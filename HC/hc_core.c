@@ -2508,7 +2508,12 @@ int hc_send(Object *target, const char *message)
 Object *hc_resolve(const char *ref) { return resolve(ref); }
 
 const char *hc_script_of(Object *o) { return o ? o->script : NULL; }
-
+void hc_set_field_text(Object *field, const char *text)
+{
+    if (!field || field->type != OBJ_FIELD) return;
+    free(field->contents);
+    field->contents = dupstr(text ? text : "");
+}
 void hc_do(const char *line)
 {
     g_depth  = 0;

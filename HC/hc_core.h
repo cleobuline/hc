@@ -55,7 +55,10 @@ Object *hc_new_button(Object *owner, const char *name);
 Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);
 void    hc_free(Object *stack);
-
+/* Script brut d'un objet (peut être NULL). */
+const char *hc_script_of(Object *o);
+/* Pose le contenu textuel d'un champ (pour l'édition interactive). */
+void        hc_set_field_text(Object *field, const char *text);
 /* ---- Contexte d'exécution ---- */
 void    hc_set_current_card(Object *card);
 /* ---- Hôte : le noyau ne sait pas afficher, il délègue ----

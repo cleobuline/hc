@@ -16,6 +16,13 @@ static Object *gEditTarget = NULL;
 static NSTextView *gEditView = nil;
 static NSPanel *gEditPanel = nil;
 static Object *gPressed = NULL;
+static BOOL    gMoving = NO;        // on déplace l'objet sélectionné
+static NSPoint gMoveStart;         // point de départ du déplacement
+static int     gObjStartX, gObjStartY;  // position de l'objet au départ
+static int     gResizeHandle = 0;  // 0 = pas de resize, 1..4 = coin saisi
+static int     gObjStartW, gObjStartH;
+static NSTextView *gFieldEditor = nil;
+static Object     *gEditingField = NULL;
 // dessine un objet (bouton ou champ) à son rectangle
 static void draw_part(Object *o) {
     if (!o->visible) return;
@@ -41,7 +48,20 @@ static void draw_part(Object *o) {
             [s drawInRect:NSInsetRect(r, 4, 4) withAttributes:nil];
         }
 }
-
+static int handle_at(Object *o, NSPoint p) {
+    if (!o) return 0;
+    CGFloat s = 8;  // tolérance de clic
+    NSPoint corners[4] = {
+        {o->x, o->y},
+        {o->x + o->w, o->y},
+        {o->x, o->y + o->h},
+        {o->x + o->w, o->y + o->h}
+    };
+    for (int i = 0; i < 4; i++)
+        if (fabs(p.x - corners[i].x) <= s && fabs(p.y - corners[i].y) <= s)
+            return i + 1;
+    return 0;
+}
 // trouve la part (bouton/champ) contenant le point, carte puis fond
 static Object *part_at(Object *card, NSPoint p) {
     if (!card) return NULL;
@@ -97,12 +117,24 @@ static void cocoa_field_changed(Object *field) {
         draw_part(card->parts[i]);
 
     if (gSelected) {
-        NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
-        [[NSColor redColor] setStroke];
-        NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
-        [path setLineWidth:2];
-        [path stroke];
-    }
+            NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
+            [[NSColor redColor] setStroke];
+            NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
+            [path setLineWidth:2];
+            [path stroke];
+
+            // poignées aux quatre coins
+            [[NSColor redColor] setFill];
+            CGFloat s = 6;
+            NSPoint corners[4] = {
+                {r.origin.x, r.origin.y},                                  // haut-gauche
+                {r.origin.x + r.size.width, r.origin.y},                   // haut-droit
+                {r.origin.x, r.origin.y + r.size.height},                  // bas-gauche
+                {r.origin.x + r.size.width, r.origin.y + r.size.height}    // bas-droit
+            };
+            for (int i = 0; i < 4; i++)
+                NSRectFill(NSMakeRect(corners[i].x - s/2, corners[i].y - s/2, s, s));
+        }
 
     if (gDragging) {
         [[NSColor blueColor] setStroke];
@@ -117,7 +149,9 @@ static void cocoa_field_changed(Object *field) {
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
-
+    if (gSelected) NSLog(@"clic p=%.0f,%.0f  handle=%d  obj=%d,%d,%d,%d",
+            p.x, p.y, handle_at(gSelected, p),
+            gSelected->x, gSelected->y, gSelected->w, gSelected->h);
     // double-clic en mode édition : éditer le script
     if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
         [self editScriptOf:hit];
@@ -125,31 +159,85 @@ static void cocoa_field_changed(Object *field) {
     }
 
     if (gTool == TOOL_BROWSE) {
-        if (hit) {
-            gPressed = hit;
-            hc_send(hit, "mouseDown");
-            [self setNeedsDisplay:YES];
+            if (hit && hit->type == OBJ_FIELD) {
+                [self beginFieldEdit:hit];
+                return;
+            }
+            if (hit) {
+                gPressed = hit;
+                hc_send(hit, "mouseDown");
+                [self setNeedsDisplay:YES];
+            } else {
+                [self endFieldEdit];
+            }
+            return;
         }
-        
-        return;
-    }
 
+ 
     // mode bouton/champ
-    if (hit) {
-        gSelected = hit;
-        gDragging = NO;
-    } else {
-        gSelected = NULL;
-        gDragStart = p;
-        gDragRect = NSMakeRect(p.x, p.y, 0, 0);
-        gDragging = YES;
-    }
-    [self setNeedsDisplay:YES];
+        // d'abord : saisit-on une poignée de l'objet déjà sélectionné ?
+        if (gSelected) {
+            int h = handle_at(gSelected, p);
+            if (h) {
+                gResizeHandle = h;
+                gMoveStart = p;
+                gObjStartX = gSelected->x;
+                gObjStartY = gSelected->y;
+                gObjStartW = gSelected->w;
+                gObjStartH = gSelected->h;
+                gMoving = NO;
+                gDragging = NO;
+                return;
+            }
+        }
+
+        if (hit) {
+            gSelected = hit;
+            gMoving = YES;
+            gMoveStart = p;
+            gObjStartX = hit->x;
+            gObjStartY = hit->y;
+            gDragging = NO;
+        } else {
+            gSelected = NULL;
+            gDragStart = p;
+            gDragRect = NSMakeRect(p.x, p.y, 0, 0);
+            gDragging = YES;
+        }
+        [self setNeedsDisplay:YES];
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-    if (!gDragging) return;
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if (gResizeHandle && gSelected) {
+        int dx = (int)(p.x - gMoveStart.x);
+        int dy = (int)(p.y - gMoveStart.y);
+        int x = gObjStartX, y = gObjStartY, w = gObjStartW, h = gObjStartH;
+        switch (gResizeHandle) {
+            case 1: x += dx; y += dy; w -= dx; h -= dy; break;  // HG
+            case 2: y += dy; w += dx; h -= dy; break;            // HD
+            case 3: x += dx; w -= dx; h += dy; break;            // BG
+            case 4: w += dx; h += dy; break;                     // BD
+        }
+        if (w < 8) w = 8;
+        if (h < 8) h = 8;
+        gSelected->x = x; gSelected->y = y;
+        gSelected->w = w; gSelected->h = h;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+    // déplacement d'un objet sélectionné
+    if (gMoving && gSelected) {
+        int dx = (int)(p.x - gMoveStart.x);
+        int dy = (int)(p.y - gMoveStart.y);
+        gSelected->x = gObjStartX + dx;
+        gSelected->y = gObjStartY + dy;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    // création par tracé (inchangé)
+    if (!gDragging) return;
     CGFloat x = MIN(gDragStart.x, p.x);
     CGFloat y = MIN(gDragStart.y, p.y);
     CGFloat w = fabs(p.x - gDragStart.x);
@@ -159,7 +247,11 @@ static void cocoa_field_changed(Object *field) {
 }
 - (void)mouseUp:(NSEvent *)event {
     // --- mode flèche : envoyer mouseUp au script ---
-    NSLog(@"mouseUp appelé, gTool=%d gPressed=%s", (int)gTool, gPressed ? "OUI" : "non");
+    if (gResizeHandle) {
+            gResizeHandle = 0;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gTool == TOOL_BROWSE) {
         if (gPressed) {
             NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
@@ -169,6 +261,12 @@ static void cocoa_field_changed(Object *field) {
             gPressed = NULL;
             [self setNeedsDisplay:YES];
         }
+        // fin d'un déplacement
+            if (gMoving) {
+                gMoving = NO;
+                [self setNeedsDisplay:YES];
+                return;
+            }
         return;
     }
 
@@ -247,7 +345,7 @@ static void cocoa_field_changed(Object *field) {
         [content addSubview:b];
         return b;
     };
-    mk(@"fleche", TOOL_BROWSE, 4);
+    mk(@"👆", TOOL_BROWSE, 4);
     mk(@"B", TOOL_BUTTON, 42);
     mk(@"F", TOOL_FIELD, 80);
 
@@ -303,6 +401,27 @@ static void cocoa_field_changed(Object *field) {
     }
     [gEditPanel close];
     gEditPanel = nil; gEditView = nil; gEditTarget = nil;
+    [self setNeedsDisplay:YES];
+}
+- (void)beginFieldEdit:(Object *)field {
+    [self endFieldEdit];
+    gEditingField = field;
+    NSRect r = NSMakeRect(field->x, field->y, field->w, field->h);
+    gFieldEditor = [[NSTextView alloc] initWithFrame:NSInsetRect(r, 2, 2)];
+    [gFieldEditor setFont:[NSFont systemFontOfSize:13]];
+    const char *tx = field->contents ? field->contents : "";
+    [gFieldEditor setString:[NSString stringWithUTF8String:tx]];
+    [self addSubview:gFieldEditor];
+    [[self window] makeFirstResponder:gFieldEditor];
+}
+
+- (void)endFieldEdit {
+    if (gFieldEditor && gEditingField) {
+        hc_set_field_text(gEditingField, [[gFieldEditor string] UTF8String]);
+    }
+    [gFieldEditor removeFromSuperview];
+    gFieldEditor = nil;
+    gEditingField = NULL;
     [self setNeedsDisplay:YES];
 }
 @end
