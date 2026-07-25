@@ -30,14 +30,25 @@ static void draw_part(Object *o) {
     NSRect r = NSMakeRect(o->x, o->y, o->w, o->h);
 
     if (o->type == OBJ_BUTTON) {
-        [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
-        NSRectFill(r);
-        [[NSColor blackColor] setStroke];
-        NSFrameRect(r);
-        const char *nm = o->name ? o->name : "";
-        NSString *s = [NSString stringWithUTF8String:nm];
-        [s drawAtPoint:NSMakePoint(o->x + 8, o->y + o->h/2 - 8) withAttributes:nil];
-    }
+            BOOL on = o->hilite;
+            [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+            NSRectFill(r);
+            [[NSColor blackColor] setStroke];
+            NSFrameRect(r);
+
+            const char *nm = o->name ? o->name : "";
+            NSString *s = [NSString stringWithUTF8String:nm];
+            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+            [ps setAlignment:NSTextAlignmentCenter];
+            NSDictionary *attrs = @{
+                NSFontAttributeName: [NSFont boldSystemFontOfSize:13],
+                NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                NSParagraphStyleAttributeName: ps
+            };
+            NSRect tr = NSInsetRect(r, 4, 0);
+            tr.origin.y += (r.size.height - 16) / 2;
+            [s drawInRect:tr withAttributes:attrs];
+        }
     else if (o->type == OBJ_FIELD) {
             [[NSColor colorWithWhite:0.97 alpha:1.0] setFill];
             NSRectFill(r);
@@ -163,13 +174,17 @@ static void cocoa_field_changed(Object *field) {
                 [self beginFieldEdit:hit];
                 return;
             }
-            if (hit) {
-                gPressed = hit;
-                hc_send(hit, "mouseDown");
-                [self setNeedsDisplay:YES];
-            } else {
-                [self endFieldEdit];
-            }
+        if (hit) {
+                    gPressed = hit;
+                    if (hit->type == OBJ_BUTTON && hit->autohilite) {
+                        hit->hilite = 1;
+                        [self setNeedsDisplay:YES];
+                    }
+                    hc_send(hit, "mouseDown");
+                    [self setNeedsDisplay:YES];
+                } else {
+                    [self endFieldEdit];
+                }
             return;
         }
 
@@ -253,22 +268,25 @@ static void cocoa_field_changed(Object *field) {
             return;
         }
     if (gTool == TOOL_BROWSE) {
-        if (gPressed) {
-            NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-            Object *hit = part_at(hc_current_card(), p);
-            if (hit == gPressed)
-                hc_send(gPressed, "mouseUp");
-            gPressed = NULL;
-            [self setNeedsDisplay:YES];
-        }
-        // fin d'un déplacement
+            if (gPressed) {
+                NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+                Object *hit = part_at(hc_current_card(), p);
+                if (hit == gPressed)
+                    hc_send(gPressed, "mouseUp");
+                // autohilite : éteindre le flash au relâché
+                if (gPressed->type == OBJ_BUTTON && gPressed->autohilite)
+                    gPressed->hilite = 0;
+                gPressed = NULL;
+                [self setNeedsDisplay:YES];
+            }
+            // fin d'un déplacement
             if (gMoving) {
                 gMoving = NO;
                 [self setNeedsDisplay:YES];
                 return;
             }
-        return;
-    }
+            return;
+        }
 
     // --- mode édition : finir la création par drag ---
     if (!gDragging) return;

@@ -73,6 +73,8 @@ static void put_part(FILE *f, Object *o)
     put_block(f, "script", o->script);
     if (o->type == OBJ_FIELD) put_block(f, "contents", o->contents);
     if (!o->visible) fprintf(f, "hidden\n");
+    if (o->hilite) fprintf(f, "hilite\n");
+    if (o->autohilite) fprintf(f, "autohilite\n");
     fprintf(f, "end %s\n", kind);
 }
 
@@ -276,6 +278,14 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "hidden") == 0) {
             if (target) target->visible = 0;
+            continue;
+        }
+        if (strcmp(s, "hilite") == 0) {
+            if (target) target->hilite = 1;
+            continue;
+        }
+        if (strcmp(s, "autohilite") == 0) {
+            if (target) target->autohilite = 1;
             continue;
         }
         if (strncmp(s, "rect ", 5) == 0 && part) {

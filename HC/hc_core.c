@@ -1363,6 +1363,8 @@ static void term_value(const char *t, char *out, int outlen)
                         return;
                     }
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
+                    if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
+                    if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "script"))  { snprintf(out, outlen, "%s", o->script ? o->script : ""); return; }
                     if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
                                                    { snprintf(out, outlen, "%s", o->contents ? o->contents : ""); return; }
@@ -2228,6 +2230,11 @@ static void exec_line(Object *me, const char *line)
             o->name = dupstr(val);
         } else if (ci_equal(prop, "visible")) {
             o->visible = truthy(val);
+        } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
+            o->hilite = truthy(val);
+            notify_field(o);
+        } else if (ci_equal(prop, "autohilite")) {
+            o->autohilite = truthy(val);
         } else if (ci_equal(prop, "script")) {
             hc_set_script(o, val);
         } else if (ci_equal(prop, "style")) {
@@ -2508,12 +2515,14 @@ int hc_send(Object *target, const char *message)
 Object *hc_resolve(const char *ref) { return resolve(ref); }
 
 const char *hc_script_of(Object *o) { return o ? o->script : NULL; }
+
 void hc_set_field_text(Object *field, const char *text)
 {
     if (!field || field->type != OBJ_FIELD) return;
     free(field->contents);
     field->contents = dupstr(text ? text : "");
 }
+
 void hc_do(const char *line)
 {
     g_depth  = 0;
