@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 50;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -11,6 +11,9 @@
 		4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB503014BE7D006AE901 /* Assets.xcassets */; };
 		4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB523014BE7D006AE901 /* MainMenu.xib */; };
 		4DF5FB573014BE7E006AE901 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB563014BE7E006AE901 /* main.m */; };
+		4DF5FB643014C005006AE901 /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB623014C004006AE901 /* hc_core.c */; };
+		4DF5FB653014C005006AE901 /* hc_file.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB633014C005006AE901 /* hc_file.c */; };
+		4DF5FB6A3014C140006AE901 /* HCview.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB693014C140006AE901 /* HCview.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +25,12 @@
 		4DF5FB553014BE7D006AE901 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4DF5FB563014BE7E006AE901 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		4DF5FB583014BE7E006AE901 /* HC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HC.entitlements; sourceTree = "<group>"; };
+		4DF5FB603014C004006AE901 /* hc_file.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hc_file.h; sourceTree = "<group>"; };
+		4DF5FB613014C004006AE901 /* hc_core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hc_core.h; sourceTree = "<group>"; };
+		4DF5FB623014C004006AE901 /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
+		4DF5FB633014C005006AE901 /* hc_file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_file.c; sourceTree = "<group>"; };
+		4DF5FB683014C140006AE901 /* HCview.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCview.h; sourceTree = "<group>"; };
+		4DF5FB693014C140006AE901 /* HCview.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCview.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -38,6 +47,8 @@
 		4DF5FB413014BE74006AE901 = {
 			isa = PBXGroup;
 			children = (
+				4DF5FB683014C140006AE901 /* HCview.h */,
+				4DF5FB693014C140006AE901 /* HCview.m */,
 				4DF5FB4C3014BE74006AE901 /* HC */,
 				4DF5FB4B3014BE74006AE901 /* Products */,
 			);
@@ -55,7 +66,11 @@
 			isa = PBXGroup;
 			children = (
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
+				4DF5FB623014C004006AE901 /* hc_core.c */,
+				4DF5FB613014C004006AE901 /* hc_core.h */,
+				4DF5FB633014C005006AE901 /* hc_file.c */,
 				4DF5FB4E3014BE74006AE901 /* AppDelegate.m */,
+				4DF5FB603014C004006AE901 /* hc_file.h */,
 				4DF5FB503014BE7D006AE901 /* Assets.xcassets */,
 				4DF5FB523014BE7D006AE901 /* MainMenu.xib */,
 				4DF5FB553014BE7D006AE901 /* Info.plist */,
@@ -99,7 +114,7 @@
 				};
 			};
 			buildConfigurationList = 4DF5FB453014BE74006AE901 /* Build configuration list for PBXProject "HC" */;
-			compatibilityVersion = "Xcode 9.3";
+			compatibilityVersion = "Xcode 12.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -133,8 +148,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,
 				4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */,
+				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
+				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
