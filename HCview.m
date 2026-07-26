@@ -2,7 +2,7 @@
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 
-typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD } HCTool;
+typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL } HCTool;
 static HCTool gTool = TOOL_BROWSE;
 static Object *gSelected = NULL;   // objet sélectionné en mode édition
 
@@ -24,9 +24,35 @@ static int     gResizeHandle = 0;  // 0 = pas de resize, 1..4 = coin saisi
 static int     gObjStartW, gObjStartH;
 static NSTextView *gFieldEditor = nil;
 static Object     *gEditingField = NULL;
+static NSPoint gPenLast;
+static BOOL    gPenDrawing = NO;
+static BOOL gEditBackground = NO;   // NO = couche carte, YES = couche fond
+// peint un segment de ligne dans le bitmap de la carte courante
+static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
+    if (!rep) return;
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return;
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
 
+    // retourner le contexte pour qu'il corresponde à la vue isFlipped
+    // (origine en haut, comme les coordonnées reçues de la souris)
+    CGFloat H = [rep pixelsHigh];
+    NSAffineTransform *flip = [NSAffineTransform transform];
+    [flip translateXBy:0 yBy:H];
+    [flip scaleXBy:1 yBy:-1];
+    [flip concat];
 
+    [color setStroke];
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:from];
+    [path lineToPoint:to];
+    [path setLineWidth:width];
+    [path setLineCapStyle:NSLineCapStyleRound];
+    [path stroke];
 
+    [NSGraphicsContext restoreGraphicsState];
+}
 // récupère (ou crée) le bitmap de peinture d'une carte/fond
 static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
 
@@ -34,45 +60,40 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
     NSValue *key = [NSValue valueWithPointer:o];
     NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
+    if (rep) return rep;
 
-    if (rep) {
-        NSLog(@"paint_bitmap obj=%p type=%d -> CACHE HIT", (void*)o, o->type);
-        return rep;
-    }
+    // crée toujours un bitmap NEUF et DESSINABLE aux dimensions voulues
+    NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes:NULL
+                          pixelsWide:w pixelsHigh:h
+                       bitsPerSample:8 samplesPerPixel:4
+                            hasAlpha:YES isPlanar:NO
+                      colorSpaceName:NSCalibratedRGBColorSpace
+                         bytesPerRow:0 bitsPerPixel:0];
 
-    // pas dans le cache : décoder depuis le base64 du noyau, ou créer un bitmap vierge
+    // si le noyau a un PNG base64, le décoder et le peindre DANS le canvas
     const char *b64 = hc_paint_of(o);
-    NSLog(@"paint_bitmap obj=%p type=%d CACHE MISS b64=%s",
-          (void*)o, o->type, (b64 && *b64) ? "PRESENT" : "vide");
-
     if (b64 && *b64) {
-        NSString *b64str = [NSString stringWithUTF8String:b64];
-        NSLog(@"  -> b64 longueur=%lu", (unsigned long)[b64str length]);
-        NSData *data = [[NSData alloc] initWithBase64EncodedString:b64str
+        NSData *data = [[NSData alloc] initWithBase64EncodedString:
+                         [NSString stringWithUTF8String:b64]
                          options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        NSLog(@"  -> data=%@ (%lu octets)", data ? @"OK" : @"NIL",
-              (unsigned long)(data ? [data length] : 0));
-        if (data) {
-            rep = [NSBitmapImageRep imageRepWithData:data];
-            NSLog(@"  -> rep=%@ (%ldx%ld)", rep ? @"OK" : @"NIL",
-                  rep ? (long)[rep pixelsWide] : 0,
-                  rep ? (long)[rep pixelsHigh] : 0);
+        NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
+        if (loaded) {
+            NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
+            [NSGraphicsContext saveGraphicsState];
+            [NSGraphicsContext setCurrentContext:ctx];
+            [loaded drawInRect:NSMakeRect(0, 0, w, h)
+                      fromRect:NSZeroRect
+                     operation:NSCompositingOperationSourceOver
+                      fraction:1.0
+                respectFlipped:YES
+                         hints:nil];
+            [NSGraphicsContext restoreGraphicsState];
         }
     }
 
-    if (!rep) {
-        NSLog(@"  -> création bitmap vierge %dx%d", w, h);
-        rep = [[NSBitmapImageRep alloc]
-                initWithBitmapDataPlanes:NULL
-                              pixelsWide:w pixelsHigh:h
-                           bitsPerSample:8 samplesPerPixel:4
-                                hasAlpha:YES isPlanar:NO
-                          colorSpaceName:NSCalibratedRGBColorSpace
-                             bytesPerRow:0 bitsPerPixel:0];
-    }
-
-    if (rep) [gPaintCache setObject:rep forKey:key];
-    return rep;
+    [gPaintCache setObject:canvas forKey:key];
+    return canvas;
 }
 // éteint tous les radioButtons de la carte sauf 'keep'
 static void radio_exclusive(Object *card, Object *keep) {
@@ -191,8 +212,27 @@ static int handle_at(Object *o, NSPoint p) {
     return 0;
 }
 // trouve la part (bouton/champ) contenant le point, carte puis fond
+// trouve la part contenant le point.
+// En navigation (browse), cherche partout (carte + fond).
+// En édition, ne cherche que dans la couche active.
 static Object *part_at(Object *card, NSPoint p) {
     if (!card) return NULL;
+
+    // en mode édition, restreindre à la couche active
+    if (gTool != TOOL_BROWSE) {
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) return NULL;
+        for (int i = layer->nparts - 1; i >= 0; i--) {
+            Object *o = layer->parts[i];
+            if (o->visible &&
+                p.x >= o->x && p.x <= o->x + o->w &&
+                p.y >= o->y && p.y <= o->y + o->h)
+                return o;
+        }
+        return NULL;
+    }
+
+    // en navigation : carte d'abord, puis fond
     for (int i = card->nparts - 1; i >= 0; i--) {
         Object *o = card->parts[i];
         if (o->visible &&
@@ -237,13 +277,18 @@ static void cocoa_field_changed(Object *field) {
     if (!card) return;
 
     // --- calque de peinture : fond puis carte, SOUS les objets ---
-    NSRect b = [self bounds];
-    if (card->bg) {
-        NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
-        [bgpaint drawAtPoint:NSMakePoint(0, 0)];
-    }
-    NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
-    [cardpaint drawAtPoint:NSMakePoint(0, 0)];
+        NSRect b = [self bounds];
+        NSRect full = NSMakeRect(0, 0, b.size.width, b.size.height);
+        if (card->bg) {
+            NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
+            [bgpaint drawInRect:full fromRect:NSZeroRect
+                      operation:NSCompositingOperationSourceOver fraction:1.0
+                 respectFlipped:YES hints:nil];
+        }
+        NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
+        [cardpaint drawInRect:full fromRect:NSZeroRect
+                    operation:NSCompositingOperationSourceOver fraction:1.0
+               respectFlipped:YES hints:nil];
 
     // --- objets par-dessus ---
     if (card->bg)
@@ -277,6 +322,21 @@ static void cocoa_field_changed(Object *field) {
         [path setLineDash:dash count:2 phase:0];
         [path stroke];
     }
+    if (gEditBackground) {
+            [[NSColor colorWithRed:0.6 green:0.4 blue:0.2 alpha:1.0] setStroke];
+            NSBezierPath *frame = [NSBezierPath bezierPathWithRect:NSInsetRect([self bounds], 4, 4)];
+            [frame setLineWidth:4];
+            CGFloat dash[] = {10, 5};
+            [frame setLineDash:dash count:2 phase:0];
+            [frame stroke];
+        }
+}
+- (void)toggleBackground:(id)sender {
+    gEditBackground = !gEditBackground;
+    gSelected = NULL;
+    [self endFieldEdit];
+    [self setNeedsDisplay:YES];
+    NSLog(@"couche : %@", gEditBackground ? @"FOND" : @"CARTE");
 }
 - (void)testScribble {
     Object *card = hc_current_card();
@@ -315,9 +375,23 @@ static void cocoa_field_changed(Object *field) {
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
-    if (gSelected) NSLog(@"clic p=%.0f,%.0f  handle=%d  obj=%d,%d,%d,%d",
-            p.x, p.y, handle_at(gSelected, p),
-            gSelected->x, gSelected->y, gSelected->w, gSelected->h);
+    if (gTool == TOOL_PENCIL) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;   // ← couche active
+        if (!layer) layer = card;
+        NSLog(@"crayon: gEditBackground=%d card=%p bg=%p layer=%p type=%d",
+              gEditBackground, (void*)card, (void*)(card?card->bg:NULL),
+              (void*)layer, layer?layer->type:-1);
+            if (layer) {
+                
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                gPenLast = p;
+                gPenDrawing = YES;
+                paint_stroke(rep, p, p, [NSColor blackColor], 2);
+                [self setNeedsDisplay:YES];
+            }
+            return;
+        }
     // double-clic en mode édition : éditer le script
     if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
         [self editScriptOf:hit];
@@ -382,6 +456,16 @@ static void cocoa_field_changed(Object *field) {
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if (gTool == TOOL_PENCIL && gPenDrawing) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;   // ← couche active
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            paint_stroke(rep, gPenLast, p, [NSColor blackColor], 2);
+            gPenLast = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gResizeHandle && gSelected) {
         int dx = (int)(p.x - gMoveStart.x);
         int dy = (int)(p.y - gMoveStart.y);
@@ -423,6 +507,10 @@ static void cocoa_field_changed(Object *field) {
     if (gResizeHandle) {
             gResizeHandle = 0;
             [self setNeedsDisplay:YES];
+            return;
+        }
+    if (gTool == TOOL_PENCIL) {
+            gPenDrawing = NO;
             return;
         }
     if (gTool == TOOL_BROWSE) {
@@ -468,16 +556,18 @@ static void cocoa_field_changed(Object *field) {
         return;
     }
     Object *card = hc_current_card();
-    if (!card) return;
-    char name[64];
-    Object *o;
-    if (gTool == TOOL_BUTTON) {
-        snprintf(name, sizeof name, "Bouton %d", ++gNewCount);
-        o = hc_new_button(card, name);
-    } else {
-        snprintf(name, sizeof name, "Champ %d", ++gNewCount);
-        o = hc_new_field(card, name);
-    }
+        if (!card) return;
+        Object *owner = gEditBackground ? card->bg : card;   // couche cible
+        if (!owner) owner = card;                            // sécurité si pas de fond
+        char name[64];
+        Object *o;
+        if (gTool == TOOL_BUTTON) {
+            snprintf(name, sizeof name, "Bouton %d", ++gNewCount);
+            o = hc_new_button(owner, name);
+        } else {
+            snprintf(name, sizeof name, "Champ %d", ++gNewCount);
+            o = hc_new_field(owner, name);
+        }
     o->x = (int)gDragRect.origin.x;
     o->y = (int)gDragRect.origin.y;
     o->w = (int)gDragRect.size.width;
@@ -516,7 +606,7 @@ static void cocoa_field_changed(Object *field) {
 
 - (void)installToolPalette {
     NSPanel *palette = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(520, 400, 120, 60)
+        initWithContentRect:NSMakeRect(520, 400, 170, 60)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
                     backing:NSBackingStoreBuffered
                       defer:NO];
@@ -538,7 +628,7 @@ static void cocoa_field_changed(Object *field) {
     mk(@"👆", TOOL_BROWSE, 4);
     mk(@"B", TOOL_BUTTON, 42);
     mk(@"F", TOOL_FIELD, 80);
-
+    mk(@"✏", TOOL_PENCIL, 118);
     [palette makeKeyAndOrderFront:nil];
 }
 
@@ -614,5 +704,5 @@ static void cocoa_field_changed(Object *field) {
     gEditingField = NULL;
     [self setNeedsDisplay:YES];
 }
-
+ 
 @end

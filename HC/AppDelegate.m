@@ -24,14 +24,18 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     // --- pile avec deux cartes ---
     //Object *stack = hc_new_stack("Essai");
     gStack = hc_new_stack("Essai");
-    // carte 1 : accueil
-    Object *c1 = hc_new_card(gStack, NULL, "accueil");
-    hc_new_button(c1, "Bonjour");
-    hc_new_button(c1, "Suivant");
 
-    // carte 2 : seconde
-    Object *c2 = hc_new_card(gStack, NULL, "seconde");
-    hc_new_button(c2, "Retour");
+        // un fond commun, partagé par les cartes
+        Object *bg = hc_new_background(gStack, "commun");
+
+        // carte 1 : accueil, sur le fond commun
+        Object *c1 = hc_new_card(gStack, bg, "accueil");
+        hc_new_button(c1, "Bonjour");
+        hc_new_button(c1, "Suivant");
+
+        // carte 2 : seconde, même fond
+        Object *c2 = hc_new_card(gStack, bg, "seconde");
+        hc_new_button(c2, "Retour");
 
     hc_set_current_card(c1);
 
@@ -79,6 +83,12 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [fileMenu addItemWithTitle:@"Test dessin"
                             action:@selector(testDraw:)
                      keyEquivalent:@"t"];
+    [fileMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *bgItem = [[NSMenuItem alloc] initWithTitle:@"Éditer le fond"
+                                                        action:@selector(toggleBackground:)
+                                                 keyEquivalent:@"b"];
+        [bgItem setTarget:view];
+        [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
 }
@@ -89,11 +99,13 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     gCardCount++;
     char name[64];
     snprintf(name, sizeof name, "carte %d", gCardCount);
-    Object *c = hc_new_card(gStack, NULL, name);
+    // réutiliser le fond de la carte courante
+    Object *cur = hc_current_card();
+    Object *bg = cur ? cur->bg : NULL;
+    Object *c = hc_new_card(gStack, bg, name);
     hc_set_current_card(c);
     [gView setNeedsDisplay:YES];
 }
-
 - (void)saveStack:(id)sender {
     NSSavePanel *panel = [NSSavePanel savePanel];
     [panel setNameFieldStringValue:@"MaPile.stack"];

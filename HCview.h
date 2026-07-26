@@ -13,6 +13,7 @@
 - (void)testScribble;
 - (void)flushPaintToKernel;
 - (void)clearPaintCache;
+- (void)toggleBackground:(id)sender;
 @end
 
 extern HCView *gView;
