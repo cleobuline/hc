@@ -47,8 +47,6 @@
 		4DF5FB413014BE74006AE901 = {
 			isa = PBXGroup;
 			children = (
-				4DF5FB683014C140006AE901 /* HCview.h */,
-				4DF5FB693014C140006AE901 /* HCview.m */,
 				4DF5FB4C3014BE74006AE901 /* HC */,
 				4DF5FB4B3014BE74006AE901 /* Products */,
 			);
@@ -67,7 +65,9 @@
 			children = (
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
 				4DF5FB623014C004006AE901 /* hc_core.c */,
+				4DF5FB693014C140006AE901 /* HCview.m */,
 				4DF5FB613014C004006AE901 /* hc_core.h */,
+				4DF5FB683014C140006AE901 /* HCview.h */,
 				4DF5FB633014C005006AE901 /* hc_file.c */,
 				4DF5FB4E3014BE74006AE901 /* AppDelegate.m */,
 				4DF5FB603014C004006AE901 /* hc_file.h */,
