@@ -122,7 +122,7 @@ static void draw_part(Object *o) {
             const char *st = o->style ? o->style : "rectangle";
             BOOL isCheck = (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0);
             BOOL isRadio = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
-
+        BOOL isTransparent = (strcmp(st, "transparent") == 0);
             const char *nm = o->name ? o->name : "";
             NSString *s = [NSString stringWithUTF8String:nm];
 
@@ -167,6 +167,33 @@ static void draw_part(Object *o) {
                 NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:13] };
                 [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - 8) withAttributes:attrs];
             }
+            else if (isTransparent) {
+                        BOOL on = o->hilite;
+                        if (on) {
+                            [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
+                            NSRectFill(r);
+                        }
+                        // en mode édition : montrer le contour pour pouvoir le saisir
+                        if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
+                            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+                            NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
+                            [outline setLineWidth:1];
+                            CGFloat dash[] = {3, 2};
+                            [outline setLineDash:dash count:2 phase:0];
+                            [outline stroke];
+                        }
+                        CGFloat fs = o->textsize > 0 ? o->textsize : 16;
+                        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                        [ps setAlignment:NSTextAlignmentCenter];
+                        NSDictionary *attrs = @{
+                            NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+                            NSForegroundColorAttributeName: [NSColor blackColor],
+                            NSParagraphStyleAttributeName: ps
+                        };
+                        NSRect tr = NSInsetRect(r, 2, 0);
+                        tr.origin.y += (r.size.height - fs * 1.2) / 2;
+                        [s drawInRect:tr withAttributes:attrs];
+                    }
             else {
                 // bouton rectangle classique, avec highlight vidéo inverse
                 BOOL on = o->hilite;

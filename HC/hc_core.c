@@ -464,6 +464,7 @@ static Object *resolve(const char *ref)
     if (ci_word(ref, "bg") || ci_word(ref, "background")) {
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
+        if (!*ref) return bg;   /* « background » seul = le fond de la carte courante */
     } else if (ci_word(ref, "card") || ci_word(ref, "cd")) {
         /* "card button" / "card field" / "card \"nom\"" / "card 3" */
         const char *after = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
@@ -1366,6 +1367,7 @@ static void term_value(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
+                    if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
                     if (ci_equal(prop, "script"))  { snprintf(out, outlen, "%s", o->script ? o->script : ""); return; }
                     if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
                                                    { snprintf(out, outlen, "%s", o->contents ? o->contents : ""); return; }
@@ -2236,6 +2238,9 @@ static void exec_line(Object *me, const char *line)
             notify_field(o);
         } else if (ci_equal(prop, "autohilite")) {
             o->autohilite = truthy(val);
+        } else if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) {
+            o->textsize = atoi(val);
+            notify_field(o);
         } else if (ci_equal(prop, "script")) {
             hc_set_script(o, val);
         } else if (ci_equal(prop, "style")) {

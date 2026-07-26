@@ -41,6 +41,7 @@ struct Object {
     int      visible;
     int      hilite;    /* bouton allumé (vidéo inverse) ; coché pour checkBox/radio */
     int      autohilite;/* le bouton s'allume automatiquement pendant le clic */
+    int      textsize;  /* taille de police du nom (0 = défaut) */
     char    *contents;  /* contenu textuel (champs) */
 
     /* géométrie : rectangle en coordonnées carte (pixels).
