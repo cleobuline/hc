@@ -23,6 +23,25 @@ static int     gResizeHandle = 0;  // 0 = pas de resize, 1..4 = coin saisi
 static int     gObjStartW, gObjStartH;
 static NSTextView *gFieldEditor = nil;
 static Object     *gEditingField = NULL;
+
+
+// éteint tous les radioButtons de la carte sauf 'keep'
+static void radio_exclusive(Object *card, Object *keep) {
+    if (!card) return;
+    for (int i = 0; i < card->nparts; i++) {
+        Object *o = card->parts[i];
+        if (o->type == OBJ_BUTTON && o != keep && o->style &&
+            (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
+            o->hilite = 0;
+    }
+    if (card->bg)
+        for (int i = 0; i < card->bg->nparts; i++) {
+            Object *o = card->bg->parts[i];
+            if (o->type == OBJ_BUTTON && o != keep && o->style &&
+                (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
+                o->hilite = 0;
+        }
+}
 // dessine un objet (bouton ou champ) à son rectangle
 static void draw_part(Object *o) {
     if (!o->visible) return;
@@ -30,24 +49,73 @@ static void draw_part(Object *o) {
     NSRect r = NSMakeRect(o->x, o->y, o->w, o->h);
 
     if (o->type == OBJ_BUTTON) {
-            BOOL on = o->hilite;
-            [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
-            NSRectFill(r);
-            [[NSColor blackColor] setStroke];
-            NSFrameRect(r);
+            const char *st = o->style ? o->style : "rectangle";
+            BOOL isCheck = (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0);
+            BOOL isRadio = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
 
             const char *nm = o->name ? o->name : "";
             NSString *s = [NSString stringWithUTF8String:nm];
-            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-            [ps setAlignment:NSTextAlignmentCenter];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: [NSFont boldSystemFontOfSize:13],
-                NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-                NSParagraphStyleAttributeName: ps
-            };
-            NSRect tr = NSInsetRect(r, 4, 0);
-            tr.origin.y += (r.size.height - 16) / 2;
-            [s drawInRect:tr withAttributes:attrs];
+
+            if (isCheck || isRadio) {
+                // case ou rond à gauche, nom à droite
+                CGFloat box = 14;
+                CGFloat cy = o->y + o->h/2.0 - box/2.0;
+                NSRect mark = NSMakeRect(o->x + 2, cy, box, box);
+
+                [[NSColor whiteColor] setFill];
+                [[NSColor blackColor] setStroke];
+
+                if (isRadio) {
+                    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:mark];
+                    [circle fill];
+                    [circle stroke];
+                    if (o->hilite) {
+                        NSRect dot = NSInsetRect(mark, 4, 4);
+                        [[NSColor blackColor] setFill];
+                        [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
+                    }
+                } else {
+                                // case à cocher
+                                [[NSColor whiteColor] setFill];
+                                NSRectFill(mark);
+                                [[NSColor blackColor] setStroke];
+                                NSBezierPath *box_path = [NSBezierPath bezierPathWithRect:mark];
+                                [box_path setLineWidth:1];
+                                [box_path stroke];
+                                if (o->hilite) {
+                                    NSBezierPath *x = [NSBezierPath bezierPath];
+                                    [x moveToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+2)];
+                                    [x lineToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+box-2)];
+                                    [x moveToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+2)];
+                                    [x lineToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+box-2)];
+                                    [x setLineWidth:1.5];
+                                    [x stroke];
+                                }
+                            }
+
+                // le nom, à droite de la case
+                NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:13] };
+                [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - 8) withAttributes:attrs];
+            }
+            else {
+                // bouton rectangle classique, avec highlight vidéo inverse
+                BOOL on = o->hilite;
+                [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+                NSRectFill(r);
+                [[NSColor blackColor] setStroke];
+                NSFrameRect(r);
+
+                NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                [ps setAlignment:NSTextAlignmentCenter];
+                NSDictionary *attrs = @{
+                    NSFontAttributeName: [NSFont boldSystemFontOfSize:13],
+                    NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                    NSParagraphStyleAttributeName: ps
+                };
+                NSRect tr = NSInsetRect(r, 4, 0);
+                tr.origin.y += (r.size.height - 16) / 2;
+                [s drawInRect:tr withAttributes:attrs];
+            }
         }
     else if (o->type == OBJ_FIELD) {
             [[NSColor colorWithWhite:0.97 alpha:1.0] setFill];
@@ -176,9 +244,12 @@ static void cocoa_field_changed(Object *field) {
             }
         if (hit) {
                     gPressed = hit;
-                    if (hit->type == OBJ_BUTTON && hit->autohilite) {
+                    // flash uniquement pour les boutons rectangle avec autohilite
+                    if (hit->type == OBJ_BUTTON && hit->autohilite &&
+                        (!hit->style ||
+                         (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
+                          strcmp(hit->style, "radioButton") != 0 && strcmp(hit->style, "radiobutton") != 0))) {
                         hit->hilite = 1;
-                        [self setNeedsDisplay:YES];
                     }
                     hc_send(hit, "mouseDown");
                     [self setNeedsDisplay:YES];
@@ -273,13 +344,27 @@ static void cocoa_field_changed(Object *field) {
                 Object *hit = part_at(hc_current_card(), p);
                 if (hit == gPressed)
                     hc_send(gPressed, "mouseUp");
-                // autohilite : éteindre le flash au relâché
-                if (gPressed->type == OBJ_BUTTON && gPressed->autohilite)
+
+                // comportement checkBox / radioButton : bascule persistante
+                if (gPressed->type == OBJ_BUTTON && gPressed->style) {
+                    const char *st = gPressed->style;
+                    if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
+                        gPressed->hilite = !gPressed->hilite;   // bascule et reste
+                    }
+                    else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
+                        gPressed->hilite = 1;                    // allume
+                        radio_exclusive(hc_current_card(), gPressed);  // éteint les autres
+                    }
+                    else if (gPressed->autohilite) {
+                        gPressed->hilite = 0;   // bouton normal : éteindre le flash
+                    }
+                } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
                     gPressed->hilite = 0;
+                }
+
                 gPressed = NULL;
                 [self setNeedsDisplay:YES];
             }
-            // fin d'un déplacement
             if (gMoving) {
                 gMoving = NO;
                 [self setNeedsDisplay:YES];
@@ -442,4 +527,5 @@ static void cocoa_field_changed(Object *field) {
     gEditingField = NULL;
     [self setNeedsDisplay:YES];
 }
+
 @end

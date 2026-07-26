@@ -6,24 +6,29 @@
 #import "AppDelegate.h"
 #import "HCView.h"
 #import "hc_core.h"
-
+#import "hc_file.h"
 @interface AppDelegate ()
 @property (strong) IBOutlet NSWindow *window;
 @end
 
 @implementation AppDelegate
 
+
+
+static Object *gStack = NULL;
+static int gCardCount = 0;   // pour nommer les nouvelles cartes
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     // --- pile avec deux cartes ---
-    Object *stack = hc_new_stack("Essai");
-
+    //Object *stack = hc_new_stack("Essai");
+    gStack = hc_new_stack("Essai");
     // carte 1 : accueil
-    Object *c1 = hc_new_card(stack, NULL, "accueil");
+    Object *c1 = hc_new_card(gStack, NULL, "accueil");
     hc_new_button(c1, "Bonjour");
     hc_new_button(c1, "Suivant");
 
     // carte 2 : seconde
-    Object *c2 = hc_new_card(stack, NULL, "seconde");
+    Object *c2 = hc_new_card(gStack, NULL, "seconde");
     hc_new_button(c2, "Retour");
 
     hc_set_current_card(c1);
@@ -53,9 +58,69 @@
 
     [view installMessageBox];
     [view installToolPalette];
+    // menu Fichier
+        NSMenu *mainMenu = [NSApp mainMenu];
+        NSMenuItem *fileItem = [[NSMenuItem alloc] init];
+        NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"Pile"];
+
+        [fileMenu addItemWithTitle:@"Nouvelle carte"
+                            action:@selector(newCard:)
+                     keyEquivalent:@"n"];
+        [fileMenu addItem:[NSMenuItem separatorItem]];
+        [fileMenu addItemWithTitle:@"Ouvrir une pile…"
+                            action:@selector(openStack:)
+                     keyEquivalent:@"o"];
+        [fileMenu addItemWithTitle:@"Enregistrer la pile…"
+                            action:@selector(saveStack:)
+                     keyEquivalent:@"s"];
+
+        [fileItem setSubmenu:fileMenu];
+        [mainMenu addItem:fileItem];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
 }
+- (void)newCard:(id)sender {
+    gCardCount++;
+    char name[64];
+    snprintf(name, sizeof name, "carte %d", gCardCount);
+    Object *c = hc_new_card(gStack, NULL, name);
+    hc_set_current_card(c);
+    [gView setNeedsDisplay:YES];
+}
 
+- (void)saveStack:(id)sender {
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    [panel setNameFieldStringValue:@"MaPile.stack"];
+    if ([panel runModal] == NSModalResponseOK) {
+        NSString *path = [[panel URL] path];
+        if (hc_save(gStack, [path UTF8String]) != 0)
+            NSLog(@"échec de la sauvegarde");
+    }
+}
+
+- (void)openStack:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    [panel setCanChooseFiles:YES];
+    [panel setAllowsMultipleSelection:NO];
+    if ([panel runModal] == NSModalResponseOK) {
+        NSString *path = [[panel URL] path];
+        Object *loaded = hc_load([path UTF8String]);
+        if (loaded) {
+            // remplacer la pile courante
+            hc_free(gStack);
+            gStack = loaded;
+            // aller à la première carte
+            for (int i = 0; i < gStack->nparts; i++) {
+                if (gStack->parts[i]->type == OBJ_CARD) {
+                    hc_set_current_card(gStack->parts[i]);
+                    break;
+                }
+            }
+            [gView setNeedsDisplay:YES];
+        } else {
+            NSLog(@"échec du chargement");
+        }
+    }
+}
 @end
