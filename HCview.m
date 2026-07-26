@@ -1,8 +1,8 @@
 #import "HCview.h"
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
-
-typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL } HCTool;
+typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
+               TOOL_LINE, TOOL_RECT, TOOL_OVAL } HCTool;
 static HCTool gTool = TOOL_BROWSE;
 static Object *gSelected = NULL;   // objet sélectionné en mode édition
 
@@ -28,6 +28,41 @@ static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
 static BOOL gEditBackground = NO;   // NO = couche carte, YES = couche fond
 // peint un segment de ligne dans le bitmap de la carte courante
+static NSPoint gShapeStart;
+static NSPoint gShapeEnd;
+static BOOL    gShapeDrawing = NO;
+static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
+
+static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
+    if (!rep) return;
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return;
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+
+    CGFloat H = [rep pixelsHigh];
+    NSAffineTransform *flip = [NSAffineTransform transform];
+    [flip translateXBy:0 yBy:H];
+    [flip scaleXBy:1 yBy:-1];
+    [flip concat];
+
+    [color setStroke];
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
+
+    if (tool == TOOL_LINE) {
+        [path moveToPoint:a];
+        [path lineToPoint:b];
+    } else if (tool == TOOL_RECT) {
+        path = [NSBezierPath bezierPathWithRect:box];
+    } else if (tool == TOOL_OVAL) {
+        path = [NSBezierPath bezierPathWithOvalInRect:box];
+    }
+    [path setLineWidth:width];
+    [path stroke];
+
+    [NSGraphicsContext restoreGraphicsState];
+}
 static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
@@ -53,6 +88,31 @@ static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColo
 
     [NSGraphicsContext restoreGraphicsState];
 }
+// efface un segment (remet à transparent) au lieu de peindre
+static void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width) {
+    if (!rep) return;
+
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return;
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+
+    CGFloat H = [rep pixelsHigh];
+    NSAffineTransform *flip = [NSAffineTransform transform];
+    [flip translateXBy:0 yBy:H];
+    [flip scaleXBy:1 yBy:-1];
+    [flip concat];
+
+    CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:from];
+    [path lineToPoint:to];
+    [path setLineWidth:width];
+    [path setLineCapStyle:NSLineCapStyleRound];
+    [path stroke];
+
+    [NSGraphicsContext restoreGraphicsState];
+}
 // récupère (ou crée) le bitmap de peinture d'une carte/fond
 static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
 
@@ -62,7 +122,6 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
     if (rep) return rep;
 
-    // crée toujours un bitmap NEUF et DESSINABLE aux dimensions voulues
     NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
@@ -71,7 +130,15 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
                       colorSpaceName:NSCalibratedRGBColorSpace
                          bytesPerRow:0 bitsPerPixel:0];
 
-    // si le noyau a un PNG base64, le décoder et le peindre DANS le canvas
+    // effacer explicitement vers le transparent
+    {
+        NSGraphicsContext *cctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext setCurrentContext:cctx];
+        CGContextClearRect([cctx CGContext], CGRectMake(0, 0, w, h));
+        [NSGraphicsContext restoreGraphicsState];
+    }
+
     const char *b64 = hc_paint_of(o);
     if (b64 && *b64) {
         NSData *data = [[NSData alloc] initWithBase64EncodedString:
@@ -357,6 +424,22 @@ static void cocoa_field_changed(Object *field) {
             [frame setLineDash:dash count:2 phase:0];
             [frame stroke];
         }
+    if (gShapeDrawing) {
+            [[NSColor blueColor] setStroke];
+            NSBezierPath *preview = [NSBezierPath bezierPath];
+            NSRect box = NSMakeRect(MIN(gShapeStart.x,gShapeEnd.x), MIN(gShapeStart.y,gShapeEnd.y),
+                                    fabs(gShapeEnd.x-gShapeStart.x), fabs(gShapeEnd.y-gShapeStart.y));
+            if (gTool == TOOL_LINE) {
+                [preview moveToPoint:gShapeStart];
+                [preview lineToPoint:gShapeEnd];
+            } else if (gTool == TOOL_RECT) {
+                preview = [NSBezierPath bezierPathWithRect:box];
+            } else if (gTool == TOOL_OVAL) {
+                preview = [NSBezierPath bezierPathWithOvalInRect:box];
+            }
+            [preview setLineWidth:1];
+            [preview stroke];
+        }
 }
 - (void)toggleBackground:(id)sender {
     gEditBackground = !gEditBackground;
@@ -417,6 +500,27 @@ static void cocoa_field_changed(Object *field) {
                 paint_stroke(rep, p, p, [NSColor blackColor], 2);
                 [self setNeedsDisplay:YES];
             }
+            return;
+        }
+    if (gTool == TOOL_ERASER) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+        NSLog(@"gomme: gEditBackground=%d layer type=%d", gEditBackground, layer?layer->type:-1);
+            if (layer) {
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                gPenLast = p;
+                gPenDrawing = YES;
+                erase_stroke(rep, p, p, 16);   // gomme large de 16
+                [self setNeedsDisplay:YES];
+            }
+            return;
+        }
+    if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
+            gShapeStart = p;
+            gShapeEnd = p;
+            gShapeDrawing = YES;
+            [self setNeedsDisplay:YES];
             return;
         }
     // double-clic en mode édition : éditer le script
@@ -493,6 +597,21 @@ static void cocoa_field_changed(Object *field) {
             [self setNeedsDisplay:YES];
             return;
         }
+    if (gTool == TOOL_ERASER && gPenDrawing) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            erase_stroke(rep, gPenLast, p, 16);
+            gPenLast = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    if (gShapeDrawing) {
+            gShapeEnd = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gResizeHandle && gSelected) {
         int dx = (int)(p.x - gMoveStart.x);
         int dy = (int)(p.y - gMoveStart.y);
@@ -536,8 +655,18 @@ static void cocoa_field_changed(Object *field) {
             [self setNeedsDisplay:YES];
             return;
         }
-    if (gTool == TOOL_PENCIL) {
+    if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER) {
             gPenDrawing = NO;
+            return;
+        }
+    if (gShapeDrawing) {
+            gShapeDrawing = NO;
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            paint_shape(rep, gTool, gShapeStart, gShapeEnd, [NSColor blackColor], 2);
+            [self setNeedsDisplay:YES];
             return;
         }
     if (gTool == TOOL_BROWSE) {
@@ -633,7 +762,7 @@ static void cocoa_field_changed(Object *field) {
 
 - (void)installToolPalette {
     NSPanel *palette = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(520, 400, 170, 60)
+        initWithContentRect:NSMakeRect(520, 400, 320, 60)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
                     backing:NSBackingStoreBuffered
                       defer:NO];
@@ -656,6 +785,10 @@ static void cocoa_field_changed(Object *field) {
     mk(@"B", TOOL_BUTTON, 42);
     mk(@"F", TOOL_FIELD, 80);
     mk(@"✏", TOOL_PENCIL, 118);
+    mk(@"⌫", TOOL_ERASER, 156);
+    mk(@"╱", TOOL_LINE, 194);
+    mk(@"▭", TOOL_RECT, 232);
+    mk(@"○", TOOL_OVAL, 270);
     [palette makeKeyAndOrderFront:nil];
 }
 
