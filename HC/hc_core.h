@@ -47,6 +47,7 @@ struct Object {
        rect = (left, top, right, bottom) = (x, y, x+w, y+h). */
     int      x, y, w, h;
     char    *style;     /* boutons : rectangle, roundRect, checkBox… ; NULL = défaut */
+    char    *paint;     /* cartes/fonds : bitmap peinture encodé base64 (opaque pour le noyau) */
 };
 
 /* ---- Construction ---- */
@@ -105,6 +106,11 @@ const char *hc_script_of(Object *o);
 
 /* Pose le contenu textuel d'un champ (pour l'édition interactive). */
 void        hc_set_field_text(Object *field, const char *text);
+
+/* Calque de peinture (bitmap base64) d'une carte ou d'un fond.
+   Le noyau ne l'interprète pas : il le stocke et le restitue tel quel. */
+const char *hc_paint_of(Object *o);
+void        hc_set_paint(Object *o, const char *base64);
 
 /* Libère les variables globales (à appeler avant de quitter). */
 void        hc_shutdown(void);

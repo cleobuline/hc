@@ -17,7 +17,9 @@
 
 static Object *gStack = NULL;
 static int gCardCount = 0;   // pour nommer les nouvelles cartes
-
+- (void)testDraw:(id)sender {
+    [gView testScribble];
+}
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     // --- pile avec deux cartes ---
     //Object *stack = hc_new_stack("Essai");
@@ -73,7 +75,10 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [fileMenu addItemWithTitle:@"Enregistrer la pile…"
                             action:@selector(saveStack:)
                      keyEquivalent:@"s"];
-
+    [fileMenu addItem:[NSMenuItem separatorItem]];
+        [fileMenu addItemWithTitle:@"Test dessin"
+                            action:@selector(testDraw:)
+                     keyEquivalent:@"t"];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
 }
@@ -93,12 +98,12 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     NSSavePanel *panel = [NSSavePanel savePanel];
     [panel setNameFieldStringValue:@"MaPile.stack"];
     if ([panel runModal] == NSModalResponseOK) {
+        [gView flushPaintToKernel];        // ← encode les bitmaps en base64 AVANT de sauver
         NSString *path = [[panel URL] path];
         if (hc_save(gStack, [path UTF8String]) != 0)
             NSLog(@"échec de la sauvegarde");
     }
 }
-
 - (void)openStack:(id)sender {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:YES];
@@ -107,10 +112,9 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         NSString *path = [[panel URL] path];
         Object *loaded = hc_load([path UTF8String]);
         if (loaded) {
-            // remplacer la pile courante
             hc_free(gStack);
             gStack = loaded;
-            // aller à la première carte
+            [gView clearPaintCache];        // ← oublier les vieux bitmaps
             for (int i = 0; i < gStack->nparts; i++) {
                 if (gStack->parts[i]->type == OBJ_CARD) {
                     hc_set_current_card(gStack->parts[i]);

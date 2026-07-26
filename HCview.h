@@ -8,6 +8,11 @@
 - (void)toolChosen:(id)sender;
 - (void)editScriptOf:(Object *)obj;
 - (void)saveScript:(id)sender;
+- (void)beginFieldEdit:(Object *)field;
+- (void)endFieldEdit;
+- (void)testScribble;
+- (void)flushPaintToKernel;
+- (void)clearPaintCache;
 @end
 
 extern HCView *gView;

@@ -1,5 +1,6 @@
 #import "HCview.h"
 #import "hc_core.h"
+#import <objc/runtime.h>   // pour associer un bitmap à un Object
 
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD } HCTool;
 static HCTool gTool = TOOL_BROWSE;
@@ -25,6 +26,54 @@ static NSTextView *gFieldEditor = nil;
 static Object     *gEditingField = NULL;
 
 
+
+// récupère (ou crée) le bitmap de peinture d'une carte/fond
+static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
+
+static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
+    if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
+    NSValue *key = [NSValue valueWithPointer:o];
+    NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
+
+    if (rep) {
+        NSLog(@"paint_bitmap obj=%p type=%d -> CACHE HIT", (void*)o, o->type);
+        return rep;
+    }
+
+    // pas dans le cache : décoder depuis le base64 du noyau, ou créer un bitmap vierge
+    const char *b64 = hc_paint_of(o);
+    NSLog(@"paint_bitmap obj=%p type=%d CACHE MISS b64=%s",
+          (void*)o, o->type, (b64 && *b64) ? "PRESENT" : "vide");
+
+    if (b64 && *b64) {
+        NSString *b64str = [NSString stringWithUTF8String:b64];
+        NSLog(@"  -> b64 longueur=%lu", (unsigned long)[b64str length]);
+        NSData *data = [[NSData alloc] initWithBase64EncodedString:b64str
+                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        NSLog(@"  -> data=%@ (%lu octets)", data ? @"OK" : @"NIL",
+              (unsigned long)(data ? [data length] : 0));
+        if (data) {
+            rep = [NSBitmapImageRep imageRepWithData:data];
+            NSLog(@"  -> rep=%@ (%ldx%ld)", rep ? @"OK" : @"NIL",
+                  rep ? (long)[rep pixelsWide] : 0,
+                  rep ? (long)[rep pixelsHigh] : 0);
+        }
+    }
+
+    if (!rep) {
+        NSLog(@"  -> création bitmap vierge %dx%d", w, h);
+        rep = [[NSBitmapImageRep alloc]
+                initWithBitmapDataPlanes:NULL
+                              pixelsWide:w pixelsHigh:h
+                           bitsPerSample:8 samplesPerPixel:4
+                                hasAlpha:YES isPlanar:NO
+                          colorSpaceName:NSCalibratedRGBColorSpace
+                             bytesPerRow:0 bitsPerPixel:0];
+    }
+
+    if (rep) [gPaintCache setObject:rep forKey:key];
+    return rep;
+}
 // éteint tous les radioButtons de la carte sauf 'keep'
 static void radio_exclusive(Object *card, Object *keep) {
     if (!card) return;
@@ -184,37 +233,42 @@ static void cocoa_field_changed(Object *field) {
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor whiteColor] setFill];
     NSRectFill(dirtyRect);
-
     Object *card = hc_current_card();
     if (!card) return;
 
+    // --- calque de peinture : fond puis carte, SOUS les objets ---
+    NSRect b = [self bounds];
+    if (card->bg) {
+        NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
+        [bgpaint drawAtPoint:NSMakePoint(0, 0)];
+    }
+    NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
+    [cardpaint drawAtPoint:NSMakePoint(0, 0)];
+
+    // --- objets par-dessus ---
     if (card->bg)
         for (int i = 0; i < card->bg->nparts; i++)
             draw_part(card->bg->parts[i]);
-
     for (int i = 0; i < card->nparts; i++)
         draw_part(card->parts[i]);
 
     if (gSelected) {
-            NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
-            [[NSColor redColor] setStroke];
-            NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
-            [path setLineWidth:2];
-            [path stroke];
-
-            // poignées aux quatre coins
-            [[NSColor redColor] setFill];
-            CGFloat s = 6;
-            NSPoint corners[4] = {
-                {r.origin.x, r.origin.y},                                  // haut-gauche
-                {r.origin.x + r.size.width, r.origin.y},                   // haut-droit
-                {r.origin.x, r.origin.y + r.size.height},                  // bas-gauche
-                {r.origin.x + r.size.width, r.origin.y + r.size.height}    // bas-droit
-            };
-            for (int i = 0; i < 4; i++)
-                NSRectFill(NSMakeRect(corners[i].x - s/2, corners[i].y - s/2, s, s));
-        }
-
+        NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
+        [[NSColor redColor] setStroke];
+        NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
+        [path setLineWidth:2];
+        [path stroke];
+        [[NSColor redColor] setFill];
+        CGFloat s = 6;
+        NSPoint corners[4] = {
+            {r.origin.x, r.origin.y},
+            {r.origin.x + r.size.width, r.origin.y},
+            {r.origin.x, r.origin.y + r.size.height},
+            {r.origin.x + r.size.width, r.origin.y + r.size.height}
+        };
+        for (int i = 0; i < 4; i++)
+            NSRectFill(NSMakeRect(corners[i].x - s/2, corners[i].y - s/2, s, s));
+    }
     if (gDragging) {
         [[NSColor blueColor] setStroke];
         NSBezierPath *path = [NSBezierPath bezierPathWithRect:gDragRect];
@@ -224,7 +278,40 @@ static void cocoa_field_changed(Object *field) {
         [path stroke];
     }
 }
+- (void)testScribble {
+    Object *card = hc_current_card();
+    if (!card) return;
+    NSBitmapImageRep *rep = paint_bitmap(card, 500, 400);
 
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+
+    [[NSColor blackColor] setStroke];
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:NSMakePoint(50, 50)];
+    [path curveToPoint:NSMakePoint(250, 150)
+         controlPoint1:NSMakePoint(100, 200)
+         controlPoint2:NSMakePoint(200, 20)];
+    [path setLineWidth:3];
+    [path stroke];
+
+    [NSGraphicsContext restoreGraphicsState];
+    [self setNeedsDisplay:YES];
+}
+- (void)clearPaintCache {
+    [gPaintCache removeAllObjects];
+}
+- (void)flushPaintToKernel {
+    if (!gPaintCache) return;
+    for (NSValue *key in gPaintCache) {
+        Object *o = [key pointerValue];
+        NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
+        NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        NSString *b64 = [png base64EncodedStringWithOptions:0];
+        hc_set_paint(o, [b64 UTF8String]);
+    }
+}
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);

@@ -49,7 +49,7 @@ static char *dupstr_file(const char *s)
 
 /* ==================== écriture ==================== */
 
-static void put_block(FILE *f, const char *tag, const char *text)
+static void put_block_wrap(FILE *f, const char *tag, const char *text, int wrap)
 {
     if (!text || !*text) return;
     fprintf(f, "%s\n", tag);
@@ -57,11 +57,33 @@ static void put_block(FILE *f, const char *tag, const char *text)
     while (*p) {
         const char *nl = strchr(p, '\n');
         int len = nl ? (int)(nl - p) : (int)strlen(p);
-        fprintf(f, "| %.*s\n", len, p);
+        if (wrap) {
+            /* découper en tronçons de 100 caractères (base64) : le lecteur
+               les recolle et le décodeur base64 ignore les sauts de ligne. */
+            int off = 0;
+            while (off < len) {
+                int chunk = (len - off > 100) ? 100 : (len - off);
+                fprintf(f, "| %.*s\n", chunk, p + off);
+                off += chunk;
+            }
+            if (len == 0) fprintf(f, "|\n");
+        } else {
+            fprintf(f, "| %.*s\n", len, p);
+        }
         if (!nl) break;
         p = nl + 1;
     }
     fprintf(f, "end %s\n", tag);
+}
+
+static void put_block(FILE *f, const char *tag, const char *text)
+{
+    put_block_wrap(f, tag, text, 0);   /* scripts, contenus : pas de découpage */
+}
+
+static void put_paint(FILE *f, const char *b64)
+{
+    put_block_wrap(f, "paint", b64, 1);   /* base64 : découpé en lignes courtes */
 }
 
 static void put_part(FILE *f, Object *o)
@@ -96,6 +118,7 @@ int hc_save(Object *stack, const char *path)
         if (bg->type != OBJ_BACKGROUND) continue;
         fprintf(f, "background \"%s\"\n", bg->name ? bg->name : "");
         put_block(f, "script", bg->script);
+        put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
         fprintf(f, "end background\n\n");
     }
@@ -107,6 +130,7 @@ int hc_save(Object *stack, const char *path)
         if (c->bg && c->bg->name) fprintf(f, " background \"%s\"", c->bg->name);
         fprintf(f, "\n");
         put_block(f, "script", c->script);
+        put_paint(f, c->paint);
         for (int j = 0; j < c->nparts; j++) put_part(f, c->parts[j]);
         fprintf(f, "end card\n\n");
     }
@@ -202,16 +226,16 @@ Object *hc_load(const char *path)
     Object *part  = NULL;   /* bouton ou champ en cours */
     Object *target = NULL;  /* à qui appartient le bloc en cours */
 
-    char line[1024], nm[256], nm2[256];
+    char line[4096], nm[256], nm2[256]; (void)nm2;
     Acc acc = {0};
-    int in_script = 0, in_contents = 0;
+    int in_script = 0, in_contents = 0, in_paint = 0;
 
     while (fgets(line, sizeof line, f)) {
         rtrim(line);
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
-        if (in_script || in_contents) {
+        if (in_script || in_contents || in_paint) {
             if (s[0] == '|') {
                 acc_line(&acc, (s[1] == ' ') ? s + 2 : s + 1);
                 continue;
@@ -232,6 +256,15 @@ Object *hc_load(const char *path)
                 in_contents = 0;
                 continue;
             }
+            if (strcmp(s, "end paint") == 0) {
+                char *t = acc_take(&acc);
+                if (target && (target->type == OBJ_CARD || target->type == OBJ_BACKGROUND)) {
+                    free(target->paint);
+                    target->paint = t ? t : NULL;
+                } else free(t);
+                in_paint = 0;
+                continue;
+            }
             continue;   /* ligne parasite dans un bloc : ignorée */
         }
 
@@ -240,6 +273,7 @@ Object *hc_load(const char *path)
         /* --- ouverture de blocs texte --- */
         if (strcmp(s, "script") == 0)   { in_script = 1;   continue; }
         if (strcmp(s, "contents") == 0) { in_contents = 1; continue; }
+        if (strcmp(s, "paint") == 0)    { in_paint = 1;    continue; }
 
         /* --- en-têtes d'objets --- */
         if (strncmp(s, "stack ", 6) == 0) {

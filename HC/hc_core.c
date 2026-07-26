@@ -253,6 +253,7 @@ void hc_free(Object *o)
     free(o->script);
     free(o->contents);
     free(o->style);
+    free(o->paint);
     free(o);
 }
 
@@ -2521,6 +2522,19 @@ void hc_set_field_text(Object *field, const char *text)
     if (!field || field->type != OBJ_FIELD) return;
     free(field->contents);
     field->contents = dupstr(text ? text : "");
+}
+
+const char *hc_paint_of(Object *o)
+{
+    return o ? o->paint : NULL;
+}
+
+void hc_set_paint(Object *o, const char *base64)
+{
+    if (!o) return;
+    if (o->type != OBJ_CARD && o->type != OBJ_BACKGROUND) return;
+    free(o->paint);
+    o->paint = (base64 && *base64) ? dupstr(base64) : NULL;
 }
 
 void hc_do(const char *line)
