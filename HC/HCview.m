@@ -2,7 +2,7 @@
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
-               TOOL_LINE, TOOL_RECT, TOOL_OVAL } HCTool;
+               TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL} HCTool;
 static HCTool gTool = TOOL_BROWSE;
 static Object *gSelected = NULL;   // objet sélectionné en mode édition
 
@@ -39,7 +39,7 @@ static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b
     if (!ctx) return;
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-
+    [ctx setShouldAntialias:NO];
     CGFloat H = [rep pixelsHigh];
     NSAffineTransform *flip = [NSAffineTransform transform];
     [flip translateXBy:0 yBy:H];
@@ -63,13 +63,78 @@ static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b
 
     [NSGraphicsContext restoreGraphicsState];
 }
+// remplit la zone connexe autour de (sx,sy) avec du noir.
+// Approche itérative avec une pile explicite (pas de récursion : robuste sur grandes zones).
+static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
+    if (!rep) return;
+    int W = (int)[rep pixelsWide];
+    int H = (int)[rep pixelsHigh];
+    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return;
+
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow];        // octets par ligne
+    NSInteger spp = [rep samplesPerPixel];    // échantillons par pixel (4 = RGBA)
+
+    // adresse du pixel (x,y)
+    #define PIX(x,y) (data + (y)*bpr + (x)*spp)
+
+    unsigned char *sp = PIX(sx, sy);
+    unsigned char sr = sp[0], sg = sp[1], sb = sp[2];
+    unsigned char sa = (spp >= 4) ? sp[3] : 255;
+
+    // déjà noir opaque ? rien à faire
+    if (sr < 12 && sg < 12 && sb < 12 && sa > 240) return;
+
+    unsigned char *done = calloc((size_t)W * H, 1);
+    if (!done) return;
+
+    int cap = 4096, top = 0;
+    int *xs = malloc(sizeof(int)*cap);
+    int *ys = malloc(sizeof(int)*cap);
+    xs[top]=sx; ys[top]=sy; top++;
+
+    while (top > 0) {
+        top--;
+        int x = xs[top], y = ys[top];
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        if (done[y*W + x]) continue;
+        done[y*W + x] = 1;
+
+        unsigned char *px = PIX(x, y);
+        unsigned char a = (spp >= 4) ? px[3] : 255;
+        // même couleur que le départ ? (tolérance)
+        if (abs(px[0]-sr) > 40 || abs(px[1]-sg) > 40 ||
+            abs(px[2]-sb) > 40 || abs(a-sa) > 40)
+            continue;   // frontière
+
+        // peindre en noir opaque
+        px[0] = 0; px[1] = 0; px[2] = 0;
+        if (spp >= 4) px[3] = 255;
+
+        if (top + 4 >= cap) {
+            cap *= 2;
+            xs = realloc(xs, sizeof(int)*cap);
+            ys = realloc(ys, sizeof(int)*cap);
+        }
+        xs[top]=x+1; ys[top]=y; top++;
+        xs[top]=x-1; ys[top]=y; top++;
+        xs[top]=x; ys[top]=y+1; top++;
+        xs[top]=x; ys[top]=y-1; top++;
+    }
+    #undef PIX
+
+    free(done);
+    free(xs);
+    free(ys);
+}
 static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
     if (!ctx) return;
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-
+    [[NSGraphicsContext currentContext] setShouldAntialias:NO];
     // retourner le contexte pour qu'il corresponde à la vue isFlipped
     // (origine en haut, comme les coordonnées reçues de la souris)
     CGFloat H = [rep pixelsHigh];
@@ -96,7 +161,7 @@ static void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloa
     if (!ctx) return;
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-
+    [ctx setShouldAntialias:NO];
     CGFloat H = [rep pixelsHigh];
     NSAffineTransform *flip = [NSAffineTransform transform];
     [flip translateXBy:0 yBy:H];
@@ -149,6 +214,7 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
             NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
             [NSGraphicsContext saveGraphicsState];
             [NSGraphicsContext setCurrentContext:ctx];
+            [ctx setShouldAntialias:NO];
             [loaded drawInRect:NSMakeRect(0, 0, w, h)
                       fromRect:NSZeroRect
                      operation:NSCompositingOperationSourceOver
@@ -262,24 +328,25 @@ static void draw_part(Object *o) {
                         [s drawInRect:tr withAttributes:attrs];
                     }
             else {
-                // bouton rectangle classique, avec highlight vidéo inverse
-                BOOL on = o->hilite;
-                [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
-                NSRectFill(r);
-                [[NSColor blackColor] setStroke];
-                NSFrameRect(r);
+                        // bouton rectangle classique
+                        BOOL on = o->hilite;
+                        [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+                        NSRectFill(r);
+                        [[NSColor blackColor] setStroke];
+                        NSFrameRect(r);
 
-                NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-                [ps setAlignment:NSTextAlignmentCenter];
-                NSDictionary *attrs = @{
-                    NSFontAttributeName: [NSFont boldSystemFontOfSize:13],
-                    NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-                    NSParagraphStyleAttributeName: ps
-                };
-                NSRect tr = NSInsetRect(r, 4, 0);
-                tr.origin.y += (r.size.height - 16) / 2;
-                [s drawInRect:tr withAttributes:attrs];
-            }
+                        CGFloat fs = o->textsize > 0 ? o->textsize : 13;   // ← lit textSize
+                        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                        [ps setAlignment:NSTextAlignmentCenter];
+                        NSDictionary *attrs = @{
+                            NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+                            NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                            NSParagraphStyleAttributeName: ps
+                        };
+                        NSRect tr = NSInsetRect(r, 4, 0);
+                        tr.origin.y += (r.size.height - fs * 1.2) / 2;   // recentrage selon la taille
+                        [s drawInRect:tr withAttributes:attrs];
+                    }
         }
     else if (o->type == OBJ_FIELD) {
             [[NSColor colorWithWhite:0.97 alpha:1.0] setFill];
@@ -456,7 +523,7 @@ static void cocoa_field_changed(Object *field) {
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-
+    [ctx setShouldAntialias:NO];
     [[NSColor blackColor] setStroke];
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(50, 50)];
@@ -528,7 +595,15 @@ static void cocoa_field_changed(Object *field) {
         [self editScriptOf:hit];
         return;
     }
-
+    if (gTool == TOOL_FILL) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            flood_fill(rep, (int)p.x, (int)p.y);
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gTool == TOOL_BROWSE) {
             if (hit && hit->type == OBJ_FIELD) {
                 [self beginFieldEdit:hit];
@@ -762,7 +837,7 @@ static void cocoa_field_changed(Object *field) {
 
 - (void)installToolPalette {
     NSPanel *palette = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(520, 400, 320, 60)
+        initWithContentRect:NSMakeRect(520, 400, 400, 60)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
                     backing:NSBackingStoreBuffered
                       defer:NO];
@@ -789,6 +864,7 @@ static void cocoa_field_changed(Object *field) {
     mk(@"╱", TOOL_LINE, 194);
     mk(@"▭", TOOL_RECT, 232);
     mk(@"○", TOOL_OVAL, 270);
+    mk(@"💧", TOOL_FILL, 308);
     [palette makeKeyAndOrderFront:nil];
 }
 
