@@ -15,6 +15,7 @@
 - (void)clearPaintCache;
 - (void)toggleBackground:(id)sender;
 - (void)installPatternPalette;
+- (void)applyStackSize;
 @end
 
 extern HCView *gView;

@@ -65,6 +65,8 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     [view installMessageBox];
     [view installToolPalette];
     [view installPatternPalette];
+    [view applyStackSize];
+
     // menu Fichier
         NSMenu *mainMenu = [NSApp mainMenu];
         NSMenuItem *fileItem = [[NSMenuItem alloc] init];
@@ -92,6 +94,7 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
+    [view applyStackSize];  
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
@@ -127,13 +130,14 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         if (loaded) {
             hc_free(gStack);
             gStack = loaded;
-            [gView clearPaintCache];        // ← oublier les vieux bitmaps
+            [gView clearPaintCache];
             for (int i = 0; i < gStack->nparts; i++) {
                 if (gStack->parts[i]->type == OBJ_CARD) {
                     hc_set_current_card(gStack->parts[i]);
                     break;
                 }
             }
+            [gView applyStackSize];      // ← ajuster la fenêtre à la taille de la pile chargée
             [gView setNeedsDisplay:YES];
         } else {
             NSLog(@"échec du chargement");

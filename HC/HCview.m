@@ -52,6 +52,8 @@ static const unsigned char PATTERNS[][8] = {
     {0xEE,0xDD,0xBB,0x77,0xEE,0xDD,0xBB,0x77},  // 15 diagonales épaisses
 };
 #define NUM_PATTERNS (int)(sizeof(PATTERNS)/sizeof(PATTERNS[0]))
+typedef enum { INK_BLACK, INK_WHITE, INK_ERASE } HCInk;
+static HCInk gInk = INK_BLACK;   // encre courante du crayon/formes
 
 static int gPattern = 2;   // motif courant (1 = noir plein)
 
@@ -63,6 +65,8 @@ static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
     if (!ctx) return;
+    NSLog(@"paint_shape: rep H=%ld, vue H=%.0f, a.y=%.0f b.y=%.0f",
+              (long)[rep pixelsHigh], [gView bounds].size.height, a.y, b.y);
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
     [ctx setShouldAntialias:NO];
@@ -92,6 +96,79 @@ static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b
 // remplit la zone connexe autour de (sx,sy) avec du noir.
 // Approche itérative avec une pile explicite (pas de récursion : robuste sur grandes zones).
 static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
+    if (!rep) return;
+    int W = (int)[rep pixelsWide];
+    int H = (int)[rep pixelsHigh];
+    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return;
+
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow];
+    NSInteger spp = [rep samplesPerPixel];
+
+    #define PIX(x,y) (data + (y)*bpr + (x)*spp)
+
+    unsigned char *sp = PIX(sx, sy);
+    unsigned char sr = sp[0], sg = sp[1], sb = sp[2];
+    unsigned char sa = (spp >= 4) ? sp[3] : 255;
+
+    unsigned char *done = calloc((size_t)W * H, 1);
+    if (!done) return;
+
+    int cap = 4096, top = 0;
+    int *xs = malloc(sizeof(int)*cap);
+    int *ys = malloc(sizeof(int)*cap);
+    xs[top]=sx; ys[top]=sy; top++;
+
+    while (top > 0) {
+        top--;
+        int x = xs[top], y = ys[top];
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        if (done[y*W + x]) continue;
+        done[y*W + x] = 1;
+
+        unsigned char *px = PIX(x, y);
+        unsigned char a = (spp >= 4) ? px[3] : 255;
+
+        if (abs(px[0]-sr) > 40 || abs(px[1]-sg) > 40 ||
+            abs(px[2]-sb) > 40 || abs(a-sa) > 40)
+            continue;   // frontière
+
+        if (pattern_bit(gPattern, x, y)) {
+                    // trait du motif : TOUJOURS noir
+                    px[0] = 0; px[1] = 0; px[2] = 0;
+                    if (spp >= 4) px[3] = 255;
+                } else {
+                    // fond du motif : blanc opaque ou transparent, selon l'encre
+                    if (gInk == INK_WHITE) {
+                        px[0] = 255; px[1] = 255; px[2] = 255;
+                        if (spp >= 4) px[3] = 255;        // fond blanc opaque (masque)
+                    } else if (gInk == INK_ERASE) {
+                        px[0] = 0; px[1] = 0; px[2] = 0;
+                        if (spp >= 4) px[3] = 0;          // efface tout (même les traits)
+                    } else {
+                        px[0] = 0; px[1] = 0; px[2] = 0;
+                        if (spp >= 4) px[3] = 0;          // fond transparent (background visible)
+                    }
+                }
+
+        if (top + 4 >= cap) {
+            cap *= 2;
+            xs = realloc(xs, sizeof(int)*cap);
+            ys = realloc(ys, sizeof(int)*cap);
+        }
+        xs[top]=x+1; ys[top]=y; top++;
+        xs[top]=x-1; ys[top]=y; top++;
+        xs[top]=x; ys[top]=y+1; top++;
+        xs[top]=x; ys[top]=y-1; top++;
+    }
+    #undef PIX
+
+    free(done);
+    free(xs);
+    free(ys);
+}
+static void flood_fill_old (NSBitmapImageRep *rep, int sx, int sy) {
     if (!rep) return;
     int W = (int)[rep pixelsWide];
     int H = (int)[rep pixelsHigh];
@@ -166,16 +243,24 @@ static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColo
     if (!ctx) return;
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-    [[NSGraphicsContext currentContext] setShouldAntialias:NO];
-    // retourner le contexte pour qu'il corresponde à la vue isFlipped
-    // (origine en haut, comme les coordonnées reçues de la souris)
+    [ctx setShouldAntialias:NO];
+
     CGFloat H = [rep pixelsHigh];
     NSAffineTransform *flip = [NSAffineTransform transform];
     [flip translateXBy:0 yBy:H];
     [flip scaleXBy:1 yBy:-1];
     [flip concat];
 
-    [color setStroke];
+    // encre : blanc, noir, ou effacement (transparent)
+    if (gInk == INK_ERASE) {
+        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
+        [[NSColor blackColor] setStroke];   // couleur ignorée en mode clear
+    } else if (gInk == INK_WHITE) {
+        [[NSColor whiteColor] setStroke];
+    } else {
+        [[NSColor blackColor] setStroke];
+    }
+
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:from];
     [path lineToPoint:to];
@@ -217,8 +302,13 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
     NSValue *key = [NSValue valueWithPointer:o];
     NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
+    if (rep && ((int)[rep pixelsWide] != w || (int)[rep pixelsHigh] != h)) {
+        [gPaintCache removeObjectForKey:key];
+        rep = nil;
+    }
     if (rep) return rep;
-
+    NSLog(@"paint_bitmap crée canvas %dx%d (bounds vue: %.0fx%.0f)",
+              w, h, [gView bounds].size.width, [gView bounds].size.height);
     NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
@@ -237,25 +327,22 @@ static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     }
 
     const char *b64 = hc_paint_of(o);
-    if (b64 && *b64) {
-        NSData *data = [[NSData alloc] initWithBase64EncodedString:
-                         [NSString stringWithUTF8String:b64]
-                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
-        if (loaded) {
-            NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
-            [NSGraphicsContext saveGraphicsState];
-            [NSGraphicsContext setCurrentContext:ctx];
-            [ctx setShouldAntialias:NO];
-            [loaded drawInRect:NSMakeRect(0, 0, w, h)
-                      fromRect:NSZeroRect
-                     operation:NSCompositingOperationSourceOver
-                      fraction:1.0
-                respectFlipped:YES
-                         hints:nil];
-            [NSGraphicsContext restoreGraphicsState];
+        if (b64 && *b64) {
+            NSData *data = [[NSData alloc] initWithBase64EncodedString:
+                             [NSString stringWithUTF8String:b64]
+                             options:NSDataBase64DecodingIgnoreUnknownCharacters];
+            NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
+            if (loaded) {
+                NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
+                [NSGraphicsContext saveGraphicsState];
+                [NSGraphicsContext setCurrentContext:ctx];
+                [ctx setShouldAntialias:NO];
+                // dessiner à taille réelle en HAUT-gauche (pas d'étirement)
+                CGFloat lh = [loaded pixelsHigh];
+                [loaded drawAtPoint:NSMakePoint(0, h - lh)];
+                [NSGraphicsContext restoreGraphicsState];
+            }
         }
-    }
 
     [gPaintCache setObject:canvas forKey:key];
     return canvas;
@@ -533,7 +620,39 @@ static void cocoa_field_changed(Object *field) {
 @end
 @implementation HCView
 
+- (void)inkChosen:(id)sender {
+    gInk = (HCInk)[sender tag];
+    NSLog(@"encre : %d", (int)gInk);
+}
 - (BOOL)isFlipped { return YES; }
+- (void)applyStackSize {
+    // 1. D'ABORD encoder les dessins actuels (avant tout redimensionnement)
+    [self flushPaintToKernel];
+
+    // 2. Trouver la pile et sa taille
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) return;
+    int w = stack->w > 0 ? stack->w : 512;
+    int h = stack->h > 0 ? stack->h : 342;
+
+    // 3. Vider le cache (les bitmaps seront recréés à la nouvelle taille, en rechargeant le PNG)
+    [self clearPaintCache];
+
+    // 4. Redimensionner la fenêtre
+    NSWindow *win = [self window];
+    if (!win) return;
+    NSRect frame = [win frame];
+    NSRect content = NSMakeRect(0, 0, w, h);
+    NSRect newFrame = [win frameRectForContentRect:content];
+    newFrame.origin = frame.origin;
+    newFrame.origin.y = frame.origin.y + frame.size.height - newFrame.size.height;
+    [win setFrame:newFrame display:YES animate:NO];
+
+    [self setNeedsDisplay:YES];
+}
 - (void)installPatternPalette {
     int cols = 4, rows = (NUM_PATTERNS + cols - 1) / cols;
     CGFloat cell = 32, gap = 4, margin = 6;
@@ -555,30 +674,42 @@ static void cocoa_field_changed(Object *field) {
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor whiteColor] setFill];
     NSRectFill(dirtyRect);
+
     Object *card = hc_current_card();
     if (!card) return;
 
-    // --- calque de peinture : fond puis carte, SOUS les objets ---
-        NSRect b = [self bounds];
-        NSRect full = NSMakeRect(0, 0, b.size.width, b.size.height);
-        if (card->bg) {
-            NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
-            [bgpaint drawInRect:full fromRect:NSZeroRect
-                      operation:NSCompositingOperationSourceOver fraction:1.0
-                 respectFlipped:YES hints:nil];
-        }
-        NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
-        [cardpaint drawInRect:full fromRect:NSZeroRect
-                    operation:NSCompositingOperationSourceOver fraction:1.0
-               respectFlipped:YES hints:nil];
+    NSRect b = [self bounds];
 
-    // --- objets par-dessus ---
+    // ===== empilement façon HyperCard, de bas en haut =====
+
+    // 1. peinture du fond
+    if (card->bg) {
+        NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
+        [bgpaint drawInRect:NSMakeRect(0, 0, [bgpaint pixelsWide], [bgpaint pixelsHigh])
+                   fromRect:NSZeroRect
+                  operation:NSCompositingOperationSourceOver fraction:1.0
+             respectFlipped:YES hints:nil];
+    }
+
+    // 2. objets du fond
     if (card->bg)
         for (int i = 0; i < card->bg->nparts; i++)
             draw_part(card->bg->parts[i]);
+
+    // 3. peinture de la carte (PAR-DESSUS les objets du fond)
+    NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
+    [cardpaint drawInRect:NSMakeRect(0, 0, [cardpaint pixelsWide], [cardpaint pixelsHigh])
+                 fromRect:NSZeroRect
+                operation:NSCompositingOperationSourceOver fraction:1.0
+           respectFlipped:YES hints:nil];
+
+    // 4. objets de la carte (au-dessus de tout)
     for (int i = 0; i < card->nparts; i++)
         draw_part(card->parts[i]);
 
+    // ===== surcouches d'édition (toujours au-dessus) =====
+
+    // sélection
     if (gSelected) {
         NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
         [[NSColor redColor] setStroke];
@@ -596,6 +727,8 @@ static void cocoa_field_changed(Object *field) {
         for (int i = 0; i < 4; i++)
             NSRectFill(NSMakeRect(corners[i].x - s/2, corners[i].y - s/2, s, s));
     }
+
+    // aperçu de création d'objet (drag rectangle)
     if (gDragging) {
         [[NSColor blueColor] setStroke];
         NSBezierPath *path = [NSBezierPath bezierPathWithRect:gDragRect];
@@ -604,30 +737,34 @@ static void cocoa_field_changed(Object *field) {
         [path setLineDash:dash count:2 phase:0];
         [path stroke];
     }
+
+    // cadre marron : mode édition du fond
     if (gEditBackground) {
-            [[NSColor colorWithRed:0.6 green:0.4 blue:0.2 alpha:1.0] setStroke];
-            NSBezierPath *frame = [NSBezierPath bezierPathWithRect:NSInsetRect([self bounds], 4, 4)];
-            [frame setLineWidth:4];
-            CGFloat dash[] = {10, 5};
-            [frame setLineDash:dash count:2 phase:0];
-            [frame stroke];
-        }
+        [[NSColor colorWithRed:0.6 green:0.4 blue:0.2 alpha:1.0] setStroke];
+        NSBezierPath *frame = [NSBezierPath bezierPathWithRect:NSInsetRect(b, 4, 4)];
+        [frame setLineWidth:4];
+        CGFloat dash[] = {10, 5};
+        [frame setLineDash:dash count:2 phase:0];
+        [frame stroke];
+    }
+
+    // aperçu élastique des formes (ligne / rect / ovale)
     if (gShapeDrawing) {
-            [[NSColor blueColor] setStroke];
-            NSBezierPath *preview = [NSBezierPath bezierPath];
-            NSRect box = NSMakeRect(MIN(gShapeStart.x,gShapeEnd.x), MIN(gShapeStart.y,gShapeEnd.y),
-                                    fabs(gShapeEnd.x-gShapeStart.x), fabs(gShapeEnd.y-gShapeStart.y));
-            if (gTool == TOOL_LINE) {
-                [preview moveToPoint:gShapeStart];
-                [preview lineToPoint:gShapeEnd];
-            } else if (gTool == TOOL_RECT) {
-                preview = [NSBezierPath bezierPathWithRect:box];
-            } else if (gTool == TOOL_OVAL) {
-                preview = [NSBezierPath bezierPathWithOvalInRect:box];
-            }
-            [preview setLineWidth:1];
-            [preview stroke];
+        [[NSColor blueColor] setStroke];
+        NSBezierPath *preview = [NSBezierPath bezierPath];
+        NSRect box = NSMakeRect(MIN(gShapeStart.x,gShapeEnd.x), MIN(gShapeStart.y,gShapeEnd.y),
+                                fabs(gShapeEnd.x-gShapeStart.x), fabs(gShapeEnd.y-gShapeStart.y));
+        if (gTool == TOOL_LINE) {
+            [preview moveToPoint:gShapeStart];
+            [preview lineToPoint:gShapeEnd];
+        } else if (gTool == TOOL_RECT) {
+            preview = [NSBezierPath bezierPathWithRect:box];
+        } else if (gTool == TOOL_OVAL) {
+            preview = [NSBezierPath bezierPathWithOvalInRect:box];
         }
+        [preview setLineWidth:1];
+        [preview stroke];
+    }
 }
 - (void)toggleBackground:(id)sender {
     gEditBackground = !gEditBackground;
@@ -952,19 +1089,19 @@ static void cocoa_field_changed(Object *field) {
     NSString *cmd = [gMsgBox stringValue];
     if ([cmd length] == 0) return;
     hc_do([cmd UTF8String]);
+    [self applyStackSize];          // ← applique un éventuel changement de taille
     [self setNeedsDisplay:YES];
     [gMsgBox selectText:nil];
 }
 
 - (void)installToolPalette {
     NSPanel *palette = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(520, 400, 400, 60)
+        initWithContentRect:NSMakeRect(520, 400, 470, 60)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
                     backing:NSBackingStoreBuffered
                       defer:NO];
     [palette setTitle:@"Outils"];
     [palette setFloatingPanel:YES];
-
     NSView *content = [palette contentView];
 
     NSButton *(^mk)(NSString*, NSInteger, CGFloat) = ^NSButton*(NSString *title, NSInteger tag, CGFloat x) {
@@ -986,6 +1123,21 @@ static void cocoa_field_changed(Object *field) {
     mk(@"▭", TOOL_RECT, 232);
     mk(@"○", TOOL_OVAL, 270);
     mk(@"💧", TOOL_FILL, 308);
+
+    NSButton *(^mkInk)(NSString*, NSInteger, CGFloat) = ^NSButton*(NSString *titre, NSInteger encre, CGFloat x) {
+        NSButton *bt = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 36, 36)];
+        [bt setTitle:titre];
+        [bt setTag:encre];
+        [bt setTarget:self];
+        [bt setAction:@selector(inkChosen:)];
+        [bt setBezelStyle:NSBezelStyleRegularSquare];
+        [content addSubview:bt];
+        return bt;
+    };
+    mkInk(@"⬛", INK_BLACK, 350);
+    mkInk(@"⬜", INK_WHITE, 388);
+    mkInk(@"◌", INK_ERASE, 426);
+
     [palette makeKeyAndOrderFront:nil];
 }
 

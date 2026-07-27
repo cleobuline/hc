@@ -110,6 +110,7 @@ int hc_save(Object *stack, const char *path)
     fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
 
     fprintf(f, "stack \"%s\"\n", stack->name ? stack->name : "");
+    fprintf(f, "size %d,%d\n", stack->w, stack->h);
     put_block(f, "script", stack->script);
     fprintf(f, "end stack\n\n");
 
@@ -285,6 +286,13 @@ Object *hc_load(const char *path)
         }
         if (!stack) continue;   /* rien avant la pile */
 
+        if (strncmp(s, "size ", 5) == 0) {
+            int sw, sh;
+            if (sscanf(s + 5, "%d,%d", &sw, &sh) == 2) {
+                stack->w = sw; stack->h = sh;
+            }
+            continue;
+        }
         if (strncmp(s, "background ", 11) == 0) {
             get_quoted(s, 0, nm, sizeof nm);
             owner = hc_new_background(stack, nm);
