@@ -64,6 +64,7 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
 
     [view installMessageBox];
     [view installToolPalette];
+    [view installPatternPalette];
     // menu Fichier
         NSMenu *mainMenu = [NSApp mainMenu];
         NSMenuItem *fileItem = [[NSMenuItem alloc] init];

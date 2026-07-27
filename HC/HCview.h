@@ -14,6 +14,7 @@
 - (void)flushPaintToKernel;
 - (void)clearPaintCache;
 - (void)toggleBackground:(id)sender;
+- (void)installPatternPalette;
 @end
 
 extern HCView *gView;

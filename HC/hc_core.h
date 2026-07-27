@@ -115,5 +115,4 @@ void        hc_set_paint(Object *o, const char *base64);
 
 /* Libère les variables globales (à appeler avant de quitter). */
 void        hc_shutdown(void);
-
 #endif /* HC_CORE_H */

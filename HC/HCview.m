@@ -32,7 +32,33 @@ static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
+// ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
+static const unsigned char PATTERNS[][8] = {
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},  // 0  blanc (vide)
+    {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},  // 1  noir plein
+    {0xAA,0x55,0xAA,0x55,0xAA,0x55,0xAA,0x55},  // 2  gris 50% (damier fin)
+    {0x88,0x22,0x88,0x22,0x88,0x22,0x88,0x22},  // 3  gris 25% (points épars)
+    {0x77,0xDD,0x77,0xDD,0x77,0xDD,0x77,0xDD},  // 4  gris 75% (dense)
+    {0xFF,0x00,0xFF,0x00,0xFF,0x00,0xFF,0x00},  // 5  lignes horizontales
+    {0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88},  // 6  lignes verticales
+    {0x11,0x22,0x44,0x88,0x11,0x22,0x44,0x88},  // 7  diagonales /
+    {0x88,0x44,0x22,0x11,0x88,0x44,0x22,0x11},  // 8  diagonales \
+    {0x81,0x42,0x24,0x18,0x18,0x24,0x42,0x81},  // 9  croisillons X
+    {0xFF,0x80,0x80,0x80,0xFF,0x08,0x08,0x08},  // 10 briques
+    {0x22,0x22,0xFF,0x22,0x22,0x22,0xFF,0x22},  // 11 grillage
+    {0x00,0x00,0x00,0x88,0x00,0x00,0x00,0x88},  // 12 pointillés
+    {0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA},  // 13 lignes verticales fines
+    {0x40,0xA0,0x00,0x04,0x0A,0x00,0x40,0xA0},  // 14 écailles
+    {0xEE,0xDD,0xBB,0x77,0xEE,0xDD,0xBB,0x77},  // 15 diagonales épaisses
+};
+#define NUM_PATTERNS (int)(sizeof(PATTERNS)/sizeof(PATTERNS[0]))
 
+static int gPattern = 2;   // motif courant (1 = noir plein)
+
+static inline int pattern_bit(int pat, int x, int y) {
+    unsigned char row = PATTERNS[pat][y & 7];
+    return (row >> (7 - (x & 7))) & 1;
+}
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
@@ -108,9 +134,15 @@ static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
             abs(px[2]-sb) > 40 || abs(a-sa) > 40)
             continue;   // frontière
 
-        // peindre en noir opaque
-        px[0] = 0; px[1] = 0; px[2] = 0;
-        if (spp >= 4) px[3] = 255;
+ 
+        // peindre selon le motif courant
+                if (pattern_bit(gPattern, x, y)) {
+                    px[0] = 0; px[1] = 0; px[2] = 0;      // bit du motif = noir
+                    if (spp >= 4) px[3] = 255;
+                } else {
+                    px[0] = 0; px[1] = 0; px[2] = 0;      // bit vide = transparent
+                    if (spp >= 4) px[3] = 0;
+                }
 
         if (top + 4 >= cap) {
             cap *= 2;
@@ -426,11 +458,100 @@ static void cocoa_field_changed(Object *field) {
     (void)field;
     [gView setNeedsDisplay:YES];
 }
+// ---- petite vue-grille pour choisir un motif ----
+@interface PatternPalette : NSView
+@end
 
-@implementation HCView
+@implementation PatternPalette
 
 - (BOOL)isFlipped { return YES; }
 
+- (void)drawRect:(NSRect)dirtyRect {
+    [[NSColor colorWithWhite:0.85 alpha:1.0] setFill];
+    NSRectFill(dirtyRect);
+
+    int cols = 4;
+    CGFloat cell = 32, gap = 4, margin = 6;
+
+    for (int i = 0; i < NUM_PATTERNS; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+        // fond blanc de la case
+        [[NSColor whiteColor] setFill];
+        NSRectFill(box);
+
+        // dessiner le motif dans la case, pixel par pixel (agrandi)
+        [[NSColor blackColor] setFill];
+        int px = 2;   // taille d'un "pixel" du motif à l'écran
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                if (pattern_bit(i, x, y)) {
+                    for (int ry = 0; ry < 2; ry++)   // répéter le motif 2x pour remplir la case
+                        for (int rx = 0; rx < 2; rx++) {
+                            NSRect p = NSMakeRect(box.origin.x + (x + rx*8)*px/2.0,
+                                                  box.origin.y + (y + ry*8)*px/2.0,
+                                                  px, px);
+                            NSRectFill(p);
+                        }
+                }
+            }
+        }
+
+        // cadre : rouge épais si c'est le motif courant, gris sinon
+        if (i == gPattern) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr = [NSBezierPath bezierPathWithRect:NSInsetRect(box, -1, -1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor grayColor] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    int cols = 4;
+    CGFloat cell = 32, gap = 4, margin = 6;
+    for (int i = 0; i < NUM_PATTERNS; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+        if (NSPointInRect(p, box)) {
+            gPattern = i;
+            [self setNeedsDisplay:YES];
+            [gView setNeedsDisplay:YES];
+            break;
+        }
+    }
+}
+
+@end
+@implementation HCView
+
+- (BOOL)isFlipped { return YES; }
+- (void)installPatternPalette {
+    int cols = 4, rows = (NUM_PATTERNS + cols - 1) / cols;
+    CGFloat cell = 32, gap = 4, margin = 6;
+    CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
+    CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
+
+    NSPanel *panel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(560, 200, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [panel setTitle:@"Motifs"];
+    [panel setFloatingPanel:YES];
+
+    PatternPalette *grid = [[PatternPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [panel setContentView:grid];
+    [panel makeKeyAndOrderFront:nil];
+}
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor whiteColor] setFill];
     NSRectFill(dirtyRect);
