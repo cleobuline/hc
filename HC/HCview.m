@@ -2,7 +2,7 @@
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
-    TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM, TOOL_LASSO } HCTool;
+    TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM, TOOL_LASSO , TOOL_SELRECT } HCTool;
 static HCTool gTool = TOOL_BROWSE;
 static Object *gSelected = NULL;   // objet sélectionné en mode édition
 
@@ -37,6 +37,14 @@ static NSPoint gLassoPts[4096];
 static int gLassoCount = 0;
 static BOOL gLassoDrawing = NO;
 static BOOL gLassoActive = NO;   // une sélection existe-t-elle ?
+
+
+static NSPoint gSelStart, gSelEnd; // selection rectabgle
+static BOOL gSelRectDrawing = NO;
+static BOOL gSelRectActive = NO;
+
+
+
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 static const unsigned char PATTERNS[][8] = {
@@ -65,6 +73,19 @@ static int gPattern = 2;   // motif courant (1 = noir plein)
 static NSPoint gFreePts[4096];
 static int gFreeCount = 0;
 static BOOL gFreeDrawing = NO;
+static NSPanel *gPatternPanel = nil;
+static NSPanel *gWidthPanel = nil;
+static NSBitmapImageRep *gClipboard = nil;   // presse-papier (zone copiée)
+static int gClipW = 0, gClipH = 0;           // dimensions de la zone copiée
+
+
+static BOOL gFloating = NO;        // un collage flotte-t-il ?
+static NSPoint gFloatPos;          // position (coin haut-gauche) du flottant
+static BOOL gFloatDragging = NO;   // en train de le déplacer ?
+static NSPoint gFloatGrab;         // décalage entre le clic et le coin
+
+
+
 
 static inline int pattern_bit(int pat, int x, int y) {
     unsigned char row = PATTERNS[pat][y & 7];
@@ -432,6 +453,88 @@ static void erase_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         }
     }
 }
+// scotche le presse-papier dans le bitmap à la position (haut-gauche) donnée
+static void stamp_clipboard(NSBitmapImageRep *rep, NSPoint pos) {
+    if (!rep || !gClipboard) return;
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    int px0 = (int)pos.x, py0 = (int)pos.y;
+
+    unsigned char *dst = [rep bitmapData];
+    unsigned char *src = [gClipboard bitmapData];
+    NSInteger dbpr = [rep bytesPerRow], dspp = [rep samplesPerPixel];
+    NSInteger sbpr = [gClipboard bytesPerRow], sspp = [gClipboard samplesPerPixel];
+
+    for (int y = 0; y < gClipH; y++) {
+        for (int x = 0; x < gClipW; x++) {
+            int dx = px0 + x, dy = py0 + y;
+            if (dx < 0 || dx >= W || dy < 0 || dy >= H) continue;
+            unsigned char *sp = src + y*sbpr + x*sspp;
+            unsigned char sa = (sspp>=4) ? sp[3] : 255;
+            if (sa == 0) continue;   // pixel transparent du presse-papier : ne pas écraser
+            unsigned char *dp = dst + dy*dbpr + dx*dspp;
+            dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
+            if (dspp>=4) dp[3]=sa;
+        }
+    }
+}
+// copie une zone rectangulaire du bitmap dans le presse-papier
+static void copy_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
+    if (!rep) return;
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    int x0 = (int)MIN(a.x,b.x), x1 = (int)MAX(a.x,b.x);
+    int y0 = (int)MIN(a.y,b.y), y1 = (int)MAX(a.y,b.y);
+    if (x0<0)x0=0; if(y0<0)y0=0; if(x1>=W)x1=W-1; if(y1>=H)y1=H-1;
+    int w = x1-x0+1, h = y1-y0+1;
+    if (w < 1 || h < 1) return;
+
+    // créer le bitmap presse-papier
+    NSBitmapImageRep *clip = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:w pixelsHigh:h
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+
+    unsigned char *src = [rep bitmapData];
+    unsigned char *dst = [clip bitmapData];
+    NSInteger sbpr = [rep bytesPerRow], sspp = [rep samplesPerPixel];
+    NSInteger dbpr = [clip bytesPerRow], dspp = [clip samplesPerPixel];
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            unsigned char *sp = src + (y0+y)*sbpr + (x0+x)*sspp;
+            unsigned char *dp = dst + y*dbpr + x*dspp;
+            dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
+            dp[3] = (sspp>=4) ? sp[3] : 255;
+        }
+    }
+
+    gClipboard = clip;
+    gClipW = w; gClipH = h;
+    // aussi vers le presse-papier système
+        NSData *tiff = [clip TIFFRepresentation];
+        if (tiff) {
+            NSImage *img = [[NSImage alloc] initWithData:tiff];
+            NSPasteboard *pb = [NSPasteboard generalPasteboard];
+            [pb clearContents];
+            [pb writeObjects:@[img]];
+        }
+}
+
+static void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
+if (!rep) return;
+int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+unsigned char *data = [rep bitmapData];
+if (!data) return;
+NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+int x0 = (int)MIN(a.x,b.x), x1 = (int)MAX(a.x,b.x);
+int y0 = (int)MIN(a.y,b.y), y1 = (int)MAX(a.y,b.y);
+if (x0<0)x0=0; if(y0<0)y0=0; if(x1>=W)x1=W-1; if(y1>=H)y1=H-1;
+for (int y=y0;y<=y1;y++)
+    for (int x=x0;x<=x1;x++){
+        unsigned char *px = data + y*bpr + x*spp;
+        px[0]=0; px[1]=0; px[2]=0;
+        if(spp>=4) px[3]=0;
+    }
+}
 // dessine un objet (bouton ou champ) à son rectangle
 static void draw_part(Object *o) {
     if (!o->visible) return;
@@ -710,7 +813,8 @@ static const ToolCell TOOLCELLS[] = {
     {"○", 0, TOOL_OVAL},
     {"💧", 0, TOOL_FILL},
     {"✎", 0, TOOL_FREEFORM},
-    {"⬚", 0, TOOL_LASSO},        // ← ajoute cette ligne
+    {"⬚", 0, TOOL_LASSO},
+    {"◰", 0, TOOL_SELRECT},     // ou ⬛⃞ ou ◰ — un rectangle de sélection
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
     {"◌", 1, INK_ERASE},
@@ -774,16 +878,27 @@ static const ToolCell TOOLCELLS[] = {
 
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    BOOL dbl = ([event clickCount] == 2);
     int cols = 4;
     CGFloat cell = 38, gap = 3, margin = 6;
     for (int i = 0; i < NUM_TOOLCELLS; i++) {
         int col = i % cols, row = i / cols;
-        NSRect box = NSMakeRect(margin + col*(cell+gap),
-                                margin + row*(cell+gap),
-                                cell, cell);
+        NSRect box = NSMakeRect(margin + col*(cell+gap), margin + row*(cell+gap), cell, cell);
         if (NSPointInRect(p, box)) {
             const ToolCell *tc = &TOOLCELLS[i];
-            if (tc->kind == 0) { gTool = (HCTool)tc->value; gSelected = NULL; }
+            if (tc->kind == 0) {
+                gTool = (HCTool)tc->value;
+                gSelected = NULL;
+                if (dbl) {
+                    // double-clic : ouvrir la palette de réglage associée
+                    if (tc->value == TOOL_FILL)
+                        [gView showPatternPalette];
+                    else if (tc->value == TOOL_PENCIL || tc->value == TOOL_ERASER ||
+                             tc->value == TOOL_LINE || tc->value == TOOL_RECT ||
+                             tc->value == TOOL_OVAL || tc->value == TOOL_FREEFORM)
+                        [gView showWidthPalette];
+                }
+            }
             else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
             else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
             [self setNeedsDisplay:YES];
@@ -869,8 +984,59 @@ static const ToolCell TOOLCELLS[] = {
 @end
 @implementation HCView
 - (BOOL)acceptsFirstResponder { return YES; }
+
 - (void)keyDown:(NSEvent *)event {
     unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
+    NSUInteger mods = [event modifierFlags];
+        BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
+
+
+    // ⌘X : couper la sélection rectangulaire (copier puis effacer)
+        if (cmd && (key == 'x' || key == 'X') && gTool == TOOL_SELRECT && gSelRectActive) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            copy_rect(rep, gSelStart, gSelEnd);    // copier dans le presse-papier
+            erase_rect(rep, gSelStart, gSelEnd);   // puis effacer la zone
+            gSelRectActive = NO;
+            [self setNeedsDisplay:YES];
+            NSLog(@"coupé : %d x %d", gClipW, gClipH);
+            return;
+        }
+    // ⌘C : copier la sélection rectangulaire
+        if (cmd && (key == 'c' || key == 'C') && gTool == TOOL_SELRECT && gSelRectActive) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            copy_rect(rep, gSelStart, gSelEnd);
+            NSLog(@"copié : %d x %d", gClipW, gClipH);
+            return;
+        }
+    // ⌘V : coller (presse-papier système d'abord, sinon interne) en flottant
+            if (cmd && (key == 'v' || key == 'V')) {
+                // essayer une image du presse-papier système
+                NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
+                if (imgs.count > 0) {
+                    NSData *tiff = [imgs[0] TIFFRepresentation];
+                    NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
+                    if (ext) {
+                        gClipboard = ext;
+                        gClipW = (int)[ext pixelsWide];
+                        gClipH = (int)[ext pixelsHigh];
+                    }
+                }
+                if (gClipboard) {
+                    gFloating = YES;
+                    NSRect b = [self bounds];
+                    gFloatPos = NSMakePoint((b.size.width - gClipW)/2, (b.size.height - gClipH)/2);
+                    [self setNeedsDisplay:YES];
+                }
+                return;
+            }
+
     // lasso actif : Delete efface la zone sélectionnée
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
         gTool == TOOL_LASSO && gLassoActive) {
@@ -892,6 +1058,17 @@ static const ToolCell TOOLCELLS[] = {
         [self setNeedsDisplay:YES];
         return;
     }
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
+            gTool == TOOL_SELRECT && gSelRectActive) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            erase_rect(rep, gSelStart, gSelEnd);
+            gSelRectActive = NO;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     [super keyDown:event];
 }
 - (void)inkChosen:(id)sender {
@@ -948,23 +1125,31 @@ static const ToolCell TOOLCELLS[] = {
 - (void)widthChosen:(id)sender {
     gLineWidth = (int)[sender tag];
 }
+- (void)showPatternPalette {
+   if (!gPatternPanel) [self installPatternPalette];
+   else [gPatternPanel makeKeyAndOrderFront:nil];
+    [gPatternPanel setReleasedWhenClosed:NO];
+}
+- (void)showWidthPalette {
+   if (!gWidthPanel) [self installWidthPalette];
+   else [gWidthPanel makeKeyAndOrderFront:nil];
+    [gWidthPanel setReleasedWhenClosed:NO];
+}
 - (void)installPatternPalette {
     int cols = 4, rows = (NUM_PATTERNS + cols - 1) / cols;
     CGFloat cell = 32, gap = 4, margin = 6;
     CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
-
-    NSPanel *panel = [[NSPanel alloc]
+    gPatternPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(560, 200, w, h)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
-    [panel setTitle:@"Motifs"];
-    [panel setFloatingPanel:YES];
-
+    [gPatternPanel setTitle:@"Motifs"];
+    [gPatternPanel setFloatingPanel:YES];
     PatternPalette *grid = [[PatternPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
-    [panel setContentView:grid];
-    [panel makeKeyAndOrderFront:nil];
+    [gPatternPanel setContentView:grid];
+    [gPatternPanel makeKeyAndOrderFront:nil];
 }
 // remplit l'intérieur d'un polygone (forme libre) avec le motif + encre courants
 static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
@@ -1131,6 +1316,29 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             [pv setLineDash:dash count:2 phase:0];
             [pv stroke];
         }
+    if (gSelRectDrawing || gSelRectActive) {
+            NSRect sel = NSMakeRect(MIN(gSelStart.x,gSelEnd.x), MIN(gSelStart.y,gSelEnd.y),
+                                    fabs(gSelEnd.x-gSelStart.x), fabs(gSelEnd.y-gSelStart.y));
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *pv = [NSBezierPath bezierPathWithRect:sel];
+            [pv setLineWidth:1];
+            CGFloat dash[] = {4, 3};
+            [pv setLineDash:dash count:2 phase:0];
+            [pv stroke];
+        }
+    if (gFloating && gClipboard) {
+            NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
+            [gClipboard drawInRect:fr fromRect:NSZeroRect
+                         operation:NSCompositingOperationSourceOver fraction:1.0
+                    respectFlipped:YES hints:nil];
+            // cadre pointillé autour du flottant
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *fp = [NSBezierPath bezierPathWithRect:fr];
+            [fp setLineWidth:1];
+            CGFloat dash[] = {4, 3};
+            [fp setLineDash:dash count:2 phase:0];
+            [fp stroke];
+        }
 }
 - (void)toggleBackground:(id)sender {
     gEditBackground = !gEditBackground;
@@ -1176,6 +1384,24 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
+    if (gFloating) {
+            NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
+            if (NSPointInRect(p, fr)) {
+                // clic DANS le flottant : commencer à le déplacer
+                gFloatDragging = YES;
+                gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
+            } else {
+                // clic DEHORS : scotcher le flottant dans le bitmap
+                Object *card = hc_current_card();
+                Object *layer = gEditBackground ? card->bg : card;
+                if (!layer) layer = card;
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                stamp_clipboard(rep, gFloatPos);
+                gFloating = NO;
+                [self setNeedsDisplay:YES];
+            }
+            return;
+        }
     if (gTool == TOOL_PENCIL) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;   // ← couche active
@@ -1193,6 +1419,13 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             }
             return;
         }
+    if (gTool == TOOL_SELRECT) {
+        gSelStart = p; gSelEnd = p;
+        gSelRectDrawing = YES;
+        gSelRectActive = NO;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (gTool == TOOL_ERASER) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;
@@ -1303,6 +1536,11 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    if (gFloating && gFloatDragging) {
+            gFloatPos = NSMakePoint(p.x - gFloatGrab.x, p.y - gFloatGrab.y);
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gTool == TOOL_PENCIL && gPenDrawing) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;   // ← couche active
@@ -1327,6 +1565,16 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             [self setNeedsDisplay:YES];
             return;
         }
+    if (gTool == TOOL_SELRECT && gSelRectDrawing) {
+        gSelEnd = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+
+
+
+
     if (gShapeDrawing) {
             gShapeEnd = p;
             [self setNeedsDisplay:YES];
@@ -1376,6 +1624,10 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 }
 - (void)mouseUp:(NSEvent *)event {
     // --- mode flèche : envoyer mouseUp au script ---
+    if (gFloating) {
+            gFloatDragging = NO;
+            return;
+        }
     if (gResizeHandle) {
             gResizeHandle = 0;
             [self setNeedsDisplay:YES];
@@ -1383,6 +1635,12 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         }
     if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER) {
             gPenDrawing = NO;
+            return;
+        }
+    if (gTool == TOOL_SELRECT) {
+            gSelRectDrawing = NO;
+            gSelRectActive = (fabs(gSelEnd.x-gSelStart.x) > 3 && fabs(gSelEnd.y-gSelStart.y) > 3);
+            [self setNeedsDisplay:YES];
             return;
         }
     // tool lasso

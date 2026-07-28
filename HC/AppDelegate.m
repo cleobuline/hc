@@ -4,7 +4,7 @@
 //
 
 #import "AppDelegate.h"
-#import "HCView.h"
+#import "HCview.h"
 #import "hc_core.h"
 #import "hc_file.h"
 @interface AppDelegate ()

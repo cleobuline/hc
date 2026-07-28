@@ -19,6 +19,8 @@
 - (void)installWidthPalette;
 - (void)widthChosen:(id)sender;
 - (void)toggleFilled:(id)sender;
+- (void)showPatternPalette;
+- (void)showWidthPalette;
 @end
 
 extern HCView *gView;
