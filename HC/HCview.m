@@ -1171,17 +1171,16 @@ static const ToolCell TOOLCELLS[] = {
     CGFloat cell = 40, gap = 3, margin = 6;
     CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
-
-    NSPanel *panel = [[NSPanel alloc]
+    gWidthPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(200, 150, w, h)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
-    [panel setTitle:@"Épaisseur"];
-    [panel setFloatingPanel:YES];
-
+    [gWidthPanel setTitle:@"Épaisseur"];
+    [gWidthPanel setFloatingPanel:YES];
+    [gWidthPanel setReleasedWhenClosed:NO];
     WidthPalette *grid = [[WidthPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
-    [panel setContentView:grid];
-    [panel makeKeyAndOrderFront:nil];
+    [gWidthPanel setContentView:grid];
+    [gWidthPanel makeKeyAndOrderFront:nil];
 }
 
 - (void)widthChosen:(id)sender {
@@ -1193,6 +1192,7 @@ static const ToolCell TOOLCELLS[] = {
     [gPatternPanel setReleasedWhenClosed:NO];
 }
 - (void)showWidthPalette {
+    NSLog(@"showWidthPalette: gWidthPanel=%@", gWidthPanel);
    if (!gWidthPanel) [self installWidthPalette];
    else [gWidthPanel makeKeyAndOrderFront:nil];
     [gWidthPanel setReleasedWhenClosed:NO];
