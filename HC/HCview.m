@@ -85,7 +85,61 @@ static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 
 
+// ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
+// dessine chaque ligne en binaire : le motif est lisible directement dans le code
 
+static const unsigned short ICON_BUCKET[16] = {
+    0b0000000000000000,
+    0b0000001110000000,
+    0b0000110001100000,
+    0b0001000000110000,
+    0b0010000000011000,
+    0b0100000000001100,
+    0b0110000000001100,
+    0b0011000000011000,
+    0b0001100000110000,
+    0b0000110001100110,
+    0b0000011111000110,
+    0b0000001110000110,
+    0b0000000000000110,
+    0b0000000000000100,
+    0b0000000000000000,
+    0b0000000000000000,
+};
+
+static const unsigned short ICON_LASSO[16] = {
+    0b0000011111000000,
+    0b0001100000110000,
+    0b0010000000001000,
+    0b0100000000000100,
+    0b0100000000000100,
+    0b0010000000001000,
+    0b0001100000110000,
+    0b0000011111000000,
+    0b0000001100000000,
+    0b0000000110000000,
+    0b0000000011000000,
+    0b0000000011000000,
+    0b0000000110000000,
+    0b0000001100000000,
+    0b0000011000000000,
+    0b0000000000000000,
+};
+
+static void draw_icon_bits(const unsigned short *icon, NSRect r) {
+    [[NSColor blackColor] setFill];
+    CGFloat px = 1;   // taille fixe d'un pixel d'icône (petit = net)
+    // centrer l'icône 16x16 dans la case
+    CGFloat ox = r.origin.x + (r.size.width  - 16*px) / 2;
+    CGFloat oy = r.origin.y + (r.size.height - 16*px) / 2;
+    for (int row = 0; row < 16; row++) {
+        unsigned short bits = icon[row];
+        for (int col = 0; col < 16; col++) {
+            if (bits & (0x8000 >> col))
+                NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
+        }
+    }
+}
 
 static inline int pattern_bit(int pat, int x, int y) {
     unsigned char row = PATTERNS[pat][y & 7];
@@ -853,16 +907,23 @@ static const ToolCell TOOLCELLS[] = {
         [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
         NSRectFill(box);
 
-        NSString *g = [NSString stringWithUTF8String:tc->glyph];
-        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-        [ps setAlignment:NSTextAlignmentCenter];
-        NSDictionary *attrs = @{
-            NSFontAttributeName: [NSFont systemFontOfSize:18],
-            NSParagraphStyleAttributeName: ps
-        };
-        NSRect tr = box;
-        tr.origin.y += (box.size.height - 22) / 2;
-        [g drawInRect:tr withAttributes:attrs];
+        // icône bitmap pour certains outils, glyphe pour les autres
+                if (tc->kind == 0 && tc->value == TOOL_FILL) {
+                    draw_icon_bits(ICON_BUCKET, box);
+                } else if (tc->kind == 0 && tc->value == TOOL_LASSO) {
+                    draw_icon_bits(ICON_LASSO, box);
+                } else {
+                    NSString *g = [NSString stringWithUTF8String:tc->glyph];
+                    NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                    [ps setAlignment:NSTextAlignmentCenter];
+                    NSDictionary *attrs = @{
+                        NSFontAttributeName: [NSFont systemFontOfSize:18],
+                        NSParagraphStyleAttributeName: ps
+                    };
+                    NSRect tr = box;
+                    tr.origin.y += (box.size.height - 22) / 2;
+                    [g drawInRect:tr withAttributes:attrs];
+                }
 
         if (active) {
             [[NSColor redColor] setStroke];
@@ -989,7 +1050,8 @@ static const ToolCell TOOLCELLS[] = {
     unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
     NSUInteger mods = [event modifierFlags];
         BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
-
+    NSLog(@"keyDown: key=%d cmd=%d gTool=%d gLassoActive=%d gSelected=%p",
+              (int)key, cmd, (int)gTool, gLassoActive, (void*)gSelected);
 
     // ⌘X : couper la sélection rectangulaire (copier puis effacer)
         if (cmd && (key == 'x' || key == 'X') && gTool == TOOL_SELRECT && gSelRectActive) {
