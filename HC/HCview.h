@@ -16,6 +16,9 @@
 - (void)toggleBackground:(id)sender;
 - (void)installPatternPalette;
 - (void)applyStackSize;
+- (void)installWidthPalette;
+- (void)widthChosen:(id)sender;
+- (void)toggleFilled:(id)sender;
 @end
 
 extern HCView *gView;

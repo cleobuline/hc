@@ -65,6 +65,7 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     [view installMessageBox];
     [view installToolPalette];
     [view installPatternPalette];
+    [view installWidthPalette];
     [view applyStackSize];
 
     // menu Fichier

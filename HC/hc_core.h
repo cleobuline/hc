@@ -42,6 +42,7 @@ struct Object {
     int      hilite;    /* bouton allumé (vidéo inverse) ; coché pour checkBox/radio */
     int      autohilite;/* le bouton s'allume automatiquement pendant le clic */
     int      textsize;  /* taille de police du nom (0 = défaut) */
+    int      showname;  /* le nom du bouton est-il affiché ? (1 = oui par défaut) */
     char    *contents;  /* contenu textuel (champs) */
 
     /* géométrie : rectangle en coordonnées carte (pixels).
@@ -115,4 +116,5 @@ void        hc_set_paint(Object *o, const char *base64);
 
 /* Libère les variables globales (à appeler avant de quitter). */
 void        hc_shutdown(void);
+
 #endif /* HC_CORE_H */

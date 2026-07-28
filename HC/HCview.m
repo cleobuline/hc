@@ -31,6 +31,9 @@ static BOOL gEditBackground = NO;   // NO = couche carte, YES = couche fond
 static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
+static int gLineWidth = 2;   // épaisseur du trait (0 = pas de contour)
+static BOOL gShapeFilled = NO;   // NO = contour seul, YES = rempli du motif
+
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 static const unsigned char PATTERNS[][8] = {
@@ -61,25 +64,83 @@ static inline int pattern_bit(int pat, int x, int y) {
     unsigned char row = PATTERNS[pat][y & 7];
     return (row >> (7 - (x & 7))) & 1;
 }
+// remplit l'intérieur d'une forme (rect ou ovale) avec le motif + encre courants
+static void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
+    if (!rep) return;
+    int W = (int)[rep pixelsWide];
+    int H = (int)[rep pixelsHigh];
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow];
+    NSInteger spp = [rep samplesPerPixel];
+
+    int x0 = (int)MIN(a.x, b.x), x1 = (int)MAX(a.x, b.x);
+    int y0 = (int)MIN(a.y, b.y), y1 = (int)MAX(a.y, b.y);
+    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+    if (x1 >= W) x1 = W-1; if (y1 >= H) y1 = H-1;
+
+    // centre et demi-axes pour l'ovale
+    double cx = (x0 + x1) / 2.0, cy = (y0 + y1) / 2.0;
+    double rx = (x1 - x0) / 2.0, ry = (y1 - y0) / 2.0;
+
+    for (int y = y0; y <= y1; y++) {
+        for (int x = x0; x <= x1; x++) {
+            // pour l'ovale, ne remplir que l'intérieur de l'ellipse
+            if (tool == TOOL_OVAL) {
+                if (rx < 1 || ry < 1) continue;
+                double dx = (x - cx) / rx, dy = (y - cy) / ry;
+                if (dx*dx + dy*dy > 1.0) continue;   // hors de l'ellipse
+            }
+            // (pour TOOL_RECT, tout le rectangle est rempli)
+
+            unsigned char *px = data + y*bpr + x*spp;
+            if (pattern_bit(gPattern, x, y)) {
+                // trait du motif : toujours noir
+                px[0]=0; px[1]=0; px[2]=0;
+                if (spp>=4) px[3]=255;
+            } else {
+                // fond du motif : selon l'encre
+                if (gInk == INK_WHITE) {
+                    px[0]=255; px[1]=255; px[2]=255;
+                    if (spp>=4) px[3]=255;
+                } else {
+                    px[0]=0; px[1]=0; px[2]=0;
+                    if (spp>=4) px[3]=0;   // transparent (noir ou efface)
+                }
+            }
+        }
+    }
+}
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
     if (!rep) return;
+    if (width <= 0 && tool != TOOL_LINE) return;   // épaisseur 0 : pas de contour (sauf ligne)
+    if (width <= 0) width = 1;                       // une ligne garde au moins 1
+
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
     if (!ctx) return;
-    NSLog(@"paint_shape: rep H=%ld, vue H=%.0f, a.y=%.0f b.y=%.0f",
-              (long)[rep pixelsHigh], [gView bounds].size.height, a.y, b.y);
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
     [ctx setShouldAntialias:NO];
+
     CGFloat H = [rep pixelsHigh];
     NSAffineTransform *flip = [NSAffineTransform transform];
     [flip translateXBy:0 yBy:H];
     [flip scaleXBy:1 yBy:-1];
     [flip concat];
 
-    [color setStroke];
+    // encre : blanc, noir, ou effacement (comme paint_stroke)
+    if (gInk == INK_ERASE) {
+        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
+        [[NSColor blackColor] setStroke];
+    } else if (gInk == INK_WHITE) {
+        [[NSColor whiteColor] setStroke];
+    } else {
+        [[NSColor blackColor] setStroke];
+    }
+    (void)color;   // l'encre gouverne la couleur désormais
+
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
-
     if (tool == TOOL_LINE) {
         [path moveToPoint:a];
         [path lineToPoint:b];
@@ -168,75 +229,7 @@ static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
     free(xs);
     free(ys);
 }
-static void flood_fill_old (NSBitmapImageRep *rep, int sx, int sy) {
-    if (!rep) return;
-    int W = (int)[rep pixelsWide];
-    int H = (int)[rep pixelsHigh];
-    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return;
 
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow];        // octets par ligne
-    NSInteger spp = [rep samplesPerPixel];    // échantillons par pixel (4 = RGBA)
-
-    // adresse du pixel (x,y)
-    #define PIX(x,y) (data + (y)*bpr + (x)*spp)
-
-    unsigned char *sp = PIX(sx, sy);
-    unsigned char sr = sp[0], sg = sp[1], sb = sp[2];
-    unsigned char sa = (spp >= 4) ? sp[3] : 255;
-
-    // déjà noir opaque ? rien à faire
-    if (sr < 12 && sg < 12 && sb < 12 && sa > 240) return;
-
-    unsigned char *done = calloc((size_t)W * H, 1);
-    if (!done) return;
-
-    int cap = 4096, top = 0;
-    int *xs = malloc(sizeof(int)*cap);
-    int *ys = malloc(sizeof(int)*cap);
-    xs[top]=sx; ys[top]=sy; top++;
-
-    while (top > 0) {
-        top--;
-        int x = xs[top], y = ys[top];
-        if (x < 0 || x >= W || y < 0 || y >= H) continue;
-        if (done[y*W + x]) continue;
-        done[y*W + x] = 1;
-
-        unsigned char *px = PIX(x, y);
-        unsigned char a = (spp >= 4) ? px[3] : 255;
-        // même couleur que le départ ? (tolérance)
-        if (abs(px[0]-sr) > 40 || abs(px[1]-sg) > 40 ||
-            abs(px[2]-sb) > 40 || abs(a-sa) > 40)
-            continue;   // frontière
-
- 
-        // peindre selon le motif courant
-                if (pattern_bit(gPattern, x, y)) {
-                    px[0] = 0; px[1] = 0; px[2] = 0;      // bit du motif = noir
-                    if (spp >= 4) px[3] = 255;
-                } else {
-                    px[0] = 0; px[1] = 0; px[2] = 0;      // bit vide = transparent
-                    if (spp >= 4) px[3] = 0;
-                }
-
-        if (top + 4 >= cap) {
-            cap *= 2;
-            xs = realloc(xs, sizeof(int)*cap);
-            ys = realloc(ys, sizeof(int)*cap);
-        }
-        xs[top]=x+1; ys[top]=y; top++;
-        xs[top]=x-1; ys[top]=y; top++;
-        xs[top]=x; ys[top]=y+1; top++;
-        xs[top]=x; ys[top]=y-1; top++;
-    }
-    #undef PIX
-
-    free(done);
-    free(xs);
-    free(ys);
-}
 static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
@@ -264,7 +257,7 @@ static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColo
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:from];
     [path lineToPoint:to];
-    [path setLineWidth:width];
+    [path setLineWidth:width > 0 ? width : 1];
     [path setLineCapStyle:NSLineCapStyleRound];
     [path stroke];
 
@@ -444,7 +437,8 @@ static void draw_part(Object *o) {
                         };
                         NSRect tr = NSInsetRect(r, 2, 0);
                         tr.origin.y += (r.size.height - fs * 1.2) / 2;
-                        [s drawInRect:tr withAttributes:attrs];
+                if (o->showname)
+                                [s drawInRect:tr withAttributes:attrs];
                     }
             else {
                         // bouton rectangle classique
@@ -464,7 +458,8 @@ static void draw_part(Object *o) {
                         };
                         NSRect tr = NSInsetRect(r, 4, 0);
                         tr.origin.y += (r.size.height - fs * 1.2) / 2;   // recentrage selon la taille
-                        [s drawInRect:tr withAttributes:attrs];
+                if (o->showname)
+                                [s drawInRect:tr withAttributes:attrs];
                     }
         }
     else if (o->type == OBJ_FIELD) {
@@ -545,6 +540,181 @@ static void cocoa_field_changed(Object *field) {
     (void)field;
     [gView setNeedsDisplay:YES];
 }
+
+
+
+// ==================== palette d'épaisseur de trait (vue custom) ====================
+@interface WidthPalette : NSView
+@end
+
+@implementation WidthPalette
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+    NSRectFill(dirtyRect);
+
+    int cols = 4;
+    CGFloat cell = 40, gap = 3, margin = 6;
+
+    for (int i = 0; i <= 10; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+
+        BOOL active = (gLineWidth == i);
+
+        [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
+        NSRectFill(box);
+
+        if (i == 0) {
+            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+            [ps setAlignment:NSTextAlignmentCenter];
+            NSDictionary *attrs = @{
+                NSFontAttributeName: [NSFont systemFontOfSize:14],
+                NSParagraphStyleAttributeName: ps
+            };
+            NSRect tr = box; tr.origin.y += (box.size.height - 18)/2;
+            [@"0" drawInRect:tr withAttributes:attrs];
+        } else {
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *line = [NSBezierPath bezierPath];
+            CGFloat midY = box.origin.y + box.size.height/2;
+            [line moveToPoint:NSMakePoint(box.origin.x + 6, midY)];
+            [line lineToPoint:NSMakePoint(box.origin.x + box.size.width - 6, midY)];
+            [line setLineWidth:i];
+            [line stroke];
+        }
+
+        if (active) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr = [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    int cols = 4;
+    CGFloat cell = 40, gap = 3, margin = 6;
+    for (int i = 0; i <= 10; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+        if (NSPointInRect(p, box)) {
+            gLineWidth = i;
+            [self setNeedsDisplay:YES];
+            break;
+        }
+    }
+}
+
+@end
+
+
+
+// ==================== palette d'outils custom (grille + sélection encadrée) ====================
+typedef struct { const char *glyph; int kind; int value; } ToolCell;
+
+static const ToolCell TOOLCELLS[] = {
+    {"👆", 0, TOOL_BROWSE},
+    {"B",  0, TOOL_BUTTON},
+    {"F",  0, TOOL_FIELD},
+    {"✏", 0, TOOL_PENCIL},
+    {"⌫", 0, TOOL_ERASER},
+    {"╱", 0, TOOL_LINE},
+    {"▭", 0, TOOL_RECT},
+    {"○", 0, TOOL_OVAL},
+    {"💧", 0, TOOL_FILL},
+    {"⬛", 1, INK_BLACK},
+    {"⬜", 1, INK_WHITE},
+    {"◌", 1, INK_ERASE},
+    {"▣", 2, 0},
+};
+#define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
+
+@interface ToolPalette : NSView
+@end
+
+@implementation ToolPalette
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+    NSRectFill(dirtyRect);
+
+    int cols = 4;
+    CGFloat cell = 38, gap = 3, margin = 6;
+
+    for (int i = 0; i < NUM_TOOLCELLS; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+        const ToolCell *tc = &TOOLCELLS[i];
+
+        BOOL active = NO;
+        if (tc->kind == 0) active = (gTool == (HCTool)tc->value);
+        else if (tc->kind == 1) active = (gInk == (HCInk)tc->value);
+        else if (tc->kind == 2) active = gShapeFilled;
+
+        [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
+        NSRectFill(box);
+
+        NSString *g = [NSString stringWithUTF8String:tc->glyph];
+        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+        [ps setAlignment:NSTextAlignmentCenter];
+        NSDictionary *attrs = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:18],
+            NSParagraphStyleAttributeName: ps
+        };
+        NSRect tr = box;
+        tr.origin.y += (box.size.height - 22) / 2;
+        [g drawInRect:tr withAttributes:attrs];
+
+        if (active) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr = [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    int cols = 4;
+    CGFloat cell = 38, gap = 3, margin = 6;
+    for (int i = 0; i < NUM_TOOLCELLS; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap),
+                                margin + row*(cell+gap),
+                                cell, cell);
+        if (NSPointInRect(p, box)) {
+            const ToolCell *tc = &TOOLCELLS[i];
+            if (tc->kind == 0) { gTool = (HCTool)tc->value; gSelected = NULL; }
+            else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
+            else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
+            [self setNeedsDisplay:YES];
+            [gView setNeedsDisplay:YES];
+            break;
+        }
+    }
+}
+
+@end
 // ---- petite vue-grille pour choisir un motif ----
 @interface PatternPalette : NSView
 @end
@@ -652,6 +822,27 @@ static void cocoa_field_changed(Object *field) {
     [win setFrame:newFrame display:YES animate:NO];
 
     [self setNeedsDisplay:YES];
+}
+- (void)installWidthPalette {
+    int cols = 4, rows = 3;   // 11 valeurs sur 3 rangées
+    CGFloat cell = 40, gap = 3, margin = 6;
+    CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
+    CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
+
+    NSPanel *panel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(200, 150, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [panel setTitle:@"Épaisseur"];
+    [panel setFloatingPanel:YES];
+
+    WidthPalette *grid = [[WidthPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [panel setContentView:grid];
+    [panel makeKeyAndOrderFront:nil];
+}
+
+- (void)widthChosen:(id)sender {
+    gLineWidth = (int)[sender tag];
 }
 - (void)installPatternPalette {
     int cols = 4, rows = (NUM_PATTERNS + cols - 1) / cols;
@@ -822,7 +1013,7 @@ static void cocoa_field_changed(Object *field) {
                 NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
                 gPenLast = p;
                 gPenDrawing = YES;
-                paint_stroke(rep, p, p, [NSColor blackColor], 2);
+                paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
                 [self setNeedsDisplay:YES];
             }
             return;
@@ -925,8 +1116,7 @@ static void cocoa_field_changed(Object *field) {
             Object *layer = gEditBackground ? card->bg : card;   // ← couche active
             if (!layer) layer = card;
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            paint_stroke(rep, gPenLast, p, [NSColor blackColor], 2);
-            gPenLast = p;
+        paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);            gPenLast = p;
             [self setNeedsDisplay:YES];
             return;
         }
@@ -997,8 +1187,10 @@ static void cocoa_field_changed(Object *field) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;
             if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            paint_shape(rep, gTool, gShapeStart, gShapeEnd, [NSColor blackColor], 2);
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                    if (gShapeFilled && gTool != TOOL_LINE)
+                        fill_shape(rep, gTool, gShapeStart, gShapeEnd);
+                    paint_shape(rep, gTool, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);;
             [self setNeedsDisplay:YES];
             return;
         }
@@ -1095,52 +1287,26 @@ static void cocoa_field_changed(Object *field) {
 }
 
 - (void)installToolPalette {
+    int cols = 4, rows = (NUM_TOOLCELLS + cols - 1) / cols;
+    CGFloat cell = 38, gap = 3, margin = 6;
+    CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
+    CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
+
     NSPanel *palette = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(520, 400, 470, 60)
+        initWithContentRect:NSMakeRect(560, 350, w, h)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
-                    backing:NSBackingStoreBuffered
-                      defer:NO];
+                    backing:NSBackingStoreBuffered defer:NO];
     [palette setTitle:@"Outils"];
     [palette setFloatingPanel:YES];
-    NSView *content = [palette contentView];
 
-    NSButton *(^mk)(NSString*, NSInteger, CGFloat) = ^NSButton*(NSString *title, NSInteger tag, CGFloat x) {
-        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 36, 36)];
-        [b setTitle:title];
-        [b setTag:tag];
-        [b setTarget:self];
-        [b setAction:@selector(toolChosen:)];
-        [b setBezelStyle:NSBezelStyleRegularSquare];
-        [content addSubview:b];
-        return b;
-    };
-    mk(@"👆", TOOL_BROWSE, 4);
-    mk(@"B", TOOL_BUTTON, 42);
-    mk(@"F", TOOL_FIELD, 80);
-    mk(@"✏", TOOL_PENCIL, 118);
-    mk(@"⌫", TOOL_ERASER, 156);
-    mk(@"╱", TOOL_LINE, 194);
-    mk(@"▭", TOOL_RECT, 232);
-    mk(@"○", TOOL_OVAL, 270);
-    mk(@"💧", TOOL_FILL, 308);
-
-    NSButton *(^mkInk)(NSString*, NSInteger, CGFloat) = ^NSButton*(NSString *titre, NSInteger encre, CGFloat x) {
-        NSButton *bt = [[NSButton alloc] initWithFrame:NSMakeRect(x, 10, 36, 36)];
-        [bt setTitle:titre];
-        [bt setTag:encre];
-        [bt setTarget:self];
-        [bt setAction:@selector(inkChosen:)];
-        [bt setBezelStyle:NSBezelStyleRegularSquare];
-        [content addSubview:bt];
-        return bt;
-    };
-    mkInk(@"⬛", INK_BLACK, 350);
-    mkInk(@"⬜", INK_WHITE, 388);
-    mkInk(@"◌", INK_ERASE, 426);
-
+    ToolPalette *grid = [[ToolPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [palette setContentView:grid];
     [palette makeKeyAndOrderFront:nil];
 }
-
+- (void)toggleFilled:(id)sender {
+    gShapeFilled = !gShapeFilled;
+    NSLog(@"formes : %@", gShapeFilled ? @"PLEINES" : @"VIDES");
+}
 - (void)toolChosen:(id)sender {
     gTool = (HCTool)[sender tag];
     gSelected = NULL;

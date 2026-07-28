@@ -186,6 +186,7 @@ static Object *new_object(ObjType type, Object *owner, const char *name)
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
+    o->showname = 1;   /* le nom s'affiche par défaut */
     return o;
 }
 
@@ -203,7 +204,9 @@ static void add_part(Object *parent, Object *child)
 
 Object *hc_new_stack(const char *name)
 {
-    return new_object(OBJ_STACK, NULL, name);
+    Object *o = new_object(OBJ_STACK, NULL, name);
+    o->w = 512; o->h = 342;   /* taille de carte par défaut (comme le Mac classique) */
+    return o;
 }
 
 Object *hc_new_background(Object *stack, const char *name)
@@ -1365,6 +1368,7 @@ static void term_value(const char *t, char *out, int outlen)
                         return;
                     }
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
+                    if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
@@ -2233,6 +2237,9 @@ static void exec_line(Object *me, const char *line)
             o->name = dupstr(val);
         } else if (ci_equal(prop, "visible")) {
             o->visible = truthy(val);
+        } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
+            o->showname = truthy(val);
+            notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
             o->hilite = truthy(val);
             notify_field(o);
