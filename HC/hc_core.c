@@ -260,6 +260,25 @@ void hc_free(Object *o)
     free(o);
 }
 
+/* Retire un objet (bouton/champ) de la couche de son propriétaire et le libère.
+ * Renvoie 1 si trouvé et supprimé, 0 sinon. */
+int hc_delete_part(Object *o)
+{
+    if (!o || !o->owner) return 0;
+    Object *parent = o->owner;
+    for (int i = 0; i < parent->nparts; i++) {
+        if (parent->parts[i] == o) {
+            /* décaler les suivants pour combler le trou */
+            for (int j = i; j < parent->nparts - 1; j++)
+                parent->parts[j] = parent->parts[j + 1];
+            parent->nparts--;
+            hc_free(o);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* ==================== chaîne de messages ==================== */
 
 /* Construit la chaîne de remontée depuis `target`.

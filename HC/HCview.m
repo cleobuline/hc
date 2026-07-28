@@ -2,7 +2,7 @@
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
-               TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL} HCTool;
+    TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM, TOOL_LASSO } HCTool;
 static HCTool gTool = TOOL_BROWSE;
 static Object *gSelected = NULL;   // objet sélectionné en mode édition
 
@@ -33,7 +33,10 @@ static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
 static int gLineWidth = 2;   // épaisseur du trait (0 = pas de contour)
 static BOOL gShapeFilled = NO;   // NO = contour seul, YES = rempli du motif
-
+static NSPoint gLassoPts[4096];
+static int gLassoCount = 0;
+static BOOL gLassoDrawing = NO;
+static BOOL gLassoActive = NO;   // une sélection existe-t-elle ?
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 static const unsigned char PATTERNS[][8] = {
@@ -59,6 +62,9 @@ typedef enum { INK_BLACK, INK_WHITE, INK_ERASE } HCInk;
 static HCInk gInk = INK_BLACK;   // encre courante du crayon/formes
 
 static int gPattern = 2;   // motif courant (1 = noir plein)
+static NSPoint gFreePts[4096];
+static int gFreeCount = 0;
+static BOOL gFreeDrawing = NO;
 
 static inline int pattern_bit(int pat, int x, int y) {
     unsigned char row = PATTERNS[pat][y & 7];
@@ -111,6 +117,43 @@ static void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b)
         }
     }
 }
+// dessine une forme libre (contour fermé) à partir d'une liste de points
+static void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
+    if (!rep || n < 2) return;
+    if (width <= 0) return;   // épaisseur 0 : pas de contour
+
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return;
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+    [ctx setShouldAntialias:NO];
+
+    CGFloat H = [rep pixelsHigh];
+    NSAffineTransform *flip = [NSAffineTransform transform];
+    [flip translateXBy:0 yBy:H];
+    [flip scaleXBy:1 yBy:-1];
+    [flip concat];
+
+    if (gInk == INK_ERASE) {
+        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
+        [[NSColor blackColor] setStroke];
+    } else if (gInk == INK_WHITE) {
+        [[NSColor whiteColor] setStroke];
+    } else {
+        [[NSColor blackColor] setStroke];
+    }
+
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:pts[0]];
+    for (int i = 1; i < n; i++)
+        [path lineToPoint:pts[i]];
+    [path closePath];              // ferme le contour (relie au premier point)
+    [path setLineWidth:width];
+    [path stroke];
+
+    [NSGraphicsContext restoreGraphicsState];
+}
+
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
     if (!rep) return;
     if (width <= 0 && tool != TOOL_LINE) return;   // épaisseur 0 : pas de contour (sauf ligne)
@@ -356,6 +399,38 @@ static void radio_exclusive(Object *card, Object *keep) {
                 (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
                 o->hilite = 0;
         }
+}
+// efface (rend transparent) l'intérieur d'un polygone
+static void erase_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
+    if (!rep || n < 3) return;
+    int W = (int)[rep pixelsWide];
+    int H = (int)[rep pixelsHigh];
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow];
+    NSInteger spp = [rep samplesPerPixel];
+
+    double minx=pts[0].x,maxx=pts[0].x,miny=pts[0].y,maxy=pts[0].y;
+    for (int i=1;i<n;i++){
+        if(pts[i].x<minx)minx=pts[i].x; if(pts[i].x>maxx)maxx=pts[i].x;
+        if(pts[i].y<miny)miny=pts[i].y; if(pts[i].y>maxy)maxy=pts[i].y;
+    }
+    int y0=(int)floor(miny),y1=(int)ceil(maxy),x0=(int)floor(minx),x1=(int)ceil(maxx);
+    if(y0<0)y0=0; if(x0<0)x0=0; if(y1>=H)y1=H-1; if(x1>=W)x1=W-1;
+
+    for (int y=y0;y<=y1;y++){
+        for (int x=x0;x<=x1;x++){
+            int inside=0;
+            for (int i=0,j=n-1;i<n;j=i++){
+                double yi=pts[i].y,yj=pts[j].y,xi=pts[i].x,xj=pts[j].x;
+                if(((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
+            }
+            if(!inside) continue;
+            unsigned char *px = data + y*bpr + x*spp;
+            px[0]=0; px[1]=0; px[2]=0;
+            if(spp>=4) px[3]=0;   // transparent
+        }
+    }
 }
 // dessine un objet (bouton ou champ) à son rectangle
 static void draw_part(Object *o) {
@@ -634,11 +709,15 @@ static const ToolCell TOOLCELLS[] = {
     {"▭", 0, TOOL_RECT},
     {"○", 0, TOOL_OVAL},
     {"💧", 0, TOOL_FILL},
+    {"✎", 0, TOOL_FREEFORM},
+    {"⬚", 0, TOOL_LASSO},        // ← ajoute cette ligne
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
     {"◌", 1, INK_ERASE},
     {"▣", 2, 0},
 };
+
+
 #define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
 
 @interface ToolPalette : NSView
@@ -789,7 +868,32 @@ static const ToolCell TOOLCELLS[] = {
 
 @end
 @implementation HCView
-
+- (BOOL)acceptsFirstResponder { return YES; }
+- (void)keyDown:(NSEvent *)event {
+    unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
+    // lasso actif : Delete efface la zone sélectionnée
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
+        gTool == TOOL_LASSO && gLassoActive) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+        erase_freeform(rep, gLassoPts, gLassoCount);   // efface l'intérieur
+        gLassoActive = NO;
+        gLassoCount = 0;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+    // suppression d'objet sélectionné (ton code existant)
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
+        gSelected && gTool != TOOL_BROWSE) {
+        hc_delete_part(gSelected);
+        gSelected = NULL;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+    [super keyDown:event];
+}
 - (void)inkChosen:(id)sender {
     gInk = (HCInk)[sender tag];
     NSLog(@"encre : %d", (int)gInk);
@@ -861,6 +965,58 @@ static const ToolCell TOOLCELLS[] = {
     PatternPalette *grid = [[PatternPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [panel setContentView:grid];
     [panel makeKeyAndOrderFront:nil];
+}
+// remplit l'intérieur d'un polygone (forme libre) avec le motif + encre courants
+static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
+    if (!rep || n < 3) return;
+    int W = (int)[rep pixelsWide];
+    int H = (int)[rep pixelsHigh];
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow];
+    NSInteger spp = [rep samplesPerPixel];
+
+    // boîte englobante du polygone
+    double minx = pts[0].x, maxx = pts[0].x, miny = pts[0].y, maxy = pts[0].y;
+    for (int i = 1; i < n; i++) {
+        if (pts[i].x < minx) minx = pts[i].x;
+        if (pts[i].x > maxx) maxx = pts[i].x;
+        if (pts[i].y < miny) miny = pts[i].y;
+        if (pts[i].y > maxy) maxy = pts[i].y;
+    }
+    int y0 = (int)floor(miny), y1 = (int)ceil(maxy);
+    int x0 = (int)floor(minx), x1 = (int)ceil(maxx);
+    if (y0 < 0) y0 = 0; if (x0 < 0) x0 = 0;
+    if (y1 >= H) y1 = H-1; if (x1 >= W) x1 = W-1;
+
+    for (int y = y0; y <= y1; y++) {
+        for (int x = x0; x <= x1; x++) {
+            // test point-dans-polygone (ray casting horizontal)
+            int inside = 0;
+            for (int i = 0, j = n-1; i < n; j = i++) {
+                double yi = pts[i].y, yj = pts[j].y;
+                double xi = pts[i].x, xj = pts[j].x;
+                if (((yi > y) != (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+                    inside = !inside;
+            }
+            if (!inside) continue;
+
+            unsigned char *px = data + y*bpr + x*spp;
+            if (pattern_bit(gPattern, x, y)) {
+                px[0]=0; px[1]=0; px[2]=0;
+                if (spp>=4) px[3]=255;
+            } else {
+                if (gInk == INK_WHITE) {
+                    px[0]=255; px[1]=255; px[2]=255;
+                    if (spp>=4) px[3]=255;
+                } else {
+                    px[0]=0; px[1]=0; px[2]=0;
+                    if (spp>=4) px[3]=0;
+                }
+            }
+        }
+    }
 }
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor whiteColor] setFill];
@@ -956,6 +1112,25 @@ static const ToolCell TOOLCELLS[] = {
         [preview setLineWidth:1];
         [preview stroke];
     }
+    if (gFreeDrawing && gFreeCount > 1) {
+            [[NSColor blueColor] setStroke];
+            NSBezierPath *pv = [NSBezierPath bezierPath];
+            [pv moveToPoint:gFreePts[0]];
+            for (int i = 1; i < gFreeCount; i++) [pv lineToPoint:gFreePts[i]];
+            [pv setLineWidth:1];
+            [pv stroke];
+        }
+    if ((gLassoDrawing || gLassoActive) && gLassoCount > 1) {
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *pv = [NSBezierPath bezierPath];
+            [pv moveToPoint:gLassoPts[0]];
+            for (int i = 1; i < gLassoCount; i++) [pv lineToPoint:gLassoPts[i]];
+            if (gLassoActive) [pv closePath];
+            [pv setLineWidth:1];
+            CGFloat dash[] = {4, 3};
+            [pv setLineDash:dash count:2 phase:0];
+            [pv stroke];
+        }
 }
 - (void)toggleBackground:(id)sender {
     gEditBackground = !gEditBackground;
@@ -1053,6 +1228,22 @@ static const ToolCell TOOLCELLS[] = {
             [self setNeedsDisplay:YES];
             return;
         }
+    if (gTool == TOOL_FREEFORM) {
+            gFreeCount = 0;
+            gFreePts[gFreeCount++] = p;
+            gFreeDrawing = YES;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    // tool lasso
+        if (gTool == TOOL_LASSO) {
+            gLassoCount = 0;
+            gLassoPts[gLassoCount++] = p;
+            gLassoDrawing = YES;
+            gLassoActive = NO;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gTool == TOOL_BROWSE) {
             if (hit && hit->type == OBJ_FIELD) {
                 [self beginFieldEdit:hit];
@@ -1096,6 +1287,7 @@ static const ToolCell TOOLCELLS[] = {
         if (hit) {
             gSelected = hit;
             gMoving = YES;
+            [[self window] makeFirstResponder:self];   // ← focus clavier pour recevoir Delete
             gMoveStart = p;
             gObjStartX = hit->x;
             gObjStartY = hit->y;
@@ -1130,6 +1322,11 @@ static const ToolCell TOOLCELLS[] = {
             [self setNeedsDisplay:YES];
             return;
         }
+    if (gTool == TOOL_FREEFORM && gFreeDrawing) {
+            if (gFreeCount < 4096) gFreePts[gFreeCount++] = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gShapeDrawing) {
             gShapeEnd = p;
             [self setNeedsDisplay:YES];
@@ -1152,6 +1349,12 @@ static const ToolCell TOOLCELLS[] = {
         [self setNeedsDisplay:YES];
         return;
     }
+    // mouseDragged
+        if (gTool == TOOL_LASSO && gLassoDrawing) {
+            if (gLassoCount < 4096) gLassoPts[gLassoCount++] = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     // déplacement d'un objet sélectionné
     if (gMoving && gSelected) {
         int dx = (int)(p.x - gMoveStart.x);
@@ -1182,6 +1385,13 @@ static const ToolCell TOOLCELLS[] = {
             gPenDrawing = NO;
             return;
         }
+    // tool lasso
+        if (gTool == TOOL_LASSO) {
+            gLassoDrawing = NO;
+            gLassoActive = (gLassoCount >= 3);   // sélection valide si au moins un triangle
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gShapeDrawing) {
             gShapeDrawing = NO;
             Object *card = hc_current_card();
@@ -1191,6 +1401,21 @@ static const ToolCell TOOLCELLS[] = {
                     if (gShapeFilled && gTool != TOOL_LINE)
                         fill_shape(rep, gTool, gShapeStart, gShapeEnd);
                     paint_shape(rep, gTool, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    if (gTool == TOOL_FREEFORM) {
+            gFreeDrawing = NO;
+            if (gFreeCount >= 2) {
+                Object *card = hc_current_card();
+                Object *layer = gEditBackground ? card->bg : card;
+                if (!layer) layer = card;
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                if (gShapeFilled && gFreeCount >= 3)
+                    fill_freeform(rep, gFreePts, gFreeCount);
+                paint_freeform(rep, gFreePts, gFreeCount, gLineWidth);
+            }
+            gFreeCount = 0;
             [self setNeedsDisplay:YES];
             return;
         }

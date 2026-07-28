@@ -60,6 +60,7 @@ Object *hc_new_button(Object *owner, const char *name);
 Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);
 void    hc_free(Object *stack);
+int     hc_delete_part(Object *o);
 
 /* ---- Contexte d'exécution ---- */
 void    hc_set_current_card(Object *card);
