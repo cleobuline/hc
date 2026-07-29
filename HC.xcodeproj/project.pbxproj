@@ -14,6 +14,7 @@
 		4DF5FB643014C005006AE901 /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB623014C004006AE901 /* hc_core.c */; };
 		4DF5FB653014C005006AE901 /* hc_file.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB633014C005006AE901 /* hc_file.c */; };
 		4DF5FB6A3014C140006AE901 /* HCview.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB693014C140006AE901 /* HCview.m */; };
+		4DF5FB6F3019CF11006AE901 /* icons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB6E3019CF11006AE901 /* icons.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,8 @@
 		4DF5FB633014C005006AE901 /* hc_file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_file.c; sourceTree = "<group>"; };
 		4DF5FB683014C140006AE901 /* HCview.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCview.h; sourceTree = "<group>"; };
 		4DF5FB693014C140006AE901 /* HCview.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCview.m; sourceTree = "<group>"; };
+		4DF5FB6D3019CEC6006AE901 /* icons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = icons.h; sourceTree = "<group>"; };
+		4DF5FB6E3019CF11006AE901 /* icons.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = icons.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +69,8 @@
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
+				4DF5FB6D3019CEC6006AE901 /* icons.h */,
+				4DF5FB6E3019CF11006AE901 /* icons.m */,
 				4DF5FB613014C004006AE901 /* hc_core.h */,
 				4DF5FB683014C140006AE901 /* HCview.h */,
 				4DF5FB633014C005006AE901 /* hc_file.c */,
@@ -148,6 +153,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,
 				4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */,

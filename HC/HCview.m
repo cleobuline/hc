@@ -1,6 +1,7 @@
 #import "HCview.h"
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
+#import "icons.h"
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
     TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM, TOOL_LASSO , TOOL_SELRECT } HCTool;
 static HCTool gTool = TOOL_BROWSE;
@@ -88,6 +89,25 @@ static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 // ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
 // dessine chaque ligne en binaire : le motif est lisible directement dans le code
 
+static const unsigned short ICON_ERASER[16] = {
+    0b0000000000000000,
+    0b0000000100000000,
+    0b0000001010000000,
+    0b0000010001000000,
+    0b0000100000100000,
+    0b0001000000010000,
+    0b0010000000110000,
+    0b0110000001010000,
+    0b0101000010100000,
+    0b0100100101000000,
+    0b0010010100000000,
+    0b0001001000000000,
+    0b0000110000000000,
+    0b0000000000000000,
+    0b0000000000000000,
+    0b0000000000000000,
+};
+
 static const unsigned short ICON_BUCKET[16] = {
     0b0000000000000000,
     0b0000001110000000,
@@ -125,6 +145,7 @@ static const unsigned short ICON_LASSO[16] = {
     0b0000011000000000,
     0b0000000000000000,
 };
+
 
 static void draw_icon_bits(const unsigned short *icon, NSRect r) {
     [[NSColor blackColor] setFill];
@@ -908,11 +929,17 @@ static const ToolCell TOOLCELLS[] = {
         NSRectFill(box);
 
         // icône bitmap pour certains outils, glyphe pour les autres
-                if (tc->kind == 0 && tc->value == TOOL_FILL) {
-                    draw_icon_bits(ICON_BUCKET, box);
+        if (tc->kind == 0 && tc->value == TOOL_PENCIL) {
+             draw_icon_ascii(ICON_PENCIL32, box);
+         } else if  (tc->kind == 0 && tc->value == TOOL_FILL) {
+                    draw_icon_ascii(ICON_BUCKET32, box);
                 } else if (tc->kind == 0 && tc->value == TOOL_LASSO) {
-                    draw_icon_bits(ICON_LASSO, box);
-                } else {
+                    draw_icon_ascii(ICON_LASSO32, box);
+                } else if (tc->kind == 0 && tc->value == TOOL_ERASER) {
+                    draw_icon_ascii(ICON_ERASER32, box);
+                } else if (tc->kind == 0 && tc->value == TOOL_FREEFORM) {
+                    draw_icon_ascii(ICON_FREEFORM32, box);
+                }else{
                     NSString *g = [NSString stringWithUTF8String:tc->glyph];
                     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                     [ps setAlignment:NSTextAlignmentCenter];
