@@ -89,78 +89,8 @@ static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 // ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
 // dessine chaque ligne en binaire : le motif est lisible directement dans le code
 
-static const unsigned short ICON_ERASER[16] = {
-    0b0000000000000000,
-    0b0000000100000000,
-    0b0000001010000000,
-    0b0000010001000000,
-    0b0000100000100000,
-    0b0001000000010000,
-    0b0010000000110000,
-    0b0110000001010000,
-    0b0101000010100000,
-    0b0100100101000000,
-    0b0010010100000000,
-    0b0001001000000000,
-    0b0000110000000000,
-    0b0000000000000000,
-    0b0000000000000000,
-    0b0000000000000000,
-};
-
-static const unsigned short ICON_BUCKET[16] = {
-    0b0000000000000000,
-    0b0000001110000000,
-    0b0000110001100000,
-    0b0001000000110000,
-    0b0010000000011000,
-    0b0100000000001100,
-    0b0110000000001100,
-    0b0011000000011000,
-    0b0001100000110000,
-    0b0000110001100110,
-    0b0000011111000110,
-    0b0000001110000110,
-    0b0000000000000110,
-    0b0000000000000100,
-    0b0000000000000000,
-    0b0000000000000000,
-};
-
-static const unsigned short ICON_LASSO[16] = {
-    0b0000011111000000,
-    0b0001100000110000,
-    0b0010000000001000,
-    0b0100000000000100,
-    0b0100000000000100,
-    0b0010000000001000,
-    0b0001100000110000,
-    0b0000011111000000,
-    0b0000001100000000,
-    0b0000000110000000,
-    0b0000000011000000,
-    0b0000000011000000,
-    0b0000000110000000,
-    0b0000001100000000,
-    0b0000011000000000,
-    0b0000000000000000,
-};
 
 
-static void draw_icon_bits(const unsigned short *icon, NSRect r) {
-    [[NSColor blackColor] setFill];
-    CGFloat px = 1;   // taille fixe d'un pixel d'icône (petit = net)
-    // centrer l'icône 16x16 dans la case
-    CGFloat ox = r.origin.x + (r.size.width  - 16*px) / 2;
-    CGFloat oy = r.origin.y + (r.size.height - 16*px) / 2;
-    for (int row = 0; row < 16; row++) {
-        unsigned short bits = icon[row];
-        for (int col = 0; col < 16; col++) {
-            if (bits & (0x8000 >> col))
-                NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
-        }
-    }
-}
 
 static inline int pattern_bit(int pat, int x, int y) {
     unsigned char row = PATTERNS[pat][y & 7];
@@ -939,6 +869,21 @@ static const ToolCell TOOLCELLS[] = {
                     draw_icon_ascii(ICON_ERASER32, box);
                 } else if (tc->kind == 0 && tc->value == TOOL_FREEFORM) {
                     draw_icon_ascii(ICON_FREEFORM32, box);
+                } else if (tc->kind == 0 && tc->value == TOOL_SELRECT) {
+                            draw_icon_ascii(ICON_SELRECT32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_BUTTON) {
+                            draw_icon_ascii(ICON_BUTTON32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_FIELD) {
+                   draw_icon_ascii(ICON_FIELD32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_RECT) {
+                   draw_icon_ascii(ICON_RECT32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_LINE) {
+                   draw_icon_ascii(ICON_LINE32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_OVAL) {
+                   draw_icon_ascii(ICON_OVAL32, box);
+               } else   if (tc->kind == 0 && tc->value == TOOL_BROWSE) {
+                       draw_icon_ascii(ICON_HAND32, box);
+                   
                 }else{
                     NSString *g = [NSString stringWithUTF8String:tc->glyph];
                     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
@@ -1022,20 +967,18 @@ static const ToolCell TOOLCELLS[] = {
         NSRectFill(box);
 
         // dessiner le motif dans la case, pixel par pixel (agrandi)
+        // dessiner le motif : 8x8 bits, chaque bit = 4x4 px -> remplit la case 32x32
         [[NSColor blackColor] setFill];
-        int px = 2;   // taille d'un "pixel" du motif à l'écran
+        CGFloat px = cell / 8.0;
         for (int y = 0; y < 8; y++) {
             for (int x = 0; x < 8; x++) {
                 if (pattern_bit(i, x, y)) {
-                    for (int ry = 0; ry < 2; ry++)   // répéter le motif 2x pour remplir la case
-                        for (int rx = 0; rx < 2; rx++) {
-                            NSRect p = NSMakeRect(box.origin.x + (x + rx*8)*px/2.0,
-                                                  box.origin.y + (y + ry*8)*px/2.0,
-                                                  px, px);
-                            NSRectFill(p);
-                        }
+                    NSRectFill(NSMakeRect(box.origin.x + x*px,
+                                          box.origin.y + y*px,
+                                          px, px));
                 }
             }
+        
         }
 
         // cadre : rouge épais si c'est le motif courant, gris sinon

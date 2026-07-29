@@ -9,7 +9,13 @@ extern const char *ICON_ERASER32[32];
 extern const char *ICON_BUCKET32[32];
 extern const char *ICON_LASSO32[32];
 extern const char *ICON_FREEFORM32[32];
-
+extern const char *ICON_SELRECT32[32];
+extern const char *ICON_BUTTON32[32] ;
+extern const char *ICON_FIELD32[32] ;
+extern const char *ICON_RECT32[32] ;
+extern const char *ICON_LINE32[32];
+extern const char *ICON_OVAL32[32];
+extern const char *ICON_HAND32[32] ;
 // dessine une icône ASCII 32x32 dans le rect (centrée)
 void draw_icon_ascii(const char **icon, NSRect r);
 
