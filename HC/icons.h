@@ -16,6 +16,7 @@ extern const char *ICON_RECT32[32] ;
 extern const char *ICON_LINE32[32];
 extern const char *ICON_OVAL32[32];
 extern const char *ICON_HAND32[32] ;
+extern const char *ICON_BRUSH32[32];
 // dessine une icône ASCII 32x32 dans le rect (centrée)
 void draw_icon_ascii(const char **icon, NSRect r);
 

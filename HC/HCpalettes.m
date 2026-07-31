@@ -8,14 +8,43 @@
 #import "HCpalettes.h"
 #import "icons.h"
 
-@interface HCView : NSView
-- (void)showPatternPalette;
-- (void)showWidthPalette;
-@end
-
+ 
 // #import "HCview.h"
 // ==================== palette d'épaisseur de trait (vue custom) ====================
  
+// 12 brosses 16x16 (bit a 1 = pixel peint)
+static const unsigned short BRUSHES[12][16] = {
+    /* 0 : point 1px */
+    {0,0,0,0,0,0,0,0x0080,0,0,0,0,0,0,0,0},
+    /* 1 : carre 2 */
+    {0,0,0,0,0,0,0x00C0,0x00C0,0,0,0,0,0,0,0,0},
+    /* 2 : carre 4 */
+    {0,0,0,0,0,0x03C0,0x03C0,0x03C0,0x03C0,0,0,0,0,0,0,0},
+    /* 3 : carre 8 */
+    {0,0,0,0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0,0,0,0},
+    /* 4 : rond 4 */
+    {0,0,0,0,0,0x0180,0x03C0,0x03C0,0x03C0,0x0180,0,0,0,0,0,0},
+    /* 5 : rond 8 */
+    {0,0,0,0x0180,0x07E0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x0FF0,0x07E0,0x0180,0,0,0},
+    /* 6 : rond 12 */
+    {0,0x0180,0x07E0,0x0FF0,0x1FF8,0x3FFC,0x3FFC,0x3FFC,0x3FFC,0x3FFC,0x3FFC,0x1FF8,0x0FF0,0x07E0,0x0180,0},
+    /* 7 : barre horizontale */
+    {0,0,0,0,0,0,0,0x3FFC,0x3FFC,0,0,0,0,0,0,0},
+    /* 8 : barre verticale */
+    {0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180},
+    /* 9 : oblique \ */
+        {0xC000,0xE000,0x7000,0x3800,0x1C00,0x0E00,0x0700,0x0380,0x01C0,0x00E0,0x0070,0x0038,0x001C,0x000E,0x0007,0x0003},
+        /* 10 : oblique / */
+        {0x0003,0x0007,0x000E,0x001C,0x0038,0x0070,0x00E0,0x01C0,0x0380,0x0700,0x0E00,0x1C00,0x3800,0x7000,0xE000,0xC000},
+    /* 11 : croix */
+        {0,0,0,0x0180,0x0180,0x0180,0x0180,0x0180,0x0FF0,0x0FF0,0x0180,0x0180,0x0180,0x0180,0x0180,0},
+};
+
+int brush_bit(int brush, int x, int y) {
+    if (brush < 0 || brush >= NUM_BRUSHES) brush = 5;
+    if (x < 0 || x > 15 || y < 0 || y > 15) return 0;
+    return (BRUSHES[brush][y] >> (15 - x)) & 1;
+}
 @implementation WidthPalette
 
 - (BOOL)isFlipped { return YES; }
@@ -98,6 +127,7 @@ static const ToolCell TOOLCELLS[] = {
     {"B",  0, TOOL_BUTTON},
     {"F",  0, TOOL_FIELD},
     {"✏", 0, TOOL_PENCIL},
+    {"P", 0, TOOL_BRUSH},
     {"⌫", 0, TOOL_ERASER},
     {"╱", 0, TOOL_LINE},
     {"▭", 0, TOOL_RECT},
@@ -167,7 +197,8 @@ static const ToolCell TOOLCELLS[] = {
                    draw_icon_ascii(ICON_OVAL32, box);
                } else   if (tc->kind == 0 && tc->value == TOOL_BROWSE) {
                        draw_icon_ascii(ICON_HAND32, box);
-                   
+               } else if (tc->kind == 0 && tc->value == TOOL_BRUSH) {
+                           draw_icon_ascii(ICON_BRUSH32, box);
                 }else{
                     NSString *g = [NSString stringWithUTF8String:tc->glyph];
                     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
@@ -208,12 +239,22 @@ static const ToolCell TOOLCELLS[] = {
                 gSelected = NULL;
                 if (dbl) {
                     // double-clic : ouvrir la palette de réglage associée
+                    SEL sel = NULL;
                     if (tc->value == TOOL_FILL)
-                        [(HCView *)gView showPatternPalette];
+                        sel = @selector(showPatternPalette);
+                    else if (tc->value == TOOL_BRUSH)
+                        sel = @selector(showBrushPalette);
                     else if (tc->value == TOOL_PENCIL || tc->value == TOOL_ERASER ||
                              tc->value == TOOL_LINE || tc->value == TOOL_RECT ||
                              tc->value == TOOL_OVAL || tc->value == TOOL_FREEFORM)
-                        [(HCView *)gView showWidthPalette];
+                        sel = @selector(showWidthPalette);
+
+                    if (sel && [gView respondsToSelector:sel]) {
+                        #pragma clang diagnostic push
+                        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                        [gView performSelector:sel];
+                        #pragma clang diagnostic pop
+                    }
                 }
             }
             else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
@@ -290,6 +331,58 @@ static const ToolCell TOOLCELLS[] = {
             gPattern = i;
             [self setNeedsDisplay:YES];
             [gView setNeedsDisplay:YES];
+            break;
+        }
+    }
+}
+
+@end
+@implementation BrushPalette
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+    NSRectFill(dirtyRect);
+    int cols = 4;
+    CGFloat cell = 34, gap = 3, margin = 6;
+    for (int i = 0; i < NUM_BRUSHES; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap), margin + row*(cell+gap), cell, cell);
+        BOOL active = (gBrush == i);
+        [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
+        NSRectFill(box);
+        // apercu de la brosse, 1 bit = 2x2 px, centre
+        [[NSColor blackColor] setFill];
+        CGFloat px = 2.0;
+        CGFloat ox = box.origin.x + (cell - 16*px)/2;
+        CGFloat oy = box.origin.y + (cell - 16*px)/2;
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++)
+                if (brush_bit(i, x, y))
+                    NSRectFill(NSMakeRect(ox + x*px, oy + y*px, px, px));
+        if (active) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr = [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    int cols = 4;
+    CGFloat cell = 34, gap = 3, margin = 6;
+    for (int i = 0; i < NUM_BRUSHES; i++) {
+        int col = i % cols, row = i / cols;
+        NSRect box = NSMakeRect(margin + col*(cell+gap), margin + row*(cell+gap), cell, cell);
+        if (NSPointInRect(p, box)) {
+            gBrush = i;
+            [self setNeedsDisplay:YES];
             break;
         }
     }

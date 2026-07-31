@@ -42,6 +42,9 @@ static BOOL gSelRectActive = NO;
 
 static NSPoint gClipPts[4096];   // contour de la selection collee (relatif au coin)
 static int gClipPtsCount = 0;    // 0 = selection rectangulaire
+static NSPanel *gPatternPanel = nil;
+static NSPanel *gWidthPanel = nil;
+static NSPanel *gBrushPanel = nil;
 
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
@@ -95,8 +98,8 @@ static const unsigned char PATTERNS[38][8] = {
 static NSPoint gFreePts[4096];
 static int gFreeCount = 0;
 static BOOL gFreeDrawing = NO;
-static NSPanel *gPatternPanel = nil;
-static NSPanel *gWidthPanel = nil;
+
+
 static NSBitmapImageRep *gClipboard = nil;   // presse-papier (zone copiée)
 static int gClipW = 0, gClipH = 0;           // dimensions de la zone copiée
 
@@ -392,7 +395,50 @@ static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
     free(xs);
     free(ys);
 }
+// applique la brosse en un point (coin haut-gauche centre sur cx,cy)
+static void brush_stamp(NSBitmapImageRep *rep, int cx, int cy) {
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+    for (int by = 0; by < 16; by++) {
+        for (int bx = 0; bx < 16; bx++) {
+            if (!brush_bit(gBrush, bx, by)) continue;
+            int x = cx - 8 + bx, y = cy - 8 + by;
+            if (x < 0 || x >= W || y < 0 || y >= H) continue;
+            unsigned char *px = data + y*bpr + x*spp;
+                        if (gInk == INK_ERASE) {
+                            px[0]=0; px[1]=0; px[2]=0;
+                            if (spp>=4) px[3]=0;
+                        } else if (pattern_bit(gPattern, x, y)) {
+                            px[0]=0; px[1]=0; px[2]=0;          // trait du motif : noir
+                            if (spp>=4) px[3]=255;
+                        } else if (gInk == INK_WHITE) {
+                            px[0]=255; px[1]=255; px[2]=255;    // fond du motif : blanc opaque
+                            if (spp>=4) px[3]=255;
+                        } else {
+                            px[0]=0; px[1]=0; px[2]=0;          // fond du motif : transparent
+                            if (spp>=4) px[3]=0;
+                        }
+        }
+    }
+}
 
+// trace un segment au pinceau
+static void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to) {
+    if (!rep) return;
+    int x0=(int)from.x, y0=(int)from.y, x1=(int)to.x, y1=(int)to.y;
+    int dx = abs(x1-x0), dy = abs(y1-y0);
+    int sx = x0<x1 ? 1 : -1, sy = y0<y1 ? 1 : -1;
+    int err = dx-dy;
+    while (1) {
+        brush_stamp(rep, x0, y0);
+        if (x0==x1 && y0==y1) break;
+        int e2 = 2*err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 <  dx) { err += dx; y0 += sy; }
+    }
+}
 static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
     if (!rep) return;
     NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
@@ -907,6 +953,7 @@ static const ToolCell TOOLCELLS[] = {
     {"⬜", 1, INK_WHITE},
     {"◌", 1, INK_ERASE},
     {"▣", 2, 0},
+    {"P", 0, TOOL_BRUSH},
 };
 
 
@@ -1113,7 +1160,27 @@ static const ToolCell TOOLCELLS[] = {
     [gWidthPanel setContentView:grid];
     [gWidthPanel makeKeyAndOrderFront:nil];
 }
+- (void)installBrushPalette {
+    int cols = 4, rows = (NUM_BRUSHES + cols - 1) / cols;
+    CGFloat cell = 34, gap = 3, margin = 6;
+    CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
+    CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
+    gBrushPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(250, 300, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gBrushPanel setTitle:@"Pinceaux"];
+    [gBrushPanel setFloatingPanel:YES];
+    [gBrushPanel setReleasedWhenClosed:NO];
+    BrushPalette *grid = [[BrushPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [gBrushPanel setContentView:grid];
+    [gBrushPanel makeKeyAndOrderFront:nil];
+}
 
+- (void)showBrushPalette {
+    if (!gBrushPanel) [self installBrushPalette];
+    else [gBrushPanel makeKeyAndOrderFront:nil];
+}
 - (void)widthChosen:(id)sender {
     gLineWidth = (int)[sender tag];
 }
@@ -1429,6 +1496,19 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         [self setNeedsDisplay:YES];
         return;
     }
+    if (gTool == TOOL_BRUSH) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            if (layer) {
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+                gPenLast = p;
+                gPenDrawing = YES;
+                brush_stroke(rep, p, p);
+                [self setNeedsDisplay:YES];
+            }
+            return;
+        }
     if (gTool == TOOL_ERASER) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;
@@ -1550,6 +1630,16 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             if (!layer) layer = card;
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
         paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);            gPenLast = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    if (gTool == TOOL_BRUSH && gPenDrawing) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            brush_stroke(rep, gPenLast, p);
+            gPenLast = p;
             [self setNeedsDisplay:YES];
             return;
         }

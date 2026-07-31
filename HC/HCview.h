@@ -22,6 +22,7 @@
 - (void)ditherSelection:(id)sender;
 - (void)showPatternPalette;
 - (void)showWidthPalette;
+- (void)showBrushPalette;
 @end
 
 extern HCView *gView;

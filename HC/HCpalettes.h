@@ -15,5 +15,9 @@ int pattern_bit(int pat, int x, int y);
 
 @interface WidthPalette : NSView
 @end
+#define NUM_BRUSHES 12
+int brush_bit(int brush, int x, int y);
 
+@interface BrushPalette : NSView
+@end
 #endif /* HCpalettes_h */
