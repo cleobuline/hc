@@ -84,9 +84,9 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
                             action:@selector(saveStack:)
                      keyEquivalent:@"s"];
     [fileMenu addItem:[NSMenuItem separatorItem]];
-        [fileMenu addItemWithTitle:@"Test dessin"
-                            action:@selector(testDraw:)
-                     keyEquivalent:@"t"];
+    [fileMenu addItemWithTitle:@"Tramer la sélection"
+                            action:@selector(ditherSelection:)
+                     keyEquivalent:@"d"];
     [fileMenu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *bgItem = [[NSMenuItem alloc] initWithTitle:@"Éditer le fond"
                                                         action:@selector(toggleBackground:)

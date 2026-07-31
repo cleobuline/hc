@@ -19,6 +19,7 @@
 - (void)installWidthPalette;
 - (void)widthChosen:(id)sender;
 - (void)toggleFilled:(id)sender;
+- (void)ditherSelection:(id)sender;
 - (void)showPatternPalette;
 - (void)showWidthPalette;
 @end
