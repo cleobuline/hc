@@ -4,6 +4,7 @@
 #import "icons.h"
 #import "HCglobals.h"
 #import "HCpalettes.h"
+#import "HCicons.h"
 static NSTextField *gMsgBox = nil; // la message box
 
 static NSPoint gDragStart;
@@ -759,113 +760,155 @@ static void draw_part(Object *o) {
     NSRect r = NSMakeRect(o->x, o->y, o->w, o->h);
 
     if (o->type == OBJ_BUTTON) {
-            const char *st = o->style ? o->style : "rectangle";
-            BOOL isCheck = (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0);
-            BOOL isRadio = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
+        const char *st = o->style ? o->style : "rectangle";
+        BOOL isCheck = (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0);
+        BOOL isRadio = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
         BOOL isTransparent = (strcmp(st, "transparent") == 0);
-            const char *nm = o->name ? o->name : "";
-            NSString *s = [NSString stringWithUTF8String:nm];
+        const char *nm = o->name ? o->name : "";
+        NSString *s = [NSString stringWithUTF8String:nm];
 
-            if (isCheck || isRadio) {
-                // case ou rond à gauche, nom à droite
-                CGFloat box = 14;
-                CGFloat cy = o->y + o->h/2.0 - box/2.0;
-                NSRect mark = NSMakeRect(o->x + 2, cy, box, box);
+        const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
+        if (ic) {
+            // ---- bouton a icone : l'icone remplace l'apparence ----
+            BOOL on = o->hilite;
+            if (on) {                       // hilite : fond noir, icone en blanc
+                [[NSColor blackColor] setFill];
+                NSRectFill(r);
+            }
+            // icone centree horizontalement, en haut
+            CGFloat iy = o->y + 2;
+            NSRect ir = NSMakeRect(o->x + (o->w - 32)/2.0, iy, 32, 32);
+            if (on) [[NSColor whiteColor] setFill];
+            else    [[NSColor blackColor] setFill];
+            hcicon_draw(ic, ir, 1.0);
+
+            // en mode edition : contour pointille pour pouvoir la saisir
+            if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
+                [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+                NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
+                [outline setLineWidth:1];
+                CGFloat dash[] = {3, 2};
+                [outline setLineDash:dash count:2 phase:0];
+                [outline stroke];
+            }
+
+            // le nom, sous l'icone
+            if (o->showname && o->h > 36) {
+                CGFloat fs = o->textsize > 0 ? o->textsize : 11;
+                NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                [ps setAlignment:NSTextAlignmentCenter];
+                NSDictionary *attrs = @{
+                    NSFontAttributeName: [NSFont systemFontOfSize:fs],
+                    NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                    NSParagraphStyleAttributeName: ps
+                };
+                NSRect tr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
+                [s drawInRect:tr withAttributes:attrs];
+            }
+        }
+        else if (isCheck || isRadio) {
+            // case ou rond à gauche, nom à droite
+            CGFloat box = 14;
+            CGFloat cy = o->y + o->h/2.0 - box/2.0;
+            NSRect mark = NSMakeRect(o->x + 2, cy, box, box);
+
+            [[NSColor whiteColor] setFill];
+            [[NSColor blackColor] setStroke];
+
+            if (isRadio) {
+                NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:mark];
+                [circle fill];
+                [circle stroke];
+                if (o->hilite) {
+                    NSRect dot = NSInsetRect(mark, 4, 4);
+                    [[NSColor blackColor] setFill];
+                    [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
+                }
+            } else {
+                // case à cocher
                 [[NSColor whiteColor] setFill];
+                NSRectFill(mark);
                 [[NSColor blackColor] setStroke];
+                NSBezierPath *box_path = [NSBezierPath bezierPathWithRect:mark];
+                [box_path setLineWidth:1];
+                [box_path stroke];
+                if (o->hilite) {
+                    NSBezierPath *x = [NSBezierPath bezierPath];
+                    [x moveToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+2)];
+                    [x lineToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+box-2)];
+                    [x moveToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+2)];
+                    [x lineToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+box-2)];
+                    [x setLineWidth:1.5];
+                    [x stroke];
+                }
+            }
 
-                if (isRadio) {
-                    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:mark];
-                    [circle fill];
-                    [circle stroke];
-                    if (o->hilite) {
-                        NSRect dot = NSInsetRect(mark, 4, 4);
-                        [[NSColor blackColor] setFill];
-                        [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
-                    }
-                } else {
-                                // case à cocher
-                                [[NSColor whiteColor] setFill];
-                                NSRectFill(mark);
-                                [[NSColor blackColor] setStroke];
-                                NSBezierPath *box_path = [NSBezierPath bezierPathWithRect:mark];
-                                [box_path setLineWidth:1];
-                                [box_path stroke];
-                                if (o->hilite) {
-                                    NSBezierPath *x = [NSBezierPath bezierPath];
-                                    [x moveToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+2)];
-                                    [x lineToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+box-2)];
-                                    [x moveToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+2)];
-                                    [x lineToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+box-2)];
-                                    [x setLineWidth:1.5];
-                                    [x stroke];
-                                }
-                            }
-
-                // le nom, à droite de la case
+            // le nom, à droite de la case
+            if (o->showname) {
                 NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:13] };
                 [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - 8) withAttributes:attrs];
             }
-            else if (isTransparent) {
-                        BOOL on = o->hilite;
-                        if (on) {
-                            [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
-                            NSRectFill(r);
-                        }
-                        // en mode édition : montrer le contour pour pouvoir le saisir
-                        if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
-                            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
-                            NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
-                            [outline setLineWidth:1];
-                            CGFloat dash[] = {3, 2};
-                            [outline setLineDash:dash count:2 phase:0];
-                            [outline stroke];
-                        }
-                        CGFloat fs = o->textsize > 0 ? o->textsize : 16;
-                        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-                        [ps setAlignment:NSTextAlignmentCenter];
-                        NSDictionary *attrs = @{
-                            NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
-                            NSForegroundColorAttributeName: [NSColor blackColor],
-                            NSParagraphStyleAttributeName: ps
-                        };
-                        NSRect tr = NSInsetRect(r, 2, 0);
-                        tr.origin.y += (r.size.height - fs * 1.2) / 2;
-                if (o->showname)
-                                [s drawInRect:tr withAttributes:attrs];
-                    }
-            else {
-                        // bouton rectangle classique
-                        BOOL on = o->hilite;
-                        [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
-                        NSRectFill(r);
-                        [[NSColor blackColor] setStroke];
-                        NSFrameRect(r);
-
-                        CGFloat fs = o->textsize > 0 ? o->textsize : 13;   // ← lit textSize
-                        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-                        [ps setAlignment:NSTextAlignmentCenter];
-                        NSDictionary *attrs = @{
-                            NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
-                            NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-                            NSParagraphStyleAttributeName: ps
-                        };
-                        NSRect tr = NSInsetRect(r, 4, 0);
-                        tr.origin.y += (r.size.height - fs * 1.2) / 2;   // recentrage selon la taille
-                if (o->showname)
-                                [s drawInRect:tr withAttributes:attrs];
-                    }
         }
-    else if (o->type == OBJ_FIELD) {
-            [[NSColor colorWithWhite:0.97 alpha:1.0] setFill];
+        else if (isTransparent) {
+            BOOL on = o->hilite;
+            if (on) {
+                [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
+                NSRectFill(r);
+            }
+            // en mode édition : montrer le contour pour pouvoir le saisir
+            if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
+                [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+                NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
+                [outline setLineWidth:1];
+                CGFloat dash[] = {3, 2};
+                [outline setLineDash:dash count:2 phase:0];
+                [outline stroke];
+            }
+            CGFloat fs = o->textsize > 0 ? o->textsize : 16;
+            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+            [ps setAlignment:NSTextAlignmentCenter];
+            NSDictionary *attrs = @{
+                NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+                NSForegroundColorAttributeName: [NSColor blackColor],
+                NSParagraphStyleAttributeName: ps
+            };
+            NSRect tr = NSInsetRect(r, 2, 0);
+            tr.origin.y += (r.size.height - fs * 1.2) / 2;
+            if (o->showname)
+                [s drawInRect:tr withAttributes:attrs];
+        }
+        else {
+            // bouton rectangle classique
+            BOOL on = o->hilite;
+            [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
             NSRectFill(r);
-            [[NSColor colorWithWhite:0.4 alpha:1.0] setStroke];
+            [[NSColor blackColor] setStroke];
             NSFrameRect(r);
-            const char *tx = o->contents ? o->contents : "";
-            NSString *s = [NSString stringWithUTF8String:tx];
-            [s drawInRect:NSInsetRect(r, 4, 4) withAttributes:nil];
+
+            CGFloat fs = o->textsize > 0 ? o->textsize : 13;
+            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+            [ps setAlignment:NSTextAlignmentCenter];
+            NSDictionary *attrs = @{
+                NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+                NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                NSParagraphStyleAttributeName: ps
+            };
+            NSRect tr = NSInsetRect(r, 4, 0);
+            tr.origin.y += (r.size.height - fs * 1.2) / 2;
+            if (o->showname)
+                [s drawInRect:tr withAttributes:attrs];
         }
+    }
+    else if (o->type == OBJ_FIELD) {
+        [[NSColor colorWithWhite:0.97 alpha:1.0] setFill];
+        NSRectFill(r);
+        [[NSColor colorWithWhite:0.4 alpha:1.0] setStroke];
+        NSFrameRect(r);
+        const char *tx = o->contents ? o->contents : "";
+        NSString *s = [NSString stringWithUTF8String:tx];
+        [s drawInRect:NSInsetRect(r, 4, 4) withAttributes:nil];
+    }
 }
 static int handle_at(Object *o, NSPoint p) {
     if (!o) return 0;

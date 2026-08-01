@@ -99,6 +99,7 @@ static void put_part(FILE *f, Object *o)
     if (o->autohilite) fprintf(f, "autohilite\n");
     if (o->textsize) fprintf(f, "textsize %d\n", o->textsize);
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
+    if (o->icon) fprintf(f, "icon %d\n", o->icon);
     fprintf(f, "end %s\n", kind);
 }
 
@@ -334,6 +335,10 @@ Object *hc_load(const char *path)
         }
         if (strncmp(s, "textsize ", 9) == 0 && part) {
             part->textsize = atoi(s + 9);
+            continue;
+        }
+        if (strncmp(s, "icon ", 5) == 0 && part) {
+            part->icon = atoi(s + 5);
             continue;
         }
         if (strcmp(s, "hidename") == 0 && part) {

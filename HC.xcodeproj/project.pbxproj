@@ -17,6 +17,7 @@
 		4DF5FB6F3019CF11006AE901 /* icons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB6E3019CF11006AE901 /* icons.m */; };
 		4DF5FB7A301CC889006AE901 /* HCglobals.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB79301CC889006AE901 /* HCglobals.m */; };
 		4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB7C301CD14C006AE901 /* HCpalettes.m */; };
+		4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB82301E0DAF006AE901 /* HCicons.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,8 @@
 		4DF5FB79301CC889006AE901 /* HCglobals.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCglobals.m; sourceTree = "<group>"; };
 		4DF5FB7C301CD14C006AE901 /* HCpalettes.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCpalettes.m; sourceTree = "<group>"; };
 		4DF5FB7F301CD236006AE901 /* HCpalettes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCpalettes.h; sourceTree = "<group>"; };
+		4DF5FB81301E0D06006AE901 /* HCicons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCicons.h; sourceTree = "<group>"; };
+		4DF5FB82301E0DAF006AE901 /* HCicons.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCicons.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +79,8 @@
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
 				4DF5FB6D3019CEC6006AE901 /* icons.h */,
+				4DF5FB81301E0D06006AE901 /* HCicons.h */,
+				4DF5FB82301E0DAF006AE901 /* HCicons.m */,
 				4DF5FB6E3019CF11006AE901 /* icons.m */,
 				4DF5FB613014C004006AE901 /* hc_core.h */,
 				4DF5FB683014C140006AE901 /* HCview.h */,
@@ -167,6 +172,7 @@
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,
 				4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */,
+				4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */,
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
 				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
 				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,

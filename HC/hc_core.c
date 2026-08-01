@@ -1388,6 +1388,7 @@ static void term_value(const char *t, char *out, int outlen)
                     }
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
                     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
+                    if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
@@ -2258,6 +2259,9 @@ static void exec_line(Object *me, const char *line)
             o->visible = truthy(val);
         } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
             o->showname = truthy(val);
+            notify_field(o);
+        } else if (ci_equal(prop, "icon")) {
+            o->icon = atoi(val);
             notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
             o->hilite = truthy(val);
