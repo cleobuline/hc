@@ -135,7 +135,8 @@ static const ToolCell TOOLCELLS[] = {
     {"💧", 0, TOOL_FILL},
     {"✎", 0, TOOL_FREEFORM},
     {"⬚", 0, TOOL_LASSO},
-    {"◰", 0, TOOL_SELRECT},     // ou ⬛⃞ ou ◰ — un rectangle de sélection
+    {"◰", 0, TOOL_SELRECT},
+    {"A", 0, TOOL_TEXT},//  
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
     {"◌", 1, INK_ERASE},
@@ -235,28 +236,35 @@ static const ToolCell TOOLCELLS[] = {
         if (NSPointInRect(p, box)) {
             const ToolCell *tc = &TOOLCELLS[i];
             if (tc->kind == 0) {
-                gTool = (HCTool)tc->value;
-                gSelected = NULL;
-                if (dbl) {
-                    // double-clic : ouvrir la palette de réglage associée
-                    SEL sel = NULL;
-                    if (tc->value == TOOL_FILL)
-                        sel = @selector(showPatternPalette);
-                    else if (tc->value == TOOL_BRUSH)
-                        sel = @selector(showBrushPalette);
-                    else if (tc->value == TOOL_PENCIL || tc->value == TOOL_ERASER ||
-                             tc->value == TOOL_LINE || tc->value == TOOL_RECT ||
-                             tc->value == TOOL_OVAL || tc->value == TOOL_FREEFORM)
-                        sel = @selector(showWidthPalette);
-
-                    if (sel && [gView respondsToSelector:sel]) {
-                        #pragma clang diagnostic push
-                        #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                        [gView performSelector:sel];
-                        #pragma clang diagnostic pop
-                    }
-                }
-            }
+                            // quitter l'outil texte : graver la saisie en cours
+                            if (gTool == TOOL_TEXT && tc->value != TOOL_TEXT) {
+                                #pragma clang diagnostic push
+                                #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                                if ([gView respondsToSelector:@selector(commitText)])
+                                    [gView performSelector:@selector(commitText)];
+                                #pragma clang diagnostic pop
+                            }
+                            gTool = (HCTool)tc->value;
+                            gSelected = NULL;
+                            if (dbl) {
+                                // double-clic : ouvrir la palette de réglage associée
+                                SEL sel = NULL;
+                                if (tc->value == TOOL_FILL)
+                                    sel = @selector(showPatternPalette);
+                                else if (tc->value == TOOL_BRUSH)
+                                    sel = @selector(showBrushPalette);
+                                else if (tc->value == TOOL_PENCIL || tc->value == TOOL_ERASER ||
+                                         tc->value == TOOL_LINE || tc->value == TOOL_RECT ||
+                                         tc->value == TOOL_OVAL || tc->value == TOOL_FREEFORM)
+                                    sel = @selector(showWidthPalette);
+                                if (sel && [gView respondsToSelector:sel]) {
+                                    #pragma clang diagnostic push
+                                    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                                    [gView performSelector:sel];
+                                    #pragma clang diagnostic pop
+                                }
+                            }
+                        }
             else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
             else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
             [self setNeedsDisplay:YES];

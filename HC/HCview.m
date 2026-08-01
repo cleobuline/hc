@@ -46,6 +46,15 @@ static NSPanel *gPatternPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
+
+
+static BOOL gTextActive = NO;
+static NSPoint gTextPos;                 // coin haut-gauche de la saisie
+static NSMutableString *gTextBuf = nil;
+
+int gTextSize = 16;
+static NSColor *gTextColor = nil;
+static BOOL gTextUnderline = NO;
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 
@@ -108,7 +117,7 @@ static BOOL gFloating = NO;        // un collage flotte-t-il ?
 static NSPoint gFloatPos;          // position (coin haut-gauche) du flottant
 static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
-
+static NSFont *gTextFont = nil;
 
 // ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
 // dessine chaque ligne en binaire : le motif est lisible directement dans le code
@@ -228,14 +237,14 @@ static void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b)
                 px[0]=0; px[1]=0; px[2]=0;
                 if (spp>=4) px[3]=255;
             } else {
-                // fond du motif : selon l'encre
-                if (gInk == INK_WHITE) {
-                    px[0]=255; px[1]=255; px[2]=255;
-                    if (spp>=4) px[3]=255;
-                } else {
-                    px[0]=0; px[1]=0; px[2]=0;
-                    if (spp>=4) px[3]=0;   // transparent (noir ou efface)
-                }
+                            if (gInk == INK_ERASE) {
+                                px[0]=0; px[1]=0; px[2]=0;
+                                if (spp>=4) px[3]=0;        // transparent : efface
+                            } else {
+                                px[0]=255; px[1]=255; px[2]=255;
+                                if (spp>=4) px[3]=255;      // blanc opaque
+                            }
+                        
             }
         }
     }
@@ -370,13 +379,16 @@ static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
                     if (gInk == INK_WHITE) {
                         px[0] = 255; px[1] = 255; px[2] = 255;
                         if (spp >= 4) px[3] = 255;        // fond blanc opaque (masque)
-                    } else if (gInk == INK_ERASE) {
-                        px[0] = 0; px[1] = 0; px[2] = 0;
-                        if (spp >= 4) px[3] = 0;          // efface tout (même les traits)
                     } else {
-                        px[0] = 0; px[1] = 0; px[2] = 0;
-                        if (spp >= 4) px[3] = 0;          // fond transparent (background visible)
-                    }
+                                        // fond du motif : transparent seulement en encre EFFACE
+                                        if (gInk == INK_ERASE) {
+                                            px[0] = 0; px[1] = 0; px[2] = 0;
+                                            if (spp >= 4) px[3] = 0;          // efface
+                                        } else {
+                                            px[0] = 255; px[1] = 255; px[2] = 255;
+                                            if (spp >= 4) px[3] = 255;        // blanc opaque
+                                        }
+                                    }
                 }
 
         if (top + 4 >= cap) {
@@ -925,7 +937,43 @@ static void cocoa_field_changed(Object *field) {
     (void)field;
     [gView setNeedsDisplay:YES];
 }
+static NSFont *text_font(void) {
+    if (!gTextFont) {
+        gTextFont = [NSFont fontWithName:@"Helvetica" size:gTextSize];
+        if (!gTextFont) gTextFont = [NSFont systemFontOfSize:gTextSize];
+    }
+    return gTextFont;
+}
 
+static NSDictionary *text_attrs(void) {
+    NSColor *c = gTextColor;
+    if (!c) c = (gInk == INK_WHITE) ? [NSColor whiteColor] : [NSColor blackColor];
+    NSMutableDictionary *a = [NSMutableDictionary dictionary];
+    a[NSFontAttributeName] = text_font();
+    a[NSForegroundColorAttributeName] = c;
+    if (gTextUnderline) a[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+    return a;
+}
+// grave le texte dans le bitmap a la position donnee
+static void stamp_text(NSBitmapImageRep *rep, NSString *s, NSPoint pos) {
+    if (!rep || [s length] == 0) return;
+    NSGraphicsContext *base = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!base) return;
+    CGContextRef cg = [base CGContext];
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithCGContext:cg flipped:YES];
+
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+    [ctx setShouldAntialias:NO];
+
+    CGFloat H = [rep pixelsHigh];
+    CGContextTranslateCTM(cg, 0, H);
+    CGContextScaleCTM(cg, 1, -1);
+
+    [s drawAtPoint:pos withAttributes:text_attrs()];
+
+    [NSGraphicsContext restoreGraphicsState];
+}
 
 
 // ==================== palette d'épaisseur de trait (vue custom) ====================
@@ -954,6 +1002,7 @@ static const ToolCell TOOLCELLS[] = {
     {"◌", 1, INK_ERASE},
     {"▣", 2, 0},
     {"P", 0, TOOL_BRUSH},
+    {"A", 0, TOOL_TEXT},
 };
 
 
@@ -961,6 +1010,113 @@ static const ToolCell TOOLCELLS[] = {
 
 @implementation HCView
 - (BOOL)acceptsFirstResponder { return YES; }
+- (void)copy:(id)sender {
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (gTool == TOOL_SELRECT && gSelRectActive)
+        copy_rect(rep, gSelStart, gSelEnd);
+    else if (gTool == TOOL_LASSO && gLassoActive)
+        copy_freeform(rep, gLassoPts, gLassoCount);
+}
+
+- (void)cut:(id)sender {
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (gTool == TOOL_SELRECT && gSelRectActive) {
+        copy_rect(rep, gSelStart, gSelEnd);
+        erase_rect(rep, gSelStart, gSelEnd);
+        gSelRectActive = NO;
+    } else if (gTool == TOOL_LASSO && gLassoActive) {
+        copy_freeform(rep, gLassoPts, gLassoCount);
+        erase_freeform(rep, gLassoPts, gLassoCount);
+        gLassoActive = NO;
+        gLassoCount = 0;
+    }
+    [self setNeedsDisplay:YES];
+}
+
+- (void)paste:(id)sender {
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
+    if (imgs.count > 0) {
+        NSData *tiff = [imgs[0] TIFFRepresentation];
+        NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
+        if (ext) {
+            gClipboard = ext;
+            gClipW = (int)[ext pixelsWide];
+            gClipH = (int)[ext pixelsHigh];
+            gClipPtsCount = 0;
+        }
+    }
+    if (gClipboard) {
+        gFloating = YES;
+        NSRect b = [self bounds];
+        gFloatPos = NSMakePoint((b.size.width - gClipW)/2, (b.size.height - gClipH)/2);
+        [self setNeedsDisplay:YES];
+    }
+}
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+    SEL a = [item action];
+    if (a == @selector(copy:) || a == @selector(cut:))
+        return (gTool == TOOL_SELRECT && gSelRectActive) ||
+               (gTool == TOOL_LASSO && gLassoActive);
+    if (a == @selector(paste:))
+        return gClipboard != nil ||
+               [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil];
+    return YES;
+}
+- (void)setFrameSize:(NSSize)newSize {
+    [self flushPaintToKernel];   // encoder les dessins avant que le cache ne soit invalide
+    [super setFrameSize:newSize];
+    [self clearPaintCache];
+    [self setNeedsDisplay:YES];
+}
+- (void)changeColor:(id)sender {
+    gTextColor = [sender color];
+    [self setNeedsDisplay:YES];
+}
+- (void)underline:(id)sender {
+    gTextUnderline = !gTextUnderline;
+    [self setNeedsDisplay:YES];
+}
+- (void)commitText {
+    if (!gTextActive) return;
+    if ([gTextBuf length] > 0) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        if (layer) {
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                        (int)[self bounds].size.height);
+            stamp_text(rep, gTextBuf, gTextPos);
+        }
+    }
+    gTextActive = NO;
+    gTextBuf = nil;
+    [self setNeedsDisplay:YES];
+}
+- (void)changeFont:(id)sender {
+    gTextFont = [sender convertFont:text_font()];
+    gTextSize = (int)[gTextFont pointSize];
+    [[NSFontManager sharedFontManager] setSelectedFont:gTextFont isMultiple:NO];
+    [self setNeedsDisplay:YES];
+}
+// gras / italique / souligne passent par la
+- (void)changeAttributes:(id)sender {
+    [self setNeedsDisplay:YES];
+}
+
+- (NSFontPanelModeMask)validModesForFontPanel:(NSFontPanel *)fontPanel {
+    return NSFontPanelModesMaskStandardModes;
+}
 - (void)ditherSelection:(id)sender {
     // collage flottant : tramer l'image qui flotte
     if (gFloating && gClipboard) {
@@ -1004,93 +1160,60 @@ static const ToolCell TOOLCELLS[] = {
 - (void)keyDown:(NSEvent *)event {
     unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
     NSUInteger mods = [event modifierFlags];
-        BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
-    NSLog(@"keyDown: key=%d cmd=%d gTool=%d gLassoActive=%d gSelected=%p",
-              (int)key, cmd, (int)gTool, gLassoActive, (void*)gSelected);
+    BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
 
-    // ⌘X : couper la sélection rectangulaire (copier puis effacer)
-        if (cmd && (key == 'x' || key == 'X') && gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            copy_rect(rep, gSelStart, gSelEnd);    // copier dans le presse-papier
-            erase_rect(rep, gSelStart, gSelEnd);   // puis effacer la zone
-            gSelRectActive = NO;
-            [self setNeedsDisplay:YES];
-            NSLog(@"coupé : %d x %d", gClipW, gClipH);
-            return;
-        }
-    // ⌘C : copier la sélection rectangulaire
-        if (cmd && (key == 'c' || key == 'C') && gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            copy_rect(rep, gSelStart, gSelEnd);
-            NSLog(@"copié : %d x %d", gClipW, gClipH);
-            return;
-        }
-    // ⌘C : copier la selection lasso
-        if (cmd && (key == 'c' || key == 'C') && gTool == TOOL_LASSO && gLassoActive) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            copy_freeform(rep, gLassoPts, gLassoCount);
-            return;
-        }
-
-        // ⌘X : couper la selection lasso
-        if (cmd && (key == 'x' || key == 'X') && gTool == TOOL_LASSO && gLassoActive) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            copy_freeform(rep, gLassoPts, gLassoCount);
-            erase_freeform(rep, gLassoPts, gLassoCount);
-            gLassoActive = NO;
-            gLassoCount = 0;
+    // saisie de texte en cours : tout va au tampon
+    if (gTool == TOOL_TEXT && gTextActive && !cmd) {
+        if (key == 27) {                          // Echap : annuler
+            gTextActive = NO;
             [self setNeedsDisplay:YES];
             return;
         }
-    // ⌘V : coller (presse-papier système d'abord, sinon interne) en flottant
-            if (cmd && (key == 'v' || key == 'V')) {
-                // essayer une image du presse-papier système
-                NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
-                if (imgs.count > 0) {
-                    NSData *tiff = [imgs[0] TIFFRepresentation];
-                    NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
-                    if (ext) {
-                        gClipboard = ext;
-                        gClipW = (int)[ext pixelsWide];
-                        gClipH = (int)[ext pixelsHigh];
-                    }
-                }
-                if (gClipboard) {
-                    gFloating = YES;
-                    NSRect b = [self bounds];
-                    gFloatPos = NSMakePoint((b.size.width - gClipW)/2, (b.size.height - gClipH)/2);
-                    [self setNeedsDisplay:YES];
-                }
-                return;
-            }
+        if (key == NSDeleteCharacter || key == NSBackspaceCharacter) {
+            NSUInteger n = [gTextBuf length];
+            if (n > 0) [gTextBuf deleteCharactersInRange:NSMakeRange(n-1, 1)];
+            [self setNeedsDisplay:YES];
+            return;
+        }
+        NSString *chars = [event characters];
+        if ([chars length] > 0) {
+            if ([chars isEqualToString:@"\r"]) chars = @"\n";
+            [gTextBuf appendString:chars];
+            [self setNeedsDisplay:YES];
+        }
+        return;
+    }
 
-    // lasso actif : Delete efface la zone sélectionnée
+    // Delete : lasso actif -> effacer la zone
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
         gTool == TOOL_LASSO && gLassoActive) {
         Object *card = hc_current_card();
         Object *layer = gEditBackground ? card->bg : card;
         if (!layer) layer = card;
-        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-        erase_freeform(rep, gLassoPts, gLassoCount);   // efface l'intérieur
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                    (int)[self bounds].size.height);
+        erase_freeform(rep, gLassoPts, gLassoCount);
         gLassoActive = NO;
         gLassoCount = 0;
         [self setNeedsDisplay:YES];
         return;
     }
-    // suppression d'objet sélectionné (ton code existant)
+
+    // Delete : selection rectangulaire -> effacer la zone
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
+        gTool == TOOL_SELRECT && gSelRectActive) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                    (int)[self bounds].size.height);
+        erase_rect(rep, gSelStart, gSelEnd);
+        gSelRectActive = NO;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    // Delete : objet selectionne -> le supprimer
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
         gSelected && gTool != TOOL_BROWSE) {
         hc_delete_part(gSelected);
@@ -1098,17 +1221,7 @@ static const ToolCell TOOLCELLS[] = {
         [self setNeedsDisplay:YES];
         return;
     }
-    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
-            gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            erase_rect(rep, gSelStart, gSelEnd);
-            gSelRectActive = NO;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+
     [super keyDown:event];
 }
 - (void)inkChosen:(id)sender {
@@ -1252,13 +1365,14 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
                 px[0]=0; px[1]=0; px[2]=0;
                 if (spp>=4) px[3]=255;
             } else {
-                if (gInk == INK_WHITE) {
-                    px[0]=255; px[1]=255; px[2]=255;
-                    if (spp>=4) px[3]=255;
-                } else {
-                    px[0]=0; px[1]=0; px[2]=0;
-                    if (spp>=4) px[3]=0;
-                }
+                            if (gInk == INK_ERASE) {
+                                px[0]=0; px[1]=0; px[2]=0;
+                                if (spp>=4) px[3]=0;        // transparent : efface
+                            } else {
+                                px[0]=255; px[1]=255; px[2]=255;
+                                if (spp>=4) px[3]=255;      // blanc opaque
+                            }
+                        
             }
         }
     }
@@ -1408,6 +1522,24 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             CGFloat dash[] = {4, 3};
             [fp setLineDash:dash count:2 phase:0];
             [fp stroke];
+        }
+    if (gTextActive && gTextBuf) {
+            NSDictionary *at = text_attrs();
+            [gTextBuf drawAtPoint:gTextPos withAttributes:at];
+
+            NSArray *lines = [gTextBuf componentsSeparatedByString:@"\n"];
+            NSString *last = [lines lastObject];
+            NSSize lastSz = [last sizeWithAttributes:at];
+            // hauteur d'une ligne telle que la mesure le moteur de rendu
+            NSSize oneLine = [@"Ag" sizeWithAttributes:at];
+            CGFloat cy = gTextPos.y + ([lines count] - 1) * oneLine.height;
+
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *caret = [NSBezierPath bezierPath];
+            [caret moveToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy)];
+            [caret lineToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy + oneLine.height)];
+            [caret setLineWidth:1];
+            [caret stroke];
         }
 }
 - (void)toggleBackground:(id)sender {
@@ -1581,7 +1713,15 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
                 }
             return;
         }
-
+    if (gTool == TOOL_TEXT) {
+            [self commitText];          // graver la saisie en cours
+            gTextPos = p;
+            gTextBuf = [NSMutableString string];
+            gTextActive = YES;
+            [[self window] makeFirstResponder:self];
+            [self setNeedsDisplay:YES];
+            return;
+        }
  
     // mode bouton/champ
         // d'abord : saisit-on une poignée de l'objet déjà sélectionné ?
