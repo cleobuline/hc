@@ -139,8 +139,8 @@ static const ToolCell TOOLCELLS[] = {
     {"A", 0, TOOL_TEXT},//  
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
-    {"◌", 1, INK_ERASE},
     {"▣", 2, 0},
+    {"◫", 3, 0},
 };
 
 
@@ -169,7 +169,7 @@ static const ToolCell TOOLCELLS[] = {
         if (tc->kind == 0) active = (gTool == (HCTool)tc->value);
         else if (tc->kind == 1) active = (gInk == (HCInk)tc->value);
         else if (tc->kind == 2) active = gShapeFilled;
-
+        else if (tc->kind == 3) active = gTransparentBg;
         [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
         NSRectFill(box);
 
@@ -267,6 +267,7 @@ static const ToolCell TOOLCELLS[] = {
                         }
             else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
             else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
+            else if (tc->kind == 3) { gTransparentBg = !gTransparentBg; }
             [self setNeedsDisplay:YES];
             [gView setNeedsDisplay:YES];
             break;

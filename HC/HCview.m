@@ -46,7 +46,7 @@ static NSPanel *gPatternPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
-
+BOOL gTransparentBg = NO;
 
 static BOOL gTextActive = NO;
 static NSPoint gTextPos;                 // coin haut-gauche de la saisie
@@ -237,15 +237,16 @@ static void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b)
                 px[0]=0; px[1]=0; px[2]=0;
                 if (spp>=4) px[3]=255;
             } else {
-                            if (gInk == INK_ERASE) {
-                                px[0]=0; px[1]=0; px[2]=0;
-                                if (spp>=4) px[3]=0;        // transparent : efface
-                            } else {
-                                px[0]=255; px[1]=255; px[2]=255;
-                                if (spp>=4) px[3]=255;      // blanc opaque
+                                if (gInk == INK_ERASE) {
+                                    px[0]=0; px[1]=0; px[2]=0;
+                                    if (spp>=4) px[3]=0;          // efface
+                                } else if (gTransparentBg) {
+                                    continue;                      // laisser intact
+                                } else {
+                                    px[0]=255; px[1]=255; px[2]=255;
+                                    if (spp>=4) px[3]=255;        // fond blanc opaque
+                                }
                             }
-                        
-            }
         }
     }
 }
@@ -374,22 +375,20 @@ static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
                     // trait du motif : TOUJOURS noir
                     px[0] = 0; px[1] = 0; px[2] = 0;
                     if (spp >= 4) px[3] = 255;
-                } else {
-                    // fond du motif : blanc opaque ou transparent, selon l'encre
-                    if (gInk == INK_WHITE) {
-                        px[0] = 255; px[1] = 255; px[2] = 255;
-                        if (spp >= 4) px[3] = 255;        // fond blanc opaque (masque)
+        } else {
+            if (gInk == INK_ERASE) {
+                        px[0]=0; px[1]=0; px[2]=0;
+                        if (spp>=4) px[3]=0;              // efface tout
+                    } else if (pattern_bit(gPattern, x, y)) {
+                        px[0]=0; px[1]=0; px[2]=0;        // trait du motif : noir
+                        if (spp>=4) px[3]=255;
+                    } else if (gTransparentBg) {
+                        /* fond : laisser intact */
                     } else {
-                                        // fond du motif : transparent seulement en encre EFFACE
-                                        if (gInk == INK_ERASE) {
-                                            px[0] = 0; px[1] = 0; px[2] = 0;
-                                            if (spp >= 4) px[3] = 0;          // efface
-                                        } else {
-                                            px[0] = 255; px[1] = 255; px[2] = 255;
-                                            if (spp >= 4) px[3] = 255;        // blanc opaque
-                                        }
-                                    }
-                }
+                        px[0]=255; px[1]=255; px[2]=255;  // fond blanc opaque
+                        if (spp>=4) px[3]=255;
+                    }
+                        }
 
         if (top + 4 >= cap) {
             cap *= 2;
@@ -425,12 +424,11 @@ static void brush_stamp(NSBitmapImageRep *rep, int cx, int cy) {
                         } else if (pattern_bit(gPattern, x, y)) {
                             px[0]=0; px[1]=0; px[2]=0;          // trait du motif : noir
                             if (spp>=4) px[3]=255;
-                        } else if (gInk == INK_WHITE) {
-                            px[0]=255; px[1]=255; px[2]=255;    // fond du motif : blanc opaque
-                            if (spp>=4) px[3]=255;
+                        } else if (gTransparentBg) {
+                            continue;                            // fond : laisser intact
                         } else {
-                            px[0]=0; px[1]=0; px[2]=0;          // fond du motif : transparent
-                            if (spp>=4) px[3]=0;
+                            px[0]=255; px[1]=255; px[2]=255;    // fond blanc opaque
+                            if (spp>=4) px[3]=255;
                         }
         }
     }
@@ -1365,15 +1363,16 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
                 px[0]=0; px[1]=0; px[2]=0;
                 if (spp>=4) px[3]=255;
             } else {
-                            if (gInk == INK_ERASE) {
-                                px[0]=0; px[1]=0; px[2]=0;
-                                if (spp>=4) px[3]=0;        // transparent : efface
-                            } else {
-                                px[0]=255; px[1]=255; px[2]=255;
-                                if (spp>=4) px[3]=255;      // blanc opaque
+                                if (gInk == INK_ERASE) {
+                                    px[0]=0; px[1]=0; px[2]=0;
+                                    if (spp>=4) px[3]=0;          // efface
+                                } else if (gTransparentBg) {
+                                    continue;                      // laisser intact
+                                } else {
+                                    px[0]=255; px[1]=255; px[2]=255;
+                                    if (spp>=4) px[3]=255;        // fond blanc opaque
+                                }
                             }
-                        
-            }
         }
     }
 }

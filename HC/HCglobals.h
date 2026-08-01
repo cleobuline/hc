@@ -20,4 +20,5 @@ extern NSView *gView;
 extern id gView;
 extern int gBrush;
 extern int gTextSize;
+extern BOOL gTransparentBg;
 #endif
