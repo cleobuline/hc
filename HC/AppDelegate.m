@@ -5,6 +5,7 @@
 
 #import "AppDelegate.h"
 #import "HCview.h"
+#import "HCdialogs.h"
 #import "hc_core.h"
 #import "hc_file.h"
 @interface AppDelegate ()

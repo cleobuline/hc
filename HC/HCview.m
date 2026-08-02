@@ -5,6 +5,8 @@
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
+#import "graphics.h"
+#import "HCdialogs.h"
 static NSTextField *gMsgBox = nil; // la message box
 
 static NSPoint gDragStart;
@@ -41,8 +43,6 @@ static NSPoint gSelStart, gSelEnd; // selection rectabgle
 static BOOL gSelRectDrawing = NO;
 static BOOL gSelRectActive = NO;
 
-static NSPoint gClipPts[4096];   // contour de la selection collee (relatif au coin)
-static int gClipPtsCount = 0;    // 0 = selection rectangulaire
 static NSPanel *gPatternPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
@@ -57,78 +57,9 @@ int gTextSize = 16;
 static NSColor *gTextColor = nil;
 static BOOL gTextUnderline = NO;
 
-
-
-
-
-static NSPanel      *gInfoPanel = nil;
-static Object       *gInfoTarget = NULL;
-static NSTextField  *gInfoName = nil;
-static NSPopUpButton *gInfoStyle = nil;
-static NSButton     *gInfoShowName = nil;
-static NSButton     *gInfoAutoHilite = nil;
-static NSTextField  *gInfoIconField = nil;
-
-
-static NSPanel    *gContentsPanel = nil;
-static NSTextView *gContentsView = nil;
-static Object     *gContentsTarget = NULL;
 static Object *gPopupTarget = NULL;
 
-static NSPanel     *gBgPanel = nil;
-static Object      *gBgTarget = NULL;
-static NSTextField *gBgName = nil;
-
-
-
-static NSPanel     *gCardPanel = nil;
-static Object      *gCardTarget = NULL;
-static NSTextField *gCardName = nil;
-
-static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
-// ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
-
-static const unsigned char PATTERNS[38][8] = {
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},   /* 19  blanc     */
-    {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},   /*  0  noir      */
-    {0xDD,0xFF,0x77,0xFF,0xDD,0xFF,0x77,0xFF},   /*  1  87.5%     */
-    {0xDD,0x77,0xDD,0x77,0xDD,0x77,0xDD,0x77},   /*  2  75%       */
-    {0xAA,0x55,0xAA,0x55,0xAA,0x55,0xAA,0x55},   /*  3  50%       */
-    {0x55,0xFF,0x55,0xFF,0x55,0xFF,0x55,0xFF},   /*  4            */
-    {0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA},   /*  5  lignes V  */
-    {0xEE,0xDD,0xBB,0x77,0xEE,0xDD,0xBB,0x77},   /*  6  diagonale */
-    {0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88},   /*  7            */
-    {0xB1,0x30,0x03,0x1B,0xD8,0xC0,0x0C,0x8D},   /*  8            */
-    {0x80,0x10,0x02,0x20,0x01,0x08,0x40,0x04},   /*  9            */
-    {0xFF,0x88,0x88,0x88,0xFF,0x88,0x88,0x88},   /* 10  grille    */
-    {0xFF,0x80,0x80,0x80,0xFF,0x08,0x08,0x08},   /* 11  briques   */
-    {0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00},   /* 12  1.5%      */
-    {0x80,0x40,0x20,0x00,0x02,0x04,0x08,0x00},   /* 13            */
-    {0x82,0x44,0x39,0x44,0x82,0x01,0x01,0x01},   /* 14            */
-    {0xF8,0x74,0x22,0x47,0x8F,0x17,0x22,0x71},   /* 15  vannerie  */
-    {0x55,0xA0,0x40,0x40,0x55,0x0A,0x04,0x04},   /* 16            */
-    {0x20,0x50,0x88,0x88,0x88,0x88,0x05,0x02},   /* 17            */
-    {0xBF,0x00,0xBF,0xBF,0xB0,0xB0,0xB0,0xB0},   /* 18            */
-    {0x80,0x00,0x08,0x00,0x80,0x00,0x08,0x00},   /* 20  6%        */
-    {0x88,0x00,0x22,0x00,0x88,0x00,0x22,0x00},   /* 21  12%       */
-    {0x88,0x22,0x88,0x22,0x88,0x22,0x88,0x22},   /* 22  25%       */
-    {0xAA,0x00,0xAA,0x00,0xAA,0x00,0xAA,0x00},   /* 23            */
-    {0xFF,0x00,0xFF,0x00,0xFF,0x00,0xFF,0x00},   /* 24  lignes H  */
-    {0x11,0x22,0x44,0x88,0x11,0x22,0x44,0x88},   /* 25  diagonale */
-    {0xFF,0x00,0x00,0x00,0xFF,0x00,0x00,0x00},   /* 26            */
-    {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80},   /* 27  diagonale */
-    {0xAA,0x00,0x80,0x00,0x88,0x00,0x80,0x00},   /* 28            */
-    {0xFF,0x80,0x80,0x80,0x80,0x80,0x80,0x80},   /* 29            */
-    {0x08,0x1C,0x22,0xC1,0x80,0x01,0x02,0x04},   /* 30            */
-    {0x88,0x14,0x22,0x41,0x88,0x00,0xAA,0x00},   /* 31            */
-    {0x40,0xA0,0x00,0x00,0x04,0x0A,0x00,0x00},   /* 32            */
-    {0x03,0x84,0x48,0x30,0x0C,0x02,0x01,0x01},   /* 33            */
-    {0x80,0x80,0x41,0x3E,0x08,0x08,0x14,0xE3},   /* 34  poisson   */
-    {0x10,0x20,0x54,0xAA,0xFF,0x02,0x04,0x08},   /* 35  fleche    */
-    {0x77,0x89,0x8F,0x8F,0x77,0x98,0xF8,0xF8},   /* 36  tissage   */
-    {0x00,0x08,0x14,0x2A,0x55,0x2A,0x14,0x08},   /* 37  losanges  */
-};
-#define NUM_PATTERNS 38
+ #define NUM_PATTERNS 38
 
 // #define NUM_PATTERNS (int)(sizeof(PATTERNS)/sizeof(PATTERNS[0]))
 
@@ -139,8 +70,6 @@ static int gFreeCount = 0;
 static BOOL gFreeDrawing = NO;
 
 
-static NSBitmapImageRep *gClipboard = nil;   // presse-papier (zone copiée)
-static int gClipW = 0, gClipH = 0;           // dimensions de la zone copiée
 
 
 static BOOL gFloating = NO;        // un collage flotte-t-il ?
@@ -148,453 +77,19 @@ static NSPoint gFloatPos;          // position (coin haut-gauche) du flottant
 static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 static NSFont *gTextFont = nil;
-static NSTextField *gInfoTextSize = nil;
+//static NSTextField *gInfoTextSize = nil;
 
 
 
-static NSPanel   *gIconPanel = nil;
-static IconGrid  *gIconGrid = nil;
-static NSTextField *gIconLabel = nil;
-// ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
-// dessine chaque ligne en binaire : le motif est lisible directement dans le code
+//static NSPanel   *gIconPanel = nil;
+//static IconGrid  *gIconGrid = nil;
+//static NSTextField *gIconLabel = nil;
 
 
 
-
-  inline int pattern_bit(int pat, int x, int y) {
-    unsigned char row = PATTERNS[pat][y & 7];
-    return (row >> (7 - (x & 7))) & 1;
-}
-// convertit une zone en noir et blanc trame (Floyd-Steinberg)
-// poly != NULL : ne trame que l'interieur du polygone
-static void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
-                          NSPoint *poly, int npoly)
-{
-    if (!rep) return;
-    if ([rep bitsPerSample] != 8 || [rep samplesPerPixel] < 3) return;
-    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 >= W) x1 = W-1;
-    if (y1 >= H) y1 = H-1;
-    int w = x1-x0+1, h = y1-y0+1;
-    if (w < 1 || h < 1) return;
-
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
-
-    double *lum = calloc((size_t)w*h, sizeof(double));
-    unsigned char *use = calloc((size_t)w*h, 1);
-    if (!lum || !use) { free(lum); free(use); return; }
-
-    // luminance des pixels concernes
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            int gx = x0+x, gy = y0+y;
-            unsigned char *px = data + gy*bpr + gx*spp;
-            unsigned char a = (spp>=4) ? px[3] : 255;
-            if (a == 0) continue;                    // transparent : intact
-            if (poly && npoly >= 3) {
-                int inside = 0;
-                for (int i=0, j=npoly-1; i<npoly; j=i++) {
-                    double yi=poly[i].y, yj=poly[j].y, xi=poly[i].x, xj=poly[j].x;
-                    if (((yi>gy)!=(yj>gy)) && (gx < (xj-xi)*(gy-yi)/(yj-yi)+xi))
-                        inside = !inside;
-                }
-                if (!inside) continue;               // hors polygone : intact
-            }
-            use[y*w+x] = 1;
-            lum[y*w+x] = 0.299*px[0] + 0.587*px[1] + 0.114*px[2];
-        }
-    }
-
-    // diffusion d'erreur
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            if (!use[y*w+x]) continue;
-            double old = lum[y*w+x];
-            double nv  = (old < 128.0) ? 0.0 : 255.0;
-            double err = old - nv;
-            lum[y*w+x] = nv;
-            if (x+1 < w && use[y*w+x+1])          lum[y*w+x+1]     += err * 7.0/16.0;
-            if (y+1 < h) {
-                if (x > 0 && use[(y+1)*w+x-1])    lum[(y+1)*w+x-1] += err * 3.0/16.0;
-                if (use[(y+1)*w+x])               lum[(y+1)*w+x]   += err * 5.0/16.0;
-                if (x+1 < w && use[(y+1)*w+x+1])  lum[(y+1)*w+x+1] += err * 1.0/16.0;
-            }
-        }
-    }
-
-    // ecriture en noir ou blanc pur
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            if (!use[y*w+x]) continue;
-            unsigned char *px = data + (y0+y)*bpr + (x0+x)*spp;
-            unsigned char v = (lum[y*w+x] < 128.0) ? 0 : 255;
-            px[0]=v; px[1]=v; px[2]=v;
-            if (spp>=4) px[3]=255;
-        }
-    }
-    free(lum); free(use);
-}
-// remplit l'intérieur d'une forme (rect ou ovale) avec le motif + encre courants
-static void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
-    if (!rep) return;
-    int W = (int)[rep pixelsWide];
-    int H = (int)[rep pixelsHigh];
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow];
-    NSInteger spp = [rep samplesPerPixel];
-
-    int x0 = (int)MIN(a.x, b.x), x1 = (int)MAX(a.x, b.x);
-    int y0 = (int)MIN(a.y, b.y), y1 = (int)MAX(a.y, b.y);
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
-    if (x1 >= W) x1 = W-1; if (y1 >= H) y1 = H-1;
-
-    // centre et demi-axes pour l'ovale
-    double cx = (x0 + x1) / 2.0, cy = (y0 + y1) / 2.0;
-    double rx = (x1 - x0) / 2.0, ry = (y1 - y0) / 2.0;
-
-    for (int y = y0; y <= y1; y++) {
-        for (int x = x0; x <= x1; x++) {
-            // pour l'ovale, ne remplir que l'intérieur de l'ellipse
-            if (tool == TOOL_OVAL) {
-                if (rx < 1 || ry < 1) continue;
-                double dx = (x - cx) / rx, dy = (y - cy) / ry;
-                if (dx*dx + dy*dy > 1.0) continue;   // hors de l'ellipse
-            }
-            // (pour TOOL_RECT, tout le rectangle est rempli)
-
-            unsigned char *px = data + y*bpr + x*spp;
-            if (pattern_bit(gPattern, x, y)) {
-                // trait du motif : toujours noir
-                px[0]=0; px[1]=0; px[2]=0;
-                if (spp>=4) px[3]=255;
-            } else {
-                                if (gInk == INK_ERASE) {
-                                    px[0]=0; px[1]=0; px[2]=0;
-                                    if (spp>=4) px[3]=0;          // efface
-                                } else if (gTransparentBg) {
-                                    continue;                      // laisser intact
-                                } else {
-                                    px[0]=255; px[1]=255; px[2]=255;
-                                    if (spp>=4) px[3]=255;        // fond blanc opaque
-                                }
-                            }
-        }
-    }
-}
-// dessine une forme libre (contour fermé) à partir d'une liste de points
-static void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
-    if (!rep || n < 2) return;
-    if (width <= 0) return;   // épaisseur 0 : pas de contour
-
-    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
-    if (!ctx) return;
-    [NSGraphicsContext saveGraphicsState];
-    [NSGraphicsContext setCurrentContext:ctx];
-    [ctx setShouldAntialias:NO];
-
-    CGFloat H = [rep pixelsHigh];
-    NSAffineTransform *flip = [NSAffineTransform transform];
-    [flip translateXBy:0 yBy:H];
-    [flip scaleXBy:1 yBy:-1];
-    [flip concat];
-
-    if (gInk == INK_ERASE) {
-        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
-        [[NSColor blackColor] setStroke];
-    } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
-    } else {
-        [[NSColor blackColor] setStroke];
-    }
-
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:pts[0]];
-    for (int i = 1; i < n; i++)
-        [path lineToPoint:pts[i]];
-    [path closePath];              // ferme le contour (relie au premier point)
-    [path setLineWidth:width];
-    [path stroke];
-
-    [NSGraphicsContext restoreGraphicsState];
-}
-
-static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
-    if (!rep) return;
-    if (width <= 0 && tool != TOOL_LINE) return;   // épaisseur 0 : pas de contour (sauf ligne)
-    if (width <= 0) width = 1;                       // une ligne garde au moins 1
-
-    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
-    if (!ctx) return;
-    [NSGraphicsContext saveGraphicsState];
-    [NSGraphicsContext setCurrentContext:ctx];
-    [ctx setShouldAntialias:NO];
-
-    CGFloat H = [rep pixelsHigh];
-    NSAffineTransform *flip = [NSAffineTransform transform];
-    [flip translateXBy:0 yBy:H];
-    [flip scaleXBy:1 yBy:-1];
-    [flip concat];
-
-    // encre : blanc, noir, ou effacement (comme paint_stroke)
-    if (gInk == INK_ERASE) {
-        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
-        [[NSColor blackColor] setStroke];
-    } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
-    } else {
-        [[NSColor blackColor] setStroke];
-    }
-    (void)color;   // l'encre gouverne la couleur désormais
-
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
-    if (tool == TOOL_LINE) {
-        [path moveToPoint:a];
-        [path lineToPoint:b];
-    } else if (tool == TOOL_RECT) {
-        path = [NSBezierPath bezierPathWithRect:box];
-    } else if (tool == TOOL_OVAL) {
-        path = [NSBezierPath bezierPathWithOvalInRect:box];
-    }
-    [path setLineWidth:width];
-    [path stroke];
-
-    [NSGraphicsContext restoreGraphicsState];
-}
-// remplit la zone connexe autour de (sx,sy) avec du noir.
-// Approche itérative avec une pile explicite (pas de récursion : robuste sur grandes zones).
-static void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
-    if (!rep) return;
-    int W = (int)[rep pixelsWide];
-    int H = (int)[rep pixelsHigh];
-    if (sx < 0 || sx >= W || sy < 0 || sy >= H) return;
-
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow];
-    NSInteger spp = [rep samplesPerPixel];
-
-    #define PIX(x,y) (data + (y)*bpr + (x)*spp)
-
-    unsigned char *sp = PIX(sx, sy);
-    unsigned char sr = sp[0], sg = sp[1], sb = sp[2];
-    unsigned char sa = (spp >= 4) ? sp[3] : 255;
-
-    unsigned char *done = calloc((size_t)W * H, 1);
-    if (!done) return;
-
-    int cap = 4096, top = 0;
-    int *xs = malloc(sizeof(int)*cap);
-    int *ys = malloc(sizeof(int)*cap);
-    xs[top]=sx; ys[top]=sy; top++;
-
-    while (top > 0) {
-        top--;
-        int x = xs[top], y = ys[top];
-        if (x < 0 || x >= W || y < 0 || y >= H) continue;
-        if (done[y*W + x]) continue;
-        done[y*W + x] = 1;
-
-        unsigned char *px = PIX(x, y);
-        unsigned char a = (spp >= 4) ? px[3] : 255;
-
-        if (abs(px[0]-sr) > 40 || abs(px[1]-sg) > 40 ||
-            abs(px[2]-sb) > 40 || abs(a-sa) > 40)
-            continue;   // frontière
-
-        if (pattern_bit(gPattern, x, y)) {
-                    // trait du motif : TOUJOURS noir
-                    px[0] = 0; px[1] = 0; px[2] = 0;
-                    if (spp >= 4) px[3] = 255;
-        } else {
-            if (gInk == INK_ERASE) {
-                        px[0]=0; px[1]=0; px[2]=0;
-                        if (spp>=4) px[3]=0;              // efface tout
-                    } else if (pattern_bit(gPattern, x, y)) {
-                        px[0]=0; px[1]=0; px[2]=0;        // trait du motif : noir
-                        if (spp>=4) px[3]=255;
-                    } else if (gTransparentBg) {
-                        /* fond : laisser intact */
-                    } else {
-                        px[0]=255; px[1]=255; px[2]=255;  // fond blanc opaque
-                        if (spp>=4) px[3]=255;
-                    }
-                        }
-
-        if (top + 4 >= cap) {
-            cap *= 2;
-            xs = realloc(xs, sizeof(int)*cap);
-            ys = realloc(ys, sizeof(int)*cap);
-        }
-        xs[top]=x+1; ys[top]=y; top++;
-        xs[top]=x-1; ys[top]=y; top++;
-        xs[top]=x; ys[top]=y+1; top++;
-        xs[top]=x; ys[top]=y-1; top++;
-    }
-    #undef PIX
-
-    free(done);
-    free(xs);
-    free(ys);
-}
-// applique la brosse en un point (coin haut-gauche centre sur cx,cy)
-static void brush_stamp(NSBitmapImageRep *rep, int cx, int cy) {
-    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
-    for (int by = 0; by < 16; by++) {
-        for (int bx = 0; bx < 16; bx++) {
-            if (!brush_bit(gBrush, bx, by)) continue;
-            int x = cx - 8 + bx, y = cy - 8 + by;
-            if (x < 0 || x >= W || y < 0 || y >= H) continue;
-            unsigned char *px = data + y*bpr + x*spp;
-                        if (gInk == INK_ERASE) {
-                            px[0]=0; px[1]=0; px[2]=0;
-                            if (spp>=4) px[3]=0;
-                        } else if (pattern_bit(gPattern, x, y)) {
-                            px[0]=0; px[1]=0; px[2]=0;          // trait du motif : noir
-                            if (spp>=4) px[3]=255;
-                        } else if (gTransparentBg) {
-                            continue;                            // fond : laisser intact
-                        } else {
-                            px[0]=255; px[1]=255; px[2]=255;    // fond blanc opaque
-                            if (spp>=4) px[3]=255;
-                        }
-        }
-    }
-}
-
-// trace un segment au pinceau
-static void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to) {
-    if (!rep) return;
-    int x0=(int)from.x, y0=(int)from.y, x1=(int)to.x, y1=(int)to.y;
-    int dx = abs(x1-x0), dy = abs(y1-y0);
-    int sx = x0<x1 ? 1 : -1, sy = y0<y1 ? 1 : -1;
-    int err = dx-dy;
-    while (1) {
-        brush_stamp(rep, x0, y0);
-        if (x0==x1 && y0==y1) break;
-        int e2 = 2*err;
-        if (e2 > -dy) { err -= dy; x0 += sx; }
-        if (e2 <  dx) { err += dx; y0 += sy; }
-    }
-}
-static void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width) {
-    if (!rep) return;
-    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
-    if (!ctx) return;
-    [NSGraphicsContext saveGraphicsState];
-    [NSGraphicsContext setCurrentContext:ctx];
-    [ctx setShouldAntialias:NO];
-
-    CGFloat H = [rep pixelsHigh];
-    NSAffineTransform *flip = [NSAffineTransform transform];
-    [flip translateXBy:0 yBy:H];
-    [flip scaleXBy:1 yBy:-1];
-    [flip concat];
-
-    // encre : blanc, noir, ou effacement (transparent)
-    if (gInk == INK_ERASE) {
-        CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
-        [[NSColor blackColor] setStroke];   // couleur ignorée en mode clear
-    } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
-    } else {
-        [[NSColor blackColor] setStroke];
-    }
-
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:from];
-    [path lineToPoint:to];
-    [path setLineWidth:width > 0 ? width : 1];
-    [path setLineCapStyle:NSLineCapStyleRound];
-    [path stroke];
-
-    [NSGraphicsContext restoreGraphicsState];
-}
-// efface un segment (remet à transparent) au lieu de peindre
-static void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width) {
-    if (!rep) return;
-
-    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
-    if (!ctx) return;
-    [NSGraphicsContext saveGraphicsState];
-    [NSGraphicsContext setCurrentContext:ctx];
-    [ctx setShouldAntialias:NO];
-    CGFloat H = [rep pixelsHigh];
-    NSAffineTransform *flip = [NSAffineTransform transform];
-    [flip translateXBy:0 yBy:H];
-    [flip scaleXBy:1 yBy:-1];
-    [flip concat];
-
-    CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:from];
-    [path lineToPoint:to];
-    [path setLineWidth:width];
-    [path setLineCapStyle:NSLineCapStyleRound];
-    [path stroke];
-
-    [NSGraphicsContext restoreGraphicsState];
-}
 // récupère (ou crée) le bitmap de peinture d'une carte/fond
 static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
 
-static NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
-    if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
-    NSValue *key = [NSValue valueWithPointer:o];
-    NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
-    if (rep && ((int)[rep pixelsWide] != w || (int)[rep pixelsHigh] != h)) {
-        [gPaintCache removeObjectForKey:key];
-        rep = nil;
-    }
-    if (rep) return rep;
-    NSLog(@"paint_bitmap crée canvas %dx%d (bounds vue: %.0fx%.0f)",
-              w, h, [gView bounds].size.width, [gView bounds].size.height);
-    NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
-            initWithBitmapDataPlanes:NULL
-                          pixelsWide:w pixelsHigh:h
-                       bitsPerSample:8 samplesPerPixel:4
-                            hasAlpha:YES isPlanar:NO
-                      colorSpaceName:NSCalibratedRGBColorSpace
-                         bytesPerRow:0 bitsPerPixel:0];
-
-    // effacer explicitement vers le transparent
-    {
-        NSGraphicsContext *cctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
-        [NSGraphicsContext saveGraphicsState];
-        [NSGraphicsContext setCurrentContext:cctx];
-        CGContextClearRect([cctx CGContext], CGRectMake(0, 0, w, h));
-        [NSGraphicsContext restoreGraphicsState];
-    }
-
-    const char *b64 = hc_paint_of(o);
-        if (b64 && *b64) {
-            NSData *data = [[NSData alloc] initWithBase64EncodedString:
-                             [NSString stringWithUTF8String:b64]
-                             options:NSDataBase64DecodingIgnoreUnknownCharacters];
-            NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
-            if (loaded) {
-                NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
-                [NSGraphicsContext saveGraphicsState];
-                [NSGraphicsContext setCurrentContext:ctx];
-                [ctx setShouldAntialias:NO];
-                // dessiner à taille réelle en HAUT-gauche (pas d'étirement)
-                CGFloat lh = [loaded pixelsHigh];
-                [loaded drawAtPoint:NSMakePoint(0, h - lh)];
-                [NSGraphicsContext restoreGraphicsState];
-            }
-        }
-
-    [gPaintCache setObject:canvas forKey:key];
-    return canvas;
-}
 // éteint tous les radioButtons de la carte sauf 'keep'
 static void radio_exclusive(Object *card, Object *keep) {
     if (!card) return;
@@ -612,182 +107,8 @@ static void radio_exclusive(Object *card, Object *keep) {
                 o->hilite = 0;
         }
 }
-// efface (rend transparent) l'intérieur d'un polygone
-static void erase_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
-    if (!rep || n < 3) return;
-    int W = (int)[rep pixelsWide];
-    int H = (int)[rep pixelsHigh];
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow];
-    NSInteger spp = [rep samplesPerPixel];
 
-    double minx=pts[0].x,maxx=pts[0].x,miny=pts[0].y,maxy=pts[0].y;
-    for (int i=1;i<n;i++){
-        if(pts[i].x<minx)minx=pts[i].x; if(pts[i].x>maxx)maxx=pts[i].x;
-        if(pts[i].y<miny)miny=pts[i].y; if(pts[i].y>maxy)maxy=pts[i].y;
-    }
-    int y0=(int)floor(miny),y1=(int)ceil(maxy),x0=(int)floor(minx),x1=(int)ceil(maxx);
-    if(y0<0)y0=0; if(x0<0)x0=0; if(y1>=H)y1=H-1; if(x1>=W)x1=W-1;
 
-    for (int y=y0;y<=y1;y++){
-        for (int x=x0;x<=x1;x++){
-            int inside=0;
-            for (int i=0,j=n-1;i<n;j=i++){
-                double yi=pts[i].y,yj=pts[j].y,xi=pts[i].x,xj=pts[j].x;
-                if(((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside;
-            }
-            if(!inside) continue;
-            unsigned char *px = data + y*bpr + x*spp;
-            px[0]=0; px[1]=0; px[2]=0;
-            if(spp>=4) px[3]=0;   // transparent
-        }
-    }
-}
-// scotche le presse-papier dans le bitmap à la position (haut-gauche) donnée
-static void stamp_clipboard(NSBitmapImageRep *rep, NSPoint pos) {
-    if (!rep || !gClipboard) return;
-    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-    int px0 = (int)pos.x, py0 = (int)pos.y;
-
-    unsigned char *dst = [rep bitmapData];
-    unsigned char *src = [gClipboard bitmapData];
-    NSInteger dbpr = [rep bytesPerRow], dspp = [rep samplesPerPixel];
-    NSInteger sbpr = [gClipboard bytesPerRow], sspp = [gClipboard samplesPerPixel];
-
-    for (int y = 0; y < gClipH; y++) {
-        for (int x = 0; x < gClipW; x++) {
-            int dx = px0 + x, dy = py0 + y;
-            if (dx < 0 || dx >= W || dy < 0 || dy >= H) continue;
-            unsigned char *sp = src + y*sbpr + x*sspp;
-            unsigned char sa = (sspp>=4) ? sp[3] : 255;
-            if (sa == 0) continue;   // pixel transparent du presse-papier : ne pas écraser
-            unsigned char *dp = dst + dy*dbpr + dx*dspp;
-            dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
-            if (dspp>=4) dp[3]=sa;
-        }
-    }
-}
-// copie une zone rectangulaire du bitmap dans le presse-papier
-static void copy_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
-    if (!rep) return;
-    
-    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-    int x0 = (int)MIN(a.x,b.x), x1 = (int)MAX(a.x,b.x);
-    int y0 = (int)MIN(a.y,b.y), y1 = (int)MAX(a.y,b.y);
-    if (x0<0)x0=0; if(y0<0)y0=0; if(x1>=W)x1=W-1; if(y1>=H)y1=H-1;
-    int w = x1-x0+1, h = y1-y0+1;
-    if (w < 1 || h < 1) return;
-
-    // créer le bitmap presse-papier
-    NSBitmapImageRep *clip = [[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:NULL pixelsWide:w pixelsHigh:h
-        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
-
-    unsigned char *src = [rep bitmapData];
-    unsigned char *dst = [clip bitmapData];
-    NSInteger sbpr = [rep bytesPerRow], sspp = [rep samplesPerPixel];
-    NSInteger dbpr = [clip bytesPerRow], dspp = [clip samplesPerPixel];
-
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            unsigned char *sp = src + (y0+y)*sbpr + (x0+x)*sspp;
-            unsigned char *dp = dst + y*dbpr + x*dspp;
-            dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
-            dp[3] = (sspp>=4) ? sp[3] : 255;
-        }
-    }
-
-    gClipboard = clip;
-        gClipW = w; gClipH = h;
-        gClipPtsCount = 0;        // selection rectangulaire : pas de contour libre
-    // aussi vers le presse-papier système
-        NSData *tiff = [clip TIFFRepresentation];
-        if (tiff) {
-            NSImage *img = [[NSImage alloc] initWithData:tiff];
-            NSPasteboard *pb = [NSPasteboard generalPasteboard];
-            [pb clearContents];
-            [pb writeObjects:@[img]];
-        }
-}
-// copie l'interieur d'un polygone dans le presse-papier (hors polygone = transparent)
-static void copy_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
-    if (!rep || n < 3) return;
-    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-    unsigned char *src = [rep bitmapData];
-    if (!src) return;
-    NSInteger sbpr = [rep bytesPerRow], sspp = [rep samplesPerPixel];
-
-    // boite englobante
-    double minx=pts[0].x, maxx=pts[0].x, miny=pts[0].y, maxy=pts[0].y;
-    for (int i=1;i<n;i++){
-        if(pts[i].x<minx)minx=pts[i].x; if(pts[i].x>maxx)maxx=pts[i].x;
-        if(pts[i].y<miny)miny=pts[i].y; if(pts[i].y>maxy)maxy=pts[i].y;
-    }
-    int x0=(int)floor(minx), x1=(int)ceil(maxx);
-    int y0=(int)floor(miny), y1=(int)ceil(maxy);
-    if(x0<0)x0=0; if(y0<0)y0=0; if(x1>=W)x1=W-1; if(y1>=H)y1=H-1;
-    int w = x1-x0+1, h = y1-y0+1;
-    if (w < 1 || h < 1) return;
-    gClipPtsCount = (n > 4096) ? 4096 : n;
-     for (int i = 0; i < gClipPtsCount; i++)
-         gClipPts[i] = NSMakePoint(pts[i].x - x0, pts[i].y - y0);
-    NSBitmapImageRep *clip = [[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:NULL pixelsWide:w pixelsHigh:h
-        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
-    unsigned char *dst = [clip bitmapData];
-    NSInteger dbpr = [clip bytesPerRow], dspp = [clip samplesPerPixel];
-
-    for (int y = y0; y <= y1; y++) {
-        for (int x = x0; x <= x1; x++) {
-            unsigned char *dp = dst + (y-y0)*dbpr + (x-x0)*dspp;
-            // dedans ou dehors du polygone ?
-            int inside = 0;
-            for (int i=0, j=n-1; i<n; j=i++) {
-                double yi=pts[i].y, yj=pts[j].y, xi=pts[i].x, xj=pts[j].x;
-                if (((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi))
-                    inside = !inside;
-            }
-            if (!inside) {                       // dehors : transparent
-                dp[0]=0; dp[1]=0; dp[2]=0; dp[3]=0;
-                continue;
-            }
-            unsigned char *sp = src + y*sbpr + x*sspp;
-            dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
-            dp[3] = (sspp>=4) ? sp[3] : 255;
-        }
-    }
-
-    gClipboard = clip;
-    gClipW = w; gClipH = h;
-
-    // presse-papier systeme
-    NSData *tiff = [clip TIFFRepresentation];
-    if (tiff) {
-        NSImage *img = [[NSImage alloc] initWithData:tiff];
-        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-        [pb clearContents];
-        [pb writeObjects:@[img]];
-    }
-}
-static void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
-if (!rep) return;
-int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
-unsigned char *data = [rep bitmapData];
-if (!data) return;
-NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
-int x0 = (int)MIN(a.x,b.x), x1 = (int)MAX(a.x,b.x);
-int y0 = (int)MIN(a.y,b.y), y1 = (int)MAX(a.y,b.y);
-if (x0<0)x0=0; if(y0<0)y0=0; if(x1>=W)x1=W-1; if(y1>=H)y1=H-1;
-for (int y=y0;y<=y1;y++)
-    for (int x=x0;x<=x1;x++){
-        unsigned char *px = data + y*bpr + x*spp;
-        px[0]=0; px[1]=0; px[2]=0;
-        if(spp>=4) px[3]=0;
-    }
-}
 // dessine un objet (bouton ou champ) à son rectangle
 /* ---- dessine le nom d'un bouton, centre dans le rect ---- */
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
@@ -815,7 +136,78 @@ static void draw_edit_outline(NSRect r) {
     [outline setLineDash:dash count:2 phase:0];
     [outline stroke];
 }
+/* ---- dessine le fond et le cadre d'un bouton selon son style ---- */
+static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
+    const char *st = o->style ? o->style : "rectangle";
 
+    if (strcmp(st, "transparent") == 0) {
+        if (on) {
+            [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
+            NSRectFill(r);
+        }
+        return;
+    }
+    if (strcmp(st, "shadow") == 0) {
+        NSRect body = NSMakeRect(r.origin.x, r.origin.y,
+                                 r.size.width - 3, r.size.height - 3);
+        NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
+                                 r.size.width - 3, r.size.height - 3);
+        [[NSColor blackColor] setFill];
+        NSRectFill(sh);
+        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        NSRectFill(body);
+        [[NSColor blackColor] setStroke];
+        NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
+        [bp setLineWidth:1];
+        [bp stroke];
+        return;
+    }
+    if (strcmp(st, "roundRect") == 0 || strcmp(st, "roundrect") == 0) {
+        NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
+                                                          xRadius:8 yRadius:8];
+        [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+        [p fill];
+        [[NSColor blackColor] setStroke];
+        [p setLineWidth:1];
+        [p stroke];
+        return;
+    }
+    if (strcmp(st, "oval") == 0) {
+        NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(r, 0.5, 0.5)];
+        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [p fill];
+        [[NSColor blackColor] setStroke];
+        [p setLineWidth:1];
+        [p stroke];
+        return;
+    }
+    if (strcmp(st, "standard") == 0 || strcmp(st, "default") == 0) {
+        NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 2.5, 2.5)
+                                                          xRadius:6 yRadius:6];
+        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [p fill];
+        [[NSColor blackColor] setStroke];
+        [p setLineWidth:1];
+        [p stroke];
+        if (strcmp(st, "default") == 0) {
+            NSBezierPath *o2 = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 1.5, 1.5)
+                                                               xRadius:9 yRadius:9];
+            [o2 setLineWidth:3];
+            [o2 stroke];
+        }
+        return;
+    }
+    if (strcmp(st, "opaque") == 0) {
+        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        NSRectFill(r);
+        return;
+    }
+    // rectangle par defaut
+    [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+    NSRectFill(r);
+    [[NSColor blackColor] setStroke];
+    NSFrameRect(r);
+}
 static void draw_part(Object *o) {
     if (!o->visible) return;
 
@@ -840,34 +232,31 @@ static void draw_part(Object *o) {
 
         const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
-        /* ---------- bouton a icone : l'icone remplace l'apparence ---------- */
-        if (ic) {
-            CGFloat iy = o->y + 2;
-            NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
 
-            if (on) {
-                [[NSColor blackColor] setFill];
-                NSRectFill(r);
-                [[NSColor whiteColor] setFill];
-            } else {
-                [[NSColor blackColor] setFill];
-            }
-            hcicon_draw(ic, ir, 1.0);
-            draw_edit_outline(r);
+        /* ---------- bouton a icone : habillage du style + icone par-dessus ---------- */
+                if (ic) {
+                    CGFloat iy = o->y + 2;
+                    NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
 
-            if (o->showname && o->h > 36) {
-                CGFloat fs = o->textsize > 0 ? o->textsize : 11;
-                NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-                [ps setAlignment:NSTextAlignmentCenter];
-                NSDictionary *attrs = @{
-                    NSFontAttributeName: [NSFont systemFontOfSize:fs],
-                    NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-                    NSParagraphStyleAttributeName: ps
-                };
-                NSRect tr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
-                [s drawInRect:tr withAttributes:attrs];
-            }
-        }
+                    draw_btn_frame(o, r, on);
+
+                    [(on ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
+                    hcicon_draw(ic, ir, 1.0);
+                    draw_edit_outline(r);
+
+                    if (o->showname && o->h > 36) {
+                        CGFloat fs = o->textsize > 0 ? o->textsize : 11;
+                        NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                        [ps setAlignment:NSTextAlignmentCenter];
+                        NSDictionary *attrs = @{
+                            NSFontAttributeName: [NSFont systemFontOfSize:fs],
+                            NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+                            NSParagraphStyleAttributeName: ps
+                        };
+                        NSRect tr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
+                        [s drawInRect:tr withAttributes:attrs];
+                    }
+                }
         /* ---------- case a cocher / bouton radio ---------- */
         else if (isCheck || isRadio) {
             CGFloat box = 14;
@@ -1169,35 +558,12 @@ static void stamp_text(NSBitmapImageRep *rep, NSString *s, NSPoint pos) {
 // ==================== palette d'outils custom (grille + sélection encadrée) ====================
 typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
-static const ToolCell TOOLCELLS[] = {
-    {"👆", 0, TOOL_BROWSE},
-    {"B",  0, TOOL_BUTTON},
-    {"F",  0, TOOL_FIELD},
-    {"✏", 0, TOOL_PENCIL},
-    {"⌫", 0, TOOL_ERASER},
-    {"╱", 0, TOOL_LINE},
-    {"▭", 0, TOOL_RECT},
-    {"○", 0, TOOL_OVAL},
-    {"💧", 0, TOOL_FILL},
-    {"✎", 0, TOOL_FREEFORM},
-    {"⬚", 0, TOOL_LASSO},
-    {"◰", 0, TOOL_SELRECT},     // ou ⬛⃞ ou ◰ — un rectangle de sélection
-    {"⬛", 1, INK_BLACK},
-    {"⬜", 1, INK_WHITE},
-    {"◌", 1, INK_ERASE},
-    {"▣", 2, 0},
-    {"P", 0, TOOL_BRUSH},
-    {"A", 0, TOOL_TEXT},
-};
-
-
-#define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
 
 @implementation HCView
 
-static NSPanel     *gStackPanel = nil;
-static Object      *gStackTarget = NULL;
-static NSTextField *gStackName = nil;
+// static NSPanel     *gStackPanel = nil;
+//static Object      *gStackTarget = NULL;
+//static NSTextField *gStackName = nil;
 
 - (void)updateWindowTitle {
     Object *card = hc_current_card();
@@ -1208,156 +574,6 @@ static NSTextField *gStackName = nil;
     const char *nm = stack->name ? stack->name : "Sans titre";
     [[self window] setTitle:[NSString stringWithUTF8String:nm]];
 }
-- (void)showStackInfo {
-    Object *card = hc_current_card();
-    if (!card) return;
-    Object *stack = card->owner;
-    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
-    if (!stack) return;
-    gStackTarget = stack;
-
-    gStackPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(280, 320, 340, 200)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gStackPanel setTitle:@"Stack Info"];
-    [gStackPanel setReleasedWhenClosed:NO];
-    NSView *c = [gStackPanel contentView];
-
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 90, 18)];
-    [lb setStringValue:@"Stack Name:"];
-    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
-    [c addSubview:lb];
-
-    gStackName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
-    [gStackName setStringValue:[NSString stringWithUTF8String:stack->name ? stack->name : ""]];
-    [c addSubview:gStackName];
-
-    int nCards = 0, nBgs = 0;
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i]->type == OBJ_CARD)       nCards++;
-        else if (stack->parts[i]->type == OBJ_BACKGROUND) nBgs++;
-    }
-
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
-    [ids setStringValue:[NSString stringWithFormat:
-        @"Cards: %d\nBackgrounds: %d\nCard size: %d x %d",
-        nCards, nBgs, stack->w, stack->h]];
-    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
-    [c addSubview:ids];
-
-    NSButton *(^mkST)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
-        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
-        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
-        [b setTarget:self]; [b setAction:a];
-        [c addSubview:b];
-        return b;
-    };
-    mkST(@"Script…", @selector(stackScript:), 16);
-    mkST(@"Cancel",  @selector(stackCancel:), 148);
-    NSButton *ok = mkST(@"OK", @selector(stackOK:), 240);
-    [ok setKeyEquivalent:@"\r"];
-
-    [gStackPanel makeKeyAndOrderFront:nil];
-}
-
-- (void)stackOK:(id)sender {
-    if (gStackTarget) {
-        free(gStackTarget->name);
-        gStackTarget->name = strdup([[gStackName stringValue] UTF8String]);
-    }
-    [gStackPanel close];
-    gStackTarget = NULL;
-    [self updateWindowTitle];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)stackCancel:(id)sender {
-    [gStackPanel close];
-    gStackTarget = NULL;
-}
-
-- (void)stackScript:(id)sender {
-    Object *st = gStackTarget;
-    [self stackOK:sender];
-    if (st) [self editScriptOf:st];
-}
-- (void)showCardInfo {
-    Object *card = hc_current_card();
-    if (!card) return;
-    gCardTarget = card;
-
-    gCardPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(300, 300, 340, 200)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gCardPanel setTitle:@"Card Info"];
-    [gCardPanel setReleasedWhenClosed:NO];
-    NSView *c = [gCardPanel contentView];
-
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 90, 18)];
-    [lb setStringValue:@"Card Name:"];
-    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
-    [c addSubview:lb];
-
-    gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
-    [gCardName setStringValue:[NSString stringWithUTF8String:card->name ? card->name : ""]];
-    [c addSubview:gCardName];
-
-    // rang de la carte dans la pile et total
-    Object *stack = card->owner;
-    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
-    int rang = 0, total = 0;
-    if (stack)
-        for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD) {
-                total++;
-                if (stack->parts[i] == card) rang = total;
-            }
-
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
-    [ids setStringValue:[NSString stringWithFormat:
-        @"Card number: %d out of %d\nCard ID: %d\nCard fields: %d",
-        rang, total, card->id, card->nparts]];
-    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
-    [c addSubview:ids];
-
-    NSButton *(^mkCD)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
-        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
-        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
-        [b setTarget:self]; [b setAction:a];
-        [c addSubview:b];
-        return b;
-    };
-    mkCD(@"Script…", @selector(cardScript:), 16);
-    mkCD(@"Cancel",  @selector(cardCancel:), 148);
-    NSButton *ok = mkCD(@"OK", @selector(cardOK:), 240);
-    [ok setKeyEquivalent:@"\r"];
-
-    [gCardPanel makeKeyAndOrderFront:nil];
-}
-
-- (void)cardOK:(id)sender {
-    if (gCardTarget) {
-        free(gCardTarget->name);
-        gCardTarget->name = strdup([[gCardName stringValue] UTF8String]);
-    }
-    [gCardPanel close];
-    gCardTarget = NULL;
-    [self setNeedsDisplay:YES];
-}
-
-- (void)cardCancel:(id)sender {
-    [gCardPanel close];
-    gCardTarget = NULL;
-}
-
-- (void)cardScript:(id)sender {
-    Object *cd = gCardTarget;
-    [self cardOK:sender];
-    if (cd) [self editScriptOf:cd];
-}
-
 - (void)newBackground:(id)sender {
     Object *card = hc_current_card();
     if (!card) return;
@@ -1376,142 +592,9 @@ static NSTextField *gStackName = nil;
 }
 
 
-- (void)showBackgroundInfo {
-    Object *card = hc_current_card();
-    if (!card || !card->bg) return;
-    Object *bg = card->bg;
-    gBgTarget = bg;
 
-    gBgPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 280, 340, 200)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gBgPanel setTitle:@"Background Info"];
-    [gBgPanel setReleasedWhenClosed:NO];
-    NSView *c = [gBgPanel contentView];
 
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 120, 18)];
-    [lb setStringValue:@"Background Name:"];
-    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
-    [c addSubview:lb];
-
-    gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 158, 184, 22)];
-    [gBgName setStringValue:[NSString stringWithUTF8String:bg->name ? bg->name : ""]];
-    [c addSubview:gBgName];
-
-    // combien de cartes partagent ce fond ?
-    int nCards = 0;
-    Object *stack = bg->owner;
-    if (stack)
-        for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg) nCards++;
-
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
-    [ids setStringValue:[NSString stringWithFormat:
-        @"Background ID: %d\nCards in this background: %d\nFields: %d",
-        bg->id, nCards, bg->nparts]];
-    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
-    [c addSubview:ids];
-
-    NSButton *(^mkBG)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
-        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
-        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
-        [b setTarget:self]; [b setAction:a];
-        [c addSubview:b];
-        return b;
-    };
-    mkBG(@"Script…", @selector(bgScript:), 16);
-    mkBG(@"Cancel",  @selector(bgCancel:), 148);
-    NSButton *ok = mkBG(@"OK", @selector(bgOK:), 240);
-    [ok setKeyEquivalent:@"\r"];
-
-    [gBgPanel makeKeyAndOrderFront:nil];
-}
-
-- (void)bgOK:(id)sender {
-    if (gBgTarget) {
-        free(gBgTarget->name);
-        gBgTarget->name = strdup([[gBgName stringValue] UTF8String]);
-    }
-    [gBgPanel close];
-    gBgTarget = NULL;
-    [self setNeedsDisplay:YES];
-}
-
-- (void)bgCancel:(id)sender {
-    [gBgPanel close];
-    gBgTarget = NULL;
-}
-
-- (void)bgScript:(id)sender {
-    Object *bg = gBgTarget;
-    [self bgOK:sender];
-    if (bg) [self editScriptOf:bg];
-}
-- (void)infoIcon:(id)sender {
-    Object *o = gInfoTarget;
-    if (!o) return;
-
-    int rows = (NUM_HCICONS + ICONGRID_COLS - 1) / ICONGRID_COLS;
-    CGFloat gw = ICONGRID_COLS * ICONGRID_CELL;
-    CGFloat gh = rows * ICONGRID_CELL;
-
-    gIconPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(360, 200, gw + 34, 380)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gIconPanel setTitle:@"Icons"];
-    [gIconPanel setReleasedWhenClosed:NO];
-    NSView *c = [gIconPanel contentView];
-
-    NSScrollView *scroll = [[NSScrollView alloc]
-        initWithFrame:NSMakeRect(12, 76, gw + 16, 288)];
-    [scroll setHasVerticalScroller:YES];
-    [scroll setBorderType:NSBezelBorder];
-
-    gIconGrid = [[IconGrid alloc] initWithFrame:NSMakeRect(0, 0, gw, gh)];
-    gIconGrid.selected = o->icon;
-    [scroll setDocumentView:gIconGrid];
-    [c addSubview:scroll];
-
-    gIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 50, gw, 18)];
-    [gIconLabel setBezeled:NO]; [gIconLabel setDrawsBackground:NO];
-    [gIconLabel setEditable:NO];
-    [c addSubview:gIconLabel];
-
-    NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
-            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 12, 76, 28)];
-            [b setTitle:t];
-            [b setBezelStyle:NSBezelStyleRounded];
-            [b setTarget:self];
-            [b setAction:a];
-            [c addSubview:b];
-            return b;
-        };
-        mkIB(@"Aucune", @selector(iconNone:),   12);
-        mkIB(@"Cancel", @selector(iconCancel:), gw + 34 - 172);
-        NSButton *ok = mkIB(@"OK", @selector(iconOK:), gw + 34 - 88);
-        [ok setKeyEquivalent:@"\r"];
-
-    [gIconPanel makeKeyAndOrderFront:nil];
-}
-
-- (void)iconOK:(id)sender {
-    if (gInfoTarget && gIconGrid) {
-        gInfoTarget->icon = gIconGrid.selected;
-        [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", gIconGrid.selected]];
-    }
-    [gIconPanel close];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)iconNone:(id)sender {
-    if (gIconGrid) { gIconGrid.selected = 0; [gIconGrid setNeedsDisplay:YES]; }
-}
-
-- (void)iconCancel:(id)sender {
-    [gIconPanel close];
-}
+  
 - (BOOL)acceptsFirstResponder { return YES; }
 
 - (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p {
@@ -1546,192 +629,17 @@ static NSTextField *gStackName = nil;
     gPopupTarget = NULL;
     [self setNeedsDisplay:YES];
 }
-- (void)infoContents:(id)sender {
-    Object *o = gInfoTarget;
-    if (!o) return;
-    gContentsTarget = o;
 
-    gContentsPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(340, 240, 320, 260)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gContentsPanel setTitle:@"Contents"];
-    [gContentsPanel setReleasedWhenClosed:NO];
-    NSView *c = [gContentsPanel contentView];
 
-    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(12, 52, 296, 192)];
-    [scroll setHasVerticalScroller:YES];
-    [scroll setBorderType:NSBezelBorder];
-    NSTextView *tv = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
-    [tv setFont:[NSFont systemFontOfSize:12]];
-    [tv setString:[NSString stringWithUTF8String:o->contents ? o->contents : ""]];
-    [scroll setDocumentView:tv];
-    [c addSubview:scroll];
-    gContentsView = tv;
 
-    NSButton *cancel = [[NSButton alloc] initWithFrame:NSMakeRect(108, 12, 96, 28)];
-    [cancel setTitle:@"Cancel"];
-    [cancel setBezelStyle:NSBezelStyleRounded];
-    [cancel setTarget:self];
-    [cancel setAction:@selector(contentsCancel:)];
-    [c addSubview:cancel];
 
-    NSButton *ok = [[NSButton alloc] initWithFrame:NSMakeRect(212, 12, 96, 28)];
-    [ok setTitle:@"OK"];
-    [ok setBezelStyle:NSBezelStyleRounded];
-    [ok setKeyEquivalent:@"\r"];
-    [ok setTarget:self];
-    [ok setAction:@selector(contentsOK:)];
-    [c addSubview:ok];
 
-    [gContentsPanel makeKeyAndOrderFront:nil];
-}
 
-- (void)contentsOK:(id)sender {
-    if (gContentsTarget)
-        hc_set_field_text(gContentsTarget, [[gContentsView string] UTF8String]);
-    [gContentsPanel close];
-    gContentsTarget = NULL;
-    [self setNeedsDisplay:YES];
-}
 
-- (void)contentsCancel:(id)sender {
-    [gContentsPanel close];
-    gContentsTarget = NULL;
-}
-- (void)showButtonInfo:(Object *)obj {
-    if (!obj) return;
-    gInfoTarget = obj;
 
-    if (gInfoPanel) [gInfoPanel close];
-    gInfoPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(300, 260, 360, 300)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-                    backing:NSBackingStoreBuffered defer:NO];
-    [gInfoPanel setTitle:@"Button Info"];
-    [gInfoPanel setReleasedWhenClosed:NO];
-    NSView *c = [gInfoPanel contentView];
+ 
 
-    // --- nom ---
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 90, 18)];
-    [lb setStringValue:@"Button Name:"];
-    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
-    [c addSubview:lb];
-
-    gInfoName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 260, 232, 22)];
-    [gInfoName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
-    [c addSubview:gInfoName];
-
-    // --- identifiants (lecture seule) ---
-    int rang = 0;
-    Object *owner = obj->owner;
-    if (owner)
-        for (int i = 0; i < owner->nparts; i++)
-            if (owner->parts[i] == obj) { rang = i + 1; break; }
-
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 200, 200, 52)];
-    [ids setStringValue:[NSString stringWithFormat:
-        @"Card button number: %d\nCard part number: %d\nCard button ID: %d",
-        rang, rang, obj->id]];
-    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
-    [c addSubview:ids];
-
-    // --- style ---
-    NSTextField *sl = [[NSTextField alloc] initWithFrame:NSMakeRect(224, 234, 40, 18)];
-    [sl setStringValue:@"Style:"];
-    [sl setBezeled:NO]; [sl setDrawsBackground:NO]; [sl setEditable:NO];
-    [c addSubview:sl];
-    NSTextField *tl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 126, 70, 18)];
-        [tl setStringValue:@"Text size:"];
-        [tl setBezeled:NO]; [tl setDrawsBackground:NO]; [tl setEditable:NO];
-        [c addSubview:tl];
-
-        gInfoTextSize = [[NSTextField alloc] initWithFrame:NSMakeRect(86, 124, 60, 22)];
-    [gInfoTextSize setStringValue:[NSString stringWithFormat:@"%d", obj->textsize]];        [c addSubview:gInfoTextSize];
-    gInfoStyle = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(224, 210, 120, 24)];
-    [gInfoStyle addItemsWithTitles:@[@"transparent", @"opaque", @"rectangle",
-                                         @"shadow", @"roundRect", @"checkBox",
-                                         @"radioButton", @"standard", @"default",
-                                         @"oval", @"popup"]];
-    
-    const char *st = obj->style ? obj->style : "rectangle";
-    [gInfoStyle selectItemWithTitle:[NSString stringWithUTF8String:st]];
-    [c addSubview:gInfoStyle];
-
-    // --- cases a cocher ---
-    gInfoShowName = [[NSButton alloc] initWithFrame:NSMakeRect(224, 178, 120, 20)];
-    [gInfoShowName setButtonType:NSButtonTypeSwitch];
-    [gInfoShowName setTitle:@"Show Name"];
-    [gInfoShowName setState:obj->showname ? NSControlStateValueOn : NSControlStateValueOff];
-    [c addSubview:gInfoShowName];
-
-    gInfoAutoHilite = [[NSButton alloc] initWithFrame:NSMakeRect(224, 156, 120, 20)];
-    [gInfoAutoHilite setButtonType:NSButtonTypeSwitch];
-    [gInfoAutoHilite setTitle:@"Auto Hilite"];
-    [gInfoAutoHilite setState:obj->autohilite ? NSControlStateValueOn : NSControlStateValueOff];
-    [c addSubview:gInfoAutoHilite];
-
-    // --- icone (par identifiant, en attendant le selecteur) ---
-    NSTextField *il = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 156, 40, 18)];
-    [il setStringValue:@"Icon:"];
-    [il setBezeled:NO]; [il setDrawsBackground:NO]; [il setEditable:NO];
-    [c addSubview:il];
-
-    gInfoIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(56, 154, 70, 22)];
-    [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", obj->icon]];
-    [c addSubview:gInfoIconField];
-
-    // --- boutons ---
-    NSButton *(^mk)(NSString*, SEL, CGFloat, CGFloat) =
-        ^NSButton*(NSString *t, SEL a, CGFloat x, CGFloat y) {
-            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 96, 28)];
-            [b setTitle:t];
-            [b setBezelStyle:NSBezelStyleRounded];
-            [b setTarget:self];
-            [b setAction:a];
-            [c addSubview:b];
-            return b;
-        };
-    mk(@"Script…", @selector(infoScript:), 16, 52);
-    mk(@"Contents…", @selector(infoContents:), 224, 52);
-    mk(@"Icon…",   @selector(infoIcon:),   120, 52);
-    mk(@"Cancel",  @selector(infoCancel:), 128, 16);
-    NSButton *ok = mk(@"OK", @selector(infoOK:), 232, 16);
-    [ok setKeyEquivalent:@"\r"];
-
-    [gInfoPanel makeKeyAndOrderFront:nil];
-}
-
-- (void)infoOK:(id)sender {
-    Object *o = gInfoTarget;
-        if (o) {
-            // nom
-            free(o->name);
-            o->name = strdup([[gInfoName stringValue] UTF8String]);
-            // style
-            free(o->style);
-            o->style = strdup([[gInfoStyle titleOfSelectedItem] UTF8String]);
-            o->textsize = [[gInfoTextSize stringValue] intValue];
-            o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
-            o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);
-            o->icon = [[gInfoIconField stringValue] intValue];
-        }
-    [gInfoPanel close];
-    gInfoTarget = NULL;
-    [self setNeedsDisplay:YES];
-}
-
-- (void)infoCancel:(id)sender {
-    [gInfoPanel close];
-    gInfoTarget = NULL;
-}
-
-- (void)infoScript:(id)sender {
-    Object *o = gInfoTarget;
-    [self infoOK:sender];        // valider les changements avant
-    if (o) [self editScriptOf:o];
-}
-
+ 
  
 
 - (void)copy:(id)sender {
@@ -2048,60 +956,8 @@ static NSTextField *gStackName = nil;
     [gPatternPanel setContentView:grid];
     [gPatternPanel makeKeyAndOrderFront:nil];
 }
-// remplit l'intérieur d'un polygone (forme libre) avec le motif + encre courants
-static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
-    if (!rep || n < 3) return;
-    int W = (int)[rep pixelsWide];
-    int H = (int)[rep pixelsHigh];
-    unsigned char *data = [rep bitmapData];
-    if (!data) return;
-    NSInteger bpr = [rep bytesPerRow];
-    NSInteger spp = [rep samplesPerPixel];
+ 
 
-    // boîte englobante du polygone
-    double minx = pts[0].x, maxx = pts[0].x, miny = pts[0].y, maxy = pts[0].y;
-    for (int i = 1; i < n; i++) {
-        if (pts[i].x < minx) minx = pts[i].x;
-        if (pts[i].x > maxx) maxx = pts[i].x;
-        if (pts[i].y < miny) miny = pts[i].y;
-        if (pts[i].y > maxy) maxy = pts[i].y;
-    }
-    int y0 = (int)floor(miny), y1 = (int)ceil(maxy);
-    int x0 = (int)floor(minx), x1 = (int)ceil(maxx);
-    if (y0 < 0) y0 = 0; if (x0 < 0) x0 = 0;
-    if (y1 >= H) y1 = H-1; if (x1 >= W) x1 = W-1;
-
-    for (int y = y0; y <= y1; y++) {
-        for (int x = x0; x <= x1; x++) {
-            // test point-dans-polygone (ray casting horizontal)
-            int inside = 0;
-            for (int i = 0, j = n-1; i < n; j = i++) {
-                double yi = pts[i].y, yj = pts[j].y;
-                double xi = pts[i].x, xj = pts[j].x;
-                if (((yi > y) != (yj > y)) &&
-                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
-                    inside = !inside;
-            }
-            if (!inside) continue;
-
-            unsigned char *px = data + y*bpr + x*spp;
-            if (pattern_bit(gPattern, x, y)) {
-                px[0]=0; px[1]=0; px[2]=0;
-                if (spp>=4) px[3]=255;
-            } else {
-                                if (gInk == INK_ERASE) {
-                                    px[0]=0; px[1]=0; px[2]=0;
-                                    if (spp>=4) px[3]=0;          // efface
-                                } else if (gTransparentBg) {
-                                    continue;                      // laisser intact
-                                } else {
-                                    px[0]=255; px[1]=255; px[2]=255;
-                                    if (spp>=4) px[3]=255;        // fond blanc opaque
-                                }
-                            }
-        }
-    }
-}
 - (void)drawRect:(NSRect)dirtyRect {
     [[NSColor whiteColor] setFill];
     NSRectFill(dirtyRect);

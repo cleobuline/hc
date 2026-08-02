@@ -8,4 +8,8 @@ BOOL    gShapeFilled = NO;
 int gBrush = 5;
 Object *gSelected = NULL;
 id gView = nil;
+NSBitmapImageRep *gClipboard = nil;
+int gClipW = 0, gClipH = 0;
+NSPoint gClipPts[4096];
+int gClipPtsCount = 0;
 

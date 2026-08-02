@@ -6,6 +6,9 @@
 #define NUM_PATTERNS 38
 #define ICONGRID_COLS 6
 #define ICONGRID_CELL 44
+
+extern const int NUM_TOOLCELLS;
+
 int pattern_bit(int pat, int x, int y);
 
 @interface PatternPalette : NSView

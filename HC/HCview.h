@@ -23,25 +23,7 @@
 - (void)showPatternPalette;
 - (void)showWidthPalette;
 - (void)showBrushPalette;
-- (void)showButtonInfo:(Object *)obj;
-- (void)infoContents:(id)sender;
-- (void)contentsOK:(id)sender;
-- (void)contentsCancel:(id)sender;
-- (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p;
-- (void)popupChosen:(id)sender;
 - (void)newBackground:(id)sender;
-- (void)showBackgroundInfo;
-- (void)bgOK:(id)sender;
-- (void)bgCancel:(id)sender;
-- (void)bgScript:(id)sender;
-- (void)showCardInfo;
-- (void)cardOK:(id)sender;
-- (void)cardCancel:(id)sender;
-- (void)cardScript:(id)sender;
-- (void)showStackInfo;
-- (void)stackOK:(id)sender;
-- (void)stackCancel:(id)sender;
-- (void)stackScript:(id)sender;
 - (void)updateWindowTitle;
 @end
 

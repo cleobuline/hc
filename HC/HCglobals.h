@@ -21,4 +21,9 @@ extern id gView;
 extern int gBrush;
 extern int gTextSize;
 extern BOOL gTransparentBg;
+extern NSBitmapImageRep *gClipboard;
+extern int gClipW, gClipH;
+extern NSPoint gClipPts[4096];
+extern int gClipPtsCount;
+
 #endif

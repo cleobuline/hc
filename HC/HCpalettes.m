@@ -144,7 +144,7 @@ static const ToolCell TOOLCELLS[] = {
 };
 
 
-#define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
+const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 @interface HCView (Palettes)
 - (void)showPatternPalette;
 - (void)showWidthPalette;
