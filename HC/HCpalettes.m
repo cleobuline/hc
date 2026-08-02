@@ -7,8 +7,8 @@
 
 #import "HCpalettes.h"
 #import "icons.h"
-
- 
+#import "HCview.h"
+#import "HCicons.h"
 // #import "HCview.h"
 // ==================== palette d'épaisseur de trait (vue custom) ====================
  
@@ -145,8 +145,62 @@ static const ToolCell TOOLCELLS[] = {
 
 
 #define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
-
+@interface HCView (Palettes)
+- (void)showPatternPalette;
+- (void)showWidthPalette;
+- (void)showBrushPalette;
+- (void)commitText;
+@end
  
+
+#define ICONGRID_COLS 6
+#define ICONGRID_CELL 44
+
+@implementation IconGrid
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+    NSRectFill([self bounds]);
+
+    for (int i = 0; i < NUM_HCICONS; i++) {
+        int col = i % ICONGRID_COLS, row = i / ICONGRID_COLS;
+        NSRect box = NSMakeRect(col*ICONGRID_CELL, row*ICONGRID_CELL,
+                                ICONGRID_CELL, ICONGRID_CELL);
+        if (!NSIntersectsRect(box, dirtyRect)) continue;
+
+        BOOL active = (HCICONS[i].id == self.selected);
+        [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
+        NSRectFill(box);
+
+        [[NSColor blackColor] setFill];
+        hcicon_draw(&HCICONS[i], box, 1.0);
+
+        if (active) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr = [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    int col = (int)(p.x / ICONGRID_CELL);
+    int row = (int)(p.y / ICONGRID_CELL);
+    int i = row * ICONGRID_COLS + col;
+    if (col < 0 || col >= ICONGRID_COLS || i < 0 || i >= NUM_HCICONS) return;
+    self.selected = HCICONS[i].id;
+    [self setNeedsDisplay:YES];
+}
+
+@end
 @implementation ToolPalette
 
 - (BOOL)isFlipped { return YES; }

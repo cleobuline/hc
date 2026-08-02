@@ -95,9 +95,13 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
+    [self.window setReleasedWhenClosed:NO];
     [view applyStackSize];  
 }
-
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+    if (!flag) [self.window makeKeyAndOrderFront:nil];
+    return YES;
+}
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
 }
 - (void)newCard:(id)sender {
@@ -139,6 +143,7 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
                 }
             }
             [gView applyStackSize];      // ← ajuster la fenêtre à la taille de la pile chargée
+            [self.window makeKeyAndOrderFront:nil];
             [gView setNeedsDisplay:YES];
         } else {
             NSLog(@"échec du chargement");

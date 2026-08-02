@@ -1389,6 +1389,8 @@ static void term_value(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
                     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
                     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
+                    if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines"))
+                        { snprintf(out, outlen, "%d", o->selectedline); return; }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
@@ -2263,6 +2265,9 @@ static void exec_line(Object *me, const char *line)
         } else if (ci_equal(prop, "icon")) {
             o->icon = atoi(val);
             notify_field(o);
+        } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
+            o->selectedline = atoi(val);
+            notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
             o->hilite = truthy(val);
             notify_field(o);
@@ -2277,8 +2282,8 @@ static void exec_line(Object *me, const char *line)
             free(o->style);
             o->style = dupstr(val);
         } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
-            if (o->type != OBJ_FIELD) {
-                emit(HC_ERR, "   !! seul un champ a un contenu");
+            if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
+                emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
                 return;
             }
             free(o->contents);
@@ -2554,7 +2559,7 @@ const char *hc_script_of(Object *o) { return o ? o->script : NULL; }
 
 void hc_set_field_text(Object *field, const char *text)
 {
-    if (!field || field->type != OBJ_FIELD) return;
+    if (!field || (field->type != OBJ_FIELD && field->type != OBJ_BUTTON)) return;
     free(field->contents);
     field->contents = dupstr(text ? text : "");
 }

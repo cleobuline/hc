@@ -56,6 +56,25 @@ static NSMutableString *gTextBuf = nil;
 int gTextSize = 16;
 static NSColor *gTextColor = nil;
 static BOOL gTextUnderline = NO;
+
+
+
+
+
+static NSPanel      *gInfoPanel = nil;
+static Object       *gInfoTarget = NULL;
+static NSTextField  *gInfoName = nil;
+static NSPopUpButton *gInfoStyle = nil;
+static NSButton     *gInfoShowName = nil;
+static NSButton     *gInfoAutoHilite = nil;
+static NSTextField  *gInfoIconField = nil;
+
+
+static NSPanel    *gContentsPanel = nil;
+static NSTextView *gContentsView = nil;
+static Object     *gContentsTarget = NULL;
+static Object *gPopupTarget = NULL;
+
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 
@@ -119,7 +138,13 @@ static NSPoint gFloatPos;          // position (coin haut-gauche) du flottant
 static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 static NSFont *gTextFont = nil;
+static NSTextField *gInfoTextSize = nil;
 
+
+
+static NSPanel   *gIconPanel = nil;
+static IconGrid  *gIconGrid = nil;
+static NSTextField *gIconLabel = nil;
 // ==================== icônes bitmap 16x16 (1 = pixel noir) ====================
 // dessine chaque ligne en binaire : le motif est lisible directement dans le code
 
@@ -754,6 +779,33 @@ for (int y=y0;y<=y1;y++)
     }
 }
 // dessine un objet (bouton ou champ) à son rectangle
+/* ---- dessine le nom d'un bouton, centre dans le rect ---- */
+static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
+    if (!o->showname) return;
+    CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
+    NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+    [ps setAlignment:NSTextAlignmentCenter];
+    NSDictionary *attrs = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+        NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
+        NSParagraphStyleAttributeName: ps
+    };
+    NSRect tr = NSInsetRect(r, 4, 0);
+    tr.origin.y += (r.size.height - fs * 1.2) / 2;
+    [s drawInRect:tr withAttributes:attrs];
+}
+
+/* ---- contour pointille montre en mode edition ---- */
+static void draw_edit_outline(NSRect r) {
+    if (gTool != TOOL_BUTTON && gTool != TOOL_FIELD) return;
+    [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+    NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
+    [outline setLineWidth:1];
+    CGFloat dash[] = {3, 2};
+    [outline setLineDash:dash count:2 phase:0];
+    [outline stroke];
+}
+
 static void draw_part(Object *o) {
     if (!o->visible) return;
 
@@ -761,39 +813,38 @@ static void draw_part(Object *o) {
 
     if (o->type == OBJ_BUTTON) {
         const char *st = o->style ? o->style : "rectangle";
-        BOOL isCheck = (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0);
-        BOOL isRadio = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
-        BOOL isTransparent = (strcmp(st, "transparent") == 0);
+        BOOL isCheck   = (strcmp(st, "checkBox") == 0    || strcmp(st, "checkbox") == 0);
+        BOOL isRadio   = (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0);
+        BOOL isTransp  = (strcmp(st, "transparent") == 0);
+        BOOL isRound   = (strcmp(st, "roundRect") == 0   || strcmp(st, "roundrect") == 0);
+        BOOL isOpaque  = (strcmp(st, "opaque") == 0);
+        BOOL isShadow  = (strcmp(st, "shadow") == 0);
+        BOOL isPopup   = (strcmp(st, "popup") == 0);
+        BOOL isStd     = (strcmp(st, "standard") == 0);
+        BOOL isDefault = (strcmp(st, "default") == 0);
+        BOOL isOval    = (strcmp(st, "oval") == 0);
+
         const char *nm = o->name ? o->name : "";
         NSString *s = [NSString stringWithUTF8String:nm];
+        BOOL on = o->hilite;
 
         const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
+        /* ---------- bouton a icone : l'icone remplace l'apparence ---------- */
         if (ic) {
-            // ---- bouton a icone : l'icone remplace l'apparence ----
-            BOOL on = o->hilite;
-            if (on) {                       // hilite : fond noir, icone en blanc
+            CGFloat iy = o->y + 2;
+            NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
+
+            if (on) {
                 [[NSColor blackColor] setFill];
                 NSRectFill(r);
+                [[NSColor whiteColor] setFill];
+            } else {
+                [[NSColor blackColor] setFill];
             }
-            // icone centree horizontalement, en haut
-            CGFloat iy = o->y + 2;
-            NSRect ir = NSMakeRect(o->x + (o->w - 32)/2.0, iy, 32, 32);
-            if (on) [[NSColor whiteColor] setFill];
-            else    [[NSColor blackColor] setFill];
             hcicon_draw(ic, ir, 1.0);
+            draw_edit_outline(r);
 
-            // en mode edition : contour pointille pour pouvoir la saisir
-            if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
-                [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
-                NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
-                [outline setLineWidth:1];
-                CGFloat dash[] = {3, 2};
-                [outline setLineDash:dash count:2 phase:0];
-                [outline stroke];
-            }
-
-            // le nom, sous l'icone
             if (o->showname && o->h > 36) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 11;
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
@@ -807,8 +858,8 @@ static void draw_part(Object *o) {
                 [s drawInRect:tr withAttributes:attrs];
             }
         }
+        /* ---------- case a cocher / bouton radio ---------- */
         else if (isCheck || isRadio) {
-            // case ou rond à gauche, nom à droite
             CGFloat box = 14;
             CGFloat cy = o->y + o->h/2.0 - box/2.0;
             NSRect mark = NSMakeRect(o->x + 2, cy, box, box);
@@ -820,20 +871,19 @@ static void draw_part(Object *o) {
                 NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:mark];
                 [circle fill];
                 [circle stroke];
-                if (o->hilite) {
+                if (on) {
                     NSRect dot = NSInsetRect(mark, 4, 4);
                     [[NSColor blackColor] setFill];
                     [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
                 }
             } else {
-                // case à cocher
                 [[NSColor whiteColor] setFill];
                 NSRectFill(mark);
                 [[NSColor blackColor] setStroke];
-                NSBezierPath *box_path = [NSBezierPath bezierPathWithRect:mark];
-                [box_path setLineWidth:1];
-                [box_path stroke];
-                if (o->hilite) {
+                NSBezierPath *bp = [NSBezierPath bezierPathWithRect:mark];
+                [bp setLineWidth:1];
+                [bp stroke];
+                if (on) {
                     NSBezierPath *x = [NSBezierPath bezierPath];
                     [x moveToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+2)];
                     [x lineToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+box-2)];
@@ -844,60 +894,144 @@ static void draw_part(Object *o) {
                 }
             }
 
-            // le nom, à droite de la case
             if (o->showname) {
-                NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:13] };
-                [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - 8) withAttributes:attrs];
+                CGFloat fs = o->textsize > 0 ? o->textsize : 13;
+                NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:fs] };
+                [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - fs*0.6)
+                withAttributes:attrs];
             }
         }
-        else if (isTransparent) {
-            BOOL on = o->hilite;
+        /* ---------- transparent ---------- */
+        else if (isTransp) {
             if (on) {
                 [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
                 NSRectFill(r);
             }
-            // en mode édition : montrer le contour pour pouvoir le saisir
-            if (gTool == TOOL_BUTTON || gTool == TOOL_FIELD) {
-                [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
-                NSBezierPath *outline = [NSBezierPath bezierPathWithRect:r];
-                [outline setLineWidth:1];
-                CGFloat dash[] = {3, 2};
-                [outline setLineDash:dash count:2 phase:0];
-                [outline stroke];
-            }
-            CGFloat fs = o->textsize > 0 ? o->textsize : 16;
-            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-            [ps setAlignment:NSTextAlignmentCenter];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
-                NSForegroundColorAttributeName: [NSColor blackColor],
-                NSParagraphStyleAttributeName: ps
-            };
-            NSRect tr = NSInsetRect(r, 2, 0);
-            tr.origin.y += (r.size.height - fs * 1.2) / 2;
-            if (o->showname)
+            draw_edit_outline(r);
+            if (o->showname) {
+                CGFloat fs = o->textsize > 0 ? o->textsize : 16;
+                NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
+                [ps setAlignment:NSTextAlignmentCenter];
+                NSDictionary *attrs = @{
+                    NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
+                    NSForegroundColorAttributeName: [NSColor blackColor],
+                    NSParagraphStyleAttributeName: ps
+                };
+                NSRect tr = NSInsetRect(r, 2, 0);
+                tr.origin.y += (r.size.height - fs * 1.2) / 2;
                 [s drawInRect:tr withAttributes:attrs];
+            }
         }
+        /* ---------- popup : cadre + chevron + ligne courante ---------- */
+        /* ---------- popup : rectangle ombre + chevron + ligne courante ---------- */
+                else if (isPopup) {
+                    NSRect body = NSMakeRect(r.origin.x, r.origin.y,
+                                             r.size.width - 3, r.size.height - 3);
+                    NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
+                                             r.size.width - 3, r.size.height - 3);
+
+                    [[NSColor blackColor] setFill];
+                    NSRectFill(sh);
+                    [[NSColor whiteColor] setFill];
+                    NSRectFill(body);
+                    [[NSColor blackColor] setStroke];
+                    NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
+                    [bp setLineWidth:1];
+                    [bp stroke];
+
+                    // chevron de deroulement, a droite
+                    CGFloat cx = body.origin.x + body.size.width - 12;
+                    CGFloat cy = body.origin.y + body.size.height/2.0;
+                    [[NSColor blackColor] setFill];
+                    NSBezierPath *ar = [NSBezierPath bezierPath];
+                    [ar moveToPoint:NSMakePoint(cx - 4, cy - 2)];
+                    [ar lineToPoint:NSMakePoint(cx + 4, cy - 2)];
+                    [ar lineToPoint:NSMakePoint(cx,     cy + 3)];
+                    [ar closePath];
+                    [ar fill];
+
+                    // la ligne choisie, ou le nom du bouton a defaut
+                    NSString *label = s;
+                    if (o->contents && *o->contents) {
+                        NSArray *lines = [[NSString stringWithUTF8String:o->contents]
+                                          componentsSeparatedByString:@"\n"];
+                        int sel = o->selectedline > 0 ? o->selectedline : 1;
+                        if (sel <= (int)[lines count] && [lines[sel-1] length] > 0)
+                            label = lines[sel-1];
+                    }
+                    CGFloat fs = o->textsize > 0 ? o->textsize : 12;
+                    NSDictionary *attrs = @{ NSFontAttributeName: [NSFont systemFontOfSize:fs] };
+                    [label drawAtPoint:NSMakePoint(body.origin.x + 6,
+                                                   body.origin.y + (body.size.height - fs*1.3)/2)
+                        withAttributes:attrs];
+                }
+        /* ---------- standard / default : boutons systeme ---------- */
+        else if (isStd || isDefault) {
+            NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 2.5, 2.5)
+                                                              xRadius:6 yRadius:6];
+            [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+            [p fill];
+            [[NSColor blackColor] setStroke];
+            [p setLineWidth:1];
+            [p stroke];
+            if (isDefault) {
+                NSBezierPath *o2 = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 1.5, 1.5)
+                                                                   xRadius:9 yRadius:9];
+                [o2 setLineWidth:3];
+                [o2 stroke];
+            }
+            draw_btn_label(o, s, r, on, 13);
+        }
+        /* ---------- oval ---------- */
+        else if (isOval) {
+            NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(r, 0.5, 0.5)];
+            [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+            [p fill];
+            [[NSColor blackColor] setStroke];
+            [p setLineWidth:1];
+            [p stroke];
+            draw_btn_label(o, s, r, on, 13);
+        }
+        /* ---------- shadow ---------- */
+        else if (isShadow) {
+            NSRect body = NSMakeRect(r.origin.x, r.origin.y,
+                                     r.size.width - 3, r.size.height - 3);
+            NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
+                                     r.size.width - 3, r.size.height - 3);
+            [[NSColor blackColor] setFill];
+            NSRectFill(sh);
+            [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+            NSRectFill(body);
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
+            [bp setLineWidth:1];
+            [bp stroke];
+            draw_btn_label(o, s, body, on, 13);
+        }
+        /* ---------- roundRect ---------- */
+        else if (isRound) {
+            NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
+                                                              xRadius:8 yRadius:8];
+            [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+            [p fill];
+            [[NSColor blackColor] setStroke];
+            [p setLineWidth:1];
+            [p stroke];
+            draw_btn_label(o, s, r, on, 13);
+        }
+        /* ---------- opaque : fond uni, pas de cadre ---------- */
+        else if (isOpaque) {
+            [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+            NSRectFill(r);
+            draw_btn_label(o, s, r, on, 13);
+        }
+        /* ---------- rectangle (defaut) ---------- */
         else {
-            // bouton rectangle classique
-            BOOL on = o->hilite;
             [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
             NSRectFill(r);
             [[NSColor blackColor] setStroke];
             NSFrameRect(r);
-
-            CGFloat fs = o->textsize > 0 ? o->textsize : 13;
-            NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
-            [ps setAlignment:NSTextAlignmentCenter];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
-                NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-                NSParagraphStyleAttributeName: ps
-            };
-            NSRect tr = NSInsetRect(r, 4, 0);
-            tr.origin.y += (r.size.height - fs * 1.2) / 2;
-            if (o->showname)
-                [s drawInRect:tr withAttributes:attrs];
+            draw_btn_label(o, s, r, on, 13);
         }
     }
     else if (o->type == OBJ_FIELD) {
@@ -1050,7 +1184,297 @@ static const ToolCell TOOLCELLS[] = {
 #define NUM_TOOLCELLS (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]))
 
 @implementation HCView
+
+
+
+
+
+- (void)infoIcon:(id)sender {
+    Object *o = gInfoTarget;
+    if (!o) return;
+
+    int rows = (NUM_HCICONS + ICONGRID_COLS - 1) / ICONGRID_COLS;
+    CGFloat gw = ICONGRID_COLS * ICONGRID_CELL;
+    CGFloat gh = rows * ICONGRID_CELL;
+
+    gIconPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(360, 200, gw + 34, 380)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gIconPanel setTitle:@"Icons"];
+    [gIconPanel setReleasedWhenClosed:NO];
+    NSView *c = [gIconPanel contentView];
+
+    NSScrollView *scroll = [[NSScrollView alloc]
+        initWithFrame:NSMakeRect(12, 76, gw + 16, 288)];
+    [scroll setHasVerticalScroller:YES];
+    [scroll setBorderType:NSBezelBorder];
+
+    gIconGrid = [[IconGrid alloc] initWithFrame:NSMakeRect(0, 0, gw, gh)];
+    gIconGrid.selected = o->icon;
+    [scroll setDocumentView:gIconGrid];
+    [c addSubview:scroll];
+
+    gIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 50, gw, 18)];
+    [gIconLabel setBezeled:NO]; [gIconLabel setDrawsBackground:NO];
+    [gIconLabel setEditable:NO];
+    [c addSubview:gIconLabel];
+
+    NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 12, 76, 28)];
+            [b setTitle:t];
+            [b setBezelStyle:NSBezelStyleRounded];
+            [b setTarget:self];
+            [b setAction:a];
+            [c addSubview:b];
+            return b;
+        };
+        mkIB(@"Aucune", @selector(iconNone:),   12);
+        mkIB(@"Cancel", @selector(iconCancel:), gw + 34 - 172);
+        NSButton *ok = mkIB(@"OK", @selector(iconOK:), gw + 34 - 88);
+        [ok setKeyEquivalent:@"\r"];
+
+    [gIconPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)iconOK:(id)sender {
+    if (gInfoTarget && gIconGrid) {
+        gInfoTarget->icon = gIconGrid.selected;
+        [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", gIconGrid.selected]];
+    }
+    [gIconPanel close];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)iconNone:(id)sender {
+    if (gIconGrid) { gIconGrid.selected = 0; [gIconGrid setNeedsDisplay:YES]; }
+}
+
+- (void)iconCancel:(id)sender {
+    [gIconPanel close];
+}
 - (BOOL)acceptsFirstResponder { return YES; }
+
+- (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p {
+    if (!o->contents || !*o->contents) return;
+    NSArray *lines = [[NSString stringWithUTF8String:o->contents]
+                      componentsSeparatedByString:@"\n"];
+
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+    for (NSUInteger i = 0; i < [lines count]; i++) {
+        NSString *t = lines[i];
+        if ([t length] == 0) continue;
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:t
+                                                    action:@selector(popupChosen:)
+                                             keyEquivalent:@""];
+        [it setTarget:self];
+        [it setTag:(NSInteger)(i + 1)];        // numero de ligne, base 1
+        if ((int)(i + 1) == o->selectedline) [it setState:NSControlStateValueOn];
+        [menu addItem:it];
+    }
+    gPopupTarget = o;
+    NSPoint origin = NSMakePoint(o->x, o->y + o->h);
+    [menu popUpMenuPositioningItem:nil
+                        atLocation:origin
+                            inView:self];
+}
+
+- (void)popupChosen:(id)sender {
+    if (gPopupTarget) {
+        gPopupTarget->selectedline = (int)[sender tag];
+        hc_send(gPopupTarget, "mouseUp");     // le script reagit au choix
+    }
+    gPopupTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+- (void)infoContents:(id)sender {
+    Object *o = gInfoTarget;
+    if (!o) return;
+    gContentsTarget = o;
+
+    gContentsPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(340, 240, 320, 260)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gContentsPanel setTitle:@"Contents"];
+    [gContentsPanel setReleasedWhenClosed:NO];
+    NSView *c = [gContentsPanel contentView];
+
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(12, 52, 296, 192)];
+    [scroll setHasVerticalScroller:YES];
+    [scroll setBorderType:NSBezelBorder];
+    NSTextView *tv = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
+    [tv setFont:[NSFont systemFontOfSize:12]];
+    [tv setString:[NSString stringWithUTF8String:o->contents ? o->contents : ""]];
+    [scroll setDocumentView:tv];
+    [c addSubview:scroll];
+    gContentsView = tv;
+
+    NSButton *cancel = [[NSButton alloc] initWithFrame:NSMakeRect(108, 12, 96, 28)];
+    [cancel setTitle:@"Cancel"];
+    [cancel setBezelStyle:NSBezelStyleRounded];
+    [cancel setTarget:self];
+    [cancel setAction:@selector(contentsCancel:)];
+    [c addSubview:cancel];
+
+    NSButton *ok = [[NSButton alloc] initWithFrame:NSMakeRect(212, 12, 96, 28)];
+    [ok setTitle:@"OK"];
+    [ok setBezelStyle:NSBezelStyleRounded];
+    [ok setKeyEquivalent:@"\r"];
+    [ok setTarget:self];
+    [ok setAction:@selector(contentsOK:)];
+    [c addSubview:ok];
+
+    [gContentsPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)contentsOK:(id)sender {
+    if (gContentsTarget)
+        hc_set_field_text(gContentsTarget, [[gContentsView string] UTF8String]);
+    [gContentsPanel close];
+    gContentsTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)contentsCancel:(id)sender {
+    [gContentsPanel close];
+    gContentsTarget = NULL;
+}
+- (void)showButtonInfo:(Object *)obj {
+    if (!obj) return;
+    gInfoTarget = obj;
+
+    if (gInfoPanel) [gInfoPanel close];
+    gInfoPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(300, 260, 360, 300)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gInfoPanel setTitle:@"Button Info"];
+    [gInfoPanel setReleasedWhenClosed:NO];
+    NSView *c = [gInfoPanel contentView];
+
+    // --- nom ---
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 90, 18)];
+    [lb setStringValue:@"Button Name:"];
+    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+    [c addSubview:lb];
+
+    gInfoName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 260, 232, 22)];
+    [gInfoName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [c addSubview:gInfoName];
+
+    // --- identifiants (lecture seule) ---
+    int rang = 0;
+    Object *owner = obj->owner;
+    if (owner)
+        for (int i = 0; i < owner->nparts; i++)
+            if (owner->parts[i] == obj) { rang = i + 1; break; }
+
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 200, 200, 52)];
+    [ids setStringValue:[NSString stringWithFormat:
+        @"Card button number: %d\nCard part number: %d\nCard button ID: %d",
+        rang, rang, obj->id]];
+    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
+    [c addSubview:ids];
+
+    // --- style ---
+    NSTextField *sl = [[NSTextField alloc] initWithFrame:NSMakeRect(224, 234, 40, 18)];
+    [sl setStringValue:@"Style:"];
+    [sl setBezeled:NO]; [sl setDrawsBackground:NO]; [sl setEditable:NO];
+    [c addSubview:sl];
+    NSTextField *tl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 126, 70, 18)];
+        [tl setStringValue:@"Text size:"];
+        [tl setBezeled:NO]; [tl setDrawsBackground:NO]; [tl setEditable:NO];
+        [c addSubview:tl];
+
+        gInfoTextSize = [[NSTextField alloc] initWithFrame:NSMakeRect(86, 124, 60, 22)];
+    [gInfoTextSize setStringValue:[NSString stringWithFormat:@"%d", obj->textsize]];        [c addSubview:gInfoTextSize];
+    gInfoStyle = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(224, 210, 120, 24)];
+    [gInfoStyle addItemsWithTitles:@[@"transparent", @"opaque", @"rectangle",
+                                         @"shadow", @"roundRect", @"checkBox",
+                                         @"radioButton", @"standard", @"default",
+                                         @"oval", @"popup"]];
+    
+    const char *st = obj->style ? obj->style : "rectangle";
+    [gInfoStyle selectItemWithTitle:[NSString stringWithUTF8String:st]];
+    [c addSubview:gInfoStyle];
+
+    // --- cases a cocher ---
+    gInfoShowName = [[NSButton alloc] initWithFrame:NSMakeRect(224, 178, 120, 20)];
+    [gInfoShowName setButtonType:NSButtonTypeSwitch];
+    [gInfoShowName setTitle:@"Show Name"];
+    [gInfoShowName setState:obj->showname ? NSControlStateValueOn : NSControlStateValueOff];
+    [c addSubview:gInfoShowName];
+
+    gInfoAutoHilite = [[NSButton alloc] initWithFrame:NSMakeRect(224, 156, 120, 20)];
+    [gInfoAutoHilite setButtonType:NSButtonTypeSwitch];
+    [gInfoAutoHilite setTitle:@"Auto Hilite"];
+    [gInfoAutoHilite setState:obj->autohilite ? NSControlStateValueOn : NSControlStateValueOff];
+    [c addSubview:gInfoAutoHilite];
+
+    // --- icone (par identifiant, en attendant le selecteur) ---
+    NSTextField *il = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 156, 40, 18)];
+    [il setStringValue:@"Icon:"];
+    [il setBezeled:NO]; [il setDrawsBackground:NO]; [il setEditable:NO];
+    [c addSubview:il];
+
+    gInfoIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(56, 154, 70, 22)];
+    [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", obj->icon]];
+    [c addSubview:gInfoIconField];
+
+    // --- boutons ---
+    NSButton *(^mk)(NSString*, SEL, CGFloat, CGFloat) =
+        ^NSButton*(NSString *t, SEL a, CGFloat x, CGFloat y) {
+            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 96, 28)];
+            [b setTitle:t];
+            [b setBezelStyle:NSBezelStyleRounded];
+            [b setTarget:self];
+            [b setAction:a];
+            [c addSubview:b];
+            return b;
+        };
+    mk(@"Script…", @selector(infoScript:), 16, 52);
+    mk(@"Contents…", @selector(infoContents:), 224, 52);
+    mk(@"Icon…",   @selector(infoIcon:),   120, 52);
+    mk(@"Cancel",  @selector(infoCancel:), 128, 16);
+    NSButton *ok = mk(@"OK", @selector(infoOK:), 232, 16);
+    [ok setKeyEquivalent:@"\r"];
+
+    [gInfoPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)infoOK:(id)sender {
+    Object *o = gInfoTarget;
+        if (o) {
+            // nom
+            free(o->name);
+            o->name = strdup([[gInfoName stringValue] UTF8String]);
+            // style
+            free(o->style);
+            o->style = strdup([[gInfoStyle titleOfSelectedItem] UTF8String]);
+            o->textsize = [[gInfoTextSize stringValue] intValue];
+            o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
+            o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);
+            o->icon = [[gInfoIconField stringValue] intValue];
+        }
+    [gInfoPanel close];
+    gInfoTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)infoCancel:(id)sender {
+    [gInfoPanel close];
+    gInfoTarget = NULL;
+}
+
+- (void)infoScript:(id)sender {
+    Object *o = gInfoTarget;
+    [self infoOK:sender];        // valider les changements avant
+    if (o) [self editScriptOf:o];
+}
+
+ 
+
 - (void)copy:(id)sender {
     Object *card = hc_current_card();
     if (!card) return;
@@ -1625,179 +2049,183 @@ static void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         hc_set_paint(o, [b64 UTF8String]);
     }
 }
+/* a placer avec les autres globales de HCview.m */
+// static Object *gPopupTarget = NULL;
+
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
+
+    /* ---------- collage flottant : deplacer ou scotcher ---------- */
     if (gFloating) {
-            NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
-            if (NSPointInRect(p, fr)) {
-                // clic DANS le flottant : commencer à le déplacer
-                gFloatDragging = YES;
-                gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
-            } else {
-                // clic DEHORS : scotcher le flottant dans le bitmap
-                Object *card = hc_current_card();
-                Object *layer = gEditBackground ? card->bg : card;
-                if (!layer) layer = card;
-                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                stamp_clipboard(rep, gFloatPos);
-                gFloating = NO;
-                [self setNeedsDisplay:YES];
-            }
-            return;
-        }
-    if (gTool == TOOL_PENCIL) {
+        NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
+        if (NSPointInRect(p, fr)) {
+            gFloatDragging = YES;
+            gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
+        } else {
             Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;   // ← couche active
-        if (!layer) layer = card;
-        NSLog(@"crayon: gEditBackground=%d card=%p bg=%p layer=%p type=%d",
-              gEditBackground, (void*)card, (void*)(card?card->bg:NULL),
-              (void*)layer, layer?layer->type:-1);
-            if (layer) {
-                
-                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                gPenLast = p;
-                gPenDrawing = YES;
-                paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
-                [self setNeedsDisplay:YES];
-            }
-            return;
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                        (int)[self bounds].size.height);
+            stamp_clipboard(rep, gFloatPos);
+            gFloating = NO;
+            [self setNeedsDisplay:YES];
         }
+        return;
+    }
+
+    /* ---------- outils de trace libre ---------- */
+    if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        if (layer) {
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                        (int)[self bounds].size.height);
+            gPenLast = p;
+            gPenDrawing = YES;
+            if (gTool == TOOL_PENCIL)      paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
+            else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
+            else                           erase_stroke(rep, p, p, 16);
+            [self setNeedsDisplay:YES];
+        }
+        return;
+    }
+
+    /* ---------- formes elastiques ---------- */
+    if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
+        gShapeStart = p;
+        gShapeEnd = p;
+        gShapeDrawing = YES;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* ---------- pot de peinture ---------- */
+    if (gTool == TOOL_FILL) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                    (int)[self bounds].size.height);
+        flood_fill(rep, (int)p.x, (int)p.y);
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* ---------- forme libre ---------- */
+    if (gTool == TOOL_FREEFORM) {
+        gFreeCount = 0;
+        gFreePts[gFreeCount++] = p;
+        gFreeDrawing = YES;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* ---------- lasso ---------- */
+    if (gTool == TOOL_LASSO) {
+        [[self window] makeFirstResponder:self];
+        gLassoCount = 0;
+        gLassoPts[gLassoCount++] = p;
+        gLassoDrawing = YES;
+        gLassoActive = NO;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* ---------- selection rectangulaire ---------- */
     if (gTool == TOOL_SELRECT) {
+        [[self window] makeFirstResponder:self];
         gSelStart = p; gSelEnd = p;
         gSelRectDrawing = YES;
         gSelRectActive = NO;
         [self setNeedsDisplay:YES];
         return;
     }
-    if (gTool == TOOL_BRUSH) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            if (layer) {
-                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                gPenLast = p;
-                gPenDrawing = YES;
-                brush_stroke(rep, p, p);
-                [self setNeedsDisplay:YES];
-            }
-            return;
-        }
-    if (gTool == TOOL_ERASER) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-        NSLog(@"gomme: gEditBackground=%d layer type=%d", gEditBackground, layer?layer->type:-1);
-            if (layer) {
-                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                gPenLast = p;
-                gPenDrawing = YES;
-                erase_stroke(rep, p, p, 16);   // gomme large de 16
-                [self setNeedsDisplay:YES];
-            }
-            return;
-        }
-    if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
-            gShapeStart = p;
-            gShapeEnd = p;
-            gShapeDrawing = YES;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    // double-clic en mode édition : éditer le script
-    if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
-        [self editScriptOf:hit];
+
+    /* ---------- outil texte ---------- */
+    if (gTool == TOOL_TEXT) {
+        [self commitText];                 // graver la saisie precedente
+        gTextPos = p;
+        gTextBuf = [NSMutableString string];
+        gTextActive = YES;
+        [[self window] makeFirstResponder:self];
+        [[NSFontManager sharedFontManager] setSelectedFont:text_font() isMultiple:NO];
+        [self setNeedsDisplay:YES];
         return;
     }
-    if (gTool == TOOL_FILL) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-            flood_fill(rep, (int)p.x, (int)p.y);
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    if (gTool == TOOL_FREEFORM) {
-            gFreeCount = 0;
-            gFreePts[gFreeCount++] = p;
-            gFreeDrawing = YES;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    // tool lasso
-        if (gTool == TOOL_LASSO) {
-            gLassoCount = 0;
-            gLassoPts[gLassoCount++] = p;
-            gLassoDrawing = YES;
-            gLassoActive = NO;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    if (gTool == TOOL_BROWSE) {
-            if (hit && hit->type == OBJ_FIELD) {
-                [self beginFieldEdit:hit];
-                return;
-            }
-        if (hit) {
-                    gPressed = hit;
-                    // flash uniquement pour les boutons rectangle avec autohilite
-                    if (hit->type == OBJ_BUTTON && hit->autohilite &&
-                        (!hit->style ||
-                         (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
-                          strcmp(hit->style, "radioButton") != 0 && strcmp(hit->style, "radiobutton") != 0))) {
-                        hit->hilite = 1;
-                    }
-                    hc_send(hit, "mouseDown");
-                    [self setNeedsDisplay:YES];
-                } else {
-                    [self endFieldEdit];
-                }
-            return;
-        }
-    if (gTool == TOOL_TEXT) {
-            [self commitText];          // graver la saisie en cours
-            gTextPos = p;
-            gTextBuf = [NSMutableString string];
-            gTextActive = YES;
-            [[self window] makeFirstResponder:self];
-            [self setNeedsDisplay:YES];
-            return;
-        }
- 
-    // mode bouton/champ
-        // d'abord : saisit-on une poignée de l'objet déjà sélectionné ?
-        if (gSelected) {
-            int h = handle_at(gSelected, p);
-            if (h) {
-                gResizeHandle = h;
-                gMoveStart = p;
-                gObjStartX = gSelected->x;
-                gObjStartY = gSelected->y;
-                gObjStartW = gSelected->w;
-                gObjStartH = gSelected->h;
-                gMoving = NO;
-                gDragging = NO;
-                return;
-            }
-        }
 
-        if (hit) {
-            gSelected = hit;
-            gMoving = YES;
-            [[self window] makeFirstResponder:self];   // ← focus clavier pour recevoir Delete
-            gMoveStart = p;
-            gObjStartX = hit->x;
-            gObjStartY = hit->y;
-            gDragging = NO;
-        } else {
-            gSelected = NULL;
-            gDragStart = p;
-            gDragRect = NSMakeRect(p.x, p.y, 0, 0);
-            gDragging = YES;
+    /* ---------- double-clic en mode edition : Info ou script ---------- */
+    if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
+        if (hit->type == OBJ_BUTTON) [self showButtonInfo:hit];
+        else                         [self editScriptOf:hit];
+        return;
+    }
+
+    /* ---------- navigation ---------- */
+    if (gTool == TOOL_BROWSE) {
+        // bouton popup : derouler le menu
+        if (hit && hit->type == OBJ_BUTTON && hit->style &&
+            strcmp(hit->style, "popup") == 0) {
+            [self showPopupMenuFor:hit atPoint:p];
+            return;
         }
-        [self setNeedsDisplay:YES];
+        if (hit && hit->type == OBJ_FIELD) {
+            [self beginFieldEdit:hit];
+            return;
+        }
+        if (hit) {
+            gPressed = hit;
+            // flash uniquement pour les boutons sans etat persistant
+            if (hit->type == OBJ_BUTTON && hit->autohilite &&
+                (!hit->style ||
+                 (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
+                  strcmp(hit->style, "radioButton") != 0 && strcmp(hit->style, "radiobutton") != 0))) {
+                hit->hilite = 1;
+            }
+            hc_send(hit, "mouseDown");
+            [self setNeedsDisplay:YES];
+        } else {
+            [self endFieldEdit];
+        }
+        return;
+    }
+
+    /* ---------- mode bouton / champ ---------- */
+    // saisit-on une poignee de l'objet deja selectionne ?
+    if (gSelected) {
+        int h = handle_at(gSelected, p);
+        if (h) {
+            gResizeHandle = h;
+            gMoveStart = p;
+            gObjStartX = gSelected->x;
+            gObjStartY = gSelected->y;
+            gObjStartW = gSelected->w;
+            gObjStartH = gSelected->h;
+            gMoving = NO;
+            gDragging = NO;
+            return;
+        }
+    }
+
+    if (hit) {
+        gSelected = hit;
+        gMoving = YES;
+        [[self window] makeFirstResponder:self];   // focus clavier pour Delete
+        gMoveStart = p;
+        gObjStartX = hit->x;
+        gObjStartY = hit->y;
+        gDragging = NO;
+    } else {
+        gSelected = NULL;
+        gDragStart = p;
+        gDragRect = NSMakeRect(p.x, p.y, 0, 0);
+        gDragging = YES;
+    }
+    [self setNeedsDisplay:YES];
 }
+
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];

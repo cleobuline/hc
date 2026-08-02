@@ -23,6 +23,12 @@
 - (void)showPatternPalette;
 - (void)showWidthPalette;
 - (void)showBrushPalette;
+- (void)showButtonInfo:(Object *)obj;
+- (void)infoContents:(id)sender;
+- (void)contentsOK:(id)sender;
+- (void)contentsCancel:(id)sender;
+- (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p;
+- (void)popupChosen:(id)sender;
 @end
 
 extern HCView *gView;

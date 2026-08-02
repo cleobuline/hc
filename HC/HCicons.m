@@ -6303,7 +6303,7 @@ const HCIcon *hcicon_find(int id) {
 
 void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px) {
     if (!ic) return;
-    [[NSColor blackColor] setFill];
+   
     CGFloat ox = r.origin.x + (r.size.width  - 32*px) / 2;
     CGFloat oy = r.origin.y + (r.size.height - 32*px) / 2;
     for (int row = 0; row < 32; row++) {

@@ -44,6 +44,7 @@ struct Object {
     int      textsize;  /* taille de police du nom (0 = défaut) */
     int      showname;  /* le nom du bouton est-il affiché ? (1 = oui par défaut) */
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
+    int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
     char    *contents;  /* contenu textuel (champs) */
 
     /* géométrie : rectangle en coordonnées carte (pixels).

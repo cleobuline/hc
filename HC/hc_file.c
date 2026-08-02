@@ -93,13 +93,14 @@ static void put_part(FILE *f, Object *o)
     fprintf(f, "rect %d,%d,%d,%d\n", o->x, o->y, o->x + o->w, o->y + o->h);
     if (o->style) fprintf(f, "style \"%s\"\n", o->style);
     put_block(f, "script", o->script);
-    if (o->type == OBJ_FIELD) put_block(f, "contents", o->contents);
+    if (o->type == OBJ_FIELD || o->type == OBJ_BUTTON) put_block(f, "contents", o->contents);
     if (!o->visible) fprintf(f, "hidden\n");
     if (o->hilite) fprintf(f, "hilite\n");
     if (o->autohilite) fprintf(f, "autohilite\n");
     if (o->textsize) fprintf(f, "textsize %d\n", o->textsize);
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
+    if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
     fprintf(f, "end %s\n", kind);
 }
 
@@ -253,7 +254,7 @@ Object *hc_load(const char *path)
             }
             if (strcmp(s, "end contents") == 0) {
                 char *t = acc_take(&acc);
-                if (target && target->type == OBJ_FIELD) {
+                if (target && (target->type == OBJ_FIELD || target->type == OBJ_BUTTON)) {
                     free(target->contents);
                     target->contents = t ? t : NULL;
                 } else free(t);
@@ -339,6 +340,10 @@ Object *hc_load(const char *path)
         }
         if (strncmp(s, "icon ", 5) == 0 && part) {
             part->icon = atoi(s + 5);
+            continue;
+        }
+        if (strncmp(s, "selectedline ", 13) == 0 && part) {
+            part->selectedline = atoi(s + 13);
             continue;
         }
         if (strcmp(s, "hidename") == 0 && part) {
