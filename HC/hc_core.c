@@ -2364,13 +2364,20 @@ static void exec_line(Object *me, const char *line)
             if (!*w) dst = resolve("first card");
         }
         if (dst && dst->type == OBJ_CARD) {
-            set_result("");
-            Object *old = g_current_card;
-            if (old) hc_send(old, "closeCard");
-            g_current_card = dst;
-            emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-            hc_send(dst, "openCard");
-        } else {
+                    set_result("");
+                    Object *old = g_current_card;
+                    Object *oldbg = old ? old->bg : NULL;
+                    Object *newbg = dst->bg;
+
+                    if (old) hc_send(old, "closeCard");
+                    if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+
+                    g_current_card = dst;
+                    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
+
+                    if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
+                    hc_send(dst, "openCard");
+                } else {
             set_result("carte introuvable");
             emit(HC_ERR, "   !! carte introuvable : %s", r);
         }

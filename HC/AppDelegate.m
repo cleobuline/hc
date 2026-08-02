@@ -72,10 +72,19 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         NSMenu *mainMenu = [NSApp mainMenu];
         NSMenuItem *fileItem = [[NSMenuItem alloc] init];
         NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"Pile"];
-
+    NSMenuItem *siItem = [[NSMenuItem alloc] initWithTitle:@"Infos de la pile…"
+                                                        action:@selector(showStackInfo)
+                                                 keyEquivalent:@""];
+        [siItem setTarget:view];
+        [fileMenu addItem:siItem];
         [fileMenu addItemWithTitle:@"Nouvelle carte"
                             action:@selector(newCard:)
                      keyEquivalent:@"n"];
+    NSMenuItem *ciItem = [[NSMenuItem alloc] initWithTitle:@"Infos de la carte…"
+                                                        action:@selector(showCardInfo)
+                                                 keyEquivalent:@""];
+        [ciItem setTarget:view];
+        [fileMenu addItem:ciItem];
         [fileMenu addItem:[NSMenuItem separatorItem]];
         [fileMenu addItemWithTitle:@"Ouvrir une pile…"
                             action:@selector(openStack:)
@@ -95,6 +104,17 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
+    NSMenuItem *nbItem = [[NSMenuItem alloc] initWithTitle:@"Nouveau fond"
+                                                        action:@selector(newBackground:)
+                                                 keyEquivalent:@""];
+        [nbItem setTarget:view];
+        [fileMenu addItem:nbItem];
+
+        NSMenuItem *biItem = [[NSMenuItem alloc] initWithTitle:@"Infos du fond…"
+                                                        action:@selector(showBackgroundInfo)
+                                                 keyEquivalent:@""];
+        [biItem setTarget:view];
+        [fileMenu addItem:biItem];
     [self.window setReleasedWhenClosed:NO];
     [view applyStackSize];  
 }
@@ -116,10 +136,12 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
     [gView setNeedsDisplay:YES];
 }
 - (void)saveStack:(id)sender {
+    const char *nm = gStack && gStack->name ? gStack->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];
-    [panel setNameFieldStringValue:@"MaPile.stack"];
+    [panel setNameFieldStringValue:
+        [NSString stringWithFormat:@"%s.stack", nm]];
     if ([panel runModal] == NSModalResponseOK) {
-        [gView flushPaintToKernel];        // ← encode les bitmaps en base64 AVANT de sauver
+        [gView flushPaintToKernel];
         NSString *path = [[panel URL] path];
         if (hc_save(gStack, [path UTF8String]) != 0)
             NSLog(@"échec de la sauvegarde");

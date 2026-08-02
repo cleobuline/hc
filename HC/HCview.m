@@ -75,6 +75,16 @@ static NSTextView *gContentsView = nil;
 static Object     *gContentsTarget = NULL;
 static Object *gPopupTarget = NULL;
 
+static NSPanel     *gBgPanel = nil;
+static Object      *gBgTarget = NULL;
+static NSTextField *gBgName = nil;
+
+
+
+static NSPanel     *gCardPanel = nil;
+static Object      *gCardTarget = NULL;
+static NSTextField *gCardName = nil;
+
 static void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 // ==================== motifs de remplissage (8x8, façon QuickDraw) ====================
 
@@ -1185,10 +1195,259 @@ static const ToolCell TOOLCELLS[] = {
 
 @implementation HCView
 
+static NSPanel     *gStackPanel = nil;
+static Object      *gStackTarget = NULL;
+static NSTextField *gStackName = nil;
+
+- (void)updateWindowTitle {
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) return;
+    const char *nm = stack->name ? stack->name : "Sans titre";
+    [[self window] setTitle:[NSString stringWithUTF8String:nm]];
+}
+- (void)showStackInfo {
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) return;
+    gStackTarget = stack;
+
+    gStackPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(280, 320, 340, 200)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gStackPanel setTitle:@"Stack Info"];
+    [gStackPanel setReleasedWhenClosed:NO];
+    NSView *c = [gStackPanel contentView];
+
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 90, 18)];
+    [lb setStringValue:@"Stack Name:"];
+    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+    [c addSubview:lb];
+
+    gStackName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
+    [gStackName setStringValue:[NSString stringWithUTF8String:stack->name ? stack->name : ""]];
+    [c addSubview:gStackName];
+
+    int nCards = 0, nBgs = 0;
+    for (int i = 0; i < stack->nparts; i++) {
+        if (stack->parts[i]->type == OBJ_CARD)       nCards++;
+        else if (stack->parts[i]->type == OBJ_BACKGROUND) nBgs++;
+    }
+
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    [ids setStringValue:[NSString stringWithFormat:
+        @"Cards: %d\nBackgrounds: %d\nCard size: %d x %d",
+        nCards, nBgs, stack->w, stack->h]];
+    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
+    [c addSubview:ids];
+
+    NSButton *(^mkST)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
+        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
+        [b setTarget:self]; [b setAction:a];
+        [c addSubview:b];
+        return b;
+    };
+    mkST(@"Script…", @selector(stackScript:), 16);
+    mkST(@"Cancel",  @selector(stackCancel:), 148);
+    NSButton *ok = mkST(@"OK", @selector(stackOK:), 240);
+    [ok setKeyEquivalent:@"\r"];
+
+    [gStackPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)stackOK:(id)sender {
+    if (gStackTarget) {
+        free(gStackTarget->name);
+        gStackTarget->name = strdup([[gStackName stringValue] UTF8String]);
+    }
+    [gStackPanel close];
+    gStackTarget = NULL;
+    [self updateWindowTitle];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)stackCancel:(id)sender {
+    [gStackPanel close];
+    gStackTarget = NULL;
+}
+
+- (void)stackScript:(id)sender {
+    Object *st = gStackTarget;
+    [self stackOK:sender];
+    if (st) [self editScriptOf:st];
+}
+- (void)showCardInfo {
+    Object *card = hc_current_card();
+    if (!card) return;
+    gCardTarget = card;
+
+    gCardPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(300, 300, 340, 200)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gCardPanel setTitle:@"Card Info"];
+    [gCardPanel setReleasedWhenClosed:NO];
+    NSView *c = [gCardPanel contentView];
+
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 90, 18)];
+    [lb setStringValue:@"Card Name:"];
+    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+    [c addSubview:lb];
+
+    gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
+    [gCardName setStringValue:[NSString stringWithUTF8String:card->name ? card->name : ""]];
+    [c addSubview:gCardName];
+
+    // rang de la carte dans la pile et total
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    int rang = 0, total = 0;
+    if (stack)
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD) {
+                total++;
+                if (stack->parts[i] == card) rang = total;
+            }
+
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    [ids setStringValue:[NSString stringWithFormat:
+        @"Card number: %d out of %d\nCard ID: %d\nCard fields: %d",
+        rang, total, card->id, card->nparts]];
+    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
+    [c addSubview:ids];
+
+    NSButton *(^mkCD)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
+        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
+        [b setTarget:self]; [b setAction:a];
+        [c addSubview:b];
+        return b;
+    };
+    mkCD(@"Script…", @selector(cardScript:), 16);
+    mkCD(@"Cancel",  @selector(cardCancel:), 148);
+    NSButton *ok = mkCD(@"OK", @selector(cardOK:), 240);
+    [ok setKeyEquivalent:@"\r"];
+
+    [gCardPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)cardOK:(id)sender {
+    if (gCardTarget) {
+        free(gCardTarget->name);
+        gCardTarget->name = strdup([[gCardName stringValue] UTF8String]);
+    }
+    [gCardPanel close];
+    gCardTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)cardCancel:(id)sender {
+    [gCardPanel close];
+    gCardTarget = NULL;
+}
+
+- (void)cardScript:(id)sender {
+    Object *cd = gCardTarget;
+    [self cardOK:sender];
+    if (cd) [self editScriptOf:cd];
+}
+
+- (void)newBackground:(id)sender {
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) return;
+
+    char name[64];
+    static int bgCount = 0;
+    snprintf(name, sizeof name, "Fond %d", ++bgCount);
+    Object *bg = hc_new_background(stack, name);
+    Object *nc = hc_new_card(stack, bg, "");
+    hc_set_current_card(nc);
+    gSelected = NULL;
+    [self setNeedsDisplay:YES];
+}
 
 
+- (void)showBackgroundInfo {
+    Object *card = hc_current_card();
+    if (!card || !card->bg) return;
+    Object *bg = card->bg;
+    gBgTarget = bg;
 
+    gBgPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(320, 280, 340, 200)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gBgPanel setTitle:@"Background Info"];
+    [gBgPanel setReleasedWhenClosed:NO];
+    NSView *c = [gBgPanel contentView];
 
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 120, 18)];
+    [lb setStringValue:@"Background Name:"];
+    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+    [c addSubview:lb];
+
+    gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 158, 184, 22)];
+    [gBgName setStringValue:[NSString stringWithUTF8String:bg->name ? bg->name : ""]];
+    [c addSubview:gBgName];
+
+    // combien de cartes partagent ce fond ?
+    int nCards = 0;
+    Object *stack = bg->owner;
+    if (stack)
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg) nCards++;
+
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    [ids setStringValue:[NSString stringWithFormat:
+        @"Background ID: %d\nCards in this background: %d\nFields: %d",
+        bg->id, nCards, bg->nparts]];
+    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
+    [c addSubview:ids];
+
+    NSButton *(^mkBG)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
+        [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
+        [b setTarget:self]; [b setAction:a];
+        [c addSubview:b];
+        return b;
+    };
+    mkBG(@"Script…", @selector(bgScript:), 16);
+    mkBG(@"Cancel",  @selector(bgCancel:), 148);
+    NSButton *ok = mkBG(@"OK", @selector(bgOK:), 240);
+    [ok setKeyEquivalent:@"\r"];
+
+    [gBgPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)bgOK:(id)sender {
+    if (gBgTarget) {
+        free(gBgTarget->name);
+        gBgTarget->name = strdup([[gBgName stringValue] UTF8String]);
+    }
+    [gBgPanel close];
+    gBgTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)bgCancel:(id)sender {
+    [gBgPanel close];
+    gBgTarget = NULL;
+}
+
+- (void)bgScript:(id)sender {
+    Object *bg = gBgTarget;
+    [self bgOK:sender];
+    if (bg) [self editScriptOf:bg];
+}
 - (void)infoIcon:(id)sender {
     Object *o = gInfoTarget;
     if (!o) return;
@@ -1719,7 +1978,7 @@ static const ToolCell TOOLCELLS[] = {
     newFrame.origin = frame.origin;
     newFrame.origin.y = frame.origin.y + frame.size.height - newFrame.size.height;
     [win setFrame:newFrame display:YES animate:NO];
-
+    [self updateWindowTitle];
     [self setNeedsDisplay:YES];
 }
 - (void)installWidthPalette {
