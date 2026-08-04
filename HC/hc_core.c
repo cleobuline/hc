@@ -1056,8 +1056,26 @@ static int container_set(const char *ref, const char *val, int mode)
 
         if (!chunk_span(base, ct, a, b, &st, &en)) {
             if (mode == 3) return 1;            /* rien à supprimer */
-            snprintf(neuf, sizeof neuf, "%s%s%s", base,
-                     (*base && sepstr[0]) ? sepstr : "", val);
+            /* Le rang visé dépasse le contenu : compléter avec des éléments
+             * vides jusqu'à ce rang, comme le fait HyperTalk. */
+            if (sepstr[0] && a > 0) {
+                int have = 0;
+                if (*base) {
+                    have = 1;
+                    for (const char *q = base; *q; q++)
+                        if (*q == sepstr[0]) have++;
+                }
+                int need = (have == 0) ? (a - 1) : (a - have);
+                int pos = 0;
+                pos += snprintf(neuf + pos, sizeof neuf - pos, "%s", base);
+                for (int k = 0; k < need && pos < (int)sizeof neuf - 2; k++)
+                    neuf[pos++] = sepstr[0];
+                neuf[pos] = '\0';
+                snprintf(neuf + pos, sizeof neuf - pos, "%s", val);
+            } else {
+                snprintf(neuf, sizeof neuf, "%s%s%s", base,
+                         (*base && sepstr[0]) ? sepstr : "", val);
+            }
         } else {
             char old[2048];
             int len = en - st;
@@ -1084,13 +1102,14 @@ static int container_set(const char *ref, const char *val, int mode)
     char merged[4096];
     Object *o = resolve(ref);
     if (o && o->type == OBJ_FIELD) {
-        const char *old = o->contents ? o->contents : "";
+        /* passer par hc_field_text / hc_set_field_text : un champ de fond non
+         * partagé a un texte propre à chaque carte */
+        const char *old = hc_field_text(o);
         if      (mode == 1) snprintf(merged, sizeof merged, "%s%s", old, val);
         else if (mode == 2) snprintf(merged, sizeof merged, "%s%s", val, old);
         else if (mode == 3) merged[0] = '\0';
         else                snprintf(merged, sizeof merged, "%s", val);
-        free(o->contents);
-        o->contents = dupstr(merged);
+        hc_set_field_text(o, merged);
         notify_field(o);
         return 1;
     }
@@ -1506,8 +1525,8 @@ static void term_value(const char *t, char *out, int outlen)
     /* --- un objet ? champ → contenu, autre → sa désignation --- */
     Object *o = resolve(t);
     if (o) {
-        if (o->type == OBJ_FIELD && o->contents) snprintf(out, outlen, "%s", o->contents);
-        else                                     hc_describe(o, out, outlen);
+        if (o->type == OBJ_FIELD) snprintf(out, outlen, "%s", hc_field_text(o));
+        else                      hc_describe(o, out, outlen);
         return;
     }
 
@@ -2479,6 +2498,78 @@ static void exec_line(Object *me, const char *line)
             if (nm[0]) frame_declare_global(g_frame, nm);
             while (*q == ',' || *q == ' ' || *q == '\t') q++;
         }
+        return;
+    }
+
+    /* --- add / subtract / multiply / divide ---
+     *   add 1 to i            subtract 2 from x
+     *   multiply x by 3       divide t by 2
+     * Le conteneur peut etre une variable, un champ ou un chunk. */
+    if (ci_equal(verb, "add") || ci_equal(verb, "subtract") ||
+        ci_equal(verb, "multiply") || ci_equal(verb, "divide")) {
+
+        const char *sep = NULL; int seplen = 0;
+        if      (ci_equal(verb, "add"))      { sep = "to";   seplen = 2; }
+        else if (ci_equal(verb, "subtract")) { sep = "from"; seplen = 4; }
+        else                                  { sep = "by";   seplen = 2; }
+
+        const char *r = skip_spaces(rest);
+        const char *kw = NULL;
+        int inq = 0;
+        for (const char *q = r; *q; q++) {
+            if (*q == '"') { inq = !inq; continue; }
+            if (inq) continue;
+            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, sep)) { kw = q; break; }
+        }
+        if (!kw) {
+            emit(HC_ERR, "   !! syntaxe : %s <valeur> %s <conteneur>", verb, sep);
+            set_result("syntax error");
+            return;
+        }
+
+        /* add/subtract : <valeur> to|from <conteneur>
+         * multiply/divide : <conteneur> by <valeur>   (ordre inverse) */
+        int valueFirst = (ci_equal(verb, "add") || ci_equal(verb, "subtract"));
+
+        char left[512], amount[128], cur[512];
+        int n = (int)(kw - r);
+        if (n > (int)sizeof left - 1) n = (int)sizeof left - 1;
+        memcpy(left, r, n); left[n] = 0;
+        /* retirer les espaces de fin */
+        for (int k = (int)strlen(left) - 1; k >= 0 && isspace((unsigned char)left[k]); k--)
+            left[k] = 0;
+
+        const char *right = skip_spaces(kw + seplen);
+        const char *dst;
+        if (valueFirst) {
+            eval_expr(left, amount, sizeof amount);
+            dst = right;
+        } else {
+            eval_expr(right, amount, sizeof amount);
+            dst = left;
+        }
+        eval_expr(dst, cur, sizeof cur);
+
+        double a = 0, b = 0;
+        as_num(cur, &a);
+        as_num(amount, &b);
+        double res = a;
+        if      (ci_equal(verb, "add"))      res = a + b;
+        else if (ci_equal(verb, "subtract")) res = a - b;
+        else if (ci_equal(verb, "multiply")) res = a * b;
+        else {
+            if (b == 0) { emit(HC_ERR, "   !! division par zero"); set_result("divide by zero"); return; }
+            res = a / b;
+        }
+
+        char out[64];
+        put_num(res, out, sizeof out);
+        if (!container_set(dst, out, 0)) {
+            emit(HC_ERR, "   !! destination inconnue : %s", dst);
+            set_result("no such container");
+            return;
+        }
+        set_result("");
         return;
     }
 
