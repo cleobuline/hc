@@ -101,6 +101,17 @@ static void put_part(FILE *f, Object *o)
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
+    if (o->locktext) fprintf(f, "locktext\n");
+    if (o->wide_margins) fprintf(f, "widemargins\n");
+    if (o->fixed_lh) fprintf(f, "fixedlineheight\n");
+    if (o->show_lines) fprintf(f, "showlines\n");
+    fprintf(f, "id %d\n", o->id);
+    if (o->auto_tab) fprintf(f, "autotab\n");
+    if (o->dont_search) fprintf(f, "dontsearch\n");
+    if (o->shared_text) fprintf(f, "sharedtext\n");
+    if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
+    if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
+    if (o->scroll) fprintf(f, "scroll %d\n", o->scroll);
     fprintf(f, "end %s\n", kind);
 }
 
@@ -136,6 +147,10 @@ int hc_save(Object *stack, const char *path)
         fprintf(f, "\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
+        for (int j = 0; j < c->nbgtexts; j++) {
+            fprintf(f, "bgtext %d\n", c->bgtexts[j].field_id);
+            put_block(f, "bgtextdata", c->bgtexts[j].text);
+        }
         for (int j = 0; j < c->nparts; j++) put_part(f, c->parts[j]);
         fprintf(f, "end card\n\n");
     }
@@ -233,14 +248,15 @@ Object *hc_load(const char *path)
 
     char line[4096], nm[256], nm2[256]; (void)nm2;
     Acc acc = {0};
-    int in_script = 0, in_contents = 0, in_paint = 0;
+    int in_script = 0, in_contents = 0, in_paint = 0, in_bgtext = 0;
+    int bgtext_id = 0;
 
     while (fgets(line, sizeof line, f)) {
         rtrim(line);
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
-        if (in_script || in_contents || in_paint) {
+        if (in_script || in_contents || in_paint || in_bgtext) {
             if (s[0] == '|') {
                 acc_line(&acc, (s[1] == ' ') ? s + 2 : s + 1);
                 continue;
@@ -261,6 +277,25 @@ Object *hc_load(const char *path)
                 in_contents = 0;
                 continue;
             }
+            if (strcmp(s, "end bgtextdata") == 0) {
+                char *t = acc_take(&acc);
+                if (owner && owner->type == OBJ_CARD && bgtext_id) {
+                    if (owner->nbgtexts == owner->capbgtexts) {
+                        int cap = owner->capbgtexts ? owner->capbgtexts * 2 : 4;
+                        struct BgText *bp = realloc(owner->bgtexts, (size_t)cap * sizeof *bp);
+                        if (bp) { owner->bgtexts = bp; owner->capbgtexts = cap; }
+                    }
+                    if (owner->nbgtexts < owner->capbgtexts) {
+                        owner->bgtexts[owner->nbgtexts].field_id = bgtext_id;
+                        owner->bgtexts[owner->nbgtexts].text = t ? t : dupstr_file("");
+                        owner->nbgtexts++;
+                        t = NULL;
+                    }
+                }
+                free(t);
+                in_bgtext = 0;
+                continue;
+            }
             if (strcmp(s, "end paint") == 0) {
                 char *t = acc_take(&acc);
                 if (target && (target->type == OBJ_CARD || target->type == OBJ_BACKGROUND)) {
@@ -279,6 +314,8 @@ Object *hc_load(const char *path)
         if (strcmp(s, "script") == 0)   { in_script = 1;   continue; }
         if (strcmp(s, "contents") == 0) { in_contents = 1; continue; }
         if (strcmp(s, "paint") == 0)    { in_paint = 1;    continue; }
+        if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
+        if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
 
         /* --- en-têtes d'objets --- */
         if (strncmp(s, "stack ", 6) == 0) {
@@ -344,6 +381,30 @@ Object *hc_load(const char *path)
         }
         if (strncmp(s, "selectedline ", 13) == 0 && part) {
             part->selectedline = atoi(s + 13);
+            continue;
+        }
+        if (strcmp(s, "locktext") == 0 && part)       { part->locktext = 1; continue; }
+        if (strcmp(s, "widemargins") == 0 && part)    { part->wide_margins = 1; continue; }
+        if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
+        if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
+        if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }
+        if (strcmp(s, "dontsearch") == 0 && part)     { part->dont_search = 1; continue; }
+        if (strcmp(s, "sharedtext") == 0 && part)     { part->shared_text = 1; continue; }
+        if (strncmp(s, "textfont ", 9) == 0 && part) {
+            free(part->textfont);
+            part->textfont = dupstr_file(s + 9);
+            continue;
+        }
+        if (strncmp(s, "textstyle ", 10) == 0 && part) {
+            part->textstyle = atoi(s + 10);
+            continue;
+        }
+        if (strncmp(s, "id ", 3) == 0 && part) {
+            hc_set_id(part, atoi(s + 3));
+            continue;
+        }
+        if (strncmp(s, "scroll ", 7) == 0 && part) {
+            part->scroll = atoi(s + 7);
             continue;
         }
         if (strcmp(s, "hidename") == 0 && part) {

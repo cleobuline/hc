@@ -35,6 +35,12 @@
 - (void)contentsOK:(id)sender;
 - (void)contentsCancel:(id)sender;
 
+- (void)showFieldInfo:(Object *)obj;
+
+- (void)fldOK:(id)sender;
+- (void)fldCancel:(id)sender;
+- (void)fldScript:(id)sender;
+- (void)fldTextStyle:(id)sender;
 @end
 
 #endif /* HCdialogs_h */

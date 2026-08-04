@@ -150,7 +150,40 @@ static void console_line(HcLineKind kind, int depth, const char *text)
     fputc('\n', stdout);
 }
 
-static const HcHost g_console_host = { console_line, NULL };
+/* Repli console : de quoi tester le noyau sans interface graphique. */
+static char g_console_buf[512];
+
+static const char *console_ask(const char *prompt, const char *deflt)
+{
+    printf("   [ask] %s [%s] ", prompt, deflt ? deflt : "");
+    fflush(stdout);
+    if (!fgets(g_console_buf, sizeof g_console_buf, stdin)) return NULL;
+    size_t n = strlen(g_console_buf);
+    while (n && (g_console_buf[n-1] == '\n' || g_console_buf[n-1] == '\r'))
+        g_console_buf[--n] = '\0';
+    if (!g_console_buf[0] && deflt) {
+        snprintf(g_console_buf, sizeof g_console_buf, "%s", deflt);
+    }
+    return g_console_buf;
+}
+
+static const char *console_answer(const char *prompt, const char *b1,
+                                  const char *b2, const char *b3)
+{
+    printf("   [answer] %s  (1=%s", prompt, b1 ? b1 : "OK");
+    if (b2) printf(" 2=%s", b2);
+    if (b3) printf(" 3=%s", b3);
+    printf(") ");
+    fflush(stdout);
+    if (!fgets(g_console_buf, sizeof g_console_buf, stdin)) return b1;
+    int c = atoi(g_console_buf);
+    if (c == 3 && b3) return b3;
+    if (c == 2 && b2) return b2;
+    return b1 ? b1 : "OK";
+}
+
+static const HcHost g_console_host = { console_line, NULL,
+                                       console_ask, console_answer };
 static const HcHost *g_host = &g_console_host;
 
 void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
@@ -176,6 +209,20 @@ static void notify_field(Object *field)
 /* ==================== construction ==================== */
 
 static int g_next_id = 1;
+
+/* pile de navigation : push cd / pop cd */
+#define NAVSTACK_MAX 64
+static Object *g_navstack[NAVSTACK_MAX];
+static int     g_navtop = 0;
+
+/* Force l'identifiant d'un objet relu depuis un fichier, et garde le
+ * compteur au-dessus pour ne jamais réattribuer un id existant. */
+void hc_set_id(Object *o, int id)
+{
+    if (!o || id <= 0) return;
+    o->id = id;
+    if (id >= g_next_id) g_next_id = id + 1;
+}
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
@@ -256,6 +303,9 @@ void hc_free(Object *o)
     free(o->script);
     free(o->contents);
     free(o->style);
+    free(o->textfont);
+    for (int i = 0; i < o->nbgtexts; i++) free(o->bgtexts[i].text);
+    free(o->bgtexts);
     free(o->paint);
     free(o);
 }
@@ -494,6 +544,13 @@ static Object *resolve(const char *ref)
             char nm[128];
             quoted(after, nm, sizeof nm);
             return find_card_by_name(stack, nm);
+        }
+        if (ci_word(after, "id")) {                    /* card id N */
+            int wanted = atoi(skip_spaces(after + 2));
+            for (int i = 0; i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->id == wanted)
+                    return stack->parts[i];
+            return NULL;
         }
         if (isdigit((unsigned char)*after))
             return nth_card(stack, atoi(after) - 1);   /* 1-based en HyperTalk */
@@ -1187,8 +1244,12 @@ static int call_function(const char *t, char *out, int outlen)
     if (ci_equal(name, "cos"))    { put_num(cos(a), out, outlen); return 1; }
     if (ci_equal(name, "tan"))    { put_num(tan(a), out, outlen); return 1; }
     if (ci_equal(name, "atan"))   { put_num(atan(a), out, outlen); return 1; }
-    if (ci_equal(name, "random")) { int n = (int)a;
-                                    snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1; }
+    if (ci_equal(name, "random")) {
+        static int seeded = 0;
+        if (!seeded) { srand((unsigned)time(NULL)); seeded = 1; }
+        int n = (int)a;
+        snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1;
+    }
     if (ci_equal(name, "charToNum")) { snprintf(out, outlen, "%d", (unsigned char)vals[0][0]); return 1; }
     if (ci_equal(name, "numToChar")) { snprintf(out, outlen, "%c", (int)a); return 1; }
 
@@ -1391,12 +1452,29 @@ static void term_value(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
                     if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines"))
                         { snprintf(out, outlen, "%d", o->selectedline); return; }
+                    if (ci_equal(prop, "locktext")) { snprintf(out, outlen, "%s", o->locktext ? "true" : "false"); return; }
+                    if (ci_equal(prop, "widemargins")) { snprintf(out, outlen, "%s", o->wide_margins ? "true" : "false"); return; }
+                    if (ci_equal(prop, "fixedlineheight")) { snprintf(out, outlen, "%s", o->fixed_lh ? "true" : "false"); return; }
+                    if (ci_equal(prop, "showlines")) { snprintf(out, outlen, "%s", o->show_lines ? "true" : "false"); return; }
+                    if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return; }
+                    if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return; }
+                    if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return; }
+                    if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return; }
+                    if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return; }
+                    if (ci_equal(prop, "textstyle")) {
+                        char buf[64]; buf[0] = 0;
+                        if (o->textstyle & 1) strcat(buf, "bold");
+                        if (o->textstyle & 2) { if (buf[0]) strcat(buf, ","); strcat(buf, "italic"); }
+                        if (o->textstyle & 4) { if (buf[0]) strcat(buf, ","); strcat(buf, "underline"); }
+                        if (!buf[0]) strcpy(buf, "plain");
+                        snprintf(out, outlen, "%s", buf); return;
+                    }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
                     if (ci_equal(prop, "script"))  { snprintf(out, outlen, "%s", o->script ? o->script : ""); return; }
                     if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
-                                                   { snprintf(out, outlen, "%s", o->contents ? o->contents : ""); return; }
+                                                   { snprintf(out, outlen, "%s", hc_field_text(o)); return; }
                     if (ci_equal(prop, "style"))   { snprintf(out, outlen, "%s", o->style ? o->style : "rectangle"); return; }
                 }
             }
@@ -2268,6 +2346,35 @@ static void exec_line(Object *me, const char *line)
         } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
             o->selectedline = atoi(val);
             notify_field(o);
+        } else if (ci_equal(prop, "locktext")) {
+            o->locktext = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "widemargins")) {
+            o->wide_margins = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "fixedlineheight")) {
+            o->fixed_lh = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "showlines")) {
+            o->show_lines = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "autotab")) {
+            o->auto_tab = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "dontsearch")) {
+            o->dont_search = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "sharedtext")) {
+            o->shared_text = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "scroll")) {
+            o->scroll = atoi(val);
+            if (o->scroll < 0) o->scroll = 0;
+            notify_field(o);
+        } else if (ci_equal(prop, "textfont")) {
+            free(o->textfont);
+            o->textfont = (*val) ? dupstr(val) : NULL;
+            notify_field(o);
+        } else if (ci_equal(prop, "textstyle")) {
+            int st = 0;
+            if (strstr(val, "bold") || strstr(val, "Bold")) st |= 1;
+            if (strstr(val, "italic") || strstr(val, "Italic")) st |= 2;
+            if (strstr(val, "underline") || strstr(val, "Underline")) st |= 4;
+            o->textstyle = st;
+            notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
             o->hilite = truthy(val);
             notify_field(o);
@@ -2286,8 +2393,7 @@ static void exec_line(Object *me, const char *line)
                 emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
                 return;
             }
-            free(o->contents);
-            o->contents = dupstr(val);
+            hc_set_field_text(o, val);
             notify_field(o);
         } else if (geom_write(o, prop, val)) {
             notify_field(o);
@@ -2354,30 +2460,157 @@ static void exec_line(Object *me, const char *line)
         return;
     }
 
+    /* --- ask "invite" [with "défaut"] --- */
+    if (ci_equal(verb, "ask")) {
+        const char *r = skip_spaces(rest);
+        char prompt[512] = "", deflt[512] = "";
+
+        /* repérer « with » hors des chaînes */
+        const char *kw = NULL;
+        int inq = 0;
+        for (const char *q = r; *q; q++) {
+            if (*q == '"') { inq = !inq; continue; }
+            if (inq) continue;
+            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
+        }
+        if (kw) {
+            char expr[512];
+            int n = (int)(kw - r);
+            if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+            memcpy(expr, r, n); expr[n] = '\0';
+            eval_expr(expr, prompt, sizeof prompt);
+            eval_expr(skip_spaces(kw + 4), deflt, sizeof deflt);
+        } else {
+            eval_expr(r, prompt, sizeof prompt);
+        }
+
+        const char *rep = (g_host && g_host->ask) ? g_host->ask(prompt, deflt) : NULL;
+        if (rep) { var_set("it", rep); set_result(""); }
+        else     { var_set("it", "");  set_result("Cancel"); }
+        return;
+    }
+
+    /* --- answer "invite" [with "a" [or "b" [or "c"]]] --- */
+    if (ci_equal(verb, "answer")) {
+        const char *r = skip_spaces(rest);
+        char prompt[512] = "";
+        char btn[3][128] = { "", "", "" };
+        int nb = 0;
+
+        const char *kw = NULL;
+        int inq = 0;
+        for (const char *q = r; *q; q++) {
+            if (*q == '"') { inq = !inq; continue; }
+            if (inq) continue;
+            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
+        }
+        if (kw) {
+            char expr[512];
+            int n = (int)(kw - r);
+            if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+            memcpy(expr, r, n); expr[n] = '\0';
+            eval_expr(expr, prompt, sizeof prompt);
+
+            /* découper sur « or », hors des chaînes */
+            const char *p2 = skip_spaces(kw + 4);
+            while (*p2 && nb < 3) {
+                const char *cut = NULL;
+                inq = 0;
+                for (const char *q = p2; *q; q++) {
+                    if (*q == '"') { inq = !inq; continue; }
+                    if (inq) continue;
+                    if ((q == p2 || isspace((unsigned char)q[-1])) && ci_word(q, "or")) { cut = q; break; }
+                }
+                char one[256];
+                int len = cut ? (int)(cut - p2) : (int)strlen(p2);
+                if (len > (int)sizeof one - 1) len = (int)sizeof one - 1;
+                memcpy(one, p2, len); one[len] = '\0';
+                eval_expr(one, btn[nb], sizeof btn[nb]);
+                nb++;
+                if (!cut) break;
+                p2 = skip_spaces(cut + 2);
+            }
+        } else {
+            eval_expr(r, prompt, sizeof prompt);
+        }
+        if (nb == 0) { snprintf(btn[0], sizeof btn[0], "OK"); nb = 1; }
+
+        const char *rep = (g_host && g_host->answer)
+            ? g_host->answer(prompt, btn[0], nb > 1 ? btn[1] : NULL,
+                                              nb > 2 ? btn[2] : NULL)
+            : btn[0];
+        var_set("it", rep ? rep : "");
+        set_result("");
+        return;
+    }
+
+    /* --- push [card] : mémorise la carte courante --- */
+    if (ci_equal(verb, "push")) {
+        const char *r = skip_spaces(rest);
+        Object *dst = *r ? resolve(r) : g_current_card;
+        if (!dst || dst->type != OBJ_CARD) dst = g_current_card;
+        if (!dst) { set_result("aucune carte a empiler"); return; }
+        if (g_navtop >= NAVSTACK_MAX) {          /* pile pleine : on decale */
+            for (int i = 1; i < NAVSTACK_MAX; i++) g_navstack[i-1] = g_navstack[i];
+            g_navtop = NAVSTACK_MAX - 1;
+        }
+        g_navstack[g_navtop++] = dst;
+        set_result("");
+        emit(HC_INFO, "   ⇒ empile la carte \"%s\"", dst->name ? dst->name : "?");
+        return;
+    }
+
+    /* --- pop [card] [into conteneur] : depile et y va --- */
+    if (ci_equal(verb, "pop")) {
+        if (g_navtop <= 0) { set_result("pile de navigation vide"); return; }
+        Object *dst = g_navstack[--g_navtop];
+        const char *r = skip_spaces(rest);
+        if (ci_word(r, "card") || ci_word(r, "cd")) r = skip_spaces(r + (ci_word(r,"cd") ? 2 : 4));
+
+        if (ci_word(r, "into")) {                /* pop cd into x : sans y aller */
+            char cmd[320];
+            snprintf(cmd, sizeof cmd, "put \"card id %d\" into %s",
+                     dst->id, skip_spaces(r + 4));
+            exec_line(me, cmd);
+            set_result("");
+            return;
+        }
+
+        Object *old = g_current_card;
+        Object *oldbg = old ? old->bg : NULL;
+        Object *newbg = dst->bg;
+        if (old) hc_send(old, "closeCard");
+        if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+        g_current_card = dst;
+        if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
+        hc_send(dst, "openCard");
+        set_result("");
+        emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
+        return;
+    }
+
     /* --- go [to] card "nom" | next | previous | first | last | card 3 --- */
     if (ci_equal(verb, "go")) {
         const char *r = skip_spaces(rest);
         if (ci_word(r, "to")) r = skip_spaces(r + 2);
         Object *dst = resolve(r);
+        if (!dst) {                          /* « go x » : evaluer d'abord */
+            char v[256];
+            eval_expr(r, v, sizeof v);
+            if (v[0] && strcmp(v, r) != 0) dst = resolve(v);
+        }
         if (!dst && ci_word(r, "card")) {   /* « go card » nu : la première */
             const char *w = skip_spaces(r + 4);
             if (!*w) dst = resolve("first card");
         }
         if (dst && dst->type == OBJ_CARD) {
-                    set_result("");
-                    Object *old = g_current_card;
-                    Object *oldbg = old ? old->bg : NULL;
-                    Object *newbg = dst->bg;
-
-                    if (old) hc_send(old, "closeCard");
-                    if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
-
-                    g_current_card = dst;
-                    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-
-                    if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
-                    hc_send(dst, "openCard");
-                } else {
+            set_result("");
+            Object *old = g_current_card;
+            if (old) hc_send(old, "closeCard");
+            g_current_card = dst;
+            emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
+            hc_send(dst, "openCard");
+        } else {
             set_result("carte introuvable");
             emit(HC_ERR, "   !! carte introuvable : %s", r);
         }
@@ -2564,9 +2797,52 @@ Object *hc_resolve(const char *ref) { return resolve(ref); }
 
 const char *hc_script_of(Object *o) { return o ? o->script : NULL; }
 
+/* Un champ de fond non partagé a un texte propre à chaque carte. */
+static int field_is_percard(Object *field)
+{
+    return field && field->type == OBJ_FIELD
+        && field->owner && field->owner->type == OBJ_BACKGROUND
+        && !field->shared_text;
+}
+
+const char *hc_field_text(Object *field)
+{
+    if (!field) return "";
+    if (field_is_percard(field) && g_current_card) {
+        Object *cd = g_current_card;
+        for (int i = 0; i < cd->nbgtexts; i++)
+            if (cd->bgtexts[i].field_id == field->id)
+                return cd->bgtexts[i].text ? cd->bgtexts[i].text : "";
+        return "";                       /* pas encore rempli sur cette carte */
+    }
+    return field->contents ? field->contents : "";
+}
+
 void hc_set_field_text(Object *field, const char *text)
 {
     if (!field || (field->type != OBJ_FIELD && field->type != OBJ_BUTTON)) return;
+
+    if (field_is_percard(field) && g_current_card) {
+        Object *cd = g_current_card;
+        for (int i = 0; i < cd->nbgtexts; i++)
+            if (cd->bgtexts[i].field_id == field->id) {
+                free(cd->bgtexts[i].text);
+                cd->bgtexts[i].text = dupstr(text ? text : "");
+                return;
+            }
+        if (cd->nbgtexts == cd->capbgtexts) {
+            int cap = cd->capbgtexts ? cd->capbgtexts * 2 : 4;
+            struct BgText *p = realloc(cd->bgtexts, (size_t)cap * sizeof *p);
+            if (!p) return;
+            cd->bgtexts = p;
+            cd->capbgtexts = cap;
+        }
+        cd->bgtexts[cd->nbgtexts].field_id = field->id;
+        cd->bgtexts[cd->nbgtexts].text = dupstr(text ? text : "");
+        cd->nbgtexts++;
+        return;
+    }
+
     free(field->contents);
     field->contents = dupstr(text ? text : "");
 }

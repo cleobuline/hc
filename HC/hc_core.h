@@ -25,6 +25,9 @@ typedef enum {
 
 typedef struct Object Object;
 
+/* texte d'un champ de fond, propre à une carte */
+struct BgText { int field_id; char *text; };
+
 struct Object {
     ObjType  type;
     int      id;
@@ -45,7 +48,26 @@ struct Object {
     int      showname;  /* le nom du bouton est-il affiché ? (1 = oui par défaut) */
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
     int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
-    char    *contents;  /* contenu textuel (champs) */
+
+    /* propriétés de champ */
+    int      locktext;       /* le champ est-il non modifiable ? */
+    int      wide_margins;   /* marges larges */
+    int      fixed_lh;       /* interligne fixe */
+    int      show_lines;     /* lignes de guidage visibles */
+    int      auto_tab;       /* tab passe au champ suivant */
+    int      dont_search;    /* exclu de find */
+    int      shared_text;    /* texte partagé entre cartes du même fond */
+
+    char    *textfont;       /* nom de police (NULL = défaut) */
+    int      textstyle;      /* bits : 1 gras, 2 italique, 4 souligné */
+    int      scroll;         /* décalage vertical d'un champ scrolling, en pixels */
+
+    /* pour une CARTE : textes propres des champs de fond non partagés */
+    struct BgText *bgtexts;
+    int      nbgtexts, capbgtexts;
+    char    *contents;  /* contenu textuel (champs) ; pour un champ de fond
+                         * non partagé, c'est la valeur par défaut : le texte
+                         * réel est stocké dans chaque carte (voir bgtexts) */
 
     /* géométrie : rectangle en coordonnées carte (pixels).
        rect = (left, top, right, bottom) = (x, y, x+w, y+h). */
@@ -82,6 +104,15 @@ typedef enum { HC_MSG, HC_TRACE, HC_ERR, HC_INFO } HcLineKind;
 typedef struct {
     void (*line)(HcLineKind kind, int depth, const char *text);
     void (*field_changed)(Object *field);   /* champ modifié : rafraîchir l'affichage */
+
+    /* Boîtes de dialogue. L'hôte renvoie un pointeur valide jusqu'au prochain
+     * appel ; NULL vaut annulation.
+     *   ask     : saisie de texte, deflt peut être vide
+     *   answer  : choix parmi 1 à 3 boutons ; b2 et b3 peuvent être NULL,
+     *             le dernier fourni est le bouton par défaut */
+    const char *(*ask)(const char *prompt, const char *deflt);
+    const char *(*answer)(const char *prompt, const char *b1,
+                          const char *b2, const char *b3);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
@@ -111,6 +142,9 @@ const char *hc_script_of(Object *o);
 
 /* Pose le contenu textuel d'un champ (pour l'édition interactive). */
 void        hc_set_field_text(Object *field, const char *text);
+/* Texte effectif d'un champ : propre à la carte courante s'il s'agit d'un
+ * champ de fond non partagé. Ne renvoie jamais NULL. */
+const char *hc_field_text(Object *field);
 
 /* Calque de peinture (bitmap base64) d'une carte ou d'un fond.
    Le noyau ne l'interprète pas : il le stocke et le restitue tel quel. */
@@ -119,5 +153,6 @@ void        hc_set_paint(Object *o, const char *base64);
 
 /* Libère les variables globales (à appeler avant de quitter). */
 void        hc_shutdown(void);
+void        hc_set_id(Object *o, int id);
 
 #endif /* HC_CORE_H */

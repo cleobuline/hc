@@ -41,7 +41,158 @@ static Object     *gContentsTarget = NULL;
 
 @implementation HCView (Dialogs)
 
+static NSPanel      *gFldPanel = nil;
+static Object       *gFldTarget = NULL;
+static NSTextField  *gFldName = nil;
+static NSPopUpButton *gFldStyle = nil;
+static NSButton     *gFldLock = nil;
+static NSButton     *gFldWide = nil;
+static NSButton     *gFldFixed = nil;
+static NSButton     *gFldLines = nil;
+static NSButton     *gFldTab = nil;
+static NSButton     *gFldNoSearch = nil;
+static NSButton     *gFldShared = nil;
+static NSTextField  *gFldTextSize = nil;
+extern Object *gFontTarget;
 
+Object *gFontTarget = NULL;    // objet vise par le panneau des polices
+
+- (void)showFieldInfo:(Object *)obj {
+    if (!obj) return;
+    gFldTarget = obj;
+
+    if (gFldPanel) [gFldPanel close];
+    gFldPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(300, 240, 380, 320)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gFldPanel setTitle:@"Field Info"];
+    [gFldPanel setReleasedWhenClosed:NO];
+    NSView *c = [gFldPanel contentView];
+
+    // --- nom ---
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 282, 80, 18)];
+    [lb setStringValue:@"Field Name:"];
+    [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+    [c addSubview:lb];
+
+    gFldName = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 280, 262, 22)];
+    [gFldName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [c addSubview:gFldName];
+
+    // --- identifiants ---
+    int rang = 0;
+    Object *owner = obj->owner;
+    if (owner)
+        for (int i = 0; i < owner->nparts; i++)
+            if (owner->parts[i] == obj) { rang = i + 1; break; }
+
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 218, 180, 52)];
+    [ids setStringValue:[NSString stringWithFormat:
+        @"Field number: %d\nPart number: %d\nField ID: %d", rang, rang, obj->id]];
+    [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
+    [c addSubview:ids];
+
+    // --- style ---
+    NSTextField *sl = [[NSTextField alloc] initWithFrame:NSMakeRect(210, 250, 40, 18)];
+    [sl setStringValue:@"Style:"];
+    [sl setBezeled:NO]; [sl setDrawsBackground:NO]; [sl setEditable:NO];
+    [c addSubview:sl];
+
+    gFldStyle = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(250, 246, 112, 24)];
+    [gFldStyle addItemsWithTitles:@[@"transparent", @"opaque", @"rectangle",
+                                    @"shadow", @"scrolling"]];
+    const char *st = obj->style ? obj->style : "rectangle";
+    [gFldStyle selectItemWithTitle:[NSString stringWithUTF8String:st]];
+    [c addSubview:gFldStyle];
+
+    // --- cases a cocher ---
+    NSButton *(^mkChk)(NSString*, BOOL, CGFloat) = ^NSButton*(NSString *t, BOOL on, CGFloat y) {
+        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(210, y, 152, 20)];
+        [b setButtonType:NSButtonTypeSwitch];
+        [b setTitle:t];
+        [b setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+        [c addSubview:b];
+        return b;
+    };
+    gFldLock     = mkChk(@"Lock Text",         obj->locktext,     220);
+    gFldWide     = mkChk(@"Wide Margins",      obj->wide_margins, 198);
+    gFldFixed    = mkChk(@"Fixed Line Height", obj->fixed_lh,     176);
+    gFldLines    = mkChk(@"Show Lines",        obj->show_lines,   154);
+    gFldTab      = mkChk(@"Auto Tab",          obj->auto_tab,     132);
+    gFldNoSearch = mkChk(@"Don't Search",      obj->dont_search,  110);
+    gFldShared   = mkChk(@"Shared Text",       obj->shared_text,   88);
+
+    // --- taille de texte ---
+    NSTextField *tl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 178, 70, 18)];
+    [tl setStringValue:@"Text size:"];
+    [tl setBezeled:NO]; [tl setDrawsBackground:NO]; [tl setEditable:NO];
+    [c addSubview:tl];
+
+    gFldTextSize = [[NSTextField alloc] initWithFrame:NSMakeRect(86, 176, 60, 22)];
+    [gFldTextSize setStringValue:[NSString stringWithFormat:@"%d", obj->textsize]];
+    [c addSubview:gFldTextSize];
+
+    // --- boutons ---
+    NSButton *(^mkFI)(NSString*, SEL, CGFloat, CGFloat) =
+        ^NSButton*(NSString *t, SEL a, CGFloat x, CGFloat y) {
+            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 96, 28)];
+            [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
+            [b setTarget:self]; [b setAction:a];
+            [c addSubview:b];
+            return b;
+        };
+    mkFI(@"Text Style…", @selector(fldTextStyle:), 16, 88);
+    mkFI(@"Script…", @selector(fldScript:), 16, 52);
+    mkFI(@"Cancel",  @selector(fldCancel:), 150, 16);
+    NSButton *ok = mkFI(@"OK", @selector(fldOK:), 254, 16);
+    [ok setKeyEquivalent:@"\r"];
+
+    [gFldPanel makeKeyAndOrderFront:nil];
+}
+- (void)fldTextStyle:(id)sender {
+    if (!gFldTarget) return;
+    gFontTarget = gFldTarget;
+    // pre-selectionner la police courante du champ
+    CGFloat sz = gFldTarget->textsize > 0 ? gFldTarget->textsize : 12;
+    NSFont *f = nil;
+    if (gFldTarget->textfont && *gFldTarget->textfont)
+        f = [NSFont fontWithName:[NSString stringWithUTF8String:gFldTarget->textfont] size:sz];
+    if (!f) f = [NSFont systemFontOfSize:sz];
+    [[NSFontManager sharedFontManager] setSelectedFont:f isMultiple:NO];
+    [[NSFontManager sharedFontManager] orderFrontFontPanel:self];
+}
+- (void)fldOK:(id)sender {
+    Object *o = gFldTarget;
+    if (o) {
+        free(o->name);
+        o->name = strdup([[gFldName stringValue] UTF8String]);
+        free(o->style);
+        o->style = strdup([[gFldStyle titleOfSelectedItem] UTF8String]);
+        o->textsize     = [[gFldTextSize stringValue] intValue];
+        o->locktext     = ([gFldLock state]     == NSControlStateValueOn);
+        o->wide_margins = ([gFldWide state]     == NSControlStateValueOn);
+        o->fixed_lh     = ([gFldFixed state]    == NSControlStateValueOn);
+        o->show_lines   = ([gFldLines state]    == NSControlStateValueOn);
+        o->auto_tab     = ([gFldTab state]      == NSControlStateValueOn);
+        o->dont_search  = ([gFldNoSearch state] == NSControlStateValueOn);
+        o->shared_text  = ([gFldShared state]   == NSControlStateValueOn);
+    }
+    [gFldPanel close];
+    gFldTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+- (void)fldCancel:(id)sender {
+    [gFldPanel close];
+    gFldTarget = NULL;
+}
+
+- (void)fldScript:(id)sender {
+    Object *o = gFldTarget;
+    [self fldOK:sender];
+    if (o) [self editScriptOf:o];
+}
 - (void)showButtonInfo:(Object *)obj {
     if (!obj) return;
     gInfoTarget = obj;

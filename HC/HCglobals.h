@@ -25,5 +25,6 @@ extern NSBitmapImageRep *gClipboard;
 extern int gClipW, gClipH;
 extern NSPoint gClipPts[4096];
 extern int gClipPtsCount;
+extern Object *gFontTarget;
 
 #endif
