@@ -441,7 +441,6 @@ void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width
     [NSGraphicsContext restoreGraphicsState];
 }
 // récupère (ou crée) le bitmap de peinture d'une carte/fond
-static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
 
 
 NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {

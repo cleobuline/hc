@@ -26,5 +26,6 @@ extern int gClipW, gClipH;
 extern NSPoint gClipPts[4096];
 extern int gClipPtsCount;
 extern Object *gFontTarget;
+extern NSMutableDictionary *gPaintCache;
 
 #endif

@@ -12,4 +12,5 @@ NSBitmapImageRep *gClipboard = nil;
 int gClipW = 0, gClipH = 0;
 NSPoint gClipPts[4096];
 int gClipPtsCount = 0;
+NSMutableDictionary *gPaintCache = nil;
 

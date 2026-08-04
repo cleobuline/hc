@@ -219,6 +219,23 @@ static void acc_line(Acc *a, const char *s)
     a->buf[a->len]   = '\0';
 }
 
+/* Comme acc_line, mais sans ajouter de saut de ligne : le bloc paint est du
+ * base64 découpé à l'écriture, il doit se recoller à l'identique. */
+static void acc_join(Acc *a, const char *s)
+{
+    size_t n = strlen(s);
+    if (a->len + n + 2 > a->cap) {
+        size_t cap = a->cap ? a->cap * 2 : 256;
+        while (cap < a->len + n + 2) cap *= 2;
+        char *p = realloc(a->buf, cap);
+        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        a->buf = p; a->cap = cap;
+    }
+    memcpy(a->buf + a->len, s, n);
+    a->len += n;
+    a->buf[a->len] = '\0';
+}
+
 static char *acc_take(Acc *a)
 {
     char *r = a->buf;
@@ -258,7 +275,9 @@ Object *hc_load(const char *path)
         /* --- lignes d'un bloc --- */
         if (in_script || in_contents || in_paint || in_bgtext) {
             if (s[0] == '|') {
-                acc_line(&acc, (s[1] == ' ') ? s + 2 : s + 1);
+                const char *piece = (s[1] == ' ') ? s + 2 : s + 1;
+                if (in_paint) acc_join(&acc, piece);   /* base64 : recoller */
+                else          acc_line(&acc, piece);
                 continue;
             }
             if (strcmp(s, "end script") == 0) {

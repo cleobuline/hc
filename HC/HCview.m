@@ -85,7 +85,7 @@ static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 static NSFont *gTextFont = nil;
 
 
-static NSMutableDictionary *gPaintCache = nil;  // clé = pointeur objet, valeur = NSBitmapImageRep
+
 
 // éteint tous les radioButtons de la carte sauf 'keep'
 static void radio_exclusive(Object *card, Object *keep) {
@@ -1321,7 +1321,36 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     for (NSValue *key in gPaintCache) {
         Object *o = [key pointerValue];
         NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
-        NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        if (!rep) continue;
+
+        NSInteger w = [rep pixelsWide], h = [rep pixelsHigh];
+
+        /* NSBitmapImageRep garde en cache la representation compressee : apres
+         * une ecriture directe dans bitmapData, elle serait perimee. On encode
+         * donc une copie fraiche. */
+        NSBitmapImageRep *fresh = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes:NULL
+                          pixelsWide:w pixelsHigh:h
+                       bitsPerSample:8 samplesPerPixel:4
+                            hasAlpha:YES isPlanar:NO
+                      colorSpaceName:NSCalibratedRGBColorSpace
+                         bytesPerRow:0 bitsPerPixel:0];
+
+        unsigned char *src = [rep bitmapData];
+        unsigned char *dst = [fresh bitmapData];
+        NSInteger sbpr = [rep bytesPerRow], dbpr = [fresh bytesPerRow];
+        NSInteger spp  = [rep samplesPerPixel], dspp = [fresh samplesPerPixel];
+        for (NSInteger y = 0; y < h; y++) {
+            for (NSInteger x = 0; x < w; x++) {
+                unsigned char *sp = src + y*sbpr + x*spp;
+                unsigned char *dp = dst + y*dbpr + x*dspp;
+                dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
+                dp[3] = (spp >= 4) ? sp[3] : 255;
+            }
+        }
+
+        NSData *png = [fresh representationUsingType:NSBitmapImageFileTypePNG
+                                          properties:@{}];
         NSString *b64 = [png base64EncodedStringWithOptions:0];
         hc_set_paint(o, [b64 UTF8String]);
     }

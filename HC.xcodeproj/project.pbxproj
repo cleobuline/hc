@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4DF28F7A3022AACD00D7740C /* HCglobals.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF28F793022AACD00D7740C /* HCglobals.m */; };
 		4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB4E3014BE74006AE901 /* AppDelegate.m */; };
 		4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB503014BE7D006AE901 /* Assets.xcassets */; };
 		4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB523014BE7D006AE901 /* MainMenu.xib */; };
@@ -23,6 +24,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		4DF28F793022AACD00D7740C /* HCglobals.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCglobals.m; sourceTree = "<group>"; };
 		4DF5FB4A3014BE74006AE901 /* HC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DF5FB4D3014BE74006AE901 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		4DF5FB4E3014BE74006AE901 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
 				4DF5FB8B301FEE35006AE901 /* HCdialogs.h */,
+				4DF28F793022AACD00D7740C /* HCglobals.m */,
 				4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */,
 				4DF5FB87301FE73D006AE901 /* graphics.h */,
 				4DF5FB88301FE77C006AE901 /* graphics.m */,
@@ -183,6 +186,7 @@
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,
 				4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */,
+				4DF28F7A3022AACD00D7740C /* HCglobals.m in Sources */,
 				4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */,
 				4DF5FB8D301FEE6F006AE901 /* HCdialogs.m in Sources */,
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
