@@ -262,7 +262,7 @@ static void draw_part(Object *o) {
 
         const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
-        /* ---- bouton a icone ---- */
+        /* ---- bouton a icone : habillage du style + icone par-dessus ---- */
         if (ic) {
             CGFloat iy = o->y + 2;
             NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
@@ -275,11 +275,11 @@ static void draw_part(Object *o) {
             if (o->showname && o->h > 36) {
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                 [ps setAlignment:NSTextAlignmentCenter];
-                NSMutableDictionary *at = [obj_attrs(o, 11,
+                NSMutableDictionary *bat = [obj_attrs(o, 11,
                     on ? [NSColor whiteColor] : [NSColor blackColor]) mutableCopy];
-                at[NSParagraphStyleAttributeName] = ps;
-                NSRect tr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
-                [s drawInRect:tr withAttributes:at];
+                bat[NSParagraphStyleAttributeName] = ps;
+                NSRect btr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
+                [s drawInRect:btr withAttributes:bat];
             }
         }
         /* ---- case a cocher / bouton radio ---- */
@@ -332,14 +332,14 @@ static void draw_part(Object *o) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 16;
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                 [ps setAlignment:NSTextAlignmentCenter];
-                NSMutableDictionary *at = [obj_attrs(o, 16, [NSColor blackColor]) mutableCopy];
-                at[NSParagraphStyleAttributeName] = ps;
-                NSRect tr = NSInsetRect(r, 2, 0);
-                tr.origin.y += (r.size.height - fs * 1.2) / 2;
-                [s drawInRect:tr withAttributes:at];
+                NSMutableDictionary *bat = [obj_attrs(o, 16, [NSColor blackColor]) mutableCopy];
+                bat[NSParagraphStyleAttributeName] = ps;
+                NSRect btr = NSInsetRect(r, 2, 0);
+                btr.origin.y += (r.size.height - fs * 1.2) / 2;
+                [s drawInRect:btr withAttributes:bat];
             }
         }
-        /* ---- popup ---- */
+        /* ---- popup : rectangle ombre + chevron + ligne courante ---- */
         else if (isPopup) {
             NSRect body = NSMakeRect(r.origin.x, r.origin.y,
                                      r.size.width - 3, r.size.height - 3);
@@ -397,6 +397,7 @@ static void draw_part(Object *o) {
 
         NSRect body = r;
 
+        /* ---- fond et cadre selon le style ---- */
         if (isTransp) {
             /* rien : le fond transparait */
         }
@@ -419,58 +420,58 @@ static void draw_part(Object *o) {
             [bp stroke];
         }
         else if (isScroll) {
-                    [[NSColor whiteColor] setFill];
-                    NSRectFill(r);
-                    [[NSColor blackColor] setStroke];
-                    NSFrameRect(r);
+            [[NSColor whiteColor] setFill];
+            NSRectFill(r);
+            [[NSColor blackColor] setStroke];
+            NSFrameRect(r);
 
-                    CGFloat bw = 16;
-                    NSRect bar = NSMakeRect(r.origin.x + r.size.width - bw, r.origin.y,
-                                            bw, r.size.height);
-                    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
-                    NSRectFill(bar);
-                    [[NSColor blackColor] setStroke];
-                    NSFrameRect(bar);
+            CGFloat bw = 16;
+            NSRect bar = NSMakeRect(r.origin.x + r.size.width - bw, r.origin.y,
+                                    bw, r.size.height);
+            [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+            NSRectFill(bar);
+            [[NSColor blackColor] setStroke];
+            NSFrameRect(bar);
 
-                    /* les deux fleches */
-                    [[NSColor blackColor] setFill];
-                    CGFloat cx = bar.origin.x + bw/2;
-                    NSBezierPath *up = [NSBezierPath bezierPath];
-                    [up moveToPoint:NSMakePoint(cx - 4, bar.origin.y + 11)];
-                    [up lineToPoint:NSMakePoint(cx + 4, bar.origin.y + 11)];
-                    [up lineToPoint:NSMakePoint(cx,     bar.origin.y + 5)];
-                    [up closePath]; [up fill];
-                    NSBezierPath *dn = [NSBezierPath bezierPath];
-                    CGFloat by = bar.origin.y + bar.size.height;
-                    [dn moveToPoint:NSMakePoint(cx - 4, by - 11)];
-                    [dn lineToPoint:NSMakePoint(cx + 4, by - 11)];
-                    [dn lineToPoint:NSMakePoint(cx,     by - 5)];
-                    [dn closePath]; [dn fill];
+            /* les deux fleches */
+            [[NSColor blackColor] setFill];
+            CGFloat cx = bar.origin.x + bw/2;
+            NSBezierPath *up = [NSBezierPath bezierPath];
+            [up moveToPoint:NSMakePoint(cx - 4, bar.origin.y + 11)];
+            [up lineToPoint:NSMakePoint(cx + 4, bar.origin.y + 11)];
+            [up lineToPoint:NSMakePoint(cx,     bar.origin.y + 5)];
+            [up closePath]; [up fill];
+            NSBezierPath *dn = [NSBezierPath bezierPath];
+            CGFloat by = bar.origin.y + bar.size.height;
+            [dn moveToPoint:NSMakePoint(cx - 4, by - 11)];
+            [dn lineToPoint:NSMakePoint(cx + 4, by - 11)];
+            [dn lineToPoint:NSMakePoint(cx,     by - 5)];
+            [dn closePath]; [dn fill];
 
-                    /* l'ascenseur, proportionnel a la part visible du texte */
-                    CGFloat m0 = o->wide_margins ? 8 : 4;
-                    NSRect tr0 = NSInsetRect(NSMakeRect(r.origin.x, r.origin.y,
-                                                        r.size.width - bw, r.size.height), m0, m0);
-                    CGFloat th = field_text_height(o, tr0);
-                    CGFloat vh = tr0.size.height;
-                    CGFloat gy = bar.origin.y + 16;
-                    CGFloat gh = bar.size.height - 32;
-                    if (th > vh && gh > 8) {
-                        CGFloat kh = gh * (vh / th);
-                        if (kh < 12) kh = 12;
-                        CGFloat maxs = th - vh;
-                        CGFloat pos = (maxs > 0) ? (o->scroll / maxs) : 0;
-                        if (pos > 1) pos = 1;
-                        NSRect knob = NSMakeRect(bar.origin.x + 1, gy + pos * (gh - kh),
-                                                 bw - 2, kh);
-                        [[NSColor colorWithWhite:0.75 alpha:1.0] setFill];
-                        NSRectFill(knob);
-                        [[NSColor blackColor] setStroke];
-                        NSFrameRect(knob);
-                    }
+            /* l'ascenseur, proportionnel a la part visible du texte */
+            CGFloat m0 = o->wide_margins ? 8 : 4;
+            NSRect tr0 = NSInsetRect(NSMakeRect(r.origin.x, r.origin.y,
+                                                r.size.width - bw, r.size.height), m0, m0);
+            CGFloat th = field_text_height(o, tr0);
+            CGFloat vh = tr0.size.height;
+            CGFloat gy = bar.origin.y + 16;
+            CGFloat gh = bar.size.height - 32;
+            if (th > vh && gh > 8) {
+                CGFloat kh = gh * (vh / th);
+                if (kh < 12) kh = 12;
+                CGFloat maxs = th - vh;
+                CGFloat pos = (maxs > 0) ? (o->scroll / maxs) : 0;
+                if (pos > 1) pos = 1;
+                NSRect knob = NSMakeRect(bar.origin.x + 1, gy + pos * (gh - kh),
+                                         bw - 2, kh);
+                [[NSColor colorWithWhite:0.75 alpha:1.0] setFill];
+                NSRectFill(knob);
+                [[NSColor blackColor] setStroke];
+                NSFrameRect(knob);
+            }
 
-                    body = NSMakeRect(r.origin.x, r.origin.y, r.size.width - bw, r.size.height);
-                }
+            body = NSMakeRect(r.origin.x, r.origin.y, r.size.width - bw, r.size.height);
+        }
         else {   /* rectangle */
             [[NSColor whiteColor] setFill];
             NSRectFill(r);
@@ -482,6 +483,7 @@ static void draw_part(Object *o) {
         CGFloat m = o->wide_margins ? 8 : 4;
         NSRect tr = NSInsetRect(body, m, m);
 
+        /* ---- lignes de guidage ---- */
         if (o->show_lines) {
             CGFloat lh = [@"Ag" sizeWithAttributes:at].height;
             if (lh < 4) lh = 12;
@@ -497,6 +499,7 @@ static void draw_part(Object *o) {
             }
         }
 
+        /* ---- le texte ---- */
         const char *tx = hc_field_text(o);
         NSString *s = [NSString stringWithUTF8String:tx];
 
@@ -510,6 +513,39 @@ static void draw_part(Object *o) {
             [NSGraphicsContext restoreGraphicsState];
         } else {
             [s drawInRect:tr withAttributes:at];
+        }
+
+        /* ---- surlignage du dernier « find » ---- */
+        int fstart = 0, flen = 0;
+        if (hc_found_range(o, &fstart, &flen) && flen > 0 &&
+            fstart + flen <= (int)[s length]) {
+
+            NSTextStorage   *ts = [[NSTextStorage alloc] initWithString:s attributes:at];
+            NSLayoutManager *lm = [[NSLayoutManager alloc] init];
+            NSTextContainer *tc = [[NSTextContainer alloc]
+                                    initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
+            [tc setLineFragmentPadding:0];
+            [lm addTextContainer:tc];
+            [ts addLayoutManager:lm];
+
+            NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fstart, flen)
+                                       actualCharacterRange:NULL];
+            NSRect box = [lm boundingRectForGlyphRange:glyphs inTextContainer:tc];
+            box.origin.x += tr.origin.x;
+            box.origin.y += tr.origin.y - (isScroll ? o->scroll : 0);
+
+            [NSGraphicsContext saveGraphicsState];
+            NSRectClip(tr);
+            [[NSColor blackColor] setFill];
+            NSRectFill(box);
+            NSMutableDictionary *inv = [at mutableCopy];
+            inv[NSForegroundColorAttributeName] = [NSColor whiteColor];
+            NSAttributedString *sub =
+                [[NSAttributedString alloc]
+                    initWithString:[s substringWithRange:NSMakeRange(fstart, flen)]
+                        attributes:inv];
+            [sub drawAtPoint:box.origin];
+            [NSGraphicsContext restoreGraphicsState];
         }
 
         if (isTransp) draw_edit_outline(r);
@@ -1462,9 +1498,16 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
         // champ : passer en saisie
         if (hit && hit->type == OBJ_FIELD) {
-            [self beginFieldEdit:hit];
-            return;
-        }
+                    if (hit->locktext) {
+                        // champ verrouille : le clic va au script, comme un bouton
+                        gPressed = hit;
+                        hc_send(hit, "mouseDown");
+                        [self setNeedsDisplay:YES];
+                    } else {
+                        [self beginFieldEdit:hit];
+                    }
+                    return;
+                }
 
         if (hit) {
             gPressed = hit;
@@ -1857,6 +1900,8 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                 NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle)
             }];
     const char *tx = hc_field_text(field);
+    [gFieldEditor setEditable:!field->locktext];
+    [gFieldEditor setSelectable:YES];
     [gFieldEditor setString:[NSString stringWithUTF8String:tx]];
     [self addSubview:gFieldEditor];
     [[self window] makeFirstResponder:gFieldEditor];

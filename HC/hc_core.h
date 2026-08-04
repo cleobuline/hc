@@ -145,6 +145,8 @@ void        hc_set_field_text(Object *field, const char *text);
 /* Texte effectif d'un champ : propre à la carte courante s'il s'agit d'un
  * champ de fond non partagé. Ne renvoie jamais NULL. */
 const char *hc_field_text(Object *field);
+/* Plage surlignee par le dernier « find » dans ce champ. 1 si trouve. */
+int         hc_found_range(Object *field, int *start, int *len);
 
 /* Calque de peinture (bitmap base64) d'une carte ou d'un fond.
    Le noyau ne l'interprète pas : il le stocke et le restitue tel quel. */

@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <time.h>
+#include <strings.h>
 
 /* ==================== outils chaînes ==================== */
 
@@ -209,6 +210,14 @@ static void notify_field(Object *field)
 /* ==================== construction ==================== */
 
 static int g_next_id = 1;
+
+/* resultat de la derniere recherche : the foundText / foundField / foundLine */
+static char    g_found_text[256] = "";
+static Object *g_found_field = NULL;
+static int     g_found_line = 0;
+static int     g_found_start = 0;   /* offset du motif dans le texte du champ */
+static int     g_found_len   = 0;   /* longueur du motif, 0 = rien de trouve */
+static Object *g_found_card  = NULL;
 
 /* pile de navigation : push cd / pop cd */
 #define NAVSTACK_MAX 64
@@ -1175,6 +1184,19 @@ static int call_function(const char *t, char *out, int outlen)
     if (!*skip_spaces(after)) {
         if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
         if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
+        if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_text); return 1; }
+        if (ci_equal(name, "foundfield")) {
+            if (g_found_field) hc_describe(g_found_field, out, outlen);
+            else snprintf(out, outlen, "%s", "");
+            return 1;
+        }
+        if (ci_equal(name, "foundline")) {
+            if (g_found_field && g_found_line > 0) {
+                char d[96]; hc_describe(g_found_field, d, sizeof d);
+                snprintf(out, outlen, "line %d of %s", g_found_line, d);
+            } else snprintf(out, outlen, "%s", "");
+            return 1;
+        }
         if (ci_equal(name, "paramcount")) { snprintf(out, outlen, "%d", g_nparams - 1); return 1; }
         if (ci_equal(name, "params")) {
             /* tous les paramètres, nom du message inclus, séparés par des virgules */
@@ -2460,6 +2482,118 @@ static void exec_line(Object *me, const char *line)
         return;
     }
 
+    /* --- find [string|word|chars|whole] "texte" [in <champ>] ---
+     * Parcourt les cartes à partir de la courante, en bouclant. Ignore les
+     * champs marqués dontSearch. Le mode par défaut d'HyperTalk cherche un
+     * mot commençant par le motif. */
+    if (ci_equal(verb, "find")) {
+        const char *r = skip_spaces(rest);
+        int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
+        if      (ci_word(r, "string") || ci_word(r, "chars")) { mode = 1; r = skip_spaces(r + 6); }
+        else if (ci_word(r, "whole"))  { mode = 1; r = skip_spaces(r + 5); }
+        else if (ci_word(r, "word"))   { mode = 2; r = skip_spaces(r + 4); }
+
+        /* separer le motif de l'eventuel « in <champ> » */
+        const char *kw = NULL;
+        int inq = 0;
+        for (const char *q = r; *q; q++) {
+            if (*q == '"') { inq = !inq; continue; }
+            if (inq) continue;
+            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
+        }
+        char pat[256] = "", where[128] = "";
+        if (kw) {
+            char e[256];
+            int n = (int)(kw - r);
+            if (n > (int)sizeof e - 1) n = (int)sizeof e - 1;
+            memcpy(e, r, n); e[n] = 0;
+            eval_expr(e, pat, sizeof pat);
+            snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
+        } else {
+            eval_expr(r, pat, sizeof pat);
+        }
+        if (!pat[0]) { set_result("not found"); return; }
+
+        Object *stack = g_current_card ? g_current_card->owner : NULL;
+        while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+        if (!stack) { set_result("not found"); return; }
+
+        int total = card_count(stack);
+        int start = card_index(stack, g_current_card);
+        if (start < 0) start = 0;
+
+        for (int k = 0; k < total; k++) {
+            Object *cd = nth_card(stack, (start + k) % total);
+            if (!cd) continue;
+
+            /* champs de la carte puis du fond */
+            Object *layers[2] = { cd, cd->bg };
+            for (int L = 0; L < 2; L++) {
+                Object *lay = layers[L];
+                if (!lay) continue;
+                for (int i = 0; i < lay->nparts; i++) {
+                    Object *fl = lay->parts[i];
+                    if (fl->type != OBJ_FIELD || fl->dont_search) continue;
+                    if (where[0]) {          /* recherche restreinte a un champ */
+                        Object *only = resolve(where);
+                        if (only != fl) continue;
+                    }
+
+                    Object *saved = g_current_card;
+                    g_current_card = cd;                 /* pour le texte par carte */
+                    const char *tx = hc_field_text(fl);
+                    const char *hit = NULL;
+                    int line = 1;
+
+                    for (const char *q = tx; *q; q++) {
+                        if (*q == '\n') { line++; continue; }
+                        int atword = (q == tx) || isspace((unsigned char)q[-1]);
+                        if (mode == 1 || atword) {
+                            size_t plen = strlen(pat);
+                            if (strncasecmp(q, pat, plen) == 0) {
+                                if (mode == 2) {         /* mot entier */
+                                    char nx = q[plen];
+                                    if (nx && !isspace((unsigned char)nx) &&
+                                        !ispunct((unsigned char)nx)) continue;
+                                }
+                                hit = q;
+                                break;
+                            }
+                        }
+                    }
+                    g_current_card = saved;
+
+                    if (hit) {
+                        snprintf(g_found_text, sizeof g_found_text, "%s", pat);
+                        g_found_field = fl;
+                        g_found_line = line;
+                        g_found_start = (int)(hit - tx);
+                        g_found_len   = (int)strlen(pat);
+                        g_found_card  = cd;
+
+                        if (cd != g_current_card) {      /* naviguer si besoin */
+                            Object *old = g_current_card;
+                            Object *oldbg = old ? old->bg : NULL;
+                            if (old) hc_send(old, "closeCard");
+                            if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                            g_current_card = cd;
+                            if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
+                            hc_send(cd, "openCard");
+                        }
+                        set_result("");
+                        emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
+                             pat, cd->name ? cd->name : "?");
+                        return;
+                    }
+                }
+            }
+        }
+        g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
+        g_found_start = g_found_len = 0; g_found_card = NULL;
+        set_result("not found");
+        return;
+    }
+
     /* --- ask "invite" [with "défaut"] --- */
     if (ci_equal(verb, "ask")) {
         const char *r = skip_spaces(rest);
@@ -2803,6 +2937,17 @@ static int field_is_percard(Object *field)
     return field && field->type == OBJ_FIELD
         && field->owner && field->owner->type == OBJ_BACKGROUND
         && !field->shared_text;
+}
+
+/* Plage du dernier « find » : renvoie 1 si ce champ, sur cette carte, porte
+ * le texte trouve, et remplit start et len. */
+int hc_found_range(Object *field, int *start, int *len)
+{
+    if (!field || field != g_found_field || g_found_len <= 0) return 0;
+    if (g_found_card && g_found_card != g_current_card) return 0;
+    if (start) *start = g_found_start;
+    if (len)   *len   = g_found_len;
+    return 1;
 }
 
 const char *hc_field_text(Object *field)
