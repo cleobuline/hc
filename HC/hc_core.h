@@ -113,6 +113,24 @@ typedef struct {
     const char *(*ask)(const char *prompt, const char *deflt);
     const char *(*answer)(const char *prompt, const char *b1,
                           const char *b2, const char *b3);
+
+    /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul
+     * (souris, clavier, écran, horloge). L'hôte renvoie une chaîne valide
+     * jusqu'au prochain appel, ou NULL si le nom lui est inconnu.
+     * Noms attendus par les scripts d'origine :
+     *   mouse      « up » / « down »
+     *   mouseLoc   « x,y » en coordonnées carte
+     *   optionKey, commandKey, shiftKey   « up » / « down »
+     * Le nom arrive sans « the » et sans tenir compte de la casse. */
+    const char *(*global_get)(const char *name);
+    void        (*global_set)(const char *name, const char *value);
+
+    void (*play_sound)(const char *name);   /* play "boing" */
+
+    /* Appelé à chaque tour de boucle « repeat ». C'est là qu'une interface
+     * graphique redessine et rend la main : sans lui, une boucle d'animation
+     * monopolise le fil principal et rien ne s'affiche avant la fin. */
+    void (*idle)(void);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */

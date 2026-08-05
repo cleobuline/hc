@@ -1,6 +1,8 @@
 #import "HCview.h"
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
+#include <strings.h>       // strcasecmp, pour les noms de proprietes globales
+#import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import "icons.h"
 #import "HCglobals.h"
 #import "HCpalettes.h"
@@ -654,6 +656,99 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
 static void cocoa_field_changed(Object *field) {
     (void)field;
     [gView setNeedsDisplay:YES];
+}
+
+/* ---------- proprietes globales : ce que le noyau ne peut pas savoir ----------
+ * On ne pompe PAS la boucle d'evenements : NSEvent expose l'etat du materiel
+ * en methodes de classe, ce qui marche depuis une boucle HyperTalk bloquante
+ * du genre « repeat until the mouse is up ».
+ * La vue etant isFlipped, ses coordonnees sont deja celles de la carte. */
+static char gGlobBuf[64];
+
+static const char *cocoa_global_get(const char *name) {
+    if (strcasecmp(name, "mouse") == 0)
+        return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
+
+    if (strcasecmp(name, "optionKey") == 0)
+        return ([NSEvent modifierFlags] & NSEventModifierFlagOption) ? "down" : "up";
+    if (strcasecmp(name, "commandKey") == 0)
+        return ([NSEvent modifierFlags] & NSEventModifierFlagCommand) ? "down" : "up";
+    if (strcasecmp(name, "shiftKey") == 0)
+        return ([NSEvent modifierFlags] & NSEventModifierFlagShift) ? "down" : "up";
+
+    if (strcasecmp(name, "mouseLoc") == 0) {
+        NSPoint s = [NSEvent mouseLocation];               // ecran
+        NSRect  w = [[gView window] convertRectFromScreen:
+                        NSMakeRect(s.x, s.y, 0, 0)];       // fenetre
+        NSPoint v = [gView convertPoint:w.origin fromView:nil];
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d", (int)v.x, (int)v.y);
+        return gGlobBuf;
+    }
+
+    if (strcasecmp(name, "ticks") == 0) {                  // 1/60 s
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%ld",
+                 (long)([NSDate timeIntervalSinceReferenceDate] * 60.0));
+        return gGlobBuf;
+    }
+    return NULL;   // nom inconnu : le noyau se rabat sur un litteral
+}
+
+/* hide/unhide sont comptes par NSCursor : sans ce drapeau, un script qui
+ * fait « set cursor to none » deux fois laisserait le curseur cache. */
+static BOOL gCursorHidden = NO;
+
+static void cocoa_global_set(const char *name, const char *value) {
+    if (strcasecmp(name, "cursor") == 0) {
+        if (strcasecmp(value, "none") == 0) {
+            if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
+        } else {
+            if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
+            if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0)
+                [[NSCursor operationNotAllowedCursor] set];
+            else if (strcasecmp(value, "ibeam") == 0)
+                [[NSCursor IBeamCursor] set];
+            else
+                [[NSCursor arrowCursor] set];
+        }
+    }
+}
+
+/* Filet de securite : si un script se termine sur « set cursor to none »
+ * sans jamais le remettre, l'utilisateur perd son pointeur. */
+void hc_restore_cursor(void) {
+    if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
+}
+
+static void cocoa_play(const char *name) {
+    NSString *n = [NSString stringWithUTF8String:name ? name : ""];
+    NSSound *s = [NSSound soundNamed:n];               // sons systeme
+    if (!s) {                                          // puis les ressources
+        NSArray *ext = @[@"aiff", @"aif", @"wav"];
+        for (NSString *e in ext) {
+            NSString *p = [[NSBundle mainBundle] pathForResource:n ofType:e];
+            if (p) { s = [[NSSound alloc] initWithContentsOfFile:p byReference:YES]; break; }
+        }
+    }
+    if (s) [s play];      // asynchrone : l'animation continue
+    else   NSBeep();
+}
+
+/* Appele a chaque tour de « repeat ». Sans lui, une boucle d'animation
+ * monopolise le fil principal : rien ne s'affiche avant la fin du
+ * gestionnaire, et le de apparait directement en bas de la carte. */
+static void cocoa_idle(void) {
+    [gView display];              // drawRect: tout de suite, dans le backing store
+    [[gView window] displayIfNeeded];
+
+    /* Et LA, le point qui fait toute la difference : la vue est layer-backed,
+     * donc le contenu du calque n'est envoye au serveur de fenetres qu'a la
+     * fin du cycle de run loop. Comme dieFall ne rend jamais la main, les
+     * soixante images s'empileraient dans le calque et seule la derniere
+     * serait visible : on verrait le de partir, puis arriver, sans la chute.
+     * CATransaction flush valide la transaction immediatement. */
+    [CATransaction flush];
+
+    [NSThread sleepForTimeInterval:1.0 / 60.0]; // sinon la chute est instantanee
 }
 static NSFont *text_font(void) {
     if (!gTextFont) {
@@ -1829,11 +1924,15 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     [self addSubview:gMsgBox];
 
     static HcHost host;
-        host.line = cocoa_line;
-        host.field_changed = cocoa_field_changed;
-        host.ask = cocoa_ask;
-        host.answer = cocoa_answer;
-        hc_set_host(&host);;
+    host.line          = cocoa_line;
+    host.field_changed = cocoa_field_changed;
+    host.ask           = cocoa_ask;
+    host.answer        = cocoa_answer;
+    host.global_get    = cocoa_global_get;
+    host.global_set    = cocoa_global_set;
+    host.play_sound    = cocoa_play;
+    host.idle          = cocoa_idle;
+    hc_set_host(&host);
 }
 
 - (void)messageBoxEntered:(id)sender {

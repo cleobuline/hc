@@ -183,8 +183,23 @@ static const char *console_answer(const char *prompt, const char *b1,
     return b1 ? b1 : "OK";
 }
 
-static const HcHost g_console_host = { console_line, NULL,
-                                       console_ask, console_answer };
+/* Valeurs par défaut en console : la souris est relâchée et aucune touche
+ * n'est enfoncée. C'est ce qui permet à « repeat until the mouse is up » de
+ * se terminer immédiatement en ligne de commande au lieu de boucler à vide. */
+static const char *console_global(const char *name)
+{
+    if (ci_equal(name, "mouse"))      return "up";
+    if (ci_equal(name, "mouseLoc"))   return "0,0";
+    if (ci_equal(name, "optionKey"))  return "up";
+    if (ci_equal(name, "commandKey")) return "up";
+    if (ci_equal(name, "shiftKey"))   return "up";
+    return NULL;
+}
+
+static const HcHost g_console_host = {
+    console_line, NULL, console_ask, console_answer,
+    console_global, NULL, NULL, NULL
+};
 static const HcHost *g_host = &g_console_host;
 
 void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
@@ -205,6 +220,24 @@ static void emit(HcLineKind kind, const char *fmt, ...)
 static void notify_field(Object *field)
 {
     if (g_host && g_host->field_changed) g_host->field_changed(field);
+}
+
+/* Propriété globale lue chez l'hôte. NULL = nom inconnu. */
+static const char *host_global(const char *name)
+{
+    if (g_host && g_host->global_get) return g_host->global_get(name);
+    return NULL;
+}
+
+static void host_global_set(const char *name, const char *value)
+{
+    if (g_host && g_host->global_set) g_host->global_set(name, value);
+}
+
+/* Respiration : l'hôte redessine et traite ses événements. */
+static void host_idle(void)
+{
+    if (g_host && g_host->idle) g_host->idle();
 }
 
 /* ==================== construction ==================== */
@@ -297,10 +330,34 @@ Object *hc_new_field(Object *owner, const char *name)
     return o;
 }
 
+/* Normalise les fins de ligne : « \r\n » (Windows) et « \r » seul (Mac
+ * classique) deviennent « \n ». Sans ça, un script en « \r » n'est qu'une
+ * seule ligne géante : find_handler reconnaît bien « on mouseUp », mais le
+ * corps — cherché après le premier « \n » — est vide. Le gestionnaire est
+ * alors annoncé comme traité et ne fait rien, ce qui est très déroutant.
+ * Les scripts d'HyperCard d'origine sont tous en « \r ». */
+static char *dup_script(const char *s)
+{
+    if (!s) return NULL;
+    char *d = (char *)malloc(strlen(s) + 1);
+    if (!d) return NULL;
+    char *w = d;
+    for (const char *p = s; *p; p++) {
+        if (*p == '\r') {
+            if (p[1] == '\n') continue;   /* \r\n : le \n qui suit fera l'affaire */
+            *w++ = '\n';
+        } else {
+            *w++ = *p;
+        }
+    }
+    *w = '\0';
+    return d;
+}
+
 void hc_set_script(Object *o, const char *script)
 {
     free(o->script);
-    o->script = dupstr(script);
+    o->script = dup_script(script);
 }
 
 void hc_free(Object *o)
@@ -569,7 +626,7 @@ static Object *resolve(const char *ref)
     /* --- cartes désignées par leur rang --- */
     if (ci_word(ref, "this")) {
         const char *w = skip_spaces(ref + 4);
-        if (!*w || ci_word(w, "card")) return card;
+        if (!*w || ci_word(w, "card") || ci_word(w, "cd")) return card;
         if (ci_word(w, "stack")) return stack;
         if (ci_word(w, "background") || ci_word(w, "bg")) return bg;
     }
@@ -806,7 +863,7 @@ static void collect_ref(const char **p, char *buf, int buflen)
             continue;
         }
 
-        if (!*w || strchr("&+-*/<>=(),", *w)) { s = w; break; }
+        if (!*w || strchr("&+-*/^<>=(),", *w)) { s = w; break; }
 
         const char *st = w, *q = w;
         if (*w == '"') {
@@ -814,7 +871,7 @@ static void collect_ref(const char **p, char *buf, int buflen)
             while (*q && *q != '"') q++;
             if (*q == '"') q++;
         } else {
-            while (*q && !isspace((unsigned char)*q) && !strchr("&+-*/<>=(),\"", *q)) q++;
+            while (*q && !isspace((unsigned char)*q) && !strchr("&+-*/^<>=(),\"", *q)) q++;
             if (is_stop_word(st, (int)(q - st))) { s = w; break; }
         }
 
@@ -1337,10 +1394,34 @@ static int call_function(const char *t, char *out, int outlen)
 
 /* ==================== propriétés géométriques ==================== */
 
+/* La pile qui contient cet objet (l'objet lui-même si c'en est une). */
+static Object *owning_stack(Object *o)
+{
+    while (o && o->type != OBJ_STACK) o = o->owner;
+    return o;
+}
+
+/* Rectangle effectif. Une carte ou un fond n'a pas de géométrie propre :
+ * c'est celle de sa pile, comme dans HyperCard, où « the rect of this card »
+ * vaut « 0,0,largeur,hauteur ». Une pile sans taille explicite garde le
+ * format d'origine du Macintosh, 512×342. */
+static void obj_rect(Object *o, int *L, int *T, int *R, int *B)
+{
+    if (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND || o->type == OBJ_STACK) {
+        Object *st = owning_stack(o);
+        *L = 0; *T = 0;
+        *R = (st && st->w > 0) ? st->w : 512;
+        *B = (st && st->h > 0) ? st->h : 342;
+        return;
+    }
+    *L = o->x; *T = o->y; *R = o->x + o->w; *B = o->y + o->h;
+}
+
 /* Lit une propriété géométrique dans `out`. Renvoie 0 si `prop` n'en est pas. */
 static int geom_read(Object *o, const char *prop, char *out, int outlen)
 {
-    int L = o->x, T = o->y, R = o->x + o->w, B = o->y + o->h;
+    int L, T, R, B;
+    obj_rect(o, &L, &T, &R, &B);
     if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle"))
         snprintf(out, outlen, "%d,%d,%d,%d", L, T, R, B);
     else if (ci_equal(prop, "topleft"))   snprintf(out, outlen, "%d,%d", L, T);
@@ -1350,10 +1431,10 @@ static int geom_read(Object *o, const char *prop, char *out, int outlen)
     else if (ci_equal(prop, "top"))       snprintf(out, outlen, "%d", T);
     else if (ci_equal(prop, "right"))     snprintf(out, outlen, "%d", R);
     else if (ci_equal(prop, "bottom"))    snprintf(out, outlen, "%d", B);
-    else if (ci_equal(prop, "width"))     snprintf(out, outlen, "%d", o->w);
-    else if (ci_equal(prop, "height"))    snprintf(out, outlen, "%d", o->h);
+    else if (ci_equal(prop, "width"))     snprintf(out, outlen, "%d", R - L);
+    else if (ci_equal(prop, "height"))    snprintf(out, outlen, "%d", B - T);
     else if (ci_equal(prop, "loc") || ci_equal(prop, "location"))
-                                          snprintf(out, outlen, "%d,%d", L + o->w/2, T + o->h/2);
+                                          snprintf(out, outlen, "%d,%d", (L + R) / 2, (T + B) / 2);
     else return 0;
     return 1;
 }
@@ -1375,6 +1456,12 @@ static int parse_ints(const char *s, int *v, int maxn)
 static int geom_write(Object *o, const char *prop, const char *val)
 {
     int p[4];
+    /* Redimensionner une carte ou un fond, c'est redimensionner la pile :
+     * c'est elle qui porte la taille, et l'interface la relit de là. */
+    if (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND) {
+        Object *st = owning_stack(o);
+        if (st) o = st;
+    }
     if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle")) {
         if (parse_ints(val, p, 4) == 4) { o->x = p[0]; o->y = p[1]; o->w = p[2]-p[0]; o->h = p[3]-p[1]; }
     } else if (ci_equal(prop, "topleft")) {
@@ -1393,6 +1480,36 @@ static int geom_write(Object *o, const char *prop, const char *val)
     if (o->w < 0) o->w = 0;
     if (o->h < 0) o->h = 0;
     return 1;
+}
+
+/* Le mot est-il un nom de propriété ? Sert à accepter « loc of me » sans
+ * « the ». La liste couvre exactement les propriétés que sait lire la
+ * branche ci-dessous : y ajouter un nom sans l'ajouter là serait un piège. */
+static int is_prop_name(const char *w, int len)
+{
+    static const char *tab[] = {
+        "rect", "rectangle", "topleft", "botright", "bottomright",
+        "left", "top", "right", "bottom", "width", "height",
+        "loc", "location", "id", "name", "visible", "showname", "shownname",
+        "icon", "selectedline", "selectedlines", "locktext", "widemargins",
+        "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
+        "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
+        "textsize", "textheight", "script", "text", "contents", "style", NULL
+    };
+    for (int i = 0; tab[i]; i++)
+        if ((int)strlen(tab[i]) == len && ci_nequal(w, tab[i], len)) return 1;
+    return 0;
+}
+
+/* « <propriété> of … » sans « the » devant ? */
+static int prop_word_before_of(const char *t)
+{
+    const char *w = skip_spaces(t);
+    const char *q = w;
+    while (*q && !isspace((unsigned char)*q)) q++;
+    if (q == w) return 0;
+    if (!is_prop_name(w, (int)(q - w))) return 0;
+    return ci_word(skip_spaces(q), "of");
 }
 
 static void term_value(const char *t, char *out, int outlen)
@@ -1464,9 +1581,13 @@ static void term_value(const char *t, char *out, int outlen)
     /* --- fonctions intégrées --- */
     if (call_function(t, out, outlen)) return;
 
-    /* --- the [short|long] <propriété> of <objet> --- */
-    if (ci_word(t, "the")) {
-        const char *w = skip_spaces(t + 3);
+    /* --- [the] [short|long] <propriété> of <objet> ---
+     * HyperCard tolère l'omission de « the » : « bottom of this cd »,
+     * « loc of me ». On ne l'accepte que si le premier mot est bien un nom
+     * de propriété connu, sinon « item 1 of x » ou une variable suivie de
+     * « of » se feraient happer. */
+    if (ci_word(t, "the") || prop_word_before_of(t)) {
+        const char *w = ci_word(t, "the") ? skip_spaces(t + 3) : t;
 
         int shortf = 0;
         if (ci_word(w, "short")) { shortf = 1; w = skip_spaces(w + 5); }
@@ -1534,6 +1655,18 @@ static void term_value(const char *t, char *out, int outlen)
     if (!strchr(t, ' ')) {
         const char *v = var_get(t);
         if (v) { snprintf(out, outlen, "%s", v); return; }
+    }
+
+    /* --- une propriété globale ? (« the mouse », « the mouseLoc »…) ---
+     * Après les variables : un script qui nomme sa variable « mouse » garde
+     * la priorité, comme dans HyperCard. */
+    {
+        const char *g = t;
+        if (ci_word(g, "the")) g = skip_spaces(g + 3);
+        if (*g && !strchr(g, ' ')) {
+            const char *v = host_global(g);
+            if (v) { snprintf(out, outlen, "%s", v); return; }
+        }
     }
 
     /* --- sinon littéral non quoté, comme le faisait HyperCard --- */
@@ -1944,6 +2077,43 @@ static const char *find_kw(const char *s, const char *w)
     return NULL;
 }
 
+/* Évalue un point pour « show … at ». HyperCard accepte les deux formes :
+ *   show me at 100,120          → deux expressions séparées par une virgule
+ *   show me at the mouseLoc     → une seule expression rendant « x,y »
+ * On découpe donc aux virgules de premier niveau (hors guillemets et
+ * parenthèses), on évalue chaque morceau, et on recolle avec une virgule.
+ * Ainsi « show me at horz,vert » comme « show me at item 1 of p, 20 »
+ * arrivent tous deux sous la forme « x,y » attendue par geom_write. */
+static void eval_point(const char *s, char *out, int outlen)
+{
+    int pos = 0, depth = 0, inq = 0, n = 0;
+    const char *part = skip_spaces(s);
+    out[0] = '\0';
+
+    for (const char *q = part; ; q++) {
+        if (*q == '"') inq = !inq;
+        else if (!inq && *q == '(') depth++;
+        else if (!inq && *q == ')') depth--;
+
+        if (*q && !(!inq && depth <= 0 && *q == ',')) continue;
+
+        char expr[512], val[512];
+        int len = (int)(q - part);
+        while (len > 0 && isspace((unsigned char)part[len-1])) len--;
+        if (len > (int)sizeof expr - 1) len = (int)sizeof expr - 1;
+        memcpy(expr, part, (size_t)len); expr[len] = '\0';
+        eval_checked(expr, val, sizeof val);
+
+        pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
+                        n ? "," : "", val);
+        if (pos >= outlen) pos = outlen - 1;
+        n++;
+
+        if (!*q) break;
+        part = skip_spaces(q + 1);
+    }
+}
+
 /* Une ligne ouvre-t-elle un bloc ? (« if … then » sans suite, « repeat … ») */
 static int opens_if(const char *s)
 {
@@ -1957,22 +2127,42 @@ static int opens_repeat(const char *s)
     return ci_word(s, "repeat");
 }
 
-/* Index de la ligne fermante correspondante (« end if », « end repeat »),
-   en tenant compte des imbrications. Renvoie `to` si rien n'est trouvé. */
+/* « else <instruction> » referme un if à lui seul : pas de « end if ».
+   En revanche « else » seul, ou « else if … then » en bloc, ouvre une suite. */
+static int else_closes(const char *s)
+{
+    if (!ci_word(s, "else")) return 0;
+    const char *rest = skip_spaces(s + 4);
+    if (!*rest) return 0;           /* « else » seul : le bloc continue */
+    if (opens_if(rest)) return 0;   /* « else if … then » en bloc */
+    return 1;
+}
+
+static int match_end(char **L, int from, int to, const char *what);
+
+/* Index de la dernière ligne de la construction ouverte par L[open]. */
+static int skip_block(char **L, int open, int to)
+{
+    if (opens_if(L[open]))     return match_end(L, open + 1, to, "if");
+    if (opens_repeat(L[open])) return match_end(L, open + 1, to, "repeat");
+    return open;
+}
+
+/* Index de la ligne fermante correspondante. Pour un « if », ce peut être
+   « end if » ou l'« else <instruction> » qui le referme. Les constructions
+   imbriquées sont sautées par récursion : plus de compteur de profondeur,
+   qui ne survit pas à un bloc ayant deux fermetures possibles. */
 static int match_end(char **L, int from, int to, const char *what)
 {
-    int depth = 0;
-    char endw[32];
-    snprintf(endw, sizeof endw, "end %s", what);
+    int isif = (strcmp(what, "if") == 0);
     for (int i = from; i < to; i++) {
         const char *s = L[i];
-        if (opens_if(s) || opens_repeat(s)) depth++;
-        else if (ci_word(s, "end")) {
+        if (opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
+        if (isif && else_closes(s)) return i;
+        if (ci_word(s, "end")) {
             const char *w = skip_spaces(s + 3);
-            if (ci_word(w, "if") || ci_word(w, "repeat")) {
-                if (depth == 0 && ci_prefix(s, endw)) return i;
-                depth--;
-            }
+            if (isif  && ci_word(w, "if"))     return i;
+            if (!isif && ci_word(w, "repeat")) return i;
         }
     }
     return to;
@@ -1981,17 +2171,16 @@ static int match_end(char **L, int from, int to, const char *what)
 /* Premier « else » de même niveau entre `from` et `to`. */
 static int find_else(char **L, int from, int to)
 {
-    int depth = 0;
     for (int i = from; i < to; i++) {
         const char *s = L[i];
-        if (opens_if(s) || opens_repeat(s)) depth++;
-        else if (ci_word(s, "end")) { if (depth > 0) depth--; }
-        else if (depth == 0 && ci_word(s, "else")) return i;
+        if (opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
+        if (ci_word(s, "else")) return i;
     }
     return -1;
 }
 
 static void exec_block(Object *me, char **L, int from, int to);
+static void exec_stmt(Object *me, const char *s);
 
 /* `head` vaut « if <condition> then » ; le corps va de `from` à `end_idx`. */
 static void exec_if(Object *me, const char *head, char **L, int from, int end_idx)
@@ -2013,8 +2202,8 @@ static void exec_if(Object *me, const char *head, char **L, int from, int end_id
 
     const char *rest = skip_spaces(L[m] + 4);   /* après « else » */
     if (!*rest) { exec_block(me, L, m + 1, end_idx); return; }
-    if (ci_word(rest, "if")) { exec_if(me, rest, L, m + 1, end_idx); return; }
-    exec_line(me, rest);                        /* « else <instruction> » */
+    if (opens_if(rest)) { exec_if(me, rest, L, m + 1, end_idx); return; }
+    exec_stmt(me, rest);          /* « else <instruction> », if en ligne compris */
 }
 
 /* Exécute une instruction simple, ou un `if` tenant sur une seule ligne. */
@@ -2053,7 +2242,10 @@ static void exec_block(Object *me, char **L, int from, int to)
         /* --- if … then / end if --- */
         if (opens_if(s)) {
             int e = match_end(L, i + 1, to, "if");
-            exec_if(me, s, L, i + 1, e);
+            /* si c'est un « else <instruction> » qui referme, il fait
+               partie de la construction : exec_if doit le voir */
+            int body_end = (e < to && else_closes(L[e])) ? e + 1 : e;
+            exec_if(me, s, L, i + 1, body_end);
             i = e;
             if (flow_broken()) return;
             continue;
@@ -2125,6 +2317,7 @@ static void exec_block(Object *me, char **L, int from, int to)
                 }
 
                 exec_block(me, L, i + 1, e);
+                host_idle();      /* l'hôte redessine et souffle */
 
                 if (g_next_repeat) g_next_repeat = 0;
                 if (g_exit_repeat) { g_exit_repeat = 0; break; }
@@ -2343,8 +2536,20 @@ static void exec_line(Object *me, const char *line)
         char prop[64];
         const char *q = next_word(s, prop, sizeof prop);
         q = skip_spaces(q);
+
+        /* Pas de « of » : c'est une propriété globale, pas celle d'un objet.
+         * « set cursor to none », « set lockScreen to true »… */
         if (!ci_word(q, "of")) {
-            emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(rest));
+            const char *to = find_kw(s, "to");
+            if (!to) {
+                emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(rest));
+                return;
+            }
+            char val[512];
+            eval_checked(to + 2, val, sizeof val);
+            host_global_set(prop, val);
+            set_result("");
+            emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
             return;
         }
         q = skip_spaces(q + 2);
@@ -2842,14 +3047,65 @@ static void exec_line(Object *me, const char *line)
         return;
     }
 
-    /* --- show / hide <objet> --- */
+    /* --- show <objet> [at <point>] / hide <objet> ---
+     * « show me at h,v » est la primitive d'animation d'HyperCard : elle
+     * déplace l'objet ET le rend visible, le centre allant au point donné
+     * (comme « the loc », pas comme « the topLeft »). */
     if (ci_equal(verb, "show") || ci_equal(verb, "hide")) {
-        Object *o = resolve(rest);
-        if (o) {
-            o->visible = ci_equal(verb, "show");
-            char d[64]; hc_describe(o, d, sizeof d);
-            emit(HC_INFO, "   → %s : %s", d, o->visible ? "visible" : "caché");
+        int showing = ci_equal(verb, "show");
+        const char *at = showing ? find_kw(rest, "at") : NULL;
+
+        char refbuf[256];
+        const char *ref = rest;
+        if (at) {
+            int n = (int)(at - rest);
+            if (n > (int)sizeof refbuf - 1) n = (int)sizeof refbuf - 1;
+            memcpy(refbuf, rest, (size_t)n); refbuf[n] = '\0';
+            while (n > 0 && isspace((unsigned char)refbuf[n-1])) refbuf[--n] = '\0';
+            ref = refbuf;
         }
+
+        Object *o = resolve(ref);
+        if (!o) {
+            set_result("objet introuvable");
+            emit(HC_ERR, "   !! objet introuvable : %s", ref);
+            return;
+        }
+
+        o->visible = showing;
+        char d[64]; hc_describe(o, d, sizeof d);
+
+        if (at) {
+            char pt[256];
+            eval_point(skip_spaces(at + 2), pt, sizeof pt);
+            if (!geom_write(o, "loc", pt)) {
+                emit(HC_ERR, "   !! show … at : point mal formé : %s", pt);
+                return;
+            }
+            notify_field(o);
+            set_result("");
+            emit(HC_INFO, "   → %s : visible en %s", d, pt);
+            return;
+        }
+
+        notify_field(o);
+        set_result("");
+        emit(HC_INFO, "   → %s : %s", d, showing ? "visible" : "caché");
+        return;
+    }
+
+    /* --- play <son> ---
+     * HyperCard accepte une suite de notes derrière le nom du son
+     * (« play "boing" tempo 200 c4 e4 »). On ne retient que le nom : le reste
+     * demande un synthétiseur, pas un lecteur d'échantillon. */
+    if (ci_equal(verb, "play")) {
+        char val[256];
+        const char *s = skip_spaces(rest);
+        if (*s == '"') quoted(s, val, sizeof val);
+        else           next_word(s, val, sizeof val);
+        if (g_host && g_host->play_sound) g_host->play_sound(val);
+        set_result("");
+        emit(HC_INFO, "   ♪ play \"%s\"", val);
         return;
     }
 
