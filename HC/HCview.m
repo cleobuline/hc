@@ -719,18 +719,66 @@ void hc_restore_cursor(void) {
     if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
 }
 
+/* Les sons en cours de lecture. INDISPENSABLE : [NSSound play] est
+ * asynchrone et rend la main aussitot. Sans cette reference forte, ARC
+ * desalloue le NSSound des la sortie de la fonction et la lecture est
+ * coupee avant d'avoir produit le moindre son : le son est bien trouve
+ * (donc pas de NSBeep de repli), mais on n'entend rien du tout. */
+static NSMutableArray *gPlaying = nil;
+
+@interface HCSoundKeeper : NSObject <NSSoundDelegate>
+@end
+@implementation HCSoundKeeper
+- (void)sound:(NSSound *)s didFinishPlaying:(BOOL)ok {
+    (void)ok;
+    [gPlaying removeObject:s];      // relache une fois la lecture finie
+}
+@end
+static HCSoundKeeper *gSoundKeeper = nil;
+
 static void cocoa_play(const char *name) {
     NSString *n = [NSString stringWithUTF8String:name ? name : ""];
+
     NSSound *s = [NSSound soundNamed:n];               // sons systeme
     if (!s) {                                          // puis les ressources
-        NSArray *ext = @[@"aiff", @"aif", @"wav"];
-        for (NSString *e in ext) {
+        for (NSString *e in @[@"aiff", @"aif", @"wav"]) {
             NSString *p = [[NSBundle mainBundle] pathForResource:n ofType:e];
             if (p) { s = [[NSSound alloc] initWithContentsOfFile:p byReference:YES]; break; }
         }
     }
-    if (s) [s play];      // asynchrone : l'animation continue
-    else   NSBeep();
+    if (!s) {
+        /* Ni l'un ni l'autre : soundNamed: et pathForResource: comparent le
+         * nom a la lettre pres, alors que HyperTalk ignore la casse partout.
+         * La pile d'origine ecrivait d'ailleurs « boing » a un endroit et
+         * « Boing » a un autre. On refait donc la recherche a la main. */
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSArray *dirs = @[[[NSBundle mainBundle] resourcePath],
+                          [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Sounds"],
+                          @"/Library/Sounds",
+                          @"/System/Library/Sounds"];
+        for (NSString *d in dirs) {
+            if (!d) continue;
+            for (NSString *f in [fm contentsOfDirectoryAtPath:d error:NULL]) {
+                if ([[f stringByDeletingPathExtension] caseInsensitiveCompare:n] != NSOrderedSame)
+                    continue;
+                s = [[NSSound alloc] initWithContentsOfFile:
+                        [d stringByAppendingPathComponent:f] byReference:YES];
+                if (s) break;
+            }
+            if (s) break;
+        }
+    }
+    if (!s) { NSBeep(); return; }
+
+    if (!gPlaying)     gPlaying = [[NSMutableArray alloc] init];
+    if (!gSoundKeeper) gSoundKeeper = [[HCSoundKeeper alloc] init];
+
+    /* soundNamed: rend une instance partagee : on la copie, sinon deux
+     * rebonds rapproches se coupent l'un l'autre. */
+    s = [s copy];
+    [s setDelegate:gSoundKeeper];
+    [gPlaying addObject:s];
+    [s play];             // asynchrone : l'animation continue pendant ce temps
 }
 
 /* Appele a chaque tour de « repeat ». Sans lui, une boucle d'animation

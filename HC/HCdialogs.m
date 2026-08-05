@@ -39,6 +39,40 @@ static NSPanel    *gContentsPanel = nil;
 static NSTextView *gContentsView = nil;
 static Object     *gContentsTarget = NULL;
 
+/* ---------- popup de style : la casse ----------
+ * HyperTalk ignore la casse, NSPopUpButton non. Le noyau accepte aussi bien
+ * « radioButton » que « radiobutton » (cf. HCview.m et hc_core.c), mais
+ * selectItemWithTitle: compare a la lettre pres : un bouton dont le style
+ * est en minuscules ne trouve aucun element, le popup se retrouve SANS
+ * selection, et titleOfSelectedItem rend nil a la validation.
+ * strdup(NULL) plantait alors dans infoOK: / fldOK:. */
+static void select_style(NSPopUpButton *pop, const char *style)
+{
+    NSString *want = [NSString stringWithUTF8String:style && *style ? style : "rectangle"];
+    for (NSMenuItem *it in [pop itemArray]) {
+        if ([[it title] caseInsensitiveCompare:want] == NSOrderedSame) {
+            [pop selectItem:it];
+            return;
+        }
+    }
+    /* style inconnu du menu : on retombe sur le premier plutot que de
+       laisser le popup sans selection. */
+    if ([pop numberOfItems] > 0) [pop selectItemAtIndex:0];
+}
+
+/* Remplace une chaine du noyau par le contenu d'un controle Cocoa.
+ * Ne touche a rien si la source est nil : c'est le filet qui manquait. */
+static void set_cstr(char **dst, NSString *s)
+{
+    if (!s) return;
+    const char *u = [s UTF8String];
+    if (!u) return;
+    char *n = strdup(u);
+    if (!n) return;          /* plus de memoire : on garde l'ancienne valeur */
+    free(*dst);
+    *dst = n;
+}
+
 @implementation HCView (Dialogs)
 
 static NSPanel      *gFldPanel = nil;
@@ -102,8 +136,7 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
     gFldStyle = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(250, 246, 112, 24)];
     [gFldStyle addItemsWithTitles:@[@"transparent", @"opaque", @"rectangle",
                                     @"shadow", @"scrolling"]];
-    const char *st = obj->style ? obj->style : "rectangle";
-    [gFldStyle selectItemWithTitle:[NSString stringWithUTF8String:st]];
+    select_style(gFldStyle, obj->style);
     [c addSubview:gFldStyle];
 
     // --- cases a cocher ---
@@ -165,10 +198,8 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
 - (void)fldOK:(id)sender {
     Object *o = gFldTarget;
     if (o) {
-        free(o->name);
-        o->name = strdup([[gFldName stringValue] UTF8String]);
-        free(o->style);
-        o->style = strdup([[gFldStyle titleOfSelectedItem] UTF8String]);
+        set_cstr(&o->name,  [gFldName stringValue]);
+        set_cstr(&o->style, [gFldStyle titleOfSelectedItem]);
         o->textsize     = [[gFldTextSize stringValue] intValue];
         o->locktext     = ([gFldLock state]     == NSControlStateValueOn);
         o->wide_margins = ([gFldWide state]     == NSControlStateValueOn);
@@ -248,8 +279,7 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
                                          @"radioButton", @"standard", @"default",
                                          @"oval", @"popup"]];
     
-    const char *st = obj->style ? obj->style : "rectangle";
-    [gInfoStyle selectItemWithTitle:[NSString stringWithUTF8String:st]];
+    select_style(gInfoStyle, obj->style);
     [c addSubview:gInfoStyle];
 
     // --- cases a cocher ---
@@ -644,11 +674,9 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
     Object *o = gInfoTarget;
         if (o) {
             // nom
-            free(o->name);
-            o->name = strdup([[gInfoName stringValue] UTF8String]);
+            set_cstr(&o->name,  [gInfoName stringValue]);
             // style
-            free(o->style);
-            o->style = strdup([[gInfoStyle titleOfSelectedItem] UTF8String]);
+            set_cstr(&o->style, [gInfoStyle titleOfSelectedItem]);
             o->textsize = [[gInfoTextSize stringValue] intValue];
             o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
             o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);
