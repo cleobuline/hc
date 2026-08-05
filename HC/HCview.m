@@ -9,6 +9,7 @@
 #import "HCicons.h"
 #import "graphics.h"
 #import "HCdialogs.h"
+extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 static NSTextField *gMsgBox = nil; // la message box
 
 static NSPoint gDragStart;
@@ -1039,6 +1040,11 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
             if (tgt == gEditingField && gFieldEditor)
                 [gFieldEditor setFont:obj_font(tgt, 12)];
+
+            /* Garder la case « taille » du dialogue d'info en accord :
+               sans ca, valider le dialogue apres avoir choisi une police
+               reecrit l'ancienne taille par-dessus la nouvelle. */
+            hc_sync_size_field(tgt);
         } else {
         gTextFont = nf;
         gTextSize = (int)[nf pointSize];

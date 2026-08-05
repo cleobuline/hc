@@ -18,6 +18,13 @@
 
 static Object *gStack = NULL;
 static int gCardCount = 0;   // pour nommer les nouvelles cartes
+
+/* Pile reclamee par le Finder avant que l'interface existe. Voir
+ * application:openFile: plus bas : l'Apple Event d'ouverture arrive ENTRE
+ * applicationWillFinishLaunching: et applicationDidFinishLaunching:, donc
+ * gView est encore nil au moment ou le Finder nous parle. On met le chemin
+ * de cote et on le traite une fois la vue construite. */
+static NSString *gPendingOpen = nil;
 - (void)testDraw:(id)sender {
     [gView testScribble];
 }
@@ -117,7 +124,14 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
         [biItem setTarget:view];
         [fileMenu addItem:biItem];
     [self.window setReleasedWhenClosed:NO];
-    [view applyStackSize];  
+    [view applyStackSize];
+
+    /* Le Finder nous a peut-etre demande une pile avant que tout ceci existe. */
+    if (gPendingOpen) {
+        NSString *p = gPendingOpen;
+        gPendingOpen = nil;
+        [self loadStackAtPath:p];
+    }
 }
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
     if (!flag) [self.window makeKeyAndOrderFront:nil];
@@ -148,29 +162,64 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
             NSLog(@"échec de la sauvegarde");
     }
 }
+/* Charge une pile et l'installe. Le corps de l'ancien openStack:, sorti du
+ * panneau de selection pour que le double-clic dans le Finder puisse
+ * emprunter exactement le meme chemin. */
+- (BOOL)loadStackAtPath:(NSString *)path {
+    Object *loaded = hc_load([path UTF8String]);
+    if (!loaded) {
+        NSLog(@"échec du chargement : %@", path);
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Pile illisible"];
+        [a setInformativeText:[path lastPathComponent]];
+        [a runModal];
+        return NO;
+    }
+
+    hc_free(gStack);
+    gStack = loaded;
+    [gView clearPaintCache];
+
+    Object *first = NULL;
+    for (int i = 0; i < gStack->nparts; i++) {
+        if (gStack->parts[i]->type == OBJ_CARD) { first = gStack->parts[i]; break; }
+    }
+    if (!first) {                       /* pile sans carte : on en fabrique une */
+        Object *bg = hc_new_background(gStack, "commun");
+        first = hc_new_card(gStack, bg, "carte 1");
+    }
+    hc_set_current_card(first);
+
+    [gView applyStackSize];   // ajuster la fenetre a la taille de la pile chargee
+    [self.window makeKeyAndOrderFront:nil];
+    [gView setNeedsDisplay:YES];
+    return YES;
+}
+
 - (void)openStack:(id)sender {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:YES];
     [panel setAllowsMultipleSelection:NO];
-    if ([panel runModal] == NSModalResponseOK) {
-        NSString *path = [[panel URL] path];
-        Object *loaded = hc_load([path UTF8String]);
-        if (loaded) {
-            hc_free(gStack);
-            gStack = loaded;
-            [gView clearPaintCache];
-            for (int i = 0; i < gStack->nparts; i++) {
-                if (gStack->parts[i]->type == OBJ_CARD) {
-                    hc_set_current_card(gStack->parts[i]);
-                    break;
-                }
-            }
-            [gView applyStackSize];      // ← ajuster la fenêtre à la taille de la pile chargée
-            [self.window makeKeyAndOrderFront:nil];
-            [gView setNeedsDisplay:YES];
-        } else {
-            NSLog(@"échec du chargement");
-        }
+    if ([panel runModal] == NSModalResponseOK)
+        [self loadStackAtPath:[[panel URL] path]];
+}
+
+/* Double-clic sur une pile dans le Finder. Sans ce message, AppKit refuse
+ * le document avec « cannot open files in the HyperCard Stack format »,
+ * meme quand le type est correctement declare dans Info.plist. */
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)path {
+    if (!gView) { gPendingOpen = path; return YES; }   /* trop tot : voir plus haut */
+    return [self loadStackAtPath:path];
+}
+
+/* Plusieurs piles laches d'un coup sur l'icone du Dock. */
+- (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)paths {
+    BOOL ok = NO;
+    for (NSString *p in paths) {
+        if (!gView) { gPendingOpen = p; ok = YES; break; }  /* on n'en garde qu'une */
+        ok = [self loadStackAtPath:p] || ok;
     }
+    [sender replyToOpenOrPrint:ok ? NSApplicationDelegateReplySuccess
+                                  : NSApplicationDelegateReplyFailure];
 }
 @end

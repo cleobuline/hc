@@ -70,12 +70,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		4DF5FB413014BE74006AE901 = {
+		4DF28F863023DD3700D7740C /* sounds */ = {
 			isa = PBXGroup;
 			children = (
 				4DF28F823023709D00D7740C /* coq.wav */,
 				4DF28F7F302369FE00D7740C /* boing3.wav */,
 				4DF28F7C3023666200D7740C /* boing.wav */,
+			);
+			path = sounds;
+			sourceTree = "<group>";
+		};
+		4DF5FB413014BE74006AE901 = {
+			isa = PBXGroup;
+			children = (
 				4DF5FB4C3014BE74006AE901 /* HC */,
 				4DF5FB4B3014BE74006AE901 /* Products */,
 			);
@@ -92,6 +99,7 @@
 		4DF5FB4C3014BE74006AE901 /* HC */ = {
 			isa = PBXGroup;
 			children = (
+				4DF28F863023DD3700D7740C /* sounds */,
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,

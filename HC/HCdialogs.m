@@ -195,12 +195,23 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
     [[NSFontManager sharedFontManager] setSelectedFont:f isMultiple:NO];
     [[NSFontManager sharedFontManager] orderFrontFontPanel:self];
 }
+/* Le panneau des polices vient de changer la taille d'un objet. Si c'est
+ * celui qu'affiche le dialogue d'info, remettre la petite case en accord :
+ * sinon fldOK:/infoOK: reecriront l'ancienne valeur par-dessus la nouvelle,
+ * et l'utilisateur verra sa taille revenir toute seule en arriere. */
+void hc_sync_size_field(Object *o)
+{
+    if (!o) return;
+    if (o == gFldTarget  && gFldTextSize)  [gFldTextSize  setIntValue:o->textsize];
+    if (o == gInfoTarget && gInfoTextSize) [gInfoTextSize setIntValue:o->textsize];
+}
+
 - (void)fldOK:(id)sender {
     Object *o = gFldTarget;
     if (o) {
         set_cstr(&o->name,  [gFldName stringValue]);
         set_cstr(&o->style, [gFldStyle titleOfSelectedItem]);
-        o->textsize     = [[gFldTextSize stringValue] intValue];
+        o->textsize     = [[gFldTextSize stringValue] intValue];   /* voir hc_sync_field_dialog */
         o->locktext     = ([gFldLock state]     == NSControlStateValueOn);
         o->wide_margins = ([gFldWide state]     == NSControlStateValueOn);
         o->fixed_lh     = ([gFldFixed state]    == NSControlStateValueOn);
@@ -210,12 +221,17 @@ Object *gFontTarget = NULL;    // objet vise par le panneau des polices
         o->shared_text  = ([gFldShared state]   == NSControlStateValueOn);
     }
     [gFldPanel close];
-    gFldTarget = NULL;
+    gFldTarget  = NULL;
+    gFontTarget = NULL;   /* sinon le panneau des polices reste braque sur
+                             ce champ et toutes les modifications de police
+                             suivantes lui reviennent, quel que soit l'objet
+                             reellement selectionne. */
     [self setNeedsDisplay:YES];
 }
 
 - (void)fldCancel:(id)sender {
     [gFldPanel close];
+    gFontTarget = NULL;
     gFldTarget = NULL;
 }
 
