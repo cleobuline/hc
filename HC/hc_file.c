@@ -37,6 +37,22 @@
 #include <string.h>
 #include <ctype.h>
 
+/* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
+ * contre-obliques qu'elle contient. Sans ça, un objet nommé
+ *     go card "canard"
+ * s'écrivait  button "go card "canard""  et le lecteur, qui s'arrête au
+ * guillemet suivant, ne relisait que « go card ». Le nom était donc perdu
+ * à l'écriture, pas à la lecture. */
+static void put_quoted(FILE *f, const char *s)
+{
+    fputc('"', f);
+    for (const char *p = s ? s : ""; *p; p++) {
+        if (*p == '"' || *p == '\\') fputc('\\', f);
+        fputc(*p, f);
+    }
+    fputc('"', f);
+}
+
 static char *dupstr_file(const char *s)
 {
     if (!s) return NULL;
@@ -89,7 +105,7 @@ static void put_paint(FILE *f, const char *b64)
 static void put_part(FILE *f, Object *o)
 {
     const char *kind = (o->type == OBJ_BUTTON) ? "button" : "field";
-    fprintf(f, "%s \"%s\"\n", kind, o->name ? o->name : "");
+    fprintf(f, "%s ", kind); put_quoted(f, o->name); fputc('\n', f);
     fprintf(f, "rect %d,%d,%d,%d\n", o->x, o->y, o->x + o->w, o->y + o->h);
     if (o->style) fprintf(f, "style \"%s\"\n", o->style);
     put_block(f, "script", o->script);
@@ -123,7 +139,7 @@ int hc_save(Object *stack, const char *path)
 
     fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
 
-    fprintf(f, "stack \"%s\"\n", stack->name ? stack->name : "");
+    fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
     put_block(f, "script", stack->script);
     fprintf(f, "end stack\n\n");
@@ -132,7 +148,7 @@ int hc_save(Object *stack, const char *path)
     for (int i = 0; i < stack->nparts; i++) {
         Object *bg = stack->parts[i];
         if (bg->type != OBJ_BACKGROUND) continue;
-        fprintf(f, "background \"%s\"\n", bg->name ? bg->name : "");
+        fprintf(f, "background "); put_quoted(f, bg->name); fputc('\n', f);
         put_block(f, "script", bg->script);
         put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
@@ -142,8 +158,8 @@ int hc_save(Object *stack, const char *path)
     for (int i = 0; i < stack->nparts; i++) {
         Object *c = stack->parts[i];
         if (c->type != OBJ_CARD) continue;
-        fprintf(f, "card \"%s\"", c->name ? c->name : "");
-        if (c->bg && c->bg->name) fprintf(f, " background \"%s\"", c->bg->name);
+        fprintf(f, "card "); put_quoted(f, c->name);
+        if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
         fprintf(f, "\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
@@ -184,15 +200,17 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
     while (*p) {
         if (*p == '"') {
             p++;
-            const char *start = p;
-            while (*p && *p != '"') p++;
-            if (found == which) {
-                int len = (int)(p - start);
-                if (len > outlen - 1) len = outlen - 1;
-                memcpy(out, start, (size_t)len);
-                out[len] = '\0';
-                return 1;
+            int len = 0;
+            int keep = (found == which);
+            /* Un guillemet précédé d'une contre-oblique fait partie du nom :
+               il ne referme pas la chaîne (voir put_quoted). */
+            while (*p && *p != '"') {
+                char c = *p;
+                if (c == '\\' && (p[1] == '"' || p[1] == '\\')) { p++; c = *p; }
+                if (keep && len < outlen - 1) out[len++] = c;
+                p++;
             }
+            if (keep) { out[len] = '\0'; return 1; }
             found++;
             if (*p == '"') p++;
         } else p++;

@@ -3,29 +3,39 @@
 #import <Cocoa/Cocoa.h>
 #import "hc_core.h"
 
+/* La vue principale est declaree en avant : ce fichier n'a besoin que du nom
+ * de la classe, pas de son interface. Cela evite un cycle d'inclusion avec
+ * HCview.h, qui lui importe HCglobals.h. */
+@class HCView;
+
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
                TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM,
                TOOL_LASSO, TOOL_SELRECT, TOOL_BRUSH , TOOL_TEXT} HCTool;
 
 typedef enum { INK_BLACK, INK_WHITE, INK_ERASE } HCInk;
 
+/* ---- Etat des outils de dessin ---- */
+extern HCTool   gTool;
+extern HCInk    gInk;
+extern int      gPattern;
+extern int      gLineWidth;
+extern int      gBrush;
+extern BOOL     gShapeFilled;
+extern int      gTextSize;
+extern BOOL     gTransparentBg;
 
-extern HCTool gTool ;
-extern HCInk   gInk;
-extern int     gPattern;
-extern int     gLineWidth;
-extern BOOL    gShapeFilled;
-extern Object *gSelected;
-extern NSView *gView;
-extern id gView;
-extern int gBrush;
-extern int gTextSize;
-extern BOOL gTransparentBg;
+/* ---- Selection et vue ---- */
+extern Object  *gSelected;
+extern Object  *gFontTarget;   /* objet vise par le panneau des polices */
+extern HCView  *gView;
+
+/* ---- Presse-papiers peinture ---- */
 extern NSBitmapImageRep *gClipboard;
-extern int gClipW, gClipH;
-extern NSPoint gClipPts[4096];
-extern int gClipPtsCount;
-extern Object *gFontTarget;
+extern int      gClipW, gClipH;
+extern NSPoint  gClipPts[4096];
+extern int      gClipPtsCount;
+
+/* ---- Cache des bitmaps de peinture ---- */
 extern NSMutableDictionary *gPaintCache;
 
 #endif

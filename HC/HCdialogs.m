@@ -87,9 +87,9 @@ static NSButton     *gFldTab = nil;
 static NSButton     *gFldNoSearch = nil;
 static NSButton     *gFldShared = nil;
 static NSTextField  *gFldTextSize = nil;
-extern Object *gFontTarget;
+//extern Object *gFontTarget;
 
-Object *gFontTarget = NULL;    // objet vise par le panneau des polices
+//Object *gFontTarget = NULL;    // objet vise par le panneau des polices
 
 - (void)showFieldInfo:(Object *)obj {
     if (!obj) return;

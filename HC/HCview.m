@@ -50,13 +50,13 @@ static NSPanel *gPatternPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
-BOOL gTransparentBg = NO;
+// BOOL gTransparentBg = NO;
 
 static BOOL gTextActive = NO;
 static NSPoint gTextPos;                 // coin haut-gauche de la saisie
 static NSMutableString *gTextBuf = nil;
 
-int gTextSize = 16;
+// int gTextSize = 16;
 static NSColor *gTextColor = nil;
 static BOOL gTextUnderline = NO;
 

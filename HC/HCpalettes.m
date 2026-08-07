@@ -145,12 +145,7 @@ static const ToolCell TOOLCELLS[] = {
 
 
 const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
-@interface HCView (Palettes)
-- (void)showPatternPalette;
-- (void)showWidthPalette;
-- (void)showBrushPalette;
-- (void)commitText;
-@end
+ 
  
 
 #define ICONGRID_COLS 6
@@ -290,35 +285,25 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
         if (NSPointInRect(p, box)) {
             const ToolCell *tc = &TOOLCELLS[i];
             if (tc->kind == 0) {
-                            // quitter l'outil texte : graver la saisie en cours
-                            if (gTool == TOOL_TEXT && tc->value != TOOL_TEXT) {
-                                #pragma clang diagnostic push
-                                #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                                if ([gView respondsToSelector:@selector(commitText)])
-                                    [gView performSelector:@selector(commitText)];
-                                #pragma clang diagnostic pop
-                            }
-                            gTool = (HCTool)tc->value;
-                            gSelected = NULL;
-                            if (dbl) {
-                                // double-clic : ouvrir la palette de réglage associée
-                                SEL sel = NULL;
-                                if (tc->value == TOOL_FILL)
-                                    sel = @selector(showPatternPalette);
-                                else if (tc->value == TOOL_BRUSH)
-                                    sel = @selector(showBrushPalette);
-                                else if (tc->value == TOOL_PENCIL || tc->value == TOOL_ERASER ||
-                                         tc->value == TOOL_LINE || tc->value == TOOL_RECT ||
-                                         tc->value == TOOL_OVAL || tc->value == TOOL_FREEFORM)
-                                    sel = @selector(showWidthPalette);
-                                if (sel && [gView respondsToSelector:sel]) {
-                                    #pragma clang diagnostic push
-                                    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                                    [gView performSelector:sel];
-                                    #pragma clang diagnostic pop
-                                }
-                            }
-                        }
+                // quitter l'outil texte : graver la saisie en cours
+                if (gTool == TOOL_TEXT && tc->value != TOOL_TEXT)
+                    [gView commitText];
+
+                gTool = (HCTool)tc->value;
+                gSelected = NULL;
+
+                if (dbl) {
+                    // double-clic : ouvrir la palette de reglage associee
+                    switch (tc->value) {
+                    case TOOL_FILL:  [gView showPatternPalette]; break;
+                    case TOOL_BRUSH: [gView showBrushPalette];   break;
+                    case TOOL_PENCIL: case TOOL_ERASER: case TOOL_LINE:
+                    case TOOL_RECT:   case TOOL_OVAL:   case TOOL_FREEFORM:
+                        [gView showWidthPalette]; break;
+                    default: break;
+                    }
+                }
+            }
             else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
             else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
             else if (tc->kind == 3) { gTransparentBg = !gTransparentBg; }

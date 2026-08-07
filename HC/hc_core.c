@@ -94,7 +94,36 @@ static const char *quoted(const char *s, char *out, int outlen)
  * (`on boum / send "boum" to me / end boum`) épuise la pile C
  * et le programme meurt. Le vrai HyperCard répondait
  * « Too much recursion » ; on fait pareil, en douceur. */
-#define HC_MAX_DEPTH 64
+/* Taille des valeurs manipulees par l'interpreteur : variables, arguments,
+ * proprietes. C'est ce plafond qui limite « get the script of me » — un
+ * script plus long est tronque, et le reecrire le mutile.
+ *
+ * Ne pas l'augmenter sans baisser HC_MAX_DEPTH en meme temps. Ces tampons
+ * sont sur la pile de fonctions recursives, et certains par blocs de 8 ou 16
+ * lignes (raw/vals dans call_function, saved_params dans hc_send_args_k),
+ * donc le cout par niveau de recursion est de l'ordre de 60 fois HC_VAL.
+ * Mesure sur une pile de 8 Mo :
+ *
+ *      HC_VAL      profondeur avant segfault
+ *        512               62
+ *       2048               45
+ *       4096               20
+ *       8192               12
+ *      12288                7      <- reglage actuel
+ *      16384                5
+ *
+ * 12288 est le plus petit palier qui recopie entier le script du champ
+ * Calendrier (9112 octets). La vraie sortie de ce compromis est de sortir
+ * les tableaux d'arguments de la pile ; tant que ce n'est pas fait, garder
+ * HC_MAX_DEPTH strictement sous la profondeur du tableau ci-dessus. */
+#define HC_VAL 4096
+
+/* Les gestionnaires reels sont peu imbriques : le chemin le plus profond du
+ * champ Calendrier (newfield -> addStackScript -> FindHandler) n'atteint que
+ * 3 niveaux. 6 laisse de la marge et fait tomber le garde-fou AVANT la pile,
+ * ce qui transforme une recursion emballee en erreur propre au lieu d'un
+ * plantage de l'application. */
+#define HC_MAX_DEPTH 16
 
 static Object *g_current_card = NULL;
 static int     g_trace = 1;
@@ -103,11 +132,18 @@ static int     g_pass  = 0;   /* levé par `pass` : le message doit continuer */
 /* `the result` : les commandes susceptibles d'échouer y déposent un message,
  * et le vident quand elles réussissent. Les autres commandes n'y touchent
  * pas — c'est ce qui permet d'écrire « go … » puis « put the result ». */
-static char    g_result[512] = "";
+static char    g_result[HC_VAL] = "";
+
+/* Levé dès qu'un « the script of … » a été tronqué faute de place dans un
+ * tampon de valeur. Tant qu'il est levé, « set script of … » refuse d'écrire :
+ * dans le gestionnaire courant, la valeur lue est forcément mutilée, et la
+ * réécrire détruirait le script. Sauvé et remis à zéro à chaque entrée de
+ * gestionnaire, pour qu'un appel imbriqué ne contamine pas son appelant. */
+static int     g_script_clipped = 0;
 
 /* Arguments du gestionnaire courant, pour `the params`, param(n), paramCount.
    g_params[0] est le nom du message ; les suivants sont les arguments. */
-static char    g_params[16][512];
+static char    g_params[16][HC_VAL];
 static int     g_nparams = 0;
 
 static void set_result(const char *msg) { snprintf(g_result, sizeof g_result, "%s", msg); }
@@ -152,7 +188,7 @@ static void console_line(HcLineKind kind, int depth, const char *text)
 }
 
 /* Repli console : de quoi tester le noyau sans interface graphique. */
-static char g_console_buf[512];
+static char g_console_buf[HC_VAL];
 
 static const char *console_ask(const char *prompt, const char *deflt)
 {
@@ -336,19 +372,75 @@ Object *hc_new_field(Object *owner, const char *name)
  * corps — cherché après le premier « \n » — est vide. Le gestionnaire est
  * alors annoncé comme traité et ne fait rien, ce qui est très déroutant.
  * Les scripts d'HyperCard d'origine sont tous en « \r ». */
+/* Caractères spéciaux du Macintosh. Les scripts d'origine sont encodés en
+ * MacRoman ; recopiés depuis un navigateur ils arrivent en UTF-8. On accepte
+ * les deux, car on ne peut pas savoir d'où vient la pile :
+ *
+ *     ¬   0xC2   /  0xC2 0xAC        continuation : la ligne suivante suit
+ *     ≠   0xAD   /  0xE2 0x89 0xA0   devient « <> »
+ *     ≤   0xB2   /  0xE2 0x89 0xA4   devient « <= »
+ *     ≥   0xB3   /  0xE2 0x89 0xA5   devient « >= »
+ *
+ * L'ambiguïté du 0xC2 se lève seule : en UTF-8 il est toujours suivi d'un
+ * octet de continuation (0x80-0xBF), et l'unique séquence qui nous intéresse
+ * est 0xC2 0xAC. Un 0xC2 suivi d'autre chose est un ¬ MacRoman ; un 0xC2
+ * suivi d'un octet de continuation autre que 0xAC est un caractère UTF-8
+ * quelconque (« ² », « ° »…) qu'on recopie intact.
+ *
+ * La sortie peut être plus longue que l'entrée (un octet « ≠ » devient deux),
+ * d'où l'allocation au double. */
+static int is_utf8_cont(unsigned char c) { return c >= 0x80 && c <= 0xBF; }
+
 static char *dup_script(const char *s)
 {
     if (!s) return NULL;
-    char *d = (char *)malloc(strlen(s) + 1);
+    size_t n = strlen(s);
+    char *d = (char *)malloc(2 * n + 2);
     if (!d) return NULL;
     char *w = d;
-    for (const char *p = s; *p; p++) {
-        if (*p == '\r') {
-            if (p[1] == '\n') continue;   /* \r\n : le \n qui suit fera l'affaire */
-            *w++ = '\n';
-        } else {
-            *w++ = *p;
+
+    for (const unsigned char *p = (const unsigned char *)s; *p; ) {
+        /* --- continuation de ligne --- */
+        int cont = 0;
+        if (p[0] == 0xC2 && p[1] == 0xAC)              { cont = 1; p += 2; }
+        else if (p[0] == 0xC2 && !is_utf8_cont(p[1]))  { cont = 1; p += 1; }
+        if (cont) {
+            /* avaler les blancs puis la fin de ligne : les deux lignes n'en
+             * font plus qu'une, séparées par une espace. */
+            while (*p == ' ' || *p == '\t') p++;
+            if (*p == '\r') { p++; if (*p == '\n') p++; }
+            else if (*p == '\n') p++;
+            *w++ = ' ';
+            continue;
         }
+
+        /* --- opérateurs de comparaison --- */
+        if (p[0] == 0xE2 && p[1] == 0x89) {
+            if (p[2] == 0xA0) { *w++ = '<'; *w++ = '>'; p += 3; continue; }
+            if (p[2] == 0xA4) { *w++ = '<'; *w++ = '='; p += 3; continue; }
+            if (p[2] == 0xA5) { *w++ = '>'; *w++ = '='; p += 3; continue; }
+        }
+        if (p[0] == 0xAD) { *w++ = '<'; *w++ = '>'; p++; continue; }
+        if (p[0] == 0xB2) { *w++ = '<'; *w++ = '='; p++; continue; }
+        if (p[0] == 0xB3) { *w++ = '>'; *w++ = '='; p++; continue; }
+
+        /* --- caractère UTF-8 multi-octets : recopie intégrale --- */
+        if (p[0] >= 0xC2 && p[0] <= 0xF4) {
+            int len = p[0] >= 0xF0 ? 4 : p[0] >= 0xE0 ? 3 : 2;
+            for (int i = 0; i < len && p[i]; i++) *w++ = (char)p[i];
+            while (len-- && *p) p++;
+            continue;
+        }
+
+        /* --- fins de ligne --- */
+        if (p[0] == '\r') {
+            p++;
+            if (*p == '\n') p++;          /* \r\n : une seule fin de ligne */
+            *w++ = '\n';
+            continue;
+        }
+
+        *w++ = (char)*p++;
     }
     *w = '\0';
     return d;
@@ -451,17 +543,23 @@ static int build_chain(Object *target, Object *chain[], int max)
 /* Cherche `on <message>` en début de ligne dans le script.
  * Renvoie un pointeur sur le début du corps, et remplit *end avec la fin.
  */
-static const char *find_handler(const char *script, const char *message,
-                                const char **body_end, const char **hdr_out)
+/* isfunc : 0 cherche « on <nom> », 1 cherche « function <nom> ».
+ * Les deux familles vivent dans le même script et ne se marchent pas dessus :
+ * HyperCard permet à une pile d'avoir « on date » et « function date ». */
+static const char *find_handler_k(const char *script, const char *message,
+                                  int isfunc,
+                                  const char **body_end, const char **hdr_out)
 {
     if (!script) return NULL;
     const char *p = script;
+    const char *kw = isfunc ? "function " : "on ";
+    int kwlen = isfunc ? 9 : 3;
 
     while (*p) {
         const char *line = skip_spaces(p);
-        if (ci_prefix(line, "on ")) {
+        if (ci_prefix(line, kw)) {
             char name[64];
-            next_word(line + 3, name, sizeof name);
+            next_word(line + kwlen, name, sizeof name);
             if (ci_equal(name, message)) {
                 if (hdr_out) *hdr_out = line;   /* l'en-tête, pour ses paramètres */
                 /* corps = après la fin de cette ligne */
@@ -493,6 +591,12 @@ static const char *find_handler(const char *script, const char *message,
         p = nl + 1;
     }
     return NULL;
+}
+
+static const char *find_handler(const char *script, const char *message,
+                                const char **body_end, const char **hdr_out)
+{
+    return find_handler_k(script, message, 0, body_end, hdr_out);
 }
 
 /* ==================== résolution de références ==================== */
@@ -603,6 +707,49 @@ static Object *resolve(const char *ref)
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (!*ref) return bg;   /* « background » seul = le fond de la carte courante */
+
+        /* « background "second" », « bg id 4 », « background 2 » : le fond
+         * lui-même, et non un objet posé dessus. Sans ceci, « background »
+         * n'est qu'un préfixe pour « bg button … » et un fond nommé reste
+         * introuvable. */
+        if (*ref == '"') {
+            char nm[128];
+            quoted(ref, nm, sizeof nm);
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_BACKGROUND &&
+                    stack->parts[i]->name && ci_equal(stack->parts[i]->name, nm))
+                    return stack->parts[i];
+            return NULL;
+        }
+        if (ci_word(ref, "id")) {
+            int wanted = atoi(skip_spaces(ref + 2));
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_BACKGROUND &&
+                    stack->parts[i]->id == wanted)
+                    return stack->parts[i];
+            return NULL;
+        }
+        if (isdigit((unsigned char)*ref)) {
+            int n = atoi(ref) - 1;          /* 1-based en HyperTalk */
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_BACKGROUND && n-- == 0)
+                    return stack->parts[i];
+            return NULL;
+        }
+        /* « go background commun » : nom de fond sans guillemets. */
+        if (!ci_word(ref, "button") && !ci_word(ref, "btn") &&
+            !ci_word(ref, "field")  && !ci_word(ref, "fld")  &&
+            !ci_word(ref, "part")) {
+            char nm[128];
+            int n = 0;
+            while (ref[n] && n < (int)sizeof nm - 1) { nm[n] = ref[n]; n++; }
+            while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
+            nm[n] = '\0';
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_BACKGROUND &&
+                    stack->parts[i]->name && ci_equal(stack->parts[i]->name, nm))
+                    return stack->parts[i];
+        }
     } else if (ci_word(ref, "card") || ci_word(ref, "cd")) {
         /* "card button" / "card field" / "card \"nom\"" / "card 3" */
         const char *after = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
@@ -620,6 +767,21 @@ static Object *resolve(const char *ref)
         }
         if (isdigit((unsigned char)*after))
             return nth_card(stack, atoi(after) - 1);   /* 1-based en HyperTalk */
+
+        /* « go card canard » : HyperCard accepte un nom de carte sans
+         * guillemets. On ne tente le nom nu que si ce qui suit n'est pas un
+         * objet posé sur la carte, sinon « card button "ok" » y passerait. */
+        if (*after && !ci_word(after, "button") && !ci_word(after, "btn") &&
+                      !ci_word(after, "field")  && !ci_word(after, "fld") &&
+                      !ci_word(after, "part")   && !ci_word(after, "window")) {
+            char nm[128];
+            int n = 0;
+            while (after[n] && n < (int)sizeof nm - 1) { nm[n] = after[n]; n++; }
+            while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
+            nm[n] = '\0';
+            Object *c = find_card_by_name(stack, nm);
+            if (c) return c;
+        }
         ref = after;
     }
 
@@ -636,7 +798,16 @@ static Object *resolve(const char *ref)
     if (ci_word(ref, "first")) return nth_card(stack, 0);
     if (ci_word(ref, "last"))  return nth_card(stack, card_count(stack) - 1);
 
-    if (ci_equal(ref, "stack")) return stack;
+    if (ci_word(ref, "stack")) {
+        const char *after = skip_spaces(ref + 5);
+        if (!*after) return stack;
+        if (*after == '"') {                 /* « stack "Essai" » */
+            char nm[128];
+            quoted(after, nm, sizeof nm);
+            if (stack && stack->name && ci_equal(stack->name, nm)) return stack;
+            return NULL;                      /* une seule pile ouverte à la fois */
+        }
+    }
 
     ObjType t;
     if (ci_word(ref, "button") || ci_word(ref, "btn")) { t = OBJ_BUTTON; }
@@ -901,7 +1072,9 @@ typedef enum { CH_NONE, CH_CHAR, CH_WORD, CH_ITEM, CH_LINE } ChunkType;
 static void eval_expr(const char *s, char *out, int outlen);
 static const char *find_kw(const char *s, const char *w);   /* défini plus bas */
 static int hc_send_args(Object *target, const char *message,
-                        char argv[][512], int argc);   /* défini plus bas */
+                        char argv[][HC_VAL], int argc);   /* défini plus bas */
+static int hc_call_user_function(Object *target, const char *name,
+                                 char argv[][HC_VAL], int argc);  /* idem */
 
 /* Reconnaît un nom de morceau et dit combien de caractères il occupe. */
 static ChunkType chunk_kind(const char *s, int *used)
@@ -1197,7 +1370,7 @@ static int container_set(const char *ref, const char *val, int mode)
 
 /* Découpe les arguments d'un appel : virgules de premier niveau seulement,
    les parenthèses et les guillemets protègent. */
-static int split_args(const char *s, char args[][512], int maxargs)
+static int split_args(const char *s, char args[][HC_VAL], int maxargs)
 {
     int n = 0, depth = 0, inq = 0, len = 0;
     args[0][0] = '\0';
@@ -1230,6 +1403,216 @@ static void format_date(char *out, int outlen, int mode)
     else if (mode == 3) fmt = "%H:%M";             /* time */
     else if (mode == 4) fmt = "%H:%M:%S";          /* long time */
     strftime(out, (size_t)outlen, fmt, tm);
+}
+
+/* ==================== dates : analyse et mise en forme ==================== */
+
+/* Tables en anglais, volontairement : HyperTalk n'est pas localisé, et un
+ * script de 1990 compare ses résultats à « January » ou « Sun ». Passer par
+ * strftime ferait dépendre le sens du script de la locale de la machine. */
+static const char *k_month[12] = {
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December" };
+static const char *k_day[7] = {
+    "Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday" };
+
+/* Secondes du Macintosh : depuis le 1er janvier 1904, pas 1970. */
+#define HC_MAC_EPOCH 2082844800LL
+
+enum { DF_SECONDS, DF_DATEITEMS, DF_SHORTDATE, DF_LONGDATE,
+       DF_ABBREVDATE, DF_SHORTTIME, DF_LONGTIME, DF_NONE };
+
+static int name_index(const char *w, const char **tab, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (ci_equal(w, tab[i])) return i;
+        /* forme abrégée : les trois premières lettres suffisent, comme
+         * « Aug » pour August ou « Wed » pour Wednesday. */
+        if (strlen(w) == 3 && ci_nequal(w, tab[i], 3)) return i;
+    }
+    return -1;
+}
+
+/* Analyse une date, une heure, une liste dateItems ou des secondes.
+ * Renvoie 1 si la chaîne a été comprise, et remplit *tm (normalisé par
+ * mktime, donc avec le jour de la semaine correct).
+ *
+ * Le séparateur lève l'ambiguïté, comme chez Apple : les dateItems sont
+ * toujours séparés par des virgules, la date courte toujours par des
+ * barres obliques. « 2026,8,7 » est donc une année-mois-jour, tandis que
+ * « 8/7/26 » est un mois-jour-année. */
+static int parse_datetime(const char *s, struct tm *tm)
+{
+    if (!s) return 0;
+
+    int nums[12], nn = 0;
+    int mon = -1, hh = -1, mi = 0, ss = 0, meridian = 0;  /* 1 = AM, 2 = PM */
+    int sawslash = 0, sawcolon = 0, sawname = 0;
+
+    const char *p = s;
+    while (*p) {
+        while (*p && !isalnum((unsigned char)*p)) {
+            if (*p == '/') sawslash = 1;
+            p++;
+        }
+        if (!*p) break;
+
+        if (isdigit((unsigned char)*p)) {
+            int v = 0;
+            while (isdigit((unsigned char)*p)) { v = v * 10 + (*p - '0'); p++; }
+            if (*p == ':') {                       /* début d'une heure */
+                sawcolon = 1;
+                hh = v; p++;
+                mi = 0;
+                while (isdigit((unsigned char)*p)) { mi = mi * 10 + (*p - '0'); p++; }
+                if (*p == ':') {
+                    p++; ss = 0;
+                    while (isdigit((unsigned char)*p)) { ss = ss * 10 + (*p - '0'); p++; }
+                }
+            } else if (nn < 12) {
+                nums[nn++] = v;
+            }
+        } else {
+            char w[32]; int k = 0;
+            while (isalpha((unsigned char)*p) && k < (int)sizeof w - 1) w[k++] = *p++;
+            w[k] = '\0';
+            if (ci_equal(w, "AM")) meridian = 1;
+            else if (ci_equal(w, "PM")) meridian = 2;
+            else {
+                int m = name_index(w, k_month, 12);
+                if (m >= 0) { mon = m; sawname = 1; }
+                else if (name_index(w, k_day, 7) >= 0) sawname = 1;  /* jour : ignoré */
+            }
+        }
+    }
+
+    memset(tm, 0, sizeof *tm);
+    tm->tm_isdst = -1;
+
+    /* --- secondes du Macintosh : un seul nombre, et il est énorme --- */
+    if (!sawslash && !sawcolon && !sawname && nn == 1 && nums[0] > 100000) {
+        time_t t = (time_t)((long long)nums[0] - HC_MAC_EPOCH);
+        struct tm *lt = localtime(&t);
+        if (!lt) return 0;
+        *tm = *lt;
+        return 1;
+    }
+
+    int year = -1, day = -1;
+
+    if (sawname) {                       /* « Friday, August 7, 2026 » */
+        if (nn >= 1) day  = nums[0];
+        if (nn >= 2) year = nums[1];
+        if (mon < 0) return 0;           /* un nom de jour seul n'est pas une date */
+        if (day < 0) day = 1;            /* « August » = le 1er août */
+    } else if (sawslash) {               /* « 8/7/26 » : mois, jour, année */
+        if (nn >= 1) mon  = nums[0] - 1;
+        if (nn >= 2) day  = nums[1];
+        if (nn >= 3) year = nums[2];
+    } else if (nn >= 3) {                /* dateItems : y, m, d, h, mn, s, dow */
+        year = nums[0]; mon = nums[1] - 1; day = nums[2];
+        if (nn >= 4) hh = nums[3];
+        if (nn >= 5) mi = nums[4];
+        if (nn >= 6) ss = nums[5];
+        /* nums[6] est le jour de la semaine : recalculé, jamais lu */
+    } else if (sawcolon) {               /* heure seule : on garde aujourd'hui */
+        time_t now = time(NULL);
+        struct tm *lt = localtime(&now);
+        if (!lt) return 0;
+        year = lt->tm_year + 1900; mon = lt->tm_mon; day = lt->tm_mday;
+    } else {
+        return 0;
+    }
+
+    if (mon < 0 || day < 0) return 0;
+    if (year < 0) {                      /* année tue : celle en cours */
+        time_t now = time(NULL);
+        struct tm *lt = localtime(&now);
+        if (!lt) return 0;
+        year = lt->tm_year + 1900;
+    }
+    if (year < 100) year += (year < 70) ? 2000 : 1900;   /* comme le Macintosh */
+
+    if (hh < 0) hh = 0;
+    if (meridian == 2 && hh < 12) hh += 12;              /* 3 PM → 15 */
+    if (meridian == 1 && hh == 12) hh = 0;               /* 12 AM → 0 */
+
+    tm->tm_year = year - 1900;
+    tm->tm_mon  = mon;
+    tm->tm_mday = day;
+    tm->tm_hour = hh;
+    tm->tm_min  = mi;
+    tm->tm_sec  = ss;
+
+    /* mktime normalise et remplit tm_wday. C'est lui qui fait marcher
+     * « put 1 into item 3 of d » suivi de « convert d to dateItems » :
+     * un 31 février devient un 3 mars, et le jour de la semaine suit. */
+    if (mktime(tm) == (time_t)-1) return 0;
+    return 1;
+}
+
+/* Nom de format → constante DF_*. Renvoie DF_NONE si le mot est inconnu. */
+static int date_format_code(const char *spec)
+{
+    const char *s = skip_spaces(spec);
+    if (ci_word(s, "the")) s = skip_spaces(s + 3);
+
+    int wantlong = 0, wantabbr = 0;
+    for (;;) {
+        if (ci_word(s, "long"))        { wantlong = 1; s = skip_spaces(s + 4); }
+        else if (ci_word(s, "short"))  {               s = skip_spaces(s + 5); }
+        else if (ci_word(s, "abbreviated")) { wantabbr = 1; s = skip_spaces(s + 11); }
+        else if (ci_word(s, "abbrev")) { wantabbr = 1; s = skip_spaces(s + 6); }
+        else if (ci_word(s, "abbr"))   { wantabbr = 1; s = skip_spaces(s + 4); }
+        else if (ci_word(s, "english")){               s = skip_spaces(s + 7); }
+        else break;
+    }
+    if (ci_word(s, "dateitems")) return DF_DATEITEMS;
+    if (ci_word(s, "seconds") || ci_word(s, "secs")) return DF_SECONDS;
+    if (ci_word(s, "date"))
+        return wantlong ? DF_LONGDATE : wantabbr ? DF_ABBREVDATE : DF_SHORTDATE;
+    if (ci_word(s, "time"))
+        return wantlong ? DF_LONGTIME : DF_SHORTTIME;
+    return DF_NONE;
+}
+
+static void emit_datetime(struct tm *tm, int fmt, char *out, int outlen)
+{
+    int h12 = tm->tm_hour % 12; if (h12 == 0) h12 = 12;
+    const char *ampm = tm->tm_hour < 12 ? "AM" : "PM";
+
+    switch (fmt) {
+    case DF_DATEITEMS:
+        snprintf(out, outlen, "%d,%d,%d,%d,%d,%d,%d",
+                 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                 tm->tm_hour, tm->tm_min, tm->tm_sec, tm->tm_wday + 1);
+        break;
+    case DF_SHORTDATE:
+        snprintf(out, outlen, "%d/%d/%02d",
+                 tm->tm_mon + 1, tm->tm_mday, (tm->tm_year + 1900) % 100);
+        break;
+    case DF_LONGDATE:
+        snprintf(out, outlen, "%s, %s %d, %d", k_day[tm->tm_wday],
+                 k_month[tm->tm_mon], tm->tm_mday, tm->tm_year + 1900);
+        break;
+    case DF_ABBREVDATE:
+        snprintf(out, outlen, "%.3s, %.3s %d, %d", k_day[tm->tm_wday],
+                 k_month[tm->tm_mon], tm->tm_mday, tm->tm_year + 1900);
+        break;
+    case DF_SHORTTIME:
+        snprintf(out, outlen, "%d:%02d %s", h12, tm->tm_min, ampm);
+        break;
+    case DF_LONGTIME:
+        snprintf(out, outlen, "%d:%02d:%02d %s", h12, tm->tm_min, tm->tm_sec, ampm);
+        break;
+    case DF_SECONDS: {
+        struct tm copy = *tm;
+        snprintf(out, outlen, "%lld", (long long)mktime(&copy) + HC_MAC_EPOCH);
+        break;
+    }
+    default:
+        out[0] = '\0';
+    }
 }
 
 /* Renvoie 1 si `t` était bien un appel de fonction. */
@@ -1295,7 +1678,7 @@ static int call_function(const char *t, char *out, int outlen)
     }
 
     /* --- arguments : « of <expr> » ou « (a, b, c) » --- */
-    char raw[8][512], vals[8][512];
+    char raw[8][HC_VAL], vals[8][HC_VAL];
     int nargs = 0;
     const char *q = skip_spaces(after);
 
@@ -1308,7 +1691,7 @@ static int call_function(const char *t, char *out, int outlen)
             else if (!inq && *end == ')') depth--;
             if (depth) end++;
         }
-        char inner[512];
+        char inner[HC_VAL];
         int len = (int)(end - (q + 1));
         if (len > (int)sizeof inner - 1) len = (int)sizeof inner - 1;
         if (len < 0) len = 0;
@@ -1387,6 +1770,22 @@ static int call_function(const char *t, char *out, int outlen)
         else if (ci_equal(name, "min") || ci_equal(name, "max")) put_num(best, out, outlen);
         else                            put_num(acc / nargs, out, outlen);
         return 1;
+    }
+
+    /* --- fonction définie par l'utilisateur ---
+     * Dernier recours, après tous les noms intégrés : une pile qui définit
+     * « function length » ne doit pas masquer celle du noyau, comme dans
+     * HyperCard. La recherche part de l'objet dont le script tourne et
+     * remonte la chaîne carte → fond → pile. */
+    {
+        Object *from = g_me ? g_me : g_current_card;
+        char uargv[8][HC_VAL];
+        for (int i = 0; i < nargs; i++)
+            snprintf(uargv[i], sizeof uargv[i], "%s", vals[i]);
+        if (hc_call_user_function(from, name, uargv, nargs)) {
+            snprintf(out, outlen, "%s", g_result);
+            return 1;
+        }
     }
 
     return 0;
@@ -1634,7 +2033,20 @@ static void term_value(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
-                    if (ci_equal(prop, "script"))  { snprintf(out, outlen, "%s", o->script ? o->script : ""); return; }
+                    if (ci_equal(prop, "script"))  {
+                        const char *sc = o->script ? o->script : "";
+                        /* Les valeurs du noyau tiennent dans des tampons fixes.
+                         * Un script plus long est tronqué : le dire, sinon un
+                         * « set script of me to it » réécrit la version mutilée
+                         * sans que personne ne s'en aperçoive. */
+                        if ((int)strlen(sc) >= outlen) {
+                            g_script_clipped = 1;
+                            emit(HC_ERR, "   !! script de %d octets tronqué à %d : "
+                                         "toute réécriture sera refusée",
+                                 (int)strlen(sc), outlen - 1);
+                        }
+                        snprintf(out, outlen, "%s", sc); return;
+                    }
                     if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
                                                    { snprintf(out, outlen, "%s", hc_field_text(o)); return; }
                     if (ci_equal(prop, "style"))   { snprintf(out, outlen, "%s", o->style ? o->style : "rectangle"); return; }
@@ -1691,7 +2103,7 @@ static void parse_factor(const char **p, char *out, int outlen)
         return;
     }
     if (*s == '-') {
-        char v[512]; double d = 0;
+        char v[HC_VAL]; double d = 0;
         *p = s + 1;
         parse_factor(p, v, sizeof v);
         as_num(v, &d);
@@ -1701,12 +2113,37 @@ static void parse_factor(const char **p, char *out, int outlen)
     /* `not` est au niveau 2 chez Apple, aussi serré que le moins unaire :
        « not 5 > 2 » se lit « (not 5) > 2 ». */
     if (ci_word(s, "not")) {
-        char v[512];
+        char v[HC_VAL];
         *p = s + 3;
         parse_factor(p, v, sizeof v);
         snprintf(out, outlen, "%s", truthy(v) ? "false" : "true");
         return;
     }
+    /* « there is a <objet> » / « there is no <objet> » / « there is not a … »
+     * Tout ce qui suit désigne l'objet : l'expression s'arrête là, ce qui
+     * suffit puisque la forme n'apparaît jamais qu'en position de condition. */
+    if (ci_word(s, "there")) {
+        const char *q = skip_spaces(s + 5);
+        if (ci_word(q, "is")) {
+            q = skip_spaces(q + 2);
+            int negate = 0;
+            if (ci_word(q, "not"))     { negate = 1; q = skip_spaces(q + 3); }
+            else if (ci_word(q, "no")) { negate = 1; q = skip_spaces(q + 2); }
+            if (ci_word(q, "an"))      q = skip_spaces(q + 2);
+            else if (ci_word(q, "a"))  q = skip_spaces(q + 1);
+
+            char ref[HC_VAL];
+            snprintf(ref, sizeof ref, "%s", q);
+            int k = (int)strlen(ref);
+            while (k > 0 && isspace((unsigned char)ref[k-1])) ref[--k] = '\0';
+
+            int found = resolve(ref) != NULL;
+            snprintf(out, outlen, "%s", (found != negate) ? "true" : "false");
+            *p = q + strlen(q);
+            return;
+        }
+    }
+
     if (isdigit((unsigned char)*s) || (*s == '.' && isdigit((unsigned char)s[1]))) {
         char *e;
         double d = strtod(s, &e);
@@ -1719,7 +2156,7 @@ static void parse_factor(const char **p, char *out, int outlen)
         return;
     }
 
-    char ref[512];
+    char ref[HC_VAL];
     const char *before = s;
     collect_ref(&s, ref, sizeof ref);
     if (s == before && *s) s++;      /* jamais de sur-place : pas de boucle infinie */
@@ -1735,7 +2172,7 @@ static void parse_power(const char **p, char *out, int outlen)
     if (*s != '^') return;
     *p = s + 1;
 
-    char rhs[512]; double a = 0, b = 0;
+    char rhs[HC_VAL]; double a = 0, b = 0;
     parse_power(p, rhs, sizeof rhs);      /* récursif : 2^3^2 = 2^(3^2) */
     as_num(out, &a); as_num(rhs, &b);
     put_num(pow(a, b), out, outlen);
@@ -1754,7 +2191,7 @@ static void parse_product(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[512]; double a = 0, b = 0, r = 0;
+        char rhs[HC_VAL]; double a = 0, b = 0, r = 0;
         parse_power(p, rhs, sizeof rhs);
         as_num(out, &a); as_num(rhs, &b);
         if      (op == '*') r = a * b;
@@ -1774,7 +2211,7 @@ static void parse_sum(const char **p, char *out, int outlen)
         int op = *s++;
         *p = s;
 
-        char rhs[512]; double a = 0, b = 0;
+        char rhs[HC_VAL]; double a = 0, b = 0;
         parse_product(p, rhs, sizeof rhs);
         as_num(out, &a); as_num(rhs, &b);
         put_num(op == '+' ? a + b : a - b, out, outlen);
@@ -1792,7 +2229,7 @@ static void parse_concat(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[512];
+        char rhs[HC_VAL];
         parse_sum(p, rhs, sizeof rhs);
         int n = (int)strlen(out);
         if (space && n < outlen - 1) { out[n++] = ' '; out[n] = '\0'; }
@@ -1874,28 +2311,19 @@ static int int_items(const char *s)
 
 /* Forme numérique seulement (12/25/96, 1996-12-25). Sans horloge dans le
    noyau, on ne reconnaît pas encore « December 25, 1996 ». */
+/* « is a date » et « convert » doivent s'accorder : ce que l'un accepte,
+ * l'autre doit le reconnaître. Sans quoi un script qui valide une saisie
+ * par « if it is a date then convert it » tourne en boucle sur une date
+ * pourtant convertible — les dateItems, par exemple. */
 static int looks_like_date(const char *s)
 {
-    char buf[64];
-    int n = 0;
-    const char *p = s;
-    while (*p) {
-        const char *q = p;
-        while (*q && *q != '/' && *q != '-') q++;
-        int len = (int)(q - p);
-        if (len == 0 || len > (int)sizeof buf - 1) return 0;
-        memcpy(buf, p, (size_t)len); buf[len] = '\0';
-        if (!is_int_str(buf)) return 0;
-        n++;
-        if (!*q) break;
-        p = q + 1;
-    }
-    return n == 3;
+    struct tm tm;
+    return parse_datetime(s, &tm);
 }
 
 static int is_of_type(const char *v, const char *ty)
 {
-    char t[512];
+    char t[HC_VAL];
     double d;
     trim_copy(v, t, sizeof t);
 
@@ -1930,9 +2358,15 @@ static void parse_relational(const char **p, char *out, int outlen)
             if (ci_word(w, "not")) { notted = 1; w = skip_spaces(w + 3); }
 
             if (ci_word(w, "a") || ci_word(w, "an")) {      /* test de type */
-                char ty[32];
-                const char *q = next_word(skip_spaces(w + (ci_word(w, "an") ? 2 : 1)),
-                                          ty, sizeof ty);
+                /* Lire le nom de type lettre à lettre, sans next_word : celui-ci
+                 * s'arrête aux blancs et emporterait la parenthèse fermante de
+                 * « (it is a date) », ce qui faisait échouer tous les tests de
+                 * type placés entre parenthèses. */
+                char ty[32]; int tk = 0;
+                const char *q = skip_spaces(w + (ci_word(w, "an") ? 2 : 1));
+                while (isalpha((unsigned char)*q) && tk < (int)sizeof ty - 1)
+                    ty[tk++] = *q++;
+                ty[tk] = '\0';
                 *p = q;
                 int r = is_of_type(out, ty);
                 if (notted) r = !r;
@@ -1941,7 +2375,7 @@ static void parse_relational(const char **p, char *out, int outlen)
             }
             if (ci_word(w, "within")) {                     /* point is within rect */
                 *p = w + 6;
-                char rhs[512];
+                char rhs[HC_VAL];
                 parse_concat(p, rhs, sizeof rhs);
                 int pt[2], rc[4];
                 int r = 0;
@@ -1958,7 +2392,7 @@ static void parse_relational(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[512];
+        char rhs[HC_VAL];
         parse_concat(p, rhs, sizeof rhs);
         int r = compare_vals(op, out, rhs);
         if (neg) r = !r;
@@ -1985,7 +2419,7 @@ static void parse_equality(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[512];
+        char rhs[HC_VAL];
         parse_relational(p, rhs, sizeof rhs);
         int r = compare_vals(op, out, rhs);
         if (neg) r = !r;
@@ -2000,7 +2434,7 @@ static void parse_and(const char **p, char *out, int outlen)
         const char *s = skip_spaces(*p);
         if (!ci_word(s, "and")) break;
         *p = s + 3;
-        char rhs[512];
+        char rhs[HC_VAL];
         parse_equality(p, rhs, sizeof rhs);
         snprintf(out, outlen, "%s", (truthy(out) && truthy(rhs)) ? "true" : "false");
     }
@@ -2013,7 +2447,7 @@ static void parse_expr(const char **p, char *out, int outlen)
         const char *s = skip_spaces(*p);
         if (!ci_word(s, "or")) break;
         *p = s + 2;
-        char rhs[512];
+        char rhs[HC_VAL];
         parse_and(p, rhs, sizeof rhs);
         snprintf(out, outlen, "%s", (truthy(out) || truthy(rhs)) ? "true" : "false");
     }
@@ -2097,7 +2531,7 @@ static void eval_point(const char *s, char *out, int outlen)
 
         if (*q && !(!inq && depth <= 0 && *q == ',')) continue;
 
-        char expr[512], val[512];
+        char expr[HC_VAL], val[HC_VAL];
         int len = (int)(q - part);
         while (len > 0 && isspace((unsigned char)part[len-1])) len--;
         if (len > (int)sizeof expr - 1) len = (int)sizeof expr - 1;
@@ -2140,9 +2574,34 @@ static int else_closes(const char *s)
 
 static int match_end(char **L, int from, int to, const char *what);
 
+/* Formes hybrides « if … then <instruction> » + « else » à la ligne :
+ * définies plus bas, mais les trois explorateurs ci-dessous doivent déjà
+ * savoir les enjamber, sans quoi le « else » de l'if interne passe pour la
+ * fin de l'if externe. */
+static int is_inline_if(const char *s);
+static int chain_end(char **L, int i, int to);
+
+/* Vrai si L[i] ouvre une construction hybride qu'il faut enjamber d'un bloc. */
+static int opens_inline_chain(char **L, int i, int to)
+{
+    const char *th;
+    if (!is_inline_if(L[i])) return 0;
+
+    /* Une ligne qui porte déjà son propre « else » est complète en elle-même :
+     *     if the result <> empty then get error() else exit repeat
+     *     else get error()          <- appartient à un if ENGLOBANT
+     * Sans ce garde-fou on s'empare du « else » du dessous, et la branche
+     * exécutée n'est pas celle que le script demande. */
+    th = find_kw(L[i], "then");
+    if (th && find_kw(th + 4, "else")) return 0;
+
+    return i + 1 < to && ci_word(L[i+1], "else");
+}
+
 /* Index de la dernière ligne de la construction ouverte par L[open]. */
 static int skip_block(char **L, int open, int to)
 {
+    if (opens_inline_chain(L, open, to)) return chain_end(L, open, to);
     if (opens_if(L[open]))     return match_end(L, open + 1, to, "if");
     if (opens_repeat(L[open])) return match_end(L, open + 1, to, "repeat");
     return open;
@@ -2157,7 +2616,8 @@ static int match_end(char **L, int from, int to, const char *what)
     int isif = (strcmp(what, "if") == 0);
     for (int i = from; i < to; i++) {
         const char *s = L[i];
-        if (opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
+        if (opens_inline_chain(L, i, to) ||
+            opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
         if (isif && else_closes(s)) return i;
         if (ci_word(s, "end")) {
             const char *w = skip_spaces(s + 3);
@@ -2173,7 +2633,8 @@ static int find_else(char **L, int from, int to)
 {
     for (int i = from; i < to; i++) {
         const char *s = L[i];
-        if (opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
+        if (opens_inline_chain(L, i, to) ||
+            opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
         if (ci_word(s, "else")) return i;
     }
     return -1;
@@ -2186,7 +2647,7 @@ static void exec_stmt(Object *me, const char *s);
 static void exec_if(Object *me, const char *head, char **L, int from, int end_idx)
 {
     const char *th = find_kw(head, "then");
-    char cond[512], val[512];
+    char cond[HC_VAL], val[HC_VAL];
     const char *c0 = skip_spaces(head + 2);   /* après « if » */
     int n = th ? (int)(th - c0) : (int)strlen(c0);
     if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
@@ -2212,7 +2673,7 @@ static void exec_stmt(Object *me, const char *s)
     if (ci_word(s, "if")) {
         const char *th = find_kw(s, "then");
         if (th) {
-            char cond[512], val[512];
+            char cond[HC_VAL], val[HC_VAL];
             const char *c0 = skip_spaces(s + 2);
             int n = (int)(th - c0);
             if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
@@ -2221,7 +2682,7 @@ static void exec_stmt(Object *me, const char *s)
 
             const char *body = skip_spaces(th + 4);
             const char *el   = find_kw(body, "else");
-            char yes[512];
+            char yes[HC_VAL];
             int ny = el ? (int)(el - body) : (int)strlen(body);
             if (ny > (int)sizeof yes - 1) ny = (int)sizeof yes - 1;
             memcpy(yes, body, (size_t)ny); yes[ny] = '\0';
@@ -2234,10 +2695,76 @@ static void exec_stmt(Object *me, const char *s)
     exec_line(me, s);
 }
 
+/* Un `if` dont le « then » porte déjà une instruction, mais dont le « else »
+ * ouvre la ligne suivante. HyperCard admet cette forme hybride, et la chaîne :
+ *
+ *     if (it is in "1,3,5,7,8,10") or (it = 12) then return 31
+ *     else if (it is in "4,6,9,11") then return 30
+ *     else
+ *       ...
+ *     end if
+ *
+ * Ni opens_if (qui exige un « then » en fin de ligne) ni exec_stmt (qui ne
+ * regarde qu'une ligne) ne savent la lire. On la traite en deux temps :
+ * d'abord mesurer l'étendue de la construction, ensuite l'exécuter. */
+
+/* Vrai si la ligne est « if <cond> then <instruction> », then non terminal. */
+static int is_inline_if(const char *s)
+{
+    if (!ci_word(s, "if")) return 0;
+    const char *th = find_kw(s, "then");
+    return th && *skip_spaces(th + 4);
+}
+
+/* Indice de la dernière ligne de la construction ouverte en `i`. */
+static int chain_end(char **L, int i, int to)
+{
+    int j = i;
+    while (j + 1 < to && ci_word(L[j+1], "else")) {
+        const char *rest = skip_spaces(L[j+1] + 4);
+        if (!*rest)                                  /* « else » seul : bloc */
+            return match_end(L, j + 2, to, "if");
+        j++;
+        if (!is_inline_if(rest)) break;              /* « else <instruction> » */
+    }
+    return j;
+}
+
+static void exec_if_chain(Object *me, char **L, int i, int to, int end)
+{
+    const char *head = L[i];
+    for (;;) {
+        const char *th = find_kw(head, "then");
+        char cond[HC_VAL], val[HC_VAL];
+        const char *c0 = skip_spaces(head + 2);      /* après « if » */
+        int n = (int)(th - c0);
+        if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
+        memcpy(cond, c0, (size_t)n); cond[n] = '\0';
+        eval_checked(cond, val, sizeof val);
+
+        if (truthy(val)) { exec_stmt(me, skip_spaces(th + 4)); return; }
+
+        if (i + 1 >= to || !ci_word(L[i+1], "else")) return;
+        const char *rest = skip_spaces(L[i+1] + 4);
+        if (!*rest)          { exec_block(me, L, i + 2, end); return; }
+        if (is_inline_if(rest)) { head = rest; i++; continue; }
+        exec_stmt(me, rest); return;
+    }
+}
+
 static void exec_block(Object *me, char **L, int from, int to)
 {
     for (int i = from; i < to; i++) {
         const char *s = L[i];
+
+        /* --- if … then <instruction> avec un « else » à la ligne --- */
+        if (opens_inline_chain(L, i, to)) {
+            int e = chain_end(L, i, to);
+            exec_if_chain(me, L, i, to, e);
+            i = e;
+            if (flow_broken()) return;
+            continue;
+        }
 
         /* --- if … then / end if --- */
         if (opens_if(s)) {
@@ -2282,8 +2809,21 @@ static void exec_block(Object *me, char **L, int from, int to)
                 kind = 1;
                 const char *q = h;
                 if (ci_word(q, "for")) q = skip_spaces(q + 3);
+
+                /* Retirer le « times » final avant d'évaluer : sans ça,
+                 * « repeat n times » fait lire « n times » comme une seule
+                 * référence, qui ne vaut rien — donc zéro tour. Avec un
+                 * littéral le problème ne se voyait pas, parse_factor
+                 * s'arrêtant tout seul après le nombre. */
+                char cnt[256];
+                const char *tm = find_kw(q, "times");
+                int cn = tm ? (int)(tm - q) : (int)strlen(q);
+                while (cn > 0 && isspace((unsigned char)q[cn-1])) cn--;
+                if (cn > (int)sizeof cnt - 1) cn = (int)sizeof cnt - 1;
+                memcpy(cnt, q, (size_t)cn); cnt[cn] = '\0';
+
                 char v[256];
-                eval_expr(q, v, sizeof v);
+                eval_expr(cnt, v, sizeof v);
                 double d = 0; as_num(v, &d);
                 times = (long)d;
             }
@@ -2343,6 +2883,33 @@ static void exec_block(Object *me, char **L, int from, int to)
 }
 
 /* Découpe le corps d'un gestionnaire en lignes utiles, puis l'exécute. */
+/* HyperCard autorise le « then » à ouvrir la ligne suivante :
+ *
+ *     if (theDayOfWeek - 1) <> 0
+ *     then put char 1 to n of spaces() into theDayNumbers
+ *
+ * On recolle ces deux lignes avant toute analyse : exec_if ignore alors
+ * complètement cette variante. Le recollage n'a lieu que si la ligne suivante
+ * commence vraiment par « then », donc un `if` mal formé ne peut pas avaler
+ * la suite du gestionnaire. */
+static void join_split_then(char **L, int *n)
+{
+    for (int i = 0; i + 1 < *n; i++) {
+        if (!ci_word(L[i], "if")) continue;
+        if (find_kw(L[i], "then")) continue;
+        if (!ci_word(L[i+1], "then")) continue;
+
+        size_t need = strlen(L[i]) + strlen(L[i+1]) + 2;
+        char *j = (char *)malloc(need);
+        if (!j) return;
+        snprintf(j, need, "%s %s", L[i], L[i+1]);
+        free(L[i]); free(L[i+1]);
+        L[i] = j;
+        for (int k = i + 1; k + 1 < *n; k++) L[k] = L[k+1];
+        (*n)--;
+    }
+}
+
 static void exec_body(Object *me, const char *body, const char *end)
 {
     int cap = 32, n = 0;
@@ -2355,7 +2922,7 @@ static void exec_body(Object *me, const char *body, const char *end)
         const char *stop = (nl && nl < end) ? nl : end;
         int len = (int)(stop - p);
 
-        char line[512];
+        char line[HC_VAL];
         if (len > (int)sizeof line - 1) len = (int)sizeof line - 1;
         memcpy(line, p, (size_t)len);
         line[len] = '\0';
@@ -2387,6 +2954,7 @@ static void exec_body(Object *me, const char *body, const char *end)
         p = nl + 1;
     }
 
+    join_split_then(L, &n);
     exec_block(me, L, 0, n);
 
     for (int i = 0; i < n; i++) free(L[i]);
@@ -2404,9 +2972,31 @@ static void exec_line(Object *me, const char *line)
      * d'arguments éventuels. « send "carre 6" to card X » appelle on carre
      * sur X avec l'argument 6. Les arguments sont évalués côté appelant. */
     if (ci_equal(verb, "send")) {
-        char msgline[512];
+        char msgline[HC_VAL];
         rest = skip_spaces(rest);
-        if (*rest == '"') rest = quoted(rest, msgline, sizeof msgline);
+        if (*rest == '"') {
+            const char *after = quoted(rest, msgline, sizeof msgline);
+            char probe[8];
+            next_word(after, probe, sizeof probe);
+            if (ci_equal(probe, "to")) {
+                rest = after;                       /* littéral simple */
+            } else {
+                /* Le message est une expression : « send "go " & n to … ».
+                 * Elle court jusqu'au dernier « to » de premier niveau, les
+                 * « to » enfermés dans les guillemets étant ignorés. */
+                const char *last = NULL, *scan = rest;
+                for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+                    last = k; scan = k + 2;
+                }
+                if (!last) { emit(HC_ERR, "?? send mal formé : %s", line); return; }
+                char expr[HC_VAL];
+                int n = (int)(last - rest);
+                if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+                memcpy(expr, rest, (size_t)n); expr[n] = '\0';
+                eval_expr(expr, msgline, sizeof msgline);
+                rest = last;
+            }
+        }
         else {
             /* message nu : tout jusqu'à « to » (au niveau supérieur) */
             const char *to_kw = find_kw(rest, "to");
@@ -2430,11 +3020,11 @@ static void exec_line(Object *me, const char *line)
         /* découper le message en nom + arguments */
         char msg[128];
         const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-        char argv[16][512];
+        char argv[16][HC_VAL];
         int argc = 0;
         a = skip_spaces(a);
         while (*a && argc < 16) {
-            char one[512]; int len = 0, depth = 0, inq = 0;
+            char one[HC_VAL]; int len = 0, depth = 0, inq = 0;
             while (*a && !(depth == 0 && !inq && *a == ',')) {
                 if (*a == '"') inq = !inq;
                 else if (!inq && *a == '(') depth++;
@@ -2468,14 +3058,14 @@ static void exec_line(Object *me, const char *line)
             else if (ci_word(q, "before")) { kw = q; kwlen = 6; mode = 2; break; }
         }
 
-        char val[512];
+        char val[HC_VAL];
         if (!kw) {                       /* pas de destination : la boîte de message */
             eval_checked(rest, val, sizeof val);
             emit(HC_MSG, "%s", val);
             return;
         }
 
-        char expr[512];
+        char expr[HC_VAL];
         int n = (int)(kw - rest);
         if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
         memcpy(expr, rest, (size_t)n); expr[n] = '\0';
@@ -2484,7 +3074,7 @@ static void exec_line(Object *me, const char *line)
         const char *dsttext = skip_spaces(kw + kwlen);
         if (container_set(dsttext, val, mode)) {
             set_result("");
-            char shown[512];
+            char shown[HC_VAL];
             eval_expr(dsttext, shown, sizeof shown);
             if (!*shown && *val) snprintf(shown, sizeof shown, "%s", val);
             emit(HC_INFO, "   → %s ← \"%s\"", dsttext, shown);
@@ -2508,9 +3098,90 @@ static void exec_line(Object *me, const char *line)
         return;
     }
 
+    /* --- lock screen | unlock screen [with visual …] ---
+     * Ce sont les alias de « set lockScreen to true/false », et c'est bien
+     * ainsi qu'on les traite : l'hôte reçoit une propriété globale et décide
+     * seul de suspendre ou non son rafraîchissement. Le noyau, lui, ne sait
+     * toujours pas ce qu'est un écran. L'effet visuel éventuel est ignoré. */
+    if (ci_equal(verb, "lock") || ci_equal(verb, "unlock")) {
+        if (ci_word(skip_spaces(rest), "screen")) {
+            host_global_set("lockScreen", ci_equal(verb, "lock") ? "true" : "false");
+            set_result("");
+            return;
+        }
+    }
+
+    /* --- convert <conteneur> to <format> [and <format>] ---
+     * Le résultat retourne dans le conteneur d'origine ; si la source n'en
+     * est pas un (« convert the date to dateItems »), il atterrit dans `it`,
+     * comme sur Macintosh. En cas d'échec, `the result` vaut « invalid date »
+     * — c'est ce que les scripts d'époque testent. */
+    if (ci_equal(verb, "convert")) {
+        /* Le « to » qui compte est le dernier de premier niveau : la source
+         * peut en contenir un elle-même, comme dans
+         * « convert item 1 to 7 of calData() to dateItems ». */
+        const char *to = NULL, *scan = rest;
+        for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+            to = k; scan = k + 2;
+        }
+        if (!to) {
+            emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(rest));
+            set_result("invalid date");
+            return;
+        }
+
+        char src[HC_VAL];
+        int n = (int)(to - rest);
+        if (n > (int)sizeof src - 1) n = (int)sizeof src - 1;
+        memcpy(src, rest, (size_t)n); src[n] = '\0';
+        while (n > 0 && isspace((unsigned char)src[n-1])) src[--n] = '\0';
+        const char *srcp = skip_spaces(src);
+
+        /* le format cible, éventuellement double : « short date and long time » */
+        char spec[256];
+        snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
+        char *andkw = (char *)find_kw(spec, "and");
+        int f1 = DF_NONE, f2 = DF_NONE;
+        if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
+        f1 = date_format_code(spec);
+        if (f1 == DF_NONE) {
+            emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
+            set_result("invalid date");
+            return;
+        }
+
+        char val[HC_VAL];
+        eval_expr(srcp, val, sizeof val);
+
+        struct tm tm;
+        if (!parse_datetime(val, &tm)) {
+            emit(HC_ERR, "   !! date incomprise : « %s »", val);
+            set_result("invalid date");
+            return;
+        }
+
+        char outv[HC_VAL], part2[256];
+        emit_datetime(&tm, f1, outv, sizeof outv);
+        if (f2 != DF_NONE) {
+            emit_datetime(&tm, f2, part2, sizeof part2);
+            int L = (int)strlen(outv);
+            snprintf(outv + L, sizeof outv - L, " %s", part2);
+        }
+
+        /* Destination : le conteneur source s'il en est un. « the date »,
+         * « the long time » et les appels de fonction n'en sont pas. */
+        int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
+        if (to_it || !container_set(srcp, outv, 0))
+            var_set("it", outv);
+
+        set_result("");
+        emit(HC_INFO, "   → %s", outv);
+        return;
+    }
+
     /* --- return <expr> : dépose une valeur dans `the result` et sort --- */
     if (ci_equal(verb, "return")) {
-        char val[512];
+        char val[HC_VAL];
         eval_checked(rest, val, sizeof val);
         set_result(val);
         g_exit_handler = 1;
@@ -2545,7 +3216,7 @@ static void exec_line(Object *me, const char *line)
                 emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(rest));
                 return;
             }
-            char val[512];
+            char val[HC_VAL];
             eval_checked(to + 2, val, sizeof val);
             host_global_set(prop, val);
             set_result("");
@@ -2630,6 +3301,20 @@ static void exec_line(Object *me, const char *line)
             o->textsize = atoi(val);
             notify_field(o);
         } else if (ci_equal(prop, "script")) {
+            /* Une valeur qui touche exactement le plafond a presque
+             * certainement été tronquée en chemin (« get the script of me »
+             * sur un script plus long que HC_VAL). L'écrire telle quelle
+             * détruirait le script. On refuse : mieux vaut un gestionnaire
+             * qui échoue qu'une pile mutilée.
+             *
+             * Un script faisant pile HC_VAL-1 octets serait refusé à tort ;
+             * c'est un prix négligeable face à la perte de l'original. */
+            if (g_script_clipped || (int)strlen(val) >= HC_VAL - 1) {
+                emit(HC_ERR, "   !! écriture refusée : ce gestionnaire a lu un "
+                             "script tronqué ; l'écrire le détruirait");
+                set_result("script tronqué");
+                return;
+            }
             hc_set_script(o, val);
         } else if (ci_equal(prop, "style")) {
             free(o->style);
@@ -2684,7 +3369,7 @@ static void exec_line(Object *me, const char *line)
 
     /* --- get <expr> : le résultat va dans `it` --- */
     if (ci_equal(verb, "get")) {
-        char val[512];
+        char val[HC_VAL];
         eval_checked(rest, val, sizeof val);
         var_set("it", val);
         emit(HC_INFO, "   → it ← \"%s\"", val);
@@ -2736,7 +3421,7 @@ static void exec_line(Object *me, const char *line)
          * multiply/divide : <conteneur> by <valeur>   (ordre inverse) */
         int valueFirst = (ci_equal(verb, "add") || ci_equal(verb, "subtract"));
 
-        char left[512], amount[128], cur[512];
+        char left[HC_VAL], amount[128], cur[HC_VAL];
         int n = (int)(kw - r);
         if (n > (int)sizeof left - 1) n = (int)sizeof left - 1;
         memcpy(left, r, n); left[n] = 0;
@@ -2893,7 +3578,7 @@ static void exec_line(Object *me, const char *line)
     /* --- ask "invite" [with "défaut"] --- */
     if (ci_equal(verb, "ask")) {
         const char *r = skip_spaces(rest);
-        char prompt[512] = "", deflt[512] = "";
+        char prompt[HC_VAL] = "", deflt[HC_VAL] = "";
 
         /* repérer « with » hors des chaînes */
         const char *kw = NULL;
@@ -2904,7 +3589,7 @@ static void exec_line(Object *me, const char *line)
             if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
         }
         if (kw) {
-            char expr[512];
+            char expr[HC_VAL];
             int n = (int)(kw - r);
             if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
             memcpy(expr, r, n); expr[n] = '\0';
@@ -2923,7 +3608,7 @@ static void exec_line(Object *me, const char *line)
     /* --- answer "invite" [with "a" [or "b" [or "c"]]] --- */
     if (ci_equal(verb, "answer")) {
         const char *r = skip_spaces(rest);
-        char prompt[512] = "";
+        char prompt[HC_VAL] = "";
         char btn[3][128] = { "", "", "" };
         int nb = 0;
 
@@ -2935,7 +3620,7 @@ static void exec_line(Object *me, const char *line)
             if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
         }
         if (kw) {
-            char expr[512];
+            char expr[HC_VAL];
             int n = (int)(kw - r);
             if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
             memcpy(expr, r, n); expr[n] = '\0';
@@ -3033,11 +3718,32 @@ static void exec_line(Object *me, const char *line)
             const char *w = skip_spaces(r + 4);
             if (!*w) dst = resolve("first card");
         }
+        /* « go background "x" » mène à la PREMIÈRE CARTE de ce fond, et
+         * « go stack "x" » à la première carte de la pile : dans HyperCard
+         * on ne se tient jamais sur un fond, seulement sur une carte. */
+        if (dst && (dst->type == OBJ_BACKGROUND || dst->type == OBJ_STACK)) {
+            Object *stk = owning_stack(dst);
+            Object *found = NULL;
+            for (int i = 0; stk && i < stk->nparts; i++) {
+                Object *c = stk->parts[i];
+                if (c->type != OBJ_CARD) continue;
+                if (dst->type == OBJ_STACK || c->bg == dst) { found = c; break; }
+            }
+            if (!found)
+                emit(HC_ERR, "   !! aucune carte dans %s", hc_typename(dst->type));
+            dst = found;
+        }
+
         if (dst && dst->type == OBJ_CARD) {
             set_result("");
-            Object *old = g_current_card;
+            Object *old   = g_current_card;
+            Object *oldbg = old ? old->bg : NULL;
             if (old) hc_send(old, "closeCard");
+            /* Changement de fond : les quatre messages, dans l'ordre
+             * d'HyperCard. « find » le faisait déjà, « go » l'oubliait. */
+            if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
             g_current_card = dst;
+            if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
             emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
             hc_send(dst, "openCard");
         } else {
@@ -3132,12 +3838,12 @@ static void exec_line(Object *me, const char *line)
         for (int i = 0; i < nc; i++) {
             const char *end = NULL, *hdr = NULL;
             if (find_handler(chain[i]->script, verb, &end, &hdr)) {
-                char argv[16][512];
+                char argv[16][HC_VAL];
                 int argc = 0;
                 const char *a = skip_spaces(rest);
                 while (*a && argc < 16) {
                     /* découpe au niveau des virgules de premier niveau */
-                    char one[512]; int len = 0, depth = 0, inq = 0;
+                    char one[HC_VAL]; int len = 0, depth = 0, inq = 0;
                     while (*a && !(depth == 0 && !inq && *a == ',')) {
                         if (*a == '"') inq = !inq;
                         else if (!inq && *a == '(') depth++;
@@ -3164,8 +3870,8 @@ static void exec_line(Object *me, const char *line)
 
 /* Envoie un message accompagné d'une liste d'arguments déjà évalués.
    argv[0..argc-1] sont les valeurs des arguments (sans le nom du message). */
-static int hc_send_args(Object *target, const char *message,
-                        char argv[][512], int argc)
+static int hc_send_args_k(Object *target, const char *message,
+                          char argv[][HC_VAL], int argc, int isfunc)
 {
     if (g_depth >= HC_MAX_DEPTH) {
         emit(HC_ERR, "!! trop de récursion : message \"%s\" abandonné", message);
@@ -3177,12 +3883,14 @@ static int hc_send_args(Object *target, const char *message,
 
     /* `the target` vaut le destinataire initial pendant toute la remontée ;
        on empile l'ancien pour les envois imbriqués. */
+    int saved_clipped = g_script_clipped;
+    g_script_clipped = 0;
     Object *saved_target = g_target;
     Object *saved_me     = g_me;
     g_target = target;
 
     /* on empile les paramètres du gestionnaire appelant */
-    char saved_params[16][512];
+    char saved_params[16][HC_VAL];
     int  saved_nparams = g_nparams;
     for (int i = 0; i < g_nparams; i++)
         memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
@@ -3204,7 +3912,7 @@ static int hc_send_args(Object *target, const char *message,
     for (int i = 0; i < n; i++) {
         Object *o = chain[i];
         const char *end = NULL, *hdr = NULL;
-        const char *body = find_handler(o->script, message, &end, &hdr);
+        const char *body = find_handler_k(o->script, message, isfunc, &end, &hdr);
 
         if (body) {
             if (g_trace) {
@@ -3220,13 +3928,25 @@ static int hc_send_args(Object *target, const char *message,
                « on carre n » → la variable locale n reçoit argv[0]. */
             if (hdr) {
                 char pname[64];
-                const char *q = next_word(hdr + 3, pname, sizeof pname);  /* saute « on nom » */
+                /* sauter le mot-clé (« on » / « function ») puis le nom :
+                 * un décalage fixe casserait dès qu'on change de mot-clé. */
+                const char *q = next_word(hdr, pname, sizeof pname);
+                q = next_word(q, pname, sizeof pname);
                 int idx = 0;
                 for (;;) {
                     q = skip_spaces(q);
                     if (*q == ',') { q++; continue; }
                     if (!*q || *q == '\n') break;
-                    q = next_word(q, pname, sizeof pname);
+                    /* Lire le nom sans next_word : celui-ci ne s'arrête qu'aux
+                     * blancs et avalerait la virgule dans « on markToday
+                     * theNewDay,theOldDay » — forme sans espace qu'emploient
+                     * tous les scripts d'origine. Aucun paramètre n'était
+                     * alors lié. */
+                    int pk = 0;
+                    while (*q && *q != ',' && *q != '\n' && !isspace((unsigned char)*q)
+                           && pk < (int)sizeof pname - 1)
+                        pname[pk++] = *q++;
+                    pname[pk] = '\0';
                     if (!pname[0]) break;
                     var_set(pname, idx < argc ? argv[idx] : "");
                     idx++;
@@ -3251,12 +3971,17 @@ static int hc_send_args(Object *target, const char *message,
     }
 
     if (!handled && g_trace) {
-        emit(HC_TRACE, "  ✗ message \"%s\" non traité", message);
+        /* Muet pour une recherche de fonction : ne pas trouver « numLines »
+         * est le cas normal quand le nom est en fait une variable ou un
+         * littéral. Seul un message resté sans preneur mérite la trace. */
+        if (!isfunc)
+            emit(HC_TRACE, "  ✗ message \"%s\" non traité", message);
     }
 
     g_depth--;
     g_me     = saved_me;
     g_target = saved_target;
+    g_script_clipped = saved_clipped;
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)
@@ -3266,9 +3991,28 @@ static int hc_send_args(Object *target, const char *message,
     return handled;
 }
 
+static int hc_send_args(Object *target, const char *message,
+                        char argv[][HC_VAL], int argc)
+{
+    return hc_send_args_k(target, message, argv, argc, 0);
+}
+
+/* Appel d'une fonction utilisateur : même remontée de la chaîne, mais on
+ * cherche « function <nom> ». La valeur est déposée dans `the result` par
+ * l'instruction `return` ; on la vide d'abord pour qu'une fonction sans
+ * `return` rende bien la chaîne vide plutôt que le reliquat de l'appel
+ * précédent. */
+static int hc_call_user_function(Object *target, const char *name,
+                                 char argv[][HC_VAL], int argc)
+{
+    if (!target) return 0;
+    set_result("");
+    return hc_send_args_k(target, name, argv, argc, 1);
+}
+
 int hc_send(Object *target, const char *message)
 {
-    char none[1][512];
+    char none[1][HC_VAL];
     return hc_send_args(target, message, none, 0);
 }
 
