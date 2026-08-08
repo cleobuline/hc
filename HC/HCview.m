@@ -1,6 +1,7 @@
 #import "HCview.h"
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
+#include <stdlib.h>        // getenv, pour la trace HC_RUNS_DEBUG
 #include <strings.h>       // strcasecmp, pour les noms de proprietes globales
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import "icons.h"
@@ -208,16 +209,22 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     [[NSColor blackColor] setStroke];
     NSFrameRect(r);
 }
+static NSFont *font_with_traits(NSFont *f, BOOL bold, BOOL italic, BOOL *faux);
+static NSFont *font_by_loose_name(NSString *want, CGFloat sz);
+
 static NSFont *obj_font(Object *o, CGFloat defSize) {
     CGFloat sz = o->textsize > 0 ? o->textsize : defSize;
     NSFont *f = nil;
     if (o->textfont && *o->textfont)
-        f = [NSFont fontWithName:[NSString stringWithUTF8String:o->textfont] size:sz];
+        f = font_by_loose_name([NSString stringWithUTF8String:o->textfont], sz);
     if (!f) f = [NSFont systemFontOfSize:sz];
-    NSFontManager *fm = [NSFontManager sharedFontManager];
-    if (o->textstyle & 1) f = [fm convertFont:f toHaveTrait:NSBoldFontMask];
-    if (o->textstyle & 2) f = [fm convertFont:f toHaveTrait:NSItalicFontMask];
-    return f;
+    /* Même chemin que les plages de style : convertFont:toHaveTrait: rend la
+     * fonte système inchangée et sans rien dire, si bien qu'un champ resté
+     * dans la police par défaut ne pouvait pas passer au gras — et que le
+     * panneau de polices, en recevant une fonte sans trait, croyait le gras
+     * éteint et l'écrasait au coup suivant. */
+    return font_with_traits(f, (o->textstyle & HC_BOLD)   ? YES : NO,
+                               (o->textstyle & HC_ITALIC) ? YES : NO, NULL);
 }
 
 
@@ -235,15 +242,298 @@ static NSDictionary *obj_attrs(Object *o, CGFloat defSize, NSColor *color) {
         at[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
     return at;
 }
+/* `group` n'a aucun equivalent Cocoa : c'est une semantique HyperCard, pas un
+ * rendu. On le porte comme attribut personnalise, sinon il disparaitrait au
+ * premier aller-retour par l'editeur. */
+static NSString * const kHCGroupAttribute = @"HCGroup";
+
+/* Le gras synthétique et le contour se disputaient NSStrokeWidth : poser l'un
+ * effaçait l'autre, et « gras + creux » revenait creux tout court. On garde
+ * donc une trace explicite du gras simulé, au lieu de la déduire du signe du
+ * trait. */
+static NSString * const kHCFauxBoldAttribute = @"HCFauxBold";
+
+/* ---- texte attribué d'un champ : les plages de style ----
+ *
+ * Le noyau tient des plages de caractères (hc_run_count / hc_run_at). On part
+ * des attributs du champ entier, puis on surcharge chaque plage. Les plages
+ * arrivent triées et sans recouvrement, il n'y a donc aucune imbrication à
+ * démêler ici.
+ */
+
+/* Les plages du noyau sont des décalages en OCTETS dans le texte UTF-8, alors
+ * que NSString compte en unités UTF-16. C'est identique tant que le texte est
+ * en ASCII — le calendrier l'est — et faux dès le premier accent. */
+static NSUInteger utf16_from_byte(const char *utf8, int byteoff)
+{
+    if (byteoff <= 0) return 0;
+    NSString *pre = [[NSString alloc] initWithBytes:utf8
+                                             length:(NSUInteger)byteoff
+                                           encoding:NSUTF8StringEncoding];
+    return pre ? [pre length] : (NSUInteger)byteoff;   /* coupe au milieu d'un
+                                                        * caractère : repli */
+}
+
+/* Applique gras/italique de façon fiable.
+ *
+ * NSFontManager convertFont:toHaveTrait: échoue silencieusement sur la police
+ * système : San Francisco n'est pas exposée par nom de famille, et on récupère
+ * la même fonte sans le moindre avertissement. On passe donc par le
+ * descripteur et ses traits symboliques, qui, eux, la connaissent. Si même
+ * cela échoue — police sans variante grasse — on grossit le trait, ce que le
+ * Macintosh appelait le gras synthétique. */
+static NSFont *font_with_traits(NSFont *f, BOOL bold, BOOL italic, BOOL *faux)
+{
+    if (faux) *faux = NO;
+    if (!f || (!bold && !italic)) return f;
+
+    NSFontDescriptorSymbolicTraits want = 0;
+    if (bold)   want |= NSFontDescriptorTraitBold;
+    if (italic) want |= NSFontDescriptorTraitItalic;
+
+    NSFontDescriptor *fd =
+        [[f fontDescriptor] fontDescriptorWithSymbolicTraits:
+            [[f fontDescriptor] symbolicTraits] | want];
+    NSFont *nf = [NSFont fontWithDescriptor:fd size:[f pointSize]];
+
+    if (!nf) {                              /* repli : l'ancienne méthode */
+        NSFontManager *fm = [NSFontManager sharedFontManager];
+        nf = f;
+        if (bold)   nf = [fm convertFont:nf toHaveTrait:NSBoldFontMask];
+        if (italic) nf = [fm convertFont:nf toHaveTrait:NSItalicFontMask];
+    }
+    if (!nf) nf = f;
+
+    /* A-t-on vraiment obtenu le gras ? Sinon on le simulera au trait. */
+    if (bold && faux) {
+        NSFontDescriptorSymbolicTraits got = [[nf fontDescriptor] symbolicTraits];
+        if (!(got & NSFontDescriptorTraitBold)) *faux = YES;
+    }
+    return nf;
+}
+
+/* Cocoa veut le nom exact : « monaco » ne rend rien, « Monaco » rend la
+ * police. HyperCard, lui, se moquait de la casse — les scripts d'origine
+ * écrivent « geneva » aussi souvent que « Geneva ». On tente donc le nom tel
+ * quel, puis on le cherche parmi les familles installées en ignorant la
+ * casse. Sans cela un « set the textFont … to "monaco" » était accepté par le
+ * noyau, stocké, relu — et restait invisible à l'écran. */
+static NSFont *font_by_loose_name(NSString *want, CGFloat sz)
+{
+    if (![want length]) return nil;
+
+    NSFont *f = [NSFont fontWithName:want size:sz];
+    if (f) return f;
+
+    NSFontManager *fm = [NSFontManager sharedFontManager];
+
+    /* Par famille : « Monaco », « Times New Roman »… C'est ce qu'écrivent les
+     * scripts HyperCard. fontWithName: accepte un nom de famille, mais exige
+     * la casse exacte, d'où la comparaison souple. */
+    for (NSString *fam in [fm availableFontFamilies])
+        if ([fam caseInsensitiveCompare:want] == NSOrderedSame) {
+            if ((f = [NSFont fontWithName:fam size:sz])) return f;
+            /* Famille reconnue mais sans membre au nom de la famille : on
+             * prend son premier membre (« Helvetica Neue » -> « HelveticaNeue-
+             * Regular »). availableMembersOfFontFamily rend des tableaux dont
+             * le premier élément est le nom de fonte. */
+            for (NSArray *m in [fm availableMembersOfFontFamily:fam]) {
+                if ([m count] < 1) continue;
+                if ((f = [NSFont fontWithName:m[0] size:sz])) return f;
+            }
+        }
+
+    /* Dernier recours : un nom de FONTE et non de famille — « Courier-Bold »,
+     * que certains scripts écrivent tel quel. */
+    for (NSString *nm in [fm availableFonts])
+        if ([nm caseInsensitiveCompare:want] == NSOrderedSame)
+            if ((f = [NSFont fontWithName:nm size:sz])) return f;
+    return nil;
+}
+
+/* La police d'une plage : son nom et son corps à elle, sur lesquels viendront
+ * se poser les traits. `fallback` est la police du champ, utilisée si le nom
+ * demandé n'existe pas sur cette machine — HyperCard faisait de même plutôt
+ * que de rendre du vide. */
+static NSFont *run_base_font(const char *name, int size, NSFont *fallback)
+{
+    CGFloat sz = size > 0 ? (CGFloat)size
+                          : (fallback ? [fallback pointSize] : 12);
+    if (name && *name) {
+        NSFont *f = font_by_loose_name([NSString stringWithUTF8String:name], sz);
+        if (f) return f;
+        if (getenv("HC_RUNS_DEBUG"))
+            NSLog(@"[runs]   police introuvable : \"%s\" -> repli sur le champ",
+                  name);
+    }
+    if (!fallback) return [NSFont systemFontOfSize:sz];
+    if (sz == [fallback pointSize]) return fallback;
+    return [NSFont fontWithDescriptor:[fallback fontDescriptor] size:sz];
+}
+
+static void apply_run_style(NSMutableAttributedString *as, NSRange r,
+                            int style, NSFont *base, NSColor *color)
+{
+    BOOL faux = NO;
+    NSFont *f = font_with_traits(base,
+                                 (style & HC_BOLD)   ? YES : NO,
+                                 (style & HC_ITALIC) ? YES : NO,
+                                 &faux);
+    if (f) [as addAttribute:NSFontAttributeName value:f range:r];
+
+    /* Un seul NSStrokeWidth pour deux effets, il faut donc trancher une fois :
+     *   creux            -> trait positif (contour seul)
+     *   creux ET gras    -> trait positif plus épais, comme le faisait le Mac
+     *   gras simulé seul -> trait négatif (remplir ET contourner)
+     * Le gras simulé est en plus marqué par son propre attribut : le signe du
+     * trait ne suffit plus à le retrouver quand le creux l'a emporté. */
+    if (faux) [as addAttribute:kHCFauxBoldAttribute value:@(1) range:r];
+
+    double stroke = 0.0;
+    if (style & HC_OUTLINE)  stroke = (faux || (style & HC_BOLD)) ? 5.0 : 3.0;
+    else if (faux)           stroke = -3.0;
+    if (stroke != 0.0) {
+        [as addAttribute:NSStrokeWidthAttributeName value:@(stroke) range:r];
+        [as addAttribute:NSStrokeColorAttributeName
+                   value:(color ? color : [NSColor blackColor]) range:r];
+    }
+
+    if (style & HC_UNDERLINE)
+        [as addAttribute:NSUnderlineStyleAttributeName
+                   value:@(NSUnderlineStyleSingle) range:r];
+    if (style & HC_SHADOW) {
+        NSShadow *sh = [[NSShadow alloc] init];
+        [sh setShadowOffset:NSMakeSize(1, -1)];
+        [sh setShadowBlurRadius:0];
+        [sh setShadowColor:[NSColor grayColor]];
+        [as addAttribute:NSShadowAttributeName value:sh range:r];
+    }
+    /* Condense et extend se rendent par l'approche : c'est ce que faisait le
+     * Macintosh, qui rapprochait ou écartait les glyphes sans changer de fonte. */
+    if (style & HC_CONDENSE)
+        [as addAttribute:NSKernAttributeName value:@(-1.0) range:r];
+    if (style & HC_EXTEND)
+        [as addAttribute:NSKernAttributeName value:@(1.5) range:r];
+
+    /* HC_GROUP ne se voit pas, mais il doit survivre a un aller-retour par
+     * l'editeur : on le porte comme attribut personnalise. */
+    if (style & HC_GROUP)
+        [as addAttribute:kHCGroupAttribute value:@(1) range:r];
+}
+
+static NSAttributedString *field_attr_string(Object *o, NSString *s,
+                                             NSDictionary *at)
+{
+    NSMutableAttributedString *as =
+        [[NSMutableAttributedString alloc] initWithString:s attributes:at];
+
+    int n = hc_run_count(o);
+    if (getenv("HC_RUNS_DEBUG"))
+        NSLog(@"[runs] champ %s : %d plage(s)", o->name ? o->name : "?", n);
+    if (n <= 0) return as;
+
+    const char *tx  = hc_field_text(o);
+    NSFont  *base   = at[NSFontAttributeName];
+    NSColor *color  = at[NSForegroundColorAttributeName];
+    NSUInteger len  = [s length];
+
+    for (int i = 0; i < n; i++) {
+        int a = 0, l = 0, st = 0, sz = 0;
+        const char *fn = NULL;
+        if (!hc_run_attrs(o, i, &a, &l, &st, &sz, &fn) || l <= 0) continue;
+        NSUInteger u0 = utf16_from_byte(tx, a);
+        NSUInteger u1 = utf16_from_byte(tx, a + l);
+        if (u0 >= len) continue;
+        if (u1 > len)  u1 = len;
+        if (u1 <= u0)  continue;
+        if (getenv("HC_RUNS_DEBUG"))
+            NSLog(@"[runs]   [%d..%d[ style %d corps %d police %s"
+                   " -> UTF16 [%lu..%lu[",
+                  a, a + l, st, sz, fn ? fn : "(champ)",
+                  (unsigned long)u0, (unsigned long)u1);
+        /* La plage porte sa propre police : les traits se posent dessus, pas
+         * sur celle du champ. Sans cela « Geneva » restait invisible tant que
+         * le champ était en Helvetica. */
+        apply_run_style(as, NSMakeRange(u0, u1 - u0), st,
+                        run_base_font(fn, sz, base), color);
+    }
+    return as;
+}
+
+/* ---- Traduction retour : attributs Cocoa -> bits du noyau ----
+ *
+ * Pendant la saisie, c'est la NSTextStorage qui détient le style : elle sait
+ * déjà tout faire, y compris Cmd-B. À la fermeture on relit ses attributs et
+ * on reconstruit les plages du noyau. Le Toolbox faisait exactement cela avec
+ * son TEStyleRec — une table de plages pointant vers des styles ; Cocoa en est
+ * la descendante directe, les deux modèles ne sont pas rivaux.
+ *
+ * `group` n'a aucun équivalent Cocoa : c'est une sémantique HyperCard, pas un
+ * rendu. On le porte comme attribut personnalisé, sinon il disparaîtrait au
+ * premier aller-retour. */
+static int style_bits_from_attrs(NSDictionary *a)
+{
+    int st = 0;
+
+    NSFont *f = a[NSFontAttributeName];
+    if (f) {
+        NSFontDescriptorSymbolicTraits t = [[f fontDescriptor] symbolicTraits];
+        if (t & NSFontDescriptorTraitBold)   st |= HC_BOLD;
+        if (t & NSFontDescriptorTraitItalic) st |= HC_ITALIC;
+    }
+
+    NSNumber *u = a[NSUnderlineStyleAttributeName];
+    if (u && [u intValue] != 0) st |= HC_UNDERLINE;
+
+    /* Le trait NÉGATIF est notre gras synthétique, pas un contour : seul un
+     * trait positif signifie « lettres creuses ». Confondre les deux
+     * transformerait chaque gras en outline à la première sauvegarde.
+     * Quand les deux styles coexistent, le trait est positif et ne dit plus
+     * rien du gras : c'est l'attribut dédié qui le rapporte. */
+    NSNumber *sw = a[NSStrokeWidthAttributeName];
+    if (sw) {
+        double v = [sw doubleValue];
+        if (v > 0)      st |= HC_OUTLINE;
+        else if (v < 0) st |= HC_BOLD;
+    }
+    if (a[kHCFauxBoldAttribute]) st |= HC_BOLD;
+
+    if (a[NSShadowAttributeName]) st |= HC_SHADOW;
+
+    NSNumber *k = a[NSKernAttributeName];
+    if (k) {
+        double v = [k doubleValue];
+        if (v < 0)      st |= HC_CONDENSE;
+        else if (v > 0) st |= HC_EXTEND;
+    }
+
+    if (a[kHCGroupAttribute]) st |= HC_GROUP;
+    return st;
+}
+
+/* Décalage en OCTETS correspondant à un index UTF-16 : l'inverse de
+ * utf16_from_byte. Le noyau raisonne en octets, NSString en unités UTF-16. */
+static int byte_from_utf16(NSString *s, NSUInteger u16)
+{
+    if (u16 == 0) return 0;
+    if (u16 > [s length]) u16 = [s length];
+    NSString *pre = [s substringToIndex:u16];
+    return (int)[pre lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+}
+
 /* hauteur totale du texte d'un champ, dans sa largeur utile */
 static CGFloat field_text_height(Object *o, NSRect tr) {
-    const char *tx = o->contents ? o->contents : "";
-    NSString *s = [NSString stringWithUTF8String:tx];
+    /* hc_field_text et non o->contents : un champ de fond non partagé a un
+     * texte par carte, et c'est celui-là qu'on affiche. */
+    const char *tx = hc_field_text(o);
+    NSString *s = [NSString stringWithUTF8String:tx ? tx : ""];
     if ([s length] == 0) return 0;
     NSDictionary *at = obj_attrs(o, 12, [NSColor blackColor]);
-    NSRect b = [s boundingRectWithSize:NSMakeSize(tr.size.width, CGFLOAT_MAX)
-                               options:NSStringDrawingUsesLineFragmentOrigin
-                            attributes:at];
+    /* Mesurer sur le texte attribué : du gras occupe plus de place, et un
+     * champ défilant se tromperait de hauteur. */
+    NSAttributedString *as = field_attr_string(o, s, at);
+    NSRect b = [as boundingRectWithSize:NSMakeSize(tr.size.width, CGFLOAT_MAX)
+                                options:NSStringDrawingUsesLineFragmentOrigin];
     return b.size.height;
 }
 static void draw_part(Object *o) {
@@ -506,16 +796,20 @@ static void draw_part(Object *o) {
         const char *tx = hc_field_text(o);
         NSString *s = [NSString stringWithUTF8String:tx];
 
+        /* Texte attribué plutôt que chaîne nue : c'est lui qui porte les
+         * plages de style posées par « set the textStyle of word 3 of … ». */
+        NSAttributedString *as = field_attr_string(o, s, at);
+
         if (isScroll) {
             [NSGraphicsContext saveGraphicsState];
             NSRectClip(tr);
             NSRect off = tr;
             off.origin.y   -= o->scroll;
             off.size.height += o->scroll + 4000;
-            [s drawInRect:off withAttributes:at];
+            [as drawInRect:off];
             [NSGraphicsContext restoreGraphicsState];
         } else {
-            [s drawInRect:tr withAttributes:at];
+            [as drawInRect:tr];
         }
 
         /* ---- surlignage du dernier « find » ---- */
@@ -523,7 +817,9 @@ static void draw_part(Object *o) {
         if (hc_found_range(o, &fstart, &flen) && flen > 0 &&
             fstart + flen <= (int)[s length]) {
 
-            NSTextStorage   *ts = [[NSTextStorage alloc] initWithString:s attributes:at];
+            /* Mesurer sur le texte ATTRIBUÉ : un mot en gras est plus large,
+             * et le rectangle de surlignage tomberait à côté. */
+            NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
             NSLayoutManager *lm = [[NSLayoutManager alloc] init];
             NSTextContainer *tc = [[NSTextContainer alloc]
                                     initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
@@ -541,12 +837,13 @@ static void draw_part(Object *o) {
             NSRectClip(tr);
             [[NSColor blackColor] setFill];
             NSRectFill(box);
-            NSMutableDictionary *inv = [at mutableCopy];
-            inv[NSForegroundColorAttributeName] = [NSColor whiteColor];
-            NSAttributedString *sub =
-                [[NSAttributedString alloc]
-                    initWithString:[s substringWithRange:NSMakeRange(fstart, flen)]
-                        attributes:inv];
+            /* Redessiner en blanc la portion trouvée, en conservant son style :
+             * on part du texte attribué et on n'échange que la couleur. */
+            NSMutableAttributedString *sub =
+                [[as attributedSubstringFromRange:NSMakeRange(fstart, flen)] mutableCopy];
+            [sub addAttribute:NSForegroundColorAttributeName
+                        value:[NSColor whiteColor]
+                        range:NSMakeRange(0, [sub length])];
             [sub drawAtPoint:box.origin];
             [NSGraphicsContext restoreGraphicsState];
         }
@@ -1024,22 +1321,59 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     [self setNeedsDisplay:YES];
 }
 - (void)changeFont:(id)sender {
-    NSFont *nf = [sender convertFont:text_font()];
     Object *tgt = gFontTarget ? gFontTarget
                     : (gEditingField ? gEditingField
                     : ((gSelected && gTool != TOOL_BROWSE) ? gSelected : NULL));
+
+    /* Le gestionnaire de polices applique sa modification à la fonte qu'on lui
+     * tend : c'est donc CELLE DE LA CIBLE qu'il faut lui donner. En partant de
+     * text_font() — la fonte de l'outil peinture, toujours Helvetica normal —
+     * chaque Cmd-B repartait de zéro : le gras posé juste avant n'était pas
+     * dans la fonte soumise, donc pas dans la fonte rendue, donc perdu. Les
+     * styles s'écrasaient au lieu de s'ajouter. */
+    NSFont *nf = [sender convertFont:(tgt ? obj_font(tgt, 12) : text_font())];
+
     if (tgt) {
+            NSFontManager *fm = [NSFontManager sharedFontManager];
+            NSFontTraitMask tr = [fm traitsOfFont:nf];
+
+            /* Une seule source de vérité pour le gras et l'italique : les bits
+             * de textstyle. On range donc le NOM DE FONTE SANS SES TRAITS,
+             * sinon « Helvetica-Bold » resterait gras même après avoir éteint
+             * le bit, et rien ne pourrait plus le dégraisser. */
+            NSFontDescriptor *pd =
+                [[nf fontDescriptor] fontDescriptorWithSymbolicTraits:
+                    [[nf fontDescriptor] symbolicTraits] &
+                    ~(NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic)];
+            NSFont *plain = [NSFont fontWithDescriptor:pd size:[nf pointSize]];
+            if (!plain) {                       /* repli : l'ancienne méthode */
+                plain = nf;
+                if (tr & NSBoldFontMask)
+                    plain = [fm convertFont:plain toNotHaveTrait:NSBoldFontMask];
+                if (tr & NSItalicFontMask)
+                    plain = [fm convertFont:plain toNotHaveTrait:NSItalicFontMask];
+            }
+            if (!plain) plain = nf;
+
             free(tgt->textfont);
-            tgt->textfont = strdup([[nf fontName] UTF8String]);
+            tgt->textfont = strdup([[plain fontName] UTF8String]);
             tgt->textsize = (int)[nf pointSize];
-            NSFontTraitMask tr = [[NSFontManager sharedFontManager] traitsOfFont:nf];
-            int st = 0;
-            if (tr & NSBoldFontMask)   st |= 1;
-            if (tr & NSItalicFontMask) st |= 2;
+
+            /* Le panneau de polices ne parle que de gras et d'italique : on ne
+             * touche qu'à ces deux bits et on garde les autres (souligné,
+             * creux, ombré, condensé, étendu, group), qu'il ignore et qu'il
+             * effaçait jusqu'ici au passage. */
+            int st = tgt->textstyle & ~(HC_BOLD | HC_ITALIC);
+            if (tr & NSBoldFontMask)   st |= HC_BOLD;
+            if (tr & NSItalicFontMask) st |= HC_ITALIC;
             tgt->textstyle = st;
 
             if (tgt == gEditingField && gFieldEditor)
                 [gFieldEditor setFont:obj_font(tgt, 12)];
+
+            /* Le panneau doit refléter ce que porte vraiment l'objet, sinon la
+             * bascule suivante repart d'un état faux. */
+            [fm setSelectedFont:obj_font(tgt, 12) isMultiple:NO];
 
             /* Garder la case « taille » du dialogue d'info en accord :
                sans ca, valider le dialogue apres avoir choisi une police
@@ -2076,22 +2410,72 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     NSRect r = NSMakeRect(field->x, field->y, field->w, field->h);
     gFieldEditor = [[NSTextView alloc] initWithFrame:NSInsetRect(r, 2, 2)];
     [gFieldEditor setFont:obj_font(field, 12)];
-        if (field->textstyle & 4)
-            [gFieldEditor setTypingAttributes:@{
-                NSFontAttributeName: obj_font(field, 12),
-                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle)
-            }];
+
+    /* Texte riche, sans quoi la NSTextStorage aplatirait tout a la premiere
+     * frappe et Cmd-B resterait sans effet. */
+    [gFieldEditor setRichText:YES];
+    [gFieldEditor setImportsGraphics:NO];
+    [gFieldEditor setAllowsUndo:YES];
+
     const char *tx = hc_field_text(field);
+    NSString *str = [NSString stringWithUTF8String:tx ? tx : ""];
+    NSDictionary *base = obj_attrs(field, 12, [NSColor blackColor]);
+
     [gFieldEditor setEditable:!field->locktext];
     [gFieldEditor setSelectable:YES];
-    [gFieldEditor setString:[NSString stringWithUTF8String:tx]];
+
+    /* On confie a l'editeur le texte AVEC ses plages : pendant la saisie,
+     * c'est lui qui detient la verite du style. */
+    [[gFieldEditor textStorage]
+        setAttributedString:field_attr_string(field, str, base)];
+    [gFieldEditor setTypingAttributes:base];
     [self addSubview:gFieldEditor];
     [[self window] makeFirstResponder:gFieldEditor];
 }
 
 - (void)endFieldEdit {
     if (gFieldEditor && gEditingField) {
-        hc_set_field_text(gEditingField, [[gFieldEditor string] UTF8String]);
+        NSString *str = [gFieldEditor string];
+
+        /* Le texte d'abord : hc_set_field_text detruit les plages, puisqu'il
+         * voit un remplacement complet. On les reconstruit ensuite depuis la
+         * NSTextStorage, qui a suivi la saisie. */
+        hc_set_field_text(gEditingField, [str UTF8String]);
+        hc_runs_clear(gEditingField);
+
+        NSTextStorage *ts = [gFieldEditor textStorage];
+        NSUInteger len = [ts length], i = 0;
+        while (i < len) {
+            NSRange eff;
+            NSDictionary *a = [ts attributesAtIndex:i
+                              longestEffectiveRange:&eff
+                                            inRange:NSMakeRange(i, len - i)];
+            int st = style_bits_from_attrs(a);
+
+            /* Le nom de police est rangé SANS ses traits : le gras vit dans
+             * les bits de style, et le laisser aussi dans le nom de la fonte
+             * donnerait deux sources de vérité qui finiraient par diverger. */
+            NSFont *rf = a[NSFontAttributeName];
+            const char *fname = NULL;
+            int fsize = 0;
+            if (rf) {
+                NSFontDescriptor *fd = [[rf fontDescriptor]
+                    fontDescriptorWithSymbolicTraits:
+                        [[rf fontDescriptor] symbolicTraits]
+                        & ~(NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic)];
+                NSFont *plain = [NSFont fontWithDescriptor:fd size:[rf pointSize]];
+                fname = [[(plain ? plain : rf) fontName] UTF8String];
+                fsize = (int)lround([rf pointSize]);
+            }
+
+            /* hc_run_add_full retombe sur les sentinelles quand la plage ne se
+             * distingue pas du champ : inutile de comparer ici. */
+            int b0 = byte_from_utf16(str, eff.location);
+            int b1 = byte_from_utf16(str, eff.location + eff.length);
+            hc_run_add_full(gEditingField, b0, b1 - b0, st, fsize, fname);
+            i = NSMaxRange(eff);
+            if (eff.length == 0) break;      /* garde-fou : jamais de boucle */
+        }
     }
     [gFieldEditor removeFromSuperview];
     gFieldEditor = nil;

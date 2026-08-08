@@ -27,8 +27,22 @@
  *     contents
  *     | du texte
  *     end contents
+ *     textstyle 1
+ *     run 3,2,2
  *     end field
  *     end card
+ *
+ * Le style d'un champ tient sur deux lignes de nature différente :
+ *   textstyle N   style du champ entier, valeur de repli
+ *   run s,l,N     une plage : N s'applique aux `l` octets à partir de `s`
+ * Un champ de fond non partagé a un texte ET un style par carte : la carte
+ * les écrit ensemble, le bloc « bgtextdata » suivi de ses lignes « bgrun ».
+ *
+ *     bgtext 12
+ *     bgtextdata
+ *     | note propre a cette carte
+ *     end bgtextdata
+ *     bgrun 0,4,1
  */
 #include "hc_file.h"
 
@@ -102,6 +116,36 @@ static void put_paint(FILE *f, const char *b64)
     put_block_wrap(f, "paint", b64, 1);   /* base64 : découpé en lignes courtes */
 }
 
+/* Plages de style d'un champ, une par ligne :
+ *     run <start>,<len>,<style>
+ * Les offsets sont en octets dans le texte du champ, comme dans le noyau
+ * (hc_run_at les rend tels quels). La liste est déjà triée et fusionnée par
+ * runs_tidy à l'écriture, on la recopie donc dans l'ordre.
+ * Le tag change selon le porteur : « run » pour la liste du champ lui-même,
+ * « bgrun » pour celle qu'une carte tient sur un champ de fond non partagé. */
+static void put_runs(FILE *f, const char *tag, const struct RunList *rl)
+{
+    if (!rl) return;
+    for (int i = 0; i < rl->n; i++) {
+        const struct TextRun *r = &rl->v[i];
+        if (r->len <= 0) continue;
+        /* Une plage muette sur les trois attributs décrit le champ : inutile.
+         * Attention, `style == 0` n'est pas muet — c'est « plain », qui doit
+         * survivre à l'enregistrement dans un champ gras. L'ancien test le
+         * jetait, et le mot reprenait le gras du champ au rechargement. */
+        if (r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font) continue;
+
+        /* Forme courte quand il n'y a que du style : les piles déjà
+         * enregistrées gardent exactement la même allure, et un binaire plus
+         * ancien continue de les lire. */
+        if (r->size == 0 && !r->font)
+            fprintf(f, "%s %d,%d,%d\n", tag, r->start, r->len, r->style);
+        else
+            fprintf(f, "%s %d,%d,%d,%d,%s\n", tag, r->start, r->len,
+                    r->style, r->size, r->font ? r->font : "");
+    }
+}
+
 static void put_part(FILE *f, Object *o)
 {
     const char *kind = (o->type == OBJ_BUTTON) ? "button" : "field";
@@ -127,6 +171,7 @@ static void put_part(FILE *f, Object *o)
     if (o->shared_text) fprintf(f, "sharedtext\n");
     if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
     if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
+    if (o->type == OBJ_FIELD) put_runs(f, "run", &o->runs);
     if (o->scroll) fprintf(f, "scroll %d\n", o->scroll);
     fprintf(f, "end %s\n", kind);
 }
@@ -166,6 +211,9 @@ int hc_save(Object *stack, const char *path)
         for (int j = 0; j < c->nbgtexts; j++) {
             fprintf(f, "bgtext %d\n", c->bgtexts[j].field_id);
             put_block(f, "bgtextdata", c->bgtexts[j].text);
+            /* le style suit le texte : un champ de fond non partagé a un
+               style par carte, exactement comme il a un texte par carte */
+            put_runs(f, "bgrun", &c->bgtexts[j].runs);
         }
         for (int j = 0; j < c->nparts; j++) put_part(f, c->parts[j]);
         fprintf(f, "end card\n\n");
@@ -261,6 +309,56 @@ static char *acc_take(Acc *a)
     return r;
 }
 
+/* Ajoute une plage de style à une liste. On écrit directement dans la
+ * struct RunList plutôt que de passer par hc_run_add : celui-ci vise la liste
+ * « active » (celle de la carte courante pour un champ de fond non partagé),
+ * or au chargement il n'y a pas encore de carte courante et c'est une liste
+ * précise que l'on veut remplir. Le fichier a été écrit trié et fusionné,
+ * donc pas besoin de normaliser. */
+/* « s,l,st » (ancienne forme) ou « s,l,st,taille,police ». Le nom de police
+ * vient en dernier et court jusqu'au bout de la ligne : il peut donc contenir
+ * des espaces (« Times New Roman ») sans qu'on ait à le citer. */
+static int parse_run(const char *s, int *start, int *len, int *style,
+                     int *size, char *font, int fontlen)
+{
+    *size = 0; font[0] = '\0';
+    if (sscanf(s, "%d,%d,%d", start, len, style) != 3) return 0;
+
+    const char *p = s;
+    for (int commas = 0; *p && commas < 3; p++)
+        if (*p == ',') commas++;
+    if (!*p) return 1;                       /* forme courte : rien de plus */
+
+    *size = atoi(p);
+    const char *q = strchr(p, ',');
+    if (!q) return 1;                        /* taille sans police */
+    q++;
+    int n = (int)strlen(q);
+    while (n > 0 && (q[n-1] == '\n' || q[n-1] == '\r')) n--;
+    if (n >= fontlen) n = fontlen - 1;
+    memcpy(font, q, (size_t)n); font[n] = '\0';
+    return 1;
+}
+
+static void add_run(struct RunList *rl, int start, int len, int style,
+                    int size, const char *font)
+{
+    if (!rl || len <= 0 || start < 0) return;
+    if (style == HC_STYLE_INHERIT && size == 0 && (!font || !*font)) return;
+    if (rl->n == rl->cap) {
+        int cap = rl->cap ? rl->cap * 2 : 8;
+        struct TextRun *v = (struct TextRun *)realloc(rl->v, (size_t)cap * sizeof *v);
+        if (!v) return;
+        rl->v = v; rl->cap = cap;
+    }
+    rl->v[rl->n].start = start;
+    rl->v[rl->n].len   = len;
+    rl->v[rl->n].style = style;
+    rl->v[rl->n].size  = size;
+    rl->v[rl->n].font  = (font && *font) ? dupstr_file(font) : NULL;
+    rl->n++;
+}
+
 static Object *find_bg(Object *stack, const char *name)
 {
     for (int i = 0; i < stack->nparts; i++) {
@@ -285,6 +383,8 @@ Object *hc_load(const char *path)
     Acc acc = {0};
     int in_script = 0, in_contents = 0, in_paint = 0, in_bgtext = 0;
     int bgtext_id = 0;
+    int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
+                               lignes « bgrun » qui suivent s'y rattachent */
 
     while (fgets(line, sizeof line, f)) {
         rtrim(line);
@@ -323,8 +423,14 @@ Object *hc_load(const char *path)
                         if (bp) { owner->bgtexts = bp; owner->capbgtexts = cap; }
                     }
                     if (owner->nbgtexts < owner->capbgtexts) {
-                        owner->bgtexts[owner->nbgtexts].field_id = bgtext_id;
-                        owner->bgtexts[owner->nbgtexts].text = t ? t : dupstr_file("");
+                        struct BgText *e = &owner->bgtexts[owner->nbgtexts];
+                        e->field_id = bgtext_id;
+                        e->text = t ? t : dupstr_file("");
+                        /* realloc rend de la mémoire non initialisée : sans ce
+                           nettoyage, la liste de plages part sur un pointeur
+                           bidon et hc_free y passe. */
+                        memset(&e->runs, 0, sizeof e->runs);
+                        last_bgtext = owner->nbgtexts;
                         owner->nbgtexts++;
                         t = NULL;
                     }
@@ -354,6 +460,23 @@ Object *hc_load(const char *path)
         if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
         if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
 
+        /* --- plages de style --- */
+        if (strncmp(s, "run ", 4) == 0) {
+            int a, b, c, sz; char fn[128];
+            if (part && part->type == OBJ_FIELD &&
+                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn))
+                add_run(&part->runs, a, b, c, sz, fn);
+            continue;
+        }
+        if (strncmp(s, "bgrun ", 6) == 0) {
+            int a, b, c, sz; char fn[128];
+            if (owner && owner->type == OBJ_CARD &&
+                last_bgtext >= 0 && last_bgtext < owner->nbgtexts &&
+                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn))
+                add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn);
+            continue;
+        }
+
         /* --- en-têtes d'objets --- */
         if (strncmp(s, "stack ", 6) == 0) {
             get_quoted(s, 0, nm, sizeof nm);
@@ -382,6 +505,7 @@ Object *hc_load(const char *path)
             if (get_quoted(s, 1, nm2, sizeof nm2)) bg = find_bg(stack, nm2);
             owner = hc_new_card(stack, bg, nm);
             target = owner;
+            last_bgtext = -1;
             continue;
         }
         if (strncmp(s, "button ", 7) == 0 && owner) {
@@ -467,7 +591,7 @@ Object *hc_load(const char *path)
             part = NULL; target = owner; continue;
         }
         if (strcmp(s, "end card") == 0 || strcmp(s, "end background") == 0) {
-            owner = NULL; target = stack; continue;
+            owner = NULL; target = stack; last_bgtext = -1; continue;
         }
         if (strcmp(s, "end stack") == 0) { target = NULL; continue; }
     }

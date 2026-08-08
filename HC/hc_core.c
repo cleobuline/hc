@@ -94,36 +94,36 @@ static const char *quoted(const char *s, char *out, int outlen)
  * (`on boum / send "boum" to me / end boum`) épuise la pile C
  * et le programme meurt. Le vrai HyperCard répondait
  * « Too much recursion » ; on fait pareil, en douceur. */
-/* Taille des valeurs manipulees par l'interpreteur : variables, arguments,
- * proprietes. C'est ce plafond qui limite « get the script of me » — un
+/* Taille d'une valeur manipulee par l'interpreteur : variables, arguments,
+ * proprietes. C'est ce plafond qui limite « get the script of me » ; un
  * script plus long est tronque, et le reecrire le mutile.
  *
- * Ne pas l'augmenter sans baisser HC_MAX_DEPTH en meme temps. Ces tampons
- * sont sur la pile de fonctions recursives, et certains par blocs de 8 ou 16
- * lignes (raw/vals dans call_function, saved_params dans hc_send_args_k),
- * donc le cout par niveau de recursion est de l'ordre de 60 fois HC_VAL.
- * Mesure sur une pile de 8 Mo :
+ * Les tampons vivent desormais dans l'arene (voir plus bas), pas sur la
+ * pile. Ce reglage ne coute donc plus de profondeur de recursion, seulement
+ * de la memoire. Mesures sur le champ Calendrier et sur une recursion nue :
  *
- *      HC_VAL      profondeur avant segfault
- *        512               62
- *       2048               45
- *       4096               20
- *       8192               12
- *      12288                7      <- reglage actuel
- *      16384                5
+ *                      pile / niveau     arene au pic (profondeur 63)
+ *   avant l'arene        306 752 o        --        (plafond : 26 niveaux)
+ *   apres, HC_VAL 16 Ko    6 720 o        49 Mo
+ *   apres, HC_VAL 64 Ko    6 720 o       202 Mo
  *
- * 12288 est le plus petit palier qui recopie entier le script du champ
- * Calendrier (9112 octets). La vraie sortie de ce compromis est de sortir
- * les tableaux d'arguments de la pile ; tant que ce n'est pas fait, garder
- * HC_MAX_DEPTH strictement sous la profondeur du tableau ci-dessus. */
-#define HC_VAL 4096
+ * 16 Ko couvre tres largement les scripts d'epoque (celui du Calendrier fait
+ * 9,1 Ko) et garde le pic d'arene raisonnable. L'arene retombe a zero entre
+ * deux commandes, et une boucle de 20 000 tours n'y consomme que 700 Ko :
+ * la liberation est bien par instruction, pas par gestionnaire.
+ *
+ * Le vrai correctif reste a venir : allouer chaque valeur a sa taille reelle
+ * plutot qu'au plafond. La plupart des valeurs font quelques octets ; ce sont
+ * les ~50 tampons vivants par niveau, tous dimensionnes au maximum, qui font
+ * le pic. Cela demande de remplacer les signatures (char *out, int outlen)
+ * par un type chaine dynamique — un chantier a part entiere. */
+#define HC_VAL 16384
 
-/* Les gestionnaires reels sont peu imbriques : le chemin le plus profond du
- * champ Calendrier (newfield -> addStackScript -> FindHandler) n'atteint que
- * 3 niveaux. 6 laisse de la marge et fait tomber le garde-fou AVANT la pile,
- * ce qui transforme une recursion emballee en erreur propre au lieu d'un
- * plantage de l'application. */
-#define HC_MAX_DEPTH 16
+/* Le garde-fou de recursion peut revenir a sa valeur d'origine : a 6,7 Ko de
+ * pile par niveau, 64 niveaux ne coutent que 436 Ko sur les 8 Mo du fil
+ * principal. Une recursion emballee rend « trop de recursion » au lieu de
+ * faire tomber l'application. */
+#define HC_MAX_DEPTH 64
 
 static Object *g_current_card = NULL;
 static int     g_trace = 1;
@@ -244,12 +244,100 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
    final ni l'indentation : l'hôte s'en charge. */
 static void emit(HcLineKind kind, const char *fmt, ...)
 {
-    char buf[2048];
+    /* Tampon propre, hors arène : arena_buf() appelle emit() en cas de
+     * saturation, et une récursion mutuelle entre l'allocateur et le
+     * rapporteur d'erreurs serait fatale. Les messages sont courts. */
+    char buf[1024];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     if (g_host && g_host->line) g_host->line(kind, g_depth, buf);
+}
+
+/* ==================== arène de tampons ====================
+ *
+ * Les tampons de valeur ne vivent plus sur la pile. Mesure avant ce
+ * changement : 75 tampons vivants par niveau de récursion, soit 75 × HC_VAL
+ * par appel de gestionnaire. HC_VAL ne pouvait donc pas dépasser quelques
+ * kilo-octets sans faire déborder les 8 Mo du fil principal — et un script
+ * un peu long devenait intronçonnable.
+ *
+ * Principe : une arène à pointeur de sommet. Allouer avance le sommet ;
+ * libérer le ramène où il était. Chaque fonction note le sommet à l'entrée
+ * (ARENA_MARK) et le restaure avant de rendre la main (ARENA_FREE). La
+ * discipline est sûre parce qu'un appelé note toujours un sommet PLUS HAUT
+ * que son appelant : sa libération ne peut donc jamais toucher les tampons
+ * de celui qui l'a appelé.
+ *
+ * L'arène est faite de blocs chaînés jamais déplacés : un realloc
+ * invaliderait les tampons déjà distribués. Les blocs restent alloués après
+ * libération, et resservent — on ne paie l'allocation système qu'une fois.
+ *
+ * Les fonctions à sorties multiples (term_value, call_function, exec_line :
+ * 40, 36 et 57 return) ne sont volontairement pas instrumentées. Leurs
+ * appelants directs — parse_factor et exec_stmt — le sont, et cela suffit :
+ * toute valeur est recopiée dans le `out` de l'appelant avant chaque retour.
+ */
+#define HC_ARENA_BLOCK     (4u * 1024u * 1024u)
+#define HC_ARENA_MAXBLOCKS 32             /* plafond dur : 128 Mo */
+
+static char  *g_ablk[HC_ARENA_MAXBLOCKS];
+static int    g_ablk_count = 0;
+static size_t g_atop = 0;                 /* sommet virtuel : bloc × taille + offset */
+static size_t g_ahigh = 0;                /* plus haut sommet atteint (diagnostic) */
+static char   g_apanic[HC_VAL];           /* filet en cas d'arène saturée */
+
+#define ARENA_MARK  size_t _amark = g_atop
+#define ARENA_FREE  (g_atop = _amark)
+
+static void *arena_alloc(size_t n)
+{
+    n = (n + 15u) & ~(size_t)15;                    /* alignement confortable */
+    if (n == 0 || n > HC_ARENA_BLOCK) return NULL;
+
+    size_t bi  = g_atop / HC_ARENA_BLOCK;
+    size_t off = g_atop % HC_ARENA_BLOCK;
+    if (off + n > HC_ARENA_BLOCK) { bi++; off = 0; }   /* ne pas chevaucher */
+    if (bi >= HC_ARENA_MAXBLOCKS) return NULL;
+
+    while (g_ablk_count <= (int)bi) {
+        char *b = (char *)malloc(HC_ARENA_BLOCK);
+        if (!b) return NULL;
+        g_ablk[g_ablk_count++] = b;
+    }
+    g_atop = bi * (size_t)HC_ARENA_BLOCK + off + n;
+    if (g_atop > g_ahigh) g_ahigh = g_atop;
+    return g_ablk[bi] + off;
+}
+
+/* Un tampon de valeur. Ne renvoie jamais NULL : en cas de saturation on rend
+ * le filet, ce qui dégrade le résultat mais n'écrase pas la mémoire. */
+static char *arena_buf(void)
+{
+    char *p = (char *)arena_alloc(HC_VAL);
+    if (!p) { emit(HC_ERR, "   !! arène de tampons saturée"); p = g_apanic; }
+    p[0] = '\0';
+    return p;
+}
+
+/* n tampons contigus, pour les tableaux d'arguments. */
+static char (*arena_rows(int n))[HC_VAL]
+{
+    char (*p)[HC_VAL] = (char (*)[HC_VAL])arena_alloc((size_t)n * HC_VAL);
+    if (!p) {
+        emit(HC_ERR, "   !! arène de tampons saturée");
+        return (char (*)[HC_VAL])g_apanic;      /* dégradé, mais borné */
+    }
+    for (int i = 0; i < n; i++) p[i][0] = '\0';
+    return p;
+}
+
+static void arena_shutdown(void)
+{
+    for (int i = 0; i < g_ablk_count; i++) free(g_ablk[i]);
+    g_ablk_count = 0;
+    g_atop = g_ahigh = 0;
 }
 
 /* Signale à l'hôte qu'un champ a changé (rafraîchissement d'affichage). */
@@ -301,6 +389,9 @@ void hc_set_id(Object *o, int id)
     o->id = id;
     if (id >= g_next_id) g_next_id = id + 1;
 }
+
+/* Les plages de style sont definies bien plus bas, mais hc_free en a besoin. */
+static void runs_free(struct RunList *rl);
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
@@ -462,8 +553,12 @@ void hc_free(Object *o)
     free(o->contents);
     free(o->style);
     free(o->textfont);
-    for (int i = 0; i < o->nbgtexts; i++) free(o->bgtexts[i].text);
+    for (int i = 0; i < o->nbgtexts; i++) {
+        free(o->bgtexts[i].text);
+        runs_free(&o->bgtexts[i].runs);
+    }
     free(o->bgtexts);
+    runs_free(&o->runs);
     free(o->paint);
     free(o);
 }
@@ -926,7 +1021,7 @@ static void frame_clear(Frame *f)
     memset(f, 0, sizeof *f);
 }
 
-void hc_shutdown(void) { frame_clear(&g_globals); }
+void hc_shutdown(void) { frame_clear(&g_globals); arena_shutdown(); }
 
 /* ==================== évaluation d'expressions ==================== */
 
@@ -1249,8 +1344,8 @@ static int chunk_read(const char *t, char *out, int outlen)
     ChunkType ct; char ia[128], ib[128]; const char *rest; int ordinal;
     if (!parse_chunk(t, &ct, ia, sizeof ia, ib, sizeof ib, &rest, &ordinal)) return 0;
 
-    char src[2048];
-    eval_expr(rest, src, sizeof src);      /* récursif : les morceaux s'emboîtent */
+    char *src = arena_buf();
+    eval_expr(rest, src, HC_VAL);      /* récursif : les morceaux s'emboîtent */
 
     int a, b, st, en;
     chunk_indices(src, ct, ordinal, ia, ib, &a, &b);
@@ -1265,24 +1360,472 @@ static int chunk_read(const char *t, char *out, int outlen)
 }
 
 
+/* ==================== plages de style ====================
+ *
+ * Une plage couvre [start, start+len) dans le texte du champ. Ce qu'aucune
+ * plage ne couvre prend le style du champ entier. Les plages sont tenues
+ * triées, sans recouvrement et sans trou vide : `runs_tidy` s'en charge après
+ * chaque manipulation.
+ */
+
+/* Liste active d'un champ. Un champ de fond non partagé a un style PAR CARTE,
+ * comme il a un texte par carte : sinon le gras posé sur une carte se
+ * retrouverait sur toutes celles du même fond. */
+static int field_is_percard(Object *field);   /* défini plus bas */
+
+static struct RunList *runs_of(Object *field)
+{
+    if (!field || field->type != OBJ_FIELD) return NULL;
+    if (field_is_percard(field) && g_current_card) {
+        Object *cd = g_current_card;
+        for (int i = 0; i < cd->nbgtexts; i++)
+            if (cd->bgtexts[i].field_id == field->id)
+                return &cd->bgtexts[i].runs;
+        return NULL;          /* la carte n'a pas encore d'entrée : rien à styler */
+    }
+    return &field->runs;
+}
+
+static void runs_free(struct RunList *rl)
+{
+    if (!rl) return;
+    for (int i = 0; i < rl->n; i++) free(rl->v[i].font);
+    free(rl->v);
+    rl->v = NULL; rl->n = rl->cap = 0;
+}
+
+static int runs_room(struct RunList *rl, int need)
+{
+    if (rl->n + need <= rl->cap) return 1;
+    int cap = rl->cap ? rl->cap * 2 : 8;
+    while (cap < rl->n + need) cap *= 2;
+    struct TextRun *v = (struct TextRun *)realloc(rl->v, (size_t)cap * sizeof *v);
+    if (!v) return 0;
+    rl->v = v; rl->cap = cap;
+    return 1;
+}
+
+/* Une plage qui ne dit rien sur aucun des trois attributs : elle décrit
+ * exactement le champ, autant ne pas la garder. Attention, `style == 0` n'est
+ * PAS muet — c'est « plain », qui a le pouvoir d'effacer le gras du champ.
+ * Seul HC_STYLE_INHERIT signifie « je ne me prononce pas ». */
+static int run_is_mute(const struct TextRun *r)
+{
+    return r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font;
+}
+
+/* Deux plages voisines ne se fusionnent que si elles s'accordent sur les trois
+ * attributs. Comparer le seul masque de style recollait « Geneva gras » et
+ * « Monaco gras » en une plage, dont la police était celle de la première. */
+static int run_same_attrs(const struct TextRun *a, const struct TextRun *b)
+{
+    if (a->style != b->style || a->size != b->size) return 0;
+    if (!a->font && !b->font) return 1;
+    if (!a->font || !b->font) return 0;
+    return strcmp(a->font, b->font) == 0;
+}
+
+static void runs_sort(struct RunList *rl)
+{
+    for (int i = 1; i < rl->n; i++) {                /* tri par insertion */
+        struct TextRun t = rl->v[i];
+        int k = i - 1;
+        while (k >= 0 && rl->v[k].start > t.start) { rl->v[k+1] = rl->v[k]; k--; }
+        rl->v[k+1] = t;
+    }
+}
+
+/* Trie, jette les plages muettes, fusionne les voisines identiques. Appelé
+ * après toute modification pour que la liste reste canonique — deux listes
+ * équivalentes ont ainsi la même représentation. */
+static void runs_tidy(struct RunList *rl)
+{
+    if (!rl) return;
+
+    for (int i = 0; i < rl->n; ) {                   /* jeter les inutiles */
+        if (rl->v[i].len <= 0 || run_is_mute(&rl->v[i])) {
+            free(rl->v[i].font);
+            for (int k = i; k + 1 < rl->n; k++) rl->v[k] = rl->v[k+1];
+            rl->n--;
+        } else i++;
+    }
+    runs_sort(rl);
+    for (int i = 0; i + 1 < rl->n; ) {               /* fusionner les jointives */
+        struct TextRun *a = &rl->v[i], *b = &rl->v[i+1];
+        if (a->start + a->len == b->start && run_same_attrs(a, b)) {
+            a->len += b->len;
+            free(b->font);
+            for (int k = i + 1; k + 1 < rl->n; k++) rl->v[k] = rl->v[k+1];
+            rl->n--;
+        } else i++;
+    }
+}
+
+/* Recale les plages après une écriture : `oldlen` caractères à la position
+ * `at` ont été remplacés par `newlen`. Les trois règles, vérifiées dans
+ * HyperCard 2.4 :
+ *   - plage entièrement recouverte  -> détruite
+ *   - plage contenant `at`, ou finissant juste à `at` -> allongée
+ *     (la frontière est collante : le caractère inséré hérite du style de
+ *      son voisin de gauche, y compris juste après la fin d'une plage)
+ *   - plage située après -> décalée de (newlen - oldlen)
+ */
+static void runs_edit(struct RunList *rl, int at, int oldlen, int newlen)
+{
+    if (!rl || rl->n == 0) return;
+    int d = newlen - oldlen, end = at + oldlen;
+
+    for (int i = 0; i < rl->n; i++) {
+        struct TextRun *r = &rl->v[i];
+        int rs = r->start, re = r->start + r->len;
+
+        if (re < at)                { continue; }                 /* avant */
+        if (rs >= end)              { r->start += d; continue; }  /* après */
+        if (rs >= at && re <= end)  { r->len = 0; continue; }     /* recouverte */
+
+        int keepL = (rs < at)  ? at - rs  : 0;                    /* survit à gauche */
+        int keepR = (re > end) ? re - end : 0;                    /* survit à droite */
+
+        if (keepL && !keepR)      { r->len = keepL + newlen; }    /* collante */
+        else if (keepR && !keepL) { r->start = at + newlen; r->len = keepR; }
+        else                      { r->len = keepL + newlen + keepR; }
+    }
+    runs_tidy(rl);
+}
+
+/* Quel(s) attribut(s) une écriture concerne. Les trois sont indépendants :
+ * poser un style ne doit pas emporter la police avec lui. */
+#define RA_STYLE 1
+#define RA_SIZE  2
+#define RA_FONT  4
+
+static void run_apply(struct TextRun *r, int mask,
+                      int style, int size, const char *font)
+{
+    if (mask & RA_STYLE) r->style = style;
+    if (mask & RA_SIZE)  r->size  = size;
+    if (mask & RA_FONT) {
+        free(r->font);
+        r->font = (font && *font) ? dupstr(font) : NULL;
+    }
+}
+
+/* Coupe en deux la plage qui enjambe `pos`, s'il y en a une. Après un appel
+ * en `start` puis en `end`, plus aucune plage ne chevauche la frontière :
+ * chacune est entièrement dedans ou entièrement dehors. */
+static int runs_split_at(struct RunList *rl, int pos)
+{
+    for (int i = 0; i < rl->n; i++) {
+        struct TextRun *r = &rl->v[i];
+        if (pos <= r->start || pos >= r->start + r->len) continue;
+
+        if (!runs_room(rl, 1)) return 0;
+        r = &rl->v[i];                            /* realloc a pu tout déplacer */
+        struct TextRun tail = *r;
+        tail.font  = r->font ? dupstr(r->font) : NULL;
+        tail.start = pos;
+        tail.len   = r->start + r->len - pos;
+        r->len     = pos - r->start;
+        rl->v[rl->n++] = tail;
+        return 1;                                 /* les plages ne se recouvrent
+                                                   * pas : une seule enjambe */
+    }
+    return 1;
+}
+
+/* Pose un attribut sur [start, start+len) SANS toucher aux deux autres.
+ *
+ * L'ancienne version rasait toute plage recouverte pour en poser une neuve :
+ * « set the textStyle of word 3 to bold » effaçait donc la police de ce mot.
+ * On procède maintenant en trois temps : découper aux frontières, combler les
+ * trous par des plages muettes pour que l'intervalle soit intégralement
+ * couvert, puis n'écrire que l'attribut demandé sur chaque plage concernée. */
+static int runs_set_attr(struct RunList *rl, int start, int len, int mask,
+                         int style, int size, const char *font)
+{
+    if (!rl || len <= 0 || start < 0) return 0;
+    int end = start + len;
+
+    if (!runs_split_at(rl, start)) return 0;
+    if (!runs_split_at(rl, end))   return 0;
+    runs_sort(rl);
+
+    /* Combler : tout caractère de l'intervalle doit appartenir à une plage,
+     * sinon l'attribut n'aurait nulle part où s'écrire. Les plages ajoutées
+     * sont muettes — elles décrivent le champ — jusqu'à ce qu'on écrive
+     * dedans juste après. */
+    int cursor = start, n0 = rl->n;
+    for (int i = 0; i < n0 && cursor < end; i++) {
+        int rs = rl->v[i].start, re = rs + rl->v[i].len;
+        if (re <= start) continue;
+        if (rs >= end)   break;
+        if (rs > cursor) {
+            if (!runs_room(rl, 1)) return 0;
+            struct TextRun g = { cursor, rs - cursor, HC_STYLE_INHERIT, 0, NULL };
+            rl->v[rl->n++] = g;
+        }
+        if (re > cursor) cursor = re;
+    }
+    if (cursor < end) {
+        if (!runs_room(rl, 1)) return 0;
+        struct TextRun g = { cursor, end - cursor, HC_STYLE_INHERIT, 0, NULL };
+        rl->v[rl->n++] = g;
+    }
+
+    for (int i = 0; i < rl->n; i++) {
+        struct TextRun *r = &rl->v[i];
+        if (r->start >= start && r->start + r->len <= end && r->len > 0)
+            run_apply(r, mask, style, size, font);
+    }
+
+    runs_tidy(rl);
+    return 1;
+}
+
+/* Style effectif de [start, start+len), sachant que ce qu'aucune plage ne
+ * couvre vaut `dflt`. Renvoie HC_STYLE_MIXED si la plage n'est pas homogène —
+ * c'est ce que le guide d'Apple appelle « mixed ». */
+static int runs_get_style(struct RunList *rl, int start, int len, int dflt)
+{
+    if (len <= 0) return dflt;
+    int first = -2;
+    for (int c = start; c < start + len; c++) {
+        int st = dflt;
+        if (rl) {
+            for (int i = 0; i < rl->n; i++)
+                if (c >= rl->v[i].start && c < rl->v[i].start + rl->v[i].len) {
+                    if (rl->v[i].style != HC_STYLE_INHERIT) st = rl->v[i].style;
+                    break;
+                }
+        }
+        if (first == -2) first = st;
+        else if (st != first) return HC_STYLE_MIXED;
+    }
+    return first == -2 ? dflt : first;
+}
+
+/* Police effective de [start, start+len). Écrit « mixed » si la plage n'est
+ * pas homogène, comme le fait la lecture du style. `dflt` est la police du
+ * champ, qui s'applique partout où aucune plage ne se prononce. */
+static void runs_get_font(struct RunList *rl, int start, int len,
+                          const char *dflt, char *out, int outlen)
+{
+    if (!dflt) dflt = "";
+    const char *first = NULL;
+    for (int c = start; c < start + len; c++) {
+        const char *fn = dflt;
+        if (rl)
+            for (int i = 0; i < rl->n; i++)
+                if (c >= rl->v[i].start && c < rl->v[i].start + rl->v[i].len) {
+                    if (rl->v[i].font) fn = rl->v[i].font;
+                    break;
+                }
+        if (!first) first = fn;
+        else if (strcmp(fn, first) != 0) { snprintf(out, outlen, "mixed"); return; }
+    }
+    snprintf(out, outlen, "%s", first ? first : dflt);
+}
+
+/* Corps effectif de [start, start+len). Renvoie -1 pour « mixed » : zéro est
+ * déjà pris par « le champ n'a pas de taille explicite ». */
+static int runs_get_size(struct RunList *rl, int start, int len, int dflt)
+{
+    int first = -2;
+    for (int c = start; c < start + len; c++) {
+        int sz = dflt;
+        if (rl)
+            for (int i = 0; i < rl->n; i++)
+                if (c >= rl->v[i].start && c < rl->v[i].start + rl->v[i].len) {
+                    if (rl->v[i].size) sz = rl->v[i].size;
+                    break;
+                }
+        if (first == -2) first = sz;
+        else if (sz != first) return -1;
+    }
+    return first == -2 ? dflt : first;
+}
+
+/* Un mot -> son bit. 0 si le mot n'est pas un nom de style (« plain » compris :
+ * il ne vaut aucun bit, mais reste un nom légitime — voir style_is_names). */
+static int style_bit_of_name(const char *w)
+{
+    if      (ci_equal(w, "bold"))      return HC_BOLD;
+    else if (ci_equal(w, "italic"))    return HC_ITALIC;
+    else if (ci_equal(w, "underline")) return HC_UNDERLINE;
+    else if (ci_equal(w, "outline"))   return HC_OUTLINE;
+    else if (ci_equal(w, "shadow"))    return HC_SHADOW;
+    else if (ci_equal(w, "condensed") || ci_equal(w, "condense")
+                                      || ci_equal(w, "condens")) return HC_CONDENSE;
+    else if (ci_equal(w, "extend") || ci_equal(w, "extended")) return HC_EXTEND;
+    else if (ci_equal(w, "group"))     return HC_GROUP;
+    return 0;
+}
+
+/* « bold,condense » -> bits. `plain` n'est pas un bit mais l'absence de bits,
+ * et il est écrasé par tout ce qui l'accompagne, comme le veut le guide.
+ * Le guide écrit « condensed », le menu du Mac « Condense » et le script du
+ * Calendrier « condense » : les trois sont acceptés. */
+static int style_from_names(const char *s)
+{
+    int bits = 0;
+    while (s && *s) {
+        while (*s == ' ' || *s == '\t' || *s == ',' || *s == '"') s++;
+        if (!*s) break;
+        char w[32]; int k = 0;
+        while (*s && *s != ',' && *s != ' ' && *s != '\t' && *s != '"'
+               && k < (int)sizeof w - 1) w[k++] = *s++;
+        w[k] = '\0';
+        bits |= style_bit_of_name(w);
+        /* « plain » et les mots inconnus n'ajoutent rien */
+    }
+    return bits;
+}
+
+/* Vrai si TOUS les mots de `s` nomment un style. C'est ce qui sépare la liste
+ * de noms, qu'HyperCard écrit sans guillemets — « to bold,underline » — d'une
+ * expression à évaluer — « to s & ",italic" ». Les guillemets ne sont pas des
+ * séparateurs ici : une liste citée est traitée un cran plus haut. */
+static int style_is_names(const char *s)
+{
+    int words = 0;
+    while (s && *s) {
+        while (*s == ' ' || *s == '\t' || *s == ',') s++;
+        if (!*s) break;
+        char w[32]; int k = 0;
+        while (*s && *s != ',' && *s != ' ' && *s != '\t') {
+            if (k < (int)sizeof w - 1) w[k++] = *s;
+            s++;
+        }
+        w[k] = '\0';
+        if (!style_bit_of_name(w) && !ci_equal(w, "plain")) return 0;
+        words++;
+    }
+    return words > 0;
+}
+
+static void style_to_names(int bits, char *out, int outlen)
+{
+    static const struct { int b; const char *n; } T[] = {
+        { HC_BOLD, "bold" }, { HC_ITALIC, "italic" }, { HC_UNDERLINE, "underline" },
+        { HC_OUTLINE, "outline" }, { HC_SHADOW, "shadow" },
+        { HC_CONDENSE, "condense" }, { HC_EXTEND, "extend" }, { HC_GROUP, "group" }
+    };
+    if (bits == HC_STYLE_MIXED) { snprintf(out, outlen, "mixed"); return; }
+    int pos = 0;
+    out[0] = '\0';
+    for (int i = 0; i < (int)(sizeof T / sizeof T[0]); i++)
+        if (bits & T[i].b)
+            pos += snprintf(out + pos, outlen - pos, "%s%s", pos ? "," : "", T[i].n);
+    if (!pos) snprintf(out, outlen, "plain");
+}
+
+/* Résout « <morceaux> of <champ> » en un intervalle ABSOLU de caractères dans
+ * le texte du champ. container_set travaille en relatif à chaque niveau de sa
+ * récursion, ce qui suffit pour écrire du texte mais pas pour situer une
+ * plage de style. On refait donc la descente en cumulant les décalages.
+ * Renvoie NULL si `ref` n'est pas un morceau de champ. */
+static Object *chunk_target(const char *ref, int *st, int *en)
+{
+    ChunkType ct; char ia[128], ib[128]; const char *rest; int ordinal;
+    if (!parse_chunk(ref, &ct, ia, sizeof ia, ib, sizeof ib, &rest, &ordinal))
+        return NULL;
+
+    Object *fld;
+    int base_off = 0;
+    char *base = arena_buf();
+
+    int inner_st, inner_en;
+    Object *inner = chunk_target(rest, &inner_st, &inner_en);
+    if (inner) {                                   /* morceau de morceau */
+        fld = inner;
+        base_off = inner_st;
+        int len = inner_en - inner_st;
+        if (len < 0) len = 0;
+        snprintf(base, HC_VAL, "%.*s", len, hc_field_text(fld) + inner_st);
+    } else {
+        fld = resolve(rest);
+        if (!fld || fld->type != OBJ_FIELD) return NULL;
+        snprintf(base, HC_VAL, "%s", hc_field_text(fld));
+    }
+
+    int a, b, s2, e2;
+    chunk_indices(base, ct, ordinal, ia, ib, &a, &b);
+    if (!chunk_span(base, ct, a, b, &s2, &e2)) return NULL;
+    *st = base_off + s2;
+    *en = base_off + e2;
+    return fld;
+}
+
+/* Intervalle de la dernière écriture, posé par container_set et consommé par
+ * hc_set_field_text : c'est le seul moyen de savoir si l'écriture portait sur
+ * un morceau (les plages se recalent) ou sur le champ entier (elles meurent). */
+static Object *g_edit_fld = NULL;
+static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
+
 /* Écrit dans un conteneur : champ, variable, ou morceau de l'un des deux.
  * mode : 0 remplacer, 1 après, 2 avant, 3 supprimer.
  * L'appel est récursif, donc « word 2 of line 3 of field "notes" » marche.
  * Renvoie 1 si la destination a été reconnue.
  */
+static int container_set_body(const char *ref, const char *val, int mode);
+
+/* container_set est recursif : « char 2 of word 2 of me » se traite en trois
+ * passes emboitees. Seule la PLUS EXTERNE connait l'intervalle que l'ecriture
+ * vise reellement ; les suivantes voient un remplacement complet du morceau
+ * englobant. Sans ce garde-fou, la note d'intervalle etait ecrasee par le
+ * niveau interne et les plages de style se croyaient recouvertes. */
+static int g_cset_depth = 0;
+
 static int container_set(const char *ref, const char *val, int mode)
+{
+    if (g_cset_depth == 0) { g_edit_fld = NULL; g_edit_at = -1; }
+    g_cset_depth++;
+    int r = container_set_body(ref, val, mode);
+    g_cset_depth--;
+    return r;
+}
+
+static int container_set_body(const char *ref, const char *val, int mode)
 {
     ChunkType ct; char ia[128], ib[128]; const char *rest; int ordinal;
 
     if (parse_chunk(ref, &ct, ia, sizeof ia, ib, sizeof ib, &rest, &ordinal)) {
-        char base[2048];
-        eval_expr(rest, base, sizeof base);
+        /* Noter l'intervalle absolu visé dans le champ, pour que les plages de
+         * style puissent se recaler. Sans cette note, hc_set_field_text ne voit
+         * qu'un texte entier remplacé et détruit tout le style. */
+        if (g_cset_depth == 1) {
+            int cst, cen;
+            Object *cf = chunk_target(ref, &cst, &cen);
+            if (cf) {
+                g_edit_fld = cf;
+                int vlen = (int)strlen(val);
+                if      (mode == 1) { g_edit_at = cen; g_edit_old = 0; g_edit_new = vlen; }
+                else if (mode == 2) { g_edit_at = cst; g_edit_old = 0; g_edit_new = vlen; }
+                else if (mode == 3) {
+                    /* Supprimer un morceau emporte aussi son separateur —
+                     * « delete word 1 » retire « Sun » ET l'espace qui suit.
+                     * Meme ajustement que plus bas, sinon les plages qui
+                     * suivent se decalent d'un caractere de trop. */
+                    char sep = chunk_sep(ct);
+                    const char *ft = hc_field_text(cf);
+                    int fl = (int)strlen(ft);
+                    if (sep) {
+                        if      (cen < fl && ft[cen] == sep)  cen++;
+                        else if (cst > 0  && ft[cst-1] == sep) cst--;
+                    }
+                    g_edit_at = cst; g_edit_old = cen - cst; g_edit_new = 0;
+                }
+                else                { g_edit_at = cst; g_edit_old = cen - cst; g_edit_new = vlen; }
+            }
+        }
+        char *base = arena_buf();
+        eval_expr(rest, base, HC_VAL);
 
         int a, b, st, en;
         chunk_indices(base, ct, ordinal, ia, ib, &a, &b);
 
         char sepstr[2] = { chunk_sep(ct), '\0' };
-        char neuf[4096];
+        char *neuf = arena_buf();
 
         if (!chunk_span(base, ct, a, b, &st, &en)) {
             if (mode == 3) return 1;            /* rien à supprimer */
@@ -1297,48 +1840,48 @@ static int container_set(const char *ref, const char *val, int mode)
                 }
                 int need = (have == 0) ? (a - 1) : (a - have);
                 int pos = 0;
-                pos += snprintf(neuf + pos, sizeof neuf - pos, "%s", base);
-                for (int k = 0; k < need && pos < (int)sizeof neuf - 2; k++)
+                pos += snprintf(neuf + pos, HC_VAL - pos, "%s", base);
+                for (int k = 0; k < need && pos < (int)HC_VAL - 2; k++)
                     neuf[pos++] = sepstr[0];
                 neuf[pos] = '\0';
-                snprintf(neuf + pos, sizeof neuf - pos, "%s", val);
+                snprintf(neuf + pos, HC_VAL - pos, "%s", val);
             } else {
-                snprintf(neuf, sizeof neuf, "%s%s%s", base,
+                snprintf(neuf, HC_VAL, "%s%s%s", base,
                          (*base && sepstr[0]) ? sepstr : "", val);
             }
         } else {
-            char old[2048];
+            char *old = arena_buf();
             int len = en - st;
-            if (len > (int)sizeof old - 1) len = (int)sizeof old - 1;
+            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
             if (len < 0) len = 0;
             memcpy(old, base + st, (size_t)len); old[len] = '\0';
 
-            char piece[2048];
-            if      (mode == 1) snprintf(piece, sizeof piece, "%s%s", old, val);
-            else if (mode == 2) snprintf(piece, sizeof piece, "%s%s", val, old);
+            char *piece = arena_buf();
+            if      (mode == 1) snprintf(piece, HC_VAL, "%s%s", old, val);
+            else if (mode == 2) snprintf(piece, HC_VAL, "%s%s", val, old);
             else if (mode == 3) piece[0] = '\0';
-            else                snprintf(piece, sizeof piece, "%s", val);
+            else                snprintf(piece, HC_VAL, "%s", val);
 
             if (mode == 3 && sepstr[0]) {       /* supprimer emporte un séparateur */
                 int bl = (int)strlen(base);
                 if      (en < bl && base[en] == sepstr[0]) en++;
                 else if (st > 0  && base[st-1] == sepstr[0]) st--;
             }
-            snprintf(neuf, sizeof neuf, "%.*s%s%s", st, base, piece, base + en);
+            snprintf(neuf, HC_VAL, "%.*s%s%s", st, base, piece, base + en);
         }
         return container_set(rest, neuf, 0);
     }
 
-    char merged[4096];
+    char *merged = arena_buf();
     Object *o = resolve(ref);
     if (o && o->type == OBJ_FIELD) {
         /* passer par hc_field_text / hc_set_field_text : un champ de fond non
          * partagé a un texte propre à chaque carte */
         const char *old = hc_field_text(o);
-        if      (mode == 1) snprintf(merged, sizeof merged, "%s%s", old, val);
-        else if (mode == 2) snprintf(merged, sizeof merged, "%s%s", val, old);
+        if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
+        else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
         else if (mode == 3) merged[0] = '\0';
-        else                snprintf(merged, sizeof merged, "%s", val);
+        else                snprintf(merged, HC_VAL, "%s", val);
         hc_set_field_text(o, merged);
         notify_field(o);
         return 1;
@@ -1350,10 +1893,10 @@ static int container_set(const char *ref, const char *val, int mode)
     if (vname[0] && vname[0] != '"' && !*skip_spaces(after)) {
         const char *old = var_get(vname);
         if (!old) old = "";
-        if      (mode == 1) snprintf(merged, sizeof merged, "%s%s", old, val);
-        else if (mode == 2) snprintf(merged, sizeof merged, "%s%s", val, old);
+        if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
+        else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
         else if (mode == 3) merged[0] = '\0';
-        else                snprintf(merged, sizeof merged, "%s", val);
+        else                snprintf(merged, HC_VAL, "%s", val);
         var_set(vname, merged);
         return 1;
     }
@@ -1616,7 +2159,7 @@ static void emit_datetime(struct tm *tm, int fmt, char *out, int outlen)
 }
 
 /* Renvoie 1 si `t` était bien un appel de fonction. */
-static int call_function(const char *t, char *out, int outlen)
+static int call_function_body(const char *t, char *out, int outlen)
 {
     const char *s = skip_spaces(t);
     if (ci_word(s, "the")) s = skip_spaces(s + 3);
@@ -1678,7 +2221,8 @@ static int call_function(const char *t, char *out, int outlen)
     }
 
     /* --- arguments : « of <expr> » ou « (a, b, c) » --- */
-    char raw[8][HC_VAL], vals[8][HC_VAL];
+    char (*raw)[HC_VAL]  = arena_rows(8);
+    char (*vals)[HC_VAL] = arena_rows(8);
     int nargs = 0;
     const char *q = skip_spaces(after);
 
@@ -1691,9 +2235,9 @@ static int call_function(const char *t, char *out, int outlen)
             else if (!inq && *end == ')') depth--;
             if (depth) end++;
         }
-        char inner[HC_VAL];
+        char *inner = arena_buf();
         int len = (int)(end - (q + 1));
-        if (len > (int)sizeof inner - 1) len = (int)sizeof inner - 1;
+        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
         if (len < 0) len = 0;
         memcpy(inner, q + 1, (size_t)len); inner[len] = '\0';
         nargs = split_args(inner, raw, 8);
@@ -1779,7 +2323,7 @@ static int call_function(const char *t, char *out, int outlen)
      * remonte la chaîne carte → fond → pile. */
     {
         Object *from = g_me ? g_me : g_current_card;
-        char uargv[8][HC_VAL];
+        char (*uargv)[HC_VAL] = arena_rows(8);
         for (int i = 0; i < nargs; i++)
             snprintf(uargv[i], sizeof uargv[i], "%s", vals[i]);
         if (hc_call_user_function(from, name, uargv, nargs)) {
@@ -1789,6 +2333,14 @@ static int call_function(const char *t, char *out, int outlen)
     }
 
     return 0;
+}
+
+static int call_function(const char *t, char *out, int outlen)
+{
+    ARENA_MARK;
+    int r = call_function_body(t, out, outlen);
+    ARENA_FREE;
+    return r;
 }
 
 /* ==================== propriétés géométriques ==================== */
@@ -1911,7 +2463,7 @@ static int prop_word_before_of(const char *t)
     return ci_word(skip_spaces(q), "of");
 }
 
-static void term_value(const char *t, char *out, int outlen)
+static void term_value_body(const char *t, char *out, int outlen)
 {
     t = skip_spaces(t);
     out[0] = '\0';
@@ -1969,8 +2521,8 @@ static void term_value(const char *t, char *out, int outlen)
             if (ct != CH_NONE) {
                 const char *r = skip_spaces(k + used);
                 if (ci_word(r, "in") || ci_word(r, "of")) r = skip_spaces(r + 2);
-                char src[2048];
-                eval_expr(r, src, sizeof src);
+                char *src = arena_buf();
+                eval_expr(r, src, HC_VAL);
                 snprintf(out, outlen, "%d", chunk_count(src, ct));
                 return;
             }
@@ -1999,6 +2551,33 @@ static void term_value(const char *t, char *out, int outlen)
             while (pl > 0 && (w[pl-1] == ' ' || w[pl-1] == '\t')) pl--;
             if (pl > 0 && pl < (int)sizeof prop) {
                 memcpy(prop, w, (size_t)pl); prop[pl] = '\0';
+
+                /* Lecture sur une plage de texte :
+                 *     if the textStyle of the clickChunk is bold
+                 * La cible peut donc etre calculee : « of + 2 » est evalue
+                 * comme expression si ce n'est pas deja un morceau litteral. */
+                if (ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
+                    ci_equal(prop, "textsize")  || ci_equal(prop, "textheight")) {
+                    int cst, cen;
+                    Object *cf = chunk_target(of + 2, &cst, &cen);
+                    if (cf) {
+                        struct RunList *rl = runs_of(cf);
+                        if (ci_equal(prop, "textstyle")) {
+                            style_to_names(runs_get_style(rl, cst, cen - cst,
+                                                          cf->textstyle),
+                                           out, outlen);
+                        } else if (ci_equal(prop, "textfont")) {
+                            runs_get_font(rl, cst, cen - cst, cf->textfont,
+                                          out, outlen);
+                        } else {
+                            int sz = runs_get_size(rl, cst, cen - cst, cf->textsize);
+                            if (sz < 0) snprintf(out, outlen, "mixed");
+                            else        snprintf(out, outlen, "%d", sz);
+                        }
+                        return;
+                    }
+                }
+
                 Object *o = resolve(of + 2);
                 if (o) {
                     if (geom_read(o, prop, out, outlen)) return;
@@ -2085,12 +2664,20 @@ static void term_value(const char *t, char *out, int outlen)
     snprintf(out, outlen, "%s", t);
 }
 
+static void term_value(const char *t, char *out, int outlen)
+{
+    ARENA_MARK;
+    term_value_body(t, out, outlen);
+    ARENA_FREE;
+}
+
 static void parse_expr(const char **p, char *out, int outlen);
 
 static int truthy(const char *s);
 
 static void parse_factor(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     const char *s = skip_spaces(*p);
     out[0] = '\0';
 
@@ -2100,24 +2687,25 @@ static void parse_factor(const char **p, char *out, int outlen)
         s = skip_spaces(*p);
         if (*s == ')') s++;
         *p = s;
-        return;
+        { ARENA_FREE; return; }
     }
     if (*s == '-') {
-        char v[HC_VAL]; double d = 0;
+        char *v = arena_buf();
+        double d = 0;
         *p = s + 1;
-        parse_factor(p, v, sizeof v);
+        parse_factor(p, v, HC_VAL);
         as_num(v, &d);
         put_num(-d, out, outlen);
-        return;
+        { ARENA_FREE; return; }
     }
     /* `not` est au niveau 2 chez Apple, aussi serré que le moins unaire :
        « not 5 > 2 » se lit « (not 5) > 2 ». */
     if (ci_word(s, "not")) {
-        char v[HC_VAL];
+        char *v = arena_buf();
         *p = s + 3;
-        parse_factor(p, v, sizeof v);
+        parse_factor(p, v, HC_VAL);
         snprintf(out, outlen, "%s", truthy(v) ? "false" : "true");
-        return;
+        { ARENA_FREE; return; }
     }
     /* « there is a <objet> » / « there is no <objet> » / « there is not a … »
      * Tout ce qui suit désigne l'objet : l'expression s'arrête là, ce qui
@@ -2132,15 +2720,15 @@ static void parse_factor(const char **p, char *out, int outlen)
             if (ci_word(q, "an"))      q = skip_spaces(q + 2);
             else if (ci_word(q, "a"))  q = skip_spaces(q + 1);
 
-            char ref[HC_VAL];
-            snprintf(ref, sizeof ref, "%s", q);
+            char *ref = arena_buf();
+            snprintf(ref, HC_VAL, "%s", q);
             int k = (int)strlen(ref);
             while (k > 0 && isspace((unsigned char)ref[k-1])) ref[--k] = '\0';
 
             int found = resolve(ref) != NULL;
             snprintf(out, outlen, "%s", (found != negate) ? "true" : "false");
             *p = q + strlen(q);
-            return;
+            { ARENA_FREE; return; }
         }
     }
 
@@ -2149,37 +2737,44 @@ static void parse_factor(const char **p, char *out, int outlen)
         double d = strtod(s, &e);
         *p = e;
         put_num(d, out, outlen);
-        return;
+        { ARENA_FREE; return; }
     }
     if (*s == '"') {                 /* littéral : on ne prend que lui */
         *p = quoted(s, out, outlen);
-        return;
+        { ARENA_FREE; return; }
     }
 
-    char ref[HC_VAL];
+    char *ref = arena_buf();
     const char *before = s;
-    collect_ref(&s, ref, sizeof ref);
+    collect_ref(&s, ref, HC_VAL);
     if (s == before && *s) s++;      /* jamais de sur-place : pas de boucle infinie */
     *p = s;
     term_value(ref, out, outlen);
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* niveau 3 : exponentiation, associative à droite */
 static void parse_power(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_factor(p, out, outlen);
     const char *s = skip_spaces(*p);
     if (*s != '^') return;
     *p = s + 1;
 
-    char rhs[HC_VAL]; double a = 0, b = 0;
-    parse_power(p, rhs, sizeof rhs);      /* récursif : 2^3^2 = 2^(3^2) */
+    char *rhs = arena_buf();
+    double a = 0, b = 0;
+    parse_power(p, rhs, HC_VAL);      /* récursif : 2^3^2 = 2^(3^2) */
     as_num(out, &a); as_num(rhs, &b);
     put_num(pow(a, b), out, outlen);
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void parse_product(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_power(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
@@ -2191,8 +2786,9 @@ static void parse_product(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[HC_VAL]; double a = 0, b = 0, r = 0;
-        parse_power(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        double a = 0, b = 0, r = 0;
+        parse_power(p, rhs, HC_VAL);
         as_num(out, &a); as_num(rhs, &b);
         if      (op == '*') r = a * b;
         else if (op == '/') r = (b != 0) ? a / b : 0;
@@ -2200,10 +2796,13 @@ static void parse_product(const char **p, char *out, int outlen)
         else                r = (b != 0) ? a - b * (double)(long long)(a / b) : 0;
         put_num(r, out, outlen);
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void parse_sum(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_product(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
@@ -2211,15 +2810,19 @@ static void parse_sum(const char **p, char *out, int outlen)
         int op = *s++;
         *p = s;
 
-        char rhs[HC_VAL]; double a = 0, b = 0;
-        parse_product(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+    double a = 0, b = 0;
+        parse_product(p, rhs, HC_VAL);
         as_num(out, &a); as_num(rhs, &b);
         put_num(op == '+' ? a + b : a - b, out, outlen);
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void parse_concat(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_sum(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
@@ -2229,12 +2832,14 @@ static void parse_concat(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[HC_VAL];
-        parse_sum(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        parse_sum(p, rhs, HC_VAL);
         int n = (int)strlen(out);
         if (space && n < outlen - 1) { out[n++] = ' '; out[n] = '\0'; }
         snprintf(out + n, (size_t)(outlen - n), "%s", rhs);
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* Compare deux valeurs. Numérique si les deux en sont, sinon texte
@@ -2323,24 +2928,28 @@ static int looks_like_date(const char *s)
 
 static int is_of_type(const char *v, const char *ty)
 {
-    char t[HC_VAL];
+    ARENA_MARK;
+    char *t = arena_buf();
     double d;
-    trim_copy(v, t, sizeof t);
+    trim_copy(v, t, HC_VAL);
 
     if (ci_equal(ty, "number"))    return as_num(t, &d);
     if (ci_equal(ty, "integer"))   return is_int_str(t);
     if (ci_equal(ty, "logical") || ci_equal(ty, "boolean"))
-        return ci_equal(t, "true") || ci_equal(t, "false");
+        { ARENA_FREE; return ci_equal(t, "true") || ci_equal(t, "false"); }
     if (ci_equal(ty, "point"))     return int_items(t) == 2;
     if (ci_equal(ty, "rect") || ci_equal(ty, "rectangle")) return int_items(t) == 4;
     if (ci_equal(ty, "date"))      return looks_like_date(t);
-    return 0;
+    { ARENA_FREE; return 0; }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* niveau 7 : comparaisons relationnelles, contains, is in.
    Attention : un « is » nu appartient au niveau 8, on le laisse passer. */
 static void parse_relational(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_concat(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
@@ -2375,8 +2984,8 @@ static void parse_relational(const char **p, char *out, int outlen)
             }
             if (ci_word(w, "within")) {                     /* point is within rect */
                 *p = w + 6;
-                char rhs[HC_VAL];
-                parse_concat(p, rhs, sizeof rhs);
+                char *rhs = arena_buf();
+                parse_concat(p, rhs, HC_VAL);
                 int pt[2], rc[4];
                 int r = 0;
                 if (parse_ints(out, pt, 2) == 2 && parse_ints(rhs, rc, 4) == 4)
@@ -2392,17 +3001,20 @@ static void parse_relational(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[HC_VAL];
-        parse_concat(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        parse_concat(p, rhs, HC_VAL);
         int r = compare_vals(op, out, rhs);
         if (neg) r = !r;
         snprintf(out, outlen, "%s", r ? "true" : "false");
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* niveau 8 : égalités */
 static void parse_equality(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_relational(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
@@ -2419,44 +3031,55 @@ static void parse_equality(const char **p, char *out, int outlen)
         else break;
         *p = s;
 
-        char rhs[HC_VAL];
-        parse_relational(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        parse_relational(p, rhs, HC_VAL);
         int r = compare_vals(op, out, rhs);
         if (neg) r = !r;
         snprintf(out, outlen, "%s", r ? "true" : "false");
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void parse_and(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_equality(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
         if (!ci_word(s, "and")) break;
         *p = s + 3;
-        char rhs[HC_VAL];
-        parse_equality(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        parse_equality(p, rhs, HC_VAL);
         snprintf(out, outlen, "%s", (truthy(out) && truthy(rhs)) ? "true" : "false");
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void parse_expr(const char **p, char *out, int outlen)
 {
+    ARENA_MARK;
     parse_and(p, out, outlen);
     for (;;) {
         const char *s = skip_spaces(*p);
         if (!ci_word(s, "or")) break;
         *p = s + 2;
-        char rhs[HC_VAL];
-        parse_and(p, rhs, sizeof rhs);
+        char *rhs = arena_buf();
+        parse_and(p, rhs, HC_VAL);
         snprintf(out, outlen, "%s", (truthy(out) || truthy(rhs)) ? "true" : "false");
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void eval_expr(const char *s, char *out, int outlen)
 {
+    ARENA_MARK;
     const char *p = s;
     parse_expr(&p, out, outlen);
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* Comme eval_expr, mais râle si l'analyseur n'a pas tout mangé.
@@ -2464,6 +3087,7 @@ static void eval_expr(const char *s, char *out, int outlen)
  * expression mal formée retombe silencieusement en littéral. */
 static void eval_checked(const char *s, char *out, int outlen)
 {
+    ARENA_MARK;
     const char *p = s;
     parse_expr(&p, out, outlen);
     const char *left = skip_spaces(p);
@@ -2474,6 +3098,8 @@ static void eval_checked(const char *s, char *out, int outlen)
         while (n > 0 && (shown[n-1] == ' ' || shown[n-1] == '\t')) shown[--n] = '\0';
         emit(HC_ERR, "   !! texte incompris, ignoré : « %s »", shown);
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void exec_line(Object *me, const char *line);
@@ -2531,12 +3157,13 @@ static void eval_point(const char *s, char *out, int outlen)
 
         if (*q && !(!inq && depth <= 0 && *q == ',')) continue;
 
-        char expr[HC_VAL], val[HC_VAL];
+        char *expr = arena_buf();
+        char *val = arena_buf();
         int len = (int)(q - part);
         while (len > 0 && isspace((unsigned char)part[len-1])) len--;
-        if (len > (int)sizeof expr - 1) len = (int)sizeof expr - 1;
+        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
         memcpy(expr, part, (size_t)len); expr[len] = '\0';
-        eval_checked(expr, val, sizeof val);
+        eval_checked(expr, val, HC_VAL);
 
         pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
                         n ? "," : "", val);
@@ -2646,18 +3273,20 @@ static void exec_stmt(Object *me, const char *s);
 /* `head` vaut « if <condition> then » ; le corps va de `from` à `end_idx`. */
 static void exec_if(Object *me, const char *head, char **L, int from, int end_idx)
 {
+    ARENA_MARK;
     const char *th = find_kw(head, "then");
-    char cond[HC_VAL], val[HC_VAL];
+    char *cond = arena_buf();
+    char *val = arena_buf();
     const char *c0 = skip_spaces(head + 2);   /* après « if » */
     int n = th ? (int)(th - c0) : (int)strlen(c0);
-    if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
+    if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
     memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-    eval_checked(cond, val, sizeof val);
+    eval_checked(cond, val, HC_VAL);
 
     int m = find_else(L, from, end_idx);
     if (truthy(val)) {
         exec_block(me, L, from, m >= 0 ? m : end_idx);
-        return;
+        { ARENA_FREE; return; }
     }
     if (m < 0) return;
 
@@ -2665,34 +3294,40 @@ static void exec_if(Object *me, const char *head, char **L, int from, int end_id
     if (!*rest) { exec_block(me, L, m + 1, end_idx); return; }
     if (opens_if(rest)) { exec_if(me, rest, L, m + 1, end_idx); return; }
     exec_stmt(me, rest);          /* « else <instruction> », if en ligne compris */
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* Exécute une instruction simple, ou un `if` tenant sur une seule ligne. */
 static void exec_stmt(Object *me, const char *s)
 {
+    ARENA_MARK;
     if (ci_word(s, "if")) {
         const char *th = find_kw(s, "then");
         if (th) {
-            char cond[HC_VAL], val[HC_VAL];
+            char *cond = arena_buf();
+            char *val = arena_buf();
             const char *c0 = skip_spaces(s + 2);
             int n = (int)(th - c0);
-            if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
+            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
             memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-            eval_checked(cond, val, sizeof val);
+            eval_checked(cond, val, HC_VAL);
 
             const char *body = skip_spaces(th + 4);
             const char *el   = find_kw(body, "else");
-            char yes[HC_VAL];
+            char *yes = arena_buf();
             int ny = el ? (int)(el - body) : (int)strlen(body);
-            if (ny > (int)sizeof yes - 1) ny = (int)sizeof yes - 1;
+            if (ny > (int)HC_VAL - 1) ny = (int)HC_VAL - 1;
             memcpy(yes, body, (size_t)ny); yes[ny] = '\0';
 
             if (truthy(val)) exec_stmt(me, yes);
             else if (el)     exec_stmt(me, skip_spaces(el + 4));
-            return;
+            { ARENA_FREE; return; }
         }
     }
     exec_line(me, s);
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 /* Un `if` dont le « then » porte déjà une instruction, mais dont le « else »
@@ -2732,15 +3367,17 @@ static int chain_end(char **L, int i, int to)
 
 static void exec_if_chain(Object *me, char **L, int i, int to, int end)
 {
+    ARENA_MARK;
     const char *head = L[i];
     for (;;) {
         const char *th = find_kw(head, "then");
-        char cond[HC_VAL], val[HC_VAL];
+        char *cond = arena_buf();
+        char *val = arena_buf();
         const char *c0 = skip_spaces(head + 2);      /* après « if » */
         int n = (int)(th - c0);
-        if (n > (int)sizeof cond - 1) n = (int)sizeof cond - 1;
+        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
         memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-        eval_checked(cond, val, sizeof val);
+        eval_checked(cond, val, HC_VAL);
 
         if (truthy(val)) { exec_stmt(me, skip_spaces(th + 4)); return; }
 
@@ -2750,6 +3387,8 @@ static void exec_if_chain(Object *me, char **L, int i, int to, int end)
         if (is_inline_if(rest)) { head = rest; i++; continue; }
         exec_stmt(me, rest); return;
     }
+    ARENA_FREE;
+    ARENA_FREE;
 }
 
 static void exec_block(Object *me, char **L, int from, int to)
@@ -2922,8 +3561,8 @@ static void exec_body(Object *me, const char *body, const char *end)
         const char *stop = (nl && nl < end) ? nl : end;
         int len = (int)(stop - p);
 
-        char line[HC_VAL];
-        if (len > (int)sizeof line - 1) len = (int)sizeof line - 1;
+        char *line = arena_buf();
+        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
         memcpy(line, p, (size_t)len);
         line[len] = '\0';
 
@@ -2961,7 +3600,7 @@ static void exec_body(Object *me, const char *body, const char *end)
     free(L);
 }
 
-static void exec_line(Object *me, const char *line)
+static void exec_line_body(Object *me, const char *line)
 {
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
     char verb[64];
@@ -2972,10 +3611,10 @@ static void exec_line(Object *me, const char *line)
      * d'arguments éventuels. « send "carre 6" to card X » appelle on carre
      * sur X avec l'argument 6. Les arguments sont évalués côté appelant. */
     if (ci_equal(verb, "send")) {
-        char msgline[HC_VAL];
+        char *msgline = arena_buf();
         rest = skip_spaces(rest);
         if (*rest == '"') {
-            const char *after = quoted(rest, msgline, sizeof msgline);
+            const char *after = quoted(rest, msgline, HC_VAL);
             char probe[8];
             next_word(after, probe, sizeof probe);
             if (ci_equal(probe, "to")) {
@@ -2989,11 +3628,11 @@ static void exec_line(Object *me, const char *line)
                     last = k; scan = k + 2;
                 }
                 if (!last) { emit(HC_ERR, "?? send mal formé : %s", line); return; }
-                char expr[HC_VAL];
+                char *expr = arena_buf();
                 int n = (int)(last - rest);
-                if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+                if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
                 memcpy(expr, rest, (size_t)n); expr[n] = '\0';
-                eval_expr(expr, msgline, sizeof msgline);
+                eval_expr(expr, msgline, HC_VAL);
                 rest = last;
             }
         }
@@ -3001,7 +3640,7 @@ static void exec_line(Object *me, const char *line)
             /* message nu : tout jusqu'à « to » (au niveau supérieur) */
             const char *to_kw = find_kw(rest, "to");
             int len = to_kw ? (int)(to_kw - rest) : (int)strlen(rest);
-            if (len > (int)sizeof msgline - 1) len = (int)sizeof msgline - 1;
+            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
             memcpy(msgline, rest, (size_t)len); msgline[len] = '\0';
             rest = to_kw ? to_kw : rest + strlen(rest);
         }
@@ -3020,11 +3659,12 @@ static void exec_line(Object *me, const char *line)
         /* découper le message en nom + arguments */
         char msg[128];
         const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-        char argv[16][HC_VAL];
+        char (*argv)[HC_VAL] = arena_rows(16);
         int argc = 0;
         a = skip_spaces(a);
         while (*a && argc < 16) {
-            char one[HC_VAL]; int len = 0, depth = 0, inq = 0;
+            char *one = arena_buf();
+            int len = 0, depth = 0, inq = 0;
             while (*a && !(depth == 0 && !inq && *a == ',')) {
                 if (*a == '"') inq = !inq;
                 else if (!inq && *a == '(') depth++;
@@ -3058,25 +3698,25 @@ static void exec_line(Object *me, const char *line)
             else if (ci_word(q, "before")) { kw = q; kwlen = 6; mode = 2; break; }
         }
 
-        char val[HC_VAL];
+        char *val = arena_buf();
         if (!kw) {                       /* pas de destination : la boîte de message */
-            eval_checked(rest, val, sizeof val);
+            eval_checked(rest, val, HC_VAL);
             emit(HC_MSG, "%s", val);
             return;
         }
 
-        char expr[HC_VAL];
+        char *expr = arena_buf();
         int n = (int)(kw - rest);
-        if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
         memcpy(expr, rest, (size_t)n); expr[n] = '\0';
-        eval_checked(expr, val, sizeof val);
+        eval_checked(expr, val, HC_VAL);
 
         const char *dsttext = skip_spaces(kw + kwlen);
         if (container_set(dsttext, val, mode)) {
             set_result("");
-            char shown[HC_VAL];
-            eval_expr(dsttext, shown, sizeof shown);
-            if (!*shown && *val) snprintf(shown, sizeof shown, "%s", val);
+            char *shown = arena_buf();
+            eval_expr(dsttext, shown, HC_VAL);
+            if (!*shown && *val) snprintf(shown, HC_VAL, "%s", val);
             emit(HC_INFO, "   → %s ← \"%s\"", dsttext, shown);
         } else {
             set_result("destination invalide");
@@ -3130,9 +3770,9 @@ static void exec_line(Object *me, const char *line)
             return;
         }
 
-        char src[HC_VAL];
+        char *src = arena_buf();
         int n = (int)(to - rest);
-        if (n > (int)sizeof src - 1) n = (int)sizeof src - 1;
+        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
         memcpy(src, rest, (size_t)n); src[n] = '\0';
         while (n > 0 && isspace((unsigned char)src[n-1])) src[--n] = '\0';
         const char *srcp = skip_spaces(src);
@@ -3150,8 +3790,8 @@ static void exec_line(Object *me, const char *line)
             return;
         }
 
-        char val[HC_VAL];
-        eval_expr(srcp, val, sizeof val);
+        char *val = arena_buf();
+        eval_expr(srcp, val, HC_VAL);
 
         struct tm tm;
         if (!parse_datetime(val, &tm)) {
@@ -3160,12 +3800,13 @@ static void exec_line(Object *me, const char *line)
             return;
         }
 
-        char outv[HC_VAL], part2[256];
-        emit_datetime(&tm, f1, outv, sizeof outv);
+        char *outv = arena_buf();
+        char part2[256];
+        emit_datetime(&tm, f1, outv, HC_VAL);
         if (f2 != DF_NONE) {
             emit_datetime(&tm, f2, part2, sizeof part2);
             int L = (int)strlen(outv);
-            snprintf(outv + L, sizeof outv - L, " %s", part2);
+            snprintf(outv + L, HC_VAL - L, " %s", part2);
         }
 
         /* Destination : le conteneur source s'il en est un. « the date »,
@@ -3181,8 +3822,8 @@ static void exec_line(Object *me, const char *line)
 
     /* --- return <expr> : dépose une valeur dans `the result` et sort --- */
     if (ci_equal(verb, "return")) {
-        char val[HC_VAL];
-        eval_checked(rest, val, sizeof val);
+        char *val = arena_buf();
+        eval_checked(rest, val, HC_VAL);
         set_result(val);
         g_exit_handler = 1;
         return;
@@ -3211,13 +3852,24 @@ static void exec_line(Object *me, const char *line)
         /* Pas de « of » : c'est une propriété globale, pas celle d'un objet.
          * « set cursor to none », « set lockScreen to true »… */
         if (!ci_word(q, "of")) {
+            /* « set word 2 of field "x" to bold » : le nom de propriete manque.
+             * Sans ce garde-fou, « word » partait comme propriete globale chez
+             * l'hote et l'ecriture disparaissait sans un mot. */
+            if (ci_equal(prop, "char") || ci_equal(prop, "character")
+             || ci_equal(prop, "word") || ci_equal(prop, "item")
+             || ci_equal(prop, "line")) {
+                set_result("propriete manquante");
+                emit(HC_ERR, "   !! set : quelle propriete ? essayez "
+                             "« set the textStyle of %s … »", skip_spaces(rest));
+                return;
+            }
             const char *to = find_kw(s, "to");
             if (!to) {
                 emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(rest));
                 return;
             }
-            char val[HC_VAL];
-            eval_checked(to + 2, val, sizeof val);
+            char *val = arena_buf();
+            eval_checked(to + 2, val, HC_VAL);
             host_global_set(prop, val);
             set_result("");
             emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
@@ -3225,7 +3877,14 @@ static void exec_line(Object *me, const char *line)
         }
         q = skip_spaces(q + 2);
 
-        const char *to = find_kw(q, "to");
+        /* Le « to » qui separe la cible de la valeur est le DERNIER de premier
+         * niveau : la cible peut en contenir elle-meme, comme dans
+         *     set the textStyle of word d of line 3 to numLines of me to bold
+         * Couper au premier tronquait la cible a « line 3 ». */
+        const char *to = NULL, *scan = q;
+        for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+            to = k; scan = k + 2;
+        }
         if (!to) {
             emit(HC_ERR, "   !! set sans « to » : %s", skip_spaces(rest));
             return;
@@ -3237,13 +3896,115 @@ static void exec_line(Object *me, const char *line)
         memcpy(refbuf, q, (size_t)n); refbuf[n] = '\0';
         while (n > 0 && (refbuf[n-1] == ' ' || refbuf[n-1] == '\t')) refbuf[--n] = '\0';
 
-        char val[2048];
-        eval_checked(to + 2, val, sizeof val);
+        char *val = arena_buf();
+        /* « to bold,condense » n'est pas une expression : c'est une liste de
+         * noms de styles, qu'HyperCard accepte sans guillemets. On prend donc
+         * le texte brut, sauf s'il nomme une variable — auquel cas on lit sa
+         * valeur, pour que « set the textStyle of X to myStyle » marche. */
+        if (ci_equal(prop, "textstyle")) {
+            const char *raw = skip_spaces(to + 2);
+            int rl = (int)strlen(raw);
+            while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+            snprintf(val, HC_VAL, "%.*s", rl, raw);
+
+            /* Trancher sur le CONTENU, pas sur la ponctuation. L'ancien test
+             * — « ni virgule ni espace, alors peut-être une variable » —
+             * classait « s & ",italic" » parmi les listes de noms : il n'en
+             * retenait que « italic » et jetait le reste, si bien qu'on ne
+             * pouvait pas relire un style pour lui en ajouter un. Désormais
+             * une suite de noms de style reste littérale, et tout le reste
+             * est évalué comme l'expression que c'est. */
+            if (!style_is_names(val)) {
+                int n = (int)strlen(val);
+                int quoted = 0;
+
+                /* Une liste de noms peut arriver citée : « to "bold,italic" ».
+                 * On la déguillemete pour la re-tester. L'ancienne écriture
+                 * glissait le snprintf dans la condition via l'opérateur
+                 * virgule, ce que le compilateur signale à juste titre : c'est
+                 * le motif habituel d'un « f(a, b) » mal parenthésé. */
+                if (n > 1 && val[0] == '"' && val[n-1] == '"') {
+                    char *inner = arena_buf();
+                    snprintf(inner, HC_VAL, "%.*s", n - 2, val + 1);
+                    if (style_is_names(inner)) {
+                        snprintf(val, HC_VAL, "%s", inner);
+                        quoted = 1;
+                    }
+                }
+                if (!quoted) eval_checked(to + 2, val, HC_VAL);
+            }
+        } else {
+            eval_checked(to + 2, val, HC_VAL);
+        }
+
+        /* La cible peut designer une PLAGE DE TEXTE et non un objet :
+         *     set the textStyle of word 3 of line 2 of field "cal" to bold
+         * resolve() ne sait chercher que des objets, d'ou l'echec historique
+         * « objet introuvable : word theNewDay of line 3 ». On essaie donc
+         * d'abord le morceau, avant de retomber sur la resolution d'objet. */
+        {
+            int cst, cen;
+            Object *cf = chunk_target(refbuf, &cst, &cen);
+            if (cf) {
+                /* Les trois attributs de texte se posent par plage, comme dans
+                 * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
+                 * n'a aucun sens sur un morceau. */
+                int mask = 0;
+                if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
+                else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
+                else if (ci_equal(prop, "textsize") ||
+                         ci_equal(prop, "textheight")) mask = RA_SIZE;
+
+                if (!mask) {
+                    /* Deux échecs bien différents, qu'un seul message
+                     * confondait : « font » n'est pas une propriété du tout
+                     * (c'est « textFont »), alors que « rect » en est une,
+                     * mais qui décrit un objet et non un morceau. Annoncer
+                     * « ne s'applique pas à un morceau » sur un nom inconnu
+                     * envoyait chercher l'erreur au mauvais endroit. */
+                    if (!is_prop_name(prop, (int)strlen(prop))) {
+                        set_result("propriete inconnue");
+                        emit(HC_ERR, "   !! propriete inconnue : %s"
+                                     " (les proprietes de texte sont textFont,"
+                                     " textSize, textStyle)", prop);
+                    } else {
+                        set_result("propriete non applicable a un morceau");
+                        emit(HC_ERR, "   !! %s decrit un objet, pas un morceau"
+                                     " de texte", prop);
+                    }
+                    return;
+                }
+                struct RunList *rl = runs_of(cf);
+                if (!rl) {
+                    set_result("champ sans stockage de style");
+                    emit(HC_ERR, "   !! ce champ n'a pas encore de texte sur cette carte");
+                    return;
+                }
+                runs_set_attr(rl, cst, cen - cst, mask,
+                              (mask & RA_STYLE) ? style_from_names(val) : 0,
+                              (mask & RA_SIZE)  ? atoi(val) : 0,
+                              (mask & RA_FONT)  ? val : NULL);
+                notify_field(cf);
+                set_result("");
+                emit(HC_INFO, "   → %s de [%d..%d[ ← \"%s\"", prop, cst, cen, val);
+                return;
+            }
+        }
 
         Object *o = resolve(refbuf);
         if (!o) {
-            set_result("objet introuvable");
-            emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
+            /* Distinguer les deux echecs : une reference d'objet inconnue, ou
+             * un morceau de texte qui n'existe pas (champ vide, rang au-dela
+             * du contenu). « objet introuvable » sur « word 8 of line 3 of me »
+             * envoyait chercher au mauvais endroit. */
+            ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
+            if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
+                set_result("morceau hors limites");
+                emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+            } else {
+                set_result("objet introuvable");
+                emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
+            }
             return;
         }
 
@@ -3348,8 +4109,8 @@ static void exec_line(Object *me, const char *line)
             emit(HC_ERR, "   !! do : trop d'imbrications");
             return;
         }
-        char val[2048];
-        eval_checked(rest, val, sizeof val);
+        char *val = arena_buf();
+        eval_checked(rest, val, HC_VAL);
 
         do_depth++;
         /* plusieurs lignes : on les exécute l'une après l'autre */
@@ -3369,8 +4130,8 @@ static void exec_line(Object *me, const char *line)
 
     /* --- get <expr> : le résultat va dans `it` --- */
     if (ci_equal(verb, "get")) {
-        char val[HC_VAL];
-        eval_checked(rest, val, sizeof val);
+        char *val = arena_buf();
+        eval_checked(rest, val, HC_VAL);
         var_set("it", val);
         emit(HC_INFO, "   → it ← \"%s\"", val);
         return;
@@ -3421,9 +4182,11 @@ static void exec_line(Object *me, const char *line)
          * multiply/divide : <conteneur> by <valeur>   (ordre inverse) */
         int valueFirst = (ci_equal(verb, "add") || ci_equal(verb, "subtract"));
 
-        char left[HC_VAL], amount[128], cur[HC_VAL];
+        char *left = arena_buf();
+        char amount[128];
+        char *cur = arena_buf();
         int n = (int)(kw - r);
-        if (n > (int)sizeof left - 1) n = (int)sizeof left - 1;
+        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
         memcpy(left, r, n); left[n] = 0;
         /* retirer les espaces de fin */
         for (int k = (int)strlen(left) - 1; k >= 0 && isspace((unsigned char)left[k]); k--)
@@ -3438,7 +4201,7 @@ static void exec_line(Object *me, const char *line)
             eval_expr(right, amount, sizeof amount);
             dst = left;
         }
-        eval_expr(dst, cur, sizeof cur);
+        eval_expr(dst, cur, HC_VAL);
 
         double a = 0, b = 0;
         as_num(cur, &a);
@@ -3578,7 +4341,8 @@ static void exec_line(Object *me, const char *line)
     /* --- ask "invite" [with "défaut"] --- */
     if (ci_equal(verb, "ask")) {
         const char *r = skip_spaces(rest);
-        char prompt[HC_VAL] = "", deflt[HC_VAL] = "";
+        char *prompt = arena_buf();
+        char *deflt = arena_buf();
 
         /* repérer « with » hors des chaînes */
         const char *kw = NULL;
@@ -3589,14 +4353,14 @@ static void exec_line(Object *me, const char *line)
             if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
         }
         if (kw) {
-            char expr[HC_VAL];
+            char *expr = arena_buf();
             int n = (int)(kw - r);
-            if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
             memcpy(expr, r, n); expr[n] = '\0';
-            eval_expr(expr, prompt, sizeof prompt);
-            eval_expr(skip_spaces(kw + 4), deflt, sizeof deflt);
+            eval_expr(expr, prompt, HC_VAL);
+            eval_expr(skip_spaces(kw + 4), deflt, HC_VAL);
         } else {
-            eval_expr(r, prompt, sizeof prompt);
+            eval_expr(r, prompt, HC_VAL);
         }
 
         const char *rep = (g_host && g_host->ask) ? g_host->ask(prompt, deflt) : NULL;
@@ -3608,7 +4372,7 @@ static void exec_line(Object *me, const char *line)
     /* --- answer "invite" [with "a" [or "b" [or "c"]]] --- */
     if (ci_equal(verb, "answer")) {
         const char *r = skip_spaces(rest);
-        char prompt[HC_VAL] = "";
+        char *prompt = arena_buf();
         char btn[3][128] = { "", "", "" };
         int nb = 0;
 
@@ -3620,11 +4384,11 @@ static void exec_line(Object *me, const char *line)
             if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
         }
         if (kw) {
-            char expr[HC_VAL];
+            char *expr = arena_buf();
             int n = (int)(kw - r);
-            if (n > (int)sizeof expr - 1) n = (int)sizeof expr - 1;
+            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
             memcpy(expr, r, n); expr[n] = '\0';
-            eval_expr(expr, prompt, sizeof prompt);
+            eval_expr(expr, prompt, HC_VAL);
 
             /* découper sur « or », hors des chaînes */
             const char *p2 = skip_spaces(kw + 4);
@@ -3638,7 +4402,7 @@ static void exec_line(Object *me, const char *line)
                 }
                 char one[256];
                 int len = cut ? (int)(cut - p2) : (int)strlen(p2);
-                if (len > (int)sizeof one - 1) len = (int)sizeof one - 1;
+                if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
                 memcpy(one, p2, len); one[len] = '\0';
                 eval_expr(one, btn[nb], sizeof btn[nb]);
                 nb++;
@@ -3646,7 +4410,7 @@ static void exec_line(Object *me, const char *line)
                 p2 = skip_spaces(cut + 2);
             }
         } else {
-            eval_expr(r, prompt, sizeof prompt);
+            eval_expr(r, prompt, HC_VAL);
         }
         if (nb == 0) { snprintf(btn[0], sizeof btn[0], "OK"); nb = 1; }
 
@@ -3807,8 +4571,8 @@ static void exec_line(Object *me, const char *line)
     if (ci_equal(verb, "play")) {
         char val[256];
         const char *s = skip_spaces(rest);
-        if (*s == '"') quoted(s, val, sizeof val);
-        else           next_word(s, val, sizeof val);
+        if (*s == '"') quoted(s, val, HC_VAL);
+        else           next_word(s, val, HC_VAL);
         if (g_host && g_host->play_sound) g_host->play_sound(val);
         set_result("");
         emit(HC_INFO, "   ♪ play \"%s\"", val);
@@ -3838,12 +4602,13 @@ static void exec_line(Object *me, const char *line)
         for (int i = 0; i < nc; i++) {
             const char *end = NULL, *hdr = NULL;
             if (find_handler(chain[i]->script, verb, &end, &hdr)) {
-                char argv[16][HC_VAL];
+                char (*argv)[HC_VAL] = arena_rows(16);
                 int argc = 0;
                 const char *a = skip_spaces(rest);
                 while (*a && argc < 16) {
                     /* découpe au niveau des virgules de premier niveau */
-                    char one[HC_VAL]; int len = 0, depth = 0, inq = 0;
+                    char *one = arena_buf();
+            int len = 0, depth = 0, inq = 0;
                     while (*a && !(depth == 0 && !inq && *a == ',')) {
                         if (*a == '"') inq = !inq;
                         else if (!inq && *a == '(') depth++;
@@ -3866,11 +4631,22 @@ static void exec_line(Object *me, const char *line)
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);
 }
 
+/* Enveloppe de libération. exec_line a 57 points de sortie : les instrumenter
+ * un par un serait une invitation à l'erreur. On renomme le corps et on pose la
+ * marque autour — une seule fois, sans toucher à sa logique. Même recette pour
+ * term_value et call_function, qui en ont 40 et 36. */
+static void exec_line(Object *me, const char *line)
+{
+    ARENA_MARK;
+    exec_line_body(me, line);
+    ARENA_FREE;
+}
+
 /* ==================== envoi d'un message ==================== */
 
 /* Envoie un message accompagné d'une liste d'arguments déjà évalués.
    argv[0..argc-1] sont les valeurs des arguments (sans le nom du message). */
-static int hc_send_args_k(Object *target, const char *message,
+static int hc_send_args_k_body(Object *target, const char *message,
                           char argv[][HC_VAL], int argc, int isfunc)
 {
     if (g_depth >= HC_MAX_DEPTH) {
@@ -3890,7 +4666,7 @@ static int hc_send_args_k(Object *target, const char *message,
     g_target = target;
 
     /* on empile les paramètres du gestionnaire appelant */
-    char saved_params[16][HC_VAL];
+    char (*saved_params)[HC_VAL] = arena_rows(16);
     int  saved_nparams = g_nparams;
     for (int i = 0; i < g_nparams; i++)
         memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
@@ -3991,6 +4767,18 @@ static int hc_send_args_k(Object *target, const char *message,
     return handled;
 }
 
+/* Frontière de message : chaque envoi rend ses tampons en sortant. Sans cela
+ * une pile qui envoie des milliers de messages verrait l'arène croître sans
+ * fin, puisque seuls parse_factor et exec_stmt libèrent en dessous. */
+static int hc_send_args_k(Object *target, const char *message,
+                          char argv[][HC_VAL], int argc, int isfunc)
+{
+    ARENA_MARK;
+    int r = hc_send_args_k_body(target, message, argv, argc, isfunc);
+    ARENA_FREE;
+    return r;
+}
+
 static int hc_send_args(Object *target, const char *message,
                         char argv[][HC_VAL], int argc)
 {
@@ -4012,8 +4800,11 @@ static int hc_call_user_function(Object *target, const char *name,
 
 int hc_send(Object *target, const char *message)
 {
-    char none[1][HC_VAL];
-    return hc_send_args(target, message, none, 0);
+    ARENA_MARK;
+    char (*none)[HC_VAL] = arena_rows(1);
+    int r = hc_send_args(target, message, none, 0);
+    ARENA_FREE;
+    return r;
 }
 
 /* ==================== boîte de message ==================== */
@@ -4056,6 +4847,21 @@ const char *hc_field_text(Object *field)
 
 void hc_set_field_text(Object *field, const char *text)
 {
+    /* Recalage des plages de style. Si container_set a noté un intervalle pour
+     * CE champ, l'écriture portait sur un morceau et les plages se recalent ;
+     * sinon elle porte sur le champ entier et elles sont détruites — c'est la
+     * règle du remplacement complet, observée dans HyperCard 2.4. */
+    if (field && field->type == OBJ_FIELD) {
+        struct RunList *rl = runs_of(field);
+        if (rl) {
+            if (g_edit_fld == field && g_edit_at >= 0)
+                runs_edit(rl, g_edit_at, g_edit_old, g_edit_new);
+            else
+                runs_free(rl);
+        }
+    }
+    g_edit_fld = NULL; g_edit_at = -1;
+
     if (!field || (field->type != OBJ_FIELD && field->type != OBJ_BUTTON)) return;
 
     if (field_is_percard(field) && g_current_card) {
@@ -4075,12 +4881,84 @@ void hc_set_field_text(Object *field, const char *text)
         }
         cd->bgtexts[cd->nbgtexts].field_id = field->id;
         cd->bgtexts[cd->nbgtexts].text = dupstr(text ? text : "");
+        /* realloc ne nettoie rien : sans ce memset la liste de plages
+         * démarrerait sur un pointeur bidon, et le premier hc_run_add
+         * (ou hc_free) partirait dessus. */
+        memset(&cd->bgtexts[cd->nbgtexts].runs, 0,
+               sizeof cd->bgtexts[cd->nbgtexts].runs);
         cd->nbgtexts++;
         return;
     }
 
     free(field->contents);
     field->contents = dupstr(text ? text : "");
+}
+
+/* ---- Plages de style : lecture par l'hote ---- */
+int hc_run_count(Object *field)
+{
+    struct RunList *rl = runs_of(field);
+    return rl ? rl->n : 0;
+}
+
+/* Les sentinelles ne sortent jamais du noyau : l'hôte reçoit des valeurs
+ * effectives, sinon HC_STYLE_INHERIT (-2) allumerait, bit à bit, l'italique,
+ * le souligné et tout le reste au premier « & HC_ITALIC » de la vue. */
+int hc_run_attrs(Object *field, int i, int *start, int *len,
+                 int *style, int *size, const char **font)
+{
+    struct RunList *rl = runs_of(field);
+    if (!rl || i < 0 || i >= rl->n) return 0;
+    struct TextRun *r = &rl->v[i];
+    if (start) *start = r->start;
+    if (len)   *len   = r->len;
+    if (style) *style = (r->style == HC_STYLE_INHERIT) ? field->textstyle
+                                                       : r->style;
+    if (size)  *size  = r->size ? r->size : field->textsize;
+    if (font)  *font  = r->font ? r->font : field->textfont;
+    return 1;
+}
+
+int hc_run_at(Object *field, int i, int *start, int *len, int *style)
+{
+    return hc_run_attrs(field, i, start, len, style, NULL, NULL);
+}
+
+void hc_runs_clear(Object *field)
+{
+    struct RunList *rl = runs_of(field);
+    if (rl) runs_free(rl);
+}
+
+int hc_run_add_full(Object *field, int start, int len,
+                    int style, int size, const char *font)
+{
+    struct RunList *rl = runs_of(field);
+    if (!rl || len <= 0 || start < 0) return 0;
+
+    /* La vue passe des valeurs effectives ; celles qui coïncident avec le
+     * champ redeviennent des sentinelles, sinon un simple gras figerait au
+     * passage la police du champ dans chaque plage. */
+    int fsz = field->textsize;
+    const char *ffn = field->textfont;
+    if (size == fsz) size = 0;
+    if (font && ffn && strcmp(font, ffn) == 0) font = NULL;
+    if (font && !*font) font = NULL;
+
+    if (style == 0 && size == 0 && !font) return 0;   /* rien à dire */
+
+    if (!runs_room(rl, 1)) return 0;
+    struct TextRun n;
+    n.start = start; n.len = len; n.style = style; n.size = size;
+    n.font  = font ? dupstr(font) : NULL;
+    rl->v[rl->n++] = n;
+    runs_tidy(rl);
+    return 1;
+}
+
+int hc_run_add(Object *field, int start, int len, int style)
+{
+    return hc_run_add_full(field, start, len, style, 0, NULL);
 }
 
 const char *hc_paint_of(Object *o)
@@ -4098,10 +4976,12 @@ void hc_set_paint(Object *o, const char *base64)
 
 void hc_do(const char *line)
 {
+    ARENA_MARK;
     g_depth  = 0;
     g_pass   = 0;
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
     exec_stmt(g_current_card, line);
+    ARENA_FREE;
 }

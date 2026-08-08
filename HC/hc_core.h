@@ -25,8 +25,47 @@ typedef enum {
 
 typedef struct Object Object;
 
-/* texte d'un champ de fond, propre à une carte */
-struct BgText { int field_id; char *text; };
+/* ---- Styles par plage de caractères ----
+ * HyperCard laisse le style, la police et le corps varier à l'intérieur d'un
+ * même champ : « set the textStyle of word 3 of line 2 of field 1 to bold ».
+ * Le texte porte donc une liste de plages, chacune couvrant un intervalle de
+ * caractères [start, start+len) et donnant les attributs qui s'y appliquent.
+ * Ce qui n'est couvert par aucune plage prend les attributs du champ entier.
+ *
+ * Les trois attributs sont indépendants, comme dans HyperCard 2.x : poser un
+ * style sur un mot ne touche pas sa police, et réciproquement. Chacun a sa
+ * SENTINELLE D'HÉRITAGE, qui veut dire « prends la valeur du champ » :
+ *     font  == NULL              -> Object.textfont
+ *     size  == 0                 -> Object.textsize
+ *     style == HC_STYLE_INHERIT  -> Object.textstyle
+ * Le style a besoin d'une sentinelle À PART de zéro : zéro veut dire « plain,
+ * explicitement », ce qui doit effacer le gras du champ sur cette plage. Les
+ * confondre rendait « set the textStyle of word 3 to plain » sans effet dans
+ * un champ gras — la plage était jetée, et le mot reprenait le gras du champ.
+ * Une plage dont les trois champs valent leur sentinelle ne dit plus rien et
+ * se fait jeter par runs_tidy.
+ *
+ * Ces sentinelles sont INTERNES : hc_run_attrs les résout avant de rendre la
+ * main à l'hôte, qui ne voit que des valeurs effectives. */
+struct TextRun { int start, len; int style; int size; char *font; };
+struct RunList { struct TextRun *v; int n, cap; };
+
+/* Bits de style. Les trois premiers sont ceux qu'Object.textstyle utilisait
+ * déjà, conservés à l'identique pour ne pas casser les piles enregistrées. */
+#define HC_BOLD       1
+#define HC_ITALIC     2
+#define HC_UNDERLINE  4
+#define HC_OUTLINE    8
+#define HC_SHADOW    16
+#define HC_CONDENSE  32
+#define HC_EXTEND    64
+#define HC_GROUP    128
+#define HC_STYLE_MIXED   (-1) /* rendu par une lecture sur plage non homogène */
+#define HC_STYLE_INHERIT (-2) /* plage muette sur le style : voir plus haut */
+
+/* texte d'un champ de fond, propre à une carte, avec ses plages de style :
+ * un champ de fond non partagé a un texte ET un style par carte. */
+struct BgText { int field_id; char *text; struct RunList runs; };
 
 struct Object {
     ObjType  type;
@@ -59,7 +98,11 @@ struct Object {
     int      shared_text;    /* texte partagé entre cartes du même fond */
 
     char    *textfont;       /* nom de police (NULL = défaut) */
-    int      textstyle;      /* bits : 1 gras, 2 italique, 4 souligné */
+    int      textstyle;      /* bits HC_BOLD… : style du champ entier, valeur
+                              * de repli pour tout ce qu'aucune plage ne couvre */
+    struct RunList runs;     /* champs : plages de style. Pour un champ de fond
+                              * non partagé, c'est le repli ; le style réel de
+                              * chaque carte est dans ses bgtexts (voir plus haut) */
     int      scroll;         /* décalage vertical d'un champ scrolling, en pixels */
 
     /* pour une CARTE : textes propres des champs de fond non partagés */
@@ -163,6 +206,32 @@ void        hc_set_field_text(Object *field, const char *text);
 /* Texte effectif d'un champ : propre à la carte courante s'il s'agit d'un
  * champ de fond non partagé. Ne renvoie jamais NULL. */
 const char *hc_field_text(Object *field);
+/* ---- Plages de style : lecture par l'hôte, pour le rendu ----
+ * L'hôte parcourt les plages du champ pour construire son texte attribué.
+ * Les intervalles sont en caractères, dans le texte rendu par hc_field_text.
+ * Ce qu'aucune plage ne couvre prend le style du champ (Object.textstyle). */
+int         hc_run_count(Object *field);
+int         hc_run_at(Object *field, int i, int *start, int *len, int *style);
+/* Comme hc_run_at, mais rend aussi la police et le corps de la plage. Les
+ * sentinelles sont déjà résolues : `font` et `size` valent ceux du champ quand
+ * la plage ne dit rien, et ne sont donc jamais NULL ni nuls sans raison.
+ * `font` pointe dans le modèle : valable jusqu'à la prochaine modification. */
+int         hc_run_attrs(Object *field, int i, int *start, int *len,
+                         int *style, int *size, const char **font);
+
+/* ---- Plages de style : écriture en bloc, pour l'éditeur ----
+ * Pendant la saisie c'est la vue qui détient le style ; à la fermeture elle
+ * reconstruit les plages du noyau. On efface, puis on ajoute dans l'ordre.
+ * hc_run_add tolère le désordre et les recouvrements : la liste est
+ * normalisée ensuite. */
+void        hc_runs_clear(Object *field);
+int         hc_run_add(Object *field, int start, int len, int style);
+/* Variante complète. `font` NULL ou vide et `size` nul valent « comme le
+ * champ » : c'est ce que la vue doit passer quand la plage ne se distingue
+ * pas du champ sur cet attribut, pour ne pas figer une valeur héritée. */
+int         hc_run_add_full(Object *field, int start, int len,
+                            int style, int size, const char *font);
+
 /* Plage surlignee par le dernier « find » dans ce champ. 1 si trouve. */
 int         hc_found_range(Object *field, int *start, int *len);
 
