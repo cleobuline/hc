@@ -8,6 +8,25 @@
 #import "HCicons.h"
 #import "graphics.h"
 
+/* Les actions du panneau « Text Style » sont définies dans la catégorie
+ * HCView (Dialogs), plus bas dans ce fichier. Mais show_style_panel, qui les
+ * pose comme cibles, est une fonction C au niveau fichier, donc AVANT cette
+ * @implementation : le compilateur n'en connaît pas encore les sélecteurs et
+ * refuse @selector(styleOK:) — « Undeclared selector ».
+ *
+ * Les autres @selector du fichier ne posent pas ce problème parce qu'ils sont
+ * tous écrits À L'INTÉRIEUR de l'@implementation, où les méthodes définies
+ * plus bas restent visibles.
+ *
+ * Une catégorie déclarée sans @implementation correspondante dans la même
+ * unité de compilation ne provoque aucun avertissement : c'est la manière
+ * habituelle d'annoncer des méthodes privées. Un nom distinct de (Dialogs)
+ * évite tout risque de doublon avec ce que HCview.h déclare déjà. */
+@interface HCView (DialogsPrivate)
+- (void)styleOK:(id)sender;
+- (void)styleFont:(id)sender;
+@end
+
 /* --- etat des dialogues, prive a ce fichier --- */
 static NSPanel      *gInfoPanel = nil;
 static Object       *gInfoTarget = NULL;
