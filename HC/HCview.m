@@ -1245,6 +1245,38 @@ static void stamp_text(NSBitmapImageRep *rep, NSString *s, NSPoint pos) {
 typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
 
+@interface SprayPreview : NSView
+@end
+
+@implementation SprayPreview
+- (void)drawRect:(NSRect)dirty {
+    [[NSColor whiteColor] setFill];
+    NSRectFill([self bounds]);
+
+    int w = (int)[self bounds].size.width, h = (int)[self bounds].size.height;
+    if (w < 1 || h < 1) return;
+
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:w pixelsHigh:h
+                    bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+                   colorSpaceName:NSCalibratedRGBColorSpace
+                      bytesPerRow:0 bitsPerPixel:0];
+    memset([rep bitmapData], 0, (size_t)[rep bytesPerRow] * h);
+
+    /* Un trait horizontal en trois passes : la première montre le grain d'un
+     * geste rapide, les suivantes l'assombrissement obtenu en repassant. */
+    for (int pass = 0; pass < 3; pass++) {
+        NSPoint a = NSMakePoint(gSprayRadius + 4, h/2);
+        NSPoint b = NSMakePoint(w - gSprayRadius - 4, h/2);
+        spray_stroke(rep, a, b, gSprayRadius, gSprayDensity);
+    }
+
+    [rep drawInRect:[self bounds]];
+    [[NSColor grayColor] setStroke];
+    NSFrameRect([self bounds]);
+}
+@end
+
 @implementation HCView
 
 // static NSPanel     *gStackPanel = nil;
@@ -1342,7 +1374,40 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
  
  
 
+/* ---- Couper / Copier / Coller ----------------------------------------
+ * Ces trois commandes ne veulent pas dire la même chose selon le contexte,
+ * et c'est l'OUTIL COURANT qui tranche — pas le contenu du presse-papiers.
+ * C'est le modèle d'HyperCard, et c'est déjà celui qu'applique la touche
+ * Delete plus bas dans keyDown:.
+ *
+ * Ordre d'arbitrage, du plus prioritaire au moins :
+ *   1. un champ en cours d'édition  -> TEXTE. Rien à faire ici : le
+ *      NSTextView est premier répondant et intercepte avant nous.
+ *   2. un objet sélectionné, hors outil main -> OBJET (noyau)
+ *   3. une sélection de peinture             -> IMAGE (presse-papiers pixels)
+ *   4. rien                                  -> on laisse passer
+ *
+ * L'objet passe AVANT l'image : avec l'outil bouton, une sélection de
+ * peinture peut traîner d'un usage précédent, et copier des pixels alors
+ * qu'un bouton est visiblement sélectionné surprendrait. */
+
+/* La sélection d'objet est-elle celle qui doit primer ? */
+static BOOL object_selection_active(void)
+{
+    return (gSelected != NULL && gTool != TOOL_BROWSE) ? YES : NO;
+}
+
+static BOOL paint_selection_active(void)
+{
+    return ((gTool == TOOL_SELRECT && gSelRectActive) ||
+            (gTool == TOOL_LASSO   && gLassoActive)) ? YES : NO;
+}
+
 - (void)copy:(id)sender {
+    if (object_selection_active()) {
+        if (hc_copy_part(gSelected)) return;
+    }
+
     Object *card = hc_current_card();
     if (!card) return;
     Object *layer = gEditBackground ? card->bg : card;
@@ -1356,6 +1421,18 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void)cut:(id)sender {
+    if (object_selection_active()) {
+        /* Le champ éventuellement ouvert sur cet objet doit être fermé AVANT
+         * la suppression : son éditeur pointe l'objet, et écrirait dans de la
+         * mémoire libérée à la fermeture. */
+        if (gSelected == gEditingField) [self endFieldEdit];
+        if (hc_cut_part(gSelected)) {
+            gSelected = NULL;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
+
     Object *card = hc_current_card();
     if (!card) return;
     Object *layer = gEditBackground ? card->bg : card;
@@ -1376,6 +1453,30 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void)paste:(id)sender {
+    /* Coller un OBJET, si l'outil bouton ou champ est actif et que le noyau
+     * en tient un. Avec l'outil main, Coller garde son sens de peinture :
+     * poser un bouton alors qu'on navigue serait surprenant. */
+    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_part()) {
+        Object *card = hc_current_card();
+        if (card) {
+            /* On colle là où l'on édite : couche fond si le mode fond est
+             * actif, couche carte sinon. Le noyau ajustera la nature de
+             * l'objet en conséquence. */
+            Object *owner = (gEditBackground && card->bg) ? card->bg : card;
+            Object *p = hc_paste_part(owner);
+            if (p) {
+                gSelected = p;
+                /* Certains scripts s'initialisent à la pose — le champ
+                 * calendrier d'origine écrit son gestionnaire openCard dans
+                 * le script de la pile depuis newField. Sans ce message, il
+                 * serait collé mais inerte. */
+                hc_send(p, p->type == OBJ_BUTTON ? "newButton" : "newField");
+                [self setNeedsDisplay:YES];
+                return;
+            }
+        }
+    }
+
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
     if (imgs.count > 0) {
@@ -1395,14 +1496,17 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
         [self setNeedsDisplay:YES];
     }
 }
+
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     SEL a = [item action];
     if (a == @selector(copy:) || a == @selector(cut:))
-        return (gTool == TOOL_SELRECT && gSelRectActive) ||
-               (gTool == TOOL_LASSO && gLassoActive);
-    if (a == @selector(paste:))
+        return object_selection_active() || paint_selection_active();
+    if (a == @selector(paste:)) {
+        if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_part())
+            return YES;
         return gClipboard != nil ||
                [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil];
+    }
     return YES;
 }
 - (void)setFrameSize:(NSSize)newSize {
@@ -1656,10 +1760,17 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
     gWidthPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(200, 150, w, h)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
     [gWidthPanel setTitle:@"Épaisseur"];
     [gWidthPanel setFloatingPanel:YES];
+    /* Les palettes d'HyperCard ne prennent JAMAIS le clavier : on clique un
+     * outil et il est choisi, sans clic préalable pour activer la fenêtre.
+     * Sans ces deux réglages, AppKit avale le premier clic pour activer le
+     * panneau, puis la carte perd son premier répondant — d'où le second clic
+     * pour choisir, et encore un autre pour éditer ensuite. */
+    [gWidthPanel setBecomesKeyOnlyIfNeeded:YES];
     [gWidthPanel setReleasedWhenClosed:NO];
     WidthPalette *grid = [[WidthPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gWidthPanel setContentView:grid];
@@ -1672,10 +1783,17 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
     gBrushPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(250, 300, w, h)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
     [gBrushPanel setTitle:@"Pinceaux"];
     [gBrushPanel setFloatingPanel:YES];
+    /* Les palettes d'HyperCard ne prennent JAMAIS le clavier : on clique un
+     * outil et il est choisi, sans clic préalable pour activer la fenêtre.
+     * Sans ces deux réglages, AppKit avale le premier clic pour activer le
+     * panneau, puis la carte perd son premier répondant — d'où le second clic
+     * pour choisir, et encore un autre pour éditer ensuite. */
+    [gBrushPanel setBecomesKeyOnlyIfNeeded:YES];
     [gBrushPanel setReleasedWhenClosed:NO];
     BrushPalette *grid = [[BrushPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gBrushPanel setContentView:grid];
@@ -1707,11 +1825,18 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
     gPatternPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(560, 200, w, h)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered
                       defer:NO];
     [gPatternPanel setTitle:@"Motifs"];
     [gPatternPanel setFloatingPanel:YES];
+    /* Les palettes d'HyperCard ne prennent JAMAIS le clavier : on clique un
+     * outil et il est choisi, sans clic préalable pour activer la fenêtre.
+     * Sans ces deux réglages, AppKit avale le premier clic pour activer le
+     * panneau, puis la carte perd son premier répondant — d'où le second clic
+     * pour choisir, et encore un autre pour éditer ensuite. */
+    [gPatternPanel setBecomesKeyOnlyIfNeeded:YES];
     PatternPalette *grid = [[PatternPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gPatternPanel setContentView:grid];
     [gPatternPanel makeKeyAndOrderFront:nil];
@@ -1980,7 +2105,8 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     }
 
     /* ---------- outils de trace libre ---------- */
-    if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER) {
+    if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
+        gTool == TOOL_SPRAY) {
         Object *card = hc_current_card();
         Object *layer = gEditBackground ? card->bg : card;
         if (!layer) layer = card;
@@ -1991,6 +2117,15 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
             gPenDrawing = YES;
             if (gTool == TOOL_PENCIL)      paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
+            else if (gTool == TOOL_SPRAY) {
+                spray_stamp(rep, (int)lround(p.x), (int)lround(p.y),
+                            gSprayRadius, gSprayDensity);
+                /* L'aérographe continue de pulvériser sur place : c'est ce qui
+                 * permet de charger un point en insistant, et c'est la seule
+                 * différence de nature avec le pinceau. Sans minuterie, un clic
+                 * maintenu ne déposerait qu'un seul nuage. */
+                [self startSprayTimer];
+            }
             else                           erase_stroke(rep, p, p, 16);
             [self setNeedsDisplay:YES];
         }
@@ -2228,6 +2363,17 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
             [self setNeedsDisplay:YES];
             return;
         }
+    if (gTool == TOOL_SPRAY && gPenDrawing) {
+            Object *card = hc_current_card();
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                        (int)[self bounds].size.height);
+            spray_stroke(rep, gPenLast, p, gSprayRadius, gSprayDensity);
+            gPenLast = p;
+            [self setNeedsDisplay:YES];
+            return;
+        }
     if (gTool == TOOL_ERASER && gPenDrawing) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;
@@ -2308,8 +2454,13 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
             [self setNeedsDisplay:YES];
             return;
         }
-    if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER) {
+    if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER ||
+        gTool == TOOL_BRUSH  || gTool == TOOL_SPRAY) {
+            /* TOOL_BRUSH manquait ici : gPenDrawing restait à YES après le
+             * relâchement. Sans effet visible — mouseDragged: ne part que
+             * bouton enfoncé — mais l'état mentait. */
             gPenDrawing = NO;
+            [self stopSprayTimer];
             return;
         }
     if (gTool == TOOL_SELRECT) {
@@ -2450,6 +2601,152 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     [gMsgBox selectText:nil];
 }
 
+/* ---- minuterie de l'aérographe ----
+ * Le spray doit continuer à déposer tant que le bouton est enfoncé, même
+ * immobile. mouseDragged: ne se déclenchant qu'au mouvement, il faut une
+ * horloge. 24 pulsations par seconde donnent une montée en densité proche de
+ * l'original sans saturer d'un coup.
+ *
+ * La minuterie est arrêtée à trois endroits : au relâchement, au changement
+ * d'outil et à la disparition de la vue. Une minuterie qui survit à son outil
+ * continuerait de peindre dans le vide — ou pire, dans la carte suivante. */
+static NSTimer *gSprayTimer = nil;
+/* Valables uniquement pendant que le dialogue de réglage est ouvert : mis à
+ * nil à sa fermeture, les vues étant détruites avec lui. */
+static NSView       *gSprayPreview = nil;
+static NSTextField  *gSprayRadiusLabel = nil;
+static NSTextField  *gSprayDensityLabel = nil;
+
+- (void)startSprayTimer {
+    [self stopSprayTimer];
+    gSprayTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/24.0
+                                                   target:self
+                                                 selector:@selector(sprayTick:)
+                                                 userInfo:nil
+                                                  repeats:YES];
+}
+
+- (void)stopSprayTimer {
+    if (gSprayTimer) { [gSprayTimer invalidate]; gSprayTimer = nil; }
+}
+
+- (void)sprayTick:(NSTimer *)t {
+    if (!gPenDrawing || gTool != TOOL_SPRAY) { [self stopSprayTimer]; return; }
+    Object *card = hc_current_card();
+    if (!card) { [self stopSprayTimer]; return; }
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    /* gPenLast, et non la position courante de la souris : si elle bouge,
+     * c'est mouseDragged: qui pulvérise le long du trajet, et pulvériser
+     * deux fois doublerait la densité du trait. */
+    spray_stamp(rep, (int)lround(gPenLast.x), (int)lround(gPenLast.y),
+                gSprayRadius, gSprayDensity);
+    [self setNeedsDisplay:YES];
+}
+
+/* ---- réglage de l'aérographe ----
+ * Ouvert par double-clic sur l'outil. Modal : on règle, on valide, on dessine.
+ *
+ * Tirettes plutôt que champs de saisie, parce que personne ne sait ce que vaut
+ * « densité 45 » — on le découvre en essayant. Avec un champ, chaque essai
+ * coûte quatre gestes ; avec une tirette on balaie et l'aperçu suit, si bien
+ * qu'on trouve la bonne valeur sans jamais lire un chiffre. C'est le cas où le
+ * geste continu bat la saisie : il n'y a pas de valeur juste, seulement une
+ * valeur qui rend bien.
+ *
+ * Le chiffre reste affiché à côté, pour ceux qui veulent retrouver un réglage.
+ * setContinuous: est indispensable — sans lui l'action n'arrive qu'au
+ * relâchement, et l'aperçu ne suivrait pas le geste. */
+- (void)showSprayPalette {
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:@"Aérographe"];
+    [a setInformativeText:@"Taille du nuage et nombre de points par passe."];
+    [a addButtonWithTitle:@"OK"];
+    [a addButtonWithTitle:@"Annuler"];
+
+    NSView *c = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 280, 142)];
+
+    SprayPreview *prev = [[SprayPreview alloc] initWithFrame:NSMakeRect(0, 72, 280, 62)];
+    [c addSubview:prev];
+    gSprayPreview = prev;
+
+    /* --- rayon --- */
+    NSTextField *rl = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 42, 62, 18)];
+    [rl setStringValue:@"Rayon"];
+    [rl setBezeled:NO]; [rl setDrawsBackground:NO]; [rl setEditable:NO];
+    [c addSubview:rl];
+
+    NSSlider *rs = [[NSSlider alloc] initWithFrame:NSMakeRect(62, 40, 176, 20)];
+    [rs setMinValue:1]; [rs setMaxValue:32];
+    [rs setNumberOfTickMarks:32];
+    [rs setAllowsTickMarkValuesOnly:YES];
+    [rs setIntValue:gSprayRadius];
+    [rs setContinuous:YES];
+    [rs setTarget:self]; [rs setAction:@selector(sprayRadiusChanged:)];
+    [c addSubview:rs];
+
+    gSprayRadiusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(244, 42, 36, 18)];
+    [gSprayRadiusLabel setBezeled:NO]; [gSprayRadiusLabel setDrawsBackground:NO];
+    [gSprayRadiusLabel setEditable:NO];
+    [gSprayRadiusLabel setAlignment:NSTextAlignmentRight];
+    [c addSubview:gSprayRadiusLabel];
+
+    /* --- densité --- */
+    NSTextField *dl = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 10, 62, 18)];
+    [dl setStringValue:@"Densité"];
+    [dl setBezeled:NO]; [dl setDrawsBackground:NO]; [dl setEditable:NO];
+    [c addSubview:dl];
+
+    NSSlider *ds = [[NSSlider alloc] initWithFrame:NSMakeRect(62, 8, 176, 20)];
+    [ds setMinValue:1]; [ds setMaxValue:120];
+    [ds setIntValue:gSprayDensity];
+    [ds setContinuous:YES];
+    [ds setTarget:self]; [ds setAction:@selector(sprayDensityChanged:)];
+    [c addSubview:ds];
+
+    gSprayDensityLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(244, 10, 36, 18)];
+    [gSprayDensityLabel setBezeled:NO]; [gSprayDensityLabel setDrawsBackground:NO];
+    [gSprayDensityLabel setEditable:NO];
+    [gSprayDensityLabel setAlignment:NSTextAlignmentRight];
+    [c addSubview:gSprayDensityLabel];
+
+    [a setAccessoryView:c];
+    [self updateSprayLabels];
+
+    /* Mémoriser pour rétablir sur Annuler : les tirettes modifient les
+     * globales en direct, donc renoncer doit défaire tous ces essais. */
+    int oldR = gSprayRadius, oldD = gSprayDensity;
+
+    if ([a runModal] != NSAlertFirstButtonReturn) {
+        gSprayRadius  = oldR;
+        gSprayDensity = oldD;
+    }
+
+    /* Les vues meurent avec le dialogue : laisser les pointeurs en ferait des
+     * cibles pendantes au prochain rafraîchissement de l'aperçu. */
+    gSprayPreview       = nil;
+    gSprayRadiusLabel   = nil;
+    gSprayDensityLabel  = nil;
+}
+
+- (void)updateSprayLabels {
+    [gSprayRadiusLabel  setStringValue:[NSString stringWithFormat:@"%d", gSprayRadius]];
+    [gSprayDensityLabel setStringValue:[NSString stringWithFormat:@"%d", gSprayDensity]];
+    [gSprayPreview setNeedsDisplay:YES];
+}
+
+- (void)sprayRadiusChanged:(id)sender {
+    gSprayRadius = [sender intValue];
+    [self updateSprayLabels];
+}
+
+- (void)sprayDensityChanged:(id)sender {
+    gSprayDensity = [sender intValue];
+    [self updateSprayLabels];
+}
+
 - (void)installToolPalette {
     int cols = 4, rows = (NUM_TOOLCELLS + cols - 1) / cols;
     CGFloat cell = 38, gap = 3, margin = 6;
@@ -2458,10 +2755,17 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
     NSPanel *palette = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(560, 350, w, h)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow |
+                             NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
     [palette setTitle:@"Outils"];
     [palette setFloatingPanel:YES];
+    /* Les palettes d'HyperCard ne prennent JAMAIS le clavier : on clique un
+     * outil et il est choisi, sans clic préalable pour activer la fenêtre.
+     * Sans ces deux réglages, AppKit avale le premier clic pour activer le
+     * panneau, puis la carte perd son premier répondant — d'où le second clic
+     * pour choisir, et encore un autre pour éditer ensuite. */
+    [palette setBecomesKeyOnlyIfNeeded:YES];
 
     ToolPalette *grid = [[ToolPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [palette setContentView:grid];

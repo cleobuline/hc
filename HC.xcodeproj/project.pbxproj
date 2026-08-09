@@ -12,6 +12,7 @@
 		4DF28F833023709D00D7740C /* coq.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F823023709D00D7740C /* coq.wav */; };
 		4DF28F8A3023F77000D7740C /* canard.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F893023F77000D7740C /* canard.wav */; };
 		4DF28F903027EE3700D7740C /* HCglobals.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF28F8F3027EE3600D7740C /* HCglobals.m */; };
+		4DF28F953029393400D7740C /* graphics.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF28F943029393400D7740C /* graphics.m */; };
 		4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB4E3014BE74006AE901 /* AppDelegate.m */; };
 		4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB503014BE7D006AE901 /* Assets.xcassets */; };
 		4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB523014BE7D006AE901 /* MainMenu.xib */; };
@@ -22,7 +23,6 @@
 		4DF5FB6F3019CF11006AE901 /* icons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB6E3019CF11006AE901 /* icons.m */; };
 		4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB7C301CD14C006AE901 /* HCpalettes.m */; };
 		4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB82301E0DAF006AE901 /* HCicons.m */; };
-		4DF5FB89301FE77C006AE901 /* graphics.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB88301FE77C006AE901 /* graphics.m */; };
 		4DF5FB8D301FEE6F006AE901 /* HCdialogs.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +32,7 @@
 		4DF28F823023709D00D7740C /* coq.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = coq.wav; sourceTree = "<group>"; };
 		4DF28F893023F77000D7740C /* canard.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = canard.wav; sourceTree = "<group>"; };
 		4DF28F8F3027EE3600D7740C /* HCglobals.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCglobals.m; sourceTree = "<group>"; };
+		4DF28F943029393400D7740C /* graphics.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = graphics.m; sourceTree = "<group>"; };
 		4DF5FB4A3014BE74006AE901 /* HC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4DF5FB4D3014BE74006AE901 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		4DF5FB4E3014BE74006AE901 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -54,7 +55,6 @@
 		4DF5FB81301E0D06006AE901 /* HCicons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCicons.h; sourceTree = "<group>"; };
 		4DF5FB82301E0DAF006AE901 /* HCicons.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCicons.m; sourceTree = "<group>"; };
 		4DF5FB87301FE73D006AE901 /* graphics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = graphics.h; sourceTree = "<group>"; };
-		4DF5FB88301FE77C006AE901 /* graphics.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = graphics.m; sourceTree = "<group>"; };
 		4DF5FB8B301FEE35006AE901 /* HCdialogs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCdialogs.h; sourceTree = "<group>"; };
 		4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCdialogs.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -104,10 +104,10 @@
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
+				4DF28F943029393400D7740C /* graphics.m */,
 				4DF5FB8B301FEE35006AE901 /* HCdialogs.h */,
 				4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */,
 				4DF5FB87301FE73D006AE901 /* graphics.h */,
-				4DF5FB88301FE77C006AE901 /* graphics.m */,
 				4DF5FB6D3019CEC6006AE901 /* icons.h */,
 				4DF5FB81301E0D06006AE901 /* HCicons.h */,
 				4DF5FB82301E0DAF006AE901 /* HCicons.m */,
@@ -202,7 +202,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4DF5FB89301FE77C006AE901 /* graphics.m in Sources */,
 				4DF28F903027EE3700D7740C /* HCglobals.m in Sources */,
 				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
@@ -213,6 +212,7 @@
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
 				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
 				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,
+				4DF28F953029393400D7740C /* graphics.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -47,6 +47,12 @@ int brush_bit(int brush, int x, int y) {
 }
 @implementation WidthPalette
 
+/* Agir dès le PREMIER clic, même si le panneau n'est pas la fenêtre active.
+ * Par défaut AppKit consomme ce clic pour activer la fenêtre, ce qui oblige à
+ * cliquer deux fois : une fois pour réveiller la palette, une fois pour
+ * choisir. Les palettes d'HyperCard répondent au premier coup. */
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+
 - (BOOL)isFlipped { return YES; }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -136,7 +142,12 @@ static const ToolCell TOOLCELLS[] = {
     {"✎", 0, TOOL_FREEFORM},
     {"⬚", 0, TOOL_LASSO},
     {"◰", 0, TOOL_SELRECT},
-    {"A", 0, TOOL_TEXT},//  
+    {"A", 0, TOOL_TEXT},//
+    /* Aérographe. Glyphe plutôt qu'icône bitmap : ICON_SPRAY32 n'existe pas
+     * encore dans icons.h, et la branche « sinon » du dessin sait très bien
+     * rendre un caractère. À remplacer par draw_icon_ascii le jour où
+     * l'icône sera dessinée. */
+    {"❊", 0, TOOL_SPRAY},
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
     {"▣", 2, 0},
@@ -197,6 +208,12 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 
 @end
 @implementation ToolPalette
+
+/* Agir dès le PREMIER clic, même si le panneau n'est pas la fenêtre active.
+ * Par défaut AppKit consomme ce clic pour activer la fenêtre, ce qui oblige à
+ * cliquer deux fois : une fois pour réveiller la palette, une fois pour
+ * choisir. Les palettes d'HyperCard répondent au premier coup. */
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
 - (BOOL)isFlipped { return YES; }
 
@@ -292,11 +309,18 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                 gTool = (HCTool)tc->value;
                 gSelected = NULL;
 
+                /* Une minuterie d'aérographe qui survit à son outil
+                 * continuerait de pulvériser dans le vide. Le relâchement de
+                 * la souris l'arrête déjà, mais pas un changement d'outil
+                 * fait au clavier ou pendant que le bouton est enfoncé. */
+                [gView stopSprayTimer];
+
                 if (dbl) {
                     // double-clic : ouvrir la palette de reglage associee
                     switch (tc->value) {
                     case TOOL_FILL:  [gView showPatternPalette]; break;
                     case TOOL_BRUSH: [gView showBrushPalette];   break;
+                    case TOOL_SPRAY: [gView showSprayPalette];   break;
                     case TOOL_PENCIL: case TOOL_ERASER: case TOOL_LINE:
                     case TOOL_RECT:   case TOOL_OVAL:   case TOOL_FREEFORM:
                         [gView showWidthPalette]; break;
@@ -319,6 +343,12 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
  
 
 @implementation PatternPalette
+
+/* Agir dès le PREMIER clic, même si le panneau n'est pas la fenêtre active.
+ * Par défaut AppKit consomme ce clic pour activer la fenêtre, ce qui oblige à
+ * cliquer deux fois : une fois pour réveiller la palette, une fois pour
+ * choisir. Les palettes d'HyperCard répondent au premier coup. */
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
 - (BOOL)isFlipped { return YES; }
 
@@ -386,6 +416,12 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 
 @end
 @implementation BrushPalette
+
+/* Agir dès le PREMIER clic, même si le panneau n'est pas la fenêtre active.
+ * Par défaut AppKit consomme ce clic pour activer la fenêtre, ce qui oblige à
+ * cliquer deux fois : une fois pour réveiller la palette, une fois pour
+ * choisir. Les palettes d'HyperCard répondent au premier coup. */
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
 
 - (BOOL)isFlipped { return YES; }
 

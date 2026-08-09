@@ -23,6 +23,13 @@
 - (void)applyStackSize;
 - (void)installWidthPalette;
 - (void)installBrushPalette;
+- (void)startSprayTimer;
+- (void)stopSprayTimer;
+- (void)sprayTick:(NSTimer *)t;
+- (void)showSprayPalette;
+- (void)updateSprayLabels;
+- (void)sprayRadiusChanged:(id)sender;
+- (void)sprayDensityChanged:(id)sender;
 - (void)widthChosen:(id)sender;
 - (void)toggleFilled:(id)sender;
 - (void)ditherSelection:(id)sender;

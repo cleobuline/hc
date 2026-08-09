@@ -628,6 +628,144 @@ int hc_delete_part(Object *o)
     return 0;
 }
 
+/* ==================== presse-papiers d'objets ====================
+ *
+ * HyperCard copie un OBJET, pas des pixels ni du texte : un bouton collé
+ * emporte son script, son icône, sa police, son style. Le presse-papiers
+ * garde donc un Object complet, simplement DÉTACHÉ — owner à NULL, absent
+ * du tableau parts[] de qui que ce soit. Il survit ainsi à la suppression de
+ * sa carte d'origine, et même au chargement d'une autre pile.
+ *
+ * La liste de ce qu'un clone doit emporter est celle de put_part() dans
+ * hc_file.c : si le format de fichier le sérialise, le clone le copie. Les
+ * deux doivent rester d'accord, sans quoi un objet collé perdrait à l'écran
+ * ce qu'il aurait gardé sur disque. */
+static Object *g_clipboard = NULL;
+
+/* Définis plus bas, mais le presse-papiers en a besoin ici. */
+static int runs_room(struct RunList *rl, int need);
+
+/* Clone profond d'un bouton ou d'un champ. Le clone n'a PAS de propriétaire
+ * et garde l'identifiant de l'original : c'est hc_paste_part qui en attribue
+ * un neuf au moment de la pose, parce que c'est là seulement qu'on sait dans
+ * quelle pile il atterrit. */
+static Object *clone_part(Object *o)
+{
+    if (!o || (o->type != OBJ_BUTTON && o->type != OBJ_FIELD)) return NULL;
+
+    Object *c = calloc(1, sizeof(Object));
+    if (!c) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+
+    c->type = o->type;
+    c->id   = o->id;              /* remplacé à la pose */
+    c->owner = NULL;              /* détaché : c'est tout l'intérêt */
+
+    c->name     = dupstr(o->name);
+    c->script   = dupstr(o->script);
+    c->contents = dupstr(o->contents);
+    c->style    = dupstr(o->style);
+    c->textfont = dupstr(o->textfont);
+
+    c->x = o->x; c->y = o->y; c->w = o->w; c->h = o->h;
+
+    c->visible      = o->visible;
+    c->hilite       = o->hilite;
+    c->autohilite   = o->autohilite;
+    c->textsize     = o->textsize;
+    c->showname     = o->showname;
+    c->icon         = o->icon;
+    c->selectedline = o->selectedline;
+    c->locktext     = o->locktext;
+    c->wide_margins = o->wide_margins;
+    c->fixed_lh     = o->fixed_lh;
+    c->show_lines   = o->show_lines;
+    c->auto_tab     = o->auto_tab;
+    c->dont_search  = o->dont_search;
+    c->shared_text  = o->shared_text;
+    c->textstyle    = o->textstyle;
+    c->scroll       = o->scroll;
+
+    /* Les plages de style : chaque nom de police est duppé à son tour, sinon
+     * deux objets partageraient le même pointeur et le second hc_free()
+     * libérerait une seconde fois. */
+    if (o->runs.n > 0 && runs_room(&c->runs, o->runs.n)) {
+        for (int i = 0; i < o->runs.n; i++) {
+            c->runs.v[i] = o->runs.v[i];
+            c->runs.v[i].font = dupstr(o->runs.v[i].font);
+        }
+        c->runs.n = o->runs.n;
+    }
+
+    return c;
+}
+
+int hc_copy_part(Object *o)
+{
+    Object *c = clone_part(o);
+    if (!c) return 0;
+
+    /* Un champ de fond NON PARTAGÉ garde son texte dans chaque carte, pas
+     * dans l'objet. Ce qu'on voit à l'écran vient donc de la carte courante :
+     * c'est ce texte-là qu'il faut emporter, et non le contenu par défaut de
+     * l'objet, qui est souvent vide. */
+    if (o->type == OBJ_FIELD && !o->shared_text &&
+        o->owner && o->owner->type == OBJ_BACKGROUND) {
+        const char *seen = hc_field_text(o);
+        if (seen && *seen) { free(c->contents); c->contents = dupstr(seen); }
+    }
+
+    if (g_clipboard) hc_free(g_clipboard);
+    g_clipboard = c;
+    return 1;
+}
+
+int hc_cut_part(Object *o)
+{
+    if (!hc_copy_part(o)) return 0;
+    return hc_delete_part(o);
+}
+
+Object *hc_paste_part(Object *owner)
+{
+    if (!g_clipboard || !owner) return NULL;
+    if (owner->type != OBJ_CARD && owner->type != OBJ_BACKGROUND) return NULL;
+
+    Object *c = clone_part(g_clipboard);
+    if (!c) return NULL;
+
+    /* Identifiant NEUF. Deux objets de même id rendraient « field id 42 »
+     * ambigu, et hc_save écrirait deux fois la même clé. */
+    c->id = g_next_id++;
+    c->owner = owner;
+
+    /* Le propriétaire décide de la nature : coller sur une carte un bouton
+     * pris sur un fond en fait un bouton de carte. C'est le comportement
+     * d'HyperCard, et la seule lecture cohérente — l'objet vit désormais là.
+     * Un champ ne peut être « partagé » que sur un fond. */
+    if (owner->type == OBJ_CARD) c->shared_text = 0;
+
+    /* Décalage si la place est déjà prise, pour que le collé ne se cache pas
+     * exactement derrière l'original. HyperCard fait de même. */
+    for (int i = 0; i < owner->nparts; i++) {
+        Object *p = owner->parts[i];
+        if (p->type == c->type && p->x == c->x && p->y == c->y) {
+            c->x += 8; c->y += 8;
+            i = -1;                     /* re-vérifier depuis le début */
+        }
+    }
+
+    add_part(owner, c);
+    return c;
+}
+
+Object *hc_clipboard_part(void) { return g_clipboard; }
+
+void hc_clipboard_clear(void)
+{
+    if (g_clipboard) hc_free(g_clipboard);
+    g_clipboard = NULL;
+}
+
 /* ==================== chaîne de messages ==================== */
 
 /* Construit la chaîne de remontée depuis `target`.
@@ -1159,7 +1297,15 @@ static void frame_clear(Frame *f)
     memset(f, 0, sizeof *f);
 }
 
-void hc_shutdown(void) { frame_clear(&g_globals); arena_shutdown(); }
+void hc_shutdown(void)
+{
+    /* Le presse-papiers survit volontairement à la pile qui l'a rempli :
+     * c'est ce qui permet de coller d'une pile à l'autre. Il faut donc le
+     * libérer ici, et pas dans hc_free. */
+    hc_clipboard_clear();
+    frame_clear(&g_globals);
+    arena_shutdown();
+}
 
 /* ==================== évaluation d'expressions ==================== */
 

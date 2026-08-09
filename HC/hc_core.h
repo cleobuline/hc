@@ -266,4 +266,27 @@ int         hc_owner_is_bg(Object *o);
  * addition des deux : c'est ce que la numérotation par rang suppose). */
 int         hc_part_count(Object *owner, ObjType type);
 
+/* ---- Presse-papiers d'objets (copier/couper/coller boutons et champs) ----
+ * HyperCard copie un OBJET, pas des pixels : le clone emporte nom, script,
+ * géométrie, style, police, icône, et pour un champ ses plages et son texte.
+ *
+ * Le presse-papiers garde un objet DÉTACHÉ, sans propriétaire. Il survit donc
+ * à la suppression de sa carte d'origine et au chargement d'une autre pile —
+ * c'est ce qui permet de coller d'une pile vers une autre. hc_shutdown le
+ * libère.
+ *
+ * À la pose, hc_paste_part attribue un identifiant NEUF (deux objets de même
+ * id rendraient « field id 42 » ambigu), rattache l'objet au propriétaire
+ * demandé, et le décale de quelques pixels si la place est déjà occupée.
+ * C'est le propriétaire qui décide de la nature : coller sur une carte un
+ * bouton pris sur un fond en fait un bouton de carte.
+ *
+ * L'hôte doit envoyer « newButton » ou « newField » à l'objet rendu : certains
+ * scripts (le calendrier d'origine, par exemple) s'initialisent là. */
+int      hc_copy_part(Object *o);            /* 1 si copié */
+int      hc_cut_part(Object *o);             /* copie puis supprime */
+Object  *hc_paste_part(Object *owner);       /* NULL si rien à coller */
+Object  *hc_clipboard_part(void);            /* NULL si vide ; ne pas libérer */
+void     hc_clipboard_clear(void);
+
 #endif /* HC_CORE_H */
