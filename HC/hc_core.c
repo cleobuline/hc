@@ -390,6 +390,52 @@ void hc_set_id(Object *o, int id)
     if (id >= g_next_id) g_next_id = id + 1;
 }
 
+/* ---- numérotation d'une part : voir hc_core.h pour la distinction ----
+ * Ces deux fonctions sont la SEULE définition du rang. Le dialogue Infos les
+ * recalculait de son côté, à partir de l'index brut dans parts[] : un champ
+ * posé après cinq boutons s'y annonçait « Field number: 6 », et le script
+ * « card field 6 » écrit sur cette foi ne désignait rien. */
+int hc_object_number(Object *o)
+{
+    if (!o || !o->owner) return 0;
+    int n = 0;
+    for (int i = 0; i < o->owner->nparts; i++) {
+        Object *p = o->owner->parts[i];
+        if (p->type != o->type) continue;
+        n++;
+        if (p == o) return n;
+    }
+    return 0;
+}
+
+int hc_part_number(Object *o)
+{
+    if (!o || !o->owner) return 0;
+    if (o->type != OBJ_BUTTON && o->type != OBJ_FIELD) return 0;
+    int n = 0;
+    for (int i = 0; i < o->owner->nparts; i++) {
+        Object *p = o->owner->parts[i];
+        if (p->type != OBJ_BUTTON && p->type != OBJ_FIELD) continue;
+        n++;
+        if (p == o) return n;
+    }
+    return 0;
+}
+
+int hc_owner_is_bg(Object *o)
+{
+    return (o && o->owner && o->owner->type == OBJ_BACKGROUND) ? 1 : 0;
+}
+
+int hc_part_count(Object *owner, ObjType type)
+{
+    if (!owner) return 0;
+    int n = 0;
+    for (int i = 0; i < owner->nparts; i++)
+        if (owner->parts[i]->type == type) n++;
+    return n;
+}
+
 /* Les plages de style sont definies bien plus bas, mais hc_free en a besoin. */
 static void runs_free(struct RunList *rl);
 
@@ -773,10 +819,58 @@ static int card_index(Object *stack, Object *card)
     return -1;
 }
 
+/* Déclarés ici parce que resolve() en a besoin : un descripteur d'objet peut
+ * porter une expression (« field f », « button (i+1) »), qu'il faut donc
+ * pouvoir évaluer alors que les variables et l'analyseur ne sont définis que
+ * bien plus bas. */
+static const char *var_get(const char *name);
+static void eval_expr(const char *s, char *out, int outlen);
+
+/* Évalue le jeton qui désigne un objet, quand ce n'est ni un nombre littéral
+ * ni une chaîne entre guillemets. Trois formes, dans cet ordre :
+ *
+ *   (expr)      évaluée par l'analyseur — « button (i + 1) »
+ *   identif.    lue comme variable      — « field f »
+ *   le reste    rendu tel quel          — « field toto », nom nu
+ *
+ * On n'appelle l'analyseur QUE sur la forme parenthésée. Un identificateur nu
+ * passe par var_get directement : eval_expr repasserait par term_value, qui
+ * commence justement par appeler resolve(), et l'on tournerait en rond sur
+ * une tournure inattendue. La parenthèse, elle, est un signal explicite du
+ * script, et son contenu ne peut pas se replier sur le jeton d'origine.
+ *
+ * Sortie vide si le jeton est composé de plusieurs mots : c'est alors une
+ * tournure que resolve() ne sait pas lire, et mieux vaut ne rien prétendre. */
+static void eval_id_token(const char *ref, char *out, int outlen)
+{
+    out[0] = '\0';
+    ref = skip_spaces(ref);
+    if (!*ref) return;
+
+    if (*ref == '(') { eval_expr(ref, out, outlen); }
+    else {
+        char tok[128];
+        const char *after = next_word(ref, tok, sizeof tok);
+        if (*skip_spaces(after)) return;          /* plusieurs mots : on passe */
+        const char *v = var_get(tok);
+        snprintf(out, outlen, "%s", v ? v : tok);
+    }
+
+    /* Les espaces de bord fausseraient aussi bien le test « est-ce un
+     * nombre ? » que la comparaison de nom. */
+    int n = (int)strlen(out);
+    while (n > 0 && isspace((unsigned char)out[n-1])) out[--n] = '\0';
+    int lead = 0;
+    while (out[lead] && isspace((unsigned char)out[lead])) lead++;
+    if (lead) memmove(out, out + lead, strlen(out + lead) + 1);
+}
+
 /* Résout une référence du genre :
  *   button "ok"        (carte courante, puis fond)
  *   bg button "nav"    (fond de la carte courante)
  *   field "notes"
+ *   field f            (rang ou nom pris dans une variable)
+ *   button (i + 1)     (expression entre parenthèses)
  *   card "accueil"
  *   this card / next card / previous card / first card / last card
  *   me / the target
@@ -913,7 +1007,16 @@ static Object *resolve(const char *ref)
 
     /* --- button id N / field id N --- */
     if (ci_word(ref, "id")) {
-        int wanted = atoi(skip_spaces(ref + 2));
+        const char *a = skip_spaces(ref + 2);
+        int wanted;
+        if (isdigit((unsigned char)*a)) {
+            wanted = atoi(a);
+        } else {
+            /* « field id n » : l'identifiant vient d'une variable. */
+            char v[128];
+            eval_id_token(a, v, sizeof v);
+            wanted = atoi(v);
+        }
         Object *o = find_part_by_id(card, t, wanted);
         if (!o) o = find_part_by_id(bg, t, wanted);
         return o;
@@ -927,8 +1030,43 @@ static Object *resolve(const char *ref)
         return o;
     }
 
-    char nm[128];
-    quoted(ref, nm, sizeof nm);
+    char nm[256];
+    nm[0] = '\0';
+
+    if (*ref == '"') {
+        quoted(ref, nm, sizeof nm);
+    } else {
+        /* --- désignateur dynamique : « field f », « button (i + 1) » ------
+         * HyperCard accepte une expression là où l'on écrit d'ordinaire un
+         * rang ou un nom. C'est ce qui rend les boucles possibles :
+         *
+         *     repeat with f = 1 to the number of fields
+         *         set the textStyle of field f to plain
+         *     end repeat
+         *
+         * Le jeton n'est ici ni un chiffre ni une chaîne entre guillemets :
+         * on l'évalue, puis on regarde CE QUI EN SORT — un nombre désigne un
+         * rang, autre chose un nom. La variable n'a donc pas à savoir laquelle
+         * des deux formes elle porte, exactement comme « field 3 » et
+         * « field "titre" » cohabitent.
+         *
+         * Une variable jamais affectée vaut son propre nom en HyperTalk :
+         * « field toto » retombe naturellement sur le champ nommé toto, sans
+         * cas particulier. Auparavant quoted() rendait une chaîne vide sur un
+         * jeton nu et resolve() abandonnait aussitôt — les deux formes
+         * échouaient ensemble. */
+        eval_id_token(ref, nm, sizeof nm);
+
+        /* Un rang, si tout ce qui sort est un nombre. */
+        int nlen = (int)strlen(nm);
+        if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
+            int n = atoi(nm);
+            Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
+            if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
+            return o;
+        }
+    }
+
     if (!nm[0]) return NULL;
 
     Object *o = NULL;
@@ -2494,27 +2632,57 @@ static void term_value_body(const char *t, char *out, int outlen)
                          card_count(g_current_card ? g_current_card->owner : NULL));
                 return;
             }
-            /* the number of buttons|fields [of <carte>] */
-            if (ci_word(k, "buttons") || ci_word(k, "btns") ||
-                ci_word(k, "fields")  || ci_word(k, "flds")) {
-                ObjType want = (k[0]=='b' || k[0]=='B') ? OBJ_BUTTON : OBJ_FIELD;
-                const char *r = k;
-                while (*r && !isspace((unsigned char)*r)) r++;
-                r = skip_spaces(r);
-                if (ci_word(r, "of")) r = skip_spaces(r + 2);
-                Object *card = *r ? resolve(r) : g_current_card;
-                if (card && card->type != OBJ_CARD && card->type != OBJ_BACKGROUND)
-                    card = g_current_card;
-                int n = 0;
-                if (card) {
-                    for (int i = 0; i < card->nparts; i++)
-                        if (card->parts[i]->type == want) n++;
-                    if (card->type == OBJ_CARD && card->bg)
-                        for (int i = 0; i < card->bg->nparts; i++)
-                            if (card->bg->parts[i]->type == want) n++;
+            /* the number of [card|bg] buttons|fields [of <carte>]
+             *
+             * La portée manquait : « the number of fields » additionnait la
+             * carte ET le fond, alors que les rangs, eux, se comptent
+             * séparément dans chacun. Sur une carte de 3 champs posée sur un
+             * fond qui en porte 3, le compteur annonçait 6 et « field 4 » ne
+             * désignait rien — toute boucle « repeat with f = 1 to the number
+             * of fields » partait droit dans le mur. Le total reste la valeur
+             * par défaut, par compatibilité, mais on peut désormais demander
+             * l'un ou l'autre. */
+            {
+                const char *k2 = k;
+                int scope = 0;              /* 0 = total, 1 = carte, 2 = fond */
+                if (ci_word(k2, "card") || ci_word(k2, "cd")) {
+                    const char *a = k2;
+                    while (*a && !isspace((unsigned char)*a)) a++;
+                    a = skip_spaces(a);
+                    if (ci_word(a, "buttons") || ci_word(a, "btns") ||
+                        ci_word(a, "fields")  || ci_word(a, "flds")) { scope = 1; k2 = a; }
+                } else if (ci_word(k2, "bg") || ci_word(k2, "background")) {
+                    const char *a = k2;
+                    while (*a && !isspace((unsigned char)*a)) a++;
+                    a = skip_spaces(a);
+                    if (ci_word(a, "buttons") || ci_word(a, "btns") ||
+                        ci_word(a, "fields")  || ci_word(a, "flds")) { scope = 2; k2 = a; }
                 }
-                snprintf(out, outlen, "%d", n);
-                return;
+
+                if (ci_word(k2, "buttons") || ci_word(k2, "btns") ||
+                    ci_word(k2, "fields")  || ci_word(k2, "flds")) {
+                    ObjType want = (k2[0]=='b' || k2[0]=='B') ? OBJ_BUTTON : OBJ_FIELD;
+                    const char *r = k2;
+                    while (*r && !isspace((unsigned char)*r)) r++;
+                    r = skip_spaces(r);
+                    if (ci_word(r, "of")) r = skip_spaces(r + 2);
+                    Object *card = *r ? resolve(r) : g_current_card;
+                    if (card && card->type != OBJ_CARD && card->type != OBJ_BACKGROUND)
+                        card = g_current_card;
+                    int n = 0;
+                    if (card) {
+                        /* Un fond désigné explicitement ne compte que le sien. */
+                        int own = (scope != 2) || card->type == OBJ_BACKGROUND;
+                        if (own)
+                            for (int i = 0; i < card->nparts; i++)
+                                if (card->parts[i]->type == want) n++;
+                        if (scope != 1 && card->type == OBJ_CARD && card->bg)
+                            for (int i = 0; i < card->bg->nparts; i++)
+                                if (card->bg->parts[i]->type == want) n++;
+                    }
+                    snprintf(out, outlen, "%d", n);
+                    return;
+                }
             }
             int used = 0;
             ChunkType ct = chunk_kind(k, &used);
@@ -2525,6 +2693,26 @@ static void term_value_body(const char *t, char *out, int outlen)
                 eval_expr(r, src, HC_VAL);
                 snprintf(out, outlen, "%d", chunk_count(src, ct));
                 return;
+            }
+
+            /* the number of <objet> : son RANG parmi ses semblables.
+             *
+             * « the number of field "test" » répond 2 si c'est le deuxième
+             * champ de son propriétaire. C'est le pendant exact de la
+             * désignation par rang, et donc de quoi savoir quel chiffre écrire
+             * dans « field N » — ou constater qu'un champ vit sur le fond et
+             * non sur la carte. En dernier recours : les morceaux et les
+             * pluriels ont déjà eu leur tour, il ne reste qu'un objet. */
+            {
+                Object *ob = resolve(k);
+                if (ob && (ob->type == OBJ_BUTTON || ob->type == OBJ_FIELD)) {
+                    int n = hc_object_number(ob);
+                    if (n > 0) { snprintf(out, outlen, "%d", n); return; }
+                }
+                if (ob && ob->type == OBJ_CARD) {
+                    int n = card_index(ob->owner, ob);
+                    if (n >= 0) { snprintf(out, outlen, "%d", n + 1); return; }
+                }
             }
         }
     }
@@ -2602,12 +2790,12 @@ static void term_value_body(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return; }
                     if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return; }
                     if (ci_equal(prop, "textstyle")) {
-                        char buf[64]; buf[0] = 0;
-                        if (o->textstyle & 1) strcat(buf, "bold");
-                        if (o->textstyle & 2) { if (buf[0]) strcat(buf, ","); strcat(buf, "italic"); }
-                        if (o->textstyle & 4) { if (buf[0]) strcat(buf, ","); strcat(buf, "underline"); }
-                        if (!buf[0]) strcpy(buf, "plain");
-                        snprintf(out, outlen, "%s", buf); return;
+                        /* Même formatage que la lecture sur un morceau : le
+                         * code d'origine n'écrivait que les trois premiers
+                         * bits, si bien qu'un objet en creux se relisait
+                         * « plain » et perdait son style à l'enregistrement. */
+                        style_to_names(o->textstyle, out, outlen);
+                        return;
                     }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
@@ -4047,11 +4235,12 @@ static void exec_line_body(Object *me, const char *line)
             o->textfont = (*val) ? dupstr(val) : NULL;
             notify_field(o);
         } else if (ci_equal(prop, "textstyle")) {
-            int st = 0;
-            if (strstr(val, "bold") || strstr(val, "Bold")) st |= 1;
-            if (strstr(val, "italic") || strstr(val, "Italic")) st |= 2;
-            if (strstr(val, "underline") || strstr(val, "Underline")) st |= 4;
-            o->textstyle = st;
+            /* Passe par style_from_names, comme la pose sur un morceau. Le
+             * code d'origine cherchait trois sous-chaînes à la main : il
+             * ignorait outline, shadow, condense, extend et group — d'où un
+             * « to bold,outline » sur un bouton qui se relisait « bold » —
+             * et un mot comme « underlined » l'aurait déclenché à tort. */
+            o->textstyle = style_from_names(val);
             notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
             o->hilite = truthy(val);

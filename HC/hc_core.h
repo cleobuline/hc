@@ -244,4 +244,26 @@ void        hc_set_paint(Object *o, const char *base64);
 void        hc_shutdown(void);
 void        hc_set_id(Object *o, int id);
 
+/* ---- Numérotation d'une part ----
+ * HyperCard distingue deux compteurs, et les confondre fait écrire des
+ * scripts qui ne désignent pas l'objet qu'on croit :
+ *
+ *   hc_object_number  rang parmi les objets DE MÊME TYPE chez le propriétaire.
+ *                     C'est le N de « field N » et « button N ».
+ *   hc_part_number    rang parmi TOUTES les parts, boutons et champs mêlés.
+ *                     C'est le N de « part N », et l'ordre de tabulation.
+ *
+ * Un champ posé après cinq boutons a donc le numéro de champ 1 et le numéro
+ * de part 6. Les deux renvoient 0 si l'objet n'est pas une part.
+ *
+ * Attention : la numérotation est PROPRE AU PROPRIÉTAIRE. Un champ de fond
+ * numéro 1 se désigne « bg field 1 », et « card field 1 » est un autre objet.
+ * hc_owner_is_bg dit de quel côté on se trouve. */
+int         hc_object_number(Object *o);
+int         hc_part_number(Object *o);
+int         hc_owner_is_bg(Object *o);
+/* Nombre de parts d'un type donné chez un propriétaire (carte OU fond, sans
+ * addition des deux : c'est ce que la numérotation par rang suppose). */
+int         hc_part_count(Object *owner, ObjType type);
+
 #endif /* HC_CORE_H */

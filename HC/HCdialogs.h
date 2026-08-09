@@ -41,6 +41,11 @@
 - (void)fldCancel:(id)sender;
 - (void)fldScript:(id)sender;
 - (void)fldTextStyle:(id)sender;
+
+/* Panneau de styles, commun au bouton et au champ. */
+- (void)infoTextStyle:(id)sender;
+- (void)styleOK:(id)sender;
+- (void)styleFont:(id)sender;
 @end
 
 #endif /* HCdialogs_h */

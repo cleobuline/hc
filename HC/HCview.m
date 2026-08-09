@@ -3,6 +3,7 @@
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 #include <stdlib.h>        // getenv, pour la trace HC_RUNS_DEBUG
 #include <strings.h>       // strcasecmp, pour les noms de proprietes globales
+#include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import "icons.h"
 #import "HCglobals.h"
@@ -27,6 +28,9 @@ static int     gObjStartX, gObjStartY;  // position de l'objet au départ
 static int     gResizeHandle = 0;  // 0 = pas de resize, 1..4 = coin saisi
 static int     gObjStartW, gObjStartH;
 static NSTextView *gFieldEditor = nil;
+/* La NSTextView vit désormais dans une NSScrollView, qui est la sous-vue
+ * réellement montée : c'est elle qu'il faut retirer à la fermeture. */
+static NSScrollView *gFieldScroll = nil;
 static Object     *gEditingField = NULL;
 static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
@@ -111,17 +115,24 @@ static void radio_exclusive(Object *card, Object *keep) {
 
 
 // dessine un objet (bouton ou champ) à son rectangle
+static NSDictionary *obj_attrs(Object *o, CGFloat defSize, NSColor *color);
+
 /* ---- dessine le nom d'un bouton, centre dans le rect ---- */
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
     [ps setAlignment:NSTextAlignmentCenter];
-    NSDictionary *attrs = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:fs],
-        NSForegroundColorAttributeName: (on ? [NSColor whiteColor] : [NSColor blackColor]),
-        NSParagraphStyleAttributeName: ps
-    };
+
+    /* Ce chemin fabriquait son dictionnaire à la main, avec
+     * boldSystemFontOfSize: en dur : la police ET le style de l'objet étaient
+     * ignorés, seul le corps passait. D'où « seul textSize fonctionne sur les
+     * boutons ». Il partage désormais obj_attrs avec les autres chemins. */
+    NSMutableDictionary *attrs =
+        [obj_attrs(o, defSize, on ? [NSColor whiteColor]
+                                  : [NSColor blackColor]) mutableCopy];
+    attrs[NSParagraphStyleAttributeName] = ps;
+
     NSRect tr = NSInsetRect(r, 4, 0);
     tr.origin.y += (r.size.height - fs * 1.2) / 2;
     [s drawInRect:tr withAttributes:attrs];
@@ -211,20 +222,30 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
 }
 static NSFont *font_with_traits(NSFont *f, BOOL bold, BOOL italic, BOOL *faux);
 static NSFont *font_by_loose_name(NSString *want, CGFloat sz);
+static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color);
 
-static NSFont *obj_font(Object *o, CGFloat defSize) {
+/* La police d'un objet SANS ses traits : famille et corps seulement. Les
+ * traits sont posés ensuite par style_attrs, qui sait aussi les simuler.
+ * Les garder séparés évite la double source de vérité entre le nom de fonte
+ * et les bits de style, qui nous a déjà coûté cher. */
+static NSFont *obj_base_font(Object *o, CGFloat defSize) {
     CGFloat sz = o->textsize > 0 ? o->textsize : defSize;
     NSFont *f = nil;
     if (o->textfont && *o->textfont)
         f = font_by_loose_name([NSString stringWithUTF8String:o->textfont], sz);
     if (!f) f = [NSFont systemFontOfSize:sz];
+    return f;
+}
+
+static NSFont *obj_font(Object *o, CGFloat defSize) {
     /* Même chemin que les plages de style : convertFont:toHaveTrait: rend la
      * fonte système inchangée et sans rien dire, si bien qu'un champ resté
      * dans la police par défaut ne pouvait pas passer au gras — et que le
      * panneau de polices, en recevant une fonte sans trait, croyait le gras
      * éteint et l'écrasait au coup suivant. */
-    return font_with_traits(f, (o->textstyle & HC_BOLD)   ? YES : NO,
-                               (o->textstyle & HC_ITALIC) ? YES : NO, NULL);
+    return font_with_traits(obj_base_font(o, defSize),
+                            (o->textstyle & HC_BOLD)   ? YES : NO,
+                            (o->textstyle & HC_ITALIC) ? YES : NO, NULL);
 }
 
 
@@ -234,13 +255,13 @@ static NSFont *obj_font(Object *o, CGFloat defSize) {
  
 
 /* ---- attributs de texte d'un objet ---- */
+/* Attributs de dessin d'un objet — nom de bouton, étiquette de case à cocher,
+ * ligne courante d'un popup. Passe désormais par style_attrs, si bien qu'un
+ * bouton rend le creux, l'ombré, l'approche et les traits simulés exactement
+ * comme un champ. Auparavant il ne connaissait que le souligné, et « set the
+ * textStyle of button "x" to outline » restait sans effet visible. */
 static NSDictionary *obj_attrs(Object *o, CGFloat defSize, NSColor *color) {
-    NSMutableDictionary *at = [NSMutableDictionary dictionary];
-    at[NSFontAttributeName] = obj_font(o, defSize);
-    at[NSForegroundColorAttributeName] = color ? color : [NSColor blackColor];
-    if (o->textstyle & 4)
-        at[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
-    return at;
+    return style_attrs(o->textstyle, obj_base_font(o, defSize), color);
 }
 /* `group` n'a aucun equivalent Cocoa : c'est une semantique HyperCard, pas un
  * rendu. On le porte comme attribut personnalise, sinon il disparaitrait au
@@ -304,7 +325,10 @@ static NSFont *font_with_traits(NSFont *f, BOOL bold, BOOL italic, BOOL *faux)
     }
     if (!nf) nf = f;
 
-    /* A-t-on vraiment obtenu le gras ? Sinon on le simulera au trait. */
+    /* A-t-on vraiment obtenu le gras ? Sinon on le simulera au trait.
+     * L'italique n'a pas d'équivalent : sur une famille sans variante penchée,
+     * « to italic » reste stocké dans le noyau mais ne se voit pas — c'est le
+     * choix retenu, plutôt qu'une inclinaison synthétique. */
     if (bold && faux) {
         NSFontDescriptorSymbolicTraits got = [[nf fontDescriptor] symbolicTraits];
         if (!(got & NSFontDescriptorTraitBold)) *faux = YES;
@@ -371,15 +395,22 @@ static NSFont *run_base_font(const char *name, int size, NSFont *fallback)
     return [NSFont fontWithDescriptor:[fallback fontDescriptor] size:sz];
 }
 
-static void apply_run_style(NSMutableAttributedString *as, NSRange r,
-                            int style, NSFont *base, NSColor *color)
+/* Traduit un masque de style HyperCard en attributs Cocoa. C'est LE seul
+ * endroit où cette traduction est écrite : le champ y passe par plage, le
+ * bouton par son nom entier. Les avoir en double, c'était garantir qu'un
+ * effet ajouté d'un côté manquerait de l'autre — ce qui était le cas du
+ * creux et de l'ombré, absents des boutons. */
+static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
 {
+    NSMutableDictionary *at = [NSMutableDictionary dictionary];
+    if (!color) color = [NSColor blackColor];
+    at[NSForegroundColorAttributeName] = color;
+
     BOOL faux = NO;
     NSFont *f = font_with_traits(base,
                                  (style & HC_BOLD)   ? YES : NO,
-                                 (style & HC_ITALIC) ? YES : NO,
-                                 &faux);
-    if (f) [as addAttribute:NSFontAttributeName value:f range:r];
+                                 (style & HC_ITALIC) ? YES : NO, &faux);
+    if (f) at[NSFontAttributeName] = f;
 
     /* Un seul NSStrokeWidth pour deux effets, il faut donc trancher une fois :
      *   creux            -> trait positif (contour seul)
@@ -387,38 +418,43 @@ static void apply_run_style(NSMutableAttributedString *as, NSRange r,
      *   gras simulé seul -> trait négatif (remplir ET contourner)
      * Le gras simulé est en plus marqué par son propre attribut : le signe du
      * trait ne suffit plus à le retrouver quand le creux l'a emporté. */
-    if (faux) [as addAttribute:kHCFauxBoldAttribute value:@(1) range:r];
+    if (faux) at[kHCFauxBoldAttribute] = @(1);
 
     double stroke = 0.0;
     if (style & HC_OUTLINE)  stroke = (faux || (style & HC_BOLD)) ? 5.0 : 3.0;
     else if (faux)           stroke = -3.0;
     if (stroke != 0.0) {
-        [as addAttribute:NSStrokeWidthAttributeName value:@(stroke) range:r];
-        [as addAttribute:NSStrokeColorAttributeName
-                   value:(color ? color : [NSColor blackColor]) range:r];
+        at[NSStrokeWidthAttributeName] = @(stroke);
+        at[NSStrokeColorAttributeName] = color;
     }
 
     if (style & HC_UNDERLINE)
-        [as addAttribute:NSUnderlineStyleAttributeName
-                   value:@(NSUnderlineStyleSingle) range:r];
+        at[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+
     if (style & HC_SHADOW) {
         NSShadow *sh = [[NSShadow alloc] init];
         [sh setShadowOffset:NSMakeSize(1, -1)];
         [sh setShadowBlurRadius:0];
         [sh setShadowColor:[NSColor grayColor]];
-        [as addAttribute:NSShadowAttributeName value:sh range:r];
+        at[NSShadowAttributeName] = sh;
     }
+
     /* Condense et extend se rendent par l'approche : c'est ce que faisait le
      * Macintosh, qui rapprochait ou écartait les glyphes sans changer de fonte. */
-    if (style & HC_CONDENSE)
-        [as addAttribute:NSKernAttributeName value:@(-1.0) range:r];
-    if (style & HC_EXTEND)
-        [as addAttribute:NSKernAttributeName value:@(1.5) range:r];
+    if (style & HC_CONDENSE) at[NSKernAttributeName] = @(-1.0);
+    if (style & HC_EXTEND)   at[NSKernAttributeName] = @(1.5);
 
     /* HC_GROUP ne se voit pas, mais il doit survivre a un aller-retour par
      * l'editeur : on le porte comme attribut personnalise. */
-    if (style & HC_GROUP)
-        [as addAttribute:kHCGroupAttribute value:@(1) range:r];
+    if (style & HC_GROUP) at[kHCGroupAttribute] = @(1);
+
+    return at;
+}
+
+static void apply_run_style(NSMutableAttributedString *as, NSRange r,
+                            int style, NSFont *base, NSColor *color)
+{
+    [as addAttributes:style_attrs(style, base, color) range:r];
 }
 
 static NSAttributedString *field_attr_string(Object *o, NSString *s,
@@ -536,6 +572,46 @@ static CGFloat field_text_height(Object *o, NSRect tr) {
                                 options:NSStringDrawingUsesLineFragmentOrigin];
     return b.size.height;
 }
+
+/* ---------------------------------------------------------------------------
+ * Géométrie du texte d'un champ : UNE SEULE source de vérité, partagée par le
+ * dessin, l'éditeur et le suivi de la barre de défilement.
+ *
+ * Auparavant chaque endroit refaisait son propre calcul — le dessin retirait
+ * la barre puis les marges, l'éditeur se contentait d'un NSInsetRect(…, 2, 2)
+ * — et les deux divergeaient de quelques pixels. Le texte sautait donc en
+ * passant du mode édition au mode navigation, et la plage de défilement
+ * n'était pas la même de part et d'autre.
+ * ------------------------------------------------------------------------- */
+static NSRect field_text_rect(Object *o) {
+    NSRect r = NSMakeRect(o->x, o->y, o->w, o->h);
+    const char *st = o->style ? o->style : "rectangle";
+    if (strcmp(st, "scrolling") == 0) {
+        r.size.width -= 16;                    /* place prise par la barre */
+    } else if (strcmp(st, "shadow") == 0) {
+        r.size.width  -= 3;                    /* l'ombre portée */
+        r.size.height -= 3;
+    }
+    CGFloat m = o->wide_margins ? 8 : 4;
+    return NSInsetRect(r, m, m);
+}
+
+/* Défilement maximal : ce qui dépasse de la partie visible, jamais négatif. */
+static CGFloat field_max_scroll(Object *o) {
+    NSRect tr = field_text_rect(o);
+    CGFloat maxs = field_text_height(o, tr) - tr.size.height;
+    return maxs > 0 ? maxs : 0;
+}
+
+/* Ramener o->scroll dans ses bornes. Il n'était borné qu'en bas : les flèches
+ * et le clic-page pouvaient le pousser au-delà de la fin du texte, et le champ
+ * finissait sur du blanc pendant que la poignée, elle, restait bloquée en bas. */
+static void field_clamp_scroll(Object *o) {
+    CGFloat maxs = field_max_scroll(o);
+    if (o->scroll > maxs) o->scroll = (int)lround(maxs);
+    if (o->scroll < 0)    o->scroll = 0;
+}
+
 static void draw_part(Object *o) {
     if (!o->visible) return;
 
@@ -713,6 +789,10 @@ static void draw_part(Object *o) {
             [bp stroke];
         }
         else if (isScroll) {
+            /* Borner avant de dessiner : au retour du mode édition, scroll peut
+             * porter une valeur venue d'une géométrie qui n'est plus la nôtre. */
+            field_clamp_scroll(o);
+
             [[NSColor whiteColor] setFill];
             NSRectFill(r);
             [[NSColor blackColor] setStroke];
@@ -742,9 +822,7 @@ static void draw_part(Object *o) {
             [dn closePath]; [dn fill];
 
             /* l'ascenseur, proportionnel a la part visible du texte */
-            CGFloat m0 = o->wide_margins ? 8 : 4;
-            NSRect tr0 = NSInsetRect(NSMakeRect(r.origin.x, r.origin.y,
-                                                r.size.width - bw, r.size.height), m0, m0);
+            NSRect tr0 = field_text_rect(o);
             CGFloat th = field_text_height(o, tr0);
             CGFloat vh = tr0.size.height;
             CGFloat gy = bar.origin.y + 16;
@@ -752,8 +830,13 @@ static void draw_part(Object *o) {
             if (th > vh && gh > 8) {
                 CGFloat kh = gh * (vh / th);
                 if (kh < 12) kh = 12;
+                /* Sur un champ court, gh tombe entre 8 et 12 : le garde-fou
+                 * ci-dessus laissait poser une poignée de 12 dans une piste de
+                 * 9, qui débordait alors sur les flèches. */
+                if (kh > gh) kh = gh;
                 CGFloat maxs = th - vh;
                 CGFloat pos = (maxs > 0) ? (o->scroll / maxs) : 0;
+                if (pos < 0) pos = 0;
                 if (pos > 1) pos = 1;
                 NSRect knob = NSMakeRect(bar.origin.x + 1, gy + pos * (gh - kh),
                                          bw - 2, kh);
@@ -773,8 +856,7 @@ static void draw_part(Object *o) {
         }
 
         NSDictionary *at = obj_attrs(o, 12, [NSColor blackColor]);
-        CGFloat m = o->wide_margins ? 8 : 4;
-        NSRect tr = NSInsetRect(body, m, m);
+        NSRect tr = field_text_rect(o);
 
         /* ---- lignes de guidage ---- */
         if (o->show_lines) {
@@ -800,21 +882,40 @@ static void draw_part(Object *o) {
          * plages de style posées par « set the textStyle of word 3 of … ». */
         NSAttributedString *as = field_attr_string(o, s, at);
 
-        if (isScroll) {
-            [NSGraphicsContext saveGraphicsState];
-            NSRectClip(tr);
-            NSRect off = tr;
-            off.origin.y   -= o->scroll;
-            off.size.height += o->scroll + 4000;
-            [as drawInRect:off];
-            [NSGraphicsContext restoreGraphicsState];
-        } else {
-            [as drawInRect:tr];
+        /* Sauté quand l'éditeur est ouvert sur ce champ : la NSTextView est
+         * transparente, pour laisser voir le cadre et le fond dessinés ici,
+         * mais du coup l'ancien texte se voyait AUSSI, en surimpression sous
+         * celui qu'on est en train de taper. Le cadre reste dessiné, le
+         * contenu revient à l'éditeur. */
+        if (o != gEditingField) {
+            if (isScroll) {
+                [NSGraphicsContext saveGraphicsState];
+                NSRectClip(tr);
+                NSRect off = tr;
+                off.origin.y   -= o->scroll;
+                /* La hauteur réelle du texte, mesurée dans la même largeur.
+                 * La marge forfaitaire de 4000 px qui tenait lieu de hauteur
+                 * ne servait qu'à masquer le fait qu'on ne la connaissait
+                 * pas ; elle est désormais celle qui a servi à dimensionner
+                 * la poignée, donc les deux ne peuvent plus diverger. */
+                CGFloat full = field_text_height(o, tr);
+                if (full < tr.size.height) full = tr.size.height;
+                off.size.height = full;
+                [as drawInRect:off];
+                [NSGraphicsContext restoreGraphicsState];
+            } else {
+                [as drawInRect:tr];
+            }
         }
 
-        /* ---- surlignage du dernier « find » ---- */
+        /* ---- surlignage du dernier « find » ----
+         * Sauté lui aussi pendant l'édition : il se poserait sur un texte que
+         * l'on ne dessine plus, donc en surimpression du contenu de
+         * l'éditeur, et à une position calculée sans tenir compte des
+         * modifications en cours de frappe. */
         int fstart = 0, flen = 0;
-        if (hc_found_range(o, &fstart, &flen) && flen > 0 &&
+        if (o != gEditingField &&
+            hc_found_range(o, &fstart, &flen) && flen > 0 &&
             fstart + flen <= (int)[s length]) {
 
             /* Mesurer sur le texte ATTRIBUÉ : un mot en gras est plus large,
@@ -1188,12 +1289,26 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                       componentsSeparatedByString:@"\n"];
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+
+    /* Les items d'un NSMenu prennent la police système si on ne leur donne
+     * qu'un titre nu : le popup s'affichait donc dans une autre police que
+     * son propre titre. On leur pose un titre attribué construit par
+     * obj_attrs, comme tout le reste.
+     *
+     * La couleur est retirée du dictionnaire : c'est au menu de la choisir,
+     * pour que l'item survolé reste lisible sur son fond de surbrillance.
+     * Un noir imposé y deviendrait illisible. */
+    NSMutableDictionary *iat = [obj_attrs(o, 12, nil) mutableCopy];
+    [iat removeObjectForKey:NSForegroundColorAttributeName];
+
     for (NSUInteger i = 0; i < [lines count]; i++) {
         NSString *t = lines[i];
         if ([t length] == 0) continue;
         NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:t
                                                     action:@selector(popupChosen:)
                                              keyEquivalent:@""];
+        [it setAttributedTitle:
+            [[NSAttributedString alloc] initWithString:t attributes:iat]];
         [it setTarget:self];
         [it setTag:(NSInteger)(i + 1)];        // numero de ligne, base 1
         if ((int)(i + 1) == o->selectedline) [it setState:NSControlStateValueOn];
@@ -1962,9 +2077,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                     CGFloat bw = 16;
                     NSRect bar = NSMakeRect(hit->x + hit->w - bw, hit->y, bw, hit->h);
                     if (NSPointInRect(p, bar)) {
-                        CGFloat m0 = hit->wide_margins ? 8 : 4;
-                        NSRect tr0 = NSInsetRect(NSMakeRect(hit->x, hit->y,
-                                                            hit->w - bw, hit->h), m0, m0);
+                        NSRect tr0 = field_text_rect(hit);
                         CGFloat th = field_text_height(hit, tr0);
                         CGFloat vh = tr0.size.height;
                         CGFloat gy = bar.origin.y + 16, gh = bar.size.height - 32;
@@ -1977,10 +2090,15 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                         } else if (p.y > bar.origin.y + hit->h - 16) {
                             hit->scroll += (int)lh;
                         } else if (th > vh && gh > 8) {
+                            /* Exactement le même calcul que dans draw_part :
+                             * une poignée dessinée ici et testée là serait
+                             * insaisissable sur ses derniers pixels. */
                             CGFloat kh = gh * (vh / th);
                             if (kh < 12) kh = 12;
+                            if (kh > gh) kh = gh;
                             CGFloat maxs = th - vh;
                             CGFloat pos = (maxs > 0) ? (hit->scroll / maxs) : 0;
+                            if (pos < 0) pos = 0;
                             if (pos > 1) pos = 1;
                             CGFloat ky = gy + pos * (gh - kh);
                             if (p.y >= ky && p.y <= ky + kh) {
@@ -1995,7 +2113,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                             if (p.y < ky) hit->scroll -= hit->h;
                             else          hit->scroll += hit->h;
                         }
-                        if (hit->scroll < 0) hit->scroll = 0;
+                        field_clamp_scroll(hit);
                         [self setNeedsDisplay:YES];
                         return;
                     }
@@ -2407,8 +2525,54 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 - (void)beginFieldEdit:(Object *)field {
     [self endFieldEdit];
     gEditingField = field;
-    NSRect r = NSMakeRect(field->x, field->y, field->w, field->h);
-    gFieldEditor = [[NSTextView alloc] initWithFrame:NSInsetRect(r, 2, 2)];
+
+    /* MÊME rectangle que celui du dessin, au pixel près. Un NSInsetRect(…,2,2)
+     * posait le texte 2 px plus haut que draw_part, et sur une largeur
+     * différente : le contenu sautait à l'ouverture de l'éditeur, se
+     * réenroulait autrement, et ressortait décalé. */
+    NSRect r = field_text_rect(field);
+
+    /* Une NSTextView créée par initWithFrame: est verticalement
+     * redimensionnable : elle GRANDIT au-delà de son cadre dès que le texte
+     * dépasse. Posée directement comme sous-vue, elle débordait donc du
+     * champ, sans rien pour la rogner ni la faire défiler.
+     *
+     * On l'enferme dans une NSScrollView, qui apporte les deux : le clip par
+     * sa vue de contenu, et le défilement. La barre n'apparaît que pour les
+     * champs de style « scrolling », comme dans HyperCard — les autres se
+     * contentent d'être rognés, mais restent parcourables au clavier et à la
+     * molette, sans quoi un texte trop long deviendrait inatteignable. */
+    BOOL isScroll = (field->style && strcmp(field->style, "scrolling") == 0);
+
+    gFieldScroll = [[NSScrollView alloc] initWithFrame:r];
+    /* Pas de barre Cocoa : draw_part dessine déjà la nôtre, avec ses deux
+     * flèches de 16 px. Les deux se superposaient, et la poignée de Cocoa,
+     * qui court sur toute la hauteur du cadre, débordait par-dessus les
+     * flèches. Elle rognait en outre la largeur utile, d'où un enroulement
+     * du texte différent de celui du dessin. */
+    [gFieldScroll setHasVerticalScroller:NO];
+    [gFieldScroll setHasHorizontalScroller:NO];
+    [gFieldScroll setAutohidesScrollers:YES];
+    [gFieldScroll setBorderType:NSNoBorder];
+    [gFieldScroll setDrawsBackground:NO];
+
+    NSSize sz = [gFieldScroll contentSize];
+    gFieldEditor = [[NSTextView alloc]
+        initWithFrame:NSMakeRect(0, 0, sz.width, sz.height)];
+    [gFieldEditor setMinSize:NSMakeSize(0, 0)];
+    [gFieldEditor setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+    [gFieldEditor setVerticallyResizable:YES];
+    [gFieldEditor setHorizontallyResizable:NO];
+    [gFieldEditor setAutoresizingMask:NSViewWidthSizable];
+    [[gFieldEditor textContainer] setContainerSize:NSMakeSize(sz.width, FLT_MAX)];
+    [[gFieldEditor textContainer] setWidthTracksTextView:YES];
+    /* NSTextView réserve 5 px de chaque côté par défaut, là où -drawInRect:
+     * n'en réserve aucun : sans cela le texte se décalait à droite en édition
+     * et se réenroulait 10 px trop tôt. */
+    [[gFieldEditor textContainer] setLineFragmentPadding:0];
+    [gFieldEditor setTextContainerInset:NSZeroSize];
+    [gFieldEditor setDrawsBackground:NO];
+
     [gFieldEditor setFont:obj_font(field, 12)];
 
     /* Texte riche, sans quoi la NSTextStorage aplatirait tout a la premiere
@@ -2429,8 +2593,47 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     [[gFieldEditor textStorage]
         setAttributedString:field_attr_string(field, str, base)];
     [gFieldEditor setTypingAttributes:base];
-    [self addSubview:gFieldEditor];
+
+    [gFieldScroll setDocumentView:gFieldEditor];
+    [self addSubview:gFieldScroll];
+
+    /* Reprendre le décalage que le dessin utilisait : sinon un champ
+     * scrolling sautait en haut à l'ouverture de l'éditeur, puis y restait
+     * après fermeture. La vue est retournée, donc l'origine du document
+     * correspond directement à field->scroll. */
+    if (isScroll) {
+        field_clamp_scroll(field);
+        if (field->scroll > 0) {
+            /* Après que la mise en page a eu lieu, sinon la vue de contenu ne
+             * connaît pas encore sa hauteur de document et refuse d'aller
+             * au-delà de zéro. */
+            [[gFieldEditor layoutManager]
+                ensureLayoutForTextContainer:[gFieldEditor textContainer]];
+            [[gFieldScroll contentView]
+                scrollToPoint:NSMakePoint(0, field->scroll)];
+            [gFieldScroll reflectScrolledClipView:[gFieldScroll contentView]];
+        }
+
+        /* Pendant la saisie, c'est la NSScrollView qui défile : sans écoute,
+         * la poignée que nous dessinons resterait figée sur la valeur d'avant
+         * l'ouverture, puis sauterait d'un coup à la fermeture. */
+        [[gFieldScroll contentView] setPostsBoundsChangedNotifications:YES];
+        [[NSNotificationCenter defaultCenter]
+            addObserver:self
+               selector:@selector(fieldEditorDidScroll:)
+                   name:NSViewBoundsDidChangeNotification
+                 object:[gFieldScroll contentView]];
+    }
+
     [[self window] makeFirstResponder:gFieldEditor];
+}
+
+/* Recopier le défilement de l'éditeur dans le modèle, à chaque mouvement. */
+- (void)fieldEditorDidScroll:(NSNotification *)note {
+    if (!gEditingField || !gFieldScroll) return;
+    gEditingField->scroll =
+        (int)lround([[gFieldScroll contentView] bounds].origin.y);
+    [self setNeedsDisplay:YES];
 }
 
 - (void)endFieldEdit {
@@ -2444,6 +2647,20 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
         hc_runs_clear(gEditingField);
 
         NSTextStorage *ts = [gFieldEditor textStorage];
+
+        /* Repère de comparaison : la police que le champ RENDRAIT sans aucune
+         * plage. hc_run_add_full compare aux valeurs brutes du champ —
+         * textfont à NULL, textsize à 0 — alors que l'éditeur travaille avec
+         * la police résolue (système, 12 points). Rien ne coïncidait, donc
+         * aucune plage n'était neutralisée : après une seule session
+         * d'édition, chaque caractère portait une police, un corps et un
+         * style explicites, et le dialogue du champ n'avait plus prise sur
+         * rien. On neutralise donc ici, contre l'effectif. */
+        NSFont *fbase = obj_base_font(gEditingField, 12);
+        NSString *fbaseName = [fbase fontName];
+        int fbaseSize = (int)lround([fbase pointSize]);
+        int fbaseStyle = gEditingField->textstyle;
+
         NSUInteger len = [ts length], i = 0;
         while (i < len) {
             NSRange eff;
@@ -2464,12 +2681,25 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
                         [[rf fontDescriptor] symbolicTraits]
                         & ~(NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic)];
                 NSFont *plain = [NSFont fontWithDescriptor:fd size:[rf pointSize]];
-                fname = [[(plain ? plain : rf) fontName] UTF8String];
-                fsize = (int)lround([rf pointSize]);
+                NSString *nm = [(plain ? plain : rf) fontName];
+                int sz = (int)lround([rf pointSize]);
+
+                /* Identique à ce que le champ rendrait tout seul : on ne dit
+                 * rien, pour que la plage reste sensible aux changements
+                 * ultérieurs du champ. */
+                if (![nm isEqualToString:fbaseName]) fname = [nm UTF8String];
+                if (sz != fbaseSize)                 fsize = sz;
             }
 
-            /* hc_run_add_full retombe sur les sentinelles quand la plage ne se
-             * distingue pas du champ : inutile de comparer ici. */
+            /* Même raisonnement pour le style : une plage qui ne fait que
+             * répéter celui du champ n'a pas à le figer. Sans quoi mettre le
+             * champ en gras laissait tout le texte en clair. */
+            if (st == fbaseStyle && !fname && fsize == 0) {
+                i = NSMaxRange(eff);
+                if (eff.length == 0) break;
+                continue;
+            }
+
             int b0 = byte_from_utf16(str, eff.location);
             int b1 = byte_from_utf16(str, eff.location + eff.length);
             hc_run_add_full(gEditingField, b0, b1 - b0, st, fsize, fname);
@@ -2477,7 +2707,26 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
             if (eff.length == 0) break;      /* garde-fou : jamais de boucle */
         }
     }
-    [gFieldEditor removeFromSuperview];
+    /* Reporter le décalage dans le modèle, pour que le dessin reprenne là où
+     * l'éditeur s'est arrêté. Sans cela le texte sautait en haut dès qu'on
+     * cliquait ailleurs. */
+    if (gEditingField && gFieldScroll &&
+        gEditingField->style && strcmp(gEditingField->style, "scrolling") == 0) {
+        gEditingField->scroll =
+            (int)lround([[gFieldScroll contentView] bounds].origin.y);
+        /* Le texte vient peut-être de raccourcir sous la frappe : ce que
+         * l'éditeur pouvait atteindre n'est plus forcément atteignable. */
+        field_clamp_scroll(gEditingField);
+    }
+
+    if (gFieldScroll)
+        [[NSNotificationCenter defaultCenter]
+            removeObserver:self
+                      name:NSViewBoundsDidChangeNotification
+                    object:[gFieldScroll contentView]];
+
+    [gFieldScroll removeFromSuperview];
+    gFieldScroll = nil;
     gFieldEditor = nil;
     gEditingField = NULL;
     [self setNeedsDisplay:YES];

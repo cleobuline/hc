@@ -25,6 +25,31 @@ static int gCardCount = 0;   // pour nommer les nouvelles cartes
  * gView est encore nil au moment ou le Finder nous parle. On met le chemin
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
+
+/* Retrouve le menu Fichier fourni par le nib.
+ *
+ * Le chercher par son titre serait fragile : il s'appelle « File » ou
+ * « Fichier » selon la langue du système, et le nib n'est pas localisé. On le
+ * reconnaît donc à son CONTENU — c'est celui qui porte print: ou
+ * runPageLayout:, deux actions qu'AppKit n'y met jamais par hasard.
+ *
+ * À défaut, on prend le deuxième menu de la barre : le premier est toujours
+ * le menu d'application, le suivant est Fichier dans tous les gabarits. */
+static NSMenu *find_file_menu(void)
+{
+    NSMenu *main = [NSApp mainMenu];
+    if (!main) return nil;
+
+    for (NSMenuItem *top in [main itemArray]) {
+        NSMenu *sub = [top submenu];
+        if (!sub) continue;
+        for (NSMenuItem *it in [sub itemArray])
+            if ([it action] == @selector(print:) ||
+                [it action] == @selector(runPageLayout:))
+                return sub;
+    }
+    return [main numberOfItems] > 1 ? [[main itemAtIndex:1] submenu] : nil;
+}
 - (void)testDraw:(id)sender {
     [gView testScribble];
 }
@@ -76,7 +101,8 @@ static NSString *gPendingOpen = nil;
     [view installWidthPalette];
     [view applyStackSize];
 
-    // menu Fichier
+    /* --- menu « Pile » : nos commandes propres, ajoutées en bout de barre.
+     * Le menu Fichier, lui, vient du nib et se remplit plus bas. --- */
         NSMenu *mainMenu = [NSApp mainMenu];
         NSMenuItem *fileItem = [[NSMenuItem alloc] init];
         NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"Pile"];
@@ -94,13 +120,6 @@ static NSString *gPendingOpen = nil;
         [ciItem setTarget:view];
         [fileMenu addItem:ciItem];
         [fileMenu addItem:[NSMenuItem separatorItem]];
-        [fileMenu addItemWithTitle:@"Ouvrir une pile…"
-                            action:@selector(openStack:)
-                     keyEquivalent:@"o"];
-        [fileMenu addItemWithTitle:@"Enregistrer la pile…"
-                            action:@selector(saveStack:)
-                     keyEquivalent:@"s"];
-    [fileMenu addItem:[NSMenuItem separatorItem]];
     [fileMenu addItemWithTitle:@"Tramer la sélection"
                             action:@selector(ditherSelection:)
                      keyEquivalent:@"d"];
@@ -123,6 +142,44 @@ static NSString *gPendingOpen = nil;
                                                  keyEquivalent:@""];
         [biItem setTarget:view];
         [fileMenu addItem:biItem];
+
+    /* --- menu Fichier : ouvrir et enregistrer ---
+     * Leur place naturelle, et celle où tout utilisateur de Mac va les
+     * chercher. On les met en tête, avant Fermer et Imprimer.
+     *
+     * La cible est posée explicitement : sans elle l'envoi remonte la chaîne
+     * des réponses, qui part du premier répondant — donc de la vue, puis de
+     * la fenêtre. Le délégué d'application n'y figure qu'en dernier recours,
+     * et un champ en cours d'édition pourrait avaler le message avant lui. */
+    NSMenu *sysFile = find_file_menu();
+    if (sysFile) {
+        NSMenuItem *op = [[NSMenuItem alloc] initWithTitle:@"Ouvrir une pile…"
+                                                    action:@selector(openStack:)
+                                             keyEquivalent:@"o"];
+        [op setTarget:self];
+
+        NSMenuItem *sv = [[NSMenuItem alloc] initWithTitle:@"Enregistrer la pile…"
+                                                    action:@selector(saveStack:)
+                                             keyEquivalent:@"s"];
+        [sv setTarget:self];
+
+        [sysFile insertItem:op atIndex:0];
+        [sysFile insertItem:sv atIndex:1];
+        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:2];
+    } else {
+        /* Nib inattendu : plutôt que de perdre les deux commandes, on les
+         * laisse dans le menu Pile, là où elles étaient. */
+        [fileMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *op = [fileMenu addItemWithTitle:@"Ouvrir une pile…"
+                                             action:@selector(openStack:)
+                                      keyEquivalent:@"o"];
+        [op setTarget:self];
+        NSMenuItem *sv = [fileMenu addItemWithTitle:@"Enregistrer la pile…"
+                                             action:@selector(saveStack:)
+                                      keyEquivalent:@"s"];
+        [sv setTarget:self];
+    }
+
     [self.window setReleasedWhenClosed:NO];
     [view applyStackSize];
 

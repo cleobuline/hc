@@ -18,6 +18,141 @@ static NSButton     *gInfoAutoHilite = nil;
 static NSTextField  *gInfoIconField = nil;
 static NSTextField  *gInfoTextSize = nil;
 
+/* ---------- panneau « Text Style » ----------
+ * Partagé par le dialogue de bouton et celui de champ : les deux visent le
+ * même Object, seule l'ouverture diffère. Le panneau de polices du système
+ * ne sait poser que le gras et l'italique ; les six autres bits d'HyperCard
+ * (souligné, creux, ombré, condensé, étendu, group) n'avaient aucune
+ * interface, alors même que le rendu les gère. */
+static NSPanel  *gStylePanel  = nil;
+static Object   *gStyleTarget = NULL;
+static NSButton *gStyleBox[8] = {nil};
+static NSPopUpButton *gStyleFont = nil;
+static NSTextField   *gStyleSize = nil;
+
+/* Même ordre que les bits, pour que l'indice de la case soit son décalage. */
+static const char *STYLE_LABELS[8] = {
+    "Bold", "Italic", "Underline", "Outline",
+    "Shadow", "Condense", "Extend", "Group"
+};
+
+/* Définie plus bas ; remet la case « taille » du dialogue parent en accord. */
+void hc_sync_size_field(Object *o);
+
+/* Range les trois attributs dans l'objet. Appelée par styleOK: comme par
+ * styleFont: : sans cela, changeFont: écrirait dans l'objet puis styleOK:
+ * rendrait par-dessus l'état figé des contrôles, et la police choisie au
+ * panneau système repartirait toute seule en arrière. */
+static void commit_style_panel(void)
+{
+    Object *o = gStyleTarget;
+    if (!o) return;
+
+    int st = 0;
+    for (int i = 0; i < 8; i++)
+        if ([gStyleBox[i] state] == NSControlStateValueOn) st |= (1 << i);
+    o->textstyle = st;
+
+    NSString *fam = [gStyleFont titleOfSelectedItem];
+    if ([fam length]) {
+        free(o->textfont);
+        o->textfont = strdup([fam UTF8String]);
+    }
+
+    int sz = [gStyleSize intValue];
+    if (sz > 0) o->textsize = sz;
+
+    /* Garder la case « taille » du dialogue parent en accord : sinon son OK
+     * réécrira l'ancienne valeur par-dessus celle qu'on vient de poser. */
+    hc_sync_size_field(o);
+}
+
+/* Fermer un dialogue d'info doit fermer le panneau de styles qu'il a ouvert :
+ * sinon il reste à l'écran, braqué sur un objet dont le dialogue parent a
+ * disparu — et son OK réécrirait le style d'une cible que l'utilisateur croit
+ * ne plus éditer. */
+static void close_style_panel(void)
+{
+    if (gStylePanel) [gStylePanel close];
+    gStyleTarget = NULL;
+}
+
+/* Ouvre le panneau de styles sur un objet quelconque — bouton ou champ.
+ * Les cases sont posées dans l'ordre des bits : l'indice i vaut 1 << i, ce
+ * qui évite une table de correspondance qu'il faudrait tenir à jour. */
+static void show_style_panel(id owner, Object *o)
+{
+    if (!o) return;
+    gStyleTarget = o;
+
+    if (gStylePanel) [gStylePanel close];
+    gStylePanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(340, 300, 240, 300)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gStylePanel setTitle:@"Text Style"];
+    [gStylePanel setReleasedWhenClosed:NO];
+    NSView *c = [gStylePanel contentView];
+
+    /* --- police --- */
+    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 70, 18)];
+    [fl setStringValue:@"Text font:"];
+    [fl setBezeled:NO]; [fl setDrawsBackground:NO]; [fl setEditable:NO];
+    [c addSubview:fl];
+
+    gStyleFont = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(90, 258, 134, 24)];
+    [gStyleFont addItemsWithTitles:
+        [[[NSFontManager sharedFontManager] availableFontFamilies]
+            sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)]];
+
+    /* Sélectionner la police courante sans tenir compte de la casse : le
+     * noyau stocke ce que le script a écrit (« monaco »), la liste système
+     * porte le nom canonique (« Monaco »), et selectItemWithTitle: compare à
+     * la lettre près. Même piège que select_style plus haut. */
+    if (o->textfont && *o->textfont) {
+        NSString *want = [NSString stringWithUTF8String:o->textfont];
+        for (NSMenuItem *it in [gStyleFont itemArray])
+            if ([[it title] caseInsensitiveCompare:want] == NSOrderedSame) {
+                [gStyleFont selectItem:it];
+                break;
+            }
+    }
+    [c addSubview:gStyleFont];
+
+    /* --- corps --- */
+    NSTextField *zl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 234, 70, 18)];
+    [zl setStringValue:@"Text size:"];
+    [zl setBezeled:NO]; [zl setDrawsBackground:NO]; [zl setEditable:NO];
+    [c addSubview:zl];
+
+    gStyleSize = [[NSTextField alloc] initWithFrame:NSMakeRect(90, 232, 60, 22)];
+    [gStyleSize setIntValue:o->textsize];
+    [c addSubview:gStyleSize];
+
+    for (int i = 0; i < 8; i++) {
+        gStyleBox[i] = [[NSButton alloc]
+            initWithFrame:NSMakeRect(20, 202 - i * 22, 150, 20)];
+        [gStyleBox[i] setButtonType:NSButtonTypeSwitch];
+        [gStyleBox[i] setTitle:[NSString stringWithUTF8String:STYLE_LABELS[i]]];
+        [gStyleBox[i] setState:(o->textstyle & (1 << i)) ? NSControlStateValueOn
+                                                         : NSControlStateValueOff];
+        [c addSubview:gStyleBox[i]];
+    }
+
+    NSButton *fnt = [[NSButton alloc] initWithFrame:NSMakeRect(16, 8, 80, 28)];
+    [fnt setTitle:@"Font…"]; [fnt setBezelStyle:NSBezelStyleRounded];
+    [fnt setTarget:owner]; [fnt setAction:@selector(styleFont:)];
+    [c addSubview:fnt];
+
+    NSButton *ok = [[NSButton alloc] initWithFrame:NSMakeRect(104, 8, 80, 28)];
+    [ok setTitle:@"OK"]; [ok setBezelStyle:NSBezelStyleRounded];
+    [ok setTarget:owner]; [ok setAction:@selector(styleOK:)];
+    [ok setKeyEquivalent:@"\r"];
+    [c addSubview:ok];
+
+    [gStylePanel makeKeyAndOrderFront:nil];
+}
+
  
 static NSPanel     *gBgPanel = nil;
 static Object      *gBgTarget = NULL;
@@ -115,15 +250,20 @@ static NSTextField  *gFldTextSize = nil;
     [c addSubview:gFldName];
 
     // --- identifiants ---
-    int rang = 0;
-    Object *owner = obj->owner;
-    if (owner)
-        for (int i = 0; i < owner->nparts; i++)
-            if (owner->parts[i] == obj) { rang = i + 1; break; }
+    /* Le rang vient du noyau. Recompté ici à partir de l'index brut dans
+     * parts[], il mélangeait boutons et champs : un champ posé après cinq
+     * boutons s'affichait « Field number: 6 », et « card field 6 » recopié
+     * dans un script ne désignait rien. Les deux compteurs sont par ailleurs
+     * distincts — numéro de champ et numéro de part — là où l'ancien code
+     * imprimait deux fois la même valeur. */
+    int fnum  = hc_object_number(obj);
+    int pnum  = hc_part_number(obj);
+    BOOL isBg = hc_owner_is_bg(obj) ? YES : NO;
 
     NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 218, 180, 52)];
     [ids setStringValue:[NSString stringWithFormat:
-        @"Field number: %d\nPart number: %d\nField ID: %d", rang, rang, obj->id]];
+        @"%@ number: %d\nPart number: %d\nField ID: %d",
+        isBg ? @"Bg field" : @"Card field", fnum, pnum, obj->id]];
     [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
     [c addSubview:ids];
 
@@ -184,17 +324,38 @@ static NSTextField  *gFldTextSize = nil;
     [gFldPanel makeKeyAndOrderFront:nil];
 }
 - (void)fldTextStyle:(id)sender {
-    if (!gFldTarget) return;
-    gFontTarget = gFldTarget;
-    // pre-selectionner la police courante du champ
-    CGFloat sz = gFldTarget->textsize > 0 ? gFldTarget->textsize : 12;
+    show_style_panel(self, gFldTarget);
+}
+
+- (void)infoTextStyle:(id)sender {
+    show_style_panel(self, gInfoTarget);
+}
+
+- (void)styleOK:(id)sender {
+    commit_style_panel();
+    [gStylePanel close];
+    gStyleTarget = NULL;
+    [self setNeedsDisplay:YES];
+}
+
+/* Le panneau de polices du système reste utile pour ce que le menu ne donne
+ * pas : les corps non listés et l'aperçu. Il ne touchera qu'aux bits gras et
+ * italique, changeFont: préservant les six autres. */
+- (void)styleFont:(id)sender {
+    if (!gStyleTarget) return;
+    commit_style_panel();          /* voir le commentaire de commit_style_panel */
+
+    gFontTarget = gStyleTarget;
+    CGFloat sz = gStyleTarget->textsize > 0 ? gStyleTarget->textsize : 12;
     NSFont *f = nil;
-    if (gFldTarget->textfont && *gFldTarget->textfont)
-        f = [NSFont fontWithName:[NSString stringWithUTF8String:gFldTarget->textfont] size:sz];
+    if (gStyleTarget->textfont && *gStyleTarget->textfont)
+        f = [NSFont fontWithName:
+                [NSString stringWithUTF8String:gStyleTarget->textfont] size:sz];
     if (!f) f = [NSFont systemFontOfSize:sz];
     [[NSFontManager sharedFontManager] setSelectedFont:f isMultiple:NO];
     [[NSFontManager sharedFontManager] orderFrontFontPanel:self];
 }
+
 /* Le panneau des polices vient de changer la taille d'un objet. Si c'est
  * celui qu'affiche le dialogue d'info, remettre la petite case en accord :
  * sinon fldOK:/infoOK: reecriront l'ancienne valeur par-dessus la nouvelle,
@@ -221,6 +382,7 @@ void hc_sync_size_field(Object *o)
         o->shared_text  = ([gFldShared state]   == NSControlStateValueOn);
     }
     [gFldPanel close];
+    close_style_panel();
     gFldTarget  = NULL;
     gFontTarget = NULL;   /* sinon le panneau des polices reste braque sur
                              ce champ et toutes les modifications de police
@@ -231,6 +393,7 @@ void hc_sync_size_field(Object *o)
 
 - (void)fldCancel:(id)sender {
     [gFldPanel close];
+    close_style_panel();
     gFontTarget = NULL;
     gFldTarget = NULL;
 }
@@ -264,16 +427,18 @@ void hc_sync_size_field(Object *o)
     [c addSubview:gInfoName];
 
     // --- identifiants (lecture seule) ---
-    int rang = 0;
-    Object *owner = obj->owner;
-    if (owner)
-        for (int i = 0; i < owner->nparts; i++)
-            if (owner->parts[i] == obj) { rang = i + 1; break; }
+    /* Même correction que pour les champs : le rang vient du noyau, les deux
+     * compteurs sont distincts, et le libellé dit enfin si l'objet est posé
+     * sur la carte ou sur le fond — « Card button » était écrit en dur, y
+     * compris pour un bouton de fond. */
+    int bnum  = hc_object_number(obj);
+    int pnum  = hc_part_number(obj);
+    NSString *kind = hc_owner_is_bg(obj) ? @"Bg" : @"Card";
 
     NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 200, 200, 52)];
     [ids setStringValue:[NSString stringWithFormat:
-        @"Card button number: %d\nCard part number: %d\nCard button ID: %d",
-        rang, rang, obj->id]];
+        @"%@ button number: %d\n%@ part number: %d\n%@ button ID: %d",
+        kind, bnum, kind, pnum, kind, obj->id]];
     [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
     [c addSubview:ids];
 
@@ -332,6 +497,7 @@ void hc_sync_size_field(Object *o)
             [c addSubview:b];
             return b;
         };
+    mk(@"Text Style…", @selector(infoTextStyle:), 16, 88);
     mk(@"Script…", @selector(infoScript:), 16, 52);
     mk(@"Contents…", @selector(infoContents:), 224, 52);
     mk(@"Icon…",   @selector(infoIcon:),   120, 52);
@@ -386,9 +552,12 @@ void hc_sync_size_field(Object *o)
             }
 
     NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    /* « Card fields » affichait card->nparts, c'est-à-dire boutons compris.
+     * On compte les champs, et eux seuls — et ceux de la carte, sans y
+     * ajouter ceux du fond, puisque « card field N » les numérote à part. */
     [ids setStringValue:[NSString stringWithFormat:
         @"Card number: %d out of %d\nCard ID: %d\nCard fields: %d",
-        rang, total, card->id, card->nparts]];
+        rang, total, card->id, hc_part_count(card, OBJ_FIELD)]];
     [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
     [c addSubview:ids];
 
@@ -699,13 +868,19 @@ void hc_sync_size_field(Object *o)
             o->icon = [[gInfoIconField stringValue] intValue];
         }
     [gInfoPanel close];
+    close_style_panel();
     gInfoTarget = NULL;
+    gFontTarget = NULL;   /* comme fldOK: : sinon le panneau des polices reste
+                             braque sur ce bouton et toute modification de
+                             police suivante lui revient. */
     [self setNeedsDisplay:YES];
 }
 
 - (void)infoCancel:(id)sender {
     [gInfoPanel close];
+    close_style_panel();
     gInfoTarget = NULL;
+    gFontTarget = NULL;
 }
 
 - (void)infoScript:(id)sender {
