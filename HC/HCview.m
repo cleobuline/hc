@@ -52,6 +52,7 @@ static BOOL gSelRectDrawing = NO;
 static BOOL gSelRectActive = NO;
 
 static NSPanel *gPatternPanel = nil;
+static NSPanel *gToolPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
@@ -1499,6 +1500,16 @@ static BOOL paint_selection_active(void)
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     SEL a = [item action];
+
+    /* Coche devant les palettes visibles, comme HyperCard. On la pose ici
+     * plutôt qu'au moment du basculement : l'utilisateur peut aussi fermer une
+     * palette par sa case de fermeture, et le menu doit le refléter. */
+    if (a == @selector(togglePalette:)) {
+        [item setState:[self paletteVisibleForTag:[item tag]]
+                        ? NSControlStateValueOn : NSControlStateValueOff];
+        return YES;
+    }
+
     if (a == @selector(copy:) || a == @selector(cut:))
         return object_selection_active() || paint_selection_active();
     if (a == @selector(paste:)) {
@@ -1771,6 +1782,11 @@ static BOOL paint_selection_active(void)
      * panneau, puis la carte perd son premier répondant — d'où le second clic
      * pour choisir, et encore un autre pour éditer ensuite. */
     [gWidthPanel setBecomesKeyOnlyIfNeeded:YES];
+    /* Les palettes s'effacent quand on passe à une autre application, et
+     * reviennent au retour. setFloatingPanel: les place au-dessus de TOUTES
+     * les fenêtres du système, y compris celles des autres programmes : sans
+     * cela elles resteraient plantées par-dessus Xcode ou l'émulateur. */
+    [gWidthPanel setHidesOnDeactivate:YES];
     [gWidthPanel setReleasedWhenClosed:NO];
     WidthPalette *grid = [[WidthPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gWidthPanel setContentView:grid];
@@ -1794,6 +1810,11 @@ static BOOL paint_selection_active(void)
      * panneau, puis la carte perd son premier répondant — d'où le second clic
      * pour choisir, et encore un autre pour éditer ensuite. */
     [gBrushPanel setBecomesKeyOnlyIfNeeded:YES];
+    /* Les palettes s'effacent quand on passe à une autre application, et
+     * reviennent au retour. setFloatingPanel: les place au-dessus de TOUTES
+     * les fenêtres du système, y compris celles des autres programmes : sans
+     * cela elles resteraient plantées par-dessus Xcode ou l'émulateur. */
+    [gBrushPanel setHidesOnDeactivate:YES];
     [gBrushPanel setReleasedWhenClosed:NO];
     BrushPalette *grid = [[BrushPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gBrushPanel setContentView:grid];
@@ -1813,7 +1834,6 @@ static BOOL paint_selection_active(void)
     [gPatternPanel setReleasedWhenClosed:NO];
 }
 - (void)showWidthPalette {
-    NSLog(@"showWidthPalette: gWidthPanel=%@", gWidthPanel);
    if (!gWidthPanel) [self installWidthPalette];
    else [gWidthPanel makeKeyAndOrderFront:nil];
     [gWidthPanel setReleasedWhenClosed:NO];
@@ -1837,6 +1857,11 @@ static BOOL paint_selection_active(void)
      * panneau, puis la carte perd son premier répondant — d'où le second clic
      * pour choisir, et encore un autre pour éditer ensuite. */
     [gPatternPanel setBecomesKeyOnlyIfNeeded:YES];
+    /* Les palettes s'effacent quand on passe à une autre application, et
+     * reviennent au retour. setFloatingPanel: les place au-dessus de TOUTES
+     * les fenêtres du système, y compris celles des autres programmes : sans
+     * cela elles resteraient plantées par-dessus Xcode ou l'émulateur. */
+    [gPatternPanel setHidesOnDeactivate:YES];
     PatternPalette *grid = [[PatternPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gPatternPanel setContentView:grid];
     [gPatternPanel makeKeyAndOrderFront:nil];
@@ -2038,6 +2063,33 @@ static BOOL paint_selection_active(void)
 }
 - (void)clearPaintCache {
     [gPaintCache removeAllObjects];
+}
+
+/* Lâche tout ce que la vue retient de la pile courante, AVANT que le noyau ne
+ * la libère. Sans cela, gSelected et gEditingField pointeraient dans de la
+ * mémoire rendue, et le premier redessin — ou le premier clic — planterait.
+ * Le défaut existait déjà à l'ouverture d'un fichier : charger une pile avec
+ * un bouton sélectionné suffisait à le déclencher. */
+- (void)resetForNewStack {
+    if (gEditingField) [self endFieldEdit];
+    gSelected      = NULL;
+    gEditingField  = NULL;
+    gResizeHandle  = 0;
+    gDragging      = NO;
+    gPenDrawing    = NO;
+    [self stopSprayTimer];
+
+    /* Sélections de peinture et objet flottant : ils décrivent une carte qui
+     * n'existera plus. */
+    gSelRectActive  = NO;
+    gSelRectDrawing = NO;
+    gLassoActive    = NO;
+    gLassoCount     = 0;
+    gFloating       = NO;
+    gFloatDragging  = NO;
+
+    /* Le presse-papiers d'objets survit volontairement : il est détaché de
+     * toute pile, et coller d'une pile vers une autre est justement l'usage. */
 }
 - (void)flushPaintToKernel {
     if (!gPaintCache) return;
@@ -2565,6 +2617,30 @@ static BOOL paint_selection_active(void)
     gSelected = o;
     [self setNeedsDisplay:YES];
 }
+/* --- Find, à la manière d'HyperCard ---
+ * Pas de panneau de recherche : la commande prépare simplement « find "" »
+ * dans la boîte de message et pose le point d'insertion ENTRE les guillemets.
+ * L'utilisateur tape son mot et valide — c'est la commande HyperTalk find qui
+ * fait le travail, la même que dans un script.
+ *
+ * Il faut passer par l'éditeur de champ (le NSText partagé de la fenêtre) et
+ * non par le NSTextField : setStringValue: ne donne pas le focus, et un champ
+ * qui ne l'a pas n'a pas de sélection où poser un point d'insertion. */
+- (void)findInStack:(id)sender {
+    if (!gMsgBox) return;
+
+    NSString *amorce = @"find \"\"";
+    [gMsgBox setStringValue:amorce];
+    [[self window] makeFirstResponder:gMsgBox];
+
+    NSText *ed = [[self window] fieldEditor:YES forObject:gMsgBox];
+    if (ed) {
+        /* Entre les deux guillemets : longueur - 1. */
+        NSUInteger pos = [amorce length] - 1;
+        [ed setSelectedRange:NSMakeRange(pos, 0)];
+    }
+}
+
 - (void)installMessageBox {
     gView = self;
     NSRect b = [self bounds];
@@ -2753,24 +2829,69 @@ static NSTextField  *gSprayDensityLabel = nil;
     CGFloat w = margin*2 + cols*cell + (cols-1)*gap;
     CGFloat h = margin*2 + rows*cell + (rows-1)*gap;
 
-    NSPanel *palette = [[NSPanel alloc]
+    /* Retenue dans une globale, et refermable : sans les deux, la palette
+     * n'existait que le temps de cette méthode et rien ne pouvait la rappeler.
+     * setReleasedWhenClosed:NO est indispensable — par défaut un NSPanel se
+     * détruit à la fermeture, et la globale pointerait dans le vide. */
+    gToolPanel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(560, 350, w, h)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow |
+                             NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [palette setTitle:@"Outils"];
-    [palette setFloatingPanel:YES];
+    [gToolPanel setTitle:@"Outils"];
+    [gToolPanel setFloatingPanel:YES];
     /* Les palettes d'HyperCard ne prennent JAMAIS le clavier : on clique un
      * outil et il est choisi, sans clic préalable pour activer la fenêtre.
      * Sans ces deux réglages, AppKit avale le premier clic pour activer le
      * panneau, puis la carte perd son premier répondant — d'où le second clic
      * pour choisir, et encore un autre pour éditer ensuite. */
-    [palette setBecomesKeyOnlyIfNeeded:YES];
+    [gToolPanel setBecomesKeyOnlyIfNeeded:YES];
+    /* Les palettes s'effacent quand on passe à une autre application, et
+     * reviennent au retour. setFloatingPanel: les place au-dessus de TOUTES
+     * les fenêtres du système, y compris celles des autres programmes : sans
+     * cela elles resteraient plantées par-dessus Xcode ou l'émulateur. */
+    [gToolPanel setHidesOnDeactivate:YES];
+    [gToolPanel setReleasedWhenClosed:NO];
 
     ToolPalette *grid = [[ToolPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
-    [palette setContentView:grid];
-    [palette makeKeyAndOrderFront:nil];
+    [gToolPanel setContentView:grid];
+    [gToolPanel makeKeyAndOrderFront:nil];
 }
+
+- (void)showToolPalette {
+    if (!gToolPanel) [self installToolPalette];
+    else [gToolPanel makeKeyAndOrderFront:nil];
+}
+
+/* Une seule commande par palette, qui montre ou cache selon l'état. Le menu
+ * porte une coche, mise à jour par validateMenuItem: — c'est ce que faisait
+ * HyperCard, et ça évite d'avoir deux entrées « Afficher » et « Masquer »
+ * dont l'une est toujours inutile. */
+- (void)togglePalette:(id)sender {
+    NSInteger tag = [sender tag];
+    NSPanel *p = nil;
+    switch (tag) {
+        case 1: if (!gToolPanel)    { [self installToolPalette];    return; } p = gToolPanel;    break;
+        case 2: if (!gPatternPanel) { [self installPatternPalette]; return; } p = gPatternPanel; break;
+        case 3: if (!gWidthPanel)   { [self installWidthPalette];   return; } p = gWidthPanel;   break;
+        case 4: if (!gBrushPanel)   { [self installBrushPalette];   return; } p = gBrushPanel;   break;
+        default: return;
+    }
+    if ([p isVisible]) [p orderOut:nil];
+    else               [p makeKeyAndOrderFront:nil];
+}
+
+- (BOOL)paletteVisibleForTag:(NSInteger)tag {
+    switch (tag) {
+        case 1: return gToolPanel    && [gToolPanel isVisible];
+        case 2: return gPatternPanel && [gPatternPanel isVisible];
+        case 3: return gWidthPanel   && [gWidthPanel isVisible];
+        case 4: return gBrushPanel   && [gBrushPanel isVisible];
+    }
+    return NO;
+}
+
 - (void)toggleFilled:(id)sender {
     gShapeFilled = !gShapeFilled;
     NSLog(@"formes : %@", gShapeFilled ? @"PLEINES" : @"VIDES");

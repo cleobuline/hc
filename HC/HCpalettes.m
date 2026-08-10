@@ -143,10 +143,8 @@ static const ToolCell TOOLCELLS[] = {
     {"⬚", 0, TOOL_LASSO},
     {"◰", 0, TOOL_SELRECT},
     {"A", 0, TOOL_TEXT},//
-    /* Aérographe. Glyphe plutôt qu'icône bitmap : ICON_SPRAY32 n'existe pas
-     * encore dans icons.h, et la branche « sinon » du dessin sait très bien
-     * rendre un caractère. À remplacer par draw_icon_ascii le jour où
-     * l'icône sera dessinée. */
+    /* Aérographe — icône dans ICON_SPRAY32. Le glyphe reste comme repli si
+     * la chaîne de dessin ne le reconnaît pas. */
     {"❊", 0, TOOL_SPRAY},
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
@@ -266,6 +264,10 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                        draw_icon_ascii(ICON_HAND32, box);
                } else if (tc->kind == 0 && tc->value == TOOL_BRUSH) {
                            draw_icon_ascii(ICON_BRUSH32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_TEXT) {
+                           draw_icon_ascii(ICON_TEXT32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_SPRAY) {
+                           draw_icon_ascii(ICON_SPRAY32, box);
                 }else{
                     NSString *g = [NSString stringWithUTF8String:tc->glyph];
                     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];

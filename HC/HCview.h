@@ -7,6 +7,7 @@
 
 @interface HCView : NSView
 - (void)installMessageBox;
+- (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
 - (void)installToolPalette;
 - (void)toolChosen:(id)sender;
@@ -18,6 +19,7 @@
 - (void)testScribble;
 - (void)flushPaintToKernel;
 - (void)clearPaintCache;
+- (void)resetForNewStack;
 - (void)toggleBackground:(id)sender;
 - (void)installPatternPalette;
 - (void)applyStackSize;
@@ -34,6 +36,9 @@
 - (void)toggleFilled:(id)sender;
 - (void)ditherSelection:(id)sender;
 - (void)showPatternPalette;
+- (void)showToolPalette;
+- (void)togglePalette:(id)sender;
+- (BOOL)paletteVisibleForTag:(NSInteger)tag;
 - (void)showWidthPalette;
 - (void)showBrushPalette;
 - (void)newBackground:(id)sender;

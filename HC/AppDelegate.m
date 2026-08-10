@@ -50,43 +50,16 @@ static NSMenu *find_file_menu(void)
     }
     return [main numberOfItems] > 1 ? [[main itemAtIndex:1] submenu] : nil;
 }
-- (void)testDraw:(id)sender {
-    [gView testScribble];
-}
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
-    // --- pile avec deux cartes ---
-    //Object *stack = hc_new_stack("Essai");
-    gStack = hc_new_stack("Essai");
-
-        // un fond commun, partagé par les cartes
-        Object *bg = hc_new_background(gStack, "commun");
-
-        // carte 1 : accueil, sur le fond commun
-        Object *c1 = hc_new_card(gStack, bg, "accueil");
-        hc_new_button(c1, "Bonjour");
-        hc_new_button(c1, "Suivant");
-
-        // carte 2 : seconde, même fond
-        Object *c2 = hc_new_card(gStack, bg, "seconde");
-        hc_new_button(c2, "Retour");
-
+    /* Pile vide au démarrage : une carte sur un fond, rien de plus.
+     * La pile de démonstration qui vivait ici — deux cartes, trois boutons et
+     * leurs scripts — a fait son temps : « Nouvelle pile » et « Ouvrir » sont
+     * en place, et le programme n'a plus à se fabriquer un contenu factice
+     * pour avoir quelque chose à montrer. */
+    gStack = hc_new_stack("Sans titre");
+    Object *bg = hc_new_background(gStack, "commun");
+    Object *c1 = hc_new_card(gStack, bg, "carte 1");
     hc_set_current_card(c1);
-
-    // --- géométrie et scripts ---
-    hc_do("set the rect of button \"Bonjour\" to \"40,40,180,70\"");
-    hc_do("set the rect of button \"Suivant\" to \"40,90,180,120\"");
-
-    hc_set_script(hc_resolve("button \"Bonjour\""),
-        "on mouseUp\n  put \"Bonjour, Patricia !\"\nend mouseUp\n");
-    hc_set_script(hc_resolve("button \"Suivant\""),
-        "on mouseUp\n  go next card\nend mouseUp\n");
-
-    // pour la carte 2, il faut y aller pour résoudre son bouton
-    hc_set_current_card(c2);
-    hc_do("set the rect of button \"Retour\" to \"40,40,180,70\"");
-    hc_set_script(hc_resolve("button \"Retour\""),
-        "on mouseUp\n  go previous card\nend mouseUp\n");
-    hc_set_current_card(c1);   // on revient à l'accueil pour démarrer
 
     // --- vue et message box ---
     NSRect frame = [[self.window contentView] bounds];
@@ -153,6 +126,59 @@ static NSMenu *find_file_menu(void)
      * et un champ en cours d'édition pourrait avaler le message avant lui. */
     NSMenu *sysFile = find_file_menu();
     if (sysFile) {
+        /* Faire le ménage AVANT d'insérer les nôtres, sinon les index de
+         * l'insertion se décalent.
+         *
+         * Le nib apporte les commandes de document standard d'AppKit — New,
+         * Open…, Open Recent, Save…, Save As… — qui ne mènent nulle part ici :
+         * ce programme ne repose pas sur NSDocument, et elles restent grisées
+         * en doublon des nôtres. On les retire par leur ACTION et non par leur
+         * titre, qui change avec la langue du système.
+         *
+         * Print et Page Setup restent : ils serviront le jour où l'impression
+         * d'une carte sera écrite. */
+        SEL morts[] = {
+            @selector(newDocument:),
+            @selector(openDocument:),
+            @selector(saveDocument:),
+            @selector(saveDocumentAs:),
+            @selector(saveDocumentTo:),
+            @selector(revertDocumentToSaved:),
+        };
+        for (NSInteger i = [sysFile numberOfItems] - 1; i >= 0; i--) {
+            NSMenuItem *it = [sysFile itemAtIndex:i];
+
+            /* « Open Recent » n'a pas d'action propre : c'est un sous-menu
+             * peuplé par le contrôleur de documents. On le reconnaît à ce
+             * qu'il porte un sous-menu contenant clearRecentDocuments:. */
+            BOOL recent = NO;
+            for (NSMenuItem *sub in [[it submenu] itemArray])
+                if ([sub action] == @selector(clearRecentDocuments:)) { recent = YES; break; }
+
+            BOOL mort = recent;
+            for (unsigned k = 0; !mort && k < sizeof morts / sizeof *morts; k++)
+                if ([it action] == morts[k]) mort = YES;
+
+            if (mort) [sysFile removeItemAtIndex:i];
+        }
+
+        /* Deux séparateurs qui se suivent, ou un séparateur en tête, sont ce
+         * que laisse toujours une suppression d'entrées. */
+        for (NSInteger i = [sysFile numberOfItems] - 1; i >= 0; i--) {
+            if (![[sysFile itemAtIndex:i] isSeparatorItem]) continue;
+            if (i == 0 || i == [sysFile numberOfItems] - 1 ||
+                [[sysFile itemAtIndex:i-1] isSeparatorItem])
+                [sysFile removeItemAtIndex:i];
+        }
+
+        /* HyperCard réservait Cmd-N à « Nouvelle carte », et laissait
+         * « Nouvelle pile » sans raccourci. On garde cette répartition : c'est
+         * la carte qu'on crée cent fois par séance, pas la pile. */
+        NSMenuItem *np = [[NSMenuItem alloc] initWithTitle:@"Nouvelle pile…"
+                                                    action:@selector(newStack:)
+                                             keyEquivalent:@""];
+        [np setTarget:self];
+
         NSMenuItem *op = [[NSMenuItem alloc] initWithTitle:@"Ouvrir une pile…"
                                                     action:@selector(openStack:)
                                              keyEquivalent:@"o"];
@@ -163,13 +189,18 @@ static NSMenu *find_file_menu(void)
                                              keyEquivalent:@"s"];
         [sv setTarget:self];
 
-        [sysFile insertItem:op atIndex:0];
-        [sysFile insertItem:sv atIndex:1];
-        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:2];
+        [sysFile insertItem:np atIndex:0];
+        [sysFile insertItem:op atIndex:1];
+        [sysFile insertItem:sv atIndex:2];
+        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:3];
     } else {
         /* Nib inattendu : plutôt que de perdre les deux commandes, on les
          * laisse dans le menu Pile, là où elles étaient. */
         [fileMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *np = [fileMenu addItemWithTitle:@"Nouvelle pile…"
+                                             action:@selector(newStack:)
+                                      keyEquivalent:@""];
+        [np setTarget:self];
         NSMenuItem *op = [fileMenu addItemWithTitle:@"Ouvrir une pile…"
                                              action:@selector(openStack:)
                                       keyEquivalent:@"o"];
@@ -178,6 +209,120 @@ static NSMenu *find_file_menu(void)
                                              action:@selector(saveStack:)
                                       keyEquivalent:@"s"];
         [sv setTarget:self];
+    }
+
+    /* --- menu « Outils » : afficher ou masquer les palettes ---
+     * HyperCard laissait refermer ses palettes et les rappeler d'ici, avec une
+     * coche devant celles qui sont à l'écran. Une seule entrée par palette,
+     * qui bascule : deux entrées « Afficher » et « Masquer » en laisseraient
+     * toujours une inutile. Le tag identifie la palette côté vue. */
+    NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
+    NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Outils"];
+    struct { NSString *title; NSInteger tag; NSString *key; } pals[] = {
+        { @"Outils",    1, @"1" },
+        { @"Motifs",    2, @"2" },
+        { @"Épaisseur", 3, @"3" },
+        { @"Pinceaux",  4, @"4" },
+    };
+    for (int i = 0; i < 4; i++) {
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:pals[i].title
+                                                    action:@selector(togglePalette:)
+                                             keyEquivalent:pals[i].key];
+        [mi setTag:pals[i].tag];
+        [mi setTarget:view];
+        [toolsMenu addItem:mi];
+    }
+    [toolsItem setSubmenu:toolsMenu];
+    [mainMenu addItem:toolsItem];
+
+    /* --- retirer les menus du gabarit qui ne servent à rien ici ---
+     * View, Window et Help viennent du nib d'Xcode. Le premier ne pilote
+     * qu'une barre d'outils inexistante ; les deux autres s'adressent à une
+     * application à fenêtres multiples et à un livre d'aide qui n'existe pas.
+     *
+     * L'ordre compte : AppKit garde une référence sur les menus Fenêtre et
+     * Aide et continue d'y écrire — la liste des fenêtres ouvertes, l'entrée
+     * de recherche d'aide. Il faut donc les lui RENDRE avant de les retirer,
+     * sinon il écrit dans un menu qui n'est plus dans la barre.
+     *
+     * On les reconnaît à leur contenu et non à leur titre, qui suit la langue
+     * du système : ce nib n'est pas localisé, mais la barre, elle, l'est. */
+    [NSApp setWindowsMenu:nil];
+    [NSApp setHelpMenu:nil];
+
+    /* --- menu Edit : ne garder que ce qui a un sens ici ---
+     * Le gabarit apporte quatre sous-menus qui s'adressent à un traitement de
+     * texte : Find, Spelling and Grammar, Substitutions, Transformations. Rien
+     * de tout cela ne s'applique à une pile.
+     *
+     * Speech reste : HyperCard avait « speak » en HyperTalk via MacinTalk, et
+     * des piles entières lisaient leur texte à voix haute.
+     *
+     * Find est remplacé par la version d'HyperCard : pas de panneau, mais
+     * « find "" » préparé dans la boîte de message. */
+    NSMenu *editMenu = nil;
+    for (NSMenuItem *top in [mainMenu itemArray]) {
+        for (NSMenuItem *it in [[top submenu] itemArray])
+            if ([it action] == @selector(paste:)) { editMenu = [top submenu]; break; }
+        if (editMenu) break;
+    }
+
+    if (editMenu) {
+        SEL sousMenusMorts[] = {
+            @selector(performFindPanelAction:),       /* Find                  */
+            @selector(showGuessPanel:),               /* Spelling and Grammar  */
+            @selector(checkSpelling:),
+            @selector(orderFrontSubstitutionsPanel:), /* Substitutions         */
+            @selector(toggleSmartInsertDelete:),
+            @selector(uppercaseWord:),                /* Transformations       */
+            @selector(capitalizeWord:),
+        };
+        for (NSInteger i = [editMenu numberOfItems] - 1; i >= 0; i--) {
+            NSMenu *sub = [[editMenu itemAtIndex:i] submenu];
+            if (!sub) continue;
+            BOOL mort = NO;
+            for (NSMenuItem *it in [sub itemArray]) {
+                for (unsigned k = 0; !mort && k < sizeof sousMenusMorts / sizeof *sousMenusMorts; k++)
+                    if ([it action] == sousMenusMorts[k]) mort = YES;
+                if (mort) break;
+            }
+            if (mort) [editMenu removeItemAtIndex:i];
+        }
+
+        for (NSInteger i = [editMenu numberOfItems] - 1; i >= 0; i--) {
+            if (![[editMenu itemAtIndex:i] isSeparatorItem]) continue;
+            if (i == 0 || i == [editMenu numberOfItems] - 1 ||
+                [[editMenu itemAtIndex:i-1] isSeparatorItem])
+                [editMenu removeItemAtIndex:i];
+        }
+
+        [editMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *fd = [[NSMenuItem alloc] initWithTitle:@"Chercher…"
+                                                    action:@selector(findInStack:)
+                                             keyEquivalent:@"f"];
+        [fd setTarget:view];
+        [editMenu addItem:fd];
+    }
+
+    SEL signatures[] = {
+        @selector(toggleToolbarShown:),           /* View   */
+        @selector(runToolbarCustomizationPalette:),
+        @selector(arrangeInFront:),               /* Window */
+        @selector(performMiniaturize:),
+        @selector(performZoom:),
+        @selector(showHelp:),                     /* Help   */
+    };
+    for (NSInteger i = [mainMenu numberOfItems] - 1; i >= 0; i--) {
+        NSMenu *sub = [[mainMenu itemAtIndex:i] submenu];
+        if (!sub || sub == toolsMenu || sub == fileMenu || sub == sysFile) continue;
+
+        BOOL mort = NO;
+        for (NSMenuItem *it in [sub itemArray]) {
+            for (unsigned k = 0; !mort && k < sizeof signatures / sizeof *signatures; k++)
+                if ([it action] == signatures[k]) mort = YES;
+            if (mort) break;
+        }
+        if (mort) [mainMenu removeItemAtIndex:i];
     }
 
     [self.window setReleasedWhenClosed:NO];
@@ -219,6 +364,37 @@ static NSMenu *find_file_menu(void)
             NSLog(@"échec de la sauvegarde");
     }
 }
+/* Installe une pile déjà construite : libère l'ancienne, remet la vue à zéro,
+ * se place sur la première carte. Partagé par l'ouverture d'un fichier et la
+ * création d'une pile neuve — les deux font exactement la même chose une fois
+ * la pile en main, et deux copies de cette séquence finiraient par diverger. */
+- (void)installStack:(Object *)st {
+    /* AVANT hc_free : la vue garde des pointeurs dans l'ancienne pile (objet
+     * sélectionné, champ en cours d'édition, cache de peinture). Les libérer
+     * sans prévenir la vue laisse des pointeurs pendants qui plantent au
+     * premier redessin. */
+    [gView resetForNewStack];
+
+    hc_free(gStack);
+    gStack = st;
+    [gView clearPaintCache];
+
+    Object *first = NULL;
+    for (int i = 0; i < gStack->nparts; i++) {
+        if (gStack->parts[i]->type == OBJ_CARD) { first = gStack->parts[i]; break; }
+    }
+    if (!first) {                       /* pile sans carte : on en fabrique une */
+        Object *bg = hc_new_background(gStack, "commun");
+        first = hc_new_card(gStack, bg, "carte 1");
+    }
+    hc_set_current_card(first);
+
+    [gView applyStackSize];
+    [gView updateWindowTitle];
+    [self.window makeKeyAndOrderFront:nil];
+    [gView setNeedsDisplay:YES];
+}
+
 /* Charge une pile et l'installe. Le corps de l'ancien openStack:, sorti du
  * panneau de selection pour que le double-clic dans le Finder puisse
  * emprunter exactement le meme chemin. */
@@ -232,25 +408,42 @@ static NSMenu *find_file_menu(void)
         [a runModal];
         return NO;
     }
-
-    hc_free(gStack);
-    gStack = loaded;
-    [gView clearPaintCache];
-
-    Object *first = NULL;
-    for (int i = 0; i < gStack->nparts; i++) {
-        if (gStack->parts[i]->type == OBJ_CARD) { first = gStack->parts[i]; break; }
-    }
-    if (!first) {                       /* pile sans carte : on en fabrique une */
-        Object *bg = hc_new_background(gStack, "commun");
-        first = hc_new_card(gStack, bg, "carte 1");
-    }
-    hc_set_current_card(first);
-
-    [gView applyStackSize];   // ajuster la fenetre a la taille de la pile chargee
-    [self.window makeKeyAndOrderFront:nil];
-    [gView setNeedsDisplay:YES];
+    [self installStack:loaded];
+    gCardCount = 0;          /* la numérotation repart avec la nouvelle pile */
     return YES;
+}
+
+/* --- Nouvelle pile ---
+ * On jette la pile courante. La confirmation n'est pas du zèle : il n'y a pas
+ * d'indicateur de modification dans ce programme, donc rien ne distingue une
+ * pile fraîchement enregistrée d'une heure de travail non sauvegardée. Tant
+ * que ce sera le cas, mieux vaut demander. */
+- (void)newStack:(id)sender {
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:@"Nouvelle pile"];
+    [a setInformativeText:@"La pile ouverte sera fermée. "
+                           @"Ce qui n'a pas été enregistré sera perdu."];
+    [a addButtonWithTitle:@"Créer"];
+    [a addButtonWithTitle:@"Annuler"];
+
+    NSTextField *nameField =
+        [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 240, 24)];
+    [nameField setStringValue:@"Sans titre"];
+    [a setAccessoryView:nameField];
+    [[a window] setInitialFirstResponder:nameField];
+
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+
+    NSString *name = [[nameField stringValue]
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if ([name length] == 0) name = @"Sans titre";
+
+    Object *st = hc_new_stack([name UTF8String]);
+    Object *bg = hc_new_background(st, "commun");
+    hc_new_card(st, bg, "carte 1");
+
+    [self installStack:st];
+    gCardCount = 0;
 }
 
 - (void)openStack:(id)sender {
