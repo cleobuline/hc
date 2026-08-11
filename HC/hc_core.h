@@ -129,6 +129,19 @@ void    hc_set_script(Object *o, const char *script);
 void    hc_free(Object *stack);
 int     hc_delete_part(Object *o);
 
+/* Supprime une carte et la libère. Renvoie 0 sans rien faire si c'est la
+ * DERNIÈRE carte de la pile : HyperCard refusait aussi, et une pile sans carte
+ * n'a pas de sens.
+ *
+ * Si la carte supprimée était la carte courante, celle-ci passe à la suivante
+ * — ou à la précédente s'il n'y en a pas. L'hôte doit donc relire
+ * hc_current_card après l'appel, et lâcher AVANT tout ce qu'il retient de la
+ * carte : objet sélectionné, champ en édition, sélection de texte. */
+int     hc_delete_card(Object *card);
+
+/* Nombre de cartes d'une pile. */
+int     hc_card_count(Object *stack);
+
 /* ---- Contexte d'exécution ---- */
 void    hc_set_current_card(Object *card);
 /* ---- Hôte : le noyau ne sait pas afficher, il délègue ----
@@ -169,6 +182,14 @@ typedef struct {
     void        (*global_set)(const char *name, const char *value);
 
     void (*play_sound)(const char *name);   /* play "boing" */
+
+    /* Sélection de texte posée par « select … of field X ». L'hôte met la
+     * surbrillance dans son éditeur de champ : sans lui, la sélection serait
+     * vraie pour les scripts et invisible à l'écran. `field` NULL veut dire
+     * « plus rien de sélectionné ». Les bornes sont en caractères, dans le
+     * texte rendu par hc_field_text ; une longueur nulle est un point
+     * d'insertion. */
+    void (*selection_changed)(Object *field, int start, int len);
 
     /* Appelé à chaque tour de boucle « repeat ». C'est là qu'une interface
      * graphique redessine et rend la main : sans lui, une boucle d'animation
@@ -234,6 +255,20 @@ int         hc_run_add_full(Object *field, int start, int len,
 
 /* Plage surlignee par le dernier « find » dans ce champ. 1 si trouve. */
 int         hc_found_range(Object *field, int *start, int *len);
+
+/* ---- Sélection de texte ----
+ * Posée par le verbe « select » et lue par « the selection ». L'hôte l'appelle
+ * aussi quand l'utilisateur sélectionne à la souris, pour que les scripts
+ * voient la même chose que l'écran.
+ *
+ * Bornes en caractères dans le texte rendu par hc_field_text, demi-ouvertes :
+ * [start, start+len). Une longueur nulle est un point d'insertion.
+ * Passer NULL comme champ efface la sélection.
+ *
+ * hc_set_selection prévient l'hôte par selection_changed ; l'hôte doit donc se
+ * garder de la rappeler en réaction, sous peine de boucle. */
+void        hc_set_selection(Object *field, int start, int len);
+int         hc_get_selection(Object **field, int *start, int *len);
 
 /* Calque de peinture (bitmap base64) d'une carte ou d'un fond.
    Le noyau ne l'interprète pas : il le stocke et le restitue tel quel. */

@@ -87,6 +87,11 @@ static NSMenu *find_file_menu(void)
         [fileMenu addItemWithTitle:@"Nouvelle carte"
                             action:@selector(newCard:)
                      keyEquivalent:@"n"];
+        /* Pas de raccourci : une suppression irréversible ne doit pas être à
+         * une frappe de distance d'une commande voisine. */
+        [fileMenu addItemWithTitle:@"Supprimer la carte…"
+                            action:@selector(deleteCard:)
+                     keyEquivalent:@""];
     NSMenuItem *ciItem = [[NSMenuItem alloc] initWithTitle:@"Infos de la carte…"
                                                         action:@selector(showCardInfo)
                                                  keyEquivalent:@""];
@@ -352,6 +357,40 @@ static NSMenu *find_file_menu(void)
     hc_set_current_card(c);
     [gView setNeedsDisplay:YES];
 }
+- (void)deleteCard:(id)sender {
+    Object *cur = hc_current_card();
+    if (!cur) return;
+
+    /* Refuser AVANT de demander : proposer de supprimer puis répondre que
+     * c'est impossible serait une conversation inutile. */
+    if (hc_card_count(gStack) <= 1) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Dernière carte"];
+        [a setInformativeText:@"Une pile compte au moins une carte."];
+        [a runModal];
+        return;
+    }
+
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:@"Supprimer cette carte ?"];
+    [a setInformativeText:@"Son texte, ses boutons et sa peinture seront perdus. "
+                           @"Cette action ne peut pas être annulée."];
+    [a addButtonWithTitle:@"Supprimer"];
+    [a addButtonWithTitle:@"Annuler"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+
+    /* Lâcher tout ce que la vue retient de cette carte AVANT de la libérer :
+     * objet sélectionné, champ en édition, sélection de texte, dernier clic.
+     * Sans cela, le premier redessin lirait de la mémoire rendue. */
+    [gView resetForNewStack];
+    [gView clearPaintCache];
+
+    hc_delete_card(cur);
+
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
+}
+
 - (void)saveStack:(id)sender {
     const char *nm = gStack && gStack->name ? gStack->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];

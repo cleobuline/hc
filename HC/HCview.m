@@ -458,16 +458,79 @@ static void apply_run_style(NSMutableAttributedString *as, NSRange r,
     [as addAttributes:style_attrs(style, base, color) range:r];
 }
 
+/* Pose la surbrillance de sélection SUR la chaîne attribuée.
+ *
+ * C'est AppKit qui placera le fond, avec exactement la mise en page qui sert
+ * à tracer le texte : la surbrillance ne peut donc pas se décaler. Les deux
+ * tentatives précédentes calculaient sa position à part — d'abord en
+ * retraçant le texte par-dessus, puis avec un NSLayoutManager monté pour
+ * l'occasion — et les deux tombaient à côté, parce qu'une seconde mise en
+ * page n'est jamais tout à fait la première.
+ *
+ * Vidéo inverse, comme l'original en noir et blanc : fond noir, texte blanc. */
+static void apply_selection_highlight(NSMutableAttributedString *as, Object *o)
+{
+    if (!o || o->type != OBJ_FIELD) return;
+
+    Object *sel = NULL; int start = 0, len = 0;
+    hc_get_selection(&sel, &start, &len);
+    if (sel != o || len <= 0) return;
+
+    const char *tx = hc_field_text(o);
+    NSUInteger n  = [as length];
+    NSUInteger u0 = utf16_from_byte(tx, start);
+    NSUInteger u1 = utf16_from_byte(tx, start + len);
+    if (u0 >= n) return;
+    if (u1 > n)  u1 = n;
+    if (u1 <= u0) return;
+
+    NSRange r = NSMakeRange(u0, u1 - u0);
+    [as addAttribute:NSBackgroundColorAttributeName value:[NSColor blackColor] range:r];
+    [as addAttribute:NSForegroundColorAttributeName value:[NSColor whiteColor] range:r];
+}
+
 static NSAttributedString *field_attr_string(Object *o, NSString *s,
                                              NSDictionary *at)
 {
     NSMutableAttributedString *as =
         [[NSMutableAttributedString alloc] initWithString:s attributes:at];
 
+    /* ---- interligne FIXE, imposé aux deux moteurs de mise en page ----
+     *
+     * -drawInRect: et la NSTextView de l'éditeur n'espacent pas les lignes de
+     * la même façon : l'une suit les métriques de la police, l'autre les
+     * siennes. L'écart est minuscule par ligne, mais il s'accumule — sur vingt
+     * lignes il atteignait quatre lignes entières, si bien que le texte affiché
+     * en édition ne correspondait plus à celui du dessin pour un même
+     * défilement.
+     *
+     * Poser l'interligne dans la chaîne elle-même règle la question à la
+     * source : les deux moteurs reçoivent la consigne, aucun n'a plus son mot
+     * à dire. C'est aussi ce que faisait HyperCard, dont « the textHeight »
+     * était une propriété de CHAMP — un interligne unique pour tout le champ,
+     * quelles que soient les tailles employées ligne à ligne. La valeur par
+     * défaut y valait quatre tiers du corps.
+     *
+     * Effet de bord bienvenu : le calcul de la ligne cliquée devient exact,
+     * et la formule des scripts d'époque — « (mouseV - top) div textHeight »
+     * — tombe juste. */
+    NSFont *fbase = at[NSFontAttributeName];
+    CGFloat corps = fbase ? [fbase pointSize] : 12;
+    CGFloat lh = o->textsize > 0 ? o->textsize : corps;
+    lh = floor(lh * 4.0 / 3.0 + 0.5);
+    if (lh < 1) lh = 12;
+
+    NSMutableParagraphStyle *ps =
+        [[NSParagraphStyle defaultParagraphStyle] mutableCopy];
+    [ps setMinimumLineHeight:lh];
+    [ps setMaximumLineHeight:lh];
+    [as addAttribute:NSParagraphStyleAttributeName value:ps
+               range:NSMakeRange(0, [as length])];
+
     int n = hc_run_count(o);
     if (getenv("HC_RUNS_DEBUG"))
         NSLog(@"[runs] champ %s : %d plage(s)", o->name ? o->name : "?", n);
-    if (n <= 0) return as;
+    if (n <= 0) { apply_selection_highlight(as, o); return as; }
 
     const char *tx  = hc_field_text(o);
     NSFont  *base   = at[NSFontAttributeName];
@@ -494,8 +557,10 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
         apply_run_style(as, NSMakeRange(u0, u1 - u0), st,
                         run_base_font(fn, sz, base), color);
     }
+    apply_selection_highlight(as, o);
     return as;
 }
+
 
 /* ---- Traduction retour : attributs Cocoa -> bits du noyau ----
  *
@@ -597,8 +662,7 @@ static NSRect field_text_rect(Object *o) {
     return NSInsetRect(r, m, m);
 }
 
-/* Défilement maximal : ce qui dépasse de la partie visible, jamais négatif. */
-static CGFloat field_max_scroll(Object *o) {
+/* Défilement maximal : ce qui dépasse de la partie visible, jamais négatif. */static CGFloat field_max_scroll(Object *o) {
     NSRect tr = field_text_rect(o);
     CGFloat maxs = field_text_height(o, tr) - tr.size.height;
     return maxs > 0 ? maxs : 0;
@@ -611,6 +675,27 @@ static void field_clamp_scroll(Object *o) {
     CGFloat maxs = field_max_scroll(o);
     if (o->scroll > maxs) o->scroll = (int)lround(maxs);
     if (o->scroll < 0)    o->scroll = 0;
+}
+
+/* Rectangle dans lequel le texte est RÉELLEMENT tracé : la zone visible,
+ * remontée du défilement et étendue à la hauteur du contenu.
+ *
+ * Partagé par le dessin et le test de clic. Les deux le calculaient chacun de
+ * leur côté, et sur un champ défilant le clic tombait à côté d'exactement le
+ * défilement courant — le dessin appliquait le décalage, le test de clic
+ * croyait le compenser. Une seule fonction, et la question ne se pose plus.
+ * C'est le même remède qu'au rectangle de texte lui-même, à la surbrillance
+ * de sélection et au décompte des lignes : ne pas recalculer à côté. */
+static NSRect field_text_draw_rect(Object *o) {
+    NSRect tr = field_text_rect(o);
+    if (!(o->style && strcmp(o->style, "scrolling") == 0)) return tr;
+
+    NSRect off = tr;
+    off.origin.y -= o->scroll;
+    CGFloat full = field_text_height(o, tr);
+    if (full < tr.size.height) full = tr.size.height;
+    off.size.height = full;
+    return off;
 }
 
 static void draw_part(Object *o) {
@@ -892,17 +977,7 @@ static void draw_part(Object *o) {
             if (isScroll) {
                 [NSGraphicsContext saveGraphicsState];
                 NSRectClip(tr);
-                NSRect off = tr;
-                off.origin.y   -= o->scroll;
-                /* La hauteur réelle du texte, mesurée dans la même largeur.
-                 * La marge forfaitaire de 4000 px qui tenait lieu de hauteur
-                 * ne servait qu'à masquer le fait qu'on ne la connaissait
-                 * pas ; elle est désormais celle qui a servi à dimensionner
-                 * la poignée, donc les deux ne peuvent plus diverger. */
-                CGFloat full = field_text_height(o, tr);
-                if (full < tr.size.height) full = tr.size.height;
-                off.size.height = full;
-                [as drawInRect:off];
+                [as drawInRect:field_text_draw_rect(o)];
                 [NSGraphicsContext restoreGraphicsState];
             } else {
                 [as drawInRect:tr];
@@ -1058,12 +1133,201 @@ static void cocoa_field_changed(Object *field) {
     [gView setNeedsDisplay:YES];
 }
 
+/* ---------- sélection posée par un script ----------
+ * « select line 2 of field "toc" » doit se VOIR. Le noyau retient la plage et
+ * nous prévient ici ; à nous d'ouvrir le champ en édition et d'y poser la
+ * surbrillance.
+ *
+ * Le drapeau évite la boucle : poser la sélection dans le NSTextView déclenche
+ * textViewDidChangeSelection:, qui rappellerait hc_set_selection, qui
+ * rappellerait ceci. On ne peut pas s'en passer — les deux sens sont
+ * nécessaires, l'un pour les scripts, l'autre pour la souris. */
+static BOOL gApplyingSelection = NO;
+
+static void cocoa_selection_changed(Object *field, int start, int len) {
+    if (gApplyingSelection) return;
+    if (!gView) return;
+
+    if (!field) {
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
+    gApplyingSelection = YES;
+
+    /* Champ VERROUILLÉ : on ne l'ouvre pas. HyperCard surligne sans passer en
+     * édition, et c'est le cas de tous les sommaires — leur champ est
+     * verrouillé précisément pour que le clic aille au script. Ouvrir
+     * l'éditeur volerait le clavier, poserait un curseur dans un texte
+     * qu'on ne peut pas modifier, et réécrirait le contenu à chaque
+     * fermeture. C'est drawRect: qui dessine la surbrillance.
+     *
+     * Si un éditeur est ouvert sur un AUTRE champ, on le ferme quand même :
+     * deux sélections visibles à la fois n'auraient aucun sens. */
+    if (field->locktext) {
+        if (gEditingField && gEditingField != field) [gView endFieldEdit];
+        gApplyingSelection = NO;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
+    /* Ouvrir le champ si ce n'est pas déjà lui : sans éditeur, il n'y a pas de
+     * surbrillance à poser. C'est aussi ce que fait HyperCard — « select » met
+     * le champ en édition. */
+    if (gEditingField != field) {
+        [gView endFieldEdit];
+        [gView beginFieldEdit:field];
+    }
+
+    if (gFieldEditor) {
+        NSUInteger n = [[gFieldEditor string] length];
+        NSUInteger s = (NSUInteger)(start < 0 ? 0 : start);
+        NSUInteger l = (NSUInteger)(len   < 0 ? 0 : len);
+        if (s > n)     s = n;
+        if (s + l > n) l = n - s;
+        [gFieldEditor setSelectedRange:NSMakeRange(s, l)];
+        [gFieldEditor scrollRangeToVisible:NSMakeRange(s, l)];
+    }
+
+    gApplyingSelection = NO;
+    [gView setNeedsDisplay:YES];
+}
+
 /* ---------- proprietes globales : ce que le noyau ne peut pas savoir ----------
  * On ne pompe PAS la boucle d'evenements : NSEvent expose l'etat du materiel
  * en methodes de classe, ce qui marche depuis une boucle HyperTalk bloquante
  * du genre « repeat until the mouse is up ».
  * La vue etant isFlipped, ses coordonnees sont deja celles de la carte. */
 static char gGlobBuf[64];
+
+/* Dernier clic dans la carte : position en coordonnées carte, et le champ
+ * touché s'il y en a un. Posés par mouseDown, lus par les propriétés
+ * clickLoc / clickLine / clickText. */
+static NSPoint  gClickPoint = {0, 0};
+static Object  *gClickField = NULL;
+
+/* Numéro de la ligne cliquée dans un champ, 1-based, ou 0.
+ *
+ * On interroge une VRAIE mise en page, montée avec les mêmes paramètres que
+ * le dessin — texte attribué, largeur de field_text_rect, pas d'espacement de
+ * fragment. La version précédente estimait la hauteur de ligne par
+ * « ascender - descender + leading » : un calcul parallèle à celui du dessin,
+ * donc voué à s'en écarter, et le clic tombait sur la ligne voisine. Le texte
+ * attribué compte aussi : une ligne en 18 points est plus haute que ses
+ * voisines en 12, et une hauteur moyenne se décale un peu plus à chaque
+ * ligne. */
+/* Répercuter o->scroll dans l'éditeur ouvert sur ce champ.
+ *
+ * Pendant l'édition, c'est la NSScrollView qui détient le défilement réel : la
+ * barre que nous dessinons n'est qu'un décor tant que personne ne relaie ses
+ * clics. C'est ce qui manquait depuis qu'on a désactivé la barre de Cocoa pour
+ * supprimer le doublon — la nôtre bougeait, le texte non.
+ *
+ * Le drapeau évite le va-et-vient : déplacer la vue de contenu déclenche la
+ * notification de changement de bornes, qui réécrirait o->scroll. */
+static BOOL gSyncingEditorScroll = NO;
+
+/* Course de défilement de l'éditeur, en pixels de SON document. */
+static CGFloat editor_course(void) {
+    if (!gFieldScroll) return 0;
+    CGFloat c = NSHeight([[gFieldScroll documentView] frame])
+              - NSHeight([[gFieldScroll contentView] bounds]);
+    return c > 0 ? c : 0;
+}
+
+/* Où en est l'éditeur, entre 0 et 1. */
+static CGFloat editor_fraction(void) {
+    CGFloat c = editor_course();
+    if (c <= 0) return 0;
+    CGFloat f = [[gFieldScroll contentView] bounds].origin.y / c;
+    return f < 0 ? 0 : (f > 1 ? 1 : f);
+}
+
+/* Reporte o->scroll dans l'éditeur ouvert sur ce champ.
+ *
+ * Par la FRACTION de course, et non en pixels : l'éditeur espace ses lignes
+ * un peu plus serré que -drawInRect:, donc son document est plus court. Sur
+ * vingt lignes l'écart atteignait quatre lignes — pousser nos pixels tels
+ * quels le faisait défiler trop loin, et le texte affiché ne correspondait
+ * plus à la position de la poignée.
+ *
+ * La fraction, elle, veut dire la même chose des deux côtés : à mi-course,
+ * chacun est au milieu de SON document. */
+static void sync_editor_scroll(Object *o) {
+    if (!o || o != gEditingField || !gFieldScroll) return;
+
+    /* Recaler l'origine du document à zéro.
+     *
+     * Une NSTextView verticalement redimensionnable ne grandit pas toujours
+     * vers le bas : mesuré ici, son cadre valait {{0, -75.8}, {160, 2469}}.
+     * Les soixante-quinze premiers pixels de texte — quatre lignes — se
+     * trouvaient donc AU-DESSUS de la zone visible, si bien que la vue de
+     * contenu posée à y=0 affichait déjà la cinquième ligne.
+     *
+     * Le défilement n'y était pour rien : la mesure donnait scroll=0, pos=0,
+     * y=0. Tout était juste, sauf la position de la vue elle-même. */
+    NSView *doc = [gFieldScroll documentView];
+    NSRect df = [doc frame];
+    if (df.origin.y != 0 || df.origin.x != 0) {
+        df.origin.x = 0;
+        df.origin.y = 0;
+        [doc setFrame:df];
+    }
+
+    CGFloat maxs = field_max_scroll(o);
+    CGFloat pos  = maxs > 0 ? o->scroll / maxs : 0;
+    if (pos < 0) pos = 0;
+    if (pos > 1) pos = 1;
+
+    gSyncingEditorScroll = YES;
+    [[gFieldScroll contentView]
+        scrollToPoint:NSMakePoint(0, floor(pos * editor_course()))];
+    [gFieldScroll reflectScrolledClipView:[gFieldScroll contentView]];
+    gSyncingEditorScroll = NO;
+}
+
+static int click_line_number(Object *f, NSPoint p) {
+    if (!f || f->type != OBJ_FIELD) return 0;
+
+    const char *tx = hc_field_text(f);
+    if (!tx || !*tx) return 0;
+    NSString *s = [NSString stringWithUTF8String:tx];
+    if (!s) return 0;
+
+    NSRect tr  = field_text_rect(f);        /* largeur de mise en page */
+    NSRect off = field_text_draw_rect(f);   /* où le texte est tracé */
+    NSAttributedString *as =
+        field_attr_string(f, s, obj_attrs(f, 12, [NSColor blackColor]));
+
+    NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
+    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
+    NSTextContainer *tc = [[NSTextContainer alloc]
+                            initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
+    [tc setLineFragmentPadding:0];
+    [lm addTextContainer:tc];
+    [ts addLayoutManager:lm];
+
+    /* Coordonnées du conteneur, prises sur le rectangle où le texte est
+     * EFFECTIVEMENT tracé — défilement compris, sans le recalculer ici. */
+    NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
+    if (q.y < 0) return 0;
+
+    CGFloat frac = 0;
+    NSUInteger gi = [lm glyphIndexForPoint:q inTextContainer:tc
+                    fractionOfDistanceThroughGlyph:&frac];
+    NSUInteger ci = [lm characterIndexForGlyphAtIndex:gi];
+    if (ci > [s length]) ci = [s length];
+
+    /* Cliquer sous le texte ne désigne rien, comme dans HyperCard : le
+     * gestionnaire de mise en page, lui, rendrait le dernier glyphe. */
+    NSRect used = [lm usedRectForTextContainer:tc];
+    if (q.y > NSMaxY(used)) return 0;
+
+    int line = 1;
+    for (NSUInteger i = 0; i < ci; i++)
+        if ([s characterAtIndex:i] == '\n') line++;
+    return line;
+}
 
 static const char *cocoa_global_get(const char *name) {
     if (strcasecmp(name, "mouse") == 0)
@@ -1086,9 +1350,96 @@ static const char *cocoa_global_get(const char *name) {
     }
 
     if (strcasecmp(name, "ticks") == 0) {                  // 1/60 s
-        snprintf(gGlobBuf, sizeof gGlobBuf, "%ld",
-                 (long)([NSDate timeIntervalSinceReferenceDate] * 60.0));
+        /* Depuis le LANCEMENT, comme HyperCard comptait depuis le démarrage
+         * de la machine. Compté depuis 2001, la valeur dépasse quarante-huit
+         * milliards : au-delà de ce qu'un entier 32 bits encaisse, et bien
+         * au-delà de ce qu'un script d'époque a jamais eu à manipuler. */
+        static NSTimeInterval t0 = 0;
+        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        if (t0 == 0) t0 = now;
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%ld", (long)((now - t0) * 60.0));
         return gGlobBuf;
+    }
+
+    /* --- le dernier clic ---
+     * Le noyau ne peut pas les connaître : il ne voit pas la souris. On les
+     * sert donc ici, à partir de la position mémorisée par mouseDown.
+     *
+     * clickLine rend une DÉSIGNATION, pas un numéro : « line 3 of card field 2 »,
+     * telle qu'HyperCard la rend. C'est ce qui permet de l'enchaîner —
+     * « put the clickLine into l ; put the value of l » — et c'est ce
+     * qu'attendent les scripts de sommaire d'origine. Un script qui veut le
+     * seul numéro écrit « word 2 of the clickLine ». */
+    if (strcasecmp(name, "clickLoc") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d",
+                 (int)gClickPoint.x, (int)gClickPoint.y);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "clickH") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", (int)gClickPoint.x);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "clickV") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", (int)gClickPoint.y);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "clickLine") == 0) {
+        static char buf[160];
+        buf[0] = '\0';
+        int line = click_line_number(gClickField, gClickPoint);
+        if (gClickField && line > 0) {
+            char desc[96];
+            hc_describe(gClickField, desc, sizeof desc);
+            snprintf(buf, sizeof buf, "line %d of %s%s", line,
+                     hc_owner_is_bg(gClickField) ? "bg " : "card ", desc);
+        }
+        return buf;
+    }
+    /* --- la ligne sous la souris, EN CE MOMENT ---
+     * the clickLine est figée sur le clic initial : c'est sa définition, et
+     * c'est ce qu'il faut pour savoir où l'on a cliqué. Mais une boucle de
+     * suivi — « repeat while the mouse is down » — a besoin de la position
+     * COURANTE, sinon la sélection reste sur la ligne de départ et ne suit
+     * pas le pointeur.
+     *
+     * mouseLocationOutsideOfEventStream plutôt qu'un événement : pendant une
+     * boucle HyperTalk bloquante, aucun événement n'est distribué, et
+     * interroger la fenêtre est le seul moyen d'avoir une position à jour. */
+    if (strcasecmp(name, "mouseLine") == 0) {
+        static char buf[160];
+        buf[0] = '\0';
+        NSPoint w = [[gView window] mouseLocationOutsideOfEventStream];
+        NSPoint p = [gView convertPoint:w fromView:nil];
+        Object *f = part_at(hc_current_card(), p);
+        if (f && f->type == OBJ_FIELD) {
+            int line = click_line_number(f, p);
+            if (line > 0) {
+                char desc[96];
+                hc_describe(f, desc, sizeof desc);
+                snprintf(buf, sizeof buf, "line %d of %s%s", line,
+                         hc_owner_is_bg(f) ? "bg " : "card ", desc);
+            }
+        }
+        return buf;
+    }
+
+    if (strcasecmp(name, "clickText") == 0) {
+        static char buf[512];
+        buf[0] = '\0';
+        int line = click_line_number(gClickField, gClickPoint);
+        if (gClickField && line > 0) {
+            const char *t = hc_field_text(gClickField);
+            int n = 1;
+            const char *deb = t;
+            while (n < line && (deb = strchr(deb, '\n'))) { deb++; n++; }
+            if (deb) {
+                const char *fin = strchr(deb, '\n');
+                int len = fin ? (int)(fin - deb) : (int)strlen(deb);
+                if (len > (int)sizeof buf - 1) len = (int)sizeof buf - 1;
+                snprintf(buf, sizeof buf, "%.*s", len, deb);
+            }
+        }
+        return buf;
     }
     return NULL;   // nom inconnu : le noyau se rabat sur un litteral
 }
@@ -1893,16 +2244,26 @@ static BOOL paint_selection_active(void)
         for (int i = 0; i < card->bg->nparts; i++)
             draw_part(card->bg->parts[i]);
 
-    // 3. peinture de la carte (PAR-DESSUS les objets du fond)
-    NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
-    [cardpaint drawInRect:NSMakeRect(0, 0, [cardpaint pixelsWide], [cardpaint pixelsHigh])
-                 fromRect:NSZeroRect
-                operation:NSCompositingOperationSourceOver fraction:1.0
-           respectFlipped:YES hints:nil];
+    /* 3 et 4. La couche carte — peinture puis objets.
+     *
+     * En mode fond, elle disparaît entièrement, comme dans HyperCard : on ne
+     * voit que ce qu'on est en train de modifier. Laisser la carte visible
+     * rend le travail confus, puisque rien ne distingue à l'œil un bouton du
+     * fond d'un bouton de la carte, alors que seul le premier répond au clic
+     * dans ce mode. Le cadre marron dit qu'on est dans le fond ; la carte
+     * absente le confirme sans ambiguïté. */
+    if (!gEditBackground) {
+        // 3. peinture de la carte (PAR-DESSUS les objets du fond)
+        NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
+        [cardpaint drawInRect:NSMakeRect(0, 0, [cardpaint pixelsWide], [cardpaint pixelsHigh])
+                     fromRect:NSZeroRect
+                    operation:NSCompositingOperationSourceOver fraction:1.0
+               respectFlipped:YES hints:nil];
 
-    // 4. objets de la carte (au-dessus de tout)
-    for (int i = 0; i < card->nparts; i++)
-        draw_part(card->parts[i]);
+        // 4. objets de la carte (au-dessus de tout)
+        for (int i = 0; i < card->nparts; i++)
+            draw_part(card->parts[i]);
+    }
 
     // ===== surcouches d'édition (toujours au-dessus) =====
 
@@ -2038,7 +2399,6 @@ static BOOL paint_selection_active(void)
     gSelected = NULL;
     [self endFieldEdit];
     [self setNeedsDisplay:YES];
-    NSLog(@"couche : %@", gEditBackground ? @"FOND" : @"CARTE");
 }
 - (void)testScribble {
     Object *card = hc_current_card();
@@ -2072,6 +2432,9 @@ static BOOL paint_selection_active(void)
  * un bouton sélectionné suffisait à le déclencher. */
 - (void)resetForNewStack {
     if (gEditingField) [self endFieldEdit];
+    /* La sélection désigne un champ de la pile qu'on s'apprête à libérer. */
+    hc_set_selection(NULL, 0, 0);
+    gClickField    = NULL;      /* désigne un champ de la pile qui s'en va */
     gSelected      = NULL;
     gEditingField  = NULL;
     gResizeHandle  = 0;
@@ -2136,6 +2499,12 @@ static BOOL paint_selection_active(void)
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
+
+    /* Mémoriser le clic AVANT tout traitement : les gestionnaires HyperTalk
+     * déclenchés plus bas lisent the clickLine et the clickLoc, et doivent y
+     * trouver CE clic-ci, pas le précédent. */
+    gClickPoint = p;
+    gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
 
     /* ---------- collage flottant : deplacer ou scotcher ---------- */
     if (gFloating) {
@@ -2301,6 +2670,7 @@ static BOOL paint_selection_active(void)
                             else          hit->scroll += hit->h;
                         }
                         field_clamp_scroll(hit);
+                        sync_editor_scroll(hit);
                         [self setNeedsDisplay:YES];
                         return;
                     }
@@ -2387,6 +2757,7 @@ static BOOL paint_selection_active(void)
                 if (pos < 0) pos = 0;
                 if (pos > 1) pos = 1;
                 gScrollField->scroll = (int)(pos * gScrollMax);
+                sync_editor_scroll(gScrollField);
             }
             [self setNeedsDisplay:YES];
             return;
@@ -2659,6 +3030,7 @@ static BOOL paint_selection_active(void)
     static HcHost host;
     host.line          = cocoa_line;
     host.field_changed = cocoa_field_changed;
+    host.selection_changed = cocoa_selection_changed;
     host.ask           = cocoa_ask;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
@@ -2948,6 +3320,22 @@ static NSTextField  *gSprayDensityLabel = nil;
     [self setNeedsDisplay:YES];
 }
 - (void)beginFieldEdit:(Object *)field {
+    if (!field) return;
+
+    /* Un champ VERROUILLÉ ne s'édite jamais, d'où qu'on vienne. Le garde-fou
+     * est ici plutôt que chez chaque appelant : c'est une propriété du champ,
+     * pas une politique de tel ou tel chemin d'appel, et il suffit d'un
+     * appelant oublié pour voir reparaître un curseur dans un texte qu'on ne
+     * peut pas modifier. La surbrillance d'une sélection sur un champ
+     * verrouillé est dessinée par drawRect:, sans éditeur. */
+    if (field->locktext) {
+        /* Fermer l'éditeur éventuellement ouvert sur un AUTRE champ : le laisser
+         * en place afficherait deux points d'attention à la fois. */
+        [self endFieldEdit];
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     [self endFieldEdit];
     gEditingField = field;
 
@@ -2996,6 +3384,9 @@ static NSTextField  *gSprayDensityLabel = nil;
      * et se réenroulait 10 px trop tôt. */
     [[gFieldEditor textContainer] setLineFragmentPadding:0];
     [gFieldEditor setTextContainerInset:NSZeroSize];
+    /* Pour recevoir textViewDidChangeSelection: et tenir « the selection » à
+     * jour quand l'utilisateur sélectionne à la souris ou au clavier. */
+    [gFieldEditor setDelegate:self];
     [gFieldEditor setDrawsBackground:NO];
 
     [gFieldEditor setFont:obj_font(field, 12)];
@@ -3017,9 +3408,33 @@ static NSTextField  *gSprayDensityLabel = nil;
      * c'est lui qui detient la verite du style. */
     [[gFieldEditor textStorage]
         setAttributedString:field_attr_string(field, str, base)];
-    [gFieldEditor setTypingAttributes:base];
+
+    /* Reprendre l'interligne dans les attributs de frappe : sans cela, le
+     * texte tapé retomberait à l'espacement par défaut, et le champ mêlerait
+     * deux interlignes — celui du texte relu et celui du texte saisi. */
+    {
+        NSMutableDictionary *tattr = [base mutableCopy];
+        if ([[gFieldEditor textStorage] length] > 0) {
+            id ps = [[gFieldEditor textStorage]
+                        attribute:NSParagraphStyleAttributeName
+                          atIndex:0 effectiveRange:NULL];
+            if (ps) tattr[NSParagraphStyleAttributeName] = ps;
+        }
+        [gFieldEditor setTypingAttributes:tattr];
+    }
 
     [gFieldScroll setDocumentView:gFieldEditor];
+
+    /* Recaler l'origine de la vue de texte : posée comme document, elle peut
+     * se placer à une ordonnée négative, et les premières lignes se
+     * retrouveraient hors champ dès l'ouverture. Voir sync_editor_scroll. */
+    {
+        NSRect df = [gFieldEditor frame];
+        if (df.origin.x != 0 || df.origin.y != 0) {
+            df.origin = NSZeroPoint;
+            [gFieldEditor setFrame:df];
+        }
+    }
     [self addSubview:gFieldScroll];
 
     /* Reprendre le décalage que le dessin utilisait : sinon un champ
@@ -3029,9 +3444,6 @@ static NSTextField  *gSprayDensityLabel = nil;
     if (isScroll) {
         field_clamp_scroll(field);
         if (field->scroll > 0) {
-            /* Après que la mise en page a eu lieu, sinon la vue de contenu ne
-             * connaît pas encore sa hauteur de document et refuse d'aller
-             * au-delà de zéro. */
             [[gFieldEditor layoutManager]
                 ensureLayoutForTextContainer:[gFieldEditor textContainer]];
             [[gFieldScroll contentView]
@@ -3051,14 +3463,58 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     [[self window] makeFirstResponder:gFieldEditor];
+
 }
 
 /* Recopier le défilement de l'éditeur dans le modèle, à chaque mouvement. */
-- (void)fieldEditorDidScroll:(NSNotification *)note {
-    if (!gEditingField || !gFieldScroll) return;
-    gEditingField->scroll =
-        (int)lround([[gFieldScroll contentView] bounds].origin.y);
+/* Molette sur un champ défilant.
+ *
+ * En édition, la NSScrollView la traiterait seule — mais seulement si le
+ * pointeur est sur elle, et pas sur la barre que nous dessinons à côté. On
+ * passe donc toujours par le modèle, puis on répercute : un seul chemin, quel
+ * que soit l'endroit exact du pointeur. */
+- (void)scrollWheel:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    Object *hit = part_at(hc_current_card(), p);
+    if (!hit || hit->type != OBJ_FIELD ||
+        !(hit->style && strcmp(hit->style, "scrolling") == 0)) {
+        [super scrollWheel:event];
+        return;
+    }
+
+    CGFloat dy = [event scrollingDeltaY];
+    if ([event hasPreciseScrollingDeltas]) hit->scroll -= (int)lround(dy);
+    else                                   hit->scroll -= (int)lround(dy * 16);
+
+    field_clamp_scroll(hit);
+    sync_editor_scroll(hit);
     [self setNeedsDisplay:YES];
+}
+
+- (void)fieldEditorDidScroll:(NSNotification *)note {
+    if (gSyncingEditorScroll) return;   /* c'est nous qui venons de le poser */
+    if (!gEditingField || !gFieldScroll) return;
+    /* Reconvertir dans NOTRE échelle : la position de l'éditeur est exprimée
+     * dans sa hauteur de document, plus courte que la nôtre. Recopier les
+     * pixels tels quels décalait la poignée. */
+    gEditingField->scroll =
+        (int)lround(editor_fraction() * field_max_scroll(gEditingField));
+    [self setNeedsDisplay:YES];
+}
+
+/* L'utilisateur vient de sélectionner à la souris ou au clavier : le noyau
+ * doit voir la même chose que l'écran, sinon « the selection » mentirait dans
+ * tout script déclenché par ce clic — ce qui est précisément le cas d'un
+ * sommaire, où mouseDown lit la ligne que l'utilisateur vient de désigner. */
+- (void)textViewDidChangeSelection:(NSNotification *)note {
+    if (gApplyingSelection) return;          /* c'est nous qui l'avons posée */
+    if (!gEditingField || !gFieldEditor) return;
+    if ([note object] != gFieldEditor) return;
+
+    NSRange r = [gFieldEditor selectedRange];
+    gApplyingSelection = YES;
+    hc_set_selection(gEditingField, (int)r.location, (int)r.length);
+    gApplyingSelection = NO;
 }
 
 - (void)endFieldEdit {
@@ -3138,7 +3594,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     if (gEditingField && gFieldScroll &&
         gEditingField->style && strcmp(gEditingField->style, "scrolling") == 0) {
         gEditingField->scroll =
-            (int)lround([[gFieldScroll contentView] bounds].origin.y);
+            (int)lround(editor_fraction() * field_max_scroll(gEditingField));
         /* Le texte vient peut-être de raccourcir sous la frappe : ce que
          * l'éditeur pouvait atteindre n'est plus forcément atteignable. */
         field_clamp_scroll(gEditingField);
@@ -3149,6 +3605,11 @@ static NSTextField  *gSprayDensityLabel = nil;
             removeObserver:self
                       name:NSViewBoundsDidChangeNotification
                     object:[gFieldScroll contentView]];
+
+    /* Détacher le délégué AVANT de lâcher l'éditeur : une notification de
+     * sélection arrivant après coup trouverait gEditingField déjà nul, ou pire,
+     * pointant sur l'objet suivant. */
+    [gFieldEditor setDelegate:nil];
 
     [gFieldScroll removeFromSuperview];
     gFieldScroll = nil;

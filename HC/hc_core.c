@@ -232,9 +232,14 @@ static const char *console_global(const char *name)
     return NULL;
 }
 
+/* Initialiseurs nommés : la structure gagne des champs au fil du temps, et une
+ * liste positionnelle oblige à recompter à chaque ajout — c'est ainsi qu'un
+ * callback finit branché sur le mauvais membre. */
 static const HcHost g_console_host = {
-    console_line, NULL, console_ask, console_answer,
-    console_global, NULL, NULL, NULL
+    .line       = console_line,
+    .ask        = console_ask,
+    .answer     = console_answer,
+    .global_get = console_global,
 };
 static const HcHost *g_host = &g_console_host;
 
@@ -375,6 +380,64 @@ static int     g_found_line = 0;
 static int     g_found_start = 0;   /* offset du motif dans le texte du champ */
 static int     g_found_len   = 0;   /* longueur du motif, 0 = rien de trouve */
 static Object *g_found_card  = NULL;
+
+/* ---- sélection de texte ----
+ * « select char 3 to 9 of field "toc" » pose une plage ; « the selection » la
+ * relit. Le noyau ne fait que la RETENIR : c'est l'hôte qui la montre à
+ * l'écran, via le callback selection_changed, parce que la surbrillance
+ * appartient à l'éditeur de champ de l'interface et non au modèle.
+ *
+ * Les bornes sont en caractères, dans le texte rendu par hc_field_text, et
+ * demi-ouvertes : [start, start+len). Une longueur nulle est un simple point
+ * d'insertion, ce qui est exactement ce que veut dire « select before char N »
+ * dans HyperTalk. */
+static Object *g_sel_field = NULL;
+static int     g_sel_start = 0;
+static int     g_sel_len   = 0;
+
+void hc_set_selection(Object *field, int start, int len)
+{
+    if (field && field->type != OBJ_FIELD) return;
+    if (start < 0) start = 0;
+    if (len   < 0) len   = 0;
+
+    if (field) {
+        int n = (int)strlen(hc_field_text(field));
+        if (start > n)       start = n;
+        if (start + len > n) len   = n - start;
+    }
+
+    g_sel_field = field;
+    g_sel_start = field ? start : 0;
+    g_sel_len   = field ? len   : 0;
+
+    /* L'hôte doit poser la surbrillance : sans cela « select line 2 » serait
+     * vrai pour les scripts et invisible à l'écran. */
+    if (g_host && g_host->selection_changed)
+        g_host->selection_changed(g_sel_field, g_sel_start, g_sel_len);
+}
+
+int hc_get_selection(Object **field, int *start, int *len)
+{
+    if (field) *field = g_sel_field;
+    if (start) *start = g_sel_start;
+    if (len)   *len   = g_sel_len;
+    return g_sel_field != NULL;
+}
+
+/* Texte sélectionné, ou chaîne vide. Écrit dans le tampon fourni. */
+static void selection_text(char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!g_sel_field) return;
+    const char *t = hc_field_text(g_sel_field);
+    int n = (int)strlen(t);
+    int s = g_sel_start, l = g_sel_len;
+    if (s > n) return;
+    if (s + l > n) l = n - s;
+    if (l <= 0) return;
+    snprintf(out, outlen, "%.*s", l, t + s);
+}
 
 /* pile de navigation : push cd / pop cd */
 #define NAVSTACK_MAX 64
@@ -611,6 +674,62 @@ void hc_free(Object *o)
 
 /* Retire un objet (bouton/champ) de la couche de son propriétaire et le libère.
  * Renvoie 1 si trouvé et supprimé, 0 sinon. */
+/* Définis plus bas, mais la suppression de carte en a besoin ici. */
+static Object *nth_card(Object *stack, int n);
+static int     card_index(Object *stack, Object *card);
+
+/* Supprime une carte de sa pile.
+ *
+ * Refuse la DERNIÈRE carte : HyperCard faisait de même, et une pile sans carte
+ * n'a pas de sens — le chargement en fabriquerait une d'office, donnant
+ * l'impression que la suppression n'a rien fait.
+ *
+ * La carte courante est déplacée AVANT la libération, sur la suivante ou, à
+ * défaut, sur la précédente. Sans cela g_current_card pointerait dans de la
+ * mémoire rendue, et la première évaluation de script partirait dans le vide.
+ *
+ * Le texte des champs de fond non partagés meurt avec la carte : il vivait
+ * dans ses bgtexts, ce que hc_free libère déjà. */
+int hc_delete_card(Object *card)
+{
+    if (!card || card->type != OBJ_CARD || !card->owner) return 0;
+    Object *stack = card->owner;
+
+    int total = 0;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_CARD) total++;
+    if (total <= 1) return 0;              /* on ne supprime pas la dernière */
+
+    int idx = card_index(stack, card);
+    if (idx < 0) return 0;
+
+    for (int i = 0; i < stack->nparts; i++) {
+        if (stack->parts[i] != card) continue;
+        for (int j = i; j < stack->nparts - 1; j++)
+            stack->parts[j] = stack->parts[j + 1];
+        stack->nparts--;
+        break;
+    }
+
+    if (g_current_card == card) {
+        Object *suiv = nth_card(stack, idx);          /* celle qui a pris la place */
+        if (!suiv) suiv = nth_card(stack, idx - 1);   /* c'était la dernière */
+        g_current_card = suiv;
+    }
+
+    hc_free(card);
+    return 1;
+}
+
+int hc_card_count(Object *stack)
+{
+    if (!stack) return 0;
+    int n = 0;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_CARD) n++;
+    return n;
+}
+
 int hc_delete_part(Object *o)
 {
     if (!o || !o->owner) return 0;
@@ -1086,7 +1205,10 @@ static Object *resolve(const char *ref)
             return find_card_by_name(stack, nm);
         }
         if (ci_word(after, "id")) {                    /* card id N */
-            int wanted = atoi(skip_spaces(after + 2));
+            const char *a = skip_spaces(after + 2);
+            int wanted;
+            if (isdigit((unsigned char)*a)) wanted = atoi(a);
+            else { char v[128]; eval_id_token(a, v, sizeof v); wanted = atoi(v); }
             for (int i = 0; i < stack->nparts; i++)
                 if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->id == wanted)
                     return stack->parts[i];
@@ -1101,11 +1223,36 @@ static Object *resolve(const char *ref)
         if (*after && !ci_word(after, "button") && !ci_word(after, "btn") &&
                       !ci_word(after, "field")  && !ci_word(after, "fld") &&
                       !ci_word(after, "part")   && !ci_word(after, "window")) {
-            char nm[128];
-            int n = 0;
-            while (after[n] && n < (int)sizeof nm - 1) { nm[n] = after[n]; n++; }
-            while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
-            nm[n] = '\0';
+            /* --- désignateur dynamique : « go cd v », « go card (i+1) » ------
+             * Même règle que pour les champs et les boutons : le jeton est
+             * évalué, puis on regarde ce qui en sort — un nombre désigne un
+             * rang, autre chose un nom. C'est ce qui rend possible le
+             * sommaire d'une pile, où le nom de la carte à ouvrir est calculé
+             * à partir de la ligne cliquée :
+             *
+             *     put the selection into deb
+             *     go cd deb
+             *
+             * Une variable jamais affectée vaut son propre nom, donc
+             * « go card canard » continue de désigner la carte canard. */
+            char nm[256];
+            eval_id_token(after, nm, sizeof nm);
+
+            if (!nm[0]) {
+                /* Plusieurs mots : eval_id_token s'abstient. Un nom de carte
+                 * peut légitimement en contenir, sans guillemets — on reprend
+                 * alors la chaîne entière, comme avant. */
+                int n = 0;
+                while (after[n] && n < (int)sizeof nm - 1) { nm[n] = after[n]; n++; }
+                while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
+                nm[n] = '\0';
+            }
+
+            int nlen = (int)strlen(nm);
+            if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
+                Object *c = nth_card(stack, atoi(nm) - 1);
+                if (c) return c;
+            }
             Object *c = find_card_by_name(stack, nm);
             if (c) return c;
         }
@@ -1287,6 +1434,27 @@ static void frame_declare_global(Frame *f, const char *name)
         f->gl = p; f->capgl = cap;
     }
     f->gl[f->ngl++] = dupstr(name);
+
+    /* Une globale DÉCLARÉE existe, et vaut la chaîne vide tant qu'on ne l'a
+     * pas affectée. Sans cela elle tombait sous la règle « identificateur
+     * inconnu = son propre nom », et « global lastclick » suivi de
+     * « if lastclick is empty » répondait faux — la globale valant le texte
+     * « lastclick ». Cette règle-là ne concerne que les mots jamais déclarés.
+     *
+     * On ne touche pas à une globale déjà posée par un autre gestionnaire :
+     * c'est tout l'intérêt d'une globale que de survivre entre les appels. */
+    for (int i = 0; i < g_globals.n; i++)
+        if (ci_equal(g_globals.v[i].name, name)) return;
+
+    if (g_globals.n == g_globals.cap) {
+        int cap = g_globals.cap ? g_globals.cap * 2 : 8;
+        Var *p = realloc(g_globals.v, (size_t)cap * sizeof *p);
+        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        g_globals.v = p; g_globals.cap = cap;
+    }
+    g_globals.v[g_globals.n].name = dupstr(name);
+    g_globals.v[g_globals.n].val  = dupstr("");
+    g_globals.n++;
 }
 
 static void frame_clear(Frame *f)
@@ -2471,6 +2639,26 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
         if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
         if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_text); return 1; }
+        if (ci_equal(name, "selection") || ci_equal(name, "selectedtext")) {
+            selection_text(out, outlen); return 1;
+        }
+        if (ci_equal(name, "selectedfield")) {
+            if (g_sel_field) hc_describe(g_sel_field, out, outlen);
+            else snprintf(out, outlen, "%s", "");
+            return 1;
+        }
+        /* Numéro de la ligne sélectionnée, ou vide. C'est ce que lisent les
+         * sommaires pour savoir où aller ; le calculer ici évite à chaque
+         * pile de le refaire à coups de « number of chars of line 1 to N ». */
+        if (ci_equal(name, "selectedline")) {
+            if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
+            const char *t = hc_field_text(g_sel_field);
+            int line = 1;
+            for (int i = 0; i < g_sel_start && t[i]; i++)
+                if (t[i] == '\n') line++;
+            snprintf(out, outlen, "%d", line);
+            return 1;
+        }
         if (ci_equal(name, "foundfield")) {
             if (g_found_field) hc_describe(g_found_field, out, outlen);
             else snprintf(out, outlen, "%s", "");
@@ -2499,7 +2687,28 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "ticks")) {
-            snprintf(out, outlen, "%lld", (long long)(clock() * 60 / CLOCKS_PER_SEC));
+            /* Soixantièmes de seconde. D'abord l'hôte, s'il sait : lui seul a
+             * une horloge fine et fiable.
+             *
+             * clock() mesurait le temps PROCESSEUR, pas le temps écoulé. Dans
+             * une application graphique qui passe son temps à attendre
+             * l'utilisateur, il n'avance presque pas — « the ticks » rendait 0
+             * en boucle, et tout script comparant deux instants pour détecter
+             * un double-clic voyait un écart nul, donc un double-clic à chaque
+             * fois.
+             *
+             * Le repli compte depuis le PREMIER appel plutôt que depuis 1970 :
+             * HyperCard comptait depuis le démarrage de la machine, et un
+             * nombre qui reste petit évite d'éprouver l'arithmétique des
+             * scripts sur des milliards. */
+            const char *hv = host_global(name);
+            if (hv && *hv) { snprintf(out, outlen, "%s", hv); return 1; }
+
+            static time_t t0;
+            static int t0_pris = 0;
+            time_t now = time(NULL);
+            if (!t0_pris) { t0 = now; t0_pris = 1; }
+            snprintf(out, outlen, "%lld", (long long)(now - t0) * 60);
             return 1;
         }
     }
@@ -4961,6 +5170,59 @@ static void exec_line_body(Object *me, const char *line)
                 return;
             }
         }
+    }
+
+    /* ---- select <morceau> of <champ> ----
+     * « select line 2 of field "toc" », « select char 5 to 12 of card field 1 »,
+     * et les formes vides « select empty » / « select » qui ne sélectionnent
+     * rien. HyperCard accepte aussi « select before/after <morceau> » : ce sont
+     * des points d'insertion, donc une plage de longueur nulle.
+     *
+     * Le travail de découpe est déjà fait par chunk_target, qui rend le champ
+     * et les bornes du morceau — le même code que celui qui sert à « put X
+     * into line 2 of field Y ». Il n'y a rien à réécrire ici, seulement à
+     * mémoriser le résultat et à prévenir l'hôte. */
+    if (ci_word(verb, "select")) {
+        const char *a = skip_spaces(rest);
+
+        if (!*a || ci_word(a, "empty")) {
+            hc_set_selection(NULL, 0, 0);
+            return;
+        }
+
+        int point_avant = 0, point_apres = 0;
+        if (ci_word(a, "before"))     { point_avant = 1; a = skip_spaces(a + 6); }
+        else if (ci_word(a, "after")) { point_apres = 1; a = skip_spaces(a + 5); }
+
+        /* « select text of field X » : tout le contenu. */
+        if (ci_word(a, "text")) {
+            const char *r = skip_spaces(a + 4);
+            if (ci_word(r, "of")) r = skip_spaces(r + 2);
+            Object *f = resolve(r);
+            if (f && f->type == OBJ_FIELD) {
+                const char *t = hc_field_text(f);
+                hc_set_selection(f, 0, (int)strlen(t));
+            } else emit(HC_ERR, "   !! select : champ introuvable : %s", r);
+            return;
+        }
+
+        int st, en;
+        Object *f = chunk_target(a, &st, &en);
+        if (!f) {
+            /* Pas de morceau : peut-être le champ entier, « select field 1 ». */
+            f = resolve(a);
+            if (f && f->type == OBJ_FIELD) {
+                const char *t = hc_field_text(f);
+                st = 0; en = (int)strlen(t);
+            } else {
+                emit(HC_ERR, "   !! select : cible introuvable : %s", a);
+                return;
+            }
+        }
+        if (point_avant)      hc_set_selection(f, st, 0);
+        else if (point_apres) hc_set_selection(f, en, 0);
+        else                  hc_set_selection(f, st, en - st);
+        return;
     }
 
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);

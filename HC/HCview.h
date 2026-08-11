@@ -5,7 +5,7 @@
 #import "hc_core.h"
 #import "HCglobals.h"   /* declare gView, une bonne fois pour toutes */
 
-@interface HCView : NSView
+@interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
