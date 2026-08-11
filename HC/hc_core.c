@@ -2658,6 +2658,14 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "itemdelimiter")) {
             snprintf(out, outlen, "%c", g_item_delim); return 1;
         }
+        /* the tool : l'outil courant, sous la forme « brush tool ». C'est
+         * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
+         * celui d'HyperCard au repos. */
+        if (ci_equal(name, "tool")) {
+            const char *t = host_global("tool");
+            snprintf(out, outlen, "%s", (t && *t) ? t : "browse tool");
+            return 1;
+        }
         if (ci_equal(name, "selection") || ci_equal(name, "selectedtext")) {
             selection_text(out, outlen); return 1;
         }
@@ -5616,6 +5624,127 @@ static void exec_line_body(Object *me, const char *line)
             set_result("");
             return;
         }
+    }
+
+    /* ---- choose <outil> tool ----
+     * « choose brush tool », « choose line tool ». Le mot « tool » final est
+     * facultatif chez certains auteurs ; on le retire s'il est là. */
+    if (ci_equal(verb, "choose")) {
+        ARENA_MARK;
+        char *nom = arena_buf();
+        snprintf(nom, HC_VAL, "%s", skip_spaces(rest));
+        int n = (int)strlen(nom);
+        while (n > 0 && isspace((unsigned char)nom[n-1])) nom[--n] = '\0';
+        if (n > 4 && ci_equal(nom + n - 4, "tool")) {
+            n -= 4;
+            while (n > 0 && isspace((unsigned char)nom[n-1])) n--;
+            nom[n] = '\0';
+        }
+        /* « choose tool 3 » : par numéro, comme la palette. On laisse l'hôte
+         * décider, il connaît l'ordre de ses cases. */
+        if (g_host && g_host->choose_tool) g_host->choose_tool(nom);
+        else emit(HC_ERR, "   !! choose : l'hôte ne gère pas les outils");
+        ARENA_FREE;
+        set_result("");
+        return;
+    }
+
+    /* ---- drag from <point> to <point> [with <touches>] ---- */
+    if (ci_equal(verb, "drag")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "from")) a = skip_spaces(a + 4);
+        const char *to = find_kw(a, "to");
+        if (!to) { emit(HC_ERR, "   !! drag : « to » manquant"); return; }
+
+        ARENA_MARK;
+        char *p1 = arena_buf(), *p2 = arena_buf();
+        int len = (int)(to - a);
+        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+        memcpy(p1, a, (size_t)len); p1[len] = '\0';
+
+        const char *reste = skip_spaces(to + 2);
+        const char *with = find_kw(reste, "with");
+        char *mods = arena_buf();
+        mods[0] = '\0';
+        if (with) {
+            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
+            len = (int)(with - reste);
+            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+            memcpy(p2, reste, (size_t)len); p2[len] = '\0';
+        } else {
+            snprintf(p2, HC_VAL, "%s", reste);
+        }
+
+        char *v1 = arena_buf(), *v2 = arena_buf();
+        eval_point(p1, v1, HC_VAL);
+        eval_point(p2, v2, HC_VAL);
+        int x1 = atoi(v1), y1 = 0, x2 = atoi(v2), y2 = 0;
+        const char *c1 = strchr(v1, ','), *c2 = strchr(v2, ',');
+        if (c1) y1 = atoi(c1 + 1);
+        if (c2) y2 = atoi(c2 + 1);
+
+        if (g_host && g_host->drag) g_host->drag(x1, y1, x2, y2, mods);
+        else emit(HC_ERR, "   !! drag : l'hôte ne gère pas la souris");
+        ARENA_FREE;
+        set_result("");
+        return;
+    }
+
+    /* ---- click at <point> [with <touches>] ---- */
+    if (ci_equal(verb, "click")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "at")) a = skip_spaces(a + 2);
+
+        ARENA_MARK;
+        const char *with = find_kw(a, "with");
+        char *pt = arena_buf(), *mods = arena_buf();
+        mods[0] = '\0';
+        if (with) {
+            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
+            int len = (int)(with - a);
+            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+            memcpy(pt, a, (size_t)len); pt[len] = '\0';
+        } else {
+            snprintf(pt, HC_VAL, "%s", a);
+        }
+
+        char *v = arena_buf();
+        eval_point(pt, v, HC_VAL);
+        int x = atoi(v), y = 0;
+        const char *c = strchr(v, ',');
+        if (c) y = atoi(c + 1);
+
+        if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
+        else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
+        ARENA_FREE;
+        set_result("");
+        return;
+    }
+
+    /* ---- type <texte> [with <touches>] ---- */
+    if (ci_equal(verb, "type")) {
+        const char *a = skip_spaces(rest);
+        const char *with = find_kw(a, "with");
+
+        ARENA_MARK;
+        char *expr = arena_buf(), *mods = arena_buf();
+        mods[0] = '\0';
+        if (with) {
+            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
+            int len = (int)(with - a);
+            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+            memcpy(expr, a, (size_t)len); expr[len] = '\0';
+        } else {
+            snprintf(expr, HC_VAL, "%s", a);
+        }
+
+        char *txt = arena_buf();
+        eval_checked(expr, txt, HC_VAL);
+        if (g_host && g_host->type_text) g_host->type_text(txt, mods);
+        else emit(HC_ERR, "   !! type : l'hôte ne gère pas le clavier");
+        ARENA_FREE;
+        set_result("");
+        return;
     }
 
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);

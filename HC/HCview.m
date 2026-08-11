@@ -1128,6 +1128,142 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
     }
 }
 
+/* Dernier clic dans la carte : position en coordonnées carte, et le champ
+ * touché s'il y en a un. Posés par mouseDown, lus par les propriétés
+ * clickLoc / clickLine / clickText. */
+static NSPoint  gClickPoint = {0, 0};
+static Object  *gClickField = NULL;
+
+/* ---------- outils et gestes simulés par script ----------
+ * « choose line tool » puis « drag from 10,10 to 90,90 » : un script qui
+ * dessine. C'était une signature d'HyperCard, et les piles s'en servaient pour
+ * fabriquer des graphiques à la volée.
+ *
+ * Les noms viennent d'HyperCard, y compris ses variantes d'écriture — « round
+ * rect » et « roundRect » désignent le même outil selon les scripts. */
+static void cocoa_choose_tool(const char *name) {
+    if (!name) return;
+    struct { const char *nom; HCTool t; } table[] = {
+        { "browse",         TOOL_BROWSE   },
+        { "button",         TOOL_BUTTON   },
+        { "field",          TOOL_FIELD    },
+        { "select",         TOOL_SELRECT  },
+        { "lasso",          TOOL_LASSO    },
+        { "pencil",         TOOL_PENCIL   },
+        { "brush",          TOOL_BRUSH    },
+        { "eraser",         TOOL_ERASER   },
+        { "line",           TOOL_LINE     },
+        { "spray",          TOOL_SPRAY    },
+        { "spray can",      TOOL_SPRAY    },
+        { "rectangle",      TOOL_RECT     },
+        { "rect",           TOOL_RECT     },
+        { "bucket",         TOOL_FILL     },
+        { "oval",           TOOL_OVAL     },
+        { "curve",          TOOL_FREEFORM },
+        { "text",           TOOL_TEXT     },
+        { "polygon",        TOOL_FREEFORM },
+    };
+    for (unsigned i = 0; i < sizeof table / sizeof *table; i++) {
+        if (strcasecmp(name, table[i].nom) == 0) {
+            gTool = table[i].t;
+            gSelected = NULL;
+            [gView stopSprayTimer];
+            [gView setNeedsDisplay:YES];
+            return;
+        }
+    }
+    NSLog(@"choose : outil inconnu « %s »", name);
+}
+
+/* Recherche insensible à la casse. strcasestr est une extension GNU, absente
+ * de la bibliothèque de macOS : l'écrire ici évite un #define _GNU_SOURCE qui
+ * n'aurait de toute façon aucun effet sur ce système. */
+static BOOL mods_has(const char *mods, const char *k) {
+    if (!mods || !k || !*k) return NO;
+    size_t n = strlen(k);
+    for (const char *p = mods; *p; p++)
+        if (strncasecmp(p, k, n) == 0) return YES;
+    return NO;
+}
+
+/* Trace avec l'outil courant, sans passer par la boucle d'événements : on
+ * appelle directement les fonctions de dessin. Simuler de vrais événements
+ * souris serait plus fidèle en apparence, mais un script qui trace cent
+ * segments empilerait cent allers-retours dans la file d'attente. */
+static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
+    Object *card = hc_current_card();
+    if (!card || !gView) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+
+    NSRect b = [gView bounds];
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)b.size.width, (int)b.size.height);
+    NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
+
+    /* shiftKey contraint le trait, comme sous la souris. */
+    if (mods_has(mods, "shift")) {
+        CGFloat dx = fabs(z.x - a.x), dy = fabs(z.y - a.y);
+        if (dx > dy) z.y = a.y; else z.x = a.x;
+    }
+
+    switch (gTool) {
+        case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
+        case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
+        case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
+        case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
+        case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
+        case TOOL_RECT: case TOOL_OVAL: case TOOL_FREEFORM:
+            if (gShapeFilled) fill_shape(rep, gTool, a, z);
+            else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
+            break;
+        default:
+            /* Outil sans tracé : déplacer l'objet sélectionné, comme le ferait
+             * un glissement à la souris. */
+            if (gSelected) {
+                gSelected->x += x2 - x1;
+                gSelected->y += y2 - y1;
+            }
+            break;
+    }
+    [gView setNeedsDisplay:YES];
+}
+
+static void cocoa_click_at(int x, int y, const char *mods) {
+    (void)mods;
+    if (!gView) return;
+    NSPoint p = NSMakePoint(x, y);
+
+    /* Un clic scripté doit produire les mêmes MESSAGES qu'un clic réel —
+     * mouseDown puis mouseUp sur la part visée — sinon « click at » ne
+     * déclencherait aucun gestionnaire, ce qui est tout son intérêt. */
+    Object *hit = part_at(hc_current_card(), p);
+    gClickPoint = p;
+    gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
+
+    if (hit && gTool == TOOL_BROWSE) {
+        hc_send(hit, "mouseDown");
+        hc_send(hit, "mouseUp");
+    }
+    [gView setNeedsDisplay:YES];
+}
+
+static void cocoa_type_text(const char *text, const char *mods) {
+    (void)mods;
+    if (!text || !gView) return;
+    NSString *s = [NSString stringWithUTF8String:text];
+    if (!s) return;
+
+    /* Dans le champ en cours d'édition s'il y en a un, sinon dans la boîte de
+     * message — c'est là que va la frappe quand aucun champ n'a le focus. */
+    if (gEditingField && gFieldEditor) {
+        [gFieldEditor insertText:s replacementRange:[gFieldEditor selectedRange]];
+    } else if (gMsgBox) {
+        [gMsgBox setStringValue:
+            [[gMsgBox stringValue] stringByAppendingString:s]];
+    }
+    [gView setNeedsDisplay:YES];
+}
+
 static void cocoa_field_changed(Object *field) {
     (void)field;
     [gView setNeedsDisplay:YES];
@@ -1200,11 +1336,6 @@ static void cocoa_selection_changed(Object *field, int start, int len) {
  * La vue etant isFlipped, ses coordonnees sont deja celles de la carte. */
 static char gGlobBuf[64];
 
-/* Dernier clic dans la carte : position en coordonnées carte, et le champ
- * touché s'il y en a un. Posés par mouseDown, lus par les propriétés
- * clickLoc / clickLine / clickText. */
-static NSPoint  gClickPoint = {0, 0};
-static Object  *gClickField = NULL;
 
 /* Numéro de la ligne cliquée dans un champ, 1-based, ou 0.
  *
@@ -1370,6 +1501,50 @@ static const char *cocoa_global_get(const char *name) {
      * « put the clickLine into l ; put the value of l » — et c'est ce
      * qu'attendent les scripts de sommaire d'origine. Un script qui veut le
      * seul numéro écrit « word 2 of the clickLine ». */
+    /* Contrepartie en lecture des réglages de peinture : un script qui les
+     * modifie doit pouvoir les rétablir ensuite, faute de quoi il laisse
+     * l'application dans un état qu'il a choisi pour lui seul. */
+    if (strcasecmp(name, "filled") == 0)
+        return gShapeFilled ? "true" : "false";
+    if (strcasecmp(name, "lineSize") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gLineWidth);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "pattern") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gPattern + 1);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "brush") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gBrush + 1);
+        return gGlobBuf;
+    }
+
+    /* the tool : le nom qu'HyperCard emploie, suivi de « tool ». Les scripts
+     * comparent la chaîne entière — « if the tool is "brush tool" ». */
+    if (strcasecmp(name, "tool") == 0) {
+        const char *n = "browse";
+        switch (gTool) {
+            case TOOL_BROWSE:   n = "browse";    break;
+            case TOOL_BUTTON:   n = "button";    break;
+            case TOOL_FIELD:    n = "field";     break;
+            case TOOL_SELRECT:  n = "select";    break;
+            case TOOL_LASSO:    n = "lasso";     break;
+            case TOOL_PENCIL:   n = "pencil";    break;
+            case TOOL_BRUSH:    n = "brush";     break;
+            case TOOL_ERASER:   n = "eraser";    break;
+            case TOOL_LINE:     n = "line";      break;
+            case TOOL_SPRAY:    n = "spray";     break;
+            case TOOL_RECT:     n = "rectangle"; break;
+            case TOOL_FILL:     n = "bucket";    break;
+            case TOOL_OVAL:     n = "oval";      break;
+            case TOOL_FREEFORM: n = "curve";     break;
+            case TOOL_TEXT:     n = "text";      break;
+            default: break;
+        }
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%s tool", n);
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "clickLoc") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d",
                  (int)gClickPoint.x, (int)gClickPoint.y);
@@ -1449,6 +1624,51 @@ static const char *cocoa_global_get(const char *name) {
 static BOOL gCursorHidden = NO;
 
 static void cocoa_global_set(const char *name, const char *value) {
+    /* ---- propriétés de peinture ----
+     * Elles pilotent les outils, donc les gestes scriptés par « drag ». Sans
+     * elles, un script ne peut tracer que des formes vides d'un pixel — de
+     * quoi faire un cadre, pas un histogramme.
+     *
+     * Ce sont des propriétés de l'INTERFACE et non du modèle : le noyau ne
+     * sait pas ce qu'est un motif ni une épaisseur de trait. Elles arrivent
+     * donc ici par host_global_set, et n'ont rien à faire dans hc_core. */
+    int vrai = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+
+    if (strcasecmp(name, "filled") == 0) {
+        gShapeFilled = vrai ? YES : NO;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (strcasecmp(name, "lineSize") == 0) {
+        int v = atoi(value);
+        if (v < 1) v = 1;
+        if (v > 8) v = 8;          /* la palette d'HyperCard s'arrête là */
+        gLineWidth = v;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (strcasecmp(name, "pattern") == 0) {
+        int v = atoi(value);
+        if (v < 1) v = 1;
+        if (v > NUM_PATTERNS) v = NUM_PATTERNS;
+        /* HyperCard numérote les motifs à partir de 1, notre table à partir
+         * de 0 : un décalage qui, oublié, décale toute la palette. */
+        gPattern = v - 1;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (strcasecmp(name, "brush") == 0) {
+        int v = atoi(value);
+        if (v < 1) v = 1;
+        if (v > NUM_BRUSHES) v = NUM_BRUSHES;
+        gBrush = v - 1;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    /* « centered » n'est pas implémenté : le dessin ne sait pas encore tracer
+     * une forme depuis son centre. Mieux vaut ne rien exposer que d'accepter
+     * un réglage sans effet, qui laisserait croire au script qu'il a agi. */
+
     if (strcasecmp(name, "cursor") == 0) {
         if (strcasecmp(value, "none") == 0) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
@@ -3036,6 +3256,10 @@ static BOOL paint_selection_active(void)
     host.global_get    = cocoa_global_get;
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
+    host.choose_tool   = cocoa_choose_tool;
+    host.drag          = cocoa_drag;
+    host.click_at      = cocoa_click_at;
+    host.type_text     = cocoa_type_text;
     host.idle          = cocoa_idle;
     hc_set_host(&host);
 }

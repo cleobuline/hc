@@ -194,6 +194,25 @@ typedef struct {
 
     void (*play_sound)(const char *name);   /* play "boing" */
 
+    /* ---- outils et gestes simulés ----
+     * Le noyau ne connaît ni la palette ni la souris : il analyse la commande
+     * et délègue. `mods` est une liste éventuelle de touches séparées par des
+     * virgules — « shiftKey », « optionKey », « commandKey » — ou NULL.
+     *
+     * choose_tool  « choose line tool »  : nom d'outil en minuscules, tel
+     *              qu'HyperCard l'écrit (browse, brush, line, spray…).
+     * drag         « drag from 10,10 to 90,90 » : trace avec l'outil courant.
+     * click_at     « click at 100,120 » : un clic complet, appui et relâchement.
+     * type_text    « type "bonjour" » : frappe dans ce qui a le focus.
+     *
+     * Ensemble, choose et drag permettent à un script de DESSINER, ce qui
+     * était une signature d'HyperCard : les piles s'y fabriquaient des
+     * graphiques à la volée. */
+    void (*choose_tool)(const char *name);
+    void (*drag)(int x1, int y1, int x2, int y2, const char *mods);
+    void (*click_at)(int x, int y, const char *mods);
+    void (*type_text)(const char *text, const char *mods);
+
     /* Sélection de texte posée par « select … of field X ». L'hôte met la
      * surbrillance dans son éditeur de champ : sans lui, la sélection serait
      * vraie pour les scripts et invisible à l'écran. `field` NULL veut dire
