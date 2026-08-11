@@ -514,10 +514,10 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
      * Effet de bord bienvenu : le calcul de la ligne cliquée devient exact,
      * et la formule des scripts d'époque — « (mouseV - top) div textHeight »
      * — tombe juste. */
-    NSFont *fbase = at[NSFontAttributeName];
-    CGFloat corps = fbase ? [fbase pointSize] : 12;
-    CGFloat lh = o->textsize > 0 ? o->textsize : corps;
-    lh = floor(lh * 4.0 / 3.0 + 0.5);
+    /* L'interligne vient du NOYAU, via hc_text_height : c'est la valeur que
+     * « the textHeight » rend aux scripts, et il serait absurde qu'ils
+     * calculent sur un espacement différent de celui qu'ils voient. */
+    CGFloat lh = hc_text_height(o);
     if (lh < 1) lh = 12;
 
     NSMutableParagraphStyle *ps =

@@ -721,8 +721,15 @@ int hc_delete_card(Object *card)
     return 1;
 }
 
-int hc_card_count(Object *stack)
+int hc_text_height(Object *o)
 {
+    if (!o) return 16;
+    if (o->textheight > 0) return o->textheight;
+    int sz = o->textsize > 0 ? o->textsize : 12;
+    return (sz * 4 + 1) / 3;      /* quatre tiers, arrondi comme HyperCard */
+}
+
+int hc_card_count(Object *stack){
     if (!stack) return 0;
     int n = 0;
     for (int i = 0; i < stack->nparts; i++)
@@ -1639,9 +1646,18 @@ static ChunkType chunk_kind(const char *s, int *used)
     return CH_NONE;
 }
 
+/* Séparateur d'items, modifiable par « set the itemDelimiter to ";" ».
+ *
+ * HyperCard 2.2 l'a introduit pour découper autre chose que du CSV — des
+ * chemins de fichiers séparés par « : », des lignes de tabulations. C'est une
+ * propriété GLOBALE, et non celle d'un conteneur : elle vaut pour tout le
+ * découpage tant qu'on ne la change pas, ce qui oblige les scripts prudents à
+ * la remettre à la virgule après usage. */
+static char g_item_delim = ',';
+
 static char chunk_sep(ChunkType t)
 {
-    if (t == CH_ITEM) return ',';
+    if (t == CH_ITEM) return g_item_delim;
     if (t == CH_LINE) return '\n';
     if (t == CH_WORD) return ' ';
     return '\0';
@@ -2639,6 +2655,9 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
         if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
         if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_text); return 1; }
+        if (ci_equal(name, "itemdelimiter")) {
+            snprintf(out, outlen, "%c", g_item_delim); return 1;
+        }
         if (ci_equal(name, "selection") || ci_equal(name, "selectedtext")) {
             selection_text(out, outlen); return 1;
         }
@@ -2762,6 +2781,14 @@ static int call_function_body(const char *t, char *out, int outlen)
     if (ci_equal(name, "cos"))    { put_num(cos(a), out, outlen); return 1; }
     if (ci_equal(name, "tan"))    { put_num(tan(a), out, outlen); return 1; }
     if (ci_equal(name, "atan"))   { put_num(atan(a), out, outlen); return 1; }
+    /* Variantes de précision d'HyperCard : exp1(x) = e^x − 1 et
+     * ln1(x) = ln(1+x). Elles existent parce qu'aux alentours de zéro, calculer
+     * exp(x)-1 fait perdre les chiffres significatifs — la soustraction annule
+     * la partie utile du résultat. Les bibliothèques modernes fournissent
+     * expm1 et log1p, qui font exactement cela. */
+    if (ci_equal(name, "exp1"))   { put_num(expm1(a), out, outlen); return 1; }
+    if (ci_equal(name, "exp2"))   { put_num(pow(2.0, a), out, outlen); return 1; }
+    if (ci_equal(name, "ln1"))    { put_num(a > -1 ? log1p(a) : 0, out, outlen); return 1; }
     if (ci_equal(name, "random")) {
         static int seeded = 0;
         if (!seeded) { srand((unsigned)time(NULL)); seeded = 1; }
@@ -2783,6 +2810,26 @@ static int call_function_body(const char *t, char *out, int outlen)
     }
 
     /* --- deux entrées --- */
+    /* Fonctions financières d'HyperCard. Elles paraissent exotiques, mais les
+     * piles de gestion des années 90 en sont truffées — calculs de prêts, de
+     * placements. Deux formules, rien de plus :
+     *   annuity(taux, périodes)  = (1 − (1+taux)^−n) / taux
+     *   compound(taux, périodes) = (1+taux)^n
+     * Le taux nul est un cas limite légitime : l'annuité vaut alors le nombre
+     * de périodes, et la division ferait une erreur. */
+    if (ci_equal(name, "annuity") && nargs >= 2) {
+        double taux = 0, n = 0;
+        as_num(vals[0], &taux); as_num(vals[1], &n);
+        put_num(taux == 0 ? n : (1.0 - pow(1.0 + taux, -n)) / taux, out, outlen);
+        return 1;
+    }
+    if (ci_equal(name, "compound") && nargs >= 2) {
+        double taux = 0, n = 0;
+        as_num(vals[0], &taux); as_num(vals[1], &n);
+        put_num(pow(1.0 + taux, n), out, outlen);
+        return 1;
+    }
+
     if (ci_equal(name, "offset")) {
         int pos = 0, nl = (int)strlen(vals[0]), hl = (int)strlen(vals[1]);
         for (int i = 0; nl && i + nl <= hl; i++)
@@ -3100,7 +3147,7 @@ static void term_value_body(const char *t, char *out, int outlen)
                  * La cible peut donc etre calculee : « of + 2 » est evalue
                  * comme expression si ce n'est pas deja un morceau litteral. */
                 if (ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
-                    ci_equal(prop, "textsize")  || ci_equal(prop, "textheight")) {
+                    ci_equal(prop, "textsize")) {
                     int cst, cen;
                     Object *cf = chunk_target(of + 2, &cst, &cen);
                     if (cf) {
@@ -3154,7 +3201,12 @@ static void term_value_body(const char *t, char *out, int outlen)
                     }
                     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
-                    if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", o->textsize); return; }
+                    if (ci_equal(prop, "textsize")) { snprintf(out, outlen, "%d", o->textsize); return; }
+                    /* textHeight n'est PAS textSize : c'est l'interligne, et
+                     * les scripts d'époque divisent par lui pour trouver la
+                     * ligne cliquée. Les confondre faussait le calcul d'un
+                     * tiers de ligne à chaque ligne. */
+                    if (ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", hc_text_height(o)); return; }
                     if (ci_equal(prop, "script"))  {
                         const char *sc = o->script ? o->script : "";
                         /* Les valeurs du noyau tiennent dans des tampons fixes.
@@ -4143,11 +4195,94 @@ static void exec_body(Object *me, const char *body, const char *end)
     free(L);
 }
 
+/* ---- tri ------------------------------------------------------------------
+ *   sort [this] stack [ascending|descending] [text|numeric|dateTime] by <clé>
+ *   sort [lines|items of] <conteneur> [sens] [style] [by <clé avec each>]
+ *
+ * Deux familles sous un même verbe, et la même mécanique dessous : pour chaque
+ * élément on évalue une CLÉ, puis on trie sur ces clés.
+ *
+ * Ce qui change d'une famille à l'autre, c'est le contexte d'évaluation. Pour
+ * les cartes, une clé comme « field "nom" » doit désigner le champ de LA carte
+ * examinée — on déplace donc la carte courante le temps du calcul. Pour un
+ * conteneur, la clé porte sur la variable `each`, qui vaut tour à tour chaque
+ * ligne ou chaque item.
+ *
+ * Le tri est STABLE : deux éléments de clé égale gardent leur ordre d'origine.
+ * HyperCard le garantissait, et des piles s'en servent pour trier sur deux
+ * critères en triant deux fois, du moins important au plus important. */
+typedef enum { SORT_TEXT, SORT_NUM, SORT_DATE } SortStyle;
+typedef struct { char *cle; int rang; Object *card; } SortItem;
+
+static int       g_sort_desc  = 0;
+static SortStyle g_sort_style = SORT_TEXT;
+
+static int sort_cmp(const void *pa, const void *pb)
+{
+    const SortItem *a = pa, *b = pb;
+    int r = 0;
+
+    if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
+        double x = 0, y = 0;
+        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
+        /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
+         * de venir se mêler aux valeurs légitimes. */
+        if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
+        else if (nx)  r = -1;
+        else if (ny)  r =  1;
+    } else {
+        const char *x = a->cle, *y = b->cle;      /* insensible à la casse */
+        while (*x && *y) {
+            int cx = tolower((unsigned char)*x), cy = tolower((unsigned char)*y);
+            if (cx != cy) { r = cx < cy ? -1 : 1; break; }
+            x++; y++;
+        }
+        if (!r) r = (*x ? 1 : 0) - (*y ? 1 : 0);
+    }
+
+    if (g_sort_desc) r = -r;
+    if (r == 0) r = a->rang - b->rang;            /* stabilité */
+    return r;
+}
+
+/* Lit sens et style, et rend ce qui reste de la ligne. */
+static const char *sort_options(const char *s, int *desc, SortStyle *style)
+{
+    for (;;) {
+        s = skip_spaces(s);
+        if      (ci_word(s, "ascending"))     { *desc = 0; s += 9;  }
+        else if (ci_word(s, "descending"))    { *desc = 1; s += 10; }
+        else if (ci_word(s, "text"))          { *style = SORT_TEXT; s += 4; }
+        else if (ci_word(s, "numeric"))       { *style = SORT_NUM;  s += 7; }
+        else if (ci_word(s, "datetime"))      { *style = SORT_DATE; s += 8; }
+        else if (ci_word(s, "international")) { *style = SORT_TEXT; s += 13; }
+        else return s;
+    }
+}
+
 static void exec_line_body(Object *me, const char *line)
 {
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
     char verb[64];
     const char *rest = next_word(line, verb, sizeof verb);
+
+    /* Une parenthèse ouvrante termine le verbe aussi sûrement qu'un espace.
+     * « return(x) », sans espace, est légal en HyperTalk et fréquent dans les
+     * piles d'époque — next_word en faisait un seul mot, et l'interpréteur
+     * annonçait « verbe inconnu : return(trunc(… ». On recoupe donc au
+     * premier '(' et l'on rend le reste à l'analyseur d'expression, qui sait
+     * très bien traiter une parenthèse en tête. */
+    {
+        char *par = strchr(verb, '(');
+        if (par && par != verb) {
+            rest = line + (par - verb);
+            /* Retrouver la position réelle dans la ligne : verb a été copié
+             * depuis le premier caractère non blanc. */
+            const char *deb = skip_spaces(line);
+            rest = deb + (par - verb);
+            *par = '\0';
+        }
+    }
 
     /* --- send "<message> [args]" to <objet> ---
      * Le message est une ligne de HyperTalk : un nom de gestionnaire suivi
@@ -4413,6 +4548,18 @@ static void exec_line_body(Object *me, const char *line)
             }
             char *val = arena_buf();
             eval_checked(to + 2, val, HC_VAL);
+
+            /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
+             * lui qui découpe les items, et l'interface n'a rien à en savoir.
+             * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
+             * HyperCard ne retenait qu'un caractère. */
+            if (ci_equal(prop, "itemdelimiter")) {
+                g_item_delim = val[0] ? val[0] : ',';
+                set_result("");
+                emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+                return;
+            }
+
             host_global_set(prop, val);
             set_result("");
             emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
@@ -4495,8 +4642,7 @@ static void exec_line_body(Object *me, const char *line)
                 int mask = 0;
                 if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
                 else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
-                else if (ci_equal(prop, "textsize") ||
-                         ci_equal(prop, "textheight")) mask = RA_SIZE;
+                else if (ci_equal(prop, "textsize")) mask = RA_SIZE;
 
                 if (!mask) {
                     /* Deux échecs bien différents, qu'un seul message
@@ -4602,8 +4748,13 @@ static void exec_line_body(Object *me, const char *line)
             notify_field(o);
         } else if (ci_equal(prop, "autohilite")) {
             o->autohilite = truthy(val);
-        } else if (ci_equal(prop, "textsize") || ci_equal(prop, "textheight")) {
+        } else if (ci_equal(prop, "textsize")) {
             o->textsize = atoi(val);
+            notify_field(o);
+        } else if (ci_equal(prop, "textheight")) {
+            /* Zéro rétablit la valeur déduite du corps. */
+            int v = atoi(val);
+            o->textheight = v > 0 ? v : 0;
             notify_field(o);
         } else if (ci_equal(prop, "script")) {
             /* Une valeur qui touche exactement le plafond a presque
@@ -5223,6 +5374,248 @@ static void exec_line_body(Object *me, const char *line)
         else if (point_apres) hc_set_selection(f, en, 0);
         else                  hc_set_selection(f, st, en - st);
         return;
+    }
+
+    /* ---- wait ----
+     *   wait 30 ticks / wait 2 seconds / wait until <condition>
+     *   wait while <condition> / wait for 10 ticks
+     *
+     * Omniprésente dans les piles : elle rythme les animations et laisse le
+     * temps de lire un message. L'attente passe par host_idle à chaque tour,
+     * sans quoi l'écran resterait figé pendant toute la durée — c'est déjà ce
+     * que fait la boucle repeat. Une attente sans redessin donnerait un
+     * programme qui semble planté. */
+    if (ci_equal(verb, "wait")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "for")) a = skip_spaces(a + 3);
+
+        if (ci_word(a, "until") || ci_word(a, "while")) {
+            int jusqua = ci_word(a, "until");
+            const char *cond = skip_spaces(a + 5);
+            int tours = 0;
+            for (;;) {
+                /* Marquer et rendre l'arène à CHAQUE tour : sans cela une
+                 * attente un peu longue la saturait, et la condition cessait
+                 * d'être évaluée — l'attente devenait infinie. */
+                ARENA_MARK;
+                char *v = arena_buf();
+                eval_checked(cond, v, HC_VAL);
+                int vrai = truthy(v);
+                ARENA_FREE;
+                if (jusqua ? vrai : !vrai) break;
+                if (++tours > HC_MAX_LOOP) {
+                    emit(HC_ERR, "!! wait interrompu après %d tours", HC_MAX_LOOP);
+                    break;
+                }
+                host_idle();
+            }
+            return;
+        }
+
+        /* Une durée, suivie de son unité. Le tick — un soixantième de seconde —
+         * est l'unité par défaut d'HyperCard.
+         *
+         * L'unité est retirée AVANT d'évaluer : « wait 5 ticks » passé tel quel
+         * à l'analyseur d'expression lui laissait un « ticks » orphelin, qu'il
+         * signalait comme du texte incompris. */
+        char nb[128];
+        nb[0] = '\0';
+        const char *ap = a;
+        int i = 0;
+        while (*ap && i < (int)sizeof nb - 1) {
+            /* S'arrêter au mot d'unité, pas au premier espace : la durée peut
+             * être une expression, comme « wait 2 * 30 ticks ». */
+            const char *w = skip_spaces(ap);
+            if (ci_word(w, "tick")   || ci_word(w, "ticks") ||
+                ci_word(w, "second") || ci_word(w, "seconds") ||
+                ci_word(w, "sec")    || ci_word(w, "secs")) break;
+            nb[i++] = *ap++;
+        }
+        nb[i] = '\0';
+
+        ARENA_MARK;
+        char *ev = arena_buf();
+        eval_checked(nb, ev, HC_VAL);
+        double n = 0;
+        as_num(ev, &n);
+        ARENA_FREE;
+
+        const char *unite = skip_spaces(ap);
+        double ticks = n;
+        if (ci_word(unite, "second") || ci_word(unite, "seconds") ||
+            ci_word(unite, "sec")    || ci_word(unite, "secs"))
+            ticks = n * 60.0;
+
+        if (ticks > HC_MAX_LOOP) ticks = HC_MAX_LOOP;
+        for (long k = 0; k < (long)ticks; k++) host_idle();
+        return;
+    }
+
+    /* ---- sort : voir les helpers plus haut pour la mécanique ---- */
+    if (ci_equal(verb, "sort")) {
+        const char *a = skip_spaces(rest);
+        int cartes = 0;                 /* trie-t-on des cartes ? */
+        ChunkType morceau = CH_LINE;    /* pour un conteneur */
+
+        if (ci_word(a, "this")) a = skip_spaces(a + 4);
+        if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
+
+        if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
+        else if (ci_word(a, "cards")) {
+            cartes = 1; a = skip_spaces(a + 5);
+            if (ci_word(a, "of")) {
+                a = skip_spaces(a + 2);
+                if (ci_word(a, "this")) a = skip_spaces(a + 4);
+                if (ci_word(a, "stack")) a = skip_spaces(a + 5);
+            }
+        }
+        else if (ci_word(a, "lines")) { morceau = CH_LINE; a = skip_spaces(a + 5);
+                                        if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+        else if (ci_word(a, "items")) { morceau = CH_ITEM; a = skip_spaces(a + 5);
+                                        if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+
+        int desc = 0; SortStyle style = SORT_TEXT;
+
+        if (cartes) {
+            a = sort_options(a, &desc, &style);
+            const char *cle = NULL;
+            if (ci_word(a, "by")) cle = skip_spaces(a + 2);
+
+            Object *stack = g_current_card ? g_current_card->owner : NULL;
+            if (!stack) { emit(HC_ERR, "   !! sort : pas de pile"); return; }
+
+            int n = 0;
+            for (int i = 0; i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_CARD) n++;
+            if (n < 2) return;
+
+            SortItem *tab = calloc((size_t)n, sizeof *tab);
+            char **cles = calloc((size_t)n, sizeof *cles);
+            if (!tab || !cles) { free(tab); free(cles); return; }
+
+            Object *avant = g_current_card;
+            int k = 0;
+            for (int i = 0; i < stack->nparts; i++) {
+                Object *c = stack->parts[i];
+                if (c->type != OBJ_CARD) continue;
+                /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
+                 * doit désigner le champ de celle-ci, pas de la carte de
+                 * départ. C'est tout le sens du tri par contenu. */
+                g_current_card = c;
+                char tmp[HC_VAL];
+                tmp[0] = '\0';
+                if (cle) { ARENA_MARK; char *v = arena_buf();
+                           eval_checked(cle, v, HC_VAL);
+                           snprintf(tmp, sizeof tmp, "%s", v); ARENA_FREE; }
+                cles[k] = dupstr(tmp);
+                tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
+                k++;
+            }
+            g_current_card = avant;
+
+            g_sort_desc = desc; g_sort_style = style;
+            qsort(tab, (size_t)n, sizeof *tab, sort_cmp);
+
+            /* Réécrire les cartes dans leur nouvel ordre, en laissant les
+             * fonds à leur place : ils occupent aussi parts[]. */
+            k = 0;
+            for (int i = 0; i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_CARD)
+                    stack->parts[i] = tab[k++].card;
+
+            for (int i = 0; i < n; i++) free(cles[i]);
+            free(cles); free(tab);
+            set_result("");
+            return;
+        }
+
+        /* --- tri d'un conteneur --- */
+        {
+            /* La clé est facultative ; sans elle on trie sur l'élément même. */
+            const char *by = find_kw(a, "by");
+            char cible[HC_VAL];
+            int len = by ? (int)(by - a) : (int)strlen(a);
+            if (len > (int)sizeof cible - 1) len = (int)sizeof cible - 1;
+            memcpy(cible, a, (size_t)len); cible[len] = '\0';
+
+            /* Les options peuvent suivre la cible : « sort field 1 descending ». */
+            char *fin = cible + strlen(cible);
+            while (fin > cible && isspace((unsigned char)fin[-1])) *--fin = '\0';
+            for (;;) {
+                char *mot = fin;
+                while (mot > cible && !isspace((unsigned char)mot[-1])) mot--;
+                if (mot == cible) break;
+                int d2 = desc; SortStyle s2 = style;
+                const char *apres = sort_options(mot, &d2, &s2);
+                if (apres == mot) break;            /* pas une option */
+                desc = d2; style = s2;
+                while (mot > cible && isspace((unsigned char)mot[-1])) mot--;
+                *mot = '\0'; fin = mot;
+            }
+
+            const char *cle = by ? skip_spaces(by + 2) : NULL;
+
+            ARENA_MARK;
+            char *src = arena_buf();
+            eval_checked(cible, src, HC_VAL);
+
+            int n = chunk_count(src, morceau);
+            if (n < 2) { ARENA_FREE; return; }
+
+            SortItem *tab = calloc((size_t)n, sizeof *tab);
+            char **cles = calloc((size_t)n, sizeof *cles);
+            char **elems = calloc((size_t)n, sizeof *elems);
+            if (!tab || !cles || !elems) { free(tab); free(cles); free(elems);
+                                           ARENA_FREE; return; }
+
+            for (int i = 0; i < n; i++) {
+                int b = 0, e = 0;
+                chunk_span1(src, morceau, i + 1, &b, &e);
+                elems[i] = malloc((size_t)(e - b) + 1);
+                memcpy(elems[i], src + b, (size_t)(e - b));
+                elems[i][e - b] = '\0';
+
+                /* `each` : la variable que la clé interroge. Sans clé, on trie
+                 * directement sur l'élément. */
+                if (cle) {
+                    var_set("each", elems[i]);
+                    ARENA_MARK;
+                    char *v = arena_buf();
+                    eval_checked(cle, v, HC_VAL);
+                    cles[i] = dupstr(v);
+                    ARENA_FREE;
+                } else {
+                    cles[i] = dupstr(elems[i]);
+                }
+                tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
+            }
+
+            /* Ranger les éléments dans un tableau parallèle indexé par rang,
+             * pour les retrouver après le tri. */
+            g_sort_desc = desc; g_sort_style = style;
+            qsort(tab, (size_t)n, sizeof *tab, sort_cmp);
+
+            char sep[2] = { chunk_sep(morceau), '\0' };
+            char *res = arena_buf();
+            res[0] = '\0';
+            size_t used = 0;
+            for (int i = 0; i < n; i++) {
+                const char *el = elems[tab[i].rang];
+                size_t l = strlen(el);
+                if (used + l + 2 >= HC_VAL) break;
+                if (i) { res[used++] = sep[0]; }
+                memcpy(res + used, el, l); used += l;
+                res[used] = '\0';
+            }
+
+            container_set(cible, res, 0);
+
+            for (int i = 0; i < n; i++) { free(cles[i]); free(elems[i]); }
+            free(cles); free(elems); free(tab);
+            ARENA_FREE;
+            set_result("");
+            return;
+        }
     }
 
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);

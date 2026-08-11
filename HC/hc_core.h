@@ -84,6 +84,17 @@ struct Object {
     int      hilite;    /* bouton allumé (vidéo inverse) ; coché pour checkBox/radio */
     int      autohilite;/* le bouton s'allume automatiquement pendant le clic */
     int      textsize;  /* taille de police du nom (0 = défaut) */
+    /* Interligne d'un champ, en pixels. 0 = déduit du corps, à la manière
+     * d'HyperCard : quatre tiers de la taille de police.
+     *
+     * C'est une propriété du CHAMP ENTIER, et non des plages : HyperCard
+     * espaçait toutes les lignes d'un champ également, quelles que soient les
+     * tailles employées ligne à ligne. Les scripts d'époque s'appuient
+     * dessus — « (mouseV - top of the target) div the textHeight » est la
+     * façon canonique de trouver la ligne cliquée. Confondre textHeight et
+     * textSize, comme on le faisait, rendait cette formule fausse d'un tiers
+     * de ligne à chaque ligne. */
+    int      textheight;
     int      showname;  /* le nom du bouton est-il affiché ? (1 = oui par défaut) */
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
     int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
@@ -252,6 +263,12 @@ int         hc_run_add(Object *field, int start, int len, int style);
  * pas du champ sur cet attribut, pour ne pas figer une valeur héritée. */
 int         hc_run_add_full(Object *field, int start, int len,
                             int style, int size, const char *font);
+
+/* Interligne effectif d'un champ, en pixels : textheight s'il est posé, sinon
+ * quatre tiers du corps. Utilisé par le noyau pour « the textHeight » et par
+ * l'hôte pour dessiner — une seule définition, sans quoi les scripts
+ * calculeraient sur un interligne différent de celui qu'ils voient. */
+int         hc_text_height(Object *o);
 
 /* Plage surlignee par le dernier « find » dans ce champ. 1 si trouve. */
 int         hc_found_range(Object *field, int *start, int *len);
