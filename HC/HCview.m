@@ -2103,8 +2103,16 @@ static BOOL paint_selection_active(void)
     [self clearPaintCache];
     [self setNeedsDisplay:YES];
 }
+/* Le panneau de couleurs système a bougé le curseur.
+ *
+ * `sender` est typé NSColorPanel plutôt que laissé en `id` : avec `id`, le
+ * compilateur choisit la première méthode `color` qu'il connaît, et CALayer en
+ * déclare une qui rend un CGColorRef. D'où l'avertissement « assigning
+ * CGColorRef to NSColor * » — le code marchait, mais par chance. */
 - (void)changeColor:(id)sender {
-    gTextColor = [sender color];
+    NSColorPanel *panneau = (NSColorPanel *)sender;
+    if (![panneau respondsToSelector:@selector(color)]) return;
+    gTextColor = [panneau color];
     [self setNeedsDisplay:YES];
 }
 - (void)underline:(id)sender {
