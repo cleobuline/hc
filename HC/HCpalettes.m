@@ -311,6 +311,12 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                 gTool = (HCTool)tc->value;
                 gSelected = NULL;
 
+                /* Déposer un collage en attente. Une image plus grande que la
+                 * carte n'a pas d'extérieur où cliquer pour la valider :
+                 * changer d'outil devient alors le seul moyen de la poser, et
+                 * c'est ce que fait HyperCard. */
+                [gView dropFloating];
+
                 /* Une minuterie d'aérographe qui survit à son outil
                  * continuerait de pulvériser dans le vide. Le relâchement de
                  * la souris l'arrête déjà, mais pas un changement d'outil

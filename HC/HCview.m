@@ -13,6 +13,7 @@
 #import "HCdialogs.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 static NSTextField *gMsgBox = nil; // la message box
+static NSPanel *gMsgPanel = nil;   // sa fenêtre flottante
 
 static NSPoint gDragStart;
 static NSRect  gDragRect;
@@ -1122,6 +1123,11 @@ static const char *cocoa_answer(const char *prompt, const char *b1,
 static void cocoa_line(HcLineKind kind, int depth, const char *text) {
     (void)depth;
     if (kind == HC_MSG && gMsgBox) {
+        /* Un « put » sans destination doit se VOIR : si la fenêtre est fermée,
+         * on la rouvre. C'est ce que fait HyperCard, et sans cela un script
+         * qui affiche un résultat semblerait ne rien faire. */
+        if (gMsgPanel && ![gMsgPanel isVisible])
+            [gMsgPanel orderFront:nil];
         [gMsgBox setStringValue:[NSString stringWithUTF8String:text]];
     } else {
         NSLog(@"%s", text);
@@ -2240,6 +2246,22 @@ static BOOL paint_selection_active(void)
     NSUInteger mods = [event modifierFlags];
     BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
 
+    /* Un collage flotte : Entrée le dépose, Échap l'abandonne. C'est la façon
+     * canonique d'HyperCard, et le seul recours quand l'image déborde de la
+     * carte au point qu'on ne puisse plus cliquer à côté. */
+    if (gFloating && !cmd) {
+        if (key == NSEnterCharacter || key == NSCarriageReturnCharacter) {
+            [self dropFloating];
+            return;
+        }
+        if (key == 27) {
+            gFloating = NO;
+            gFloatDragging = NO;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
+
     // saisie de texte en cours : tout va au tampon
     if (gTool == TOOL_TEXT && gTextActive && !cmd) {
         if (key == 27) {                          // Echap : annuler
@@ -2733,14 +2755,7 @@ static BOOL paint_selection_active(void)
             gFloatDragging = YES;
             gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
         } else {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                        (int)[self bounds].size.height);
-            stamp_clipboard(rep, gFloatPos);
-            gFloating = NO;
-            [self setNeedsDisplay:YES];
+            [self dropFloating];
         }
         return;
     }
@@ -3232,20 +3247,67 @@ static BOOL paint_selection_active(void)
     }
 }
 
+/* Dépose l'objet flottant dans la couche courante.
+ *
+ * Le seul moyen de le déposer était de cliquer À CÔTÉ — impossible quand
+ * l'image est plus grande que la carte, puisqu'il n'y a plus de « à côté ».
+ * On l'appelle donc aussi au changement d'outil et sur Entrée, qui sont les
+ * deux autres façons dont HyperCard clôt un collage. */
+- (void)dropFloating {
+    if (!gFloating || !gClipboard) { gFloating = NO; return; }
+    Object *card = hc_current_card();
+    if (!card) { gFloating = NO; return; }
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    stamp_clipboard(rep, gFloatPos);
+    gFloating = NO;
+    gFloatDragging = NO;
+    [self setNeedsDisplay:YES];
+}
+
 - (void)installMessageBox {
     gView = self;
-    NSRect b = [self bounds];
-    gMsgBox = [[NSTextField alloc] initWithFrame:NSMakeRect(10, b.size.height - 34, b.size.width - 20, 24)];
+
+    /* ---- la boîte de message, dans sa propre fenêtre ----
+     * Comme dans HyperCard : une fenêtre flottante déplaçable, refermable, et
+     * rappelable par le menu. Sous-vue de la carte, elle occupait une bande de
+     * la pile en permanence et se déplaçait avec elle — alors qu'elle
+     * n'appartient pas à la pile mais à l'environnement.
+     *
+     * Mêmes réglages que les palettes : non activante pour ne pas voler le
+     * clavier à la carte, et masquée quand on passe à une autre application.
+     * Une exception cependant, et elle est essentielle : le panneau doit
+     * pouvoir DEVENIR fenêtre clé, sinon on ne pourrait rien y taper. D'où
+     * setBecomesKeyOnlyIfNeeded: — il ne prend le clavier que lorsqu'on clique
+     * dans le champ, ce qui est exactement le comportement voulu. */
+    CGFloat w = 480, h = 30;
+    gMsgPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(120, 120, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow |
+                             NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskNonactivatingPanel)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gMsgPanel setTitle:@"Message"];
+    [gMsgPanel setFloatingPanel:YES];
+    [gMsgPanel setBecomesKeyOnlyIfNeeded:YES];
+    [gMsgPanel setHidesOnDeactivate:YES];
+    [gMsgPanel setReleasedWhenClosed:NO];
+
+    gMsgBox = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 3, w - 8, 24)];
     [gMsgBox setEditable:YES];
     [gMsgBox setSelectable:YES];
     [gMsgBox setBezeled:YES];
     [gMsgBox setDrawsBackground:YES];
     [gMsgBox setBackgroundColor:[NSColor colorWithWhite:0.96 alpha:1.0]];
-    [gMsgBox setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+    [gMsgBox setAutoresizingMask:NSViewWidthSizable];
     [gMsgBox setStringValue:@""];
     [gMsgBox setTarget:self];
     [gMsgBox setAction:@selector(messageBoxEntered:)];
-    [self addSubview:gMsgBox];
+    [[gMsgPanel contentView] addSubview:gMsgBox];
+    [gMsgPanel makeKeyAndOrderFront:nil];
 
     static HcHost host;
     host.line          = cocoa_line;
@@ -3472,6 +3534,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 2: if (!gPatternPanel) { [self installPatternPalette]; return; } p = gPatternPanel; break;
         case 3: if (!gWidthPanel)   { [self installWidthPalette];   return; } p = gWidthPanel;   break;
         case 4: if (!gBrushPanel)   { [self installBrushPalette];   return; } p = gBrushPanel;   break;
+        case 5: if (!gMsgPanel)     { [self installMessageBox];     return; } p = gMsgPanel;     break;
         default: return;
     }
     if ([p isVisible]) [p orderOut:nil];
@@ -3484,6 +3547,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         case 2: return gPatternPanel && [gPatternPanel isVisible];
         case 3: return gWidthPanel   && [gWidthPanel isVisible];
         case 4: return gBrushPanel   && [gBrushPanel isVisible];
+        case 5: return gMsgPanel     && [gMsgPanel isVisible];
     }
     return NO;
 }

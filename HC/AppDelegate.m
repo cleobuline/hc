@@ -228,8 +228,10 @@ static NSMenu *find_file_menu(void)
         { @"Motifs",    2, @"2" },
         { @"Épaisseur", 3, @"3" },
         { @"Pinceaux",  4, @"4" },
+        /* Cmd-M, le raccourci d'HyperCard pour la boîte de message. */
+        { @"Message",   5, @"m" },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:pals[i].title
                                                     action:@selector(togglePalette:)
                                              keyEquivalent:pals[i].key];
@@ -396,6 +398,14 @@ static NSMenu *find_file_menu(void)
     NSSavePanel *panel = [NSSavePanel savePanel];
     [panel setNameFieldStringValue:
         [NSString stringWithFormat:@"%s.stack", nm]];
+    /* Documents, et NON le dossier de l'application. Celui-ci est en lecture
+     * seule quand l'application tourne depuis une image disque, et vaut
+     * /Applications une fois installée — deux endroits où l'on n'enregistre
+     * pas son travail. Ouvrir peut partir de l'application ; enregistrer, non. */
+    NSArray *docs = NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES);
+    if ([docs count] > 0)
+        [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
     if ([panel runModal] == NSModalResponseOK) {
         [gView flushPaintToKernel];
         NSString *path = [[panel URL] path];
@@ -485,10 +495,27 @@ static NSMenu *find_file_menu(void)
     gCardCount = 0;
 }
 
+/* Dossier qui CONTIENT l'application — pas son intérieur.
+ *
+ * bundlePath désigne HC.app lui-même ; c'est son parent qui porte les piles
+ * livrées à côté, demo.stack notamment. Sur une image disque montée, c'est le
+ * volume ; une fois l'application installée, c'est /Applications. */
+static NSURL *app_folder(void)
+{
+    NSString *p = [[NSBundle mainBundle] bundlePath];
+    return [NSURL fileURLWithPath:[p stringByDeletingLastPathComponent]
+                      isDirectory:YES];
+}
+
 - (void)openStack:(id)sender {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:YES];
     [panel setAllowsMultipleSelection:NO];
+    /* S'ouvrir là où l'application se trouve : sur l'image disque de
+     * distribution, la pile de démonstration est juste à côté d'elle, et la
+     * chercher à la main est le premier obstacle qu'un nouvel arrivant
+     * rencontre. Le panneau retient ensuite le dernier dossier visité. */
+    [panel setDirectoryURL:app_folder()];
     if ([panel runModal] == NSModalResponseOK)
         [self loadStackAtPath:[[panel URL] path]];
 }
