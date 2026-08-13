@@ -47,7 +47,7 @@ static const unsigned char PATTERNS[38][8] = {
     {0x00,0x08,0x14,0x2A,0x55,0x2A,0x14,0x08},   /* 37  losanges  */
 };
 
-// #define NUM_PATTERNS (int)(sizeof(PATTERNS)/sizeof(PATTERNS[0]))
+// modifié #define NUM_PATTERNS (int)(sizeof(PATTERNS)/sizeof(PATTERNS[0]))
 
 
 
@@ -365,6 +365,73 @@ void brush_stamp(NSBitmapImageRep *rep, int cx, int cy) {
 }
 
 // trace un segment au pinceau
+
+/* Réglages courants de l'aérographe, modifiés par son panneau de réglage. */
+int gSprayRadius  = 8;
+int gSprayDensity = 30;
+
+/* ---- aérographe ----
+ * Le spray ne pose pas une forme pleine comme le pinceau : il sème des points
+ * isolés dans un disque, avec une densité faible. Repasser au même endroit
+ * assombrit progressivement — c'est ce qui fait tout le caractère de l'outil,
+ * et pourquoi il doit continuer à pulvériser quand la souris ne bouge PAS.
+ *
+ * La densité est volontairement basse (une trentaine de points par passe pour
+ * un rayon de 8) : à forte densité on obtient un rond plein, c'est-à-dire un
+ * pinceau, et l'effet de nuage disparaît.
+ *
+ * Le tirage est uniforme dans le DISQUE, pas dans le carré : tirer x et y
+ * indépendamment concentrerait les points aux quatre coins. On tire donc un
+ * angle et un rayon, ce dernier en racine pour que la surface soit couverte
+ * uniformément — sans la racine, le centre serait bien plus dense que le bord. */
+void spray_stamp(NSBitmapImageRep *rep, int cx, int cy, int radius, int density) {
+    if (!rep) return;
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+    if (radius < 1) radius = 1;
+
+    for (int i = 0; i < density; i++) {
+        double ang = ((double)arc4random_uniform(100000) / 100000.0) * 2.0 * M_PI;
+        double rr  = sqrt((double)arc4random_uniform(100000) / 100000.0) * radius;
+        int x = cx + (int)lround(cos(ang) * rr);
+        int y = cy + (int)lround(sin(ang) * rr);
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+
+        unsigned char *px = data + y*bpr + x*spp;
+        if (gInk == INK_ERASE) {
+            px[0]=0; px[1]=0; px[2]=0;
+            if (spp>=4) px[3]=0;
+        } else if (pattern_bit(gPattern, x, y)) {
+            px[0]=0; px[1]=0; px[2]=0;
+            if (spp>=4) px[3]=255;
+        }
+        /* Hors motif on ne pose RIEN : contrairement au pinceau, l'aérographe
+         * ne peint jamais le fond. Un nuage doit laisser voir ce qu'il y a
+         * dessous, sinon repasser dessus effacerait le dessin au lieu de
+         * l'assombrir. */
+    }
+}
+
+/* Pulvérise le long d'un segment. Le pas de 2 pixels évite de recalculer un
+ * nuage complet à chaque pixel d'une diagonale, ce qui saturerait le trait. */
+void spray_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to,
+                  int radius, int density) {
+    if (!rep) return;
+    double dx = to.x - from.x, dy = to.y - from.y;
+    double len = sqrt(dx*dx + dy*dy);
+    int steps = (int)(len / 2.0);
+    if (steps < 1) {
+        spray_stamp(rep, (int)lround(from.x), (int)lround(from.y), radius, density);
+        return;
+    }
+    for (int i = 0; i <= steps; i++) {
+        double t = (double)i / steps;
+        spray_stamp(rep, (int)lround(from.x + dx*t),
+                         (int)lround(from.y + dy*t), radius, density);
+    }
+}
 
 void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to) {
     if (!rep) return;
