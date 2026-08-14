@@ -213,6 +213,19 @@ typedef struct {
     void (*click_at)(int x, int y, const char *mods);
     void (*type_text)(const char *text, const char *mods);
 
+    /* ---- effet de transition ----
+     * Appelé juste AVANT un changement de carte, quand un « visual » a été
+     * armé. L'hôte photographie l'écran de départ, laisse le noyau changer de
+     * carte, puis anime le passage à l'arrivée.
+     *
+     * `effect` porte le nom d'HyperCard, éventuellement en plusieurs mots
+     * (« barn door open », « iris close »). `speed` vaut « fast », « slow »,
+     * « very fast », « very slow » ou la chaîne vide. `image` vaut « black »,
+     * « white », « gray », « inverse », « card », ou la chaîne vide — c'est
+     * VERS quoi on fond, un fondu au noir se faisant en deux temps :
+     * « visual dissolve to black » puis « visual dissolve to card ». */
+    void (*visual_effect)(const char *effect, const char *speed, const char *image);
+
     /* Sélection de texte posée par « select … of field X ». L'hôte met la
      * surbrillance dans son éditeur de champ : sans lui, la sélection serait
      * vraie pour les scripts et invisible à l'écran. `field` NULL veut dire

@@ -2686,6 +2686,36 @@ static int call_function_body(const char *t, char *out, int outlen)
             snprintf(out, outlen, "%d", line);
             return 1;
         }
+        /* ---- désignations de morceau ----
+         * « char 5 to 12 of card field "notes" » : la forme qu'HyperCard rend
+         * pour dire OÙ se trouve quelque chose. C'est une chaîne évaluable —
+         * « put the value of the selectedChunk » relit le texte désigné — et
+         * c'est ce qui permet à un script de retenir une position pour y
+         * revenir plus tard.
+         *
+         * Les bornes sont en caractères, 1-based et inclusives : le contraire
+         * des nôtres, qui sont 0-based et demi-ouvertes. D'où le +1 sur le
+         * début et rien sur la fin. */
+        if (ci_equal(name, "selectedchunk")) {
+            if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
+            char d[96];
+            hc_describe(g_sel_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s%s",
+                     g_sel_start + 1, g_sel_start + g_sel_len,
+                     hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+            return 1;
+        }
+        if (ci_equal(name, "foundchunk")) {
+            if (!g_found_field || g_found_len <= 0) {
+                snprintf(out, outlen, "%s", ""); return 1;
+            }
+            char d[96];
+            hc_describe(g_found_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s%s",
+                     g_found_start + 1, g_found_start + g_found_len,
+                     hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+            return 1;
+        }
         if (ci_equal(name, "foundfield")) {
             if (g_found_field) hc_describe(g_found_field, out, outlen);
             else snprintf(out, outlen, "%s", "");
@@ -4268,6 +4298,25 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
     }
 }
 
+/* ---- effets de transition ------------------------------------------------
+ *   visual [effect] <nom> [vitesse] [to <image>]
+ *
+ * « visual » ne dessine rien : elle ARME un effet qui se jouera au prochain
+ * changement de carte, puis s'oublie. C'est ce qui permet d'écrire
+ *
+ *     visual effect dissolve slowly
+ *     go to next card
+ *
+ * et non l'inverse. Un effet armé mais jamais suivi d'un « go » se perd sans
+ * bruit, exactement comme dans HyperCard.
+ *
+ * Le noyau ne sait pas animer : il analyse, retient, et passe le tout à
+ * l'hôte au moment du changement. Les noms restent ceux d'HyperCard, y compris
+ * les composés en deux mots — « barn door open », « iris close ». */
+static char g_visual_effect[64] = "";
+static char g_visual_speed[16]  = "";
+static char g_visual_image[16]  = "";
+
 static void exec_line_body(Object *me, const char *line)
 {
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
@@ -5203,6 +5252,15 @@ static void exec_line_body(Object *me, const char *line)
 
         if (dst && dst->type == OBJ_CARD) {
             set_result("");
+            /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte :
+             * l'hôte a besoin de photographier l'écran de départ. Puis on
+             * l'oublie — « visual » ne vaut que pour le prochain « go ». */
+            if (g_visual_effect[0]) {
+                if (g_host && g_host->visual_effect)
+                    g_host->visual_effect(g_visual_effect, g_visual_speed,
+                                          g_visual_image);
+                g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+            }
             Object *old   = g_current_card;
             Object *oldbg = old ? old->bg : NULL;
             if (old) hc_send(old, "closeCard");
@@ -5743,6 +5801,61 @@ static void exec_line_body(Object *me, const char *line)
         if (g_host && g_host->type_text) g_host->type_text(txt, mods);
         else emit(HC_ERR, "   !! type : l'hôte ne gère pas le clavier");
         ARENA_FREE;
+        set_result("");
+        return;
+    }
+
+    /* ---- visual : arme un effet pour le prochain « go » ---- */
+    if (ci_equal(verb, "visual")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "effect")) a = skip_spaces(a + 6);
+
+        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+
+        /* « to <image> » se détache en premier : il termine la commande, et le
+         * reste appartient au nom de l'effet et à sa vitesse. */
+        const char *to = find_kw(a, "to");
+        char reste[192];
+        int len = to ? (int)(to - a) : (int)strlen(a);
+        if (len > (int)sizeof reste - 1) len = (int)sizeof reste - 1;
+        memcpy(reste, a, (size_t)len);
+        reste[len] = '\0';
+        while (len > 0 && isspace((unsigned char)reste[len-1])) reste[--len] = '\0';
+
+        if (to) {
+            const char *img = skip_spaces(to + 2);
+            snprintf(g_visual_image, sizeof g_visual_image, "%s", img);
+            int n = (int)strlen(g_visual_image);
+            while (n > 0 && isspace((unsigned char)g_visual_image[n-1]))
+                g_visual_image[--n] = '\0';
+        }
+
+        /* La vitesse est en QUEUE, et peut faire deux mots : « very fast ».
+         * On la retire par la fin, ce qui laisse le nom de l'effet — lui aussi
+         * en plusieurs mots parfois, d'où l'impossibilité de découper par la
+         * gauche. */
+        static const char *vitesses[] = { "very fast", "very slow", "very slowly",
+                                          "fast", "slow", "slowly", NULL };
+        for (int i = 0; vitesses[i]; i++) {
+            int lv = (int)strlen(vitesses[i]);
+            int lr = (int)strlen(reste);
+            if (lr > lv && ci_equal(reste + lr - lv, vitesses[i]) &&
+                isspace((unsigned char)reste[lr - lv - 1])) {
+                snprintf(g_visual_speed, sizeof g_visual_speed, "%s", vitesses[i]);
+                int k = lr - lv - 1;
+                while (k > 0 && isspace((unsigned char)reste[k-1])) k--;
+                reste[k] = '\0';
+                break;
+            }
+        }
+
+        /* %.63s plutôt que %s : `reste` fait 192 octets, la cible 64. La
+         * troncature est volontaire — aucun nom d'effet d'HyperCard n'atteint
+         * cette longueur — mais il faut la dire, sinon le compilateur la
+         * signale à juste titre. */
+        snprintf(g_visual_effect, sizeof g_visual_effect, "%.63s", reste);
+        if (!g_visual_effect[0])
+            snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
         set_result("");
         return;
     }

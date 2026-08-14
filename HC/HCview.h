@@ -7,6 +7,7 @@
 
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
+- (void)runVisualTransition;
 - (void)dropFloating;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
