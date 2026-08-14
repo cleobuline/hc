@@ -117,7 +117,18 @@ static const char *quoted(const char *s, char *out, int outlen)
  * les ~50 tampons vivants par niveau, tous dimensionnes au maximum, qui font
  * le pic. Cela demande de remplacer les signatures (char *out, int outlen)
  * par un type chaine dynamique — un chantier a part entiere. */
-#define HC_VAL 16384
+/* Taille d'une valeur HyperTalk : variable, champ, résultat d'expression.
+ *
+ * 16 Ko à l'origine, ce qui tronquait tout fichier plus gros dès l'arrivée de
+ * « read from file ». L'arène qui sert ces tampons est allouée à la demande,
+ * par blocs de 4 Mo : monter cette limite ne coûte donc rien tant que les
+ * valeurs restent petites, et ne se paie qu'au moment où l'on manipule
+ * vraiment un gros texte.
+ *
+ * 256 Ko couvre les usages réels — un fichier de données, un champ de plusieurs
+ * milliers de lignes — sans permettre à un script emballé d'épuiser la mémoire
+ * en quelques tours de boucle. */
+#define HC_VAL 262144
 
 /* Le garde-fou de recursion peut revenir a sa valeur d'origine : a 6,7 Ko de
  * pile par niveau, 64 niveaux ne coutent que 436 Ko sur les 8 Mo du fil
@@ -1472,8 +1483,14 @@ static void frame_clear(Frame *f)
     memset(f, 0, sizeof *f);
 }
 
+/* Défini plus bas, avec les commandes de fichier. */
+static void file_close(const char *nom);
+
 void hc_shutdown(void)
 {
+    /* Fermer les fichiers laissés ouverts par un script : sans cela, ce qui
+     * attend dans les tampons du système ne serait jamais écrit. */
+    file_close(NULL);
     /* Le presse-papiers survit volontairement à la pile qui l'a rempli :
      * c'est ce qui permet de coller d'une pile à l'autre. Il faut donc le
      * libérer ici, et pas dans hc_free. */
@@ -4317,6 +4334,125 @@ static char g_visual_effect[64] = "";
 static char g_visual_speed[16]  = "";
 static char g_visual_image[16]  = "";
 
+/* ---- fichiers ouverts par script -----------------------------------------
+ *   open file "notes"      read from file "notes" for 20
+ *   write x to file "sortie"                     close file "notes"
+ *
+ * HyperCard désigne les fichiers par leur NOM, pas par un descripteur : c'est
+ * « read from file "notes" » et non « read from handle 3 ». On tient donc une
+ * petite table nom → FILE*, et chaque commande y retrouve son fichier.
+ *
+ * La position de lecture est celle du flux, sauf quand « at » l'impose. Un
+ * « at » négatif compte depuis la FIN, ce qui permet de relire une queue de
+ * fichier sans en connaître la taille.
+ *
+ * Le noyau s'en charge lui-même plutôt que de déléguer à l'hôte : fopen est du
+ * C standard, et une pile qui importe des données doit fonctionner aussi bien
+ * dans une version sans interface graphique. */
+#define HC_MAX_FILES 8
+/* `nom` est celui qu'emploie le SCRIPT, `chemin` celui où le fichier se trouve
+ * vraiment. Les deux diffèrent dès que l'utilisateur a désigné le fichier dans
+ * un dialogue : le script continue d'écrire « read from file "notes" », et
+ * c'est bien ce nom-là qui doit le retrouver. */
+static struct { char *nom; char *chemin; FILE *f; } g_files[HC_MAX_FILES];
+
+static FILE *file_find(const char *nom)
+{
+    for (int i = 0; i < HC_MAX_FILES; i++) {
+        if (!g_files[i].nom) continue;
+        if (ci_equal(g_files[i].nom, nom)) return g_files[i].f;
+        if (g_files[i].chemin && ci_equal(g_files[i].chemin, nom)) return g_files[i].f;
+    }
+    return NULL;
+}
+
+/* Ouvre en lecture-écriture, en créant au besoin : HyperCard n'a qu'un seul
+ * « open file » pour les deux usages, et un script peut lire puis écrire dans
+ * le même fichier sans le rouvrir.
+ *
+ * Si le nom ne mène à rien, on DEMANDE où se trouve le fichier plutôt que d'en
+ * fabriquer un vide. C'est ce que faisait HyperCard, et c'est ce qui rend les
+ * scripts d'époque utilisables : ils écrivent « open file "notes" », sans
+ * chemin, en comptant sur le dialogue pour la suite. Sous le bac à sable de
+ * macOS, c'est aussi la seule façon d'atteindre un fichier — le désigner vaut
+ * autorisation. */
+static int file_open(const char *nom)
+{
+    if (!nom || !*nom) return 0;
+    if (file_find(nom)) return 1;              /* déjà ouvert : sans effet */
+    int libre = -1;
+    for (int i = 0; i < HC_MAX_FILES; i++)
+        if (!g_files[i].nom) { libre = i; break; }
+    if (libre < 0) return 0;
+
+    FILE *f = fopen(nom, "r+b");
+
+    /* Introuvable : deux cas bien distincts.
+     *
+     * Un nom PORTANT UN CHEMIN dit où l'on veut écrire — on crée le fichier,
+     * sans rien demander. C'est ce qu'attend « ask file » suivi d'« open
+     * file » : le panneau a déjà servi à choisir l'emplacement, et redemander
+     * serait absurde.
+     *
+     * Un nom SEUL, en revanche, est celui d'un script d'époque qui écrit
+     * « open file "notes" » et compte sur le dialogue pour la suite. On
+     * demande alors où se trouve le fichier, comme HyperCard.
+     *
+     * L'ordre inverse — demander avant de créer — faisait réapparaître le
+     * panneau juste après « ask file », pour un fichier qu'on venait de
+     * nommer. */
+    if (!f && strchr(nom, '/')) f = fopen(nom, "w+b");
+
+    if (!f) {
+        const char *reel = NULL;
+        if (g_host && g_host->answer_file) {
+            char inv[256];
+            snprintf(inv, sizeof inv, "Où est le fichier « %s » ?", nom);
+            reel = g_host->answer_file(inv);
+        }
+        if (reel && *reel) {
+            f = fopen(reel, "r+b");
+            if (!f) f = fopen(reel, "w+b");
+            if (f) g_files[libre].chemin = dupstr(reel);
+        }
+    }
+    if (!f) return 0;
+
+    g_files[libre].nom = dupstr(nom);
+    g_files[libre].f   = f;
+    return 1;
+}
+
+static void file_close(const char *nom)
+{
+    for (int i = 0; i < HC_MAX_FILES; i++) {
+        if (!g_files[i].nom) continue;
+        if (nom && !ci_equal(g_files[i].nom, nom) &&
+            !(g_files[i].chemin && ci_equal(g_files[i].chemin, nom))) continue;
+        fclose(g_files[i].f);
+        free(g_files[i].nom);
+        free(g_files[i].chemin);
+        g_files[i].nom    = NULL;
+        g_files[i].chemin = NULL;
+        g_files[i].f      = NULL;
+        if (nom) return;
+    }
+}
+
+/* Traduit les constantes de caractère d'HyperTalk. Renvoie -1 si le mot n'en
+ * est pas une, auquel cas c'est le premier caractère qui compte. */
+static int file_constant(const char *s)
+{
+    if (ci_equal(s, "return"))   return '\n';
+    if (ci_equal(s, "tab"))      return '\t';
+    if (ci_equal(s, "space"))    return ' ';
+    if (ci_equal(s, "quote"))    return '"';
+    if (ci_equal(s, "formfeed")) return '\f';
+    if (ci_equal(s, "linefeed")) return '\n';
+    if (ci_equal(s, "end") || ci_equal(s, "eof")) return -2;   /* jusqu'au bout */
+    return -1;
+}
+
 static void exec_line_body(Object *me, const char *line)
 {
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
@@ -5093,6 +5229,33 @@ static void exec_line_body(Object *me, const char *line)
     /* --- ask "invite" [with "défaut"] --- */
     if (ci_equal(verb, "ask")) {
         const char *r = skip_spaces(rest);
+
+        /* ---- ask file <invite> [with <nom par défaut>] ----
+         * Le panneau d'enregistrement, pendant d'« answer file ». Même
+         * mécanique : le chemin choisi dans « it », vide si l'on annule. */
+        if (ci_word(r, "file")) {
+            ARENA_MARK;
+            char *inv = arena_buf(), *def = arena_buf();
+            const char *a = skip_spaces(r + 4);
+            const char *w = find_kw(a, "with");
+            if (w) {
+                char brut[512];
+                int n = (int)(w - a);
+                if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
+                memcpy(brut, a, (size_t)n); brut[n] = '\0';
+                eval_checked(brut, inv, HC_VAL);
+                eval_checked(skip_spaces(w + 4), def, HC_VAL);
+            } else {
+                eval_checked(a, inv, HC_VAL);
+            }
+            const char *chemin = (g_host && g_host->ask_file)
+                               ? g_host->ask_file(inv, def) : NULL;
+            var_set("it", chemin ? chemin : "");
+            set_result(chemin ? "" : "Cancel");
+            ARENA_FREE;
+            return;
+        }
+
         char *prompt = arena_buf();
         char *deflt = arena_buf();
 
@@ -5124,6 +5287,37 @@ static void exec_line_body(Object *me, const char *line)
     /* --- answer "invite" [with "a" [or "b" [or "c"]]] --- */
     if (ci_equal(verb, "answer")) {
         const char *r = skip_spaces(rest);
+
+        /* ---- answer file <invite> [of type <t>] ----
+         * Le panneau d'ouverture, et non une boîte à boutons. Le chemin choisi
+         * va dans « it », l'annulation y laisse la chaîne vide.
+         *
+         * C'est aussi la parade au bac à sable de macOS : un fichier désigné
+         * par l'utilisateur devient accessible du seul fait de ce choix, là où
+         * un chemin écrit dans un script se heurte à « Operation not
+         * permitted ». */
+        if (ci_word(r, "file")) {
+            ARENA_MARK;
+            char *inv = arena_buf();
+            const char *a = skip_spaces(r + 4);
+            const char *oft = find_kw(a, "of");     /* « of type … » : ignoré */
+            if (oft) {
+                char brut[512];
+                int n = (int)(oft - a);
+                if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
+                memcpy(brut, a, (size_t)n); brut[n] = '\0';
+                eval_checked(brut, inv, HC_VAL);
+            } else {
+                eval_checked(a, inv, HC_VAL);
+            }
+            const char *chemin = (g_host && g_host->answer_file)
+                               ? g_host->answer_file(inv) : NULL;
+            var_set("it", chemin ? chemin : "");
+            set_result(chemin ? "" : "Cancel");
+            ARENA_FREE;
+            return;
+        }
+
         char *prompt = arena_buf();
         char btn[3][128] = { "", "", "" };
         int nb = 0;
@@ -5857,6 +6051,246 @@ static void exec_line_body(Object *me, const char *line)
         if (!g_visual_effect[0])
             snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
         set_result("");
+        return;
+    }
+
+    /* ---- open file <nom> ---- */
+    if (ci_equal(verb, "open") && ci_word(skip_spaces(rest), "file")) {
+        ARENA_MARK;
+        char *nom = arena_buf();
+        eval_checked(skip_spaces(skip_spaces(rest) + 4), nom, HC_VAL);
+        if (file_open(nom)) set_result("");
+        else { set_result("Can't open file");
+               emit(HC_ERR, "   !! open file : %s", nom); }
+        ARENA_FREE;
+        return;
+    }
+
+    /* ---- close file <nom> ---- */
+    if (ci_equal(verb, "close") && ci_word(skip_spaces(rest), "file")) {
+        ARENA_MARK;
+        char *nom = arena_buf();
+        eval_checked(skip_spaces(skip_spaces(rest) + 4), nom, HC_VAL);
+        file_close(nom);
+        set_result("");
+        ARENA_FREE;
+        return;
+    }
+
+    /* ---- read from file <nom> [at <pos>] for <n> | until <car> ----
+     * Le texte lu va dans « it », comme toute lecture en HyperTalk. */
+    if (ci_equal(verb, "read")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "from")) a = skip_spaces(a + 4);
+        if (!ci_word(a, "file")) { emit(HC_ERR, "   !! read : « file » attendu"); return; }
+        a = skip_spaces(a + 4);
+
+        /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
+         * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
+        const char *at  = find_kw(a, "at");
+        const char *fo  = find_kw(a, "for");
+        const char *unt = find_kw(a, "until");
+        const char *fin = at ? at : (fo ? fo : unt);
+
+        ARENA_MARK;
+        char *nom = arena_buf();
+        {
+            char brut[512];
+            int len = fin ? (int)(fin - a) : (int)strlen(a);
+            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+            memcpy(brut, a, (size_t)len); brut[len] = '\0';
+            eval_checked(brut, nom, HC_VAL);
+        }
+
+        FILE *f = file_find(nom);
+        if (!f) {
+            set_result("File is not open");
+            emit(HC_ERR, "   !! read : fichier non ouvert : %s", nom);
+            ARENA_FREE; return;
+        }
+
+        if (at) {
+            char *pv = arena_buf();
+            const char *bornes = fo ? fo : unt;
+            char brut[256];
+            const char *deb = skip_spaces(at + 2);
+            int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
+            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+            memcpy(brut, deb, (size_t)len); brut[len] = '\0';
+            eval_checked(brut, pv, HC_VAL);
+            long pos = atol(pv);
+            /* Positif : depuis le début, et 1-based comme tout HyperTalk.
+             * Négatif : depuis la fin. */
+            if (pos >= 0) fseek(f, pos > 0 ? pos - 1 : 0, SEEK_SET);
+            else          fseek(f, pos, SEEK_END);
+        }
+
+        char *out = arena_buf();
+        int n = 0;
+
+        if (fo) {
+            char *cv = arena_buf();
+            eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
+            long combien = atol(cv);
+            while (n < HC_VAL - 1 && n < combien) {
+                int c = fgetc(f);
+                if (c == EOF) break;
+                out[n++] = (char)c;
+            }
+        } else if (unt) {
+            char mot[64];
+            next_word(skip_spaces(unt + 5), mot, sizeof mot);
+            int stop = file_constant(mot);
+            if (stop == -1) {
+                /* Pas une constante : un caractère, éventuellement calculé. */
+                char *cv = arena_buf();
+                eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
+                stop = cv[0] ? (unsigned char)cv[0] : '\n';
+            }
+            while (n < HC_VAL - 1) {
+                int c = fgetc(f);
+                if (c == EOF) break;
+                out[n++] = (char)c;
+                /* Le caractère d'arrêt fait PARTIE du texte lu : c'est ce que
+                 * fait HyperCard, et ce qui permet d'enchaîner les lectures
+                 * ligne à ligne sans perdre les séparateurs. */
+                if (stop >= 0 && c == stop) break;
+            }
+        } else {
+            /* Ni « for » ni « until » : tout le fichier. */
+            while (n < HC_VAL - 1) {
+                int c = fgetc(f);
+                if (c == EOF) break;
+                out[n++] = (char)c;
+            }
+        }
+        out[n] = '\0';
+
+        /* Dire la troncature plutôt que de couper en silence : un script qui
+         * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
+         * sa lecture en plusieurs « read ... for N ». */
+        if (n >= HC_VAL - 1) {
+            set_result("Value too large");
+            emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
+        } else {
+            set_result(n > 0 ? "" : "End of file");
+        }
+        var_set("it", out);
+        ARENA_FREE;
+        return;
+    }
+
+    /* ---- write <texte> to file <nom> [at <pos>|end|eof] ---- */
+    if (ci_equal(verb, "write")) {
+        const char *a = skip_spaces(rest);
+        const char *to = find_kw(a, "to");
+        if (!to) { emit(HC_ERR, "   !! write : « to file » attendu"); return; }
+
+        ARENA_MARK;
+        char *txt = arena_buf();
+        {
+            char brut[HC_VAL];
+            int len = (int)(to - a);
+            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+            memcpy(brut, a, (size_t)len); brut[len] = '\0';
+            eval_checked(brut, txt, HC_VAL);
+        }
+
+        const char *r2 = skip_spaces(to + 2);
+        if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
+        const char *at = find_kw(r2, "at");
+
+        char *nom = arena_buf();
+        {
+            char brut[512];
+            int len = at ? (int)(at - r2) : (int)strlen(r2);
+            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+            memcpy(brut, r2, (size_t)len); brut[len] = '\0';
+            eval_checked(brut, nom, HC_VAL);
+        }
+
+        FILE *f = file_find(nom);
+        if (!f) {
+            set_result("File is not open");
+            emit(HC_ERR, "   !! write : fichier non ouvert : %s", nom);
+            ARENA_FREE; return;
+        }
+
+        if (at) {
+            const char *p = skip_spaces(at + 2);
+            if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
+            else {
+                char *pv = arena_buf();
+                eval_checked(p, pv, HC_VAL);
+                long pos = atol(pv);
+                if (pos >= 0) fseek(f, pos > 0 ? pos - 1 : 0, SEEK_SET);
+                else          fseek(f, pos, SEEK_END);
+            }
+        }
+
+        fwrite(txt, 1, strlen(txt), f);
+        fflush(f);      /* pour qu'un autre programme voie le texte tout de suite */
+        set_result("");
+        ARENA_FREE;
+        return;
+    }
+
+    /* ---- save [this] stack [<nom>] as [stack] <fichier> ----
+     * Duplique la pile sous un autre nom. HyperCard n'a pas de commande
+     * « enregistrer » : il écrivait en continu, et « save » sert donc à faire
+     * une copie, pas à valider un travail en cours. */
+    if (ci_equal(verb, "save")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "this")) a = skip_spaces(a + 4);
+        if (ci_word(a, "stack")) a = skip_spaces(a + 5);
+
+        const char *as = find_kw(a, "as");
+        if (!as) {
+            emit(HC_ERR, "   !! save : « as » attendu");
+            set_result("Bad parameter");
+            return;
+        }
+
+        ARENA_MARK;
+        /* La pile à copier : celle qu'on nomme, ou la courante. */
+        Object *pile = g_current_card ? g_current_card->owner : NULL;
+        if (as > a) {
+            char brut[512];
+            int n = (int)(as - a);
+            if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
+            memcpy(brut, a, (size_t)n); brut[n] = '\0';
+            char *nom = arena_buf();
+            eval_checked(brut, nom, HC_VAL);
+            if (nom[0]) {
+                /* Un nom explicite ne peut désigner que la pile ouverte : nous
+                 * n'en tenons qu'une à la fois. On vérifie plutôt que de
+                 * copier silencieusement la mauvaise. */
+                if (!pile || !pile->name || !ci_equal(pile->name, nom)) {
+                    emit(HC_ERR, "   !! save : pile introuvable : %s", nom);
+                    set_result("No such stack");
+                    ARENA_FREE;
+                    return;
+                }
+            }
+        }
+
+        const char *dest = skip_spaces(as + 2);
+        if (ci_word(dest, "stack")) dest = skip_spaces(dest + 5);
+        char *chemin = arena_buf();
+        eval_checked(dest, chemin, HC_VAL);
+
+        if (!pile || !chemin[0]) {
+            set_result("Bad parameter");
+            ARENA_FREE;
+            return;
+        }
+        if (g_host && g_host->save_stack && g_host->save_stack(pile, chemin))
+            set_result("");
+        else {
+            emit(HC_ERR, "   !! save : échec de l'écriture : %s", chemin);
+            set_result("Can't save stack");
+        }
+        ARENA_FREE;
         return;
     }
 

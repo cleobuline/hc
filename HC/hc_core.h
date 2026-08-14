@@ -181,6 +181,30 @@ typedef struct {
     const char *(*answer)(const char *prompt, const char *b1,
                           const char *b2, const char *b3);
 
+    /* ---- panneaux de fichier ----
+     * Rendent le chemin choisi, ou NULL si l'utilisateur annule.
+     *
+     * Distincts d'ask et answer parce qu'ils ne demandent pas du texte mais un
+     * emplacement. Ils servent aussi de recours à « open file » quand le nom
+     * seul ne mène à rien — c'est ce que faisait HyperCard, dont les scripts
+     * écrivent « open file "notes" » sans chemin.
+     *
+     * Sous le bac à sable de macOS, c'est la seule façon d'atteindre un
+     * fichier hors des dossiers autorisés : le désigner vaut autorisation. */
+    const char *(*answer_file)(const char *prompt);
+    const char *(*ask_file)(const char *prompt, const char *deflt);
+
+    /* Enregistre une COPIE de la pile sous un autre nom.
+     *
+     * C'est ce que veut dire « save stack "X" as "Y" » : dupliquer, et non
+     * enregistrer les modifications en cours — HyperCard écrivait en continu,
+     * et n'avait pas de commande d'enregistrement.
+     *
+     * Le noyau délègue parce qu'il ne connaît pas le format de fichier :
+     * celui-ci vit dans hc_file.c, que le noyau n'inclut pas. Renvoyer 0
+     * signale l'échec, que la commande traduit dans « the result ». */
+    int (*save_stack)(Object *stack, const char *path);
+
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul
      * (souris, clavier, écran, horloge). L'hôte renvoie une chaîne valide
      * jusqu'au prochain appel, ou NULL si le nom lui est inconnu.

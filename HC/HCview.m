@@ -1084,6 +1084,45 @@ static Object *part_at(Object *card, NSPoint p) {
 }
 static char gDlgBuf[512];
 
+/* ---------- panneaux de fichier ----------
+ * « answer file » pour ouvrir, « ask file » pour enregistrer. Ils servent
+ * aussi de recours à « open file » quand le nom seul ne mène à rien — le
+ * comportement d'HyperCard, dont les scripts écrivent « open file "notes" »
+ * sans chemin.
+ *
+ * Sous le bac à sable de macOS, c'est en outre la seule façon d'atteindre un
+ * fichier hors des dossiers autorisés : le désigner dans un panneau vaut
+ * autorisation, là où un chemin écrit dans un script se heurte à « Operation
+ * not permitted ». */
+static char gFileBuf[2048];
+
+static const char *cocoa_answer_file(const char *prompt) {
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    [p setCanChooseFiles:YES];
+    [p setCanChooseDirectories:NO];
+    [p setAllowsMultipleSelection:NO];
+    if (prompt && *prompt)
+        [p setMessage:[NSString stringWithUTF8String:prompt]];
+    if ([p runModal] != NSModalResponseOK) return NULL;
+    NSString *chemin = [[p URL] path];
+    if (!chemin) return NULL;
+    snprintf(gFileBuf, sizeof gFileBuf, "%s", [chemin UTF8String]);
+    return gFileBuf;
+}
+
+static const char *cocoa_ask_file(const char *prompt, const char *deflt) {
+    NSSavePanel *p = [NSSavePanel savePanel];
+    if (prompt && *prompt)
+        [p setMessage:[NSString stringWithUTF8String:prompt]];
+    if (deflt && *deflt)
+        [p setNameFieldStringValue:[NSString stringWithUTF8String:deflt]];
+    if ([p runModal] != NSModalResponseOK) return NULL;
+    NSString *chemin = [[p URL] path];
+    if (!chemin) return NULL;
+    snprintf(gFileBuf, sizeof gFileBuf, "%s", [chemin UTF8String]);
+    return gFileBuf;
+}
+
 static const char *cocoa_ask(const char *prompt, const char *deflt) {
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:[NSString stringWithUTF8String:prompt ? prompt : ""]];
@@ -3617,6 +3656,45 @@ static BOOL paint_selection_active(void)
 
     draw_snapshot(gVisualBefore, b, NSCompositingOperationCopy, 1.0);
 
+    /* ---- damier ----
+     * Une grille de cases qui se découvrent en DEUX vagues : les cases de
+     * parité paire d'abord, les impaires ensuite. C'est ce décalage qui donne
+     * le motif en échiquier ; révéler toutes les cases ensemble ne ferait
+     * qu'un agrandissement uniforme.
+     *
+     * La zone à découvrir n'étant pas un rectangle mais une réunion de
+     * rectangles, elle ne peut pas passer par visual_reveal_rect — d'où ce
+     * traitement à part, avec un chemin de découpe. */
+    if (strcasecmp(gVisualName, "checkerboard") == 0 && gVisualAfter) {
+        const CGFloat cote = 32;
+        int cols = (int)ceil(b.size.width  / cote);
+        int rows = (int)ceil(b.size.height / cote);
+
+        NSBezierPath *masque = [NSBezierPath bezierPath];
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                /* Chaque case a son propre instant d'apparition : sa vague
+                 * (0 ou 1) donne la moitié de course, et sa position dans la
+                 * grille répartit le reste — sans quoi une vague entière
+                 * surgirait d'un coup. */
+                int vague = (r + c) & 1;
+                CGFloat rang = (CGFloat)(r * cols + c) / (cols * rows);
+                CGFloat seuil = vague * 0.5 + rang * 0.5;
+                if (t < seuil) continue;
+                [masque appendBezierPathWithRect:
+                    NSMakeRect(c * cote, r * cote, cote, cote)];
+            }
+        }
+        if (![masque isEmpty]) {
+            [NSGraphicsContext saveGraphicsState];
+            [masque addClip];
+            if (teinte) { [teinte setFill]; NSRectFill(b); }
+            else draw_snapshot(gVisualAfter, b, NSCompositingOperationCopy, 1.0);
+            [NSGraphicsContext restoreGraphicsState];
+        }
+        return YES;
+    }
+
     NSRect z;
     if (visual_reveal_rect(gVisualName, t, b, &z)) {
         [NSGraphicsContext saveGraphicsState];
@@ -3682,6 +3760,8 @@ static BOOL paint_selection_active(void)
     host.field_changed = cocoa_field_changed;
     host.selection_changed = cocoa_selection_changed;
     host.ask           = cocoa_ask;
+    host.answer_file   = cocoa_answer_file;
+    host.ask_file      = cocoa_ask_file;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
     host.global_set    = cocoa_global_set;
