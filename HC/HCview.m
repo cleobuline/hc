@@ -696,10 +696,19 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
          * champ, comme pour la police et le corps. */
         NSColor *cr = color;
         if (co != HC_COLOR_INHERIT)
-            cr = [NSColor colorWithCalibratedRed:((co >> 16) & 255) / 255.0
-                                           green:((co >>  8) & 255) / 255.0
-                                            blue:( co        & 255) / 255.0
-                                           alpha:1.0];
+            /* sRGB, le même espace que celui de la relecture.
+             *
+             * On posait en « calibrated » et on relisait en « device » : deux
+             * espaces distincts, donc une conversion à chaque aller-retour
+             * entre l'édition et la visualisation. Elle n'est pas neutre — la
+             * trace montrait 1.0 devenir 0.999996 — et l'erreur s'accumulait :
+             * les couleurs pâlissaient jusqu'au blanc au fil des allers et
+             * retours. Un seul espace des deux côtés, et il n'y a plus de
+             * conversion du tout. */
+            cr = [NSColor colorWithSRGBRed:((co >> 16) & 255) / 255.0
+                                     green:((co >>  8) & 255) / 255.0
+                                      blue:( co        & 255) / 255.0
+                                     alpha:1.0];
         apply_run_style(as, NSMakeRange(u0, u1 - u0), st,
                         run_base_font(fn, sz, base), cr);
     }
@@ -4639,11 +4648,24 @@ static NSTextField  *gSprayDensityLabel = nil;
                 NSColor *rc = a[NSForegroundColorAttributeName];
                 if (rc) {
                     NSColor *rgb = [rc colorUsingColorSpace:
-                                        [NSColorSpace deviceRGBColorSpace]];
+                                        [NSColorSpace sRGBColorSpace]];
                     if (rgb) {
-                        int r = (int)lround([rgb redComponent]   * 255);
-                        int g = (int)lround([rgb greenComponent] * 255);
-                        int b = (int)lround([rgb blueComponent]  * 255);
+                        /* Borner explicitement : une composante rendue à
+                         * 1.000001 par une conversion donnerait 256, et le
+                         * décalage de bits mordrait sur la composante
+                         * voisine. */
+                        CGFloat rc0 = [rgb redComponent];
+                        CGFloat gc0 = [rgb greenComponent];
+                        CGFloat bc0 = [rgb blueComponent];
+                        if (rc0 < 0) rc0 = 0;
+                        if (rc0 > 1) rc0 = 1;
+                        if (gc0 < 0) gc0 = 0;
+                        if (gc0 > 1) gc0 = 1;
+                        if (bc0 < 0) bc0 = 0;
+                        if (bc0 > 1) bc0 = 1;
+                        int r = (int)lround(rc0 * 255);
+                        int g = (int)lround(gc0 * 255);
+                        int b = (int)lround(bc0 * 255);
                         /* Ni le noir, ni le BLANC.
                          *
                          * Le noir est la couleur par défaut : la retenir

@@ -1906,7 +1906,15 @@ static int run_is_mute(const struct TextRun *r)
  * « Monaco gras » en une plage, dont la police était celle de la première. */
 static int run_same_attrs(const struct TextRun *a, const struct TextRun *b)
 {
+    /* La COULEUR compte, comme les trois autres attributs.
+     *
+     * Sans elle, runs_tidy refusionnait des plages voisines de couleurs
+     * différentes : sur trois mots rouges, colorer celui du milieu en bleu
+     * n'avait aucun effet visible — la plage était bien découpée, puis
+     * aussitôt recollée parce que les deux morceaux paraissaient identiques.
+     * Et c'est la couleur du PREMIER qui l'emportait, d'où « ça reste rouge ». */
     if (a->style != b->style || a->size != b->size) return 0;
+    if (a->color != b->color) return 0;
     if (!a->font && !b->font) return 1;
     if (!a->font || !b->font) return 0;
     return strcmp(a->font, b->font) == 0;

@@ -167,6 +167,10 @@ static void put_part(FILE *f, Object *o)
     if (o->hilite) fprintf(f, "hilite\n");
     if (o->autohilite) fprintf(f, "autohilite\n");
     if (o->textsize) fprintf(f, "textsize %d\n", o->textsize);
+    /* Écrit seulement s'il a été posé explicitement : zéro veut dire
+     * « déduit du corps », et les piles enregistrées avant l'existence
+     * de cette ligne se relisent donc sans rien perdre. */
+    if (o->textheight) fprintf(f, "textheight %d\n", o->textheight);
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
@@ -561,6 +565,10 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "autohilite") == 0) {
             if (target) target->autohilite = 1;
+            continue;
+        }
+        if (strncmp(s, "textheight ", 11) == 0 && part) {
+            part->textheight = atoi(s + 11);
             continue;
         }
         if (strncmp(s, "textsize ", 9) == 0 && part) {
