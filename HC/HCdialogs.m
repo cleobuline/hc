@@ -25,6 +25,7 @@
 @interface HCView (DialogsPrivate)
 - (void)styleOK:(id)sender;
 - (void)styleFont:(id)sender;
+- (void)autoSelectToggled:(id)sender;
 @end
 
 /* --- etat des dialogues, prive a ce fichier --- */
@@ -240,6 +241,9 @@ static NSButton     *gFldLines = nil;
 static NSButton     *gFldTab = nil;
 static NSButton     *gFldNoSearch = nil;
 static NSButton     *gFldShared = nil;
+static NSButton     *gFldNoWrap = nil;
+static NSButton     *gFldAutoSel = nil;
+static NSButton     *gFldMultiple = nil;
 static NSTextField  *gFldTextSize = nil;
 //extern Object *gFontTarget;
 
@@ -251,7 +255,7 @@ static NSTextField  *gFldTextSize = nil;
 
     if (gFldPanel) [gFldPanel close];
     gFldPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(300, 240, 380, 320)
+        initWithContentRect:NSMakeRect(300, 200, 380, 360)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gFldPanel setTitle:@"Field Info"];
@@ -307,13 +311,27 @@ static NSTextField  *gFldTextSize = nil;
         [c addSubview:b];
         return b;
     };
-    gFldLock     = mkChk(@"Lock Text",         obj->locktext,     220);
-    gFldWide     = mkChk(@"Wide Margins",      obj->wide_margins, 198);
-    gFldFixed    = mkChk(@"Fixed Line Height", obj->fixed_lh,     176);
-    gFldLines    = mkChk(@"Show Lines",        obj->show_lines,   154);
-    gFldTab      = mkChk(@"Auto Tab",          obj->auto_tab,     132);
-    gFldNoSearch = mkChk(@"Don't Search",      obj->dont_search,  110);
-    gFldShared   = mkChk(@"Shared Text",       obj->shared_text,   88);
+    /* Ordre repris de HyperCard 2.4 : Lock Text, Don't Wrap, Auto Select,
+     * Multiple Lines, Wide Margins, Fixed Line Height, Show Lines, Auto Tab,
+     * Don't Search. Les habitués retrouvent chaque case à sa place. */
+    /* Sous le menu Style, qui occupe 246 à 270 : la première case chevauchait
+     * le menu déroulant, les deux se dessinant l'un sur l'autre. */
+    gFldLock     = mkChk(@"Lock Text",         obj->locktext,      218);
+    gFldNoWrap   = mkChk(@"Don't Wrap",        obj->dont_wrap,     198);
+    gFldAutoSel  = mkChk(@"Auto Select",       obj->auto_select,   178);
+    gFldMultiple = mkChk(@"Multiple Lines",    obj->multiple_lines,158);
+    gFldWide     = mkChk(@"Wide Margins",      obj->wide_margins,  138);
+    gFldFixed    = mkChk(@"Fixed Line Height", obj->fixed_lh,      118);
+    gFldLines    = mkChk(@"Show Lines",        obj->show_lines,     98);
+    gFldTab      = mkChk(@"Auto Tab",          obj->auto_tab,       78);
+    gFldNoSearch = mkChk(@"Don't Search",      obj->dont_search,    58);
+    gFldShared   = mkChk(@"Shared Text",       obj->shared_text,    38);
+
+    /* Multiple Lines n'a de sens qu'avec Auto Select : HyperCard la grise
+     * tant que l'autre n'est pas cochée. */
+    [gFldMultiple setEnabled:(obj->auto_select != 0)];
+    [gFldAutoSel setTarget:self];
+    [gFldAutoSel setAction:@selector(autoSelectToggled:)];
 
     // --- taille de texte ---
     NSTextField *tl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 178, 70, 18)];
@@ -336,8 +354,10 @@ static NSTextField  *gFldTextSize = nil;
         };
     mkFI(@"Text Style…", @selector(fldTextStyle:), 16, 88);
     mkFI(@"Script…", @selector(fldScript:), 16, 52);
-    mkFI(@"Cancel",  @selector(fldCancel:), 150, 16);
-    NSButton *ok = mkFI(@"OK", @selector(fldOK:), 254, 16);
+    /* Sous la dernière case, qui descend maintenant à y=38 : à y=16 les
+     * boutons passent dessous sans la toucher. */
+    mkFI(@"Cancel",  @selector(fldCancel:), 160, 8);
+    NSButton *ok = mkFI(@"OK", @selector(fldOK:), 264, 8);
     [ok setKeyEquivalent:@"\r"];
 
     [gFldPanel makeKeyAndOrderFront:nil];
@@ -360,6 +380,18 @@ static NSTextField  *gFldTextSize = nil;
 /* Le panneau de polices du système reste utile pour ce que le menu ne donne
  * pas : les corps non listés et l'aperçu. Il ne touchera qu'aux bits gras et
  * italique, changeFont: préservant les six autres. */
+/* « Auto Select » commande « Multiple Lines » : la seconde n'a de sens qu'avec
+ * la première, et HyperCard la grise tant que l'autre n'est pas cochée. */
+- (void)autoSelectToggled:(id)sender {
+    (void)sender;
+    BOOL on = ([gFldAutoSel state] == NSControlStateValueOn);
+    [gFldMultiple setEnabled:on];
+    if (!on) [gFldMultiple setState:NSControlStateValueOff];
+    /* Auto Select impose le verrouillage : la case se coche d'elle-même, pour
+     * que l'utilisateur voie tout de suite ce qu'implique son choix. */
+    if (on) [gFldLock setState:NSControlStateValueOn];
+}
+
 - (void)styleFont:(id)sender {
     if (!gStyleTarget) return;
     commit_style_panel();          /* voir le commentaire de commit_style_panel */
@@ -367,9 +399,15 @@ static NSTextField  *gFldTextSize = nil;
     gFontTarget = gStyleTarget;
     CGFloat sz = gStyleTarget->textsize > 0 ? gStyleTarget->textsize : 12;
     NSFont *f = nil;
-    if (gStyleTarget->textfont && *gStyleTarget->textfont)
-        f = [NSFont fontWithName:
-                [NSString stringWithUTF8String:gStyleTarget->textfont] size:sz];
+    if (gStyleTarget->textfont && *gStyleTarget->textfont) {
+        NSString *nm = [NSString stringWithUTF8String:gStyleTarget->textfont];
+        /* Pas les noms de police système, qui commencent par un point :
+         * CoreText refuse de les servir par leur nom et rend du Times en
+         * l'annonçant dans la console. Les piles enregistrées avant que l'on
+         * ne stocke le nom de famille en portent encore. */
+        if (nm && ![nm hasPrefix:@"."])
+            f = [NSFont fontWithName:nm size:sz];
+    }
     if (!f) f = [NSFont systemFontOfSize:sz];
     [[NSFontManager sharedFontManager] setSelectedFont:f isMultiple:NO];
     [[NSFontManager sharedFontManager] orderFrontFontPanel:self];
@@ -399,6 +437,13 @@ void hc_sync_size_field(Object *o)
         o->auto_tab     = ([gFldTab state]      == NSControlStateValueOn);
         o->dont_search  = ([gFldNoSearch state] == NSControlStateValueOn);
         o->shared_text  = ([gFldShared state]   == NSControlStateValueOn);
+        o->dont_wrap    = ([gFldNoWrap state]   == NSControlStateValueOn);
+        o->auto_select  = ([gFldAutoSel state]  == NSControlStateValueOn);
+        o->multiple_lines = ([gFldMultiple state] == NSControlStateValueOn);
+        /* Auto Select impose le verrouillage : on ne tape pas dans une liste
+         * de choix, et sans cela le clic ouvrirait l'éditeur au lieu de
+         * sélectionner la ligne. HyperCard fait de même. */
+        if (o->auto_select) o->locktext = 1;
     }
     [gFldPanel close];
     close_style_panel();

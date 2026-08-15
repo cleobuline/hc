@@ -10,6 +10,7 @@
 #import "HCpalettes.h"
 #import "HCicons.h"
 #import "graphics.h"
+#import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 static NSTextField *gMsgBox = nil; // la message box
@@ -230,6 +231,15 @@ static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
  * traits sont posés ensuite par style_attrs, qui sait aussi les simuler.
  * Les garder séparés évite la double source de vérité entre le nom de fonte
  * et les bits de style, qui nous a déjà coûté cher. */
+/* Vrai pendant qu'on construit la chaîne DESTINÉE À L'ÉDITEUR.
+ *
+ * La même chaîne sert au dessin et à la NSTextView, mais les deux n'espacent
+ * pas les lignes pareil : le dessin ajoute l'interligne recommandé par la
+ * police, la NSTextView non. Un pixel par ligne, mesuré. On ne peut donc pas
+ * leur donner exactement le même style de paragraphe — d'où ce drapeau, qui
+ * dit lequel des deux on sert. */
+static BOOL gForEditor = NO;
+
 static NSFont *obj_base_font(Object *o, CGFloat defSize) {
     CGFloat sz = o->textsize > 0 ? o->textsize : defSize;
     NSFont *f = nil;
@@ -347,6 +357,18 @@ static NSFont *font_with_traits(NSFont *f, BOOL bold, BOOL italic, BOOL *faux)
 static NSFont *font_by_loose_name(NSString *want, CGFloat sz)
 {
     if (![want length]) return nil;
+
+    /* Les noms commençant par un point sont ceux des polices système —
+     * « .SFNS-Regular », « .AppleSystemUIFont ». CoreText refuse de les servir
+     * par leur nom et rend du Times, en le signalant à chaque appel :
+     *
+     *   Client requested name ".SFNS-Regular", it will get Times-Roman
+     *
+     * On rend donc directement la police système, qui est ce que ce nom
+     * désigne. Le cas survient avec les piles enregistrées avant que l'on ne
+     * stocke le nom de FAMILLE plutôt que le nom PostScript : leurs plages
+     * portent encore l'ancien nom, et doivent continuer de s'afficher. */
+    if ([want hasPrefix:@"."]) return [NSFont systemFontOfSize:sz];
 
     NSFont *f = [NSFont fontWithName:want size:sz];
     if (f) return f;
@@ -496,35 +518,140 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
     NSMutableAttributedString *as =
         [[NSMutableAttributedString alloc] initWithString:s attributes:at];
 
-    /* ---- interligne FIXE, imposé aux deux moteurs de mise en page ----
+    /* ---- style de paragraphe : interligne, alignement, retour à la ligne ----
      *
-     * -drawInRect: et la NSTextView de l'éditeur n'espacent pas les lignes de
-     * la même façon : l'une suit les métriques de la police, l'autre les
-     * siennes. L'écart est minuscule par ligne, mais il s'accumule — sur vingt
-     * lignes il atteignait quatre lignes entières, si bien que le texte affiché
-     * en édition ne correspondait plus à celui du dessin pour un même
-     * défilement.
-     *
-     * Poser l'interligne dans la chaîne elle-même règle la question à la
-     * source : les deux moteurs reçoivent la consigne, aucun n'a plus son mot
-     * à dire. C'est aussi ce que faisait HyperCard, dont « the textHeight »
-     * était une propriété de CHAMP — un interligne unique pour tout le champ,
-     * quelles que soient les tailles employées ligne à ligne. La valeur par
-     * défaut y valait quatre tiers du corps.
-     *
-     * Effet de bord bienvenu : le calcul de la ligne cliquée devient exact,
-     * et la formule des scripts d'époque — « (mouseV - top) div textHeight »
-     * — tombe juste. */
-    /* L'interligne vient du NOYAU, via hc_text_height : c'est la valeur que
-     * « the textHeight » rend aux scripts, et il serait absurde qu'ils
-     * calculent sur un espacement différent de celui qu'ils voient. */
-    CGFloat lh = hc_text_height(o);
-    if (lh < 1) lh = 12;
-
+     * Les trois sont posés ici, dans la chaîne elle-même, plutôt que laissés
+     * au moteur de rendu : -drawInRect: et la NSTextView de l'éditeur
+     * n'espacent pas les lignes de la même façon, et l'écart — minuscule par
+     * ligne — s'accumulait jusqu'à quatre lignes entières sur vingt. Poser la
+     * consigne dans le texte règle la question à la source, aucun des deux
+     * moteurs n'ayant plus son mot à dire. */
     NSMutableParagraphStyle *ps =
         [[NSParagraphStyle defaultParagraphStyle] mutableCopy];
-    [ps setMinimumLineHeight:lh];
-    [ps setMaximumLineHeight:lh];
+
+    /* L'interligne n'est imposé QUE si « fixedLineHeight » est coché.
+     *
+     * C'est le sens de cette propriété de champ : coché, toutes les lignes ont
+     * la même hauteur, et un mot en gros corps est rogné ; décoché, chaque
+     * ligne prend la hauteur qu'il lui faut, et un passage en 18 points
+     * repousse ses voisines.
+     *
+     * L'imposer dans les deux cas — ce que je faisais depuis que l'interligne
+     * fixe a servi à réconcilier le dessin et l'éditeur — écrasait les lignes
+     * hautes les unes sur les autres et faussait leur décompte, donc le clic
+     * et la sélection avec.
+     *
+     * Le décompte reste juste dans les deux modes, parce que click_line_number
+     * interroge la mise en page réelle plutôt que de diviser par une hauteur
+     * supposée : c'est précisément ce que cette correction préserve. */
+    if (o->fixed_lh) {
+        CGFloat lh = hc_text_height(o);
+        if (lh < 1) lh = 12;
+        [ps setMinimumLineHeight:lh];
+        [ps setMaximumLineHeight:lh];
+
+        /* Poser le texte SUR sa ligne, et non sous le trait du dessus.
+         *
+         * AppKit agrandit une ligne contrainte vers le bas, en laissant la
+         * ligne de base là où elle serait sans contrainte : le texte se
+         * retrouve collé en haut, avec tout le vide dessous. HyperCard fait
+         * l'inverse — le texte repose sur la ligne, comme sur du papier
+         * réglé, et l'espace supplémentaire va au-dessus.
+         *
+         * On décale donc la ligne de base de ce que la contrainte a ajouté.
+         * L'écart peut être nul ou négatif si l'interligne demandé est plus
+         * court que la police, auquel cas on ne décale rien : mieux vaut un
+         * texte rogné qu'un texte remonté hors de sa ligne. */
+        NSFont *fb = obj_base_font(o, 12);
+        if (fb) {
+            NSAttributedString *une =
+                [[NSAttributedString alloc] initWithString:@"Mg"
+                                                attributes:@{NSFontAttributeName: fb}];
+            CGFloat nat = [une boundingRectWithSize:NSMakeSize(10000, CGFLOAT_MAX)
+                                            options:NSStringDrawingUsesLineFragmentOrigin
+                          ].size.height;
+            CGFloat sup = lh - nat;
+            if (sup > 0) [as addAttribute:NSBaselineOffsetAttributeName
+                                    value:@(-sup)
+                                    range:NSMakeRange(0, [as length])];
+        }
+    } else {
+        /* Interligne variable, mais consigne EXPLICITE quand même.
+         *
+         * Sans elle, -drawInRect: et la NSTextView de l'éditeur retombent
+         * chacune sur leurs propres métriques, et l'écart se voit d'un mode à
+         * l'autre : les lignes paraissent plus serrées en édition. Fixer le
+         * multiple à 1 et l'espacement à zéro ne contraint pas la hauteur des
+         * lignes — chacune garde celle que sa police lui donne — mais impose
+         * aux deux moteurs la même règle pour les enchaîner. */
+        [ps setLineHeightMultiple:1.0];
+        [ps setParagraphSpacing:0.0];
+        [ps setParagraphSpacingBefore:0.0];
+
+        /* L'interligne que -drawInRect: ajoute et que la NSTextView omet.
+         *
+         * Mesuré : 112 pixels au dessin contre 105 en édition pour sept
+         * lignes, soit exactement un pixel par ligne. C'est le « leading » de
+         * la police — l'espace qu'elle recommande entre deux lignes. On le
+         * rend explicite, ce qui accorde les deux moteurs sans contraindre la
+         * hauteur des lignes : chacune garde celle que sa police lui donne.
+         *
+         * On le demande à la police du champ, plutôt que de coder 1 en dur :
+         * une police de titre en recommande davantage qu'une police de
+         * labeur, et l'écart suivrait. */
+        [ps setLineSpacing:0.0];
+
+        if (gForEditor) {
+            /* Imposer à l'éditeur la hauteur de ligne du DESSIN.
+             *
+             * Mesuré sur sept lignes de 12 points : 112 pixels au dessin
+             * contre 105 en édition, soit 16 contre 15. Un pixel par ligne.
+             *
+             * D'où vient-il ? Pas du « leading » de la police, qui vaut zéro
+             * ici — je l'ai cru et le réglage n'a rien changé. C'est
+             * -drawInRect: qui arrondit la hauteur de ligne vers le haut, là
+             * où le gestionnaire de mise en page garde la valeur exacte.
+             *
+             * On demande donc à l'éditeur la même hauteur, calculée sur la
+             * police : ascendante + descendante, arrondie au pixel supérieur,
+             * comme le fait le dessin. Chaque ligne garde alors la hauteur que
+             * sa police lui donne — l'interligne reste variable — mais les
+             * deux moteurs l'arrondissent pareil. */
+            /* La hauteur de ligne du dessin, MESURÉE et non reconstituée.
+             *
+             * Deux tentatives ont échoué avant celle-ci : le « leading » de la
+             * police vaut zéro, et « ascendante - descendante » arrondie donne
+             * 15 là où le dessin en fait 16. Plutôt que de deviner une
+             * troisième formule, on demande au dessin lui-même : une ligne de
+             * texte, mesurée par -boundingRectWithSize:, rend exactement la
+             * hauteur qu'il emploiera. */
+            NSFont *fb = obj_base_font(o, 12);
+            if (fb) {
+                NSAttributedString *une =
+                    [[NSAttributedString alloc] initWithString:@"Mg"
+                                                    attributes:@{NSFontAttributeName: fb}];
+                CGFloat h = [une boundingRectWithSize:NSMakeSize(10000, CGFLOAT_MAX)
+                                              options:NSStringDrawingUsesLineFragmentOrigin
+                            ].size.height;
+                if (h > 0) [ps setMinimumLineHeight:h];
+            }
+        }
+    }
+
+    /* Alignement et retour à la ligne, posés au même endroit que l'interligne
+     * — ils appartiennent tous trois au style de PARAGRAPHE, et les séparer
+     * obligerait à parcourir la chaîne deux fois.
+     *
+     * dontWrap coupe au bord au lieu de passer à la ligne : c'est ce qu'il
+     * faut pour des données en colonnes, où un retour automatique décalerait
+     * tout le tableau. */
+    switch (o->text_align) {
+        case 1:  [ps setAlignment:NSTextAlignmentCenter]; break;
+        case 2:  [ps setAlignment:NSTextAlignmentRight];  break;
+        default: [ps setAlignment:NSTextAlignmentLeft];   break;
+    }
+    if (o->dont_wrap) [ps setLineBreakMode:NSLineBreakByClipping];
+
     [as addAttribute:NSParagraphStyleAttributeName value:ps
                range:NSMakeRange(0, [as length])];
 
@@ -947,7 +1074,27 @@ static void draw_part(Object *o) {
 
         /* ---- lignes de guidage ---- */
         if (o->show_lines) {
-            CGFloat lh = [@"Ag" sizeWithAttributes:at].height;
+            /* Les traits suivent l'interligne RÉEL du champ.
+             *
+             * Ils étaient espacés de la hauteur d'un « Ag » mesuré à part —
+             * une quatrième façon de calculer une hauteur de ligne, qui
+             * ignorait « fixedLineHeight » : le texte se posait à 43 pixels,
+             * les traits à 39, et tout se décalait un peu plus à chaque ligne.
+             *
+             * On demande donc la même valeur que la mise en page : celle du
+             * noyau quand l'interligne est fixe, la hauteur mesurée sinon. */
+            CGFloat lh;
+            if (o->fixed_lh) {
+                lh = hc_text_height(o);
+            } else {
+                NSFont *fb = obj_base_font(o, 12);
+                NSAttributedString *une =
+                    [[NSAttributedString alloc] initWithString:@"Mg"
+                                                    attributes:@{NSFontAttributeName: fb}];
+                lh = [une boundingRectWithSize:NSMakeSize(10000, CGFLOAT_MAX)
+                                       options:NSStringDrawingUsesLineFragmentOrigin
+                      ].size.height;
+            }
             if (lh < 4) lh = 12;
             [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
             for (CGFloat y = tr.origin.y + lh - o->scroll;
@@ -1096,6 +1243,21 @@ static char gDlgBuf[512];
  * not permitted ». */
 static char gFileBuf[2048];
 
+/* « save stack ... as ... » : écrire une copie de la pile.
+ *
+ * Le noyau ne connaît pas le format de fichier — il vit dans hc_file.c, qu'il
+ * n'inclut pas — d'où ce détour par l'hôte.
+ *
+ * flushPaintToKernel d'abord : les dessins des cartes vivent dans un cache de
+ * bitmaps côté vue, et ne sont encodés dans le modèle qu'à la demande. Sans
+ * cet appel, la copie serait enregistrée sans la peinture faite depuis la
+ * dernière sauvegarde. */
+static int cocoa_save_stack(Object *stack, const char *path) {
+    if (!stack || !path || !*path) return 0;
+    [gView flushPaintToKernel];
+    return hc_save(stack, path) == 0;
+}
+
 static const char *cocoa_answer_file(const char *prompt) {
     NSOpenPanel *p = [NSOpenPanel openPanel];
     [p setCanChooseFiles:YES];
@@ -1168,9 +1330,18 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
         if (gMsgPanel && ![gMsgPanel isVisible])
             [gMsgPanel orderFront:nil];
         [gMsgBox setStringValue:[NSString stringWithUTF8String:text]];
-    } else {
-        NSLog(@"%s", text);
+        return;
     }
+
+    /* Les ERREURS vont toujours à la console : sans elles, un script fautif
+     * échouerait en silence, et l'on chercherait longtemps.
+     *
+     * Les traces du dispatcher et les retours d'action, en revanche, recopient
+     * chaque affectation — un champ chargé depuis un fichier de plusieurs
+     * milliers de caractères remplissait la console sans rien apprendre.
+     * HC_TRACE dans l'environnement les rétablit, comme HC_RUNS_DEBUG le fait
+     * déjà pour les plages de style. */
+    if (kind == HC_ERR || getenv("HC_TRACE")) NSLog(@"%s", text);
 }
 
 /* Un clic a-t-il eu lieu depuis la dernière lecture de « the mouseClick » ? */
@@ -1634,6 +1805,10 @@ static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
     NSTextContainer *tc = [[NSTextContainer alloc]
                             initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
     [tc setLineFragmentPadding:0];
+    /* Même réglage que l'éditeur et que -drawInRect: : sans lui, ce
+     * gestionnaire monté pour l'occasion mesurerait des lignes plus hautes que
+     * celles qu'on voit, et le clic tomberait à côté. */
+    [lm setUsesFontLeading:NO];
     [lm addTextContainer:tc];
     [ts addLayoutManager:lm];
 
@@ -1681,6 +1856,10 @@ static int click_line_number(Object *f, NSPoint p) {
     NSTextContainer *tc = [[NSTextContainer alloc]
                             initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
     [tc setLineFragmentPadding:0];
+    /* Même réglage que l'éditeur et que -drawInRect: : sans lui, ce
+     * gestionnaire monté pour l'occasion mesurerait des lignes plus hautes que
+     * celles qu'on voit, et le clic tomberait à côté. */
+    [lm setUsesFontLeading:NO];
     [lm addTextContainer:tc];
     [ts addLayoutManager:lm];
 
@@ -2463,7 +2642,30 @@ static BOOL paint_selection_active(void)
             if (!plain) plain = nf;
 
             free(tgt->textfont);
-            tgt->textfont = strdup([[plain fontName] UTF8String]);
+            /* Le nom de FAMILLE, et non fontName.
+             *
+             * fontName rend le nom PostScript, qui vaut « .SFNS-Regular » pour
+             * les polices système — un nom interne réservé, que fontWithName:
+             * refuse de servir : CoreText avertit et rend du Times à la place.
+             * Le nom de famille, lui, est celui qu'écrivent les scripts
+             * HyperCard et celui que la résolution sait retrouver.
+             *
+             * Si la famille manque, on retombe sur Helvetica plutôt que sur un
+             * nom qui ne se relira pas — une pile enregistrée doit pouvoir
+             * retrouver sa police ailleurs. */
+            NSString *fam = [plain familyName];
+            /* Une police SYSTÈME efface le nom au lieu d'en imposer un autre.
+             *
+             * Substituer « Helvetica » figeait une police explicite sur
+             * l'objet, après quoi « set the textFont … » ne changeait plus
+             * rien à l'écran : le nom stocké l'emportait. textfont à NULL veut
+             * dire « la police par défaut », ce qui est exactement le sens de
+             * la police système, et laisse la propriété modifiable. */
+            if (!fam || [fam hasPrefix:@"."]) {
+                tgt->textfont = NULL;
+            } else {
+                tgt->textfont = strdup([fam UTF8String]);
+            }
             tgt->textsize = (int)[nf pointSize];
 
             /* Le panneau de polices ne parle que de gras et d'italique : on ne
@@ -3233,6 +3435,29 @@ static BOOL paint_selection_active(void)
         // champ : passer en saisie
         if (hit && hit->type == OBJ_FIELD) {
                     if (hit->locktext) {
+                        /* autoSelect : le clic sélectionne la LIGNE entière,
+                         * au lieu de se contenter d'aller au script. C'est
+                         * ainsi que se font les sommaires et les listes de
+                         * choix — sans une ligne de HyperTalk, là où le
+                         * sommaire de MacCam le fait à la main.
+                         *
+                         * La sélection est posée AVANT mouseDown : le script
+                         * déclenché doit pouvoir lire « the selectedLine » et
+                         * y trouver la ligne qu'on vient de désigner. */
+                        if (hit->auto_select) {
+                            int ligne = click_line_number(hit, p);
+                            if (ligne > 0) {
+                                const char *tx = hc_field_text(hit);
+                                int deb = 0, n = 1;
+                                while (n < ligne && tx[deb]) {
+                                    if (tx[deb] == '\n') n++;
+                                    deb++;
+                                }
+                                int fin = deb;
+                                while (tx[fin] && tx[fin] != '\n') fin++;
+                                hc_set_selection(hit, deb, fin - deb);
+                            }
+                        }
                         // champ verrouille : le clic va au script, comme un bouton
                         gPressed = hit;
                         hc_send(hit, "mouseDown");
@@ -3297,6 +3522,27 @@ static BOOL paint_selection_active(void)
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+
+    /* autoSelect : la sélection suit le pointeur tant que le bouton est
+     * enfoncé, comme dans toute liste de choix. Sans cela il faudrait relâcher
+     * et recliquer pour changer de ligne. */
+    if (gPressed && gPressed->type == OBJ_FIELD && gPressed->auto_select) {
+        int ligne = click_line_number(gPressed, p);
+        if (ligne > 0) {
+            const char *tx = hc_field_text(gPressed);
+            int deb = 0, n = 1;
+            while (n < ligne && tx[deb]) {
+                if (tx[deb] == '\n') n++;
+                deb++;
+            }
+            int fin = deb;
+            while (tx[fin] && tx[fin] != '\n') fin++;
+            hc_set_selection(gPressed, deb, fin - deb);
+            [self setNeedsDisplay:YES];
+        }
+        return;
+    }
+
     if (gScrollField) {
             CGFloat travel = gScrollGH - gScrollKH;
             if (travel > 0) {
@@ -3762,6 +4008,7 @@ static BOOL paint_selection_active(void)
     host.ask           = cocoa_ask;
     host.answer_file   = cocoa_answer_file;
     host.ask_file      = cocoa_ask_file;
+    host.save_stack    = cocoa_save_stack;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
     host.global_set    = cocoa_global_set;
@@ -4121,6 +4368,14 @@ static NSTextField  *gSprayDensityLabel = nil;
      * et se réenroulait 10 px trop tôt. */
     [[gFieldEditor textContainer] setLineFragmentPadding:0];
     [gFieldEditor setTextContainerInset:NSZeroSize];
+
+    /* usesFontLeading LAISSÉ À SA VALEUR PAR DÉFAUT.
+     *
+     * Le mettre à NO paraissait logique — -drawInRect: n'ajoute pas
+     * l'interligne de la police — mais la mesure a montré l'inverse : le
+     * dessin rend 112 pixels là où l'éditeur en rend 105, donc c'est
+     * l'éditeur qui en manque un par ligne, pas le dessin qui en a un de
+     * trop. On le compense par le style de paragraphe, plus bas. */
     /* Pour recevoir textViewDidChangeSelection: et tenir « the selection » à
      * jour quand l'utilisateur sélectionne à la souris ou au clavier. */
     [gFieldEditor setDelegate:self];
@@ -4143,8 +4398,11 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     /* On confie a l'editeur le texte AVEC ses plages : pendant la saisie,
      * c'est lui qui detient la verite du style. */
+    gForEditor = YES;
     [[gFieldEditor textStorage]
         setAttributedString:field_attr_string(field, str, base)];
+    gForEditor = NO;
+
 
     /* Reprendre l'interligne dans les attributs de frappe : sans cela, le
      * texte tapé retomberait à l'espacement par défaut, et le champ mêlerait
@@ -4275,7 +4533,17 @@ static NSTextField  *gSprayDensityLabel = nil;
          * style explicites, et le dialogue du champ n'avait plus prise sur
          * rien. On neutralise donc ici, contre l'effectif. */
         NSFont *fbase = obj_base_font(gEditingField, 12);
-        NSString *fbaseName = [fbase fontName];
+        /* familyName, et non fontName : c'est le nom que l'on ENREGISTRE
+         * pour les plages, et un nom PostScript de police système —
+         * « .SFNS-Regular » — ne se relit pas. La comparaison doit porter
+         * sur la même forme que ce qu'on stocke. */
+        NSString *fbaseName = [fbase familyName];
+        if (!fbaseName) fbaseName = [fbase fontName];
+        /* Ne PAS remplacer ici un nom système par Helvetica : ce nom sert de
+         * repère de comparaison, et le substituer ferait différer chaque plage
+         * du champ — donc figerait une police explicite partout, après quoi
+         * « set the textFont of field … » n'aurait plus prise sur rien. Le
+         * repère doit rester ce que le champ rend vraiment. */
         int fbaseSize = (int)lround([fbase pointSize]);
         int fbaseStyle = gEditingField->textstyle;
 
@@ -4299,7 +4567,9 @@ static NSTextField  *gSprayDensityLabel = nil;
                         [[rf fontDescriptor] symbolicTraits]
                         & ~(NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic)];
                 NSFont *plain = [NSFont fontWithDescriptor:fd size:[rf pointSize]];
-                NSString *nm = [(plain ? plain : rf) fontName];
+                NSFont *src = plain ? plain : rf;
+                NSString *nm = [src familyName];
+                if (!nm) nm = [src fontName];
                 int sz = (int)lround([rf pointSize]);
 
                 /* Identique à ce que le champ rendrait tout seul : on ne dit

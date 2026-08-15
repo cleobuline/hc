@@ -3039,6 +3039,8 @@ static int is_prop_name(const char *w, int len)
         "loc", "location", "id", "name", "visible", "showname", "shownname",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
+        "textalign", "autoselect", "multiplelines", "dontwrap",
+        "selectedtext", "selectedchunk",
         "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
         "textsize", "textheight", "script", "text", "contents", "style", NULL
     };
@@ -3235,8 +3237,71 @@ static void term_value_body(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
                     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
                     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
-                    if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines"))
-                        { snprintf(out, outlen, "%d", o->selectedline); return; }
+                    /* selectedLine : deux choses selon l'objet.
+                     *
+                     * Sur un BOUTON popup, c'est l'article choisi dans le menu
+                     * — un entier rangé dans l'objet. Sur un CHAMP, c'est la
+                     * ligne actuellement sélectionnée, qui n'appartient pas à
+                     * l'objet mais à l'état global de sélection : un seul
+                     * champ à la fois peut l'avoir.
+                     *
+                     * HyperCard rend « line N of card field X » pour un champ
+                     * et un simple numéro pour un bouton — deux formes, parce
+                     * que les deux ne servent pas à la même chose. */
+                    if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
+                        if (o->type == OBJ_FIELD) {
+                            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return; }
+                            const char *t = hc_field_text(o);
+                            int line = 1;
+                            for (int i = 0; i < g_sel_start && t[i]; i++)
+                                if (t[i] == '\n') line++;
+                            char d[96];
+                            hc_describe(o, d, sizeof d);
+                            snprintf(out, outlen, "line %d of %s%s", line,
+                                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+                            return;
+                        }
+                        snprintf(out, outlen, "%d", o->selectedline); return;
+                    }
+
+                    /* selectedText d'un objet : le texte sélectionné s'il
+                     * s'agit du champ qui porte la sélection ; pour un bouton
+                     * popup, l'article choisi — c'est ainsi qu'on lit ce que
+                     * l'utilisateur a pris dans le menu. */
+                    if (ci_equal(prop, "selectedtext")) {
+                        if (o->type == OBJ_FIELD) {
+                            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return; }
+                            selection_text(out, outlen);
+                            return;
+                        }
+                        if (o->type == OBJ_BUTTON && o->selectedline > 0) {
+                            const char *t = o->contents ? o->contents : "";
+                            int n = 1, deb = 0;
+                            while (n < o->selectedline && t[deb]) {
+                                if (t[deb] == '\n') n++;
+                                deb++;
+                            }
+                            int fin = deb;
+                            while (t[fin] && t[fin] != '\n') fin++;
+                            snprintf(out, outlen, "%.*s", fin - deb, t + deb);
+                            return;
+                        }
+                        snprintf(out, outlen, "%s", "");
+                        return;
+                    }
+
+                    /* selectedChunk d'un champ : même désignation que la forme
+                     * globale, mais seulement si c'est bien ce champ-là. */
+                    if (ci_equal(prop, "selectedchunk")) {
+                        if (o->type == OBJ_FIELD && g_sel_field == o) {
+                            char d[96];
+                            hc_describe(o, d, sizeof d);
+                            snprintf(out, outlen, "char %d to %d of %s%s",
+                                     g_sel_start + 1, g_sel_start + g_sel_len,
+                                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+                        } else snprintf(out, outlen, "%s", "");
+                        return;
+                    }
                     if (ci_equal(prop, "locktext")) { snprintf(out, outlen, "%s", o->locktext ? "true" : "false"); return; }
                     if (ci_equal(prop, "widemargins")) { snprintf(out, outlen, "%s", o->wide_margins ? "true" : "false"); return; }
                     if (ci_equal(prop, "fixedlineheight")) { snprintf(out, outlen, "%s", o->fixed_lh ? "true" : "false"); return; }
@@ -3244,6 +3309,18 @@ static void term_value_body(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return; }
                     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return; }
                     if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return; }
+                    /* textAlign se lit en toutes lettres, comme HyperCard :
+                     * « left », « center », « right ». Un script compare la
+                     * chaîne, il n'a que faire de notre codage interne. */
+                    if (ci_equal(prop, "textalign")) {
+                        snprintf(out, outlen, "%s",
+                                 o->text_align == 1 ? "center" :
+                                 o->text_align == 2 ? "right"  : "left");
+                        return;
+                    }
+                    if (ci_equal(prop, "autoselect")) { snprintf(out, outlen, "%s", o->auto_select ? "true" : "false"); return; }
+                    if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return; }
+                    if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return; }
                     if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return; }
                     if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return; }
                     if (ci_equal(prop, "textstyle")) {
@@ -4918,6 +4995,26 @@ static void exec_line_body(Object *me, const char *line)
             o->auto_tab = truthy(val); notify_field(o);
         } else if (ci_equal(prop, "dontsearch")) {
             o->dont_search = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "textalign")) {
+            /* Accepte aussi « centre » et « centered », qu'on rencontre dans
+             * les scripts, et retombe à gauche sur un mot inconnu plutôt que
+             * d'échouer : HyperCard est indulgent sur cette propriété. */
+            if (ci_equal(val, "center") || ci_equal(val, "centre") ||
+                ci_equal(val, "centered"))      o->text_align = 1;
+            else if (ci_equal(val, "right"))    o->text_align = 2;
+            else                                o->text_align = 0;
+            notify_field(o);
+        } else if (ci_equal(prop, "autoselect")) {
+            o->auto_select = truthy(val);
+            /* Un champ à sélection de lignes est forcément verrouillé : on ne
+             * tape pas dans une liste de choix. HyperCard verrouillait de même,
+             * et sans cela le clic ouvrirait l'éditeur au lieu de sélectionner. */
+            if (o->auto_select) o->locktext = 1;
+            notify_field(o);
+        } else if (ci_equal(prop, "multiplelines")) {
+            o->multiple_lines = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "dontwrap")) {
+            o->dont_wrap = truthy(val); notify_field(o);
         } else if (ci_equal(prop, "sharedtext")) {
             o->shared_text = truthy(val); notify_field(o);
         } else if (ci_equal(prop, "scroll")) {

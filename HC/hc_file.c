@@ -167,6 +167,13 @@ static void put_part(FILE *f, Object *o)
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
     if (o->locktext) fprintf(f, "locktext\n");
     if (o->wide_margins) fprintf(f, "widemargins\n");
+    /* Écrites seulement si posées : une pile enregistrée avant l'existence de
+     * ces lignes se relit donc sans rien perdre, et le fichier ne s'alourdit
+     * pas de valeurs par défaut. */
+    if (o->auto_select)    fprintf(f, "autoselect\n");
+    if (o->multiple_lines) fprintf(f, "multiplelines\n");
+    if (o->dont_wrap)      fprintf(f, "dontwrap\n");
+    if (o->text_align)     fprintf(f, "textalign %d\n", o->text_align);
     if (o->fixed_lh) fprintf(f, "fixedlineheight\n");
     if (o->show_lines) fprintf(f, "showlines\n");
     fprintf(f, "id %d\n", o->id);
@@ -554,6 +561,10 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "locktext") == 0 && part)       { part->locktext = 1; continue; }
         if (strcmp(s, "widemargins") == 0 && part)    { part->wide_margins = 1; continue; }
+        if (strcmp(s, "autoselect") == 0 && part)     { part->auto_select = 1; continue; }
+        if (strcmp(s, "multiplelines") == 0 && part)  { part->multiple_lines = 1; continue; }
+        if (strcmp(s, "dontwrap") == 0 && part)       { part->dont_wrap = 1; continue; }
+        if (strncmp(s, "textalign ", 10) == 0 && part) { part->text_align = atoi(s + 10); continue; }
         if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
         if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
         if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }

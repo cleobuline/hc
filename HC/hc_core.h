@@ -108,6 +108,26 @@ struct Object {
     int      dont_search;    /* exclu de find */
     int      shared_text;    /* texte partagé entre cartes du même fond */
 
+    /* Alignement du texte : 0 gauche, 1 centré, 2 droite. HyperCard n'en
+     * connaît pas d'autre — pas de justifié. */
+    int      text_align;
+
+    /* autoSelect : cliquer dans le champ sélectionne la LIGNE entière au lieu
+     * de poser un curseur. C'est ainsi que se font les sommaires et les listes
+     * de choix, sans une ligne de script — le sommaire de MacCam fait à la
+     * main ce que cette propriété donne pour rien.
+     *
+     * Elle suppose le champ verrouillé : un champ où l'on peut taper n'a pas
+     * de raison de sélectionner des lignes entières. HyperCard imposait la
+     * même condition. */
+    int      auto_select;
+    int      multiple_lines;  /* autoSelect : plusieurs lignes à la fois */
+
+    /* dontWrap : les lignes trop longues sont coupées au bord au lieu de
+     * passer à la ligne. Utile pour les données en colonnes, où un retour
+     * automatique décalerait tout. */
+    int      dont_wrap;
+
     char    *textfont;       /* nom de police (NULL = défaut) */
     int      textstyle;      /* bits HC_BOLD… : style du champ entier, valeur
                               * de repli pour tout ce qu'aucune plage ne couvre */
