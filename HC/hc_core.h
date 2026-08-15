@@ -38,6 +38,13 @@ typedef struct Object Object;
  *     font  == NULL              -> Object.textfont
  *     size  == 0                 -> Object.textsize
  *     style == HC_STYLE_INHERIT  -> Object.textstyle
+ *     color == HC_COLOR_INHERIT  -> noir, ou la couleur du champ
+ *
+ * La couleur est un ajout : HyperCard était en noir et blanc, et n'avait pas
+ * de « textColor ». Elle suit néanmoins la même mécanique que les trois
+ * autres, ce qui évite d'inventer un second système de plages. Encodée en
+ * 0xRRGGBB, avec une sentinelle À PART de zéro — qui est le noir, une couleur
+ * légitime qu'on doit pouvoir poser explicitement.
  * Le style a besoin d'une sentinelle À PART de zéro : zéro veut dire « plain,
  * explicitement », ce qui doit effacer le gras du champ sur cette plage. Les
  * confondre rendait « set the textStyle of word 3 to plain » sans effet dans
@@ -47,7 +54,7 @@ typedef struct Object Object;
  *
  * Ces sentinelles sont INTERNES : hc_run_attrs les résout avant de rendre la
  * main à l'hôte, qui ne voit que des valeurs effectives. */
-struct TextRun { int start, len; int style; int size; char *font; };
+struct TextRun { int start, len; int style; int size; char *font; int color; };
 struct RunList { struct TextRun *v; int n, cap; };
 
 /* Bits de style. Les trois premiers sont ceux qu'Object.textstyle utilisait
@@ -62,6 +69,7 @@ struct RunList { struct TextRun *v; int n, cap; };
 #define HC_GROUP    128
 #define HC_STYLE_MIXED   (-1) /* rendu par une lecture sur plage non homogène */
 #define HC_STYLE_INHERIT (-2) /* plage muette sur le style : voir plus haut */
+#define HC_COLOR_INHERIT (-1) /* plage muette sur la couleur : voir plus haut */
 
 /* texte d'un champ de fond, propre à une carte, avec ses plages de style :
  * un champ de fond non partagé a un texte ET un style par carte. */
@@ -326,6 +334,11 @@ int         hc_run_at(Object *field, int i, int *start, int *len, int *style);
  * `font` pointe dans le modèle : valable jusqu'à la prochaine modification. */
 int         hc_run_attrs(Object *field, int i, int *start, int *len,
                          int *style, int *size, const char **font);
+/* Comme hc_run_attrs, plus la couleur. HC_COLOR_INHERIT y signifie « pas de
+ * couleur propre » : l'hôte emploie alors la sienne, noire d'ordinaire. */
+int         hc_run_attrs_color(Object *field, int i, int *start, int *len,
+                               int *style, int *size, const char **font,
+                               int *color);
 
 /* ---- Plages de style : écriture en bloc, pour l'éditeur ----
  * Pendant la saisie c'est la vue qui détient le style ; à la fermeture elle
@@ -339,6 +352,10 @@ int         hc_run_add(Object *field, int start, int len, int style);
  * pas du champ sur cet attribut, pour ne pas figer une valeur héritée. */
 int         hc_run_add_full(Object *field, int start, int len,
                             int style, int size, const char *font);
+/* Variante avec la couleur, en 0xRRGGBB. HC_COLOR_INHERIT laisse la plage
+ * muette sur cet attribut, comme font NULL et 0 pour la police et le corps. */
+int         hc_run_add_color(Object *field, int start, int len,
+                             int style, int size, const char *font, int color);
 
 /* Interligne effectif d'un champ, en pixels : textheight s'il est posé, sinon
  * quatre tiers du corps. Utilisé par le noyau pour « the textHeight » et par

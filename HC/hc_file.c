@@ -133,16 +133,25 @@ static void put_runs(FILE *f, const char *tag, const struct RunList *rl)
          * Attention, `style == 0` n'est pas muet — c'est « plain », qui doit
          * survivre à l'enregistrement dans un champ gras. L'ancien test le
          * jetait, et le mot reprenait le gras du champ au rechargement. */
-        if (r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font) continue;
+        if (r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font &&
+            r->color == HC_COLOR_INHERIT) continue;
 
-        /* Forme courte quand il n'y a que du style : les piles déjà
-         * enregistrées gardent exactement la même allure, et un binaire plus
-         * ancien continue de les lire. */
-        if (r->size == 0 && !r->font)
+        /* Trois formes, de la plus courte à la plus longue, pour que les piles
+         * déjà enregistrées gardent exactement la même allure et qu'un binaire
+         * plus ancien continue de les lire :
+         *     s,l,style
+         *     s,l,style,corps,police
+         *     s,l,style,corps,police,couleur
+         * La police pouvant contenir des espaces mais jamais de virgule, la
+         * couleur se lit sans ambiguïté après la dernière. */
+        if (r->size == 0 && !r->font && r->color == HC_COLOR_INHERIT)
             fprintf(f, "%s %d,%d,%d\n", tag, r->start, r->len, r->style);
-        else
+        else if (r->color == HC_COLOR_INHERIT)
             fprintf(f, "%s %d,%d,%d,%d,%s\n", tag, r->start, r->len,
                     r->style, r->size, r->font ? r->font : "");
+        else
+            fprintf(f, "%s %d,%d,%d,%d,%s,%d\n", tag, r->start, r->len,
+                    r->style, r->size, r->font ? r->font : "", r->color);
     }
 }
 
@@ -158,10 +167,6 @@ static void put_part(FILE *f, Object *o)
     if (o->hilite) fprintf(f, "hilite\n");
     if (o->autohilite) fprintf(f, "autohilite\n");
     if (o->textsize) fprintf(f, "textsize %d\n", o->textsize);
-    /* Écrit seulement s'il a été posé explicitement : zéro veut dire
-     * « déduit du corps », et les piles enregistrées avant l'existence
-     * de cette ligne se relisent donc sans rien perdre. */
-    if (o->textheight) fprintf(f, "textheight %d\n", o->textheight);
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
@@ -330,9 +335,9 @@ static char *acc_take(Acc *a)
  * vient en dernier et court jusqu'au bout de la ligne : il peut donc contenir
  * des espaces (« Times New Roman ») sans qu'on ait à le citer. */
 static int parse_run(const char *s, int *start, int *len, int *style,
-                     int *size, char *font, int fontlen)
+                     int *size, char *font, int fontlen, int *color)
 {
-    *size = 0; font[0] = '\0';
+    *size = 0; font[0] = '\0'; *color = HC_COLOR_INHERIT;
     if (sscanf(s, "%d,%d,%d", start, len, style) != 3) return 0;
 
     const char *p = s;
@@ -344,18 +349,32 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     const char *q = strchr(p, ',');
     if (!q) return 1;                        /* taille sans police */
     q++;
-    int n = (int)strlen(q);
+
+    /* La couleur, s'il y en a une, suit la DERNIÈRE virgule : un nom de police
+     * peut contenir des espaces mais jamais de virgule, donc la découpe est
+     * sans ambiguïté. Son absence laisse la sentinelle, et les piles écrites
+     * avant l'existence de ce champ se relisent sans rien perdre. */
+    const char *derniere = strrchr(q, ',');
+    int n;
+    if (derniere) {
+        *color = atoi(derniere + 1);
+        n = (int)(derniere - q);
+    } else {
+        n = (int)strlen(q);
+    }
     while (n > 0 && (q[n-1] == '\n' || q[n-1] == '\r')) n--;
     if (n >= fontlen) n = fontlen - 1;
+    if (n < 0) n = 0;
     memcpy(font, q, (size_t)n); font[n] = '\0';
     return 1;
 }
 
 static void add_run(struct RunList *rl, int start, int len, int style,
-                    int size, const char *font)
+                    int size, const char *font, int color)
 {
     if (!rl || len <= 0 || start < 0) return;
-    if (style == HC_STYLE_INHERIT && size == 0 && (!font || !*font)) return;
+    if (style == HC_STYLE_INHERIT && size == 0 && (!font || !*font) &&
+        color == HC_COLOR_INHERIT) return;
     if (rl->n == rl->cap) {
         int cap = rl->cap ? rl->cap * 2 : 8;
         struct TextRun *v = (struct TextRun *)realloc(rl->v, (size_t)cap * sizeof *v);
@@ -367,6 +386,7 @@ static void add_run(struct RunList *rl, int start, int len, int style,
     rl->v[rl->n].style = style;
     rl->v[rl->n].size  = size;
     rl->v[rl->n].font  = (font && *font) ? dupstr_file(font) : NULL;
+    rl->v[rl->n].color = color;
     rl->n++;
 }
 
@@ -473,18 +493,18 @@ Object *hc_load(const char *path)
 
         /* --- plages de style --- */
         if (strncmp(s, "run ", 4) == 0) {
-            int a, b, c, sz; char fn[128];
+            int a, b, c, sz, co; char fn[128];
             if (part && part->type == OBJ_FIELD &&
-                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn))
-                add_run(&part->runs, a, b, c, sz, fn);
+                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn, &co))
+                add_run(&part->runs, a, b, c, sz, fn, co);
             continue;
         }
         if (strncmp(s, "bgrun ", 6) == 0) {
-            int a, b, c, sz; char fn[128];
+            int a, b, c, sz, co; char fn[128];
             if (owner && owner->type == OBJ_CARD &&
                 last_bgtext >= 0 && last_bgtext < owner->nbgtexts &&
-                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn))
-                add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn);
+                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn, &co))
+                add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn, co);
             continue;
         }
 
@@ -541,10 +561,6 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "autohilite") == 0) {
             if (target) target->autohilite = 1;
-            continue;
-        }
-        if (strncmp(s, "textheight ", 11) == 0 && part) {
-            part->textheight = atoi(s + 11);
             continue;
         }
         if (strncmp(s, "textsize ", 9) == 0 && part) {

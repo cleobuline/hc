@@ -829,6 +829,7 @@ static Object *clone_part(Object *o)
         for (int i = 0; i < o->runs.n; i++) {
             c->runs.v[i] = o->runs.v[i];
             c->runs.v[i].font = dupstr(o->runs.v[i].font);
+            /* .color part avec la copie de structure ci-dessus. */
         }
         c->runs.n = o->runs.n;
     }
@@ -1896,7 +1897,8 @@ static int runs_room(struct RunList *rl, int need)
  * Seul HC_STYLE_INHERIT signifie « je ne me prononce pas ». */
 static int run_is_mute(const struct TextRun *r)
 {
-    return r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font;
+    return r->style == HC_STYLE_INHERIT && r->size == 0 && !r->font &&
+           r->color == HC_COLOR_INHERIT;
 }
 
 /* Deux plages voisines ne se fusionnent que si elles s'accordent sur les trois
@@ -1983,12 +1985,14 @@ static void runs_edit(struct RunList *rl, int at, int oldlen, int newlen)
 #define RA_STYLE 1
 #define RA_SIZE  2
 #define RA_FONT  4
+#define RA_COLOR 8
 
 static void run_apply(struct TextRun *r, int mask,
-                      int style, int size, const char *font)
+                      int style, int size, const char *font, int color)
 {
     if (mask & RA_STYLE) r->style = style;
     if (mask & RA_SIZE)  r->size  = size;
+    if (mask & RA_COLOR) r->color = color;
     if (mask & RA_FONT) {
         free(r->font);
         r->font = (font && *font) ? dupstr(font) : NULL;
@@ -2018,6 +2022,55 @@ static int runs_split_at(struct RunList *rl, int pos)
     return 1;
 }
 
+/* Traduit un nom de couleur, ou « #RRGGBB », ou « r,v,b », en 0xRRGGBB.
+ *
+ * Les noms sont ceux qu'on écrit spontanément dans un script, en français
+ * comme en anglais : une pile écrite ici doit rester lisible par qui la
+ * relira. Renvoie HC_COLOR_INHERIT si le mot n'est pas une couleur — la plage
+ * reste alors muette sur cet attribut, plutôt que de virer au noir. */
+static int color_from_name(const char *v)
+{
+    if (!v || !*v) return HC_COLOR_INHERIT;
+    while (*v == ' ' || *v == '\t') v++;
+
+    static const struct { const char *nom; int rgb; } table[] = {
+        { "black",   0x000000 }, { "noir",    0x000000 },
+        { "white",   0xFFFFFF }, { "blanc",   0xFFFFFF },
+        { "red",     0xFF0000 }, { "rouge",   0xFF0000 },
+        { "green",   0x008000 }, { "vert",    0x008000 },
+        { "blue",    0x0000FF }, { "bleu",    0x0000FF },
+        { "yellow",  0xFFFF00 }, { "jaune",   0xFFFF00 },
+        { "cyan",    0x00FFFF },
+        { "magenta", 0xFF00FF },
+        { "orange",  0xFF8000 },
+        { "purple",  0x800080 }, { "violet",  0x800080 },
+        { "brown",   0x804000 }, { "marron",  0x804000 },
+        { "pink",    0xFFC0CB }, { "rose",    0xFFC0CB },
+        { "gray",    0x808080 }, { "grey",    0x808080 }, { "gris", 0x808080 },
+    };
+    for (unsigned i = 0; i < sizeof table / sizeof *table; i++)
+        if (ci_equal(v, table[i].nom)) return table[i].rgb;
+
+    if (*v == '#') return (int)strtol(v + 1, NULL, 16);
+
+    /* « 255,128,0 » : la forme qu'emploient les scripts qui calculent leurs
+     * couleurs, et celle que rend « the textColor ». */
+    if (strchr(v, ',')) {
+        int r = 0, g = 0, b = 0;
+        if (sscanf(v, "%d , %d , %d", &r, &g, &b) == 3) {
+            if (r < 0)   r = 0;
+            if (r > 255) r = 255;
+            if (g < 0)   g = 0;
+            if (g > 255) g = 255;
+            if (b < 0)   b = 0;
+            if (b > 255) b = 255;
+            return (r << 16) | (g << 8) | b;
+        }
+    }
+    if (isdigit((unsigned char)*v)) return (int)strtol(v, NULL, 0);
+    return HC_COLOR_INHERIT;
+}
+
 /* Pose un attribut sur [start, start+len) SANS toucher aux deux autres.
  *
  * L'ancienne version rasait toute plage recouverte pour en poser une neuve :
@@ -2026,7 +2079,7 @@ static int runs_split_at(struct RunList *rl, int pos)
  * trous par des plages muettes pour que l'intervalle soit intégralement
  * couvert, puis n'écrire que l'attribut demandé sur chaque plage concernée. */
 static int runs_set_attr(struct RunList *rl, int start, int len, int mask,
-                         int style, int size, const char *font)
+                         int style, int size, const char *font, int color)
 {
     if (!rl || len <= 0 || start < 0) return 0;
     int end = start + len;
@@ -2046,21 +2099,21 @@ static int runs_set_attr(struct RunList *rl, int start, int len, int mask,
         if (rs >= end)   break;
         if (rs > cursor) {
             if (!runs_room(rl, 1)) return 0;
-            struct TextRun g = { cursor, rs - cursor, HC_STYLE_INHERIT, 0, NULL };
+            struct TextRun g = { cursor, rs - cursor, HC_STYLE_INHERIT, 0, NULL, HC_COLOR_INHERIT };
             rl->v[rl->n++] = g;
         }
         if (re > cursor) cursor = re;
     }
     if (cursor < end) {
         if (!runs_room(rl, 1)) return 0;
-        struct TextRun g = { cursor, end - cursor, HC_STYLE_INHERIT, 0, NULL };
+        struct TextRun g = { cursor, end - cursor, HC_STYLE_INHERIT, 0, NULL, HC_COLOR_INHERIT };
         rl->v[rl->n++] = g;
     }
 
     for (int i = 0; i < rl->n; i++) {
         struct TextRun *r = &rl->v[i];
         if (r->start >= start && r->start + r->len <= end && r->len > 0)
-            run_apply(r, mask, style, size, font);
+            run_apply(r, mask, style, size, font, color);
     }
 
     runs_tidy(rl);
@@ -2128,6 +2181,25 @@ static int runs_get_size(struct RunList *rl, int start, int len, int dflt)
         else if (sz != first) return -1;
     }
     return first == -2 ? dflt : first;
+}
+
+/* Couleur commune à [start, start+len), ou -2 si elle varie. HC_COLOR_INHERIT
+ * si aucune plage ne se prononce. Même forme que runs_get_size : une lecture
+ * sur un intervalle non homogène doit dire « mixed » plutôt que de choisir. */
+static int runs_get_color(struct RunList *rl, int start, int len)
+{
+    int vu = 0, val = HC_COLOR_INHERIT;
+    int end = start + len;
+    for (int p = start; p < end; p++) {
+        int c = HC_COLOR_INHERIT;
+        if (rl) for (int i = 0; i < rl->n; i++) {
+            struct TextRun *r = &rl->v[i];
+            if (p >= r->start && p < r->start + r->len) { c = r->color; break; }
+        }
+        if (!vu) { val = c; vu = 1; }
+        else if (c != val) return -2;
+    }
+    return val;
 }
 
 /* Un mot -> son bit. 0 si le mot n'est pas un nom de style (« plain » compris :
@@ -3039,7 +3111,7 @@ static int is_prop_name(const char *w, int len)
         "loc", "location", "id", "name", "visible", "showname", "shownname",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
-        "textalign", "autoselect", "multiplelines", "dontwrap",
+        "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "selectedtext", "selectedchunk",
         "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
         "textsize", "textheight", "script", "text", "contents", "style", NULL
@@ -3204,12 +3276,21 @@ static void term_value_body(const char *t, char *out, int outlen)
                  * La cible peut donc etre calculee : « of + 2 » est evalue
                  * comme expression si ce n'est pas deja un morceau litteral. */
                 if (ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
-                    ci_equal(prop, "textsize")) {
+                    ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor")) {
                     int cst, cen;
                     Object *cf = chunk_target(of + 2, &cst, &cen);
                     if (cf) {
                         struct RunList *rl = runs_of(cf);
-                        if (ci_equal(prop, "textstyle")) {
+                        if (ci_equal(prop, "textcolor")) {
+                            /* Rendue en « r,v,b » : c'est la forme qu'un
+                             * script peut décomposer avec « item 1 of », et
+                             * celle que « set the textColor » réaccepte. */
+                            int col = runs_get_color(rl, cst, cen - cst);
+                            if (col == HC_COLOR_INHERIT) snprintf(out, outlen, "0,0,0");
+                            else if (col < 0)            snprintf(out, outlen, "mixed");
+                            else snprintf(out, outlen, "%d,%d,%d",
+                                          (col >> 16) & 255, (col >> 8) & 255, col & 255);
+                        } else if (ci_equal(prop, "textstyle")) {
                             style_to_names(runs_get_style(rl, cst, cen - cst,
                                                           cf->textstyle),
                                            out, outlen);
@@ -4912,6 +4993,7 @@ static void exec_line_body(Object *me, const char *line)
                 int mask = 0;
                 if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
                 else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
+                else if (ci_equal(prop, "textcolor")) mask = RA_COLOR;
                 else if (ci_equal(prop, "textsize")) mask = RA_SIZE;
 
                 if (!mask) {
@@ -4942,7 +5024,9 @@ static void exec_line_body(Object *me, const char *line)
                 runs_set_attr(rl, cst, cen - cst, mask,
                               (mask & RA_STYLE) ? style_from_names(val) : 0,
                               (mask & RA_SIZE)  ? atoi(val) : 0,
-                              (mask & RA_FONT)  ? val : NULL);
+                              (mask & RA_FONT)  ? val : NULL,
+                              (mask & RA_COLOR) ? color_from_name(val)
+                                                : HC_COLOR_INHERIT);
                 notify_field(cf);
                 set_result("");
                 emit(HC_INFO, "   → %s de [%d..%d[ ← \"%s\"", prop, cst, cen, val);
@@ -6667,8 +6751,8 @@ int hc_run_count(Object *field)
 /* Les sentinelles ne sortent jamais du noyau : l'hôte reçoit des valeurs
  * effectives, sinon HC_STYLE_INHERIT (-2) allumerait, bit à bit, l'italique,
  * le souligné et tout le reste au premier « & HC_ITALIC » de la vue. */
-int hc_run_attrs(Object *field, int i, int *start, int *len,
-                 int *style, int *size, const char **font)
+int hc_run_attrs_color(Object *field, int i, int *start, int *len,
+                       int *style, int *size, const char **font, int *color)
 {
     struct RunList *rl = runs_of(field);
     if (!rl || i < 0 || i >= rl->n) return 0;
@@ -6679,7 +6763,17 @@ int hc_run_attrs(Object *field, int i, int *start, int *len,
                                                        : r->style;
     if (size)  *size  = r->size ? r->size : field->textsize;
     if (font)  *font  = r->font ? r->font : field->textfont;
+    /* La couleur garde sa sentinelle, contrairement aux trois autres : le
+     * champ n'a pas de couleur propre où se rabattre, et c'est à l'hôte de
+     * décider ce que « pas de couleur » veut dire — du noir, d'ordinaire. */
+    if (color) *color = r->color;
     return 1;
+}
+
+int hc_run_attrs(Object *field, int i, int *start, int *len,
+                 int *style, int *size, const char **font)
+{
+    return hc_run_attrs_color(field, i, start, len, style, size, font, NULL);
 }
 
 int hc_run_at(Object *field, int i, int *start, int *len, int *style)
@@ -6696,6 +6790,13 @@ void hc_runs_clear(Object *field)
 int hc_run_add_full(Object *field, int start, int len,
                     int style, int size, const char *font)
 {
+    return hc_run_add_color(field, start, len, style, size, font,
+                            HC_COLOR_INHERIT);
+}
+
+int hc_run_add_color(Object *field, int start, int len,
+                     int style, int size, const char *font, int color)
+{
     struct RunList *rl = runs_of(field);
     if (!rl || len <= 0 || start < 0) return 0;
 
@@ -6708,12 +6809,14 @@ int hc_run_add_full(Object *field, int start, int len,
     if (font && ffn && strcmp(font, ffn) == 0) font = NULL;
     if (font && !*font) font = NULL;
 
-    if (style == 0 && size == 0 && !font) return 0;   /* rien à dire */
+    if (style == 0 && size == 0 && !font && color == HC_COLOR_INHERIT)
+        return 0;                                     /* rien à dire */
 
     if (!runs_room(rl, 1)) return 0;
     struct TextRun n;
     n.start = start; n.len = len; n.style = style; n.size = size;
     n.font  = font ? dupstr(font) : NULL;
+    n.color = color;
     rl->v[rl->n++] = n;
     runs_tidy(rl);
     return 1;

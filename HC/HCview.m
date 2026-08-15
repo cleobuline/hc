@@ -495,6 +495,15 @@ static void apply_selection_highlight(NSMutableAttributedString *as, Object *o)
 {
     if (!o || o->type != OBJ_FIELD) return;
 
+    /* Jamais sur la chaîne destinée à l'ÉDITEUR.
+     *
+     * La NSTextView dessine sa propre sélection ; la nôtre ferait double
+     * emploi. Pire, ses attributs — texte blanc sur fond noir — restaient dans
+     * le NSTextView, et la relecture des plages à la fermeture les prenait
+     * pour des couleurs choisies par l'utilisateur : le texte sélectionné
+     * ressortait en blanc. */
+    if (gForEditor) return;
+
     Object *sel = NULL; int start = 0, len = 0;
     hc_get_selection(&sel, &start, &len);
     if (sel != o || len <= 0) return;
@@ -666,9 +675,9 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
     NSUInteger len  = [s length];
 
     for (int i = 0; i < n; i++) {
-        int a = 0, l = 0, st = 0, sz = 0;
+        int a = 0, l = 0, st = 0, sz = 0, co = HC_COLOR_INHERIT;
         const char *fn = NULL;
-        if (!hc_run_attrs(o, i, &a, &l, &st, &sz, &fn) || l <= 0) continue;
+        if (!hc_run_attrs_color(o, i, &a, &l, &st, &sz, &fn, &co) || l <= 0) continue;
         NSUInteger u0 = utf16_from_byte(tx, a);
         NSUInteger u1 = utf16_from_byte(tx, a + l);
         if (u0 >= len) continue;
@@ -682,8 +691,17 @@ static NSAttributedString *field_attr_string(Object *o, NSString *s,
         /* La plage porte sa propre police : les traits se posent dessus, pas
          * sur celle du champ. Sans cela « Geneva » restait invisible tant que
          * le champ était en Helvetica. */
+        /* La couleur de la plage l'emporte sur celle du champ. HC_COLOR_INHERIT
+         * veut dire « la plage ne se prononce pas » : on garde alors celle du
+         * champ, comme pour la police et le corps. */
+        NSColor *cr = color;
+        if (co != HC_COLOR_INHERIT)
+            cr = [NSColor colorWithCalibratedRed:((co >> 16) & 255) / 255.0
+                                           green:((co >>  8) & 255) / 255.0
+                                            blue:( co        & 255) / 255.0
+                                           alpha:1.0];
         apply_run_style(as, NSMakeRange(u0, u1 - u0), st,
-                        run_base_font(fn, sz, base), color);
+                        run_base_font(fn, sz, base), cr);
     }
     apply_selection_highlight(as, o);
     return as;
@@ -2583,7 +2601,35 @@ static BOOL paint_selection_active(void)
 - (void)changeColor:(id)sender {
     NSColorPanel *panneau = (NSColorPanel *)sender;
     if (![panneau respondsToSelector:@selector(color)]) return;
-    gTextColor = [panneau color];
+    NSColor *c = [panneau color];
+
+    /* Un champ est en édition : la couleur va à SA SÉLECTION.
+     *
+     * Le panneau du système envoie changeColor: au premier répondant, et notre
+     * vue l'interceptait pour l'outil texte de peinture — la couleur ne
+     * parvenait jamais au NSTextView, et le disque du menu Format restait sans
+     * effet sur les champs.
+     *
+     * Sans sélection, on règle les attributs de FRAPPE : la couleur
+     * s'appliquera à ce qui sera tapé ensuite, ce qui est le comportement
+     * habituel d'un traitement de texte. */
+    if (gEditingField && gFieldEditor) {
+        NSRange r = [gFieldEditor selectedRange];
+        if (r.length > 0) {
+            [[gFieldEditor textStorage]
+                addAttribute:NSForegroundColorAttributeName value:c range:r];
+        } else {
+            NSMutableDictionary *ta =
+                [[gFieldEditor typingAttributes] mutableCopy];
+            ta[NSForegroundColorAttributeName] = c;
+            [gFieldEditor setTypingAttributes:ta];
+        }
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* Aucun champ ouvert : c'est l'outil texte de peinture qui est visé. */
+    gTextColor = c;
     [self setNeedsDisplay:YES];
 }
 - (void)underline:(id)sender {
@@ -4387,6 +4433,9 @@ static NSTextField  *gSprayDensityLabel = nil;
      * frappe et Cmd-B resterait sans effet. */
     [gFieldEditor setRichText:YES];
     [gFieldEditor setImportsGraphics:NO];
+    /* Laisse les panneaux Police et Couleur du système agir sur la sélection :
+     * sans cela, le disque du menu Format reste sans effet dans un champ. */
+    [gFieldEditor setUsesFontPanel:YES];
     [gFieldEditor setAllowsUndo:YES];
 
     const char *tx = hc_field_text(field);
@@ -4579,10 +4628,47 @@ static NSTextField  *gSprayDensityLabel = nil;
                 if (sz != fbaseSize)                 fsize = sz;
             }
 
+            /* La COULEUR, que le panneau du système pose sur la sélection.
+             *
+             * Sans cette lecture, elle vivait dans le NSTextView et mourait
+             * avec lui : on la voyait en édition, elle disparaissait en
+             * visualisation. Le noir est traité comme « rien à dire », pour
+             * qu'un texte ordinaire ne se couvre pas de plages inutiles. */
+            int fcolor = HC_COLOR_INHERIT;
+            {
+                NSColor *rc = a[NSForegroundColorAttributeName];
+                if (rc) {
+                    NSColor *rgb = [rc colorUsingColorSpace:
+                                        [NSColorSpace deviceRGBColorSpace]];
+                    if (rgb) {
+                        int r = (int)lround([rgb redComponent]   * 255);
+                        int g = (int)lround([rgb greenComponent] * 255);
+                        int b = (int)lround([rgb blueComponent]  * 255);
+                        /* Ni le noir, ni le BLANC.
+                         *
+                         * Le noir est la couleur par défaut : la retenir
+                         * couvrirait de plages inutiles tout texte ordinaire.
+                         *
+                         * Le blanc, lui, vient de la surbrillance de sélection
+                         * — apply_selection_highlight pose du texte blanc sur
+                         * fond noir pour la vidéo inverse, et ces attributs
+                         * traînent dans le NSTextView à la fermeture. On les
+                         * relisait comme des couleurs choisies, d'où un texte
+                         * qui virait au blanc dès qu'on l'avait sélectionné.
+                         *
+                         * Perdre le vrai blanc n'est pas une gêne : sur fond
+                         * blanc, il serait invisible. */
+                        if ((r || g || b) && !(r == 255 && g == 255 && b == 255))
+                            fcolor = (r << 16) | (g << 8) | b;
+                    }
+                }
+            }
+
             /* Même raisonnement pour le style : une plage qui ne fait que
              * répéter celui du champ n'a pas à le figer. Sans quoi mettre le
              * champ en gras laissait tout le texte en clair. */
-            if (st == fbaseStyle && !fname && fsize == 0) {
+            if (st == fbaseStyle && !fname && fsize == 0 &&
+                fcolor == HC_COLOR_INHERIT) {
                 i = NSMaxRange(eff);
                 if (eff.length == 0) break;
                 continue;
@@ -4590,7 +4676,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
             int b0 = byte_from_utf16(str, eff.location);
             int b1 = byte_from_utf16(str, eff.location + eff.length);
-            hc_run_add_full(gEditingField, b0, b1 - b0, st, fsize, fname);
+            hc_run_add_color(gEditingField, b0, b1 - b0, st, fsize, fname, fcolor);
             i = NSMaxRange(eff);
             if (eff.length == 0) break;      /* garde-fou : jamais de boucle */
         }
