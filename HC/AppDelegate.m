@@ -8,6 +8,7 @@
 #import "HCdialogs.h"
 #import "hc_core.h"
 #import "hc_file.h"
+#import "HCdocument.h"
 @interface AppDelegate ()
 @property (strong) IBOutlet NSWindow *window;
 @end
@@ -17,6 +18,11 @@
 
 
 static Object *gStack = NULL;
+/* Chemin du fichier de la pile ouverte, ou nil pour une pile jamais
+ * enregistrée. Sert à « go to stack "X" » : HyperCard cherchait d'abord à
+ * côté de la pile courante, ce qui permettait à un ensemble de piles de
+ * s'appeler entre elles sans chemin absolu. */
+static NSString *gStackPath = nil;
 static int gCardCount = 0;   // pour nommer les nouvelles cartes
 
 /* Pile reclamee par le Finder avant que l'interface existe. Voir
@@ -57,6 +63,8 @@ static NSMenu *find_file_menu(void)
      * en place, et le programme n'a plus à se fabriquer un contenu factice
      * pour avoir quelque chose à montrer. */
     gStack = hc_new_stack("Sans titre");
+    /* L'enregistrement auprès du noyau se fait par HCDocument, plus bas :
+     * un seul endroit qui décide, plutôt que deux qui pourraient diverger. */
     Object *bg = hc_new_background(gStack, "commun");
     Object *c1 = hc_new_card(gStack, bg, "carte 1");
     hc_set_current_card(c1);
@@ -67,6 +75,19 @@ static NSMenu *find_file_menu(void)
     [view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [self.window setContentView:view];
     [self.window setTitle:@"HyperCard"];
+
+    /* Le document initial, autour de la fenêtre venue du nib.
+     *
+     * Une seule pile est ouverte pour l'instant, mais elle passe déjà par
+     * HCDocument : c'est ce qui permettra d'en ouvrir d'autres sans que le
+     * reste du programme ait à changer. gView désigne toujours la vue active,
+     * et HCDocument la fait suivre. */
+    HCDocument *doc = [[HCDocument alloc] init];
+    doc.stack  = gStack;
+    doc.window = self.window;
+    doc.view   = view;
+    [self.window setDelegate:doc];
+    [doc registerDocument];
 
     [view installMessageBox];
     [view installToolPalette];
@@ -424,8 +445,14 @@ static NSMenu *find_file_menu(void)
      * premier redessin. */
     [gView resetForNewStack];
 
+    /* Retirer du registre AVANT de libérer : le noyau y garde des pointeurs
+     * empruntés, et une pile libérée sans avoir été retirée y laisserait une
+     * adresse morte que « stack "X" » finirait par suivre. */
+    hc_unregister_stack(gStack);
     hc_free(gStack);
+
     gStack = st;
+    hc_register_stack(gStack);
     [gView clearPaintCache];
 
     Object *first = NULL;
@@ -447,6 +474,103 @@ static NSMenu *find_file_menu(void)
 /* Charge une pile et l'installe. Le corps de l'ancien openStack:, sorti du
  * panneau de selection pour que le double-clic dans le Finder puisse
  * emprunter exactement le meme chemin. */
+/* « go to stack "X" » sur une pile qui n'est pas ouverte : la trouver, la
+ * charger, l'enregistrer, la rendre.
+ *
+ * Le noyau ne sait pas où chercher un fichier — c'est tout l'objet de ce
+ * callback. Il ne sait pas non plus donner une fenêtre à une pile, ce qui
+ * viendra quand plusieurs pourront être ouvertes ; pour l'instant la nouvelle
+ * remplace l'ancienne dans l'unique fenêtre. */
+/* Non statiques : l'hôte est monté dans HCview.m, qui les câble. */
+Object *cocoa_open_stack(const char *nom);
+void    cocoa_stack_changed(Object *stack);
+
+/* Cherche un fichier de pile par son NOM seul, comme le faisait HyperCard :
+ * d'abord à côté de la pile ouverte, puis à côté de l'application, enfin dans
+ * Documents. Rend le chemin trouvé, ou nil.
+ *
+ * Les scripts d'époque écrivent « go to stack "Index" » sans chemin — c'est à
+ * l'environnement de savoir où regarder. */
+static NSString *trouver_pile(NSString *nom) {
+    if ([nom length] == 0) return nil;
+
+    /* Un chemin explicite se suffit à lui-même. */
+    if ([nom hasPrefix:@"/"] || [nom hasPrefix:@"~"]) {
+        NSString *p = [nom stringByExpandingTildeInPath];
+        return [[NSFileManager defaultManager] fileExistsAtPath:p] ? p : nil;
+    }
+
+    NSMutableArray *dossiers = [NSMutableArray array];
+    if (gStackPath) [dossiers addObject:[gStackPath stringByDeletingLastPathComponent]];
+    [dossiers addObject:[[[NSBundle mainBundle] bundlePath]
+                            stringByDeletingLastPathComponent]];
+    NSArray *docs = NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES);
+    if ([docs count] > 0) [dossiers addObject:docs[0]];
+
+    /* Avec et sans l'extension : « go to stack "Index" » doit trouver
+     * « Index.stack », qui est la façon dont on les nomme ici. */
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *d in dossiers) {
+        for (NSString *suffixe in @[@"", @".stack"]) {
+            NSString *p = [d stringByAppendingPathComponent:
+                              [nom stringByAppendingString:suffixe]];
+            if ([fm fileExistsAtPath:p]) return p;
+        }
+    }
+    return nil;
+}
+
+/* ---- les deux callbacks du multi-piles ----
+ *
+ * Ils sont appelés PENDANT l'exécution d'un script, ce qui interdit de
+ * remplacer la pile sous les pieds de l'interpréteur : il tient des pointeurs
+ * dans l'ancienne, et la libérer le ferait travailler sur de la mémoire
+ * rendue.
+ *
+ * La question ne se pose plus depuis que chaque pile a sa fenêtre : on n'en
+ * libère aucune, l'ancienne reste simplement derrière. */
+Object *cocoa_open_stack(const char *nom) {
+    if (!nom || !*nom) return NULL;
+    NSString *n = [NSString stringWithUTF8String:nom];
+
+    /* Déjà ouverte : on ne la recharge pas, on ramène sa fenêtre devant.
+     * Rouvrir un second exemplaire de la même pile donnerait deux vues d'un
+     * même contenu, qui divergeraient à la première modification. */
+    for (HCDocument *d in [HCDocument allDocuments]) {
+        if (!d.stack || !d.stack->name) continue;
+        if (strcasecmp(d.stack->name, nom) == 0) {
+            [d.window makeKeyAndOrderFront:nil];
+            return d.stack;
+        }
+    }
+
+    NSString *chemin = trouver_pile(n);
+    if (!chemin) return NULL;
+
+    Object *st = hc_load([chemin UTF8String]);
+    if (!st) return NULL;
+
+    /* Une FENÊTRE de plus, et non un remplacement : c'est tout l'objet du
+     * multi-piles. L'ancienne reste ouverte derrière, avec son contenu. */
+    [HCDocument documentWithStack:st path:chemin];
+    return st;
+}
+
+void cocoa_stack_changed(Object *stack) {
+    if (!stack) return;
+
+    /* Le noyau vient de se déplacer sur une autre pile : amener sa fenêtre au
+     * premier plan. C'est windowDidBecomeMain: qui fera le reste — désigner le
+     * document actif et faire suivre gView. */
+    HCDocument *d = [HCDocument documentForStack:stack];
+    if (d) {
+        [d.window makeKeyAndOrderFront:nil];
+        [d.view applyStackSize];
+        [d.view setNeedsDisplay:YES];
+    }
+}
+
 - (BOOL)loadStackAtPath:(NSString *)path {
     Object *loaded = hc_load([path UTF8String]);
     if (!loaded) {
@@ -457,7 +581,45 @@ static NSMenu *find_file_menu(void)
         [a runModal];
         return NO;
     }
-    [self installStack:loaded];
+    /* Une FENÊTRE de plus, et non un remplacement.
+     *
+     * Ouvrir une pile ne ferme plus celle qu'on regardait : c'est le sens même
+     * du multi-piles, et c'est ce que faisait HyperCard. La seule exception
+     * est le document initial resté vierge — remplacer une pile « Sans titre »
+     * où l'on n'a rien fait évite d'accumuler des fenêtres vides. */
+    HCDocument *actif = [HCDocument current];
+    BOOL vierge = actif && actif.path == nil && actif.stack &&
+                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+
+    if (vierge) {
+        Object *ancienne = actif.stack;
+        [actif.view resetForNewStack];
+        hc_unregister_stack(ancienne);
+        actif.stack = loaded;
+        actif.path  = path;
+        hc_register_stack(loaded);
+        hc_free(ancienne);
+
+        Object *first = NULL;
+        for (int i = 0; i < loaded->nparts; i++)
+            if (loaded->parts[i]->type == OBJ_CARD) { first = loaded->parts[i]; break; }
+        if (first) hc_set_current_card(first);
+
+        [actif.view clearPaintCache];
+        [actif.view applyStackSize];
+        [actif.window setTitle:[path lastPathComponent]];
+        [actif.window makeKeyAndOrderFront:nil];
+        [actif.view setNeedsDisplay:YES];
+    } else {
+        Object *first = NULL;
+        for (int i = 0; i < loaded->nparts; i++)
+            if (loaded->parts[i]->type == OBJ_CARD) { first = loaded->parts[i]; break; }
+        if (first) hc_set_current_card(first);
+        [HCDocument documentWithStack:loaded path:path];
+    }
+
+    gStack = loaded;
+    gStackPath = path;       /* pour que « go to stack "X" » cherche à côté */
     gCardCount = 0;          /* la numérotation repart avec la nouvelle pile */
     return YES;
 }
@@ -492,6 +654,7 @@ static NSMenu *find_file_menu(void)
     hc_new_card(st, bg, "carte 1");
 
     [self installStack:st];
+    gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
     gCardCount = 0;
 }
 

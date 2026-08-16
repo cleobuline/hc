@@ -13,30 +13,119 @@
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
+extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
+extern void    cocoa_stack_changed(Object *stack);
+
+/* ═══ Ce qui appartient à UN DOCUMENT ═══════════════════════════════════════
+ *
+ * Vingt variables décrivaient l'état de la pile ouverte, éparpillées parmi
+ * les soixante-dix-huit globales du fichier. Les regrouper est le premier pas
+ * vers l'ouverture de plusieurs piles à la fois : il suffira alors d'avoir
+ * plusieurs HCDoc, et de désigner le courant.
+ *
+ * Le tri s'est fait sur une question simple : « si deux piles étaient
+ * ouvertes, cette variable devrait-elle valoir deux choses différentes ? »
+ *   - le champ en cours d'édition, oui — chacune a le sien
+ *   - l'outil courant, non — une seule palette pour toute l'application
+ *   - le point où l'on a commencé à glisser, non plus : on ne fait pas deux
+ *     gestes de souris à la fois, et ces variables-là ne survivent pas au
+ *     relâchement du bouton
+ *
+ * Pour l'instant il n'y a qu'un seul document, et les macros ci-dessous font
+ * que le reste du fichier continue de s'écrire comme avant. Rien ne change de
+ * comportement : c'est un rangement, pas une refonte. */
+typedef struct {
+    /* édition d'un champ */
+    Object       *editingField;
+    NSTextView   *fieldEditor;
+    NSScrollView *fieldScroll;
+
+    /* édition d'un script */
+    Object       *editTarget;
+    NSTextView   *editView;
+    NSPanel      *editPanel;
+
+    /* sélection et interaction */
+    Object       *pressed;        /* objet sous le bouton de la souris */
+    Object       *popupTarget;    /* menu popup ouvert */
+    Object       *scrollField;    /* champ dont on glisse la poignée */
+    Object       *clickField;     /* champ du dernier clic */
+    NSPoint       clickPoint;
+
+    /* couche affichée */
+    BOOL          editBackground; /* NO = carte, YES = fond */
+
+    /* collage de peinture en attente de dépôt */
+    BOOL          floating;
+    NSPoint       floatPos;
+
+    /* saisie de l'outil texte */
+    BOOL             textActive;
+    NSPoint          textPos;
+    NSMutableString *textBuf;
+
+    /* La carte affichée par CE document.
+     *
+     * hc_current_card() est unique pour tout le noyau : deux fenêtres ouvertes
+     * dessinaient donc la même carte, et l'on croyait voir une copie de la
+     * nouvelle pile dans l'ancienne fenêtre. Chaque vue doit retenir la
+     * sienne, et ne la reprendre du noyau que lorsqu'elle est active. */
+    Object       *card;
+
+    /* numérotation des cartes créées */
+    int           newCount;
+} HCDoc;
+
+/* Le document ACTIF. Il en existe un par fenêtre ouverte, alloué par la vue
+ * qui le porte ; ce pointeur désigne celui dont la fenêtre est au premier
+ * plan, et c'est HCDocument qui le fait suivre.
+ *
+ * gDoc0 sert de repli : le programme lit ces variables avant même qu'une
+ * fenêtre existe, et un pointeur nul y ferait plus de dégâts qu'un document
+ * vide dont personne ne se sert. */
+static HCDoc  gDoc0;
+static HCDoc *gDoc = &gDoc0;
+
+/* Rend le document actif. Appelé par HCDocument quand la fenêtre change. */
+void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
+
+/* Les anciens noms, pour que le reste du fichier reste lisible et que ce
+ * rangement ne se paie pas de trois cents modifications. */
+#define gEditingField    (gDoc->editingField)
+#define gFieldEditor     (gDoc->fieldEditor)
+#define gFieldScroll     (gDoc->fieldScroll)
+#define gEditTarget      (gDoc->editTarget)
+#define gEditView        (gDoc->editView)
+#define gEditPanel       (gDoc->editPanel)
+#define gPressed         (gDoc->pressed)
+#define gPopupTarget     (gDoc->popupTarget)
+#define gScrollField     (gDoc->scrollField)
+#define gClickField      (gDoc->clickField)
+#define gClickPoint      (gDoc->clickPoint)
+#define gEditBackground  (gDoc->editBackground)
+#define gFloating        (gDoc->floating)
+#define gFloatPos        (gDoc->floatPos)
+#define gTextActive      (gDoc->textActive)
+#define gTextPos         (gDoc->textPos)
+#define gTextBuf         (gDoc->textBuf)
+#define gNewCount        (gDoc->newCount)
+#define gDocCard         (gDoc->card)
+
 static NSTextField *gMsgBox = nil; // la message box
 static NSPanel *gMsgPanel = nil;   // sa fenêtre flottante
 
 static NSPoint gDragStart;
 static NSRect  gDragRect;
 static BOOL    gDragging = NO;
-static int     gNewCount = 0;
-static Object *gEditTarget = NULL;
-static NSTextView *gEditView = nil;
-static NSPanel *gEditPanel = nil;
-static Object *gPressed = NULL;
 static BOOL    gMoving = NO;        // on déplace l'objet sélectionné
 static NSPoint gMoveStart;         // point de départ du déplacement
 static int     gObjStartX, gObjStartY;  // position de l'objet au départ
 static int     gResizeHandle = 0;  // 0 = pas de resize, 1..4 = coin saisi
 static int     gObjStartW, gObjStartH;
-static NSTextView *gFieldEditor = nil;
 /* La NSTextView vit désormais dans une NSScrollView, qui est la sous-vue
  * réellement montée : c'est elle qu'il faut retirer à la fermeture. */
-static NSScrollView *gFieldScroll = nil;
-static Object     *gEditingField = NULL;
 static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
-static BOOL gEditBackground = NO;   // NO = couche carte, YES = couche fond
 // peint un segment de ligne dans le bitmap de la carte courante
 static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
@@ -60,18 +149,13 @@ static NSPanel *gBrushPanel = nil;
 
 // BOOL gTransparentBg = NO;
 
-static BOOL gTextActive = NO;
-static NSPoint gTextPos;                 // coin haut-gauche de la saisie
-static NSMutableString *gTextBuf = nil;
 
 // int gTextSize = 16;
 static NSColor *gTextColor = nil;
 static BOOL gTextUnderline = NO;
 
-static Object *gPopupTarget = NULL;
 
 
-static Object *gScrollField = NULL;
 static CGFloat gScrollGrab, gScrollGH, gScrollKH, gScrollGY, gScrollMax;
 
 
@@ -89,8 +173,6 @@ static BOOL gFreeDrawing = NO;
 
 
 
-static BOOL gFloating = NO;        // un collage flotte-t-il ?
-static NSPoint gFloatPos;          // position (coin haut-gauche) du flottant
 static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 static NSFont *gTextFont = nil;
@@ -1377,8 +1459,6 @@ static BOOL gMouseClicked = NO;
 /* Dernier clic dans la carte : position en coordonnées carte, et le champ
  * touché s'il y en a un. Posés par mouseDown, lus par les propriétés
  * clickLoc / clickLine / clickText. */
-static NSPoint  gClickPoint = {0, 0};
-static Object  *gClickField = NULL;
 
 /* ---------- outils et gestes simulés par script ----------
  * « choose line tool » puis « drag from 10,10 to 90,90 » : un script qui
@@ -2353,7 +2433,29 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 @end
 
-@implementation HCView
+@implementation HCView {
+    /* Le document de CETTE vue. Chaque fenêtre a le sien ; gDoc désigne celui
+     * de la fenêtre active, et les deux coïncident quand c'est nous. */
+    HCDoc _doc;
+}
+
+/* Le HCDoc de cette vue, pour que HCDocument puisse le désigner comme actif. */
+- (void *)docState { return &_doc; }
+
+/* La carte affichée par cette vue.
+ *
+ * Quand la vue est active, c'est celle du noyau — et on la mémorise au
+ * passage, pour la retrouver quand une autre fenêtre prendra le premier plan.
+ * Sinon, c'est la dernière qu'on y a vue. */
+- (Object *)documentCard {
+    if (gDoc == &_doc) {
+        Object *c = hc_current_card();
+        if (c) _doc.card = c;
+        return c;
+    }
+    return _doc.card;
+}
+
 
 // static NSPanel     *gStackPanel = nil;
 //static Object      *gStackTarget = NULL;
@@ -3033,7 +3135,11 @@ static BOOL paint_selection_active(void)
     [[NSColor whiteColor] setFill];
     NSRectFill(dirtyRect);
 
-    Object *card = hc_current_card();
+    /* La carte de CE document, et non hc_current_card() : celle du noyau
+     * appartient à la fenêtre active, et les autres afficheraient son contenu.
+     * Quand cette vue est l'active, les deux coïncident — c'est
+     * hc_set_current_card qui les tient d'accord. */
+    Object *card = [self documentCard];
     if (!card) return;
 
     NSRect b = [self bounds];
@@ -3244,21 +3350,31 @@ static BOOL paint_selection_active(void)
     if (gEditingField) [self endFieldEdit];
     /* La sélection désigne un champ de la pile qu'on s'apprête à libérer. */
     hc_set_selection(NULL, 0, 0);
-    gClickField    = NULL;      /* désigne un champ de la pile qui s'en va */
-    gSelected      = NULL;
-    gEditingField  = NULL;
-    gResizeHandle  = 0;
-    gDragging      = NO;
-    gPenDrawing    = NO;
     [self stopSprayTimer];
 
-    /* Sélections de peinture et objet flottant : ils décrivent une carte qui
-     * n'existera plus. */
+    /* Le document repart à neuf.
+     *
+     * Tout ce que HCDoc contient désigne la pile qui s'en va : le champ en
+     * édition, l'objet pressé, le collage en attente.
+     *
+     * Une affectation de structure plutôt qu'un memset : sous ARC, écraser des
+     * pointeurs objets à coups d'octets empêche le compilateur de les relâcher,
+     * et il le refuse. Affecter une structure vide passe par les mêmes
+     * mécanismes qu'une affectation champ par champ, sans avoir à les écrire. */
+    HCDoc vide = {0};
+    *gDoc = vide;
+
+    /* Ce qui n'appartient PAS au document et doit être remis quand même :
+     * l'objet sélectionné et les gestes de peinture en cours vivent hors de
+     * HCDoc mais décrivent une carte qui n'existera plus. */
+    gSelected       = NULL;
+    gResizeHandle   = 0;
+    gDragging       = NO;
+    gPenDrawing     = NO;
     gSelRectActive  = NO;
     gSelRectDrawing = NO;
     gLassoActive    = NO;
     gLassoCount     = 0;
-    gFloating       = NO;
     gFloatDragging  = NO;
 
     /* Le presse-papiers d'objets survit volontairement : il est détaché de
@@ -4064,6 +4180,10 @@ static BOOL paint_selection_active(void)
     host.answer_file   = cocoa_answer_file;
     host.ask_file      = cocoa_ask_file;
     host.save_stack    = cocoa_save_stack;
+    /* Définis dans AppDelegate.m : lui seul sait où trouver un fichier de pile
+     * et ce qu'il advient de celle qu'on quitte. */
+    host.open_stack    = cocoa_open_stack;
+    host.stack_changed = cocoa_stack_changed;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
     host.global_set    = cocoa_global_set;

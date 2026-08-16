@@ -137,6 +137,57 @@ static const char *quoted(const char *s, char *out, int outlen)
 #define HC_MAX_DEPTH 64
 
 static Object *g_current_card = NULL;
+
+/* ---- piles ouvertes -------------------------------------------------------
+ *
+ * Le noyau ne POSSÈDE aucune pile : hc_load en rend une, hc_free la libère,
+ * et c'est l'hôte qui décide de leur sort. Mais pour que « stack "X" » désigne
+ * autre chose que la pile courante, il faut bien qu'il sache lesquelles sont
+ * ouvertes.
+ *
+ * D'où ce registre, que l'hôte tient à jour. Il ne détient rien non plus : ce
+ * sont des pointeurs empruntés, et l'hôte doit retirer une pile AVANT de la
+ * libérer, sans quoi le registre pointerait dans le vide. */
+#define HC_MAX_STACKS 16
+static Object *g_stacks[HC_MAX_STACKS];
+static int     g_nstacks = 0;
+
+void hc_register_stack(Object *stack)
+{
+    if (!stack || stack->type != OBJ_STACK) return;
+    for (int i = 0; i < g_nstacks; i++)
+        if (g_stacks[i] == stack) return;             /* déjà connue */
+    if (g_nstacks < HC_MAX_STACKS) g_stacks[g_nstacks++] = stack;
+}
+
+void hc_unregister_stack(Object *stack)
+{
+    for (int i = 0; i < g_nstacks; i++) {
+        if (g_stacks[i] != stack) continue;
+        for (int k = i; k + 1 < g_nstacks; k++) g_stacks[k] = g_stacks[k+1];
+        g_nstacks--;
+        return;
+    }
+}
+
+/* Pile ouverte portant ce nom, ou NULL. Casse ignorée, comme partout ailleurs
+ * en HyperTalk. */
+static Object *find_open_stack(const char *nom)
+{
+    if (!nom || !*nom) return NULL;
+    for (int i = 0; i < g_nstacks; i++)
+        if (g_stacks[i]->name && ci_equal(g_stacks[i]->name, nom))
+            return g_stacks[i];
+    return NULL;
+}
+
+int hc_stack_count(void) { return g_nstacks; }
+
+Object *hc_stack_at(int i)
+{
+    return (i >= 0 && i < g_nstacks) ? g_stacks[i] : NULL;
+}
+
 static int     g_trace = 1;
 static int     g_pass  = 0;   /* levé par `pass` : le message doit continuer */
 
@@ -1298,7 +1349,10 @@ static Object *resolve(const char *ref)
             char nm[128];
             quoted(after, nm, sizeof nm);
             if (stack && stack->name && ci_equal(stack->name, nm)) return stack;
-            return NULL;                      /* une seule pile ouverte à la fois */
+            /* Une AUTRE pile ouverte peut porter ce nom : c'est tout l'objet
+             * du registre. Sans lui, « the name of stack "Autre" » ne pouvait
+             * désigner que la pile courante. */
+            return find_open_stack(nm);
         }
     }
 
@@ -5607,6 +5661,43 @@ static void exec_line_body(Object *me, const char *line)
     if (ci_equal(verb, "go")) {
         const char *r = skip_spaces(rest);
         if (ci_word(r, "to")) r = skip_spaces(r + 2);
+
+        /* ---- go to stack "X" ----
+         * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de
+         * l'ouvrir — lui seul sait où chercher le fichier et comment lui
+         * donner une fenêtre. C'est ce qui permet à une pile d'en appeler une
+         * autre, le mécanisme sur lequel reposaient les piles à index et les
+         * bibliothèques de l'époque. */
+        if (ci_word(r, "stack")) {
+            const char *a = skip_spaces(r + 5);
+            ARENA_MARK;
+            char *nom = arena_buf();
+            eval_checked(a, nom, HC_VAL);
+
+            Object *cible = find_open_stack(nom);
+            if (!cible && g_host && g_host->open_stack)
+                cible = g_host->open_stack(nom);
+
+            if (cible) {
+                Object *prem = NULL;
+                for (int i = 0; i < cible->nparts; i++)
+                    if (cible->parts[i]->type == OBJ_CARD) { prem = cible->parts[i]; break; }
+                if (prem) {
+                    Object *old = g_current_card;
+                    if (old && old->owner != cible) hc_send(old, "closeStack");
+                    g_current_card = prem;
+                    if (g_host && g_host->stack_changed) g_host->stack_changed(cible);
+                    hc_send(prem, "openStack");
+                    set_result("");
+                } else set_result("No such card");
+            } else {
+                set_result("No such stack");
+                emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
+            }
+            ARENA_FREE;
+            return;
+        }
+
         Object *dst = resolve(r);
         if (!dst) {                          /* « go x » : evaluer d'abord */
             char v[256];

@@ -7,6 +7,10 @@
 
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
+/* L'état de document de cette vue, et la carte qu'elle affiche. Chaque fenêtre
+ * a les siens ; HCDocument désigne l'actif par hc_set_active_doc. */
+- (void *)docState;
+- (Object *)documentCard;
 - (void)runVisualTransition;
 - (void)dropFloating;
 - (void)findInStack:(id)sender;

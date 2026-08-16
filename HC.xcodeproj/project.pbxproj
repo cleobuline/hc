@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
 		4DF28F833023709D00D7740C /* coq.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F823023709D00D7740C /* coq.wav */; };
@@ -27,6 +28,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
+		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
 		4DF28F7F302369FE00D7740C /* boing3.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing3.wav; sourceTree = "<group>"; };
 		4DF28F823023709D00D7740C /* coq.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = coq.wav; sourceTree = "<group>"; };
@@ -116,6 +119,8 @@
 				4DF5FB683014C140006AE901 /* HCview.h */,
 				4DF5FB633014C005006AE901 /* hc_file.c */,
 				4DF5FB4E3014BE74006AE901 /* AppDelegate.m */,
+				4D9E256F3031F6D000C2D5EE /* HCdocument.h */,
+				4D9E256C3031EB1800C2D5EE /* Hcdocument.m */,
 				4DF5FB77301CC7F6006AE901 /* HCglobals.h */,
 				4DF5FB603014C004006AE901 /* hc_file.h */,
 				4DF5FB503014BE7D006AE901 /* Assets.xcassets */,
@@ -203,6 +208,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4DF28F903027EE3700D7740C /* HCglobals.m in Sources */,
+				4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */,
 				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,

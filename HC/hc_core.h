@@ -233,6 +233,17 @@ typedef struct {
      * signale l'échec, que la commande traduit dans « the result ». */
     int (*save_stack)(Object *stack, const char *path);
 
+    /* ---- plusieurs piles ouvertes ----
+     * open_stack   « go to stack "X" » sur une pile qui n'est pas ouverte :
+     *              l'hôte la trouve, la charge, l'enregistre par
+     *              hc_register_stack et la rend. NULL s'il ne la trouve pas.
+     *              Seul l'hôte sait où chercher un fichier et comment lui
+     *              donner une fenêtre.
+     * stack_changed  la pile courante vient de changer : à l'hôte d'amener sa
+     *              fenêtre au premier plan et de redessiner. */
+    Object *(*open_stack)(const char *nom);
+    void    (*stack_changed)(Object *stack);
+
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul
      * (souris, clavier, écran, horloge). L'hôte renvoie une chaîne valide
      * jusqu'au prochain appel, ou NULL si le nom lui est inconnu.
@@ -296,6 +307,18 @@ typedef struct {
 void        hc_set_host(const HcHost *h);
 
 Object *hc_current_card(void);
+
+/* ---- Registre des piles ouvertes ----
+ * Le noyau ne possède aucune pile : hc_load en rend une, hc_free la libère.
+ * Mais pour que « stack "X" » et « go to stack "X" » désignent autre chose
+ * que la pile courante, il doit savoir lesquelles sont ouvertes.
+ *
+ * L'hôte enregistre une pile après l'avoir chargée, et la RETIRE avant de la
+ * libérer — sans quoi le registre garderait un pointeur mort. */
+void    hc_register_stack(Object *stack);
+void    hc_unregister_stack(Object *stack);
+int     hc_stack_count(void);
+Object *hc_stack_at(int i);
 
 /* ---- Coeur : envoi d'un message ---- */
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
