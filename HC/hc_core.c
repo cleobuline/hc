@@ -128,7 +128,7 @@ static const char *quoted(const char *s, char *out, int outlen)
  * 256 Ko couvre les usages réels — un fichier de données, un champ de plusieurs
  * milliers de lignes — sans permettre à un script emballé d'épuiser la mémoire
  * en quelques tours de boucle. */
-#define HC_VAL 262144
+#define HC_VAL 1048576
 
 /* Le garde-fou de recursion peut revenir a sa valeur d'origine : a 6,7 Ko de
  * pile par niveau, 64 niveaux ne coutent que 436 Ko sur les 8 Mo du fil
@@ -346,8 +346,19 @@ static void emit(HcLineKind kind, const char *fmt, ...)
  * appelants directs — parse_factor et exec_stmt — le sont, et cela suffit :
  * toute valeur est recopiée dans le `out` de l'appelant avant chaque retour.
  */
-#define HC_ARENA_BLOCK     (4u * 1024u * 1024u)
-#define HC_ARENA_MAXBLOCKS 32             /* plafond dur : 128 Mo */
+/* Blocs de 16 Mo, plafond à 1 Go.
+ *
+ * L'arène est allouée À LA DEMANDE : ce plafond ne coûte rien tant qu'on ne
+ * s'en approche pas, et une pile ordinaire n'en emploiera jamais un seul bloc.
+ * Il ne sert qu'à borner l'emballement — un script qui alloue en boucle doit
+ * s'arrêter quelque part plutôt que de faire ramer la machine entière.
+ *
+ * Les valeurs précédentes — blocs de 4 Mo, plafond de 128 Mo — saturaient dès
+ * qu'on lisait un fichier de quelques centaines de kilo-octets : chaque
+ * expression alloue plusieurs tampons de HC_VAL, et HC_VAL a grandi avec les
+ * commandes de fichier. Les deux limites doivent monter ensemble. */
+#define HC_ARENA_BLOCK     (16u * 1024u * 1024u)
+#define HC_ARENA_MAXBLOCKS 64             /* plafond dur : 1 Go */
 
 static char  *g_ablk[HC_ARENA_MAXBLOCKS];
 static int    g_ablk_count = 0;
@@ -6042,12 +6053,16 @@ static void exec_line_body(Object *me, const char *line)
                  * doit désigner le champ de celle-ci, pas de la carte de
                  * départ. C'est tout le sens du tri par contenu. */
                 g_current_card = c;
-                char tmp[HC_VAL];
-                tmp[0] = '\0';
-                if (cle) { ARENA_MARK; char *v = arena_buf();
-                           eval_checked(cle, v, HC_VAL);
-                           snprintf(tmp, sizeof tmp, "%s", v); ARENA_FREE; }
+                /* Par l'arène et non par la pile : HC_VAL vaut un mégaoctet,
+                 * et trois tampons de cette taille dans une même fonction
+                 * réservaient trois mégaoctets sur une pile d'appel qui en
+                 * fait huit. exec_line_body débordait à l'entrée, avant même
+                 * sa première instruction. */
+                ARENA_MARK;
+                char *tmp = arena_buf();
+                if (cle) eval_checked(cle, tmp, HC_VAL);
                 cles[k] = dupstr(tmp);
+                ARENA_FREE;
                 tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
                 k++;
             }
@@ -6073,10 +6088,16 @@ static void exec_line_body(Object *me, const char *line)
         {
             /* La clé est facultative ; sans elle on trie sur l'élément même. */
             const char *by = find_kw(a, "by");
-            char cible[HC_VAL];
-            int len = by ? (int)(by - a) : (int)strlen(a);
-            if (len > (int)sizeof cible - 1) len = (int)sizeof cible - 1;
-            memcpy(cible, a, (size_t)len); cible[len] = '\0';
+            /* Par l'arène : voir plus haut, la pile ne supporte pas des
+             * tampons de HC_VAL. ARENA_MARK est déjà posé plus bas pour la
+             * lecture du conteneur ; celui-ci vit jusqu'au ARENA_FREE. */
+            ARENA_MARK;
+            char *cible = arena_buf();
+            {
+                int len = by ? (int)(by - a) : (int)strlen(a);
+                if (len > HC_VAL - 1) len = HC_VAL - 1;
+                memcpy(cible, a, (size_t)len); cible[len] = '\0';
+            }
 
             /* Les options peuvent suivre la cible : « sort field 1 descending ». */
             char *fin = cible + strlen(cible);
@@ -6095,7 +6116,8 @@ static void exec_line_body(Object *me, const char *line)
 
             const char *cle = by ? skip_spaces(by + 2) : NULL;
 
-            ARENA_MARK;
+            /* Un seul ARENA_MARK pour toute la branche : il a été posé plus
+             * haut avec le tampon `cible`, et les deux se libèrent ensemble. */
             char *src = arena_buf();
             eval_checked(cible, src, HC_VAL);
 
@@ -6469,9 +6491,10 @@ static void exec_line_body(Object *me, const char *line)
         ARENA_MARK;
         char *txt = arena_buf();
         {
-            char brut[HC_VAL];
+            /* Par l'arène : voir le commentaire du tri. */
+            char *brut = arena_buf();
             int len = (int)(to - a);
-            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+            if (len > HC_VAL - 1) len = HC_VAL - 1;
             memcpy(brut, a, (size_t)len); brut[len] = '\0';
             eval_checked(brut, txt, HC_VAL);
         }
