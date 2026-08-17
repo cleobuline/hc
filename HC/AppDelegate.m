@@ -23,7 +23,8 @@ static Object *gStack = NULL;
  * côté de la pile courante, ce qui permettait à un ensemble de piles de
  * s'appeler entre elles sans chemin absolu. */
 static NSString *gStackPath = nil;
-static int gCardCount = 0;   // pour nommer les nouvelles cartes
+/* Le compteur de cartes appartient au DOCUMENT : chaque pile numérote les
+ * siennes. Voir HCDocument.cardCount. */
 
 /* Pile reclamee par le Finder avant que l'interface existe. Voir
  * application:openFile: plus bas : l'Apple Event d'ouverture arrive ENTRE
@@ -370,15 +371,24 @@ static NSMenu *find_file_menu(void)
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
 }
 - (void)newCard:(id)sender {
-    gCardCount++;
-    char name[64];
-    snprintf(name, sizeof name, "carte %d", gCardCount);
-    // réutiliser le fond de la carte courante
+    /* La pile de la carte COURANTE, et non gStack : celui-ci désigne la
+     * dernière pile chargée, pas celle qu'on regarde, et la nouvelle carte
+     * atterrissait dans la mauvaise fenêtre. La carte courante, elle, sait
+     * toujours à quelle pile elle appartient. */
     Object *cur = hc_current_card();
-    Object *bg = cur ? cur->bg : NULL;
-    Object *c = hc_new_card(gStack, bg, name);
+    if (!cur) return;
+    Object *pile = cur->owner;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+    if (!pile) return;
+
+    HCDocument *doc = [HCDocument current];
+    doc.cardCount = doc.cardCount + 1;
+    char name[64];
+    snprintf(name, sizeof name, "carte %d", doc.cardCount);
+
+    Object *c = hc_new_card(pile, cur->bg, name);
     hc_set_current_card(c);
-    [gView setNeedsDisplay:YES];
+    [doc.view setNeedsDisplay:YES];
 }
 - (void)deleteCard:(id)sender {
     Object *cur = hc_current_card();
@@ -386,7 +396,10 @@ static NSMenu *find_file_menu(void)
 
     /* Refuser AVANT de demander : proposer de supprimer puis répondre que
      * c'est impossible serait une conversation inutile. */
-    if (hc_card_count(gStack) <= 1) {
+    Object *pile = cur->owner;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+
+    if (hc_card_count(pile) <= 1) {
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"Dernière carte"];
         [a setInformativeText:@"Une pile compte au moins une carte."];
@@ -415,7 +428,14 @@ static NSMenu *find_file_menu(void)
 }
 
 - (void)saveStack:(id)sender {
-    const char *nm = gStack && gStack->name ? gStack->name : "MaPile";
+    /* La pile de la fenêtre ACTIVE, et non gStack.
+     *
+     * gStack date du temps où une seule pile pouvait être ouverte : il désigne
+     * la dernière chargée, pas celle qu'on regarde. « Enregistrer » proposait
+     * donc le nom de la mauvaise pile — et l'aurait enregistrée à sa place. */
+    HCDocument *doc = [HCDocument current];
+    Object *pile = doc.stack ? doc.stack : gStack;
+    const char *nm = pile && pile->name ? pile->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];
     [panel setNameFieldStringValue:
         [NSString stringWithFormat:@"%s.stack", nm]];
@@ -428,9 +448,10 @@ static NSMenu *find_file_menu(void)
     if ([docs count] > 0)
         [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
     if ([panel runModal] == NSModalResponseOK) {
-        [gView flushPaintToKernel];
+        [doc.view flushPaintToKernel];
         NSString *path = [[panel URL] path];
-        if (hc_save(gStack, [path UTF8String]) != 0)
+        doc.path = path;              /* « go to stack » cherchera à côté */
+        if (hc_save(pile, [path UTF8String]) != 0)
             NSLog(@"échec de la sauvegarde");
     }
 }
@@ -439,36 +460,50 @@ static NSMenu *find_file_menu(void)
  * création d'une pile neuve — les deux font exactement la même chose une fois
  * la pile en main, et deux copies de cette séquence finiraient par diverger. */
 - (void)installStack:(Object *)st {
-    /* AVANT hc_free : la vue garde des pointeurs dans l'ancienne pile (objet
-     * sélectionné, champ en cours d'édition, cache de peinture). Les libérer
-     * sans prévenir la vue laisse des pointeurs pendants qui plantent au
-     * premier redessin. */
-    [gView resetForNewStack];
+    if (!st) return;
 
-    /* Retirer du registre AVANT de libérer : le noyau y garde des pointeurs
-     * empruntés, et une pile libérée sans avoir été retirée y laisserait une
-     * adresse morte que « stack "X" » finirait par suivre. */
-    hc_unregister_stack(gStack);
-    hc_free(gStack);
+    /* Une FENÊTRE de plus, et non un remplacement.
+     *
+     * Cette méthode remplaçait la pile ouverte, ce qui était la seule façon de
+     * faire quand une seule pouvait l'être. Avec le multi-fenêtres, créer une
+     * pile ne doit pas fermer celle qu'on regardait — pas plus que « Nouveau »
+     * ne ferme le document courant dans un traitement de texte.
+     *
+     * Seule exception : un document resté vierge — jamais enregistré, une
+     * carte, rien de créé — se laisse remplacer, faute de quoi on
+     * accumulerait des fenêtres vides depuis le lancement. */
+    Object *first = NULL;
+    for (int i = 0; i < st->nparts; i++)
+        if (st->parts[i]->type == OBJ_CARD) { first = st->parts[i]; break; }
+    if (!first) {                       /* pile sans carte : on en fabrique une */
+        Object *bg = hc_new_background(st, "commun");
+        first = hc_new_card(st, bg, "carte 1");
+    }
+
+    HCDocument *actif = [HCDocument current];
+    BOOL vierge = actif && actif.path == nil && actif.stack &&
+                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+
+    if (vierge) {
+        Object *ancienne = actif.stack;
+        [actif.view resetForNewStack];
+        hc_unregister_stack(ancienne);
+        actif.stack = st;
+        hc_register_stack(st);
+        hc_free(ancienne);
+
+        hc_set_current_card(first);
+        [actif.view clearPaintCache];
+        [actif.view applyStackSize];
+        [actif.view updateWindowTitle];
+        [actif.window makeKeyAndOrderFront:nil];
+        [actif.view setNeedsDisplay:YES];
+    } else {
+        hc_set_current_card(first);
+        [HCDocument documentWithStack:st path:nil];
+    }
 
     gStack = st;
-    hc_register_stack(gStack);
-    [gView clearPaintCache];
-
-    Object *first = NULL;
-    for (int i = 0; i < gStack->nparts; i++) {
-        if (gStack->parts[i]->type == OBJ_CARD) { first = gStack->parts[i]; break; }
-    }
-    if (!first) {                       /* pile sans carte : on en fabrique une */
-        Object *bg = hc_new_background(gStack, "commun");
-        first = hc_new_card(gStack, bg, "carte 1");
-    }
-    hc_set_current_card(first);
-
-    [gView applyStackSize];
-    [gView updateWindowTitle];
-    [self.window makeKeyAndOrderFront:nil];
-    [gView setNeedsDisplay:YES];
 }
 
 /* Charge une pile et l'installe. Le corps de l'ancien openStack:, sorti du
@@ -620,7 +655,6 @@ void cocoa_stack_changed(Object *stack) {
 
     gStack = loaded;
     gStackPath = path;       /* pour que « go to stack "X" » cherche à côté */
-    gCardCount = 0;          /* la numérotation repart avec la nouvelle pile */
     return YES;
 }
 
@@ -655,7 +689,6 @@ void cocoa_stack_changed(Object *stack) {
 
     [self installStack:st];
     gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
-    gCardCount = 0;
 }
 
 /* Dossier qui CONTIENT l'application — pas son intérieur.

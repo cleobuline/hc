@@ -7,6 +7,11 @@
 
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
+/* La minuterie d'« idle ». Une seule pour toute l'application : elle envoie le
+ * message à la carte de la fenêtre active, jamais aux autres. */
+- (void)startIdleTimer;
+- (void)stopIdleTimer;
+- (void)idleTick:(NSTimer *)t;
 /* L'état de document de cette vue, et la carte qu'elle affiche. Chaque fenêtre
  * a les siens ; HCDocument désigne l'actif par hc_set_active_doc. */
 - (void *)docState;

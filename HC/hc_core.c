@@ -217,6 +217,12 @@ void hc_trace(int on) { g_trace = on; }
 void hc_set_current_card(Object *card) { g_current_card = card; }
 Object *hc_current_card(void) { return g_current_card; }
 
+/* Un script est-il en cours ? Sert à l'hôte pour ne pas envoyer « idle »
+ * pendant qu'un gestionnaire s'exécute : les deux s'imbriqueraient, et une
+ * animation lancée depuis idle se relancerait à chaque tour de sa propre
+ * boucle. */
+int hc_is_running(void) { return g_depth > 0; }
+
 const char *hc_typename(ObjType t)
 {
     switch (t) {

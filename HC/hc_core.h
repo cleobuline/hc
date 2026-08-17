@@ -308,6 +308,10 @@ void        hc_set_host(const HcHost *h);
 
 Object *hc_current_card(void);
 
+/* 1 si un gestionnaire est en cours d'exécution. L'hôte s'en sert pour ne pas
+ * envoyer « idle » au milieu d'un script. */
+int     hc_is_running(void);
+
 /* ---- Registre des piles ouvertes ----
  * Le noyau ne possède aucune pile : hc_load en rend une, hc_free la libère.
  * Mais pour que « stack "X" » et « go to stack "X" » désignent autre chose

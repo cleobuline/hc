@@ -2462,7 +2462,12 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 //static NSTextField *gStackName = nil;
 
 - (void)updateWindowTitle {
-    Object *card = hc_current_card();
+    /* La carte de CETTE vue, et non hc_current_card().
+     *
+     * Celle du noyau appartient à la fenêtre active : toute fenêtre qui
+     * s'intitulait ainsi prenait le nom de la pile courante, si bien qu'ouvrir
+     * « demo » renommait la fenêtre d'origine « demo » elle aussi. */
+    Object *card = [self documentCard];
     if (!card) return;
     Object *stack = card->owner;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
@@ -2484,7 +2489,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     Object *nc = hc_new_card(stack, bg, "");
     hc_set_current_card(nc);
     gSelected = NULL;
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 
 
@@ -2606,7 +2611,7 @@ static BOOL paint_selection_active(void)
         if (gSelected == gEditingField) [self endFieldEdit];
         if (hc_cut_part(gSelected)) {
             gSelected = NULL;
-            [self setNeedsDisplay:YES];
+            [gView setNeedsDisplay:YES];
             return;
         }
     }
@@ -2627,7 +2632,7 @@ static BOOL paint_selection_active(void)
         gLassoActive = NO;
         gLassoCount = 0;
     }
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 
 - (void)paste:(id)sender {
@@ -2649,7 +2654,7 @@ static BOOL paint_selection_active(void)
                  * le script de la pile depuis newField. Sans ce message, il
                  * serait collé mais inerte. */
                 hc_send(p, p->type == OBJ_BUTTON ? "newButton" : "newField");
-                [self setNeedsDisplay:YES];
+                [gView setNeedsDisplay:YES];
                 return;
             }
         }
@@ -2671,7 +2676,7 @@ static BOOL paint_selection_active(void)
         gFloating = YES;
         NSRect b = [self bounds];
         gFloatPos = NSMakePoint((b.size.width - gClipW)/2, (b.size.height - gClipH)/2);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
     }
 }
 
@@ -2735,17 +2740,17 @@ static BOOL paint_selection_active(void)
             ta[NSForegroundColorAttributeName] = c;
             [gFieldEditor setTypingAttributes:ta];
         }
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         return;
     }
 
     /* Aucun champ ouvert : c'est l'outil texte de peinture qui est visé. */
     gTextColor = c;
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 - (void)underline:(id)sender {
     gTextUnderline = !gTextUnderline;
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 - (void)commitText {
     if (!gTextActive) return;
@@ -2850,11 +2855,11 @@ static BOOL paint_selection_active(void)
         gTextSize = (int)[nf pointSize];
     }
     [[NSFontManager sharedFontManager] setSelectedFont:nf isMultiple:NO];
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 // gras / italique / souligne passent par la
 - (void)changeAttributes:(id)sender {
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 
 - (NSFontPanelModeMask)validModesForFontPanel:(NSFontPanel *)fontPanel {
@@ -2864,7 +2869,7 @@ static BOOL paint_selection_active(void)
     // collage flottant : tramer l'image qui flotte
     if (gFloating && gClipboard) {
         dither_region(gClipboard, 0, 0, gClipW-1, gClipH-1, NULL, 0);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         return;
     }
     Object *card = hc_current_card();
@@ -2878,7 +2883,7 @@ static BOOL paint_selection_active(void)
         dither_region(rep, (int)MIN(gSelStart.x,gSelEnd.x), (int)MIN(gSelStart.y,gSelEnd.y),
                            (int)MAX(gSelStart.x,gSelEnd.x), (int)MAX(gSelStart.y,gSelEnd.y),
                            NULL, 0);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         return;
     }
     // selection lasso
@@ -2893,12 +2898,12 @@ static BOOL paint_selection_active(void)
         dither_region(rep, (int)floor(minx), (int)floor(miny),
                            (int)ceil(maxx),  (int)ceil(maxy),
                            gLassoPts, gLassoCount);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         return;
     }
     // rien de selectionne : toute la couche
     dither_region(rep, 0, 0, (int)[rep pixelsWide]-1, (int)[rep pixelsHigh]-1, NULL, 0);
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 - (void)keyDown:(NSEvent *)event {
     unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
@@ -2992,8 +2997,10 @@ static BOOL paint_selection_active(void)
     // 1. D'ABORD encoder les dessins actuels (avant tout redimensionnement)
     [self flushPaintToKernel];
 
-    // 2. Trouver la pile et sa taille
-    Object *card = hc_current_card();
+    /* 2. La pile de CETTE vue, et non celle du noyau : sinon une fenêtre
+     * prendrait la taille de la pile active, et deux piles de dimensions
+     * différentes se redimensionneraient l'une l'autre. */
+    Object *card = [self documentCard];
     if (!card) return;
     Object *stack = card->owner;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
@@ -3310,11 +3317,25 @@ static BOOL paint_selection_active(void)
             [caret stroke];
         }
 }
+/* ─── Les commandes de MENU redessinent gView, jamais self ───────────────────
+ *
+ * Une commande de menu s'adresse à la vue qui s'y est inscrite, pas
+ * nécessairement à celle du premier plan : avec plusieurs piles ouvertes, elle
+ * agissait sur la bonne carte mais rafraîchissait une autre fenêtre. On ne
+ * voyait le changement qu'en redimensionnant, ce qui force un redessin.
+ *
+ * gView suit la fenêtre active — c'est HCDocument qui le tient à jour. Les
+ * gestionnaires de SOURIS, eux, gardent self : la vue cliquée est par
+ * définition celle qu'on vise. */
 - (void)toggleBackground:(id)sender {
+    /* Sur la vue ACTIVE : cette commande vient du menu, dont la cible est la
+     * vue qui s'est inscrite, pas nécessairement celle du premier plan. Et
+     * gEditBackground appartient au document actif — basculer la couche d'une
+     * fenêtre en redessinant une autre ne montrait rien. */
     gEditBackground = !gEditBackground;
     gSelected = NULL;
-    [self endFieldEdit];
-    [self setNeedsDisplay:YES];
+    [gView endFieldEdit];
+    [gView setNeedsDisplay:YES];
 }
 - (void)testScribble {
     Object *card = hc_current_card();
@@ -3338,6 +3359,13 @@ static BOOL paint_selection_active(void)
     [self setNeedsDisplay:YES];
 }
 - (void)clearPaintCache {
+    /* Le cache est partagé par toutes les fenêtres — il est indexé par objet,
+     * pas par pile. Le vider entièrement efface donc aussi les bitmaps des
+     * autres piles ouvertes.
+     *
+     * Ce n'est pas une perte : chaque bitmap se reconstruit depuis le modèle
+     * au premier redessin, et flushPaintToKernel a déjà encodé ce qui devait
+     * l'être. C'est du travail refait, pas du travail perdu. */
     [gPaintCache removeAllObjects];
 }
 
@@ -4131,8 +4159,63 @@ static BOOL paint_selection_active(void)
 }
 
 
+/* ─── on idle ────────────────────────────────────────────────────────────────
+ *
+ * HyperCard envoie « idle » à la carte courante dès que rien d'autre ne se
+ * passe. C'est ce qui permet aux piles d'avoir une horloge, une animation de
+ * fond, une surveillance — sans lui, un gestionnaire ne s'exécute qu'en
+ * réponse à un geste de l'utilisateur.
+ *
+ * Trois précautions, chacune pour une raison précise :
+ *
+ *   - pas pendant qu'un script tourne : les gestionnaires s'imbriqueraient, et
+ *     une animation lancée depuis idle se relancerait à chaque tour de sa
+ *     propre boucle ;
+ *   - pas de réentrance : un idle qui dure plus longtemps que la période
+ *     laisserait la minuterie en lancer un second par-dessus ;
+ *   - seulement à la fenêtre ACTIVE : envoyer idle aux cartes de toutes les
+ *     piles ouvertes multiplierait le travail et ferait tourner en fond des
+ *     animations qu'on ne regarde pas.
+ *
+ * Dix fois par seconde plutôt que soixante : HyperCard n'était pas plus
+ * rapide, et un idle trop fréquent transforme la moindre pile en gouffre à
+ * processeur. */
+static NSTimer *gIdleTimer = nil;
+static BOOL     gInIdle = NO;
+
+- (void)startIdleTimer {
+    if (gIdleTimer) return;
+    gIdleTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/10.0
+                                                  target:self
+                                                selector:@selector(idleTick:)
+                                                userInfo:nil
+                                                 repeats:YES];
+}
+
+- (void)stopIdleTimer {
+    if (gIdleTimer) { [gIdleTimer invalidate]; gIdleTimer = nil; }
+}
+
+- (void)idleTick:(NSTimer *)t {
+    (void)t;
+    if (gInIdle || hc_is_running()) return;
+    if (self != gView) return;          /* seule la fenêtre active */
+
+    Object *card = [self documentCard];
+    if (!card) return;
+
+    gInIdle = YES;
+    hc_send(card, "idle");
+    gInIdle = NO;
+}
+
 - (void)installMessageBox {
     gView = self;
+
+    /* La minuterie d'idle est unique : startIdleTimer ne fait rien si elle
+     * tourne déjà, et idleTick n'envoie le message qu'à la fenêtre active.
+     * Une minuterie par vue enverrait autant d'idle qu'il y a de piles. */
+    [self startIdleTimer];
 
     /* ---- la boîte de message, dans sa propre fenêtre ----
      * Comme dans HyperCard : une fenêtre flottante déplaçable, refermable, et
@@ -4201,8 +4284,15 @@ static BOOL paint_selection_active(void)
     NSString *cmd = [gMsgBox stringValue];
     if ([cmd length] == 0) return;
     hc_do([cmd UTF8String]);
-    [self applyStackSize];          // ← applique un éventuel changement de taille
-    [self setNeedsDisplay:YES];
+
+    /* gView et non self : la boîte de message est une fenêtre unique,
+     * installée par la PREMIÈRE vue créée. Quand plusieurs piles sont
+     * ouvertes, `self` désigne donc cette vue-là et non celle qu'on regarde —
+     * « go next card » changeait bien de carte, mais rafraîchissait une autre
+     * fenêtre. gView, lui, suit toujours la fenêtre active. */
+    [gView applyStackSize];         // ← applique un éventuel changement de taille
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
     [gMsgBox selectText:nil];
 }
 
@@ -4430,7 +4520,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 - (void)toolChosen:(id)sender {
     gTool = (HCTool)[sender tag];
     gSelected = NULL;
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
     NSLog(@"outil : %d", (int)gTool);
 }
 - (void)editScriptOf:(Object *)obj {
@@ -4476,7 +4566,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
     [gEditPanel close];
     gEditPanel = nil; gEditView = nil; gEditTarget = nil;
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 - (void)beginFieldEdit:(Object *)field {
     if (!field) return;
