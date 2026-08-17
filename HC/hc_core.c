@@ -152,6 +152,14 @@ static Object *g_current_card = NULL;
 static Object *g_stacks[HC_MAX_STACKS];
 static int     g_nstacks = 0;
 
+/* ---- piles en usage ----
+ * Déclarées par « start using stack "X" », retirées par « stop using ». Ce
+ * sont des pointeurs empruntés, comme le registre : fermer une pile la retire
+ * aussi d'ici, sans quoi la chaîne de messages suivrait une adresse morte. */
+#define HC_MAX_USING 8
+static Object *g_using[HC_MAX_USING];
+static int     g_nusing = 0;
+
 void hc_register_stack(Object *stack)
 {
     if (!stack || stack->type != OBJ_STACK) return;
@@ -162,6 +170,16 @@ void hc_register_stack(Object *stack)
 
 void hc_unregister_stack(Object *stack)
 {
+    /* La retirer AUSSI des piles en usage : une bibliothèque qu'on ferme
+     * laisserait sinon son adresse dans la chaîne de messages, et le premier
+     * message envoyé après sa libération irait la lire. */
+    for (int i = 0; i < g_nusing; i++) {
+        if (g_using[i] != stack) continue;
+        for (int k = i; k + 1 < g_nusing; k++) g_using[k] = g_using[k+1];
+        g_nusing--;
+        break;
+    }
+
     for (int i = 0; i < g_nstacks; i++) {
         if (g_stacks[i] != stack) continue;
         for (int k = i; k + 1 < g_nstacks; k++) g_stacks[k] = g_stacks[k+1];
@@ -1019,6 +1037,23 @@ static int build_chain(Object *target, Object *chain[], int max)
         else if (target->owner) stack = target->owner;
     }
     if (stack && stack != target && n < max) chain[n++] = stack;
+
+    /* Les piles EN USAGE, après la pile courante.
+     *
+     * « start using stack "Outils" » insère une pile dans la chaîne : ses
+     * gestionnaires deviennent appelables depuis n'importe quelle pile, sans
+     * qu'on ait à les y recopier. C'était le mécanisme des bibliothèques de
+     * l'époque — une pile de fonctions partagées, déclarée une fois.
+     *
+     * Elles viennent en DERNIER, et dans l'ordre inverse de leur déclaration :
+     * la plus récemment déclarée est consultée en premier, comme dans
+     * HyperCard. Une pile locale l'emporte donc toujours sur une bibliothèque,
+     * ce qui permet de redéfinir localement un gestionnaire partagé. */
+    for (int i = g_nusing - 1; i >= 0 && n < max; i--) {
+        Object *u = g_using[i];
+        if (!u || u == stack || u == target) continue;   /* déjà dans la chaîne */
+        chain[n++] = u;
+    }
 
     return n;
 }
@@ -2823,6 +2858,23 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
         if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
         if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_text); return 1; }
+        /* the stacksInUse : les bibliothèques déclarées, une par ligne, dans
+         * l'ordre de déclaration. C'est ce que rend HyperCard, et ce qui
+         * permet à un script de vérifier qu'une pile est bien en usage avant
+         * d'appeler ses gestionnaires. */
+        if (ci_equal(name, "stacksinuse")) {
+            out[0] = '\0';
+            size_t used = 0;
+            for (int i = 0; i < g_nusing; i++) {
+                const char *nm = g_using[i]->name ? g_using[i]->name : "";
+                size_t l = strlen(nm);
+                if (used + l + 2 >= (size_t)outlen) break;
+                if (i) out[used++] = '\n';
+                memcpy(out + used, nm, l); used += l;
+                out[used] = '\0';
+            }
+            return 1;
+        }
         if (ci_equal(name, "itemdelimiter")) {
             snprintf(out, outlen, "%c", g_item_delim); return 1;
         }
@@ -6603,6 +6655,59 @@ static void exec_line_body(Object *me, const char *line)
         return;
     }
 
+    /* ---- start using stack "X" / stop using stack "X" ----
+     *
+     * Une pile en usage s'insère dans la chaîne de messages : ses gestionnaires
+     * deviennent appelables de partout. C'est ainsi qu'on partageait du code
+     * entre piles avant les greffons — une bibliothèque déclarée une fois.
+     *
+     * Redéclarer une pile déjà en usage la DÉPLACE en tête plutôt que de
+     * l'ajouter deux fois : c'est ce que dit le manuel, et cela permet de
+     * changer la priorité d'une bibliothèque sans la retirer d'abord. */
+    if (ci_equal(verb, "start") || ci_equal(verb, "stop")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "using")) {
+            int demarrer = ci_equal(verb, "start");
+            a = skip_spaces(a + 5);
+            if (ci_word(a, "stack")) a = skip_spaces(a + 5);
+
+            ARENA_MARK;
+            char *nom = arena_buf();
+            eval_checked(a, nom, HC_VAL);
+
+            /* load_stack et non open_stack : une pile en usage reste INVISIBLE.
+             *
+             * C'est le comportement d'HyperCard, et il a sa logique — une
+             * bibliothèque n'a rien à montrer, et lui ouvrir une fenêtre
+             * encombrerait l'écran à chaque « start using ». Seul « go to
+             * stack » affiche. */
+            Object *pile = find_open_stack(nom);
+            if (!pile && demarrer && g_host && g_host->load_stack)
+                pile = g_host->load_stack(nom);
+
+            if (!pile) {
+                set_result("No such stack");
+                emit(HC_ERR, "   !! using : pile introuvable : %s", nom);
+                ARENA_FREE;
+                return;
+            }
+
+            /* La retirer d'abord, dans les deux cas : « stop » n'a que cela à
+             * faire, et « start » s'en sert pour la remettre en tête. */
+            for (int i = 0; i < g_nusing; i++) {
+                if (g_using[i] != pile) continue;
+                for (int k = i; k + 1 < g_nusing; k++) g_using[k] = g_using[k+1];
+                g_nusing--;
+                break;
+            }
+            if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+
+            set_result("");
+            ARENA_FREE;
+            return;
+        }
+    }
+
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);
 }
 
@@ -6629,8 +6734,11 @@ static int hc_send_args_k_body(Object *target, const char *message,
         return 0;
     }
 
-    Object *chain[8];
-    int n = build_chain(target, chain, 8);
+    /* Quatre maillons pour l'objet, la carte, le fond et la pile ; le reste
+     * pour les piles en usage, qui viennent après. Une chaîne trop courte les
+     * écarterait silencieusement. */
+    Object *chain[4 + HC_MAX_USING];
+    int n = build_chain(target, chain, (int)(sizeof chain / sizeof *chain));
 
     /* `the target` vaut le destinataire initial pendant toute la remontée ;
        on empile l'ancien pour les envois imbriqués. */

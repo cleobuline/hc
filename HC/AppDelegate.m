@@ -23,6 +23,14 @@ static Object *gStack = NULL;
  * côté de la pile courante, ce qui permettait à un ensemble de piles de
  * s'appeler entre elles sans chemin absolu. */
 static NSString *gStackPath = nil;
+
+/* Piles chargées SANS fenêtre, par « start using ».
+ *
+ * Elles n'appartiennent à aucun HCDocument — c'est justement ce qui les rend
+ * invisibles — donc rien ne les libérerait à la fermeture d'une fenêtre. On
+ * les retient ici pour les rendre à l'arrêt du programme. */
+static NSMutableArray *gPilesEnUsage = nil;
+
 /* Le compteur de cartes appartient au DOCUMENT : chaque pile numérote les
  * siennes. Voir HCDocument.cardCount. */
 
@@ -369,6 +377,18 @@ static NSMenu *find_file_menu(void)
     return YES;
 }
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
+    (void)aNotification;
+
+    /* Les piles chargées par « start using » n'ont pas de fenêtre, donc rien
+     * ne les libère à la fermeture. On les rend ici — et on les retire du
+     * registre d'abord, comme partout ailleurs. */
+    for (NSValue *v in gPilesEnUsage) {
+        Object *st = [v pointerValue];
+        if (!st) continue;
+        hc_unregister_stack(st);
+        hc_free(st);
+    }
+    [gPilesEnUsage removeAllObjects];
 }
 - (void)newCard:(id)sender {
     /* La pile de la carte COURANTE, et non gStack : celui-ci désigne la
@@ -518,6 +538,7 @@ static NSMenu *find_file_menu(void)
  * remplace l'ancienne dans l'unique fenêtre. */
 /* Non statiques : l'hôte est monté dans HCview.m, qui les câble. */
 Object *cocoa_open_stack(const char *nom);
+Object *cocoa_load_stack(const char *nom);
 void    cocoa_stack_changed(Object *stack);
 
 /* Cherche un fichier de pile par son NOM seul, comme le faisait HyperCard :
@@ -565,6 +586,25 @@ static NSString *trouver_pile(NSString *nom) {
  *
  * La question ne se pose plus depuis que chaque pile a sa fenêtre : on n'en
  * libère aucune, l'ancienne reste simplement derrière. */
+/* « start using stack "X" » : charger sans montrer.
+ *
+ * HyperCard ne donnait pas de fenêtre à une pile en usage — une bibliothèque
+ * n'a rien à afficher, et lui en ouvrir une encombrerait l'écran à chaque
+ * déclaration. */
+Object *cocoa_load_stack(const char *nom) {
+    if (!nom || !*nom) return NULL;
+    NSString *chemin = trouver_pile([NSString stringWithUTF8String:nom]);
+    if (!chemin) return NULL;
+
+    Object *st = hc_load([chemin UTF8String]);
+    if (!st) return NULL;
+
+    hc_register_stack(st);
+    if (!gPilesEnUsage) gPilesEnUsage = [NSMutableArray array];
+    [gPilesEnUsage addObject:[NSValue valueWithPointer:st]];
+    return st;
+}
+
 Object *cocoa_open_stack(const char *nom) {
     if (!nom || !*nom) return NULL;
     NSString *n = [NSString stringWithUTF8String:nom];

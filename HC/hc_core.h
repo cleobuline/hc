@@ -242,6 +242,18 @@ typedef struct {
      * stack_changed  la pile courante vient de changer : à l'hôte d'amener sa
      *              fenêtre au premier plan et de redessiner. */
     Object *(*open_stack)(const char *nom);
+
+    /* Charge une pile SANS lui donner de fenêtre.
+     *
+     * C'est ce que demande « start using stack "X" » : la pile entre dans la
+     * chaîne de messages, ses gestionnaires deviennent appelables, mais elle
+     * reste invisible. Une bibliothèque n'a pas à s'afficher — HyperCard ne la
+     * montrait pas, et ouvrir une fenêtre pour chaque pile d'outils déclarée
+     * encombrerait l'écran sans rien apporter.
+     *
+     * L'hôte doit l'enregistrer par hc_register_stack et la retenir pour
+     * pouvoir la libérer plus tard : le noyau ne possède aucune pile. */
+    Object *(*load_stack)(const char *nom);
     void    (*stack_changed)(Object *stack);
 
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul

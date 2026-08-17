@@ -14,6 +14,7 @@
 #import "HCdialogs.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
+extern Object *cocoa_load_stack(const char *nom);
 extern void    cocoa_stack_changed(Object *stack);
 
 /* ═══ Ce qui appartient à UN DOCUMENT ═══════════════════════════════════════
@@ -4199,9 +4200,20 @@ static BOOL     gInIdle = NO;
 - (void)idleTick:(NSTimer *)t {
     (void)t;
     if (gInIdle || hc_is_running()) return;
-    if (self != gView) return;          /* seule la fenêtre active */
 
-    Object *card = [self documentCard];
+    /* La carte de la vue ACTIVE, prise sur gView et non sur self.
+     *
+     * La minuterie est unique et appartient à la vue qui l'a créée — celle du
+     * nib, la première. Dès qu'une autre fenêtre passe au premier plan, `self`
+     * cesse d'être l'active : le test « self != gView » sortait alors à chaque
+     * tour, et « on idle » ne se déclenchait plus jamais. La mesure le disait,
+     * deux adresses différentes dix fois par seconde.
+     *
+     * Viser gView plutôt que se comparer à lui : c'est lui qui suit la fenêtre
+     * active, et la minuterie n'a pas à savoir qui l'a créée. */
+    HCView *v = gView;
+    if (!v) return;
+    Object *card = [v documentCard];
     if (!card) return;
 
     gInIdle = YES;
@@ -4266,6 +4278,7 @@ static BOOL     gInIdle = NO;
     /* Définis dans AppDelegate.m : lui seul sait où trouver un fichier de pile
      * et ce qu'il advient de celle qu'on quitte. */
     host.open_stack    = cocoa_open_stack;
+    host.load_stack    = cocoa_load_stack;
     host.stack_changed = cocoa_stack_changed;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
