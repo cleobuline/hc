@@ -116,6 +116,11 @@ struct Object {
     int      dont_search;    /* exclu de find */
     int      shared_text;    /* texte partagé entre cartes du même fond */
 
+    /* Carte marquée. « mark cards where <condition> » les désigne, « print
+     * marked cards » ou « go next marked card » les parcourt : c'est ainsi
+     * qu'on travaille sur un sous-ensemble d'une pile sans la modifier. */
+    int      marked;
+
     /* Alignement du texte : 0 gauche, 1 centré, 2 droite. HyperCard n'en
      * connaît pas d'autre — pas de justifié. */
     int      text_align;
@@ -254,6 +259,18 @@ typedef struct {
      * L'hôte doit l'enregistrer par hc_register_stack et la retenir pour
      * pouvoir la libérer plus tard : le noyau ne possède aucune pile. */
     Object *(*load_stack)(const char *nom);
+
+    /* Imprime des cartes.
+     *
+     * `cartes` est un tableau de `n` cartes, dans l'ordre où elles doivent
+     * sortir. Le noyau se contente de le composer — il ne sait rien du papier,
+     * des marges ni du pilote d'imprimante.
+     *
+     * Une carte par page : HyperCard en disposait plusieurs sur une feuille,
+     * mais ses piles faisaient toutes 512×342. Avec des tailles libres, une
+     * grille demanderait de décider quoi faire d'une carte plus large que la
+     * page — pour un gain qui ne vaut pas cette complication. */
+    void (*print_cards)(Object **cartes, int n);
     void    (*stack_changed)(Object *stack);
 
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul

@@ -1717,6 +1717,115 @@ static BOOL visual_reveal_rect(const char *nom, CGFloat t, NSRect b, NSRect *out
     return NO;
 }
 
+/* ─── Impression ─────────────────────────────────────────────────────────────
+ *
+ * Une vue jetable qui dessine les cartes les unes après les autres, une par
+ * page. NSPrintOperation s'occupe du panneau, de l'aperçu et du PDF — « Enre-
+ * gistrer au format PDF » y est offert sans une ligne de plus, ce qui est
+ * commode quand on n'a pas d'imprimante sous la main.
+ *
+ * Le dessin passe par la vue existante plutôt que d'être réécrit : on lui
+ * demande de se dessiner pour chaque carte, en déplaçant la carte courante le
+ * temps de la page. C'est le même procédé que le tri, qui se déplace pour
+ * évaluer ses clés — et il évite d'avoir deux codes de rendu qui divergeraient.
+ */
+@interface HCPrintView : NSView
+@property (assign) Object **cards;
+@property (assign) int       count;
+@property (assign) NSSize    cardSize;
+@end
+
+@implementation HCPrintView
+
+- (BOOL)isFlipped { return YES; }
+
+- (BOOL)knowsPageRange:(NSRangePointer)range {
+    range->location = 1;
+    range->length   = (NSUInteger)self.count;
+    return YES;
+}
+
+- (NSRect)rectForPage:(NSInteger)page {
+    /* Chaque page occupe une bande de la vue : la mise en page d'AppKit
+     * découpe une vue haute en pages, et l'on place la carte n dans la
+     * bande n. */
+    return NSMakeRect(0, (page - 1) * self.cardSize.height,
+                      self.cardSize.width, self.cardSize.height);
+}
+
+- (void)drawRect:(NSRect)dirty {
+    if (!self.cards || self.count <= 0 || !gView) return;
+
+    Object *avant = hc_current_card();
+
+    for (int i = 0; i < self.count; i++) {
+        NSRect page = NSMakeRect(0, i * self.cardSize.height,
+                                 self.cardSize.width, self.cardSize.height);
+        if (!NSIntersectsRect(page, dirty)) continue;
+
+        /* Se placer SUR la carte à imprimer : la vue dessine celle du noyau,
+         * et sans ce déplacement toutes les pages porteraient la même. */
+        hc_set_current_card(self.cards[i]);
+
+        [NSGraphicsContext saveGraphicsState];
+        NSAffineTransform *t = [NSAffineTransform transform];
+        [t translateXBy:0 yBy:page.origin.y];
+        [t concat];
+        NSRect r = NSMakeRect(0, 0, self.cardSize.width, self.cardSize.height);
+        [[NSColor whiteColor] setFill];
+        NSRectFill(r);
+        [gView drawRect:r];
+        [NSGraphicsContext restoreGraphicsState];
+    }
+
+    hc_set_current_card(avant);
+}
+
+@end
+
+static void cocoa_print_cards(Object **cards, int n) {
+    if (!cards || n <= 0 || !gView) return;
+
+    /* La taille de la première carte : une pile a une taille unique, et
+     * mélanger des piles dans une même impression n'a pas de sens. */
+    Object *pile = cards[0]->owner;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+    CGFloat w = (pile && pile->w > 0) ? pile->w : 512;
+    CGFloat h = (pile && pile->h > 0) ? pile->h : 342;
+
+    /* Copier la liste : le noyau nous passe un tableau local, qui disparaît
+     * dès que la commande rend la main. runOperation est modal, donc il
+     * survivrait — mais compter là-dessus rendrait la fonction fragile au
+     * moindre changement d'AppKit. */
+    Object **copie = malloc(sizeof(Object *) * (size_t)n);
+    if (!copie) return;
+    memcpy(copie, cards, sizeof(Object *) * (size_t)n);
+
+    HCPrintView *pv = [[HCPrintView alloc]
+        initWithFrame:NSMakeRect(0, 0, w, h * n)];
+    pv.cards    = copie;
+    pv.count    = n;
+    pv.cardSize = NSMakeSize(w, h);
+
+    NSPrintInfo *info = [[NSPrintInfo sharedPrintInfo] copy];
+    [info setHorizontalPagination:NSPrintingPaginationModeFit];
+    [info setVerticalPagination:NSPrintingPaginationModeAutomatic];
+    [info setTopMargin:24];  [info setBottomMargin:24];
+    [info setLeftMargin:24]; [info setRightMargin:24];
+    /* Paysage si la carte est plus large que haute : une pile 512×342 tient
+     * mieux ainsi, et l'on évite une réduction inutile. */
+    [info setOrientation:(w > h) ? NSPaperOrientationLandscape
+                                 : NSPaperOrientationPortrait];
+
+    NSPrintOperation *op = [NSPrintOperation printOperationWithView:pv
+                                                          printInfo:info];
+    [op setShowsPrintPanel:YES];
+    [op setShowsProgressPanel:YES];
+    [op runOperation];
+
+    free(copie);
+}
+
 static void cocoa_type_text(const char *text, const char *mods) {
     (void)mods;
     if (!text || !gView) return;
@@ -4279,6 +4388,7 @@ static BOOL     gInIdle = NO;
      * et ce qu'il advient de celle qu'on quitte. */
     host.open_stack    = cocoa_open_stack;
     host.load_stack    = cocoa_load_stack;
+    host.print_cards   = cocoa_print_cards;
     host.stack_changed = cocoa_stack_changed;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;

@@ -179,6 +179,7 @@ static void put_part(FILE *f, Object *o)
     /* Écrites seulement si posées : une pile enregistrée avant l'existence de
      * ces lignes se relit donc sans rien perdre, et le fichier ne s'alourdit
      * pas de valeurs par défaut. */
+    if (o->marked)         fprintf(f, "marked\n");
     if (o->auto_select)    fprintf(f, "autoselect\n");
     if (o->multiple_lines) fprintf(f, "multiplelines\n");
     if (o->dont_wrap)      fprintf(f, "dontwrap\n");
@@ -585,6 +586,7 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "locktext") == 0 && part)       { part->locktext = 1; continue; }
         if (strcmp(s, "widemargins") == 0 && part)    { part->wide_margins = 1; continue; }
+        if (strcmp(s, "marked") == 0 && target)        { target->marked = 1; continue; }
         if (strcmp(s, "autoselect") == 0 && part)     { part->auto_select = 1; continue; }
         if (strcmp(s, "multiplelines") == 0 && part)  { part->multiple_lines = 1; continue; }
         if (strcmp(s, "dontwrap") == 0 && part)       { part->dont_wrap = 1; continue; }

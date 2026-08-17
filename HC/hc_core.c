@@ -3243,6 +3243,7 @@ static int is_prop_name(const char *w, int len)
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
+        "marked",
         "selectedtext", "selectedchunk",
         "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
         "textsize", "textheight", "script", "text", "contents", "style", NULL
@@ -3319,6 +3320,23 @@ static void term_value_body(const char *t, char *out, int outlen)
                     a = skip_spaces(a);
                     if (ci_word(a, "buttons") || ci_word(a, "btns") ||
                         ci_word(a, "fields")  || ci_word(a, "flds")) { scope = 2; k2 = a; }
+                }
+
+                /* the number of marked cards : combien de cartes sont
+                 * désignées. Ici et non parmi les propriétés — « the number
+                 * of » a son propre chemin d'analyse, et une propriété nommée
+                 * « markedcards » n'y serait jamais consultée. */
+                if (ci_word(k2, "marked")) {
+                    const char *r2 = skip_spaces(k2 + 6);
+                    if (ci_word(r2, "cards") || ci_word(r2, "cds")) {
+                        Object *p = g_current_card ? g_current_card->owner : NULL;
+                        while (p && p->type != OBJ_STACK) p = p->owner;
+                        int m = 0;
+                        if (p) for (int i = 0; i < p->nparts; i++)
+                            if (p->parts[i]->type == OBJ_CARD && p->parts[i]->marked) m++;
+                        snprintf(out, outlen, "%d", m);
+                        return;
+                    }
                 }
 
                 if (ci_word(k2, "buttons") || ci_word(k2, "btns") ||
@@ -3533,6 +3551,7 @@ static void term_value_body(const char *t, char *out, int outlen)
                     if (ci_equal(prop, "autoselect")) { snprintf(out, outlen, "%s", o->auto_select ? "true" : "false"); return; }
                     if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return; }
                     if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return; }
+                    if (ci_equal(prop, "marked")) { snprintf(out, outlen, "%s", o->marked ? "true" : "false"); return; }
                     if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return; }
                     if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return; }
                     if (ci_equal(prop, "textstyle")) {
@@ -5228,6 +5247,8 @@ static void exec_line_body(Object *me, const char *line)
             notify_field(o);
         } else if (ci_equal(prop, "multiplelines")) {
             o->multiple_lines = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "marked")) {
+            o->marked = truthy(val);
         } else if (ci_equal(prop, "dontwrap")) {
             o->dont_wrap = truthy(val); notify_field(o);
         } else if (ci_equal(prop, "sharedtext")) {
@@ -6706,6 +6727,161 @@ static void exec_line_body(Object *me, const char *line)
             ARENA_FREE;
             return;
         }
+    }
+
+    /* ---- mark / unmark ----
+     *   mark card 3            mark cards where <condition>
+     *   unmark all cards       unmark this card
+     *
+     * Marquer désigne un sous-ensemble d'une pile sans la modifier : on trie
+     * une fois, puis « print marked cards » ou « go next marked card »
+     * travaille dessus. C'est la façon dont les piles de données filtraient
+     * leur contenu, avant les bases de données.
+     *
+     * « where » évalue la condition SUR chaque carte : on s'y déplace le temps
+     * du calcul, comme le fait déjà le tri. Sans cela « field "ville" »
+     * désignerait toujours le champ de la carte de départ. */
+    if (ci_equal(verb, "mark") || ci_equal(verb, "unmark")) {
+        int poser = ci_equal(verb, "mark");
+        const char *a = skip_spaces(rest);
+
+        Object *pile = g_current_card ? g_current_card->owner : NULL;
+        while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+        if (!pile) { set_result("No stack"); return; }
+
+        if (ci_word(a, "all")) {
+            for (int i = 0; i < pile->nparts; i++)
+                if (pile->parts[i]->type == OBJ_CARD)
+                    pile->parts[i]->marked = poser;
+            set_result("");
+            return;
+        }
+
+        const char *wh = find_kw(a, "where");
+        if (wh) {
+            const char *cond = skip_spaces(wh + 5);
+            Object *avant = g_current_card;
+            for (int i = 0; i < pile->nparts; i++) {
+                Object *c = pile->parts[i];
+                if (c->type != OBJ_CARD) continue;
+                g_current_card = c;
+                ARENA_MARK;
+                char *v = arena_buf();
+                eval_checked(cond, v, HC_VAL);
+                if (truthy(v)) c->marked = poser;
+                ARENA_FREE;
+            }
+            g_current_card = avant;
+            set_result("");
+            return;
+        }
+
+        /* Une carte désignée, ou la courante.
+         *
+         * « this card » se résout très bien, mais « mark card 2 » demande que
+         * `a` porte encore le mot « card » — on ne le retire donc pas, et l'on
+         * laisse resolve faire son travail. Le cas vide, lui, vise la carte
+         * courante. */
+        Object *c = *a ? resolve(a) : g_current_card;
+        if (!c) {
+            ARENA_MARK;
+            char *v = arena_buf();
+            eval_checked(a, v, HC_VAL);
+            c = resolve(v);
+            ARENA_FREE;
+        }
+        if (c && c->type == OBJ_CARD) { c->marked = poser; set_result(""); }
+        else { set_result("No such card");
+               emit(HC_ERR, "   !! %s : carte introuvable", verb); }
+        return;
+    }
+
+    /* ---- print card / print this stack / print marked cards ----
+     *
+     * Le noyau compose la LISTE des cartes à sortir et la passe à l'hôte, qui
+     * seul connaît le papier. Une carte par page.
+     *
+     * « print field » et « print <expression> » d'HyperCard ne sont pas ici :
+     * ils impriment du texte, ce qui est un autre chemin — et l'on imprime
+     * plus souvent une carte que le contenu d'un champ. */
+    if (ci_equal(verb, "print")) {
+        const char *a = skip_spaces(rest);
+        if (ci_word(a, "this")) a = skip_spaces(a + 4);
+
+        Object *pile = g_current_card ? g_current_card->owner : NULL;
+        while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+
+        Object *liste[512];
+        int n = 0;
+
+        if (ci_word(a, "stack") || ci_word(a, "all")) {
+            /* toute la pile */
+            if (pile)
+                for (int i = 0; i < pile->nparts && n < 512; i++)
+                    if (pile->parts[i]->type == OBJ_CARD) liste[n++] = pile->parts[i];
+        }
+        else if (ci_word(a, "marked")) {
+            if (pile)
+                for (int i = 0; i < pile->nparts && n < 512; i++)
+                    if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
+                        liste[n++] = pile->parts[i];
+        }
+        else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
+            const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
+            if (!*r) {
+                /* « print card » nu : la carte courante. */
+                if (g_current_card) liste[n++] = g_current_card;
+            } else {
+                /* « print card 3 », « print card "index" », « print card 2 to 7 » */
+                const char *to = find_kw(r, "to");
+                if (to) {
+                    ARENA_MARK;
+                    char brut[256];
+                    int len = (int)(to - r);
+                    if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+                    memcpy(brut, r, (size_t)len); brut[len] = '\0';
+                    char *v1 = arena_buf(), *v2 = arena_buf();
+                    eval_checked(brut, v1, HC_VAL);
+                    eval_checked(skip_spaces(to + 2), v2, HC_VAL);
+                    int d = atoi(v1), f = atoi(v2);
+                    if (d < 1) d = 1;
+                    for (int i = d; i <= f && n < 512; i++) {
+                        Object *c = nth_card(pile, i - 1);
+                        if (c) liste[n++] = c;
+                    }
+                    ARENA_FREE;
+                } else {
+                    Object *c = resolve(r);
+                    if (!c) {
+                        ARENA_MARK;
+                        char *v = arena_buf();
+                        eval_checked(r, v, HC_VAL);
+                        c = resolve(v);
+                        if (!c) {
+                            char ref[128];
+                            snprintf(ref, sizeof ref, "card %s", v);
+                            c = resolve(ref);
+                        }
+                        ARENA_FREE;
+                    }
+                    if (c && c->type == OBJ_CARD) liste[n++] = c;
+                }
+            }
+        }
+
+        if (n == 0) {
+            set_result("No cards to print");
+            emit(HC_ERR, "   !! print : rien à imprimer");
+            return;
+        }
+        if (g_host && g_host->print_cards) {
+            g_host->print_cards(liste, n);
+            set_result("");
+        } else {
+            set_result("Can't print");
+            emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
+        }
+        return;
     }
 
     emit(HC_ERR, "   ?? verbe inconnu : %s", verb);
