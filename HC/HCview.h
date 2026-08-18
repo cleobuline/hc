@@ -16,7 +16,6 @@
  * a les siens ; HCDocument désigne l'actif par hc_set_active_doc. */
 - (void *)docState;
 - (Object *)documentCard;
-- (void)runVisualTransition;
 - (void)dropFloating;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
