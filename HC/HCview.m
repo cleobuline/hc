@@ -49,6 +49,16 @@ typedef struct {
     /* sélection et interaction */
     Object       *pressed;        /* objet sous le bouton de la souris */
     Object       *popupTarget;    /* menu popup ouvert */
+    NSArray<NSString *> *popupItems;
+    NSArray<NSNumber *> *popupItemLines; /* lignes HC, base 1 */
+    NSRect        popupRect;
+    CGFloat       popupRowHeight;
+    NSInteger     popupKeyboardRow;
+    NSInteger     popupChosenRow;
+    BOOL          popupFlashInverted;
+    NSInteger     popupFlashToggles;
+    NSTimer      *popupFlashTimer;
+    NSTimeInterval popupOpenedAt;
     Object       *scrollField;    /* champ dont on glisse la poignée */
     Object       *clickField;     /* champ du dernier clic */
     NSPoint       clickPoint;
@@ -100,6 +110,16 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gEditPanel       (gDoc->editPanel)
 #define gPressed         (gDoc->pressed)
 #define gPopupTarget     (gDoc->popupTarget)
+#define gPopupItems      (gDoc->popupItems)
+#define gPopupItemLines  (gDoc->popupItemLines)
+#define gPopupRect       (gDoc->popupRect)
+#define gPopupRowHeight  (gDoc->popupRowHeight)
+#define gPopupKeyboardRow (gDoc->popupKeyboardRow)
+#define gPopupChosenRow  (gDoc->popupChosenRow)
+#define gPopupFlashInverted (gDoc->popupFlashInverted)
+#define gPopupFlashToggles (gDoc->popupFlashToggles)
+#define gPopupFlashTimer (gDoc->popupFlashTimer)
+#define gPopupOpenedAt   (gDoc->popupOpenedAt)
 #define gScrollField     (gDoc->scrollField)
 #define gClickField      (gDoc->clickField)
 #define gClickPoint      (gDoc->clickPoint)
@@ -177,6 +197,10 @@ static BOOL gFreeDrawing = NO;
 static BOOL gFloatDragging = NO;   // en train de le déplacer ?
 static NSPoint gFloatGrab;         // décalage entre le clic et le coin
 static NSFont *gTextFont = nil;
+
+@interface HCView ()
+- (void)popupFlashTick:(NSTimer *)timer;
+@end
 
 
 
@@ -934,6 +958,133 @@ static NSRect field_text_draw_rect(Object *o) {
     if (full < tr.size.height) full = tr.size.height;
     off.size.height = full;
     return off;
+}
+
+/* Popup System 6 dessiné dans la carte, à la place du panneau AppKit moderne.
+ * Son état appartient au document : une fenêtre ne doit jamais fermer le menu
+ * ouvert dans une autre pile. */
+static void close_popup_menu(void) {
+    [gPopupFlashTimer invalidate];
+    gPopupFlashTimer = nil;
+    gPopupTarget = NULL;
+    gPopupItems = nil;
+    gPopupItemLines = nil;
+    gPopupRect = NSZeroRect;
+    gPopupRowHeight = 0;
+    gPopupKeyboardRow = -1;
+    gPopupChosenRow = -1;
+    gPopupFlashInverted = NO;
+    gPopupFlashToggles = 0;
+}
+
+/* Les popups HyperCard n'ont pas encore de propriété « disabled » par ligne :
+ * toutes les lignes existantes sont donc activables. Centraliser le test ici
+ * garantit que le survol, le clic et le clavier suivront la même règle le jour
+ * où cette propriété sera ajoutée. */
+static BOOL popup_row_is_enabled(NSInteger row) {
+    return row >= 0 && row < (NSInteger)gPopupItems.count;
+}
+
+static NSInteger popup_row_at_point(NSPoint p) {
+    if (!NSPointInRect(p, gPopupRect) || gPopupRowHeight <= 0) return -1;
+    NSInteger row = (NSInteger)floor((p.y - gPopupRect.origin.y - 1) /
+                                     gPopupRowHeight);
+    return popup_row_is_enabled(row) ? row : -1;
+}
+
+static void open_popup_menu(Object *o, HCView *view) {
+    if (!o->contents || !*o->contents) return;
+    NSArray<NSString *> *raw = [[NSString stringWithUTF8String:o->contents]
+                                componentsSeparatedByString:@"\n"];
+    NSMutableArray<NSString *> *items = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *lines = [NSMutableArray array];
+    for (NSUInteger i = 0; i < raw.count; i++) {
+        if (raw[i].length == 0) continue;
+        [items addObject:raw[i]];
+        [lines addObject:@(i + 1)];
+    }
+    if (items.count == 0) return;
+
+    NSDictionary *attrs = obj_attrs(o, 12, nil);
+    CGFloat width = o->w;
+    for (NSString *item in items)
+        width = MAX(width, ceil([item sizeWithAttributes:attrs].width) + 24);
+    gPopupRowHeight = MAX(16, ceil([@"Ag" sizeWithAttributes:attrs].height) + 4);
+    CGFloat height = gPopupRowHeight * items.count;
+    NSRect bounds = view.bounds;
+    CGFloat x = MIN(MAX(0, o->x), MAX(0, bounds.size.width - width - 3));
+    CGFloat y = o->y + o->h;
+    if (y + height + 3 > bounds.size.height) y = MAX(0, o->y - height);
+
+    gPopupTarget = o;
+    gPopupItems = items.copy;
+    gPopupItemLines = lines.copy;
+    gPopupRect = NSMakeRect(x, y, width, height);
+    /* L'instant de l'ouverture, pour distinguer les deux gestes du System 6 :
+     * presser-glisser-relâcher, et cliquer-puis-cliquer. Voir mouseUp:. */
+    gPopupOpenedAt = [NSDate timeIntervalSinceReferenceDate];
+    NSUInteger selected = [gPopupItemLines indexOfObject:@(o->selectedline)];
+    gPopupKeyboardRow = selected == NSNotFound ? 0 : (NSInteger)selected;
+    [view.window makeFirstResponder:view];
+    [view.window setAcceptsMouseMovedEvents:YES];
+    [view setNeedsDisplay:YES];
+}
+
+static void draw_popup_menu(void) {
+    if (!gPopupTarget || gPopupItems.count == 0) return;
+    [[NSColor blackColor] setFill];
+    NSRectFill(NSOffsetRect(gPopupRect, 3, 3));
+    [[NSColor whiteColor] setFill];
+    NSRectFill(gPopupRect);
+    [[NSColor blackColor] setStroke];
+    [[NSBezierPath bezierPathWithRect:NSInsetRect(gPopupRect, .5, .5)] stroke];
+
+    NSDictionary *attrs = obj_attrs(gPopupTarget, 12, nil);
+    for (NSUInteger i = 0; i < gPopupItems.count; i++) {
+        NSRect row = NSMakeRect(gPopupRect.origin.x + 1,
+                                gPopupRect.origin.y + i * gPopupRowHeight + 1,
+                                gPopupRect.size.width - 2, gPopupRowHeight);
+        BOOL selected = (NSInteger)i == gPopupKeyboardRow && !gPopupFlashInverted;
+        if (selected) { [[NSColor blackColor] setFill]; NSRectFill(row); }
+        NSMutableDictionary *rowAttrs = attrs.mutableCopy;
+        rowAttrs[NSForegroundColorAttributeName] = selected ? NSColor.whiteColor : NSColor.blackColor;
+        NSString *title = gPopupItems[i];
+        CGFloat textHeight = [title sizeWithAttributes:rowAttrs].height;
+        [title drawAtPoint:NSMakePoint(row.origin.x + 14, row.origin.y + floor((row.size.height - textHeight) / 2))
+            withAttributes:rowAttrs];
+        if (gPopupItemLines[i].integerValue == gPopupTarget->selectedline) {
+            [(selected ? NSColor.whiteColor : NSColor.blackColor) setStroke];
+            NSBezierPath *check = NSBezierPath.bezierPath;
+            CGFloat cx = row.origin.x + 2, cy = row.origin.y + row.size.height / 2;
+            [check moveToPoint:NSMakePoint(cx, cy)];
+            [check lineToPoint:NSMakePoint(cx + 2, cy + 3)];
+            [check lineToPoint:NSMakePoint(cx + 6, cy - 3)];
+            check.lineWidth = 1.5;
+            [check stroke];
+        }
+    }
+}
+
+static void choose_popup_row(HCView *view, NSInteger row) {
+    if (!gPopupTarget || !popup_row_is_enabled(row)) return;
+    gPopupTarget->selectedline = gPopupItemLines[row].intValue;
+    hc_send(gPopupTarget, "mouseUp");
+    close_popup_menu();
+    [view setNeedsDisplay:YES];
+}
+
+static void flash_popup_selection(HCView *view, NSInteger row) {
+    if (!gPopupTarget || !popup_row_is_enabled(row)) return;
+    gPopupKeyboardRow = row;
+    gPopupChosenRow = row;
+    gPopupFlashInverted = NO;
+    gPopupFlashToggles = 6;
+    [gPopupFlashTimer invalidate];
+    gPopupFlashTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 15.0
+                                                         target:view
+                                                       selector:@selector(popupFlashTick:)
+                                                       userInfo:nil repeats:YES];
+    [view setNeedsDisplay:YES];
 }
 
 static void draw_part(Object *o) {
@@ -1733,6 +1884,7 @@ static BOOL visual_reveal_rect(const char *nom, CGFloat t, NSRect b, NSRect *out
 @property (assign) Object **cards;
 @property (assign) int       count;
 @property (assign) NSSize    cardSize;
+@property (assign) int       pageEnCours;
 @end
 
 @implementation HCPrintView
@@ -1746,42 +1898,48 @@ static BOOL visual_reveal_rect(const char *nom, CGFloat t, NSRect b, NSRect *out
 }
 
 - (NSRect)rectForPage:(NSInteger)page {
-    /* Chaque page occupe une bande de la vue : la mise en page d'AppKit
-     * découpe une vue haute en pages, et l'on place la carte n dans la
-     * bande n. */
+    /* La bande de la carte demandée. On retient AUSSI son numéro : avec la
+     * pagination désactivée, AppKit ne décale pas le dessin d'une page à
+     * l'autre — il rappelle drawRect: avec la même origine, et sans ce
+     * repère toutes les pages porteraient la première carte. */
+    self.pageEnCours = (int)page - 1;
     return NSMakeRect(0, (page - 1) * self.cardSize.height,
                       self.cardSize.width, self.cardSize.height);
 }
 
 - (void)drawRect:(NSRect)dirty {
+    (void)dirty;
     if (!self.cards || self.count <= 0 || !gView) return;
 
+    int i = self.pageEnCours;
+    if (i < 0 || i >= self.count) i = 0;
+
+    /* Se placer SUR la carte à imprimer : la vue dessine celle du noyau, et
+     * sans ce déplacement toutes les pages porteraient la même. */
     Object *avant = hc_current_card();
+    hc_set_current_card(self.cards[i]);
 
-    for (int i = 0; i < self.count; i++) {
-        NSRect page = NSMakeRect(0, i * self.cardSize.height,
-                                 self.cardSize.width, self.cardSize.height);
-        if (!NSIntersectsRect(page, dirty)) continue;
+    [NSGraphicsContext saveGraphicsState];
+    /* Ramener l'origine sur la bande de CETTE page : le contexte est placé au
+     * début de la bande demandée par rectForPage:, mais la vue dessine
+     * toujours en 0,0. */
+    NSAffineTransform *t = [NSAffineTransform transform];
+    [t translateXBy:0 yBy:i * self.cardSize.height];
+    [t concat];
 
-        /* Se placer SUR la carte à imprimer : la vue dessine celle du noyau,
-         * et sans ce déplacement toutes les pages porteraient la même. */
-        hc_set_current_card(self.cards[i]);
-
-        [NSGraphicsContext saveGraphicsState];
-        NSAffineTransform *t = [NSAffineTransform transform];
-        [t translateXBy:0 yBy:page.origin.y];
-        [t concat];
-        NSRect r = NSMakeRect(0, 0, self.cardSize.width, self.cardSize.height);
-        [[NSColor whiteColor] setFill];
-        NSRectFill(r);
-        [gView drawRect:r];
-        [NSGraphicsContext restoreGraphicsState];
-    }
+    NSRect r = NSMakeRect(0, 0, self.cardSize.width, self.cardSize.height);
+    [[NSColor whiteColor] setFill];
+    NSRectFill(r);
+    [gView drawRect:r];
+    [NSGraphicsContext restoreGraphicsState];
 
     hc_set_current_card(avant);
 }
 
 @end
+
+/* Déclarée ici pour que print: puisse l'appeler avant sa définition. */
+static void cocoa_print_cards(Object **cards, int n);
 
 static void cocoa_print_cards(Object **cards, int n) {
     if (!cards || n <= 0 || !gView) return;
@@ -1808,14 +1966,37 @@ static void cocoa_print_cards(Object **cards, int n) {
     pv.cardSize = NSMakeSize(w, h);
 
     NSPrintInfo *info = [[NSPrintInfo sharedPrintInfo] copy];
-    [info setHorizontalPagination:NSPrintingPaginationModeFit];
-    [info setVerticalPagination:NSPrintingPaginationModeAutomatic];
-    [info setTopMargin:24];  [info setBottomMargin:24];
-    [info setLeftMargin:24]; [info setRightMargin:24];
-    /* Paysage si la carte est plus large que haute : une pile 512×342 tient
-     * mieux ainsi, et l'on évite une réduction inutile. */
+    [info setTopMargin:36];  [info setBottomMargin:36];
+    [info setLeftMargin:36]; [info setRightMargin:36];
+
+    /* Paysage si la carte est plus large que haute : une pile 512×342 y perd
+     * beaucoup moins qu'en portrait. */
     [info setOrientation:(w > h) ? NSPaperOrientationLandscape
                                  : NSPaperOrientationPortrait];
+
+    /* Faire tenir chaque carte ENTIÈREMENT dans sa page.
+     *
+     * La pagination automatique découpe ce qui déborde : une carte plus haute
+     * que la page sortait sur deux feuilles, coupée au milieu. On calcule donc
+     * l'échelle nous-mêmes — le plus petit des deux rapports, pour que ni la
+     * largeur ni la hauteur ne dépasse — et l'on n'agrandit jamais : une carte
+     * qui tient déjà garde sa taille réelle, ce qui préserve le rendu des
+     * trames en noir et blanc. */
+    NSSize papier = [info paperSize];
+    CGFloat dispoW = papier.width  - [info leftMargin] - [info rightMargin];
+    CGFloat dispoH = papier.height - [info topMargin]  - [info bottomMargin];
+    CGFloat ech = 1.0;
+    if (w > dispoW || h > dispoH) {
+        CGFloat ex = dispoW / w, ey = dispoH / h;
+        ech = ex < ey ? ex : ey;
+    }
+    [info setScalingFactor:ech];
+
+    /* Pagination désactivée dans les deux sens : l'échelle garantit déjà que
+     * chaque carte tient, et rectForPage: place la bonne bande. Laisser
+     * AppKit paginer par-dessus ajouterait des pages vides. */
+    [info setHorizontalPagination:NSPrintingPaginationModeClip];
+    [info setVerticalPagination:NSPrintingPaginationModeClip];
 
     NSPrintOperation *op = [NSPrintOperation printOperationWithView:pv
                                                           printInfo:info];
@@ -2824,6 +3005,22 @@ static BOOL paint_selection_active(void)
  * compilateur choisit la première méthode `color` qu'il connaît, et CALayer en
  * déclare une qui rend un CGColorRef. D'où l'avertissement « assigning
  * CGColorRef to NSColor * » — le code marchait, mais par chance. */
+/* Le menu Fichier → Imprimer.
+ *
+ * Sans cette redéfinition, c'est le print: de NSView qui répond : il imprime
+ * la vue telle qu'elle est, sans l'échelle ni la pagination par carte — d'où
+ * un résultat différent de « print card ». Une seule façon d'imprimer vaut
+ * mieux que deux qui divergent. */
+- (void)print:(id)sender {
+    (void)sender;
+    NSLog(@"[print] appelée, gView=%p self=%p", gView, self);
+    Object *card = [self documentCard];
+    NSLog(@"[print] card=%p", card);
+    if (!card) return;
+    Object *tab[1] = { card };
+    cocoa_print_cards(tab, 1);
+}
+
 - (void)changeColor:(id)sender {
     NSColorPanel *panneau = (NSColorPanel *)sender;
     if (![panneau respondsToSelector:@selector(color)]) return;
@@ -3015,10 +3212,46 @@ static BOOL paint_selection_active(void)
     dither_region(rep, 0, 0, (int)[rep pixelsWide]-1, (int)[rep pixelsHigh]-1, NULL, 0);
     [gView setNeedsDisplay:YES];
 }
+- (void)popupFlashTick:(NSTimer *)timer {
+    if (!gPopupTarget || gPopupChosenRow < 0) { close_popup_menu(); return; }
+    gPopupFlashInverted = !gPopupFlashInverted;
+    if (--gPopupFlashToggles <= 0) {
+        NSInteger row = gPopupChosenRow;
+        [timer invalidate];
+        gPopupFlashTimer = nil;
+        choose_popup_row(self, row);
+        return;
+    }
+    [self setNeedsDisplay:YES];
+}
+
 - (void)keyDown:(NSEvent *)event {
     unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
     NSUInteger mods = [event modifierFlags];
     BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
+
+    if (gPopupTarget && !cmd) {
+        if (gPopupFlashTimer) return;
+        NSInteger count = gPopupItems.count;
+        if (key == 27) { close_popup_menu(); [self setNeedsDisplay:YES]; return; }
+        if (key == NSUpArrowFunctionKey) {
+            NSInteger row = gPopupKeyboardRow < 0 ? count - 1 : gPopupKeyboardRow - 1;
+            while (row >= 0 && !popup_row_is_enabled(row)) row--;
+            if (row >= 0) { gPopupKeyboardRow = row; [self setNeedsDisplay:YES]; }
+            return;
+        }
+        if (key == NSDownArrowFunctionKey) {
+            NSInteger row = gPopupKeyboardRow < 0 ? 0 : gPopupKeyboardRow + 1;
+            while (row < count && !popup_row_is_enabled(row)) row++;
+            if (row < count) { gPopupKeyboardRow = row; [self setNeedsDisplay:YES]; }
+            return;
+        }
+        if ((key == NSEnterCharacter || key == NSCarriageReturnCharacter) &&
+            popup_row_is_enabled(gPopupKeyboardRow)) {
+            flash_popup_selection(self, gPopupKeyboardRow); return;
+        }
+        return;
+    }
 
     /* Un collage flotte : Entrée le dépose, Échap l'abandonne. C'est la façon
      * canonique d'HyperCard, et le seul recours quand l'image déborde de la
@@ -3426,6 +3659,8 @@ static BOOL paint_selection_active(void)
             [caret setLineWidth:1];
             [caret stroke];
         }
+    /* Dernière surcouche : comme sous System 6, le menu couvre la carte. */
+    draw_popup_menu();
 }
 /* ─── Les commandes de MENU redessinent gView, jamais self ───────────────────
  *
@@ -3486,6 +3721,7 @@ static BOOL paint_selection_active(void)
  * un bouton sélectionné suffisait à le déclencher. */
 - (void)resetForNewStack {
     if (gEditingField) [self endFieldEdit];
+    close_popup_menu();
     /* La sélection désigne un champ de la pile qu'on s'apprête à libérer. */
     hc_set_selection(NULL, 0, 0);
     [self stopSprayTimer];
@@ -3560,8 +3796,30 @@ static BOOL paint_selection_active(void)
 /* a placer avec les autres globales de HCview.m */
 // static Object *gPopupTarget = NULL;
 
+- (void)mouseMoved:(NSEvent *)event {
+    if (!gPopupTarget || gPopupFlashTimer) return;
+    NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
+    NSInteger row = popup_row_at_point(p);
+    if (row == gPopupKeyboardRow) return;
+    gPopupKeyboardRow = row;  /* -1 hors du menu : aucune ligne ne surbrille */
+    [self setNeedsDisplay:YES];
+}
+
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+
+    /* Un popup est modal : un clic extérieur le ferme sans traverser la carte. */
+    if (gPopupTarget) {
+        if (gPopupFlashTimer) return;
+        NSInteger row = popup_row_at_point(p);
+        if (row >= 0) {
+            flash_popup_selection(self, row);
+        } else {
+            close_popup_menu();
+            [self setNeedsDisplay:YES];
+        }
+        return;
+    }
     Object *hit = part_at(hc_current_card(), p);
 
     /* Mémoriser le clic AVANT tout traitement : les gestionnaires HyperTalk
@@ -3737,7 +3995,7 @@ static BOOL paint_selection_active(void)
         // bouton popup : derouler le menu
         if (hit && hit->type == OBJ_BUTTON && hit->style &&
             strcmp(hit->style, "popup") == 0) {
-            [self showPopupMenuFor:hit atPoint:p];
+            open_popup_menu(hit, self);
             return;
         }
 
@@ -3831,6 +4089,25 @@ static BOOL paint_selection_active(void)
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+
+    /* ---- popup ouvert : la surbrillance suit le pointeur ----
+     *
+     * mouseMoved: ne se déclenche que bouton RELÂCHÉ. Un menu System 6 se
+     * manipule pourtant bouton enfoncé — on presse, on glisse, on relâche sur
+     * l'article — et sans cette branche il fallait cliquer deux fois : une
+     * pour ouvrir, une pour choisir.
+     *
+     * Hors du menu, la ligne retenue passe à -1 : rien ne surbrille, et
+     * relâcher là referme sans choisir. C'est ce que fait l'original, et c'est
+     * la seule façon d'annuler à la souris. */
+    if (gPopupTarget && !gPopupFlashTimer) {
+        NSInteger row = popup_row_at_point(p);
+        if (row != gPopupKeyboardRow) {
+            gPopupKeyboardRow = row;
+            [self setNeedsDisplay:YES];
+        }
+        return;
+    }
 
     /* autoSelect : la sélection suit le pointeur tant que le bouton est
      * enfoncé, comme dans toute liste de choix. Sans cela il faudrait relâcher
@@ -3968,6 +4245,36 @@ static BOOL paint_selection_active(void)
     [self setNeedsDisplay:YES];
 }
 - (void)mouseUp:(NSEvent *)event {
+    /* ---- popup ouvert : relâcher CHOISIT l'article survolé ----
+     *
+     * C'est le geste du System 6 : presser sur le bouton, glisser jusqu'à
+     * l'article, relâcher. Sans cela le menu restait ouvert après le
+     * relâchement et attendait un second clic.
+     *
+     * Relâcher hors du menu — ligne -1 — le referme sans rien choisir, ce qui
+     * est la façon d'annuler. */
+    if (gPopupTarget && !gPopupFlashTimer) {
+        NSPoint pp = [self convertPoint:[event locationInWindow] fromView:nil];
+        NSInteger row = popup_row_at_point(pp);
+        if (row >= 0 && popup_row_is_enabled(row)) {
+            flash_popup_selection(self, row);
+        } else {
+            /* Hors du menu : refermer sans choisir — SAUF si l'on vient tout
+             * juste de l'ouvrir.
+             *
+             * Le System 6 accepte deux gestes : presser-glisser-relâcher, et
+             * cliquer pour ouvrir puis cliquer pour choisir. Dans le second,
+             * le relâchement suit l'ouverture de quelques centièmes de
+             * seconde et se produit sur le bouton, donc hors du menu — le
+             * refermer là rendrait ce geste impossible. */
+            if ([NSDate timeIntervalSinceReferenceDate] - gPopupOpenedAt > 0.25) {
+                close_popup_menu();
+                [self setNeedsDisplay:YES];
+            }
+        }
+        return;
+    }
+
     // --- mode flèche : envoyer mouseUp au script ---
     if (gScrollField) { gScrollField = NULL; return; }
     if (gFloating) {
