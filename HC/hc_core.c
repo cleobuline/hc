@@ -4760,7 +4760,79 @@ static int file_constant(const char *s)
     if (ci_equal(s, "end") || ci_equal(s, "eof")) return -2;   /* jusqu'au bout */
     return -1;
 }
+/* ── go … marked card ────────────────────────────────────────────────────────
+ *
+ * « go next marked card », « go first marked card », « go marked card 3 ».
+ * Les cartes non marquées doivent être sautées comme si elles n'existaient
+ * pas, et « next » boucle en fin de pile comme le fait « go next card ».
+ *
+ * Renvoie NULL si la référence ne parle pas de cartes marquées : resolve()
+ * reprend alors la main, et rien du comportement existant ne bouge. */
+static Object *marked_card_ref(const char *r)
+{
+    enum { REL_NONE, REL_NEXT, REL_PREV, REL_FIRST, REL_LAST, REL_ANY };
+    int quoi = REL_NONE;
+    const char *a = skip_spaces(r);
 
+    if      (ci_word(a, "next"))     { quoi = REL_NEXT;  a = skip_spaces(a + 4); }
+    else if (ci_word(a, "previous")) { quoi = REL_PREV;  a = skip_spaces(a + 8); }
+    else if (ci_word(a, "prev"))     { quoi = REL_PREV;  a = skip_spaces(a + 4); }
+    else if (ci_word(a, "first"))    { quoi = REL_FIRST; a = skip_spaces(a + 5); }
+    else if (ci_word(a, "last"))     { quoi = REL_LAST;  a = skip_spaces(a + 4); }
+    else if (ci_word(a, "any"))      { quoi = REL_ANY;   a = skip_spaces(a + 3); }
+
+    if (!ci_word(a, "marked")) return NULL;
+    a = skip_spaces(a + 6);
+    if      (ci_word(a, "cards")) a = skip_spaces(a + 5);
+    else if (ci_word(a, "card"))  a = skip_spaces(a + 4);
+    else if (ci_word(a, "cds"))   a = skip_spaces(a + 3);
+    else if (ci_word(a, "cd"))    a = skip_spaces(a + 2);
+    else return NULL;             /* « marked » seul ne désigne pas une carte */
+
+    Object *pile = g_current_card ? g_current_card->owner : NULL;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+    if (!pile) return NULL;
+
+    int n = pile->nparts, ici = -1;
+    for (int i = 0; i < n; i++)
+        if (pile->parts[i] == g_current_card) { ici = i; break; }
+
+    /* Relatif : on avance d'un cran à la fois depuis la carte courante, et
+     * l'on fait au plus un tour complet avant d'abandonner. */
+    if (quoi == REL_NEXT || quoi == REL_PREV) {
+        int pas = (quoi == REL_NEXT) ? 1 : -1;
+        for (int k = 1; k <= n; k++) {
+            int i = ((ici + pas * k) % n + n) % n;
+            Object *c = pile->parts[i];
+            if (c->type == OBJ_CARD && c->marked) return c;
+        }
+        return NULL;
+    }
+
+    /* Absolu : le rang compte parmi les seules cartes marquées, la troisième
+     * marquée pouvant très bien être la neuvième de la pile. */
+    int m = 0;
+    for (int i = 0; i < n; i++)
+        if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked) m++;
+    if (m == 0) return NULL;
+
+    int rang = 1;
+    if      (quoi == REL_LAST) rang = m;
+    else if (quoi == REL_ANY)  rang = (rand() % m) + 1;
+    else if (quoi == REL_NONE && *a) {
+        char v[128]; double d = 0;
+        eval_expr(a, v, sizeof v); as_num(v, &d);
+        rang = (int)d;
+    }
+    if (rang < 1 || rang > m) return NULL;
+
+    for (int i = 0; i < n; i++) {
+        Object *c = pile->parts[i];
+        if (c->type != OBJ_CARD || !c->marked) continue;
+        if (--rang == 0) return c;
+    }
+    return NULL;
+}
 static void exec_line_body(Object *me, const char *line)
 {
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
@@ -5788,7 +5860,10 @@ static void exec_line_body(Object *me, const char *line)
             return;
         }
 
-        Object *dst = resolve(r);
+        /* Le marquage filtre la navigation : resolve() n'y connaît rien, on
+         * lui laisse tout le reste. */
+        Object *dst = marked_card_ref(r);
+        if (!dst) dst = resolve(r);
         if (!dst) {                          /* « go x » : evaluer d'abord */
             char v[256];
             eval_expr(r, v, sizeof v);

@@ -90,6 +90,7 @@ struct Object {
 
     int      visible;
     int      hilite;    /* bouton allumé (vidéo inverse) ; coché pour checkBox/radio */
+    int marked;        /* carte marquee : « mark this card ». Toujours 0 ailleurs. */
     int      autohilite;/* le bouton s'allume automatiquement pendant le clic */
     int      textsize;  /* taille de police du nom (0 = défaut) */
     /* Interligne d'un champ, en pixels. 0 = déduit du corps, à la manière
@@ -119,7 +120,7 @@ struct Object {
     /* Carte marquée. « mark cards where <condition> » les désigne, « print
      * marked cards » ou « go next marked card » les parcourt : c'est ainsi
      * qu'on travaille sur un sous-ensemble d'une pile sans la modifier. */
-    int      marked;
+
 
     /* Alignement du texte : 0 gauche, 1 centré, 2 droite. HyperCard n'en
      * connaît pas d'autre — pas de justifié. */

@@ -227,6 +227,7 @@ int hc_save(Object *stack, const char *path)
         fprintf(f, "card "); put_quoted(f, c->name);
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
         fprintf(f, "\n");
+        if (c->marked) fprintf(f, "marked\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
         for (int j = 0; j < c->nbgtexts; j++) {
@@ -562,6 +563,10 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "hilite") == 0) {
             if (target) target->hilite = 1;
+            continue;
+        }
+        if (strcmp(s, "marked") == 0) {
+            if (target) target->marked = 1;
             continue;
         }
         if (strcmp(s, "autohilite") == 0) {
