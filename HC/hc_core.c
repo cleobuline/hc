@@ -4768,9 +4768,10 @@ static int file_constant(const char *s)
  *
  * Renvoie NULL si la référence ne parle pas de cartes marquées : resolve()
  * reprend alors la main, et rien du comportement existant ne bouge. */
-static Object *marked_card_ref(const char *r)
+static Object *marked_card_ref(const char *r, int *concerne)
 {
     enum { REL_NONE, REL_NEXT, REL_PREV, REL_FIRST, REL_LAST, REL_ANY };
+    *concerne = 0;
     int quoi = REL_NONE;
     const char *a = skip_spaces(r);
 
@@ -4788,6 +4789,12 @@ static Object *marked_card_ref(const char *r)
     else if (ci_word(a, "cds"))   a = skip_spaces(a + 3);
     else if (ci_word(a, "cd"))    a = skip_spaces(a + 2);
     else return NULL;             /* « marked » seul ne désigne pas une carte */
+
+    /* Passé ce point, la référence parle bien de cartes marquées. Ne rien
+     * trouver signifie alors qu'il n'y en a aucune, et « go » doit rester sur
+     * place — surtout pas retomber sur resolve(), qui ne retiendrait que le
+     * « next » et changerait de carte. */
+    *concerne = 1;
 
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
@@ -5862,7 +5869,9 @@ static void exec_line_body(Object *me, const char *line)
 
         /* Le marquage filtre la navigation : resolve() n'y connaît rien, on
          * lui laisse tout le reste. */
-        Object *dst = marked_card_ref(r);
+        int marque = 0;
+        Object *dst = marked_card_ref(r, &marque);
+        if (marque && !dst) { set_result("No such card"); return; }
         if (!dst) dst = resolve(r);
         if (!dst) {                          /* « go x » : evaluer d'abord */
             char v[256];
