@@ -146,6 +146,9 @@ static const ToolCell TOOLCELLS[] = {
     /* Aérographe — icône dans ICON_SPRAY32. Le glyphe reste comme repli si
      * la chaîne de dessin ne le reconnaît pas. */
     {"❊", 0, TOOL_SPRAY},
+    /* Encre et fond. Le glyphe ne sert plus : ces deux cases se peignent avec
+     * leur couleur courante, et un double-clic dessus la change — comme le
+     * double-clic sur le pinceau ouvre ses reglages. */
     {"⬛", 1, INK_BLACK},
     {"⬜", 1, INK_WHITE},
     {"▣", 2, 0},
@@ -237,8 +240,23 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
         [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
         NSRectFill(box);
 
+        /* Les deux cases d'encre se peignent avec leur couleur courante. C'est
+         * le seul endroit ou le reglage se voit sans qu'on l'ouvre, et ce qui
+         * rend le double-clic devinable : un carre de couleur invite a etre
+         * change, un glyphe non. Repli sur noir et blanc si hc_colors_init n'a
+         * pas encore tourne — la palette peut se dessiner avant. */
+        if (tc->kind == 1) {
+            NSColor *sc = (tc->value == INK_BLACK) ? gInkColor : gBackColor;
+            if (!sc) sc = (tc->value == INK_BLACK) ? [NSColor blackColor]
+                                                   : [NSColor whiteColor];
+            NSRect sw = NSInsetRect(box, 7, 7);
+            [sc setFill];
+            NSRectFill(sw);
+            [[NSColor colorWithWhite:0.35 alpha:1.0] setStroke];
+            NSFrameRect(sw);
+        }
         // icône bitmap pour certains outils, glyphe pour les autres
-        if (tc->kind == 0 && tc->value == TOOL_PENCIL) {
+        else if (tc->kind == 0 && tc->value == TOOL_PENCIL) {
              draw_icon_ascii(ICON_PENCIL32, box);
          } else if  (tc->kind == 0 && tc->value == TOOL_FILL) {
                     draw_icon_ascii(ICON_BUCKET32, box);
@@ -336,7 +354,14 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                     }
                 }
             }
-            else if (tc->kind == 1) { gInk = (HCInk)tc->value; }
+            else if (tc->kind == 1) {
+                gInk = (HCInk)tc->value;
+                /* Double-clic : choisir la couleur de CETTE encre. Le panneau
+                 * du systeme est partage avec l'outil texte et l'edition de
+                 * champ ; showDrawColorPanel: pose le drapeau qui dit a qui
+                 * la prochaine couleur revient. */
+                if (dbl) [gView showDrawColorPanel:(tc->value == INK_BLACK)];
+            }
             else if (tc->kind == 2) { gShapeFilled = !gShapeFilled; }
             else if (tc->kind == 3) { gTransparentBg = !gTransparentBg; }
             [self setNeedsDisplay:YES];

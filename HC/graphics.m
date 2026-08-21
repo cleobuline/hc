@@ -56,6 +56,47 @@ int pattern_bit(int pat, int x, int y) {
     return (row >> (7 - (x & 7))) & 1;
 }
 
+/* ---- Couleur d'encre et de fond, pour les fonctions qui ecrivent le pixel ----
+ *
+ * Les fonctions a contexte (paint_stroke, paint_shape) posent simplement
+ * [gInkColor setStroke]. Celles qui touchent le pixel directement ont besoin
+ * des composantes, et il serait absurde de les recalculer a chaque point : on
+ * les extrait une fois par appel, dans des variables locales.
+ *
+ * Le passage par sRGB est obligatoire : une couleur nommee ([NSColor
+ * blackColor]) ou issue d'un catalogue n'a pas de composantes tant qu'on ne
+ * l'a pas convertie, et getRed:… leve sur elle.
+ *
+ * Le repli sur noir et blanc couvre le cas ou hc_colors_init() n'a pas encore
+ * tourne — le dessin retombe alors exactement sur le comportement d'avant. */
+static void color_rgb(NSColor *c, NSColor *repli,
+                      unsigned char *r, unsigned char *g, unsigned char *b)
+{
+    if (!c) c = repli;
+    NSColor *s = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    if (!s) s = [repli colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    if (!s) { *r = *g = *b = 0; return; }
+    CGFloat rr = 0, gg = 0, bb = 0, aa = 1;
+    [s getRed:&rr green:&gg blue:&bb alpha:&aa];
+    *r = (unsigned char)(rr * 255.0 + 0.5);
+    *g = (unsigned char)(gg * 255.0 + 0.5);
+    *b = (unsigned char)(bb * 255.0 + 0.5);
+}
+
+/* Les six composantes, a declarer en tete des fonctions a pixel. Un macro
+ * plutot que six lignes recopiees cinq fois : la moindre divergence entre
+ * deux copies donnerait un outil qui ne peint pas comme les autres. */
+#define INK_RGB_LOCALS \
+    unsigned char ir_, ig_, ib_, br_, bg_, bb_; \
+    color_rgb(gInkColor,  [NSColor blackColor], &ir_, &ig_, &ib_); \
+    color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_)
+
+/* Poser l'encre / poser le fond, alpha opaque. */
+#define PUT_INK(px)  do { (px)[0]=ir_; (px)[1]=ig_; (px)[2]=ib_; \
+                          if (spp>=4) (px)[3]=255; } while (0)
+#define PUT_BACK(px) do { (px)[0]=br_; (px)[1]=bg_; (px)[2]=bb_; \
+                          if (spp>=4) (px)[3]=255; } while (0)
+
 void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
                           NSPoint *poly, int npoly)
 {
@@ -147,6 +188,8 @@ void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
     double cx = (x0 + x1) / 2.0, cy = (y0 + y1) / 2.0;
     double rx = (x1 - x0) / 2.0, ry = (y1 - y0) / 2.0;
 
+    INK_RGB_LOCALS;
+
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
             // pour l'ovale, ne remplir que l'intérieur de l'ellipse
@@ -159,20 +202,17 @@ void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
 
             unsigned char *px = data + y*bpr + x*spp;
             if (pattern_bit(gPattern, x, y)) {
-                // trait du motif : toujours noir
-                px[0]=0; px[1]=0; px[2]=0;
-                if (spp>=4) px[3]=255;
+                PUT_INK(px);                   // trait du motif : l'encre
             } else {
-                                if (gInk == INK_ERASE) {
-                                    px[0]=0; px[1]=0; px[2]=0;
-                                    if (spp>=4) px[3]=0;          // efface
-                                } else if (gTransparentBg) {
-                                    continue;                      // laisser intact
-                                } else {
-                                    px[0]=255; px[1]=255; px[2]=255;
-                                    if (spp>=4) px[3]=255;        // fond blanc opaque
-                                }
-                            }
+                if (gInk == INK_ERASE) {
+                    px[0]=0; px[1]=0; px[2]=0;
+                    if (spp>=4) px[3]=0;       // efface
+                } else if (gTransparentBg) {
+                    continue;                  // laisser intact
+                } else {
+                    PUT_BACK(px);              // fond opaque
+                }
+            }
         }
     }
 }
@@ -198,9 +238,9 @@ void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
         CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
         [[NSColor blackColor] setStroke];
     } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
+        [(gBackColor ? gBackColor : [NSColor whiteColor]) setStroke];
     } else {
-        [[NSColor blackColor] setStroke];
+        [(gInkColor ? gInkColor : [NSColor blackColor]) setStroke];
     }
 
     NSBezierPath *path = [NSBezierPath bezierPath];
@@ -232,16 +272,17 @@ void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSCol
     [flip scaleXBy:1 yBy:-1];
     [flip concat];
 
-    // encre : blanc, noir, ou effacement (comme paint_stroke)
+    // encre : voir paint_stroke, meme logique
     if (gInk == INK_ERASE) {
         CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
         [[NSColor blackColor] setStroke];
     } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
+        [(gBackColor ? gBackColor : [NSColor whiteColor]) setStroke];
     } else {
-        [[NSColor blackColor] setStroke];
+        [(gInkColor ? gInkColor : [NSColor blackColor]) setStroke];
     }
-    (void)color;   // l'encre gouverne la couleur désormais
+    (void)color;   /* le parametre reste pour la signature ; ce sont les
+                    * globales qui gouvernent, comme pour l'outil texte */
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
@@ -286,6 +327,8 @@ void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
     int *ys = malloc(sizeof(int)*cap);
     xs[top]=sx; ys[top]=sy; top++;
 
+    INK_RGB_LOCALS;
+
     while (top > 0) {
         top--;
         int x = xs[top], y = ys[top];
@@ -301,23 +344,17 @@ void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
             continue;   // frontière
 
         if (pattern_bit(gPattern, x, y)) {
-                    // trait du motif : TOUJOURS noir
-                    px[0] = 0; px[1] = 0; px[2] = 0;
-                    if (spp >= 4) px[3] = 255;
+            PUT_INK(px);                          // trait du motif : l'encre
         } else {
             if (gInk == INK_ERASE) {
-                        px[0]=0; px[1]=0; px[2]=0;
-                        if (spp>=4) px[3]=0;              // efface tout
-                    } else if (pattern_bit(gPattern, x, y)) {
-                        px[0]=0; px[1]=0; px[2]=0;        // trait du motif : noir
-                        if (spp>=4) px[3]=255;
-                    } else if (gTransparentBg) {
-                        /* fond : laisser intact */
-                    } else {
-                        px[0]=255; px[1]=255; px[2]=255;  // fond blanc opaque
-                        if (spp>=4) px[3]=255;
-                    }
-                        }
+                px[0]=0; px[1]=0; px[2]=0;
+                if (spp>=4) px[3]=0;              // efface tout
+            } else if (gTransparentBg) {
+                /* fond : laisser intact */
+            } else {
+                PUT_BACK(px);                     // fond opaque
+            }
+        }
 
         if (top + 4 >= cap) {
             cap *= 2;
@@ -342,24 +379,23 @@ void brush_stamp(NSBitmapImageRep *rep, int cx, int cy) {
     unsigned char *data = [rep bitmapData];
     if (!data) return;
     NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+    INK_RGB_LOCALS;
     for (int by = 0; by < 16; by++) {
         for (int bx = 0; bx < 16; bx++) {
             if (!brush_bit(gBrush, bx, by)) continue;
             int x = cx - 8 + bx, y = cy - 8 + by;
             if (x < 0 || x >= W || y < 0 || y >= H) continue;
             unsigned char *px = data + y*bpr + x*spp;
-                        if (gInk == INK_ERASE) {
-                            px[0]=0; px[1]=0; px[2]=0;
-                            if (spp>=4) px[3]=0;
-                        } else if (pattern_bit(gPattern, x, y)) {
-                            px[0]=0; px[1]=0; px[2]=0;          // trait du motif : noir
-                            if (spp>=4) px[3]=255;
-                        } else if (gTransparentBg) {
-                            continue;                            // fond : laisser intact
-                        } else {
-                            px[0]=255; px[1]=255; px[2]=255;    // fond blanc opaque
-                            if (spp>=4) px[3]=255;
-                        }
+            if (gInk == INK_ERASE) {
+                px[0]=0; px[1]=0; px[2]=0;
+                if (spp>=4) px[3]=0;
+            } else if (pattern_bit(gPattern, x, y)) {
+                PUT_INK(px);                     // trait du motif : l'encre
+            } else if (gTransparentBg) {
+                continue;                        // fond : laisser intact
+            } else {
+                PUT_BACK(px);                    // fond opaque
+            }
         }
     }
 }
@@ -392,6 +428,10 @@ void spray_stamp(NSBitmapImageRep *rep, int cx, int cy, int radius, int density)
     NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
     if (radius < 1) radius = 1;
 
+    /* L'aerographe ne peint jamais le fond (voir plus bas) : seule l'encre
+     * lui sert. Le macro en declare deux, le compilateur ecarte l'inutile. */
+    INK_RGB_LOCALS;
+
     for (int i = 0; i < density; i++) {
         double ang = ((double)arc4random_uniform(100000) / 100000.0) * 2.0 * M_PI;
         double rr  = sqrt((double)arc4random_uniform(100000) / 100000.0) * radius;
@@ -404,8 +444,7 @@ void spray_stamp(NSBitmapImageRep *rep, int cx, int cy, int radius, int density)
             px[0]=0; px[1]=0; px[2]=0;
             if (spp>=4) px[3]=0;
         } else if (pattern_bit(gPattern, x, y)) {
-            px[0]=0; px[1]=0; px[2]=0;
-            if (spp>=4) px[3]=255;
+            PUT_INK(px);
         }
         /* Hors motif on ne pose RIEN : contrairement au pinceau, l'aérographe
          * ne peint jamais le fond. Un nuage doit laisser voir ce qu'il y a
@@ -462,14 +501,17 @@ void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *colo
     [flip scaleXBy:1 yBy:-1];
     [flip concat];
 
-    // encre : blanc, noir, ou effacement (transparent)
+    /* gInk reste un MODE — peindre, peindre en fond, effacer. Les deux couleurs
+     * disent seulement AVEC QUOI. En noir et blanc elles valent noir et blanc,
+     * et le comportement d'origine est alors le cas particulier, sans branche
+     * supplementaire nulle part. */
     if (gInk == INK_ERASE) {
         CGContextSetBlendMode([ctx CGContext], kCGBlendModeClear);
         [[NSColor blackColor] setStroke];   // couleur ignorée en mode clear
     } else if (gInk == INK_WHITE) {
-        [[NSColor whiteColor] setStroke];
+        [(gBackColor ? gBackColor : [NSColor whiteColor]) setStroke];
     } else {
-        [[NSColor blackColor] setStroke];
+        [(gInkColor ? gInkColor : [NSColor blackColor]) setStroke];
     }
 
     NSBezierPath *path = [NSBezierPath bezierPath];
@@ -763,6 +805,8 @@ void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
     if (y0 < 0) y0 = 0; if (x0 < 0) x0 = 0;
     if (y1 >= H) y1 = H-1; if (x1 >= W) x1 = W-1;
 
+    INK_RGB_LOCALS;
+
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
             // test point-dans-polygone (ray casting horizontal)
@@ -778,19 +822,17 @@ void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 
             unsigned char *px = data + y*bpr + x*spp;
             if (pattern_bit(gPattern, x, y)) {
-                px[0]=0; px[1]=0; px[2]=0;
-                if (spp>=4) px[3]=255;
+                PUT_INK(px);                   // trait du motif : l'encre
             } else {
-                                if (gInk == INK_ERASE) {
-                                    px[0]=0; px[1]=0; px[2]=0;
-                                    if (spp>=4) px[3]=0;          // efface
-                                } else if (gTransparentBg) {
-                                    continue;                      // laisser intact
-                                } else {
-                                    px[0]=255; px[1]=255; px[2]=255;
-                                    if (spp>=4) px[3]=255;        // fond blanc opaque
-                                }
-                            }
+                if (gInk == INK_ERASE) {
+                    px[0]=0; px[1]=0; px[2]=0;
+                    if (spp>=4) px[3]=0;       // efface
+                } else if (gTransparentBg) {
+                    continue;                  // laisser intact
+                } else {
+                    PUT_BACK(px);              // fond opaque
+                }
+            }
         }
     }
 }

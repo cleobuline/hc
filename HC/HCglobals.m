@@ -13,6 +13,8 @@ int     gBrush        = 5;
 BOOL    gShapeFilled  = NO;
 int     gTextSize     = 16;
 BOOL    gTransparentBg = NO;
+NSColor *gInkColor  = nil;   /* noir  — voir hc_colors_init() */
+NSColor *gBackColor = nil;   /* blanc — idem */
 
 /* ---- Selection et vue ---- */
 Object *gSelected    = NULL;
@@ -27,3 +29,10 @@ int     gClipPtsCount = 0;
 
 /* ---- Cache des bitmaps de peinture ---- */
 NSMutableDictionary *gPaintCache = nil;
+/* Les couleurs ne peuvent pas s'initialiser a la declaration — un initialiseur
+ * global doit etre une constante de compilation. Appele une fois au demarrage,
+ * depuis le meme endroit que le branchement des callbacks du noyau. */
+void hc_colors_init(void) {
+    if (!gInkColor)  gInkColor  = [NSColor blackColor];
+    if (!gBackColor) gBackColor = [NSColor whiteColor];
+}

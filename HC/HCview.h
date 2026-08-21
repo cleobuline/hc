@@ -53,6 +53,7 @@
 - (void)showBrushPalette;
 - (void)newBackground:(id)sender;
 - (void)updateWindowTitle;
+- (void)showDrawColorPanel:(BOOL)ink;
 @end
 
 #endif /* HCview_h */

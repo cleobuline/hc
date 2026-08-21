@@ -23,7 +23,14 @@ extern int      gBrush;
 extern BOOL     gShapeFilled;
 extern int      gTextSize;
 extern BOOL     gTransparentBg;
-
+/* Couleur d'encre et couleur de fond du dessin.
+ *
+ * gInk reste ce qu'il etait : un MODE — peindre, peindre en fond, effacer.
+ * Ces deux couleurs disent seulement AVEC QUOI. En noir et blanc elles valent
+ * noir et blanc, et le comportement d'origine est alors le cas particulier,
+ * sans branche supplementaire nulle part. */
+extern NSColor *gInkColor;
+extern NSColor *gBackColor;
 /* ---- Selection et vue ---- */
 extern Object  *gSelected;
 extern Object  *gFontTarget;   /* objet vise par le panneau des polices */
@@ -37,5 +44,5 @@ extern int      gClipPtsCount;
 
 /* ---- Cache des bitmaps de peinture ---- */
 extern NSMutableDictionary *gPaintCache;
-
+void hc_colors_init(void);
 #endif
