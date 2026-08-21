@@ -776,6 +776,7 @@ static NSURL *app_folder(void)
  * le document avec « cannot open files in the HyperCard Stack format »,
  * meme quand le type est correctement declare dans Info.plist. */
 - (BOOL)application:(NSApplication *)sender openFile:(NSString *)path {
+    NSLog(@"openFile: %@ (gView=%@)", path, gView ? @"pret" : @"nil");
     if (!gView) { gPendingOpen = path; return YES; }   /* trop tot : voir plus haut */
     return [self loadStackAtPath:path];
 }
