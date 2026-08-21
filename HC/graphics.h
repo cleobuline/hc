@@ -46,5 +46,6 @@ void stamp_clipboard(NSBitmapImageRep *rep, NSPoint pos);
 
 void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
                    NSPoint *poly, int npoly);
-
+NSBitmapImageRep *paint_copy(NSBitmapImageRep *src);
+void paint_swap(NSBitmapImageRep *a, NSBitmapImageRep *b);
 #endif /* graphics_h */

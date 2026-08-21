@@ -346,8 +346,11 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                     switch (tc->value) {
                     case TOOL_FILL:  [gView showPatternPalette]; break;
                     case TOOL_BRUSH: [gView showBrushPalette];   break;
-                    case TOOL_SPRAY: [gView showSprayPalette];   break;
-                    case TOOL_PENCIL: case TOOL_ERASER: case TOOL_LINE:
+                        case TOOL_SPRAY: [gView showSprayPalette];   break;
+                        /* La gomme n'ouvre pas la palette d'epaisseur : dans
+                         * HyperCard, son double-clic efface toute la couche. */
+                        case TOOL_ERASER: [gView eraseAll]; break;
+                        case TOOL_PENCIL: case TOOL_LINE:
                     case TOOL_RECT:   case TOOL_OVAL:   case TOOL_FREEFORM:
                         [gView showWidthPalette]; break;
                     default: break;

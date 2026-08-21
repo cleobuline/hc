@@ -62,8 +62,16 @@ static HCDocument *gCurrentDoc = nil;
 
     NSWindow *win = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(140 + dx, 320 - dy, w, h)
-                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                             NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
+                     /* Pas de redimensionnement : la taille d'une fenetre de pile
+                      * est celle de ses cartes, comme dans HyperCard, ou l'on
+                      * passait par « Infos pile » et non par le coin de la
+                      * fenetre. Ce n'est pas qu'une question de fidelite — le
+                      * calque de peinture est cree a la taille de la vue, et le
+                      * laisser changer en cours de route le faisait repartir du
+                      * PNG enregistre, effacant tout ce qui avait ete peint
+                      * depuis la derniere sauvegarde. */
+                     styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                NSWindowStyleMaskMiniaturizable)
                     backing:NSBackingStoreBuffered defer:NO];
     [win setReleasedWhenClosed:NO];
 

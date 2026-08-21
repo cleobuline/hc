@@ -54,6 +54,9 @@
 - (void)newBackground:(id)sender;
 - (void)updateWindowTitle;
 - (void)showDrawColorPanel:(BOOL)ink;
+- (void)eraseAll;
+- (void)beginPaintUndo;
+- (void)undo:(id)sender;
 @end
 
 #endif /* HCview_h */

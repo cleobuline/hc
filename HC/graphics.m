@@ -4,7 +4,8 @@
 
 #import "graphics.h"
 #import "HCpalettes.h"    // brush_bit
-
+     // flushPaintToKernel : l'interface complete, la
+                          // declaration anticipee de HCglobals.h ne suffit pas
 
 static const unsigned char PATTERNS[38][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},   /* 19  blanc     */
@@ -553,14 +554,35 @@ void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width
 
 
 NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
+    NSLog(@"[paint] o=%p demande %dx%d", o, w, h);
     if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
     NSValue *key = [NSValue valueWithPointer:o];
     NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
-    if (rep && ((int)[rep pixelsWide] != w || (int)[rep pixelsHigh] != h)) {
-        [gPaintCache removeObjectForKey:key];
-        rep = nil;
+
+    /* Le calque ne RETRECIT jamais.
+     *
+     * On le recreait des que les dimensions demandees changeaient, et il
+     * repartait du PNG enregistre : tout ce qui avait ete peint depuis la
+     * derniere sauvegarde disparaissait. Pire, reduire la carte amputait le
+     * dessin pour de bon — repasser a la taille d'avant ne retrouvait rien,
+     * l'information n'existait plus.
+     *
+     * Reduire ne doit que MASQUER. Le calque garde donc la plus grande taille
+     * jamais atteinte, et l'on ne le recree que pour l'AGRANDIR, en recopiant
+     * le contenu vivant plutot qu'en relisant le PNG. Un bitmap parfois plus
+     * grand que la carte ne coute qu'un peu de memoire ; le dessin perdu, lui,
+     * pouvait representer une heure de travail. */
+    NSBitmapImageRep *ancien = nil;
+    if (rep) {
+        int ow = (int)[rep pixelsWide], oh = (int)[rep pixelsHigh];
+        if (ow >= w && oh >= h) return rep;    /* assez grand : rien a faire */
+        /* Agrandir dans la seule dimension qui manque retrecirait l'autre :
+         * on prend le maximum des deux, cote par cote. */
+        w = MAX(w, ow);
+        h = MAX(h, oh);
+        ancien = rep;
     }
-    if (rep) return rep;
+
     NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
@@ -578,23 +600,39 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
         [NSGraphicsContext restoreGraphicsState];
     }
 
+    /* Agrandissement : le contenu vivant prime sur le PNG enregistre, qui peut
+     * dater d'avant les derniers coups de crayon. Ancrage en HAUT-gauche, le
+     * meme que pour la relecture ci-dessous. */
+    if (ancien) {
+        NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext setCurrentContext:ctx];
+        [ctx setShouldAntialias:NO];
+        CGFloat ah = [ancien pixelsHigh];
+        [ancien drawAtPoint:NSMakePoint(0, h - ah)];
+        [NSGraphicsContext restoreGraphicsState];
+        NSLog(@"[paint] o=%p RECREE en %dx%d (ancien=%p)", o, w, h, ancien);
+        [gPaintCache setObject:canvas forKey:key];
+        return canvas;
+    }
+
     const char *b64 = hc_paint_of(o);
-        if (b64 && *b64) {
-            NSData *data = [[NSData alloc] initWithBase64EncodedString:
-                             [NSString stringWithUTF8String:b64]
-                             options:NSDataBase64DecodingIgnoreUnknownCharacters];
-            NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
-            if (loaded) {
-                NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
-                [NSGraphicsContext saveGraphicsState];
-                [NSGraphicsContext setCurrentContext:ctx];
-                [ctx setShouldAntialias:NO];
-                // dessiner à taille réelle en HAUT-gauche (pas d'étirement)
-                CGFloat lh = [loaded pixelsHigh];
-                [loaded drawAtPoint:NSMakePoint(0, h - lh)];
-                [NSGraphicsContext restoreGraphicsState];
-            }
+    if (b64 && *b64) {
+        NSData *data = [[NSData alloc] initWithBase64EncodedString:
+                         [NSString stringWithUTF8String:b64]
+                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
+        if (loaded) {
+            NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
+            [NSGraphicsContext saveGraphicsState];
+            [NSGraphicsContext setCurrentContext:ctx];
+            [ctx setShouldAntialias:NO];
+            // dessiner à taille réelle en HAUT-gauche (pas d'étirement)
+            CGFloat lh = [loaded pixelsHigh];
+            [loaded drawAtPoint:NSMakePoint(0, h - lh)];
+            [NSGraphicsContext restoreGraphicsState];
         }
+    }
 
     [gPaintCache setObject:canvas forKey:key];
     return canvas;
@@ -765,6 +803,7 @@ void copy_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 }
 
 void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
+    NSLog(@"[erase_rect] appelée %g,%g → %g,%g", a.x, a.y, b.x, b.y);
 if (!rep) return;
 int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
 unsigned char *data = [rep bitmapData];
@@ -835,4 +874,35 @@ void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
             }
         }
     }
+}
+/* Copie independante d'un calque, pour l'annulation. */
+NSBitmapImageRep *paint_copy(NSBitmapImageRep *src) {
+    if (!src) return nil;
+    NSInteger w = [src pixelsWide], h = [src pixelsHigh];
+    NSBitmapImageRep *dst = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:w pixelsHigh:h
+                   bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+                  colorSpaceName:NSCalibratedRGBColorSpace
+                     bytesPerRow:0 bitsPerPixel:0];
+    if (!dst) return nil;
+    memcpy([dst bitmapData], [src bitmapData], (size_t)[src bytesPerRow] * h);
+    return dst;
+}
+
+/* Echange le contenu de deux calques de meme taille.
+ *
+ * Echanger plutot que recopier rend l'annulation reversible : un second
+ * Cmd-Z retablit, comme dans HyperCard ou le menu alternait « Annuler » et
+ * « Retablir ». On echange le CONTENU et non les pointeurs, car le cache et
+ * les appelants retiennent le rep vivant. */
+void paint_swap(NSBitmapImageRep *a, NSBitmapImageRep *b) {
+    if (!a || !b) return;
+    if ([a pixelsWide] != [b pixelsWide] || [a pixelsHigh] != [b pixelsHigh]) return;
+    size_t n = (size_t)[a bytesPerRow] * [a pixelsHigh];
+    unsigned char *tmp = malloc(n);
+    if (!tmp) return;
+    memcpy(tmp, [a bitmapData], n);
+    memcpy([a bitmapData], [b bitmapData], n);
+    memcpy([b bitmapData], tmp, n);
+    free(tmp);
 }

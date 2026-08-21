@@ -77,7 +77,8 @@ typedef struct {
     BOOL             textActive;
     NSPoint          textPos;
     NSMutableString *textBuf;
-
+    NSBitmapImageRep *paintUndo;
+    Object           *paintUndoLayer;
     /* La carte affichée par CE document.
      *
      * hc_current_card() est unique pour tout le noyau : deux fenêtres ouvertes
@@ -134,6 +135,8 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gTextBuf         (gDoc->textBuf)
 #define gNewCount        (gDoc->newCount)
 #define gDocCard         (gDoc->card)
+#define gPaintUndo       (gDoc->paintUndo)
+#define gPaintUndoLayer  (gDoc->paintUndoLayer)
 
 static NSTextField *gMsgBox = nil; // la message box
 static NSPanel *gMsgPanel = nil;   // sa fenêtre flottante
@@ -2119,9 +2122,17 @@ static BOOL paint_selection_active(void)
     return YES;
 }
 - (void)setFrameSize:(NSSize)newSize {
-    [self flushPaintToKernel];   // encoder les dessins avant que le cache ne soit invalide
+    /* Le cache n'est PAS vide ici.
+     *
+     * On le vidait, et le calque repartait du PNG a la nouvelle taille : en
+     * retrecissant, la gravure suivante enregistrait une version amputee, et
+     * repasser a la taille d'avant ne retrouvait plus rien. Le dessin etait
+     * perdu pour de bon.
+     *
+     * Un calque garde sa taille propre (voir paint_bitmap, qui ne le recree
+     * que pour l'agrandir) : reduire la vue ne fait que MASQUER, comme dans
+     * HyperCard ou la taille des cartes ne touche jamais a la peinture. */
     [super setFrameSize:newSize];
-    [self clearPaintCache];
     [self setNeedsDisplay:YES];
 }
 /* Le panneau de couleurs système a bougé le curseur.
@@ -2159,7 +2170,8 @@ static BOOL paint_selection_active(void)
     if (gColorTarget) {
         if (gColorTarget == 1) gInkColor  = c;
         else                   gBackColor = c;
-        [gToolPanel display];
+       // [gToolPanel display];
+        [(NSView *)[gToolPanel contentView] display];
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -2488,7 +2500,7 @@ static int gColorTarget = 0;
 - (BOOL)isFlipped { return YES; }
 - (void)applyStackSize {
     // 1. D'ABORD encoder les dessins actuels (avant tout redimensionnement)
-    [self flushPaintToKernel];
+    
 
     /* 2. La pile de CETTE vue, et non celle du noyau : sinon une fenêtre
      * prendrait la taille de la pile active, et deux piles de dimensions
@@ -2501,10 +2513,18 @@ static int gColorTarget = 0;
     int w = stack->w > 0 ? stack->w : 512;
     int h = stack->h > 0 ? stack->h : 342;
 
-    // 3. Vider le cache (les bitmaps seront recréés à la nouvelle taille, en rechargeant le PNG)
-    [self clearPaintCache];
+    /* Le cache n'est PAS vide, et rien n'est grave ici.
+     *
+     * On faisait les deux : encoder le calque, puis le jeter pour qu'il
+     * reparte du PNG a la nouvelle taille. En reduisant, la gravure suivante
+     * enregistrait donc une version amputee — et repasser a la taille d'avant
+     * ne retrouvait plus rien, l'information ayant disparu du modele.
+     *
+     * Un calque garde sa taille propre : paint_bitmap ne le recree que pour
+     * l'AGRANDIR. Reduire la carte ne fait que masquer, comme dans HyperCard
+     * ou changer les dimensions d'une pile ne touche jamais a la peinture. */
 
-    // 4. Redimensionner la fenêtre
+    // Redimensionner la fenêtre
     NSWindow *win = [self window];
     if (!win) return;
     NSRect frame = [win frame];
@@ -2572,7 +2592,40 @@ static int gColorTarget = 0;
     [gBrushPanel setContentView:grid];
     [gBrushPanel makeKeyAndOrderFront:nil];
 }
+/* Double-clic sur la gomme : effacer toute la couche courante.
+ *
+ * La couche ACTIVE seulement — fond ou carte selon gEditBackground. Effacer
+ * les deux d'un geste serait le meilleur moyen de perdre un fond partage par
+ * cinquante cartes sans l'avoir voulu.
+ *
+ * Irreversible : il n'y a pas d'annulation sur la peinture. */
+- (void)eraseAll {
+    Object *card = [self documentCard];
+    if (!card) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
 
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) return;
+
+    /* L'effacement vient de la palette, pas d'un clic dans la vue : il ne
+     * passe donc pas par le point d'accroche de mouseDown:, et sans cet appel
+     * Cmd-Z remonterait au geste d'AVANT. C'est justement l'action qui a le
+     * plus besoin d'etre annulable. */
+    [self beginPaintUndo];
+
+    /* Remettre a transparent, pas a blanc : un calque de carte laisse voir le
+     * fond au travers, et le peindre en blanc opaque le masquerait. */
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+    CGContextClearRect([ctx CGContext],
+                       CGRectMake(0, 0, [rep pixelsWide], [rep pixelsHigh]));
+    [NSGraphicsContext restoreGraphicsState];
+
+    [self setNeedsDisplay:YES];
+}
 - (void)showBrushPalette {
     if (!gBrushPanel) [self installBrushPalette];
     else [gBrushPanel makeKeyAndOrderFront:nil];
@@ -2853,6 +2906,39 @@ static int gColorTarget = 0;
     [NSGraphicsContext restoreGraphicsState];
     [self setNeedsDisplay:YES];
 }
+/* La couche que les outils de peinture visent : fond ou carte. */
+- (Object *)paintLayer {
+    Object *card = [self documentCard];
+    if (!card) return NULL;
+    Object *layer = gEditBackground ? card->bg : card;
+    return layer ? layer : card;
+}
+
+/* Copie du calque avant un geste de peinture.
+ *
+ * Au mouseDown UNIQUEMENT, jamais pendant le glissement : une copie prise a
+ * chaque deplacement de souris ne remonterait que d'un pixel. Un seul niveau,
+ * comme dans HyperCard. */
+- (void)beginPaintUndo {
+    Object *layer = [self paintLayer];
+    if (!layer) return;
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) return;
+    gPaintUndo      = paint_copy(rep);
+    gPaintUndoLayer = layer;
+}
+
+- (void)undo:(id)sender {
+    (void)sender;
+    if (!gPaintUndo || !gPaintUndoLayer) { NSBeep(); return; }
+    NSBitmapImageRep *rep = paint_bitmap(gPaintUndoLayer,
+                                         (int)[self bounds].size.width,
+                                         (int)[self bounds].size.height);
+    if (!rep) return;
+    paint_swap(rep, gPaintUndo);   /* reversible : un second Cmd-Z retablit */
+    [self setNeedsDisplay:YES];
+}
 - (void)clearPaintCache {
     /* Le cache est partagé par toutes les fenêtres — il est indexé par objet,
      * pas par pile. Le vider entièrement efface donc aussi les bitmaps des
@@ -2940,6 +3026,7 @@ static int gColorTarget = 0;
         NSData *png = [fresh representationUsingType:NSBitmapImageFileTypePNG
                                           properties:@{}];
         NSString *b64 = [png base64EncodedStringWithOptions:0];
+        NSLog(@"[flush] o=%p grave %ldx%ld", o, (long)w, (long)h);
         hc_set_paint(o, [b64 UTF8String]);
     }
 }
@@ -2990,6 +3077,16 @@ static int gColorTarget = 0;
         }
         return;
     }
+
+    /* ---------- outils de trace libre ---------- */
+    /* Copie d'annulation avant TOUT geste de peinture — un seul endroit
+     * plutot qu'un par branche : un outil ajoute plus tard serait sinon le
+     * seul a ne pas s'annuler, et personne ne s'en apercevrait avant
+     * longtemps. */
+    if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
+        gTool == TOOL_SPRAY  || gTool == TOOL_LINE  || gTool == TOOL_RECT   ||
+        gTool == TOOL_OVAL   || gTool == TOOL_FILL  || gTool == TOOL_FREEFORM)
+        [self beginPaintUndo];
 
     /* ---------- outils de trace libre ---------- */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||

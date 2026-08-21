@@ -85,6 +85,22 @@ static NSMenu *find_file_menu(void)
     [self.window setContentView:view];
     [self.window setTitle:@"HyperCard"];
 
+    /* Ni redimensionnement, ni plein ecran : la taille d'une fenetre de pile
+     * est celle de ses cartes, comme dans HyperCard, ou l'on passait par
+     * « Infos pile » et non par le coin de la fenetre.
+     *
+     * Ce n'est pas qu'une question de fidelite. Le calque de peinture est cree
+     * a la taille de la vue, et le laisser changer en cours de route le fait
+     * repartir du PNG enregistre : tout ce qui a ete peint depuis la derniere
+     * sauvegarde disparait. Voir paint_bitmap.
+     *
+     * Cette fenetre-ci vient du nib, donc son masque s'y regle aussi — on le
+     * corrige ici pour que la raison soit lisible avec le reste du code. Les
+     * piles ouvertes ensuite passent par HCDocument, qui fait de meme. */
+    [self.window setStyleMask:([self.window styleMask]
+                               & ~NSWindowStyleMaskResizable)];
+    [self.window setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
+
     /* Le document initial, autour de la fenêtre venue du nib.
      *
      * Une seule pile est ouverte pour l'instant, mais elle passe déjà par
