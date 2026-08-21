@@ -554,7 +554,7 @@ void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width
 
 
 NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
-    NSLog(@"[paint] o=%p demande %dx%d", o, w, h);
+ 
     if (!gPaintCache) gPaintCache = [NSMutableDictionary dictionary];
     NSValue *key = [NSValue valueWithPointer:o];
     NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
@@ -611,7 +611,7 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
         CGFloat ah = [ancien pixelsHigh];
         [ancien drawAtPoint:NSMakePoint(0, h - ah)];
         [NSGraphicsContext restoreGraphicsState];
-        NSLog(@"[paint] o=%p RECREE en %dx%d (ancien=%p)", o, w, h, ancien);
+         
         [gPaintCache setObject:canvas forKey:key];
         return canvas;
     }
@@ -803,7 +803,7 @@ void copy_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 }
 
 void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
-    NSLog(@"[erase_rect] appelée %g,%g → %g,%g", a.x, a.y, b.x, b.y);
+   
 if (!rep) return;
 int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
 unsigned char *data = [rep bitmapData];
