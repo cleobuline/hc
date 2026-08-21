@@ -2322,9 +2322,11 @@ static int gColorTarget = 0;
     gColorTarget = ink ? 1 : 2;
     NSColorPanel *p = [NSColorPanel sharedColorPanel];
     [p setColor:(ink ? gInkColor : gBackColor)];
-    [p setTarget:self];
-    [p setAction:@selector(changeColor:)];
-    [p makeKeyAndOrderFront:nil];
+    /* Pas de setTarget:/setAction: — NSColorPanel envoie changeColor: par la
+     * chaine de repondants. Une cible explicite cree un second chemin qui
+     * survit a la vue : le panneau tirait alors sur un objet libere. */
+    [[self window] makeFirstResponder:self];
+    [p orderFront:nil];
 }
 // gras / italique / souligne passent par la
 - (void)changeAttributes:(id)sender {
