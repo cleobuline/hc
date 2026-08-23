@@ -1760,18 +1760,30 @@ static void cocoa_play(const char *name) {
  * monopolise le fil principal : rien ne s'affiche avant la fin du
  * gestionnaire, et le de apparait directement en bas de la carte. */
 static void cocoa_idle(void) {
+    /* Ne rien faire de coûteux quand rien n'a changé.
+     *
+     * L'ancienne version dormait 1/60 s à CHAQUE tour de boucle, plus un
+     * redessin complet et un flush de transaction. C'était juste pour les
+     * animations — la chute du dé serait instantanée sans cela — mais toutes
+     * les boucles le payaient, y compris celles qui ne dessinent rien. Une
+     * boucle de calcul pur coûtait 45 ms le tour, dont 45 ms d'attente.
+     *
+     * Cocoa tient déjà le compte de ce qui doit être repeint : les
+     * setNeedsDisplay: disséminés dans ce fichier alimentent needsDisplay.
+     * On s'en sert comme aiguillage. */
+    if (![gView needsDisplay]) return;
+
     [gView display];              // drawRect: tout de suite, dans le backing store
     [[gView window] displayIfNeeded];
 
-    /* Et LA, le point qui fait toute la difference : la vue est layer-backed,
-     * donc le contenu du calque n'est envoye au serveur de fenetres qu'a la
-     * fin du cycle de run loop. Comme dieFall ne rend jamais la main, les
-     * soixante images s'empileraient dans le calque et seule la derniere
-     * serait visible : on verrait le de partir, puis arriver, sans la chute.
-     * CATransaction flush valide la transaction immediatement. */
+    /* La vue est layer-backed, donc le contenu du calque n'est envoyé au
+     * serveur de fenêtres qu'à la fin du cycle de run loop. Comme dieFall ne
+     * rend jamais la main, les soixante images s'empileraient dans le calque
+     * et seule la dernière serait visible : on verrait le dé partir, puis
+     * arriver, sans la chute. CATransaction flush valide immédiatement. */
     [CATransaction flush];
 
-    [NSThread sleepForTimeInterval:1.0 / 60.0]; // sinon la chute est instantanee
+    [NSThread sleepForTimeInterval:1.0 / 60.0]; // sinon la chute est instantanée
 }
 static NSFont *text_font(void) {
     if (!gTextFont) {

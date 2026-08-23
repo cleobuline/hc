@@ -12,7 +12,8 @@
 #include <math.h>
 #include <time.h>
 #include <strings.h>
-
+#include "hct_bloc.h"
+#include "hct_eval.h"
 /* ==================== outils chaînes ==================== */
 
 static char *dupstr(const char *s)
@@ -4156,13 +4157,285 @@ static void parse_expr(const char **p, char *out, int outlen)
     ARENA_FREE;
 }
 
+/* ==================================================================
+ * PONT VERS L'INTERPRÉTEUR v3
+ *
+ * RÉPARTITION DU TRAVAIL PENDANT LA TRANSITION
+ *
+ * La v3 prend : littéraux, constantes, variables, les dix rangs
+ * d'opérateurs, les morceaux, l'arithmétique, et les fonctions purement
+ * calculatoires (abs, sqrt, min, max, offset, round, length…).
+ *
+ * hc_core.c garde : les références d'objets, les propriétés, les
+ * gestionnaires écrits en HyperTalk, et les fonctions du monde. La v3 les
+ * lui renvoie par le rappel « recours », qui reconstitue le texte source
+ * du sous-arbre et le confie à term_value — laquelle sait déjà tout faire.
+ *
+ * ------------------------------------------------------------------
+ * LA FRAGILITÉ DE CE PONT, ET POURQUOI ELLE EST ACCEPTABLE
+ *
+ * La reconstitution du texte ne peut restituer que ce qui figure dans
+ * l'arbre. Tout ce que l'analyseur consomme SANS le ranger dans un nœud
+ * disparaît : les parenthèses d'un appel, le « the » facultatif. Chaque
+ * cas se rattrape ici, au coup par coup — voir v3_recours.
+ *
+ * C'est le prix d'une greffe progressive. Le pont disparaîtra quand la v3
+ * saura résoudre les objets et appeler les gestionnaires elle-même, sans
+ * repasser par le texte.
+ * ================================================================== */
+
+/* Reconstitue le texte source d'un sous-arbre.
+ *
+ * Exact, parce que les jetons pointent DANS le script d'origine et qu'une
+ * référence y est contiguë : du premier au dernier octet couvert. */
+static void v3_source(const HctNoeud *n, char *out, int outlen)
+{
+    const char *deb = NULL, *fin = NULL;
+    const HctNoeud *pile[256];
+    int np = 0;
+
+    out[0] = '\0';
+    if (!n) return;
+    pile[np++] = n;
+
+    while (np) {
+        const HctNoeud *c = pile[--np];
+        if (c->jeton.deb && c->jeton.len >= 0) {
+            const char *d = c->jeton.deb;
+            const char *f = d + c->jeton.len;
+            if (!deb || d < deb) deb = d;
+            if (!fin || f > fin) fin = f;
+        }
+        for (int i = 0; i < c->nfils && np < 256; i++)
+            if (c->fils[i]) pile[np++] = c->fils[i];
+    }
+    if (!deb || !fin || fin <= deb) return;
+
+    int len = (int)(fin - deb);
+    if (len >= outlen) len = outlen - 1;
+    memcpy(out, deb, (size_t)len);
+    out[len] = '\0';
+}
+
+/* --- variables ------------------------------------------------------ */
+
+static int v3_lit_var(void *d, const char *nom, HctValeur *out)
+{
+    (void)d;
+    const char *v = var_get(nom);
+    if (!v) return 0;
+    *out = hct_val_texte(v);
+    return 1;
+}
+
+static int v3_ecrit_var(void *d, const char *nom, const char *val)
+{
+    (void)d;
+    var_set(nom, val ? val : "");
+    return 1;
+}
+
+/* --- recours : objets, propriétés, tout ce que la v3 ne fait pas ----- */
+
+/* Profondeur du recours.
+ *
+ * Le recours appelle term_value, qui peut à son tour appeler eval_expr —
+ * laquelle repasse par le recours. L'imbrication est légitime (une fonction
+ * HyperTalk qui en appelle une autre), mais rien ne garantit qu'une tournure
+ * inattendue ne bouclera pas sur elle-même. Le plafond transforme une boucle
+ * infinie, qui gèlerait l'application, en une erreur visible. */
+static int g_v3_recours_prof = 0;
+
+static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
+{
+    (void)d;
+    /* txt est plus grand que refait, pour que la recomposition d'un appel
+     * — qui ajoute un espace et une parenthèse — y tienne toujours. */
+    char txt[1200], val[HC_VAL];
+
+    if (g_v3_recours_prof > 64) {
+        emit(HC_ERR, "   !! évaluation trop imbriquée");
+        *out = hct_val_texte("");
+        return 1;
+    }
+
+    v3_source(n, txt, sizeof txt);
+    if (!txt[0]) return 0;
+
+    /* Un appel de fonction demande DEUX rattrapages.
+     *
+     * 1. Les parenthèses ne sont dans aucun nœud : l'arbre ne retient que le
+     *    nom et les arguments. La reconstitution rendait « dayNameData » au
+     *    lieu de « dayNameData() », et « FindHandler("a","b",c » sans sa
+     *    parenthèse fermante.
+     *
+     * 2. Et il faut un ESPACE avant la parenthèse ouvrante. next_word() de
+     *    hc_core.c ne découpe que sur les blancs : avec « dayNameData() »
+     *    elle croit que la fonction s'appelle « dayNameData() », parenthèses
+     *    comprises, et ne trouve évidemment rien. Avec « dayNameData () »
+     *    elle lit le nom, puis reconnaît la liste d'arguments.
+     *
+     * Sans ces deux corrections, le calendrier affichait « dayNameData() »
+     * en toutes lettres à la place de ses jours de la semaine. */
+    if (n->genre == HCTN_APPEL) {
+        /* Recomposition en place, par décalage : un tampon intermédiaire
+         * obligeait à le dimensionner plus grand que txt, puis à recopier
+         * dans txt qui redevenait trop petit — le compilateur avait raison
+         * de protester à chaque tour. Ici rien n'est copié en aller-retour :
+         * on insère l'espace, puis on ajoute la parenthèse fermante. */
+        size_t l = strlen(txt);
+        char *par = strchr(txt, '(');
+
+        if (par && l + 2 < sizeof txt) {
+            size_t pos = (size_t)(par - txt);
+            memmove(txt + pos + 1, txt + pos, l - pos + 1);  /* zéro compris */
+            txt[pos] = ' ';
+            l++;
+            txt[l] = ')';
+            txt[l + 1] = '\0';
+        } else if (!par && l + 3 < sizeof txt) {
+            txt[l] = ' '; txt[l + 1] = '('; txt[l + 2] = ')'; txt[l + 3] = '\0';
+        }
+    }
+
+    g_v3_recours_prof++;
+    val[0] = '\0';
+    term_value(txt, val, sizeof val);
+
+    /* L'analyseur consomme « the » sans le ranger dans aucun nœud : la
+     * reconstitution rend donc « target » au lieu de « the target », et
+     * « value of x » au lieu de « the value of x ». Or term_value distingue
+     * les deux formes pour plusieurs tournures.
+     *
+     * Plutôt que de modifier l'analyseur — le « the » est bien facultatif
+     * dans la grammaire — on réessaie avec le mot quand la première lecture
+     * ne rend rien. Une propriété qui vaut légitimement la chaîne vide
+     * repassera par ce chemin sans dommage : le second essai rendra vide
+     * lui aussi. */
+    if (!val[0]) {
+        char avec_the[1216];
+        snprintf(avec_the, sizeof avec_the, "the %s", txt);
+        term_value(avec_the, val, sizeof val);
+    }
+    g_v3_recours_prof--;
+
+    *out = hct_val_texte(val);
+    return 1;
+}
+
+/* --- fonctions du monde --------------------------------------------- */
+
+static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
+                       HctValeur *out)
+{
+    (void)d;
+    char buf[HC_VAL];
+
+    /* itemDelimiter : demandé avant chaque découpage en items. On le sert
+     * directement, c'est une globale de hc_core.c. */
+    if (ci_equal(nom, "itemDelimiter")) {
+        char sep[2] = { g_item_delim, 0 };
+        *out = hct_val_texte(sep);
+        return 1;
+    }
+
+    if (nargs == 0) {
+        /* Une seule porte : term_value.
+         *
+         * J'avais d'abord essayé call_function, ce qui échouait pour deux
+         * raisons cumulées. D'une part elle prend le PREMIER MOT de la
+         * chaîne : avec « the mouseLoc » elle cherche une fonction nommée
+         * « the ». D'autre part « the mouseLoc » n'y figure pas du tout —
+         * c'est host_global qui la sert, atteinte seulement par
+         * term_value_body.
+         *
+         * Or term_value_body appelle elle-même call_function en son sein.
+         * Passer par term_value couvre donc les deux chemins, et c'est la
+         * fonction que hc_core.c utilise partout ailleurs pour la même
+         * question. Faire autrement était une complication inutile.
+         *
+         * term_value rend le texte tel quel quand elle ne reconnaît rien :
+         * on ne retient donc que si le résultat DIFFÈRE de la demande. */
+        char appel[160];
+        snprintf(appel, sizeof appel, "the %s", nom);
+
+        buf[0] = '\0';
+        term_value(appel, buf, sizeof buf);
+        if (buf[0] && strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
+            *out = hct_val_texte(buf);
+            return 1;
+        }
+        return 0;
+    }
+
+    /* Fonctions du monde à un argument NUMÉRIQUE — param(n) et consorts.
+     * On s'en tient au numérique : reconstruire un argument textuel serait
+     * fragile dès qu'il contient un guillemet. Le reste passe par le
+     * recours, qui dispose du texte source exact. */
+    if (nargs == 1 && hct_est_nombre(args[0].txt)) {
+        char appel[160];
+        snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
+        buf[0] = '\0';
+        if (call_function(appel, buf, sizeof buf)) {
+            *out = hct_val_texte(buf);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* --- l'hôte assemblé ------------------------------------------------- */
+
+static HctHote v3_hote(void)
+{
+    HctHote h;
+    memset(&h, 0, sizeof h);
+    h.lit_var   = v3_lit_var;
+    h.ecrit_var = v3_ecrit_var;
+    h.fonction  = v3_fonction;
+    h.recours   = v3_recours;
+    return h;
+}
+
+/* ==================================================================
+ * eval_expr, version v3 — remplace l'ancienne
+ *
+ * Une réserve par appel : l'arbre naît et meurt avec l'expression. Plus
+ * coûteux qu'un arbre mis en cache, mais correct — on optimisera quand on
+ * aura MESURÉ, pas avant.
+ * ================================================================== */
+
 static void eval_expr(const char *s, char *out, int outlen)
 {
-    ARENA_MARK;
-    const char *p = s;
-    parse_expr(&p, out, outlen);
-    ARENA_FREE;
-    ARENA_FREE;
+    out[0] = '\0';
+    if (!s || !*s) return;
+
+    HctLot lot;
+    HctReserve reserve;
+    memset(&reserve, 0, sizeof reserve);
+
+    hct_lex(s, &lot);
+
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &lot, &reserve);
+    HctNoeud *n = hct_expression(&a);
+
+    HctContexte ctx;
+    hct_ctx_init(&ctx, v3_hote());
+    HctValeur v = hct_evalue(&ctx, n);
+
+    if (ctx.erreur) {
+        /* Le nœud fautif porte sa ligne et sa colonne : c'est ce qui
+         * permettra de surligner la faute dans l'éditeur de script. */
+        emit(HC_ERR, "   !! %s (colonne %d)", ctx.erreur,
+             ctx.fautif ? ctx.fautif->jeton.col : 0);
+    } else {
+        snprintf(out, (size_t)outlen, "%s", v.txt);
+    }
+
+    hct_val_libere(&v);
+    hct_reserve_libere(&reserve);
+    hct_lot_libere(&lot);
 }
 
 /* Comme eval_expr, mais râle si l'analyseur n'a pas tout mangé.

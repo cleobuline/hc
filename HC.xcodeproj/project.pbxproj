@@ -12,6 +12,15 @@
 		4D482C29303899720071BC2B /* stack.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4D482C27303899710071BC2B /* stack.icns */; };
 		4D482C2D3038BE9B0071BC2B /* HCpaint.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C2C3038BE9B0071BC2B /* HCpaint.m */; };
 		4D482C35303913500071BC2B /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D482C34303913350071BC2B /* libz.tbd */; };
+		4D482C49303B585A0071BC2B /* hct_arbre.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C38303B58530071BC2B /* hct_arbre.c */; };
+		4D482C4A303B585A0071BC2B /* hct_cmd.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C3A303B58540071BC2B /* hct_cmd.c */; };
+		4D482C4B303B585A0071BC2B /* hct_eval.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C3B303B58540071BC2B /* hct_eval.c */; };
+		4D482C4C303B585A0071BC2B /* hct_lex.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C3C303B58550071BC2B /* hct_lex.c */; };
+		4D482C4D303B585A0071BC2B /* hct_val.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C3E303B58550071BC2B /* hct_val.c */; };
+		4D482C4E303B585A0071BC2B /* hct_bloc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C40303B58560071BC2B /* hct_bloc.c */; };
+		4D482C4F303B585A0071BC2B /* hct_expr.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C44303B58580071BC2B /* hct_expr.c */; };
+		4D482C50303B585A0071BC2B /* hct_exec.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C46303B58590071BC2B /* hct_exec.c */; };
+		4D482C51303B585A0071BC2B /* hct_chunk.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C47303B58590071BC2B /* hct_chunk.c */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
@@ -42,6 +51,24 @@
 		4D482C2C3038BE9B0071BC2B /* HCpaint.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCpaint.m; sourceTree = "<group>"; };
 		4D482C2F3038BF1E0071BC2B /* HCpaint.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCpaint.h; sourceTree = "<group>"; };
 		4D482C34303913350071BC2B /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
+		4D482C37303B58530071BC2B /* hct_val.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_val.h; sourceTree = "<group>"; };
+		4D482C38303B58530071BC2B /* hct_arbre.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_arbre.c; sourceTree = "<group>"; };
+		4D482C39303B58530071BC2B /* hct_expr.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_expr.h; sourceTree = "<group>"; };
+		4D482C3A303B58540071BC2B /* hct_cmd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_cmd.c; sourceTree = "<group>"; };
+		4D482C3B303B58540071BC2B /* hct_eval.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_eval.c; sourceTree = "<group>"; };
+		4D482C3C303B58550071BC2B /* hct_lex.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_lex.c; sourceTree = "<group>"; };
+		4D482C3D303B58550071BC2B /* hct_arbre.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_arbre.h; sourceTree = "<group>"; };
+		4D482C3E303B58550071BC2B /* hct_val.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_val.c; sourceTree = "<group>"; };
+		4D482C3F303B58560071BC2B /* hct_cmd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_cmd.h; sourceTree = "<group>"; };
+		4D482C40303B58560071BC2B /* hct_bloc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_bloc.c; sourceTree = "<group>"; };
+		4D482C41303B58570071BC2B /* hct_bloc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_bloc.h; sourceTree = "<group>"; };
+		4D482C42303B58570071BC2B /* hct_lex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_lex.h; sourceTree = "<group>"; };
+		4D482C43303B58580071BC2B /* hct_exec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_exec.h; sourceTree = "<group>"; };
+		4D482C44303B58580071BC2B /* hct_expr.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_expr.c; sourceTree = "<group>"; };
+		4D482C45303B58580071BC2B /* hct_chunk.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_chunk.h; sourceTree = "<group>"; };
+		4D482C46303B58590071BC2B /* hct_exec.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_exec.c; sourceTree = "<group>"; };
+		4D482C47303B58590071BC2B /* hct_chunk.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_chunk.c; sourceTree = "<group>"; };
+		4D482C48303B58590071BC2B /* hct_eval.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_eval.h; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
@@ -142,6 +169,24 @@
 				4DF856E030343BE0009E17FB /* HCvisual.h */,
 				4DF856DF30343BE0009E17FB /* HCvisual.m */,
 				4DF28F943029393400D7740C /* graphics.m */,
+				4D482C38303B58530071BC2B /* hct_arbre.c */,
+				4D482C3D303B58550071BC2B /* hct_arbre.h */,
+				4D482C40303B58560071BC2B /* hct_bloc.c */,
+				4D482C41303B58570071BC2B /* hct_bloc.h */,
+				4D482C47303B58590071BC2B /* hct_chunk.c */,
+				4D482C45303B58580071BC2B /* hct_chunk.h */,
+				4D482C3A303B58540071BC2B /* hct_cmd.c */,
+				4D482C3F303B58560071BC2B /* hct_cmd.h */,
+				4D482C3B303B58540071BC2B /* hct_eval.c */,
+				4D482C48303B58590071BC2B /* hct_eval.h */,
+				4D482C46303B58590071BC2B /* hct_exec.c */,
+				4D482C43303B58580071BC2B /* hct_exec.h */,
+				4D482C44303B58580071BC2B /* hct_expr.c */,
+				4D482C39303B58530071BC2B /* hct_expr.h */,
+				4D482C3C303B58550071BC2B /* hct_lex.c */,
+				4D482C42303B58570071BC2B /* hct_lex.h */,
+				4D482C3E303B58550071BC2B /* hct_val.c */,
+				4D482C37303B58530071BC2B /* hct_val.h */,
 				4D482C2C3038BE9B0071BC2B /* HCpaint.m */,
 				4D482C2F3038BF1E0071BC2B /* HCpaint.h */,
 				4DF5FB8B301FEE35006AE901 /* HCdialogs.h */,
@@ -253,16 +298,25 @@
 				4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */,
 				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
 				4DF5FB653014C005006AE901 /* hc_file.c in Sources */,
+				4D482C50303B585A0071BC2B /* hct_exec.c in Sources */,
 				4DF5FB573014BE7E006AE901 /* main.m in Sources */,
+				4D482C4E303B585A0071BC2B /* hct_bloc.c in Sources */,
+				4D482C4F303B585A0071BC2B /* hct_expr.c in Sources */,
 				4DF5FB4F3014BE74006AE901 /* AppDelegate.m in Sources */,
+				4D482C4A303B585A0071BC2B /* hct_cmd.c in Sources */,
+				4D482C4C303B585A0071BC2B /* hct_lex.c in Sources */,
 				4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */,
 				4DF5FB8D301FEE6F006AE901 /* HCdialogs.m in Sources */,
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
 				4D482C2D3038BE9B0071BC2B /* HCpaint.m in Sources */,
+				4D482C4D303B585A0071BC2B /* hct_val.c in Sources */,
 				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
 				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,
 				4DF856E130343BE0009E17FB /* HCvisual.m in Sources */,
+				4D482C4B303B585A0071BC2B /* hct_eval.c in Sources */,
 				4DF28F953029393400D7740C /* graphics.m in Sources */,
+				4D482C51303B585A0071BC2B /* hct_chunk.c in Sources */,
+				4D482C49303B585A0071BC2B /* hct_arbre.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
