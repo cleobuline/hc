@@ -800,6 +800,8 @@ int hc_delete_card(Object *card)
     int idx = card_index(stack, card);
     if (idx < 0) return 0;
 
+    Object *bg = card->bg;                 /* retenu AVANT la libération */
+
     for (int i = 0; i < stack->nparts; i++) {
         if (stack->parts[i] != card) continue;
         for (int j = i; j < stack->nparts - 1; j++)
@@ -815,6 +817,29 @@ int hc_delete_card(Object *card)
     }
 
     hc_free(card);
+
+    /* Un fond n'existe que par ses cartes : HyperCard n'en crée jamais un seul
+     * et le fait disparaître avec la dernière carte qui s'y appuie. Sans ce
+     * ménage, le fond survit en mémoire — « the number of backgrounds » le
+     * compte encore, et « go background "x" » peut désigner cette coquille
+     * vide plutôt que le fond homonyme réellement utilisé. */
+    if (bg && bg->type == OBJ_BACKGROUND) {
+        int reste = 0;
+        for (int i = 0; i < stack->nparts && !reste; i++)
+            if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
+                reste = 1;
+        if (!reste) {
+            for (int i = 0; i < stack->nparts; i++) {
+                if (stack->parts[i] != bg) continue;
+                for (int j = i; j < stack->nparts - 1; j++)
+                    stack->parts[j] = stack->parts[j + 1];
+                stack->nparts--;
+                break;
+            }
+            hc_free(bg);
+        }
+    }
+
     return 1;
 }
 
@@ -1297,12 +1322,20 @@ static Object *resolve(const char *ref)
                     return stack->parts[i];
             return NULL;
         }
-        if (isdigit((unsigned char)*ref)) {
-            int n = atoi(ref) - 1;          /* 1-based en HyperTalk */
-            for (int i = 0; stack && i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_BACKGROUND && n-- == 0)
-                    return stack->parts[i];
-            return NULL;
+          {
+            const char *num = ref;
+            char val[128];
+            if (!isdigit((unsigned char)*ref)) {
+                eval_id_token(ref, val, sizeof val);
+                if (val[0] && isdigit((unsigned char)val[0])) num = val;
+            }
+            if (isdigit((unsigned char)*num)) {
+                int n = atoi(num) - 1;          /* 1-based en HyperTalk */
+                for (int i = 0; stack && i < stack->nparts; i++)
+                    if (stack->parts[i]->type == OBJ_BACKGROUND && n-- == 0)
+                        return stack->parts[i];
+                return NULL;
+            }
         }
         /* « go background commun » : nom de fond sans guillemets. */
         if (!ci_word(ref, "button") && !ci_word(ref, "btn") &&
@@ -1387,6 +1420,62 @@ static Object *resolve(const char *ref)
         if (!*w || ci_word(w, "card") || ci_word(w, "cd")) return card;
         if (ci_word(w, "stack")) return stack;
         if (ci_word(w, "background") || ci_word(w, "bg")) return bg;
+    }
+    /* « next/previous background » : HyperCard ne se tient jamais sur un fond,
+     * on rend donc une CARTE — la première de ce fond. On balaie l'ordre des
+     * cartes jusqu'à en croiser une dont le fond diffère, avec bouclage comme
+     * « go next card ». Sans ceci, « next » ignorait le mot qui le suit et
+     * « go next background » se comportait comme « go next card ». */
+    /* « next/previous/first/last background » : HyperCard ne se tient jamais
+     * sur un fond, on rend donc une CARTE — la première de ce fond. Sans ceci,
+     * « next » et consorts ignoraient le mot qui les suit, et « go next
+     * background » se comportait comme « go next card ». */
+    {
+        const char *rel = NULL;
+        int pas = 0, absolu = 0;    /* absolu : 1 = premier fond, -1 = dernier */
+        if      (ci_word(ref, "next"))     { rel = skip_spaces(ref + 4); pas = +1; }
+        else if (ci_word(ref, "previous")) { rel = skip_spaces(ref + 8); pas = -1; }
+        else if (ci_word(ref, "prev"))     { rel = skip_spaces(ref + 4); pas = -1; }
+        else if (ci_word(ref, "first"))    { rel = skip_spaces(ref + 5); absolu = +1; }
+        else if (ci_word(ref, "last"))     { rel = skip_spaces(ref + 4); absolu = -1; }
+
+        if (rel && (ci_word(rel, "background") || ci_word(rel, "bg"))) {
+
+            /* first/last : le fond visé est absolu, pas relatif à la carte
+             * courante. On prend le premier ou le dernier OBJ_BACKGROUND de
+             * la pile, puis sa première carte. */
+            if (absolu) {
+                Object *cible = NULL;
+                for (int i = 0; i < stack->nparts; i++) {
+                    Object *o = stack->parts[i];
+                    if (o->type != OBJ_BACKGROUND) continue;
+                    if (absolu > 0) { cible = o; break; }
+                    cible = o;                     /* on garde le dernier vu */
+                }
+                if (!cible) return NULL;
+                for (int j = 0; j < card_count(stack); j++) {
+                    Object *d = nth_card(stack, j);
+                    if (d && d->bg == cible) return d;
+                }
+                return NULL;
+            }
+
+            /* next/previous : on balaie l'ordre des cartes jusqu'à en croiser
+             * une dont le fond diffère, avec bouclage comme « go next card ». */
+            int n = card_count(stack);
+            int i = card_index(stack, card);
+            if (n <= 0 || i < 0) return NULL;
+            for (int k = 1; k <= n; k++) {
+                Object *c = nth_card(stack, ((i + pas * k) % n + n) % n);
+                if (!c || c->bg == bg) continue;
+                for (int j = 0; j < n; j++) {      /* première carte de CE fond */
+                    Object *d = nth_card(stack, j);
+                    if (d && d->bg == c->bg) return d;
+                }
+                return c;
+            }
+            return card;    /* un seul fond : on reste sur place, sans erreur */
+        }
     }
     if (ci_word(ref, "next"))  return nth_card(stack, card_index(stack, card) + 1);
     if (ci_word(ref, "prev") || ci_word(ref, "previous"))
@@ -3290,9 +3379,45 @@ static void term_value_body(const char *t, char *out, int outlen)
             const char *k = skip_spaces(w + 6);
             if (ci_word(k, "of")) k = skip_spaces(k + 2);
 
+            /* the number of cards [of <fond|pile>] : sans complément, les
+             * cartes de la pile courante ; avec un fond, les seules cartes
+             * qui s'y appuient. Le complément était ignoré, si bien que
+             * « the number of cards of bg 3 » rendait le total de la pile. */
             if (ci_word(k, "cards") || ci_word(k, "cds")) {
-                snprintf(out, outlen, "%d",
-                         card_count(g_current_card ? g_current_card->owner : NULL));
+                const char *r = k;
+                while (*r && !isspace((unsigned char)*r)) r++;
+                r = skip_spaces(r);
+                if (ci_word(r, "of") || ci_word(r, "in")) r = skip_spaces(r + 2);
+
+                Object *p = g_current_card ? g_current_card->owner : NULL;
+                while (p && p->type != OBJ_STACK) p = p->owner;
+
+                if (*r) {
+                    Object *o = resolve(r);
+                    if (o && o->type == OBJ_BACKGROUND) {
+                        int n = 0;
+                        for (int i = 0; p && i < p->nparts; i++)
+                            if (p->parts[i]->type == OBJ_CARD && p->parts[i]->bg == o) n++;
+                        snprintf(out, outlen, "%d", n);
+                        return;
+                    }
+                    if (o && o->type == OBJ_STACK) p = o;
+                }
+                snprintf(out, outlen, "%d", card_count(p));
+                return;
+            }
+            /* the number of backgrounds : les fonds de la pile courante.
+             * Placé avant la branche « bg buttons/fields » de plus bas, qui
+             * reconnaît « background » comme une portée et non comme le type
+             * à compter — sans cette priorité, « backgrounds » y tomberait. */
+            if (ci_word(k, "backgrounds") || ci_word(k, "bkgnds") ||
+                ci_word(k, "bgs")) {
+                Object *p = g_current_card ? g_current_card->owner : NULL;
+                while (p && p->type != OBJ_STACK) p = p->owner;
+                int n = 0;
+                if (p) for (int i = 0; i < p->nparts; i++)
+                    if (p->parts[i]->type == OBJ_BACKGROUND) n++;
+                snprintf(out, outlen, "%d", n);
                 return;
             }
             /* the number of [card|bg] buttons|fields [of <carte>]

@@ -10,6 +10,8 @@
 		4D3BF8F530384BAB0052F85B /* HCprint.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D3BF8F430384BAB0052F85B /* HCprint.m */; };
 		4D482C28303899720071BC2B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4D482C26303899710071BC2B /* AppIcon.icns */; };
 		4D482C29303899720071BC2B /* stack.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4D482C27303899710071BC2B /* stack.icns */; };
+		4D482C2D3038BE9B0071BC2B /* HCpaint.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C2C3038BE9B0071BC2B /* HCpaint.m */; };
+		4D482C35303913500071BC2B /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D482C34303913350071BC2B /* libz.tbd */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
@@ -37,6 +39,9 @@
 		4D3BF8F430384BAB0052F85B /* HCprint.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCprint.m; sourceTree = "<group>"; };
 		4D482C26303899710071BC2B /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		4D482C27303899710071BC2B /* stack.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = stack.icns; sourceTree = "<group>"; };
+		4D482C2C3038BE9B0071BC2B /* HCpaint.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCpaint.m; sourceTree = "<group>"; };
+		4D482C2F3038BF1E0071BC2B /* HCpaint.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCpaint.h; sourceTree = "<group>"; };
+		4D482C34303913350071BC2B /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
@@ -80,12 +85,21 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D482C35303913500071BC2B /* libz.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		4D482C33303913340071BC2B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4D482C34303913350071BC2B /* libz.tbd */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		4DF28F863023DD3700D7740C /* sounds */ = {
 			isa = PBXGroup;
 			children = (
@@ -102,6 +116,7 @@
 			children = (
 				4DF5FB4C3014BE74006AE901 /* HC */,
 				4DF5FB4B3014BE74006AE901 /* Products */,
+				4D482C33303913340071BC2B /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -127,6 +142,8 @@
 				4DF856E030343BE0009E17FB /* HCvisual.h */,
 				4DF856DF30343BE0009E17FB /* HCvisual.m */,
 				4DF28F943029393400D7740C /* graphics.m */,
+				4D482C2C3038BE9B0071BC2B /* HCpaint.m */,
+				4D482C2F3038BF1E0071BC2B /* HCpaint.h */,
 				4DF5FB8B301FEE35006AE901 /* HCdialogs.h */,
 				4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */,
 				4DF5FB87301FE73D006AE901 /* graphics.h */,
@@ -241,6 +258,7 @@
 				4DF5FB83301E0DAF006AE901 /* HCicons.m in Sources */,
 				4DF5FB8D301FEE6F006AE901 /* HCdialogs.m in Sources */,
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
+				4D482C2D3038BE9B0071BC2B /* HCpaint.m in Sources */,
 				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
 				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,
 				4DF856E130343BE0009E17FB /* HCvisual.m in Sources */,
@@ -387,6 +405,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -406,6 +425,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

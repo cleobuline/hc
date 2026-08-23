@@ -4,6 +4,7 @@
 
 #import "graphics.h"
 #import "HCpalettes.h"    // brush_bit
+#import "HCpaint.h"
      // flushPaintToKernel : l'interface complete, la
                           // declaration anticipee de HCglobals.h ne suffit pas
 
@@ -618,10 +619,7 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
 
     const char *b64 = hc_paint_of(o);
     if (b64 && *b64) {
-        NSData *data = [[NSData alloc] initWithBase64EncodedString:
-                         [NSString stringWithUTF8String:b64]
-                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
-        NSBitmapImageRep *loaded = data ? [NSBitmapImageRep imageRepWithData:data] : nil;
+        NSBitmapImageRep *loaded = hcp_decode([NSString stringWithUTF8String:b64]);
         if (loaded) {
             NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
             [NSGraphicsContext saveGraphicsState];

@@ -40,7 +40,7 @@ static NSMutableArray *gPilesEnUsage = nil;
  * gView est encore nil au moment ou le Finder nous parle. On met le chemin
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
-
+static BOOL gLancee = NO;      /* vrai une fois applicationDidFinishLaunching passé */
 /* Retrouve le menu Fichier fourni par le nib.
  *
  * Le chercher par son titre serait fragile : il s'appelle « File » ou
@@ -387,6 +387,7 @@ static NSMenu *find_file_menu(void)
         gPendingOpen = nil;
         [self loadStackAtPath:p];
     }
+    gLancee = YES;
 }
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
     if (!flag) [self.window makeKeyAndOrderFront:nil];
@@ -777,7 +778,7 @@ static NSURL *app_folder(void)
  * meme quand le type est correctement declare dans Info.plist. */
 - (BOOL)application:(NSApplication *)sender openFile:(NSString *)path {
     NSLog(@"openFile: %@ (gView=%@)", path, gView ? @"pret" : @"nil");
-    if (!gView) { gPendingOpen = path; return YES; }   /* trop tot : voir plus haut */
+    if (!gLancee) { gPendingOpen = path; return YES; }   /* trop tot : voir plus haut */
     return [self loadStackAtPath:path];
 }
 
@@ -785,7 +786,7 @@ static NSURL *app_folder(void)
 - (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)paths {
     BOOL ok = NO;
     for (NSString *p in paths) {
-        if (!gView) { gPendingOpen = p; ok = YES; break; }  /* on n'en garde qu'une */
+        if (!gLancee) { gPendingOpen = p; ok = YES; break; }  /* on n'en garde qu'une */
         ok = [self loadStackAtPath:p] || ok;
     }
     [sender replyToOpenOrPrint:ok ? NSApplicationDelegateReplySuccess

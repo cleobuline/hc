@@ -15,6 +15,7 @@
 #import "graphics.h"
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
+#import "HCpaint.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
 extern Object *cocoa_load_stack(const char *nom);
@@ -3003,14 +3004,16 @@ static int gColorTarget = 0;
 
         /* NSBitmapImageRep garde en cache la representation compressee : apres
          * une ecriture directe dans bitmapData, elle serait perimee. On encode
-         * donc une copie fraiche. */
+         * donc une copie fraiche.
+         * bytesPerRow force a w*4 : hcp_encode exige des lignes compactes, et
+         * un bytesPerRow a 0 laisse Cocoa aligner comme il veut. */
         NSBitmapImageRep *fresh = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
                        bitsPerSample:8 samplesPerPixel:4
                             hasAlpha:YES isPlanar:NO
                       colorSpaceName:NSCalibratedRGBColorSpace
-                         bytesPerRow:0 bitsPerPixel:0];
+                         bytesPerRow:w * 4 bitsPerPixel:32];
 
         unsigned char *src = [rep bitmapData];
         unsigned char *dst = [fresh bitmapData];
@@ -3025,10 +3028,10 @@ static int gColorTarget = 0;
             }
         }
 
-        NSData *png = [fresh representationUsingType:NSBitmapImageFileTypePNG
-                                          properties:@{}];
-        NSString *b64 = [png base64EncodedStringWithOptions:0];
-        NSLog(@"[flush] o=%p grave %ldx%ld", o, (long)w, (long)h);
+        NSString *b64 = hcp_encode(fresh);
+        if (!b64) { NSLog(@"[flush] o=%p ECHEC encodage", o); continue; }
+        NSLog(@"[flush] o=%p grave %ldx%ld, %lu car.", o, (long)w, (long)h,
+              (unsigned long)[b64 length]);
         hc_set_paint(o, [b64 UTF8String]);
     }
 }

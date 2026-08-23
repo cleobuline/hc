@@ -211,10 +211,24 @@ int hc_save(Object *stack, const char *path)
     fprintf(f, "end stack\n\n");
 
     /* les fonds d'abord : les cartes s'y réfèrent par leur nom */
+    /* les fonds d'abord : les cartes s'y réfèrent par leur nom */
     for (int i = 0; i < stack->nparts; i++) {
         Object *bg = stack->parts[i];
         if (bg->type != OBJ_BACKGROUND) continue;
+
+        /* Un fond sans carte n'a pas d'existence dans HyperCard : il n'y est
+         * jamais créé seul, et disparaît avec sa dernière carte. On ne le
+         * réécrit donc pas — sans quoi les coquilles vides se transmettent
+         * d'enregistrement en enregistrement, et deux fonds homonymes rendent
+         * « go background "x" » imprévisible selon lequel resolve() trouve. */
+        int utilise = 0;
+        for (int j = 0; j < stack->nparts && !utilise; j++)
+            if (stack->parts[j]->type == OBJ_CARD && stack->parts[j]->bg == bg)
+                utilise = 1;
+        if (!utilise) continue;
+
         fprintf(f, "background "); put_quoted(f, bg->name); fputc('\n', f);
+        fprintf(f, "id %d\n", bg->id);
         put_block(f, "script", bg->script);
         put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
@@ -227,6 +241,7 @@ int hc_save(Object *stack, const char *path)
         fprintf(f, "card "); put_quoted(f, c->name);
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
         fprintf(f, "\n");
+        fprintf(f, "id %d\n", c->id);
         if (c->marked) fprintf(f, "marked\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
@@ -610,8 +625,8 @@ Object *hc_load(const char *path)
             part->textstyle = atoi(s + 10);
             continue;
         }
-        if (strncmp(s, "id ", 3) == 0 && part) {
-            hc_set_id(part, atoi(s + 3));
+        if (strncmp(s, "id ", 3) == 0 && target) {
+            hc_set_id(target, atoi(s + 3));
             continue;
         }
         if (strncmp(s, "scroll ", 7) == 0 && part) {
