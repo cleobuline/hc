@@ -1868,7 +1868,18 @@ static ChunkType chunk_kind(const char *s, int *used)
  * découpage tant qu'on ne la change pas, ce qui oblige les scripts prudents à
  * la remettre à la virgule après usage. */
 static char g_item_delim = ',';
+/* Levé dès que le noyau change quelque chose de visible ; lu et remis à zéro
+ * par l'hôte. Sans lui, cocoa_idle ne peut pas savoir s'il doit repeindre :
+ * l'architecture reposait sur un redessin inconditionnel à chaque tour de
+ * boucle, ce qui coûtait 16 ms d'attente même aux boucles de calcul pur. */
+static int g_visual_dirty = 0;
 
+int hc_take_visual_dirty(void)
+{
+    int d = g_visual_dirty;
+    g_visual_dirty = 0;
+    return d;
+}
 static char chunk_sep(ChunkType t)
 {
     if (t == CH_ITEM) return g_item_delim;
@@ -5498,6 +5509,7 @@ static void exec_line_body(Object *me, const char *line)
 
     /* --- set [the] <propriété> of <objet> to <expr> --- */
     if (ci_equal(verb, "set")) {
+        g_visual_dirty = 1;
         const char *s = skip_spaces(rest);
         if (ci_word(s, "the")) s = skip_spaces(s + 3);
 
@@ -6330,6 +6342,7 @@ static void exec_line_body(Object *me, const char *line)
      * (comme « the loc », pas comme « the topLeft »). */
     if (ci_equal(verb, "show") || ci_equal(verb, "hide")) {
         int showing = ci_equal(verb, "show");
+        g_visual_dirty = 1;
         const char *at = showing ? find_kw(rest, "at") : NULL;
 
         char refbuf[256];

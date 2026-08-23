@@ -441,7 +441,13 @@ static int rang_ordinal(HctOrdinal o, int total)
         case HCT_ORD_HUITIEME:  return 8;
         case HCT_ORD_NEUVIEME:  return 9;
         case HCT_ORD_DIXIEME:   return 10;
-        case HCT_ORD_MILIEU:    return total > 0 ? (total + 1) / 2 : 0;
+        case HCT_ORD_MILIEU:
+            /* total/2 + 1, et non (total+1)/2 : en arithmétique entière la
+             * seconde forme donne 2 pour quatre éléments, alors que
+             * HyperCard rend le TROISIÈME — vérifié : « middle item of
+             * "a,b,c,d" » vaut « c ». Les deux formules coïncident sur un
+             * nombre impair, ce qui masquait l'erreur. */
+            return total > 0 ? total / 2 + 1 : 0;
         case HCT_ORD_DERNIER:   return total;
         case HCT_ORD_QUELCONQUE:return total > 0 ? (rand() % total) + 1 : 0;
         default:                return 0;

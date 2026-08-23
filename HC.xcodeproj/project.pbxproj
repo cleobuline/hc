@@ -21,6 +21,7 @@
 		4D482C4F303B585A0071BC2B /* hct_expr.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C44303B58580071BC2B /* hct_expr.c */; };
 		4D482C50303B585A0071BC2B /* hct_exec.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C46303B58590071BC2B /* hct_exec.c */; };
 		4D482C51303B585A0071BC2B /* hct_chunk.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C47303B58590071BC2B /* hct_chunk.c */; };
+		4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C59303BA13B0071BC2B /* hct_verif.c */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
@@ -69,6 +70,8 @@
 		4D482C46303B58590071BC2B /* hct_exec.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_exec.c; sourceTree = "<group>"; };
 		4D482C47303B58590071BC2B /* hct_chunk.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_chunk.c; sourceTree = "<group>"; };
 		4D482C48303B58590071BC2B /* hct_eval.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_eval.h; sourceTree = "<group>"; };
+		4D482C59303BA13B0071BC2B /* hct_verif.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_verif.c; sourceTree = "<group>"; };
+		4D482C5A303BA13B0071BC2B /* hct_verif.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_verif.h; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
@@ -162,6 +165,8 @@
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
 				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
+				4D482C59303BA13B0071BC2B /* hct_verif.c */,
+				4D482C5A303BA13B0071BC2B /* hct_verif.h */,
 				4D3BF8F330384BAA0052F85B /* HCprint.h */,
 				4D3BF8F430384BAB0052F85B /* HCprint.m */,
 				4DF856DA30343751009E17FB /* HCtext.h */,
@@ -292,6 +297,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */,
 				4DF856DC30343751009E17FB /* HCtext.m in Sources */,
 				4D3BF8F530384BAB0052F85B /* HCprint.m in Sources */,
 				4DF28F903027EE3700D7740C /* HCglobals.m in Sources */,

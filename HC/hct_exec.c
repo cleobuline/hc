@@ -234,7 +234,7 @@ static void ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
             int total = hct_chunk_compte(base.txt, cible->sorte, d);
             switch (cible->ordinal) {
                 case HCT_ORD_DERNIER: n1 = total; break;
-                case HCT_ORD_MILIEU:  n1 = total > 0 ? (total + 1) / 2 : 0; break;
+                case HCT_ORD_MILIEU:  n1 = total > 0 ? total / 2 + 1 : 0; break;
                 default:              n1 = (int)cible->ordinal; break;
             }
         } else {

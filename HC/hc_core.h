@@ -173,7 +173,9 @@ Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);
 void    hc_free(Object *stack);
 int     hc_delete_part(Object *o);
-
+/* Rend 1 si le noyau a modifié quelque chose de visible depuis le dernier
+   appel, et remet le drapeau à zéro. */
+int hc_take_visual_dirty(void);
 /* Supprime une carte et la libère. Renvoie 0 sans rien faire si c'est la
  * DERNIÈRE carte de la pile : HyperCard refusait aussi, et une pile sans carte
  * n'a pas de sens.

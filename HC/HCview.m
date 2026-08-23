@@ -16,6 +16,7 @@
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
 #import "HCpaint.h"
+#import "hct_verif.h"
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
 extern Object *cocoa_load_stack(const char *nom);
@@ -1760,30 +1761,22 @@ static void cocoa_play(const char *name) {
  * monopolise le fil principal : rien ne s'affiche avant la fin du
  * gestionnaire, et le de apparait directement en bas de la carte. */
 static void cocoa_idle(void) {
-    /* Ne rien faire de coûteux quand rien n'a changé.
+    /* Deux sources de changement, et il faut les deux.
      *
-     * L'ancienne version dormait 1/60 s à CHAQUE tour de boucle, plus un
-     * redessin complet et un flush de transaction. C'était juste pour les
-     * animations — la chute du dé serait instantanée sans cela — mais toutes
-     * les boucles le payaient, y compris celles qui ne dessinent rien. Une
-     * boucle de calcul pur coûtait 45 ms le tour, dont 45 ms d'attente.
+     * needsDisplay couvre ce que la couche Cocoa a modifié elle-même.
+     * hc_take_visual_dirty couvre ce que le NOYAU a modifié — « set loc of
+     * me », « show », « hide » — qui ne passe par aucun setNeedsDisplay:
+     * puisque la vue se repeint depuis le modèle.
      *
-     * Cocoa tient déjà le compte de ce qui doit être repeint : les
-     * setNeedsDisplay: disséminés dans ce fichier alimentent needsDisplay.
-     * On s'en sert comme aiguillage. */
-    if (![gView needsDisplay]) return;
+     * Ne consulter que le premier faisait tomber le dé instantanément : ses
+     * soixante images défilaient sans que Cocoa se doute de rien. */
+    int noyau = hc_take_visual_dirty();
+    if (!noyau && ![gView needsDisplay]) return;
 
-    [gView display];              // drawRect: tout de suite, dans le backing store
+    [gView display];
     [[gView window] displayIfNeeded];
-
-    /* La vue est layer-backed, donc le contenu du calque n'est envoyé au
-     * serveur de fenêtres qu'à la fin du cycle de run loop. Comme dieFall ne
-     * rend jamais la main, les soixante images s'empileraient dans le calque
-     * et seule la dernière serait visible : on verrait le dé partir, puis
-     * arriver, sans la chute. CATransaction flush valide immédiatement. */
     [CATransaction flush];
-
-    [NSThread sleepForTimeInterval:1.0 / 60.0]; // sinon la chute est instantanée
+    [NSThread sleepForTimeInterval:1.0 / 60.0];
 }
 static NSFont *text_font(void) {
     if (!gTextFont) {
@@ -4088,7 +4081,6 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 - (void)editScriptOf:(Object *)obj {
     gEditTarget = obj;
-
     NSPanel *panel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(300, 200, 480, 340)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
@@ -4096,11 +4088,9 @@ static NSTextField  *gSprayDensityLabel = nil;
                       defer:NO];
     char d[64]; hc_describe(obj, d, sizeof d);
     [panel setTitle:[NSString stringWithFormat:@"Script de %s", d]];
-
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 286)];
     [scroll setHasVerticalScroller:YES];
     [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-
     NSTextView *tv = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
     [tv setFont:[NSFont fontWithName:@"Monaco" size:12]];
     [tv setAutoresizingMask:NSViewWidthSizable];
@@ -4108,8 +4098,19 @@ static NSTextField  *gSprayDensityLabel = nil;
     [tv setString:cur ? [NSString stringWithUTF8String:cur] : @""];
     [scroll setDocumentView:tv];
     [[panel contentView] addSubview:scroll];
-
     gEditView = tv;
+
+    /* Vérificateur : montre les fautes AVANT l'exécution, avec leur ligne.
+     * Deux d'entre elles ne se manifestent jamais autrement — un « on
+     * mouseDwon » ne se déclenche pas en silence, et un « end » manquant ne
+     * se voit qu'au moment où le gestionnaire est appelé. */
+    NSButton *verif = [[NSButton alloc] initWithFrame:NSMakeRect(290, 8, 90, 30)];
+    [verif setTitle:@"Vérifier"];
+    [verif setBezelStyle:NSBezelStyleRounded];
+    [verif setTarget:self];
+    [verif setAction:@selector(checkScript:)];
+    [verif setAutoresizingMask:NSViewMinXMargin | NSViewMaxYMargin];
+    [[panel contentView] addSubview:verif];
 
     NSButton *ok = [[NSButton alloc] initWithFrame:NSMakeRect(390, 8, 80, 30)];
     [ok setTitle:@"OK"];
@@ -4123,6 +4124,84 @@ static NSTextField  *gSprayDensityLabel = nil;
     [panel makeKeyAndOrderFront:nil];
 }
 
+/* Sélectionne la ligne `ligne` (base 1) et la fait défiler à l'écran.
+ *
+ * On sélectionne la LIGNE entière et non la colonne : NSTextView raisonne en
+ * unités UTF-16 alors que le vérificateur compte en octets, et le moindre
+ * accent décalerait la position. La ligne est exacte quel que soit
+ * l'encodage — et de toute façon plus lisible. */
+- (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {
+    NSString *s = [tv string];
+    NSUInteger deb = 0, len = [s length];
+    int courante = 1;
+
+    if (len == 0) return;
+
+    while (deb < len && courante < ligne) {
+        NSRange r = [s lineRangeForRange:NSMakeRange(deb, 0)];
+        deb = NSMaxRange(r);
+        courante++;
+    }
+    if (deb >= len) deb = len - 1;
+
+    NSRange r = [s lineRangeForRange:NSMakeRange(deb, 0)];
+    /* Retirer le saut de ligne final : le garder ferait déborder la
+     * surbrillance sur la ligne suivante. */
+    while (r.length > 0) {
+        unichar c = [s characterAtIndex:NSMaxRange(r) - 1];
+        if (c != '\n' && c != '\r') break;
+        r.length--;
+    }
+
+    [tv setSelectedRange:r];
+    [tv scrollRangeToVisible:r];
+    [[tv window] makeFirstResponder:tv];
+}
+
+- (void)checkScript:(id)sender {
+    (void)sender;
+    if (!gEditView) return;
+
+    const char *src = [[gEditView string] UTF8String];
+    HctRapport rap;
+    hct_verifie(src ? src : "", &rap, YES);
+
+    if (rap.n == 0) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Script correct"];
+        [a setInformativeText:@"Aucune faute détectée."];
+        [a runModal];
+        hct_rapport_libere(&rap);
+        return;
+    }
+
+    NSMutableString *txt = [NSMutableString string];
+    for (int i = 0; i < rap.n; i++) {
+        HctSignalement *s = &rap.liste[i];
+        [txt appendFormat:@"%@ ligne %d : %s",
+             s->niveau == HCT_V_ERREUR ? @"Erreur" : @"Attention",
+             s->ligne, s->message];
+        if (s->extrait[0]) [txt appendFormat:@"  [%s]", s->extrait];
+        [txt appendString:@"\n"];
+    }
+
+    /* Le curseur se place sur la première faute : sans cela l'utilisateur
+     * devrait compter les lignes lui-même. hct_premier privilégie les
+     * erreurs sur les avertissements. */
+    const HctSignalement *p = hct_premier(&rap);
+    if (p) [self selectLine:p->ligne inTextView:gEditView];
+
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:rap.nerreurs
+        ? [NSString stringWithFormat:@"%d faute%@ de syntaxe", rap.nerreurs,
+                                     rap.nerreurs > 1 ? @"s" : @""]
+        : @"Script correct, avec des remarques"];
+    [a setInformativeText:txt];
+    [a runModal];
+
+    hct_rapport_libere(&rap);
+}
+
 - (void)saveScript:(id)sender {
     if (gEditTarget && gEditView) {
         hc_set_script(gEditTarget, [[gEditView string] UTF8String]);
@@ -4130,8 +4209,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     [gEditPanel close];
     gEditPanel = nil; gEditView = nil; gEditTarget = nil;
     [gView setNeedsDisplay:YES];
-}
-- (void)beginFieldEdit:(Object *)field {
+}- (void)beginFieldEdit:(Object *)field {
     if (!field) return;
 
     /* Un champ VERROUILLÉ ne s'édite jamais, d'où qu'on vienne. Le garde-fou
