@@ -22,6 +22,7 @@
 		4D482C50303B585A0071BC2B /* hct_exec.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C46303B58590071BC2B /* hct_exec.c */; };
 		4D482C51303B585A0071BC2B /* hct_chunk.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C47303B58590071BC2B /* hct_chunk.c */; };
 		4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C59303BA13B0071BC2B /* hct_verif.c */; };
+		4D482C5F303C81270071BC2B /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C5E303C81270071BC2B /* hc_core.c */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
@@ -33,7 +34,6 @@
 		4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB503014BE7D006AE901 /* Assets.xcassets */; };
 		4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 4DF5FB523014BE7D006AE901 /* MainMenu.xib */; };
 		4DF5FB573014BE7E006AE901 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB563014BE7E006AE901 /* main.m */; };
-		4DF5FB643014C005006AE901 /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB623014C004006AE901 /* hc_core.c */; };
 		4DF5FB653014C005006AE901 /* hc_file.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB633014C005006AE901 /* hc_file.c */; };
 		4DF5FB6A3014C140006AE901 /* HCview.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB693014C140006AE901 /* HCview.m */; };
 		4DF5FB6F3019CF11006AE901 /* icons.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB6E3019CF11006AE901 /* icons.m */; };
@@ -72,6 +72,7 @@
 		4D482C48303B58590071BC2B /* hct_eval.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_eval.h; sourceTree = "<group>"; };
 		4D482C59303BA13B0071BC2B /* hct_verif.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_verif.c; sourceTree = "<group>"; };
 		4D482C5A303BA13B0071BC2B /* hct_verif.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_verif.h; sourceTree = "<group>"; };
+		4D482C5E303C81270071BC2B /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
@@ -90,7 +91,6 @@
 		4DF5FB583014BE7E006AE901 /* HC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HC.entitlements; sourceTree = "<group>"; };
 		4DF5FB603014C004006AE901 /* hc_file.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hc_file.h; sourceTree = "<group>"; };
 		4DF5FB613014C004006AE901 /* hc_core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hc_core.h; sourceTree = "<group>"; };
-		4DF5FB623014C004006AE901 /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
 		4DF5FB633014C005006AE901 /* hc_file.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_file.c; sourceTree = "<group>"; };
 		4DF5FB683014C140006AE901 /* HCview.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HCview.h; sourceTree = "<group>"; };
 		4DF5FB693014C140006AE901 /* HCview.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HCview.m; sourceTree = "<group>"; };
@@ -163,7 +163,6 @@
 			children = (
 				4DF28F863023DD3700D7740C /* sounds */,
 				4DF5FB4D3014BE74006AE901 /* AppDelegate.h */,
-				4DF5FB623014C004006AE901 /* hc_core.c */,
 				4DF5FB693014C140006AE901 /* HCview.m */,
 				4D482C59303BA13B0071BC2B /* hct_verif.c */,
 				4D482C5A303BA13B0071BC2B /* hct_verif.h */,
@@ -181,6 +180,7 @@
 				4D482C47303B58590071BC2B /* hct_chunk.c */,
 				4D482C45303B58580071BC2B /* hct_chunk.h */,
 				4D482C3A303B58540071BC2B /* hct_cmd.c */,
+				4D482C5E303C81270071BC2B /* hc_core.c */,
 				4D482C3F303B58560071BC2B /* hct_cmd.h */,
 				4D482C3B303B58540071BC2B /* hct_eval.c */,
 				4D482C48303B58590071BC2B /* hct_eval.h */,
@@ -300,6 +300,7 @@
 				4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */,
 				4DF856DC30343751009E17FB /* HCtext.m in Sources */,
 				4D3BF8F530384BAB0052F85B /* HCprint.m in Sources */,
+				4D482C5F303C81270071BC2B /* hc_core.c in Sources */,
 				4DF28F903027EE3700D7740C /* HCglobals.m in Sources */,
 				4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */,
 				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
@@ -316,7 +317,6 @@
 				4DF5FB7D301CD14C006AE901 /* HCpalettes.m in Sources */,
 				4D482C2D3038BE9B0071BC2B /* HCpaint.m in Sources */,
 				4D482C4D303B585A0071BC2B /* hct_val.c in Sources */,
-				4DF5FB643014C005006AE901 /* hc_core.c in Sources */,
 				4DF5FB6A3014C140006AE901 /* HCview.m in Sources */,
 				4DF856E130343BE0009E17FB /* HCvisual.m in Sources */,
 				4D482C4B303B585A0071BC2B /* hct_eval.c in Sources */,

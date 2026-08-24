@@ -3754,7 +3754,44 @@ static void term_value_body(const char *t, char *out, int outlen)
             if (v) { snprintf(out, outlen, "%s", v); return; }
         }
     }
+    /* --- « the width of card window », « the height of card window » ---
+     *
+     * La fenêtre de la pile. HyperCard la traite comme un objet à part
+     * entière, avec ses propriétés de géométrie ; on n'implémente ici que
+     * les quatre qui servent réellement dans les scripts d'époque, à partir
+     * de la taille de la pile courante.
+     *
+     * Graph Maker s'en sert pour contraindre le déplacement de ses boutons
+     * aux bords de la carte :
+     *
+     *     doDragBtn name of me,0,62,width of card window,height of card window
+     */
+    {
+        const char *g = t;
+        if (ci_word(g, "the")) g = skip_spaces(g + 3);
 
+        char prop[32];
+        const char *ap = next_word(g, prop, sizeof prop);
+        ap = skip_spaces(ap);
+        if (ci_word(ap, "of")) ap = skip_spaces(ap + 2);
+        if (ci_word(ap, "card") || ci_word(ap, "cd"))
+            ap = skip_spaces(ap + (ci_word(ap, "cd") ? 2 : 4));
+
+        if (ci_word(ap, "window")) {
+            Object *st = owning_stack(g_current_card);
+            int w = st && st->w ? st->w : 512;
+            int h = st && st->h ? st->h : 342;
+
+            if      (ci_equal(prop, "width"))  { snprintf(out, outlen, "%d", w); return; }
+            else if (ci_equal(prop, "height")) { snprintf(out, outlen, "%d", h); return; }
+            else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle")) {
+                snprintf(out, outlen, "0,0,%d,%d", w, h); return;
+            }
+            else if (ci_equal(prop, "loc") || ci_equal(prop, "location")) {
+                snprintf(out, outlen, "%d,%d", w / 2, h / 2); return;
+            }
+        }
+    }
     /* --- sinon littéral non quoté, comme le faisait HyperCard --- */
     snprintf(out, outlen, "%s", t);
 }
@@ -4214,6 +4251,15 @@ static void v3_source(const HctNoeud *n, char *out, int outlen)
         if (c->jeton.deb && c->jeton.len >= 0) {
             const char *d = c->jeton.deb;
             const char *f = d + c->jeton.len;
+
+            /* Une chaîne littérale est rangée SANS ses guillemets : deb
+             * pointe après le premier, len s'arrête avant le second. Les
+             * bornes du texte source les incluent, sinon la reconstitution
+             * rend « bg field "Data » — chaîne non fermée que term_value ne
+             * peut pas lire, et tout ce qui suit part en vrille sans le
+             * moindre message. */
+            if (c->jeton.genre == HCT_CHAINE) { d--; f++; }
+
             if (!deb || d < deb) deb = d;
             if (!fin || f > fin) fin = f;
         }
@@ -4314,19 +4360,27 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
     term_value(txt, val, sizeof val);
 
     /* L'analyseur consomme « the » sans le ranger dans aucun nœud : la
-     * reconstitution rend donc « target » au lieu de « the target », et
-     * « value of x » au lieu de « the value of x ». Or term_value distingue
-     * les deux formes pour plusieurs tournures.
+     * reconstitution rend « target » au lieu de « the target », et
+     * « value of x » au lieu de « the value of x ».
      *
-     * Plutôt que de modifier l'analyseur — le « the » est bien facultatif
-     * dans la grammaire — on réessaie avec le mot quand la première lecture
-     * ne rend rien. Une propriété qui vaut légitimement la chaîne vide
-     * repassera par ce chemin sans dommage : le second essai rendra vide
-     * lui aussi. */
-    if (!val[0]) {
+     * term_value ne reconnaît pas ces formes tronquées et retombe sur son
+     * littéral non quoté : elle rend LE TEXTE DE LA DEMANDE, pas du vide.
+     * Ne tester que la vacuité laissait donc passer la faute — « get the
+     * value of theLine » rendait la chaîne « value of theLine », dont le
+     * premier caractère « v » faisait sauter chaque ligne de totalValues, et
+     * le total restait obstinément à zéro.
+     *
+     * On réessaie donc aussi quand le résultat est identique à la demande. */
+    if (!val[0] || strcmp(val, txt) == 0) {
         char avec_the[1216];
         snprintf(avec_the, sizeof avec_the, "the %s", txt);
         term_value(avec_the, val, sizeof val);
+
+        /* Si même avec « the » rien de neuf ne sort, on rend le texte
+         * d'origine plutôt que « the value of x » : c'est ce que faisait
+         * l'ancien évaluateur, et un script peut s'appuyer dessus. */
+        if (strcmp(val, avec_the) == 0)
+            snprintf(val, sizeof val, "%s", txt);
     }
     g_v3_recours_prof--;
 
@@ -4421,6 +4475,20 @@ static void eval_expr(const char *s, char *out, int outlen)
     out[0] = '\0';
     if (!s || !*s) return;
 
+    /* Rembobiner l'arène du noyau après l'évaluation.
+     *
+     * L'arène est une pile : ARENA_MARK retient le sommet, ARENA_FREE l'y
+     * ramène. L'ancienne eval_checked le faisait, la v3 l'avait perdu — et
+     * comme le recours appelle term_value, qui alloue par arena_buf, le
+     * sommet montait sans jamais redescendre.
+     *
+     * À saturation, arena_buf rend g_apanic : un tampon STATIQUE PARTAGÉ.
+     * Toutes les expressions suivantes écrivent alors au même endroit et
+     * s'écrasent mutuellement. D'où des zéros là où l'on attendait des
+     * pourcentages — et seulement dans les gestionnaires qui enchaînent
+     * beaucoup d'évaluations, les essais isolés passant sans encombre. */
+    ARENA_MARK;
+
     HctLot lot;
     HctReserve reserve;
     memset(&reserve, 0, sizeof reserve);
@@ -4436,8 +4504,6 @@ static void eval_expr(const char *s, char *out, int outlen)
     HctValeur v = hct_evalue(&ctx, n);
 
     if (ctx.erreur) {
-        /* Le nœud fautif porte sa ligne et sa colonne : c'est ce qui
-         * permettra de surligner la faute dans l'éditeur de script. */
         emit(HC_ERR, "   !! %s (colonne %d)", ctx.erreur,
              ctx.fautif ? ctx.fautif->jeton.col : 0);
     } else {
@@ -4447,12 +4513,27 @@ static void eval_expr(const char *s, char *out, int outlen)
     hct_val_libere(&v);
     hct_reserve_libere(&reserve);
     hct_lot_libere(&lot);
+
+    ARENA_FREE;
 }
 
+static void eval_checked(const char *s, char *out, int outlen)
+{
+    /* La v3 consomme l'expression entière et pose elle-même un nœud d'erreur
+     * sur ce qui reste : le contrôle séparé de l'ancienne version n'a plus
+     * lieu d'être, et cette fonction devient un simple alias.
+     *
+     * Elle était restée branchée sur parse_expr après la greffe, si bien que
+     * la moitié de l'exécution — dont « put », « get », les conditions de
+     * « if » et les bornes de « repeat » — employait encore l'ancien
+     * évaluateur. D'où des divergences invisibles : « item (3 mod 14) + 1 of
+     * "13,11,22,14" » rendait 1 par « put » et 14 partout ailleurs. */
+    eval_expr(s, out, outlen);
+}
 /* Comme eval_expr, mais râle si l'analyseur n'a pas tout mangé.
  * C'est le garde-fou contre les fautes de frappe : sans lui, une
  * expression mal formée retombe silencieusement en littéral. */
-static void eval_checked(const char *s, char *out, int outlen)
+static void eval_checked_old(const char *s, char *out, int outlen)
 {
     ARENA_MARK;
     const char *p = s;
