@@ -187,9 +187,19 @@ int hct_lex(const char *src, HctLot *lot)
         /* --- nombre --------------------------------------------------
          * Un point n'est un séparateur décimal que s'il est suivi d'un
          * chiffre : « 3.5 » est un nombre, « card 3.name » ne l'est pas. */
-        if (isdigit((unsigned char)*p)) {
+        /* Un nombre commence par un chiffre, ou par un POINT suivi d'un
+         * chiffre : « .02 » est du HyperTalk parfaitement valide, et les
+         * scripts d'époque l'écrivent volontiers — Graph Maker teste
+         * « if change > .02 » avant de remplir chaque part de son camembert.
+         *
+         * Sans ce cas, le point partait en « caractère inattendu », la
+         * comparaison échouait, et le remplissage était sauté en silence. */
+        if (isdigit((unsigned char)*p) ||
+            (*p == '.' && isdigit((unsigned char)p[1]))) {
             const char *q = p;
             int col = COL(p), points = 0;
+            if (*q == '.') { q++; points++;
+                             while (isdigit((unsigned char)*q)) q++; }
             while (isdigit((unsigned char)*q) ||
                    (*q == '.' && isdigit((unsigned char)q[1]))) {
                 if (*q == '.') points++;

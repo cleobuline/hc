@@ -341,9 +341,16 @@ void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
         unsigned char *px = PIX(x, y);
         unsigned char a = (spp >= 4) ? px[3] : 255;
 
-        if (abs(px[0]-sr) > 40 || abs(px[1]-sg) > 40 ||
-            abs(px[2]-sb) > 40 || abs(a-sa) > 40)
-            continue;   // frontière
+        /* Tolérance ZÉRO : seuls les pixels strictement identiques au point
+         * de départ sont remplis.
+         *
+         * La tolérance de 40 laissait le flot traverser les motifs déjà
+         * posés — une part remplie a des pixels de fond identiques au vide
+         * des parts voisines, donc le seau franchissait les traits et le
+         * camembert entier virait au gris. HyperCard travaillait en 1 bit,
+         * où la question ne se posait pas : un pixel est noir ou blanc. */
+        if (px[0] != sr || px[1] != sg || px[2] != sb || a != sa)
+            continue;   // frontière : tout ce qui diffère arrête le flot
 
         if (pattern_bit(gPattern, x, y)) {
             PUT_INK(px);                          // trait du motif : l'encre

@@ -6857,6 +6857,34 @@ static void exec_line_body(Object *me, const char *line)
         set_result("");
         return;
     }
+    /* « reset paint » : remet toutes les propriétés de dessin à leur valeur
+     * par défaut. HyperCard l'a prévue justement parce qu'un gestionnaire qui
+     * change filled, pattern ou lineSize les laisse volontiers derrière lui.
+     *
+     * Sans elle, doLegend de Graph Maker laissait « filled » à true, et au
+     * tracé suivant doPieChart dessinait son cercle PLEIN au lieu de vide :
+     * le seau partait alors d'un pixel noir et noyait le camembert entier.
+     * Le premier tracé passait, le second non — un état qui survit d'un
+     * appel à l'autre, et rien pour le signaler. */
+    if (ci_equal(verb, "reset")) {
+        const char *quoi = skip_spaces(rest);
+        if (ci_word(quoi, "paint")) {
+            host_global_set("filled",   "false");
+            host_global_set("pattern",  "12");   /* le noir de HyperCard */
+            host_global_set("lineSize", "1");
+            host_global_set("brush",    "8");
+            host_global_set("textFont", "geneva");
+            host_global_set("textSize", "12");
+            host_global_set("textStyle","plain");
+            host_global_set("textAlign","left");
+            host_global_set("textHeight","16");
+            set_result("");
+            return;
+        }
+        emit(HC_ERR, "   !! reset : seul « reset paint » est reconnu");
+        set_result("");
+        return;
+    }
 
     /* ---- drag from <point> to <point> [with <touches>] ---- */
     if (ci_equal(verb, "drag")) {

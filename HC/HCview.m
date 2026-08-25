@@ -21,7 +21,7 @@ extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
 extern Object *cocoa_load_stack(const char *nom);
 extern void    cocoa_stack_changed(Object *stack);
-
+static NSFont *text_font(void);
 /* ═══ Ce qui appartient à UN DOCUMENT ═══════════════════════════════════════
  *
  * Vingt variables décrivaient l'état de la pile ouverte, éparpillées parmi
@@ -159,7 +159,9 @@ static BOOL    gPenDrawing = NO;
 static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
- 
+static int       gTextHeight = 0;          /* 0 = déduit de la taille */
+static NSString *gTextStyleName = nil;
+static NSString *gTextAlign = nil;
  
 static NSPoint gLassoPts[4096];
 static int gLassoCount = 0;
@@ -1096,7 +1098,34 @@ static void cocoa_click_at(int x, int y, const char *mods) {
     gClickPoint = p;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
     gMouseClicked = YES;              /* pour « the mouseClick » */
-
+    /* Outil texte : le clic scripté pose le point d'insertion, exactement
+     * comme le clic à la souris de mouseDown:. C'est ce que fait HyperCard —
+     * « choose text tool / click at x,y / type "..." » est la façon normale
+     * d'écrire dans le calque de peinture depuis un script. */
+    if (gTool == TOOL_TEXT) {
+        [gView commitText];              /* graver la saisie précédente */
+        gTextPos = p;
+        gTextBuf = [NSMutableString string];
+        gTextActive = YES;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    /* Le seau : un clic scripté remplit, comme le clic à la souris. C'est
+     * ainsi que Graph Maker colore les parts de son camembert —
+     * « set pattern to getPattern(slice) / choose bucket tool /
+     * click at halfX,halfY ». Sans ce cas, la commande ne faisait rien et
+     * les parts restaient vides. */
+    if (gTool == TOOL_FILL) {
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer,
+                                    (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
+        flood_fill(rep, (int)p.x, (int)p.y);
+        [gView setNeedsDisplay:YES];
+        return;
+    }
     if (hit && gTool == TOOL_BROWSE) {
         hc_send(hit, "mouseDown");
         hc_send(hit, "mouseUp");
@@ -1110,7 +1139,21 @@ static void cocoa_type_text(const char *text, const char *mods) {
     NSString *s = [NSString stringWithUTF8String:text];
     if (!s) return;
 
-    /* Dans le champ en cours d'édition s'il y en a un, sinon dans la boîte de
+    /* Trois destinations, dans l'ordre où HyperCard les choisit.
+     *
+     * L'outil texte d'abord : « type » PEINT alors dans le calque, à la
+     * position posée par le dernier « click at ». C'est ainsi que Graph Maker
+     * écrit ses titres et ses libellés, et sans ce cas la commande partait
+     * dans la boîte de message sans que rien ne le signale. */
+    if (gTool == TOOL_TEXT && gTextActive) {
+        if (!gTextBuf) gTextBuf = [NSMutableString string];
+        [gTextBuf appendString:s];
+        [gView commitText];              /* graver tout de suite */
+        gView.needsDisplay = YES;
+        return;
+    }
+
+    /* Sinon dans le champ en cours d'édition, sinon dans la boîte de
      * message — c'est là que va la frappe quand aucun champ n'a le focus. */
     if (gEditingField && gFieldEditor) {
         [gFieldEditor insertText:s replacementRange:[gFieldEditor selectedRange]];
@@ -1509,6 +1552,30 @@ static const char *cocoa_global_get(const char *name) {
     /* Contrepartie en lecture des réglages de peinture : un script qui les
      * modifie doit pouvoir les rétablir ensuite, faute de quoi il laisse
      * l'application dans un état qu'il a choisi pour lui seul. */
+    /* Les propriétés de l'outil texte. « the textHeight » sert au placement
+     * vertical dans presque toutes les piles qui dessinent du texte :
+     * Graph Maker s'en sert quatre fois pour empiler ses libellés de légende.
+     * Sans elle, « put legendTop + the textHeight + 5 into vert » donnait une
+     * chaîne vide, et le texte partait se peindre hors du cadre. */
+    if (strcasecmp(name, "textHeight") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d",
+                 gTextHeight > 0 ? gTextHeight
+                                 : (int)[text_font() pointSize] + 3);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "textSize") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", (int)[text_font() pointSize]);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "textFont") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%s",
+                 [[text_font() familyName] UTF8String]);
+        return gGlobBuf;
+    }
+    if (strcasecmp(name, "textStyle") == 0)
+        return gTextStyleName ? [gTextStyleName UTF8String] : "plain";
+    if (strcasecmp(name, "textAlign") == 0)
+        return gTextAlign ? [gTextAlign UTF8String] : "left";
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
     if (strcasecmp(name, "lineSize") == 0) {
@@ -1673,7 +1740,44 @@ static void cocoa_global_set(const char *name, const char *value) {
     /* « centered » n'est pas implémenté : le dessin ne sait pas encore tracer
      * une forme depuis son centre. Mieux vaut ne rien exposer que d'accepter
      * un réglage sans effet, qui laisserait croire au script qu'il a agi. */
-
+    /* ---- propriétés de l'outil texte ----
+     *
+     * textFont, textSize, textStyle, textAlign et textHeight existent sur les
+     * objets, mais elles ont AUSSI une valeur globale : celle de l'outil
+     * texte, qui décide de quoi aura l'air le prochain « type ».
+     *
+     * Sans elles, le setFont de Graph Maker ne réglait rien, et surtout
+     * « the textHeight » rendait du vide — de sorte que « put legendTop +
+     * the textHeight + 5 into vert » donnait une chaîne vide, et toute la
+     * légende partait se dessiner ailleurs, sans le moindre message. */
+    if (strcasecmp(name, "textFont") == 0) {
+        NSString *nom = [NSString stringWithUTF8String:value];
+        NSFont *f = [NSFont fontWithName:nom size:gTextSize];
+        if (f) gTextFont = f;
+        return;
+    }
+    if (strcasecmp(name, "textSize") == 0) {
+        int v = atoi(value);
+        if (v < 4)  v = 4;
+        if (v > 96) v = 96;
+        gTextSize = v;
+        NSFont *f = [NSFont fontWithName:[text_font() fontName] size:v];
+        gTextFont = f ? f : [NSFont systemFontOfSize:v];
+        return;
+    }
+    if (strcasecmp(name, "textHeight") == 0) {
+        int v = atoi(value);
+        if (v > 0) gTextHeight = v;
+        return;
+    }
+    if (strcasecmp(name, "textStyle") == 0) {
+        gTextStyleName = [NSString stringWithUTF8String:value];
+        return;
+    }
+    if (strcasecmp(name, "textAlign") == 0) {
+        gTextAlign = [NSString stringWithUTF8String:value];
+        return;
+    }
     if (strcasecmp(name, "cursor") == 0) {
         if (strcasecmp(value, "none") == 0) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
