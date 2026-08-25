@@ -1132,7 +1132,26 @@ static void cocoa_click_at(int x, int y, const char *mods) {
     }
     [gView setNeedsDisplay:YES];
 }
+/* Les éléments de menu que les scripts d'époque emploient. La liste
+ * s'étendra ; l'important est que les noms soient ceux d'HyperCard, en
+ * anglais, puisque c'est ce que les piles écrivent. */
+static void cocoa_do_menu(const char *item) {
+    if (!item || !gView) return;
 
+    if (strcasecmp(item, "Clear Picture") == 0 ||
+        strcasecmp(item, "Clear") == 0) {
+        [gView eraseAll];
+        return;
+    }
+    if (strcasecmp(item, "Select All") == 0) {
+        /* Sans sélection rectangulaire scriptée, on ne fait rien : c'est
+         * « Clear Picture » qui porte l'effacement, et Select All n'est là
+         * que pour la forme dans les scripts d'époque. */
+        return;
+    }
+    NSLog(@"[doMenu] élément non géré : %s", item);
+    
+}
 static void cocoa_type_text(const char *text, const char *mods) {
     (void)mods;
     if (!text || !gView) return;
@@ -1887,6 +1906,25 @@ static NSFont *text_font(void) {
         gTextFont = [NSFont fontWithName:@"Helvetica" size:gTextSize];
         if (!gTextFont) gTextFont = [NSFont systemFontOfSize:gTextSize];
     }
+    NSLog(@"[font] style=[%@] police=%@", gTextStyleName, [gTextFont fontName]);
+    /* Appliquer le style demandé par « set textStyle to bold,italic ».
+     *
+     * Il était rangé dans gTextStyleName mais jamais appliqué : le setFont de
+     * Graph Maker demandait « bold » et le titre sortait en romain. Le style
+     * n'est pas une propriété de la police mais un TRAIT qu'on lui ajoute,
+     * d'où le passage par NSFontManager. */
+    if (!gTextStyleName || [gTextStyleName length] == 0) return gTextFont;
+
+    NSFontTraitMask traits = 0;
+    NSString *s = [gTextStyleName lowercaseString];
+    if ([s rangeOfString:@"bold"].location   != NSNotFound) traits |= NSBoldFontMask;
+    if ([s rangeOfString:@"italic"].location != NSNotFound) traits |= NSItalicFontMask;
+
+    if (traits) {
+        NSFont *f = [[NSFontManager sharedFontManager]
+                        convertFont:gTextFont toHaveTrait:traits];
+        if (f) return f;
+    }
     return gTextFont;
 }
 
@@ -1915,8 +1953,52 @@ static void stamp_text(NSBitmapImageRep *rep, NSString *s, NSPoint pos) {
     CGContextTranslateCTM(cg, 0, H);
     CGContextScaleCTM(cg, 1, -1);
 
-    [s drawAtPoint:pos withAttributes:text_attrs()];
+    /* HyperCard pose le texte sur sa LIGNE DE BASE, pas sur son coin haut :
+     * « click at x,y » puis « type » écrit au-DESSUS de y, jambages exceptés.
+     * drawAtPoint: prend au contraire le coin haut-gauche, ce qui descendait
+     * tout le texte d'une ascendante.
+     *
+     * Le décalage se voyait dans la légende de Graph Maker, où chaque
+     * libellé est aligné sur sa case de motif :
+     *
+     *     drag from horz,(vert - the textHeight) to horz + the textHeight,vert
+     *     click at horz + 20,vert
+     *
+     * Le bas de la case et la ligne de base du texte doivent coïncider ;
+     * sans cette correction le libellé tombait sous sa case. */
+    NSDictionary *attrs = text_attrs();
+    NSFont *f = [attrs objectForKey:NSFontAttributeName];
+    CGFloat montee = f ? [f ascender] : 0;
+    /* « set textAlign to center » ou « right » : HyperCard aligne le texte
+     * PAR RAPPORT au point de clic, il ne le pousse pas dans une boîte.
+     * Graph Maker s'en sert pour centrer son titre sur le camembert et pour
+     * aligner ses pourcentages à droite de la légende. */
+    CGFloat largeur = [s sizeWithAttributes:attrs].width;
+    CGFloat x = pos.x;
+    if (gTextAlign) {
+        NSString *al = [gTextAlign lowercaseString];
+        if      ([al isEqualToString:@"center"]) x -= largeur / 2;
+        else if ([al isEqualToString:@"right"])  x -= largeur;
+    }
 
+    NSPoint haut = NSMakePoint(x, pos.y - montee);
+    [s drawAtPoint:haut withAttributes:attrs];
+
+    /* Gras simulé, comme le faisait le Mac classique : il n'avait pas de
+     * vraie police grasse et redessinait le texte décalé d'un pixel. C'est ce
+     * qui donne son aspect au gras d'HyperCard — et c'est la seule voie ici,
+     * puisque Geneva n'a pas de variante grasse sur macOS moderne :
+     * NSFontManager rend alors la police d'origine sans rien signaler. */
+    if (gTextStyleName &&
+        [[gTextStyleName lowercaseString] rangeOfString:@"bold"].location
+            != NSNotFound) {
+        NSFont *f2 = [attrs objectForKey:NSFontAttributeName];
+        NSString *nom = f2 ? [f2 fontName] : @"";
+        /* Ne simuler que si la police n'est PAS déjà grasse, sinon le trait
+         * doublerait et le texte deviendrait pâteux. */
+        if ([nom rangeOfString:@"Bold"].location == NSNotFound)
+            [s drawAtPoint:NSMakePoint(haut.x + 1, haut.y) withAttributes:attrs];
+    }
     [NSGraphicsContext restoreGraphicsState];
 }
 
@@ -3937,6 +4019,7 @@ static BOOL     gInIdle = NO;
     host.type_text     = cocoa_type_text;
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
+    host.do_menu       = cocoa_do_menu;
     hc_set_host(&host);
 }
 

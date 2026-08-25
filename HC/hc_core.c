@@ -6870,7 +6870,7 @@ static void exec_line_body(Object *me, const char *line)
         const char *quoi = skip_spaces(rest);
         if (ci_word(quoi, "paint")) {
             host_global_set("filled",   "false");
-            host_global_set("pattern",  "12");   /* le noir de HyperCard */
+            host_global_set("pattern",  "2");   /* le noir de HyperCard */
             host_global_set("lineSize", "1");
             host_global_set("brush",    "8");
             host_global_set("textFont", "geneva");
@@ -6885,7 +6885,23 @@ static void exec_line_body(Object *me, const char *line)
         set_result("");
         return;
     }
-
+    /* « doMenu » : HyperCard scriptait par les menus tout ce qui n'avait pas
+     * de commande propre — effacer l'image, tout sélectionner, copier. Les
+     * piles d'époque s'en servent constamment.
+     *
+     * On route vers l'hôte, seul à connaître ses menus. Sans cette commande,
+     * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
+     * se superposait au précédent. */
+    if (ci_equal(verb, "domenu")) {
+        ARENA_MARK;
+        char *item = arena_buf();
+        eval_checked(rest, item, HC_VAL);
+        if (g_host && g_host->do_menu) g_host->do_menu(item);
+        else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+        ARENA_FREE;
+        set_result("");
+        return;
+    }
     /* ---- drag from <point> to <point> [with <touches>] ---- */
     if (ci_equal(verb, "drag")) {
         const char *a = skip_spaces(rest);

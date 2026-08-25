@@ -333,6 +333,7 @@ typedef struct {
      * graphique redessine et rend la main : sans lui, une boucle d'animation
      * monopolise le fil principal et rien ne s'affiche avant la fin. */
     void (*idle)(void);
+    void (*do_menu)(const char *item);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
