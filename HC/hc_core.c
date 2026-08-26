@@ -4382,7 +4382,27 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         if (strcmp(val, avec_the) == 0)
             snprintf(val, sizeof val, "%s", txt);
     }
+    /* Dernier recours : l'ANCIEN analyseur.
+     *
+     * Certaines tournures ne vivent que dans parse_factor et n'ont jamais été
+     * portées dans term_value — « there is a <objet> » en est une. term_value
+     * rend alors le texte inchangé, ce qui est justement le signe qu'elle n'a
+     * rien reconnu ; on passe donc la main à parse_expr, qui les connaît.
+     *
+     * Sans cela, « if there is a cd btn "Drawgraph" » rendait la chaîne
+     * elle-même, jamais true ni false — et les gestionnaires enterKey et
+     * enterInField de Graph Maker ne se déclenchaient pas. */
+    if (strcmp(val, txt) == 0) {
+        const char *q = txt;
+        char essai[HC_VAL];
+        essai[0] = '\0';
+        parse_expr(&q, essai, sizeof essai);
+        if (essai[0] && strcmp(essai, txt) != 0)
+            snprintf(val, sizeof val, "%s", essai);
+    }
+
     g_v3_recours_prof--;
+ 
 
     *out = hct_val_texte(val);
     return 1;

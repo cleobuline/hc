@@ -296,7 +296,7 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "roundRect") == 0 || strcmp(st, "roundrect") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
                                                           xRadius:8 yRadius:8];
-        [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
         [p fill];
         [[NSColor blackColor] setStroke];
         [p setLineWidth:1];
@@ -333,10 +333,15 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
         NSRectFill(r);
         return;
     }
-    // rectangle par defaut
-    [(on ? [NSColor blackColor] : [NSColor colorWithWhite:0.9 alpha:1.0]) setFill];
+    /* Style « rectangle » : cadre noir d'un pixel, intérieur blanc opaque.
+     *
+     * Attention : NSFrameRect emploie la couleur de REMPLISSAGE courante, pas
+     * celle de trait — d'où un cadre blanc sur blanc si l'on ne repose pas le
+     * noir après avoir rempli. Le setStroke n'y change rien, et c'est un
+     * piège classique de l'API. */
+    [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
     NSRectFill(r);
-    [[NSColor blackColor] setStroke];
+    [[NSColor blackColor] setFill];        /* setFill, pas setStroke */
     NSFrameRect(r);
 }
 

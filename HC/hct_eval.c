@@ -245,6 +245,19 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
 {
     const char *op = n->op ? n->op : "";
 
+    /* « there is a X » se traite AVANT d'évaluer son fils.
+     *
+     * Le fils est justement l'objet dont on demande l'existence : l'évaluer
+     * pose une erreur quand il n'existe pas, et l'on sortait alors sans
+     * jamais atteindre le recours. Or « there is a bg btn "absent" » doit
+     * rendre false, pas échouer — c'est tout son intérêt. */
+    if (strcmp(op, "not") && strcmp(op, "neg")) {
+        HctValeur vr;
+        if (ctx->hote.recours &&
+            ctx->hote.recours(ctx->hote.donnees, n, &vr)) return vr;
+        return hct_val_bool(0);
+    }
+
     HctValeur a = hct_evalue(ctx, n->fils[0]);
     if (ctx->erreur) return a;
 
@@ -261,12 +274,14 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
             r = hct_val_vide();
         } else r = hct_val_nombre(-hct_vers_nombre(a.txt));
     } else {
-        /* « there is a X » : la question se pose à l'hôte, qui seul sait si
-         * l'objet existe. Sans hôte, on ne peut que répondre faux. */
-        r = hct_val_bool(0);
+        if (!hct_est_nombre(a.txt)) {
+            hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
+            r = hct_val_vide();
+        } else r = hct_val_nombre(-hct_vers_nombre(a.txt));
     }
     hct_val_libere(&a);
     return r;
+
 }
 
 /* ------------------------------------------------------------ feuilles */
