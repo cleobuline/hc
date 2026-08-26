@@ -2563,6 +2563,7 @@ static int gColorTarget = 0;
     gMouseClicked = YES;
 
     /* ---------- Clic sur sélection rectangulaire active : décollage du tampon ---------- */
+    /* ---------- Clic sur sélection rectangulaire active : déplacement ou duplication ---------- */
     if (gTool == TOOL_SELRECT && gSelRectActive) {
         NSRect selRect = NSMakeRect(MIN(gSelStart.x, gSelEnd.x), MIN(gSelStart.y, gSelEnd.y),
                                     fabs(gSelEnd.x - gSelStart.x), fabs(gSelEnd.y - gSelStart.y));
@@ -2570,8 +2571,16 @@ static int gColorTarget = 0;
             [self beginPaintUndo];
             Object *layer = [self paintLayer];
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            
+            // 1. Toujours copier la zone vers gClipboard
             copy_rect(rep, gSelStart, gSelEnd);
-            erase_rect(rep, gSelStart, gSelEnd);
+            
+            // 2. N'effacer l'original QUE SI la touche Option n'est PAS enfoncée
+            BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
+            if (!optionDown) {
+                erase_rect(rep, gSelStart, gSelEnd);
+            }
+
             gFloating = YES;
             gFloatDragging = YES;
             gFloatPos = selRect.origin;
@@ -2585,6 +2594,7 @@ static int gColorTarget = 0;
     }
 
     /* ---------- Clic sur sélection lasso active : décollage du tampon ---------- */
+    /* ---------- Clic sur sélection lasso active : déplacement ou duplication ---------- */
     if (gTool == TOOL_LASSO && gLassoActive && gLassoCount >= 3) {
         NSBezierPath *lassoPath = [NSBezierPath bezierPath];
         [lassoPath moveToPoint:gLassoPts[0]];
@@ -2595,8 +2605,15 @@ static int gColorTarget = 0;
             [self beginPaintUndo];
             Object *layer = [self paintLayer];
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+            
+            // 1. Toujours copier le lasso vers gClipboard
             copy_freeform(rep, gLassoPts, gLassoCount);
-            erase_freeform(rep, gLassoPts, gLassoCount);
+            
+            // 2. N'effacer l'original QUE SI la touche Option n'est PAS enfoncée
+            BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
+            if (!optionDown) {
+                erase_freeform(rep, gLassoPts, gLassoCount);
+            }
             
             double minx = gLassoPts[0].x, miny = gLassoPts[0].y;
             for (int i = 1; i < gLassoCount; i++) {
