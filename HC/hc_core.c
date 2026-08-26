@@ -4306,10 +4306,17 @@ static int g_v3_recours_prof = 0;
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
-    /* txt est plus grand que refait, pour que la recomposition d'un appel
-     * — qui ajoute un espace et une parenthèse — y tienne toujours. */
-    char txt[1200], val[HC_VAL];
-
+    /* Tampons dimensionnés pour une EXPRESSION, pas pour une valeur de champ.
+     *
+     * val et essai étaient en HC_VAL, qui vaut plusieurs centaines de
+     * kilo-octets : deux tampons de cette taille en variables locales
+     * faisaient réserver deux mégaoctets de pile à chaque appel, et le
+     * débordement survenait dès qu'un script enchaînait les évaluations.
+     * Le désassemblage le montrait sans détour : « subq $0x200a10, %rsp ».
+     *
+     * Une expression confiée au recours ne dépasse jamais quelques centaines
+     * d'octets, et sa valeur non plus dans ce contexte. */
+    char txt[1200], val[8192];
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
         *out = hct_val_texte("");
@@ -4394,7 +4401,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * enterInField de Graph Maker ne se déclenchaient pas. */
     if (strcmp(val, txt) == 0) {
         const char *q = txt;
-        char essai[HC_VAL];
+        char essai[8192];
         essai[0] = '\0';
         parse_expr(&q, essai, sizeof essai);
         if (essai[0] && strcmp(essai, txt) != 0)
