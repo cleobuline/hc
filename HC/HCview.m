@@ -182,7 +182,6 @@ static NSPanel *gBrushPanel = nil;
 
 
 // int gTextSize = 16;
-static NSColor *gTextColor = nil;
 static BOOL gTextUnderline = NO;
 
 
@@ -1934,7 +1933,7 @@ static NSFont *text_font(void) {
 }
 
 static NSDictionary *text_attrs(void) {
-    NSColor *c = gTextColor;
+    NSColor *c = gInkColor;
     if (!c) c = (gInk == INK_WHITE) ? [NSColor whiteColor] : [NSColor blackColor];
     NSMutableDictionary *a = [NSMutableDictionary dictionary];
     a[NSFontAttributeName] = text_font();
@@ -2399,7 +2398,7 @@ static BOOL paint_selection_active(void)
     }
 
     /* Aucun champ ouvert : c'est l'outil texte de peinture qui est visé. */
-    gTextColor = c;
+    gInkColor = c;
     [gView setNeedsDisplay:YES];
 }
 - (void)underline:(id)sender {
