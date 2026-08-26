@@ -718,12 +718,20 @@ static HctNoeud *chunk_ou_of(HctAnalyseur *a)
     if (mot_ici(a, "the")) avance(a);
 
     /* Un adjectif ne vaut que s'il qualifie quelque chose. */
-    const char *adj = NULL;
+    
+    /* Un adjectif ne vaut que s'il qualifie quelque chose.
+     *
+     * On retient son JETON, pas son texte : le nœud qui suivra étendra ses
+     * bornes pour couvrir « long time » et non le seul « time ». Sans cela
+     * l'adjectif disparaissait de l'arbre, et le pont — qui reconstitue le
+     * texte source à partir des jetons — demandait « the time » au lieu de
+     * « the long time », rendant l'heure sans les secondes. */
+    const HctJeton *jadj = NULL;
     if (adjectif_ici(a)) {
         const HctJeton *suiv = (a->i + 1 < a->lot->n) ? &a->lot->jetons[a->i+1]
                                                       : NULL;
         if (suiv && suiv->genre == HCT_IDENT) {
-            adj = hct_reserve_texte(a->reserve, ici(a)->deb, ici(a)->len);
+            jadj = ici(a);
             avance(a);
         }
     }
@@ -780,8 +788,13 @@ static HctNoeud *chunk_ou_of(HctAnalyseur *a)
 
     HctNoeud *n = hct_noeud(a->reserve, HCTN_IDENT, j);
     if (!n) return NULL;
-    if (adj) n->op = adj;                       /* « long », « short »…      */
-
+    if (jadj) {
+        /* Le jeton s'étend de l'adjectif à la fin du nom, pour que la
+         * reconstitution du texte source rende « long time ». */
+        n->jeton.deb = jadj->deb;
+        n->jeton.len = (int)((j.deb + j.len) - jadj->deb);
+        n->jeton.col = jadj->col;
+    }
     if (op_ici(a, "(")) {                       /* appel : f(a, b) */
         avance(a);
         HctNoeud *appel = hct_noeud(a->reserve, HCTN_APPEL, j);
