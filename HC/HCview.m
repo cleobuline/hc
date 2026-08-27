@@ -697,7 +697,10 @@ static void draw_part(Object *o) {
                 [as drawInRect:field_text_draw_rect(o)];
                 [NSGraphicsContext restoreGraphicsState];
             } else {
-                [as drawInRect:tr];
+                /* Remplace [as drawInRect:tr] par : */
+                [as drawWithRect:tr
+                         options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+                         context:nil];
             }
         }
 
@@ -3725,7 +3728,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 - (void)beginFieldEdit:(Object *)field {
     if (!field) return;
 
-    /* Sécurité : interdiction d'éditer si on n'est pas sur l'outil Browse */
+    /* Interdiction d'éditer si l'outil n'est pas BROWSE ou si le champ est verrouillé */
     if (gTool != TOOL_BROWSE || field->locktext) {
         if (gEditingField) [self endFieldEdit];
         [[self window] makeFirstResponder:self];
@@ -3737,7 +3740,6 @@ static NSTextField  *gSprayDensityLabel = nil;
     gEditingField = field;
 
     NSRect r = field_text_rect(field);
-
     BOOL isScroll = (field->style && strcmp(field->style, "scrolling") == 0);
 
     gFieldScroll = [[NSScrollView alloc] initWithFrame:r];
@@ -3747,28 +3749,42 @@ static NSTextField  *gSprayDensityLabel = nil;
     [gFieldScroll setBorderType:NSNoBorder];
     [gFieldScroll setDrawsBackground:NO];
 
+    /* Forcer le conteneur à ne pas déborder du cadre du champ */
+    [gFieldScroll setWantsLayer:YES];
+    [[gFieldScroll layer] setMasksToBounds:YES];
+
+    /* Suppression des marges internes du NSClipView */
+    [[gFieldScroll contentView] setContentInsets:NSEdgeInsetsZero];
     NSSize sz = [gFieldScroll contentSize];
-    gFieldEditor = [[NSTextView alloc]
-        initWithFrame:NSMakeRect(0, 0, sz.width, sz.height)];
+
+    /* 2. Instantation et configuration géométrique du NSTextView */
+    gFieldEditor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, sz.width, sz.height)];
     [gFieldEditor setMinSize:NSMakeSize(0, 0)];
     [gFieldEditor setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
     [gFieldEditor setVerticallyResizable:YES];
     [gFieldEditor setHorizontallyResizable:NO];
     [gFieldEditor setAutoresizingMask:NSViewWidthSizable];
-    [[gFieldEditor textContainer] setContainerSize:NSMakeSize(sz.width, FLT_MAX)];
-    [[gFieldEditor textContainer] setWidthTracksTextView:YES];
-    [[gFieldEditor textContainer] setLineFragmentPadding:0];
-    [gFieldEditor setTextContainerInset:NSZeroSize];
 
-    [gFieldEditor setDelegate:self];
+    /* 3. Zéro rembourrage et alignement des métriques de police */
+    NSTextContainer *container = [gFieldEditor textContainer];
+    [container setContainerSize:NSMakeSize(sz.width, FLT_MAX)];
+    [container setWidthTracksTextView:YES];
+    [container setLineFragmentPadding:0];
+
+    [gFieldEditor setTextContainerInset:NSMakeSize(0, 0)];
     [gFieldEditor setDrawsBackground:NO];
-    [gFieldEditor setFont:obj_font(field, 12)];
+    [gFieldEditor setDelegate:self];
+    NSLayoutManager *lm = [gFieldEditor layoutManager];
+        [lm setUsesFontLeading:YES];
+    [lm setTypesetterBehavior:NSTypesetterBehavior_10_2_WithCompatibility];    /* Clé de l'alignement : forcer le Layout Manager à appliquer les métriques exactes de la fonte */
+    [[gFieldEditor layoutManager] setUsesFontLeading:YES];
 
     [gFieldEditor setRichText:YES];
     [gFieldEditor setImportsGraphics:NO];
     [gFieldEditor setUsesFontPanel:YES];
     [gFieldEditor setAllowsUndo:YES];
 
+    /* 4. Chargement du contenu textuel et des attributs */
     const char *tx = hc_field_text(field);
     NSString *str = [NSString stringWithUTF8String:tx ? tx : ""];
     NSDictionary *base = obj_attrs(field, 12, [NSColor blackColor]);
@@ -3777,48 +3793,44 @@ static NSTextField  *gSprayDensityLabel = nil;
     [gFieldEditor setSelectable:YES];
 
     gForEditor = YES;
-    [[gFieldEditor textStorage]
-        setAttributedString:field_attr_string(field, str, base)];
+    [[gFieldEditor textStorage] setAttributedString:field_attr_string(field, str, base)];
     gForEditor = NO;
 
-    {
-        NSMutableDictionary *tattr = [base mutableCopy];
-        if ([[gFieldEditor textStorage] length] > 0) {
-            id ps = [[gFieldEditor textStorage]
-                        attribute:NSParagraphStyleAttributeName
-                          atIndex:0 effectiveRange:NULL];
-            if (ps) tattr[NSParagraphStyleAttributeName] = ps;
-        }
-        [gFieldEditor setTypingAttributes:tattr];
+    /* Alignement du style de paragraphe initial */
+    NSMutableDictionary *tattr = [base mutableCopy];
+    if ([[gFieldEditor textStorage] length] > 0) {
+        id ps = [[gFieldEditor textStorage] attribute:NSParagraphStyleAttributeName
+                                              atIndex:0
+                                       effectiveRange:NULL];
+        if (ps) tattr[NSParagraphStyleAttributeName] = ps;
     }
+    [gFieldEditor setTypingAttributes:tattr];
 
     [gFieldScroll setDocumentView:gFieldEditor];
 
-    {
-        NSRect df = [gFieldEditor frame];
-        if (df.origin.x != 0 || df.origin.y != 0) {
-            df.origin = NSZeroPoint;
-            [gFieldEditor setFrame:df];
-        }
+    /* Réinitialisation de l'origine du document dans le ScrollView */
+    NSRect df = [gFieldEditor frame];
+    if (df.origin.x != 0 || df.origin.y != 0) {
+        df.origin = NSZeroPoint;
+        [gFieldEditor setFrame:df];
     }
+
     [self addSubview:gFieldScroll];
 
+    /* 5. Synchronisation du défilement pour les champs 'scrolling' */
     if (isScroll) {
         field_clamp_scroll(field);
         if (field->scroll > 0) {
-            [[gFieldEditor layoutManager]
-                ensureLayoutForTextContainer:[gFieldEditor textContainer]];
-            [[gFieldScroll contentView]
-                scrollToPoint:NSMakePoint(0, field->scroll)];
+            [[gFieldEditor layoutManager] ensureLayoutForTextContainer:container];
+            [[gFieldScroll contentView] scrollToPoint:NSMakePoint(0, field->scroll)];
             [gFieldScroll reflectScrolledClipView:[gFieldScroll contentView]];
         }
 
         [[gFieldScroll contentView] setPostsBoundsChangedNotifications:YES];
-        [[NSNotificationCenter defaultCenter]
-            addObserver:self
-               selector:@selector(fieldEditorDidScroll:)
-                   name:NSViewBoundsDidChangeNotification
-                 object:[gFieldScroll contentView]];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(fieldEditorDidScroll:)
+                                                     name:NSViewBoundsDidChangeNotification
+                                                   object:[gFieldScroll contentView]];
     }
 
     [[self window] makeFirstResponder:gFieldEditor];
