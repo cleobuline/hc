@@ -3742,22 +3742,19 @@ static NSTextField  *gSprayDensityLabel = nil;
     NSRect r = field_text_rect(field);
     BOOL isScroll = (field->style && strcmp(field->style, "scrolling") == 0);
 
+    /* 1. Conteneur ScrollView ajusté et verrouillé au cadre */
     gFieldScroll = [[NSScrollView alloc] initWithFrame:r];
     [gFieldScroll setHasVerticalScroller:NO];
     [gFieldScroll setHasHorizontalScroller:NO];
     [gFieldScroll setAutohidesScrollers:YES];
     [gFieldScroll setBorderType:NSNoBorder];
     [gFieldScroll setDrawsBackground:NO];
-
-    /* Forcer le conteneur à ne pas déborder du cadre du champ */
     [gFieldScroll setWantsLayer:YES];
     [[gFieldScroll layer] setMasksToBounds:YES];
 
-    /* Suppression des marges internes du NSClipView */
-    [[gFieldScroll contentView] setContentInsets:NSEdgeInsetsZero];
     NSSize sz = [gFieldScroll contentSize];
 
-    /* 2. Instantation et configuration géométrique du NSTextView */
+    /* 2. Instanciation et configuration du NSTextView */
     gFieldEditor = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, sz.width, sz.height)];
     [gFieldEditor setMinSize:NSMakeSize(0, 0)];
     [gFieldEditor setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
@@ -3765,7 +3762,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     [gFieldEditor setHorizontallyResizable:NO];
     [gFieldEditor setAutoresizingMask:NSViewWidthSizable];
 
-    /* 3. Zéro rembourrage et alignement des métriques de police */
+    /* 3. Métriques et suppression des marges internes */
     NSTextContainer *container = [gFieldEditor textContainer];
     [container setContainerSize:NSMakeSize(sz.width, FLT_MAX)];
     [container setWidthTracksTextView:YES];
@@ -3774,17 +3771,18 @@ static NSTextField  *gSprayDensityLabel = nil;
     [gFieldEditor setTextContainerInset:NSMakeSize(0, 0)];
     [gFieldEditor setDrawsBackground:NO];
     [gFieldEditor setDelegate:self];
+
+    /* Alignement typographique classique Cocoa */
     NSLayoutManager *lm = [gFieldEditor layoutManager];
-        [lm setUsesFontLeading:YES];
-    [lm setTypesetterBehavior:NSTypesetterBehavior_10_2_WithCompatibility];    /* Clé de l'alignement : forcer le Layout Manager à appliquer les métriques exactes de la fonte */
-    [[gFieldEditor layoutManager] setUsesFontLeading:YES];
+    [lm setUsesFontLeading:YES];
+    [lm setTypesetterBehavior:NSTypesetterBehavior_10_2_WithCompatibility];
 
     [gFieldEditor setRichText:YES];
     [gFieldEditor setImportsGraphics:NO];
     [gFieldEditor setUsesFontPanel:YES];
     [gFieldEditor setAllowsUndo:YES];
 
-    /* 4. Chargement du contenu textuel et des attributs */
+    /* 4. Chargement du texte et synchronisation de l'interligne statique */
     const char *tx = hc_field_text(field);
     NSString *str = [NSString stringWithUTF8String:tx ? tx : ""];
     NSDictionary *base = obj_attrs(field, 12, [NSColor blackColor]);
@@ -3796,19 +3794,22 @@ static NSTextField  *gSprayDensityLabel = nil;
     [[gFieldEditor textStorage] setAttributedString:field_attr_string(field, str, base)];
     gForEditor = NO;
 
-    /* Alignement du style de paragraphe initial */
+    /* Application stricte de la hauteur de ligne pour correspondre au mode Browse */
     NSMutableDictionary *tattr = [base mutableCopy];
-    if ([[gFieldEditor textStorage] length] > 0) {
-        id ps = [[gFieldEditor textStorage] attribute:NSParagraphStyleAttributeName
-                                              atIndex:0
-                                       effectiveRange:NULL];
-        if (ps) tattr[NSParagraphStyleAttributeName] = ps;
+    NSMutableParagraphStyle *ps = [[tattr objectForKey:NSParagraphStyleAttributeName] mutableCopy];
+    if (!ps) ps = [[NSMutableParagraphStyle alloc] init];
+
+    CGFloat lh = hc_text_height(field);
+    if (lh > 0) {
+        [ps setMinimumLineHeight:lh];
+        [ps setMaximumLineHeight:lh];
     }
+    tattr[NSParagraphStyleAttributeName] = ps;
     [gFieldEditor setTypingAttributes:tattr];
 
     [gFieldScroll setDocumentView:gFieldEditor];
 
-    /* Réinitialisation de l'origine du document dans le ScrollView */
+    /* Réinitialisation de l'origine du document */
     NSRect df = [gFieldEditor frame];
     if (df.origin.x != 0 || df.origin.y != 0) {
         df.origin = NSZeroPoint;
@@ -3817,7 +3818,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     [self addSubview:gFieldScroll];
 
-    /* 5. Synchronisation du défilement pour les champs 'scrolling' */
+    /* 5. Prise en charge du défilement pour les champs scrolling */
     if (isScroll) {
         field_clamp_scroll(field);
         if (field->scroll > 0) {
