@@ -124,6 +124,9 @@ static int     gObjStartW, gObjStartH;
 static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
 
+typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
+static HCAxisLock gLockedAxis = AXIS_NONE;
+
 static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
@@ -163,18 +166,12 @@ static NSFont *gTextFont = nil;
 static NSTimer *gAntsTimer = nil;
 static CGFloat  gAntsPhase = 0.0;
 
-
-
-typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
-static HCAxisLock gLockedAxis = AXIS_NONE;
-
 @interface HCView ()
 - (void)popupFlashTick:(NSTimer *)timer;
 - (void)startAntsTimer;
 - (void)stopAntsTimer;
 @end
 
-/* Utilitaire : contrainte d'axe horizontal ou vertical avec Maj (Shift) */
 static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
     CGFloat dx = fabs(current.x - start.x);
     CGFloat dy = fabs(current.y - start.y);
@@ -185,7 +182,6 @@ static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
     }
 }
 
-/* Utilitaire de calcul de la boîte englobante d'une forme selon l'état de la touche Option (Alt) */
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     if (centered) {
         CGFloat dx = fabs(end.x - start.x);
@@ -566,6 +562,10 @@ static void draw_part(Object *o) {
                                 r.size.width - 3, r.size.height - 3);
             draw_btn_label(o, s, lr, on, 13);
         }
+
+        if (gTool == TOOL_BUTTON) {
+            draw_edit_outline(r);
+        }
     }
     else if (o->type == OBJ_FIELD) {
         const char *st = o->style ? o->style : "rectangle";
@@ -734,9 +734,10 @@ static void draw_part(Object *o) {
             [NSGraphicsContext restoreGraphicsState];
         }
 
-        if (isTransp) draw_edit_outline(r);
+        if (gTool == TOOL_FIELD || isTransp) draw_edit_outline(r);
     }
 }
+
 static int handle_at(Object *o, NSPoint p) {
     if (!o) return 0;
     CGFloat s = 8;
@@ -893,6 +894,13 @@ static void cocoa_choose_tool(const char *name) {
     for (unsigned i = 0; i < sizeof table / sizeof *table; i++) {
         if (strcasecmp(name, table[i].nom) == 0) {
             [gView dropFloating];
+
+            /* Sortie immédiate du mode édition et retrait du focus de l'éditeur Cocoa */
+            if (gEditingField) {
+                [gView endFieldEdit];
+                [[gView window] makeFirstResponder:gView];
+            }
+
             gTool = table[i].t;
             gSelected = NULL;
             [gView stopSprayTimer];
@@ -2563,6 +2571,7 @@ static int gColorTarget = 0;
     gResizeHandle   = 0;
     gDragging       = NO;
     gPenDrawing     = NO;
+    gLockedAxis     = AXIS_NONE;
     gSelRectActive  = NO;
     gSelRectDrawing = NO;
     gLassoActive    = NO;
@@ -2617,15 +2626,18 @@ static int gColorTarget = 0;
     [self setNeedsDisplay:YES];
 }
 
-- (void)mouseDown:(NSEvent *)event {
-    /* Dans mouseDown: quand on commence un tracé */
+- (NSView *)hitTest:(NSPoint)point {
+    if (gTool != TOOL_BROWSE && gEditingField) {
+        [self endFieldEdit];
+        [[self window] makeFirstResponder:self];
+    }
+    return [super hitTest:point];
+}
 
+- (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
 
-    gPenLast = p;
-    gPenDrawing = YES;
-    gLockedAxis = AXIS_NONE; // <--- Réinitialisation ici
-    
+    /* 1. Menus Popup */
     if (gPopupTarget) {
         if (gPopupFlashTimer) return;
         NSInteger row = popup_row_at_point(p);
@@ -2637,13 +2649,43 @@ static int gColorTarget = 0;
         }
         return;
     }
+
     Object *hit = part_at(hc_current_card(), p);
 
     gClickPoint = p;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
     gMouseClicked = YES;
 
-    /* ---------- Clic sur sélection rectangulaire active : déplacement ou duplication (Option) ---------- */
+    /* 2. Fermeture prioritaire du mode édition de texte si l'outil n'est plus Browse */
+    if (gTool != TOOL_BROWSE && gEditingField) {
+        [self endFieldEdit];
+    }
+
+    /* 3. Double-clic sur un objet (Édition des infos ou du script) */
+    if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
+        if (hit->type == OBJ_BUTTON)      [self showButtonInfo:hit];
+        else if (hit->type == OBJ_FIELD)  [self showFieldInfo:hit];
+        else                              [self editScriptOf:hit];
+        return;
+    }
+
+    /* 4. Priorité aux outils FIELD et BUTTON (sélection et déplacement direct) */
+    if (gTool == TOOL_FIELD || gTool == TOOL_BUTTON) {
+        if (hit && ((gTool == TOOL_FIELD  && hit->type == OBJ_FIELD) ||
+                    (gTool == TOOL_BUTTON && hit->type == OBJ_BUTTON))) {
+            
+            gSelected = hit;
+            gMoving = YES;
+            [[self window] makeFirstResponder:self];
+            gMoveStart = p;
+            gObjStartX = hit->x;
+            gObjStartY = hit->y;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
+
+    /* 5. Gestion des sélections de peinture actives (Rectangulaire & Lasso) */
     if (gTool == TOOL_SELRECT && gSelRectActive) {
         NSRect selRect = NSMakeRect(MIN(gSelStart.x, gSelEnd.x), MIN(gSelStart.y, gSelEnd.y),
                                     fabs(gSelEnd.x - gSelStart.x), fabs(gSelEnd.y - gSelStart.y));
@@ -2672,7 +2714,6 @@ static int gColorTarget = 0;
         }
     }
 
-    /* ---------- Clic sur sélection lasso active : déplacement ou duplication (Option) ---------- */
     if (gTool == TOOL_LASSO && gLassoActive && gLassoCount >= 3) {
         NSBezierPath *lassoPath = [NSBezierPath bezierPath];
         [lassoPath moveToPoint:gLassoPts[0]];
@@ -2720,11 +2761,13 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* 6. Préparation Undo pour les outils de dessin */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
         gTool == TOOL_SPRAY  || gTool == TOOL_LINE  || gTool == TOOL_RECT   ||
         gTool == TOOL_OVAL   || gTool == TOOL_FILL  || gTool == TOOL_FREEFORM)
         [self beginPaintUndo];
 
+    /* 7. Traitement des outils continus */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
         gTool == TOOL_SPRAY) {
         Object *card = hc_current_card();
@@ -2735,6 +2778,7 @@ static int gColorTarget = 0;
                                                         (int)[self bounds].size.height);
             gPenLast = p;
             gPenDrawing = YES;
+            gLockedAxis = AXIS_NONE;
             if (gTool == TOOL_PENCIL)      paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
             else if (gTool == TOOL_SPRAY) {
@@ -2807,59 +2851,52 @@ static int gColorTarget = 0;
         return;
     }
 
-    if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
-        if (hit->type == OBJ_BUTTON)      [self showButtonInfo:hit];
-        else if (hit->type == OBJ_FIELD)  [self showFieldInfo:hit];
-        else                              [self editScriptOf:hit];
-        return;
-    }
-
+    /* 8. Outil BROWSE (Interaction avec la carte) */
     if (gTool == TOOL_BROWSE) {
-
         if (hit && hit->type == OBJ_FIELD && hit->style &&
-                    strcmp(hit->style, "scrolling") == 0) {
-                    CGFloat bw = 16;
-                    NSRect bar = NSMakeRect(hit->x + hit->w - bw, hit->y, bw, hit->h);
-                    if (NSPointInRect(p, bar)) {
-                        NSRect tr0 = field_text_rect(hit);
-                        CGFloat th = field_text_height(hit, tr0);
-                        CGFloat vh = tr0.size.height;
-                        CGFloat gy = bar.origin.y + 16, gh = bar.size.height - 32;
-                        CGFloat lh = [@"Ag" sizeWithAttributes:
-                            @{NSFontAttributeName: obj_font(hit, 12)}].height;
-                        if (lh < 4) lh = 12;
+            strcmp(hit->style, "scrolling") == 0) {
+            CGFloat bw = 16;
+            NSRect bar = NSMakeRect(hit->x + hit->w - bw, hit->y, bw, hit->h);
+            if (NSPointInRect(p, bar)) {
+                NSRect tr0 = field_text_rect(hit);
+                CGFloat th = field_text_height(hit, tr0);
+                CGFloat vh = tr0.size.height;
+                CGFloat gy = bar.origin.y + 16, gh = bar.size.height - 32;
+                CGFloat lh = [@"Ag" sizeWithAttributes:
+                    @{NSFontAttributeName: obj_font(hit, 12)}].height;
+                if (lh < 4) lh = 12;
 
-                        if (p.y < bar.origin.y + 16) {
-                            hit->scroll -= (int)lh;
-                        } else if (p.y > bar.origin.y + hit->h - 16) {
-                            hit->scroll += (int)lh;
-                        } else if (th > vh && gh > 8) {
-                            CGFloat kh = gh * (vh / th);
-                            if (kh < 12) kh = 12;
-                            if (kh > gh) kh = gh;
-                            CGFloat maxs = th - vh;
-                            CGFloat pos = (maxs > 0) ? (hit->scroll / maxs) : 0;
-                            if (pos < 0) pos = 0;
-                            if (pos > 1) pos = 1;
-                            CGFloat ky = gy + pos * (gh - kh);
-                            if (p.y >= ky && p.y <= ky + kh) {
-                                gScrollField = hit;
-                                gScrollGrab  = p.y - ky;
-                                gScrollGH    = gh;
-                                gScrollKH    = kh;
-                                gScrollGY    = gy;
-                                gScrollMax   = maxs;
-                                return;
-                            }
-                            if (p.y < ky) hit->scroll -= hit->h;
-                            else          hit->scroll += hit->h;
-                        }
-                        field_clamp_scroll(hit);
-                        sync_editor_scroll(hit);
-                        [self setNeedsDisplay:YES];
+                if (p.y < bar.origin.y + 16) {
+                    hit->scroll -= (int)lh;
+                } else if (p.y > bar.origin.y + hit->h - 16) {
+                    hit->scroll += (int)lh;
+                } else if (th > vh && gh > 8) {
+                    CGFloat kh = gh * (vh / th);
+                    if (kh < 12) kh = 12;
+                    if (kh > gh) kh = gh;
+                    CGFloat maxs = th - vh;
+                    CGFloat pos = (maxs > 0) ? (hit->scroll / maxs) : 0;
+                    if (pos < 0) pos = 0;
+                    if (pos > 1) pos = 1;
+                    CGFloat ky = gy + pos * (gh - kh);
+                    if (p.y >= ky && p.y <= ky + kh) {
+                        gScrollField = hit;
+                        gScrollGrab  = p.y - ky;
+                        gScrollGH    = gh;
+                        gScrollKH    = kh;
+                        gScrollGY    = gy;
+                        gScrollMax   = maxs;
                         return;
                     }
+                    if (p.y < ky) hit->scroll -= hit->h;
+                    else          hit->scroll += hit->h;
                 }
+                field_clamp_scroll(hit);
+                sync_editor_scroll(hit);
+                [self setNeedsDisplay:YES];
+                return;
+            }
+        }
 
         if (hit && hit->type == OBJ_BUTTON && hit->style &&
             strcmp(hit->style, "popup") == 0) {
@@ -2868,29 +2905,29 @@ static int gColorTarget = 0;
         }
 
         if (hit && hit->type == OBJ_FIELD) {
-                    if (hit->locktext) {
-                        if (hit->auto_select) {
-                            int ligne = click_line_number(hit, p);
-                            if (ligne > 0) {
-                                const char *tx = hc_field_text(hit);
-                                int deb = 0, n = 1;
-                                while (n < ligne && tx[deb]) {
-                                    if (tx[deb] == '\n') n++;
-                                    deb++;
-                                }
-                                int fin = deb;
-                                while (tx[fin] && tx[fin] != '\n') fin++;
-                                hc_set_selection(hit, deb, fin - deb);
-                            }
+            if (hit->locktext) {
+                if (hit->auto_select) {
+                    int ligne = click_line_number(hit, p);
+                    if (ligne > 0) {
+                        const char *tx = hc_field_text(hit);
+                        int deb = 0, n = 1;
+                        while (n < ligne && tx[deb]) {
+                            if (tx[deb] == '\n') n++;
+                            deb++;
                         }
-                        gPressed = hit;
-                        hc_send(hit, "mouseDown");
-                        [self setNeedsDisplay:YES];
-                    } else {
-                        [self beginFieldEdit:hit];
+                        int fin = deb;
+                        while (tx[fin] && tx[fin] != '\n') fin++;
+                        hc_set_selection(hit, deb, fin - deb);
                     }
-                    return;
                 }
+                gPressed = hit;
+                hc_send(hit, "mouseDown");
+                [self setNeedsDisplay:YES];
+            } else {
+                [self beginFieldEdit:hit];
+            }
+            return;
+        }
 
         if (hit) {
             gPressed = hit;
@@ -2908,6 +2945,7 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* 9. Redimensionnement via poignées */
     if (gSelected) {
         int h = handle_at(gSelected, p);
         if (h) {
@@ -2923,6 +2961,7 @@ static int gColorTarget = 0;
         }
     }
 
+    /* 10. Sélection générale ou tracé du rectangle de création */
     if (hit) {
         gSelected = hit;
         gMoving = YES;
@@ -2990,20 +3029,17 @@ static int gColorTarget = 0;
         return;
     }
 
-    /* --- Outils de dessin continu (Crayon, Pinceau, Aérographe, Gomme) --- */
-    /* --- Outils de dessin continu (Crayon, Pinceau, Aérographe, Gomme) --- */
+    /* Outils de dessin continu (Crayon, Pinceau, Aérographe, Gomme) avec verrou d'axe */
     if ((gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER || gTool == TOOL_SPRAY) && gPenDrawing) {
         if (shiftDown) {
-            /* Si l'axe n'est pas encore verrouillé, on détermine la dominante au départ */
             if (gLockedAxis == AXIS_NONE) {
                 CGFloat dx = fabs(p.x - gPenLast.x);
                 CGFloat dy = fabs(p.y - gPenLast.y);
-                if (dx > 2 || dy > 2) { // Petit seuil pour éviter le bruit
+                if (dx > 2 || dy > 2) {
                     gLockedAxis = (dx > dy) ? AXIS_HORIZONTAL : AXIS_VERTICAL;
                 }
             }
 
-            /* On applique strict le verrou déterminé */
             if (gLockedAxis == AXIS_HORIZONTAL) {
                 p.y = gPenLast.y;
             } else if (gLockedAxis == AXIS_VERTICAL) {
@@ -3125,6 +3161,7 @@ static int gColorTarget = 0;
     if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER ||
         gTool == TOOL_BRUSH  || gTool == TOOL_SPRAY) {
         gPenDrawing = NO;
+        gLockedAxis = AXIS_NONE;
         [self stopSprayTimer];
         return;
     }
@@ -3554,10 +3591,18 @@ static NSTextField  *gSprayDensityLabel = nil;
 
 - (void)toolChosen:(id)sender {
     [self dropFloating];
-    gTool = (HCTool)[sender tag];
+    
+    HCTool newTool = (HCTool)[sender tag];
+    
+    if (gEditingField) {
+        [self endFieldEdit];
+    }
+    
+    [[self window] makeFirstResponder:self];
+    
+    gTool = newTool;
     gSelected = NULL;
-    [gView setNeedsDisplay:YES];
-    NSLog(@"outil : %d", (int)gTool);
+    [self setNeedsDisplay:YES];
 }
 
 - (void)editScriptOf:(Object *)obj {
@@ -3680,8 +3725,10 @@ static NSTextField  *gSprayDensityLabel = nil;
 - (void)beginFieldEdit:(Object *)field {
     if (!field) return;
 
-    if (field->locktext) {
-        [self endFieldEdit];
+    /* Sécurité : interdiction d'éditer si on n'est pas sur l'outil Browse */
+    if (gTool != TOOL_BROWSE || field->locktext) {
+        if (gEditingField) [self endFieldEdit];
+        [[self window] makeFirstResponder:self];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -3816,6 +3863,10 @@ static NSTextField  *gSprayDensityLabel = nil;
 
 - (void)endFieldEdit {
     if (gFieldEditor && gEditingField) {
+        if ([[self window] firstResponder] == gFieldEditor) {
+            [[self window] makeFirstResponder:self];
+        }
+
         NSString *str = [gFieldEditor string];
 
         hc_set_field_text(gEditingField, [str UTF8String]);
