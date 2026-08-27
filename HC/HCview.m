@@ -159,9 +159,43 @@ static BOOL gFloatDragging = NO;
 static NSPoint gFloatGrab;
 static NSFont *gTextFont = nil;
 
+/* Fourmis de feu */
+static NSTimer *gAntsTimer = nil;
+static CGFloat  gAntsPhase = 0.0;
+
+
+
+typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
+static HCAxisLock gLockedAxis = AXIS_NONE;
+
 @interface HCView ()
 - (void)popupFlashTick:(NSTimer *)timer;
+- (void)startAntsTimer;
+- (void)stopAntsTimer;
 @end
+
+/* Utilitaire : contrainte d'axe horizontal ou vertical avec Maj (Shift) */
+static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
+    CGFloat dx = fabs(current.x - start.x);
+    CGFloat dy = fabs(current.y - start.y);
+    if (dx > dy) {
+        return NSMakePoint(current.x, start.y);
+    } else {
+        return NSMakePoint(start.x, current.y);
+    }
+}
+
+/* Utilitaire de calcul de la boîte englobante d'une forme selon l'état de la touche Option (Alt) */
+static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
+    if (centered) {
+        CGFloat dx = fabs(end.x - start.x);
+        CGFloat dy = fabs(end.y - start.y);
+        return NSMakeRect(start.x - dx, start.y - dy, dx * 2, dy * 2);
+    } else {
+        return NSMakeRect(MIN(start.x, end.x), MIN(start.y, end.y),
+                          fabs(end.x - start.x), fabs(end.y - start.y));
+    }
+}
 
 static void radio_exclusive(Object *card, Object *keep) {
     if (!card) return;
@@ -888,8 +922,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
 
     if (mods_has(mods, "shift")) {
-        CGFloat dx = fabs(z.x - a.x), dy = fabs(z.y - a.y);
-        if (dx > dy) z.y = a.y; else z.x = a.x;
+        z = constrain_to_axis(a, z);
     }
 
     switch (gTool) {
@@ -1627,6 +1660,29 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     return _doc.card;
 }
 
+- (void)startAntsTimer {
+    if (gAntsTimer) return;
+    gAntsTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/15.0
+                                                  target:self
+                                                selector:@selector(antsTick:)
+                                                userInfo:nil
+                                                 repeats:YES];
+}
+
+- (void)stopAntsTimer {
+    if (gAntsTimer) { [gAntsTimer invalidate]; gAntsTimer = nil; }
+}
+
+- (void)antsTick:(NSTimer *)t {
+    if (!gSelRectActive && !gLassoActive) {
+        [self stopAntsTimer];
+        return;
+    }
+    gAntsPhase += 1.0;
+    if (gAntsPhase >= 8.0) gAntsPhase = 0.0;
+    [self setNeedsDisplay:YES];
+}
+
 - (void)updateWindowTitle {
     Object *card = [self documentCard];
     if (!card) return;
@@ -2090,6 +2146,7 @@ static int gColorTarget = 0;
         erase_freeform(rep, gLassoPts, gLassoCount);
         gLassoActive = NO;
         gLassoCount = 0;
+        [self stopAntsTimer];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -2103,6 +2160,7 @@ static int gColorTarget = 0;
                                                     (int)[self bounds].size.height);
         erase_rect(rep, gSelStart, gSelEnd);
         gSelRectActive = NO;
+        [self stopAntsTimer];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -2325,13 +2383,22 @@ static int gColorTarget = 0;
         [frame stroke];
     }
 
+    /* Aperçu dynamique des formes géométriques */
     if (gShapeDrawing) {
+        BOOL optionDown = ([NSEvent modifierFlags] & NSEventModifierFlagOption) != 0;
+        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, optionDown);
+
         [[NSColor blueColor] setStroke];
-        NSBezierPath *preview = [NSBezierPath bezierPath];
-        NSRect box = NSMakeRect(MIN(gShapeStart.x,gShapeEnd.x), MIN(gShapeStart.y,gShapeEnd.y),
-                                fabs(gShapeEnd.x-gShapeStart.x), fabs(gShapeEnd.y-gShapeStart.y));
+        NSBezierPath *preview = nil;
         if (gTool == TOOL_LINE) {
-            [preview moveToPoint:gShapeStart];
+            preview = [NSBezierPath bezierPath];
+            if (optionDown) {
+                NSPoint opposite = NSMakePoint(2 * gShapeStart.x - gShapeEnd.x,
+                                               2 * gShapeStart.y - gShapeEnd.y);
+                [preview moveToPoint:opposite];
+            } else {
+                [preview moveToPoint:gShapeStart];
+            }
             [preview lineToPoint:gShapeEnd];
         } else if (gTool == TOOL_RECT) {
             preview = [NSBezierPath bezierPathWithRect:box];
@@ -2341,75 +2408,82 @@ static int gColorTarget = 0;
         [preview setLineWidth:1];
         [preview stroke];
     }
+
     if (gFreeDrawing && gFreeCount > 1) {
-            [[NSColor blueColor] setStroke];
-            NSBezierPath *pv = [NSBezierPath bezierPath];
-            [pv moveToPoint:gFreePts[0]];
-            for (int i = 1; i < gFreeCount; i++) [pv lineToPoint:gFreePts[i]];
-            [pv setLineWidth:1];
-            [pv stroke];
-        }
+        [[NSColor blueColor] setStroke];
+        NSBezierPath *pv = [NSBezierPath bezierPath];
+        [pv moveToPoint:gFreePts[0]];
+        for (int i = 1; i < gFreeCount; i++) [pv lineToPoint:gFreePts[i]];
+        [pv setLineWidth:1];
+        [pv stroke];
+    }
+
+    /* Lasso avec animation fourmis de feu */
     if ((gLassoDrawing || gLassoActive) && gLassoCount > 1) {
-            [[NSColor blackColor] setStroke];
-            NSBezierPath *pv = [NSBezierPath bezierPath];
-            [pv moveToPoint:gLassoPts[0]];
-            for (int i = 1; i < gLassoCount; i++) [pv lineToPoint:gLassoPts[i]];
-            if (gLassoActive) [pv closePath];
-            [pv setLineWidth:1];
-            CGFloat dash[] = {4, 3};
-            [pv setLineDash:dash count:2 phase:0];
-            [pv stroke];
-        }
+        [[NSColor blackColor] setStroke];
+        NSBezierPath *pv = [NSBezierPath bezierPath];
+        [pv moveToPoint:gLassoPts[0]];
+        for (int i = 1; i < gLassoCount; i++) [pv lineToPoint:gLassoPts[i]];
+        if (gLassoActive) [pv closePath];
+        [pv setLineWidth:1];
+        CGFloat dash[] = {4, 4};
+        [pv setLineDash:dash count:2 phase:gAntsPhase];
+        [pv stroke];
+    }
+
+    /* Sélection rectangulaire avec animation fourmis de feu */
     if (gSelRectDrawing || gSelRectActive) {
-            NSRect sel = NSMakeRect(MIN(gSelStart.x,gSelEnd.x), MIN(gSelStart.y,gSelEnd.y),
-                                    fabs(gSelEnd.x-gSelStart.x), fabs(gSelEnd.y-gSelStart.y));
-            [[NSColor blackColor] setStroke];
-            NSBezierPath *pv = [NSBezierPath bezierPathWithRect:sel];
-            [pv setLineWidth:1];
-            CGFloat dash[] = {4, 3};
-            [pv setLineDash:dash count:2 phase:0];
-            [pv stroke];
-        }
+        NSRect sel = NSMakeRect(MIN(gSelStart.x,gSelEnd.x), MIN(gSelStart.y,gSelEnd.y),
+                                fabs(gSelEnd.x-gSelStart.x), fabs(gSelEnd.y-gSelStart.y));
+        [[NSColor blackColor] setStroke];
+        NSBezierPath *pv = [NSBezierPath bezierPathWithRect:sel];
+        [pv setLineWidth:1];
+        CGFloat dash[] = {4, 4};
+        [pv setLineDash:dash count:2 phase:gAntsPhase];
+        [pv stroke];
+    }
+
     if (gFloating && gClipboard) {
-            NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
-            [gClipboard drawInRect:fr fromRect:NSZeroRect
-                         operation:NSCompositingOperationSourceOver fraction:1.0
-                    respectFlipped:YES hints:nil];
+        NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
+        [gClipboard drawInRect:fr fromRect:NSZeroRect
+                     operation:NSCompositingOperationSourceOver fraction:1.0
+                respectFlipped:YES hints:nil];
 
-            [[NSColor blackColor] setStroke];
-            NSBezierPath *fp = [NSBezierPath bezierPath];
-            if (gClipPtsCount >= 3) {
-                [fp moveToPoint:NSMakePoint(gFloatPos.x + gClipPts[0].x,
-                                            gFloatPos.y + gClipPts[0].y)];
-                for (int i = 1; i < gClipPtsCount; i++)
-                    [fp lineToPoint:NSMakePoint(gFloatPos.x + gClipPts[i].x,
-                                                gFloatPos.y + gClipPts[i].y)];
-                [fp closePath];
-            } else {
-                fp = [NSBezierPath bezierPathWithRect:fr];
-            }
-            [fp setLineWidth:1];
-            CGFloat dash[] = {4, 3};
-            [fp setLineDash:dash count:2 phase:0];
-            [fp stroke];
+        [[NSColor blackColor] setStroke];
+        NSBezierPath *fp = [NSBezierPath bezierPath];
+        if (gClipPtsCount >= 3) {
+            [fp moveToPoint:NSMakePoint(gFloatPos.x + gClipPts[0].x,
+                                        gFloatPos.y + gClipPts[0].y)];
+            for (int i = 1; i < gClipPtsCount; i++)
+                [fp lineToPoint:NSMakePoint(gFloatPos.x + gClipPts[i].x,
+                                            gFloatPos.y + gClipPts[i].y)];
+            [fp closePath];
+        } else {
+            fp = [NSBezierPath bezierPathWithRect:fr];
         }
+        [fp setLineWidth:1];
+        CGFloat dash[] = {4, 4};
+        [fp setLineDash:dash count:2 phase:gAntsPhase];
+        [fp stroke];
+    }
+
     if (gTextActive && gTextBuf) {
-            NSDictionary *at = text_attrs();
-            [gTextBuf drawAtPoint:gTextPos withAttributes:at];
+        NSDictionary *at = text_attrs();
+        [gTextBuf drawAtPoint:gTextPos withAttributes:at];
 
-            NSArray *lines = [gTextBuf componentsSeparatedByString:@"\n"];
-            NSString *last = [lines lastObject];
-            NSSize lastSz = [last sizeWithAttributes:at];
-            NSSize oneLine = [@"Ag" sizeWithAttributes:at];
-            CGFloat cy = gTextPos.y + ([lines count] - 1) * oneLine.height;
+        NSArray *lines = [gTextBuf componentsSeparatedByString:@"\n"];
+        NSString *last = [lines lastObject];
+        NSSize lastSz = [last sizeWithAttributes:at];
+        NSSize oneLine = [@"Ag" sizeWithAttributes:at];
+        CGFloat cy = gTextPos.y + ([lines count] - 1) * oneLine.height;
 
-            [[NSColor blackColor] setStroke];
-            NSBezierPath *caret = [NSBezierPath bezierPath];
-            [caret moveToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy)];
-            [caret lineToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy + oneLine.height)];
-            [caret setLineWidth:1];
-            [caret stroke];
-        }
+        [[NSColor blackColor] setStroke];
+        NSBezierPath *caret = [NSBezierPath bezierPath];
+        [caret moveToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy)];
+        [caret lineToPoint:NSMakePoint(gTextPos.x + lastSz.width, cy + oneLine.height)];
+        [caret setLineWidth:1];
+        [caret stroke];
+    }
     draw_popup_menu();
 }
 
@@ -2480,6 +2554,7 @@ static int gColorTarget = 0;
     close_popup_menu();
     hc_set_selection(NULL, 0, 0);
     [self stopSprayTimer];
+    [self stopAntsTimer];
 
     HCDoc vide = {0};
     *gDoc = vide;
@@ -2543,8 +2618,14 @@ static int gColorTarget = 0;
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    /* Dans mouseDown: quand on commence un tracé */
+
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
 
+    gPenLast = p;
+    gPenDrawing = YES;
+    gLockedAxis = AXIS_NONE; // <--- Réinitialisation ici
+    
     if (gPopupTarget) {
         if (gPopupFlashTimer) return;
         NSInteger row = popup_row_at_point(p);
@@ -2562,8 +2643,7 @@ static int gColorTarget = 0;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
     gMouseClicked = YES;
 
-    /* ---------- Clic sur sélection rectangulaire active : décollage du tampon ---------- */
-    /* ---------- Clic sur sélection rectangulaire active : déplacement ou duplication ---------- */
+    /* ---------- Clic sur sélection rectangulaire active : déplacement ou duplication (Option) ---------- */
     if (gTool == TOOL_SELRECT && gSelRectActive) {
         NSRect selRect = NSMakeRect(MIN(gSelStart.x, gSelEnd.x), MIN(gSelStart.y, gSelEnd.y),
                                     fabs(gSelEnd.x - gSelStart.x), fabs(gSelEnd.y - gSelStart.y));
@@ -2572,10 +2652,8 @@ static int gColorTarget = 0;
             Object *layer = [self paintLayer];
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
             
-            // 1. Toujours copier la zone vers gClipboard
             copy_rect(rep, gSelStart, gSelEnd);
             
-            // 2. N'effacer l'original QUE SI la touche Option n'est PAS enfoncée
             BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
             if (!optionDown) {
                 erase_rect(rep, gSelStart, gSelEnd);
@@ -2586,6 +2664,7 @@ static int gColorTarget = 0;
             gFloatPos = selRect.origin;
             gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
             gSelRectActive = NO;
+            [self startAntsTimer];
             [self setNeedsDisplay:YES];
             return;
         } else if (gFloating) {
@@ -2593,8 +2672,7 @@ static int gColorTarget = 0;
         }
     }
 
-    /* ---------- Clic sur sélection lasso active : décollage du tampon ---------- */
-    /* ---------- Clic sur sélection lasso active : déplacement ou duplication ---------- */
+    /* ---------- Clic sur sélection lasso active : déplacement ou duplication (Option) ---------- */
     if (gTool == TOOL_LASSO && gLassoActive && gLassoCount >= 3) {
         NSBezierPath *lassoPath = [NSBezierPath bezierPath];
         [lassoPath moveToPoint:gLassoPts[0]];
@@ -2606,10 +2684,8 @@ static int gColorTarget = 0;
             Object *layer = [self paintLayer];
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
             
-            // 1. Toujours copier le lasso vers gClipboard
             copy_freeform(rep, gLassoPts, gLassoCount);
             
-            // 2. N'effacer l'original QUE SI la touche Option n'est PAS enfoncée
             BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
             if (!optionDown) {
                 erase_freeform(rep, gLassoPts, gLassoCount);
@@ -2625,6 +2701,7 @@ static int gColorTarget = 0;
             gFloatPos = NSMakePoint(minx, miny);
             gFloatGrab = NSMakePoint(p.x - gFloatPos.x, p.y - gFloatPos.y);
             gLassoActive = NO;
+            [self startAntsTimer];
             [self setNeedsDisplay:YES];
             return;
         } else if (gFloating) {
@@ -2632,7 +2709,6 @@ static int gColorTarget = 0;
         }
     }
 
-    /* ---------- collage flottant : deplacer ou scotcher ---------- */
     if (gFloating) {
         NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
         if (NSPointInRect(p, fr)) {
@@ -2705,6 +2781,7 @@ static int gColorTarget = 0;
         gLassoPts[gLassoCount++] = p;
         gLassoDrawing = YES;
         gLassoActive = NO;
+        [self stopAntsTimer];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -2714,6 +2791,7 @@ static int gColorTarget = 0;
         gSelStart = p; gSelEnd = p;
         gSelRectDrawing = YES;
         gSelRectActive = NO;
+        [self stopAntsTimer];
         [self setNeedsDisplay:YES];
         return;
     }
@@ -2864,6 +2942,7 @@ static int gColorTarget = 0;
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    BOOL shiftDown = ([event modifierFlags] & NSEventModifierFlagShift) != 0;
 
     if (gPopupTarget && !gPopupFlashTimer) {
         NSInteger row = popup_row_at_point(p);
@@ -2892,82 +2971,91 @@ static int gColorTarget = 0;
     }
 
     if (gScrollField) {
-            CGFloat travel = gScrollGH - gScrollKH;
-            if (travel > 0) {
-                CGFloat pos = (p.y - gScrollGrab - gScrollGY) / travel;
-                if (pos < 0) pos = 0;
-                if (pos > 1) pos = 1;
-                gScrollField->scroll = (int)(pos * gScrollMax);
-                sync_editor_scroll(gScrollField);
-            }
-            [self setNeedsDisplay:YES];
-            return;
+        CGFloat travel = gScrollGH - gScrollKH;
+        if (travel > 0) {
+            CGFloat pos = (p.y - gScrollGrab - gScrollGY) / travel;
+            if (pos < 0) pos = 0;
+            if (pos > 1) pos = 1;
+            gScrollField->scroll = (int)(pos * gScrollMax);
+            sync_editor_scroll(gScrollField);
         }
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gFloating && gFloatDragging) {
-            gFloatPos = NSMakePoint(p.x - gFloatGrab.x, p.y - gFloatGrab.y);
-            [self setNeedsDisplay:YES];
-            return;
+        NSPoint targetP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
+        gFloatPos = NSMakePoint(targetP.x - gFloatGrab.x, targetP.y - gFloatGrab.y);
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* --- Outils de dessin continu (Crayon, Pinceau, Aérographe, Gomme) --- */
+    /* --- Outils de dessin continu (Crayon, Pinceau, Aérographe, Gomme) --- */
+    if ((gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER || gTool == TOOL_SPRAY) && gPenDrawing) {
+        if (shiftDown) {
+            /* Si l'axe n'est pas encore verrouillé, on détermine la dominante au départ */
+            if (gLockedAxis == AXIS_NONE) {
+                CGFloat dx = fabs(p.x - gPenLast.x);
+                CGFloat dy = fabs(p.y - gPenLast.y);
+                if (dx > 2 || dy > 2) { // Petit seuil pour éviter le bruit
+                    gLockedAxis = (dx > dy) ? AXIS_HORIZONTAL : AXIS_VERTICAL;
+                }
+            }
+
+            /* On applique strict le verrou déterminé */
+            if (gLockedAxis == AXIS_HORIZONTAL) {
+                p.y = gPenLast.y;
+            } else if (gLockedAxis == AXIS_VERTICAL) {
+                p.x = gPenLast.x;
+            }
+        } else {
+            gLockedAxis = AXIS_NONE;
         }
-    if (gTool == TOOL_PENCIL && gPenDrawing) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+
+        if (gTool == TOOL_PENCIL) {
             paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
-            gPenLast = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    if (gTool == TOOL_BRUSH && gPenDrawing) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+        } else if (gTool == TOOL_BRUSH) {
             brush_stroke(rep, gPenLast, p);
-            gPenLast = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    if (gTool == TOOL_SPRAY && gPenDrawing) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                        (int)[self bounds].size.height);
+        } else if (gTool == TOOL_SPRAY) {
             spray_stroke(rep, gPenLast, p, gSprayRadius, gSprayDensity);
-            gPenLast = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
-    if (gTool == TOOL_ERASER && gPenDrawing) {
-            Object *card = hc_current_card();
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+        } else if (gTool == TOOL_ERASER) {
             erase_stroke(rep, gPenLast, p, 16);
-            gPenLast = p;
-            [self setNeedsDisplay:YES];
-            return;
         }
+
+        gPenLast = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gTool == TOOL_FREEFORM && gFreeDrawing) {
-            if (gFreeCount < 4096) gFreePts[gFreeCount++] = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        if (shiftDown) p = constrain_to_axis(gFreePts[0], p);
+        if (gFreeCount < 4096) gFreePts[gFreeCount++] = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gTool == TOOL_SELRECT && gSelRectDrawing) {
-        gSelEnd = p;
+        gSelEnd = shiftDown ? constrain_to_axis(gSelStart, p) : p;
         [self setNeedsDisplay:YES];
         return;
     }
 
     if (gShapeDrawing) {
-            gShapeEnd = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        gShapeEnd = shiftDown ? constrain_to_axis(gShapeStart, p) : p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gResizeHandle && gSelected) {
-        int dx = (int)(p.x - gMoveStart.x);
-        int dy = (int)(p.y - gMoveStart.y);
+        NSPoint currentP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
+        int dx = (int)(currentP.x - gMoveStart.x);
+        int dy = (int)(currentP.y - gMoveStart.y);
         int x = gObjStartX, y = gObjStartY, w = gObjStartW, h = gObjStartH;
         switch (gResizeHandle) {
             case 1: x += dx; y += dy; w -= dx; h -= dy; break;
@@ -2982,14 +3070,17 @@ static int gColorTarget = 0;
         [self setNeedsDisplay:YES];
         return;
     }
+
     if (gTool == TOOL_LASSO && gLassoDrawing) {
-            if (gLassoCount < 4096) gLassoPts[gLassoCount++] = p;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        if (gLassoCount < 4096) gLassoPts[gLassoCount++] = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gMoving && gSelected) {
-        int dx = (int)(p.x - gMoveStart.x);
-        int dy = (int)(p.y - gMoveStart.y);
+        NSPoint currentP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
+        int dx = (int)(currentP.x - gMoveStart.x);
+        int dy = (int)(currentP.y - gMoveStart.y);
         gSelected->x = gObjStartX + dx;
         gSelected->y = gObjStartY + dy;
         [self setNeedsDisplay:YES];
@@ -2997,10 +3088,11 @@ static int gColorTarget = 0;
     }
 
     if (!gDragging) return;
-    CGFloat x = MIN(gDragStart.x, p.x);
-    CGFloat y = MIN(gDragStart.y, p.y);
-    CGFloat w = fabs(p.x - gDragStart.x);
-    CGFloat h = fabs(p.y - gDragStart.y);
+    NSPoint currentP = shiftDown ? constrain_to_axis(gDragStart, p) : p;
+    CGFloat x = MIN(gDragStart.x, currentP.x);
+    CGFloat y = MIN(gDragStart.y, currentP.y);
+    CGFloat w = fabs(currentP.x - gDragStart.x);
+    CGFloat h = fabs(currentP.y - gDragStart.y);
     gDragRect = NSMakeRect(x, y, w, h);
     [self setNeedsDisplay:YES];
 }
@@ -3022,92 +3114,115 @@ static int gColorTarget = 0;
 
     if (gScrollField) { gScrollField = NULL; return; }
     if (gFloating) {
-            gFloatDragging = NO;
-            return;
-        }
+        gFloatDragging = NO;
+        return;
+    }
     if (gResizeHandle) {
-            gResizeHandle = 0;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        gResizeHandle = 0;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (gTool == TOOL_PENCIL || gTool == TOOL_ERASER ||
         gTool == TOOL_BRUSH  || gTool == TOOL_SPRAY) {
-            gPenDrawing = NO;
-            [self stopSprayTimer];
-            return;
-        }
+        gPenDrawing = NO;
+        [self stopSprayTimer];
+        return;
+    }
     if (gTool == TOOL_SELRECT) {
-            gSelRectDrawing = NO;
-            gSelRectActive = (fabs(gSelEnd.x-gSelStart.x) > 3 && fabs(gSelEnd.y-gSelStart.y) > 3);
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        gSelRectDrawing = NO;
+        gSelRectActive = (fabs(gSelEnd.x-gSelStart.x) > 3 && fabs(gSelEnd.y-gSelStart.y) > 3);
+        if (gSelRectActive) [self startAntsTimer];
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (gTool == TOOL_LASSO) {
-            gLassoDrawing = NO;
-            gLassoActive = (gLassoCount >= 3);
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        gLassoDrawing = NO;
+        gLassoActive = (gLassoCount >= 3);
+        if (gLassoActive) [self startAntsTimer];
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    /* Gravure des formes géométriques */
     if (gShapeDrawing) {
-            gShapeDrawing = NO;
+        gShapeDrawing = NO;
+        BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
+        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, optionDown);
+
+        NSPoint finalStart = box.origin;
+        NSPoint finalEnd = NSMakePoint(box.origin.x + box.size.width, box.origin.y + box.size.height);
+
+        Object *card = hc_current_card();
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
+
+        if (gTool == TOOL_LINE) {
+            if (optionDown) {
+                NSPoint opposite = NSMakePoint(2 * gShapeStart.x - gShapeEnd.x,
+                                               2 * gShapeStart.y - gShapeEnd.y);
+                paint_shape(rep, TOOL_LINE, opposite, gShapeEnd, [NSColor blackColor], gLineWidth);
+            } else {
+                paint_shape(rep, TOOL_LINE, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);
+            }
+        } else {
+            if (gShapeFilled)
+                fill_shape(rep, gTool, finalStart, finalEnd);
+            paint_shape(rep, gTool, finalStart, finalEnd, [NSColor blackColor], gLineWidth);
+        }
+
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    if (gTool == TOOL_FREEFORM) {
+        gFreeDrawing = NO;
+        if (gFreeCount >= 2) {
             Object *card = hc_current_card();
             Object *layer = gEditBackground ? card->bg : card;
             if (!layer) layer = card;
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                    if (gShapeFilled && gTool != TOOL_LINE)
-                        fill_shape(rep, gTool, gShapeStart, gShapeEnd);
-                    paint_shape(rep, gTool, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);;
-            [self setNeedsDisplay:YES];
-            return;
+            if (gShapeFilled && gFreeCount >= 3)
+                fill_freeform(rep, gFreePts, gFreeCount);
+            paint_freeform(rep, gFreePts, gFreeCount, gLineWidth);
         }
-    if (gTool == TOOL_FREEFORM) {
-            gFreeDrawing = NO;
-            if (gFreeCount >= 2) {
-                Object *card = hc_current_card();
-                Object *layer = gEditBackground ? card->bg : card;
-                if (!layer) layer = card;
-                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
-                if (gShapeFilled && gFreeCount >= 3)
-                    fill_freeform(rep, gFreePts, gFreeCount);
-                paint_freeform(rep, gFreePts, gFreeCount, gLineWidth);
-            }
-            gFreeCount = 0;
-            [self setNeedsDisplay:YES];
-            return;
-        }
+        gFreeCount = 0;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (gTool == TOOL_BROWSE) {
-            if (gPressed) {
-                NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
-                Object *hit = part_at(hc_current_card(), p);
-                if (hit == gPressed)
-                    hc_send(gPressed, "mouseUp");
+        if (gPressed) {
+            NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+            Object *hit = part_at(hc_current_card(), p);
+            if (hit == gPressed)
+                hc_send(gPressed, "mouseUp");
 
-                if (gPressed->type == OBJ_BUTTON && gPressed->style) {
-                    const char *st = gPressed->style;
-                    if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
-                        gPressed->hilite = !gPressed->hilite;
-                    }
-                    else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
-                        gPressed->hilite = 1;
-                        radio_exclusive(hc_current_card(), gPressed);
-                    }
-                    else if (gPressed->autohilite) {
-                        gPressed->hilite = 0;
-                    }
-                } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
+            if (gPressed->type == OBJ_BUTTON && gPressed->style) {
+                const char *st = gPressed->style;
+                if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
+                    gPressed->hilite = !gPressed->hilite;
+                }
+                else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
+                    gPressed->hilite = 1;
+                    radio_exclusive(hc_current_card(), gPressed);
+                }
+                else if (gPressed->autohilite) {
                     gPressed->hilite = 0;
                 }
+            } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
+                gPressed->hilite = 0;
+            }
 
-                gPressed = NULL;
-                [self setNeedsDisplay:YES];
-            }
-            if (gMoving) {
-                gMoving = NO;
-                [self setNeedsDisplay:YES];
-                return;
-            }
+            gPressed = NULL;
+            [self setNeedsDisplay:YES];
+        }
+        if (gMoving) {
+            gMoving = NO;
+            [self setNeedsDisplay:YES];
             return;
         }
+        return;
+    }
 
     if (!gDragging) return;
     gDragging = NO;
@@ -3116,18 +3231,18 @@ static int gColorTarget = 0;
         return;
     }
     Object *card = hc_current_card();
-        if (!card) return;
-        Object *owner = gEditBackground ? card->bg : card;
-        if (!owner) owner = card;
-        char name[64];
-        Object *o;
-        if (gTool == TOOL_BUTTON) {
-            snprintf(name, sizeof name, "Bouton %d", ++gNewCount);
-            o = hc_new_button(owner, name);
-        } else {
-            snprintf(name, sizeof name, "Champ %d", ++gNewCount);
-            o = hc_new_field(owner, name);
-        }
+    if (!card) return;
+    Object *owner = gEditBackground ? card->bg : card;
+    if (!owner) owner = card;
+    char name[64];
+    Object *o;
+    if (gTool == TOOL_BUTTON) {
+        snprintf(name, sizeof name, "Bouton %d", ++gNewCount);
+        o = hc_new_button(owner, name);
+    } else {
+        snprintf(name, sizeof name, "Champ %d", ++gNewCount);
+        o = hc_new_field(owner, name);
+    }
     o->x = (int)gDragRect.origin.x;
     o->y = (int)gDragRect.origin.y;
     o->w = (int)gDragRect.size.width;
@@ -3162,6 +3277,7 @@ static int gColorTarget = 0;
     stamp_clipboard(rep, gFloatPos);
     gFloating = NO;
     gFloatDragging = NO;
+    [self stopAntsTimer];
     [self setNeedsDisplay:YES];
 }
 
