@@ -698,9 +698,10 @@ static void draw_part(Object *o) {
                 [NSGraphicsContext restoreGraphicsState];
             } else {
                 /* Remplace [as drawInRect:tr] par : */
+                /* Dans draw_part, pour le rendu statique des champs : */
                 [as drawWithRect:tr
-                         options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-                         context:nil];
+                        options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+                        context:nil];
             }
         }
 
@@ -1545,7 +1546,25 @@ static void cocoa_play(const char *name) {
 static void cocoa_idle(void) {
     int noyau = hc_take_visual_dirty();
     if (!noyau && ![gView needsDisplay]) return;
-
+    /*
+  if (!noyau && ![gView needsDisplay]) {
+       Rendre la main au système, mais pas à chaque tour.
+         *
+         * Une pause d'une milliseconde par tour coûtait cent secondes sur
+         * cent mille tours — soixante fois plus lent qu'avant, et pire que
+         * la version d'origine. On ne souffle donc que toutes les 20 ms :
+         * l'état de la souris reste frais à l'échelle du geste humain, et une
+         * boucle de calcul n'en paie qu'une fraction négligeable.
+        
+        static CFTimeInterval derniere = 0;
+        CFTimeInterval maintenant = CACurrentMediaTime();
+        if (maintenant - derniere >= 0.02) {
+            derniere = maintenant;
+            [NSThread sleepForTimeInterval:0.001];
+        }
+        return;
+    }
+     */
     [gView display];
     [[gView window] displayIfNeeded];
     [CATransaction flush];
@@ -1592,7 +1611,7 @@ static void stamp_text(NSBitmapImageRep *rep, NSString *s, NSPoint pos) {
 
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
-    [ctx setShouldAntialias:NO];
+    [ctx setShouldAntialias:YES];
 
     CGFloat H = [rep pixelsHigh];
     CGContextTranslateCTM(cg, 0, H);
@@ -2118,9 +2137,21 @@ static int gColorTarget = 0;
             [self dropFloating];
             return;
         }
-        if (key == 27) {
+        /* Échap ou Suppression abandonnent la zone flottante.
+         *
+         * Elle n'est ni gSelRectActive ni gLassoActive — ces drapeaux ont été
+         * baissés au soulèvement — donc les cas de suppression plus bas ne la
+         * voyaient pas, et la touche restait sans effet.
+         *
+         * Le geste sert surtout après un Option-glisser : on duplique, on
+         * change d'avis, et l'on jette la copie sans avoir à la déposer puis
+         * à la resélectionner. Après un glissement ordinaire, le calque a
+         * déjà été effacé au soulèvement : abandonner supprime alors vraiment
+         * la zone, ce qui est bien ce qu'on attend de Suppression. */
+        if (key == 27 || key == NSDeleteCharacter || key == NSDeleteFunctionKey) {
             gFloating = NO;
             gFloatDragging = NO;
+            [self stopAntsTimer];
             [self setNeedsDisplay:YES];
             return;
         }
@@ -2480,13 +2511,25 @@ static int gColorTarget = 0;
 
     if (gTextActive && gTextBuf) {
         NSDictionary *at = text_attrs();
-        [gTextBuf drawAtPoint:gTextPos withAttributes:at];
+
+        /* L'aperçu doit se placer comme la GRAVURE : à la ligne de base.
+         * stamp_text a été corrigée pour poser le texte sur gTextPos, cet
+         * aperçu non — d'où un texte affiché une ascendante trop haut pendant
+         * la frappe, qui redescendait d'un coup à la validation. */
+        NSFont *fp = [at objectForKey:NSFontAttributeName];
+        CGFloat montee = fp ? [fp ascender] : 0;
+        NSPoint haut = NSMakePoint(gTextPos.x, gTextPos.y - montee);
+
+        [gTextBuf drawAtPoint:haut withAttributes:at];
 
         NSArray *lines = [gTextBuf componentsSeparatedByString:@"\n"];
         NSString *last = [lines lastObject];
         NSSize lastSz = [last sizeWithAttributes:at];
         NSSize oneLine = [@"Ag" sizeWithAttributes:at];
-        CGFloat cy = gTextPos.y + ([lines count] - 1) * oneLine.height;
+
+        /* Le curseur suit le même décalage, sans quoi il flotterait au-dessus
+         * du texte qu'il est censé suivre. */
+        CGFloat cy = haut.y + ([lines count] - 1) * oneLine.height;
 
         [[NSColor blackColor] setStroke];
         NSBezierPath *caret = [NSBezierPath bezierPath];
@@ -3311,13 +3354,30 @@ static int gColorTarget = 0;
     if (!card) { gFloating = NO; return; }
     Object *layer = gEditBackground ? card->bg : card;
     if (!layer) layer = card;
-
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
     stamp_clipboard(rep, gFloatPos);
+
+    /* La sélection suit la zone déposée.
+     *
+     * Sans cela, gSelStart/gSelEnd et gLassoPts gardent leur position
+     * d'origine : le tracé pointillé réapparaissait là d'où le dessin venait,
+     * alors qu'il est maintenant ailleurs. La reprendre au même endroit
+     * permet aussi de la redéplacer aussitôt, comme dans HyperCard. */
+    if (gTool == TOOL_SELRECT) {
+        gSelStart = gFloatPos;
+        gSelEnd   = NSMakePoint(gFloatPos.x + gClipW, gFloatPos.y + gClipH);
+        gSelRectActive = YES;
+    } else if (gTool == TOOL_LASSO && gClipPtsCount >= 3) {
+        for (int i = 0; i < gClipPtsCount && i < 4096; i++)
+            gLassoPts[i] = NSMakePoint(gFloatPos.x + gClipPts[i].x,
+                                       gFloatPos.y + gClipPts[i].y);
+        gLassoCount = gClipPtsCount;
+        gLassoActive = YES;
+    }
+
     gFloating = NO;
     gFloatDragging = NO;
-    [self stopAntsTimer];
     [self setNeedsDisplay:YES];
 }
 
@@ -3777,6 +3837,10 @@ static NSTextField  *gSprayDensityLabel = nil;
     [lm setUsesFontLeading:YES];
     [lm setTypesetterBehavior:NSTypesetterBehavior_10_2_WithCompatibility];
 
+    /* Annule les variations de baseline de la première ligne selon les polices (Geneva vs Times) */
+        [gFieldEditor setDisplaysLinkToolTips:NO];
+        [lm setBackgroundLayoutEnabled:NO];
+    
     [gFieldEditor setRichText:YES];
     [gFieldEditor setImportsGraphics:NO];
     [gFieldEditor setUsesFontPanel:YES];

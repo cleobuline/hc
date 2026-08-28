@@ -200,7 +200,27 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         hct_val_libere(&b);
         return hct_val_bool(vb);
     }
+    /* « is a <type> » : le second opérande est un MOT-CLÉ, pas une valeur.
+     *
+     * L'évaluer était une faute : « date » est aussi une fonction, et
+     * l'évaluation rendait la date du jour au lieu du mot « date ».
+     * est_de_type recevait « 26/8/26 » et ne reconnaissait évidemment rien —
+     * « x is a date » était donc toujours faux. Même piège pour « point »,
+     * si un script définit une fonction de ce nom. */
+    if (!strcmp(op, "is a") || !strcmp(op, "is not a")) {
+        HctValeur g = hct_evalue(ctx, n->fils[0]);
+        if (ctx->erreur) return g;
 
+        char type[32];
+        int l = n->fils[1]->jeton.len;
+        if (l > (int)sizeof type - 1) l = (int)sizeof type - 1;
+        memcpy(type, n->fils[1]->jeton.deb, (size_t)l);
+        type[l] = '\0';
+
+        int vrai = est_de_type(g.txt, type);
+        hct_val_libere(&g);
+        return hct_val_bool(!strcmp(op, "is a") ? vrai : !vrai);
+    }
     HctValeur a = hct_evalue(ctx, n->fils[0]);
     if (ctx->erreur) return a;
     HctValeur b = hct_evalue(ctx, n->fils[1]);

@@ -152,7 +152,7 @@ static Object *g_current_card = NULL;
 #define HC_MAX_STACKS 16
 static Object *g_stacks[HC_MAX_STACKS];
 static int     g_nstacks = 0;
-
+static int g_visual_dirty = 0;
 /* ---- piles en usage ----
  * Déclarées par « start using stack "X" », retirées par « stop using ». Ce
  * sont des pointeurs empruntés, comme le registre : fermer une pile la retire
@@ -509,11 +509,18 @@ void hc_set_selection(Object *field, int start, int len)
     g_sel_start = field ? start : 0;
     g_sel_len   = field ? len   : 0;
 
+    /* Un changement de sélection est un changement VISIBLE : sans lever le
+     * drapeau, cocoa_idle croit qu'il n'y a rien à repeindre et rend la main
+     * sans rafraîchir. Une boucle « repeat while the mouse is down » qui suit
+     * le pointeur ne montrait alors sa sélection qu'au relâchement. */
+    g_visual_dirty = 1;
+
     /* L'hôte doit poser la surbrillance : sans cela « select line 2 » serait
      * vrai pour les scripts et invisible à l'écran. */
     if (g_host && g_host->selection_changed)
         g_host->selection_changed(g_sel_field, g_sel_start, g_sel_len);
 }
+
 
 int hc_get_selection(Object **field, int *start, int *len)
 {
@@ -1872,7 +1879,7 @@ static char g_item_delim = ',';
  * par l'hôte. Sans lui, cocoa_idle ne peut pas savoir s'il doit repeindre :
  * l'architecture reposait sur un redessin inconditionnel à chaque tour de
  * boucle, ce qui coûtait 16 ms d'attente même aux boucles de calcul pur. */
-static int g_visual_dirty = 0;
+
 
 int hc_take_visual_dirty(void)
 {
@@ -4306,6 +4313,7 @@ static int g_v3_recours_prof = 0;
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
+
     /* Tampons dimensionnés pour une EXPRESSION, pas pour une valeur de champ.
      *
      * val et essai étaient en HC_VAL, qui vaut plusieurs centaines de
@@ -4325,7 +4333,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 
     v3_source(n, txt, sizeof txt);
     if (!txt[0]) return 0;
-
+ 
     /* Un appel de fonction demande DEUX rattrapages.
      *
      * 1. Les parenthèses ne sont dans aucun nœud : l'arbre ne retient que le
@@ -4378,7 +4386,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * le total restait obstinément à zéro.
      *
      * On réessaie donc aussi quand le résultat est identique à la demande. */
-    if (!val[0] || strcmp(val, txt) == 0) {
+    if (strcmp(val, txt) == 0) {
         char avec_the[1216];
         snprintf(avec_the, sizeof avec_the, "the %s", txt);
         term_value(avec_the, val, sizeof val);
@@ -4432,28 +4440,21 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     }
 
     if (nargs == 0) {
-        /* Une seule porte : term_value.
+        /* Une seule porte : term_value, qui appelle elle-même call_function.
          *
-         * J'avais d'abord essayé call_function, ce qui échouait pour deux
-         * raisons cumulées. D'une part elle prend le PREMIER MOT de la
-         * chaîne : avec « the mouseLoc » elle cherche une fonction nommée
-         * « the ». D'autre part « the mouseLoc » n'y figure pas du tout —
-         * c'est host_global qui la sert, atteinte seulement par
-         * term_value_body.
-         *
-         * Or term_value_body appelle elle-même call_function en son sein.
-         * Passer par term_value couvre donc les deux chemins, et c'est la
-         * fonction que hc_core.c utilise partout ailleurs pour la même
-         * question. Faire autrement était une complication inutile.
-         *
-         * term_value rend le texte tel quel quand elle ne reconnaît rien :
-         * on ne retient donc que si le résultat DIFFÈRE de la demande. */
+         * On distingue « reconnu » de « non reconnu » en comparant au texte
+         * de la demande — term_value rendant le littéral quand elle ne sait
+         * rien faire. Surtout PAS en testant si le résultat est vide : « the
+         * result » vaut légitimement vide quand tout s'est bien passé, et le
+         * rejeter comme un échec faisait rendre « result » en clair. Le
+         * calendrier voyait alors « if the result <> empty » toujours vrai et
+         * refusait toutes les dates. */
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
 
         buf[0] = '\0';
         term_value(appel, buf, sizeof buf);
-        if (buf[0] && strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
+        if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
             *out = hct_val_texte(buf);
             return 1;
         }
