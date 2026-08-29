@@ -587,7 +587,6 @@ static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
 static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 2) return hct_val_vide();
-
     const HctNoeud *quoi = n->fils[0];
     const HctNoeud *sur  = n->fils[1];
 
@@ -611,7 +610,25 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             free(nom);
             return hct_val_vide();
         }
-
+        /* « the number of cards of <fond> » : un comptage d'OBJETS.
+         *
+         * Le bloc précédent ne couvre que les morceaux — char, word, item,
+         * line. Ici la cible est une référence d'objet, et rien ne la
+         * traitait : on tombait dans le chemin des propriétés, qui résolvait
+         * « cards of this background » en la carte courante et lisait sa
+         * propriété « number ». D'où le total de la pile au lieu du compte
+         * par fond.
+         *
+         * On confie donc le nœud entier au recours, qui reconstitue le texte
+         * et le donne à term_value — laquelle sait compter par conteneur. */
+        if (!strcasecmp(nom, "number") && sur->genre == HCTN_OBJET) {
+            HctValeur vr;
+            if (ctx->hote.recours &&
+                ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
+                free(nom);
+                return vr;
+            }
+        }
         /* « the length of X » s'écrit aussi bien que « length(X) ». */
         if (!strcasecmp(nom, "length")) {
             HctValeur v = hct_evalue(ctx, sur);

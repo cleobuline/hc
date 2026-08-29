@@ -601,16 +601,23 @@ static HctNoeud *reference(HctAnalyseur *a)
         a->i++;
         HctTypeObjet t;
         if (type_obj_ici(a, &t)) {
+            /* Le jeton couvre « this background », pas le seul « this » :
+             * la reconstitution du texte source doit rendre la référence
+             * entière. Sans cela le pont envoyait « cards of this » à
+             * term_value, qui ne reconnaissait rien et retombait sur le
+             * total de la pile. */
+            const HctJeton *jtype = ici(a);
             avance(a);
             HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);
             if (!n) return NULL;
+            n->jeton.len = (int)((jtype->deb + jtype->len) - j.deb);
             n->typeobj = t;
             n->designateur = HCT_DES_RELATIF;
             n->relatif = rel;
             attache_cible(a, n);
             return n;
         }
-        a->i = garde;     /* « next » n'était pas suivi d'un type */
+        a->i = garde;
     }
 
     /* [ordinal] [portée] <type> [désignateur] */
