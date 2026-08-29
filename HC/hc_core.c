@@ -4614,7 +4614,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
     char *val = arena_buf();
 
     v3_source(n, txt, HC_VAL);
-    emit(HC_ERR, "   [rec] txt=[%s]", txt);
+ 
     if (!txt[0]) { ARENA_FREE; return 0; }
 
     /* Un appel de fonction demande DEUX rattrapages.

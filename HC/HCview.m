@@ -74,7 +74,7 @@ typedef struct {
 
 static HCDoc  gDoc0;
 static HCDoc *gDoc = &gDoc0;
-
+static NSTimer *gStillDownTimer = nil;
 void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 
 #define gEditingField    (gDoc->editingField)
@@ -1571,7 +1571,7 @@ static NSFont *text_font(void) {
         gTextFont = [NSFont fontWithName:@"Helvetica" size:gTextSize];
         if (!gTextFont) gTextFont = [NSFont systemFontOfSize:gTextSize];
     }
-    NSLog(@"[font] style=[%@] police=%@", gTextStyleName, [gTextFont fontName]);
+ 
     if (!gTextStyleName || [gTextStyleName length] == 0) return gTextFont;
 
     NSFontTraitMask traits = 0;
@@ -1916,16 +1916,16 @@ static BOOL paint_selection_active(void)
 
 - (void)print:(id)sender {
     (void)sender;
-    NSLog(@"[print] appelée, gView=%p self=%p", gView, self);
+    
     Object *card = [self documentCard];
-    NSLog(@"[print] card=%p", card);
+     
     if (!card) return;
     Object *tab[1] = { card };
     cocoa_print_cards(tab, 1);
 }
 
 - (void)changeColor:(id)sender {
-    NSLog(@"[changeColor] appelée, gColorTarget=%d", gColorTarget);
+     
     NSColorPanel *panneau = (NSColorPanel *)sender;
     if (![panneau respondsToSelector:@selector(color)]) return;
     NSColor *c = [panneau color];
@@ -2215,7 +2215,7 @@ static int gColorTarget = 0;
 
 - (void)inkChosen:(id)sender {
     gInk = (HCInk)[sender tag];
-    NSLog(@"encre : %d", (int)gInk);
+     
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -2963,6 +2963,12 @@ static int gColorTarget = 0;
                 }
                 gPressed = hit;
                 hc_send(hit, "mouseDown");
+                /* mouseStillDown part en continu tant que le bouton reste
+                 * enfoncé, même immobile — c'est ce qui fait marcher les
+                 * boutons à répétition et les flèches de défilement. Un
+                 * minuteur plutôt que mouseDragged:, qui ne se déclenche
+                 * qu'au mouvement. */
+                [self startStillDownTimer];
                 [self setNeedsDisplay:YES];
             } else {
                 [self beginFieldEdit:hit];
@@ -2979,9 +2985,17 @@ static int gColorTarget = 0;
                 hit->hilite = 1;
             }
             hc_send(hit, "mouseDown");
+            [self startStillDownTimer];
             [self setNeedsDisplay:YES];
         } else {
+            /* Clic sur la carte nue : HyperCard lui envoie quand même
+             * mouseDown, d'où il remonte au fond puis à la pile. C'est ce qui
+             * permet à un script de carte de réagir à un clic n'importe où —
+             * les piles de navigation s'en servent beaucoup. */
             [self endFieldEdit];
+            gPressed = hc_current_card();
+            hc_send(gPressed, "mouseDown");
+            [self startStillDownTimer];
         }
         return;
     }
@@ -3272,7 +3286,11 @@ static int gColorTarget = 0;
         if (gPressed) {
             NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
             Object *hit = part_at(hc_current_card(), p);
-            if (hit == gPressed)
+
+            /* Pour la carte elle-même, part_at rend NULL : on compare
+             * donc à la carte courante plutôt qu'au résultat du test. */
+            if (hit == gPressed ||
+                (!hit && gPressed == hc_current_card()))
                 hc_send(gPressed, "mouseUp");
 
             if (gPressed->type == OBJ_BUTTON && gPressed->style) {
@@ -3644,7 +3662,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
 - (void)toggleFilled:(id)sender {
     gShapeFilled = !gShapeFilled;
-    NSLog(@"formes : %@", gShapeFilled ? @"PLEINES" : @"VIDES");
+     
 }
 
 - (void)toolChosen:(id)sender {
@@ -4038,5 +4056,27 @@ static NSTextField  *gSprayDensityLabel = nil;
     gEditingField = NULL;
     [self setNeedsDisplay:YES];
 }
+- (void)startStillDownTimer {
+     
+    [self stopStillDownTimer];
+    gStillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/20.0
+                                                       target:self
+                                                     selector:@selector(stillDownTick:)
+                                                     userInfo:nil
+                                                      repeats:YES];
+}
 
+- (void)stopStillDownTimer {
+    [gStillDownTimer invalidate];
+    gStillDownTimer = nil;
+}
+
+- (void)stillDownTick:(NSTimer *)t {
+    (void)t;
+       if (!gPressed || !([NSEvent pressedMouseButtons] & 1)) {
+        [self stopStillDownTimer];
+        return;
+    }
+    hc_send(gPressed, "mouseStillDown");
+}
 @end

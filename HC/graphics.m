@@ -632,9 +632,23 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
             [NSGraphicsContext saveGraphicsState];
             [NSGraphicsContext setCurrentContext:ctx];
             [ctx setShouldAntialias:NO];
-            // dessiner à taille réelle en HAUT-gauche (pas d'étirement)
+
+            /* COPIE, pas composition.
+             *
+             * drawAtPoint: emploie sourceOver par défaut : l'image se mélange
+             * au fond au lieu de le remplacer. À chaque enregistrement-
+             * relecture, les pixels semi-transparents se superposaient un peu
+             * plus, et les images en couleur s'assombrissaient cycle après
+             * cycle. Le mode « copy » écrase, ce qui est ce qu'on veut pour
+             * restaurer un calque tel qu'il a été enregistré. */
             CGFloat lh = [loaded pixelsHigh];
-            [loaded drawAtPoint:NSMakePoint(0, h - lh)];
+            [loaded drawInRect:NSMakeRect(0, h - lh,
+                                          [loaded pixelsWide], lh)
+                      fromRect:NSZeroRect
+                     operation:NSCompositingOperationCopy
+                      fraction:1.0
+                respectFlipped:YES hints:nil];
+
             [NSGraphicsContext restoreGraphicsState];
         }
     }
