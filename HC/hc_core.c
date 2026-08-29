@@ -4308,32 +4308,314 @@ static int v3_ecrit_var(void *d, const char *nom, const char *val)
  * HyperTalk qui en appelle une autre), mais rien ne garantit qu'une tournure
  * inattendue ne bouclera pas sur elle-même. Le plafond transforme une boucle
  * infinie, qui gèlerait l'application, en une erreur visible. */
+/* ==================================================================
+ * RÉSOLUTION D'OBJETS DEPUIS L'ARBRE
+ *
+ * Jusqu'ici les références d'objets repassaient par le TEXTE : le pont
+ * reconstituait « bg field "Data" of card 3 » à partir des jetons, puis le
+ * confiait à resolve(). Or la reconstitution ne peut restituer que ce qui
+ * figure dans l'arbre, et tout ce que l'analyseur consomme sans le ranger
+ * disparaît. On en a perdu quatre en une semaine :
+ *
+ *   - le « the » facultatif     -> « target » au lieu de « the target »
+ *   - les parenthèses d'un appel -> « dayNameData » au lieu de « … () »
+ *   - le guillemet fermant      -> « bg field "Data » — chaîne ouverte
+ *   - les adjectifs             -> « time » au lieu de « long time »
+ *
+ * Chaque perte donnait le même symptôme : une valeur rendue en clair, sans
+ * le moindre message, et un calcul qui s'effondrait plus loin.
+ *
+ * Le nœud HCTN_OBJET porte déjà tout ce dont resolve a besoin — type,
+ * portée, mode de désignation, cible — puisqu'il a été calqué sur elle. On
+ * traduit donc directement, sans jamais repasser par le texte.
+ *
+ * Restent au recours : les propriétés, les fonctions du monde et les
+ * gestionnaires écrits en HyperTalk, qui n'ont pas de nœud dédié.
+ * ================================================================== */
+
+/* Évalue un sous-arbre en texte, dans le contexte courant. */
+static void v3_val_texte(HctContexte *ctx, const HctNoeud *n,
+                         char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!n) return;
+    HctValeur v = hct_evalue(ctx, n);
+    snprintf(out, (size_t)outlen, "%s", v.txt ? v.txt : "");
+    hct_val_libere(&v);
+}
+
+/* Le n-ième fond de la pile, 1-based. NULL si le rang dépasse. */
+static Object *v3_nth_bg(Object *stack, int n)
+{
+    if (!stack || n < 1) return NULL;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_BACKGROUND && --n == 0)
+            return stack->parts[i];
+    return NULL;
+}
+
+static Object *v3_bg_par_nom(Object *stack, const char *nm)
+{
+    for (int i = 0; stack && i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_BACKGROUND &&
+            stack->parts[i]->name && ci_equal(stack->parts[i]->name, nm))
+            return stack->parts[i];
+    return NULL;
+}
+
+static Object *v3_bg_par_id(Object *stack, int id)
+{
+    for (int i = 0; stack && i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_BACKGROUND &&
+            stack->parts[i]->id == id)
+            return stack->parts[i];
+    return NULL;
+}
+
+/* La première carte d'un fond, dans l'ordre de la pile.
+ * HyperCard ne se tient jamais SUR un fond : « go bg 2 » mène à sa
+ * première carte, et c'est ce que rend cette fonction pour les formes de
+ * navigation. */
+static Object *v3_carte_du_bg(Object *stack, Object *bgcible)
+{
+    if (!bgcible) return NULL;
+    int n = card_count(stack);
+    for (int j = 0; j < n; j++) {
+        Object *d = nth_card(stack, j);
+        if (d && d->bg == bgcible) return d;
+    }
+    return NULL;
+}
+
+/* Le rang que désigne un ordinal, pour un total donné.
+ * « middle » vaut total/2 + 1, et non (total+1)/2 : sur quatre éléments
+ * HyperCard rend le TROISIÈME — vérifié. */
+static int v3_rang_ordinal(HctOrdinal o, int total)
+{
+    switch (o) {
+        case HCT_ORD_PREMIER:    return 1;
+        case HCT_ORD_DEUXIEME:   return 2;
+        case HCT_ORD_TROISIEME:  return 3;
+        case HCT_ORD_QUATRIEME:  return 4;
+        case HCT_ORD_CINQUIEME:  return 5;
+        case HCT_ORD_SIXIEME:    return 6;
+        case HCT_ORD_SEPTIEME:   return 7;
+        case HCT_ORD_HUITIEME:   return 8;
+        case HCT_ORD_NEUVIEME:   return 9;
+        case HCT_ORD_DIXIEME:    return 10;
+        case HCT_ORD_MILIEU:     return total > 0 ? total / 2 + 1 : 0;
+        case HCT_ORD_DERNIER:    return total;
+        case HCT_ORD_QUELCONQUE: return total > 0 ? (rand() % total) + 1 : 0;
+        default:                 return 0;
+    }
+}
+
+static Object *hct_resout(HctContexte *ctx, const HctNoeud *n);
+
+/* La cible d'un « of », si le nœud en porte une.
+ *
+ * Les enfants d'un HCTN_OBJET sont, dans l'ordre : le désignateur quand il
+ * en faut un — nom, rang, id — puis la cible du « of ». On regarde donc le
+ * DERNIER enfant, et seulement s'il est lui-même une référence d'objet. */
+static Object *v3_cible(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return NULL;
+    const HctNoeud *dernier = n->fils[n->nfils - 1];
+    if (dernier->genre != HCTN_OBJET) return NULL;
+    return hct_resout(ctx, dernier);
+}
+
+/* Le nœud du désignateur, ou NULL quand il n'y en a pas. */
+static const HctNoeud *v3_designateur(const HctNoeud *n)
+{
+    if (n->designateur != HCT_DES_NOM &&
+        n->designateur != HCT_DES_RANG &&
+        n->designateur != HCT_DES_ID) return NULL;
+    return n->nfils >= 1 ? n->fils[0] : NULL;
+}
+
+/* ------------------------------------------------------------ l'entrée */
+
+static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OBJET) return NULL;
+
+    Object *card  = g_current_card;
+    Object *bg    = card ? card->bg : NULL;
+    Object *stack = card ? card->owner : NULL;
+
+    /* Une cible explicite déplace le contexte : « bg field "x" of card 3 »
+     * cherche le champ dans la carte 3, pas dans la carte courante. */
+    Object *cible = v3_cible(ctx, n);
+    if (cible) {
+        if (cible->type == OBJ_CARD)            { card = cible; bg = card->bg; }
+        else if (cible->type == OBJ_BACKGROUND) { bg = cible; }
+        else if (cible->type == OBJ_STACK)      { stack = cible; }
+        if (card) stack = owning_stack(card);
+    }
+
+    char val[256];
+    const HctNoeud *des = v3_designateur(n);
+    if (des) v3_val_texte(ctx, des, val, sizeof val);
+    else     val[0] = '\0';
+
+    switch (n->typeobj) {
+
+        case HCT_OBJ_ME:     return g_me;
+        case HCT_OBJ_TARGET: return g_target;
+
+        case HCT_OBJ_STACK:
+            if (n->designateur == HCT_DES_NOM) {
+                if (stack && stack->name && ci_equal(stack->name, val))
+                    return stack;
+                return find_open_stack(val);
+            }
+            return stack;
+
+        case HCT_OBJ_BACKGROUND:
+            switch (n->designateur) {
+                case HCT_DES_NOM:  return v3_bg_par_nom(stack, val);
+                case HCT_DES_ID:   return v3_bg_par_id(stack, atoi(val));
+                case HCT_DES_RANG: {
+                    /* Un désignateur peut être un nom aussi bien qu'un rang :
+                     * « bg i » où i vaut 2, mais aussi « bg commun ». On
+                     * regarde CE QUI SORT de l'évaluation, comme resolve. */
+                    int l = (int)strlen(val);
+                    if (l > 0 && (int)strspn(val, "0123456789") == l)
+                        return v3_nth_bg(stack, atoi(val));
+                    return v3_bg_par_nom(stack, val);
+                }
+                case HCT_DES_ORDINAL: {
+                    int total = 0;
+                    for (int i = 0; stack && i < stack->nparts; i++)
+                        if (stack->parts[i]->type == OBJ_BACKGROUND) total++;
+                    Object *b = v3_nth_bg(stack, v3_rang_ordinal(n->ordinal, total));
+                    return v3_carte_du_bg(stack, b);
+                }
+                case HCT_DES_RELATIF: {
+                    if (n->relatif == HCT_REL_CE) return bg;
+                    /* next/previous : on balaie l'ordre des CARTES jusqu'à en
+                     * croiser une dont le fond diffère, avec bouclage — comme
+                     * resolve, et comme HyperCard. */
+                    int nc = card_count(stack);
+                    int i  = card_index(stack, card);
+                    int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
+                    if (nc <= 0 || i < 0) return NULL;
+                    for (int k = 1; k <= nc; k++) {
+                        Object *c = nth_card(stack, ((i + pas * k) % nc + nc) % nc);
+                        if (!c || c->bg == bg) continue;
+                        return v3_carte_du_bg(stack, c->bg);
+                    }
+                    return card;   /* un seul fond : on reste sur place */
+                }
+                default: return bg;
+            }
+
+        case HCT_OBJ_CARD:
+            switch (n->designateur) {
+                case HCT_DES_NOM: return find_card_by_name(stack, val);
+                case HCT_DES_ID: {
+                    int w = atoi(val);
+                    for (int i = 0; stack && i < stack->nparts; i++)
+                        if (stack->parts[i]->type == OBJ_CARD &&
+                            stack->parts[i]->id == w)
+                            return stack->parts[i];
+                    return NULL;
+                }
+                case HCT_DES_RANG: {
+                    int l = (int)strlen(val);
+                    if (l > 0 && (int)strspn(val, "0123456789") == l)
+                        return nth_card(stack, atoi(val) - 1);
+                    return find_card_by_name(stack, val);
+                }
+                case HCT_DES_ORDINAL:
+                    return nth_card(stack,
+                        v3_rang_ordinal(n->ordinal, card_count(stack)) - 1);
+                case HCT_DES_RELATIF:
+                    if (n->relatif == HCT_REL_CE) return card;
+                    return nth_card(stack, card_index(stack, card) +
+                        (n->relatif == HCT_REL_SUIVANT ? 1 : -1));
+                default: return card;
+            }
+
+        case HCT_OBJ_BUTTON:
+        case HCT_OBJ_FIELD:
+        case HCT_OBJ_PART: {
+            ObjType t = (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
+
+            /* La portée décide où chercher. Sans portée explicite, HyperCard
+             * cherche d'abord sur la carte, puis se rabat sur le fond — c'est
+             * ce que fait resolve, et beaucoup de piles en dépendent. */
+            Object *premier  = (n->portee == HCT_PORTEE_FOND) ? bg : card;
+            Object *repli    = (n->portee == HCT_PORTEE_AUCUNE) ? bg : NULL;
+
+            switch (n->designateur) {
+                case HCT_DES_ID: {
+                    int w = atoi(val);
+                    Object *o = find_part_by_id(premier, t, w);
+                    if (!o && repli) o = find_part_by_id(repli, t, w);
+                    return o;
+                }
+                case HCT_DES_NOM: {
+                    Object *o = find_part(premier, t, val);
+                    if (!o && repli) o = find_part(repli, t, val);
+                    return o;
+                }
+                case HCT_DES_RANG: {
+                    int l = (int)strlen(val);
+                    if (l > 0 && (int)strspn(val, "0123456789") == l) {
+                        int r = atoi(val);
+                        Object *o = find_part_by_rank(premier, t, r);
+                        if (!o && repli) o = find_part_by_rank(repli, t, r);
+                        return o;
+                    }
+                    Object *o = find_part(premier, t, val);
+                    if (!o && repli) o = find_part(repli, t, val);
+                    return o;
+                }
+                default:
+                    return NULL;
+            }
+        }
+
+        default:
+            return NULL;
+    }
+}
+
 static int g_v3_recours_prof = 0;
 
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
 
-    /* Tampons dimensionnés pour une EXPRESSION, pas pour une valeur de champ.
-     *
-     * val et essai étaient en HC_VAL, qui vaut plusieurs centaines de
-     * kilo-octets : deux tampons de cette taille en variables locales
-     * faisaient réserver deux mégaoctets de pile à chaque appel, et le
-     * débordement survenait dès qu'un script enchaînait les évaluations.
-     * Le désassemblage le montrait sans détour : « subq $0x200a10, %rsp ».
-     *
-     * Une expression confiée au recours ne dépasse jamais quelques centaines
-     * d'octets, et sa valeur non plus dans ce contexte. */
-    char txt[1200], val[8192];
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
         *out = hct_val_texte("");
         return 1;
     }
 
-    v3_source(n, txt, sizeof txt);
-    if (!txt[0]) return 0;
- 
+    /* Les tampons vont dans l'ARÈNE, pas sur la pile.
+     *
+     * Deux tampons en HC_VAL déclarés en variables locales faisaient réserver
+     * deux mégaoctets de pile à chaque appel — débordement dès qu'un script
+     * enchaînait les évaluations, et le débogueur s'arrêtait sur un
+     * « subq $0x200a10, %rsp » sans explication.
+     *
+     * Mais 8 Ko ne suffisent pas davantage : le calendrier LIT SON PROPRE
+     * SCRIPT, qui fait 9 Ko, pour y réécrire ses données. Le garde-fou de
+     * hc_core refusait alors toute réécriture — à juste titre, puisque écrire
+     * un script tronqué l'aurait détruit.
+     *
+     * L'arène règle les deux d'un coup : pleine taille, aucune pression sur
+     * la pile, et eval_expr la rembobine à chaque expression. */
+    ARENA_MARK;
+    char *txt = arena_buf();
+    char *val = arena_buf();
+
+    v3_source(n, txt, HC_VAL);
+    if (!txt[0]) { ARENA_FREE; return 0; }
+
     /* Un appel de fonction demande DEUX rattrapages.
      *
      * 1. Les parenthèses ne sont dans aucun nœud : l'arbre ne retient que le
@@ -4344,82 +4626,76 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * 2. Et il faut un ESPACE avant la parenthèse ouvrante. next_word() de
      *    hc_core.c ne découpe que sur les blancs : avec « dayNameData() »
      *    elle croit que la fonction s'appelle « dayNameData() », parenthèses
-     *    comprises, et ne trouve évidemment rien. Avec « dayNameData () »
-     *    elle lit le nom, puis reconnaît la liste d'arguments.
+     *    comprises, et ne trouve rien. Avec « dayNameData () » elle lit le
+     *    nom, puis reconnaît la liste d'arguments.
      *
      * Sans ces deux corrections, le calendrier affichait « dayNameData() »
      * en toutes lettres à la place de ses jours de la semaine. */
     if (n->genre == HCTN_APPEL) {
-        /* Recomposition en place, par décalage : un tampon intermédiaire
-         * obligeait à le dimensionner plus grand que txt, puis à recopier
-         * dans txt qui redevenait trop petit — le compilateur avait raison
-         * de protester à chaque tour. Ici rien n'est copié en aller-retour :
-         * on insère l'espace, puis on ajoute la parenthèse fermante. */
         size_t l = strlen(txt);
         char *par = strchr(txt, '(');
 
-        if (par && l + 2 < sizeof txt) {
+        if (par && l + 2 < (size_t)HC_VAL) {
             size_t pos = (size_t)(par - txt);
             memmove(txt + pos + 1, txt + pos, l - pos + 1);  /* zéro compris */
             txt[pos] = ' ';
             l++;
             txt[l] = ')';
             txt[l + 1] = '\0';
-        } else if (!par && l + 3 < sizeof txt) {
+        } else if (!par && l + 3 < (size_t)HC_VAL) {
             txt[l] = ' '; txt[l + 1] = '('; txt[l + 2] = ')'; txt[l + 3] = '\0';
         }
     }
 
     g_v3_recours_prof++;
     val[0] = '\0';
-    term_value(txt, val, sizeof val);
+    term_value(txt, val, HC_VAL);
 
     /* L'analyseur consomme « the » sans le ranger dans aucun nœud : la
      * reconstitution rend « target » au lieu de « the target », et
-     * « value of x » au lieu de « the value of x ».
+     * « value of x » au lieu de « the value of x ». term_value ne reconnaît
+     * pas ces formes tronquées et retombe sur son littéral non quoté — elle
+     * rend LE TEXTE DE LA DEMANDE.
      *
-     * term_value ne reconnaît pas ces formes tronquées et retombe sur son
-     * littéral non quoté : elle rend LE TEXTE DE LA DEMANDE, pas du vide.
-     * Ne tester que la vacuité laissait donc passer la faute — « get the
-     * value of theLine » rendait la chaîne « value of theLine », dont le
-     * premier caractère « v » faisait sauter chaque ligne de totalValues, et
-     * le total restait obstinément à zéro.
-     *
-     * On réessaie donc aussi quand le résultat est identique à la demande. */
+     * On réessaie donc quand le résultat est identique à la demande, mais
+     * SURTOUT PAS quand il est vide : « the result » vaut légitimement vide
+     * lorsque tout s'est bien passé, et traiter ce vide comme un échec
+     * rendait « result » en clair. Le calendrier voyait alors
+     * « if the result <> empty » toujours vrai et refusait toutes les dates. */
     if (strcmp(val, txt) == 0) {
-        char avec_the[1216];
-        snprintf(avec_the, sizeof avec_the, "the %s", txt);
-        term_value(avec_the, val, sizeof val);
+        char *avec_the = arena_buf();
+        snprintf(avec_the, HC_VAL, "the %s", txt);
+        term_value(avec_the, val, HC_VAL);
 
         /* Si même avec « the » rien de neuf ne sort, on rend le texte
          * d'origine plutôt que « the value of x » : c'est ce que faisait
          * l'ancien évaluateur, et un script peut s'appuyer dessus. */
         if (strcmp(val, avec_the) == 0)
-            snprintf(val, sizeof val, "%s", txt);
+            snprintf(val, HC_VAL, "%s", txt);
     }
+
     /* Dernier recours : l'ANCIEN analyseur.
      *
      * Certaines tournures ne vivent que dans parse_factor et n'ont jamais été
      * portées dans term_value — « there is a <objet> » en est une. term_value
      * rend alors le texte inchangé, ce qui est justement le signe qu'elle n'a
-     * rien reconnu ; on passe donc la main à parse_expr, qui les connaît.
+     * rien reconnu ; on passe la main à parse_expr, qui les connaît.
      *
      * Sans cela, « if there is a cd btn "Drawgraph" » rendait la chaîne
-     * elle-même, jamais true ni false — et les gestionnaires enterKey et
-     * enterInField de Graph Maker ne se déclenchaient pas. */
+     * elle-même, jamais true ni false. */
     if (strcmp(val, txt) == 0) {
         const char *q = txt;
-        char essai[8192];
+        char *essai = arena_buf();
         essai[0] = '\0';
-        parse_expr(&q, essai, sizeof essai);
+        parse_expr(&q, essai, HC_VAL);
         if (essai[0] && strcmp(essai, txt) != 0)
-            snprintf(val, sizeof val, "%s", essai);
+            snprintf(val, HC_VAL, "%s", essai);
     }
 
     g_v3_recours_prof--;
- 
 
     *out = hct_val_texte(val);
+    ARENA_FREE;
     return 1;
 }
 
@@ -4477,6 +4753,28 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     return 0;
 }
 
+/* --- ponts vers l'hôte ----------------------------------------------- */
+
+/* L'hôte reçoit le nœud, hct_resout rend l'objet. Plus aucun texte
+ * reconstitué sur ce chemin. */
+static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
+{
+    (void)d;
+    return hct_resout(ctx, ref);
+}
+
+/* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
+ * comme dans HyperCard. */
+static int v3_lit_objet(void *d, void *objet, HctValeur *out)
+{
+    (void)d;
+    Object *o = objet;
+    if (!o) return 0;
+    if (o->type == OBJ_FIELD) *out = hct_val_texte(hc_field_text(o));
+    else                      *out = hct_val_texte(o->name ? o->name : "");
+    return 1;
+}
+
 /* --- l'hôte assemblé ------------------------------------------------- */
 
 static HctHote v3_hote(void)
@@ -4487,6 +4785,8 @@ static HctHote v3_hote(void)
     h.ecrit_var = v3_ecrit_var;
     h.fonction  = v3_fonction;
     h.recours   = v3_recours;
+    h.resout    = v3_resout;
+    h.lit_objet = v3_lit_objet;
     return h;
 }
 

@@ -1546,15 +1546,10 @@ static void cocoa_play(const char *name) {
 static void cocoa_idle(void) {
     int noyau = hc_take_visual_dirty();
     if (!noyau && ![gView needsDisplay]) return;
-    /*
+    
   if (!noyau && ![gView needsDisplay]) {
-       Rendre la main au système, mais pas à chaque tour.
-         *
-         * Une pause d'une milliseconde par tour coûtait cent secondes sur
-         * cent mille tours — soixante fois plus lent qu'avant, et pire que
-         * la version d'origine. On ne souffle donc que toutes les 20 ms :
-         * l'état de la souris reste frais à l'échelle du geste humain, et une
-         * boucle de calcul n'en paie qu'une fraction négligeable.
+       //Rendre la main au système, mais pas à chaque tour.
+         
         
         static CFTimeInterval derniere = 0;
         CFTimeInterval maintenant = CACurrentMediaTime();
@@ -1564,7 +1559,7 @@ static void cocoa_idle(void) {
         }
         return;
     }
-     */
+   
     [gView display];
     [[gView window] displayIfNeeded];
     [CATransaction flush];
