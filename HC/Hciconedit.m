@@ -6,7 +6,7 @@
  * est const. C'est hcicon_edit_editable qui absorbe la difference, et c'est
  * le seul endroit qui la connaisse.
  */
-#import "HCiconedit.h"
+#import "Hciconedit.h"
 #import "HCicons.h"
 
 #include <string.h>

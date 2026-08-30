@@ -361,9 +361,9 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
             return hct_val_vide();
         }
     }
-
-    HctValeur r;
+    HctValeur r = {0};
     int fait = 0;
+ 
 
     /* Fonctions purement calculatoires : l'exécuteur les fait lui-même, sans
      * déranger l'hôte. Celles qui dépendent du monde — the ticks, the mouse —

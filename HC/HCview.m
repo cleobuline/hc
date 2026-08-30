@@ -12,7 +12,7 @@
 #import "HCprint.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
-#import "HCiconedit.h"
+#import "Hciconedit.h"
 #import "graphics.h"
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"

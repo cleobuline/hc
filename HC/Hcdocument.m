@@ -6,7 +6,7 @@
 #import "HCview.h"
 #import "HCglobals.h"
 #import "HCdialogs.h"    /* hcicon_panel_stack_closing */
-#import "HCiconedit.h"   /* hcicon_edit_sync */
+#import "Hciconedit.h"   /* hcicon_edit_sync */
 
 /* Définie dans HCview.m : désigne le HCDoc de la fenêtre active. */
 extern void hc_set_active_doc(void *d);

@@ -57,6 +57,11 @@
 - (void)eraseAll;
 - (void)beginPaintUndo;
 - (void)undo:(id)sender;
+/* Cartes : articles de menu distincts de Couper et Copier, comme dans
+ * HyperCard. Coller reste commun — il pose ce que le presse-papiers contient. */
+- (void)copyCard:(id)sender;
+- (void)cutCard:(id)sender;
+- (void)duplicateCard:(id)sender;
 @end
 
 #endif /* HCview_h */
