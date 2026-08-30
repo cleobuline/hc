@@ -229,6 +229,26 @@ struct StackIcon *hc_icon_get(Object *stack, int id);
 struct StackIcon *hc_icon_at(Object *stack, int i);
 int               hc_icon_count(Object *stack);
 void              hc_icon_remove(Object *stack, int id);
+/* ---- résolution d'un nom d'icône ----
+ * « set the icon of me to "Close Box" » doit marcher aussi bien que par numéro.
+ * Mais chercher un nom suppose de connaître les DEUX catalogues, celui de la
+ * pile et celui compilé dans l'application — et ce dernier vit dans un fichier
+ * Objective-C, que ce noyau en C99 ne peut pas inclure.
+ *
+ * D'où ce crochet : la couche Cocoa dépose sa fonction au démarrage, le noyau
+ * l'appelle sans savoir ce qu'il y a derrière. Tant qu'elle n'est pas posée,
+ * on se rabat sur atoi — les numéros marchent, les noms non. */
+typedef int (*HCIconResolver)(const char *text);
+void hc_set_icon_resolver(HCIconResolver fn);
+int  hc_resolve_icon(const char *text);
+
+/* Même mécanisme, pour savoir si un numéro est pris dans le catalogue
+ * d'origine : transplanter les icônes d'une carte collée demande un numéro
+ * libre, et « libre » doit l'être des deux côtés. Sans ce crochet, on ne
+ * vérifie que la pile — au pire on masque une icône d'origine. */
+typedef int (*HCIconTakenFn)(int id);
+void hc_set_icon_builtin_check(HCIconTakenFn fn);
+
 /* Il n'y a volontairement PAS de « hc_icon_next_id » ici. Choisir un numéro
  * libre suppose de connaître aussi le catalogue d'icônes compilé dans
  * l'application, dont les identifiants s'étalent de 128 à plus de 32000 ; le
@@ -539,7 +559,45 @@ int         hc_part_count(Object *owner, ObjType type);
 int      hc_copy_part(Object *o);            /* 1 si copié */
 int      hc_cut_part(Object *o);             /* copie puis supprime */
 Object  *hc_paste_part(Object *owner);       /* NULL si rien à coller */
+
+/* ---- copier-coller de CARTES ----
+ * Même presse-papiers que les parts : copier une carte écrase un bouton copié,
+ * comme dans HyperCard.
+ *
+ * Une carte emporte ses boutons et champs de carte, son calque de peinture, sa
+ * marque, et ses bgtexts — le texte non partagé des champs de fond, qui
+ * appartient à la carte. Le FOND n'est pas copié : la carte s'appuie dessus,
+ * elle ne le possède pas. Le presse-papiers en retient l'identifiant et le
+ * retrouve au collage.
+ *
+ * Le FOND part aussi, en copie : coller dans une AUTRE pile l'y recrée. Coller
+ * là où l'on a copié réutilise le fond existant — reconnu par identité, non par
+ * identifiant, deux piles chargées de fichiers différents pouvant porter le
+ * même numéro sans rien avoir de commun.
+ *
+ * Recréer un fond lui donne des identifiants neufs, y compris à ses champs. Les
+ * bgtexts de la carte, qui les désignent, sont réétiquetés par position — sans
+ * quoi le texte non partagé de la carte disparaîtrait à l'écran.
+ *
+ * Les ICÔNES de pile qu'utilisent les boutons partent également : un bouton ne
+ * retient qu'un numéro, qui désigne le catalogue de sa pile d'origine. À
+ * l'arrivée, un numéro déjà pris par une icône identique est réutilisé ; pris
+ * par une autre, on en prend un libre et l'on réétiquette les boutons. Les
+ * icônes d'origine ne voyagent pas : elles existent partout.
+ *
+ * La carte collée se pose juste après la carte courante, comme dans HyperCard,
+ * et reçoit des identifiants neufs — elle et ses parts. */
+int      hc_copy_card(Object *card);         /* 1 si copiée */
+int      hc_cut_card(Object *card);          /* copie puis supprime */
+Object  *hc_paste_card(Object *stack);       /* NULL si rien à coller */
+Object  *hc_duplicate_card(Object *card);    /* sans toucher au presse-papiers */
+
+/* À appeler quand une pile se ferme, AVANT hc_free : le presse-papiers y
+ * emprunte un pointeur de fond, qui ne doit pas lui survivre. */
+void     hc_clipboard_stack_closing(Object *stack);
 Object  *hc_clipboard_part(void);            /* NULL si vide ; ne pas libérer */
+int      hc_clipboard_has_card(void);        /* le presse-papiers porte une carte */
+int      hc_clipboard_has_part(void);        /* ... un bouton ou un champ */
 void     hc_clipboard_clear(void);
 
 #endif /* HC_CORE_H */

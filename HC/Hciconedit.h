@@ -56,8 +56,21 @@ void hcicon_edit_rename(Object *stack, int id, const char *name);
 int  hcicon_edit_users(Object *stack, int id);
 void hcicon_edit_delete(Object *stack, int id);
 
-/* Refait la copie de travail de HCicons a partir de la pile. Les operations
- * ci-dessus l'appellent deja ; a appeler soi-meme apres un hc_load. */
+/* Refait la copie de travail de HCicons a partir de la pile.
+ * Les operations ci-dessus l'appellent deja. */
 void hcicon_edit_sync(Object *stack);
+
+/* Lie le catalogue a une pile, sans travail si c'est deja la bonne.
+ *
+ * A appeler au debut de chaque dessin. HCicons ne retient qu'UNE copie de
+ * travail, alors que plusieurs piles peuvent etre ouvertes en meme temps :
+ * lier au chargement ne suffirait pas, la seconde pile ouverte ecraserait le
+ * catalogue de la premiere, qui afficherait alors de mauvaises icones. C'est
+ * la fenetre en train de se dessiner qui doit imposer la sienne.
+ *
+ * Le raccourci se fait sur le POINTEUR de pile. Une pile fermee puis une
+ * nouvelle allouee a la meme adresse passeraient donc au travers : appeler
+ * hcicon_edit_sync(NULL) a la fermeture d'une pile pour rompre le lien. */
+void hcicon_edit_bind(Object *stack);
 
 #endif /* hciconedit_h */

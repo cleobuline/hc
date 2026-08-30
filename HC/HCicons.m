@@ -2,6 +2,8 @@
 #include "hc_core.h"   /* struct StackIcon */
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
 
 const HCIcon HCICONS[] = {
     {128, "Link To", {
@@ -6347,6 +6349,50 @@ const HCIcon *hcicon_find(int id) {
     for (int i = 0; i < NUM_HCICONS; i++)
         if (HCICONS[i].id == id) return &HCICONS[i];
     return NULL;
+}
+
+int hcicon_builtin_has(int id) {
+    for (int i = 0; i < NUM_HCICONS; i++)
+        if (HCICONS[i].id == id) return 1;
+    return 0;
+}
+
+/* Comparaison de noms d'icones : casse ignoree, espaces de bord ignores.
+ * On ne se sert pas de strcasecmp directement pour pouvoir rogner les bords
+ * sans recopier la chaine. */
+static int hcicon_name_eq(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    while (*a == ' ' || *a == '\t') a++;
+    while (*b == ' ' || *b == '\t') b++;
+    const char *ea = a + strlen(a), *eb = b + strlen(b);
+    while (ea > a && (ea[-1] == ' ' || ea[-1] == '\t')) ea--;
+    while (eb > b && (eb[-1] == ' ' || eb[-1] == '\t')) eb--;
+    if ((ea - a) != (eb - b)) return 0;
+    for (; a < ea; a++, b++)
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return 0;
+    return 1;
+}
+
+int hcicon_id_for_text(const char *s) {
+    if (!s) return 0;
+    while (*s == ' ' || *s == '\t') s++;
+    if (!*s) return 0;
+
+    /* Un nombre, eventuellement signe : HyperCard acceptait les deux formes,
+     * et un nom d'icone ne commence jamais par un chiffre. */
+    if (*s == '-' || (*s >= '0' && *s <= '9')) {
+        char *end = NULL;
+        long v = strtol(s, &end, 10);
+        while (end && (*end == ' ' || *end == '\t')) end++;
+        if (end && !*end) return (int)v;
+        /* sinon c'est un nom qui commence par un chiffre : on continue */
+    }
+
+    for (int i = 0; i < gStackCount; i++)
+        if (hcicon_name_eq(gStackIcons[i].name, s)) return gStackIcons[i].id;
+    for (int i = 0; i < NUM_HCICONS; i++)
+        if (hcicon_name_eq(HCICONS[i].name, s)) return HCICONS[i].id;
+    return 0;
 }
 
 /* ---- catalogue complet ----

@@ -50,6 +50,25 @@ const HCIcon  *hcicon_stack_at(int i);
 int            hcicon_catalog_count(void);
 const HCIcon  *hcicon_catalog_at(int i);
 
+/* Ce numero est-il pris dans le catalogue D'ORIGINE ?
+ *
+ * Sans etat : ne regarde ni la pile ni le catalogue de travail. Sert au noyau,
+ * qui doit choisir un numero libre en transplantant des icones d'une pile a
+ * l'autre, et qui ne connait pas HCICONS. */
+int hcicon_builtin_has(int id);
+
+/* Le numero designe par un texte, pour « set the icon of me to ... ».
+ *
+ * Accepte un nombre (« 3071 ») ou un nom (« Close Box »), la casse et les
+ * espaces de bord etant ignores. Cherche dans la pile d'abord, puis dans le
+ * catalogue d'origine — meme priorite que hcicon_find, sinon une icone
+ * redefinie repondrait sous son ancien dessin.
+ *
+ * Rend 0 quand rien ne correspond. Ce qui tombe bien : 0 veut deja dire
+ * « aucune icone », et c'est le comportement de HyperCard devant un nom
+ * inconnu. L'appelant qui veut distinguer les deux cas teste le texte. */
+int hcicon_id_for_text(const char *s);
+
 /* Dessine une icone 32x32 centree dans le rect (px = taille d'un pixel). */
 void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px);
 

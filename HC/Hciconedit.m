@@ -16,10 +16,20 @@
 
 /* ==================== operations ==================== */
 
+/* Pile a laquelle le catalogue est actuellement lie. */
+static Object *gBoundStack = NULL;
+
 void hcicon_edit_sync(Object *stack)
 {
+    gBoundStack = stack;
     hcicon_use_stack_icons(stack ? stack->icons  : NULL,
                            stack ? stack->nicons : 0);
+}
+
+void hcicon_edit_bind(Object *stack)
+{
+    if (stack == gBoundStack) return;   /* deja la bonne : rien a faire */
+    hcicon_edit_sync(stack);
 }
 
 struct StackIcon *hcicon_edit_editable(Object *stack, int id)

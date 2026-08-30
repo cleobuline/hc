@@ -12,6 +12,7 @@
 #import "HCprint.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
+#import "HCiconedit.h"
 #import "graphics.h"
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
@@ -444,7 +445,17 @@ static void draw_part(Object *o) {
         const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
         if (ic) {
-            CGFloat iy = o->y + 2;
+            /* L'icône se centre dans la place qui lui revient.
+             *
+             * Quand le nom s'affiche, il occupe la bande du bas : l'icône se
+             * centre alors dans les 36 points du haut, ce qui la remet à
+             * o->y + 2. Sans nom, elle se centre dans TOUT le bouton — la
+             * caler à o->y + 2 la décalait de deux points vers le bas sur un
+             * bouton de 32 ou 34 de haut, soit la taille habituelle d'un
+             * bouton à icône. */
+            BOOL withName = (o->showname && o->h > 36);
+            CGFloat iarea = withName ? 36 : o->h;
+            CGFloat iy    = o->y + floor((iarea - 32) / 2.0);
             NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
 
             draw_btn_frame(o, r, on);
@@ -452,13 +463,15 @@ static void draw_part(Object *o) {
             hcicon_draw(ic, ir, 1.0);
             draw_edit_outline(r);
 
-            if (o->showname && o->h > 36) {
+            if (withName) {
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                 [ps setAlignment:NSTextAlignmentCenter];
                 NSMutableDictionary *bat = [obj_attrs(o, 11,
                     on ? [NSColor whiteColor] : [NSColor blackColor]) mutableCopy];
                 bat[NSParagraphStyleAttributeName] = ps;
-                NSRect btr = NSMakeRect(o->x, iy + 34, o->w, o->h - 36);
+                /* Le texte ne suit plus iy : la bande du bas est fixe, elle
+                 * commence sous les 36 points réservés à l'icône. */
+                NSRect btr = NSMakeRect(o->x, o->y + 36, o->w, o->h - 36);
                 [s drawInRect:btr withAttributes:bat];
             }
         }
@@ -1850,8 +1863,88 @@ static BOOL paint_selection_active(void)
     [gView setNeedsDisplay:YES];
 }
 
+/* ==================== cartes : couper, copier, dupliquer ====================
+ *
+ * Articles de menu DISTINCTS de Couper et Copier, comme dans HyperCard. Les
+ * partager rendrait Cmd-C imprévisible : copy: a déjà trois sens selon le
+ * contexte — objet sélectionné, sélection flottante, région de peinture — et
+ * la carte en ferait un quatrième dans l'état le plus courant, outil Browse et
+ * rien de sélectionné.
+ *
+ * Coller, lui, reste commun : il se contente de poser ce que le presse-papiers
+ * contient. */
+
+- (void)copyCard:(id)sender {
+    (void)sender;
+    Object *card = hc_current_card();
+    if (card) hc_copy_card(card);
+}
+
+- (void)cutCard:(id)sender {
+    (void)sender;
+    Object *card = hc_current_card();
+    if (!card) return;
+
+    /* Lâcher ce que la vue retient de cette carte AVANT qu'elle soit libérée :
+     * champ en édition, objet sélectionné. Sinon le prochain redessin suit des
+     * pointeurs dans de la mémoire rendue. */
+    if (gEditingField) [self endFieldEdit];
+    gSelected = NULL;
+
+    if (!hc_cut_card(card)) {
+        /* hc_delete_card refuse la dernière carte d'une pile. */
+        NSBeep();
+        return;
+    }
+    [gView setNeedsDisplay:YES];
+}
+
+- (void)duplicateCard:(id)sender {
+    (void)sender;
+    Object *card = hc_current_card();
+    if (!card) return;
+
+    Object *nouvelle = hc_duplicate_card(card);
+    if (!nouvelle) { NSBeep(); return; }
+
+    hc_set_current_card(nouvelle);
+    gSelected = NULL;
+    hc_send(nouvelle, "newCard");
+    [gView setNeedsDisplay:YES];
+}
+
 - (void)paste:(id)sender {
-    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_part()) {
+    /* Une carte d'abord : c'est la nature du presse-papiers qui décide, pas
+     * l'outil courant. Déduire du contexte se tromperait dès qu'une carte a
+     * été copiée puis l'outil Bouton choisi. */
+    if (hc_clipboard_has_card()) {
+        Object *card = hc_current_card();
+        Object *stack = card ? card->owner : NULL;
+        Object *nouvelle = stack ? hc_paste_card(stack) : NULL;
+        if (nouvelle) {
+            /* Coller a pu apporter des icônes de l'autre pile. Le catalogue de
+             * travail doit être refait ici : hcicon_edit_bind se contente de
+             * comparer les pointeurs, et cette pile étant déjà liée, il ne
+             * verrait rien changer — les boutons resteraient vides jusqu'au
+             * prochain changement de fenêtre. */
+            hcicon_edit_sync(stack);
+
+            hc_set_current_card(nouvelle);
+            gSelected = NULL;
+            hc_send(nouvelle, "newCard");
+            [gView setNeedsDisplay:YES];
+        } else {
+            /* Seul échec possible ici : le fond de la carte copiée n'existe
+             * pas dans cette pile. On le dit, plutôt que de ne rien faire. */
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:@"Impossible de coller cette carte"];
+            [a setInformativeText:@"Son fond n'existe pas dans cette pile."];
+            [a runModal];
+        }
+        return;
+    }
+
+    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part()) {
         Object *card = hc_current_card();
         if (card) {
             Object *owner = (gEditBackground && card->bg) ? card->bg : card;
@@ -1905,7 +1998,13 @@ static BOOL paint_selection_active(void)
      * en créer et en dessiner avec n'importe quel outil ; faute de bouton, OK
      * referme sans rien attribuer. */
     if (a == @selector(paste:)) {
-        if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_part())
+        /* Une carte se colle quel que soit l'outil : c'est la nature du
+         * presse-papiers qui commande, comme dans paste: lui-même. Sans cette
+         * branche, l'article restait grisé après « Copier la carte » — la
+         * validation n'autorisait que les outils Bouton et Champ. */
+        if (hc_clipboard_has_card())
+            return YES;
+        if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part())
             return YES;
         return gClipboard != nil ||
                [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil];
@@ -2349,6 +2448,20 @@ static int gColorTarget = 0;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
+    /* Lier le catalogue d'icônes à la pile de CETTE fenêtre, avant tout dessin.
+     *
+     * HCicons ne retient qu'une copie de travail, alors que plusieurs piles
+     * peuvent être ouvertes en même temps : c'est donc la fenêtre en train de
+     * se dessiner qui doit imposer la sienne. Lier une fois au chargement ne
+     * suffirait pas — la seconde pile ouverte écraserait le catalogue de la
+     * première, qui afficherait alors de mauvaises icônes.
+     *
+     * Sans travail quand c'est déjà la bonne pile, donc gratuit au redessin. */
+    {
+        Object *dc = [self documentCard];
+        hcicon_edit_bind(dc ? dc->owner : NULL);
+    }
+
     if (visual_pending()) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self runVisualTransition];

@@ -861,6 +861,31 @@ void hc_sync_size_field(Object *o)
     [gContentsPanel makeKeyAndOrderFront:nil];
 }
 
+/* Une pile se ferme : le panneau Icônes retient des Object* qui ne doivent pas
+ * lui survivre — gIconStack, et la pile que gIconBits garde pour dessiner.
+ *
+ * On referme donc, plutôt que de tenter de le repointer ailleurs : le panneau
+ * montre les ressources d'UNE pile, et celle-ci n'existe plus. Passer NULL
+ * ferme quelle que soit la pile.
+ *
+ * gInfoTarget n'est pas touché : le panneau étant fermé, iconOK: ne peut plus
+ * s'exécuter, et l'info du bouton peut légitimement être ouverte par ailleurs. */
+void hcicon_panel_stack_closing(Object *stack)
+{
+    if (!gIconPanel) return;
+    if (stack && gIconStack != stack) return;
+
+    [gIconPanel close];
+    gIconPanel  = nil;
+    gIconGrid   = nil;
+    gIconLabel  = nil;
+    gIconBits   = nil;
+    gIconName   = nil;
+    gIconInfo   = nil;
+    gIconStack  = NULL;
+    gIconNameId = 0;
+}
+
 /* « Édition › Icône… » — la deuxième porte d'entrée du panneau Icônes.
  *
  * Toujours disponible, y compris sans sélection : le panneau gère les icônes

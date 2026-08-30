@@ -3,6 +3,10 @@
 
 #import "HCview.h"
 
+/* À appeler quand une pile se ferme, AVANT hc_free : referme le panneau Icônes
+ * s'il montrait celle-là. NULL ferme dans tous les cas. */
+void hcicon_panel_stack_closing(Object *stack);
+
 @interface HCView (Dialogs)
 
 - (void)showButtonInfo:(Object *)obj;

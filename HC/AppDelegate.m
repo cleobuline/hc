@@ -4,6 +4,7 @@
 //
 
 #import "AppDelegate.h"
+#import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
 #import "HCdialogs.h"
 #import "hc_core.h"
@@ -66,6 +67,17 @@ static NSMenu *find_file_menu(void)
     return [main numberOfItems] > 1 ? [[main itemAtIndex:1] submenu] : nil;
 }
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+    /* Apprendre au noyau à lire un nom d'icône.
+     *
+     * hc_core est du C99 et ne peut pas inclure HCicons.h, qui importe Cocoa :
+     * on lui dépose donc la fonction. Sans cette ligne « set the icon of me to
+     * "Close Box" » retomberait sur atoi, c'est-à-dire sur 0 — aucune icône,
+     * et sans le moindre message. À poser avant qu'un script puisse tourner. */
+    hc_set_icon_resolver(hcicon_id_for_text);
+    /* Et de quoi lui dire si un numéro est déjà pris par une icône d'origine,
+     * quand il transplante les icônes d'une carte collée. */
+    hc_set_icon_builtin_check(hcicon_builtin_has);
+
     /* Pile vide au démarrage : une carte sur un fond, rien de plus.
      * La pile de démonstration qui vivait ici — deux cartes, trois boutons et
      * leurs scripts — a fait son temps : « Nouvelle pile » et « Ouvrir » sont
@@ -355,6 +367,28 @@ static NSMenu *find_file_menu(void)
                                              keyEquivalent:@"f"];
         [fd setTarget:view];
         [editMenu addItem:fd];
+
+        /* Cartes : articles DISTINCTS de Couper et Copier, comme dans
+         * HyperCard. Coller n'en a pas besoin — il pose ce que le
+         * presse-papiers contient, carte ou bouton. */
+        [editMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *cc = [[NSMenuItem alloc] initWithTitle:@"Copier la carte"
+                                                    action:@selector(copyCard:)
+                                             keyEquivalent:@""];
+        [cc setTarget:view];
+        [editMenu addItem:cc];
+
+        NSMenuItem *xc = [[NSMenuItem alloc] initWithTitle:@"Couper la carte"
+                                                    action:@selector(cutCard:)
+                                             keyEquivalent:@""];
+        [xc setTarget:view];
+        [editMenu addItem:xc];
+
+        NSMenuItem *dc = [[NSMenuItem alloc] initWithTitle:@"Dupliquer la carte"
+                                                    action:@selector(duplicateCard:)
+                                             keyEquivalent:@""];
+        [dc setTarget:view];
+        [editMenu addItem:dc];
 
         /* « Icône… » d'HyperCard : ouvre le panneau des icônes sur le bouton
          * sélectionné. validateMenuItem: le grise quand la sélection n'est pas

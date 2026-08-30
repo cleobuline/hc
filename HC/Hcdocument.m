@@ -5,6 +5,8 @@
 #import "HCdocument.h"
 #import "HCview.h"
 #import "HCglobals.h"
+#import "HCdialogs.h"    /* hcicon_panel_stack_closing */
+#import "HCiconedit.h"   /* hcicon_edit_sync */
 
 /* Définie dans HCview.m : désigne le HCDoc de la fenêtre active. */
 extern void hc_set_active_doc(void *d);
@@ -91,6 +93,15 @@ static HCDocument *gCurrentDoc = nil;
                        : (stack->name ? [NSString stringWithUTF8String:stack->name]
                                       : @"Sans titre")];
     [win makeKeyAndOrderFront:nil];
+    /* La vue doit être premier répondant, pas seulement présente.
+     *
+     * Les articles de menu à cible nulle — Couper, Copier, Coller — descendent
+     * la chaîne des répondants. Si celle-ci part de la FENÊTRE, elle ne passe
+     * jamais par la vue : AppKit ne trouve pas paste:, et grise l'article sans
+     * même appeler validateMenuItem:. Cela ne se voyait pas avec l'outil
+     * Bouton, dont les clics appellent makeFirstResponder:, mais l'outil
+     * Browse n'a aucune raison de le faire. */
+    [win makeFirstResponder:v];
     return d;
 }
 
@@ -123,6 +134,11 @@ static HCDocument *gCurrentDoc = nil;
  * fenêtre, comme dans toute application à documents multiples. */
 - (void)windowDidBecomeMain:(NSNotification *)note {
     [HCDocument setCurrent:self];
+    /* Remettre la vue en premier répondant : le passage d'une fenêtre à
+     * l'autre peut le laisser sur la fenêtre elle-même, et les articles de
+     * menu à cible nulle ne trouveraient plus la vue. */
+    if (self.view && [self.window firstResponder] != self.view)
+        [self.window makeFirstResponder:self.view];
     if (self.stack) {
         /* Replacer le noyau sur une carte de CETTE pile : les scripts et les
          * commandes de menu travaillent sur la carte courante, qui doit suivre
@@ -187,6 +203,24 @@ static HCDocument *gCurrentDoc = nil;
             }
             hc_set_current_card(repli);   /* NULL si c'était la dernière pile */
         }
+        /* Les icônes appartiennent à la pile : deux choses la retiennent
+         * encore, et toutes deux mourraient avec elle.
+         *
+         * Le panneau Icônes garde un pointeur sur la pile et sur celle que sa
+         * grille dessine — on le referme s'il montrait celle-ci.
+         *
+         * Le catalogue de travail de HCicons, lui, est lié à une pile par son
+         * ADRESSE. Une pile libérée puis une autre allouée au même endroit
+         * passeraient pour la même, et l'on afficherait les icônes de la
+         * défunte : on rompt le lien. Le prochain dessin d'une fenêtre
+         * survivante rétablira le sien. */
+        hcicon_panel_stack_closing(pile);
+        hcicon_edit_sync(NULL);
+        /* Le presse-papiers emprunte un pointeur sur le fond de la carte
+         * copiée : il ne doit pas survivre à sa pile. La carte et la copie du
+         * fond, elles, sont possédées et restent collables ailleurs. */
+        hc_clipboard_stack_closing(pile);
+
         self.stack = NULL;
         hc_free(pile);
     }
