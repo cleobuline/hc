@@ -355,6 +355,16 @@ static NSMenu *find_file_menu(void)
                                              keyEquivalent:@"f"];
         [fd setTarget:view];
         [editMenu addItem:fd];
+
+        /* « Icône… » d'HyperCard : ouvre le panneau des icônes sur le bouton
+         * sélectionné. validateMenuItem: le grise quand la sélection n'est pas
+         * un bouton. Pas de raccourci clavier — HyperCard n'en avait pas, et
+         * les lettres qui restent libres servent ailleurs. */
+        NSMenuItem *ic = [[NSMenuItem alloc] initWithTitle:@"Icône…"
+                                                    action:@selector(editIcon:)
+                                             keyEquivalent:@""];
+        [ic setTarget:view];
+        [editMenu addItem:ic];
     }
 
     SEL signatures[] = {

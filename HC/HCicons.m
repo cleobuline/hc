@@ -1,4 +1,7 @@
 #import "HCicons.h"
+#include "hc_core.h"   /* struct StackIcon */
+#include <stdlib.h>
+#include <string.h>
 
 const HCIcon HCICONS[] = {
     {128, "Link To", {
@@ -6295,9 +6298,85 @@ const HCIcon HCICONS[] = {
 
 const int NUM_HCICONS = (int)(sizeof(HCICONS)/sizeof(HCICONS[0]));
 
+/* ==================== catalogue de la pile ==================== */
+
+/* Copie de travail des icones de la pile courante. On copie plutot que de
+ * pointer dans la structure de la pile : hcicon_find rend un pointeur que
+ * l'appelant garde le temps d'un dessin, et une pile rechargee entre-temps
+ * le laisserait pendre. Le cout est nul a cette echelle — quelques dizaines
+ * d'icones de 128 octets. */
+static HCIcon *gStackIcons = NULL;
+static int     gStackCount = 0;
+
+static void hcicon_free_stack_icons(void) {
+    for (int i = 0; i < gStackCount; i++)
+        free((void *)gStackIcons[i].name);   /* strdup ci-dessous */
+    free(gStackIcons);
+    gStackIcons = NULL;
+    gStackCount = 0;
+}
+
+void hcicon_use_stack_icons(const struct StackIcon *tab, int n) {
+    hcicon_free_stack_icons();
+    if (!tab || n <= 0) return;
+
+    gStackIcons = calloc((size_t)n, sizeof *gStackIcons);
+    if (!gStackIcons) return;
+
+    for (int i = 0; i < n; i++) {
+        gStackIcons[i].id   = tab[i].id;
+        gStackIcons[i].name = strdup(tab[i].name ? tab[i].name : "");
+        memcpy(gStackIcons[i].bits, tab[i].bits, 128);
+    }
+    gStackCount = n;
+}
+
+int hcicon_stack_count(void) { return gStackCount; }
+
+const HCIcon *hcicon_stack_at(int i) {
+    if (i < 0 || i >= gStackCount) return NULL;
+    return &gStackIcons[i];
+}
+
 const HCIcon *hcicon_find(int id) {
+    /* La pile d'abord : c'est ce qui permet de redefinir une icone d'origine
+     * sans recompiler. Parcours a rebours, la derniere entree lue l'emporte
+     * si un fichier abime contient deux fois le meme numero. */
+    for (int i = gStackCount - 1; i >= 0; i--)
+        if (gStackIcons[i].id == id) return &gStackIcons[i];
     for (int i = 0; i < NUM_HCICONS; i++)
         if (HCICONS[i].id == id) return &HCICONS[i];
+    return NULL;
+}
+
+/* ---- catalogue complet ----
+ * On ne construit aucune table : le catalogue est la concatenation de celle
+ * de la pile et de celle d'origine, moins les doublons. L'index se traduit
+ * donc a la volee. Une table de plus serait une table de plus a invalider,
+ * et c'est exactement le genre d'oubli qui laisse une vue sur une icone
+ * disparue. */
+static int hcicon_builtin_is_overridden(int id) {
+    for (int i = 0; i < gStackCount; i++)
+        if (gStackIcons[i].id == id) return 1;
+    return 0;
+}
+
+int hcicon_catalog_count(void) {
+    int n = gStackCount;
+    for (int i = 0; i < NUM_HCICONS; i++)
+        if (!hcicon_builtin_is_overridden(HCICONS[i].id)) n++;
+    return n;
+}
+
+const HCIcon *hcicon_catalog_at(int i) {
+    if (i < 0) return NULL;
+    if (i < gStackCount) return &gStackIcons[i];
+
+    int k = i - gStackCount;
+    for (int j = 0; j < NUM_HCICONS; j++) {
+        if (hcicon_builtin_is_overridden(HCICONS[j].id)) continue;
+        if (k-- == 0) return &HCICONS[j];
+    }
     return NULL;
 }
 

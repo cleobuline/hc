@@ -167,23 +167,42 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 
 - (BOOL)isFlipped { return YES; }
 
++ (CGFloat)heightForCount:(int)n {
+    int rows = (n + ICONGRID_COLS - 1) / ICONGRID_COLS;
+    if (rows < 1) rows = 1;
+    return rows * ICONGRID_CELL;
+}
+
+/* Le catalogue grandit quand on cree une icone : la vue doit s'agrandir avec
+ * lui, sinon les dernieres tombent hors du document et le defilement ne les
+ * atteint jamais. */
+- (void)reload {
+    NSRect f = [self frame];
+    f.size.height = [IconGrid heightForCount:hcicon_catalog_count()];
+    [self setFrame:f];
+    [self setNeedsDisplay:YES];
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
-    (void)dirtyRect;
     [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
     NSRectFill([self bounds]);
 
-    for (int i = 0; i < NUM_HCICONS; i++) {
+    int n = hcicon_catalog_count();
+    for (int i = 0; i < n; i++) {
         int col = i % ICONGRID_COLS, row = i / ICONGRID_COLS;
         NSRect box = NSMakeRect(col*ICONGRID_CELL, row*ICONGRID_CELL,
                                 ICONGRID_CELL, ICONGRID_CELL);
         if (!NSIntersectsRect(box, dirtyRect)) continue;
 
-        BOOL active = (HCICONS[i].id == self.selected);
+        const HCIcon *ic = hcicon_catalog_at(i);
+        if (!ic) continue;
+
+        BOOL active = (ic->id == self.selected);
         [(active ? [NSColor whiteColor] : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
         NSRectFill(box);
 
         [[NSColor blackColor] setFill];
-        hcicon_draw(&HCICONS[i], box, 1.0);
+        hcicon_draw(ic, box, 1.0);
 
         if (active) {
             [[NSColor redColor] setStroke];
@@ -202,9 +221,16 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
     int col = (int)(p.x / ICONGRID_CELL);
     int row = (int)(p.y / ICONGRID_CELL);
     int i = row * ICONGRID_COLS + col;
-    if (col < 0 || col >= ICONGRID_COLS || i < 0 || i >= NUM_HCICONS) return;
-    self.selected = HCICONS[i].id;
+    if (col < 0 || col >= ICONGRID_COLS || i < 0 || i >= hcicon_catalog_count()) return;
+
+    const HCIcon *ic = hcicon_catalog_at(i);
+    if (!ic) return;
+    self.selected = ic->id;
     [self setNeedsDisplay:YES];
+
+    if (self.target && self.action &&
+        [self.target respondsToSelector:self.action])
+        [NSApp sendAction:self.action to:self.target from:self];
 }
 
 @end

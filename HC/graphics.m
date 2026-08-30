@@ -591,6 +591,19 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
         ancien = rep;
     }
 
+    /* Le calque de peinture vit en sRGB, point.
+     *
+     * Il naissait en NSCalibratedRGBColorSpace, c'est-a-dire le Generic RGB
+     * d'Apple, de gamma 1.8. Le PNG relu, lui, est en sRGB, de gamma 2.2. Y
+     * dessiner le PNG declenchait donc une VRAIE conversion colorimetrique a
+     * chaque chargement — le mode « copy » evite la composition, pas la
+     * conversion. L'aller et le retour n'etant pas symetriques, chaque cycle
+     * enregistrer/relire appliquait un v^(2.2/1.8) de plus : les tons moyens
+     * descendaient, les ombres se creusaient, les couleurs se saturaient.
+     *
+     * Un seul espace de bout en bout, et l'aller-retour redevient l'identite
+     * au bit pres. Le retag a lieu AVANT toute ecriture de pixel, la methode
+     * renvoyant une nouvelle rep. */
     NSBitmapImageRep *canvas = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
@@ -598,6 +611,11 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
                             hasAlpha:YES isPlanar:NO
                       colorSpaceName:NSCalibratedRGBColorSpace
                          bytesPerRow:0 bitsPerPixel:0];
+    {
+        NSBitmapImageRep *srgb = [canvas bitmapImageRepByRetaggingWithColorSpace:
+                                            [NSColorSpace sRGBColorSpace]];
+        if (srgb) canvas = srgb;
+    }
 
     // effacer explicitement vers le transparent
     {
@@ -628,6 +646,16 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     if (b64 && *b64) {
         NSBitmapImageRep *loaded = hcp_decode([NSString stringWithUTF8String:b64]);
         if (loaded) {
+            /* Le PNG peut porter n'importe quel profil (fichier ancien, image
+             * collee depuis une autre application, absence de profil...). On le
+             * ramene une bonne fois en sRGB par une CONVERSION — la seule du
+             * pipeline, et elle est idempotente : une fois tout le monde en
+             * sRGB, elle ne touche plus aucun pixel. */
+            NSBitmapImageRep *conv = [loaded bitmapImageRepByConvertingToColorSpace:
+                                                 [NSColorSpace sRGBColorSpace]
+                                          renderingIntent:NSColorRenderingIntentDefault];
+            if (conv) loaded = conv;
+
             NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:canvas];
             [NSGraphicsContext saveGraphicsState];
             [NSGraphicsContext setCurrentContext:ctx];

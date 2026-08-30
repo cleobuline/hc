@@ -6,6 +6,7 @@
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
+#import "HCiconedit.h"
 #import "graphics.h"
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie
@@ -187,6 +188,15 @@ static NSPanel     *gStackPanel = nil;
 static NSPanel     *gIconPanel = nil;
 static IconGrid    *gIconGrid = nil;
 static NSTextField *gIconLabel = nil;
+/* moitie edition du panneau Icones */
+static HCFatBits   *gIconBits = nil;
+static NSTextField *gIconName = nil;
+/* Quelle icône le champ Nom est en train de nommer. Indispensable : quand on
+ * clique une autre icône, la sélection a déjà changé au moment où l'on valide,
+ * et sans ce témoin on renommerait la nouvelle avec le texte de l'ancienne. */
+static int          gIconNameId = 0;
+static NSTextField *gIconInfo = nil;
+static Object      *gIconStack = NULL;
 
 static Object      *gStackTarget = NULL;
 static NSTextField *gStackName = nil;
@@ -851,68 +861,273 @@ void hc_sync_size_field(Object *o)
     [gContentsPanel makeKeyAndOrderFront:nil];
 }
 
-- (void)infoIcon:(id)sender {
-    Object *o = gInfoTarget;
-    if (!o) return;
+/* « Édition › Icône… » — la deuxième porte d'entrée du panneau Icônes.
+ *
+ * Toujours disponible, y compris sans sélection : le panneau gère les icônes
+ * de la pile, qui sont des ressources. Sans bouton pour cible, on peut créer,
+ * dessiner et renommer ; OK referme alors sans rien attribuer.
+ *
+ * gInfoTarget n'est normalement posé que par l'info du bouton : on le pose ici
+ * sur l'objet sélectionné s'il s'agit d'un bouton, à NULL sinon.
+ * gInfoIconField est remis à nil parce que le panneau d'info n'est pas ouvert —
+ * iconOK: y écrit, et le laisser pointer sur le champ d'un panneau refermé
+ * reviendrait à peindre dans le vide. */
+- (void)editIcon:(id)sender {
+    gInfoTarget = (gSelected && gSelected->type == OBJ_BUTTON) ? gSelected : NULL;
+    gInfoIconField = nil;
+    [self infoIcon:sender];
+}
 
-    int rows = (NUM_HCICONS + ICONGRID_COLS - 1) / ICONGRID_COLS;
-    CGFloat gw = ICONGRID_COLS * ICONGRID_CELL;
-    CGFloat gh = rows * ICONGRID_CELL;
+- (void)infoIcon:(id)sender {
+    (void)sender;
+    /* gInfoTarget peut être NULL : le panneau sert alors uniquement à gérer les
+     * icônes de la pile, sans en attribuer aucune. */
+    Object *o = gInfoTarget;
+
+    /* La pile porte le catalogue : on la retrouve par la carte courante. */
+    Object *card = hc_current_card();
+    gIconStack = (card && card->owner) ? card->owner : NULL;
+    hcicon_edit_sync(gIconStack);
+
+    CGFloat gw   = ICONGRID_COLS * ICONGRID_CELL;
+    CGFloat gh   = [IconGrid heightForCount:hcicon_catalog_count()];
+    CGFloat bits = [HCFatBits side];
+
+    /* Deux colonnes : le catalogue a gauche, l'edition a droite, hauts
+     * alignes. Le panneau n'est pas retourne — les ordonnees partent du bas. */
+    const CGFloat LX = 12, RX = LX + gw + 16 + 16;
+    const CGFloat W  = RX + bits + 12;
+    const CGFloat H  = 420;
+    const CGFloat TOP = H - 16;              /* haut commun aux deux colonnes */
 
     gIconPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(360, 200, gw + 34, 380)
+        initWithContentRect:NSMakeRect(360, 200, W, H)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gIconPanel setTitle:@"Icons"];
+    [gIconPanel setTitle:@"Icônes"];
     [gIconPanel setReleasedWhenClosed:NO];
     NSView *c = [gIconPanel contentView];
 
+    /* ---- colonne de gauche : le catalogue ---- */
     NSScrollView *scroll = [[NSScrollView alloc]
-        initWithFrame:NSMakeRect(12, 76, gw + 16, 288)];
+        initWithFrame:NSMakeRect(LX, TOP - 288, gw + 16, 288)];
     [scroll setHasVerticalScroller:YES];
     [scroll setBorderType:NSBezelBorder];
 
     gIconGrid = [[IconGrid alloc] initWithFrame:NSMakeRect(0, 0, gw, gh)];
-    gIconGrid.selected = o->icon;
+    gIconGrid.selected = o ? o->icon : 0;
+    gIconGrid.target   = self;
+    gIconGrid.action   = @selector(iconPicked:);
     [scroll setDocumentView:gIconGrid];
     [c addSubview:scroll];
 
-    gIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 50, gw, 18)];
+    gIconLabel = [[NSTextField alloc]
+        initWithFrame:NSMakeRect(LX, TOP - 288 - 24, gw, 18)];
     [gIconLabel setBezeled:NO]; [gIconLabel setDrawsBackground:NO];
     [gIconLabel setEditable:NO];
     [c addSubview:gIconLabel];
 
-    NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
-            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 12, 76, 28)];
-            [b setTitle:t];
-            [b setBezelStyle:NSBezelStyleRounded];
-            [b setTarget:self];
-            [b setAction:a];
-            [c addSubview:b];
-            return b;
-        };
-        mkIB(@"Aucune", @selector(iconNone:),   12);
-        mkIB(@"Cancel", @selector(iconCancel:), gw + 34 - 172);
-        NSButton *ok = mkIB(@"OK", @selector(iconOK:), gw + 34 - 88);
-        [ok setKeyEquivalent:@"\r"];
+    /* ---- colonne de droite : l'edition ---- */
+    gIconBits = [[HCFatBits alloc]
+        initWithFrame:NSMakeRect(RX, TOP - bits, bits, bits)];
+    gIconBits.iconId = o ? o->icon : 0;
+    gIconBits.stack  = gIconStack;
+    gIconBits.target = self;
+    gIconBits.action = @selector(iconEdited:);
+    [c addSubview:gIconBits];
 
+    gIconName = [[NSTextField alloc]
+        initWithFrame:NSMakeRect(RX, TOP - bits - 30, bits, 22)];
+    [gIconName setTarget:self];
+    [gIconName setAction:@selector(iconRename:)];
+    [c addSubview:gIconName];
+
+    gIconInfo = [[NSTextField alloc]
+        initWithFrame:NSMakeRect(RX, TOP - bits - 52, bits, 18)];
+    [gIconInfo setBezeled:NO]; [gIconInfo setDrawsBackground:NO];
+    [gIconInfo setEditable:NO];
+    [c addSubview:gIconInfo];
+
+    NSButton *(^mkEB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+        NSButton *b = [[NSButton alloc]
+            initWithFrame:NSMakeRect(x, TOP - bits - 84, 62, 26)];
+        [b setTitle:t];
+        [b setBezelStyle:NSBezelStyleRounded];
+        [b setFont:[NSFont systemFontOfSize:10]];
+        [b setTarget:self];
+        [b setAction:a];
+        [c addSubview:b];
+        return b;
+    };
+    mkEB(@"Nouvelle", @selector(iconNew:),       RX);
+    mkEB(@"Dupliquer",@selector(iconDuplicate:), RX + 64);
+    mkEB(@"Effacer",  @selector(iconErase:),     RX + 128);
+    mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192);
+
+    /* ---- rangee du bas, commune ---- */
+    NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+        NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 12, 76, 28)];
+        [b setTitle:t];
+        [b setBezelStyle:NSBezelStyleRounded];
+        [b setTarget:self];
+        [b setAction:a];
+        [c addSubview:b];
+        return b;
+    };
+    /* Sans bouton pour cible, « Aucune » et « OK » n'ont rien à attribuer :
+     * OK ne fait alors que refermer. Les icônes créées ou dessinées, elles,
+     * restent dans la pile — ce sont des ressources. */
+    mkIB(@"Aucune", @selector(iconNone:),   LX);
+    mkIB(@"Cancel", @selector(iconCancel:), W - 172);
+    NSButton *ok = mkIB(@"OK", @selector(iconOK:), W - 88);
+    [ok setKeyEquivalent:@"\r"];
+
+    [self iconRefresh];
     [gIconPanel makeKeyAndOrderFront:nil];
 }
 
+/* Valide le contenu du champ Nom sur l'icône qu'il nomme.
+ *
+ * À appeler AVANT tout ce qui change la sélection. Le champ n'envoie son action
+ * qu'à la touche Entrée ; cliquer la grille ou un bouton ne la déclenche pas, et
+ * IconGrid n'acceptant pas le premier répondant, le champ ne perd même pas le
+ * focus — controlTextDidEndEditing: ne servirait donc à rien ici. */
+- (void)iconCommitName {
+    if (!gIconName || gIconNameId == 0) return;
+    if (![gIconName isEditable]) return;          /* icône d'origine */
+
+    struct StackIcon *own = hc_icon_get(gIconStack, gIconNameId);
+    if (!own) return;
+
+    const char *typed = [[gIconName stringValue] UTF8String];
+    if (!typed) return;
+    if (own->name && strcmp(own->name, typed) == 0) return;   /* rien n'a changé */
+
+    hcicon_edit_rename(gIconStack, gIconNameId, typed);
+}
+
+/* Seul endroit qui remet les deux colonnes d'accord. Toutes les actions y
+ * passent : c'est ce qui evite qu'une d'elles oublie un morceau. */
+- (void)iconRefresh {
+    int id = gIconGrid ? gIconGrid.selected : 0;
+    const HCIcon     *ic  = hcicon_find(id);
+    struct StackIcon *own = hc_icon_get(gIconStack, id);
+
+    gIconBits.iconId = id;
+    gIconBits.stack  = gIconStack;
+
+    [gIconName setStringValue:
+        (ic && ic->name) ? [NSString stringWithUTF8String:ic->name] : @""];
+    /* Une icone d'origine ne se renomme pas : elle est const. Elle le devient
+     * des qu'on la dessine, hcicon_edit_editable la recopiant dans la pile. */
+    [gIconName setEditable:(own != NULL)];
+    gIconNameId = id;
+
+    if (id == 0)
+        [gIconInfo setStringValue:@"Aucune icône"];
+    else
+        [gIconInfo setStringValue:[NSString stringWithFormat:@"N° %d — %@",
+            id, own ? @"pile" : @"d'origine"]];
+
+    [gIconLabel setStringValue:
+        [NSString stringWithFormat:@"%d icônes", hcicon_catalog_count()]];
+
+    [gIconGrid reload];
+    [gIconBits setNeedsDisplay:YES];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)iconSelect:(int)id {
+    gIconGrid.selected = id;
+    [self iconRefresh];
+}
+
+/* iconPicked: arrive APRÈS qu'IconGrid a changé sa sélection : la validation
+ * du nom s'appuie donc sur gIconNameId, qui désigne encore l'ancienne. */
+- (void)iconPicked:(id)sender { (void)sender; [self iconCommitName]; [self iconRefresh]; }
+- (void)iconEdited:(id)sender { (void)sender; [self iconRefresh]; }
+
+- (void)iconNew:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    int id = hcicon_edit_new(gIconStack);
+    if (id) [self iconSelect:id];
+}
+
+- (void)iconDuplicate:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    int id = hcicon_edit_duplicate(gIconStack, gIconGrid.selected);
+    if (id) [self iconSelect:id];
+}
+
+- (void)iconErase:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    hcicon_edit_erase(gIconStack, gIconGrid.selected);
+    [self iconRefresh];
+}
+
+/* Supprimer ne rend pas leur icone aux boutons qui la portent : ils gardent un
+ * numero mort et n'affichent plus rien, comme dans HyperCard. On l'annonce
+ * plutot que de laisser la surprise pour plus tard. */
+- (void)iconDelete:(id)sender {
+    (void)sender;
+    int id = gIconGrid.selected;
+    if (!hc_icon_get(gIconStack, id)) { NSBeep(); return; }
+
+    gIconNameId = 0;          /* on supprime : rien à valider */
+    int users = hcicon_edit_users(gIconStack, id);
+    if (users > 0) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:[NSString stringWithFormat:
+            @"%d bouton%@ utilise%@ encore cette icône.",
+            users, users > 1 ? @"s" : @"", users > 1 ? @"nt" : @""]];
+        [a setInformativeText:@"Ils garderont son numéro et n'afficheront plus rien."];
+        [a addButtonWithTitle:@"Supprimer"];
+        [a addButtonWithTitle:@"Annuler"];
+        if ([a runModal] != NSAlertFirstButtonReturn) return;
+    }
+
+    hcicon_edit_delete(gIconStack, id);
+    [self iconSelect:0];
+}
+
+/* Touche Entrée dans le champ. Le gros du travail est dans iconCommitName,
+ * qui sert aussi à tous les autres chemins de sortie du champ. */
+- (void)iconRename:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    [self iconRefresh];
+}
+
 - (void)iconOK:(id)sender {
+    (void)sender;
+    [self iconCommitName];
     if (gInfoTarget && gIconGrid) {
         gInfoTarget->icon = gIconGrid.selected;
-        [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", gIconGrid.selected]];
+        /* nil quand on vient du menu Édition plutôt que de l'info du bouton. */
+        if (gInfoIconField)
+            [gInfoIconField setStringValue:
+                [NSString stringWithFormat:@"%d", gIconGrid.selected]];
     }
     [gIconPanel close];
     [self setNeedsDisplay:YES];
 }
 
 - (void)iconNone:(id)sender {
-    if (gIconGrid) { gIconGrid.selected = 0; [gIconGrid setNeedsDisplay:YES]; }
+    (void)sender;
+    [self iconSelect:0];
 }
 
+/* Cancel ne renonce qu'a l'ATTRIBUTION. Les icones creees ou dessinees restent
+ * dans la pile : ce sont des ressources, pas une propriete du bouton, et les
+ * defaire supposerait un historique que le noyau n'a pas. */
 - (void)iconCancel:(id)sender {
+    (void)sender;
+    /* Le nom se valide même ici : Cancel ne renonce qu'à l'attribution, et un
+     * nom fraîchement tapé fait partie de l'icône, pas du bouton. */
+    [self iconCommitName];
     [gIconPanel close];
 }
  

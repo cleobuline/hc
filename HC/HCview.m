@@ -1900,6 +1900,10 @@ static BOOL paint_selection_active(void)
 
     if (a == @selector(copy:) || a == @selector(cut:))
         return object_selection_active() || paint_selection_active();
+    /* « Icône… » reste TOUJOURS disponible, même sans bouton sélectionné : le
+     * panneau gère les icônes de la pile, qui sont des ressources. On peut donc
+     * en créer et en dessiner avec n'importe quel outil ; faute de bouton, OK
+     * referme sans rien attribuer. */
     if (a == @selector(paste:)) {
         if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_part())
             return YES;
@@ -2629,26 +2633,49 @@ static int gColorTarget = 0;
 
         NSInteger w = [rep pixelsWide], h = [rep pixelsHigh];
 
+        /* On recopie les octets tels quels : `fresh` doit donc porter le meme
+           espace colorimetrique et le meme format alpha que `rep`. Figer
+           NSCalibratedRGBColorSpace ici re-etiquetait les pixels sans les
+           convertir, alors que le chargement, lui, convertissait pour de bon.
+           C'est cette asymetrie qui rongeait les couleurs cycle apres cycle.
+           Le calque vit desormais en sRGB (cf. paint_bitmap) et l'on grave en
+           sRGB : l'aller-retour est l'identite au bit pres. */
         NSBitmapImageRep *fresh = [[NSBitmapImageRep alloc]
             initWithBitmapDataPlanes:NULL
                           pixelsWide:w pixelsHigh:h
                        bitsPerSample:8 samplesPerPixel:4
                             hasAlpha:YES isPlanar:NO
-                      colorSpaceName:NSCalibratedRGBColorSpace
+                      colorSpaceName:[rep colorSpaceName]
+                        bitmapFormat:([rep bitmapFormat]
+                                      & NSBitmapFormatAlphaNonpremultiplied)
                          bytesPerRow:w * 4 bitsPerPixel:32];
 
         unsigned char *src = [rep bitmapData];
         unsigned char *dst = [fresh bitmapData];
         NSInteger sbpr = [rep bytesPerRow], dbpr = [fresh bytesPerRow];
-        NSInteger spp  = [rep samplesPerPixel], dspp = [fresh samplesPerPixel];
+        NSInteger spp  = [rep samplesPerPixel];
+        /* Pas en octets : samplesPerPixel n'est pas le pas des lors qu'une rep
+           a 3 echantillons alignes sur 32 bits. */
+        NSInteger sstride = [rep bitsPerPixel] / 8;
+        NSInteger dstride = [fresh bitsPerPixel] / 8;
         for (NSInteger y = 0; y < h; y++) {
             for (NSInteger x = 0; x < w; x++) {
-                unsigned char *sp = src + y*sbpr + x*spp;
-                unsigned char *dp = dst + y*dbpr + x*dspp;
+                unsigned char *sp = src + y*sbpr + x*sstride;
+                unsigned char *dp = dst + y*dbpr + x*dstride;
                 dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2];
                 dp[3] = (spp >= 4) ? sp[3] : 255;
             }
         }
+
+        /* colorSpaceName ne transporte qu'un nom generique : on rattache le
+           profil ICC exact de la source. Retagging = on change l'etiquette,
+           jamais les valeurs. A faire une fois les pixels ecrits, la methode
+           renvoyant une nouvelle rep. */
+        NSColorSpace *cs = [rep colorSpace];
+        if (!cs) cs = [NSColorSpace sRGBColorSpace];
+        NSBitmapImageRep *tagged =
+            [fresh bitmapImageRepByRetaggingWithColorSpace:cs];
+        if (tagged) fresh = tagged;
 
         NSString *b64 = hcp_encode(fresh);
         if (!b64) { NSLog(@"[flush] o=%p ECHEC encodage", o); continue; }

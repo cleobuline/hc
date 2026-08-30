@@ -43,13 +43,37 @@
  *     | note propre a cette carte
  *     end bgtextdata
  *     bgrun 0,4,1
+ *
+ * Les icones appartiennent a la PILE, comme les ressources ICON de HyperCard :
+ * une pile emporte ses icones, et un bouton n'en retient que le numero.
+ *
+ *     iconres 20554 "Terminator"
+ *     | 00000000
+ *     | 00018000
+ *     | ...
+ *     end iconres
+ *
+ * 32x32 en 1 bit, soit 128 octets, ecrits en hexadecimal a raison de quatre
+ * octets par ligne : une ligne du fichier est une ligne de l'icone, et il y en
+ * a trente-deux. L'hexadecimal plutot que le base64 des blocs « paint » :
+ * c'est court, ca se lit, et ca se retouche a la main. Bit de poids fort a
+ * gauche, bit a 1 = encre — la disposition de HCICONS, a l'octet pres.
+ *
+ * Le mot-cle est « iconres » et non « icon », deja pris par l'attribut de
+ * bouton. Les distinguer au seul garde « && part » ne tiendrait que parce que
+ * la pile s'ecrit avant les cartes : trop fragile pour qu'on s'y fie.
+ *
+ * Un binaire anterieur relisant une pile qui contient des icones ne les
+ * comprend pas, mais ne s'y casse pas : « iconres ... » ne repond a aucun
+ * prefixe connu et les lignes « | » hors bloc sont deja ignorees.
  */
 #include "hc_file.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#define HC_ICON_BYTES 128
+
 
 /* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
  * contre-obliques qu'elle contient. Sans ça, un objet nommé
@@ -114,6 +138,24 @@ static void put_block(FILE *f, const char *tag, const char *text)
 static void put_paint(FILE *f, const char *b64)
 {
     put_block_wrap(f, "paint", b64, 1);   /* base64 : découpé en lignes courtes */
+}
+
+/* Une icône de pile : en-tête, puis 128 octets en hexadécimal, huit par
+ * ligne. Le nom passe par put_quoted, il peut donc contenir un guillemet. */
+static void put_icon(FILE *f, const struct StackIcon *ic)
+{
+    fprintf(f, "iconres %d ", ic->id);
+    put_quoted(f, ic->name ? ic->name : "");
+    fputc('\n', f);
+    /* Quatre octets par ligne : une ligne du fichier = une ligne de l'icone,
+     * comme dans la source de HCICONS. Trente-deux lignes, et le dessin se
+     * devine a l'oeil nu dans le fichier. */
+    for (int i = 0; i < HC_ICON_BYTES; i += 4) {
+        fputs("| ", f);
+        for (int k = 0; k < 4; k++) fprintf(f, "%02X", ic->bits[i + k]);
+        fputc('\n', f);
+    }
+    fprintf(f, "end iconres\n");
 }
 
 /* Plages de style d'un champ, une par ligne :
@@ -208,6 +250,9 @@ int hc_save(Object *stack, const char *path)
     fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
     put_block(f, "script", stack->script);
+    /* Les icônes tiennent dans le bloc de la pile : elles lui appartiennent,
+     * et se relisent donc avant la première carte susceptible de s'y référer. */
+    for (int i = 0; i < stack->nicons; i++) put_icon(f, &stack->icons[i]);
     fprintf(f, "end stack\n\n");
 
     /* les fonds d'abord : les cartes s'y réfèrent par leur nom */
@@ -411,6 +456,17 @@ static void add_run(struct RunList *rl, int start, int len, int style,
     rl->n++;
 }
 
+/* Un chiffre hexadécimal, ou -1. On ne se repose pas sur sscanf : une ligne
+ * tronquée ou salie doit interrompre le remplissage sans écrire n'importe
+ * quoi dans les 128 octets, et surtout sans déborder. */
+static int hexval(int c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 static Object *find_bg(Object *stack, const char *name)
 {
     for (int i = 0; i < stack->nparts; i++) {
@@ -434,6 +490,9 @@ Object *hc_load(const char *path)
     char line[4096], nm[256], nm2[256]; (void)nm2;
     Acc acc = {0};
     int in_script = 0, in_contents = 0, in_paint = 0, in_bgtext = 0;
+    int in_icon = 0;
+    struct StackIcon *cur_icon = NULL;   /* icône en cours de remplissage */
+    int icon_pos = 0;                    /* octets déjà lus, 0..HC_ICON_BYTES */
     int bgtext_id = 0;
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
@@ -443,11 +502,28 @@ Object *hc_load(const char *path)
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
-        if (in_script || in_contents || in_paint || in_bgtext) {
+        if (in_script || in_contents || in_paint || in_bgtext || in_icon) {
             if (s[0] == '|') {
                 const char *piece = (s[1] == ' ') ? s + 2 : s + 1;
-                if (in_paint) acc_join(&acc, piece);   /* base64 : recoller */
-                else          acc_line(&acc, piece);
+                if (in_icon) {
+                    /* Paires de chiffres hexadécimaux. On s'arrête au premier
+                     * caractère qui n'en est pas un, et de toute façon à
+                     * HC_ICON_BYTES : une ligne trop longue ne déborde pas. */
+                    for (const char *p = piece; p[0] && p[1]; p += 2) {
+                        int hi = hexval((unsigned char)p[0]);
+                        int lo = hexval((unsigned char)p[1]);
+                        if (hi < 0 || lo < 0) break;
+                        if (icon_pos >= HC_ICON_BYTES) break;
+                        if (cur_icon) cur_icon->bits[icon_pos] = (unsigned char)(hi * 16 + lo);
+                        icon_pos++;
+                    }
+                }
+                else if (in_paint) acc_join(&acc, piece);   /* base64 : recoller */
+                else               acc_line(&acc, piece);
+                continue;
+            }
+            if (strcmp(s, "end iconres") == 0) {
+                in_icon = 0; cur_icon = NULL; icon_pos = 0;
                 continue;
             }
             if (strcmp(s, "end script") == 0) {
@@ -511,6 +587,20 @@ Object *hc_load(const char *path)
         if (strcmp(s, "paint") == 0)    { in_paint = 1;    continue; }
         if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
         if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
+
+        /* --- icône de pile ---
+         * L'en-tête porte le numéro puis le nom : iconres 20554 "Terminator".
+         * L'entrée est créée vide, les lignes « | » la remplissent ; une icône
+         * dont le bloc serait tronqué garde donc ses octets manquants à zéro
+         * plutôt que de disparaître. */
+        if (strncmp(s, "iconres ", 8) == 0 && stack) {
+            int iid = atoi(s + 8);
+            if (!get_quoted(s, 0, nm, sizeof nm)) nm[0] = 0;
+            cur_icon = hc_icon_add(stack, iid, nm);
+            icon_pos = 0;
+            in_icon  = 1;
+            continue;
+        }
 
         /* --- plages de style --- */
         if (strncmp(s, "run ", 4) == 0) {

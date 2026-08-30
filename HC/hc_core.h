@@ -75,6 +75,26 @@ struct RunList { struct TextRun *v; int n, cap; };
  * un champ de fond non partagé a un texte ET un style par carte. */
 struct BgText { int field_id; char *text; struct RunList runs; };
 
+/* ---- Icônes de pile ----
+ * HyperCard rangeait les icônes de boutons en ressources ICON dans le fichier
+ * de pile lui-même : une pile emportait ses icônes, et un bouton n'en retenait
+ * que le numéro. On fait pareil, la table appartient à l'objet PILE.
+ *
+ * 32×32 en 1 bit, soit 128 octets : 32 lignes de 4 octets, bit de poids fort à
+ * gauche, bit à 1 = encre. C'est la disposition d'une ressource ICON, et celle
+ * du catalogue d'origine compilé dans l'application — les deux tables se
+ * lisent donc avec le même code.
+ *
+ * Le noyau ne sait pas dessiner : ces octets lui sont opaques, comme l'est
+ * déjà le base64 de `paint`. */
+#define HC_ICON_BYTES 128
+
+struct StackIcon {
+    int           id;
+    char         *name;                    /* possédé : libéré par hc_free */
+    unsigned char bits[HC_ICON_BYTES];
+};
+
 struct Object {
     ObjType  type;
     int      id;
@@ -162,6 +182,10 @@ struct Object {
     int      x, y, w, h;
     char    *style;     /* boutons : rectangle, roundRect, checkBox… ; NULL = défaut */
     char    *paint;     /* cartes/fonds : bitmap peinture encodé base64 (opaque pour le noyau) */
+
+    /* pour une PILE : ses icônes. Nul partout ailleurs. */
+    struct StackIcon *icons;
+    int      nicons, capicons;
 };
 
 /* ---- Construction ---- */
@@ -188,6 +212,30 @@ int     hc_delete_card(Object *card);
 
 /* Nombre de cartes d'une pile. */
 int     hc_card_count(Object *stack);
+
+/* ---- Icônes de pile ----
+ * `stack` doit être une pile ; tout rend NULL ou 0 sinon.
+ *
+ * hc_icon_add REMPLACE l'entrée si le numéro existe déjà, au lieu d'en ajouter
+ * une seconde. Sans quoi un fichier contenant deux fois le même numéro ferait
+ * grossir la table à chaque relecture, et hcicon_find n'aurait aucun moyen de
+ * savoir laquelle des deux compte. Les octets d'une entrée neuve valent zéro :
+ * c'est au dessinateur, pas au noyau, de la remplir.
+ *
+ * Les pointeurs rendus visent l'intérieur de la table et ne survivent donc pas
+ * à un hc_icon_add ni à un hc_icon_remove — relire par numéro après coup. */
+struct StackIcon *hc_icon_add(Object *stack, int id, const char *name);
+struct StackIcon *hc_icon_get(Object *stack, int id);
+struct StackIcon *hc_icon_at(Object *stack, int i);
+int               hc_icon_count(Object *stack);
+void              hc_icon_remove(Object *stack, int id);
+/* Il n'y a volontairement PAS de « hc_icon_next_id » ici. Choisir un numéro
+ * libre suppose de connaître aussi le catalogue d'icônes compilé dans
+ * l'application, dont les identifiants s'étalent de 128 à plus de 32000 ; le
+ * noyau ne voit que la pile et se tromperait. Ce choix appartient à la couche
+ * qui voit les deux tables — cf. hcicon_edit_free_id. */
+/* Libère la table. À appeler depuis hc_free, sur la branche OBJ_STACK. */
+void              hc_icons_free(Object *stack);
 
 /* ---- Contexte d'exécution ---- */
 void    hc_set_current_card(Object *card);

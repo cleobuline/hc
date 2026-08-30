@@ -14,6 +14,7 @@
 - (void)infoCancel:(id)sender;
 - (void)infoScript:(id)sender;
 - (void)infoIcon:(id)sender;
+- (void)editIcon:(id)sender;   /* Édition › Icône… */
 - (void)infoContents:(id)sender;
 
 - (void)cardOK:(id)sender;
@@ -31,6 +32,18 @@
 - (void)iconOK:(id)sender;
 - (void)iconNone:(id)sender;
 - (void)iconCancel:(id)sender;
+
+/* Edition des icones, moitie droite du panneau Icones. */
+- (void)iconRefresh;
+- (void)iconCommitName;
+- (void)iconSelect:(int)id;
+- (void)iconPicked:(id)sender;
+- (void)iconEdited:(id)sender;
+- (void)iconNew:(id)sender;
+- (void)iconDuplicate:(id)sender;
+- (void)iconErase:(id)sender;
+- (void)iconDelete:(id)sender;
+- (void)iconRename:(id)sender;
 
 - (void)contentsOK:(id)sender;
 - (void)contentsCancel:(id)sender;
