@@ -12,7 +12,7 @@
 #import "HCprint.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
-#import "Hciconedit.h"
+#import "HCiconedit.h"
 #import "graphics.h"
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
@@ -3587,7 +3587,19 @@ static BOOL     gInIdle = NO;
     [gMsgBox setSelectable:YES];
     [gMsgBox setBezeled:YES];
     [gMsgBox setDrawsBackground:YES];
+    /* Fond et texte imposés ENSEMBLE.
+     *
+     * Le fond était figé à un blanc cassé, mais la couleur du texte restait
+     * celle du système : en mode sombre elle passait au blanc, et la boîte
+     * message devenait blanc sur blanc.
+     *
+     * La boîte message de HyperCard était noire sur blanc, et l'est restée
+     * ici : c'est une fenêtre de PILE, pas un élément de l'interface de
+     * macOS, et elle doit s'accorder à la carte qu'elle commande — laquelle
+     * est blanche dans les deux modes. Imposer les deux couleurs plutôt que
+     * suivre l'apparence est donc voulu. */
     [gMsgBox setBackgroundColor:[NSColor colorWithWhite:0.96 alpha:1.0]];
+    [gMsgBox setTextColor:[NSColor blackColor]];
     [gMsgBox setAutoresizingMask:NSViewWidthSizable];
     [gMsgBox setStringValue:@""];
     [gMsgBox setTarget:self];
