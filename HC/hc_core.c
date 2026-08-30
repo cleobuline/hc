@@ -1223,10 +1223,7 @@ static void clip_collect_icons(Object *stack, Object *layer)
         g_clip_icons[g_clip_nicons].name = dupstr(src->name);
         memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
         g_clip_nicons++;
-#if HC_TRACE_ICONS
-        fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
-                src->id, src->name ? src->name : "");
-#endif
+ 
     }
 }
 
@@ -1287,24 +1284,15 @@ static void transplant_icons(Object *stack, Object *card, Object *bg)
         if (!identique) {
             if (ex) {
                 newid = icon_free_id_in(stack);
-#if HC_TRACE_ICONS
-                fprintf(stderr, "[icone] %d deja pris par un autre dessin"
-                                " -> %d\n", oldid, newid);
-#endif
+ 
                 if (!newid) continue;           /* on laisse le numéro mort */
             }
             struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
-#if HC_TRACE_ICONS
-            fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
-                    newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
-                    e ? "ok" : "ECHEC");
-#endif
+ 
             if (!e) continue;
             memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
         }
-#if HC_TRACE_ICONS
-        else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
-#endif
+ 
 
         remap_button_icons(card, oldid, newid);
         remap_button_icons(bg,   oldid, newid);
