@@ -98,6 +98,42 @@ void hcicon_edit_erase(Object *stack, int id)
     hcicon_edit_sync(stack);
 }
 
+/* Lecture et ecriture d'un pixel dans un tampon de 128 octets brut.
+ * 32 lignes de 4 octets, bit de poids fort a gauche. */
+static int bits_get(const unsigned char *b, int row, int col)
+{
+    return (b[row * 4 + col / 8] & (0x80 >> (col & 7))) ? 1 : 0;
+}
+
+static void bits_set(unsigned char *b, int row, int col, int v)
+{
+    unsigned char mask = (unsigned char)(0x80 >> (col & 7));
+    if (v) b[row * 4 + col / 8] |=  mask;
+    else   b[row * 4 + col / 8] &= (unsigned char)~mask;
+}
+
+void hcicon_edit_rotate(Object *stack, int id)
+{
+    struct StackIcon *e = hcicon_edit_editable(stack, id);
+    if (!e) return;
+
+    /* Quart de tour horaire : le pixel qui arrive en (ligne, colonne) vient de
+     * (31 - colonne, ligne). Le coin bas-gauche passe donc en haut a gauche.
+     *
+     * On ecrit dans un tampon plutot qu'en place : la rotation lit des pixels
+     * qu'elle a deja reecrits, et la faire sur le tableau lui-meme brouillerait
+     * le dessin des la premiere ligne. */
+    unsigned char out[HC_ICON_BYTES];
+    memset(out, 0, sizeof out);
+
+    for (int row = 0; row < 32; row++)
+        for (int col = 0; col < 32; col++)
+            bits_set(out, row, col, bits_get(e->bits, 31 - col, row));
+
+    memcpy(e->bits, out, HC_ICON_BYTES);
+    hcicon_edit_sync(stack);
+}
+
 void hcicon_edit_rename(Object *stack, int id, const char *name)
 {
     if (!hc_icon_get(stack, id)) return;   /* une icone d'origine ne se renomme pas */

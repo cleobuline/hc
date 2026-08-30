@@ -46,6 +46,7 @@ void hcicon_panel_stack_closing(Object *stack);
 - (void)iconNew:(id)sender;
 - (void)iconDuplicate:(id)sender;
 - (void)iconErase:(id)sender;
+- (void)iconRotate:(id)sender;
 - (void)iconDelete:(id)sender;
 - (void)iconRename:(id)sender;
 

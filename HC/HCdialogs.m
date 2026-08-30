@@ -922,7 +922,9 @@ void hcicon_panel_stack_closing(Object *stack)
      * alignes. Le panneau n'est pas retourne — les ordonnees partent du bas. */
     const CGFloat LX = 12, RX = LX + gw + 16 + 16;
     const CGFloat W  = RX + bits + 12;
-    const CGFloat H  = 420;
+    /* 452 et non 420 : la seconde rangée de boutons descend jusqu'à y=64, et
+     * la rangée du bas occupe 20..48. Trente-deux points de plus les séparent. */
+    const CGFloat H  = 452;
     const CGFloat TOP = H - 16;              /* haut commun aux deux colonnes */
 
     gIconPanel = [[NSPanel alloc]
@@ -973,9 +975,10 @@ void hcicon_panel_stack_closing(Object *stack)
     [gIconInfo setEditable:NO];
     [c addSubview:gIconInfo];
 
-    NSButton *(^mkEB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
+    NSButton *(^mkEB)(NSString*, SEL, CGFloat, int) =
+        ^NSButton*(NSString *t, SEL a, CGFloat x, int rangee) {
         NSButton *b = [[NSButton alloc]
-            initWithFrame:NSMakeRect(x, TOP - bits - 84, 62, 26)];
+            initWithFrame:NSMakeRect(x, TOP - bits - 84 - rangee * 32, 62, 26)];
         [b setTitle:t];
         [b setBezelStyle:NSBezelStyleRounded];
         [b setFont:[NSFont systemFontOfSize:10]];
@@ -984,10 +987,11 @@ void hcicon_panel_stack_closing(Object *stack)
         [c addSubview:b];
         return b;
     };
-    mkEB(@"Nouvelle", @selector(iconNew:),       RX);
-    mkEB(@"Dupliquer",@selector(iconDuplicate:), RX + 64);
-    mkEB(@"Effacer",  @selector(iconErase:),     RX + 128);
-    mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192);
+    mkEB(@"Nouvelle", @selector(iconNew:),       RX,       0);
+    mkEB(@"Dupliquer",@selector(iconDuplicate:), RX + 64,  0);
+    mkEB(@"Effacer",  @selector(iconErase:),     RX + 128, 0);
+    mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192, 0);
+    mkEB(@"Pivoter",  @selector(iconRotate:),    RX,       1);
 
     /* ---- rangee du bas, commune ---- */
     NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
@@ -1084,6 +1088,15 @@ void hcicon_panel_stack_closing(Object *stack)
     [self iconCommitName];
     int id = hcicon_edit_duplicate(gIconStack, gIconGrid.selected);
     if (id) [self iconSelect:id];
+}
+
+/* Quart de tour horaire. Quatre clics ramènent au point de départ : une grille
+ * carrée tourne sans qu'aucun pixel ne sorte, donc sans perte. */
+- (void)iconRotate:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    hcicon_edit_rotate(gIconStack, gIconGrid.selected);
+    [self iconRefresh];
 }
 
 - (void)iconErase:(id)sender {

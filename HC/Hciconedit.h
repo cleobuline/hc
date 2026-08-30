@@ -49,6 +49,11 @@ int  hcicon_edit_free_id(void);
 int  hcicon_edit_new(Object *stack);
 int  hcicon_edit_duplicate(Object *stack, int id);
 void hcicon_edit_erase(Object *stack, int id);
+
+/* Pivote l'icone d'un quart de tour, dans le sens des aiguilles. Quatre appels
+ * ramenent donc au point de depart, sans perte : une grille carree tourne sans
+ * qu'aucun pixel ne sorte. */
+void hcicon_edit_rotate(Object *stack, int id);
 void hcicon_edit_rename(Object *stack, int id, const char *name);
 
 /* Combien de boutons de la pile portent ce numero. A montrer avant de
