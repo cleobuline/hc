@@ -471,6 +471,13 @@ void    hc_unregister_stack(Object *stack);
 int     hc_stack_count(void);
 Object *hc_stack_at(int i);
 
+/* Ce calque — carte ou fond — appartient-il encore à une pile ouverte ?
+ *
+ * À interroger avant de se servir d'un pointeur conservé hors du noyau : un
+ * cache indexé par adresse ne sait pas que son objet est mort. Ne déréférence
+ * jamais l'argument, il ne fait que le comparer aux objets vivants. */
+int     hc_layer_is_live(Object *layer);
+
 /* ---- Coeur : envoi d'un message ---- */
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
 int     hc_send(Object *target, const char *message);

@@ -2822,8 +2822,27 @@ static int gColorTarget = 0;
 
 - (void)flushPaintToKernel {
     if (!gPaintCache) return;
+
+    NSMutableArray *mortes = [NSMutableArray array];
+
     for (NSValue *key in gPaintCache) {
         Object *o = [key pointerValue];
+
+        /* Le cache est indexé par POINTEUR et rien ne l'invalide : une carte
+         * coupée, une pile fermée, et l'adresse y reste. hc_set_paint ferait
+         * alors free sur de la mémoire rendue — d'où un plantage à
+         * l'enregistrement, très loin de sa cause, puisque le flush n'a lieu
+         * qu'à ce moment-là.
+         *
+         * On demande donc au noyau, qui tient le registre des piles ouvertes.
+         * Il ne déréférence pas l'adresse douteuse, il la compare aux objets
+         * vivants. */
+        if (!hc_layer_is_live(o)) {
+            NSLog(@"[flush] o=%p calque mort, ignore", o);
+            [mortes addObject:key];
+            continue;
+        }
+
         NSBitmapImageRep *rep = [gPaintCache objectForKey:key];
         if (!rep) continue;
 
@@ -2879,6 +2898,9 @@ static int gColorTarget = 0;
               (unsigned long)[b64 length]);
         hc_set_paint(o, [b64 UTF8String]);
     }
+
+    /* Hors de la boucle : on ne modifie pas une table qu'on parcourt. */
+    for (NSValue *key in mortes) [gPaintCache removeObjectForKey:key];
 }
 
 - (void)mouseMoved:(NSEvent *)event {

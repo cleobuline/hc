@@ -202,6 +202,31 @@ static Object *find_open_stack(const char *nom)
 
 int hc_stack_count(void) { return g_nstacks; }
 
+/* Ce calque appartient-il encore à une pile ouverte ?
+ *
+ * L'hôte garde un cache de bitmaps indexé par POINTEUR de carte ou de fond, et
+ * le déverse dans le noyau avant chaque enregistrement. Rien n'y invalidait les
+ * clés : une carte coupée, une pile fermée, et le pointeur restait dans le
+ * cache jusqu'à faire appeler free sur de la mémoire rendue — un plantage à
+ * l'enregistrement, très loin de sa cause.
+ *
+ * On ne peut pas interroger un pointeur mort, mais on peut le chercher parmi
+ * les vivants : le registre des piles ouvertes donne la liste complète, et un
+ * calque absent de toutes n'existe plus. Comparaisons seulement, aucun
+ * déréférencement de la valeur douteuse. */
+int hc_layer_is_live(Object *layer)
+{
+    if (!layer) return 0;
+    for (int i = 0; i < hc_stack_count(); i++) {
+        Object *st = hc_stack_at(i);
+        if (!st) continue;
+        if (st == layer) return 1;
+        for (int k = 0; k < st->nparts; k++)
+            if (st->parts[k] == layer) return 1;
+    }
+    return 0;
+}
+
 Object *hc_stack_at(int i)
 {
     return (i >= 0 && i < g_nstacks) ? g_stacks[i] : NULL;
@@ -8797,7 +8822,35 @@ void hc_set_shared_text(Object *field, int shared)
     Object *cd = g_current_card;
 
     if (shared) {
-        /* La carte courante fournit ce qui devient le contenu partagé. */
+        /* La carte courante fournit ce qui devient le contenu partagé.
+         *
+         * À défaut, la PREMIÈRE carte du fond qui en a un. Sans ce repli, un
+         * champ dont une seule carte porte le texte passait en partagé avec
+         * son ancien contenu — souvent une plage périmée — et la mise en forme
+         * paraissait détruite alors qu'elle dormait dans une autre carte.
+         *
+         * C'est un choix par défaut, pas une certitude : si plusieurs cartes
+         * ont un texte, celle qu'on affiche l'emporte, et à défaut la première
+         * rencontrée. Les autres gardent le leur en réserve et le retrouvent
+         * si l'on décoche. */
+        if (cd) {
+            int a_entree = 0;
+            for (int i = 0; i < cd->nbgtexts && !a_entree; i++)
+                if (cd->bgtexts[i].field_id == field->id) a_entree = 1;
+
+            if (!a_entree && field->owner && field->owner->owner) {
+                Object *pile = field->owner->owner;
+                for (int k = 0; k < pile->nparts && !a_entree; k++) {
+                    Object *autre = pile->parts[k];
+                    if (autre->type != OBJ_CARD || autre->bg != field->owner) continue;
+                    for (int i = 0; i < autre->nbgtexts; i++)
+                        if (autre->bgtexts[i].field_id == field->id) {
+                            cd = autre; a_entree = 1; break;
+                        }
+                }
+            }
+        }
+
         if (cd) {
             for (int i = 0; i < cd->nbgtexts; i++) {
                 if (cd->bgtexts[i].field_id != field->id) continue;

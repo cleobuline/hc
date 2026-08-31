@@ -4,6 +4,8 @@
 //
 
 #import "AppDelegate.h"
+#include <errno.h>
+#include <string.h>
 #import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
 #import "HCdialogs.h"
@@ -528,13 +530,31 @@ static NSMenu *find_file_menu(void)
         NSDocumentDirectory, NSUserDomainMask, YES);
     if ([docs count] > 0)
         [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
-    if ([panel runModal] == NSModalResponseOK) {
+    /* Une FEUILLE attachée à la fenêtre de la pile, plutôt qu'un panneau
+     * modal pour toute l'application.
+     *
+     * C'est plus juste ici : plusieurs piles peuvent être ouvertes, et bloquer
+     * toutes les fenêtres pour n'en enregistrer qu'une n'a pas de sens. Cela
+     * fait taire au passage les avertissements « found it necessary to prepare
+     * implicitly » d'AppKit, que runModal déclenche depuis que les panneaux de
+     * fichiers s'exécutent dans un service séparé.
+     *
+     * Contrepartie : la méthode rend la main AVANT que l'utilisateur ait
+     * choisi. Un appelant qui enchaînerait sur l'enregistrement — quitter
+     * après avoir enregistré, par exemple — doit passer par le bloc, pas par
+     * la ligne d'après. */
+    NSWindow *hote = doc.window;
+    void (^fini)(NSModalResponse) = ^(NSModalResponse reponse) {
+        if (reponse != NSModalResponseOK) return;
         [doc.view flushPaintToKernel];
         NSString *path = [[panel URL] path];
         doc.path = path;              /* « go to stack » cherchera à côté */
         if (hc_save(pile, [path UTF8String]) != 0)
             NSLog(@"échec de la sauvegarde");
-    }
+    };
+
+    if (hote) [panel beginSheetModalForWindow:hote completionHandler:fini];
+    else      fini([panel runModal]);   /* aucune fenêtre : on retombe sur le modal */
 }
 /* Installe une pile déjà construite : libère l'ancienne, remet la vue à zéro,
  * se place sur la première carte. Partagé par l'ouverture d'un fichier et la
@@ -654,11 +674,35 @@ static NSString *trouver_pile(NSString *nom) {
  * déclaration. */
 Object *cocoa_load_stack(const char *nom) {
     if (!nom || !*nom) return NULL;
-    NSString *chemin = trouver_pile([NSString stringWithUTF8String:nom]);
-    if (!chemin) return NULL;
 
+    /* Les deux échecs possibles se distinguent ici, et NULLE PART ailleurs :
+     * le noyau ne voit qu'un NULL et dit « No such stack » dans les deux cas.
+     * Fichier absent et fichier illisible n'appellent pourtant pas le même
+     * remède. */
+    NSString *chemin = trouver_pile([NSString stringWithUTF8String:nom]);
+    if (!chemin) {
+        NSLog(@"[using] fichier introuvable : « %s »", nom);
+        return NULL;
+    }
+
+    /* hc_load ne rend NULL que si fopen échoue, ou si le fichier ne contient
+     * aucune ligne « stack ». On ouvre donc nous-mêmes pour trancher : errno
+     * distingue le refus de lecture (bac à sable, permissions) du fichier
+     * simplement mal formé. */
+    errno = 0;
     Object *st = hc_load([chemin UTF8String]);
-    if (!st) return NULL;
+    if (!st) {
+        int e = errno;
+        FILE *essai = fopen([chemin fileSystemRepresentation], "r");
+        if (!essai) {
+            NSLog(@"[using] ouverture refusée : %@ — %s",
+                  chemin, strerror(errno ? errno : e));
+        } else {
+            fclose(essai);
+            NSLog(@"[using] lisible mais sans ligne « stack » : %@", chemin);
+        }
+        return NULL;
+    }
 
     hc_register_stack(st);
     if (!gPilesEnUsage) gPilesEnUsage = [NSMutableArray array];
