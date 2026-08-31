@@ -6426,6 +6426,64 @@ const HCIcon *hcicon_catalog_at(int i) {
     return NULL;
 }
 
+/* Marque les pixels eteints que l'on atteint depuis le bord de la grille.
+ * Ce qui reste eteint sans etre marque est ENCLOS dans le dessin. */
+static void icon_outside(const HCIcon *ic, unsigned char out[32][32]) {
+    memset(out, 0, 32 * 32);
+
+    /* Pile explicite plutot que recursion : 1024 cases au pire, et l'on ne
+     * risque pas de faire deborder celle du programme. */
+    static short pile[1024 * 2];
+    int sp = 0;
+
+    for (int i = 0; i < 32; i++) {
+        int bords[4][2] = { {0,i}, {31,i}, {i,0}, {i,31} };
+        for (int k = 0; k < 4; k++) {
+            int r = bords[k][0], c = bords[k][1];
+            if (ic->bits[r*4 + c/8] & (0x80 >> (c & 7))) continue;  /* encre */
+            if (out[r][c]) continue;
+            out[r][c] = 1;
+            pile[sp*2] = (short)r; pile[sp*2+1] = (short)c; sp++;
+        }
+    }
+
+    while (sp > 0) {
+        sp--;
+        int r = pile[sp*2], c = pile[sp*2+1];
+        int dr[4] = {-1,1,0,0}, dc[4] = {0,0,-1,1};
+        for (int k = 0; k < 4; k++) {
+            int nr = r + dr[k], nc = c + dc[k];
+            if (nr < 0 || nr > 31 || nc < 0 || nc > 31) continue;
+            if (out[nr][nc]) continue;
+            if (ic->bits[nr*4 + nc/8] & (0x80 >> (nc & 7))) continue;
+            out[nr][nc] = 1;
+            if (sp < 1024) { pile[sp*2] = (short)nr; pile[sp*2+1] = (short)nc; sp++; }
+        }
+    }
+}
+
+void hcicon_draw_inverted(const HCIcon *ic, NSRect r, CGFloat px) {
+    if (!ic) return;
+
+    unsigned char dehors[32][32];
+    icon_outside(ic, dehors);
+
+    /* Meme centrage que hcicon_draw : les deux doivent coincider au point
+     * pres, sinon l'inversion se decalerait du dessin. */
+    CGFloat ox = r.origin.x + (r.size.width  - 32*px) / 2;
+    CGFloat oy = r.origin.y + (r.size.height - 32*px) / 2;
+
+    for (int row = 0; row < 32; row++) {
+        for (int col = 0; col < 32; col++) {
+            int encre = (ic->bits[row*4 + col/8] & (0x80 >> (col & 7))) ? 1 : 0;
+            if (!encre && dehors[row][col]) continue;      /* le fond ne bouge pas */
+
+            [(encre ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
+            NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
+        }
+    }
+}
+
 void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px) {
     if (!ic) return;
    

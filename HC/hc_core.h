@@ -75,6 +75,17 @@ struct RunList { struct TextRun *v; int n, cap; };
  * un champ de fond non partagé a un texte ET un style par carte. */
 struct BgText { int field_id; char *text; struct RunList runs; };
 
+/* L'allumage d'un bouton de fond NON PARTAGÉ, pour une carte donnée.
+ *
+ * Pendant exact de BgText : quand sharedHilite est faux, l'allumage cesse
+ * d'être une propriété du bouton pour devenir une propriété de la carte —
+ * chaque carte du fond garde le sien. Les cases à cocher d'un questionnaire
+ * en dépendent, elles n'auraient aucun sens partagées.
+ *
+ * Une carte ne retient que les boutons qu'elle a effectivement allumés :
+ * l'absence d'entrée vaut éteint. */
+struct BgHilite { int button_id; int hilite; };
+
 /* ---- Icônes de pile ----
  * HyperCard rangeait les icônes de boutons en ressources ICON dans le fichier
  * de pile lui-même : une pile emportait ses icônes, et un bouton n'en retenait
@@ -125,6 +136,13 @@ struct Object {
      * de ligne à chaque ligne. */
     int      textheight;
     int      showname;  /* le nom du bouton est-il affiché ? (1 = oui par défaut) */
+    /* Bouton actif ? (1 = oui par défaut)
+     *
+     * Case « Enabled » de l'Info bouton de HyperCard 2. Un bouton désactivé ne
+     * reçoit plus les messages de souris et son nom se dessine en gris : il
+     * reste visible et à sa place, simplement inerte et visiblement inactif.
+     * C'est le grisage des contrôles du Toolbox, que HyperCard a repris. */
+    int      enabled;
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
     int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
 
@@ -136,6 +154,13 @@ struct Object {
     int      auto_tab;       /* tab passe au champ suivant */
     int      dont_search;    /* exclu de find */
     int      shared_text;    /* texte partagé entre cartes du même fond */
+    /* Allumage partagé entre cartes du même fond ? (1 = oui par défaut)
+     *
+     * Case « Shared Hilite » de l'Info bouton. À faux, l'allumage réel est
+     * stocké dans chaque carte (voir bghilites) et non dans ce champ : ne
+     * jamais lire ni écrire o->hilite directement pour un bouton de fond,
+     * passer par hc_hilite_of et hc_set_hilite. */
+    int      shared_hilite;
 
     /* Carte marquée. « mark cards where <condition> » les désigne, « print
      * marked cards » ou « go next marked card » les parcourt : c'est ainsi
@@ -173,6 +198,10 @@ struct Object {
     /* pour une CARTE : textes propres des champs de fond non partagés */
     struct BgText *bgtexts;
     int      nbgtexts, capbgtexts;
+
+    /* pour une CARTE : l'allumage des boutons de fond non partagés. */
+    struct BgHilite *bghilites;
+    int      nbghilites, capbghilites;
     char    *contents;  /* contenu textuel (champs) ; pour un champ de fond
                          * non partagé, c'est la valeur par défaut : le texte
                          * réel est stocké dans chaque carte (voir bgtexts) */
@@ -212,6 +241,23 @@ int     hc_delete_card(Object *card);
 
 /* Nombre de cartes d'une pile. */
 int     hc_card_count(Object *stack);
+
+/* ---- allumage d'un bouton ----
+ * LE seul chemin d'accès. Pour un bouton de fond dont sharedHilite est faux,
+ * l'allumage vit dans la carte et non dans le bouton : lire ou écrire
+ * o->hilite en direct donnerait la même valeur sur toutes les cartes du fond,
+ * ce qui est précisément ce que « non partagé » exclut.
+ *
+ * `card` est la carte où l'on regarde ; NULL prend la carte courante. */
+/* Bascule « Shared Text » d'un champ de fond, en déménageant texte et plages
+ * de style entre la carte et l'objet. Ne jamais écrire field->shared_text en
+ * direct : le contenu deviendrait inaccessible. */
+void    hc_set_shared_text(Object *field, int shared);
+
+int     hc_hilite_of(Object *btn, Object *card);
+void    hc_set_hilite(Object *btn, Object *card, int on);
+/* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
+void    hc_set_hilite_raw(Object *card, int button_id, int on);
 
 /* ---- Icônes de pile ----
  * `stack` doit être une pile ; tout rend NULL ou 0 sinon.

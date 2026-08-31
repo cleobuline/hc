@@ -617,6 +617,8 @@ static Object *new_object(ObjType type, Object *owner, const char *name)
     o->owner   = owner;
     o->visible = 1;
     o->showname = 1;   /* le nom s'affiche par défaut */
+    o->enabled  = 1;   /* et le bouton est actif */
+    o->shared_hilite = 1;  /* allumage partagé entre cartes du même fond */
     return o;
 }
 
@@ -767,6 +769,7 @@ void hc_free(Object *o)
     free(o->contents);
     free(o->style);
     free(o->textfont);
+    free(o->bghilites);
     for (int i = 0; i < o->nbgtexts; i++) {
         free(o->bgtexts[i].text);
         runs_free(&o->bgtexts[i].runs);
@@ -859,6 +862,71 @@ int hc_text_height(Object *o)
     return (sz * 4 + 1) / 3;      /* quatre tiers, arrondi comme HyperCard */
 }
 
+/* ---- allumage d'un bouton ----
+ *
+ * Un bouton de fond dont sharedHilite est faux range son allumage dans la
+ * CARTE, pas dans lui-même : sans ce détour, cocher une case sur une carte la
+ * cocherait sur toutes celles du fond.
+ *
+ * Une carte ne retient que les boutons qu'elle a allumés ; l'absence d'entrée
+ * vaut éteint, ce qui évite d'écrire une ligne par bouton et par carte. */
+static int hilite_par_carte(Object *btn)
+{
+    return btn && btn->type == OBJ_BUTTON && !btn->shared_hilite &&
+           btn->owner && btn->owner->type == OBJ_BACKGROUND;
+}
+
+int hc_hilite_of(Object *btn, Object *card)
+{
+    if (!btn) return 0;
+    if (!hilite_par_carte(btn)) return btn->hilite;
+
+    if (!card) card = g_current_card;
+    if (!card) return 0;
+    for (int i = 0; i < card->nbghilites; i++)
+        if (card->bghilites[i].button_id == btn->id)
+            return card->bghilites[i].hilite;
+    return 0;
+}
+
+/* Pose l'entrée directement, par identifiant de bouton.
+ *
+ * Le chargement s'en sert : il lit « bghilite 14 » et n'a pas l'objet sous la
+ * main. Ne vérifie donc rien — c'est hc_set_hilite qui décide si la carte est
+ * bien le bon dépositaire. */
+void hc_set_hilite_raw(Object *card, int button_id, int on)
+{
+    if (!card) return;
+
+    for (int i = 0; i < card->nbghilites; i++)
+        if (card->bghilites[i].button_id == button_id) {
+            card->bghilites[i].hilite = on ? 1 : 0;
+            return;
+        }
+
+    if (!on) return;          /* éteint = pas d'entrée : rien à créer */
+
+    if (card->nbghilites == card->capbghilites) {
+        int cap = card->capbghilites ? card->capbghilites * 2 : 4;
+        struct BgHilite *t = realloc(card->bghilites, (size_t)cap * sizeof *t);
+        if (!t) return;
+        card->bghilites = t;
+        card->capbghilites = cap;
+    }
+    card->bghilites[card->nbghilites].button_id = button_id;
+    card->bghilites[card->nbghilites].hilite    = 1;
+    card->nbghilites++;
+}
+
+void hc_set_hilite(Object *btn, Object *card, int on)
+{
+    if (!btn) return;
+    if (!hilite_par_carte(btn)) { btn->hilite = on ? 1 : 0; return; }
+
+    if (!card) card = g_current_card;
+    hc_set_hilite_raw(card, btn->id, on);
+}
+
 int hc_card_count(Object *stack){
     if (!stack) return 0;
     int n = 0;
@@ -929,6 +997,8 @@ static Object *clone_part(Object *o)
     c->autohilite   = o->autohilite;
     c->textsize     = o->textsize;
     c->showname     = o->showname;
+    c->enabled      = o->enabled;
+    c->shared_hilite = o->shared_hilite;
     c->icon         = o->icon;
     c->selectedline = o->selectedline;
     c->locktext     = o->locktext;
@@ -1114,7 +1184,19 @@ static Object *clone_layer(Object *o, ObjType type)
         add_part(c, p);
     }
 
-    if (type == OBJ_CARD) clone_bgtexts(c, o);
+    if (type == OBJ_CARD) {
+        clone_bgtexts(c, o);
+        /* L'allumage par carte suit la carte, comme son texte non partagé.
+         * Copie plate : ni chaînes ni plages de style à dupliquer. */
+        if (o->nbghilites > 0) {
+            c->bghilites = calloc((size_t)o->nbghilites, sizeof *c->bghilites);
+            if (c->bghilites) {
+                memcpy(c->bghilites, o->bghilites,
+                       (size_t)o->nbghilites * sizeof *c->bghilites);
+                c->nbghilites = c->capbghilites = o->nbghilites;
+            }
+        }
+    }
     return c;
 }
 
@@ -1139,6 +1221,17 @@ static void remap_bgtexts(Object *card, Object *bgsrc, Object *bgdst)
 
         if (idx >= 0 && idx < bgdst->nparts)
             card->bgtexts[i].field_id = bgdst->parts[idx]->id;
+    }
+
+    /* L'allumage par carte désigne les boutons de fond de la même façon, et se
+     * perdrait tout autant : une case cochée redeviendrait vide. */
+    for (int i = 0; i < card->nbghilites; i++) {
+        int idx = -1;
+        for (int k = 0; k < bgsrc->nparts; k++)
+            if (bgsrc->parts[k]->id == card->bghilites[i].button_id) { idx = k; break; }
+
+        if (idx >= 0 && idx < bgdst->nparts)
+            card->bghilites[i].button_id = bgdst->parts[idx]->id;
     }
 }
 
@@ -1196,12 +1289,26 @@ static void clip_collect_icons(Object *stack, Object *layer)
 {
     if (!stack || !layer) return;
 
+#if HC_TRACE_ICONS
+    fprintf(stderr, "[icone] examen de %s \"%s\" : %d part(s)\n",
+            layer->type == OBJ_CARD ? "la carte" : "le fond",
+            layer->name ? layer->name : "", layer->nparts);
+    for (int i = 0; i < layer->nparts; i++)
+        fprintf(stderr, "[icone]   part %d type=%d icon=%d \"%s\"\n",
+                i, layer->parts[i]->type, layer->parts[i]->icon,
+                layer->parts[i]->name ? layer->parts[i]->name : "");
+#endif
+
     for (int i = 0; i < layer->nparts; i++) {
         Object *p = layer->parts[i];
         if (p->type != OBJ_BUTTON || p->icon == 0) continue;
 
         struct StackIcon *src = hc_icon_get(stack, p->icon);
- 
+#if HC_TRACE_ICONS
+        if (!src)
+            fprintf(stderr, "[icone] bouton icon=%d absent de la pile source"
+                            " (icone d'origine ?)\n", p->icon);
+#endif
         if (!src) continue;                     /* icône d'origine : partout */
 
         int deja = 0;
@@ -1219,7 +1326,10 @@ static void clip_collect_icons(Object *stack, Object *layer)
         g_clip_icons[g_clip_nicons].name = dupstr(src->name);
         memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
         g_clip_nicons++;
- 
+#if HC_TRACE_ICONS
+        fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
+                src->id, src->name ? src->name : "");
+#endif
     }
 }
 
@@ -1264,11 +1374,18 @@ static void remap_button_icons(Object *layer, int oldid, int newid)
  *     réétiquette les boutons. Deux piles chargées de fichiers différents
  *     peuvent parfaitement numéroter deux dessins distincts de la même façon ;
  *     réutiliser aveuglément mettrait la mauvaise image sur le bouton. */
+/* `bg` ne doit être passé que si le fond vient d'être RECRÉÉ.
+ *
+ * Un fond réutilisé est partagé par toutes les cartes de la pile : réétiqueter
+ * ses boutons changerait les icônes de chacune d'elles. Le cas ne se présente
+ * pas tant que réutilisation rime avec icônes identiques — mais il suffit
+ * d'avoir retouché une icône entre le copier et le coller pour que les bits
+ * diffèrent, et l'on abîmerait la pile entière pour une carte collée. */
 static void transplant_icons(Object *stack, Object *card, Object *bg)
 {
- 
-   // fprintf(stderr, "[icone] transplantation de %d icone(s)\n", g_clip_nicons);
- 
+#if HC_TRACE_ICONS
+    fprintf(stderr, "[icone] transplantation de %d icone(s)\n", g_clip_nicons);
+#endif
     for (int i = 0; i < g_clip_nicons; i++) {
         int oldid = g_clip_icons[i].id;
         int newid = oldid;
@@ -1280,15 +1397,24 @@ static void transplant_icons(Object *stack, Object *card, Object *bg)
         if (!identique) {
             if (ex) {
                 newid = icon_free_id_in(stack);
- 
+#if HC_TRACE_ICONS
+                fprintf(stderr, "[icone] %d deja pris par un autre dessin"
+                                " -> %d\n", oldid, newid);
+#endif
                 if (!newid) continue;           /* on laisse le numéro mort */
             }
             struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
- 
+#if HC_TRACE_ICONS
+            fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
+                    newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
+                    e ? "ok" : "ECHEC");
+#endif
             if (!e) continue;
             memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
         }
- 
+#if HC_TRACE_ICONS
+        else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
+#endif
 
         remap_button_icons(card, oldid, newid);
         remap_button_icons(bg,   oldid, newid);
@@ -1346,6 +1472,7 @@ Object *hc_paste_card(Object *stack)
      * commun, et rattacher la carte au mauvais fond lui ferait perdre sa mise
      * en page sans le moindre avertissement. */
     Object *bg = NULL;
+    int bg_recree = 0;               /* le fond a-t-il été créé à l'instant ? */
     if (g_clip_bg_live && g_clip_bg_stack == stack) {
         for (int i = 0; i < stack->nparts; i++)
             if (stack->parts[i] == g_clip_bg_live) { bg = g_clip_bg_live; break; }
@@ -1357,6 +1484,7 @@ Object *hc_paste_card(Object *stack)
     if (!bg && g_clip_bg_copy) {
         bg = place_layer_clone(stack, g_clip_bg_copy, OBJ_BACKGROUND, NULL, NULL);
         if (!bg) return NULL;
+        bg_recree       = 1;
         g_clip_bg_live  = bg;
         g_clip_bg_stack = stack;
     }
@@ -1374,10 +1502,10 @@ Object *hc_paste_card(Object *stack)
     remap_bgtexts(c, g_clip_bg_copy, bg);
 
     /* Les icônes ensuite : elles ne dépendent pas du fond, mais leurs numéros
-     * peuvent changer, et les boutons des DEUX couches sont concernés. Le fond
-     * n'est réétiqueté que s'il vient d'être recréé — réutilisé, ses boutons
-     * portent déjà les bons numéros, et l'icône y sera trouvée identique. */
-    transplant_icons(stack, c, bg);
+     * peuvent changer. Le fond n'est réétiqueté QUE s'il vient d'être recréé :
+     * réutilisé, il appartient aussi aux autres cartes de la pile, et le
+     * toucher changerait leurs icônes à toutes. */
+    transplant_icons(stack, c, bg_recree ? bg : NULL);
     return c;
 }
 
@@ -3779,8 +3907,10 @@ static int is_prop_name(const char *w, int len)
         "rect", "rectangle", "topleft", "botright", "bottomright",
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location", "id", "name", "visible", "showname", "shownname",
+        "enabled",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
+        "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
         "selectedtext", "selectedchunk",
@@ -4041,6 +4171,7 @@ static void term_value_body(const char *t, char *out, int outlen)
                     }
                     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
                     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
+                    if (ci_equal(prop, "enabled")) { snprintf(out, outlen, "%s", o->enabled ? "true" : "false"); return; }
                     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
                     /* selectedLine : deux choses selon l'objet.
                      *
@@ -4137,7 +4268,8 @@ static void term_value_body(const char *t, char *out, int outlen)
                         style_to_names(o->textstyle, out, outlen);
                         return;
                     }
-                    if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", o->hilite ? "true" : "false"); return; }
+                    if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", hc_hilite_of(o, NULL) ? "true" : "false"); return; }
+                    if (ci_equal(prop, "sharedhilite")) { snprintf(out, outlen, "%s", o->shared_hilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
                     if (ci_equal(prop, "textsize")) { snprintf(out, outlen, "%d", o->textsize); return; }
                     /* textHeight n'est PAS textSize : c'est l'interligne, et
@@ -5137,15 +5269,30 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
     (void)d;
-    char buf[HC_VAL];
 
     /* itemDelimiter : demandé avant chaque découpage en items. On le sert
-     * directement, c'est une globale de hc_core.c. */
+     * directement, c'est une globale de hc_core.c. Avant toute allocation :
+     * c'est le cas le plus fréquent, et il n'a besoin de rien. */
     if (ci_equal(nom, "itemDelimiter")) {
         char sep[2] = { g_item_delim, 0 };
         *out = hct_val_texte(sep);
         return 1;
     }
+
+    /* Le tampon vient de l'ARÈNE, plus de la pile.
+     *
+     * HC_VAL vaut un mégaoctet : « char buf[HC_VAL] » posait tout cela sur la
+     * pile à chaque appel. Un mégaoctet passe encore sur le fil principal, qui
+     * en a huit — mais v3_fonction est rappelée par term_value, elle-même
+     * rappelée par l'évaluateur, et trois ou quatre niveaux d'imbrication
+     * suffisaient à toucher la page de garde. D'où un plantage qui ne
+     * survenait que sur certains scripts, à la première écriture dans le
+     * cadre.
+     *
+     * ARENA_MARK / ARENA_FREE encadrent l'emprunt : l'arène est une pile, on
+     * la rembobine en sortant. */
+    ARENA_MARK;
+    char *buf = arena_buf();
 
     if (nargs == 0) {
         /* Une seule porte : term_value, qui appelle elle-même call_function.
@@ -5161,11 +5308,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         snprintf(appel, sizeof appel, "the %s", nom);
 
         buf[0] = '\0';
-        term_value(appel, buf, sizeof buf);
+        term_value(appel, buf, HC_VAL);
         if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
             *out = hct_val_texte(buf);
+            ARENA_FREE;
             return 1;
         }
+        ARENA_FREE;
         return 0;
     }
 
@@ -5177,11 +5326,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
-        if (call_function(appel, buf, sizeof buf)) {
+        if (call_function(appel, buf, HC_VAL)) {
             *out = hct_val_texte(buf);
+            ARENA_FREE;
             return 1;
         }
     }
+    ARENA_FREE;
     return 0;
 }
 
@@ -5265,8 +5416,29 @@ static void eval_expr(const char *s, char *out, int outlen)
     HctValeur v = hct_evalue(&ctx, n);
 
     if (ctx.erreur) {
-        emit(HC_ERR, "   !! %s (colonne %d)", ctx.erreur,
-             ctx.fautif ? ctx.fautif->jeton.col : 0);
+        /* L'expression fautive et l'objet, pas seulement la colonne.
+         *
+         * « un nombre est attendu ici (colonne 5) » ne mène nulle part : on ne
+         * sait ni ce qui était évalué, ni depuis quel script. Ces deux
+         * renseignements sont ici sous la main — autant les donner.
+         *
+         * L'expression est tronquée : une expression peut faire des lignes, et
+         * la console n'a pas à les recevoir en entier. */
+        char apercu[80];
+        snprintf(apercu, sizeof apercu, "%s", s);
+        if (strlen(s) >= sizeof apercu - 1)
+            snprintf(apercu + sizeof apercu - 4, 4, "...");
+
+        char qui[128];
+        qui[0] = '\0';
+        if (g_me) hc_describe(g_me, qui, (int)sizeof qui);
+
+        emit(HC_ERR, "   !! %s (colonne %d) dans « %s »%s%s",
+             ctx.erreur,
+             ctx.fautif ? ctx.fautif->jeton.col : 0,
+             apercu,
+             qui[0] ? " — objet : " : "",
+             qui);
     } else {
         snprintf(out, (size_t)outlen, "%s", v.txt);
     }
@@ -5291,7 +5463,25 @@ static void eval_checked(const char *s, char *out, int outlen)
      * "13,11,22,14" » rendait 1 par « put » et 14 partout ailleurs. */
     eval_expr(s, out, outlen);
 }
- 
+/* Comme eval_expr, mais râle si l'analyseur n'a pas tout mangé.
+ * C'est le garde-fou contre les fautes de frappe : sans lui, une
+ * expression mal formée retombe silencieusement en littéral. */
+static void eval_checked_old(const char *s, char *out, int outlen)
+{
+    ARENA_MARK;
+    const char *p = s;
+    parse_expr(&p, out, outlen);
+    const char *left = skip_spaces(p);
+    if (*left) {
+        char shown[256];
+        snprintf(shown, sizeof shown, "%s", left);
+        int n = (int)strlen(shown);
+        while (n > 0 && (shown[n-1] == ' ' || shown[n-1] == '\t')) shown[--n] = '\0';
+        emit(HC_ERR, "   !! texte incompris, ignoré : « %s »", shown);
+    }
+    ARENA_FREE;
+    ARENA_FREE;
+}
 
 static void exec_line(Object *me, const char *line);
 
@@ -6405,7 +6595,42 @@ static void exec_line_body(Object *me, const char *line)
          * noms de styles, qu'HyperCard accepte sans guillemets. On prend donc
          * le texte brut, sauf s'il nomme une variable — auquel cas on lit sa
          * valeur, pour que « set the textStyle of X to myStyle » marche. */
-        if (ci_equal(prop, "textstyle")) {
+        /* Même problème pour la couleur : « to white » n'est pas une
+         * expression, c'est un nom que HyperCard accepte nu. L'évaluer le
+         * traitait comme un identifiant inconnu, et le résultat vide se
+         * changeait en HC_COLOR_INHERIT — rien ne bougeait, sans un mot.
+         *
+         * On ne prend le texte brut que s'il NOMME une couleur : « to
+         * theColor » ou « to item 1 of liste » restent des expressions. */
+        if (ci_equal(prop, "textcolor")) {
+            const char *raw = skip_spaces(to + 2);
+            int rl = (int)strlen(raw);
+            while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+
+            /* Court exprès : on ne cherche qu'à savoir si le texte NOMME une
+             * couleur, et « white », « #FF00AA » ou « 255,128,0 » tiennent
+             * tous là-dedans. Un texte plus long ne peut pas être un nom de
+             * couleur — il est tronqué, color_from_name le refuse, et l'on
+             * retombe sur l'évaluation, qui est bien ce qu'il faut faire.
+             *
+             * Surtout pas char[HC_VAL] : ce serait un mégaoctet sur la pile,
+             * dans une fonction que l'évaluateur appelle en cascade. */
+            char brut[64];
+            snprintf(brut, sizeof brut, "%.*s", rl, raw);
+
+            /* Déguillemeter d'abord : « to "white" » nomme aussi une couleur. */
+            int n = (int)strlen(brut);
+            if (n > 1 && brut[0] == '"' && brut[n-1] == '"') {
+                memmove(brut, brut + 1, (size_t)(n - 2));
+                brut[n - 2] = '\0';
+            }
+
+            if (color_from_name(brut) != HC_COLOR_INHERIT)
+                snprintf(val, HC_VAL, "%s", brut);
+            else
+                eval_checked(to + 2, val, HC_VAL);
+        }
+        else if (ci_equal(prop, "textstyle")) {
             const char *raw = skip_spaces(to + 2);
             int rl = (int)strlen(raw);
             while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
@@ -6521,6 +6746,9 @@ static void exec_line_body(Object *me, const char *line)
             o->name = dupstr(val);
         } else if (ci_equal(prop, "visible")) {
             o->visible = truthy(val);
+        } else if (ci_equal(prop, "enabled")) {
+            o->enabled = truthy(val);
+            notify_field(o);
         } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
             o->showname = truthy(val);
             notify_field(o);
@@ -6567,8 +6795,12 @@ static void exec_line_body(Object *me, const char *line)
             o->marked = truthy(val);
         } else if (ci_equal(prop, "dontwrap")) {
             o->dont_wrap = truthy(val); notify_field(o);
+        } else if (ci_equal(prop, "sharedhilite")) {
+            o->shared_hilite = truthy(val); notify_field(o);
         } else if (ci_equal(prop, "sharedtext")) {
-            o->shared_text = truthy(val); notify_field(o);
+            /* Par la même porte que la case de l'Info : basculer le drapeau
+             * seul rendrait le contenu inaccessible. */
+            hc_set_shared_text(o, truthy(val));
         } else if (ci_equal(prop, "scroll")) {
             o->scroll = atoi(val);
             if (o->scroll < 0) o->scroll = 0;
@@ -6586,7 +6818,7 @@ static void exec_line_body(Object *me, const char *line)
             o->textstyle = style_from_names(val);
             notify_field(o);
         } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
-            o->hilite = truthy(val);
+            hc_set_hilite(o, NULL, truthy(val));
             notify_field(o);
         } else if (ci_equal(prop, "autohilite")) {
             o->autohilite = truthy(val);
@@ -7590,6 +7822,24 @@ static void exec_line_body(Object *me, const char *line)
         snprintf(nom, HC_VAL, "%s", skip_spaces(rest));
         int n = (int)strlen(nom);
         while (n > 0 && isspace((unsigned char)nom[n-1])) nom[--n] = '\0';
+
+        /* Guillemets d'abord, suffixe ensuite.
+         *
+         * « choose "Select Tool" » arrivait tel quel jusqu'à l'hôte, qui ne
+         * reconnaissait aucun outil de ce nom. Et comme la chaîne se terminait
+         * par un guillemet, le retrait du mot « tool » ne se déclenchait pas
+         * davantage : les deux problèmes n'en faisaient qu'un.
+         *
+         * Un seul niveau, et seulement si les deux bouts se répondent : on ne
+         * touche pas à un nom qui contiendrait un guillemet isolé. */
+        if (n >= 2 && ((nom[0] == '"'  && nom[n-1] == '"') ||
+                       (nom[0] == '\'' && nom[n-1] == '\''))) {
+            memmove(nom, nom + 1, (size_t)(n - 2));
+            n -= 2;
+            nom[n] = '\0';
+            while (n > 0 && isspace((unsigned char)nom[n-1])) nom[--n] = '\0';
+        }
+
         if (n > 4 && ci_equal(nom + n - 4, "tool")) {
             n -= 4;
             while (n > 0 && isspace((unsigned char)nom[n-1])) n--;
@@ -8517,6 +8767,81 @@ void hc_set_field_text(Object *field, const char *text)
 
     free(field->contents);
     field->contents = dupstr(text ? text : "");
+}
+
+/* Bascule « Shared Text », en emportant le contenu.
+ *
+ * Un champ de fond non partagé range son texte ET SES PLAGES DE STYLE dans la
+ * carte ; partagé, il les range dans l'objet. Basculer le seul drapeau faisait
+ * donc lire un magasin vide : les plages n'étaient pas détruites, elles
+ * devenaient inaccessibles — et la couleur qu'on venait de poser disparaissait
+ * sans un mot.
+ *
+ * On déménage donc, dans le sens de la bascule. Sans effet si le drapeau ne
+ * change pas, ou si le champ n'appartient pas à un fond.
+ *
+ * Une limite assumée dans le sens « devient partagé » : seule la carte
+ * COURANTE fournit le texte retenu. Les autres cartes gardent le leur en
+ * réserve, invisible tant que le champ reste partagé, et le retrouvent si l'on
+ * décoche. C'est ce que faisait HyperCard, et c'est moins destructeur que de
+ * choisir à la place de l'utilisateur laquelle des cartes fait foi. */
+void hc_set_shared_text(Object *field, int shared)
+{
+    if (!field || field->type != OBJ_FIELD) return;
+    if (!field->owner || field->owner->type != OBJ_BACKGROUND) {
+        field->shared_text = shared ? 1 : 0;
+        return;
+    }
+    if (!!field->shared_text == !!shared) return;      /* rien ne change */
+
+    Object *cd = g_current_card;
+
+    if (shared) {
+        /* La carte courante fournit ce qui devient le contenu partagé. */
+        if (cd) {
+            for (int i = 0; i < cd->nbgtexts; i++) {
+                if (cd->bgtexts[i].field_id != field->id) continue;
+
+                free(field->contents);
+                field->contents = dupstr(cd->bgtexts[i].text ? cd->bgtexts[i].text : "");
+
+                runs_free(&field->runs);
+                struct RunList *sr = &cd->bgtexts[i].runs;
+                if (sr->n > 0 && runs_room(&field->runs, sr->n)) {
+                    for (int k = 0; k < sr->n; k++) {
+                        field->runs.v[k]      = sr->v[k];
+                        field->runs.v[k].font = dupstr(sr->v[k].font);
+                    }
+                    field->runs.n = sr->n;
+                }
+                break;
+            }
+        }
+        field->shared_text = 1;
+    } else {
+        /* Le contenu partagé descend dans la carte courante, pour qu'elle
+         * garde à l'écran ce qu'elle affichait à l'instant. */
+        field->shared_text = 0;
+        if (cd) {
+            hc_set_field_text(field, field->contents ? field->contents : "");
+
+            for (int i = 0; i < cd->nbgtexts; i++) {
+                if (cd->bgtexts[i].field_id != field->id) continue;
+
+                runs_free(&cd->bgtexts[i].runs);
+                struct RunList *sr = &field->runs;
+                if (sr->n > 0 && runs_room(&cd->bgtexts[i].runs, sr->n)) {
+                    for (int k = 0; k < sr->n; k++) {
+                        cd->bgtexts[i].runs.v[k]      = sr->v[k];
+                        cd->bgtexts[i].runs.v[k].font = dupstr(sr->v[k].font);
+                    }
+                    cd->bgtexts[i].runs.n = sr->n;
+                }
+                break;
+            }
+        }
+    }
+    notify_field(field);
 }
 
 /* ---- Plages de style : lecture par l'hote ---- */

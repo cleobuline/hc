@@ -38,6 +38,7 @@
  * Un champ de fond non partagé a un texte ET un style par carte : la carte
  * les écrit ensemble, le bloc « bgtextdata » suivi de ses lignes « bgrun ».
  *
+ *     bghilite 14
  *     bgtext 12
  *     bgtextdata
  *     | note propre a cette carte
@@ -68,12 +69,11 @@
  * prefixe connu et les lignes « | » hors bloc sont deja ignorees.
  */
 #include "hc_file.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#define HC_ICON_BYTES 128
-
 
 /* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
  * contre-obliques qu'elle contient. Sans ça, un objet nommé
@@ -214,6 +214,13 @@ static void put_part(FILE *f, Object *o)
      * de cette ligne se relisent donc sans rien perdre. */
     if (o->textheight) fprintf(f, "textheight %d\n", o->textheight);
     if (!o->showname) fprintf(f, "hidename\n");   /* nom masqué (défaut = affiché) */
+    /* Comme « hidename » : on n'écrit que l'exception. Le défaut étant actif,
+     * une pile où personne n'a désactivé de bouton reste identique à ce qu'une
+     * version antérieure écrivait — et relisible par elle. */
+    if (!o->enabled)  fprintf(f, "disabled\n");
+    /* Même règle : on n'écrit que l'exception, le défaut étant partagé. */
+    if (o->type == OBJ_BUTTON && !o->shared_hilite)
+        fprintf(f, "unsharedhilite\n");
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
     if (o->locktext) fprintf(f, "locktext\n");
@@ -290,6 +297,13 @@ int hc_save(Object *stack, const char *path)
         if (c->marked) fprintf(f, "marked\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
+        /* L'allumage des boutons de fond NON PARTAGÉS appartient à la carte.
+         * Une ligne par bouton allumé : l'absence vaut éteint, ce qui évite
+         * une ligne par bouton et par carte dans une pile ordinaire. */
+        for (int j = 0; j < c->nbghilites; j++)
+            if (c->bghilites[j].hilite)
+                fprintf(f, "bghilite %d\n", c->bghilites[j].button_id);
+
         for (int j = 0; j < c->nbgtexts; j++) {
             fprintf(f, "bgtext %d\n", c->bgtexts[j].field_id);
             put_block(f, "bgtextdata", c->bgtexts[j].text);
@@ -585,6 +599,13 @@ Object *hc_load(const char *path)
         if (strcmp(s, "script") == 0)   { in_script = 1;   continue; }
         if (strcmp(s, "contents") == 0) { in_contents = 1; continue; }
         if (strcmp(s, "paint") == 0)    { in_paint = 1;    continue; }
+        /* Allumage d'un bouton de fond non partagé, sur CETTE carte.
+         * `owner` désigne le fond ou la carte en cours : on vérifie donc que
+         * c'est bien une carte, un fond n'ayant pas de table d'allumage. */
+        if (strncmp(s, "bghilite ", 9) == 0 && owner && owner->type == OBJ_CARD) {
+            hc_set_hilite_raw(owner, atoi(s + 9), 1);
+            continue;
+        }
         if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
         if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
 
@@ -725,6 +746,14 @@ Object *hc_load(const char *path)
         }
         if (strcmp(s, "hidename") == 0 && part) {
             part->showname = 0;
+            continue;
+        }
+        if (strcmp(s, "disabled") == 0 && part) {
+            part->enabled = 0;
+            continue;
+        }
+        if (strcmp(s, "unsharedhilite") == 0 && part) {
+            part->shared_hilite = 0;
             continue;
         }
         if (strncmp(s, "rect ", 5) == 0 && part) {

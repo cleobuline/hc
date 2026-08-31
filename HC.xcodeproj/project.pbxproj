@@ -24,7 +24,6 @@
 		4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C59303BA13B0071BC2B /* hct_verif.c */; };
 		4D482C5F303C81270071BC2B /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C5E303C81270071BC2B /* hc_core.c */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
-		4DA09F833043C705003F1A35 /* HC in Resources */ = {isa = PBXBuildFile; fileRef = 4DA09F823043C705003F1A35 /* HC */; };
 		4DA09F863043C745003F1A35 /* hc_icons.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F853043C745003F1A35 /* hc_icons.c */; };
 		4DA09F8D3043CC60003F1A35 /* Hciconedit.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F8C3043CC60003F1A35 /* Hciconedit.m */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
@@ -78,7 +77,6 @@
 		4D482C5E303C81270071BC2B /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
-		4DA09F823043C705003F1A35 /* HC */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HC; sourceTree = "<group>"; };
 		4DA09F853043C745003F1A35 /* hc_icons.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_icons.c; sourceTree = "<group>"; };
 		4DA09F8C3043CC60003F1A35 /* Hciconedit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hciconedit.m; sourceTree = "<group>"; };
 		4DA09F8F3043CCA2003F1A35 /* Hciconedit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Hciconedit.h; sourceTree = "<group>"; };
@@ -210,7 +208,6 @@
 				4DF5FB81301E0D06006AE901 /* HCicons.h */,
 				4DF5FB82301E0DAF006AE901 /* HCicons.m */,
 				4DA09F853043C745003F1A35 /* hc_icons.c */,
-				4DA09F823043C705003F1A35 /* HC */,
 				4DF5FB6E3019CF11006AE901 /* icons.m */,
 				4DF5FB613014C004006AE901 /* hc_core.h */,
 				4DF5FB683014C140006AE901 /* HCview.h */,
@@ -290,7 +287,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4DA09F833043C705003F1A35 /* HC in Resources */,
 				4DF28F80302369FF00D7740C /* boing3.wav in Resources */,
 				4DF28F8A3023F77000D7740C /* canard.wav in Resources */,
 				4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */,

@@ -69,6 +69,18 @@ int hcicon_builtin_has(int id);
  * inconnu. L'appelant qui veut distinguer les deux cas teste le texte. */
 int hcicon_id_for_text(const char *s);
 
+/* Dessine l'icone INVERSEE, pour un bouton transparent allume.
+ *
+ * L'encre passe au blanc et le blanc ENCLOS passe au noir : l'inversion se
+ * limite a la forme de l'icone, sans carre autour ni debordement sur la carte.
+ *
+ * Le blanc enclos se distingue du fond par diffusion depuis les bords de la
+ * grille : tout pixel eteint que l'on n'atteint pas ainsi est a l'interieur du
+ * dessin. C'est la seule definition qui tienne pour une icone quelconque, et
+ * elle vaut ce que vaut le dessin — une forme ouverte n'a pas d'interieur, et
+ * seule son encre s'inversera. */
+void hcicon_draw_inverted(const HCIcon *ic, NSRect r, CGFloat px);
+
 /* Dessine une icone 32x32 centree dans le rect (px = taille d'un pixel). */
 void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px);
 

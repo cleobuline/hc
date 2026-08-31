@@ -200,15 +200,27 @@ static void radio_exclusive(Object *card, Object *keep) {
         Object *o = card->parts[i];
         if (o->type == OBJ_BUTTON && o != keep && o->style &&
             (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-            o->hilite = 0;
+            hc_set_hilite(o, card, 0);
     }
     if (card->bg)
         for (int i = 0; i < card->bg->nparts; i++) {
             Object *o = card->bg->parts[i];
             if (o->type == OBJ_BUTTON && o != keep && o->style &&
                 (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-                o->hilite = 0;
+                hc_set_hilite(o, card, 0);
         }
+}
+
+/* La couleur du nom d'un bouton.
+ *
+ * Un bouton désactivé écrit en gris, comme les contrôles grisés du Toolbox que
+ * HyperCard a repris : c'est le seul signe visible qu'il est inerte, puisqu'il
+ * garde sa place et son cadre. Le gris l'emporte sur l'allumage — un bouton
+ * désactivé n'a de toute façon aucune raison d'être allumé. */
+static NSColor *btn_label_color(Object *o, NSColor *normale) {
+    if (o->type == OBJ_BUTTON && !o->enabled)
+        return [NSColor colorWithWhite:0.55 alpha:1.0];
+    return normale;
 }
 
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
@@ -218,8 +230,8 @@ static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat de
     [ps setAlignment:NSTextAlignmentCenter];
 
     NSMutableDictionary *attrs =
-        [obj_attrs(o, defSize, on ? [NSColor whiteColor]
-                                  : [NSColor blackColor]) mutableCopy];
+        [obj_attrs(o, defSize, btn_label_color(o, on ? [NSColor whiteColor]
+                                                     : [NSColor blackColor])) mutableCopy];
     attrs[NSParagraphStyleAttributeName] = ps;
 
     NSRect tr = NSInsetRect(r, 4, 0);
@@ -241,8 +253,16 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     const char *st = o->style ? o->style : "rectangle";
 
     if (strcmp(st, "transparent") == 0) {
-        if (on) {
-            [[NSColor colorWithWhite:0.0 alpha:0.15] setFill];
+        /* Noir franc, et non un voile gris : HyperCard INVERSAIT la zone d'un
+         * bouton transparent allumé, le noir passant au blanc et
+         * réciproquement. Le reste du code suit déjà cette logique — l'icône
+         * et le nom se dessinent en blanc quand `on`.
+         *
+         * Mais un bouton à ICÔNE ne s'inverse pas du tout par son fond : seule
+         * l'encre de l'icône passe au blanc, ce dont draw_part se charge. On
+         * ne touche donc à rien ici quand une icône est posée. */
+        if (on && o->icon == 0) {
+            [[NSColor blackColor] setFill];
             NSRectFill(r);
         }
         return;
@@ -440,7 +460,9 @@ static void draw_part(Object *o) {
 
         const char *nm = o->name ? o->name : "";
         NSString *s = [NSString stringWithUTF8String:nm];
-        BOOL on = o->hilite;
+        /* Pour un bouton de fond non partagé, l'allumage vit dans la carte :
+         * lire o->hilite donnerait le même état sur toutes les cartes du fond. */
+        BOOL on = hc_hilite_of(o, hc_current_card());
 
         const HCIcon *ic = (o->icon ? hcicon_find(o->icon) : NULL);
 
@@ -459,19 +481,51 @@ static void draw_part(Object *o) {
             NSRect ir = NSMakeRect(floor(o->x + (o->w - 32)/2.0), floor(iy), 32, 32);
 
             draw_btn_frame(o, r, on);
-            [(on ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
-            hcicon_draw(ic, ir, 1.0);
+
+            /* Bouton transparent allumé : l'inversion se limite à la FORME de
+             * l'icône — l'encre passe au blanc, le blanc enclos passe au noir,
+             * et la carte autour n'est pas touchée. Ni carré noir, ni icône
+             * qui disparaît sur fond blanc. */
+            if (on && isTransp) {
+                hcicon_draw_inverted(ic, ir, 1.0);
+            } else {
+                [(on ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
+                hcicon_draw(ic, ir, 1.0);
+            }
             draw_edit_outline(r);
 
             if (withName) {
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                 [ps setAlignment:NSTextAlignmentCenter];
                 NSMutableDictionary *bat = [obj_attrs(o, 11,
-                    on ? [NSColor whiteColor] : [NSColor blackColor]) mutableCopy];
+                    btn_label_color(o, on ? [NSColor whiteColor]
+                                          : [NSColor blackColor])) mutableCopy];
                 bat[NSParagraphStyleAttributeName] = ps;
                 /* Le texte ne suit plus iy : la bande du bas est fixe, elle
                  * commence sous les 36 points réservés à l'icône. */
                 NSRect btr = NSMakeRect(o->x, o->y + 36, o->w, o->h - 36);
+
+                /* Bouton transparent allumé : le nom s'inverse lui aussi.
+                 *
+                 * Pour du texte, inverser ne peut vouloir dire qu'une chose —
+                 * fond noir, lettres blanches. On noircit donc DERRIÈRE, mais
+                 * serré sur le texte plutôt qu'en bande large sur toute la
+                 * largeur du bouton, dans le même esprit que l'icône dont
+                 * l'inversion épouse la forme.
+                 *
+                 * Les autres styles ont déjà noirci tout leur corps dans
+                 * draw_btn_frame : il n'y a rien à poser sous le texte. */
+                if (on && isTransp) {
+                    NSSize sz = [s sizeWithAttributes:bat];
+                    NSRect tb = NSMakeRect(
+                        floor(btr.origin.x + (btr.size.width - sz.width) / 2.0) - 1,
+                        btr.origin.y,
+                        ceil(sz.width) + 2,
+                        ceil(sz.height));
+                    [[NSColor blackColor] setFill];
+                    NSRectFill(tb);
+                }
+
                 [s drawInRect:btr withAttributes:bat];
             }
         }
@@ -513,7 +567,7 @@ static void draw_part(Object *o) {
             if (o->showname) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 13;
                 [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - fs*0.6)
-                withAttributes:obj_attrs(o, 13, nil)];
+                withAttributes:obj_attrs(o, 13, btn_label_color(o, nil))];
             }
         }
         else if (isTransp) {
@@ -523,7 +577,8 @@ static void draw_part(Object *o) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 16;
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
                 [ps setAlignment:NSTextAlignmentCenter];
-                NSMutableDictionary *bat = [obj_attrs(o, 16, [NSColor blackColor]) mutableCopy];
+                NSMutableDictionary *bat = [obj_attrs(o, 16,
+                    btn_label_color(o, [NSColor blackColor])) mutableCopy];
                 bat[NSParagraphStyleAttributeName] = ps;
                 NSRect btr = NSInsetRect(r, 2, 0);
                 btr.origin.y += (r.size.height - fs * 1.2) / 2;
@@ -565,7 +620,7 @@ static void draw_part(Object *o) {
             CGFloat fs = o->textsize > 0 ? o->textsize : 12;
             [label drawAtPoint:NSMakePoint(body.origin.x + 6,
                                            body.origin.y + (body.size.height - fs*1.3)/2)
-                withAttributes:obj_attrs(o, 12, nil)];
+                withAttributes:obj_attrs(o, 12, btn_label_color(o, nil))];
         }
         else {
             draw_btn_frame(o, r, on);
@@ -770,6 +825,15 @@ static int handle_at(Object *o, NSPoint p) {
     return 0;
 }
 
+/* Un bouton désactivé est-il transparent au clic ?
+ *
+ * Seulement en mode Browse. Avec l'outil Bouton on doit pouvoir le
+ * sélectionner, le déplacer et rouvrir son Info — sans quoi on ne pourrait
+ * plus jamais le réactiver autrement que par script. */
+static BOOL part_inerte(Object *o) {
+    return (gTool == TOOL_BROWSE && o->type == OBJ_BUTTON && !o->enabled);
+}
+
 static Object *part_at(Object *card, NSPoint p) {
     if (!card) return NULL;
 
@@ -778,7 +842,7 @@ static Object *part_at(Object *card, NSPoint p) {
         if (!layer) return NULL;
         for (int i = layer->nparts - 1; i >= 0; i--) {
             Object *o = layer->parts[i];
-            if (o->visible &&
+            if (o->visible && !part_inerte(o) &&
                 p.x >= o->x && p.x <= o->x + o->w &&
                 p.y >= o->y && p.y <= o->y + o->h)
                 return o;
@@ -788,7 +852,7 @@ static Object *part_at(Object *card, NSPoint p) {
 
     for (int i = card->nparts - 1; i >= 0; i--) {
         Object *o = card->parts[i];
-        if (o->visible &&
+        if (o->visible && !part_inerte(o) &&
             p.x >= o->x && p.x <= o->x + o->w &&
             p.y >= o->y && p.y <= o->y + o->h)
             return o;
@@ -796,7 +860,7 @@ static Object *part_at(Object *card, NSPoint p) {
     if (card->bg)
         for (int i = card->bg->nparts - 1; i >= 0; i--) {
             Object *o = card->bg->parts[i];
-            if (o->visible &&
+            if (o->visible && !part_inerte(o) &&
                 p.x >= o->x && p.x <= o->x + o->w &&
                 p.y >= o->y && p.y <= o->y + o->h)
                 return o;
@@ -1877,7 +1941,11 @@ static BOOL paint_selection_active(void)
 - (void)copyCard:(id)sender {
     (void)sender;
     Object *card = hc_current_card();
-    if (card) hc_copy_card(card);
+    if (!card) return;
+    /* Même raison : on copie ce qui est à l'écran, pas ce qui dormait dans le
+     * noyau depuis le dernier enregistrement. */
+    [self flushPaintToKernel];
+    hc_copy_card(card);
 }
 
 - (void)cutCard:(id)sender {
@@ -1886,10 +1954,20 @@ static BOOL paint_selection_active(void)
     if (!card) return;
 
     /* Lâcher ce que la vue retient de cette carte AVANT qu'elle soit libérée :
-     * champ en édition, objet sélectionné. Sinon le prochain redessin suit des
-     * pointeurs dans de la mémoire rendue. */
+     * champ en édition, objet sélectionné, ET le cache de peinture.
+     *
+     * Ce dernier est indexé par POINTEUR d'objet, et flushPaintToKernel appelle
+     * hc_set_paint sur chacune de ses clés. Une carte coupée mais laissée dans
+     * le cache faisait donc appeler free sur un objet rendu — plantage dans
+     * free, loin de sa cause.
+     *
+     * On vide APRÈS le flush : ce que la carte avait de peint doit d'abord
+     * redescendre dans le noyau, faute de quoi la copie au presse-papiers
+     * emporterait un calque périmé. */
     if (gEditingField) [self endFieldEdit];
     gSelected = NULL;
+    [self flushPaintToKernel];
+    [self clearPaintCache];
 
     if (!hc_cut_card(card)) {
         /* hc_delete_card refuse la dernière carte d'une pile. */
@@ -1903,6 +1981,11 @@ static BOOL paint_selection_active(void)
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
+
+    /* Redescendre la peinture avant de cloner : sans cela le clone emporterait
+     * le calque tel qu'il était au dernier enregistrement, et non ce que l'on
+     * voit à l'écran. */
+    [self flushPaintToKernel];
 
     Object *nouvelle = hc_duplicate_card(card);
     if (!nouvelle) { NSBeep(); return; }
@@ -3122,7 +3205,7 @@ static int gColorTarget = 0;
                 (!hit->style ||
                  (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
                   strcmp(hit->style, "radioButton") != 0 && strcmp(hit->style, "radiobutton") != 0))) {
-                hit->hilite = 1;
+                hc_set_hilite(hit, hc_current_card(), 1);
             }
             hc_send(hit, "mouseDown");
             [self startStillDownTimer];
@@ -3436,17 +3519,18 @@ static int gColorTarget = 0;
             if (gPressed->type == OBJ_BUTTON && gPressed->style) {
                 const char *st = gPressed->style;
                 if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
-                    gPressed->hilite = !gPressed->hilite;
+                    hc_set_hilite(gPressed, hc_current_card(),
+                                  !hc_hilite_of(gPressed, hc_current_card()));
                 }
                 else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
-                    gPressed->hilite = 1;
+                    hc_set_hilite(gPressed, hc_current_card(), 1);
                     radio_exclusive(hc_current_card(), gPressed);
                 }
                 else if (gPressed->autohilite) {
-                    gPressed->hilite = 0;
+                    hc_set_hilite(gPressed, hc_current_card(), 0);
                 }
             } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
-                gPressed->hilite = 0;
+                hc_set_hilite(gPressed, hc_current_card(), 0);
             }
 
             gPressed = NULL;
@@ -4150,6 +4234,19 @@ static NSTextField  *gSprayDensityLabel = nil;
 
             int fcolor = HC_COLOR_INHERIT;
             {
+                /* La couleur récoltée dans l'éditeur Cocoa.
+                 *
+                 * On rejetait ici le noir ET le blanc, pour ne pas enregistrer
+                 * une couleur là où l'utilisateur n'en avait posé aucune. Mais
+                 * le blanc est une couleur qu'on choisit délibérément — sur un
+                 * bandeau sombre, c'est même la seule qui convienne — et le
+                 * noir en est une aussi dès qu'un champ a une autre couleur par
+                 * défaut. Les deux se perdaient donc en refermant l'éditeur,
+                 * alors que « set the textColor to white » les gardait.
+                 *
+                 * On ne rejette plus rien : c'est le TEXTE NON COLORÉ qui doit
+                 * se reconnaître, et l'absence d'attribut s'en charge déjà,
+                 * `rc` valant alors nil. */
                 NSColor *rc = a[NSForegroundColorAttributeName];
                 if (rc) {
                     NSColor *rgb = [rc colorUsingColorSpace:
@@ -4167,8 +4264,7 @@ static NSTextField  *gSprayDensityLabel = nil;
                         int r = (int)lround(rc0 * 255);
                         int g = (int)lround(gc0 * 255);
                         int b = (int)lround(bc0 * 255);
-                        if ((r || g || b) && !(r == 255 && g == 255 && b == 255))
-                            fcolor = (r << 16) | (g << 8) | b;
+                        fcolor = (r << 16) | (g << 8) | b;
                     }
                 }
             }

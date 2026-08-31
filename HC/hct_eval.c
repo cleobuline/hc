@@ -87,14 +87,39 @@ static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
 
 /* --------------------------------------------------------- arithmétique */
 
+/* Une chaine vide, ou faite de blancs, vaut-elle pour rien ? */
+static int est_vide(const char *s)
+{
+    if (!s) return 1;
+    while (*s) { if (!isspace((unsigned char)*s)) return 0; s++; }
+    return 1;
+}
+
 static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
                        HctValeur a, HctValeur b)
 {
-    if (!hct_est_nombre(a.txt) || !hct_est_nombre(b.txt)) {
+    /* Le VIDE vaut zero en arithmetique, comme dans HyperCard ou « empty + 1 »
+     * donne 1.
+     *
+     * Ce n'est pas une commodite : des piles entieres en dependent. Graph Maker
+     * boucle « repeat with slice = 1 to dataCount + 1 », un tour de plus que le
+     * nombre de lignes pour refermer le camembert, et son dernier passage
+     * calcule « pi * (line slice of pieData) / total » sur une ligne qui
+     * n'existe pas. Refuser le vide y arretait le trace.
+     *
+     * Un texte non vide et non numerique reste une faute : c'est la difference
+     * entre une case laissee blanche et une donnee erronee. */
+    if (!est_vide(a.txt) && !hct_est_nombre(a.txt)) {
         hct_ctx_faute(ctx, n, "un nombre est attendu ici");
         return hct_val_vide();
     }
-    double x = hct_vers_nombre(a.txt), y = hct_vers_nombre(b.txt), r = 0;
+    if (!est_vide(b.txt) && !hct_est_nombre(b.txt)) {
+        hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+        return hct_val_vide();
+    }
+    double x = est_vide(a.txt) ? 0 : hct_vers_nombre(a.txt);
+    double y = est_vide(b.txt) ? 0 : hct_vers_nombre(b.txt);
+    double r = 0;
 
     if      (!strcmp(op, "+")) r = x + y;
     else if (!strcmp(op, "-")) r = x - y;
@@ -361,9 +386,9 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
             return hct_val_vide();
         }
     }
-    HctValeur r = {0};
+
+    HctValeur r;
     int fait = 0;
- 
 
     /* Fonctions purement calculatoires : l'exécuteur les fait lui-même, sans
      * déranger l'hôte. Celles qui dépendent du monde — the ticks, the mouse —

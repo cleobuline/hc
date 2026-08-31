@@ -6,7 +6,7 @@
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
-#import "Hciconedit.h"
+#import "HCiconedit.h"
 #import "graphics.h"
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie
@@ -36,6 +36,8 @@ static NSTextField  *gInfoName = nil;
 static NSPopUpButton *gInfoStyle = nil;
 static NSButton     *gInfoShowName = nil;
 static NSButton     *gInfoAutoHilite = nil;
+static NSButton     *gInfoEnabled = nil;
+static NSButton     *gInfoSharedHilite = nil;
 static NSTextField  *gInfoIconField = nil;
 static NSTextField  *gInfoTextSize = nil;
 
@@ -446,7 +448,9 @@ void hc_sync_size_field(Object *o)
         o->show_lines   = ([gFldLines state]    == NSControlStateValueOn);
         o->auto_tab     = ([gFldTab state]      == NSControlStateValueOn);
         o->dont_search  = ([gFldNoSearch state] == NSControlStateValueOn);
-        o->shared_text  = ([gFldShared state]   == NSControlStateValueOn);
+        /* Par hc_set_shared_text et non en direct : la bascule déménage le
+         * texte et les plages de style entre la carte et l'objet. */
+        hc_set_shared_text(o, ([gFldShared state] == NSControlStateValueOn));
         o->dont_wrap    = ([gFldNoWrap state]   == NSControlStateValueOn);
         o->auto_select  = ([gFldAutoSel state]  == NSControlStateValueOn);
         o->multiple_lines = ([gFldMultiple state] == NSControlStateValueOn);
@@ -549,6 +553,25 @@ void hc_sync_size_field(Object *o)
     [gInfoAutoHilite setTitle:@"Auto Hilite"];
     [gInfoAutoHilite setState:obj->autohilite ? NSControlStateValueOn : NSControlStateValueOff];
     [c addSubview:gInfoAutoHilite];
+
+    /* « Enabled », à la place qu'elle occupe dans l'Info bouton de HyperCard 2 :
+     * sous Auto Hilite. Décochée, le bouton ne reçoit plus les messages de
+     * souris et son nom se dessine en gris. */
+    gInfoEnabled = [[NSButton alloc] initWithFrame:NSMakeRect(224, 134, 120, 20)];
+    [gInfoEnabled setButtonType:NSButtonTypeSwitch];
+    [gInfoEnabled setTitle:@"Enabled"];
+    [gInfoEnabled setState:obj->enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    [c addSubview:gInfoEnabled];
+
+    /* « Shared Hilite » : n'a de sens que pour un bouton de FOND, l'allumage
+     * d'un bouton de carte n'ayant personne avec qui être partagé. On la grise
+     * plutôt que de la cacher, pour que la boîte garde la même allure. */
+    gInfoSharedHilite = [[NSButton alloc] initWithFrame:NSMakeRect(224, 112, 130, 20)];
+    [gInfoSharedHilite setButtonType:NSButtonTypeSwitch];
+    [gInfoSharedHilite setTitle:@"Shared Hilite"];
+    [gInfoSharedHilite setState:obj->shared_hilite ? NSControlStateValueOn : NSControlStateValueOff];
+    [gInfoSharedHilite setEnabled:(obj->owner && obj->owner->type == OBJ_BACKGROUND)];
+    [c addSubview:gInfoSharedHilite];
 
     // --- icone (par identifiant, en attendant le selecteur) ---
     NSTextField *il = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 156, 40, 18)];
@@ -1182,6 +1205,8 @@ void hcicon_panel_stack_closing(Object *stack)
             o->textsize = [[gInfoTextSize stringValue] intValue];
             o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
             o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);
+            o->enabled    = ([gInfoEnabled state]    == NSControlStateValueOn);
+            o->shared_hilite = ([gInfoSharedHilite state] == NSControlStateValueOn);
             o->icon = [[gInfoIconField stringValue] intValue];
         }
     [gInfoPanel close];
