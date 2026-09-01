@@ -5,7 +5,20 @@
 #include <string.h>
 #include <ctype.h>
 
-static int est_blanc(char c) { return c == ' ' || c == '\t'; }
+/* Un blanc au sens des MOTS de HyperTalk.
+ *
+ * Le retour à la ligne en est un : « the number of words of "a\nb" » vaut deux,
+ * pas un. Ne séparer que sur l'espace et la tabulation collait les mots de part
+ * et d'autre d'un saut de ligne — ce qui se voit dès qu'on compte les mots d'un
+ * champ de plusieurs lignes.
+ *
+ * On n'emploie pas isspace() tel quel : sa réponse dépend de la locale, et
+ * l'analyse d'un script ne doit pas changer selon les réglages du système. */
+static int est_blanc(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+           c == '\v' || c == '\f';
+}
 
 /* ------------------------------------------------------------ comptage */
 
@@ -32,6 +45,9 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
         }
 
         case HCT_CH_ITEM: {
+            /* Un séparateur final CRÉE un item vide : « a,b, » en compte
+             * trois. C'est l'inverse des lignes, où « a\nb\n » en vaut deux —
+             * une dissymétrie de HyperCard, pas une inattention. */
             if (len == 0) return 0;
             int n = 1;
             for (int i = 0; i < len; i++) if (s[i] == delim) n++;

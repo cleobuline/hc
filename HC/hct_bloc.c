@@ -132,9 +132,49 @@ static void ferme(HctAnalyseur *a, HctNoeud *n, const char *attendu)
     if (!hct_expr_fini(a)) hct_expr_avance(a);
 }
 
+/* Consomme « end X » s'il y en a un, sans se plaindre s'il n'y en a pas.
+ *
+ * Sert aux formes de « if » qui se referment d'elles-mêmes — « else » suivi
+ * d'une instruction — mais derrière lesquelles l'auteur a pu écrire « end if »
+ * quand même. On regarde deux jetons en avant sans rien consommer, et l'on ne
+ * mange la paire que si elle est bien là. */
+static void ferme_si_present(HctAnalyseur *a, const char *attendu)
+{
+    /* Seulement s'il n'y a pas de « if » au-dessus.
+     *
+     * Le script du calendrier d'Apple l'a montré :
+     *
+     *     if (…) then
+     *       …
+     *     else
+     *       if it is a number then get error()
+     *       if it is a date then
+     *         …
+     *       else get error()      <- ce si-là est clos ici
+     *     end if                  <- mais ce « end if » est au si du dessus
+     *     end repeat
+     *
+     * Manger ce « end if » décalait tout : le « end repeat » arrivait là où le
+     * si extérieur attendait son « end », et le gestionnaire entier partait en
+     * morceaux. Sans englobant, en revanche, personne d'autre ne peut le
+     * réclamer, et le prendre ne coûte rien. */
+    if (a->prof_si > 1) return;
+
+    int garde = a->i;
+    saute_eol(a);
+    if (mot_ici_b(a, "end")) {
+        hct_expr_avance(a);
+        if (mot_ici_b(a, attendu)) {
+            if (!hct_expr_fini(a)) hct_expr_avance(a);
+            return;
+        }
+    }
+    a->i = garde;      /* ni « end », ni le bon : on rend la position */
+}
+
 /* ----------------------------------------------------------------- IF */
 
-static HctNoeud *analyse_if(HctAnalyseur *a)
+static HctNoeud *analyse_if_corps(HctAnalyseur *a)
 {
     HctNoeud *n = ouvre(a, HCTN_SI, "if", 1);
     if (!n) return NULL;
@@ -169,11 +209,18 @@ static HctNoeud *analyse_if(HctAnalyseur *a)
                  *     if decay > 4 then
                  *       …
                  *     else add 2 to horz
-                 *     repeat                 <- instruction suivante */
+                 *     repeat                 <- instruction suivante
+                 *
+                 * Mais un auteur peut TOUT DE MÊME écrire « end if » derrière,
+                 * et HyperCard l'accepte. Le refuser était grave, pas seulement
+                 * bruyant : le « end if » orphelin était pris pour la fin du
+                 * GESTIONNAIRE, tout ce qui suivait sortait du corps, et le
+                 * vrai « end <nom> » devenait un envoi de message. */
                 HctNoeud *sinon = hct_noeud(a->reserve, HCTN_BLOC,
                                             *hct_expr_jeton(a));
                 hct_ajoute_fils(a->reserve, sinon, hct_bloc_instruction(a));
                 hct_ajoute_fils(a->reserve, n, sinon);
+                ferme_si_present(a, "if");
                 return n;
             }
         }
@@ -201,10 +248,28 @@ static HctNoeud *analyse_if(HctAnalyseur *a)
                                         *hct_expr_jeton(a));
             hct_ajoute_fils(a->reserve, sinon, hct_bloc_instruction(a));
             hct_ajoute_fils(a->reserve, n, sinon);
+            /* Pas de ferme_si_present ici : le « then » tenait sur une seule
+             * ligne, donc le si est déjà clos et un « end if » qui suivrait
+             * appartient au si ENGLOBANT. C'est la forme
+             *     if a then
+             *       if b then beep
+             *       else beep
+             *     end if          <- au si extérieur
+             * et la manger ici cassait l'imbrication. */
         }
     } else {
         a->i = garde;    /* pas de « else » : on rend la fin de ligne */
     }
+    return n;
+}
+
+/* Le compteur de « if » ouverts encadre l'analyse, quelle qu'en soit la
+ * sortie — analyse_if_corps en a plusieurs. */
+static HctNoeud *analyse_if(HctAnalyseur *a)
+{
+    a->prof_si++;
+    HctNoeud *n = analyse_if_corps(a);
+    a->prof_si--;
     return n;
 }
 
@@ -234,6 +299,18 @@ static HctNoeud *analyse_repeat(HctAnalyseur *a)
         if (mot_ici_b(a, "to")) hct_expr_avance(a);
         else hct_ajoute_fils(a->reserve, n, hct_expr_faute(a, "« to » attendu"));
         hct_ajoute_fils(a->reserve, n, hct_expression(a));       /* arrivée */
+        /* Le pas, facultatif : « repeat with i = 1 to 10 by 2 ».
+         *
+         * Sans lui, le « by 2 » retombait dans le corps de la boucle et
+         * devenait un envoi de message exécuté à chaque tour, pendant que le
+         * pas restait à 1 : dix tours au lieu de cinq, sans le moindre
+         * signalement. Le nœud du pas est le fils qui précède le corps ;
+         * l'exécuteur le reconnaît à la forme « with pas ». */
+        if (mot_ici_b(a, "by")) {
+            hct_expr_avance(a);
+            n->op = !strcmp(n->op, "with down") ? "with down pas" : "with pas";
+            hct_ajoute_fils(a->reserve, n, hct_expression(a));
+        }
     } else if (hct_expr_jeton(a)->genre != HCT_EOL) {
         /* repeat N [times] */
         n->op = "times";

@@ -112,6 +112,38 @@ struct Object {
     char    *name;      /* nom de l'objet (peut être NULL) */
     char    *script;    /* script HyperTalk brut */
 
+    /* Arbre du script, analysé une seule fois et gardé.
+     *
+     * L'ancien interpréteur relit et redécoupe le texte à chaque instruction :
+     * sur une boucle de cent mille tours, les deux tiers du temps y passent.
+     * L'exécuteur v3 travaille sur un arbre, qu'il serait absurde de
+     * reconstruire à chaque message.
+     *
+     * Opaques ici : hc_core.h est du C pur et ne connaît pas les types de la
+     * bibliothèque. Voir script_arbre() dans hc_core.c.
+     *
+     * INVALIDATION : toute écriture dans `script` doit passer par
+     * hc_set_script, qui jette l'arbre. Modifier le champ en direct laisserait
+     * un arbre décrivant l'ancien texte, et le gestionnaire exécuté ne serait
+     * plus celui qu'on lit. */
+    void    *arbre;     /* HctNoeud *   — racine, ou NULL                  */
+    void    *reserve;   /* HctReserve * — mémoire de l'arbre               */
+    void    *lot;       /* HctLot *     — jetons, pointant dans `script`   */
+    int      arbre_sain;/* 1 si l'analyse n'a rien signalé                 */
+    int      arbre_signale; /* le refus a déjà été tracé une fois           */
+    int      arbre_faute_ligne; /* ligne de la première faute, 0 si aucune  */
+
+    /* Un script peut se réécrire LUI-MÊME pendant qu'il s'exécute : le
+     * calendrier d'Apple range ses données dans son propre script. Libérer
+     * alors l'arbre et son texte tirerait le sol sous les pieds de
+     * l'exécuteur — les nœuds ET les jetons y pointent.
+     *
+     * On compte donc les exécutions en cours, et l'on diffère. */
+    int      arbre_usage;   /* profondeur d'exécution de cet arbre          */
+    int      arbre_perime;  /* à jeter dès que l'usage retombe à zéro       */
+    char   **textes_gardes; /* anciens scripts, encore lus par des jetons   */
+    int      ntextes_gardes;
+
     Object  *owner;     /* propriétaire : pile pour fond/carte, carte ou fond pour les parts */
     Object  *bg;        /* pour une carte : son fond */
 
@@ -218,12 +250,26 @@ struct Object {
 };
 
 /* ---- Construction ---- */
+/* Relevé des retours de la v3 vers l'ancien interpréteur : ce que l'exécuteur
+ * v3 ne sait pas faire lui-même et rend à exec_stmt / term_value.
+ *
+ * Sert à décider ce qu'on peut retirer de hc_core.c : promener toutes les
+ * piles, puis appeler hc_v3_bilan(). Ce qui n'y figure jamais est un candidat
+ * à la coupe ; le reste porte encore. */
+void hc_v3_bilan(void);
+void hc_v3_bilan_remise_a_zero(void);
+
 Object *hc_new_stack(const char *name);
 Object *hc_new_background(Object *stack, const char *name);
 Object *hc_new_card(Object *stack, Object *bg, const char *name);
 Object *hc_new_button(Object *owner, const char *name);
 Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);
+
+/* Jette l'arbre analysé d'un objet. hc_set_script et hc_free l'appellent déjà ;
+ * à appeler soi-même si l'on modifie `script` par un autre chemin — l'arbre
+ * décrirait sinon un texte qui n'existe plus. */
+void    hc_arbre_oublie(Object *o);
 void    hc_free(Object *stack);
 int     hc_delete_part(Object *o);
 /* Rend 1 si le noyau a modifié quelque chose de visible depuis le dernier

@@ -51,6 +51,44 @@ typedef struct {
      *
      * Rend 0 si l'hôte ne sait pas non plus. */
     int (*recours)(void *d, const HctNoeud *n, HctValeur *out);
+
+    /* Recours pour les COMMANDES, symétrique du précédent.
+     *
+     * L'exécuteur ne traite lui-même que ce qui ne touche pas au monde : put,
+     * get, global, l'arithmétique, les structures de contrôle, les sorties.
+     * Tout le reste — go, set, show, answer, visual — lui revient.
+     *
+     * Le nœud lui est passé TEL QUEL, et non ses opérandes évalués. La
+     * différence est décisive : « go to card 3 » n'a de sens que si l'hôte
+     * voit la référence d'objet intacte ; évaluée d'abord, elle serait déjà
+     * réduite à du texte et la commande perdrait son sens.
+     *
+     * L'hôte peut donc reconstituer la ligne d'origine par
+     * hct_noeud_etendue() et la confier à son propre interpréteur. C'est le
+     * mécanisme de la transition : la bibliothèque prend ce qu'elle sait
+     * faire, l'ancien code garde le reste, et la frontière se déplace sans
+     * que rien ne s'arrête.
+     *
+     * Rend 1 si la commande a été traitée, 0 pour laisser l'exécuteur se
+     * rabattre sur `fonction`. */
+    int (*commande)(void *d, const HctNoeud *n, HctContexte *ctx);
+
+    /* Respiration : appelée à la fin de chaque tour de boucle. L'hôte
+     * redessine, vide sa file d'événements, et rend 0 s'il faut interrompre.
+     *
+     * Indispensable : « repeat while the mouse is down » ne peut pas voir la
+     * souris se relever si l'hôte n'a jamais la main. NULL = ne rien faire. */
+    int (*respire)(void *d);
+
+    /* Écrire dans un objet résolu — le texte d'un champ. `mode` vaut 0 pour
+     * remplacer, 1 pour insérer AVANT, 2 pour ajouter APRÈS, comme `put`.
+     *
+     * Sans ce rappel, « put x into card field "n" » repartait tout entier à
+     * l'hôte, qui réanalysait la ligne et réévaluait l'expression : le chemin
+     * le plus fréquent d'un script était aussi le plus cher. Rend 0 si l'hôte
+     * ne sait pas écrire dans cet objet — un bouton n'est pas un conteneur —
+     * et l'exécuteur se rabat alors sur `commande`. */
+    int (*ecrit_objet)(void *d, void *objet, const char *val, int mode);
 } HctHote;
 
 struct HctContexte {

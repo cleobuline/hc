@@ -13,9 +13,13 @@
 #include <time.h>
 #include <strings.h>
 #include "hct_bloc.h"
+#include "hct_chunk.h"   /* morceaux : étape 1 de la reprise v3 */
+#include "hct_val.h"     /* valeurs  : étape 2 */
+#include "hct_exec.h"    /* exécuteur : étape 3 */
 #include "hct_eval.h"
-/* ==================== outils chaînes ==================== */
 
+/* ==================== outils chaînes ==================== */
+#define HC_V3_DEFAUT 1
 static char *dupstr(const char *s)
 {
     if (!s) return NULL;
@@ -468,9 +472,21 @@ static void arena_shutdown(void)
     g_atop = g_ahigh = 0;
 }
 
-/* Signale à l'hôte qu'un champ a changé (rafraîchissement d'affichage). */
+/* Écran verrouillé ? Suivi ici plutôt que relu chez l'hôte : la question est
+ * posée à chaque écriture dans un champ, et un aller-retour par écriture
+ * coûterait plus cher que ce qu'il évite. Posé par « lock/unlock screen » et
+ * par « set lockScreen to … ». */
+static int g_ecran_verrouille = 0;
+
+/* Signale à l'hôte qu'un champ a changé (rafraîchissement d'affichage).
+ *
+ * Rien ne sort tant que l'écran est verrouillé : c'est la raison d'être de
+ * « lock screen », et c'est ce qui rend supportable une boucle qui écrit dix
+ * mille fois dans un champ. Sans ce filtre, chaque écriture provoquait un
+ * redessin — l'interprétation ne pesait plus rien et l'affichage tout. */
 static void notify_field(Object *field)
 {
+    if (g_ecran_verrouille) return;
     if (g_host && g_host->field_changed) g_host->field_changed(field);
 }
 
@@ -778,8 +794,188 @@ static char *dup_script(const char *s)
     return d;
 }
 
+/* Jette l'arbre d'un objet. Appelé dès que son script change, et par hc_free.
+ *
+ * Les jetons pointent DANS le texte du script : libérer l'un sans l'autre
+ * laisserait des pointeurs dans de la mémoire rendue. Les trois morceaux
+ * naissent et meurent donc ensemble. */
+void hc_arbre_oublie(Object *o)
+{
+    if (!o) return;
+
+    /* L'arbre tourne : on ne peut rien libérer sous ses pieds. On marque, et
+     * v3_execute nettoiera en sortant. */
+    if (o->arbre_usage > 0) { o->arbre_perime = 1; return; }
+
+    if (o->reserve) { hct_reserve_libere((HctReserve *)o->reserve); free(o->reserve); }
+    if (o->lot)     { hct_lot_libere((HctLot *)o->lot);             free(o->lot); }
+    o->arbre = NULL;
+    o->reserve = NULL;
+    o->lot = NULL;
+    o->arbre_sain = 0;
+    o->arbre_signale = 0;
+    o->arbre_perime = 0;
+
+    /* Les anciens textes mis de côté ne servent plus : plus aucun jeton n'y
+     * pointe, puisque le lot vient d'être libéré. */
+    for (int i = 0; i < o->ntextes_gardes; i++) free(o->textes_gardes[i]);
+    free(o->textes_gardes);
+    o->textes_gardes = NULL;
+    o->ntextes_gardes = 0;
+}
+
+/* Met un texte de script de côté au lieu de le libérer.
+ *
+ * Les jetons de l'arbre en cours d'exécution pointent dedans : le libérer
+ * maintenant les ferait viser de la mémoire rendue. On le garde jusqu'à ce
+ * que l'arbre lui-même parte. */
+static void garde_texte(Object *o, char *texte)
+{
+    if (!texte) return;
+    char **t = realloc(o->textes_gardes,
+                       (size_t)(o->ntextes_gardes + 1) * sizeof *t);
+    if (!t) { free(texte); return; }   /* faute de mieux */
+    o->textes_gardes = t;
+    o->textes_gardes[o->ntextes_gardes++] = texte;
+}
+
+/* Parcourt l'arbre et signale chaque nœud d'erreur, avec la ligne, la colonne
+ * et le texte de la ligne fautive.
+ *
+ * L'analyseur ne s'arrête pas à la première faute : il en pose une et
+ * continue, pour pouvoir toutes les montrer d'un coup. On les montre donc
+ * toutes — mais pas plus de vingt, un script vraiment cassé en produirait
+ * autant que de lignes. */
+static void v3_dis_les_fautes_r(Object *o, const HctNoeud *n, int *reste)
+{
+    if (!n || *reste <= 0) return;
+
+    if (n->genre == HCTN_ERREUR) {
+        if (!o->arbre_faute_ligne) o->arbre_faute_ligne = n->jeton.ligne;
+
+        /* La ligne du script telle qu'elle est écrite, pour n'avoir pas à
+         * compter les lignes dans l'éditeur. */
+        char ligne[160] = "";
+        if (o->script) {
+            const char *p = o->script;
+            for (int l = 1; l < n->jeton.ligne && *p; p++)
+                if (*p == '\n') l++;
+            int k = 0;
+            while (*p && *p != '\n' && *p != '\r' && k < (int)sizeof ligne - 1)
+                ligne[k++] = *p++;
+            ligne[k] = '\0';
+        }
+
+        emit(HC_ERR, "   !! script, ligne %d colonne %d : %s",
+             n->jeton.ligne, n->jeton.col, n->msg ? n->msg : "forme non comprise");
+        if (*ligne) emit(HC_ERR, "      %s", ligne);
+        (*reste)--;
+    }
+
+    for (int i = 0; i < n->nfils; i++)
+        v3_dis_les_fautes_r(o, n->fils[i], reste);
+}
+
+static void v3_dis_les_fautes(Object *o, const HctNoeud *racine)
+{
+    int reste = 20;
+    v3_dis_les_fautes_r(o, racine, &reste);
+}
+
+/* L'arbre du script, analysé à la première demande et gardé ensuite.
+ *
+ * Rend NULL si le script est vide, ou si l'analyse a signalé la moindre
+ * faute. Ce dernier point est délibéré : mieux vaut confier tout le script à
+ * l'ancien interpréteur que d'en exécuter la moitié avec le nouveau et de
+ * s'arrêter au milieu sur une forme mal comprise. La frontière se déplacera
+ * quand la v3 saura tout lire, pas avant. */
+static const HctNoeud *script_arbre(Object *o)
+{
+    if (!o || !o->script || !*o->script) return NULL;
+    if (o->arbre) return o->arbre_sain ? (const HctNoeud *)o->arbre : NULL;
+    if (o->lot) return NULL;          /* déjà tenté, et rejeté */
+
+    HctLot *lot = calloc(1, sizeof *lot);
+    HctReserve *res = calloc(1, sizeof *res);
+    if (!lot || !res) { free(lot); free(res); return NULL; }
+
+    o->lot = lot;
+    o->reserve = res;
+
+    int sain = hct_lex(o->script, lot);
+
+    HctAnalyseur a;
+    hct_analyseur_init(&a, lot, res);
+    HctNoeud *racine = hct_bloc_script(&a);
+
+    /* Une faute ne condamne plus TOUT le script, seulement le gestionnaire qui
+     * la porte — trouve_gestionnaire l'écartera, et ce message-là repartira à
+     * l'ancien interpréteur.
+     *
+     * Ce qu'on exige encore, c'est que la STRUCTURE tienne : chaque enfant de
+     * la racine doit être un gestionnaire. Une faute qui déborde de son
+     * gestionnaire laisse des nœuds nus à ce niveau, signe qu'un « end » a été
+     * mal attribué et que le découpage n'est plus fiable — là, on refuse tout.
+     *
+     * Ce que ça change en pratique : une coquille dans une fonction
+     * inutilisée — il en traîne dans les piles réelles — ne prive plus les
+     * trente autres gestionnaires du script de la v3. */
+    int structure_ok = (racine != NULL);
+    for (int i = 0; racine && i < racine->nfils; i++)
+        if (racine->fils[i]->genre != HCTN_GESTIONNAIRE) { structure_ok = 0; break; }
+
+    if (sain && racine && (a.nerreurs == 0 || structure_ok)) {
+        o->arbre = racine;
+        o->arbre_sain = 1;
+        if (a.nerreurs) {
+            /* On le dit quand même : la faute est réelle, et son gestionnaire
+             * n'aura pas la v3. */
+            o->arbre_faute_ligne = 0;
+            v3_dis_les_fautes(o, racine);
+        }
+        return racine;
+    }
+
+    /* Analyse douteuse : on garde le lot et la réserve pour ne pas
+     * recommencer à chaque message, mais on ne rendra jamais l'arbre.
+     *
+     * On dit AUSSI pourquoi, et où. « analyse non propre » tout court
+     * n'apprenait rien : un script de trois cents lignes refusé pour une
+     * virgule se cherchait à la main. Une faute suffit à écarter le script
+     * entier, donc la première ligne signalée est celle à corriger. */
+    o->arbre_sain = 0;
+    o->arbre_faute_ligne = 0;
+
+    for (int i = 0; i < lot->n; i++)
+        if (lot->jetons[i].genre == HCT_ERREUR) {
+            if (!o->arbre_faute_ligne) o->arbre_faute_ligne = lot->jetons[i].ligne;
+            emit(HC_ERR, "   !! script, ligne %d colonne %d : %s",
+                 lot->jetons[i].ligne, lot->jetons[i].col,
+                 lot->jetons[i].msg ? lot->jetons[i].msg : "jeton mal formé");
+        }
+    v3_dis_les_fautes(o, racine);
+
+    return NULL;
+}
+
 void hc_set_script(Object *o, const char *script)
 {
+    if (o->arbre_usage > 0) {
+        /* Le script se réécrit pendant qu'il s'exécute — le calendrier
+         * d'Apple range ses données dans le sien. On ne libère donc ni
+         * l'arbre ni son texte : le premier est marqué périmé, le second mis
+         * de côté, et tout partira quand l'exécution sera finie.
+         *
+         * Le gestionnaire en cours continue sur l'ANCIEN texte, ce qui est le
+         * comportement de HyperCard : la réécriture ne prend effet qu'au
+         * prochain appel. */
+        o->arbre_perime = 1;
+        garde_texte(o, o->script);
+        o->script = dup_script(script);
+        return;
+    }
+
+    hc_arbre_oublie(o);          /* AVANT de libérer le texte : les jetons y pointent */
     free(o->script);
     o->script = dup_script(script);
 }
@@ -790,6 +986,7 @@ void hc_free(Object *o)
     for (int i = 0; i < o->nparts; i++) hc_free(o->parts[i]);
     free(o->parts);
     free(o->name);
+    hc_arbre_oublie(o);          /* avant le script : les jetons y pointent */
     free(o->script);
     free(o->contents);
     free(o->style);
@@ -1199,6 +1396,10 @@ static Object *clone_layer(Object *o, ObjType type)
 
     c->name   = dupstr(o->name);
     c->script = dupstr(o->script);
+    /* Pas de recopie de l'arbre : ses jetons pointeraient dans le script de
+     * l'ORIGINAL. Le clone réanalysera le sien à la première demande. */
+    c->arbre = c->reserve = c->lot = NULL;
+    c->arbre_sain = 0;
     c->paint  = dupstr(o->paint);
     c->marked = o->marked;
 
@@ -2302,26 +2503,33 @@ static int ci_strstr(const char *hay, const char *needle)
 }
 
 /* une valeur est-elle un nombre ? */
+/* ---- les valeurs : déléguées à hct_val ----
+ *
+ * Étape 2 de la reprise de l'interpréteur v3, et pour la même raison que les
+ * morceaux : du texte entre, du texte sort, aucun état partagé.
+ *
+ * Deux corrections viennent avec, l'une invisible et l'autre non.
+ *
+ * La lecture s'appuyait sur strtod, qui accepte « 0x10 », « inf » et « nan ».
+ * HyperCard n'a jamais lu que des chiffres, une décimale et un exposant : ces
+ * trois-là redeviennent du texte ordinaire, ce qu'ils auraient toujours dû
+ * être.
+ *
+ * L'écriture des non-entiers passe de « %.10g » — dix chiffres significatifs —
+ * à six décimales avec les zéros de fin retirés, qui est le numberFormat par
+ * défaut de HyperCard. « put 1/3 » rend donc 0.333333 et non 0.3333333333.
+ * C'est plus fidèle, mais c'est visible : un script qui comparait des chaînes
+ * de nombres verra la différence. */
 static int as_num(const char *s, double *d)
 {
-    if (!s) return 0;
-    const char *t = skip_spaces(s);
-    if (!*t) return 0;
-    char *e;
-    double v = strtod(t, &e);
-    if (e == t) return 0;
-    while (*e == ' ' || *e == '\t') e++;
-    if (*e) return 0;
-    *d = v;
+    if (!hct_est_nombre(s)) return 0;
+    *d = hct_vers_nombre(s);
     return 1;
 }
 
 static void put_num(double d, char *out, int outlen)
 {
-    if (d == (double)(long long)d && d > -1e15 && d < 1e15)
-        snprintf(out, outlen, "%lld", (long long)d);
-    else
-        snprintf(out, outlen, "%.10g", d);
+    hct_ecrit_nombre(d, out, outlen);
 }
 
 /* mots qui terminent une référence : ce sont des opérateurs ou des
@@ -2451,60 +2659,49 @@ static char chunk_sep(ChunkType t)
     return '\0';
 }
 
-/* Combien de morceaux de ce type dans `s` ? */
+/* ---- les morceaux : délégués à hct_chunk ----
+ *
+ * Étape 1 de la reprise de l'interpréteur v3. Le découpage en morceaux est ce
+ * qu'il y a de plus simple à confier : du texte entre, du texte sort, aucun
+ * état partagé. Deux implémentations coexistaient, et chacune avait son
+ * défaut.
+ *
+ * Celle-ci comptait « a,b, » pour DEUX items, retirant le morceau vide final
+ * comme elle le fait — à juste titre — pour les lignes. HyperCard en compte
+ * trois : un séparateur d'items final crée bien un item vide, alors qu'un
+ * saut de ligne final ne crée pas de ligne. La dissymétrie est voulue, et
+ * hct_chunk la respecte.
+ *
+ * Réciproquement, hct_chunk ne séparait les mots que sur l'espace et la
+ * tabulation ; le saut de ligne y a été ajouté, faute de quoi les mots de
+ * part et d'autre d'un retour se seraient collés.
+ *
+ * Le traducteur ci-dessous est la seule couture : les deux énumérations
+ * décrivent la même chose dans un ordre différent. */
+static HctSorteChunk vers_sorte_v3(ChunkType t)
+{
+    switch (t) {
+        case CH_WORD: return HCT_CH_WORD;
+        case CH_ITEM: return HCT_CH_ITEM;
+        case CH_LINE: return HCT_CH_LINE;
+        default:      return HCT_CH_CHAR;
+    }
+}
+
 static int chunk_count(const char *s, ChunkType t)
 {
-    int len = (int)strlen(s);
-    if (t == CH_CHAR) return len;
-    if (len == 0) return 0;
-
-    if (t == CH_ITEM || t == CH_LINE) {
-        char d = chunk_sep(t);
-        int n = 1;
-        for (int i = 0; i < len; i++) if (s[i] == d) n++;
-        if (s[len-1] == d) n--;          /* un séparateur final ne crée pas de morceau */
-        return n;
-    }
-    int n = 0, i = 0;
-    while (i < len) {
-        while (i < len && isspace((unsigned char)s[i])) i++;
-        if (i >= len) break;
-        n++;
-        while (i < len && !isspace((unsigned char)s[i])) i++;
-    }
-    return n;
+    if (t == CH_NONE) return 0;
+    return hct_chunk_compte(s, vers_sorte_v3(t), g_item_delim);
 }
 
 /* Bornes du n-ième morceau (1-based). Renvoie 0 s'il n'existe pas. */
 static int chunk_span1(const char *s, ChunkType t, int n, int *b, int *e)
 {
-    int len = (int)strlen(s);
-    if (n < 1) return 0;
-
-    if (t == CH_CHAR) {
-        if (n > len) return 0;
-        *b = n - 1; *e = n; return 1;
-    }
-    if (t == CH_ITEM || t == CH_LINE) {
-        char d = chunk_sep(t);
-        int count = 1, start = 0;
-        for (int i = 0; i <= len; i++) {
-            if (i == len || s[i] == d) {
-                if (count == n) { *b = start; *e = i; return 1; }
-                count++; start = i + 1;
-            }
-        }
-        return 0;
-    }
-    int count = 0, i = 0;
-    while (i < len) {
-        while (i < len && isspace((unsigned char)s[i])) i++;
-        if (i >= len) break;
-        int start = i;
-        while (i < len && !isspace((unsigned char)s[i])) i++;
-        if (++count == n) { *b = start; *e = i; return 1; }
-    }
-    return 0;
+    if (t == CH_NONE) return 0;
+    HctBornes r = hct_chunk_bornes(s, vers_sorte_v3(t), n, 0, g_item_delim);
+    if (!r.trouve) return 0;
+    *b = r.deb; *e = r.fin;
+    return 1;
 }
 
 /* Bornes d'un intervalle a..b (b <= 0 : un seul morceau). */
@@ -4586,7 +4783,10 @@ static int compare_vals(int op, const char *x, const char *y)
             default:  return a >= b;
         }
     }
-    int c = ci_cmp(x, y);
+    /* Texte : hct_compare applique la même règle — numérique si les DEUX
+     * opérandes le sont, sinon comparaison insensible à la casse. On n'arrive
+     * ici que dans le second cas, les nombres ayant été traités au-dessus. */
+    int c = hct_compare(x, y, NULL);
     switch (op) {
         case '=': return c == 0;
         case '!': return c != 0;
@@ -5036,10 +5236,21 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
      * cherche le champ dans la carte 3, pas dans la carte courante. */
     Object *cible = v3_cible(ctx, n);
     if (cible) {
-        if (cible->type == OBJ_CARD)            { card = cible; bg = card->bg; }
+        if (cible->type == OBJ_CARD) {
+            card = cible;
+            bg   = card->bg;
+            /* La pile suit la carte : « field 1 of card 3 of stack "x" »
+             * cherche dans la pile de CETTE carte. */
+            stack = owning_stack(card);
+        }
         else if (cible->type == OBJ_BACKGROUND) { bg = cible; }
-        else if (cible->type == OBJ_STACK)      { stack = cible; }
-        if (card) stack = owning_stack(card);
+        else if (cible->type == OBJ_STACK) {
+            /* Une pile désignée explicitement gagne. Recalculer la pile
+             * depuis g_current_card juste après, comme on le faisait, la
+             * ramenait aussitôt à la pile COURANTE : « card 3 of stack "y" »
+             * cherchait la carte 3 de la pile ouverte. */
+            stack = cible;
+        }
     }
 
     char val[256];
@@ -5173,9 +5384,13 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
 
 static int g_v3_recours_prof = 0;
 
+static void v3_note(const char *quoi, const char *nom);
+
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
+
+    v3_note("recours", hct_genre_noeud_nom(n->genre));
 
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
@@ -5304,6 +5519,8 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         return 1;
     }
 
+    v3_note("fonction", nom);
+
     /* Le tampon vient de l'ARÈNE, plus de la pile.
      *
      * HC_VAL vaut un mégaoctet : « char buf[HC_VAL] » posait tout cela sur la
@@ -5384,7 +5601,369 @@ static int v3_lit_objet(void *d, void *objet, HctValeur *out)
     return 1;
 }
 
+/* Écrire dans un objet résolu, sans repasser par le texte.
+ *
+ * Seuls les champs sont des conteneurs : un bouton rend 0, et l'exécuteur se
+ * rabat alors sur exec_stmt, qui saura dire pourquoi.
+ *
+ * On refait ici la concaténation de container_set plutôt que de l'appeler :
+ * container_set prend une RÉFÉRENCE TEXTUELLE, et c'est justement le texte
+ * qu'on veut éviter de reconstituer. Attention en revanche, les deux
+ * conventions de `mode` sont INVERSES — 1 vaut « after » pour container_set et
+ * « before » pour l'exécuteur ; on s'en tient à celle de l'exécuteur.
+ *
+ * hc_set_field_text s'occupe seul des plages de style : sans intervalle noté,
+ * un remplacement complet les détruit, ce qui est la règle de HyperCard 2.4. */
+static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
+{
+    (void)d;
+    Object *o = objet;
+    if (!o || o->type != OBJ_FIELD) return 0;
+    if (!val) val = "";
+
+    if (mode == 0) {
+        hc_set_field_text(o, val);
+    } else {
+        ARENA_MARK;
+        char *fusion = arena_buf();
+        const char *ancien = hc_field_text(o);
+        if (mode == 1) snprintf(fusion, HC_VAL, "%s%s", val, ancien);  /* before */
+        else           snprintf(fusion, HC_VAL, "%s%s", ancien, val);  /* after  */
+        hc_set_field_text(o, fusion);
+        ARENA_FREE;
+    }
+    notify_field(o);
+    set_result("");
+    return 1;
+}
+
+/* --- respiration : l'hôte reprend la main entre deux tours de boucle ---
+ *
+ * L'ancien exécuteur appelle host_idle() à chaque tour de repeat (voir
+ * exec_block). Sans l'équivalent ici, « repeat while the mouse is down » ne
+ * rendait jamais la main : la file d'événements n'était pas vidée, l'état de
+ * la souris ne changeait plus, et rien ne se redessinait — le script ne
+ * suivait pas la souris.
+ *
+ * Rend 0 pour interrompre la boucle. On garde le même plafond que l'ancien,
+ * et le même message : une boucle emballée doit se voir. */
+static int v3_respire(void *d)
+{
+    (void)d;
+
+    /* Quelque chose de visible a changé : on rend la main TOUT DE SUITE.
+     *
+     * Une animation — le dé qui rebondit, un bouton qu'on traîne — dessine une
+     * image par tour de boucle. L'étrangler à soixante hertz sautait les
+     * images intermédiaires : le dé traversait l'écran d'un trait au lieu de
+     * tomber. La cadence de l'animation, c'est celle du redessin, et c'est
+     * l'hôte qui la donne en repeignant.
+     *
+     * hc_take_visual_dirty() remet le drapeau à zéro chez l'hôte : le tour
+     * suivant, s'il n'a rien changé de visible, retombe sur l'étranglement. */
+    if (g_visual_dirty) { host_idle(); return 1; }
+
+    /* Rien de visible : pas à CHAQUE tour, environ soixante fois par seconde.
+     *
+     * host_idle() fait redessiner l'hôte et vider sa file d'événements ; c'est
+     * ce qui coûte, pas l'interprétation. Une boucle serrée qui l'appelle dix
+     * mille fois paie dix mille rafraîchissements pour un seul écran visible.
+     *
+     * Soixante hertz suffisent : c'est la cadence de l'écran, et c'est
+     * largement assez pour voir la souris se relever. HyperCard ne faisait pas
+     * autrement — un « repeat » ne redessinait pas à chaque passage.
+     *
+     * Premier tour excepté : on souffle tout de suite, pour que l'hôte prenne
+     * la main même sur une boucle qui ne fera qu'un ou deux tours. */
+    static struct timespec dernier;
+    static int amorce = 0;
+
+    struct timespec t;
+    if (clock_gettime(CLOCK_MONOTONIC, &t) != 0) { host_idle(); return 1; }
+
+    if (!amorce) { amorce = 1; dernier = t; host_idle(); return 1; }
+
+    double ecoule = (double)(t.tv_sec - dernier.tv_sec)
+                  + (double)(t.tv_nsec - dernier.tv_nsec) / 1e9;
+    if (ecoule < 0 || ecoule >= 1.0 / 60.0) {
+        dernier = t;
+        host_idle();
+    }
+    return 1;      /* le plafond de tours est tenu par l'exécuteur */
+}
+
 /* --- l'hôte assemblé ------------------------------------------------- */
+
+static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
+
+/* --- recours pour les COMMANDES ---
+ *
+ * hct_exec exécute lui-même ce qui ne touche pas au monde : put, get, global,
+ * l'arithmétique, les structures de contrôle, les sorties. Tout le reste —
+ * go, set, show, answer, visual, les soixante autres — lui revient ici.
+ *
+ * On ne reçoit pas des opérandes évalués mais le NŒUD, ce qui permet de
+ * retrouver la ligne d'origine dans le script et de la confier à exec_stmt.
+ * L'ancien interpréteur garde donc tout ce qu'il sait faire, et la frontière
+ * se déplacera commande par commande sans que rien ne s'arrête.
+ *
+ * Évaluer les opérandes d'abord ne marcherait pas : « go to card 3 » n'a de
+ * sens que si la référence d'objet parvient intacte. */
+/* ---- relevé des retours vers l'ancien interpréteur -------------------
+ *
+ * Tant que la v3 ne fait pas tout, hc_core.c ne peut pas être élagué au
+ * jugé : couper une fonction qu'un seul script d'une seule pile appelle une
+ * fois par an, c'est casser cette pile-là sans le savoir.
+ *
+ * On compte donc, par nom, chaque passage de la v3 vers l'ancien code. Ce qui
+ * n'apparaît jamais après avoir promené toutes les piles est un candidat à la
+ * coupe ; le reste porte encore.
+ *
+ * hc_v3_bilan() vide le relevé sur la console. Coût : une comparaison de
+ * chaînes par retour, négligeable devant l'exec_stmt qui suit. */
+#define V3_RELEVE_MAX 256
+struct V3Releve { char nom[48]; long n; };
+static struct V3Releve g_releve[V3_RELEVE_MAX];
+static int g_nreleve = 0;
+
+static void v3_note(const char *quoi, const char *nom)
+{
+    char cle[48];
+    snprintf(cle, sizeof cle, "%s %s", quoi, nom && *nom ? nom : "?");
+    for (int i = 0; i < g_nreleve; i++)
+        if (!strcmp(g_releve[i].nom, cle)) { g_releve[i].n++; return; }
+    if (g_nreleve >= V3_RELEVE_MAX) return;
+    snprintf(g_releve[g_nreleve].nom, sizeof g_releve[0].nom, "%s", cle);
+    g_releve[g_nreleve].n = 1;
+    g_nreleve++;
+}
+
+void hc_v3_bilan(void)
+{
+    emit(HC_INFO, "— retours de la v3 vers l'ancien interpréteur —");
+    if (!g_nreleve) { emit(HC_INFO, "   (aucun)"); return; }
+    /* tri décroissant, en place : la liste est courte */
+    for (int i = 0; i < g_nreleve; i++)
+        for (int j = i + 1; j < g_nreleve; j++)
+            if (g_releve[j].n > g_releve[i].n) {
+                struct V3Releve t = g_releve[i];
+                g_releve[i] = g_releve[j]; g_releve[j] = t;
+            }
+    for (int i = 0; i < g_nreleve; i++)
+        emit(HC_INFO, "   %-40s %ld", g_releve[i].nom, g_releve[i].n);
+}
+
+void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; }
+
+static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
+{
+    (void)d; (void)ctx;
+
+    const char *deb; int len;
+    if (!hct_noeud_etendue(n, &deb, &len)) return 0;   /* rien à reconstituer */
+
+    v3_note("commande", n->genre == HCTN_MESSAGE ? "<message>" : n->op);
+
+    ARENA_MARK;
+    char *ligne = arena_buf();
+    int m = len < HC_VAL - 1 ? len : HC_VAL - 1;
+    memcpy(ligne, deb, (size_t)m);
+    ligne[m] = '\0';
+
+#if HC_TRACE_V3
+    /* La ligne telle qu'elle est reconstituée. C'est LE point à vérifier : si
+     * elle est tronquée ou débordante, exec_stmt reçoit autre chose que ce que
+     * l'auteur a écrit, et le résultat est faux sans qu'aucune erreur ne soit
+     * signalée. */
+    fprintf(stderr, "[v3->ancien] « %s »\n", ligne);
+#endif
+
+    exec_stmt(g_me, ligne);
+
+    ARENA_FREE;
+    return 1;
+}
+
+/* Défini juste après ce bloc, qui s'en sert : l'ordre de lecture met
+ * l'exécution avant la table des rappels, plus lisible ainsi. */
+static HctHote v3_hote(void);
+
+/* ---- exécution d'un gestionnaire par la v3 ----
+ *
+ * Le pari de la transition : l'exécuteur v3 déroule l'arbre, et tout ce qu'il
+ * ne sait pas faire lui-même repart vers exec_stmt par v3_commande. Rien ne
+ * s'arrête donc en chemin, quelle que soit la commande rencontrée.
+ *
+ * On n'appelle PAS hct_appelle : il ouvre sa propre portée et y lie les
+ * paramètres, alors que hc_send_args_k_body a déjà posé son cadre et lié les
+ * siens par var_set. Deux liaisons dans deux magasins différents, et les
+ * paramètres seraient introuvables. On exécute donc le corps directement.
+ *
+ * Rend 0 si le gestionnaire n'est pas dans l'arbre — l'appelant se rabat
+ * alors sur exec_body. */
+static int v3_actif(void)
+{
+    /* Interrupteur, pour comparer les deux exécuteurs sans recompiler.
+     * Lu une fois : le relire à chaque message coûterait un getenv par appel. */
+    /* Défaut à la compilation, que l'environnement peut renverser dans les
+     * deux sens : HC_V3=1 allume, HC_V3=0 éteint, absence laisse ce défaut.
+     *
+     * Passer par le seul environnement s'est révélé peu commode — une
+     * variable de schéma Xcode n'arrive pas toujours jusqu'au programme, et
+     * l'on cherche alors un bug là où il n'y en a pas. Une constante ici se
+     * change en une compilation, et reste vraie quel que soit le lanceur. */
+#ifndef HC_V3_DEFAUT
+#define HC_V3_DEFAUT 1
+#endif
+
+    static int etat = -1;
+    if (etat < 0) {
+        const char *e = getenv("HC_V3");
+        if (e && *e) etat = (*e != '0');
+        else         etat = HC_V3_DEFAUT;
+        /* fprintf et non emit : emit passe par l'hôte, qui filtre selon le
+         * niveau. Le temps de la mise au point on veut cette ligne quoi qu'il
+         * arrive, y compris quand la réponse est « non ». */
+        fprintf(stderr, "[v3] HC_V3=%s (défaut %d) -> exécuteur v3 %s\n",
+                (e && *e) ? e : "absent", HC_V3_DEFAUT,
+                etat ? "ACTIF" : "éteint");
+    }
+    return etat;
+}
+
+/* Une faute d'analyse quelque part dans ce sous-arbre ? */
+static int v3_porte_une_faute(const HctNoeud *n)
+{
+    if (!n) return 0;
+    if (n->genre == HCTN_ERREUR) return 1;
+    for (int i = 0; i < n->nfils; i++)
+        if (v3_porte_une_faute(n->fils[i])) return 1;
+    return 0;
+}
+
+static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
+                                           const char *nom, int isfunc)
+{
+    if (!racine) return NULL;
+    const char *kw = isfunc ? "function" : "on";
+
+    for (int i = 0; i < racine->nfils; i++) {
+        const HctNoeud *f = racine->fils[i];
+        if (f->genre != HCTN_GESTIONNAIRE || f->nfils < 3) continue;
+        /* Gestionnaire mal analysé : à l'ancien interpréteur, qui est plus
+         * indulgent. Les autres gestionnaires du script restent à la v3. */
+        if (v3_porte_une_faute(f)) continue;
+        if (!f->op || strcasecmp(f->op, kw) != 0) continue;
+
+        const HctJeton *j = &f->fils[0]->jeton;
+        if ((int)strlen(nom) != j->len) continue;
+        if (ci_nequal(j->deb, nom, j->len)) return f;
+    }
+    return NULL;
+}
+
+/* Trace du branchement. Mettre à 0 quand la bascule sera acquise : elle
+ * imprime une ligne par MESSAGE, ce qui devient vite illisible. */
+#define HC_TRACE_V3 1
+
+static int v3_execute(Object *o, const char *message, int isfunc)
+{
+    if (!v3_actif()) return 0;
+
+    /* Pourquoi la v3 renonce, le cas échéant. Trois raisons possibles, et
+     * elles n'appellent pas le même remède :
+     *
+     *   arbre refusé   — l'analyse du script a signalé une faute, et l'on
+     *                    préfère confier le script entier à l'ancien
+     *                    exécuteur plutôt que d'en exécuter la moitié ;
+     *   absent         — le script s'analyse, mais ce gestionnaire n'y est
+     *                    pas sous cette forme ;
+     *   pris en charge — la v3 exécute.
+     *
+     * Sur HC_ERR et non HC_TRACE : le temps de la mise au point, on veut ces
+     * lignes sans avoir à lever le drapeau de trace. */
+    const HctNoeud *racine = script_arbre(o);
+    if (!racine) {
+#if HC_TRACE_V3
+        /* Une fois par objet : l'analyse ne sera pas retentée, inutile de le
+         * répéter à chaque message. */
+        if (!o->arbre_signale) {
+            o->arbre_signale = 1;
+            char d[64]; hc_describe(o, d, sizeof d);
+            if (o->arbre_faute_ligne)
+                fprintf(stderr, "[v3] arbre refusé pour %s "
+                                "(première faute ligne %d)\n", d, o->arbre_faute_ligne);
+            else
+                fprintf(stderr, "[v3] arbre refusé pour %s (analyse non propre)\n", d);
+        }
+#endif
+        return 0;
+    }
+
+    const HctNoeud *g = trouve_gestionnaire(racine, message, isfunc);
+    if (!g) {
+#if HC_TRACE_V3
+        if (!strcasecmp(message, "idle")) return 0;
+        fprintf(stderr, "[v3] « %s »%s absent de l'arbre (%d gestionnaire(s) vus)\n",
+             message, isfunc ? " (fonction)" : "", racine->nfils);
+        for (int i = 0; i < racine->nfils; i++) {
+            const HctNoeud *f = racine->fils[i];
+            if (f->genre != HCTN_GESTIONNAIRE) {
+                fprintf(stderr, "[v3]   fils %d : %s (pas un gestionnaire)\n",
+                     i, hct_genre_noeud_nom(f->genre));
+                continue;
+            }
+            char nom[64];
+            if (f->nfils >= 1) hct_texte(&f->fils[0]->jeton, nom, sizeof nom);
+            else snprintf(nom, sizeof nom, "?");
+            fprintf(stderr, "[v3]   fils %d : %s %s (%d fils)\n",
+                 i, f->op ? f->op : "?", nom, f->nfils);
+        }
+#endif
+        return 0;
+    }
+
+#if HC_TRACE_V3
+    /* « idle » part à chaque tour de la boucle d'événements, plusieurs fois
+     * par seconde : le tracer noie tout le reste. Les autres messages, eux,
+     * sont assez rares pour qu'une ligne chacun reste lisible. */
+    if (strcasecmp(message, "idle") != 0)
+        fprintf(stderr, "[v3] « %s » pris en charge\n", message);
+#endif
+
+    HctExec x;
+    hct_exec_init(&x, v3_hote());
+    x.script = racine;
+
+    /* Marquer l'arbre comme en cours : un script qui se réécrit lui-même
+     * appellerait sinon hc_arbre_oublie et libérerait le sol sous nos pieds. */
+    o->arbre_usage++;
+    hct_exec(&x, g->fils[2]);          /* fils 2 = le corps */
+    o->arbre_usage--;
+
+    /* Les signaux redeviennent les drapeaux de hc_core : « pass » doit faire
+     * remonter le message, et l'ancien code les lit sous cette forme. */
+    if (x.signal == HCT_SIG_PASS) g_pass = 1;
+
+    /* La valeur d'un `return` va dans `the result` — pour une FONCTION comme
+     * pour un gestionnaire de message, exactement comme le fait exec_stmt
+     * (« if the result <> empty » après un appel en dépend).
+     *
+     * On ne pose le résultat que si un `return` a vraiment été exécuté :
+     * l'écraser systématiquement effacerait celui qu'une commande du corps
+     * vient d'y déposer — « go to card 99 » y met sa plainte. */
+    if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
+
+    if (x.ctx.erreur)
+        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
+             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+
+    hct_exec_libere(&x);
+
+    /* Sortie du dernier niveau : on peut enfin jeter ce qui a été marqué. */
+    if (o->arbre_usage == 0 && o->arbre_perime) hc_arbre_oublie(o);
+    return 1;
+}
 
 static HctHote v3_hote(void)
 {
@@ -5396,6 +5975,9 @@ static HctHote v3_hote(void)
     h.recours   = v3_recours;
     h.resout    = v3_resout;
     h.lit_objet = v3_lit_objet;
+    h.commande  = v3_commande;
+    h.respire   = v3_respire;
+    h.ecrit_objet = v3_ecrit_objet;
     return h;
 }
 
@@ -6451,7 +7033,12 @@ static void exec_line_body(Object *me, const char *line)
      * toujours pas ce qu'est un écran. L'effet visuel éventuel est ignoré. */
     if (ci_equal(verb, "lock") || ci_equal(verb, "unlock")) {
         if (ci_word(skip_spaces(rest), "screen")) {
-            host_global_set("lockScreen", ci_equal(verb, "lock") ? "true" : "false");
+            g_ecran_verrouille = ci_equal(verb, "lock");
+            host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
+            /* Au déverrouillage, on redemande un rafraîchissement : les
+             * champs modifiés pendant le verrou n'ont rien signalé, et l'hôte
+             * l'apprend par hc_take_visual_dirty(). */
+            if (!g_ecran_verrouille) g_visual_dirty = 1;
             set_result("");
             return;
         }
@@ -6587,6 +7174,14 @@ static void exec_line_body(Object *me, const char *line)
                 set_result("");
                 emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
                 return;
+            }
+
+            /* lockScreen suivi ici aussi : « set lockScreen to true » est
+             * l'exact synonyme de « lock screen », et notify_field s'appuie
+             * dessus pour ne pas redessiner mille fois pour rien. */
+            if (ci_equal(prop, "lockscreen")) {
+                g_ecran_verrouille = truthy(val);
+                if (!g_ecran_verrouille) g_visual_dirty = 1;
             }
 
             host_global_set(prop, val);
@@ -8632,7 +9227,10 @@ static int hc_send_args_k_body(Object *target, const char *message,
             g_pass = 0;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
             g_me   = o;          /* `me` = l'objet dont le script tourne */
-            exec_body(o, body, end);
+            /* La v3 d'abord si elle est active ET si elle a su analyser ce
+             * script. Sinon l'ancien exécuteur, inchangé. */
+            if (!v3_execute(o, message, isfunc))
+                exec_body(o, body, end);
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
 
             g_frame = savedf;
@@ -8676,6 +9274,24 @@ static int hc_send_args_k(Object *target, const char *message,
     ARENA_MARK;
     int r = hc_send_args_k_body(target, message, argv, argc, isfunc);
     ARENA_FREE;
+
+    /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
+     *
+     * HyperCard déverrouille l'écran de lui-même dès qu'il a fini de traiter
+     * un message : « lock screen » ne vaut que pour le gestionnaire en cours.
+     * Sans cette remise à zéro, un gestionnaire qui verrouille puis sort avant
+     * son « unlock screen » — un `exit`, une erreur, une branche oubliée —
+     * laissait l'écran verrouillé POUR TOUJOURS. Plus aucun champ ne se
+     * rafraîchissait, et rien ne disait pourquoi.
+     *
+     * Uniquement au niveau le plus extérieur : un gestionnaire qui en appelle
+     * un autre doit garder son verrou pendant l'appel. */
+    if (g_depth == 0 && g_ecran_verrouille) {
+        g_ecran_verrouille = 0;
+        g_visual_dirty = 1;
+        host_global_set("lockScreen", "false");
+    }
+
     return r;
 }
 

@@ -142,6 +142,22 @@ void      hct_reserve_libere(HctReserve *r);
  * littéraux séparés par « | » et ne peuvent donc pas être utilisés tels quels. */
 const char *hct_reserve_texte(HctReserve *r, const char *s, int len);
 
+/* Étendue d'un sous-arbre dans le TEXTE SOURCE.
+ *
+ * Les jetons pointent dans le script, jamais ailleurs : on peut donc retrouver
+ * la portion de texte d'où vient un nœud, en prenant le premier octet de son
+ * jeton le plus à gauche et le dernier de son jeton le plus à droite.
+ *
+ * C'est ce qui permet à un hôte de reprendre la main sur une forme que la
+ * bibliothèque ne sait pas traiter : il reçoit le nœud, en tire le texte
+ * d'origine, et le confie à son propre interpréteur. Le mécanisme de la
+ * transition tient à cela.
+ *
+ * Rend 0 si le nœud est vide ou sans jeton exploitable. Les jetons de fin de
+ * ligne et de fin de source sont ignorés : ils n'ont pas de largeur utile et
+ * étireraient l'étendue au-delà de l'instruction. */
+int hct_noeud_etendue(const HctNoeud *n, const char **deb, int *len);
+
 const char *hct_genre_noeud_nom(HctGenreNoeud g);
 const char *hct_sorte_chunk_nom(HctSorteChunk s);
 const char *hct_ordinal_nom(HctOrdinal o);

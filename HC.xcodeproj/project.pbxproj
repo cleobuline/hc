@@ -26,6 +26,7 @@
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DA09F863043C745003F1A35 /* hc_icons.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F853043C745003F1A35 /* hc_icons.c */; };
 		4DA09F8D3043CC60003F1A35 /* Hciconedit.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F8C3043CC60003F1A35 /* Hciconedit.m */; };
+		4DA09F933045EB1E003F1A35 /* cocorico.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DA09F923045EB1E003F1A35 /* cocorico.wav */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
 		4DF28F833023709D00D7740C /* coq.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F823023709D00D7740C /* coq.wav */; };
@@ -80,6 +81,7 @@
 		4DA09F853043C745003F1A35 /* hc_icons.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_icons.c; sourceTree = "<group>"; };
 		4DA09F8C3043CC60003F1A35 /* Hciconedit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hciconedit.m; sourceTree = "<group>"; };
 		4DA09F8F3043CCA2003F1A35 /* Hciconedit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Hciconedit.h; sourceTree = "<group>"; };
+		4DA09F923045EB1E003F1A35 /* cocorico.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = cocorico.wav; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
 		4DF28F7F302369FE00D7740C /* boing3.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing3.wav; sourceTree = "<group>"; };
 		4DF28F823023709D00D7740C /* coq.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = coq.wav; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 		4DF28F863023DD3700D7740C /* sounds */ = {
 			isa = PBXGroup;
 			children = (
+				4DA09F923045EB1E003F1A35 /* cocorico.wav */,
 				4DF28F893023F77000D7740C /* canard.wav */,
 				4DF28F823023709D00D7740C /* coq.wav */,
 				4DF28F7F302369FE00D7740C /* boing3.wav */,
@@ -291,6 +294,7 @@
 				4DF28F8A3023F77000D7740C /* canard.wav in Resources */,
 				4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */,
 				4D482C29303899720071BC2B /* stack.icns in Resources */,
+				4DA09F933045EB1E003F1A35 /* cocorico.wav in Resources */,
 				4D482C28303899720071BC2B /* AppIcon.icns in Resources */,
 				4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */,
 				4DF28F833023709D00D7740C /* coq.wav in Resources */,

@@ -228,12 +228,26 @@ static int applique(HctAnalyseur *a, const char *motif, HctNoeud *cmd)
                 but[lbut] = 0;
             }
             const char *butoir = lbut ? but : NULL;
+            /* On avance jusqu'au butoir ou à la fin de la ligne, que les
+             * expressions soient séparées par des virgules OU par des blancs.
+             *
+             * S'arrêter à la première sans virgule laissait la moitié de la
+             * ligne au sol : « sort marked cards by f » ne prenait que
+             * « marked », « find "x" in field 1 » que la chaîne, « show all
+             * cards » que « all ». Le reste devenait « texte inattendu en fin
+             * de ligne », et cette seule faute suffisait à faire refuser TOUT
+             * le script par script_arbre().
+             *
+             * Le garde sur la position évite de tourner en rond si une
+             * expression ne consomme rien — ce qui arrive sur un jeton que
+             * l'analyseur ne sait pas lire. */
             while (!hct_expr_fini(a)) {
                 if (butoir && alternative_colle(hct_expr_jeton(a), butoir, lbut) >= 0)
                     break;
+                int avant = a->i;
                 hct_ajoute_fils(a->reserve, cmd, hct_expression(a));
                 if (hct_expr_virgule(a)) continue;
-                break;
+                if (a->i == avant) break;
             }
             continue;
         }

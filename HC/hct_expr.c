@@ -846,6 +846,7 @@ void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r)
     a->nerreurs = 0;
     a->sans_of = 0;
     a->prof = 0;
+    a->prof_si = 0;
 }
 
 HctNoeud *hct_expression(HctAnalyseur *a)

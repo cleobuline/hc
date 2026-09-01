@@ -105,6 +105,84 @@ void hct_reserve_libere(HctReserve *r)
     r->nnoeuds = 0;
 }
 
+/* --------------------------------------------------- étendue dans le source */
+
+/* Parcours : on retient l'octet le plus à gauche et le plus à droite vus dans
+ * le sous-arbre. Les nœuds n'étant pas forcément dans l'ordre du texte — un
+ * mot-clé consommé après coup peut précéder son opérande dans l'arbre —, on
+ * ne peut pas se contenter du premier et du dernier fils. */
+static void etendue_parcours(const HctNoeud *n, const char **min, const char **max)
+{
+    if (!n) return;
+
+    const HctJeton *j = &n->jeton;
+    if (j->deb && j->len > 0 && j->genre != HCT_EOL && j->genre != HCT_FIN) {
+        if (!*min || j->deb < *min) *min = j->deb;
+        if (!*max || j->deb + j->len > *max) *max = j->deb + j->len;
+    }
+    for (int i = 0; i < n->nfils; i++)
+        etendue_parcours(n->fils[i], min, max);
+}
+
+int hct_noeud_etendue(const HctNoeud *n, const char **deb, int *len)
+{
+    const char *min = NULL, *max = NULL;
+    etendue_parcours(n, &min, &max);
+    if (!min || !max || max <= min) return 0;
+
+    /* Étendre jusqu'à la fin de la LIGNE, et non jusqu'au dernier jeton retenu.
+     *
+     * Certains caractères ne deviennent le jeton d'aucun nœud : l'analyseur les
+     * consomme et les oublie. Les parenthèses d'un appel en font partie, si
+     * bien que « get item it of monthNameData() » se reconstituait sans elles.
+     * L'ancien interpréteur y lisait alors une variable jamais affectée, qui
+     * vaut son propre nom en HyperTalk — le calendrier recevait la chaîne
+     * « monthNameData » au lieu de la liste des mois, et échouait sans un mot.
+     *
+     * Une instruction occupant sa ligne entière, aller jusqu'au saut de ligne
+     * rend tout ce que l'auteur a écrit, ponctuation comprise. On s'arrête
+     * aussi au point-virgule, qui sépare deux instructions sur une même ligne,
+     * et l'on retire les blancs de fin. */
+    const char *fin = max;
+    while (*fin && *fin != '\n' && *fin != '\r' && *fin != ';') {
+        /* Arrêt devant un commentaire. Le lexer les avale sans en faire de
+         * jetons, si bien qu'aller jusqu'au bout de la ligne les ramassait :
+         * « saveRect -- saves current frame size » repartait tel quel à
+         * l'ancien interpréteur, qui lisait « -- saves… » comme les arguments
+         * du message et se plaignait d'une expression attendue.
+         *
+         * Le scan ne commence qu'APRÈS le dernier jeton du nœud, donc un
+         * « -- » rencontré ici est forcément un commentaire, jamais deux moins
+         * consécutifs d'une expression. */
+        if (fin[0] == '-' && fin[1] == '-') break;
+
+        /* Arrêt devant « else » : dans « if C then go home else beep », la
+         * branche « then » ne va que jusque-là. Sans cette borne, elle avalait
+         * le reste et l'ancien interpréteur cherchait une carte nommée
+         * « home else beep ».
+         *
+         * « else » n'entre dans aucun motif de commande : le rencontrer hors
+         * d'une chaîne veut donc toujours dire qu'on est sorti de l'instruction.
+         * Le test des bords évite d'arrêter sur un nom qui le contient, comme
+         * « elsewhere ». */
+        if ((fin[0] == 'e' || fin[0] == 'E') &&
+            (fin == min || fin[-1] == ' ' || fin[-1] == '\t') &&
+            (fin[1] == 'l' || fin[1] == 'L') &&
+            (fin[2] == 's' || fin[2] == 'S') &&
+            (fin[3] == 'e' || fin[3] == 'E') &&
+            (fin[4] == '\0' || fin[4] == ' ' || fin[4] == '\t' ||
+             fin[4] == '\n' || fin[4] == '\r'))
+            break;
+        fin++;
+    }
+    while (fin > max && (fin[-1] == ' ' || fin[-1] == '\t')) fin--;
+    if (fin > max) max = fin;
+
+    *deb = min;
+    *len = (int)(max - min);
+    return 1;
+}
+
 /* ------------------------------------------------------------------ noms */
 
 const char *hct_genre_noeud_nom(HctGenreNoeud g)

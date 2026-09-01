@@ -41,6 +41,7 @@ typedef struct {
     HctPortee_  *globales;    /* une seule, vit tout le temps              */
     HctSignal    signal;
     HctValeur    retour;      /* valeur rendue par `return`                */
+    int          a_rendu;     /* 1 si un `return` a été exécuté            */
     int          profondeur;  /* garde-fou contre la récursion infinie     */
     const HctNoeud *script;   /* le script courant, pour retrouver ses
                                * gestionnaires quand une expression appelle

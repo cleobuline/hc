@@ -45,6 +45,14 @@ typedef struct {
      * humain n'y arrive jamais, mais un fichier corrompu, si : c'est donc
      * l'application entière qui tomberait. On refuse au-delà du plafond. */
     int           prof;
+
+    /* Combien de « if » sont ouverts au-dessus de celui qu'on analyse.
+     *
+     * Sert à trancher une ambiguïté réelle de HyperTalk : après
+     * « if C then <bloc> else <instruction> », le si est clos, et un « end if »
+     * qui suivrait appartient au si ENGLOBANT. Il n'y a d'exception que
+     * lorsqu'il n'y a pas d'englobant — personne ne peut alors le réclamer. */
+    int           prof_si;
 } HctAnalyseur;
 
 void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r);
