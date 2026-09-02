@@ -173,6 +173,13 @@ static CGFloat  gAntsPhase = 0.0;
 - (void)stopAntsTimer;
 @end
 
+/* Une partie mérite-t-elle d'être redessinée ? La marge couvre le cadre
+ * d'édition et le liseré de sélection, qui débordent un peu. */
+static inline BOOL part_touche(Object *o, NSRect sale) {
+    if (!o) return NO;
+    return NSIntersectsRect(sale, NSMakeRect(o->x - 8, o->y - 8,
+                                             o->w + 16, o->h + 16));
+}
 static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
     CGFloat dx = fabs(current.x - start.x);
     CGFloat dy = fabs(current.y - start.y);
@@ -981,7 +988,25 @@ static void cocoa_choose_tool(const char *name) {
                 [gView endFieldEdit];
                 [[gView window] makeFirstResponder:gView];
             }
+            /* Changer pour un outil qui ne sélectionne pas abandonne la
+             * sélection de peinture, comme dans HyperCard : on ne garde pas
+             * son lasso en prenant la main ou le crayon.
+             *
+             * gSelected, juste en dessous, est la sélection d'un OBJET —
+             * bouton ou champ. Ce sont deux choses distinctes, et seule la
+             * première était remise à zéro : le rectangle en pointillés
+             * survivait au changement d'outil, fourmis comprises. */
+            HCTool neuf = table[i].t;
+            if (neuf != TOOL_SELRECT && neuf != TOOL_LASSO) {
+                gSelRectActive  = NO;
+                gSelRectDrawing = NO;
+                gLassoActive    = NO;
+                gLassoDrawing   = NO;
+                gLassoCount     = 0;
+                [gView stopAntsTimer];
+            }
 
+            gTool = neuf;
             gTool = table[i].t;
             gSelected = NULL;
             [gView stopSprayTimer];
@@ -999,21 +1024,17 @@ static BOOL mods_has(const char *mods, const char *k) {
         if (strncasecmp(p, k, n) == 0) return YES;
     return NO;
 }
-
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
     if (!card || !gView) return;
     Object *layer = gEditBackground ? card->bg : card;
     if (!layer) layer = card;
-
     NSRect b = [gView bounds];
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)b.size.width, (int)b.size.height);
     NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
-
     if (mods_has(mods, "shift")) {
         z = constrain_to_axis(a, z);
     }
-
     switch (gTool) {
         case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
@@ -1024,6 +1045,101 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
             if (gShapeFilled) fill_shape(rep, gTool, a, z);
             else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
             break;
+
+        case TOOL_SELRECT:
+            /* Au lasso rectangulaire, un glissement ne dessine pas : il
+             * SÉLECTIONNE. On pose directement l'état d'arrivée d'une
+             * sélection faite à la souris, sans passer par gSelRectDrawing.
+             *
+             * Sans ce cas, le « drag from 0,0 to 169,341 » des scripts tombait
+             * dans default, aucune sélection n'était établie, et le
+             * « doMenu "Clear Picture" » qui suit effaçait TOUT le calque au
+             * lieu de la seule bande visée — la courbe qu'on venait de tracer
+             * disparaissait avec. */
+            gSelStart = a;
+            gSelEnd   = z;
+            gSelRectDrawing = NO;
+            gSelRectActive  = YES;
+            [gView startAntsTimer];
+            break;
+
+        default:
+            if (gSelected) {
+                gSelected->x += x2 - x1;
+                gSelected->y += y2 - y1;
+            }
+            break;
+    }
+
+    /* Ne rafraîchir que la zone touchée.
+     *
+     * Un tracé de script appelle cette fonction une fois par segment, et
+     * v3_respire rend la main à AppKit à chaque tour de boucle : marquer TOUTE
+     * la vue sale, c'était recomposer la carte entière — calque, champs,
+     * boutons — une fois par segment. Sur une courbe de deux mille points, ça
+     * se voit. HyperCard ne rafraîchissait que les pixels touchés, et c'est
+     * pour cela que la pile d'origine paraît plus vive sous Basilisk.
+     *
+     * Deux exceptions gardent le rafraîchissement complet : la sélection, dont
+     * le rectangle en pointillés bouge sur toute sa surface, et le déplacement
+     * d'un objet, qui laisse un trou à son ancienne place. */
+    if (gTool == TOOL_SELRECT || (gSelected && gTool != TOOL_BROWSE)) {
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
+    NSRect sale = NSMakeRect(MIN(a.x, z.x), MIN(a.y, z.y),
+                             fabs(z.x - a.x), fabs(z.y - a.y));
+
+    /* De quoi couvrir l'épaisseur du trait, la largeur du pinceau et la
+     * dispersion de l'aérographe. Large plutôt que juste : une marge de trop
+     * ne coûte que quelques pixels, une marge manquante laisse une traînée. */
+    CGFloat marge = gLineWidth + 2;
+    if (gTool == TOOL_BRUSH)  marge = 24;
+    if (gTool == TOOL_ERASER) marge = 20;
+    if (gTool == TOOL_SPRAY)  marge = gSprayRadius + 4;
+
+    [gView setNeedsDisplayInRect:NSInsetRect(sale, -marge, -marge)];
+}
+static void cocoa_drag_old(int x1, int y1, int x2, int y2, const char *mods) {
+    Object *card = hc_current_card();
+    if (!card || !gView) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+    NSRect b = [gView bounds];
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)b.size.width, (int)b.size.height);
+    NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
+    if (mods_has(mods, "shift")) {
+        z = constrain_to_axis(a, z);
+    }
+    switch (gTool) {
+        case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
+        case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
+        case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
+        case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
+        case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
+        case TOOL_RECT: case TOOL_OVAL: case TOOL_FREEFORM:
+            if (gShapeFilled) fill_shape(rep, gTool, a, z);
+            else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
+            break;
+
+        case TOOL_SELRECT:
+            /* Au lasso rectangulaire, un glissement ne dessine pas : il
+             * SÉLECTIONNE. On pose directement l'état d'arrivée d'une
+             * sélection faite à la souris, sans passer par gSelRectDrawing.
+             *
+             * Sans ce cas, le « drag from 0,0 to 169,341 » des scripts tombait
+             * dans default, aucune sélection n'était établie, et le
+             * « doMenu "Clear Picture" » qui suit effaçait TOUT le calque au
+             * lieu de la seule bande visée — la courbe qu'on venait de tracer
+             * disparaissait avec. */
+            gSelStart = a;
+            gSelEnd   = z;
+            gSelRectDrawing = NO;
+            gSelRectActive  = YES;
+            [gView startAntsTimer];
+            break;
+
         default:
             if (gSelected) {
                 gSelected->x += x2 - x1;
@@ -1043,6 +1159,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
     gClickPoint = p;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
     gMouseClicked = YES;
+
     if (gTool == TOOL_TEXT) {
         [gView commitText];
         gTextPos = p;
@@ -1051,6 +1168,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         [gView setNeedsDisplay:YES];
         return;
     }
+
     if (gTool == TOOL_FILL) {
         Object *card = hc_current_card();
         Object *layer = gEditBackground ? card->bg : card;
@@ -1059,9 +1177,67 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                                     (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
         flood_fill(rep, (int)p.x, (int)p.y);
-        [gView setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];   /* le remplissage peut aller partout */
         return;
     }
+
+    /* Un clic avec un outil de peinture POSE UN POINT.
+     *
+     * C'est la primitive de tracé point par point d'HyperCard : les scripts
+     * qui dessinent sans relier leurs points — case « Connect » décochée dans
+     * la pile des équations paramétriques — n'emploient que « click at ».
+     * Sans ce cas, ils ne dessinaient rien du tout, en silence. */
+    if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH  ||
+        gTool == TOOL_ERASER || gTool == TOOL_SPRAY  ||
+        gTool == TOOL_LINE   || gTool == TOOL_RECT   ||
+        gTool == TOOL_OVAL   || gTool == TOOL_FREEFORM) {
+
+        Object *card = hc_current_card();
+        if (!card) return;
+        Object *layer = gEditBackground ? card->bg : card;
+        if (!layer) layer = card;
+        NSBitmapImageRep *rep = paint_bitmap(layer,
+                                    (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
+
+        CGFloat marge;
+        switch (gTool) {
+            case TOOL_BRUSH:
+                brush_stroke(rep, p, p);
+                marge = 24;
+                break;
+            case TOOL_ERASER:
+                erase_stroke(rep, p, p, 16);
+                marge = 20;
+                break;
+            case TOOL_SPRAY:
+                spray_stroke(rep, p, p, gSprayRadius, gSprayDensity);
+                marge = gSprayRadius + 4;
+                break;
+            default:
+                /* Crayon, ligne et formes. On passe par paint_stroke plutôt
+                 * que de peindre à la main : elle travaille dans le repère de
+                 * la CARTE, y vers le bas, alors qu'un contexte bitmap a son
+                 * origine en bas à gauche — un NSRectFill direct posait le
+                 * point à la hauteur inverse.
+                 *
+                 * Un trait d'un pixel de long tient lieu de point, et évite le
+                 * cas dégénéré d'un segment de longueur nulle, dont le rendu
+                 * dépend du moteur. */
+                paint_stroke(rep, p, NSMakePoint(p.x + 1, p.y),
+                             [NSColor blackColor], gLineWidth);
+                marge = gLineWidth + 2;
+                break;
+        }
+
+        /* Ne rafraîchir que le point posé. Marquer toute la vue sale
+         * recomposait la carte entière — calque, champs, boutons — une fois
+         * par point, et un maillage de surface en compte des milliers. */
+        [gView setNeedsDisplayInRect:
+            NSMakeRect(p.x - marge, p.y - marge, 2 * marge, 2 * marge)];
+        return;
+    }
+
     if (hit && gTool == TOOL_BROWSE) {
         hc_send(hit, "mouseDown");
         hc_send(hit, "mouseUp");
@@ -1071,15 +1247,39 @@ static void cocoa_click_at(int x, int y, const char *mods) {
 
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
-
+ 
     if (strcasecmp(item, "Clear Picture") == 0 ||
         strcasecmp(item, "Clear") == 0) {
+        /* La sélection d'abord, tout le calque seulement s'il n'y en a pas. */
+        if (gTool == TOOL_SELRECT && gSelRectActive) {
+            Object *card = hc_current_card();
+            if (!card) return;
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep =
+                paint_bitmap(layer, (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
+            [gView beginPaintUndo];
+            erase_rect(rep, gSelStart, gSelEnd);
+            gSelRectActive = NO;
+            [gView stopAntsTimer];
+            [gView setNeedsDisplay:YES];
+            return;
+        }
         [gView eraseAll];
         return;
     }
+
     if (strcasecmp(item, "Select All") == 0) {
+        NSRect b = [gView bounds];
+        gSelStart = NSMakePoint(0, 0);
+        gSelEnd   = NSMakePoint(b.size.width, b.size.height);
+        gSelRectActive = YES;
+        [gView startAntsTimer];
+        [gView setNeedsDisplay:YES];
         return;
     }
+
     NSLog(@"[doMenu] élément non géré : %s", item);
 }
 
@@ -1418,6 +1618,7 @@ static const char *cocoa_global_get(const char *name) {
             case TOOL_OVAL:     n = "oval";      break;
             case TOOL_FREEFORM: n = "curve";     break;
             case TOOL_TEXT:     n = "text";      break;
+                
             default: break;
         }
         snprintf(gGlobBuf, sizeof gGlobBuf, "%s tool", n);
@@ -1621,26 +1822,36 @@ static void cocoa_play(const char *name) {
 }
 
 static void cocoa_idle(void) {
-    int noyau = hc_take_visual_dirty();
-    if (!noyau && ![gView needsDisplay]) return;
-    
-  if (!noyau && ![gView needsDisplay]) {
-       //Rendre la main au système, mais pas à chaque tour.
-         
-        
-        static CFTimeInterval derniere = 0;
-        CFTimeInterval maintenant = CACurrentMediaTime();
-        if (maintenant - derniere >= 0.02) {
-            derniere = maintenant;
-            [NSThread sleepForTimeInterval:0.001];
-        }
-        return;
-    }
-   
-    [gView display];
+    /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
+     * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
+     * montrer. */
+    if (hc_take_visual_dirty()) [gView setNeedsDisplay:YES];
+
+    /* Au plus soixante fois par seconde. Ce qui n'est pas montré maintenant
+     * reste marqué sale et partira à l'image suivante : rien ne se perd, et la
+     * boucle de script n'est pas ralentie par l'affichage. */
+    static CFTimeInterval prochaine = 0;
+    CFTimeInterval maintenant = CACurrentMediaTime();
+    if (maintenant < prochaine) return;
+    /* On avance d'un pas fixe, sans dériver ; si on a pris du retard, on
+     * repart de maintenant plutôt que de rattraper en rafale. */
+    prochaine += 1.0 / 60.0;
+    if (prochaine < maintenant) prochaine = maintenant + 1.0 / 60.0;;
+
+    /* Un tour de boucle d'événements, et non un simple display.
+     *
+     * Une partie de ce qui est visible ne vit pas dans drawRect: — le
+     * surlignage d'un champ est dessiné par gFieldEditor, une NSTextView
+     * adossée à un CALQUE. Marquer la vue sale ne suffit pas : le contenu d'un
+     * calque n'atteint l'écran qu'à la validation de la transaction, que seule
+     * la boucle d'événements déclenche.
+     *
+     * C'est aussi ce qui rend la fenêtre réactive pendant un long script :
+     * les clics et les touches sont traités au passage. beforeDate:[NSDate
+     * date] veut dire « ne dors pas si la file est vide ». */
     [[gView window] displayIfNeeded];
-    [CATransaction flush];
-    [NSThread sleepForTimeInterval:1.0 / 60.0];
+    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                             beforeDate:[NSDate date]];
 }
 
 static NSFont *text_font(void) {
@@ -2530,6 +2741,29 @@ static int gColorTarget = 0;
     [gPatternPanel makeKeyAndOrderFront:nil];
 }
 
+/* Ne composer que la portion du calque qui recoupe la zone sale.
+ *
+ * Composer le calque ENTIER à chaque redessin coûtait une vingtaine de
+ * millisecondes, deux fois — celui du fond et celui de la carte. Sur un tracé
+ * de plusieurs milliers de segments, c'est là que passait tout le temps, et
+ * c'est pourquoi la pile d'origine paraissait plus vive sous Basilisk :
+ * QuickDraw ne rafraîchissait que les pixels touchés.
+ *
+ * La vue est retournée, origine en haut ; un NSBitmapImageRep ne l'est pas.
+ * Le rectangle source se déduit donc par symétrie verticale. */
+static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
+    if (!rep) return;
+    CGFloat W = [rep pixelsWide], H = [rep pixelsHigh];
+    NSRect dest = NSIntersectionRect(NSIntegralRect(sale), NSMakeRect(0, 0, W, H));
+    if (NSIsEmptyRect(dest)) return;
+    NSRect src = NSMakeRect(dest.origin.x,
+                            H - (dest.origin.y + dest.size.height),
+                            dest.size.width, dest.size.height);
+    [rep drawInRect:dest fromRect:src
+          operation:NSCompositingOperationSourceOver fraction:1.0
+     respectFlipped:YES hints:nil];
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     /* Lier le catalogue d'icônes à la pile de CETTE fenêtre, avant tout dessin.
      *
@@ -2562,26 +2796,19 @@ static int gColorTarget = 0;
     NSRect b = [self bounds];
 
     if (card->bg) {
-        NSBitmapImageRep *bgpaint = paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height);
-        [bgpaint drawInRect:NSMakeRect(0, 0, [bgpaint pixelsWide], [bgpaint pixelsHigh])
-                   fromRect:NSZeroRect
-                  operation:NSCompositingOperationSourceOver fraction:1.0
-             respectFlipped:YES hints:nil];
+        draw_layer_dirty(paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height),
+                         dirtyRect);
+        for (int i = 0; i < card->bg->nparts; i++)
+            if (part_touche(card->bg->parts[i], dirtyRect))
+                draw_part(card->bg->parts[i]);
     }
 
-    if (card->bg)
-        for (int i = 0; i < card->bg->nparts; i++)
-            draw_part(card->bg->parts[i]);
-
     if (!gEditBackground) {
-        NSBitmapImageRep *cardpaint = paint_bitmap(card, (int)b.size.width, (int)b.size.height);
-        [cardpaint drawInRect:NSMakeRect(0, 0, [cardpaint pixelsWide], [cardpaint pixelsHigh])
-                     fromRect:NSZeroRect
-                    operation:NSCompositingOperationSourceOver fraction:1.0
-               respectFlipped:YES hints:nil];
-
+        draw_layer_dirty(paint_bitmap(card, (int)b.size.width, (int)b.size.height),
+                         dirtyRect);
         for (int i = 0; i < card->nparts; i++)
-            draw_part(card->parts[i]);
+            if (part_touche(card->parts[i], dirtyRect))
+                draw_part(card->parts[i]);
     }
 
     if (gSelected) {
@@ -2733,6 +2960,7 @@ static int gColorTarget = 0;
         [caret setLineWidth:1];
         [caret stroke];
     }
+
     draw_popup_menu();
 }
 
@@ -4327,13 +4555,23 @@ static NSTextField  *gSprayDensityLabel = nil;
     [self setNeedsDisplay:YES];
 }
 - (void)startStillDownTimer {
-     
     [self stopStillDownTimer];
-    gStillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/20.0
+    gStillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
                                                        target:self
                                                      selector:@selector(stillDownTick:)
                                                      userInfo:nil
                                                       repeats:YES];
+
+    /* Le mode « common » fait continuer le minuteur pendant qu'un menu est
+     * ouvert ou qu'on redimensionne la fenêtre ; sans lui il se fige, et le
+     * script cesse de recevoir mouseStillDown au pire moment.
+     *
+     * Tolérance nulle : macOS regroupe volontiers les déclenchements pour
+     * économiser l'énergie, ce qui produit exactement les à-coups qu'on
+     * cherche à supprimer. */
+    [[NSRunLoop currentRunLoop] addTimer:gStillDownTimer
+                                 forMode:NSRunLoopCommonModes];
+    [gStillDownTimer setTolerance:0];
 }
 
 - (void)stopStillDownTimer {

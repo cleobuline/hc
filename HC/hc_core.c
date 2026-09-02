@@ -19,7 +19,7 @@
 #include "hct_eval.h"
 
 /* ==================== outils chaînes ==================== */
-#define HC_V3_DEFAUT 1
+#define HC_V3_DEFAUT 0
 static char *dupstr(const char *s)
 {
     if (!s) return NULL;
@@ -157,6 +157,14 @@ static Object *g_current_card = NULL;
 static Object *g_stacks[HC_MAX_STACKS];
 static int     g_nstacks = 0;
 static int g_visual_dirty = 0;
+
+/* L'outil courant et la sélection de peinture vivent chez l'HÔTE, qui les
+ * connaît déjà : il les pose à la souris comme au script, et lui seul voit
+ * les pixels. Les répliquer ici aurait fait une seconde source de vérité,
+ * aveugle à tout ce que l'utilisateur fait à la main.
+ *
+ * Le noyau se contente donc de demander « the tool » quand il en a besoin,
+ * par host_global("tool") — qui rend la forme complète, « select tool ». */
 /* ---- piles en usage ----
  * Déclarées par « start using stack "X" », retirées par « stop using ». Ce
  * sont des pointeurs empruntés, comme le registre : fermer une pile la retire
@@ -478,6 +486,39 @@ static void arena_shutdown(void)
  * par « set lockScreen to … ». */
 static int g_ecran_verrouille = 0;
 
+/* Champs modifiés pendant le verrou, à rafraîchir au déverrouillage.
+ *
+ * Demander un rafraîchissement GLOBAL au déverrouillage, comme je le faisais,
+ * pouvait coûter plus cher que les rafraîchissements qu'on venait d'éviter :
+ * l'hôte repeint alors la carte entière — boutons, image, tous les champs —
+ * là où sans « lock screen » il n'aurait marqué qu'un seul champ. On retient
+ * donc les champs touchés et on ne réveille que ceux-là.
+ *
+ * Au-delà de la capacité on retombe sur le rafraîchissement global, qui reste
+ * correct : mieux vaut trop repeindre que pas assez. */
+#define HC_VERROU_MAX 64
+static Object *g_verrou_champs[HC_VERROU_MAX];
+static int     g_verrou_n = 0;
+static int     g_verrou_deborde = 0;
+
+static void verrou_retiens(Object *field)
+{
+    for (int i = 0; i < g_verrou_n; i++)
+        if (g_verrou_champs[i] == field) return;
+    if (g_verrou_n >= HC_VERROU_MAX) { g_verrou_deborde = 1; return; }
+    g_verrou_champs[g_verrou_n++] = field;
+}
+
+static void verrou_reveille(void)
+{
+    if (g_verrou_deborde) g_visual_dirty = 1;
+    else if (g_host && g_host->field_changed)
+        for (int i = 0; i < g_verrou_n; i++)
+            g_host->field_changed(g_verrou_champs[i]);
+    g_verrou_n = 0;
+    g_verrou_deborde = 0;
+}
+
 /* Signale à l'hôte qu'un champ a changé (rafraîchissement d'affichage).
  *
  * Rien ne sort tant que l'écran est verrouillé : c'est la raison d'être de
@@ -486,7 +527,7 @@ static int g_ecran_verrouille = 0;
  * redessin — l'interprétation ne pesait plus rien et l'affichage tout. */
 static void notify_field(Object *field)
 {
-    if (g_ecran_verrouille) return;
+    if (g_ecran_verrouille) { verrou_retiens(field); return; }
     if (g_host && g_host->field_changed) g_host->field_changed(field);
 }
 
@@ -500,6 +541,40 @@ static const char *host_global(const char *name)
 static void host_global_set(const char *name, const char *value)
 {
     if (g_host && g_host->global_set) g_host->global_set(name, value);
+}
+
+/* Attendre une DURÉE réelle, en laissant l'hôte respirer.
+ *
+ * L'attente comptait des TOURS de host_idle, en supposant qu'un tour valait un
+ * tick : c'était vrai tant que l'hôte dormait un soixantième de seconde à
+ * chaque appel. Dès qu'il rend la main tout de suite — ce qu'il doit faire
+ * pour qu'une boucle de tracé aille vite — « wait 10 seconds » passait en un
+ * éclair. On mesure donc le temps, et l'on dort entre deux tours plutôt que de
+ * brûler le processeur.
+ *
+ * Le pas de sommeil est court, un deux-cent-quarantième de seconde : assez
+ * pour ne rien consommer, assez fin pour que « wait 1 tick » reste précis. */
+static void host_idle(void);
+
+static void attends(double secondes)
+{
+    if (secondes <= 0) { host_idle(); return; }
+
+    struct timespec t0, t;
+    if (clock_gettime(CLOCK_MONOTONIC, &t0) != 0) { host_idle(); return; }
+
+    for (;;) {
+        host_idle();
+        clock_gettime(CLOCK_MONOTONIC, &t);
+        double ecoule = (double)(t.tv_sec - t0.tv_sec)
+                      + (double)(t.tv_nsec - t0.tv_nsec) / 1e9;
+        if (ecoule >= secondes) return;
+
+        double reste = secondes - ecoule;
+        double pause = reste < 1.0 / 240.0 ? reste : 1.0 / 240.0;
+        struct timespec dodo = { 0, (long)(pause * 1e9) };
+        nanosleep(&dodo, NULL);
+    }
 }
 
 /* Respiration : l'hôte redessine et traite ses événements. */
@@ -5660,8 +5735,15 @@ static int v3_respire(void *d)
      * l'hôte qui la donne en repeignant.
      *
      * hc_take_visual_dirty() remet le drapeau à zéro chez l'hôte : le tour
-     * suivant, s'il n'a rien changé de visible, retombe sur l'étranglement. */
-    if (g_visual_dirty) { host_idle(); return 1; }
+     * suivant, s'il n'a rien changé de visible, retombe sur l'étranglement.
+     *
+     * SAUF écran verrouillé. Il n'y a alors rien à montrer, donc rien qui
+     * presse — et surtout, un hôte qui ne repeint pas pendant le verrou
+     * n'appelle pas hc_take_visual_dirty() et ne remet donc JAMAIS le drapeau
+     * à zéro. On restait bloqué sur cette branche à chaque tour, et
+     * « lock screen » rendait la boucle plus LENTE qu'sans, exactement le
+     * contraire de ce qu'il promet. */
+    if (g_visual_dirty && !g_ecran_verrouille) { host_idle(); return 1; }
 
     /* Rien de visible : pas à CHAQUE tour, environ soixante fois par seconde.
      *
@@ -7035,10 +7117,9 @@ static void exec_line_body(Object *me, const char *line)
         if (ci_word(skip_spaces(rest), "screen")) {
             g_ecran_verrouille = ci_equal(verb, "lock");
             host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
-            /* Au déverrouillage, on redemande un rafraîchissement : les
-             * champs modifiés pendant le verrou n'ont rien signalé, et l'hôte
-             * l'apprend par hc_take_visual_dirty(). */
-            if (!g_ecran_verrouille) g_visual_dirty = 1;
+            /* Au déverrouillage, on réveille les champs modifiés pendant le
+             * verrou — eux seulement, pas l'écran entier. */
+            if (!g_ecran_verrouille) verrou_reveille();
             set_result("");
             return;
         }
@@ -7181,7 +7262,7 @@ static void exec_line_body(Object *me, const char *line)
              * dessus pour ne pas redessiner mille fois pour rien. */
             if (ci_equal(prop, "lockscreen")) {
                 g_ecran_verrouille = truthy(val);
-                if (!g_ecran_verrouille) g_visual_dirty = 1;
+                if (!g_ecran_verrouille) verrou_reveille();
             }
 
             host_global_set(prop, val);
@@ -8190,6 +8271,7 @@ static void exec_line_body(Object *me, const char *line)
      * que fait la boucle repeat. Une attente sans redessin donnerait un
      * programme qui semble planté. */
     if (ci_equal(verb, "wait")) {
+        /* voir attends() plus haut */
         const char *a = skip_spaces(rest);
         if (ci_word(a, "for")) a = skip_spaces(a + 3);
 
@@ -8211,7 +8293,9 @@ static void exec_line_body(Object *me, const char *line)
                     emit(HC_ERR, "!! wait interrompu après %d tours", HC_MAX_LOOP);
                     break;
                 }
-                host_idle();
+                /* Même raison : sans le sommeil de l'hôte, cette boucle
+                 * tournerait à plein régime en attendant un clic. */
+                attends(1.0 / 60.0);
             }
             return;
         }
@@ -8251,7 +8335,7 @@ static void exec_line_body(Object *me, const char *line)
             ticks = n * 60.0;
 
         if (ticks > HC_MAX_LOOP) ticks = HC_MAX_LOOP;
-        for (long k = 0; k < (long)ticks; k++) host_idle();
+        attends(ticks / 60.0);
         return;
     }
 
@@ -8437,6 +8521,7 @@ static void exec_line_body(Object *me, const char *line)
      * « choose brush tool », « choose line tool ». Le mot « tool » final est
      * facultatif chez certains auteurs ; on le retire s'il est là. */
     if (ci_equal(verb, "choose")) {
+        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         ARENA_MARK;
         char *nom = arena_buf();
         snprintf(nom, HC_VAL, "%s", skip_spaces(rest));
@@ -8467,6 +8552,7 @@ static void exec_line_body(Object *me, const char *line)
         }
         /* « choose tool 3 » : par numéro, comme la palette. On laisse l'hôte
          * décider, il connaît l'ordre de ses cases. */
+        emit(HC_TRACE, "   ✎ choose « %s »", nom);
         if (g_host && g_host->choose_tool) g_host->choose_tool(nom);
         else emit(HC_ERR, "   !! choose : l'hôte ne gère pas les outils");
         ARENA_FREE;
@@ -8509,9 +8595,11 @@ static void exec_line_body(Object *me, const char *line)
      * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
      * se superposait au précédent. */
     if (ci_equal(verb, "domenu")) {
+        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         ARENA_MARK;
         char *item = arena_buf();
         eval_checked(rest, item, HC_VAL);
+
         if (g_host && g_host->do_menu) g_host->do_menu(item);
         else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
         ARENA_FREE;
@@ -8520,6 +8608,7 @@ static void exec_line_body(Object *me, const char *line)
     }
     /* ---- drag from <point> to <point> [with <touches>] ---- */
     if (ci_equal(verb, "drag")) {
+        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         const char *a = skip_spaces(rest);
         if (ci_word(a, "from")) a = skip_spaces(a + 4);
         const char *to = find_kw(a, "to");
@@ -8552,6 +8641,9 @@ static void exec_line_body(Object *me, const char *line)
         if (c1) y1 = atoi(c1 + 1);
         if (c2) y2 = atoi(c2 + 1);
 
+        { const char *t = host_global("tool");
+          emit(HC_TRACE, "   ✎ drag %d,%d -> %d,%d (%s)",
+               x1, y1, x2, y2, t ? t : "?"); }
         if (g_host && g_host->drag) g_host->drag(x1, y1, x2, y2, mods);
         else emit(HC_ERR, "   !! drag : l'hôte ne gère pas la souris");
         ARENA_FREE;
@@ -8561,6 +8653,7 @@ static void exec_line_body(Object *me, const char *line)
 
     /* ---- click at <point> [with <touches>] ---- */
     if (ci_equal(verb, "click")) {
+        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         const char *a = skip_spaces(rest);
         if (ci_word(a, "at")) a = skip_spaces(a + 2);
 
@@ -8583,6 +8676,8 @@ static void exec_line_body(Object *me, const char *line)
         const char *c = strchr(v, ',');
         if (c) y = atoi(c + 1);
 
+        { const char *t = host_global("tool");
+          emit(HC_TRACE, "   ✎ click at %d,%d (%s)", x, y, t ? t : "?"); }
         if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
         else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
         ARENA_FREE;
@@ -8592,6 +8687,7 @@ static void exec_line_body(Object *me, const char *line)
 
     /* ---- type <texte> [with <touches>] ---- */
     if (ci_equal(verb, "type")) {
+        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         const char *a = skip_spaces(rest);
         const char *with = find_kw(a, "with");
 
@@ -9288,7 +9384,7 @@ static int hc_send_args_k(Object *target, const char *message,
      * un autre doit garder son verrou pendant l'appel. */
     if (g_depth == 0 && g_ecran_verrouille) {
         g_ecran_verrouille = 0;
-        g_visual_dirty = 1;
+        verrou_reveille();
         host_global_set("lockScreen", "false");
     }
 
