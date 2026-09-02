@@ -88,13 +88,64 @@ static NSColor *visual_image_color(const char *image) {
     return nil;                            /* « card » et « inverse » */
 }
 
+/* ═══ Écran gelé (« lock screen ») ═══════════════════════════════
+ *
+ * HyperCard ne SUSPENDAIT pas le dessin pendant un verrou : il gelait
+ * l'image. Le script peignait dessous, sur une carte que personne ne voyait,
+ * et « unlock screen » révélait le résultat d'un coup — éventuellement par un
+ * effet de transition, ce qui est toute la raison d'être de la formule
+ * « unlock screen with visual dissolve ».
+ *
+ * C'est aussi la seule forme qui tienne ici. Le noyau filtre déjà les
+ * écritures dans les champs (notify_field), mais tout ce que l'hôte dessine
+ * lui-même — « drag », « click at », « choose », « doMenu » — marque la vue
+ * sale en direct, à une soixantaine d'endroits. Geler à l'entrée de drawRect:
+ * les couvre tous d'un coup, là où filtrer chaque marquage serait sans fin. */
+static NSBitmapImageRep *gLockImage = nil;
+
+BOOL hcv_screen_locked(void) { return gLockImage != nil; }
+
+void hcv_lock_screen(void) {
+    if (gLockImage || gVisualRunning) return;   /* déjà gelé, ou en transition */
+    /* Même précaution que pour une transition : pendant la photographie, le
+     * dessin doit montrer la carte et non ce qu'on est en train de figer. */
+    gVisualCapturing = YES;
+    gLockImage = snapshot_view();
+    gVisualCapturing = NO;
+}
+
+void hcv_unlock_screen(void) {
+    if (!gLockImage) return;
+    /* Un « visual effect » armé pendant le verrou trouve ici son image de
+     * départ : c'est l'écran tel qu'il était AVANT que le script ne peigne. */
+    if (gVisualSteps > 0 && !gVisualBefore) gVisualBefore = gLockImage;
+    gLockImage = nil;
+    [gView setNeedsDisplay:YES];
+}
+
+/* Appelée en tête de drawRect:. Rend YES si l'image gelée a pris la place du
+ * dessin normal. */
+BOOL hcv_draw_locked(NSView *v) {
+    if (!gLockImage || gVisualCapturing) return NO;
+    draw_snapshot(gLockImage, [v bounds], NSCompositingOperationCopy, 1.0);
+    return YES;
+}
+
 void cocoa_visual_effect(const char *effect, const char *speed,
                                 const char *image) {
     if (!gView || !effect) return;
 
-    gVisualCapturing = YES;
-    NSBitmapImageRep *avant = snapshot_view();
-    gVisualCapturing = NO;
+    /* Sous verrou, l'écran visible EST l'image gelée : la photographier de
+     * nouveau capturerait ce que le script vient de peindre en cachette, et la
+     * transition partirait de l'arrivée. */
+    NSBitmapImageRep *avant;
+    if (gLockImage) {
+        avant = gLockImage;
+    } else {
+        gVisualCapturing = YES;
+        avant = snapshot_view();
+        gVisualCapturing = NO;
+    }
     if (!avant) return;
 
     /* Le noyau change de carte juste après notre retour ; on doit donc
