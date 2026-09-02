@@ -1280,7 +1280,7 @@ static void cocoa_do_menu(const char *item) {
         return;
     }
 
-    NSLog(@"[doMenu] élément non géré : %s", item);
+ 
 }
 
 static void cocoa_type_text(const char *text, const char *mods) {
