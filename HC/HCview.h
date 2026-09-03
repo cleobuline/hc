@@ -16,6 +16,11 @@
  * a les siens ; HCDocument désigne l'actif par hc_set_active_doc. */
 - (void *)docState;
 - (Object *)documentCard;
+/* La carte mémorisée par CETTE vue, sans passer par le noyau.
+ * documentCard interroge hc_current_card() dès que la vue est active, ce qui
+ * ne vaut rien au moment précis où l'on bascule de fenêtre : le noyau tient
+ * encore la carte de la pile qu'on vient de quitter. */
+- (Object *)rememberedCard;
 - (void)dropFloating;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;

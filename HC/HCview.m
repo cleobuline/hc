@@ -1694,20 +1694,6 @@ static BOOL gCursorHidden = NO;
 static void cocoa_global_set(const char *name, const char *value) {
     int vrai = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 
-    /* « lock screen », « unlock screen », « set lockScreen to … ».
-     *
-     * Le noyau nous envoyait fidèlement la propriété (hc_core.c, lock/unlock,
-     * set lockScreen, et le déverrouillage automatique au retour au repos) et
-     * personne ne l'écoutait : elle traversait toutes les branches et
-     * repartait. Le verrou ne valait donc que pour les écritures dans les
-     * champs, filtrées côté noyau par notify_field — le dessin par script,
-     * lui, passait tout droit à l'écran. */
-    if (strcasecmp(name, "lockScreen") == 0) {
-        if (vrai) hcv_lock_screen();
-        else      hcv_unlock_screen();
-        return;
-    }
-
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
         [gView setNeedsDisplay:YES];
@@ -1836,21 +1822,6 @@ static void cocoa_play(const char *name) {
 }
 
 static void cocoa_idle(void) {
-    /* Écran verrouillé : rien à montrer.
-     *
-     * Redessiner l'image gelée soixante fois par seconde serait exact mais
-     * gratuit — et c'est précisément ce que « lock screen » promet d'éviter à
-     * une boucle qui écrit dix mille fois. On consomme quand même le drapeau
-     * (hcv_unlock_screen redemandera un redessin complet), et l'on continue de
-     * vider la file d'événements : sans cela « repeat until the mouse is up »
-     * ne verrait jamais la souris se relever, même sous verrou. */
-    if (hcv_screen_locked()) {
-        hc_take_visual_dirty();
-        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                 beforeDate:[NSDate date]];
-        return;
-    }
-
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
      * montrer. */
@@ -1992,6 +1963,8 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void *)docState { return &_doc; }
+
+- (Object *)rememberedCard { return _doc.card; }
 
 - (Object *)documentCard {
     if (gDoc == &_doc) {
@@ -2807,10 +2780,6 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         Object *dc = [self documentCard];
         hcicon_edit_bind(dc ? dc->owner : NULL);
     }
-
-    /* Écran verrouillé : on remontre l'image d'avant le verrou et l'on sort.
-     * Le script continue de peindre, mais dans la carte, pas sur l'écran. */
-    if (hcv_draw_locked(self)) return;
 
     if (visual_pending()) {
         dispatch_async(dispatch_get_main_queue(), ^{

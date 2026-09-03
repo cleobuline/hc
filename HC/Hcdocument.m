@@ -42,6 +42,32 @@ static HCDocument *gCurrentDoc = nil;
      * même carte — et la seconde fenêtre afficherait le contenu de la
      * première. */
     hc_set_active_doc([doc.view docState]);
+
+    /* Et rendre au noyau la carte de CETTE pile.
+     *
+     * L'échange se fait dans les deux sens, et il manquait un sens. La vue
+     * active lit hc_current_card() à chaque dessin et mémorise ce qu'elle y
+     * trouve ; la vue inactive garde la sienne. Mais à l'instant du
+     * basculement, la vue qui reprend la main est déjà « active » alors que le
+     * noyau tient encore la carte de la pile qu'on vient de quitter — elle
+     * adoptait donc une carte étrangère, et la sienne était perdue.
+     *
+     * D'où rememberedCard, qui court-circuite cette lecture. Le test sur
+     * `owner` couvre le cas où la carte mémorisée n'appartient plus à la pile ;
+     * on retombe alors sur la première, comme avant. */
+    Object *garde = [doc.view rememberedCard];
+    if (garde && garde->owner == doc.stack) {
+        hc_set_current_card(garde);
+    } else if (doc.stack) {
+        Object *cur = hc_current_card();
+        if (!cur || cur->owner != doc.stack) {
+            for (int i = 0; i < doc.stack->nparts; i++)
+                if (doc.stack->parts[i]->type == OBJ_CARD) {
+                    hc_set_current_card(doc.stack->parts[i]);
+                    break;
+                }
+        }
+    }
 }
 
 + (HCDocument *)documentForStack:(Object *)stack {
@@ -139,19 +165,10 @@ static HCDocument *gCurrentDoc = nil;
      * menu à cible nulle ne trouveraient plus la vue. */
     if (self.view && [self.window firstResponder] != self.view)
         [self.window makeFirstResponder:self.view];
-    if (self.stack) {
-        /* Replacer le noyau sur une carte de CETTE pile : les scripts et les
-         * commandes de menu travaillent sur la carte courante, qui doit suivre
-         * la fenêtre au premier plan. */
-        Object *cur = hc_current_card();
-        if (!cur || cur->owner != self.stack) {
-            for (int i = 0; i < self.stack->nparts; i++)
-                if (self.stack->parts[i]->type == OBJ_CARD) {
-                    hc_set_current_card(self.stack->parts[i]);
-                    break;
-                }
-        }
-    }
+    /* Replacer le noyau sur la carte de CETTE pile : c'est setCurrent: qui
+     * s'en charge maintenant, seul point de passage obligé de tous les
+     * changements de document — la fermeture d'une fenêtre y passe aussi, et
+     * dupliquer le choix ici les aurait fait diverger. */
     [self.view setNeedsDisplay:YES];
 }
 

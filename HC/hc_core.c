@@ -6358,13 +6358,23 @@ static void exec_if(Object *me, const char *head, char **L, int from, int end_id
         exec_block(me, L, from, m >= 0 ? m : end_idx);
         { ARENA_FREE; return; }
     }
-    if (m < 0) return;
+    /* Chaque sortie rend ses tampons. Celle-ci — condition fausse, pas de
+     * « else » — les gardait, et c'est la plus fréquente de toutes : un
+     * « if … then … end if » non pris dans une boucle serrée perdait deux
+     * tampons par tour. exec_block n'a pas de marque à lui pour les
+     * récupérer, donc g_atop ne faisait que monter jusqu'à « arène de
+     * tampons saturée », des milliers de tours plus loin. Le script
+     * s'arrêtait alors en plein milieu, sans rapport visible avec la
+     * condition qui l'avait déclenché.
+     *
+     * `rest` pointe dans L[m], pas dans l'arène : libérer après l'appel est
+     * sans danger. */
+    if (m < 0) { ARENA_FREE; return; }
 
     const char *rest = skip_spaces(L[m] + 4);   /* après « else » */
-    if (!*rest) { exec_block(me, L, m + 1, end_idx); return; }
-    if (opens_if(rest)) { exec_if(me, rest, L, m + 1, end_idx); return; }
+    if (!*rest) { exec_block(me, L, m + 1, end_idx); ARENA_FREE; return; }
+    if (opens_if(rest)) { exec_if(me, rest, L, m + 1, end_idx); ARENA_FREE; return; }
     exec_stmt(me, rest);          /* « else <instruction> », if en ligne compris */
-    ARENA_FREE;
     ARENA_FREE;
 }
 
@@ -6396,7 +6406,6 @@ static void exec_stmt(Object *me, const char *s)
         }
     }
     exec_line(me, s);
-    ARENA_FREE;
     ARENA_FREE;
 }
 
@@ -6449,16 +6458,18 @@ static void exec_if_chain(Object *me, char **L, int i, int to, int end)
         memcpy(cond, c0, (size_t)n); cond[n] = '\0';
         eval_checked(cond, val, HC_VAL);
 
-        if (truthy(val)) { exec_stmt(me, skip_spaces(th + 4)); return; }
+        /* On ne sort d'ici que par `return` : les deux ARENA_FREE qui
+         * suivaient la boucle n'ont jamais été atteints. Chaque sortie porte
+         * donc la sienne. `rest` et `head` pointent dans L, pas dans l'arène :
+         * libérer avant de rendre la main ne les invalide pas. */
+        if (truthy(val)) { exec_stmt(me, skip_spaces(th + 4)); ARENA_FREE; return; }
 
-        if (i + 1 >= to || !ci_word(L[i+1], "else")) return;
+        if (i + 1 >= to || !ci_word(L[i+1], "else")) { ARENA_FREE; return; }
         const char *rest = skip_spaces(L[i+1] + 4);
-        if (!*rest)          { exec_block(me, L, i + 2, end); return; }
+        if (!*rest)          { exec_block(me, L, i + 2, end); ARENA_FREE; return; }
         if (is_inline_if(rest)) { head = rest; i++; continue; }
-        exec_stmt(me, rest); return;
+        exec_stmt(me, rest); ARENA_FREE; return;
     }
-    ARENA_FREE;
-    ARENA_FREE;
 }
 
 static void exec_block(Object *me, char **L, int from, int to)
