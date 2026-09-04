@@ -6191,17 +6191,21 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
                                          * dessous, qui doivent pouvoir
                                          * rembobiner À LEUR PROPRE MARQUE
                                          * sans toucher à `mots`. */
+    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
+     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
+     * premier rang desquels « the », que l'analyseur avale sans le ranger
+     * dans un nœud (« sort cards by the name of me » perdait son « the »).
+     * v3_source sur le nœud entier restitue l'intervalle EXACT du texte
+     * source, puisque « the » se situe bien ENTRE les jetons des fils, dans
+     * cet intervalle. Trouvé en portant « convert », qui en dépendait pour
+     * de vrai — voir son commentaire pour le détail du symptôme. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     const char *a = skip_spaces(mots);
@@ -6382,17 +6386,16 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     const char *r = skip_spaces(mots);
@@ -6587,17 +6590,18 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
                                          * les ARENA_MARK imbriqués ci-dessous
                                          * doivent rembobiner à LEUR marque sans
                                          * toucher à `mots`. */
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. Ici « the »
+     * pouvait manquer aussi bien devant la propriété (« set [the]
+     * textStyle… ») que dans la valeur elle-même (« to the value of x »). */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     g_visual_dirty = 1;
@@ -6939,17 +6943,24 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
+     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
+     * premier rang desquels « the », que l'analyseur avale sans le ranger
+     * dans un nœud. « convert the date to dateItems » redevenait « convert
+     * date to dateItems », et to_it — qui décide si le résultat va dans
+     * `it` ou dans un conteneur — se trompait alors de branche : « date »
+     * était pris pour un conteneur à écrire, et il naissait une variable de
+     * ce nom au lieu que le résultat aille dans `it`. v3_source sur le nœud
+     * entier restitue l'intervalle EXACT du texte source, « the » compris,
+     * puisqu'il se situe bien ENTRE les jetons des fils, dans cet
+     * intervalle. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     /* Le « to » qui compte est le dernier de premier niveau : la source
@@ -7027,17 +7038,16 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     const char *a = skip_spaces(mots);
@@ -7136,17 +7146,16 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     const char *a = skip_spaces(mots);
@@ -7261,17 +7270,16 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
     {
-        int pos = 0;
-        for (int i = 0; i < n->nfils; i++) {
-            char *frag = arena_buf();
-            v3_source(n->fils[i], frag, HC_VAL);
-            if (!frag[0]) continue;
-            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
-                            pos ? " " : "", frag);
-            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
-        }
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
     }
 
     const char *a = skip_spaces(mots);
@@ -7527,6 +7535,13 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
  * pour un morceau. v3_source la reconstitue donc, comme le fait v3_recours
  * pour une expression qu'elle ne sait pas évaluer elle-même.
  *
+ * Sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme « last »
+ * dans « delete the last word of X » n'est le jeton d'AUCUN nœud — juste un
+ * ordinal numérique posé sur le nœud CHUNK, dont le jeton propre commence
+ * à « word ». Reconstruire depuis n->fils[0] seul rendait donc « word of X »,
+ * sans « the last » : container_set n'y voyait plus de rang du tout. Voir le
+ * commentaire de v3_cmd_convert pour le détail de cette classe de bogue.
+ *
  * Une faute d'analyse dans la cible — n->fils[0] devenu lui-même une
  * HCTN_ERREUR — rendrait un texte tronqué : container_set effacerait alors
  * autre chose que ce que le script demande, en silence. On rend 0 plutôt que
@@ -7542,7 +7557,13 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
 
     char d[256];
-    v3_source(n->fils[0], d, sizeof d);
+    v3_source(n, d, sizeof d);
+    {
+        char *p = d;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(d, p, strlen(p) + 1);
+    }
     if (!d[0]) return 0;
 
     if (container_set(d, "", 3)) {
