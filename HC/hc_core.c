@@ -6234,6 +6234,36 @@ static void v3_brut(const HctNoeud *f, char *out, int outlen)
     out[len] = '\0';
 }
 
+/* Comme v3_brut, mais une variable LIÉE l'emporte sur le mot littéral.
+ *
+ * « choose tl tool », où tl est un paramètre qui vaut « browse », doit lire
+ * tl ; « choose line tool », où rien ne lie « line », doit rendre « line »
+ * telle quelle. C'est l'idiome de sauvegarde/restauration d'outil des
+ * scripts HyperCard classiques : « on clearScreen tl … if tl is not empty
+ * then choose tl tool ».
+ *
+ * On s'arrête à lit_var, sans passer par l'évaluateur complet : celui-ci
+ * essaierait ensuite hote.fonction, qui — pour un mot que rien ne connaît —
+ * DIFFUSE un message de ce nom via hc_call_user_function plutôt que de
+ * rendre le mot littéral. « choose select tool » enverrait alors un message
+ * « select » à travers toute la hiérarchie avant de choisir l'outil, un
+ * effet de bord que ce mot brut n'attend pas. */
+static void v3_mot_ou_var(HctContexte *ctx, const HctNoeud *f, char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!f || outlen < 1) return;
+    char nom[128];
+    v3_brut(f, nom, sizeof nom);
+    if (!*nom) return;
+    HctValeur v;
+    if (ctx->hote.lit_var && ctx->hote.lit_var(ctx->hote.donnees, nom, &v)) {
+        snprintf(out, (size_t)outlen, "%s", v.txt ? v.txt : "");
+        hct_val_libere(&v);
+        return;
+    }
+    snprintf(out, (size_t)outlen, "%s", nom);
+}
+
 /* Les touches d'un « with … », telles qu'écrites : l'hôte attend la même
  * chaîne que lui donnait l'ancien exécuteur. */
 static void v3_touches(const HctNoeud *n, int deb, char *out, int outlen)
@@ -7805,9 +7835,10 @@ static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
 /* choose <outil> [tool].
  *
  * Le motif « W [tool] » a déjà séparé les mots du nom et le suffixe « tool ».
- * Les mots sont pris BRUTS : « choose line tool » ne doit pas lire une
- * variable nommée « line ». Une chaîne, elle, s'évalue — Apple écrit aussi
- * bien « choose "Select Tool" ». */
+ * Un mot brut (HCTN_IDENT) se lit par v3_mot_ou_var : une variable liée de ce
+ * nom l'emporte, sinon c'est le mot lui-même — « choose tl tool » lit tl,
+ * « choose line tool » sans variable « line » rend « line ». Le reste (une
+ * chaîne, « choose "Select Tool" ») s'évalue normalement. */
 static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
 {
     char nom[128];
@@ -7818,7 +7849,7 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;      /* le « tool » du motif */
         char m[128];
-        if (f->genre == HCTN_IDENT) v3_brut(f, m, sizeof m);
+        if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, m, sizeof m);
         else {
             v3_val_texte(ctx, f, m, sizeof m);
             if (ctx->erreur) return 1;
