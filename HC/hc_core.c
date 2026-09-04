@@ -6096,6 +6096,267 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
     }
 }
 
+/* ---- tri : mécanique commune aux deux exécuteurs -------------------------
+ * Déplacé ici (l'original vivait juste avant l'ancien gestionnaire de
+ * « sort », documenté plus bas) parce que v3_cmd_sort en a besoin et que
+ * rien, avant ce point du fichier, n'en dépendait déjà. Le tri est STABLE :
+ * deux éléments de clé égale gardent leur ordre d'origine — HyperCard le
+ * garantissait, et des piles s'en servent pour trier sur deux critères en
+ * triant deux fois, du moins important au plus important. */
+static void eval_checked(const char *s, char *out, int outlen);   /* défini plus bas */
+
+typedef enum { SORT_TEXT, SORT_NUM, SORT_DATE } SortStyle;
+typedef struct { char *cle; int rang; Object *card; } SortItem;
+
+static int       g_sort_desc  = 0;
+static SortStyle g_sort_style = SORT_TEXT;
+
+static int sort_cmp(const void *pa, const void *pb)
+{
+    const SortItem *a = pa, *b = pb;
+    int r = 0;
+
+    if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
+        double x = 0, y = 0;
+        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
+        /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
+         * de venir se mêler aux valeurs légitimes. */
+        if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
+        else if (nx)  r = -1;
+        else if (ny)  r =  1;
+    } else {
+        const char *x = a->cle, *y = b->cle;      /* insensible à la casse */
+        while (*x && *y) {
+            int cx = tolower((unsigned char)*x), cy = tolower((unsigned char)*y);
+            if (cx != cy) { r = cx < cy ? -1 : 1; break; }
+            x++; y++;
+        }
+        if (!r) r = (*x ? 1 : 0) - (*y ? 1 : 0);
+    }
+
+    if (g_sort_desc) r = -r;
+    if (r == 0) r = a->rang - b->rang;            /* stabilité */
+    return r;
+}
+
+/* Lit sens et style, et rend ce qui reste de la ligne. */
+static const char *sort_options(const char *s, int *desc, SortStyle *style)
+{
+    for (;;) {
+        s = skip_spaces(s);
+        if      (ci_word(s, "ascending"))     { *desc = 0; s += 9;  }
+        else if (ci_word(s, "descending"))    { *desc = 1; s += 10; }
+        else if (ci_word(s, "text"))          { *style = SORT_TEXT; s += 4; }
+        else if (ci_word(s, "numeric"))       { *style = SORT_NUM;  s += 7; }
+        else if (ci_word(s, "datetime"))      { *style = SORT_DATE; s += 8; }
+        else if (ci_word(s, "international")) { *style = SORT_TEXT; s += 13; }
+        else return s;
+    }
+}
+
+/* sort [this] stack [asc|desc] [style] by <clé>
+ * sort [lines|items of] <conteneur> [asc|desc] [style] [by <clé avec each>]
+ *
+ * Motif hct_cmd.c : « * [ascending|descending] [text|numeric|international|
+ * datetime] [by e] ». Le « * » découpe la cible mot à mot — « cards », « of »,
+ * « this », « stack » deviennent chacun leur propre fils, une référence
+ * d'objet comme « field 1 » en fait parfois un seul — et rien ici n'a besoin
+ * de savoir lequel : v3_source reconstitue le texte exact de CHAQUE fils, on
+ * les rejoint par un espace, et on obtient EXACTEMENT le texte que lisait
+ * l'ancien exécuteur. On lui reprend alors son analyse mot à mot telle
+ * quelle, sans y toucher — seule la source du texte a changé.
+ *
+ * Pas d'évaluation à ce stade : « cards », « stack », « lines » restent des
+ * MOTS, pas des expressions. Une pile qui aurait une variable nommée
+ * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
+ * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
+static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;             /* nommée à part : pas de collision
+                                         * avec les ARENA_MARK imbriqués ci-
+                                         * dessous, qui doivent pouvoir
+                                         * rembobiner À LEUR PROPRE MARQUE
+                                         * sans toucher à `mots`. */
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    const char *a = skip_spaces(mots);
+    int cartes = 0;                 /* trie-t-on des cartes ? */
+    ChunkType morceau = CH_LINE;    /* pour un conteneur */
+
+    if (ci_word(a, "this")) a = skip_spaces(a + 4);
+    if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
+
+    if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
+    else if (ci_word(a, "cards")) {
+        cartes = 1; a = skip_spaces(a + 5);
+        if (ci_word(a, "of")) {
+            a = skip_spaces(a + 2);
+            if (ci_word(a, "this")) a = skip_spaces(a + 4);
+            if (ci_word(a, "stack")) a = skip_spaces(a + 5);
+        }
+    }
+    else if (ci_word(a, "lines")) { morceau = CH_LINE; a = skip_spaces(a + 5);
+                                    if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+    else if (ci_word(a, "items")) { morceau = CH_ITEM; a = skip_spaces(a + 5);
+                                    if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+
+    int desc = 0; SortStyle style = SORT_TEXT;
+
+    if (cartes) {
+        a = sort_options(a, &desc, &style);
+        const char *cle = NULL;
+        if (ci_word(a, "by")) cle = skip_spaces(a + 2);
+
+        Object *stack = g_current_card ? g_current_card->owner : NULL;
+        if (!stack) { emit(HC_ERR, "   !! sort : pas de pile");
+                      g_atop = sauve; return 1; }
+
+        int n2 = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD) n2++;
+        if (n2 < 2) { g_atop = sauve; return 1; }
+
+        SortItem *tab = calloc((size_t)n2, sizeof *tab);
+        char **cles = calloc((size_t)n2, sizeof *cles);
+        if (!tab || !cles) { free(tab); free(cles); g_atop = sauve; return 1; }
+
+        Object *avant = g_current_card;
+        int k = 0;
+        for (int i = 0; i < stack->nparts; i++) {
+            Object *c = stack->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
+             * doit désigner le champ de celle-ci, pas de la carte de
+             * départ. C'est tout le sens du tri par contenu. */
+            g_current_card = c;
+            ARENA_MARK;
+            char *tmp = arena_buf();
+            if (cle) eval_checked(cle, tmp, HC_VAL);
+            cles[k] = dupstr(tmp);
+            ARENA_FREE;
+            tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
+            k++;
+        }
+        g_current_card = avant;
+
+        g_sort_desc = desc; g_sort_style = style;
+        qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
+
+        /* Réécrire les cartes dans leur nouvel ordre, en laissant les
+         * fonds à leur place : ils occupent aussi parts[]. */
+        k = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD)
+                stack->parts[i] = tab[k++].card;
+
+        for (int i = 0; i < n2; i++) free(cles[i]);
+        free(cles); free(tab);
+        set_result("");
+        g_atop = sauve;
+        return 1;
+    }
+
+    /* --- tri d'un conteneur --- */
+    {
+        const char *by = find_kw(a, "by");
+        ARENA_MARK;
+        char *cible = arena_buf();
+        {
+            int len = by ? (int)(by - a) : (int)strlen(a);
+            if (len > HC_VAL - 1) len = HC_VAL - 1;
+            memcpy(cible, a, (size_t)len); cible[len] = '\0';
+        }
+
+        /* Les options peuvent suivre la cible : « sort field 1 descending ». */
+        char *fin = cible + strlen(cible);
+        while (fin > cible && isspace((unsigned char)fin[-1])) *--fin = '\0';
+        for (;;) {
+            char *mot = fin;
+            while (mot > cible && !isspace((unsigned char)mot[-1])) mot--;
+            if (mot == cible) break;
+            int d2 = desc; SortStyle s2 = style;
+            const char *apres = sort_options(mot, &d2, &s2);
+            if (apres == mot) break;            /* pas une option */
+            desc = d2; style = s2;
+            while (mot > cible && isspace((unsigned char)mot[-1])) mot--;
+            *mot = '\0'; fin = mot;
+        }
+
+        const char *cle = by ? skip_spaces(by + 2) : NULL;
+
+        char *src = arena_buf();
+        eval_checked(cible, src, HC_VAL);
+
+        int n2 = chunk_count(src, morceau);
+        if (n2 < 2) { ARENA_FREE; g_atop = sauve; return 1; }
+
+        SortItem *tab = calloc((size_t)n2, sizeof *tab);
+        char **cles = calloc((size_t)n2, sizeof *cles);
+        char **elems = calloc((size_t)n2, sizeof *elems);
+        if (!tab || !cles || !elems) { free(tab); free(cles); free(elems);
+                                       ARENA_FREE; g_atop = sauve; return 1; }
+
+        for (int i = 0; i < n2; i++) {
+            int b = 0, e = 0;
+            chunk_span1(src, morceau, i + 1, &b, &e);
+            elems[i] = malloc((size_t)(e - b) + 1);
+            memcpy(elems[i], src + b, (size_t)(e - b));
+            elems[i][e - b] = '\0';
+
+            /* `each` : la variable que la clé interroge. Sans clé, on trie
+             * directement sur l'élément. */
+            if (cle) {
+                var_set("each", elems[i]);
+                ARENA_MARK;
+                char *v = arena_buf();
+                eval_checked(cle, v, HC_VAL);
+                cles[i] = dupstr(v);
+                ARENA_FREE;
+            } else {
+                cles[i] = dupstr(elems[i]);
+            }
+            tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
+        }
+
+        g_sort_desc = desc; g_sort_style = style;
+        qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
+
+        char sep[2] = { chunk_sep(morceau), '\0' };
+        char *res = arena_buf();
+        res[0] = '\0';
+        size_t used = 0;
+        for (int i = 0; i < n2; i++) {
+            const char *el = elems[tab[i].rang];
+            size_t l = strlen(el);
+            if (used + l + 2 >= HC_VAL) break;
+            if (i) { res[used++] = sep[0]; }
+            memcpy(res + used, el, l); used += l;
+            res[used] = '\0';
+        }
+
+        container_set(cible, res, 0);
+
+        for (int i = 0; i < n2; i++) { free(cles[i]); free(elems[i]); }
+        free(cles); free(elems); free(tab);
+        ARENA_FREE;
+        set_result("");
+        g_atop = sauve;
+        return 1;
+    }
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -7059,6 +7320,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
     { "show",   v3_cmd_montre  },
+    { "sort",   v3_cmd_sort    },
     { "start",  v3_cmd_using   },
     { "stop",   v3_cmd_using   },
     { "type",   v3_cmd_type    },
@@ -8017,54 +8279,10 @@ static void exec_body(Object *me, const char *body, const char *end)
  * Le tri est STABLE : deux éléments de clé égale gardent leur ordre d'origine.
  * HyperCard le garantissait, et des piles s'en servent pour trier sur deux
  * critères en triant deux fois, du moins important au plus important. */
-typedef enum { SORT_TEXT, SORT_NUM, SORT_DATE } SortStyle;
-typedef struct { char *cle; int rang; Object *card; } SortItem;
-
-static int       g_sort_desc  = 0;
-static SortStyle g_sort_style = SORT_TEXT;
-
-static int sort_cmp(const void *pa, const void *pb)
-{
-    const SortItem *a = pa, *b = pb;
-    int r = 0;
-
-    if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
-        double x = 0, y = 0;
-        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
-        /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
-         * de venir se mêler aux valeurs légitimes. */
-        if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
-        else if (nx)  r = -1;
-        else if (ny)  r =  1;
-    } else {
-        const char *x = a->cle, *y = b->cle;      /* insensible à la casse */
-        while (*x && *y) {
-            int cx = tolower((unsigned char)*x), cy = tolower((unsigned char)*y);
-            if (cx != cy) { r = cx < cy ? -1 : 1; break; }
-            x++; y++;
-        }
-        if (!r) r = (*x ? 1 : 0) - (*y ? 1 : 0);
-    }
-
-    if (g_sort_desc) r = -r;
-    if (r == 0) r = a->rang - b->rang;            /* stabilité */
-    return r;
-}
-
-/* Lit sens et style, et rend ce qui reste de la ligne. */
-static const char *sort_options(const char *s, int *desc, SortStyle *style)
-{
-    for (;;) {
-        s = skip_spaces(s);
-        if      (ci_word(s, "ascending"))     { *desc = 0; s += 9;  }
-        else if (ci_word(s, "descending"))    { *desc = 1; s += 10; }
-        else if (ci_word(s, "text"))          { *style = SORT_TEXT; s += 4; }
-        else if (ci_word(s, "numeric"))       { *style = SORT_NUM;  s += 7; }
-        else if (ci_word(s, "datetime"))      { *style = SORT_DATE; s += 8; }
-        else if (ci_word(s, "international")) { *style = SORT_TEXT; s += 13; }
-        else return s;
-    }
-}
+/* SortStyle, SortItem, g_sort_desc, g_sort_style, sort_cmp et sort_options
+ * ont migré avant la table V3_VERBES, juste après v3_point : v3_cmd_sort en
+ * a besoin, et rien ici n'en dépendait plus tôt dans le fichier. Le tri
+ * lui-même reste documenté ci-dessus ; seule sa mécanique a bougé. */
 
 /* ---- effets de transition ------------------------------------------------
  *   visual [effect] <nom> [vitesse] [to <image>]
