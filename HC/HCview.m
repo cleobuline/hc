@@ -3369,6 +3369,25 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     /* 8. Outil BROWSE (Interaction avec la carte) */
     if (gTool == TOOL_BROWSE) {
+        /* Refermer l'édition en cours avant tout AUTRE clic, sinon un champ
+         * en cours d'édition la garde ouverte pendant qu'un bouton clique à
+         * côté exécute son script.
+         *
+         * C'est un vrai problème quand ce script change de carte (« go
+         * next », par exemple) : gEditingField et sa zone de texte flottante
+         * pointaient toujours sur le champ de l'ANCIENNE carte, et
+         * continuaient de s'afficher par-dessus la nouvelle — en
+         * surimpression, comme si les deux cartes se superposaient. Chaque
+         * branche ci-dessous appelait déjà endFieldEdit pour SON propre cas
+         * (changer de champ, cliquer la carte nue), sauf celle-ci — cliquer
+         * un bouton, un champ verrouillé ou un menu popup pendant qu'un AUTRE
+         * champ s'édite — qui ne l'appelait jamais.
+         *
+         * On épargne le champ qu'on re-clique lui-même : y cliquer ne fait
+         * que replacer le curseur, pas recommencer l'édition, et lui
+         * appliquer endFieldEdit ici la fermerait pour rien. */
+        if (gEditingField && hit != gEditingField) [self endFieldEdit];
+
         if (hit && hit->type == OBJ_FIELD && hit->style &&
             strcmp(hit->style, "scrolling") == 0) {
             CGFloat bw = 16;
@@ -3466,8 +3485,9 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
             /* Clic sur la carte nue : HyperCard lui envoie quand même
              * mouseDown, d'où il remonte au fond puis à la pile. C'est ce qui
              * permet à un script de carte de réagir à un clic n'importe où —
-             * les piles de navigation s'en servent beaucoup. */
-            [self endFieldEdit];
+             * les piles de navigation s'en servent beaucoup. endFieldEdit
+             * déjà fait en entrée du bloc TOOL_BROWSE, inutile de le refaire
+             * ici. */
             gPressed = hc_current_card();
             hc_send(gPressed, "mouseDown");
             [self startStillDownTimer];
