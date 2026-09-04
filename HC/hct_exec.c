@@ -784,6 +784,42 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         return;
     }
 
+    /* repeat for each <sorte> <var> in <source>
+     *
+     * La source est évaluée UNE SEULE FOIS, avant le premier tour, et le
+     * découpage porte sur cette copie : c'est la règle d'HyperCard, et elle
+     * compte — « repeat for each line L in field "x" » qui écrit dans ce même
+     * champ ne doit pas voir sa propre liste changer sous lui, ni boucler
+     * sans fin. */
+    if (!strcasecmp(forme, "each")) {
+        if (n->nfils < 3) return;
+        char *nom = texte(n->fils[0]);
+        if (!nom) return;
+
+        HctValeur src = hct_evalue(&x->ctx, n->fils[1]);
+        if (x->ctx.erreur) { free(nom); hct_val_libere(&src); return; }
+
+        char d = delim_de(x);
+        int total = hct_chunk_compte(src.txt, n->sorte, d);
+
+        for (int i = 1; i <= total; i++) {
+            if (++tours > PLAFOND) break;
+            HctValeur m = hct_chunk_lit(src.txt, n->sorte, i, 0, d);
+            var_ecrit(x, nom, m.txt);
+            hct_val_libere(&m);
+
+            hct_exec(x, corps);
+            if (x->ctx.erreur) break;
+            if (!respire(x)) break;
+            if (x->signal == HCT_SIG_NEXT_REPEAT) { x->signal = HCT_SIG_AUCUN; continue; }
+            if (x->signal == HCT_SIG_EXIT_REPEAT) { x->signal = HCT_SIG_AUCUN; break; }
+            if (x->signal) break;
+        }
+        hct_val_libere(&src);
+        free(nom);
+        return;
+    }
+
     long limite = -1;
     if (!strcasecmp(forme, "times")) {
         if (n->nfils < 2) return;

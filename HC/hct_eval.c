@@ -300,6 +300,25 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
      * jamais atteindre le recours. Or « there is a bg btn "absent" » doit
      * rendre false, pas échouer — c'est tout son intérêt. */
     if (strcmp(op, "not") && strcmp(op, "neg")) {
+        /* L'objet se cherche par l'ARBRE quand l'hôte sait le résoudre.
+         *
+         * Le recours reconstitue le texte source et le confie à l'ancien
+         * interpréteur, dont l'analyse de référence est moins complète :
+         * « there is a button (nomDansUneVariable) » y rendait false, alors
+         * que « the short name of button (nomDansUneVariable) » — qui passe
+         * par le même désignateur entre parenthèses, mais par l'arbre —
+         * trouvait le bouton. Résoudre ici règle l'incohérence et supprime
+         * un aller-retour.
+         *
+         * On ne s'en charge que pour un nœud d'OBJET : « there is a
+         * <expression> » a d'autres formes, que le recours garde. */
+        if (n->nfils >= 1 && n->fils[0] &&
+            n->fils[0]->genre == HCTN_OBJET && ctx->hote.resout) {
+            int existe = ctx->hote.resout(ctx->hote.donnees, n->fils[0], ctx) != NULL;
+            if (!strcmp(op, "there is no")) existe = !existe;
+            return hct_val_bool(existe);
+        }
+
         HctValeur vr;
         if (ctx->hote.recours &&
             ctx->hote.recours(ctx->hote.donnees, n, &vr)) return vr;
