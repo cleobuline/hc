@@ -6109,6 +6109,39 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
     }
 }
 
+/* Le texte de toute une commande, depuis le nœud, moins son premier mot (le
+ * verbe) : ce que valait `rest` dans l'ancien exécuteur, pour les commandes
+ * portées qui refont son analyse mot à mot (visual, sort, find, set,
+ * convert, print, read, write).
+ *
+ * hct_noeud_etendue, jamais v3_source, pour cet usage précis. v3_source
+ * s'arrête au dernier JETON retenu dans le sous-arbre — et les parenthèses
+ * ne sont le jeton d'AUCUN nœud, qu'elles ferment un appel ou groupent une
+ * expression : l'analyseur les consomme et les oublie. « set icon of me to
+ * (2100 + random(6)) » se reconstituait donc « (2100 + random(6 », les DEUX
+ * parenthèses fermantes perdues, et l'évaluation de la valeur échouait sur
+ * « parenthèse fermante attendue ». Msg d'erreur trouvé par test réel dans
+ * Xcode. hct_noeud_etendue étend jusqu'au saut de ligne (ou au point-
+ * virgule, ou à « else », ou à un commentaire) plutôt qu'au dernier jeton :
+ * elle rend donc tout ce que l'auteur a écrit, ponctuation comprise. C'est
+ * elle que v3_commande utilise déjà pour son propre repli vers l'ancien
+ * chemin — même remède, ici pour ne PAS avoir à y retomber. */
+static void v3_reste(const HctNoeud *n, char *out, int outlen)
+{
+    out[0] = '\0';
+    const char *deb; int len;
+    if (!hct_noeud_etendue(n, &deb, &len)) return;
+    if (len > outlen - 1) len = outlen - 1;
+    memcpy(out, deb, (size_t)len);
+    out[len] = '\0';
+
+    /* Sauter le premier mot (le verbe) et les blancs qui le suivent. */
+    char *p = out;
+    while (*p && !isspace((unsigned char)*p)) p++;
+    while (*p == ' ' || *p == '\t') p++;
+    memmove(out, p, strlen(p) + 1);
+}
+
 /* ---- tri : mécanique commune aux deux exécuteurs -------------------------
  * Déplacé ici (l'original vivait juste avant l'ancien gestionnaire de
  * « sort », documenté plus bas) parce que v3_cmd_sort en a besoin et que
@@ -6174,10 +6207,10 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * datetime] [by e] ». Le « * » découpe la cible mot à mot — « cards », « of »,
  * « this », « stack » deviennent chacun leur propre fils, une référence
  * d'objet comme « field 1 » en fait parfois un seul — et rien ici n'a besoin
- * de savoir lequel : v3_source reconstitue le texte exact de CHAQUE fils, on
- * les rejoint par un espace, et on obtient EXACTEMENT le texte que lisait
- * l'ancien exécuteur. On lui reprend alors son analyse mot à mot telle
- * quelle, sans y toucher — seule la source du texte a changé.
+ * de savoir lequel : v3_reste (voir sa définition) rend le texte EXACT que
+ * lisait l'ancien exécuteur, ponctuation et « the » compris. On lui reprend
+ * alors son analyse mot à mot telle quelle, sans y toucher — seule la
+ * source du texte a changé.
  *
  * Pas d'évaluation à ce stade : « cards », « stack », « lines » restent des
  * MOTS, pas des expressions. Une pile qui aurait une variable nommée
@@ -6191,22 +6224,8 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
                                          * dessous, qui doivent pouvoir
                                          * rembobiner À LEUR PROPRE MARQUE
                                          * sans toucher à `mots`. */
-    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
-     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
-     * premier rang desquels « the », que l'analyseur avale sans le ranger
-     * dans un nœud (« sort cards by the name of me » perdait son « the »).
-     * v3_source sur le nœud entier restitue l'intervalle EXACT du texte
-     * source, puisque « the » se situe bien ENTRE les jetons des fils, dans
-     * cet intervalle. Trouvé en portant « convert », qui en dépendait pour
-     * de vrai — voir son commentaire pour le détail du symptôme. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     int cartes = 0;                 /* trie-t-on des cartes ? */
@@ -6378,25 +6397,16 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
  *
  * Motif hct_cmd.c : « * », sans borne — l'analyseur découpe la ligne entière
  * mot à mot, exactement comme pour « sort » et « visual ». Même remède :
- * v3_source reconstitue le texte exact de chaque fils, on les rejoint par un
- * espace, et l'ancien algorithme — lecture du mode, recherche de « in » hors
- * des guillemets, balayage carte par carte puis champ par champ — s'applique
- * tel quel au résultat. */
+ * v3_reste rend le texte EXACT que lisait l'ancien exécuteur, et son
+ * algorithme — lecture du mode, recherche de « in » hors des guillemets,
+ * balayage carte par carte puis champ par champ — s'applique tel quel au
+ * résultat. */
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *r = skip_spaces(mots);
     int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
@@ -6577,12 +6587,12 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
  * <cible>] » comme UNE SEULE expression — chunk_ou_of, qui fabrique un nœud
  * HCTN_OF pour « textStyle of word 3 of field 1 » aussi bien qu'un
  * HCTN_IDENT nu pour « cursor » — et le « to *» qui suit redevient du texte
- * brut, comme pour « visual », « sort » et « find ». Même remède : v3_source
- * reconstitue le texte exact de chaque fils, la jointure par espace redonne
- * exactement ce que lisait l'ancien exécuteur, et son algorithme — bascule
- * propriété globale/objet/morceau, textStyle et textColor en noms nus,
- * plage de style versus objet — s'applique tel quel au résultat. Rien de
- * cet algorithme n'a été touché ; seule la source du texte a changé. */
+ * brut, comme pour « visual », « sort » et « find ». Même remède : v3_reste
+ * rend exactement ce que lisait l'ancien exécuteur — « the » et parenthèses
+ * compris, voir sa définition — et son algorithme — bascule propriété
+ * globale/objet/morceau, textStyle et textColor en noms nus, plage de style
+ * versus objet — s'applique tel quel au résultat. Rien de cet algorithme
+ * n'a été touché ; seule la source du texte a changé. */
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -6590,19 +6600,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
                                          * les ARENA_MARK imbriqués ci-dessous
                                          * doivent rembobiner à LEUR marque sans
                                          * toucher à `mots`. */
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. Ici « the »
-     * pouvait manquer aussi bien devant la propriété (« set [the]
-     * textStyle… ») que dans la valeur elle-même (« to the value of x »). */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     g_visual_dirty = 1;
     const char *s = skip_spaces(mots);
@@ -6933,35 +6932,24 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 /* convert <conteneur> [from <format>] to <format> [and <format>]
  *
  * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
- * v3_source reconstitue le texte exact de chaque fils et la jointure par
- * espace redonne ce que lisait l'ancien exécuteur — y compris son silence
- * sur « from » : il ne l'a jamais traité spécialement, ne coupant qu'au
- * dernier « to » de premier niveau, et cette jointure reproduit exactement
- * ce texte-là, « from » compris dans la source. Pas une ligne de
- * l'algorithme n'a changé. */
+ * v3_reste (voir sa définition) rend le texte EXACT que lisait l'ancien
+ * exécuteur — y compris son silence sur « from » : il ne l'a jamais traité
+ * spécialement, ne coupant qu'au dernier « to » de premier niveau, et
+ * « from » se retrouve donc dans la source, comme avant ce portage. Pas une
+ * ligne de l'algorithme n'a changé.
+ *
+ * C'est ICI qu'a été trouvé, par test réel dans Xcode, le bug du « the »
+ * avalé sans être rangé dans un nœud : « convert the date to dateItems »
+ * se reconstituait « convert date to dateItems », et to_it — qui décide si
+ * le résultat va dans `it` ou dans un conteneur — se trompait de branche :
+ * « date » ressemblait à un conteneur, une variable de ce nom naissait, et
+ * `it` ne recevait jamais rien. */
 static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
-     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
-     * premier rang desquels « the », que l'analyseur avale sans le ranger
-     * dans un nœud. « convert the date to dateItems » redevenait « convert
-     * date to dateItems », et to_it — qui décide si le résultat va dans
-     * `it` ou dans un conteneur — se trompait alors de branche : « date »
-     * était pris pour un conteneur à écrire, et il naissait une variable de
-     * ce nom au lieu que le résultat aille dans `it`. v3_source sur le nœud
-     * entier restitue l'intervalle EXACT du texte source, « the » compris,
-     * puisqu'il se situe bien ENTRE les jetons des fils, dans cet
-     * intervalle. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     /* Le « to » qui compte est le dernier de premier niveau : la source
      * peut en contenir un elle-même, comme dans
@@ -7030,25 +7018,16 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 /* print [this] card|stack|all|marked [<n>] [to <n>] [with <rapport>]
  *
  * Motif hct_cmd.c : « * [with e] », sans borne — comme pour find/sort/
- * visual, v3_source reconstitue le texte exact de chaque fils. « with
- * <rapport> » est reconstitué lui aussi mais reste ignoré : l'ancien
- * exécuteur ne le lisait déjà pas, une mise en page de rapport demandant un
+ * visual, v3_reste rend le texte EXACT que lisait l'ancien exécuteur.
+ * « with <rapport> » en fait partie mais reste ignoré : l'ancien exécuteur
+ * ne le lisait déjà pas, une mise en page de rapport demandant un
  * imprimeur que le noyau n'a jamais eu. */
 static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     if (ci_word(a, "this")) a = skip_spaces(a + 4);
@@ -7139,24 +7118,14 @@ static int   file_constant(const char *s);         /* défini plus bas */
  * branche `at` reste correcte et prête, juste jamais empruntée tant que la
  * table n'aura pas gagné cet élément.
  *
- * Comme pour set/sort/find/print, v3_source reconstitue le texte exact de
- * chaque fils et la jointure par espace redonne ce que lisait l'ancien
- * exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+ * Comme pour set/sort/find/print, v3_reste rend le texte EXACT que lisait
+ * l'ancien exécuteur ; l'algorithme n'a pas changé d'une ligne. */
 static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     if (ci_word(a, "from")) a = skip_spaces(a + 4);
@@ -7270,17 +7239,8 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     const char *to = find_kw(a, "to");
@@ -7532,15 +7492,14 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
  * caractère —, ou vide un champ ou une variable entière. container_set sait
  * déjà tout cela (mode 3), à condition de recevoir le TEXTE de la référence :
  * hct_cmd.c l'analyse comme une expression ordinaire (« e »), sans nœud dédié
- * pour un morceau. v3_source la reconstitue donc, comme le fait v3_recours
- * pour une expression qu'elle ne sait pas évaluer elle-même.
- *
- * Sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme « last »
- * dans « delete the last word of X » n'est le jeton d'AUCUN nœud — juste un
- * ordinal numérique posé sur le nœud CHUNK, dont le jeton propre commence
- * à « word ». Reconstruire depuis n->fils[0] seul rendait donc « word of X »,
- * sans « the last » : container_set n'y voyait plus de rang du tout. Voir le
- * commentaire de v3_cmd_convert pour le détail de cette classe de bogue.
+ * pour un morceau. v3_reste (voir sa définition) la reconstitue donc, comme
+ * le fait v3_recours pour une expression qu'elle ne sait pas évaluer
+ * elle-même — sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme
+ * « last » dans « delete the last word of X » n'est le jeton d'AUCUN nœud —
+ * juste un ordinal numérique posé sur le nœud CHUNK, dont le jeton propre
+ * commence à « word ». Reconstruire depuis n->fils[0] seul, avec v3_source,
+ * rendait donc « word of X », sans « the last » : container_set n'y voyait
+ * plus de rang du tout.
  *
  * Une faute d'analyse dans la cible — n->fils[0] devenu lui-même une
  * HCTN_ERREUR — rendrait un texte tronqué : container_set effacerait alors
@@ -7557,13 +7516,7 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
 
     char d[256];
-    v3_source(n, d, sizeof d);
-    {
-        char *p = d;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(d, p, strlen(p) + 1);
-    }
+    v3_reste(n, d, sizeof d);
     if (!d[0]) return 0;
 
     if (container_set(d, "", 3)) {
