@@ -6555,6 +6555,364 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* set [the] <propriété> [of <cible>] to <valeur>
+ *
+ * Motif hct_cmd.c : « e to * ». Le « e » couvre déjà « [the] <propriété> [of
+ * <cible>] » comme UNE SEULE expression — chunk_ou_of, qui fabrique un nœud
+ * HCTN_OF pour « textStyle of word 3 of field 1 » aussi bien qu'un
+ * HCTN_IDENT nu pour « cursor » — et le « to *» qui suit redevient du texte
+ * brut, comme pour « visual », « sort » et « find ». Même remède : v3_source
+ * reconstitue le texte exact de chaque fils, la jointure par espace redonne
+ * exactement ce que lisait l'ancien exécuteur, et son algorithme — bascule
+ * propriété globale/objet/morceau, textStyle et textColor en noms nus,
+ * plage de style versus objet — s'applique tel quel au résultat. Rien de
+ * cet algorithme n'a été touché ; seule la source du texte a changé. */
+static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;             /* nommée à part, comme dans v3_cmd_sort :
+                                         * les ARENA_MARK imbriqués ci-dessous
+                                         * doivent rembobiner à LEUR marque sans
+                                         * toucher à `mots`. */
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    g_visual_dirty = 1;
+    const char *s = skip_spaces(mots);
+    if (ci_word(s, "the")) s = skip_spaces(s + 3);
+
+    char prop[64];
+    const char *q = next_word(s, prop, sizeof prop);
+    q = skip_spaces(q);
+
+    /* Pas de « of » : c'est une propriété globale, pas celle d'un objet.
+     * « set cursor to none », « set lockScreen to true »… */
+    if (!ci_word(q, "of")) {
+        /* « set word 2 of field "x" to bold » : le nom de propriete manque.
+         * Sans ce garde-fou, « word » partait comme propriete globale chez
+         * l'hote et l'ecriture disparaissait sans un mot. */
+        if (ci_equal(prop, "char") || ci_equal(prop, "character")
+         || ci_equal(prop, "word") || ci_equal(prop, "item")
+         || ci_equal(prop, "line")) {
+            set_result("propriete manquante");
+            emit(HC_ERR, "   !! set : quelle propriete ? essayez "
+                         "« set the textStyle of %s … »", skip_spaces(mots));
+            g_atop = sauve; return 1;
+        }
+        const char *to = find_kw(s, "to");
+        if (!to) {
+            emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(mots));
+            g_atop = sauve; return 1;
+        }
+        char *val = arena_buf();
+        eval_checked(to + 2, val, HC_VAL);
+
+        /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
+         * lui qui découpe les items, et l'interface n'a rien à en savoir.
+         * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
+         * HyperCard ne retenait qu'un caractère. */
+        if (ci_equal(prop, "itemdelimiter")) {
+            g_item_delim = val[0] ? val[0] : ',';
+            set_result("");
+            emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+            g_atop = sauve; return 1;
+        }
+
+        /* lockScreen suivi ici aussi : « set lockScreen to true » est
+         * l'exact synonyme de « lock screen », et notify_field s'appuie
+         * dessus pour ne pas redessiner mille fois pour rien. */
+        if (ci_equal(prop, "lockscreen")) {
+            g_ecran_verrouille = truthy(val);
+            if (!g_ecran_verrouille) verrou_reveille();
+        }
+
+        host_global_set(prop, val);
+        set_result("");
+        emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
+        g_atop = sauve; return 1;
+    }
+    q = skip_spaces(q + 2);
+
+    /* Le « to » qui separe la cible de la valeur est le DERNIER de premier
+     * niveau : la cible peut en contenir elle-meme, comme dans
+     *     set the textStyle of word d of line 3 to numLines of me to bold
+     * Couper au premier tronquait la cible a « line 3 ». */
+    const char *to = NULL, *scan = q;
+    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+        to = k; scan = k + 2;
+    }
+    if (!to) {
+        emit(HC_ERR, "   !! set sans « to » : %s", skip_spaces(mots));
+        g_atop = sauve; return 1;
+    }
+
+    char refbuf[256];
+    int nref = (int)(to - q);
+    if (nref > (int)sizeof refbuf - 1) nref = (int)sizeof refbuf - 1;
+    memcpy(refbuf, q, (size_t)nref); refbuf[nref] = '\0';
+    while (nref > 0 && (refbuf[nref-1] == ' ' || refbuf[nref-1] == '\t')) refbuf[--nref] = '\0';
+
+    char *val = arena_buf();
+    /* « to bold,condense » n'est pas une expression : c'est une liste de
+     * noms de styles, qu'HyperCard accepte sans guillemets. On prend donc
+     * le texte brut, sauf s'il nomme une variable — auquel cas on lit sa
+     * valeur, pour que « set the textStyle of X to myStyle » marche. */
+    /* Même problème pour la couleur : « to white » n'est pas une
+     * expression, c'est un nom que HyperCard accepte nu. L'évaluer le
+     * traitait comme un identifiant inconnu, et le résultat vide se
+     * changeait en HC_COLOR_INHERIT — rien ne bougeait, sans un mot.
+     *
+     * On ne prend le texte brut que s'il NOMME une couleur : « to
+     * theColor » ou « to item 1 of liste » restent des expressions. */
+    if (ci_equal(prop, "textcolor")) {
+        const char *raw = skip_spaces(to + 2);
+        int rl = (int)strlen(raw);
+        while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+
+        char brut[64];
+        snprintf(brut, sizeof brut, "%.*s", rl, raw);
+
+        /* Déguillemeter d'abord : « to "white" » nomme aussi une couleur. */
+        int nb = (int)strlen(brut);
+        if (nb > 1 && brut[0] == '"' && brut[nb-1] == '"') {
+            memmove(brut, brut + 1, (size_t)(nb - 2));
+            brut[nb - 2] = '\0';
+        }
+
+        if (color_from_name(brut) != HC_COLOR_INHERIT)
+            snprintf(val, HC_VAL, "%s", brut);
+        else
+            eval_checked(to + 2, val, HC_VAL);
+    }
+    else if (ci_equal(prop, "textstyle")) {
+        const char *raw = skip_spaces(to + 2);
+        int rl = (int)strlen(raw);
+        while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+        snprintf(val, HC_VAL, "%.*s", rl, raw);
+
+        /* Trancher sur le CONTENU, pas sur la ponctuation : une suite de
+         * noms de style reste littérale, tout le reste est évalué comme
+         * l'expression que c'est. */
+        if (!style_is_names(val)) {
+            int nv = (int)strlen(val);
+            int quoted = 0;
+
+            /* Une liste de noms peut arriver citée : « to "bold,italic" ».
+             * On la déguillemete pour la re-tester. */
+            if (nv > 1 && val[0] == '"' && val[nv-1] == '"') {
+                char *inner = arena_buf();
+                snprintf(inner, HC_VAL, "%.*s", nv - 2, val + 1);
+                if (style_is_names(inner)) {
+                    snprintf(val, HC_VAL, "%s", inner);
+                    quoted = 1;
+                }
+            }
+            if (!quoted) eval_checked(to + 2, val, HC_VAL);
+        }
+    } else {
+        eval_checked(to + 2, val, HC_VAL);
+    }
+
+    /* La cible peut designer une PLAGE DE TEXTE et non un objet :
+     *     set the textStyle of word 3 of line 2 of field "cal" to bold
+     * resolve() ne sait chercher que des objets, d'ou l'echec historique
+     * « objet introuvable : word theNewDay of line 3 ». On essaie donc
+     * d'abord le morceau, avant de retomber sur la resolution d'objet. */
+    {
+        int cst, cen;
+        Object *cf = chunk_target(refbuf, &cst, &cen);
+        if (cf) {
+            /* Les trois attributs de texte se posent par plage, comme dans
+             * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
+             * n'a aucun sens sur un morceau. */
+            int mask = 0;
+            if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
+            else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
+            else if (ci_equal(prop, "textcolor")) mask = RA_COLOR;
+            else if (ci_equal(prop, "textsize")) mask = RA_SIZE;
+
+            if (!mask) {
+                if (!is_prop_name(prop, (int)strlen(prop))) {
+                    set_result("propriete inconnue");
+                    emit(HC_ERR, "   !! propriete inconnue : %s"
+                                 " (les proprietes de texte sont textFont,"
+                                 " textSize, textStyle)", prop);
+                } else {
+                    set_result("propriete non applicable a un morceau");
+                    emit(HC_ERR, "   !! %s decrit un objet, pas un morceau"
+                                 " de texte", prop);
+                }
+                g_atop = sauve; return 1;
+            }
+            struct RunList *rl = runs_of(cf);
+            if (!rl) {
+                set_result("champ sans stockage de style");
+                emit(HC_ERR, "   !! ce champ n'a pas encore de texte sur cette carte");
+                g_atop = sauve; return 1;
+            }
+            runs_set_attr(rl, cst, cen - cst, mask,
+                          (mask & RA_STYLE) ? style_from_names(val) : 0,
+                          (mask & RA_SIZE)  ? atoi(val) : 0,
+                          (mask & RA_FONT)  ? val : NULL,
+                          (mask & RA_COLOR) ? color_from_name(val)
+                                            : HC_COLOR_INHERIT);
+            notify_field(cf);
+            set_result("");
+            emit(HC_INFO, "   → %s de [%d..%d[ ← \"%s\"", prop, cst, cen, val);
+            g_atop = sauve; return 1;
+        }
+    }
+
+    Object *o = resolve(refbuf);
+    if (!o) {
+        /* Distinguer les deux echecs : une reference d'objet inconnue, ou
+         * un morceau de texte qui n'existe pas (champ vide, rang au-dela
+         * du contenu). « objet introuvable » sur « word 8 of line 3 of me »
+         * envoyait chercher au mauvais endroit. */
+        ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
+        if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
+            set_result("morceau hors limites");
+            emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+        } else {
+            set_result("objet introuvable");
+            emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
+        }
+        g_atop = sauve; return 1;
+    }
+
+    char d[64]; hc_describe(o, d, sizeof d);   /* avant modification */
+
+    if (ci_equal(prop, "name")) {
+        free(o->name);
+        o->name = dupstr(val);
+    } else if (ci_equal(prop, "visible")) {
+        o->visible = truthy(val);
+    } else if (ci_equal(prop, "enabled")) {
+        o->enabled = truthy(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
+        o->showname = truthy(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "icon")) {
+        /* Un numéro ou un nom : « set the icon of me to 3071 » comme
+         * « ... to "Close Box" ». atoi seul rendait 0 sur tout nom, donc
+         * silencieusement « aucune icône ». */
+        o->icon = hc_resolve_icon(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
+        o->selectedline = atoi(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "locktext")) {
+        o->locktext = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "widemargins")) {
+        o->wide_margins = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "fixedlineheight")) {
+        o->fixed_lh = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "showlines")) {
+        o->show_lines = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "autotab")) {
+        o->auto_tab = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "dontsearch")) {
+        o->dont_search = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "textalign")) {
+        /* Accepte aussi « centre » et « centered », qu'on rencontre dans
+         * les scripts, et retombe à gauche sur un mot inconnu plutôt que
+         * d'échouer : HyperCard est indulgent sur cette propriété. */
+        if (ci_equal(val, "center") || ci_equal(val, "centre") ||
+            ci_equal(val, "centered"))      o->text_align = 1;
+        else if (ci_equal(val, "right"))    o->text_align = 2;
+        else                                o->text_align = 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "autoselect")) {
+        o->auto_select = truthy(val);
+        /* Un champ à sélection de lignes est forcément verrouillé : on ne
+         * tape pas dans une liste de choix. HyperCard verrouillait de même,
+         * et sans cela le clic ouvrirait l'éditeur au lieu de sélectionner. */
+        if (o->auto_select) o->locktext = 1;
+        notify_field(o);
+    } else if (ci_equal(prop, "multiplelines")) {
+        o->multiple_lines = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "marked")) {
+        o->marked = truthy(val);
+    } else if (ci_equal(prop, "dontwrap")) {
+        o->dont_wrap = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "sharedhilite")) {
+        o->shared_hilite = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "sharedtext")) {
+        /* Par la même porte que la case de l'Info : basculer le drapeau
+         * seul rendrait le contenu inaccessible. */
+        hc_set_shared_text(o, truthy(val));
+    } else if (ci_equal(prop, "scroll")) {
+        o->scroll = atoi(val);
+        if (o->scroll < 0) o->scroll = 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "textfont")) {
+        free(o->textfont);
+        o->textfont = (*val) ? dupstr(val) : NULL;
+        notify_field(o);
+    } else if (ci_equal(prop, "textstyle")) {
+        /* Passe par style_from_names, comme la pose sur un morceau. */
+        o->textstyle = style_from_names(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
+        hc_set_hilite(o, NULL, truthy(val));
+        notify_field(o);
+    } else if (ci_equal(prop, "autohilite")) {
+        o->autohilite = truthy(val);
+    } else if (ci_equal(prop, "textsize")) {
+        o->textsize = atoi(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "textheight")) {
+        /* Zéro rétablit la valeur déduite du corps. */
+        int v = atoi(val);
+        o->textheight = v > 0 ? v : 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "script")) {
+        /* Une valeur qui touche exactement le plafond a presque
+         * certainement été tronquée en chemin. L'écrire telle quelle
+         * détruirait le script. On refuse : mieux vaut un gestionnaire
+         * qui échoue qu'une pile mutilée. */
+        if (g_script_clipped || (int)strlen(val) >= HC_VAL - 1) {
+            emit(HC_ERR, "   !! écriture refusée : ce gestionnaire a lu un "
+                         "script tronqué ; l'écrire le détruirait");
+            set_result("script tronqué");
+            g_atop = sauve; return 1;
+        }
+        hc_set_script(o, val);
+    } else if (ci_equal(prop, "style")) {
+        free(o->style);
+        o->style = dupstr(val);
+    } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
+        if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
+            emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
+            g_atop = sauve; return 1;
+        }
+        hc_set_field_text(o, val);
+        notify_field(o);
+    } else if (geom_write(o, prop, val)) {
+        notify_field(o);
+    } else {
+        set_result("propriété inconnue");
+        emit(HC_ERR, "   !! propriété inconnue : %s", prop);
+        g_atop = sauve; return 1;
+    }
+
+    set_result("");
+    emit(HC_INFO, "   → %s de %s ← \"%s\"", prop, d, val);
+    g_atop = sauve;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -7519,6 +7877,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
     { "send",   v3_cmd_send    },
+    { "set",    v3_cmd_set     },
     { "show",   v3_cmd_montre  },
     { "sort",   v3_cmd_sort    },
     { "start",  v3_cmd_using   },
