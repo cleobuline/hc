@@ -5465,10 +5465,23 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                 case HCT_DES_ORDINAL:
                     return nth_card(stack,
                         v3_rang_ordinal(n->ordinal, card_count(stack)) - 1);
-                case HCT_DES_RELATIF:
+                case HCT_DES_RELATIF: {
                     if (n->relatif == HCT_REL_CE) return card;
-                    return nth_card(stack, card_index(stack, card) +
-                        (n->relatif == HCT_REL_SUIVANT ? 1 : -1));
+                    /* « go next card » depuis la dernière mène à la PREMIÈRE,
+                     * et « go previous card » depuis la première mène à la
+                     * DERNIÈRE : HyperCard boucle. C'est déjà ce que fait la
+                     * branche des FONDS, juste au-dessus — les deux doivent
+                     * s'accorder, et jusqu'ici seuls les fonds bouclaient.
+                     * Sans le modulo, nth_card rendait NULL sur le premier
+                     * « go previous card », et la navigation s'arrêtait là,
+                     * silencieusement : le résultat restait vide, aucun
+                     * message d'erreur, juste plus rien qui bouge. */
+                    int nc = card_count(stack);
+                    int i  = card_index(stack, card);
+                    if (nc <= 0 || i < 0) return NULL;
+                    int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
+                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
+                }
                 default: return card;
             }
 
