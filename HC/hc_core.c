@@ -4329,6 +4329,29 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
 {
     if (geom_read(o, prop, out, outlen)) return 1;
     if (ci_equal(prop, "id"))      { snprintf(out, outlen, "%d", o->id); return 1; }
+    /* « the number of this card », « the number of card field "x" » : le RANG
+     * de l'objet parmi ses semblables, à ne pas confondre avec le comptage
+     * qu'est « the number of cards ».
+     *
+     * term_value le traite bien avant d'arriver ici, mais l'évaluateur v3,
+     * lui, passe par lit_prop : sans cette entrée, « the number of this
+     * card » repartait à chaque fois vers l'ancien interpréteur par
+     * reconstitution du texte source. */
+    if (ci_equal(prop, "number")) {
+        if (o->type == OBJ_CARD) {
+            int n = card_index(o->owner, o);
+            if (n < 0) return 0;
+            snprintf(out, outlen, "%d", n + 1);
+            return 1;
+        }
+        if (o->type == OBJ_BUTTON || o->type == OBJ_FIELD) {
+            int n = hc_object_number(o);
+            if (n <= 0) return 0;
+            snprintf(out, outlen, "%d", n);
+            return 1;
+        }
+        return 0;
+    }
     if (ci_equal(prop, "name")) {
         if (shortf) snprintf(out, outlen, "%s", o->name ? o->name : "");
         else        hc_describe(o, out, outlen);

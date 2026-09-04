@@ -769,8 +769,19 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * par fond.
          *
          * On confie donc le nœud entier au recours, qui reconstitue le texte
-         * et le donne à term_value — laquelle sait compter par conteneur. */
-        if (!strcasecmp(nom, "number") && sur->genre == HCTN_OBJET) {
+         * et le donne à term_value — laquelle sait compter par conteneur.
+         *
+         * Seulement le PLURIEL NU, cependant : « cards », « card buttons »,
+         * qui n'ont pas de désignateur. Dès qu'il y en a un — « the number of
+         * this card », « the number of card field "x" » —, ce n'est plus un
+         * comptage mais le RANG de cet objet-là, et le chemin des propriétés
+         * est exactement le bon : il résout l'objet, puis lit sa propriété
+         * « number ». Y envoyer aussi le rang évite un aller-retour par le
+         * texte pour la forme la plus courante de toutes, celle par laquelle
+         * un script sait où il se trouve. */
+        if (!strcasecmp(nom, "number") && sur->genre == HCTN_OBJET &&
+            sur->designateur == HCT_DES_AUCUN &&
+            sur->typeobj != HCT_OBJ_ME && sur->typeobj != HCT_OBJ_TARGET) {
             HctValeur vr;
             if (ctx->hote.recours &&
                 ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
