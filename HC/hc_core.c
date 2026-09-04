@@ -7102,6 +7102,220 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+static FILE *file_find(const char *nom);          /* défini plus bas */
+static int   file_constant(const char *s);         /* défini plus bas */
+
+/* read from file <nom> [at <pos>] for <n> | until <car>
+ *
+ * Motif hct_cmd.c : « from file e [for|until e] » — pas de place pour « at
+ * <pos> », qui vit pourtant dans l'algorithme ci-dessous. Ce n'est pas un
+ * oubli de ce portage : la table ne l'a jamais prévu, et « read … at … »
+ * échoue donc déjà à l'analyse — toute la LIGNE devient une HCTN_ERREUR, ce
+ * qui fait retomber le gestionnaire entier à l'ancien exécuteur, lequel sait
+ * la lire. v3_cmd_read ne voit donc jamais de « at » dans ses fils ; sa
+ * branche `at` reste correcte et prête, juste jamais empruntée tant que la
+ * table n'aura pas gagné cet élément.
+ *
+ * Comme pour set/sort/find/print, v3_source reconstitue le texte exact de
+ * chaque fils et la jointure par espace redonne ce que lisait l'ancien
+ * exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    const char *a = skip_spaces(mots);
+    if (ci_word(a, "from")) a = skip_spaces(a + 4);
+    if (!ci_word(a, "file")) {
+        emit(HC_ERR, "   !! read : « file » attendu");
+        g_atop = sauve; return 1;
+    }
+    a = skip_spaces(a + 4);
+
+    /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
+     * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
+    const char *at  = find_kw(a, "at");
+    const char *fo  = find_kw(a, "for");
+    const char *unt = find_kw(a, "until");
+    const char *fin = at ? at : (fo ? fo : unt);
+
+    char *nom = arena_buf();
+    {
+        char brut[512];
+        int len = fin ? (int)(fin - a) : (int)strlen(a);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, a, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, nom, HC_VAL);
+    }
+
+    FILE *f = file_find(nom);
+    if (!f) {
+        set_result("File is not open");
+        emit(HC_ERR, "   !! read : fichier non ouvert : %s", nom);
+        g_atop = sauve; return 1;
+    }
+
+    if (at) {
+        char *pv = arena_buf();
+        const char *bornes = fo ? fo : unt;
+        char brut[256];
+        const char *deb = skip_spaces(at + 2);
+        int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, deb, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, pv, HC_VAL);
+        long lpos = atol(pv);
+        /* Positif : depuis le début, et 1-based comme tout HyperTalk.
+         * Négatif : depuis la fin. */
+        if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
+        else           fseek(f, lpos, SEEK_END);
+    }
+
+    char *out = arena_buf();
+    int no = 0;
+
+    if (fo) {
+        char *cv = arena_buf();
+        eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
+        long combien = atol(cv);
+        while (no < HC_VAL - 1 && no < combien) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+        }
+    } else if (unt) {
+        char mot[64];
+        next_word(skip_spaces(unt + 5), mot, sizeof mot);
+        int stop = file_constant(mot);
+        if (stop == -1) {
+            /* Pas une constante : un caractère, éventuellement calculé. */
+            char *cv = arena_buf();
+            eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
+            stop = cv[0] ? (unsigned char)cv[0] : '\n';
+        }
+        while (no < HC_VAL - 1) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+            /* Le caractère d'arrêt fait PARTIE du texte lu : c'est ce que
+             * fait HyperCard, et ce qui permet d'enchaîner les lectures
+             * ligne à ligne sans perdre les séparateurs. */
+            if (stop >= 0 && c == stop) break;
+        }
+    } else {
+        /* Ni « for » ni « until » : tout le fichier. */
+        while (no < HC_VAL - 1) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+        }
+    }
+    out[no] = '\0';
+
+    /* Dire la troncature plutôt que de couper en silence : un script qui
+     * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
+     * sa lecture en plusieurs « read ... for N ». */
+    if (no >= HC_VAL - 1) {
+        set_result("Value too large");
+        emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
+    } else {
+        set_result(no > 0 ? "" : "End of file");
+    }
+    var_set("it", out);
+    g_atop = sauve;
+    return 1;
+}
+
+/* write <texte> to file <nom> [at <pos>|end|eof]
+ *
+ * Motif hct_cmd.c : « e to file e » — pas de « at » non plus, même remède
+ * que v3_cmd_read : « write … at … » échoue à l'analyse et fait retomber le
+ * gestionnaire entier à l'ancien exécuteur, donc jamais de « at » dans les
+ * fils qu'on reçoit ici. */
+static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    const char *a = skip_spaces(mots);
+    const char *to = find_kw(a, "to");
+    if (!to) {
+        emit(HC_ERR, "   !! write : « to file » attendu");
+        g_atop = sauve; return 1;
+    }
+
+    char *txt = arena_buf();
+    {
+        char *brut = arena_buf();
+        int len = (int)(to - a);
+        if (len > HC_VAL - 1) len = HC_VAL - 1;
+        memcpy(brut, a, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, txt, HC_VAL);
+    }
+
+    const char *r2 = skip_spaces(to + 2);
+    if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
+    const char *at = find_kw(r2, "at");
+
+    char *nom = arena_buf();
+    {
+        char brut[512];
+        int len = at ? (int)(at - r2) : (int)strlen(r2);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, r2, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, nom, HC_VAL);
+    }
+
+    FILE *f = file_find(nom);
+    if (!f) {
+        set_result("File is not open");
+        emit(HC_ERR, "   !! write : fichier non ouvert : %s", nom);
+        g_atop = sauve; return 1;
+    }
+
+    if (at) {
+        const char *p = skip_spaces(at + 2);
+        if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
+        else {
+            char *pv = arena_buf();
+            eval_checked(p, pv, HC_VAL);
+            long lpos = atol(pv);
+            if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
+            else           fseek(f, lpos, SEEK_END);
+        }
+    }
+
+    fwrite(txt, 1, strlen(txt), f);
+    fflush(f);      /* pour qu'un autre programme voie le texte tout de suite */
+    set_result("");
+    g_atop = sauve;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -8065,6 +8279,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "pop",    v3_cmd_pop     },
     { "print",  v3_cmd_print   },
     { "push",   v3_cmd_push    },
+    { "read",   v3_cmd_read    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
     { "send",   v3_cmd_send    },
@@ -8078,6 +8293,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "unmark", v3_cmd_marque  },
     { "visual", v3_cmd_visuel  },
     { "wait",   v3_cmd_wait    },
+    { "write",  v3_cmd_write   },
     { NULL, NULL }
 };
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
