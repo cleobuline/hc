@@ -6582,6 +6582,89 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * MOTS, pas des expressions. Une pile qui aurait une variable nommée
  * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
  * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
+/* select — la sélection de texte dans un champ.
+ *
+ *   select empty                     rien de sélectionné
+ *   select text of <champ>           tout le contenu
+ *   select <champ>                   idem, forme courte
+ *   select char 3 to 5 of <champ>    un morceau
+ *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
+ *
+ * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
+ * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte.
+ *
+ * Rend 0 sur les formes non couvertes — un ordinal (« select last line
+ * of… »), une cible qui n'est pas un champ —, et l'ancien exécuteur les
+ * reprend intactes. */
+static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = 0, avant = 0, apres = 0;
+
+    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(n->fils[i], m, sizeof m);
+        if      (ci_equal(m, "before")) { avant = 1; i++; }
+        else if (ci_equal(m, "after"))  { apres = 1; i++; }
+    }
+
+    /* « select » nu : plus rien de sélectionné. */
+    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
+
+    const HctNoeud *c = n->fils[i];
+
+    if (c->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(c, m, sizeof m);
+        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
+        return 0;                       /* une variable : ancien chemin */
+    }
+
+    Object *f = NULL;
+    int st = 0, en = 0;
+
+    if (c->genre == HCTN_OBJET) {
+        f = hct_resout(ctx, c);
+        if (!f || f->type != OBJ_FIELD) return 0;
+        st = 0; en = (int)strlen(hc_field_text(f));
+    } else if (c->genre == HCTN_OF && c->nfils >= 2 &&
+               c->fils[0] && c->fils[0]->genre == HCTN_IDENT &&
+               c->fils[1] && c->fils[1]->genre == HCTN_OBJET) {
+        char m[16];
+        v3_brut(c->fils[0], m, sizeof m);
+        if (!ci_equal(m, "text")) return 0;
+        f = hct_resout(ctx, c->fils[1]);
+        if (!f || f->type != OBJ_FIELD) return 0;
+        st = 0; en = (int)strlen(hc_field_text(f));
+    } else if (c->genre == HCTN_CHUNK && c->nfils >= 2 && !c->ordinal) {
+        const HctNoeud *cible = c->fils[c->nfils - 1];
+        if (!cible || cible->genre != HCTN_OBJET) return 0;
+        f = hct_resout(ctx, cible);
+        if (!f || f->type != OBJ_FIELD) return 0;
+
+        char b1[64], b2[64];
+        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
+        if (ctx->erreur) return 1;
+        int n1 = (int)hct_vers_nombre(b1), n2 = 0;
+        if (c->nfils >= 3) {
+            v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+            if (ctx->erreur) return 1;
+            n2 = (int)hct_vers_nombre(b2);
+        }
+        HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
+                                        n1, n2, g_item_delim);
+        if (!bo.trouve) return 0;
+        st = bo.deb; en = bo.fin;
+    } else {
+        return 0;
+    }
+
+    if      (avant) hc_set_selection(f, st, 0);
+    else if (apres) hc_set_selection(f, en, 0);
+    else            hc_set_selection(f, st, en - st);
+    set_result("");
+    return 1;
+}
+
 static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -8643,6 +8726,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "read",   v3_cmd_read    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
+    { "select", v3_cmd_select  },
     { "send",   v3_cmd_send    },
     { "set",    v3_cmd_set     },
     { "show",   v3_cmd_montre  },
@@ -8679,7 +8763,22 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
     /* --- pas encore porté : l'ancien chemin, intact --- */
     const char *deb; int len;
     if (!hct_noeud_etendue(n, &deb, &len)) return 0;   /* rien à reconstituer */
-    v3_note("commande", n->genre == HCTN_MESSAGE ? "<message>" : n->op);
+    /* Le verbe seul ne suffit pas quand il a plusieurs formes : « select »
+     * revenant trois cents fois ne dit pas LAQUELLE de ses cinq syntaxes
+     * n'est pas portée. On joint donc un bout de la ligne, comme pour les
+     * recours. Les blancs sont aplatis pour tenir sur une ligne de bilan. */
+    if (n->genre == HCTN_MESSAGE) {
+        v3_note("commande", "<message>");
+    } else {
+        char frag[28], cle[40];
+        int f = len < (int)sizeof frag - 1 ? len : (int)sizeof frag - 1;
+        memcpy(frag, deb, (size_t)f);
+        frag[f] = '\0';
+        for (char *p = frag; *p; p++)
+            if (*p == '\n' || *p == '\t' || *p == '\r') *p = ' ';
+        snprintf(cle, sizeof cle, "%s: %s", n->op ? n->op : "?", frag);
+        v3_note("commande", cle);
+    }
     ARENA_MARK;
     char *ligne = arena_buf();
     int m = len < HC_VAL - 1 ? len : HC_VAL - 1;
@@ -11136,14 +11235,23 @@ static void exec_line_body(Object *me, const char *line)
         if (ci_word(a, "before"))     { point_avant = 1; a = skip_spaces(a + 6); }
         else if (ci_word(a, "after")) { point_apres = 1; a = skip_spaces(a + 5); }
 
-        /* « select text of field X » : tout le contenu. */
+        /* « select text of field X » : tout le contenu.
+         *
+         * before / after valent ici aussi : « select before text of fld x »
+         * pose le point d'insertion au début, « after » à la fin. Cette
+         * branche sortait sans les consulter, si bien que les deux formes
+         * sélectionnaient tout le champ — le contraire de ce qu'elles
+         * demandent, et la façon habituelle de placer le curseur avant de
+         * taper. */
         if (ci_word(a, "text")) {
             const char *r = skip_spaces(a + 4);
             if (ci_word(r, "of")) r = skip_spaces(r + 2);
             Object *f = resolve(r);
             if (f && f->type == OBJ_FIELD) {
-                const char *t = hc_field_text(f);
-                hc_set_selection(f, 0, (int)strlen(t));
+                int fin = (int)strlen(hc_field_text(f));
+                if      (point_avant) hc_set_selection(f, 0, 0);
+                else if (point_apres) hc_set_selection(f, fin, 0);
+                else                  hc_set_selection(f, 0, fin);
             } else emit(HC_ERR, "   !! select : champ introuvable : %s", r);
             return;
         }
