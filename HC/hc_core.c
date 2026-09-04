@@ -6098,6 +6098,117 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
 
 /* ------------------------------------------------------------- les verbes */
 
+/* answer "invite" [with "a" [or "b" [or "c"]]]
+ *
+ * Motif hct_cmd.c : « b [with b [or b [or b]]] ». Les fils, dans l'ordre :
+ * l'invite, puis — si « with » est là — un HCTN_MOTCLE "with", un bouton,
+ * et chaque bouton suivant précédé de son propre HCTN_MOTCLE "or". Aucune
+ * chaîne à redécouper sur « with »/« or » hors des guillemets, comme le
+ * faisait l'ancien exécuteur : l'analyseur a déjà fait ce travail, et n'a
+ * pas cette faiblesse-là. */
+static int v3_cmd_reponse(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+
+    /* Les tampons vont dans l'ARÈNE, pas sur la pile : une invite peut citer
+     * le contenu d'un champ entier, et HC_VAL (un mégaoctet) ne tiendrait
+     * pas dans une fonction que le répartiteur de commandes appelle pour
+     * chaque ligne. Même raison que dans v3_recours. */
+    ARENA_MARK;
+    char *prompt = arena_buf();
+    v3_val_texte(ctx, n->fils[0], prompt, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char (*btn)[HC_VAL] = arena_rows(3);
+    int nb = 0;
+    if (v3_est_motcle(n, 1, "with")) {
+        int i = 2;
+        while (nb < 3 && i < n->nfils) {
+            v3_val_texte(ctx, n->fils[i], btn[nb], HC_VAL);
+            if (ctx->erreur) { ARENA_FREE; return 1; }
+            nb++; i++;
+            if (i < n->nfils && v3_est_motcle(n, i, "or")) i++;
+            else break;
+        }
+    }
+    if (nb == 0) { snprintf(btn[0], HC_VAL, "OK"); nb = 1; }
+
+    const char *rep = (g_host && g_host->answer)
+        ? g_host->answer(prompt, btn[0], nb > 1 ? btn[1] : NULL,
+                                          nb > 2 ? btn[2] : NULL)
+        : btn[0];
+    var_set("it", rep ? rep : "");
+    set_result("");
+    ARENA_FREE;
+    return 1;
+}
+
+/* answer file "invite" [of type t] : panneau d'ouverture, pas une boîte à
+ * boutons. « of type … » ne sert déjà à rien dans l'ancien exécuteur — il
+ * n'en tirait que la coupure de l'invite — et le nœud n'en garde de toute
+ * façon que les mots-clés, pas un fils à lire. */
+static int v3_cmd_reponse_fichier(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *inv = arena_buf();
+    v3_val_texte(ctx, n->fils[0], inv, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    const char *chemin = (g_host && g_host->answer_file)
+                        ? g_host->answer_file(inv) : NULL;
+    var_set("it", chemin ? chemin : "");
+    set_result(chemin ? "" : "Cancel");
+    ARENA_FREE;
+    return 1;
+}
+
+/* ask "invite" [with "défaut"] */
+static int v3_cmd_demande(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *prompt = arena_buf();
+    v3_val_texte(ctx, n->fils[0], prompt, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char *deflt = arena_buf();
+    if (v3_est_motcle(n, 1, "with") && n->nfils >= 3) {
+        v3_val_texte(ctx, n->fils[2], deflt, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+    }
+
+    const char *rep = (g_host && g_host->ask) ? g_host->ask(prompt, deflt) : NULL;
+    if (rep) { var_set("it", rep); set_result(""); }
+    else     { var_set("it", "");  set_result("Cancel"); }
+    ARENA_FREE;
+    return 1;
+}
+
+/* ask file "invite" [with "nom par défaut"] : le pendant en écriture
+ * d'« answer file ». Le chemin choisi va dans « it », vide si l'on annule. */
+static int v3_cmd_demande_fichier(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *inv = arena_buf();
+    v3_val_texte(ctx, n->fils[0], inv, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char *def = arena_buf();
+    if (v3_est_motcle(n, 1, "with") && n->nfils >= 3) {
+        v3_val_texte(ctx, n->fils[2], def, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+    }
+
+    const char *chemin = (g_host && g_host->ask_file)
+                        ? g_host->ask_file(inv, def) : NULL;
+    var_set("it", chemin ? chemin : "");
+    set_result(chemin ? "" : "Cancel");
+    ARENA_FREE;
+    return 1;
+}
+
 /* beep : l'ancien exécuteur ignore le nombre de bips et se contente de la
  * ligne. On garde ce comportement tel quel — la migration ne doit rien
  * changer d'observable, sinon on ne saura plus si une régression vient du
@@ -6925,6 +7036,10 @@ static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
 typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 
 static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
+    { "answer",      v3_cmd_reponse         },
+    { "answer file", v3_cmd_reponse_fichier },
+    { "ask",         v3_cmd_demande         },
+    { "ask file",    v3_cmd_demande_fichier },
     { "beep",   v3_cmd_beep    },
     { "choose", v3_cmd_choose  },
     { "click",  v3_cmd_click   },
