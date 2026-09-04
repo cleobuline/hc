@@ -6913,6 +6913,195 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* convert <conteneur> [from <format>] to <format> [and <format>]
+ *
+ * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
+ * v3_source reconstitue le texte exact de chaque fils et la jointure par
+ * espace redonne ce que lisait l'ancien exécuteur — y compris son silence
+ * sur « from » : il ne l'a jamais traité spécialement, ne coupant qu'au
+ * dernier « to » de premier niveau, et cette jointure reproduit exactement
+ * ce texte-là, « from » compris dans la source. Pas une ligne de
+ * l'algorithme n'a changé. */
+static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    /* Le « to » qui compte est le dernier de premier niveau : la source
+     * peut en contenir un elle-même, comme dans
+     * « convert item 1 to 7 of calData() to dateItems ». */
+    const char *to = NULL, *scan = mots;
+    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+        to = k; scan = k + 2;
+    }
+    if (!to) {
+        emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(mots));
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *src = arena_buf();
+    int len = (int)(to - mots);
+    if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+    memcpy(src, mots, (size_t)len); src[len] = '\0';
+    while (len > 0 && isspace((unsigned char)src[len-1])) src[--len] = '\0';
+    const char *srcp = skip_spaces(src);
+
+    /* le format cible, éventuellement double : « short date and long time » */
+    char spec[256];
+    snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
+    char *andkw = (char *)find_kw(spec, "and");
+    int f1 = DF_NONE, f2 = DF_NONE;
+    if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
+    f1 = date_format_code(spec);
+    if (f1 == DF_NONE) {
+        emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *val = arena_buf();
+    eval_expr(srcp, val, HC_VAL);
+
+    struct tm tm;
+    if (!parse_datetime(val, &tm)) {
+        emit(HC_ERR, "   !! date incomprise : « %s »", val);
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *outv = arena_buf();
+    char part2[256];
+    emit_datetime(&tm, f1, outv, HC_VAL);
+    if (f2 != DF_NONE) {
+        emit_datetime(&tm, f2, part2, sizeof part2);
+        int L = (int)strlen(outv);
+        snprintf(outv + L, HC_VAL - L, " %s", part2);
+    }
+
+    /* Destination : le conteneur source s'il en est un. « the date »,
+     * « the long time » et les appels de fonction n'en sont pas. */
+    int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
+    if (to_it || !container_set(srcp, outv, 0))
+        var_set("it", outv);
+
+    set_result("");
+    emit(HC_INFO, "   → %s", outv);
+    g_atop = sauve;
+    return 1;
+}
+
+/* print [this] card|stack|all|marked [<n>] [to <n>] [with <rapport>]
+ *
+ * Motif hct_cmd.c : « * [with e] », sans borne — comme pour find/sort/
+ * visual, v3_source reconstitue le texte exact de chaque fils. « with
+ * <rapport> » est reconstitué lui aussi mais reste ignoré : l'ancien
+ * exécuteur ne le lisait déjà pas, une mise en page de rapport demandant un
+ * imprimeur que le noyau n'a jamais eu. */
+static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    const char *a = skip_spaces(mots);
+    if (ci_word(a, "this")) a = skip_spaces(a + 4);
+
+    Object *pile = g_current_card ? g_current_card->owner : NULL;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+
+    Object *liste[512];
+    int np = 0;
+
+    if (ci_word(a, "stack") || ci_word(a, "all")) {
+        if (pile)
+            for (int i = 0; i < pile->nparts && np < 512; i++)
+                if (pile->parts[i]->type == OBJ_CARD) liste[np++] = pile->parts[i];
+    }
+    else if (ci_word(a, "marked")) {
+        if (pile)
+            for (int i = 0; i < pile->nparts && np < 512; i++)
+                if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
+                    liste[np++] = pile->parts[i];
+    }
+    else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
+        const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
+        if (!*r) {
+            /* « print card » nu : la carte courante. */
+            if (g_current_card) liste[np++] = g_current_card;
+        } else {
+            /* « print card 3 », « print card "index" », « print card 2 to 7 » */
+            const char *to = find_kw(r, "to");
+            if (to) {
+                char *v1 = arena_buf(), *v2 = arena_buf();
+                int len = (int)(to - r);
+                char brut[256];
+                if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+                memcpy(brut, r, (size_t)len); brut[len] = '\0';
+                eval_checked(brut, v1, HC_VAL);
+                eval_checked(skip_spaces(to + 2), v2, HC_VAL);
+                int d = atoi(v1), f = atoi(v2);
+                if (d < 1) d = 1;
+                for (int i = d; i <= f && np < 512; i++) {
+                    Object *c = nth_card(pile, i - 1);
+                    if (c) liste[np++] = c;
+                }
+            } else {
+                Object *c = resolve(r);
+                if (!c) {
+                    char *v = arena_buf();
+                    eval_checked(r, v, HC_VAL);
+                    c = resolve(v);
+                    if (!c) {
+                        char ref[128];
+                        snprintf(ref, sizeof ref, "card %s", v);
+                        c = resolve(ref);
+                    }
+                }
+                if (c && c->type == OBJ_CARD) liste[np++] = c;
+            }
+        }
+    }
+
+    if (np == 0) {
+        set_result("No cards to print");
+        emit(HC_ERR, "   !! print : rien à imprimer");
+        g_atop = sauve; return 1;
+    }
+    if (g_host && g_host->print_cards) {
+        g_host->print_cards(liste, np);
+        set_result("");
+    } else {
+        set_result("Can't print");
+        emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
+    }
+    g_atop = sauve;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -7861,6 +8050,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "choose", v3_cmd_choose  },
     { "click",  v3_cmd_click   },
     { "close",  v3_cmd_fichier },
+    { "convert", v3_cmd_convert },
     { "debug",  v3_cmd_debug   },
     { "delete", v3_cmd_delete  },
     { "domenu", v3_cmd_domenu  },
@@ -7873,6 +8063,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "open",   v3_cmd_fichier },
     { "play",   v3_cmd_play    },
     { "pop",    v3_cmd_pop     },
+    { "print",  v3_cmd_print   },
     { "push",   v3_cmd_push    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
