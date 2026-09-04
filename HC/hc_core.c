@@ -5705,12 +5705,25 @@ static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
  * term_value traite bien des choses AVANT d'en arriver là — les constantes,
  * les dates, « the result » —, et court-circuiter aveuglément déplacerait
  * l'ordre de priorité sans qu'on s'en aperçoive. Ajouter un nom ici est une
- * ligne, et c'est le bon prix pour ne pas casser une règle par accident. */
+ * ligne, et c'est le bon prix pour ne pas casser une règle par accident.
+ *
+ * Ordre vérifié pour chacun de ces noms : dans term_value_body, seules les
+ * constantes, la liste sans argument de call_function_body et les variables
+ * passent avant host_global. resolve() n'attrape rien ici — un mot nu sans
+ * mot-clé de type ne désigne aucun objet (vérifié : un champ nommé
+ * « pattern » ne répond pas à « put pattern », ni en v1 ni en v3). Un nom
+ * que l'hôte ignore rend NULL et reprend le chemin normal, si bien qu'en
+ * lister un de trop ne coûte rien. */
 static const char *V3_GLOBALES_HOTE[] = {
     "mouse", "mouseLoc", "mouseH", "mouseV",
     "clickLoc", "clickH", "clickV",
+    "clickChunk", "clickLine", "clickText",
+    "mouseClick", "mouseLine",
     "shiftKey", "optionKey", "commandKey", "cmdKey",
     "tool", "screenRect",
+    /* réglages de peinture et de texte, tenus par l'hôte */
+    "textHeight", "textSize", "textFont", "textStyle", "textAlign",
+    "filled", "lineSize", "pattern", "brush",
     NULL
 };
 
