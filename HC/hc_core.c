@@ -6176,6 +6176,41 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* delete <cible> : supprime un morceau de conteneur — mot, ligne, item,
+ * caractère —, ou vide un champ ou une variable entière. container_set sait
+ * déjà tout cela (mode 3), à condition de recevoir le TEXTE de la référence :
+ * hct_cmd.c l'analyse comme une expression ordinaire (« e »), sans nœud dédié
+ * pour un morceau. v3_source la reconstitue donc, comme le fait v3_recours
+ * pour une expression qu'elle ne sait pas évaluer elle-même.
+ *
+ * Une faute d'analyse dans la cible — n->fils[0] devenu lui-même une
+ * HCTN_ERREUR — rendrait un texte tronqué : container_set effacerait alors
+ * autre chose que ce que le script demande, en silence. On rend 0 plutôt que
+ * de risquer ça ; l'ancien chemin sait dire pourquoi la ligne est fautive.
+ *
+ * container_set ne connaît que les morceaux, la boîte de messages, les
+ * champs et les variables — jamais les boutons, cartes ou menus : « delete
+ * button 1 » lui échappe déjà, et continuera de repartir à l'ancien chemin,
+ * comme avant ce portage. */
+static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
+
+    char d[256];
+    v3_source(n->fils[0], d, sizeof d);
+    if (!d[0]) return 0;
+
+    if (container_set(d, "", 3)) {
+        set_result("");
+        emit(HC_INFO, "   → supprimé : %s", d);
+    } else {
+        set_result("rien à supprimer");
+        emit(HC_ERR, "   !! rien à supprimer : %s", d);
+    }
+    return 1;
+}
+
 /* play : HyperCard accepte une suite de notes derrière le nom du son
  * (« play "boing" tempo 200 c4 e4 »). Comme l'ancien exécuteur, on ne retient
  * que le nom : le reste demande un synthétiseur, pas un lecteur. */
@@ -6815,6 +6850,78 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     hc_send_args(start, nom, argv, argc);
     return 1;
 }
+
+/* visual [effect] <nom> [<vitesse>] [to <image>] : arme l'effet du PROCHAIN
+ * « go » (voir v3_cmd_go, plus haut) — elle ne joue rien elle-même.
+ *
+ * hct_cmd.c ne motive la commande que par « [effect] W » : rien dans l'arbre
+ * ne distingue déjà le nom de l'effet, sa vitesse et l'image cible — ce sont
+ * juste des HCTN_IDENT à la file, un par mot. On les rejoint donc par un
+ * espace, ce qui reconstitue exactement le texte que lisait l'ancien
+ * exécuteur, et on lui reprend son analyse telle quelle : couper la vitesse
+ * en QUEUE, puis « to » en tête de ce qui restait. Même ambiguïté qu'avant,
+ * juste plus aucun texte à reconstruire depuis les jetons de la ligne
+ * entière. */
+static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    int deb = (n->nfils >= 1 && n->fils[0]->genre == HCTN_MOTCLE) ? 1 : 0;
+
+    char mots[192];
+    int pos = 0;
+    mots[0] = '\0';
+    for (int i = deb; i < n->nfils; i++) {
+        char m[64];
+        v3_brut(n->fils[i], m, sizeof m);
+        if (!*m) continue;
+        pos += snprintf(mots + pos, sizeof(mots) - (size_t)pos, "%s%s",
+                        pos ? " " : "", m);
+        if (pos >= (int)sizeof mots) { pos = (int)sizeof mots - 1; break; }
+    }
+
+    g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+
+    const char *to = find_kw(mots, "to");
+    char reste[192];
+    int len = to ? (int)(to - mots) : (int)strlen(mots);
+    if (len > (int)sizeof reste - 1) len = (int)sizeof reste - 1;
+    memcpy(reste, mots, (size_t)len);
+    reste[len] = '\0';
+    while (len > 0 && isspace((unsigned char)reste[len-1])) reste[--len] = '\0';
+
+    if (to) {
+        const char *img = skip_spaces(to + 2);
+        snprintf(g_visual_image, sizeof g_visual_image, "%s", img);
+        int ni = (int)strlen(g_visual_image);
+        while (ni > 0 && isspace((unsigned char)g_visual_image[ni-1]))
+            g_visual_image[--ni] = '\0';
+    }
+
+    /* La vitesse est en QUEUE, et peut faire deux mots : « very fast ». On la
+     * retire par la fin, ce qui laisse le nom de l'effet — lui aussi parfois
+     * en plusieurs mots, d'où l'impossibilité de découper par la gauche. */
+    static const char *vitesses[] = { "very fast", "very slow", "very slowly",
+                                      "fast", "slow", "slowly", NULL };
+    for (int i = 0; vitesses[i]; i++) {
+        int lv = (int)strlen(vitesses[i]);
+        int lr = (int)strlen(reste);
+        if (lr > lv && ci_equal(reste + lr - lv, vitesses[i]) &&
+            isspace((unsigned char)reste[lr - lv - 1])) {
+            snprintf(g_visual_speed, sizeof g_visual_speed, "%s", vitesses[i]);
+            int k = lr - lv - 1;
+            while (k > 0 && isspace((unsigned char)reste[k-1])) k--;
+            reste[k] = '\0';
+            break;
+        }
+    }
+
+    snprintf(g_visual_effect, sizeof g_visual_effect, "%.63s", reste);
+    if (!g_visual_effect[0])
+        snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
+    set_result("");
+    return 1;
+}
+
 typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 
 static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
@@ -6823,6 +6930,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "click",  v3_cmd_click   },
     { "close",  v3_cmd_fichier },
     { "debug",  v3_cmd_debug   },
+    { "delete", v3_cmd_delete  },
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
     { "go",     v3_cmd_go      },
@@ -6841,6 +6949,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "type",   v3_cmd_type    },
     { "unlock", v3_cmd_verrou  },
     { "unmark", v3_cmd_marque  },
+    { "visual", v3_cmd_visuel  },
     { "wait",   v3_cmd_wait    },
     { NULL, NULL }
 };
