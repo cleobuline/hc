@@ -5701,6 +5701,159 @@ static const char *V3_GLOBALES_HOTE[] = {
     NULL
 };
 
+/* Les propriétés du monde sans argument que call_function_body servait en
+ * relexant « the » + nom : the result, the date (et ses formes longues et
+ * courtes), the selection, the paramCount... Toutes des lectures directes
+ * de globales déjà accessibles ici — aucune n'a besoin de l'ancien
+ * interpréteur, seulement de sa liste, reproduite terme à terme pour ne
+ * rien oublier ni rien réordonner.
+ *
+ * `buf` vient de l'arène de l'appelant (HC_VAL, un mégaoctet) : seul
+ * « stacksInUse » et « the params » peuvent approcher cette taille, mais
+ * les deux se servent du même tampon plutôt que d'ajouter une variante.
+ *
+ * Rend 0 si nom n'est reconnu par rien ici : l'appelant retombe alors sur
+ * term_value, exactement comme avant. */
+static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
+{
+    /* formes composées : long date, short time, abbreviated date… */
+    int datemode = -1;
+    if (ci_word(nom, "long")) {
+        const char *w = skip_spaces(nom + 4);
+        if (ci_word(w, "date")) datemode = 2; else if (ci_word(w, "time")) datemode = 4;
+    } else if (ci_word(nom, "short")) {
+        const char *w = skip_spaces(nom + 5);
+        if (ci_word(w, "date")) datemode = 0; else if (ci_word(w, "time")) datemode = 3;
+    } else if (ci_word(nom, "abbreviated") || ci_word(nom, "abbrev") || ci_word(nom, "abbr")) {
+        const char *w = strchr(nom, ' ');
+        if (w && ci_word(skip_spaces(w), "date")) datemode = 1;
+    }
+    if (datemode >= 0) {
+        char petit[128];
+        format_date(petit, sizeof petit, datemode);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "date")) {
+        char petit[128]; format_date(petit, sizeof petit, 0);
+        *out = hct_val_texte(petit); return 1;
+    }
+    if (ci_equal(nom, "time")) {
+        char petit[128]; format_date(petit, sizeof petit, 3);
+        *out = hct_val_texte(petit); return 1;
+    }
+    if (ci_equal(nom, "result")) { *out = hct_val_texte(g_result); return 1; }
+    if (ci_equal(nom, "foundtext")) { *out = hct_val_texte(g_found_text); return 1; }
+    if (ci_equal(nom, "stacksinuse")) {
+        buf[0] = '\0';
+        size_t used = 0;
+        for (int i = 0; i < g_nusing; i++) {
+            const char *nm = g_using[i]->name ? g_using[i]->name : "";
+            size_t l = strlen(nm);
+            if (used + l + 2 >= (size_t)HC_VAL) break;
+            if (i) buf[used++] = '\n';
+            memcpy(buf + used, nm, l); used += l;
+            buf[used] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "selection") || ci_equal(nom, "selectedtext")) {
+        selection_text(buf, HC_VAL);
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedfield")) {
+        char petit[96];
+        if (g_sel_field) hc_describe(g_sel_field, petit, sizeof petit);
+        else petit[0] = '\0';
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedline")) {
+        if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
+        const char *t = hc_field_text(g_sel_field);
+        int line = 1;
+        for (int i = 0; i < g_sel_start && t[i]; i++)
+            if (t[i] == '\n') line++;
+        char petit[16]; snprintf(petit, sizeof petit, "%d", line);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedchunk")) {
+        if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
+        char d[96];
+        hc_describe(g_sel_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+                 g_sel_start + 1, g_sel_start + g_sel_len,
+                 hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundchunk")) {
+        if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
+        char d[96];
+        hc_describe(g_found_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+                 g_found_start + 1, g_found_start + g_found_len,
+                 hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundfield")) {
+        char petit[96];
+        if (g_found_field) hc_describe(g_found_field, petit, sizeof petit);
+        else petit[0] = '\0';
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundline")) {
+        if (g_found_field && g_found_line > 0) {
+            char d[96]; hc_describe(g_found_field, d, sizeof d);
+            char petit[128];
+            snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
+            *out = hct_val_texte(petit);
+        } else *out = hct_val_texte("");
+        return 1;
+    }
+    if (ci_equal(nom, "paramcount")) {
+        char petit[16]; snprintf(petit, sizeof petit, "%d", g_nparams - 1);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "params")) {
+        buf[0] = '\0';
+        int pos = 0;
+        for (int i = 0; i < g_nparams; i++)
+            pos += snprintf(buf + pos, (size_t)HC_VAL - pos, "%s%s", i ? "," : "", g_params[i]);
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "seconds") || ci_equal(nom, "secs")) {
+        char petit[24];
+        snprintf(petit, sizeof petit, "%lld", (long long)time(NULL) + HC_MAC_EPOCH);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "ticks")) {
+        /* comme dans call_function_body : l'hôte d'abord, lui seul a une
+         * horloge fine ; le repli compte depuis le premier appel. */
+        const char *hv = host_global(nom);
+        if (hv && *hv) { *out = hct_val_texte(hv); return 1; }
+        static time_t t0;
+        static int t0_pris = 0;
+        time_t now = time(NULL);
+        if (!t0_pris) { t0 = now; t0_pris = 1; }
+        char petit[24];
+        snprintf(petit, sizeof petit, "%lld", (long long)(now - t0) * 60);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    return 0;
+}
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -5728,6 +5881,16 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             *out = hct_val_texte(v);
             return 1;
         }
+
+        /* the result, the date, the selection... la même liste que
+         * call_function_body servait, mais sans relexer « the » + nom.
+         * ARENA_MARK/FREE encadrent juste cet essai : le tampon ne survit
+         * pas à l'appel, hct_val_texte en a déjà fait une copie. */
+        ARENA_MARK;
+        char *gbuf = arena_buf();
+        int servi = v3_fonction_globale(nom, gbuf, out);
+        ARENA_FREE;
+        if (servi) return 1;
     }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
