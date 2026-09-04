@@ -489,6 +489,28 @@ static void arena_shutdown(void)
  * par « set lockScreen to … ». */
 static int g_ecran_verrouille = 0;
 
+/* « lock messages » : les messages SYSTÈME — openCard, closeCard,
+ * openBackground, closeBackground — ne partent plus.
+ *
+ * C'est ce qui permet à un script de parcourir une pile sans réveiller les
+ * gestionnaires de chaque carte : un sommaire qui relève un champ sur cent
+ * cartes n'a pas à déclencher cent openCard. Sans cette commande, un tel
+ * parcours exécute les scripts de toute la pile et peut échouer sur une
+ * carte dont le gestionnaire suppose autre chose.
+ *
+ * Seuls les messages système sont retenus : un « send » explicite part
+ * quand même, comme dans HyperCard. */
+static int g_messages_verrouilles = 0;
+
+/* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
+ * envois automatiques de changement de carte passent par ici — et eux seuls,
+ * pour que « send » continue de partir. */
+static void hc_send_systeme(Object *o, const char *message)
+{
+    if (!o || g_messages_verrouilles) return;
+    hc_send(o, message);
+}
+
 /* Champs modifiés pendant le verrou, à rafraîchir au déverrouillage.
  *
  * Demander un rafraîchissement GLOBAL au déverrouillage, comme je le faisais,
@@ -6816,11 +6838,11 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     if (cd != g_current_card) {      /* naviguer si besoin */
                         Object *old = g_current_card;
                         Object *oldbg = old ? old->bg : NULL;
-                        if (old) hc_send(old, "closeCard");
-                        if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                        if (old) hc_send_systeme(old, "closeCard");
+                        if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
                         g_current_card = cd;
-                        if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
-                        hc_send(cd, "openCard");
+                        if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
+                        hc_send_systeme(cd, "openCard");
                     }
                     set_result("");
                     emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
@@ -7753,14 +7775,21 @@ static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* lock/unlock screen. Les autres formes — « lock messages », « lock recent »
- * — repartent à l'ancien chemin. */
+/* lock/unlock screen et lock/unlock messages. « lock recent » repart à
+ * l'ancien chemin. */
 static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     char mot[32];
     if (n->nfils < 1) return 0;
     v3_brut(n->fils[0], mot, sizeof mot);
+
+    if (ci_equal(mot, "messages")) {
+        g_messages_verrouilles = ci_equal(n->op, "lock");
+        set_result("");
+        return 1;
+    }
+
     if (!ci_equal(mot, "screen")) return 0;
 
     g_ecran_verrouille = ci_equal(n->op, "lock");
@@ -7907,11 +7936,11 @@ static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
     Object *oldbg = old ? old->bg : NULL;
     Object *newbg = dst->bg;
 
-    if (old) hc_send(old, "closeCard");
-    if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+    if (old) hc_send_systeme(old, "closeCard");
+    if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
     g_current_card = dst;
-    if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
-    hc_send(dst, "openCard");
+    if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
+    hc_send_systeme(dst, "openCard");
     set_result("");
     emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
     return 1;
@@ -8318,13 +8347,13 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 
     Object *old   = g_current_card;
     Object *oldbg = old ? old->bg : NULL;
-    if (old) hc_send(old, "closeCard");
+    if (old) hc_send_systeme(old, "closeCard");
     /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
-    if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
+    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
     g_current_card = dst;
-    if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
+    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
     emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-    hc_send(dst, "openCard");
+    hc_send_systeme(dst, "openCard");
     return 1;
 }
 
@@ -9963,6 +9992,11 @@ static void exec_line_body(Object *me, const char *line)
      * seul de suspendre ou non son rafraîchissement. Le noyau, lui, ne sait
      * toujours pas ce qu'est un écran. L'effet visuel éventuel est ignoré. */
     if (ci_equal(verb, "lock") || ci_equal(verb, "unlock")) {
+        if (ci_word(skip_spaces(rest), "messages")) {
+            g_messages_verrouilles = ci_equal(verb, "lock");
+            set_result("");
+            return;
+        }
         if (ci_word(skip_spaces(rest), "screen")) {
             g_ecran_verrouille = ci_equal(verb, "lock");
             host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
@@ -10637,11 +10671,11 @@ static void exec_line_body(Object *me, const char *line)
                         if (cd != g_current_card) {      /* naviguer si besoin */
                             Object *old = g_current_card;
                             Object *oldbg = old ? old->bg : NULL;
-                            if (old) hc_send(old, "closeCard");
-                            if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                            if (old) hc_send_systeme(old, "closeCard");
+                            if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
                             g_current_card = cd;
-                            if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
-                            hc_send(cd, "openCard");
+                            if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
+                            hc_send_systeme(cd, "openCard");
                         }
                         set_result("");
                         emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
@@ -10835,11 +10869,11 @@ static void exec_line_body(Object *me, const char *line)
         Object *old = g_current_card;
         Object *oldbg = old ? old->bg : NULL;
         Object *newbg = dst->bg;
-        if (old) hc_send(old, "closeCard");
-        if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+        if (old) hc_send_systeme(old, "closeCard");
+        if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
         g_current_card = dst;
-        if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
-        hc_send(dst, "openCard");
+        if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
+        hc_send_systeme(dst, "openCard");
         set_result("");
         emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
         return;
@@ -10930,14 +10964,14 @@ static void exec_line_body(Object *me, const char *line)
             }
             Object *old   = g_current_card;
             Object *oldbg = old ? old->bg : NULL;
-            if (old) hc_send(old, "closeCard");
+            if (old) hc_send_systeme(old, "closeCard");
             /* Changement de fond : les quatre messages, dans l'ordre
              * d'HyperCard. « find » le faisait déjà, « go » l'oubliait. */
-            if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
+            if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
             g_current_card = dst;
-            if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
+            if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
             emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-            hc_send(dst, "openCard");
+            hc_send_systeme(dst, "openCard");
         } else {
             set_result("carte introuvable");
             emit(HC_ERR, "   !! carte introuvable : %s", r);
@@ -12236,6 +12270,11 @@ static int hc_send_args_k(Object *target, const char *message,
         verrou_reveille();
         host_global_set("lockScreen", "false");
     }
+    /* Même règle pour « lock messages », et pour la même raison : un
+     * gestionnaire qui verrouille puis sort avant son « unlock messages »
+     * laisserait la pile MUETTE pour toujours — plus un seul openCard, et
+     * rien pour dire pourquoi. */
+    if (g_depth == 0) g_messages_verrouilles = 0;
 
     return r;
 }
