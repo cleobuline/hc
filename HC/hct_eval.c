@@ -372,6 +372,10 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
 
 /* -------------------------------------------------------------- appels */
 
+/* Définie plus bas, avec « the value of » dont elle est le moteur. */
+static int evalue_texte(HctContexte *ctx, const char *src,
+                        const HctNoeud *origine, HctValeur *out);
+
 static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return hct_val_vide();
@@ -440,6 +444,30 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
                 if (!strncasecmp(g + i, p, lp)) { pos = (long)i + 1; break; }
         r = hct_val_nombre((double)pos); fait = 1;
     }
+    /* value(x) : le pendant en forme d'appel de « the value of x ». Même
+     * moteur, donc même règle — evalue_texte refuse ce qui n'est pas une
+     * expression complète et propre, et l'on garde alors le recours, où
+     * l'ancien évaluateur est plus tolérant. */
+    if (!fait && nargs == 1 && !strcasecmp(nom, "value"))
+        fait = evalue_texte(ctx, args[0].txt, n, &r);
+
+    /* Fonctions financières d'HyperCard. Deux formules, rien de plus, et
+     * aucun besoin du monde extérieur :
+     *   annuity(taux, n)  = (1 − (1+taux)^−n) / taux
+     *   compound(taux, n) = (1+taux)^n
+     * Le taux nul est un cas limite légitime : l'annuité vaut alors le
+     * nombre de périodes, et la division ferait une erreur. */
+    if (!fait && nargs == 2 &&
+        hct_est_nombre(args[0].txt) && hct_est_nombre(args[1].txt) &&
+        (!strcasecmp(nom, "annuity") || !strcasecmp(nom, "compound"))) {
+        double taux = hct_vers_nombre(args[0].txt);
+        double per  = hct_vers_nombre(args[1].txt);
+        double y;
+        if (!strcasecmp(nom, "compound")) y = pow(1.0 + taux, per);
+        else y = (taux == 0) ? per : (1.0 - pow(1.0 + taux, -per)) / taux;
+        r = hct_val_nombre(y); fait = 1;
+    }
+
     if (!fait && (!strcasecmp(nom, "min") || !strcasecmp(nom, "max") ||
                   !strcasecmp(nom, "sum") || !strcasecmp(nom, "average") ||
                   !strcasecmp(nom, "avg"))) {

@@ -5548,6 +5548,66 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
     }
 }
 
+/* « the number of cards », « the number of card buttons », « the number of
+ * backgrounds » : un COMPTAGE d'objets, que seul l'hôte peut faire.
+ *
+ * L'évaluateur sait déjà compter les morceaux — « the number of items of x »
+ * — mais pas les objets, et ces formes repartaient donc en entier vers
+ * l'ancien interpréteur par reconstitution du texte source. Avec les pertes
+ * qui vont avec : « the number of card fields » se reconstituait en
+ * « number of card », que term_value rendait tel quel, en clair, au lieu
+ * d'un nombre.
+ *
+ * On ne traite que le PLURIEL nu, sans désignateur ni cible : « the number
+ * of card 3 » désigne le RANG de cette carte, et « the number of cards of
+ * bg 2 » porte une cible — les deux restent à l'ancien code.
+ *
+ * La portée absente compte la carte ET le fond, comme term_value : les rangs
+ * se comptent séparément dans chacun, mais le total est resté la valeur par
+ * défaut par compatibilité. */
+static int v3_nombre_objets(const HctNoeud *obj, int *out)
+{
+    if (!obj || obj->genre != HCTN_OBJET) return 0;
+    if (obj->designateur != HCT_DES_AUCUN) return 0;
+    if (obj->nfils != 0) return 0;
+
+    Object *card  = g_current_card;
+    Object *stack = owning_stack(card);
+
+    if (obj->typeobj == HCT_OBJ_CARD) { *out = card_count(stack); return 1; }
+
+    if (obj->typeobj == HCT_OBJ_BACKGROUND) {
+        int n = 0;
+        for (int i = 0; stack && i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_BACKGROUND) n++;
+        *out = n;
+        return 1;
+    }
+
+    if (obj->typeobj != HCT_OBJ_BUTTON && obj->typeobj != HCT_OBJ_FIELD &&
+        obj->typeobj != HCT_OBJ_PART)
+        return 0;
+
+    Object *coins[2] = { NULL, NULL };
+    if      (obj->portee == HCT_PORTEE_CARTE) coins[0] = card;
+    else if (obj->portee == HCT_PORTEE_FOND)  coins[0] = card ? card->bg : NULL;
+    else { coins[0] = card; coins[1] = card ? card->bg : NULL; }
+
+    int n = 0;
+    for (int k = 0; k < 2; k++) {
+        Object *o = coins[k];
+        for (int i = 0; o && i < o->nparts; i++) {
+            int t = o->parts[i]->type;
+            if (obj->typeobj == HCT_OBJ_PART) {
+                if (t == OBJ_BUTTON || t == OBJ_FIELD) n++;
+            } else if (t == (obj->typeobj == HCT_OBJ_BUTTON ? OBJ_BUTTON
+                                                            : OBJ_FIELD)) n++;
+        }
+    }
+    *out = n;
+    return 1;
+}
+
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
@@ -5568,6 +5628,21 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * le reste (« recours objet », « recours chunk »… ) se nomme par un bout
      * de son texte source : bien moins ambigu qu'un genre de nœud qui ne dit
      * pas QUEL objet ou QUELLE expression est en cause. */
+    /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
+     * le relevé : ce n'est plus un retour vers l'ancien interpréteur. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
+        char quoi[32];
+        hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+        int compte;
+        if (ci_equal(quoi, "number") && v3_nombre_objets(n->fils[1], &compte)) {
+            char b[24];
+            snprintf(b, sizeof b, "%d", compte);
+            *out = hct_val_texte(b);
+            return 1;
+        }
+    }
+
     if (n->genre == HCTN_OF && n->nfils >= 1 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char nom[32], cle[40];
@@ -5935,6 +6010,15 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         int servi = v3_fonction_globale(nom, gbuf, out);
         ARENA_FREE;
         if (servi) return 1;
+    }
+
+    /* param(n) : le n-ième paramètre du gestionnaire courant, param(0)
+     * étant le nom du message. Une lecture de g_params, rien de plus —
+     * elle n'avait aucune raison de repartir chez l'ancien interpréteur. */
+    if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
+        int i = (int)hct_vers_nombre(args[0].txt);
+        *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
+        return 1;
     }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
