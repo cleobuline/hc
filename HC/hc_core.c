@@ -6357,6 +6357,140 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
     }
 }
 
+/* find [string|chars|whole|word] "motif" [in <champ>]
+ *
+ * Motif hct_cmd.c : « * », sans borne — l'analyseur découpe la ligne entière
+ * mot à mot, exactement comme pour « sort » et « visual ». Même remède :
+ * v3_source reconstitue le texte exact de chaque fils, on les rejoint par un
+ * espace, et l'ancien algorithme — lecture du mode, recherche de « in » hors
+ * des guillemets, balayage carte par carte puis champ par champ — s'applique
+ * tel quel au résultat. */
+static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    char *mots = arena_buf();
+    {
+        int pos = 0;
+        for (int i = 0; i < n->nfils; i++) {
+            char *frag = arena_buf();
+            v3_source(n->fils[i], frag, HC_VAL);
+            if (!frag[0]) continue;
+            pos += snprintf(mots + pos, (size_t)(HC_VAL - pos), "%s%s",
+                            pos ? " " : "", frag);
+            if (pos >= HC_VAL) { pos = HC_VAL - 1; break; }
+        }
+    }
+
+    const char *r = skip_spaces(mots);
+    int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
+    if      (ci_word(r, "string") || ci_word(r, "chars")) { mode = 1; r = skip_spaces(r + 6); }
+    else if (ci_word(r, "whole"))  { mode = 1; r = skip_spaces(r + 5); }
+    else if (ci_word(r, "word"))   { mode = 2; r = skip_spaces(r + 4); }
+
+    /* separer le motif de l'eventuel « in <champ> » */
+    const char *kw = NULL;
+    int inq = 0;
+    for (const char *q = r; *q; q++) {
+        if (*q == '"') { inq = !inq; continue; }
+        if (inq) continue;
+        if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
+    }
+    char pat[256] = "", where[128] = "";
+    if (kw) {
+        char e[256];
+        int len = (int)(kw - r);
+        if (len > (int)sizeof e - 1) len = (int)sizeof e - 1;
+        memcpy(e, r, (size_t)len); e[len] = 0;
+        eval_expr(e, pat, sizeof pat);
+        snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
+    } else {
+        eval_expr(r, pat, sizeof pat);
+    }
+    if (!pat[0]) { set_result("not found"); g_atop = sauve; return 1; }
+
+    Object *stack = g_current_card ? g_current_card->owner : NULL;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) { set_result("not found"); g_atop = sauve; return 1; }
+
+    int total = card_count(stack);
+    int start = card_index(stack, g_current_card);
+    if (start < 0) start = 0;
+
+    for (int k = 0; k < total; k++) {
+        Object *cd = nth_card(stack, (start + k) % total);
+        if (!cd) continue;
+
+        /* champs de la carte puis du fond */
+        Object *layers[2] = { cd, cd->bg };
+        for (int L = 0; L < 2; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts; i++) {
+                Object *fl = lay->parts[i];
+                if (fl->type != OBJ_FIELD || fl->dont_search) continue;
+                if (where[0]) {          /* recherche restreinte a un champ */
+                    Object *only = resolve(where);
+                    if (only != fl) continue;
+                }
+
+                Object *saved = g_current_card;
+                g_current_card = cd;                 /* pour le texte par carte */
+                const char *tx = hc_field_text(fl);
+                const char *hit = NULL;
+                int line = 1;
+
+                for (const char *q = tx; *q; q++) {
+                    if (*q == '\n') { line++; continue; }
+                    int atword = (q == tx) || isspace((unsigned char)q[-1]);
+                    if (mode == 1 || atword) {
+                        size_t plen = strlen(pat);
+                        if (strncasecmp(q, pat, plen) == 0) {
+                            if (mode == 2) {         /* mot entier */
+                                char nx = q[plen];
+                                if (nx && !isspace((unsigned char)nx) &&
+                                    !ispunct((unsigned char)nx)) continue;
+                            }
+                            hit = q;
+                            break;
+                        }
+                    }
+                }
+                g_current_card = saved;
+
+                if (hit) {
+                    snprintf(g_found_text, sizeof g_found_text, "%s", pat);
+                    g_found_field = fl;
+                    g_found_line = line;
+                    g_found_start = (int)(hit - tx);
+                    g_found_len   = (int)strlen(pat);
+                    g_found_card  = cd;
+
+                    if (cd != g_current_card) {      /* naviguer si besoin */
+                        Object *old = g_current_card;
+                        Object *oldbg = old ? old->bg : NULL;
+                        if (old) hc_send(old, "closeCard");
+                        if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                        g_current_card = cd;
+                        if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
+                        hc_send(cd, "openCard");
+                    }
+                    set_result("");
+                    emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
+                         pat, cd->name ? cd->name : "?");
+                    g_atop = sauve;
+                    return 1;
+                }
+            }
+        }
+    }
+    g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
+    g_found_start = g_found_len = 0; g_found_card = NULL;
+    set_result("not found");
+    g_atop = sauve;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -7309,6 +7443,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "delete", v3_cmd_delete  },
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
+    { "find",   v3_cmd_find    },
     { "go",     v3_cmd_go      },
     { "hide",   v3_cmd_montre  },
     { "lock",   v3_cmd_verrou  },
