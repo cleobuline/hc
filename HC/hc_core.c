@@ -6491,6 +6491,70 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* send "<message>" to <objet>
+ *
+ * Motif hct_cmd.c : « e [to r] ». Sans « to r » c'est une forme fautive que
+ * l'ancien exécuteur refuse avec son propre message ; on lui laisse ce cas
+ * plutôt que de le reproduire à côté.
+ *
+ * Le message reste un TEXTE à redécouper après évaluation — nom du
+ * gestionnaire, puis arguments séparés par des virgules — exactement comme
+ * le faisait l'ancien exécuteur : « send "carre" & n to bouton » ne sait pas
+ * d'avance combien d'arguments son résultat portera. La cible, elle, n'a
+ * plus besoin de repasser par le texte : c'est un vrai nœud HCTN_OBJET, que
+ * hct_resout résout directement — avec un repli sur le texte, comme dans
+ * v3_cmd_go, pour les formes qu'il ne couvre pas encore. */
+static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 3 || !v3_est_motcle(n, 1, "to")) return 0;
+
+    ARENA_MARK;
+    char *msgline = arena_buf();
+    v3_val_texte(ctx, n->fils[0], msgline, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    Object *target = hct_resout(ctx, n->fils[2]);
+    if (!target) {
+        char v[256];
+        v3_val_texte(ctx, n->fils[2], v, sizeof v);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+        if (v[0]) target = resolve(v);
+    }
+    if (!target) {
+        set_result("destinataire introuvable");
+        emit(HC_ERR, "   !! destinataire introuvable");
+        ARENA_FREE;
+        return 1;
+    }
+
+    /* découper le message en nom + arguments */
+    char msg[128];
+    const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
+    char (*argv)[HC_VAL] = arena_rows(16);
+    int argc = 0;
+    a = skip_spaces(a);
+    while (*a && argc < 16) {
+        char *one = arena_buf();
+        int len = 0, depth = 0, inq = 0;
+        while (*a && !(depth == 0 && !inq && *a == ',')) {
+            if (*a == '"') inq = !inq;
+            else if (!inq && *a == '(') depth++;
+            else if (!inq && *a == ')') depth--;
+            if (len < 511) one[len++] = *a;
+            a++;
+        }
+        one[len] = '\0';
+        eval_expr(one, argv[argc], sizeof argv[argc]);   /* contexte appelant */
+        argc++;
+        if (*a == ',') a = skip_spaces(a + 1); else break;
+    }
+
+    set_result("");     /* un `return` dans le gestionnaire le remplira */
+    hc_send_args(target, msg, argv, argc);
+    ARENA_FREE;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
 
 /* answer "invite" [with "a" [or "b" [or "c"]]]
@@ -7454,6 +7518,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "push",   v3_cmd_push    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
+    { "send",   v3_cmd_send    },
     { "show",   v3_cmd_montre  },
     { "sort",   v3_cmd_sort    },
     { "start",  v3_cmd_using   },
