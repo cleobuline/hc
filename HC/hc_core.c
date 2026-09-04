@@ -5538,11 +5538,18 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
 
-    /* Étiquette fine pour « X of Y » : le genre seul ne dit rien quand la
-     * ligne monte à plusieurs milliers. Une pile de dessin en a produit 8919
-     * en une session, et « recours of » ne permettait de savoir ni laquelle
-     * coûtait, ni s'il s'agissait d'une propriété qu'obj_prop_read ignore ou
-     * d'une cible que hct_resout ne sait pas résoudre. On note donc le NOM. */
+    /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
+     * plusieurs milliers, ni surtout à qui lit le bilan sans l'arbre sous
+     * les yeux. Une pile de dessin en a produit 8919 en une session, et
+     * « recours of » ne permettait de savoir ni laquelle coûtait, ni s'il
+     * s'agissait d'une propriété qu'obj_prop_read ignore ou d'une cible que
+     * hct_resout ne sait pas résoudre.
+     *
+     * « X of Y » se nomme par Y, le nom de la propriété — le cas le plus
+     * fréquent, et celui où le nom seul suffit à savoir quoi chercher. Tout
+     * le reste (« recours objet », « recours chunk »… ) se nomme par un bout
+     * de son texte source : bien moins ambigu qu'un genre de nœud qui ne dit
+     * pas QUEL objet ou QUELLE expression est en cause. */
     if (n->genre == HCTN_OF && n->nfils >= 1 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char nom[32], cle[40];
@@ -5550,7 +5557,13 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         snprintf(cle, sizeof cle, "of %s", nom);
         v3_note("recours", cle);
     } else {
-        v3_note("recours", hct_genre_noeud_nom(n->genre));
+        char frag[32];
+        v3_source(n, frag, sizeof frag);
+        for (char *p = frag; *p; p++) if (*p == '\n' || *p == '\t') *p = ' ';
+        char cle[40];
+        if (*frag) snprintf(cle, sizeof cle, "%s: %s", hct_genre_noeud_nom(n->genre), frag);
+        else       snprintf(cle, sizeof cle, "%s", hct_genre_noeud_nom(n->genre));
+        v3_note("recours", cle);
     }
 
     if (g_v3_recours_prof > 64) {
