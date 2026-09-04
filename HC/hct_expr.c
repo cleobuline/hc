@@ -571,6 +571,26 @@ static void attache_cible(HctAnalyseur *a, HctNoeud *n)
     }
 }
 
+/* La boîte de messages, écrite « msg », « message box » ou « message window ».
+ *
+ * On ne prend PAS « message » tout seul : c'est un nom trop ordinaire — le
+ * paramètre d'un gestionnaire, une variable — et l'en priver casserait des
+ * scripts qui marchent. L'abréviation « msg », elle, ne désigne rien d'autre ;
+ * on la reconnaît à ce que le lexer lui a posé une forme normalisée, ce que
+ * le mot plein n'a pas.
+ *
+ * Sans cette reconnaissance, « put x into the message box » n'était pas
+ * analysable : « box » restait sur la ligne et donnait « texte inattendu en
+ * fin de ligne ». La faute suffisait à faire refuser le script ENTIER par
+ * script_arbre(), donc à renvoyer tous ses gestionnaires à l'ancien
+ * exécuteur — une ligne perdue en désactivait des centaines. */
+static int boite_message_ici(HctAnalyseur *a)
+{
+    if (!mot_ici(a, "message")) return 0;
+    if (ici(a)->norme) return 1;                  /* « msg » */
+    return mot_apres(a, 1, "box") || mot_apres(a, 1, "window");
+}
+
 /* Analyse une référence d'objet à partir du jeton courant, en supposant que
  * l'appelant a déjà reconnu qu'il s'agit d'une. */
 static HctNoeud *reference(HctAnalyseur *a)
@@ -578,12 +598,13 @@ static HctNoeud *reference(HctAnalyseur *a)
     HctJeton j = *ici(a);
 
     /* me, the target, the message box */
-    if (mot_ici(a, "me") || mot_ici(a, "target") || mot_ici(a, "message")) {
+    if (mot_ici(a, "me") || mot_ici(a, "target") || boite_message_ici(a)) {
         HctTypeObjet t = mot_ici(a, "me")     ? HCT_OBJ_ME
                        : mot_ici(a, "target") ? HCT_OBJ_TARGET
                                               : HCT_OBJ_MESSAGE;
         avance(a);
-        if (t == HCT_OBJ_MESSAGE && mot_ici(a, "box")) avance(a);
+        if (t == HCT_OBJ_MESSAGE &&
+            (mot_ici(a, "box") || mot_ici(a, "window"))) avance(a);
         HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);
         if (!n) return NULL;
         n->typeobj = t;
@@ -685,6 +706,9 @@ static HctNoeud *reference(HctAnalyseur *a)
 static int reference_ici(HctAnalyseur *a)
 {
     if (mot_ici(a, "me") || mot_ici(a, "target")) return 1;
+    /* Sans cette ligne, la branche « boîte de messages » de reference() était
+     * inatteignable : c'est ici que l'on décide d'y aller. */
+    if (boite_message_ici(a)) return 1;
     HctTypeObjet t;
     if (type_obj_ici(a, &t)) return 1;
     if (mot_ici(a, "this") || mot_ici(a, "next") || mot_ici(a, "previous")) {

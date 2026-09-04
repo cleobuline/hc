@@ -2,6 +2,7 @@
 
 #include "hct_exec.h"
 #include "hct_chunk.h"
+#include "hct_bloc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -345,6 +346,14 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
     }
 
     if (cible->genre == HCTN_OBJET) {
+        /* La boîte de messages n'est pas un objet de la pile : elle n'a ni
+         * propriétaire ni rang, et resout() ne peut rien en faire. Elle a son
+         * propre rappel. */
+        if (cible->typeobj == HCT_OBJ_MESSAGE) {
+            if (!x->ctx.hote.ecrit_message) return 0;
+            return x->ctx.hote.ecrit_message(x->ctx.hote.donnees, val, mode);
+        }
+
         /* Un objet : l'hôte le résout, puis y écrit. C'est le chemin court —
          * sans lui, la ligne entière repartait à l'interpréteur de l'hôte,
          * qui la réanalysait et réévaluait l'expression. */
@@ -370,8 +379,11 @@ static int cible_connue(HctExec *x, const HctNoeud *c)
     if (c->genre == HCTN_CHUNK)
         return c->nfils >= 1 && cible_connue(x, c->fils[c->nfils - 1]);
     /* Un objet ne compte que si l'hôte sait le résoudre ET y écrire. */
-    if (c->genre == HCTN_OBJET)
+    if (c->genre == HCTN_OBJET) {
+        if (c->typeobj == HCT_OBJ_MESSAGE)
+            return x->ctx.hote.ecrit_message != NULL;
         return x->ctx.hote.resout != NULL && x->ctx.hote.ecrit_objet != NULL;
+    }
     return 0;
 }
 
@@ -390,6 +402,63 @@ static int nombre_ou_vide(const char *s, double *x)
 
 /* ------------------------------------------------------------ commandes */
 
+/* « do <expression> » : évaluer, puis EXÉCUTER le texte obtenu.
+ *
+ * Le pendant exact de « the value of », en version instruction. La ligne
+ * repartait jusqu'ici tout entière à l'hôte, qui la reconstituait et la
+ * confiait à son propre interpréteur — quatre cent soixante fois dans une
+ * seule boucle « repeat while the mouse is down ». La bibliothèque a le
+ * lexer, l'analyseur et l'exécuteur : elle n'a plus besoin de personne.
+ *
+ * Le texte s'exécute dans le MÊME HctExec, donc avec les variables du
+ * gestionnaire courant. C'est ce que veut HyperTalk, et tout l'intérêt de la
+ * commande.
+ *
+ * Rend 0 si le texte ne s'analyse pas ; l'appelant se rabat sur l'hôte, qui
+ * reste plus indulgent sur les formes que la v3 ne lit pas encore. */
+static int execute_texte(HctExec *x, const char *src, const HctNoeud *origine)
+{
+    if (!src || !*src) return 1;          /* « do empty » : rien à faire */
+
+    /* Un texte peut contenir un « do » qui le reconstruit : sans plafond, la
+     * récursion est infinie et la pile C meurt sans message. */
+    if (x->profondeur >= 64) {
+        hct_ctx_faute(&x->ctx, origine, "« do » trop imbriqué");
+        return 1;
+    }
+
+    HctLot lot;
+    if (!hct_lex(src, &lot)) { hct_lot_libere(&lot); return 0; }
+
+    HctReserve res;
+    memset(&res, 0, sizeof res);
+
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &lot, &res);
+    HctNoeud *arbre = hct_bloc_instruction(&a);
+    if (!arbre || a.nerreurs) {
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        return 0;
+    }
+
+    int deja = x->ctx.erreur != NULL;
+
+    x->profondeur++;
+    hct_exec(x, arbre);
+    x->profondeur--;
+
+    /* Le nœud fautif pointerait dans une réserve qu'on libère à l'instant :
+     * on le ramène sur le nœud d'origine, qui vit dans le script et porte
+     * une ligne que l'utilisateur peut voir. */
+    if (!deja && x->ctx.erreur) x->ctx.fautif = origine;
+
+    hct_reserve_libere(&res);
+    hct_lot_libere(&lot);
+    return 1;
+}
+
+
 static void commande(HctExec *x, const HctNoeud *n)
 {
     const char *v = n->op ? n->op : "";
@@ -397,10 +466,17 @@ static void commande(HctExec *x, const HctNoeud *n)
     if (!strcasecmp(v, "put")) {
         if (n->nfils < 1) return;
 
-        /* Ce que l'exécuteur ne saura pas écrire — un champ, une propriété,
-         * ou la boîte de message — repart à l'hôte SANS avoir été évalué. */
+        /* Ce que l'exécuteur ne saura pas écrire — un champ que l'hôte ne
+         * sert pas, une propriété — repart à l'hôte SANS avoir été évalué.
+         *
+         * Sans cible, la destination est la boîte de messages : on sait la
+         * servir dès que l'hôte fournit ecrit_message. C'est la forme la plus
+         * fréquente d'un script, et elle repartait entière à l'ancien
+         * interpréteur, qui réanalysait la ligne et réévaluait l'expression. */
         int a_cible = n->nfils >= 3;
-        if ((!a_cible || !cible_connue(x, n->fils[2])) && x->ctx.hote.commande) {
+        int sait = a_cible ? cible_connue(x, n->fils[2])
+                           : (x->ctx.hote.ecrit_message != NULL);
+        if (!sait && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
             return;
         }
@@ -415,17 +491,30 @@ static void commande(HctExec *x, const HctNoeud *n)
                 x->ctx.hote.commande)
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
         } else {
-            /* « put X » sans cible écrit dans la BOÎTE DE MESSAGE, qui n'est
+            /* « put X » sans cible écrit dans la BOÎTE DE MESSAGES, qui n'est
              * pas une variable : lui poser var("msg") créait une variable de
-             * ce nom et n'affichait rien. Seul l'hôte sait montrer la boîte,
-             * on lui rend donc la commande entière — c'est aussi ce que fait
-             * l'ancien exécuteur, qui émet HC_MSG.
+             * ce nom et n'affichait rien. Seul l'hôte sait la montrer.
              *
-             * Le repli sur ecrit_var ne sert qu'aux hôtes sans `commande`. */
-            if (x->ctx.hote.commande)
+             * Le repli sur `commande`, puis sur ecrit_var, ne sert qu'aux
+             * hôtes qui ne fournissent pas ecrit_message. */
+            if (x->ctx.hote.ecrit_message)
+                x->ctx.hote.ecrit_message(x->ctx.hote.donnees, val.txt, 0);
+            else if (x->ctx.hote.commande)
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
             else if (x->ctx.hote.ecrit_var)
                 x->ctx.hote.ecrit_var(x->ctx.hote.donnees, "msg", val.txt);
+        }
+        hct_val_libere(&val);
+        return;
+    }
+
+    /* « do <expression> » : évaluer, puis EXÉCUTER le texte obtenu. */
+    if (!strcasecmp(v, "do")) {
+        if (n->nfils < 1) return;
+        HctValeur val = hct_evalue(&x->ctx, n->fils[0]);
+        if (!x->ctx.erreur) {
+            if (!execute_texte(x, val.txt, n) && x->ctx.hote.commande)
+                x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
         }
         hct_val_libere(&val);
         return;
@@ -445,6 +534,19 @@ static void commande(HctExec *x, const HctNoeud *n)
          * servent pas, ne ferait rien du tout. On lui repasse la commande
          * entière plus bas, par le recours. */
         if (hote_tient_les_vars(x)) {
+            /* Un rappel dédié évite de lui rendre la LIGNE, qu'il devrait
+             * réanalyser pour en tirer des noms que nous avons déjà. */
+            if (x->ctx.hote.globale) {
+                for (int i = 0; i < n->nfils; i++) {
+                    const HctNoeud *f = n->fils[i];
+                    if (f->genre != HCTN_IDENT) continue;
+                    char *nom = texte(f);
+                    if (!nom) continue;
+                    x->ctx.hote.globale(x->ctx.hote.donnees, nom);
+                    free(nom);
+                }
+                return;
+            }
             if (x->ctx.hote.commande)
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
             return;
@@ -841,6 +943,7 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.donnees   = x;
     pont.lit_var   = lit_var_pont;
     pont.ecrit_var = ecrit_var_pont;
+    pont.globale   = hote.globale;
     pont.fonction  = fonction_pont;
     pont.resout    = hote.resout;
     pont.lit_objet = hote.lit_objet;
@@ -855,6 +958,7 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.recours   = hote.recours;
     pont.commande  = hote.commande;
     pont.ecrit_objet = hote.ecrit_objet;
+    pont.ecrit_message = hote.ecrit_message;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);

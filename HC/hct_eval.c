@@ -2,6 +2,7 @@
 
 #include "hct_eval.h"
 #include "hct_chunk.h"
+#include "hct_expr.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -13,7 +14,9 @@ void hct_ctx_init(HctContexte *ctx, HctHote hote)
     ctx->hote = hote;
     ctx->erreur = NULL;
     ctx->fautif = NULL;
+    ctx->prof_valeur = 0;
 }
+ 
 
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg)
 {
@@ -579,28 +582,102 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
  * l'hôte sait résoudre et lire ; l'évaluateur ne fait que transmettre. */
 static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
 {
-    /* Le recours d'abord : un hôte qui sait déjà évaluer les références par
-     * lui-même n'a pas à passer par resout/lit_objet. */
+    /* L'ARBRE d'abord, le texte ensuite.
+     *
+     * L'ordre inverse — recours en tête — rendait resout et lit_objet
+     * INATTEIGNABLES chez tout hôte dont le recours est un fourre-tout : il
+     * reconstitue le texte source de n'importe quel nœud et ne refuse que si
+     * ce texte est vide, donc il répond toujours, donc les lignes suivantes
+     * n'étaient jamais atteintes. Toute la résolution depuis l'arbre était
+     * écrite et ne tournait pas, et les références repassaient par la
+     * reconstitution avec les pertes qui vont avec — le « the » avalé, les
+     * parenthèses d'un appel, le guillemet fermant d'une chaîne.
+     *
+     * Le recours reste en filet, pour deux cas : l'hôte qui ne sait pas
+     * résoudre CE nœud, et celui qui préfère tout traiter lui-même et ne
+     * fournit ni resout ni lit_objet. */
     HctValeur v;
+
+    if (ctx->hote.resout && ctx->hote.lit_objet) {
+        void *o = ctx->hote.resout(ctx->hote.donnees, n, ctx);
+        if (o && ctx->hote.lit_objet(ctx->hote.donnees, o, &v)) return v;
+    }
+
     if (ctx->hote.recours &&
         ctx->hote.recours(ctx->hote.donnees, n, &v)) return v;
 
     if (!ctx->hote.resout || !ctx->hote.lit_objet) {
         hct_ctx_faute(ctx, n, "aucun hôte pour résoudre cet objet");
-        return hct_val_vide();
-    }
-    void *o = ctx->hote.resout(ctx->hote.donnees, n, ctx);
-    if (!o) {
+    } else {
         hct_ctx_faute(ctx, n, "objet introuvable");
-        return hct_val_vide();
     }
-    if (!ctx->hote.lit_objet(ctx->hote.donnees, o, &v)) {
-        hct_ctx_faute(ctx, n, "cet objet n'a pas de contenu");
-        return hct_val_vide();
-    }
-    return v;
+    return hct_val_vide();
 }
 
+/* Relit un TEXTE comme une expression, et l'évalue dans le contexte courant.
+ *
+ * C'est ce que demande « the value of X » : évaluer X, puis considérer son
+ * contenu comme du HyperTalk. Si x contient « card field 3 », la valeur est
+ * le texte du champ, pas la chaîne « card field 3 ».
+ *
+ * Ce travail partait jusqu'ici au recours, qui reconstituait le texte source
+ * et le confiait à l'ancien interpréteur — treize mille fois sur une seule
+ * session de dessin. La bibliothèque sait désormais le faire : elle a le
+ * lexer et l'analyseur qui lui manquaient quand ce chemin a été écrit.
+ *
+ * Rend 0 si le texte n'est PAS une expression complète et propre ; l'appelant
+ * garde alors l'ancien chemin. Ce refus est délibéré : « a,b,c » s'analyse
+ * sans faute jusqu'à la virgule et rendrait « a », alors que HyperCard rend
+ * la chaîne entière. On exige donc que l'analyse ait consommé toute la ligne.
+ */
+static int evalue_texte(HctContexte *ctx, const char *src,
+                        const HctNoeud *origine, HctValeur *out)
+{
+    if (!src)  return 0;
+    if (!*src) { *out = hct_val_vide(); return 1; }
+
+    if (ctx->prof_valeur >= 32) {
+        hct_ctx_faute(ctx, origine, "« the value of » trop imbriqué");
+        *out = hct_val_vide();
+        return 1;
+    }
+
+    HctLot lot;
+    if (!hct_lex(src, &lot)) { hct_lot_libere(&lot); return 0; }
+
+    HctReserve res;
+    memset(&res, 0, sizeof res);
+
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &lot, &res);
+    HctNoeud *arbre = hct_expression(&a);
+
+    /* Tout le texte doit avoir été consommé, et sans faute. */
+    const HctJeton *reste = &lot.jetons[a.i];
+    if (!arbre || a.nerreurs ||
+        (reste->genre != HCT_FIN && reste->genre != HCT_EOL)) {
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        return 0;
+    }
+
+    int deja = ctx->erreur != NULL;
+
+    ctx->prof_valeur++;
+    HctValeur v = hct_evalue(ctx, arbre);
+    ctx->prof_valeur--;
+
+    /* Le nœud fautif pointerait dans une réserve qu'on libère à l'instant :
+     * on le ramène sur le nœud d'origine, qui vit dans le script et porte
+     * donc une ligne et une colonne que l'utilisateur peut voir. */
+    if (!deja && ctx->erreur) ctx->fautif = origine;
+
+    hct_reserve_libere(&res);
+    hct_lot_libere(&lot);
+
+    *out = v;
+    return 1;
+}
 /* ---------------------------------------------------- « X of Y »
  *
  * Trois choses très différentes prennent cette forme :
@@ -669,13 +746,26 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          *
          * C'est là toute la différence : si x contient « card field 3 »,
          * « the value of x » rend le TEXTE du champ, pas la chaîne
-         * « card field 3 ». Rendre simplement la valeur de x, comme je le
-         * faisais, cassait tout script qui range un nom d'objet dans une
-         * variable — un motif très courant.
+         * « card field 3 ». Rendre simplement la valeur de x cassait tout
+         * script qui range un nom d'objet dans une variable — un motif très
+         * courant.
          *
-         * La réévaluation demande un analyseur, donc on la confie au
-         * recours, qui a le texte source et l'évaluateur de l'hôte. */
+         * La bibliothèque s'en charge seule depuis qu'elle a son analyseur.
+         * Le recours ne garde que ce que celui-ci refuse : un texte qui n'est
+         * pas une expression complète, où l'ancien évaluateur reste plus
+         * tolérant. */
         if (!strcasecmp(nom, "value")) {
+            HctValeur v = hct_evalue(ctx, sur);
+            if (ctx->erreur) { free(nom); return v; }
+
+            HctValeur r;
+            if (evalue_texte(ctx, v.txt, n, &r)) {
+                hct_val_libere(&v);
+                free(nom);
+                return r;
+            }
+            hct_val_libere(&v);
+
             HctValeur vr;
             if (ctx->hote.recours &&
                 ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
@@ -685,15 +775,20 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             free(nom);
             return hct_evalue(ctx, sur);   /* sans hôte : au mieux */
         }
-
-        /* Sinon c'est une propriété : seul l'hôte sait la lire. Le recours
-         * passe en premier, pour les hôtes qui préfèrent tout traiter. */
+        /* Sinon c'est une propriété : seul l'hôte sait la lire.
+         *
+         * lit_prop AVANT le recours, pour la même raison que dans objet() :
+         * un recours fourre-tout accepte tout, donc lit_prop ne serait jamais
+         * appelée. Et le chemin par le texte perd ici précisément ce dont la
+         * propriété a besoin — l'analyseur consomme « the » sans le ranger
+         * dans aucun nœud, si bien que la reconstitution rend « name of card
+         * field "x" » et non « the name of… ».
+         *
+         * Le recours garde tout ce que lit_prop refuse : les propriétés
+         * globales, celles que l'hôte ne connaît que par son propre
+         * évaluateur, et le cas où la cible ne se résout pas. */
         HctValeur vr;
-        if (ctx->hote.recours &&
-            ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
-            free(nom);
-            return vr;
-        }
+
         if (ctx->hote.resout && ctx->hote.lit_prop) {
             void *objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
             if (objet) {
@@ -704,6 +799,13 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
                 }
             }
         }
+
+        if (ctx->hote.recours &&
+            ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
+            free(nom);
+            return vr;
+        }
+
         hct_ctx_faute(ctx, n, "propriété inconnue");
         free(nom);
         return hct_val_vide();

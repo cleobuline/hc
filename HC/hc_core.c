@@ -17,9 +17,9 @@
 #include "hct_val.h"     /* valeurs  : étape 2 */
 #include "hct_exec.h"    /* exécuteur : étape 3 */
 #include "hct_eval.h"
-
+#define HC_MAX_LOOP 1000000
 /* ==================== outils chaînes ==================== */
-#define HC_V3_DEFAUT 0
+#define HC_V3_DEFAUT 1
 static char *dupstr(const char *s)
 {
     if (!s) return NULL;
@@ -157,6 +157,9 @@ static Object *g_current_card = NULL;
 static Object *g_stacks[HC_MAX_STACKS];
 static int     g_nstacks = 0;
 static int g_visual_dirty = 0;
+static char g_visual_effect[64] = "";
+static char g_visual_speed[16]  = "";
+static char g_visual_image[16]  = "";
 
 /* L'outil courant et la sélection de peinture vivent chez l'HÔTE, qui les
  * connaît déjà : il les pose à la souris comme au script, et lui seul voit
@@ -2317,9 +2320,13 @@ static Object *resolve(const char *ref)
             return card;    /* un seul fond : on reste sur place, sans erreur */
         }
     }
-    if (ci_word(ref, "next"))  return nth_card(stack, card_index(stack, card) + 1);
-    if (ci_word(ref, "prev") || ci_word(ref, "previous"))
-                               return nth_card(stack, card_index(stack, card) - 1);
+    if (ci_word(ref, "next") || ci_word(ref, "prev") || ci_word(ref, "previous")) {
+        int pas = ci_word(ref, "next") ? +1 : -1;
+        int nc = card_count(stack);
+        int i  = card_index(stack, card);
+        if (nc <= 0 || i < 0) return NULL;
+        return nth_card(stack, ((i + pas) % nc + nc) % nc);
+    }
     if (ci_word(ref, "first")) return nth_card(stack, 0);
     if (ci_word(ref, "last"))  return nth_card(stack, card_count(stack) - 1);
 
@@ -3392,6 +3399,34 @@ static int container_set(const char *ref, const char *val, int mode)
     return r;
 }
 
+/* La boîte de messages comme DESTINATION : « put x into msg »,
+ * « put x into the message box ».
+ *
+ * Elle n'est ni un objet de la pile ni une variable, et rien ne la traitait.
+ * « into msg » tombait donc sur la branche des variables et créait une
+ * variable de ce nom : le message n'apparaissait nulle part, sans le moindre
+ * signalement. « into the message box » n'y arrivait même pas — trois mots,
+ * la branche n'en accepte qu'un — et donnait « destination invalide ».
+ *
+ * On ne prend « message » tout seul que suivi de « box » ou « window » : le
+ * mot est un nom de variable trop banal pour le confisquer, et des scripts
+ * s'en servent. « msg » ne désigne rien d'autre. C'est la même règle que
+ * boite_message_ici() dans hct_expr.c ; les deux chemins doivent trancher
+ * pareil, sinon un script change de sens selon l'exécuteur. */
+static int est_boite_message(const char *ref)
+{
+    char m1[64], m2[64], m3[64];
+    const char *p = next_word(ref, m1, sizeof m1);
+    if (ci_equal(m1, "the")) p = next_word(p, m1, sizeof m1);
+    if (!ci_equal(m1, "msg") && !ci_equal(m1, "message")) return 0;
+
+    p = next_word(p, m2, sizeof m2);
+    if (!m2[0]) return ci_equal(m1, "msg");            /* « msg » tout seul */
+    if (!ci_equal(m2, "box") && !ci_equal(m2, "window")) return 0;
+    next_word(p, m3, sizeof m3);
+    return m3[0] == '\0';
+}
+
 static int container_set_body(const char *ref, const char *val, int mode)
 {
     ChunkType ct; char ia[128], ib[128]; const char *rest; int ordinal;
@@ -3477,6 +3512,14 @@ static int container_set_body(const char *ref, const char *val, int mode)
             snprintf(neuf, HC_VAL, "%.*s%s%s", st, base, piece, base + en);
         }
         return container_set(rest, neuf, 0);
+    }
+
+    /* HC n'a pas de boîte persistante : la valeur part sur la sortie, comme
+     * pour « put x » sans destination. `mode` est donc sans objet — on ne peut
+     * rien ajouter à la suite de ce qui est déjà affiché. */
+    if (est_boite_message(ref)) {
+        if (mode != 3) emit(HC_MSG, "%s", val ? val : "");
+        return 1;
     }
 
     char *merged = arena_buf();
@@ -4230,6 +4273,155 @@ static int prop_word_before_of(const char *t)
     return ci_word(skip_spaces(q), "of");
 }
 
+/* Lecture d'une propriété sur un objet DÉJÀ RÉSOLU.
+ *
+ * Extrait tel quel de term_value, sans une ligne de changement : c'était le
+ * seul lecteur de propriétés du programme, et il n'était atteignable qu'en
+ * lui donnant du TEXTE à réanalyser. La v3 tient l'objet, pas son nom — il
+ * lui fallait donc la même chaîne de tests, mais prise par l'autre bout.
+ *
+ * Rend 1 si `prop` a été reconnue et `out` renseigné, 0 sinon — auquel cas
+ * l'appelant poursuit comme avant.
+ *
+ * `shortf` vaut 1 pour « the short name of » : seul `name` s'en sert. */
+static int obj_prop_read(Object *o, const char *prop, int shortf,
+                         char *out, int outlen)
+{
+    if (geom_read(o, prop, out, outlen)) return 1;
+    if (ci_equal(prop, "id"))      { snprintf(out, outlen, "%d", o->id); return 1; }
+    if (ci_equal(prop, "name")) {
+        if (shortf) snprintf(out, outlen, "%s", o->name ? o->name : "");
+        else        hc_describe(o, out, outlen);
+        return 1;
+    }
+    if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "enabled")) { snprintf(out, outlen, "%s", o->enabled ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return 1; }
+    /* selectedLine : deux choses selon l'objet.
+     *
+     * Sur un BOUTON popup, c'est l'article choisi dans le menu
+     * — un entier rangé dans l'objet. Sur un CHAMP, c'est la
+     * ligne actuellement sélectionnée, qui n'appartient pas à
+     * l'objet mais à l'état global de sélection : un seul
+     * champ à la fois peut l'avoir.
+     *
+     * HyperCard rend « line N of card field X » pour un champ
+     * et un simple numéro pour un bouton — deux formes, parce
+     * que les deux ne servent pas à la même chose. */
+    if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
+        if (o->type == OBJ_FIELD) {
+            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return 1; }
+            const char *t = hc_field_text(o);
+            int line = 1;
+            for (int i = 0; i < g_sel_start && t[i]; i++)
+                if (t[i] == '\n') line++;
+            char d[96];
+            hc_describe(o, d, sizeof d);
+            snprintf(out, outlen, "line %d of %s%s", line,
+                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+            return 1;
+        }
+        snprintf(out, outlen, "%d", o->selectedline); return 1;
+    }
+
+    /* selectedText d'un objet : le texte sélectionné s'il
+     * s'agit du champ qui porte la sélection ; pour un bouton
+     * popup, l'article choisi — c'est ainsi qu'on lit ce que
+     * l'utilisateur a pris dans le menu. */
+    if (ci_equal(prop, "selectedtext")) {
+        if (o->type == OBJ_FIELD) {
+            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return 1; }
+            selection_text(out, outlen);
+            return 1;
+        }
+        if (o->type == OBJ_BUTTON && o->selectedline > 0) {
+            const char *t = o->contents ? o->contents : "";
+            int n = 1, deb = 0;
+            while (n < o->selectedline && t[deb]) {
+                if (t[deb] == '\n') n++;
+                deb++;
+            }
+            int fin = deb;
+            while (t[fin] && t[fin] != '\n') fin++;
+            snprintf(out, outlen, "%.*s", fin - deb, t + deb);
+            return 1;
+        }
+        snprintf(out, outlen, "%s", "");
+        return 1;
+    }
+
+    /* selectedChunk d'un champ : même désignation que la forme
+     * globale, mais seulement si c'est bien ce champ-là. */
+    if (ci_equal(prop, "selectedchunk")) {
+        if (o->type == OBJ_FIELD && g_sel_field == o) {
+            char d[96];
+            hc_describe(o, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s%s",
+                     g_sel_start + 1, g_sel_start + g_sel_len,
+                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+        } else snprintf(out, outlen, "%s", "");
+        return 1;
+    }
+    if (ci_equal(prop, "locktext")) { snprintf(out, outlen, "%s", o->locktext ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "widemargins")) { snprintf(out, outlen, "%s", o->wide_margins ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "fixedlineheight")) { snprintf(out, outlen, "%s", o->fixed_lh ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "showlines")) { snprintf(out, outlen, "%s", o->show_lines ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return 1; }
+    /* textAlign se lit en toutes lettres, comme HyperCard :
+     * « left », « center », « right ». Un script compare la
+     * chaîne, il n'a que faire de notre codage interne. */
+    if (ci_equal(prop, "textalign")) {
+        snprintf(out, outlen, "%s",
+                 o->text_align == 1 ? "center" :
+                 o->text_align == 2 ? "right"  : "left");
+        return 1;
+    }
+    if (ci_equal(prop, "autoselect")) { snprintf(out, outlen, "%s", o->auto_select ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "marked")) { snprintf(out, outlen, "%s", o->marked ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return 1; }
+    if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return 1; }
+    if (ci_equal(prop, "textstyle")) {
+        /* Même formatage que la lecture sur un morceau : le
+         * code d'origine n'écrivait que les trois premiers
+         * bits, si bien qu'un objet en creux se relisait
+         * « plain » et perdait son style à l'enregistrement. */
+        style_to_names(o->textstyle, out, outlen);
+        return 1;
+    }
+    if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", hc_hilite_of(o, NULL) ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "sharedhilite")) { snprintf(out, outlen, "%s", o->shared_hilite ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "textsize")) { snprintf(out, outlen, "%d", o->textsize); return 1; }
+    /* textHeight n'est PAS textSize : c'est l'interligne, et
+     * les scripts d'époque divisent par lui pour trouver la
+     * ligne cliquée. Les confondre faussait le calcul d'un
+     * tiers de ligne à chaque ligne. */
+    if (ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", hc_text_height(o)); return 1; }
+    if (ci_equal(prop, "script"))  {
+        const char *sc = o->script ? o->script : "";
+        /* Les valeurs du noyau tiennent dans des tampons fixes.
+         * Un script plus long est tronqué : le dire, sinon un
+         * « set script of me to it » réécrit la version mutilée
+         * sans que personne ne s'en aperçoive. */
+        if ((int)strlen(sc) >= outlen) {
+            g_script_clipped = 1;
+            emit(HC_ERR, "   !! script de %d octets tronqué à %d : "
+                         "toute réécriture sera refusée",
+                 (int)strlen(sc), outlen - 1);
+        }
+        snprintf(out, outlen, "%s", sc); return 1;
+    }
+    if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
+                                   { snprintf(out, outlen, "%s", hc_field_text(o)); return 1; }
+    if (ci_equal(prop, "style"))   { snprintf(out, outlen, "%s", o->style ? o->style : "rectangle"); return 1; }
+    return 0;
+}
+
 static void term_value_body(const char *t, char *out, int outlen)
 {
     t = skip_spaces(t);
@@ -4458,140 +4650,8 @@ static void term_value_body(const char *t, char *out, int outlen)
                 }
 
                 Object *o = resolve(of + 2);
-                if (o) {
-                    if (geom_read(o, prop, out, outlen)) return;
-                    if (ci_equal(prop, "id"))      { snprintf(out, outlen, "%d", o->id); return; }
-                    if (ci_equal(prop, "name")) {
-                        if (shortf) snprintf(out, outlen, "%s", o->name ? o->name : "");
-                        else        hc_describe(o, out, outlen);
-                        return;
-                    }
-                    if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return; }
-                    if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return; }
-                    if (ci_equal(prop, "enabled")) { snprintf(out, outlen, "%s", o->enabled ? "true" : "false"); return; }
-                    if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return; }
-                    /* selectedLine : deux choses selon l'objet.
-                     *
-                     * Sur un BOUTON popup, c'est l'article choisi dans le menu
-                     * — un entier rangé dans l'objet. Sur un CHAMP, c'est la
-                     * ligne actuellement sélectionnée, qui n'appartient pas à
-                     * l'objet mais à l'état global de sélection : un seul
-                     * champ à la fois peut l'avoir.
-                     *
-                     * HyperCard rend « line N of card field X » pour un champ
-                     * et un simple numéro pour un bouton — deux formes, parce
-                     * que les deux ne servent pas à la même chose. */
-                    if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
-                        if (o->type == OBJ_FIELD) {
-                            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return; }
-                            const char *t = hc_field_text(o);
-                            int line = 1;
-                            for (int i = 0; i < g_sel_start && t[i]; i++)
-                                if (t[i] == '\n') line++;
-                            char d[96];
-                            hc_describe(o, d, sizeof d);
-                            snprintf(out, outlen, "line %d of %s%s", line,
-                                     hc_owner_is_bg(o) ? "bg " : "card ", d);
-                            return;
-                        }
-                        snprintf(out, outlen, "%d", o->selectedline); return;
-                    }
-
-                    /* selectedText d'un objet : le texte sélectionné s'il
-                     * s'agit du champ qui porte la sélection ; pour un bouton
-                     * popup, l'article choisi — c'est ainsi qu'on lit ce que
-                     * l'utilisateur a pris dans le menu. */
-                    if (ci_equal(prop, "selectedtext")) {
-                        if (o->type == OBJ_FIELD) {
-                            if (g_sel_field != o) { snprintf(out, outlen, "%s", ""); return; }
-                            selection_text(out, outlen);
-                            return;
-                        }
-                        if (o->type == OBJ_BUTTON && o->selectedline > 0) {
-                            const char *t = o->contents ? o->contents : "";
-                            int n = 1, deb = 0;
-                            while (n < o->selectedline && t[deb]) {
-                                if (t[deb] == '\n') n++;
-                                deb++;
-                            }
-                            int fin = deb;
-                            while (t[fin] && t[fin] != '\n') fin++;
-                            snprintf(out, outlen, "%.*s", fin - deb, t + deb);
-                            return;
-                        }
-                        snprintf(out, outlen, "%s", "");
-                        return;
-                    }
-
-                    /* selectedChunk d'un champ : même désignation que la forme
-                     * globale, mais seulement si c'est bien ce champ-là. */
-                    if (ci_equal(prop, "selectedchunk")) {
-                        if (o->type == OBJ_FIELD && g_sel_field == o) {
-                            char d[96];
-                            hc_describe(o, d, sizeof d);
-                            snprintf(out, outlen, "char %d to %d of %s%s",
-                                     g_sel_start + 1, g_sel_start + g_sel_len,
-                                     hc_owner_is_bg(o) ? "bg " : "card ", d);
-                        } else snprintf(out, outlen, "%s", "");
-                        return;
-                    }
-                    if (ci_equal(prop, "locktext")) { snprintf(out, outlen, "%s", o->locktext ? "true" : "false"); return; }
-                    if (ci_equal(prop, "widemargins")) { snprintf(out, outlen, "%s", o->wide_margins ? "true" : "false"); return; }
-                    if (ci_equal(prop, "fixedlineheight")) { snprintf(out, outlen, "%s", o->fixed_lh ? "true" : "false"); return; }
-                    if (ci_equal(prop, "showlines")) { snprintf(out, outlen, "%s", o->show_lines ? "true" : "false"); return; }
-                    if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return; }
-                    if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return; }
-                    if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return; }
-                    /* textAlign se lit en toutes lettres, comme HyperCard :
-                     * « left », « center », « right ». Un script compare la
-                     * chaîne, il n'a que faire de notre codage interne. */
-                    if (ci_equal(prop, "textalign")) {
-                        snprintf(out, outlen, "%s",
-                                 o->text_align == 1 ? "center" :
-                                 o->text_align == 2 ? "right"  : "left");
-                        return;
-                    }
-                    if (ci_equal(prop, "autoselect")) { snprintf(out, outlen, "%s", o->auto_select ? "true" : "false"); return; }
-                    if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return; }
-                    if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return; }
-                    if (ci_equal(prop, "marked")) { snprintf(out, outlen, "%s", o->marked ? "true" : "false"); return; }
-                    if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return; }
-                    if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return; }
-                    if (ci_equal(prop, "textstyle")) {
-                        /* Même formatage que la lecture sur un morceau : le
-                         * code d'origine n'écrivait que les trois premiers
-                         * bits, si bien qu'un objet en creux se relisait
-                         * « plain » et perdait son style à l'enregistrement. */
-                        style_to_names(o->textstyle, out, outlen);
-                        return;
-                    }
-                    if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", hc_hilite_of(o, NULL) ? "true" : "false"); return; }
-                    if (ci_equal(prop, "sharedhilite")) { snprintf(out, outlen, "%s", o->shared_hilite ? "true" : "false"); return; }
-                    if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return; }
-                    if (ci_equal(prop, "textsize")) { snprintf(out, outlen, "%d", o->textsize); return; }
-                    /* textHeight n'est PAS textSize : c'est l'interligne, et
-                     * les scripts d'époque divisent par lui pour trouver la
-                     * ligne cliquée. Les confondre faussait le calcul d'un
-                     * tiers de ligne à chaque ligne. */
-                    if (ci_equal(prop, "textheight")) { snprintf(out, outlen, "%d", hc_text_height(o)); return; }
-                    if (ci_equal(prop, "script"))  {
-                        const char *sc = o->script ? o->script : "";
-                        /* Les valeurs du noyau tiennent dans des tampons fixes.
-                         * Un script plus long est tronqué : le dire, sinon un
-                         * « set script of me to it » réécrit la version mutilée
-                         * sans que personne ne s'en aperçoive. */
-                        if ((int)strlen(sc) >= outlen) {
-                            g_script_clipped = 1;
-                            emit(HC_ERR, "   !! script de %d octets tronqué à %d : "
-                                         "toute réécriture sera refusée",
-                                 (int)strlen(sc), outlen - 1);
-                        }
-                        snprintf(out, outlen, "%s", sc); return;
-                    }
-                    if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
-                                                   { snprintf(out, outlen, "%s", hc_field_text(o)); return; }
-                    if (ci_equal(prop, "style"))   { snprintf(out, outlen, "%s", o->style ? o->style : "rectangle"); return; }
-                }
+                if (o && obj_prop_read(o, prop, shortf, out, outlen))
+                    return;
             }
         }
     }
@@ -5367,20 +5427,20 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                     return v3_carte_du_bg(stack, b);
                 }
                 case HCT_DES_RELATIF: {
-                    if (n->relatif == HCT_REL_CE) return bg;
-                    /* next/previous : on balaie l'ordre des CARTES jusqu'à en
-                     * croiser une dont le fond diffère, avec bouclage — comme
-                     * resolve, et comme HyperCard. */
+                    if (n->relatif == HCT_REL_CE) return card;
+                    /* « go next card » depuis la dernière mène à la PREMIÈRE :
+                     * HyperCard boucle, et les piles d'époque s'en servent pour
+                     * feuilleter sans jamais tester les bords. Sans le modulo,
+                     * nth_card rendait NULL et la commande échouait en silence
+                     * sur les deux extrémités.
+                     *
+                     * C'est déjà ce que fait la branche des FONDS, quelques
+                     * lignes plus haut — les deux doivent s'accorder. */
                     int nc = card_count(stack);
                     int i  = card_index(stack, card);
-                    int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
                     if (nc <= 0 || i < 0) return NULL;
-                    for (int k = 1; k <= nc; k++) {
-                        Object *c = nth_card(stack, ((i + pas * k) % nc + nc) % nc);
-                        if (!c || c->bg == bg) continue;
-                        return v3_carte_du_bg(stack, c->bg);
-                    }
-                    return card;   /* un seul fond : on reste sur place */
+                    int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
+                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
                 }
                 default: return bg;
             }
@@ -5465,7 +5525,20 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
 
-    v3_note("recours", hct_genre_noeud_nom(n->genre));
+    /* Étiquette fine pour « X of Y » : le genre seul ne dit rien quand la
+     * ligne monte à plusieurs milliers. Une pile de dessin en a produit 8919
+     * en une session, et « recours of » ne permettait de savoir ni laquelle
+     * coûtait, ni s'il s'agissait d'une propriété qu'obj_prop_read ignore ou
+     * d'une cible que hct_resout ne sait pas résoudre. On note donc le NOM. */
+    if (n->genre == HCTN_OF && n->nfils >= 1 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
+        char nom[32], cle[40];
+        hct_texte(&n->fils[0]->jeton, nom, sizeof nom);
+        snprintf(cle, sizeof cle, "of %s", nom);
+        v3_note("recours", cle);
+    } else {
+        v3_note("recours", hct_genre_noeud_nom(n->genre));
+    }
 
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
@@ -5577,14 +5650,48 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
     ARENA_FREE;
     return 1;
 }
-
-/* --- fonctions du monde --------------------------------------------- */
+/* Fonction définie dans une pile — « function calData … ».
+ *
+ * Les arguments sont DÉJÀ évalués quand ils nous arrivent : on les passe tels
+ * quels à la chaîne de messages, au lieu de fabriquer « calData(3) » pour le
+ * faire relexer par call_function, qui rappelait la v3 aussitôt. C'est cette
+ * boucle-là qui se referme.
+ *
+ * Le tampon vient de l'arène, comme dans call_function_body : huit lignes de
+ * HC_VAL ne tiendraient pas sur la pile. */
+static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
+{
+    Object *from = g_me ? g_me : g_current_card;
+    char (*uargv)[HC_VAL] = arena_rows(8);
+    if (nargs > 8) nargs = 8;
+    for (int i = 0; i < nargs; i++)
+        snprintf(uargv[i], HC_VAL, "%s", args[i].txt ? args[i].txt : "");
+    return hc_call_user_function(from, nom, uargv, nargs);
+}
+/* Fonctions du monde sans argument que l'hôte sert d'une seule lecture.
+ *
+ * Elles passaient par term_value avec une chaîne fabriquée — « the mouseLoc »
+ * relexée, réanalysée, pour finir sur le host_global qu'on appelle ici
+ * directement. Trois cent dix-neuf allers-retours dans une seule boucle
+ * « repeat while the mouse is down ».
+ *
+ * Une liste explicite plutôt qu'un appel à host_global pour tout nom inconnu :
+ * term_value traite bien des choses AVANT d'en arriver là — les constantes,
+ * les dates, « the result » —, et court-circuiter aveuglément déplacerait
+ * l'ordre de priorité sans qu'on s'en aperçoive. Ajouter un nom ici est une
+ * ligne, et c'est le bon prix pour ne pas casser une règle par accident. */
+static const char *V3_GLOBALES_HOTE[] = {
+    "mouse", "mouseLoc", "mouseH", "mouseV",
+    "clickLoc", "clickH", "clickV",
+    "shiftKey", "optionKey", "commandKey", "cmdKey",
+    "tool", "screenRect",
+    NULL
+};
 
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
     (void)d;
-
     /* itemDelimiter : demandé avant chaque découpage en items. On le sert
      * directement, c'est une globale de hc_core.c. Avant toute allocation :
      * c'est le cas le plus fréquent, et il n'a besoin de rien. */
@@ -5594,7 +5701,21 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         return 1;
     }
 
-    v3_note("fonction", nom);
+    /* Les fonctions du monde, servies sans fabriquer ni relexer de chaîne.
+     * Comme itemDelimiter, ce chemin n'emprunte rien à l'arène.
+     *
+     * L'évaluateur a déjà essayé lit_var avant de nous appeler : une pile qui
+     * nomme sa variable « mouse » garde donc la priorité, exactement comme
+     * dans term_value. */
+    if (nargs == 0) {
+        for (int i = 0; V3_GLOBALES_HOTE[i]; i++) {
+            if (!ci_equal(nom, V3_GLOBALES_HOTE[i])) continue;
+            const char *v = host_global(nom);
+            if (!v) break;          /* l'hôte l'ignore : chemin normal */
+            *out = hct_val_texte(v);
+            return 1;
+        }
+    }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
      *
@@ -5610,7 +5731,6 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * la rembobine en sortant. */
     ARENA_MARK;
     char *buf = arena_buf();
-
     if (nargs == 0) {
         /* Une seule porte : term_value, qui appelle elle-même call_function.
          *
@@ -5623,18 +5743,22 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
          * refusait toutes les dates. */
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
-
         buf[0] = '\0';
         term_value(appel, buf, HC_VAL);
         if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
+            v3_note("fonction", nom);      /* term_value a fourni la réponse */
             *out = hct_val_texte(buf);
+            ARENA_FREE;
+            return 1;
+        }
+        if (v3_fonction_pile(nom, args, 0)) {
+            *out = hct_val_texte(g_result);
             ARENA_FREE;
             return 1;
         }
         ARENA_FREE;
         return 0;
     }
-
     /* Fonctions du monde à un argument NUMÉRIQUE — param(n) et consorts.
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
@@ -5644,10 +5768,16 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
         if (call_function(appel, buf, HC_VAL)) {
+            v3_note("fonction", nom);      /* call_function a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
             return 1;
         }
+    }
+    if (v3_fonction_pile(nom, args, nargs)) {
+        *out = hct_val_texte(g_result);
+        ARENA_FREE;
+        return 1;
     }
     ARENA_FREE;
     return 0;
@@ -5820,10 +5950,31 @@ static void v3_note(const char *quoi, const char *nom)
     g_nreleve++;
 }
 
+/* Le relevé part sur la SORTIE D'ERREUR autant que par emit().
+ *
+ * emit(HC_INFO) traverse le rappel `line` de l'hôte, et l'interface est libre
+ * de ne pas afficher cette famille — c'est celle des « → x ← … », qu'on ne
+ * montre qu'en mode trace. Le bilan disparaissait donc en silence : la
+ * commande s'exécutait, et rien n'apparaissait.
+ *
+ * Même raison que pour les lignes « [v3] » du branchement : le temps de la
+ * mise au point, on veut ces lignes quoi qu'il arrive, sans dépendre de ce
+ * que l'interface veut bien montrer. */
+static void bilan_ligne(const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    emit(HC_INFO, "%s", buf);
+    fprintf(stderr, "[v3] %s\n", buf);
+}
+
 void hc_v3_bilan(void)
 {
-    emit(HC_INFO, "— retours de la v3 vers l'ancien interpréteur —");
-    if (!g_nreleve) { emit(HC_INFO, "   (aucun)"); return; }
+    bilan_ligne("— retours de la v3 vers l'ancien interpréteur —");
+    if (!g_nreleve) { bilan_ligne("   (aucun)"); return; }
     /* tri décroissant, en place : la liste est courte */
     for (int i = 0; i < g_nreleve; i++)
         for (int j = i + 1; j < g_nreleve; j++)
@@ -5832,36 +5983,899 @@ void hc_v3_bilan(void)
                 g_releve[i] = g_releve[j]; g_releve[j] = t;
             }
     for (int i = 0; i < g_nreleve; i++)
-        emit(HC_INFO, "   %-40s %ld", g_releve[i].nom, g_releve[i].n);
+        bilan_ligne("   %-40s %ld", g_releve[i].nom, g_releve[i].n);
 }
 
 void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; }
 
+/* ===================================================================
+ * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de
+ * « static int v3_commande » jusqu'à sa fermeture, juste avant la
+ * déclaration de v3_hote).
+ *
+ * Un seul changement ailleurs : « #define HC_MAX_LOOP 1000000 » est
+ * aujourd'hui à la ligne 6344, donc APRÈS ce bloc, qui s'en sert pour
+ * borner « wait until ». Il faut le remonter avant — près des autres
+ * constantes du haut du fichier — et retirer la définition d'origine.
+ * =================================================================== */
+
+/* ------------------------------------------------- répartiteur des commandes
+ *
+ * Chaque verbe porté est une fonction qui reçoit le NŒUD. Ses arguments sont
+ * des sous-arbres qu'on évalue avec hct_evalue, ses références d'objets des
+ * nœuds que hct_resout sait résoudre. Plus de texte reconstitué, plus de
+ * réanalyse par l'ancien interpréteur, et surtout plus de double évaluation :
+ * dans une boucle de dessin, les coordonnées d'un « drag » étaient jusqu'ici
+ * calculées par la v3, jetées, puis recalculées par exec_stmt à chaque tour.
+ *
+ * Une fonction rend 1 si elle a traité la commande, 0 pour laisser l'ancien
+ * chemin s'en charger. Ce zéro n'est pas un échec : il sert à porter la forme
+ * courante d'un verbe en laissant ses formes rares derrière, plutôt que de
+ * tout porter d'un coup ou rien. Ce qui repart ainsi reste compté par
+ * v3_note, donc visible au bilan.
+ *
+ * La TABLE est le tableau d'avancement de la migration : ce qui n'y figure
+ * pas est exactement ce qu'il reste à porter avant de pouvoir supprimer
+ * exec_stmt.
+ */
+
+/* Le fils `i` est-il le mot-clé `mot` ? Les motifs de hct_cmd.c gardent dans
+ * l'arbre les mots qu'ils consomment, et c'est par eux qu'on distingue les
+ * formes d'un même verbe — « drag from … to … » de « … with … ». */
+static int v3_est_motcle(const HctNoeud *n, int i, const char *mot)
+{
+    if (!n || i < 0 || i >= n->nfils) return 0;
+    const HctNoeud *f = n->fils[i];
+    return f && f->genre == HCTN_MOTCLE && f->op && ci_equal(f->op, mot);
+}
+
+/* Rang du mot-clé `mot` à partir de `depuis`, ou -1. */
+static int v3_indice_motcle(const HctNoeud *n, const char *mot, int depuis)
+{
+    for (int i = depuis; i < n->nfils; i++)
+        if (v3_est_motcle(n, i, mot)) return i;
+    return -1;
+}
+
+/* Le texte d'un fils TEL QU'ÉCRIT, sans l'évaluer.
+ *
+ * Certains arguments ont la forme d'une expression sans en être une :
+ * « with shiftKey » nomme une touche, et l'évaluer appellerait la fonction du
+ * même nom, qui rendrait « true » ou « false ». De même « choose line tool »,
+ * où « line » est un nom d'outil et non une variable.
+ *
+ * On lit le jeton du nœud et non hct_noeud_etendue, qui étend délibérément
+ * son résultat jusqu'à la fin de la LIGNE — ce qu'il faut pour rendre une
+ * instruction entière à l'ancien interpréteur, jamais pour isoler un mot. */
+static void v3_brut(const HctNoeud *f, char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!f || outlen < 1) return;
+    int len = f->jeton.len;
+    if (len < 0) len = 0;
+    if (len > outlen - 1) len = outlen - 1;
+    if (len) memcpy(out, f->jeton.deb, (size_t)len);
+    out[len] = '\0';
+}
+
+/* Les touches d'un « with … », telles qu'écrites : l'hôte attend la même
+ * chaîne que lui donnait l'ancien exécuteur. */
+static void v3_touches(const HctNoeud *n, int deb, char *out, int outlen)
+{
+    int pos = 0;
+    out[0] = '\0';
+    for (int i = deb; i >= 0 && i < n->nfils; i++) {
+        char m[64];
+        v3_brut(n->fils[i], m, sizeof m);
+        if (!*m) continue;
+        pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
+                        pos ? ", " : "", m);
+        if (pos >= outlen) { pos = outlen - 1; break; }
+    }
+}
+
+/* Un point : les fils [deb, fin[ évalués et joints par une virgule.
+ *
+ * Le découpage est déjà fait par l'analyseur — le motif « * » sépare les
+ * expressions aux virgules, si bien que « drag from 10,20 to … » donne deux
+ * fils. eval_point, qui redécoupait le texte en comptant les parenthèses et
+ * les guillemets, n'a plus lieu d'être. */
+static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
+                     char *out, int outlen)
+{
+    int pos = 0;
+    out[0] = '\0';
+    if (fin > n->nfils) fin = n->nfils;
+    for (int i = deb; i < fin; i++) {
+        char v[128];
+        v3_val_texte(ctx, n->fils[i], v, sizeof v);
+        if (ctx->erreur) return;
+        pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
+                        pos ? "," : "", v);
+        if (pos >= outlen) { pos = outlen - 1; break; }
+    }
+}
+
+/* ------------------------------------------------------------- les verbes */
+
+/* beep : l'ancien exécuteur ignore le nombre de bips et se contente de la
+ * ligne. On garde ce comportement tel quel — la migration ne doit rien
+ * changer d'observable, sinon on ne saura plus si une régression vient du
+ * portage ou d'une correction glissée dedans. */
+static int v3_cmd_beep(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx; (void)n;
+    emit(HC_INFO, "   ♪ beep");
+    return 1;
+}
+
+static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    char quoi[32];
+    quoi[0] = '\0';
+    if (n->nfils >= 1) v3_brut(n->fils[0], quoi, sizeof quoi);
+    if (ci_equal(quoi, "raz")) { hc_v3_bilan_remise_a_zero(); return 1; }
+    hc_v3_bilan();
+    return 1;
+}
+
+/* lock/unlock screen. Les autres formes — « lock messages », « lock recent »
+ * — repartent à l'ancien chemin. */
+static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    char mot[32];
+    if (n->nfils < 1) return 0;
+    v3_brut(n->fils[0], mot, sizeof mot);
+    if (!ci_equal(mot, "screen")) return 0;
+
+    g_ecran_verrouille = ci_equal(n->op, "lock");
+    host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
+    /* Au déverrouillage, on réveille les champs modifiés pendant le verrou —
+     * eux seulement, pas l'écran entier. */
+    if (!g_ecran_verrouille) verrou_reveille();
+    set_result("");
+    return 1;
+}
+
+static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
+{
+    int montrer = ci_equal(n->op, "show");
+    if (n->nfils < 1) return 0;
+
+    /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
+     * NULL et l'ancien chemin s'en charge, avec son message d'erreur. */
+    Object *o = hct_resout(ctx, n->fils[0]);
+    if (!o) return 0;
+
+    g_visual_dirty = 1;
+    o->visible = montrer;
+
+    char d[64];
+    hc_describe(o, d, sizeof d);
+
+    int iat = montrer ? v3_indice_motcle(n, "at", 1) : -1;
+    if (iat >= 0) {
+        char pt[128];
+        v3_point(ctx, n, iat + 1, n->nfils, pt, sizeof pt);
+        if (ctx->erreur) return 1;
+        if (!geom_write(o, "loc", pt)) {
+            emit(HC_ERR, "   !! show … at : point mal formé : %s", pt);
+            return 1;
+        }
+        notify_field(o);
+        set_result("");
+        emit(HC_INFO, "   → %s : visible en %s", d, pt);
+        return 1;
+    }
+
+    notify_field(o);
+    set_result("");
+    emit(HC_INFO, "   → %s : %s", d, montrer ? "visible" : "caché");
+    return 1;
+}
+
+/* play : HyperCard accepte une suite de notes derrière le nom du son
+ * (« play "boing" tempo 200 c4 e4 »). Comme l'ancien exécuteur, on ne retient
+ * que le nom : le reste demande un synthétiseur, pas un lecteur. */
+static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    char nom[256];
+    const HctNoeud *f = n->fils[0];
+    if (f->genre == HCTN_IDENT) v3_brut(f, nom, sizeof nom);
+    else {
+        v3_val_texte(ctx, f, nom, sizeof nom);
+        if (ctx->erreur) return 1;
+    }
+    if (g_host && g_host->play_sound) g_host->play_sound(nom);
+    set_result("");
+    emit(HC_INFO, "   ♪ play \"%s\"", nom);
+    return 1;
+}
+
+static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
+{
+    Object *dst = g_current_card;
+    if (n->nfils >= 1) {
+        Object *o = hct_resout(ctx, n->fils[0]);
+        if (!o) return 0;
+        dst = o;
+    }
+    if (!dst || dst->type != OBJ_CARD) dst = g_current_card;
+    if (!dst) { set_result("aucune carte a empiler"); return 1; }
+
+    if (g_navtop >= NAVSTACK_MAX) {          /* pile pleine : on decale */
+        for (int i = 1; i < NAVSTACK_MAX; i++) g_navstack[i-1] = g_navstack[i];
+        g_navtop = NAVSTACK_MAX - 1;
+    }
+    g_navstack[g_navtop++] = dst;
+    set_result("");
+    emit(HC_INFO, "   ⇒ empile la carte \"%s\"", dst->name ? dst->name : "?");
+    return 1;
+}
+
+/* pop [card] [into conteneur].
+ *
+ * La forme « into » garde l'ancien chemin : écrire dans un conteneur
+ * quelconque — variable, champ, morceau — est le travail de `put`, et le
+ * refaire ici en dupliquerait la mécanique. Elle reviendra quand `put` sera
+ * un service partagé plutôt qu'une ligne fabriquée pour exec_line. */
+static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    if (v3_indice_motcle(n, "into", 0) >= 0) return 0;
+    if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
+
+    Object *dst = g_navstack[--g_navtop];
+    Object *old = g_current_card;
+    Object *oldbg = old ? old->bg : NULL;
+    Object *newbg = dst->bg;
+
+    if (old) hc_send(old, "closeCard");
+    if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+    g_current_card = dst;
+    if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
+    hc_send(dst, "openCard");
+    set_result("");
+    emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
+    return 1;
+}
+
+/* reset paint : remet les propriétés de dessin à leur valeur par défaut. */
+static int v3_cmd_reset(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    char quoi[32];
+    quoi[0] = '\0';
+    if (n->nfils >= 1) v3_brut(n->fils[0], quoi, sizeof quoi);
+
+    if (ci_equal(quoi, "paint")) {
+        host_global_set("filled",    "false");
+        host_global_set("pattern",   "2");   /* le noir de HyperCard */
+        host_global_set("lineSize",  "1");
+        host_global_set("brush",     "8");
+        host_global_set("textFont",  "geneva");
+        host_global_set("textSize",  "12");
+        host_global_set("textStyle", "plain");
+        host_global_set("textAlign", "left");
+        host_global_set("textHeight","16");
+        set_result("");
+        return 1;
+    }
+    emit(HC_ERR, "   !! reset : seul « reset paint » est reconnu");
+    set_result("");
+    return 1;
+}
+
+/* doMenu : HyperCard scriptait par les menus tout ce qui n'avait pas de
+ * commande propre. On route vers l'hôte, seul à connaître ses menus. */
+static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils != 1) return 0;      /* « doMenu X without dialog » : ancien */
+
+    char item[256];
+    v3_val_texte(ctx, n->fils[0], item, sizeof item);
+    if (ctx->erreur) return 1;
+
+    g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
+    if (g_host && g_host->do_menu) g_host->do_menu(item);
+    else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+    set_result("");
+    return 1;
+}
+
+/* choose <outil> [tool].
+ *
+ * Le motif « W [tool] » a déjà séparé les mots du nom et le suffixe « tool ».
+ * Les mots sont pris BRUTS : « choose line tool » ne doit pas lire une
+ * variable nommée « line ». Une chaîne, elle, s'évalue — Apple écrit aussi
+ * bien « choose "Select Tool" ». */
+static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
+{
+    char nom[128];
+    int pos = 0;
+    nom[0] = '\0';
+
+    for (int i = 0; i < n->nfils; i++) {
+        const HctNoeud *f = n->fils[i];
+        if (f->genre == HCTN_MOTCLE) continue;      /* le « tool » du motif */
+        char m[128];
+        if (f->genre == HCTN_IDENT) v3_brut(f, m, sizeof m);
+        else {
+            v3_val_texte(ctx, f, m, sizeof m);
+            if (ctx->erreur) return 1;
+        }
+        if (!*m) continue;
+        pos += snprintf(nom + pos, sizeof nom - (size_t)pos, "%s%s",
+                        pos ? " " : "", m);
+        if (pos >= (int)sizeof nom) { pos = (int)sizeof nom - 1; break; }
+    }
+
+    /* Le suffixe « tool » peut aussi être venu de la chaîne elle-même. */
+    int k = (int)strlen(nom);
+    if (k > 4 && ci_equal(nom + k - 4, "tool")) {
+        k -= 4;
+        while (k > 0 && isspace((unsigned char)nom[k-1])) k--;
+        nom[k] = '\0';
+    }
+
+    g_visual_dirty = 1;
+    emit(HC_TRACE, "   ✎ choose « %s »", nom);
+    if (g_host && g_host->choose_tool) g_host->choose_tool(nom);
+    else emit(HC_ERR, "   !! choose : l'hôte ne gère pas les outils");
+    set_result("");
+    return 1;
+}
+
+static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
+{
+    int ito = v3_indice_motcle(n, "to", 0);
+    if (ito < 0) { emit(HC_ERR, "   !! drag : « to » manquant"); return 1; }
+
+    int iwith = v3_indice_motcle(n, "with", ito + 1);
+    int deb1  = v3_est_motcle(n, 0, "from") ? 1 : 0;
+
+    char p1[128], p2[128], mods[128];
+    v3_point(ctx, n, deb1, ito, p1, sizeof p1);
+    if (ctx->erreur) return 1;
+    v3_point(ctx, n, ito + 1, iwith >= 0 ? iwith : n->nfils, p2, sizeof p2);
+    if (ctx->erreur) return 1;
+    v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
+
+    int x1 = atoi(p1), y1 = 0, x2 = atoi(p2), y2 = 0;
+    const char *c1 = strchr(p1, ','), *c2 = strchr(p2, ',');
+    if (c1) y1 = atoi(c1 + 1);
+    if (c2) y2 = atoi(c2 + 1);
+
+    g_visual_dirty = 1;
+    { const char *t = host_global("tool");
+      emit(HC_TRACE, "   ✎ drag %d,%d -> %d,%d (%s)",
+           x1, y1, x2, y2, t ? t : "?"); }
+    if (g_host && g_host->drag) g_host->drag(x1, y1, x2, y2, mods);
+    else emit(HC_ERR, "   !! drag : l'hôte ne gère pas la souris");
+    set_result("");
+    return 1;
+}
+
+static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
+{
+    int iwith = v3_indice_motcle(n, "with", 0);
+    int deb   = v3_est_motcle(n, 0, "at") ? 1 : 0;
+
+    char pt[128], mods[128];
+    v3_point(ctx, n, deb, iwith >= 0 ? iwith : n->nfils, pt, sizeof pt);
+    if (ctx->erreur) return 1;
+    v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
+
+    int x = atoi(pt), y = 0;
+    const char *c = strchr(pt, ',');
+    if (c) y = atoi(c + 1);
+
+    g_visual_dirty = 1;
+    { const char *t = host_global("tool");
+      emit(HC_TRACE, "   ✎ click at %d,%d (%s)", x, y, t ? t : "?"); }
+    if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
+    else emit(HC_ERR, "   !! click : l'hôte ne gère pas le clavier");
+    set_result("");
+    return 1;
+}
+
+static int v3_cmd_type(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+
+    int iwith = v3_indice_motcle(n, "with", 0);
+    if (iwith == 0) return 0;
+
+    /* Le texte tapé peut être long : tampon d'arène, comme l'ancien code, et
+     * non sur la pile. */
+    ARENA_MARK;
+    char *txt = arena_buf();
+    char mods[128];
+    v3_val_texte(ctx, n->fils[0], txt, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+    v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
+
+    g_visual_dirty = 1;
+    if (g_host && g_host->type_text) g_host->type_text(txt, mods);
+    else emit(HC_ERR, "   !! type : l'hôte ne gère pas le clavier");
+    ARENA_FREE;
+    set_result("");
+    return 1;
+}
+
+/* mark / unmark.
+ *
+ * « mark cards where <condition> » garde l'ancien chemin : « where » n'est
+ * pas un mot du motif, il arrive donc en identificateur ordinaire et la
+ * condition qui le suit n'est pas isolée de façon sûre. C'est le genre de
+ * forme qui mérite son propre motif dans hct_cmd.c plutôt qu'un découpage
+ * ici. */
+static int v3_cmd_marque(HctContexte *ctx, const HctNoeud *n)
+{
+    int poser = ci_equal(n->op, "mark");
+
+    for (int i = 0; i < n->nfils; i++) {
+        char m[16];
+        v3_brut(n->fils[i], m, sizeof m);
+        if (ci_equal(m, "where")) return 0;
+    }
+
+    Object *pile = g_current_card ? g_current_card->owner : NULL;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+    if (!pile) { set_result("No stack"); return 1; }
+
+    char m0[16];
+    m0[0] = '\0';
+    if (n->nfils >= 1) v3_brut(n->fils[0], m0, sizeof m0);
+
+    if (ci_equal(m0, "all")) {
+        for (int i = 0; i < pile->nparts; i++)
+            if (pile->parts[i]->type == OBJ_CARD)
+                pile->parts[i]->marked = poser;
+        set_result("");
+        return 1;
+    }
+
+    Object *c = n->nfils >= 1 ? hct_resout(ctx, n->fils[0]) : g_current_card;
+    if (!c || c->type != OBJ_CARD) return 0;
+    c->marked = poser;
+    set_result("");
+    return 1;
+}
+
+/* wait [while|until] <condition> | wait [for] <durée> [ticks|seconds].
+ *
+ * La condition est réévaluée depuis L'ARBRE à chaque tour, non depuis son
+ * texte : « wait until the mouse is up » ne relexe plus rien. */
+static int v3_cmd_wait(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = 0, condition = 0, jusqua = 0;
+
+    if      (v3_est_motcle(n, i, "until")) { jusqua = condition = 1; i++; }
+    else if (v3_est_motcle(n, i, "while")) { condition = 1; i++; }
+    if (v3_est_motcle(n, i, "for")) i++;
+
+    if (i >= n->nfils) return 0;
+    const HctNoeud *e = n->fils[i++];
+
+    if (condition) {
+        long tours = 0;
+        for (;;) {
+            char v[64];
+            v3_val_texte(ctx, e, v, sizeof v);
+            if (ctx->erreur) return 1;
+            int vrai = truthy(v);
+            if (jusqua ? vrai : !vrai) break;
+            if (++tours > HC_MAX_LOOP) {
+                emit(HC_ERR, "!! wait interrompu après %d tours", HC_MAX_LOOP);
+                break;
+            }
+            /* Sans le sommeil de l'hôte, cette boucle tournerait à plein
+             * régime en attendant un clic. */
+            attends(1.0 / 60.0);
+        }
+        return 1;
+    }
+
+    char v[64];
+    v3_val_texte(ctx, e, v, sizeof v);
+    if (ctx->erreur) return 1;
+
+    double nb = hct_est_nombre(v) ? hct_vers_nombre(v) : 0.0;
+    double ticks = nb;               /* le tick est l'unité par défaut */
+
+    if (v3_est_motcle(n, i, "seconds") || v3_est_motcle(n, i, "second") ||
+        v3_est_motcle(n, i, "secs")    || v3_est_motcle(n, i, "sec"))
+        ticks = nb * 60.0;
+
+    if (ticks > HC_MAX_LOOP) ticks = HC_MAX_LOOP;
+    attends(ticks / 60.0);
+    return 1;
+}
+
+/* ===================================================================
+ * Groupe B — à insérer dans hc_core.c juste AVANT la table V3_VERBES,
+ * c'est-à-dire après v3_cmd_wait et avant « typedef int (*V3Verbe) ».
+ * Les entrées à ajouter à la table sont données à la fin.
+ *
+ * Deux ajustements ailleurs dans le fichier :
+ *
+ *   - les trois variables de l'effet visuel sont définies ligne 6923,
+ *     donc APRÈS ce bloc, qui s'en sert dans « go ». Il faut remonter
+ *     leurs trois lignes au-dessus du répartiteur :
+ *         static char g_visual_effect[64] = "";
+ *         static char g_visual_speed[16]  = "";
+ *         static char g_visual_image[16]  = "";
+ *
+ *   - file_open et marked_card_ref sont définis plus bas : les deux
+ *     déclarations anticipées sont incluses ci-dessous, rien à faire.
+ * =================================================================== */
+
+static int     file_open(const char *nom);          /* défini plus bas */
+static Object *marked_card_ref(const char *r, int *concerne);
+
+/* Le NOM d'une pile désignée par un nœud.
+ *
+ * On ne peut pas se contenter de hct_resout : « go to stack "Index" » doit
+ * pouvoir OUVRIR une pile qui n'est pas encore là, et il faut donc son nom,
+ * pas un objet qui n'existe pas. Quand la référence est déjà résolue —
+ * « this stack » — on rend le nom de l'objet trouvé. */
+static void v3_nom_pile(HctContexte *ctx, const HctNoeud *ref,
+                        char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!ref) return;
+
+    if (ref->genre == HCTN_OBJET && ref->typeobj == HCT_OBJ_STACK) {
+        const HctNoeud *des = v3_designateur(ref);
+        if (des) { v3_val_texte(ctx, des, out, outlen); return; }
+        Object *s = hct_resout(ctx, ref);
+        snprintf(out, (size_t)outlen, "%s", s && s->name ? s->name : "");
+        return;
+    }
+    v3_val_texte(ctx, ref, out, outlen);
+}
+
+/* ---------------------------------------------------------------- go
+ *
+ * Le seul verbe du groupe qui déplace l'utilisateur, et le seul dont une
+ * erreur laisse la pile dans un état bancal plutôt que de ne rien faire.
+ * D'où le parti pris : dès que la cible n'est pas une carte, on rend 0 et
+ * l'ancien exécuteur reprend la ligne entière, avec ses messages d'erreur.
+ * Il refait le travail, mais seulement quand la v3 a échoué.
+ */
+static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
+    if (i >= n->nfils) return 0;
+
+    /* « go to next marked card » : le marquage filtre la navigation, et
+     * hct_resout n'en sait rien — c'est marked_card_ref qui s'en charge, sur
+     * le texte. Ancien chemin. */
+    for (int k = i; k < n->nfils; k++) {
+        char m[16];
+        v3_brut(n->fils[k], m, sizeof m);
+        if (ci_equal(m, "marked")) return 0;
+    }
+
+    const HctNoeud *ref = n->fils[i];
+
+    /* ---- go to stack "X" ----
+     * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de
+     * l'ouvrir — lui seul sait où chercher le fichier et comment lui donner
+     * une fenêtre. C'est ce qui permet à une pile d'en appeler une autre. */
+    if (ref->genre == HCTN_OBJET && ref->typeobj == HCT_OBJ_STACK) {
+        char nom[256];
+        v3_nom_pile(ctx, ref, nom, sizeof nom);
+        if (ctx->erreur) return 1;
+
+        Object *cible = find_open_stack(nom);
+        if (!cible && g_host && g_host->open_stack)
+            cible = g_host->open_stack(nom);
+        if (!cible) return 0;              /* introuvable : ancien chemin */
+
+        Object *prem = NULL;
+        for (int k = 0; k < cible->nparts; k++)
+            if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
+        if (!prem) { set_result("No such card"); return 1; }
+
+        Object *old = g_current_card;
+        if (old && old->owner != cible) hc_send(old, "closeStack");
+        g_current_card = prem;
+        if (g_host && g_host->stack_changed) g_host->stack_changed(cible);
+        hc_send(prem, "openStack");
+        set_result("");
+        return 1;
+    }
+
+    Object *dst = NULL;
+
+    /* « go card » nu mène à la PREMIÈRE carte. hct_resout, lui, rendrait la
+     * carte courante : un nœud objet sans désignateur, c'est « this ». La
+     * distinction n'existe que pour go, on la fait donc ici. */
+    if (ref->genre == HCTN_OBJET && ref->typeobj == HCT_OBJ_CARD &&
+        ref->designateur == HCT_DES_AUCUN && ref->nfils == 0) {
+        dst = nth_card(owning_stack(g_current_card), 0);
+    } else {
+        dst = hct_resout(ctx, ref);
+
+        /* « go x » : la variable porte la référence. On évalue, puis on
+         * résout le texte obtenu — resolve fait ce que la v3 ne sait pas
+         * faire à partir d'une chaîne. */
+        if (!dst) {
+            char v[256];
+            v3_val_texte(ctx, ref, v, sizeof v);
+            if (ctx->erreur) return 1;
+            if (v[0]) dst = resolve(v);
+        }
+    }
+
+    /* « go background "x" » mène à la PREMIÈRE CARTE de ce fond, et
+     * « go stack "x" » à la première carte de la pile : dans HyperCard on ne
+     * se tient jamais sur un fond, seulement sur une carte. */
+    if (dst && (dst->type == OBJ_BACKGROUND || dst->type == OBJ_STACK)) {
+        Object *stk = owning_stack(dst);
+        Object *trouve = NULL;
+        for (int k = 0; stk && k < stk->nparts; k++) {
+            Object *c = stk->parts[k];
+            if (c->type != OBJ_CARD) continue;
+            if (dst->type == OBJ_STACK || c->bg == dst) { trouve = c; break; }
+        }
+        dst = trouve;
+    }
+
+    if (!dst || dst->type != OBJ_CARD) return 0;   /* ancien chemin */
+
+    set_result("");
+
+    /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte : l'hôte
+     * a besoin de photographier l'écran de départ. Puis on l'oublie —
+     * « visual » ne vaut que pour le prochain « go ». */
+    if (g_visual_effect[0]) {
+        if (g_host && g_host->visual_effect)
+            g_host->visual_effect(g_visual_effect, g_visual_speed,
+                                  g_visual_image);
+        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+    }
+
+    Object *old   = g_current_card;
+    Object *oldbg = old ? old->bg : NULL;
+    if (old) hc_send(old, "closeCard");
+    /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
+    if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
+    g_current_card = dst;
+    if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
+    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
+    hc_send(dst, "openCard");
+    return 1;
+}
+
+/* ------------------------------------------------- open / close file
+ *
+ * Les autres emplois d'open et de close — une application, une fenêtre — ne
+ * sont pas traités par l'ancien exécuteur non plus : sans le mot « file »,
+ * on rend 0 et la ligne suit son cours. */
+static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
+{
+    if (!v3_est_motcle(n, 0, "file")) return 0;
+    if (n->nfils != 2) return 0;
+
+    char nom[512];
+    v3_val_texte(ctx, n->fils[1], nom, sizeof nom);
+    if (ctx->erreur) return 1;
+
+    if (ci_equal(n->op, "close")) {
+        file_close(nom);
+        set_result("");
+        return 1;
+    }
+
+    if (file_open(nom)) set_result("");
+    else {
+        set_result("Can't open file");
+        emit(HC_ERR, "   !! open file : %s", nom);
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------- save
+ *
+ * « save this stack as "chemin" ». Un nom explicite ne peut désigner que la
+ * pile ouverte — nous n'en tenons qu'une à la fois —, et l'on vérifie plutôt
+ * que de copier silencieusement la mauvaise. */
+static int v3_cmd_save(HctContexte *ctx, const HctNoeud *n)
+{
+    int ias = v3_indice_motcle(n, "as", 0);
+    if (ias < 1 || ias + 1 >= n->nfils) return 0;
+
+    Object *pile = hct_resout(ctx, n->fils[0]);
+    if (ctx->erreur) return 1;
+    if (pile && pile->type != OBJ_STACK) pile = owning_stack(pile);
+    if (!pile) return 0;                  /* pile introuvable : ancien chemin */
+
+    const HctNoeud *ou = n->fils[ias + 1];
+    /* « as stack "x" » : le mot est décoratif, la cible est un chemin. */
+    if (ou->genre == HCTN_OBJET && ou->typeobj == HCT_OBJ_STACK) {
+        const HctNoeud *des = v3_designateur(ou);
+        if (!des) return 0;
+        ou = des;
+    }
+
+    char chemin[512];
+    v3_val_texte(ctx, ou, chemin, sizeof chemin);
+    if (ctx->erreur) return 1;
+    if (!chemin[0]) { set_result("Bad parameter"); return 1; }
+
+    if (g_host && g_host->save_stack && g_host->save_stack(pile, chemin))
+        set_result("");
+    else {
+        emit(HC_ERR, "   !! save : échec de l'écriture : %s", chemin);
+        set_result("Can't save stack");
+    }
+    return 1;
+}
+
+/* --------------------------------------------- start / stop using
+ *
+ * Une pile en usage s'insère dans la chaîne de messages : ses gestionnaires
+ * deviennent appelables de partout. Redéclarer une pile déjà en usage la
+ * DÉPLACE en tête plutôt que de l'ajouter deux fois.
+ *
+ * load_stack et non open_stack : une pile en usage reste INVISIBLE. Seul
+ * « go to stack » affiche. */
+static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
+{
+    if (!v3_est_motcle(n, 0, "using")) return 0;
+    if (n->nfils < 2) return 0;
+
+    int demarrer = ci_equal(n->op, "start");
+
+    char nom[256];
+    v3_nom_pile(ctx, n->fils[1], nom, sizeof nom);
+    if (ctx->erreur) return 1;
+
+    Object *pile = find_open_stack(nom);
+    if (!pile && demarrer && g_host && g_host->load_stack)
+        pile = g_host->load_stack(nom);
+    if (!pile) return 0;                  /* introuvable : ancien chemin */
+
+    /* La retirer d'abord, dans les deux cas : « stop » n'a que cela à faire,
+     * et « start » s'en sert pour la remettre en tête. */
+    for (int i = 0; i < g_nusing; i++) {
+        if (g_using[i] != pile) continue;
+        for (int k = i; k + 1 < g_nusing; k++) g_using[k] = g_using[k+1];
+        g_nusing--;
+        break;
+    }
+    if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+
+    set_result("");
+    return 1;
+}
+
+/* ================= entrées à ajouter à la table V3_VERBES =================
+ * Dans l'ordre alphabétique de la table existante :
+ *
+ *     { "close",  v3_cmd_fichier },
+ *     { "go",     v3_cmd_go      },
+ *     { "open",   v3_cmd_fichier },
+ *     { "save",   v3_cmd_save    },
+ *     { "start",  v3_cmd_using   },
+ *     { "stop",   v3_cmd_using   },
+ * ========================================================================= */
+/* ------------------------------------------------------------- la table */
+/* Gestionnaire écrit dans une pile, appelé comme commande —
+ * « selectline it, the name of me ».
+ *
+ * Le pendant exact de v3_fonction_pile. La ligne repartait à exec_stmt, qui
+ * la redécoupait aux virgules, réévaluait chaque argument, trouvait le
+ * gestionnaire et rappelait la v3 pour l'exécuter : six cents allers-retours
+ * dans une seule boucle, pour un travail que nous avions déjà fait.
+ *
+ * Les fils du nœud HCTN_MESSAGE sont les arguments, déjà séparés par
+ * l'analyseur. On les évalue une fois et on les passe tels quels.
+ *
+ * Rend 0 si aucun objet de la chaîne ne définit ce gestionnaire — la ligne
+ * suit alors son cours vers l'ancien chemin, qui saura dire pourquoi. */
+static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
+{
+    /* Le nom du gestionnaire est dans le JETON, pas dans op : pour un nœud
+     * HCTN_MESSAGE, l'analyseur met le mot littéral « message » dans op. */
+    char nom[64];
+    hct_texte(&n->jeton, nom, sizeof nom);
+    if (!nom[0]) return 0;
+
+    Object *start = g_me ? g_me : g_current_card;
+    Object *chain[8];
+    int nc = build_chain(start, chain, 8);
+
+    int trouve = 0;
+    for (int i = 0; i < nc && !trouve; i++) {
+        const char *end = NULL, *hdr = NULL;
+        if (find_handler(chain[i]->script, nom, &end, &hdr)) trouve = 1;
+    }
+    if (!trouve) return 0;
+
+    char (*argv)[HC_VAL] = arena_rows(16);
+    int argc = 0;
+    for (int i = 0; i < n->nfils && argc < 16; i++) {
+        const HctNoeud *f = n->fils[i];
+        if (f->genre == HCTN_MOTCLE) continue;
+        char *v = arena_buf();
+        v3_val_texte(ctx, f, v, HC_VAL);
+        if (ctx->erreur) return 1;
+        snprintf(argv[argc], HC_VAL, "%s", v);
+        argc++;
+    }
+
+    set_result("");
+    hc_send_args(start, nom, argv, argc);
+    return 1;
+}
+typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
+
+static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
+    { "beep",   v3_cmd_beep    },
+    { "choose", v3_cmd_choose  },
+    { "click",  v3_cmd_click   },
+    { "close",  v3_cmd_fichier },
+    { "debug",  v3_cmd_debug   },
+    { "domenu", v3_cmd_domenu  },
+    { "drag",   v3_cmd_drag    },
+    { "go",     v3_cmd_go      },
+    { "hide",   v3_cmd_montre  },
+    { "lock",   v3_cmd_verrou  },
+    { "mark",   v3_cmd_marque  },
+    { "open",   v3_cmd_fichier },
+    { "play",   v3_cmd_play    },
+    { "pop",    v3_cmd_pop     },
+    { "push",   v3_cmd_push    },
+    { "reset",  v3_cmd_reset   },
+    { "save",   v3_cmd_save    },
+    { "show",   v3_cmd_montre  },
+    { "start",  v3_cmd_using   },
+    { "stop",   v3_cmd_using   },
+    { "type",   v3_cmd_type    },
+    { "unlock", v3_cmd_verrou  },
+    { "unmark", v3_cmd_marque  },
+    { "wait",   v3_cmd_wait    },
+    { NULL, NULL }
+};
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
 {
-    (void)d; (void)ctx;
+    (void)d;
+    if (n->genre == HCTN_COMMANDE && n->op)
+        for (int i = 0; V3_VERBES[i].verbe; i++)
+            if (ci_equal(V3_VERBES[i].verbe, n->op)) {
+                if (V3_VERBES[i].fn(ctx, n)) return 1;
+                break;                 /* forme non portée : ancien chemin */
+            }
 
+    /* Un gestionnaire de la pile : on l'appelle avec nos arguments plutôt que
+     * de rendre la ligne à exec_stmt, qui les réévaluerait. */
+    if (n->genre == HCTN_MESSAGE) {
+        ARENA_MARK;
+        int fait = v3_message_pile(ctx, n);
+        ARENA_FREE;
+        if (fait) return 1;
+    }
+
+    /* --- pas encore porté : l'ancien chemin, intact --- */
     const char *deb; int len;
     if (!hct_noeud_etendue(n, &deb, &len)) return 0;   /* rien à reconstituer */
-
     v3_note("commande", n->genre == HCTN_MESSAGE ? "<message>" : n->op);
-
     ARENA_MARK;
     char *ligne = arena_buf();
     int m = len < HC_VAL - 1 ? len : HC_VAL - 1;
     memcpy(ligne, deb, (size_t)m);
     ligne[m] = '\0';
-
 #if HC_TRACE_V3
-    /* La ligne telle qu'elle est reconstituée. C'est LE point à vérifier : si
-     * elle est tronquée ou débordante, exec_stmt reçoit autre chose que ce que
-     * l'auteur a écrit, et le résultat est faux sans qu'aucune erreur ne soit
-     * signalée. */
     fprintf(stderr, "[v3->ancien] « %s »\n", ligne);
 #endif
-
     exec_stmt(g_me, ligne);
-
     ARENA_FREE;
     return 1;
 }
@@ -6047,19 +7061,102 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     return 1;
 }
 
+/* --- lecture d'une propriété, depuis l'arbre -------------------------
+ *
+ * L'évaluateur tient l'objet DÉJÀ résolu et le nom de la propriété : il n'y
+ * a plus rien à reconstituer, et les pertes de la reconstitution — le « the »
+ * avalé, les adjectifs — ne peuvent plus se produire ici.
+ *
+ * Le nom arrive tel que l'analyseur l'a fusionné. Les adjectifs de l'annexe I
+ * sont collés au nom de la propriété (voir ADJECTIFS dans hct_expr.c) :
+ * « the short name of me » donne « short name », en un seul jeton. On détache
+ * donc l'adjectif avant de consulter obj_prop_read, qui attend le nom nu et
+ * un drapeau, exactement comme le faisait term_value.
+ *
+ * Rend 0 pour tout ce qu'obj_prop_read ne connaît pas — les propriétés
+ * globales, les formes calculées, celles d'un morceau de texte. Le recours
+ * prend alors la suite, comme avant. */
+static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
+{
+    (void)d;
+    Object *o = objet;
+    if (!o || !prop) return 0;
+
+    static const char *ADJECTIFS[] = {
+        "short", "long", "abbreviated", "abbrev", "abbr",
+        "english", "plain", "numeric", NULL
+    };
+
+    const char *p = prop;
+    int shortf = 0;
+
+    while (*p == ' ' || *p == '\t') p++;
+    for (int i = 0; ADJECTIFS[i]; i++) {
+        size_t l = strlen(ADJECTIFS[i]);
+        if (strncasecmp(p, ADJECTIFS[i], l) != 0) continue;
+        if (p[l] != ' ' && p[l] != '\t') continue;   /* « shortcut » n'est pas « short » */
+        if (i == 0) shortf = 1;                       /* seul « short » change la lecture */
+        p += l;
+        while (*p == ' ' || *p == '\t') p++;
+        break;
+    }
+    if (!*p) return 0;
+
+    /* Le tampon vient de l'arène : « the script of me » peut peser plusieurs
+     * kilo-octets, et HC_VAL sur la pile coûterait un mégaoctet par appel. */
+    ARENA_MARK;
+    char *buf = arena_buf();
+    buf[0] = '\0';
+
+    int ok = obj_prop_read(o, p, shortf, buf, HC_VAL);
+    if (ok) *out = hct_val_texte(buf);
+
+    ARENA_FREE;
+    return ok;
+}
+
+/* --- la boîte de messages ---
+ *
+ * « put X » sans destination, et « put X into the message box ». HC n'a pas
+ * de boîte persistante : la valeur part sur la sortie, comme le fait
+ * exec_stmt, qui émet HC_MSG au même endroit.
+ *
+ * `mode` est donc sans objet ici — on ne peut rien ajouter à la suite de ce
+ * qui a déjà été affiché. On l'ignore et l'on rend 1 : refuser renverrait la
+ * ligne à l'ancien interpréteur, qui n'en ferait pas davantage. */
+static int v3_ecrit_message(void *d, const char *val, int mode)
+{
+    (void)d; (void)mode;
+    emit(HC_MSG, "%s", val ? val : "");
+    return 1;
+}
+/* « global a, b » : l'exécuteur nous passe les noms un par un, puisque c'est
+ * nous qui tenons les cadres. Même travail que l'ancien exécuteur, sans la
+ * ligne à réanalyser. */
+static int v3_globale(void *d, const char *nom)
+{
+    (void)d;
+    if (!nom || !*nom) return 0;
+    frame_declare_global(g_frame, nom);
+    return 1;
+}
 static HctHote v3_hote(void)
 {
     HctHote h;
     memset(&h, 0, sizeof h);
     h.lit_var   = v3_lit_var;
     h.ecrit_var = v3_ecrit_var;
+    h.globale   = v3_globale;
     h.fonction  = v3_fonction;
     h.recours   = v3_recours;
     h.resout    = v3_resout;
     h.lit_objet = v3_lit_objet;
+    h.lit_prop  = v3_lit_prop;
     h.commande  = v3_commande;
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;
+    h.ecrit_message = v3_ecrit_message;
+
     return h;
 }
 
@@ -6181,8 +7278,7 @@ static int g_exit_handler = 0;   /* exit <gestionnaire> */
 static int g_exit_repeat  = 0;   /* exit repeat */
 static int g_next_repeat  = 0;   /* next repeat */
 
-/* Une boucle sans fin bloquerait la console : plafond de sécurité. */
-#define HC_MAX_LOOP 1000000
+ 
 
 /* faut-il interrompre le fil d'exécution courant ? */
 static int flow_broken(void)
@@ -6761,9 +7857,6 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * Le noyau ne sait pas animer : il analyse, retient, et passe le tout à
  * l'hôte au moment du changement. Les noms restent ceux d'HyperCard, y compris
  * les composés en deux mots — « barn door open », « iris close ». */
-static char g_visual_effect[64] = "";
-static char g_visual_speed[16]  = "";
-static char g_visual_image[16]  = "";
 
 /* ---- fichiers ouverts par script -----------------------------------------
  *   open file "notes"      read from file "notes" for 20
@@ -7065,6 +8158,24 @@ static void exec_line_body(Object *me, const char *line)
     }
 
     /* --- put <expr> [into|after|before <champ|variable>] --- */
+    /* --- debug : le relevé des retours de la v3 vers ce fichier ---
+     *
+     * « debug bilan » l'imprime, « debug raz » le remet à zéro. Le verbe
+     * existe dans la table de hct_cmd.c mais n'avait aucun traitant : il
+     * partait en envoi de message et se perdait.
+     *
+     * Le passer par une commande plutôt que par un appel depuis l'interface
+     * permet de le déclencher DEPUIS un script, donc de mesurer une pile
+     * précise : « debug raz » en début de gestionnaire, « debug bilan » à la
+     * fin. */
+    if (ci_equal(verb, "debug")) {
+        char quoi[64];
+        next_word(rest, quoi, sizeof quoi);
+        if (ci_equal(quoi, "raz")) { hc_v3_bilan_remise_a_zero(); return; }
+        hc_v3_bilan();
+        return;
+    }
+
     if (ci_equal(verb, "put")) {
         /* repérer la préposition, hors des chaînes entre guillemets */
         const char *kw = NULL;

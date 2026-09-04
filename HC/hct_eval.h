@@ -89,19 +89,50 @@ typedef struct {
      * ne sait pas écrire dans cet objet — un bouton n'est pas un conteneur —
      * et l'exécuteur se rabat alors sur `commande`. */
     int (*ecrit_objet)(void *d, void *objet, const char *val, int mode);
+
+    /* Écrire dans la BOÎTE DE MESSAGES : « put X » sans destination, et
+     * « put X into the message box ».
+     *
+     * Sans ce rappel, la forme la plus courante d'un script — un simple
+     * « put » — repartait tout entière à l'hôte, qui réanalysait la ligne et
+     * réévaluait l'expression que l'exécuteur venait déjà d'évaluer.
+     *
+     * `mode` suit la convention d'ecrit_objet : 0 remplace, 1 insère AVANT,
+     * 2 ajoute APRÈS. Un hôte qui se contente d'afficher la valeur peut
+     * l'ignorer et rendre 1 quand même.
+     *
+     * Rend 0 si l'hôte n'a pas de boîte ; l'exécuteur se rabat sur
+     * `commande`. */
+    int (*ecrit_message)(void *d, const char *val, int mode);
+    int (*globale)(void *d, const char *nom);
 } HctHote;
+
+ 
 
 struct HctContexte {
     HctHote     hote;
     const char *erreur;        /* NULL tant que tout va bien           */
     const HctNoeud *fautif;    /* le nœud où l'erreur s'est produite   */
-};
 
+    /* Imbrication des « the value of ». Une variable peut contenir un texte
+     * qui redemande sa propre valeur : sans plafond, la récursion est
+     * infinie et la pile C meurt sans message. */
+    int         prof_valeur;
+};
 void hct_ctx_init(HctContexte *ctx, HctHote hote);
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg);
 
 /* Évalue un arbre d'expression. En cas d'erreur, rend une valeur vide et
  * renseigne ctx->erreur — l'appelant doit le tester. */
 HctValeur hct_evalue(HctContexte *ctx, const HctNoeud *n);
+/* Déclarer une variable GLOBALE dans le gestionnaire courant.
+ *
+ * Quand l'hôte tient les variables, il tient aussi la distinction entre
+ * locale et globale : l'exécuteur ne peut pas la poser lui-même, ses
+ * propres portées ne servant alors à rien. Sans ce rappel, « global »
+ * repartait tout entier à l'hôte par `commande` — cinquante-trois fois
+ * sur une seule pile, pour une commande qui ne touche à rien.
+ *
+ * Rend 0 si l'hôte ne sait pas ; l'exécuteur se rabat sur `commande`. */
 
 #endif
