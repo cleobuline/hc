@@ -8817,6 +8817,15 @@ static int v3_globale(void *d, const char *nom)
     frame_declare_global(g_frame, nom);
     return 1;
 }
+/* Vider « the result » après une commande que l'exécuteur a traitée seul.
+ * exec_stmt le fait depuis toujours pour put et l'arithmétique ; sans cela
+ * la v3 laissait survivre un résultat déposé bien plus tôt. */
+static void v3_resultat_vide(void *d)
+{
+    (void)d;
+    set_result("");
+}
+
 static HctHote v3_hote(void)
 {
     HctHote h;
@@ -8833,6 +8842,7 @@ static HctHote v3_hote(void)
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;
     h.ecrit_message = v3_ecrit_message;
+    h.resultat_vide = v3_resultat_vide;
 
     return h;
 }

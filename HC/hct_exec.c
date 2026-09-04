@@ -459,6 +459,23 @@ static int execute_texte(HctExec *x, const char *src, const HctNoeud *origine)
 }
 
 
+/* « the result » rend le résultat de la DERNIÈRE commande exécutée : une
+ * commande qui réussit sans rien à signaler le laisse vide. Les commandes
+ * traitées ici ne le faisaient pas, si bien qu'un résultat déposé bien plus
+ * tôt leur survivait — « if the result is not empty » restait vrai longtemps
+ * après la commande qui l'avait rempli.
+ *
+ * On ne vide QUE sur le chemin où l'exécuteur a fait le travail lui-même :
+ * quand la commande repart à l'hôte, c'est à lui de dire ce qu'il en advient. */
+static void resultat_vide(HctExec *x)
+{
+    /* x->hote, et non x->ctx.hote : le pont construit par hct_exec_init ne
+     * recopie que les rappels dont l'ÉVALUATEUR a besoin, et ses `donnees`
+     * pointent sur l'exécuteur, pas sur l'hôte. On s'adresse donc à l'hôte
+     * réel, celui que l'appelant nous a confié. */
+    if (x->hote.resultat_vide) x->hote.resultat_vide(x->hote.donnees);
+}
+
 static void commande(HctExec *x, const HctNoeud *n)
 {
     const char *v = n->op ? n->op : "";
@@ -484,12 +501,15 @@ static void commande(HctExec *x, const HctNoeud *n)
         HctValeur val = hct_evalue(&x->ctx, n->fils[0]);
         if (x->ctx.erreur) { hct_val_libere(&val); return; }
 
+        int delegue = 0;
         if (n->nfils >= 3) {
             int mode = est_motcle(n->fils[1], "before") ? 1
                      : est_motcle(n->fils[1], "after")  ? 2 : 0;
             if (!ecrit_dans(x, n->fils[2], val.txt, mode) &&
-                x->ctx.hote.commande)
+                x->ctx.hote.commande) {
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+                delegue = 1;
+            }
         } else {
             /* « put X » sans cible écrit dans la BOÎTE DE MESSAGES, qui n'est
              * pas une variable : lui poser var("msg") créait une variable de
@@ -499,12 +519,15 @@ static void commande(HctExec *x, const HctNoeud *n)
              * hôtes qui ne fournissent pas ecrit_message. */
             if (x->ctx.hote.ecrit_message)
                 x->ctx.hote.ecrit_message(x->ctx.hote.donnees, val.txt, 0);
-            else if (x->ctx.hote.commande)
+            else if (x->ctx.hote.commande) {
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+                delegue = 1;
+            }
             else if (x->ctx.hote.ecrit_var)
                 x->ctx.hote.ecrit_var(x->ctx.hote.donnees, "msg", val.txt);
         }
         hct_val_libere(&val);
+        if (!delegue && !x->ctx.erreur) resultat_vide(x);
         return;
     }
 
@@ -605,10 +628,14 @@ static void commande(HctExec *x, const HctNoeud *n)
             r = xc / xv;
         }
         HctValeur res = hct_val_nombre(r);
-        if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande)
+        int delegue = 0;
+        if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+            delegue = 1;
+        }
         hct_val_libere(&res);
         hct_val_libere(&val); hct_val_libere(&act);
+        if (!delegue && !x->ctx.erreur) resultat_vide(x);
         return;
     }
 

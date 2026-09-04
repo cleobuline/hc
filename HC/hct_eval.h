@@ -105,6 +105,24 @@ typedef struct {
      * `commande`. */
     int (*ecrit_message)(void *d, const char *val, int mode);
     int (*globale)(void *d, const char *nom);
+
+    /* Vider « the result ».
+     *
+     * En HyperTalk, `the result` rend le résultat de la DERNIÈRE commande
+     * exécutée : une commande qui réussit sans rien avoir à signaler le
+     * laisse vide. C'est ce qui fait marcher le garde classique
+     *
+     *     go to card "absente"
+     *     if the result is not empty then …
+     *
+     * Les commandes que l'exécuteur traite lui-même — put, add, subtract,
+     * multiply, divide — ne touchaient à rien, si bien qu'un résultat déposé
+     * bien plus tôt survivait à travers elles et rendait le test vrai à
+     * tort. `the result` étant une notion de l'hôte, l'exécuteur ne peut que
+     * le prévenir.
+     *
+     * NULL = l'hôte ne tient pas de résultat, il n'y a rien à vider. */
+    void (*resultat_vide)(void *d);
 } HctHote;
 
  
