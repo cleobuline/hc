@@ -5465,10 +5465,23 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                 case HCT_DES_ORDINAL:
                     return nth_card(stack,
                         v3_rang_ordinal(n->ordinal, card_count(stack)) - 1);
-                case HCT_DES_RELATIF:
+                case HCT_DES_RELATIF: {
                     if (n->relatif == HCT_REL_CE) return card;
-                    return nth_card(stack, card_index(stack, card) +
-                        (n->relatif == HCT_REL_SUIVANT ? 1 : -1));
+                    /* « go next card » depuis la dernière mène à la PREMIÈRE,
+                     * et « go previous card » depuis la première mène à la
+                     * DERNIÈRE : HyperCard boucle. C'est déjà ce que fait la
+                     * branche des FONDS, juste au-dessus — les deux doivent
+                     * s'accorder, et jusqu'ici seuls les fonds bouclaient.
+                     * Sans le modulo, nth_card rendait NULL sur le premier
+                     * « go previous card », et la navigation s'arrêtait là,
+                     * silencieusement : le résultat restait vide, aucun
+                     * message d'erreur, juste plus rien qui bouge. */
+                    int nc = card_count(stack);
+                    int i  = card_index(stack, card);
+                    if (nc <= 0 || i < 0) return NULL;
+                    int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
+                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
+                }
                 default: return card;
             }
 
@@ -6096,7 +6109,1346 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
     }
 }
 
+/* ---- tri : mécanique commune aux deux exécuteurs -------------------------
+ * Déplacé ici (l'original vivait juste avant l'ancien gestionnaire de
+ * « sort », documenté plus bas) parce que v3_cmd_sort en a besoin et que
+ * rien, avant ce point du fichier, n'en dépendait déjà. Le tri est STABLE :
+ * deux éléments de clé égale gardent leur ordre d'origine — HyperCard le
+ * garantissait, et des piles s'en servent pour trier sur deux critères en
+ * triant deux fois, du moins important au plus important. */
+static void eval_checked(const char *s, char *out, int outlen);   /* défini plus bas */
+
+typedef enum { SORT_TEXT, SORT_NUM, SORT_DATE } SortStyle;
+typedef struct { char *cle; int rang; Object *card; } SortItem;
+
+static int       g_sort_desc  = 0;
+static SortStyle g_sort_style = SORT_TEXT;
+
+static int sort_cmp(const void *pa, const void *pb)
+{
+    const SortItem *a = pa, *b = pb;
+    int r = 0;
+
+    if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
+        double x = 0, y = 0;
+        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
+        /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
+         * de venir se mêler aux valeurs légitimes. */
+        if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
+        else if (nx)  r = -1;
+        else if (ny)  r =  1;
+    } else {
+        const char *x = a->cle, *y = b->cle;      /* insensible à la casse */
+        while (*x && *y) {
+            int cx = tolower((unsigned char)*x), cy = tolower((unsigned char)*y);
+            if (cx != cy) { r = cx < cy ? -1 : 1; break; }
+            x++; y++;
+        }
+        if (!r) r = (*x ? 1 : 0) - (*y ? 1 : 0);
+    }
+
+    if (g_sort_desc) r = -r;
+    if (r == 0) r = a->rang - b->rang;            /* stabilité */
+    return r;
+}
+
+/* Lit sens et style, et rend ce qui reste de la ligne. */
+static const char *sort_options(const char *s, int *desc, SortStyle *style)
+{
+    for (;;) {
+        s = skip_spaces(s);
+        if      (ci_word(s, "ascending"))     { *desc = 0; s += 9;  }
+        else if (ci_word(s, "descending"))    { *desc = 1; s += 10; }
+        else if (ci_word(s, "text"))          { *style = SORT_TEXT; s += 4; }
+        else if (ci_word(s, "numeric"))       { *style = SORT_NUM;  s += 7; }
+        else if (ci_word(s, "datetime"))      { *style = SORT_DATE; s += 8; }
+        else if (ci_word(s, "international")) { *style = SORT_TEXT; s += 13; }
+        else return s;
+    }
+}
+
+/* sort [this] stack [asc|desc] [style] by <clé>
+ * sort [lines|items of] <conteneur> [asc|desc] [style] [by <clé avec each>]
+ *
+ * Motif hct_cmd.c : « * [ascending|descending] [text|numeric|international|
+ * datetime] [by e] ». Le « * » découpe la cible mot à mot — « cards », « of »,
+ * « this », « stack » deviennent chacun leur propre fils, une référence
+ * d'objet comme « field 1 » en fait parfois un seul — et rien ici n'a besoin
+ * de savoir lequel : v3_source reconstitue le texte exact de CHAQUE fils, on
+ * les rejoint par un espace, et on obtient EXACTEMENT le texte que lisait
+ * l'ancien exécuteur. On lui reprend alors son analyse mot à mot telle
+ * quelle, sans y toucher — seule la source du texte a changé.
+ *
+ * Pas d'évaluation à ce stade : « cards », « stack », « lines » restent des
+ * MOTS, pas des expressions. Une pile qui aurait une variable nommée
+ * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
+ * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
+static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;             /* nommée à part : pas de collision
+                                         * avec les ARENA_MARK imbriqués ci-
+                                         * dessous, qui doivent pouvoir
+                                         * rembobiner À LEUR PROPRE MARQUE
+                                         * sans toucher à `mots`. */
+    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
+     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
+     * premier rang desquels « the », que l'analyseur avale sans le ranger
+     * dans un nœud (« sort cards by the name of me » perdait son « the »).
+     * v3_source sur le nœud entier restitue l'intervalle EXACT du texte
+     * source, puisque « the » se situe bien ENTRE les jetons des fils, dans
+     * cet intervalle. Trouvé en portant « convert », qui en dépendait pour
+     * de vrai — voir son commentaire pour le détail du symptôme. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    const char *a = skip_spaces(mots);
+    int cartes = 0;                 /* trie-t-on des cartes ? */
+    ChunkType morceau = CH_LINE;    /* pour un conteneur */
+
+    if (ci_word(a, "this")) a = skip_spaces(a + 4);
+    if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
+
+    if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
+    else if (ci_word(a, "cards")) {
+        cartes = 1; a = skip_spaces(a + 5);
+        if (ci_word(a, "of")) {
+            a = skip_spaces(a + 2);
+            if (ci_word(a, "this")) a = skip_spaces(a + 4);
+            if (ci_word(a, "stack")) a = skip_spaces(a + 5);
+        }
+    }
+    else if (ci_word(a, "lines")) { morceau = CH_LINE; a = skip_spaces(a + 5);
+                                    if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+    else if (ci_word(a, "items")) { morceau = CH_ITEM; a = skip_spaces(a + 5);
+                                    if (ci_word(a, "of")) a = skip_spaces(a + 2); }
+
+    int desc = 0; SortStyle style = SORT_TEXT;
+
+    if (cartes) {
+        a = sort_options(a, &desc, &style);
+        const char *cle = NULL;
+        if (ci_word(a, "by")) cle = skip_spaces(a + 2);
+
+        Object *stack = g_current_card ? g_current_card->owner : NULL;
+        if (!stack) { emit(HC_ERR, "   !! sort : pas de pile");
+                      g_atop = sauve; return 1; }
+
+        int n2 = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD) n2++;
+        if (n2 < 2) { g_atop = sauve; return 1; }
+
+        SortItem *tab = calloc((size_t)n2, sizeof *tab);
+        char **cles = calloc((size_t)n2, sizeof *cles);
+        if (!tab || !cles) { free(tab); free(cles); g_atop = sauve; return 1; }
+
+        Object *avant = g_current_card;
+        int k = 0;
+        for (int i = 0; i < stack->nparts; i++) {
+            Object *c = stack->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
+             * doit désigner le champ de celle-ci, pas de la carte de
+             * départ. C'est tout le sens du tri par contenu. */
+            g_current_card = c;
+            ARENA_MARK;
+            char *tmp = arena_buf();
+            if (cle) eval_checked(cle, tmp, HC_VAL);
+            cles[k] = dupstr(tmp);
+            ARENA_FREE;
+            tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
+            k++;
+        }
+        g_current_card = avant;
+
+        g_sort_desc = desc; g_sort_style = style;
+        qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
+
+        /* Réécrire les cartes dans leur nouvel ordre, en laissant les
+         * fonds à leur place : ils occupent aussi parts[]. */
+        k = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD)
+                stack->parts[i] = tab[k++].card;
+
+        for (int i = 0; i < n2; i++) free(cles[i]);
+        free(cles); free(tab);
+        set_result("");
+        g_atop = sauve;
+        return 1;
+    }
+
+    /* --- tri d'un conteneur --- */
+    {
+        const char *by = find_kw(a, "by");
+        ARENA_MARK;
+        char *cible = arena_buf();
+        {
+            int len = by ? (int)(by - a) : (int)strlen(a);
+            if (len > HC_VAL - 1) len = HC_VAL - 1;
+            memcpy(cible, a, (size_t)len); cible[len] = '\0';
+        }
+
+        /* Les options peuvent suivre la cible : « sort field 1 descending ». */
+        char *fin = cible + strlen(cible);
+        while (fin > cible && isspace((unsigned char)fin[-1])) *--fin = '\0';
+        for (;;) {
+            char *mot = fin;
+            while (mot > cible && !isspace((unsigned char)mot[-1])) mot--;
+            if (mot == cible) break;
+            int d2 = desc; SortStyle s2 = style;
+            const char *apres = sort_options(mot, &d2, &s2);
+            if (apres == mot) break;            /* pas une option */
+            desc = d2; style = s2;
+            while (mot > cible && isspace((unsigned char)mot[-1])) mot--;
+            *mot = '\0'; fin = mot;
+        }
+
+        const char *cle = by ? skip_spaces(by + 2) : NULL;
+
+        char *src = arena_buf();
+        eval_checked(cible, src, HC_VAL);
+
+        int n2 = chunk_count(src, morceau);
+        if (n2 < 2) { ARENA_FREE; g_atop = sauve; return 1; }
+
+        SortItem *tab = calloc((size_t)n2, sizeof *tab);
+        char **cles = calloc((size_t)n2, sizeof *cles);
+        char **elems = calloc((size_t)n2, sizeof *elems);
+        if (!tab || !cles || !elems) { free(tab); free(cles); free(elems);
+                                       ARENA_FREE; g_atop = sauve; return 1; }
+
+        for (int i = 0; i < n2; i++) {
+            int b = 0, e = 0;
+            chunk_span1(src, morceau, i + 1, &b, &e);
+            elems[i] = malloc((size_t)(e - b) + 1);
+            memcpy(elems[i], src + b, (size_t)(e - b));
+            elems[i][e - b] = '\0';
+
+            /* `each` : la variable que la clé interroge. Sans clé, on trie
+             * directement sur l'élément. */
+            if (cle) {
+                var_set("each", elems[i]);
+                ARENA_MARK;
+                char *v = arena_buf();
+                eval_checked(cle, v, HC_VAL);
+                cles[i] = dupstr(v);
+                ARENA_FREE;
+            } else {
+                cles[i] = dupstr(elems[i]);
+            }
+            tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
+        }
+
+        g_sort_desc = desc; g_sort_style = style;
+        qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
+
+        char sep[2] = { chunk_sep(morceau), '\0' };
+        char *res = arena_buf();
+        res[0] = '\0';
+        size_t used = 0;
+        for (int i = 0; i < n2; i++) {
+            const char *el = elems[tab[i].rang];
+            size_t l = strlen(el);
+            if (used + l + 2 >= HC_VAL) break;
+            if (i) { res[used++] = sep[0]; }
+            memcpy(res + used, el, l); used += l;
+            res[used] = '\0';
+        }
+
+        container_set(cible, res, 0);
+
+        for (int i = 0; i < n2; i++) { free(cles[i]); free(elems[i]); }
+        free(cles); free(elems); free(tab);
+        ARENA_FREE;
+        set_result("");
+        g_atop = sauve;
+        return 1;
+    }
+}
+
+/* find [string|chars|whole|word] "motif" [in <champ>]
+ *
+ * Motif hct_cmd.c : « * », sans borne — l'analyseur découpe la ligne entière
+ * mot à mot, exactement comme pour « sort » et « visual ». Même remède :
+ * v3_source reconstitue le texte exact de chaque fils, on les rejoint par un
+ * espace, et l'ancien algorithme — lecture du mode, recherche de « in » hors
+ * des guillemets, balayage carte par carte puis champ par champ — s'applique
+ * tel quel au résultat. */
+static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    const char *r = skip_spaces(mots);
+    int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
+    if      (ci_word(r, "string") || ci_word(r, "chars")) { mode = 1; r = skip_spaces(r + 6); }
+    else if (ci_word(r, "whole"))  { mode = 1; r = skip_spaces(r + 5); }
+    else if (ci_word(r, "word"))   { mode = 2; r = skip_spaces(r + 4); }
+
+    /* separer le motif de l'eventuel « in <champ> » */
+    const char *kw = NULL;
+    int inq = 0;
+    for (const char *q = r; *q; q++) {
+        if (*q == '"') { inq = !inq; continue; }
+        if (inq) continue;
+        if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
+    }
+    char pat[256] = "", where[128] = "";
+    if (kw) {
+        char e[256];
+        int len = (int)(kw - r);
+        if (len > (int)sizeof e - 1) len = (int)sizeof e - 1;
+        memcpy(e, r, (size_t)len); e[len] = 0;
+        eval_expr(e, pat, sizeof pat);
+        snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
+    } else {
+        eval_expr(r, pat, sizeof pat);
+    }
+    if (!pat[0]) { set_result("not found"); g_atop = sauve; return 1; }
+
+    Object *stack = g_current_card ? g_current_card->owner : NULL;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) { set_result("not found"); g_atop = sauve; return 1; }
+
+    int total = card_count(stack);
+    int start = card_index(stack, g_current_card);
+    if (start < 0) start = 0;
+
+    for (int k = 0; k < total; k++) {
+        Object *cd = nth_card(stack, (start + k) % total);
+        if (!cd) continue;
+
+        /* champs de la carte puis du fond */
+        Object *layers[2] = { cd, cd->bg };
+        for (int L = 0; L < 2; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts; i++) {
+                Object *fl = lay->parts[i];
+                if (fl->type != OBJ_FIELD || fl->dont_search) continue;
+                if (where[0]) {          /* recherche restreinte a un champ */
+                    Object *only = resolve(where);
+                    if (only != fl) continue;
+                }
+
+                Object *saved = g_current_card;
+                g_current_card = cd;                 /* pour le texte par carte */
+                const char *tx = hc_field_text(fl);
+                const char *hit = NULL;
+                int line = 1;
+
+                for (const char *q = tx; *q; q++) {
+                    if (*q == '\n') { line++; continue; }
+                    int atword = (q == tx) || isspace((unsigned char)q[-1]);
+                    if (mode == 1 || atword) {
+                        size_t plen = strlen(pat);
+                        if (strncasecmp(q, pat, plen) == 0) {
+                            if (mode == 2) {         /* mot entier */
+                                char nx = q[plen];
+                                if (nx && !isspace((unsigned char)nx) &&
+                                    !ispunct((unsigned char)nx)) continue;
+                            }
+                            hit = q;
+                            break;
+                        }
+                    }
+                }
+                g_current_card = saved;
+
+                if (hit) {
+                    snprintf(g_found_text, sizeof g_found_text, "%s", pat);
+                    g_found_field = fl;
+                    g_found_line = line;
+                    g_found_start = (int)(hit - tx);
+                    g_found_len   = (int)strlen(pat);
+                    g_found_card  = cd;
+
+                    if (cd != g_current_card) {      /* naviguer si besoin */
+                        Object *old = g_current_card;
+                        Object *oldbg = old ? old->bg : NULL;
+                        if (old) hc_send(old, "closeCard");
+                        if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                        g_current_card = cd;
+                        if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
+                        hc_send(cd, "openCard");
+                    }
+                    set_result("");
+                    emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
+                         pat, cd->name ? cd->name : "?");
+                    g_atop = sauve;
+                    return 1;
+                }
+            }
+        }
+    }
+    g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
+    g_found_start = g_found_len = 0; g_found_card = NULL;
+    set_result("not found");
+    g_atop = sauve;
+    return 1;
+}
+
+/* send "<message>" to <objet>
+ *
+ * Motif hct_cmd.c : « e [to r] ». Sans « to r » c'est une forme fautive que
+ * l'ancien exécuteur refuse avec son propre message ; on lui laisse ce cas
+ * plutôt que de le reproduire à côté.
+ *
+ * Le message reste un TEXTE à redécouper après évaluation — nom du
+ * gestionnaire, puis arguments séparés par des virgules — exactement comme
+ * le faisait l'ancien exécuteur : « send "carre" & n to bouton » ne sait pas
+ * d'avance combien d'arguments son résultat portera. La cible, elle, n'a
+ * plus besoin de repasser par le texte : c'est un vrai nœud HCTN_OBJET, que
+ * hct_resout résout directement — avec un repli sur le texte, comme dans
+ * v3_cmd_go, pour les formes qu'il ne couvre pas encore. */
+static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 3 || !v3_est_motcle(n, 1, "to")) return 0;
+
+    ARENA_MARK;
+    char *msgline = arena_buf();
+    v3_val_texte(ctx, n->fils[0], msgline, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    Object *target = hct_resout(ctx, n->fils[2]);
+    if (!target) {
+        char v[256];
+        v3_val_texte(ctx, n->fils[2], v, sizeof v);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+        if (v[0]) target = resolve(v);
+    }
+    if (!target) {
+        set_result("destinataire introuvable");
+        emit(HC_ERR, "   !! destinataire introuvable");
+        ARENA_FREE;
+        return 1;
+    }
+
+    /* découper le message en nom + arguments */
+    char msg[128];
+    const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
+    char (*argv)[HC_VAL] = arena_rows(16);
+    int argc = 0;
+    a = skip_spaces(a);
+    while (*a && argc < 16) {
+        char *one = arena_buf();
+        int len = 0, depth = 0, inq = 0;
+        while (*a && !(depth == 0 && !inq && *a == ',')) {
+            if (*a == '"') inq = !inq;
+            else if (!inq && *a == '(') depth++;
+            else if (!inq && *a == ')') depth--;
+            if (len < 511) one[len++] = *a;
+            a++;
+        }
+        one[len] = '\0';
+        eval_expr(one, argv[argc], sizeof argv[argc]);   /* contexte appelant */
+        argc++;
+        if (*a == ',') a = skip_spaces(a + 1); else break;
+    }
+
+    set_result("");     /* un `return` dans le gestionnaire le remplira */
+    hc_send_args(target, msg, argv, argc);
+    ARENA_FREE;
+    return 1;
+}
+
+/* set [the] <propriété> [of <cible>] to <valeur>
+ *
+ * Motif hct_cmd.c : « e to * ». Le « e » couvre déjà « [the] <propriété> [of
+ * <cible>] » comme UNE SEULE expression — chunk_ou_of, qui fabrique un nœud
+ * HCTN_OF pour « textStyle of word 3 of field 1 » aussi bien qu'un
+ * HCTN_IDENT nu pour « cursor » — et le « to *» qui suit redevient du texte
+ * brut, comme pour « visual », « sort » et « find ». Même remède : v3_source
+ * reconstitue le texte exact de chaque fils, la jointure par espace redonne
+ * exactement ce que lisait l'ancien exécuteur, et son algorithme — bascule
+ * propriété globale/objet/morceau, textStyle et textColor en noms nus,
+ * plage de style versus objet — s'applique tel quel au résultat. Rien de
+ * cet algorithme n'a été touché ; seule la source du texte a changé. */
+static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;             /* nommée à part, comme dans v3_cmd_sort :
+                                         * les ARENA_MARK imbriqués ci-dessous
+                                         * doivent rembobiner à LEUR marque sans
+                                         * toucher à `mots`. */
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. Ici « the »
+     * pouvait manquer aussi bien devant la propriété (« set [the]
+     * textStyle… ») que dans la valeur elle-même (« to the value of x »). */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    g_visual_dirty = 1;
+    const char *s = skip_spaces(mots);
+    if (ci_word(s, "the")) s = skip_spaces(s + 3);
+
+    char prop[64];
+    const char *q = next_word(s, prop, sizeof prop);
+    q = skip_spaces(q);
+
+    /* Pas de « of » : c'est une propriété globale, pas celle d'un objet.
+     * « set cursor to none », « set lockScreen to true »… */
+    if (!ci_word(q, "of")) {
+        /* « set word 2 of field "x" to bold » : le nom de propriete manque.
+         * Sans ce garde-fou, « word » partait comme propriete globale chez
+         * l'hote et l'ecriture disparaissait sans un mot. */
+        if (ci_equal(prop, "char") || ci_equal(prop, "character")
+         || ci_equal(prop, "word") || ci_equal(prop, "item")
+         || ci_equal(prop, "line")) {
+            set_result("propriete manquante");
+            emit(HC_ERR, "   !! set : quelle propriete ? essayez "
+                         "« set the textStyle of %s … »", skip_spaces(mots));
+            g_atop = sauve; return 1;
+        }
+        const char *to = find_kw(s, "to");
+        if (!to) {
+            emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(mots));
+            g_atop = sauve; return 1;
+        }
+        char *val = arena_buf();
+        eval_checked(to + 2, val, HC_VAL);
+
+        /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
+         * lui qui découpe les items, et l'interface n'a rien à en savoir.
+         * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
+         * HyperCard ne retenait qu'un caractère. */
+        if (ci_equal(prop, "itemdelimiter")) {
+            g_item_delim = val[0] ? val[0] : ',';
+            set_result("");
+            emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+            g_atop = sauve; return 1;
+        }
+
+        /* lockScreen suivi ici aussi : « set lockScreen to true » est
+         * l'exact synonyme de « lock screen », et notify_field s'appuie
+         * dessus pour ne pas redessiner mille fois pour rien. */
+        if (ci_equal(prop, "lockscreen")) {
+            g_ecran_verrouille = truthy(val);
+            if (!g_ecran_verrouille) verrou_reveille();
+        }
+
+        host_global_set(prop, val);
+        set_result("");
+        emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
+        g_atop = sauve; return 1;
+    }
+    q = skip_spaces(q + 2);
+
+    /* Le « to » qui separe la cible de la valeur est le DERNIER de premier
+     * niveau : la cible peut en contenir elle-meme, comme dans
+     *     set the textStyle of word d of line 3 to numLines of me to bold
+     * Couper au premier tronquait la cible a « line 3 ». */
+    const char *to = NULL, *scan = q;
+    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+        to = k; scan = k + 2;
+    }
+    if (!to) {
+        emit(HC_ERR, "   !! set sans « to » : %s", skip_spaces(mots));
+        g_atop = sauve; return 1;
+    }
+
+    char refbuf[256];
+    int nref = (int)(to - q);
+    if (nref > (int)sizeof refbuf - 1) nref = (int)sizeof refbuf - 1;
+    memcpy(refbuf, q, (size_t)nref); refbuf[nref] = '\0';
+    while (nref > 0 && (refbuf[nref-1] == ' ' || refbuf[nref-1] == '\t')) refbuf[--nref] = '\0';
+
+    char *val = arena_buf();
+    /* « to bold,condense » n'est pas une expression : c'est une liste de
+     * noms de styles, qu'HyperCard accepte sans guillemets. On prend donc
+     * le texte brut, sauf s'il nomme une variable — auquel cas on lit sa
+     * valeur, pour que « set the textStyle of X to myStyle » marche. */
+    /* Même problème pour la couleur : « to white » n'est pas une
+     * expression, c'est un nom que HyperCard accepte nu. L'évaluer le
+     * traitait comme un identifiant inconnu, et le résultat vide se
+     * changeait en HC_COLOR_INHERIT — rien ne bougeait, sans un mot.
+     *
+     * On ne prend le texte brut que s'il NOMME une couleur : « to
+     * theColor » ou « to item 1 of liste » restent des expressions. */
+    if (ci_equal(prop, "textcolor")) {
+        const char *raw = skip_spaces(to + 2);
+        int rl = (int)strlen(raw);
+        while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+
+        char brut[64];
+        snprintf(brut, sizeof brut, "%.*s", rl, raw);
+
+        /* Déguillemeter d'abord : « to "white" » nomme aussi une couleur. */
+        int nb = (int)strlen(brut);
+        if (nb > 1 && brut[0] == '"' && brut[nb-1] == '"') {
+            memmove(brut, brut + 1, (size_t)(nb - 2));
+            brut[nb - 2] = '\0';
+        }
+
+        if (color_from_name(brut) != HC_COLOR_INHERIT)
+            snprintf(val, HC_VAL, "%s", brut);
+        else
+            eval_checked(to + 2, val, HC_VAL);
+    }
+    else if (ci_equal(prop, "textstyle")) {
+        const char *raw = skip_spaces(to + 2);
+        int rl = (int)strlen(raw);
+        while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
+        snprintf(val, HC_VAL, "%.*s", rl, raw);
+
+        /* Trancher sur le CONTENU, pas sur la ponctuation : une suite de
+         * noms de style reste littérale, tout le reste est évalué comme
+         * l'expression que c'est. */
+        if (!style_is_names(val)) {
+            int nv = (int)strlen(val);
+            int quoted = 0;
+
+            /* Une liste de noms peut arriver citée : « to "bold,italic" ».
+             * On la déguillemete pour la re-tester. */
+            if (nv > 1 && val[0] == '"' && val[nv-1] == '"') {
+                char *inner = arena_buf();
+                snprintf(inner, HC_VAL, "%.*s", nv - 2, val + 1);
+                if (style_is_names(inner)) {
+                    snprintf(val, HC_VAL, "%s", inner);
+                    quoted = 1;
+                }
+            }
+            if (!quoted) eval_checked(to + 2, val, HC_VAL);
+        }
+    } else {
+        eval_checked(to + 2, val, HC_VAL);
+    }
+
+    /* La cible peut designer une PLAGE DE TEXTE et non un objet :
+     *     set the textStyle of word 3 of line 2 of field "cal" to bold
+     * resolve() ne sait chercher que des objets, d'ou l'echec historique
+     * « objet introuvable : word theNewDay of line 3 ». On essaie donc
+     * d'abord le morceau, avant de retomber sur la resolution d'objet. */
+    {
+        int cst, cen;
+        Object *cf = chunk_target(refbuf, &cst, &cen);
+        if (cf) {
+            /* Les trois attributs de texte se posent par plage, comme dans
+             * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
+             * n'a aucun sens sur un morceau. */
+            int mask = 0;
+            if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
+            else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
+            else if (ci_equal(prop, "textcolor")) mask = RA_COLOR;
+            else if (ci_equal(prop, "textsize")) mask = RA_SIZE;
+
+            if (!mask) {
+                if (!is_prop_name(prop, (int)strlen(prop))) {
+                    set_result("propriete inconnue");
+                    emit(HC_ERR, "   !! propriete inconnue : %s"
+                                 " (les proprietes de texte sont textFont,"
+                                 " textSize, textStyle)", prop);
+                } else {
+                    set_result("propriete non applicable a un morceau");
+                    emit(HC_ERR, "   !! %s decrit un objet, pas un morceau"
+                                 " de texte", prop);
+                }
+                g_atop = sauve; return 1;
+            }
+            struct RunList *rl = runs_of(cf);
+            if (!rl) {
+                set_result("champ sans stockage de style");
+                emit(HC_ERR, "   !! ce champ n'a pas encore de texte sur cette carte");
+                g_atop = sauve; return 1;
+            }
+            runs_set_attr(rl, cst, cen - cst, mask,
+                          (mask & RA_STYLE) ? style_from_names(val) : 0,
+                          (mask & RA_SIZE)  ? atoi(val) : 0,
+                          (mask & RA_FONT)  ? val : NULL,
+                          (mask & RA_COLOR) ? color_from_name(val)
+                                            : HC_COLOR_INHERIT);
+            notify_field(cf);
+            set_result("");
+            emit(HC_INFO, "   → %s de [%d..%d[ ← \"%s\"", prop, cst, cen, val);
+            g_atop = sauve; return 1;
+        }
+    }
+
+    Object *o = resolve(refbuf);
+    if (!o) {
+        /* Distinguer les deux echecs : une reference d'objet inconnue, ou
+         * un morceau de texte qui n'existe pas (champ vide, rang au-dela
+         * du contenu). « objet introuvable » sur « word 8 of line 3 of me »
+         * envoyait chercher au mauvais endroit. */
+        ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
+        if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
+            set_result("morceau hors limites");
+            emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+        } else {
+            set_result("objet introuvable");
+            emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
+        }
+        g_atop = sauve; return 1;
+    }
+
+    char d[64]; hc_describe(o, d, sizeof d);   /* avant modification */
+
+    if (ci_equal(prop, "name")) {
+        free(o->name);
+        o->name = dupstr(val);
+    } else if (ci_equal(prop, "visible")) {
+        o->visible = truthy(val);
+    } else if (ci_equal(prop, "enabled")) {
+        o->enabled = truthy(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
+        o->showname = truthy(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "icon")) {
+        /* Un numéro ou un nom : « set the icon of me to 3071 » comme
+         * « ... to "Close Box" ». atoi seul rendait 0 sur tout nom, donc
+         * silencieusement « aucune icône ». */
+        o->icon = hc_resolve_icon(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
+        o->selectedline = atoi(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "locktext")) {
+        o->locktext = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "widemargins")) {
+        o->wide_margins = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "fixedlineheight")) {
+        o->fixed_lh = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "showlines")) {
+        o->show_lines = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "autotab")) {
+        o->auto_tab = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "dontsearch")) {
+        o->dont_search = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "textalign")) {
+        /* Accepte aussi « centre » et « centered », qu'on rencontre dans
+         * les scripts, et retombe à gauche sur un mot inconnu plutôt que
+         * d'échouer : HyperCard est indulgent sur cette propriété. */
+        if (ci_equal(val, "center") || ci_equal(val, "centre") ||
+            ci_equal(val, "centered"))      o->text_align = 1;
+        else if (ci_equal(val, "right"))    o->text_align = 2;
+        else                                o->text_align = 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "autoselect")) {
+        o->auto_select = truthy(val);
+        /* Un champ à sélection de lignes est forcément verrouillé : on ne
+         * tape pas dans une liste de choix. HyperCard verrouillait de même,
+         * et sans cela le clic ouvrirait l'éditeur au lieu de sélectionner. */
+        if (o->auto_select) o->locktext = 1;
+        notify_field(o);
+    } else if (ci_equal(prop, "multiplelines")) {
+        o->multiple_lines = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "marked")) {
+        o->marked = truthy(val);
+    } else if (ci_equal(prop, "dontwrap")) {
+        o->dont_wrap = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "sharedhilite")) {
+        o->shared_hilite = truthy(val); notify_field(o);
+    } else if (ci_equal(prop, "sharedtext")) {
+        /* Par la même porte que la case de l'Info : basculer le drapeau
+         * seul rendrait le contenu inaccessible. */
+        hc_set_shared_text(o, truthy(val));
+    } else if (ci_equal(prop, "scroll")) {
+        o->scroll = atoi(val);
+        if (o->scroll < 0) o->scroll = 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "textfont")) {
+        free(o->textfont);
+        o->textfont = (*val) ? dupstr(val) : NULL;
+        notify_field(o);
+    } else if (ci_equal(prop, "textstyle")) {
+        /* Passe par style_from_names, comme la pose sur un morceau. */
+        o->textstyle = style_from_names(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
+        hc_set_hilite(o, NULL, truthy(val));
+        notify_field(o);
+    } else if (ci_equal(prop, "autohilite")) {
+        o->autohilite = truthy(val);
+    } else if (ci_equal(prop, "textsize")) {
+        o->textsize = atoi(val);
+        notify_field(o);
+    } else if (ci_equal(prop, "textheight")) {
+        /* Zéro rétablit la valeur déduite du corps. */
+        int v = atoi(val);
+        o->textheight = v > 0 ? v : 0;
+        notify_field(o);
+    } else if (ci_equal(prop, "script")) {
+        /* Une valeur qui touche exactement le plafond a presque
+         * certainement été tronquée en chemin. L'écrire telle quelle
+         * détruirait le script. On refuse : mieux vaut un gestionnaire
+         * qui échoue qu'une pile mutilée. */
+        if (g_script_clipped || (int)strlen(val) >= HC_VAL - 1) {
+            emit(HC_ERR, "   !! écriture refusée : ce gestionnaire a lu un "
+                         "script tronqué ; l'écrire le détruirait");
+            set_result("script tronqué");
+            g_atop = sauve; return 1;
+        }
+        hc_set_script(o, val);
+    } else if (ci_equal(prop, "style")) {
+        free(o->style);
+        o->style = dupstr(val);
+    } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
+        if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
+            emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
+            g_atop = sauve; return 1;
+        }
+        hc_set_field_text(o, val);
+        notify_field(o);
+    } else if (geom_write(o, prop, val)) {
+        notify_field(o);
+    } else {
+        set_result("propriété inconnue");
+        emit(HC_ERR, "   !! propriété inconnue : %s", prop);
+        g_atop = sauve; return 1;
+    }
+
+    set_result("");
+    emit(HC_INFO, "   → %s de %s ← \"%s\"", prop, d, val);
+    g_atop = sauve;
+    return 1;
+}
+
+/* convert <conteneur> [from <format>] to <format> [and <format>]
+ *
+ * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
+ * v3_source reconstitue le texte exact de chaque fils et la jointure par
+ * espace redonne ce que lisait l'ancien exécuteur — y compris son silence
+ * sur « from » : il ne l'a jamais traité spécialement, ne coupant qu'au
+ * dernier « to » de premier niveau, et cette jointure reproduit exactement
+ * ce texte-là, « from » compris dans la source. Pas une ligne de
+ * l'algorithme n'a changé. */
+static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
+     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
+     * premier rang desquels « the », que l'analyseur avale sans le ranger
+     * dans un nœud. « convert the date to dateItems » redevenait « convert
+     * date to dateItems », et to_it — qui décide si le résultat va dans
+     * `it` ou dans un conteneur — se trompait alors de branche : « date »
+     * était pris pour un conteneur à écrire, et il naissait une variable de
+     * ce nom au lieu que le résultat aille dans `it`. v3_source sur le nœud
+     * entier restitue l'intervalle EXACT du texte source, « the » compris,
+     * puisqu'il se situe bien ENTRE les jetons des fils, dans cet
+     * intervalle. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    /* Le « to » qui compte est le dernier de premier niveau : la source
+     * peut en contenir un elle-même, comme dans
+     * « convert item 1 to 7 of calData() to dateItems ». */
+    const char *to = NULL, *scan = mots;
+    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
+        to = k; scan = k + 2;
+    }
+    if (!to) {
+        emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(mots));
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *src = arena_buf();
+    int len = (int)(to - mots);
+    if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
+    memcpy(src, mots, (size_t)len); src[len] = '\0';
+    while (len > 0 && isspace((unsigned char)src[len-1])) src[--len] = '\0';
+    const char *srcp = skip_spaces(src);
+
+    /* le format cible, éventuellement double : « short date and long time » */
+    char spec[256];
+    snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
+    char *andkw = (char *)find_kw(spec, "and");
+    int f1 = DF_NONE, f2 = DF_NONE;
+    if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
+    f1 = date_format_code(spec);
+    if (f1 == DF_NONE) {
+        emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *val = arena_buf();
+    eval_expr(srcp, val, HC_VAL);
+
+    struct tm tm;
+    if (!parse_datetime(val, &tm)) {
+        emit(HC_ERR, "   !! date incomprise : « %s »", val);
+        set_result("invalid date");
+        g_atop = sauve; return 1;
+    }
+
+    char *outv = arena_buf();
+    char part2[256];
+    emit_datetime(&tm, f1, outv, HC_VAL);
+    if (f2 != DF_NONE) {
+        emit_datetime(&tm, f2, part2, sizeof part2);
+        int L = (int)strlen(outv);
+        snprintf(outv + L, HC_VAL - L, " %s", part2);
+    }
+
+    /* Destination : le conteneur source s'il en est un. « the date »,
+     * « the long time » et les appels de fonction n'en sont pas. */
+    int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
+    if (to_it || !container_set(srcp, outv, 0))
+        var_set("it", outv);
+
+    set_result("");
+    emit(HC_INFO, "   → %s", outv);
+    g_atop = sauve;
+    return 1;
+}
+
+/* print [this] card|stack|all|marked [<n>] [to <n>] [with <rapport>]
+ *
+ * Motif hct_cmd.c : « * [with e] », sans borne — comme pour find/sort/
+ * visual, v3_source reconstitue le texte exact de chaque fils. « with
+ * <rapport> » est reconstitué lui aussi mais reste ignoré : l'ancien
+ * exécuteur ne le lisait déjà pas, une mise en page de rapport demandant un
+ * imprimeur que le noyau n'a jamais eu. */
+static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    const char *a = skip_spaces(mots);
+    if (ci_word(a, "this")) a = skip_spaces(a + 4);
+
+    Object *pile = g_current_card ? g_current_card->owner : NULL;
+    while (pile && pile->type != OBJ_STACK) pile = pile->owner;
+
+    Object *liste[512];
+    int np = 0;
+
+    if (ci_word(a, "stack") || ci_word(a, "all")) {
+        if (pile)
+            for (int i = 0; i < pile->nparts && np < 512; i++)
+                if (pile->parts[i]->type == OBJ_CARD) liste[np++] = pile->parts[i];
+    }
+    else if (ci_word(a, "marked")) {
+        if (pile)
+            for (int i = 0; i < pile->nparts && np < 512; i++)
+                if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
+                    liste[np++] = pile->parts[i];
+    }
+    else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
+        const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
+        if (!*r) {
+            /* « print card » nu : la carte courante. */
+            if (g_current_card) liste[np++] = g_current_card;
+        } else {
+            /* « print card 3 », « print card "index" », « print card 2 to 7 » */
+            const char *to = find_kw(r, "to");
+            if (to) {
+                char *v1 = arena_buf(), *v2 = arena_buf();
+                int len = (int)(to - r);
+                char brut[256];
+                if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+                memcpy(brut, r, (size_t)len); brut[len] = '\0';
+                eval_checked(brut, v1, HC_VAL);
+                eval_checked(skip_spaces(to + 2), v2, HC_VAL);
+                int d = atoi(v1), f = atoi(v2);
+                if (d < 1) d = 1;
+                for (int i = d; i <= f && np < 512; i++) {
+                    Object *c = nth_card(pile, i - 1);
+                    if (c) liste[np++] = c;
+                }
+            } else {
+                Object *c = resolve(r);
+                if (!c) {
+                    char *v = arena_buf();
+                    eval_checked(r, v, HC_VAL);
+                    c = resolve(v);
+                    if (!c) {
+                        char ref[128];
+                        snprintf(ref, sizeof ref, "card %s", v);
+                        c = resolve(ref);
+                    }
+                }
+                if (c && c->type == OBJ_CARD) liste[np++] = c;
+            }
+        }
+    }
+
+    if (np == 0) {
+        set_result("No cards to print");
+        emit(HC_ERR, "   !! print : rien à imprimer");
+        g_atop = sauve; return 1;
+    }
+    if (g_host && g_host->print_cards) {
+        g_host->print_cards(liste, np);
+        set_result("");
+    } else {
+        set_result("Can't print");
+        emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
+    }
+    g_atop = sauve;
+    return 1;
+}
+
+static FILE *file_find(const char *nom);          /* défini plus bas */
+static int   file_constant(const char *s);         /* défini plus bas */
+
+/* read from file <nom> [at <pos>] for <n> | until <car>
+ *
+ * Motif hct_cmd.c : « from file e [for|until e] » — pas de place pour « at
+ * <pos> », qui vit pourtant dans l'algorithme ci-dessous. Ce n'est pas un
+ * oubli de ce portage : la table ne l'a jamais prévu, et « read … at … »
+ * échoue donc déjà à l'analyse — toute la LIGNE devient une HCTN_ERREUR, ce
+ * qui fait retomber le gestionnaire entier à l'ancien exécuteur, lequel sait
+ * la lire. v3_cmd_read ne voit donc jamais de « at » dans ses fils ; sa
+ * branche `at` reste correcte et prête, juste jamais empruntée tant que la
+ * table n'aura pas gagné cet élément.
+ *
+ * Comme pour set/sort/find/print, v3_source reconstitue le texte exact de
+ * chaque fils et la jointure par espace redonne ce que lisait l'ancien
+ * exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    const char *a = skip_spaces(mots);
+    if (ci_word(a, "from")) a = skip_spaces(a + 4);
+    if (!ci_word(a, "file")) {
+        emit(HC_ERR, "   !! read : « file » attendu");
+        g_atop = sauve; return 1;
+    }
+    a = skip_spaces(a + 4);
+
+    /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
+     * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
+    const char *at  = find_kw(a, "at");
+    const char *fo  = find_kw(a, "for");
+    const char *unt = find_kw(a, "until");
+    const char *fin = at ? at : (fo ? fo : unt);
+
+    char *nom = arena_buf();
+    {
+        char brut[512];
+        int len = fin ? (int)(fin - a) : (int)strlen(a);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, a, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, nom, HC_VAL);
+    }
+
+    FILE *f = file_find(nom);
+    if (!f) {
+        set_result("File is not open");
+        emit(HC_ERR, "   !! read : fichier non ouvert : %s", nom);
+        g_atop = sauve; return 1;
+    }
+
+    if (at) {
+        char *pv = arena_buf();
+        const char *bornes = fo ? fo : unt;
+        char brut[256];
+        const char *deb = skip_spaces(at + 2);
+        int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, deb, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, pv, HC_VAL);
+        long lpos = atol(pv);
+        /* Positif : depuis le début, et 1-based comme tout HyperTalk.
+         * Négatif : depuis la fin. */
+        if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
+        else           fseek(f, lpos, SEEK_END);
+    }
+
+    char *out = arena_buf();
+    int no = 0;
+
+    if (fo) {
+        char *cv = arena_buf();
+        eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
+        long combien = atol(cv);
+        while (no < HC_VAL - 1 && no < combien) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+        }
+    } else if (unt) {
+        char mot[64];
+        next_word(skip_spaces(unt + 5), mot, sizeof mot);
+        int stop = file_constant(mot);
+        if (stop == -1) {
+            /* Pas une constante : un caractère, éventuellement calculé. */
+            char *cv = arena_buf();
+            eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
+            stop = cv[0] ? (unsigned char)cv[0] : '\n';
+        }
+        while (no < HC_VAL - 1) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+            /* Le caractère d'arrêt fait PARTIE du texte lu : c'est ce que
+             * fait HyperCard, et ce qui permet d'enchaîner les lectures
+             * ligne à ligne sans perdre les séparateurs. */
+            if (stop >= 0 && c == stop) break;
+        }
+    } else {
+        /* Ni « for » ni « until » : tout le fichier. */
+        while (no < HC_VAL - 1) {
+            int c = fgetc(f);
+            if (c == EOF) break;
+            out[no++] = (char)c;
+        }
+    }
+    out[no] = '\0';
+
+    /* Dire la troncature plutôt que de couper en silence : un script qui
+     * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
+     * sa lecture en plusieurs « read ... for N ». */
+    if (no >= HC_VAL - 1) {
+        set_result("Value too large");
+        emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
+    } else {
+        set_result(no > 0 ? "" : "End of file");
+    }
+    var_set("it", out);
+    g_atop = sauve;
+    return 1;
+}
+
+/* write <texte> to file <nom> [at <pos>|end|eof]
+ *
+ * Motif hct_cmd.c : « e to file e » — pas de « at » non plus, même remède
+ * que v3_cmd_read : « write … at … » échoue à l'analyse et fait retomber le
+ * gestionnaire entier à l'ancien exécuteur, donc jamais de « at » dans les
+ * fils qu'on reçoit ici. */
+static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    size_t sauve = g_atop;
+    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
+     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
+     * « orphelins » comme « the », qu'aucun fils ne porte. */
+    char *mots = arena_buf();
+    v3_source(n, mots, HC_VAL);
+    {
+        char *p = mots;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(mots, p, strlen(p) + 1);
+    }
+
+    const char *a = skip_spaces(mots);
+    const char *to = find_kw(a, "to");
+    if (!to) {
+        emit(HC_ERR, "   !! write : « to file » attendu");
+        g_atop = sauve; return 1;
+    }
+
+    char *txt = arena_buf();
+    {
+        char *brut = arena_buf();
+        int len = (int)(to - a);
+        if (len > HC_VAL - 1) len = HC_VAL - 1;
+        memcpy(brut, a, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, txt, HC_VAL);
+    }
+
+    const char *r2 = skip_spaces(to + 2);
+    if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
+    const char *at = find_kw(r2, "at");
+
+    char *nom = arena_buf();
+    {
+        char brut[512];
+        int len = at ? (int)(at - r2) : (int)strlen(r2);
+        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
+        memcpy(brut, r2, (size_t)len); brut[len] = '\0';
+        eval_checked(brut, nom, HC_VAL);
+    }
+
+    FILE *f = file_find(nom);
+    if (!f) {
+        set_result("File is not open");
+        emit(HC_ERR, "   !! write : fichier non ouvert : %s", nom);
+        g_atop = sauve; return 1;
+    }
+
+    if (at) {
+        const char *p = skip_spaces(at + 2);
+        if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
+        else {
+            char *pv = arena_buf();
+            eval_checked(p, pv, HC_VAL);
+            long lpos = atol(pv);
+            if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
+            else           fseek(f, lpos, SEEK_END);
+        }
+    }
+
+    fwrite(txt, 1, strlen(txt), f);
+    fflush(f);      /* pour qu'un autre programme voie le texte tout de suite */
+    set_result("");
+    g_atop = sauve;
+    return 1;
+}
+
 /* ------------------------------------------------------------- les verbes */
+
+/* answer "invite" [with "a" [or "b" [or "c"]]]
+ *
+ * Motif hct_cmd.c : « b [with b [or b [or b]]] ». Les fils, dans l'ordre :
+ * l'invite, puis — si « with » est là — un HCTN_MOTCLE "with", un bouton,
+ * et chaque bouton suivant précédé de son propre HCTN_MOTCLE "or". Aucune
+ * chaîne à redécouper sur « with »/« or » hors des guillemets, comme le
+ * faisait l'ancien exécuteur : l'analyseur a déjà fait ce travail, et n'a
+ * pas cette faiblesse-là. */
+static int v3_cmd_reponse(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+
+    /* Les tampons vont dans l'ARÈNE, pas sur la pile : une invite peut citer
+     * le contenu d'un champ entier, et HC_VAL (un mégaoctet) ne tiendrait
+     * pas dans une fonction que le répartiteur de commandes appelle pour
+     * chaque ligne. Même raison que dans v3_recours. */
+    ARENA_MARK;
+    char *prompt = arena_buf();
+    v3_val_texte(ctx, n->fils[0], prompt, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char (*btn)[HC_VAL] = arena_rows(3);
+    int nb = 0;
+    if (v3_est_motcle(n, 1, "with")) {
+        int i = 2;
+        while (nb < 3 && i < n->nfils) {
+            v3_val_texte(ctx, n->fils[i], btn[nb], HC_VAL);
+            if (ctx->erreur) { ARENA_FREE; return 1; }
+            nb++; i++;
+            if (i < n->nfils && v3_est_motcle(n, i, "or")) i++;
+            else break;
+        }
+    }
+    if (nb == 0) { snprintf(btn[0], HC_VAL, "OK"); nb = 1; }
+
+    const char *rep = (g_host && g_host->answer)
+        ? g_host->answer(prompt, btn[0], nb > 1 ? btn[1] : NULL,
+                                          nb > 2 ? btn[2] : NULL)
+        : btn[0];
+    var_set("it", rep ? rep : "");
+    set_result("");
+    ARENA_FREE;
+    return 1;
+}
+
+/* answer file "invite" [of type t] : panneau d'ouverture, pas une boîte à
+ * boutons. « of type … » ne sert déjà à rien dans l'ancien exécuteur — il
+ * n'en tirait que la coupure de l'invite — et le nœud n'en garde de toute
+ * façon que les mots-clés, pas un fils à lire. */
+static int v3_cmd_reponse_fichier(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *inv = arena_buf();
+    v3_val_texte(ctx, n->fils[0], inv, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    const char *chemin = (g_host && g_host->answer_file)
+                        ? g_host->answer_file(inv) : NULL;
+    var_set("it", chemin ? chemin : "");
+    set_result(chemin ? "" : "Cancel");
+    ARENA_FREE;
+    return 1;
+}
+
+/* ask "invite" [with "défaut"] */
+static int v3_cmd_demande(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *prompt = arena_buf();
+    v3_val_texte(ctx, n->fils[0], prompt, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char *deflt = arena_buf();
+    if (v3_est_motcle(n, 1, "with") && n->nfils >= 3) {
+        v3_val_texte(ctx, n->fils[2], deflt, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+    }
+
+    const char *rep = (g_host && g_host->ask) ? g_host->ask(prompt, deflt) : NULL;
+    if (rep) { var_set("it", rep); set_result(""); }
+    else     { var_set("it", "");  set_result("Cancel"); }
+    ARENA_FREE;
+    return 1;
+}
+
+/* ask file "invite" [with "nom par défaut"] : le pendant en écriture
+ * d'« answer file ». Le chemin choisi va dans « it », vide si l'on annule. */
+static int v3_cmd_demande_fichier(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1) return 0;
+    ARENA_MARK;
+    char *inv = arena_buf();
+    v3_val_texte(ctx, n->fils[0], inv, HC_VAL);
+    if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    char *def = arena_buf();
+    if (v3_est_motcle(n, 1, "with") && n->nfils >= 3) {
+        v3_val_texte(ctx, n->fils[2], def, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+    }
+
+    const char *chemin = (g_host && g_host->ask_file)
+                        ? g_host->ask_file(inv, def) : NULL;
+    var_set("it", chemin ? chemin : "");
+    set_result(chemin ? "" : "Cancel");
+    ARENA_FREE;
+    return 1;
+}
 
 /* beep : l'ancien exécuteur ignore le nombre de bips et se contente de la
  * ligne. On garde ce comportement tel quel — la migration ne doit rien
@@ -6173,6 +7525,54 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     notify_field(o);
     set_result("");
     emit(HC_INFO, "   → %s : %s", d, montrer ? "visible" : "caché");
+    return 1;
+}
+
+/* delete <cible> : supprime un morceau de conteneur — mot, ligne, item,
+ * caractère —, ou vide un champ ou une variable entière. container_set sait
+ * déjà tout cela (mode 3), à condition de recevoir le TEXTE de la référence :
+ * hct_cmd.c l'analyse comme une expression ordinaire (« e »), sans nœud dédié
+ * pour un morceau. v3_source la reconstitue donc, comme le fait v3_recours
+ * pour une expression qu'elle ne sait pas évaluer elle-même.
+ *
+ * Sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme « last »
+ * dans « delete the last word of X » n'est le jeton d'AUCUN nœud — juste un
+ * ordinal numérique posé sur le nœud CHUNK, dont le jeton propre commence
+ * à « word ». Reconstruire depuis n->fils[0] seul rendait donc « word of X »,
+ * sans « the last » : container_set n'y voyait plus de rang du tout. Voir le
+ * commentaire de v3_cmd_convert pour le détail de cette classe de bogue.
+ *
+ * Une faute d'analyse dans la cible — n->fils[0] devenu lui-même une
+ * HCTN_ERREUR — rendrait un texte tronqué : container_set effacerait alors
+ * autre chose que ce que le script demande, en silence. On rend 0 plutôt que
+ * de risquer ça ; l'ancien chemin sait dire pourquoi la ligne est fautive.
+ *
+ * container_set ne connaît que les morceaux, la boîte de messages, les
+ * champs et les variables — jamais les boutons, cartes ou menus : « delete
+ * button 1 » lui échappe déjà, et continuera de repartir à l'ancien chemin,
+ * comme avant ce portage. */
+static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
+
+    char d[256];
+    v3_source(n, d, sizeof d);
+    {
+        char *p = d;
+        while (*p && !isspace((unsigned char)*p)) p++;
+        while (*p == ' ' || *p == '\t') p++;
+        memmove(d, p, strlen(p) + 1);
+    }
+    if (!d[0]) return 0;
+
+    if (container_set(d, "", 3)) {
+        set_result("");
+        emit(HC_INFO, "   → supprimé : %s", d);
+    } else {
+        set_result("rien à supprimer");
+        emit(HC_ERR, "   !! rien à supprimer : %s", d);
+    }
     return 1;
 }
 
@@ -6815,16 +8215,95 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     hc_send_args(start, nom, argv, argc);
     return 1;
 }
+
+/* visual [effect] <nom> [<vitesse>] [to <image>] : arme l'effet du PROCHAIN
+ * « go » (voir v3_cmd_go, plus haut) — elle ne joue rien elle-même.
+ *
+ * hct_cmd.c ne motive la commande que par « [effect] W » : rien dans l'arbre
+ * ne distingue déjà le nom de l'effet, sa vitesse et l'image cible — ce sont
+ * juste des HCTN_IDENT à la file, un par mot. On les rejoint donc par un
+ * espace, ce qui reconstitue exactement le texte que lisait l'ancien
+ * exécuteur, et on lui reprend son analyse telle quelle : couper la vitesse
+ * en QUEUE, puis « to » en tête de ce qui restait. Même ambiguïté qu'avant,
+ * juste plus aucun texte à reconstruire depuis les jetons de la ligne
+ * entière. */
+static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
+{
+    (void)ctx;
+    int deb = (n->nfils >= 1 && n->fils[0]->genre == HCTN_MOTCLE) ? 1 : 0;
+
+    char mots[192];
+    int pos = 0;
+    mots[0] = '\0';
+    for (int i = deb; i < n->nfils; i++) {
+        char m[64];
+        v3_brut(n->fils[i], m, sizeof m);
+        if (!*m) continue;
+        pos += snprintf(mots + pos, sizeof(mots) - (size_t)pos, "%s%s",
+                        pos ? " " : "", m);
+        if (pos >= (int)sizeof mots) { pos = (int)sizeof mots - 1; break; }
+    }
+
+    g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+
+    const char *to = find_kw(mots, "to");
+    char reste[192];
+    int len = to ? (int)(to - mots) : (int)strlen(mots);
+    if (len > (int)sizeof reste - 1) len = (int)sizeof reste - 1;
+    memcpy(reste, mots, (size_t)len);
+    reste[len] = '\0';
+    while (len > 0 && isspace((unsigned char)reste[len-1])) reste[--len] = '\0';
+
+    if (to) {
+        const char *img = skip_spaces(to + 2);
+        snprintf(g_visual_image, sizeof g_visual_image, "%s", img);
+        int ni = (int)strlen(g_visual_image);
+        while (ni > 0 && isspace((unsigned char)g_visual_image[ni-1]))
+            g_visual_image[--ni] = '\0';
+    }
+
+    /* La vitesse est en QUEUE, et peut faire deux mots : « very fast ». On la
+     * retire par la fin, ce qui laisse le nom de l'effet — lui aussi parfois
+     * en plusieurs mots, d'où l'impossibilité de découper par la gauche. */
+    static const char *vitesses[] = { "very fast", "very slow", "very slowly",
+                                      "fast", "slow", "slowly", NULL };
+    for (int i = 0; vitesses[i]; i++) {
+        int lv = (int)strlen(vitesses[i]);
+        int lr = (int)strlen(reste);
+        if (lr > lv && ci_equal(reste + lr - lv, vitesses[i]) &&
+            isspace((unsigned char)reste[lr - lv - 1])) {
+            snprintf(g_visual_speed, sizeof g_visual_speed, "%s", vitesses[i]);
+            int k = lr - lv - 1;
+            while (k > 0 && isspace((unsigned char)reste[k-1])) k--;
+            reste[k] = '\0';
+            break;
+        }
+    }
+
+    snprintf(g_visual_effect, sizeof g_visual_effect, "%.63s", reste);
+    if (!g_visual_effect[0])
+        snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
+    set_result("");
+    return 1;
+}
+
 typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 
 static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
+    { "answer",      v3_cmd_reponse         },
+    { "answer file", v3_cmd_reponse_fichier },
+    { "ask",         v3_cmd_demande         },
+    { "ask file",    v3_cmd_demande_fichier },
     { "beep",   v3_cmd_beep    },
     { "choose", v3_cmd_choose  },
     { "click",  v3_cmd_click   },
     { "close",  v3_cmd_fichier },
+    { "convert", v3_cmd_convert },
     { "debug",  v3_cmd_debug   },
+    { "delete", v3_cmd_delete  },
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
+    { "find",   v3_cmd_find    },
     { "go",     v3_cmd_go      },
     { "hide",   v3_cmd_montre  },
     { "lock",   v3_cmd_verrou  },
@@ -6832,16 +8311,23 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "open",   v3_cmd_fichier },
     { "play",   v3_cmd_play    },
     { "pop",    v3_cmd_pop     },
+    { "print",  v3_cmd_print   },
     { "push",   v3_cmd_push    },
+    { "read",   v3_cmd_read    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
+    { "send",   v3_cmd_send    },
+    { "set",    v3_cmd_set     },
     { "show",   v3_cmd_montre  },
+    { "sort",   v3_cmd_sort    },
     { "start",  v3_cmd_using   },
     { "stop",   v3_cmd_using   },
     { "type",   v3_cmd_type    },
     { "unlock", v3_cmd_verrou  },
     { "unmark", v3_cmd_marque  },
+    { "visual", v3_cmd_visuel  },
     { "wait",   v3_cmd_wait    },
+    { "write",  v3_cmd_write   },
     { NULL, NULL }
 };
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
@@ -7793,54 +9279,10 @@ static void exec_body(Object *me, const char *body, const char *end)
  * Le tri est STABLE : deux éléments de clé égale gardent leur ordre d'origine.
  * HyperCard le garantissait, et des piles s'en servent pour trier sur deux
  * critères en triant deux fois, du moins important au plus important. */
-typedef enum { SORT_TEXT, SORT_NUM, SORT_DATE } SortStyle;
-typedef struct { char *cle; int rang; Object *card; } SortItem;
-
-static int       g_sort_desc  = 0;
-static SortStyle g_sort_style = SORT_TEXT;
-
-static int sort_cmp(const void *pa, const void *pb)
-{
-    const SortItem *a = pa, *b = pb;
-    int r = 0;
-
-    if (g_sort_style == SORT_NUM || g_sort_style == SORT_DATE) {
-        double x = 0, y = 0;
-        int nx = as_num(a->cle, &x), ny = as_num(b->cle, &y);
-        /* Ce qui n'est pas un nombre passe après, plutôt que de valoir zéro et
-         * de venir se mêler aux valeurs légitimes. */
-        if (nx && ny) r = (x < y) ? -1 : (x > y) ? 1 : 0;
-        else if (nx)  r = -1;
-        else if (ny)  r =  1;
-    } else {
-        const char *x = a->cle, *y = b->cle;      /* insensible à la casse */
-        while (*x && *y) {
-            int cx = tolower((unsigned char)*x), cy = tolower((unsigned char)*y);
-            if (cx != cy) { r = cx < cy ? -1 : 1; break; }
-            x++; y++;
-        }
-        if (!r) r = (*x ? 1 : 0) - (*y ? 1 : 0);
-    }
-
-    if (g_sort_desc) r = -r;
-    if (r == 0) r = a->rang - b->rang;            /* stabilité */
-    return r;
-}
-
-/* Lit sens et style, et rend ce qui reste de la ligne. */
-static const char *sort_options(const char *s, int *desc, SortStyle *style)
-{
-    for (;;) {
-        s = skip_spaces(s);
-        if      (ci_word(s, "ascending"))     { *desc = 0; s += 9;  }
-        else if (ci_word(s, "descending"))    { *desc = 1; s += 10; }
-        else if (ci_word(s, "text"))          { *style = SORT_TEXT; s += 4; }
-        else if (ci_word(s, "numeric"))       { *style = SORT_NUM;  s += 7; }
-        else if (ci_word(s, "datetime"))      { *style = SORT_DATE; s += 8; }
-        else if (ci_word(s, "international")) { *style = SORT_TEXT; s += 13; }
-        else return s;
-    }
-}
+/* SortStyle, SortItem, g_sort_desc, g_sort_style, sort_cmp et sort_options
+ * ont migré avant la table V3_VERBES, juste après v3_point : v3_cmd_sort en
+ * a besoin, et rien ici n'en dépendait plus tôt dans le fichier. Le tri
+ * lui-même reste documenté ci-dessus ; seule sa mécanique a bougé. */
 
 /* ---- effets de transition ------------------------------------------------
  *   visual [effect] <nom> [vitesse] [to <image>]

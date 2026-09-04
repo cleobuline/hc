@@ -672,17 +672,28 @@ static HctNoeud *reference(HctAnalyseur *a)
         avance(a);
         n->designateur = HCT_DES_ID;
         a->sans_of++;
-        hct_ajoute_fils(a->reserve, n, rang_concat(a));
+        /* rang_somme, pas rang_concat : voir le commentaire sous le
+         * désignateur numérique, deux blocs plus bas — même raison, même
+         * remède, ici pour « card id n ». */
+        hct_ajoute_fils(a->reserve, n, rang_somme(a));
         a->sans_of--;
     } else if (ici(a)->genre == HCT_CHAINE) {
         n->designateur = HCT_DES_NOM;
         a->sans_of++;
-        hct_ajoute_fils(a->reserve, n, rang_concat(a));
+        /* Idem : un nom cité ne doit pas avaler un « && » qui suit. */
+        hct_ajoute_fils(a->reserve, n, rang_somme(a));
         a->sans_of--;
     } else if (ici(a)->genre == HCT_NOMBRE || op_ici(a, "(")) {
         n->designateur = HCT_DES_RANG;
         a->sans_of++;
-        hct_ajoute_fils(a->reserve, n, rang_concat(a));
+        /* rang_somme (5), pas rang_concat (6) : le désignateur numérique
+         * garde le droit à l'arithmétique — « card i + 1 » — mais s'arrête
+         * avant « & »/« && ». Avec rang_concat, « card 1 && x » lisait « 1
+         * && x » comme LE RANG, avalait tout le « && x » dans la référence,
+         * et ne laissait rien à l'opérateur de concaténation qui l'entoure :
+         * « the name of card 1 && the name of card 2 » perdait le second
+         * terme en entier, sans le moindre message d'erreur. */
+        hct_ajoute_fils(a->reserve, n, rang_somme(a));
         a->sans_of--;
     } else if (ici(a)->genre == HCT_IDENT && !mot_structurel(a)) {
         /* Désignateur pris dans une variable : « card whichCard »,
@@ -692,7 +703,7 @@ static HctNoeud *reference(HctAnalyseur *a)
          * « set rect of ... of card c to ... ». */
         n->designateur = HCT_DES_RANG;
         a->sans_of++;
-        hct_ajoute_fils(a->reserve, n, rang_concat(a));
+        hct_ajoute_fils(a->reserve, n, rang_somme(a));
         a->sans_of--;
     } else {
         n->designateur = HCT_DES_AUCUN;   /* « the name of stack » */
