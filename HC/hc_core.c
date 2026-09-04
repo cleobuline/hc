@@ -3638,7 +3638,22 @@ static int parse_datetime(const char *s, struct tm *tm)
 {
     if (!s) return 0;
 
-    int nums[12], nn = 0;
+    /* Les nombres sont accumulés en LONG LONG, pas en int.
+     *
+     * Les secondes du Macintosh comptent depuis 1904 : elles ont dépassé
+     * INT_MAX en 1972, et valent aujourd'hui près de quatre milliards. Sur un
+     * int elles débordaient — comportement indéfini, en pratique une valeur
+     * négative —, si bien que le test « nn == 1 && nums[0] > 100000 » plus bas
+     * était faux et que la branche des secondes n'était JAMAIS prise. Toute
+     * date passée en secondes était rejetée avec « date incomprise », y
+     * compris celles que le noyau venait lui-même de produire : « put the
+     * seconds into t » suivi de « convert t to dateItems » ne marchait pas,
+     * alors que c'est l'idiome le plus courant pour dater quelque chose.
+     *
+     * Le plafond évite qu'une suite de chiffres démesurée déborde à son tour :
+     * au-delà, ce n'est de toute façon plus une date. */
+    long long nums[12];
+    int nn = 0;
     int mon = -1, hh = -1, mi = 0, ss = 0, meridian = 0;  /* 1 = AM, 2 = PM */
     int sawslash = 0, sawcolon = 0, sawname = 0;
 
@@ -3651,11 +3666,14 @@ static int parse_datetime(const char *s, struct tm *tm)
         if (!*p) break;
 
         if (isdigit((unsigned char)*p)) {
-            int v = 0;
-            while (isdigit((unsigned char)*p)) { v = v * 10 + (*p - '0'); p++; }
+            long long v = 0;
+            while (isdigit((unsigned char)*p)) {
+                if (v < 1000000000000LL) v = v * 10 + (*p - '0');
+                p++;
+            }
             if (*p == ':') {                       /* début d'une heure */
                 sawcolon = 1;
-                hh = v; p++;
+                hh = (int)v; p++;
                 mi = 0;
                 while (isdigit((unsigned char)*p)) { mi = mi * 10 + (*p - '0'); p++; }
                 if (*p == ':') {
@@ -3684,7 +3702,7 @@ static int parse_datetime(const char *s, struct tm *tm)
 
     /* --- secondes du Macintosh : un seul nombre, et il est énorme --- */
     if (!sawslash && !sawcolon && !sawname && nn == 1 && nums[0] > 100000) {
-        time_t t = (time_t)((long long)nums[0] - HC_MAC_EPOCH);
+        time_t t = (time_t)(nums[0] - HC_MAC_EPOCH);
         struct tm *lt = localtime(&t);
         if (!lt) return 0;
         *tm = *lt;
@@ -3694,19 +3712,19 @@ static int parse_datetime(const char *s, struct tm *tm)
     int year = -1, day = -1;
 
     if (sawname) {                       /* « Friday, August 7, 2026 » */
-        if (nn >= 1) day  = nums[0];
-        if (nn >= 2) year = nums[1];
+        if (nn >= 1) day  = (int)nums[0];
+        if (nn >= 2) year = (int)nums[1];
         if (mon < 0) return 0;           /* un nom de jour seul n'est pas une date */
         if (day < 0) day = 1;            /* « August » = le 1er août */
     } else if (sawslash) {               /* « 8/7/26 » : mois, jour, année */
-        if (nn >= 1) mon  = nums[0] - 1;
-        if (nn >= 2) day  = nums[1];
-        if (nn >= 3) year = nums[2];
+        if (nn >= 1) mon  = (int)nums[0] - 1;
+        if (nn >= 2) day  = (int)nums[1];
+        if (nn >= 3) year = (int)nums[2];
     } else if (nn >= 3) {                /* dateItems : y, m, d, h, mn, s, dow */
-        year = nums[0]; mon = nums[1] - 1; day = nums[2];
-        if (nn >= 4) hh = nums[3];
-        if (nn >= 5) mi = nums[4];
-        if (nn >= 6) ss = nums[5];
+        year = (int)nums[0]; mon = (int)nums[1] - 1; day = (int)nums[2];
+        if (nn >= 4) hh = (int)nums[3];
+        if (nn >= 5) mi = (int)nums[4];
+        if (nn >= 6) ss = (int)nums[5];
         /* nums[6] est le jour de la semaine : recalculé, jamais lu */
     } else if (sawcolon) {               /* heure seule : on garde aujourd'hui */
         time_t now = time(NULL);
