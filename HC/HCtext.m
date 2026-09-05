@@ -655,6 +655,70 @@ int byte_from_utf16(NSString *s, NSUInteger u16)
 }
 
 /* hauteur totale du texte d'un champ, dans sa largeur utile */
+/* ═══ MISE EN PAGE CONSERVÉE ════════════════════════════════════════════
+ *
+ * Même avec la chaîne attribuée en mémoire, le dessin composait encore les
+ * quarante-huit kilo-octets d'un champ à chaque image pour n'en montrer
+ * qu'une vingtaine de lignes : -drawInRect: met en page tout ce qu'on lui
+ * donne, sans savoir ce qui sera visible.
+ *
+ * On garde donc le trio NSTextStorage / NSLayoutManager / NSTextContainer
+ * d'une image à l'autre. Deux gains, et le second est le vrai :
+ *
+ *   la mise en page n'est plus refaite quand rien n'a changé ;
+ *   NSLayoutManager compose PARESSEUSEMENT — en ne lui demandant que la
+ *   plage de glyphes du rectangle visible, il n'aura jamais à composer les
+ *   lignes situées plus bas.
+ *
+ * Le conteneur a la largeur du texte et une hauteur infinie : c'est sur la
+ * largeur que le texte se replie, et la hauteur est justement ce qu'on ne
+ * veut pas calculer.
+ *
+ * La largeur entre dans la clé, comme pour la hauteur : la changer replie
+ * le texte autrement. */
+NSLayoutManager *field_layout(Object *o, NSString *s, NSDictionary *at,
+                              CGFloat largeur, NSTextContainer **conteneur)
+{
+    static NSMutableArray<NSDictionary *> *memo = nil;
+    if (!memo) memo = [[NSMutableArray alloc] init];
+
+    NSDictionary *sig = champ_signature(o, s);
+    NSNumber *larg = @(largeur);
+
+    for (NSUInteger i = 0; i < [memo count]; i++) {
+        NSDictionary *e = memo[i];
+        if (![e[@"largeur"] isEqualToNumber:larg]) continue;
+        if (!champ_signature_egale(e[@"sig"], sig)) continue;
+        if (i > 0) {
+            [memo removeObjectAtIndex:i];
+            [memo insertObject:e atIndex:0];
+        }
+        if (conteneur) *conteneur = e[@"conteneur"];
+        return e[@"disposeur"];
+    }
+
+    NSTextStorage   *ts = [[NSTextStorage alloc]
+                            initWithAttributedString:field_attr_string(o, s, at)];
+    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
+    NSTextContainer *tc = [[NSTextContainer alloc]
+                            initWithContainerSize:NSMakeSize(largeur, CGFLOAT_MAX)];
+    [tc setLineFragmentPadding:0];
+    [lm addTextContainer:tc];
+    [ts addLayoutManager:lm];
+
+    /* Les trois sont retenus ensemble : le disposeur ne garde qu'une
+     * référence faible sur son magasin, qui disparaîtrait sinon. */
+    [memo insertObject:@{ @"sig"       : sig,
+                          @"largeur"   : larg,
+                          @"magasin"   : ts,
+                          @"disposeur" : lm,
+                          @"conteneur" : tc } atIndex:0];
+    while ([memo count] > HC_TEXTE_MEMO) [memo removeLastObject];
+
+    if (conteneur) *conteneur = tc;
+    return lm;
+}
+
 /* La hauteur est mémorisée séparément de la chaîne : c'est ELLE qui coûte
  * cher. boundingRectWithSize met en page le texte entier — mille lignes pour
  * en afficher vingt —, et le dessin d'un champ à défilement la demande à

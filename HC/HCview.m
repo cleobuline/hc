@@ -844,18 +844,33 @@ static void draw_part_reel(Object *o) {
         NSAttributedString *as = field_attr_string(o, s, at);
 
         if (o != gEditingField) {
-            if (isScroll) {
-                [NSGraphicsContext saveGraphicsState];
-                NSRectClip(tr);
-                [as drawInRect:field_text_draw_rect(o)];
-                [NSGraphicsContext restoreGraphicsState];
-            } else {
-                /* Remplace [as drawInRect:tr] par : */
-                /* Dans draw_part, pour le rendu statique des champs : */
-                [as drawWithRect:tr
-                        options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-                        context:nil];
-            }
+            /* On ne trace QUE la plage visible.
+             *
+             * -drawInRect: mettait en page tout le texte, quarante-huit
+             * kilo-octets pour une vingtaine de lignes affichées : mesuré à
+             * plus de quatre cents millisecondes par image sur un champ
+             * chargé. NSLayoutManager, lui, compose paresseusement — en ne
+             * lui demandant que les glyphes du rectangle visible, il ne
+             * touchera jamais aux lignes du dessous. La mise en page est en
+             * plus conservée d'une image à l'autre par field_layout.
+             *
+             * Le décalage vertical porte le défilement : le conteneur a son
+             * origine au début du texte, et l'on pose cette origine plus haut
+             * que le cadre pour montrer le passage voulu. */
+            NSTextContainer *tc = nil;
+            NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
+
+            CGFloat dy = isScroll ? o->scroll : 0;
+            NSRect visible = NSMakeRect(0, dy, tr.size.width, tr.size.height);
+            NSRange plage = [lm glyphRangeForBoundingRect:visible
+                                          inTextContainer:tc];
+            NSPoint origine = NSMakePoint(tr.origin.x, tr.origin.y - dy);
+
+            [NSGraphicsContext saveGraphicsState];
+            NSRectClip(tr);
+            [lm drawBackgroundForGlyphRange:plage atPoint:origine];
+            [lm drawGlyphsForGlyphRange:plage atPoint:origine];
+            [NSGraphicsContext restoreGraphicsState];
         }
 
         int fstart = 0, flen = 0;
