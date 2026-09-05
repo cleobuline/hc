@@ -739,8 +739,25 @@ NSLayoutManager *field_layout(Object *o, NSString *s, NSDictionary *at,
                             initWithAttributedString:field_attr_string(o, s, at)];
     NSLayoutManager *lm = [[NSLayoutManager alloc] init];
     NSTextContainer *tc = [[NSTextContainer alloc]
-                            initWithContainerSize:NSMakeSize(largeur, CGFLOAT_MAX)];
+                            initWithContainerSize:NSMakeSize(largeur, 1e6)];
     [tc setLineFragmentPadding:0];
+
+    /* EXACTEMENT les réglages du test de clic (click_word_range et
+     * click_line_number) : conteneur de 1e6 et, surtout, interligne de police
+     * DÉSACTIVÉ.
+     *
+     * Laissé à sa valeur par défaut, NSLayoutManager ajoute l'interligne
+     * recommandé par la police à chaque ligne. L'écart est d'un pixel ou deux
+     * par ligne, mais il s'ACCUMULE : au bas d'un champ de trente lignes, le
+     * texte tracé n'est plus là où le clic croit qu'il est, et la ligne
+     * surlignée n'est pas celle qu'on a désignée.
+     *
+     * Les deux mises en page doivent donc naître avec les mêmes réglages —
+     * c'est la même leçon que celle d'apply_selection_highlight, dont le
+     * commentaire prévient qu'« une seconde mise en page n'est jamais tout à
+     * fait la première ». */
+    [lm setUsesFontLeading:NO];
+
     [lm addTextContainer:tc];
     [ts addLayoutManager:lm];
 
