@@ -4,6 +4,7 @@
 #include <stdlib.h>        // getenv, pour la trace HC_RUNS_DEBUG
 #include <strings.h>       // strcasecmp, pour les noms de proprietes globales
 #include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
+#include <time.h>          // clock_gettime, pour le compteur de dessin temporaire
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import "icons.h"
 #import "HCglobals.h"
@@ -453,7 +454,61 @@ static void flash_popup_selection(HCView *view, NSInteger row) {
     [view setNeedsDisplay:YES];
 }
 
-static void draw_part(Object *o) {
+/* ═══ COMPTEUR DE DESSIN — TEMPORAIRE ═══════════════════════════════════
+ *
+ * Trois hypothèses successives sur la lenteur des cartes chargées de
+ * boutons se sont révélées fausses, faute d'un chiffre. Celui-ci le donne :
+ * combien de redessins par seconde, combien d'objets dessinés, et quelle
+ * part du temps y passe réellement.
+ *
+ * Le rapport ne sort qu'une fois par seconde. Un NSLog par redessin
+ * coûterait plus cher que ce qu'il mesure — c'est exactement le piège dans
+ * lequel on est déjà tombés avec les traces de l'interpréteur.
+ *
+ * À RETIRER une fois la réponse obtenue : c'est un instrument, pas un
+ * correctif. */
+static double hcm_maintenant(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+static long   hcm_nb_draw   = 0;   /* appels à drawRect               */
+static long   hcm_nb_parts  = 0;   /* objets dessinés                 */
+static double hcm_tps_parts = 0;   /* secondes passées dans draw_part */
+static double hcm_t0        = 0;   /* début de la fenêtre de mesure   */
+
+static void draw_part_reel(Object *o);
+
+static void draw_part(Object *o)
+{
+    double t = hcm_maintenant();
+    draw_part_reel(o);
+    hcm_tps_parts += hcm_maintenant() - t;
+    hcm_nb_parts++;
+}
+
+/* Appelée en tête de drawRect. */
+static void hcm_compte_redessin(void)
+{
+    if (hcm_t0 == 0) hcm_t0 = hcm_maintenant();
+    hcm_nb_draw++;
+    double ecoule = hcm_maintenant() - hcm_t0;
+    if (ecoule < 1.0) return;
+
+    NSLog(@"[mesure] %.0f redessins/s | %.0f objets/s | %.1f%% du temps dans "
+          @"draw_part | %.4f ms par objet",
+          hcm_nb_draw / ecoule,
+          hcm_nb_parts / ecoule,
+          100.0 * hcm_tps_parts / ecoule,
+          hcm_nb_parts ? 1000.0 * hcm_tps_parts / hcm_nb_parts : 0.0);
+
+    hcm_nb_draw = 0; hcm_nb_parts = 0; hcm_tps_parts = 0;
+    hcm_t0 = hcm_maintenant();
+}
+
+static void draw_part_reel(Object *o) {
     if (!o->visible) return;
 
     NSRect r = NSMakeRect(o->x, o->y, o->w, o->h);
@@ -2767,6 +2822,8 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
+    hcm_compte_redessin();      /* compteur temporaire — voir plus haut */
+
     /* Lier le catalogue d'icônes à la pile de CETTE fenêtre, avant tout dessin.
      *
      * HCicons ne retient qu'une copie de travail, alors que plusieurs piles
