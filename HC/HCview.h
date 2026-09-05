@@ -5,6 +5,11 @@
 #import "hc_core.h"
 #import "HCglobals.h"   /* declare gView, une bonne fois pour toutes */
 
+/* Propose un article de menu à la pile avant que l'action native n'agisse.
+ * Rend YES si un « on doMenu » l'a pris : l'appelant sort alors sans rien
+ * faire. Voir le commentaire de sa définition dans HCview.m. */
+BOOL hcv_menu_trappe(const char *article);
+
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
 /* La minuterie d'« idle ». Une seule pour toute l'application : elle envoie le

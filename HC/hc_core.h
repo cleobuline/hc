@@ -533,6 +533,11 @@ int     hc_send(Object *target, const char *message);
  * C'est par ici que doit passer TOUT déclenchement de menu, script ou clic. */
 void    hc_do_menu(const char *item);
 
+/* La moitié « message » de hc_do_menu : propose l'article à la pile et rend 1
+ * si un gestionnaire l'a pris. Pour l'interface, dont les actions natives
+ * savent déjà agir et n'ont qu'à demander d'abord. */
+int     hc_menu_trappe(const char *item);
+
 /* Exécute une seule ligne de script dans le contexte de la carte courante
    (l'équivalent de la boîte de message d'HyperCard). */
 void    hc_do(const char *line);

@@ -497,6 +497,7 @@ static NSMenu *find_file_menu(void)
     [gPilesEnUsage removeAllObjects];
 }
 - (void)newCard:(id)sender {
+    if (hcv_menu_trappe("New Card")) return;   /* la pile détourne l'article */
     /* La pile de la carte COURANTE, et non gStack : celui-ci désigne la
      * dernière pile chargée, pas celle qu'on regarde, et la nouvelle carte
      * atterrissait dans la mauvaise fenêtre. La carte courante, elle, sait
@@ -517,6 +518,7 @@ static NSMenu *find_file_menu(void)
     [doc.view setNeedsDisplay:YES];
 }
 - (void)deleteCard:(id)sender {
+    if (hcv_menu_trappe("Delete Card")) return;   /* la pile détourne l'article */
     Object *cur = hc_current_card();
     if (!cur) return;
 
@@ -554,6 +556,7 @@ static NSMenu *find_file_menu(void)
 }
 
 - (void)saveStack:(id)sender {
+    if (hcv_menu_trappe("Save a Copy…")) return;   /* la pile détourne l'article */
     /* La pile de la fenêtre ACTIVE, et non gStack.
      *
      * gStack date du temps où une seule pile pouvait être ouverte : il désigne
@@ -852,6 +855,7 @@ void cocoa_stack_changed(Object *stack) {
  * pile fraîchement enregistrée d'une heure de travail non sauvegardée. Tant
  * que ce sera le cas, mieux vaut demander. */
 - (void)newStack:(id)sender {
+    if (hcv_menu_trappe("New Stack…")) return;   /* la pile détourne l'article */
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:@"Nouvelle pile"];
     [a setInformativeText:@"La pile ouverte sera fermée. "
@@ -892,6 +896,7 @@ static NSURL *app_folder(void)
 }
 
 - (void)openStack:(id)sender {
+    if (hcv_menu_trappe("Open Stack…")) return;   /* la pile détourne l'article */
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:YES];
     [panel setAllowsMultipleSelection:NO];

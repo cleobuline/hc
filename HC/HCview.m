@@ -1348,6 +1348,33 @@ static void cocoa_click_at(int x, int y, const char *mods) {
  * libération jusqu'à la fin du gestionnaire ; tant que ce n'est pas fait, ces
  * deux articles restent hors de portée d'un script, et c'est un moindre mal
  * comparé à un plantage. */
+/* ═══ Offrir un article à la pile avant de l'exécuter ═══════════════════
+ *
+ * HyperCard envoie doMenu pour TOUT choix de menu, celui de l'utilisateur
+ * compris ; l'action native n'a lieu que si personne ne l'intercepte. Les
+ * actions de HC savent déjà agir : il ne leur manquait que de demander
+ * d'abord. D'où une ligne en tête de chacune :
+ *
+ *     if (hcv_menu_trappe("New Card")) return;
+ *
+ * Plutôt que de détourner les articles en leur réécrivant cible et action au
+ * démarrage : validateMenuItem: se règle sur l'action d'un article, et la lui
+ * changer sous les pieds griserait ou dégriserait les menus au hasard.
+ *
+ * gDansDoMenu ferme la boucle. Un script qui fait « doMenu "New Card" » passe
+ * par hc_do_menu — message d'abord, puis cocoa_menu_hypercard, qui appelle
+ * newCard:. Sans ce drapeau, newCard: reproposerait l'article à la pile, le
+ * même « on doMenu » se déclencherait une seconde fois et la carte ne serait
+ * jamais créée. Le drapeau dit : on est DÉJÀ dans le traitement d'un article,
+ * la question a été posée. */
+static BOOL gDansDoMenu = NO;
+
+BOOL hcv_menu_trappe(const char *article)
+{
+    if (gDansDoMenu) return NO;
+    return hc_menu_trappe(article) ? YES : NO;
+}
+
 static NSString *menu_normalise(NSString *s)
 {
     /* Un script écrit aussi bien « Find… » que « Find... » ou « Find » : les
@@ -1381,7 +1408,14 @@ static void cocoa_menu_hypercard(const char *item)
         if (![menu_normalise(nom) isEqualToString:voulu]) continue;
         SEL sel = NSSelectorFromString(
                       [NSString stringWithUTF8String:TABLE[i].selecteur]);
-        if (sel) [NSApp sendAction:sel to:nil from:gView];
+        if (sel) {
+            /* La pile a déjà eu son mot à dire, dans hc_do_menu : que l'action
+             * ne le lui redemande pas. Voir gDansDoMenu. */
+            BOOL avant = gDansDoMenu;
+            gDansDoMenu = YES;
+            [NSApp sendAction:sel to:nil from:gView];
+            gDansDoMenu = avant;
+        }
         return;
     }
     NSLog(@"doMenu : article inconnu « %s »", item);
@@ -2187,6 +2221,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void)newBackground:(id)sender {
+    if (hcv_menu_trappe("New Background")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
     Object *stack = card->owner;
@@ -2330,6 +2365,7 @@ static BOOL paint_selection_active(void)
  * contient. */
 
 - (void)copyCard:(id)sender {
+    if (hcv_menu_trappe("Copy Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2340,6 +2376,7 @@ static BOOL paint_selection_active(void)
 }
 
 - (void)cutCard:(id)sender {
+    if (hcv_menu_trappe("Cut Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2369,6 +2406,7 @@ static BOOL paint_selection_active(void)
 }
 
 - (void)duplicateCard:(id)sender {
+    if (hcv_menu_trappe("Duplicate Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2627,6 +2665,7 @@ static int gColorTarget = 0;
 }
 
 - (void)ditherSelection:(id)sender {
+    if (hcv_menu_trappe("Dither Selection")) return;   /* la pile détourne l'article */
     if (gFloating && gClipboard) {
         dither_region(gClipboard, 0, 0, gClipW-1, gClipH-1, NULL, 0);
         [gView setNeedsDisplay:YES];
@@ -3145,6 +3184,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)toggleBackground:(id)sender {
+    if (hcv_menu_trappe("Background")) return;   /* la pile détourne l'article */
     gEditBackground = !gEditBackground;
     gSelected = NULL;
     [gView endFieldEdit];
@@ -4022,6 +4062,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)findInStack:(id)sender {
+    if (hcv_menu_trappe("Find…")) return;   /* la pile détourne l'article */
     if (!gMsgBox) return;
 
     NSString *amorce = @"find \"\"";

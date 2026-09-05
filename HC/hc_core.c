@@ -12579,9 +12579,16 @@ static int menu_meme_article(const char *a, const char *b)
     return la == lb && strncasecmp(a, b, la) == 0;
 }
 
-void hc_do_menu(const char *item)
+/* Proposer un article à la pile, sans rien exécuter ensuite.
+ *
+ * C'est la moitié « message » de hc_do_menu, isolée pour l'interface : quand
+ * l'utilisateur CLIQUE un article, l'action native est déjà écrite et sait se
+ * faire toute seule ; il ne lui manque que de demander d'abord à la pile si
+ * elle veut s'en charger. Rend 1 si un gestionnaire l'a pris — l'appelant n'a
+ * alors plus rien à faire. */
+int hc_menu_trappe(const char *item)
 {
-    if (!item) return;
+    if (!item) return 0;
 
     g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
 
@@ -12591,8 +12598,14 @@ void hc_do_menu(const char *item)
     int pris = g_current_card
              ? hc_send_args(g_current_card, "doMenu", argv, 1) : 0;
     ARENA_FREE;
+    return pris;
+}
 
-    if (pris) return;                 /* la pile s'en est chargée */
+void hc_do_menu(const char *item)
+{
+    if (!item) return;
+
+    if (hc_menu_trappe(item)) return; /* la pile s'en est chargée */
 
     for (int i = 0; MENUS_NOYAU[i].article; i++)
         if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
