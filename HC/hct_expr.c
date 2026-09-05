@@ -514,13 +514,55 @@ static const struct { const char *mot; HctTypeObjet type; } TYPES_OBJ[] = {
     { "fields",     HCT_OBJ_FIELD      },
     { "part",       HCT_OBJ_PART       },
     { "parts",      HCT_OBJ_PART       },
+    /* Les menus de la barre. Pas de PLURIEL ici : « the menus » est une
+     * fonction d'HyperCard, pas une référence d'objet, et « menuItems » est
+     * un nom de fonction que les piles emploient réellement. */
+    { "menuitem",   HCT_OBJ_MENUITEM   },
+    { "menu",       HCT_OBJ_MENU       },
     { NULL, 0 }
 };
+
+/* Un menu n'est un OBJET que s'il est DÉSIGNÉ.
+ *
+ * « menu "Outils" », « menuItem 4 » : oui. Mais « menuItems() » — une
+ * fonction que la pile des surfaces 3D définit vraiment — n'est pas un
+ * objet, et sans cette prudence l'analyseur en faisait une référence de menu
+ * suivie d'une parenthèse égarée : erreur de syntaxe sur une ligne
+ * parfaitement légale, et tout le gestionnaire retombait à l'ancien
+ * interpréteur.
+ *
+ * Les autres types n'ont pas besoin de ce garde : personne n'appelle sa
+ * fonction « card » ou « background ». « menu », si. */
+static int designateur_suit(HctAnalyseur *a)
+{
+    int k = a->i + 1;
+    if (k >= a->lot->n) return 0;
+    const HctJeton *j = &a->lot->jetons[k];
+    if (j->genre == HCT_CHAINE || j->genre == HCT_NOMBRE) return 1;
+    if (mot_est(j, "id")) return 1;
+    /* Une parenthèse DÉTACHÉE désigne encore : « menu (i) ». Collée au mot,
+     * c'est un appel de fonction — le cas de menuItems() —, et seul l'écart
+     * dans le source les distingue.
+     *
+     * On s'arrête là. « menu maVariable » serait légal en HyperTalk, mais
+     * l'accepter ferait de « put menu into x » un menu nommé « into » : le
+     * mot suivant est un identifiant comme un autre. Entre reconnaître une
+     * forme rare et casser une forme courante, le choix est vite fait. */
+    if (op_est(j, "(")) return j->deb != ici(a)->deb + ici(a)->len;
+    return 0;
+}
 
 static int type_obj_ici(HctAnalyseur *a, HctTypeObjet *t)
 {
     for (int k = 0; TYPES_OBJ[k].mot; k++)
-        if (mot_ici(a, TYPES_OBJ[k].mot)) { *t = TYPES_OBJ[k].type; return 1; }
+        if (mot_ici(a, TYPES_OBJ[k].mot)) {
+            if ((TYPES_OBJ[k].type == HCT_OBJ_MENU ||
+                 TYPES_OBJ[k].type == HCT_OBJ_MENUITEM) &&
+                !designateur_suit(a))
+                return 0;                 /* un simple mot, pas un objet */
+            *t = TYPES_OBJ[k].type;
+            return 1;
+        }
     return 0;
 }
 

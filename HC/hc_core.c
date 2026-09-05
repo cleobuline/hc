@@ -1133,6 +1133,15 @@ int hc_delete_card(Object *card)
     int idx = card_index(stack, card);
     if (idx < 0) return 0;
 
+    /* HyperCard prévient la carte AVANT de la faire disparaître : c'est la
+     * dernière occasion qu'a un script de sauver ce qu'elle contient. Après
+     * hc_free, il n'y a plus personne à qui parler.
+     *
+     * Le pendant de newCard, qui existait déjà côté interface. Envoyé ici et
+     * non dans hc_free : celui-ci sert aussi à libérer une pile entière, et
+     * une pile qui se ferme n'a pas à voir défiler un deleteCard par carte. */
+    hc_send_systeme(card, "deleteCard");
+
     Object *bg = card->bg;                 /* retenu AVANT la libération */
 
     for (int i = 0; i < stack->nparts; i++) {
@@ -1162,6 +1171,10 @@ int hc_delete_card(Object *card)
             if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
                 reste = 1;
         if (!reste) {
+            /* Le fond s'en va avec sa dernière carte : il a droit au même
+             * avertissement qu'elle, et pour la même raison — après hc_free,
+             * il n'y a plus personne à qui parler. */
+            hc_send_systeme(bg, "deleteBackground");
             for (int i = 0; i < stack->nparts; i++) {
                 if (stack->parts[i] != bg) continue;
                 for (int j = i; j < stack->nparts - 1; j++)
@@ -1257,9 +1270,27 @@ int hc_card_count(Object *stack){
     return n;
 }
 
+/* L'objet dont la suppression est en cours, s'il y en a un.
+ *
+ * deleteButton et deleteField partent AVANT la libération — c'est la dernière
+ * occasion qu'a un script de sauver ce que l'objet contient. Mais le
+ * gestionnaire est du script : rien ne l'empêche de supprimer l'objet
+ * lui-même, et l'on libérerait alors deux fois la même mémoire. Un pointeur
+ * suffit à l'empêcher : la suppression imbriquée du même objet ne fait rien
+ * et rend 0, la suppression extérieure va jusqu'au bout, et l'objet n'est
+ * libéré qu'une fois. */
+static Object *g_part_en_suppression = NULL;
+
 int hc_delete_part(Object *o)
 {
     if (!o || !o->owner) return 0;
+    if (o == g_part_en_suppression) return 0;
+
+    Object *precedent = g_part_en_suppression;
+    g_part_en_suppression = o;
+    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
+    g_part_en_suppression = precedent;
+
     Object *parent = o->owner;
     for (int i = 0; i < parent->nparts; i++) {
         if (parent->parts[i] == o) {
@@ -3403,6 +3434,164 @@ static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
  * L'appel est récursif, donc « word 2 of line 3 of field "notes" » marche.
  * Renvoie 1 si la destination a été reconnue.
  */
+/* ═══ LES MENUS DE LA BARRE, CRÉÉS PAR SCRIPT ═══════════════════════════
+ *
+ * Une pile d'époque se donne ses propres menus :
+ *
+ *     create menu "3DEquations"
+ *     put menuItems() into menu "3DEquations" with menuMsg menuMsgs()
+ *
+ * Chaque article porte SON message : choisir « Curves » envoie « goCurves »,
+ * pas « doMenu "Curves" ». C'est ce qui distingue un menu de pile d'un menu
+ * de l'application, et c'est pour cela que la liste des messages compte
+ * autant que celle des articles.
+ *
+ * Le modèle vit ICI et non dans l'interface, pour trois raisons : un script
+ * doit pouvoir l'interroger (« there is a menu "X" »), il se teste alors sans
+ * Cocoa, et l'hôte n'a plus qu'à en construire le reflet. Un seul rappel le
+ * prévient — menus_changed — et il relit tout par les accesseurs.
+ *
+ * Ces menus ne s'enregistrent PAS avec la pile : ils naissent d'un script et
+ * meurent avec lui, comme dans HyperCard. C'est d'ailleurs pourquoi les
+ * piles écrivent « if there is no menu "X" then createMenu » en tête de leur
+ * openStack. */
+
+#define HC_MENUS_MAX     16
+#define HC_ARTICLES_MAX  64
+
+typedef struct {
+    char  nom[64];
+    char *article[HC_ARTICLES_MAX];   /* le texte affiché             */
+    char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
+    char  actif[HC_ARTICLES_MAX];
+    int   n;
+    int   actif_menu;
+} HcMenuBarre;
+
+static HcMenuBarre g_menus[HC_MENUS_MAX];
+static int         g_nmenus = 0;
+
+static void menus_prevenir(void)
+{
+    if (g_host && g_host->menus_changed) g_host->menus_changed();
+}
+
+static int menu_index(const char *nom)
+{
+    if (!nom || !*nom) return -1;
+    for (int i = 0; i < g_nmenus; i++)
+        if (ci_equal(g_menus[i].nom, nom)) return i;
+    return -1;
+}
+
+static void menu_vide(HcMenuBarre *m)
+{
+    for (int j = 0; j < m->n; j++) {
+        free(m->article[j]); m->article[j] = NULL;
+        free(m->message[j]); m->message[j] = NULL;
+    }
+    m->n = 0;
+}
+
+static int menu_creer(const char *nom)
+{
+    if (!nom || !*nom) return 0;
+    if (menu_index(nom) >= 0) return 0;          /* déjà là */
+    if (g_nmenus >= HC_MENUS_MAX) {
+        emit(HC_ERR, "   !! trop de menus (%d au plus)", HC_MENUS_MAX);
+        return 0;
+    }
+    HcMenuBarre *m = &g_menus[g_nmenus++];
+    memset(m, 0, sizeof *m);
+    snprintf(m->nom, sizeof m->nom, "%s", nom);
+    m->actif_menu = 1;
+    menus_prevenir();
+    return 1;
+}
+
+static int menu_supprimer(const char *nom)
+{
+    int i = menu_index(nom);
+    if (i < 0) return 0;
+    menu_vide(&g_menus[i]);
+    for (int k = i; k < g_nmenus - 1; k++) g_menus[k] = g_menus[k + 1];
+    g_nmenus--;
+    menus_prevenir();
+    return 1;
+}
+
+/* Découper une liste d'articles.
+ *
+ * HyperCard accepte le retour à la ligne ou la virgule. On choisit d'après ce
+ * qu'on trouve : dès qu'il y a un retour, c'est lui qui sépare — sans quoi un
+ * article contenant une virgule (« Export, s'il vous plaît ») serait coupé en
+ * deux. Une liste d'une seule ligne se découpe aux virgules, comme le veut
+ * l'usage.
+ *
+ * Les lignes VIDES comptent : la liste des messages est parallèle à celle des
+ * articles, et un séparateur « - » n'a pas de message. Les sauter décalerait
+ * tout le reste — chaque article enverrait le message du suivant. */
+static int liste_decoupe(const char *src, char sep, char **out, int max)
+{
+    int n = 0;
+    const char *p = src ? src : "";
+    while (n < max) {
+        const char *f = strchr(p, sep);
+        int len = f ? (int)(f - p) : (int)strlen(p);
+        while (len > 0 && (p[len-1] == '\r' || p[len-1] == ' ')) len--;
+        char *t = malloc((size_t)len + 1);
+        if (!t) break;
+        memcpy(t, p, (size_t)len); t[len] = '\0';
+        out[n++] = t;
+        if (!f) break;
+        p = f + 1;
+    }
+    return n;
+}
+
+static void menu_articles(int i, const char *articles, const char *messages)
+{
+    if (i < 0 || i >= g_nmenus) return;
+    HcMenuBarre *m = &g_menus[i];
+    menu_vide(m);
+
+    char sep = strchr(articles ? articles : "", '\n') ? '\n' : ',';
+    m->n = liste_decoupe(articles, sep, m->article, HC_ARTICLES_MAX);
+
+    if (messages && *messages) {
+        char *msg[HC_ARTICLES_MAX];
+        char sepm = strchr(messages, '\n') ? '\n' : ',';
+        int nm = liste_decoupe(messages, sepm, msg, HC_ARTICLES_MAX);
+        for (int j = 0; j < m->n; j++)
+            m->message[j] = (j < nm) ? msg[j] : NULL;
+        for (int j = m->n; j < nm; j++) free(msg[j]);   /* liste plus longue */
+    }
+    for (int j = 0; j < m->n; j++) m->actif[j] = 1;
+    menus_prevenir();
+}
+
+static void menus_reset(void)
+{
+    for (int i = 0; i < g_nmenus; i++) menu_vide(&g_menus[i]);
+    g_nmenus = 0;
+    menus_prevenir();
+}
+
+/* ---- ce que l'hôte lit pour construire son reflet ---- */
+int         hc_menu_nombre(void)          { return g_nmenus; }
+const char *hc_menu_nom(int i)
+{ return (i >= 0 && i < g_nmenus) ? g_menus[i].nom : NULL; }
+int         hc_menu_est_actif(int i)
+{ return (i >= 0 && i < g_nmenus) ? g_menus[i].actif_menu : 0; }
+int         hc_menu_nb_articles(int i)
+{ return (i >= 0 && i < g_nmenus) ? g_menus[i].n : 0; }
+const char *hc_menu_article(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? g_menus[i].article[j] : NULL; }
+int         hc_menu_article_actif(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? g_menus[i].actif[j] : 0; }
+
 static int container_set_body(const char *ref, const char *val, int mode);
 
 /* container_set est recursif : « char 2 of word 2 of me » se traite en trois
@@ -5653,6 +5842,68 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
     return 1;
 }
 
+/* ═══ « card window » : la fenêtre de la pile ════════════════════════════
+ *
+ * HyperCard traite la fenêtre de la pile comme un objet à part entière, avec
+ * ses propriétés de géométrie. L'arbre de la v3 n'a pas de type FENÊTRE, et
+ * n'en a pas besoin : l'analyseur lit « card window » comme « la carte de rang
+ * <window> » — un HCTN_OBJET de type carte, désigné par un rang qui se trouve
+ * être l'identifiant « window ». Il suffit de reconnaître cette forme.
+ *
+ * Sans cela, hct_resout évaluait « window » comme un rang, n'y trouvait pas de
+ * variable, et le DIFFUSAIT comme un message dans toute la hiérarchie avant
+ * d'échouer : deux envois de « window » et un de « width » PAR EXPRESSION, et
+ * un piège si la pile a par malchance un gestionnaire de ce nom. La valeur
+ * finissait juste, l'ancien interpréteur la servant par term_value — mais au
+ * prix d'un aller-retour par le texte et de cinq messages inutiles.
+ *
+ * On s'en tient aux quatre propriétés que term_value sert déjà : ce sont
+ * celles qu'emploient les scripts d'époque, et inventer les autres reviendrait
+ * à décider seul de ce que HyperCard aurait répondu. */
+static int v3_est_fenetre(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OBJET)          return 0;
+    if (n->typeobj != HCT_OBJ_CARD)            return 0;
+    if (n->designateur != HCT_DES_RANG)        return 0;
+    if (n->nfils != 1 || !n->fils[0])          return 0;
+    if (n->fils[0]->genre != HCTN_IDENT)       return 0;
+
+    char mot[16];
+    hct_texte(&n->fils[0]->jeton, mot, sizeof mot);
+    return ci_equal(mot, "window");
+}
+
+static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2)   return 0;
+    if (!n->fils[0] || n->fils[0]->genre != HCTN_IDENT) return 0;
+    if (!v3_est_fenetre(n->fils[1]))                 return 0;
+
+    char prop[32];
+    hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+
+    Object *st = owning_stack(g_current_card);
+    int w = st && st->w ? st->w : 512;
+    int h = st && st->h ? st->h : 342;
+    char b[48];
+
+    if      (ci_equal(prop, "width"))  snprintf(b, sizeof b, "%d", w);
+    else if (ci_equal(prop, "height")) snprintf(b, sizeof b, "%d", h);
+    else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle"))
+        snprintf(b, sizeof b, "0,0,%d,%d", w, h);
+    else if (ci_equal(prop, "loc") || ci_equal(prop, "location"))
+        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);
+    else return 0;
+
+    *out = hct_val_texte(b);
+    return 1;
+}
+
+/* Définis plus bas, avec les autres commandes de menu ; v3_recours en a
+ * besoin pour « there is a menu "X" ». */
+static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
+static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
+
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
@@ -5673,6 +5924,34 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * le reste (« recours objet », « recours chunk »… ) se nomme par un bout
      * de son texte source : bien moins ambigu qu'un genre de nœud qui ne dit
      * pas QUEL objet ou QUELLE expression est en cause. */
+    /* La géométrie de la fenêtre de la pile, servie sans repasser par le
+     * texte. Avant le relevé : ce n'est plus un retour vers la v1. */
+    if (v3_fenetre_prop(n, out)) return 1;
+
+    /* « there is a menu "X" » / « there is no menu "X" ».
+     *
+     * hct_eval nous l'envoie ici plutôt qu'à resout : un menu n'a pas d'objet
+     * derrière lui, et resout rendrait toujours NULL — la pile croirait son
+     * menu absent à chaque ouverture et le recréerait sans fin. */
+    if (n->genre == HCTN_UNAIRE && n->op && n->nfils >= 1 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_OBJET &&
+        (n->fils[0]->typeobj == HCT_OBJ_MENU ||
+         n->fils[0]->typeobj == HCT_OBJ_MENUITEM) &&
+        (ci_equal(n->op, "there is a") || ci_equal(n->op, "there is an") ||
+         ci_equal(n->op, "there is no"))) {
+
+        int existe;
+        if (n->fils[0]->typeobj == HCT_OBJ_MENU)
+            existe = v3_menu_index(NULL, n->fils[0]) >= 0;
+        else {
+            int im = -1;
+            existe = v3_article_index(NULL, n->fils[0], &im) >= 0;
+        }
+        if (ci_equal(n->op, "there is no")) existe = !existe;
+        *out = hct_val_texte(existe ? "true" : "false");
+        return 1;
+    }
+
     /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
      * le relevé : ce n'est plus un retour vers l'ancien interpréteur. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
@@ -6139,6 +6418,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
 static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 {
     (void)d;
+
+    /* « card window » n'est pas une carte, c'est la fenêtre de la pile — voir
+     * v3_est_fenetre. On refuse ici plutôt que de laisser hct_resout évaluer
+     * « window » comme un rang : cette évaluation DIFFUSE le mot comme un
+     * message dans toute la hiérarchie avant d'échouer. Le nœud « of » qui
+     * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
+    if (v3_est_fenetre(ref)) return NULL;
 
     return hct_resout(ctx, ref);
 }
@@ -7968,8 +8254,45 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
  * comme avant ce portage. */
 static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
+
+    /* « delete menu "X" » et « delete menuItem 4 of menu "X" ». Avant le
+     * chemin des conteneurs : un menu n'en est pas un, et container_set
+     * répondrait « rien à supprimer ». */
+    if (n->fils[0]->genre == HCTN_OBJET) {
+        const HctNoeud *o = n->fils[0];
+        if (o->typeobj == HCT_OBJ_MENU) {
+            int i = v3_menu_index(ctx, o);
+            if (ctx->erreur) return 1;
+            if (i < 0) { set_result("menu introuvable"); return 1; }
+            char nom[64];
+            snprintf(nom, sizeof nom, "%s", g_menus[i].nom);
+            menu_supprimer(nom);
+            set_result("");
+            return 1;
+        }
+        if (o->typeobj == HCT_OBJ_MENUITEM) {
+            int im = -1;
+            int j = v3_article_index(ctx, o, &im);
+            if (ctx->erreur) return 1;
+            if (j < 0) { set_result("article introuvable"); return 1; }
+            HcMenuBarre *m = &g_menus[im];
+            free(m->article[j]);
+            free(m->message[j]);
+            for (int k = j; k < m->n - 1; k++) {
+                m->article[k] = m->article[k + 1];
+                m->message[k] = m->message[k + 1];
+                m->actif[k]   = m->actif[k + 1];
+            }
+            m->n--;
+            m->article[m->n] = NULL;
+            m->message[m->n] = NULL;
+            menus_prevenir();
+            set_result("");
+            return 1;
+        }
+    }
+
 
     char d[256];
     v3_reste(n, d, sizeof d);
@@ -8060,6 +8383,15 @@ static int v3_cmd_reset(HctContexte *ctx, const HctNoeud *n)
     quoi[0] = '\0';
     if (n->nfils >= 1) v3_brut(n->fils[0], quoi, sizeof quoi);
 
+    /* « reset menuBar » : la barre revient à celle de l'application, tous
+     * les menus créés par script disparaissant d'un coup. HyperCard s'en sert
+     * pour faire le ménage quand on ne sait plus ce qui traîne. */
+    if (ci_equal(quoi, "menubar")) {
+        menus_reset();
+        set_result("");
+        return 1;
+    }
+
     if (ci_equal(quoi, "paint")) {
         host_global_set("filled",    "false");
         host_global_set("pattern",   "2");   /* le noir de HyperCard */
@@ -8088,9 +8420,7 @@ static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
     v3_val_texte(ctx, n->fils[0], item, sizeof item);
     if (ctx->erreur) return 1;
 
-    g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
-    if (g_host && g_host->do_menu) g_host->do_menu(item);
-    else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+    hc_do_menu(item);                 /* message d'abord, action ensuite */
     set_result("");
     return 1;
 }
@@ -8699,6 +9029,161 @@ static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
 
 typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 
+/* ═══ Les commandes de menu ═════════════════════════════════════════════
+ *
+ * Toutes travaillent sur l'ARBRE : « menu "X" » et « menuItem 4 of menu "X" »
+ * sont des nœuds d'objet depuis que la grammaire les connaît, et il n'y a
+ * donc plus rien à redécouper dans du texte. */
+
+/* Un nœud « menu <désignateur> » → son indice dans la barre, ou -1. */
+static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENU) return -1;
+    if (n->nfils < 1) return -1;
+
+    /* Le contexte peut manquer : v3_recours n'en reçoit pas, et c'est lui
+     * qui sert « there is a menu "X" ». Un désignateur littéral — le cas de
+     * toutes les piles — se lit alors directement dans le jeton. Une
+     * expression, elle, exige un contexte : sans lui on renonce, et la ligne
+     * repart par le chemin ordinaire. */
+    char b[64];
+    if (ctx) {
+        v3_val_texte(ctx, n->fils[0], b, sizeof b);
+        if (ctx->erreur) return -1;
+    } else {
+        HctGenreNoeud g = n->fils[0]->genre;
+        if (g != HCTN_CHAINE && g != HCTN_NOMBRE) return -1;
+        hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    }
+
+    if (n->designateur == HCT_DES_RANG) {
+        int r = atoi(b);
+        return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
+    }
+    return menu_index(b);
+}
+
+/* Un nœud « menuItem <désignateur> of menu <…> » → l'indice de l'article, et
+ * par `imenu` celui de son menu. -1 si l'un des deux est introuvable. */
+static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
+{
+    if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENUITEM) return -1;
+    if (n->nfils < 2) return -1;
+
+    int im = v3_menu_index(ctx, n->fils[n->nfils - 1]);
+    if (im < 0) return -1;
+    *imenu = im;
+
+    char b[64];
+    if (ctx) {
+        v3_val_texte(ctx, n->fils[0], b, sizeof b);
+        if (ctx->erreur) return -1;
+    } else {
+        HctGenreNoeud g = n->fils[0]->genre;
+        if (g != HCTN_CHAINE && g != HCTN_NOMBRE) return -1;
+        hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    }
+
+    if (n->designateur == HCT_DES_RANG) {
+        int r = atoi(b);
+        return (r >= 1 && r <= g_menus[im].n) ? r - 1 : -1;
+    }
+    for (int j = 0; j < g_menus[im].n; j++)
+        if (ci_equal(g_menus[im].article[j], b)) return j;
+    return -1;
+}
+
+/* create menu <nom> */
+static int v3_cmd_create(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1 || !n->fils[0]) return 0;
+    const HctNoeud *o = n->fils[0];
+    if (o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_MENU) return 0;
+    if (o->nfils < 1) return 0;
+
+    char nom[64];
+    v3_val_texte(ctx, o->fils[0], nom, sizeof nom);
+    if (ctx->erreur) return 1;
+
+    if (!menu_creer(nom))
+        emit(HC_INFO, "   → le menu « %s » existe déjà", nom);
+    set_result("");
+    return 1;
+}
+
+/* enable | disable  menu <nom> | menuItem <n> of menu <nom> */
+static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1 || !n->fils[0]) return 0;
+    const HctNoeud *o = n->fils[0];
+    if (o->genre != HCTN_OBJET) return 0;
+
+    int actif = ci_equal(n->op, "enable");
+
+    if (o->typeobj == HCT_OBJ_MENU) {
+        int i = v3_menu_index(ctx, o);
+        if (ctx->erreur) return 1;
+        if (i < 0) { set_result("menu introuvable"); return 1; }
+        g_menus[i].actif_menu = actif;
+        menus_prevenir();
+        set_result("");
+        return 1;
+    }
+    if (o->typeobj == HCT_OBJ_MENUITEM) {
+        int im = -1;
+        int j = v3_article_index(ctx, o, &im);
+        if (ctx->erreur) return 1;
+        if (j < 0) { set_result("article introuvable"); return 1; }
+        g_menus[im].actif[j] = (char)actif;
+        menus_prevenir();
+        set_result("");
+        return 1;
+    }
+    return 0;                       /* enable d'autre chose : pas pour nous */
+}
+
+/* put <articles> into menu <nom> [with menuMsg <messages>]
+ *
+ * L'exécuteur nous confie la ligne ENTIÈRE, non évaluée, parce que
+ * cible_connue refuse les menus : on évalue donc soi-même, et une seule fois.
+ * L'arbre est « e into <objet menu> [with menumsg e] ». */
+static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 3) return 0;
+    const HctNoeud *cible = n->fils[2];
+    if (!cible || cible->genre != HCTN_OBJET ||
+        cible->typeobj != HCT_OBJ_MENU) return 0;
+
+    int i = v3_menu_index(ctx, cible);
+    if (ctx->erreur) return 1;
+    if (i < 0) {
+        emit(HC_ERR, "   !! menu introuvable");
+        set_result("menu introuvable");
+        return 1;
+    }
+
+    ARENA_MARK;
+    char *articles = arena_buf();
+    char *messages = arena_buf();
+    articles[0] = messages[0] = '\0';
+
+    v3_val_texte(ctx, n->fils[0], articles, HC_VAL);
+
+    /* « with menuMsg <e> » : le mot-clé et son expression sont les derniers
+     * fils. On prend la dernière expression, quel que soit le nombre de
+     * mots-clés que le motif a posés devant elle. */
+    if (!ctx->erreur && n->nfils >= 5) {
+        const HctNoeud *d = n->fils[n->nfils - 1];
+        if (d && d->genre != HCTN_MOTCLE)
+            v3_val_texte(ctx, d, messages, HC_VAL);
+    }
+
+    if (!ctx->erreur) menu_articles(i, articles, messages);
+    ARENA_FREE;
+    set_result("");
+    return 1;
+}
+
 static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "answer",      v3_cmd_reponse         },
     { "answer file", v3_cmd_reponse_fichier },
@@ -8709,6 +9194,10 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "click",  v3_cmd_click   },
     { "close",  v3_cmd_fichier },
     { "convert", v3_cmd_convert },
+    { "create",  v3_cmd_create  },
+    { "disable", v3_cmd_menu_actif },
+    { "enable",  v3_cmd_menu_actif },
+    { "put",     v3_cmd_put_menu },
     { "debug",  v3_cmd_debug   },
     { "delete", v3_cmd_delete  },
     { "domenu", v3_cmd_domenu  },
@@ -11609,13 +12098,10 @@ static void exec_line_body(Object *me, const char *line)
      * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
      * se superposait au précédent. */
     if (ci_equal(verb, "domenu")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         ARENA_MARK;
         char *item = arena_buf();
         eval_checked(rest, item, HC_VAL);
-
-        if (g_host && g_host->do_menu) g_host->do_menu(item);
-        else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+        hc_do_menu(item);          /* message d'abord, action ensuite */
         ARENA_FREE;
         set_result("");
         return;
@@ -12345,8 +12831,18 @@ static int hc_send_args_k_body(Object *target, const char *message,
 
             g_frame = savedf;
             frame_clear(&frame);
+
+            /* « pass » veut dire JE NE L'AI PAS TRAITÉ : le message repart vers
+             * le maillon suivant, et s'il n'en reste aucun il revient à
+             * HyperCard lui-même, qui applique le comportement par défaut.
+             *
+             * handled était posé AVANT ce test, si bien qu'un gestionnaire qui
+             * passait comptait quand même comme preneur. L'appelant ne pouvait
+             * donc pas distinguer « la pile s'en est chargée » de « personne
+             * n'en a voulu » — exactement ce dont doMenu a besoin pour savoir
+             * s'il doit exécuter l'article de menu. */
+            if (g_pass) { g_pass = 0; continue; }
             handled = 1;
-            if (g_pass) { g_pass = 0; continue; }   /* pass : on remonte */
             break;
         } else if (g_trace) {
             char d[64]; hc_describe(o, d, sizeof d);
@@ -12427,6 +12923,150 @@ static int hc_call_user_function(Object *target, const char *name,
     if (!target) return 0;
     set_result("");
     return hc_send_args_k(target, name, argv, argc, 1);
+}
+
+/* ═══ doMenu ════════════════════════════════════════════════════════════
+ *
+ * Dans HyperCard, choisir un article de menu ENVOIE d'abord le message
+ * « doMenu <article> » à la carte courante. Le comportement natif n'a lieu
+ * que si personne ne l'intercepte, ou si un gestionnaire le rend par
+ * « pass doMenu ». C'est de cette façon qu'une pile détourne un article :
+ *
+ *     on doMenu quoi
+ *       if quoi is "Clear Picture" then effaceProprement
+ *       else pass doMenu
+ *     end doMenu
+ *
+ * HC exécutait l'article DIRECTEMENT, sans jamais envoyer le message : aucun
+ * « on doMenu » d'une pile d'époque ne se déclenchait, en silence.
+ *
+ * La récursion reste possible — un gestionnaire qui rappelle doMenu pour le
+ * même article se rappelle lui-même — mais c'est le comportement d'HyperCard,
+ * et le garde-fou de profondeur (HC_MAX_DEPTH) l'arrête avec un message clair
+ * plutôt que d'inventer une règle qu'HyperCard n'avait pas. */
+/* Les articles standards qu'HyperCard exécutait lui-même et que le NOYAU sait
+ * faire sans rien demander à l'hôte : le menu Aller.
+ *
+ * Une pile d'époque écrit « doMenu \"Next\" » aussi naturellement que
+ * « go next ». Sans cette table, l'article partait à l'hôte, qui ne connaît
+ * que ses propres menus — en français, et sans menu Aller : il ne se passait
+ * rien du tout, sans un mot.
+ *
+ * On passe par exec_stmt plutôt que de refaire le changement de carte à la
+ * main : la séquence closeCard / closeBackground / openBackground / openCard
+ * est écrite en toutes lettres à vingt-quatre endroits de ce fichier, et en
+ * ajouter un vingt-cinquième exemplaire serait absurde.
+ *
+ * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
+ * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
+ * Il y faudrait d'abord un historique de navigation. */
+static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = {
+    { "Next",     "go next"  },
+    { "Prev",     "go prev"  },
+    { "Previous", "go prev"  },
+    { "First",    "go first" },
+    { "Last",     "go last"  },
+    { NULL, NULL }
+};
+
+/* Comparaison d'un nom d'article, à la tolérance près qui sépare ce qu'écrit
+ * un script de ce qu'affiche un menu : la casse, et les points de suspension
+ * finaux. HyperCard affiche « Find… » avec le vrai caractère « … » ; les
+ * scripts écrivent aussi bien « Find… » que « Find... » ou « Find ». Les trois
+ * doivent désigner le même article. */
+static int menu_meme_article(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    while (la && (a[la-1] == '.' || a[la-1] == ' ')) la--;
+    while (lb && (b[lb-1] == '.' || b[lb-1] == ' ')) lb--;
+    /* « … » en UTF-8 : E2 80 A6 */
+    while (la >= 3 && (unsigned char)a[la-3] == 0xE2 &&
+           (unsigned char)a[la-2] == 0x80 && (unsigned char)a[la-1] == 0xA6) {
+        la -= 3;
+        while (la && a[la-1] == ' ') la--;
+    }
+    while (lb >= 3 && (unsigned char)b[lb-3] == 0xE2 &&
+           (unsigned char)b[lb-2] == 0x80 && (unsigned char)b[lb-1] == 0xA6) {
+        lb -= 3;
+        while (lb && b[lb-1] == ' ') lb--;
+    }
+    return la == lb && strncasecmp(a, b, la) == 0;
+}
+
+/* Proposer un article à la pile, sans rien exécuter ensuite.
+ *
+ * C'est la moitié « message » de hc_do_menu, isolée pour l'interface : quand
+ * l'utilisateur CLIQUE un article, l'action native est déjà écrite et sait se
+ * faire toute seule ; il ne lui manque que de demander d'abord à la pile si
+ * elle veut s'en charger. Rend 1 si un gestionnaire l'a pris — l'appelant n'a
+ * alors plus rien à faire. */
+/* Envoyer un message accompagné d'UN argument.
+ *
+ * hc_send n'en accepte aucun, hc_send_args est interne : l'hôte n'avait donc
+ * aucun moyen d'envoyer « arrowKey left » ou « functionKey 3 », alors que ce
+ * sont précisément les messages du clavier, tous porteurs d'un argument.
+ * Rend 1 si un gestionnaire l'a pris — un « pass » ne compte pas, voir
+ * hc_send_args_k_body. */
+int hc_send_arg(Object *target, const char *message, const char *arg)
+{
+    if (!target || !message) return 0;
+
+    ARENA_MARK;
+    char (*argv)[HC_VAL] = arena_rows(1);
+    snprintf(argv[0], HC_VAL, "%s", arg ? arg : "");
+    int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
+    ARENA_FREE;
+    return pris;
+}
+
+/* L'utilisateur a choisi un article d'un menu de pile.
+ *
+ * S'il porte un message, c'est LUI qui part, et non doMenu : « Curves »
+ * envoie « goCurves ». Sinon on retombe sur doMenu, ce qui laisse un menu
+ * construit sans messages se comporter comme les menus de l'application.
+ *
+ * On passe par hc_do plutôt que par hc_send : le message d'un article peut
+ * porter des arguments (« markCard 3 »), et hc_do sait analyser une ligne
+ * là où hc_send_arg n'accepte qu'un nom. Sa remise à zéro de la profondeur
+ * est ici exacte : un choix de menu est une action de l'utilisateur, au
+ * repos, exactement comme une ligne tapée dans la boîte de message. */
+void hc_menu_choisi(int i, int j)
+{
+    if (i < 0 || i >= g_nmenus) return;
+    HcMenuBarre *m = &g_menus[i];
+    if (j < 0 || j >= m->n) return;
+    if (!m->actif_menu || !m->actif[j]) return;
+
+    const char *art = m->article[j];
+    if (!art || !*art || !strcmp(art, "-")) return;   /* un séparateur */
+
+    if (m->message[j] && *m->message[j]) { hc_do(m->message[j]); return; }
+    hc_do_menu(art);
+}
+
+int hc_menu_trappe(const char *item)
+{
+    if (!item) return 0;
+
+    g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
+
+    return g_current_card ? hc_send_arg(g_current_card, "doMenu", item) : 0;
+}
+
+void hc_do_menu(const char *item)
+{
+    if (!item) return;
+
+    if (hc_menu_trappe(item)) return; /* la pile s'en est chargée */
+
+    for (int i = 0; MENUS_NOYAU[i].article; i++)
+        if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
+            exec_stmt(g_me ? g_me : g_current_card, MENUS_NOYAU[i].ligne);
+            return;
+        }
+
+    if (g_host && g_host->do_menu) g_host->do_menu(item);
+    else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
 }
 
 int hc_send(Object *target, const char *message)

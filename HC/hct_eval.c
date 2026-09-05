@@ -313,7 +313,13 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
          * On ne s'en charge que pour un nœud d'OBJET : « there is a
          * <expression> » a d'autres formes, que le recours garde. */
         if (n->nfils >= 1 && n->fils[0] &&
-            n->fils[0]->genre == HCTN_OBJET && ctx->hote.resout) {
+            n->fils[0]->genre == HCTN_OBJET &&
+            /* Sauf un menu : il n'a pas d'objet derrière lui, resout rendrait
+             * toujours NULL et « there is a menu "X" » serait toujours faux.
+             * Le recours, lui, sait interroger la barre de menus. */
+            n->fils[0]->typeobj != HCT_OBJ_MENU &&
+            n->fils[0]->typeobj != HCT_OBJ_MENUITEM &&
+            ctx->hote.resout) {
             int existe = ctx->hote.resout(ctx->hote.donnees, n->fils[0], ctx) != NULL;
             if (!strcmp(op, "there is no")) existe = !existe;
             return hct_val_bool(existe);

@@ -616,6 +616,7 @@ void hc_sync_size_field(Object *o)
     [self setNeedsDisplay:YES];
 }
 - (void)showCardInfo {
+    if (hcv_menu_trappe("Card Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
     gCardTarget = card;
@@ -682,6 +683,7 @@ void hc_sync_size_field(Object *o)
     [self setNeedsDisplay:YES];
 }
 - (void)showBackgroundInfo {
+    if (hcv_menu_trappe("Bkgnd Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card || !card->bg) return;
     Object *bg = card->bg;
@@ -754,6 +756,7 @@ void hc_sync_size_field(Object *o)
     if (bg) [self editScriptOf:bg];
 }
 - (void)showStackInfo {
+    if (hcv_menu_trappe("Stack Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
     Object *stack = card->owner;
@@ -921,6 +924,7 @@ void hcicon_panel_stack_closing(Object *stack)
  * iconOK: y écrit, et le laisser pointer sur le champ d'un panneau refermé
  * reviendrait à peindre dans le vide. */
 - (void)editIcon:(id)sender {
+    if (hcv_menu_trappe("Icon…")) return;   /* la pile détourne l'article */
     gInfoTarget = (gSelected && gSelected->type == OBJ_BUTTON) ? gSelected : NULL;
     gInfoIconField = nil;
     [self infoIcon:sender];
