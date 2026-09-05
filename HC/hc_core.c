@@ -5653,6 +5653,63 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
     return 1;
 }
 
+/* ═══ « card window » : la fenêtre de la pile ════════════════════════════
+ *
+ * HyperCard traite la fenêtre de la pile comme un objet à part entière, avec
+ * ses propriétés de géométrie. L'arbre de la v3 n'a pas de type FENÊTRE, et
+ * n'en a pas besoin : l'analyseur lit « card window » comme « la carte de rang
+ * <window> » — un HCTN_OBJET de type carte, désigné par un rang qui se trouve
+ * être l'identifiant « window ». Il suffit de reconnaître cette forme.
+ *
+ * Sans cela, hct_resout évaluait « window » comme un rang, n'y trouvait pas de
+ * variable, et le DIFFUSAIT comme un message dans toute la hiérarchie avant
+ * d'échouer : deux envois de « window » et un de « width » PAR EXPRESSION, et
+ * un piège si la pile a par malchance un gestionnaire de ce nom. La valeur
+ * finissait juste, l'ancien interpréteur la servant par term_value — mais au
+ * prix d'un aller-retour par le texte et de cinq messages inutiles.
+ *
+ * On s'en tient aux quatre propriétés que term_value sert déjà : ce sont
+ * celles qu'emploient les scripts d'époque, et inventer les autres reviendrait
+ * à décider seul de ce que HyperCard aurait répondu. */
+static int v3_est_fenetre(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OBJET)          return 0;
+    if (n->typeobj != HCT_OBJ_CARD)            return 0;
+    if (n->designateur != HCT_DES_RANG)        return 0;
+    if (n->nfils != 1 || !n->fils[0])          return 0;
+    if (n->fils[0]->genre != HCTN_IDENT)       return 0;
+
+    char mot[16];
+    hct_texte(&n->fils[0]->jeton, mot, sizeof mot);
+    return ci_equal(mot, "window");
+}
+
+static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2)   return 0;
+    if (!n->fils[0] || n->fils[0]->genre != HCTN_IDENT) return 0;
+    if (!v3_est_fenetre(n->fils[1]))                 return 0;
+
+    char prop[32];
+    hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+
+    Object *st = owning_stack(g_current_card);
+    int w = st && st->w ? st->w : 512;
+    int h = st && st->h ? st->h : 342;
+    char b[48];
+
+    if      (ci_equal(prop, "width"))  snprintf(b, sizeof b, "%d", w);
+    else if (ci_equal(prop, "height")) snprintf(b, sizeof b, "%d", h);
+    else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle"))
+        snprintf(b, sizeof b, "0,0,%d,%d", w, h);
+    else if (ci_equal(prop, "loc") || ci_equal(prop, "location"))
+        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);
+    else return 0;
+
+    *out = hct_val_texte(b);
+    return 1;
+}
+
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
@@ -5673,6 +5730,10 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * le reste (« recours objet », « recours chunk »… ) se nomme par un bout
      * de son texte source : bien moins ambigu qu'un genre de nœud qui ne dit
      * pas QUEL objet ou QUELLE expression est en cause. */
+    /* La géométrie de la fenêtre de la pile, servie sans repasser par le
+     * texte. Avant le relevé : ce n'est plus un retour vers la v1. */
+    if (v3_fenetre_prop(n, out)) return 1;
+
     /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
      * le relevé : ce n'est plus un retour vers l'ancien interpréteur. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
@@ -6139,6 +6200,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
 static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 {
     (void)d;
+
+    /* « card window » n'est pas une carte, c'est la fenêtre de la pile — voir
+     * v3_est_fenetre. On refuse ici plutôt que de laisser hct_resout évaluer
+     * « window » comme un rang : cette évaluation DIFFUSE le mot comme un
+     * message dans toute la hiérarchie avant d'échouer. Le nœud « of » qui
+     * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
+    if (v3_est_fenetre(ref)) return NULL;
 
     return hct_resout(ctx, ref);
 }
