@@ -1059,24 +1059,35 @@ static BOOL mods_has(const char *mods, const char *k) {
  * On accumule donc l'union des zones sales et l'on n'invalide qu'une fois,
  * au déverrouillage. Le noyau déverrouille de lui-même en retombant au
  * repos, si bien qu'un script qui oublie son « unlock screen » ne laisse pas
- * l'écran figé. */
+ * l'écran figé.
+ *
+ * Première version : les deux fonctions ci-dessous testaient elles-mêmes le
+ * verrou, et les sites de peinture les appelaient. C'était trop étroit — le
+ * dessin n'est pas la seule chose qui salit la vue pendant un script :
+ *
+ *   - antsTick: fait marcher les fourmis d'une sélection QUINZE FOIS PAR
+ *     SECONDE, et invalidait toute la vue à chaque pas. Il suffisait qu'une
+ *     sélection reste active — un « doMenu Select All » non suivi d'un
+ *     changement d'outil — pour que le tracé apparaisse au fur et à mesure,
+ *     verrou ou pas ;
+ *   - une douzaine de rappels de l'hôte (choose, doMenu, type, les propriétés
+ *     de peinture, le changement de champ ou de sélection) marquaient la vue
+ *     sale directement ;
+ *   - eraseAll et les autres méthodes de la vue également.
+ *
+ * Recenser ces chemins un par un, c'est en oublier un. On intercepte donc au
+ * seul endroit par lequel ils passent TOUS : setNeedsDisplay: et
+ * setNeedsDisplayInRect: de la vue elle-même, redéfinies plus bas. Le verrou
+ * y accumule, et ne relâche qu'une fois. */
 static BOOL   gLockScreen = NO;
 static BOOL   gSaleTout   = NO;   /* une invalidation totale est en attente */
 static BOOL   gSaleUnPeu  = NO;   /* gSaleRect porte une zone en attente    */
 static NSRect gSaleRect;
 
-static void hcv_invalide(NSRect r)
-{
-    if (!gLockScreen) { [gView setNeedsDisplayInRect:r]; return; }
-    gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
-    gSaleUnPeu = YES;
-}
-
-static void hcv_invalide_tout(void)
-{
-    if (!gLockScreen) { [gView setNeedsDisplay:YES]; return; }
-    gSaleTout = YES;
-}
+/* Ces deux-la ne testent plus rien : la vue s'en charge. Elles restent parce
+ * qu'elles disent l'intention au lieu du moyen. */
+static void hcv_invalide(NSRect r)   { [gView setNeedsDisplayInRect:r]; }
+static void hcv_invalide_tout(void)  { [gView setNeedsDisplay:YES]; }
 
 static void hcv_verrou_ecran(BOOL ferme)
 {
@@ -1310,6 +1321,106 @@ static void cocoa_click_at(int x, int y, const char *mods) {
     [gView setNeedsDisplay:YES];
 }
 
+/* ═══ Les articles de menu d'HyperCard ══════════════════════════════════
+ *
+ * Une pile d'époque écrit « doMenu "New Card" ». Jusqu'ici cet article
+ * partait dans cocoa_do_menu, qui ne connaissait que « Clear Picture » et
+ * « Select All », et n'en faisait rien. Sans un mot : c'est le pire des cas,
+ * la pile croit avoir agi.
+ *
+ * Les articles de HC portent maintenant leurs noms d'HyperCard, si bien que
+ * cette table ne traduit plus rien — elle dit quelle ACTION déclenche un
+ * article donné. On pourrait la remplacer par une recherche du même titre
+ * dans la barre de menus ; c'est justement ce qu'on ne veut pas, parce qu'il
+ * y a des articles à ne PAS rendre atteignables depuis un script (voir plus
+ * bas). Une table explicite dit lesquels, une recherche générique les
+ * attraperait tous.
+ *
+ * L'action part par la chaîne des répondeurs, ces méthodes étant réparties
+ * entre AppDelegate, HCView et sa catégorie Dialogs : les nommer une par une
+ * supposerait de savoir où chacune habite, ce qui serait faux au premier
+ * déménagement.
+ *
+ * DEUX ABSENTS VOLONTAIRES : « Delete Card » et « Cut Card ». Ils appellent
+ * hc_delete_card, qui libère la carte. Si le script qui les demande tourne sur
+ * un bouton DE CETTE CARTE — le cas le plus courant —, on libère l'objet dont
+ * le gestionnaire est en cours d'exécution. Il faut d'abord différer la
+ * libération jusqu'à la fin du gestionnaire ; tant que ce n'est pas fait, ces
+ * deux articles restent hors de portée d'un script, et c'est un moindre mal
+ * comparé à un plantage. */
+/* ═══ Offrir un article à la pile avant de l'exécuter ═══════════════════
+ *
+ * HyperCard envoie doMenu pour TOUT choix de menu, celui de l'utilisateur
+ * compris ; l'action native n'a lieu que si personne ne l'intercepte. Les
+ * actions de HC savent déjà agir : il ne leur manquait que de demander
+ * d'abord. D'où une ligne en tête de chacune :
+ *
+ *     if (hcv_menu_trappe("New Card")) return;
+ *
+ * Plutôt que de détourner les articles en leur réécrivant cible et action au
+ * démarrage : validateMenuItem: se règle sur l'action d'un article, et la lui
+ * changer sous les pieds griserait ou dégriserait les menus au hasard.
+ *
+ * gDansDoMenu ferme la boucle. Un script qui fait « doMenu "New Card" » passe
+ * par hc_do_menu — message d'abord, puis cocoa_menu_hypercard, qui appelle
+ * newCard:. Sans ce drapeau, newCard: reproposerait l'article à la pile, le
+ * même « on doMenu » se déclencherait une seconde fois et la carte ne serait
+ * jamais créée. Le drapeau dit : on est DÉJÀ dans le traitement d'un article,
+ * la question a été posée. */
+static BOOL gDansDoMenu = NO;
+
+BOOL hcv_menu_trappe(const char *article)
+{
+    if (gDansDoMenu) return NO;
+    return hc_menu_trappe(article) ? YES : NO;
+}
+
+static NSString *menu_normalise(NSString *s)
+{
+    /* Un script écrit aussi bien « Find… » que « Find... » ou « Find » : les
+     * trois désignent le même article, et la casse n'y est pour rien. */
+    NSCharacterSet *fin =
+        [NSCharacterSet characterSetWithCharactersInString:@". …"];
+    return [[s stringByTrimmingCharactersInSet:fin] lowercaseString];
+}
+
+static void cocoa_menu_hypercard(const char *item)
+{
+    static const struct { const char *article; const char *selecteur; } TABLE[] = {
+        { "New Card",       "newCard:"           },
+        { "Copy Card",      "copyCard:"          },
+        { "Paste Card",     "paste:"             },
+        { "New Background", "newBackground:"     },
+        { "Background",     "toggleBackground:"  },
+        { "Card Info",      "showCardInfo"       },
+        { "Bkgnd Info",     "showBackgroundInfo" },
+        { "Stack Info",     "showStackInfo"      },
+        { "Find",           "findInStack:"       },
+        { "New Stack",      "newStack:"          },
+        { "Open Stack",     "openStack:"         },
+        { "Save a Copy",    "saveStack:"         },
+        { NULL, NULL }
+    };
+
+    NSString *voulu = menu_normalise([NSString stringWithUTF8String:item]);
+    for (int i = 0; TABLE[i].article; i++) {
+        NSString *nom = [NSString stringWithUTF8String:TABLE[i].article];
+        if (![menu_normalise(nom) isEqualToString:voulu]) continue;
+        SEL sel = NSSelectorFromString(
+                      [NSString stringWithUTF8String:TABLE[i].selecteur]);
+        if (sel) {
+            /* La pile a déjà eu son mot à dire, dans hc_do_menu : que l'action
+             * ne le lui redemande pas. Voir gDansDoMenu. */
+            BOOL avant = gDansDoMenu;
+            gDansDoMenu = YES;
+            [NSApp sendAction:sel to:nil from:gView];
+            gDansDoMenu = avant;
+        }
+        return;
+    }
+    NSLog(@"doMenu : article inconnu « %s »", item);
+}
+
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
  
@@ -1345,7 +1456,7 @@ static void cocoa_do_menu(const char *item) {
         return;
     }
 
- 
+    cocoa_menu_hypercard(item);
 }
 
 static void cocoa_type_text(const char *text, const char *mods) {
@@ -2048,6 +2159,34 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     return _doc.card;
 }
 
+/* ═══ Le verrou d'écran, appliqué ═══════════════════════════════════════
+ *
+ * Tout ce qui veut redessiner la carte finit ici, d'où qu'il vienne : un
+ * rappel de l'hôte, une méthode de la vue, un minuteur, ou AppKit lui-même.
+ * C'est donc ici, et nulle part ailleurs, que « lock screen » retient.
+ *
+ * Le garde `self == gView` limite l'effet à la vue active : les autres
+ * documents ouverts continuent de se rafraîchir normalement.
+ *
+ * Au déverrouillage, hcv_verrou_ecran remet gLockScreen à NO AVANT de
+ * réinvalider — ces deux méthodes laissent alors passer, et la carte se
+ * recompose une seule fois. */
+- (void)setNeedsDisplay:(BOOL)flag
+{
+    if (flag && gLockScreen && self == gView) { gSaleTout = YES; return; }
+    [super setNeedsDisplay:flag];
+}
+
+- (void)setNeedsDisplayInRect:(NSRect)r
+{
+    if (gLockScreen && self == gView) {
+        gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
+        gSaleUnPeu = YES;
+        return;
+    }
+    [super setNeedsDisplayInRect:r];
+}
+
 - (void)startAntsTimer {
     if (gAntsTimer) return;
     gAntsTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/15.0
@@ -2082,6 +2221,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void)newBackground:(id)sender {
+    if (hcv_menu_trappe("New Background")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
     Object *stack = card->owner;
@@ -2225,6 +2365,7 @@ static BOOL paint_selection_active(void)
  * contient. */
 
 - (void)copyCard:(id)sender {
+    if (hcv_menu_trappe("Copy Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2235,6 +2376,7 @@ static BOOL paint_selection_active(void)
 }
 
 - (void)cutCard:(id)sender {
+    if (hcv_menu_trappe("Cut Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2264,6 +2406,7 @@ static BOOL paint_selection_active(void)
 }
 
 - (void)duplicateCard:(id)sender {
+    if (hcv_menu_trappe("Duplicate Card")) return;   /* la pile détourne l'article */
     (void)sender;
     Object *card = hc_current_card();
     if (!card) return;
@@ -2522,6 +2665,7 @@ static int gColorTarget = 0;
 }
 
 - (void)ditherSelection:(id)sender {
+    if (hcv_menu_trappe("Dither Selection")) return;   /* la pile détourne l'article */
     if (gFloating && gClipboard) {
         dither_region(gClipboard, 0, 0, gClipW-1, gClipH-1, NULL, 0);
         [gView setNeedsDisplay:YES];
@@ -2682,6 +2826,12 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* En dernier, une fois écartés les modes propres à HC — menu déroulant,
+     * zone flottante, outil Texte, suppressions. Ceux-là sont à nous et
+     * gardent la main ; tout le reste appartient à la pile, qui peut
+     * maintenant nommer la touche. */
+    if ([self envoieToucheHyperCard:event]) return;
+
     [super keyDown:event];
 }
 
@@ -2723,7 +2873,7 @@ static int gColorTarget = 0;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gWidthPanel setTitle:@"Épaisseur"];
+    [gWidthPanel setTitle:@"Line Size"];
     [gWidthPanel setFloatingPanel:YES];
     [gWidthPanel setBecomesKeyOnlyIfNeeded:YES];
     [gWidthPanel setHidesOnDeactivate:YES];
@@ -2743,7 +2893,7 @@ static int gColorTarget = 0;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gBrushPanel setTitle:@"Pinceaux"];
+    [gBrushPanel setTitle:@"Brushes"];
     [gBrushPanel setFloatingPanel:YES];
     [gBrushPanel setBecomesKeyOnlyIfNeeded:YES];
     [gBrushPanel setHidesOnDeactivate:YES];
@@ -2807,7 +2957,7 @@ static int gColorTarget = 0;
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered
                       defer:NO];
-    [gPatternPanel setTitle:@"Motifs"];
+    [gPatternPanel setTitle:@"Patterns"];
     [gPatternPanel setFloatingPanel:YES];
     [gPatternPanel setBecomesKeyOnlyIfNeeded:YES];
     [gPatternPanel setHidesOnDeactivate:YES];
@@ -3039,7 +3189,147 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     draw_popup_menu();
 }
 
+/* ═══ openField, closeField, exitField ══════════════════════════════════
+ *
+ * Les trois messages qu'HyperCard envoie autour de l'édition d'un champ, et
+ * qui sont la seule façon pour une pile de CONTRÔLER une saisie :
+ *
+ *   openField   quand l'édition commence ;
+ *   closeField  quand elle se termine ET que le texte a changé ;
+ *   exitField   quand elle se termine sans que rien ait changé.
+ *
+ * C'est la distinction qui fait tout l'intérêt de la paire : un
+ * « on closeField » qui valide et reformate ne doit pas se déclencher quand
+ * l'utilisateur n'a fait que traverser le champ.
+ *
+ * D'où gTexteAuDebut, pris à l'ouverture et comparé à la fermeture. Le
+ * comparer au texte du NOYAU serait faux : endFieldEdit vient justement d'y
+ * recopier ce que contient l'éditeur, donc les deux seraient toujours égaux
+ * et closeField ne partirait jamais.
+ *
+ * gSansMessageChamp couvre les fermetures TECHNIQUES — changer de pile, tout
+ * remettre à zéro — où le champ s'en va sans que l'utilisateur ait quitté
+ * quoi que ce soit. */
+static NSString *gTexteAuDebut     = nil;
+static BOOL      gSansMessageChamp = NO;
+
+/* ═══ Les messages du clavier ═══════════════════════════════════════════
+ *
+ * HyperCard nomme les touches avant d'agir : arrowKey, tabKey, returnKey,
+ * enterKey, functionKey, controlKey, keyDown. Une pile qui veut sa propre
+ * navigation ou ses propres raccourcis n'a que ça, et HC n'en envoyait aucun.
+ *
+ * Rend YES si un gestionnaire a PRIS la touche : l'appelant s'arrête là. Un
+ * gestionnaire qui fait « pass » rend 0, et la touche retrouve son effet
+ * habituel — le même accord qu'avec returnInField.
+ *
+ * commandKeyDown n'y est pas : Cmd+lettre est intercepté par les équivalents
+ * clavier des menus AVANT que keyDown: soit appelé. Il faudrait
+ * performKeyEquivalent:, c'est-à-dire se placer devant la barre de menus, et
+ * cela mérite d'être fait séparément plutôt qu'en passant. */
+- (BOOL)envoieToucheHyperCard:(NSEvent *)event
+{
+    Object *carte = hc_current_card();
+    if (!carte) return NO;
+
+    NSString *nues = [event charactersIgnoringModifiers];
+    if ([nues length] == 0) return NO;          /* touche morte, accent en cours */
+    unichar key = [nues characterAtIndex:0];
+    NSUInteger mods = [event modifierFlags];
+
+    const char *msg = NULL;
+    char arg[32];
+    arg[0] = '\0';
+
+    switch (key) {
+        case NSLeftArrowFunctionKey:    msg = "arrowKey"; strcpy(arg, "left");  break;
+        case NSRightArrowFunctionKey:   msg = "arrowKey"; strcpy(arg, "right"); break;
+        case NSUpArrowFunctionKey:      msg = "arrowKey"; strcpy(arg, "up");    break;
+        case NSDownArrowFunctionKey:    msg = "arrowKey"; strcpy(arg, "down");  break;
+        case NSTabCharacter:            msg = "tabKey";                         break;
+        case NSCarriageReturnCharacter: msg = "returnKey";                      break;
+        case NSEnterCharacter:          msg = "enterKey";                       break;
+        default: break;
+    }
+
+    if (!msg && key >= NSF1FunctionKey && key <= NSF15FunctionKey) {
+        msg = "functionKey";
+        snprintf(arg, sizeof arg, "%d", (int)(key - NSF1FunctionKey) + 1);
+    }
+
+    if (!msg && (mods & NSEventModifierFlagControl) && key >= 1 && key < 128) {
+        msg = "controlKey";
+        snprintf(arg, sizeof arg, "%d", (int)key);
+    }
+
+    if (!msg) {
+        /* keyDown : toute touche qui produit un caractère, celui-ci en
+         * argument. On prend [event characters] et non les touches nues :
+         * « on keyDown k » attend le caractère TAPÉ, majuscule et accent
+         * compris. */
+        NSString *ch = [event characters];
+        if ([ch length] == 0) return NO;
+        unichar c = [ch characterAtIndex:0];
+        if (c < 32 || c == 0x7F) return NO;             /* commande, pas caractère */
+        if (c >= 0xF700 && c <= 0xF8FF) return NO;      /* touche de fonction */
+        msg = "keyDown";
+        snprintf(arg, sizeof arg, "%s", [ch UTF8String]);
+    }
+
+    return hc_send_arg(carte, msg, arg[0] ? arg : NULL) ? YES : NO;
+}
+
+/* ═══ returnInField ═════════════════════════════════════════════════════
+ *
+ * HyperCard envoie returnInField quand Retour est frappé dans un champ. Si
+ * personne ne le traite, le retour à la ligne s'insère normalement — c'est
+ * ce que fait « pass returnInField », et ici c'est un simple NO rendu à
+ * NSTextView, qui poursuit son travail habituel.
+ *
+ * hc_send rend 1 seulement si un gestionnaire a VRAIMENT pris le message :
+ * depuis que « pass » veut dire ce qu'il dit, un gestionnaire qui passe rend
+ * la main, et la touche retrouve son effet normal. Les deux mécaniques se
+ * répondent exactement.
+ *
+ * PAS d'enterInField. Sur un portable, Entrée n'existe que par Fn+Retour, et
+ * Cocoa envoie les deux touches sur insertNewline: — les distinguer oblige à
+ * fouiller l'événement courant. Se tromper ferait fermer le champ sur un
+ * simple Retour : un risque réel sur la touche dont on se sert, pour servir
+ * celle qu'on n'a pas. Le jour où enterInField manquera à quelqu'un, il sera
+ * temps ; ce n'est pas aujourd'hui.
+ *
+ * Première méthode de délégué de texte de ce fichier. Les suivantes —
+ * tabKey, arrowKey — passeront par ici. */
+- (BOOL)textView:(NSTextView *)tv doCommandBySelector:(SEL)cmd
+{
+    if (tv != gFieldEditor || !gEditingField) return NO;
+
+    if (cmd == @selector(insertNewline:))
+        return hc_send(gEditingField, "returnInField") ? YES : NO;
+
+    /* Tabulation dans un champ : HyperCard envoie tabKey. Sans preneur, la
+     * tabulation s'insère comme d'habitude. */
+    if (cmd == @selector(insertTab:))
+        return hc_send_arg(hc_current_card(), "tabKey", NULL) ? YES : NO;
+
+    return NO;
+}
+
+/* Ce qu'il faut lâcher avant de changer de carte depuis l'INTERFACE.
+ *
+ * Un clic sur un bouton passe par mouseDown:, qui referme déjà l'édition en
+ * cours — sans quoi gEditingField et sa zone de texte flottante resteraient
+ * affichés par-dessus la carte suivante. Un clic de MENU ne passe pas par là,
+ * et n'avait donc personne pour faire ce ménage. */
+- (void)prepareForCardChange
+{
+    if (gEditingField) [self endFieldEdit];
+    [self dropFloating];
+    gSelected = NULL;
+}
+
 - (void)toggleBackground:(id)sender {
+    if (hcv_menu_trappe("Background")) return;   /* la pile détourne l'article */
     gEditBackground = !gEditBackground;
     gSelected = NULL;
     [gView endFieldEdit];
@@ -3101,7 +3391,14 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)resetForNewStack {
-    if (gEditingField) [self endFieldEdit];
+    /* Fermeture technique : la pile s'en va, l'utilisateur n'a quitté aucun
+     * champ. Un closeField ici ferait tourner le script d'un objet qui est
+     * sur le point de disparaître. */
+    if (gEditingField) {
+        gSansMessageChamp = YES;
+        [self endFieldEdit];
+        gSansMessageChamp = NO;
+    }
     [self dropFloating];
     close_popup_menu();
     hc_set_selection(NULL, 0, 0);
@@ -3917,6 +4214,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)findInStack:(id)sender {
+    if (hcv_menu_trappe("Find…")) return;   /* la pile détourne l'article */
     if (!gMsgBox) return;
 
     NSString *amorce = @"find \"\"";
@@ -3979,6 +4277,73 @@ static BOOL     gInIdle = NO;
     if (gIdleTimer) { [gIdleTimer invalidate]; gIdleTimer = nil; }
 }
 
+/* ═══ mouseEnter, mouseLeave, mouseWithin ═══════════════════════════════
+ *
+ * Le survol. Les boutons qui s'allument au passage du curseur sont partout
+ * dans les piles des années 90, et HC n'envoyait aucun de ces trois messages.
+ *
+ * Traité au TEMPS MORT, avec « idle », et non sur les événements de
+ * déplacement de souris. C'est l'architecture d'HyperCard, et elle nous
+ * arrange doublement : rien à faire suivre à la fenêtre — pas de
+ * setAcceptsMouseMovedEvents:, pas de mouseMoved: —, et surtout mouseWithin
+ * est borné à dix envois par seconde au lieu d'un par pixel parcouru. Sur une
+ * carte à cent boutons, la différence est exactement celle qu'on a passé la
+ * journée à corriger ailleurs.
+ *
+ * Le prix : une transition est vue au dixième de seconde près. Pour un bouton
+ * qui s'allume, personne ne le remarque.
+ *
+ * Trois gardes, chacun contre un vrai danger :
+ *
+ *   - seulement à l'outil doigt. Aux outils Bouton ou Champ, survoler un
+ *     objet ne doit pas faire tourner son script : on l'AUTEURE, on ne s'en
+ *     sert pas.
+ *
+ *   - rien pendant qu'on tient le bouton de la souris. Un glissement n'est
+ *     pas un survol, et le script n'a pas à s'exécuter au milieu.
+ *
+ *   - à un changement de carte, on oublie l'objet survolé SANS lui envoyer
+ *     mouseLeave. Il appartenait à l'ancienne carte et a pu être libéré :
+ *     lui parler serait lire de la mémoire rendue. On compare les pointeurs
+ *     de carte, on ne les déréférence jamais. */
+static Object *gSurvole      = NULL;   /* l'objet sous le curseur          */
+static Object *gSurvoleCarte = NULL;   /* et la carte où on l'a vu         */
+
+static void hcv_survol(HCView *v, Object *carte)
+{
+    if (gTool != TOOL_BROWSE || gDragging || gPenDrawing || gFloatDragging) {
+        gSurvole = NULL;
+        gSurvoleCarte = carte;
+        return;
+    }
+
+    if (carte != gSurvoleCarte) {          /* on a changé de carte */
+        gSurvole = NULL;
+        gSurvoleCarte = carte;
+    }
+
+    NSWindow *w = [v window];
+    Object *sous = NULL;
+    if (w && [w isKeyWindow]) {
+        NSPoint p = [v convertPoint:[w mouseLocationOutsideOfEventStream]
+                           fromView:nil];
+        if (NSPointInRect(p, [v bounds])) sous = part_at(carte, p);
+    }
+
+    if (sous == gSurvole) {
+        if (sous) hc_send(sous, "mouseWithin");
+        return;
+    }
+
+    Object *ancien = gSurvole;
+    gSurvole = sous;
+
+    /* Un gestionnaire peut changer de carte sous nos pieds : on ne parle au
+     * suivant que si l'on est toujours là où l'on croit être. */
+    if (ancien) hc_send(ancien, "mouseLeave");
+    if (sous && hc_current_card() == carte) hc_send(sous, "mouseEnter");
+}
+
 - (void)idleTick:(NSTimer *)t {
     (void)t;
     if (gInIdle || hc_is_running()) return;
@@ -3989,7 +4354,16 @@ static BOOL     gInIdle = NO;
     if (!card) return;
 
     gInIdle = YES;
+    hcv_survol(v, card);
     hc_send(card, "idle");
+
+    /* Et rafraîchir si l'un de ces gestionnaires a changé quelque chose.
+     * Personne ne le faisait : un « on idle » qui bougeait un objet, ou un
+     * mouseEnter qui allume un bouton, restaient invisibles jusqu'au prochain
+     * redessin venu d'ailleurs. Le drapeau du noyau évite de tout repeindre
+     * dix fois par seconde pour rien. */
+    if (hc_take_visual_dirty()) [v setNeedsDisplay:YES];
+
     gInIdle = NO;
 }
 
@@ -4199,7 +4573,7 @@ static NSTextField  *gSprayDensityLabel = nil;
                              NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gToolPanel setTitle:@"Outils"];
+    [gToolPanel setTitle:@"Tools"];
     [gToolPanel setFloatingPanel:YES];
     [gToolPanel setBecomesKeyOnlyIfNeeded:YES];
     [gToolPanel setHidesOnDeactivate:YES];
@@ -4493,6 +4867,12 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     [[self window] makeFirstResponder:gFieldEditor];
+
+    /* openField en DERNIER, quand l'éditeur est entièrement en place : le
+     * gestionnaire est du script, il peut sélectionner du texte, changer de
+     * carte, refermer le champ. Tout ce qu'il touche doit déjà exister. */
+    gTexteAuDebut = [[gFieldEditor string] copy];
+    hc_send(field, "openField");
 }
 
 - (void)scrollWheel:(NSEvent *)event {
@@ -4643,11 +5023,25 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     [gFieldEditor setDelegate:nil];
 
+    /* Ce qu'il faut retenir AVANT de tout effacer : à qui parler, et si le
+     * texte a bougé. */
+    Object   *champ   = gEditingField;
+    NSString *final   = gFieldEditor ? [gFieldEditor string] : nil;
+    BOOL      change  = (champ && gTexteAuDebut && final &&
+                         ![final isEqualToString:gTexteAuDebut]);
+
     [gFieldScroll removeFromSuperview];
     gFieldScroll = nil;
     gFieldEditor = nil;
     gEditingField = NULL;
+    gTexteAuDebut = nil;
     [self setNeedsDisplay:YES];
+
+    /* Le message part une fois l'état rendu : un gestionnaire qui rappellerait
+     * endFieldEdit — en changeant de carte, par exemple — ne trouve alors plus
+     * rien à fermer, et ne peut pas boucler. */
+    if (champ && !gSansMessageChamp)
+        hc_send(champ, change ? "closeField" : "exitField");
 }
 - (void)startStillDownTimer {
     [self stopStillDownTimer];

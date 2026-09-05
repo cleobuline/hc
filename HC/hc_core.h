@@ -528,6 +528,21 @@ int     hc_layer_is_live(Object *layer);
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
 int     hc_send(Object *target, const char *message);
 
+/* Choisir un article de menu. Envoie « doMenu <article> » à la carte courante
+ * et n'exécute l'article que si personne ne l'intercepte — voir hc_core.c.
+ * C'est par ici que doit passer TOUT déclenchement de menu, script ou clic. */
+void    hc_do_menu(const char *item);
+
+/* La moitié « message » de hc_do_menu : propose l'article à la pile et rend 1
+ * si un gestionnaire l'a pris. Pour l'interface, dont les actions natives
+ * savent déjà agir et n'ont qu'à demander d'abord. */
+/* Envoie un message avec UN argument, et rend 1 si un gestionnaire l'a pris.
+ * Les messages du clavier en ont tous un : « arrowKey left », « keyDown a »,
+ * « functionKey 3 ». Passer NULL pour un message sans argument. */
+int     hc_send_arg(Object *target, const char *message, const char *arg);
+
+int     hc_menu_trappe(const char *item);
+
 /* Exécute une seule ligne de script dans le contexte de la carte courante
    (l'équivalent de la boîte de message d'HyperCard). */
 void    hc_do(const char *line);
