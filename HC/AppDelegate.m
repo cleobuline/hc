@@ -76,7 +76,29 @@ static NSMenu *find_file_menu(void)
 - (void)goMenuItem:(id)sender
 {
     NSString *t = [sender title];
-    if (t) hc_do_menu([t UTF8String]);
+    if (!t) return;
+
+    [gView prepareForCardChange];
+    hc_do_menu([t UTF8String]);
+
+    /* ET REDESSINER — c'est ce qui manquait.
+     *
+     * Le chemin des SCRIPTS obtient son rafraîchissement de cocoa_idle,
+     * appelée à chaque respiration de la boucle d'exécution : elle consomme
+     * le drapeau du noyau et invalide la vue. Un clic de menu ne fait tourner
+     * aucune boucle, personne ne consommait donc le drapeau, et la carte
+     * courante changeait SANS que l'écran bouge.
+     *
+     * D'où l'illusion que seul « First » fonctionnait : après plusieurs
+     * « Next » silencieux, il ramenait la carte courante sur celle que
+     * l'écran montrait encore, et l'affichage redevenait juste — non parce
+     * qu'il s'était rafraîchi, mais parce que la réalité l'avait rejoint.
+     *
+     * On consomme le drapeau nous-mêmes pour ne pas laisser à la prochaine
+     * respiration une invalidation TOTALE dont on vient de faire l'ouvrage. */
+    (void)hc_take_visual_dirty();
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {

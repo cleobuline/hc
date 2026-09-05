@@ -3183,6 +3183,19 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     draw_popup_menu();
 }
 
+/* Ce qu'il faut lâcher avant de changer de carte depuis l'INTERFACE.
+ *
+ * Un clic sur un bouton passe par mouseDown:, qui referme déjà l'édition en
+ * cours — sans quoi gEditingField et sa zone de texte flottante resteraient
+ * affichés par-dessus la carte suivante. Un clic de MENU ne passe pas par là,
+ * et n'avait donc personne pour faire ce ménage. */
+- (void)prepareForCardChange
+{
+    if (gEditingField) [self endFieldEdit];
+    [self dropFloating];
+    gSelected = NULL;
+}
+
 - (void)toggleBackground:(id)sender {
     if (hcv_menu_trappe("Background")) return;   /* la pile détourne l'article */
     gEditBackground = !gEditBackground;

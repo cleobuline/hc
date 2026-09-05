@@ -27,6 +27,9 @@ BOOL hcv_menu_trappe(const char *article);
  * encore la carte de la pile qu'on vient de quitter. */
 - (Object *)rememberedCard;
 - (void)dropFloating;
+/* Lâcher l'édition et la sélection avant un changement de carte venu de
+ * l'interface. Voir HCview.m. */
+- (void)prepareForCardChange;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
 - (void)installToolPalette;
