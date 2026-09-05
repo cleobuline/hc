@@ -766,18 +766,33 @@ static void draw_part(Object *o) {
         NSAttributedString *as = field_attr_string(o, s, at);
 
         if (o != gEditingField) {
-            if (isScroll) {
-                [NSGraphicsContext saveGraphicsState];
-                NSRectClip(tr);
-                [as drawInRect:field_text_draw_rect(o)];
-                [NSGraphicsContext restoreGraphicsState];
-            } else {
-                /* Remplace [as drawInRect:tr] par : */
-                /* Dans draw_part, pour le rendu statique des champs : */
-                [as drawWithRect:tr
-                        options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
-                        context:nil];
-            }
+            /* On ne trace QUE la plage visible.
+             *
+             * -drawInRect: mettait en page tout le texte, quarante-huit
+             * kilo-octets pour une vingtaine de lignes affichées : mesuré à
+             * plus de quatre cents millisecondes par image sur un champ
+             * chargé. NSLayoutManager, lui, compose paresseusement — en ne
+             * lui demandant que les glyphes du rectangle visible, il ne
+             * touchera jamais aux lignes du dessous. La mise en page est en
+             * plus conservée d'une image à l'autre par field_layout.
+             *
+             * Le décalage vertical porte le défilement : le conteneur a son
+             * origine au début du texte, et l'on pose cette origine plus haut
+             * que le cadre pour montrer le passage voulu. */
+            NSTextContainer *tc = nil;
+            NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
+
+            CGFloat dy = isScroll ? o->scroll : 0;
+            NSRect visible = NSMakeRect(0, dy, tr.size.width, tr.size.height);
+            NSRange plage = [lm glyphRangeForBoundingRect:visible
+                                          inTextContainer:tc];
+            NSPoint origine = NSMakePoint(tr.origin.x, tr.origin.y - dy);
+
+            [NSGraphicsContext saveGraphicsState];
+            NSRectClip(tr);
+            [lm drawBackgroundForGlyphRange:plage atPoint:origine];
+            [lm drawGlyphsForGlyphRange:plage atPoint:origine];
+            [NSGraphicsContext restoreGraphicsState];
         }
 
         int fstart = 0, flen = 0;
@@ -785,13 +800,16 @@ static void draw_part(Object *o) {
             hc_found_range(o, &fstart, &flen) && flen > 0 &&
             fstart + flen <= (int)[s length]) {
 
-            NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-            NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-            NSTextContainer *tc = [[NSTextContainer alloc]
-                                    initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-            [tc setLineFragmentPadding:0];
-            [lm addTextContainer:tc];
-            [ts addLayoutManager:lm];
+            /* La mise en page du TRACÉ, comme pour le test de clic.
+             *
+             * Celle qu'on montait ici gardait l'interligne de police par
+             * défaut, alors que le tracé l'a désactivé : la boîte noire du
+             * texte trouvé se décalait donc vers le bas à mesure qu'on
+             * descendait dans le champ. Personne ne l'avait encore signalé,
+             * mais c'est le même défaut que celui de la ligne surlignée, et
+             * il se corrige au même endroit. */
+            NSTextContainer *tc = nil;
+            NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
 
             NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fstart, flen)
                                        actualCharacterRange:NULL];
@@ -1024,6 +1042,54 @@ static BOOL mods_has(const char *mods, const char *k) {
         if (strncasecmp(p, k, n) == 0) return YES;
     return NO;
 }
+/* ═══ VERROU D'ÉCRAN, CÔTÉ PEINTURE ═════════════════════════════════════
+ *
+ * « lock screen » ne verrouillait rien du tout pour le dessin. Le noyau
+ * prévient pourtant l'hôte par host_global_set("lockScreen", …), mais
+ * personne ici n'écoutait : chaque segment tracé invalidait sa zone, et un
+ * tracé de surface en produit plus de deux mille. Entre un « lock screen »
+ * et son « unlock screen », l'écran se recomposait donc deux mille fois —
+ * exactement ce que la commande existe pour empêcher.
+ *
+ * Le noyau fait déjà cela pour les CHAMPS : notify_field met de côté ceux
+ * qui changent pendant le verrou, et verrou_reveille les réveille au
+ * déverrouillage. Il manquait le pendant pour la peinture, qui ne passe pas
+ * par le noyau mais va droit à l'hôte.
+ *
+ * On accumule donc l'union des zones sales et l'on n'invalide qu'une fois,
+ * au déverrouillage. Le noyau déverrouille de lui-même en retombant au
+ * repos, si bien qu'un script qui oublie son « unlock screen » ne laisse pas
+ * l'écran figé. */
+static BOOL   gLockScreen = NO;
+static BOOL   gSaleTout   = NO;   /* une invalidation totale est en attente */
+static BOOL   gSaleUnPeu  = NO;   /* gSaleRect porte une zone en attente    */
+static NSRect gSaleRect;
+
+static void hcv_invalide(NSRect r)
+{
+    if (!gLockScreen) { [gView setNeedsDisplayInRect:r]; return; }
+    gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
+    gSaleUnPeu = YES;
+}
+
+static void hcv_invalide_tout(void)
+{
+    if (!gLockScreen) { [gView setNeedsDisplay:YES]; return; }
+    gSaleTout = YES;
+}
+
+static void hcv_verrou_ecran(BOOL ferme)
+{
+    if (ferme == gLockScreen) return;
+    gLockScreen = ferme;
+    if (ferme) return;                    /* on ferme : rien à faire */
+
+    if (gSaleTout)       [gView setNeedsDisplay:YES];
+    else if (gSaleUnPeu) [gView setNeedsDisplayInRect:gSaleRect];
+    gSaleTout = NO;
+    gSaleUnPeu = NO;
+}
+
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
     if (!card || !gView) return;
@@ -1084,7 +1150,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
      * le rectangle en pointillés bouge sur toute sa surface, et le déplacement
      * d'un objet, qui laisse un trou à son ancienne place. */
     if (gTool == TOOL_SELRECT || (gSelected && gTool != TOOL_BROWSE)) {
-        [gView setNeedsDisplay:YES];
+        hcv_invalide_tout();
         return;
     }
 
@@ -1099,7 +1165,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     if (gTool == TOOL_ERASER) marge = 20;
     if (gTool == TOOL_SPRAY)  marge = gSprayRadius + 4;
 
-    [gView setNeedsDisplayInRect:NSInsetRect(sale, -marge, -marge)];
+    hcv_invalide(NSInsetRect(sale, -marge, -marge));
 }
 static void cocoa_drag_old(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
@@ -1177,7 +1243,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                                     (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
         flood_fill(rep, (int)p.x, (int)p.y);
-        [gView setNeedsDisplay:YES];   /* le remplissage peut aller partout */
+        hcv_invalide_tout();           /* le remplissage peut aller partout */
         return;
     }
 
@@ -1233,8 +1299,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         /* Ne rafraîchir que le point posé. Marquer toute la vue sale
          * recomposait la carte entière — calque, champs, boutons — une fois
          * par point, et un maillage de surface en compte des milliers. */
-        [gView setNeedsDisplayInRect:
-            NSMakeRect(p.x - marge, p.y - marge, 2 * marge, 2 * marge)];
+        hcv_invalide(NSMakeRect(p.x - marge, p.y - marge, 2 * marge, 2 * marge));
         return;
     }
 
@@ -1423,17 +1488,12 @@ static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
 
     NSRect tr  = field_text_rect(f);
     NSRect off = field_text_draw_rect(f);
-    NSAttributedString *as =
-        field_attr_string(f, s, obj_attrs(f, 12, [NSColor blackColor]));
 
-    NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-    NSTextContainer *tc = [[NSTextContainer alloc]
-                            initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-    [tc setLineFragmentPadding:0];
-    [lm setUsesFontLeading:NO];
-    [lm addTextContainer:tc];
-    [ts addLayoutManager:lm];
+    /* Même mise en page que le tracé — voir click_line_number. */
+    NSTextContainer *tc = nil;
+    NSLayoutManager *lm = field_layout(f, s,
+                                       obj_attrs(f, 12, [NSColor blackColor]),
+                                       tr.size.width, &tc);
 
     NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
     if (q.y < 0) return 0;
@@ -1469,17 +1529,23 @@ static int click_line_number(Object *f, NSPoint p) {
 
     NSRect tr  = field_text_rect(f);
     NSRect off = field_text_draw_rect(f);
-    NSAttributedString *as =
-        field_attr_string(f, s, obj_attrs(f, 12, [NSColor blackColor]));
 
-    NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-    NSTextContainer *tc = [[NSTextContainer alloc]
-                            initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-    [tc setLineFragmentPadding:0];
-    [lm setUsesFontLeading:NO];
-    [lm addTextContainer:tc];
-    [ts addLayoutManager:lm];
+    /* La MÊME mise en page que le tracé, et non une seconde montée pour
+     * l'occasion.
+     *
+     * Deux raisons, et la seconde est celle qui se voit. La première : cette
+     * fonction est appelée dans « repeat while the mouse is down », donc à
+     * chaque tour de boucle, et remonter la mise en page d'un champ de
+     * quarante-huit kilo-octets à chaque fois coûtait des centaines de
+     * millisecondes par tour. La seconde : le tracé et le clic DOIVENT
+     * s'accorder au pixel près, et deux mises en page montées séparément
+     * finissent toujours par diverger — l'oubli de setUsesFontLeading:NO dans
+     * field_layout a suffi à décaler la ligne surlignée. Une seule mise en
+     * page, et la question ne se pose plus. */
+    NSTextContainer *tc = nil;
+    NSLayoutManager *lm = field_layout(f, s,
+                                       obj_attrs(f, 12, [NSColor blackColor]),
+                                       tr.size.width, &tc);
 
     NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
     if (q.y < 0) return 0;
@@ -1694,6 +1760,13 @@ static BOOL gCursorHidden = NO;
 static void cocoa_global_set(const char *name, const char *value) {
     int vrai = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 
+    /* Le verrou d'écran du noyau. Sans cette ligne, « lock screen » ne
+     * retenait rien du dessin — voir hcv_verrou_ecran. */
+    if (strcasecmp(name, "lockScreen") == 0) {
+        hcv_verrou_ecran(vrai ? YES : NO);
+        return;
+    }
+
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
         [gView setNeedsDisplay:YES];
@@ -1825,7 +1898,7 @@ static void cocoa_idle(void) {
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
      * montrer. */
-    if (hc_take_visual_dirty()) [gView setNeedsDisplay:YES];
+    if (hc_take_visual_dirty()) hcv_invalide_tout();
 
     /* Au plus soixante fois par seconde. Ce qui n'est pas montré maintenant
      * reste marqué sale et partira à l'image suivante : rien ne se perd, et la
@@ -3369,6 +3442,25 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     /* 8. Outil BROWSE (Interaction avec la carte) */
     if (gTool == TOOL_BROWSE) {
+        /* Refermer l'édition en cours avant tout AUTRE clic, sinon un champ
+         * en cours d'édition la garde ouverte pendant qu'un bouton clique à
+         * côté exécute son script.
+         *
+         * C'est un vrai problème quand ce script change de carte (« go
+         * next », par exemple) : gEditingField et sa zone de texte flottante
+         * pointaient toujours sur le champ de l'ANCIENNE carte, et
+         * continuaient de s'afficher par-dessus la nouvelle — en
+         * surimpression, comme si les deux cartes se superposaient. Chaque
+         * branche ci-dessous appelait déjà endFieldEdit pour SON propre cas
+         * (changer de champ, cliquer la carte nue), sauf celle-ci — cliquer
+         * un bouton, un champ verrouillé ou un menu popup pendant qu'un AUTRE
+         * champ s'édite — qui ne l'appelait jamais.
+         *
+         * On épargne le champ qu'on re-clique lui-même : y cliquer ne fait
+         * que replacer le curseur, pas recommencer l'édition, et lui
+         * appliquer endFieldEdit ici la fermerait pour rien. */
+        if (gEditingField && hit != gEditingField) [self endFieldEdit];
+
         if (hit && hit->type == OBJ_FIELD && hit->style &&
             strcmp(hit->style, "scrolling") == 0) {
             CGFloat bw = 16;
@@ -3466,8 +3558,9 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
             /* Clic sur la carte nue : HyperCard lui envoie quand même
              * mouseDown, d'où il remonte au fond puis à la pile. C'est ce qui
              * permet à un script de carte de réagir à un clic n'importe où —
-             * les piles de navigation s'en servent beaucoup. */
-            [self endFieldEdit];
+             * les piles de navigation s'en servent beaucoup. endFieldEdit
+             * déjà fait en entrée du bloc TOOL_BROWSE, inutile de le refaire
+             * ici. */
             gPressed = hc_current_card();
             hc_send(gPressed, "mouseDown");
             [self startStillDownTimer];

@@ -489,6 +489,28 @@ static void arena_shutdown(void)
  * par « set lockScreen to … ». */
 static int g_ecran_verrouille = 0;
 
+/* « lock messages » : les messages SYSTÈME — openCard, closeCard,
+ * openBackground, closeBackground — ne partent plus.
+ *
+ * C'est ce qui permet à un script de parcourir une pile sans réveiller les
+ * gestionnaires de chaque carte : un sommaire qui relève un champ sur cent
+ * cartes n'a pas à déclencher cent openCard. Sans cette commande, un tel
+ * parcours exécute les scripts de toute la pile et peut échouer sur une
+ * carte dont le gestionnaire suppose autre chose.
+ *
+ * Seuls les messages système sont retenus : un « send » explicite part
+ * quand même, comme dans HyperCard. */
+static int g_messages_verrouilles = 0;
+
+/* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
+ * envois automatiques de changement de carte passent par ici — et eux seuls,
+ * pour que « send » continue de partir. */
+static void hc_send_systeme(Object *o, const char *message)
+{
+    if (!o || g_messages_verrouilles) return;
+    hc_send(o, message);
+}
+
 /* Champs modifiés pendant le verrou, à rafraîchir au déverrouillage.
  *
  * Demander un rafraîchissement GLOBAL au déverrouillage, comme je le faisais,
@@ -3638,7 +3660,22 @@ static int parse_datetime(const char *s, struct tm *tm)
 {
     if (!s) return 0;
 
-    int nums[12], nn = 0;
+    /* Les nombres sont accumulés en LONG LONG, pas en int.
+     *
+     * Les secondes du Macintosh comptent depuis 1904 : elles ont dépassé
+     * INT_MAX en 1972, et valent aujourd'hui près de quatre milliards. Sur un
+     * int elles débordaient — comportement indéfini, en pratique une valeur
+     * négative —, si bien que le test « nn == 1 && nums[0] > 100000 » plus bas
+     * était faux et que la branche des secondes n'était JAMAIS prise. Toute
+     * date passée en secondes était rejetée avec « date incomprise », y
+     * compris celles que le noyau venait lui-même de produire : « put the
+     * seconds into t » suivi de « convert t to dateItems » ne marchait pas,
+     * alors que c'est l'idiome le plus courant pour dater quelque chose.
+     *
+     * Le plafond évite qu'une suite de chiffres démesurée déborde à son tour :
+     * au-delà, ce n'est de toute façon plus une date. */
+    long long nums[12];
+    int nn = 0;
     int mon = -1, hh = -1, mi = 0, ss = 0, meridian = 0;  /* 1 = AM, 2 = PM */
     int sawslash = 0, sawcolon = 0, sawname = 0;
 
@@ -3651,11 +3688,14 @@ static int parse_datetime(const char *s, struct tm *tm)
         if (!*p) break;
 
         if (isdigit((unsigned char)*p)) {
-            int v = 0;
-            while (isdigit((unsigned char)*p)) { v = v * 10 + (*p - '0'); p++; }
+            long long v = 0;
+            while (isdigit((unsigned char)*p)) {
+                if (v < 1000000000000LL) v = v * 10 + (*p - '0');
+                p++;
+            }
             if (*p == ':') {                       /* début d'une heure */
                 sawcolon = 1;
-                hh = v; p++;
+                hh = (int)v; p++;
                 mi = 0;
                 while (isdigit((unsigned char)*p)) { mi = mi * 10 + (*p - '0'); p++; }
                 if (*p == ':') {
@@ -3684,7 +3724,7 @@ static int parse_datetime(const char *s, struct tm *tm)
 
     /* --- secondes du Macintosh : un seul nombre, et il est énorme --- */
     if (!sawslash && !sawcolon && !sawname && nn == 1 && nums[0] > 100000) {
-        time_t t = (time_t)((long long)nums[0] - HC_MAC_EPOCH);
+        time_t t = (time_t)(nums[0] - HC_MAC_EPOCH);
         struct tm *lt = localtime(&t);
         if (!lt) return 0;
         *tm = *lt;
@@ -3694,19 +3734,19 @@ static int parse_datetime(const char *s, struct tm *tm)
     int year = -1, day = -1;
 
     if (sawname) {                       /* « Friday, August 7, 2026 » */
-        if (nn >= 1) day  = nums[0];
-        if (nn >= 2) year = nums[1];
+        if (nn >= 1) day  = (int)nums[0];
+        if (nn >= 2) year = (int)nums[1];
         if (mon < 0) return 0;           /* un nom de jour seul n'est pas une date */
         if (day < 0) day = 1;            /* « August » = le 1er août */
     } else if (sawslash) {               /* « 8/7/26 » : mois, jour, année */
-        if (nn >= 1) mon  = nums[0] - 1;
-        if (nn >= 2) day  = nums[1];
-        if (nn >= 3) year = nums[2];
+        if (nn >= 1) mon  = (int)nums[0] - 1;
+        if (nn >= 2) day  = (int)nums[1];
+        if (nn >= 3) year = (int)nums[2];
     } else if (nn >= 3) {                /* dateItems : y, m, d, h, mn, s, dow */
-        year = nums[0]; mon = nums[1] - 1; day = nums[2];
-        if (nn >= 4) hh = nums[3];
-        if (nn >= 5) mi = nums[4];
-        if (nn >= 6) ss = nums[5];
+        year = (int)nums[0]; mon = (int)nums[1] - 1; day = (int)nums[2];
+        if (nn >= 4) hh = (int)nums[3];
+        if (nn >= 5) mi = (int)nums[4];
+        if (nn >= 6) ss = (int)nums[5];
         /* nums[6] est le jour de la semaine : recalculé, jamais lu */
     } else if (sawcolon) {               /* heure seule : on garde aujourd'hui */
         time_t now = time(NULL);
@@ -4289,6 +4329,29 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
 {
     if (geom_read(o, prop, out, outlen)) return 1;
     if (ci_equal(prop, "id"))      { snprintf(out, outlen, "%d", o->id); return 1; }
+    /* « the number of this card », « the number of card field "x" » : le RANG
+     * de l'objet parmi ses semblables, à ne pas confondre avec le comptage
+     * qu'est « the number of cards ».
+     *
+     * term_value le traite bien avant d'arriver ici, mais l'évaluateur v3,
+     * lui, passe par lit_prop : sans cette entrée, « the number of this
+     * card » repartait à chaque fois vers l'ancien interpréteur par
+     * reconstitution du texte source. */
+    if (ci_equal(prop, "number")) {
+        if (o->type == OBJ_CARD) {
+            int n = card_index(o->owner, o);
+            if (n < 0) return 0;
+            snprintf(out, outlen, "%d", n + 1);
+            return 1;
+        }
+        if (o->type == OBJ_BUTTON || o->type == OBJ_FIELD) {
+            int n = hc_object_number(o);
+            if (n <= 0) return 0;
+            snprintf(out, outlen, "%d", n);
+            return 1;
+        }
+        return 0;
+    }
     if (ci_equal(prop, "name")) {
         if (shortf) snprintf(out, outlen, "%s", o->name ? o->name : "");
         else        hc_describe(o, out, outlen);
@@ -5530,6 +5593,66 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
     }
 }
 
+/* « the number of cards », « the number of card buttons », « the number of
+ * backgrounds » : un COMPTAGE d'objets, que seul l'hôte peut faire.
+ *
+ * L'évaluateur sait déjà compter les morceaux — « the number of items of x »
+ * — mais pas les objets, et ces formes repartaient donc en entier vers
+ * l'ancien interpréteur par reconstitution du texte source. Avec les pertes
+ * qui vont avec : « the number of card fields » se reconstituait en
+ * « number of card », que term_value rendait tel quel, en clair, au lieu
+ * d'un nombre.
+ *
+ * On ne traite que le PLURIEL nu, sans désignateur ni cible : « the number
+ * of card 3 » désigne le RANG de cette carte, et « the number of cards of
+ * bg 2 » porte une cible — les deux restent à l'ancien code.
+ *
+ * La portée absente compte la carte ET le fond, comme term_value : les rangs
+ * se comptent séparément dans chacun, mais le total est resté la valeur par
+ * défaut par compatibilité. */
+static int v3_nombre_objets(const HctNoeud *obj, int *out)
+{
+    if (!obj || obj->genre != HCTN_OBJET) return 0;
+    if (obj->designateur != HCT_DES_AUCUN) return 0;
+    if (obj->nfils != 0) return 0;
+
+    Object *card  = g_current_card;
+    Object *stack = owning_stack(card);
+
+    if (obj->typeobj == HCT_OBJ_CARD) { *out = card_count(stack); return 1; }
+
+    if (obj->typeobj == HCT_OBJ_BACKGROUND) {
+        int n = 0;
+        for (int i = 0; stack && i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_BACKGROUND) n++;
+        *out = n;
+        return 1;
+    }
+
+    if (obj->typeobj != HCT_OBJ_BUTTON && obj->typeobj != HCT_OBJ_FIELD &&
+        obj->typeobj != HCT_OBJ_PART)
+        return 0;
+
+    Object *coins[2] = { NULL, NULL };
+    if      (obj->portee == HCT_PORTEE_CARTE) coins[0] = card;
+    else if (obj->portee == HCT_PORTEE_FOND)  coins[0] = card ? card->bg : NULL;
+    else { coins[0] = card; coins[1] = card ? card->bg : NULL; }
+
+    int n = 0;
+    for (int k = 0; k < 2; k++) {
+        Object *o = coins[k];
+        for (int i = 0; o && i < o->nparts; i++) {
+            int t = o->parts[i]->type;
+            if (obj->typeobj == HCT_OBJ_PART) {
+                if (t == OBJ_BUTTON || t == OBJ_FIELD) n++;
+            } else if (t == (obj->typeobj == HCT_OBJ_BUTTON ? OBJ_BUTTON
+                                                            : OBJ_FIELD)) n++;
+        }
+    }
+    *out = n;
+    return 1;
+}
+
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
@@ -5538,11 +5661,33 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     (void)d;
 
-    /* Étiquette fine pour « X of Y » : le genre seul ne dit rien quand la
-     * ligne monte à plusieurs milliers. Une pile de dessin en a produit 8919
-     * en une session, et « recours of » ne permettait de savoir ni laquelle
-     * coûtait, ni s'il s'agissait d'une propriété qu'obj_prop_read ignore ou
-     * d'une cible que hct_resout ne sait pas résoudre. On note donc le NOM. */
+    /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
+     * plusieurs milliers, ni surtout à qui lit le bilan sans l'arbre sous
+     * les yeux. Une pile de dessin en a produit 8919 en une session, et
+     * « recours of » ne permettait de savoir ni laquelle coûtait, ni s'il
+     * s'agissait d'une propriété qu'obj_prop_read ignore ou d'une cible que
+     * hct_resout ne sait pas résoudre.
+     *
+     * « X of Y » se nomme par Y, le nom de la propriété — le cas le plus
+     * fréquent, et celui où le nom seul suffit à savoir quoi chercher. Tout
+     * le reste (« recours objet », « recours chunk »… ) se nomme par un bout
+     * de son texte source : bien moins ambigu qu'un genre de nœud qui ne dit
+     * pas QUEL objet ou QUELLE expression est en cause. */
+    /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
+     * le relevé : ce n'est plus un retour vers l'ancien interpréteur. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
+        char quoi[32];
+        hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+        int compte;
+        if (ci_equal(quoi, "number") && v3_nombre_objets(n->fils[1], &compte)) {
+            char b[24];
+            snprintf(b, sizeof b, "%d", compte);
+            *out = hct_val_texte(b);
+            return 1;
+        }
+    }
+
     if (n->genre == HCTN_OF && n->nfils >= 1 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char nom[32], cle[40];
@@ -5550,7 +5695,13 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         snprintf(cle, sizeof cle, "of %s", nom);
         v3_note("recours", cle);
     } else {
-        v3_note("recours", hct_genre_noeud_nom(n->genre));
+        char frag[32];
+        v3_source(n, frag, sizeof frag);
+        for (char *p = frag; *p; p++) if (*p == '\n' || *p == '\t') *p = ' ';
+        char cle[40];
+        if (*frag) snprintf(cle, sizeof cle, "%s: %s", hct_genre_noeud_nom(n->genre), frag);
+        else       snprintf(cle, sizeof cle, "%s", hct_genre_noeud_nom(n->genre));
+        v3_note("recours", cle);
     }
 
     if (g_v3_recours_prof > 64) {
@@ -5692,14 +5843,180 @@ static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
  * term_value traite bien des choses AVANT d'en arriver là — les constantes,
  * les dates, « the result » —, et court-circuiter aveuglément déplacerait
  * l'ordre de priorité sans qu'on s'en aperçoive. Ajouter un nom ici est une
- * ligne, et c'est le bon prix pour ne pas casser une règle par accident. */
+ * ligne, et c'est le bon prix pour ne pas casser une règle par accident.
+ *
+ * Ordre vérifié pour chacun de ces noms : dans term_value_body, seules les
+ * constantes, la liste sans argument de call_function_body et les variables
+ * passent avant host_global. resolve() n'attrape rien ici — un mot nu sans
+ * mot-clé de type ne désigne aucun objet (vérifié : un champ nommé
+ * « pattern » ne répond pas à « put pattern », ni en v1 ni en v3). Un nom
+ * que l'hôte ignore rend NULL et reprend le chemin normal, si bien qu'en
+ * lister un de trop ne coûte rien. */
 static const char *V3_GLOBALES_HOTE[] = {
     "mouse", "mouseLoc", "mouseH", "mouseV",
     "clickLoc", "clickH", "clickV",
+    "clickChunk", "clickLine", "clickText",
+    "mouseClick", "mouseLine",
     "shiftKey", "optionKey", "commandKey", "cmdKey",
     "tool", "screenRect",
+    /* réglages de peinture et de texte, tenus par l'hôte */
+    "textHeight", "textSize", "textFont", "textStyle", "textAlign",
+    "filled", "lineSize", "pattern", "brush",
     NULL
 };
+
+/* Les propriétés du monde sans argument que call_function_body servait en
+ * relexant « the » + nom : the result, the date (et ses formes longues et
+ * courtes), the selection, the paramCount... Toutes des lectures directes
+ * de globales déjà accessibles ici — aucune n'a besoin de l'ancien
+ * interpréteur, seulement de sa liste, reproduite terme à terme pour ne
+ * rien oublier ni rien réordonner.
+ *
+ * `buf` vient de l'arène de l'appelant (HC_VAL, un mégaoctet) : seul
+ * « stacksInUse » et « the params » peuvent approcher cette taille, mais
+ * les deux se servent du même tampon plutôt que d'ajouter une variante.
+ *
+ * Rend 0 si nom n'est reconnu par rien ici : l'appelant retombe alors sur
+ * term_value, exactement comme avant. */
+static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
+{
+    /* formes composées : long date, short time, abbreviated date… */
+    int datemode = -1;
+    if (ci_word(nom, "long")) {
+        const char *w = skip_spaces(nom + 4);
+        if (ci_word(w, "date")) datemode = 2; else if (ci_word(w, "time")) datemode = 4;
+    } else if (ci_word(nom, "short")) {
+        const char *w = skip_spaces(nom + 5);
+        if (ci_word(w, "date")) datemode = 0; else if (ci_word(w, "time")) datemode = 3;
+    } else if (ci_word(nom, "abbreviated") || ci_word(nom, "abbrev") || ci_word(nom, "abbr")) {
+        const char *w = strchr(nom, ' ');
+        if (w && ci_word(skip_spaces(w), "date")) datemode = 1;
+    }
+    if (datemode >= 0) {
+        char petit[128];
+        format_date(petit, sizeof petit, datemode);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "date")) {
+        char petit[128]; format_date(petit, sizeof petit, 0);
+        *out = hct_val_texte(petit); return 1;
+    }
+    if (ci_equal(nom, "time")) {
+        char petit[128]; format_date(petit, sizeof petit, 3);
+        *out = hct_val_texte(petit); return 1;
+    }
+    if (ci_equal(nom, "result")) { *out = hct_val_texte(g_result); return 1; }
+    if (ci_equal(nom, "foundtext")) { *out = hct_val_texte(g_found_text); return 1; }
+    if (ci_equal(nom, "stacksinuse")) {
+        buf[0] = '\0';
+        size_t used = 0;
+        for (int i = 0; i < g_nusing; i++) {
+            const char *nm = g_using[i]->name ? g_using[i]->name : "";
+            size_t l = strlen(nm);
+            if (used + l + 2 >= (size_t)HC_VAL) break;
+            if (i) buf[used++] = '\n';
+            memcpy(buf + used, nm, l); used += l;
+            buf[used] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "selection") || ci_equal(nom, "selectedtext")) {
+        selection_text(buf, HC_VAL);
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedfield")) {
+        char petit[96];
+        if (g_sel_field) hc_describe(g_sel_field, petit, sizeof petit);
+        else petit[0] = '\0';
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedline")) {
+        if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
+        const char *t = hc_field_text(g_sel_field);
+        int line = 1;
+        for (int i = 0; i < g_sel_start && t[i]; i++)
+            if (t[i] == '\n') line++;
+        char petit[16]; snprintf(petit, sizeof petit, "%d", line);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "selectedchunk")) {
+        if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
+        char d[96];
+        hc_describe(g_sel_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+                 g_sel_start + 1, g_sel_start + g_sel_len,
+                 hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundchunk")) {
+        if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
+        char d[96];
+        hc_describe(g_found_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+                 g_found_start + 1, g_found_start + g_found_len,
+                 hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundfield")) {
+        char petit[96];
+        if (g_found_field) hc_describe(g_found_field, petit, sizeof petit);
+        else petit[0] = '\0';
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "foundline")) {
+        if (g_found_field && g_found_line > 0) {
+            char d[96]; hc_describe(g_found_field, d, sizeof d);
+            char petit[128];
+            snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
+            *out = hct_val_texte(petit);
+        } else *out = hct_val_texte("");
+        return 1;
+    }
+    if (ci_equal(nom, "paramcount")) {
+        char petit[16]; snprintf(petit, sizeof petit, "%d", g_nparams - 1);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "params")) {
+        buf[0] = '\0';
+        int pos = 0;
+        for (int i = 0; i < g_nparams; i++)
+            pos += snprintf(buf + pos, (size_t)HC_VAL - pos, "%s%s", i ? "," : "", g_params[i]);
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+    if (ci_equal(nom, "seconds") || ci_equal(nom, "secs")) {
+        char petit[24];
+        snprintf(petit, sizeof petit, "%lld", (long long)time(NULL) + HC_MAC_EPOCH);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    if (ci_equal(nom, "ticks")) {
+        /* comme dans call_function_body : l'hôte d'abord, lui seul a une
+         * horloge fine ; le repli compte depuis le premier appel. */
+        const char *hv = host_global(nom);
+        if (hv && *hv) { *out = hct_val_texte(hv); return 1; }
+        static time_t t0;
+        static int t0_pris = 0;
+        time_t now = time(NULL);
+        if (!t0_pris) { t0 = now; t0_pris = 1; }
+        char petit[24];
+        snprintf(petit, sizeof petit, "%lld", (long long)(now - t0) * 60);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+    return 0;
+}
 
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
@@ -5728,6 +6045,25 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             *out = hct_val_texte(v);
             return 1;
         }
+
+        /* the result, the date, the selection... la même liste que
+         * call_function_body servait, mais sans relexer « the » + nom.
+         * ARENA_MARK/FREE encadrent juste cet essai : le tampon ne survit
+         * pas à l'appel, hct_val_texte en a déjà fait une copie. */
+        ARENA_MARK;
+        char *gbuf = arena_buf();
+        int servi = v3_fonction_globale(nom, gbuf, out);
+        ARENA_FREE;
+        if (servi) return 1;
+    }
+
+    /* param(n) : le n-ième paramètre du gestionnaire courant, param(0)
+     * étant le nom du message. Une lecture de g_params, rien de plus —
+     * elle n'avait aucune raison de repartir chez l'ancien interpréteur. */
+    if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
+        int i = (int)hct_vers_nombre(args[0].txt);
+        *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
+        return 1;
     }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
@@ -6071,6 +6407,36 @@ static void v3_brut(const HctNoeud *f, char *out, int outlen)
     out[len] = '\0';
 }
 
+/* Comme v3_brut, mais une variable LIÉE l'emporte sur le mot littéral.
+ *
+ * « choose tl tool », où tl est un paramètre qui vaut « browse », doit lire
+ * tl ; « choose line tool », où rien ne lie « line », doit rendre « line »
+ * telle quelle. C'est l'idiome de sauvegarde/restauration d'outil des
+ * scripts HyperCard classiques : « on clearScreen tl … if tl is not empty
+ * then choose tl tool ».
+ *
+ * On s'arrête à lit_var, sans passer par l'évaluateur complet : celui-ci
+ * essaierait ensuite hote.fonction, qui — pour un mot que rien ne connaît —
+ * DIFFUSE un message de ce nom via hc_call_user_function plutôt que de
+ * rendre le mot littéral. « choose select tool » enverrait alors un message
+ * « select » à travers toute la hiérarchie avant de choisir l'outil, un
+ * effet de bord que ce mot brut n'attend pas. */
+static void v3_mot_ou_var(HctContexte *ctx, const HctNoeud *f, char *out, int outlen)
+{
+    out[0] = '\0';
+    if (!f || outlen < 1) return;
+    char nom[128];
+    v3_brut(f, nom, sizeof nom);
+    if (!*nom) return;
+    HctValeur v;
+    if (ctx->hote.lit_var && ctx->hote.lit_var(ctx->hote.donnees, nom, &v)) {
+        snprintf(out, (size_t)outlen, "%s", v.txt ? v.txt : "");
+        hct_val_libere(&v);
+        return;
+    }
+    snprintf(out, (size_t)outlen, "%s", nom);
+}
+
 /* Les touches d'un « with … », telles qu'écrites : l'hôte attend la même
  * chaîne que lui donnait l'ancien exécuteur. */
 static void v3_touches(const HctNoeud *n, int deb, char *out, int outlen)
@@ -6107,6 +6473,39 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
                         pos ? "," : "", v);
         if (pos >= outlen) { pos = outlen - 1; break; }
     }
+}
+
+/* Le texte de toute une commande, depuis le nœud, moins son premier mot (le
+ * verbe) : ce que valait `rest` dans l'ancien exécuteur, pour les commandes
+ * portées qui refont son analyse mot à mot (visual, sort, find, set,
+ * convert, print, read, write).
+ *
+ * hct_noeud_etendue, jamais v3_source, pour cet usage précis. v3_source
+ * s'arrête au dernier JETON retenu dans le sous-arbre — et les parenthèses
+ * ne sont le jeton d'AUCUN nœud, qu'elles ferment un appel ou groupent une
+ * expression : l'analyseur les consomme et les oublie. « set icon of me to
+ * (2100 + random(6)) » se reconstituait donc « (2100 + random(6 », les DEUX
+ * parenthèses fermantes perdues, et l'évaluation de la valeur échouait sur
+ * « parenthèse fermante attendue ». Msg d'erreur trouvé par test réel dans
+ * Xcode. hct_noeud_etendue étend jusqu'au saut de ligne (ou au point-
+ * virgule, ou à « else », ou à un commentaire) plutôt qu'au dernier jeton :
+ * elle rend donc tout ce que l'auteur a écrit, ponctuation comprise. C'est
+ * elle que v3_commande utilise déjà pour son propre repli vers l'ancien
+ * chemin — même remède, ici pour ne PAS avoir à y retomber. */
+static void v3_reste(const HctNoeud *n, char *out, int outlen)
+{
+    out[0] = '\0';
+    const char *deb; int len;
+    if (!hct_noeud_etendue(n, &deb, &len)) return;
+    if (len > outlen - 1) len = outlen - 1;
+    memcpy(out, deb, (size_t)len);
+    out[len] = '\0';
+
+    /* Sauter le premier mot (le verbe) et les blancs qui le suivent. */
+    char *p = out;
+    while (*p && !isspace((unsigned char)*p)) p++;
+    while (*p == ' ' || *p == '\t') p++;
+    memmove(out, p, strlen(p) + 1);
 }
 
 /* ---- tri : mécanique commune aux deux exécuteurs -------------------------
@@ -6174,15 +6573,98 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * datetime] [by e] ». Le « * » découpe la cible mot à mot — « cards », « of »,
  * « this », « stack » deviennent chacun leur propre fils, une référence
  * d'objet comme « field 1 » en fait parfois un seul — et rien ici n'a besoin
- * de savoir lequel : v3_source reconstitue le texte exact de CHAQUE fils, on
- * les rejoint par un espace, et on obtient EXACTEMENT le texte que lisait
- * l'ancien exécuteur. On lui reprend alors son analyse mot à mot telle
- * quelle, sans y toucher — seule la source du texte a changé.
+ * de savoir lequel : v3_reste (voir sa définition) rend le texte EXACT que
+ * lisait l'ancien exécuteur, ponctuation et « the » compris. On lui reprend
+ * alors son analyse mot à mot telle quelle, sans y toucher — seule la
+ * source du texte a changé.
  *
  * Pas d'évaluation à ce stade : « cards », « stack », « lines » restent des
  * MOTS, pas des expressions. Une pile qui aurait une variable nommée
  * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
  * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
+/* select — la sélection de texte dans un champ.
+ *
+ *   select empty                     rien de sélectionné
+ *   select text of <champ>           tout le contenu
+ *   select <champ>                   idem, forme courte
+ *   select char 3 to 5 of <champ>    un morceau
+ *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
+ *
+ * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
+ * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte.
+ *
+ * Rend 0 sur les formes non couvertes — un ordinal (« select last line
+ * of… »), une cible qui n'est pas un champ —, et l'ancien exécuteur les
+ * reprend intactes. */
+static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = 0, avant = 0, apres = 0;
+
+    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(n->fils[i], m, sizeof m);
+        if      (ci_equal(m, "before")) { avant = 1; i++; }
+        else if (ci_equal(m, "after"))  { apres = 1; i++; }
+    }
+
+    /* « select » nu : plus rien de sélectionné. */
+    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
+
+    const HctNoeud *c = n->fils[i];
+
+    if (c->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(c, m, sizeof m);
+        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
+        return 0;                       /* une variable : ancien chemin */
+    }
+
+    Object *f = NULL;
+    int st = 0, en = 0;
+
+    if (c->genre == HCTN_OBJET) {
+        f = hct_resout(ctx, c);
+        if (!f || f->type != OBJ_FIELD) return 0;
+        st = 0; en = (int)strlen(hc_field_text(f));
+    } else if (c->genre == HCTN_OF && c->nfils >= 2 &&
+               c->fils[0] && c->fils[0]->genre == HCTN_IDENT &&
+               c->fils[1] && c->fils[1]->genre == HCTN_OBJET) {
+        char m[16];
+        v3_brut(c->fils[0], m, sizeof m);
+        if (!ci_equal(m, "text")) return 0;
+        f = hct_resout(ctx, c->fils[1]);
+        if (!f || f->type != OBJ_FIELD) return 0;
+        st = 0; en = (int)strlen(hc_field_text(f));
+    } else if (c->genre == HCTN_CHUNK && c->nfils >= 2 && !c->ordinal) {
+        const HctNoeud *cible = c->fils[c->nfils - 1];
+        if (!cible || cible->genre != HCTN_OBJET) return 0;
+        f = hct_resout(ctx, cible);
+        if (!f || f->type != OBJ_FIELD) return 0;
+
+        char b1[64], b2[64];
+        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
+        if (ctx->erreur) return 1;
+        int n1 = (int)hct_vers_nombre(b1), n2 = 0;
+        if (c->nfils >= 3) {
+            v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+            if (ctx->erreur) return 1;
+            n2 = (int)hct_vers_nombre(b2);
+        }
+        HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
+                                        n1, n2, g_item_delim);
+        if (!bo.trouve) return 0;
+        st = bo.deb; en = bo.fin;
+    } else {
+        return 0;
+    }
+
+    if      (avant) hc_set_selection(f, st, 0);
+    else if (apres) hc_set_selection(f, en, 0);
+    else            hc_set_selection(f, st, en - st);
+    set_result("");
+    return 1;
+}
+
 static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -6191,22 +6673,8 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
                                          * dessous, qui doivent pouvoir
                                          * rembobiner À LEUR PROPRE MARQUE
                                          * sans toucher à `mots`. */
-    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
-     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
-     * premier rang desquels « the », que l'analyseur avale sans le ranger
-     * dans un nœud (« sort cards by the name of me » perdait son « the »).
-     * v3_source sur le nœud entier restitue l'intervalle EXACT du texte
-     * source, puisque « the » se situe bien ENTRE les jetons des fils, dans
-     * cet intervalle. Trouvé en portant « convert », qui en dépendait pour
-     * de vrai — voir son commentaire pour le détail du symptôme. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     int cartes = 0;                 /* trie-t-on des cartes ? */
@@ -6378,25 +6846,16 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
  *
  * Motif hct_cmd.c : « * », sans borne — l'analyseur découpe la ligne entière
  * mot à mot, exactement comme pour « sort » et « visual ». Même remède :
- * v3_source reconstitue le texte exact de chaque fils, on les rejoint par un
- * espace, et l'ancien algorithme — lecture du mode, recherche de « in » hors
- * des guillemets, balayage carte par carte puis champ par champ — s'applique
- * tel quel au résultat. */
+ * v3_reste rend le texte EXACT que lisait l'ancien exécuteur, et son
+ * algorithme — lecture du mode, recherche de « in » hors des guillemets,
+ * balayage carte par carte puis champ par champ — s'applique tel quel au
+ * résultat. */
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *r = skip_spaces(mots);
     int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
@@ -6485,11 +6944,11 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     if (cd != g_current_card) {      /* naviguer si besoin */
                         Object *old = g_current_card;
                         Object *oldbg = old ? old->bg : NULL;
-                        if (old) hc_send(old, "closeCard");
-                        if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                        if (old) hc_send_systeme(old, "closeCard");
+                        if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
                         g_current_card = cd;
-                        if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
-                        hc_send(cd, "openCard");
+                        if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
+                        hc_send_systeme(cd, "openCard");
                     }
                     set_result("");
                     emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
@@ -6577,12 +7036,12 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
  * <cible>] » comme UNE SEULE expression — chunk_ou_of, qui fabrique un nœud
  * HCTN_OF pour « textStyle of word 3 of field 1 » aussi bien qu'un
  * HCTN_IDENT nu pour « cursor » — et le « to *» qui suit redevient du texte
- * brut, comme pour « visual », « sort » et « find ». Même remède : v3_source
- * reconstitue le texte exact de chaque fils, la jointure par espace redonne
- * exactement ce que lisait l'ancien exécuteur, et son algorithme — bascule
- * propriété globale/objet/morceau, textStyle et textColor en noms nus,
- * plage de style versus objet — s'applique tel quel au résultat. Rien de
- * cet algorithme n'a été touché ; seule la source du texte a changé. */
+ * brut, comme pour « visual », « sort » et « find ». Même remède : v3_reste
+ * rend exactement ce que lisait l'ancien exécuteur — « the » et parenthèses
+ * compris, voir sa définition — et son algorithme — bascule propriété
+ * globale/objet/morceau, textStyle et textColor en noms nus, plage de style
+ * versus objet — s'applique tel quel au résultat. Rien de cet algorithme
+ * n'a été touché ; seule la source du texte a changé. */
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -6590,19 +7049,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
                                          * les ARENA_MARK imbriqués ci-dessous
                                          * doivent rembobiner à LEUR marque sans
                                          * toucher à `mots`. */
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. Ici « the »
-     * pouvait manquer aussi bien devant la propriété (« set [the]
-     * textStyle… ») que dans la valeur elle-même (« to the value of x »). */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     g_visual_dirty = 1;
     const char *s = skip_spaces(mots);
@@ -6933,35 +7381,24 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 /* convert <conteneur> [from <format>] to <format> [and <format>]
  *
  * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
- * v3_source reconstitue le texte exact de chaque fils et la jointure par
- * espace redonne ce que lisait l'ancien exécuteur — y compris son silence
- * sur « from » : il ne l'a jamais traité spécialement, ne coupant qu'au
- * dernier « to » de premier niveau, et cette jointure reproduit exactement
- * ce texte-là, « from » compris dans la source. Pas une ligne de
- * l'algorithme n'a changé. */
+ * v3_reste (voir sa définition) rend le texte EXACT que lisait l'ancien
+ * exécuteur — y compris son silence sur « from » : il ne l'a jamais traité
+ * spécialement, ne coupant qu'au dernier « to » de premier niveau, et
+ * « from » se retrouve donc dans la source, comme avant ce portage. Pas une
+ * ligne de l'algorithme n'a changé.
+ *
+ * C'est ICI qu'a été trouvé, par test réel dans Xcode, le bug du « the »
+ * avalé sans être rangé dans un nœud : « convert the date to dateItems »
+ * se reconstituait « convert date to dateItems », et to_it — qui décide si
+ * le résultat va dans `it` ou dans un conteneur — se trompait de branche :
+ * « date » ressemblait à un conteneur, une variable de ce nom naissait, et
+ * `it` ne recevait jamais rien. */
 static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : reconstruire fils
-     * par fils perd les jetons « orphelins » qu'aucun fils ne porte — au
-     * premier rang desquels « the », que l'analyseur avale sans le ranger
-     * dans un nœud. « convert the date to dateItems » redevenait « convert
-     * date to dateItems », et to_it — qui décide si le résultat va dans
-     * `it` ou dans un conteneur — se trompait alors de branche : « date »
-     * était pris pour un conteneur à écrire, et il naissait une variable de
-     * ce nom au lieu que le résultat aille dans `it`. v3_source sur le nœud
-     * entier restitue l'intervalle EXACT du texte source, « the » compris,
-     * puisqu'il se situe bien ENTRE les jetons des fils, dans cet
-     * intervalle. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     /* Le « to » qui compte est le dernier de premier niveau : la source
      * peut en contenir un elle-même, comme dans
@@ -7030,25 +7467,16 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 /* print [this] card|stack|all|marked [<n>] [to <n>] [with <rapport>]
  *
  * Motif hct_cmd.c : « * [with e] », sans borne — comme pour find/sort/
- * visual, v3_source reconstitue le texte exact de chaque fils. « with
- * <rapport> » est reconstitué lui aussi mais reste ignoré : l'ancien
- * exécuteur ne le lisait déjà pas, une mise en page de rapport demandant un
+ * visual, v3_reste rend le texte EXACT que lisait l'ancien exécuteur.
+ * « with <rapport> » en fait partie mais reste ignoré : l'ancien exécuteur
+ * ne le lisait déjà pas, une mise en page de rapport demandant un
  * imprimeur que le noyau n'a jamais eu. */
 static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     if (ci_word(a, "this")) a = skip_spaces(a + 4);
@@ -7139,24 +7567,14 @@ static int   file_constant(const char *s);         /* défini plus bas */
  * branche `at` reste correcte et prête, juste jamais empruntée tant que la
  * table n'aura pas gagné cet élément.
  *
- * Comme pour set/sort/find/print, v3_source reconstitue le texte exact de
- * chaque fils et la jointure par espace redonne ce que lisait l'ancien
- * exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+ * Comme pour set/sort/find/print, v3_reste rend le texte EXACT que lisait
+ * l'ancien exécuteur ; l'algorithme n'a pas changé d'une ligne. */
 static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     if (ci_word(a, "from")) a = skip_spaces(a + 4);
@@ -7270,17 +7688,8 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     size_t sauve = g_atop;
-    /* v3_source sur le nœud ENTIER, pas fils par fils : voir le commentaire
-     * de v3_cmd_convert — reconstruire fils par fils perd les jetons
-     * « orphelins » comme « the », qu'aucun fils ne porte. */
     char *mots = arena_buf();
-    v3_source(n, mots, HC_VAL);
-    {
-        char *p = mots;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(mots, p, strlen(p) + 1);
-    }
+    v3_reste(n, mots, HC_VAL);
 
     const char *a = skip_spaces(mots);
     const char *to = find_kw(a, "to");
@@ -7472,14 +7881,21 @@ static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* lock/unlock screen. Les autres formes — « lock messages », « lock recent »
- * — repartent à l'ancien chemin. */
+/* lock/unlock screen et lock/unlock messages. « lock recent » repart à
+ * l'ancien chemin. */
 static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
     char mot[32];
     if (n->nfils < 1) return 0;
     v3_brut(n->fils[0], mot, sizeof mot);
+
+    if (ci_equal(mot, "messages")) {
+        g_messages_verrouilles = ci_equal(n->op, "lock");
+        set_result("");
+        return 1;
+    }
+
     if (!ci_equal(mot, "screen")) return 0;
 
     g_ecran_verrouille = ci_equal(n->op, "lock");
@@ -7532,15 +7948,14 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
  * caractère —, ou vide un champ ou une variable entière. container_set sait
  * déjà tout cela (mode 3), à condition de recevoir le TEXTE de la référence :
  * hct_cmd.c l'analyse comme une expression ordinaire (« e »), sans nœud dédié
- * pour un morceau. v3_source la reconstitue donc, comme le fait v3_recours
- * pour une expression qu'elle ne sait pas évaluer elle-même.
- *
- * Sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme « last »
- * dans « delete the last word of X » n'est le jeton d'AUCUN nœud — juste un
- * ordinal numérique posé sur le nœud CHUNK, dont le jeton propre commence
- * à « word ». Reconstruire depuis n->fils[0] seul rendait donc « word of X »,
- * sans « the last » : container_set n'y voyait plus de rang du tout. Voir le
- * commentaire de v3_cmd_convert pour le détail de cette classe de bogue.
+ * pour un morceau. v3_reste (voir sa définition) la reconstitue donc, comme
+ * le fait v3_recours pour une expression qu'elle ne sait pas évaluer
+ * elle-même — sur le nœud ENTIER, pas sur n->fils[0] seul : un ordinal comme
+ * « last » dans « delete the last word of X » n'est le jeton d'AUCUN nœud —
+ * juste un ordinal numérique posé sur le nœud CHUNK, dont le jeton propre
+ * commence à « word ». Reconstruire depuis n->fils[0] seul, avec v3_source,
+ * rendait donc « word of X », sans « the last » : container_set n'y voyait
+ * plus de rang du tout.
  *
  * Une faute d'analyse dans la cible — n->fils[0] devenu lui-même une
  * HCTN_ERREUR — rendrait un texte tronqué : container_set effacerait alors
@@ -7557,13 +7972,7 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils < 1 || n->fils[0]->genre == HCTN_ERREUR) return 0;
 
     char d[256];
-    v3_source(n, d, sizeof d);
-    {
-        char *p = d;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        while (*p == ' ' || *p == '\t') p++;
-        memmove(d, p, strlen(p) + 1);
-    }
+    v3_reste(n, d, sizeof d);
     if (!d[0]) return 0;
 
     if (container_set(d, "", 3)) {
@@ -7633,11 +8042,11 @@ static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
     Object *oldbg = old ? old->bg : NULL;
     Object *newbg = dst->bg;
 
-    if (old) hc_send(old, "closeCard");
-    if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+    if (old) hc_send_systeme(old, "closeCard");
+    if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
     g_current_card = dst;
-    if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
-    hc_send(dst, "openCard");
+    if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
+    hc_send_systeme(dst, "openCard");
     set_result("");
     emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
     return 1;
@@ -7689,9 +8098,10 @@ static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
 /* choose <outil> [tool].
  *
  * Le motif « W [tool] » a déjà séparé les mots du nom et le suffixe « tool ».
- * Les mots sont pris BRUTS : « choose line tool » ne doit pas lire une
- * variable nommée « line ». Une chaîne, elle, s'évalue — Apple écrit aussi
- * bien « choose "Select Tool" ». */
+ * Un mot brut (HCTN_IDENT) se lit par v3_mot_ou_var : une variable liée de ce
+ * nom l'emporte, sinon c'est le mot lui-même — « choose tl tool » lit tl,
+ * « choose line tool » sans variable « line » rend « line ». Le reste (une
+ * chaîne, « choose "Select Tool" ») s'évalue normalement. */
 static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
 {
     char nom[128];
@@ -7702,7 +8112,7 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;      /* le « tool » du motif */
         char m[128];
-        if (f->genre == HCTN_IDENT) v3_brut(f, m, sizeof m);
+        if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, m, sizeof m);
         else {
             v3_val_texte(ctx, f, m, sizeof m);
             if (ctx->erreur) return 1;
@@ -8043,13 +8453,13 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 
     Object *old   = g_current_card;
     Object *oldbg = old ? old->bg : NULL;
-    if (old) hc_send(old, "closeCard");
+    if (old) hc_send_systeme(old, "closeCard");
     /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
-    if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
+    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
     g_current_card = dst;
-    if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
+    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
     emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-    hc_send(dst, "openCard");
+    hc_send_systeme(dst, "openCard");
     return 1;
 }
 
@@ -8316,6 +8726,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "read",   v3_cmd_read    },
     { "reset",  v3_cmd_reset   },
     { "save",   v3_cmd_save    },
+    { "select", v3_cmd_select  },
     { "send",   v3_cmd_send    },
     { "set",    v3_cmd_set     },
     { "show",   v3_cmd_montre  },
@@ -8352,7 +8763,22 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
     /* --- pas encore porté : l'ancien chemin, intact --- */
     const char *deb; int len;
     if (!hct_noeud_etendue(n, &deb, &len)) return 0;   /* rien à reconstituer */
-    v3_note("commande", n->genre == HCTN_MESSAGE ? "<message>" : n->op);
+    /* Le verbe seul ne suffit pas quand il a plusieurs formes : « select »
+     * revenant trois cents fois ne dit pas LAQUELLE de ses cinq syntaxes
+     * n'est pas portée. On joint donc un bout de la ligne, comme pour les
+     * recours. Les blancs sont aplatis pour tenir sur une ligne de bilan. */
+    if (n->genre == HCTN_MESSAGE) {
+        v3_note("commande", "<message>");
+    } else {
+        char frag[28], cle[40];
+        int f = len < (int)sizeof frag - 1 ? len : (int)sizeof frag - 1;
+        memcpy(frag, deb, (size_t)f);
+        frag[f] = '\0';
+        for (char *p = frag; *p; p++)
+            if (*p == '\n' || *p == '\t' || *p == '\r') *p = ' ';
+        snprintf(cle, sizeof cle, "%s: %s", n->op ? n->op : "?", frag);
+        v3_note("commande", cle);
+    }
     ARENA_MARK;
     char *ligne = arena_buf();
     int m = len < HC_VAL - 1 ? len : HC_VAL - 1;
@@ -8446,7 +8872,7 @@ static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
 
 /* Trace du branchement. Mettre à 0 quand la bascule sera acquise : elle
  * imprime une ligne par MESSAGE, ce qui devient vite illisible. */
-#define HC_TRACE_V3 1
+#define HC_TRACE_V3 0
 
 static int v3_execute(Object *o, const char *message, int isfunc)
 {
@@ -8626,6 +9052,15 @@ static int v3_globale(void *d, const char *nom)
     frame_declare_global(g_frame, nom);
     return 1;
 }
+/* Vider « the result » après une commande que l'exécuteur a traitée seul.
+ * exec_stmt le fait depuis toujours pour put et l'arithmétique ; sans cela
+ * la v3 laissait survivre un résultat déposé bien plus tôt. */
+static void v3_resultat_vide(void *d)
+{
+    (void)d;
+    set_result("");
+}
+
 static HctHote v3_hote(void)
 {
     HctHote h;
@@ -8642,6 +9077,7 @@ static HctHote v3_hote(void)
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;
     h.ecrit_message = v3_ecrit_message;
+    h.resultat_vide = v3_resultat_vide;
 
     return h;
 }
@@ -9678,6 +10114,11 @@ static void exec_line_body(Object *me, const char *line)
      * seul de suspendre ou non son rafraîchissement. Le noyau, lui, ne sait
      * toujours pas ce qu'est un écran. L'effet visuel éventuel est ignoré. */
     if (ci_equal(verb, "lock") || ci_equal(verb, "unlock")) {
+        if (ci_word(skip_spaces(rest), "messages")) {
+            g_messages_verrouilles = ci_equal(verb, "lock");
+            set_result("");
+            return;
+        }
         if (ci_word(skip_spaces(rest), "screen")) {
             g_ecran_verrouille = ci_equal(verb, "lock");
             host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
@@ -10352,11 +10793,11 @@ static void exec_line_body(Object *me, const char *line)
                         if (cd != g_current_card) {      /* naviguer si besoin */
                             Object *old = g_current_card;
                             Object *oldbg = old ? old->bg : NULL;
-                            if (old) hc_send(old, "closeCard");
-                            if (oldbg && oldbg != cd->bg) hc_send(oldbg, "closeBackground");
+                            if (old) hc_send_systeme(old, "closeCard");
+                            if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
                             g_current_card = cd;
-                            if (cd->bg && cd->bg != oldbg) hc_send(cd->bg, "openBackground");
-                            hc_send(cd, "openCard");
+                            if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
+                            hc_send_systeme(cd, "openCard");
                         }
                         set_result("");
                         emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
@@ -10550,11 +10991,11 @@ static void exec_line_body(Object *me, const char *line)
         Object *old = g_current_card;
         Object *oldbg = old ? old->bg : NULL;
         Object *newbg = dst->bg;
-        if (old) hc_send(old, "closeCard");
-        if (oldbg && oldbg != newbg) hc_send(oldbg, "closeBackground");
+        if (old) hc_send_systeme(old, "closeCard");
+        if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
         g_current_card = dst;
-        if (newbg && newbg != oldbg) hc_send(newbg, "openBackground");
-        hc_send(dst, "openCard");
+        if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
+        hc_send_systeme(dst, "openCard");
         set_result("");
         emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
         return;
@@ -10645,14 +11086,14 @@ static void exec_line_body(Object *me, const char *line)
             }
             Object *old   = g_current_card;
             Object *oldbg = old ? old->bg : NULL;
-            if (old) hc_send(old, "closeCard");
+            if (old) hc_send_systeme(old, "closeCard");
             /* Changement de fond : les quatre messages, dans l'ordre
              * d'HyperCard. « find » le faisait déjà, « go » l'oubliait. */
-            if (oldbg && oldbg != dst->bg) hc_send(oldbg, "closeBackground");
+            if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
             g_current_card = dst;
-            if (dst->bg && dst->bg != oldbg) hc_send(dst->bg, "openBackground");
+            if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
             emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-            hc_send(dst, "openCard");
+            hc_send_systeme(dst, "openCard");
         } else {
             set_result("carte introuvable");
             emit(HC_ERR, "   !! carte introuvable : %s", r);
@@ -10794,14 +11235,23 @@ static void exec_line_body(Object *me, const char *line)
         if (ci_word(a, "before"))     { point_avant = 1; a = skip_spaces(a + 6); }
         else if (ci_word(a, "after")) { point_apres = 1; a = skip_spaces(a + 5); }
 
-        /* « select text of field X » : tout le contenu. */
+        /* « select text of field X » : tout le contenu.
+         *
+         * before / after valent ici aussi : « select before text of fld x »
+         * pose le point d'insertion au début, « after » à la fin. Cette
+         * branche sortait sans les consulter, si bien que les deux formes
+         * sélectionnaient tout le champ — le contraire de ce qu'elles
+         * demandent, et la façon habituelle de placer le curseur avant de
+         * taper. */
         if (ci_word(a, "text")) {
             const char *r = skip_spaces(a + 4);
             if (ci_word(r, "of")) r = skip_spaces(r + 2);
             Object *f = resolve(r);
             if (f && f->type == OBJ_FIELD) {
-                const char *t = hc_field_text(f);
-                hc_set_selection(f, 0, (int)strlen(t));
+                int fin = (int)strlen(hc_field_text(f));
+                if      (point_avant) hc_set_selection(f, 0, 0);
+                else if (point_apres) hc_set_selection(f, fin, 0);
+                else                  hc_set_selection(f, 0, fin);
             } else emit(HC_ERR, "   !! select : champ introuvable : %s", r);
             return;
         }
@@ -11951,6 +12401,11 @@ static int hc_send_args_k(Object *target, const char *message,
         verrou_reveille();
         host_global_set("lockScreen", "false");
     }
+    /* Même règle pour « lock messages », et pour la même raison : un
+     * gestionnaire qui verrouille puis sort avant son « unlock messages »
+     * laisserait la pile MUETTE pour toujours — plus un seul openCard, et
+     * rien pour dire pourquoi. */
+    if (g_depth == 0) g_messages_verrouilles = 0;
 
     return r;
 }

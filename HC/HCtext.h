@@ -23,6 +23,12 @@ NSDictionary *obj_attrs(Object *o, CGFloat defSize, NSColor *color);
 
 /* ---- Chaine attribuee d'un champ, avec ses plages de style ---- */
 NSAttributedString *field_attr_string(Object *o, NSString *s, NSDictionary *at);
+
+/* Mise en page d'un champ, conservée d'un redessin à l'autre. Rend le
+ * disposeur et, par `conteneur`, le conteneur associé — de quoi ne tracer
+ * que la plage de glyphes réellement visible. Voir HCtext.m. */
+NSLayoutManager *field_layout(Object *o, NSString *s, NSDictionary *at,
+                              CGFloat largeur, NSTextContainer **conteneur);
 int                 style_bits_from_attrs(NSDictionary *a);
 
 /* ---- Conversion d'index : octets UTF-8 <-> unites UTF-16 ---- */

@@ -61,6 +61,14 @@ static int mot_ici_b(HctAnalyseur *a, const char *m)
     return mot(hct_expr_jeton(a), m);
 }
 
+/* Le mot SUIVANT, sans avancer : « repeat for each » ne se distingue de
+ * « repeat for 3 times » qu'au deuxième mot. */
+static int mot_suivant_b(HctAnalyseur *a, const char *m)
+{
+    const HctJeton *j = hct_expr_jeton_apres(a, 1);
+    return j && mot(j, m);
+}
+
 /* Passe les fins de ligne. Les lignes vides ont déjà été fondues par le
  * lexer, mais un bloc peut en commencer par une. */
 static void saute_eol(HctAnalyseur *a)
@@ -311,6 +319,39 @@ static HctNoeud *analyse_repeat(HctAnalyseur *a)
             n->op = !strcmp(n->op, "with down") ? "with down pas" : "with pas";
             hct_ajoute_fils(a->reserve, n, hct_expression(a));
         }
+    } else if (mot_ici_b(a, "for") && mot_suivant_b(a, "each")) {
+        /* repeat for each <sorte> <var> in <expression>
+         *
+         * La forme la plus courante des piles d'époque pour parcourir un
+         * texte : « repeat for each line L in field "data" ». Elle n'était
+         * reconnue par AUCUN des deux interpréteurs et retombait sur
+         * « repeat N times », où « for » s'évaluait comme une variable jamais
+         * affectée — donc valant son propre nom, donc zéro tour. La boucle ne
+         * s'exécutait pas une seule fois, sans le moindre message.
+         *
+         * On note la sorte dans le nœud, comme un chunk : l'exécuteur n'a
+         * plus qu'à découper. */
+        hct_expr_avance(a);                     /* for  */
+        hct_expr_avance(a);                     /* each */
+        n->op = "each";
+        n->sorte = HCT_CH_ITEM;
+        if      (mot_ici_b(a, "char")  || mot_ici_b(a, "chars") ||
+                 mot_ici_b(a, "character") || mot_ici_b(a, "characters"))
+            n->sorte = HCT_CH_CHAR;
+        else if (mot_ici_b(a, "word")  || mot_ici_b(a, "words"))
+            n->sorte = HCT_CH_WORD;
+        else if (mot_ici_b(a, "line")  || mot_ici_b(a, "lines"))
+            n->sorte = HCT_CH_LINE;
+        else if (mot_ici_b(a, "item")  || mot_ici_b(a, "items"))
+            n->sorte = HCT_CH_ITEM;
+        else
+            hct_ajoute_fils(a->reserve, n,
+                            hct_expr_faute(a, "char, word, item ou line attendu"));
+        hct_expr_avance(a);                     /* la sorte */
+        hct_ajoute_fils(a->reserve, n, hct_expr_avale_mot(a));   /* la variable */
+        if (mot_ici_b(a, "in")) hct_expr_avance(a);
+        else hct_ajoute_fils(a->reserve, n, hct_expr_faute(a, "« in » attendu"));
+        hct_ajoute_fils(a->reserve, n, hct_expression(a));       /* la source */
     } else if (hct_expr_jeton(a)->genre != HCT_EOL) {
         /* repeat N [times] */
         n->op = "times";

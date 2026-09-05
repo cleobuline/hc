@@ -310,8 +310,133 @@ static void apply_selection_highlight(NSMutableAttributedString *as, Object *o)
     [as addAttribute:NSForegroundColorAttributeName value:[NSColor whiteColor] range:r];
 }
 
-NSAttributedString *field_attr_string(Object *o, NSString *s,
-                                             NSDictionary *at)
+/* ═══ MÉMOIRE DES CHAÎNES ATTRIBUÉES ════════════════════════════════════
+ *
+ * Un champ de mille lignes coûtait près d'une seconde par redessin, mesuré.
+ * La raison n'est pas le nombre d'objets sur la carte — le noyau, lui, ne met
+ * qu'une microseconde par clic — mais le fait qu'un seul champ refaisait DEUX
+ * mises en page complètes de tout son texte à chaque image :
+ *
+ *   field_text_height, pour la barre de défilement, construisait la chaîne
+ *   attribuée puis mesurait la hauteur de MILLE lignes ;
+ *   puis le dessin reconstruisait la même chaîne et remettait tout en page,
+ *   pour n'en afficher que vingt.
+ *
+ * On mémorise donc le résultat, en le comparant à ce dont il dépend : le
+ * texte, la police, le corps, le style, l'interligne fixe — et gForEditor,
+ * qui change le style de paragraphe. L'oublier ferait partager une entrée
+ * entre l'éditeur et le dessin, dont les interlignes diffèrent d'un pixel
+ * par ligne : c'est justement ce que ce drapeau existe pour distinguer.
+ *
+ * Comparer les entrées plutôt que s'abonner à une notification : le noyau ne
+ * prévient l'hôte que pour le TEXTE d'un champ (field_changed), pas pour ses
+ * propriétés de style. Une mémoire fondée sur une notification laisserait
+ * donc un champ figé après « set the textFont of field 1 to Monaco ».
+ *
+ * La chaîne rendue est immuable et partagée : aucun appelant ne la modifie,
+ * tous la recopient (initWithAttributedString: ou setAttributedString:).
+ *
+ * `at` n'entre pas dans la clé : tous les appelants le dérivent de l'objet
+ * par obj_attrs(o, 12, noir), donc les propriétés de l'objet le déterminent
+ * entièrement. */
+#define HC_TEXTE_MEMO 6
+
+static NSMutableArray<NSDictionary *> *g_memo_champs = nil;
+
+/* La signature de ce qui détermine le rendu d'un champ.
+ *
+ * Deux entrées ne sautent pas aux yeux et manquaient à la première version,
+ * ce qui a coûté la surbrillance des champs-listes :
+ *
+ *   LA SÉLECTION. apply_selection_highlight l'incruste DANS la chaîne
+ *   attribuée — fond noir, texte blanc — parce qu'une surbrillance calculée
+ *   à part tombait à côté (voir son commentaire). Elle change donc le rendu
+ *   sans toucher au texte : « selectline » n'aurait plus rien affiché.
+ *
+ *   LES PLAGES DE STYLE. « set the textStyle of char 5 to 10 of field 1 to
+ *   bold » ne change ni le texte ni le style du champ entier. Sans elles
+ *   dans la clé, le gras ne serait apparu qu'au prochain changement de
+ *   texte. On les résume en une chaîne : elles sont peu nombreuses, et
+ *   c'est le prix d'une comparaison sûre. */
+static NSString *champ_plages(Object *o)
+{
+    int n = hc_run_count(o);
+    if (n <= 0) return @"";
+    NSMutableString *r = [NSMutableString stringWithCapacity:(NSUInteger)n * 16];
+    for (int i = 0; i < n; i++) {
+        int a = 0, l = 0, st = 0, sz = 0, co = HC_COLOR_INHERIT;
+        const char *fn = NULL;
+        if (!hc_run_attrs_color(o, i, &a, &l, &st, &sz, &fn, &co)) continue;
+        [r appendFormat:@"%d/%d/%d/%d/%s/%d;",
+                        a, l, st, sz, fn ? fn : "", co];
+    }
+    return r;
+}
+
+static NSDictionary *champ_signature(Object *o, NSString *s)
+{
+    Object *sel = NULL; int start = 0, len = 0;
+    hc_get_selection(&sel, &start, &len);
+
+    return @{ @"objet"   : [NSValue valueWithPointer:o],
+              @"texte"   : s ?: @"",
+              @"police"  : [NSString stringWithUTF8String:
+                              (o->textfont && *o->textfont) ? o->textfont : ""],
+              @"corps"   : @(o->textsize),
+              @"style"   : @(o->textstyle),
+              @"interl"  : @(o->fixed_lh),
+              @"editeur" : @(gForEditor),
+              @"seldeb"  : @(sel == o ? start : -1),
+              @"sellen"  : @(sel == o ? len   : 0),
+              @"plages"  : champ_plages(o) };
+}
+
+static BOOL champ_signature_egale(NSDictionary *a, NSDictionary *b)
+{
+    return [a[@"objet"]   isEqual:b[@"objet"]]
+        && [a[@"corps"]   isEqual:b[@"corps"]]
+        && [a[@"style"]   isEqual:b[@"style"]]
+        && [a[@"interl"]  isEqual:b[@"interl"]]
+        && [a[@"editeur"] isEqual:b[@"editeur"]]
+        && [a[@"seldeb"]  isEqual:b[@"seldeb"]]
+        && [a[@"sellen"]  isEqual:b[@"sellen"]]
+        && [a[@"police"]  isEqualToString:b[@"police"]]
+        && [a[@"plages"]  isEqualToString:b[@"plages"]]
+        && [a[@"texte"]   isEqualToString:b[@"texte"]];
+}
+
+static NSAttributedString *field_attr_string_construit(Object *o, NSString *s,
+                                                       NSDictionary *at);
+
+NSAttributedString *field_attr_string(Object *o, NSString *s, NSDictionary *at)
+{
+    if (!g_memo_champs) g_memo_champs = [[NSMutableArray alloc] init];
+
+    NSDictionary *sig = champ_signature(o, s);
+
+    for (NSUInteger i = 0; i < [g_memo_champs count]; i++) {
+        NSDictionary *e = g_memo_champs[i];
+        if (!champ_signature_egale(e[@"sig"], sig)) continue;
+        /* Le plus récemment servi passe en tête : le champ que l'on redessine
+         * en boucle est trouvé du premier coup. */
+        if (i > 0) {
+            [g_memo_champs removeObjectAtIndex:i];
+            [g_memo_champs insertObject:e atIndex:0];
+        }
+        return e[@"chaine"];
+    }
+
+    NSAttributedString *as = [field_attr_string_construit(o, s, at) copy];
+
+    [g_memo_champs insertObject:@{ @"sig" : sig, @"chaine" : as } atIndex:0];
+    while ([g_memo_champs count] > HC_TEXTE_MEMO)
+        [g_memo_champs removeLastObject];
+
+    return as;
+}
+
+static NSAttributedString *field_attr_string_construit(Object *o, NSString *s,
+                                                       NSDictionary *at)
 {
     NSMutableAttributedString *as =
         [[NSMutableAttributedString alloc] initWithString:s attributes:at];
@@ -568,18 +693,130 @@ int byte_from_utf16(NSString *s, NSUInteger u16)
 }
 
 /* hauteur totale du texte d'un champ, dans sa largeur utile */
+/* ═══ MISE EN PAGE CONSERVÉE ════════════════════════════════════════════
+ *
+ * Même avec la chaîne attribuée en mémoire, le dessin composait encore les
+ * quarante-huit kilo-octets d'un champ à chaque image pour n'en montrer
+ * qu'une vingtaine de lignes : -drawInRect: met en page tout ce qu'on lui
+ * donne, sans savoir ce qui sera visible.
+ *
+ * On garde donc le trio NSTextStorage / NSLayoutManager / NSTextContainer
+ * d'une image à l'autre. Deux gains, et le second est le vrai :
+ *
+ *   la mise en page n'est plus refaite quand rien n'a changé ;
+ *   NSLayoutManager compose PARESSEUSEMENT — en ne lui demandant que la
+ *   plage de glyphes du rectangle visible, il n'aura jamais à composer les
+ *   lignes situées plus bas.
+ *
+ * Le conteneur a la largeur du texte et une hauteur infinie : c'est sur la
+ * largeur que le texte se replie, et la hauteur est justement ce qu'on ne
+ * veut pas calculer.
+ *
+ * La largeur entre dans la clé, comme pour la hauteur : la changer replie
+ * le texte autrement. */
+NSLayoutManager *field_layout(Object *o, NSString *s, NSDictionary *at,
+                              CGFloat largeur, NSTextContainer **conteneur)
+{
+    static NSMutableArray<NSDictionary *> *memo = nil;
+    if (!memo) memo = [[NSMutableArray alloc] init];
+
+    NSDictionary *sig = champ_signature(o, s);
+    NSNumber *larg = @(largeur);
+
+    for (NSUInteger i = 0; i < [memo count]; i++) {
+        NSDictionary *e = memo[i];
+        if (![e[@"largeur"] isEqualToNumber:larg]) continue;
+        if (!champ_signature_egale(e[@"sig"], sig)) continue;
+        if (i > 0) {
+            [memo removeObjectAtIndex:i];
+            [memo insertObject:e atIndex:0];
+        }
+        if (conteneur) *conteneur = e[@"conteneur"];
+        return e[@"disposeur"];
+    }
+
+    NSTextStorage   *ts = [[NSTextStorage alloc]
+                            initWithAttributedString:field_attr_string(o, s, at)];
+    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
+    NSTextContainer *tc = [[NSTextContainer alloc]
+                            initWithContainerSize:NSMakeSize(largeur, 1e6)];
+    [tc setLineFragmentPadding:0];
+
+    /* EXACTEMENT les réglages du test de clic (click_word_range et
+     * click_line_number) : conteneur de 1e6 et, surtout, interligne de police
+     * DÉSACTIVÉ.
+     *
+     * Laissé à sa valeur par défaut, NSLayoutManager ajoute l'interligne
+     * recommandé par la police à chaque ligne. L'écart est d'un pixel ou deux
+     * par ligne, mais il s'ACCUMULE : au bas d'un champ de trente lignes, le
+     * texte tracé n'est plus là où le clic croit qu'il est, et la ligne
+     * surlignée n'est pas celle qu'on a désignée.
+     *
+     * Les deux mises en page doivent donc naître avec les mêmes réglages —
+     * c'est la même leçon que celle d'apply_selection_highlight, dont le
+     * commentaire prévient qu'« une seconde mise en page n'est jamais tout à
+     * fait la première ». */
+    [lm setUsesFontLeading:NO];
+
+    [lm addTextContainer:tc];
+    [ts addLayoutManager:lm];
+
+    /* Les trois sont retenus ensemble : le disposeur ne garde qu'une
+     * référence faible sur son magasin, qui disparaîtrait sinon. */
+    [memo insertObject:@{ @"sig"       : sig,
+                          @"largeur"   : larg,
+                          @"magasin"   : ts,
+                          @"disposeur" : lm,
+                          @"conteneur" : tc } atIndex:0];
+    while ([memo count] > HC_TEXTE_MEMO) [memo removeLastObject];
+
+    if (conteneur) *conteneur = tc;
+    return lm;
+}
+
+/* La hauteur est mémorisée séparément de la chaîne : c'est ELLE qui coûte
+ * cher. boundingRectWithSize met en page le texte entier — mille lignes pour
+ * en afficher vingt —, et le dessin d'un champ à défilement la demande à
+ * chaque image, uniquement pour dimensionner la poignée de la barre.
+ *
+ * La largeur entre dans la clé : c'est sur elle que le texte se replie, donc
+ * elle change la hauteur. Le reste vient de champ_signature. */
 CGFloat field_text_height(Object *o, NSRect tr) {
     /* hc_field_text et non o->contents : un champ de fond non partagé a un
      * texte par carte, et c'est celui-là qu'on affiche. */
     const char *tx = hc_field_text(o);
     NSString *s = [NSString stringWithUTF8String:tx ? tx : ""];
     if ([s length] == 0) return 0;
+
+    static NSMutableArray<NSDictionary *> *memo = nil;
+    if (!memo) memo = [[NSMutableArray alloc] init];
+
+    NSDictionary *sig = champ_signature(o, s);
+    NSNumber *larg = @(tr.size.width);
+
+    for (NSUInteger i = 0; i < [memo count]; i++) {
+        NSDictionary *e = memo[i];
+        if (![e[@"largeur"] isEqualToNumber:larg]) continue;
+        if (!champ_signature_egale(e[@"sig"], sig)) continue;
+        if (i > 0) {
+            [memo removeObjectAtIndex:i];
+            [memo insertObject:e atIndex:0];
+        }
+        return [e[@"hauteur"] doubleValue];
+    }
+
     NSDictionary *at = obj_attrs(o, 12, [NSColor blackColor]);
     /* Mesurer sur le texte attribué : du gras occupe plus de place, et un
      * champ défilant se tromperait de hauteur. */
     NSAttributedString *as = field_attr_string(o, s, at);
     NSRect b = [as boundingRectWithSize:NSMakeSize(tr.size.width, CGFLOAT_MAX)
                                 options:NSStringDrawingUsesLineFragmentOrigin];
+
+    [memo insertObject:@{ @"sig"     : sig,
+                          @"largeur" : larg,
+                          @"hauteur" : @(b.size.height) } atIndex:0];
+    while ([memo count] > HC_TEXTE_MEMO) [memo removeLastObject];
+
     return b.size.height;
 }
 

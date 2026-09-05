@@ -300,6 +300,25 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
      * jamais atteindre le recours. Or « there is a bg btn "absent" » doit
      * rendre false, pas échouer — c'est tout son intérêt. */
     if (strcmp(op, "not") && strcmp(op, "neg")) {
+        /* L'objet se cherche par l'ARBRE quand l'hôte sait le résoudre.
+         *
+         * Le recours reconstitue le texte source et le confie à l'ancien
+         * interpréteur, dont l'analyse de référence est moins complète :
+         * « there is a button (nomDansUneVariable) » y rendait false, alors
+         * que « the short name of button (nomDansUneVariable) » — qui passe
+         * par le même désignateur entre parenthèses, mais par l'arbre —
+         * trouvait le bouton. Résoudre ici règle l'incohérence et supprime
+         * un aller-retour.
+         *
+         * On ne s'en charge que pour un nœud d'OBJET : « there is a
+         * <expression> » a d'autres formes, que le recours garde. */
+        if (n->nfils >= 1 && n->fils[0] &&
+            n->fils[0]->genre == HCTN_OBJET && ctx->hote.resout) {
+            int existe = ctx->hote.resout(ctx->hote.donnees, n->fils[0], ctx) != NULL;
+            if (!strcmp(op, "there is no")) existe = !existe;
+            return hct_val_bool(existe);
+        }
+
         HctValeur vr;
         if (ctx->hote.recours &&
             ctx->hote.recours(ctx->hote.donnees, n, &vr)) return vr;
@@ -372,6 +391,10 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
 
 /* -------------------------------------------------------------- appels */
 
+/* Définie plus bas, avec « the value of » dont elle est le moteur. */
+static int evalue_texte(HctContexte *ctx, const char *src,
+                        const HctNoeud *origine, HctValeur *out);
+
 static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return hct_val_vide();
@@ -440,6 +463,30 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
                 if (!strncasecmp(g + i, p, lp)) { pos = (long)i + 1; break; }
         r = hct_val_nombre((double)pos); fait = 1;
     }
+    /* value(x) : le pendant en forme d'appel de « the value of x ». Même
+     * moteur, donc même règle — evalue_texte refuse ce qui n'est pas une
+     * expression complète et propre, et l'on garde alors le recours, où
+     * l'ancien évaluateur est plus tolérant. */
+    if (!fait && nargs == 1 && !strcasecmp(nom, "value"))
+        fait = evalue_texte(ctx, args[0].txt, n, &r);
+
+    /* Fonctions financières d'HyperCard. Deux formules, rien de plus, et
+     * aucun besoin du monde extérieur :
+     *   annuity(taux, n)  = (1 − (1+taux)^−n) / taux
+     *   compound(taux, n) = (1+taux)^n
+     * Le taux nul est un cas limite légitime : l'annuité vaut alors le
+     * nombre de périodes, et la division ferait une erreur. */
+    if (!fait && nargs == 2 &&
+        hct_est_nombre(args[0].txt) && hct_est_nombre(args[1].txt) &&
+        (!strcasecmp(nom, "annuity") || !strcasecmp(nom, "compound"))) {
+        double taux = hct_vers_nombre(args[0].txt);
+        double per  = hct_vers_nombre(args[1].txt);
+        double y;
+        if (!strcasecmp(nom, "compound")) y = pow(1.0 + taux, per);
+        else y = (taux == 0) ? per : (1.0 - pow(1.0 + taux, -per)) / taux;
+        r = hct_val_nombre(y); fait = 1;
+    }
+
     if (!fait && (!strcasecmp(nom, "min") || !strcasecmp(nom, "max") ||
                   !strcasecmp(nom, "sum") || !strcasecmp(nom, "average") ||
                   !strcasecmp(nom, "avg"))) {
@@ -722,8 +769,19 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * par fond.
          *
          * On confie donc le nœud entier au recours, qui reconstitue le texte
-         * et le donne à term_value — laquelle sait compter par conteneur. */
-        if (!strcasecmp(nom, "number") && sur->genre == HCTN_OBJET) {
+         * et le donne à term_value — laquelle sait compter par conteneur.
+         *
+         * Seulement le PLURIEL NU, cependant : « cards », « card buttons »,
+         * qui n'ont pas de désignateur. Dès qu'il y en a un — « the number of
+         * this card », « the number of card field "x" » —, ce n'est plus un
+         * comptage mais le RANG de cet objet-là, et le chemin des propriétés
+         * est exactement le bon : il résout l'objet, puis lit sa propriété
+         * « number ». Y envoyer aussi le rang évite un aller-retour par le
+         * texte pour la forme la plus courante de toutes, celle par laquelle
+         * un script sait où il se trouve. */
+        if (!strcasecmp(nom, "number") && sur->genre == HCTN_OBJET &&
+            sur->designateur == HCT_DES_AUCUN &&
+            sur->typeobj != HCT_OBJ_ME && sur->typeobj != HCT_OBJ_TARGET) {
             HctValeur vr;
             if (ctx->hote.recours &&
                 ctx->hote.recours(ctx->hote.donnees, n, &vr)) {

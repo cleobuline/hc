@@ -459,6 +459,23 @@ static int execute_texte(HctExec *x, const char *src, const HctNoeud *origine)
 }
 
 
+/* « the result » rend le résultat de la DERNIÈRE commande exécutée : une
+ * commande qui réussit sans rien à signaler le laisse vide. Les commandes
+ * traitées ici ne le faisaient pas, si bien qu'un résultat déposé bien plus
+ * tôt leur survivait — « if the result is not empty » restait vrai longtemps
+ * après la commande qui l'avait rempli.
+ *
+ * On ne vide QUE sur le chemin où l'exécuteur a fait le travail lui-même :
+ * quand la commande repart à l'hôte, c'est à lui de dire ce qu'il en advient. */
+static void resultat_vide(HctExec *x)
+{
+    /* x->hote, et non x->ctx.hote : le pont construit par hct_exec_init ne
+     * recopie que les rappels dont l'ÉVALUATEUR a besoin, et ses `donnees`
+     * pointent sur l'exécuteur, pas sur l'hôte. On s'adresse donc à l'hôte
+     * réel, celui que l'appelant nous a confié. */
+    if (x->hote.resultat_vide) x->hote.resultat_vide(x->hote.donnees);
+}
+
 static void commande(HctExec *x, const HctNoeud *n)
 {
     const char *v = n->op ? n->op : "";
@@ -484,12 +501,15 @@ static void commande(HctExec *x, const HctNoeud *n)
         HctValeur val = hct_evalue(&x->ctx, n->fils[0]);
         if (x->ctx.erreur) { hct_val_libere(&val); return; }
 
+        int delegue = 0;
         if (n->nfils >= 3) {
             int mode = est_motcle(n->fils[1], "before") ? 1
                      : est_motcle(n->fils[1], "after")  ? 2 : 0;
             if (!ecrit_dans(x, n->fils[2], val.txt, mode) &&
-                x->ctx.hote.commande)
+                x->ctx.hote.commande) {
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+                delegue = 1;
+            }
         } else {
             /* « put X » sans cible écrit dans la BOÎTE DE MESSAGES, qui n'est
              * pas une variable : lui poser var("msg") créait une variable de
@@ -499,12 +519,15 @@ static void commande(HctExec *x, const HctNoeud *n)
              * hôtes qui ne fournissent pas ecrit_message. */
             if (x->ctx.hote.ecrit_message)
                 x->ctx.hote.ecrit_message(x->ctx.hote.donnees, val.txt, 0);
-            else if (x->ctx.hote.commande)
+            else if (x->ctx.hote.commande) {
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+                delegue = 1;
+            }
             else if (x->ctx.hote.ecrit_var)
                 x->ctx.hote.ecrit_var(x->ctx.hote.donnees, "msg", val.txt);
         }
         hct_val_libere(&val);
+        if (!delegue && !x->ctx.erreur) resultat_vide(x);
         return;
     }
 
@@ -605,10 +628,14 @@ static void commande(HctExec *x, const HctNoeud *n)
             r = xc / xv;
         }
         HctValeur res = hct_val_nombre(r);
-        if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande)
+        int delegue = 0;
+        if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+            delegue = 1;
+        }
         hct_val_libere(&res);
         hct_val_libere(&val); hct_val_libere(&act);
+        if (!delegue && !x->ctx.erreur) resultat_vide(x);
         return;
     }
 
@@ -753,6 +780,42 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
             if (x->signal == HCT_SIG_EXIT_REPEAT) { x->signal = HCT_SIG_AUCUN; break; }
             if (x->signal) break;
         }
+        free(nom);
+        return;
+    }
+
+    /* repeat for each <sorte> <var> in <source>
+     *
+     * La source est évaluée UNE SEULE FOIS, avant le premier tour, et le
+     * découpage porte sur cette copie : c'est la règle d'HyperCard, et elle
+     * compte — « repeat for each line L in field "x" » qui écrit dans ce même
+     * champ ne doit pas voir sa propre liste changer sous lui, ni boucler
+     * sans fin. */
+    if (!strcasecmp(forme, "each")) {
+        if (n->nfils < 3) return;
+        char *nom = texte(n->fils[0]);
+        if (!nom) return;
+
+        HctValeur src = hct_evalue(&x->ctx, n->fils[1]);
+        if (x->ctx.erreur) { free(nom); hct_val_libere(&src); return; }
+
+        char d = delim_de(x);
+        int total = hct_chunk_compte(src.txt, n->sorte, d);
+
+        for (int i = 1; i <= total; i++) {
+            if (++tours > PLAFOND) break;
+            HctValeur m = hct_chunk_lit(src.txt, n->sorte, i, 0, d);
+            var_ecrit(x, nom, m.txt);
+            hct_val_libere(&m);
+
+            hct_exec(x, corps);
+            if (x->ctx.erreur) break;
+            if (!respire(x)) break;
+            if (x->signal == HCT_SIG_NEXT_REPEAT) { x->signal = HCT_SIG_AUCUN; continue; }
+            if (x->signal == HCT_SIG_EXIT_REPEAT) { x->signal = HCT_SIG_AUCUN; break; }
+            if (x->signal) break;
+        }
+        hct_val_libere(&src);
         free(nom);
         return;
     }
