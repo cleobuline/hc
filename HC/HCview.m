@@ -2826,6 +2826,12 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* En dernier, une fois écartés les modes propres à HC — menu déroulant,
+     * zone flottante, outil Texte, suppressions. Ceux-là sont à nous et
+     * gardent la main ; tout le reste appartient à la pile, qui peut
+     * maintenant nommer la touche. */
+    if ([self envoieToucheHyperCard:event]) return;
+
     [super keyDown:event];
 }
 
@@ -3207,6 +3213,72 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 static NSString *gTexteAuDebut     = nil;
 static BOOL      gSansMessageChamp = NO;
 
+/* ═══ Les messages du clavier ═══════════════════════════════════════════
+ *
+ * HyperCard nomme les touches avant d'agir : arrowKey, tabKey, returnKey,
+ * enterKey, functionKey, controlKey, keyDown. Une pile qui veut sa propre
+ * navigation ou ses propres raccourcis n'a que ça, et HC n'en envoyait aucun.
+ *
+ * Rend YES si un gestionnaire a PRIS la touche : l'appelant s'arrête là. Un
+ * gestionnaire qui fait « pass » rend 0, et la touche retrouve son effet
+ * habituel — le même accord qu'avec returnInField.
+ *
+ * commandKeyDown n'y est pas : Cmd+lettre est intercepté par les équivalents
+ * clavier des menus AVANT que keyDown: soit appelé. Il faudrait
+ * performKeyEquivalent:, c'est-à-dire se placer devant la barre de menus, et
+ * cela mérite d'être fait séparément plutôt qu'en passant. */
+- (BOOL)envoieToucheHyperCard:(NSEvent *)event
+{
+    Object *carte = hc_current_card();
+    if (!carte) return NO;
+
+    NSString *nues = [event charactersIgnoringModifiers];
+    if ([nues length] == 0) return NO;          /* touche morte, accent en cours */
+    unichar key = [nues characterAtIndex:0];
+    NSUInteger mods = [event modifierFlags];
+
+    const char *msg = NULL;
+    char arg[32];
+    arg[0] = '\0';
+
+    switch (key) {
+        case NSLeftArrowFunctionKey:    msg = "arrowKey"; strcpy(arg, "left");  break;
+        case NSRightArrowFunctionKey:   msg = "arrowKey"; strcpy(arg, "right"); break;
+        case NSUpArrowFunctionKey:      msg = "arrowKey"; strcpy(arg, "up");    break;
+        case NSDownArrowFunctionKey:    msg = "arrowKey"; strcpy(arg, "down");  break;
+        case NSTabCharacter:            msg = "tabKey";                         break;
+        case NSCarriageReturnCharacter: msg = "returnKey";                      break;
+        case NSEnterCharacter:          msg = "enterKey";                       break;
+        default: break;
+    }
+
+    if (!msg && key >= NSF1FunctionKey && key <= NSF15FunctionKey) {
+        msg = "functionKey";
+        snprintf(arg, sizeof arg, "%d", (int)(key - NSF1FunctionKey) + 1);
+    }
+
+    if (!msg && (mods & NSEventModifierFlagControl) && key >= 1 && key < 128) {
+        msg = "controlKey";
+        snprintf(arg, sizeof arg, "%d", (int)key);
+    }
+
+    if (!msg) {
+        /* keyDown : toute touche qui produit un caractère, celui-ci en
+         * argument. On prend [event characters] et non les touches nues :
+         * « on keyDown k » attend le caractère TAPÉ, majuscule et accent
+         * compris. */
+        NSString *ch = [event characters];
+        if ([ch length] == 0) return NO;
+        unichar c = [ch characterAtIndex:0];
+        if (c < 32 || c == 0x7F) return NO;             /* commande, pas caractère */
+        if (c >= 0xF700 && c <= 0xF8FF) return NO;      /* touche de fonction */
+        msg = "keyDown";
+        snprintf(arg, sizeof arg, "%s", [ch UTF8String]);
+    }
+
+    return hc_send_arg(carte, msg, arg[0] ? arg : NULL) ? YES : NO;
+}
+
 /* ═══ returnInField ═════════════════════════════════════════════════════
  *
  * HyperCard envoie returnInField quand Retour est frappé dans un champ. Si
@@ -3230,10 +3302,17 @@ static BOOL      gSansMessageChamp = NO;
  * tabKey, arrowKey — passeront par ici. */
 - (BOOL)textView:(NSTextView *)tv doCommandBySelector:(SEL)cmd
 {
-    if (tv != gFieldEditor || !gEditingField)   return NO;
-    if (cmd != @selector(insertNewline:))       return NO;
+    if (tv != gFieldEditor || !gEditingField) return NO;
 
-    return hc_send(gEditingField, "returnInField") ? YES : NO;
+    if (cmd == @selector(insertNewline:))
+        return hc_send(gEditingField, "returnInField") ? YES : NO;
+
+    /* Tabulation dans un champ : HyperCard envoie tabKey. Sans preneur, la
+     * tabulation s'insère comme d'habitude. */
+    if (cmd == @selector(insertTab:))
+        return hc_send_arg(hc_current_card(), "tabKey", NULL) ? YES : NO;
+
+    return NO;
 }
 
 /* Ce qu'il faut lâcher avant de changer de carte depuis l'INTERFACE.

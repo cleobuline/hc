@@ -12586,19 +12586,32 @@ static int menu_meme_article(const char *a, const char *b)
  * faire toute seule ; il ne lui manque que de demander d'abord à la pile si
  * elle veut s'en charger. Rend 1 si un gestionnaire l'a pris — l'appelant n'a
  * alors plus rien à faire. */
+/* Envoyer un message accompagné d'UN argument.
+ *
+ * hc_send n'en accepte aucun, hc_send_args est interne : l'hôte n'avait donc
+ * aucun moyen d'envoyer « arrowKey left » ou « functionKey 3 », alors que ce
+ * sont précisément les messages du clavier, tous porteurs d'un argument.
+ * Rend 1 si un gestionnaire l'a pris — un « pass » ne compte pas, voir
+ * hc_send_args_k_body. */
+int hc_send_arg(Object *target, const char *message, const char *arg)
+{
+    if (!target || !message) return 0;
+
+    ARENA_MARK;
+    char (*argv)[HC_VAL] = arena_rows(1);
+    snprintf(argv[0], HC_VAL, "%s", arg ? arg : "");
+    int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
+    ARENA_FREE;
+    return pris;
+}
+
 int hc_menu_trappe(const char *item)
 {
     if (!item) return 0;
 
     g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
 
-    ARENA_MARK;
-    char (*argv)[HC_VAL] = arena_rows(1);
-    snprintf(argv[0], HC_VAL, "%s", item);
-    int pris = g_current_card
-             ? hc_send_args(g_current_card, "doMenu", argv, 1) : 0;
-    ARENA_FREE;
-    return pris;
+    return g_current_card ? hc_send_arg(g_current_card, "doMenu", item) : 0;
 }
 
 void hc_do_menu(const char *item)
