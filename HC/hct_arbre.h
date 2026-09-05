@@ -60,7 +60,14 @@ typedef enum {
 typedef enum {
     HCT_OBJ_STACK, HCT_OBJ_BACKGROUND, HCT_OBJ_CARD,
     HCT_OBJ_BUTTON, HCT_OBJ_FIELD, HCT_OBJ_PART,
-    HCT_OBJ_ME, HCT_OBJ_TARGET, HCT_OBJ_MESSAGE
+    HCT_OBJ_ME, HCT_OBJ_TARGET, HCT_OBJ_MESSAGE,
+    /* Les menus de la barre, créés par script. Ce ne sont pas des objets de
+     * la PILE — ils ne s'enregistrent pas avec elle et disparaissent quand
+     * elle se ferme —, mais la grammaire les désigne exactement comme les
+     * autres : « menu "Outils" », « menuItem 4 of menu "Outils" ». Sans cette
+     * entrée, « delete menu "Outils" » s'arrêtait sur le mot « menu » et
+     * perdait le nom en chemin. */
+    HCT_OBJ_MENU, HCT_OBJ_MENUITEM
 } HctTypeObjet;
 
 /* « card field 1 » et « bg field 1 » sont DEUX objets différents : la

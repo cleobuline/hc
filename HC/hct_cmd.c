@@ -85,7 +85,16 @@ static const HctCommande TABLE[] = {
     { "pop",        "card [into c]" },
     { "print",      "* [with e]" },
     { "push",       "*" },
-    { "put",        "e [into|before|after c]" },
+    /* Le groupe « with menuMsg » ne sert qu'à « put <articles> into menu
+     * <nom> with menuMsg <messages> » : chaque article y reçoit SON message,
+     * celui qui part quand on le choisit. Sans ce groupe le motif s'arrêtait
+     * au conteneur et la liste des messages tombait par terre, sans erreur —
+     * le menu se construisait, et aucun de ses articles ne faisait rien.
+     *
+     * Facultatif, donc sans effet sur les autres « put ». HyperCard écrit
+     * ce mot-clé de quatre façons ; on les accepte toutes. */
+    { "put",        "e [into|before|after c] "
+                    "[with menumsg|menumsgs|menumessage|menumessages e]" },
     { "read",       "from file e [for|until e]" },
     { "reply",      "e [with keyword e]" },
     { "request",    "*" },
