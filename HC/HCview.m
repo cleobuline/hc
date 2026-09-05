@@ -3207,6 +3207,35 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 static NSString *gTexteAuDebut     = nil;
 static BOOL      gSansMessageChamp = NO;
 
+/* ═══ returnInField ═════════════════════════════════════════════════════
+ *
+ * HyperCard envoie returnInField quand Retour est frappé dans un champ. Si
+ * personne ne le traite, le retour à la ligne s'insère normalement — c'est
+ * ce que fait « pass returnInField », et ici c'est un simple NO rendu à
+ * NSTextView, qui poursuit son travail habituel.
+ *
+ * hc_send rend 1 seulement si un gestionnaire a VRAIMENT pris le message :
+ * depuis que « pass » veut dire ce qu'il dit, un gestionnaire qui passe rend
+ * la main, et la touche retrouve son effet normal. Les deux mécaniques se
+ * répondent exactement.
+ *
+ * PAS d'enterInField. Sur un portable, Entrée n'existe que par Fn+Retour, et
+ * Cocoa envoie les deux touches sur insertNewline: — les distinguer oblige à
+ * fouiller l'événement courant. Se tromper ferait fermer le champ sur un
+ * simple Retour : un risque réel sur la touche dont on se sert, pour servir
+ * celle qu'on n'a pas. Le jour où enterInField manquera à quelqu'un, il sera
+ * temps ; ce n'est pas aujourd'hui.
+ *
+ * Première méthode de délégué de texte de ce fichier. Les suivantes —
+ * tabKey, arrowKey — passeront par ici. */
+- (BOOL)textView:(NSTextView *)tv doCommandBySelector:(SEL)cmd
+{
+    if (tv != gFieldEditor || !gEditingField)   return NO;
+    if (cmd != @selector(insertNewline:))       return NO;
+
+    return hc_send(gEditingField, "returnInField") ? YES : NO;
+}
+
 /* Ce qu'il faut lâcher avant de changer de carte depuis l'INTERFACE.
  *
  * Un clic sur un bouton passe par mouseDown:, qui referme déjà l'édition en
