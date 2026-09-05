@@ -3183,6 +3183,30 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     draw_popup_menu();
 }
 
+/* ═══ openField, closeField, exitField ══════════════════════════════════
+ *
+ * Les trois messages qu'HyperCard envoie autour de l'édition d'un champ, et
+ * qui sont la seule façon pour une pile de CONTRÔLER une saisie :
+ *
+ *   openField   quand l'édition commence ;
+ *   closeField  quand elle se termine ET que le texte a changé ;
+ *   exitField   quand elle se termine sans que rien ait changé.
+ *
+ * C'est la distinction qui fait tout l'intérêt de la paire : un
+ * « on closeField » qui valide et reformate ne doit pas se déclencher quand
+ * l'utilisateur n'a fait que traverser le champ.
+ *
+ * D'où gTexteAuDebut, pris à l'ouverture et comparé à la fermeture. Le
+ * comparer au texte du NOYAU serait faux : endFieldEdit vient justement d'y
+ * recopier ce que contient l'éditeur, donc les deux seraient toujours égaux
+ * et closeField ne partirait jamais.
+ *
+ * gSansMessageChamp couvre les fermetures TECHNIQUES — changer de pile, tout
+ * remettre à zéro — où le champ s'en va sans que l'utilisateur ait quitté
+ * quoi que ce soit. */
+static NSString *gTexteAuDebut     = nil;
+static BOOL      gSansMessageChamp = NO;
+
 /* Ce qu'il faut lâcher avant de changer de carte depuis l'INTERFACE.
  *
  * Un clic sur un bouton passe par mouseDown:, qui referme déjà l'édition en
@@ -3259,7 +3283,14 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 }
 
 - (void)resetForNewStack {
-    if (gEditingField) [self endFieldEdit];
+    /* Fermeture technique : la pile s'en va, l'utilisateur n'a quitté aucun
+     * champ. Un closeField ici ferait tourner le script d'un objet qui est
+     * sur le point de disparaître. */
+    if (gEditingField) {
+        gSansMessageChamp = YES;
+        [self endFieldEdit];
+        gSansMessageChamp = NO;
+    }
     [self dropFloating];
     close_popup_menu();
     hc_set_selection(NULL, 0, 0);
@@ -4652,6 +4683,12 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     [[self window] makeFirstResponder:gFieldEditor];
+
+    /* openField en DERNIER, quand l'éditeur est entièrement en place : le
+     * gestionnaire est du script, il peut sélectionner du texte, changer de
+     * carte, refermer le champ. Tout ce qu'il touche doit déjà exister. */
+    gTexteAuDebut = [[gFieldEditor string] copy];
+    hc_send(field, "openField");
 }
 
 - (void)scrollWheel:(NSEvent *)event {
@@ -4802,11 +4839,25 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     [gFieldEditor setDelegate:nil];
 
+    /* Ce qu'il faut retenir AVANT de tout effacer : à qui parler, et si le
+     * texte a bougé. */
+    Object   *champ   = gEditingField;
+    NSString *final   = gFieldEditor ? [gFieldEditor string] : nil;
+    BOOL      change  = (champ && gTexteAuDebut && final &&
+                         ![final isEqualToString:gTexteAuDebut]);
+
     [gFieldScroll removeFromSuperview];
     gFieldScroll = nil;
     gFieldEditor = nil;
     gEditingField = NULL;
+    gTexteAuDebut = nil;
     [self setNeedsDisplay:YES];
+
+    /* Le message part une fois l'état rendu : un gestionnaire qui rappellerait
+     * endFieldEdit — en changeant de carte, par exemple — ne trouve alors plus
+     * rien à fermer, et ne peut pas boucler. */
+    if (champ && !gSansMessageChamp)
+        hc_send(champ, change ? "closeField" : "exitField");
 }
 - (void)startStillDownTimer {
     [self stopStillDownTimer];
