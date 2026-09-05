@@ -12530,6 +12530,55 @@ static int hc_call_user_function(Object *target, const char *name,
  * même article se rappelle lui-même — mais c'est le comportement d'HyperCard,
  * et le garde-fou de profondeur (HC_MAX_DEPTH) l'arrête avec un message clair
  * plutôt que d'inventer une règle qu'HyperCard n'avait pas. */
+/* Les articles standards qu'HyperCard exécutait lui-même et que le NOYAU sait
+ * faire sans rien demander à l'hôte : le menu Aller.
+ *
+ * Une pile d'époque écrit « doMenu \"Next\" » aussi naturellement que
+ * « go next ». Sans cette table, l'article partait à l'hôte, qui ne connaît
+ * que ses propres menus — en français, et sans menu Aller : il ne se passait
+ * rien du tout, sans un mot.
+ *
+ * On passe par exec_stmt plutôt que de refaire le changement de carte à la
+ * main : la séquence closeCard / closeBackground / openBackground / openCard
+ * est écrite en toutes lettres à vingt-quatre endroits de ce fichier, et en
+ * ajouter un vingt-cinquième exemplaire serait absurde.
+ *
+ * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
+ * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
+ * Il y faudrait d'abord un historique de navigation. */
+static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = {
+    { "Next",     "go next"  },
+    { "Prev",     "go prev"  },
+    { "Previous", "go prev"  },
+    { "First",    "go first" },
+    { "Last",     "go last"  },
+    { NULL, NULL }
+};
+
+/* Comparaison d'un nom d'article, à la tolérance près qui sépare ce qu'écrit
+ * un script de ce qu'affiche un menu : la casse, et les points de suspension
+ * finaux. HyperCard affiche « Find… » avec le vrai caractère « … » ; les
+ * scripts écrivent aussi bien « Find… » que « Find... » ou « Find ». Les trois
+ * doivent désigner le même article. */
+static int menu_meme_article(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    while (la && (a[la-1] == '.' || a[la-1] == ' ')) la--;
+    while (lb && (b[lb-1] == '.' || b[lb-1] == ' ')) lb--;
+    /* « … » en UTF-8 : E2 80 A6 */
+    while (la >= 3 && (unsigned char)a[la-3] == 0xE2 &&
+           (unsigned char)a[la-2] == 0x80 && (unsigned char)a[la-1] == 0xA6) {
+        la -= 3;
+        while (la && a[la-1] == ' ') la--;
+    }
+    while (lb >= 3 && (unsigned char)b[lb-3] == 0xE2 &&
+           (unsigned char)b[lb-2] == 0x80 && (unsigned char)b[lb-1] == 0xA6) {
+        lb -= 3;
+        while (lb && b[lb-1] == ' ') lb--;
+    }
+    return la == lb && strncasecmp(a, b, la) == 0;
+}
+
 void hc_do_menu(const char *item)
 {
     if (!item) return;
@@ -12544,6 +12593,12 @@ void hc_do_menu(const char *item)
     ARENA_FREE;
 
     if (pris) return;                 /* la pile s'en est chargée */
+
+    for (int i = 0; MENUS_NOYAU[i].article; i++)
+        if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
+            exec_stmt(g_me ? g_me : g_current_card, MENUS_NOYAU[i].ligne);
+            return;
+        }
 
     if (g_host && g_host->do_menu) g_host->do_menu(item);
     else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");

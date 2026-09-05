@@ -1321,6 +1321,67 @@ static void cocoa_click_at(int x, int y, const char *mods) {
     [gView setNeedsDisplay:YES];
 }
 
+/* ═══ Les articles de menu d'HyperCard ══════════════════════════════════
+ *
+ * Les menus de HC sont les siens : natifs, en français, « Nouvelle carte »
+ * plutôt que « New Card ». Une pile d'époque, elle, écrit « doMenu "New
+ * Card" » — et jusqu'ici cet article partait dans cocoa_do_menu, qui ne
+ * connaissait que « Clear Picture » et « Select All », et n'en faisait rien.
+ * Sans un mot : c'est le pire des cas, la pile croit avoir agi.
+ *
+ * D'où cette table de traduction. Elle ne renomme aucun menu — l'interface
+ * reste en français — elle dit seulement quel article d'HyperCard déclenche
+ * quelle action de HC. L'action est envoyée par la chaîne des répondeurs,
+ * puisque ces méthodes sont réparties entre AppDelegate, HCView et sa
+ * catégorie Dialogs : les nommer une par une supposerait de savoir où chacune
+ * habite, ce qui serait faux au premier déménagement.
+ *
+ * DEUX ABSENTS VOLONTAIRES : « Delete Card » et « Cut Card ». Ils appellent
+ * hc_delete_card, qui libère la carte. Si le script qui les demande tourne sur
+ * un bouton DE CETTE CARTE — le cas le plus courant —, on libère l'objet dont
+ * le gestionnaire est en cours d'exécution. Il faut d'abord différer la
+ * libération jusqu'à la fin du gestionnaire ; tant que ce n'est pas fait, ces
+ * deux articles restent hors de portée d'un script, et c'est un moindre mal
+ * comparé à un plantage. */
+static NSString *menu_normalise(NSString *s)
+{
+    /* Un script écrit aussi bien « Find… » que « Find... » ou « Find » : les
+     * trois désignent le même article, et la casse n'y est pour rien. */
+    NSCharacterSet *fin =
+        [NSCharacterSet characterSetWithCharactersInString:@". …"];
+    return [[s stringByTrimmingCharactersInSet:fin] lowercaseString];
+}
+
+static void cocoa_menu_hypercard(const char *item)
+{
+    static const struct { const char *article; const char *selecteur; } TABLE[] = {
+        { "New Card",       "newCard:"           },
+        { "Copy Card",      "copyCard:"          },
+        { "Paste Card",     "paste:"             },
+        { "New Background", "newBackground:"     },
+        { "Background",     "toggleBackground:"  },
+        { "Card Info",      "showCardInfo"       },
+        { "Bkgnd Info",     "showBackgroundInfo" },
+        { "Stack Info",     "showStackInfo"      },
+        { "Find",           "findInStack:"       },
+        { "New Stack",      "newStack:"          },
+        { "Open Stack",     "openStack:"         },
+        { "Save a Copy",    "saveStack:"         },
+        { NULL, NULL }
+    };
+
+    NSString *voulu = menu_normalise([NSString stringWithUTF8String:item]);
+    for (int i = 0; TABLE[i].article; i++) {
+        NSString *nom = [NSString stringWithUTF8String:TABLE[i].article];
+        if (![menu_normalise(nom) isEqualToString:voulu]) continue;
+        SEL sel = NSSelectorFromString(
+                      [NSString stringWithUTF8String:TABLE[i].selecteur]);
+        if (sel) [NSApp sendAction:sel to:nil from:gView];
+        return;
+    }
+    NSLog(@"doMenu : article inconnu « %s »", item);
+}
+
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
  
@@ -1356,7 +1417,7 @@ static void cocoa_do_menu(const char *item) {
         return;
     }
 
- 
+    cocoa_menu_hypercard(item);
 }
 
 static void cocoa_type_text(const char *text, const char *mods) {
