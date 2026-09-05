@@ -4277,6 +4277,73 @@ static BOOL     gInIdle = NO;
     if (gIdleTimer) { [gIdleTimer invalidate]; gIdleTimer = nil; }
 }
 
+/* ═══ mouseEnter, mouseLeave, mouseWithin ═══════════════════════════════
+ *
+ * Le survol. Les boutons qui s'allument au passage du curseur sont partout
+ * dans les piles des années 90, et HC n'envoyait aucun de ces trois messages.
+ *
+ * Traité au TEMPS MORT, avec « idle », et non sur les événements de
+ * déplacement de souris. C'est l'architecture d'HyperCard, et elle nous
+ * arrange doublement : rien à faire suivre à la fenêtre — pas de
+ * setAcceptsMouseMovedEvents:, pas de mouseMoved: —, et surtout mouseWithin
+ * est borné à dix envois par seconde au lieu d'un par pixel parcouru. Sur une
+ * carte à cent boutons, la différence est exactement celle qu'on a passé la
+ * journée à corriger ailleurs.
+ *
+ * Le prix : une transition est vue au dixième de seconde près. Pour un bouton
+ * qui s'allume, personne ne le remarque.
+ *
+ * Trois gardes, chacun contre un vrai danger :
+ *
+ *   - seulement à l'outil doigt. Aux outils Bouton ou Champ, survoler un
+ *     objet ne doit pas faire tourner son script : on l'AUTEURE, on ne s'en
+ *     sert pas.
+ *
+ *   - rien pendant qu'on tient le bouton de la souris. Un glissement n'est
+ *     pas un survol, et le script n'a pas à s'exécuter au milieu.
+ *
+ *   - à un changement de carte, on oublie l'objet survolé SANS lui envoyer
+ *     mouseLeave. Il appartenait à l'ancienne carte et a pu être libéré :
+ *     lui parler serait lire de la mémoire rendue. On compare les pointeurs
+ *     de carte, on ne les déréférence jamais. */
+static Object *gSurvole      = NULL;   /* l'objet sous le curseur          */
+static Object *gSurvoleCarte = NULL;   /* et la carte où on l'a vu         */
+
+static void hcv_survol(HCView *v, Object *carte)
+{
+    if (gTool != TOOL_BROWSE || gDragging || gPenDrawing || gFloatDragging) {
+        gSurvole = NULL;
+        gSurvoleCarte = carte;
+        return;
+    }
+
+    if (carte != gSurvoleCarte) {          /* on a changé de carte */
+        gSurvole = NULL;
+        gSurvoleCarte = carte;
+    }
+
+    NSWindow *w = [v window];
+    Object *sous = NULL;
+    if (w && [w isKeyWindow]) {
+        NSPoint p = [v convertPoint:[w mouseLocationOutsideOfEventStream]
+                           fromView:nil];
+        if (NSPointInRect(p, [v bounds])) sous = part_at(carte, p);
+    }
+
+    if (sous == gSurvole) {
+        if (sous) hc_send(sous, "mouseWithin");
+        return;
+    }
+
+    Object *ancien = gSurvole;
+    gSurvole = sous;
+
+    /* Un gestionnaire peut changer de carte sous nos pieds : on ne parle au
+     * suivant que si l'on est toujours là où l'on croit être. */
+    if (ancien) hc_send(ancien, "mouseLeave");
+    if (sous && hc_current_card() == carte) hc_send(sous, "mouseEnter");
+}
+
 - (void)idleTick:(NSTimer *)t {
     (void)t;
     if (gInIdle || hc_is_running()) return;
@@ -4287,7 +4354,16 @@ static BOOL     gInIdle = NO;
     if (!card) return;
 
     gInIdle = YES;
+    hcv_survol(v, card);
     hc_send(card, "idle");
+
+    /* Et rafraîchir si l'un de ces gestionnaires a changé quelque chose.
+     * Personne ne le faisait : un « on idle » qui bougeait un objet, ou un
+     * mouseEnter qui allume un bouton, restaient invisibles jusqu'au prochain
+     * redessin venu d'ailleurs. Le drapeau du noyau évite de tout repeindre
+     * dix fois par seconde pour rien. */
+    if (hc_take_visual_dirty()) [v setNeedsDisplay:YES];
+
     gInIdle = NO;
 }
 
