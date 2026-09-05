@@ -343,9 +343,41 @@ static void apply_selection_highlight(NSMutableAttributedString *as, Object *o)
 
 static NSMutableArray<NSDictionary *> *g_memo_champs = nil;
 
-/* La signature de ce qui détermine le rendu d'un champ. */
+/* La signature de ce qui détermine le rendu d'un champ.
+ *
+ * Deux entrées ne sautent pas aux yeux et manquaient à la première version,
+ * ce qui a coûté la surbrillance des champs-listes :
+ *
+ *   LA SÉLECTION. apply_selection_highlight l'incruste DANS la chaîne
+ *   attribuée — fond noir, texte blanc — parce qu'une surbrillance calculée
+ *   à part tombait à côté (voir son commentaire). Elle change donc le rendu
+ *   sans toucher au texte : « selectline » n'aurait plus rien affiché.
+ *
+ *   LES PLAGES DE STYLE. « set the textStyle of char 5 to 10 of field 1 to
+ *   bold » ne change ni le texte ni le style du champ entier. Sans elles
+ *   dans la clé, le gras ne serait apparu qu'au prochain changement de
+ *   texte. On les résume en une chaîne : elles sont peu nombreuses, et
+ *   c'est le prix d'une comparaison sûre. */
+static NSString *champ_plages(Object *o)
+{
+    int n = hc_run_count(o);
+    if (n <= 0) return @"";
+    NSMutableString *r = [NSMutableString stringWithCapacity:(NSUInteger)n * 16];
+    for (int i = 0; i < n; i++) {
+        int a = 0, l = 0, st = 0, sz = 0, co = HC_COLOR_INHERIT;
+        const char *fn = NULL;
+        if (!hc_run_attrs_color(o, i, &a, &l, &st, &sz, &fn, &co)) continue;
+        [r appendFormat:@"%d/%d/%d/%d/%s/%d;",
+                        a, l, st, sz, fn ? fn : "", co];
+    }
+    return r;
+}
+
 static NSDictionary *champ_signature(Object *o, NSString *s)
 {
+    Object *sel = NULL; int start = 0, len = 0;
+    hc_get_selection(&sel, &start, &len);
+
     return @{ @"objet"   : [NSValue valueWithPointer:o],
               @"texte"   : s ?: @"",
               @"police"  : [NSString stringWithUTF8String:
@@ -353,7 +385,10 @@ static NSDictionary *champ_signature(Object *o, NSString *s)
               @"corps"   : @(o->textsize),
               @"style"   : @(o->textstyle),
               @"interl"  : @(o->fixed_lh),
-              @"editeur" : @(gForEditor) };
+              @"editeur" : @(gForEditor),
+              @"seldeb"  : @(sel == o ? start : -1),
+              @"sellen"  : @(sel == o ? len   : 0),
+              @"plages"  : champ_plages(o) };
 }
 
 static BOOL champ_signature_egale(NSDictionary *a, NSDictionary *b)
@@ -363,7 +398,10 @@ static BOOL champ_signature_egale(NSDictionary *a, NSDictionary *b)
         && [a[@"style"]   isEqual:b[@"style"]]
         && [a[@"interl"]  isEqual:b[@"interl"]]
         && [a[@"editeur"] isEqual:b[@"editeur"]]
+        && [a[@"seldeb"]  isEqual:b[@"seldeb"]]
+        && [a[@"sellen"]  isEqual:b[@"sellen"]]
         && [a[@"police"]  isEqualToString:b[@"police"]]
+        && [a[@"plages"]  isEqualToString:b[@"plages"]]
         && [a[@"texte"]   isEqualToString:b[@"texte"]];
 }
 
