@@ -1059,24 +1059,35 @@ static BOOL mods_has(const char *mods, const char *k) {
  * On accumule donc l'union des zones sales et l'on n'invalide qu'une fois,
  * au déverrouillage. Le noyau déverrouille de lui-même en retombant au
  * repos, si bien qu'un script qui oublie son « unlock screen » ne laisse pas
- * l'écran figé. */
+ * l'écran figé.
+ *
+ * Première version : les deux fonctions ci-dessous testaient elles-mêmes le
+ * verrou, et les sites de peinture les appelaient. C'était trop étroit — le
+ * dessin n'est pas la seule chose qui salit la vue pendant un script :
+ *
+ *   - antsTick: fait marcher les fourmis d'une sélection QUINZE FOIS PAR
+ *     SECONDE, et invalidait toute la vue à chaque pas. Il suffisait qu'une
+ *     sélection reste active — un « doMenu Select All » non suivi d'un
+ *     changement d'outil — pour que le tracé apparaisse au fur et à mesure,
+ *     verrou ou pas ;
+ *   - une douzaine de rappels de l'hôte (choose, doMenu, type, les propriétés
+ *     de peinture, le changement de champ ou de sélection) marquaient la vue
+ *     sale directement ;
+ *   - eraseAll et les autres méthodes de la vue également.
+ *
+ * Recenser ces chemins un par un, c'est en oublier un. On intercepte donc au
+ * seul endroit par lequel ils passent TOUS : setNeedsDisplay: et
+ * setNeedsDisplayInRect: de la vue elle-même, redéfinies plus bas. Le verrou
+ * y accumule, et ne relâche qu'une fois. */
 static BOOL   gLockScreen = NO;
 static BOOL   gSaleTout   = NO;   /* une invalidation totale est en attente */
 static BOOL   gSaleUnPeu  = NO;   /* gSaleRect porte une zone en attente    */
 static NSRect gSaleRect;
 
-static void hcv_invalide(NSRect r)
-{
-    if (!gLockScreen) { [gView setNeedsDisplayInRect:r]; return; }
-    gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
-    gSaleUnPeu = YES;
-}
-
-static void hcv_invalide_tout(void)
-{
-    if (!gLockScreen) { [gView setNeedsDisplay:YES]; return; }
-    gSaleTout = YES;
-}
+/* Ces deux-la ne testent plus rien : la vue s'en charge. Elles restent parce
+ * qu'elles disent l'intention au lieu du moyen. */
+static void hcv_invalide(NSRect r)   { [gView setNeedsDisplayInRect:r]; }
+static void hcv_invalide_tout(void)  { [gView setNeedsDisplay:YES]; }
 
 static void hcv_verrou_ecran(BOOL ferme)
 {
@@ -2046,6 +2057,34 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
         return c;
     }
     return _doc.card;
+}
+
+/* ═══ Le verrou d'écran, appliqué ═══════════════════════════════════════
+ *
+ * Tout ce qui veut redessiner la carte finit ici, d'où qu'il vienne : un
+ * rappel de l'hôte, une méthode de la vue, un minuteur, ou AppKit lui-même.
+ * C'est donc ici, et nulle part ailleurs, que « lock screen » retient.
+ *
+ * Le garde `self == gView` limite l'effet à la vue active : les autres
+ * documents ouverts continuent de se rafraîchir normalement.
+ *
+ * Au déverrouillage, hcv_verrou_ecran remet gLockScreen à NO AVANT de
+ * réinvalider — ces deux méthodes laissent alors passer, et la carte se
+ * recompose une seule fois. */
+- (void)setNeedsDisplay:(BOOL)flag
+{
+    if (flag && gLockScreen && self == gView) { gSaleTout = YES; return; }
+    [super setNeedsDisplay:flag];
+}
+
+- (void)setNeedsDisplayInRect:(NSRect)r
+{
+    if (gLockScreen && self == gView) {
+        gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
+        gSaleUnPeu = YES;
+        return;
+    }
+    [super setNeedsDisplayInRect:r];
 }
 
 - (void)startAntsTimer {
