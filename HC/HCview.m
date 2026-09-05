@@ -878,13 +878,16 @@ static void draw_part_reel(Object *o) {
             hc_found_range(o, &fstart, &flen) && flen > 0 &&
             fstart + flen <= (int)[s length]) {
 
-            NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-            NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-            NSTextContainer *tc = [[NSTextContainer alloc]
-                                    initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-            [tc setLineFragmentPadding:0];
-            [lm addTextContainer:tc];
-            [ts addLayoutManager:lm];
+            /* La mise en page du TRACÉ, comme pour le test de clic.
+             *
+             * Celle qu'on montait ici gardait l'interligne de police par
+             * défaut, alors que le tracé l'a désactivé : la boîte noire du
+             * texte trouvé se décalait donc vers le bas à mesure qu'on
+             * descendait dans le champ. Personne ne l'avait encore signalé,
+             * mais c'est le même défaut que celui de la ligne surlignée, et
+             * il se corrige au même endroit. */
+            NSTextContainer *tc = nil;
+            NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
 
             NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fstart, flen)
                                        actualCharacterRange:NULL];
@@ -1516,17 +1519,12 @@ static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
 
     NSRect tr  = field_text_rect(f);
     NSRect off = field_text_draw_rect(f);
-    NSAttributedString *as =
-        field_attr_string(f, s, obj_attrs(f, 12, [NSColor blackColor]));
 
-    NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-    NSTextContainer *tc = [[NSTextContainer alloc]
-                            initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-    [tc setLineFragmentPadding:0];
-    [lm setUsesFontLeading:NO];
-    [lm addTextContainer:tc];
-    [ts addLayoutManager:lm];
+    /* Même mise en page que le tracé — voir click_line_number. */
+    NSTextContainer *tc = nil;
+    NSLayoutManager *lm = field_layout(f, s,
+                                       obj_attrs(f, 12, [NSColor blackColor]),
+                                       tr.size.width, &tc);
 
     NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
     if (q.y < 0) return 0;
@@ -1562,17 +1560,23 @@ static int click_line_number(Object *f, NSPoint p) {
 
     NSRect tr  = field_text_rect(f);
     NSRect off = field_text_draw_rect(f);
-    NSAttributedString *as =
-        field_attr_string(f, s, obj_attrs(f, 12, [NSColor blackColor]));
 
-    NSTextStorage   *ts = [[NSTextStorage alloc] initWithAttributedString:as];
-    NSLayoutManager *lm = [[NSLayoutManager alloc] init];
-    NSTextContainer *tc = [[NSTextContainer alloc]
-                            initWithContainerSize:NSMakeSize(tr.size.width, 1e6)];
-    [tc setLineFragmentPadding:0];
-    [lm setUsesFontLeading:NO];
-    [lm addTextContainer:tc];
-    [ts addLayoutManager:lm];
+    /* La MÊME mise en page que le tracé, et non une seconde montée pour
+     * l'occasion.
+     *
+     * Deux raisons, et la seconde est celle qui se voit. La première : cette
+     * fonction est appelée dans « repeat while the mouse is down », donc à
+     * chaque tour de boucle, et remonter la mise en page d'un champ de
+     * quarante-huit kilo-octets à chaque fois coûtait des centaines de
+     * millisecondes par tour. La seconde : le tracé et le clic DOIVENT
+     * s'accorder au pixel près, et deux mises en page montées séparément
+     * finissent toujours par diverger — l'oubli de setUsesFontLeading:NO dans
+     * field_layout a suffi à décaler la ligne surlignée. Une seule mise en
+     * page, et la question ne se pose plus. */
+    NSTextContainer *tc = nil;
+    NSLayoutManager *lm = field_layout(f, s,
+                                       obj_attrs(f, 12, [NSColor blackColor]),
+                                       tr.size.width, &tc);
 
     NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
     if (q.y < 0) return 0;
