@@ -1421,6 +1421,78 @@ static void cocoa_menu_hypercard(const char *item)
     NSLog(@"doMenu : article inconnu « %s »", item);
 }
 
+/* ═══ Le reflet Cocoa des menus de pile ═════════════════════════════════
+ *
+ * Le noyau tient le modèle ; on n'en construit ici que l'image. À chaque
+ * menus_changed on refait toute la barre plutôt que de suivre des
+ * modifications au coup par coup : le modèle est petit, et reconstruire est
+ * la seule façon d'être sûr que l'écran dit la vérité.
+ *
+ * Les menus de pile se reconnaissent à leur ÉTIQUETTE. Sans marque, il
+ * faudrait les distinguer des menus de l'application par leur titre, et une
+ * pile qui s'appellerait « Edit » emporterait le menu Édition avec elle.
+ *
+ * L'étiquette d'un article encode ses deux indices — menu et rang — parce que
+ * c'est tout ce dont hc_menu_choisi a besoin, et que la ranger là évite de
+ * tenir un tableau parallèle qui se désaccorderait au premier oubli. */
+#define HCV_MENU_SCRIPT   0x48435F4D     /* « HC_M », improbable ailleurs */
+
+static void cocoa_menus_changed(void)
+{
+    NSMenu *barre = [NSApp mainMenu];
+    if (!barre) return;
+
+    /* D'abord retirer les anciens, en descendant : chaque retrait décale ce
+     * qui suit. */
+    for (NSInteger k = [barre numberOfItems] - 1; k >= 0; k--)
+        if ([[barre itemAtIndex:k] tag] == HCV_MENU_SCRIPT)
+            [barre removeItemAtIndex:k];
+
+    for (int i = 0; i < hc_menu_nombre(); i++) {
+        const char *nom = hc_menu_nom(i);
+        if (!nom) continue;
+
+        NSMenuItem *tete = [[NSMenuItem alloc] init];
+        [tete setTag:HCV_MENU_SCRIPT];
+        NSMenu *m = [[NSMenu alloc] initWithTitle:
+                        [NSString stringWithUTF8String:nom]];
+
+        /* Sans cela AppKit décide seul de ce qui est actif, en cherchant un
+         * répondeur pour chaque action — et « disable menuItem 4 » n'aurait
+         * aucun effet visible. */
+        [m setAutoenablesItems:NO];
+
+        for (int j = 0; j < hc_menu_nb_articles(i); j++) {
+            const char *art = hc_menu_article(i, j);
+            if (!art) continue;
+
+            if (!strcmp(art, "-")) {
+                [m addItem:[NSMenuItem separatorItem]];
+                continue;
+            }
+            NSMenuItem *mi = [[NSMenuItem alloc]
+                initWithTitle:[NSString stringWithUTF8String:art]
+                       action:@selector(hcMenuScriptItem:)
+                keyEquivalent:@""];
+            [mi setTarget:gView];
+            [mi setTag:(NSInteger)(i * 1000 + j)];
+            /* Un menu désactivé grise TOUS ses articles.
+             *
+             * setEnabled: sur l'article de tête ne suffit pas : la barre de
+             * menus, elle, décide seule de ce qui est actif, et l'on ne va pas
+             * lui retirer ce pouvoir pour les menus de l'application. Griser
+             * le contenu donne le même résultat visible, sans y toucher. */
+            [mi setEnabled:(hc_menu_est_actif(i) && hc_menu_article_actif(i, j))
+                            ? YES : NO];
+            [m addItem:mi];
+        }
+
+        [tete setSubmenu:m];
+        [tete setEnabled:hc_menu_est_actif(i) ? YES : NO];
+        [barre addItem:tete];
+    }
+}
+
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
  
@@ -3328,6 +3400,23 @@ static BOOL      gSansMessageChamp = NO;
  * cours — sans quoi gEditingField et sa zone de texte flottante resteraient
  * affichés par-dessus la carte suivante. Un clic de MENU ne passe pas par là,
  * et n'avait donc personne pour faire ce ménage. */
+/* Un article d'un menu de pile a été choisi. Le noyau décide de ce qui part
+ * — le message de l'article, ou doMenu à défaut ; on ne fait que lui donner
+ * les deux indices rangés dans l'étiquette.
+ *
+ * Même ménage et même rafraîchissement que le menu Go : ces messages
+ * naviguent souvent (« goCurves » fait « go bg "Curves" »), et un clic de
+ * menu ne fait tourner aucune boucle qui consommerait le drapeau visuel. */
+- (void)hcMenuScriptItem:(id)sender
+{
+    NSInteger t = [sender tag];
+    [self prepareForCardChange];
+    hc_menu_choisi((int)(t / 1000), (int)(t % 1000));
+    (void)hc_take_visual_dirty();
+    [self updateWindowTitle];
+    [self setNeedsDisplay:YES];
+}
+
 - (void)prepareForCardChange
 {
     if (gEditingField) [self endFieldEdit];
@@ -4441,6 +4530,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
     host.do_menu       = cocoa_do_menu;
+    host.menus_changed = cocoa_menus_changed;
     hc_set_host(&host);
 }
 

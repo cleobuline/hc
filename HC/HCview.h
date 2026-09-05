@@ -30,6 +30,9 @@ BOOL hcv_menu_trappe(const char *article);
 /* Lâcher l'édition et la sélection avant un changement de carte venu de
  * l'interface. Voir HCview.m. */
 - (void)prepareForCardChange;
+/* Un article d'un menu créé par script a été choisi ; l'étiquette de
+ * l'article porte ses deux indices. Voir HCview.m. */
+- (void)hcMenuScriptItem:(id)sender;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
 - (void)installToolPalette;
