@@ -8872,7 +8872,7 @@ static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
 
 /* Trace du branchement. Mettre à 0 quand la bascule sera acquise : elle
  * imprime une ligne par MESSAGE, ce qui devient vite illisible. */
-#define HC_TRACE_V3 1
+#define HC_TRACE_V3 0
 
 static int v3_execute(Object *o, const char *message, int isfunc)
 {
