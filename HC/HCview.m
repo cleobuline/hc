@@ -4532,6 +4532,15 @@ static void hcv_survol(HCView *v, Object *carte)
     host.do_menu       = cocoa_do_menu;
     host.menus_changed = cocoa_menus_changed;
     hc_set_host(&host);
+
+    /* Mettre la barre d'accord avec le modèle, une fois pour toutes.
+     *
+     * Une pile peut avoir été ouverte AVANT que l'hôte soit installé — un
+     * double-clic sur un fichier au lancement appelle application:openFile:
+     * sans garantie d'ordre. Son openStack aurait alors créé ses menus dans
+     * le noyau, et menus_changed, encore nul, n'aurait prévenu personne : le
+     * modèle serait juste, l'écran vide. Une ligne l'évite. */
+    cocoa_menus_changed();
 }
 
 - (void)messageBoxEntered:(id)sender {

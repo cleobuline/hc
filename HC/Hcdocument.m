@@ -128,6 +128,32 @@ static HCDocument *gCurrentDoc = nil;
      * Bouton, dont les clics appellent makeFirstResponder:, mais l'outil
      * Browse n'a aucune raison de le faire. */
     [win makeFirstResponder:v];
+
+    /* openStack, ENFIN.
+     *
+     * Le noyau ne l'envoyait que depuis « go to stack "X" » : ouvrir une pile
+     * par le menu, par un double-clic ou au lancement ne le déclenchait
+     * jamais. Tout ce qu'une pile fait à son ouverture — se donner ses menus,
+     * régler ses champs, aller à la bonne carte — restait donc lettre morte
+     * dès qu'on ne passait pas par un script.
+     *
+     * Ici et non chez l'appelant : c'est le seul point par lequel passent les
+     * trois chemins d'ouverture. En dernier, une fois la fenêtre à l'écran et
+     * la vue premier répondant, parce que le gestionnaire est du script et
+     * qu'il peut vouloir montrer, écrire, ou changer de carte.
+     *
+     * La carte courante doit désigner CETTE pile avant l'envoi, sans quoi
+     * « the target » et « me » parleraient de la fenêtre qu'on vient de
+     * quitter. */
+    Object *premiere = NULL;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_CARD) { premiere = stack->parts[i]; break; }
+    if (premiere) {
+        Object *cur = hc_current_card();
+        if (!cur || cur->owner != stack) hc_set_current_card(premiere);
+        hc_send(premiere, "openStack");
+        [v setNeedsDisplay:YES];
+    }
     return d;
 }
 
@@ -198,6 +224,25 @@ static HCDocument *gCurrentDoc = nil;
      * plan viderait celui d'une autre. */
     HCDocument *avant = [HCDocument current];
     [HCDocument setCurrent:self];
+
+    /* closeStack AVANT tout démontage — c'est la dernière fois que la pile
+     * est entière, et un gestionnaire y lit encore ses champs. Le pendant de
+     * l'openStack de documentWithStack:, et ce par quoi une pile défait ce
+     * qu'elle avait posé : ses menus, notamment, qui ne s'en iraient pas
+     * autrement puisqu'ils ne vivent pas dans la pile.
+     *
+     * La carte courante doit être ici aussi, pour la même raison qu'à
+     * l'ouverture. */
+    if (pile) {
+        Object *premiere = NULL;
+        for (int i = 0; i < pile->nparts; i++)
+            if (pile->parts[i]->type == OBJ_CARD) { premiere = pile->parts[i]; break; }
+        if (premiere) {
+            Object *cur = hc_current_card();
+            if (!cur || cur->owner != pile) hc_set_current_card(premiere);
+            hc_send(premiere, "closeStack");
+        }
+    }
     [self.view resetForNewStack];
     [self.view clearPaintCache];
     [self unregisterDocument];
