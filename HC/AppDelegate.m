@@ -903,6 +903,12 @@ void cocoa_stack_changed(Object *stack) {
 
     [self installStack:st];
     gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
+
+    /* Après installStack: — la pile doit être en place et sa carte courante
+     * avant qu'un script puisse s'y exécuter. Une pile neuve n'a bien sûr
+     * aucun gestionnaire ; le message sert aux piles modèles, dont le script
+     * est copié à la création. */
+    hc_send(st, "newStack");
 }
 
 /* Dossier qui CONTIENT l'application — pas son intérieur.

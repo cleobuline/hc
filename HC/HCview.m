@@ -2236,6 +2236,13 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     hc_set_current_card(nc);
     gSelected = NULL;
     [gView setNeedsDisplay:YES];
+
+    /* Les deux messages, dans l'ordre d'HyperCard : le fond naît, puis la
+     * première carte qui s'y appuie. Envoyés une fois la carte devenue
+     * courante, sans quoi « the target » et « me » désigneraient encore la
+     * carte d'où l'on vient. */
+    hc_send(bg, "newBackground");
+    hc_send(nc, "newCard");
 }
 
 - (BOOL)acceptsFirstResponder { return YES; }

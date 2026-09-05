@@ -1171,6 +1171,10 @@ int hc_delete_card(Object *card)
             if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
                 reste = 1;
         if (!reste) {
+            /* Le fond s'en va avec sa dernière carte : il a droit au même
+             * avertissement qu'elle, et pour la même raison — après hc_free,
+             * il n'y a plus personne à qui parler. */
+            hc_send_systeme(bg, "deleteBackground");
             for (int i = 0; i < stack->nparts; i++) {
                 if (stack->parts[i] != bg) continue;
                 for (int j = i; j < stack->nparts - 1; j++)
@@ -1266,9 +1270,27 @@ int hc_card_count(Object *stack){
     return n;
 }
 
+/* L'objet dont la suppression est en cours, s'il y en a un.
+ *
+ * deleteButton et deleteField partent AVANT la libération — c'est la dernière
+ * occasion qu'a un script de sauver ce que l'objet contient. Mais le
+ * gestionnaire est du script : rien ne l'empêche de supprimer l'objet
+ * lui-même, et l'on libérerait alors deux fois la même mémoire. Un pointeur
+ * suffit à l'empêcher : la suppression imbriquée du même objet ne fait rien
+ * et rend 0, la suppression extérieure va jusqu'au bout, et l'objet n'est
+ * libéré qu'une fois. */
+static Object *g_part_en_suppression = NULL;
+
 int hc_delete_part(Object *o)
 {
     if (!o || !o->owner) return 0;
+    if (o == g_part_en_suppression) return 0;
+
+    Object *precedent = g_part_en_suppression;
+    g_part_en_suppression = o;
+    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
+    g_part_en_suppression = precedent;
+
     Object *parent = o->owner;
     for (int i = 0; i < parent->nparts; i++) {
         if (parent->parts[i] == o) {
