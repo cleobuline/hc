@@ -494,6 +494,13 @@ typedef struct {
      * monopolise le fil principal et rien ne s'affiche avant la fin. */
     void (*idle)(void);
     void (*do_menu)(const char *item);
+
+    /* La barre de menus créée par script a changé : créée, supprimée,
+     * remplie, activée. L'hôte relit tout par les accesseurs hc_menu_* et
+     * reconstruit son reflet. Un seul rappel pour toutes les opérations : le
+     * modèle est petit, et le reconstruire en entier évite d'inventer un
+     * protocole de mises à jour fines que personne ne saurait tenir. */
+    void (*menus_changed)(void);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
@@ -540,6 +547,23 @@ void    hc_do_menu(const char *item);
  * Les messages du clavier en ont tous un : « arrowKey left », « keyDown a »,
  * « functionKey 3 ». Passer NULL pour un message sans argument. */
 int     hc_send_arg(Object *target, const char *message, const char *arg);
+
+/* ---- les menus de la barre, créés par script ----
+ *
+ * Le modèle vit dans le noyau ; l'hôte n'en construit que le reflet. Il le
+ * relit ici après chaque menus_changed. Les indices sont à base 0, alors que
+ * HyperTalk compte à partir de 1 : « menuItem 4 » est l'indice 3. */
+int         hc_menu_nombre(void);
+const char *hc_menu_nom(int i);
+int         hc_menu_est_actif(int i);
+int         hc_menu_nb_articles(int i);
+const char *hc_menu_article(int i, int j);
+int         hc_menu_article_actif(int i, int j);
+
+/* L'utilisateur a choisi l'article j du menu i. Envoie le message de
+ * l'article s'il en a un, sinon « doMenu <article> ». Un séparateur ne
+ * déclenche rien. */
+void        hc_menu_choisi(int i, int j);
 
 int     hc_menu_trappe(const char *item);
 
