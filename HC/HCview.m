@@ -479,14 +479,32 @@ static long   hcm_nb_parts  = 0;   /* objets dessinés                 */
 static double hcm_tps_parts = 0;   /* secondes passées dans draw_part */
 static double hcm_t0        = 0;   /* début de la fenêtre de mesure   */
 
+/* Le PIRE objet de la fenêtre de mesure.
+ *
+ * La moyenne par objet a montré 40 ms, ce qui ne peut pas être le coût de
+ * tous : quelques objets écrasent le reste. On retient donc le plus cher et
+ * on le nomme, plutôt que d'en faire une cinquième hypothèse. */
+static double hcm_pire_tps  = 0;
+static char   hcm_pire[128] = "";
+static int    hcm_pire_len  = 0;   /* taille du texte, pour un champ */
+
 static void draw_part_reel(Object *o);
 
 static void draw_part(Object *o)
 {
     double t = hcm_maintenant();
     draw_part_reel(o);
-    hcm_tps_parts += hcm_maintenant() - t;
+    double dt = hcm_maintenant() - t;
+
+    hcm_tps_parts += dt;
     hcm_nb_parts++;
+
+    if (dt > hcm_pire_tps) {
+        hcm_pire_tps = dt;
+        hc_describe(o, hcm_pire, sizeof hcm_pire);
+        hcm_pire_len = (o->type == OBJ_FIELD)
+                     ? (int)strlen(hc_field_text(o)) : 0;
+    }
 }
 
 /* Appelée en tête de drawRect. */
@@ -497,14 +515,19 @@ static void hcm_compte_redessin(void)
     double ecoule = hcm_maintenant() - hcm_t0;
     if (ecoule < 1.0) return;
 
-    NSLog(@"[mesure] %.0f redessins/s | %.0f objets/s | %.1f%% du temps dans "
-          @"draw_part | %.4f ms par objet",
+    NSLog(@"[mesure] %.0f redessins/s | %.0f objets/s | %.1f%% dans draw_part "
+          @"| moyenne %.3f ms | PIRE %.1f ms : %s%s",
           hcm_nb_draw / ecoule,
           hcm_nb_parts / ecoule,
           100.0 * hcm_tps_parts / ecoule,
-          hcm_nb_parts ? 1000.0 * hcm_tps_parts / hcm_nb_parts : 0.0);
+          hcm_nb_parts ? 1000.0 * hcm_tps_parts / hcm_nb_parts : 0.0,
+          1000.0 * hcm_pire_tps,
+          hcm_pire[0] ? hcm_pire : "(rien)",
+          hcm_pire_len ? [[NSString stringWithFormat:@" (%d octets de texte)",
+                           hcm_pire_len] UTF8String] : "");
 
     hcm_nb_draw = 0; hcm_nb_parts = 0; hcm_tps_parts = 0;
+    hcm_pire_tps = 0; hcm_pire[0] = '\0'; hcm_pire_len = 0;
     hcm_t0 = hcm_maintenant();
 }
 
