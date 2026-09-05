@@ -528,6 +528,11 @@ int     hc_layer_is_live(Object *layer);
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
 int     hc_send(Object *target, const char *message);
 
+/* Choisir un article de menu. Envoie « doMenu <article> » à la carte courante
+ * et n'exécute l'article que si personne ne l'intercepte — voir hc_core.c.
+ * C'est par ici que doit passer TOUT déclenchement de menu, script ou clic. */
+void    hc_do_menu(const char *item);
+
 /* Exécute une seule ligne de script dans le contexte de la carte courante
    (l'équivalent de la boîte de message d'HyperCard). */
 void    hc_do(const char *line);

@@ -1133,6 +1133,15 @@ int hc_delete_card(Object *card)
     int idx = card_index(stack, card);
     if (idx < 0) return 0;
 
+    /* HyperCard prévient la carte AVANT de la faire disparaître : c'est la
+     * dernière occasion qu'a un script de sauver ce qu'elle contient. Après
+     * hc_free, il n'y a plus personne à qui parler.
+     *
+     * Le pendant de newCard, qui existait déjà côté interface. Envoyé ici et
+     * non dans hc_free : celui-ci sert aussi à libérer une pile entière, et
+     * une pile qui se ferme n'a pas à voir défiler un deleteCard par carte. */
+    hc_send_systeme(card, "deleteCard");
+
     Object *bg = card->bg;                 /* retenu AVANT la libération */
 
     for (int i = 0; i < stack->nparts; i++) {
@@ -8156,9 +8165,7 @@ static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
     v3_val_texte(ctx, n->fils[0], item, sizeof item);
     if (ctx->erreur) return 1;
 
-    g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
-    if (g_host && g_host->do_menu) g_host->do_menu(item);
-    else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+    hc_do_menu(item);                 /* message d'abord, action ensuite */
     set_result("");
     return 1;
 }
@@ -11677,13 +11684,10 @@ static void exec_line_body(Object *me, const char *line)
      * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
      * se superposait au précédent. */
     if (ci_equal(verb, "domenu")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
         ARENA_MARK;
         char *item = arena_buf();
         eval_checked(rest, item, HC_VAL);
-
-        if (g_host && g_host->do_menu) g_host->do_menu(item);
-        else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
+        hc_do_menu(item);          /* message d'abord, action ensuite */
         ARENA_FREE;
         set_result("");
         return;
@@ -12413,8 +12417,18 @@ static int hc_send_args_k_body(Object *target, const char *message,
 
             g_frame = savedf;
             frame_clear(&frame);
+
+            /* « pass » veut dire JE NE L'AI PAS TRAITÉ : le message repart vers
+             * le maillon suivant, et s'il n'en reste aucun il revient à
+             * HyperCard lui-même, qui applique le comportement par défaut.
+             *
+             * handled était posé AVANT ce test, si bien qu'un gestionnaire qui
+             * passait comptait quand même comme preneur. L'appelant ne pouvait
+             * donc pas distinguer « la pile s'en est chargée » de « personne
+             * n'en a voulu » — exactement ce dont doMenu a besoin pour savoir
+             * s'il doit exécuter l'article de menu. */
+            if (g_pass) { g_pass = 0; continue; }
             handled = 1;
-            if (g_pass) { g_pass = 0; continue; }   /* pass : on remonte */
             break;
         } else if (g_trace) {
             char d[64]; hc_describe(o, d, sizeof d);
@@ -12495,6 +12509,44 @@ static int hc_call_user_function(Object *target, const char *name,
     if (!target) return 0;
     set_result("");
     return hc_send_args_k(target, name, argv, argc, 1);
+}
+
+/* ═══ doMenu ════════════════════════════════════════════════════════════
+ *
+ * Dans HyperCard, choisir un article de menu ENVOIE d'abord le message
+ * « doMenu <article> » à la carte courante. Le comportement natif n'a lieu
+ * que si personne ne l'intercepte, ou si un gestionnaire le rend par
+ * « pass doMenu ». C'est de cette façon qu'une pile détourne un article :
+ *
+ *     on doMenu quoi
+ *       if quoi is "Clear Picture" then effaceProprement
+ *       else pass doMenu
+ *     end doMenu
+ *
+ * HC exécutait l'article DIRECTEMENT, sans jamais envoyer le message : aucun
+ * « on doMenu » d'une pile d'époque ne se déclenchait, en silence.
+ *
+ * La récursion reste possible — un gestionnaire qui rappelle doMenu pour le
+ * même article se rappelle lui-même — mais c'est le comportement d'HyperCard,
+ * et le garde-fou de profondeur (HC_MAX_DEPTH) l'arrête avec un message clair
+ * plutôt que d'inventer une règle qu'HyperCard n'avait pas. */
+void hc_do_menu(const char *item)
+{
+    if (!item) return;
+
+    g_visual_dirty = 1;               /* touche à l'écran : voir v3_respire */
+
+    ARENA_MARK;
+    char (*argv)[HC_VAL] = arena_rows(1);
+    snprintf(argv[0], HC_VAL, "%s", item);
+    int pris = g_current_card
+             ? hc_send_args(g_current_card, "doMenu", argv, 1) : 0;
+    ARENA_FREE;
+
+    if (pris) return;                 /* la pile s'en est chargée */
+
+    if (g_host && g_host->do_menu) g_host->do_menu(item);
+    else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");
 }
 
 int hc_send(Object *target, const char *message)
