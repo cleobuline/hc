@@ -68,6 +68,17 @@ static NSMenu *find_file_menu(void)
     }
     return [main numberOfItems] > 1 ? [[main itemAtIndex:1] submenu] : nil;
 }
+/* Un article de menu qui porte son nom d'HyperCard n'a rien à traduire : on
+ * le donne tel quel à hc_do_menu, qui l'envoie d'abord à la pile sous forme
+ * de message doMenu et ne l'exécute que si personne ne l'intercepte. C'est le
+ * chemin qu'HyperCard faisait suivre à TOUT choix de menu, et celui que
+ * devront prendre les autres articles quand on les y branchera. */
+- (void)goMenuItem:(id)sender
+{
+    NSString *t = [sender title];
+    if (t) hc_do_menu([t UTF8String]);
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     /* Apprendre au noyau à lire un nom d'icône.
      *
@@ -138,44 +149,44 @@ static NSMenu *find_file_menu(void)
      * Le menu Fichier, lui, vient du nib et se remplit plus bas. --- */
         NSMenu *mainMenu = [NSApp mainMenu];
         NSMenuItem *fileItem = [[NSMenuItem alloc] init];
-        NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"Pile"];
-    NSMenuItem *siItem = [[NSMenuItem alloc] initWithTitle:@"Infos de la pile…"
+        NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"Objects"];
+    NSMenuItem *siItem = [[NSMenuItem alloc] initWithTitle:@"Stack Info…"
                                                         action:@selector(showStackInfo)
                                                  keyEquivalent:@""];
         [siItem setTarget:view];
         [fileMenu addItem:siItem];
-        [fileMenu addItemWithTitle:@"Nouvelle carte"
+        [fileMenu addItemWithTitle:@"New Card"
                             action:@selector(newCard:)
                      keyEquivalent:@"n"];
         /* Pas de raccourci : une suppression irréversible ne doit pas être à
          * une frappe de distance d'une commande voisine. */
-        [fileMenu addItemWithTitle:@"Supprimer la carte…"
+        [fileMenu addItemWithTitle:@"Delete Card"
                             action:@selector(deleteCard:)
                      keyEquivalent:@""];
-    NSMenuItem *ciItem = [[NSMenuItem alloc] initWithTitle:@"Infos de la carte…"
+    NSMenuItem *ciItem = [[NSMenuItem alloc] initWithTitle:@"Card Info…"
                                                         action:@selector(showCardInfo)
                                                  keyEquivalent:@""];
         [ciItem setTarget:view];
         [fileMenu addItem:ciItem];
         [fileMenu addItem:[NSMenuItem separatorItem]];
-    [fileMenu addItemWithTitle:@"Tramer la sélection"
+    [fileMenu addItemWithTitle:@"Dither Selection"
                             action:@selector(ditherSelection:)
                      keyEquivalent:@"d"];
     [fileMenu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *bgItem = [[NSMenuItem alloc] initWithTitle:@"Éditer le fond"
+        NSMenuItem *bgItem = [[NSMenuItem alloc] initWithTitle:@"Background"
                                                         action:@selector(toggleBackground:)
                                                  keyEquivalent:@"b"];
         [bgItem setTarget:view];
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
-    NSMenuItem *nbItem = [[NSMenuItem alloc] initWithTitle:@"Nouveau fond"
+    NSMenuItem *nbItem = [[NSMenuItem alloc] initWithTitle:@"New Background"
                                                         action:@selector(newBackground:)
                                                  keyEquivalent:@""];
         [nbItem setTarget:view];
         [fileMenu addItem:nbItem];
 
-        NSMenuItem *biItem = [[NSMenuItem alloc] initWithTitle:@"Infos du fond…"
+        NSMenuItem *biItem = [[NSMenuItem alloc] initWithTitle:@"Bkgnd Info…"
                                                         action:@selector(showBackgroundInfo)
                                                  keyEquivalent:@""];
         [biItem setTarget:view];
@@ -239,17 +250,17 @@ static NSMenu *find_file_menu(void)
         /* HyperCard réservait Cmd-N à « Nouvelle carte », et laissait
          * « Nouvelle pile » sans raccourci. On garde cette répartition : c'est
          * la carte qu'on crée cent fois par séance, pas la pile. */
-        NSMenuItem *np = [[NSMenuItem alloc] initWithTitle:@"Nouvelle pile…"
+        NSMenuItem *np = [[NSMenuItem alloc] initWithTitle:@"New Stack…"
                                                     action:@selector(newStack:)
                                              keyEquivalent:@""];
         [np setTarget:self];
 
-        NSMenuItem *op = [[NSMenuItem alloc] initWithTitle:@"Ouvrir une pile…"
+        NSMenuItem *op = [[NSMenuItem alloc] initWithTitle:@"Open Stack…"
                                                     action:@selector(openStack:)
                                              keyEquivalent:@"o"];
         [op setTarget:self];
 
-        NSMenuItem *sv = [[NSMenuItem alloc] initWithTitle:@"Enregistrer la pile…"
+        NSMenuItem *sv = [[NSMenuItem alloc] initWithTitle:@"Save a Copy…"
                                                     action:@selector(saveStack:)
                                              keyEquivalent:@"s"];
         [sv setTarget:self];
@@ -262,15 +273,15 @@ static NSMenu *find_file_menu(void)
         /* Nib inattendu : plutôt que de perdre les deux commandes, on les
          * laisse dans le menu Pile, là où elles étaient. */
         [fileMenu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *np = [fileMenu addItemWithTitle:@"Nouvelle pile…"
+        NSMenuItem *np = [fileMenu addItemWithTitle:@"New Stack…"
                                              action:@selector(newStack:)
                                       keyEquivalent:@""];
         [np setTarget:self];
-        NSMenuItem *op = [fileMenu addItemWithTitle:@"Ouvrir une pile…"
+        NSMenuItem *op = [fileMenu addItemWithTitle:@"Open Stack…"
                                              action:@selector(openStack:)
                                       keyEquivalent:@"o"];
         [op setTarget:self];
-        NSMenuItem *sv = [fileMenu addItemWithTitle:@"Enregistrer la pile…"
+        NSMenuItem *sv = [fileMenu addItemWithTitle:@"Save a Copy…"
                                              action:@selector(saveStack:)
                                       keyEquivalent:@"s"];
         [sv setTarget:self];
@@ -281,13 +292,45 @@ static NSMenu *find_file_menu(void)
      * coche devant celles qui sont à l'écran. Une seule entrée par palette,
      * qui bascule : deux entrées « Afficher » et « Masquer » en laisseraient
      * toujours une inutile. Le tag identifie la palette côté vue. */
+    /* --- menu Go ---
+     *
+     * Il n'existait pas. HyperCard en a toujours eu un, et le noyau sait
+     * désormais exécuter ses articles seul (hc_do_menu, table MENUS_NOYAU) :
+     * il ne manquait que de quoi les CLIQUER.
+     *
+     * Chaque article passe par hc_do_menu et non par « go next » : c'est ce
+     * qui envoie d'abord le message doMenu à la pile, et permet donc à un
+     * « on doMenu » de détourner la navigation — tout l'intérêt de la
+     * manœuvre. Le titre de l'article EST le nom d'HyperCard, si bien qu'il
+     * n'y a rien à traduire.
+     *
+     * Pas de raccourcis clavier : HyperCard donnait Cmd-1 à Cmd-4 à First,
+     * Prev, Next et Last, mais ici ces quatre touches ouvrent déjà les
+     * palettes du menu Tools. Entre deux fidélités qui se contredisent, celle
+     * qui ne casse rien.
+     *
+     * « Back », « Home » et « Recent » manquent faute d'historique de
+     * navigation dans le noyau — les afficher grisés serait plus honnête que
+     * de les afficher morts, mais les omettre l'est encore davantage. */
+    NSMenuItem *goItem = [[NSMenuItem alloc] init];
+    NSMenu *goMenu = [[NSMenu alloc] initWithTitle:@"Go"];
+    for (NSString *t in @[ @"First", @"Prev", @"Next", @"Last" ]) {
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:t
+                                                    action:@selector(goMenuItem:)
+                                             keyEquivalent:@""];
+        [mi setTarget:self];
+        [goMenu addItem:mi];
+    }
+    [goItem setSubmenu:goMenu];
+    [mainMenu addItem:goItem];
+
     NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
-    NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Outils"];
+    NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Tools"];
     struct { NSString *title; NSInteger tag; NSString *key; } pals[] = {
-        { @"Outils",    1, @"1" },
-        { @"Motifs",    2, @"2" },
-        { @"Épaisseur", 3, @"3" },
-        { @"Pinceaux",  4, @"4" },
+        { @"Tools",     1, @"1" },
+        { @"Patterns",  2, @"2" },
+        { @"Line Size", 3, @"3" },
+        { @"Brushes",   4, @"4" },
         /* Cmd-M, le raccourci d'HyperCard pour la boîte de message. */
         { @"Message",   5, @"m" },
     };
@@ -364,7 +407,7 @@ static NSMenu *find_file_menu(void)
         }
 
         [editMenu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *fd = [[NSMenuItem alloc] initWithTitle:@"Chercher…"
+        NSMenuItem *fd = [[NSMenuItem alloc] initWithTitle:@"Find…"
                                                     action:@selector(findInStack:)
                                              keyEquivalent:@"f"];
         [fd setTarget:view];
@@ -374,19 +417,19 @@ static NSMenu *find_file_menu(void)
          * HyperCard. Coller n'en a pas besoin — il pose ce que le
          * presse-papiers contient, carte ou bouton. */
         [editMenu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *cc = [[NSMenuItem alloc] initWithTitle:@"Copier la carte"
+        NSMenuItem *cc = [[NSMenuItem alloc] initWithTitle:@"Copy Card"
                                                     action:@selector(copyCard:)
                                              keyEquivalent:@""];
         [cc setTarget:view];
         [editMenu addItem:cc];
 
-        NSMenuItem *xc = [[NSMenuItem alloc] initWithTitle:@"Couper la carte"
+        NSMenuItem *xc = [[NSMenuItem alloc] initWithTitle:@"Cut Card"
                                                     action:@selector(cutCard:)
                                              keyEquivalent:@""];
         [xc setTarget:view];
         [editMenu addItem:xc];
 
-        NSMenuItem *dc = [[NSMenuItem alloc] initWithTitle:@"Dupliquer la carte"
+        NSMenuItem *dc = [[NSMenuItem alloc] initWithTitle:@"Duplicate Card"
                                                     action:@selector(duplicateCard:)
                                              keyEquivalent:@""];
         [dc setTarget:view];
@@ -396,7 +439,7 @@ static NSMenu *find_file_menu(void)
          * sélectionné. validateMenuItem: le grise quand la sélection n'est pas
          * un bouton. Pas de raccourci clavier — HyperCard n'en avait pas, et
          * les lettres qui restent libres servent ailleurs. */
-        NSMenuItem *ic = [[NSMenuItem alloc] initWithTitle:@"Icône…"
+        NSMenuItem *ic = [[NSMenuItem alloc] initWithTitle:@"Icon…"
                                                     action:@selector(editIcon:)
                                              keyEquivalent:@""];
         [ic setTarget:view];

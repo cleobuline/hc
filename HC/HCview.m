@@ -1323,18 +1323,23 @@ static void cocoa_click_at(int x, int y, const char *mods) {
 
 /* ═══ Les articles de menu d'HyperCard ══════════════════════════════════
  *
- * Les menus de HC sont les siens : natifs, en français, « Nouvelle carte »
- * plutôt que « New Card ». Une pile d'époque, elle, écrit « doMenu "New
- * Card" » — et jusqu'ici cet article partait dans cocoa_do_menu, qui ne
- * connaissait que « Clear Picture » et « Select All », et n'en faisait rien.
- * Sans un mot : c'est le pire des cas, la pile croit avoir agi.
+ * Une pile d'époque écrit « doMenu "New Card" ». Jusqu'ici cet article
+ * partait dans cocoa_do_menu, qui ne connaissait que « Clear Picture » et
+ * « Select All », et n'en faisait rien. Sans un mot : c'est le pire des cas,
+ * la pile croit avoir agi.
  *
- * D'où cette table de traduction. Elle ne renomme aucun menu — l'interface
- * reste en français — elle dit seulement quel article d'HyperCard déclenche
- * quelle action de HC. L'action est envoyée par la chaîne des répondeurs,
- * puisque ces méthodes sont réparties entre AppDelegate, HCView et sa
- * catégorie Dialogs : les nommer une par une supposerait de savoir où chacune
- * habite, ce qui serait faux au premier déménagement.
+ * Les articles de HC portent maintenant leurs noms d'HyperCard, si bien que
+ * cette table ne traduit plus rien — elle dit quelle ACTION déclenche un
+ * article donné. On pourrait la remplacer par une recherche du même titre
+ * dans la barre de menus ; c'est justement ce qu'on ne veut pas, parce qu'il
+ * y a des articles à ne PAS rendre atteignables depuis un script (voir plus
+ * bas). Une table explicite dit lesquels, une recherche générique les
+ * attraperait tous.
+ *
+ * L'action part par la chaîne des répondeurs, ces méthodes étant réparties
+ * entre AppDelegate, HCView et sa catégorie Dialogs : les nommer une par une
+ * supposerait de savoir où chacune habite, ce qui serait faux au premier
+ * déménagement.
  *
  * DEUX ABSENTS VOLONTAIRES : « Delete Card » et « Cut Card ». Ils appellent
  * hc_delete_card, qui libère la carte. Si le script qui les demande tourne sur
@@ -2823,7 +2828,7 @@ static int gColorTarget = 0;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gWidthPanel setTitle:@"Épaisseur"];
+    [gWidthPanel setTitle:@"Line Size"];
     [gWidthPanel setFloatingPanel:YES];
     [gWidthPanel setBecomesKeyOnlyIfNeeded:YES];
     [gWidthPanel setHidesOnDeactivate:YES];
@@ -2843,7 +2848,7 @@ static int gColorTarget = 0;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gBrushPanel setTitle:@"Pinceaux"];
+    [gBrushPanel setTitle:@"Brushes"];
     [gBrushPanel setFloatingPanel:YES];
     [gBrushPanel setBecomesKeyOnlyIfNeeded:YES];
     [gBrushPanel setHidesOnDeactivate:YES];
@@ -2907,7 +2912,7 @@ static int gColorTarget = 0;
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered
                       defer:NO];
-    [gPatternPanel setTitle:@"Motifs"];
+    [gPatternPanel setTitle:@"Patterns"];
     [gPatternPanel setFloatingPanel:YES];
     [gPatternPanel setBecomesKeyOnlyIfNeeded:YES];
     [gPatternPanel setHidesOnDeactivate:YES];
@@ -4299,7 +4304,7 @@ static NSTextField  *gSprayDensityLabel = nil;
                              NSWindowStyleMaskClosable |
                              NSWindowStyleMaskNonactivatingPanel)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gToolPanel setTitle:@"Outils"];
+    [gToolPanel setTitle:@"Tools"];
     [gToolPanel setFloatingPanel:YES];
     [gToolPanel setBecomesKeyOnlyIfNeeded:YES];
     [gToolPanel setHidesOnDeactivate:YES];
