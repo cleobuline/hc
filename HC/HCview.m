@@ -1042,6 +1042,54 @@ static BOOL mods_has(const char *mods, const char *k) {
         if (strncasecmp(p, k, n) == 0) return YES;
     return NO;
 }
+/* ═══ VERROU D'ÉCRAN, CÔTÉ PEINTURE ═════════════════════════════════════
+ *
+ * « lock screen » ne verrouillait rien du tout pour le dessin. Le noyau
+ * prévient pourtant l'hôte par host_global_set("lockScreen", …), mais
+ * personne ici n'écoutait : chaque segment tracé invalidait sa zone, et un
+ * tracé de surface en produit plus de deux mille. Entre un « lock screen »
+ * et son « unlock screen », l'écran se recomposait donc deux mille fois —
+ * exactement ce que la commande existe pour empêcher.
+ *
+ * Le noyau fait déjà cela pour les CHAMPS : notify_field met de côté ceux
+ * qui changent pendant le verrou, et verrou_reveille les réveille au
+ * déverrouillage. Il manquait le pendant pour la peinture, qui ne passe pas
+ * par le noyau mais va droit à l'hôte.
+ *
+ * On accumule donc l'union des zones sales et l'on n'invalide qu'une fois,
+ * au déverrouillage. Le noyau déverrouille de lui-même en retombant au
+ * repos, si bien qu'un script qui oublie son « unlock screen » ne laisse pas
+ * l'écran figé. */
+static BOOL   gLockScreen = NO;
+static BOOL   gSaleTout   = NO;   /* une invalidation totale est en attente */
+static BOOL   gSaleUnPeu  = NO;   /* gSaleRect porte une zone en attente    */
+static NSRect gSaleRect;
+
+static void hcv_invalide(NSRect r)
+{
+    if (!gLockScreen) { [gView setNeedsDisplayInRect:r]; return; }
+    gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
+    gSaleUnPeu = YES;
+}
+
+static void hcv_invalide_tout(void)
+{
+    if (!gLockScreen) { [gView setNeedsDisplay:YES]; return; }
+    gSaleTout = YES;
+}
+
+static void hcv_verrou_ecran(BOOL ferme)
+{
+    if (ferme == gLockScreen) return;
+    gLockScreen = ferme;
+    if (ferme) return;                    /* on ferme : rien à faire */
+
+    if (gSaleTout)       [gView setNeedsDisplay:YES];
+    else if (gSaleUnPeu) [gView setNeedsDisplayInRect:gSaleRect];
+    gSaleTout = NO;
+    gSaleUnPeu = NO;
+}
+
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
     if (!card || !gView) return;
@@ -1102,7 +1150,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
      * le rectangle en pointillés bouge sur toute sa surface, et le déplacement
      * d'un objet, qui laisse un trou à son ancienne place. */
     if (gTool == TOOL_SELRECT || (gSelected && gTool != TOOL_BROWSE)) {
-        [gView setNeedsDisplay:YES];
+        hcv_invalide_tout();
         return;
     }
 
@@ -1117,7 +1165,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     if (gTool == TOOL_ERASER) marge = 20;
     if (gTool == TOOL_SPRAY)  marge = gSprayRadius + 4;
 
-    [gView setNeedsDisplayInRect:NSInsetRect(sale, -marge, -marge)];
+    hcv_invalide(NSInsetRect(sale, -marge, -marge));
 }
 static void cocoa_drag_old(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
@@ -1195,7 +1243,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                                     (int)[gView bounds].size.width,
                                     (int)[gView bounds].size.height);
         flood_fill(rep, (int)p.x, (int)p.y);
-        [gView setNeedsDisplay:YES];   /* le remplissage peut aller partout */
+        hcv_invalide_tout();           /* le remplissage peut aller partout */
         return;
     }
 
@@ -1251,8 +1299,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
         /* Ne rafraîchir que le point posé. Marquer toute la vue sale
          * recomposait la carte entière — calque, champs, boutons — une fois
          * par point, et un maillage de surface en compte des milliers. */
-        [gView setNeedsDisplayInRect:
-            NSMakeRect(p.x - marge, p.y - marge, 2 * marge, 2 * marge)];
+        hcv_invalide(NSMakeRect(p.x - marge, p.y - marge, 2 * marge, 2 * marge));
         return;
     }
 
@@ -1713,6 +1760,13 @@ static BOOL gCursorHidden = NO;
 static void cocoa_global_set(const char *name, const char *value) {
     int vrai = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 
+    /* Le verrou d'écran du noyau. Sans cette ligne, « lock screen » ne
+     * retenait rien du dessin — voir hcv_verrou_ecran. */
+    if (strcasecmp(name, "lockScreen") == 0) {
+        hcv_verrou_ecran(vrai ? YES : NO);
+        return;
+    }
+
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
         [gView setNeedsDisplay:YES];
@@ -1844,7 +1898,7 @@ static void cocoa_idle(void) {
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
      * montrer. */
-    if (hc_take_visual_dirty()) [gView setNeedsDisplay:YES];
+    if (hc_take_visual_dirty()) hcv_invalide_tout();
 
     /* Au plus soixante fois par seconde. Ce qui n'est pas montré maintenant
      * reste marqué sale et partira à l'image suivante : rien ne se perd, et la
