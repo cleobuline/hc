@@ -149,6 +149,24 @@ static NSPanel *gToolPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
+/* ═══ Prévenir une palette qu'un script vient de changer son réglage ═════
+ *
+ * « set the pattern to 12 » posait bien le motif, mais la palette des motifs
+ * continuait d'entourer l'ancien : l'écran disait une chose, le programme en
+ * faisait une autre. Un état montré faux est pire qu'un état non montré —
+ * l'utilisateur clique là où il croit être.
+ *
+ * Le clic de l'utilisateur, lui, redessinait sa palette depuis toujours : il
+ * ne manquait que le chemin des scripts. On invalide plutôt qu'on force le
+ * dessin — cent « set the pattern » dans une boucle ne doivent pas faire cent
+ * redessins, mais un par image.
+ *
+ * Rien si la palette est fermée : elle se redessinera en s'ouvrant. */
+static void hcv_palette_maj(NSPanel *p)
+{
+    if (p && [p isVisible]) [(NSView *)[p contentView] setNeedsDisplay:YES];
+}
+
 static BOOL gTextUnderline = NO;
 
 static CGFloat gScrollGrab, gScrollGH, gScrollKH, gScrollGY, gScrollMax;
@@ -1028,6 +1046,10 @@ static void cocoa_choose_tool(const char *name) {
             gTool = table[i].t;
             gSelected = NULL;
             [gView stopSprayTimer];
+            /* La palette entoure l'outil courant : « choose brush tool »
+             * depuis un script doit déplacer ce cadre, sinon la palette
+             * désigne un outil dont on ne se sert plus. */
+            hcv_palette_maj(gToolPanel);
             [gView setNeedsDisplay:YES];
             return;
         }
@@ -2045,13 +2067,14 @@ static void cocoa_global_set(const char *name, const char *value) {
 
         /* La palette d'outils montre les deux couleurs : sans ce rafraîchis-
          * sement, elle continuerait d'afficher les anciennes. */
-        if (gToolPanel) [(NSView *)[gToolPanel contentView] display];
+        hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
 
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
+        hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -2060,6 +2083,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > 8) v = 8;
         gLineWidth = v;
+        hcv_palette_maj(gWidthPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -2068,6 +2092,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > NUM_PATTERNS) v = NUM_PATTERNS;
         gPattern = v - 1;
+        hcv_palette_maj(gPatternPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -2076,6 +2101,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > NUM_BRUSHES) v = NUM_BRUSHES;
         gBrush = v - 1;
+        hcv_palette_maj(gBrushPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
