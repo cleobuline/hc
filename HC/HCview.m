@@ -1533,6 +1533,28 @@ static void cocoa_do_menu(const char *item) {
         return;
     }
 
+    /* Les transformations du menu Paint, atteignables par script :
+     * « doMenu "Invert" ». Avant la table des articles d'interface, qui
+     * enverrait une action à gView — laquelle n'a pas d'étiquette à lire. */
+    {
+        static const struct { const char *nom; NSInteger tag; } PEINTURE[] = {
+            { "Invert",          HCV_PAINT_INVERT  },
+            { "Darken",          HCV_PAINT_DARKEN  },
+            { "Lighten",         HCV_PAINT_LIGHTEN },
+            { "Trace Edges",     HCV_PAINT_TRACE   },
+            { "Flip Horizontal", HCV_PAINT_FLIPH   },
+            { "Flip Vertical",   HCV_PAINT_FLIPV   },
+            { "Rotate Left",     HCV_PAINT_ROTL    },
+            { "Rotate Right",    HCV_PAINT_ROTR    },
+            { NULL, 0 }
+        };
+        for (int i = 0; PEINTURE[i].nom; i++)
+            if (strcasecmp(PEINTURE[i].nom, item) == 0) {
+                [gView paintOpTag:PEINTURE[i].tag];
+                return;
+            }
+    }
+
     cocoa_menu_hypercard(item);
 }
 
@@ -2589,6 +2611,11 @@ static BOOL paint_selection_active(void)
 
     if (a == @selector(copy:) || a == @selector(cut:))
         return object_selection_active() || paint_selection_active();
+
+    /* Les articles du menu Paint n'ont de sens que sur une sélection de
+     * peinture. HyperCard les grisait de même — et c'est plus sûr que de les
+     * laisser cliquables pour ne rien faire. */
+    if (a == @selector(paintOp:)) return paint_selection_active();
     /* « Icône… » reste TOUJOURS disponible, même sans bouton sélectionné : le
      * panneau gère les icônes de la pile, qui sont des ressources. On peut donc
      * en créer et en dessiner avec n'importe quel outil ; faute de bouton, OK
@@ -2985,6 +3012,106 @@ static int gColorTarget = 0;
     BrushPalette *grid = [[BrushPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     [gBrushPanel setContentView:grid];
     [gBrushPanel makeKeyAndOrderFront:nil];
+}
+
+/* ═══ Les articles du menu Paint ════════════════════════════════════════
+ *
+ * Une seule action pour les huit : l'étiquette de l'article dit laquelle.
+ * Toutes suivent le même chemin — trouver la zone, prendre l'instantané
+ * d'annulation, transformer, redessiner — et l'écrire huit fois serait huit
+ * occasions d'en oublier un morceau.
+ *
+ * La ZONE, c'est la sélection : le polygone du lasso s'il est actif, sinon le
+ * rectangle des fourmis. Sans sélection il ne se passe rien, et
+ * validateMenuItem: grise les articles pour le dire d'avance — c'est ce que
+ * faisait HyperCard, et c'est plus sûr que d'appliquer à toute la carte une
+ * transformation qu'on ne pourrait plus distinguer d'une fausse manœuvre. */
+/* Y a-t-il de quoi travailler ? Rend NO sans rien toucher si non. */
+static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
+                              NSPoint **poly, int *npoly)
+{
+    *poly = NULL; *npoly = 0;
+
+    if (gLassoActive && gLassoCount >= 3) {
+        double minx = gLassoPts[0].x, maxx = minx;
+        double miny = gLassoPts[0].y, maxy = miny;
+        for (int i = 1; i < gLassoCount; i++) {
+            if (gLassoPts[i].x < minx) minx = gLassoPts[i].x;
+            if (gLassoPts[i].x > maxx) maxx = gLassoPts[i].x;
+            if (gLassoPts[i].y < miny) miny = gLassoPts[i].y;
+            if (gLassoPts[i].y > maxy) maxy = gLassoPts[i].y;
+        }
+        *x0 = (int)floor(minx); *y0 = (int)floor(miny);
+        *x1 = (int)ceil(maxx);  *y1 = (int)ceil(maxy);
+        *poly = gLassoPts; *npoly = gLassoCount;
+        return YES;
+    }
+    if (gSelRectActive) {
+        *x0 = (int)MIN(gSelStart.x, gSelEnd.x);
+        *x1 = (int)MAX(gSelStart.x, gSelEnd.x);
+        *y0 = (int)MIN(gSelStart.y, gSelEnd.y);
+        *y1 = (int)MAX(gSelStart.y, gSelEnd.y);
+        return YES;
+    }
+    return NO;
+}
+
+- (void)paintOp:(id)sender
+{
+    [self paintOpTag:[sender tag]];
+}
+
+/* Séparée de l'action pour que « doMenu "Invert" » y arrive aussi : un script
+ * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire. */
+- (void)paintOpTag:(NSInteger)quoi
+{
+    int x0, y0, x1, y1, npoly;
+    NSPoint *poly;
+    if (!hcv_zone_peinture(&x0, &y0, &x1, &y1, &poly, &npoly)) { NSBeep(); return; }
+
+    Object *card = [self documentCard];
+    if (!card) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) return;
+
+    [self beginPaintUndo];
+
+    switch (quoi) {
+        case HCV_PAINT_INVERT:  paint_invert(rep, x0,y0,x1,y1, poly,npoly);      break;
+        case HCV_PAINT_DARKEN:  paint_darken(rep, x0,y0,x1,y1, poly,npoly);      break;
+        case HCV_PAINT_LIGHTEN: paint_lighten(rep, x0,y0,x1,y1, poly,npoly);     break;
+        case HCV_PAINT_TRACE:   paint_trace_edges(rep, x0,y0,x1,y1, poly,npoly); break;
+        case HCV_PAINT_FLIPH:   paint_flip(rep, x0,y0,x1,y1, 1);                 break;
+        case HCV_PAINT_FLIPV:   paint_flip(rep, x0,y0,x1,y1, 0);                 break;
+
+        /* La rotation change la FORME de la sélection dès qu'elle n'est pas
+         * carrée : ses côtés s'échangent. On y déplace les fourmis, sans quoi
+         * elles entoureraient une zone qui n'a plus rien à voir avec l'image.
+         *
+         * Un lasso devient alors un simple rectangle : son polygone ne
+         * survivrait pas à la rotation, et prétendre le contraire donnerait
+         * une sélection qui ne recouvre plus ce qu'elle désigne. */
+        case HCV_PAINT_ROTL:
+        case HCV_PAINT_ROTR: {
+            NSRect neuf = NSZeroRect;
+            paint_rotate(rep, x0,y0,x1,y1,
+                         quoi == HCV_PAINT_ROTR ? +1 : -1, &neuf);
+            gLassoActive = NO;
+            gLassoCount  = 0;
+            gSelStart = NSMakePoint(NSMinX(neuf), NSMinY(neuf));
+            gSelEnd   = NSMakePoint(NSMaxX(neuf), NSMaxY(neuf));
+            gSelRectActive = YES;
+            [self startAntsTimer];
+            break;
+        }
+        default: return;
+    }
+
+    [self setNeedsDisplay:YES];
 }
 
 - (void)eraseAll {

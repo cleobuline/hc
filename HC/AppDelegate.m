@@ -346,6 +346,47 @@ static NSMenu *find_file_menu(void)
     [goItem setSubmenu:goMenu];
     [mainMenu addItem:goItem];
 
+    /* --- menu Paint ---
+     *
+     * Les transformations d'image d'HyperCard, dans son ordre. Huit pour
+     * l'instant : celles qui ne font que relire des pixels et en écrire
+     * d'autres. Manquent encore Select, Fill, Pickup, Opaque, Transparent,
+     * Keep et Revert, qui demandent chacune autre chose que du calcul — un
+     * second calque, un mode de transparence, un instantané nommé. Mieux vaut
+     * un menu court et vrai qu'un menu complet à moitié grisé pour toujours.
+     *
+     * Pas de raccourcis clavier : ceux d'HyperCard sont pris ici (⌘S pour
+     * enregistrer, ⌘A pour tout sélectionner), et deux fidélités qui se
+     * contredisent se tranchent en faveur de celle qui ne casse rien.
+     *
+     * validateMenuItem: les grise tant qu'il n'y a pas de sélection de
+     * peinture — c'est ce que faisait HyperCard, et c'est plus sûr que de les
+     * laisser cliquables pour ne rien faire. */
+    NSMenuItem *paintItem = [[NSMenuItem alloc] init];
+    NSMenu *paintMenu = [[NSMenu alloc] initWithTitle:@"Paint"];
+    struct { NSString *titre; NSInteger tag; } peint[] = {
+        { @"Invert",          HCV_PAINT_INVERT  },
+        { @"Darken",          HCV_PAINT_DARKEN  },
+        { @"Lighten",         HCV_PAINT_LIGHTEN },
+        { @"Trace Edges",     HCV_PAINT_TRACE   },
+        { nil,                0                 },   /* séparateur */
+        { @"Rotate Left",     HCV_PAINT_ROTL    },
+        { @"Rotate Right",    HCV_PAINT_ROTR    },
+        { @"Flip Vertical",   HCV_PAINT_FLIPV   },
+        { @"Flip Horizontal", HCV_PAINT_FLIPH   },
+    };
+    for (int i = 0; i < (int)(sizeof peint / sizeof *peint); i++) {
+        if (!peint[i].titre) { [paintMenu addItem:[NSMenuItem separatorItem]]; continue; }
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:peint[i].titre
+                                                    action:@selector(paintOp:)
+                                             keyEquivalent:@""];
+        [mi setTag:peint[i].tag];
+        [mi setTarget:view];
+        [paintMenu addItem:mi];
+    }
+    [paintItem setSubmenu:paintMenu];
+    [mainMenu addItem:paintItem];
+
     NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
     NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Tools"];
     struct { NSString *title; NSInteger tag; NSString *key; } pals[] = {

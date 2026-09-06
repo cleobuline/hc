@@ -46,6 +46,24 @@ void stamp_clipboard(NSBitmapImageRep *rep, NSPoint pos);
 
 void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
                    NSPoint *poly, int npoly);
+/* ---- Les transformations du menu Paint ----
+ *
+ * Toutes travaillent sur une ZONE : un rectangle, éventuellement restreint au
+ * polygone du lasso (poly/npoly, NULL sinon) — la convention de
+ * dither_region, qui les a précédées.
+ *
+ * Flip et Rotate font exception et travaillent sur la boîte englobante :
+ * retourner une forme quelconque « sur elle-même » n'a pas de sens
+ * géométrique, et HyperCard ne le prétendait pas davantage.
+ *
+ * Le calcul est dans hc_pixels.h, en C pur et vérifiable hors du Mac. */
+void paint_invert(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, NSPoint *poly,int npoly);
+void paint_darken(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, NSPoint *poly,int npoly);
+void paint_lighten(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, NSPoint *poly,int npoly);
+void paint_trace_edges(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, NSPoint *poly,int npoly);
+void paint_flip(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, int horizontal);
+void paint_rotate(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, int sens, NSRect *nouveau);
+
 NSBitmapImageRep *paint_copy(NSBitmapImageRep *src);
 void paint_swap(NSBitmapImageRep *a, NSBitmapImageRep *b);
 #endif /* graphics_h */

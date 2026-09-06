@@ -3,6 +3,7 @@
 //
 
 #import "graphics.h"
+#include "hc_pixels.h"   /* le calcul des transformations du menu Paint */
 #import "HCpalettes.h"    // brush_bit
 #import "HCpaint.h"
      // flushPaintToKernel : l'interface complete, la
@@ -922,6 +923,94 @@ void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         }
     }
 }
+/* ═══ LE MENU PAINT ═════════════════════════════════════════════════════
+ *
+ * Six transformations, dont le calcul vit dans hc_pixels.h — du C99 qui ne
+ * connaît ni AppKit ni NSPoint, et qui se vérifie donc sur des images de six
+ * pixels de large plutôt qu'à l'œil sur un écran. Voir l'en-tête de ce
+ * fichier pour la raison.
+ *
+ * Ici, rien que la traduction : le tampon et son pas de ligne d'un côté, les
+ * sommets du lasso mis à plat de l'autre. */
+
+/* Les sommets du lasso, de NSPoint vers des doubles à plat. Rend NULL s'il
+ * n'y a pas de polygone — ce que hc_pixels lit comme « toute la zone ». */
+static double *poly_a_plat(NSPoint *pts, int n)
+{
+    if (!pts || n < 3) return NULL;
+    double *d = malloc((size_t)n * 2 * sizeof *d);
+    if (!d) return NULL;
+    for (int i = 0; i < n; i++) { d[2*i] = pts[i].x; d[2*i+1] = pts[i].y; }
+    return d;
+}
+
+#define PAINT_PROLOGUE                                              \
+    if (!rep) return;                                               \
+    if ([rep bitsPerSample] != 8 || [rep samplesPerPixel] < 3) return; \
+    unsigned char *data = [rep bitmapData];                         \
+    if (!data) return;                                              \
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];       \
+    long bpr = (long)[rep bytesPerRow];                             \
+    int spp = (int)[rep samplesPerPixel]
+
+void paint_invert(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_invert(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_darken(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_darken(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_lighten(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                   NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_lighten(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_trace_edges(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                       NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_trace_edges(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_flip(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                int horizontal)
+{
+    PAINT_PROLOGUE;
+    hcp_flip(data, bpr, spp, W, H, x0, y0, x1, y1, horizontal);
+}
+
+/* `sens` : +1 à droite, -1 à gauche. `nouveau` reçoit le rectangle d'arrivée,
+ * qui n'est pas celui de départ dès que la sélection n'est pas carrée —
+ * l'appelant doit y déplacer la sélection. */
+void paint_rotate(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  int sens, NSRect *nouveau)
+{
+    if (nouveau) *nouveau = NSMakeRect(x0, y0, x1 - x0, y1 - y0);
+    PAINT_PROLOGUE;
+    int a, b, c, d;
+    hcp_rotate(data, bpr, spp, W, H, x0, y0, x1, y1, sens, &a, &b, &c, &d);
+    if (nouveau) *nouveau = NSMakeRect(a, b, c - a, d - b);
+}
+
+#undef PAINT_PROLOGUE
+
 /* Copie independante d'un calque, pour l'annulation. */
 NSBitmapImageRep *paint_copy(NSBitmapImageRep *src) {
     if (!src) return nil;

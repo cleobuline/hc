@@ -8,6 +8,17 @@
 /* Propose un article de menu à la pile avant que l'action native n'agisse.
  * Rend YES si un « on doMenu » l'a pris : l'appelant sort alors sans rien
  * faire. Voir le commentaire de sa définition dans HCview.m. */
+/* Les huit transformations du menu Paint. L'étiquette d'un article de menu
+ * porte laquelle, et c'est ce qui les relie : AppDelegate pose les articles,
+ * HCview les exécute. En commun ici, plutôt qu'en nombres recopiés de part et
+ * d'autre — la première modification aurait fait diverger les deux copies
+ * sans que rien ne le signale. */
+enum {
+    HCV_PAINT_INVERT = 1, HCV_PAINT_DARKEN, HCV_PAINT_LIGHTEN,
+    HCV_PAINT_TRACE,      HCV_PAINT_FLIPH,  HCV_PAINT_FLIPV,
+    HCV_PAINT_ROTL,       HCV_PAINT_ROTR
+};
+
 BOOL hcv_menu_trappe(const char *article);
 
 @interface HCView : NSView <NSTextViewDelegate>
@@ -33,6 +44,10 @@ BOOL hcv_menu_trappe(const char *article);
 /* Un article d'un menu créé par script a été choisi ; l'étiquette de
  * l'article porte ses deux indices. Voir HCview.m. */
 - (void)hcMenuScriptItem:(id)sender;
+/* Les transformations du menu Paint. paintOp: lit l'étiquette de l'article ;
+ * paintOpTag: sert aux scripts, qui n'en ont pas. Voir HCview.m. */
+- (void)paintOp:(id)sender;
+- (void)paintOpTag:(NSInteger)quoi;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
 - (void)installToolPalette;
