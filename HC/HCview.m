@@ -1872,8 +1872,19 @@ static const char *cocoa_global_get(const char *name) {
         if (!sr) return "0,0,0";
         CGFloat r = 0, v = 0, b = 0, a = 1;
         [sr getRed:&r green:&v blue:&b alpha:&a];
-        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d",
-                 (int)lround(r * 255), (int)lround(v * 255), (int)lround(b * 255));
+        int ia = (int)lround(a * 255);
+        /* Trois nombres quand l'encre est opaque, quatre sinon. Rendre
+         * toujours quatre casserait les scripts qui font « item 3 of the
+         * paintColor » ou qui relisent pour réécrire ; n'en rendre que trois
+         * perdrait l'opacité qu'on vient de poser. Le format dit donc ce
+         * qu'il y a à dire, et pas davantage. */
+        if (ia >= 255)
+            snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d",
+                     (int)lround(r * 255), (int)lround(v * 255), (int)lround(b * 255));
+        else
+            snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d,%d",
+                     (int)lround(r * 255), (int)lround(v * 255),
+                     (int)lround(b * 255), ia);
         return gGlobBuf;
     }
 
@@ -2014,17 +2025,23 @@ static void cocoa_global_set(const char *name, const char *value) {
     if (strcasecmp(name, "paintColor")     == 0 ||
         strcasecmp(name, "inkColor")       == 0 ||
         strcasecmp(name, "paintBackColor") == 0) {
-        int rgb = hc_color_from_name(value);
+        int alpha = 255;
+        int rgb = hc_color_from_name_alpha(value, &alpha);
         if (rgb == HC_COLOR_INHERIT) {
             NSLog(@"set the %s : couleur incomprise « %s »", name, value);
             return;
         }
+        /* Le fond reste opaque quoi qu'on demande : un fond à moitié
+         * transparent n'est pas un fond, et l'admettre rendrait « Opaque »
+         * et « Transparent » du menu Paint incompréhensibles le jour où on
+         * les écrira. */
+        BOOL estFond = (strcasecmp(name, "paintBackColor") == 0);
         NSColor *c = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0
                                          green:((rgb >>  8) & 0xFF) / 255.0
                                           blue:( rgb        & 0xFF) / 255.0
-                                         alpha:1.0];
-        if (strcasecmp(name, "paintBackColor") == 0) gBackColor = c;
-        else                                         gInkColor  = c;
+                                         alpha:estFond ? 1.0 : alpha / 255.0];
+        if (estFond) gBackColor = c;
+        else         gInkColor  = c;
 
         /* La palette d'outils montre les deux couleurs : sans ce rafraîchis-
          * sement, elle continuerait d'afficher les anciennes. */

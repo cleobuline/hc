@@ -3138,8 +3138,9 @@ static int runs_split_at(struct RunList *rl, int pos)
  * comme en anglais : une pile écrite ici doit rester lisible par qui la
  * relira. Renvoie HC_COLOR_INHERIT si le mot n'est pas une couleur — la plage
  * reste alors muette sur cet attribut, plutôt que de virer au noir. */
-static int color_from_name(const char *v)
+static int color_from_name_a(const char *v, int *alpha)
 {
+    if (alpha) *alpha = 255;
     if (!v || !*v) return HC_COLOR_INHERIT;
     while (*v == ' ' || *v == '\t') v++;
 
@@ -3175,22 +3176,37 @@ static int color_from_name(const char *v)
     if (*v == '#') return (int)strtol(v + 1, NULL, 16);
 
     /* « 255,128,0 » : la forme qu'emploient les scripts qui calculent leurs
-     * couleurs, et celle que rend « the textColor ». */
+     * couleurs, et celle que rend « the textColor ».
+     *
+     * « 255,128,0,64 » y ajoute l'opacité. Un quatrième nombre était jusqu'ici
+     * lu puis JETÉ en silence : sscanf s'arrêtait à trois et rendait 3, donc
+     * la conversion réussissait et l'on peignait opaque sans que rien ne le
+     * dise. C'est le pire des cas — un script qui a l'air de marcher. */
     if (strchr(v, ',')) {
-        int r = 0, g = 0, b = 0;
-        if (sscanf(v, "%d , %d , %d", &r, &g, &b) == 3) {
+        int r = 0, g = 0, b = 0, a = 255;
+        int n = sscanf(v, "%d , %d , %d , %d", &r, &g, &b, &a);
+        if (n >= 3) {
             if (r < 0)   r = 0;
             if (r > 255) r = 255;
             if (g < 0)   g = 0;
             if (g > 255) g = 255;
             if (b < 0)   b = 0;
             if (b > 255) b = 255;
+            if (n >= 4) {
+                if (a < 0)   a = 0;
+                if (a > 255) a = 255;
+                if (alpha) *alpha = a;
+            }
             return (r << 16) | (g << 8) | b;
         }
     }
     if (isdigit((unsigned char)*v)) return (int)strtol(v, NULL, 0);
     return HC_COLOR_INHERIT;
 }
+
+/* La forme sans opacité, pour tout ce qui n'en veut pas : les plages de
+ * style d'un champ, qui n'ont pas de canal alpha. */
+static int color_from_name(const char *v) { return color_from_name_a(v, NULL); }
 
 /* Le même vocabulaire, ouvert à l'hôte.
  *
@@ -3199,6 +3215,14 @@ static int color_from_name(const char *v)
  * programme, c'est la garantie qu'un jour l'une saura dire « turquoise » et
  * pas l'autre. */
 int hc_color_from_name(const char *v) { return color_from_name(v); }
+
+/* Avec l'opacité : `alpha` reçoit 0..255, et 255 quand la couleur n'en
+ * mentionne pas. Seule la PEINTURE s'en sert — un calque a un canal alpha,
+ * une plage de style de champ n'en a pas. */
+int hc_color_from_name_alpha(const char *v, int *alpha)
+{
+    return color_from_name_a(v, alpha);
+}
 
 /* Pose un attribut sur [start, start+len) SANS toucher aux deux autres.
  *
@@ -12308,6 +12332,29 @@ static void exec_line_body(Object *me, const char *line)
      * On route vers l'hôte, seul à connaître ses menus. Sans cette commande,
      * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
      * se superposait au précédent. */
+    /* « local a, b, c ».
+     *
+     * HyperTalk 2.2 le connaît, HC non : la ligne partait en « verbe inconnu »
+     * et polluait la trace. Une variable de gestionnaire est DÉJÀ locale ici —
+     * il n'y a donc rien à faire d'autre que de ne pas se plaindre. On les
+     * pose tout de même à vide, pour qu'une lecture avant écriture rende la
+     * chaîne vide plutôt que le nom de la variable. */
+    if (ci_equal(verb, "local")) {
+        const char *q = skip_spaces(rest);
+        while (*q) {
+            char nom[64];
+            int k = 0;
+            while (*q && *q != ',' && !isspace((unsigned char)*q) && k < 63)
+                nom[k++] = *q++;
+            nom[k] = '\0';
+            if (nom[0]) var_set(nom, "");
+            q = skip_spaces(q);
+            if (*q == ',') q = skip_spaces(q + 1);
+        }
+        set_result("");
+        return;
+    }
+
     if (ci_equal(verb, "domenu")) {
         ARENA_MARK;
         char *item = arena_buf();

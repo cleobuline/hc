@@ -55,6 +55,44 @@ static void hcp_vide(unsigned char *px, int spp)
     if (spp >= 4) px[3] = 0;
 }
 
+/* ═══ Composition d'une encre semi-opaque ═══════════════════════════════
+ *
+ * « set the paintColor to "255,0,0,128" » : du rouge à moitié transparent.
+ *
+ * HyperCard ne savait pas faire cela — il n'avait ni couleur ni canal alpha.
+ * Le calque de HC, lui, est RVBA depuis toujours : il ne manquait qu'un
+ * mélange, et le fait que la couleur d'encre porte son opacité.
+ *
+ * C'est la composition « source par-dessus » habituelle. Ce qui compte, et ce
+ * qui la distingue d'une simple pose d'alpha, c'est que les passages
+ * S'ACCUMULENT : repasser deux fois avec une encre à moitié opaque donne
+ * trois quarts d'opacité, exactement comme un lavis. Poser l'alpha tel quel
+ * donnerait toujours la moitié, et un pinceau qui ne charge jamais.
+ *
+ * Tout en entiers : le calcul se fait des millions de fois par tracé, et l'on
+ * ne va pas convertir en flottant pour arrondir aussitôt. */
+static void hcp_melange(unsigned char *px, int spp,
+                        unsigned char r, unsigned char g, unsigned char b,
+                        int sa)
+{
+    if (sa <= 0) return;                    /* rien à poser */
+    if (sa >= 255 || spp < 4) {             /* opaque, ou sans canal alpha */
+        px[0] = r; px[1] = g; px[2] = b;
+        if (spp >= 4) px[3] = 255;
+        return;
+    }
+
+    int da = px[3];
+    int reste = da * (255 - sa) / 255;      /* ce que la destination garde */
+    int oa = sa + reste;
+    if (oa <= 0) { hcp_vide(px, spp); return; }
+
+    px[0] = (unsigned char)((r * sa + px[0] * reste) / oa);
+    px[1] = (unsigned char)((g * sa + px[1] * reste) / oa);
+    px[2] = (unsigned char)((b * sa + px[2] * reste) / oa);
+    px[3] = (unsigned char)oa;
+}
+
 /* Le point (x,y) est-il dans le polygone ? Lancer de rayon horizontal, comme
  * fill_freeform — même méthode, pour que le lasso délimite exactement la même
  * chose quel que soit l'outil qui s'en sert.

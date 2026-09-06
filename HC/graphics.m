@@ -73,8 +73,10 @@ int pattern_bit(int pat, int x, int y) {
  * Le repli sur noir et blanc couvre le cas ou hc_colors_init() n'a pas encore
  * tourne — le dessin retombe alors exactement sur le comportement d'avant. */
 static void color_rgb(NSColor *c, NSColor *repli,
-                      unsigned char *r, unsigned char *g, unsigned char *b)
+                      unsigned char *r, unsigned char *g, unsigned char *b,
+                      int *a)
 {
+    if (a) *a = 255;
     if (!c) c = repli;
     NSColor *s = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
     if (!s) s = [repli colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
@@ -84,6 +86,11 @@ static void color_rgb(NSColor *c, NSColor *repli,
     *r = (unsigned char)(rr * 255.0 + 0.5);
     *g = (unsigned char)(gg * 255.0 + 0.5);
     *b = (unsigned char)(bb * 255.0 + 0.5);
+    /* L'OPACITÉ de l'encre, qui n'était pas lue jusqu'ici : « set the
+     * paintColor to "255,0,0,128" » la pose dans gInkColor, et c'est PUT_INK
+     * qui en fait un lavis. Le fond, lui, reste toujours opaque — un fond à
+     * moitié transparent n'est pas un fond. */
+    if (a) *a = (int)(aa * 255.0 + 0.5);
 }
 
 /* Les six composantes, a declarer en tete des fonctions a pixel. Un macro
@@ -91,12 +98,19 @@ static void color_rgb(NSColor *c, NSColor *repli,
  * deux copies donnerait un outil qui ne peint pas comme les autres. */
 #define INK_RGB_LOCALS \
     unsigned char ir_, ig_, ib_, br_, bg_, bb_; \
-    color_rgb(gInkColor,  [NSColor blackColor], &ir_, &ig_, &ib_); \
-    color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_)
+    int ia_; \
+    color_rgb(gInkColor,  [NSColor blackColor], &ir_, &ig_, &ib_, &ia_); \
+    color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_, NULL)
 
-/* Poser l'encre / poser le fond, alpha opaque. */
-#define PUT_INK(px)  do { (px)[0]=ir_; (px)[1]=ig_; (px)[2]=ib_; \
-                          if (spp>=4) (px)[3]=255; } while (0)
+/* Poser l'encre. Franche si elle est opaque — le cas de toujours, et le
+ * chemin rapide —, mélangée sinon : voir hcp_melange. C'est ce qui fait
+ * qu'une encre à moitié transparente CHARGE quand on repasse dessus, au lieu
+ * de rester à moitié. */
+#define PUT_INK(px)  do {                                          \
+    if (ia_ >= 255) { (px)[0]=ir_; (px)[1]=ig_; (px)[2]=ib_;        \
+                      if (spp>=4) (px)[3]=255; }                    \
+    else hcp_melange((px), (int)spp, ir_, ig_, ib_, ia_);           \
+} while (0)
 #define PUT_BACK(px) do { (px)[0]=br_; (px)[1]=bg_; (px)[2]=bb_; \
                           if (spp>=4) (px)[3]=255; } while (0)
 

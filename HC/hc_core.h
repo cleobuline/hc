@@ -77,6 +77,11 @@ struct RunList { struct TextRun *v; int n, cap; };
  * « set the textColor », ouvert pour que la peinture parle le même. */
 int hc_color_from_name(const char *v);
 
+/* La même, avec l'opacité : « 255,0,0,128 ». `alpha` reçoit 0..255, et 255
+ * quand la couleur n'en mentionne pas. Seule la peinture s'en sert — un
+ * calque a un canal alpha, une plage de style de champ n'en a pas. */
+int hc_color_from_name_alpha(const char *v, int *alpha);
+
 /* texte d'un champ de fond, propre à une carte, avec ses plages de style :
  * un champ de fond non partagé a un texte ET un style par carte. */
 struct BgText { int field_id; char *text; struct RunList runs; };
