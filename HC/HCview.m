@@ -1484,6 +1484,11 @@ static void cocoa_menus_changed(void)
              * le contenu donne le même résultat visible, sans y toucher. */
             [mi setEnabled:(hc_menu_est_actif(i) && hc_menu_article_actif(i, j))
                             ? YES : NO];
+            /* La marque à gauche du nom : « set the checkMark of menuItem 2
+             * of menu "X" to true ». C'est l'état d'un article de menu au
+             * sens d'AppKit, pas un caractère à ajouter au titre. */
+            [mi setState:hc_menu_article_coche(i, j) ? NSControlStateValueOn
+                                                     : NSControlStateValueOff];
             [m addItem:mi];
         }
 

@@ -3464,6 +3464,7 @@ typedef struct {
     char *article[HC_ARTICLES_MAX];   /* le texte affiché             */
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
+    char  coche[HC_ARTICLES_MAX];     /* la marque à gauche du nom    */
     int   n;
     int   actif_menu;
 } HcMenuBarre;
@@ -3566,7 +3567,7 @@ static void menu_articles(int i, const char *articles, const char *messages)
             m->message[j] = (j < nm) ? msg[j] : NULL;
         for (int j = m->n; j < nm; j++) free(msg[j]);   /* liste plus longue */
     }
-    for (int j = 0; j < m->n; j++) m->actif[j] = 1;
+    for (int j = 0; j < m->n; j++) { m->actif[j] = 1; m->coche[j] = 0; }
     menus_prevenir();
 }
 
@@ -3591,6 +3592,9 @@ const char *hc_menu_article(int i, int j)
 int         hc_menu_article_actif(int i, int j)
 { return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
          ? g_menus[i].actif[j] : 0; }
+int         hc_menu_article_coche(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? g_menus[i].coche[j] : 0; }
 
 static int container_set_body(const char *ref, const char *val, int mode);
 
@@ -5903,6 +5907,8 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
  * besoin pour « there is a menu "X" ». */
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
+static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
+                            const char *prop, HctValeur *out);
 
 static int g_v3_recours_prof = 0;
 
@@ -5950,6 +5956,47 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
         return 1;
+    }
+
+    /* Les propriétés d'un menu et de ses articles : « the checkMark of
+     * menuItem 2 of menu "X" », « the name of menu 1 ». Comme pour
+     * « there is a menu », resout ne peut rien pour elles.
+     *
+     * Sans contexte — v3_recours n'en reçoit pas —, les deux résolveurs
+     * lisent le désignateur littéral dans le jeton, ce qui couvre la forme
+     * qu'emploient les piles. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
+        (n->fils[1]->typeobj == HCT_OBJ_MENU ||
+         n->fils[1]->typeobj == HCT_OBJ_MENUITEM)) {
+        char prop[64];
+        hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+        if (v3_menu_prop_lit(NULL, n->fils[1], prop, out)) return 1;
+    }
+
+    /* « the number of menuItems of menu "X" » : un comptage, dont l'arbre
+     * emboîte deux « of ». */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OF &&
+        n->fils[1]->nfils >= 2) {
+        char quoi[32], sorte[32];
+        hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+        const HctNoeud *dedans = n->fils[1];
+        if (ci_equal(quoi, "number") &&
+            dedans->fils[0] && dedans->fils[0]->genre == HCTN_IDENT &&
+            dedans->fils[1] && dedans->fils[1]->genre == HCTN_OBJET &&
+            dedans->fils[1]->typeobj == HCT_OBJ_MENU) {
+            hct_texte(&dedans->fils[0]->jeton, sorte, sizeof sorte);
+            if (ci_equal(sorte, "menuitems") || ci_equal(sorte, "menuitem")) {
+                int i = v3_menu_index(NULL, dedans->fils[1]);
+                char b[24];
+                snprintf(b, sizeof b, "%d", i >= 0 ? g_menus[i].n : 0);
+                *out = hct_val_texte(b);
+                return 1;
+            }
+        }
     }
 
     /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
@@ -7328,9 +7375,29 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
  * globale/objet/morceau, textStyle et textColor en noms nus, plage de style
  * versus objet — s'applique tel quel au résultat. Rien de cet algorithme
  * n'a été touché ; seule la source du texte a changé. */
+static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
+                              const char *prop, const char *val);
+static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len);
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
+    /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
+     * pile, et le chemin ordinaire — reconstitution du texte puis résolution
+     * — n'en ferait rien. */
+    {
+        char prop[64];
+        const HctNoeud *obj = v3_set_cible_menu(n, prop, sizeof prop);
+        if (obj && n->nfils >= 3) {
+            char val[256];
+            v3_val_texte(ctx, n->fils[n->nfils - 1], val, sizeof val);
+            if (ctx->erreur) return 1;
+            if (v3_menu_prop_ecrit(ctx, obj, prop, val)) { set_result(""); return 1; }
+            emit(HC_ERR, "   !! propriété de menu inconnue : %s", prop);
+            set_result("propriété inconnue");
+            return 1;
+        }
+    }
+
     size_t sauve = g_atop;             /* nommée à part, comme dans v3_cmd_sort :
                                          * les ARENA_MARK imbriqués ci-dessous
                                          * doivent rembobiner à LEUR marque sans
@@ -9091,6 +9158,130 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     for (int j = 0; j < g_menus[im].n; j++)
         if (ci_equal(g_menus[im].article[j], b)) return j;
     return -1;
+}
+
+/* Les propriétés d'un menu et de ses articles.
+ *
+ * L'arbre nous les donne toutes faites : « set the checkMark of menuItem 2 of
+ * menu "X" to true » est un nœud « of » dont le fils gauche nomme la
+ * propriété et le droit désigne l'article. Rien à redécouper.
+ *
+ * Rendent 1 si la propriété est de leur ressort, 0 sinon — auquel cas la
+ * ligne repart par le chemin ordinaire, comme pour n'importe quel objet. */
+static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
+                            const char *prop, HctValeur *out)
+{
+    char b[128];
+
+    if (obj->typeobj == HCT_OBJ_MENU) {
+        int i = v3_menu_index(ctx, obj);
+        if (i < 0) return 0;
+        if (ci_equal(prop, "name")) { *out = hct_val_texte(g_menus[i].nom); return 1; }
+        if (ci_equal(prop, "enabled")) {
+            *out = hct_val_texte(g_menus[i].actif_menu ? "true" : "false");
+            return 1;
+        }
+        if (ci_equal(prop, "number")) {
+            snprintf(b, sizeof b, "%d", i + 1);
+            *out = hct_val_texte(b);
+            return 1;
+        }
+        return 0;
+    }
+
+    if (obj->typeobj == HCT_OBJ_MENUITEM) {
+        int im = -1;
+        int j = v3_article_index(ctx, obj, &im);
+        if (j < 0) return 0;
+        HcMenuBarre *m = &g_menus[im];
+
+        if (ci_equal(prop, "checkmark")) {
+            *out = hct_val_texte(m->coche[j] ? "true" : "false"); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            *out = hct_val_texte(m->actif[j] ? "true" : "false"); return 1;
+        }
+        if (ci_equal(prop, "name")) {
+            *out = hct_val_texte(m->article[j] ? m->article[j] : ""); return 1;
+        }
+        if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
+            *out = hct_val_texte(m->message[j] ? m->message[j] : ""); return 1;
+        }
+        if (ci_equal(prop, "number")) {
+            snprintf(b, sizeof b, "%d", j + 1);
+            *out = hct_val_texte(b); return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
+                              const char *prop, const char *val)
+{
+    int vrai = truthy(val);
+
+    if (obj->typeobj == HCT_OBJ_MENU) {
+        int i = v3_menu_index(ctx, obj);
+        if (i < 0) return 0;
+        if (ci_equal(prop, "name")) {
+            snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
+            menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            g_menus[i].actif_menu = vrai;
+            menus_prevenir(); return 1;
+        }
+        return 0;
+    }
+
+    if (obj->typeobj == HCT_OBJ_MENUITEM) {
+        int im = -1;
+        int j = v3_article_index(ctx, obj, &im);
+        if (j < 0) return 0;
+        HcMenuBarre *m = &g_menus[im];
+
+        if (ci_equal(prop, "checkmark")) {
+            m->coche[j] = (char)vrai; menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            m->actif[j] = (char)vrai; menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "name")) {
+            char *t = malloc(strlen(val) + 1);
+            if (!t) return 1;
+            strcpy(t, val);
+            free(m->article[j]); m->article[j] = t;
+            menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
+            char *t = malloc(strlen(val) + 1);
+            if (!t) return 1;
+            strcpy(t, val);
+            free(m->message[j]); m->message[j] = t;
+            menus_prevenir(); return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+/* Le nœud « of » d'un set : « set the X of <objet> to … ». Rend le nœud
+ * d'objet et le nom de la propriété, ou 0 si ce n'est pas cette forme. */
+static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len)
+{
+    if (!n || n->nfils < 1) return NULL;
+    const HctNoeud *of = n->fils[0];
+    if (!of || of->genre != HCTN_OF || of->nfils < 2) return NULL;
+    if (!of->fils[0] || of->fils[0]->genre != HCTN_IDENT) return NULL;
+
+    const HctNoeud *obj = of->fils[1];
+    if (!obj || obj->genre != HCTN_OBJET) return NULL;
+    if (obj->typeobj != HCT_OBJ_MENU && obj->typeobj != HCT_OBJ_MENUITEM)
+        return NULL;
+
+    hct_texte(&of->fils[0]->jeton, prop, len);
+    return obj;
 }
 
 /* create menu <nom> */
