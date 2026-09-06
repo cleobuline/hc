@@ -1861,6 +1861,22 @@ static const char *cocoa_global_get(const char *name) {
         return gTextStyleName ? [gTextStyleName UTF8String] : "plain";
     if (strcasecmp(name, "textAlign") == 0)
         return gTextAlign ? [gTextAlign UTF8String] : "left";
+    /* Rendues en « r,v,b », le format que rend déjà « the textColor » : un
+     * script qui relit une couleur pour la recalculer trouve trois nombres,
+     * pas un nom qu'il faudrait retraduire. */
+    if (strcasecmp(name, "paintColor")     == 0 ||
+        strcasecmp(name, "inkColor")       == 0 ||
+        strcasecmp(name, "paintBackColor") == 0) {
+        NSColor *c = (strcasecmp(name, "paintBackColor") == 0) ? gBackColor : gInkColor;
+        NSColor *sr = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+        if (!sr) return "0,0,0";
+        CGFloat r = 0, v = 0, b = 0, a = 1;
+        [sr getRed:&r green:&v blue:&b alpha:&a];
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d",
+                 (int)lround(r * 255), (int)lround(v * 255), (int)lround(b * 255));
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
     if (strcasecmp(name, "lineSize") == 0) {
@@ -1974,6 +1990,46 @@ static void cocoa_global_set(const char *name, const char *value) {
      * retenait rien du dessin — voir hcv_verrou_ecran. */
     if (strcasecmp(name, "lockScreen") == 0) {
         hcv_verrou_ecran(vrai ? YES : NO);
+        return;
+    }
+
+    /* ═══ La couleur de peinture, depuis un script ═══════════════════════
+     *
+     * « set the paintColor to "vert" », « set the paintColor to "64,255,30" ».
+     *
+     * HyperCard n'avait pas cela : il peignait en noir sur blanc. Mais HC a
+     * déjà de la couleur — le panneau des couleurs pose gInkColor, et
+     * « set the textColor » colore le texte —, et un script qui ne peut pas
+     * atteindre ce que la souris atteint est un manque plutôt qu'une
+     * fidélité. On se contente donc d'ouvrir une porte déjà construite : les
+     * fonctions de dessin lisent gInkColor depuis toujours.
+     *
+     * Le vocabulaire est celui du noyau, hc_color_from_name — le même que
+     * « set the textColor ». Deux tables de couleurs dans le même programme,
+     * ce serait la garantie qu'un jour l'une saura dire « turquoise » et pas
+     * l'autre.
+     *
+     * Une valeur incomprise ne change rien et se signale : peindre en noir
+     * parce qu'on a mal orthographié « magenta » se remarque trop tard. */
+    if (strcasecmp(name, "paintColor")     == 0 ||
+        strcasecmp(name, "inkColor")       == 0 ||
+        strcasecmp(name, "paintBackColor") == 0) {
+        int rgb = hc_color_from_name(value);
+        if (rgb == HC_COLOR_INHERIT) {
+            NSLog(@"set the %s : couleur incomprise « %s »", name, value);
+            return;
+        }
+        NSColor *c = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0
+                                         green:((rgb >>  8) & 0xFF) / 255.0
+                                          blue:( rgb        & 0xFF) / 255.0
+                                         alpha:1.0];
+        if (strcasecmp(name, "paintBackColor") == 0) gBackColor = c;
+        else                                         gInkColor  = c;
+
+        /* La palette d'outils montre les deux couleurs : sans ce rafraîchis-
+         * sement, elle continuerait d'afficher les anciennes. */
+        if (gToolPanel) [(NSView *)[gToolPanel contentView] display];
+        [gView setNeedsDisplay:YES];
         return;
     }
 

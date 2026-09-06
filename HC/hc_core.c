@@ -3157,6 +3157,17 @@ static int color_from_name(const char *v)
         { "brown",   0x804000 }, { "marron",  0x804000 },
         { "pink",    0xFFC0CB }, { "rose",    0xFFC0CB },
         { "gray",    0x808080 }, { "grey",    0x808080 }, { "gris", 0x808080 },
+        /* Ajoutées quand la table est devenue celle de la PEINTURE aussi :
+         * on nomme spontanément plus de couleurs quand on dessine que quand
+         * on colore trois mots dans un champ. */
+        { "turquoise", 0x40E0D0 },
+        { "olive",     0x808000 },
+        { "navy",      0x000080 }, { "marine",  0x000080 },
+        { "gold",      0xFFD700 }, { "or",      0xFFD700 },
+        { "silver",    0xC0C0C0 }, { "argent",  0xC0C0C0 },
+        { "beige",     0xF5F5DC },
+        { "indigo",    0x4B0082 },
+        { "lime",      0x00FF00 },
     };
     for (unsigned i = 0; i < sizeof table / sizeof *table; i++)
         if (ci_equal(v, table[i].nom)) return table[i].rgb;
@@ -3180,6 +3191,14 @@ static int color_from_name(const char *v)
     if (isdigit((unsigned char)*v)) return (int)strtol(v, NULL, 0);
     return HC_COLOR_INHERIT;
 }
+
+/* Le même vocabulaire, ouvert à l'hôte.
+ *
+ * « set the paintColor to "vert" » doit comprendre exactement ce que comprend
+ * « set the textColor to "vert" ». Deux tables de couleurs dans le même
+ * programme, c'est la garantie qu'un jour l'une saura dire « turquoise » et
+ * pas l'autre. */
+int hc_color_from_name(const char *v) { return color_from_name(v); }
 
 /* Pose un attribut sur [start, start+len) SANS toucher aux deux autres.
  *
@@ -6188,6 +6207,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush",
+    "paintColor", "paintBackColor", "inkColor",
     NULL
 };
 

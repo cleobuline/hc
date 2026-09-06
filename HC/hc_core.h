@@ -71,6 +71,12 @@ struct RunList { struct TextRun *v; int n, cap; };
 #define HC_STYLE_INHERIT (-2) /* plage muette sur le style : voir plus haut */
 #define HC_COLOR_INHERIT (-1) /* plage muette sur la couleur : voir plus haut */
 
+/* Traduit un nom de couleur, « #RRGGBB » ou « r,v,b » en 0xRRGGBB, et rend
+ * HC_COLOR_INHERIT si ce n'en est pas une. Les noms sont acceptés en français
+ * comme en anglais — vert, green, rouge, red… C'est le vocabulaire de
+ * « set the textColor », ouvert pour que la peinture parle le même. */
+int hc_color_from_name(const char *v);
+
 /* texte d'un champ de fond, propre à une carte, avec ses plages de style :
  * un champ de fond non partagé a un texte ET un style par carte. */
 struct BgText { int field_id; char *text; struct RunList runs; };
