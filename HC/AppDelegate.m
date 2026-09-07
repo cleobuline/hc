@@ -11,7 +11,7 @@
 #import "HCdialogs.h"
 #import "hc_core.h"
 #import "hc_file.h"
-#import "HCdocument.h"
+#import "Hcdocument.h"
 @interface AppDelegate ()
 @property (strong) IBOutlet NSWindow *window;
 @end

@@ -6,7 +6,7 @@
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
-#import "HCiconedit.h"
+#import "Hciconedit.h"
 #import "graphics.h"
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie

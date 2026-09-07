@@ -2,7 +2,7 @@
 //  HCdocument.m — une pile ouverte, avec sa fenêtre et sa vue
 //
 
-#import "HCdocument.h"
+#import "Hcdocument.h"
 #import "HCview.h"
 #import "HCglobals.h"
 #import "HCdialogs.h"    /* hcicon_panel_stack_closing */
