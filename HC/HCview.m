@@ -916,21 +916,39 @@ static Object *part_at_layer(Object *layer, NSPoint p) {
  * bouton de carte posé par-dessus un bouton de fond garde la priorité, comme
  * au clic en mode Browse. Ce qui change, c'est qu'on ne s'arrête plus là.
  *
+ * ET DANS L'AUTRE SENS AUSSI. En édition de fond, les mêmes outils atteignent
+ * les objets de la CARTE. C'est ce que faisait HyperCard : ⌘B commande le
+ * calque de PEINTURE et l'endroit où atterrissent les objets neufs, pas ce
+ * que les outils d'objet ont le droit de toucher.
+ *
+ * Ce qui oblige à dessiner ce qu'on attrape — voir couche_carte_visible(),
+ * qui répond pour les deux et que drawRect: consulte aussi. Une réponse par
+ * fonction aurait donné, un jour ou l'autre, un bouton cliquable et invisible
+ * ou l'inverse, sans que rien ne le signale.
+ *
  * Le calque du part attrapé reste visible : la sélection change de couleur
  * (voir drawRect:), et l'Info dit « Background Button ». Déplacer un bouton
  * de fond le déplace sur TOUTES les cartes de ce fond — l'action est la même
- * qu'avant, il fallait seulement qu'on puisse la voir venir.
+ * qu'avant, il fallait seulement qu'on puisse la voir venir. */
+
+/* Le calque CARTE participe-t-il — au dessin comme au clic ?
  *
- * LA RÈGLE, en un mot : ON N'ATTRAPE QUE CE QUI EST DESSINÉ. C'est pourquoi
- * l'édition de fond, elle, ne donne QUE le fond : drawRect: y saute
- * entièrement le calque carte, et attraper un bouton qu'on ne voit pas serait
- * le même défaut à l'envers. Cette méthode et drawRect: doivent donc dire la
- * même chose du calque carte — c'est la seule condition à tenir si l'une des
- * deux change. */
+ * Non en édition de fond : c'est tout le sens de ⌘B, on veut voir le fond
+ * seul. Sauf avec les outils d'objet, qui travaillent sur les deux calques à
+ * la fois et doivent donc les montrer tous les deux.
+ *
+ * Une seule fonction pour les deux questions, parce que ce sont les deux
+ * moitiés d'une seule : on n'attrape que ce qui est dessiné, et on dessine
+ * tout ce qu'on peut attraper. Les séparer, c'était se réserver un bouton
+ * fantôme. */
+static BOOL couche_carte_visible(void) {
+    return !gEditBackground || gTool == TOOL_BUTTON || gTool == TOOL_FIELD;
+}
+
 static Object *part_at(Object *card, NSPoint p) {
     if (!card) return NULL;
 
-    if (!gEditBackground) {
+    if (couche_carte_visible()) {
         Object *o = part_at_layer(card, p);
         if (o) return o;
     }
@@ -1069,7 +1087,6 @@ static void cocoa_choose_tool(const char *name) {
             }
 
             gTool = neuf;
-            gTool = table[i].t;
             gSelected = NULL;
             [gView stopSprayTimer];
             /* La palette entoure l'outil courant : « choose brush tool »
@@ -3448,13 +3465,19 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
                 draw_part(card->bg->parts[i]);
     }
 
-    if (!gEditBackground) {
+    /* La PEINTURE de la carte disparaît en édition de fond, toujours : c'est
+     * ce qu'on demande à ⌘B, voir le fond seul et pouvoir y dessiner. */
+    if (!gEditBackground)
         draw_layer_dirty(paint_bitmap(card, (int)b.size.width, (int)b.size.height),
                          dirtyRect);
+
+    /* Ses OBJETS, eux, restent visibles quand un outil d'objet est en main,
+     * puisque cet outil peut les attraper. Même question, même réponse que
+     * part_at : couche_carte_visible() répond aux deux. */
+    if (couche_carte_visible())
         for (int i = 0; i < card->nparts; i++)
             if (part_touche(card->parts[i], dirtyRect))
                 draw_part(card->parts[i]);
-    }
 
     if (gSelected) {
         NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
