@@ -508,6 +508,12 @@ static int g_messages_verrouilles = 0;
  * chemins de « the xxx ». D'où cette déclaration anticipée. */
 static int reglage_lit(const char *nom, char *out, int outlen);
 
+/* Les compteurs de l'ancien interprète — définis avec le relevé du bilan,
+ * bien plus bas, mais appelés par du code qui le précède. */
+static void v1_compte(const char *quoi, const char *porte);
+static const char *v1_porte(const char *nom);
+static const char *g_v1_porte = "?";
+
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
@@ -4093,6 +4099,7 @@ static void emit_datetime(struct tm *tm, int fmt, char *out, int outlen)
 /* Renvoie 1 si `t` était bien un appel de fonction. */
 static int call_function_body(const char *t, char *out, int outlen)
 {
+    v1_compte("v1 fonction", g_v1_porte);
     const char *s = skip_spaces(t);
     if (ci_word(s, "the")) s = skip_spaces(s + 3);
 
@@ -4751,6 +4758,7 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
 
 static void term_value_body(const char *t, char *out, int outlen)
 {
+    v1_compte("v1 terme", g_v1_porte);
     t = skip_spaces(t);
     out[0] = '\0';
     if (!*t) return;
@@ -6134,6 +6142,11 @@ static void v3_note(const char *quoi, const char *nom);
 
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
+    /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
+     * entière. C'est par ici que term_value et call_function, le vieux
+     * moteur d'expressions, sont encore atteints. Sans cette porte ils
+     * comptaient sous « ? », et c'était justement le plus gros total. */
+    const char *sauve_porte = v1_porte("recours expr");
     (void)d;
 
     /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
@@ -6173,7 +6186,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         }
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Les propriétés d'un menu et de ses articles : « the checkMark of
@@ -6251,7 +6264,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
         *out = hct_val_texte("");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Les tampons vont dans l'ARÈNE, pas sur la pile.
@@ -6356,6 +6369,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 
     *out = hct_val_texte(val);
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
     return 1;
 }
 /* Fonction définie dans une pile — « function calData … ».
@@ -6583,6 +6597,9 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
+    /* L'autre porte sur l'ancien moteur d'expressions : les FONCTIONS que la
+     * v3 ne calcule pas elle-même. C'est ce qui restait sous « ? ». */
+    const char *sauve_porte = v1_porte("fonction v3");
     (void)d;
     /* itemDelimiter : demandé avant chaque découpage en items. On le sert
      * directement, c'est une globale de hc_core.c. Avant toute allocation :
@@ -6590,7 +6607,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     if (ci_equal(nom, "itemDelimiter")) {
         char sep[2] = { g_item_delim, 0 };
         *out = hct_val_texte(sep);
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Les fonctions du monde, servies sans fabriquer ni relexer de chaîne.
@@ -6605,7 +6622,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             const char *v = host_global(nom);
             if (!v) break;          /* l'hôte l'ignore : chemin normal */
             *out = hct_val_texte(v);
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
 
         /* the result, the date, the selection... la même liste que
@@ -6625,7 +6642,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
         int i = (int)hct_vers_nombre(args[0].txt);
         *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
@@ -6660,15 +6677,15 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             v3_note("fonction", nom);      /* term_value a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
         if (v3_fonction_pile(nom, args, 0)) {
             *out = hct_val_texte(g_result);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
         ARENA_FREE;
-        return 0;
+        { g_v1_porte = sauve_porte; } return 0;
     }
     /* Fonctions du monde à un argument NUMÉRIQUE — param(n) et consorts.
      * On s'en tient au numérique : reconstruire un argument textuel serait
@@ -6682,15 +6699,16 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             v3_note("fonction", nom);      /* call_function a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
     }
     if (v3_fonction_pile(nom, args, nargs)) {
         *out = hct_val_texte(g_result);
         ARENA_FREE;
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
     return 0;
 }
 
@@ -6852,13 +6870,60 @@ static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
  * hc_v3_bilan() vide le relevé sur la console. Coût : une comparaison de
  * chaînes par retour, négligeable devant l'exec_stmt qui suit. */
 #define V3_RELEVE_MAX 256
-struct V3Releve { char nom[48]; long n; };
+/* 64 et non 48 : un intitulé accentué suivi d'un nom de porte débordait, et
+ * snprintf coupait au milieu d'un caractère UTF-8 — la ligne de bilan sortait
+ * alors en octets invalides. Les intitulés ont maigri aussi, ci-dessous. */
+struct V3Releve { char nom[64]; long n; };
 static struct V3Releve g_releve[V3_RELEVE_MAX];
 static int g_nreleve = 0;
 
+/* ═══ Ce que l'ANCIEN interprète exécute encore, et par quelle porte ═════
+ *
+ * Le relevé ci-dessus compte les RECOURS : les fois où la v3 renonce et rend
+ * la main. « (aucun) » veut donc dire « la v3 n'a jamais abandonné » — et
+ * PAS « l'ancien interprète ne tourne plus ». Ce sont deux choses
+ * différentes, et les confondre m'a fait croire le chantier plus avancé
+ * qu'il ne l'est : cinq commandes v3 appellent eval_checked de l'intérieur,
+ * sans que rien ne le signale, et la boîte de message passe entièrement par
+ * exec_line_body.
+ *
+ * Ces deux compteurs-ci mesurent donc l'EXÉCUTION RÉELLE, quelle qu'en soit
+ * l'origine. Ils répondent à la seule question qui décide de l'élagage :
+ * qu'est-ce qui appellerait encore le code qu'on veut supprimer ?
+ *
+ * La PORTE dit d'où l'on vient. Elle est posée par les points d'entrée —
+ * la boîte de message, les menus du noyau, le recours, et chacune des
+ * commandes v3 qui emprunte l'évaluateur v1 — et rendue à sa valeur
+ * précédente en sortant, parce que ces chemins s'imbriquent : un « do »
+ * dans un gestionnaire appelé depuis un article de menu en traverse trois. */
+static struct V3Releve g_v1[V3_RELEVE_MAX];
+static int  g_nv1 = 0;
+static void v1_compte(const char *quoi, const char *porte)
+{
+    char cle[64];
+    snprintf(cle, sizeof cle, "%s %s", quoi, porte && *porte ? porte : "?");
+    for (int i = 0; i < g_nv1; i++)
+        if (!strcmp(g_v1[i].nom, cle)) { g_v1[i].n++; return; }
+    if (g_nv1 >= V3_RELEVE_MAX) return;
+    snprintf(g_v1[g_nv1].nom, sizeof g_v1[0].nom, "%s", cle);
+    g_v1[g_nv1].n = 1;
+    g_nv1++;
+}
+
+/* Poser la porte et la rendre. À employer par paires, dans la même fonction :
+ *     const char *sauve = v1_porte("msg");
+ *     ...
+ *     g_v1_porte = sauve; */
+static const char *v1_porte(const char *nom)
+{
+    const char *avant = g_v1_porte;
+    g_v1_porte = nom;
+    return avant;
+}
+
 static void v3_note(const char *quoi, const char *nom)
 {
-    char cle[48];
+    char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, nom && *nom ? nom : "?");
     for (int i = 0; i < g_nreleve; i++)
         if (!strcmp(g_releve[i].nom, cle)) { g_releve[i].n++; return; }
@@ -6889,10 +6954,12 @@ static void bilan_ligne(const char *fmt, ...)
     fprintf(stderr, "[v3] %s\n", buf);
 }
 
+static void bilan_v1(void);
+
 void hc_v3_bilan(void)
 {
     bilan_ligne("— retours de la v3 vers l'ancien interpréteur —");
-    if (!g_nreleve) { bilan_ligne("   (aucun)"); return; }
+    if (!g_nreleve) { bilan_ligne("   (aucun)"); bilan_v1(); return; }
     /* tri décroissant, en place : la liste est courte */
     for (int i = 0; i < g_nreleve; i++)
         for (int j = i + 1; j < g_nreleve; j++)
@@ -6902,9 +6969,29 @@ void hc_v3_bilan(void)
             }
     for (int i = 0; i < g_nreleve; i++)
         bilan_ligne("   %-40s %ld", g_releve[i].nom, g_releve[i].n);
+    bilan_v1();
 }
 
-void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; }
+/* Le second relevé : ce que l'ancien interprète a réellement exécuté.
+ *
+ * Séparé du premier, et pas fondu dedans : « recours » et « exécution » ne
+ * disent pas la même chose, et un tableau qui mélangerait les deux ferait
+ * lire « aucun retour » là où l'ancien code tourne à plein. */
+static void bilan_v1(void)
+{
+    bilan_ligne("— ce que l'ancien interprète exécute encore —");
+    if (!g_nv1) { bilan_ligne("   (rien)"); return; }
+    for (int i = 0; i < g_nv1; i++)
+        for (int j = i + 1; j < g_nv1; j++)
+            if (g_v1[j].n > g_v1[i].n) {
+                struct V3Releve t = g_v1[i];
+                g_v1[i] = g_v1[j]; g_v1[j] = t;
+            }
+    for (int i = 0; i < g_nv1; i++)
+        bilan_ligne("   %-40s %ld", g_v1[i].nom, g_v1[i].n);
+}
+
+void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
 
 /* ===================================================================
  * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de
@@ -9649,7 +9736,14 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
     if (n->genre == HCTN_COMMANDE && n->op)
         for (int i = 0; V3_VERBES[i].verbe; i++)
             if (ci_equal(V3_VERBES[i].verbe, n->op)) {
-                if (V3_VERBES[i].fn(ctx, n)) return 1;
+                /* La porte prend le nom du VERBE le temps de son exécution.
+                 * Une commande portée qui réanalyse encore du texte se
+                 * dénonce alors elle-même — « texte réanalysé : set » vaut
+                 * mieux qu'un « ? » qu'il faudrait aller débusquer. */
+                const char *sauve = v1_porte(n->op);
+                int fait = V3_VERBES[i].fn(ctx, n);
+                g_v1_porte = sauve;
+                if (fait) return 1;
                 break;                 /* forme non portée : ancien chemin */
             }
 
@@ -9689,7 +9783,16 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
 #if HC_TRACE_V3
     fprintf(stderr, "[v3->ancien] « %s »\n", ligne);
 #endif
+    /* LE recours : la v3 a renoncé et rend la ligne à l'ancien interprète.
+     *
+     * La porte se pose ICI et pas en tête de la fonction : au-dessus, les
+     * verbes portés s'exécutent en v3 et sortent par leur propre return —
+     * les compter comme du recours attribuerait à l'ancien code du travail
+     * que la v3 vient de faire. Un compteur qui exagère est aussi inutile
+     * qu'un compteur muet. */
+    const char *sauve_porte = v1_porte("recours v3");
     exec_stmt(g_me, ligne);
+    g_v1_porte = sauve_porte;
     ARENA_FREE;
     return 1;
 }
@@ -9994,6 +10097,7 @@ static HctHote v3_hote(void)
 
 static void eval_expr(const char *s, char *out, int outlen)
 {
+    v1_compte("v3 relit", g_v1_porte);
     out[0] = '\0';
     if (!s || !*s) return;
 
@@ -10838,6 +10942,7 @@ static Object *marked_card_ref(const char *r, int *concerne)
 }
 static void exec_line_body(Object *me, const char *line)
 {
+    v1_compte("v1 ligne", g_v1_porte);
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
     char verb[64];
     const char *rest = next_word(line, verb, sizeof verb);
@@ -13509,7 +13614,13 @@ void hc_do_menu(const char *item)
 
     for (int i = 0; MENUS_NOYAU[i].article; i++)
         if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
+            /* « go next card » et ses quatre voisines : cinq lignes de texte
+             * exécutées par l'ancien interprète. Les porter à la v3 est le
+             * geste le plus simple du chantier — d'où l'intérêt de savoir
+             * combien elles pèsent réellement. */
+            const char *sauve = v1_porte("menu du noyau");
             exec_stmt(g_me ? g_me : g_current_card, MENUS_NOYAU[i].ligne);
+            g_v1_porte = sauve;
             return;
         }
 
@@ -13817,6 +13928,10 @@ void hc_set_paint(Object *o, const char *base64)
 
 void hc_do(const char *line)
 {
+    /* La boîte de message, la commande « do », et la répartition des
+     * articles de menu que les piles créent : trois usages, une seule
+     * porte, et de loin la plus fréquentée. */
+    const char *sauve_porte = v1_porte("msg/do");
     ARENA_MARK;
     g_depth  = 0;
     g_pass   = 0;
@@ -13825,4 +13940,5 @@ void hc_do(const char *line)
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
     exec_stmt(g_current_card, line);
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
 }
