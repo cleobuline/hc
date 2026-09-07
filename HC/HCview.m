@@ -885,38 +885,56 @@ static BOOL part_inerte(Object *o) {
     return (gTool == TOOL_BROWSE && o->type == OBJ_BUTTON && !o->enabled);
 }
 
-static Object *part_at(Object *card, NSPoint p) {
-    if (!card) return NULL;
-
-    if (gTool != TOOL_BROWSE) {
-        Object *layer = gEditBackground ? card->bg : card;
-        if (!layer) return NULL;
-        for (int i = layer->nparts - 1; i >= 0; i--) {
-            Object *o = layer->parts[i];
-            if (o->visible && !part_inerte(o) &&
-                p.x >= o->x && p.x <= o->x + o->w &&
-                p.y >= o->y && p.y <= o->y + o->h)
-                return o;
-        }
-        return NULL;
-    }
-
-    for (int i = card->nparts - 1; i >= 0; i--) {
-        Object *o = card->parts[i];
+/* Le part le plus haut d'un calque sous le point, ou NULL. */
+static Object *part_at_layer(Object *layer, NSPoint p) {
+    if (!layer) return NULL;
+    for (int i = layer->nparts - 1; i >= 0; i--) {
+        Object *o = layer->parts[i];
         if (o->visible && !part_inerte(o) &&
             p.x >= o->x && p.x <= o->x + o->w &&
             p.y >= o->y && p.y <= o->y + o->h)
             return o;
     }
-    if (card->bg)
-        for (int i = card->bg->nparts - 1; i >= 0; i--) {
-            Object *o = card->bg->parts[i];
-            if (o->visible && !part_inerte(o) &&
-                p.x >= o->x && p.x <= o->x + o->w &&
-                p.y >= o->y && p.y <= o->y + o->h)
-                return o;
-        }
     return NULL;
+}
+
+/* ═══ Ce qu'on peut attraper, et depuis où ═════════════════════════════
+ *
+ * Les outils Bouton et Champ atteignent LES DEUX CALQUES, que l'on soit en
+ * édition de carte ou de fond. C'est ce que faisait la version précédente
+ * pour le seul outil Browse ; les outils d'objet, eux, ne voyaient que le
+ * calque courant.
+ *
+ * Ce n'était pas tenable, parce que le DESSIN, lui, ne faisait pas cette
+ * différence : draw_edit_outline entoure de pointillés tous les boutons
+ * visibles dès que l'outil Bouton est choisi, ceux du fond compris. On
+ * montrait donc une poignée d'objets présentés comme modifiables, dont la
+ * moitié ne répondait ni au clic ni au double-clic. Un état montré faux est
+ * pire qu'un état non montré : l'utilisateur cherche l'erreur chez lui.
+ *
+ * L'ordre reste celui de l'affichage — la carte d'abord, le fond ensuite : un
+ * bouton de carte posé par-dessus un bouton de fond garde la priorité, comme
+ * au clic en mode Browse. Ce qui change, c'est qu'on ne s'arrête plus là.
+ *
+ * Le calque du part attrapé reste visible : la sélection change de couleur
+ * (voir drawRect:), et l'Info dit « Background Button ». Déplacer un bouton
+ * de fond le déplace sur TOUTES les cartes de ce fond — l'action est la même
+ * qu'avant, il fallait seulement qu'on puisse la voir venir.
+ *
+ * LA RÈGLE, en un mot : ON N'ATTRAPE QUE CE QUI EST DESSINÉ. C'est pourquoi
+ * l'édition de fond, elle, ne donne QUE le fond : drawRect: y saute
+ * entièrement le calque carte, et attraper un bouton qu'on ne voit pas serait
+ * le même défaut à l'envers. Cette méthode et drawRect: doivent donc dire la
+ * même chose du calque carte — c'est la seule condition à tenir si l'une des
+ * deux change. */
+static Object *part_at(Object *card, NSPoint p) {
+    if (!card) return NULL;
+
+    if (!gEditBackground) {
+        Object *o = part_at_layer(card, p);
+        if (o) return o;
+    }
+    return part_at_layer(card->bg, p);
 }
 static char gDlgBuf[512];
 static char gFileBuf[2048];
@@ -3440,11 +3458,23 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     if (gSelected) {
         NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
-        [[NSColor redColor] setStroke];
+        /* Ocre pour un objet du FOND, rouge pour un objet de la carte.
+         *
+         * Depuis que les outils Bouton et Champ atteignent les deux calques,
+         * on peut tenir un objet de fond sans être en édition de fond — et le
+         * déplacer, le redimensionner ou le supprimer le fait alors sur TOUTES
+         * les cartes de ce fond. Cette portée-là doit se voir avant le geste,
+         * pas se découvrir après. L'ocre est déjà la couleur du cadre
+         * d'édition de fond, juste en dessous : c'est le même mot dans le même
+         * vocabulaire, et pas un code de plus à retenir. */
+        NSColor *teinte = hc_owner_is_bg(gSelected)
+            ? [NSColor colorWithRed:0.6 green:0.4 blue:0.2 alpha:1.0]
+            : [NSColor redColor];
+        [teinte setStroke];
         NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
         [path setLineWidth:2];
         [path stroke];
-        [[NSColor redColor] setFill];
+        [teinte setFill];
         CGFloat s = 6;
         NSPoint corners[4] = {
             {r.origin.x, r.origin.y},
