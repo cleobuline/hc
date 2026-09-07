@@ -67,6 +67,12 @@ typedef struct {
     NSBitmapImageRep *paintUndo;
     Object           *paintUndoLayer;
 
+    /* Le point de repère de Revert : l'état du calque avant le premier coup
+     * de pinceau donné dessus. Distinct de paintUndo, qui ne remonte que d'un
+     * pas — Revert défait toute la séance de peinture d'un coup. */
+    NSBitmapImageRep *keepSnap;
+    Object           *keepLayer;
+
     Object       *card;
 
     /* numérotation des cartes créées */
@@ -109,6 +115,8 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gDocCard         (gDoc->card)
 #define gPaintUndo       (gDoc->paintUndo)
 #define gPaintUndoLayer  (gDoc->paintUndoLayer)
+#define gKeepSnap        (gDoc->keepSnap)
+#define gKeepLayer       (gDoc->keepLayer)
 
 static NSTextField *gMsgBox = nil;
 static NSPanel *gMsgPanel = nil;
@@ -1568,6 +1576,9 @@ static void cocoa_do_menu(const char *item) {
             { "Flip Vertical",   HCV_PAINT_FLIPV   },
             { "Rotate Left",     HCV_PAINT_ROTL    },
             { "Rotate Right",    HCV_PAINT_ROTR    },
+            { "Fill",            HCV_PAINT_FILL    },
+            { "Keep",            HCV_PAINT_KEEP    },
+            { "Revert",          HCV_PAINT_REVERT  },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -2370,7 +2381,20 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 - (Object *)documentCard {
     if (gDoc == &_doc) {
         Object *c = hc_current_card();
-        if (c) _doc.card = c;
+        if (c) {
+            /* Le changement de carte se constate ICI, et pas ailleurs : tout
+             * ce qui a besoin de la carte courante passe par cette méthode,
+             * qu'on y arrive par le menu Go, par « go next » dans un script,
+             * par un bouton, ou par l'ouverture d'une pile. Poser le constat
+             * dans prepareForCardChange n'aurait couvert que la moitié de ces
+             * chemins — et la moitié manquante aurait donné un Revert qui
+             * ramène à l'état d'une visite précédente.
+             *
+             * Quitter la carte vaut Keep, comme dans HyperCard : ce qu'on y
+             * laisse en partant est gardé. */
+            if (c != _doc.card) [self forgetKeepSnapshot];
+            _doc.card = c;
+        }
         return c;
     }
     return _doc.card;
@@ -2732,8 +2756,26 @@ static BOOL paint_selection_active(void)
 
     /* Les articles du menu Paint n'ont de sens que sur une sélection de
      * peinture. HyperCard les grisait de même — et c'est plus sûr que de les
-     * laisser cliquables pour ne rien faire. */
-    if (a == @selector(paintOp:)) return paint_selection_active();
+     * laisser cliquables pour ne rien faire.
+     *
+     * Keep et Revert font exception : ils portent sur la carte entière. Les
+     * griser faute de sélection les rendrait inaccessibles au moment précis où
+     * on les cherche — juste après un dessin raté, quand plus rien n'est
+     * sélectionné. Revert reste grisé tant qu'il n'y a nulle part où revenir :
+     * c'est la seule information vraie qu'on puisse en donner d'avance. */
+    if (a == @selector(paintOp:)) {
+        NSInteger t = [item tag];
+        if (t == HCV_PAINT_KEEP) return [self paintLayer] != NULL;
+        if (t == HCV_PAINT_REVERT) {
+            /* paintLayer d'abord : il passe par documentCard, qui peut oublier
+             * l'instantané si la carte a changé depuis. Lire gKeepSnap avant
+             * lui donnerait un article actif pointant sur un instantané que le
+             * clic suivant aurait déjà jeté. */
+            Object *l = [self paintLayer];
+            return l != NULL && gKeepSnap != nil && gKeepLayer == l;
+        }
+        return paint_selection_active();
+    }
     /* « Icône… » reste TOUJOURS disponible, même sans bouton sélectionné : le
      * panneau gère les icônes de la pile, qui sont des ressources. On peut donc
      * en créer et en dessiner avec n'importe quel outil ; faute de bouton, OK
@@ -3176,6 +3218,19 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 
 - (void)paintOp:(id)sender
 {
+    /* Un script peut détourner l'article, comme pour les autres menus :
+     *
+     *     on doMenu what
+     *       if what is "Revert" then answer "Pas sur cette carte."
+     *       else pass doMenu
+     *     end doMenu
+     *
+     * Le détournement se fait ICI et pas dans paintOpTag : celui-ci est aussi
+     * le chemin qu'emprunte « doMenu "Invert" » venu d'un script, et l'y
+     * mettre ferait rappeler le gestionnaire par lui-même. gDansDoMenu couvre
+     * déjà ce cas, mais un seul garde vaut mieux que deux qui doivent
+     * s'accorder. */
+    if (hcv_menu_trappe([[sender title] UTF8String])) return;
     [self paintOpTag:[sender tag]];
 }
 
@@ -3183,6 +3238,13 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
  * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire. */
 - (void)paintOpTag:(NSInteger)quoi
 {
+    /* Keep et Revert portent sur la carte entière, pas sur une sélection : ils
+     * passent donc AVANT qu'on en cherche une. Les exiger derrière le test de
+     * zone les rendrait inutilisables au moment où on en a le plus besoin —
+     * juste après un dessin raté, quand plus rien n'est sélectionné. */
+    if (quoi == HCV_PAINT_KEEP)   { [self keepPaint];   return; }
+    if (quoi == HCV_PAINT_REVERT) { [self revertPaint]; return; }
+
     int x0, y0, x1, y1, npoly;
     NSPoint *poly;
     if (!hcv_zone_peinture(&x0, &y0, &x1, &y1, &poly, &npoly)) { NSBeep(); return; }
@@ -3205,6 +3267,17 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
         case HCV_PAINT_TRACE:   paint_trace_edges(rep, x0,y0,x1,y1, poly,npoly); break;
         case HCV_PAINT_FLIPH:   paint_flip(rep, x0,y0,x1,y1, 1);                 break;
         case HCV_PAINT_FLIPV:   paint_flip(rep, x0,y0,x1,y1, 0);                 break;
+
+        /* Fill remplit la sélection de la trame courante, à l'encre courante,
+         * et respecte « fond transparent » comme les formes pleines : c'est le
+         * seul article du menu qui peint au lieu de transformer.
+         *
+         * L'encre EFFACE est écartée : remplir avec elle laisserait la zone
+         * vide, ce que fait déjà la gomme, et on ne l'aurait su qu'après. */
+        case HCV_PAINT_FILL:
+            if (gInk == INK_ERASE) { NSBeep(); return; }
+            paint_fill_zone(rep, x0,y0,x1,y1, poly,npoly);
+            break;
 
         /* La rotation change la FORME de la sélection dès qu'elle n'est pas
          * carrée : ses côtés s'échangent. On y déplace les fourmis, sans quoi
@@ -3719,6 +3792,60 @@ static BOOL      gSansMessageChamp = NO;
     if (!rep) return;
     gPaintUndo      = paint_copy(rep);
     gPaintUndoLayer = layer;
+
+    /* Et, du même coup, le point de repère de Revert s'il n'en existe pas
+     * encore pour ce calque.
+     *
+     * Ici et nulle part ailleurs : beginPaintUndo est déjà le passage obligé
+     * de tout ce qui modifie la peinture — outils, menu Paint, collage,
+     * effacement. Recenser à la main les endroits où « la peinture commence »,
+     * c'est en oublier un, et l'oubli donnerait un Revert qui ramène à un état
+     * plus ancien que l'utilisateur ne croit. Ce qui est pire que pas de
+     * Revert du tout. */
+    if (!gKeepSnap || gKeepLayer != layer) {
+        gKeepSnap  = paint_copy(rep);
+        gKeepLayer = layer;
+    }
+}
+
+/* Keep : l'état courant devient le nouveau point de repère. Ce qui précède
+ * n'est plus rattrapable par Revert — c'est le sens du mot. */
+- (void)keepPaint {
+    Object *layer = [self paintLayer];
+    if (!layer) { NSBeep(); return; }
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) { NSBeep(); return; }
+    gKeepSnap  = paint_copy(rep);
+    gKeepLayer = layer;
+}
+
+/* Revert : retour au dernier point de repère.
+ *
+ * L'instantané SURVIT au retour : on doit pouvoir repeindre et revenir encore,
+ * autant de fois qu'on veut. C'est pourquoi c'est paint_restore et non
+ * paint_swap — l'échange aurait fait du point de repère une bascule.
+ *
+ * Un beginPaintUndo d'abord, pour qu'un Revert donné par erreur se défasse
+ * d'un Cmd-Z : c'est l'article le plus destructeur du menu. */
+- (void)revertPaint {
+    Object *layer = [self paintLayer];
+    if (!gKeepSnap || !layer || gKeepLayer != layer) { NSBeep(); return; }
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) { NSBeep(); return; }
+    gPaintUndo      = paint_copy(rep);
+    gPaintUndoLayer = layer;
+    paint_restore(rep, gKeepSnap);
+    [self setNeedsDisplay:YES];
+}
+
+/* Quitter la carte vaut Keep, comme dans HyperCard : ce qu'on y laisse est
+ * gardé, et Revert ne peut plus le reprendre. Sans cet oubli, revenir sur une
+ * carte ferait pointer Revert vers un état d'il y a une heure. */
+- (void)forgetKeepSnapshot {
+    gKeepSnap  = nil;
+    gKeepLayer = NULL;
 }
 
 - (void)undo:(id)sender {

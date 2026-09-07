@@ -66,4 +66,7 @@ void paint_rotate(NSBitmapImageRep *rep, int x0,int y0,int x1,int y1, int sens, 
 
 NSBitmapImageRep *paint_copy(NSBitmapImageRep *src);
 void paint_swap(NSBitmapImageRep *a, NSBitmapImageRep *b);
+void paint_restore(NSBitmapImageRep *a, NSBitmapImageRep *b);
+void paint_fill_zone(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                     NSPoint *poly, int npoly);
 #endif /* graphics_h */

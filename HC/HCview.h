@@ -8,15 +8,21 @@
 /* Propose un article de menu à la pile avant que l'action native n'agisse.
  * Rend YES si un « on doMenu » l'a pris : l'appelant sort alors sans rien
  * faire. Voir le commentaire de sa définition dans HCview.m. */
-/* Les huit transformations du menu Paint. L'étiquette d'un article de menu
- * porte laquelle, et c'est ce qui les relie : AppDelegate pose les articles,
- * HCview les exécute. En commun ici, plutôt qu'en nombres recopiés de part et
- * d'autre — la première modification aurait fait diverger les deux copies
- * sans que rien ne le signale. */
+/* Les articles du menu Paint. L'étiquette d'un article de menu porte lequel,
+ * et c'est ce qui les relie : AppDelegate pose les articles, HCview les
+ * exécute. En commun ici, plutôt qu'en nombres recopiés de part et d'autre —
+ * la première modification aurait fait diverger les deux copies sans que rien
+ * ne le signale.
+ *
+ * Les huit premiers transforment la sélection et l'exigent donc. FILL la
+ * remplit, et l'exige aussi. KEEP et REVERT, eux, portent sur la carte
+ * entière : ils n'ont pas de sélection à demander, et paintOpTag les traite
+ * avant d'en chercher une. */
 enum {
     HCV_PAINT_INVERT = 1, HCV_PAINT_DARKEN, HCV_PAINT_LIGHTEN,
     HCV_PAINT_TRACE,      HCV_PAINT_FLIPH,  HCV_PAINT_FLIPV,
-    HCV_PAINT_ROTL,       HCV_PAINT_ROTR
+    HCV_PAINT_ROTL,       HCV_PAINT_ROTR,   HCV_PAINT_FILL,
+    HCV_PAINT_KEEP,       HCV_PAINT_REVERT
 };
 
 BOOL hcv_menu_trappe(const char *article);
@@ -87,6 +93,8 @@ BOOL hcv_menu_trappe(const char *article);
 - (void)showDrawColorPanel:(BOOL)ink;
 - (void)eraseAll;
 - (void)beginPaintUndo;
+- (void)keepPaint;      /* menu Paint : Keep   — l'état courant fait référence */
+- (void)revertPaint;    /* menu Paint : Revert — retour à cette référence */
 - (void)undo:(id)sender;
 /* Cartes : articles de menu distincts de Couper et Copier, comme dans
  * HyperCard. Coller reste commun — il pose ce que le presse-papiers contient. */

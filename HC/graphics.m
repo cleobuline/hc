@@ -1023,6 +1023,31 @@ void paint_rotate(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
     if (nouveau) *nouveau = NSMakeRect(a, b, c - a, d - b);
 }
 
+/* Fill : la zone remplie de la trame courante.
+ *
+ * Elle est la seule des sept à lire les réglages de peinture — trame, encre,
+ * fond, fond transparent —, ce qui est justement la part qui ne peut pas
+ * vivre dans hc_pixels.h. Les huit octets de la trame y descendent ; le
+ * catalogue reste ici.
+ *
+ * L'encre EFFACE se traite en amont, dans paintOpTag : remplir à l'encre
+ * « effacer » n'a pas de sens, c'est eraseAll qu'on veut alors. */
+void paint_fill_zone(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                     NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    if (gPattern < 0 || gPattern >= NUM_PATTERNS) return;
+    INK_RGB_LOCALS;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_remplit(data, bpr, spp, W, H, x0, y0, x1, y1,
+                p, p ? npoly : 0,
+                PATTERNS[gPattern],
+                ir_, ig_, ib_, ia_,
+                br_, bg_, bb_,
+                gTransparentBg ? 1 : 0);
+    free(p);
+}
+
 #undef PAINT_PROLOGUE
 
 /* Copie independante d'un calque, pour l'annulation. */
@@ -1037,6 +1062,34 @@ NSBitmapImageRep *paint_copy(NSBitmapImageRep *src) {
     if (!dst) return nil;
     memcpy([dst bitmapData], [src bitmapData], (size_t)[src bytesPerRow] * h);
     return dst;
+}
+
+/* Recopie b dans a, sans rien changer à b.
+ *
+ * paint_swap ne convient pas à Revert : l'échange mettrait l'image ABANDONNÉE
+ * dans l'instantané, et le Revert suivant la ramènerait. Or l'instantané de
+ * Keep est un point de repère, pas une pile — on doit pouvoir y revenir
+ * autant de fois qu'on veut, et repeindre entre deux. */
+void paint_restore(NSBitmapImageRep *a, NSBitmapImageRep *b) {
+    if (!a || !b) return;
+    if ([a pixelsWide] != [b pixelsWide] || [a pixelsHigh] != [b pixelsHigh]) return;
+    if ([a samplesPerPixel] != [b samplesPerPixel]) return;
+    unsigned char *da = [a bitmapData], *db = [b bitmapData];
+    if (!da || !db) return;
+
+    NSInteger ba = [a bytesPerRow], bb = [b bytesPerRow];
+    NSInteger h  = [a pixelsHigh];
+    /* Ligne à ligne quand les pas diffèrent. AppKit choisit le bourrage de fin
+     * de ligne ; deux reps de même taille n'ont donc pas forcément le même pas,
+     * et un memcpy en bloc décalerait tout d'un cran à partir de la 2e ligne.
+     * Renoncer aurait été pire : un Revert qui ne fait rien, sans le dire. */
+    if (ba == bb) {
+        memcpy(da, db, (size_t)ba * h);
+        return;
+    }
+    NSInteger n = MIN(ba, bb);
+    for (NSInteger y = 0; y < h; y++)
+        memcpy(da + y * ba, db + y * bb, (size_t)n);
 }
 
 /* Echange le contenu de deux calques de meme taille.

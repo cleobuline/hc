@@ -317,4 +317,57 @@ static void hcp_rotate(unsigned char *data, long bpr, int spp, int W, int H,
     if (nx0) { *nx0 = dx0; *ny0 = dy0; *nx1 = dx0 + nw - 1; *ny1 = dy0 + nh - 1; }
 }
 
+/* ---- Fill : la zone, remplie de la trame courante ----
+ *
+ * Le septième article, et le seul qui PEINT au lieu de transformer ce qui
+ * est déjà là. Il tient quand même ici, pour la même raison que les six
+ * autres : c'est du calcul par pixel, et un décalage d'une colonne dans la
+ * trame ne se voit pas à l'œil sur un écran.
+ *
+ * La trame arrive en huit octets — une ligne par octet, bit de poids fort à
+ * gauche —, pas en numéro : hc_pixels.h ne connaît pas le catalogue des
+ * trames, qui vit dans graphics.m avec le reste de l'habillage. Les huit
+ * octets sont tout ce dont le calcul a besoin.
+ *
+ * L'encre porte son opacité, comme partout ailleurs : `ia` < 255 donne un
+ * lavis qui charge si l'on remplit deux fois. Le fond, lui, est franc — un
+ * fond à demi transparent n'est pas un fond.
+ *
+ * `fond_transparent` laisse intact ce que la trame ne couvre pas, au lieu
+ * d'y poser le fond. C'est le même réglage que pour les formes pleines, et
+ * il doit s'y comporter pareil : remplir en trame 25 % par-dessus un dessin
+ * doit le voiler, pas l'effacer. */
+static void hcp_remplit(unsigned char *data, long bpr, int spp, int W, int H,
+                        int x0, int y0, int x1, int y1,
+                        const double *poly, int npoly,
+                        const unsigned char motif[8],
+                        unsigned char ir, unsigned char ig, unsigned char ib,
+                        int ia,
+                        unsigned char br, unsigned char bg, unsigned char bb,
+                        int fond_transparent)
+{
+    if (!data || !motif) return;
+    if (!hcp_borne(W, H, &x0, &y0, &x1, &y1)) return;
+
+    for (int y = y0; y <= y1; y++) {
+        unsigned char ligne = motif[y & 7];
+        for (int x = x0; x <= x1; x++) {
+            if (!hcp_dans_poly(poly, npoly, x, y)) continue;
+            unsigned char *px = HCP_PX(data, bpr, spp, x, y);
+
+            if ((ligne >> (7 - (x & 7))) & 1) {
+                if (ia >= 255) {
+                    px[0] = ir; px[1] = ig; px[2] = ib;
+                    if (spp >= 4) px[3] = 255;
+                } else {
+                    hcp_melange(px, spp, ir, ig, ib, ia);
+                }
+            } else if (!fond_transparent) {
+                px[0] = br; px[1] = bg; px[2] = bb;
+                if (spp >= 4) px[3] = 255;
+            }
+        }
+    }
+}
+
 #endif /* hc_pixels_h */

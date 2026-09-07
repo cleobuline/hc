@@ -365,6 +365,7 @@ static NSMenu *find_file_menu(void)
     NSMenuItem *paintItem = [[NSMenuItem alloc] init];
     NSMenu *paintMenu = [[NSMenu alloc] initWithTitle:@"Paint"];
     struct { NSString *titre; NSInteger tag; } peint[] = {
+        { @"Fill",            HCV_PAINT_FILL    },
         { @"Invert",          HCV_PAINT_INVERT  },
         { @"Darken",          HCV_PAINT_DARKEN  },
         { @"Lighten",         HCV_PAINT_LIGHTEN },
@@ -374,6 +375,12 @@ static NSMenu *find_file_menu(void)
         { @"Rotate Right",    HCV_PAINT_ROTR    },
         { @"Flip Vertical",   HCV_PAINT_FLIPV   },
         { @"Flip Horizontal", HCV_PAINT_FLIPH   },
+        { nil,                0                 },   /* séparateur */
+        /* En bas du menu, comme dans HyperCard : ce sont les deux seuls
+         * articles qui ne transforment pas une sélection mais toute la
+         * séance de peinture. */
+        { @"Keep",            HCV_PAINT_KEEP    },
+        { @"Revert",          HCV_PAINT_REVERT  },
     };
     for (int i = 0; i < (int)(sizeof peint / sizeof *peint); i++) {
         if (!peint[i].titre) { [paintMenu addItem:[NSMenuItem separatorItem]]; continue; }
