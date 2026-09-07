@@ -1866,6 +1866,11 @@ static int hcv_quelle_couleur(const char *nom)
     return 0;
 }
 
+/* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
+ * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
+ * que hcv_quelle_couleur a supprimé pour les couleurs. */
+static NSString *gCursorNom = @"arrow";
+
 static const char *cocoa_global_get(const char *name) {
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
@@ -1952,6 +1957,11 @@ static const char *cocoa_global_get(const char *name) {
         return gTextStyleName ? [gTextStyleName UTF8String] : "plain";
     if (strcasecmp(name, "textAlign") == 0)
         return gTextAlign ? [gTextAlign UTF8String] : "left";
+    if (strcasecmp(name, "cursor") == 0)
+        return gCursorNom ? [gCursorNom UTF8String] : "arrow";
+    if (strcasecmp(name, "editBkgnd") == 0)
+        return gEditBackground ? "true" : "false";
+
     /* Rendues en « r,v,b », le format que rend déjà « the textColor » : un
      * script qui relit une couleur pour la recalculer trouve trois nombres,
      * pas un nom qu'il faudrait retraduire. */
@@ -2199,17 +2209,42 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "cursor") == 0) {
+        /* On retient le curseur RÉELLEMENT POSÉ, pas le mot demandé : « set
+         * the cursor to zorglub » donne la flèche, et « the cursor » doit
+         * alors rendre « arrow ». Rendre « zorglub » décrirait un état qui
+         * n'existe pas. */
         if (strcasecmp(value, "none") == 0) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
+            gCursorNom = @"none";
         } else {
             if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
-            if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0)
+            if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0) {
                 [[NSCursor operationNotAllowedCursor] set];
-            else if (strcasecmp(value, "ibeam") == 0)
+                gCursorNom = @"watch";
+            } else if (strcasecmp(value, "ibeam") == 0) {
                 [[NSCursor IBeamCursor] set];
-            else
+                gCursorNom = @"ibeam";
+            } else {
                 [[NSCursor arrowCursor] set];
+                gCursorNom = @"arrow";
+            }
         }
+        return;
+    }
+
+    /* editBkgnd : le pendant scriptable de ⌘B. HyperCard l'avait, et une pile
+     * qui pose ses objets de fond en s'ouvrant en a besoin. Le passage par
+     * gEditBackground est le même que celui de l'article de menu — un seul
+     * chemin pour entrer dans le fond, quelle qu'en soit la demande. */
+    if (strcasecmp(name, "editBkgnd") == 0) {
+        BOOL v = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        if (v != gEditBackground) {
+            gEditBackground = v;
+            gSelected = NULL;
+            [gView endFieldEdit];
+            [gView setNeedsDisplay:YES];
+        }
+        return;
     }
 }
 

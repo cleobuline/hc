@@ -502,6 +502,12 @@ static int g_ecran_verrouille = 0;
  * quand même, comme dans HyperCard. */
 static int g_messages_verrouilles = 0;
 
+/* La table des réglages d'environnement — userLevel, dragSpeed, blindTyping,
+ * powerKeys, lockRecent, textArrows — vit bien plus bas, avec truthy et
+ * as_num dont elle se sert. Sa LECTURE est demandée avant, par les deux
+ * chemins de « the xxx ». D'où cette déclaration anticipée. */
+static int reglage_lit(const char *nom, char *out, int outlen);
+
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
@@ -4154,6 +4160,7 @@ static int call_function_body(const char *t, char *out, int outlen)
             snprintf(out, outlen, "%s", g_messages_verrouilles ? "true" : "false");
             return 1;
         }
+        if (reglage_lit(name, out, outlen)) return 1;
         /* the tool : l'outil courant, sous la forme « brush tool ». C'est
          * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
          * celui d'HyperCard au repos. */
@@ -5271,6 +5278,104 @@ static int truthy(const char *s)
  * diverger, et l'ajout suivant n'aurait été fait que dans l'une des deux.
  *
  * Rend 1 si la propriété a été prise en charge, 0 si elle regarde l'hôte. */
+/* ═══ Les réglages d'environnement ═════════════════════════════════════
+ *
+ * userLevel, dragSpeed, blindTyping, powerKeys, lockRecent, textArrows : six
+ * réglages qu'une pile pose dans son openStack et relit ensuite. Ils se
+ * ressemblent tous — un nom, un type, une valeur, des bornes —, ce qui est
+ * exactement la raison d'en faire une TABLE et non six paires de branches.
+ * Six paires, c'est douze endroits à tenir d'accord, et la septième propriété
+ * n'aurait été ajoutée qu'à l'un des deux.
+ *
+ * CE QU'ILS FONT, ET CE QU'ILS NE FONT PAS. Il faut le dire, parce qu'un
+ * réglage qu'on peut poser et relire donne l'impression d'agir.
+ *
+ * Ils sont RETENUS et RELUS fidèlement : « set the userLevel to 3 » puis
+ * « if the userLevel < 4 » se comportent comme la pile l'attend, et c'est
+ * déjà tout autre chose que le silence d'avant, où poser ne faisait rien et
+ * relire rendait le mot « userLevel ».
+ *
+ * Ils ne sont pas encore CONSULTÉS par l'application. HC n'a pas de niveaux
+ * d'utilisateur — tout y est toujours accessible, ce qui équivaut au niveau
+ * 5 —, son « drag » est instantané, et il n'a pas de liste de cartes
+ * récentes. Une pile qui compterait sur « set the userLevel to 1 » pour se
+ * protéger de l'édition se tromperait donc. C'est écrit ici plutôt que tu
+ * l'apprennes à tes dépens.
+ *
+ * Les bornes servent : « set the userLevel to 47 » se refuse au lieu de
+ * ranger 47. Un réglage hors de son domaine ne veut rien dire, et le laisser
+ * passer reporte la surprise à la lecture. */
+typedef enum { REG_BOOL, REG_ENTIER } HcTypeReglage;
+
+static struct {
+    const char   *nom;       /* en minuscules, pour la comparaison    */
+    const char   *affiche;   /* tel qu'HyperCard l'écrit, pour la trace */
+    HcTypeReglage type;
+    int           valeur;
+    int           mini, maxi;
+} G_REGLAGES[] = {
+    /* 5 par défaut : HC n'impose aucune restriction, et annoncer un niveau
+     * plus bas que ce qu'on autorise serait le mensonge inverse. */
+    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5     },
+    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767 },
+    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1     },
+    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1     },
+    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1     },
+    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1     },
+};
+#define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
+
+static int reglage_index(const char *nom)
+{
+    for (int i = 0; i < HC_NREGLAGES; i++)
+        if (ci_equal(nom, G_REGLAGES[i].nom)) return i;
+    return -1;
+}
+
+/* Poser. Rend 1 si le nom en est un — même quand la valeur est refusée :
+ * la propriété a bien été reconnue, c'est la valeur qui ne convient pas, et
+ * la passer ensuite à l'hôte l'induirait en erreur. */
+static int reglage_pose(const char *prop, const char *val)
+{
+    int i = reglage_index(prop);
+    if (i < 0) return 0;
+
+    int v;
+    if (G_REGLAGES[i].type == REG_BOOL) {
+        v = truthy(val) ? 1 : 0;
+    } else {
+        double d;
+        if (!as_num(val, &d)) {
+            emit(HC_ERR, "   !! %s attend un nombre, reçu « %s »",
+                 G_REGLAGES[i].affiche, val);
+            return 1;
+        }
+        v = (int)d;
+        if (v < G_REGLAGES[i].mini || v > G_REGLAGES[i].maxi) {
+            emit(HC_ERR, "   !! %s va de %d à %d, reçu %d",
+                 G_REGLAGES[i].affiche, G_REGLAGES[i].mini,
+                 G_REGLAGES[i].maxi, v);
+            return 1;
+        }
+    }
+    G_REGLAGES[i].valeur = v;
+    emit(HC_INFO, "   → %s ← %d", G_REGLAGES[i].affiche, v);
+    return 1;
+}
+
+/* Relire. Rend 1 si le nom en est un ; `out` reçoit « true »/« false » pour
+ * un booléen, le nombre sinon — les deux formes qu'HyperTalk sait comparer. */
+static int reglage_lit(const char *nom, char *out, int outlen)
+{
+    int i = reglage_index(nom);
+    if (i < 0) return 0;
+    if (G_REGLAGES[i].type == REG_BOOL)
+        snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].valeur ? "true" : "false");
+    else
+        snprintf(out, (size_t)outlen, "%d", G_REGLAGES[i].valeur);
+    return 1;
+}
+
 static int prop_globale_noyau(const char *prop, const char *val)
 {
     /* Une chaîne vide ou de plusieurs caractères ramène à la virgule —
@@ -5288,6 +5393,9 @@ static int prop_globale_noyau(const char *prop, const char *val)
         emit(HC_INFO, "   → numberFormat ← \"%s\"", hct_format_nombre_lu());
         return 1;
     }
+
+    /* Les six réglages d'environnement, en une table — voir plus haut. */
+    if (reglage_pose(prop, val)) return 1;
 
     /* lockScreen : « set lockScreen to true » est l'exact synonyme de « lock
      * screen », et notify_field s'appuie dessus pour ne pas redessiner mille
@@ -6298,6 +6406,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush",
+    "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
     NULL
@@ -6467,6 +6576,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     if (ci_equal(nom, "lockmessages")) {
         *out = hct_val_texte(g_messages_verrouilles ? "true" : "false"); return 1;
     }
+    if (reglage_lit(nom, buf, HC_VAL)) { *out = hct_val_texte(buf); return 1; }
     return 0;
 }
 
