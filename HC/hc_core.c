@@ -6953,6 +6953,9 @@ static int v3_respire(void *d)
 /* --- l'hôte assemblé ------------------------------------------------- */
 
 static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
+/* Une ligne isolée passée à la v3 — voir sa définition, tout en bas. Déclarée
+ * ici parce que hc_do_menu s'en sert bien avant. */
+static int v3_do_ligne(const char *line);
 
 /* --- recours pour les COMMANDES ---
  *
@@ -13636,12 +13639,20 @@ static int hc_call_user_function(Object *target, const char *name,
  * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
  * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
  * Il y faudrait d'abord un historique de navigation. */
+/* La forme longue — « go next CARD » et non « go next ».
+ *
+ * Les deux marchent, mais elles ne se lisent pas pareil : « go next » laisse
+ * l'analyseur sur un simple nom, qu'il faut alors évaluer comme expression,
+ * ce qui finit en recours vers l'ancien interprète. « go next card » donne
+ * une référence d'objet en bonne et due forme, que la v3 traite seule. Le
+ * relevé l'a dit dès que ces lignes sont passées à la v3 : « fonction next »
+ * apparaissait là où il n'y avait rien avant. */
 static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = {
-    { "Next",     "go next"  },
-    { "Prev",     "go prev"  },
-    { "Previous", "go prev"  },
-    { "First",    "go first" },
-    { "Last",     "go last"  },
+    { "Next",     "go next card"  },
+    { "Prev",     "go prev card"  },
+    { "Previous", "go prev card"  },
+    { "First",    "go first card" },
+    { "Last",     "go last card"  },
     { NULL, NULL }
 };
 
@@ -13763,12 +13774,21 @@ void hc_do_menu(const char *item)
 
     for (int i = 0; MENUS_NOYAU[i].article; i++)
         if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
-            /* « go next card » et ses quatre voisines : cinq lignes de texte
-             * exécutées par l'ancien interprète. Les porter à la v3 est le
-             * geste le plus simple du chantier — d'où l'intérêt de savoir
-             * combien elles pèsent réellement. */
+            /* « go next card » et ses quatre voisines. La v3 d'abord, comme
+             * pour la boîte de message ; l'ancien ne sert plus que de repli.
+             *
+             * On pose `me` avant : exec_stmt le recevait en argument, la v3
+             * le lit dans g_me par l'hôte. Sans cette ligne, un « go next »
+             * déclenché depuis un menu n'aurait plus le même `me` qu'avant —
+             * la sorte de différence qui ne se voit qu'un mois plus tard,
+             * dans un script qui lit « the short name of me ». */
             const char *sauve = v1_porte("menu du noyau");
-            exec_stmt(g_me ? g_me : g_current_card, MENUS_NOYAU[i].ligne);
+            Object *cible    = g_me ? g_me : g_current_card;
+            Object *sauve_me = g_me;
+            g_me = cible;
+            if (!v3_do_ligne(MENUS_NOYAU[i].ligne))
+                exec_stmt(cible, MENUS_NOYAU[i].ligne);
+            g_me = sauve_me;
             g_v1_porte = sauve;
             return;
         }
