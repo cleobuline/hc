@@ -1797,6 +1797,29 @@ static int click_line_number(Object *f, NSPoint p) {
     return line;
 }
 
+/* ═══ Les deux couleurs de peinture, et leurs noms ══════════════════════
+ *
+ * « foreColor » et « backColor » sont les noms naturels, ceux qu'emploient
+ * les descendants d'HyperCard. « paintColor » et « paintBackColor » ont été
+ * écrits les premiers ici ; ils restent acceptés, parce qu'un nom qui a servi
+ * une fois se retrouve dans une pile, et qu'une pile ne se corrige pas à
+ * distance. « inkColor » suit, puisque c'est le nom de la variable.
+ *
+ * Une seule table, lue par la lecture ET par l'écriture : les faire diverger
+ * donnerait une propriété qu'on peut poser et pas relire, ou l'inverse.
+ *
+ * Rend +1 pour l'encre, -1 pour le fond, 0 si ce n'est aucune des deux. */
+static int hcv_quelle_couleur(const char *nom)
+{
+    static const char *ENCRE[] = { "foreColor", "foregroundColor",
+                                   "paintColor", "inkColor", NULL };
+    static const char *FOND[]  = { "backColor", "backgroundColor",
+                                   "paintBackColor", NULL };
+    for (int i = 0; ENCRE[i]; i++) if (!strcasecmp(nom, ENCRE[i])) return  1;
+    for (int i = 0; FOND[i];  i++) if (!strcasecmp(nom, FOND[i]))  return -1;
+    return 0;
+}
+
 static const char *cocoa_global_get(const char *name) {
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
@@ -1886,10 +1909,8 @@ static const char *cocoa_global_get(const char *name) {
     /* Rendues en « r,v,b », le format que rend déjà « the textColor » : un
      * script qui relit une couleur pour la recalculer trouve trois nombres,
      * pas un nom qu'il faudrait retraduire. */
-    if (strcasecmp(name, "paintColor")     == 0 ||
-        strcasecmp(name, "inkColor")       == 0 ||
-        strcasecmp(name, "paintBackColor") == 0) {
-        NSColor *c = (strcasecmp(name, "paintBackColor") == 0) ? gBackColor : gInkColor;
+    if (hcv_quelle_couleur(name)) {
+        NSColor *c = (hcv_quelle_couleur(name) < 0) ? gBackColor : gInkColor;
         NSColor *sr = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
         if (!sr) return "0,0,0";
         CGFloat r = 0, v = 0, b = 0, a = 1;
@@ -2044,9 +2065,7 @@ static void cocoa_global_set(const char *name, const char *value) {
      *
      * Une valeur incomprise ne change rien et se signale : peindre en noir
      * parce qu'on a mal orthographié « magenta » se remarque trop tard. */
-    if (strcasecmp(name, "paintColor")     == 0 ||
-        strcasecmp(name, "inkColor")       == 0 ||
-        strcasecmp(name, "paintBackColor") == 0) {
+    if (hcv_quelle_couleur(name)) {
         int alpha = 255;
         int rgb = hc_color_from_name_alpha(value, &alpha);
         if (rgb == HC_COLOR_INHERIT) {
@@ -2057,7 +2076,7 @@ static void cocoa_global_set(const char *name, const char *value) {
          * transparent n'est pas un fond, et l'admettre rendrait « Opaque »
          * et « Transparent » du menu Paint incompréhensibles le jour où on
          * les écrira. */
-        BOOL estFond = (strcasecmp(name, "paintBackColor") == 0);
+        BOOL estFond = (hcv_quelle_couleur(name) < 0);
         NSColor *c = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0
                                          green:((rgb >>  8) & 0xFF) / 255.0
                                           blue:( rgb        & 0xFF) / 255.0

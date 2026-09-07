@@ -6231,6 +6231,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush",
+    "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
     NULL
 };
