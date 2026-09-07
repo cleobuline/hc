@@ -6672,7 +6672,14 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
         buf[0] = '\0';
+        /* La porte prend le NOM de la fonction demandée, le temps de
+         * l'emprunt. « v1 fonction 2 » ne disait pas laquelle porter ;
+         * « v1 fonction the destination » le dit. Un compteur qui ne nomme
+         * pas son sujet oblige à retrouver à la main ce qu'il vient de
+         * mesurer, et c'est justement ce qu'on voulait éviter. */
+        const char *sauve_nom = v1_porte(nom);
         term_value(appel, buf, HC_VAL);
+        g_v1_porte = sauve_nom;
         if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
             v3_note("fonction", nom);      /* term_value a fourni la réponse */
             *out = hct_val_texte(buf);
@@ -6695,7 +6702,12 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
-        if (call_function(appel, buf, HC_VAL)) {
+        /* Même raison qu'au-dessus : la porte nomme la fonction demandée,
+         * pour que le relevé désigne ce qu'il y a à porter. */
+        const char *sauve_n2 = v1_porte(nom);
+        int fait_v1 = call_function(appel, buf, HC_VAL);
+        g_v1_porte = sauve_n2;
+        if (fait_v1) {
             v3_note("fonction", nom);      /* call_function a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
