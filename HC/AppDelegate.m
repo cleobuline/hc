@@ -44,6 +44,17 @@ static NSMutableArray *gPilesEnUsage = nil;
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
 static BOOL gLancee = NO;      /* vrai une fois applicationDidFinishLaunching passé */
+/* Tous les articles de la barre de menus, sous-menus compris. Récursif parce
+ * qu'un raccourci peut se cacher à deux niveaux — Format ▸ Font ▸ Bold. */
+static void hc_menus_parcourir(NSMenu *m, void (^bloc)(NSMenuItem *))
+{
+    if (!m) return;
+    for (NSMenuItem *it in [m itemArray]) {
+        bloc(it);
+        if ([it submenu]) hc_menus_parcourir([it submenu], bloc);
+    }
+}
+
 /* Retrouve le menu Fichier fourni par le nib.
  *
  * Le chercher par son titre serait fragile : il s'appelle « File » ou
@@ -535,6 +546,60 @@ static NSMenu *find_file_menu(void)
             if (mort) break;
         }
         if (mort) [mainMenu removeItemAtIndex:i];
+    }
+
+    /* ═══ Les raccourcis d'HyperCard passent avant ceux du gabarit ═══════
+     *
+     * Le nib d'Xcode apporte un menu Format complet, et son « Bold » porte
+     * ⌘B — le raccourci d'HyperCard pour passer dans le fond. Deux articles
+     * pour une frappe : AppKit n'en sert qu'un, et ce n'était pas le nôtre.
+     * Le ⌘B d'HyperCard était donc mort depuis le premier jour, sans que
+     * rien ne le dise : un menu ne signale pas qu'on lui a volé sa touche.
+     *
+     * On tranche comme partout ailleurs ici — en faveur de la fidélité qui
+     * ne casse rien. Le raccourci revient à Background ; Bold reste dans son
+     * menu, cliquable, et HC a de toute façon sa propre voie pour le style
+     * (l'Info du champ, « set the textStyle of word 3 to bold »).
+     *
+     * La table dit QUI possède chaque frappe, et le balayage retire la
+     * touche à tous les autres — y compris à des articles que ce gabarit
+     * n'a pas encore et qu'une version future d'Xcode ajoutera. Traiter le
+     * seul cas connu aurait demandé de revenir ici à chaque collision, et
+     * une collision ne se voit pas : elle se constate des mois plus tard,
+     * quand quelqu'un remarque qu'une touche ne fait plus rien.
+     *
+     * Par ACTION et non par titre, comme les deux ménages plus haut : le
+     * titre change avec la langue du système. */
+    {
+        struct { NSString *touche; SEL proprietaire; } nos[] = {
+            { @"b", @selector(toggleBackground:) },   /* Background      */
+            { @"n", @selector(newCard:)          },   /* New Card        */
+            { @"d", @selector(ditherSelection:)  },   /* Dither          */
+            { @"f", @selector(findInStack:)      },   /* Find…           */
+            { @"o", @selector(openStack:)        },   /* Open Stack…     */
+            { @"s", @selector(saveStack:)        },   /* Save a Copy…    */
+            { @"m", @selector(togglePalette:)    },   /* Message         */
+            { @"1", @selector(togglePalette:)    },   /* Tools           */
+            { @"2", @selector(togglePalette:)    },   /* Patterns        */
+            { @"3", @selector(togglePalette:)    },   /* Line Size       */
+            { @"4", @selector(togglePalette:)    },   /* Brushes         */
+        };
+        for (unsigned k = 0; k < sizeof nos / sizeof *nos; k++) {
+            NSString *touche = nos[k].touche;
+            SEL proprietaire = nos[k].proprietaire;
+            hc_menus_parcourir(mainMenu, ^(NSMenuItem *it) {
+                if (![[[it keyEquivalent] lowercaseString] isEqualToString:touche])
+                    return;
+                /* ⌘⇧B est une autre frappe que ⌘B : on ne la revendique pas.
+                 * Et une équivalence sans ⌘ ne peut pas nous gêner. */
+                NSEventModifierFlags mods = [it keyEquivalentModifierMask];
+                if (!(mods & NSEventModifierFlagCommand)) return;
+                if (mods & (NSEventModifierFlagShift | NSEventModifierFlagOption |
+                            NSEventModifierFlagControl)) return;
+                if ([it action] == proprietaire) return;
+                [it setKeyEquivalent:@""];
+            });
+        }
     }
 
     [self.window setReleasedWhenClosed:NO];
