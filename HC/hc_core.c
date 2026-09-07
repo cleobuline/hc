@@ -14075,6 +14075,65 @@ void hc_set_paint(Object *o, const char *base64)
     o->paint = (base64 && *base64) ? dupstr(base64) : NULL;
 }
 
+/* ═══ Une ligne isolée, exécutée par la v3 ══════════════════════════════
+ *
+ * La boîte de message, la commande « do », et la répartition des articles de
+ * menu que les piles créent : trois usages, un seul point d'entrée, et le
+ * plus fréquenté de tous ceux qui restaient sur l'ancien interprète.
+ *
+ * Le portage est simple parce que le rattrapage est déjà là : ce que la v3
+ * ne sait pas exécuter, v3_commande le rend à exec_stmt COMMANDE PAR
+ * COMMANDE. On n'a donc pas besoin qu'elle comprenne tout pour lui confier
+ * la ligne — ce qu'elle ignore repart, le reste ne repart plus.
+ *
+ * hct_bloc_script et non une seule instruction : la boîte de message accepte
+ * plusieurs lignes collées, et même un « repeat … end repeat » entier. Un
+ * analyseur d'instruction unique aurait refusé ce que l'ancien acceptait.
+ *
+ * LES VARIABLES SURVIVENT d'une ligne à l'autre — « put 1 into x » puis
+ * « put x » —, et il fallait le vérifier avant de porter : c'est l'hôte qui
+ * les tient, pas l'exécuteur, si bien qu'un HctExec neuf à chaque ligne n'en
+ * perd aucune.
+ *
+ * Rend 1 si la v3 s'en est chargée, 0 pour laisser l'ancien faire. Une faute
+ * d'analyse renvoie à l'ancien, qui est plus indulgent : on ne veut pas
+ * qu'une tournure rare tapée dans la boîte cesse de marcher. */
+static int v3_do_ligne(const char *line)
+{
+    if (!v3_actif() || !line || !*line) return 0;
+
+    HctLot lot;
+    HctReserve res;
+    memset(&lot, 0, sizeof lot);
+    memset(&res, 0, sizeof res);
+
+    hct_lex(line, &lot);
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &lot, &res);
+    HctNoeud *bloc = hct_bloc_script(&a);
+
+    if (!bloc || a.nerreurs || bloc->nfils == 0) {
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        return 0;
+    }
+
+    HctExec x;
+    hct_exec_init(&x, v3_hote());
+    x.script = bloc;
+    hct_exec(&x, bloc);
+
+    if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
+    if (x.ctx.erreur)
+        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
+             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+
+    hct_exec_libere(&x);
+    hct_reserve_libere(&res);
+    hct_lot_libere(&lot);
+    return 1;
+}
+
 void hc_do(const char *line)
 {
     /* La boîte de message, la commande « do », et la répartition des
@@ -14087,7 +14146,8 @@ void hc_do(const char *line)
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
-    exec_stmt(g_current_card, line);
+    if (!v3_do_ligne(line))
+        exec_stmt(g_current_card, line);
     ARENA_FREE;
     g_v1_porte = sauve_porte;
 }
