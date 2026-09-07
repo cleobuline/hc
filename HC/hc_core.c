@@ -994,6 +994,25 @@ static void v3_dis_les_fautes(Object *o, const HctNoeud *racine)
     v3_dis_les_fautes_r(o, racine, &reste);
 }
 
+/* Les fautes qui COÛTENT quelque chose : celles qui sont dans un
+ * gestionnaire, et qui le privent donc de la v3.
+ *
+ * Depuis qu'une bannière hors gestionnaire n'empêche plus rien, la signaler
+ * serait du bruit : le cadre de « ∞ » des piles d'époque produit des dizaines
+ * de « caractère inattendu » qui ne changent rien à l'exécution. Mais se
+ * taire sur TOUT serait pire — une coquille dans un gestionnaire lui coûte
+ * l'exécuteur v3, et l'auteur doit l'apprendre.
+ *
+ * On descend donc par gestionnaire, et on laisse le décor tranquille. */
+static void v3_dis_les_fautes_utiles(Object *o, const HctNoeud *racine)
+{
+    if (!racine) return;
+    int reste = 20;
+    for (int i = 0; i < racine->nfils; i++)
+        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE)
+            v3_dis_les_fautes_r(o, racine->fils[i], &reste);
+}
+
 /* L'arbre du script, analysé à la première demande et gardé ensuite.
  *
  * Rend NULL si le script est vide, ou si l'analyse a signalé la moindre
@@ -1024,26 +1043,51 @@ static const HctNoeud *script_arbre(Object *o)
      * la porte — trouve_gestionnaire l'écartera, et ce message-là repartira à
      * l'ancien interpréteur.
      *
-     * Ce qu'on exige encore, c'est que la STRUCTURE tienne : chaque enfant de
-     * la racine doit être un gestionnaire. Une faute qui déborde de son
-     * gestionnaire laisse des nœuds nus à ce niveau, signe qu'un « end » a été
-     * mal attribué et que le découpage n'est plus fiable — là, on refuse tout.
+     * CE QU'ON EXIGE : qu'il reste au moins un gestionnaire. Rien de plus.
+     * Ni que le lexeur soit propre, ni que tout enfant de la racine soit un
+     * gestionnaire — deux conditions posées ici et qui condamnaient des
+     * scripts parfaitement utilisables.
      *
-     * Ce que ça change en pratique : une coquille dans une fonction
-     * inutilisée — il en traîne dans les piles réelles — ne prive plus les
-     * trente autres gestionnaires du script de la v3. */
-    int structure_ok = (racine != NULL);
+     * POURQUOI ELLES SAUTENT. Les piles d'époque s'ouvrent presque toutes sur
+     * une bannière — un cadre de « ∞ », le nom du programme, la liste de ses
+     * gestionnaires — écrite hors de tout « on … end ». HyperCard l'ignorait :
+     * seuls les blocs on/function comptaient, le reste était du décor. Nous,
+     * on refusait le script ENTIER. Mesuré sur Graph Maker 2.2 : onze lignes
+     * de bannière coûtaient 374 lignes exécutées par la v1 et près de 500
+     * réanalyses, pour un script que la v3 savait parfaitement lire dès qu'on
+     * commentait l'en-tête.
+     *
+     * CE QUI PROTÈGE ENCORE, et qui suffit : trouve_gestionnaire écarte, un
+     * par un, les gestionnaires qui portent une faute. Contrôle plus fin que
+     * celui qu'on retire, puisqu'il examine le gestionnaire qu'on s'apprête à
+     * exécuter plutôt que son voisinage.
+     *
+     * Le cas qu'on redoutait — un « end » manquant qui fait avaler le
+     * gestionnaire suivant — ne laisse d'ailleurs PAS de nœuds nus à la
+     * racine : il produit un gestionnaire fautif, que le contrôle par
+     * gestionnaire écarte, et l'avalé n'est simplement pas trouvé. Il repart
+     * à l'ancien interpréteur, ce qui est exactement ce qu'on veut. Le veto
+     * global ne rattrapait donc rien que l'autre ne rattrape déjà — vérifié
+     * en construisant le cas.
+     *
+     * Une faute de LEXIQUE suit la même règle : dans un gestionnaire elle le
+     * rend fautif et il est écarté ; dans la bannière elle ne regarde
+     * personne. */
+    int gestionnaires = 0;
     for (int i = 0; racine && i < racine->nfils; i++)
-        if (racine->fils[i]->genre != HCTN_GESTIONNAIRE) { structure_ok = 0; break; }
+        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE) gestionnaires++;
 
-    if (sain && racine && (a.nerreurs == 0 || structure_ok)) {
+    if (racine && gestionnaires > 0) {
         o->arbre = racine;
         o->arbre_sain = 1;
-        if (a.nerreurs) {
-            /* On le dit quand même : la faute est réelle, et son gestionnaire
-             * n'aura pas la v3. */
+        /* Sur a.nerreurs OU sur une faute de lexique : le lexeur pose des
+         * jetons d'erreur que l'analyseur ne compte pas toujours, et se taire
+         * sur eux ferait disparaître « caractère inattendu » d'un script qui
+         * en contient un — le diagnostic était rendu par le refus, et le
+         * refus n'a plus lieu. */
+        if (a.nerreurs || !sain) {
             o->arbre_faute_ligne = 0;
-            v3_dis_les_fautes(o, racine);
+            v3_dis_les_fautes_utiles(o, racine);
         }
         return racine;
     }
