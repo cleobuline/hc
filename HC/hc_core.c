@@ -4133,6 +4133,27 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "itemdelimiter")) {
             snprintf(out, outlen, "%c", g_item_delim); return 1;
         }
+        /* Le gabarit vide se rend tel quel : c'est ce que HyperCard rendait
+         * avant qu'on y touche, et « if the numberFormat is empty » doit
+         * pouvoir le constater. */
+        if (ci_equal(name, "numberformat")) {
+            snprintf(out, outlen, "%s", hct_format_nombre_lu()); return 1;
+        }
+        /* Les deux verrous se POSAIENT déjà — « lock screen », « set the
+         * lockScreen to true » — mais ne se relisaient pas : « put the
+         * lockScreen » rendait le mot « lockScreen », et personne ne s'en
+         * apercevait puisque rien ne se plaignait. Depuis que « the » ne ment
+         * plus, la même ligne lève une erreur ; la vraie réponse était de
+         * toute façon due. Une propriété qu'on peut poser et pas relire est
+         * une propriété à moitié. */
+        if (ci_equal(name, "lockscreen")) {
+            snprintf(out, outlen, "%s", g_ecran_verrouille ? "true" : "false");
+            return 1;
+        }
+        if (ci_equal(name, "lockmessages")) {
+            snprintf(out, outlen, "%s", g_messages_verrouilles ? "true" : "false");
+            return 1;
+        }
         /* the tool : l'outil courant, sous la forme « brush tool ». C'est
          * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
          * celui d'HyperCard au repos. */
@@ -5237,6 +5258,52 @@ static int truthy(const char *s)
     if (as_num(s, &d)) return d != 0;
     return ci_equal(s, "true");
 }
+
+/* ═══ Les propriétés globales que le NOYAU tient lui-même ══════════════
+ *
+ * itemDelimiter découpe les items, numberFormat met en forme les calculs,
+ * lockScreen retient l'affichage : ce sont des réglages de l'interprète, pas
+ * de l'interface. L'hôte n'a rien à en savoir, et le lui passer l'obligerait
+ * à nous les rendre ensuite.
+ *
+ * UNE SEULE FOIS, ici. Le même bloc était recopié dans le chemin v3 et dans
+ * le chemin v1 — deux copies à modifier ensemble, donc deux copies vouées à
+ * diverger, et l'ajout suivant n'aurait été fait que dans l'une des deux.
+ *
+ * Rend 1 si la propriété a été prise en charge, 0 si elle regarde l'hôte. */
+static int prop_globale_noyau(const char *prop, const char *val)
+{
+    /* Une chaîne vide ou de plusieurs caractères ramène à la virgule —
+     * HyperCard ne retenait qu'un caractère. */
+    if (ci_equal(prop, "itemdelimiter")) {
+        g_item_delim = val[0] ? val[0] : ',';
+        emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+        return 1;
+    }
+
+    /* « set the numberFormat to "0.00" ». Le gabarit vit dans hct_val.c, avec
+     * l'écriture des nombres qu'il gouverne. */
+    if (ci_equal(prop, "numberformat")) {
+        hct_format_nombre(val);
+        emit(HC_INFO, "   → numberFormat ← \"%s\"", hct_format_nombre_lu());
+        return 1;
+    }
+
+    /* lockScreen : « set lockScreen to true » est l'exact synonyme de « lock
+     * screen », et notify_field s'appuie dessus pour ne pas redessiner mille
+     * fois pour rien.
+     *
+     * Rend 0 : l'hôte doit le voir passer aussi — HCview s'en sert pour
+     * retenir setNeedsDisplay:. C'est la seule des trois à être partagée. */
+    if (ci_equal(prop, "lockscreen")) {
+        g_ecran_verrouille = truthy(val);
+        if (!g_ecran_verrouille) verrou_reveille();
+        return 0;
+    }
+
+    return 0;
+}
+
 
 /* ---- tests de type pour « is a[n] <type> » ----
    Le guide (chapitre 7) donne : number, integer, point, rect, date, logical. */
@@ -6386,6 +6453,20 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         *out = hct_val_texte(petit);
         return 1;
     }
+
+    /* Les réglages que le noyau tient — voir prop_globale_noyau, qui les
+     * POSE. Servis ici pour qu'ils soient rendus par l'exécuteur v3 et non
+     * par un retour vers l'ancien : debug bilan reste (aucun). Le miroir de
+     * l'écriture doit vivre du même côté qu'elle. */
+    if (ci_equal(nom, "numberformat")) {
+        *out = hct_val_texte(hct_format_nombre_lu()); return 1;
+    }
+    if (ci_equal(nom, "lockscreen")) {
+        *out = hct_val_texte(g_ecran_verrouille ? "true" : "false"); return 1;
+    }
+    if (ci_equal(nom, "lockmessages")) {
+        *out = hct_val_texte(g_messages_verrouilles ? "true" : "false"); return 1;
+    }
     return 0;
 }
 
@@ -7480,23 +7561,9 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         char *val = arena_buf();
         eval_checked(to + 2, val, HC_VAL);
 
-        /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
-         * lui qui découpe les items, et l'interface n'a rien à en savoir.
-         * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
-         * HyperCard ne retenait qu'un caractère. */
-        if (ci_equal(prop, "itemdelimiter")) {
-            g_item_delim = val[0] ? val[0] : ',';
+        if (prop_globale_noyau(prop, val)) {
             set_result("");
-            emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
             g_atop = sauve; return 1;
-        }
-
-        /* lockScreen suivi ici aussi : « set lockScreen to true » est
-         * l'exact synonyme de « lock screen », et notify_field s'appuie
-         * dessus pour ne pas redessiner mille fois pour rien. */
-        if (ci_equal(prop, "lockscreen")) {
-            g_ecran_verrouille = truthy(val);
-            if (!g_ecran_verrouille) verrou_reveille();
         }
 
         host_global_set(prop, val);
@@ -10976,23 +11043,9 @@ static void exec_line_body(Object *me, const char *line)
             char *val = arena_buf();
             eval_checked(to + 2, val, HC_VAL);
 
-            /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
-             * lui qui découpe les items, et l'interface n'a rien à en savoir.
-             * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
-             * HyperCard ne retenait qu'un caractère. */
-            if (ci_equal(prop, "itemdelimiter")) {
-                g_item_delim = val[0] ? val[0] : ',';
+            if (prop_globale_noyau(prop, val)) {
                 set_result("");
-                emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
                 return;
-            }
-
-            /* lockScreen suivi ici aussi : « set lockScreen to true » est
-             * l'exact synonyme de « lock screen », et notify_field s'appuie
-             * dessus pour ne pas redessiner mille fois pour rien. */
-            if (ci_equal(prop, "lockscreen")) {
-                g_ecran_verrouille = truthy(val);
-                if (!g_ecran_verrouille) verrou_reveille();
             }
 
             host_global_set(prop, val);

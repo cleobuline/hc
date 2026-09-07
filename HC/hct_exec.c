@@ -633,7 +633,7 @@ static void commande(HctExec *x, const HctNoeud *n)
                            hct_val_libere(&val); hct_val_libere(&act); return; }
             r = xc / xv;
         }
-        HctValeur res = hct_val_nombre(r);
+        HctValeur res = hct_val_calcul(r);
         int delegue = 0;
         if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
