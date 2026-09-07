@@ -6638,6 +6638,47 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     return 0;
 }
 
+/* ═══ Les noms dont l'ancien moteur n'a jamais rien su faire ═══════════
+ *
+ * « setFont geneva,10,center,bold » passe quatre mots nus en arguments.
+ * Chacun est évalué, donc cherché comme fonction, donc confié à term_value —
+ * qui ne le connaît pas et rend le mot lui-même. L'appel n'apprend rien, et
+ * il recommence à chaque tour de boucle : dix-huit fois « geneva », seize
+ * fois « plain », huit fois « left » sur une seule séance de Graph Maker.
+ *
+ * La réponse ne peut pas changer. Ce que term_value sait servir est fixé à
+ * la compilation — des fonctions intégrées et des propriétés —, jamais des
+ * noms que la pile inventerait en route : ceux-là sont servis APRÈS, par
+ * v3_fonction_pile, et n'arrivent donc jamais ici. Un nom qui a échoué une
+ * fois échouera toujours ; on le note et on ne redemande plus.
+ *
+ * On ne note QUE l'écho — le cas où term_value rend le mot qu'on lui a
+ * donné. Une réponse vide légitime, « the selection » quand rien n'est
+ * sélectionné, ne ressemble pas à un écho et n'est pas mise en cache.
+ *
+ * Table courte et bornée : les mots nus d'un script se comptent en dizaines,
+ * et déborder ne coûte que de refaire l'emprunt comme avant. */
+#define V3_MUETS_MAX 64
+static char g_muets[V3_MUETS_MAX][40];
+static int  g_nmuets = 0;
+
+static int v1_est_muet(const char *nom)
+{
+    for (int i = 0; i < g_nmuets; i++)
+        if (ci_equal(g_muets[i], nom)) return 1;
+    return 0;
+}
+
+static void v1_note_muet(const char *nom)
+{
+    if (!nom || !*nom) return;
+    if ((int)strlen(nom) >= (int)sizeof g_muets[0]) return;   /* trop long */
+    if (g_nmuets >= V3_MUETS_MAX) return;
+    if (v1_est_muet(nom)) return;
+    snprintf(g_muets[g_nmuets], sizeof g_muets[0], "%s", nom);
+    g_nmuets++;
+}
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -6716,6 +6757,17 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
         buf[0] = '\0';
+        if (v1_est_muet(nom)) {
+            /* Déjà demandé, déjà sans réponse : on passe directement à la
+             * suite, qui est le vrai chemin pour ce nom-là. */
+            if (v3_fonction_pile(nom, args, 0)) {
+                *out = hct_val_texte(g_result);
+                ARENA_FREE;
+                { g_v1_porte = sauve_porte; } return 1;
+            }
+            ARENA_FREE;
+            { g_v1_porte = sauve_porte; } return 0;
+        }
         /* La porte prend le NOM de la fonction demandée, le temps de
          * l'emprunt. « v1 fonction 2 » ne disait pas laquelle porter ;
          * « v1 fonction the destination » le dit. Un compteur qui ne nomme
@@ -6730,6 +6782,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             ARENA_FREE;
             { g_v1_porte = sauve_porte; } return 1;
         }
+        v1_note_muet(nom);       /* l'écho : inutile de redemander */
         if (v3_fonction_pile(nom, args, 0)) {
             *out = hct_val_texte(g_result);
             ARENA_FREE;
@@ -6742,7 +6795,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
      * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt)) {
+    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom)) {
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
@@ -6757,6 +6810,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             ARENA_FREE;
             { g_v1_porte = sauve_porte; } return 1;
         }
+        v1_note_muet(nom);
     }
     if (v3_fonction_pile(nom, args, nargs)) {
         *out = hct_val_texte(g_result);
@@ -7812,7 +7866,28 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             g_atop = sauve; return 1;
         }
         char *val = arena_buf();
-        eval_checked(to + 2, val, HC_VAL);
+
+        /* La VALEUR est déjà un sous-arbre : l'évaluer, plutôt que relire son
+         * texte.
+         *
+         * eval_checked relexe et réanalyse une expression que l'analyseur
+         * avait déjà réduite en arbre quelques instants plus tôt. Sur une
+         * séance de Graph Maker, « set » à lui seul refaisait ce travail
+         * 114 fois — « set pattern to getPattern(i) » dans une boucle de
+         * tracé, « set cursor to watch », « set filled to true ».
+         *
+         * TROIS ENFANTS SEULEMENT, et une cible qui soit un simple nom. Une
+         * valeur en liste — « set the textStyle to bold,condense » — en donne
+         * quatre, un par élément, et il n'y a plus de sous-arbre unique à
+         * évaluer : ce cas garde le chemin par le texte, qui sait le lire.
+         * Mieux vaut porter la forme courante et laisser la rare derrière que
+         * de tout porter mal. */
+        if (n->nfils == 3 && n->fils[0]->genre == HCTN_IDENT) {
+            v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else {
+            eval_checked(to + 2, val, HC_VAL);
+        }
 
         if (prop_globale_noyau(prop, val)) {
             set_result("");
