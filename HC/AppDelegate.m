@@ -612,13 +612,49 @@ static NSMenu *find_file_menu(void)
         [self loadStackAtPath:p];
     }
     gLancee = YES;
+
+    /* startUp : le tout premier message d'HyperCard, envoyé une fois, quand
+     * tout est en place.
+     *
+     * Ici et pas plus haut : le gestionnaire est du script, il peut vouloir
+     * ouvrir une pile, poser des menus, aller à une carte. Rien de cela n'a
+     * de sens tant que les menus ne sont pas construits et la fenêtre pas à
+     * l'écran. gLancee vient d'être posé, donc suspend/resume peuvent partir
+     * après lui — et jamais avant, ce qui aurait donné un « resume » comme
+     * premier message de la séance. */
+    hc_env_message("startUp");
 }
+/* suspend et resume : l'application passe à l'arrière-plan, puis revient.
+ *
+ * Dans HyperCard, c'était le départ vers une AUTRE application et le retour ;
+ * sous macOS c'est le même événement, le changement d'application actif.
+ *
+ * gLancee garde le premier resume : didBecomeActive: part au lancement, avant
+ * même que les menus existent, et une pile aurait reçu « resume » comme tout
+ * premier message de la séance — avant startUp, avant openStack. On ne revient
+ * pas d'un endroit où l'on n'est jamais allé. */
+- (void)applicationDidResignActive:(NSNotification *)note {
+    (void)note;
+    if (gLancee) hc_env_message("suspend");
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)note {
+    (void)note;
+    if (gLancee) hc_env_message("resume");
+}
+
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
     if (!flag) [self.window makeKeyAndOrderFront:nil];
     return YES;
 }
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
     (void)aNotification;
+
+    /* quit, AVANT tout démontage : c'est la dernière fois que les piles sont
+     * entières, et un gestionnaire y lit encore ses champs. Le pendant de
+     * startUp, et la dernière occasion qu'a une pile d'enregistrer ce qu'elle
+     * tient en mémoire. */
+    hc_env_message("quit");
 
     /* Les piles chargées par « start using » n'ont pas de fenêtre, donc rien
      * ne les libère à la fermeture. On les rend ici — et on les retire du

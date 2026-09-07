@@ -145,15 +145,8 @@ static HCDocument *gCurrentDoc = nil;
      * La carte courante doit désigner CETTE pile avant l'envoi, sans quoi
      * « the target » et « me » parleraient de la fenêtre qu'on vient de
      * quitter. */
-    Object *premiere = NULL;
-    for (int i = 0; i < stack->nparts; i++)
-        if (stack->parts[i]->type == OBJ_CARD) { premiere = stack->parts[i]; break; }
-    if (premiere) {
-        Object *cur = hc_current_card();
-        if (!cur || cur->owner != stack) hc_set_current_card(premiere);
-        hc_send(premiere, "openStack");
-        [v setNeedsDisplay:YES];
-    }
+    [d envoiePile:"openStack"];
+    [v setNeedsDisplay:YES];
     return d;
 }
 
@@ -179,6 +172,33 @@ static HCDocument *gCurrentDoc = nil;
 
 /* ---- fenêtre ---- */
 
+/* Envoyer un message système à CETTE pile.
+ *
+ * La carte courante doit d'abord désigner la pile visée, sans quoi « the
+ * target » et « me » parleraient de la fenêtre qu'on vient de quitter — la
+ * même précaution que prenaient déjà openStack et closeStack, à la main et en
+ * double. Elle est ici une fois pour les six.
+ *
+ * hc_send et non hc_send_systeme : « lock messages » sert à parcourir une
+ * pile sans réveiller ses gestionnaires de carte. Aucun des six ne survient
+ * pendant un parcours — ils viennent de l'utilisateur ou du système : un
+ * lancement, une extinction, un changement d'application, un clic sur une
+ * autre fenêtre. Les retenir n'empêcherait rien et masquerait un départ. */
+- (void)envoiePile:(const char *)message
+{
+    Object *pile = self.stack;
+    if (!pile || !message) return;
+
+    Object *premiere = NULL;
+    for (int i = 0; i < pile->nparts; i++)
+        if (pile->parts[i]->type == OBJ_CARD) { premiere = pile->parts[i]; break; }
+    if (!premiere) return;
+
+    Object *cur = hc_current_card();
+    if (!cur || cur->owner != pile) hc_set_current_card(premiere);
+    hc_send(premiere, message);
+}
+
 /* La fenêtre passe au premier plan : ce document devient l'actif.
  *
  * C'est le seul endroit qui décide du document courant, et c'est voulu :
@@ -196,10 +216,33 @@ static HCDocument *gCurrentDoc = nil;
      * changements de document — la fermeture d'une fenêtre y passe aussi, et
      * dupliquer le choix ici les aurait fait diverger. */
     [self.view setNeedsDisplay:YES];
+
+    /* resumeStack : on REVIENT sur cette pile. Pas la première fois — voir
+     * dejaVue. L'envoi vient en dernier, la fenêtre en place et le document
+     * courant désigné, parce que le gestionnaire est du script et peut
+     * vouloir écrire, montrer, ou changer de carte. */
+    if (self.dejaVue) [self envoiePile:"resumeStack"];
+    else self.dejaVue = YES;
+}
+
+/* suspendStack : on QUITTE cette pile pour une autre, sans la fermer.
+ *
+ * Rien à faire si elle n'a jamais été au premier plan : on ne quitte pas ce
+ * qu'on n'a pas visité. Et rien non plus pendant la fermeture — windowWillClose
+ * envoie closeStack, qui dit déjà mieux ce qui se passe ; enchaîner les deux
+ * ferait défaire la pile en deux temps. */
+- (void)windowDidResignMain:(NSNotification *)note {
+    (void)note;
+    if (!self.dejaVue || self.enFermeture) return;
+    [self envoiePile:"suspendStack"];
 }
 
 - (void)windowWillClose:(NSNotification *)note {
     (void)note;
+
+    /* Fermer une fenêtre lui fait perdre le premier plan : sans ce drapeau,
+     * windowDidResignMain enverrait suspendStack juste avant closeStack. */
+    self.enFermeture = YES;
 
     /* Fermer une fenêtre libère sa pile.
      *
@@ -233,16 +276,7 @@ static HCDocument *gCurrentDoc = nil;
      *
      * La carte courante doit être ici aussi, pour la même raison qu'à
      * l'ouverture. */
-    if (pile) {
-        Object *premiere = NULL;
-        for (int i = 0; i < pile->nparts; i++)
-            if (pile->parts[i]->type == OBJ_CARD) { premiere = pile->parts[i]; break; }
-        if (premiere) {
-            Object *cur = hc_current_card();
-            if (!cur || cur->owner != pile) hc_set_current_card(premiere);
-            hc_send(premiere, "closeStack");
-        }
-    }
+    [self envoiePile:"closeStack"];
     [self.view resetForNewStack];
     [self.view clearPaintCache];
     [self unregisterDocument];

@@ -13365,6 +13365,32 @@ int hc_menu_trappe(const char *item)
     return g_current_card ? hc_send_arg(g_current_card, "doMenu", item) : 0;
 }
 
+/* ═══ Les messages du cycle de vie ═════════════════════════════════════
+ *
+ * startUp, quit, suspend, resume : les quatre que HyperCard envoyait à
+ * l'ENVIRONNEMENT et non à une pile en particulier. Ils partent donc à la
+ * carte courante, d'où ils remontent la hiérarchie jusqu'à la pile — c'est
+ * ce que faisait HyperCard, qui les adressait à la pile Home, c'est-à-dire à
+ * celle où l'on se trouve.
+ *
+ * suspendStack et resumeStack, eux, désignent une pile précise et vivent
+ * dans Hcdocument.m, où l'on sait quelle fenêtre gagne ou perd le premier
+ * plan.
+ *
+ * hc_send et non hc_send_systeme : « lock messages » sert à parcourir une
+ * pile sans réveiller les gestionnaires de chaque carte. Aucun de ces quatre
+ * ne survient pendant un parcours — ils viennent du système : un lancement,
+ * une extinction, un changement d'application. Les retenir n'épargnerait
+ * rien et masquerait un départ.
+ *
+ * Sans carte courante, rien : il n'y a personne à qui parler, et ce n'est pas
+ * une erreur — l'application peut tourner sans pile ouverte. */
+void hc_env_message(const char *message)
+{
+    if (!message || !g_current_card) return;
+    hc_send(g_current_card, message);
+}
+
 void hc_do_menu(const char *item)
 {
     if (!item) return;

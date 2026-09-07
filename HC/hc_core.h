@@ -551,6 +551,11 @@ int     hc_send(Object *target, const char *message);
  * C'est par ici que doit passer TOUT déclenchement de menu, script ou clic. */
 void    hc_do_menu(const char *item);
 
+/* startUp, quit, suspend, resume : les messages du cycle de vie de
+ * l'application. Envoyés à la carte courante, d'où ils remontent la
+ * hiérarchie jusqu'à la pile. Voir la note à leur définition. */
+void    hc_env_message(const char *message);
+
 /* La moitié « message » de hc_do_menu : propose l'article à la pile et rend 1
  * si un gestionnaire l'a pris. Pour l'interface, dont les actions natives
  * savent déjà agir et n'ont qu'à demander d'abord. */
