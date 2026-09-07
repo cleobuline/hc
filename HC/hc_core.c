@@ -13364,8 +13364,26 @@ static int hc_send_args_k_body(Object *target, const char *message,
             g_me   = o;          /* `me` = l'objet dont le script tourne */
             /* La v3 d'abord si elle est active ET si elle a su analyser ce
              * script. Sinon l'ancien exécuteur, inchangé. */
+            /* La v3 d'abord ; à défaut, le gestionnaire ENTIER retombe sur
+             * l'ancien exécuteur. C'est de loin le plus gros emprunt, et il
+             * ne se voyait nulle part : le relevé des recours reste « aucun »
+             * puisque la v3 n'a même pas commencé.
+             *
+             * La porte nomme donc l'objet et le message — « v1 ligne
+             * button "Tracer".mouseUp » désigne le script à regarder, là où
+             * un total anonyme n'apprenait rien. Le tampon est LOCAL : un
+             * gestionnaire peut en appeler un autre, et un tampon partagé se
+             * ferait écraser par l'appel imbriqué. */
+            char porte[96];
+            {
+                char qui[64];
+                hc_describe(o, qui, sizeof qui);
+                snprintf(porte, sizeof porte, "%s.%s", qui, message);
+            }
+            const char *sauve_v1 = v1_porte(porte);
             if (!v3_execute(o, message, isfunc))
                 exec_body(o, body, end);
+            g_v1_porte = sauve_v1;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
 
             g_frame = savedf;
