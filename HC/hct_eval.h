@@ -154,6 +154,15 @@ void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
 /* Évalue un arbre d'expression. En cas d'erreur, rend une valeur vide et
  * renseigne ctx->erreur — l'appelant doit le tester. */
 HctValeur hct_evalue(HctContexte *ctx, const HctNoeud *n);
+
+/* Le rang que désigne un ordinal, dans un ensemble de `total` éléments :
+ * « last » vaut total, « middle » vaut total/2 + 1, « any » tire au sort.
+ * Rend 0 si l'ordinal n'en désigne aucun.
+ *
+ * Exportée parce que hc_core en a besoin pour « select last word of … » :
+ * en écrire une seconde copie là-bas aurait donné deux tables d'ordinaux à
+ * tenir d'accord, et « middle » a déjà été faux une fois. */
+int hct_rang_ordinal(HctOrdinal o, int total);
 /* Déclarer une variable GLOBALE dans le gestionnaire courant.
  *
  * Quand l'hôte tient les variables, il tient aussi la distinction entre

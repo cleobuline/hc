@@ -7404,21 +7404,44 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         f = hct_resout(ctx, c->fils[1]);
         if (!f || f->type != OBJ_FIELD) return 0;
         st = 0; en = (int)strlen(hc_field_text(f));
-    } else if (c->genre == HCTN_CHUNK && c->nfils >= 2 && !c->ordinal) {
+    } else if (c->genre == HCTN_CHUNK && c->nfils >= 1) {
         const HctNoeud *cible = c->fils[c->nfils - 1];
         if (!cible || cible->genre != HCTN_OBJET) return 0;
         f = hct_resout(ctx, cible);
         if (!f || f->type != OBJ_FIELD) return 0;
 
-        char b1[64], b2[64];
-        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
-        if (ctx->erreur) return 1;
-        int n1 = (int)hct_vers_nombre(b1), n2 = 0;
-        if (c->nfils >= 3) {
-            v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+        int n1 = 0, n2 = 0;
+        if (c->ordinal) {
+            /* « select last word of … », « select middle line of … ».
+             *
+             * L'ordinal REMPLACE les bornes : le nœud n'a plus qu'un enfant,
+             * sa cible, et le rang se calcule sur le nombre d'éléments. C'est
+             * pourquoi cette branche exigeait « !c->ordinal » et rendait la
+             * main — toutes ces formes repartaient à l'ancien interprète,
+             * alors que « select char 2 of … » passait.
+             *
+             * hct_rang_ordinal vient de hct_eval.c, où l'évaluateur s'en sert
+             * déjà : en écrire une seconde copie ici aurait donné deux tables
+             * d'ordinaux à tenir d'accord, et « middle » a déjà été faux une
+             * fois — total/2+1 et non (total+1)/2. */
+            int total = hct_chunk_compte(hc_field_text(f), c->sorte,
+                                         g_item_delim);
+            n1 = hct_rang_ordinal(c->ordinal, total);
+            if (n1 <= 0) return 0;
+        } else if (c->nfils >= 2) {
+            char b1[64], b2[64];
+            v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
             if (ctx->erreur) return 1;
-            n2 = (int)hct_vers_nombre(b2);
+            n1 = (int)hct_vers_nombre(b1);
+            if (c->nfils >= 3) {
+                v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+                if (ctx->erreur) return 1;
+                n2 = (int)hct_vers_nombre(b2);
+            }
+        } else {
+            return 0;               /* ni ordinal ni borne : rien à viser */
         }
+
         HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
                                         n1, n2, g_item_delim);
         if (!bo.trouve) return 0;

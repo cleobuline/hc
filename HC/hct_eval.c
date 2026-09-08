@@ -589,7 +589,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
  * bornes : « last word of x » n'a pas de rang écrit.
  */
 
-static int rang_ordinal(HctOrdinal o, int total)
+int hct_rang_ordinal(HctOrdinal o, int total)
 {
     switch (o) {
         case HCT_ORD_PREMIER:   return 1;
@@ -656,7 +656,7 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
 
     if (n->ordinal) {
         int total = hct_chunk_compte(cible.txt, n->sorte, d);
-        n1 = rang_ordinal(n->ordinal, total);
+        n1 = hct_rang_ordinal(n->ordinal, total);
         if (n1 < 1) { hct_val_libere(&cible); return hct_val_vide(); }
     } else {
         int ok = 0;
