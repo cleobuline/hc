@@ -25,6 +25,15 @@ void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg)
     ctx->fautif = n;
 }
 
+void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
+                       const char *quoi, const char *nom)
+{
+    if (ctx->erreur) return;
+    snprintf(ctx->message, sizeof ctx->message, "%s : %s", quoi, nom ? nom : "?");
+    ctx->erreur = ctx->message;
+    ctx->fautif = n;
+}
+
 /* ---------------------------------------------------------- constantes
  *
  * HyperTalk en compte une vingtaine. Elles ne sont pas des variables : on ne
@@ -141,7 +150,7 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
     }
     else if (!strcmp(op, "^")) r = pow(x, y);
 
-    return hct_val_nombre(r);
+    return hct_val_calcul(r);
 }
 
 /* ------------------------------------------------------- appartenance */
@@ -345,12 +354,12 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
         if (!hct_est_nombre(a.txt)) {
             hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
             r = hct_val_vide();
-        } else r = hct_val_nombre(-hct_vers_nombre(a.txt));
+        } else r = hct_val_calcul(-hct_vers_nombre(a.txt));
     } else {
         if (!hct_est_nombre(a.txt)) {
             hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
             r = hct_val_vide();
-        } else r = hct_val_nombre(-hct_vers_nombre(a.txt));
+        } else r = hct_val_calcul(-hct_vers_nombre(a.txt));
     }
     hct_val_libere(&a);
     return r;
@@ -387,9 +396,29 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
         return v;
     }
 
-    /* Rien de tout cela : en HyperTalk, une variable jamais affectée vaut son
+    /* Rien de tout cela.
+     *
+     * SANS ARTICLE : en HyperTalk, une variable jamais affectée vaut son
      * propre nom. C'est ce qui fait marcher « go card canard » sans
-     * guillemets, et il ne faut donc PAS en faire une erreur. */
+     * guillemets, et il ne faut donc PAS en faire une erreur.
+     *
+     * AVEC « the » : c'est une autre phrase. « the » annonce une propriété,
+     * une fonction ou une constante — jamais un mot ordinaire. Lui appliquer
+     * la règle des littéraux nus faisait rendre « userLevl » à « put the
+     * userLevl », et « numberFormat » à « put the numberFormat » : une faute
+     * de frappe et une propriété absente donnaient toutes deux une réponse
+     * d'apparence normale. Rien ne les signalait, et c'est ainsi qu'une
+     * vingtaine de trous ont pu rester invisibles.
+     *
+     * On refuse donc. Le message NOMME le mot : c'est la seule chose que
+     * l'utilisateur ait besoin de lire pour savoir s'il s'est trompé de
+     * lettre ou si la propriété n'existe pas encore ici. */
+    if (n->article) {
+        hct_ctx_faute_nom(ctx, n, "propriété ou fonction inconnue", nom);
+        free(nom);
+        return hct_val_vide();
+    }
+
     v = hct_val_texte(nom);
     free(nom);
     return v;
@@ -400,6 +429,37 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
 /* Définie plus bas, avec « the value of » dont elle est le moteur. */
 static int evalue_texte(HctContexte *ctx, const char *src,
                         const HctNoeud *origine, HctValeur *out);
+
+/* Les fonctions de calcul à un argument.
+ *
+ * Extraites parce qu'HyperTalk les écrit de DEUX façons — « sqrt(2) » et
+ * « the sqrt of 2 » — qui arrivent ici par deux chemins différents, appel()
+ * et noeud_of(). Elles étaient traitées dans le seul premier ; le second
+ * renvoyait tout à l'ancien interpréteur, qui les calculait sans passer par
+ * le numberFormat. « set the numberFormat to "0.000" » mettait donc en forme
+ * sqrt(2) mais pas « the sqrt of 2 » — deux écritures de la même chose, deux
+ * résultats.
+ *
+ * Rend 0 si le nom n'en est pas une. */
+static int math_un_arg(const char *nom, double x, double *y)
+{
+    if      (!strcasecmp(nom, "abs"))   *y = fabs(x);
+    else if (!strcasecmp(nom, "sqrt"))  *y = sqrt(x);
+    else if (!strcasecmp(nom, "trunc")) *y = trunc(x);
+    else if (!strcasecmp(nom, "round")) *y = round(x);
+    else if (!strcasecmp(nom, "sin"))   *y = sin(x);
+    else if (!strcasecmp(nom, "cos"))   *y = cos(x);
+    else if (!strcasecmp(nom, "tan"))   *y = tan(x);
+    else if (!strcasecmp(nom, "atan"))  *y = atan(x);
+    else if (!strcasecmp(nom, "exp"))   *y = exp(x);
+    else if (!strcasecmp(nom, "exp1"))  *y = expm1(x);
+    else if (!strcasecmp(nom, "exp2"))  *y = exp2(x);
+    else if (!strcasecmp(nom, "ln"))    *y = log(x);
+    else if (!strcasecmp(nom, "ln1"))   *y = log1p(x);
+    else if (!strcasecmp(nom, "log2"))  *y = log2(x);
+    else return 0;
+    return 1;
+}
 
 static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 {
@@ -426,28 +486,13 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
      * déranger l'hôte. Celles qui dépendent du monde — the ticks, the mouse —
      * lui reviennent. */
     if (nargs == 1 && hct_est_nombre(args[0].txt)) {
-        double x = hct_vers_nombre(args[0].txt);
-        double y = 0; int ok = 1;
-        if      (!strcasecmp(nom, "abs"))   y = fabs(x);
-        else if (!strcasecmp(nom, "sqrt"))  y = sqrt(x);
-        else if (!strcasecmp(nom, "trunc")) y = trunc(x);
-        else if (!strcasecmp(nom, "round")) y = round(x);
-        else if (!strcasecmp(nom, "sin"))   y = sin(x);
-        else if (!strcasecmp(nom, "cos"))   y = cos(x);
-        else if (!strcasecmp(nom, "tan"))   y = tan(x);
-        else if (!strcasecmp(nom, "atan"))  y = atan(x);
-        else if (!strcasecmp(nom, "exp"))   y = exp(x);
-        else if (!strcasecmp(nom, "exp1"))  y = expm1(x);
-        else if (!strcasecmp(nom, "exp2"))  y = exp2(x);
-        else if (!strcasecmp(nom, "ln"))    y = log(x);
-        else if (!strcasecmp(nom, "ln1"))   y = log1p(x);
-        else if (!strcasecmp(nom, "log2"))  y = log2(x);
-        else if (!strcasecmp(nom, "numtochar")) {
-            char c[2] = { (char)(int)x, 0 };
-            r = hct_val_texte(c); fait = 1; ok = 0;
+        double y;
+        if (math_un_arg(nom, hct_vers_nombre(args[0].txt), &y)) {
+            r = hct_val_calcul(y); fait = 1;
+        } else if (!strcasecmp(nom, "numtochar")) {
+            char c[2] = { (char)(int)hct_vers_nombre(args[0].txt), 0 };
+            r = hct_val_texte(c); fait = 1;
         }
-        else ok = 0;
-        if (ok) { r = hct_val_nombre(y); fait = 1; }
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "length")) {
         r = hct_val_nombre(args[0].len); fait = 1;
@@ -490,7 +535,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         double y;
         if (!strcasecmp(nom, "compound")) y = pow(1.0 + taux, per);
         else y = (taux == 0) ? per : (1.0 - pow(1.0 + taux, -per)) / taux;
-        r = hct_val_nombre(y); fait = 1;
+        r = hct_val_calcul(y); fait = 1;
     }
 
     if (!fait && (!strcasecmp(nom, "min") || !strcasecmp(nom, "max") ||
@@ -509,7 +554,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         }
         if (!strcasecmp(nom, "average") || !strcasecmp(nom, "avg"))
             acc = compte ? acc / compte : 0;
-        r = hct_val_nombre(acc); fait = 1;
+        r = hct_val_calcul(acc); fait = 1;
     }
 
     if (!fait && ctx->hote.fonction)
@@ -544,7 +589,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
  * bornes : « last word of x » n'a pas de rang écrit.
  */
 
-static int rang_ordinal(HctOrdinal o, int total)
+int hct_rang_ordinal(HctOrdinal o, int total)
 {
     switch (o) {
         case HCT_ORD_PREMIER:   return 1;
@@ -611,7 +656,7 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
 
     if (n->ordinal) {
         int total = hct_chunk_compte(cible.txt, n->sorte, d);
-        n1 = rang_ordinal(n->ordinal, total);
+        n1 = hct_rang_ordinal(n->ordinal, total);
         if (n1 < 1) { hct_val_libere(&cible); return hct_val_vide(); }
     } else {
         int ok = 0;
@@ -839,6 +884,35 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             free(nom);
             return hct_evalue(ctx, sur);   /* sans hôte : au mieux */
         }
+        /* « the sqrt of 2 », « the round of 1.5 » : la forme « of » des
+         * fonctions de calcul. Même chose que « sqrt(2) », et le même code
+         * la calcule — voir math_un_arg. Sans cette branche, elles partaient
+         * à l'hôte, qui les rendait hors numberFormat.
+         *
+         * Après les comptages, qui ont leur propre sens de « of », et avant
+         * les propriétés : aucun objet ne s'appelle « sqrt ». */
+        {
+            /* Le NOM d'abord, la cible ensuite. L'ordre inverse évaluait
+             * « card (i + 1) » comme une valeur avant de savoir qu'on avait
+             * affaire à une propriété, et la référence d'objet, qui n'est pas
+             * une expression, se cassait en chemin. Une garde qui coûte une
+             * comparaison de nom évite d'évaluer ce qu'on n'a pas à évaluer. */
+            double y;
+            if (math_un_arg(nom, 0.0, &y)) {
+                HctValeur a = hct_evalue(ctx, sur);
+                if (ctx->erreur) {
+                    hct_val_libere(&a); free(nom); return hct_val_vide();
+                }
+                if (hct_est_nombre(a.txt) &&
+                    math_un_arg(nom, hct_vers_nombre(a.txt), &y)) {
+                    hct_val_libere(&a);
+                    free(nom);
+                    return hct_val_calcul(y);
+                }
+                hct_val_libere(&a);
+            }
+        }
+
         /* Sinon c'est une propriété : seul l'hôte sait la lire.
          *
          * lit_prop AVANT le recours, pour la même raison que dans objet() :

@@ -3,6 +3,7 @@
 //
 
 #import "graphics.h"
+#include "hc_pixels.h"   /* le calcul des transformations du menu Paint */
 #import "HCpalettes.h"    // brush_bit
 #import "HCpaint.h"
      // flushPaintToKernel : l'interface complete, la
@@ -72,8 +73,10 @@ int pattern_bit(int pat, int x, int y) {
  * Le repli sur noir et blanc couvre le cas ou hc_colors_init() n'a pas encore
  * tourne — le dessin retombe alors exactement sur le comportement d'avant. */
 static void color_rgb(NSColor *c, NSColor *repli,
-                      unsigned char *r, unsigned char *g, unsigned char *b)
+                      unsigned char *r, unsigned char *g, unsigned char *b,
+                      int *a)
 {
+    if (a) *a = 255;
     if (!c) c = repli;
     NSColor *s = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
     if (!s) s = [repli colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
@@ -83,6 +86,11 @@ static void color_rgb(NSColor *c, NSColor *repli,
     *r = (unsigned char)(rr * 255.0 + 0.5);
     *g = (unsigned char)(gg * 255.0 + 0.5);
     *b = (unsigned char)(bb * 255.0 + 0.5);
+    /* L'OPACITÉ de l'encre, qui n'était pas lue jusqu'ici : « set the
+     * paintColor to "255,0,0,128" » la pose dans gInkColor, et c'est PUT_INK
+     * qui en fait un lavis. Le fond, lui, reste toujours opaque — un fond à
+     * moitié transparent n'est pas un fond. */
+    if (a) *a = (int)(aa * 255.0 + 0.5);
 }
 
 /* Les six composantes, a declarer en tete des fonctions a pixel. Un macro
@@ -90,12 +98,19 @@ static void color_rgb(NSColor *c, NSColor *repli,
  * deux copies donnerait un outil qui ne peint pas comme les autres. */
 #define INK_RGB_LOCALS \
     unsigned char ir_, ig_, ib_, br_, bg_, bb_; \
-    color_rgb(gInkColor,  [NSColor blackColor], &ir_, &ig_, &ib_); \
-    color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_)
+    int ia_; \
+    color_rgb(gInkColor,  [NSColor blackColor], &ir_, &ig_, &ib_, &ia_); \
+    color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_, NULL)
 
-/* Poser l'encre / poser le fond, alpha opaque. */
-#define PUT_INK(px)  do { (px)[0]=ir_; (px)[1]=ig_; (px)[2]=ib_; \
-                          if (spp>=4) (px)[3]=255; } while (0)
+/* Poser l'encre. Franche si elle est opaque — le cas de toujours, et le
+ * chemin rapide —, mélangée sinon : voir hcp_melange. C'est ce qui fait
+ * qu'une encre à moitié transparente CHARGE quand on repasse dessus, au lieu
+ * de rester à moitié. */
+#define PUT_INK(px)  do {                                          \
+    if (ia_ >= 255) { (px)[0]=ir_; (px)[1]=ig_; (px)[2]=ib_;        \
+                      if (spp>=4) (px)[3]=255; }                    \
+    else hcp_melange((px), (int)spp, ir_, ig_, ib_, ia_);           \
+} while (0)
 #define PUT_BACK(px) do { (px)[0]=br_; (px)[1]=bg_; (px)[2]=bb_; \
                           if (spp>=4) (px)[3]=255; } while (0)
 
@@ -922,6 +937,119 @@ void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
         }
     }
 }
+/* ═══ LE MENU PAINT ═════════════════════════════════════════════════════
+ *
+ * Six transformations, dont le calcul vit dans hc_pixels.h — du C99 qui ne
+ * connaît ni AppKit ni NSPoint, et qui se vérifie donc sur des images de six
+ * pixels de large plutôt qu'à l'œil sur un écran. Voir l'en-tête de ce
+ * fichier pour la raison.
+ *
+ * Ici, rien que la traduction : le tampon et son pas de ligne d'un côté, les
+ * sommets du lasso mis à plat de l'autre. */
+
+/* Les sommets du lasso, de NSPoint vers des doubles à plat. Rend NULL s'il
+ * n'y a pas de polygone — ce que hc_pixels lit comme « toute la zone ». */
+static double *poly_a_plat(NSPoint *pts, int n)
+{
+    if (!pts || n < 3) return NULL;
+    double *d = malloc((size_t)n * 2 * sizeof *d);
+    if (!d) return NULL;
+    for (int i = 0; i < n; i++) { d[2*i] = pts[i].x; d[2*i+1] = pts[i].y; }
+    return d;
+}
+
+#define PAINT_PROLOGUE                                              \
+    if (!rep) return;                                               \
+    if ([rep bitsPerSample] != 8 || [rep samplesPerPixel] < 3) return; \
+    unsigned char *data = [rep bitmapData];                         \
+    if (!data) return;                                              \
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];       \
+    long bpr = (long)[rep bytesPerRow];                             \
+    int spp = (int)[rep samplesPerPixel]
+
+void paint_invert(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_invert(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_darken(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_darken(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_lighten(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                   NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_lighten(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_trace_edges(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                       NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_trace_edges(data, bpr, spp, W, H, x0, y0, x1, y1, p, p ? npoly : 0);
+    free(p);
+}
+
+void paint_flip(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                int horizontal)
+{
+    PAINT_PROLOGUE;
+    hcp_flip(data, bpr, spp, W, H, x0, y0, x1, y1, horizontal);
+}
+
+/* `sens` : +1 à droite, -1 à gauche. `nouveau` reçoit le rectangle d'arrivée,
+ * qui n'est pas celui de départ dès que la sélection n'est pas carrée —
+ * l'appelant doit y déplacer la sélection. */
+void paint_rotate(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                  int sens, NSRect *nouveau)
+{
+    if (nouveau) *nouveau = NSMakeRect(x0, y0, x1 - x0, y1 - y0);
+    PAINT_PROLOGUE;
+    int a, b, c, d;
+    hcp_rotate(data, bpr, spp, W, H, x0, y0, x1, y1, sens, &a, &b, &c, &d);
+    if (nouveau) *nouveau = NSMakeRect(a, b, c - a, d - b);
+}
+
+/* Fill : la zone remplie de la trame courante.
+ *
+ * Elle est la seule des sept à lire les réglages de peinture — trame, encre,
+ * fond, fond transparent —, ce qui est justement la part qui ne peut pas
+ * vivre dans hc_pixels.h. Les huit octets de la trame y descendent ; le
+ * catalogue reste ici.
+ *
+ * L'encre EFFACE se traite en amont, dans paintOpTag : remplir à l'encre
+ * « effacer » n'a pas de sens, c'est eraseAll qu'on veut alors. */
+void paint_fill_zone(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
+                     NSPoint *poly, int npoly)
+{
+    PAINT_PROLOGUE;
+    if (gPattern < 0 || gPattern >= NUM_PATTERNS) return;
+    INK_RGB_LOCALS;
+    double *p = poly_a_plat(poly, npoly);
+    hcp_remplit(data, bpr, spp, W, H, x0, y0, x1, y1,
+                p, p ? npoly : 0,
+                PATTERNS[gPattern],
+                ir_, ig_, ib_, ia_,
+                br_, bg_, bb_,
+                gTransparentBg ? 1 : 0);
+    free(p);
+}
+
+#undef PAINT_PROLOGUE
+
 /* Copie independante d'un calque, pour l'annulation. */
 NSBitmapImageRep *paint_copy(NSBitmapImageRep *src) {
     if (!src) return nil;
@@ -934,6 +1062,34 @@ NSBitmapImageRep *paint_copy(NSBitmapImageRep *src) {
     if (!dst) return nil;
     memcpy([dst bitmapData], [src bitmapData], (size_t)[src bytesPerRow] * h);
     return dst;
+}
+
+/* Recopie b dans a, sans rien changer à b.
+ *
+ * paint_swap ne convient pas à Revert : l'échange mettrait l'image ABANDONNÉE
+ * dans l'instantané, et le Revert suivant la ramènerait. Or l'instantané de
+ * Keep est un point de repère, pas une pile — on doit pouvoir y revenir
+ * autant de fois qu'on veut, et repeindre entre deux. */
+void paint_restore(NSBitmapImageRep *a, NSBitmapImageRep *b) {
+    if (!a || !b) return;
+    if ([a pixelsWide] != [b pixelsWide] || [a pixelsHigh] != [b pixelsHigh]) return;
+    if ([a samplesPerPixel] != [b samplesPerPixel]) return;
+    unsigned char *da = [a bitmapData], *db = [b bitmapData];
+    if (!da || !db) return;
+
+    NSInteger ba = [a bytesPerRow], bb = [b bytesPerRow];
+    NSInteger h  = [a pixelsHigh];
+    /* Ligne à ligne quand les pas diffèrent. AppKit choisit le bourrage de fin
+     * de ligne ; deux reps de même taille n'ont donc pas forcément le même pas,
+     * et un memcpy en bloc décalerait tout d'un cran à partir de la 2e ligne.
+     * Renoncer aurait été pire : un Revert qui ne fait rien, sans le dire. */
+    if (ba == bb) {
+        memcpy(da, db, (size_t)ba * h);
+        return;
+    }
+    NSInteger n = MIN(ba, bb);
+    for (NSInteger y = 0; y < h; y++)
+        memcpy(da + y * ba, db + y * bb, (size_t)n);
 }
 
 /* Echange le contenu de deux calques de meme taille.

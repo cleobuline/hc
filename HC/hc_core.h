@@ -71,6 +71,17 @@ struct RunList { struct TextRun *v; int n, cap; };
 #define HC_STYLE_INHERIT (-2) /* plage muette sur le style : voir plus haut */
 #define HC_COLOR_INHERIT (-1) /* plage muette sur la couleur : voir plus haut */
 
+/* Traduit un nom de couleur, « #RRGGBB » ou « r,v,b » en 0xRRGGBB, et rend
+ * HC_COLOR_INHERIT si ce n'en est pas une. Les noms sont acceptés en français
+ * comme en anglais — vert, green, rouge, red… C'est le vocabulaire de
+ * « set the textColor », ouvert pour que la peinture parle le même. */
+int hc_color_from_name(const char *v);
+
+/* La même, avec l'opacité : « 255,0,0,128 ». `alpha` reçoit 0..255, et 255
+ * quand la couleur n'en mentionne pas. Seule la peinture s'en sert — un
+ * calque a un canal alpha, une plage de style de champ n'en a pas. */
+int hc_color_from_name_alpha(const char *v, int *alpha);
+
 /* texte d'un champ de fond, propre à une carte, avec ses plages de style :
  * un champ de fond non partagé a un texte ET un style par carte. */
 struct BgText { int field_id; char *text; struct RunList runs; };
@@ -540,6 +551,11 @@ int     hc_send(Object *target, const char *message);
  * C'est par ici que doit passer TOUT déclenchement de menu, script ou clic. */
 void    hc_do_menu(const char *item);
 
+/* startUp, quit, suspend, resume : les messages du cycle de vie de
+ * l'application. Envoyés à la carte courante, d'où ils remontent la
+ * hiérarchie jusqu'à la pile. Voir la note à leur définition. */
+void    hc_env_message(const char *message);
+
 /* La moitié « message » de hc_do_menu : propose l'article à la pile et rend 1
  * si un gestionnaire l'a pris. Pour l'interface, dont les actions natives
  * savent déjà agir et n'ont qu'à demander d'abord. */
@@ -559,6 +575,7 @@ int         hc_menu_est_actif(int i);
 int         hc_menu_nb_articles(int i);
 const char *hc_menu_article(int i, int j);
 int         hc_menu_article_actif(int i, int j);
+int         hc_menu_article_coche(int i, int j);
 
 /* L'utilisateur a choisi l'article j du menu i. Envoie le message de
  * l'article s'il en a un, sinon « doMenu <article> ». Un séparateur ne

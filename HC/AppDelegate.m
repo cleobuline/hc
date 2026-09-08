@@ -11,7 +11,7 @@
 #import "HCdialogs.h"
 #import "hc_core.h"
 #import "hc_file.h"
-#import "HCdocument.h"
+#import "Hcdocument.h"
 @interface AppDelegate ()
 @property (strong) IBOutlet NSWindow *window;
 @end
@@ -44,6 +44,17 @@ static NSMutableArray *gPilesEnUsage = nil;
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
 static BOOL gLancee = NO;      /* vrai une fois applicationDidFinishLaunching passé */
+/* Tous les articles de la barre de menus, sous-menus compris. Récursif parce
+ * qu'un raccourci peut se cacher à deux niveaux — Format ▸ Font ▸ Bold. */
+static void hc_menus_parcourir(NSMenu *m, void (^bloc)(NSMenuItem *))
+{
+    if (!m) return;
+    for (NSMenuItem *it in [m itemArray]) {
+        bloc(it);
+        if ([it submenu]) hc_menus_parcourir([it submenu], bloc);
+    }
+}
+
 /* Retrouve le menu Fichier fourni par le nib.
  *
  * Le chercher par son titre serait fragile : il s'appelle « File » ou
@@ -346,6 +357,54 @@ static NSMenu *find_file_menu(void)
     [goItem setSubmenu:goMenu];
     [mainMenu addItem:goItem];
 
+    /* --- menu Paint ---
+     *
+     * Les transformations d'image d'HyperCard, dans son ordre. Huit pour
+     * l'instant : celles qui ne font que relire des pixels et en écrire
+     * d'autres. Manquent encore Select, Fill, Pickup, Opaque, Transparent,
+     * Keep et Revert, qui demandent chacune autre chose que du calcul — un
+     * second calque, un mode de transparence, un instantané nommé. Mieux vaut
+     * un menu court et vrai qu'un menu complet à moitié grisé pour toujours.
+     *
+     * Pas de raccourcis clavier : ceux d'HyperCard sont pris ici (⌘S pour
+     * enregistrer, ⌘A pour tout sélectionner), et deux fidélités qui se
+     * contredisent se tranchent en faveur de celle qui ne casse rien.
+     *
+     * validateMenuItem: les grise tant qu'il n'y a pas de sélection de
+     * peinture — c'est ce que faisait HyperCard, et c'est plus sûr que de les
+     * laisser cliquables pour ne rien faire. */
+    NSMenuItem *paintItem = [[NSMenuItem alloc] init];
+    NSMenu *paintMenu = [[NSMenu alloc] initWithTitle:@"Paint"];
+    struct { NSString *titre; NSInteger tag; } peint[] = {
+        { @"Fill",            HCV_PAINT_FILL    },
+        { @"Invert",          HCV_PAINT_INVERT  },
+        { @"Darken",          HCV_PAINT_DARKEN  },
+        { @"Lighten",         HCV_PAINT_LIGHTEN },
+        { @"Trace Edges",     HCV_PAINT_TRACE   },
+        { nil,                0                 },   /* séparateur */
+        { @"Rotate Left",     HCV_PAINT_ROTL    },
+        { @"Rotate Right",    HCV_PAINT_ROTR    },
+        { @"Flip Vertical",   HCV_PAINT_FLIPV   },
+        { @"Flip Horizontal", HCV_PAINT_FLIPH   },
+        { nil,                0                 },   /* séparateur */
+        /* En bas du menu, comme dans HyperCard : ce sont les deux seuls
+         * articles qui ne transforment pas une sélection mais toute la
+         * séance de peinture. */
+        { @"Keep",            HCV_PAINT_KEEP    },
+        { @"Revert",          HCV_PAINT_REVERT  },
+    };
+    for (int i = 0; i < (int)(sizeof peint / sizeof *peint); i++) {
+        if (!peint[i].titre) { [paintMenu addItem:[NSMenuItem separatorItem]]; continue; }
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:peint[i].titre
+                                                    action:@selector(paintOp:)
+                                             keyEquivalent:@""];
+        [mi setTag:peint[i].tag];
+        [mi setTarget:view];
+        [paintMenu addItem:mi];
+    }
+    [paintItem setSubmenu:paintMenu];
+    [mainMenu addItem:paintItem];
+
     NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
     NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Tools"];
     struct { NSString *title; NSInteger tag; NSString *key; } pals[] = {
@@ -489,6 +548,60 @@ static NSMenu *find_file_menu(void)
         if (mort) [mainMenu removeItemAtIndex:i];
     }
 
+    /* ═══ Les raccourcis d'HyperCard passent avant ceux du gabarit ═══════
+     *
+     * Le nib d'Xcode apporte un menu Format complet, et son « Bold » porte
+     * ⌘B — le raccourci d'HyperCard pour passer dans le fond. Deux articles
+     * pour une frappe : AppKit n'en sert qu'un, et ce n'était pas le nôtre.
+     * Le ⌘B d'HyperCard était donc mort depuis le premier jour, sans que
+     * rien ne le dise : un menu ne signale pas qu'on lui a volé sa touche.
+     *
+     * On tranche comme partout ailleurs ici — en faveur de la fidélité qui
+     * ne casse rien. Le raccourci revient à Background ; Bold reste dans son
+     * menu, cliquable, et HC a de toute façon sa propre voie pour le style
+     * (l'Info du champ, « set the textStyle of word 3 to bold »).
+     *
+     * La table dit QUI possède chaque frappe, et le balayage retire la
+     * touche à tous les autres — y compris à des articles que ce gabarit
+     * n'a pas encore et qu'une version future d'Xcode ajoutera. Traiter le
+     * seul cas connu aurait demandé de revenir ici à chaque collision, et
+     * une collision ne se voit pas : elle se constate des mois plus tard,
+     * quand quelqu'un remarque qu'une touche ne fait plus rien.
+     *
+     * Par ACTION et non par titre, comme les deux ménages plus haut : le
+     * titre change avec la langue du système. */
+    {
+        struct { NSString *touche; SEL proprietaire; } nos[] = {
+            { @"b", @selector(toggleBackground:) },   /* Background      */
+            { @"n", @selector(newCard:)          },   /* New Card        */
+            { @"d", @selector(ditherSelection:)  },   /* Dither          */
+            { @"f", @selector(findInStack:)      },   /* Find…           */
+            { @"o", @selector(openStack:)        },   /* Open Stack…     */
+            { @"s", @selector(saveStack:)        },   /* Save a Copy…    */
+            { @"m", @selector(togglePalette:)    },   /* Message         */
+            { @"1", @selector(togglePalette:)    },   /* Tools           */
+            { @"2", @selector(togglePalette:)    },   /* Patterns        */
+            { @"3", @selector(togglePalette:)    },   /* Line Size       */
+            { @"4", @selector(togglePalette:)    },   /* Brushes         */
+        };
+        for (unsigned k = 0; k < sizeof nos / sizeof *nos; k++) {
+            NSString *touche = nos[k].touche;
+            SEL proprietaire = nos[k].proprietaire;
+            hc_menus_parcourir(mainMenu, ^(NSMenuItem *it) {
+                if (![[[it keyEquivalent] lowercaseString] isEqualToString:touche])
+                    return;
+                /* ⌘⇧B est une autre frappe que ⌘B : on ne la revendique pas.
+                 * Et une équivalence sans ⌘ ne peut pas nous gêner. */
+                NSEventModifierFlags mods = [it keyEquivalentModifierMask];
+                if (!(mods & NSEventModifierFlagCommand)) return;
+                if (mods & (NSEventModifierFlagShift | NSEventModifierFlagOption |
+                            NSEventModifierFlagControl)) return;
+                if ([it action] == proprietaire) return;
+                [it setKeyEquivalent:@""];
+            });
+        }
+    }
+
     [self.window setReleasedWhenClosed:NO];
     [view applyStackSize];
 
@@ -499,13 +612,49 @@ static NSMenu *find_file_menu(void)
         [self loadStackAtPath:p];
     }
     gLancee = YES;
+
+    /* startUp : le tout premier message d'HyperCard, envoyé une fois, quand
+     * tout est en place.
+     *
+     * Ici et pas plus haut : le gestionnaire est du script, il peut vouloir
+     * ouvrir une pile, poser des menus, aller à une carte. Rien de cela n'a
+     * de sens tant que les menus ne sont pas construits et la fenêtre pas à
+     * l'écran. gLancee vient d'être posé, donc suspend/resume peuvent partir
+     * après lui — et jamais avant, ce qui aurait donné un « resume » comme
+     * premier message de la séance. */
+    hc_env_message("startUp");
 }
+/* suspend et resume : l'application passe à l'arrière-plan, puis revient.
+ *
+ * Dans HyperCard, c'était le départ vers une AUTRE application et le retour ;
+ * sous macOS c'est le même événement, le changement d'application actif.
+ *
+ * gLancee garde le premier resume : didBecomeActive: part au lancement, avant
+ * même que les menus existent, et une pile aurait reçu « resume » comme tout
+ * premier message de la séance — avant startUp, avant openStack. On ne revient
+ * pas d'un endroit où l'on n'est jamais allé. */
+- (void)applicationDidResignActive:(NSNotification *)note {
+    (void)note;
+    if (gLancee) hc_env_message("suspend");
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)note {
+    (void)note;
+    if (gLancee) hc_env_message("resume");
+}
+
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
     if (!flag) [self.window makeKeyAndOrderFront:nil];
     return YES;
 }
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
     (void)aNotification;
+
+    /* quit, AVANT tout démontage : c'est la dernière fois que les piles sont
+     * entières, et un gestionnaire y lit encore ses champs. Le pendant de
+     * startUp, et la dernière occasion qu'a une pile d'enregistrer ce qu'elle
+     * tient en mémoire. */
+    hc_env_message("quit");
 
     /* Les piles chargées par « start using » n'ont pas de fenêtre, donc rien
      * ne les libère à la fermeture. On les rend ici — et on les retire du

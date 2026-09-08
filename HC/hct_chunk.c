@@ -141,6 +141,60 @@ HctValeur hct_chunk_lit(const char *s, HctSorteChunk sorte,
     return hct_val_texte_n(s + b.deb, b.fin - b.deb);
 }
 
+/* ---------------------------------------------------------- suppression
+ *
+ * « delete item 2 of "a,b,c" » rend "a,c" — le SÉPARATEUR part avec le
+ * morceau. C'est ce qui distingue delete d'une écriture de vide, laquelle
+ * rend "a,,c" : l'un retire un élément de la liste, l'autre le vide sans
+ * l'ôter. Les confondre aurait été une corruption silencieuse de données,
+ * du genre qu'on ne voit qu'en relisant un fichier des semaines plus tard.
+ *
+ * LA RÈGLE, relevée sur dix-huit cas rendus par l'ancien interprète : on
+ * retire le morceau, plus UN séparateur — celui qui suit s'il en existe un,
+ * sinon celui qui précède. D'où :
+ *
+ *     item 1 de "a,b,c"  ->  "b,c"     (séparateur d'après)
+ *     item 3 de "a,b,c"  ->  "a,b"     (séparateur d'avant, il n'y en a plus après)
+ *     item 1 de "a"      ->  ""        (aucun des deux)
+ *     item 2 de "a,,c"   ->  "a,c"     (un morceau vide se retire comme un autre)
+ *
+ * CHAR fait exception : il n'a pas de séparateur, on retire les octets et
+ * c'est tout.
+ *
+ * Un rang hors limites ne change rien — « delete item 9 of "a,b,c" » rend
+ * "a,b,c". Étendre la chaîne pour y supprimer du vide n'aurait pas de sens,
+ * et l'écriture, qui l'étend, le fait pour une raison qui ne vaut pas ici. */
+HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
+                             int n, int n2, char delim)
+{
+    if (!s) return hct_val_vide();
+    int len = (int)strlen(s);
+
+    HctBornes b = hct_chunk_bornes(s, sorte, n, n2, delim);
+    if (!b.trouve) return hct_val_texte_n(s, len);
+
+    int deb = b.deb, fin = b.fin;
+    if (sorte != HCT_CH_CHAR) {
+        if (fin < len)      fin++;      /* le séparateur qui suit  */
+        else if (deb > 0)   deb--;      /* à défaut, celui d'avant */
+    }
+    if (deb < 0) deb = 0;
+    if (fin > len) fin = len;
+    if (fin < deb) fin = deb;
+
+    /* Ce qui reste : avant, puis après. Même façon d'allouer que
+     * hct_chunk_ecrit, juste en dessous. */
+    int taille = deb + (len - fin);
+    HctValeur r;
+    r.txt = malloc((size_t)taille + 1);
+    if (!r.txt) { r.len = 0; return r; }
+    memcpy(r.txt, s, (size_t)deb);
+    memcpy(r.txt + deb, s + fin, (size_t)(len - fin));
+    r.txt[taille] = '\0';
+    r.len = taille;
+    return r;
+}
+
 /* ------------------------------------------------------------ écriture */
 
 HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,

@@ -37,6 +37,7 @@ HctValeur hct_val_vide(void);
 HctValeur hct_val_texte(const char *s);
 HctValeur hct_val_texte_n(const char *s, int len);
 HctValeur hct_val_nombre(double x);
+HctValeur hct_val_calcul(double x);   /* idem, mais mis en forme */
 HctValeur hct_val_bool(int vrai);
 HctValeur hct_val_copie(HctValeur v);
 void      hct_val_libere(HctValeur *v);
@@ -59,6 +60,11 @@ int hct_vers_bool(const char *s, int *valide);
  * l'entier quand la valeur en est un, et jusqu'à six décimales sinon,
  * zéros de fin retirés. */
 int hct_ecrit_nombre(double x, char *out, int taille);
+int hct_ecrit_nombre_format(double x, char *out, int taille);
+
+/* Le gabarit de « the numberFormat ». Chaîne vide = le défaut d'HyperCard. */
+void        hct_format_nombre(const char *f);
+const char *hct_format_nombre_lu(void);
 
 /* --- comparaison ---
  *

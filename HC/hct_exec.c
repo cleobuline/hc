@@ -295,12 +295,18 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         char d = delim_de(x);
         int n1 = 0, n2 = 0;
         if (cible->ordinal) {
+            /* hct_rang_ordinal, et non une table recopiée ici.
+             *
+             * Celle qui s'y trouvait traduisait « any » par la VALEUR de
+             * l'énumération — treize — au lieu d'un rang tiré au sort :
+             * « put "X" into any item of "a,b,c" » écrivait dans l'item 13 et
+             * rendait « a,b,c,,,,,,,,,,X ». La lecture, elle, passait par
+             * hct_eval.c et tirait bien au hasard, si bien que les deux sens
+             * de la même tournure ne parlaient pas du même item.
+             *
+             * Trois copies de cette table existaient. Il en reste une. */
             int total = hct_chunk_compte(base.txt, cible->sorte, d);
-            switch (cible->ordinal) {
-                case HCT_ORD_DERNIER: n1 = total; break;
-                case HCT_ORD_MILIEU:  n1 = total > 0 ? total / 2 + 1 : 0; break;
-                default:              n1 = (int)cible->ordinal; break;
-            }
+            n1 = hct_rang_ordinal(cible->ordinal, total);
         } else {
             if (cible->nfils >= 2) {
                 HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
@@ -391,6 +397,59 @@ static int cible_connue(HctExec *x, const HctNoeud *c)
         return x->ctx.hote.resout != NULL && x->ctx.hote.ecrit_objet != NULL;
     }
     return 0;
+}
+
+/* « delete <morceau> » : retirer un morceau de sa cible, séparateur compris.
+ *
+ * Le pendant d'ecrit_dans pour la suppression, et NON un appel à celle-ci
+ * avec une valeur vide : les deux ne font pas la même chose.
+ *
+ *     delete item 2 of "a,b,c"          ->  "a,c"
+ *     put empty into item 2 of "a,b,c"  ->  "a,,c"
+ *
+ * L'un retire un élément de la liste, l'autre le vide sans l'ôter. Les
+ * confondre aurait été une corruption silencieuse — le genre qu'on découvre
+ * en relisant un fichier des semaines plus tard. Voir hct_chunk_supprime,
+ * dont les vingt-et-un cas sont relevés sur ce que rendait l'ancien
+ * interprète.
+ *
+ * Rend 0 si la cible n'est pas un morceau qu'on sache écrire ; l'appelant
+ * rend alors la ligne à l'hôte, qui sait supprimer bien d'autres choses —
+ * un bouton, une carte, un menu. */
+static int supprime_dans(HctExec *x, const HctNoeud *cible)
+{
+    if (!cible || cible->genre != HCTN_CHUNK || cible->nfils < 1) return 0;
+
+    const HctNoeud *sous = cible->fils[cible->nfils - 1];
+    if (!cible_connue(x, sous)) return 0;
+
+    HctValeur base = hct_evalue(&x->ctx, sous);
+    if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
+
+    char d = delim_de(x);
+    int n1 = 0, n2 = 0;
+    if (cible->ordinal) {
+        int total = hct_chunk_compte(base.txt, cible->sorte, d);
+        n1 = hct_rang_ordinal(cible->ordinal, total);
+    } else {
+        if (cible->nfils >= 2) {
+            HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
+            n1 = (int)hct_vers_nombre(a.txt);
+            hct_val_libere(&a);
+        }
+        if (cible->nfils >= 3) {
+            HctValeur b = hct_evalue(&x->ctx, cible->fils[1]);
+            n2 = (int)hct_vers_nombre(b.txt);
+            hct_val_libere(&b);
+        }
+    }
+    if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
+
+    HctValeur neuf = hct_chunk_supprime(base.txt, cible->sorte, n1, n2, d);
+    int ok = ecrit_dans(x, sous, neuf.txt, 0);
+    hct_val_libere(&neuf);
+    hct_val_libere(&base);
+    return ok;
 }
 
 /* Le vide vaut zéro, comme dans hct_eval.c : « put empty into total » suivi de
@@ -485,6 +544,18 @@ static void resultat_vide(HctExec *x)
 static void commande(HctExec *x, const HctNoeud *n)
 {
     const char *v = n->op ? n->op : "";
+
+    if (!strcasecmp(v, "delete")) {
+        /* Seulement la forme « morceau » ; delete d'un bouton, d'une carte
+         * ou d'un menu reste à l'hôte, qui a les objets. */
+        if (n->nfils >= 1 && supprime_dans(x, n->fils[0])) {
+            if (!x->ctx.erreur) resultat_vide(x);
+            return;
+        }
+        if (!x->ctx.erreur && x->ctx.hote.commande)
+            x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
+        return;
+    }
 
     if (!strcasecmp(v, "put")) {
         if (n->nfils < 1) return;
@@ -633,7 +704,7 @@ static void commande(HctExec *x, const HctNoeud *n)
                            hct_val_libere(&val); hct_val_libere(&act); return; }
             r = xc / xv;
         }
-        HctValeur res = hct_val_nombre(r);
+        HctValeur res = hct_val_calcul(r);
         int delegue = 0;
         if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);

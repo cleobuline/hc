@@ -28,6 +28,23 @@
 @property (strong, nonatomic) HCView       *view;
 @property (assign, nonatomic) int           cardCount;  /* cartes créées */
 
+/* Vrai dès que cette fenêtre a été au premier plan une première fois.
+ *
+ * suspendStack et resumeStack disent qu'on QUITTE une pile ouverte pour une
+ * autre, et qu'on y REVIENT. La toute première fois qu'une fenêtre passe au
+ * premier plan, on n'y revient pas : on l'ouvre, et c'est openStack qui le
+ * dit. Sans ce drapeau, chaque ouverture aurait envoyé resumeStack dans la
+ * foulée d'openStack, et une pile qui règle ses menus dans les deux les
+ * aurait posés deux fois. */
+@property (assign, nonatomic) BOOL          dejaVue;
+
+/* Vrai à partir de windowWillClose:. Fermer une fenêtre lui fait perdre le
+ * premier plan, ce qui enverrait suspendStack juste avant closeStack. */
+@property (assign, nonatomic) BOOL          enFermeture;
+
+/* Le pendant de dejaVue pour les messages système du cycle de vie. */
+- (void)envoiePile:(const char *)message;
+
 /* Le document actif : celui dont la fenêtre est au premier plan. C'est lui
  * que visent les commandes de menu et les scripts. */
 + (HCDocument *)current;

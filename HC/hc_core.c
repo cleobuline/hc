@@ -502,6 +502,18 @@ static int g_ecran_verrouille = 0;
  * quand même, comme dans HyperCard. */
 static int g_messages_verrouilles = 0;
 
+/* La table des réglages d'environnement — userLevel, dragSpeed, blindTyping,
+ * powerKeys, lockRecent, textArrows — vit bien plus bas, avec truthy et
+ * as_num dont elle se sert. Sa LECTURE est demandée avant, par les deux
+ * chemins de « the xxx ». D'où cette déclaration anticipée. */
+static int reglage_lit(const char *nom, char *out, int outlen);
+
+/* Les compteurs de l'ancien interprète — définis avec le relevé du bilan,
+ * bien plus bas, mais appelés par du code qui le précède. */
+static void v1_compte(const char *quoi, const char *porte);
+static const char *v1_porte(const char *nom);
+static const char *g_v1_porte = "?";
+
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
@@ -982,6 +994,25 @@ static void v3_dis_les_fautes(Object *o, const HctNoeud *racine)
     v3_dis_les_fautes_r(o, racine, &reste);
 }
 
+/* Les fautes qui COÛTENT quelque chose : celles qui sont dans un
+ * gestionnaire, et qui le privent donc de la v3.
+ *
+ * Depuis qu'une bannière hors gestionnaire n'empêche plus rien, la signaler
+ * serait du bruit : le cadre de « ∞ » des piles d'époque produit des dizaines
+ * de « caractère inattendu » qui ne changent rien à l'exécution. Mais se
+ * taire sur TOUT serait pire — une coquille dans un gestionnaire lui coûte
+ * l'exécuteur v3, et l'auteur doit l'apprendre.
+ *
+ * On descend donc par gestionnaire, et on laisse le décor tranquille. */
+static void v3_dis_les_fautes_utiles(Object *o, const HctNoeud *racine)
+{
+    if (!racine) return;
+    int reste = 20;
+    for (int i = 0; i < racine->nfils; i++)
+        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE)
+            v3_dis_les_fautes_r(o, racine->fils[i], &reste);
+}
+
 /* L'arbre du script, analysé à la première demande et gardé ensuite.
  *
  * Rend NULL si le script est vide, ou si l'analyse a signalé la moindre
@@ -1012,26 +1043,51 @@ static const HctNoeud *script_arbre(Object *o)
      * la porte — trouve_gestionnaire l'écartera, et ce message-là repartira à
      * l'ancien interpréteur.
      *
-     * Ce qu'on exige encore, c'est que la STRUCTURE tienne : chaque enfant de
-     * la racine doit être un gestionnaire. Une faute qui déborde de son
-     * gestionnaire laisse des nœuds nus à ce niveau, signe qu'un « end » a été
-     * mal attribué et que le découpage n'est plus fiable — là, on refuse tout.
+     * CE QU'ON EXIGE : qu'il reste au moins un gestionnaire. Rien de plus.
+     * Ni que le lexeur soit propre, ni que tout enfant de la racine soit un
+     * gestionnaire — deux conditions posées ici et qui condamnaient des
+     * scripts parfaitement utilisables.
      *
-     * Ce que ça change en pratique : une coquille dans une fonction
-     * inutilisée — il en traîne dans les piles réelles — ne prive plus les
-     * trente autres gestionnaires du script de la v3. */
-    int structure_ok = (racine != NULL);
+     * POURQUOI ELLES SAUTENT. Les piles d'époque s'ouvrent presque toutes sur
+     * une bannière — un cadre de « ∞ », le nom du programme, la liste de ses
+     * gestionnaires — écrite hors de tout « on … end ». HyperCard l'ignorait :
+     * seuls les blocs on/function comptaient, le reste était du décor. Nous,
+     * on refusait le script ENTIER. Mesuré sur Graph Maker 2.2 : onze lignes
+     * de bannière coûtaient 374 lignes exécutées par la v1 et près de 500
+     * réanalyses, pour un script que la v3 savait parfaitement lire dès qu'on
+     * commentait l'en-tête.
+     *
+     * CE QUI PROTÈGE ENCORE, et qui suffit : trouve_gestionnaire écarte, un
+     * par un, les gestionnaires qui portent une faute. Contrôle plus fin que
+     * celui qu'on retire, puisqu'il examine le gestionnaire qu'on s'apprête à
+     * exécuter plutôt que son voisinage.
+     *
+     * Le cas qu'on redoutait — un « end » manquant qui fait avaler le
+     * gestionnaire suivant — ne laisse d'ailleurs PAS de nœuds nus à la
+     * racine : il produit un gestionnaire fautif, que le contrôle par
+     * gestionnaire écarte, et l'avalé n'est simplement pas trouvé. Il repart
+     * à l'ancien interpréteur, ce qui est exactement ce qu'on veut. Le veto
+     * global ne rattrapait donc rien que l'autre ne rattrape déjà — vérifié
+     * en construisant le cas.
+     *
+     * Une faute de LEXIQUE suit la même règle : dans un gestionnaire elle le
+     * rend fautif et il est écarté ; dans la bannière elle ne regarde
+     * personne. */
+    int gestionnaires = 0;
     for (int i = 0; racine && i < racine->nfils; i++)
-        if (racine->fils[i]->genre != HCTN_GESTIONNAIRE) { structure_ok = 0; break; }
+        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE) gestionnaires++;
 
-    if (sain && racine && (a.nerreurs == 0 || structure_ok)) {
+    if (racine && gestionnaires > 0) {
         o->arbre = racine;
         o->arbre_sain = 1;
-        if (a.nerreurs) {
-            /* On le dit quand même : la faute est réelle, et son gestionnaire
-             * n'aura pas la v3. */
+        /* Sur a.nerreurs OU sur une faute de lexique : le lexeur pose des
+         * jetons d'erreur que l'analyseur ne compte pas toujours, et se taire
+         * sur eux ferait disparaître « caractère inattendu » d'un script qui
+         * en contient un — le diagnostic était rendu par le refus, et le
+         * refus n'a plus lieu. */
+        if (a.nerreurs || !sain) {
             o->arbre_faute_ligne = 0;
-            v3_dis_les_fautes(o, racine);
+            v3_dis_les_fautes_utiles(o, racine);
         }
         return racine;
     }
@@ -3138,8 +3194,9 @@ static int runs_split_at(struct RunList *rl, int pos)
  * comme en anglais : une pile écrite ici doit rester lisible par qui la
  * relira. Renvoie HC_COLOR_INHERIT si le mot n'est pas une couleur — la plage
  * reste alors muette sur cet attribut, plutôt que de virer au noir. */
-static int color_from_name(const char *v)
+static int color_from_name_a(const char *v, int *alpha)
 {
+    if (alpha) *alpha = 255;
     if (!v || !*v) return HC_COLOR_INHERIT;
     while (*v == ' ' || *v == '\t') v++;
 
@@ -3157,6 +3214,17 @@ static int color_from_name(const char *v)
         { "brown",   0x804000 }, { "marron",  0x804000 },
         { "pink",    0xFFC0CB }, { "rose",    0xFFC0CB },
         { "gray",    0x808080 }, { "grey",    0x808080 }, { "gris", 0x808080 },
+        /* Ajoutées quand la table est devenue celle de la PEINTURE aussi :
+         * on nomme spontanément plus de couleurs quand on dessine que quand
+         * on colore trois mots dans un champ. */
+        { "turquoise", 0x40E0D0 },
+        { "olive",     0x808000 },
+        { "navy",      0x000080 }, { "marine",  0x000080 },
+        { "gold",      0xFFD700 }, { "or",      0xFFD700 },
+        { "silver",    0xC0C0C0 }, { "argent",  0xC0C0C0 },
+        { "beige",     0xF5F5DC },
+        { "indigo",    0x4B0082 },
+        { "lime",      0x00FF00 },
     };
     for (unsigned i = 0; i < sizeof table / sizeof *table; i++)
         if (ci_equal(v, table[i].nom)) return table[i].rgb;
@@ -3164,21 +3232,52 @@ static int color_from_name(const char *v)
     if (*v == '#') return (int)strtol(v + 1, NULL, 16);
 
     /* « 255,128,0 » : la forme qu'emploient les scripts qui calculent leurs
-     * couleurs, et celle que rend « the textColor ». */
+     * couleurs, et celle que rend « the textColor ».
+     *
+     * « 255,128,0,64 » y ajoute l'opacité. Un quatrième nombre était jusqu'ici
+     * lu puis JETÉ en silence : sscanf s'arrêtait à trois et rendait 3, donc
+     * la conversion réussissait et l'on peignait opaque sans que rien ne le
+     * dise. C'est le pire des cas — un script qui a l'air de marcher. */
     if (strchr(v, ',')) {
-        int r = 0, g = 0, b = 0;
-        if (sscanf(v, "%d , %d , %d", &r, &g, &b) == 3) {
+        int r = 0, g = 0, b = 0, a = 255;
+        int n = sscanf(v, "%d , %d , %d , %d", &r, &g, &b, &a);
+        if (n >= 3) {
             if (r < 0)   r = 0;
             if (r > 255) r = 255;
             if (g < 0)   g = 0;
             if (g > 255) g = 255;
             if (b < 0)   b = 0;
             if (b > 255) b = 255;
+            if (n >= 4) {
+                if (a < 0)   a = 0;
+                if (a > 255) a = 255;
+                if (alpha) *alpha = a;
+            }
             return (r << 16) | (g << 8) | b;
         }
     }
     if (isdigit((unsigned char)*v)) return (int)strtol(v, NULL, 0);
     return HC_COLOR_INHERIT;
+}
+
+/* La forme sans opacité, pour tout ce qui n'en veut pas : les plages de
+ * style d'un champ, qui n'ont pas de canal alpha. */
+static int color_from_name(const char *v) { return color_from_name_a(v, NULL); }
+
+/* Le même vocabulaire, ouvert à l'hôte.
+ *
+ * « set the paintColor to "vert" » doit comprendre exactement ce que comprend
+ * « set the textColor to "vert" ». Deux tables de couleurs dans le même
+ * programme, c'est la garantie qu'un jour l'une saura dire « turquoise » et
+ * pas l'autre. */
+int hc_color_from_name(const char *v) { return color_from_name(v); }
+
+/* Avec l'opacité : `alpha` reçoit 0..255, et 255 quand la couleur n'en
+ * mentionne pas. Seule la PEINTURE s'en sert — un calque a un canal alpha,
+ * une plage de style de champ n'en a pas. */
+int hc_color_from_name_alpha(const char *v, int *alpha)
+{
+    return color_from_name_a(v, alpha);
 }
 
 /* Pose un attribut sur [start, start+len) SANS toucher aux deux autres.
@@ -3464,6 +3563,7 @@ typedef struct {
     char *article[HC_ARTICLES_MAX];   /* le texte affiché             */
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
+    char  coche[HC_ARTICLES_MAX];     /* la marque à gauche du nom    */
     int   n;
     int   actif_menu;
 } HcMenuBarre;
@@ -3566,7 +3666,7 @@ static void menu_articles(int i, const char *articles, const char *messages)
             m->message[j] = (j < nm) ? msg[j] : NULL;
         for (int j = m->n; j < nm; j++) free(msg[j]);   /* liste plus longue */
     }
-    for (int j = 0; j < m->n; j++) m->actif[j] = 1;
+    for (int j = 0; j < m->n; j++) { m->actif[j] = 1; m->coche[j] = 0; }
     menus_prevenir();
 }
 
@@ -3591,6 +3691,9 @@ const char *hc_menu_article(int i, int j)
 int         hc_menu_article_actif(int i, int j)
 { return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
          ? g_menus[i].actif[j] : 0; }
+int         hc_menu_article_coche(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? g_menus[i].coche[j] : 0; }
 
 static int container_set_body(const char *ref, const char *val, int mode);
 
@@ -4040,6 +4143,7 @@ static void emit_datetime(struct tm *tm, int fmt, char *out, int outlen)
 /* Renvoie 1 si `t` était bien un appel de fonction. */
 static int call_function_body(const char *t, char *out, int outlen)
 {
+    v1_compte("v1 fonction", g_v1_porte);
     const char *s = skip_spaces(t);
     if (ci_word(s, "the")) s = skip_spaces(s + 3);
 
@@ -4086,6 +4190,28 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "itemdelimiter")) {
             snprintf(out, outlen, "%c", g_item_delim); return 1;
         }
+        /* Le gabarit vide se rend tel quel : c'est ce que HyperCard rendait
+         * avant qu'on y touche, et « if the numberFormat is empty » doit
+         * pouvoir le constater. */
+        if (ci_equal(name, "numberformat")) {
+            snprintf(out, outlen, "%s", hct_format_nombre_lu()); return 1;
+        }
+        /* Les deux verrous se POSAIENT déjà — « lock screen », « set the
+         * lockScreen to true » — mais ne se relisaient pas : « put the
+         * lockScreen » rendait le mot « lockScreen », et personne ne s'en
+         * apercevait puisque rien ne se plaignait. Depuis que « the » ne ment
+         * plus, la même ligne lève une erreur ; la vraie réponse était de
+         * toute façon due. Une propriété qu'on peut poser et pas relire est
+         * une propriété à moitié. */
+        if (ci_equal(name, "lockscreen")) {
+            snprintf(out, outlen, "%s", g_ecran_verrouille ? "true" : "false");
+            return 1;
+        }
+        if (ci_equal(name, "lockmessages")) {
+            snprintf(out, outlen, "%s", g_messages_verrouilles ? "true" : "false");
+            return 1;
+        }
+        if (reglage_lit(name, out, outlen)) return 1;
         /* the tool : l'outil courant, sous la forme « brush tool ». C'est
          * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
          * celui d'HyperCard au repos. */
@@ -4676,6 +4802,7 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
 
 static void term_value_body(const char *t, char *out, int outlen)
 {
+    v1_compte("v1 terme", g_v1_porte);
     t = skip_spaces(t);
     out[0] = '\0';
     if (!*t) return;
@@ -5190,6 +5317,153 @@ static int truthy(const char *s)
     if (as_num(s, &d)) return d != 0;
     return ci_equal(s, "true");
 }
+
+/* ═══ Les propriétés globales que le NOYAU tient lui-même ══════════════
+ *
+ * itemDelimiter découpe les items, numberFormat met en forme les calculs,
+ * lockScreen retient l'affichage : ce sont des réglages de l'interprète, pas
+ * de l'interface. L'hôte n'a rien à en savoir, et le lui passer l'obligerait
+ * à nous les rendre ensuite.
+ *
+ * UNE SEULE FOIS, ici. Le même bloc était recopié dans le chemin v3 et dans
+ * le chemin v1 — deux copies à modifier ensemble, donc deux copies vouées à
+ * diverger, et l'ajout suivant n'aurait été fait que dans l'une des deux.
+ *
+ * Rend 1 si la propriété a été prise en charge, 0 si elle regarde l'hôte. */
+/* ═══ Les réglages d'environnement ═════════════════════════════════════
+ *
+ * userLevel, dragSpeed, blindTyping, powerKeys, lockRecent, textArrows : six
+ * réglages qu'une pile pose dans son openStack et relit ensuite. Ils se
+ * ressemblent tous — un nom, un type, une valeur, des bornes —, ce qui est
+ * exactement la raison d'en faire une TABLE et non six paires de branches.
+ * Six paires, c'est douze endroits à tenir d'accord, et la septième propriété
+ * n'aurait été ajoutée qu'à l'un des deux.
+ *
+ * CE QU'ILS FONT, ET CE QU'ILS NE FONT PAS. Il faut le dire, parce qu'un
+ * réglage qu'on peut poser et relire donne l'impression d'agir.
+ *
+ * Ils sont RETENUS et RELUS fidèlement : « set the userLevel to 3 » puis
+ * « if the userLevel < 4 » se comportent comme la pile l'attend, et c'est
+ * déjà tout autre chose que le silence d'avant, où poser ne faisait rien et
+ * relire rendait le mot « userLevel ».
+ *
+ * Ils ne sont pas encore CONSULTÉS par l'application. HC n'a pas de niveaux
+ * d'utilisateur — tout y est toujours accessible, ce qui équivaut au niveau
+ * 5 —, son « drag » est instantané, et il n'a pas de liste de cartes
+ * récentes. Une pile qui compterait sur « set the userLevel to 1 » pour se
+ * protéger de l'édition se tromperait donc. C'est écrit ici plutôt que tu
+ * l'apprennes à tes dépens.
+ *
+ * Les bornes servent : « set the userLevel to 47 » se refuse au lieu de
+ * ranger 47. Un réglage hors de son domaine ne veut rien dire, et le laisser
+ * passer reporte la surprise à la lecture. */
+typedef enum { REG_BOOL, REG_ENTIER } HcTypeReglage;
+
+static struct {
+    const char   *nom;       /* en minuscules, pour la comparaison    */
+    const char   *affiche;   /* tel qu'HyperCard l'écrit, pour la trace */
+    HcTypeReglage type;
+    int           valeur;
+    int           mini, maxi;
+} G_REGLAGES[] = {
+    /* 5 par défaut : HC n'impose aucune restriction, et annoncer un niveau
+     * plus bas que ce qu'on autorise serait le mensonge inverse. */
+    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5     },
+    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767 },
+    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1     },
+    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1     },
+    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1     },
+    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1     },
+};
+#define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
+
+static int reglage_index(const char *nom)
+{
+    for (int i = 0; i < HC_NREGLAGES; i++)
+        if (ci_equal(nom, G_REGLAGES[i].nom)) return i;
+    return -1;
+}
+
+/* Poser. Rend 1 si le nom en est un — même quand la valeur est refusée :
+ * la propriété a bien été reconnue, c'est la valeur qui ne convient pas, et
+ * la passer ensuite à l'hôte l'induirait en erreur. */
+static int reglage_pose(const char *prop, const char *val)
+{
+    int i = reglage_index(prop);
+    if (i < 0) return 0;
+
+    int v;
+    if (G_REGLAGES[i].type == REG_BOOL) {
+        v = truthy(val) ? 1 : 0;
+    } else {
+        double d;
+        if (!as_num(val, &d)) {
+            emit(HC_ERR, "   !! %s attend un nombre, reçu « %s »",
+                 G_REGLAGES[i].affiche, val);
+            return 1;
+        }
+        v = (int)d;
+        if (v < G_REGLAGES[i].mini || v > G_REGLAGES[i].maxi) {
+            emit(HC_ERR, "   !! %s va de %d à %d, reçu %d",
+                 G_REGLAGES[i].affiche, G_REGLAGES[i].mini,
+                 G_REGLAGES[i].maxi, v);
+            return 1;
+        }
+    }
+    G_REGLAGES[i].valeur = v;
+    emit(HC_INFO, "   → %s ← %d", G_REGLAGES[i].affiche, v);
+    return 1;
+}
+
+/* Relire. Rend 1 si le nom en est un ; `out` reçoit « true »/« false » pour
+ * un booléen, le nombre sinon — les deux formes qu'HyperTalk sait comparer. */
+static int reglage_lit(const char *nom, char *out, int outlen)
+{
+    int i = reglage_index(nom);
+    if (i < 0) return 0;
+    if (G_REGLAGES[i].type == REG_BOOL)
+        snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].valeur ? "true" : "false");
+    else
+        snprintf(out, (size_t)outlen, "%d", G_REGLAGES[i].valeur);
+    return 1;
+}
+
+static int prop_globale_noyau(const char *prop, const char *val)
+{
+    /* Une chaîne vide ou de plusieurs caractères ramène à la virgule —
+     * HyperCard ne retenait qu'un caractère. */
+    if (ci_equal(prop, "itemdelimiter")) {
+        g_item_delim = val[0] ? val[0] : ',';
+        emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+        return 1;
+    }
+
+    /* « set the numberFormat to "0.00" ». Le gabarit vit dans hct_val.c, avec
+     * l'écriture des nombres qu'il gouverne. */
+    if (ci_equal(prop, "numberformat")) {
+        hct_format_nombre(val);
+        emit(HC_INFO, "   → numberFormat ← \"%s\"", hct_format_nombre_lu());
+        return 1;
+    }
+
+    /* Les six réglages d'environnement, en une table — voir plus haut. */
+    if (reglage_pose(prop, val)) return 1;
+
+    /* lockScreen : « set lockScreen to true » est l'exact synonyme de « lock
+     * screen », et notify_field s'appuie dessus pour ne pas redessiner mille
+     * fois pour rien.
+     *
+     * Rend 0 : l'hôte doit le voir passer aussi — HCview s'en sert pour
+     * retenir setNeedsDisplay:. C'est la seule des trois à être partagée. */
+    if (ci_equal(prop, "lockscreen")) {
+        g_ecran_verrouille = truthy(val);
+        if (!g_ecran_verrouille) verrou_reveille();
+        return 0;
+    }
+
+    return 0;
+}
+
 
 /* ---- tests de type pour « is a[n] <type> » ----
    Le guide (chapitre 7) donne : number, integer, point, rect, date, logical. */
@@ -5903,6 +6177,8 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
  * besoin pour « there is a menu "X" ». */
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
+static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
+                            const char *prop, HctValeur *out);
 
 static int g_v3_recours_prof = 0;
 
@@ -5910,6 +6186,11 @@ static void v3_note(const char *quoi, const char *nom);
 
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
+    /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
+     * entière. C'est par ici que term_value et call_function, le vieux
+     * moteur d'expressions, sont encore atteints. Sans cette porte ils
+     * comptaient sous « ? », et c'était justement le plus gros total. */
+    const char *sauve_porte = v1_porte("recours expr");
     (void)d;
 
     /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
@@ -5949,7 +6230,48 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         }
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
+    }
+
+    /* Les propriétés d'un menu et de ses articles : « the checkMark of
+     * menuItem 2 of menu "X" », « the name of menu 1 ». Comme pour
+     * « there is a menu », resout ne peut rien pour elles.
+     *
+     * Sans contexte — v3_recours n'en reçoit pas —, les deux résolveurs
+     * lisent le désignateur littéral dans le jeton, ce qui couvre la forme
+     * qu'emploient les piles. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
+        (n->fils[1]->typeobj == HCT_OBJ_MENU ||
+         n->fils[1]->typeobj == HCT_OBJ_MENUITEM)) {
+        char prop[64];
+        hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+        if (v3_menu_prop_lit(NULL, n->fils[1], prop, out)) return 1;
+    }
+
+    /* « the number of menuItems of menu "X" » : un comptage, dont l'arbre
+     * emboîte deux « of ». */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OF &&
+        n->fils[1]->nfils >= 2) {
+        char quoi[32], sorte[32];
+        hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+        const HctNoeud *dedans = n->fils[1];
+        if (ci_equal(quoi, "number") &&
+            dedans->fils[0] && dedans->fils[0]->genre == HCTN_IDENT &&
+            dedans->fils[1] && dedans->fils[1]->genre == HCTN_OBJET &&
+            dedans->fils[1]->typeobj == HCT_OBJ_MENU) {
+            hct_texte(&dedans->fils[0]->jeton, sorte, sizeof sorte);
+            if (ci_equal(sorte, "menuitems") || ci_equal(sorte, "menuitem")) {
+                int i = v3_menu_index(NULL, dedans->fils[1]);
+                char b[24];
+                snprintf(b, sizeof b, "%d", i >= 0 ? g_menus[i].n : 0);
+                *out = hct_val_texte(b);
+                return 1;
+            }
+        }
     }
 
     /* Un comptage d'objets se fait ici, sans repasser par le texte. Avant
@@ -5986,7 +6308,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
     if (g_v3_recours_prof > 64) {
         emit(HC_ERR, "   !! évaluation trop imbriquée");
         *out = hct_val_texte("");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Les tampons vont dans l'ARÈNE, pas sur la pile.
@@ -6091,6 +6413,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 
     *out = hct_val_texte(val);
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
     return 1;
 }
 /* Fonction définie dans une pile — « function calData … ».
@@ -6141,6 +6464,9 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush",
+    "cursor", "editBkgnd",
+    "foreColor", "backColor", "foregroundColor", "backgroundColor",
+    "paintColor", "paintBackColor", "inkColor",
     NULL
 };
 
@@ -6294,12 +6620,71 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         *out = hct_val_texte(petit);
         return 1;
     }
+
+    /* Les réglages que le noyau tient — voir prop_globale_noyau, qui les
+     * POSE. Servis ici pour qu'ils soient rendus par l'exécuteur v3 et non
+     * par un retour vers l'ancien : debug bilan reste (aucun). Le miroir de
+     * l'écriture doit vivre du même côté qu'elle. */
+    if (ci_equal(nom, "numberformat")) {
+        *out = hct_val_texte(hct_format_nombre_lu()); return 1;
+    }
+    if (ci_equal(nom, "lockscreen")) {
+        *out = hct_val_texte(g_ecran_verrouille ? "true" : "false"); return 1;
+    }
+    if (ci_equal(nom, "lockmessages")) {
+        *out = hct_val_texte(g_messages_verrouilles ? "true" : "false"); return 1;
+    }
+    if (reglage_lit(nom, buf, HC_VAL)) { *out = hct_val_texte(buf); return 1; }
     return 0;
+}
+
+/* ═══ Les noms dont l'ancien moteur n'a jamais rien su faire ═══════════
+ *
+ * « setFont geneva,10,center,bold » passe quatre mots nus en arguments.
+ * Chacun est évalué, donc cherché comme fonction, donc confié à term_value —
+ * qui ne le connaît pas et rend le mot lui-même. L'appel n'apprend rien, et
+ * il recommence à chaque tour de boucle : dix-huit fois « geneva », seize
+ * fois « plain », huit fois « left » sur une seule séance de Graph Maker.
+ *
+ * La réponse ne peut pas changer. Ce que term_value sait servir est fixé à
+ * la compilation — des fonctions intégrées et des propriétés —, jamais des
+ * noms que la pile inventerait en route : ceux-là sont servis APRÈS, par
+ * v3_fonction_pile, et n'arrivent donc jamais ici. Un nom qui a échoué une
+ * fois échouera toujours ; on le note et on ne redemande plus.
+ *
+ * On ne note QUE l'écho — le cas où term_value rend le mot qu'on lui a
+ * donné. Une réponse vide légitime, « the selection » quand rien n'est
+ * sélectionné, ne ressemble pas à un écho et n'est pas mise en cache.
+ *
+ * Table courte et bornée : les mots nus d'un script se comptent en dizaines,
+ * et déborder ne coûte que de refaire l'emprunt comme avant. */
+#define V3_MUETS_MAX 64
+static char g_muets[V3_MUETS_MAX][40];
+static int  g_nmuets = 0;
+
+static int v1_est_muet(const char *nom)
+{
+    for (int i = 0; i < g_nmuets; i++)
+        if (ci_equal(g_muets[i], nom)) return 1;
+    return 0;
+}
+
+static void v1_note_muet(const char *nom)
+{
+    if (!nom || !*nom) return;
+    if ((int)strlen(nom) >= (int)sizeof g_muets[0]) return;   /* trop long */
+    if (g_nmuets >= V3_MUETS_MAX) return;
+    if (v1_est_muet(nom)) return;
+    snprintf(g_muets[g_nmuets], sizeof g_muets[0], "%s", nom);
+    g_nmuets++;
 }
 
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
+    /* L'autre porte sur l'ancien moteur d'expressions : les FONCTIONS que la
+     * v3 ne calcule pas elle-même. C'est ce qui restait sous « ? ». */
+    const char *sauve_porte = v1_porte("fonction v3");
     (void)d;
     /* itemDelimiter : demandé avant chaque découpage en items. On le sert
      * directement, c'est une globale de hc_core.c. Avant toute allocation :
@@ -6307,7 +6692,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     if (ci_equal(nom, "itemDelimiter")) {
         char sep[2] = { g_item_delim, 0 };
         *out = hct_val_texte(sep);
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Les fonctions du monde, servies sans fabriquer ni relexer de chaîne.
@@ -6322,7 +6707,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             const char *v = host_global(nom);
             if (!v) break;          /* l'hôte l'ignore : chemin normal */
             *out = hct_val_texte(v);
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
 
         /* the result, the date, the selection... la même liste que
@@ -6342,7 +6727,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
         int i = (int)hct_vers_nombre(args[0].txt);
         *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
 
     /* Le tampon vient de l'ARÈNE, plus de la pile.
@@ -6372,42 +6757,68 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
         buf[0] = '\0';
+        if (v1_est_muet(nom)) {
+            /* Déjà demandé, déjà sans réponse : on passe directement à la
+             * suite, qui est le vrai chemin pour ce nom-là. */
+            if (v3_fonction_pile(nom, args, 0)) {
+                *out = hct_val_texte(g_result);
+                ARENA_FREE;
+                { g_v1_porte = sauve_porte; } return 1;
+            }
+            ARENA_FREE;
+            { g_v1_porte = sauve_porte; } return 0;
+        }
+        /* La porte prend le NOM de la fonction demandée, le temps de
+         * l'emprunt. « v1 fonction 2 » ne disait pas laquelle porter ;
+         * « v1 fonction the destination » le dit. Un compteur qui ne nomme
+         * pas son sujet oblige à retrouver à la main ce qu'il vient de
+         * mesurer, et c'est justement ce qu'on voulait éviter. */
+        const char *sauve_nom = v1_porte(nom);
         term_value(appel, buf, HC_VAL);
+        g_v1_porte = sauve_nom;
         if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
             v3_note("fonction", nom);      /* term_value a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
+        v1_note_muet(nom);       /* l'écho : inutile de redemander */
         if (v3_fonction_pile(nom, args, 0)) {
             *out = hct_val_texte(g_result);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
         ARENA_FREE;
-        return 0;
+        { g_v1_porte = sauve_porte; } return 0;
     }
     /* Fonctions du monde à un argument NUMÉRIQUE — param(n) et consorts.
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
      * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt)) {
+    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom)) {
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
-        if (call_function(appel, buf, HC_VAL)) {
+        /* Même raison qu'au-dessus : la porte nomme la fonction demandée,
+         * pour que le relevé désigne ce qu'il y a à porter. */
+        const char *sauve_n2 = v1_porte(nom);
+        int fait_v1 = call_function(appel, buf, HC_VAL);
+        g_v1_porte = sauve_n2;
+        if (fait_v1) {
             v3_note("fonction", nom);      /* call_function a fourni la réponse */
             *out = hct_val_texte(buf);
             ARENA_FREE;
-            return 1;
+            { g_v1_porte = sauve_porte; } return 1;
         }
+        v1_note_muet(nom);
     }
     if (v3_fonction_pile(nom, args, nargs)) {
         *out = hct_val_texte(g_result);
         ARENA_FREE;
-        return 1;
+        { g_v1_porte = sauve_porte; } return 1;
     }
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
     return 0;
 }
 
@@ -6542,6 +6953,9 @@ static int v3_respire(void *d)
 /* --- l'hôte assemblé ------------------------------------------------- */
 
 static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
+/* Une ligne isolée passée à la v3 — voir sa définition, tout en bas. Déclarée
+ * ici parce que hc_do_menu s'en sert bien avant. */
+static int v3_do_ligne(const char *line);
 
 /* --- recours pour les COMMANDES ---
  *
@@ -6569,13 +6983,60 @@ static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
  * hc_v3_bilan() vide le relevé sur la console. Coût : une comparaison de
  * chaînes par retour, négligeable devant l'exec_stmt qui suit. */
 #define V3_RELEVE_MAX 256
-struct V3Releve { char nom[48]; long n; };
+/* 64 et non 48 : un intitulé accentué suivi d'un nom de porte débordait, et
+ * snprintf coupait au milieu d'un caractère UTF-8 — la ligne de bilan sortait
+ * alors en octets invalides. Les intitulés ont maigri aussi, ci-dessous. */
+struct V3Releve { char nom[64]; long n; };
 static struct V3Releve g_releve[V3_RELEVE_MAX];
 static int g_nreleve = 0;
 
+/* ═══ Ce que l'ANCIEN interprète exécute encore, et par quelle porte ═════
+ *
+ * Le relevé ci-dessus compte les RECOURS : les fois où la v3 renonce et rend
+ * la main. « (aucun) » veut donc dire « la v3 n'a jamais abandonné » — et
+ * PAS « l'ancien interprète ne tourne plus ». Ce sont deux choses
+ * différentes, et les confondre m'a fait croire le chantier plus avancé
+ * qu'il ne l'est : cinq commandes v3 appellent eval_checked de l'intérieur,
+ * sans que rien ne le signale, et la boîte de message passe entièrement par
+ * exec_line_body.
+ *
+ * Ces deux compteurs-ci mesurent donc l'EXÉCUTION RÉELLE, quelle qu'en soit
+ * l'origine. Ils répondent à la seule question qui décide de l'élagage :
+ * qu'est-ce qui appellerait encore le code qu'on veut supprimer ?
+ *
+ * La PORTE dit d'où l'on vient. Elle est posée par les points d'entrée —
+ * la boîte de message, les menus du noyau, le recours, et chacune des
+ * commandes v3 qui emprunte l'évaluateur v1 — et rendue à sa valeur
+ * précédente en sortant, parce que ces chemins s'imbriquent : un « do »
+ * dans un gestionnaire appelé depuis un article de menu en traverse trois. */
+static struct V3Releve g_v1[V3_RELEVE_MAX];
+static int  g_nv1 = 0;
+static void v1_compte(const char *quoi, const char *porte)
+{
+    char cle[64];
+    snprintf(cle, sizeof cle, "%s %s", quoi, porte && *porte ? porte : "?");
+    for (int i = 0; i < g_nv1; i++)
+        if (!strcmp(g_v1[i].nom, cle)) { g_v1[i].n++; return; }
+    if (g_nv1 >= V3_RELEVE_MAX) return;
+    snprintf(g_v1[g_nv1].nom, sizeof g_v1[0].nom, "%s", cle);
+    g_v1[g_nv1].n = 1;
+    g_nv1++;
+}
+
+/* Poser la porte et la rendre. À employer par paires, dans la même fonction :
+ *     const char *sauve = v1_porte("msg");
+ *     ...
+ *     g_v1_porte = sauve; */
+static const char *v1_porte(const char *nom)
+{
+    const char *avant = g_v1_porte;
+    g_v1_porte = nom;
+    return avant;
+}
+
 static void v3_note(const char *quoi, const char *nom)
 {
-    char cle[48];
+    char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, nom && *nom ? nom : "?");
     for (int i = 0; i < g_nreleve; i++)
         if (!strcmp(g_releve[i].nom, cle)) { g_releve[i].n++; return; }
@@ -6606,10 +7067,12 @@ static void bilan_ligne(const char *fmt, ...)
     fprintf(stderr, "[v3] %s\n", buf);
 }
 
+static void bilan_v1(void);
+
 void hc_v3_bilan(void)
 {
     bilan_ligne("— retours de la v3 vers l'ancien interpréteur —");
-    if (!g_nreleve) { bilan_ligne("   (aucun)"); return; }
+    if (!g_nreleve) { bilan_ligne("   (aucun)"); bilan_v1(); return; }
     /* tri décroissant, en place : la liste est courte */
     for (int i = 0; i < g_nreleve; i++)
         for (int j = i + 1; j < g_nreleve; j++)
@@ -6619,9 +7082,29 @@ void hc_v3_bilan(void)
             }
     for (int i = 0; i < g_nreleve; i++)
         bilan_ligne("   %-40s %ld", g_releve[i].nom, g_releve[i].n);
+    bilan_v1();
 }
 
-void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; }
+/* Le second relevé : ce que l'ancien interprète a réellement exécuté.
+ *
+ * Séparé du premier, et pas fondu dedans : « recours » et « exécution » ne
+ * disent pas la même chose, et un tableau qui mélangerait les deux ferait
+ * lire « aucun retour » là où l'ancien code tourne à plein. */
+static void bilan_v1(void)
+{
+    bilan_ligne("— ce que l'ancien interprète exécute encore —");
+    if (!g_nv1) { bilan_ligne("   (rien)"); return; }
+    for (int i = 0; i < g_nv1; i++)
+        for (int j = i + 1; j < g_nv1; j++)
+            if (g_v1[j].n > g_v1[i].n) {
+                struct V3Releve t = g_v1[i];
+                g_v1[i] = g_v1[j]; g_v1[j] = t;
+            }
+    for (int i = 0; i < g_nv1; i++)
+        bilan_ligne("   %-40s %ld", g_v1[i].nom, g_v1[i].n);
+}
+
+void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
 
 /* ===================================================================
  * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de
@@ -6921,21 +7404,44 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         f = hct_resout(ctx, c->fils[1]);
         if (!f || f->type != OBJ_FIELD) return 0;
         st = 0; en = (int)strlen(hc_field_text(f));
-    } else if (c->genre == HCTN_CHUNK && c->nfils >= 2 && !c->ordinal) {
+    } else if (c->genre == HCTN_CHUNK && c->nfils >= 1) {
         const HctNoeud *cible = c->fils[c->nfils - 1];
         if (!cible || cible->genre != HCTN_OBJET) return 0;
         f = hct_resout(ctx, cible);
         if (!f || f->type != OBJ_FIELD) return 0;
 
-        char b1[64], b2[64];
-        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
-        if (ctx->erreur) return 1;
-        int n1 = (int)hct_vers_nombre(b1), n2 = 0;
-        if (c->nfils >= 3) {
-            v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+        int n1 = 0, n2 = 0;
+        if (c->ordinal) {
+            /* « select last word of … », « select middle line of … ».
+             *
+             * L'ordinal REMPLACE les bornes : le nœud n'a plus qu'un enfant,
+             * sa cible, et le rang se calcule sur le nombre d'éléments. C'est
+             * pourquoi cette branche exigeait « !c->ordinal » et rendait la
+             * main — toutes ces formes repartaient à l'ancien interprète,
+             * alors que « select char 2 of … » passait.
+             *
+             * hct_rang_ordinal vient de hct_eval.c, où l'évaluateur s'en sert
+             * déjà : en écrire une seconde copie ici aurait donné deux tables
+             * d'ordinaux à tenir d'accord, et « middle » a déjà été faux une
+             * fois — total/2+1 et non (total+1)/2. */
+            int total = hct_chunk_compte(hc_field_text(f), c->sorte,
+                                         g_item_delim);
+            n1 = hct_rang_ordinal(c->ordinal, total);
+            if (n1 <= 0) return 0;
+        } else if (c->nfils >= 2) {
+            char b1[64], b2[64];
+            v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
             if (ctx->erreur) return 1;
-            n2 = (int)hct_vers_nombre(b2);
+            n1 = (int)hct_vers_nombre(b1);
+            if (c->nfils >= 3) {
+                v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
+                if (ctx->erreur) return 1;
+                n2 = (int)hct_vers_nombre(b2);
+            }
+        } else {
+            return 0;               /* ni ordinal ni borne : rien à viser */
         }
+
         HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
                                         n1, n2, g_item_delim);
         if (!bo.trouve) return 0;
@@ -7328,9 +7834,29 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
  * globale/objet/morceau, textStyle et textColor en noms nus, plage de style
  * versus objet — s'applique tel quel au résultat. Rien de cet algorithme
  * n'a été touché ; seule la source du texte a changé. */
+static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
+                              const char *prop, const char *val);
+static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len);
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
+    /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
+     * pile, et le chemin ordinaire — reconstitution du texte puis résolution
+     * — n'en ferait rien. */
+    {
+        char prop[64];
+        const HctNoeud *obj = v3_set_cible_menu(n, prop, sizeof prop);
+        if (obj && n->nfils >= 3) {
+            char val[256];
+            v3_val_texte(ctx, n->fils[n->nfils - 1], val, sizeof val);
+            if (ctx->erreur) return 1;
+            if (v3_menu_prop_ecrit(ctx, obj, prop, val)) { set_result(""); return 1; }
+            emit(HC_ERR, "   !! propriété de menu inconnue : %s", prop);
+            set_result("propriété inconnue");
+            return 1;
+        }
+    }
+
     size_t sauve = g_atop;             /* nommée à part, comme dans v3_cmd_sort :
                                          * les ARENA_MARK imbriqués ci-dessous
                                          * doivent rembobiner à LEUR marque sans
@@ -7366,25 +7892,32 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             g_atop = sauve; return 1;
         }
         char *val = arena_buf();
-        eval_checked(to + 2, val, HC_VAL);
 
-        /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
-         * lui qui découpe les items, et l'interface n'a rien à en savoir.
-         * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
-         * HyperCard ne retenait qu'un caractère. */
-        if (ci_equal(prop, "itemdelimiter")) {
-            g_item_delim = val[0] ? val[0] : ',';
-            set_result("");
-            emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
-            g_atop = sauve; return 1;
+        /* La VALEUR est déjà un sous-arbre : l'évaluer, plutôt que relire son
+         * texte.
+         *
+         * eval_checked relexe et réanalyse une expression que l'analyseur
+         * avait déjà réduite en arbre quelques instants plus tôt. Sur une
+         * séance de Graph Maker, « set » à lui seul refaisait ce travail
+         * 114 fois — « set pattern to getPattern(i) » dans une boucle de
+         * tracé, « set cursor to watch », « set filled to true ».
+         *
+         * TROIS ENFANTS SEULEMENT, et une cible qui soit un simple nom. Une
+         * valeur en liste — « set the textStyle to bold,condense » — en donne
+         * quatre, un par élément, et il n'y a plus de sous-arbre unique à
+         * évaluer : ce cas garde le chemin par le texte, qui sait le lire.
+         * Mieux vaut porter la forme courante et laisser la rare derrière que
+         * de tout porter mal. */
+        if (n->nfils == 3 && n->fils[0]->genre == HCTN_IDENT) {
+            v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else {
+            eval_checked(to + 2, val, HC_VAL);
         }
 
-        /* lockScreen suivi ici aussi : « set lockScreen to true » est
-         * l'exact synonyme de « lock screen », et notify_field s'appuie
-         * dessus pour ne pas redessiner mille fois pour rien. */
-        if (ci_equal(prop, "lockscreen")) {
-            g_ecran_verrouille = truthy(val);
-            if (!g_ecran_verrouille) verrou_reveille();
+        if (prop_globale_noyau(prop, val)) {
+            set_result("");
+            g_atop = sauve; return 1;
         }
 
         host_global_set(prop, val);
@@ -7471,7 +8004,21 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             if (!quoted) eval_checked(to + 2, val, HC_VAL);
         }
     } else {
-        eval_checked(to + 2, val, HC_VAL);
+        /* Le cas général — « set the rect of bg btn "L" to r ». Comme pour
+         * les propriétés globales plus haut : la valeur est déjà un
+         * sous-arbre, on l'évalue au lieu de relire son texte.
+         *
+         * Pas pour textColor ni textStyle, traités juste au-dessus : ceux-là
+         * acceptent une liste de noms nus — « to bold,condense » — qui n'est
+         * pas une expression et que l'arbre découpe en plusieurs enfants. Le
+         * test sur nfils == 3 les écarterait de toute façon ; le dire ici
+         * évite qu'on se demande pourquoi dans six mois. */
+        if (n->nfils == 3) {
+            v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else {
+            eval_checked(to + 2, val, HC_VAL);
+        }
     }
 
     /* La cible peut designer une PLAGE DE TEXTE et non un objet :
@@ -9093,6 +9640,130 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     return -1;
 }
 
+/* Les propriétés d'un menu et de ses articles.
+ *
+ * L'arbre nous les donne toutes faites : « set the checkMark of menuItem 2 of
+ * menu "X" to true » est un nœud « of » dont le fils gauche nomme la
+ * propriété et le droit désigne l'article. Rien à redécouper.
+ *
+ * Rendent 1 si la propriété est de leur ressort, 0 sinon — auquel cas la
+ * ligne repart par le chemin ordinaire, comme pour n'importe quel objet. */
+static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
+                            const char *prop, HctValeur *out)
+{
+    char b[128];
+
+    if (obj->typeobj == HCT_OBJ_MENU) {
+        int i = v3_menu_index(ctx, obj);
+        if (i < 0) return 0;
+        if (ci_equal(prop, "name")) { *out = hct_val_texte(g_menus[i].nom); return 1; }
+        if (ci_equal(prop, "enabled")) {
+            *out = hct_val_texte(g_menus[i].actif_menu ? "true" : "false");
+            return 1;
+        }
+        if (ci_equal(prop, "number")) {
+            snprintf(b, sizeof b, "%d", i + 1);
+            *out = hct_val_texte(b);
+            return 1;
+        }
+        return 0;
+    }
+
+    if (obj->typeobj == HCT_OBJ_MENUITEM) {
+        int im = -1;
+        int j = v3_article_index(ctx, obj, &im);
+        if (j < 0) return 0;
+        HcMenuBarre *m = &g_menus[im];
+
+        if (ci_equal(prop, "checkmark")) {
+            *out = hct_val_texte(m->coche[j] ? "true" : "false"); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            *out = hct_val_texte(m->actif[j] ? "true" : "false"); return 1;
+        }
+        if (ci_equal(prop, "name")) {
+            *out = hct_val_texte(m->article[j] ? m->article[j] : ""); return 1;
+        }
+        if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
+            *out = hct_val_texte(m->message[j] ? m->message[j] : ""); return 1;
+        }
+        if (ci_equal(prop, "number")) {
+            snprintf(b, sizeof b, "%d", j + 1);
+            *out = hct_val_texte(b); return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
+                              const char *prop, const char *val)
+{
+    int vrai = truthy(val);
+
+    if (obj->typeobj == HCT_OBJ_MENU) {
+        int i = v3_menu_index(ctx, obj);
+        if (i < 0) return 0;
+        if (ci_equal(prop, "name")) {
+            snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
+            menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            g_menus[i].actif_menu = vrai;
+            menus_prevenir(); return 1;
+        }
+        return 0;
+    }
+
+    if (obj->typeobj == HCT_OBJ_MENUITEM) {
+        int im = -1;
+        int j = v3_article_index(ctx, obj, &im);
+        if (j < 0) return 0;
+        HcMenuBarre *m = &g_menus[im];
+
+        if (ci_equal(prop, "checkmark")) {
+            m->coche[j] = (char)vrai; menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "enabled")) {
+            m->actif[j] = (char)vrai; menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "name")) {
+            char *t = malloc(strlen(val) + 1);
+            if (!t) return 1;
+            strcpy(t, val);
+            free(m->article[j]); m->article[j] = t;
+            menus_prevenir(); return 1;
+        }
+        if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
+            char *t = malloc(strlen(val) + 1);
+            if (!t) return 1;
+            strcpy(t, val);
+            free(m->message[j]); m->message[j] = t;
+            menus_prevenir(); return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+/* Le nœud « of » d'un set : « set the X of <objet> to … ». Rend le nœud
+ * d'objet et le nom de la propriété, ou 0 si ce n'est pas cette forme. */
+static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len)
+{
+    if (!n || n->nfils < 1) return NULL;
+    const HctNoeud *of = n->fils[0];
+    if (!of || of->genre != HCTN_OF || of->nfils < 2) return NULL;
+    if (!of->fils[0] || of->fils[0]->genre != HCTN_IDENT) return NULL;
+
+    const HctNoeud *obj = of->fils[1];
+    if (!obj || obj->genre != HCTN_OBJET) return NULL;
+    if (obj->typeobj != HCT_OBJ_MENU && obj->typeobj != HCT_OBJ_MENUITEM)
+        return NULL;
+
+    hct_texte(&of->fils[0]->jeton, prop, len);
+    return obj;
+}
+
 /* create menu <nom> */
 static int v3_cmd_create(HctContexte *ctx, const HctNoeud *n)
 {
@@ -9236,7 +9907,14 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
     if (n->genre == HCTN_COMMANDE && n->op)
         for (int i = 0; V3_VERBES[i].verbe; i++)
             if (ci_equal(V3_VERBES[i].verbe, n->op)) {
-                if (V3_VERBES[i].fn(ctx, n)) return 1;
+                /* La porte prend le nom du VERBE le temps de son exécution.
+                 * Une commande portée qui réanalyse encore du texte se
+                 * dénonce alors elle-même — « texte réanalysé : set » vaut
+                 * mieux qu'un « ? » qu'il faudrait aller débusquer. */
+                const char *sauve = v1_porte(n->op);
+                int fait = V3_VERBES[i].fn(ctx, n);
+                g_v1_porte = sauve;
+                if (fait) return 1;
                 break;                 /* forme non portée : ancien chemin */
             }
 
@@ -9276,7 +9954,16 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
 #if HC_TRACE_V3
     fprintf(stderr, "[v3->ancien] « %s »\n", ligne);
 #endif
+    /* LE recours : la v3 a renoncé et rend la ligne à l'ancien interprète.
+     *
+     * La porte se pose ICI et pas en tête de la fonction : au-dessus, les
+     * verbes portés s'exécutent en v3 et sortent par leur propre return —
+     * les compter comme du recours attribuerait à l'ancien code du travail
+     * que la v3 vient de faire. Un compteur qui exagère est aussi inutile
+     * qu'un compteur muet. */
+    const char *sauve_porte = v1_porte("recours v3");
     exec_stmt(g_me, ligne);
+    g_v1_porte = sauve_porte;
     ARENA_FREE;
     return 1;
 }
@@ -9581,6 +10268,7 @@ static HctHote v3_hote(void)
 
 static void eval_expr(const char *s, char *out, int outlen)
 {
+    v1_compte("v3 relit", g_v1_porte);
     out[0] = '\0';
     if (!s || !*s) return;
 
@@ -10425,6 +11113,7 @@ static Object *marked_card_ref(const char *r, int *concerne)
 }
 static void exec_line_body(Object *me, const char *line)
 {
+    v1_compte("v1 ligne", g_v1_porte);
     (void)me;   /* servira pour `the target` / `me` dans les expressions */
     char verb[64];
     const char *rest = next_word(line, verb, sizeof verb);
@@ -10740,23 +11429,9 @@ static void exec_line_body(Object *me, const char *line)
             char *val = arena_buf();
             eval_checked(to + 2, val, HC_VAL);
 
-            /* itemDelimiter est traité par le noyau, pas par l'hôte : c'est
-             * lui qui découpe les items, et l'interface n'a rien à en savoir.
-             * Une chaîne vide ou de plusieurs caractères ramène à la virgule —
-             * HyperCard ne retenait qu'un caractère. */
-            if (ci_equal(prop, "itemdelimiter")) {
-                g_item_delim = val[0] ? val[0] : ',';
+            if (prop_globale_noyau(prop, val)) {
                 set_result("");
-                emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
                 return;
-            }
-
-            /* lockScreen suivi ici aussi : « set lockScreen to true » est
-             * l'exact synonyme de « lock screen », et notify_field s'appuie
-             * dessus pour ne pas redessiner mille fois pour rien. */
-            if (ci_equal(prop, "lockscreen")) {
-                g_ecran_verrouille = truthy(val);
-                if (!g_ecran_verrouille) verrou_reveille();
             }
 
             host_global_set(prop, val);
@@ -12097,6 +12772,29 @@ static void exec_line_body(Object *me, const char *line)
      * On route vers l'hôte, seul à connaître ses menus. Sans cette commande,
      * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
      * se superposait au précédent. */
+    /* « local a, b, c ».
+     *
+     * HyperTalk 2.2 le connaît, HC non : la ligne partait en « verbe inconnu »
+     * et polluait la trace. Une variable de gestionnaire est DÉJÀ locale ici —
+     * il n'y a donc rien à faire d'autre que de ne pas se plaindre. On les
+     * pose tout de même à vide, pour qu'une lecture avant écriture rende la
+     * chaîne vide plutôt que le nom de la variable. */
+    if (ci_equal(verb, "local")) {
+        const char *q = skip_spaces(rest);
+        while (*q) {
+            char nom[64];
+            int k = 0;
+            while (*q && *q != ',' && !isspace((unsigned char)*q) && k < 63)
+                nom[k++] = *q++;
+            nom[k] = '\0';
+            if (nom[0]) var_set(nom, "");
+            q = skip_spaces(q);
+            if (*q == ',') q = skip_spaces(q + 1);
+        }
+        set_result("");
+        return;
+    }
+
     if (ci_equal(verb, "domenu")) {
         ARENA_MARK;
         char *item = arena_buf();
@@ -12825,8 +13523,26 @@ static int hc_send_args_k_body(Object *target, const char *message,
             g_me   = o;          /* `me` = l'objet dont le script tourne */
             /* La v3 d'abord si elle est active ET si elle a su analyser ce
              * script. Sinon l'ancien exécuteur, inchangé. */
+            /* La v3 d'abord ; à défaut, le gestionnaire ENTIER retombe sur
+             * l'ancien exécuteur. C'est de loin le plus gros emprunt, et il
+             * ne se voyait nulle part : le relevé des recours reste « aucun »
+             * puisque la v3 n'a même pas commencé.
+             *
+             * La porte nomme donc l'objet et le message — « v1 ligne
+             * button "Tracer".mouseUp » désigne le script à regarder, là où
+             * un total anonyme n'apprenait rien. Le tampon est LOCAL : un
+             * gestionnaire peut en appeler un autre, et un tampon partagé se
+             * ferait écraser par l'appel imbriqué. */
+            char porte[96];
+            {
+                char qui[64];
+                hc_describe(o, qui, sizeof qui);
+                snprintf(porte, sizeof porte, "%s.%s", qui, message);
+            }
+            const char *sauve_v1 = v1_porte(porte);
             if (!v3_execute(o, message, isfunc))
                 exec_body(o, body, end);
+            g_v1_porte = sauve_v1;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
 
             g_frame = savedf;
@@ -12960,12 +13676,20 @@ static int hc_call_user_function(Object *target, const char *name,
  * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
  * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
  * Il y faudrait d'abord un historique de navigation. */
+/* La forme longue — « go next CARD » et non « go next ».
+ *
+ * Les deux marchent, mais elles ne se lisent pas pareil : « go next » laisse
+ * l'analyseur sur un simple nom, qu'il faut alors évaluer comme expression,
+ * ce qui finit en recours vers l'ancien interprète. « go next card » donne
+ * une référence d'objet en bonne et due forme, que la v3 traite seule. Le
+ * relevé l'a dit dès que ces lignes sont passées à la v3 : « fonction next »
+ * apparaissait là où il n'y avait rien avant. */
 static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = {
-    { "Next",     "go next"  },
-    { "Prev",     "go prev"  },
-    { "Previous", "go prev"  },
-    { "First",    "go first" },
-    { "Last",     "go last"  },
+    { "Next",     "go next card"  },
+    { "Prev",     "go prev card"  },
+    { "Previous", "go prev card"  },
+    { "First",    "go first card" },
+    { "Last",     "go last card"  },
     { NULL, NULL }
 };
 
@@ -13053,6 +13777,32 @@ int hc_menu_trappe(const char *item)
     return g_current_card ? hc_send_arg(g_current_card, "doMenu", item) : 0;
 }
 
+/* ═══ Les messages du cycle de vie ═════════════════════════════════════
+ *
+ * startUp, quit, suspend, resume : les quatre que HyperCard envoyait à
+ * l'ENVIRONNEMENT et non à une pile en particulier. Ils partent donc à la
+ * carte courante, d'où ils remontent la hiérarchie jusqu'à la pile — c'est
+ * ce que faisait HyperCard, qui les adressait à la pile Home, c'est-à-dire à
+ * celle où l'on se trouve.
+ *
+ * suspendStack et resumeStack, eux, désignent une pile précise et vivent
+ * dans Hcdocument.m, où l'on sait quelle fenêtre gagne ou perd le premier
+ * plan.
+ *
+ * hc_send et non hc_send_systeme : « lock messages » sert à parcourir une
+ * pile sans réveiller les gestionnaires de chaque carte. Aucun de ces quatre
+ * ne survient pendant un parcours — ils viennent du système : un lancement,
+ * une extinction, un changement d'application. Les retenir n'épargnerait
+ * rien et masquerait un départ.
+ *
+ * Sans carte courante, rien : il n'y a personne à qui parler, et ce n'est pas
+ * une erreur — l'application peut tourner sans pile ouverte. */
+void hc_env_message(const char *message)
+{
+    if (!message || !g_current_card) return;
+    hc_send(g_current_card, message);
+}
+
 void hc_do_menu(const char *item)
 {
     if (!item) return;
@@ -13061,7 +13811,22 @@ void hc_do_menu(const char *item)
 
     for (int i = 0; MENUS_NOYAU[i].article; i++)
         if (menu_meme_article(MENUS_NOYAU[i].article, item)) {
-            exec_stmt(g_me ? g_me : g_current_card, MENUS_NOYAU[i].ligne);
+            /* « go next card » et ses quatre voisines. La v3 d'abord, comme
+             * pour la boîte de message ; l'ancien ne sert plus que de repli.
+             *
+             * On pose `me` avant : exec_stmt le recevait en argument, la v3
+             * le lit dans g_me par l'hôte. Sans cette ligne, un « go next »
+             * déclenché depuis un menu n'aurait plus le même `me` qu'avant —
+             * la sorte de différence qui ne se voit qu'un mois plus tard,
+             * dans un script qui lit « the short name of me ». */
+            const char *sauve = v1_porte("menu du noyau");
+            Object *cible    = g_me ? g_me : g_current_card;
+            Object *sauve_me = g_me;
+            g_me = cible;
+            if (!v3_do_ligne(MENUS_NOYAU[i].ligne))
+                exec_stmt(cible, MENUS_NOYAU[i].ligne);
+            g_me = sauve_me;
+            g_v1_porte = sauve;
             return;
         }
 
@@ -13367,14 +14132,79 @@ void hc_set_paint(Object *o, const char *base64)
     o->paint = (base64 && *base64) ? dupstr(base64) : NULL;
 }
 
+/* ═══ Une ligne isolée, exécutée par la v3 ══════════════════════════════
+ *
+ * La boîte de message, la commande « do », et la répartition des articles de
+ * menu que les piles créent : trois usages, un seul point d'entrée, et le
+ * plus fréquenté de tous ceux qui restaient sur l'ancien interprète.
+ *
+ * Le portage est simple parce que le rattrapage est déjà là : ce que la v3
+ * ne sait pas exécuter, v3_commande le rend à exec_stmt COMMANDE PAR
+ * COMMANDE. On n'a donc pas besoin qu'elle comprenne tout pour lui confier
+ * la ligne — ce qu'elle ignore repart, le reste ne repart plus.
+ *
+ * hct_bloc_script et non une seule instruction : la boîte de message accepte
+ * plusieurs lignes collées, et même un « repeat … end repeat » entier. Un
+ * analyseur d'instruction unique aurait refusé ce que l'ancien acceptait.
+ *
+ * LES VARIABLES SURVIVENT d'une ligne à l'autre — « put 1 into x » puis
+ * « put x » —, et il fallait le vérifier avant de porter : c'est l'hôte qui
+ * les tient, pas l'exécuteur, si bien qu'un HctExec neuf à chaque ligne n'en
+ * perd aucune.
+ *
+ * Rend 1 si la v3 s'en est chargée, 0 pour laisser l'ancien faire. Une faute
+ * d'analyse renvoie à l'ancien, qui est plus indulgent : on ne veut pas
+ * qu'une tournure rare tapée dans la boîte cesse de marcher. */
+static int v3_do_ligne(const char *line)
+{
+    if (!v3_actif() || !line || !*line) return 0;
+
+    HctLot lot;
+    HctReserve res;
+    memset(&lot, 0, sizeof lot);
+    memset(&res, 0, sizeof res);
+
+    hct_lex(line, &lot);
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &lot, &res);
+    HctNoeud *bloc = hct_bloc_script(&a);
+
+    if (!bloc || a.nerreurs || bloc->nfils == 0) {
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        return 0;
+    }
+
+    HctExec x;
+    hct_exec_init(&x, v3_hote());
+    x.script = bloc;
+    hct_exec(&x, bloc);
+
+    if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
+    if (x.ctx.erreur)
+        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
+             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+
+    hct_exec_libere(&x);
+    hct_reserve_libere(&res);
+    hct_lot_libere(&lot);
+    return 1;
+}
+
 void hc_do(const char *line)
 {
+    /* La boîte de message, la commande « do », et la répartition des
+     * articles de menu que les piles créent : trois usages, une seule
+     * porte, et de loin la plus fréquentée. */
+    const char *sauve_porte = v1_porte("msg/do");
     ARENA_MARK;
     g_depth  = 0;
     g_pass   = 0;
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
-    exec_stmt(g_current_card, line);
+    if (!v3_do_ligne(line))
+        exec_stmt(g_current_card, line);
     ARENA_FREE;
+    g_v1_porte = sauve_porte;
 }

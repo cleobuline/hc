@@ -126,6 +126,16 @@ struct HctNoeud {
     HctDesignateur designateur;
     HctRelatif     relatif;
 
+    /* « the » précédait ce nœud dans le source.
+     *
+     * L'analyseur le consommait sans laisser de trace, si bien que « the
+     * date » et « date » donnaient le MÊME arbre. L'évaluateur ne pouvait
+     * donc plus distinguer un nom de propriété d'un mot ordinaire, et
+     * appliquait à tous la règle des littéraux nus : « the userLevl » rendait
+     * « userLevl ». Une propriété absente ou mal orthographiée ne se
+     * signalait jamais. */
+    char          article;
+
     HctNoeud    **fils;
     int           nfils;
     const char   *msg;        /* HCTN_ERREUR : la raison                 */

@@ -42,6 +42,15 @@ HctValeur hct_val_nombre(double x)
     return hct_val_texte_n(buf, n);
 }
 
+/* Le résultat d'un CALCUL : celui-là passe par le numberFormat. Voir la note
+ * au-dessus de hct_format_nombre pour la raison d'avoir deux portes. */
+HctValeur hct_val_calcul(double x)
+{
+    char buf[64];
+    int n = hct_ecrit_nombre_format(x, buf, sizeof buf);
+    return hct_val_texte_n(buf, n);
+}
+
 HctValeur hct_val_bool(int vrai)
 {
     return hct_val_texte(vrai ? "true" : "false");
@@ -150,6 +159,97 @@ int hct_ecrit_nombre(double x, char *out, int taille)
         n = i + 1;
     }
     return n;
+}
+
+/* ------------------------------------------------------ numberFormat
+ *
+ * « set the numberFormat to "0.00" » : le gabarit qui met en forme le
+ * RÉSULTAT D'UN CALCUL. C'est la définition d'HyperCard, et elle est étroite
+ * à dessein — une longueur, un rang, un compteur de boucle ne sont pas des
+ * calculs, et les mettre en forme donnerait « char 1.00 of x ». Les sites
+ * d'appel choisissent donc : hct_val_nombre reste brut, hct_val_calcul met
+ * en forme. La question « est-ce un calcul ? » se tranche là où on connaît
+ * la réponse.
+ *
+ * Le gabarit se lit en deux moitiés, de part et d'autre du point :
+ *   à gauche, chaque « 0 » impose un chiffre — « 000 » écrit 7 en « 007 » ;
+ *   à droite, chaque « 0 » impose une décimale, chaque « # » l'autorise
+ *   sans l'imposer. « 0.0##" » rend 1.5 en « 1.5 » et 1.5678 en « 1.568 ».
+ *
+ * Le format vide rend le comportement par défaut, qui est exactement
+ * « 0.###### » : six décimales, zéros de fin retirés, entiers sans point.
+ * C'est le défaut d'HyperCard, et c'est pourquoi il n'a pas fallu l'écrire
+ * comme un cas particulier — c'est l'absence de format. */
+static char g_format[32] = "";
+
+void hct_format_nombre(const char *f)
+{
+    if (!f) f = "";
+    /* Un gabarit sans chiffre ne veut rien dire : on le lit comme un retour
+     * au défaut plutôt que comme une consigne d'écrire zéro chiffre. */
+    int utile = 0;
+    for (const char *p = f; *p; p++) if (*p == '0' || *p == '#') { utile = 1; break; }
+    if (!utile) { g_format[0] = 0; return; }
+    snprintf(g_format, sizeof g_format, "%s", f);
+}
+
+const char *hct_format_nombre_lu(void) { return g_format; }
+
+/* Décompose le gabarit. Rend 0 s'il n'y en a pas. */
+static int format_lu(int *entiers, int *dec_min, int *dec_max)
+{
+    if (!g_format[0]) return 0;
+    *entiers = 0; *dec_min = 0; *dec_max = 0;
+    const char *pt = strchr(g_format, '.');
+    for (const char *p = g_format; *p && (!pt || p < pt); p++)
+        if (*p == '0') (*entiers)++;
+    if (pt)
+        for (const char *p = pt + 1; *p; p++) {
+            if (*p == '0') { (*dec_max)++; *dec_min = *dec_max; }
+            else if (*p == '#') (*dec_max)++;
+        }
+    return 1;
+}
+
+int hct_ecrit_nombre_format(double x, char *out, int taille)
+{
+    int ent, dmin, dmax;
+    if (!format_lu(&ent, &dmin, &dmax))
+        return hct_ecrit_nombre(x, out, taille);
+
+    if (x != x) return snprintf(out, (size_t)taille, "NAN");
+    if (x > 1e308 || x < -1e308)
+        return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
+
+    char brut[64];
+    int n = snprintf(brut, sizeof brut, "%.*f", dmax, x);
+    if (n < 0) { if (taille) out[0] = 0; return 0; }
+
+    /* Retirer les décimales facultatives inutilisées, jamais les imposées. */
+    char *pt = strchr(brut, '.');
+    if (pt) {
+        int garde = dmin;
+        char *fin = brut + strlen(brut) - 1;
+        while (fin > pt && *fin == '0' && (int)(fin - pt) > garde) *fin-- = 0;
+        if (fin == pt && garde == 0) *pt = 0;
+    }
+
+    /* Compléter la partie entière par des zéros de tête. Le signe passe
+     * devant : « -007 » et non « 00-7 ». */
+    const char *signe = "";
+    char *corps = brut;
+    if (*corps == '-') { signe = "-"; corps++; }
+    int chiffres = 0;
+    for (const char *p = corps; *p && *p != '.'; p++) chiffres++;
+
+    char zeros[32];
+    int manque = ent - chiffres;
+    if (manque < 0) manque = 0;
+    if (manque > (int)sizeof zeros - 1) manque = (int)sizeof zeros - 1;
+    for (int i = 0; i < manque; i++) zeros[i] = '0';
+    zeros[manque] = 0;
+
+    return snprintf(out, (size_t)taille, "%s%s%s", signe, zeros, corps);
 }
 
 /* ------------------------------------------------------- comparaison */

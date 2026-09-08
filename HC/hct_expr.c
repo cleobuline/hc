@@ -796,10 +796,30 @@ static int adjectif_ici(HctAnalyseur *a)
     return 0;
 }
 
+static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a);
+
+/* « the » facultatif devant une propriété, une fonction ou un ordinal.
+ *
+ * On le CONSOMME comme avant, mais on en garde la trace sur le nœud produit.
+ * Sans elle, « the date » et « date » donnaient le même arbre, et
+ * l'évaluateur ne pouvait plus faire la différence entre un nom de propriété
+ * et un mot ordinaire — voir feuille() dans hct_eval.c, qui s'en sert pour
+ * refuser « the zorglub » tout en continuant d'accepter « go card canard ».
+ *
+ * Le drapeau se pose sur ce que le corps rend, quel que soit son genre : la
+ * question « y avait-il un article ? » ne dépend pas de ce qui suit. */
 static HctNoeud *chunk_ou_of(HctAnalyseur *a)
 {
-    /* « the » facultatif devant une propriété ou un ordinal. */
-    if (mot_ici(a, "the")) avance(a);
+    int article = 0;
+    if (mot_ici(a, "the")) { avance(a); article = 1; }
+
+    HctNoeud *n = chunk_ou_of_corps(a);
+    if (n && article) n->article = 1;
+    return n;
+}
+
+static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
+{
 
     /* Un adjectif ne vaut que s'il qualifie quelque chose. */
     

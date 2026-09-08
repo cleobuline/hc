@@ -12,7 +12,7 @@
 #import "HCprint.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
-#import "HCiconedit.h"
+#import "Hciconedit.h"
 #import "graphics.h"
 #import "hc_file.h"   /* hc_save, pour « save stack ... as ... » */
 #import "HCdialogs.h"
@@ -67,6 +67,12 @@ typedef struct {
     NSBitmapImageRep *paintUndo;
     Object           *paintUndoLayer;
 
+    /* Le point de repère de Revert : l'état du calque avant le premier coup
+     * de pinceau donné dessus. Distinct de paintUndo, qui ne remonte que d'un
+     * pas — Revert défait toute la séance de peinture d'un coup. */
+    NSBitmapImageRep *keepSnap;
+    Object           *keepLayer;
+
     Object       *card;
 
     /* numérotation des cartes créées */
@@ -109,6 +115,8 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gDocCard         (gDoc->card)
 #define gPaintUndo       (gDoc->paintUndo)
 #define gPaintUndoLayer  (gDoc->paintUndoLayer)
+#define gKeepSnap        (gDoc->keepSnap)
+#define gKeepLayer       (gDoc->keepLayer)
 
 static NSTextField *gMsgBox = nil;
 static NSPanel *gMsgPanel = nil;
@@ -148,6 +156,24 @@ static NSPanel *gPatternPanel = nil;
 static NSPanel *gToolPanel = nil;
 static NSPanel *gWidthPanel = nil;
 static NSPanel *gBrushPanel = nil;
+
+/* ═══ Prévenir une palette qu'un script vient de changer son réglage ═════
+ *
+ * « set the pattern to 12 » posait bien le motif, mais la palette des motifs
+ * continuait d'entourer l'ancien : l'écran disait une chose, le programme en
+ * faisait une autre. Un état montré faux est pire qu'un état non montré —
+ * l'utilisateur clique là où il croit être.
+ *
+ * Le clic de l'utilisateur, lui, redessinait sa palette depuis toujours : il
+ * ne manquait que le chemin des scripts. On invalide plutôt qu'on force le
+ * dessin — cent « set the pattern » dans une boucle ne doivent pas faire cent
+ * redessins, mais un par image.
+ *
+ * Rien si la palette est fermée : elle se redessinera en s'ouvrant. */
+static void hcv_palette_maj(NSPanel *p)
+{
+    if (p && [p isVisible]) [(NSView *)[p contentView] setNeedsDisplay:YES];
+}
 
 static BOOL gTextUnderline = NO;
 
@@ -859,38 +885,74 @@ static BOOL part_inerte(Object *o) {
     return (gTool == TOOL_BROWSE && o->type == OBJ_BUTTON && !o->enabled);
 }
 
-static Object *part_at(Object *card, NSPoint p) {
-    if (!card) return NULL;
-
-    if (gTool != TOOL_BROWSE) {
-        Object *layer = gEditBackground ? card->bg : card;
-        if (!layer) return NULL;
-        for (int i = layer->nparts - 1; i >= 0; i--) {
-            Object *o = layer->parts[i];
-            if (o->visible && !part_inerte(o) &&
-                p.x >= o->x && p.x <= o->x + o->w &&
-                p.y >= o->y && p.y <= o->y + o->h)
-                return o;
-        }
-        return NULL;
-    }
-
-    for (int i = card->nparts - 1; i >= 0; i--) {
-        Object *o = card->parts[i];
+/* Le part le plus haut d'un calque sous le point, ou NULL. */
+static Object *part_at_layer(Object *layer, NSPoint p) {
+    if (!layer) return NULL;
+    for (int i = layer->nparts - 1; i >= 0; i--) {
+        Object *o = layer->parts[i];
         if (o->visible && !part_inerte(o) &&
             p.x >= o->x && p.x <= o->x + o->w &&
             p.y >= o->y && p.y <= o->y + o->h)
             return o;
     }
-    if (card->bg)
-        for (int i = card->bg->nparts - 1; i >= 0; i--) {
-            Object *o = card->bg->parts[i];
-            if (o->visible && !part_inerte(o) &&
-                p.x >= o->x && p.x <= o->x + o->w &&
-                p.y >= o->y && p.y <= o->y + o->h)
-                return o;
-        }
     return NULL;
+}
+
+/* ═══ Ce qu'on peut attraper, et depuis où ═════════════════════════════
+ *
+ * Les outils Bouton et Champ atteignent LES DEUX CALQUES, que l'on soit en
+ * édition de carte ou de fond. C'est ce que faisait la version précédente
+ * pour le seul outil Browse ; les outils d'objet, eux, ne voyaient que le
+ * calque courant.
+ *
+ * Ce n'était pas tenable, parce que le DESSIN, lui, ne faisait pas cette
+ * différence : draw_edit_outline entoure de pointillés tous les boutons
+ * visibles dès que l'outil Bouton est choisi, ceux du fond compris. On
+ * montrait donc une poignée d'objets présentés comme modifiables, dont la
+ * moitié ne répondait ni au clic ni au double-clic. Un état montré faux est
+ * pire qu'un état non montré : l'utilisateur cherche l'erreur chez lui.
+ *
+ * L'ordre reste celui de l'affichage — la carte d'abord, le fond ensuite : un
+ * bouton de carte posé par-dessus un bouton de fond garde la priorité, comme
+ * au clic en mode Browse. Ce qui change, c'est qu'on ne s'arrête plus là.
+ *
+ * ET DANS L'AUTRE SENS AUSSI. En édition de fond, les mêmes outils atteignent
+ * les objets de la CARTE. C'est ce que faisait HyperCard : ⌘B commande le
+ * calque de PEINTURE et l'endroit où atterrissent les objets neufs, pas ce
+ * que les outils d'objet ont le droit de toucher.
+ *
+ * Ce qui oblige à dessiner ce qu'on attrape — voir couche_carte_visible(),
+ * qui répond pour les deux et que drawRect: consulte aussi. Une réponse par
+ * fonction aurait donné, un jour ou l'autre, un bouton cliquable et invisible
+ * ou l'inverse, sans que rien ne le signale.
+ *
+ * Le calque du part attrapé reste visible : la sélection change de couleur
+ * (voir drawRect:), et l'Info dit « Background Button ». Déplacer un bouton
+ * de fond le déplace sur TOUTES les cartes de ce fond — l'action est la même
+ * qu'avant, il fallait seulement qu'on puisse la voir venir. */
+
+/* Le calque CARTE participe-t-il — au dessin comme au clic ?
+ *
+ * Non en édition de fond : c'est tout le sens de ⌘B, on veut voir le fond
+ * seul. Sauf avec les outils d'objet, qui travaillent sur les deux calques à
+ * la fois et doivent donc les montrer tous les deux.
+ *
+ * Une seule fonction pour les deux questions, parce que ce sont les deux
+ * moitiés d'une seule : on n'attrape que ce qui est dessiné, et on dessine
+ * tout ce qu'on peut attraper. Les séparer, c'était se réserver un bouton
+ * fantôme. */
+static BOOL couche_carte_visible(void) {
+    return !gEditBackground || gTool == TOOL_BUTTON || gTool == TOOL_FIELD;
+}
+
+static Object *part_at(Object *card, NSPoint p) {
+    if (!card) return NULL;
+
+    if (couche_carte_visible()) {
+        Object *o = part_at_layer(card, p);
+        if (o) return o;
+    }
+    return part_at_layer(card->bg, p);
 }
 static char gDlgBuf[512];
 static char gFileBuf[2048];
@@ -1025,9 +1087,12 @@ static void cocoa_choose_tool(const char *name) {
             }
 
             gTool = neuf;
-            gTool = table[i].t;
             gSelected = NULL;
             [gView stopSprayTimer];
+            /* La palette entoure l'outil courant : « choose brush tool »
+             * depuis un script doit déplacer ce cadre, sinon la palette
+             * désigne un outil dont on ne se sert plus. */
+            hcv_palette_maj(gToolPanel);
             [gView setNeedsDisplay:YES];
             return;
         }
@@ -1484,6 +1549,11 @@ static void cocoa_menus_changed(void)
              * le contenu donne le même résultat visible, sans y toucher. */
             [mi setEnabled:(hc_menu_est_actif(i) && hc_menu_article_actif(i, j))
                             ? YES : NO];
+            /* La marque à gauche du nom : « set the checkMark of menuItem 2
+             * of menu "X" to true ». C'est l'état d'un article de menu au
+             * sens d'AppKit, pas un caractère à ajouter au titre. */
+            [mi setState:hc_menu_article_coche(i, j) ? NSControlStateValueOn
+                                                     : NSControlStateValueOff];
             [m addItem:mi];
         }
 
@@ -1526,6 +1596,31 @@ static void cocoa_do_menu(const char *item) {
         [gView startAntsTimer];
         [gView setNeedsDisplay:YES];
         return;
+    }
+
+    /* Les transformations du menu Paint, atteignables par script :
+     * « doMenu "Invert" ». Avant la table des articles d'interface, qui
+     * enverrait une action à gView — laquelle n'a pas d'étiquette à lire. */
+    {
+        static const struct { const char *nom; NSInteger tag; } PEINTURE[] = {
+            { "Invert",          HCV_PAINT_INVERT  },
+            { "Darken",          HCV_PAINT_DARKEN  },
+            { "Lighten",         HCV_PAINT_LIGHTEN },
+            { "Trace Edges",     HCV_PAINT_TRACE   },
+            { "Flip Horizontal", HCV_PAINT_FLIPH   },
+            { "Flip Vertical",   HCV_PAINT_FLIPV   },
+            { "Rotate Left",     HCV_PAINT_ROTL    },
+            { "Rotate Right",    HCV_PAINT_ROTR    },
+            { "Fill",            HCV_PAINT_FILL    },
+            { "Keep",            HCV_PAINT_KEEP    },
+            { "Revert",          HCV_PAINT_REVERT  },
+            { NULL, 0 }
+        };
+        for (int i = 0; PEINTURE[i].nom; i++)
+            if (strcasecmp(PEINTURE[i].nom, item) == 0) {
+                [gView paintOpTag:PEINTURE[i].tag];
+                return;
+            }
     }
 
     cocoa_menu_hypercard(item);
@@ -1748,6 +1843,34 @@ static int click_line_number(Object *f, NSPoint p) {
     return line;
 }
 
+/* ═══ Les deux couleurs de peinture, et leurs noms ══════════════════════
+ *
+ * « foreColor » et « backColor » sont les noms naturels, ceux qu'emploient
+ * les descendants d'HyperCard. « paintColor » et « paintBackColor » ont été
+ * écrits les premiers ici ; ils restent acceptés, parce qu'un nom qui a servi
+ * une fois se retrouve dans une pile, et qu'une pile ne se corrige pas à
+ * distance. « inkColor » suit, puisque c'est le nom de la variable.
+ *
+ * Une seule table, lue par la lecture ET par l'écriture : les faire diverger
+ * donnerait une propriété qu'on peut poser et pas relire, ou l'inverse.
+ *
+ * Rend +1 pour l'encre, -1 pour le fond, 0 si ce n'est aucune des deux. */
+static int hcv_quelle_couleur(const char *nom)
+{
+    static const char *ENCRE[] = { "foreColor", "foregroundColor",
+                                   "paintColor", "inkColor", NULL };
+    static const char *FOND[]  = { "backColor", "backgroundColor",
+                                   "paintBackColor", NULL };
+    for (int i = 0; ENCRE[i]; i++) if (!strcasecmp(nom, ENCRE[i])) return  1;
+    for (int i = 0; FOND[i];  i++) if (!strcasecmp(nom, FOND[i]))  return -1;
+    return 0;
+}
+
+/* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
+ * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
+ * que hcv_quelle_couleur a supprimé pour les couleurs. */
+static NSString *gCursorNom = @"arrow";
+
 static const char *cocoa_global_get(const char *name) {
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
@@ -1834,6 +1957,36 @@ static const char *cocoa_global_get(const char *name) {
         return gTextStyleName ? [gTextStyleName UTF8String] : "plain";
     if (strcasecmp(name, "textAlign") == 0)
         return gTextAlign ? [gTextAlign UTF8String] : "left";
+    if (strcasecmp(name, "cursor") == 0)
+        return gCursorNom ? [gCursorNom UTF8String] : "arrow";
+    if (strcasecmp(name, "editBkgnd") == 0)
+        return gEditBackground ? "true" : "false";
+
+    /* Rendues en « r,v,b », le format que rend déjà « the textColor » : un
+     * script qui relit une couleur pour la recalculer trouve trois nombres,
+     * pas un nom qu'il faudrait retraduire. */
+    if (hcv_quelle_couleur(name)) {
+        NSColor *c = (hcv_quelle_couleur(name) < 0) ? gBackColor : gInkColor;
+        NSColor *sr = [c colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+        if (!sr) return "0,0,0";
+        CGFloat r = 0, v = 0, b = 0, a = 1;
+        [sr getRed:&r green:&v blue:&b alpha:&a];
+        int ia = (int)lround(a * 255);
+        /* Trois nombres quand l'encre est opaque, quatre sinon. Rendre
+         * toujours quatre casserait les scripts qui font « item 3 of the
+         * paintColor » ou qui relisent pour réécrire ; n'en rendre que trois
+         * perdrait l'opacité qu'on vient de poser. Le format dit donc ce
+         * qu'il y a à dire, et pas davantage. */
+        if (ia >= 255)
+            snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d",
+                     (int)lround(r * 255), (int)lround(v * 255), (int)lround(b * 255));
+        else
+            snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d,%d,%d",
+                     (int)lround(r * 255), (int)lround(v * 255),
+                     (int)lround(b * 255), ia);
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
     if (strcasecmp(name, "lineSize") == 0) {
@@ -1950,8 +2103,53 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
 
+    /* ═══ La couleur de peinture, depuis un script ═══════════════════════
+     *
+     * « set the paintColor to "vert" », « set the paintColor to "64,255,30" ».
+     *
+     * HyperCard n'avait pas cela : il peignait en noir sur blanc. Mais HC a
+     * déjà de la couleur — le panneau des couleurs pose gInkColor, et
+     * « set the textColor » colore le texte —, et un script qui ne peut pas
+     * atteindre ce que la souris atteint est un manque plutôt qu'une
+     * fidélité. On se contente donc d'ouvrir une porte déjà construite : les
+     * fonctions de dessin lisent gInkColor depuis toujours.
+     *
+     * Le vocabulaire est celui du noyau, hc_color_from_name — le même que
+     * « set the textColor ». Deux tables de couleurs dans le même programme,
+     * ce serait la garantie qu'un jour l'une saura dire « turquoise » et pas
+     * l'autre.
+     *
+     * Une valeur incomprise ne change rien et se signale : peindre en noir
+     * parce qu'on a mal orthographié « magenta » se remarque trop tard. */
+    if (hcv_quelle_couleur(name)) {
+        int alpha = 255;
+        int rgb = hc_color_from_name_alpha(value, &alpha);
+        if (rgb == HC_COLOR_INHERIT) {
+            NSLog(@"set the %s : couleur incomprise « %s »", name, value);
+            return;
+        }
+        /* Le fond reste opaque quoi qu'on demande : un fond à moitié
+         * transparent n'est pas un fond, et l'admettre rendrait « Opaque »
+         * et « Transparent » du menu Paint incompréhensibles le jour où on
+         * les écrira. */
+        BOOL estFond = (hcv_quelle_couleur(name) < 0);
+        NSColor *c = [NSColor colorWithSRGBRed:((rgb >> 16) & 0xFF) / 255.0
+                                         green:((rgb >>  8) & 0xFF) / 255.0
+                                          blue:( rgb        & 0xFF) / 255.0
+                                         alpha:estFond ? 1.0 : alpha / 255.0];
+        if (estFond) gBackColor = c;
+        else         gInkColor  = c;
+
+        /* La palette d'outils montre les deux couleurs : sans ce rafraîchis-
+         * sement, elle continuerait d'afficher les anciennes. */
+        hcv_palette_maj(gToolPanel);
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
+        hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -1960,6 +2158,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > 8) v = 8;
         gLineWidth = v;
+        hcv_palette_maj(gWidthPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -1968,6 +2167,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > NUM_PATTERNS) v = NUM_PATTERNS;
         gPattern = v - 1;
+        hcv_palette_maj(gPatternPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -1976,6 +2176,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > NUM_BRUSHES) v = NUM_BRUSHES;
         gBrush = v - 1;
+        hcv_palette_maj(gBrushPanel);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -2008,17 +2209,42 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "cursor") == 0) {
+        /* On retient le curseur RÉELLEMENT POSÉ, pas le mot demandé : « set
+         * the cursor to zorglub » donne la flèche, et « the cursor » doit
+         * alors rendre « arrow ». Rendre « zorglub » décrirait un état qui
+         * n'existe pas. */
         if (strcasecmp(value, "none") == 0) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
+            gCursorNom = @"none";
         } else {
             if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
-            if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0)
+            if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0) {
                 [[NSCursor operationNotAllowedCursor] set];
-            else if (strcasecmp(value, "ibeam") == 0)
+                gCursorNom = @"watch";
+            } else if (strcasecmp(value, "ibeam") == 0) {
                 [[NSCursor IBeamCursor] set];
-            else
+                gCursorNom = @"ibeam";
+            } else {
                 [[NSCursor arrowCursor] set];
+                gCursorNom = @"arrow";
+            }
         }
+        return;
+    }
+
+    /* editBkgnd : le pendant scriptable de ⌘B. HyperCard l'avait, et une pile
+     * qui pose ses objets de fond en s'ouvrant en a besoin. Le passage par
+     * gEditBackground est le même que celui de l'article de menu — un seul
+     * chemin pour entrer dans le fond, quelle qu'en soit la demande. */
+    if (strcasecmp(name, "editBkgnd") == 0) {
+        BOOL v = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        if (v != gEditBackground) {
+            gEditBackground = v;
+            gSelected = NULL;
+            [gView endFieldEdit];
+            [gView setNeedsDisplay:YES];
+        }
+        return;
     }
 }
 
@@ -2225,7 +2451,20 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 - (Object *)documentCard {
     if (gDoc == &_doc) {
         Object *c = hc_current_card();
-        if (c) _doc.card = c;
+        if (c) {
+            /* Le changement de carte se constate ICI, et pas ailleurs : tout
+             * ce qui a besoin de la carte courante passe par cette méthode,
+             * qu'on y arrive par le menu Go, par « go next » dans un script,
+             * par un bouton, ou par l'ouverture d'une pile. Poser le constat
+             * dans prepareForCardChange n'aurait couvert que la moitié de ces
+             * chemins — et la moitié manquante aurait donné un Revert qui
+             * ramène à l'état d'une visite précédente.
+             *
+             * Quitter la carte vaut Keep, comme dans HyperCard : ce qu'on y
+             * laisse en partant est gardé. */
+            if (c != _doc.card) [self forgetKeepSnapshot];
+            _doc.card = c;
+        }
         return c;
     }
     return _doc.card;
@@ -2584,6 +2823,29 @@ static BOOL paint_selection_active(void)
 
     if (a == @selector(copy:) || a == @selector(cut:))
         return object_selection_active() || paint_selection_active();
+
+    /* Les articles du menu Paint n'ont de sens que sur une sélection de
+     * peinture. HyperCard les grisait de même — et c'est plus sûr que de les
+     * laisser cliquables pour ne rien faire.
+     *
+     * Keep et Revert font exception : ils portent sur la carte entière. Les
+     * griser faute de sélection les rendrait inaccessibles au moment précis où
+     * on les cherche — juste après un dessin raté, quand plus rien n'est
+     * sélectionné. Revert reste grisé tant qu'il n'y a nulle part où revenir :
+     * c'est la seule information vraie qu'on puisse en donner d'avance. */
+    if (a == @selector(paintOp:)) {
+        NSInteger t = [item tag];
+        if (t == HCV_PAINT_KEEP) return [self paintLayer] != NULL;
+        if (t == HCV_PAINT_REVERT) {
+            /* paintLayer d'abord : il passe par documentCard, qui peut oublier
+             * l'instantané si la carte a changé depuis. Lire gKeepSnap avant
+             * lui donnerait un article actif pointant sur un instantané que le
+             * clic suivant aurait déjà jeté. */
+            Object *l = [self paintLayer];
+            return l != NULL && gKeepSnap != nil && gKeepLayer == l;
+        }
+        return paint_selection_active();
+    }
     /* « Icône… » reste TOUJOURS disponible, même sans bouton sélectionné : le
      * panneau gère les icônes de la pile, qui sont des ressources. On peut donc
      * en créer et en dessiner avec n'importe quel outil ; faute de bouton, OK
@@ -2982,6 +3244,137 @@ static int gColorTarget = 0;
     [gBrushPanel makeKeyAndOrderFront:nil];
 }
 
+/* ═══ Les articles du menu Paint ════════════════════════════════════════
+ *
+ * Une seule action pour les huit : l'étiquette de l'article dit laquelle.
+ * Toutes suivent le même chemin — trouver la zone, prendre l'instantané
+ * d'annulation, transformer, redessiner — et l'écrire huit fois serait huit
+ * occasions d'en oublier un morceau.
+ *
+ * La ZONE, c'est la sélection : le polygone du lasso s'il est actif, sinon le
+ * rectangle des fourmis. Sans sélection il ne se passe rien, et
+ * validateMenuItem: grise les articles pour le dire d'avance — c'est ce que
+ * faisait HyperCard, et c'est plus sûr que d'appliquer à toute la carte une
+ * transformation qu'on ne pourrait plus distinguer d'une fausse manœuvre. */
+/* Y a-t-il de quoi travailler ? Rend NO sans rien toucher si non. */
+static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
+                              NSPoint **poly, int *npoly)
+{
+    *poly = NULL; *npoly = 0;
+
+    if (gLassoActive && gLassoCount >= 3) {
+        double minx = gLassoPts[0].x, maxx = minx;
+        double miny = gLassoPts[0].y, maxy = miny;
+        for (int i = 1; i < gLassoCount; i++) {
+            if (gLassoPts[i].x < minx) minx = gLassoPts[i].x;
+            if (gLassoPts[i].x > maxx) maxx = gLassoPts[i].x;
+            if (gLassoPts[i].y < miny) miny = gLassoPts[i].y;
+            if (gLassoPts[i].y > maxy) maxy = gLassoPts[i].y;
+        }
+        *x0 = (int)floor(minx); *y0 = (int)floor(miny);
+        *x1 = (int)ceil(maxx);  *y1 = (int)ceil(maxy);
+        *poly = gLassoPts; *npoly = gLassoCount;
+        return YES;
+    }
+    if (gSelRectActive) {
+        *x0 = (int)MIN(gSelStart.x, gSelEnd.x);
+        *x1 = (int)MAX(gSelStart.x, gSelEnd.x);
+        *y0 = (int)MIN(gSelStart.y, gSelEnd.y);
+        *y1 = (int)MAX(gSelStart.y, gSelEnd.y);
+        return YES;
+    }
+    return NO;
+}
+
+- (void)paintOp:(id)sender
+{
+    /* Un script peut détourner l'article, comme pour les autres menus :
+     *
+     *     on doMenu what
+     *       if what is "Revert" then answer "Pas sur cette carte."
+     *       else pass doMenu
+     *     end doMenu
+     *
+     * Le détournement se fait ICI et pas dans paintOpTag : celui-ci est aussi
+     * le chemin qu'emprunte « doMenu "Invert" » venu d'un script, et l'y
+     * mettre ferait rappeler le gestionnaire par lui-même. gDansDoMenu couvre
+     * déjà ce cas, mais un seul garde vaut mieux que deux qui doivent
+     * s'accorder. */
+    if (hcv_menu_trappe([[sender title] UTF8String])) return;
+    [self paintOpTag:[sender tag]];
+}
+
+/* Séparée de l'action pour que « doMenu "Invert" » y arrive aussi : un script
+ * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire. */
+- (void)paintOpTag:(NSInteger)quoi
+{
+    /* Keep et Revert portent sur la carte entière, pas sur une sélection : ils
+     * passent donc AVANT qu'on en cherche une. Les exiger derrière le test de
+     * zone les rendrait inutilisables au moment où on en a le plus besoin —
+     * juste après un dessin raté, quand plus rien n'est sélectionné. */
+    if (quoi == HCV_PAINT_KEEP)   { [self keepPaint];   return; }
+    if (quoi == HCV_PAINT_REVERT) { [self revertPaint]; return; }
+
+    int x0, y0, x1, y1, npoly;
+    NSPoint *poly;
+    if (!hcv_zone_peinture(&x0, &y0, &x1, &y1, &poly, &npoly)) { NSBeep(); return; }
+
+    Object *card = [self documentCard];
+    if (!card) return;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) return;
+
+    [self beginPaintUndo];
+
+    switch (quoi) {
+        case HCV_PAINT_INVERT:  paint_invert(rep, x0,y0,x1,y1, poly,npoly);      break;
+        case HCV_PAINT_DARKEN:  paint_darken(rep, x0,y0,x1,y1, poly,npoly);      break;
+        case HCV_PAINT_LIGHTEN: paint_lighten(rep, x0,y0,x1,y1, poly,npoly);     break;
+        case HCV_PAINT_TRACE:   paint_trace_edges(rep, x0,y0,x1,y1, poly,npoly); break;
+        case HCV_PAINT_FLIPH:   paint_flip(rep, x0,y0,x1,y1, 1);                 break;
+        case HCV_PAINT_FLIPV:   paint_flip(rep, x0,y0,x1,y1, 0);                 break;
+
+        /* Fill remplit la sélection de la trame courante, à l'encre courante,
+         * et respecte « fond transparent » comme les formes pleines : c'est le
+         * seul article du menu qui peint au lieu de transformer.
+         *
+         * L'encre EFFACE est écartée : remplir avec elle laisserait la zone
+         * vide, ce que fait déjà la gomme, et on ne l'aurait su qu'après. */
+        case HCV_PAINT_FILL:
+            if (gInk == INK_ERASE) { NSBeep(); return; }
+            paint_fill_zone(rep, x0,y0,x1,y1, poly,npoly);
+            break;
+
+        /* La rotation change la FORME de la sélection dès qu'elle n'est pas
+         * carrée : ses côtés s'échangent. On y déplace les fourmis, sans quoi
+         * elles entoureraient une zone qui n'a plus rien à voir avec l'image.
+         *
+         * Un lasso devient alors un simple rectangle : son polygone ne
+         * survivrait pas à la rotation, et prétendre le contraire donnerait
+         * une sélection qui ne recouvre plus ce qu'elle désigne. */
+        case HCV_PAINT_ROTL:
+        case HCV_PAINT_ROTR: {
+            NSRect neuf = NSZeroRect;
+            paint_rotate(rep, x0,y0,x1,y1,
+                         quoi == HCV_PAINT_ROTR ? +1 : -1, &neuf);
+            gLassoActive = NO;
+            gLassoCount  = 0;
+            gSelStart = NSMakePoint(NSMinX(neuf), NSMinY(neuf));
+            gSelEnd   = NSMakePoint(NSMaxX(neuf), NSMaxY(neuf));
+            gSelRectActive = YES;
+            [self startAntsTimer];
+            break;
+        }
+        default: return;
+    }
+
+    [self setNeedsDisplay:YES];
+}
+
 - (void)eraseAll {
     Object *card = [self documentCard];
     if (!card) return;
@@ -3107,21 +3500,39 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
                 draw_part(card->bg->parts[i]);
     }
 
-    if (!gEditBackground) {
+    /* La PEINTURE de la carte disparaît en édition de fond, toujours : c'est
+     * ce qu'on demande à ⌘B, voir le fond seul et pouvoir y dessiner. */
+    if (!gEditBackground)
         draw_layer_dirty(paint_bitmap(card, (int)b.size.width, (int)b.size.height),
                          dirtyRect);
+
+    /* Ses OBJETS, eux, restent visibles quand un outil d'objet est en main,
+     * puisque cet outil peut les attraper. Même question, même réponse que
+     * part_at : couche_carte_visible() répond aux deux. */
+    if (couche_carte_visible())
         for (int i = 0; i < card->nparts; i++)
             if (part_touche(card->parts[i], dirtyRect))
                 draw_part(card->parts[i]);
-    }
 
     if (gSelected) {
         NSRect r = NSMakeRect(gSelected->x, gSelected->y, gSelected->w, gSelected->h);
-        [[NSColor redColor] setStroke];
+        /* Ocre pour un objet du FOND, rouge pour un objet de la carte.
+         *
+         * Depuis que les outils Bouton et Champ atteignent les deux calques,
+         * on peut tenir un objet de fond sans être en édition de fond — et le
+         * déplacer, le redimensionner ou le supprimer le fait alors sur TOUTES
+         * les cartes de ce fond. Cette portée-là doit se voir avant le geste,
+         * pas se découvrir après. L'ocre est déjà la couleur du cadre
+         * d'édition de fond, juste en dessous : c'est le même mot dans le même
+         * vocabulaire, et pas un code de plus à retenir. */
+        NSColor *teinte = hc_owner_is_bg(gSelected)
+            ? [NSColor colorWithRed:0.6 green:0.4 blue:0.2 alpha:1.0]
+            : [NSColor redColor];
+        [teinte setStroke];
         NSBezierPath *path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
         [path setLineWidth:2];
         [path stroke];
-        [[NSColor redColor] setFill];
+        [teinte setFill];
         CGFloat s = 6;
         NSPoint corners[4] = {
             {r.origin.x, r.origin.y},
@@ -3469,6 +3880,60 @@ static BOOL      gSansMessageChamp = NO;
     if (!rep) return;
     gPaintUndo      = paint_copy(rep);
     gPaintUndoLayer = layer;
+
+    /* Et, du même coup, le point de repère de Revert s'il n'en existe pas
+     * encore pour ce calque.
+     *
+     * Ici et nulle part ailleurs : beginPaintUndo est déjà le passage obligé
+     * de tout ce qui modifie la peinture — outils, menu Paint, collage,
+     * effacement. Recenser à la main les endroits où « la peinture commence »,
+     * c'est en oublier un, et l'oubli donnerait un Revert qui ramène à un état
+     * plus ancien que l'utilisateur ne croit. Ce qui est pire que pas de
+     * Revert du tout. */
+    if (!gKeepSnap || gKeepLayer != layer) {
+        gKeepSnap  = paint_copy(rep);
+        gKeepLayer = layer;
+    }
+}
+
+/* Keep : l'état courant devient le nouveau point de repère. Ce qui précède
+ * n'est plus rattrapable par Revert — c'est le sens du mot. */
+- (void)keepPaint {
+    Object *layer = [self paintLayer];
+    if (!layer) { NSBeep(); return; }
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) { NSBeep(); return; }
+    gKeepSnap  = paint_copy(rep);
+    gKeepLayer = layer;
+}
+
+/* Revert : retour au dernier point de repère.
+ *
+ * L'instantané SURVIT au retour : on doit pouvoir repeindre et revenir encore,
+ * autant de fois qu'on veut. C'est pourquoi c'est paint_restore et non
+ * paint_swap — l'échange aurait fait du point de repère une bascule.
+ *
+ * Un beginPaintUndo d'abord, pour qu'un Revert donné par erreur se défasse
+ * d'un Cmd-Z : c'est l'article le plus destructeur du menu. */
+- (void)revertPaint {
+    Object *layer = [self paintLayer];
+    if (!gKeepSnap || !layer || gKeepLayer != layer) { NSBeep(); return; }
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                (int)[self bounds].size.height);
+    if (!rep) { NSBeep(); return; }
+    gPaintUndo      = paint_copy(rep);
+    gPaintUndoLayer = layer;
+    paint_restore(rep, gKeepSnap);
+    [self setNeedsDisplay:YES];
+}
+
+/* Quitter la carte vaut Keep, comme dans HyperCard : ce qu'on y laisse est
+ * gardé, et Revert ne peut plus le reprendre. Sans cet oubli, revenir sur une
+ * carte ferait pointer Revert vers un état d'il y a une heure. */
+- (void)forgetKeepSnapshot {
+    gKeepSnap  = nil;
+    gKeepLayer = NULL;
 }
 
 - (void)undo:(id)sender {

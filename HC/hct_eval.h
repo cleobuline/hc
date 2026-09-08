@@ -136,13 +136,33 @@ struct HctContexte {
      * qui redemande sa propre valeur : sans plafond, la récursion est
      * infinie et la pile C meurt sans message. */
     int         prof_valeur;
+
+    /* De quoi composer un message qui NOMME le fautif. `erreur` pointe
+     * d'ordinaire sur une constante ; quand il faut y glisser le mot qui
+     * cloche, c'est ici qu'on l'écrit et là que `erreur` pointe. Le contexte
+     * vit le temps d'une évaluation, donc le tampon aussi : personne ne le
+     * relit après. */
+    char        message[128];
 };
 void hct_ctx_init(HctContexte *ctx, HctHote hote);
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg);
+/* Même chose, mais le message nomme le coupable : « propriété ou fonction
+ * inconnue : zorglub ». Le texte est composé dans ctx->message. */
+void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
+                       const char *quoi, const char *nom);
 
 /* Évalue un arbre d'expression. En cas d'erreur, rend une valeur vide et
  * renseigne ctx->erreur — l'appelant doit le tester. */
 HctValeur hct_evalue(HctContexte *ctx, const HctNoeud *n);
+
+/* Le rang que désigne un ordinal, dans un ensemble de `total` éléments :
+ * « last » vaut total, « middle » vaut total/2 + 1, « any » tire au sort.
+ * Rend 0 si l'ordinal n'en désigne aucun.
+ *
+ * Exportée parce que hc_core en a besoin pour « select last word of … » :
+ * en écrire une seconde copie là-bas aurait donné deux tables d'ordinaux à
+ * tenir d'accord, et « middle » a déjà été faux une fois. */
+int hct_rang_ordinal(HctOrdinal o, int total);
 /* Déclarer une variable GLOBALE dans le gestionnaire courant.
  *
  * Quand l'hôte tient les variables, il tient aussi la distinction entre
