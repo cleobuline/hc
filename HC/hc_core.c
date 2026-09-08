@@ -8004,7 +8004,21 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             if (!quoted) eval_checked(to + 2, val, HC_VAL);
         }
     } else {
-        eval_checked(to + 2, val, HC_VAL);
+        /* Le cas général — « set the rect of bg btn "L" to r ». Comme pour
+         * les propriétés globales plus haut : la valeur est déjà un
+         * sous-arbre, on l'évalue au lieu de relire son texte.
+         *
+         * Pas pour textColor ni textStyle, traités juste au-dessus : ceux-là
+         * acceptent une liste de noms nus — « to bold,condense » — qui n'est
+         * pas une expression et que l'arbre découpe en plusieurs enfants. Le
+         * test sur nfils == 3 les écarterait de toute façon ; le dire ici
+         * évite qu'on se demande pourquoi dans six mois. */
+        if (n->nfils == 3) {
+            v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else {
+            eval_checked(to + 2, val, HC_VAL);
+        }
     }
 
     /* La cible peut designer une PLAGE DE TEXTE et non un objet :

@@ -295,12 +295,18 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         char d = delim_de(x);
         int n1 = 0, n2 = 0;
         if (cible->ordinal) {
+            /* hct_rang_ordinal, et non une table recopiée ici.
+             *
+             * Celle qui s'y trouvait traduisait « any » par la VALEUR de
+             * l'énumération — treize — au lieu d'un rang tiré au sort :
+             * « put "X" into any item of "a,b,c" » écrivait dans l'item 13 et
+             * rendait « a,b,c,,,,,,,,,,X ». La lecture, elle, passait par
+             * hct_eval.c et tirait bien au hasard, si bien que les deux sens
+             * de la même tournure ne parlaient pas du même item.
+             *
+             * Trois copies de cette table existaient. Il en reste une. */
             int total = hct_chunk_compte(base.txt, cible->sorte, d);
-            switch (cible->ordinal) {
-                case HCT_ORD_DERNIER: n1 = total; break;
-                case HCT_ORD_MILIEU:  n1 = total > 0 ? total / 2 + 1 : 0; break;
-                default:              n1 = (int)cible->ordinal; break;
-            }
+            n1 = hct_rang_ordinal(cible->ordinal, total);
         } else {
             if (cible->nfils >= 2) {
                 HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
