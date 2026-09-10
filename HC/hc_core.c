@@ -436,8 +436,12 @@ static char   g_apanic[HC_VAL];           /* filet en cas d'arène saturée */
 
 static void *arena_alloc(size_t n)
 {
-    n = (n + 15u) & ~(size_t)15;                    /* alignement confortable */
+    /* Vérifier AVANT l'arrondi : n + 15 peut déborder size_t si l'appelant
+     * s'est trompé. Les appels actuels sont petits, mais l'arène est justement
+     * le dernier endroit où transformer une taille impossible en petite
+     * allocation apparemment valide. */
     if (n == 0 || n > HC_ARENA_BLOCK) return NULL;
+    n = (n + 15u) & ~(size_t)15;                    /* alignement confortable */
 
     size_t bi  = g_atop / HC_ARENA_BLOCK;
     size_t off = g_atop % HC_ARENA_BLOCK;
@@ -464,13 +468,24 @@ static char *arena_buf(void)
     return p;
 }
 
-/* n tampons contigus, pour les tableaux d'arguments. */
+/* n tampons contigus, pour les tableaux d'arguments.
+ *
+ * Contrairement à arena_buf, il n'existe PAS de repli sûr : g_apanic ne fait
+ * qu'une ligne HC_VAL, alors qu'un appelant de arena_rows(16) en indexe seize.
+ * Le caster en tableau donnait donc l'illusion d'un secours tout en écrivant
+ * jusqu'à 15 Mo après le tampon. On rend NULL et chaque appelant abandonne
+ * proprement l'opération en cours. */
 static char (*arena_rows(int n))[HC_VAL]
 {
+    if (n <= 0 || (size_t)n > HC_ARENA_BLOCK / HC_VAL) {
+        emit(HC_ERR, "   !! demande de tampons d'arène impossible");
+        return NULL;
+    }
+
     char (*p)[HC_VAL] = (char (*)[HC_VAL])arena_alloc((size_t)n * HC_VAL);
     if (!p) {
         emit(HC_ERR, "   !! arène de tampons saturée");
-        return (char (*)[HC_VAL])g_apanic;      /* dégradé, mais borné */
+        return NULL;
     }
     for (int i = 0; i < n; i++) p[i][0] = '\0';
     return p;
@@ -4439,10 +4454,12 @@ static int call_function_body(const char *t, char *out, int outlen)
     }
 
     /* --- arguments : « of <expr> » ou « (a, b, c) » --- */
-    char (*raw)[HC_VAL]  = arena_rows(8);
-    char (*vals)[HC_VAL] = arena_rows(8);
     int nargs = 0;
     const char *q = skip_spaces(after);
+    if (*q != '(' && !ci_word(q, "of")) return 0;
+
+    char (*raw)[HC_VAL] = arena_rows(8);
+    if (!raw) { out[0] = '\0'; return 1; }
 
     if (*q == '(') {
         const char *end = q + 1;
@@ -4459,12 +4476,13 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (len < 0) len = 0;
         memcpy(inner, q + 1, (size_t)len); inner[len] = '\0';
         nargs = split_args(inner, raw, 8);
-    } else if (ci_word(q, "of")) {
+    } else {
         snprintf(raw[0], sizeof raw[0], "%s", q + 2);
         nargs = 1;
-    } else {
-        return 0;
     }
+
+    char (*vals)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+    if (nargs && !vals) { out[0] = '\0'; return 1; }
 
     for (int i = 0; i < nargs; i++) eval_expr(raw[i], vals[i], sizeof vals[i]);
 
@@ -4569,7 +4587,8 @@ static int call_function_body(const char *t, char *out, int outlen)
      * remonte la chaîne carte → fond → pile. */
     {
         Object *from = g_me ? g_me : g_current_card;
-        char (*uargv)[HC_VAL] = arena_rows(8);
+        char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+        if (nargs && !uargv) { out[0] = '\0'; return 1; }
         for (int i = 0; i < nargs; i++)
             snprintf(uargv[i], sizeof uargv[i], "%s", vals[i]);
         if (hc_call_user_function(from, name, uargv, nargs)) {
@@ -6542,8 +6561,9 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
-    char (*uargv)[HC_VAL] = arena_rows(8);
     if (nargs > 8) nargs = 8;
+    char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+    if (nargs && !uargv) return 0;
     for (int i = 0; i < nargs; i++)
         snprintf(uargv[i], HC_VAL, "%s", args[i].txt ? args[i].txt : "");
     return hc_call_user_function(from, nom, uargv, nargs);
@@ -7912,6 +7932,11 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     char msg[128];
     const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
     char (*argv)[HC_VAL] = arena_rows(16);
+    if (!argv) {
+        set_result("mémoire insuffisante");
+        ARENA_FREE;
+        return 1;
+    }
     int argc = 0;
     a = skip_spaces(a);
     while (*a && argc < 16) {
@@ -8717,6 +8742,11 @@ static int v3_cmd_reponse(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) { ARENA_FREE; return 1; }
 
     char (*btn)[HC_VAL] = arena_rows(3);
+    if (!btn) {
+        set_result("mémoire insuffisante");
+        ARENA_FREE;
+        return 1;
+    }
     int nb = 0;
     if (v3_est_motcle(n, 1, "with")) {
         int i = 2;
@@ -9619,6 +9649,10 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     if (!trouve) return 0;
 
     char (*argv)[HC_VAL] = arena_rows(16);
+    if (!argv) {
+        set_result("mémoire insuffisante");
+        return 1;
+    }
     int argc = 0;
     for (int i = 0; i < n->nfils && argc < 16; i++) {
         const HctNoeud *f = n->fils[i];
@@ -11322,6 +11356,10 @@ static void exec_line_body(Object *me, const char *line)
         char msg[128];
         const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
         char (*argv)[HC_VAL] = arena_rows(16);
+        if (!argv) {
+            set_result("mémoire insuffisante");
+            return;
+        }
         int argc = 0;
         a = skip_spaces(a);
         while (*a && argc < 16) {
@@ -12484,6 +12522,10 @@ static void exec_line_body(Object *me, const char *line)
             const char *end = NULL, *hdr = NULL;
             if (find_handler(chain[i]->script, verb, &end, &hdr)) {
                 char (*argv)[HC_VAL] = arena_rows(16);
+                if (!argv) {
+                    set_result("mémoire insuffisante");
+                    return;
+                }
                 int argc = 0;
                 const char *a = skip_spaces(rest);
                 while (*a && argc < 16) {
@@ -13578,6 +13620,17 @@ static int hc_send_args_k_body(Object *target, const char *message,
     Object *chain[4 + HC_MAX_USING];
     int n = build_chain(target, chain, (int)(sizeof chain / sizeof *chain));
 
+    /* Sauver les paramètres AVANT de modifier le moindre global. Auparavant
+     * on réservait 16 Mo même quand l'appelant n'avait qu'un paramètre ; on
+     * réserve maintenant exactement ce qui est vivant. Si l'arène refuse,
+     * aucun état global n'a encore changé. */
+    int saved_nparams = g_nparams;
+    char (*saved_params)[HC_VAL] =
+        saved_nparams ? arena_rows(saved_nparams) : NULL;
+    if (saved_nparams && !saved_params) return 0;
+    for (int i = 0; i < saved_nparams; i++)
+        memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
+
     /* `the target` vaut le destinataire initial pendant toute la remontée ;
        on empile l'ancien pour les envois imbriqués. */
     int saved_clipped = g_script_clipped;
@@ -13585,12 +13638,6 @@ static int hc_send_args_k_body(Object *target, const char *message,
     Object *saved_target = g_target;
     Object *saved_me     = g_me;
     g_target = target;
-
-    /* on empile les paramètres du gestionnaire appelant */
-    char (*saved_params)[HC_VAL] = arena_rows(16);
-    int  saved_nparams = g_nparams;
-    for (int i = 0; i < g_nparams; i++)
-        memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
 
     /* g_params[0] = nom du message, puis les arguments */
     snprintf(g_params[0], sizeof g_params[0], "%s", message);
@@ -13873,8 +13920,12 @@ int hc_send_arg(Object *target, const char *message, const char *arg)
     if (!target || !message) return 0;
 
     ARENA_MARK;
-    char (*argv)[HC_VAL] = arena_rows(1);
-    snprintf(argv[0], HC_VAL, "%s", arg ? arg : "");
+    char (*argv)[HC_VAL] = NULL;
+    if (arg) {
+        argv = arena_rows(1);
+        if (!argv) { ARENA_FREE; return 0; }
+        snprintf(argv[0], HC_VAL, "%s", arg);
+    }
     int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
     ARENA_FREE;
     return pris;
@@ -13974,8 +14025,7 @@ void hc_do_menu(const char *item)
 int hc_send(Object *target, const char *message)
 {
     ARENA_MARK;
-    char (*none)[HC_VAL] = arena_rows(1);
-    int r = hc_send_args(target, message, none, 0);
+    int r = hc_send_args(target, message, NULL, 0);
     ARENA_FREE;
     return r;
 }
