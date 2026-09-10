@@ -1164,49 +1164,163 @@ void hc_free(Object *o)
 static Object *nth_card(Object *stack, int n);
 static int     card_index(Object *stack, Object *card);
 
+/* Une suppression peut lancer du HyperTalk (deleteCard, deleteButton, ...),
+ * qui peut à son tour supprimer d'autres objets. Deux protections sont donc
+ * nécessaires :
+ *
+ *  - garder TOUTE la chaîne des suppressions en cours, et pas seulement le
+ *    dernier objet, pour couper les cycles A -> B -> A ;
+ *  - ne jamais libérer physiquement un objet tant qu'un message tourne ou
+ *    qu'une suppression est encore sur la pile. « delete this card » depuis
+ *    un bouton détache la carte tout de suite, mais le bouton et son arbre
+ *    restent vivants jusqu'au retour de mouseUp.
+ *
+ * Les objets différés sont déjà détachés de leur propriétaire. Une pénurie
+ * lors de l'allocation de la petite cellule de file provoque donc au pire une
+ * fuite, préférable à une libération prématurée et à un use-after-free. */
+typedef struct SuppressionActive {
+    Object *objet;
+    struct SuppressionActive *precedent;
+} SuppressionActive;
+
+static SuppressionActive *g_suppression_active = NULL;
+
+typedef struct LiberationDifferee {
+    Object *objet;
+    struct LiberationDifferee *suivante;
+} LiberationDifferee;
+
+static LiberationDifferee *g_liberations_differees = NULL;
+
+static int suppression_active(Object *o)
+{
+    for (SuppressionActive *s = g_suppression_active; s; s = s->precedent)
+        if (s->objet == o) return 1;
+    return 0;
+}
+
+/* `racine` contient-elle encore `cherche` ? Les objets de cette routine ne
+ * sont jamais encore libérés ; elle ne sert qu'à éviter de mettre dans la
+ * file à la fois un parent ET un enfant qu'il possède toujours. */
+static int objet_contient(Object *racine, Object *cherche)
+{
+    if (!racine) return 0;
+    if (racine == cherche) return 1;
+    for (int i = 0; i < racine->nparts; i++)
+        if (objet_contient(racine->parts[i], cherche)) return 1;
+    return 0;
+}
+
+static void libere_ou_differe(Object *o)
+{
+    if (!o) return;
+    if (g_depth == 0 && !g_suppression_active) {
+        hc_free(o);
+        return;
+    }
+
+    /* Un parent déjà en attente emportera cet objet avec lui. */
+    for (LiberationDifferee *d = g_liberations_differees; d; d = d->suivante)
+        if (objet_contient(d->objet, o)) return;
+
+    /* Si l'on met maintenant un parent en attente, retirer de la file les
+     * descendants qu'il possède encore : hc_free(parent) les libérera. */
+    LiberationDifferee **pp = &g_liberations_differees;
+    while (*pp) {
+        LiberationDifferee *d = *pp;
+        if (objet_contient(o, d->objet)) {
+            *pp = d->suivante;
+            free(d);
+            continue;
+        }
+        pp = &d->suivante;
+    }
+
+    LiberationDifferee *d = malloc(sizeof *d);
+    if (!d) {
+        emit(HC_ERR, "   !! mémoire insuffisante : objet détaché non libéré");
+        return;
+    }
+    d->objet = o;
+    d->suivante = g_liberations_differees;
+    g_liberations_differees = d;
+}
+
+static void libere_differees(void)
+{
+    if (g_depth != 0 || g_suppression_active) return;
+    while (g_liberations_differees) {
+        LiberationDifferee *d = g_liberations_differees;
+        g_liberations_differees = d->suivante;
+        Object *o = d->objet;
+        free(d);
+        hc_free(o);
+    }
+}
+
+static int objet_dans_parent(Object *parent, Object *o)
+{
+    if (!parent || !o) return -1;
+    for (int i = 0; i < parent->nparts; i++)
+        if (parent->parts[i] == o) return i;
+    return -1;
+}
+
+static void retire_part_index(Object *parent, int idx)
+{
+    for (int j = idx; j < parent->nparts - 1; j++)
+        parent->parts[j] = parent->parts[j + 1];
+    parent->nparts--;
+}
+
 /* Supprime une carte de sa pile.
  *
  * Refuse la DERNIÈRE carte : HyperCard faisait de même, et une pile sans carte
  * n'a pas de sens — le chargement en fabriquerait une d'office, donnant
  * l'impression que la suppression n'a rien fait.
  *
- * La carte courante est déplacée AVANT la libération, sur la suivante ou, à
- * défaut, sur la précédente. Sans cela g_current_card pointerait dans de la
- * mémoire rendue, et la première évaluation de script partirait dans le vide.
- *
- * Le texte des champs de fond non partagés meurt avec la carte : il vivait
- * dans ses bgtexts, ce que hc_free libère déjà. */
+ * deleteCard part AVANT la disparition, mais son gestionnaire est libre de
+ * modifier la pile. On recalcule donc présence, rang et nombre de cartes
+ * APRÈS le callback au lieu de réutiliser des valeurs devenues périmées. */
 int hc_delete_card(Object *card)
 {
     if (!card || card->type != OBJ_CARD || !card->owner) return 0;
-    Object *stack = card->owner;
+    if (suppression_active(card)) return 0;
 
+    Object *stack = card->owner;
     int total = 0;
     for (int i = 0; i < stack->nparts; i++)
         if (stack->parts[i]->type == OBJ_CARD) total++;
-    if (total <= 1) return 0;              /* on ne supprime pas la dernière */
+    if (total <= 1) return 0;
+    if (card_index(stack, card) < 0) return 0;
 
-    int idx = card_index(stack, card);
-    if (idx < 0) return 0;
+    SuppressionActive active = { card, g_suppression_active };
+    g_suppression_active = &active;
 
-    /* HyperCard prévient la carte AVANT de la faire disparaître : c'est la
-     * dernière occasion qu'a un script de sauver ce qu'elle contient. Après
-     * hc_free, il n'y a plus personne à qui parler.
-     *
-     * Le pendant de newCard, qui existait déjà côté interface. Envoyé ici et
-     * non dans hc_free : celui-ci sert aussi à libérer une pile entière, et
-     * une pile qui se ferme n'a pas à voir défiler un deleteCard par carte. */
     hc_send_systeme(card, "deleteCard");
 
-    Object *bg = card->bg;                 /* retenu AVANT la libération */
+    /* Le gestionnaire a pu supprimer une AUTRE carte. Il ne peut pas
+     * supprimer celle-ci par hc_delete_card (le garde ci-dessus coupe le
+     * cycle), mais il peut avoir changé le nombre et les indices. */
+    int idx = card_index(stack, card);
+    total = 0;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_CARD) total++;
 
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i] != card) continue;
-        for (int j = i; j < stack->nparts - 1; j++)
-            stack->parts[j] = stack->parts[j + 1];
-        stack->nparts--;
-        break;
+    if (idx < 0 || total <= 1) {
+        g_suppression_active = active.precedent;
+        libere_differees();
+        return 0;
     }
+
+    Object *bg = card->bg;
+    int pos = objet_dans_parent(stack, card);
+    if (pos < 0) {
+        g_suppression_active = active.precedent;
+        libere_differees();
+        return 0;
+    }
+    retire_part_index(stack, pos);
 
     if (g_current_card == card) {
         Object *suiv = nth_card(stack, idx);          /* celle qui a pris la place */
@@ -1214,34 +1328,40 @@ int hc_delete_card(Object *card)
         g_current_card = suiv;
     }
 
-    hc_free(card);
+    /* Si la commande vient du script d'un bouton de cette carte, le bouton,
+     * sa carte et leur arbre sont encore utilisés jusqu'au retour du message. */
+    libere_ou_differe(card);
 
-    /* Un fond n'existe que par ses cartes : HyperCard n'en crée jamais un seul
-     * et le fait disparaître avec la dernière carte qui s'y appuie. Sans ce
-     * ménage, le fond survit en mémoire — « the number of backgrounds » le
-     * compte encore, et « go background "x" » peut désigner cette coquille
-     * vide plutôt que le fond homonyme réellement utilisé. */
+    /* Le fond disparaît avec sa dernière carte. Le callback deleteBackground
+     * peut toutefois recréer/changer des cartes : on revérifie donc tout
+     * après lui avant de retirer le fond. */
     if (bg && bg->type == OBJ_BACKGROUND) {
         int reste = 0;
         for (int i = 0; i < stack->nparts && !reste; i++)
             if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
                 reste = 1;
-        if (!reste) {
-            /* Le fond s'en va avec sa dernière carte : il a droit au même
-             * avertissement qu'elle, et pour la même raison — après hc_free,
-             * il n'y a plus personne à qui parler. */
+
+        if (!reste && objet_dans_parent(stack, bg) >= 0 && !suppression_active(bg)) {
+            SuppressionActive abg = { bg, g_suppression_active };
+            g_suppression_active = &abg;
             hc_send_systeme(bg, "deleteBackground");
-            for (int i = 0; i < stack->nparts; i++) {
-                if (stack->parts[i] != bg) continue;
-                for (int j = i; j < stack->nparts - 1; j++)
-                    stack->parts[j] = stack->parts[j + 1];
-                stack->nparts--;
-                break;
+
+            reste = 0;
+            for (int i = 0; i < stack->nparts && !reste; i++)
+                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
+                    reste = 1;
+
+            int ibg = objet_dans_parent(stack, bg);
+            if (!reste && ibg >= 0) {
+                retire_part_index(stack, ibg);
+                libere_ou_differe(bg);
             }
-            hc_free(bg);
+            g_suppression_active = abg.precedent;
         }
     }
 
+    g_suppression_active = active.precedent;
+    libere_differees();
     return 1;
 }
 
@@ -1326,39 +1446,33 @@ int hc_card_count(Object *stack){
     return n;
 }
 
-/* L'objet dont la suppression est en cours, s'il y en a un.
- *
- * deleteButton et deleteField partent AVANT la libération — c'est la dernière
- * occasion qu'a un script de sauver ce que l'objet contient. Mais le
- * gestionnaire est du script : rien ne l'empêche de supprimer l'objet
- * lui-même, et l'on libérerait alors deux fois la même mémoire. Un pointeur
- * suffit à l'empêcher : la suppression imbriquée du même objet ne fait rien
- * et rend 0, la suppression extérieure va jusqu'au bout, et l'objet n'est
- * libéré qu'une fois. */
-static Object *g_part_en_suppression = NULL;
-
+/* Boutons/champs : même règle que pour les cartes. La pile de gardes coupe
+ * aussi les cycles A -> B -> A, que l'ancien pointeur unique laissait passer. */
 int hc_delete_part(Object *o)
 {
     if (!o || !o->owner) return 0;
-    if (o == g_part_en_suppression) return 0;
-
-    Object *precedent = g_part_en_suppression;
-    g_part_en_suppression = o;
-    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
-    g_part_en_suppression = precedent;
+    if (o->type != OBJ_BUTTON && o->type != OBJ_FIELD) return 0;
+    if (suppression_active(o)) return 0;
 
     Object *parent = o->owner;
-    for (int i = 0; i < parent->nparts; i++) {
-        if (parent->parts[i] == o) {
-            /* décaler les suivants pour combler le trou */
-            for (int j = i; j < parent->nparts - 1; j++)
-                parent->parts[j] = parent->parts[j + 1];
-            parent->nparts--;
-            hc_free(o);
-            return 1;
-        }
+    if (objet_dans_parent(parent, o) < 0) return 0;
+
+    SuppressionActive active = { o, g_suppression_active };
+    g_suppression_active = &active;
+    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
+
+    /* Le callback a pu détacher le parent entier. Sa mémoire reste néanmoins
+     * vivante grâce à libere_ou_differe tant que cette suppression est active,
+     * donc on peut retirer proprement le part de son tableau avant les frees. */
+    int idx = objet_dans_parent(parent, o);
+    if (idx >= 0) {
+        retire_part_index(parent, idx);
+        libere_ou_differe(o);
     }
-    return 0;
+
+    g_suppression_active = active.precedent;
+    libere_differees();
+    return idx >= 0;
 }
 
 /* ==================== presse-papiers d'objets ====================
@@ -8838,6 +8952,24 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             set_result("");
             return 1;
         }
+
+        /* Les objets du modèle C se suppriment comme objets, pas comme
+         * conteneurs. C'était le trou qui avalait « delete this card » :
+         * container_set répondait non, puis v3_cmd_delete rendait quand même
+         * 1, donc hc_delete_card n'était jamais appelée. */
+        Object *obj = hct_resout(ctx, o);
+        if (ctx->erreur) return 1;
+        if (obj && obj->type == OBJ_CARD) {
+            if (hc_delete_card(obj)) set_result("");
+            else set_result("Can't delete card");
+            return 1;
+        }
+        if (obj && (obj->type == OBJ_BUTTON || obj->type == OBJ_FIELD)) {
+            if (hc_delete_part(obj)) set_result("");
+            else set_result("Can't delete object");
+            return 1;
+        }
+        if (obj) return 0;              /* objet connu mais non supprimable ici */
     }
 
 
@@ -13619,6 +13751,11 @@ static int hc_send_args_k(Object *target, const char *message,
      * rien pour dire pourquoi. */
     if (g_depth == 0) g_messages_verrouilles = 0;
 
+    /* Une commande « delete this card » peut avoir détaché l'objet dont le
+     * gestionnaire vient juste de finir. C'est seulement ici que plus aucun
+     * code du message n'a besoin de lui. Une suppression C extérieure garde
+     * son propre garde actif et repoussera encore ce nettoyage. */
+    libere_differees();
     return r;
 }
 
