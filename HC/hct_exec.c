@@ -38,6 +38,7 @@ static void portee_libere(Portee *p)
 
 static Var *portee_trouve(Portee *p, const char *nom)
 {
+    if (!p || !nom) return NULL;
     for (int i = 0; i < p->n; i++)
         if (!strcasecmp(p->v[i].nom, nom)) return &p->v[i];
     return NULL;
@@ -45,6 +46,7 @@ static Var *portee_trouve(Portee *p, const char *nom)
 
 static void portee_pose(Portee *p, const char *nom, const char *val)
 {
+    if (!p || !nom) return;
     Var *v = portee_trouve(p, nom);
     if (v) {
         char *n = strdup(val ? val : "");
@@ -59,13 +61,17 @@ static void portee_pose(Portee *p, const char *nom, const char *val)
         if (!t) return;
         p->v = t; p->cap = c;
     }
-    p->v[p->n].nom = strdup(nom);
-    p->v[p->n].val = strdup(val ? val : "");
-    if (p->v[p->n].nom && p->v[p->n].val) p->n++;
+    char *nn = strdup(nom);
+    char *nv = strdup(val ? val : "");
+    if (!nn || !nv) { free(nn); free(nv); return; }
+    p->v[p->n].nom = nn;
+    p->v[p->n].val = nv;
+    p->n++;
 }
 
 static int portee_est_globale(Portee *p, const char *nom)
 {
+    if (!p || !nom) return 0;
     for (int i = 0; i < p->ngl; i++)
         if (!strcasecmp(p->gl[i], nom)) return 1;
     return 0;
@@ -73,6 +79,7 @@ static int portee_est_globale(Portee *p, const char *nom)
 
 static void portee_declare_globale(Portee *p, const char *nom)
 {
+    if (!p || !nom) return;
     if (portee_est_globale(p, nom)) return;
     if (p->ngl == p->capgl) {
         int c = p->capgl ? p->capgl * 2 : 8;
@@ -774,6 +781,10 @@ static void commande(HctExec *x, const HctNoeud *n)
         for (int i = 0; i < n->nfils; i++)
             if (n->fils[i]->genre != HCTN_MOTCLE) nargs++;
         HctValeur *args = nargs ? calloc((size_t)nargs, sizeof *args) : NULL;
+        if (nargs && !args) {
+            hct_ctx_faute(&x->ctx, n, "mémoire insuffisante");
+            return;
+        }
         int k = 0;
         for (int i = 0; i < n->nfils && !x->ctx.erreur; i++) {
             if (n->fils[i]->genre == HCTN_MOTCLE) continue;
@@ -965,7 +976,7 @@ void hct_exec(HctExec *x, const HctNoeud *n)
              * forme écrite, pour qu'il ouvre un cadre, y lie les paramètres,
              * et fasse remonter le message dans la hiérarchie. Ne l'envoyer
              * que par `fonction`, avec les arguments déjà évalués, le
-             * réduisait à un appel plat — et quand le nom lui était inconnu,
+             * réduirait à un appel plat — et quand le nom lui était inconnu,
              * le message se perdait SANS un mot, le retour n'étant même pas
              * testé. C'est ce qui empêchait le calendrier de se dessiner. */
             if (x->ctx.hote.commande &&
@@ -979,6 +990,11 @@ void hct_exec(HctExec *x, const HctNoeud *n)
             if (!nom) return;
             int nargs = n->nfils;
             HctValeur *args = nargs ? calloc((size_t)nargs, sizeof *args) : NULL;
+            if (nargs && !args) {
+                free(nom);
+                hct_ctx_faute(&x->ctx, n, "mémoire insuffisante");
+                return;
+            }
             for (int i = 0; i < nargs && !x->ctx.erreur; i++)
                 args[i] = hct_evalue(&x->ctx, n->fils[i]);
             HctValeur out;
@@ -1034,7 +1050,11 @@ int hct_appelle(HctExec *x, const HctNoeud *script, const char *nom,
     }
 
     Portee *loc = portee_neuve(x->locales);
-    if (!loc) return 1;
+    if (!loc) {
+        x->script = garde_script;
+        hct_ctx_faute(&x->ctx, g, "mémoire insuffisante");
+        return 1;
+    }
     x->locales = loc;
     x->profondeur++;
 

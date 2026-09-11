@@ -436,8 +436,12 @@ static char   g_apanic[HC_VAL];           /* filet en cas d'arène saturée */
 
 static void *arena_alloc(size_t n)
 {
-    n = (n + 15u) & ~(size_t)15;                    /* alignement confortable */
+    /* Vérifier AVANT l'arrondi : n + 15 peut déborder size_t si l'appelant
+     * s'est trompé. Les appels actuels sont petits, mais l'arène est justement
+     * le dernier endroit où transformer une taille impossible en petite
+     * allocation apparemment valide. */
     if (n == 0 || n > HC_ARENA_BLOCK) return NULL;
+    n = (n + 15u) & ~(size_t)15;                    /* alignement confortable */
 
     size_t bi  = g_atop / HC_ARENA_BLOCK;
     size_t off = g_atop % HC_ARENA_BLOCK;
@@ -464,13 +468,24 @@ static char *arena_buf(void)
     return p;
 }
 
-/* n tampons contigus, pour les tableaux d'arguments. */
+/* n tampons contigus, pour les tableaux d'arguments.
+ *
+ * Contrairement à arena_buf, il n'existe PAS de repli sûr : g_apanic ne fait
+ * qu'une ligne HC_VAL, alors qu'un appelant de arena_rows(16) en indexe seize.
+ * Le caster en tableau donnait donc l'illusion d'un secours tout en écrivant
+ * jusqu'à 15 Mo après le tampon. On rend NULL et chaque appelant abandonne
+ * proprement l'opération en cours. */
 static char (*arena_rows(int n))[HC_VAL]
 {
+    if (n <= 0 || (size_t)n > HC_ARENA_BLOCK / HC_VAL) {
+        emit(HC_ERR, "   !! demande de tampons d'arène impossible");
+        return NULL;
+    }
+
     char (*p)[HC_VAL] = (char (*)[HC_VAL])arena_alloc((size_t)n * HC_VAL);
     if (!p) {
         emit(HC_ERR, "   !! arène de tampons saturée");
-        return (char (*)[HC_VAL])g_apanic;      /* dégradé, mais borné */
+        return NULL;
     }
     for (int i = 0; i < n; i++) p[i][0] = '\0';
     return p;
@@ -1164,49 +1179,163 @@ void hc_free(Object *o)
 static Object *nth_card(Object *stack, int n);
 static int     card_index(Object *stack, Object *card);
 
+/* Une suppression peut lancer du HyperTalk (deleteCard, deleteButton, ...),
+ * qui peut à son tour supprimer d'autres objets. Deux protections sont donc
+ * nécessaires :
+ *
+ *  - garder TOUTE la chaîne des suppressions en cours, et pas seulement le
+ *    dernier objet, pour couper les cycles A -> B -> A ;
+ *  - ne jamais libérer physiquement un objet tant qu'un message tourne ou
+ *    qu'une suppression est encore sur la pile. « delete this card » depuis
+ *    un bouton détache la carte tout de suite, mais le bouton et son arbre
+ *    restent vivants jusqu'au retour de mouseUp.
+ *
+ * Les objets différés sont déjà détachés de leur propriétaire. Une pénurie
+ * lors de l'allocation de la petite cellule de file provoque donc au pire une
+ * fuite, préférable à une libération prématurée et à un use-after-free. */
+typedef struct SuppressionActive {
+    Object *objet;
+    struct SuppressionActive *precedent;
+} SuppressionActive;
+
+static SuppressionActive *g_suppression_active = NULL;
+
+typedef struct LiberationDifferee {
+    Object *objet;
+    struct LiberationDifferee *suivante;
+} LiberationDifferee;
+
+static LiberationDifferee *g_liberations_differees = NULL;
+
+static int suppression_active(Object *o)
+{
+    for (SuppressionActive *s = g_suppression_active; s; s = s->precedent)
+        if (s->objet == o) return 1;
+    return 0;
+}
+
+/* `racine` contient-elle encore `cherche` ? Les objets de cette routine ne
+ * sont jamais encore libérés ; elle ne sert qu'à éviter de mettre dans la
+ * file à la fois un parent ET un enfant qu'il possède toujours. */
+static int objet_contient(Object *racine, Object *cherche)
+{
+    if (!racine) return 0;
+    if (racine == cherche) return 1;
+    for (int i = 0; i < racine->nparts; i++)
+        if (objet_contient(racine->parts[i], cherche)) return 1;
+    return 0;
+}
+
+static void libere_ou_differe(Object *o)
+{
+    if (!o) return;
+    if (g_depth == 0 && !g_suppression_active) {
+        hc_free(o);
+        return;
+    }
+
+    /* Un parent déjà en attente emportera cet objet avec lui. */
+    for (LiberationDifferee *d = g_liberations_differees; d; d = d->suivante)
+        if (objet_contient(d->objet, o)) return;
+
+    /* Si l'on met maintenant un parent en attente, retirer de la file les
+     * descendants qu'il possède encore : hc_free(parent) les libérera. */
+    LiberationDifferee **pp = &g_liberations_differees;
+    while (*pp) {
+        LiberationDifferee *d = *pp;
+        if (objet_contient(o, d->objet)) {
+            *pp = d->suivante;
+            free(d);
+            continue;
+        }
+        pp = &d->suivante;
+    }
+
+    LiberationDifferee *d = malloc(sizeof *d);
+    if (!d) {
+        emit(HC_ERR, "   !! mémoire insuffisante : objet détaché non libéré");
+        return;
+    }
+    d->objet = o;
+    d->suivante = g_liberations_differees;
+    g_liberations_differees = d;
+}
+
+static void libere_differees(void)
+{
+    if (g_depth != 0 || g_suppression_active) return;
+    while (g_liberations_differees) {
+        LiberationDifferee *d = g_liberations_differees;
+        g_liberations_differees = d->suivante;
+        Object *o = d->objet;
+        free(d);
+        hc_free(o);
+    }
+}
+
+static int objet_dans_parent(Object *parent, Object *o)
+{
+    if (!parent || !o) return -1;
+    for (int i = 0; i < parent->nparts; i++)
+        if (parent->parts[i] == o) return i;
+    return -1;
+}
+
+static void retire_part_index(Object *parent, int idx)
+{
+    for (int j = idx; j < parent->nparts - 1; j++)
+        parent->parts[j] = parent->parts[j + 1];
+    parent->nparts--;
+}
+
 /* Supprime une carte de sa pile.
  *
  * Refuse la DERNIÈRE carte : HyperCard faisait de même, et une pile sans carte
  * n'a pas de sens — le chargement en fabriquerait une d'office, donnant
  * l'impression que la suppression n'a rien fait.
  *
- * La carte courante est déplacée AVANT la libération, sur la suivante ou, à
- * défaut, sur la précédente. Sans cela g_current_card pointerait dans de la
- * mémoire rendue, et la première évaluation de script partirait dans le vide.
- *
- * Le texte des champs de fond non partagés meurt avec la carte : il vivait
- * dans ses bgtexts, ce que hc_free libère déjà. */
+ * deleteCard part AVANT la disparition, mais son gestionnaire est libre de
+ * modifier la pile. On recalcule donc présence, rang et nombre de cartes
+ * APRÈS le callback au lieu de réutiliser des valeurs devenues périmées. */
 int hc_delete_card(Object *card)
 {
     if (!card || card->type != OBJ_CARD || !card->owner) return 0;
-    Object *stack = card->owner;
+    if (suppression_active(card)) return 0;
 
+    Object *stack = card->owner;
     int total = 0;
     for (int i = 0; i < stack->nparts; i++)
         if (stack->parts[i]->type == OBJ_CARD) total++;
-    if (total <= 1) return 0;              /* on ne supprime pas la dernière */
+    if (total <= 1) return 0;
+    if (card_index(stack, card) < 0) return 0;
 
-    int idx = card_index(stack, card);
-    if (idx < 0) return 0;
+    SuppressionActive active = { card, g_suppression_active };
+    g_suppression_active = &active;
 
-    /* HyperCard prévient la carte AVANT de la faire disparaître : c'est la
-     * dernière occasion qu'a un script de sauver ce qu'elle contient. Après
-     * hc_free, il n'y a plus personne à qui parler.
-     *
-     * Le pendant de newCard, qui existait déjà côté interface. Envoyé ici et
-     * non dans hc_free : celui-ci sert aussi à libérer une pile entière, et
-     * une pile qui se ferme n'a pas à voir défiler un deleteCard par carte. */
     hc_send_systeme(card, "deleteCard");
 
-    Object *bg = card->bg;                 /* retenu AVANT la libération */
+    /* Le gestionnaire a pu supprimer une AUTRE carte. Il ne peut pas
+     * supprimer celle-ci par hc_delete_card (le garde ci-dessus coupe le
+     * cycle), mais il peut avoir changé le nombre et les indices. */
+    int idx = card_index(stack, card);
+    total = 0;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i]->type == OBJ_CARD) total++;
 
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i] != card) continue;
-        for (int j = i; j < stack->nparts - 1; j++)
-            stack->parts[j] = stack->parts[j + 1];
-        stack->nparts--;
-        break;
+    if (idx < 0 || total <= 1) {
+        g_suppression_active = active.precedent;
+        libere_differees();
+        return 0;
     }
+
+    Object *bg = card->bg;
+    int pos = objet_dans_parent(stack, card);
+    if (pos < 0) {
+        g_suppression_active = active.precedent;
+        libere_differees();
+        return 0;
+    }
+    retire_part_index(stack, pos);
 
     if (g_current_card == card) {
         Object *suiv = nth_card(stack, idx);          /* celle qui a pris la place */
@@ -1214,34 +1343,40 @@ int hc_delete_card(Object *card)
         g_current_card = suiv;
     }
 
-    hc_free(card);
+    /* Si la commande vient du script d'un bouton de cette carte, le bouton,
+     * sa carte et leur arbre sont encore utilisés jusqu'au retour du message. */
+    libere_ou_differe(card);
 
-    /* Un fond n'existe que par ses cartes : HyperCard n'en crée jamais un seul
-     * et le fait disparaître avec la dernière carte qui s'y appuie. Sans ce
-     * ménage, le fond survit en mémoire — « the number of backgrounds » le
-     * compte encore, et « go background "x" » peut désigner cette coquille
-     * vide plutôt que le fond homonyme réellement utilisé. */
+    /* Le fond disparaît avec sa dernière carte. Le callback deleteBackground
+     * peut toutefois recréer/changer des cartes : on revérifie donc tout
+     * après lui avant de retirer le fond. */
     if (bg && bg->type == OBJ_BACKGROUND) {
         int reste = 0;
         for (int i = 0; i < stack->nparts && !reste; i++)
             if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
                 reste = 1;
-        if (!reste) {
-            /* Le fond s'en va avec sa dernière carte : il a droit au même
-             * avertissement qu'elle, et pour la même raison — après hc_free,
-             * il n'y a plus personne à qui parler. */
+
+        if (!reste && objet_dans_parent(stack, bg) >= 0 && !suppression_active(bg)) {
+            SuppressionActive abg = { bg, g_suppression_active };
+            g_suppression_active = &abg;
             hc_send_systeme(bg, "deleteBackground");
-            for (int i = 0; i < stack->nparts; i++) {
-                if (stack->parts[i] != bg) continue;
-                for (int j = i; j < stack->nparts - 1; j++)
-                    stack->parts[j] = stack->parts[j + 1];
-                stack->nparts--;
-                break;
+
+            reste = 0;
+            for (int i = 0; i < stack->nparts && !reste; i++)
+                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg)
+                    reste = 1;
+
+            int ibg = objet_dans_parent(stack, bg);
+            if (!reste && ibg >= 0) {
+                retire_part_index(stack, ibg);
+                libere_ou_differe(bg);
             }
-            hc_free(bg);
+            g_suppression_active = abg.precedent;
         }
     }
 
+    g_suppression_active = active.precedent;
+    libere_differees();
     return 1;
 }
 
@@ -1326,39 +1461,33 @@ int hc_card_count(Object *stack){
     return n;
 }
 
-/* L'objet dont la suppression est en cours, s'il y en a un.
- *
- * deleteButton et deleteField partent AVANT la libération — c'est la dernière
- * occasion qu'a un script de sauver ce que l'objet contient. Mais le
- * gestionnaire est du script : rien ne l'empêche de supprimer l'objet
- * lui-même, et l'on libérerait alors deux fois la même mémoire. Un pointeur
- * suffit à l'empêcher : la suppression imbriquée du même objet ne fait rien
- * et rend 0, la suppression extérieure va jusqu'au bout, et l'objet n'est
- * libéré qu'une fois. */
-static Object *g_part_en_suppression = NULL;
-
+/* Boutons/champs : même règle que pour les cartes. La pile de gardes coupe
+ * aussi les cycles A -> B -> A, que l'ancien pointeur unique laissait passer. */
 int hc_delete_part(Object *o)
 {
     if (!o || !o->owner) return 0;
-    if (o == g_part_en_suppression) return 0;
-
-    Object *precedent = g_part_en_suppression;
-    g_part_en_suppression = o;
-    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
-    g_part_en_suppression = precedent;
+    if (o->type != OBJ_BUTTON && o->type != OBJ_FIELD) return 0;
+    if (suppression_active(o)) return 0;
 
     Object *parent = o->owner;
-    for (int i = 0; i < parent->nparts; i++) {
-        if (parent->parts[i] == o) {
-            /* décaler les suivants pour combler le trou */
-            for (int j = i; j < parent->nparts - 1; j++)
-                parent->parts[j] = parent->parts[j + 1];
-            parent->nparts--;
-            hc_free(o);
-            return 1;
-        }
+    if (objet_dans_parent(parent, o) < 0) return 0;
+
+    SuppressionActive active = { o, g_suppression_active };
+    g_suppression_active = &active;
+    hc_send_systeme(o, o->type == OBJ_BUTTON ? "deleteButton" : "deleteField");
+
+    /* Le callback a pu détacher le parent entier. Sa mémoire reste néanmoins
+     * vivante grâce à libere_ou_differe tant que cette suppression est active,
+     * donc on peut retirer proprement le part de son tableau avant les frees. */
+    int idx = objet_dans_parent(parent, o);
+    if (idx >= 0) {
+        retire_part_index(parent, idx);
+        libere_ou_differe(o);
     }
-    return 0;
+
+    g_suppression_active = active.precedent;
+    libere_differees();
+    return idx >= 0;
 }
 
 /* ==================== presse-papiers d'objets ====================
@@ -4325,10 +4454,12 @@ static int call_function_body(const char *t, char *out, int outlen)
     }
 
     /* --- arguments : « of <expr> » ou « (a, b, c) » --- */
-    char (*raw)[HC_VAL]  = arena_rows(8);
-    char (*vals)[HC_VAL] = arena_rows(8);
     int nargs = 0;
     const char *q = skip_spaces(after);
+    if (*q != '(' && !ci_word(q, "of")) return 0;
+
+    char (*raw)[HC_VAL] = arena_rows(8);
+    if (!raw) { out[0] = '\0'; return 1; }
 
     if (*q == '(') {
         const char *end = q + 1;
@@ -4345,12 +4476,13 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (len < 0) len = 0;
         memcpy(inner, q + 1, (size_t)len); inner[len] = '\0';
         nargs = split_args(inner, raw, 8);
-    } else if (ci_word(q, "of")) {
+    } else {
         snprintf(raw[0], sizeof raw[0], "%s", q + 2);
         nargs = 1;
-    } else {
-        return 0;
     }
+
+    char (*vals)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+    if (nargs && !vals) { out[0] = '\0'; return 1; }
 
     for (int i = 0; i < nargs; i++) eval_expr(raw[i], vals[i], sizeof vals[i]);
 
@@ -4455,7 +4587,8 @@ static int call_function_body(const char *t, char *out, int outlen)
      * remonte la chaîne carte → fond → pile. */
     {
         Object *from = g_me ? g_me : g_current_card;
-        char (*uargv)[HC_VAL] = arena_rows(8);
+        char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+        if (nargs && !uargv) { out[0] = '\0'; return 1; }
         for (int i = 0; i < nargs; i++)
             snprintf(uargv[i], sizeof uargv[i], "%s", vals[i]);
         if (hc_call_user_function(from, name, uargv, nargs)) {
@@ -6428,8 +6561,9 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
-    char (*uargv)[HC_VAL] = arena_rows(8);
     if (nargs > 8) nargs = 8;
+    char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
+    if (nargs && !uargv) return 0;
     for (int i = 0; i < nargs; i++)
         snprintf(uargv[i], HC_VAL, "%s", args[i].txt ? args[i].txt : "");
     return hc_call_user_function(from, nom, uargv, nargs);
@@ -7798,6 +7932,11 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     char msg[128];
     const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
     char (*argv)[HC_VAL] = arena_rows(16);
+    if (!argv) {
+        set_result("mémoire insuffisante");
+        ARENA_FREE;
+        return 1;
+    }
     int argc = 0;
     a = skip_spaces(a);
     while (*a && argc < 16) {
@@ -8603,6 +8742,11 @@ static int v3_cmd_reponse(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) { ARENA_FREE; return 1; }
 
     char (*btn)[HC_VAL] = arena_rows(3);
+    if (!btn) {
+        set_result("mémoire insuffisante");
+        ARENA_FREE;
+        return 1;
+    }
     int nb = 0;
     if (v3_est_motcle(n, 1, "with")) {
         int i = 2;
@@ -8838,6 +8982,24 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             set_result("");
             return 1;
         }
+
+        /* Les objets du modèle C se suppriment comme objets, pas comme
+         * conteneurs. C'était le trou qui avalait « delete this card » :
+         * container_set répondait non, puis v3_cmd_delete rendait quand même
+         * 1, donc hc_delete_card n'était jamais appelée. */
+        Object *obj = hct_resout(ctx, o);
+        if (ctx->erreur) return 1;
+        if (obj && obj->type == OBJ_CARD) {
+            if (hc_delete_card(obj)) set_result("");
+            else set_result("Can't delete card");
+            return 1;
+        }
+        if (obj && (obj->type == OBJ_BUTTON || obj->type == OBJ_FIELD)) {
+            if (hc_delete_part(obj)) set_result("");
+            else set_result("Can't delete object");
+            return 1;
+        }
+        if (obj) return 0;              /* objet connu mais non supprimable ici */
     }
 
 
@@ -9487,6 +9649,10 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     if (!trouve) return 0;
 
     char (*argv)[HC_VAL] = arena_rows(16);
+    if (!argv) {
+        set_result("mémoire insuffisante");
+        return 1;
+    }
     int argc = 0;
     for (int i = 0; i < n->nfils && argc < 16; i++) {
         const HctNoeud *f = n->fils[i];
@@ -11172,6 +11338,10 @@ static void exec_line_body(Object *me, const char *line)
         char msg[128];
         const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
         char (*argv)[HC_VAL] = arena_rows(16);
+        if (!argv) {
+            set_result("mémoire insuffisante");
+            return;
+        }
         int argc = 0;
         a = skip_spaces(a);
         while (*a && argc < 16) {
@@ -12334,6 +12504,10 @@ static void exec_line_body(Object *me, const char *line)
             const char *end = NULL, *hdr = NULL;
             if (find_handler(chain[i]->script, verb, &end, &hdr)) {
                 char (*argv)[HC_VAL] = arena_rows(16);
+                if (!argv) {
+                    set_result("mémoire insuffisante");
+                    return;
+                }
                 int argc = 0;
                 const char *a = skip_spaces(rest);
                 while (*a && argc < 16) {
@@ -13428,6 +13602,17 @@ static int hc_send_args_k_body(Object *target, const char *message,
     Object *chain[4 + HC_MAX_USING];
     int n = build_chain(target, chain, (int)(sizeof chain / sizeof *chain));
 
+    /* Sauver les paramètres AVANT de modifier le moindre global. Auparavant
+     * on réservait 16 Mo même quand l'appelant n'avait qu'un paramètre ; on
+     * réserve maintenant exactement ce qui est vivant. Si l'arène refuse,
+     * aucun état global n'a encore changé. */
+    int saved_nparams = g_nparams;
+    char (*saved_params)[HC_VAL] =
+        saved_nparams ? arena_rows(saved_nparams) : NULL;
+    if (saved_nparams && !saved_params) return 0;
+    for (int i = 0; i < saved_nparams; i++)
+        memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
+
     /* `the target` vaut le destinataire initial pendant toute la remontée ;
        on empile l'ancien pour les envois imbriqués. */
     int saved_clipped = g_script_clipped;
@@ -13435,12 +13620,6 @@ static int hc_send_args_k_body(Object *target, const char *message,
     Object *saved_target = g_target;
     Object *saved_me     = g_me;
     g_target = target;
-
-    /* on empile les paramètres du gestionnaire appelant */
-    char (*saved_params)[HC_VAL] = arena_rows(16);
-    int  saved_nparams = g_nparams;
-    for (int i = 0; i < g_nparams; i++)
-        memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
 
     /* g_params[0] = nom du message, puis les arguments */
     snprintf(g_params[0], sizeof g_params[0], "%s", message);
@@ -13601,6 +13780,11 @@ static int hc_send_args_k(Object *target, const char *message,
      * rien pour dire pourquoi. */
     if (g_depth == 0) g_messages_verrouilles = 0;
 
+    /* Une commande « delete this card » peut avoir détaché l'objet dont le
+     * gestionnaire vient juste de finir. C'est seulement ici que plus aucun
+     * code du message n'a besoin de lui. Une suppression C extérieure garde
+     * son propre garde actif et repoussera encore ce nettoyage. */
+    libere_differees();
     return r;
 }
 
@@ -13718,8 +13902,12 @@ int hc_send_arg(Object *target, const char *message, const char *arg)
     if (!target || !message) return 0;
 
     ARENA_MARK;
-    char (*argv)[HC_VAL] = arena_rows(1);
-    snprintf(argv[0], HC_VAL, "%s", arg ? arg : "");
+    char (*argv)[HC_VAL] = NULL;
+    if (arg) {
+        argv = arena_rows(1);
+        if (!argv) { ARENA_FREE; return 0; }
+        snprintf(argv[0], HC_VAL, "%s", arg);
+    }
     int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
     ARENA_FREE;
     return pris;
@@ -13819,8 +14007,7 @@ void hc_do_menu(const char *item)
 int hc_send(Object *target, const char *message)
 {
     ARENA_MARK;
-    char (*none)[HC_VAL] = arena_rows(1);
-    int r = hc_send_args(target, message, none, 0);
+    int r = hc_send_args(target, message, NULL, 0);
     ARENA_FREE;
     return r;
 }
