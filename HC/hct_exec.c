@@ -718,6 +718,27 @@ static void commande(HctExec *x, const HctNoeud *n)
         HctValeur act = hct_evalue(&x->ctx, ncible);
         if (x->ctx.erreur) { hct_val_libere(&val); hct_val_libere(&act); return; }
 
+        /* UNE VARIABLE JAMAIS AFFECTÉE VAUT ZÉRO ICI.
+         *
+         * « add 1 to compteur » en tête de gestionnaire, sans « put 0 into
+         * compteur » avant : c'est l'idiome le plus courant d'HyperTalk, et
+         * l'ancien interprète y répondait 1. La v3 échouait sur « un nombre
+         * est attendu ici » — parce qu'un nom que rien ne définit vaut son
+         * propre texte, règle juste ailleurs mais absurde en arithmétique.
+         *
+         * On ne l'applique qu'au nom NU dont l'évaluation rend exactement ce
+         * nom : c'est la signature du littéral non défini. Une variable qui
+         * contient vraiment du texte non numérique continue de lever la
+         * faute, et c'est ce qu'on veut. */
+        if (ncible->genre == HCTN_IDENT && act.txt) {
+            char *nom = texte(ncible);
+            if (nom && !strcmp(nom, act.txt)) {
+                hct_val_libere(&act);
+                act = hct_val_vide();
+            }
+            free(nom);
+        }
+
         double xv, xc, r = 0;
         if (!nombre_ou_vide(val.txt, &xv) || !nombre_ou_vide(act.txt, &xc)) {
             hct_ctx_faute(&x->ctx, n, "un nombre est attendu ici");
