@@ -1335,7 +1335,10 @@ static void cocoa_click_at(int x, int y, const char *mods) {
 
     if (hit && gTool == TOOL_BROWSE) {
         hc_send(hit, "mouseDown");
-        hc_send(hit, "mouseUp");
+        /* `hit` est une variable locale : object_gone ne peut pas la mettre à
+         * NULL. Si mouseDown a supprimé l'objet, le deuxième envoi lirait de
+         * la mémoire rendue — on demande donc au noyau s'il est encore là. */
+        if (hc_object_is_live(hit)) hc_send(hit, "mouseUp");
     }
     [gView setNeedsDisplay:YES];
 }
@@ -4673,24 +4676,32 @@ static BOOL      gSansMessageChamp = NO;
                 (!hit && gPressed == hc_current_card()))
                 hc_send(gPressed, "mouseUp");
 
-            if (gPressed->type == OBJ_BUTTON && gPressed->style) {
-                const char *st = gPressed->style;
+            /* Relire gPressed APRÈS l'envoi : le gestionnaire a pu se
+             * supprimer lui-même — « on mouseUp / delete me / end mouseUp »,
+             * l'idiome du bouton qui disparaît quand on s'en sert. object_gone
+             * l'a alors mis à NULL, et rallumer l'éclairage d'un bouton mort
+             * n'a plus de sens. Avant ce rappel le pointeur restait sur de la
+             * mémoire rendue : la faute était la même, mais silencieuse. */
+            Object *presse = gPressed;
+            gPressed = NULL;
+
+            if (presse && presse->type == OBJ_BUTTON && presse->style) {
+                const char *st = presse->style;
                 if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
-                    hc_set_hilite(gPressed, hc_current_card(),
-                                  !hc_hilite_of(gPressed, hc_current_card()));
+                    hc_set_hilite(presse, hc_current_card(),
+                                  !hc_hilite_of(presse, hc_current_card()));
                 }
                 else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
-                    hc_set_hilite(gPressed, hc_current_card(), 1);
-                    radio_exclusive(hc_current_card(), gPressed);
+                    hc_set_hilite(presse, hc_current_card(), 1);
+                    radio_exclusive(hc_current_card(), presse);
                 }
-                else if (gPressed->autohilite) {
-                    hc_set_hilite(gPressed, hc_current_card(), 0);
+                else if (presse->autohilite) {
+                    hc_set_hilite(presse, hc_current_card(), 0);
                 }
-            } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
-                hc_set_hilite(gPressed, hc_current_card(), 0);
+            } else if (presse && presse->type == OBJ_BUTTON && presse->autohilite) {
+                hc_set_hilite(presse, hc_current_card(), 0);
             }
 
-            gPressed = NULL;
             [self setNeedsDisplay:YES];
         }
         if (gMoving) {
@@ -4907,7 +4918,11 @@ static void hcv_survol(HCView *v, Object *carte)
     /* Un gestionnaire peut changer de carte sous nos pieds : on ne parle au
      * suivant que si l'on est toujours là où l'on croit être. */
     if (ancien) hc_send(ancien, "mouseLeave");
-    if (sous && hc_current_card() == carte) hc_send(sous, "mouseEnter");
+    /* On relit gSurvole plutôt que de réemployer `sous` : mouseLeave est du
+     * script, il a pu supprimer l'objet qu'on s'apprêtait à saluer. Le noyau
+     * remet alors gSurvole à NULL ; une variable locale, elle, ne l'apprend
+     * jamais. La carte est vérifiée pour la même raison, depuis toujours. */
+    if (gSurvole && hc_current_card() == carte) hc_send(gSurvole, "mouseEnter");
 }
 
 - (void)idleTick:(NSTimer *)t {

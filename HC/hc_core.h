@@ -556,6 +556,13 @@ Object *hc_stack_at(int i);
  * jamais l'argument, il ne fait que le comparer aux objets vivants. */
 int     hc_layer_is_live(Object *layer);
 
+/* Le même test, à toute profondeur : boutons et champs compris. À employer
+ * pour une VARIABLE LOCALE tenue de part et d'autre d'un hc_send — un
+ * gestionnaire peut s'être supprimé lui-même. Les pointeurs que l'hôte
+ * conserve durablement, eux, sont mieux servis par le rappel object_gone,
+ * qui les remet à NULL sans qu'on ait à y penser. */
+int     hc_object_is_live(Object *o);
+
 /* ---- Coeur : envoi d'un message ---- */
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
 int     hc_send(Object *target, const char *message);

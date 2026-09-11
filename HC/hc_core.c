@@ -242,6 +242,32 @@ int hc_layer_is_live(Object *layer)
     return 0;
 }
 
+/* Comme hc_layer_is_live, mais à toute profondeur : boutons et champs
+ * compris. Pour une VARIABLE LOCALE, que object_gone ne peut pas mettre à
+ * NULL puisqu'il ne la connaît pas.
+ *
+ *     hc_send(hit, "mouseDown");
+ *     hc_send(hit, "mouseUp");     <- et si mouseDown a fait « delete me » ?
+ *
+ * Ne déréférence jamais son argument : il ne sert qu'à être comparé aux
+ * objets vivants. */
+int hc_object_is_live(Object *o)
+{
+    if (!o) return 0;
+    for (int i = 0; i < hc_stack_count(); i++) {
+        Object *st = hc_stack_at(i);
+        if (!st) continue;
+        if (st == o) return 1;
+        for (int k = 0; k < st->nparts; k++) {
+            Object *couche = st->parts[k];
+            if (couche == o) return 1;
+            for (int j = 0; j < couche->nparts; j++)
+                if (couche->parts[j] == o) return 1;
+        }
+    }
+    return 0;
+}
+
 Object *hc_stack_at(int i)
 {
     return (i >= 0 && i < g_nstacks) ? g_stacks[i] : NULL;
