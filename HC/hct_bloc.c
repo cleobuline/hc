@@ -76,6 +76,40 @@ static void saute_eol(HctAnalyseur *a)
     while (hct_expr_jeton(a)->genre == HCT_EOL) hct_expr_avance(a);
 }
 
+/* Le point-virgule sépare deux instructions sur une même ligne :
+ *     put "a" ; put 1 into i
+ * HyperTalk l'accepte partout où une fin de ligne conviendrait.
+ *
+ * L'analyseur ne connaissait que la fin de ligne et se plaignait de « texte
+ * inattendu » dès le point-virgule. Comme une ligne refusée condamne le
+ * GESTIONNAIRE entier à l'ancien interprète, la ligne d'à côté partait avec
+ * elle — et l'ancien interprète ne le traitait pas mieux : il lisait
+ * « put "i" ; put 1 into i » comme « put "i" » et rangeait la valeur dans
+ * une variable nommée i, en avalant la suite sans un mot.
+ *
+ * On ne le traite PAS comme une fin de ligne au sens large : « if C then »
+ * distingue sa forme à blocs de sa forme d'une ligne en regardant si la
+ * ligne s'arrête là, et un point-virgule ne l'arrête pas. C'est un
+ * séparateur d'instructions, rien de plus. */
+static int point_virgule(const HctJeton *j)
+{
+    return j->genre == HCT_OP && j->len == 1 && *j->deb == ';';
+}
+
+/* Vrai là où une instruction a le droit de s'arrêter. */
+static int fin_instruction(const HctJeton *j)
+{
+    return j->genre == HCT_EOL || j->genre == HCT_FIN || point_virgule(j);
+}
+
+/* Passe les séparateurs vides entre deux instructions. */
+static void saute_separateurs(HctAnalyseur *a)
+{
+    while (hct_expr_jeton(a)->genre == HCT_EOL ||
+           point_virgule(hct_expr_jeton(a)))
+        hct_expr_avance(a);
+}
+
 static HctNoeud *ouvre(HctAnalyseur *a, HctGenreNoeud g, const char *op,
                        int nmots)
 {
@@ -94,7 +128,7 @@ static HctNoeud *corps(HctAnalyseur *a, const char **fins)
     if (!bloc) return NULL;
 
     for (;;) {
-        saute_eol(a);
+        saute_separateurs(a);
         const HctJeton *j = hct_expr_jeton(a);
         if (j->genre == HCT_FIN) break;
 
@@ -110,12 +144,10 @@ static HctNoeud *corps(HctAnalyseur *a, const char **fins)
         /* Une instruction doit se terminer avec sa ligne. Ce qui reste est
          * du texte que personne n'a su lire : on le signale et on saute la
          * ligne, plutôt que de boucler dessus. */
-        if (hct_expr_jeton(a)->genre != HCT_EOL &&
-            hct_expr_jeton(a)->genre != HCT_FIN) {
+        if (!fin_instruction(hct_expr_jeton(a))) {
             hct_ajoute_fils(a->reserve, bloc,
                             hct_expr_faute(a, "texte inattendu en fin de ligne"));
-            while (hct_expr_jeton(a)->genre != HCT_EOL &&
-                   hct_expr_jeton(a)->genre != HCT_FIN)
+            while (!fin_instruction(hct_expr_jeton(a)))
                 hct_expr_avance(a);
         }
     }
@@ -436,17 +468,15 @@ HctNoeud *hct_bloc_script(HctAnalyseur *a)
     HctNoeud *s = hct_noeud(a->reserve, HCTN_BLOC, *hct_expr_jeton(a));
     if (!s) return NULL;
     for (;;) {
-        saute_eol(a);
+        saute_separateurs(a);
         if (hct_expr_fini(a)) break;
         HctNoeud *i = hct_bloc_instruction(a);
         if (!i) break;
         hct_ajoute_fils(a->reserve, s, i);
-        if (hct_expr_jeton(a)->genre != HCT_EOL &&
-            hct_expr_jeton(a)->genre != HCT_FIN) {
+        if (!fin_instruction(hct_expr_jeton(a))) {
             hct_ajoute_fils(a->reserve, s,
                             hct_expr_faute(a, "texte inattendu en fin de ligne"));
-            while (hct_expr_jeton(a)->genre != HCT_EOL &&
-                   hct_expr_jeton(a)->genre != HCT_FIN)
+            while (!fin_instruction(hct_expr_jeton(a)))
                 hct_expr_avance(a);
         }
     }

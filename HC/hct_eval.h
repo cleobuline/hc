@@ -163,6 +163,20 @@ HctValeur hct_evalue(HctContexte *ctx, const HctNoeud *n);
  * en écrire une seconde copie là-bas aurait donné deux tables d'ordinaux à
  * tenir d'accord, et « middle » a déjà été faux une fois. */
 int hct_rang_ordinal(HctOrdinal o, int total);
+
+/* Évalue un TEXTE comme une expression, dans le contexte courant — ce que
+ * demande « the value of X ».
+ *
+ * Rend 0 si le texte n'est PAS une expression complète et propre ; l'appelant
+ * garde alors son propre chemin. Ce refus est délibéré : « a,b,c » s'analyse
+ * sans faute jusqu'à la virgule et rendrait « a », alors que HyperCard rend
+ * la chaîne entière.
+ *
+ * Exporté pour les commandes dont l'argument est du texte CONSTRUIT à
+ * l'exécution — « send "carre" & n to bouton » —, où il n'y a pas d'arbre
+ * antérieur à réemployer et où l'ancien évaluateur était le seul recours. */
+int hct_evalue_texte(HctContexte *ctx, const char *src,
+                     const HctNoeud *origine, HctValeur *out);
 /* Déclarer une variable GLOBALE dans le gestionnaire courant.
  *
  * Quand l'hôte tient les variables, il tient aussi la distinction entre

@@ -242,6 +242,32 @@ int hc_layer_is_live(Object *layer)
     return 0;
 }
 
+/* Comme hc_layer_is_live, mais à toute profondeur : boutons et champs
+ * compris. Pour une VARIABLE LOCALE, que object_gone ne peut pas mettre à
+ * NULL puisqu'il ne la connaît pas.
+ *
+ *     hc_send(hit, "mouseDown");
+ *     hc_send(hit, "mouseUp");     <- et si mouseDown a fait « delete me » ?
+ *
+ * Ne déréférence jamais son argument : il ne sert qu'à être comparé aux
+ * objets vivants. */
+int hc_object_is_live(Object *o)
+{
+    if (!o) return 0;
+    for (int i = 0; i < hc_stack_count(); i++) {
+        Object *st = hc_stack_at(i);
+        if (!st) continue;
+        if (st == o) return 1;
+        for (int k = 0; k < st->nparts; k++) {
+            Object *couche = st->parts[k];
+            if (couche == o) return 1;
+            for (int j = 0; j < couche->nparts; j++)
+                if (couche->parts[j] == o) return 1;
+        }
+    }
+    return 0;
+}
+
 Object *hc_stack_at(int i)
 {
     return (i >= 0 && i < g_nstacks) ? g_stacks[i] : NULL;
@@ -532,9 +558,17 @@ static const char *g_v1_porte = "?";
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
+static void histo_arrive(Object *card);   /* l'historique, défini plus bas */
+
 static void hc_send_systeme(Object *o, const char *message)
 {
-    if (!o || g_messages_verrouilles) return;
+    if (!o) return;
+    /* L'arrivée sur une carte se note ICI, et AVANT le verrou : « lock
+     * messages » empêche le script de réagir, pas la navigation d'avoir eu
+     * lieu. Un seul point pour les six endroits qui envoient openCard, et
+     * pour ceux qu'on ajouterait. */
+    if (o->type == OBJ_CARD && ci_equal(message, "openCard")) histo_arrive(o);
+    if (g_messages_verrouilles) return;
     hc_send(o, message);
 }
 
@@ -1151,9 +1185,80 @@ void hc_set_script(Object *o, const char *script)
     o->script = dup_script(script);
 }
 
+/* ═══ L'HISTORIQUE DE NAVIGATION ═══════════════════════════════════════
+ *
+ * HyperCard retient les cartes visitées : « go back » retrace les pas, « the
+ * recent cards » les énumère, et le menu Go en tire ses articles Back et
+ * Recent. Rien de cela n'existait ici, et le commentaire du menu Go le disait
+ * franchement : « Back, Home et Recent manquent faute d'historique de
+ * navigation dans le noyau ».
+ *
+ * Une pile de cartes, la plus récemment visitée au sommet.
+ *
+ * Elle est alimentée à l'ARRIVÉE sur une carte, c'est-à-dire à l'envoi
+ * d'openCard. C'est le seul instant où l'on est sûr qu'une navigation a eu
+ * lieu, et il est UNIQUE : hc_send_systeme. Les affectations directes de
+ * g_current_card ne comptent pas — il y en a vingt-deux, et la plupart sont
+ * des allers-retours d'une ligne, le temps de lire le texte d'un champ de
+ * fond. Les compter donnerait un historique de faux mouvements.
+ *
+ * Deux fois la même carte de suite ne fait qu'un pas : revenir là où l'on est
+ * n'est pas un déplacement. */
+#define HC_HISTO_MAX 64
+static Object *g_histo[HC_HISTO_MAX];
+static int     g_nhisto = 0;
+static int     g_histo_gele = 0;   /* « go back » ne s'inscrit pas lui-même */
+
+static void histo_arrive(Object *card)
+{
+    if (!card || g_histo_gele) return;
+    if (g_nhisto > 0 && g_histo[g_nhisto - 1] == card) return;
+    if (g_nhisto == HC_HISTO_MAX) {
+        memmove(g_histo, g_histo + 1, sizeof g_histo - sizeof g_histo[0]);
+        g_nhisto--;
+    }
+    g_histo[g_nhisto++] = card;
+}
+
+/* Une carte meurt : elle sort de l'historique. Sans cela « go back » y
+ * trouverait une adresse morte — exactement la faute qu'object_gone vient de
+ * corriger dans l'interface, et le noyau n'y échappe pas plus qu'elle. */
+static void histo_oublie(Object *card)
+{
+    int j = 0;
+    for (int i = 0; i < g_nhisto; i++)
+        if (g_histo[i] != card) g_histo[j++] = g_histo[i];
+    g_nhisto = j;
+}
+
+/* La carte d'où l'on vient. Le sommet est la carte courante : on la dépile,
+ * et la destination est le nouveau sommet. Rendre NULL veut dire qu'il n'y a
+ * nulle part où revenir. */
+static Object *histo_recule(void)
+{
+    if (g_nhisto < 2) return NULL;
+    g_nhisto--;
+    return g_histo[g_nhisto - 1];
+}
+
+int hc_recent_count(void) { return g_nhisto; }
+
+/* Rang 0 = la plus récente. L'ordre rendu est celui d'HyperCard : le menu
+ * Recent montrait la dernière visitée en premier. */
+Object *hc_recent_at(int i)
+{
+    if (i < 0 || i >= g_nhisto) return NULL;
+    return g_histo[g_nhisto - 1 - i];
+}
+
 void hc_free(Object *o)
 {
     if (!o) return;
+    histo_oublie(o);
+    /* Prévenir l'hôte AVANT de libérer quoi que ce soit. C'est le seul
+     * endroit où un objet meurt, donc le seul où le dire une fois pour
+     * toutes — recenser les appelants un par un, c'est en oublier un. */
+    if (g_host && g_host->object_gone) g_host->object_gone(o);
     for (int i = 0; i < o->nparts; i++) hc_free(o->parts[i]);
     free(o->parts);
     free(o->name);
@@ -6413,6 +6518,22 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char quoi[32];
         hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+
+        /* « the number of menus » : les menus ne sont pas des objets de la
+         * pile — pas de nœud HCTN_OBJET pour eux —, donc v3_nombre_objets ne
+         * peut rien en dire. Le modèle est ici, la réponse aussi. */
+        if (ci_equal(quoi, "number") && n->fils[1] &&
+            n->fils[1]->genre == HCTN_IDENT) {
+            char sorte[32];
+            hct_texte(&n->fils[1]->jeton, sorte, sizeof sorte);
+            if (ci_equal(sorte, "menus")) {
+                char b[24];
+                snprintf(b, sizeof b, "%d", hc_menu_nombre());
+                *out = hct_val_texte(b);
+                return 1;
+            }
+        }
+
         int compte;
         if (ci_equal(quoi, "number") && v3_nombre_objets(n->fils[1], &compte)) {
             char b[24];
@@ -6512,7 +6633,12 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * lorsque tout s'est bien passé, et traiter ce vide comme un échec
      * rendait « result » en clair. Le calendrier voyait alors
      * « if the result <> empty » toujours vrai et refusait toutes les dates. */
-    if (strcmp(val, txt) == 0) {
+    int echo = 0;
+    /* Un nœud d'OBJET ne gagne rien à être redemandé avec « the » devant :
+     * « the field "menu" » n'est pas une tournure d'HyperTalk. On s'épargne
+     * ce second appel, qui doublait le coût de chaque référence absente. */
+    if (n->genre == HCTN_OBJET && strcmp(val, txt) == 0) echo = 1;
+    else if (strcmp(val, txt) == 0) {
         char *avec_the = arena_buf();
         snprintf(avec_the, HC_VAL, "the %s", txt);
         term_value(avec_the, val, HC_VAL);
@@ -6520,8 +6646,33 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         /* Si même avec « the » rien de neuf ne sort, on rend le texte
          * d'origine plutôt que « the value of x » : c'est ce que faisait
          * l'ancien évaluateur, et un script peut s'appuyer dessus. */
-        if (strcmp(val, avec_the) == 0)
+        if (strcmp(val, avec_the) == 0) {
             snprintf(val, HC_VAL, "%s", txt);
+            echo = 1;
+        }
+    }
+
+    /* UNE RÉFÉRENCE D'OBJET NE SE REND PAS ELLE-MÊME EN CLAIR.
+     *
+     * « put field "menu" », quand ce champ n'existe nulle part, affichait
+     * field "menu" — le texte de la demande. C'est la même tromperie que
+     * « the zorglub » rendant zorglub, corrigée en son temps pour les
+     * propriétés : un mot nu peut légitimement valoir lui-même, une
+     * référence d'objet jamais. L'auteur a écrit « field », il désigne un
+     * champ, et s'il n'y en a pas il faut le dire.
+     *
+     * On rend 0 : hct_eval lève alors « objet introuvable » en nommant la
+     * ligne. L'ancien moteur a déjà eu sa chance juste au-dessus — il peut
+     * résoudre des formes que hct_resout ignore, et celles-là passent. Seul
+     * l'ÉCHEC des deux change de comportement.
+     *
+     * Trouvé par le relevé d'un test de navigation : huit « recours objet:
+     * field "menu" » qui ne se voyaient nulle part ailleurs, le script
+     * travaillant tranquillement sur la chaîne « field "menu" ». */
+    if (echo && n->genre == HCTN_OBJET) {
+        ARENA_FREE;
+        g_v3_recours_prof--;
+        { g_v1_porte = sauve_porte; } return 0;
     }
 
     /* Dernier recours : l'ANCIEN analyseur.
@@ -6601,6 +6752,18 @@ static const char *V3_GLOBALES_HOTE[] = {
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
+    /* L'état de la MACHINE. Le noyau ne sait rien de l'espace disque ni de la
+     * version du système, et inventer un chiffre serait pire que se taire :
+     * un script qui vérifie « if the diskSpace < 100000 » mérite une vraie
+     * réponse ou une vraie erreur, pas une valeur décorative. On les confie
+     * donc à l'hôte, qui peut les connaître ; s'il ne répond pas, « the » dit
+     * franchement qu'il ne sait pas.
+     *
+     * PAS « the size » ni « the freeSize » : chez HyperCard ce sont des
+     * propriétés de la PILE — sa taille de fichier et l'espace que les
+     * suppressions y ont laissé —, pas de la machine. Les mettre ici les
+     * aurait détournées de leur sens. */
+    "diskSpace", "heapSpace", "systemVersion", "windows", "programs",
     NULL
 };
 
@@ -6635,6 +6798,66 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         char petit[128];
         format_date(petit, sizeof petit, datemode);
         *out = hct_val_texte(petit);
+        return 1;
+    }
+    /* « the stacks » : les piles ouvertes, une par ligne. Le noyau tient déjà
+     * ce registre — c'est celui qui permet à « go to stack "X" » de trouver
+     * une pile déjà ouverte. */
+    if (ci_equal(nom, "stacks")) {
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_stack_count(); i++) {
+            Object *st = hc_stack_at(i);
+            const char *nm = st && st->name ? st->name : "";
+            size_t l = strlen(nm);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, nm, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+
+    /* « the menus » : les menus de la barre créés par script, une par ligne.
+     * Le modèle vit ici, l'hôte n'en tient qu'un reflet. */
+    if (ci_equal(nom, "menus")) {
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_menu_nombre(); i++) {
+            const char *nm = hc_menu_nom(i);
+            if (!nm) continue;
+            size_t l = strlen(nm);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, nm, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+
+    /* « the recent cards » : les cartes visitées, la plus récente d'abord,
+     * une par ligne. « the recent names » rend les mêmes sous leur nom court.
+     * L'historique est celui qu'alimente openCard ; le menu Recent d'HyperCard
+     * le lisait de la même façon. */
+    if (ci_equal(nom, "recent cards") || ci_equal(nom, "recent names")) {
+        int courts = ci_equal(nom, "recent names");
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_recent_count(); i++) {
+            Object *c = hc_recent_at(i);
+            if (!c) continue;
+            char d[160];
+            if (courts) snprintf(d, sizeof d, "%s", c->name ? c->name : "");
+            else        hc_describe(c, d, sizeof d);
+            size_t l = strlen(d);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, d, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
         return 1;
     }
     if (ci_equal(nom, "date")) {
@@ -7157,6 +7380,42 @@ static void v1_compte(const char *quoi, const char *porte)
     g_nv1++;
 }
 
+/* ═══ LE FILET, DÉBRANCHÉ À LA DEMANDE ═════════════════════════════════
+ *
+ * HC_SANS_V1=1 empêche l'ancien exécuteur de lignes de tourner : exec_line
+ * refuse la ligne et la dénonce au lieu de l'exécuter.
+ *
+ * C'est la seule mesure qui ne se devine pas. Tant que le filet est tendu,
+ * une forme non portée retombe dessus sans bruit, et rien ne distingue « la
+ * v3 sait le faire » de « la v3 n'a jamais eu à le faire ». Débranché, ce
+ * qui casse est exactement ce qu'il reste à porter — et ce qui ne casse pas
+ * est du code qu'on peut supprimer.
+ *
+ * Le commutateur se pose ICI, dans l'enveloppe unique d'exec_line_body, et
+ * non sur les quatre appelants connus : recenser des chemins un par un,
+ * c'est en oublier un. Celui-ci les prend tous, y compris ceux qu'on
+ * ajouterait demain. */
+static int v1_debranche(void)
+{
+    static int etat = -1;
+    if (etat < 0) {
+        /* LE DÉFAUT A CHANGÉ. Le filet n'est plus tendu : HC_AVEC_V1=1 le
+         * retend, pour comparer ou pour dépanner une pile. HC_SANS_V1 reste
+         * accepté et ne sert plus à rien — on ne casse pas un réglage que
+         * quelqu'un a pu mettre dans son schéma Xcode.
+         *
+         * La mesure qui autorise ce renversement : sur 138 harnais, 127
+         * tournent à l'identique sans le filet, et les onze autres sont des
+         * scripts sciemment fautifs, des messages sans gestionnaire nulle
+         * part, ou des objets volontairement inexistants — c'est-à-dire des
+         * cas où l'ancien interprète échoue lui aussi, à un message d'erreur
+         * près. */
+        const char *avec = getenv("HC_AVEC_V1");
+        etat = (avec && *avec && *avec != '0') ? 0 : 1;
+    }
+    return etat;
+}
+
 /* Poser la porte et la rendre. À employer par paires, dans la même fonction :
  *     const char *sauve = v1_porte("msg");
  *     ...
@@ -7287,6 +7546,15 @@ static int v3_indice_motcle(const HctNoeud *n, const char *mot, int depuis)
     for (int i = depuis; i < n->nfils; i++)
         if (v3_est_motcle(n, i, mot)) return i;
     return -1;
+}
+
+/* Le nœud qui SUIT un mot-clé de premier niveau, ou NULL s'il n'y est pas.
+ * Les motifs de hct_cmd.c gardent les mots-clés dans l'arbre précisément
+ * pour qu'on puisse s'y repérer sans redécouper du texte. */
+static const HctNoeud *v3_apres_motcle(const HctNoeud *n, const char *mot)
+{
+    int i = v3_indice_motcle(n, mot, 0);
+    return (i >= 0 && i + 1 < n->nfils) ? n->fils[i + 1] : NULL;
 }
 
 /* Le texte d'un fils TEL QU'ÉCRIT, sans l'évaluer.
@@ -7593,7 +7861,18 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
 
 static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
+    /* LA CLÉ DE TRI EST UN SOUS-ARBRE, et on l'évalue une fois par élément.
+     * La relire à chaque tour — c'est ce que faisait eval_checked — refait
+     * l'analyse autant de fois qu'il y a de cartes ou de lignes : « v3 relit
+     * sort 4 » au relevé pour quatre éléments, et quatre cents pour quatre
+     * cents. Le reste de la commande (quel conteneur, quelles options) se lit
+     * toujours dans le texte : il n'est analysé qu'une fois, il ne coûte
+     * rien.
+     *
+     * Le nœud se prend ICI, avant les boucles, et sert dans les deux — le tri
+     * de cartes et celui d'un conteneur. Quand la forme de l'arbre surprend,
+     * `cle` reste le repli par le texte. */
+    const HctNoeud *ncle = v3_apres_motcle(n, "by");
     size_t sauve = g_atop;             /* nommée à part : pas de collision
                                          * avec les ARENA_MARK imbriqués ci-
                                          * dessous, qui doivent pouvoir
@@ -7654,7 +7933,9 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             g_current_card = c;
             ARENA_MARK;
             char *tmp = arena_buf();
-            if (cle) eval_checked(cle, tmp, HC_VAL);
+            tmp[0] = '\0';
+            if (ncle)     v3_val_texte(ctx, ncle, tmp, HC_VAL);
+            else if (cle) eval_checked(cle, tmp, HC_VAL);
             cles[k] = dupstr(tmp);
             ARENA_FREE;
             tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
@@ -7707,8 +7988,23 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
         const char *cle = by ? skip_spaces(by + 2) : NULL;
 
+        /* LE CONTENEUR AUSSI EST DANS L'ARBRE. Quand fils[0] est un morceau
+         * — « lines of card field "L" » —, le conteneur est sa BASE ; sinon
+         * c'est fils[0] lui-même. Une lecture par commande, pas par élément,
+         * mais c'était la dernière de « sort » à repasser par le texte. */
+        const HctNoeud *ncible = NULL;
+        if (n->nfils >= 1) {
+            const HctNoeud *f0 = n->fils[0];
+            if (f0->genre == HCTN_CHUNK && f0->nfils >= 1)
+                ncible = f0->fils[f0->nfils - 1];
+            else if (f0->genre == HCTN_OBJET || f0->genre == HCTN_IDENT)
+                ncible = f0;
+        }
+
         char *src = arena_buf();
-        eval_checked(cible, src, HC_VAL);
+        src[0] = '\0';
+        if (ncible) v3_val_texte(ctx, ncible, src, HC_VAL);
+        else        eval_checked(cible, src, HC_VAL);
 
         int n2 = chunk_count(src, morceau);
         if (n2 < 2) { ARENA_FREE; g_atop = sauve; return 1; }
@@ -7728,11 +8024,13 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
             /* `each` : la variable que la clé interroge. Sans clé, on trie
              * directement sur l'élément. */
-            if (cle) {
+            if (ncle || cle) {
                 var_set("each", elems[i]);
                 ARENA_MARK;
                 char *v = arena_buf();
-                eval_checked(cle, v, HC_VAL);
+                v[0] = '\0';
+                if (ncle) v3_val_texte(ctx, ncle, v, HC_VAL);
+                else      eval_checked(cle, v, HC_VAL);
                 cles[i] = dupstr(v);
                 ARENA_FREE;
             } else {
@@ -7950,7 +8248,22 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
             a++;
         }
         one[len] = '\0';
-        eval_expr(one, argv[argc], sizeof argv[argc]);   /* contexte appelant */
+        /* Le texte du message est CONSTRUIT à l'exécution — « send "carre" & n
+         * to bouton » ne sait pas d'avance combien d'arguments il portera —,
+         * donc il n'y a aucun arbre antérieur à réemployer : il faut bien
+         * analyser ce texte-ci. Mais c'est la v3 qui doit le faire.
+         * hct_evalue_texte est le moteur de « the value of » ; il refuse
+         * proprement ce qui n'est pas une expression complète, et l'ancien
+         * évaluateur reste le repli pour ces cas-là. */
+        {
+            HctValeur v;
+            if (hct_evalue_texte(ctx, one, n, &v)) {
+                snprintf(argv[argc], sizeof argv[argc], "%s", v.txt ? v.txt : "");
+                hct_val_libere(&v);
+            } else {
+                eval_expr(one, argv[argc], sizeof argv[argc]);
+            }
+        }
         argc++;
         if (*a == ',') a = skip_spaces(a + 1); else break;
     }
@@ -7959,6 +8272,88 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     hc_send_args(target, msg, argv, argc);
     ARENA_FREE;
     return 1;
+}
+
+/* Les deux énumérations de sortes de morceau disent la même chose, chacune
+ * dans sa maison : celle de l'arbre, celle du noyau. */
+static ChunkType v3_sorte_chunk(HctSorteChunk s)
+{
+    switch (s) {
+        case HCT_CH_WORD: return CH_WORD;
+        case HCT_CH_ITEM: return CH_ITEM;
+        case HCT_CH_LINE: return CH_LINE;
+        default:          return CH_CHAR;
+    }
+}
+
+/* Le champ visé par une référence de morceau, et l'intervalle exact de
+ * caractères qu'elle couvre — lus dans l'ARBRE.
+ *
+ * chunk_target fait déjà cela depuis le TEXTE de la référence, mais il la
+ * redécoupe à la main et confie chaque indice à eval_expr : « set the
+ * textStyle of word 3 of line 3 to 6 of me to bold » faisait ainsi relire
+ * trois expressions que l'analyseur avait réduites en arbre quelques
+ * instants plus tôt. C'était le dernier « v3 relit set » du relevé, sur le
+ * calendrier d'HyperCard 2.x, dont markToday souligne le jour courant.
+ *
+ * La récursion suit celle de chunk_target — un morceau peut porter sur un
+ * morceau — et s'arrête sur un nœud d'OBJET, seul socle qui ait un texte et
+ * des plages de style.
+ *
+ * Rendre NULL n'est pas une faute : l'appelant repart alors par le texte,
+ * qui sait lire des formes que l'arbre ne présente pas ainsi. */
+static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
+                              int *st, int *en)
+{
+    if (!ch || ch->genre != HCTN_CHUNK || ch->nfils < 1) return NULL;
+
+    const HctNoeud *base = ch->fils[ch->nfils - 1];
+
+    Object *fld;
+    int base_off = 0;
+    char *texte = arena_buf();
+
+    int dedans_st = 0, dedans_en = 0;
+    Object *dedans = v3_chunk_cible(ctx, base, &dedans_st, &dedans_en);
+    if (ctx->erreur) return NULL;
+    if (dedans) {                                   /* morceau de morceau */
+        fld = dedans;
+        base_off = dedans_st;
+        int len = dedans_en - dedans_st;
+        if (len < 0) len = 0;
+        snprintf(texte, HC_VAL, "%.*s", len, hc_field_text(fld) + dedans_st);
+    } else {
+        if (base->genre != HCTN_OBJET) return NULL;
+        fld = hct_resout(ctx, base);
+        if (ctx->erreur) return NULL;
+        if (!fld || fld->type != OBJ_FIELD) return NULL;
+        snprintf(texte, HC_VAL, "%s", hc_field_text(fld));
+    }
+
+    ChunkType ct = v3_sorte_chunk(ch->sorte);
+    int a = 0, b = 0;
+    if (ch->ordinal != HCT_ORD_AUCUN) {
+        a = hct_rang_ordinal(ch->ordinal, chunk_count(texte, ct));
+    } else {
+        char v[128]; double d = 0;
+        int nbornes = ch->nfils - 1;
+        if (nbornes >= 1) {
+            v3_val_texte(ctx, ch->fils[0], v, sizeof v);
+            if (ctx->erreur) return NULL;
+            as_num(v, &d); a = (int)d;
+        }
+        if (nbornes >= 2) {
+            v3_val_texte(ctx, ch->fils[1], v, sizeof v);
+            if (ctx->erreur) return NULL;
+            d = 0; as_num(v, &d); b = (int)d;
+        }
+    }
+
+    int s2, e2;
+    if (!chunk_span(texte, ct, a, b, &s2, &e2)) return NULL;
+    *st = base_off + s2;
+    *en = base_off + e2;
+    return fld;
 }
 
 /* set [the] <propriété> [of <cible>] to <valeur>
@@ -8166,8 +8561,15 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
      * « objet introuvable : word theNewDay of line 3 ». On essaie donc
      * d'abord le morceau, avant de retomber sur la resolution d'objet. */
     {
-        int cst, cen;
-        Object *cf = chunk_target(refbuf, &cst, &cen);
+        int cst = 0, cen = 0;
+        /* La cible est déjà dans l'arbre : le premier fils est un OF dont le
+         * second enfant est le morceau. La lire évite les eval_expr que
+         * chunk_target fait sur chaque indice. Le texte reste le recours. */
+        Object *cf = NULL;
+        if (n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2)
+            cf = v3_chunk_cible(ctx, n->fils[0]->fils[1], &cst, &cen);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
+        if (!cf) cf = chunk_target(refbuf, &cst, &cen);
         if (cf) {
             /* Les trois attributs de texte se posent par plage, comme dans
              * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
@@ -8350,63 +8752,84 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Un appel de fonction n'est pas un conteneur, où qu'il se trouve dans la
+ * référence : « item 1 to 7 of calData() » se lit mais ne s'écrit pas.
+ * L'ancien test cherchait une parenthèse dans le texte de la ligne ; celui-ci
+ * regarde l'arbre, qui sait de quoi il parle. */
+static int v3_contient_appel(const HctNoeud *n)
+{
+    if (!n) return 0;
+    if (n->genre == HCTN_APPEL) return 1;
+    for (int i = 0; i < n->nfils; i++)
+        if (v3_contient_appel(n->fils[i])) return 1;
+    return 0;
+}
+
 /* convert <conteneur> [from <format>] to <format> [and <format>]
  *
- * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
- * v3_reste (voir sa définition) rend le texte EXACT que lisait l'ancien
- * exécuteur — y compris son silence sur « from » : il ne l'a jamais traité
- * spécialement, ne coupant qu'au dernier « to » de premier niveau, et
- * « from » se retrouve donc dans la source, comme avant ce portage. Pas une
- * ligne de l'algorithme n'a changé.
+ * Motif hct_cmd.c : « c [from *] to * ». L'arbre a déjà fait le découpage :
+ * fils[0] est la source, et « from » comme « to » y sont des nœuds MOTCLE,
+ * chacun suivi de son format. On le lit, au lieu de reconstituer le texte de
+ * la ligne pour le recouper soi-même au dernier « to » de premier niveau.
  *
- * C'est ICI qu'a été trouvé, par test réel dans Xcode, le bug du « the »
- * avalé sans être rangé dans un nœud : « convert the date to dateItems »
- * se reconstituait « convert date to dateItems », et to_it — qui décide si
- * le résultat va dans `it` ou dans un conteneur — se trompait de branche :
- * « date » ressemblait à un conteneur, une variable de ce nom naissait, et
- * `it` ne recevait jamais rien. */
+ * Ce recoupage à la main était la dernière raison de relire la source : la v3
+ * l'avait déjà analysée, et eval_expr la relexait pour rien. Il était de plus
+ * fragile — « convert item 1 to 7 of calData() to dateItems » contient deux
+ * « to », et il fallait un paragraphe pour expliquer pourquoi on gardait le
+ * dernier. L'arbre, lui, ne s'y trompe pas : le « to » de la commande est un
+ * MOTCLE, celui du morceau ne l'est pas.
+ *
+ * C'est ICI qu'avait été trouvé, par test réel dans Xcode, le bug du « the »
+ * avalé sans être rangé dans un nœud : « convert the date to dateItems » se
+ * reconstituait « convert date to dateItems », et le choix entre écrire dans
+ * `it` ou dans un conteneur se trompait de branche — « date » ressemblait à
+ * une variable, une variable de ce nom naissait, et `it` ne recevait rien. Le
+ * drapeau `article`, posé depuis par l'analyseur, tranche maintenant sans
+ * regarder le texte.
+ *
+ * « from <format> » reste ignoré, comme dans l'ancien exécuteur : un format
+ * de date se reconnaît à la lecture, on n'a pas besoin qu'on l'annonce. */
 static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
+    if (n->nfils < 1) return 0;
 
-    /* Le « to » qui compte est le dernier de premier niveau : la source
-     * peut en contenir un elle-même, comme dans
-     * « convert item 1 to 7 of calData() to dateItems ». */
-    const char *to = NULL, *scan = mots;
-    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
-        to = k; scan = k + 2;
-    }
-    if (!to) {
-        emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(mots));
+    /* Le « to » de la commande : le dernier MOTCLE « to » de premier niveau. */
+    const HctNoeud *nfmt = NULL;
+    for (int i = 1; i + 1 < n->nfils; i++)
+        if (n->fils[i]->genre == HCTN_MOTCLE && n->fils[i]->op &&
+            ci_equal(n->fils[i]->op, "to"))
+            nfmt = n->fils[i + 1];
+    if (!nfmt) {
+        emit(HC_ERR, "   !! convert sans « to »");
         set_result("invalid date");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
-    char *src = arena_buf();
-    int len = (int)(to - mots);
-    if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-    memcpy(src, mots, (size_t)len); src[len] = '\0';
-    while (len > 0 && isspace((unsigned char)src[len-1])) src[--len] = '\0';
-    const char *srcp = skip_spaces(src);
-
-    /* le format cible, éventuellement double : « short date and long time » */
-    char spec[256];
-    snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
-    char *andkw = (char *)find_kw(spec, "and");
+    /* Le format est une suite de mots-clés — « dateItems », « short date »,
+     * « long date and long time » —, pas une expression : l'évaluer rendrait
+     * la valeur d'une variable qui porterait ce nom. On lit donc le source du
+     * nœud, brut. */
     int f1 = DF_NONE, f2 = DF_NONE;
-    if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
-    f1 = date_format_code(spec);
+    char m1[64], m2[64];
+    if (nfmt->genre == HCTN_BINAIRE && nfmt->op && ci_equal(nfmt->op, "and") &&
+        nfmt->nfils == 2) {
+        v3_brut(nfmt->fils[0], m1, sizeof m1);
+        v3_brut(nfmt->fils[1], m2, sizeof m2);
+        f2 = date_format_code(m2);
+    } else {
+        v3_brut(nfmt, m1, sizeof m1);
+    }
+    f1 = date_format_code(m1);
     if (f1 == DF_NONE) {
-        emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
+        emit(HC_ERR, "   !! format de date inconnu : %s", m1);
         set_result("invalid date");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
+    size_t sauve = g_atop;
     char *val = arena_buf();
-    eval_expr(srcp, val, HC_VAL);
+    v3_val_texte(ctx, n->fils[0], val, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     struct tm tm;
     if (!parse_datetime(val, &tm)) {
@@ -8424,11 +8847,21 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
         snprintf(outv + L, HC_VAL - L, " %s", part2);
     }
 
-    /* Destination : le conteneur source s'il en est un. « the date »,
-     * « the long time » et les appels de fonction n'en sont pas. */
-    int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
-    if (to_it || !container_set(srcp, outv, 0))
+    /* Destination : la source, quand c'en est un conteneur. Une variable nue
+     * s'écrit directement — plus besoin de refabriquer son nom en texte pour
+     * que container_set le réanalyse. */
+    const HctNoeud *src = n->fils[0];
+    if (src->article || v3_contient_appel(src)) {
         var_set("it", outv);
+    } else if (src->genre == HCTN_IDENT) {
+        char nom[128];
+        v3_brut(src, nom, sizeof nom);
+        var_set(nom, outv);
+    } else {
+        char ref[512];
+        v3_source(src, ref, sizeof ref);
+        if (!ref[0] || !container_set(ref, outv, 0)) var_set("it", outv);
+    }
 
     set_result("");
     emit(HC_INFO, "   → %s", outv);
@@ -8528,49 +8961,31 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 static FILE *file_find(const char *nom);          /* défini plus bas */
 static int   file_constant(const char *s);         /* défini plus bas */
 
-/* read from file <nom> [at <pos>] for <n> | until <car>
+/* read from file <nom> [at <pos>] [for <n> | until <car>]
  *
- * Motif hct_cmd.c : « from file e [for|until e] » — pas de place pour « at
- * <pos> », qui vit pourtant dans l'algorithme ci-dessous. Ce n'est pas un
- * oubli de ce portage : la table ne l'a jamais prévu, et « read … at … »
- * échoue donc déjà à l'analyse — toute la LIGNE devient une HCTN_ERREUR, ce
- * qui fait retomber le gestionnaire entier à l'ancien exécuteur, lequel sait
- * la lire. v3_cmd_read ne voit donc jamais de « at » dans ses fils ; sa
- * branche `at` reste correcte et prête, juste jamais empruntée tant que la
- * table n'aura pas gagné cet élément.
+ * Motif hct_cmd.c : « from file e [at e] [for|until e] ». Le « at » y a été
+ * AJOUTÉ : il manquait, si bien que « read … at 8 for 6 » échouait à
+ * l'analyse et faisait retomber le GESTIONNAIRE ENTIER sur l'ancien
+ * exécuteur — qui savait la lire, mais emportait avec lui les lignes saines
+ * d'à côté. La branche `at` ci-dessous existait déjà, prête et jamais
+ * empruntée.
  *
- * Comme pour set/sort/find/print, v3_reste rend le texte EXACT que lisait
- * l'ancien exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+ * Les arguments se lisent dans l'arbre, chacun repéré par son mot-clé. La
+ * version précédente reconstituait le texte de la ligne et le recoupait sur
+ * « at », « for » et « until » avant d'évaluer chaque morceau — quatre
+ * relectures possibles par commande, et une heuristique de plus à tenir. */
 static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    if (ci_word(a, "from")) a = skip_spaces(a + 4);
-    if (!ci_word(a, "file")) {
+    const HctNoeud *nfic = v3_apres_motcle(n, "file");
+    if (!nfic) {
         emit(HC_ERR, "   !! read : « file » attendu");
-        g_atop = sauve; return 1;
+        return 1;
     }
-    a = skip_spaces(a + 4);
 
-    /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
-     * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
-    const char *at  = find_kw(a, "at");
-    const char *fo  = find_kw(a, "for");
-    const char *unt = find_kw(a, "until");
-    const char *fin = at ? at : (fo ? fo : unt);
-
+    size_t sauve = g_atop;
     char *nom = arena_buf();
-    {
-        char brut[512];
-        int len = fin ? (int)(fin - a) : (int)strlen(a);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, a, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, nom, HC_VAL);
-    }
+    v3_val_texte(ctx, nfic, nom, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     FILE *f = file_find(nom);
     if (!f) {
@@ -8579,15 +8994,14 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
         g_atop = sauve; return 1;
     }
 
-    if (at) {
-        char *pv = arena_buf();
-        const char *bornes = fo ? fo : unt;
-        char brut[256];
-        const char *deb = skip_spaces(at + 2);
-        int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, deb, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, pv, HC_VAL);
+    const HctNoeud *nat  = v3_apres_motcle(n, "at");
+    const HctNoeud *nfor = v3_apres_motcle(n, "for");
+    const HctNoeud *nunt = v3_apres_motcle(n, "until");
+
+    if (nat) {
+        char pv[64];
+        v3_val_texte(ctx, nat, pv, sizeof pv);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
         long lpos = atol(pv);
         /* Positif : depuis le début, et 1-based comme tout HyperTalk.
          * Négatif : depuis la fin. */
@@ -8598,23 +9012,28 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
     char *out = arena_buf();
     int no = 0;
 
-    if (fo) {
-        char *cv = arena_buf();
-        eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
+    if (nfor) {
+        char cv[64];
+        v3_val_texte(ctx, nfor, cv, sizeof cv);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
         long combien = atol(cv);
         while (no < HC_VAL - 1 && no < combien) {
             int c = fgetc(f);
             if (c == EOF) break;
             out[no++] = (char)c;
         }
-    } else if (unt) {
+    } else if (nunt) {
+        /* « until return », « until tab » : des noms de caractères, pas des
+         * expressions — les évaluer rendrait la valeur d'une variable qui
+         * porterait ce nom. On lit donc le source d'abord, et on n'évalue
+         * que si ce n'en est pas un. */
         char mot[64];
-        next_word(skip_spaces(unt + 5), mot, sizeof mot);
+        v3_brut(nunt, mot, sizeof mot);
         int stop = file_constant(mot);
         if (stop == -1) {
-            /* Pas une constante : un caractère, éventuellement calculé. */
-            char *cv = arena_buf();
-            eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
+            char cv[64];
+            v3_val_texte(ctx, nunt, cv, sizeof cv);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
             stop = cv[0] ? (unsigned char)cv[0] : '\n';
         }
         while (no < HC_VAL - 1) {
@@ -8652,45 +9071,27 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 
 /* write <texte> to file <nom> [at <pos>|end|eof]
  *
- * Motif hct_cmd.c : « e to file e » — pas de « at » non plus, même remède
- * que v3_cmd_read : « write … at … » échoue à l'analyse et fait retomber le
- * gestionnaire entier à l'ancien exécuteur, donc jamais de « at » dans les
- * fils qu'on reçoit ici. */
+ * Motif hct_cmd.c : « e to file e [at e] ». Même ajout du « at » que pour
+ * read, et pour la même raison : sans lui, « write … at end » — la forme
+ * qu'emploie tout script qui ajoute à la fin d'un journal — condamnait le
+ * gestionnaire entier à l'ancien chemin. */
 static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    const char *to = find_kw(a, "to");
-    if (!to) {
+    if (n->nfils < 1) return 0;
+    const HctNoeud *nfic = v3_apres_motcle(n, "file");
+    if (!nfic) {
         emit(HC_ERR, "   !! write : « to file » attendu");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
+    size_t sauve = g_atop;
     char *txt = arena_buf();
-    {
-        char *brut = arena_buf();
-        int len = (int)(to - a);
-        if (len > HC_VAL - 1) len = HC_VAL - 1;
-        memcpy(brut, a, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, txt, HC_VAL);
-    }
-
-    const char *r2 = skip_spaces(to + 2);
-    if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
-    const char *at = find_kw(r2, "at");
+    v3_val_texte(ctx, n->fils[0], txt, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     char *nom = arena_buf();
-    {
-        char brut[512];
-        int len = at ? (int)(at - r2) : (int)strlen(r2);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, r2, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, nom, HC_VAL);
-    }
+    v3_val_texte(ctx, nfic, nom, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     FILE *f = file_find(nom);
     if (!f) {
@@ -8699,12 +9100,16 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
         g_atop = sauve; return 1;
     }
 
-    if (at) {
-        const char *p = skip_spaces(at + 2);
-        if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
+    const HctNoeud *nat = v3_apres_motcle(n, "at");
+    if (nat) {
+        /* « at end » et « at eof » sont des mots, pas des expressions. */
+        char mot[32];
+        v3_brut(nat, mot, sizeof mot);
+        if (ci_equal(mot, "end") || ci_equal(mot, "eof")) fseek(f, 0, SEEK_END);
         else {
-            char *pv = arena_buf();
-            eval_checked(p, pv, HC_VAL);
+            char pv[64];
+            v3_val_texte(ctx, nat, pv, sizeof pv);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
             long lpos = atol(pv);
             if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
             else           fseek(f, lpos, SEEK_END);
@@ -9396,6 +9801,101 @@ static void v3_nom_pile(HctContexte *ctx, const HctNoeud *ref,
  * l'ancien exécuteur reprend la ligne entière, avec ses messages d'erreur.
  * Il refait le travail, mais seulement quand la v3 a échoué.
  */
+/* Se rendre dans une pile, par son nom : sa première carte.
+ *
+ * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de l'ouvrir
+ * — lui seul sait où chercher le fichier et comment lui donner une fenêtre.
+ * C'est ce qui permet à une pile d'en appeler une autre.
+ *
+ * Extrait de v3_cmd_go pour que « go home » l'emploie aussi : Home n'est pas
+ * une destination à part, c'est une PILE qui porte ce nom. L'utilisatrice l'a
+ * fait remarquer en une phrase — « on a déjà go to stack xxx » — et il n'y
+ * avait en effet rien d'autre à écrire. */
+static int v3_va_a(Object *dst);   /* la navigation, définie juste après */
+
+static int v3_va_pile(const char *nom)
+{
+    Object *cible = find_open_stack(nom);
+    if (!cible && g_host && g_host->open_stack)
+        cible = g_host->open_stack(nom);
+    if (!cible) return 0;              /* introuvable : ancien chemin */
+
+    Object *prem = NULL;
+    for (int k = 0; k < cible->nparts; k++)
+        if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
+    if (!prem) { set_result("No such card"); return 1; }
+
+    return v3_va_a(prem);
+}
+
+/* Le déplacement proprement dit, une fois la carte connue : l'effet armé,
+ * les quatre messages de couche dans l'ordre d'HyperCard, l'arrivée.
+ *
+ * Extrait de v3_cmd_go pour que « go back » l'emploie aussi. Le recopier
+ * aurait donné deux navigations à tenir d'accord — et c'est exactement ainsi
+ * qu'un effet visuel ou un closeBackground finit par manquer d'un côté. */
+static int v3_va_a(Object *dst)
+{
+    if (!dst || dst->type != OBJ_CARD) return 0;
+
+    set_result("");
+
+    /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte : l'hôte
+     * a besoin de photographier l'écran de départ. Puis on l'oublie —
+     * « visual » ne vaut que pour le prochain « go ». */
+    if (g_visual_effect[0]) {
+        if (g_host && g_host->visual_effect)
+            g_host->visual_effect(g_visual_effect, g_visual_speed,
+                                  g_visual_image);
+        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+    }
+
+    /* LES SIX MESSAGES, dans l'ordre d'HyperCard : ceux de PILE encadrent
+     * ceux de COUCHE, et chacun n'est envoyé que si la chose change vraiment.
+     *
+     *     closeCard, closeBackground, closeStack
+     *     openStack, openBackground, openCard
+     *
+     * Le changement de pile se décide ICI, en comparant les propriétaires,
+     * plutôt que dans le chemin qui appelle. « go to stack "X" » n'en
+     * envoyait que deux — closeStack et openStack — et jamais openCard : il
+     * n'annonçait donc pas son arrivée sur une carte, l'historique de
+     * navigation ne voyait pas le déplacement, et le « go back » qui suivait
+     * un « go home » revenait dans le vide. Une seule navigation pour tout
+     * le monde, et la question ne se repose plus. */
+    Object *old    = g_current_card;
+    Object *oldbg  = old ? old->bg : NULL;
+    Object *pile   = owning_stack(dst);
+    Object *vpile  = old ? owning_stack(old) : NULL;
+    int change_pile = (pile != vpile);
+
+    if (old) hc_send_systeme(old, "closeCard");
+    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
+    if (change_pile && vpile) hc_send_systeme(vpile, "closeStack");
+
+    g_current_card = dst;
+    if (change_pile && g_host && g_host->stack_changed) g_host->stack_changed(pile);
+
+    if (change_pile && pile) hc_send_systeme(pile, "openStack");
+    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
+    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
+    hc_send_systeme(dst, "openCard");
+    return 1;
+}
+
+/* Revenir à la carte précédente, depuis l'interface : c'est l'article Back du
+ * menu Go. Le même geste que « go back », et par le même chemin. */
+int hc_go_back(void)
+{
+    Object *avant = histo_recule();
+    if (!avant) return 0;
+    int gele = g_histo_gele;
+    g_histo_gele = 1;
+    int r = v3_va_a(avant);
+    g_histo_gele = gele;
+    return r;
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
@@ -9412,6 +9912,39 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 
     const HctNoeud *ref = n->fils[i];
 
+    /* ---- go back ----
+     * On retrace les pas : le sommet de l'historique est la carte courante,
+     * celle d'en dessous est la destination. L'arrivée ne s'inscrit PAS —
+     * sans quoi deux « go back » de suite feraient la navette entre deux
+     * cartes au lieu de continuer à remonter.
+     *
+     * « go recent » est le même geste : c'est ainsi qu'HyperCard nommait
+     * l'article de menu qui ramène à la carte précédente. */
+    if (n->nfils == i + 1 && ref->genre == HCTN_IDENT) {
+        char mot[16];
+        v3_brut(ref, mot, sizeof mot);
+        /* « go home » : la pile nommée « Home », par le chemin de « go to
+         * stack "Home" ». Pas de destination magique — HyperCard non plus
+         * n'en avait pas : Home était un fichier de pile comme un autre, que
+         * l'application savait retrouver. Ici c'est l'hôte qui sait, et il
+         * répond déjà pour « go to stack ». */
+        if (ci_equal(mot, "home")) return v3_va_pile("Home");
+
+        if (ci_equal(mot, "back") || ci_equal(mot, "recent")) {
+            Object *avant = histo_recule();
+            if (!avant) {
+                set_result("No such card");
+                emit(HC_ERR, "   !! rien où revenir : l'historique est vide");
+                return 1;
+            }
+            int gele = g_histo_gele;
+            g_histo_gele = 1;
+            int r = v3_va_a(avant);
+            g_histo_gele = gele;
+            return r;
+        }
+    }
+
     /* ---- go to stack "X" ----
      * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de
      * l'ouvrir — lui seul sait où chercher le fichier et comment lui donner
@@ -9421,23 +9954,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         v3_nom_pile(ctx, ref, nom, sizeof nom);
         if (ctx->erreur) return 1;
 
-        Object *cible = find_open_stack(nom);
-        if (!cible && g_host && g_host->open_stack)
-            cible = g_host->open_stack(nom);
-        if (!cible) return 0;              /* introuvable : ancien chemin */
-
-        Object *prem = NULL;
-        for (int k = 0; k < cible->nparts; k++)
-            if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
-        if (!prem) { set_result("No such card"); return 1; }
-
-        Object *old = g_current_card;
-        if (old && old->owner != cible) hc_send(old, "closeStack");
-        g_current_card = prem;
-        if (g_host && g_host->stack_changed) g_host->stack_changed(cible);
-        hc_send(prem, "openStack");
-        set_result("");
-        return 1;
+        return v3_va_pile(nom);
     }
 
     Object *dst = NULL;
@@ -9477,29 +9994,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     }
 
     if (!dst || dst->type != OBJ_CARD) return 0;   /* ancien chemin */
-
-    set_result("");
-
-    /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte : l'hôte
-     * a besoin de photographier l'écran de départ. Puis on l'oublie —
-     * « visual » ne vaut que pour le prochain « go ». */
-    if (g_visual_effect[0]) {
-        if (g_host && g_host->visual_effect)
-            g_host->visual_effect(g_visual_effect, g_visual_speed,
-                                  g_visual_image);
-        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
-    }
-
-    Object *old   = g_current_card;
-    Object *oldbg = old ? old->bg : NULL;
-    if (old) hc_send_systeme(old, "closeCard");
-    /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
-    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-    g_current_card = dst;
-    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
-    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-    hc_send_systeme(dst, "openCard");
-    return 1;
+    return v3_va_a(dst);
 }
 
 /* ------------------------------------------------- open / close file
@@ -10127,6 +10622,24 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * les compter comme du recours attribuerait à l'ancien code du travail
      * que la v3 vient de faire. Un compteur qui exagère est aussi inutile
      * qu'un compteur muet. */
+    if (v1_debranche()) {
+        /* PORTE 2 : la v3 ne sait pas exécuter cette ligne. L'ancien
+         * interprète ne le savait pas non plus dans tous les cas mesurés — il
+         * rendait seulement un message différent. On écrit le nôtre.
+         *
+         * Un MESSAGE sans gestionnaire est distingué d'une COMMANDE inconnue :
+         * ce n'est pas la même faute pour qui lit, et HyperCard les nommait
+         * différemment aussi. */
+        v1_compte("v1 refusée", "recours v3");
+        if (n->genre == HCTN_MESSAGE)
+            emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
+        else
+            emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
+        set_result("Can't understand");
+        ARENA_FREE;
+        return 1;
+    }
+
     const char *sauve_porte = v1_porte("recours v3");
     exec_stmt(g_me, ligne);
     g_v1_porte = sauve_porte;
@@ -10191,6 +10704,33 @@ static int v3_porte_une_faute(const HctNoeud *n)
     return 0;
 }
 
+/* Le gestionnaire est-il inexécutable ?
+ *
+ * Une faute dans son CADRE — l'en-tête, ou le « end » qui manque — l'est : on
+ * ne sait plus où il commence ni où il finit, et l'exécuter reviendrait à
+ * deviner. Il repart à l'ancien interpréteur, plus indulgent.
+ *
+ * Une faute dans son CORPS ne condamne qu'une INSTRUCTION. L'exécuteur la
+ * signale quand il l'atteint — hct_exec traite déjà HCTN_ERREUR ainsi —, et
+ * le gestionnaire s'arrête là, comme HyperCard s'arrête sur une erreur.
+ * Écarter le gestionnaire entier pour une coquille sur une ligne, c'était
+ * renvoyer quinze lignes saines à l'ancien interpréteur pour un guillemet
+ * oublié : mesuré sur un script de test, quinze lignes pour un caractère.
+ *
+ * fils[0] est le nom, fils[1] les paramètres, fils[2] le corps ; tout enfant
+ * au-delà est une faute de fermeture, posée là par l'analyseur. Le lexeur
+ * n'endommage jamais plus d'une ligne — une chaîne non fermée s'arrête au
+ * saut de ligne —, si bien que la structure qui suit la faute reste sûre. */
+static int v3_cadre_fautif(const HctNoeud *n)
+{
+    if (!n || n->nfils < 3) return 1;
+    if (v3_porte_une_faute(n->fils[0])) return 1;
+    if (v3_porte_une_faute(n->fils[1])) return 1;
+    for (int i = 3; i < n->nfils; i++)
+        if (v3_porte_une_faute(n->fils[i])) return 1;
+    return 0;
+}
+
 static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
                                            const char *nom, int isfunc)
 {
@@ -10200,9 +10740,8 @@ static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
     for (int i = 0; i < racine->nfils; i++) {
         const HctNoeud *f = racine->fils[i];
         if (f->genre != HCTN_GESTIONNAIRE || f->nfils < 3) continue;
-        /* Gestionnaire mal analysé : à l'ancien interpréteur, qui est plus
-         * indulgent. Les autres gestionnaires du script restent à la v3. */
-        if (v3_porte_une_faute(f)) continue;
+        /* Une faute dans le CADRE seulement l'écarte : voir v3_cadre_fautif. */
+        if (v3_cadre_fautif(f)) continue;
         if (!f->op || strcasecmp(f->op, kw) != 0) continue;
 
         const HctJeton *j = &f->fils[0]->jeton;
@@ -10304,9 +10843,16 @@ static int v3_execute(Object *o, const char *message, int isfunc)
      * vient d'y déposer — « go to card 99 » y met sa plainte. */
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
 
-    if (x.ctx.erreur)
-        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+    /* L'erreur nomme le SCRIPT, pas seulement la ligne. « objet introuvable
+     * (v3, ligne 5) » laissait chercher dans quel gestionnaire de quel objet
+     * — et sur une pile qui en compte trente, cela veut dire tout ouvrir.
+     * « ligne 5 de card "Menu".openCard » désigne le fichier et l'endroit. */
+    if (x.ctx.erreur) {
+        char qui[64];
+        hc_describe(o, qui, sizeof qui);
+        emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
+             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0, qui, message);
+    }
 
     hct_exec_libere(&x);
 
@@ -13579,6 +14125,22 @@ static void exec_line_body(Object *me, const char *line)
  * term_value et call_function, qui en ont 40 et 36. */
 static void exec_line(Object *me, const char *line)
 {
+    /* LE GARDE-FOU DE DERNIER RECOURS.
+     *
+     * Les quatre portes connues vers ici sont maintenant fermées une par une,
+     * chacune avec son message — c'est plus utile qu'un refus anonyme. Ce
+     * garde reste pour la CINQUIÈME : un chemin qu'on aurait oublié, ou qu'on
+     * ajouterait demain sans y penser. Recenser des chemins un par un, c'est
+     * en oublier un ; celui-ci les prend tous.
+     *
+     * S'il se déclenche, c'est qu'il y a une porte de plus à fermer, et le
+     * message le dit : « chemin non recensé ». */
+    if (v1_debranche()) {
+        v1_compte("v1 refusée", g_v1_porte);
+        emit(HC_ERR, "   !! chemin non recensé vers l'ancien interprète "
+                     "[%s] : %s", g_v1_porte, line ? line : "");
+        return;
+    }
     ARENA_MARK;
     exec_line_body(me, line);
     ARENA_FREE;
@@ -13701,8 +14263,20 @@ static int hc_send_args_k_body(Object *target, const char *message,
                 snprintf(porte, sizeof porte, "%s.%s", qui, message);
             }
             const char *sauve_v1 = v1_porte(porte);
-            if (!v3_execute(o, message, isfunc))
-                exec_body(o, body, end);
+            if (!v3_execute(o, message, isfunc)) {
+                /* PORTE 1 vers l'ancien exécuteur : un gestionnaire que la v3
+                 * refuse — en-tête illisible, « end » manquant. HyperCard ne
+                 * l'exécutait pas davantage : il refusait d'enregistrer un
+                 * script fautif. Le confier à un moteur plus permissif, qui en
+                 * devinerait la moitié, est pire que de le dire. */
+                if (v1_debranche() && v3_actif()) {
+                    v1_compte("v1 refusée", porte);
+                    emit(HC_ERR, "   !! gestionnaire illisible : %s "
+                                 "(son en-tête ou son « end »)", porte);
+                } else {
+                    exec_body(o, body, end);
+                }
+            }
             g_v1_porte = sauve_v1;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
 
@@ -13856,6 +14430,11 @@ static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = 
     { "Previous", "go prev card"  },
     { "First",    "go first card" },
     { "Last",     "go last card"  },
+    /* Back suit l'historique de navigation, comme dans HyperCard. « doMenu
+     * "Back" » depuis un script y arrive donc aussi, et un « on doMenu » de
+     * la pile peut le détourner — c'est tout l'intérêt de passer par ici
+     * plutôt que d'appeler hc_go_back depuis l'interface. */
+    { "Back",     "go back"       },
     { NULL, NULL }
 };
 
@@ -13994,7 +14573,19 @@ void hc_do_menu(const char *item)
             Object *sauve_me = g_me;
             g_me = cible;
             if (!v3_do_ligne(MENUS_NOYAU[i].ligne))
-                exec_stmt(cible, MENUS_NOYAU[i].ligne);
+                {
+                    /* PORTE 3 : l'article de menu du noyau, si la v3 n'a pas
+                     * su lire sa ligne. Mesuré : sur 138 harnais, elle n'a
+                     * jamais servi — les cinq lignes de MENUS_NOYAU sont du
+                     * HyperTalk que la v3 lit sans peine. */
+                    if (v1_debranche()) {
+                        v1_compte("v1 refusée", "menu du noyau");
+                        emit(HC_ERR, "   !! article de menu non compris : %s",
+                             MENUS_NOYAU[i].ligne);
+                    } else {
+                        exec_stmt(cible, MENUS_NOYAU[i].ligne);
+                    }
+                }
             g_me = sauve_me;
             g_v1_porte = sauve;
             return;
@@ -14372,8 +14963,16 @@ void hc_do(const char *line)
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
-    if (!v3_do_ligne(line))
-        exec_stmt(g_current_card, line);
+    if (!v3_do_ligne(line)) {
+        /* PORTE 4 : la boîte de message, « do », les articles de menu créés
+         * par script. Jamais empruntée non plus dans la mesure. */
+        if (v1_debranche()) {
+            v1_compte("v1 refusée", "msg/do");
+            emit(HC_ERR, "   !! ne sait pas lire : %s", line);
+        } else {
+            exec_stmt(g_current_card, line);
+        }
+    }
     ARENA_FREE;
     g_v1_porte = sauve_porte;
 }

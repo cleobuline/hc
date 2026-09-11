@@ -18,6 +18,7 @@
 #import "HCdialogs.h"
 #import "HCpaint.h"
 #import "hct_verif.h"
+#import "Hcdocument.h"   /* allDocuments : oublier un objet mort partout */
 
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
@@ -1334,7 +1335,10 @@ static void cocoa_click_at(int x, int y, const char *mods) {
 
     if (hit && gTool == TOOL_BROWSE) {
         hc_send(hit, "mouseDown");
-        hc_send(hit, "mouseUp");
+        /* `hit` est une variable locale : object_gone ne peut pas la mettre à
+         * NULL. Si mouseDown a supprimé l'objet, le deuxième envoi lirait de
+         * la mémoire rendue — on demande donc au noyau s'il est encore là. */
+        if (hc_object_is_live(hit)) hc_send(hit, "mouseUp");
     }
     [gView setNeedsDisplay:YES];
 }
@@ -1842,6 +1846,33 @@ static const char *cocoa_global_get(const char *name) {
         NSPoint v = [gView convertPoint:w.origin fromView:nil];
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d",
                  (name[5] == 'H' || name[5] == 'h') ? (int)v.x : (int)v.y);
+        return gGlobBuf;
+    }
+
+    /* L'état de la machine. Le noyau ne peut pas le connaître ; nous, si.
+     *
+     * On ne répond QUE ce qu'on sait vraiment. « the heapSpace », « the
+     * windows » et « the programs » restent sans réponse : l'hôte rend NULL,
+     * et « the » dit alors franchement qu'il ne connaît pas la propriété —
+     * ce qui vaut mieux qu'un chiffre décoratif dont un script se servirait
+     * pour décider quelque chose. */
+    if (strcasecmp(name, "diskSpace") == 0) {
+        NSDictionary *a = [[NSFileManager defaultManager]
+                            attributesOfFileSystemForPath:NSHomeDirectory()
+                                                    error:nil];
+        NSNumber *libre = a[NSFileSystemFreeSize];
+        if (!libre) return NULL;
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%llu",
+                 (unsigned long long)[libre unsignedLongLongValue]);
+        return gGlobBuf;
+    }
+
+    if (strcasecmp(name, "systemVersion") == 0) {
+        NSOperatingSystemVersion v =
+            [[NSProcessInfo processInfo] operatingSystemVersion];
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%ld.%ld.%ld",
+                 (long)v.majorVersion, (long)v.minorVersion,
+                 (long)v.patchVersion);
         return gGlobBuf;
     }
 
@@ -4666,30 +4697,42 @@ static BOOL      gSansMessageChamp = NO;
             NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
             Object *hit = part_at(hc_current_card(), p);
 
+            /* TOUT CE QUI TOUCHE gDoc SE FAIT AVANT L'ENVOI.
+             *
+             * hc_send exécute du script, et le script peut tout changer sous
+             * nos pieds : supprimer le bouton (« on mouseUp / delete me / end
+             * mouseUp », l'idiome du bouton qui s'efface quand on s'en sert),
+             * changer de carte, fermer la pile — donc congédier le document
+             * dont gDoc est l'état. Lire ou écrire gDoc ensuite, c'est parier
+             * sur ce qui aura survécu.
+             *
+             * On prend donc l'objet pressé et on remet l'ardoise à zéro
+             * AVANT, puis on ne travaille plus que sur la variable locale.
+             * Comme aucun rappel ne peut mettre une variable locale à NULL,
+             * c'est hc_object_is_live qui dit si l'objet est encore là. */
+            Object *presse = gPressed;
+            gPressed = NULL;
+
             /* Pour la carte elle-même, part_at rend NULL : on compare
              * donc à la carte courante plutôt qu'au résultat du test. */
-            if (hit == gPressed ||
-                (!hit && gPressed == hc_current_card()))
-                hc_send(gPressed, "mouseUp");
+            if (hit == presse || (!hit && presse == hc_current_card()))
+                hc_send(presse, "mouseUp");
 
-            if (gPressed->type == OBJ_BUTTON && gPressed->style) {
-                const char *st = gPressed->style;
-                if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
-                    hc_set_hilite(gPressed, hc_current_card(),
-                                  !hc_hilite_of(gPressed, hc_current_card()));
+            if (presse && hc_object_is_live(presse) &&
+                presse->type == OBJ_BUTTON) {
+                Object *carte = hc_current_card();
+                const char *st = presse->style;
+                if (st && (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0))
+                    hc_set_hilite(presse, carte, !hc_hilite_of(presse, carte));
+                else if (st && (strcmp(st, "radioButton") == 0 ||
+                                strcmp(st, "radiobutton") == 0)) {
+                    hc_set_hilite(presse, carte, 1);
+                    radio_exclusive(carte, presse);
                 }
-                else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
-                    hc_set_hilite(gPressed, hc_current_card(), 1);
-                    radio_exclusive(hc_current_card(), gPressed);
-                }
-                else if (gPressed->autohilite) {
-                    hc_set_hilite(gPressed, hc_current_card(), 0);
-                }
-            } else if (gPressed->type == OBJ_BUTTON && gPressed->autohilite) {
-                hc_set_hilite(gPressed, hc_current_card(), 0);
+                else if (presse->autohilite)
+                    hc_set_hilite(presse, carte, 0);
             }
 
-            gPressed = NULL;
             [self setNeedsDisplay:YES];
         }
         if (gMoving) {
@@ -4823,6 +4866,57 @@ static BOOL     gInIdle = NO;
 static Object *gSurvole      = NULL;   /* l'objet sous le curseur          */
 static Object *gSurvoleCarte = NULL;   /* et la carte où on l'a vu         */
 
+/* ═══ UN OBJET MEURT ════════════════════════════════════════════════════
+ *
+ * L'interface garde des pointeurs sur des objets du noyau : l'objet survolé,
+ * le sélectionné, le champ en cours d'édition, la cible d'un panneau, le
+ * calque dont on tient l'instantané de Revert. Rien ne les prévenait qu'un
+ * objet venait d'être libéré.
+ *
+ * « delete me » dans le gestionnaire d'un bouton laissait donc gSurvole sur
+ * de la mémoire rendue, et le premier mouvement de souris ensuite envoyait
+ * « mouseLeave » à un script qui n'existait plus : plantage dans
+ * find_handler_k, en train de lire le script d'un objet mort. Le commentaire
+ * juste au-dessus prévoyait déjà ce danger pour le CHANGEMENT DE CARTE — on
+ * oublie l'objet survolé sans lui parler — mais pas pour sa suppression.
+ *
+ * Le noyau prévient maintenant, depuis hc_free, le seul endroit où un objet
+ * meurt. Ici on oublie, sans jamais déréférencer : le pointeur ne sert qu'à
+ * être comparé.
+ *
+ * La liste des emplacements est écrite UNE fois, ici. Tout Object * ajouté à
+ * HCDoc doit y être ajouté aussi — c'est le prix d'un cache indexé par
+ * adresse, et il vaut mieux le payer en un seul endroit qu'éparpillé. */
+static void hcv_oublie_dans(HCDoc *d, Object *mort)
+{
+    if (!d) return;
+    Object **emplacements[] = {
+        &d->editingField, &d->editTarget, &d->pressed, &d->popupTarget,
+        &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
+        &d->card,
+    };
+    for (size_t i = 0; i < sizeof emplacements / sizeof *emplacements; i++)
+        if (*emplacements[i] == mort) *emplacements[i] = NULL;
+}
+
+static void cocoa_object_gone(Object *mort)
+{
+    if (!mort) return;
+
+    if (gSelected     == mort) gSelected     = NULL;
+    if (gFontTarget   == mort) gFontTarget   = NULL;
+    if (gSurvole      == mort) gSurvole      = NULL;
+    if (gSurvoleCarte == mort) gSurvoleCarte = NULL;
+
+    /* Le document sans fenêtre, puis chacun de ceux qui en ont une : un objet
+     * peut mourir dans une pile qui n'est pas celle du dessus. */
+    hcv_oublie_dans(&gDoc0, mort);
+    for (HCDocument *doc in [HCDocument allDocuments]) {
+        HCView *v = doc.view;
+        if (v) hcv_oublie_dans((HCDoc *)[v docState], mort);
+    }
+}
+
 static void hcv_survol(HCView *v, Object *carte)
 {
     if (gTool != TOOL_BROWSE || gDragging || gPenDrawing || gFloatDragging) {
@@ -4855,7 +4949,11 @@ static void hcv_survol(HCView *v, Object *carte)
     /* Un gestionnaire peut changer de carte sous nos pieds : on ne parle au
      * suivant que si l'on est toujours là où l'on croit être. */
     if (ancien) hc_send(ancien, "mouseLeave");
-    if (sous && hc_current_card() == carte) hc_send(sous, "mouseEnter");
+    /* On relit gSurvole plutôt que de réemployer `sous` : mouseLeave est du
+     * script, il a pu supprimer l'objet qu'on s'apprêtait à saluer. Le noyau
+     * remet alors gSurvole à NULL ; une variable locale, elle, ne l'apprend
+     * jamais. La carte est vérifiée pour la même raison, depuis toujours. */
+    if (gSurvole && hc_current_card() == carte) hc_send(gSurvole, "mouseEnter");
 }
 
 - (void)idleTick:(NSTimer *)t {
@@ -4949,6 +5047,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.idle          = cocoa_idle;
     host.do_menu       = cocoa_do_menu;
     host.menus_changed = cocoa_menus_changed;
+    host.object_gone   = cocoa_object_gone;
     hc_set_host(&host);
 
     /* Mettre la barre d'accord avec le modèle, une fois pour toutes.

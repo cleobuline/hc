@@ -512,6 +512,20 @@ typedef struct {
      * modèle est petit, et le reconstruire en entier évite d'inventer un
      * protocole de mises à jour fines que personne ne saurait tenir. */
     void (*menus_changed)(void);
+
+    /* Un objet VA ÊTRE LIBÉRÉ. L'hôte oublie tout pointeur qu'il gardait
+     * dessus : l'objet survolé, le sélectionné, le champ en cours d'édition,
+     * la cible d'un panneau.
+     *
+     * NE JAMAIS DÉRÉFÉRENCER l'argument — il ne sert qu'à être comparé. Au
+     * moment de l'appel l'objet est encore lisible, mais ses enfants seront
+     * libérés juste après et s'y fier serait bâtir sur du sable.
+     *
+     * Sans ce rappel, un cache indexé par adresse n'a aucun moyen d'apprendre
+     * que son objet est mort. « delete me » dans le gestionnaire d'un bouton
+     * laissait l'interface avec un pointeur pendant, et le premier mouvement
+     * de souris ensuite envoyait « mouseLeave » à un script libéré. */
+    void (*object_gone)(Object *o);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
@@ -540,7 +554,23 @@ Object *hc_stack_at(int i);
  * À interroger avant de se servir d'un pointeur conservé hors du noyau : un
  * cache indexé par adresse ne sait pas que son objet est mort. Ne déréférence
  * jamais l'argument, il ne fait que le comparer aux objets vivants. */
+/* ---- Historique de navigation ----
+ * Les cartes visitées, alimentées à l'envoi d'openCard. Rang 0 = la plus
+ * récente. C'est ce que lisent « the recent cards », « go back », et les
+ * articles Back et Recent du menu Go. */
+int      hc_recent_count(void);
+Object  *hc_recent_at(int i);
+/* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
+int      hc_go_back(void);
+
 int     hc_layer_is_live(Object *layer);
+
+/* Le même test, à toute profondeur : boutons et champs compris. À employer
+ * pour une VARIABLE LOCALE tenue de part et d'autre d'un hc_send — un
+ * gestionnaire peut s'être supprimé lui-même. Les pointeurs que l'hôte
+ * conserve durablement, eux, sont mieux servis par le rappel object_gone,
+ * qui les remet à NULL sans qu'on ait à y penser. */
+int     hc_object_is_live(Object *o);
 
 /* ---- Coeur : envoi d'un message ---- */
 /* Renvoie 1 si un gestionnaire a traité le message, 0 sinon. */
