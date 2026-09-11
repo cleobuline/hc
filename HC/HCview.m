@@ -1243,54 +1243,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
 
     hcv_invalide(NSInsetRect(sale, -marge, -marge));
 }
-static void cocoa_drag_old(int x1, int y1, int x2, int y2, const char *mods) {
-    Object *card = hc_current_card();
-    if (!card || !gView) return;
-    Object *layer = gEditBackground ? card->bg : card;
-    if (!layer) layer = card;
-    NSRect b = [gView bounds];
-    NSBitmapImageRep *rep = paint_bitmap(layer, (int)b.size.width, (int)b.size.height);
-    NSPoint a = NSMakePoint(x1, y1), z = NSMakePoint(x2, y2);
-    if (mods_has(mods, "shift")) {
-        z = constrain_to_axis(a, z);
-    }
-    switch (gTool) {
-        case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
-        case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
-        case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
-        case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
-        case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
-        case TOOL_RECT: case TOOL_OVAL: case TOOL_FREEFORM:
-            if (gShapeFilled) fill_shape(rep, gTool, a, z);
-            else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
-            break;
 
-        case TOOL_SELRECT:
-            /* Au lasso rectangulaire, un glissement ne dessine pas : il
-             * SÉLECTIONNE. On pose directement l'état d'arrivée d'une
-             * sélection faite à la souris, sans passer par gSelRectDrawing.
-             *
-             * Sans ce cas, le « drag from 0,0 to 169,341 » des scripts tombait
-             * dans default, aucune sélection n'était établie, et le
-             * « doMenu "Clear Picture" » qui suit effaçait TOUT le calque au
-             * lieu de la seule bande visée — la courbe qu'on venait de tracer
-             * disparaissait avec. */
-            gSelStart = a;
-            gSelEnd   = z;
-            gSelRectDrawing = NO;
-            gSelRectActive  = YES;
-            [gView startAntsTimer];
-            break;
-
-        default:
-            if (gSelected) {
-                gSelected->x += x2 - x1;
-                gSelected->y += y2 - y1;
-            }
-            break;
-    }
-    [gView setNeedsDisplay:YES];
-}
 
 static void cocoa_click_at(int x, int y, const char *mods) {
     (void)mods;

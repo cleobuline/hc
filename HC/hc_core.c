@@ -10514,25 +10514,7 @@ static void eval_checked(const char *s, char *out, int outlen)
      * "13,11,22,14" » rendait 1 par « put » et 14 partout ailleurs. */
     eval_expr(s, out, outlen);
 }
-/* Comme eval_expr, mais râle si l'analyseur n'a pas tout mangé.
- * C'est le garde-fou contre les fautes de frappe : sans lui, une
- * expression mal formée retombe silencieusement en littéral. */
-static void eval_checked_old(const char *s, char *out, int outlen)
-{
-    ARENA_MARK;
-    const char *p = s;
-    parse_expr(&p, out, outlen);
-    const char *left = skip_spaces(p);
-    if (*left) {
-        char shown[256];
-        snprintf(shown, sizeof shown, "%s", left);
-        int n = (int)strlen(shown);
-        while (n > 0 && (shown[n-1] == ' ' || shown[n-1] == '\t')) shown[--n] = '\0';
-        emit(HC_ERR, "   !! texte incompris, ignoré : « %s »", shown);
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
+
 
 static void exec_line(Object *me, const char *line);
 
