@@ -68,6 +68,7 @@ static const HctCommande TABLE[] = {
     { "functionkey","e" },
     { "get",        "e" },
     { "global",     "*" },
+    { "local",      "*" },
     { "go",         "[to] *" },
     { "help",       "" },
     { "hide",       "*" },

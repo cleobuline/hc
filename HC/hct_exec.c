@@ -667,6 +667,27 @@ static void commande(HctExec *x, const HctNoeud *n)
         return;
     }
 
+    if (!strcasecmp(v, "local")) {
+        /* « local a, b, c ». Contrairement à « global », il n'y a rien à
+         * déclarer : une variable de gestionnaire est DÉJÀ locale ici. On les
+         * pose tout de même à vide, comme le faisait l'ancien exécuteur, pour
+         * qu'une lecture avant écriture rende la chaîne vide plutôt que le nom
+         * de la variable — c'est l'idiome « local tR, tG, tB » en tête de
+         * gestionnaire, suivi d'un « add » ou d'un « put … after ».
+         *
+         * var_ecrit et non hct_var_globale : l'écriture passe par l'hôte
+         * quand c'est lui qui tient les variables, exactement comme pour
+         * n'importe quelle affectation. */
+        for (int i = 0; i < n->nfils; i++) {
+            const HctNoeud *f = n->fils[i];
+            if (f->genre != HCTN_IDENT) continue;
+            char *nom = texte(f);
+            if (nom) { var_ecrit(x, nom, ""); free(nom); }
+        }
+        resultat_vide(x);
+        return;
+    }
+
     /* add/subtract/multiply/divide : lisent la cible, calculent, réécrivent.
      *
      * Attention à l'ordre des opérandes, qui n'est PAS le même :
