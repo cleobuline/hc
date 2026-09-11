@@ -7548,6 +7548,15 @@ static int v3_indice_motcle(const HctNoeud *n, const char *mot, int depuis)
     return -1;
 }
 
+/* Le nœud qui SUIT un mot-clé de premier niveau, ou NULL s'il n'y est pas.
+ * Les motifs de hct_cmd.c gardent les mots-clés dans l'arbre précisément
+ * pour qu'on puisse s'y repérer sans redécouper du texte. */
+static const HctNoeud *v3_apres_motcle(const HctNoeud *n, const char *mot)
+{
+    int i = v3_indice_motcle(n, mot, 0);
+    return (i >= 0 && i + 1 < n->nfils) ? n->fils[i + 1] : NULL;
+}
+
 /* Le texte d'un fils TEL QU'ÉCRIT, sans l'évaluer.
  *
  * Certains arguments ont la forme d'une expression sans en être une :
@@ -7852,7 +7861,18 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
 
 static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
+    /* LA CLÉ DE TRI EST UN SOUS-ARBRE, et on l'évalue une fois par élément.
+     * La relire à chaque tour — c'est ce que faisait eval_checked — refait
+     * l'analyse autant de fois qu'il y a de cartes ou de lignes : « v3 relit
+     * sort 4 » au relevé pour quatre éléments, et quatre cents pour quatre
+     * cents. Le reste de la commande (quel conteneur, quelles options) se lit
+     * toujours dans le texte : il n'est analysé qu'une fois, il ne coûte
+     * rien.
+     *
+     * Le nœud se prend ICI, avant les boucles, et sert dans les deux — le tri
+     * de cartes et celui d'un conteneur. Quand la forme de l'arbre surprend,
+     * `cle` reste le repli par le texte. */
+    const HctNoeud *ncle = v3_apres_motcle(n, "by");
     size_t sauve = g_atop;             /* nommée à part : pas de collision
                                          * avec les ARENA_MARK imbriqués ci-
                                          * dessous, qui doivent pouvoir
@@ -7913,7 +7933,9 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             g_current_card = c;
             ARENA_MARK;
             char *tmp = arena_buf();
-            if (cle) eval_checked(cle, tmp, HC_VAL);
+            tmp[0] = '\0';
+            if (ncle)     v3_val_texte(ctx, ncle, tmp, HC_VAL);
+            else if (cle) eval_checked(cle, tmp, HC_VAL);
             cles[k] = dupstr(tmp);
             ARENA_FREE;
             tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
@@ -7966,8 +7988,23 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
         const char *cle = by ? skip_spaces(by + 2) : NULL;
 
+        /* LE CONTENEUR AUSSI EST DANS L'ARBRE. Quand fils[0] est un morceau
+         * — « lines of card field "L" » —, le conteneur est sa BASE ; sinon
+         * c'est fils[0] lui-même. Une lecture par commande, pas par élément,
+         * mais c'était la dernière de « sort » à repasser par le texte. */
+        const HctNoeud *ncible = NULL;
+        if (n->nfils >= 1) {
+            const HctNoeud *f0 = n->fils[0];
+            if (f0->genre == HCTN_CHUNK && f0->nfils >= 1)
+                ncible = f0->fils[f0->nfils - 1];
+            else if (f0->genre == HCTN_OBJET || f0->genre == HCTN_IDENT)
+                ncible = f0;
+        }
+
         char *src = arena_buf();
-        eval_checked(cible, src, HC_VAL);
+        src[0] = '\0';
+        if (ncible) v3_val_texte(ctx, ncible, src, HC_VAL);
+        else        eval_checked(cible, src, HC_VAL);
 
         int n2 = chunk_count(src, morceau);
         if (n2 < 2) { ARENA_FREE; g_atop = sauve; return 1; }
@@ -7987,11 +8024,13 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
             /* `each` : la variable que la clé interroge. Sans clé, on trie
              * directement sur l'élément. */
-            if (cle) {
+            if (ncle || cle) {
                 var_set("each", elems[i]);
                 ARENA_MARK;
                 char *v = arena_buf();
-                eval_checked(cle, v, HC_VAL);
+                v[0] = '\0';
+                if (ncle) v3_val_texte(ctx, ncle, v, HC_VAL);
+                else      eval_checked(cle, v, HC_VAL);
                 cles[i] = dupstr(v);
                 ARENA_FREE;
             } else {
@@ -8209,7 +8248,22 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
             a++;
         }
         one[len] = '\0';
-        eval_expr(one, argv[argc], sizeof argv[argc]);   /* contexte appelant */
+        /* Le texte du message est CONSTRUIT à l'exécution — « send "carre" & n
+         * to bouton » ne sait pas d'avance combien d'arguments il portera —,
+         * donc il n'y a aucun arbre antérieur à réemployer : il faut bien
+         * analyser ce texte-ci. Mais c'est la v3 qui doit le faire.
+         * hct_evalue_texte est le moteur de « the value of » ; il refuse
+         * proprement ce qui n'est pas une expression complète, et l'ancien
+         * évaluateur reste le repli pour ces cas-là. */
+        {
+            HctValeur v;
+            if (hct_evalue_texte(ctx, one, n, &v)) {
+                snprintf(argv[argc], sizeof argv[argc], "%s", v.txt ? v.txt : "");
+                hct_val_libere(&v);
+            } else {
+                eval_expr(one, argv[argc], sizeof argv[argc]);
+            }
+        }
         argc++;
         if (*a == ',') a = skip_spaces(a + 1); else break;
     }
@@ -8902,15 +8956,6 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     }
     g_atop = sauve;
     return 1;
-}
-
-/* Le nœud qui SUIT un mot-clé de premier niveau, ou NULL s'il n'y est pas.
- * Les motifs de hct_cmd.c gardent les mots-clés dans l'arbre précisément
- * pour qu'on puisse s'y repérer sans redécouper du texte. */
-static const HctNoeud *v3_apres_motcle(const HctNoeud *n, const char *mot)
-{
-    int i = v3_indice_motcle(n, mot, 0);
-    return (i >= 0 && i + 1 < n->nfils) ? n->fils[i + 1] : NULL;
 }
 
 static FILE *file_find(const char *nom);          /* défini plus bas */

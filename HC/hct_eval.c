@@ -427,8 +427,8 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
 /* -------------------------------------------------------------- appels */
 
 /* Définie plus bas, avec « the value of » dont elle est le moteur. */
-static int evalue_texte(HctContexte *ctx, const char *src,
-                        const HctNoeud *origine, HctValeur *out);
+int hct_evalue_texte(HctContexte *ctx, const char *src,
+                     const HctNoeud *origine, HctValeur *out);
 
 /* Les fonctions de calcul à un argument.
  *
@@ -519,7 +519,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
      * expression complète et propre, et l'on garde alors le recours, où
      * l'ancien évaluateur est plus tolérant. */
     if (!fait && nargs == 1 && !strcasecmp(nom, "value"))
-        fait = evalue_texte(ctx, args[0].txt, n, &r);
+        fait = hct_evalue_texte(ctx, args[0].txt, n, &r);
 
     /* Fonctions financières d'HyperCard. Deux formules, rien de plus, et
      * aucun besoin du monde extérieur :
@@ -754,8 +754,8 @@ static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
  * sans faute jusqu'à la virgule et rendrait « a », alors que HyperCard rend
  * la chaîne entière. On exige donc que l'analyse ait consommé toute la ligne.
  */
-static int evalue_texte(HctContexte *ctx, const char *src,
-                        const HctNoeud *origine, HctValeur *out)
+int hct_evalue_texte(HctContexte *ctx, const char *src,
+                     const HctNoeud *origine, HctValeur *out)
 {
     if (!src)  return 0;
     if (!*src) { *out = hct_val_vide(); return 1; }
@@ -894,7 +894,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             if (ctx->erreur) { free(nom); return v; }
 
             HctValeur r;
-            if (evalue_texte(ctx, v.txt, n, &r)) {
+            if (hct_evalue_texte(ctx, v.txt, n, &r)) {
                 hct_val_libere(&v);
                 free(nom);
                 return r;
