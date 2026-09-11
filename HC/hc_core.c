@@ -7210,8 +7210,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * étant le nom du message. Une lecture de g_params, rien de plus —
      * elle n'avait aucune raison de repartir chez l'ancien interpréteur. */
     if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
-        int i = (int)hct_vers_nombre(args[0].txt);
-        *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
+        /* param(10^300) : borné, sinon la conversion est indéfinie. Hors
+         * bornes vaut « pas de tel paramètre », donc la chaîne vide — et pas
+         * le rang 0, qui est le NOM DU MESSAGE et n'a rien à faire ici. */
+        int hors;
+        int i = hct_vers_rang(args[0].txt, &hors);
+        *out = hct_val_texte((!hors && i >= 0 && i < g_nparams)
+                             ? g_params[i] : "");
         { g_v1_porte = sauve_porte; } return 1;
     }
 
@@ -7984,11 +7989,18 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
             char b1[64], b2[64];
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
             if (ctx->erreur) return 1;
-            n1 = (int)hct_vers_nombre(b1);
+            int hors;
+            n1 = hct_vers_rang(b1, &hors);
+            if (hors) { hct_ctx_faute(ctx, c->fils[0],
+                                      "rang de morceau hors limites");
+                        return 1; }
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
                 if (ctx->erreur) return 1;
-                n2 = (int)hct_vers_nombre(b2);
+                n2 = hct_vers_rang(b2, &hors);
+                if (hors) { hct_ctx_faute(ctx, c->fils[1],
+                                          "rang de morceau hors limites");
+                            return 1; }
             }
         } else {
             return 0;               /* ni ordinal ni borne : rien à viser */

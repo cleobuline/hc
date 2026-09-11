@@ -317,15 +317,26 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         } else {
             if (cible->nfils >= 2) {
                 HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
-                n1 = (int)hct_vers_nombre(a.txt);
+                int hors;
+                n1 = hct_vers_rang(a.txt, &hors);
+                if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
+                                        "rang de morceau hors limites");
                 hct_val_libere(&a);
             }
             if (cible->nfils >= 3) {
                 HctValeur b = hct_evalue(&x->ctx, cible->fils[1]);
-                n2 = (int)hct_vers_nombre(b.txt);
+                int hors;
+                n2 = hct_vers_rang(b.txt, &hors);
+                if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
+                                        "rang de morceau hors limites");
                 hct_val_libere(&b);
             }
         }
+        /* Une borne refusée arrête ici. Sans ce retour, l'écriture se
+         * poursuivait sur n1 = 0, échouait plus bas et rendait « pas
+         * traité » : la ligne repartait vers l'ancien interpréteur, qui
+         * ajoutait un « ne sait pas faire » par-dessus la vraie erreur. */
+        if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
 
         const char *aecrire = val;
         /* Pas de hct_val_vide() ici : on écrase compose.txt par un malloc
@@ -441,12 +452,18 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
     } else {
         if (cible->nfils >= 2) {
             HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
-            n1 = (int)hct_vers_nombre(a.txt);
+            int hors;
+            n1 = hct_vers_rang(a.txt, &hors);
+            if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
+                                    "rang de morceau hors limites");
             hct_val_libere(&a);
         }
         if (cible->nfils >= 3) {
             HctValeur b = hct_evalue(&x->ctx, cible->fils[1]);
-            n2 = (int)hct_vers_nombre(b.txt);
+            int hors;
+            n2 = hct_vers_rang(b.txt, &hors);
+            if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
+                                    "rang de morceau hors limites");
             hct_val_libere(&b);
         }
     }

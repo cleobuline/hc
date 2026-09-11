@@ -495,7 +495,11 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         if (math_un_arg(nom, hct_vers_nombre(args[0].txt), &y)) {
             r = hct_val_calcul(y); fait = 1;
         } else if (!strcasecmp(nom, "numtochar")) {
-            char c[2] = { (char)(int)hct_vers_nombre(args[0].txt), 0 };
+            /* numToChar : le code passe par un entier BORNÉ. « numToChar(10^300) »
+             * convertissait un double hors bornes, ce qui est indéfini. */
+            double d = hct_vers_nombre(args[0].txt);
+            int code = (d >= 0 && d <= 255) ? (int)d : 0;
+            char c[2] = { (char)code, 0 };
             r = hct_val_texte(c); fait = 1;
         }
     }
@@ -668,7 +672,12 @@ static int rang_de(HctContexte *ctx, const HctNoeud *n, int *ok)
     if (!ctx->erreur) {
         if (!hct_est_nombre(v.txt))
             hct_ctx_faute(ctx, n, "un rang numérique est attendu ici");
-        else { r = (int)hct_vers_nombre(v.txt); *ok = 1; }
+        else {
+            int hors;
+            r = hct_vers_rang(v.txt, &hors);
+            if (hors) hct_ctx_faute(ctx, n, "rang de morceau hors limites");
+            else *ok = 1;
+        }
     }
     hct_val_libere(&v);
     return r;
