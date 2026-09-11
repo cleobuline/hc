@@ -6633,6 +6633,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * lorsque tout s'est bien passé, et traiter ce vide comme un échec
      * rendait « result » en clair. Le calendrier voyait alors
      * « if the result <> empty » toujours vrai et refusait toutes les dates. */
+    int echo = 0;
     if (strcmp(val, txt) == 0) {
         char *avec_the = arena_buf();
         snprintf(avec_the, HC_VAL, "the %s", txt);
@@ -6641,8 +6642,33 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         /* Si même avec « the » rien de neuf ne sort, on rend le texte
          * d'origine plutôt que « the value of x » : c'est ce que faisait
          * l'ancien évaluateur, et un script peut s'appuyer dessus. */
-        if (strcmp(val, avec_the) == 0)
+        if (strcmp(val, avec_the) == 0) {
             snprintf(val, HC_VAL, "%s", txt);
+            echo = 1;
+        }
+    }
+
+    /* UNE RÉFÉRENCE D'OBJET NE SE REND PAS ELLE-MÊME EN CLAIR.
+     *
+     * « put field "menu" », quand ce champ n'existe nulle part, affichait
+     * field "menu" — le texte de la demande. C'est la même tromperie que
+     * « the zorglub » rendant zorglub, corrigée en son temps pour les
+     * propriétés : un mot nu peut légitimement valoir lui-même, une
+     * référence d'objet jamais. L'auteur a écrit « field », il désigne un
+     * champ, et s'il n'y en a pas il faut le dire.
+     *
+     * On rend 0 : hct_eval lève alors « objet introuvable » en nommant la
+     * ligne. L'ancien moteur a déjà eu sa chance juste au-dessus — il peut
+     * résoudre des formes que hct_resout ignore, et celles-là passent. Seul
+     * l'ÉCHEC des deux change de comportement.
+     *
+     * Trouvé par le relevé d'un test de navigation : huit « recours objet:
+     * field "menu" » qui ne se voyaient nulle part ailleurs, le script
+     * travaillant tranquillement sur la chaîne « field "menu" ». */
+    if (echo && n->genre == HCTN_OBJET) {
+        ARENA_FREE;
+        g_v3_recours_prof--;
+        { g_v1_porte = sauve_porte; } return 0;
     }
 
     /* Dernier recours : l'ANCIEN analyseur.
