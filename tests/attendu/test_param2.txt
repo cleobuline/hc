@@ -1,0 +1,19 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "drawCal" à button "GoBtn"
+      · traité par button "GoBtn"
+         [message box] [0] 2026,12,1,0,0,0,3
+         [message box] [1] 2026,12,1,0,0,0,3
+      → message "daysInMonth" à button "GoBtn"
+         · traité par button "GoBtn"
+         [message box] [2] 2026,12,1,0,0,0,3
+         [message box] [3] 2026,12,1,0,0,0,3
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   (rien)

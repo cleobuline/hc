@@ -1,0 +1,100 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+>>> select empty                                  → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: aucune
+>>> select text of card field "notes"             → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=0 long=10
+>>> select before text of card field "notes"      → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=0 long=0
+>>> select after text of card field "notes"       → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=10 long=0
+>>> select card field "notes"                     → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=0 long=10
+>>> select char 3 to 5 of card field "notes"      → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=2 long=3
+>>> select char 2 of card field "notes"           → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=1 long=1
+>>> select before char 3 of card field "notes"    → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=2 long=0
+>>> select last char of card field "notes"        → message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+  sel: debut=9 long=1

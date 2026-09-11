@@ -1,0 +1,14 @@
+  Rouge a moitie opaque (128), pose sur du VIDE puis repasse :
+    passe 1 : rvb=255,  0,  0  alpha=128  (50% d'opacite)
+    passe 2 : rvb=255,  0,  0  alpha=191  (75% d'opacite)
+    passe 3 : rvb=255,  0,  0  alpha=223  (87% d'opacite)
+    passe 4 : rvb=255,  0,  0  alpha=239  (94% d'opacite)
+
+  Bleu a moitie opaque pose sur du ROUGE opaque :
+    rvb=127,  0,128  alpha=255   (violet attendu)
+
+  Alpha 255 : pose franche, sans melange :
+    rvb=  0,255,  0  alpha=255   (vert pur attendu)
+
+  Alpha 0 : ne touche a rien :
+    rvb= 12, 34, 56  alpha=200   (inchange attendu)

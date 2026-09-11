@@ -1,0 +1,20 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme red                             1
+[v3]    v1 fonction red                          1
+   [HÔTE] foreColor        <- 255,0,0
+   [msg] foreColor  = 255,0,0
+   [msg] paintColor = 255,0,0
+   [msg] inkColor   = 255,0,0
+   [HÔTE] backColor        <- 0,0,128
+   [msg] backColor      = 0,0,128
+   [msg] backgroundColor= 0,0,128
+   [msg] paintBackColor = 0,0,128
+   [HÔTE] foregroundColor  <- 0,128,255,90
+   [msg] avec alpha : 0,128,255,90
+   [HÔTE] FORECOLOR        <- 255,215,0
+   [msg] casse : 255,215,0
+   [msg] item 2 of the foreColor = 215
+   [msg] variable : a moi

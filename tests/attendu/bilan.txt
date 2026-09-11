@@ -1,0 +1,180 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+
+── COMMANDES
+   OK    put 1 into x                                  
+   OK    get 1                                         
+   OK    add 1 to x                                    
+   OK    subtract 1 from x                             
+   OK    multiply x by 2                               
+   OK    divide x by 2                                 
+   OK    answer "a"                                    
+   OK    ask "a"                                       
+   OK    beep                                          
+   OK    wait 1 ticks                                  
+   OK    go to card 1                                  
+   OK    visual effect dissolve                        
+   OK    choose browse tool                            
+   OK    doMenu "New Card"                             
+   OK    find "x"                                      
+   OK    sort by 1                                     
+   OK    show card field 1                             
+   OK    hide card field 1                             
+   OK    select text of card field 1                   
+   OK    click at 1,1                                  
+   OK    drag from 1,1 to 2,2                          
+   OK    type "a"                                      
+   OK    delete char 1 of x                            
+   OK    set the name of me to "z"                     
+   OK    push card                                     
+   OK    pop card                                      
+   OK    lock screen                                   
+   OK    unlock screen                                 
+   OK    mark all cards                                
+   OK    unmark all cards                              
+   OK    create menu "M"                               
+   OK    reset menuBar                                 
+   OK    enable menuItem 1 of menu "M"                 
+   OK    convert "1/1/90" to seconds                   
+   OK    read from file "z" until end                  
+   OK    write "a" to file "z"                         
+   OK    open file "z"                                 
+   OK    close file "z"                                
+   OK    play "boing"                                  
+   OK    start using stack "z"                         
+   OK    stop using stack "z"                          
+   OK    print card                                    
+   OK    save this stack                               
+   OK    send "t" to me                                
+   OK    dial "555"                                    
+   OK    export paint to file "z"                      
+   OK    import paint from file "z"                    
+   OK    edit script of me                             
+   OK    palette "z"                                   
+   OK    picture "z"                                   
+   OK    request "z" from program "z"                  
+   OK    reply "z"                                     
+   OK    help                                          
+   OK    do "beep"                                     
+   OK    global g                                      
+   OK    exit t                                        
+   OK    pass t                                        
+   OK    return 1                                      
+   OK    delete card button "nope"                     
+   OK    answer file "a"                               
+   OK    ask password "a"                              
+   OK    answer program "a"                            
+   OK    select empty                                  
+   OK    select card button 1                          
+
+── FONCTIONS
+   OK    put the date                                  
+   OK    put the time                                  
+   OK    put the seconds                               
+   OK    put the ticks                                 
+   OK    put the long date                             
+   OK    put the abbreviated date                      
+   OK    put the number of cards                       
+   OK    put the number of backgrounds                 
+   OK    put the result                                
+   OK    put the selection                             
+   OK    put the selectedText                          
+   OK    put the selectedChunk                         
+   OK    put the selectedField                         
+   OK    put the selectedLine                          
+   MANQ  put the clickText                                  !! propriété ou fonction inconnue : clickText (v3, ligne 2 de button "z".t)
+   MANQ  put the clickLoc                                   !! propriété ou fonction inconnue : clickLoc (v3, ligne 2 de button "z".t)
+   MANQ  put the clickChunk                                 !! propriété ou fonction inconnue : clickChunk (v3, ligne 2 de button "z".t)
+   MANQ  put the mouse                                      !! propriété ou fonction inconnue : mouse (v3, ligne 2 de button "z".t)
+   MANQ  put the mouseLoc                                   !! propriété ou fonction inconnue : mouseLoc (v3, ligne 2 de button "z".t)
+   MANQ  put the mouseClick                                 !! propriété ou fonction inconnue : mouseClick (v3, ligne 2 de button "z".t)
+   MANQ  put the shiftKey                                   !! propriété ou fonction inconnue : shiftKey (v3, ligne 2 de button "z".t)
+   MANQ  put the optionKey                                  !! propriété ou fonction inconnue : optionKey (v3, ligne 2 de button "z".t)
+   MANQ  put the commandKey                                 !! propriété ou fonction inconnue : commandKey (v3, ligne 2 de button "z".t)
+   OK    put the tool                                  
+   MANQ  put the screenRect                                 !! propriété ou fonction inconnue : screenRect (v3, ligne 2 de button "z".t)
+   OK    put the target                                
+   OK    put the me                                    
+   OK    put the params                                
+   OK    put the paramCount                            
+   OK    put the param(1)                              
+   OK    put the value of "1+1"                        
+   OK    put the length of "abc"                       
+   OK    put the number of chars of "abc"              
+   OK    put the random of 10                          
+   OK    put the sum of 1                              
+   OK    put the average of 1                          
+   OK    put the min of 1                              
+   OK    put the trunc of 1.5                          
+   OK    put the round of 1.5                          
+   OK    put the abs of -1                             
+   OK    put the sqrt of 4                             
+   OK    put the sin of 1                              
+   OK    put the annuity of 1,2                        
+   OK    put the compound of 1,2                       
+   OK    put the charToNum of "a"                      
+   OK    put the numToChar of 65                       
+   OK    put the offset of "a","bab"                   
+   MANQ  put the diskSpace                                  !! propriété ou fonction inconnue : diskSpace (v3, ligne 2 de button "z".t)
+   MANQ  put the heapSpace                                  !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "z".t)
+   OK    put the stacks                                
+   MANQ  put the windows                                    !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "z".t)
+   MANQ  put the programs                                   !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "z".t)
+   MANQ  put the sound                                      !! propriété ou fonction inconnue : sound (v3, ligne 2 de button "z".t)
+   OK    put the menus                                 
+   MANQ  put the version                                    !! propriété ou fonction inconnue : version (v3, ligne 2 de button "z".t)
+   MANQ  put the systemVersion                              !! propriété ou fonction inconnue : systemVersion (v3, ligne 2 de button "z".t)
+   MANQ  put the freeSize                                   !! propriété ou fonction inconnue : freeSize (v3, ligne 2 de button "z".t)
+   MANQ  put the size                                       !! propriété ou fonction inconnue : size (v3, ligne 2 de button "z".t)
+   MANQ  put the destination                                !! propriété ou fonction inconnue : destination (v3, ligne 2 de button "z".t)
+
+── PROPRIETES
+   OK    put the name of me                            
+   OK    put the id of me                              
+   OK    put the script of me                          
+   OK    put the visible of me                         
+   OK    put the rect of me                            
+   OK    put the loc of me                             
+   OK    put the width of me                           
+   OK    put the height of me                          
+   OK    put the style of me                           
+   OK    put the textFont of me                        
+   OK    put the textSize of me                        
+   OK    put the textStyle of me                       
+   OK    put the textAlign of me                       
+   OK    put the textHeight of me                      
+   OK    put the icon of me                            
+   OK    put the hilite of me                          
+   OK    put the autoHilite of me                      
+   OK    put the enabled of me                         
+   OK    put the showName of me                        
+   OK    put the family of me                          
+   MANQ  put the cursor                                     !! propriété ou fonction inconnue : cursor (v3, ligne 2 de button "z".t)
+   OK    put the itemDelimiter                         
+   OK    put the numberFormat                          
+   OK    put the lockScreen                            
+   OK    put the lockMessages                          
+   OK    put the lockRecent                            
+   OK    put the userLevel                             
+   OK    put the blindTyping                           
+   OK    put the powerKeys                             
+   OK    put the dragSpeed                             
+   MANQ  put the editBkgnd                                  !! propriété ou fonction inconnue : editBkgnd (v3, ligne 2 de button "z".t)
+   MANQ  put the language                                   !! propriété ou fonction inconnue : language (v3, ligne 2 de button "z".t)
+   OK    put the freeSize of this stack                
+   OK    put the name of this stack                    
+   OK    put the number of this card                   
+   OK    put the short name of this card               
+   OK    put the owner of me                           
+   OK    put the partNumber of me                      
+   OK    put the sharedText of card field 1            
+   OK    put the sharedHilite of me                    
+   OK    put the dontSearch of card field 1            
+   OK    put the autoTab of card field 1               
+   OK    put the lockText of card field 1              
+   OK    put the wideMargins of card field 1           
+   OK    put the showLines of card field 1             
+   OK    put the scroll of card field 1                
+   OK    put the multipleLines of card field 1         
+   OK    put the autoSelect of card field 1            
+   OK    put the titleWidth of me                      
+   OK    put the highlight of me                       

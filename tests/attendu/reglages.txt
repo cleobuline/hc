@@ -1,0 +1,30 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+── valeurs par defaut
+   userLevel   5
+   dragSpeed   0
+   blindTyping false
+   powerKeys   false
+   lockRecent  false
+   textArrows  false
+── poser puis relire
+   3
+   120
+   true
+   false
+── les booleens acceptent les formes usuelles
+   true
+   false
+   true
+── hors bornes : refuse, et l'ancienne valeur tient
+   [ERR]    !! userLevel va de 1 à 5, reçu 47
+   reste a 3
+── pas un nombre : refuse aussi
+   [ERR]    !! dragSpeed attend un nombre, reçu « vite »
+   reste a 120
+── utilisables dans un test, ce qui est tout l'interet
+      niveau bas : on n'edite pas
+      niveau auteur

@@ -1,0 +1,5 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   Thursday, September 11, 2025
+   16:00
+   3840451200
+   2025,9,11,0,0,0,5

@@ -1,0 +1,99 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+>>> of this card
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] TEXTE-FOND
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> of card 2
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] TEXTE-FOND
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> of card "Deux"
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] TEXTE-FOND
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> line 1 of field
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] TEXTE-FOND
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> the text of field
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] TEXTE-FOND
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> champ absent
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      !! objet introuvable (v3, ligne 3 de button "B".mouseUp)
+>>> set du champ
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      → visible de field "menu" ← "true"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> put dans le champ
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> select
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

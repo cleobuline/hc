@@ -1,0 +1,5 @@
+1. sauvegarde normale        : code 0, 40215 octets
+2. le .tmp a disparu         : oui
+3. disque plein en cours      : code -1 (doit être -1)
+4. l'ancienne pile            : 40215 octets (était 40215) -> INTACTE
+5. et elle se relit           : oui

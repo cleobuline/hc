@@ -1,0 +1,21 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── recois 1, 2
+   → message "t" à button "B"
+   → message "recois" à button "B"
+   [msg] RECU [1] [2]
+
+── recois 1, field "pasLa"
+   → message "t" à button "B"
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
+
+── recois field "pasLa", 2
+   → message "t" à button "B"
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
+
+── put 1, field "pasLa"
+   → message "t" à button "B"
+   [ERR]    !! script, ligne 2 colonne 8 : texte inattendu en fin de ligne
+   [ERR]         put 1, field "pasLa"
+   [msg] 1
+   [ERR]    !! texte inattendu en fin de ligne (v3, ligne 2 de button "B".t)
+

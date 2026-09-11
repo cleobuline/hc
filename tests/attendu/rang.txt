@@ -1,0 +1,9 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      !! script, ligne 5 colonne 15 : texte inattendu en fin de ligne
+           put "card \"Une\"   = " & the number of card "Une"
+      [message box] this card      = 2
+      [message box] card 3         = 3
+      [message box] card \
+      !! texte inattendu en fin de ligne (v3, ligne 5 de button "B".mouseUp)

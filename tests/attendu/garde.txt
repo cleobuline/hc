@@ -1,0 +1,8 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── premier (sain, doit marcher)
+   [ERR]    !! script, ligne 12 colonne 1 : « end » manquant
+   premier : ok
+── debordant (fautif, ancien interprete)
+   [ERR]    !! gestionnaire illisible : button "B".debordant (son en-tête ou son « end »)
+── troisieme (avale, ancien interprete)
+   [ERR]    !! gestionnaire illisible : button "B".troisieme (son en-tête ou son « end »)

@@ -1,0 +1,12 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[ERR]    !! objet introuvable (v3, ligne 38 de button "nav".mouseUp)
+
+───── data2 ─────
+--- depart :  (3 cartes) ---
+ok first
+ok last
+ok card 1
+ok next depuis 1
+ok next depuis la derniere
+ok previous depuis 1
+ok this

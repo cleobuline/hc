@@ -1,0 +1,8 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [msg] card "Deux"
+   [msg] card "Trois"
+   [msg] card "Deux"
+   [msg] card "Une"
+   [msg] card "Une"
+   [HÔTE] Find...
+   [HÔTE] Clear Picture

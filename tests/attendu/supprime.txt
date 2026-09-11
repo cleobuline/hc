@@ -1,0 +1,28 @@
+  ok    delete item 1              de [a,b,c] -> [b,c]
+  ok    delete item 2              de [a,b,c] -> [a,c]
+  ok    delete item 3              de [a,b,c] -> [a,b]
+  ok    delete item 1              de [a] -> []
+  ok    delete item 1 to 2         de [a,b,c] -> [c]
+  ok    delete item 2 to 3         de [a,b,c] -> [a]
+  ok    delete item 2              de [a,,c] -> [a,c]
+  ok    delete word 1              de [un deux trois] -> [deux trois]
+  ok    delete word 2              de [un deux trois] -> [un trois]
+  ok    delete word 3              de [un deux trois] -> [un deux]
+  ok    delete word 1              de [un  deux] -> [ deux]
+  ok    delete char 1              de [abcdef] -> [bcdef]
+  ok    delete char 3              de [abcdef] -> [abdef]
+  ok    delete char 6              de [abcdef] -> [abcde]
+  ok    delete char 2 to 4         de [abcdef] -> [aef]
+  ok    delete last item           de [a,b,c] -> [a,b]
+  ok    delete last word           de [un deux trois] -> [un deux]
+  ok    delete item 9 (hors limites) de [a,b,c] -> [a,b,c]
+  ok    delete line 2              de [L1
+L2
+L3] -> [L1
+L3]
+  ok    delete line 1              de [L1
+L2] -> [L2]
+  ok    delete line 2              de [L1
+L2] -> [L1]
+
+  les 21 cas passent

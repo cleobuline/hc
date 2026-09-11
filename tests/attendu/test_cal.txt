@@ -1,0 +1,16 @@
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+→ message "drawCalendar 2026,12,1,0,0,0,3" à field "CalField"
+     (pas de gestionnaire dans field "CalField")
+     (pas de gestionnaire dans card "Une")
+     (pas de gestionnaire dans background "Fond")
+     (pas de gestionnaire dans stack "Test")
+     ✗ message "drawCalendar 2026,12,1,0,0,0,3" non traité
+=== texte du champ apres drawCalendar ===
+
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   (rien)

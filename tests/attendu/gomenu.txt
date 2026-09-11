@@ -1,0 +1,12 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+départ                 → Une
+   [3]    ⇒ va à la carte "Deux"
+clic Next              → Deux
+   [3]    ⇒ va à la carte "Trois"
+clic Next              → Trois
+   [3]    ⇒ va à la carte "Trois"
+clic Last              → Trois
+   [3]    ⇒ va à la carte "Deux"
+clic Prev              → Deux
+   [3]    ⇒ va à la carte "Une"
+clic First             → Une

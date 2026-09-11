@@ -1,0 +1,36 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours of short name                    1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    3
+[v3]    v1 fonction recours expr                 3
+>>> designateur arithmetique: card i+1
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] i
+      [message box] Deux
+>>> designateur variable directe: card i sans parens
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Deux
+>>> designateur numerique simple toujours ok
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Deux
+>>> id designateur avec concat apres
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] short name of card id 1 suffixe
+>>> nom cite avec concat apres
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une suffixe
+>>> get + put it : chaine normale
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une-Trois
+— retours de la v3 vers l'ancien interpréteur —
+   recours of short name                    1
+— ce que l'ancien interprète exécute encore —
+   v1 terme recours expr                    3
+   v1 fonction recours expr                 3

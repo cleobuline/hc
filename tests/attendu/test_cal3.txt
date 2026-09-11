@@ -1,0 +1,253 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "drawCalendar" à field "CalField"
+      · traité par field "CalField"
+      → message "watch" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "watch"
+      → message "daysInMonth" à field "CalField"
+         · traité par field "CalField"
+      → message "dayNameData" à field "CalField"
+         · traité par field "CalField"
+      → message "spaces" à field "CalField"
+         · traité par field "CalField"
+         → 2026,12,1,0,0,0,3
+      → message "monthNameData" à field "CalField"
+         · traité par field "CalField"
+      → message "dayNameData" à field "CalField"
+         · traité par field "CalField"
+      → message "spaces" à field "CalField"
+         · traité par field "CalField"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → curs[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme watch                           1
+[v3]    v1 fonction watch                        1
+[v3]    v1 terme dayNameData                     1
+[v3]    v1 fonction dayNameData                  1
+[v3]    v1 terme spaces                          1
+[v3]    v1 fonction spaces                       1
+[v3]    v1 terme monthNameData                   1
+[v3]    v1 fonction monthNameData                1
+[v3]    v1 terme busy                            1
+[v3]    v1 fonction busy                         1
+[v3]    v1 terme calData                         1
+[v3]    v1 fonction calData                      1
+or ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "busy" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "busy"
+      → message "markToday" à field "CalField"
+         · traité par field "CalField"
+         → message "calData" à field "CalField"
+            · traité par field "CalField"
+            → textStyle de [51..52[ ← "bold,underline"
+=== texte du champ apres drawCalendar ===
+December 2026
+Sun Mon Tue Wed Thu Fri Sat
+         1   2   3   4   5  
+ 6   7   8   9  10  11  12  
+13  14  15  16  17  18  19  
+20  21  22  23  24  25  26  
+27  28  29  30  31  
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v1 terme watch                           1
+   v1 fonction watch                        1
+   v1 terme dayNameData                     1
+   v1 fonction dayNameData                  1
+   v1 terme spaces                          1
+   v1 fonction spaces                       1
+   v1 terme monthNameData                   1
+   v1 fonction monthNameData                1
+   v1 terme busy                            1
+   v1 fonction busy                         1
+   v1 terme calData                         1
+   v1 fonction calData                      1

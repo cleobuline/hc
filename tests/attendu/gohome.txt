@@ -1,0 +1,25 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   → message "t" à button "B"
+   → message "closeCard" à card "Une"
+   → message "openCard" à card "Deux"
+   card "Deux"
+   (l'hôte ouvre la pile Home)
+   → message "closeCard" à card "Deux"
+   → message "closeBackground" à background "F"
+   → message "closeStack" à stack "Travail"
+   → message "openStack" à stack "Home"
+   → message "openBackground" à background "Fond"
+   → message "openCard" à card "Accueil"
+   card "Accueil"
+   result : []
+   → message "closeCard" à card "Accueil"
+   → message "closeBackground" à background "Fond"
+   → message "closeStack" à stack "Home"
+   → message "openStack" à stack "Travail"
+   → message "openBackground" à background "F"
+   → message "openCard" à card "Deux"
+   card "Deux"
+   Travail
+Home
+   --
+   card "Deux"

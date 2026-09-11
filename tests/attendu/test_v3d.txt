@@ -1,0 +1,25 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+>>> basique : "a" && "b"
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] a b
+>>> of a gauche : (the short name of card 1) && "b"
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une b
+>>> of a gauche sans par : the short name of card 1 && "b"
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une b
+>>> of a droite : "a" && the short name of card 1
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] a Une
+>>> of des deux cotes : the short name of card 1 && the short name of card 2
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une Deux
+>>> avec & simple : the short name of card 1 & the short name of card 2
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] UneDeux

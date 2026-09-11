@@ -1,0 +1,18 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme watch                           1
+[v3]    v1 fonction watch                        1
+[v3]    v1 terme geneva                          1
+[v3]    v1 fonction geneva                       1
+[v3]    v1 fonction getPattern                   1
+   pattern  = 12
+   cursor   = watch
+   filled   = true
+   textFont = geneva
+   calculee = 15
+   variable = 21
+   format   = 0.00
+   userLevel= 3
+   item 2   = b

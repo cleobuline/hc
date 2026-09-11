@@ -1,0 +1,30 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── faute de frappe : doit se plaindre, en nommant
+   [ERR]    !! propriété ou fonction inconnue : userLevl (v3, ligne 2 de button "B".t)
+── propriete absente : doit se plaindre
+   [msg] 
+── mot nu : rend son propre nom, comme avant
+   [msg] zorglub
+── « go card canard » sans guillemets marche toujours
+   [msg] canard
+   [msg] ok, le littéral nu est intact
+── variable : « the » devant une variable connue reste servi
+   [msg] 42
+── les vraies fonctions passent
+   [msg] true
+   [msg] browse
+   [msg] 1
+── les constantes passent
+   [msg] true
+   [msg] ["]
+── les proprietes d'objet passent
+   [msg] button "B"
+   [msg] 1
+── adjectifs
+   [msg] true
+   [msg] B
+── une faute n'arrete que le gestionnaire, pas le programme
+   [msg] avant
+   [ERR]    !! propriété ou fonction inconnue : blurp (v3, ligne 3 de button "B".t)
+── apres la faute, tout remarche
+   [msg] le suivant tourne normalement

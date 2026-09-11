@@ -1,0 +1,67 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── temoin
+   servi    the zorglub            -> → message "t" à button "B"· traité par button "B"→ me
+
+── fonctions du monde
+   servi    the date               -> → message "t" à button "B"· traité par button "B"09/11/
+   servi    the time               -> → message "t" à button "B"· traité par button "B"16:00
+   servi    the seconds            -> → message "t" à button "B"· traité par button "B"384045
+   servi    the ticks              -> → message "t" à button "B"· traité par button "B"0
+   servi    the long date          -> → message "t" à button "B"· traité par button "B"Thursd
+   servi    the result             -> → message "t" à button "B"· traité par button "B"
+   servi    the selection          -> → message "t" à button "B"· traité par button "B"
+   servi    the selectedText       -> → message "t" à button "B"· traité par button "B"
+   servi    the selectedChunk      -> → message "t" à button "B"· traité par button "B"
+   servi    the selectedField      -> → message "t" à button "B"· traité par button "B"
+   servi    the selectedLine       -> → message "t" à button "B"· traité par button "B"
+   servi    the clickText          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the clickLoc           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the clickChunk         -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the mouse              -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the mouseLoc           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the mouseClick         -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the shiftKey           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the optionKey          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the commandKey         -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the tool               -> → message "t" à button "B"· traité par button "B"browse
+   servi    the screenRect         -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the target             -> → message "t" à button "B"· traité par button "B"B
+   servi    the paramCount         -> → message "t" à button "B"· traité par button "B"0
+   servi    the params             -> → message "t" à button "B"· traité par button "B"t
+   servi    the stacks             -> → message "t" à button "B"· traité par button "B"
+   servi    the windows            -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the programs           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the sound              -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the menus              -> → message "t" à button "B"· traité par button "B"
+   servi    the diskSpace          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the heapSpace          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the systemVersion      -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the version            -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the destination        -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the size               -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the freeSize           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the language           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the cursor             -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the numberFormat       -> → message "t" à button "B"· traité par button "B"
+   servi    the userLevel          -> → message "t" à button "B"· traité par button "B"5
+   servi    the blindTyping        -> → message "t" à button "B"· traité par button "B"false
+   servi    the powerKeys          -> → message "t" à button "B"· traité par button "B"false
+   servi    the dragSpeed          -> → message "t" à button "B"· traité par button "B"0
+   servi    the lockRecent         -> → message "t" à button "B"· traité par button "B"false
+   servi    the lockScreen         -> → message "t" à button "B"· traité par button "B"false
+   servi    the lockMessages       -> → message "t" à button "B"· traité par button "B"false
+   servi    the editBkgnd          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the itemDelimiter      -> → message "t" à button "B"· traité par button "B",
+   servi    the number of cards    -> → message "t" à button "B"· traité par button "B"1
+   servi    the number of backgrounds -> → message "t" à button "B"· traité par button "B"1
+   servi    the foreColor          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the backColor          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the pattern            -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the brush              -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the lineSize           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the filled             -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the textFont           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the textSize           -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the textStyle          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the textAlign          -> → message "t" à button "B"· traité par button "B"→ me
+   servi    the textHeight         -> → message "t" à button "B"· traité par button "B"→ me

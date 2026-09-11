@@ -1,0 +1,77 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Deux"
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Trois"
+   → message "closeCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Deux"
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Une"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Trois"
+   → message "closeCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+        ✗ message "openCard" non traité
+      [message box] card "Une"
+      !! ne sait pas faire : go home
+      [message box] card "Une"

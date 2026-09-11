@@ -1,0 +1,64 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== TEST visual + go ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+      [message box] card "Deux"
+carte courante apres go : Deux
+
+=== TEST delete (chunk) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] banane
+cerise
+
+=== TEST sort (container) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] banane
+cerise
+pomme
+
+=== TEST sort (cards, descending, by name) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] card "Une" card "Trois" card "Deux"
+
+=== TEST find ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      ⇒ trouvé "cerise" dans la carte "Une"
+      [message box] 
+
+=== TEST answer / ask (repli console, stdin vide -> defaut) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   [answer] Ca va ?  (1=oui 2=non)       [message box] oui
+   [ask] ton nom ? [Bob] [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v3 relit find                            1
+      [message box] 
+
+=== TEST send ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "direBonjour" à card "Une"
+      · traité par card "Une"
+         [message box] bonjour monde
+
+=== bilan v3 (retours vers l'ancien interpreteur) ===
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v3 relit find                            1

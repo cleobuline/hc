@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      → dragSpeed ← 0
+      → numberFormat ← "0.00"
+      [message box] 0.33
+      → userLevel ← 5
+      → editBkgnd ← "true"
+      [message box] 5
+   → message "sound" à button "B"
+        (pas de gestionnaire dans button "B")
+        (pas de gestionnaire dans card "U")
+        (pas de gestionnaire dans background "F")
+        (pas de gestionnaire dans stack "T")
+      !! propriété ou fonction inconnue : sound (v3, ligne 8 de button "B".mouseUp)

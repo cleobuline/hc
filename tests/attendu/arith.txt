@@ -1,0 +1,26 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── add 1 to x
+  put "[" & x & "]"
+   [1]
+── put empty into y
+  add 1 to y
+  put "[" & y & "]"
+   [1]
+── put 5 into z
+  add 1 to z
+  put z
+   6
+── put empty into w
+  subtract 3 from w
+  put w
+   -3
+── put empty into q
+  multiply q by 4
+  put q
+   0
+── put "" into e
+  put e + 1
+   1
+── put "" into e2
+  put e2 & "|" & (e2 * 3)
+   |0

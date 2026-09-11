@@ -1,0 +1,7 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   1. une propriete qui existe :
+   [HOTE] brush <- 4
+   2. une qui n'existe pas :
+   3. une completement inventee :
+   4. et la LECTURE, corrigee ce matin :
+   [ERR]    !! propriété ou fonction inconnue : brushSize (v3, ligne 9 de button "B".mouseUp)

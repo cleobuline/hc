@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── témoin
+   TROU   the zorglub              
+
+── les trous du bilan de ce matin
+   servi  the numberFormat         
+   servi  the lockScreen           false
+   servi  the lockMessages         false
+   servi  the userLevel            5
+   servi  the blindTyping          false
+   servi  the powerKeys            false
+   servi  the dragSpeed            0
+   servi  the lockRecent           false
+   servi  the textArrows           false
+   servi  the cursor               (par l'interface)
+   servi  the editBkgnd            (par l'interface)
+   servi  the stacks               
+   TROU   the windows              
+   TROU   the programs             
+   TROU   the sound                
+   servi  the menus                
+   TROU   the diskSpace            
+   TROU   the heapSpace            
+   TROU   the systemVersion        
+   TROU   the version              
+   TROU   the destination          
+   TROU   the size                 
+   TROU   the freeSize             
+   TROU   the language             

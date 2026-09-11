@@ -1,0 +1,77 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== depuis la PREMIERE, go to prev card (doit boucler sur Trois) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Trois (attendu Trois)
+
+=== go to prev card, encore, encore (Trois -> Deux -> Une) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Trois (attendu Trois)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Deux (attendu Deux)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Une (attendu Une)
+
+=== depuis la DERNIERE, go to next card (doit boucler sur Une) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Une (attendu Une)
+

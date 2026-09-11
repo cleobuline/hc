@@ -1,0 +1,9 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "drawCal" à field "CalField"
+      · traité par field "CalField"
+      → message "monthNameData" à field "CalField"
+         · traité par field "CalField"
+      [message box] December 2026
+

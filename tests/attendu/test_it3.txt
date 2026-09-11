@@ -1,0 +1,24 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme calData                         1
+[v3]    v1 fonction calData                      1
+→ message "openCard" à card "Une"
+   · traité par card "Une"
+   → message "updateCalendar" à field "calendar"
+      · traité par field "calendar"
+         → 2025,9,11,0,0,0,5
+      → message "calData" à field "calendar"
+         · traité par field "calendar"
+      → message "drawIt" à field "calendar"
+         · traité par field "calendar"
+            [message box] drawIt a recu: 2025,9,11,0,0,0,5
+     (pas de gestionnaire dans background "Fond")
+     (pas de gestionnaire dans stack "Test")
+     ✗ message "openCard" non traité
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v1 terme calData                         1
+   v1 fonction calData                      1

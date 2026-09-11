@@ -1,0 +1,62 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── deux instructions
+     put "un" ; put "deux"
+   un
+   deux
+
+── affectation puis lecture
+     put 1 into i ; put i + 1
+   2
+
+── trois
+     put "a" ; put "b" ; put "c"
+   a
+   b
+   c
+
+── sans espaces
+     put "a";put "b"
+   a
+   b
+
+── point-virgule final
+     put "seul" ;
+   seul
+
+── vides en série
+     put "a" ;; put "b"
+   a
+   b
+
+── dans un repeat
+     repeat with k = 1 to 2
+    put k ; put k * 10
+  end repeat
+   1
+   10
+   2
+   20
+
+── if d'une ligne
+     put 0 into i ; if i = 0 then put "nul"
+   nul
+
+── if a blocs intact
+     if 1 = 1 then
+    put "oui"
+  else
+    put "non"
+  end if
+   oui
+
+── le cas de test_v3e
+     put "i" ; put 1 into i
+  put the short name of card (i + 1)
+   i
+   Deux
+
+── avec un commentaire
+     put "a" ; put "b" -- fin
+   a
+   b
+

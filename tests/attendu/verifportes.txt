@@ -1,0 +1,20 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── PORTE 1 : gestionnaire au cadre cassé
+      !! script, ligne 3 colonne 1 : « end » manquant
+      !! gestionnaire illisible : button "B".casse (son en-tête ou son « end »)
+
+── PORTE 2 : message sans gestionnaire
+      !! personne ne répond à « dessineLeChat 3 »
+
+── PORTE 2 bis : commande que la v3 ne sait pas faire
+      !! ne sait pas faire : put "x" into field "absentDeToutesLesCartes"
+
+── PORTE 3 : article de menu du noyau
+   carte : Deux
+
+── PORTE 4 : la boîte de message
+   [msg] 5
+      !! ne sait pas lire : zzz brrr ###
+
+── et le reste marche toujours
+   [msg] tout va bien

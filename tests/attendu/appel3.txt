@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+→ message "mouseUp" à button "B1"
+   · traité par button "B1"
+   → message "drawChart" à button "B1"
+        (pas de gestionnaire dans button "B1")
+      · traité par card "Une"
+         [message box] dedans
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

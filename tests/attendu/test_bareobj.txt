@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "pattern" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      [message box] pattern
+   → message "pattern" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      !! propriété ou fonction inconnue : pattern (v3, ligne 3 de button "GoBtn".mouseUp)

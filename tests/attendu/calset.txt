@@ -1,0 +1,54 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme watch                           1
+[v3]    v1 fonction watch                        1
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme it                              1
+[v3]    v1 fonction it                           1
+── set cursor to watch
+      v1 terme watch                           1
+      v1 fonction watch                        1
+
+── set textStyle of word 1 of line 1 to 1 of me to plain
+      (rien)
+
+── set sharedText of me to true
+      (rien)
+
+── set the script of me to "on zz\nend zz"
+      (rien)
+
+── convert d to dateItems
+      (rien)
+
+── convert the date to dateItems
+      (rien)
+
+── convert it to short date
+      v1 terme it                              1
+      v1 fonction it                           1
+

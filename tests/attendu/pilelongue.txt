@@ -1,0 +1,3 @@
+avant  : champ 8302 octets (ligne 1 = 8000), script 5020 octets
+après  : champ 8302 octets (ligne 1 = 8000), script 5020 octets
+verdict: INTACT
