@@ -53,6 +53,13 @@ typedef struct {
      * qui suivrait appartient au si ENGLOBANT. Il n'y a d'exception que
      * lorsqu'il n'y a pas d'englobant — personne ne peut alors le réclamer. */
     int           prof_si;
+
+    /* Profondeur d'imbrication des BLOCS — if, repeat — distincte de `prof`,
+     * qui compte celle des expressions. Sans cette borne, un script de
+     * soixante mille « if » imbriqués fait déborder la pile C pendant
+     * l'analyse : mesuré, segfault à 60 000, et vingt mille passent encore.
+     * Un script écrit à la main n'en imbrique pas vingt. */
+    int           prof_bloc;
 } HctAnalyseur;
 
 void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r);

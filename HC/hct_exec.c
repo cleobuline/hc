@@ -963,13 +963,30 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         return;
     }
 
+    /* -1 est la SENTINELLE « pas de limite », pour while et until. Un
+     * « repeat <n> times » dont n est négatif tombait donc dessus et tournait
+     * jusqu'au plafond — dix millions de tours, soit un gel de plusieurs
+     * secondes, là où HyperCard n'en fait aucun. Le cas n'est pas théorique :
+     * « repeat k times » avec un k calculé qui passe sous zéro est un
+     * classique.
+     *
+     * Une valeur non numérique tombait dans le même piège : hct_vers_nombre
+     * rend 0 pour « abc », ce qui est correct ici, mais un NaN ou un infini
+     * converti en long est un comportement indéfini. On borne donc avant de
+     * convertir. */
     long limite = -1;
     if (!strcasecmp(forme, "times")) {
         if (n->nfils < 2) return;
         HctValeur v = hct_evalue(&x->ctx, n->fils[0]);
         if (x->ctx.erreur) { hct_val_libere(&v); return; }
-        limite = (long)hct_vers_nombre(v.txt);
+        double d = hct_vers_nombre(v.txt);
         hct_val_libere(&v);
+        if (!(d > 0))           /* faux aussi pour NaN : aucun tour */
+            limite = 0;
+        else if (d >= (double)PLAFOND)
+            limite = PLAFOND;   /* le plafond s'en chargera, sans conversion folle */
+        else
+            limite = (long)d;
     }
 
     for (;;) {
