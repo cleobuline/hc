@@ -512,6 +512,20 @@ typedef struct {
      * modèle est petit, et le reconstruire en entier évite d'inventer un
      * protocole de mises à jour fines que personne ne saurait tenir. */
     void (*menus_changed)(void);
+
+    /* Un objet VA ÊTRE LIBÉRÉ. L'hôte oublie tout pointeur qu'il gardait
+     * dessus : l'objet survolé, le sélectionné, le champ en cours d'édition,
+     * la cible d'un panneau.
+     *
+     * NE JAMAIS DÉRÉFÉRENCER l'argument — il ne sert qu'à être comparé. Au
+     * moment de l'appel l'objet est encore lisible, mais ses enfants seront
+     * libérés juste après et s'y fier serait bâtir sur du sable.
+     *
+     * Sans ce rappel, un cache indexé par adresse n'a aucun moyen d'apprendre
+     * que son objet est mort. « delete me » dans le gestionnaire d'un bouton
+     * laissait l'interface avec un pointeur pendant, et le premier mouvement
+     * de souris ensuite envoyait « mouseLeave » à un script libéré. */
+    void (*object_gone)(Object *o);
 } HcHost;
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */

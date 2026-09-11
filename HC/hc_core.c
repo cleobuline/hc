@@ -1154,6 +1154,10 @@ void hc_set_script(Object *o, const char *script)
 void hc_free(Object *o)
 {
     if (!o) return;
+    /* Prévenir l'hôte AVANT de libérer quoi que ce soit. C'est le seul
+     * endroit où un objet meurt, donc le seul où le dire une fois pour
+     * toutes — recenser les appelants un par un, c'est en oublier un. */
+    if (g_host && g_host->object_gone) g_host->object_gone(o);
     for (int i = 0; i < o->nparts; i++) hc_free(o->parts[i]);
     free(o->parts);
     free(o->name);

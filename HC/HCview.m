@@ -18,6 +18,7 @@
 #import "HCdialogs.h"
 #import "HCpaint.h"
 #import "hct_verif.h"
+#import "Hcdocument.h"   /* allDocuments : oublier un objet mort partout */
 
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
@@ -4823,6 +4824,57 @@ static BOOL     gInIdle = NO;
 static Object *gSurvole      = NULL;   /* l'objet sous le curseur          */
 static Object *gSurvoleCarte = NULL;   /* et la carte où on l'a vu         */
 
+/* ═══ UN OBJET MEURT ════════════════════════════════════════════════════
+ *
+ * L'interface garde des pointeurs sur des objets du noyau : l'objet survolé,
+ * le sélectionné, le champ en cours d'édition, la cible d'un panneau, le
+ * calque dont on tient l'instantané de Revert. Rien ne les prévenait qu'un
+ * objet venait d'être libéré.
+ *
+ * « delete me » dans le gestionnaire d'un bouton laissait donc gSurvole sur
+ * de la mémoire rendue, et le premier mouvement de souris ensuite envoyait
+ * « mouseLeave » à un script qui n'existait plus : plantage dans
+ * find_handler_k, en train de lire le script d'un objet mort. Le commentaire
+ * juste au-dessus prévoyait déjà ce danger pour le CHANGEMENT DE CARTE — on
+ * oublie l'objet survolé sans lui parler — mais pas pour sa suppression.
+ *
+ * Le noyau prévient maintenant, depuis hc_free, le seul endroit où un objet
+ * meurt. Ici on oublie, sans jamais déréférencer : le pointeur ne sert qu'à
+ * être comparé.
+ *
+ * La liste des emplacements est écrite UNE fois, ici. Tout Object * ajouté à
+ * HCDoc doit y être ajouté aussi — c'est le prix d'un cache indexé par
+ * adresse, et il vaut mieux le payer en un seul endroit qu'éparpillé. */
+static void hcv_oublie_dans(HCDoc *d, Object *mort)
+{
+    if (!d) return;
+    Object **emplacements[] = {
+        &d->editingField, &d->editTarget, &d->pressed, &d->popupTarget,
+        &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
+        &d->card,
+    };
+    for (size_t i = 0; i < sizeof emplacements / sizeof *emplacements; i++)
+        if (*emplacements[i] == mort) *emplacements[i] = NULL;
+}
+
+static void cocoa_object_gone(Object *mort)
+{
+    if (!mort) return;
+
+    if (gSelected     == mort) gSelected     = NULL;
+    if (gFontTarget   == mort) gFontTarget   = NULL;
+    if (gSurvole      == mort) gSurvole      = NULL;
+    if (gSurvoleCarte == mort) gSurvoleCarte = NULL;
+
+    /* Le document sans fenêtre, puis chacun de ceux qui en ont une : un objet
+     * peut mourir dans une pile qui n'est pas celle du dessus. */
+    hcv_oublie_dans(&gDoc0, mort);
+    for (HCDocument *doc in [HCDocument allDocuments]) {
+        HCView *v = doc.view;
+        if (v) hcv_oublie_dans((HCDoc *)[v docState], mort);
+    }
+}
+
 static void hcv_survol(HCView *v, Object *carte)
 {
     if (gTool != TOOL_BROWSE || gDragging || gPenDrawing || gFloatDragging) {
@@ -4949,6 +5001,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.idle          = cocoa_idle;
     host.do_menu       = cocoa_do_menu;
     host.menus_changed = cocoa_menus_changed;
+    host.object_gone   = cocoa_object_gone;
     hc_set_host(&host);
 
     /* Mettre la barre d'accord avec le modèle, une fois pour toutes.
