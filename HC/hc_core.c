@@ -7157,6 +7157,31 @@ static void v1_compte(const char *quoi, const char *porte)
     g_nv1++;
 }
 
+/* ═══ LE FILET, DÉBRANCHÉ À LA DEMANDE ═════════════════════════════════
+ *
+ * HC_SANS_V1=1 empêche l'ancien exécuteur de lignes de tourner : exec_line
+ * refuse la ligne et la dénonce au lieu de l'exécuter.
+ *
+ * C'est la seule mesure qui ne se devine pas. Tant que le filet est tendu,
+ * une forme non portée retombe dessus sans bruit, et rien ne distingue « la
+ * v3 sait le faire » de « la v3 n'a jamais eu à le faire ». Débranché, ce
+ * qui casse est exactement ce qu'il reste à porter — et ce qui ne casse pas
+ * est du code qu'on peut supprimer.
+ *
+ * Le commutateur se pose ICI, dans l'enveloppe unique d'exec_line_body, et
+ * non sur les quatre appelants connus : recenser des chemins un par un,
+ * c'est en oublier un. Celui-ci les prend tous, y compris ceux qu'on
+ * ajouterait demain. */
+static int v1_debranche(void)
+{
+    static int etat = -1;
+    if (etat < 0) {
+        const char *e = getenv("HC_SANS_V1");
+        etat = (e && *e && *e != '0') ? 1 : 0;
+    }
+    return etat;
+}
+
 /* Poser la porte et la rendre. À employer par paires, dans la même fonction :
  *     const char *sauve = v1_porte("msg");
  *     ...
@@ -13699,6 +13724,14 @@ static void exec_line_body(Object *me, const char *line)
  * term_value et call_function, qui en ont 40 et 36. */
 static void exec_line(Object *me, const char *line)
 {
+    /* Débranché : on compte, on dénonce, on n'exécute pas. Le compteur reste
+     * posé pour que « debug bilan » dise combien de fois, et la porte pour
+     * qu'il dise par où. */
+    if (v1_debranche()) {
+        v1_compte("v1 refusée", g_v1_porte);
+        emit(HC_ERR, "   !! SANS V1 [%s] : %s", g_v1_porte, line ? line : "");
+        return;
+    }
     ARENA_MARK;
     exec_line_body(me, line);
     ARENA_FREE;
