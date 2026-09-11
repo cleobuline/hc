@@ -7399,8 +7399,19 @@ static int v1_debranche(void)
 {
     static int etat = -1;
     if (etat < 0) {
-        const char *e = getenv("HC_SANS_V1");
-        etat = (e && *e && *e != '0') ? 1 : 0;
+        /* LE DÉFAUT A CHANGÉ. Le filet n'est plus tendu : HC_AVEC_V1=1 le
+         * retend, pour comparer ou pour dépanner une pile. HC_SANS_V1 reste
+         * accepté et ne sert plus à rien — on ne casse pas un réglage que
+         * quelqu'un a pu mettre dans son schéma Xcode.
+         *
+         * La mesure qui autorise ce renversement : sur 138 harnais, 127
+         * tournent à l'identique sans le filet, et les onze autres sont des
+         * scripts sciemment fautifs, des messages sans gestionnaire nulle
+         * part, ou des objets volontairement inexistants — c'est-à-dire des
+         * cas où l'ancien interprète échoue lui aussi, à un message d'erreur
+         * près. */
+        const char *avec = getenv("HC_AVEC_V1");
+        etat = (avec && *avec && *avec != '0') ? 0 : 1;
     }
     return etat;
 }
@@ -10566,6 +10577,24 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * les compter comme du recours attribuerait à l'ancien code du travail
      * que la v3 vient de faire. Un compteur qui exagère est aussi inutile
      * qu'un compteur muet. */
+    if (v1_debranche()) {
+        /* PORTE 2 : la v3 ne sait pas exécuter cette ligne. L'ancien
+         * interprète ne le savait pas non plus dans tous les cas mesurés — il
+         * rendait seulement un message différent. On écrit le nôtre.
+         *
+         * Un MESSAGE sans gestionnaire est distingué d'une COMMANDE inconnue :
+         * ce n'est pas la même faute pour qui lit, et HyperCard les nommait
+         * différemment aussi. */
+        v1_compte("v1 refusée", "recours v3");
+        if (n->genre == HCTN_MESSAGE)
+            emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
+        else
+            emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
+        set_result("Can't understand");
+        ARENA_FREE;
+        return 1;
+    }
+
     const char *sauve_porte = v1_porte("recours v3");
     exec_stmt(g_me, ligne);
     g_v1_porte = sauve_porte;
@@ -14051,12 +14080,20 @@ static void exec_line_body(Object *me, const char *line)
  * term_value et call_function, qui en ont 40 et 36. */
 static void exec_line(Object *me, const char *line)
 {
-    /* Débranché : on compte, on dénonce, on n'exécute pas. Le compteur reste
-     * posé pour que « debug bilan » dise combien de fois, et la porte pour
-     * qu'il dise par où. */
+    /* LE GARDE-FOU DE DERNIER RECOURS.
+     *
+     * Les quatre portes connues vers ici sont maintenant fermées une par une,
+     * chacune avec son message — c'est plus utile qu'un refus anonyme. Ce
+     * garde reste pour la CINQUIÈME : un chemin qu'on aurait oublié, ou qu'on
+     * ajouterait demain sans y penser. Recenser des chemins un par un, c'est
+     * en oublier un ; celui-ci les prend tous.
+     *
+     * S'il se déclenche, c'est qu'il y a une porte de plus à fermer, et le
+     * message le dit : « chemin non recensé ». */
     if (v1_debranche()) {
         v1_compte("v1 refusée", g_v1_porte);
-        emit(HC_ERR, "   !! SANS V1 [%s] : %s", g_v1_porte, line ? line : "");
+        emit(HC_ERR, "   !! chemin non recensé vers l'ancien interprète "
+                     "[%s] : %s", g_v1_porte, line ? line : "");
         return;
     }
     ARENA_MARK;
@@ -14181,8 +14218,20 @@ static int hc_send_args_k_body(Object *target, const char *message,
                 snprintf(porte, sizeof porte, "%s.%s", qui, message);
             }
             const char *sauve_v1 = v1_porte(porte);
-            if (!v3_execute(o, message, isfunc))
-                exec_body(o, body, end);
+            if (!v3_execute(o, message, isfunc)) {
+                /* PORTE 1 vers l'ancien exécuteur : un gestionnaire que la v3
+                 * refuse — en-tête illisible, « end » manquant. HyperCard ne
+                 * l'exécutait pas davantage : il refusait d'enregistrer un
+                 * script fautif. Le confier à un moteur plus permissif, qui en
+                 * devinerait la moitié, est pire que de le dire. */
+                if (v1_debranche() && v3_actif()) {
+                    v1_compte("v1 refusée", porte);
+                    emit(HC_ERR, "   !! gestionnaire illisible : %s "
+                                 "(son en-tête ou son « end »)", porte);
+                } else {
+                    exec_body(o, body, end);
+                }
+            }
             g_v1_porte = sauve_v1;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
 
@@ -14479,7 +14528,19 @@ void hc_do_menu(const char *item)
             Object *sauve_me = g_me;
             g_me = cible;
             if (!v3_do_ligne(MENUS_NOYAU[i].ligne))
-                exec_stmt(cible, MENUS_NOYAU[i].ligne);
+                {
+                    /* PORTE 3 : l'article de menu du noyau, si la v3 n'a pas
+                     * su lire sa ligne. Mesuré : sur 138 harnais, elle n'a
+                     * jamais servi — les cinq lignes de MENUS_NOYAU sont du
+                     * HyperTalk que la v3 lit sans peine. */
+                    if (v1_debranche()) {
+                        v1_compte("v1 refusée", "menu du noyau");
+                        emit(HC_ERR, "   !! article de menu non compris : %s",
+                             MENUS_NOYAU[i].ligne);
+                    } else {
+                        exec_stmt(cible, MENUS_NOYAU[i].ligne);
+                    }
+                }
             g_me = sauve_me;
             g_v1_porte = sauve;
             return;
@@ -14857,8 +14918,16 @@ void hc_do(const char *line)
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
-    if (!v3_do_ligne(line))
-        exec_stmt(g_current_card, line);
+    if (!v3_do_ligne(line)) {
+        /* PORTE 4 : la boîte de message, « do », les articles de menu créés
+         * par script. Jamais empruntée non plus dans la mesure. */
+        if (v1_debranche()) {
+            v1_compte("v1 refusée", "msg/do");
+            emit(HC_ERR, "   !! ne sait pas lire : %s", line);
+        } else {
+            exec_stmt(g_current_card, line);
+        }
+    }
     ARENA_FREE;
     g_v1_porte = sauve_porte;
 }
