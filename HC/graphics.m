@@ -339,9 +339,19 @@ void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
     unsigned char *done = calloc((size_t)W * H, 1);
     if (!done) return;
 
+    /* La pile du flot. Deux allocations qui n'étaient pas vérifiées, et un
+     * realloc qui s'assignait à lui-même : en cas d'échec, l'ancien bloc
+     * était perdu ET le pointeur devenait nul, si bien que la ligne suivante
+     * — « xs[top]=… » — écrivait à l'adresse zéro. Un remplissage de grande
+     * surface est précisément le moment où l'allocation peut refuser.
+     *
+     * Trouvé à l'audit, jamais déclenché : 4 096 points font 16 Ko, et il
+     * faut une zone très découpée pour dépasser. Ce qui ne le rend pas moins
+     * faux. */
     int cap = 4096, top = 0;
     int *xs = malloc(sizeof(int)*cap);
     int *ys = malloc(sizeof(int)*cap);
+    if (!xs || !ys) { free(xs); free(ys); free(done); return; }
     xs[top]=sx; ys[top]=sy; top++;
 
     INK_RGB_LOCALS;
@@ -381,9 +391,16 @@ void flood_fill(NSBitmapImageRep *rep, int sx, int sy) {
         }
 
         if (top + 4 >= cap) {
-            cap *= 2;
-            xs = realloc(xs, sizeof(int)*cap);
-            ys = realloc(ys, sizeof(int)*cap);
+            /* Par une variable intermédiaire : un realloc qui échoue rend
+             * NULL sans libérer l'ancien bloc. S'assigner à soi-même perdait
+             * donc la mémoire et le moyen de la rendre. En cas de refus on
+             * s'arrête là : la zone est partiellement remplie, ce qui est
+             * visible et rattrapable — contrairement à un plantage. */
+            int nc = cap * 2;
+            int *nxs = realloc(xs, sizeof(int)*(size_t)nc);
+            int *nys = nxs ? realloc(ys, sizeof(int)*(size_t)nc) : NULL;
+            if (!nxs || !nys) { if (nxs) xs = nxs; if (nys) ys = nys; break; }
+            xs = nxs; ys = nys; cap = nc;
         }
         xs[top]=x+1; ys[top]=y; top++;
         xs[top]=x-1; ys[top]=y; top++;
