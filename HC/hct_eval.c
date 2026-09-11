@@ -470,6 +470,11 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 
     int nargs = n->nfils - 1;
     HctValeur *args = nargs ? calloc((size_t)nargs, sizeof *args) : NULL;
+    if (nargs && !args) {
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+        free(nom);
+        return hct_val_vide();
+    }
     for (int i = 0; i < nargs; i++) {
         args[i] = hct_evalue(ctx, n->fils[i + 1]);
         if (ctx->erreur) {
