@@ -7961,6 +7961,88 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Les deux énumérations de sortes de morceau disent la même chose, chacune
+ * dans sa maison : celle de l'arbre, celle du noyau. */
+static ChunkType v3_sorte_chunk(HctSorteChunk s)
+{
+    switch (s) {
+        case HCT_CH_WORD: return CH_WORD;
+        case HCT_CH_ITEM: return CH_ITEM;
+        case HCT_CH_LINE: return CH_LINE;
+        default:          return CH_CHAR;
+    }
+}
+
+/* Le champ visé par une référence de morceau, et l'intervalle exact de
+ * caractères qu'elle couvre — lus dans l'ARBRE.
+ *
+ * chunk_target fait déjà cela depuis le TEXTE de la référence, mais il la
+ * redécoupe à la main et confie chaque indice à eval_expr : « set the
+ * textStyle of word 3 of line 3 to 6 of me to bold » faisait ainsi relire
+ * trois expressions que l'analyseur avait réduites en arbre quelques
+ * instants plus tôt. C'était le dernier « v3 relit set » du relevé, sur le
+ * calendrier d'HyperCard 2.x, dont markToday souligne le jour courant.
+ *
+ * La récursion suit celle de chunk_target — un morceau peut porter sur un
+ * morceau — et s'arrête sur un nœud d'OBJET, seul socle qui ait un texte et
+ * des plages de style.
+ *
+ * Rendre NULL n'est pas une faute : l'appelant repart alors par le texte,
+ * qui sait lire des formes que l'arbre ne présente pas ainsi. */
+static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
+                              int *st, int *en)
+{
+    if (!ch || ch->genre != HCTN_CHUNK || ch->nfils < 1) return NULL;
+
+    const HctNoeud *base = ch->fils[ch->nfils - 1];
+
+    Object *fld;
+    int base_off = 0;
+    char *texte = arena_buf();
+
+    int dedans_st = 0, dedans_en = 0;
+    Object *dedans = v3_chunk_cible(ctx, base, &dedans_st, &dedans_en);
+    if (ctx->erreur) return NULL;
+    if (dedans) {                                   /* morceau de morceau */
+        fld = dedans;
+        base_off = dedans_st;
+        int len = dedans_en - dedans_st;
+        if (len < 0) len = 0;
+        snprintf(texte, HC_VAL, "%.*s", len, hc_field_text(fld) + dedans_st);
+    } else {
+        if (base->genre != HCTN_OBJET) return NULL;
+        fld = hct_resout(ctx, base);
+        if (ctx->erreur) return NULL;
+        if (!fld || fld->type != OBJ_FIELD) return NULL;
+        snprintf(texte, HC_VAL, "%s", hc_field_text(fld));
+    }
+
+    ChunkType ct = v3_sorte_chunk(ch->sorte);
+    int a = 0, b = 0;
+    if (ch->ordinal != HCT_ORD_AUCUN) {
+        a = hct_rang_ordinal(ch->ordinal, chunk_count(texte, ct));
+    } else {
+        char v[128]; double d = 0;
+        int nbornes = ch->nfils - 1;
+        if (nbornes >= 1) {
+            v3_val_texte(ctx, ch->fils[0], v, sizeof v);
+            if (ctx->erreur) return NULL;
+            as_num(v, &d); a = (int)d;
+        }
+        if (nbornes >= 2) {
+            v3_val_texte(ctx, ch->fils[1], v, sizeof v);
+            if (ctx->erreur) return NULL;
+            d = 0; as_num(v, &d); b = (int)d;
+        }
+    }
+
+    int s2, e2;
+    if (!chunk_span(texte, ct, a, b, &s2, &e2)) return NULL;
+    *st = base_off + s2;
+    *en = base_off + e2;
+    return fld;
+}
+
 /* set [the] <propriété> [of <cible>] to <valeur>
  *
  * Motif hct_cmd.c : « e to * ». Le « e » couvre déjà « [the] <propriété> [of
@@ -8166,8 +8248,15 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
      * « objet introuvable : word theNewDay of line 3 ». On essaie donc
      * d'abord le morceau, avant de retomber sur la resolution d'objet. */
     {
-        int cst, cen;
-        Object *cf = chunk_target(refbuf, &cst, &cen);
+        int cst = 0, cen = 0;
+        /* La cible est déjà dans l'arbre : le premier fils est un OF dont le
+         * second enfant est le morceau. La lire évite les eval_expr que
+         * chunk_target fait sur chaque indice. Le texte reste le recours. */
+        Object *cf = NULL;
+        if (n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2)
+            cf = v3_chunk_cible(ctx, n->fils[0]->fils[1], &cst, &cen);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
+        if (!cf) cf = chunk_target(refbuf, &cst, &cen);
         if (cf) {
             /* Les trois attributs de texte se posent par plage, comme dans
              * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
@@ -8350,63 +8439,84 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Un appel de fonction n'est pas un conteneur, où qu'il se trouve dans la
+ * référence : « item 1 to 7 of calData() » se lit mais ne s'écrit pas.
+ * L'ancien test cherchait une parenthèse dans le texte de la ligne ; celui-ci
+ * regarde l'arbre, qui sait de quoi il parle. */
+static int v3_contient_appel(const HctNoeud *n)
+{
+    if (!n) return 0;
+    if (n->genre == HCTN_APPEL) return 1;
+    for (int i = 0; i < n->nfils; i++)
+        if (v3_contient_appel(n->fils[i])) return 1;
+    return 0;
+}
+
 /* convert <conteneur> [from <format>] to <format> [and <format>]
  *
- * Motif hct_cmd.c : « c [from *] to * ». Comme pour set/sort/find/visual,
- * v3_reste (voir sa définition) rend le texte EXACT que lisait l'ancien
- * exécuteur — y compris son silence sur « from » : il ne l'a jamais traité
- * spécialement, ne coupant qu'au dernier « to » de premier niveau, et
- * « from » se retrouve donc dans la source, comme avant ce portage. Pas une
- * ligne de l'algorithme n'a changé.
+ * Motif hct_cmd.c : « c [from *] to * ». L'arbre a déjà fait le découpage :
+ * fils[0] est la source, et « from » comme « to » y sont des nœuds MOTCLE,
+ * chacun suivi de son format. On le lit, au lieu de reconstituer le texte de
+ * la ligne pour le recouper soi-même au dernier « to » de premier niveau.
  *
- * C'est ICI qu'a été trouvé, par test réel dans Xcode, le bug du « the »
- * avalé sans être rangé dans un nœud : « convert the date to dateItems »
- * se reconstituait « convert date to dateItems », et to_it — qui décide si
- * le résultat va dans `it` ou dans un conteneur — se trompait de branche :
- * « date » ressemblait à un conteneur, une variable de ce nom naissait, et
- * `it` ne recevait jamais rien. */
+ * Ce recoupage à la main était la dernière raison de relire la source : la v3
+ * l'avait déjà analysée, et eval_expr la relexait pour rien. Il était de plus
+ * fragile — « convert item 1 to 7 of calData() to dateItems » contient deux
+ * « to », et il fallait un paragraphe pour expliquer pourquoi on gardait le
+ * dernier. L'arbre, lui, ne s'y trompe pas : le « to » de la commande est un
+ * MOTCLE, celui du morceau ne l'est pas.
+ *
+ * C'est ICI qu'avait été trouvé, par test réel dans Xcode, le bug du « the »
+ * avalé sans être rangé dans un nœud : « convert the date to dateItems » se
+ * reconstituait « convert date to dateItems », et le choix entre écrire dans
+ * `it` ou dans un conteneur se trompait de branche — « date » ressemblait à
+ * une variable, une variable de ce nom naissait, et `it` ne recevait rien. Le
+ * drapeau `article`, posé depuis par l'analyseur, tranche maintenant sans
+ * regarder le texte.
+ *
+ * « from <format> » reste ignoré, comme dans l'ancien exécuteur : un format
+ * de date se reconnaît à la lecture, on n'a pas besoin qu'on l'annonce. */
 static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
+    if (n->nfils < 1) return 0;
 
-    /* Le « to » qui compte est le dernier de premier niveau : la source
-     * peut en contenir un elle-même, comme dans
-     * « convert item 1 to 7 of calData() to dateItems ». */
-    const char *to = NULL, *scan = mots;
-    for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
-        to = k; scan = k + 2;
-    }
-    if (!to) {
-        emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(mots));
+    /* Le « to » de la commande : le dernier MOTCLE « to » de premier niveau. */
+    const HctNoeud *nfmt = NULL;
+    for (int i = 1; i + 1 < n->nfils; i++)
+        if (n->fils[i]->genre == HCTN_MOTCLE && n->fils[i]->op &&
+            ci_equal(n->fils[i]->op, "to"))
+            nfmt = n->fils[i + 1];
+    if (!nfmt) {
+        emit(HC_ERR, "   !! convert sans « to »");
         set_result("invalid date");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
-    char *src = arena_buf();
-    int len = (int)(to - mots);
-    if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-    memcpy(src, mots, (size_t)len); src[len] = '\0';
-    while (len > 0 && isspace((unsigned char)src[len-1])) src[--len] = '\0';
-    const char *srcp = skip_spaces(src);
-
-    /* le format cible, éventuellement double : « short date and long time » */
-    char spec[256];
-    snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
-    char *andkw = (char *)find_kw(spec, "and");
+    /* Le format est une suite de mots-clés — « dateItems », « short date »,
+     * « long date and long time » —, pas une expression : l'évaluer rendrait
+     * la valeur d'une variable qui porterait ce nom. On lit donc le source du
+     * nœud, brut. */
     int f1 = DF_NONE, f2 = DF_NONE;
-    if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
-    f1 = date_format_code(spec);
+    char m1[64], m2[64];
+    if (nfmt->genre == HCTN_BINAIRE && nfmt->op && ci_equal(nfmt->op, "and") &&
+        nfmt->nfils == 2) {
+        v3_brut(nfmt->fils[0], m1, sizeof m1);
+        v3_brut(nfmt->fils[1], m2, sizeof m2);
+        f2 = date_format_code(m2);
+    } else {
+        v3_brut(nfmt, m1, sizeof m1);
+    }
+    f1 = date_format_code(m1);
     if (f1 == DF_NONE) {
-        emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
+        emit(HC_ERR, "   !! format de date inconnu : %s", m1);
         set_result("invalid date");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
+    size_t sauve = g_atop;
     char *val = arena_buf();
-    eval_expr(srcp, val, HC_VAL);
+    v3_val_texte(ctx, n->fils[0], val, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     struct tm tm;
     if (!parse_datetime(val, &tm)) {
@@ -8424,11 +8534,21 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
         snprintf(outv + L, HC_VAL - L, " %s", part2);
     }
 
-    /* Destination : le conteneur source s'il en est un. « the date »,
-     * « the long time » et les appels de fonction n'en sont pas. */
-    int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
-    if (to_it || !container_set(srcp, outv, 0))
+    /* Destination : la source, quand c'en est un conteneur. Une variable nue
+     * s'écrit directement — plus besoin de refabriquer son nom en texte pour
+     * que container_set le réanalyse. */
+    const HctNoeud *src = n->fils[0];
+    if (src->article || v3_contient_appel(src)) {
         var_set("it", outv);
+    } else if (src->genre == HCTN_IDENT) {
+        char nom[128];
+        v3_brut(src, nom, sizeof nom);
+        var_set(nom, outv);
+    } else {
+        char ref[512];
+        v3_source(src, ref, sizeof ref);
+        if (!ref[0] || !container_set(ref, outv, 0)) var_set("it", outv);
+    }
 
     set_result("");
     emit(HC_INFO, "   → %s", outv);
