@@ -9715,6 +9715,33 @@ static void v3_nom_pile(HctContexte *ctx, const HctNoeud *ref,
  * l'ancien exécuteur reprend la ligne entière, avec ses messages d'erreur.
  * Il refait le travail, mais seulement quand la v3 a échoué.
  */
+/* Se rendre dans une pile, par son nom : sa première carte.
+ *
+ * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de l'ouvrir
+ * — lui seul sait où chercher le fichier et comment lui donner une fenêtre.
+ * C'est ce qui permet à une pile d'en appeler une autre.
+ *
+ * Extrait de v3_cmd_go pour que « go home » l'emploie aussi : Home n'est pas
+ * une destination à part, c'est une PILE qui porte ce nom. L'utilisatrice l'a
+ * fait remarquer en une phrase — « on a déjà go to stack xxx » — et il n'y
+ * avait en effet rien d'autre à écrire. */
+static int v3_va_a(Object *dst);   /* la navigation, définie juste après */
+
+static int v3_va_pile(const char *nom)
+{
+    Object *cible = find_open_stack(nom);
+    if (!cible && g_host && g_host->open_stack)
+        cible = g_host->open_stack(nom);
+    if (!cible) return 0;              /* introuvable : ancien chemin */
+
+    Object *prem = NULL;
+    for (int k = 0; k < cible->nparts; k++)
+        if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
+    if (!prem) { set_result("No such card"); return 1; }
+
+    return v3_va_a(prem);
+}
+
 /* Le déplacement proprement dit, une fois la carte connue : l'effet armé,
  * les quatre messages de couche dans l'ordre d'HyperCard, l'arrivée.
  *
@@ -9737,12 +9764,33 @@ static int v3_va_a(Object *dst)
         g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
     }
 
-    Object *old   = g_current_card;
-    Object *oldbg = old ? old->bg : NULL;
+    /* LES SIX MESSAGES, dans l'ordre d'HyperCard : ceux de PILE encadrent
+     * ceux de COUCHE, et chacun n'est envoyé que si la chose change vraiment.
+     *
+     *     closeCard, closeBackground, closeStack
+     *     openStack, openBackground, openCard
+     *
+     * Le changement de pile se décide ICI, en comparant les propriétaires,
+     * plutôt que dans le chemin qui appelle. « go to stack "X" » n'en
+     * envoyait que deux — closeStack et openStack — et jamais openCard : il
+     * n'annonçait donc pas son arrivée sur une carte, l'historique de
+     * navigation ne voyait pas le déplacement, et le « go back » qui suivait
+     * un « go home » revenait dans le vide. Une seule navigation pour tout
+     * le monde, et la question ne se repose plus. */
+    Object *old    = g_current_card;
+    Object *oldbg  = old ? old->bg : NULL;
+    Object *pile   = owning_stack(dst);
+    Object *vpile  = old ? owning_stack(old) : NULL;
+    int change_pile = (pile != vpile);
+
     if (old) hc_send_systeme(old, "closeCard");
-    /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
     if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
+    if (change_pile && vpile) hc_send_systeme(vpile, "closeStack");
+
     g_current_card = dst;
+    if (change_pile && g_host && g_host->stack_changed) g_host->stack_changed(pile);
+
+    if (change_pile && pile) hc_send_systeme(pile, "openStack");
     if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
     emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
     hc_send_systeme(dst, "openCard");
@@ -9789,6 +9837,13 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils == i + 1 && ref->genre == HCTN_IDENT) {
         char mot[16];
         v3_brut(ref, mot, sizeof mot);
+        /* « go home » : la pile nommée « Home », par le chemin de « go to
+         * stack "Home" ». Pas de destination magique — HyperCard non plus
+         * n'en avait pas : Home était un fichier de pile comme un autre, que
+         * l'application savait retrouver. Ici c'est l'hôte qui sait, et il
+         * répond déjà pour « go to stack ». */
+        if (ci_equal(mot, "home")) return v3_va_pile("Home");
+
         if (ci_equal(mot, "back") || ci_equal(mot, "recent")) {
             Object *avant = histo_recule();
             if (!avant) {
@@ -9813,23 +9868,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         v3_nom_pile(ctx, ref, nom, sizeof nom);
         if (ctx->erreur) return 1;
 
-        Object *cible = find_open_stack(nom);
-        if (!cible && g_host && g_host->open_stack)
-            cible = g_host->open_stack(nom);
-        if (!cible) return 0;              /* introuvable : ancien chemin */
-
-        Object *prem = NULL;
-        for (int k = 0; k < cible->nparts; k++)
-            if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
-        if (!prem) { set_result("No such card"); return 1; }
-
-        Object *old = g_current_card;
-        if (old && old->owner != cible) hc_send(old, "closeStack");
-        g_current_card = prem;
-        if (g_host && g_host->stack_changed) g_host->stack_changed(cible);
-        hc_send(prem, "openStack");
-        set_result("");
-        return 1;
+        return v3_va_pile(nom);
     }
 
     Object *dst = NULL;
