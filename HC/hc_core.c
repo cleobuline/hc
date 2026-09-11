@@ -2905,6 +2905,34 @@ static int ci_nequal(const char *a, const char *b, int len)
     return 1;
 }
 
+/* Ajouter à la suite, SANS jamais dépasser. Rend la nouvelle position.
+ *
+ * Le motif naïf — « pos += snprintf(out + pos, outlen - pos, …) » — est un
+ * piège : snprintf rend la longueur qu'il AURAIT voulu écrire, pas celle
+ * qu'il a écrite. Dès que le tampon est plein, pos passe au-delà, et le tour
+ * suivant calcule « out + pos » hors bornes et « outlen - pos » négatif, que
+ * snprintf reçoit en size_t — donc énorme. Corruption mémoire, pas simple
+ * troncature.
+ *
+ * Cinq des sept sites concernés bornaient déjà pos après chaque ajout ; deux
+ * ne le faisaient pas, et ce sont ceux de « the params », qui concatène
+ * jusqu'à seize valeurs d'un mégaoctet dans un tampon d'un mégaoctet. Plutôt
+ * que de recopier une sixième fois le garde-fou, on le pose ici, une fois. */
+static int ajoute_borne(char *out, int outlen, int pos,
+                        const char *sep, const char *txt)
+{
+    if (!out || outlen <= 0) return 0;
+    if (pos < 0) pos = 0;
+    if (pos >= outlen - 1) return outlen - 1;   /* déjà plein */
+
+    int n = snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
+                     sep ? sep : "", txt ? txt : "");
+    if (n < 0) return pos;                      /* faute d'encodage */
+    pos += n;
+    if (pos > outlen - 1) pos = outlen - 1;     /* tronqué : on s'arrête au bord */
+    return pos;
+}
+
 static int ci_cmp(const char *a, const char *b)
 {
     while (*a && *b) {
@@ -3715,7 +3743,7 @@ static void style_to_names(int bits, char *out, int outlen)
     out[0] = '\0';
     for (int i = 0; i < (int)(sizeof T / sizeof T[0]); i++)
         if (bits & T[i].b)
-            pos += snprintf(out + pos, outlen - pos, "%s%s", pos ? "," : "", T[i].n);
+            pos = ajoute_borne(out, outlen, pos, pos ? "," : "", T[i].n);
     if (!pos) snprintf(out, outlen, "plain");
 }
 
@@ -4522,7 +4550,7 @@ static int call_function_body(const char *t, char *out, int outlen)
             out[0] = '\0';
             int pos = 0;
             for (int i = 0; i < g_nparams; i++)
-                pos += snprintf(out + pos, outlen - pos, "%s%s", i ? "," : "", g_params[i]);
+                pos = ajoute_borne(out, outlen, pos, i ? "," : "", g_params[i]);
             return 1;
         }
         if (ci_equal(name, "time")) { format_date(out, outlen, 3); return 1; }
@@ -6953,7 +6981,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         buf[0] = '\0';
         int pos = 0;
         for (int i = 0; i < g_nparams; i++)
-            pos += snprintf(buf + pos, (size_t)HC_VAL - pos, "%s%s", i ? "," : "", g_params[i]);
+            pos = ajoute_borne(buf, HC_VAL, pos, i ? "," : "", g_params[i]);
         *out = hct_val_texte(buf);
         return 1;
     }
