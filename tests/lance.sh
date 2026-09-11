@@ -92,7 +92,7 @@ for src in harnais/*.c; do
   # millisecondes, qui ne sont jamais deux fois les mêmes. On le fait tourner
   # — il doit au moins finir sans planter — mais on ne compare pas.
   case "$n" in
-    bench*) chrono=$((chrono+1)); continue ;;
+    bench*|banc*) chrono=$((chrono+1)); continue ;;
   esac
 
   ref="attendu/$n.txt"
