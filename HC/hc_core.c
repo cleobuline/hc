@@ -558,9 +558,17 @@ static const char *g_v1_porte = "?";
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
+static void histo_arrive(Object *card);   /* l'historique, défini plus bas */
+
 static void hc_send_systeme(Object *o, const char *message)
 {
-    if (!o || g_messages_verrouilles) return;
+    if (!o) return;
+    /* L'arrivée sur une carte se note ICI, et AVANT le verrou : « lock
+     * messages » empêche le script de réagir, pas la navigation d'avoir eu
+     * lieu. Un seul point pour les six endroits qui envoient openCard, et
+     * pour ceux qu'on ajouterait. */
+    if (o->type == OBJ_CARD && ci_equal(message, "openCard")) histo_arrive(o);
+    if (g_messages_verrouilles) return;
     hc_send(o, message);
 }
 
@@ -1177,9 +1185,76 @@ void hc_set_script(Object *o, const char *script)
     o->script = dup_script(script);
 }
 
+/* ═══ L'HISTORIQUE DE NAVIGATION ═══════════════════════════════════════
+ *
+ * HyperCard retient les cartes visitées : « go back » retrace les pas, « the
+ * recent cards » les énumère, et le menu Go en tire ses articles Back et
+ * Recent. Rien de cela n'existait ici, et le commentaire du menu Go le disait
+ * franchement : « Back, Home et Recent manquent faute d'historique de
+ * navigation dans le noyau ».
+ *
+ * Une pile de cartes, la plus récemment visitée au sommet.
+ *
+ * Elle est alimentée à l'ARRIVÉE sur une carte, c'est-à-dire à l'envoi
+ * d'openCard. C'est le seul instant où l'on est sûr qu'une navigation a eu
+ * lieu, et il est UNIQUE : hc_send_systeme. Les affectations directes de
+ * g_current_card ne comptent pas — il y en a vingt-deux, et la plupart sont
+ * des allers-retours d'une ligne, le temps de lire le texte d'un champ de
+ * fond. Les compter donnerait un historique de faux mouvements.
+ *
+ * Deux fois la même carte de suite ne fait qu'un pas : revenir là où l'on est
+ * n'est pas un déplacement. */
+#define HC_HISTO_MAX 64
+static Object *g_histo[HC_HISTO_MAX];
+static int     g_nhisto = 0;
+static int     g_histo_gele = 0;   /* « go back » ne s'inscrit pas lui-même */
+
+static void histo_arrive(Object *card)
+{
+    if (!card || g_histo_gele) return;
+    if (g_nhisto > 0 && g_histo[g_nhisto - 1] == card) return;
+    if (g_nhisto == HC_HISTO_MAX) {
+        memmove(g_histo, g_histo + 1, sizeof g_histo - sizeof g_histo[0]);
+        g_nhisto--;
+    }
+    g_histo[g_nhisto++] = card;
+}
+
+/* Une carte meurt : elle sort de l'historique. Sans cela « go back » y
+ * trouverait une adresse morte — exactement la faute qu'object_gone vient de
+ * corriger dans l'interface, et le noyau n'y échappe pas plus qu'elle. */
+static void histo_oublie(Object *card)
+{
+    int j = 0;
+    for (int i = 0; i < g_nhisto; i++)
+        if (g_histo[i] != card) g_histo[j++] = g_histo[i];
+    g_nhisto = j;
+}
+
+/* La carte d'où l'on vient. Le sommet est la carte courante : on la dépile,
+ * et la destination est le nouveau sommet. Rendre NULL veut dire qu'il n'y a
+ * nulle part où revenir. */
+static Object *histo_recule(void)
+{
+    if (g_nhisto < 2) return NULL;
+    g_nhisto--;
+    return g_histo[g_nhisto - 1];
+}
+
+int hc_recent_count(void) { return g_nhisto; }
+
+/* Rang 0 = la plus récente. L'ordre rendu est celui d'HyperCard : le menu
+ * Recent montrait la dernière visitée en premier. */
+Object *hc_recent_at(int i)
+{
+    if (i < 0 || i >= g_nhisto) return NULL;
+    return g_histo[g_nhisto - 1 - i];
+}
+
 void hc_free(Object *o)
 {
     if (!o) return;
+    histo_oublie(o);
     /* Prévenir l'hôte AVANT de libérer quoi que ce soit. C'est le seul
      * endroit où un objet meurt, donc le seul où le dire une fois pour
      * toutes — recenser les appelants un par un, c'est en oublier un. */
@@ -6443,6 +6518,22 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char quoi[32];
         hct_texte(&n->fils[0]->jeton, quoi, sizeof quoi);
+
+        /* « the number of menus » : les menus ne sont pas des objets de la
+         * pile — pas de nœud HCTN_OBJET pour eux —, donc v3_nombre_objets ne
+         * peut rien en dire. Le modèle est ici, la réponse aussi. */
+        if (ci_equal(quoi, "number") && n->fils[1] &&
+            n->fils[1]->genre == HCTN_IDENT) {
+            char sorte[32];
+            hct_texte(&n->fils[1]->jeton, sorte, sizeof sorte);
+            if (ci_equal(sorte, "menus")) {
+                char b[24];
+                snprintf(b, sizeof b, "%d", hc_menu_nombre());
+                *out = hct_val_texte(b);
+                return 1;
+            }
+        }
+
         int compte;
         if (ci_equal(quoi, "number") && v3_nombre_objets(n->fils[1], &compte)) {
             char b[24];
@@ -6631,6 +6722,18 @@ static const char *V3_GLOBALES_HOTE[] = {
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
+    /* L'état de la MACHINE. Le noyau ne sait rien de l'espace disque ni de la
+     * version du système, et inventer un chiffre serait pire que se taire :
+     * un script qui vérifie « if the diskSpace < 100000 » mérite une vraie
+     * réponse ou une vraie erreur, pas une valeur décorative. On les confie
+     * donc à l'hôte, qui peut les connaître ; s'il ne répond pas, « the » dit
+     * franchement qu'il ne sait pas.
+     *
+     * PAS « the size » ni « the freeSize » : chez HyperCard ce sont des
+     * propriétés de la PILE — sa taille de fichier et l'espace que les
+     * suppressions y ont laissé —, pas de la machine. Les mettre ici les
+     * aurait détournées de leur sens. */
+    "diskSpace", "heapSpace", "systemVersion", "windows", "programs",
     NULL
 };
 
@@ -6665,6 +6768,66 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         char petit[128];
         format_date(petit, sizeof petit, datemode);
         *out = hct_val_texte(petit);
+        return 1;
+    }
+    /* « the stacks » : les piles ouvertes, une par ligne. Le noyau tient déjà
+     * ce registre — c'est celui qui permet à « go to stack "X" » de trouver
+     * une pile déjà ouverte. */
+    if (ci_equal(nom, "stacks")) {
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_stack_count(); i++) {
+            Object *st = hc_stack_at(i);
+            const char *nm = st && st->name ? st->name : "";
+            size_t l = strlen(nm);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, nm, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+
+    /* « the menus » : les menus de la barre créés par script, une par ligne.
+     * Le modèle vit ici, l'hôte n'en tient qu'un reflet. */
+    if (ci_equal(nom, "menus")) {
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_menu_nombre(); i++) {
+            const char *nm = hc_menu_nom(i);
+            if (!nm) continue;
+            size_t l = strlen(nm);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, nm, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
+        return 1;
+    }
+
+    /* « the recent cards » : les cartes visitées, la plus récente d'abord,
+     * une par ligne. « the recent names » rend les mêmes sous leur nom court.
+     * L'historique est celui qu'alimente openCard ; le menu Recent d'HyperCard
+     * le lisait de la même façon. */
+    if (ci_equal(nom, "recent cards") || ci_equal(nom, "recent names")) {
+        int courts = ci_equal(nom, "recent names");
+        buf[0] = '\0';
+        size_t pris = 0;
+        for (int i = 0; i < hc_recent_count(); i++) {
+            Object *c = hc_recent_at(i);
+            if (!c) continue;
+            char d[160];
+            if (courts) snprintf(d, sizeof d, "%s", c->name ? c->name : "");
+            else        hc_describe(c, d, sizeof d);
+            size_t l = strlen(d);
+            if (pris + l + 2 >= (size_t)HC_VAL) break;
+            if (pris) buf[pris++] = '\n';
+            memcpy(buf + pris, d, l); pris += l;
+            buf[pris] = '\0';
+        }
+        *out = hct_val_texte(buf);
         return 1;
     }
     if (ci_equal(nom, "date")) {
@@ -9552,6 +9715,53 @@ static void v3_nom_pile(HctContexte *ctx, const HctNoeud *ref,
  * l'ancien exécuteur reprend la ligne entière, avec ses messages d'erreur.
  * Il refait le travail, mais seulement quand la v3 a échoué.
  */
+/* Le déplacement proprement dit, une fois la carte connue : l'effet armé,
+ * les quatre messages de couche dans l'ordre d'HyperCard, l'arrivée.
+ *
+ * Extrait de v3_cmd_go pour que « go back » l'emploie aussi. Le recopier
+ * aurait donné deux navigations à tenir d'accord — et c'est exactement ainsi
+ * qu'un effet visuel ou un closeBackground finit par manquer d'un côté. */
+static int v3_va_a(Object *dst)
+{
+    if (!dst || dst->type != OBJ_CARD) return 0;
+
+    set_result("");
+
+    /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte : l'hôte
+     * a besoin de photographier l'écran de départ. Puis on l'oublie —
+     * « visual » ne vaut que pour le prochain « go ». */
+    if (g_visual_effect[0]) {
+        if (g_host && g_host->visual_effect)
+            g_host->visual_effect(g_visual_effect, g_visual_speed,
+                                  g_visual_image);
+        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
+    }
+
+    Object *old   = g_current_card;
+    Object *oldbg = old ? old->bg : NULL;
+    if (old) hc_send_systeme(old, "closeCard");
+    /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
+    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
+    g_current_card = dst;
+    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
+    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
+    hc_send_systeme(dst, "openCard");
+    return 1;
+}
+
+/* Revenir à la carte précédente, depuis l'interface : c'est l'article Back du
+ * menu Go. Le même geste que « go back », et par le même chemin. */
+int hc_go_back(void)
+{
+    Object *avant = histo_recule();
+    if (!avant) return 0;
+    int gele = g_histo_gele;
+    g_histo_gele = 1;
+    int r = v3_va_a(avant);
+    g_histo_gele = gele;
+    return r;
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
@@ -9567,6 +9777,32 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     }
 
     const HctNoeud *ref = n->fils[i];
+
+    /* ---- go back ----
+     * On retrace les pas : le sommet de l'historique est la carte courante,
+     * celle d'en dessous est la destination. L'arrivée ne s'inscrit PAS —
+     * sans quoi deux « go back » de suite feraient la navette entre deux
+     * cartes au lieu de continuer à remonter.
+     *
+     * « go recent » est le même geste : c'est ainsi qu'HyperCard nommait
+     * l'article de menu qui ramène à la carte précédente. */
+    if (n->nfils == i + 1 && ref->genre == HCTN_IDENT) {
+        char mot[16];
+        v3_brut(ref, mot, sizeof mot);
+        if (ci_equal(mot, "back") || ci_equal(mot, "recent")) {
+            Object *avant = histo_recule();
+            if (!avant) {
+                set_result("No such card");
+                emit(HC_ERR, "   !! rien où revenir : l'historique est vide");
+                return 1;
+            }
+            int gele = g_histo_gele;
+            g_histo_gele = 1;
+            int r = v3_va_a(avant);
+            g_histo_gele = gele;
+            return r;
+        }
+    }
 
     /* ---- go to stack "X" ----
      * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de
@@ -9633,29 +9869,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     }
 
     if (!dst || dst->type != OBJ_CARD) return 0;   /* ancien chemin */
-
-    set_result("");
-
-    /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte : l'hôte
-     * a besoin de photographier l'écran de départ. Puis on l'oublie —
-     * « visual » ne vaut que pour le prochain « go ». */
-    if (g_visual_effect[0]) {
-        if (g_host && g_host->visual_effect)
-            g_host->visual_effect(g_visual_effect, g_visual_speed,
-                                  g_visual_image);
-        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
-    }
-
-    Object *old   = g_current_card;
-    Object *oldbg = old ? old->bg : NULL;
-    if (old) hc_send_systeme(old, "closeCard");
-    /* Changement de fond : les quatre messages, dans l'ordre d'HyperCard. */
-    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-    g_current_card = dst;
-    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
-    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-    hc_send_systeme(dst, "openCard");
-    return 1;
+    return v3_va_a(dst);
 }
 
 /* ------------------------------------------------- open / close file
@@ -14020,6 +14234,11 @@ static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = 
     { "Previous", "go prev card"  },
     { "First",    "go first card" },
     { "Last",     "go last card"  },
+    /* Back suit l'historique de navigation, comme dans HyperCard. « doMenu
+     * "Back" » depuis un script y arrive donc aussi, et un « on doMenu » de
+     * la pile peut le détourner — c'est tout l'intérêt de passer par ici
+     * plutôt que d'appeler hc_go_back depuis l'interface. */
+    { "Back",     "go back"       },
     { NULL, NULL }
 };
 

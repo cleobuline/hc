@@ -342,12 +342,17 @@ static NSMenu *find_file_menu(void)
      * palettes du menu Tools. Entre deux fidélités qui se contredisent, celle
      * qui ne casse rien.
      *
-     * « Back », « Home » et « Recent » manquent faute d'historique de
-     * navigation dans le noyau — les afficher grisés serait plus honnête que
-     * de les afficher morts, mais les omettre l'est encore davantage. */
+     * « Back » suit maintenant l'historique de navigation du noyau, alimenté
+     * à chaque openCard. Il passe par doMenu comme les quatre autres, donc un
+     * « on doMenu » de la pile peut le détourner.
+     *
+     * « Home » et « Recent » manquent encore : le premier demande une pile
+     * d'accueil, que rien ici ne désigne ; le second, la palette de vignettes
+     * d'HyperCard. Les omettre reste plus honnête que de les afficher
+     * morts. */
     NSMenuItem *goItem = [[NSMenuItem alloc] init];
     NSMenu *goMenu = [[NSMenu alloc] initWithTitle:@"Go"];
-    for (NSString *t in @[ @"First", @"Prev", @"Next", @"Last" ]) {
+    for (NSString *t in @[ @"Back", @"First", @"Prev", @"Next", @"Last" ]) {
         NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:t
                                                     action:@selector(goMenuItem:)
                                              keyEquivalent:@""];

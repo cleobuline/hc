@@ -554,6 +554,15 @@ Object *hc_stack_at(int i);
  * À interroger avant de se servir d'un pointeur conservé hors du noyau : un
  * cache indexé par adresse ne sait pas que son objet est mort. Ne déréférence
  * jamais l'argument, il ne fait que le comparer aux objets vivants. */
+/* ---- Historique de navigation ----
+ * Les cartes visitées, alimentées à l'envoi d'openCard. Rang 0 = la plus
+ * récente. C'est ce que lisent « the recent cards », « go back », et les
+ * articles Back et Recent du menu Go. */
+int      hc_recent_count(void);
+Object  *hc_recent_at(int i);
+/* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
+int      hc_go_back(void);
+
 int     hc_layer_is_live(Object *layer);
 
 /* Le même test, à toute profondeur : boutons et champs compris. À employer

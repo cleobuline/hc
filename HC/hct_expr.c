@@ -820,6 +820,23 @@ static HctNoeud *chunk_ou_of(HctAnalyseur *a)
 
 static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
 {
+    /* « the recent cards » et « the recent names » : deux mots pour un seul
+     * nom de propriété. Avant les adjectifs et avant les types d'objet, parce
+     * que « cards » EST un type d'objet : traité plus bas, « recent » aurait
+     * été jeté et « the recent cards » aurait rendu la carte courante.
+     *
+     * Sans cette règle l'analyseur refusait la ligne — et une ligne refusée
+     * condamne le gestionnaire ENTIER à l'ancien interprète, pour un mot. */
+    if (mot_ici(a, "recent")) {
+        if (mot_apres(a, 1, "cards") || mot_apres(a, 1, "names")) {
+            const HctJeton *suiv = &a->lot->jetons[a->i + 1];
+            HctJeton j = *ici(a);
+            j.len = (int)((suiv->deb + suiv->len) - j.deb);
+            j.norme = NULL;         /* « recent cards », pas le synonyme de cards */
+            a->i += 2;
+            return hct_noeud(a->reserve, HCTN_IDENT, j);
+        }
+    }
 
     /* Un adjectif ne vaut que s'il qualifie quelque chose. */
     

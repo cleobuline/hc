@@ -1849,6 +1849,33 @@ static const char *cocoa_global_get(const char *name) {
         return gGlobBuf;
     }
 
+    /* L'état de la machine. Le noyau ne peut pas le connaître ; nous, si.
+     *
+     * On ne répond QUE ce qu'on sait vraiment. « the heapSpace », « the
+     * windows » et « the programs » restent sans réponse : l'hôte rend NULL,
+     * et « the » dit alors franchement qu'il ne connaît pas la propriété —
+     * ce qui vaut mieux qu'un chiffre décoratif dont un script se servirait
+     * pour décider quelque chose. */
+    if (strcasecmp(name, "diskSpace") == 0) {
+        NSDictionary *a = [[NSFileManager defaultManager]
+                            attributesOfFileSystemForPath:NSHomeDirectory()
+                                                    error:nil];
+        NSNumber *libre = a[NSFileSystemFreeSize];
+        if (!libre) return NULL;
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%llu",
+                 (unsigned long long)[libre unsignedLongLongValue]);
+        return gGlobBuf;
+    }
+
+    if (strcasecmp(name, "systemVersion") == 0) {
+        NSOperatingSystemVersion v =
+            [[NSProcessInfo processInfo] operatingSystemVersion];
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%ld.%ld.%ld",
+                 (long)v.majorVersion, (long)v.minorVersion,
+                 (long)v.patchVersion);
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "screenRect") == 0) {
         NSRect r = [[NSScreen mainScreen] frame];
         snprintf(gGlobBuf, sizeof gGlobBuf, "0,0,%d,%d",
