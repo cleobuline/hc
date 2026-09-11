@@ -379,6 +379,12 @@ typedef struct {
     void (*line)(HcLineKind kind, int depth, const char *text);
     void (*field_changed)(Object *field);   /* champ modifié : rafraîchir l'affichage */
 
+    /* Mémoire épuisée : le noyau ne peut plus continuer et va s'arrêter.
+     * DERNIÈRE CHANCE pour l'hôte de sauver ce qui est ouvert et de le dire à
+     * l'utilisateur. Il ne faut rien allouer ici — c'est précisément ce qui
+     * vient d'échouer. S'il revient, le noyau s'arrête. Facultatif. */
+    void (*panic)(const char *quoi);
+
     /* Boîtes de dialogue. L'hôte renvoie un pointeur valide jusqu'au prochain
      * appel ; NULL vaut annulation.
      *   ask     : saisie de texte, deflt peut être vide
@@ -530,6 +536,10 @@ typedef struct {
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);
+
+/* Épuisement mémoire : prévient l'hôte (dernière chance de sauver, cf. panic)
+ * puis s'arrête. Ne revient jamais. */
+void        hc_memoire_epuisee(const char *quoi);
 
 Object *hc_current_card(void);
 

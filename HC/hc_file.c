@@ -96,7 +96,7 @@ static char *dupstr_file(const char *s)
     if (!s) return NULL;
     size_t n = strlen(s) + 1;
     char *p = malloc(n);
-    if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!p) hc_memoire_epuisee("copie d'une chaîne lue dans une pile");
     memcpy(p, s, n);
     return p;
 }
@@ -443,7 +443,11 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
 }
 
 /* accumulateur de texte pour les blocs « | » */
-typedef struct { char *buf; size_t len, cap; } Acc;
+/* « manque » retient qu'une allocation a échoué pendant la lecture d'un bloc.
+ * Le drapeau est COLLANT : une fois posé il ne se retire plus, parce qu'un
+ * script ou un texte tronqué est pire qu'un chargement refusé — l'utilisateur
+ * réenregistrerait par-dessus l'original sans savoir ce qu'il a perdu. */
+typedef struct { char *buf; size_t len, cap; int manque; } Acc;
 
 static void acc_line(Acc *a, const char *s)
 {
@@ -452,7 +456,7 @@ static void acc_line(Acc *a, const char *s)
         size_t cap = a->cap ? a->cap * 2 : 256;
         while (cap < a->len + n + 2) cap *= 2;
         char *p = realloc(a->buf, cap);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
     memcpy(a->buf + a->len, s, n);
@@ -470,7 +474,7 @@ static void acc_join(Acc *a, const char *s)
         size_t cap = a->cap ? a->cap * 2 : 256;
         while (cap < a->len + n + 2) cap *= 2;
         char *p = realloc(a->buf, cap);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
     memcpy(a->buf + a->len, s, n);
@@ -865,5 +869,14 @@ Object *hc_load(const char *path)
     free(acc.buf);
     ligne_libere(&lg);
     fclose(f);
+
+    /* Une seule allocation manquée pendant la lecture suffit à refuser toute
+     * la pile. C'est brutal, et c'est voulu : rendre une pile où un script ou
+     * le texte d'un champ a silencieusement perdu sa fin, c'est offrir à
+     * l'utilisateur de l'enregistrer par-dessus l'original. */
+    if (acc.manque) {
+        if (stack) hc_free(stack);
+        return NULL;
+    }
     return stack;
 }

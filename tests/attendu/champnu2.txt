@@ -16,11 +16,6 @@
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
 [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    recours of short name                    1
-[v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    3
-[v3]    v1 fonction recours expr                 3
-[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
@@ -61,10 +56,7 @@
    [ERR]    !! objet introuvable (v3, ligne 3 de button "B".t)
 
 ── put the short name of field "absent"
-   short name of field "absent"
-      recours of short name                    1
-      v1 terme recours expr                    3
-      v1 fonction recours expr                 3
+   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".t)
 
 ── put field "surCarte"
    carte

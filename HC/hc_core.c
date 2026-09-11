@@ -153,9 +153,18 @@ static Object *g_current_card = NULL;
  * D'où ce registre, que l'hôte tient à jour. Il ne détient rien non plus : ce
  * sont des pointeurs empruntés, et l'hôte doit retirer une pile AVANT de la
  * libérer, sans quoi le registre pointerait dans le vide. */
-#define HC_MAX_STACKS 16
-static Object *g_stacks[HC_MAX_STACKS];
-static int     g_nstacks = 0;
+/* Le registre GRANDIT. Il était plafonné à seize, et au-delà « hc_register_stack »
+ * ne faisait rien — silencieusement : la dix-septième pile s'ouvrait, l'hôte
+ * l'affichait, mais « go to stack "X" » ne la trouvait pas et « the stacks » ne
+ * la nommait pas. Un plafond qui ment est pire qu'un plafond qui refuse.
+ *
+ * Il n'y a d'ailleurs aucune raison de plafonner : ce sont des pointeurs
+ * empruntés, huit octets par pile ouverte. */
+static Object **g_stacks   = NULL;
+static int      g_nstacks  = 0;
+static int      g_capstacks = 0;
+
+static void emit(HcLineKind kind, const char *fmt, ...);
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
 static char g_visual_speed[16]  = "";
@@ -172,6 +181,10 @@ static char g_visual_image[16]  = "";
  * Déclarées par « start using stack "X" », retirées par « stop using ». Ce
  * sont des pointeurs empruntés, comme le registre : fermer une pile la retire
  * aussi d'ici, sans quoi la chaîne de messages suivrait une adresse morte. */
+/* Celui-ci garde un plafond, contrairement au registre des piles : les piles en
+ * usage sont des maillons de la CHAÎNE DE MESSAGES, que « chain[] » parcourt
+ * sur une taille fixe, et une chaîne sans bord serait une mauvaise idée. Mais
+ * le dépassement se dit maintenant, au lieu d'ignorer la demande en silence. */
 #define HC_MAX_USING 8
 static Object *g_using[HC_MAX_USING];
 static int     g_nusing = 0;
@@ -181,7 +194,19 @@ void hc_register_stack(Object *stack)
     if (!stack || stack->type != OBJ_STACK) return;
     for (int i = 0; i < g_nstacks; i++)
         if (g_stacks[i] == stack) return;             /* déjà connue */
-    if (g_nstacks < HC_MAX_STACKS) g_stacks[g_nstacks++] = stack;
+    if (g_nstacks == g_capstacks) {
+        int cap = g_capstacks ? g_capstacks * 2 : 16;
+        Object **n = realloc(g_stacks, (size_t)cap * sizeof *n);
+        /* Faute de place on ne enregistre pas, mais on le DIT : sans ce message
+         * la pile serait ouverte et introuvable, ce qui est exactement le
+         * défaut qu'on vient de corriger. */
+        if (!n) { emit(HC_ERR, "   !! registre des piles saturé à %d : "
+                               "« %s » restera introuvable par son nom",
+                       g_nstacks, stack->name ? stack->name : "?");
+                  return; }
+        g_stacks = n; g_capstacks = cap;
+    }
+    g_stacks[g_nstacks++] = stack;
 }
 
 void hc_unregister_stack(Object *stack)
@@ -807,12 +832,33 @@ int hc_part_count(Object *owner, ObjType type)
 }
 
 /* Les plages de style sont definies bien plus bas, mais hc_free en a besoin. */
+/* Épuisement mémoire : le SEUL point de sortie.
+ *
+ * Il y en avait treize, chacun faisant « fprintf(stderr) ; exit(1) ». Dans une
+ * application Cocoa, stderr n'est lu par personne : l'utilisateur voyait sa
+ * pile disparaître sans un mot, et sans avoir pu l'enregistrer.
+ *
+ * On prévient donc l'hôte d'abord, pour qu'il ait une dernière chance de sauver
+ * ce qui est ouvert et de l'annoncer. Puis on s'arrête : continuer après une
+ * allocation manquée reviendrait à écrire dans un pointeur nul. */
+void hc_memoire_epuisee(const char *quoi)
+{
+    static int deja = 0;
+    if (!deja) {                       /* pas de récursion si l'hôte replante */
+        deja = 1;
+        emit(HC_ERR, "   !! mémoire épuisée : %s", quoi);
+        if (g_host && g_host->panic) g_host->panic(quoi);
+    }
+    fprintf(stderr, "hc : mémoire épuisée (%s)\n", quoi);
+    exit(1);
+}
+
 static void runs_free(struct RunList *rl);
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));
-    if (!o) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
     o->id      = g_next_id++;
     o->name    = dupstr(name);
@@ -829,7 +875,7 @@ static void add_part(Object *parent, Object *child)
     if (parent->nparts == parent->capparts) {
         int cap = parent->capparts ? parent->capparts * 2 : 4;
         Object **p = realloc(parent->parts, (size_t)cap * sizeof(Object *));
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("liste des parties d'une couche");
         parent->parts = p;
         parent->capparts = cap;
     }
@@ -1620,8 +1666,11 @@ static Object *clone_part(Object *o)
 {
     if (!o || (o->type != OBJ_BUTTON && o->type != OBJ_FIELD)) return NULL;
 
+    /* Faute de place on rend NULL plutôt que de mourir : les deux appelants
+     * (copier une partie, coller) traitent déjà NULL comme « rien copié ». Une
+     * copie qui échoue est un désagrément ; un arrêt en perd la pile. */
     Object *c = calloc(1, sizeof(Object));
-    if (!c) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!c) return NULL;
 
     c->type = o->type;
     c->id   = o->id;              /* remplacé à la pose */
@@ -1778,7 +1827,7 @@ static void clone_bgtexts(Object *dst, Object *src)
     if (src->nbgtexts <= 0) return;
 
     dst->bgtexts = calloc((size_t)src->nbgtexts, sizeof *dst->bgtexts);
-    if (!dst->bgtexts) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!dst->bgtexts) hc_memoire_epuisee("textes de fond d'une carte copiée");
     dst->capbgtexts = src->nbgtexts;
 
     for (int i = 0; i < src->nbgtexts; i++) {
@@ -1807,8 +1856,9 @@ static Object *clone_layer(Object *o, ObjType type)
 {
     if (!o || o->type != type) return NULL;
 
+    /* Comme clone_part : NULL se traite, l'arrêt non. */
     Object *c = calloc(1, sizeof(Object));
-    if (!c) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!c) return NULL;
 
     c->type   = type;
     c->id     = o->id;             /* remplacé à la pose */
@@ -2820,7 +2870,7 @@ static void var_set(const char *name, const char *val)
     if (f->n == f->cap) {
         int cap = f->cap ? f->cap * 2 : 8;
         Var *p = realloc(f->v, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("variables locales d'un gestionnaire");
         f->v = p; f->cap = cap;
     }
     f->v[f->n].name = dupstr(name);
@@ -2834,7 +2884,7 @@ static void frame_declare_global(Frame *f, const char *name)
     if (f->ngl == f->capgl) {
         int cap = f->capgl ? f->capgl * 2 : 4;
         char **p = realloc(f->gl, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("déclarations « global » d'un gestionnaire");
         f->gl = p; f->capgl = cap;
     }
     f->gl[f->ngl++] = dupstr(name);
@@ -2853,7 +2903,7 @@ static void frame_declare_global(Frame *f, const char *name)
     if (g_globals.n == g_globals.cap) {
         int cap = g_globals.cap ? g_globals.cap * 2 : 8;
         Var *p = realloc(g_globals.v, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("table des variables globales");
         g_globals.v = p; g_globals.cap = cap;
     }
     g_globals.v[g_globals.n].name = dupstr(name);
@@ -6473,6 +6523,33 @@ static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
 
+static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
+
+/* « the <propriété> of <objet> » : la même règle un cran plus loin.
+ *
+ * « the short name of field "absent" » rendait « short name of field
+ * "absent" » — le texte de la demande. Un script qui teste ce nom le trouve
+ * non vide et travaille sur une chaîne inventée.
+ *
+ * Le test est PUREMENT STRUCTUREL : on ne résout rien ici. Résoudre la cible
+ * pour savoir si elle existe rappellerait l'évaluateur, donc ce recours, donc
+ * cette fonction — la première version bouclait et six harnais dépassaient
+ * leur délai. C'est « echo » qui fait le tri : il ne vaut 1 que si l'ancien
+ * évaluateur a rendu son entrée inchangée, c'est-à-dire s'il n'a rien
+ * reconnu. « the width of card window » et « the checkmark of menuItem 2 of
+ * menu "X" », qu'il sait traiter, n'arrivent jamais jusqu'ici. */
+static int v3_prop_sur_objet(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
+    const HctNoeud *sur = n->fils[1];
+    if (!sur || sur->genre != HCTN_OBJET) return 0;
+    /* C'est bien CETTE cible-ci que la résolution vient de manquer. Sans cette
+     * égalité, « the owner of me » — cible présente, propriété que le noyau ne
+     * sert pas — tomberait sous la même règle, alors qu'il ne s'agit pas du
+     * même défaut et que le message serait faux. */
+    return sur == g_v3_cible_manquee;
+}
+
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
@@ -6720,7 +6797,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && n->genre == HCTN_OBJET) {
+    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;
@@ -7234,6 +7311,18 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
 
 /* L'hôte reçoit le nœud, hct_resout rend l'objet. Plus aucun texte
  * reconstitué sur ce chemin. */
+/* Dernier nœud d'objet que v3_resout n'a PAS su résoudre.
+ *
+ * C'est le seul endroit où l'information existe. v3_recours reçoit le nœud
+ * « of » qui surplombe la cible, mais pas le verdict de la résolution ; et la
+ * refaire depuis le recours rappellerait l'évaluateur, donc le recours — la
+ * première version bouclait et six harnais dépassaient leur délai.
+ *
+ * On note donc l'échec au passage. C'est un pointeur COMPARÉ, jamais
+ * déréférencé : l'arbre lui survit le temps d'une évaluation, et de toute
+ * façon seule l'identité nous intéresse. */
+static const HctNoeud *g_v3_cible_manquee = NULL;
+
 static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 {
     (void)d;
@@ -7245,7 +7334,9 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
      * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
     if (v3_est_fenetre(ref)) return NULL;
 
-    return hct_resout(ctx, ref);
+    Object *o = hct_resout(ctx, ref);
+    if (!o && ref && ref->genre == HCTN_OBJET) g_v3_cible_manquee = ref;
+    return o;
 }
 
 /* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
@@ -10153,7 +10244,15 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
         g_nusing--;
         break;
     }
-    if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+    if (demarrer) {
+        if (g_nusing >= HC_MAX_USING) {
+            set_result("Too many stacks in use");
+            emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
+                         "« %s » n'a pas été ajoutée", HC_MAX_USING, nom);
+            return 1;
+        }
+        g_using[g_nusing++] = pile;
+    }
 
     set_result("");
     return 1;
@@ -11582,7 +11681,7 @@ static void exec_body(Object *me, const char *body, const char *end)
 {
     int cap = 32, n = 0;
     char **L = malloc((size_t)cap * sizeof *L);
-    if (!L) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!L) hc_memoire_epuisee("lignes d'un gestionnaire");
 
     const char *p = body;
     while (p < end && *p) {
@@ -11612,7 +11711,7 @@ static void exec_body(Object *me, const char *body, const char *end)
             if (n == cap) {
                 cap *= 2;
                 char **q = realloc(L, (size_t)cap * sizeof *L);
-                if (!q) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+                if (!q) hc_memoire_epuisee("lignes d'un gestionnaire");
                 L = q;
             }
             L[n++] = dupstr(t);
@@ -14012,7 +14111,17 @@ static void exec_line_body(Object *me, const char *line)
                 g_nusing--;
                 break;
             }
-            if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+            if (demarrer) {
+                if (g_nusing >= HC_MAX_USING) {
+                    set_result("Too many stacks in use");
+                    emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
+                                 "« %s » n'a pas été ajoutée",
+                         HC_MAX_USING, nom);
+                    ARENA_FREE;
+                    return;
+                }
+                g_using[g_nusing++] = pile;
+            }
 
             set_result("");
             ARENA_FREE;

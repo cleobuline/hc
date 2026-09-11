@@ -2,8 +2,8 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours of short name                    1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    3
-[v3]    v1 fonction recours expr                 3
+[v3]    v1 terme recours expr                    2
+[v3]    v1 fonction recours expr                 2
 >>> designateur arithmetique: card i+1
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
@@ -20,7 +20,7 @@
 >>> id designateur avec concat apres
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      [message box] short name of card id 1 suffixe
+      !! objet introuvable (v3, ligne 2 de button "GoBtn".mouseUp)
 >>> nom cite avec concat apres
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
@@ -32,5 +32,5 @@
 — retours de la v3 vers l'ancien interpréteur —
    recours of short name                    1
 — ce que l'ancien interprète exécute encore —
-   v1 terme recours expr                    3
-   v1 fonction recours expr                 3
+   v1 terme recours expr                    2
+   v1 fonction recours expr                 2

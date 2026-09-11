@@ -957,9 +957,10 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * globales, celles que l'hôte ne connaît que par son propre
          * évaluateur, et le cas où la cible ne se résout pas. */
         HctValeur vr;
+        void *objet = NULL;
 
         if (ctx->hote.resout && ctx->hote.lit_prop) {
-            void *objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
+            objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
             if (objet) {
                 HctValeur r;
                 if (ctx->hote.lit_prop(ctx->hote.donnees, objet, nom, &r)) {
@@ -975,7 +976,16 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             return vr;
         }
 
-        hct_ctx_faute(ctx, n, "propriété inconnue");
+        /* Deux échecs bien différents sous le même « of ». Quand la CIBLE ne
+         * s'est pas résolue et qu'elle s'écrivait comme un objet, ce n'est pas
+         * la propriété qui manque, c'est l'objet — et c'est cela qu'il faut
+         * dire. Le recours vient de renoncer, donc l'ancien évaluateur n'en
+         * savait pas plus : « the width of card window », qu'il sait traiter,
+         * n'arrive jamais jusqu'ici. */
+        if (!objet && sur && sur->genre == HCTN_OBJET)
+            hct_ctx_faute(ctx, n, "objet introuvable");
+        else
+            hct_ctx_faute(ctx, n, "propriété inconnue");
         free(nom);
         return hct_val_vide();
     }
