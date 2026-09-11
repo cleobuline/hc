@@ -4670,36 +4670,40 @@ static BOOL      gSansMessageChamp = NO;
             NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
             Object *hit = part_at(hc_current_card(), p);
 
-            /* Pour la carte elle-même, part_at rend NULL : on compare
-             * donc à la carte courante plutôt qu'au résultat du test. */
-            if (hit == gPressed ||
-                (!hit && gPressed == hc_current_card()))
-                hc_send(gPressed, "mouseUp");
-
-            /* Relire gPressed APRÈS l'envoi : le gestionnaire a pu se
-             * supprimer lui-même — « on mouseUp / delete me / end mouseUp »,
-             * l'idiome du bouton qui disparaît quand on s'en sert. object_gone
-             * l'a alors mis à NULL, et rallumer l'éclairage d'un bouton mort
-             * n'a plus de sens. Avant ce rappel le pointeur restait sur de la
-             * mémoire rendue : la faute était la même, mais silencieuse. */
+            /* TOUT CE QUI TOUCHE gDoc SE FAIT AVANT L'ENVOI.
+             *
+             * hc_send exécute du script, et le script peut tout changer sous
+             * nos pieds : supprimer le bouton (« on mouseUp / delete me / end
+             * mouseUp », l'idiome du bouton qui s'efface quand on s'en sert),
+             * changer de carte, fermer la pile — donc congédier le document
+             * dont gDoc est l'état. Lire ou écrire gDoc ensuite, c'est parier
+             * sur ce qui aura survécu.
+             *
+             * On prend donc l'objet pressé et on remet l'ardoise à zéro
+             * AVANT, puis on ne travaille plus que sur la variable locale.
+             * Comme aucun rappel ne peut mettre une variable locale à NULL,
+             * c'est hc_object_is_live qui dit si l'objet est encore là. */
             Object *presse = gPressed;
             gPressed = NULL;
 
-            if (presse && presse->type == OBJ_BUTTON && presse->style) {
+            /* Pour la carte elle-même, part_at rend NULL : on compare
+             * donc à la carte courante plutôt qu'au résultat du test. */
+            if (hit == presse || (!hit && presse == hc_current_card()))
+                hc_send(presse, "mouseUp");
+
+            if (presse && hc_object_is_live(presse) &&
+                presse->type == OBJ_BUTTON) {
+                Object *carte = hc_current_card();
                 const char *st = presse->style;
-                if (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0) {
-                    hc_set_hilite(presse, hc_current_card(),
-                                  !hc_hilite_of(presse, hc_current_card()));
+                if (st && (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0))
+                    hc_set_hilite(presse, carte, !hc_hilite_of(presse, carte));
+                else if (st && (strcmp(st, "radioButton") == 0 ||
+                                strcmp(st, "radiobutton") == 0)) {
+                    hc_set_hilite(presse, carte, 1);
+                    radio_exclusive(carte, presse);
                 }
-                else if (strcmp(st, "radioButton") == 0 || strcmp(st, "radiobutton") == 0) {
-                    hc_set_hilite(presse, hc_current_card(), 1);
-                    radio_exclusive(hc_current_card(), presse);
-                }
-                else if (presse->autohilite) {
-                    hc_set_hilite(presse, hc_current_card(), 0);
-                }
-            } else if (presse && presse->type == OBJ_BUTTON && presse->autohilite) {
-                hc_set_hilite(presse, hc_current_card(), 0);
+                else if (presse->autohilite)
+                    hc_set_hilite(presse, carte, 0);
             }
 
             [self setNeedsDisplay:YES];
