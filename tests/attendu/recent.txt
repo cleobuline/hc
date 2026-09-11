@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── au départ
+   (aucune)
+── après trois navigations
+   0* card "Une"
+   1  card "Trois"
+   2  card "Deux"
+── saut au rang 2
+   hc_go_recent(2) = 1
+   Deux
+── après le saut
+   0* card "Deux"
+   1  card "Une"
+   2  card "Trois"
+   3  card "Deux"
+── rang inexistant
+   hc_go_recent(99) = 0
+── the recent names
+   Deux
+Une
+Trois
+Deux

@@ -10058,6 +10058,22 @@ int hc_go_back(void)
     return r;
 }
 
+/* Aller DIRECTEMENT à une carte de l'historique, par son rang.
+ *
+ * C'est ce que fait l'article Recent du menu Go : la palette de vignettes
+ * d'HyperCard désignait une carte visitée, on la désigne par son nom.
+ *
+ * L'historique n'est PAS gelé ici, contrairement à « go back ». Sauter à la
+ * cinquième carte visitée est une navigation ordinaire — elle doit s'inscrire,
+ * sans quoi un « Back » juste après repartirait d'où l'on venait et non d'où
+ * l'on est. Seul « Back », qui retrace ses pas, doit s'en abstenir. */
+int hc_go_recent(int i)
+{
+    Object *c = hc_recent_at(i);
+    if (!c) return 0;
+    return v3_va_a(c);
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;

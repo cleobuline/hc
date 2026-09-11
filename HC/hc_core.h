@@ -572,6 +572,9 @@ int      hc_recent_count(void);
 Object  *hc_recent_at(int i);
 /* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
 int      hc_go_back(void);
+/* Aller à la i-ème carte de l'historique (0 = la plus récente), comme le fait
+ * l'article Recent du menu Go. 0 si ce rang n'existe pas. */
+int      hc_go_recent(int i);
 
 int     hc_layer_is_live(Object *layer);
 

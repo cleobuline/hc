@@ -4,6 +4,7 @@
 #include <stdlib.h>        // getenv, pour la trace HC_RUNS_DEBUG
 #include <strings.h>       // strcasecmp, pour les noms de proprietes globales
 #include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
+#include <mach/mach.h>     // host_statistics64, pour « the heapSpace »
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import "icons.h"
 #import "HCglobals.h"
@@ -1851,11 +1852,11 @@ static const char *cocoa_global_get(const char *name) {
 
     /* L'état de la machine. Le noyau ne peut pas le connaître ; nous, si.
      *
-     * On ne répond QUE ce qu'on sait vraiment. « the heapSpace », « the
-     * windows » et « the programs » restent sans réponse : l'hôte rend NULL,
-     * et « the » dit alors franchement qu'il ne connaît pas la propriété —
-     * ce qui vaut mieux qu'un chiffre décoratif dont un script se servirait
-     * pour décider quelque chose. */
+     * On ne répond QUE ce qu'on sait vraiment — un chiffre décoratif serait
+     * pire que pas de réponse, puisqu'un script s'en servirait pour décider
+     * quelque chose. Les trois dernières (heapSpace, windows, programs)
+     * restaient sans réponse faute d'équivalent ÉVIDENT sur macOS ; elles en
+     * ont un, chacune expliquée à sa place. */
     if (strcasecmp(name, "diskSpace") == 0) {
         NSDictionary *a = [[NSFileManager defaultManager]
                             attributesOfFileSystemForPath:NSHomeDirectory()
@@ -1874,6 +1875,86 @@ static const char *cocoa_global_get(const char *name) {
                  (long)v.majorVersion, (long)v.minorVersion,
                  (long)v.patchVersion);
         return gGlobBuf;
+    }
+
+    /* « the heapSpace » : sur le Macintosh d'origine, la place restante dans
+     * le tas de l'application — un chiffre que les scripts consultaient avant
+     * d'importer une grosse image ou d'ouvrir une pile.
+     *
+     * macOS n'a plus de tas borné par application, donc la question littérale
+     * n'a pas de réponse. Ce qui répond à l'INTENTION, c'est la mémoire
+     * physique encore disponible : pages libres plus pages inactives, que le
+     * noyau rendra sans échanger sur disque. C'est le même chiffre qu'affiche
+     * le Moniteur d'activité sous « mémoire disponible ». */
+    if (strcasecmp(name, "heapSpace") == 0) {
+        mach_port_t hote = mach_host_self();
+        vm_statistics64_data_t st;
+        mach_msg_type_number_t n = HOST_VM_INFO64_COUNT;
+        if (host_statistics64(hote, HOST_VM_INFO64,
+                              (host_info64_t)&st, &n) != KERN_SUCCESS)
+            return NULL;
+        vm_size_t page = 0;
+        if (host_page_size(hote, &page) != KERN_SUCCESS || page == 0)
+            return NULL;
+        unsigned long long libre =
+            ((unsigned long long)st.free_count +
+             (unsigned long long)st.inactive_count) * (unsigned long long)page;
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%llu", libre);
+        return gGlobBuf;
+    }
+
+    /* « the windows » : les fenêtres ouvertes, une par ligne. HyperCard y
+     * comptait la pile, la boîte de messages, les palettes — exactement ce
+     * que [NSApp windows] énumère chez nous.
+     *
+     * On saute celles qui n'ont pas de titre : ce sont les fenêtres de
+     * service que Cocoa crée pour son compte (ombres, panneaux d'aide), et
+     * une ligne vide dans la liste ne désignerait rien.
+     *
+     * Tampon PROPRE, pas gGlobBuf : celui-ci fait soixante-quatre octets, et
+     * une liste de fenêtres les dépasse dès la troisième. */
+    if (strcasecmp(name, "windows") == 0) {
+        static char buf[4096];
+        buf[0] = '\0';
+        size_t len = 0;
+        for (NSWindow *w in [NSApp windows]) {
+            const char *t = [[w title] UTF8String];
+            if (!t || !*t) continue;
+            size_t besoin = strlen(t) + (len ? 1 : 0);
+            if (len + besoin + 1 > sizeof buf) break;   /* tronqué proprement */
+            if (len) buf[len++] = '\n';
+            memcpy(buf + len, t, strlen(t));
+            len += strlen(t);
+            buf[len] = '\0';
+        }
+        return buf;
+    }
+
+    /* « the programs » : les applications en cours, une par ligne. C'était la
+     * liste du menu Pomme sous MultiFinder ; c'est aujourd'hui celle de
+     * NSWorkspace.
+     *
+     * On ne garde que les applications à interface — runningApplications
+     * énumère aussi les agents et les démons, que HyperCard n'aurait jamais
+     * listés et qui noieraient le résultat sous des dizaines de lignes. */
+    if (strcasecmp(name, "programs") == 0) {
+        static char buf[4096];
+        buf[0] = '\0';
+        size_t len = 0;
+        for (NSRunningApplication *a in
+                 [[NSWorkspace sharedWorkspace] runningApplications]) {
+            if ([a activationPolicy] != NSApplicationActivationPolicyRegular)
+                continue;
+            const char *t = [[a localizedName] UTF8String];
+            if (!t || !*t) continue;
+            size_t besoin = strlen(t) + (len ? 1 : 0);
+            if (len + besoin + 1 > sizeof buf) break;
+            if (len) buf[len++] = '\n';
+            memcpy(buf + len, t, strlen(t));
+            len += strlen(t);
+            buf[len] = '\0';
+        }
+        return buf;
     }
 
     if (strcasecmp(name, "screenRect") == 0) {
