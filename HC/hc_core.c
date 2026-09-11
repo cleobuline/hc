@@ -7412,6 +7412,14 @@ static int v1_debranche(void)
          * près. */
         const char *avec = getenv("HC_AVEC_V1");
         etat = (avec && *avec && *avec != '0') ? 0 : 1;
+
+        /* HC_V3=0 DÉBRANCHE LA V3. Sans ce rattrapage, plus personne
+         * n'exécutait quoi que ce soit : la v3 se taisait et l'ancien
+         * exécuteur refusait. L'application se lançait et ne faisait plus
+         * rien. Trouvé à l'audit, en cherchant ce que l'ancien interprète
+         * répondait à « add 1 to x ». */
+        const char *v3 = getenv("HC_V3");
+        if (v3 && *v3 == '0') etat = 0;
     }
     return etat;
 }
