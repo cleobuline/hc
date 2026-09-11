@@ -1,0 +1,27 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme calData                         1
+[v3]    v1 fonction calData                      1
+[v3]    v1 terme watch                           1
+[v3]    v1 fonction watch                        1
+[v3]    v1 terme dayNameData                     1
+[v3]    v1 fonction dayNameData                  1
+[v3]    v1 terme spaces                          1
+[v3]    v1 fonction spaces                       1
+[v3]    v1 terme monthNameData                   1
+[v3]    v1 fonction monthNameData                1
+[v3]    v1 terme busy                            1
+[v3]    v1 fonction busy                         1
+
+───── le champ ─────
+September 2025
+Sun Mon Tue Wed Thu Fri Sat
+     1   2   3   4   5   6  
+ 7   8   9  10  11  12  13  
+14  15  16  17  18  19  20  
+21  22  23  24  25  26  27  
+28  29  30  
+───── les plages de style ─────
+  [88..90) style=5

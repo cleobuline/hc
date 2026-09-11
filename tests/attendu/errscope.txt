@@ -1,0 +1,6 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   1. avant l'appel
+     dans planteur, avant
+   [ERR]    !! propriété ou fonction inconnue : zorglub (v3, ligne 3 de stack "T".planteur)
+   2. apres l'appel — l'appelant survit-il ?
+   3. et une globale posee ensuite : vu

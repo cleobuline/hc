@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== isole : the name of card 1 seul ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] card "Une"
+
+=== isole : concatenation de 3 noms ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] card "Une" card "Deux" card "Trois"
+
+=== isole : sans sort avant, juste la carte 1 ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une

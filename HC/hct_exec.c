@@ -832,6 +832,19 @@ static void commande(HctExec *x, const HctNoeud *n)
             if (n->fils[i]->genre == HCTN_MOTCLE) continue;
             args[k++] = hct_evalue(&x->ctx, n->fils[i]);
         }
+
+        /* UN ARGUMENT A ÉCHOUÉ : ne pas appeler l'hôte quand même.
+         *
+         * La boucle s'arrêtait bien, mais l'appel suivait. L'hôte recevait
+         * des arguments incomplets alors qu'une faute était déjà levée — et
+         * il agissait, par exemple en envoyant un message. Une erreur doit
+         * arrêter la ligne, pas seulement son évaluation. */
+        if (x->ctx.erreur) {
+            for (int i = 0; i < k; i++) hct_val_libere(&args[i]);
+            free(args);
+            return;
+        }
+
         HctValeur out;
         if (x->ctx.hote.fonction(x->ctx.hote.donnees, v, args, k, &out))
             hct_val_libere(&out);
@@ -950,13 +963,30 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         return;
     }
 
+    /* -1 est la SENTINELLE « pas de limite », pour while et until. Un
+     * « repeat <n> times » dont n est négatif tombait donc dessus et tournait
+     * jusqu'au plafond — dix millions de tours, soit un gel de plusieurs
+     * secondes, là où HyperCard n'en fait aucun. Le cas n'est pas théorique :
+     * « repeat k times » avec un k calculé qui passe sous zéro est un
+     * classique.
+     *
+     * Une valeur non numérique tombait dans le même piège : hct_vers_nombre
+     * rend 0 pour « abc », ce qui est correct ici, mais un NaN ou un infini
+     * converti en long est un comportement indéfini. On borne donc avant de
+     * convertir. */
     long limite = -1;
     if (!strcasecmp(forme, "times")) {
         if (n->nfils < 2) return;
         HctValeur v = hct_evalue(&x->ctx, n->fils[0]);
         if (x->ctx.erreur) { hct_val_libere(&v); return; }
-        limite = (long)hct_vers_nombre(v.txt);
+        double d = hct_vers_nombre(v.txt);
         hct_val_libere(&v);
+        if (!(d > 0))           /* faux aussi pour NaN : aucun tour */
+            limite = 0;
+        else if (d >= (double)PLAFOND)
+            limite = PLAFOND;   /* le plafond s'en chargera, sans conversion folle */
+        else
+            limite = (long)d;
     }
 
     for (;;) {
@@ -1037,14 +1067,26 @@ void hct_exec(HctExec *x, const HctNoeud *n)
                 hct_ctx_faute(&x->ctx, n, "mémoire insuffisante");
                 return;
             }
+            /* k compte ce qui a VRAIMENT été évalué : la boucle s'arrête à la
+             * première faute, et les entrées restantes valent encore ce que
+             * calloc y a mis — un txt NUL. Passer nargs les donnait à l'hôte,
+             * qui n'a aucune raison de s'attendre à un argument sans texte. */
+            int k = 0;
             for (int i = 0; i < nargs && !x->ctx.erreur; i++)
-                args[i] = hct_evalue(&x->ctx, n->fils[i]);
+                args[k++] = hct_evalue(&x->ctx, n->fils[i]);
+
+            if (x->ctx.erreur) {
+                for (int i = 0; i < k; i++) hct_val_libere(&args[i]);
+                free(args); free(nom);
+                return;
+            }
+
             HctValeur out;
-            if (x->ctx.hote.fonction(x->ctx.hote.donnees, nom, args, nargs, &out))
+            if (x->ctx.hote.fonction(x->ctx.hote.donnees, nom, args, k, &out))
                 hct_val_libere(&out);
             else
                 hct_ctx_faute(&x->ctx, n, "message inconnu");
-            for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
+            for (int i = 0; i < k; i++) hct_val_libere(&args[i]);
             free(args);
             free(nom);
             return;

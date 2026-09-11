@@ -1,0 +1,47 @@
+#include "hc_core.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+static char *slurp(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) { perror("fopen"); exit(1); }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buf = malloc(n+1);
+    fread(buf, 1, n, f);
+    buf[n] = 0;
+    fclose(f);
+    return buf;
+}
+
+int main(void)
+{
+    Object *stack = hc_new_stack("Test");
+    Object *bg    = hc_new_background(stack, "Fond");
+    Object *card1 = hc_new_card(stack, bg, "Une");
+    Object *fld = hc_new_field(card1, "CalField");
+    fld->x = 10; fld->y = 10; fld->w = 300; fld->h = 200;
+    Object *btn = hc_new_button(card1, "GoBtn");
+    hc_set_current_card(card1);
+
+    char *script = slurp("/tmp/claude-0/-home-user-hc/0f5ea498-57a7-5535-bfbb-a6b014480ae0/scratchpad/calscript.txt");
+    hc_set_script(fld, script);
+
+    hc_set_script(btn,
+        "on mouseUp\n"
+        "  drawCalendar 2026,12,1,0,0,0,3\n"  /* handler defined in card script? no -> use send */
+        "end mouseUp\n");
+    /* drawCalendar lives only on the field, so call it explicitly via send */
+    hc_set_script(btn,
+        "on mouseUp\n"
+        "  send \"drawCalendar 2026,12,1,0,0,0,3\" to card field \"CalField\"\n"
+        "end mouseUp\n");
+    hc_send(btn, "mouseUp");
+
+    printf("=== texte du champ apres drawCalendar ===\n%s\n", hc_field_text(fld));
+
+    hc_v3_bilan();
+    hc_free(stack);
+    return 0;
+}

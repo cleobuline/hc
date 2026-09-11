@@ -1,0 +1,32 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+      = 10,10,120,60
+put "10,10,120,60" into r
+  set the rect of bg btn "L" to r [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = false
+set the visible of card field "data" to false        [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = true
+set the hilite of me to true                         [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = 18
+set the textSize of card field "data" to 18          [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = bold,italic
+set the textStyle of card field "data" to bold,italic [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = Legende
+set the name of bg btn "L" to "Legende"              [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)

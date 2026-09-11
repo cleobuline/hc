@@ -1,0 +1,27 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card field "data2" of card id s 14
+[v3]    commande put: put texte into line sortieL 14
+[v3]    commande put: put empty into card field " 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 refusée recours v3                   15
+[v3]    v1 terme recours expr                    14
+[v3]    v1 fonction recours expr                 14
+[ERR]    !! ne sait pas faire : put empty into card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+
+───── data2 ─────
+

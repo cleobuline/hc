@@ -1,0 +1,65 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── commandes sans gestionnaire v3 dédié (traitées par hct_exec, ou pas)
+  ok     add 1 to x                                   
+  ok     subtract 1 from x                            
+  ok     multiply x by 2                              
+  ok     divide x by 2                                
+  ok     get 1+1                                      
+  ok     global g1, g2                                
+  ok     local l1, l2                                 
+  ok     do "put 1"                                   
+  ok     pass t                                       
+  ok     return 3                                     
+  ok     exit t                                       
+  ok     put 1 into x                                 
+  ok     next repeat                                  
+  MANQUE dial "555"                                      !! ne sait pas faire : dial "555"
+  MANQUE edit script of me                               !! ne sait pas faire : edit script of me
+  MANQUE help                                            !! ne sait pas faire : help
+  MANQUE palette "z"                                     !! ne sait pas faire : palette "z"
+  MANQUE picture "z"                                     !! ne sait pas faire : picture "z"
+  MANQUE export paint to file "z"                        !! ne sait pas faire : export paint to file "z"
+  MANQUE import paint from file "z"                      !! ne sait pas faire : import paint from file "z"
+  MANQUE request "z" from program "z"                    !! ne sait pas faire : request "z" from program "z"
+  MANQUE reply "z"                                       !! ne sait pas faire : reply "z"
+  MANQUE arrowKey "left"                                 !! ne sait pas faire : arrowKey "left"
+  MANQUE tabKey                                          !! ne sait pas faire : tabKey
+  MANQUE returnKey                                       !! ne sait pas faire : returnKey
+  MANQUE enterKey                                        !! ne sait pas faire : enterKey
+  MANQUE functionKey 1                                   !! ne sait pas faire : functionKey 1
+  MANQUE controlKey 1                                    !! ne sait pas faire : controlKey 1
+  MANQUE commandKeyDown "b"                              !! ne sait pas faire : commandKeyDown "b"
+  MANQUE keyDown "x"                                     !! ne sait pas faire : keyDown "x"
+  MANQUE enterInField                                    !! ne sait pas faire : enterInField
+  MANQUE returnInField                                   !! ne sait pas faire : returnInField
+
+── quelques formes d'expression
+  ok     put the long date                            
+  ok     put the seconds                              
+  ok     put the ticks                                
+  ok     put the paramCount                           
+  ok     put the selectedText                         
+  MANQUE put the clickText                               !! propriété ou fonction inconnue : clickText (v3, ligne 2 de button "B".t)
+  ok     put the foundText                            
+  ok     put the target                               
+  ok     put the id of me                             
+  ok     put the owner of me                          
+  ok     put the number of chars of "abc"             
+  ok     put offset("b","abc")                        
+  ok     put there is a card "Deux"                   
+  ok     put random(10) > 0                           
+  ok     put annuity(0.1,5)                           
+  ok     put compound(0.1,5)                          
+  ok     put numToChar(65)                            
+  ok     put "a" is in "abc"                          
+  ok     put 3 is within "1,1,5,5"                    
+  ok     put the abbreviated date                     
+  MANQUE put the heapSpace                               !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "B".t)
+  MANQUE put the windows                                 !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "B".t)
+  MANQUE put the programs                                !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "B".t)
+  MANQUE put the sound                                   !! propriété ou fonction inconnue : sound (v3, ligne 2 de button "B".t)
+  MANQUE put the freeSize                                !! propriété ou fonction inconnue : freeSize (v3, ligne 2 de button "B".t)
+  ok     put the size of me                           
+  MANQUE put the destination                             !! propriété ou fonction inconnue : destination (v3, ligne 2 de button "B".t)
+  MANQUE put the language                                !! propriété ou fonction inconnue : language (v3, ligne 2 de button "B".t)
+  MANQUE put the version                                 !! propriété ou fonction inconnue : version (v3, ligne 2 de button "B".t)

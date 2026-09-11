@@ -1,0 +1,7 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   A : 3 lignes
+   B : 4 lignes
+   B ligne 1 = []
+   C : 3 lignes
+   C ligne 1 = [ligne 1]
+   C ligne 3 = [ligne 3]

@@ -1,0 +1,6 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [msg] 1. the maTemperature -> 37
+   [msg] 2. maTemperature()   -> 37
+   [msg] 3. sans the          -> 37
+   [msg] 4. inconnue avec the :
+   [ERR]    !! propriété ou fonction inconnue : maTemperatur (v3, ligne 6 de button "B".mouseUp)

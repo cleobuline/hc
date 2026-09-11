@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+avant : 2 cartes
+→ message "mouseUp" à button "B"
+· traité par button "B"
+→ message "deleteCard" à card "Une"
+  (pas de gestionnaire dans card "Une")
+  (pas de gestionnaire dans background "F")
+  (pas de gestionnaire dans stack "T")
+  ✗ message "deleteCard" non traité
+après : 1 cartes

@@ -1,0 +1,63 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+── tri d'un conteneur, sans clé
+   abricot
+kiwi
+poire
+pomme
+
+── tri par clé (each)
+   kiwi
+poire
+pomme
+abricot
+
+── tri numérique
+   2,3,10,25
+
+── tri de cartes par nom
+   alpha,bravo,charlie,delta
+
+── tri de cartes, ordre inverse
+   delta,alpha
+
+── send sans argument
+   reçu [] []
+
+── send avec arguments
+   reçu [7] [14]
+
+── send avec texte construit
+   reçu [x] []
+

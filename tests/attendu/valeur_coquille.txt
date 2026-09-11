@@ -1,0 +1,11 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[ERR]    !! script, ligne 4 colonne 7 : guillemet fermant manquant
+[ERR]         put "the id of this card  into r
+[ERR]    !! guillemet fermant manquant (v3, ligne 4 de button "torture 2".essai)
+
+───── field data2 ─────
+arith  : 14

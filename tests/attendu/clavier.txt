@@ -1,0 +1,12 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [msg] flèche : left
+arrowKey left   pris=1
+   [msg] flèche : right
+arrowKey right  pris=0  (le gestionnaire fait « pass »)
+   [msg] touche : a
+keyDown a       pris=1
+   [msg] F3
+functionKey 3   pris=1
+   [msg] tab
+tabKey          pris=1
+returnKey       pris=0  (aucun gestionnaire)

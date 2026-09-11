@@ -1,0 +1,7 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "monthNameData" à button "GoBtn"
+      · traité par button "GoBtn"
+      !! ne sait pas faire : put item theMonth of monthNameData() && "2026" & return into me
+      [message box] GoBtn

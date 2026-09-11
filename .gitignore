@@ -1,0 +1,22 @@
+# Réglages personnels d'Xcode : ils changent à chaque ouverture et
+# n'intéressent que la machine qui les produit.
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# Produits de construction
+build/
+DerivedData/
+*.o
+*.dSYM/
+
+# Sorties de la suite de tests
+tests/.travail/
+
+# Sauvegardes et brouillons
+*~
+*.orig
+*.rej
+* copie.m
+* copy.m

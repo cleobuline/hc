@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "B"
+· traité par button "B"
+123456789|4194304|15.4.1
+0|
+
+
+3|3
+4
+65|3

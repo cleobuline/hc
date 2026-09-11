@@ -1,0 +1,7 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   card "Deux"
+   [ERR]    !! rien où revenir : l'historique est vide
+   card "Deux"
+   card "Une"
+--- hc_go_back depuis l'interface : 1
+--- carte : 1 recents

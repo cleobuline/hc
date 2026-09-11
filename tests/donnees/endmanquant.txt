@@ -1,0 +1,10 @@
+on premier
+  put "un" into x
+end premier
+
+on debordant
+  put "deux" into y
+
+on troisieme
+  put "trois" into z
+end troisieme

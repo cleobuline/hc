@@ -1,0 +1,17 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+  repeat 3 times
+    put 1
+  end repeat -> 3 tours
+  repeat 0 times
+    put 1
+  end repeat -> 0 tours
+  repeat -1 times
+    put 1
+  end repeat -> 0 tours
+  repeat -5 times
+    put 1
+  end repeat -> 0 tours
+  put -2 into k
+  repeat k times
+    put 1
+  end repeat -> 0 tours

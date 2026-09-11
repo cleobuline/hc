@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== openStack ===
+   ── barre : 1 menu(s), 3 notification(s) ──
+      menu 1 « 3DEquations »
+         1. Curves         
+         2. Surfaces       
+         3. -              
+         4. Export…      (désactivé)
+         5. Choose color… 
+         6. -              
+         7. Help           
+=== openStack une SECONDE fois (ne doit rien recréer) ===
+   ── barre : 1 menu(s), 4 notification(s) ──
+      menu 1 « 3DEquations »
+         1. Curves         
+         2. Surfaces       
+         3. -              
+         4. Export…      (désactivé)
+         5. Choose color… 
+         6. -              
+         7. Help           
+=== on choisit « Curves » (article 1) ===
+   [msg] → goCurves !
+=== on choisit le séparateur (article 3) ===
+=== on choisit « Export… », désactivé (article 4) ===
+=== on choisit « Help » (article 7) ===
+   [msg] → goHelp !
+=== closeStack ===
+   ── barre : 0 menu(s), 5 notification(s) ──

@@ -1,0 +1,33 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+show card field "F1"                   -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+show card field 1                      -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+show bg field "FondF"                  -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+show bg btn "FondB"                    -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+hide card field "F1"                   -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+hide card field 1                      -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+show card button "B"                   -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+show me                                -> [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)

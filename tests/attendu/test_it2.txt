@@ -1,0 +1,19 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme calData                         1
+[v3]    v1 fonction calData                      1
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → 2024,6,15,0,0,0,7
+   → message "calData" à button "GoBtn"
+      · traité par button "GoBtn"
+   → message "drawIt" à button "GoBtn"
+      · traité par button "GoBtn"
+         [message box] drawIt a recu: 2024,6,15,0,0,0,7
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v1 terme calData                         1
+   v1 fonction calData                      1

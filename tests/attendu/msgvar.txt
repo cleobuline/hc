@@ -1,0 +1,3 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [msg] x vaut : 1
+   [msg] g vaut : 7

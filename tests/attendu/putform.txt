@@ -1,0 +1,36 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+put "X" into field "data"                      [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [X]
+put "X" into item 2 of field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [alpha,X,gamma]
+put "X" into line 1 of field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [X]
+put "X" into char 1 of field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [Xlpha,beta,gamma]
+put ">" before field "data"                    [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [>alpha,beta,gamma]
+put "!" after field "data"                     [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [alpha,beta,gamma!]
+put "X" after item 1 of field "data"           [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      champ -> [alphaX,beta,gamma]

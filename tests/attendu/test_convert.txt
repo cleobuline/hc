@@ -1,0 +1,13 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v3 relit print                           2
+>>> convert une date vers dateItems
+>>> convert un conteneur (variable) vers short date
+>>> print carte courante
+   [hote] print_cards appele avec 1 carte(s)
+>>> print toute la pile
+   [hote] print_cards appele avec 3 carte(s)
+>>> print une plage
+   [hote] print_cards appele avec 3 carte(s)

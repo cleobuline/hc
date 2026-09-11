@@ -1,0 +1,8 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+   [msg] relu : 255,0,0,128
+   [msg] item 4 : 128
+   [msg] opaque : 0,128,0

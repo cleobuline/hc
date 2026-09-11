@@ -1,0 +1,83 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[ERR]    !! propriété ou fonction inconnue : zorglub (v3, ligne 222 de button "torture".essaiFaute)
+[ERR]    !! userLevel va de 1 à 5, reçu 47
+[ERR]    !! dragSpeed attend un nombre, reçu « vite »
+52 reussites, aucun echec.
+
+───── champ « data2 » ─────── 1. « the » ne ment plus
+  ok     the date repond
+  ok     the tool repond
+  ok     un mot nu vaut son nom
+  ok     the empty est vide
+  ok     the quote
+  ok     the zorglub se plaint
+
+── 2. numberFormat
+  ok     defaut : 1/3
+  ok     defaut : 2+3
+  ok     0.00 sur 1/3
+  ok     0.00 sur un entier
+  ok     0.00 relu
+  ok     #.## n'impose rien
+  ok     #.## limite quand meme
+  ok     000 complete a gauche
+  ok     000 garde le signe
+  ok     sqrt(2) mis en forme
+  ok     la forme « of » aussi
+  ok     add suit
+  ok     une longueur reste brute
+  ok     les index restent entiers
+
+── 3. reglages d'environnement
+  ok     userLevel pose et relu
+  ok     userLevel utilisable en test
+  ok     hors bornes : refus, ancienne valeur
+  ok     dragSpeed
+  ok     dragSpeed refuse le texte
+  ok     lockRecent vrai
+  ok     lockRecent accepte 0
+  ok     blindTyping
+  ok     powerKeys
+  ok     textArrows
+
+── 4. les deux verrous, enfin relisibles
+  ok     lockScreen au repos
+  ok     lockScreen apres lock
+  ok     lockScreen apres unlock
+  ok     lockScreen par set
+  ok     lockMessages apres lock
+  ok     lockMessages apres unlock
+
+── 5. curseur et calque, tenus par l'interface
+  ok     cursor relu
+  ok     cursor rend ce qu'il a POSE
+  ok     editBkgnd au repos
+  ok     editBkgnd pose
+
+── 6. couleurs de peinture
+  ok     foreColor par nom
+  ok     paintColor est un synonyme
+  ok     l'opacite se relit
+  ok     item 3 du foreColor
+  ok     backColor
+
+── 7. messages du cycle de vie
+  ok     les six arrivent
+
+── 8. menus de script
+  ok     le menu existe
+  ok     trois articles
+  ok     checkMark pose
+  ok     menuItem desactive
+  ok     menuMessage relu
+  ok     le menu s'en va
+
+── 9. l'executeur v3
+
+──────────────────────────────
+52 reussites, aucun echec.
+

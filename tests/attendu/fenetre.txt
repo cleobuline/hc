@@ -1,0 +1,16 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+→ message "mouseUp" à button "B1"
+   · traité par button "B1"
+      [message box] w=640
+      [message box] h=480
+      [message box] r=0,0,640,480
+      [message box] l=320,240
+      [message box] w2=640
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

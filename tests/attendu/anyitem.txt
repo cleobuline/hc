@@ -1,0 +1,3 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   ecriture dans « any item » -> [a,X,c]
+   lecture de « any item »    -> [b]

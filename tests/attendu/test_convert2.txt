@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v3 relit print                           2
+>>> convert une date vers dateItems
+   [1] → message "mouseUp" à button "GoBtn"
+   [1] · traité par button "GoBtn"
+   [3]    → 2024,6,15,0,0,0,7
+   [message box] 2024,6,15,0,0,0,7
+>>> convert un conteneur (variable) vers short date
+   [1] → message "mouseUp" à button "GoBtn"
+   [1] · traité par button "GoBtn"
+   [3]    → 6/15/24
+   [message box] 6/15/24
+>>> print carte courante
+   [1] → message "mouseUp" à button "GoBtn"
+   [1] · traité par button "GoBtn"
+   [hote] print_cards appele avec 1 carte(s)
+>>> print toute la pile
+   [1] → message "mouseUp" à button "GoBtn"
+   [1] · traité par button "GoBtn"
+   [hote] print_cards appele avec 3 carte(s)
+>>> print une plage
+   [1] → message "mouseUp" à button "GoBtn"
+   [1] · traité par button "GoBtn"
+   [hote] print_cards appele avec 3 carte(s)
+   [3] — retours de la v3 vers l'ancien interpréteur —
+   [3]    (aucun)
+   [3] — ce que l'ancien interprète exécute encore —
+   [3]    v3 relit print                           2

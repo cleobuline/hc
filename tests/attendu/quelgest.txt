@@ -1,0 +1,53 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── drawChart      [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme data                            1
+[v3]    v1 fonction data                         1
+
+── doPieChart     [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    commande <message>                       2
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 refusée recours v3                   2
+[v3]    v1 fonction watch                        1
+[v3]    v1 terme watch                           1
+
+── doLegend       [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+
+── updateTotals   [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours appel: validatedData(bg field "Data" 1
+[v3]    recours appel: validatedData (bg field "Data" 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    6
+[v3]    v1 fonction recours expr                 6
+[v3]    v3 relit recours expr                    6
+
+── openCard       [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+
+── closeCard      [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+
+── closeField     [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours appel: validatedData(bg field "Data" 1
+[v3]    recours appel: validatedData (bg field "Data" 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    6
+[v3]    v1 fonction recours expr                 6
+[v3]    v3 relit recours expr                    6
+
+── exitField      [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours appel: validatedData(bg field "Data" 1
+[v3]    recours appel: validatedData (bg field "Data" 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    6
+[v3]    v1 fonction recours expr                 6
+[v3]    v3 relit recours expr                    6
+

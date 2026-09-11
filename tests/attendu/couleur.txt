@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme blue                            1
+[v3]    v1 fonction blue                         1
+   [HÔTE] paintColor     <- 0,128,0
+   [msg] relu : 0,128,0
+   [HÔTE] paintColor     <- 64,255,30
+   [msg] relu : 64,255,30
+   [HÔTE] paintColor     <- 255,128,0
+   [msg] relu : 255,128,0
+   [HÔTE] paintBackColor <- 0,0,255
+   [msg] fond : 0,0,255
+   [HÔTE] paintColor     <- 64,224,208
+   [msg] apres l'erreur : 64,224,208
+   [HÔTE] paintColor     <- 80,215,0
+   [msg] calculee : 80,215,0
+   [HÔTE] paintColor     <- 160,175,0
+   [msg] calculee : 160,175,0
+   [HÔTE] paintColor     <- 240,135,0
+   [msg] calculee : 240,135,0

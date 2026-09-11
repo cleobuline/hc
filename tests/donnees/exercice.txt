@@ -1,0 +1,451 @@
+on mouseUp
+  global gEssais, gRates, gSortie
+  put 0 into gEssais
+  put empty into gRates
+  put empty into gSortie
+  debug raz
+  lock screen
+
+  testCalcul
+  testChaines
+  testMorceaux
+  testControle
+  testFonctions
+  testConteneurs
+  testProprietes
+  testDates
+  testTri
+  testEnvoi
+  testNavigation
+  testExistence
+  testPourChaque
+  testChamps
+  testFichiers
+
+  put gEssais && "essais," && the number of lines of gRates && "ratés" into rapport
+  put rapport & return & gSortie into field "data 2"
+  unlock screen
+  debug bilan
+end mouseUp
+
+-- Compare et note. Le seul endroit qui écrit le rapport.
+on verif quoi, attendu, obtenu
+  global gEssais, gRates, gSortie
+  add 1 to gEssais
+  if obtenu is attendu then
+    put "ok   " & quoi & " = " & aplat(obtenu) & return after gSortie
+  else
+    put "RATE " & quoi & " : attendu <" & aplat(attendu) & "> obtenu <" & aplat(obtenu) & ">" & return after gSortie
+    put quoi & return after gRates
+  end if
+end verif
+
+-- Une valeur qui contient des retours tiendrait sur plusieurs lignes du
+-- champ et casserait le « une ligne par essai » : on les remplace.
+function aplat t
+  repeat while offset(return, t) > 0
+    put "/" into char offset(return, t) of t
+  end repeat
+  return t
+end aplat
+
+-- ---------------------------------------------------------------- calcul
+on testCalcul
+  verif "somme", 7, 3 + 4
+  verif "produit", 12, 3 * 4
+  verif "division", 2.5, 5 / 2
+  verif "div entier", 3, 10 div 3
+  verif "mod", 1, 10 mod 3
+  verif "puissance", 8, 2 ^ 3
+  verif "priorite", 14, 2 + 3 * 4
+  verif "parentheses", 20, (2 + 3) * 4
+  verif "negatif", -5, 0 - 5
+  verif "compare <", true, 3 < 4
+  verif "compare >=", true, 4 >= 4
+  verif "et", true, (3 < 4) and (5 > 2)
+  verif "ou", true, (3 > 4) or (5 > 2)
+  verif "non", true, not (3 > 4)
+  verif "egalite texte", true, "abc" = "abc"
+  verif "difference", true, "abc" <> "abd"
+end testCalcul
+
+-- --------------------------------------------------------------- chaines
+on testChaines
+  verif "concat", "ab", "a" & "b"
+  verif "concat espace", "a b", "a" && "b"
+  verif "contains", true, "abcdef" contains "cde"
+  verif "is in", true, "cde" is in "abcdef"
+  verif "is not in", true, "xyz" is not in "abcdef"
+  verif "quote", 1, the length of quote
+  verif "return", 1, the length of return
+  verif "empty", 0, the length of empty
+  verif "space", " ", space
+  verif "tab", 1, the length of tab
+end testChaines
+
+-- -------------------------------------------------------------- morceaux
+on testMorceaux
+  put "un,deux,trois,quatre" into t
+  verif "item 2", "deux", item 2 of t
+  verif "last item", "quatre", last item of t
+  verif "first item", "un", first item of t
+  verif "middle item", "c", middle item of "a,b,c,d"
+  verif "item 2 to 3", "deux,trois", item 2 to 3 of t
+  verif "nb items", 4, the number of items of t
+
+  put "alpha beta gamma" into w
+  verif "word 2", "beta", word 2 of w
+  verif "nb mots", 3, the number of words of w
+  verif "char 1 to 5", "alpha", char 1 to 5 of w
+  verif "nb chars", 16, the number of chars of w
+  verif "last char", "a", last char of w
+
+  put "L1" & return & "L2" & return & "L3" into d
+  verif "line 2", "L2", line 2 of d
+  verif "nb lignes", 3, the number of lines of d
+  verif "last line", "L3", last line of d
+
+  set the itemDelimiter to "-"
+  verif "itemDelimiter", "b", item 2 of "a-b-c"
+  set the itemDelimiter to ","
+
+  put "un,deux,trois" into t2
+  put "DEUX" into item 2 of t2
+  verif "ecrire item", "un,DEUX,trois", t2
+  put "X" into char 1 of t2
+  verif "ecrire char", "Xn,DEUX,trois", t2
+  delete item 2 of t2
+  verif "delete item", "Xn,trois", t2
+
+  put "abc" into t3
+  put "Z" after char 1 of t3
+  verif "put after morceau", "aZbc", t3
+end testMorceaux
+
+-- -------------------------------------------------------------- controle
+on testControle
+  put 0 into s
+  repeat with i = 1 to 5
+    add i to s
+  end repeat
+  verif "repeat with", 15, s
+
+  put 0 into s
+  repeat with i = 5 down to 1
+    add 1 to s
+  end repeat
+  verif "repeat down to", 5, s
+
+  put 0 into s
+  repeat 3 times
+    add 1 to s
+  end repeat
+  verif "repeat times", 3, s
+
+  put 0 into s
+  repeat until s >= 4
+    add 1 to s
+  end repeat
+  verif "repeat until", 4, s
+
+  put 0 into s
+  repeat while s < 3
+    add 1 to s
+  end repeat
+  verif "repeat while", 3, s
+
+  put 0 into s
+  repeat with i = 1 to 10
+    if i > 3 then exit repeat
+    add 1 to s
+  end repeat
+  verif "exit repeat", 3, s
+
+  put 0 into s
+  repeat with i = 1 to 5
+    if i mod 2 = 0 then next repeat
+    add 1 to s
+  end repeat
+  verif "next repeat", 3, s
+
+  if 1 = 1 then
+    put "oui" into z
+  else
+    put "non" into z
+  end if
+  verif "if then else", "oui", z
+
+  put "" into z
+  if 1 = 2 then put "a" into z
+  else put "b" into z
+  verif "if une ligne", "b", z
+end testControle
+
+-- ------------------------------------------------------------- fonctions
+on testFonctions
+  verif "abs", 5, abs(-5)
+  verif "round", 3, round(2.6)
+  verif "trunc", 2, trunc(2.9)
+  verif "sqrt", 3, sqrt(9)
+  verif "min", 2, min(5,2,8)
+  verif "max", 8, max(5,2,8)
+  verif "sum", 15, sum(5,2,8)
+  verif "average", 5, average(5,2,8)
+  verif "length()", 6, length("abcdef")
+  verif "offset()", 3, offset("c","abcdef")
+  verif "charToNum", 65, charToNum("A")
+  verif "numToChar", "A", numToChar(65)
+  verif "value()", 7, value("3 + 4")
+  verif "compound", 1.21, compound(0.1,2)
+  verif "annuity", 1.7355, round(annuity(0.1,2) * 10000) / 10000
+
+  put random(6) into r
+  verif "random borne", true, (r >= 1) and (r <= 6)
+
+  verif "fonction perso", 25, carre(5)
+  verif "paramCount", 2, combien("a","b")
+  verif "param(1)", "a", premier("a","b")
+
+  verif "the result vide", true, the result is empty
+end testFonctions
+
+function carre n
+  return n * n
+end carre
+
+function combien
+  return the paramCount
+end combien
+
+function premier
+  return param(1)
+end premier
+
+-- ------------------------------------------------------------ conteneurs
+on testConteneurs
+  put "abc" into v
+  put "X" before v
+  verif "put before", "Xabc", v
+  put "Y" after v
+  verif "put after", "XabcY", v
+
+  put 10 into n
+  add 5 to n
+  subtract 3 from n
+  multiply n by 2
+  divide n by 4
+  verif "add/sub/mul/div", 6, n
+
+  get 42
+  verif "get puis it", 42, it
+
+  put "global" into gTest
+  verif "variable locale", "global", gTest
+
+  do "put 5 into faitParDo"
+  verif "do", 5, faitParDo
+end testConteneurs
+
+-- ------------------------------------------------------------ proprietes
+on testProprietes
+  verif "name contient button", true, "button" is in the name of me
+  verif "short name dans long name", true, (the short name of me) is in (the long name of me)
+  verif "id positif", true, (the id of me) > 0
+
+  put the rect of me into r0
+  verif "rect a 4 items", 4, the number of items of r0
+  verif "width coherent", (item 3 of r0) - (item 1 of r0), the width of me
+  verif "height coherent", (item 4 of r0) - (item 2 of r0), the height of me
+  verif "loc a 2 items", 2, the number of items of the loc of me
+
+  put the visible of me into vis0
+  set the visible of me to true
+  verif "set/get visible", true, the visible of me
+  set the visible of me to vis0
+
+  put the hilite of me into hil0
+  set the hilite of me to false
+  verif "set/get hilite", false, the hilite of me
+  set the hilite of me to hil0
+
+  put the textSize of me into ts0
+  set the textSize of me to 12
+  verif "set/get textSize", 12, the textSize of me
+  set the textSize of me to ts0
+
+  verif "nb de cartes >= 1", true, (the number of cards) >= 1
+  verif "nb de boutons >= 1", true, (the number of buttons) >= 1
+  verif "nom de la carte non vide", true, (the short name of this card) is not empty
+end testProprietes
+
+-- ----------------------------------------------------------------- dates
+on testDates
+  verif "the date non vide", true, the date is not empty
+  verif "the time non vide", true, the time is not empty
+  verif "long date plus longue", true, (the length of the long date) > (the length of the short date)
+  verif "the seconds positif", true, (the seconds) > 0
+  verif "the ticks numerique", true, (the ticks) >= 0
+
+  put the seconds into s1
+  convert s1 to dateItems
+  verif "dateItems a 7 items", 7, the number of items of s1
+
+  put "1/1/2000" into dd
+  convert dd to seconds
+  verif "convert vers seconds", true, dd > 0
+  convert dd to short date
+  verif "convert aller-retour", true, dd is not empty
+end testDates
+
+-- ------------------------------------------------------------------- tri
+on testTri
+  put "3,1,2" into t
+  sort items of t ascending numeric
+  verif "sort items numeric", "1,2,3", t
+
+  put "b,a,c" into t
+  sort items of t ascending text
+  verif "sort items text", "a,b,c", t
+
+  put "b,a,c" into t
+  sort items of t descending text
+  verif "sort descending", "c,b,a", t
+
+  put "L2" & return & "L1" into d
+  sort lines of d ascending text
+  verif "sort lines", "L1" & return & "L2", d
+end testTri
+
+-- ----------------------------------------------------------------- envoi
+on testEnvoi
+  global gRecu
+  put empty into gRecu
+  send "unMessage" to me
+  verif "send", "recu", gRecu
+
+  put empty into gRecu
+  send "avecArg 7" to me
+  verif "send avec argument", 7, gRecu
+end testEnvoi
+
+on unMessage
+  global gRecu
+  put "recu" into gRecu
+end unMessage
+
+on avecArg n
+  global gRecu
+  put n into gRecu
+end avecArg
+
+-- ------------------------------------------------------------ navigation
+-- Non destructif : on empile la carte de départ et on y revient.
+on testNavigation
+  -- « lock messages » : sans lui, chaque changement de carte declenche les
+  -- openCard/closeCard DE TA PILE, dont les gestionnaires polluent le bilan
+  -- (et peuvent echouer sur une carte qu ils ne connaissent pas).
+  lock messages
+  push card
+  put the short name of this card into depart
+  put the number of this card into rangDepart
+
+  go to next card
+  verif "go next puis retour", true, (the number of this card) is not empty
+  go to previous card
+  verif "go previous ramene", rangDepart, the number of this card
+
+  go to first card
+  verif "go first", 1, the number of this card
+  go to last card
+  verif "go last", the number of cards, the number of this card
+
+  go to card rangDepart
+  verif "go card par rang", depart, the short name of this card
+
+  pop card
+  verif "pop card", depart, the short name of this card
+
+  go to card "carteQuiNexistePas"
+  verif "go vers l inexistant remplit le result", true, the result is not empty
+  go to card rangDepart
+  unlock messages
+end testNavigation
+
+-- ------------------------------------------------------------- existence
+on testExistence
+  verif "there is a me", true, there is a button (the short name of me)
+  verif "there is no ...", false, there is a card field "champQuiNexistePas"
+  verif "there is a this card", true, there is a this card
+end testExistence
+
+-- ------------------------------------------------------------ pour chaque
+on testPourChaque
+  put 0 into n
+  repeat for each item x in "a,b,c,d"
+    add 1 to n
+  end repeat
+  verif "repeat for each item", 4, n
+
+  put "" into acc
+  repeat for each word w in "un deux trois"
+    put w & "." after acc
+  end repeat
+  verif "repeat for each word", "un.deux.trois.", acc
+
+  put 0 into n
+  repeat for each line L in ("L1" & return & "L2")
+    add 1 to n
+  end repeat
+  verif "repeat for each line", 2, n
+end testPourChaque
+
+-- ---------------------------------------------------------------- champs
+-- Écrit dans le champ "data 2" puis restaure son contenu.
+on testChamps
+  put field "data 2" into sauve
+
+  put "alpha,beta,gamma" into field "data 2"
+  verif "ecrire un champ", "alpha,beta,gamma", field "data 2"
+  verif "item d un champ", "beta", item 2 of field "data 2"
+  verif "nb items d un champ", 3, the number of items of field "data 2"
+
+  put "BETA" into item 2 of field "data 2"
+  verif "ecrire un item d un champ", "alpha,BETA,gamma", field "data 2"
+
+  put "!" after field "data 2"
+  verif "put after un champ", "alpha,BETA,gamma!", field "data 2"
+
+  put ">" before field "data 2"
+  verif "put before un champ", ">alpha,BETA,gamma!", field "data 2"
+
+  delete item 2 of field "data 2"
+  verif "delete item d un champ", ">alpha,gamma!", field "data 2"
+
+  put the number of chars of field "data 2" into nc
+  verif "nb chars d un champ", 13, nc
+
+  put sauve into field "data 2"
+end testChamps
+
+-- -------------------------------------------------------------- fichiers
+-- Un nom SANS chemin ouvre un dialogue « où est ce fichier ? » : on donne
+-- donc un chemin, sinon le script s arrete sur un panneau.
+on testFichiers
+  put "/tmp/hc_exercice.txt" into f
+  put "abc,def" into contenu
+
+  open file f
+  write contenu to file f
+  close file f
+  verif "write sans erreur", true, the result is empty
+
+  open file f
+  read from file f for 3
+  verif "read for 3", "abc", it
+  close file f
+
+  open file f
+  read from file f until ","
+  verif "read until virgule", "abc,", it
+  close file f
+end testFichiers

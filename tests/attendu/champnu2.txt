@@ -1,0 +1,87 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours of short name                    1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    3
+[v3]    v1 fonction recours expr                 3
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+── put there is a field "menu"
+   true
+
+── put there is a field "absent"
+   false
+
+── put there is no field "absent"
+   true
+
+── if there is a field "absent" then put "oui"
+  else put "non"
+   non
+
+── put field "absent"
+   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".t)
+
+── put the short name of field "absent"
+   short name of field "absent"
+      recours of short name                    1
+      v1 terme recours expr                    3
+      v1 fonction recours expr                 3
+
+── put field "surCarte"
+   carte
+
+── put card field "surCarte"
+   carte
+
+── put bg field "menu"
+   fond
+
+── put field "menu"
+   fond
+
+── put the number of lines of field "menu"
+   1
+
+── put "x" into field "menu"
+  put bg field "menu"
+   x
+
