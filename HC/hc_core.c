@@ -6634,7 +6634,11 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * rendait « result » en clair. Le calendrier voyait alors
      * « if the result <> empty » toujours vrai et refusait toutes les dates. */
     int echo = 0;
-    if (strcmp(val, txt) == 0) {
+    /* Un nœud d'OBJET ne gagne rien à être redemandé avec « the » devant :
+     * « the field "menu" » n'est pas une tournure d'HyperTalk. On s'épargne
+     * ce second appel, qui doublait le coût de chaque référence absente. */
+    if (n->genre == HCTN_OBJET && strcmp(val, txt) == 0) echo = 1;
+    else if (strcmp(val, txt) == 0) {
         char *avec_the = arena_buf();
         snprintf(avec_the, HC_VAL, "the %s", txt);
         term_value(avec_the, val, HC_VAL);
@@ -10765,9 +10769,16 @@ static int v3_execute(Object *o, const char *message, int isfunc)
      * vient d'y déposer — « go to card 99 » y met sa plainte. */
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
 
-    if (x.ctx.erreur)
-        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+    /* L'erreur nomme le SCRIPT, pas seulement la ligne. « objet introuvable
+     * (v3, ligne 5) » laissait chercher dans quel gestionnaire de quel objet
+     * — et sur une pile qui en compte trente, cela veut dire tout ouvrir.
+     * « ligne 5 de card "Menu".openCard » désigne le fichier et l'endroit. */
+    if (x.ctx.erreur) {
+        char qui[64];
+        hc_describe(o, qui, sizeof qui);
+        emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
+             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0, qui, message);
+    }
 
     hct_exec_libere(&x);
 
