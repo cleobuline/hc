@@ -541,11 +541,37 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
     if (!fait && (!strcasecmp(nom, "min") || !strcasecmp(nom, "max") ||
                   !strcasecmp(nom, "sum") || !strcasecmp(nom, "average") ||
                   !strcasecmp(nom, "avg"))) {
-        /* Ces quatre acceptent une liste de longueur quelconque. */
+        /* Ces quatre acceptent une liste de longueur quelconque — et, comme
+         * dans HyperCard, un SEUL argument qui EST une liste : « the average
+         * of card field "notes" », où le champ contient « 10,20,30 ». On
+         * découpe alors sur les virgules et les retours à la ligne, les deux
+         * séparateurs qu'un conteneur emploie. */
         double acc = 0; int compte = 0, premier = 1;
         for (int i = 0; i < nargs; i++) {
-            if (!hct_est_nombre(args[i].txt)) continue;
-            double x = hct_vers_nombre(args[i].txt);
+            const char *t = args[i].txt ? args[i].txt : "";
+            if (!hct_est_nombre(t) && (strchr(t, ',') || strchr(t, '\n'))) {
+                const char *p = t;
+                while (*p) {
+                    const char *q = p;
+                    while (*q && *q != ',' && *q != '\n') q++;
+                    char morceau[64];
+                    int l = (int)(q - p);
+                    if (l > (int)sizeof morceau - 1) l = (int)sizeof morceau - 1;
+                    memcpy(morceau, p, (size_t)l); morceau[l] = '\0';
+                    if (hct_est_nombre(morceau)) {
+                        double x = hct_vers_nombre(morceau);
+                        compte++;
+                        if (premier) { acc = x; premier = 0; }
+                        else if (!strcasecmp(nom, "min")) { if (x < acc) acc = x; }
+                        else if (!strcasecmp(nom, "max")) { if (x > acc) acc = x; }
+                        else acc += x;
+                    }
+                    p = *q ? q + 1 : q;
+                }
+                continue;
+            }
+            if (!hct_est_nombre(t)) continue;
+            double x = hct_vers_nombre(t);
             compte++;
             if (premier) { acc = x; premier = 0; }
             else if (!strcasecmp(nom, "min")) { if (x < acc) acc = x; }

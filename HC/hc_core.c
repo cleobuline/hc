@@ -10561,6 +10561,33 @@ static int v3_porte_une_faute(const HctNoeud *n)
     return 0;
 }
 
+/* Le gestionnaire est-il inexécutable ?
+ *
+ * Une faute dans son CADRE — l'en-tête, ou le « end » qui manque — l'est : on
+ * ne sait plus où il commence ni où il finit, et l'exécuter reviendrait à
+ * deviner. Il repart à l'ancien interpréteur, plus indulgent.
+ *
+ * Une faute dans son CORPS ne condamne qu'une INSTRUCTION. L'exécuteur la
+ * signale quand il l'atteint — hct_exec traite déjà HCTN_ERREUR ainsi —, et
+ * le gestionnaire s'arrête là, comme HyperCard s'arrête sur une erreur.
+ * Écarter le gestionnaire entier pour une coquille sur une ligne, c'était
+ * renvoyer quinze lignes saines à l'ancien interpréteur pour un guillemet
+ * oublié : mesuré sur un script de test, quinze lignes pour un caractère.
+ *
+ * fils[0] est le nom, fils[1] les paramètres, fils[2] le corps ; tout enfant
+ * au-delà est une faute de fermeture, posée là par l'analyseur. Le lexeur
+ * n'endommage jamais plus d'une ligne — une chaîne non fermée s'arrête au
+ * saut de ligne —, si bien que la structure qui suit la faute reste sûre. */
+static int v3_cadre_fautif(const HctNoeud *n)
+{
+    if (!n || n->nfils < 3) return 1;
+    if (v3_porte_une_faute(n->fils[0])) return 1;
+    if (v3_porte_une_faute(n->fils[1])) return 1;
+    for (int i = 3; i < n->nfils; i++)
+        if (v3_porte_une_faute(n->fils[i])) return 1;
+    return 0;
+}
+
 static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
                                            const char *nom, int isfunc)
 {
@@ -10570,9 +10597,8 @@ static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
     for (int i = 0; i < racine->nfils; i++) {
         const HctNoeud *f = racine->fils[i];
         if (f->genre != HCTN_GESTIONNAIRE || f->nfils < 3) continue;
-        /* Gestionnaire mal analysé : à l'ancien interpréteur, qui est plus
-         * indulgent. Les autres gestionnaires du script restent à la v3. */
-        if (v3_porte_une_faute(f)) continue;
+        /* Une faute dans le CADRE seulement l'écarte : voir v3_cadre_fautif. */
+        if (v3_cadre_fautif(f)) continue;
         if (!f->op || strcasecmp(f->op, kw) != 0) continue;
 
         const HctJeton *j = &f->fils[0]->jeton;

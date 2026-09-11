@@ -798,6 +798,16 @@ static int adjectif_ici(HctAnalyseur *a)
 
 static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a);
 
+/* Les fonctions d'agrégat, seules à prendre une liste derrière « of » :
+ * « the average of 1,2,3 ». Ce sont exactement celles que l'évaluateur sait
+ * calculer sur un nombre quelconque d'arguments. */
+static int nom_agregat(const HctJeton *j)
+{
+    static const char *N[] = { "min", "max", "sum", "average", "avg", NULL };
+    for (int k = 0; N[k]; k++) if (mot_est(j, N[k])) return 1;
+    return 0;
+}
+
 /* « the » facultatif devant une propriété, une fonction ou un ordinal.
  *
  * On le CONSOMME comme avant, mais on en garde la trace sur le nœud produit.
@@ -939,6 +949,38 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
 
     /* « X of Y » : propriété, ou appartenance. */
     while (!a->sans_of && (mot_ici(a, "of") || mot_ici(a, "in"))) {
+
+        /* « the average of 1,2,3 » : les fonctions d'agrégat acceptent une
+         * LISTE derrière « of ». On en fait un APPEL — average(1,2,3) —, forme
+         * que l'évaluateur sait déjà calculer, plutôt qu'un second chemin à
+         * tenir d'accord avec le premier.
+         *
+         * Sans cela la virgule restait sur le carreau : « texte inattendu en
+         * fin de ligne ». Et une ligne refusée coûtait naguère le gestionnaire
+         * entier. */
+        if (n && n->genre == HCTN_IDENT && nom_agregat(&n->jeton)) {
+            avance(a);
+            HctNoeud *appel = hct_noeud(a->reserve, HCTN_APPEL, n->jeton);
+            if (!appel) return n;
+            hct_ajoute_fils(a->reserve, appel, n);
+            int garde = a->sans_of; a->sans_of = 0;
+            for (;;) {
+                /* rang_somme et non rang_ou : la liste s'arrête AVANT la
+                 * concaténation. « "[" & the average of 1,2 & "]" » doit se
+                 * lire « … & average(1,2) & … », pas « average(1, 2 & "]") » —
+                 * la liste happait tout ce qui suivait, et la moyenne portait
+                 * sur un texte. Les éléments restent des expressions
+                 * arithmétiques complètes, ce qui est tout ce qu'une moyenne
+                 * peut vouloir. */
+                hct_ajoute_fils(a->reserve, appel, rang_somme(a));
+                if (op_ici(a, ",")) { avance(a); continue; }
+                break;
+            }
+            a->sans_of = garde;
+            n = appel;
+            continue;
+        }
+
         HctJeton jof = *ici(a);
         avance(a);
         HctNoeud *of = hct_noeud(a->reserve, HCTN_OF, jof);
