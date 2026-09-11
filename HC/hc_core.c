@@ -8670,52 +8670,43 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Le nœud qui SUIT un mot-clé de premier niveau, ou NULL s'il n'y est pas.
+ * Les motifs de hct_cmd.c gardent les mots-clés dans l'arbre précisément
+ * pour qu'on puisse s'y repérer sans redécouper du texte. */
+static const HctNoeud *v3_apres_motcle(const HctNoeud *n, const char *mot)
+{
+    int i = v3_indice_motcle(n, mot, 0);
+    return (i >= 0 && i + 1 < n->nfils) ? n->fils[i + 1] : NULL;
+}
+
 static FILE *file_find(const char *nom);          /* défini plus bas */
 static int   file_constant(const char *s);         /* défini plus bas */
 
-/* read from file <nom> [at <pos>] for <n> | until <car>
+/* read from file <nom> [at <pos>] [for <n> | until <car>]
  *
- * Motif hct_cmd.c : « from file e [for|until e] » — pas de place pour « at
- * <pos> », qui vit pourtant dans l'algorithme ci-dessous. Ce n'est pas un
- * oubli de ce portage : la table ne l'a jamais prévu, et « read … at … »
- * échoue donc déjà à l'analyse — toute la LIGNE devient une HCTN_ERREUR, ce
- * qui fait retomber le gestionnaire entier à l'ancien exécuteur, lequel sait
- * la lire. v3_cmd_read ne voit donc jamais de « at » dans ses fils ; sa
- * branche `at` reste correcte et prête, juste jamais empruntée tant que la
- * table n'aura pas gagné cet élément.
+ * Motif hct_cmd.c : « from file e [at e] [for|until e] ». Le « at » y a été
+ * AJOUTÉ : il manquait, si bien que « read … at 8 for 6 » échouait à
+ * l'analyse et faisait retomber le GESTIONNAIRE ENTIER sur l'ancien
+ * exécuteur — qui savait la lire, mais emportait avec lui les lignes saines
+ * d'à côté. La branche `at` ci-dessous existait déjà, prête et jamais
+ * empruntée.
  *
- * Comme pour set/sort/find/print, v3_reste rend le texte EXACT que lisait
- * l'ancien exécuteur ; l'algorithme n'a pas changé d'une ligne. */
+ * Les arguments se lisent dans l'arbre, chacun repéré par son mot-clé. La
+ * version précédente reconstituait le texte de la ligne et le recoupait sur
+ * « at », « for » et « until » avant d'évaluer chaque morceau — quatre
+ * relectures possibles par commande, et une heuristique de plus à tenir. */
 static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    if (ci_word(a, "from")) a = skip_spaces(a + 4);
-    if (!ci_word(a, "file")) {
+    const HctNoeud *nfic = v3_apres_motcle(n, "file");
+    if (!nfic) {
         emit(HC_ERR, "   !! read : « file » attendu");
-        g_atop = sauve; return 1;
+        return 1;
     }
-    a = skip_spaces(a + 4);
 
-    /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
-     * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
-    const char *at  = find_kw(a, "at");
-    const char *fo  = find_kw(a, "for");
-    const char *unt = find_kw(a, "until");
-    const char *fin = at ? at : (fo ? fo : unt);
-
+    size_t sauve = g_atop;
     char *nom = arena_buf();
-    {
-        char brut[512];
-        int len = fin ? (int)(fin - a) : (int)strlen(a);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, a, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, nom, HC_VAL);
-    }
+    v3_val_texte(ctx, nfic, nom, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     FILE *f = file_find(nom);
     if (!f) {
@@ -8724,15 +8715,14 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
         g_atop = sauve; return 1;
     }
 
-    if (at) {
-        char *pv = arena_buf();
-        const char *bornes = fo ? fo : unt;
-        char brut[256];
-        const char *deb = skip_spaces(at + 2);
-        int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, deb, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, pv, HC_VAL);
+    const HctNoeud *nat  = v3_apres_motcle(n, "at");
+    const HctNoeud *nfor = v3_apres_motcle(n, "for");
+    const HctNoeud *nunt = v3_apres_motcle(n, "until");
+
+    if (nat) {
+        char pv[64];
+        v3_val_texte(ctx, nat, pv, sizeof pv);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
         long lpos = atol(pv);
         /* Positif : depuis le début, et 1-based comme tout HyperTalk.
          * Négatif : depuis la fin. */
@@ -8743,23 +8733,28 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
     char *out = arena_buf();
     int no = 0;
 
-    if (fo) {
-        char *cv = arena_buf();
-        eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
+    if (nfor) {
+        char cv[64];
+        v3_val_texte(ctx, nfor, cv, sizeof cv);
+        if (ctx->erreur) { g_atop = sauve; return 1; }
         long combien = atol(cv);
         while (no < HC_VAL - 1 && no < combien) {
             int c = fgetc(f);
             if (c == EOF) break;
             out[no++] = (char)c;
         }
-    } else if (unt) {
+    } else if (nunt) {
+        /* « until return », « until tab » : des noms de caractères, pas des
+         * expressions — les évaluer rendrait la valeur d'une variable qui
+         * porterait ce nom. On lit donc le source d'abord, et on n'évalue
+         * que si ce n'en est pas un. */
         char mot[64];
-        next_word(skip_spaces(unt + 5), mot, sizeof mot);
+        v3_brut(nunt, mot, sizeof mot);
         int stop = file_constant(mot);
         if (stop == -1) {
-            /* Pas une constante : un caractère, éventuellement calculé. */
-            char *cv = arena_buf();
-            eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
+            char cv[64];
+            v3_val_texte(ctx, nunt, cv, sizeof cv);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
             stop = cv[0] ? (unsigned char)cv[0] : '\n';
         }
         while (no < HC_VAL - 1) {
@@ -8797,45 +8792,27 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 
 /* write <texte> to file <nom> [at <pos>|end|eof]
  *
- * Motif hct_cmd.c : « e to file e » — pas de « at » non plus, même remède
- * que v3_cmd_read : « write … at … » échoue à l'analyse et fait retomber le
- * gestionnaire entier à l'ancien exécuteur, donc jamais de « at » dans les
- * fils qu'on reçoit ici. */
+ * Motif hct_cmd.c : « e to file e [at e] ». Même ajout du « at » que pour
+ * read, et pour la même raison : sans lui, « write … at end » — la forme
+ * qu'emploie tout script qui ajoute à la fin d'un journal — condamnait le
+ * gestionnaire entier à l'ancien chemin. */
 static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
-    size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    const char *to = find_kw(a, "to");
-    if (!to) {
+    if (n->nfils < 1) return 0;
+    const HctNoeud *nfic = v3_apres_motcle(n, "file");
+    if (!nfic) {
         emit(HC_ERR, "   !! write : « to file » attendu");
-        g_atop = sauve; return 1;
+        return 1;
     }
 
+    size_t sauve = g_atop;
     char *txt = arena_buf();
-    {
-        char *brut = arena_buf();
-        int len = (int)(to - a);
-        if (len > HC_VAL - 1) len = HC_VAL - 1;
-        memcpy(brut, a, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, txt, HC_VAL);
-    }
-
-    const char *r2 = skip_spaces(to + 2);
-    if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
-    const char *at = find_kw(r2, "at");
+    v3_val_texte(ctx, n->fils[0], txt, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     char *nom = arena_buf();
-    {
-        char brut[512];
-        int len = at ? (int)(at - r2) : (int)strlen(r2);
-        if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-        memcpy(brut, r2, (size_t)len); brut[len] = '\0';
-        eval_checked(brut, nom, HC_VAL);
-    }
+    v3_val_texte(ctx, nfic, nom, HC_VAL);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
 
     FILE *f = file_find(nom);
     if (!f) {
@@ -8844,12 +8821,16 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
         g_atop = sauve; return 1;
     }
 
-    if (at) {
-        const char *p = skip_spaces(at + 2);
-        if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
+    const HctNoeud *nat = v3_apres_motcle(n, "at");
+    if (nat) {
+        /* « at end » et « at eof » sont des mots, pas des expressions. */
+        char mot[32];
+        v3_brut(nat, mot, sizeof mot);
+        if (ci_equal(mot, "end") || ci_equal(mot, "eof")) fseek(f, 0, SEEK_END);
         else {
-            char *pv = arena_buf();
-            eval_checked(p, pv, HC_VAL);
+            char pv[64];
+            v3_val_texte(ctx, nat, pv, sizeof pv);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
             long lpos = atol(pv);
             if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
             else           fseek(f, lpos, SEEK_END);

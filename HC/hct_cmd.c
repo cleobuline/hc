@@ -96,7 +96,7 @@ static const HctCommande TABLE[] = {
      * ce mot-clé de quatre façons ; on les accepte toutes. */
     { "put",        "e [into|before|after c] "
                     "[with menumsg|menumsgs|menumessage|menumessages e]" },
-    { "read",       "from file e [for|until e]" },
+    { "read",       "from file e [at e] [for|until e]" },
     { "reply",      "e [with keyword e]" },
     { "request",    "*" },
     { "reset",      "*" },
@@ -118,7 +118,7 @@ static const HctCommande TABLE[] = {
     { "unmark",     "*" },
     { "visual",     "[effect] W" },
     { "wait",       "[while|until] [for] e [seconds|second|secs|sec|ticks|tick]" },
-    { "write",      "e to file e" },
+    { "write",      "e to file e [at e]" },
     { NULL, NULL }
 };
 
