@@ -24,7 +24,7 @@ int main(void)
     fld->x = 10; fld->y = 10; fld->w = 300; fld->h = 200;
     hc_set_current_card(card1);
 
-    char *script = slurp("/tmp/claude-0/-home-user-hc/0f5ea498-57a7-5535-bfbb-a6b014480ae0/scratchpad/calscript.txt");
+    char *script = slurp("donnees/calendrier_court.txt");
     hc_set_script(fld, script);
 
     hc_send(fld, "drawCalendar 2026,12,1,0,0,0,3");

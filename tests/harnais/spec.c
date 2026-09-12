@@ -6,7 +6,9 @@ int main(void){
  static HcHost h;memset(&h,0,sizeof h);h.line=ma_ligne;hc_set_host(&h);
  Object *st=hc_new_stack("T");Object *bg=hc_new_background(st,"F");
  Object *c=hc_new_card(st,bg,"U");Object *b=hc_new_button(c,"B");hc_set_current_card(c);
- FILE *f=fopen("/tmp/claude-0/-home-user-hc/0f5ea498-57a7-5535-bfbb-a6b014480ae0/scratchpad/arcenciel.txt","rb");
+ FILE *f=fopen("donnees/arcenciel.txt","rb");
+ /* Dire lequel manque plutôt que de lire dans NULL. */
+ if(!f){fprintf(stderr,"données introuvables : donnees/arcenciel.txt\n");return 1;}
  static char src[16384]; size_t n=fread(src,1,sizeof src-1,f); src[n]='\0'; fclose(f);
  /* on remplace le mouseUp par un banc d'essai de la fonction spectre */
  static char essai[20000];

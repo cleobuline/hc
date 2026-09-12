@@ -195,7 +195,26 @@ struct Object {
     int      fixed_lh;       /* interligne fixe */
     int      show_lines;     /* lignes de guidage visibles */
     int      auto_tab;       /* tab passe au champ suivant */
-    int      dont_search;    /* exclu de find */
+    /* Exclu de « find ».
+     *
+     * Rangé parmi les propriétés de champ parce qu'il y est né, mais il vaut
+     * pour TROIS sortes d'objets, comme dans HyperCard : un champ qu'on ne
+     * fouille pas, une CARTE qu'on saute en entier, un FOND dont on saute
+     * toutes les cartes. C'est ainsi qu'on garde une carte d'index ou un
+     * mode d'emploi hors des résultats de recherche. */
+    int      dont_search;
+
+    /* Suppression interdite.
+     *
+     * Sur une CARTE, « delete this card » et l'article de menu la refusent.
+     * Sur un FOND, c'est la disparition du fond qui est refusée — ce qui
+     * revient à protéger sa DERNIÈRE carte, puisque rien d'autre ne supprime
+     * un fond ici.
+     *
+     * HyperCard l'a aussi sur la pile ; nous non, faute de quoi que ce soit
+     * qui supprime une pile dans le noyau. Mieux vaut ne pas offrir un
+     * verrou qui ne ferme rien. */
+    int      cant_delete;
     int      shared_text;    /* texte partagé entre cartes du même fond */
     /* Allumage partagé entre cartes du même fond ? (1 = oui par défaut)
      *
@@ -379,6 +398,12 @@ typedef struct {
     void (*line)(HcLineKind kind, int depth, const char *text);
     void (*field_changed)(Object *field);   /* champ modifié : rafraîchir l'affichage */
 
+    /* Mémoire épuisée : le noyau ne peut plus continuer et va s'arrêter.
+     * DERNIÈRE CHANCE pour l'hôte de sauver ce qui est ouvert et de le dire à
+     * l'utilisateur. Il ne faut rien allouer ici — c'est précisément ce qui
+     * vient d'échouer. S'il revient, le noyau s'arrête. Facultatif. */
+    void (*panic)(const char *quoi);
+
     /* Boîtes de dialogue. L'hôte renvoie un pointeur valide jusqu'au prochain
      * appel ; NULL vaut annulation.
      *   ask     : saisie de texte, deflt peut être vide
@@ -531,6 +556,10 @@ typedef struct {
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);
 
+/* Épuisement mémoire : prévient l'hôte (dernière chance de sauver, cf. panic)
+ * puis s'arrête. Ne revient jamais. */
+void        hc_memoire_epuisee(const char *quoi);
+
 Object *hc_current_card(void);
 
 /* 1 si un gestionnaire est en cours d'exécution. L'hôte s'en sert pour ne pas
@@ -560,8 +589,16 @@ Object *hc_stack_at(int i);
  * articles Back et Recent du menu Go. */
 int      hc_recent_count(void);
 Object  *hc_recent_at(int i);
+/* Les mêmes SANS DOUBLON, la plus récente d'abord : remplit out (au plus max
+ * entrées) et rend le nombre écrit. C'est ce que montrent le menu Recent et
+ * « the recent cards » ; l'historique brut, lui, garde ses répétitions, dont
+ * « go back » a besoin pour retracer les pas. */
+int      hc_recent_distinct(Object **out, int max);
 /* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
 int      hc_go_back(void);
+/* Aller à la i-ème carte de la liste SANS DOUBLON (0 = la plus récente),
+ * celle que montre l'article Recent du menu Go. 0 si ce rang n'existe pas. */
+int      hc_go_recent(int i);
 
 int     hc_layer_is_live(Object *layer);
 

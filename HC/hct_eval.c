@@ -495,7 +495,11 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         if (math_un_arg(nom, hct_vers_nombre(args[0].txt), &y)) {
             r = hct_val_calcul(y); fait = 1;
         } else if (!strcasecmp(nom, "numtochar")) {
-            char c[2] = { (char)(int)hct_vers_nombre(args[0].txt), 0 };
+            /* numToChar : le code passe par un entier BORNÉ. « numToChar(10^300) »
+             * convertissait un double hors bornes, ce qui est indéfini. */
+            double d = hct_vers_nombre(args[0].txt);
+            int code = (d >= 0 && d <= 255) ? (int)d : 0;
+            char c[2] = { (char)code, 0 };
             r = hct_val_texte(c); fait = 1;
         }
     }
@@ -668,7 +672,12 @@ static int rang_de(HctContexte *ctx, const HctNoeud *n, int *ok)
     if (!ctx->erreur) {
         if (!hct_est_nombre(v.txt))
             hct_ctx_faute(ctx, n, "un rang numérique est attendu ici");
-        else { r = (int)hct_vers_nombre(v.txt); *ok = 1; }
+        else {
+            int hors;
+            r = hct_vers_rang(v.txt, &hors);
+            if (hors) hct_ctx_faute(ctx, n, "rang de morceau hors limites");
+            else *ok = 1;
+        }
     }
     hct_val_libere(&v);
     return r;
@@ -957,9 +966,10 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * globales, celles que l'hôte ne connaît que par son propre
          * évaluateur, et le cas où la cible ne se résout pas. */
         HctValeur vr;
+        void *objet = NULL;
 
         if (ctx->hote.resout && ctx->hote.lit_prop) {
-            void *objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
+            objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
             if (objet) {
                 HctValeur r;
                 if (ctx->hote.lit_prop(ctx->hote.donnees, objet, nom, &r)) {
@@ -975,7 +985,16 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             return vr;
         }
 
-        hct_ctx_faute(ctx, n, "propriété inconnue");
+        /* Deux échecs bien différents sous le même « of ». Quand la CIBLE ne
+         * s'est pas résolue et qu'elle s'écrivait comme un objet, ce n'est pas
+         * la propriété qui manque, c'est l'objet — et c'est cela qu'il faut
+         * dire. Le recours vient de renoncer, donc l'ancien évaluateur n'en
+         * savait pas plus : « the width of card window », qu'il sait traiter,
+         * n'arrive jamais jusqu'ici. */
+        if (!objet && sur && sur->genre == HCTN_OBJET)
+            hct_ctx_faute(ctx, n, "objet introuvable");
+        else
+            hct_ctx_faute(ctx, n, "propriété inconnue");
         free(nom);
         return hct_val_vide();
     }

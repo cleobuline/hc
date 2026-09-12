@@ -113,6 +113,20 @@ double hct_vers_nombre(const char *s)
     return strtod(s, NULL);
 }
 
+int hct_vers_rang(const char *s, int *hors)
+{
+    if (hors) *hors = 0;
+    double d = hct_vers_nombre(s);
+    /* Le test passe par le double AVANT toute conversion : comparer après
+     * coup ne sert à rien, le mal est déjà fait. NaN échoue les deux
+     * comparaisons, donc il tombe ici aussi. */
+    if (!(d >= -(double)HCT_RANG_MAX && d <= (double)HCT_RANG_MAX)) {
+        if (hors) *hors = 1;
+        return 0;
+    }
+    return (int)d;
+}
+
 int hct_vers_bool(const char *s, int *valide)
 {
     if (valide) *valide = 1;

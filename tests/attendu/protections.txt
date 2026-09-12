@@ -1,0 +1,64 @@
+=== Don't Search ===
+── find "aiguille"
+  put the short name of this card
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   Deux
+── go to card "Une"
+  set the dontSearch of card "Deux" to true
+  find "aiguille"
+  put the short name of this card
+   Trois
+── go to card "Une"
+  set the dontSearch of card "Trois" to true
+  find "aiguille"
+  put the short name of this card & "/" & the result
+   Une/not found
+── go to card "Une"
+  set the dontSearch of card "Deux" to false
+  set the dontSearch of card "Trois" to false
+  set the dontSearch of bg "F" to true
+  find "aiguille"
+  put the short name of this card & "/" & the result
+   Une/not found
+── set the dontSearch of bg "F" to false
+  put the dontSearch of bg "F"
+   false
+=== Can't Delete ===
+── put the cantDelete of this card
+   false
+── set the cantDelete of card "Trois" to true
+  delete card "Trois"
+  put the number of cards & "/" & the result
+   3/Can't delete card
+── set the cantDelete of card "Trois" to false
+  delete card "Trois"
+  put the number of cards & "/" & the result
+   2/
+=== le verrou du fond protège sa dernière carte ===
+── set the cantDelete of card "Une" to false
+  set the cantDelete of bg "F" to true
+  put the number of cards
+   4
+── delete card "Deux"
+  put the number of cards & "/" & the result
+   3/
+── delete card "Une"
+  put the number of cards & "/" & the result
+   3/Can't delete background
+── delete card "Encore"
+  put the number of cards & "/" & the result
+   2/
+=== la copie emporte les verrous ===
+[icone] examen de la carte "Une" : 2 part(s)
+[icone]   part 0 type=4 icon=0 "x"
+[icone]   part 1 type=3 icon=0 "B"
+[icone] examen de le fond "F" : 0 part(s)
+[icone] transplantation de 0 icone(s)
+   collée : dontSearch=1 cantDelete=1
+=== enregistrement puis relecture ===
+   hc_save = 0 (0 = réussi)
+   fond  F        dontSearch=0 cantDelete=1
+   fond  G        dontSearch=0 cantDelete=0
+   carte Une      dontSearch=1 cantDelete=1
+   carte Une      dontSearch=1 cantDelete=1
+   carte Ailleurs dontSearch=0 cantDelete=0

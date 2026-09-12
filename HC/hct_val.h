@@ -49,6 +49,19 @@ void      hct_val_libere(HctValeur *v);
 int    hct_est_nombre(const char *s);
 double hct_vers_nombre(const char *s);
 
+/* Plafond d'un rang de morceau. « put 10^300 into n » suivi de « put "z" into
+ * line n of … » convertissait un double hors bornes en int — comportement
+ * INDÉFINI — puis demandait quatre gigaoctets pour y loger les lignes vides
+ * intermédiaires. Seize millions de morceaux est déjà au-delà de toute pile
+ * réelle, et laisse l'arithmétique de hct_chunk loin de ses bords. */
+#define HCT_RANG_MAX 16777216
+
+/* Convertit en rang de morceau. Rend 0 et pose *hors = 1 si la valeur sort des
+ * bornes ou n'est pas finie ; l'appelant lève alors une faute, plutôt que de
+ * travailler sur un entier né d'une conversion indéfinie. `hors` peut être
+ * NULL, auquel cas la valeur est simplement bornée. */
+int hct_vers_rang(const char *s, int *hors);
+
 /* Vrai / faux. HyperTalk n'accepte que « true » et « false », casse ignorée ;
  * tout le reste est une erreur d'exécution, d'où le drapeau `valide`. */
 int hct_vers_bool(const char *s, int *valide);

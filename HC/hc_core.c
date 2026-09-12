@@ -153,9 +153,18 @@ static Object *g_current_card = NULL;
  * D'où ce registre, que l'hôte tient à jour. Il ne détient rien non plus : ce
  * sont des pointeurs empruntés, et l'hôte doit retirer une pile AVANT de la
  * libérer, sans quoi le registre pointerait dans le vide. */
-#define HC_MAX_STACKS 16
-static Object *g_stacks[HC_MAX_STACKS];
-static int     g_nstacks = 0;
+/* Le registre GRANDIT. Il était plafonné à seize, et au-delà « hc_register_stack »
+ * ne faisait rien — silencieusement : la dix-septième pile s'ouvrait, l'hôte
+ * l'affichait, mais « go to stack "X" » ne la trouvait pas et « the stacks » ne
+ * la nommait pas. Un plafond qui ment est pire qu'un plafond qui refuse.
+ *
+ * Il n'y a d'ailleurs aucune raison de plafonner : ce sont des pointeurs
+ * empruntés, huit octets par pile ouverte. */
+static Object **g_stacks   = NULL;
+static int      g_nstacks  = 0;
+static int      g_capstacks = 0;
+
+static void emit(HcLineKind kind, const char *fmt, ...);
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
 static char g_visual_speed[16]  = "";
@@ -172,6 +181,10 @@ static char g_visual_image[16]  = "";
  * Déclarées par « start using stack "X" », retirées par « stop using ». Ce
  * sont des pointeurs empruntés, comme le registre : fermer une pile la retire
  * aussi d'ici, sans quoi la chaîne de messages suivrait une adresse morte. */
+/* Celui-ci garde un plafond, contrairement au registre des piles : les piles en
+ * usage sont des maillons de la CHAÎNE DE MESSAGES, que « chain[] » parcourt
+ * sur une taille fixe, et une chaîne sans bord serait une mauvaise idée. Mais
+ * le dépassement se dit maintenant, au lieu d'ignorer la demande en silence. */
 #define HC_MAX_USING 8
 static Object *g_using[HC_MAX_USING];
 static int     g_nusing = 0;
@@ -181,7 +194,19 @@ void hc_register_stack(Object *stack)
     if (!stack || stack->type != OBJ_STACK) return;
     for (int i = 0; i < g_nstacks; i++)
         if (g_stacks[i] == stack) return;             /* déjà connue */
-    if (g_nstacks < HC_MAX_STACKS) g_stacks[g_nstacks++] = stack;
+    if (g_nstacks == g_capstacks) {
+        int cap = g_capstacks ? g_capstacks * 2 : 16;
+        Object **n = realloc(g_stacks, (size_t)cap * sizeof *n);
+        /* Faute de place on ne enregistre pas, mais on le DIT : sans ce message
+         * la pile serait ouverte et introuvable, ce qui est exactement le
+         * défaut qu'on vient de corriger. */
+        if (!n) { emit(HC_ERR, "   !! registre des piles saturé à %d : "
+                               "« %s » restera introuvable par son nom",
+                       g_nstacks, stack->name ? stack->name : "?");
+                  return; }
+        g_stacks = n; g_capstacks = cap;
+    }
+    g_stacks[g_nstacks++] = stack;
 }
 
 void hc_unregister_stack(Object *stack)
@@ -807,12 +832,33 @@ int hc_part_count(Object *owner, ObjType type)
 }
 
 /* Les plages de style sont definies bien plus bas, mais hc_free en a besoin. */
+/* Épuisement mémoire : le SEUL point de sortie.
+ *
+ * Il y en avait treize, chacun faisant « fprintf(stderr) ; exit(1) ». Dans une
+ * application Cocoa, stderr n'est lu par personne : l'utilisateur voyait sa
+ * pile disparaître sans un mot, et sans avoir pu l'enregistrer.
+ *
+ * On prévient donc l'hôte d'abord, pour qu'il ait une dernière chance de sauver
+ * ce qui est ouvert et de l'annoncer. Puis on s'arrête : continuer après une
+ * allocation manquée reviendrait à écrire dans un pointeur nul. */
+void hc_memoire_epuisee(const char *quoi)
+{
+    static int deja = 0;
+    if (!deja) {                       /* pas de récursion si l'hôte replante */
+        deja = 1;
+        emit(HC_ERR, "   !! mémoire épuisée : %s", quoi);
+        if (g_host && g_host->panic) g_host->panic(quoi);
+    }
+    fprintf(stderr, "hc : mémoire épuisée (%s)\n", quoi);
+    exit(1);
+}
+
 static void runs_free(struct RunList *rl);
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));
-    if (!o) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
     o->id      = g_next_id++;
     o->name    = dupstr(name);
@@ -829,7 +875,7 @@ static void add_part(Object *parent, Object *child)
     if (parent->nparts == parent->capparts) {
         int cap = parent->capparts ? parent->capparts * 2 : 4;
         Object **p = realloc(parent->parts, (size_t)cap * sizeof(Object *));
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("liste des parties d'une couche");
         parent->parts = p;
         parent->capparts = cap;
     }
@@ -1251,6 +1297,32 @@ Object *hc_recent_at(int i)
     return g_histo[g_nhisto - 1 - i];
 }
 
+/* Les cartes visitées SANS DOUBLON, la plus récente d'abord.
+ *
+ * La pile brute en contient forcément : un aller-retour entre deux cartes
+ * inscrit la première deux fois, et une navigation un peu longue finissait par
+ * remplir le menu Recent de la même carte répétée trois ou quatre fois. C'est
+ * ce que HyperCard ne montrait jamais — revisiter une carte y REMONTAIT sa
+ * vignette au lieu d'en ajouter une seconde.
+ *
+ * Le dédoublonnage se fait ICI, à la lecture, et non dans histo_arrive : « go
+ * back » retrace les pas, donc l'historique BRUT doit garder ses répétitions.
+ * Deux besoins différents sur la même liste, chacun servi à sa façon.
+ *
+ * Coût quadratique, sur soixante-quatre entrées au plus. */
+int hc_recent_distinct(Object **out, int max)
+{
+    int n = 0;
+    for (int i = 0; i < g_nhisto && n < max; i++) {
+        Object *c = hc_recent_at(i);
+        if (!c) continue;
+        int vu = 0;
+        for (int k = 0; k < n; k++) if (out[k] == c) { vu = 1; break; }
+        if (!vu) out[n++] = c;
+    }
+    return n;
+}
+
 void hc_free(Object *o)
 {
     if (!o) return;
@@ -1413,6 +1485,26 @@ int hc_delete_card(Object *card)
         if (stack->parts[i]->type == OBJ_CARD) total++;
     if (total <= 1) return 0;
     if (card_index(stack, card) < 0) return 0;
+
+    /* « Can't Delete Card » : le verrou de l'Info carte.
+     *
+     * On refuse AVANT d'envoyer deleteCard — le message annonce une
+     * suppression qui va avoir lieu, et le faire partir pour rien tromperait
+     * un gestionnaire qui s'en sert pour ranger ses affaires. */
+    if (card->cant_delete) { set_result("Can't delete card"); return 0; }
+
+    /* Le verrou du FOND protège sa dernière carte, puisque c'est elle qui le
+     * ferait disparaître. Rien d'autre ici ne supprime un fond. */
+    if (card->bg && card->bg->cant_delete) {
+        int restants = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == card->bg)
+                restants++;
+        if (restants <= 1) {
+            set_result("Can't delete background");
+            return 0;
+        }
+    }
 
     SuppressionActive active = { card, g_suppression_active };
     g_suppression_active = &active;
@@ -1620,8 +1712,11 @@ static Object *clone_part(Object *o)
 {
     if (!o || (o->type != OBJ_BUTTON && o->type != OBJ_FIELD)) return NULL;
 
+    /* Faute de place on rend NULL plutôt que de mourir : les deux appelants
+     * (copier une partie, coller) traitent déjà NULL comme « rien copié ». Une
+     * copie qui échoue est un désagrément ; un arrêt en perd la pile. */
     Object *c = calloc(1, sizeof(Object));
-    if (!c) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!c) return NULL;
 
     c->type = o->type;
     c->id   = o->id;              /* remplacé à la pose */
@@ -1650,6 +1745,7 @@ static Object *clone_part(Object *o)
     c->show_lines   = o->show_lines;
     c->auto_tab     = o->auto_tab;
     c->dont_search  = o->dont_search;
+    c->cant_delete  = o->cant_delete;
     c->shared_text  = o->shared_text;
     c->textstyle    = o->textstyle;
     c->scroll       = o->scroll;
@@ -1778,7 +1874,7 @@ static void clone_bgtexts(Object *dst, Object *src)
     if (src->nbgtexts <= 0) return;
 
     dst->bgtexts = calloc((size_t)src->nbgtexts, sizeof *dst->bgtexts);
-    if (!dst->bgtexts) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!dst->bgtexts) hc_memoire_epuisee("textes de fond d'une carte copiée");
     dst->capbgtexts = src->nbgtexts;
 
     for (int i = 0; i < src->nbgtexts; i++) {
@@ -1807,8 +1903,9 @@ static Object *clone_layer(Object *o, ObjType type)
 {
     if (!o || o->type != type) return NULL;
 
+    /* Comme clone_part : NULL se traite, l'arrêt non. */
     Object *c = calloc(1, sizeof(Object));
-    if (!c) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!c) return NULL;
 
     c->type   = type;
     c->id     = o->id;             /* remplacé à la pose */
@@ -1823,6 +1920,12 @@ static Object *clone_layer(Object *o, ObjType type)
     c->arbre_sain = 0;
     c->paint  = dupstr(o->paint);
     c->marked = o->marked;
+    /* Les deux verrous suivent la copie. « cantDelete » surtout : une carte
+     * protégée dont la copie ne l'est plus offre un contournement en deux
+     * gestes — copier, coller, supprimer l'original… qui reste protégé, mais
+     * le duplicata, lui, ne l'était pas. */
+    c->dont_search = o->dont_search;
+    c->cant_delete = o->cant_delete;
 
     for (int i = 0; i < o->nparts; i++) {
         Object *p = clone_part(o->parts[i]);
@@ -2820,7 +2923,7 @@ static void var_set(const char *name, const char *val)
     if (f->n == f->cap) {
         int cap = f->cap ? f->cap * 2 : 8;
         Var *p = realloc(f->v, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("variables locales d'un gestionnaire");
         f->v = p; f->cap = cap;
     }
     f->v[f->n].name = dupstr(name);
@@ -2834,7 +2937,7 @@ static void frame_declare_global(Frame *f, const char *name)
     if (f->ngl == f->capgl) {
         int cap = f->capgl ? f->capgl * 2 : 4;
         char **p = realloc(f->gl, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("déclarations « global » d'un gestionnaire");
         f->gl = p; f->capgl = cap;
     }
     f->gl[f->ngl++] = dupstr(name);
@@ -2853,7 +2956,7 @@ static void frame_declare_global(Frame *f, const char *name)
     if (g_globals.n == g_globals.cap) {
         int cap = g_globals.cap ? g_globals.cap * 2 : 8;
         Var *p = realloc(g_globals.v, (size_t)cap * sizeof *p);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) hc_memoire_epuisee("table des variables globales");
         g_globals.v = p; g_globals.cap = cap;
     }
     g_globals.v[g_globals.n].name = dupstr(name);
@@ -4893,7 +4996,8 @@ static int is_prop_name(const char *w, int len)
         "loc", "location", "id", "name", "visible", "showname", "shownname",
         "enabled",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
-        "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
+        "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
+        "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -5036,6 +5140,7 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
     if (ci_equal(prop, "showlines")) { snprintf(out, outlen, "%s", o->show_lines ? "true" : "false"); return 1; }
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
     if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return 1; }
     /* textAlign se lit en toutes lettres, comme HyperCard :
      * « left », « center », « right ». Un script compare la
@@ -6371,7 +6476,26 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
     Object *card  = g_current_card;
     Object *stack = owning_stack(card);
 
-    if (obj->typeobj == HCT_OBJ_CARD) { *out = card_count(stack); return 1; }
+    if (obj->typeobj == HCT_OBJ_CARD) {
+        /* « the number of marked cards » : le même comptage, tamisé. Seules
+         * les cartes se marquent — « marked buttons » n'existe pas —, donc le
+         * drapeau est refusé plus bas pour tout autre type. */
+        if (obj->marque) {
+            int m = 0;
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->marked)
+                    m++;
+            *out = m;
+            return 1;
+        }
+        *out = card_count(stack);
+        return 1;
+    }
+
+    /* Le marquage ne concerne que les cartes. On REFUSE plutôt que d'ignorer
+     * le mot : « the number of marked buttons » rendrait sinon le nombre de
+     * boutons, ce qui n'est la réponse à aucune question. */
+    if (obj->marque) return 0;
 
     if (obj->typeobj == HCT_OBJ_BACKGROUND) {
         int n = 0;
@@ -6472,6 +6596,33 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
+
+static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
+
+/* « the <propriété> of <objet> » : la même règle un cran plus loin.
+ *
+ * « the short name of field "absent" » rendait « short name of field
+ * "absent" » — le texte de la demande. Un script qui teste ce nom le trouve
+ * non vide et travaille sur une chaîne inventée.
+ *
+ * Le test est PUREMENT STRUCTUREL : on ne résout rien ici. Résoudre la cible
+ * pour savoir si elle existe rappellerait l'évaluateur, donc ce recours, donc
+ * cette fonction — la première version bouclait et six harnais dépassaient
+ * leur délai. C'est « echo » qui fait le tri : il ne vaut 1 que si l'ancien
+ * évaluateur a rendu son entrée inchangée, c'est-à-dire s'il n'a rien
+ * reconnu. « the width of card window » et « the checkmark of menuItem 2 of
+ * menu "X" », qu'il sait traiter, n'arrivent jamais jusqu'ici. */
+static int v3_prop_sur_objet(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
+    const HctNoeud *sur = n->fils[1];
+    if (!sur || sur->genre != HCTN_OBJET) return 0;
+    /* C'est bien CETTE cible-ci que la résolution vient de manquer. Sans cette
+     * égalité, « the owner of me » — cible présente, propriété que le noyau ne
+     * sert pas — tomberait sous la même règle, alors qu'il ne s'agit pas du
+     * même défaut et que le message serait faux. */
+    return sur == g_v3_cible_manquee;
+}
 
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
@@ -6720,7 +6871,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && n->genre == HCTN_OBJET) {
+    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;
@@ -6896,9 +7047,12 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         int courts = ci_equal(nom, "recent names");
         buf[0] = '\0';
         size_t pris = 0;
-        for (int i = 0; i < hc_recent_count(); i++) {
-            Object *c = hc_recent_at(i);
-            if (!c) continue;
+        /* Sans doublon, comme le menu Recent : « the recent cards » est la
+         * même liste, et la répétition n'y apprend rien de plus. */
+        Object *vues[HC_HISTO_MAX];
+        int nv = hc_recent_distinct(vues, HC_HISTO_MAX);
+        for (int i = 0; i < nv; i++) {
+            Object *c = vues[i];
             char d[160];
             if (courts) snprintf(d, sizeof d, "%s", c->name ? c->name : "");
             else        hc_describe(c, d, sizeof d);
@@ -7133,8 +7287,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * étant le nom du message. Une lecture de g_params, rien de plus —
      * elle n'avait aucune raison de repartir chez l'ancien interpréteur. */
     if (nargs == 1 && ci_equal(nom, "param") && hct_est_nombre(args[0].txt)) {
-        int i = (int)hct_vers_nombre(args[0].txt);
-        *out = hct_val_texte((i >= 0 && i < g_nparams) ? g_params[i] : "");
+        /* param(10^300) : borné, sinon la conversion est indéfinie. Hors
+         * bornes vaut « pas de tel paramètre », donc la chaîne vide — et pas
+         * le rang 0, qui est le NOM DU MESSAGE et n'a rien à faire ici. */
+        int hors;
+        int i = hct_vers_rang(args[0].txt, &hors);
+        *out = hct_val_texte((!hors && i >= 0 && i < g_nparams)
+                             ? g_params[i] : "");
         { g_v1_porte = sauve_porte; } return 1;
     }
 
@@ -7234,6 +7393,18 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
 
 /* L'hôte reçoit le nœud, hct_resout rend l'objet. Plus aucun texte
  * reconstitué sur ce chemin. */
+/* Dernier nœud d'objet que v3_resout n'a PAS su résoudre.
+ *
+ * C'est le seul endroit où l'information existe. v3_recours reçoit le nœud
+ * « of » qui surplombe la cible, mais pas le verdict de la résolution ; et la
+ * refaire depuis le recours rappellerait l'évaluateur, donc le recours — la
+ * première version bouclait et six harnais dépassaient leur délai.
+ *
+ * On note donc l'échec au passage. C'est un pointeur COMPARÉ, jamais
+ * déréférencé : l'arbre lui survit le temps d'une évaluation, et de toute
+ * façon seule l'identité nous intéresse. */
+static const HctNoeud *g_v3_cible_manquee = NULL;
+
 static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 {
     (void)d;
@@ -7245,7 +7416,9 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
      * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
     if (v3_est_fenetre(ref)) return NULL;
 
-    return hct_resout(ctx, ref);
+    Object *o = hct_resout(ctx, ref);
+    if (!o && ref && ref->genre == HCTN_OBJET) g_v3_cible_manquee = ref;
+    return o;
 }
 
 /* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
@@ -7893,11 +8066,18 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
             char b1[64], b2[64];
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
             if (ctx->erreur) return 1;
-            n1 = (int)hct_vers_nombre(b1);
+            int hors;
+            n1 = hct_vers_rang(b1, &hors);
+            if (hors) { hct_ctx_faute(ctx, c->fils[0],
+                                      "rang de morceau hors limites");
+                        return 1; }
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
                 if (ctx->erreur) return 1;
-                n2 = (int)hct_vers_nombre(b2);
+                n2 = hct_vers_rang(b2, &hors);
+                if (hors) { hct_ctx_faute(ctx, c->fils[1],
+                                          "rang de morceau hors limites");
+                            return 1; }
             }
         } else {
             return 0;               /* ni ordinal ni borne : rien à viser */
@@ -8178,6 +8358,17 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     for (int k = 0; k < total; k++) {
         Object *cd = nth_card(stack, (start + k) % total);
         if (!cd) continue;
+
+        /* « Don't Search This Card » : on saute la carte ENTIÈRE, et pas
+         * seulement tel ou tel champ. Le verrou du FOND vaut pour toutes ses
+         * cartes — c'est ainsi qu'on tient un mode d'emploi ou une carte
+         * d'index hors des résultats sans avoir à cocher chaque champ.
+         *
+         * La carte COURANTE n'échappe pas à la règle : HyperCard non plus, et
+         * une exception ici ferait qu'une recherche trouve sur place ce
+         * qu'elle ne retrouvera jamais en repassant. */
+        if (cd->dont_search) continue;
+        if (cd->bg && cd->bg->dont_search) continue;
 
         /* champs de la carte puis du fond */
         Object *layers[2] = { cd, cd->bg };
@@ -8721,7 +8912,12 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     } else if (ci_equal(prop, "autotab")) {
         o->auto_tab = truthy(val); notify_field(o);
     } else if (ci_equal(prop, "dontsearch")) {
-        o->dont_search = truthy(val); notify_field(o);
+        o->dont_search = truthy(val);
+        /* notify_field ne vaut que pour un CHAMP : c'est un rafraîchissement
+         * d'affichage, et une carte ou un fond n'en a que faire ici. */
+        if (o->type == OBJ_FIELD) notify_field(o);
+    } else if (ci_equal(prop, "cantdelete")) {
+        o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
         /* Accepte aussi « centre » et « centered », qu'on rencontre dans
          * les scripts, et retombe à gauche sur un mot inconnu plutôt que
@@ -9454,8 +9650,15 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
         Object *obj = hct_resout(ctx, o);
         if (ctx->erreur) return 1;
         if (obj && obj->type == OBJ_CARD) {
-            if (hc_delete_card(obj)) set_result("");
-            else set_result("Can't delete card");
+            /* On vide « the result » AVANT : hc_delete_card y pose sa propre
+             * raison quand elle en a une — « Can't delete background » pour le
+             * verrou du fond —, et l'écraser par un message plus vague ferait
+             * chercher le verrou au mauvais endroit. Le message générique ne
+             * sert que quand elle n'a rien dit (dernière carte, suppression
+             * déjà en cours). */
+            set_result("");
+            if (hc_delete_card(obj)) return 1;
+            if (!g_result[0]) set_result("Can't delete card");
             return 1;
         }
         if (obj && (obj->type == OBJ_BUTTON || obj->type == OBJ_FIELD)) {
@@ -9955,18 +10158,84 @@ int hc_go_back(void)
     return r;
 }
 
+/* Aller DIRECTEMENT à une carte de l'historique, par son rang.
+ *
+ * C'est ce que fait l'article Recent du menu Go : la palette de vignettes
+ * d'HyperCard désignait une carte visitée, on la désigne par son nom.
+ *
+ * Le rang est celui de la liste SANS DOUBLON — la même que montre le menu.
+ * Compter sur la pile brute ferait désigner par le cinquième article une
+ * autre carte que la cinquième affichée, dès qu'un aller-retour a inscrit
+ * deux fois la même.
+ *
+ * L'historique n'est PAS gelé ici, contrairement à « go back ». Sauter à la
+ * cinquième carte visitée est une navigation ordinaire — elle doit s'inscrire,
+ * sans quoi un « Back » juste après repartirait d'où l'on venait et non d'où
+ * l'on est. Seul « Back », qui retrace ses pas, doit s'en abstenir. */
+int hc_go_recent(int i)
+{
+    Object *vues[HC_HISTO_MAX];
+    int n = hc_recent_distinct(vues, HC_HISTO_MAX);
+    if (i < 0 || i >= n) return 0;
+    return v3_va_a(vues[i]);
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
     if (i >= n->nfils) return 0;
 
-    /* « go to next marked card » : le marquage filtre la navigation, et
-     * hct_resout n'en sait rien — c'est marked_card_ref qui s'en charge, sur
-     * le texte. Ancien chemin. */
+    /* « go to next marked card » : le marquage FILTRE la navigation. La carte
+     * visée n'est pas la suivante de la pile, mais la suivante qui porte la
+     * marque — et hct_resout n'en sait rien.
+     *
+     * Cette ligne partait à l'ancien interprète. Depuis que la porte est
+     * fermée elle ne partait plus nulle part : « ne sait pas faire : go to
+     * next marked card », alors que « mark this card » et « the marked of
+     * card 3 » marchaient très bien. Un marquage qu'on peut poser et lire mais
+     * pas parcourir ne sert à rien.
+     *
+     * On la traite donc ici. La SÉLECTION reste celle de marked_card_ref — du
+     * parcours de cartes, rien de plus, et déjà éprouvé — mais la NAVIGATION
+     * est celle de la v3 : v3_va_a envoie les six messages dans l'ordre
+     * d'HyperCard et inscrit l'arrivée dans l'historique, ce que l'ancien
+     * chemin ne faisait pas.
+     *
+     * Le texte se reconstitue depuis l'arbre : les jetons pointent dans le
+     * script d'origine, et « next marked card » y est contigu. On saute le
+     * verbe et le « to » facultatif, que marked_card_ref n'attend pas. */
     for (int k = i; k < n->nfils; k++) {
-        char m[16];
+        /* Le mot peut se présenter de deux façons. Quand il précède un type
+         * d'objet — « marked card » — l'analyseur l'absorbe dans la référence
+         * et pose son drapeau ; seul reste un nœud dont le drapeau parle.
+         * Ailleurs il subsiste comme un mot nu. Les deux comptent : ne
+         * chercher que le mot nu laissait « go to next marked card » repartir
+         * sur le chemin ordinaire, qui ne retenait que « next » et changeait
+         * de carte sans regarder la marque. */
+        char m[24];
         v3_brut(n->fils[k], m, sizeof m);
-        if (ci_equal(m, "marked")) return 0;
+        if (!(n->fils[k] && n->fils[k]->marque) && !ci_equal(m, "marked"))
+            continue;
+
+        ARENA_MARK;
+        char *txt = arena_buf();
+        v3_source(n, txt, HC_VAL);
+        const char *a = skip_spaces(txt);
+        char verbe[16];
+        a = skip_spaces(next_word(a, verbe, sizeof verbe));   /* « go » */
+        if (ci_word(a, "to")) a = skip_spaces(a + 2);
+
+        int concerne = 0;
+        Object *cible = marked_card_ref(a, &concerne);
+        ARENA_FREE;
+
+        /* concerne = 0 : ce n'était pas une référence de carte marquée malgré
+         * le mot — on laisse le chemin ordinaire s'en occuper. */
+        if (!concerne) break;
+        if (!cible) { set_result("No such card"); return 1; }
+        set_result("");
+        v3_va_a(cible);
+        return 1;
     }
 
     const HctNoeud *ref = n->fils[i];
@@ -10153,7 +10422,15 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
         g_nusing--;
         break;
     }
-    if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+    if (demarrer) {
+        if (g_nusing >= HC_MAX_USING) {
+            set_result("Too many stacks in use");
+            emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
+                         "« %s » n'a pas été ajoutée", HC_MAX_USING, nom);
+            return 1;
+        }
+        g_using[g_nusing++] = pile;
+    }
 
     set_result("");
     return 1;
@@ -11582,7 +11859,7 @@ static void exec_body(Object *me, const char *body, const char *end)
 {
     int cap = 32, n = 0;
     char **L = malloc((size_t)cap * sizeof *L);
-    if (!L) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!L) hc_memoire_epuisee("lignes d'un gestionnaire");
 
     const char *p = body;
     while (p < end && *p) {
@@ -11612,7 +11889,7 @@ static void exec_body(Object *me, const char *body, const char *end)
             if (n == cap) {
                 cap *= 2;
                 char **q = realloc(L, (size_t)cap * sizeof *L);
-                if (!q) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+                if (!q) hc_memoire_epuisee("lignes d'un gestionnaire");
                 L = q;
             }
             L[n++] = dupstr(t);
@@ -14012,7 +14289,17 @@ static void exec_line_body(Object *me, const char *line)
                 g_nusing--;
                 break;
             }
-            if (demarrer && g_nusing < HC_MAX_USING) g_using[g_nusing++] = pile;
+            if (demarrer) {
+                if (g_nusing >= HC_MAX_USING) {
+                    set_result("Too many stacks in use");
+                    emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
+                                 "« %s » n'a pas été ajoutée",
+                         HC_MAX_USING, nom);
+                    ARENA_FREE;
+                    return;
+                }
+                g_using[g_nusing++] = pile;
+            }
 
             set_result("");
             ARENA_FREE;

@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── rang normal, lecture
+   b
+── rang normal, écriture
+   a
+z
+c
+── extension raisonnable
+   6
+── rang zéro
+   |
+── rang au-delà du texte
+   |
+── lecture, rang démesuré
+   [ERR]    !! rang de morceau hors limites (v3, ligne 3 de button "B".t)
+── écriture, rang démesuré
+   [ERR]    !! rang de morceau hors limites (v3, ligne 3 de button "B".t)
+── suppression, démesuré
+   [ERR]    !! rang de morceau hors limites (v3, ligne 3 de button "B".t)
+── rang négatif démesuré
+   [ERR]    !! rang de morceau hors limites (v3, ligne 3 de button "B".t)
+── juste sous le plafond
+   |
+── juste au-dessus
+   [ERR]    !! rang de morceau hors limites (v3, ligne 3 de button "B".t)
+── numToChar normal
+   A
+── numToChar démesuré
+   []
+── param démesuré
+   []

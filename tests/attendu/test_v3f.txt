@@ -3,7 +3,7 @@ id de card1 = 3
 >>> card id N seul (sans &&)
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      [message box] short name of card id 1
+      !! objet introuvable (v3, ligne 2 de button "GoBtn".mouseUp)
 >>> juste card id N
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"

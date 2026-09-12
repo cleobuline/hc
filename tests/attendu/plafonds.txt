@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── vingt-quatre piles ouvertes
+   hc_stack_count = 24
+
+── put the number of lines of the stacks
+   24
+── put line 17 of the stacks
+   P17
+── put line 24 of the stacks
+   P24
+
+── start using stack "P02"
+── start using stack "P03"
+── start using stack "P04"
+── start using stack "P05"
+── start using stack "P06"
+── start using stack "P07"
+── start using stack "P08"
+── start using stack "P09"
+── start using stack "P10"
+   [ERR]    !! trop de piles en usage (8 au plus) : « P10 » n'a pas été ajoutée
+

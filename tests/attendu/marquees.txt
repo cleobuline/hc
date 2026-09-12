@@ -1,0 +1,46 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── au départ
+   carte 1 (Une) : -
+   carte 2 (Deux) : -
+   carte 3 (Trois) : -
+── put the marked of this card
+   false
+── put the number of marked cards
+   0
+── mark this card
+── set the marked of card "Trois" to true
+── après marquage
+   carte 1 (Une) : marquée
+   carte 2 (Deux) : -
+   carte 3 (Trois) : marquée
+── put the number of marked cards
+   2
+── go to next marked card
+  put the short name of this card
+   Trois
+── go to next marked card
+  put the short name of this card
+   Une
+── go to first marked card
+  put the short name of this card
+   Une
+── go to last marked card
+  put the short name of this card
+   Trois
+── go to prev marked card
+  put the short name of this card
+   Une
+── set the marked of card "Trois" to false
+── put the number of marked cards
+   1
+── la case à cocher écrit c->marked directement
+── put the number of marked cards
+   2
+── put the marked of card "Deux"
+   true
+── enregistrement puis relecture
+   hc_save = 0 (0 = réussi)
+── la pile relue
+   carte 1 (Une) : marquée
+   carte 2 (Deux) : marquée
+   carte 3 (Trois) : -

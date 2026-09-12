@@ -25,7 +25,7 @@ int main(void)
     Object *btn = hc_new_button(card1, "GoBtn");
     hc_set_current_card(card1);
 
-    char *script = slurp("/tmp/claude-0/-home-user-hc/0f5ea498-57a7-5535-bfbb-a6b014480ae0/scratchpad/calscript.txt");
+    char *script = slurp("donnees/calendrier_court.txt");
     hc_set_script(fld, script);
 
     hc_set_script(btn,

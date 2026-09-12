@@ -1,0 +1,73 @@
+on mouseUp
+  -- ═══ ARC-EN-CIEL ═══════════════════════════════════════════════════
+  -- Demande « set the paintColor », donc HC de ce week-end ou plus récent.
+  -- Se met à la taille de la carte, quelle qu'elle soit.
+
+  put the ticks into t0
+  lock screen
+  choose line tool
+  set the lineSize to 3
+
+  put the width of card window into larg
+  put the height of card window into haut
+
+  put larg div 2 into cx          -- le centre est SOUS le bas de la carte :
+  put haut + 30 into cy           -- on ne voit donc que la voûte de l'arc
+  put haut * 1.15 into rExt
+  put rExt * 0.62 into rInt
+
+  put 15 into nBandes             -- bandes de couleur, du rouge au violet
+  put 48 into nSeg                -- segments par bande : la finesse de l'arc
+
+  repeat with b = 0 to nBandes
+    -- la couleur : on parcourt le spectre de 0 (rouge) à 1 (violet)
+    set the paintColor to spectre(b / nBandes)
+
+    put rExt - (rExt - rInt) * b / nBandes into r
+    put cx + r into xa
+    put cy into ya
+    repeat with i = 1 to nSeg
+      put pi * i / nSeg into a
+      put cx + r * cos(a) into xb
+      put cy - r * sin(a) into yb
+      drag from xa,ya to xb,yb
+      put xb into xa
+      put yb into ya
+    end repeat
+  end repeat
+
+  set the paintColor to black
+  choose browse tool
+  unlock screen
+  put "arc-en-ciel : " & (the ticks - t0) & " ticks"
+end mouseUp
+
+
+-- Le spectre, de t=0 (rouge) à t=1 (violet), par interpolation entre les
+-- sept couleurs de l'arc-en-ciel. Rend « r,v,b », ce que set the paintColor
+-- attend — et ce que the paintColor rend, si l'on veut relire.
+function spectre t
+  -- Les sept couleurs, une par ligne. Pas de continuation de ligne dans HC :
+  -- on empile, ce qui se lit d'ailleurs mieux.
+  put "255,0,0"   into arcs        -- rouge
+  put return & "255,127,0" after arcs   -- orange
+  put return & "255,255,0" after arcs   -- jaune
+  put return & "0,220,0" after arcs   -- vert
+  put return & "0,80,255" after arcs   -- bleu
+  put return & "75,0,180" after arcs   -- indigo
+  put return & "148,0,211" after arcs   -- violet
+
+  put the number of lines of arcs into n
+  put t * (n - 1) into p              -- position flottante dans la liste
+  put trunc(p) into k
+  if k > n - 2 then put n - 2 into k
+  put p - k into f                    -- fraction entre la borne k et k+1
+
+  put line (k + 1) of arcs into c1
+  put line (k + 2) of arcs into c2
+
+  put round(item 1 of c1 + f * (item 1 of c2 - item 1 of c1)) into r
+  put round(item 2 of c1 + f * (item 2 of c2 - item 2 of c1)) into v
+  put round(item 3 of c1 + f * (item 3 of c2 - item 3 of c1)) into b
+  return r & "," & v & "," & b
+end spectre

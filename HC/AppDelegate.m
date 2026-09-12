@@ -5,6 +5,7 @@
 
 #import "AppDelegate.h"
 #include <errno.h>
+#include <stdlib.h>   /* calloc/free, pour la liste du menu Recent */
 #include <string.h>
 #import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
@@ -12,7 +13,7 @@
 #import "hc_core.h"
 #import "hc_file.h"
 #import "Hcdocument.h"
-@interface AppDelegate ()
+@interface AppDelegate () <NSMenuDelegate>
 @property (strong) IBOutlet NSWindow *window;
 @end
 
@@ -84,6 +85,75 @@ static NSMenu *find_file_menu(void)
  * de message doMenu et ne l'exécute que si personne ne l'intercepte. C'est le
  * chemin qu'HyperCard faisait suivre à TOUT choix de menu, et celui que
  * devront prendre les autres articles quand on les y branchera. */
+/* Le sous-menu Recent, reconstruit à chaque ouverture. */
+static NSMenu *gRecentMenu = nil;
+
+/* Cocoa appelle ceci juste avant d'afficher le sous-menu : c'est là, et
+ * seulement là, que l'historique est à jour. */
+- (void)menuNeedsUpdate:(NSMenu *)menu
+{
+    if (menu != gRecentMenu) return;
+    [menu removeAllItems];
+
+    /* SANS DOUBLON. La pile brute en contient forcément — un aller-retour
+     * entre deux cartes y inscrit la première deux fois — et le menu finissait
+     * par montrer la même carte trois ou quatre fois. HyperCard ne faisait
+     * jamais cela : revisiter une carte y remontait sa vignette au lieu d'en
+     * ajouter une seconde. */
+    int brut = hc_recent_count();
+    if (brut <= 0) {
+        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
+                                                      action:NULL
+                                               keyEquivalent:@""];
+        [vide setEnabled:NO];
+        [menu addItem:vide];
+        return;
+    }
+    Object **vues = calloc((size_t)brut, sizeof *vues);
+    if (!vues) return;
+    int n = hc_recent_distinct(vues, brut);
+
+    /* Rang 0 est la carte COURANTE — celle qu'on regarde. L'énumérer
+     * n'offrirait qu'un aller vers soi-même, donc on part de 1. */
+    for (int i = 1; i < n; i++) {
+        Object *c = vues[i];
+        if (!c) continue;
+        char buf[256];
+        hc_describe(c, buf, sizeof buf);
+        NSMenuItem *mi = [[NSMenuItem alloc]
+                             initWithTitle:[NSString stringWithUTF8String:buf]
+                                    action:@selector(goRecentItem:)
+                             keyEquivalent:@""];
+        [mi setTarget:self];
+        [mi setTag:i];
+        [menu addItem:mi];
+    }
+    free(vues);
+    if ([menu numberOfItems] == 0) {
+        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
+                                                      action:NULL
+                                               keyEquivalent:@""];
+        [vide setEnabled:NO];
+        [menu addItem:vide];
+    }
+}
+
+/* Le rang est dans le tag : le TITRE ne suffirait pas à désigner la carte,
+ * deux cartes pouvant porter le même nom, et l'historique en garde souvent
+ * plusieurs de la même pile. */
+- (void)goRecentItem:(id)sender
+{
+    [gView prepareForCardChange];
+    if (!hc_go_recent((int)[sender tag])) return;
+
+    /* Même raison qu'au-dessus dans goMenuItem: : un clic de menu ne fait
+     * tourner aucune boucle, personne ne consomme le drapeau du noyau, et
+     * l'écran resterait sur la carte précédente. */
+    (void)hc_take_visual_dirty();
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
+}
+
 - (void)goMenuItem:(id)sender
 {
     NSString *t = [sender title];
@@ -346,10 +416,18 @@ static NSMenu *find_file_menu(void)
      * à chaque openCard. Il passe par doMenu comme les quatre autres, donc un
      * « on doMenu » de la pile peut le détourner.
      *
-     * « Home » et « Recent » manquent encore : le premier demande une pile
-     * d'accueil, que rien ici ne désigne ; le second, la palette de vignettes
-     * d'HyperCard. Les omettre reste plus honnête que de les afficher
-     * morts. */
+     * « Recent » y est maintenant, sous une autre forme : HyperCard ouvrait
+     * une palette de vignettes des cartes visitées, nous en faisons un
+     * sous-menu qui les NOMME. C'est le même service — revenir à une carte
+     * qu'on a vue — rendu avec ce que Cocoa donne pour rien. La vignette
+     * demanderait un instantané par carte, que le noyau ne garde pas.
+     *
+     * Le sous-menu se reconstruit à chaque ouverture (menuNeedsUpdate:) :
+     * l'historique change à chaque openCard, et un menu bâti une fois pour
+     * toutes montrerait l'état du lancement.
+     *
+     * « Home » manque encore : il demande une pile d'accueil, que rien ici ne
+     * désigne. L'omettre reste plus honnête que de l'afficher mort. */
     NSMenuItem *goItem = [[NSMenuItem alloc] init];
     NSMenu *goMenu = [[NSMenu alloc] initWithTitle:@"Go"];
     for (NSString *t in @[ @"Back", @"First", @"Prev", @"Next", @"Last" ]) {
@@ -359,6 +437,16 @@ static NSMenu *find_file_menu(void)
         [mi setTarget:self];
         [goMenu addItem:mi];
     }
+    [goMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *recentItem = [[NSMenuItem alloc] initWithTitle:@"Recent"
+                                                        action:NULL
+                                                 keyEquivalent:@""];
+    gRecentMenu = [[NSMenu alloc] initWithTitle:@"Recent"];
+    [gRecentMenu setDelegate:self];
+    [recentItem setSubmenu:gRecentMenu];
+    [goMenu addItem:recentItem];
+
     [goItem setSubmenu:goMenu];
     [mainMenu addItem:goItem];
 

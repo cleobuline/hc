@@ -96,7 +96,7 @@ static char *dupstr_file(const char *s)
     if (!s) return NULL;
     size_t n = strlen(s) + 1;
     char *p = malloc(n);
-    if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+    if (!p) hc_memoire_epuisee("copie d'une chaîne lue dans une pile");
     memcpy(p, s, n);
     return p;
 }
@@ -238,6 +238,7 @@ static void put_part(FILE *f, Object *o)
     fprintf(f, "id %d\n", o->id);
     if (o->auto_tab) fprintf(f, "autotab\n");
     if (o->dont_search) fprintf(f, "dontsearch\n");
+    if (o->cant_delete) fprintf(f, "cantdelete\n");
     if (o->shared_text) fprintf(f, "sharedtext\n");
     if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
     if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
@@ -304,6 +305,8 @@ int hc_save(Object *stack, const char *path)
 
         fprintf(f, "background "); put_quoted(f, bg->name); fputc('\n', f);
         fprintf(f, "id %d\n", bg->id);
+        if (bg->dont_search) fprintf(f, "dontsearch\n");
+        if (bg->cant_delete) fprintf(f, "cantdelete\n");
         put_block(f, "script", bg->script);
         put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
@@ -317,7 +320,12 @@ int hc_save(Object *stack, const char *path)
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
         fprintf(f, "\n");
         fprintf(f, "id %d\n", c->id);
-        if (c->marked) fprintf(f, "marked\n");
+        if (c->marked)      fprintf(f, "marked\n");
+        /* Les deux verrous de l'Info carte. Écrits seulement s'ils sont posés,
+         * comme « marked » : une pile enregistrée avant qu'ils existent se
+         * relit sans rien perdre. */
+        if (c->dont_search) fprintf(f, "dontsearch\n");
+        if (c->cant_delete) fprintf(f, "cantdelete\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
         /* L'allumage des boutons de fond NON PARTAGÉS appartient à la carte.
@@ -443,7 +451,11 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
 }
 
 /* accumulateur de texte pour les blocs « | » */
-typedef struct { char *buf; size_t len, cap; } Acc;
+/* « manque » retient qu'une allocation a échoué pendant la lecture d'un bloc.
+ * Le drapeau est COLLANT : une fois posé il ne se retire plus, parce qu'un
+ * script ou un texte tronqué est pire qu'un chargement refusé — l'utilisateur
+ * réenregistrerait par-dessus l'original sans savoir ce qu'il a perdu. */
+typedef struct { char *buf; size_t len, cap; int manque; } Acc;
 
 static void acc_line(Acc *a, const char *s)
 {
@@ -452,7 +464,7 @@ static void acc_line(Acc *a, const char *s)
         size_t cap = a->cap ? a->cap * 2 : 256;
         while (cap < a->len + n + 2) cap *= 2;
         char *p = realloc(a->buf, cap);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
     memcpy(a->buf + a->len, s, n);
@@ -470,7 +482,7 @@ static void acc_join(Acc *a, const char *s)
         size_t cap = a->cap ? a->cap * 2 : 256;
         while (cap < a->len + n + 2) cap *= 2;
         char *p = realloc(a->buf, cap);
-        if (!p) { fprintf(stderr, "mémoire épuisée\n"); exit(1); }
+        if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
     memcpy(a->buf + a->len, s, n);
@@ -807,7 +819,11 @@ Object *hc_load(const char *path)
         if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
         if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
         if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }
-        if (strcmp(s, "dontsearch") == 0 && part)     { part->dont_search = 1; continue; }
+        /* Sur « target » et non « part » : ces deux-là valent pour un champ,
+         * une carte ou un fond, et target est justement la cible du bloc en
+         * cours, quelle qu'elle soit. */
+        if (strcmp(s, "dontsearch") == 0 && target)   { target->dont_search = 1; continue; }
+        if (strcmp(s, "cantdelete") == 0 && target)   { target->cant_delete = 1; continue; }
         if (strcmp(s, "sharedtext") == 0 && part)     { part->shared_text = 1; continue; }
         if (strncmp(s, "textfont ", 9) == 0 && part) {
             free(part->textfont);
@@ -865,5 +881,14 @@ Object *hc_load(const char *path)
     free(acc.buf);
     ligne_libere(&lg);
     fclose(f);
+
+    /* Une seule allocation manquée pendant la lecture suffit à refuser toute
+     * la pile. C'est brutal, et c'est voulu : rendre une pile où un script ou
+     * le texte d'un champ a silencieusement perdu sa fin, c'est offrir à
+     * l'utilisateur de l'enregistrer par-dessus l'original. */
+    if (acc.manque) {
+        if (stack) hc_free(stack);
+        return NULL;
+    }
     return stack;
 }
