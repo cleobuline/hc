@@ -205,6 +205,32 @@ int hct_lex(const char *src, HctLot *lot)
                 if (*q == '.') points++;
                 q++;
             }
+            /* EXPOSANT : « 1e3 », « 2.5E-7 », « 1e+9 ».
+             *
+             * HyperCard ne les connaissait pas, mais le reste du noyau si :
+             * hct_est_nombre et hct_vers_nombre passent par strtod, qui les
+             * accepte. D'où trois réponses pour le même texte —
+             * « "1e3" is a number » rendait true, « "1e3" + 0 » rendait 1000,
+             * et value("1e3") rendait 1 parce qu'il repasse par ce lexeur, qui
+             * s'arrêtait au « e ». Un littéral « put 1e3 » ne s'analysait pas
+             * du tout.
+             *
+             * On l'accepte donc ici aussi, et les quatre s'accordent. Rien ne
+             * peut en dépendre : c'était une erreur d'analyse jusqu'ici.
+             *
+             * Le « e » n'est avalé QUE s'il est suivi d'au moins un chiffre,
+             * signe optionnel. Sans cette exigence, « 1e » deviendrait un
+             * nombre mal formé là où c'est aujourd'hui le nombre 1 suivi de la
+             * variable e — et « put 2 into e » est parfaitement légal. */
+            if (points <= 1 && (*q == 'e' || *q == 'E')) {
+                const char *r = q + 1;
+                if (*r == '+' || *r == '-') r++;
+                if (isdigit((unsigned char)*r)) {
+                    while (isdigit((unsigned char)*r)) r++;
+                    q = r;
+                }
+            }
+
             if (points > 1) {
                 if (!pousse(lot, HCT_ERREUR, p, (int)(q - p), ligne, col, NULL,
                             "nombre mal formé")) return 0;

@@ -1,0 +1,46 @@
+=== les quatre chemins disent la même chose ===
+── put 1e3 is a number
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   true
+── put "1e3" is a number
+   true
+── put 1e3 + 0
+   1000
+── put "1e3" + 0
+   1000
+── put value("1e3") + 0
+   1000
+
+=== les formes acceptées ===
+── put 1e3 + 0 & "/" & 1E3 + 0
+   1000/1000
+── put 1e+9 + 0
+   1000000000
+── put 2.5e-3 + 0
+   0.0025
+── put 1e3 * 2 & "/" & 6e2 / 3
+   2000/200
+
+=== un littéral se rend tel quel, comme 007 et 1.50 ===
+── put 007 & "/" & 1.50 & "/" & 1e3
+   007/1.50/1e3
+
+=== ce que le « e » ne doit PAS avaler ===
+── put 2 into e
+  put 1 + e
+   3
+── put 5 into e2
+  put e2
+   5
+── put 3 into e
+  put 2 * e
+   6
+── put 7 into e
+  put 1 + e & "/" & e
+   8/7
+
+=== toujours refusé ===
+── put 1.5.2
+   [ERR]    !! script, ligne 2 colonne 7 : nombre mal formé
+   [ERR]         put 1.5.2
+   [ERR]    !! nombre mal formé (v3, ligne 2 de button "B".t)
