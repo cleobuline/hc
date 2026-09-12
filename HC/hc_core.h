@@ -570,10 +570,15 @@ Object *hc_stack_at(int i);
  * articles Back et Recent du menu Go. */
 int      hc_recent_count(void);
 Object  *hc_recent_at(int i);
+/* Les mêmes SANS DOUBLON, la plus récente d'abord : remplit out (au plus max
+ * entrées) et rend le nombre écrit. C'est ce que montrent le menu Recent et
+ * « the recent cards » ; l'historique brut, lui, garde ses répétitions, dont
+ * « go back » a besoin pour retracer les pas. */
+int      hc_recent_distinct(Object **out, int max);
 /* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
 int      hc_go_back(void);
-/* Aller à la i-ème carte de l'historique (0 = la plus récente), comme le fait
- * l'article Recent du menu Go. 0 si ce rang n'existe pas. */
+/* Aller à la i-ème carte de la liste SANS DOUBLON (0 = la plus récente),
+ * celle que montre l'article Recent du menu Go. 0 si ce rang n'existe pas. */
 int      hc_go_recent(int i);
 
 int     hc_layer_is_live(Object *layer);

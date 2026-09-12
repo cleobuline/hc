@@ -17,11 +17,20 @@ static void liste(const char *titre){
   printf("── %s\n", titre);
   int n = hc_recent_count();
   if (n <= 0) { printf("   (aucune)\n"); return; }
+  printf("   brut (ce que « go back » retrace) :\n");
   for (int i = 0; i < n; i++) {
     Object *c = hc_recent_at(i);
     char buf[256]; buf[0] = '\0';
     if (c) hc_describe(c, buf, sizeof buf);
-    printf("   %d%s %s\n", i, i ? " " : "*", buf);   /* * = carte courante */
+    printf("     %d%s %s\n", i, i ? " " : "*", buf);   /* * = carte courante */
+  }
+  Object *vues[64];
+  int nv = hc_recent_distinct(vues, 64);
+  printf("   sans doublon (ce que montre le menu Recent) :\n");
+  for (int i = 0; i < nv; i++) {
+    char buf[256]; buf[0] = '\0';
+    hc_describe(vues[i], buf, sizeof buf);
+    printf("     %d%s %s\n", i, i ? " " : "*", buf);
   }
 }
 int main(void){
@@ -47,6 +56,15 @@ int main(void){
   printf("   hc_go_recent(2) = %d\n", hc_go_recent(2));
   essai("put the short name of this card");
   liste("après le saut");
+
+  /* Le cas qui remplissait le menu : un va-et-vient entre deux cartes. Six
+   * navigations, deux cartes — le menu ne doit en montrer que deux. */
+  printf("── va-et-vient Une/Deux, six fois\n");
+  for (int i = 0; i < 3; i++) {
+    essai("go to card \"Une\"");
+    essai("go to card \"Deux\"");
+  }
+  liste("après le va-et-vient");
 
   printf("── rang inexistant\n");
   printf("   hc_go_recent(99) = %d\n", hc_go_recent(99));

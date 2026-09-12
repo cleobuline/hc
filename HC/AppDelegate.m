@@ -5,6 +5,7 @@
 
 #import "AppDelegate.h"
 #include <errno.h>
+#include <stdlib.h>   /* calloc/free, pour la liste du menu Recent */
 #include <string.h>
 #import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
@@ -94,8 +95,13 @@ static NSMenu *gRecentMenu = nil;
     if (menu != gRecentMenu) return;
     [menu removeAllItems];
 
-    int n = hc_recent_count();
-    if (n <= 0) {
+    /* SANS DOUBLON. La pile brute en contient forcément — un aller-retour
+     * entre deux cartes y inscrit la première deux fois — et le menu finissait
+     * par montrer la même carte trois ou quatre fois. HyperCard ne faisait
+     * jamais cela : revisiter une carte y remontait sa vignette au lieu d'en
+     * ajouter une seconde. */
+    int brut = hc_recent_count();
+    if (brut <= 0) {
         NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
                                                       action:NULL
                                                keyEquivalent:@""];
@@ -103,11 +109,14 @@ static NSMenu *gRecentMenu = nil;
         [menu addItem:vide];
         return;
     }
+    Object **vues = calloc((size_t)brut, sizeof *vues);
+    if (!vues) return;
+    int n = hc_recent_distinct(vues, brut);
 
     /* Rang 0 est la carte COURANTE — celle qu'on regarde. L'énumérer
      * n'offrirait qu'un aller vers soi-même, donc on part de 1. */
     for (int i = 1; i < n; i++) {
-        Object *c = hc_recent_at(i);
+        Object *c = vues[i];
         if (!c) continue;
         char buf[256];
         hc_describe(c, buf, sizeof buf);
@@ -119,6 +128,7 @@ static NSMenu *gRecentMenu = nil;
         [mi setTag:i];
         [menu addItem:mi];
     }
+    free(vues);
     if ([menu numberOfItems] == 0) {
         NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
                                                       action:NULL

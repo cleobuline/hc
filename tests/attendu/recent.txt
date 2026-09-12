@@ -2,21 +2,47 @@
 ── au départ
    (aucune)
 ── après trois navigations
-   0* card "Une"
-   1  card "Trois"
-   2  card "Deux"
+   brut (ce que « go back » retrace) :
+     0* card "Une"
+     1  card "Trois"
+     2  card "Deux"
+   sans doublon (ce que montre le menu Recent) :
+     0* card "Une"
+     1  card "Trois"
+     2  card "Deux"
 ── saut au rang 2
    hc_go_recent(2) = 1
    Deux
 ── après le saut
-   0* card "Deux"
-   1  card "Une"
-   2  card "Trois"
-   3  card "Deux"
+   brut (ce que « go back » retrace) :
+     0* card "Deux"
+     1  card "Une"
+     2  card "Trois"
+     3  card "Deux"
+   sans doublon (ce que montre le menu Recent) :
+     0* card "Deux"
+     1  card "Une"
+     2  card "Trois"
+── va-et-vient Une/Deux, six fois
+── après le va-et-vient
+   brut (ce que « go back » retrace) :
+     0* card "Deux"
+     1  card "Une"
+     2  card "Deux"
+     3  card "Une"
+     4  card "Deux"
+     5  card "Une"
+     6  card "Deux"
+     7  card "Une"
+     8  card "Trois"
+     9  card "Deux"
+   sans doublon (ce que montre le menu Recent) :
+     0* card "Deux"
+     1  card "Une"
+     2  card "Trois"
 ── rang inexistant
    hc_go_recent(99) = 0
 ── the recent names
    Deux
 Une
 Trois
-Deux

@@ -1297,6 +1297,32 @@ Object *hc_recent_at(int i)
     return g_histo[g_nhisto - 1 - i];
 }
 
+/* Les cartes visitées SANS DOUBLON, la plus récente d'abord.
+ *
+ * La pile brute en contient forcément : un aller-retour entre deux cartes
+ * inscrit la première deux fois, et une navigation un peu longue finissait par
+ * remplir le menu Recent de la même carte répétée trois ou quatre fois. C'est
+ * ce que HyperCard ne montrait jamais — revisiter une carte y REMONTAIT sa
+ * vignette au lieu d'en ajouter une seconde.
+ *
+ * Le dédoublonnage se fait ICI, à la lecture, et non dans histo_arrive : « go
+ * back » retrace les pas, donc l'historique BRUT doit garder ses répétitions.
+ * Deux besoins différents sur la même liste, chacun servi à sa façon.
+ *
+ * Coût quadratique, sur soixante-quatre entrées au plus. */
+int hc_recent_distinct(Object **out, int max)
+{
+    int n = 0;
+    for (int i = 0; i < g_nhisto && n < max; i++) {
+        Object *c = hc_recent_at(i);
+        if (!c) continue;
+        int vu = 0;
+        for (int k = 0; k < n; k++) if (out[k] == c) { vu = 1; break; }
+        if (!vu) out[n++] = c;
+    }
+    return n;
+}
+
 void hc_free(Object *o)
 {
     if (!o) return;
@@ -6973,9 +6999,12 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         int courts = ci_equal(nom, "recent names");
         buf[0] = '\0';
         size_t pris = 0;
-        for (int i = 0; i < hc_recent_count(); i++) {
-            Object *c = hc_recent_at(i);
-            if (!c) continue;
+        /* Sans doublon, comme le menu Recent : « the recent cards » est la
+         * même liste, et la répétition n'y apprend rien de plus. */
+        Object *vues[HC_HISTO_MAX];
+        int nv = hc_recent_distinct(vues, HC_HISTO_MAX);
+        for (int i = 0; i < nv; i++) {
+            Object *c = vues[i];
             char d[160];
             if (courts) snprintf(d, sizeof d, "%s", c->name ? c->name : "");
             else        hc_describe(c, d, sizeof d);
@@ -10063,15 +10092,21 @@ int hc_go_back(void)
  * C'est ce que fait l'article Recent du menu Go : la palette de vignettes
  * d'HyperCard désignait une carte visitée, on la désigne par son nom.
  *
+ * Le rang est celui de la liste SANS DOUBLON — la même que montre le menu.
+ * Compter sur la pile brute ferait désigner par le cinquième article une
+ * autre carte que la cinquième affichée, dès qu'un aller-retour a inscrit
+ * deux fois la même.
+ *
  * L'historique n'est PAS gelé ici, contrairement à « go back ». Sauter à la
  * cinquième carte visitée est une navigation ordinaire — elle doit s'inscrire,
  * sans quoi un « Back » juste après repartirait d'où l'on venait et non d'où
  * l'on est. Seul « Back », qui retrace ses pas, doit s'en abstenir. */
 int hc_go_recent(int i)
 {
-    Object *c = hc_recent_at(i);
-    if (!c) return 0;
-    return v3_va_a(c);
+    Object *vues[HC_HISTO_MAX];
+    int n = hc_recent_distinct(vues, HC_HISTO_MAX);
+    if (i < 0 || i >= n) return 0;
+    return v3_va_a(vues[i]);
 }
 
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
