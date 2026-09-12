@@ -54,6 +54,15 @@ int main(void){
   essai("go to first marked card\n  put the short name of this card");
   essai("go to last marked card\n  put the short name of this card");
   essai("go to prev marked card\n  put the short name of this card");
+  /* SANS le « to » : HyperTalk l'admet partout, et c'est la forme qu'on écrit
+   * le plus souvent à la main. Rien ne la couvrait. */
+  essai("go next marked card\n  put the short name of this card");
+  essai("go first marked card\n  put the short name of this card");
+  essai("go prev marked card\n  put the short name of this card");
+  /* Les abréviations de « card », qu'un script d'époque emploie sans y
+   * penser. marked_card_ref les accepte ; personne ne le vérifiait. */
+  essai("go to next marked cd\n  put the short name of this card");
+  essai("go next marked cds\n  put the short name of this card");
 
   essai("set the marked of card \"Trois\" to false");
   essai("put the number of marked cards");

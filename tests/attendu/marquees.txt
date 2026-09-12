@@ -30,6 +30,21 @@
 ── go to prev marked card
   put the short name of this card
    Une
+── go next marked card
+  put the short name of this card
+   Trois
+── go first marked card
+  put the short name of this card
+   Une
+── go prev marked card
+  put the short name of this card
+   Trois
+── go to next marked cd
+  put the short name of this card
+   Une
+── go next marked cds
+  put the short name of this card
+   Trois
 ── set the marked of card "Trois" to false
 ── put the number of marked cards
    1
