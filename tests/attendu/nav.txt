@@ -73,5 +73,5 @@
         (pas de gestionnaire dans stack "T")
         ✗ message "openCard" non traité
       [message box] card "Une"
-      !! ne sait pas faire : go home
+      !! go : pile introuvable : Home
       [message box] card "Une"

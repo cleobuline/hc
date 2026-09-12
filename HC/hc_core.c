@@ -9932,7 +9932,7 @@ static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
     { const char *t = host_global("tool");
       emit(HC_TRACE, "   ✎ click at %d,%d (%s)", x, y, t ? t : "?"); }
     if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
-    else emit(HC_ERR, "   !! click : l'hôte ne gère pas le clavier");
+    else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
     set_result("");
     return 1;
 }
@@ -10119,7 +10119,23 @@ static int v3_va_pile(const char *nom)
     Object *cible = find_open_stack(nom);
     if (!cible && g_host && g_host->open_stack)
         cible = g_host->open_stack(nom);
-    if (!cible) return 0;              /* introuvable : ancien chemin */
+
+    /* Pile introuvable : on le DIT, au lieu de rendre 0.
+     *
+     * Rendre 0 renvoyait la ligne à l'ancien interprète, qui posait bien
+     * « No such stack ». Depuis que cette porte est fermée, le script
+     * recevait « ne sait pas faire : go to stack "X" » et « the result »
+     * valait « Can't understand » — un diagnostic faux : la commande était
+     * parfaitement comprise, c'est la pile qui manque. Le nom du call site ne
+     * laisse aucun doute, il n'y a rien d'autre à essayer.
+     *
+     * Trouvé par la batterie d'hôte minimal : sans open_stack, TOUT « go to
+     * stack » tombait dans ce cas. */
+    if (!cible) {
+        set_result("No such stack");
+        emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
+        return 1;
+    }
 
     Object *prem = NULL;
     for (int k = 0; k < cible->nparts; k++)
@@ -10434,7 +10450,18 @@ static int v3_cmd_save(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
     if (!chemin[0]) { set_result("Bad parameter"); return 1; }
 
-    if (g_host && g_host->save_stack && g_host->save_stack(pile, chemin))
+    /* Distinguer « l'hôte ne sait pas enregistrer » de « l'écriture a
+     * échoué ». Les deux donnaient « échec de l'écriture », ce qui accuse le
+     * disque alors que rien n'a été tenté — et envoie chercher un problème de
+     * permissions ou de place là où il n'y en a pas. Les autres rappels
+     * absents le disent déjà ainsi (« l'hôte ne gère pas les menus »). */
+    if (!g_host || !g_host->save_stack) {
+        set_result("Can't save stack");
+        emit(HC_ERR, "   !! save : l'hôte ne sait pas enregistrer");
+        return 1;
+    }
+
+    if (g_host->save_stack(pile, chemin))
         set_result("");
     else {
         emit(HC_ERR, "   !! save : échec de l'écriture : %s", chemin);
@@ -10485,7 +10512,20 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
 
     if (!pile && demarrer && g_host && g_host->load_stack)
         pile = g_host->load_stack(nom);
-    if (!pile) return 0;                  /* introuvable : ancien chemin */
+
+    /* Même raison qu'à v3_va_pile : l'ancien chemin disait « No such stack »,
+     * et depuis qu'il est fermé le script recevait « Can't understand ». Le
+     * « stop using » d'une pile qu'on n'utilisait pas n'est pas une erreur —
+     * la demande est satisfaite — d'où le silence dans ce cas. */
+    if (!pile) {
+        if (demarrer) {
+            set_result("No such stack");
+            emit(HC_ERR, "   !! using : pile introuvable : %s", nom);
+        } else {
+            set_result("");
+        }
+        return 1;
+    }
 
     /* La retirer d'abord, dans les deux cas : « stop » n'a que cela à faire,
      * et « start » s'en sert pour la remettre en tête. */

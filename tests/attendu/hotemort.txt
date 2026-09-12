@@ -1,0 +1,20 @@
+── hc_free de la pile : tout doit être annoncé
+   pile de 3 cartes, 2 parties        avis  13, non annoncés 0, doubles 0, inconnus 0
+
+── delete card : la carte ET ses parties
+   delete card a produit 3 avis (attendu 3 : la carte et ses 2 champs)
+   après hc_free du reste            avis  13, non annoncés 0, doubles 0, inconnus 0
+
+── delete part : un champ seul
+   delete part a produit 1 avis (attendu 1)
+   après hc_free du reste            avis   7, non annoncés 0, doubles 0, inconnus 0
+
+── « delete me » depuis un script
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   « delete me » a produit 1 avis (attendu 1)
+   hc_object_is_live après : 0 (attendu 0)
+   après hc_free du reste            avis   6, non annoncés 0, doubles 0, inconnus 0
+
+── la dernière carte d'un fond emporte le fond
+   supprimer la seule carte de F1 : 2 avis (la carte + son fond)
+   après hc_free du reste            avis   6, non annoncés 0, doubles 0, inconnus 0

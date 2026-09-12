@@ -1,0 +1,103 @@
+
+════ hôte muet : tous les rappels à NULL ════
+── answer "question"
+  put the result & "|" & it & "|"
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   |OK|
+── ask "question" with "defaut"
+  put the result & "|" & it & "|"
+   Cancel||
+── play "boing"
+── beep
+── choose browse tool
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+── drag from 1,2 to 3,4
+   [ERR]    !! drag : l'hôte ne gère pas la souris
+── click at 5,6
+   [ERR]    !! click : l'hôte ne gère pas la souris
+── type "abc"
+   [ERR]    !! type : l'hôte ne gère pas le clavier
+── visual effect dissolve
+── doMenu "Nouvelle carte"
+  put the result & "|"
+   [ERR]    !! doMenu : l'hôte ne gère pas les menus
+   |
+── go to stack "AbsolumentAbsente"
+  put the result & "|"
+   [ERR]    !! go : pile introuvable : AbsolumentAbsente
+   No such stack|
+── start using stack "AbsolumentAbsente"
+  put the result & "|"
+   [ERR]    !! using : pile introuvable : AbsolumentAbsente
+   No such stack|
+── save this stack as "/tmp/hc_muet.stack"
+  put the result & "|"
+   [ERR]    !! save : l'hôte ne sait pas enregistrer
+   Can't save stack|
+── print this card
+  put the result & "|"
+   [ERR]    !! print : l'hôte ne sait pas imprimer
+   Can't print|
+── put the diskSpace & "|" & the systemVersion & "|"
+   [ERR]    !! propriété ou fonction inconnue : diskSpace (v3, ligne 2 de button "B".t)
+── set the cursor to watch
+── select text of card field "x"
+── put the tool & "|"
+   browse tool|
+── open printing
+  print this card
+  close printing
+   [ERR]    !! ne sait pas faire : open printing
+   [ERR]    !! print : l'hôte ne sait pas imprimer
+   [ERR]    !! ne sait pas faire : close printing
+
+════ hôte qui répond par l'annulation ou le vide ════
+── answer "question"
+  put the result & "|" & it & "|"
+   ||
+── ask "question" with "defaut"
+  put the result & "|" & it & "|"
+   Cancel||
+── play "boing"
+── beep
+── choose browse tool
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+── drag from 1,2 to 3,4
+   [ERR]    !! drag : l'hôte ne gère pas la souris
+── click at 5,6
+   [ERR]    !! click : l'hôte ne gère pas la souris
+── type "abc"
+   [ERR]    !! type : l'hôte ne gère pas le clavier
+── visual effect dissolve
+── doMenu "Nouvelle carte"
+  put the result & "|"
+   [ERR]    !! doMenu : l'hôte ne gère pas les menus
+   |
+── go to stack "AbsolumentAbsente"
+  put the result & "|"
+   [ERR]    !! go : pile introuvable : AbsolumentAbsente
+   No such stack|
+── start using stack "AbsolumentAbsente"
+  put the result & "|"
+   [ERR]    !! using : pile introuvable : AbsolumentAbsente
+   No such stack|
+── save this stack as "/tmp/hc_muet.stack"
+  put the result & "|"
+   [ERR]    !! save : échec de l'écriture : /tmp/hc_muet.stack
+   Can't save stack|
+── print this card
+  put the result & "|"
+   [ERR]    !! print : l'hôte ne sait pas imprimer
+   Can't print|
+── put the diskSpace & "|" & the systemVersion & "|"
+   ||
+── set the cursor to watch
+── select text of card field "x"
+── put the tool & "|"
+   |
+── open printing
+  print this card
+  close printing
+   [ERR]    !! ne sait pas faire : open printing
+   [ERR]    !! print : l'hôte ne sait pas imprimer
+   [ERR]    !! ne sait pas faire : close printing

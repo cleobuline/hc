@@ -149,10 +149,10 @@ send "t" to me                              [v3] — retours de la v3 vers l'anc
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
 start using stack "z"                       [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    commande start: start using stack "z"    1
+[v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 refusée recours v3                   1
+[v3]    (rien)
 stop using stack "z"                        [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    commande stop: stop using stack "z"      1
+[v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 refusée recours v3                   1
+[v3]    (rien)
