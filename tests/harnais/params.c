@@ -1,5 +1,10 @@
-/* « the params » avec des paramètres énormes : le tampon fait 1 Mio, les
- * seize paramètres peuvent en porter seize. */
+/* « the params » avec des paramètres énormes : chacun peut remplir un tampon
+ * entier, et leur concaténation dépasse donc largement le plafond.
+ *
+ * Ce harnais est né d'un débordement réel — ASan avait signalé un « WRITE of
+ * size 3001 » — et il MESURE le plafond, donc sa référence bouge quand HC_VAL
+ * bouge. Ce n'est pas une régression : ce qu'il vérifie est que la longueur
+ * s'arrête exactement à HC_VAL - 1 au lieu d'écrire au-delà. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
