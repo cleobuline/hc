@@ -21,6 +21,20 @@
 ── put 1e3 * 2 & "/" & 6e2 / 3
    2000/200
 
+=== collé, sans espaces ===
+── put 1e3+1
+   1001
+── put 1e3+1e1
+   1010
+── put 1e+3+1
+   1001
+── put 1e-3+1
+   1.001
+── put 2e3-1e3
+   1000
+── put 0-1e3+1
+   -999
+
 === un littéral se rend tel quel, comme 007 et 1.50 ===
 ── put 007 & "/" & 1.50 & "/" & 1e3
    007/1.50/1e3

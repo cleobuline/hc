@@ -46,6 +46,18 @@ int main(void){
   essai("put 2.5e-3 + 0");
   essai("put 1e3 * 2 & \"/\" & 6e2 / 3");
 
+  /* SANS ESPACES : c'est là que le lexeur doit trancher. Dans « 1e+3+1 », le
+   * premier « + » appartient à l'exposant et le second est l'addition — la
+   * règle « un chiffre doit suivre le signe » ne suffit pas à le dire, c'est
+   * la consommation gloutonne de l'exposant qui le fait. */
+  printf("\n=== collé, sans espaces ===\n");
+  essai("put 1e3+1");
+  essai("put 1e3+1e1");
+  essai("put 1e+3+1");
+  essai("put 1e-3+1");
+  essai("put 2e3-1e3");
+  essai("put 0-1e3+1");
+
   printf("\n=== un littéral se rend tel quel, comme 007 et 1.50 ===\n");
   essai("put 007 & \"/\" & 1.50 & \"/\" & 1e3");
 
