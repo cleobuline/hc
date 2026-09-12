@@ -1,0 +1,23 @@
+── sans verrou : un avis par écriture
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   avis 5, champs distincts 1, global 0
+
+── verrouillé : un avis par champ TOUCHÉ, pas par écriture
+   avis 2, champs distincts 2, global 0
+   (attendu : 2 avis pour 2 champs, 51 écritures, aucun global)
+
+── un gestionnaire qui verrouille et sort sans déverrouiller
+   à la sortie du gestionnaire : avis 1, champs 1, global 0
+   (attendu : 1 avis — le verrou est relâché tout seul)
+   et l'écriture suivante passe : avis 1 (attendu 1, pas 0)
+
+── verrouillé, dix champs, plusieurs écritures chacun
+   avis 10, champs distincts 10, global 0
+   (attendu : 10 avis pour 10 champs, 30 écritures, aucun global)
+
+── au-delà du plafond : retombée sur le rafraîchissement global
+   avis 0, champs distincts 0, global 1
+   (attendu : 0 avis, et global = 1 — le noyau renonce à la liste)
+
+── le verrou se referme proprement : le tour suivant est normal
+   avis 1, champs distincts 1, global 0
