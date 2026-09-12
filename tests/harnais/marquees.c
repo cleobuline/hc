@@ -15,6 +15,17 @@
 #include <string.h>
 static void ma_ligne(HcLineKind k,int d,const char *t){(void)d;
   if(k==HC_MSG)printf("   %s\n",t); else if(k==HC_ERR)printf("   [ERR] %s\n",t);}
+/* « print marked cards » est le troisième lecteur du marquage, après la
+ * navigation et le comptage. Il passe par l'hôte, donc c'est l'hôte qui dit
+ * ce qu'on lui a demandé d'imprimer — et c'est la seule façon de le vérifier
+ * d'ici. Rien ne le couvrait : les harnais d'impression existants ne testent
+ * que « print card », « print all cards » et « print card 1 to 3 ». */
+static void mon_print(Object **cartes, int n){
+  printf("   [hôte] imprimer %d carte(s) :", n);
+  for (int i = 0; i < n; i++)
+    printf(" %s", cartes[i]->name ? cartes[i]->name : "?");
+  printf("\n");
+}
 static Object *b;
 static void essai(const char *corps){
   char s[512]; snprintf(s,sizeof s,"on t\n  %s\nend t\n",corps);
@@ -32,7 +43,8 @@ static void etat(Object *st,const char *titre){
   }
 }
 int main(void){
-  static HcHost h;memset(&h,0,sizeof h);h.line=ma_ligne;hc_set_host(&h);
+  static HcHost h;memset(&h,0,sizeof h);h.line=ma_ligne;h.print_cards=mon_print;
+  hc_set_host(&h);
   Object *st=hc_new_stack("M");hc_register_stack(st);
   Object *bg=hc_new_background(st,"F");
   Object *c1=hc_new_card(st,bg,"Une");
@@ -54,6 +66,15 @@ int main(void){
   essai("go to first marked card\n  put the short name of this card");
   essai("go to last marked card\n  put the short name of this card");
   essai("go to prev marked card\n  put the short name of this card");
+  /* SANS le « to » : HyperTalk l'admet partout, et c'est la forme qu'on écrit
+   * le plus souvent à la main. Rien ne la couvrait. */
+  essai("go next marked card\n  put the short name of this card");
+  essai("go first marked card\n  put the short name of this card");
+  essai("go prev marked card\n  put the short name of this card");
+  /* Les abréviations de « card », qu'un script d'époque emploie sans y
+   * penser. marked_card_ref les accepte ; personne ne le vérifiait. */
+  essai("go to next marked cd\n  put the short name of this card");
+  essai("go next marked cds\n  put the short name of this card");
 
   essai("set the marked of card \"Trois\" to false");
   essai("put the number of marked cards");
@@ -67,6 +88,14 @@ int main(void){
         !strcmp(st->parts[i]->name, "Deux")) st->parts[i]->marked = 1;
   essai("put the number of marked cards");
   essai("put the marked of card \"Deux\"");
+
+  /* Le troisième lecteur du marquage : l'impression. */
+  printf("── print marked cards\n");
+  essai("print marked cards");
+  essai("print marked card");
+  essai("print all cards");
+  essai("mark all cards\n  print marked cards");
+  essai("unmark all cards\n  print marked cards");
 
   /* Et cela doit survivre à l'enregistrement. */
   printf("── enregistrement puis relecture\n");

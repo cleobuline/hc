@@ -21,7 +21,7 @@ int main(void)
     fld->x = 10; fld->y = 10; fld->w = 300; fld->h = 200;
     hc_set_current_card(card1);
 
-    hc_set_script(fld, slurp("donnees/calendrier_complet.txt"));
+    { char *sc = slurp("donnees/calendrier_complet.txt"); hc_set_script(fld, sc); free(sc); }
     hc_set_script(card1,
         "on openCard\n"
         "  send \"updateCalendar\" to card field \"calendar\"\n"

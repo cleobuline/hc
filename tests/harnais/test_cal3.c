@@ -27,6 +27,7 @@ int main(void)
 
     char *script = slurp("donnees/calendrier_court.txt");
     hc_set_script(fld, script);
+    free(script);              /* hc_set_script a copié : le tampon peut partir */
 
     hc_set_script(btn,
         "on mouseUp\n"

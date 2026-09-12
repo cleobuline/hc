@@ -49,5 +49,11 @@ int main(int argc, char **argv){
     printf("verdict  : la v3 %s ce script\n",
            (sain && a && (an.nerreurs == 0 || structure_ok)) ? "ACCEPTE" : "REFUSE");
     fautes(a, src);
+    /* Rendre ce qu'on a pris. Un harnais qui fuit apprend à ignorer les
+     * rapports de fuite — et c'est justement l'angle mort qui vient de laisser
+     * passer une vraie fuite du noyau pendant deux jours. */
+    hct_reserve_libere(&r);
+    hct_lot_libere(&lot);
+    free(src);
     return 0;
 }

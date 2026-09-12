@@ -1,5 +1,6 @@
 1. sauvegarde normale        : code 0, 40215 octets
-2. le .tmp a disparu         : oui
+2. aucun temporaire resté    : oui
 3. disque plein en cours      : code -1 (doit être -1)
+3b. ni après l'échec         : oui
 4. l'ancienne pile            : 40215 octets (était 40215) -> INTACTE
 5. et elle se relit           : oui

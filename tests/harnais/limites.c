@@ -75,4 +75,26 @@ int main(void){
   essai("put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)");
   essai("put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)");
 
+  /* Les TROIS chemins d'appel doivent refuser pareil. La fonction refusait
+   * déjà ; le message et « send » tronquaient en silence, chacun ayant son
+   * propre plafond recopié. Le contrôle est maintenant au point de passage
+   * obligé, hc_send_args_k_body, et il n'y a plus qu'une limite dans le
+   * noyau. */
+  printf("=== la même limite sur les trois chemins d'appel ===\n");
+  hc_set_script(st,
+    "on recois a,b,c,d,e,f,g,h,i,j,k,l,m,n,o\n"
+    "  put \"reçu \" & the paramCount & \" arguments, dernier = \" & param(15)\n"
+    "end recois\n"
+    "function rend a,b,c,d,e,f,g,h,i,j,k,l,m,n,o\n"
+    "  return \"reçu \" & the paramCount\n"
+    "end rend\n");
+  essai("recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\n  put the result & \"|\"");
+  essai("recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16\n  put the result & \"|\"");
+  essai("put rend(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)");
+  essai("put rend(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)");
+  essai("send \"recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\" to this stack\n"
+        "  put the result & \"|\"");
+  essai("send \"recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16\" to this stack\n"
+        "  put the result & \"|\"");
+
   hc_unregister_stack(st);hc_free(st);return 0;}

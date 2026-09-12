@@ -74,6 +74,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>    /* close, pour le fichier temporaire de hc_save */
 
 /* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
  * contre-obliques qu'elle contient. Sans ça, un objet nommé
@@ -267,14 +268,28 @@ int hc_save(Object *stack, const char *path)
 {
     if (!stack || stack->type != OBJ_STACK || !path) return -1;
 
+    /* Nom temporaire IMPRÉVISIBLE, par mkstemp, et non « <chemin>.tmp ».
+     *
+     * Le nom fixe avait deux défauts dans un répertoire partagé : il écrasait
+     * sans prévenir un fichier qui portait déjà ce nom, et il suffisait d'y
+     * poser un lien symbolique pour faire écrire la sauvegarde ailleurs.
+     * mkstemp crée le fichier lui-même, en exclusivité, avec un nom que
+     * personne ne peut deviner.
+     *
+     * Il reste dans le MÊME répertoire que la destination : rename() n'est
+     * atomique qu'à l'intérieur d'un système de fichiers, et c'est cette
+     * atomicité qui garantit qu'une sauvegarde interrompue laisse l'original
+     * intact. */
     size_t lp = strlen(path);
-    char *tmp = malloc(lp + 5);
+    char *tmp = malloc(lp + 12);
     if (!tmp) return -1;
     memcpy(tmp, path, lp);
-    memcpy(tmp + lp, ".tmp", 5);
+    memcpy(tmp + lp, ".XXXXXX", 8);
 
-    FILE *f = fopen(tmp, "w");
-    if (!f) { free(tmp); return -1; }
+    int fd = mkstemp(tmp);
+    if (fd < 0) { free(tmp); return -1; }
+    FILE *f = fdopen(fd, "w");
+    if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
 
     fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
 
