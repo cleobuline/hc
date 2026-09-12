@@ -53,9 +53,22 @@
    2
 ── put the marked of card "Deux"
    true
+── print marked cards
+── print marked cards
+   [hôte] imprimer 2 carte(s) : Une Deux
+── print marked card
+   [hôte] imprimer 2 carte(s) : Une Deux
+── print all cards
+   [hôte] imprimer 3 carte(s) : Une Deux Trois
+── mark all cards
+  print marked cards
+   [hôte] imprimer 3 carte(s) : Une Deux Trois
+── unmark all cards
+  print marked cards
+   [ERR]    !! print : rien à imprimer
 ── enregistrement puis relecture
    hc_save = 0 (0 = réussi)
 ── la pile relue
-   carte 1 (Une) : marquée
-   carte 2 (Deux) : marquée
+   carte 1 (Une) : -
+   carte 2 (Deux) : -
    carte 3 (Trois) : -
