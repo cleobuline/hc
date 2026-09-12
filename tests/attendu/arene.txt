@@ -1,0 +1,13 @@
+── profondeur 5, 20 évaluations par niveau (attendu 355)
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   355
+   saturations : 0
+── profondeur 30, 20 évaluations par niveau (attendu 2130)
+   2130
+   saturations : 0
+── profondeur 55, 20 évaluations par niveau (attendu 3905)
+   3905
+   saturations : 0
+── profondeur 62, 20 évaluations par niveau (attendu 4402)
+   4402
+   saturations : 0

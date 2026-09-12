@@ -99,41 +99,41 @@ static const char *quoted(const char *s, char *out, int outlen)
  * (`on boum / send "boum" to me / end boum`) épuise la pile C
  * et le programme meurt. Le vrai HyperCard répondait
  * « Too much recursion » ; on fait pareil, en douceur. */
-/* Taille d'une valeur manipulee par l'interpreteur : variables, arguments,
- * proprietes. C'est ce plafond qui limite « get the script of me » ; un
- * script plus long est tronque, et le reecrire le mutile.
+/* Taille d'une valeur manipulée par le PONT vers l'ancien évaluateur :
+ * variables, arguments, propriétés, tout ce qui voyage dans un « char *out ».
+ * Le chemin v3 n'en dépend plus — HctValeur alloue son texte à sa taille — mais
+ * arena_buf sert encore ces tampons, tous dimensionnés au plafond.
  *
- * Les tampons vivent desormais dans l'arene (voir plus bas), pas sur la
- * pile. Ce reglage ne coute donc plus de profondeur de recursion, seulement
- * de la memoire. Mesures sur le champ Calendrier et sur une recursion nue :
+ * Ce plafond a d'abord été 16 Ko, puis monté jusqu'à 1 Mio pour que « read from
+ * file » cesse de tronquer. Il est redescendu à 64 Ko, parce qu'à 1 Mio
+ * L'ARÈNE SATURAIT SUR UN SCRIPT LÉGAL et rendait de mauvais résultats.
  *
- *                      pile / niveau     arene au pic (profondeur 63)
- *   avant l'arene        306 752 o        --        (plafond : 26 niveaux)
- *   apres, HC_VAL 16 Ko    6 720 o        49 Mo
- *   apres, HC_VAL 64 Ko    6 720 o       202 Mo
+ * L'arène plafonne à 1 Go, soit 1 024 tampons à 1 Mio. Une récursion par
+ * message en consomme une trentaine par niveau : la saturation arrivait donc
+ * vers le 32e niveau, pour un plafond de profondeur de 64. Passé ce point,
+ * arena_buf rend g_apanic — un tampon STATIQUE PARTAGÉ — et les valeurs
+ * s'écrasent mutuellement. Mesuré, récursion à 63 niveaux :
  *
- * 16 Ko couvre tres largement les scripts d'epoque (celui du Calendrier fait
- * 9,1 Ko) et garde le pic d'arene raisonnable. L'arene retombe a zero entre
- * deux commandes, et une boucle de 20 000 tours n'y consomme que 700 Ko :
- * la liberation est bien par instruction, pas par gestionnaire.
+ *                 résultat            pic mémoire
+ *   1 Mio      2272 au lieu de 4473     saturé
+ *   256 Ko     juste                     38 Mo
+ *   64 Ko      juste                     14 Mo
  *
- * Le vrai correctif reste a venir : allouer chaque valeur a sa taille reelle
- * plutot qu'au plafond. La plupart des valeurs font quelques octets ; ce sont
- * les ~50 tampons vivants par niveau, tous dimensionnes au maximum, qui font
- * le pic. Cela demande de remplacer les signatures (char *out, int outlen)
- * par un type chaine dynamique — un chantier a part entiere. */
-/* Taille d'une valeur HyperTalk : variable, champ, résultat d'expression.
+ * 64 Ko laisse la marge la plus large : aucune saturation même à 400
+ * évaluations par niveau, vingt fois le cas mesuré. Le prix est que
+ * « get the script of » et « read from file » tronquent à 64 Ko au lieu d'un
+ * mégaoctet — troncature ANNONCÉE, et toute réécriture du script est refusée
+ * (voir g_script_clipped), donc elle ne perd rien en silence. Un script
+ * d'époque est très loin de cette taille : celui du Calendrier fait 9,1 Ko.
  *
- * 16 Ko à l'origine, ce qui tronquait tout fichier plus gros dès l'arrivée de
- * « read from file ». L'arène qui sert ces tampons est allouée à la demande,
- * par blocs de 4 Mo : monter cette limite ne coûte donc rien tant que les
- * valeurs restent petites, et ne se paie qu'au moment où l'on manipule
- * vraiment un gros texte.
+ * 256 Ko reste disponible d'une ligne si un jour un script dépasse 64 Ko :
+ * même justesse, 24 Mo de pic en plus, quatre fois moins de marge.
  *
- * 256 Ko couvre les usages réels — un fichier de données, un champ de plusieurs
- * milliers de lignes — sans permettre à un script emballé d'épuiser la mémoire
- * en quelques tours de boucle. */
-#define HC_VAL 1048576
+ * Le vrai correctif reste à venir : allouer chaque valeur à sa taille réelle
+ * plutôt qu'au plafond. Cela demande de remplacer les signatures
+ * (char *out, int outlen) par un type chaîne dynamique — un chantier à part
+ * entière, qui rendrait ce plafond sans objet. */
+#define HC_VAL 65536
 
 /* Le garde-fou de recursion peut revenir a sa valeur d'origine : a 6,7 Ko de
  * pile par niveau, 64 niveaux ne coutent que 436 Ko sur les 8 Mo du fil
