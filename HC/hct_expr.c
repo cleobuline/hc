@@ -848,8 +848,40 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
         }
     }
 
-    /* Un adjectif ne vaut que s'il qualifie quelque chose. */
-    
+    /* « marked cards » : « marked » qualifie le TYPE D'OBJET, pas la propriété
+     * qui suit. Même piège que « recent cards » ci-dessus, pour la même
+     * raison — « cards » est un type d'objet, donc la mécanique des adjectifs
+     * (qui ne s'applique qu'au chemin des noms nus) aurait laissé tomber le
+     * mot, et « the number of marked cards » aurait compté TOUTES les cartes.
+     *
+     * En pratique l'analyseur refusait carrément la ligne : « texte inattendu
+     * en fin de ligne ». Un marquage qu'on peut poser et lire mais pas
+     * compter ne sert à rien.
+     *
+     * On analyse la référence normalement, puis on pose son drapeau « marque ».
+     * Le nœud reste un HCTN_OBJET au pluriel nu, donc « the number of … »
+     * prend bien le chemin du comptage — lequel lit le drapeau et ne retient
+     * que les cartes marquées. */
+    if (mot_ici(a, "marked")) {
+        HctAnalyseur b = *a; b.i = a->i + 1;
+        if (reference_ici(&b)) {
+            HctJeton jm = *ici(a);
+            avance(a);
+            HctNoeud *r = reference(a);
+            if (r) {
+                r->marque = 1;
+                /* Le jeton s'étend aussi d'un mot vers la gauche, pour que les
+                 * messages d'erreur et la reconstitution du texte source
+                 * nomment « marked cards » et non « cards ». */
+                const char *fin = r->jeton.deb + r->jeton.len;
+                r->jeton.deb = jm.deb;
+                r->jeton.len = (int)(fin - jm.deb);
+                r->jeton.col = jm.col;
+            }
+            return r;
+        }
+    }
+
     /* Un adjectif ne vaut que s'il qualifie quelque chose.
      *
      * On retient son JETON, pas son texte : le nœud qui suivra étendra ses

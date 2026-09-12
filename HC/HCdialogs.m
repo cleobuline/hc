@@ -184,6 +184,7 @@ static NSTextField *gBgName = nil;
 static NSPanel     *gCardPanel = nil;
 static Object      *gCardTarget = NULL;
 static NSTextField *gCardName = nil;
+static NSButton    *gCardMarked = nil;
 
 static NSPanel     *gStackPanel = nil;
 
@@ -659,6 +660,20 @@ void hc_sync_size_field(Object *o)
     [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
     [c addSubview:ids];
 
+    /* « Card Marked », comme dans l'Info carte de HyperCard 2.
+     *
+     * Le marquage existait partout AILLEURS — « mark this card », « set the
+     * marked of card 3 to true », « go next marked card », « the number of
+     * marked cards », et il s'enregistre avec la pile — mais cette boîte, qui
+     * est l'endroit où on s'attend à le trouver, ne le montrait pas. Marquer
+     * une carte à la main demandait de passer par la boîte de messages. */
+    gCardMarked = [[NSButton alloc] initWithFrame:NSMakeRect(16, 60, 160, 20)];
+    [gCardMarked setButtonType:NSButtonTypeSwitch];
+    [gCardMarked setTitle:@"Card Marked"];
+    [gCardMarked setState:card->marked ? NSControlStateValueOn
+                                       : NSControlStateValueOff];
+    [c addSubview:gCardMarked];
+
     NSButton *(^mkCD)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
         NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
         [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
@@ -677,9 +692,12 @@ void hc_sync_size_field(Object *o)
     if (gCardTarget) {
         free(gCardTarget->name);
         gCardTarget->name = strdup([[gCardName stringValue] UTF8String]);
+        gCardTarget->marked =
+            ([gCardMarked state] == NSControlStateValueOn) ? 1 : 0;
     }
     [gCardPanel close];
     gCardTarget = NULL;
+    gCardMarked = nil;
     [self setNeedsDisplay:YES];
 }
 - (void)showBackgroundInfo {
@@ -837,6 +855,7 @@ void hc_sync_size_field(Object *o)
 - (void)cardCancel:(id)sender {
     [gCardPanel close];
     gCardTarget = NULL;
+    gCardMarked = nil;
 }
 
 - (void)cardScript:(id)sender {

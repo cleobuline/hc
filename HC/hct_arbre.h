@@ -126,6 +126,16 @@ struct HctNoeud {
     HctDesignateur designateur;
     HctRelatif     relatif;
 
+    /* « marked cards » : le marquage FILTRE l'ensemble désigné. Ce n'est ni un
+     * désignateur — il ne choisit pas une carte — ni une portée, mais un
+     * tamis posé sur le type. « the number of marked cards » n'en compte que
+     * les marquées.
+     *
+     * Étendre le jeton du nœud d'un mot vers la gauche ne suffisait pas :
+     * l'évaluateur travaille sur l'ARBRE, et v3_nombre_objets, qui ne lit pas
+     * le texte source, comptait toutes les cartes. */
+    char           marque;
+
     /* « the » précédait ce nœud dans le source.
      *
      * L'analyseur le consommait sans laisser de trace, si bien que « the

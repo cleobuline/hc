@@ -6447,7 +6447,26 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
     Object *card  = g_current_card;
     Object *stack = owning_stack(card);
 
-    if (obj->typeobj == HCT_OBJ_CARD) { *out = card_count(stack); return 1; }
+    if (obj->typeobj == HCT_OBJ_CARD) {
+        /* « the number of marked cards » : le même comptage, tamisé. Seules
+         * les cartes se marquent — « marked buttons » n'existe pas —, donc le
+         * drapeau est refusé plus bas pour tout autre type. */
+        if (obj->marque) {
+            int m = 0;
+            for (int i = 0; stack && i < stack->nparts; i++)
+                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->marked)
+                    m++;
+            *out = m;
+            return 1;
+        }
+        *out = card_count(stack);
+        return 1;
+    }
+
+    /* Le marquage ne concerne que les cartes. On REFUSE plutôt que d'ignorer
+     * le mot : « the number of marked buttons » rendrait sinon le nombre de
+     * boutons, ce qui n'est la réponse à aucune question. */
+    if (obj->marque) return 0;
 
     if (obj->typeobj == HCT_OBJ_BACKGROUND) {
         int n = 0;
@@ -10114,13 +10133,57 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
     if (i >= n->nfils) return 0;
 
-    /* « go to next marked card » : le marquage filtre la navigation, et
-     * hct_resout n'en sait rien — c'est marked_card_ref qui s'en charge, sur
-     * le texte. Ancien chemin. */
+    /* « go to next marked card » : le marquage FILTRE la navigation. La carte
+     * visée n'est pas la suivante de la pile, mais la suivante qui porte la
+     * marque — et hct_resout n'en sait rien.
+     *
+     * Cette ligne partait à l'ancien interprète. Depuis que la porte est
+     * fermée elle ne partait plus nulle part : « ne sait pas faire : go to
+     * next marked card », alors que « mark this card » et « the marked of
+     * card 3 » marchaient très bien. Un marquage qu'on peut poser et lire mais
+     * pas parcourir ne sert à rien.
+     *
+     * On la traite donc ici. La SÉLECTION reste celle de marked_card_ref — du
+     * parcours de cartes, rien de plus, et déjà éprouvé — mais la NAVIGATION
+     * est celle de la v3 : v3_va_a envoie les six messages dans l'ordre
+     * d'HyperCard et inscrit l'arrivée dans l'historique, ce que l'ancien
+     * chemin ne faisait pas.
+     *
+     * Le texte se reconstitue depuis l'arbre : les jetons pointent dans le
+     * script d'origine, et « next marked card » y est contigu. On saute le
+     * verbe et le « to » facultatif, que marked_card_ref n'attend pas. */
     for (int k = i; k < n->nfils; k++) {
-        char m[16];
+        /* Le mot peut se présenter de deux façons. Quand il précède un type
+         * d'objet — « marked card » — l'analyseur l'absorbe dans la référence
+         * et pose son drapeau ; seul reste un nœud dont le drapeau parle.
+         * Ailleurs il subsiste comme un mot nu. Les deux comptent : ne
+         * chercher que le mot nu laissait « go to next marked card » repartir
+         * sur le chemin ordinaire, qui ne retenait que « next » et changeait
+         * de carte sans regarder la marque. */
+        char m[24];
         v3_brut(n->fils[k], m, sizeof m);
-        if (ci_equal(m, "marked")) return 0;
+        if (!(n->fils[k] && n->fils[k]->marque) && !ci_equal(m, "marked"))
+            continue;
+
+        ARENA_MARK;
+        char *txt = arena_buf();
+        v3_source(n, txt, HC_VAL);
+        const char *a = skip_spaces(txt);
+        char verbe[16];
+        a = skip_spaces(next_word(a, verbe, sizeof verbe));   /* « go » */
+        if (ci_word(a, "to")) a = skip_spaces(a + 2);
+
+        int concerne = 0;
+        Object *cible = marked_card_ref(a, &concerne);
+        ARENA_FREE;
+
+        /* concerne = 0 : ce n'était pas une référence de carte marquée malgré
+         * le mot — on laisse le chemin ordinaire s'en occuper. */
+        if (!concerne) break;
+        if (!cible) { set_result("No such card"); return 1; }
+        set_result("");
+        v3_va_a(cible);
+        return 1;
     }
 
     const HctNoeud *ref = n->fils[i];
