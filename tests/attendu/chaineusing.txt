@@ -1,0 +1,28 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── huit piles déclarées en usage
+   Lib1
+Lib2
+Lib3
+Lib4
+Lib5
+Lib6
+Lib7
+Lib8
+
+── appel de chaque service depuis un bouton
+  service1 :
+   répondu par Lib1
+  service2 :
+   répondu par Lib2
+  service3 :
+   répondu par Lib3
+  service4 :
+   répondu par Lib4
+  service5 :
+   répondu par Lib5
+  service6 :
+   répondu par Lib6
+  service7 :
+   répondu par Lib7
+  service8 :
+   répondu par Lib8

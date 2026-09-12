@@ -510,8 +510,23 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         r = hct_val_nombre((unsigned char)args[0].txt[0]); fait = 1;
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "random")) {
+        /* « random(10^300) » convertissait un double hors bornes en long :
+         * comportement indéfini, exactement celui qu'on vient de bannir des
+         * rangs de morceaux. Le test porte sur le DOUBLE, avant conversion —
+         * après, il ne veut plus rien dire. NaN échoue les deux comparaisons
+         * et tombe donc dans le refus.
+         *
+         * Le plafond est celui de hct_vers_rang plutôt que LONG_MAX : « rand()
+         * % m » ne tire de toute façon qu'au plus RAND_MAX, donc un m plus
+         * grand ne rend pas la fonction plus riche, seulement moins honnête. */
         double m = hct_vers_nombre(args[0].txt);
-        if (m < 1) m = 1;
+        if (!(m >= 1 && m <= (double)HCT_RANG_MAX)) {
+            if (m >= 1) {
+                hct_ctx_faute(ctx, n, "random : borne hors limites");
+                return hct_val_vide();
+            }
+            m = 1;                       /* « random(0) » vaut 1, comme avant */
+        }
         r = hct_val_nombre((double)(rand() % (long)m + 1)); fait = 1;
     }
     if (!fait && nargs == 2 && !strcasecmp(nom, "offset")) {

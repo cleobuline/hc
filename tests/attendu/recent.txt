@@ -42,7 +42,12 @@
      2  card "Trois"
 ── rang inexistant
    hc_go_recent(99) = 0
+── hc_go_card
+   vers "Trois"        = 1
+   Trois
+   NULL                = 0
+   un bouton, pas carte= 0
 ── the recent names
-   Deux
+   Trois
+Deux
 Une
-Trois

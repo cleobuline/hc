@@ -125,7 +125,14 @@ static NSMenu *gRecentMenu = nil;
                                     action:@selector(goRecentItem:)
                              keyEquivalent:@""];
         [mi setTarget:self];
-        [mi setTag:i];
+        /* La CARTE elle-même, pas son rang.
+         *
+         * Le rang était relu au clic dans une liste reconstruite : entre
+         * l'ouverture du menu et le clic, une navigation — un « on idle »
+         * suffit — pouvait changer l'historique, et le rang désignait alors
+         * une autre carte. Un pointeur ne bouge pas, et hc_go_card vérifie
+         * qu'il vit encore avant de s'en servir. */
+        [mi setRepresentedObject:[NSValue valueWithPointer:c]];
         [menu addItem:mi];
     }
     free(vues);
@@ -138,13 +145,19 @@ static NSMenu *gRecentMenu = nil;
     }
 }
 
-/* Le rang est dans le tag : le TITRE ne suffirait pas à désigner la carte,
- * deux cartes pouvant porter le même nom, et l'historique en garde souvent
- * plusieurs de la même pile. */
+/* La carte voyage dans representedObject : le TITRE ne suffirait pas à la
+ * désigner — deux cartes peuvent porter le même nom — et un rang ne survit pas
+ * à un historique qui change pendant que le menu est ouvert. */
 - (void)goRecentItem:(id)sender
 {
+    NSValue *v = [sender representedObject];
+    Object *cible = v ? (Object *)[v pointerValue] : NULL;
+    if (!cible) return;
+
     [gView prepareForCardChange];
-    if (!hc_go_recent((int)[sender tag])) return;
+    /* hc_go_card refuse une carte disparue depuis la construction du menu :
+     * supprimer une carte laisse un article qui la nomme encore. */
+    if (!hc_go_card(cible)) return;
 
     /* Même raison qu'au-dessus dans goMenuItem: : un clic de menu ne fait
      * tourner aucune boucle, personne ne consomme le drapeau du noyau, et
