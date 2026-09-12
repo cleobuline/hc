@@ -1,0 +1,84 @@
+function calData
+  return "2026,12,1,0,0,0,3,"
+end calData
+
+on updateCalendar
+  convert the date to dateItems
+  if item 1 to 2 of calData() <> item 1 to 2 of it then drawCalendar it
+  else
+    put item 3 of calData() into oldDay
+    put item 3 of it into newDay
+    if newDay <> oldDay then markToday newDay,oldDay
+  end if
+  if item 1 to 3 of calData() <> item 1 to 3 of it
+  then updateDateData it,item 8 of calData()
+end updateCalendar
+
+function monthNameData
+  return "January,February,March,April,May,June,July," &    "August,September,October,November,December"
+end monthNameData
+
+function dayNameData
+  return "Sun Mon Tue Wed Thu Fri Sat,4"
+end dayNameData
+
+function spaces
+  return "                                        "
+end spaces
+
+function daysInMonth theDateItems
+  get item 2 of theDateItems
+  if (it is in "1,3,5,7,8,10") or (it = 12) then return 31
+  else if (it is in "4,6,9,11") then return 30
+  else
+    if (item 1 of theDateItems mod 400 = 0) or      (item 1 of theDateItems mod 100 <> 0) and      (item 1 of theDateItems mod 4 = 0) then return 29
+    else return 28
+  end if
+end daysInMonth
+
+on markToday theNewDay,theOldDay
+  put item 8 of calData() into fieldType
+  put number of lines in me into numLines
+  if theOldDay <> empty
+  then set textStyle of word theOldDay of line 3 to numLines of me to plain
+  set textStyle of word theNewDay of line 3 to numLines of me to bold,underline
+end markToday
+
+on drawCalendar theDateItems
+  set cursor to watch
+  lock screen
+  put item 1 of theDateItems into theYear
+  put item 2 of theDateItems into theMonth
+  put item 3 of theDateItems into theDay
+  put daysInMonth(theDateItems) into daysInThisMonth
+  put last item of dayNameData() into colWidth
+  put char 1 to colWidth of spaces() into emptyColumn
+  put 1 into item 3 of theDateItems
+  convert theDateItems to dateItems
+  put item 7 of theDateItems into theDayOfWeek
+  put item theMonth of monthNameData() && theYear & return into me
+  put item 1 of dayNameData() & return after me
+  if (theDayOfWeek - 1) <> 0
+  then put char 1 to ((theDayOfWeek - 1) * colWidth) of spaces() into theDayNumbers
+  put 0 into theReturns
+  repeat with aMonthDay = 1 to daysInThisMonth
+    set cursor to busy
+    put emptyColumn into currentColumn
+    if length(aMonthDay) = 1
+    then put aMonthDay into char 2 of currentColumn
+    else put aMonthDay into char 1 to length(aMonthDay) of currentColumn
+    put currentColumn after theDayNumbers
+    if (length(theDayNumbers) - theReturns) mod (colWidth * 7) = 0
+    then
+      put return after theDayNumbers
+      add 1 to theReturns
+    end if
+  end repeat
+  put theDayNumbers into line 3 of me
+  markToday theDay
+  unlock screen
+end drawCalendar
+
+on updateDateData dateItemsData,myLoc
+  put "noop for test"
+end updateDateData
