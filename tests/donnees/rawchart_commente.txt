@@ -1,0 +1,212 @@
+-- ∞∞∞∞∞∞∞∞
+-- Graph Maker 2.2
+--
+-- THE MESSAGE HANDLERS IN THIS SCRIPT:
+-- drawChart,doPieChart,doLegend,closeField,exitField,updateTotals
+-- openCard,closeCard
+--
+-- THE FUNCTION HANDLERS IN THIS SCRIPT:
+-- getPattern,calcPercents,totalValues
+-- ∞∞∞∞∞∞∞∞
+--
+on drawChart
+  if bg field data is not empty then
+    showInfo false
+    checkUserCancel
+    put stripReturns(bg fld "Labels") into labels
+    put validatedData(stripReturns(bg fld "Data")) into data
+    if data is empty or number of lines in data = 1 then exit drawChart
+    put stripReturns(bg fld "Labels Title") into graphTitle
+    put stripReturns(bg fld "Graph Title") into legendTitle
+    put rect of bg btn "Frame" into chartRect
+    put rect of bg btn "Legend" into legendRect
+    updateTotals
+    checkUserCancel
+    clearScreen
+    doPieChart chartRect,data,graphTitle
+    doLegend labels,data,legendTitle
+    put true into bg fld "Drew Data"
+    reset paint
+  else
+    answer "Chart can not be drawn without data." with "Ok"
+  end if
+end drawChart
+
+on doPieChart chartRect,pieData,title
+  reset paint
+  set cursor to watch
+  checkUserCancel
+  put number of lines in pieData into dataCount
+  put item 1 of chartRect into chartLeft
+  put item 2 of chartRect into chartTop
+  put item 3 of chartRect into chartRight
+  put item 4 of chartRect into chartBottom
+  add 10 to chartLeft
+  subtract 10 from chartRight
+  add 25 to chartTop
+  subtract 8 from chartBottom
+  put chartRight - chartLeft into chartWidth
+  put chartBottom - chartTop into chartHeight
+  choose text tool
+  setFont geneva,10,center,bold
+  click at (chartLeft + chartWidth div 2),(chartTop - 10)
+  type line 1 of title
+  put chartTop into pieTop
+  put round(min(chartWidth,chartHeight)) into pieDiameter
+  put chartLeft + ((chartWidth - pieDiameter) div 2) into pieLeft
+  choose oval tool
+  drag from pieLeft,pieTop to (pieLeft + pieDiameter),(pieTop + pieDiameter)
+  put bg field "Total" into total
+  put pieDiameter div 2 into pieRadius
+  put pieLeft + pieRadius into pieCenterX
+  put pieTop + pieRadius into pieCenterY
+  put zero into angle
+  put zero into change
+  if total > 0 then
+    repeat with slice = 1 to (dataCount + 1)
+      checkUserCancel
+      choose line tool
+      put pieCenterX + round(pieRadius * sin(angle)) into x
+      put pieCenterY - round(pieRadius * cos(angle)) into y
+      drag from pieCenterX,pieCenterY to x,y
+      if change > .02 then
+        set pattern to getPattern(slice)
+        choose bucket tool
+        click at halfX,halfY
+      end if
+      put pi * (line slice of pieData) / total into change
+      add change to angle
+      put pieCenterX + round((pieRadius - 3) * sin(angle)) into halfX
+      put pieCenterY - round((pieRadius - 3) * cos(angle)) into halfY
+      add change to angle
+    end repeat
+  end if
+  reset paint
+  choose browse tool
+end doPieChart
+
+on doLegend theLabels,data,title
+  reset paint
+  set cursor to watch
+  put bg field "Percents" into thePercents
+  put rect of bg btn "Legend" into legendRect
+  put max(the number of lines in theLabels,the number of lines in data) into numLabels
+  if numLabels <= 1 then exit doLegend
+  put maxChars(theLabels) * 8 into maxLabelSize
+  put item 1 of legendRect + maxLabelSize + 70 into minRight
+  put item 2 of legendRect + numLabels * 17 + 20 into minBottom
+  if item 3 of legendRect < minRight  then put minRight  into item 3 of legendRect
+  if item 4 of legendRect < minBottom then put minBottom into item 4 of legendRect
+  set rect of bg btn "Legend" to legendRect
+  set bottomRight of bg btn "GrowLegend" to bottomRight of bg btn "Legend"
+  put rectHeight(legendRect) into legendHeight
+  put rectWidth(legendRect) into legendWidth
+  put item 1 of legendRect into legendLeft
+  put item 2 of legendRect into legendTop
+  put item 3 of legendRect into legendRight
+  put (legendHeight div numLabels + 1) div 2 into stepSize
+  put max(15,stepSize) into stepSize
+  choose text tool
+  setFont geneva,10,center,bold
+  put legendLeft + 10 into horz
+  put legendTop + the textHeight + 5 into vert
+  click at legendLeft + (legendWidth div 2),vert
+  type title
+  add the textHeight + 5 to vert
+  set filled to true
+  repeat with labelCount = 1 to numLabels
+    checkUserCancel
+    choose rectangle tool
+    set pattern to getPattern(labelCount + 1)
+    drag from horz,(vert - the textHeight) to horz + the textHeight,vert
+    choose text tool
+    setFont geneva,10,left,plain
+    click at horz + 20,vert
+    type line labelCount of theLabels
+    choose select tool
+    choose text tool
+    setFont geneva,10,right,plain
+    click at horz + maxLabelSize + 50,vert
+    type line labelCount of thePercents
+    add stepSize to vert
+  end repeat
+  choose browse tool
+end doLegend
+
+function getPattern thePattern
+  return item (thePattern mod 14) + 1 of "13,11,22,15,20,17,6,3,5,4,9,19,15,2"
+end getPattern
+
+on closeField
+  updateTotals
+  pass closeField
+end closeField
+
+on exitField
+  updateTotals
+  pass exitField
+end exitField
+
+on updateTotals
+  set cursor to watch
+  put validatedData(bg field "Data") into data
+  put totalValues(data) into dataTotal
+  put dataTotal into bg field "Total"
+  get calcPercents(data,dataTotal)
+  put item 1 of it into bg field "Percents"
+  put item 2 of it into bg field "Percent Total"
+end updateTotals
+
+function calcPercents data,dataTotal
+  put 0 into percentTotal
+  put empty into percentList
+  if dataTotal <> 0 then
+    repeat with dataCount = 1 to number of lines of data
+      put (line dataCount of data / dataTotal) * 100 into thePercent
+      put round(thePercent) && "%" into line dataCount of percentList
+      add thePercent to percentTotal
+    end repeat
+  else
+    repeat with dataCount = 1 to number of lines of data
+      put line dataCount of data & "%" into line dataCount of percentList
+    end repeat
+    put dataTotal into percentTotal
+  end if
+  return percentList & "," & percentTotal & "%"
+end calcPercents
+
+function totalValues data
+  put 0 into total
+  repeat with lineNum = 1 to number of lines of data
+    put line lineNum of data into theLine
+    if theLine is empty then next repeat
+    get the value of theLine
+    if character 1 of it is not in "1234567890-.()" then next repeat
+    add it to total
+  end repeat
+  return total
+end totalValues
+
+on openCard
+  lock screen
+  show bg btn "Legend"
+  show bg btn "growlegend"
+  show bg btn "Total:"
+  show bg fld "Total"
+  show bg fld "Percent Total"
+  show bg btn "Total Frame"
+  unlock screen
+  pass openCard
+end openCard
+
+on closeCard
+  lock screen
+  hide bg btn "Legend"
+  hide bg btn "growlegend"
+  hide bg btn "Total:"
+  hide bg fld "Total"
+  hide bg fld "Percent Total"
+  hide bg btn "Total Frame"
+  unlock screen
+  pass closeCard
+end closeCard

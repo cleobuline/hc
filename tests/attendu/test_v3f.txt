@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+id de card1 = 3
+>>> card id N seul (sans &&)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] short name of card id 1
+>>> juste card id N
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! objet introuvable (v3, ligne 2 de button "GoBtn".mouseUp)

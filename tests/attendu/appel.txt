@@ -1,0 +1,12 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    commande <message>                       1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 refusée recours v3                   1
+→ message "mouseUp" à button "B1"
+   · traité par button "B1"
+      !! personne ne répond à « drawChart »
+   — retours de la v3 vers l'ancien interpréteur —
+      commande <message>                       1
+   — ce que l'ancien interprète exécute encore —
+      v1 refusée recours v3                   1

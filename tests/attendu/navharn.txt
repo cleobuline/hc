@@ -1,0 +1,21 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+
+───── data2 ─────
+--- depart : Une (3 cartes) ---
+ok first
+ok last
+ok card 1
+ok next depuis 1
+ok next depuis la derniere
+ok previous depuis 1
+ok this
+ok par nom
+ok par id
+ok par variable
+background Fond -> carte 1
+ok push/pop
+--- retour : Une ---

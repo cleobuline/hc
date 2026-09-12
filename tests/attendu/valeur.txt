@@ -1,0 +1,17 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme bonjour                         1
+[v3]    v1 fonction bonjour                      1
+
+───── field data2 ─────
+arith  : 14
+objet  : 3
+texte  : bonjour
+litt   : 42
+varia  : 6
+boucle : 1234
+vide   : []
+casse  : true
+indir  : 3

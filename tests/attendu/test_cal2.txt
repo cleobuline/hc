@@ -1,0 +1,47 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme watch                           1
+[v3]    v1 fonction watch                        1
+[v3]    v1 fonction daysInMonth                  1
+[v3]    v1 terme dayNameData                     1
+[v3]    v1 fonction dayNameData                  1
+[v3]    v1 terme spaces                          1
+[v3]    v1 fonction spaces                       1
+[v3]    v1 terme monthNameData                   1
+[v3]    v1 fonction monthNameData                1
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "drawCalendar" à field "CalField"
+      · traité par field "CalField"
+      → message "watch" à field "CalField"
+           (pas de gestionnaire dans field "CalField")
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         → cursor ← "watch"
+      → message "daysInMonth" à field "CalField"
+         · traité par field "CalField"
+      → message "dayNameData" à field "CalField"
+         · traité par field "CalField"
+      → message "spaces" à field "CalField"
+         · traité par field "CalField"
+         !! date incomprise : « 2026,,1 »
+      → message "monthNameData" à field "CalField"
+         · traité par field "CalField"
+         !! un rang numérique est attendu ici (v3, ligne 51 de field "CalField".drawCalendar)
+=== texte du champ apres drawCalendar ===
+
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v1 terme watch                           1
+   v1 fonction watch                        1
+   v1 fonction daysInMonth                  1
+   v1 terme dayNameData                     1
+   v1 fonction dayNameData                  1
+   v1 terme spaces                          1
+   v1 fonction spaces                       1
+   v1 terme monthNameData                   1
+   v1 fonction monthNameData                1

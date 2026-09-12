@@ -1,0 +1,83 @@
+on mouseUp
+  global sortieLigne, sortieCarte
+  debug raz
+
+  put the id of this card into sortieCarte
+  put 0 into sortieLigne
+  put empty into card field "data2" of card id sortieCarte
+
+  put the number of cards into total
+  put the short name of this card into depart
+
+  trace "--- depart : " & depart & " (" & total & " cartes) ---"
+
+  go to first card
+  verif "first", 1
+  go to last card
+  verif "last", total
+  go to card 1
+  verif "card 1", 1
+
+  go to card 1
+  go to next card
+  verif "next depuis 1", 2
+  go to last card
+  go to next card
+  verif "next depuis la derniere", 1
+  go to card 1
+  go to previous card
+  verif "previous depuis 1", total
+
+  go to this card
+  verif "this", the number of this card
+
+  go to card 2
+  put the short name of this card into nom
+  put the id of this card into ident
+  go to first card
+  go to card nom
+  verif "par nom", 2
+  go to first card
+  go to card id ident
+  verif "par id", 2
+
+  put "card 2" into ref
+  go to first card
+  go ref
+  verif "par variable", 2
+
+  go to first card
+  put the short name of the background of card 2 into fond
+  if fond is not empty then
+    go to background fond
+    trace "background " & fond & " -> carte " & the number of this card
+  end if
+
+  go to card 2
+  push card
+  go to last card
+  pop card
+  verif "push/pop", 2
+
+  go to card depart
+  trace "--- retour : " & the short name of this card & " ---"
+  debug bilan
+end mouseUp
+
+on trace texte
+  global sortieLigne, sortieCarte
+  add 1 to sortieLigne
+  put texte into line sortieLigne of card field "data2" of card id sortieCarte
+end trace
+
+on verif quoi, attendu
+  if the result is not empty then
+    trace "ECHEC " & quoi & " : " & the result
+    exit verif
+  end if
+  if the number of this card is not attendu then
+    trace "FAUX " & quoi & " : carte " & the number of this card & " au lieu de " & attendu
+  else
+    trace "ok " & quoi
+  end if
+end verif

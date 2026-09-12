@@ -1,0 +1,73 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: bg btn "GoBtn2"           3
+[v3]    recours of hilite                        1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    6
+[v3]    v1 fonction recours expr                 6
+[v3]    v3 relit recours expr                    3
+>>> hilite of bg btn avec guillemets typographiques
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] false
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> the value of fld
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] 5
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> fld tout court comme expression
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] 5
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+>>> bg btn ordinaire
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! objet introuvable (colonne 2) dans «  bg btn "GoBtn2" » — objet : button "GoBtn"
+   → message "hilite" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      !! objet introuvable (colonne 2) dans «  bg btn "GoBtn2" » — objet : button "GoBtn"
+   → message "hilite" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      !! objet introuvable (colonne 2) dans «  bg btn "GoBtn2" » — objet : button "GoBtn"
+   → message "hilite" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      [message box] hilite of bg btn "GoBtn2"
+   — retours de la v3 vers l'ancien interpréteur —
+      recours objet: bg btn "GoBtn2"           3
+      recours of hilite                        1
+   — ce que l'ancien interprète exécute encore —
+      v1 terme recours expr                    6
+      v1 fonction recours expr                 6
+      v3 relit recours expr                    3

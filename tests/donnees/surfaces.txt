@@ -1,0 +1,112 @@
+SURFACES POUR surfaces.stack
+============================
+Les bornes |X|,|Y|,|Z| ont été calculées en faisant parcourir la grille
+par l'interpréteur lui-même : ce sont les valeurs justes, pas des
+estimations. Toutes les formules ont été évaluées par le moteur, donc la
+syntaxe passe.
+
+
+1. RUBAN DE MOEBIUS
+   x(u,v) =  (2+v*cos(u/2))*cos(u)
+   y(u,v) =  (2+v*cos(u/2))*sin(u)
+   z(u,v) =  v*sin(u/2)
+   U : 0 à 2*pi+.1   incrément pi/16
+   V : -1 à 1        incrément .25
+   |X|,|Y|,|Z| : 3  3  1
+   Connect u OUI, Connect v NON (le ruban a deux bords, il ne se referme
+   pas en v — c'est justement ce qui fait son unique face)
+
+
+2. BOUTEILLE DE KLEIN (immersion en huit)
+   x(u,v) =  (2+cos(u/2)*sin(v)-sin(u/2)*sin(2*v))*cos(u)
+   y(u,v) =  (2+cos(u/2)*sin(v)-sin(u/2)*sin(2*v))*sin(u)
+   z(u,v) =  sin(u/2)*sin(v)+cos(u/2)*sin(2*v)
+   U : 0 à 2*pi+.1   incrément pi/16
+   V : 0 à 2*pi+.1   incrément pi/16
+   |X|,|Y|,|Z| : 4  4  2
+   Connect u et v : OUI
+   C'est la forme « tore qui se retourne » : la section tourne d'un
+   demi-tour pendant que u fait le tour, donc l'intérieur rejoint
+   l'extérieur sans jamais se percer.
+
+
+3. SURFACE ROMAINE DE STEINER
+   x(u,v) =  4*sin(u)*sin(v)*cos(u)
+   y(u,v) =  4*sin(u)*cos(v)*cos(u)
+   z(u,v) =  4*sin(u)*sin(u)*cos(v)*sin(v)
+   U : 0 à pi+.1     incrément pi/16
+   V : 0 à 2*pi+.1   incrément pi/16
+   |X|,|Y|,|Z| : 2  2  2
+   Connect u et v : OUI
+   Le plan projectif dans l'espace : trois axes de symétrie, six lignes
+   de pincement. Monte l'incrément à pi/24 pour voir les arêtes.
+
+
+4. CROSS-CAP (bonnet croisé)
+   x(u,v) =  3*sin(u)*sin(2*v)/2
+   y(u,v) =  3*sin(2*u)*cos(v)*cos(v)
+   z(u,v) =  3*cos(2*u)*cos(v)*cos(v)
+   U : 0 à pi+.1     incrément pi/24
+   V : 0 à pi+.1     incrément pi/24
+   |X|,|Y|,|Z| : 2  3  3
+   Connect u et v : OUI
+
+
+5. SPHÈRE BOSSELÉE
+   x(u,v) =  (2+.4*sin(6*u)*sin(6*v))*sin(u)*cos(v)
+   y(u,v) =  (2+.4*sin(6*u)*sin(6*v))*sin(u)*sin(v)
+   z(u,v) =  (2+.4*sin(6*u)*sin(6*v))*cos(u)
+   U : 0 à pi+.1     incrément pi/24
+   V : 0 à 2*pi+.1   incrément pi/24
+   |X|,|Y|,|Z| : 3  3  3
+   Connect u et v : OUI
+   Les deux 6 donnent le nombre de bosses ; .4 leur profondeur. Essaie
+   (2+.4*sin(8*u)*sin(8*v)) pour une balle de golf, ou remplace .4 par
+   .8 pour une châtaigne.
+
+
+6. TORE NOUÉ (nœud de trèfle épaissi)
+   x(u,v) =  (2+cos(3*u))*cos(2*u)+.6*cos(v)*cos(2*u)
+   y(u,v) =  (2+cos(3*u))*sin(2*u)+.6*cos(v)*sin(2*u)
+   z(u,v) =  sin(3*u)+.6*sin(v)
+   U : 0 à 2*pi+.1   incrément pi/32
+   V : 0 à 2*pi+.1   incrément pi/8
+   |X|,|Y|,|Z| : 4  4  2
+   Connect u et v : OUI
+   L'incrément fin en u et grossier en v est voulu : u suit le nœud, v
+   n'est que le tour du tube.
+
+
+7. COQUILLAGE
+   x(u,v) =  (1-u/6.3)*cos(3*u)*(1+cos(v))
+   y(u,v) =  (1-u/6.3)*sin(3*u)*(1+cos(v))
+   z(u,v) =  3*u/6.3+(1-u/6.3)*sin(v)-1.5
+   U : 0 à 2*pi      incrément pi/16
+   V : 0 à 2*pi+.1   incrément pi/8
+   |X|,|Y|,|Z| : 2  2  3
+   Connect u et v : OUI
+   Le 3 dans cos(3*u) est le nombre de tours de la spirale.
+
+
+8. SURFACE DE DINI (pseudosphère vrillée)
+   x(u,v) =  2*sin(u)*cos(v)
+   y(u,v) =  2*sin(u)*sin(v)
+   z(u,v) =  2*(cos(u)+ln(tan(u/2+.001)))+.4*v
+   U : .4 à 2.7      incrément .15
+   V : 0 à 2*pi+.1   incrément pi/8
+   |X|,|Y|,|Z| : 2  2  4
+   Connect u OUI, Connect v NON
+   Le +.001 dans le tan est indispensable : sans lui, u=0 donne ln(0),
+   donc -INF, et la courbe part à l'infini. À courbure négative
+   constante — la « corne » qui descend en vrille.
+
+
+VARIANTES RAPIDES
+-----------------
+Sur ton tore actuel, remplace juste z :
+   z(u,v) = sin(v)+.3*sin(8*u)      tore ondulé
+   z(u,v) = sin(v)*cos(4*u)         tore pincé quatre fois
+
+Et sur la sphère bosselée, remplace le rayon (2+.4*...) par :
+   (2+.5*cos(4*u))                  citrouille à 4 côtes
+   (1.5+u/3)                        goutte / poire

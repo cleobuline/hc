@@ -1,0 +1,16 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── les quatre de l'environnement
+   startUp     — la pile s'installe
+   suspend     — on passe a une autre appli
+   resume      — on revient
+   quit        — la pile se range
+
+── les deux de pile (envoyes comme Hcdocument.m le fait)
+   suspendStack — on quitte cette pile
+   resumeStack  — on y revient
+
+── sans carte courante : rien, et pas de plantage
+   (silence attendu)
+
+── « lock messages » ne les retient PAS
+   resume      — on revient

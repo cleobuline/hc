@@ -1,0 +1,11 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [msg] articles = 4
+   [msg] coche avant  = false
+   [msg] coche apres  = true
+   [msg] nom art. 2   = Surfaces
+   [msg] message art.2= goSurf
+   [msg] actif art. 4 = true
+   [msg] actif art. 4 = false
+   [msg] nom du menu  = 3DEquations
+   [msg] renomme      = Courbes
+   [msg] decoche      = false

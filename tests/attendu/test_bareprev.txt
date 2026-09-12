@@ -1,0 +1,71 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    fonction prev                            1
+[v3]    fonction next                            1
+[v3]    fonction previous                        1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme prev                            1
+[v3]    v1 fonction prev                         1
+[v3]    v1 terme next                            1
+[v3]    v1 fonction next                         1
+[v3]    v1 terme previous                        1
+[v3]    v1 fonction previous                     1
+=== depuis PREMIERE : go prev (court, sans 'to'/'card') ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Trois (attendu Trois)
+
+=== depuis DERNIERE : go next (court) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Une (attendu Une)
+
+=== depuis PREMIERE : go previous (court) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Trois"
+   → message "openCard" à card "Trois"
+        (pas de gestionnaire dans card "Trois")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte: Trois (attendu Trois)
+
+— retours de la v3 vers l'ancien interpréteur —
+   fonction prev                            1
+   fonction next                            1
+   fonction previous                        1
+— ce que l'ancien interprète exécute encore —
+   v1 terme prev                            1
+   v1 fonction prev                         1
+   v1 terme next                            1
+   v1 fonction next                         1
+   v1 terme previous                        1
+   v1 fonction previous                     1

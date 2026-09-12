@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme geneva                          1
+[v3]    v1 fonction geneva                       1
+[v3]    v1 terme center                          1
+[v3]    v1 fonction center                       1
+[v3]    v1 terme bold                            1
+[v3]    v1 fonction bold                         1
+[v3]    v1 terme left                            1
+[v3]    v1 fonction left                         1
+[v3]    v1 terme plain                           1
+[v3]    v1 fonction plain                        1
+[v3]    v1 fonction getPattern                   1

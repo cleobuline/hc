@@ -1,0 +1,41 @@
+=== 1. trame damier, encre rouge opaque, fond blanc, zone (2,1)-(9,6) ===
+(R = encre, espace = fond, . = jamais touche)
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+  ..  RR  RR..   |  0  0255255255255255255255255  0  0
+  ..RR  RR  ..   |  0  0255255255255255255255255  0  0
+  ..RR  RR  ..   |  0  0255255255255255255255255  0  0
+  ..  RR  RR..   |  0  0255255255255255255255255  0  0
+  ..  RR  RR..   |  0  0255255255255255255255255  0  0
+  ..RR  RR  ..   |  0  0255255255255255255255255  0  0
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+
+=== 2. la meme, fond transparent : la trame seule se pose ===
+(les creux de la trame restent vides)
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+  ....RR..RR..   |  0  0  0  0255255  0  0255255  0  0
+  ..RR..RR....   |  0  0255255  0  0255255  0  0  0  0
+  ..RR..RR....   |  0  0255255  0  0255255  0  0  0  0
+  ....RR..RR..   |  0  0  0  0255255  0  0255255  0  0
+  ....RR..RR..   |  0  0  0  0255255  0  0255255  0  0
+  ..RR..RR....   |  0  0255255  0  0255255  0  0  0  0
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+
+=== 3. lasso triangulaire, trame pleine, fond transparent ===
+(rien hors du triangle)
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+  .#########..   |  0255255255255255255255255255  0  0
+  ..########..   |  0  0255255255255255255255255  0  0
+  ...######...   |  0  0  0255255255255255255  0  0  0
+  ....####....   |  0  0  0  0255255255255  0  0  0  0
+  ....###.....   |  0  0  0  0255255255  0  0  0  0  0
+  .....##.....   |  0  0  0  0  0255255  0  0  0  0  0
+  ............   |  0  0  0  0  0  0  0  0  0  0  0  0
+
+=== 4. encre a 50% sur du vide, puis un 2e remplissage : ca charge ===
+  apres 1 passe(s) : alpha=128  rvb=255,0,0
+  apres 2 passe(s) : alpha=191  rvb=255,0,0
+  apres 3 passe(s) : alpha=223  rvb=255,0,0
+
+=== 5. zone hors image et zone inversee : rien, et pas de plantage ===
+  zone hors image : rien pose. Zone inversee (9,6)->(2,1) : 48 pixels
+  (hcp_borne remet les bornes dans l'ordre : 6*8 = 48 attendus)

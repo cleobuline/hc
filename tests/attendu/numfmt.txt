@@ -1,0 +1,45 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── defaut : inchange
+   0.333333
+   5
+   2.5
+   <- vide
+── 0.00 : deux decimales imposees
+   0.33
+   5.00
+   2.50
+   0.12
+── #.## : deux decimales au plus, aucune imposee
+   0.33
+   5
+   2.5
+   0.12
+── 0.0## : une imposee, trois au plus
+   0.333
+   5.0
+   2.5
+── 000 : partie entiere completee
+   007
+   -007
+   1235
+── relecture
+   0.00
+── retour au defaut
+   0.333333
+   <- vide
+── ce qui n'est PAS un calcul reste brut
+   5
+   1
+   2
+   -- indexes intacts :
+   x
+   y
+   z
+── les fonctions de calcul suivent
+   1.414
+   2.000
+   1.500
+   3.000
+── add / subtract suivent aussi
+   6.00
+   1.50

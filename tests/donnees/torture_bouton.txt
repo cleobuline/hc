@@ -1,0 +1,230 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE — passe en revue ce qui vient d'etre ajoute a HC.
+--
+--  IL FAUT : ce script sur un bouton, un champ nomme "data2" a cote,
+--  et le bloc « torture_pile » dans le script de la pile.
+--
+--  Le rapport s'ecrit LIGNE A LIGNE dans data2, au fur et a mesure : on
+--  voit le champ se remplir, et si quelque chose plante on sait ou.
+--
+--  TROIS ERREURS S'AFFICHERONT, ET C'EST VOULU : le test provoque une
+--  propriete inconnue, un userLevel hors bornes et un dragSpeed non
+--  numerique, justement pour verifier que HC s'en plaint. Elles ne
+--  comptent pas comme des echecs — seul le total final compte.
+-- ════════════════════════════════════════════════════════════════════
+
+on mouseUp
+  global gOK, gKO, gVus
+  put empty into card field "data2"
+  put 0 into gOK
+  put 0 into gKO
+  put empty into gVus
+
+  titre "1. « the » ne ment plus"
+  verifie "the date repond", the date is not empty
+  verifie "the tool repond", the tool is not empty
+  verifie "un mot nu vaut son nom", zorglub is "zorglub"
+  verifie "the empty est vide", the empty is empty
+  verifie "the quote", the quote is quote
+  -- une propriete inconnue doit LEVER : on l'eprouve dans un
+  -- gestionnaire a part, l'erreur n'arretant que celui-la.
+  put "pas leve" into gVus
+  essaiFaute
+  verifie "the zorglub se plaint", gVus is "leve"
+  put empty into gVus
+
+  titre "2. numberFormat"
+  set the numberFormat to empty
+  verifie "defaut : 1/3", 1/3 is "0.333333"
+  verifie "defaut : 2+3", 2+3 is "5"
+  set the numberFormat to "0.00"
+  verifie "0.00 sur 1/3", 1/3 is "0.33"
+  verifie "0.00 sur un entier", 2+3 is "5.00"
+  verifie "0.00 relu", the numberFormat is "0.00"
+  set the numberFormat to "#.##"
+  verifie "#.## n'impose rien", 2+3 is "5"
+  verifie "#.## limite quand meme", 1/3 is "0.33"
+  set the numberFormat to "000"
+  verifie "000 complete a gauche", 3+4 is "007"
+  verifie "000 garde le signe", 0-7 is "-007"
+  set the numberFormat to "0.000"
+  verifie "sqrt(2) mis en forme", sqrt(2) is "1.414"
+  verifie "la forme « of » aussi", the sqrt of 2 is "1.414"
+  verifie "add suit", calculAjout() is "6.000"
+  verifie "une longueur reste brute", the length of "abcde" is "5"
+  put empty into idx
+  repeat with i = 1 to 3
+    put char i of "xyz" after idx
+  end repeat
+  verifie "les index restent entiers", idx is "xyz"
+  set the numberFormat to empty
+
+  titre "3. reglages d'environnement"
+  set the userLevel to 5
+  verifie "userLevel pose et relu", the userLevel is 5
+  set the userLevel to 2
+  verifie "userLevel utilisable en test", the userLevel < 3
+  set the userLevel to 47
+  verifie "hors bornes : refus, ancienne valeur", the userLevel is 2
+  set the userLevel to 5
+  set the dragSpeed to 120
+  verifie "dragSpeed", the dragSpeed is 120
+  set the dragSpeed to "vite"
+  verifie "dragSpeed refuse le texte", the dragSpeed is 120
+  set the dragSpeed to 0
+  set the lockRecent to true
+  verifie "lockRecent vrai", the lockRecent is true
+  set the lockRecent to 0
+  verifie "lockRecent accepte 0", the lockRecent is false
+  set the blindTyping to true
+  verifie "blindTyping", the blindTyping is true
+  set the blindTyping to false
+  set the powerKeys to true
+  verifie "powerKeys", the powerKeys is true
+  set the powerKeys to false
+  set the textArrows to true
+  verifie "textArrows", the textArrows is true
+  set the textArrows to false
+
+  titre "4. les deux verrous, enfin relisibles"
+  verifie "lockScreen au repos", the lockScreen is false
+  lock screen
+  verifie "lockScreen apres lock", the lockScreen is true
+  unlock screen
+  verifie "lockScreen apres unlock", the lockScreen is false
+  set the lockScreen to true
+  verifie "lockScreen par set", the lockScreen is true
+  set the lockScreen to false
+  lock messages
+  verifie "lockMessages apres lock", the lockMessages is true
+  unlock messages
+  verifie "lockMessages apres unlock", the lockMessages is false
+
+  titre "5. curseur et calque, tenus par l'interface"
+  set the cursor to watch
+  verifie "cursor relu", the cursor is "watch"
+  set the cursor to "zorglub"
+  verifie "cursor rend ce qu'il a POSE", the cursor is "arrow"
+  set the cursor to arrow
+  verifie "editBkgnd au repos", the editBkgnd is false
+  set the editBkgnd to true
+  verifie "editBkgnd pose", the editBkgnd is true
+  set the editBkgnd to false
+
+  titre "6. couleurs de peinture"
+  set the foreColor to red
+  verifie "foreColor par nom", the foreColor is "255,0,0"
+  verifie "paintColor est un synonyme", the paintColor is "255,0,0"
+  set the foreColor to "0,128,255,90"
+  verifie "l'opacite se relit", the foreColor is "0,128,255,90"
+  verifie "item 3 du foreColor", item 3 of the foreColor is 255
+  set the backColor to navy
+  verifie "backColor", the backColor is "0,0,128"
+  set the foreColor to black
+  set the backColor to white
+
+  titre "7. messages du cycle de vie"
+  -- Provoques a la main. Les gestionnaires sont dans le script de la PILE,
+  -- ou l'application les livre : « to this card » remonte jusqu'a eux, comme
+  -- le fera le vrai message.
+  put empty into gVus
+  send "startUp"      to this card
+  send "quit"         to this card
+  send "suspend"      to this card
+  send "resume"       to this card
+  send "suspendStack" to this card
+  send "resumeStack"  to this card
+  verifie "les six arrivent", the number of items of gVus is 6
+
+  titre "8. menus de script"
+  reset menuBar
+  create menu "Torture"
+  put "Un,Deux,Trois" into menu "Torture" with menuMsg "unMsg,deuxMsg,troisMsg"
+  verifie "le menu existe", there is a menu "Torture"
+  verifie "trois articles", the number of menuItems of menu "Torture" is 3
+  set the checkMark of menuItem 2 of menu "Torture" to true
+  verifie "checkMark pose", the checkMark of menuItem 2 of menu "Torture" is true
+  disable menuItem 3 of menu "Torture"
+  verifie "menuItem desactive", the enabled of menuItem 3 of menu "Torture" is false
+  verifie "menuMessage relu", the menuMessage of menuItem 1 of menu "Torture" is "unMsg"
+  delete menu "Torture"
+  verifie "le menu s'en va", there is not a menu "Torture"
+
+  titre "9. l'executeur v3"
+  -- Rien ne doit repartir vers l'ancien interprete : la console doit
+  -- afficher « (aucun) » juste apres cette ligne.
+  -- dans une variable, pour ne rien deverser dans la boite de message
+  debug raz
+  put the userLevel & the numberFormat & the lockScreen into z
+  put z & the foreColor & the cursor & the editBkgnd into z
+  put z & 1/3 & sqrt(2) & the sqrt of 2 & the length of "abc" into z
+  debug bilan
+
+  bilan
+end mouseUp
+
+
+-- ---- l'echafaudage -------------------------------------------------
+
+-- Une ligne de plus dans le champ.
+--
+-- « texte & return after » et non « return & texte after » : le second met
+-- le saut de ligne DEVANT, ce qui laisse une premiere ligne vide et decale
+-- tout le rapport d'un cran.
+--
+-- Pendant « lock screen » (section 4) le champ ne se redessine pas tout de
+-- suite ; les lignes paraissent au deverrouillage. C'est le comportement
+-- attendu, pas un blocage.
+on journal texte
+  put texte & return after card field "data2"
+end journal
+
+-- Une ligne vide AVANT chaque titre, sauf le premier : sinon le rapport
+-- commence par un blanc, et le champ paraît decale.
+on titre t
+  if card field "data2" is not empty then journal empty
+  journal "── " & t
+end titre
+
+on verifie quoi, cond
+  global gOK, gKO
+  if cond then
+    journal "  ok     " & quoi
+    add 1 to gOK
+  else
+    journal "  ECHEC  " & quoi
+    add 1 to gKO
+  end if
+end verifie
+
+-- Le detail est deja dans le champ, ligne a ligne ; la boite de message ne
+-- recoit que le resume. « put » vers la boite passe par un tampon de 1024
+-- octets et couperait un long rapport en silence — le champ n'a pas cette
+-- limite.
+on bilan
+  global gOK, gKO
+  journal empty
+  journal "──────────────────────────────"
+  if gKO is 0 then
+    journal gOK & " reussites, aucun echec."
+    put gOK & " reussites, aucun echec."
+  else
+    journal gOK & " reussites, " & gKO & " ECHECS."
+    put gOK & " reussites, " & gKO & " ECHECS — voir le champ data2."
+  end if
+end bilan
+
+-- L'erreur arrete CE gestionnaire, pas celui qui l'appelle : la ligne
+-- suivante ne s'execute donc pas, et c'est ce qu'on mesure.
+on essaiFaute
+  global gVus
+  put "leve" into gVus
+  put the zorglub
+  put "pas leve" into gVus
+end essaiFaute
+
+function calculAjout
+  put 5 into n
+  add 1 to n
+  return n
+end calculAjout

@@ -770,9 +770,30 @@ static NSMenu *find_file_menu(void)
         if (reponse != NSModalResponseOK) return;
         [doc.view flushPaintToKernel];
         NSString *path = [[panel URL] path];
+
+        /* ENREGISTRER D'ABORD, ADOPTER LE CHEMIN ENSUITE.
+         *
+         * doc.path était posé avant l'appel : si l'enregistrement échouait, HC
+         * croyait néanmoins que le document vivait à cette nouvelle adresse —
+         * et le prochain « Enregistrer » y écrasait ce qui s'y trouvait.
+         *
+         * Et l'échec ne se voyait que dans la console. Maintenant que hc_save
+         * détecte vraiment les fautes d'écriture — disque plein, quota — il
+         * faut le DIRE : perdre une sauvegarde en silence est la pire chose
+         * qu'un éditeur puisse faire. */
+        if (hc_save(pile, [path UTF8String]) != 0) {
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:@"L'enregistrement a échoué."];
+            [a setInformativeText:[NSString stringWithFormat:
+                @"La pile n'a pas pu être écrite dans %@.\n\n"
+                @"Le fichier d'origine est intact. Vérifiez l'espace disque "
+                @"et les droits d'écriture, puis réessayez.",
+                [path lastPathComponent]]];
+            [a addButtonWithTitle:@"OK"];
+            [a runModal];
+            return;                   /* le document garde son ancien chemin */
+        }
         doc.path = path;              /* « go to stack » cherchera à côté */
-        if (hc_save(pile, [path UTF8String]) != 0)
-            NSLog(@"échec de la sauvegarde");
     };
 
     if (hote) [panel beginSheetModalForWindow:hote completionHandler:fini];

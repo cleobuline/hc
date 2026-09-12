@@ -1,0 +1,4 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   apres 1 : [startUp]
+   apres 2 : [startUp,quit]
+   items : 2

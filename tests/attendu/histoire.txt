@@ -1,0 +1,38 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── l'historique est vide au départ
+   []
+
+── on visite trois cartes
+   card "Quatre"
+   --
+   Quatre
+Trois
+Deux
+
+── go back retrace les pas
+   card "Trois"
+   card "Deux"
+   [ERR]    !! rien où revenir : l'historique est vide
+   card "Deux"
+
+── au bout, il ne se passe rien
+   [ERR]    !! rien où revenir : l'historique est vide
+   No such card
+   card "Deux"
+
+── revenir sur la même carte ne compte pas
+   Deux
+
+── la forme longue
+   card "Deux"
+
+── on visite Trois puis Quatre, et on supprime Trois
+   pendant le gestionnaire : Quatre
+Trois
+Deux
+
+── la carte supprimée est sortie de l'historique
+   Quatre
+Deux
+   --
+   card "Deux"

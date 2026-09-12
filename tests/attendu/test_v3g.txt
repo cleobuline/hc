@@ -1,0 +1,5 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+>>> card id CORRECT && suffixe
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une suffixe

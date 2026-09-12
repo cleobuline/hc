@@ -1,0 +1,37 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card field "nExistePas"   3
+[v3]    recours of width                         1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    6
+[v3]    v1 fonction recours expr                 6
+[v3]    v3 relit recours expr                    3
+→ message "mouseUp" à button "B1"
+   · traité par button "B1"
+   → message "drawChart" à button "B1"
+        (pas de gestionnaire dans button "B1")
+      · traité par card "Une"
+         [message box] avant
+         !! objet introuvable (colonne 2) dans «  card field "nExistePas" » — objet : card "Une"
+      → message "width" à card "Une"
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         !! objet introuvable (colonne 2) dans «  card field "nExistePas" » — objet : card "Une"
+      → message "width" à card "Une"
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         !! objet introuvable (colonne 2) dans «  card field "nExistePas" » — objet : card "Une"
+      → message "width" à card "Une"
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+         [message box] apres
+   — retours de la v3 vers l'ancien interpréteur —
+      recours objet: card field "nExistePas"   3
+      recours of width                         1
+   — ce que l'ancien interprète exécute encore —
+      v1 terme recours expr                    6
+      v1 fonction recours expr                 6
+      v3 relit recours expr                    3

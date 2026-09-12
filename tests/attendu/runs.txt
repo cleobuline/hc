@@ -1,0 +1,5 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   au depart                    : 0 plage(s)
+   apres set char 1 to 5        : 1 plage(s)
+        [0..5[ style=1 corps=0 police=(champ)
+   textstyle du champ entier   : 1

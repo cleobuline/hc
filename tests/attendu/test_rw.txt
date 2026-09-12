@@ -1,0 +1,27 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+>>> write simple
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! write : fichier non ouvert : /tmp/hc_test_rw.txt
+>>> open + write + close
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+>>> read from file for N (grammaire couverte)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] ligne1
+>>> read ... at N for M (grammaire NON couverte ?)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] ligne2
+>>> write ... at end (grammaire NON couverte ?)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   (rien)

@@ -1,0 +1,39 @@
+# Le noyau de HC et sa suite de non-régression, à chaque poussée.
+#
+# L'application a besoin de Cocoa et se construit dans Xcode ; le noyau, lui,
+# est du C99 pur. C'est précisément ce qui permet de le vérifier ici, sur une
+# machine sans AppKit, en moins d'une minute.
+name: noyau
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests:
+    name: suite de non-régression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: le noyau compile
+        run: make verifie
+
+      - name: avertissements du compilateur
+        run: make avertissements
+
+      - name: suite de non-régression
+        run: make test
+
+  sanitizers:
+    name: mémoire et comportement indéfini
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # La même suite, recompilée sous AddressSanitizer et UBSan. Plus lente,
+      # d'où un travail séparé : un échec ici ne cache pas un échec là-bas.
+      - name: suite sous ASan + UBSan
+        run: make test-asan

@@ -1,0 +1,9 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+--- supprimer un bouton ---
+   [msg] adieu bouton button "Bouton"
+--- supprimer un champ ---
+   [msg] adieu champ field "Champ"
+--- supprimer la carte Deux (dernière de son fond) ---
+   [msg] adieu carte card "Deux"
+   [msg] adieu fond background "F2"
+cartes restantes = 1

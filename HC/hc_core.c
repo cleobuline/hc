@@ -2905,6 +2905,34 @@ static int ci_nequal(const char *a, const char *b, int len)
     return 1;
 }
 
+/* Ajouter à la suite, SANS jamais dépasser. Rend la nouvelle position.
+ *
+ * Le motif naïf — « pos += snprintf(out + pos, outlen - pos, …) » — est un
+ * piège : snprintf rend la longueur qu'il AURAIT voulu écrire, pas celle
+ * qu'il a écrite. Dès que le tampon est plein, pos passe au-delà, et le tour
+ * suivant calcule « out + pos » hors bornes et « outlen - pos » négatif, que
+ * snprintf reçoit en size_t — donc énorme. Corruption mémoire, pas simple
+ * troncature.
+ *
+ * Cinq des sept sites concernés bornaient déjà pos après chaque ajout ; deux
+ * ne le faisaient pas, et ce sont ceux de « the params », qui concatène
+ * jusqu'à seize valeurs d'un mégaoctet dans un tampon d'un mégaoctet. Plutôt
+ * que de recopier une sixième fois le garde-fou, on le pose ici, une fois. */
+static int ajoute_borne(char *out, int outlen, int pos,
+                        const char *sep, const char *txt)
+{
+    if (!out || outlen <= 0) return 0;
+    if (pos < 0) pos = 0;
+    if (pos >= outlen - 1) return outlen - 1;   /* déjà plein */
+
+    int n = snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
+                     sep ? sep : "", txt ? txt : "");
+    if (n < 0) return pos;                      /* faute d'encodage */
+    pos += n;
+    if (pos > outlen - 1) pos = outlen - 1;     /* tronqué : on s'arrête au bord */
+    return pos;
+}
+
 static int ci_cmp(const char *a, const char *b)
 {
     while (*a && *b) {
@@ -3715,7 +3743,7 @@ static void style_to_names(int bits, char *out, int outlen)
     out[0] = '\0';
     for (int i = 0; i < (int)(sizeof T / sizeof T[0]); i++)
         if (bits & T[i].b)
-            pos += snprintf(out + pos, outlen - pos, "%s%s", pos ? "," : "", T[i].n);
+            pos = ajoute_borne(out, outlen, pos, pos ? "," : "", T[i].n);
     if (!pos) snprintf(out, outlen, "plain");
 }
 
@@ -4133,9 +4161,11 @@ static int split_args(const char *s, char args[][HC_VAL], int maxargs)
     return n;
 }
 
+static time_t hc_maintenant(void);   /* l'horloge, gelable — définie plus bas */
+
 static void format_date(char *out, int outlen, int mode)
 {
-    time_t now = time(NULL);
+    time_t now = hc_maintenant();
     struct tm *tm = localtime(&now);
     if (!tm) { out[0] = '\0'; return; }
     const char *fmt = "%m/%d/%y";
@@ -4159,6 +4189,27 @@ static const char *k_day[7] = {
 
 /* Secondes du Macintosh : depuis le 1er janvier 1904, pas 1970. */
 #define HC_MAC_EPOCH 2082844800LL
+
+/* L'HEURE, EN UN SEUL POINT — et gelable.
+ *
+ * « the date », « the time », « the seconds » et le tirage aléatoire lisaient
+ * tous time(NULL) directement. Un test qui affiche une date passe donc
+ * aujourd'hui et échoue demain, ce qui revient à ne pas pouvoir le versionner.
+ *
+ * HC_HORLOGE, s'il porte un entier, le rend à la place : la suite de
+ * non-régression devient reproductible, y compris l'an prochain. Sans lui,
+ * rien ne change. Le semis du générateur aléatoire s'y accroche aussi, pour
+ * que « random » soit reproductible sous le même réglage. */
+static time_t hc_maintenant(void)
+{
+    static long fige = -1;
+    if (fige == -1) {
+        const char *e = getenv("HC_HORLOGE");
+        fige = (e && *e) ? strtol(e, NULL, 10) : 0;
+        if (fige < 0) fige = 0;
+    }
+    return fige ? (time_t)fige : time(NULL);
+}
 
 enum { DF_SECONDS, DF_DATEITEMS, DF_SHORTDATE, DF_LONGDATE,
        DF_ABBREVDATE, DF_SHORTTIME, DF_LONGTIME, DF_NONE };
@@ -4275,7 +4326,7 @@ static int parse_datetime(const char *s, struct tm *tm)
         if (nn >= 6) ss = (int)nums[5];
         /* nums[6] est le jour de la semaine : recalculé, jamais lu */
     } else if (sawcolon) {               /* heure seule : on garde aujourd'hui */
-        time_t now = time(NULL);
+        time_t now = hc_maintenant();
         struct tm *lt = localtime(&now);
         if (!lt) return 0;
         year = lt->tm_year + 1900; mon = lt->tm_mon; day = lt->tm_mday;
@@ -4285,7 +4336,7 @@ static int parse_datetime(const char *s, struct tm *tm)
 
     if (mon < 0 || day < 0) return 0;
     if (year < 0) {                      /* année tue : celle en cours */
-        time_t now = time(NULL);
+        time_t now = hc_maintenant();
         struct tm *lt = localtime(&now);
         if (!lt) return 0;
         year = lt->tm_year + 1900;
@@ -4522,13 +4573,13 @@ static int call_function_body(const char *t, char *out, int outlen)
             out[0] = '\0';
             int pos = 0;
             for (int i = 0; i < g_nparams; i++)
-                pos += snprintf(out + pos, outlen - pos, "%s%s", i ? "," : "", g_params[i]);
+                pos = ajoute_borne(out, outlen, pos, i ? "," : "", g_params[i]);
             return 1;
         }
         if (ci_equal(name, "time")) { format_date(out, outlen, 3); return 1; }
         if (ci_equal(name, "seconds") || ci_equal(name, "secs")) {
             /* comme sur Macintosh : secondes depuis le 1er janvier 1904 */
-            snprintf(out, outlen, "%lld", (long long)time(NULL) + 2082844800LL);
+            snprintf(out, outlen, "%lld", (long long)hc_maintenant() + 2082844800LL);
             return 1;
         }
         if (ci_equal(name, "ticks")) {
@@ -4551,7 +4602,7 @@ static int call_function_body(const char *t, char *out, int outlen)
 
             static time_t t0;
             static int t0_pris = 0;
-            time_t now = time(NULL);
+            time_t now = hc_maintenant();
             if (!t0_pris) { t0 = now; t0_pris = 1; }
             snprintf(out, outlen, "%lld", (long long)(now - t0) * 60);
             return 1;
@@ -4620,7 +4671,7 @@ static int call_function_body(const char *t, char *out, int outlen)
     if (ci_equal(name, "ln1"))    { put_num(a > -1 ? log1p(a) : 0, out, outlen); return 1; }
     if (ci_equal(name, "random")) {
         static int seeded = 0;
-        if (!seeded) { srand((unsigned)time(NULL)); seeded = 1; }
+        if (!seeded) { srand((unsigned)hc_maintenant()); seeded = 1; }
         int n = (int)a;
         snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1;
     }
@@ -6953,13 +7004,13 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         buf[0] = '\0';
         int pos = 0;
         for (int i = 0; i < g_nparams; i++)
-            pos += snprintf(buf + pos, (size_t)HC_VAL - pos, "%s%s", i ? "," : "", g_params[i]);
+            pos = ajoute_borne(buf, HC_VAL, pos, i ? "," : "", g_params[i]);
         *out = hct_val_texte(buf);
         return 1;
     }
     if (ci_equal(nom, "seconds") || ci_equal(nom, "secs")) {
         char petit[24];
-        snprintf(petit, sizeof petit, "%lld", (long long)time(NULL) + HC_MAC_EPOCH);
+        snprintf(petit, sizeof petit, "%lld", (long long)hc_maintenant() + HC_MAC_EPOCH);
         *out = hct_val_texte(petit);
         return 1;
     }
@@ -6970,7 +7021,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         if (hv && *hv) { *out = hct_val_texte(hv); return 1; }
         static time_t t0;
         static int t0_pris = 0;
-        time_t now = time(NULL);
+        time_t now = hc_maintenant();
         if (!t0_pris) { t0 = now; t0_pris = 1; }
         char petit[24];
         snprintf(petit, sizeof petit, "%lld", (long long)(now - t0) * 60);

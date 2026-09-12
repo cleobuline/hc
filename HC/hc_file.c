@@ -246,11 +246,34 @@ static void put_part(FILE *f, Object *o)
     fprintf(f, "end %s\n", kind);
 }
 
+/* Sauvegarde ATOMIQUE : on écrit à côté, puis on renomme.
+ *
+ * fopen(path, "w") tronque le fichier AVANT d'écrire quoi que ce soit. Un
+ * disque plein, un quota atteint, une coupure — et la pile d'origine est déjà
+ * détruite, la nouvelle incomplète. Pour le document de l'utilisateur, c'est
+ * la faute la plus coûteuse qu'un programme puisse commettre.
+ *
+ * On écrit donc dans « <chemin>.tmp », on vérifie que tout s'est bien passé
+ * (ferror sur le flux ET le retour de fclose, car le dernier bloc peut
+ * n'être écrit qu'à la fermeture), et seulement alors rename() prend la
+ * place de l'ancien fichier. rename est atomique sur le même système de
+ * fichiers : à aucun instant il n'existe de pile à moitié écrite sous le nom
+ * attendu.
+ *
+ * En cas d'échec, le fichier temporaire est retiré et l'ancienne pile est
+ * intacte — l'utilisateur perd sa sauvegarde, pas son travail. */
 int hc_save(Object *stack, const char *path)
 {
-    if (!stack || stack->type != OBJ_STACK) return -1;
-    FILE *f = fopen(path, "w");
-    if (!f) return -1;
+    if (!stack || stack->type != OBJ_STACK || !path) return -1;
+
+    size_t lp = strlen(path);
+    char *tmp = malloc(lp + 5);
+    if (!tmp) return -1;
+    memcpy(tmp, path, lp);
+    memcpy(tmp + lp, ".tmp", 5);
+
+    FILE *f = fopen(tmp, "w");
+    if (!f) { free(tmp); return -1; }
 
     fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
 
@@ -315,11 +338,68 @@ int hc_save(Object *stack, const char *path)
         fprintf(f, "end card\n\n");
     }
 
-    fclose(f);
+    /* Les deux vérifications comptent : ferror voit ce qui a échoué en
+     * cours de route, fclose ce qui a échoué en vidant le dernier bloc. */
+    int mauvais = ferror(f);
+    if (fclose(f) != 0) mauvais = 1;
+
+    if (mauvais || rename(tmp, path) != 0) {
+        remove(tmp);
+        free(tmp);
+        return -1;
+    }
+    free(tmp);
     return 0;
 }
 
 /* ==================== lecture ==================== */
+
+/* Une ligne, quelle que soit sa longueur.
+ *
+ * Le lecteur employait « char line[4096] » avec fgets. L'écrivain, lui, ne
+ * découpe PAS les lignes de script ni de contenu — seul le base64 de la
+ * peinture est tronçonné. Une ligne HyperTalk ou une ligne de champ de plus
+ * de 4 093 caractères était donc coupée en deux à la relecture : le premier
+ * morceau gardait son « | » et le second, qui ne l'avait pas, était pris pour
+ * une ligne parasite et jeté.
+ *
+ * Mesuré : un champ de 8 000 caractères revenait à 4 093, un script de 5 020
+ * à 4 105. Perte de données silencieuse au cycle sauvegarde → relecture, sur
+ * le document de l'utilisateur.
+ *
+ * getline existe sur macOS comme sur Linux, mais exige _POSIX_C_SOURCE 200809
+ * ou _GNU_SOURCE selon le compilateur, et ce fichier est en C99 nu. Vingt
+ * lignes suffisent, et elles ne dépendent de rien.
+ *
+ * Le tampon est réemployé d'une ligne à l'autre : il ne grandit que si une
+ * ligne l'exige, et se libère à la fin de la lecture. */
+typedef struct { char *p; size_t cap; } Ligne;
+
+static int ligne_lit(Ligne *l, FILE *f)
+{
+    if (!l->p) {
+        l->cap = 512;
+        l->p = malloc(l->cap);
+        if (!l->p) { l->cap = 0; return 0; }
+    }
+    size_t used = 0;
+    for (;;) {
+        if (used + 1 >= l->cap) {
+            size_t nc = l->cap * 2;
+            char *np = realloc(l->p, nc);
+            if (!np) return 0;          /* l->p reste valide et libérable */
+            l->p = np; l->cap = nc;
+        }
+        if (!fgets(l->p + used, (int)(l->cap - used), f))
+            return used > 0;            /* fin de fichier : ce qu'on tient */
+        used += strlen(l->p + used);
+        if (used && l->p[used - 1] == '\n') return 1;   /* ligne complète */
+        if (feof(f)) return used > 0;                   /* dernière ligne */
+    }
+}
+
+static void ligne_libere(Ligne *l) { free(l->p); l->p = NULL; l->cap = 0; }
+
 
 static void rtrim(char *s)
 {
@@ -501,7 +581,8 @@ Object *hc_load(const char *path)
     Object *part  = NULL;   /* bouton ou champ en cours */
     Object *target = NULL;  /* à qui appartient le bloc en cours */
 
-    char line[4096], nm[256], nm2[256]; (void)nm2;
+    Ligne lg = { NULL, 0 };
+    char nm[256], nm2[256]; (void)nm2;
     Acc acc = {0};
     int in_script = 0, in_contents = 0, in_paint = 0, in_bgtext = 0;
     int in_icon = 0;
@@ -511,7 +592,8 @@ Object *hc_load(const char *path)
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
 
-    while (fgets(line, sizeof line, f)) {
+    while (ligne_lit(&lg, f)) {
+        char *line = lg.p;
         rtrim(line);
         char *s = ltrim(line);
 
@@ -781,6 +863,7 @@ Object *hc_load(const char *path)
     }
 
     free(acc.buf);
+    ligne_libere(&lg);
     fclose(f);
     return stack;
 }

@@ -1,0 +1,26 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+put "X" into field "data"                    [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      « data » -> [X]   « data 2 » -> [trois,quatre]
+put "X" into field "data 2"                  [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      « data » -> [un,deux]   « data 2 » -> [X]
+put ">" before field "data 2"                [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      « data » -> [un,deux]   « data 2 » -> [>trois,quatre]
+put "X" into item 2 of field "data 2"        [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      « data » -> [un,deux]   « data 2 » -> [trois,X]
+put field "data 2" into z                    [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      « data » -> [un,deux]   « data 2 » -> [trois,quatre]

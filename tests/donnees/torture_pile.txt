@@ -1,0 +1,41 @@
+-- ════════════════════════════════════════════════════════════════════
+--  À METTRE DANS LE SCRIPT DE LA PILE (Objects ▸ Stack Info… ▸ Script).
+--
+--  Les six messages du cycle de vie sont livrés à la CARTE courante, d'où
+--  ils remontent au fond puis à la pile. Un bouton ne les voit donc jamais :
+--  c'est ici qu'ils doivent être écrits, et nulle part ailleurs.
+--
+--  Une fois posés, ils marchent pour de vrai — lancez l'application,
+--  passez à une autre, revenez, ouvrez une seconde pile, quittez.
+-- ════════════════════════════════════════════════════════════════════
+
+on startUp
+  noter "startUp"
+end startUp
+
+on quit
+  noter "quit"
+end quit
+
+on suspend
+  noter "suspend"
+end suspend
+
+on resume
+  noter "resume"
+end resume
+
+on suspendStack
+  noter "suspendStack"
+end suspendStack
+
+on resumeStack
+  noter "resumeStack"
+end resumeStack
+
+-- Le journal, dans une globale pour qu'il survive d'un message à l'autre.
+on noter quoi
+  global gVus
+  if gVus is empty then put quoi into gVus
+  else put gVus & "," & quoi into gVus
+end noter

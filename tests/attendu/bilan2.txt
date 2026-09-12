@@ -1,0 +1,40 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+
+── PROPRIETES GLOBALES : posees puis relues
+   marche   numberFormat                 -> 0.00
+   marche     -> effet reel              -> 0.33
+   INERTE   cursor                       -> [ERR]    !! propriété ou fonction inconnue : cursor (v3, ligne 3 de button "B".t)
+   marche   userLevel                    -> 2
+   marche   blindTyping                  -> true
+   marche   powerKeys                    -> true
+   marche   dragSpeed                    -> 50
+   marche   lockRecent                   -> true
+   INERTE   language                     -> [ERR]    !! propriété ou fonction inconnue : language (v3, ligne 2 de button "B".t)
+   marche   itemDelimiter                -> b
+
+── PROPRIETES D'OBJET : posees puis relues
+   marche   autoTab                      -> true
+   marche   lockText                     -> true
+   marche   dontSearch                   -> true
+   marche   sharedText                   -> true
+   marche   wideMargins                  -> true
+   marche   showLines                    -> true
+   marche   multipleLines                -> true
+   marche   autoSelect                   -> true
+   INERTE   titleWidth                   -> [ERR]    !! propriété inconnue : titleWidth titleWidth of me
+   marche   partNumber                   -> partNumber of me
+   INERTE   family                       -> [ERR]    !! propriété inconnue : family family of me
+
+── FONCTIONS : rendent-elles quelque chose ?
+   marche   the stacks                   ->
+   INERTE   the windows                  -> [ERR]    !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "B".t)
+   INERTE   the programs                 -> [ERR]    !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "B".t)
+   INERTE   the sound                    -> [ERR]    !! propriété ou fonction inconnue : sound (v3, ligne 2 de button "B".t)
+   marche   the menus                    ->
+   INERTE   the diskSpace                -> [ERR]    !! propriété ou fonction inconnue : diskSpace (v3, ligne 2 de button "B".t)
+   INERTE   the heapSpace                -> [ERR]    !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "B".t)
+   INERTE   the systemVersion            -> [ERR]    !! propriété ou fonction inconnue : systemVersion (v3, ligne 2 de button "B".t)
+   INERTE   the version                  -> [ERR]    !! propriété ou fonction inconnue : version (v3, ligne 2 de button "B".t)
+   INERTE   the destination              -> [ERR]    !! propriété ou fonction inconnue : destination (v3, ligne 2 de button "B".t)
+   INERTE   the size                     -> [ERR]    !! propriété ou fonction inconnue : size (v3, ligne 2 de button "B".t)
+   INERTE   the freeSize                 -> [ERR]    !! propriété ou fonction inconnue : freeSize (v3, ligne 2 de button "B".t)

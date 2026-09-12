@@ -120,12 +120,27 @@ static HctNoeud *ouvre(HctAnalyseur *a, HctGenreNoeud g, const char *op,
     return n;
 }
 
+/* Les expressions ont leur plafond (HCT_PROF_MAX, dans hct_expr.c) ; les
+ * blocs n'en avaient pas. corps() rappelle hct_bloc_instruction, qui rappelle
+ * l'analyse d'un if, qui rappelle corps() : rien n'arrêtait la descente, et la
+ * pile C finissait par céder. Mesuré : 60 000 « if » imbriqués font segfaulter
+ * l'analyse, 20 000 passent encore. Deux cent cinquante-six laissent une marge
+ * de deux ordres de grandeur à ce qu'un humain écrit. */
+#define HCT_BLOC_PROF_MAX 256
+
 /* Un bloc d'instructions, jusqu'à l'un des mots de fin. `fins` est une liste
  * terminée par NULL ; le mot trouvé n'est PAS consommé. */
 static HctNoeud *corps(HctAnalyseur *a, const char **fins)
 {
     HctNoeud *bloc = hct_noeud(a->reserve, HCTN_BLOC, *hct_expr_jeton(a));
     if (!bloc) return NULL;
+
+    if (++a->prof_bloc > HCT_BLOC_PROF_MAX) {
+        a->prof_bloc--;
+        hct_ajoute_fils(a->reserve, bloc,
+                        hct_expr_faute(a, "blocs trop imbriqués"));
+        return bloc;
+    }
 
     for (;;) {
         saute_separateurs(a);
@@ -151,6 +166,7 @@ static HctNoeud *corps(HctAnalyseur *a, const char **fins)
                 hct_expr_avance(a);
         }
     }
+    a->prof_bloc--;
     return bloc;
 }
 

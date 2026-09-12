@@ -1,0 +1,5 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── trois paramètres de 700 000 caractères
+   longueur de the params : 1048575
+   0
+── survécu

@@ -1,0 +1,90 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+>>> navigation NORMALE (openCard doit crier)
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+      · traité par card "Deux"
+         [message box] !! openCard de la carte Deux
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+>>> navigation avec LOCK MESSAGES (silence attendu)
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      ⇒ va à la carte "Deux"
+      ⇒ va à la carte "Une"
+>>> apres unlock, openCard revient
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+      · traité par card "Deux"
+         [message box] !! openCard de la carte Deux
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+>>> lock sans unlock : deverrouillage automatique en sortie
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      ⇒ va à la carte "Deux"
+>>>   -> le gestionnaire suivant doit crier
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+      · traité par card "Deux"
+         [message box] !! openCard de la carte Deux
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité

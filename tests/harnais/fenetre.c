@@ -1,0 +1,24 @@
+#include "hc_core.h"
+#include <stdio.h>
+int main(void)
+{
+    Object *stack = hc_new_stack("Test");
+    Object *bg    = hc_new_background(stack, "Fond");
+    Object *c1    = hc_new_card(stack, bg, "Une");
+    Object *btn   = hc_new_button(c1, "B1");
+    stack->w = 640; stack->h = 480;
+    hc_set_current_card(c1);
+    hc_set_script(btn,
+      "on mouseUp\n"
+      "  debug raz\n"
+      "  put \"w=\" & the width of card window\n"
+      "  put \"h=\" & the height of card window\n"
+      "  put \"r=\" & the rect of card window\n"
+      "  put \"l=\" & the loc of card window\n"
+      "  put \"w2=\" & width of cd window\n"
+      "  debug bilan\n"
+      "end mouseUp\n");
+    hc_send(btn, "mouseUp");
+    hc_free(stack);
+    return 0;
+}

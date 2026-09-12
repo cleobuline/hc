@@ -1,0 +1,14 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 fonction double                       1
+   4
+   x survit : 1
+   le double : 42
+   le champ : abc
+   carte : Deux
+   tour 1
+   tour 2
+   tour 3
+   item 2 : b

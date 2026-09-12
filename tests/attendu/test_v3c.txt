@@ -1,0 +1,81 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+### 1) visual + go
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+      [message box] Deux
+--> carte courante: Deux (attendu: Deux)
+
+### 2) delete (chunk)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] banane
+cerise
+--> attendu: banane puis cerise
+
+### 3) sort (container, lines)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] banane
+cerise
+pomme
+--> attendu: banane, cerise, pomme
+
+### 4) sort (cards, descending, by short name) -- evite && sur 'of'
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une
+      [message box] Trois
+      [message box] Deux
+--> attendu (desc alpha Une>Trois>Deux): Une / Trois / Deux
+
+### 5) find
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      ⇒ trouvé "cerise" dans la carte "Une"
+      [message box]
+      [message box] cerise
+--> attendu: (vide, succes) puis cerise
+
+### 6) answer / ask (stdin vide -> defaut/annulation)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   [answer] Ca va ?  (1=oui 2=non)       [message box] oui
+   [ask] ton nom ? [Bob] [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v3 relit find                            1
+      [message box]
+
+### 7) send
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "direBonjour" à card "Une"
+      · traité par card "Une"
+         [message box] bonjour monde
+--> attendu: bonjour monde
+
+### 8) precedence 'of' / '&&' -- test isole, hors de mes ports
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une Trois
+--> avec parentheses, attendu: Une Deux
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      [message box] Une Trois
+--> sans parentheses (le cas suspect)
+
+— retours de la v3 vers l'ancien interpréteur —
+   (aucun)
+— ce que l'ancien interprète exécute encore —
+   v3 relit find                            1

@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "clearScreen" à button "GoBtn"
+      · traité par button "GoBtn"
+         ✎ choose « select »
+         !! choose : l'hôte ne gère pas les outils
+      → message "doMenu" à card "Une"
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+           ✗ message "doMenu" non traité
+         !! doMenu : l'hôte ne gère pas les menus
+      → message "doMenu" à card "Une"
+           (pas de gestionnaire dans card "Une")
+           (pas de gestionnaire dans background "Fond")
+           (pas de gestionnaire dans stack "Test")
+           ✗ message "doMenu" non traité
+         !! doMenu : l'hôte ne gère pas les menus
+         ✎ choose « browse »
+         !! choose : l'hôte ne gère pas les outils
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

@@ -1,0 +1,6 @@
+=== donnees/rawchart.txt ===
+lexeur   : propre
+erreurs  : 0
+racine   : bloc, 11 enfants
+structure: tient
+verdict  : la v3 ACCEPTE ce script

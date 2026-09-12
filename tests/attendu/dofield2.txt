@@ -1,0 +1,59 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    commande do: do "get line"&&lineNumber&& 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 refusée recours v3                   1
+[v3]    v1 terme it                              1
+[v3]    v1 fonction it                           1
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card field "menu"         1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    1
+[v3]    v1 fonction recours expr                 1
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+── x vide
+   [ERR]    !! ne sait pas faire : do "get line"&&lineNumber&&"of"&& x
+   [it]
+      v1 refusée recours v3                   1
+
+── champ absent de cette carte
+   [beta]
+      recours objet: card field "menu"         1
+      v1 terme recours expr                    1
+      v1 fonction recours expr                 1
+
+── lecture directe
+   beta
+
+── par do
+   beta
+
+── par do, comme le script
+   beta
+
+── the value of x
+   alpha
+beta
+gamma
+
+── number of chars of line 1 to 2 of the value of x
+   11

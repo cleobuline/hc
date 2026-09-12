@@ -1,0 +1,17 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── le clic
+   → message "mouseUp" à button "B"
+   → message "deleteButton" à button "B"
+   l'hôte oublie l'objet survolé
+── ce que l'interface ferait ensuite (survol)
+   rien à qui parler : le pointeur a été oublié
+── objets sur la carte : 0, avis reçus : 1
+── un pointeur LOCAL, que l'hôte ne peut pas oublier
+   vivant avant : 1
+   → message "mouseDown" à button "B2"
+   → message "deleteButton" à button "B2"
+   vivant après : 0  (le deuxième envoi est donc évité)
+── un objet bien vivant
+   vivant : 1
+   la carte : 1, le fond : 1, la pile : 1
+── avis après hc_free de la pile : 6

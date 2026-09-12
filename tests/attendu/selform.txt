@@ -1,0 +1,36 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+      = char 2 to 2 of card field "data"
+select char 2 of card field "data"               [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 1 to 1 of card field "data"
+select first char of card field "data"           [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 16 to 16 of card field "data"
+select last char of card field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 7 to 10 of card field "data"
+select second word of card field "data"          [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 7 to 10 of card field "data"
+select middle word of card field "data"          [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 12 to 16 of card field "data"
+select last word of card field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+      = char 1 to 16 of card field "data"
+select last line of card field "data"            [v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)

@@ -1,0 +1,62 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours of textStyle                     1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v3 relit recours expr                    2
+[v3]    v1 fonction recours expr                 1
+[v3]    v1 terme recours expr                    1
+>>> set name d'un objet
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → name de field "Data" ← "Fruits"
+      [message box] Fruits
+>>> set visible
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → visible de field "Fruits" ← "false"
+      [message box] false
+>>> set locktext (booleen)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → locktext de field "Fruits" ← "true"
+      [message box] true
+>>> set textStyle sur un objet entier
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → textStyle de field "Fruits" ← "bold"
+      [message box] bold
+>>> set textStyle sur un morceau (plage de style)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → textStyle de [0..6[ ← "bold,italic"
+   → message "textStyle" à button "GoBtn"
+        (pas de gestionnaire dans button "GoBtn")
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+      [message box] bold,italic
+>>> set global : itemDelimiter
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → itemDelimiter ← "|"
+      [message box] b
+>>> set global : lockScreen
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → lockScreen ← "true"
+      [message box] true
+>>> set geometrie (rect via width)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      → width de field "Fruits" ← "250"
+      [message box] 250
+>>> set propriete inconnue -> erreur propre
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! propriété inconnue : frobnicate
+— retours de la v3 vers l'ancien interpréteur —
+   recours of textStyle                     1
+— ce que l'ancien interprète exécute encore —
+   v3 relit recours expr                    2
+   v1 fonction recours expr                 1
+   v1 terme recours expr                    1

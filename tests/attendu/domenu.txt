@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+--- doMenu intercepté / passé ---
+   [1] → message "mouseUp" à button "B"
+   [1] · traité par button "B"
+   [1] → message "doMenu" à card "Une"
+   [1]   (pas de gestionnaire dans card "Une")
+   [1]   (pas de gestionnaire dans background "F")
+   [1] · traité par stack "T"
+   [0] INTERCEPTÉ : Clear Picture
+   [1] → message "doMenu" à card "Une"
+   [1]   (pas de gestionnaire dans card "Une")
+   [1]   (pas de gestionnaire dans background "F")
+   [1] · traité par stack "T"
+   [0] laissé passer : Select All
+   [1]   ✗ message "doMenu" non traité
+   [HÔTE] exécute « Select All »
+   [1] → message "deleteCard" à card "Une"
+   [1]   (pas de gestionnaire dans card "Une")
+   [1]   (pas de gestionnaire dans background "F")
+   [1] · traité par stack "T"
+   [0] adieu card "Une"
+--- suppression de carte ---

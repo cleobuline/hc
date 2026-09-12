@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    commande <message>                       1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 refusée recours v3                   1
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+>>> objet inexistant
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! objet introuvable (v3, ligne 3 de button "GoBtn".mouseUp)
+>>> on clearScreen tl (choose tl tool)
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+      !! personne ne répond à « clearScreen "browse" »
+   — retours de la v3 vers l'ancien interpréteur —
+      commande <message>                       1
+   — ce que l'ancien interprète exécute encore —
+      v1 refusée recours v3                   1
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "clearScreen" à button "GoBtn"
+      · traité par button "GoBtn"
+         ✎ choose « browse »
+         !! choose : l'hôte ne gère pas les outils
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

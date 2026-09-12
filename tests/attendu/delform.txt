@@ -1,0 +1,11 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+   delete item 2  -> [a,c]
+   put empty     -> [a,,c]
+   delete word 2  -> [un trois]
+   delete char 2-4-> [aef]
+   delete line 2  -> [L1
+L3]

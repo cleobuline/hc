@@ -1,0 +1,5 @@
+litteral C             [\xe2\x80\xdepth”] octets: E2 80 DE 70 74 68 E2 80 9D
+apres hc_new_button    [\xe2\x80\xdepth”] octets: E2 80 DE 70 74 68 E2 80 9D
+hc_describe            [button "\xe2\x80\xdepth”"] octets: 62 75 74 74 6F 6E 20 22 E2 80 DE 70 74 68 E2 80 9D 22
+resolution par nom : TROUVE
+sans les guillemets courbes : echec

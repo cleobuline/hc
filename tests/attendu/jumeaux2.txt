@@ -1,0 +1,5 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+boutons avant  = 1
+   [msg] le gestionnaire tente une seconde suppression
+boutons après  = 0  (attendu 0, et surtout pas de double free)
+pile libérée sans incident

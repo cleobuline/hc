@@ -1,0 +1,65 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    fonction next                            1
+[v3]    fonction prev                            1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme next                            1
+[v3]    v1 fonction next                         1
+[v3]    v1 terme prev                            1
+[v3]    v1 fonction prev                         1
+=== go next (bouton) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte apres 'go next': Deux (attendu Deux)
+
+=== go prev (bouton) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte apres 'go prev': Une (attendu Une)
+
+=== go next card (forme complete) ===
+→ message "mouseUp" à button "GoBtn"
+   · traité par button "GoBtn"
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
+--> carte apres 'go next card': Deux (attendu Deux)
+
+— retours de la v3 vers l'ancien interpréteur —
+   fonction next                            1
+   fonction prev                            1
+— ce que l'ancien interprète exécute encore —
+   v1 terme next                            1
+   v1 fonction next                         1
+   v1 terme prev                            1
+   v1 fonction prev                         1

@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── put the stacks
+   Demo
+
+── create menu "Outils"
+  create menu "Aide"
+  put the menus
+   Outils
+Aide
+
+── put the number of menus
+   2
+
+── go card "Deux"
+  go card "Une"
+  put the recent cards
+   card "Une"
+card "Deux"
+
+── put the recent names
+   Une
+Deux
+
+── put the diskSpace
+   123456789
+
+── put the systemVersion
+   15.4.1
+
+── put the heapSpace
+   [ERR]    !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "B".t)
