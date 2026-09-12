@@ -26,3 +26,25 @@
 ── put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
    [ERR]    !! compte : trop d'arguments (16, 15 au plus)
    Too many arguments
+=== la même limite sur les trois chemins d'appel ===
+── recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+  put the result & "|"
+   reçu 15 arguments, dernier = 15
+   |
+── recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+  put the result & "|"
+   [ERR]    !! recois : trop d'arguments (16, 15 au plus)
+   Too many arguments|
+── put rend(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)
+   reçu 15
+── put rend(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+   [ERR]    !! rend : trop d'arguments (16, 15 au plus)
+   Too many arguments
+── send "recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" to this stack
+  put the result & "|"
+   reçu 15 arguments, dernier = 15
+   |
+── send "recois 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16" to this stack
+  put the result & "|"
+   [ERR]    !! recois : trop d'arguments (16, 15 au plus)
+   Too many arguments|

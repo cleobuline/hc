@@ -27,8 +27,19 @@
 
 #include <stddef.h>
 
+/* ATTENTION AU CONTRAT.
+ *
+ * Ce commentaire promettait « toujours non NULL après construction ». C'était
+ * FAUX, et un commentaire faux est pire que pas de commentaire : il fait
+ * écrire du code sans garde. Quand une allocation échoue, les constructeurs
+ * rendent txt = NULL et len = 0 — indiscernable d'une chaîne vide valide.
+ *
+ * Tant que le type n'a pas de véritable état d'échec, tout consommateur doit
+ * donc traiter txt == NULL. Le chantier est identifié : un drapeau d'échec
+ * mémoire collant dans HctContexte, qui distinguerait « vide » de « pas pu ».
+ * Il n'est pas fait, et le dire ici vaut mieux que de laisser croire l'inverse. */
 typedef struct {
-    char *txt;      /* toujours non NULL après construction, terminé par 0 */
+    char *txt;      /* terminé par 0 — mais NULL si l'allocation a échoué */
     int   len;
 } HctValeur;
 

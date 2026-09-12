@@ -21,7 +21,16 @@ TRAVAIL="${HC_TESTS_TRAVAIL:-$ICI/.travail}"
 export HC_HORLOGE=1757606400      # 11 septembre 2025, 16:00 UTC
 export TZ=UTC
 export LC_ALL=C
-export ASAN_OPTIONS=detect_leaks=0:abort_on_error=0
+# LeakSanitizer ALLUMÉ. Il était éteint depuis que la suite est entrée dans le
+# dépôt — un réglage par défaut, pas une décision — et cet angle mort a coûté :
+# une correction posée il y a deux jours fuyait 87 octets par appel refusé, et
+# le harnais qui exerçait précisément ce cas ne pouvait pas le voir.
+#
+# Mesuré avant de l'allumer : les 159 harnais ne fuient pas une seule fois. Ça
+# ne coûte donc rien, et ça ferme la seule famille de défauts mémoire que les
+# sanitizers laissaient passer — ils voyaient déjà les débordements et les
+# lectures après libération.
+export ASAN_OPTIONS=detect_leaks=1:abort_on_error=0
 export UBSAN_OPTIONS=print_stacktrace=1
 
 CFLAGS="-std=gnu99 -w -O1 -I$HC"

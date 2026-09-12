@@ -1050,7 +1050,21 @@ static void garde_texte(Object *o, char *texte)
     if (!texte) return;
     char **t = realloc(o->textes_gardes,
                        (size_t)(o->ntextes_gardes + 1) * sizeof *t);
-    if (!t) { free(texte); return; }   /* faute de mieux */
+    /* FAUTE DE PLACE, ON FUIT — délibérément.
+     *
+     * Ce texte est celui d'un script EN COURS D'EXÉCUTION : les jetons de
+     * l'arbre pointent dedans, c'est toute la raison d'être de cette liste.
+     * Le libérer parce qu'on ne peut pas l'inscrire — ce que faisait la ligne
+     * « faute de mieux » — le fait viser de la mémoire rendue par le
+     * gestionnaire qui tourne : un use-after-free, exactement ce que la liste
+     * existe pour empêcher.
+     *
+     * Entre perdre quelques centaines d'octets jusqu'à la fermeture de la
+     * pile et lire de la mémoire libérée, le choix n'est pas difficile. Et
+     * ce n'est pas un cas où l'on peut s'arrêter par hc_memoire_epuisee :
+     * l'application marche encore très bien, elle a seulement un texte de
+     * plus qu'elle ne rendra pas. */
+    if (!t) return;
     o->textes_gardes = t;
     o->textes_gardes[o->ntextes_gardes++] = texte;
 }
@@ -1229,15 +1243,34 @@ void hc_set_script(Object *o, const char *script)
          * Le gestionnaire en cours continue sur l'ANCIEN texte, ce qui est le
          * comportement de HyperCard : la réécriture ne prend effet qu'au
          * prochain appel. */
+        /* Le NOUVEAU texte d'abord, l'ancien mis de côté ensuite.
+         *
+         * Dans l'ordre inverse, un dup_script qui échoue laissait o->script à
+         * NULL alors que l'ancien venait d'être confié à la liste : l'objet
+         * se retrouvait sans script, et la réécriture perdue. En le
+         * construisant d'abord, un échec ne change rien du tout — le
+         * gestionnaire continue sur son texte, et le script reste celui
+         * d'avant. */
+        char *neuf = dup_script(script);
+        if (script && !neuf) {
+            emit(HC_ERR, "   !! mémoire insuffisante : script inchangé");
+            return;
+        }
         o->arbre_perime = 1;
         garde_texte(o, o->script);
-        o->script = dup_script(script);
+        o->script = neuf;
         return;
     }
 
+    /* Même ordre ici, et pour la même raison. */
+    char *neuf = dup_script(script);
+    if (script && !neuf) {
+        emit(HC_ERR, "   !! mémoire insuffisante : script inchangé");
+        return;
+    }
     hc_arbre_oublie(o);          /* AVANT de libérer le texte : les jetons y pointent */
     free(o->script);
-    o->script = dup_script(script);
+    o->script = neuf;
 }
 
 /* ═══ L'HISTORIQUE DE NAVIGATION ═══════════════════════════════════════
@@ -6932,22 +6965,11 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
-    /* Le plafond était de HUIT, et le dépassement se faisait en SILENCE :
-     * « function toto a,b,c,d,e,f,g,h,i,j » appelée avec dix valeurs en
-     * recevait huit, les deux dernières valant la chaîne vide sans que rien
-     * ne le dise. Un nombre inventé, de surcroît : la table des paramètres
-     * en tient quinze.
-     *
-     * On monte donc à la vraie limite, et au-delà on refuse en le disant.
-     * Tronquer un appel de fonction est le pire des trois choix — l'erreur
-     * se manifeste loin de sa cause, dans le calcul du gestionnaire. */
-    if (nargs > HC_ARGS_MAX) {
-        set_result("Too many arguments");
-        emit(HC_ERR, "   !! %s : trop d'arguments (%d, %d au plus)",
-             nom, nargs, HC_ARGS_MAX);
-        return 1;                       /* traité : l'appel a échoué, il ne
-                                           repart pas ailleurs en douce */
-    }
+    /* Pas de contrôle du nombre d'arguments ici : hc_send_args_k_body le fait
+     * pour tout le monde, et il n'y a qu'une seule limite dans le noyau.
+     * Celui qui se trouvait à cet endroit était juste, mais il était SEUL —
+     * le message et « send » tronquaient en silence pendant qu'il refusait
+     * proprement. */
     char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
     if (nargs && !uargv) return 0;
     for (int i = 0; i < nargs; i++)
@@ -8516,7 +8538,10 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     /* découper le message en nom + arguments */
     char msg[128];
     const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX);
+    /* Une ligne de PLUS que le plafond : on range le premier argument de trop
+     * pour que hc_send_args_k_body le compte et refuse. S'arrêter au plafond
+     * le ferait disparaître en silence — c'est ce qui arrivait. */
+    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
     if (!argv) {
         set_result("mémoire insuffisante");
         ARENA_FREE;
@@ -8524,9 +8549,7 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     }
     int argc = 0;
     a = skip_spaces(a);
-    /* Même plafond que la table des paramètres : « send » n'a pas de raison
-     * d'en accepter un de plus pour le perdre en route. */
-    while (*a && argc < HC_ARGS_MAX) {
+    while (*a && argc <= HC_ARGS_MAX) {
         char *one = arena_buf();
         int len = 0, depth = 0, inq = 0;
         while (*a && !(depth == 0 && !inq && *a == ',')) {
@@ -10602,15 +10625,15 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     }
     if (!trouve) return 0;
 
-    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX);
+    /* Une ligne de plus que le plafond, pour la même raison qu'à « send » :
+     * le seizième argument doit ARRIVER au centre pour s'y faire refuser. */
+    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
     if (!argv) {
         set_result("mémoire insuffisante");
         return 1;
     }
     int argc = 0;
-    /* Même plafond que la table des paramètres, et non seize : un argument de
-     * plus s'écrivait ici pour être jeté au moment de remplir g_params. */
-    for (int i = 0; i < n->nfils && argc < HC_ARGS_MAX; i++) {
+    for (int i = 0; i < n->nfils && argc <= HC_ARGS_MAX; i++) {
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;
         char *v = arena_buf();
@@ -12344,14 +12367,14 @@ static void exec_line_body(Object *me, const char *line)
         /* découper le message en nom + arguments */
         char msg[128];
         const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-        char (*argv)[HC_VAL] = arena_rows(16);
+        char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
         if (!argv) {
             set_result("mémoire insuffisante");
             return;
         }
         int argc = 0;
         a = skip_spaces(a);
-        while (*a && argc < 16) {
+        while (*a && argc <= HC_ARGS_MAX) {
             char *one = arena_buf();
             int len = 0, depth = 0, inq = 0;
             while (*a && !(depth == 0 && !inq && *a == ',')) {
@@ -13510,14 +13533,14 @@ static void exec_line_body(Object *me, const char *line)
         for (int i = 0; i < nc; i++) {
             const char *end = NULL, *hdr = NULL;
             if (find_handler(chain[i]->script, verb, &end, &hdr)) {
-                char (*argv)[HC_VAL] = arena_rows(16);
+                char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
                 if (!argv) {
                     set_result("mémoire insuffisante");
                     return;
                 }
                 int argc = 0;
                 const char *a = skip_spaces(rest);
-                while (*a && argc < 16) {
+                while (*a && argc <= HC_ARGS_MAX) {
                     /* découpe au niveau des virgules de premier niveau */
                     char *one = arena_buf();
             int len = 0, depth = 0, inq = 0;
@@ -14631,6 +14654,24 @@ static int hc_send_args_k_body(Object *target, const char *message,
     if (g_depth >= HC_MAX_DEPTH) {
         emit(HC_ERR, "!! trop de récursion : message \"%s\" abandonné", message);
         return 0;
+    }
+
+    /* TROP D'ARGUMENTS : refusé ICI, et nulle part ailleurs.
+     *
+     * La table des paramètres en tient quinze. Les appelants se contentaient
+     * de s'arrêter à ce nombre, donc un seizième argument disparaissait en
+     * silence — et chacun d'eux devait y penser, ce qui faisait autant de
+     * vérités sur la limite qu'il y a de chemins d'appel. L'appel de fonction
+     * refusait bien ; le message et « send » tronquaient.
+     *
+     * Le contrôle est donc au point de passage obligé. Aucun appelant, présent
+     * ou futur, ne peut plus l'oublier : il lui suffit de compter ses
+     * arguments honnêtement et de laisser passer le compte. */
+    if (argc > HC_ARGS_MAX) {
+        set_result("Too many arguments");
+        emit(HC_ERR, "   !! %s : trop d'arguments (%d, %d au plus)",
+             message, argc, HC_ARGS_MAX);
+        return 1;                       /* traité : l'appel a échoué */
     }
 
     /* Quatre maillons pour l'objet, la carte, le fond et la pile ; le reste

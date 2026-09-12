@@ -522,12 +522,22 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         double m = hct_vers_nombre(args[0].txt);
         if (!(m >= 1 && m <= (double)HCT_RANG_MAX)) {
             if (m >= 1) {
+                /* Marquer la faute et LAISSER LA FONCTION SE TERMINER, au lieu
+                 * de rendre ici. Un « return » à cet endroit sautait le
+                 * nettoyage de la fin — les valeurs des arguments, le tableau
+                 * qui les porte, le nom de la fonction — et fuyait donc à
+                 * chaque appel refusé. Je l'avais introduit en bornant la
+                 * conversion, et le harnais qui teste random(10^300) ne
+                 * pouvait pas le voir : la suite tourne avec
+                 * detect_leaks=0. */
                 hct_ctx_faute(ctx, n, "random : borne hors limites");
-                return hct_val_vide();
+                r = hct_val_vide(); fait = 1;
+                m = 0;                   /* ne pas tirer au sort en plus */
+            } else {
+                m = 1;                   /* « random(0) » vaut 1, comme avant */
             }
-            m = 1;                       /* « random(0) » vaut 1, comme avant */
         }
-        r = hct_val_nombre((double)(rand() % (long)m + 1)); fait = 1;
+        if (!fait) { r = hct_val_nombre((double)(rand() % (long)m + 1)); fait = 1; }
     }
     if (!fait && nargs == 2 && !strcasecmp(nom, "offset")) {
         const char *g = args[1].txt, *p = args[0].txt;
