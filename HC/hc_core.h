@@ -195,7 +195,26 @@ struct Object {
     int      fixed_lh;       /* interligne fixe */
     int      show_lines;     /* lignes de guidage visibles */
     int      auto_tab;       /* tab passe au champ suivant */
-    int      dont_search;    /* exclu de find */
+    /* Exclu de « find ».
+     *
+     * Rangé parmi les propriétés de champ parce qu'il y est né, mais il vaut
+     * pour TROIS sortes d'objets, comme dans HyperCard : un champ qu'on ne
+     * fouille pas, une CARTE qu'on saute en entier, un FOND dont on saute
+     * toutes les cartes. C'est ainsi qu'on garde une carte d'index ou un
+     * mode d'emploi hors des résultats de recherche. */
+    int      dont_search;
+
+    /* Suppression interdite.
+     *
+     * Sur une CARTE, « delete this card » et l'article de menu la refusent.
+     * Sur un FOND, c'est la disparition du fond qui est refusée — ce qui
+     * revient à protéger sa DERNIÈRE carte, puisque rien d'autre ne supprime
+     * un fond ici.
+     *
+     * HyperCard l'a aussi sur la pile ; nous non, faute de quoi que ce soit
+     * qui supprime une pile dans le noyau. Mieux vaut ne pas offrir un
+     * verrou qui ne ferme rien. */
+    int      cant_delete;
     int      shared_text;    /* texte partagé entre cartes du même fond */
     /* Allumage partagé entre cartes du même fond ? (1 = oui par défaut)
      *

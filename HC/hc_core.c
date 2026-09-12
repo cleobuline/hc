@@ -1486,6 +1486,26 @@ int hc_delete_card(Object *card)
     if (total <= 1) return 0;
     if (card_index(stack, card) < 0) return 0;
 
+    /* « Can't Delete Card » : le verrou de l'Info carte.
+     *
+     * On refuse AVANT d'envoyer deleteCard — le message annonce une
+     * suppression qui va avoir lieu, et le faire partir pour rien tromperait
+     * un gestionnaire qui s'en sert pour ranger ses affaires. */
+    if (card->cant_delete) { set_result("Can't delete card"); return 0; }
+
+    /* Le verrou du FOND protège sa dernière carte, puisque c'est elle qui le
+     * ferait disparaître. Rien d'autre ici ne supprime un fond. */
+    if (card->bg && card->bg->cant_delete) {
+        int restants = 0;
+        for (int i = 0; i < stack->nparts; i++)
+            if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == card->bg)
+                restants++;
+        if (restants <= 1) {
+            set_result("Can't delete background");
+            return 0;
+        }
+    }
+
     SuppressionActive active = { card, g_suppression_active };
     g_suppression_active = &active;
 
@@ -1725,6 +1745,7 @@ static Object *clone_part(Object *o)
     c->show_lines   = o->show_lines;
     c->auto_tab     = o->auto_tab;
     c->dont_search  = o->dont_search;
+    c->cant_delete  = o->cant_delete;
     c->shared_text  = o->shared_text;
     c->textstyle    = o->textstyle;
     c->scroll       = o->scroll;
@@ -1899,6 +1920,12 @@ static Object *clone_layer(Object *o, ObjType type)
     c->arbre_sain = 0;
     c->paint  = dupstr(o->paint);
     c->marked = o->marked;
+    /* Les deux verrous suivent la copie. « cantDelete » surtout : une carte
+     * protégée dont la copie ne l'est plus offre un contournement en deux
+     * gestes — copier, coller, supprimer l'original… qui reste protégé, mais
+     * le duplicata, lui, ne l'était pas. */
+    c->dont_search = o->dont_search;
+    c->cant_delete = o->cant_delete;
 
     for (int i = 0; i < o->nparts; i++) {
         Object *p = clone_part(o->parts[i]);
@@ -4969,7 +4996,8 @@ static int is_prop_name(const char *w, int len)
         "loc", "location", "id", "name", "visible", "showname", "shownname",
         "enabled",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
-        "fixedlineheight", "showlines", "autotab", "dontsearch", "sharedtext",
+        "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
+        "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -5112,6 +5140,7 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
     if (ci_equal(prop, "showlines")) { snprintf(out, outlen, "%s", o->show_lines ? "true" : "false"); return 1; }
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
     if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return 1; }
     /* textAlign se lit en toutes lettres, comme HyperCard :
      * « left », « center », « right ». Un script compare la
@@ -8330,6 +8359,17 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         Object *cd = nth_card(stack, (start + k) % total);
         if (!cd) continue;
 
+        /* « Don't Search This Card » : on saute la carte ENTIÈRE, et pas
+         * seulement tel ou tel champ. Le verrou du FOND vaut pour toutes ses
+         * cartes — c'est ainsi qu'on tient un mode d'emploi ou une carte
+         * d'index hors des résultats sans avoir à cocher chaque champ.
+         *
+         * La carte COURANTE n'échappe pas à la règle : HyperCard non plus, et
+         * une exception ici ferait qu'une recherche trouve sur place ce
+         * qu'elle ne retrouvera jamais en repassant. */
+        if (cd->dont_search) continue;
+        if (cd->bg && cd->bg->dont_search) continue;
+
         /* champs de la carte puis du fond */
         Object *layers[2] = { cd, cd->bg };
         for (int L = 0; L < 2; L++) {
@@ -8872,7 +8912,12 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     } else if (ci_equal(prop, "autotab")) {
         o->auto_tab = truthy(val); notify_field(o);
     } else if (ci_equal(prop, "dontsearch")) {
-        o->dont_search = truthy(val); notify_field(o);
+        o->dont_search = truthy(val);
+        /* notify_field ne vaut que pour un CHAMP : c'est un rafraîchissement
+         * d'affichage, et une carte ou un fond n'en a que faire ici. */
+        if (o->type == OBJ_FIELD) notify_field(o);
+    } else if (ci_equal(prop, "cantdelete")) {
+        o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
         /* Accepte aussi « centre » et « centered », qu'on rencontre dans
          * les scripts, et retombe à gauche sur un mot inconnu plutôt que
@@ -9605,8 +9650,15 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
         Object *obj = hct_resout(ctx, o);
         if (ctx->erreur) return 1;
         if (obj && obj->type == OBJ_CARD) {
-            if (hc_delete_card(obj)) set_result("");
-            else set_result("Can't delete card");
+            /* On vide « the result » AVANT : hc_delete_card y pose sa propre
+             * raison quand elle en a une — « Can't delete background » pour le
+             * verrou du fond —, et l'écraser par un message plus vague ferait
+             * chercher le verrou au mauvais endroit. Le message générique ne
+             * sert que quand elle n'a rien dit (dernière carte, suppression
+             * déjà en cours). */
+            set_result("");
+            if (hc_delete_card(obj)) return 1;
+            if (!g_result[0]) set_result("Can't delete card");
             return 1;
         }
         if (obj && (obj->type == OBJ_BUTTON || obj->type == OBJ_FIELD)) {

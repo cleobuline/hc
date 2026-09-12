@@ -238,6 +238,7 @@ static void put_part(FILE *f, Object *o)
     fprintf(f, "id %d\n", o->id);
     if (o->auto_tab) fprintf(f, "autotab\n");
     if (o->dont_search) fprintf(f, "dontsearch\n");
+    if (o->cant_delete) fprintf(f, "cantdelete\n");
     if (o->shared_text) fprintf(f, "sharedtext\n");
     if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
     if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
@@ -304,6 +305,8 @@ int hc_save(Object *stack, const char *path)
 
         fprintf(f, "background "); put_quoted(f, bg->name); fputc('\n', f);
         fprintf(f, "id %d\n", bg->id);
+        if (bg->dont_search) fprintf(f, "dontsearch\n");
+        if (bg->cant_delete) fprintf(f, "cantdelete\n");
         put_block(f, "script", bg->script);
         put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
@@ -317,7 +320,12 @@ int hc_save(Object *stack, const char *path)
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
         fprintf(f, "\n");
         fprintf(f, "id %d\n", c->id);
-        if (c->marked) fprintf(f, "marked\n");
+        if (c->marked)      fprintf(f, "marked\n");
+        /* Les deux verrous de l'Info carte. Écrits seulement s'ils sont posés,
+         * comme « marked » : une pile enregistrée avant qu'ils existent se
+         * relit sans rien perdre. */
+        if (c->dont_search) fprintf(f, "dontsearch\n");
+        if (c->cant_delete) fprintf(f, "cantdelete\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
         /* L'allumage des boutons de fond NON PARTAGÉS appartient à la carte.
@@ -811,7 +819,11 @@ Object *hc_load(const char *path)
         if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
         if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
         if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }
-        if (strcmp(s, "dontsearch") == 0 && part)     { part->dont_search = 1; continue; }
+        /* Sur « target » et non « part » : ces deux-là valent pour un champ,
+         * une carte ou un fond, et target est justement la cible du bloc en
+         * cours, quelle qu'elle soit. */
+        if (strcmp(s, "dontsearch") == 0 && target)   { target->dont_search = 1; continue; }
+        if (strcmp(s, "cantdelete") == 0 && target)   { target->cant_delete = 1; continue; }
         if (strcmp(s, "sharedtext") == 0 && part)     { part->shared_text = 1; continue; }
         if (strncmp(s, "textfont ", 9) == 0 && part) {
             free(part->textfont);

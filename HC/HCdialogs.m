@@ -185,6 +185,10 @@ static NSPanel     *gCardPanel = nil;
 static Object      *gCardTarget = NULL;
 static NSTextField *gCardName = nil;
 static NSButton    *gCardMarked = nil;
+static NSButton    *gCardDontSearch = nil;
+static NSButton    *gCardCantDelete = nil;
+static NSButton    *gBgDontSearch = nil;
+static NSButton    *gBgCantDelete = nil;
 
 static NSPanel     *gStackPanel = nil;
 
@@ -622,20 +626,22 @@ void hc_sync_size_field(Object *o)
     if (!card) return;
     gCardTarget = card;
 
+    /* Vingt points de plus en hauteur : les deux verrous ont pris la place
+     * qui restait au-dessus des boutons. */
     gCardPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(300, 300, 340, 200)
+        initWithContentRect:NSMakeRect(300, 300, 340, 220)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gCardPanel setTitle:@"Card Info"];
     [gCardPanel setReleasedWhenClosed:NO];
     NSView *c = [gCardPanel contentView];
 
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 90, 18)];
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 180, 90, 18)];
     [lb setStringValue:@"Card Name:"];
     [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
     [c addSubview:lb];
 
-    gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
+    gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 178, 214, 22)];
     [gCardName setStringValue:[NSString stringWithUTF8String:card->name ? card->name : ""]];
     [c addSubview:gCardName];
 
@@ -650,7 +656,7 @@ void hc_sync_size_field(Object *o)
                 if (stack->parts[i] == card) rang = total;
             }
 
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 116, 308, 52)];
     /* « Card fields » affichait card->nparts, c'est-à-dire boutons compris.
      * On compte les champs, et eux seuls — et ceux de la carte, sans y
      * ajouter ceux du fond, puisque « card field N » les numérote à part. */
@@ -667,12 +673,35 @@ void hc_sync_size_field(Object *o)
      * marked cards », et il s'enregistre avec la pile — mais cette boîte, qui
      * est l'endroit où on s'attend à le trouver, ne le montrait pas. Marquer
      * une carte à la main demandait de passer par la boîte de messages. */
-    gCardMarked = [[NSButton alloc] initWithFrame:NSMakeRect(16, 60, 160, 20)];
+    gCardMarked = [[NSButton alloc] initWithFrame:NSMakeRect(16, 96, 200, 20)];
     [gCardMarked setButtonType:NSButtonTypeSwitch];
     [gCardMarked setTitle:@"Card Marked"];
     [gCardMarked setState:card->marked ? NSControlStateValueOn
                                        : NSControlStateValueOff];
     [c addSubview:gCardMarked];
+
+    /* Les deux verrous, dans l'ordre de HyperCard 2.
+     *
+     * « Don't Search » saute la carte ENTIÈRE lors d'un find, et non tel ou
+     * tel de ses champs — c'est ainsi qu'on tient un mode d'emploi ou une
+     * carte d'index hors des résultats sans cocher chaque champ.
+     *
+     * « Can't Delete » refuse « delete this card » comme l'article de menu.
+     * Les deux s'enregistrent avec la pile : un verrou qui disparaît à la
+     * sauvegarde ne protège rien. */
+    gCardDontSearch = [[NSButton alloc] initWithFrame:NSMakeRect(16, 76, 220, 20)];
+    [gCardDontSearch setButtonType:NSButtonTypeSwitch];
+    [gCardDontSearch setTitle:@"Don't Search This Card"];
+    [gCardDontSearch setState:card->dont_search ? NSControlStateValueOn
+                                                : NSControlStateValueOff];
+    [c addSubview:gCardDontSearch];
+
+    gCardCantDelete = [[NSButton alloc] initWithFrame:NSMakeRect(16, 56, 220, 20)];
+    [gCardCantDelete setButtonType:NSButtonTypeSwitch];
+    [gCardCantDelete setTitle:@"Can't Delete This Card"];
+    [gCardCantDelete setState:card->cant_delete ? NSControlStateValueOn
+                                                : NSControlStateValueOff];
+    [c addSubview:gCardCantDelete];
 
     NSButton *(^mkCD)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
         NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
@@ -694,10 +723,14 @@ void hc_sync_size_field(Object *o)
         gCardTarget->name = strdup([[gCardName stringValue] UTF8String]);
         gCardTarget->marked =
             ([gCardMarked state] == NSControlStateValueOn) ? 1 : 0;
+        gCardTarget->dont_search =
+            ([gCardDontSearch state] == NSControlStateValueOn) ? 1 : 0;
+        gCardTarget->cant_delete =
+            ([gCardCantDelete state] == NSControlStateValueOn) ? 1 : 0;
     }
     [gCardPanel close];
     gCardTarget = NULL;
-    gCardMarked = nil;
+    gCardMarked = gCardDontSearch = gCardCantDelete = nil;
     [self setNeedsDisplay:YES];
 }
 - (void)showBackgroundInfo {
@@ -708,19 +741,19 @@ void hc_sync_size_field(Object *o)
     gBgTarget = bg;
 
     gBgPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(320, 280, 340, 200)
+        initWithContentRect:NSMakeRect(320, 280, 340, 200 + 40)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gBgPanel setTitle:@"Background Info"];
     [gBgPanel setReleasedWhenClosed:NO];
     NSView *c = [gBgPanel contentView];
 
-    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 160, 120, 18)];
+    NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 200, 120, 18)];
     [lb setStringValue:@"Background Name:"];
     [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
     [c addSubview:lb];
 
-    gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 158, 184, 22)];
+    gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 198, 184, 22)];
     [gBgName setStringValue:[NSString stringWithUTF8String:bg->name ? bg->name : ""]];
     [c addSubview:gBgName];
 
@@ -731,12 +764,31 @@ void hc_sync_size_field(Object *o)
         for (int i = 0; i < stack->nparts; i++)
             if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->bg == bg) nCards++;
 
-    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 96, 308, 52)];
+    NSTextField *ids = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 136, 308, 52)];
     [ids setStringValue:[NSString stringWithFormat:
         @"Background ID: %d\nCards in this background: %d\nFields: %d",
         bg->id, nCards, bg->nparts]];
     [ids setBezeled:NO]; [ids setDrawsBackground:NO]; [ids setEditable:NO];
     [c addSubview:ids];
+
+    /* Les mêmes verrous que dans l'Info carte, à l'échelle du FOND.
+     *
+     * « Don't Search » y saute toutes les cartes du fond d'un coup ; « Can't
+     * Delete » refuse la disparition du fond, c'est-à-dire la suppression de
+     * sa DERNIÈRE carte — rien d'autre ne supprime un fond ici. */
+    gBgDontSearch = [[NSButton alloc] initWithFrame:NSMakeRect(16, 92, 250, 20)];
+    [gBgDontSearch setButtonType:NSButtonTypeSwitch];
+    [gBgDontSearch setTitle:@"Don't Search This Background"];
+    [gBgDontSearch setState:bg->dont_search ? NSControlStateValueOn
+                                            : NSControlStateValueOff];
+    [c addSubview:gBgDontSearch];
+
+    gBgCantDelete = [[NSButton alloc] initWithFrame:NSMakeRect(16, 68, 250, 20)];
+    [gBgCantDelete setButtonType:NSButtonTypeSwitch];
+    [gBgCantDelete setTitle:@"Can't Delete This Background"];
+    [gBgCantDelete setState:bg->cant_delete ? NSControlStateValueOn
+                                            : NSControlStateValueOff];
+    [c addSubview:gBgCantDelete];
 
     NSButton *(^mkBG)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
         NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 88, 28)];
@@ -757,15 +809,21 @@ void hc_sync_size_field(Object *o)
     if (gBgTarget) {
         free(gBgTarget->name);
         gBgTarget->name = strdup([[gBgName stringValue] UTF8String]);
+        gBgTarget->dont_search =
+            ([gBgDontSearch state] == NSControlStateValueOn) ? 1 : 0;
+        gBgTarget->cant_delete =
+            ([gBgCantDelete state] == NSControlStateValueOn) ? 1 : 0;
     }
     [gBgPanel close];
     gBgTarget = NULL;
+    gBgDontSearch = gBgCantDelete = nil;
     [self setNeedsDisplay:YES];
 }
 
 - (void)bgCancel:(id)sender {
     [gBgPanel close];
     gBgTarget = NULL;
+    gBgDontSearch = gBgCantDelete = nil;
 }
 
 - (void)bgScript:(id)sender {
@@ -855,7 +913,7 @@ void hc_sync_size_field(Object *o)
 - (void)cardCancel:(id)sender {
     [gCardPanel close];
     gCardTarget = NULL;
-    gCardMarked = nil;
+    gCardMarked = gCardDontSearch = gCardCantDelete = nil;
 }
 
 - (void)cardScript:(id)sender {
