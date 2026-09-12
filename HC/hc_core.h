@@ -599,6 +599,10 @@ int      hc_go_back(void);
 /* Aller à la i-ème carte de la liste SANS DOUBLON (0 = la plus récente),
  * celle que montre l'article Recent du menu Go. 0 si ce rang n'existe pas. */
 int      hc_go_recent(int i);
+/* Aller à une carte désignée. 0 si ce n'est pas une carte, ou si elle a
+ * disparu depuis que l'appelant en a pris l'adresse — à préférer à un rang
+ * pour tout ce qui garde une cible entre deux tours de boucle d'événements. */
+int      hc_go_card(Object *card);
 
 int     hc_layer_is_live(Object *layer);
 

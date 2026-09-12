@@ -200,10 +200,14 @@ void hc_register_stack(Object *stack)
         /* Faute de place on ne enregistre pas, mais on le DIT : sans ce message
          * la pile serait ouverte et introuvable, ce qui est exactement le
          * défaut qu'on vient de corriger. */
-        if (!n) { emit(HC_ERR, "   !! registre des piles saturé à %d : "
-                               "« %s » restera introuvable par son nom",
-                       g_nstacks, stack->name ? stack->name : "?");
-                  return; }
+        /* Continuer serait pire que s'arrêter : la pile est ouverte chez
+         * l'hôte, une fenêtre la montre, et le noyau ne la connaîtrait pas —
+         * « go to stack "X" » ne la trouverait pas, hc_unregister_stack ne la
+         * retirerait de rien, et sa libération laisserait l'hôte avec une
+         * adresse morte. Cette fonction ne rend rien, donc l'appelant ne peut
+         * pas refuser l'ouverture : le seul choix honnête est le point unique
+         * d'épuisement mémoire, qui prévient l'hôte avant d'abandonner. */
+        if (!n) hc_memoire_epuisee("registre des piles ouvertes");
         g_stacks = n; g_capstacks = cap;
     }
     g_stacks[g_nstacks++] = stack;
@@ -315,7 +319,12 @@ static int     g_script_clipped = 0;
 
 /* Arguments du gestionnaire courant, pour `the params`, param(n), paramCount.
    g_params[0] est le nom du message ; les suivants sont les arguments. */
-static char    g_params[16][HC_VAL];
+/* Quinze ARGUMENTS au plus, plus le nom du message en tête. C'est la taille
+ * de cette table qui fixe la limite, et « param(n) », « the params » et
+ * « the paramCount » la lisent tous ici : tout autre plafond posé ailleurs
+ * dans le noyau serait une seconde vérité, plus basse et muette. */
+#define HC_ARGS_MAX 15
+static char    g_params[HC_ARGS_MAX + 1][HC_VAL];
 static int     g_nparams = 0;
 
 static void set_result(const char *msg) { snprintf(g_result, sizeof g_result, "%s", msg); }
@@ -4772,14 +4781,23 @@ static int call_function_body(const char *t, char *out, int outlen)
     if (ci_equal(name, "exp1"))   { put_num(expm1(a), out, outlen); return 1; }
     if (ci_equal(name, "exp2"))   { put_num(pow(2.0, a), out, outlen); return 1; }
     if (ci_equal(name, "ln1"))    { put_num(a > -1 ? log1p(a) : 0, out, outlen); return 1; }
+    /* Ces trois-là convertissent un double en entier. Bornées comme leurs
+     * jumelles de la v3 : sans le test, « random(10^300) » et
+     * « numToChar(10^300) » convertissaient hors plage — comportement
+     * indéfini. Ce chemin n'est plus l'ordinaire, mais il reste atteignable
+     * par le recours, et un comportement indéfini ne se garde pas « au cas
+     * où ». */
     if (ci_equal(name, "random")) {
         static int seeded = 0;
         if (!seeded) { srand((unsigned)hc_maintenant()); seeded = 1; }
-        int n = (int)a;
+        int n = (a >= 1 && a <= (double)HCT_RANG_MAX) ? (int)a : 0;
         snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1;
     }
     if (ci_equal(name, "charToNum")) { snprintf(out, outlen, "%d", (unsigned char)vals[0][0]); return 1; }
-    if (ci_equal(name, "numToChar")) { snprintf(out, outlen, "%c", (int)a); return 1; }
+    if (ci_equal(name, "numToChar")) {
+        int code = (a >= 0 && a <= 255) ? (int)a : 0;
+        snprintf(out, outlen, "%c", code); return 1;
+    }
 
     /* value() : évalue une chaîne comme une expression. Le petit vertige
        d'HyperTalk — du texte qui redevient du calcul. */
@@ -6914,7 +6932,22 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
-    if (nargs > 8) nargs = 8;
+    /* Le plafond était de HUIT, et le dépassement se faisait en SILENCE :
+     * « function toto a,b,c,d,e,f,g,h,i,j » appelée avec dix valeurs en
+     * recevait huit, les deux dernières valant la chaîne vide sans que rien
+     * ne le dise. Un nombre inventé, de surcroît : la table des paramètres
+     * en tient quinze.
+     *
+     * On monte donc à la vraie limite, et au-delà on refuse en le disant.
+     * Tronquer un appel de fonction est le pire des trois choix — l'erreur
+     * se manifeste loin de sa cause, dans le calcul du gestionnaire. */
+    if (nargs > HC_ARGS_MAX) {
+        set_result("Too many arguments");
+        emit(HC_ERR, "   !! %s : trop d'arguments (%d, %d au plus)",
+             nom, nargs, HC_ARGS_MAX);
+        return 1;                       /* traité : l'appel a échoué, il ne
+                                           repart pas ailleurs en douce */
+    }
     char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
     if (nargs && !uargv) return 0;
     for (int i = 0; i < nargs; i++)
@@ -8258,6 +8291,10 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             int b = 0, e = 0;
             chunk_span1(src, morceau, i + 1, &b, &e);
             elems[i] = malloc((size_t)(e - b) + 1);
+            /* Ce malloc n'était pas testé, et le memcpy qui suit écrivait donc
+             * dans NULL sous pression mémoire — en contournant justement le
+             * point unique qu'on vient de mettre en place. */
+            if (!elems[i]) hc_memoire_epuisee("éléments d'un tri");
             memcpy(elems[i], src + b, (size_t)(e - b));
             elems[i][e - b] = '\0';
 
@@ -8479,7 +8516,7 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     /* découper le message en nom + arguments */
     char msg[128];
     const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-    char (*argv)[HC_VAL] = arena_rows(16);
+    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX);
     if (!argv) {
         set_result("mémoire insuffisante");
         ARENA_FREE;
@@ -8487,7 +8524,9 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     }
     int argc = 0;
     a = skip_spaces(a);
-    while (*a && argc < 16) {
+    /* Même plafond que la table des paramètres : « send » n'a pas de raison
+     * d'en accepter un de plus pour le perdre en route. */
+    while (*a && argc < HC_ARGS_MAX) {
         char *one = arena_buf();
         int len = 0, depth = 0, inq = 0;
         while (*a && !(depth == 0 && !inq && *a == ',')) {
@@ -10172,6 +10211,20 @@ int hc_go_back(void)
  * cinquième carte visitée est une navigation ordinaire — elle doit s'inscrire,
  * sans quoi un « Back » juste après repartirait d'où l'on venait et non d'où
  * l'on est. Seul « Back », qui retrace ses pas, doit s'en abstenir. */
+/* Aller à une carte DÉSIGNÉE, sous réserve qu'elle vive encore.
+ *
+ * Le menu Recent retenait un rang, et reconstruisait la liste au clic : entre
+ * l'ouverture du menu et le clic, une navigation — un « on idle » suffit —
+ * pouvait changer l'historique, et le rang ne désignait plus la même carte.
+ * Un pointeur ne souffre pas de ce décalage, et hc_object_is_live répond pour
+ * le cas où la carte a disparu entre-temps. */
+int hc_go_card(Object *card)
+{
+    if (!card || card->type != OBJ_CARD) return 0;
+    if (!hc_object_is_live(card)) return 0;
+    return v3_va_a(card);
+}
+
 int hc_go_recent(int i)
 {
     Object *vues[HC_HISTO_MAX];
@@ -10410,6 +10463,26 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
 
     Object *pile = find_open_stack(nom);
+
+    /* Le plafond se vérifie AVANT de charger, et non après.
+     *
+     * load_stack ne rend pas seulement une pile : côté Cocoa elle l'ouvre, la
+     * fait enregistrer et la retient dans la liste des piles en usage. Refuser
+     * ensuite laissait donc une NEUVIÈME pile chargée et vivante jusqu'à la
+     * fermeture, invisible à l'utilisateur comme au script — on lui répondait
+     * « Too many stacks in use » et elle occupait quand même la mémoire.
+     *
+     * Une pile DÉJÀ ouverte échappe à ce garde : elle passera par le test
+     * d'en bas, après que la boucle de retrait ait décrémenté le compte, de
+     * sorte que redéclarer une pile déjà en usage reste possible — c'est le
+     * geste qui la remet en tête. */
+    if (!pile && demarrer && g_nusing >= HC_MAX_USING) {
+        set_result("Too many stacks in use");
+        emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
+                     "« %s » n'a pas été chargée", HC_MAX_USING, nom);
+        return 1;
+    }
+
     if (!pile && demarrer && g_host && g_host->load_stack)
         pile = g_host->load_stack(nom);
     if (!pile) return 0;                  /* introuvable : ancien chemin */
@@ -10469,8 +10542,18 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     if (!nom[0]) return 0;
 
     Object *start = g_me ? g_me : g_current_card;
-    Object *chain[8];
-    int nc = build_chain(start, chain, 8);
+    /* Même dimension qu'au dispatch : quatre maillons pour l'objet, la carte,
+     * le fond et la pile, puis une place par pile en usage.
+     *
+     * Ce tableau faisait huit entrées. Les quatre premières étant prises,
+     * build_chain n'y logeait que les QUATRE piles en usage les plus
+     * récemment déclarées, et ce test — qui décide si quelqu'un répond au
+     * message — déclarait introuvable un gestionnaire vivant dans une
+     * bibliothèque plus ancienne. Huit « start using » puis un appel : les
+     * quatre premières déclarées ne répondaient plus, sans manquer de mémoire
+     * et sans qu'aucun message ne dise pourquoi. */
+    Object *chain[4 + HC_MAX_USING];
+    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain));
 
     int trouve = 0;
     for (int i = 0; i < nc && !trouve; i++) {
@@ -10479,13 +10562,15 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     }
     if (!trouve) return 0;
 
-    char (*argv)[HC_VAL] = arena_rows(16);
+    char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX);
     if (!argv) {
         set_result("mémoire insuffisante");
         return 1;
     }
     int argc = 0;
-    for (int i = 0; i < n->nfils && argc < 16; i++) {
+    /* Même plafond que la table des paramètres, et non seize : un argument de
+     * plus s'écrivait ici pour être jeté au moment de remplir g_params. */
+    for (int i = 0; i < n->nfils && argc < HC_ARGS_MAX; i++) {
         const HctNoeud *f = n->fils[i];
         if (f->genre == HCTN_MOTCLE) continue;
         char *v = arena_buf();
@@ -13687,6 +13772,10 @@ static void exec_line_body(Object *me, const char *line)
                 int b = 0, e = 0;
                 chunk_span1(src, morceau, i + 1, &b, &e);
                 elems[i] = malloc((size_t)(e - b) + 1);
+                /* Ce malloc n'était pas testé, et le memcpy qui suit écrivait donc
+                 * dans NULL sous pression mémoire — en contournant justement le
+                 * point unique qu'on vient de mettre en place. */
+                if (!elems[i]) hc_memoire_epuisee("éléments d'un tri");
                 memcpy(elems[i], src + b, (size_t)(e - b));
                 elems[i][e - b] = '\0';
 
@@ -14532,7 +14621,7 @@ static int hc_send_args_k_body(Object *target, const char *message,
     /* g_params[0] = nom du message, puis les arguments */
     snprintf(g_params[0], sizeof g_params[0], "%s", message);
     g_nparams = 1;
-    for (int i = 0; i < argc && g_nparams < 16; i++)
+    for (int i = 0; i < argc && g_nparams <= HC_ARGS_MAX; i++)
         snprintf(g_params[g_nparams++], sizeof g_params[0], "%s", argv[i]);
 
     if (g_trace) {

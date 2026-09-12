@@ -1,0 +1,28 @@
+=== random : la borne est convertie après vérification ===
+── put random(1) & "/" & random(0)
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   1/1
+── put 10^300 into m
+  put random(m)
+   [ERR]    !! random : borne hors limites (v3, ligne 3 de button "B".t)
+── put 0-5 into m
+  put random(m)
+   1
+
+=== une neuvième « start using » ne doit rien charger ===
+   huit déclarées, load_stack appelée 8 fois
+── start using stack "Neuvieme"
+   [ERR]    !! trop de piles en usage (8 au plus) : « Neuvieme » n'a pas été chargée
+   load_stack appelée 0 fois de plus (doit valoir 0)
+── start using stack "L3"
+  put the result & "|"
+   |
+
+=== arguments d'une fonction définie dans une pile ===
+── put somme(1,2,3,4,5,6,7,8,9,10)
+   55
+── put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)
+   15
+── put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+   [ERR]    !! compte : trop d'arguments (16, 15 au plus)
+   Too many arguments

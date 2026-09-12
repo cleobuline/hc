@@ -40,7 +40,7 @@ int main(void){
   Object *c1=hc_new_card(st,bg,"Une");
   Object *c2=hc_new_card(st,bg,"Deux");
   Object *c3=hc_new_card(st,bg,"Trois");
-  (void)c2;(void)c3;
+  (void)c2;
   b=hc_new_button(c1,"B");
   hc_set_current_card(c1);
 
@@ -68,6 +68,15 @@ int main(void){
 
   printf("── rang inexistant\n");
   printf("   hc_go_recent(99) = %d\n", hc_go_recent(99));
+
+  /* hc_go_card : ce que l'article de menu emploie désormais. Un rang relu au
+   * clic peut désigner une autre carte si l'historique a bougé entre-temps ;
+   * un pointeur ne bouge pas, et la fonction refuse une carte morte. */
+  printf("── hc_go_card\n");
+  printf("   vers \"Trois\"        = %d\n", hc_go_card(c3));
+  essai("put the short name of this card");
+  printf("   NULL                = %d\n", hc_go_card(NULL));
+  printf("   un bouton, pas carte= %d\n", hc_go_card(b));
 
   printf("── the recent names\n");
   essai("put the recent names");
