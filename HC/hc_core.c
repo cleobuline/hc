@@ -12,6 +12,7 @@
 #include <math.h>
 #include <time.h>
 #include <strings.h>
+#include <limits.h>
 #include "hct_bloc.h"
 #include "hct_chunk.h"   /* morceaux : étape 1 de la reprise v3 */
 #include "hct_val.h"     /* valeurs  : étape 2 */
@@ -4260,11 +4261,27 @@ static int container_set_body(const char *ref, const char *val, int mode)
         /* passer par hc_field_text / hc_set_field_text : un champ de fond non
          * partagé a un texte propre à chaque carte */
         const char *old = hc_field_text(o);
-        if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
-        else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
-        else if (mode == 3) merged[0] = '\0';
-        else                snprintf(merged, HC_VAL, "%s", val);
-        hc_set_field_text(o, merged);
+
+        /* LE REMPLACEMENT SIMPLE NE RECOPIE PLUS.
+         *
+         * « snprintf(merged, HC_VAL, "%s", val) » pour ensuite poser merged
+         * dans le champ ne servait à rien d'autre qu'à TRONQUER à soixante-
+         * quatre kilo-octets. C'était le dernier des trois points de
+         * troncature de « sort » : après avoir rendu la source et la
+         * reconstruction dynamiques, le champ retombait quand même à 65 535
+         * caractères ici.
+         *
+         * Les modes qui CONCATÈNENT gardent le tampon : la concaténation
+         * illimitée demanderait une allocation dynamique à chaque « put
+         * after », et ce n'est pas le chemin qui détruisait des données. */
+        if (mode == 0) {
+            hc_set_field_text(o, val ? val : "");
+        } else {
+            if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
+            else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
+            else                merged[0] = '\0';        /* mode 3 : effacer */
+            hc_set_field_text(o, merged);
+        }
         notify_field(o);
         return 1;
     }
@@ -4275,11 +4292,16 @@ static int container_set_body(const char *ref, const char *val, int mode)
     if (vname[0] && vname[0] != '"' && !*skip_spaces(after)) {
         const char *old = var_get(vname);
         if (!old) old = "";
-        if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
-        else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
-        else if (mode == 3) merged[0] = '\0';
-        else                snprintf(merged, HC_VAL, "%s", val);
-        var_set(vname, merged);
+        /* Même chose pour une VARIABLE : le remplacement simple posait la
+         * valeur telle quelle, pas une copie tronquée à HC_VAL. */
+        if (mode == 0) {
+            var_set(vname, val ? val : "");
+        } else {
+            if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
+            else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
+            else                merged[0] = '\0';        /* mode 3 : effacer */
+            var_set(vname, merged);
+        }
         return 1;
     }
     return 0;
@@ -8322,18 +8344,40 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
                 ncible = f0;
         }
 
-        char *src = arena_buf();
-        src[0] = '\0';
-        if (ncible) v3_val_texte(ctx, ncible, src, HC_VAL);
-        else        eval_checked(cible, src, HC_VAL);
+        /* LA SOURCE NE PASSE PLUS PAR UN TAMPON FIXE.
+         *
+         * v3_val_texte recopiait la valeur dans HC_VAL — soixante-quatre
+         * kilo-octets — et le résultat était ensuite RÉÉCRIT dans le champ.
+         * Mesuré : « sort lines of card field "gros" » sur un champ de
+         * 200 000 caractères le ramenait à 65 525, et ses 20 000 lignes à
+         * 6 553. Sans un mot. Ce n'est pas une troncature d'affichage, c'est
+         * une destruction de données.
+         *
+         * HctValeur alloue son texte à sa taille : on le prend tel quel, et
+         * l'on en devient propriétaire — d'où le free et non hct_val_libere. */
+        char *src_dyn = NULL;
+        const char *src;
+        if (ncible) {
+            HctValeur v = hct_evalue(ctx, ncible);
+            if (ctx->erreur) { hct_val_libere(&v); ARENA_FREE;
+                               g_atop = sauve; return 1; }
+            src_dyn = v.txt;                 /* propriété reprise */
+            src = src_dyn ? src_dyn : "";
+        } else {
+            char *tmp = arena_buf();
+            tmp[0] = '\0';
+            eval_checked(cible, tmp, HC_VAL);
+            src = tmp;
+        }
 
         int n2 = chunk_count(src, morceau);
-        if (n2 < 2) { ARENA_FREE; g_atop = sauve; return 1; }
+        if (n2 < 2) { free(src_dyn); ARENA_FREE; g_atop = sauve; return 1; }
 
         SortItem *tab = calloc((size_t)n2, sizeof *tab);
         char **cles = calloc((size_t)n2, sizeof *cles);
         char **elems = calloc((size_t)n2, sizeof *elems);
         if (!tab || !cles || !elems) { free(tab); free(cles); free(elems);
+                                       free(src_dyn);
                                        ARENA_FREE; g_atop = sauve; return 1; }
 
         for (int i = 0; i < n2; i++) {
@@ -8367,23 +8411,30 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
         g_sort_desc = desc; g_sort_style = style;
         qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
 
+        /* LE RÉSULTAT NON PLUS. Le « break » quand le tampon était plein
+         * jetait les éléments restants — la seconde moitié de la destruction.
+         * On mesure d'abord, on alloue juste, on remplit sans garde : la
+         * somme des longueurs plus un séparateur par élément ne peut pas
+         * déborder ce qu'on vient de calculer. */
         char sep[2] = { chunk_sep(morceau), '\0' };
-        char *res = arena_buf();
-        res[0] = '\0';
+        size_t total = 0;
+        for (int i = 0; i < n2; i++) total += strlen(elems[i]) + 1;
+        char *res = malloc(total + 1);
+        if (!res) hc_memoire_epuisee("résultat d'un tri");
         size_t used = 0;
         for (int i = 0; i < n2; i++) {
             const char *el = elems[tab[i].rang];
             size_t l = strlen(el);
-            if (used + l + 2 >= HC_VAL) break;
-            if (i) { res[used++] = sep[0]; }
+            if (i) res[used++] = sep[0];
             memcpy(res + used, el, l); used += l;
-            res[used] = '\0';
         }
+        res[used] = '\0';
 
         container_set(cible, res, 0);
+        free(res);
 
         for (int i = 0; i < n2; i++) { free(cles[i]); free(elems[i]); }
-        free(cles); free(elems); free(tab);
+        free(cles); free(elems); free(tab); free(src_dyn);
         ARENA_FREE;
         set_result("");
         g_atop = sauve;
@@ -9374,6 +9425,69 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 static FILE *file_find(const char *nom);          /* défini plus bas */
 static int   file_constant(const char *s);         /* défini plus bas */
 
+/* Plafond d'une lecture de fichier.
+ *
+ * Ce n'est plus une taille de tampon — la lecture s'agrandit à la demande —
+ * mais un garde-fou : « read from file "/dev/zero" » n'a pas de fin, et sans
+ * plafond il mangerait la mémoire de la machine jusqu'à l'arrêt du
+ * programme. Soixante-quatre mégaoctets sont au-delà de tout fichier qu'une
+ * pile lit raisonnablement d'un seul coup, et très loin des 65 535 octets
+ * d'avant. */
+#define HC_LECTURE_MAX (64u * 1024u * 1024u)
+
+/* Le tampon de lecture s'agrandit par doublement. hc_memoire_epuisee est la
+ * sortie unique sur échec d'allocation : on ne rend pas une lecture tronquée
+ * en la faisant passer pour complète. */
+static void lecture_pousse(char **buf, size_t *cap, size_t *n, int c)
+{
+    if (*n + 1 >= *cap) {
+        size_t nc = *cap ? *cap * 2 : 1024;
+        char *p = realloc(*buf, nc);
+        if (!p) hc_memoire_epuisee("lecture d'un fichier");
+        *buf = p; *cap = nc;
+    }
+    (*buf)[(*n)++] = (char)c;
+}
+
+/* « at <pos> » : se placer dans le fichier, pour « read » comme pour « write ».
+ *
+ * atol lisait ce texte sans jamais demander si c'en était un. « read from
+ * file f at canard for 3 » se plaçait donc au début et rendait trois octets
+ * pris ailleurs que là où le script croyait, sans un mot. Et fseek peut
+ * refuser — un tube, un terminal, une position absurde — sans que personne
+ * regardât son verdict : la lecture suivante portait alors sur la position
+ * courante, pas sur celle demandée.
+ *
+ * Rend 0 après avoir posé « the result » si la position est refusée. */
+static int v3_fichier_place(FILE *f, const char *quoi, const char *pv)
+{
+    if (!hct_est_nombre(pv)) {
+        set_result("Bad file position");
+        emit(HC_ERR, "   !! %s : position illisible : %s", quoi, pv);
+        return 0;
+    }
+    double d = hct_vers_nombre(pv);
+    /* Comparaisons STRICTES : (double)LONG_MAX vaut 2^63 sur une machine 64
+     * bits, soit LONG_MAX + 1 — accepter l'égalité rendrait la conversion en
+     * long indéfinie, exactement le défaut qu'on ferme ici. */
+    if (!(d > -(double)LONG_MAX && d < (double)LONG_MAX)) {
+        set_result("Bad file position");
+        emit(HC_ERR, "   !! %s : position hors bornes : %s", quoi, pv);
+        return 0;
+    }
+    long lpos = (long)d;
+    /* Positif : depuis le début, et 1-based comme tout HyperTalk.
+     * Négatif : depuis la fin. */
+    int rc = (lpos >= 0) ? fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET)
+                         : fseek(f, lpos, SEEK_END);
+    if (rc != 0) {
+        set_result("Bad file position");
+        emit(HC_ERR, "   !! %s : position refusée : %s", quoi, pv);
+        return 0;
+    }
+    return 1;
+}
+
 /* read from file <nom> [at <pos>] [for <n> | until <car>]
  *
  * Motif hct_cmd.c : « from file e [at e] [for|until e] ». Le « at » y a été
@@ -9386,7 +9500,14 @@ static int   file_constant(const char *s);         /* défini plus bas */
  * Les arguments se lisent dans l'arbre, chacun repéré par son mot-clé. La
  * version précédente reconstituait le texte de la ligne et le recoupait sur
  * « at », « for » et « until » avant d'évaluer chaque morceau — quatre
- * relectures possibles par commande, et une heuristique de plus à tenir. */
+ * relectures possibles par commande, et une heuristique de plus à tenir.
+ *
+ * LE TEXTE LU NE PASSE PLUS PAR UN TAMPON FIXE. Il tenait dans HC_VAL, et
+ * toute lecture plus longue était coupée là. Pire : le contrôle de troncature
+ * comparait la longueur lue au bord du tampon, si bien qu'un fichier de
+ * très exactement 65 535 octets — lu en entier, sans rien perdre — se voyait
+ * annoncer « Value too large ». Le script prenait une lecture complète pour
+ * un échec. */
 static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
 {
     const HctNoeud *nfic = v3_apres_motcle(n, "file");
@@ -9415,26 +9536,34 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
         char pv[64];
         v3_val_texte(ctx, nat, pv, sizeof pv);
         if (ctx->erreur) { g_atop = sauve; return 1; }
-        long lpos = atol(pv);
-        /* Positif : depuis le début, et 1-based comme tout HyperTalk.
-         * Négatif : depuis la fin. */
-        if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
-        else           fseek(f, lpos, SEEK_END);
+        if (!v3_fichier_place(f, "read", pv)) { g_atop = sauve; return 1; }
     }
 
-    char *out = arena_buf();
-    int no = 0;
+    char  *out = NULL;
+    size_t cap = 0, no = 0;
+    int    coupe = 0;          /* arrêté par le plafond, pas par le fichier */
 
     if (nfor) {
         char cv[64];
         v3_val_texte(ctx, nfor, cv, sizeof cv);
         if (ctx->erreur) { g_atop = sauve; return 1; }
-        long combien = atol(cv);
-        while (no < HC_VAL - 1 && no < combien) {
+        /* « for » sans nombre valait zéro octet et « End of file » : un
+         * silence, là où le script a manifestement écrit une bêtise. */
+        if (!hct_est_nombre(cv)) {
+            set_result("Bad parameter");
+            emit(HC_ERR, "   !! read : « for » attend un nombre, pas : %s", cv);
+            free(out); g_atop = sauve; return 1;
+        }
+        double dc = hct_vers_nombre(cv);
+        if (dc < 0) dc = 0;
+        size_t combien = (dc > (double)HC_LECTURE_MAX)
+                       ? (size_t)HC_LECTURE_MAX : (size_t)dc;
+        while (no < combien) {
             int c = fgetc(f);
             if (c == EOF) break;
-            out[no++] = (char)c;
+            lecture_pousse(&out, &cap, &no, c);
         }
+        if (no == (size_t)HC_LECTURE_MAX && dc > (double)HC_LECTURE_MAX) coupe = 1;
     } else if (nunt) {
         /* « until return », « until tab » : des noms de caractères, pas des
          * expressions — les évaluer rendrait la valeur d'une variable qui
@@ -9449,10 +9578,12 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
             if (ctx->erreur) { g_atop = sauve; return 1; }
             stop = cv[0] ? (unsigned char)cv[0] : '\n';
         }
-        while (no < HC_VAL - 1) {
-            int c = fgetc(f);
+        for (;;) {
+            int c;
+            if (no >= (size_t)HC_LECTURE_MAX) { coupe = 1; break; }
+            c = fgetc(f);
             if (c == EOF) break;
-            out[no++] = (char)c;
+            lecture_pousse(&out, &cap, &no, c);
             /* Le caractère d'arrêt fait PARTIE du texte lu : c'est ce que
              * fait HyperCard, et ce qui permet d'enchaîner les lectures
              * ligne à ligne sans perdre les séparateurs. */
@@ -9460,17 +9591,22 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
         }
     } else {
         /* Ni « for » ni « until » : tout le fichier. */
-        while (no < HC_VAL - 1) {
-            int c = fgetc(f);
+        for (;;) {
+            int c;
+            if (no >= (size_t)HC_LECTURE_MAX) { coupe = 1; break; }
+            c = fgetc(f);
             if (c == EOF) break;
-            out[no++] = (char)c;
+            lecture_pousse(&out, &cap, &no, c);
         }
+    }
+    /* Réserver l'octet nul : lecture_pousse garde toujours la place, mais
+     * une lecture vide n'a rien alloué du tout. */
+    if (!out) {
+        out = malloc(1);
+        if (!out) hc_memoire_epuisee("lecture d'un fichier");
     }
     out[no] = '\0';
 
-    /* Dire la troncature plutôt que de couper en silence : un script qui
-     * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
-     * sa lecture en plusieurs « read ... for N ». */
     /* Une ERREUR de lecture ne se distingue pas d'une fin de fichier par le
      * seul EOF de fgetc : les deux rendent la même valeur. Sans ferror, un
      * fichier illisible à mi-parcours rendait « End of file » ou même la
@@ -9478,14 +9614,18 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
      * un fichier complet. */
     if (ferror(f)) {
         set_result("Read error");
-        emit(HC_ERR, "   !! read : erreur de lecture après %d octets", no);
-    } else if (no >= HC_VAL - 1) {
+        emit(HC_ERR, "   !! read : erreur de lecture après %zu octets", no);
+    } else if (coupe) {
+        /* Dire la troncature plutôt que de couper en silence : un script qui
+         * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
+         * sa lecture en plusieurs « read ... for N ». */
         set_result("Value too large");
-        emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
+        emit(HC_ERR, "   !! read : texte tronqué à %zu octets", no);
     } else {
         set_result(no > 0 ? "" : "End of file");
     }
     var_set("it", out);
+    free(out);
     g_atop = sauve;
     return 1;
 }
@@ -9506,19 +9646,29 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
     }
 
     size_t sauve = g_atop;
-    char *txt = arena_buf();
-    v3_val_texte(ctx, n->fils[0], txt, HC_VAL);
-    if (ctx->erreur) { g_atop = sauve; return 1; }
+    /* LA VALEUR À ÉCRIRE NE PASSE PLUS PAR UN TAMPON FIXE.
+     *
+     * On la recopiait dans HC_VAL avant d'écrire : « write field "gros" to
+     * file "donnees" » avec 200 Ko de texte en écrivait 65 535, et le
+     * contrôle d'erreur d'entrée-sortie ajouté la semaine dernière annonçait
+     * un SUCCÈS — puisque l'écriture, elle, s'était parfaitement passée. La
+     * perte avait eu lieu avant de toucher le disque.
+     *
+     * HctValeur alloue son texte à sa taille, et porte sa longueur : on écrit
+     * exactement ce qu'on a, y compris d'éventuels octets nuls. */
+    HctValeur vtxt = hct_evalue(ctx, n->fils[0]);
+    if (ctx->erreur) { hct_val_libere(&vtxt); g_atop = sauve; return 1; }
+    const char *txt = vtxt.txt ? vtxt.txt : "";
 
     char *nom = arena_buf();
     v3_val_texte(ctx, nfic, nom, HC_VAL);
-    if (ctx->erreur) { g_atop = sauve; return 1; }
+    if (ctx->erreur) { hct_val_libere(&vtxt); g_atop = sauve; return 1; }
 
     FILE *f = file_find(nom);
     if (!f) {
         set_result("File is not open");
         emit(HC_ERR, "   !! write : fichier non ouvert : %s", nom);
-        g_atop = sauve; return 1;
+        hct_val_libere(&vtxt); g_atop = sauve; return 1;
     }
 
     const HctNoeud *nat = v3_apres_motcle(n, "at");
@@ -9530,10 +9680,13 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
         else {
             char pv[64];
             v3_val_texte(ctx, nat, pv, sizeof pv);
-            if (ctx->erreur) { g_atop = sauve; return 1; }
-            long lpos = atol(pv);
-            if (lpos >= 0) fseek(f, lpos > 0 ? lpos - 1 : 0, SEEK_SET);
-            else           fseek(f, lpos, SEEK_END);
+            if (ctx->erreur) { hct_val_libere(&vtxt); g_atop = sauve; return 1; }
+            /* Une position refusée n'écrit PAS ailleurs : elle renonce.
+             * Écrire à la position courante parce que le déplacement a
+             * échoué, c'est écraser un endroit du fichier au hasard. */
+            if (!v3_fichier_place(f, "write", pv)) {
+                hct_val_libere(&vtxt); g_atop = sauve; return 1;
+            }
         }
     }
 
@@ -9546,7 +9699,7 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
      *
      * C'est la même exigence que pour l'enregistrement d'une pile, qui la
      * respecte depuis longtemps ; « write to file » avait été oublié. */
-    size_t lt = strlen(txt);
+    size_t lt = (size_t)vtxt.len;
     size_t ecrit = fwrite(txt, 1, lt, f);
     int rince = fflush(f);   /* pour qu'un autre programme voie le texte tout de suite */
 
@@ -9565,6 +9718,7 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
     } else {
         set_result("");
     }
+    hct_val_libere(&vtxt);
     g_atop = sauve;
     return 1;
 }

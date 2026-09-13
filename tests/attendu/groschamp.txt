@@ -1,0 +1,17 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   au départ : 199999 octets, 20000 lignes
+
+── sort lines of card field "gros"
+   après le tri : 199999 octets, 20000 lignes
+   première ligne : ligne0000
+
+── put card field "gros" into card field "copie"
+   la copie : 199999 octets, 20000 lignes
+
+── le détour par une variable
+   199999
+   la copie : 199999 octets, 20000 lignes
+
+── sort descending
+   après le tri : 199999 octets, 20000 lignes
+   première ligne : ligne9999
