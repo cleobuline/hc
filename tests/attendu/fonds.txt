@@ -1,0 +1,25 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── le nom, par chaque désignateur
+   bg 2               : fondDeux
+   bg par son nom     : fondTrois
+   first background   : fondUn
+   second background  : fondDeux
+   middle background  : fondDeux
+   last background    : fondTrois
+   this background    : fondUn
+   next background    : fondDeux
+   previous background: fondTrois
+   background (nu)    : fondUn
+
+── le relatif boucle, comme pour les cartes
+   sur carteTrois, fond fondTrois
+   next background    : fondUn
+
+── mais « go » mène bien à une CARTE
+   go first bg  → carteUn
+   go bg par nom → carteDeux
+   go last bg   → carteTrois
+
+── le type de l'objet obtenu
+   the name of first background : background "fondUn"
+   the name of bg 1             : background "fondUn"

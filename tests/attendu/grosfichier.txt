@@ -1,0 +1,43 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── le champ porte 200000 octets
+
+── write d'un champ de 200 000 octets
+   the result = []
+
+   le fichier fait 200000 octets
+
+── relecture du même fichier en entier
+   the result = []
+   lu : 200000
+   début : abcdef
+
+── read for 65535 sur un fichier de 65535 octets
+   the result = []
+   lu : 65535
+
+── read sans « for » sur le même fichier
+   the result = []
+   lu : 65535
+
+── read ... at <mot qui n'est pas un nombre>
+   [ERR]    !! read : position illisible : canard
+   the result = [Bad file position]
+   it = [it]
+
+── read ... for <mot qui n'est pas un nombre>
+   [ERR]    !! read : « for » attend un nombre, pas : canard
+   the result = [Bad parameter]
+
+── read ... at <position démesurée>
+   [ERR]    !! read : position hors bornes : 1e300
+   the result = [Bad file position]
+
+── write ... at <mot qui n'est pas un nombre> n'écrit nulle part
+   [ERR]    !! write : position illisible : canard
+   the result = [Bad file position]
+
+   le fichier fait toujours 65535 octets
+
+── read ... at 4 for 3  (la forme normale marche toujours)
+   [def]
+

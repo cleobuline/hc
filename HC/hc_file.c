@@ -918,7 +918,9 @@ Object *hc_load(const char *path)
     ligne_libere(&lg);
     fclose(f);
 
-    /* Une seule allocation manquée pendant la lecture suffit à refuser toute
+    /* TROIS FAÇONS DE LIRE UNE PILE INCOMPLÈTE, UN SEUL VERDICT.
+     *
+     * Une seule allocation manquée pendant la lecture suffit à refuser toute
      * la pile. C'est brutal, et c'est voulu : rendre une pile où un script ou
      * le texte d'un champ a silencieusement perdu sa fin, c'est offrir à
      * l'utilisateur de l'enregistrer par-dessus l'original.
@@ -926,8 +928,19 @@ Object *hc_load(const char *path)
      * Même verdict quand c'est le LECTEUR DE LIGNES qui a buté : il rend
      * maintenant -1 pour un échec, là où il rendait 0 comme pour une fin de
      * fichier ordinaire. La boucle s'arrêtait alors au même endroit dans les
-     * deux cas, et la pile tronquée passait pour complète. */
-    if (acc.manque || lecture == LIGNE_ECHEC) {
+     * deux cas, et la pile tronquée passait pour complète.
+     *
+     * Et même verdict, enfin, pour une coupure PROPRE au milieu d'un bloc.
+     * « script » ouvre un bloc que « end script » ferme ; idem pour contents,
+     * paint, bgtextdata et iconres. Un fichier tranché là se lit sans la
+     * moindre erreur : la boucle s'arrête sur une fin de fichier ordinaire, et
+     * le texte accumulé — un script amputé de sa moitié, le contenu d'un champ
+     * sans sa fin — n'est même jamais posé sur l'objet, faute du « end » qui
+     * l'y pose. La pile s'ouvrait donc, l'air complète, avec un script VIDE là
+     * où il y en avait un. C'était le seul des trois cas qui restait. */
+    int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext || in_icon;
+
+    if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert) {
         if (stack) hc_free(stack);
         return NULL;
     }

@@ -588,10 +588,32 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
                 while (*p) {
                     const char *q = p;
                     while (*q && *q != ',' && *q != '\n') q++;
-                    char morceau[64];
-                    int l = (int)(q - p);
-                    if (l > (int)sizeof morceau - 1) l = (int)sizeof morceau - 1;
-                    memcpy(morceau, p, (size_t)l); morceau[l] = '\0';
+                    /* UN ÉLÉMENT PLUS LONG QUE LE TAMPON N'EST PLUS COUPÉ.
+                     *
+                     * Il l'était à soixante-trois caractères, en silence, et
+                     * les deux conséquences étaient fausses chacune à sa
+                     * façon : un nombre de soixante-dix chiffres entrait dans
+                     * la somme amputé de ses sept derniers, et « 123…(63
+                     * chiffres)…abc », qui n'est pas un nombre, passait pour
+                     * un nombre une fois sa queue coupée. La moyenne d'une
+                     * colonne de champ changeait donc selon la longueur des
+                     * lignes VOISINES du nombre.
+                     *
+                     * Le tampon de pile reste pour le cas courant ; au-delà
+                     * on emprunte au tas, le temps d'un élément. */
+                    char pile[64];
+                    char *morceau = pile;
+                    size_t l = (size_t)(q - p);
+                    if (l >= sizeof pile) {
+                        morceau = malloc(l + 1);
+                        if (!morceau) {
+                            hct_ctx_faute(ctx, n, "mémoire insuffisante");
+                            for (int k = 0; k < nargs; k++) hct_val_libere(&args[k]);
+                            free(args); free(nom);
+                            return hct_val_vide();
+                        }
+                    }
+                    memcpy(morceau, p, l); morceau[l] = '\0';
                     if (hct_est_nombre(morceau)) {
                         double x = hct_vers_nombre(morceau);
                         compte++;
@@ -600,6 +622,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
                         else if (!strcasecmp(nom, "max")) { if (x > acc) acc = x; }
                         else acc += x;
                     }
+                    if (morceau != pile) free(morceau);
                     p = *q ? q + 1 : q;
                 }
                 continue;
