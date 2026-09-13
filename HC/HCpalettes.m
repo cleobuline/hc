@@ -122,8 +122,18 @@ static const char *CUR_ERASER[16] = {
     "################",
 };
 
-/* Le seau penché, et la goutte qui tombe : c'est la goutte, en bas à gauche,
- * qui marque le pixel d'où part le remplissage. */
+/* Le seau, et la goutte qui tombe : c'est la goutte qui marque le pixel d'où
+ * part le remplissage.
+ *
+ * Dessiné à la main sur l'écran, après deux tentatives de ma part à l'aveugle
+ * qui donnaient un cornet de glace puis une chaussette. Il y a des choses
+ * qu'on ne peut pas faire sans voir le résultat.
+ *
+ * Les quatorze pixels blancs autour du filet et de la goutte, eux, sont
+ * calculés : ces deux morceaux étaient du noir plein, sans un blanc nulle
+ * part, et disparaissaient donc sur la peinture noire — précisément la partie
+ * qu'il faut voir pour viser. Le corps du seau, lui, a son intérieur blanc et
+ * se passait déjà de contour extérieur ; il n'est pas touché. */
 static const char *CUR_BUCKET[16] = {
     "................",
     "......###.......",
@@ -136,11 +146,11 @@ static const char *CUR_BUCKET[16] = {
     ".#@@@@@@#.......",
     "..#@@@@#........",
     "...#@@#.........",
-    "....##..........",
-    "...##...........",
-    "..####..........",
-    "..####..........",
-    "...##...........",
+    "..@@##..........",
+    ".@@##@@.........",
+    ".@####@.........",
+    ".@####@.........",
+    ".@@##@@.........",
 };
 
 /* Le lasso : la boucle, et la corde dont la pointe est le point chaud. */
