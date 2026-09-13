@@ -388,6 +388,42 @@ static NSInteger popup_row_at_point(NSPoint p) {
     return popup_row_is_enabled(row) ? row : -1;
 }
 
+/* LARGEUR DE LA ZONE DE TITRE D'UN BOUTON POPUP.
+ *
+ * HyperCard écrit le titre d'un popup HORS du cadre, à gauche, et la boîte
+ * encadrée n'occupe que le reste de la largeur ; c'est ce partage que sa
+ * propriété « titleWidth » règle. Ici, le titre est le NOM du bouton et son
+ * apparition suit « showName » — le réglage existait déjà et ne servait à
+ * rien sur un popup, puisque le nom ne s'affichait jamais.
+ *
+ * La largeur se MESURE sur le texte plutôt que de se stocker. Une valeur
+ * stockée serait une seconde source de vérité que le dessin devrait obéir, et
+ * il faudrait la persister, la régler à la main, et la reprendre à chaque
+ * changement de police. Mesurer ne coûte rien et ne peut pas se désaccorder.
+ *
+ * Ce calcul est partagé par le dessin et par la position du menu déroulant :
+ * les deux doivent tomber au même endroit, sinon le menu s'ouvre décalé de la
+ * boîte qu'on vient de cliquer. */
+static CGFloat popup_title_width(Object *o)
+{
+    if (!o || o->type != OBJ_BUTTON) return 0;
+    const char *st = o->style ? o->style : "rectangle";
+    if (strcmp(st, "popup") != 0) return 0;
+    if (!o->showname || !o->name || !*o->name) return 0;
+
+    NSDictionary *attrs = obj_attrs(o, 12, nil);
+    NSString *nom = [NSString stringWithUTF8String:o->name];
+    CGFloat w = ceil([nom sizeWithAttributes:attrs].width) + 10;
+
+    /* Il doit RESTER de quoi voir l'article choisi et la flèche : un nom plus
+     * long que le bouton mangerait la boîte entière, et l'on cliquerait sur un
+     * popup dont on ne voit plus la sélection. Quarante-quatre points, c'est
+     * la flèche plus de quoi lire deux ou trois caractères. */
+    CGFloat place = o->w - 44;
+    if (place < 0) place = 0;
+    return w > place ? place : w;
+}
+
 static void open_popup_menu(Object *o, HCView *view) {
     if (!o->contents || !*o->contents) return;
     NSArray<NSString *> *raw = [[NSString stringWithUTF8String:o->contents]
@@ -402,13 +438,17 @@ static void open_popup_menu(Object *o, HCView *view) {
     if (items.count == 0) return;
 
     NSDictionary *attrs = obj_attrs(o, 12, nil);
-    CGFloat width = o->w;
+    /* Le menu s'ouvre sous la BOÎTE, pas sous le rectangle entier : quand un
+     * titre occupe la gauche, s'aligner sur o->x ouvrirait le menu décalé de
+     * la boîte qu'on vient de cliquer. */
+    CGFloat tw = popup_title_width(o);
+    CGFloat width = o->w - tw;
     for (NSString *item in items)
         width = MAX(width, ceil([item sizeWithAttributes:attrs].width) + 24);
     gPopupRowHeight = MAX(16, ceil([@"Ag" sizeWithAttributes:attrs].height) + 4);
     CGFloat height = gPopupRowHeight * items.count;
     NSRect bounds = view.bounds;
-    CGFloat x = MIN(MAX(0, o->x), MAX(0, bounds.size.width - width - 3));
+    CGFloat x = MIN(MAX(0, o->x + tw), MAX(0, bounds.size.width - width - 3));
     CGFloat y = o->y + o->h;
     if (y + height + 3 > bounds.size.height) y = MAX(0, o->y - height);
 
@@ -621,10 +661,23 @@ static void draw_part(Object *o) {
             }
         }
         else if (isPopup) {
-            NSRect body = NSMakeRect(r.origin.x, r.origin.y,
-                                     r.size.width - 3, r.size.height - 3);
-            NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
-                                     r.size.width - 3, r.size.height - 3);
+            /* LE TITRE, À GAUCHE ET HORS DU CADRE.
+             *
+             * C'est la disposition d'HyperCard : le nom du bouton s'écrit sur
+             * le fond de la carte, et la boîte encadrée n'occupe que le reste.
+             * Il apparaît quand « showName » est allumé — le réglage existait
+             * déjà et ne servait à rien sur un popup, puisque le nom ne
+             * s'affichait jamais, ni à droite ni à gauche.
+             *
+             * Sans titre (tw = 0), la boîte reprend toute la largeur : le
+             * bouton est alors dessiné exactement comme avant. */
+            CGFloat tw = popup_title_width(o);
+            NSRect boite = NSMakeRect(r.origin.x + tw, r.origin.y,
+                                      r.size.width - tw, r.size.height);
+            NSRect body = NSMakeRect(boite.origin.x, boite.origin.y,
+                                     boite.size.width - 3, boite.size.height - 3);
+            NSRect sh   = NSMakeRect(boite.origin.x + 3, boite.origin.y + 3,
+                                     boite.size.width - 3, boite.size.height - 3);
             [[NSColor blackColor] setFill];
             NSRectFill(sh);
             [[NSColor whiteColor] setFill];
@@ -644,7 +697,11 @@ static void draw_part(Object *o) {
             [ar closePath];
             [ar fill];
 
-            NSString *label = s;
+            /* Sans contenu, l'étiquette de la boîte retombe sur le nom du
+             * bouton. Avec un titre, ce nom serait alors écrit DEUX FOIS —
+             * une fois à gauche, une fois dans la boîte. Le titre le porte
+             * déjà : la boîte reste vide en attendant un menu. */
+            NSString *label = (tw > 0) ? @"" : s;
             if (o->contents && *o->contents) {
                 NSArray *lines = [[NSString stringWithUTF8String:o->contents]
                                   componentsSeparatedByString:@"\n"];
@@ -653,9 +710,28 @@ static void draw_part(Object *o) {
                     label = lines[sel-1];
             }
             CGFloat fs = o->textsize > 0 ? o->textsize : 12;
-            [label drawAtPoint:NSMakePoint(body.origin.x + 6,
-                                           body.origin.y + (body.size.height - fs*1.3)/2)
-                withAttributes:obj_attrs(o, 12, btn_label_color(o, nil))];
+            NSDictionary *pat = obj_attrs(o, 12, btn_label_color(o, nil));
+            CGFloat ligne = body.origin.y + (body.size.height - fs*1.3)/2;
+
+            if (tw > 0) {
+                /* Le titre lui-même, sur le fond de la carte. Il garde la
+                 * police et la taille du bouton : c'est le même objet, il
+                 * n'aurait pas de raison de changer d'écriture en passant du
+                 * cadre au fond. */
+                [s drawAtPoint:NSMakePoint(r.origin.x + 2, ligne)
+                withAttributes:pat];
+            }
+
+            /* L'ARTICLE CHOISI EST DÉTOURÉ. Il était écrit sans limite et
+             * passait sous la flèche quand il était long — deux traits noirs
+             * qui se chevauchent, et l'on ne lit plus ni l'un ni l'autre. La
+             * boîte moins la flèche, c'est la place qui lui revient. */
+            [NSGraphicsContext saveGraphicsState];
+            NSRectClip(NSMakeRect(body.origin.x + 4, body.origin.y,
+                                  body.size.width - 22, body.size.height));
+            [label drawAtPoint:NSMakePoint(body.origin.x + 6, ligne)
+                withAttributes:pat];
+            [NSGraphicsContext restoreGraphicsState];
         }
         else {
             draw_btn_frame(o, r, on);
