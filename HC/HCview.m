@@ -2370,8 +2370,26 @@ static void cocoa_global_set(const char *name, const char *value) {
                 gCursorScripteObj = [NSCursor crosshairCursor];
                 [gCursorScripteObj set];
                 gCursorNom = (strcasecmp(value, "plus") == 0) ? @"plus" : @"cross";
-            } else if (strcasecmp(value, "hand") == 0) {
-                gCursorScripteObj = [NSCursor pointingHandCursor];
+            } else if (strcasecmp(value, "hand")   == 0 ||
+                       strcasecmp(value, "browse") == 0) {
+                /* « browse » N'EST PAS UN NOM DE CURSEUR D'HYPERCARD : c'est
+                 * un nom d'OUTIL. Le curseur, lui, s'appelle « hand », et
+                 * c'est le même objet. On accepte les deux mots — celui qu'on
+                 * a sous la main quand on écrit un script de navigation est
+                 * rarement le bon — et « the cursor » rend « hand », le nom du
+                 * curseur RÉELLEMENT posé.
+                 *
+                 * C'est l'inverse de cross/plus, quelques lignes plus haut, et
+                 * la différence se raisonne : là, HyperCard a DEUX curseurs
+                 * distincts que macOS confond, et rendre le mot demandé garde
+                 * l'intention du script. Ici il n'y en a qu'un, avec un nom,
+                 * et l'inventer en second n'apporterait rien.
+                 *
+                 * Il passe par hcv_curseur_outil plutôt que par
+                 * pointingHandCursor en dur : le curseur de l'outil browse et
+                 * celui de « set the cursor to browse » sont la même chose, et
+                 * doivent le rester si l'un des deux change un jour. */
+                gCursorScripteObj = hcv_curseur_outil(TOOL_BROWSE);
                 [gCursorScripteObj set];
                 gCursorNom = @"hand";
             } else {
