@@ -1059,6 +1059,16 @@ static BOOL gCursorHidden = NO;
  * « watch ». La propriété décrirait un état qui n'existe plus. */
 static BOOL gCursorScripte = NO;
 
+/* ET LE CURSEUR QU'IL A DEMANDÉ.
+ *
+ * Le garder ne relevait pas de l'élégance : sans lui, resetCursorRects ne
+ * posait AUCUNE zone tant qu'un script tenait le curseur, et AppKit retombait
+ * alors sur la flèche par défaut de la vue. Comme « set the cursor » fait
+ * rebâtir les zones juste après avoir posé le curseur, la montre était
+ * détruite dans l'instant même où on la posait : « set cursor to watch » ne
+ * montrait jamais rien. */
+static NSCursor *gCursorScripteObj = nil;
+
 /* Pose le bon curseur sur la vue de carte.
  *
  * On passe par les ZONES DE CURSEUR d'AppKit plutôt que par un [c set] : le
@@ -1128,6 +1138,7 @@ static void cocoa_choose_tool(const char *name) {
              * outil est un geste de l'utilisateur, qui doit toujours pouvoir
              * reprendre le contrôle de ce qu'il a sous le bras. */
             gCursorScripte = NO;
+            gCursorScripteObj = nil;
             if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
             hcv_curseur_maj();
             /* La palette entoure l'outil courant : « choose brush tool »
@@ -2330,6 +2341,7 @@ static void cocoa_global_set(const char *name, const char *value) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
             gCursorNom = @"none";
             gCursorScripte = YES;
+            gCursorScripteObj = nil;      /* caché : rien à poser */
         } else {
             if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
             gCursorScripte = YES;
@@ -2342,10 +2354,12 @@ static void cocoa_global_set(const char *name, const char *value) {
                  * d'attente sont privés. La flèche, posée ici en attendant, ne
                  * mentait sur rien mais ne disait rien non plus. On dessine
                  * donc la montre, comme le Macintosh d'origine. */
-                [hcv_curseur_montre() set];
+                gCursorScripteObj = hcv_curseur_montre();
+                [gCursorScripteObj set];
                 gCursorNom = @"watch";
             } else if (strcasecmp(value, "ibeam") == 0) {
-                [[NSCursor IBeamCursor] set];
+                gCursorScripteObj = [NSCursor IBeamCursor];
+                [gCursorScripteObj set];
                 gCursorNom = @"ibeam";
             } else if (strcasecmp(value, "cross") == 0 ||
                        strcasecmp(value, "plus")  == 0) {
@@ -2353,10 +2367,12 @@ static void cocoa_global_set(const char *name, const char *value) {
                  * croix (cross). macOS n'a qu'un réticule, et inventer une
                  * différence que le système ne rend pas tromperait plus
                  * qu'elle n'aiderait : on rend donc le mot demandé. */
-                [[NSCursor crosshairCursor] set];
+                gCursorScripteObj = [NSCursor crosshairCursor];
+                [gCursorScripteObj set];
                 gCursorNom = (strcasecmp(value, "plus") == 0) ? @"plus" : @"cross";
             } else if (strcasecmp(value, "hand") == 0) {
-                [[NSCursor pointingHandCursor] set];
+                gCursorScripteObj = [NSCursor pointingHandCursor];
+                [gCursorScripteObj set];
                 gCursorNom = @"hand";
             } else {
                 [[NSCursor arrowCursor] set];
@@ -2365,6 +2381,7 @@ static void cocoa_global_set(const char *name, const char *value) {
                  * la main aux zones de curseur, sinon « set the cursor to
                  * zorglub » gèlerait le pointeur sur la flèche pour de bon. */
                 gCursorScripte = NO;
+                gCursorScripteObj = nil;
             }
         }
         hcv_curseur_maj();
@@ -2711,9 +2728,13 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 - (void)resetCursorRects
 {
     [super resetCursorRects];
+    /* Caché : on ne pose rien, et [NSCursor hide] tient tout seul. */
     if (gCursorHidden) return;
-    if (gCursorScripte) return;
-    NSCursor *c = hcv_curseur_outil((int)gTool);
+    /* Un script tient le curseur : c'est LE SIEN qu'on pose, pas rien. Ne rien
+     * poser laissait AppKit revenir à la flèche par défaut. */
+    NSCursor *c = (gCursorScripte && gCursorScripteObj)
+                ? gCursorScripteObj
+                : hcv_curseur_outil((int)gTool);
     if (c) [self addCursorRect:[self visibleRect] cursor:c];
 }
 
@@ -5139,6 +5160,26 @@ static void hcv_survol(HCView *v, Object *carte)
     if (!v) return;
     Object *card = [v documentCard];
     if (!card) return;
+
+    /* LE CURSEUR D'UN SCRIPT NE DURE QUE JUSQU'AU REPOS.
+     *
+     * C'est la règle d'HyperCard, et sans elle « set cursor to watch » laisse
+     * une montre à l'écran POUR TOUJOURS : le script qui l'a posée n'a aucune
+     * raison de la retirer, puisqu'il annonçait seulement « attends-moi ».
+     * Une application figée sur une montre alors qu'elle ne fait plus rien,
+     * c'est pire que pas de montre du tout.
+     *
+     * Le moment est le bon : ce minuteur ne tourne pas tant qu'un gestionnaire
+     * s'exécute (hc_is_running, juste au-dessus). La montre reste donc affichée
+     * pendant toute la boucle, et s'en va quand le travail est fini — ce qui
+     * est exactement ce qu'elle voulait dire. */
+    if (gCursorScripte) {
+        gCursorScripte    = NO;
+        gCursorScripteObj = nil;
+        if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
+        gCursorNom = [NSString stringWithUTF8String:hcv_curseur_nom_outil((int)gTool)];
+        hcv_curseur_maj();
+    }
 
     gInIdle = YES;
     hcv_survol(v, card);

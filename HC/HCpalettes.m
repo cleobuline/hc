@@ -334,6 +334,28 @@ NSCursor *hcv_curseur_montre(void)
     return curseur_cache(&gCurWatch, CUR_WATCH, NSMakePoint(7, 8));
 }
 
+/* Le nom HyperCard du curseur d'un outil, pour que « the cursor » ne mente
+ * pas après que le repos a rendu la main.
+ *
+ * Les outils qui portent un dessin maison n'ont pas de nom dans le
+ * vocabulaire d'HyperCard — il n'y a pas de mot pour « le curseur du
+ * crayon ». On rend « arrow » pour ceux-là : c'est faux d'un cheveu, mais
+ * moins faux que de continuer d'annoncer « watch » une fois la montre
+ * partie. */
+const char *hcv_curseur_nom_outil(int outil)
+{
+    switch ((HCTool)outil) {
+        case TOOL_BROWSE:   return "hand";
+        case TOOL_TEXT:     return "ibeam";
+        case TOOL_SELRECT:
+        case TOOL_LINE:
+        case TOOL_RECT:
+        case TOOL_OVAL:
+        case TOOL_FREEFORM: return "cross";
+        default:            return "arrow";
+    }
+}
+
 NSCursor *hcv_curseur_outil(int outil)
 {
     switch ((HCTool)outil) {

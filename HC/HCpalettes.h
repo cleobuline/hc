@@ -37,6 +37,11 @@ int brush_bit(int brush, int x, int y);
  * L'objet rendu est mis en cache ; ne pas le libérer. */
 NSCursor *hcv_curseur_outil(int outil);
 
+/* Le nom HyperCard du curseur d'un outil — « hand », « cross », « ibeam »,
+ * « arrow » — pour que « the cursor » reste honnête après que le repos a
+ * repris la main au script. */
+const char *hcv_curseur_nom_outil(int outil);
+
 /* À appeler quand gBrush change : le curseur du pinceau est alors périmé. */
 void hcv_curseur_pinceau_perime(void);
 
