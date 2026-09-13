@@ -20,6 +20,25 @@ static int est_blanc(char c)
            c == '\v' || c == '\f';
 }
 
+/* ------------------------------------------------------------------ UTF-8 */
+
+int hct_utf8_octets(const char *s, int i, int len)
+{
+    if (!s || i >= len) return 0;
+    int k = i + 1;
+    while (k < len && ((unsigned char)s[k] & 0xC0) == 0x80) k++;
+    return k - i;   /* toujours >= 1 : l'appelant avance à coup sûr */
+}
+
+int hct_utf8_compte(const char *s)
+{
+    if (!s) return 0;
+    int n = 0;
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++)
+        if ((*p & 0xC0) != 0x80) n++;   /* on ne compte pas les continuations */
+    return n;
+}
+
 /* ------------------------------------------------------------ comptage */
 
 int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
@@ -29,7 +48,10 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
 
     switch (sorte) {
         case HCT_CH_CHAR:
-            return len;
+            /* Des CARACTÈRES, pas des octets : « the number of chars of
+             * "été" » vaut trois. Voir la note UTF-8 de hct_chunk.h. */
+            (void)len;
+            return hct_utf8_compte(s);
 
         case HCT_CH_WORD: {
             /* Les blancs multiples ne comptent pas : on avance jusqu'au
@@ -78,8 +100,17 @@ static HctBornes borne_simple(const char *s, HctSorteChunk sorte, int n,
     int len = (int)strlen(s);
 
     if (sorte == HCT_CH_CHAR) {
-        if (n > len) { b.deb = b.fin = len; return b; }
-        b.deb = n - 1; b.fin = n; b.trouve = 1;
+        /* Le rang est en CARACTÈRES, les bornes en OCTETS : on avance de
+         * caractère en caractère jusqu'au n-ième. « char 1 of "été" » rendait
+         * la moitié d'un é — une demi-séquence UTF-8, que rien ne sait
+         * afficher. */
+        int i = 0, k = 0;
+        while (i < len) {
+            int t = hct_utf8_octets(s, i, len);
+            if (++k == n) { b.deb = i; b.fin = i + t; b.trouve = 1; return b; }
+            i += t;
+        }
+        b.deb = b.fin = len;
         return b;
     }
 

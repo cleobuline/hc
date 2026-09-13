@@ -496,18 +496,62 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
             r = hct_val_calcul(y); fait = 1;
         } else if (!strcasecmp(nom, "numtochar")) {
             /* numToChar : le code passe par un entier BORNÉ. « numToChar(10^300) »
-             * convertissait un double hors bornes, ce qui est indéfini. */
+             * convertissait un double hors bornes, ce qui est indéfini.
+             *
+             * Et le résultat est encodé en UTF-8. Poser l'octet brut, comme
+             * on le faisait, rendait une chaîne INVALIDE dès 128 :
+             * « numToChar(233) » donnait l'octet 0xE9 seul, qui n'est un
+             * caractère dans aucun encodage que l'application sache lire, et
+             * que « the number of chars » recomptait ensuite n'importe
+             * comment. La borne monte donc à 0x10FFFF, le dernier point de
+             * code d'Unicode, et les demi-codets (D800-DFFF), qui n'encodent
+             * rien, sont refusés. */
             double d = hct_vers_nombre(args[0].txt);
-            int code = (d >= 0 && d <= 255) ? (int)d : 0;
-            char c[2] = { (char)code, 0 };
+            long code = (d >= 0 && d <= 0x10FFFF) ? (long)d : 0;
+            if (code >= 0xD800 && code <= 0xDFFF) code = 0;
+            char c[5]; int k = 0;
+            if (code < 0x80) {
+                c[k++] = (char)code;
+            } else if (code < 0x800) {
+                c[k++] = (char)(0xC0 | (code >> 6));
+                c[k++] = (char)(0x80 | (code & 0x3F));
+            } else if (code < 0x10000) {
+                c[k++] = (char)(0xE0 | (code >> 12));
+                c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
+                c[k++] = (char)(0x80 | (code & 0x3F));
+            } else {
+                c[k++] = (char)(0xF0 | (code >> 18));
+                c[k++] = (char)(0x80 | ((code >> 12) & 0x3F));
+                c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
+                c[k++] = (char)(0x80 | (code & 0x3F));
+            }
+            c[k] = 0;
             r = hct_val_texte(c); fait = 1;
         }
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "length")) {
-        r = hct_val_nombre(args[0].len); fait = 1;
+        /* .len est un nombre d'OCTETS : « length("été") » rendait cinq. */
+        r = hct_val_nombre(hct_utf8_compte(args[0].txt)); fait = 1;
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "chartonum")) {
-        r = hct_val_nombre((unsigned char)args[0].txt[0]); fait = 1;
+        /* Le POINT DE CODE, pas le premier octet : « charToNum("é") » rendait
+         * 195, c'est-à-dire la première moitié de la séquence UTF-8 — un
+         * nombre qui ne désigne aucun caractère, et que numToChar ne savait
+         * pas renvoyer vers « é ». Les deux font maintenant l'aller-retour. */
+        const char *t = args[0].txt ? args[0].txt : "";
+        int len = (int)strlen(t);
+        long cp = 0;
+        if (len > 0) {
+            int nb = hct_utf8_octets(t, 0, len);
+            unsigned char c0 = (unsigned char)t[0];
+            if (nb == 1)      cp = c0;
+            else if (nb == 2) cp = c0 & 0x1F;
+            else if (nb == 3) cp = c0 & 0x0F;
+            else              cp = c0 & 0x07;
+            for (int i = 1; i < nb; i++)
+                cp = (cp << 6) | ((unsigned char)t[i] & 0x3F);
+        }
+        r = hct_val_nombre((double)cp); fait = 1;
     }
     if (!fait && nargs == 1 && !strcasecmp(nom, "random")) {
         /* « random(10^300) » convertissait un double hors bornes en long :
@@ -543,9 +587,14 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         const char *g = args[1].txt, *p = args[0].txt;
         size_t lp = strlen(p), lg = strlen(g);
         long pos = 0;
+        /* La position est comptée en CARACTÈRES, pour que « char offset(…) of
+         * s » retrouve bien ce qu'on a cherché. Elle était en octets :
+         * « offset("t", "été") » rendait 3 là où le t est le deuxième
+         * caractère, et le char 3 d'« été » est autre chose. */
         if (lp && lp <= lg)
-            for (size_t i = 0; i + lp <= lg; i++)
-                if (!strncasecmp(g + i, p, lp)) { pos = (long)i + 1; break; }
+            for (size_t i = 0, k = 0; i + lp <= lg;
+                 i += (size_t)hct_utf8_octets(g, (int)i, (int)lg), k++)
+                if (!strncasecmp(g + i, p, lp)) { pos = (long)k + 1; break; }
         r = hct_val_nombre((double)pos); fait = 1;
     }
     /* value(x) : le pendant en forme d'appel de « the value of x ». Même
@@ -932,7 +981,9 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
         if (!strcasecmp(nom, "length")) {
             HctValeur v = hct_evalue(ctx, sur);
             if (ctx->erreur) { free(nom); return v; }
-            HctValeur r = hct_val_nombre(v.len);
+            /* Des caractères, pas des octets — comme length(x) juste
+             * au-dessus ; les deux formes doivent s'accorder. */
+            HctValeur r = hct_val_nombre(hct_utf8_compte(v.txt));
             hct_val_libere(&v);
             free(nom);
             return r;

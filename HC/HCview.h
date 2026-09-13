@@ -27,6 +27,15 @@ enum {
 
 BOOL hcv_menu_trappe(const char *article);
 
+/* Redemander à la vue de carte quel curseur elle veut.
+ *
+ * À appeler dès que le choix change : outil, brosse, ou « set the cursor ».
+ * Passe par les zones de curseur d'AppKit plutôt que par un [c set], pour que
+ * le système le réapplique tout seul quand la souris revient sur la carte —
+ * un curseur posé à la main serait écrasé par la première palette survolée et
+ * ne reviendrait jamais. Voir la définition dans HCview.m. */
+void hcv_curseur_maj(void);
+
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
 /* La minuterie d'« idle ». Une seule pour toute l'application : elle envoie le

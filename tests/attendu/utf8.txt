@@ -1,0 +1,70 @@
+=== compter ===
+── put the number of chars of "ete"              [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   3
+── put the number of chars of "été"               3
+── put the length of "été"                        3
+── put length("été")                              3
+── put the number of chars of "日本語"           3
+── put the number of chars of ""                    0
+
+=== lire un caractère ===
+── put char 1 of "été"                            é
+── put char 2 of "été"                            t
+── put char 3 of "été"                            é
+── put char 4 of "été"                            
+── put last char of "été"                         é
+── put char 1 to 2 of "été"                       ét
+── put char 2 to 3 of "été"                       té
+── put middle char of "été"                       t
+
+=== écrire un caractère ===
+── put "été" into v
+  put "X" into char 1 of v
+  put v   Xté
+── put "été" into v
+  put "X" into char 2 of v
+  put v   éXé
+── put "été" into v
+  put "X" into char 3 of v
+  put v   étX
+── put "ete" into v
+  put "é" into char 2 of v
+  put v   eée
+── put "été" into v
+  delete char 2 of v
+  put v   éé
+── put "été" into v
+  delete char 1 of v
+  put v & "|" & the number of chars of v   té|2
+
+=== mots, éléments, lignes : déjà justes, et ils le restent ===
+── put the number of words of "été où"           2
+── put word 2 of "été où"                        où
+── put the number of items of "a,é,b"              3
+── put item 2 of "a,é,b"                           é
+── put the number of lines of "é" & return & "à"   1
+à
+── put line 2 of ("é" & return & "à")             à
+
+=== offset, en caractères ===
+── put offset("t", "été")                         2
+── put offset("é", "été")                        1
+── put offset("b", "aéb")                          3
+── put offset("z", "été")                         0
+
+=== charToNum et numToChar font l'aller-retour ===
+── put charToNum("A")                               65
+── put charToNum("é")                              233
+── put numToChar(233)                               é
+── put numToChar(charToNum("é"))                   é
+── put the number of chars of numToChar(233)        1
+── put charToNum("日")                             26085
+── put numToChar(charToNum("日"))                  日
+── put the number of chars of numToChar(1114112)    0
+── put the number of chars of numToChar(55296)      0
+
+=== dans un champ, le chemin complet ===
+── put "été" into card field "f"
+  put the number of chars of card field "f"   3
+── put "X" into char 2 of card field "f"
+  put card field "f"   éXé

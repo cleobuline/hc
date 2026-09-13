@@ -85,7 +85,20 @@ for src in harnais/*.c; do
     saute=$((saute+1)); continue
   fi
 
-  timeout 120 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1
+  # L'ENTRÉE STANDARD VIENT DE /dev/null, ET CE N'EST PAS UN DÉTAIL.
+  #
+  # « answer » et « ask » retombent sur la console quand l'hôte ne sait pas
+  # ouvrir de dialogue, et la console lit stdin par fgets. Un harnais lancé
+  # avec une entrée standard encore OUVERTE — un terminal, un tuyau que
+  # personne ne ferme — s'y bloque donc pour de bon : test_v3 et test_v3c,
+  # qui tournent en huit millisecondes, se faisaient tuer au bout de deux
+  # minutes, selon la façon dont la suite avait été lancée. Le même dépôt
+  # rendait « 167 conformes » ou « 2 en échec » sans qu'une ligne ait changé.
+  #
+  # Ces deux harnais annoncent d'ailleurs « stdin vide -> defaut » dans leur
+  # propre titre. Cette ligne rend cette phrase VRAIE, au lieu de l'espérer
+  # de l'environnement.
+  timeout 120 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
   if [ $code -ge 124 ]; then
     echo "  DÉLAI DÉPASSÉ  $n"; rate=$((rate+1)); continue
