@@ -4830,7 +4830,11 @@ static int call_function_body(const char *t, char *out, int outlen)
     (void)b;
 
     /* --- une entrée --- */
-    if (ci_equal(name, "length")) { snprintf(out, outlen, "%d", (int)strlen(vals[0])); return 1; }
+    /* Des CARACTÈRES, pas des octets. Ce vieux pont n'est plus atteint que
+     * par le recours, la v3 servant elle-même ces quatre fonctions — mais
+     * deux implémentations qui divergent finissent toujours par se venger,
+     * et il y a trois lignes à changer. */
+    if (ci_equal(name, "length")) { snprintf(out, outlen, "%d", hct_utf8_compte(vals[0])); return 1; }
     if (ci_equal(name, "abs"))    { put_num(a < 0 ? -a : a, out, outlen); return 1; }
     if (ci_equal(name, "trunc"))  { put_num((double)(long long)a, out, outlen); return 1; }
     if (ci_equal(name, "round"))  { put_num(a < 0 ? -(double)(long long)(-a + 0.5)
@@ -4863,10 +4867,40 @@ static int call_function_body(const char *t, char *out, int outlen)
         int n = (a >= 1 && a <= (double)HCT_RANG_MAX) ? (int)a : 0;
         snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1;
     }
-    if (ci_equal(name, "charToNum")) { snprintf(out, outlen, "%d", (unsigned char)vals[0][0]); return 1; }
+    if (ci_equal(name, "charToNum")) {
+        const char *car = vals[0];      /* pas `t` : c'est un paramètre ici */
+        int l = (int)strlen(car);
+        long cp = 0;
+        if (l > 0) {
+            int nb = hct_utf8_octets(car, 0, l);
+            unsigned char c0 = (unsigned char)car[0];
+            cp = (nb == 1) ? c0 : (nb == 2) ? (c0 & 0x1F)
+               : (nb == 3) ? (c0 & 0x0F) : (c0 & 0x07);
+            for (int i = 1; i < nb; i++)
+                cp = (cp << 6) | ((unsigned char)car[i] & 0x3F);
+        }
+        snprintf(out, outlen, "%ld", cp); return 1;
+    }
     if (ci_equal(name, "numToChar")) {
-        int code = (a >= 0 && a <= 255) ? (int)a : 0;
-        snprintf(out, outlen, "%c", code); return 1;
+        long code = (a >= 0 && a <= 0x10FFFF) ? (long)a : 0;
+        if (code >= 0xD800 && code <= 0xDFFF) code = 0;
+        char c[5]; int k = 0;
+        if (code < 0x80) c[k++] = (char)code;
+        else if (code < 0x800) {
+            c[k++] = (char)(0xC0 | (code >> 6));
+            c[k++] = (char)(0x80 | (code & 0x3F));
+        } else if (code < 0x10000) {
+            c[k++] = (char)(0xE0 | (code >> 12));
+            c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
+            c[k++] = (char)(0x80 | (code & 0x3F));
+        } else {
+            c[k++] = (char)(0xF0 | (code >> 18));
+            c[k++] = (char)(0x80 | ((code >> 12) & 0x3F));
+            c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
+            c[k++] = (char)(0x80 | (code & 0x3F));
+        }
+        c[k] = 0;
+        snprintf(out, outlen, "%s", c); return 1;
     }
 
     /* value() : évalue une chaîne comme une expression. Le petit vertige
@@ -4903,8 +4937,10 @@ static int call_function_body(const char *t, char *out, int outlen)
 
     if (ci_equal(name, "offset")) {
         int pos = 0, nl = (int)strlen(vals[0]), hl = (int)strlen(vals[1]);
-        for (int i = 0; nl && i + nl <= hl; i++)
-            if (ci_nequal(vals[1] + i, vals[0], nl)) { pos = i + 1; break; }
+        /* En caractères, comme la version v3 : les deux doivent s'accorder. */
+        for (int i = 0, k = 0; nl && i + nl <= hl;
+             i += hct_utf8_octets(vals[1], i, hl), k++)
+            if (ci_nequal(vals[1] + i, vals[0], nl)) { pos = k + 1; break; }
         snprintf(out, outlen, "%d", pos);
         return 1;
     }
