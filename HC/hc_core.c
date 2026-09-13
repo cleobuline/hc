@@ -467,9 +467,9 @@ static void emit(HcLineKind kind, const char *fmt, ...)
  * invaliderait les tampons déjà distribués. Les blocs restent alloués après
  * libération, et resservent — on ne paie l'allocation système qu'une fois.
  *
- * Les fonctions à sorties multiples (term_value, call_function, exec_line :
- * 40, 36 et 57 return) ne sont volontairement pas instrumentées. Leurs
- * appelants directs — parse_factor et exec_stmt — le sont, et cela suffit :
+ * Les fonctions à sorties multiples (term_value, call_function : 40 et 36
+ * return) ne sont volontairement pas instrumentées. Leur appelant direct,
+ * parse_factor, l'est, et cela suffit :
  * toute valeur est recopiée dans le `out` de l'appelant avant chaque retour.
  */
 /* Blocs de 16 Mo, plafond à 1 Go.
@@ -3079,15 +3079,6 @@ static int ajoute_borne(char *out, int outlen, int pos,
     return pos;
 }
 
-static int ci_cmp(const char *a, const char *b)
-{
-    while (*a && *b) {
-        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
-        if (ca != cb) return ca - cb;
-        a++; b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
 
 /* « a contient b », sans tenir compte de la casse */
 static int ci_strstr(const char *hay, const char *needle)
@@ -7564,8 +7555,8 @@ static int v3_lit_objet(void *d, void *objet, HctValeur *out)
 
 /* Écrire dans un objet résolu, sans repasser par le texte.
  *
- * Seuls les champs sont des conteneurs : un bouton rend 0, et l'exécuteur se
- * rabat alors sur exec_stmt, qui saura dire pourquoi.
+ * Seuls les champs sont des conteneurs : un bouton rend 0, et l'exécuteur
+ * refuse alors la ligne en disant pourquoi.
  *
  * On refait ici la concaténation de container_set plutôt que de l'appeler :
  * container_set prend une RÉFÉRENCE TEXTUELLE, et c'est justement le texte
@@ -7600,8 +7591,8 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
 
 /* --- respiration : l'hôte reprend la main entre deux tours de boucle ---
  *
- * L'ancien exécuteur appelle host_idle() à chaque tour de repeat (voir
- * exec_block). Sans l'équivalent ici, « repeat while the mouse is down » ne
+ * L'ancien exécuteur de lignes appelait host_idle() à chaque tour de repeat.
+ * Sans l'équivalent ici, « repeat while the mouse is down » ne
  * rendait jamais la main : la file d'événements n'était pas vidée, l'état de
  * la souris ne changeait plus, et rien ne se redessinait — le script ne
  * suivait pas la souris.
@@ -7662,7 +7653,6 @@ static int v3_respire(void *d)
 
 /* --- l'hôte assemblé ------------------------------------------------- */
 
-static void exec_stmt(Object *me, const char *s);   /* défini plus bas */
 /* Une ligne isolée passée à la v3 — voir sa définition, tout en bas. Déclarée
  * ici parce que hc_do_menu s'en sert bien avant. */
 static int v3_do_ligne(const char *line);
@@ -7673,10 +7663,11 @@ static int v3_do_ligne(const char *line);
  * l'arithmétique, les structures de contrôle, les sorties. Tout le reste —
  * go, set, show, answer, visual, les soixante autres — lui revient ici.
  *
- * On ne reçoit pas des opérandes évalués mais le NŒUD, ce qui permet de
- * retrouver la ligne d'origine dans le script et de la confier à exec_stmt.
- * L'ancien interpréteur garde donc tout ce qu'il sait faire, et la frontière
- * se déplacera commande par commande sans que rien ne s'arrête.
+ * On ne reçoit pas des opérandes évalués mais le NŒUD, ce qui permettait de
+ * retrouver la ligne d'origine et de la confier à l'ancien exécuteur — le
+ * temps que la frontière se déplace, commande par commande, sans que rien ne
+ * s'arrête. Elle a fini de se déplacer : ce qui arrive ici et que la v3 ne
+ * sait pas faire est désormais REFUSÉ, avec un message.
  *
  * Évaluer les opérandes d'abord ne marcherait pas : « go to card 3 » n'a de
  * sens que si la référence d'objet parvient intacte. */
@@ -7691,7 +7682,11 @@ static int v3_do_ligne(const char *line);
  * coupe ; le reste porte encore.
  *
  * hc_v3_bilan() vide le relevé sur la console. Coût : une comparaison de
- * chaînes par retour, négligeable devant l'exec_stmt qui suit. */
+ * chaînes par retour, négligeable.
+ *
+ * Ce relevé a fait son office pour les LIGNES : zéro passage sur 172 harnais,
+ * et les 2 327 lignes de l'ancien exécuteur ont pu partir. Il reste braqué
+ * sur les deux morceaux qui servent encore, les fonctions et les termes. */
 #define V3_RELEVE_MAX 256
 /* 64 et non 48 : un intitulé accentué suivi d'un nom de porte débordait, et
  * snprintf coupait au milieu d'un caractère UTF-8 — la ligne de bilan sortait
@@ -7707,8 +7702,8 @@ static int g_nreleve = 0;
  * PAS « l'ancien interprète ne tourne plus ». Ce sont deux choses
  * différentes, et les confondre m'a fait croire le chantier plus avancé
  * qu'il ne l'est : cinq commandes v3 appellent eval_checked de l'intérieur,
- * sans que rien ne le signale, et la boîte de message passe entièrement par
- * exec_line_body.
+ * sans que rien ne le signale, et la boîte de message passait entièrement par
+ * l'ancien exécuteur de lignes.
  *
  * Ces deux compteurs-ci mesurent donc l'EXÉCUTION RÉELLE, quelle qu'en soit
  * l'origine. Ils répondent à la seule question qui décide de l'élagage :
@@ -7733,49 +7728,6 @@ static void v1_compte(const char *quoi, const char *porte)
     g_nv1++;
 }
 
-/* ═══ LE FILET, DÉBRANCHÉ À LA DEMANDE ═════════════════════════════════
- *
- * HC_SANS_V1=1 empêche l'ancien exécuteur de lignes de tourner : exec_line
- * refuse la ligne et la dénonce au lieu de l'exécuter.
- *
- * C'est la seule mesure qui ne se devine pas. Tant que le filet est tendu,
- * une forme non portée retombe dessus sans bruit, et rien ne distingue « la
- * v3 sait le faire » de « la v3 n'a jamais eu à le faire ». Débranché, ce
- * qui casse est exactement ce qu'il reste à porter — et ce qui ne casse pas
- * est du code qu'on peut supprimer.
- *
- * Le commutateur se pose ICI, dans l'enveloppe unique d'exec_line_body, et
- * non sur les quatre appelants connus : recenser des chemins un par un,
- * c'est en oublier un. Celui-ci les prend tous, y compris ceux qu'on
- * ajouterait demain. */
-static int v1_debranche(void)
-{
-    static int etat = -1;
-    if (etat < 0) {
-        /* LE DÉFAUT A CHANGÉ. Le filet n'est plus tendu : HC_AVEC_V1=1 le
-         * retend, pour comparer ou pour dépanner une pile. HC_SANS_V1 reste
-         * accepté et ne sert plus à rien — on ne casse pas un réglage que
-         * quelqu'un a pu mettre dans son schéma Xcode.
-         *
-         * La mesure qui autorise ce renversement : sur 138 harnais, 127
-         * tournent à l'identique sans le filet, et les onze autres sont des
-         * scripts sciemment fautifs, des messages sans gestionnaire nulle
-         * part, ou des objets volontairement inexistants — c'est-à-dire des
-         * cas où l'ancien interprète échoue lui aussi, à un message d'erreur
-         * près. */
-        const char *avec = getenv("HC_AVEC_V1");
-        etat = (avec && *avec && *avec != '0') ? 0 : 1;
-
-        /* HC_V3=0 DÉBRANCHE LA V3. Sans ce rattrapage, plus personne
-         * n'exécutait quoi que ce soit : la v3 se taisait et l'ancien
-         * exécuteur refusait. L'application se lançait et ne faisait plus
-         * rien. Trouvé à l'audit, en cherchant ce que l'ancien interprète
-         * répondait à « add 1 to x ». */
-        const char *v3 = getenv("HC_V3");
-        if (v3 && *v3 == '0') etat = 0;
-    }
-    return etat;
-}
 
 /* Poser la porte et la rendre. À employer par paires, dans la même fonction :
  *     const char *sauve = v1_porte("msg");
@@ -7878,17 +7830,19 @@ void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
  * nœuds que hct_resout sait résoudre. Plus de texte reconstitué, plus de
  * réanalyse par l'ancien interpréteur, et surtout plus de double évaluation :
  * dans une boucle de dessin, les coordonnées d'un « drag » étaient jusqu'ici
- * calculées par la v3, jetées, puis recalculées par exec_stmt à chaque tour.
+ * calculées par la v3, jetées, puis recalculées par l'ancien exécuteur à
+ * chaque tour.
  *
- * Une fonction rend 1 si elle a traité la commande, 0 pour laisser l'ancien
- * chemin s'en charger. Ce zéro n'est pas un échec : il sert à porter la forme
- * courante d'un verbe en laissant ses formes rares derrière, plutôt que de
- * tout porter d'un coup ou rien. Ce qui repart ainsi reste compté par
- * v3_note, donc visible au bilan.
+ * Une fonction rend 1 si elle a traité la commande, 0 sinon. Ce zéro servait à
+ * laisser l'ancien chemin s'en charger : porter la forme courante d'un verbe
+ * en laissant ses formes rares derrière, plutôt que de tout porter d'un coup
+ * ou rien. Il n'y a plus d'ancien chemin — un zéro fait maintenant REFUSER la
+ * ligne, avec un message — et ce qui sort par là reste compté par v3_note,
+ * donc visible au bilan.
  *
- * La TABLE est le tableau d'avancement de la migration : ce qui n'y figure
- * pas est exactement ce qu'il reste à porter avant de pouvoir supprimer
- * exec_stmt.
+ * La TABLE était le tableau d'avancement de la migration : ce qui n'y figure
+ * pas est ce qui n'a jamais été porté, et qui est désormais refusé plutôt que
+ * rendu à l'ancien exécuteur.
  */
 
 /* Le fils `i` est-il le mot-clé `mot` ? Les motifs de hct_cmd.c gardent dans
@@ -10111,7 +10065,7 @@ static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
  * La forme « into » garde l'ancien chemin : écrire dans un conteneur
  * quelconque — variable, champ, morceau — est le travail de `put`, et le
  * refaire ici en dupliquerait la mécanique. Elle reviendra quand `put` sera
- * un service partagé plutôt qu'une ligne fabriquée pour exec_line. */
+ * un service partagé plutôt qu'une ligne fabriquée pour l'ancien exécuteur. */
 static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -10906,7 +10860,8 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
 /* Gestionnaire écrit dans une pile, appelé comme commande —
  * « selectline it, the name of me ».
  *
- * Le pendant exact de v3_fonction_pile. La ligne repartait à exec_stmt, qui
+ * Le pendant exact de v3_fonction_pile. La ligne repartait à l'ancien
+ * exécuteur, qui
  * la redécoupait aux virgules, réévaluait chaque argument, trouvait le
  * gestionnaire et rappelait la v3 pour l'exécuter : six cents allers-retours
  * dans une seule boucle, pour un travail que nous avions déjà fait.
@@ -11384,7 +11339,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
             }
 
     /* Un gestionnaire de la pile : on l'appelle avec nos arguments plutôt que
-     * de rendre la ligne à exec_stmt, qui les réévaluerait. */
+     * de rendre la ligne à l'ancien exécuteur, qui les réévaluerait. */
     if (n->genre == HCTN_MESSAGE) {
         ARENA_MARK;
         int fait = v3_message_pile(ctx, n);
@@ -11426,27 +11381,19 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * les compter comme du recours attribuerait à l'ancien code du travail
      * que la v3 vient de faire. Un compteur qui exagère est aussi inutile
      * qu'un compteur muet. */
-    if (v1_debranche()) {
-        /* PORTE 2 : la v3 ne sait pas exécuter cette ligne. L'ancien
-         * interprète ne le savait pas non plus dans tous les cas mesurés — il
-         * rendait seulement un message différent. On écrit le nôtre.
-         *
-         * Un MESSAGE sans gestionnaire est distingué d'une COMMANDE inconnue :
-         * ce n'est pas la même faute pour qui lit, et HyperCard les nommait
-         * différemment aussi. */
-        v1_compte("v1 refusée", "recours v3");
-        if (n->genre == HCTN_MESSAGE)
-            emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
-        else
-            emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
-        set_result("Can't understand");
-        ARENA_FREE;
-        return 1;
-    }
-
-    const char *sauve_porte = v1_porte("recours v3");
-    exec_stmt(g_me, ligne);
-    g_v1_porte = sauve_porte;
+    /* PORTE 2 : la v3 ne sait pas exécuter cette ligne. L'ancien interprète
+     * ne le savait pas non plus dans tous les cas mesurés — il rendait
+     * seulement un message différent. On écrit le nôtre.
+     *
+     * Un MESSAGE sans gestionnaire est distingué d'une COMMANDE inconnue :
+     * ce n'est pas la même faute pour qui lit, et HyperCard les nommait
+     * différemment aussi. */
+    v1_compte("v1 refusée", "recours v3");
+    if (n->genre == HCTN_MESSAGE)
+        emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
+    else
+        emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
+    set_result("Can't understand");
     ARENA_FREE;
     return 1;
 }
@@ -11458,8 +11405,10 @@ static HctHote v3_hote(void);
 /* ---- exécution d'un gestionnaire par la v3 ----
  *
  * Le pari de la transition : l'exécuteur v3 déroule l'arbre, et tout ce qu'il
- * ne sait pas faire lui-même repart vers exec_stmt par v3_commande. Rien ne
- * s'arrête donc en chemin, quelle que soit la commande rencontrée.
+ * ne savait pas faire lui-même repartait vers l'ancien exécuteur par
+ * v3_commande, si bien que rien ne s'arrêtait en chemin quelle que soit la
+ * commande. Le pari est tenu et l'ancien exécuteur supprimé : ce qui n'est
+ * pas porté est maintenant refusé, avec un message.
  *
  * On n'appelle PAS hct_appelle : il ouvre sa propre portée et y lie les
  * paramètres, alors que hc_send_args_k_body a déjà posé son cadre et lié les
@@ -11467,7 +11416,7 @@ static HctHote v3_hote(void);
  * paramètres seraient introuvables. On exécute donc le corps directement.
  *
  * Rend 0 si le gestionnaire n'est pas dans l'arbre — l'appelant se rabat
- * alors sur exec_body. */
+ * le dit alors à l'utilisateur, faute de second exécuteur à qui le confier. */
 static int v3_actif(void)
 {
     /* Interrupteur, pour comparer les deux exécuteurs sans recompiler.
@@ -11494,6 +11443,23 @@ static int v3_actif(void)
         fprintf(stderr, "[v3] HC_V3=%s (défaut %d) -> exécuteur v3 %s\n",
                 (e && *e) ? e : "absent", HC_V3_DEFAUT,
                 etat ? "ACTIF" : "éteint");
+
+        /* IL N'Y A PLUS DE SECOND EXÉCUTEUR À QUI PASSER LA MAIN.
+         *
+         * « HC_V3=0 » éteignait la v3 en comptant sur l'ancien interprète de
+         * lignes pour prendre le relais. Celui-ci n'existe plus : obéir
+         * laisserait une application qui se lance et n'exécute plus rien,
+         * sans que rien ne dise pourquoi. On refuse donc, et on le dit.
+         *
+         * La variable reste LUE plutôt qu'ignorée : quelqu'un l'a peut-être
+         * dans un schéma Xcode depuis des mois, et un avertissement vaut
+         * mieux qu'un silence pour l'apprendre. */
+        if (!etat) {
+            fprintf(stderr, "[v3] HC_V3=0 n'est plus tenable : l'ancien "
+                            "exécuteur de lignes a été supprimé. On continue "
+                            "avec la v3.\n");
+            etat = 1;
+        }
     }
     return etat;
 }
@@ -11639,7 +11605,7 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     if (x.signal == HCT_SIG_PASS) g_pass = 1;
 
     /* La valeur d'un `return` va dans `the result` — pour une FONCTION comme
-     * pour un gestionnaire de message, exactement comme le fait exec_stmt
+     * pour un gestionnaire de message, comme le faisait l'ancien exécuteur
      * (« if the result <> empty » après un appel en dépend).
      *
      * On ne pose le résultat que si un `return` a vraiment été exécuté :
@@ -11723,7 +11689,7 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
  *
  * « put X » sans destination, et « put X into the message box ». HC n'a pas
  * de boîte persistante : la valeur part sur la sortie, comme le fait
- * exec_stmt, qui émet HC_MSG au même endroit.
+ * l'ancien exécuteur, qui émettait HC_MSG au même endroit.
  *
  * `mode` est donc sans objet ici — on ne peut rien ajouter à la suite de ce
  * qui a déjà été affiché. On l'ignore et l'on rend 1 : refuser renverrait la
@@ -11745,7 +11711,7 @@ static int v3_globale(void *d, const char *nom)
     return 1;
 }
 /* Vider « the result » après une commande que l'exécuteur a traitée seul.
- * exec_stmt le fait depuis toujours pour put et l'arithmétique ; sans cela
+ * l'ancien exécuteur le faisait déjà pour put et l'arithmétique ; sans cela
  * la v3 laissait survivre un résultat déposé bien plus tôt. */
 static void v3_resultat_vide(void *d)
 {
@@ -11866,7 +11832,6 @@ static void eval_checked(const char *s, char *out, int outlen)
 }
 
 
-static void exec_line(Object *me, const char *line);
 
 /* ==================== structures de contrôle ==================== */
 
@@ -11877,11 +11842,6 @@ static int g_next_repeat  = 0;   /* next repeat */
 
  
 
-/* faut-il interrompre le fil d'exécution courant ? */
-static int flow_broken(void)
-{
-    return g_pass || g_exit_handler || g_exit_repeat || g_next_repeat;
-}
 
 /* Cherche le mot `w` dans `s`, hors guillemets. Renvoie NULL sinon. */
 static const char *find_kw(const char *s, const char *w)
@@ -11900,43 +11860,6 @@ static const char *find_kw(const char *s, const char *w)
     return NULL;
 }
 
-/* Évalue un point pour « show … at ». HyperCard accepte les deux formes :
- *   show me at 100,120          → deux expressions séparées par une virgule
- *   show me at the mouseLoc     → une seule expression rendant « x,y »
- * On découpe donc aux virgules de premier niveau (hors guillemets et
- * parenthèses), on évalue chaque morceau, et on recolle avec une virgule.
- * Ainsi « show me at horz,vert » comme « show me at item 1 of p, 20 »
- * arrivent tous deux sous la forme « x,y » attendue par geom_write. */
-static void eval_point(const char *s, char *out, int outlen)
-{
-    int pos = 0, depth = 0, inq = 0, n = 0;
-    const char *part = skip_spaces(s);
-    out[0] = '\0';
-
-    for (const char *q = part; ; q++) {
-        if (*q == '"') inq = !inq;
-        else if (!inq && *q == '(') depth++;
-        else if (!inq && *q == ')') depth--;
-
-        if (*q && !(!inq && depth <= 0 && *q == ',')) continue;
-
-        char *expr = arena_buf();
-        char *val = arena_buf();
-        int len = (int)(q - part);
-        while (len > 0 && isspace((unsigned char)part[len-1])) len--;
-        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-        memcpy(expr, part, (size_t)len); expr[len] = '\0';
-        eval_checked(expr, val, HC_VAL);
-
-        pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
-                        n ? "," : "", val);
-        if (pos >= outlen) pos = outlen - 1;
-        n++;
-
-        if (!*q) break;
-        part = skip_spaces(q + 1);
-    }
-}
 
 /* Une ligne ouvre-t-elle un bloc ? (« if … then » sans suite, « repeat … ») */
 static int opens_if(const char *s)
@@ -12018,89 +11941,9 @@ static int match_end(char **L, int from, int to, const char *what)
     return to;
 }
 
-/* Premier « else » de même niveau entre `from` et `to`. */
-static int find_else(char **L, int from, int to)
-{
-    for (int i = from; i < to; i++) {
-        const char *s = L[i];
-        if (opens_inline_chain(L, i, to) ||
-            opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
-        if (ci_word(s, "else")) return i;
-    }
-    return -1;
-}
 
-static void exec_block(Object *me, char **L, int from, int to);
-static void exec_stmt(Object *me, const char *s);
 
-/* `head` vaut « if <condition> then » ; le corps va de `from` à `end_idx`. */
-static void exec_if(Object *me, const char *head, char **L, int from, int end_idx)
-{
-    ARENA_MARK;
-    const char *th = find_kw(head, "then");
-    char *cond = arena_buf();
-    char *val = arena_buf();
-    const char *c0 = skip_spaces(head + 2);   /* après « if » */
-    int n = th ? (int)(th - c0) : (int)strlen(c0);
-    if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-    memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-    eval_checked(cond, val, HC_VAL);
 
-    int m = find_else(L, from, end_idx);
-    if (truthy(val)) {
-        exec_block(me, L, from, m >= 0 ? m : end_idx);
-        { ARENA_FREE; return; }
-    }
-    /* Chaque sortie rend ses tampons. Celle-ci — condition fausse, pas de
-     * « else » — les gardait, et c'est la plus fréquente de toutes : un
-     * « if … then … end if » non pris dans une boucle serrée perdait deux
-     * tampons par tour. exec_block n'a pas de marque à lui pour les
-     * récupérer, donc g_atop ne faisait que monter jusqu'à « arène de
-     * tampons saturée », des milliers de tours plus loin. Le script
-     * s'arrêtait alors en plein milieu, sans rapport visible avec la
-     * condition qui l'avait déclenché.
-     *
-     * `rest` pointe dans L[m], pas dans l'arène : libérer après l'appel est
-     * sans danger. */
-    if (m < 0) { ARENA_FREE; return; }
-
-    const char *rest = skip_spaces(L[m] + 4);   /* après « else » */
-    if (!*rest) { exec_block(me, L, m + 1, end_idx); ARENA_FREE; return; }
-    if (opens_if(rest)) { exec_if(me, rest, L, m + 1, end_idx); ARENA_FREE; return; }
-    exec_stmt(me, rest);          /* « else <instruction> », if en ligne compris */
-    ARENA_FREE;
-}
-
-/* Exécute une instruction simple, ou un `if` tenant sur une seule ligne. */
-static void exec_stmt(Object *me, const char *s)
-{
-    ARENA_MARK;
-    if (ci_word(s, "if")) {
-        const char *th = find_kw(s, "then");
-        if (th) {
-            char *cond = arena_buf();
-            char *val = arena_buf();
-            const char *c0 = skip_spaces(s + 2);
-            int n = (int)(th - c0);
-            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-            memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-            eval_checked(cond, val, HC_VAL);
-
-            const char *body = skip_spaces(th + 4);
-            const char *el   = find_kw(body, "else");
-            char *yes = arena_buf();
-            int ny = el ? (int)(el - body) : (int)strlen(body);
-            if (ny > (int)HC_VAL - 1) ny = (int)HC_VAL - 1;
-            memcpy(yes, body, (size_t)ny); yes[ny] = '\0';
-
-            if (truthy(val)) exec_stmt(me, yes);
-            else if (el)     exec_stmt(me, skip_spaces(el + 4));
-            { ARENA_FREE; return; }
-        }
-    }
-    exec_line(me, s);
-    ARENA_FREE;
-}
 
 /* Un `if` dont le « then » porte déjà une instruction, mais dont le « else »
  * ouvre la ligne suivante. HyperCard admet cette forme hybride, et la chaîne :
@@ -12111,8 +11954,8 @@ static void exec_stmt(Object *me, const char *s)
  *       ...
  *     end if
  *
- * Ni opens_if (qui exige un « then » en fin de ligne) ni exec_stmt (qui ne
- * regarde qu'une ligne) ne savent la lire. On la traite en deux temps :
+ * Ni opens_if (qui exige un « then » en fin de ligne) ni un exécuteur qui ne
+ * regarde qu'une ligne ne savent la lire. On la traite en deux temps :
  * d'abord mesurer l'étendue de la construction, ensuite l'exécuter. */
 
 /* Vrai si la ligne est « if <cond> then <instruction> », then non terminal. */
@@ -12137,242 +11980,10 @@ static int chain_end(char **L, int i, int to)
     return j;
 }
 
-static void exec_if_chain(Object *me, char **L, int i, int to, int end)
-{
-    ARENA_MARK;
-    const char *head = L[i];
-    for (;;) {
-        const char *th = find_kw(head, "then");
-        char *cond = arena_buf();
-        char *val = arena_buf();
-        const char *c0 = skip_spaces(head + 2);      /* après « if » */
-        int n = (int)(th - c0);
-        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-        memcpy(cond, c0, (size_t)n); cond[n] = '\0';
-        eval_checked(cond, val, HC_VAL);
 
-        /* On ne sort d'ici que par `return` : les deux ARENA_FREE qui
-         * suivaient la boucle n'ont jamais été atteints. Chaque sortie porte
-         * donc la sienne. `rest` et `head` pointent dans L, pas dans l'arène :
-         * libérer avant de rendre la main ne les invalide pas. */
-        if (truthy(val)) { exec_stmt(me, skip_spaces(th + 4)); ARENA_FREE; return; }
-
-        if (i + 1 >= to || !ci_word(L[i+1], "else")) { ARENA_FREE; return; }
-        const char *rest = skip_spaces(L[i+1] + 4);
-        if (!*rest)          { exec_block(me, L, i + 2, end); ARENA_FREE; return; }
-        if (is_inline_if(rest)) { head = rest; i++; continue; }
-        exec_stmt(me, rest); ARENA_FREE; return;
-    }
-}
-
-static void exec_block(Object *me, char **L, int from, int to)
-{
-    for (int i = from; i < to; i++) {
-        const char *s = L[i];
-
-        /* --- if … then <instruction> avec un « else » à la ligne --- */
-        if (opens_inline_chain(L, i, to)) {
-            int e = chain_end(L, i, to);
-            exec_if_chain(me, L, i, to, e);
-            i = e;
-            if (flow_broken()) return;
-            continue;
-        }
-
-        /* --- if … then / end if --- */
-        if (opens_if(s)) {
-            int e = match_end(L, i + 1, to, "if");
-            /* si c'est un « else <instruction> » qui referme, il fait
-               partie de la construction : exec_if doit le voir */
-            int body_end = (e < to && else_closes(L[e])) ? e + 1 : e;
-            exec_if(me, s, L, i + 1, body_end);
-            i = e;
-            if (flow_broken()) return;
-            continue;
-        }
-
-        /* --- repeat … / end repeat --- */
-        if (opens_repeat(s)) {
-            int e = match_end(L, i + 1, to, "repeat");
-            const char *h = skip_spaces(s + 6);
-
-            /* variantes de l'en-tête */
-            int    kind = 0;            /* 0 sans fin, 1 n fois, 2 while, 3 until, 4 with */
-            long   times = 0;
-            char   var[128] = "", from_e[256] = "", to_e[256] = "", cond[256] = "";
-            int    down = 0;
-
-            if (!*h || ci_word(h, "forever")) kind = 0;
-            else if (ci_word(h, "while")) { kind = 2; snprintf(cond, sizeof cond, "%s", h + 5); }
-            else if (ci_word(h, "until")) { kind = 3; snprintf(cond, sizeof cond, "%s", h + 5); }
-            else if (ci_word(h, "with")) {
-                kind = 4;
-                const char *q = next_word(skip_spaces(h + 4), var, sizeof var);
-                q = skip_spaces(q);
-                if (*q == '=') q++;
-                const char *tt = find_kw(q, "to");
-                const char *dn = find_kw(q, "down");
-                if (dn && (!tt || dn < tt)) { down = 1; tt = find_kw(dn, "to"); }
-                int n = tt ? (int)(tt - q) : (int)strlen(q);
-                if (down && dn) n = (int)(dn - q);
-                if (n > (int)sizeof from_e - 1) n = (int)sizeof from_e - 1;
-                memcpy(from_e, q, (size_t)n); from_e[n] = '\0';
-                snprintf(to_e, sizeof to_e, "%s", tt ? tt + 2 : "0");
-            } else {
-                kind = 1;
-                const char *q = h;
-                if (ci_word(q, "for")) q = skip_spaces(q + 3);
-
-                /* Retirer le « times » final avant d'évaluer : sans ça,
-                 * « repeat n times » fait lire « n times » comme une seule
-                 * référence, qui ne vaut rien — donc zéro tour. Avec un
-                 * littéral le problème ne se voyait pas, parse_factor
-                 * s'arrêtant tout seul après le nombre. */
-                char cnt[256];
-                const char *tm = find_kw(q, "times");
-                int cn = tm ? (int)(tm - q) : (int)strlen(q);
-                while (cn > 0 && isspace((unsigned char)q[cn-1])) cn--;
-                if (cn > (int)sizeof cnt - 1) cn = (int)sizeof cnt - 1;
-                memcpy(cnt, q, (size_t)cn); cnt[cn] = '\0';
-
-                char v[256];
-                eval_expr(cnt, v, sizeof v);
-                double d = 0; as_num(v, &d);
-                times = (long)d;
-            }
-
-            double cur = 0, last = 0;
-            if (kind == 4) {
-                char v[256];
-                eval_expr(from_e, v, sizeof v); as_num(v, &cur);
-                eval_expr(to_e,   v, sizeof v); as_num(v, &last);
-            }
-
-            long iter = 0;
-            for (;;) {
-                if (kind == 1 && iter >= times) break;
-                if (kind == 2 || kind == 3) {
-                    char v[256];
-                    eval_expr(cond, v, sizeof v);
-                    int t = truthy(v);
-                    if (kind == 2 && !t) break;
-                    if (kind == 3 &&  t) break;
-                }
-                if (kind == 4) {
-                    if (!down && cur > last) break;
-                    if ( down && cur < last) break;
-                    char v[64]; put_num(cur, v, sizeof v);
-                    var_set(var, v);
-                }
-                if (++iter > HC_MAX_LOOP) {
-                    emit(HC_ERR, "!! boucle interrompue après %d tours", HC_MAX_LOOP);
-                    break;
-                }
-
-                exec_block(me, L, i + 1, e);
-                host_idle();      /* l'hôte redessine et souffle */
-
-                if (g_next_repeat) g_next_repeat = 0;
-                if (g_exit_repeat) { g_exit_repeat = 0; break; }
-                if (g_pass || g_exit_handler) break;
-
-                if (kind == 4) cur += down ? -1 : 1;
-            }
-            i = e;
-            if (flow_broken()) return;
-            continue;
-        }
-
-        /* --- fermetures orphelines : on les laisse filer --- */
-        if (ci_word(s, "end")) {
-            const char *w = skip_spaces(s + 3);
-            if (ci_word(w, "if") || ci_word(w, "repeat")) continue;
-        }
-        if (ci_word(s, "else")) continue;
-
-        exec_stmt(me, s);
-        if (flow_broken()) return;
-    }
-}
 
 /* Découpe le corps d'un gestionnaire en lignes utiles, puis l'exécute. */
-/* HyperCard autorise le « then » à ouvrir la ligne suivante :
- *
- *     if (theDayOfWeek - 1) <> 0
- *     then put char 1 to n of spaces() into theDayNumbers
- *
- * On recolle ces deux lignes avant toute analyse : exec_if ignore alors
- * complètement cette variante. Le recollage n'a lieu que si la ligne suivante
- * commence vraiment par « then », donc un `if` mal formé ne peut pas avaler
- * la suite du gestionnaire. */
-static void join_split_then(char **L, int *n)
-{
-    for (int i = 0; i + 1 < *n; i++) {
-        if (!ci_word(L[i], "if")) continue;
-        if (find_kw(L[i], "then")) continue;
-        if (!ci_word(L[i+1], "then")) continue;
 
-        size_t need = strlen(L[i]) + strlen(L[i+1]) + 2;
-        char *j = (char *)malloc(need);
-        if (!j) return;
-        snprintf(j, need, "%s %s", L[i], L[i+1]);
-        free(L[i]); free(L[i+1]);
-        L[i] = j;
-        for (int k = i + 1; k + 1 < *n; k++) L[k] = L[k+1];
-        (*n)--;
-    }
-}
-
-static void exec_body(Object *me, const char *body, const char *end)
-{
-    int cap = 32, n = 0;
-    char **L = malloc((size_t)cap * sizeof *L);
-    if (!L) hc_memoire_epuisee("lignes d'un gestionnaire");
-
-    const char *p = body;
-    while (p < end && *p) {
-        const char *nl = strchr(p, '\n');
-        const char *stop = (nl && nl < end) ? nl : end;
-        int len = (int)(stop - p);
-
-        char *line = arena_buf();
-        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-        memcpy(line, p, (size_t)len);
-        line[len] = '\0';
-
-        int L2 = (int)strlen(line);
-
-        /* commentaire « -- » en fin de ligne, hors guillemets */
-        int inq = 0;
-        for (int k = 0; k < L2; k++) {
-            if (line[k] == '"') inq = !inq;
-            else if (!inq && line[k] == '-' && line[k+1] == '-') { line[k] = '\0'; L2 = k; break; }
-        }
-
-        while (L2 > 0 && (line[L2-1] == '\r' || line[L2-1] == ' ' || line[L2-1] == '\t'))
-            line[--L2] = '\0';
-
-        const char *t = skip_spaces(line);
-        if (*t && !(t[0] == '-' && t[1] == '-')) {   /* -- commentaire */
-            if (n == cap) {
-                cap *= 2;
-                char **q = realloc(L, (size_t)cap * sizeof *L);
-                if (!q) hc_memoire_epuisee("lignes d'un gestionnaire");
-                L = q;
-            }
-            L[n++] = dupstr(t);
-        }
-
-        if (!nl || nl >= end) break;
-        p = nl + 1;
-    }
-
-    join_split_then(L, &n);
-    exec_block(me, L, 0, n);
-
-    for (int i = 0; i < n; i++) free(L[i]);
-    free(L);
-}
 
 /* ---- tri ------------------------------------------------------------------
  *   sort [this] stack [ascending|descending] [text|numeric|dateTime] by <clé>
@@ -12609,2360 +12220,7 @@ static Object *marked_card_ref(const char *r, int *concerne)
     }
     return NULL;
 }
-static void exec_line_body(Object *me, const char *line)
-{
-    v1_compte("v1 ligne", g_v1_porte);
-    (void)me;   /* servira pour `the target` / `me` dans les expressions */
-    char verb[64];
-    const char *rest = next_word(line, verb, sizeof verb);
 
-    /* Une parenthèse ouvrante termine le verbe aussi sûrement qu'un espace.
-     * « return(x) », sans espace, est légal en HyperTalk et fréquent dans les
-     * piles d'époque — next_word en faisait un seul mot, et l'interpréteur
-     * annonçait « verbe inconnu : return(trunc(… ». On recoupe donc au
-     * premier '(' et l'on rend le reste à l'analyseur d'expression, qui sait
-     * très bien traiter une parenthèse en tête. */
-    {
-        char *par = strchr(verb, '(');
-        if (par && par != verb) {
-            rest = line + (par - verb);
-            /* Retrouver la position réelle dans la ligne : verb a été copié
-             * depuis le premier caractère non blanc. */
-            const char *deb = skip_spaces(line);
-            rest = deb + (par - verb);
-            *par = '\0';
-        }
-    }
-
-    /* --- send "<message> [args]" to <objet> ---
-     * Le message est une ligne de HyperTalk : un nom de gestionnaire suivi
-     * d'arguments éventuels. « send "carre 6" to card X » appelle on carre
-     * sur X avec l'argument 6. Les arguments sont évalués côté appelant. */
-    if (ci_equal(verb, "send")) {
-        char *msgline = arena_buf();
-        rest = skip_spaces(rest);
-        if (*rest == '"') {
-            const char *after = quoted(rest, msgline, HC_VAL);
-            char probe[8];
-            next_word(after, probe, sizeof probe);
-            if (ci_equal(probe, "to")) {
-                rest = after;                       /* littéral simple */
-            } else {
-                /* Le message est une expression : « send "go " & n to … ».
-                 * Elle court jusqu'au dernier « to » de premier niveau, les
-                 * « to » enfermés dans les guillemets étant ignorés. */
-                const char *last = NULL, *scan = rest;
-                for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
-                    last = k; scan = k + 2;
-                }
-                if (!last) { emit(HC_ERR, "?? send mal formé : %s", line); return; }
-                char *expr = arena_buf();
-                int n = (int)(last - rest);
-                if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-                memcpy(expr, rest, (size_t)n); expr[n] = '\0';
-                eval_expr(expr, msgline, HC_VAL);
-                rest = last;
-            }
-        }
-        else {
-            /* message nu : tout jusqu'à « to » (au niveau supérieur) */
-            const char *to_kw = find_kw(rest, "to");
-            int len = to_kw ? (int)(to_kw - rest) : (int)strlen(rest);
-            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-            memcpy(msgline, rest, (size_t)len); msgline[len] = '\0';
-            rest = to_kw ? to_kw : rest + strlen(rest);
-        }
-
-        char to[8];
-        const char *r2 = next_word(rest, to, sizeof to);
-        if (!ci_equal(to, "to")) { emit(HC_ERR, "?? send mal formé : %s", line); return; }
-
-        Object *target = resolve(r2);
-        if (!target) {
-            set_result("destinataire introuvable");
-            emit(HC_ERR, "   !! destinataire introuvable : %s", skip_spaces(r2));
-            return;
-        }
-
-        /* découper le message en nom + arguments */
-        char msg[128];
-        const char *a = next_word(skip_spaces(msgline), msg, sizeof msg);
-        char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
-        if (!argv) {
-            set_result("mémoire insuffisante");
-            return;
-        }
-        int argc = 0;
-        a = skip_spaces(a);
-        while (*a && argc <= HC_ARGS_MAX) {
-            char *one = arena_buf();
-            int len = 0, depth = 0, inq = 0;
-            while (*a && !(depth == 0 && !inq && *a == ',')) {
-                if (*a == '"') inq = !inq;
-                else if (!inq && *a == '(') depth++;
-                else if (!inq && *a == ')') depth--;
-                if (len < HC_VAL - 1) one[len++] = *a;
-                a++;
-            }
-            one[len] = '\0';
-            eval_expr(one, argv[argc], sizeof argv[argc]);   /* contexte appelant */
-            argc++;
-            if (*a == ',') a = skip_spaces(a + 1); else break;
-        }
-
-        set_result("");     /* un `return` dans le gestionnaire le remplira */
-        hc_send_args(target, msg, argv, argc);
-        return;
-    }
-
-    /* --- put <expr> [into|after|before <champ|variable>] --- */
-    /* --- debug : le relevé des retours de la v3 vers ce fichier ---
-     *
-     * « debug bilan » l'imprime, « debug raz » le remet à zéro. Le verbe
-     * existe dans la table de hct_cmd.c mais n'avait aucun traitant : il
-     * partait en envoi de message et se perdait.
-     *
-     * Le passer par une commande plutôt que par un appel depuis l'interface
-     * permet de le déclencher DEPUIS un script, donc de mesurer une pile
-     * précise : « debug raz » en début de gestionnaire, « debug bilan » à la
-     * fin. */
-    if (ci_equal(verb, "debug")) {
-        char quoi[64];
-        next_word(rest, quoi, sizeof quoi);
-        if (ci_equal(quoi, "raz")) { hc_v3_bilan_remise_a_zero(); return; }
-        hc_v3_bilan();
-        return;
-    }
-
-    if (ci_equal(verb, "put")) {
-        /* repérer la préposition, hors des chaînes entre guillemets */
-        const char *kw = NULL;
-        int kwlen = 0, mode = 0;    /* 0 = into (remplace), 1 = after, 2 = before */
-        int inq = 0;
-        for (const char *q = rest; *q; q++) {
-            if (*q == '"') { inq = !inq; continue; }
-            if (inq) continue;
-            if (!(q == rest || isspace((unsigned char)q[-1]))) continue;
-            if      (ci_word(q, "into"))   { kw = q; kwlen = 4; mode = 0; break; }
-            else if (ci_word(q, "after"))  { kw = q; kwlen = 5; mode = 1; break; }
-            else if (ci_word(q, "before")) { kw = q; kwlen = 6; mode = 2; break; }
-        }
-
-        char *val = arena_buf();
-        if (!kw) {                       /* pas de destination : la boîte de message */
-            eval_checked(rest, val, HC_VAL);
-            emit(HC_MSG, "%s", val);
-            return;
-        }
-
-        char *expr = arena_buf();
-        int n = (int)(kw - rest);
-        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-        memcpy(expr, rest, (size_t)n); expr[n] = '\0';
-        eval_checked(expr, val, HC_VAL);
-
-        const char *dsttext = skip_spaces(kw + kwlen);
-        if (container_set(dsttext, val, mode)) {
-            set_result("");
-            char *shown = arena_buf();
-            eval_expr(dsttext, shown, HC_VAL);
-            if (!*shown && *val) snprintf(shown, HC_VAL, "%s", val);
-            emit(HC_INFO, "   → %s ← \"%s\"", dsttext, shown);
-        } else {
-            set_result("destination invalide");
-            emit(HC_ERR, "   !! destination invalide : %s", dsttext);
-        }
-        return;
-    }
-
-    /* --- delete <morceau> of <conteneur> --- */
-    if (ci_equal(verb, "delete")) {
-        const char *d = skip_spaces(rest);
-        if (container_set(d, "", 3)) {
-            set_result("");
-            emit(HC_INFO, "   → supprimé : %s", d);
-        } else {
-            set_result("rien à supprimer");
-            emit(HC_ERR, "   !! rien à supprimer : %s", d);
-        }
-        return;
-    }
-
-    /* --- lock screen | unlock screen [with visual …] ---
-     * Ce sont les alias de « set lockScreen to true/false », et c'est bien
-     * ainsi qu'on les traite : l'hôte reçoit une propriété globale et décide
-     * seul de suspendre ou non son rafraîchissement. Le noyau, lui, ne sait
-     * toujours pas ce qu'est un écran. L'effet visuel éventuel est ignoré. */
-    if (ci_equal(verb, "lock") || ci_equal(verb, "unlock")) {
-        if (ci_word(skip_spaces(rest), "messages")) {
-            g_messages_verrouilles = ci_equal(verb, "lock");
-            set_result("");
-            return;
-        }
-        if (ci_word(skip_spaces(rest), "screen")) {
-            g_ecran_verrouille = ci_equal(verb, "lock");
-            host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
-            /* Au déverrouillage, on réveille les champs modifiés pendant le
-             * verrou — eux seulement, pas l'écran entier. */
-            if (!g_ecran_verrouille) verrou_reveille();
-            set_result("");
-            return;
-        }
-    }
-
-    /* --- convert <conteneur> to <format> [and <format>] ---
-     * Le résultat retourne dans le conteneur d'origine ; si la source n'en
-     * est pas un (« convert the date to dateItems »), il atterrit dans `it`,
-     * comme sur Macintosh. En cas d'échec, `the result` vaut « invalid date »
-     * — c'est ce que les scripts d'époque testent. */
-    if (ci_equal(verb, "convert")) {
-        /* Le « to » qui compte est le dernier de premier niveau : la source
-         * peut en contenir un elle-même, comme dans
-         * « convert item 1 to 7 of calData() to dateItems ». */
-        const char *to = NULL, *scan = rest;
-        for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
-            to = k; scan = k + 2;
-        }
-        if (!to) {
-            emit(HC_ERR, "   !! convert sans « to » : %s", skip_spaces(rest));
-            set_result("invalid date");
-            return;
-        }
-
-        char *src = arena_buf();
-        int n = (int)(to - rest);
-        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-        memcpy(src, rest, (size_t)n); src[n] = '\0';
-        while (n > 0 && isspace((unsigned char)src[n-1])) src[--n] = '\0';
-        const char *srcp = skip_spaces(src);
-
-        /* le format cible, éventuellement double : « short date and long time » */
-        char spec[256];
-        snprintf(spec, sizeof spec, "%s", skip_spaces(to + 2));
-        char *andkw = (char *)find_kw(spec, "and");
-        int f1 = DF_NONE, f2 = DF_NONE;
-        if (andkw) { *andkw = '\0'; f2 = date_format_code(andkw + 4); }
-        f1 = date_format_code(spec);
-        if (f1 == DF_NONE) {
-            emit(HC_ERR, "   !! format de date inconnu : %s", skip_spaces(to + 2));
-            set_result("invalid date");
-            return;
-        }
-
-        char *val = arena_buf();
-        eval_expr(srcp, val, HC_VAL);
-
-        struct tm tm;
-        if (!parse_datetime(val, &tm)) {
-            emit(HC_ERR, "   !! date incomprise : « %s »", val);
-            set_result("invalid date");
-            return;
-        }
-
-        char *outv = arena_buf();
-        char part2[256];
-        emit_datetime(&tm, f1, outv, HC_VAL);
-        if (f2 != DF_NONE) {
-            emit_datetime(&tm, f2, part2, sizeof part2);
-            int L = (int)strlen(outv);
-            snprintf(outv + L, HC_VAL - L, " %s", part2);
-        }
-
-        /* Destination : le conteneur source s'il en est un. « the date »,
-         * « the long time » et les appels de fonction n'en sont pas. */
-        int to_it = ci_word(srcp, "the") || strchr(srcp, '(') != NULL;
-        if (to_it || !container_set(srcp, outv, 0))
-            var_set("it", outv);
-
-        set_result("");
-        emit(HC_INFO, "   → %s", outv);
-        return;
-    }
-
-    /* --- return <expr> : dépose une valeur dans `the result` et sort --- */
-    if (ci_equal(verb, "return")) {
-        char *val = arena_buf();
-        eval_checked(rest, val, HC_VAL);
-        set_result(val);
-        g_exit_handler = 1;
-        return;
-    }
-
-    /* --- exit repeat | exit <gestionnaire> | next repeat --- */
-    if (ci_equal(verb, "exit")) {
-        if (ci_word(skip_spaces(rest), "repeat")) g_exit_repeat = 1;
-        else                                      g_exit_handler = 1;
-        return;
-    }
-    if (ci_equal(verb, "next")) {
-        if (ci_word(skip_spaces(rest), "repeat")) g_next_repeat = 1;
-        return;
-    }
-
-    /* --- set [the] <propriété> of <objet> to <expr> --- */
-    if (ci_equal(verb, "set")) {
-        g_visual_dirty = 1;
-        const char *s = skip_spaces(rest);
-        if (ci_word(s, "the")) s = skip_spaces(s + 3);
-
-        char prop[64];
-        const char *q = next_word(s, prop, sizeof prop);
-        q = skip_spaces(q);
-
-        /* Pas de « of » : c'est une propriété globale, pas celle d'un objet.
-         * « set cursor to none », « set lockScreen to true »… */
-        if (!ci_word(q, "of")) {
-            /* « set word 2 of field "x" to bold » : le nom de propriete manque.
-             * Sans ce garde-fou, « word » partait comme propriete globale chez
-             * l'hote et l'ecriture disparaissait sans un mot. */
-            if (ci_equal(prop, "char") || ci_equal(prop, "character")
-             || ci_equal(prop, "word") || ci_equal(prop, "item")
-             || ci_equal(prop, "line")) {
-                set_result("propriete manquante");
-                emit(HC_ERR, "   !! set : quelle propriete ? essayez "
-                             "« set the textStyle of %s … »", skip_spaces(rest));
-                return;
-            }
-            const char *to = find_kw(s, "to");
-            if (!to) {
-                emit(HC_ERR, "   !! set mal formé : %s", skip_spaces(rest));
-                return;
-            }
-            char *val = arena_buf();
-            eval_checked(to + 2, val, HC_VAL);
-
-            if (prop_globale_noyau(prop, val)) {
-                set_result("");
-                return;
-            }
-
-            host_global_set(prop, val);
-            set_result("");
-            emit(HC_INFO, "   → %s ← \"%s\"", prop, val);
-            return;
-        }
-        q = skip_spaces(q + 2);
-
-        /* Le « to » qui separe la cible de la valeur est le DERNIER de premier
-         * niveau : la cible peut en contenir elle-meme, comme dans
-         *     set the textStyle of word d of line 3 to numLines of me to bold
-         * Couper au premier tronquait la cible a « line 3 ». */
-        const char *to = NULL, *scan = q;
-        for (const char *k = find_kw(scan, "to"); k; k = find_kw(scan, "to")) {
-            to = k; scan = k + 2;
-        }
-        if (!to) {
-            emit(HC_ERR, "   !! set sans « to » : %s", skip_spaces(rest));
-            return;
-        }
-
-        char refbuf[256];
-        int n = (int)(to - q);
-        if (n > (int)sizeof refbuf - 1) n = (int)sizeof refbuf - 1;
-        memcpy(refbuf, q, (size_t)n); refbuf[n] = '\0';
-        while (n > 0 && (refbuf[n-1] == ' ' || refbuf[n-1] == '\t')) refbuf[--n] = '\0';
-
-        char *val = arena_buf();
-        /* « to bold,condense » n'est pas une expression : c'est une liste de
-         * noms de styles, qu'HyperCard accepte sans guillemets. On prend donc
-         * le texte brut, sauf s'il nomme une variable — auquel cas on lit sa
-         * valeur, pour que « set the textStyle of X to myStyle » marche. */
-        /* Même problème pour la couleur : « to white » n'est pas une
-         * expression, c'est un nom que HyperCard accepte nu. L'évaluer le
-         * traitait comme un identifiant inconnu, et le résultat vide se
-         * changeait en HC_COLOR_INHERIT — rien ne bougeait, sans un mot.
-         *
-         * On ne prend le texte brut que s'il NOMME une couleur : « to
-         * theColor » ou « to item 1 of liste » restent des expressions. */
-        if (ci_equal(prop, "textcolor")) {
-            const char *raw = skip_spaces(to + 2);
-            int rl = (int)strlen(raw);
-            while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
-
-            /* Court exprès : on ne cherche qu'à savoir si le texte NOMME une
-             * couleur, et « white », « #FF00AA » ou « 255,128,0 » tiennent
-             * tous là-dedans. Un texte plus long ne peut pas être un nom de
-             * couleur — il est tronqué, color_from_name le refuse, et l'on
-             * retombe sur l'évaluation, qui est bien ce qu'il faut faire.
-             *
-             * Surtout pas char[HC_VAL] : ce serait un mégaoctet sur la pile,
-             * dans une fonction que l'évaluateur appelle en cascade. */
-            char brut[64];
-            snprintf(brut, sizeof brut, "%.*s", rl, raw);
-
-            /* Déguillemeter d'abord : « to "white" » nomme aussi une couleur. */
-            int n = (int)strlen(brut);
-            if (n > 1 && brut[0] == '"' && brut[n-1] == '"') {
-                memmove(brut, brut + 1, (size_t)(n - 2));
-                brut[n - 2] = '\0';
-            }
-
-            if (color_from_name(brut) != HC_COLOR_INHERIT)
-                snprintf(val, HC_VAL, "%s", brut);
-            else
-                eval_checked(to + 2, val, HC_VAL);
-        }
-        else if (ci_equal(prop, "textstyle")) {
-            const char *raw = skip_spaces(to + 2);
-            int rl = (int)strlen(raw);
-            while (rl > 0 && isspace((unsigned char)raw[rl-1])) rl--;
-            snprintf(val, HC_VAL, "%.*s", rl, raw);
-
-            /* Trancher sur le CONTENU, pas sur la ponctuation. L'ancien test
-             * — « ni virgule ni espace, alors peut-être une variable » —
-             * classait « s & ",italic" » parmi les listes de noms : il n'en
-             * retenait que « italic » et jetait le reste, si bien qu'on ne
-             * pouvait pas relire un style pour lui en ajouter un. Désormais
-             * une suite de noms de style reste littérale, et tout le reste
-             * est évalué comme l'expression que c'est. */
-            if (!style_is_names(val)) {
-                int n = (int)strlen(val);
-                int quoted = 0;
-
-                /* Une liste de noms peut arriver citée : « to "bold,italic" ».
-                 * On la déguillemete pour la re-tester. L'ancienne écriture
-                 * glissait le snprintf dans la condition via l'opérateur
-                 * virgule, ce que le compilateur signale à juste titre : c'est
-                 * le motif habituel d'un « f(a, b) » mal parenthésé. */
-                if (n > 1 && val[0] == '"' && val[n-1] == '"') {
-                    char *inner = arena_buf();
-                    snprintf(inner, HC_VAL, "%.*s", n - 2, val + 1);
-                    if (style_is_names(inner)) {
-                        snprintf(val, HC_VAL, "%s", inner);
-                        quoted = 1;
-                    }
-                }
-                if (!quoted) eval_checked(to + 2, val, HC_VAL);
-            }
-        } else {
-            eval_checked(to + 2, val, HC_VAL);
-        }
-
-        /* La cible peut designer une PLAGE DE TEXTE et non un objet :
-         *     set the textStyle of word 3 of line 2 of field "cal" to bold
-         * resolve() ne sait chercher que des objets, d'ou l'echec historique
-         * « objet introuvable : word theNewDay of line 3 ». On essaie donc
-         * d'abord le morceau, avant de retomber sur la resolution d'objet. */
-        {
-            int cst, cen;
-            Object *cf = chunk_target(refbuf, &cst, &cen);
-            if (cf) {
-                /* Les trois attributs de texte se posent par plage, comme dans
-                 * HyperCard 2.x ; le reste (rect, visible…) décrit un objet et
-                 * n'a aucun sens sur un morceau. */
-                int mask = 0;
-                if      (ci_equal(prop, "textstyle")) mask = RA_STYLE;
-                else if (ci_equal(prop, "textfont"))  mask = RA_FONT;
-                else if (ci_equal(prop, "textcolor")) mask = RA_COLOR;
-                else if (ci_equal(prop, "textsize")) mask = RA_SIZE;
-
-                if (!mask) {
-                    /* Deux échecs bien différents, qu'un seul message
-                     * confondait : « font » n'est pas une propriété du tout
-                     * (c'est « textFont »), alors que « rect » en est une,
-                     * mais qui décrit un objet et non un morceau. Annoncer
-                     * « ne s'applique pas à un morceau » sur un nom inconnu
-                     * envoyait chercher l'erreur au mauvais endroit. */
-                    if (!is_prop_name(prop, (int)strlen(prop))) {
-                        set_result("propriete inconnue");
-                        emit(HC_ERR, "   !! propriete inconnue : %s"
-                                     " (les proprietes de texte sont textFont,"
-                                     " textSize, textStyle)", prop);
-                    } else {
-                        set_result("propriete non applicable a un morceau");
-                        emit(HC_ERR, "   !! %s decrit un objet, pas un morceau"
-                                     " de texte", prop);
-                    }
-                    return;
-                }
-                struct RunList *rl = runs_of(cf);
-                if (!rl) {
-                    set_result("champ sans stockage de style");
-                    emit(HC_ERR, "   !! ce champ n'a pas encore de texte sur cette carte");
-                    return;
-                }
-                runs_set_attr(rl, cst, cen - cst, mask,
-                              (mask & RA_STYLE) ? style_from_names(val) : 0,
-                              (mask & RA_SIZE)  ? atoi(val) : 0,
-                              (mask & RA_FONT)  ? val : NULL,
-                              (mask & RA_COLOR) ? color_from_name(val)
-                                                : HC_COLOR_INHERIT);
-                notify_field(cf);
-                set_result("");
-                emit(HC_INFO, "   → %s de [%d..%d[ ← \"%s\"", prop, cst, cen, val);
-                return;
-            }
-        }
-
-        Object *o = resolve(refbuf);
-        if (!o) {
-            /* Distinguer les deux echecs : une reference d'objet inconnue, ou
-             * un morceau de texte qui n'existe pas (champ vide, rang au-dela
-             * du contenu). « objet introuvable » sur « word 8 of line 3 of me »
-             * envoyait chercher au mauvais endroit. */
-            ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
-            if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
-                set_result("morceau hors limites");
-                emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
-            } else {
-                set_result("objet introuvable");
-                emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
-            }
-            return;
-        }
-
-        char d[64]; hc_describe(o, d, sizeof d);   /* avant modification */
-
-        if (ci_equal(prop, "name")) {
-            free(o->name);
-            o->name = dupstr(val);
-        } else if (ci_equal(prop, "visible")) {
-            o->visible = truthy(val);
-        } else if (ci_equal(prop, "enabled")) {
-            o->enabled = truthy(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) {
-            o->showname = truthy(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "icon")) {
-            /* Un numéro ou un nom : « set the icon of me to 3071 » comme
-             * « ... to "Close Box" ». atoi seul rendait 0 sur tout nom, donc
-             * silencieusement « aucune icône ». */
-            o->icon = hc_resolve_icon(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
-            o->selectedline = atoi(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "locktext")) {
-            o->locktext = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "widemargins")) {
-            o->wide_margins = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "fixedlineheight")) {
-            o->fixed_lh = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "showlines")) {
-            o->show_lines = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "autotab")) {
-            o->auto_tab = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "dontsearch")) {
-            o->dont_search = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "textalign")) {
-            /* Accepte aussi « centre » et « centered », qu'on rencontre dans
-             * les scripts, et retombe à gauche sur un mot inconnu plutôt que
-             * d'échouer : HyperCard est indulgent sur cette propriété. */
-            if (ci_equal(val, "center") || ci_equal(val, "centre") ||
-                ci_equal(val, "centered"))      o->text_align = 1;
-            else if (ci_equal(val, "right"))    o->text_align = 2;
-            else                                o->text_align = 0;
-            notify_field(o);
-        } else if (ci_equal(prop, "autoselect")) {
-            o->auto_select = truthy(val);
-            /* Un champ à sélection de lignes est forcément verrouillé : on ne
-             * tape pas dans une liste de choix. HyperCard verrouillait de même,
-             * et sans cela le clic ouvrirait l'éditeur au lieu de sélectionner. */
-            if (o->auto_select) o->locktext = 1;
-            notify_field(o);
-        } else if (ci_equal(prop, "multiplelines")) {
-            o->multiple_lines = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "marked")) {
-            o->marked = truthy(val);
-        } else if (ci_equal(prop, "dontwrap")) {
-            o->dont_wrap = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "sharedhilite")) {
-            o->shared_hilite = truthy(val); notify_field(o);
-        } else if (ci_equal(prop, "sharedtext")) {
-            /* Par la même porte que la case de l'Info : basculer le drapeau
-             * seul rendrait le contenu inaccessible. */
-            hc_set_shared_text(o, truthy(val));
-        } else if (ci_equal(prop, "scroll")) {
-            o->scroll = atoi(val);
-            if (o->scroll < 0) o->scroll = 0;
-            notify_field(o);
-        } else if (ci_equal(prop, "textfont")) {
-            free(o->textfont);
-            o->textfont = (*val) ? dupstr(val) : NULL;
-            notify_field(o);
-        } else if (ci_equal(prop, "textstyle")) {
-            /* Passe par style_from_names, comme la pose sur un morceau. Le
-             * code d'origine cherchait trois sous-chaînes à la main : il
-             * ignorait outline, shadow, condense, extend et group — d'où un
-             * « to bold,outline » sur un bouton qui se relisait « bold » —
-             * et un mot comme « underlined » l'aurait déclenché à tort. */
-            o->textstyle = style_from_names(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
-            hc_set_hilite(o, NULL, truthy(val));
-            notify_field(o);
-        } else if (ci_equal(prop, "autohilite")) {
-            o->autohilite = truthy(val);
-        } else if (ci_equal(prop, "textsize")) {
-            o->textsize = atoi(val);
-            notify_field(o);
-        } else if (ci_equal(prop, "textheight")) {
-            /* Zéro rétablit la valeur déduite du corps. */
-            int v = atoi(val);
-            o->textheight = v > 0 ? v : 0;
-            notify_field(o);
-        } else if (ci_equal(prop, "script")) {
-            /* Une valeur qui touche exactement le plafond a presque
-             * certainement été tronquée en chemin (« get the script of me »
-             * sur un script plus long que HC_VAL). L'écrire telle quelle
-             * détruirait le script. On refuse : mieux vaut un gestionnaire
-             * qui échoue qu'une pile mutilée.
-             *
-             * Un script faisant pile HC_VAL-1 octets serait refusé à tort ;
-             * c'est un prix négligeable face à la perte de l'original. */
-            if (g_script_clipped || (int)strlen(val) >= HC_VAL - 1) {
-                emit(HC_ERR, "   !! écriture refusée : ce gestionnaire a lu un "
-                             "script tronqué ; l'écrire le détruirait");
-                set_result("script tronqué");
-                return;
-            }
-            hc_set_script(o, val);
-        } else if (ci_equal(prop, "style")) {
-            free(o->style);
-            o->style = dupstr(val);
-        } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
-            if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
-                emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
-                return;
-            }
-            hc_set_field_text(o, val);
-            notify_field(o);
-        } else if (geom_write(o, prop, val)) {
-            notify_field(o);
-        } else {
-            set_result("propriété inconnue");
-            emit(HC_ERR, "   !! propriété inconnue : %s", prop);
-            return;
-        }
-
-        set_result("");
-        emit(HC_INFO, "   → %s de %s ← \"%s\"", prop, d, val);
-        return;
-    }
-
-    /* --- do <expr> : exécute du texte comme une instruction ---
-     * Le pendant de value() : celle-ci rend du calcul, celle-là de l'action.
-     * Un compteur évite qu'un « do » qui se relance ne mange la pile C. */
-    if (ci_equal(verb, "do")) {
-        static int do_depth = 0;
-        if (do_depth >= 16) {
-            emit(HC_ERR, "   !! do : trop d'imbrications");
-            return;
-        }
-        char *val = arena_buf();
-        eval_checked(rest, val, HC_VAL);
-
-        do_depth++;
-        /* plusieurs lignes : on les exécute l'une après l'autre */
-        char *copie = dupstr(val), *p = copie;
-        while (p && *p) {
-            char *nl = strchr(p, '\n');
-            if (nl) *nl = '\0';
-            const char *ligne = skip_spaces(p);
-            if (*ligne && !(ligne[0] == '-' && ligne[1] == '-')) exec_stmt(me, ligne);
-            if (!nl || flow_broken()) break;
-            p = nl + 1;
-        }
-        free(copie);
-        do_depth--;
-        return;
-    }
-
-    /* --- get <expr> : le résultat va dans `it` --- */
-    if (ci_equal(verb, "get")) {
-        char *val = arena_buf();
-        eval_checked(rest, val, HC_VAL);
-        var_set("it", val);
-        emit(HC_INFO, "   → it ← \"%s\"", val);
-        return;
-    }
-
-    /* --- global a, b, c --- */
-    if (ci_equal(verb, "global")) {
-        const char *q = skip_spaces(rest);
-        while (*q) {
-            char nm[128];
-            int i = 0;
-            while (*q && *q != ',' && !isspace((unsigned char)*q) && i < (int)sizeof nm - 1)
-                nm[i++] = *q++;
-            nm[i] = '\0';
-            if (nm[0]) frame_declare_global(g_frame, nm);
-            while (*q == ',' || *q == ' ' || *q == '\t') q++;
-        }
-        return;
-    }
-
-    /* --- add / subtract / multiply / divide ---
-     *   add 1 to i            subtract 2 from x
-     *   multiply x by 3       divide t by 2
-     * Le conteneur peut etre une variable, un champ ou un chunk. */
-    if (ci_equal(verb, "add") || ci_equal(verb, "subtract") ||
-        ci_equal(verb, "multiply") || ci_equal(verb, "divide")) {
-
-        const char *sep = NULL; int seplen = 0;
-        if      (ci_equal(verb, "add"))      { sep = "to";   seplen = 2; }
-        else if (ci_equal(verb, "subtract")) { sep = "from"; seplen = 4; }
-        else                                  { sep = "by";   seplen = 2; }
-
-        const char *r = skip_spaces(rest);
-        const char *kw = NULL;
-        int inq = 0;
-        for (const char *q = r; *q; q++) {
-            if (*q == '"') { inq = !inq; continue; }
-            if (inq) continue;
-            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, sep)) { kw = q; break; }
-        }
-        if (!kw) {
-            emit(HC_ERR, "   !! syntaxe : %s <valeur> %s <conteneur>", verb, sep);
-            set_result("syntax error");
-            return;
-        }
-
-        /* add/subtract : <valeur> to|from <conteneur>
-         * multiply/divide : <conteneur> by <valeur>   (ordre inverse) */
-        int valueFirst = (ci_equal(verb, "add") || ci_equal(verb, "subtract"));
-
-        char *left = arena_buf();
-        char amount[128];
-        char *cur = arena_buf();
-        int n = (int)(kw - r);
-        if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-        memcpy(left, r, n); left[n] = 0;
-        /* retirer les espaces de fin */
-        for (int k = (int)strlen(left) - 1; k >= 0 && isspace((unsigned char)left[k]); k--)
-            left[k] = 0;
-
-        const char *right = skip_spaces(kw + seplen);
-        const char *dst;
-        if (valueFirst) {
-            eval_expr(left, amount, sizeof amount);
-            dst = right;
-        } else {
-            eval_expr(right, amount, sizeof amount);
-            dst = left;
-        }
-        eval_expr(dst, cur, HC_VAL);
-
-        double a = 0, b = 0;
-        as_num(cur, &a);
-        as_num(amount, &b);
-        double res = a;
-        if      (ci_equal(verb, "add"))      res = a + b;
-        else if (ci_equal(verb, "subtract")) res = a - b;
-        else if (ci_equal(verb, "multiply")) res = a * b;
-        else {
-            if (b == 0) { emit(HC_ERR, "   !! division par zero"); set_result("divide by zero"); return; }
-            res = a / b;
-        }
-
-        char out[64];
-        put_num(res, out, sizeof out);
-        if (!container_set(dst, out, 0)) {
-            emit(HC_ERR, "   !! destination inconnue : %s", dst);
-            set_result("no such container");
-            return;
-        }
-        set_result("");
-        return;
-    }
-
-    /* --- find [string|word|chars|whole] "texte" [in <champ>] ---
-     * Parcourt les cartes à partir de la courante, en bouclant. Ignore les
-     * champs marqués dontSearch. Le mode par défaut d'HyperTalk cherche un
-     * mot commençant par le motif. */
-    if (ci_equal(verb, "find")) {
-        const char *r = skip_spaces(rest);
-        int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
-        if      (ci_word(r, "string") || ci_word(r, "chars")) { mode = 1; r = skip_spaces(r + 6); }
-        else if (ci_word(r, "whole"))  { mode = 1; r = skip_spaces(r + 5); }
-        else if (ci_word(r, "word"))   { mode = 2; r = skip_spaces(r + 4); }
-
-        /* separer le motif de l'eventuel « in <champ> » */
-        const char *kw = NULL;
-        int inq = 0;
-        for (const char *q = r; *q; q++) {
-            if (*q == '"') { inq = !inq; continue; }
-            if (inq) continue;
-            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
-        }
-        char pat[256] = "", where[128] = "";
-        if (kw) {
-            char e[256];
-            int n = (int)(kw - r);
-            if (n > (int)sizeof e - 1) n = (int)sizeof e - 1;
-            memcpy(e, r, n); e[n] = 0;
-            eval_expr(e, pat, sizeof pat);
-            snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
-        } else {
-            eval_expr(r, pat, sizeof pat);
-        }
-        if (!pat[0]) { set_result("not found"); return; }
-
-        Object *stack = g_current_card ? g_current_card->owner : NULL;
-        while (stack && stack->type != OBJ_STACK) stack = stack->owner;
-        if (!stack) { set_result("not found"); return; }
-
-        int total = card_count(stack);
-        int start = card_index(stack, g_current_card);
-        if (start < 0) start = 0;
-
-        for (int k = 0; k < total; k++) {
-            Object *cd = nth_card(stack, (start + k) % total);
-            if (!cd) continue;
-
-            /* champs de la carte puis du fond */
-            Object *layers[2] = { cd, cd->bg };
-            for (int L = 0; L < 2; L++) {
-                Object *lay = layers[L];
-                if (!lay) continue;
-                for (int i = 0; i < lay->nparts; i++) {
-                    Object *fl = lay->parts[i];
-                    if (fl->type != OBJ_FIELD || fl->dont_search) continue;
-                    if (where[0]) {          /* recherche restreinte a un champ */
-                        Object *only = resolve(where);
-                        if (only != fl) continue;
-                    }
-
-                    Object *saved = g_current_card;
-                    g_current_card = cd;                 /* pour le texte par carte */
-                    const char *tx = hc_field_text(fl);
-                    const char *hit = NULL;
-                    int line = 1;
-
-                    for (const char *q = tx; *q; q++) {
-                        if (*q == '\n') { line++; continue; }
-                        int atword = (q == tx) || isspace((unsigned char)q[-1]);
-                        if (mode == 1 || atword) {
-                            size_t plen = strlen(pat);
-                            if (strncasecmp(q, pat, plen) == 0) {
-                                if (mode == 2) {         /* mot entier */
-                                    char nx = q[plen];
-                                    if (nx && !isspace((unsigned char)nx) &&
-                                        !ispunct((unsigned char)nx)) continue;
-                                }
-                                hit = q;
-                                break;
-                            }
-                        }
-                    }
-                    g_current_card = saved;
-
-                    if (hit) {
-                        snprintf(g_found_text, sizeof g_found_text, "%s", pat);
-                        g_found_field = fl;
-                        g_found_line = line;
-                        g_found_start = (int)(hit - tx);
-                        g_found_len   = (int)strlen(pat);
-                        g_found_card  = cd;
-
-                        if (cd != g_current_card) {      /* naviguer si besoin */
-                            Object *old = g_current_card;
-                            Object *oldbg = old ? old->bg : NULL;
-                            if (old) hc_send_systeme(old, "closeCard");
-                            if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
-                            g_current_card = cd;
-                            if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
-                            hc_send_systeme(cd, "openCard");
-                        }
-                        set_result("");
-                        emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
-                             pat, cd->name ? cd->name : "?");
-                        return;
-                    }
-                }
-            }
-        }
-        g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
-        g_found_start = g_found_len = 0; g_found_card = NULL;
-        set_result("not found");
-        return;
-    }
-
-    /* --- ask "invite" [with "défaut"] --- */
-    if (ci_equal(verb, "ask")) {
-        const char *r = skip_spaces(rest);
-
-        /* ---- ask file <invite> [with <nom par défaut>] ----
-         * Le panneau d'enregistrement, pendant d'« answer file ». Même
-         * mécanique : le chemin choisi dans « it », vide si l'on annule. */
-        if (ci_word(r, "file")) {
-            ARENA_MARK;
-            char *inv = arena_buf(), *def = arena_buf();
-            const char *a = skip_spaces(r + 4);
-            const char *w = find_kw(a, "with");
-            if (w) {
-                char brut[512];
-                int n = (int)(w - a);
-                if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
-                memcpy(brut, a, (size_t)n); brut[n] = '\0';
-                eval_checked(brut, inv, HC_VAL);
-                eval_checked(skip_spaces(w + 4), def, HC_VAL);
-            } else {
-                eval_checked(a, inv, HC_VAL);
-            }
-            const char *chemin = (g_host && g_host->ask_file)
-                               ? g_host->ask_file(inv, def) : NULL;
-            var_set("it", chemin ? chemin : "");
-            set_result(chemin ? "" : "Cancel");
-            ARENA_FREE;
-            return;
-        }
-
-        char *prompt = arena_buf();
-        char *deflt = arena_buf();
-
-        /* repérer « with » hors des chaînes */
-        const char *kw = NULL;
-        int inq = 0;
-        for (const char *q = r; *q; q++) {
-            if (*q == '"') { inq = !inq; continue; }
-            if (inq) continue;
-            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
-        }
-        if (kw) {
-            char *expr = arena_buf();
-            int n = (int)(kw - r);
-            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-            memcpy(expr, r, n); expr[n] = '\0';
-            eval_expr(expr, prompt, HC_VAL);
-            eval_expr(skip_spaces(kw + 4), deflt, HC_VAL);
-        } else {
-            eval_expr(r, prompt, HC_VAL);
-        }
-
-        const char *rep = (g_host && g_host->ask) ? g_host->ask(prompt, deflt) : NULL;
-        if (rep) { var_set("it", rep); set_result(""); }
-        else     { var_set("it", "");  set_result("Cancel"); }
-        return;
-    }
-
-    /* --- answer "invite" [with "a" [or "b" [or "c"]]] --- */
-    if (ci_equal(verb, "answer")) {
-        const char *r = skip_spaces(rest);
-
-        /* ---- answer file <invite> [of type <t>] ----
-         * Le panneau d'ouverture, et non une boîte à boutons. Le chemin choisi
-         * va dans « it », l'annulation y laisse la chaîne vide.
-         *
-         * C'est aussi la parade au bac à sable de macOS : un fichier désigné
-         * par l'utilisateur devient accessible du seul fait de ce choix, là où
-         * un chemin écrit dans un script se heurte à « Operation not
-         * permitted ». */
-        if (ci_word(r, "file")) {
-            ARENA_MARK;
-            char *inv = arena_buf();
-            const char *a = skip_spaces(r + 4);
-            const char *oft = find_kw(a, "of");     /* « of type … » : ignoré */
-            if (oft) {
-                char brut[512];
-                int n = (int)(oft - a);
-                if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
-                memcpy(brut, a, (size_t)n); brut[n] = '\0';
-                eval_checked(brut, inv, HC_VAL);
-            } else {
-                eval_checked(a, inv, HC_VAL);
-            }
-            const char *chemin = (g_host && g_host->answer_file)
-                               ? g_host->answer_file(inv) : NULL;
-            var_set("it", chemin ? chemin : "");
-            set_result(chemin ? "" : "Cancel");
-            ARENA_FREE;
-            return;
-        }
-
-        char *prompt = arena_buf();
-        char btn[3][128] = { "", "", "" };
-        int nb = 0;
-
-        const char *kw = NULL;
-        int inq = 0;
-        for (const char *q = r; *q; q++) {
-            if (*q == '"') { inq = !inq; continue; }
-            if (inq) continue;
-            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "with")) { kw = q; break; }
-        }
-        if (kw) {
-            char *expr = arena_buf();
-            int n = (int)(kw - r);
-            if (n > (int)HC_VAL - 1) n = (int)HC_VAL - 1;
-            memcpy(expr, r, n); expr[n] = '\0';
-            eval_expr(expr, prompt, HC_VAL);
-
-            /* découper sur « or », hors des chaînes */
-            const char *p2 = skip_spaces(kw + 4);
-            while (*p2 && nb < 3) {
-                const char *cut = NULL;
-                inq = 0;
-                for (const char *q = p2; *q; q++) {
-                    if (*q == '"') { inq = !inq; continue; }
-                    if (inq) continue;
-                    if ((q == p2 || isspace((unsigned char)q[-1])) && ci_word(q, "or")) { cut = q; break; }
-                }
-                char one[256];
-                int len = cut ? (int)(cut - p2) : (int)strlen(p2);
-                if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-                memcpy(one, p2, len); one[len] = '\0';
-                eval_expr(one, btn[nb], sizeof btn[nb]);
-                nb++;
-                if (!cut) break;
-                p2 = skip_spaces(cut + 2);
-            }
-        } else {
-            eval_expr(r, prompt, HC_VAL);
-        }
-        if (nb == 0) { snprintf(btn[0], sizeof btn[0], "OK"); nb = 1; }
-
-        const char *rep = (g_host && g_host->answer)
-            ? g_host->answer(prompt, btn[0], nb > 1 ? btn[1] : NULL,
-                                              nb > 2 ? btn[2] : NULL)
-            : btn[0];
-        var_set("it", rep ? rep : "");
-        set_result("");
-        return;
-    }
-
-    /* --- push [card] : mémorise la carte courante --- */
-    if (ci_equal(verb, "push")) {
-        const char *r = skip_spaces(rest);
-        Object *dst = *r ? resolve(r) : g_current_card;
-        if (!dst || dst->type != OBJ_CARD) dst = g_current_card;
-        if (!dst) { set_result("aucune carte a empiler"); return; }
-        if (g_navtop >= NAVSTACK_MAX) {          /* pile pleine : on decale */
-            for (int i = 1; i < NAVSTACK_MAX; i++) g_navstack[i-1] = g_navstack[i];
-            g_navtop = NAVSTACK_MAX - 1;
-        }
-        g_navstack[g_navtop++] = dst;
-        set_result("");
-        emit(HC_INFO, "   ⇒ empile la carte \"%s\"", dst->name ? dst->name : "?");
-        return;
-    }
-
-    /* --- pop [card] [into conteneur] : depile et y va --- */
-    if (ci_equal(verb, "pop")) {
-        if (g_navtop <= 0) { set_result("pile de navigation vide"); return; }
-        Object *dst = g_navstack[--g_navtop];
-        const char *r = skip_spaces(rest);
-        if (ci_word(r, "card") || ci_word(r, "cd")) r = skip_spaces(r + (ci_word(r,"cd") ? 2 : 4));
-
-        if (ci_word(r, "into")) {                /* pop cd into x : sans y aller */
-            char cmd[320];
-            snprintf(cmd, sizeof cmd, "put \"card id %d\" into %s",
-                     dst->id, skip_spaces(r + 4));
-            exec_line(me, cmd);
-            set_result("");
-            return;
-        }
-
-        Object *old = g_current_card;
-        Object *oldbg = old ? old->bg : NULL;
-        Object *newbg = dst->bg;
-        if (old) hc_send_systeme(old, "closeCard");
-        if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
-        g_current_card = dst;
-        if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
-        hc_send_systeme(dst, "openCard");
-        set_result("");
-        emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
-        return;
-    }
-
-    /* --- go [to] card "nom" | next | previous | first | last | card 3 --- */
-    if (ci_equal(verb, "go")) {
-        const char *r = skip_spaces(rest);
-        if (ci_word(r, "to")) r = skip_spaces(r + 2);
-
-        /* ---- go to stack "X" ----
-         * Une pile déjà ouverte : on s'y rend. Sinon on demande à l'hôte de
-         * l'ouvrir — lui seul sait où chercher le fichier et comment lui
-         * donner une fenêtre. C'est ce qui permet à une pile d'en appeler une
-         * autre, le mécanisme sur lequel reposaient les piles à index et les
-         * bibliothèques de l'époque. */
-        if (ci_word(r, "stack")) {
-            const char *a = skip_spaces(r + 5);
-            ARENA_MARK;
-            char *nom = arena_buf();
-            eval_checked(a, nom, HC_VAL);
-
-            Object *cible = find_open_stack(nom);
-            if (!cible && g_host && g_host->open_stack)
-                cible = g_host->open_stack(nom);
-
-            if (cible) {
-                Object *prem = NULL;
-                for (int i = 0; i < cible->nparts; i++)
-                    if (cible->parts[i]->type == OBJ_CARD) { prem = cible->parts[i]; break; }
-                if (prem) {
-                    Object *old = g_current_card;
-                    if (old && old->owner != cible) hc_send(old, "closeStack");
-                    g_current_card = prem;
-                    if (g_host && g_host->stack_changed) g_host->stack_changed(cible);
-                    hc_send(prem, "openStack");
-                    set_result("");
-                } else set_result("No such card");
-            } else {
-                set_result("No such stack");
-                emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
-            }
-            ARENA_FREE;
-            return;
-        }
-
-        /* Le marquage filtre la navigation : resolve() n'y connaît rien, on
-         * lui laisse tout le reste. */
-        int marque = 0;
-        Object *dst = marked_card_ref(r, &marque);
-        if (marque && !dst) { set_result("No such card"); return; }
-        if (!dst) dst = resolve(r);
-        if (!dst) {                          /* « go x » : evaluer d'abord */
-            char v[256];
-            eval_expr(r, v, sizeof v);
-            if (v[0] && strcmp(v, r) != 0) dst = resolve(v);
-        }
-        if (!dst && ci_word(r, "card")) {   /* « go card » nu : la première */
-            const char *w = skip_spaces(r + 4);
-            if (!*w) dst = resolve("first card");
-        }
-        /* « go background "x" » mène à la PREMIÈRE CARTE de ce fond, et
-         * « go stack "x" » à la première carte de la pile : dans HyperCard
-         * on ne se tient jamais sur un fond, seulement sur une carte. */
-        if (dst && (dst->type == OBJ_BACKGROUND || dst->type == OBJ_STACK)) {
-            Object *stk = owning_stack(dst);
-            Object *found = NULL;
-            for (int i = 0; stk && i < stk->nparts; i++) {
-                Object *c = stk->parts[i];
-                if (c->type != OBJ_CARD) continue;
-                if (dst->type == OBJ_STACK || c->bg == dst) { found = c; break; }
-            }
-            if (!found)
-                emit(HC_ERR, "   !! aucune carte dans %s", hc_typename(dst->type));
-            dst = found;
-        }
-
-        if (dst && dst->type == OBJ_CARD) {
-            set_result("");
-            /* Jouer l'effet armé, s'il y en a un, AVANT de changer de carte :
-             * l'hôte a besoin de photographier l'écran de départ. Puis on
-             * l'oublie — « visual » ne vaut que pour le prochain « go ». */
-            if (g_visual_effect[0]) {
-                if (g_host && g_host->visual_effect)
-                    g_host->visual_effect(g_visual_effect, g_visual_speed,
-                                          g_visual_image);
-                g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
-            }
-            Object *old   = g_current_card;
-            Object *oldbg = old ? old->bg : NULL;
-            if (old) hc_send_systeme(old, "closeCard");
-            /* Changement de fond : les quatre messages, dans l'ordre
-             * d'HyperCard. « find » le faisait déjà, « go » l'oubliait. */
-            if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-            g_current_card = dst;
-            if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
-            emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-            hc_send_systeme(dst, "openCard");
-        } else {
-            set_result("carte introuvable");
-            emit(HC_ERR, "   !! carte introuvable : %s", r);
-        }
-        return;
-    }
-
-    /* --- show <objet> [at <point>] / hide <objet> ---
-     * « show me at h,v » est la primitive d'animation d'HyperCard : elle
-     * déplace l'objet ET le rend visible, le centre allant au point donné
-     * (comme « the loc », pas comme « the topLeft »). */
-    if (ci_equal(verb, "show") || ci_equal(verb, "hide")) {
-        int showing = ci_equal(verb, "show");
-        g_visual_dirty = 1;
-        const char *at = showing ? find_kw(rest, "at") : NULL;
-
-        char refbuf[256];
-        const char *ref = rest;
-        if (at) {
-            int n = (int)(at - rest);
-            if (n > (int)sizeof refbuf - 1) n = (int)sizeof refbuf - 1;
-            memcpy(refbuf, rest, (size_t)n); refbuf[n] = '\0';
-            while (n > 0 && isspace((unsigned char)refbuf[n-1])) refbuf[--n] = '\0';
-            ref = refbuf;
-        }
-
-        Object *o = resolve(ref);
-        if (!o) {
-            set_result("objet introuvable");
-            emit(HC_ERR, "   !! objet introuvable : %s", ref);
-            return;
-        }
-
-        o->visible = showing;
-        char d[64]; hc_describe(o, d, sizeof d);
-
-        if (at) {
-            char pt[256];
-            eval_point(skip_spaces(at + 2), pt, sizeof pt);
-            if (!geom_write(o, "loc", pt)) {
-                emit(HC_ERR, "   !! show … at : point mal formé : %s", pt);
-                return;
-            }
-            notify_field(o);
-            set_result("");
-            emit(HC_INFO, "   → %s : visible en %s", d, pt);
-            return;
-        }
-
-        notify_field(o);
-        set_result("");
-        emit(HC_INFO, "   → %s : %s", d, showing ? "visible" : "caché");
-        return;
-    }
-
-    /* --- play <son> ---
-     * HyperCard accepte une suite de notes derrière le nom du son
-     * (« play "boing" tempo 200 c4 e4 »). On ne retient que le nom : le reste
-     * demande un synthétiseur, pas un lecteur d'échantillon. */
-    if (ci_equal(verb, "play")) {
-        char val[256];
-        const char *s = skip_spaces(rest);
-        if (*s == '"') quoted(s, val, HC_VAL);
-        else           next_word(s, val, HC_VAL);
-        if (g_host && g_host->play_sound) g_host->play_sound(val);
-        set_result("");
-        emit(HC_INFO, "   ♪ play \"%s\"", val);
-        return;
-    }
-
-    /* --- pass <message> --- */
-    if (ci_equal(verb, "pass")) {
-        g_pass = 1;
-        emit(HC_INFO, "   ↑ pass");
-        return;
-    }
-
-    /* --- beep : utile pour tester --- */
-    if (ci_equal(verb, "beep")) {
-        emit(HC_INFO, "   ♪ beep");
-        return;
-    }
-
-    /* --- appel direct d'un gestionnaire : « carre 7 » → on carre n ---
-     * Si un objet de la chaîne courante définit « on <verb> », on le lui
-     * envoie avec les arguments (séparés par des virgules) évalués. */
-    {
-        Object *start = g_me ? g_me : g_current_card;
-        Object *chain[8];
-        int nc = build_chain(start, chain, 8);
-        for (int i = 0; i < nc; i++) {
-            const char *end = NULL, *hdr = NULL;
-            if (find_handler(chain[i]->script, verb, &end, &hdr)) {
-                char (*argv)[HC_VAL] = arena_rows(HC_ARGS_MAX + 1);
-                if (!argv) {
-                    set_result("mémoire insuffisante");
-                    return;
-                }
-                int argc = 0;
-                const char *a = skip_spaces(rest);
-                while (*a && argc <= HC_ARGS_MAX) {
-                    /* découpe au niveau des virgules de premier niveau */
-                    char *one = arena_buf();
-            int len = 0, depth = 0, inq = 0;
-                    while (*a && !(depth == 0 && !inq && *a == ',')) {
-                        if (*a == '"') inq = !inq;
-                        else if (!inq && *a == '(') depth++;
-                        else if (!inq && *a == ')') depth--;
-                        if (len < HC_VAL - 1) one[len++] = *a;
-                        a++;
-                    }
-                    one[len] = '\0';
-                    eval_expr(one, argv[argc], sizeof argv[argc]);
-                    argc++;
-                    if (*a == ',') a = skip_spaces(a + 1); else break;
-                }
-                set_result("");
-                hc_send_args(start, verb, argv, argc);
-                return;
-            }
-        }
-    }
-
-    /* ---- select <morceau> of <champ> ----
-     * « select line 2 of field "toc" », « select char 5 to 12 of card field 1 »,
-     * et les formes vides « select empty » / « select » qui ne sélectionnent
-     * rien. HyperCard accepte aussi « select before/after <morceau> » : ce sont
-     * des points d'insertion, donc une plage de longueur nulle.
-     *
-     * Le travail de découpe est déjà fait par chunk_target, qui rend le champ
-     * et les bornes du morceau — le même code que celui qui sert à « put X
-     * into line 2 of field Y ». Il n'y a rien à réécrire ici, seulement à
-     * mémoriser le résultat et à prévenir l'hôte. */
-    if (ci_word(verb, "select")) {
-        const char *a = skip_spaces(rest);
-
-        if (!*a || ci_word(a, "empty")) {
-            hc_set_selection(NULL, 0, 0);
-            return;
-        }
-
-        int point_avant = 0, point_apres = 0;
-        if (ci_word(a, "before"))     { point_avant = 1; a = skip_spaces(a + 6); }
-        else if (ci_word(a, "after")) { point_apres = 1; a = skip_spaces(a + 5); }
-
-        /* « select text of field X » : tout le contenu.
-         *
-         * before / after valent ici aussi : « select before text of fld x »
-         * pose le point d'insertion au début, « after » à la fin. Cette
-         * branche sortait sans les consulter, si bien que les deux formes
-         * sélectionnaient tout le champ — le contraire de ce qu'elles
-         * demandent, et la façon habituelle de placer le curseur avant de
-         * taper. */
-        if (ci_word(a, "text")) {
-            const char *r = skip_spaces(a + 4);
-            if (ci_word(r, "of")) r = skip_spaces(r + 2);
-            Object *f = resolve(r);
-            if (f && f->type == OBJ_FIELD) {
-                int fin = (int)strlen(hc_field_text(f));
-                if      (point_avant) hc_set_selection(f, 0, 0);
-                else if (point_apres) hc_set_selection(f, fin, 0);
-                else                  hc_set_selection(f, 0, fin);
-            } else emit(HC_ERR, "   !! select : champ introuvable : %s", r);
-            return;
-        }
-
-        int st, en;
-        Object *f = chunk_target(a, &st, &en);
-        if (!f) {
-            /* Pas de morceau : peut-être le champ entier, « select field 1 ». */
-            f = resolve(a);
-            if (f && f->type == OBJ_FIELD) {
-                const char *t = hc_field_text(f);
-                st = 0; en = (int)strlen(t);
-            } else {
-                emit(HC_ERR, "   !! select : cible introuvable : %s", a);
-                return;
-            }
-        }
-        if (point_avant)      hc_set_selection(f, st, 0);
-        else if (point_apres) hc_set_selection(f, en, 0);
-        else                  hc_set_selection(f, st, en - st);
-        return;
-    }
-
-    /* ---- wait ----
-     *   wait 30 ticks / wait 2 seconds / wait until <condition>
-     *   wait while <condition> / wait for 10 ticks
-     *
-     * Omniprésente dans les piles : elle rythme les animations et laisse le
-     * temps de lire un message. L'attente passe par host_idle à chaque tour,
-     * sans quoi l'écran resterait figé pendant toute la durée — c'est déjà ce
-     * que fait la boucle repeat. Une attente sans redessin donnerait un
-     * programme qui semble planté. */
-    if (ci_equal(verb, "wait")) {
-        /* voir attends() plus haut */
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "for")) a = skip_spaces(a + 3);
-
-        if (ci_word(a, "until") || ci_word(a, "while")) {
-            int jusqua = ci_word(a, "until");
-            const char *cond = skip_spaces(a + 5);
-            int tours = 0;
-            for (;;) {
-                /* Marquer et rendre l'arène à CHAQUE tour : sans cela une
-                 * attente un peu longue la saturait, et la condition cessait
-                 * d'être évaluée — l'attente devenait infinie. */
-                ARENA_MARK;
-                char *v = arena_buf();
-                eval_checked(cond, v, HC_VAL);
-                int vrai = truthy(v);
-                ARENA_FREE;
-                if (jusqua ? vrai : !vrai) break;
-                if (++tours > HC_MAX_LOOP) {
-                    emit(HC_ERR, "!! wait interrompu après %d tours", HC_MAX_LOOP);
-                    break;
-                }
-                /* Même raison : sans le sommeil de l'hôte, cette boucle
-                 * tournerait à plein régime en attendant un clic. */
-                attends(1.0 / 60.0);
-            }
-            return;
-        }
-
-        /* Une durée, suivie de son unité. Le tick — un soixantième de seconde —
-         * est l'unité par défaut d'HyperCard.
-         *
-         * L'unité est retirée AVANT d'évaluer : « wait 5 ticks » passé tel quel
-         * à l'analyseur d'expression lui laissait un « ticks » orphelin, qu'il
-         * signalait comme du texte incompris. */
-        char nb[128];
-        nb[0] = '\0';
-        const char *ap = a;
-        int i = 0;
-        while (*ap && i < (int)sizeof nb - 1) {
-            /* S'arrêter au mot d'unité, pas au premier espace : la durée peut
-             * être une expression, comme « wait 2 * 30 ticks ». */
-            const char *w = skip_spaces(ap);
-            if (ci_word(w, "tick")   || ci_word(w, "ticks") ||
-                ci_word(w, "second") || ci_word(w, "seconds") ||
-                ci_word(w, "sec")    || ci_word(w, "secs")) break;
-            nb[i++] = *ap++;
-        }
-        nb[i] = '\0';
-
-        ARENA_MARK;
-        char *ev = arena_buf();
-        eval_checked(nb, ev, HC_VAL);
-        double n = 0;
-        as_num(ev, &n);
-        ARENA_FREE;
-
-        const char *unite = skip_spaces(ap);
-        double ticks = n;
-        if (ci_word(unite, "second") || ci_word(unite, "seconds") ||
-            ci_word(unite, "sec")    || ci_word(unite, "secs"))
-            ticks = n * 60.0;
-
-        if (ticks > HC_MAX_LOOP) ticks = HC_MAX_LOOP;
-        attends(ticks / 60.0);
-        return;
-    }
-
-    /* ---- sort : voir les helpers plus haut pour la mécanique ---- */
-    if (ci_equal(verb, "sort")) {
-        const char *a = skip_spaces(rest);
-        int cartes = 0;                 /* trie-t-on des cartes ? */
-        ChunkType morceau = CH_LINE;    /* pour un conteneur */
-
-        if (ci_word(a, "this")) a = skip_spaces(a + 4);
-        if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
-
-        if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
-        else if (ci_word(a, "cards")) {
-            cartes = 1; a = skip_spaces(a + 5);
-            if (ci_word(a, "of")) {
-                a = skip_spaces(a + 2);
-                if (ci_word(a, "this")) a = skip_spaces(a + 4);
-                if (ci_word(a, "stack")) a = skip_spaces(a + 5);
-            }
-        }
-        else if (ci_word(a, "lines")) { morceau = CH_LINE; a = skip_spaces(a + 5);
-                                        if (ci_word(a, "of")) a = skip_spaces(a + 2); }
-        else if (ci_word(a, "items")) { morceau = CH_ITEM; a = skip_spaces(a + 5);
-                                        if (ci_word(a, "of")) a = skip_spaces(a + 2); }
-
-        int desc = 0; SortStyle style = SORT_TEXT;
-
-        if (cartes) {
-            a = sort_options(a, &desc, &style);
-            const char *cle = NULL;
-            if (ci_word(a, "by")) cle = skip_spaces(a + 2);
-
-            Object *stack = g_current_card ? g_current_card->owner : NULL;
-            if (!stack) { emit(HC_ERR, "   !! sort : pas de pile"); return; }
-
-            int n = 0;
-            for (int i = 0; i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_CARD) n++;
-            if (n < 2) return;
-
-            SortItem *tab = calloc((size_t)n, sizeof *tab);
-            char **cles = calloc((size_t)n, sizeof *cles);
-            if (!tab || !cles) { free(tab); free(cles); return; }
-
-            Object *avant = g_current_card;
-            int k = 0;
-            for (int i = 0; i < stack->nparts; i++) {
-                Object *c = stack->parts[i];
-                if (c->type != OBJ_CARD) continue;
-                /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
-                 * doit désigner le champ de celle-ci, pas de la carte de
-                 * départ. C'est tout le sens du tri par contenu. */
-                g_current_card = c;
-                /* Par l'arène et non par la pile : HC_VAL vaut un mégaoctet,
-                 * et trois tampons de cette taille dans une même fonction
-                 * réservaient trois mégaoctets sur une pile d'appel qui en
-                 * fait huit. exec_line_body débordait à l'entrée, avant même
-                 * sa première instruction. */
-                ARENA_MARK;
-                char *tmp = arena_buf();
-                if (cle) eval_checked(cle, tmp, HC_VAL);
-                cles[k] = dupstr(tmp);
-                ARENA_FREE;
-                tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
-                k++;
-            }
-            g_current_card = avant;
-
-            g_sort_desc = desc; g_sort_style = style;
-            qsort(tab, (size_t)n, sizeof *tab, sort_cmp);
-
-            /* Réécrire les cartes dans leur nouvel ordre, en laissant les
-             * fonds à leur place : ils occupent aussi parts[]. */
-            k = 0;
-            for (int i = 0; i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_CARD)
-                    stack->parts[i] = tab[k++].card;
-
-            for (int i = 0; i < n; i++) free(cles[i]);
-            free(cles); free(tab);
-            set_result("");
-            return;
-        }
-
-        /* --- tri d'un conteneur --- */
-        {
-            /* La clé est facultative ; sans elle on trie sur l'élément même. */
-            const char *by = find_kw(a, "by");
-            /* Par l'arène : voir plus haut, la pile ne supporte pas des
-             * tampons de HC_VAL. ARENA_MARK est déjà posé plus bas pour la
-             * lecture du conteneur ; celui-ci vit jusqu'au ARENA_FREE. */
-            ARENA_MARK;
-            char *cible = arena_buf();
-            {
-                int len = by ? (int)(by - a) : (int)strlen(a);
-                if (len > HC_VAL - 1) len = HC_VAL - 1;
-                memcpy(cible, a, (size_t)len); cible[len] = '\0';
-            }
-
-            /* Les options peuvent suivre la cible : « sort field 1 descending ». */
-            char *fin = cible + strlen(cible);
-            while (fin > cible && isspace((unsigned char)fin[-1])) *--fin = '\0';
-            for (;;) {
-                char *mot = fin;
-                while (mot > cible && !isspace((unsigned char)mot[-1])) mot--;
-                if (mot == cible) break;
-                int d2 = desc; SortStyle s2 = style;
-                const char *apres = sort_options(mot, &d2, &s2);
-                if (apres == mot) break;            /* pas une option */
-                desc = d2; style = s2;
-                while (mot > cible && isspace((unsigned char)mot[-1])) mot--;
-                *mot = '\0'; fin = mot;
-            }
-
-            const char *cle = by ? skip_spaces(by + 2) : NULL;
-
-            /* Un seul ARENA_MARK pour toute la branche : il a été posé plus
-             * haut avec le tampon `cible`, et les deux se libèrent ensemble. */
-            char *src = arena_buf();
-            eval_checked(cible, src, HC_VAL);
-
-            int n = chunk_count(src, morceau);
-            if (n < 2) { ARENA_FREE; return; }
-
-            SortItem *tab = calloc((size_t)n, sizeof *tab);
-            char **cles = calloc((size_t)n, sizeof *cles);
-            char **elems = calloc((size_t)n, sizeof *elems);
-            if (!tab || !cles || !elems) { free(tab); free(cles); free(elems);
-                                           ARENA_FREE; return; }
-
-            for (int i = 0; i < n; i++) {
-                int b = 0, e = 0;
-                chunk_span1(src, morceau, i + 1, &b, &e);
-                elems[i] = malloc((size_t)(e - b) + 1);
-                /* Ce malloc n'était pas testé, et le memcpy qui suit écrivait donc
-                 * dans NULL sous pression mémoire — en contournant justement le
-                 * point unique qu'on vient de mettre en place. */
-                if (!elems[i]) hc_memoire_epuisee("éléments d'un tri");
-                memcpy(elems[i], src + b, (size_t)(e - b));
-                elems[i][e - b] = '\0';
-
-                /* `each` : la variable que la clé interroge. Sans clé, on trie
-                 * directement sur l'élément. */
-                if (cle) {
-                    var_set("each", elems[i]);
-                    ARENA_MARK;
-                    char *v = arena_buf();
-                    eval_checked(cle, v, HC_VAL);
-                    cles[i] = dupstr(v);
-                    ARENA_FREE;
-                } else {
-                    cles[i] = dupstr(elems[i]);
-                }
-                tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
-            }
-
-            /* Ranger les éléments dans un tableau parallèle indexé par rang,
-             * pour les retrouver après le tri. */
-            g_sort_desc = desc; g_sort_style = style;
-            qsort(tab, (size_t)n, sizeof *tab, sort_cmp);
-
-            char sep[2] = { chunk_sep(morceau), '\0' };
-            char *res = arena_buf();
-            res[0] = '\0';
-            size_t used = 0;
-            for (int i = 0; i < n; i++) {
-                const char *el = elems[tab[i].rang];
-                size_t l = strlen(el);
-                if (used + l + 2 >= HC_VAL) break;
-                if (i) { res[used++] = sep[0]; }
-                memcpy(res + used, el, l); used += l;
-                res[used] = '\0';
-            }
-
-            container_set(cible, res, 0);
-
-            for (int i = 0; i < n; i++) { free(cles[i]); free(elems[i]); }
-            free(cles); free(elems); free(tab);
-            ARENA_FREE;
-            set_result("");
-            return;
-        }
-    }
-
-    /* ---- choose <outil> tool ----
-     * « choose brush tool », « choose line tool ». Le mot « tool » final est
-     * facultatif chez certains auteurs ; on le retire s'il est là. */
-    if (ci_equal(verb, "choose")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
-        ARENA_MARK;
-        char *nom = arena_buf();
-        snprintf(nom, HC_VAL, "%s", skip_spaces(rest));
-        int n = (int)strlen(nom);
-        while (n > 0 && isspace((unsigned char)nom[n-1])) nom[--n] = '\0';
-
-        /* Guillemets d'abord, suffixe ensuite.
-         *
-         * « choose "Select Tool" » arrivait tel quel jusqu'à l'hôte, qui ne
-         * reconnaissait aucun outil de ce nom. Et comme la chaîne se terminait
-         * par un guillemet, le retrait du mot « tool » ne se déclenchait pas
-         * davantage : les deux problèmes n'en faisaient qu'un.
-         *
-         * Un seul niveau, et seulement si les deux bouts se répondent : on ne
-         * touche pas à un nom qui contiendrait un guillemet isolé. */
-        if (n >= 2 && ((nom[0] == '"'  && nom[n-1] == '"') ||
-                       (nom[0] == '\'' && nom[n-1] == '\''))) {
-            memmove(nom, nom + 1, (size_t)(n - 2));
-            n -= 2;
-            nom[n] = '\0';
-            while (n > 0 && isspace((unsigned char)nom[n-1])) nom[--n] = '\0';
-        }
-
-        if (n > 4 && ci_equal(nom + n - 4, "tool")) {
-            n -= 4;
-            while (n > 0 && isspace((unsigned char)nom[n-1])) n--;
-            nom[n] = '\0';
-        }
-        /* « choose tool 3 » : par numéro, comme la palette. On laisse l'hôte
-         * décider, il connaît l'ordre de ses cases. */
-        emit(HC_TRACE, "   ✎ choose « %s »", nom);
-        if (g_host && g_host->choose_tool) g_host->choose_tool(nom);
-        else emit(HC_ERR, "   !! choose : l'hôte ne gère pas les outils");
-        ARENA_FREE;
-        set_result("");
-        return;
-    }
-    /* « reset paint » : remet toutes les propriétés de dessin à leur valeur
-     * par défaut. HyperCard l'a prévue justement parce qu'un gestionnaire qui
-     * change filled, pattern ou lineSize les laisse volontiers derrière lui.
-     *
-     * Sans elle, doLegend de Graph Maker laissait « filled » à true, et au
-     * tracé suivant doPieChart dessinait son cercle PLEIN au lieu de vide :
-     * le seau partait alors d'un pixel noir et noyait le camembert entier.
-     * Le premier tracé passait, le second non — un état qui survit d'un
-     * appel à l'autre, et rien pour le signaler. */
-    if (ci_equal(verb, "reset")) {
-        const char *quoi = skip_spaces(rest);
-        if (ci_word(quoi, "paint")) {
-            host_global_set("filled",   "false");
-            host_global_set("pattern",  "2");   /* le noir de HyperCard */
-            host_global_set("lineSize", "1");
-            host_global_set("brush",    "8");
-            host_global_set("textFont", "geneva");
-            host_global_set("textSize", "12");
-            host_global_set("textStyle","plain");
-            host_global_set("textAlign","left");
-            host_global_set("textHeight","16");
-            set_result("");
-            return;
-        }
-        emit(HC_ERR, "   !! reset : seul « reset paint » est reconnu");
-        set_result("");
-        return;
-    }
-    /* « doMenu » : HyperCard scriptait par les menus tout ce qui n'avait pas
-     * de commande propre — effacer l'image, tout sélectionner, copier. Les
-     * piles d'époque s'en servent constamment.
-     *
-     * On route vers l'hôte, seul à connaître ses menus. Sans cette commande,
-     * le clearScreen de Graph Maker ne faisait rien du tout, et chaque tracé
-     * se superposait au précédent. */
-    /* « local a, b, c ».
-     *
-     * HyperTalk 2.2 le connaît, HC non : la ligne partait en « verbe inconnu »
-     * et polluait la trace. Une variable de gestionnaire est DÉJÀ locale ici —
-     * il n'y a donc rien à faire d'autre que de ne pas se plaindre. On les
-     * pose tout de même à vide, pour qu'une lecture avant écriture rende la
-     * chaîne vide plutôt que le nom de la variable. */
-    if (ci_equal(verb, "local")) {
-        const char *q = skip_spaces(rest);
-        while (*q) {
-            char nom[64];
-            int k = 0;
-            while (*q && *q != ',' && !isspace((unsigned char)*q) && k < 63)
-                nom[k++] = *q++;
-            nom[k] = '\0';
-            if (nom[0]) var_set(nom, "");
-            q = skip_spaces(q);
-            if (*q == ',') q = skip_spaces(q + 1);
-        }
-        set_result("");
-        return;
-    }
-
-    if (ci_equal(verb, "domenu")) {
-        ARENA_MARK;
-        char *item = arena_buf();
-        eval_checked(rest, item, HC_VAL);
-        hc_do_menu(item);          /* message d'abord, action ensuite */
-        ARENA_FREE;
-        set_result("");
-        return;
-    }
-    /* ---- drag from <point> to <point> [with <touches>] ---- */
-    if (ci_equal(verb, "drag")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "from")) a = skip_spaces(a + 4);
-        const char *to = find_kw(a, "to");
-        if (!to) { emit(HC_ERR, "   !! drag : « to » manquant"); return; }
-
-        ARENA_MARK;
-        char *p1 = arena_buf(), *p2 = arena_buf();
-        int len = (int)(to - a);
-        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-        memcpy(p1, a, (size_t)len); p1[len] = '\0';
-
-        const char *reste = skip_spaces(to + 2);
-        const char *with = find_kw(reste, "with");
-        char *mods = arena_buf();
-        mods[0] = '\0';
-        if (with) {
-            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
-            len = (int)(with - reste);
-            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-            memcpy(p2, reste, (size_t)len); p2[len] = '\0';
-        } else {
-            snprintf(p2, HC_VAL, "%s", reste);
-        }
-
-        char *v1 = arena_buf(), *v2 = arena_buf();
-        eval_point(p1, v1, HC_VAL);
-        eval_point(p2, v2, HC_VAL);
-        int x1 = atoi(v1), y1 = 0, x2 = atoi(v2), y2 = 0;
-        const char *c1 = strchr(v1, ','), *c2 = strchr(v2, ',');
-        if (c1) y1 = atoi(c1 + 1);
-        if (c2) y2 = atoi(c2 + 1);
-
-        { const char *t = host_global("tool");
-          emit(HC_TRACE, "   ✎ drag %d,%d -> %d,%d (%s)",
-               x1, y1, x2, y2, t ? t : "?"); }
-        if (g_host && g_host->drag) g_host->drag(x1, y1, x2, y2, mods);
-        else emit(HC_ERR, "   !! drag : l'hôte ne gère pas la souris");
-        ARENA_FREE;
-        set_result("");
-        return;
-    }
-
-    /* ---- click at <point> [with <touches>] ---- */
-    if (ci_equal(verb, "click")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "at")) a = skip_spaces(a + 2);
-
-        ARENA_MARK;
-        const char *with = find_kw(a, "with");
-        char *pt = arena_buf(), *mods = arena_buf();
-        mods[0] = '\0';
-        if (with) {
-            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
-            int len = (int)(with - a);
-            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-            memcpy(pt, a, (size_t)len); pt[len] = '\0';
-        } else {
-            snprintf(pt, HC_VAL, "%s", a);
-        }
-
-        char *v = arena_buf();
-        eval_point(pt, v, HC_VAL);
-        int x = atoi(v), y = 0;
-        const char *c = strchr(v, ',');
-        if (c) y = atoi(c + 1);
-
-        { const char *t = host_global("tool");
-          emit(HC_TRACE, "   ✎ click at %d,%d (%s)", x, y, t ? t : "?"); }
-        if (g_host && g_host->click_at) g_host->click_at(x, y, mods);
-        else emit(HC_ERR, "   !! click : l'hôte ne gère pas la souris");
-        ARENA_FREE;
-        set_result("");
-        return;
-    }
-
-    /* ---- type <texte> [with <touches>] ---- */
-    if (ci_equal(verb, "type")) {
-        g_visual_dirty = 1;   /* touche à l'écran : voir v3_respire */
-        const char *a = skip_spaces(rest);
-        const char *with = find_kw(a, "with");
-
-        ARENA_MARK;
-        char *expr = arena_buf(), *mods = arena_buf();
-        mods[0] = '\0';
-        if (with) {
-            snprintf(mods, HC_VAL, "%s", skip_spaces(with + 4));
-            int len = (int)(with - a);
-            if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-            memcpy(expr, a, (size_t)len); expr[len] = '\0';
-        } else {
-            snprintf(expr, HC_VAL, "%s", a);
-        }
-
-        char *txt = arena_buf();
-        eval_checked(expr, txt, HC_VAL);
-        if (g_host && g_host->type_text) g_host->type_text(txt, mods);
-        else emit(HC_ERR, "   !! type : l'hôte ne gère pas le clavier");
-        ARENA_FREE;
-        set_result("");
-        return;
-    }
-
-    /* ---- visual : arme un effet pour le prochain « go » ---- */
-    if (ci_equal(verb, "visual")) {
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "effect")) a = skip_spaces(a + 6);
-
-        g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
-
-        /* « to <image> » se détache en premier : il termine la commande, et le
-         * reste appartient au nom de l'effet et à sa vitesse. */
-        const char *to = find_kw(a, "to");
-        char reste[192];
-        int len = to ? (int)(to - a) : (int)strlen(a);
-        if (len > (int)sizeof reste - 1) len = (int)sizeof reste - 1;
-        memcpy(reste, a, (size_t)len);
-        reste[len] = '\0';
-        while (len > 0 && isspace((unsigned char)reste[len-1])) reste[--len] = '\0';
-
-        if (to) {
-            const char *img = skip_spaces(to + 2);
-            snprintf(g_visual_image, sizeof g_visual_image, "%s", img);
-            int n = (int)strlen(g_visual_image);
-            while (n > 0 && isspace((unsigned char)g_visual_image[n-1]))
-                g_visual_image[--n] = '\0';
-        }
-
-        /* La vitesse est en QUEUE, et peut faire deux mots : « very fast ».
-         * On la retire par la fin, ce qui laisse le nom de l'effet — lui aussi
-         * en plusieurs mots parfois, d'où l'impossibilité de découper par la
-         * gauche. */
-        static const char *vitesses[] = { "very fast", "very slow", "very slowly",
-                                          "fast", "slow", "slowly", NULL };
-        for (int i = 0; vitesses[i]; i++) {
-            int lv = (int)strlen(vitesses[i]);
-            int lr = (int)strlen(reste);
-            if (lr > lv && ci_equal(reste + lr - lv, vitesses[i]) &&
-                isspace((unsigned char)reste[lr - lv - 1])) {
-                snprintf(g_visual_speed, sizeof g_visual_speed, "%s", vitesses[i]);
-                int k = lr - lv - 1;
-                while (k > 0 && isspace((unsigned char)reste[k-1])) k--;
-                reste[k] = '\0';
-                break;
-            }
-        }
-
-        /* %.63s plutôt que %s : `reste` fait 192 octets, la cible 64. La
-         * troncature est volontaire — aucun nom d'effet d'HyperCard n'atteint
-         * cette longueur — mais il faut la dire, sinon le compilateur la
-         * signale à juste titre. */
-        snprintf(g_visual_effect, sizeof g_visual_effect, "%.63s", reste);
-        if (!g_visual_effect[0])
-            snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
-        set_result("");
-        return;
-    }
-
-    /* ---- open file <nom> ---- */
-    if (ci_equal(verb, "open") && ci_word(skip_spaces(rest), "file")) {
-        ARENA_MARK;
-        char *nom = arena_buf();
-        eval_checked(skip_spaces(skip_spaces(rest) + 4), nom, HC_VAL);
-        if (file_open(nom)) set_result("");
-        else { set_result("Can't open file");
-               emit(HC_ERR, "   !! open file : %s", nom); }
-        ARENA_FREE;
-        return;
-    }
-
-    /* ---- close file <nom> ---- */
-    if (ci_equal(verb, "close") && ci_word(skip_spaces(rest), "file")) {
-        ARENA_MARK;
-        char *nom = arena_buf();
-        eval_checked(skip_spaces(skip_spaces(rest) + 4), nom, HC_VAL);
-        file_close(nom);
-        set_result("");
-        ARENA_FREE;
-        return;
-    }
-
-    /* ---- read from file <nom> [at <pos>] for <n> | until <car> ----
-     * Le texte lu va dans « it », comme toute lecture en HyperTalk. */
-    if (ci_equal(verb, "read")) {
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "from")) a = skip_spaces(a + 4);
-        if (!ci_word(a, "file")) { emit(HC_ERR, "   !! read : « file » attendu"); return; }
-        a = skip_spaces(a + 4);
-
-        /* Découper avant d'évaluer : le nom du fichier s'arrête au premier
-         * mot-clé, et lui passer « at 4 for 20 » ne donnerait rien de bon. */
-        const char *at  = find_kw(a, "at");
-        const char *fo  = find_kw(a, "for");
-        const char *unt = find_kw(a, "until");
-        const char *fin = at ? at : (fo ? fo : unt);
-
-        ARENA_MARK;
-        char *nom = arena_buf();
-        {
-            char brut[512];
-            int len = fin ? (int)(fin - a) : (int)strlen(a);
-            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-            memcpy(brut, a, (size_t)len); brut[len] = '\0';
-            eval_checked(brut, nom, HC_VAL);
-        }
-
-        FILE *f = file_find(nom);
-        if (!f) {
-            set_result("File is not open");
-            emit(HC_ERR, "   !! read : fichier non ouvert : %s", nom);
-            ARENA_FREE; return;
-        }
-
-        if (at) {
-            char *pv = arena_buf();
-            const char *bornes = fo ? fo : unt;
-            char brut[256];
-            const char *deb = skip_spaces(at + 2);
-            int len = bornes ? (int)(bornes - deb) : (int)strlen(deb);
-            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-            memcpy(brut, deb, (size_t)len); brut[len] = '\0';
-            eval_checked(brut, pv, HC_VAL);
-            long pos = atol(pv);
-            /* Positif : depuis le début, et 1-based comme tout HyperTalk.
-             * Négatif : depuis la fin. */
-            if (pos >= 0) fseek(f, pos > 0 ? pos - 1 : 0, SEEK_SET);
-            else          fseek(f, pos, SEEK_END);
-        }
-
-        char *out = arena_buf();
-        int n = 0;
-
-        if (fo) {
-            char *cv = arena_buf();
-            eval_checked(skip_spaces(fo + 3), cv, HC_VAL);
-            long combien = atol(cv);
-            while (n < HC_VAL - 1 && n < combien) {
-                int c = fgetc(f);
-                if (c == EOF) break;
-                out[n++] = (char)c;
-            }
-        } else if (unt) {
-            char mot[64];
-            next_word(skip_spaces(unt + 5), mot, sizeof mot);
-            int stop = file_constant(mot);
-            if (stop == -1) {
-                /* Pas une constante : un caractère, éventuellement calculé. */
-                char *cv = arena_buf();
-                eval_checked(skip_spaces(unt + 5), cv, HC_VAL);
-                stop = cv[0] ? (unsigned char)cv[0] : '\n';
-            }
-            while (n < HC_VAL - 1) {
-                int c = fgetc(f);
-                if (c == EOF) break;
-                out[n++] = (char)c;
-                /* Le caractère d'arrêt fait PARTIE du texte lu : c'est ce que
-                 * fait HyperCard, et ce qui permet d'enchaîner les lectures
-                 * ligne à ligne sans perdre les séparateurs. */
-                if (stop >= 0 && c == stop) break;
-            }
-        } else {
-            /* Ni « for » ni « until » : tout le fichier. */
-            while (n < HC_VAL - 1) {
-                int c = fgetc(f);
-                if (c == EOF) break;
-                out[n++] = (char)c;
-            }
-        }
-        out[n] = '\0';
-
-        /* Dire la troncature plutôt que de couper en silence : un script qui
-         * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
-         * sa lecture en plusieurs « read ... for N ». */
-        if (n >= HC_VAL - 1) {
-            set_result("Value too large");
-            emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
-        } else {
-            set_result(n > 0 ? "" : "End of file");
-        }
-        var_set("it", out);
-        ARENA_FREE;
-        return;
-    }
-
-    /* ---- write <texte> to file <nom> [at <pos>|end|eof] ---- */
-    if (ci_equal(verb, "write")) {
-        const char *a = skip_spaces(rest);
-        const char *to = find_kw(a, "to");
-        if (!to) { emit(HC_ERR, "   !! write : « to file » attendu"); return; }
-
-        ARENA_MARK;
-        char *txt = arena_buf();
-        {
-            /* Par l'arène : voir le commentaire du tri. */
-            char *brut = arena_buf();
-            int len = (int)(to - a);
-            if (len > HC_VAL - 1) len = HC_VAL - 1;
-            memcpy(brut, a, (size_t)len); brut[len] = '\0';
-            eval_checked(brut, txt, HC_VAL);
-        }
-
-        const char *r2 = skip_spaces(to + 2);
-        if (ci_word(r2, "file")) r2 = skip_spaces(r2 + 4);
-        const char *at = find_kw(r2, "at");
-
-        char *nom = arena_buf();
-        {
-            char brut[512];
-            int len = at ? (int)(at - r2) : (int)strlen(r2);
-            if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-            memcpy(brut, r2, (size_t)len); brut[len] = '\0';
-            eval_checked(brut, nom, HC_VAL);
-        }
-
-        FILE *f = file_find(nom);
-        if (!f) {
-            set_result("File is not open");
-            emit(HC_ERR, "   !! write : fichier non ouvert : %s", nom);
-            ARENA_FREE; return;
-        }
-
-        if (at) {
-            const char *p = skip_spaces(at + 2);
-            if (ci_word(p, "end") || ci_word(p, "eof")) fseek(f, 0, SEEK_END);
-            else {
-                char *pv = arena_buf();
-                eval_checked(p, pv, HC_VAL);
-                long pos = atol(pv);
-                if (pos >= 0) fseek(f, pos > 0 ? pos - 1 : 0, SEEK_SET);
-                else          fseek(f, pos, SEEK_END);
-            }
-        }
-
-        fwrite(txt, 1, strlen(txt), f);
-        fflush(f);      /* pour qu'un autre programme voie le texte tout de suite */
-        set_result("");
-        ARENA_FREE;
-        return;
-    }
-
-    /* ---- save [this] stack [<nom>] as [stack] <fichier> ----
-     * Duplique la pile sous un autre nom. HyperCard n'a pas de commande
-     * « enregistrer » : il écrivait en continu, et « save » sert donc à faire
-     * une copie, pas à valider un travail en cours. */
-    if (ci_equal(verb, "save")) {
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "this")) a = skip_spaces(a + 4);
-        if (ci_word(a, "stack")) a = skip_spaces(a + 5);
-
-        const char *as = find_kw(a, "as");
-        if (!as) {
-            emit(HC_ERR, "   !! save : « as » attendu");
-            set_result("Bad parameter");
-            return;
-        }
-
-        ARENA_MARK;
-        /* La pile à copier : celle qu'on nomme, ou la courante. */
-        Object *pile = g_current_card ? g_current_card->owner : NULL;
-        if (as > a) {
-            char brut[512];
-            int n = (int)(as - a);
-            if (n > (int)sizeof brut - 1) n = (int)sizeof brut - 1;
-            memcpy(brut, a, (size_t)n); brut[n] = '\0';
-            char *nom = arena_buf();
-            eval_checked(brut, nom, HC_VAL);
-            if (nom[0]) {
-                /* Un nom explicite ne peut désigner que la pile ouverte : nous
-                 * n'en tenons qu'une à la fois. On vérifie plutôt que de
-                 * copier silencieusement la mauvaise. */
-                if (!pile || !pile->name || !ci_equal(pile->name, nom)) {
-                    emit(HC_ERR, "   !! save : pile introuvable : %s", nom);
-                    set_result("No such stack");
-                    ARENA_FREE;
-                    return;
-                }
-            }
-        }
-
-        const char *dest = skip_spaces(as + 2);
-        if (ci_word(dest, "stack")) dest = skip_spaces(dest + 5);
-        char *chemin = arena_buf();
-        eval_checked(dest, chemin, HC_VAL);
-
-        if (!pile || !chemin[0]) {
-            set_result("Bad parameter");
-            ARENA_FREE;
-            return;
-        }
-        if (g_host && g_host->save_stack && g_host->save_stack(pile, chemin))
-            set_result("");
-        else {
-            emit(HC_ERR, "   !! save : échec de l'écriture : %s", chemin);
-            set_result("Can't save stack");
-        }
-        ARENA_FREE;
-        return;
-    }
-
-    /* ---- start using stack "X" / stop using stack "X" ----
-     *
-     * Une pile en usage s'insère dans la chaîne de messages : ses gestionnaires
-     * deviennent appelables de partout. C'est ainsi qu'on partageait du code
-     * entre piles avant les greffons — une bibliothèque déclarée une fois.
-     *
-     * Redéclarer une pile déjà en usage la DÉPLACE en tête plutôt que de
-     * l'ajouter deux fois : c'est ce que dit le manuel, et cela permet de
-     * changer la priorité d'une bibliothèque sans la retirer d'abord. */
-    if (ci_equal(verb, "start") || ci_equal(verb, "stop")) {
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "using")) {
-            int demarrer = ci_equal(verb, "start");
-            a = skip_spaces(a + 5);
-            if (ci_word(a, "stack")) a = skip_spaces(a + 5);
-
-            ARENA_MARK;
-            char *nom = arena_buf();
-            eval_checked(a, nom, HC_VAL);
-
-            /* load_stack et non open_stack : une pile en usage reste INVISIBLE.
-             *
-             * C'est le comportement d'HyperCard, et il a sa logique — une
-             * bibliothèque n'a rien à montrer, et lui ouvrir une fenêtre
-             * encombrerait l'écran à chaque « start using ». Seul « go to
-             * stack » affiche. */
-            Object *pile = find_open_stack(nom);
-            if (!pile && demarrer && g_host && g_host->load_stack)
-                pile = g_host->load_stack(nom);
-
-            if (!pile) {
-                set_result("No such stack");
-                emit(HC_ERR, "   !! using : pile introuvable : %s", nom);
-                ARENA_FREE;
-                return;
-            }
-
-            /* La retirer d'abord, dans les deux cas : « stop » n'a que cela à
-             * faire, et « start » s'en sert pour la remettre en tête. */
-            for (int i = 0; i < g_nusing; i++) {
-                if (g_using[i] != pile) continue;
-                for (int k = i; k + 1 < g_nusing; k++) g_using[k] = g_using[k+1];
-                g_nusing--;
-                break;
-            }
-            if (demarrer) {
-                if (g_nusing >= HC_MAX_USING) {
-                    set_result("Too many stacks in use");
-                    emit(HC_ERR, "   !! trop de piles en usage (%d au plus) : "
-                                 "« %s » n'a pas été ajoutée",
-                         HC_MAX_USING, nom);
-                    ARENA_FREE;
-                    return;
-                }
-                g_using[g_nusing++] = pile;
-            }
-
-            set_result("");
-            ARENA_FREE;
-            return;
-        }
-    }
-
-    /* ---- mark / unmark ----
-     *   mark card 3            mark cards where <condition>
-     *   unmark all cards       unmark this card
-     *
-     * Marquer désigne un sous-ensemble d'une pile sans la modifier : on trie
-     * une fois, puis « print marked cards » ou « go next marked card »
-     * travaille dessus. C'est la façon dont les piles de données filtraient
-     * leur contenu, avant les bases de données.
-     *
-     * « where » évalue la condition SUR chaque carte : on s'y déplace le temps
-     * du calcul, comme le fait déjà le tri. Sans cela « field "ville" »
-     * désignerait toujours le champ de la carte de départ. */
-    if (ci_equal(verb, "mark") || ci_equal(verb, "unmark")) {
-        int poser = ci_equal(verb, "mark");
-        const char *a = skip_spaces(rest);
-
-        Object *pile = g_current_card ? g_current_card->owner : NULL;
-        while (pile && pile->type != OBJ_STACK) pile = pile->owner;
-        if (!pile) { set_result("No stack"); return; }
-
-        if (ci_word(a, "all")) {
-            for (int i = 0; i < pile->nparts; i++)
-                if (pile->parts[i]->type == OBJ_CARD)
-                    pile->parts[i]->marked = poser;
-            set_result("");
-            return;
-        }
-
-        const char *wh = find_kw(a, "where");
-        if (wh) {
-            const char *cond = skip_spaces(wh + 5);
-            Object *avant = g_current_card;
-            for (int i = 0; i < pile->nparts; i++) {
-                Object *c = pile->parts[i];
-                if (c->type != OBJ_CARD) continue;
-                g_current_card = c;
-                ARENA_MARK;
-                char *v = arena_buf();
-                eval_checked(cond, v, HC_VAL);
-                if (truthy(v)) c->marked = poser;
-                ARENA_FREE;
-            }
-            g_current_card = avant;
-            set_result("");
-            return;
-        }
-
-        /* Une carte désignée, ou la courante.
-         *
-         * « this card » se résout très bien, mais « mark card 2 » demande que
-         * `a` porte encore le mot « card » — on ne le retire donc pas, et l'on
-         * laisse resolve faire son travail. Le cas vide, lui, vise la carte
-         * courante. */
-        Object *c = *a ? resolve(a) : g_current_card;
-        if (!c) {
-            ARENA_MARK;
-            char *v = arena_buf();
-            eval_checked(a, v, HC_VAL);
-            c = resolve(v);
-            ARENA_FREE;
-        }
-        if (c && c->type == OBJ_CARD) { c->marked = poser; set_result(""); }
-        else { set_result("No such card");
-               emit(HC_ERR, "   !! %s : carte introuvable", verb); }
-        return;
-    }
-
-    /* ---- print card / print this stack / print marked cards ----
-     *
-     * Le noyau compose la LISTE des cartes à sortir et la passe à l'hôte, qui
-     * seul connaît le papier. Une carte par page.
-     *
-     * « print field » et « print <expression> » d'HyperCard ne sont pas ici :
-     * ils impriment du texte, ce qui est un autre chemin — et l'on imprime
-     * plus souvent une carte que le contenu d'un champ. */
-    if (ci_equal(verb, "print")) {
-        const char *a = skip_spaces(rest);
-        if (ci_word(a, "this")) a = skip_spaces(a + 4);
-
-        Object *pile = g_current_card ? g_current_card->owner : NULL;
-        while (pile && pile->type != OBJ_STACK) pile = pile->owner;
-
-        Object *liste[512];
-        int n = 0;
-
-        if (ci_word(a, "stack") || ci_word(a, "all")) {
-            /* toute la pile */
-            if (pile)
-                for (int i = 0; i < pile->nparts && n < 512; i++)
-                    if (pile->parts[i]->type == OBJ_CARD) liste[n++] = pile->parts[i];
-        }
-        else if (ci_word(a, "marked")) {
-            if (pile)
-                for (int i = 0; i < pile->nparts && n < 512; i++)
-                    if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
-                        liste[n++] = pile->parts[i];
-        }
-        else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
-            const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
-            if (!*r) {
-                /* « print card » nu : la carte courante. */
-                if (g_current_card) liste[n++] = g_current_card;
-            } else {
-                /* « print card 3 », « print card "index" », « print card 2 to 7 » */
-                const char *to = find_kw(r, "to");
-                if (to) {
-                    ARENA_MARK;
-                    char brut[256];
-                    int len = (int)(to - r);
-                    if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-                    memcpy(brut, r, (size_t)len); brut[len] = '\0';
-                    char *v1 = arena_buf(), *v2 = arena_buf();
-                    eval_checked(brut, v1, HC_VAL);
-                    eval_checked(skip_spaces(to + 2), v2, HC_VAL);
-                    int d = atoi(v1), f = atoi(v2);
-                    if (d < 1) d = 1;
-                    for (int i = d; i <= f && n < 512; i++) {
-                        Object *c = nth_card(pile, i - 1);
-                        if (c) liste[n++] = c;
-                    }
-                    ARENA_FREE;
-                } else {
-                    Object *c = resolve(r);
-                    if (!c) {
-                        ARENA_MARK;
-                        char *v = arena_buf();
-                        eval_checked(r, v, HC_VAL);
-                        c = resolve(v);
-                        if (!c) {
-                            char ref[128];
-                            snprintf(ref, sizeof ref, "card %s", v);
-                            c = resolve(ref);
-                        }
-                        ARENA_FREE;
-                    }
-                    if (c && c->type == OBJ_CARD) liste[n++] = c;
-                }
-            }
-        }
-
-        if (n == 0) {
-            set_result("No cards to print");
-            emit(HC_ERR, "   !! print : rien à imprimer");
-            return;
-        }
-        if (g_host && g_host->print_cards) {
-            g_host->print_cards(liste, n);
-            set_result("");
-        } else {
-            set_result("Can't print");
-            emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
-        }
-        return;
-    }
-
-    emit(HC_ERR, "   ?? verbe inconnu : %s", verb);
-}
-
-/* Enveloppe de libération. exec_line a 57 points de sortie : les instrumenter
- * un par un serait une invitation à l'erreur. On renomme le corps et on pose la
- * marque autour — une seule fois, sans toucher à sa logique. Même recette pour
- * term_value et call_function, qui en ont 40 et 36. */
-static void exec_line(Object *me, const char *line)
-{
-    /* LE GARDE-FOU DE DERNIER RECOURS.
-     *
-     * Les quatre portes connues vers ici sont maintenant fermées une par une,
-     * chacune avec son message — c'est plus utile qu'un refus anonyme. Ce
-     * garde reste pour la CINQUIÈME : un chemin qu'on aurait oublié, ou qu'on
-     * ajouterait demain sans y penser. Recenser des chemins un par un, c'est
-     * en oublier un ; celui-ci les prend tous.
-     *
-     * S'il se déclenche, c'est qu'il y a une porte de plus à fermer, et le
-     * message le dit : « chemin non recensé ». */
-    if (v1_debranche()) {
-        v1_compte("v1 refusée", g_v1_porte);
-        emit(HC_ERR, "   !! chemin non recensé vers l'ancien interprète "
-                     "[%s] : %s", g_v1_porte, line ? line : "");
-        return;
-    }
-    ARENA_MARK;
-    exec_line_body(me, line);
-    ARENA_FREE;
-}
 
 /* ==================== envoi d'un message ==================== */
 
@@ -15105,13 +12363,9 @@ static int hc_send_args_k_body(Object *target, const char *message,
                  * l'exécutait pas davantage : il refusait d'enregistrer un
                  * script fautif. Le confier à un moteur plus permissif, qui en
                  * devinerait la moitié, est pire que de le dire. */
-                if (v1_debranche() && v3_actif()) {
-                    v1_compte("v1 refusée", porte);
-                    emit(HC_ERR, "   !! gestionnaire illisible : %s "
-                                 "(son en-tête ou son « end »)", porte);
-                } else {
-                    exec_body(o, body, end);
-                }
+                v1_compte("v1 refusée", porte);
+                emit(HC_ERR, "   !! gestionnaire illisible : %s "
+                             "(son en-tête ou son « end »)", porte);
             }
             g_v1_porte = sauve_v1;
             g_exit_handler = g_exit_repeat = g_next_repeat = 0;
@@ -15160,7 +12414,7 @@ static int hc_send_args_k_body(Object *target, const char *message,
 
 /* Frontière de message : chaque envoi rend ses tampons en sortant. Sans cela
  * une pile qui envoie des milliers de messages verrait l'arène croître sans
- * fin, puisque seuls parse_factor et exec_stmt libèrent en dessous. */
+ * fin, puisque seul parse_factor libère en dessous. */
 static int hc_send_args_k(Object *target, const char *message,
                           char argv[][HC_VAL], int argc, int isfunc)
 {
@@ -15244,10 +12498,10 @@ static int hc_call_user_function(Object *target, const char *name,
  * que ses propres menus — en français, et sans menu Aller : il ne se passait
  * rien du tout, sans un mot.
  *
- * On passe par exec_stmt plutôt que de refaire le changement de carte à la
- * main : la séquence closeCard / closeBackground / openBackground / openCard
- * est écrite en toutes lettres à vingt-quatre endroits de ce fichier, et en
- * ajouter un vingt-cinquième exemplaire serait absurde.
+ * On passe par une LIGNE DE HYPERTALK plutôt que de refaire le changement de
+ * carte à la main : la séquence closeCard / closeBackground / openBackground /
+ * openCard est écrite en toutes lettres à vingt-quatre endroits de ce fichier,
+ * et en ajouter un vingt-cinquième exemplaire serait absurde.
  *
  * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
  * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
@@ -15399,7 +12653,8 @@ void hc_do_menu(const char *item)
             /* « go next card » et ses quatre voisines. La v3 d'abord, comme
              * pour la boîte de message ; l'ancien ne sert plus que de repli.
              *
-             * On pose `me` avant : exec_stmt le recevait en argument, la v3
+             * On pose `me` avant : l'ancien exécuteur le recevait en
+             * argument, la v3
              * le lit dans g_me par l'hôte. Sans cette ligne, un « go next »
              * déclenché depuis un menu n'aurait plus le même `me` qu'avant —
              * la sorte de différence qui ne se voit qu'un mois plus tard,
@@ -15414,13 +12669,9 @@ void hc_do_menu(const char *item)
                      * su lire sa ligne. Mesuré : sur 138 harnais, elle n'a
                      * jamais servi — les cinq lignes de MENUS_NOYAU sont du
                      * HyperTalk que la v3 lit sans peine. */
-                    if (v1_debranche()) {
-                        v1_compte("v1 refusée", "menu du noyau");
-                        emit(HC_ERR, "   !! article de menu non compris : %s",
-                             MENUS_NOYAU[i].ligne);
-                    } else {
-                        exec_stmt(cible, MENUS_NOYAU[i].ligne);
-                    }
+                    v1_compte("v1 refusée", "menu du noyau");
+                    emit(HC_ERR, "   !! article de menu non compris : %s",
+                         MENUS_NOYAU[i].ligne);
                 }
             g_me = sauve_me;
             g_v1_porte = sauve;
@@ -15735,9 +12986,10 @@ void hc_set_paint(Object *o, const char *base64)
  * plus fréquenté de tous ceux qui restaient sur l'ancien interprète.
  *
  * Le portage est simple parce que le rattrapage est déjà là : ce que la v3
- * ne sait pas exécuter, v3_commande le rend à exec_stmt COMMANDE PAR
- * COMMANDE. On n'a donc pas besoin qu'elle comprenne tout pour lui confier
- * la ligne — ce qu'elle ignore repart, le reste ne repart plus.
+ * ne savait pas exécuter, v3_commande le rendait à l'ancien exécuteur
+ * COMMANDE PAR COMMANDE. On n'avait donc pas besoin qu'elle comprenne tout
+ * pour lui confier la ligne. Elle comprend maintenant tout ce qui reste, et
+ * ce qu'elle ignore est refusé au lieu de repartir.
  *
  * hct_bloc_script et non une seule instruction : la boîte de message accepte
  * plusieurs lignes collées, et même un « repeat … end repeat » entier. Un
@@ -15802,12 +13054,8 @@ void hc_do(const char *line)
     if (!v3_do_ligne(line)) {
         /* PORTE 4 : la boîte de message, « do », les articles de menu créés
          * par script. Jamais empruntée non plus dans la mesure. */
-        if (v1_debranche()) {
-            v1_compte("v1 refusée", "msg/do");
-            emit(HC_ERR, "   !! ne sait pas lire : %s", line);
-        } else {
-            exec_stmt(g_current_card, line);
-        }
+        v1_compte("v1 refusée", "msg/do");
+        emit(HC_ERR, "   !! ne sait pas lire : %s", line);
     }
     ARENA_FREE;
     g_v1_porte = sauve_porte;
