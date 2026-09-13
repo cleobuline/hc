@@ -161,8 +161,15 @@ int hct_ecrit_nombre(double x, char *out, int taille)
 {
     if (taille < 2) { if (taille) out[0] = 0; return 0; }
 
-    if (x != x) return snprintf(out, (size_t)taille, "NAN");        /* NaN   */
-    if (x > 1e308 || x < -1e308)
+    /* L'INFINI SE DEMANDE À LA BIBLIOTHÈQUE, PAS À UNE BORNE ÉCRITE À LA MAIN.
+     *
+     * Le test portait sur 1e308. Or le plus grand double vaut à peu près
+     * 1,7976931348623157e308 : tout l'intervalle entre les deux est FINI et
+     * parfaitement représentable, et s'écrivait pourtant « INF ». « put 1.5e308 »
+     * répondait INF, et « put 1e308 * 1.5 » aussi — alors que la seconde a bien
+     * un résultat. isinf et isnan disent exactement ce qu'on voulait savoir. */
+    if (isnan(x)) return snprintf(out, (size_t)taille, "NAN");
+    if (isinf(x))
         return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
 
     /* Entier exact et représentable : on l'écrit tel quel. */
@@ -258,8 +265,10 @@ int hct_ecrit_nombre_format(double x, char *out, int taille)
     if (!format_lu(&ent, &dmin, &dmax))
         return hct_ecrit_nombre(x, out, taille);
 
-    if (x != x) return snprintf(out, (size_t)taille, "NAN");
-    if (x > 1e308 || x < -1e308)
+    /* Même correction qu'au format par défaut : la borne 1e308 déclarait
+     * infinis des nombres finis jusqu'à 1,797e308. */
+    if (isnan(x)) return snprintf(out, (size_t)taille, "NAN");
+    if (isinf(x))
         return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
 
     /* Même garde qu'au format par défaut : un gabarit ne peut pas mettre en

@@ -40,8 +40,18 @@ int main(void){
   essai("put 1e308 + 0");
   essai("put 0-1e100 + 0");
 
-  printf("\n=== l'infini reste l'infini ===\n");
+  printf("\n=== l'infini reste l'infini, et LUI SEUL ===\n");
   essai("put 1e309 + 0");
+  /* Le test de l'infini portait sur la borne 1e308, écrite à la main. Or le
+   * plus grand double vaut à peu près 1,7976931348623157e308 : tout
+   * l'intervalle entre les deux est FINI et parfaitement représentable, et
+   * s'écrivait pourtant « INF ». isinf dit exactement ce qu'on voulait
+   * savoir : les trois premiers ci-dessous ont un résultat et doivent le
+   * montrer, le dernier déborde pour de bon et reste INF. */
+  essai("put 1.5e308 + 0");
+  essai("put 1e308 * 1.5");
+  essai("put 0 - 1.5e308");
+  essai("put 1.5e308 * 2");
 
   /* Les très petits restent à zéro : c'est le format par défaut à six
    * décimales, celui d'HyperCard. Ce n'est pas une troncature accidentelle,

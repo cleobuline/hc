@@ -13,8 +13,12 @@
 ── put 1e308 + 0                      1e+308
 ── put 0-1e100 + 0                    -1e+100
 
-=== l'infini reste l'infini ===
+=== l'infini reste l'infini, et LUI SEUL ===
 ── put 1e309 + 0                      INF
+── put 1.5e308 + 0                    1.5e+308
+── put 1e308 * 1.5                    1.5e+308
+── put 0 - 1.5e308                    -1.5e+308
+── put 1.5e308 * 2                    INF
 
 === les très petits, au format par défaut ===
 ── put 1e-10 + 0                      0

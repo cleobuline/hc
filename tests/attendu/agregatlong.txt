@@ -1,0 +1,23 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── un nombre de 70 chiffres, seul
+   1e+69
+   (la valeur juste est 1e+69)
+
+── le même entre deux 1
+   1e+69
+   (la valeur juste est 1e+69)
+
+── « 999…abc » n'est pas un nombre
+   30
+   (la valeur juste est 30)
+
+── et il ne compte pas dans la moyenne
+   15
+   (la valeur juste est 15)
+
+── le max prend le nombre entier
+   1e+69
+   (la valeur juste est 1e+69)
+
+── liste ordinaire
+   somme 60, moyenne 20, min 10, max 30
