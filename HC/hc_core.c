@@ -6303,21 +6303,6 @@ static Object *v3_bg_par_id(Object *stack, int id)
     return NULL;
 }
 
-/* La première carte d'un fond, dans l'ordre de la pile.
- * HyperCard ne se tient jamais SUR un fond : « go bg 2 » mène à sa
- * première carte, et c'est ce que rend cette fonction pour les formes de
- * navigation. */
-static Object *v3_carte_du_bg(Object *stack, Object *bgcible)
-{
-    if (!bgcible) return NULL;
-    int n = card_count(stack);
-    for (int j = 0; j < n; j++) {
-        Object *d = nth_card(stack, j);
-        if (d && d->bg == bgcible) return d;
-    }
-    return NULL;
-}
-
 /* Le rang que désigne un ordinal, pour un total donné.
  * « middle » vaut total/2 + 1, et non (total+1)/2 : sur quatre éléments
  * HyperCard rend le TROISIÈME — vérifié. */
@@ -6427,28 +6412,44 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                         return v3_nth_bg(stack, atoi(val));
                     return v3_bg_par_nom(stack, val);
                 }
+                /* UN FOND DÉSIGNÉ REND UN FOND.
+                 *
+                 * Ces deux branches rendaient une CARTE — la première carte
+                 * du fond visé pour l'ordinal, et pour le relatif la carte
+                 * suivante de la pile, qui n'a rien à voir avec le fond
+                 * suivant. Le désignateur seul changeait donc la nature de
+                 * ce qu'on obtenait : « the short name of bg 2 » donnait
+                 * « fondDeux », mais « the short name of first background »
+                 * donnait « carteUn », et « the short name of this
+                 * background » le nom de la carte courante.
+                 *
+                 * L'intention était bonne et l'endroit mauvais : on ne se
+                 * tient jamais SUR un fond, donc « go to last background »
+                 * doit mener à une carte. Mais c'est go qui fait cette
+                 * conversion, pour toutes les formes à la fois, quelques
+                 * centaines de lignes plus bas — et il la faisait déjà.
+                 * Résoudre un fond en carte ici ne servait qu'à casser
+                 * toutes les autres phrases. */
                 case HCT_DES_ORDINAL: {
                     int total = 0;
                     for (int i = 0; stack && i < stack->nparts; i++)
                         if (stack->parts[i]->type == OBJ_BACKGROUND) total++;
-                    Object *b = v3_nth_bg(stack, v3_rang_ordinal(n->ordinal, total));
-                    return v3_carte_du_bg(stack, b);
+                    return v3_nth_bg(stack, v3_rang_ordinal(n->ordinal, total));
                 }
                 case HCT_DES_RELATIF: {
-                    if (n->relatif == HCT_REL_CE) return card;
-                    /* « go next card » depuis la dernière mène à la PREMIÈRE :
-                     * HyperCard boucle, et les piles d'époque s'en servent pour
-                     * feuilleter sans jamais tester les bords. Sans le modulo,
-                     * nth_card rendait NULL et la commande échouait en silence
-                     * sur les deux extrémités.
-                     *
-                     * C'est déjà ce que fait la branche des FONDS, quelques
-                     * lignes plus haut — les deux doivent s'accorder. */
-                    int nc = card_count(stack);
-                    int i  = card_index(stack, card);
-                    if (nc <= 0 || i < 0) return NULL;
+                    if (n->relatif == HCT_REL_CE) return bg;
+                    /* Le fond suivant, pas la carte suivante — et l'on boucle,
+                     * comme les cartes le font juste en dessous : les piles
+                     * d'époque feuillettent sans jamais tester les bords. */
+                    int total = 0, rang = -1;
+                    for (int i = 0; stack && i < stack->nparts; i++)
+                        if (stack->parts[i]->type == OBJ_BACKGROUND) {
+                            if (stack->parts[i] == bg) rang = total;
+                            total++;
+                        }
+                    if (total <= 0 || rang < 0) return NULL;
                     int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
-                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
+                    return v3_nth_bg(stack, ((rang + pas) % total + total) % total + 1);
                 }
                 default: return bg;
             }
