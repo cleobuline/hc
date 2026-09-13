@@ -1068,7 +1068,7 @@ static BOOL gCursorScripte = NO;
  * première palette survolée et ne reviendrait jamais. */
 void hcv_curseur_maj(void)
 {
-    if (gView) [[gView window] invalidateCursorRects:gView];
+    if (gView) [[gView window] invalidateCursorRectsForView:gView];
 }
 
 static void cocoa_choose_tool(const char *name) {
