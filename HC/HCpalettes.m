@@ -45,6 +45,299 @@ int brush_bit(int brush, int x, int y) {
     if (x < 0 || x > 15 || y < 0 || y > 15) return 0;
     return (BRUSHES[brush][y] >> (15 - x)) & 1;
 }
+
+// ==================== les curseurs des outils ====================
+/* LE POINTEUR NE SUIVAIT PAS L'OUTIL.
+ *
+ * Choisir le crayon, le lasso ou le seau changeait `gTool`, encadrait la case
+ * dans la palette, redessinait la carte — et laissait la flèche. Il fallait
+ * donc regarder la palette pour savoir avec quoi on dessinait, alors que
+ * l'information doit être sous les yeux, au bout du bras.
+ *
+ * TROIS RÈGLES, et elles ne sont pas décoratives.
+ *
+ * 1. Le POINT CHAUD dit où la peinture tombe. Un crayon dont le point chaud
+ *    serait au centre dessinerait huit pixels à côté de sa pointe. Chaque
+ *    point chaud ci-dessous a donc été relevé sur le code de dessin, pas
+ *    choisi à l'œil : la gomme efface un trait de seize pixels de large
+ *    centré sur la souris (erase_stroke), l'aérographe pulvérise autour
+ *    d'elle (spray_stamp), et le pinceau pose son bitmap à partir de
+ *    (cx-8, cy-8) — d'où (8,8), et non le centre du dessin.
+ *
+ * 2. Le CONTOUR BLANC n'est pas un ornement. Une silhouette noire seule
+ *    disparaît sur la peinture noire, et c'est précisément là qu'on dessine.
+ *    HyperCard cerne tous ses curseurs de blanc pour cette raison.
+ *
+ * 3. On ne dessine QUE ce que le système ne sait pas dire. La croix, la main,
+ *    le I-beam et la flèche existent déjà en curseurs système, nets sur tous
+ *    les écrans et conformes aux réglages de l'utilisateur ; les redessiner
+ *    serait s'inventer du travail et rendre un résultat moins bon.
+ *
+ * Le pinceau, lui, MONTRE SA FORME : il est construit depuis brush_bit(), le
+ * même tableau que la palette des brosses et que brush_stamp(). Choisir la
+ * brosse oblique fait donc apparaître une oblique sous la souris.
+ */
+
+/* '#' noir, '@' blanc, '.' transparent. Seize lignes de seize colonnes. */
+
+/* Le crayon : la pointe en bas à gauche, et c'est elle le point chaud. */
+static const char *CUR_PENCIL[16] = {
+    ".........#####..",
+    "........#@@@@#..",
+    ".......#@@@@@#..",
+    "......#@@@@@#...",
+    ".....#@@@@@#....",
+    "....#@@@@@#.....",
+    "...#@@@@@#......",
+    "..#@@@@@#.......",
+    ".#@@@@@#........",
+    "#@@@@@#.........",
+    "#@@@@#..........",
+    "#@@@#...........",
+    "#@@#............",
+    "#@#.............",
+    "##..............",
+    "#...............",
+};
+
+/* La gomme fait SEIZE pixels de large — c'est la largeur que passe
+ * erase_stroke. Le curseur occupe donc tout son carré : ce qu'il couvre est
+ * exactement ce qu'il effacera. */
+static const char *CUR_ERASER[16] = {
+    "################",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "#@@@@@@@@@@@@@@#",
+    "################",
+};
+
+/* Le seau penché, et la goutte qui tombe : c'est la goutte, en bas à gauche,
+ * qui marque le pixel d'où part le remplissage. */
+static const char *CUR_BUCKET[16] = {
+    ".......#####....",
+    "......#@@@@@#...",
+    ".....#@@@@@@#...",
+    "....#@@@@@@@#...",
+    "...#@@@@@@@@#...",
+    "..#@@@@@@@@#....",
+    ".#@@@@@@@@#.....",
+    "#@@@@@@@@#......",
+    ".#@@@@@@#.......",
+    "..#@@@@#........",
+    "...#@@#.........",
+    "....##..........",
+    "...##...........",
+    "..#@@#..........",
+    "..#@@#..........",
+    "...##...........",
+};
+
+/* Le lasso : la boucle, et la corde dont la pointe est le point chaud. */
+static const char *CUR_LASSO[16] = {
+    "....######......",
+    "...#@@@@@@#.....",
+    "..#@#....#@#....",
+    ".#@#......#@#...",
+    ".#@#......#@#...",
+    ".#@#......#@#...",
+    "..#@#....#@#....",
+    "...#@@@@@@#.....",
+    "....##@@@#......",
+    ".....#@@#.......",
+    "....#@@#........",
+    "...#@@#.........",
+    "..#@@#..........",
+    "..#@#...........",
+    ".##.............",
+    "#...............",
+};
+
+/* L'aérographe : la bombe en bas à droite, le nuage en haut à gauche. Le
+ * point chaud est DANS le nuage — spray_stamp pulvérise autour de la souris,
+ * pas devant une buse. */
+static const char *CUR_SPRAY[16] = {
+    ".#...#..........",
+    "...#....#.......",
+    ".#....#....#....",
+    "....#...#.......",
+    ".#...#.....#....",
+    "...#...#........",
+    ".....#....#.....",
+    ".........####...",
+    "........#@@@@#..",
+    ".......#@@@@@@#.",
+    ".......#@@@@@@#.",
+    ".......#@@@@@@#.",
+    ".......#@@@@@@#.",
+    ".......#@@@@@@#.",
+    ".......#@@@@@@#.",
+    "........######..",
+};
+
+/* Fabrique une image 16x16 depuis une planche ASCII. Le blanc et le noir sont
+ * OPAQUES, le point est transparent : c'est ce qui donne la silhouette. */
+static NSImage *image_16_depuis_ascii(const char **plan)
+{
+    NSBitmapImageRep *rep =
+        [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                pixelsWide:16 pixelsHigh:16
+                                             bitsPerSample:8 samplesPerPixel:4
+                                                  hasAlpha:YES isPlanar:NO
+                                            colorSpaceName:NSDeviceRGBColorSpace
+                                               bytesPerRow:0 bitsPerPixel:0];
+    if (!rep) return nil;
+    unsigned char *data = [rep bitmapData];
+    NSInteger bpr = [rep bytesPerRow];
+    memset(data, 0, (size_t)(bpr * 16));
+    for (int y = 0; y < 16; y++) {
+        const char *ligne = plan[y];
+        if (!ligne) continue;
+        for (int x = 0; x < 16 && ligne[x]; x++) {
+            unsigned char *px = data + y*bpr + x*4;
+            if (ligne[x] == '#')      { px[0]=0;   px[1]=0;   px[2]=0;   px[3]=255; }
+            else if (ligne[x] == '@') { px[0]=255; px[1]=255; px[2]=255; px[3]=255; }
+        }
+    }
+    NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(16, 16)];
+    [img addRepresentation:rep];
+    return img;
+}
+
+/* Le pinceau courant, cerné de blanc.
+ *
+ * La silhouette vient de brush_bit — le tableau que la palette affiche et que
+ * brush_stamp imprime. Le halo est calculé : tout pixel vide qui touche un
+ * pixel plein devient blanc. Écrire douze contours à la main aurait été douze
+ * occasions de se tromper, et il aurait fallu recommencer à chaque brosse
+ * ajoutée.
+ *
+ * L'image fait 18x18 pour que le halo d'une brosse qui touche le bord ait où
+ * se poser ; le point chaud se décale d'autant. */
+static NSImage *image_pinceau(int brosse)
+{
+    NSBitmapImageRep *rep =
+        [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                pixelsWide:18 pixelsHigh:18
+                                             bitsPerSample:8 samplesPerPixel:4
+                                                  hasAlpha:YES isPlanar:NO
+                                            colorSpaceName:NSDeviceRGBColorSpace
+                                               bytesPerRow:0 bitsPerPixel:0];
+    if (!rep) return nil;
+    unsigned char *data = [rep bitmapData];
+    NSInteger bpr = [rep bytesPerRow];
+    memset(data, 0, (size_t)(bpr * 18));
+
+    for (int y = 0; y < 18; y++) {
+        for (int x = 0; x < 18; x++) {
+            int bx = x - 1, by = y - 1;   /* la brosse est décalée de un */
+            int plein = (bx >= 0 && bx < 16 && by >= 0 && by < 16)
+                      ? brush_bit(brosse, bx, by) : 0;
+            unsigned char *px = data + y*bpr + x*4;
+            if (plein) { px[0]=0; px[1]=0; px[2]=0; px[3]=255; continue; }
+            /* Vide : blanc s'il touche un plein, transparent sinon. */
+            int touche = 0;
+            for (int dy = -1; dy <= 1 && !touche; dy++)
+                for (int dx = -1; dx <= 1 && !touche; dx++) {
+                    int vx = bx + dx, vy = by + dy;
+                    if (vx >= 0 && vx < 16 && vy >= 0 && vy < 16 &&
+                        brush_bit(brosse, vx, vy)) touche = 1;
+                }
+            if (touche) { px[0]=255; px[1]=255; px[2]=255; px[3]=255; }
+        }
+    }
+    NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(18, 18)];
+    [img addRepresentation:rep];
+    return img;
+}
+
+/* Les curseurs dessinés, construits une fois. Le pinceau ne peut pas être
+ * gardé ainsi : il change avec la brosse, d'où son cache à part. */
+static NSCursor *gCurPencil = nil, *gCurEraser = nil, *gCurBucket = nil;
+static NSCursor *gCurLasso  = nil, *gCurSpray  = nil;
+static NSCursor *gCurBrush  = nil;
+static int       gCurBrushPour = -1;   /* la brosse que gCurBrush représente */
+
+/* __strong explicite : sans lui, ARC prend « NSCursor ** » pour un paramètre
+ * __autoreleasing et refuse qu'on lui passe l'adresse d'une variable statique,
+ * dont la propriété est __strong. C'est une erreur de compilation, pas un
+ * avertissement — et elle n'apparaît qu'au moment de construire. */
+static NSCursor *curseur_cache(NSCursor * __strong *ou,
+                               const char **plan, NSPoint chaud)
+{
+    if (!*ou) {
+        NSImage *img = image_16_depuis_ascii(plan);
+        if (!img) return [NSCursor arrowCursor];
+        *ou = [[NSCursor alloc] initWithImage:img hotSpot:chaud];
+    }
+    return *ou;
+}
+
+void hcv_curseur_pinceau_perime(void) { gCurBrush = nil; gCurBrushPour = -1; }
+
+NSCursor *hcv_curseur_outil(int outil)
+{
+    switch ((HCTool)outil) {
+
+        /* La main : on feuillette, on presse les boutons. */
+        case TOOL_BROWSE:  return [NSCursor pointingHandCursor];
+
+        /* Poser et déplacer des objets se fait à la flèche, comme partout. */
+        case TOOL_BUTTON:
+        case TOOL_FIELD:   return [NSCursor arrowCursor];
+
+        /* La croix, pour tout ce qui se vise : une sélection, un tracé dont
+         * on pointe les deux bouts. Le curseur système est plus net que tout
+         * ce que je dessinerais, et suit les réglages d'accessibilité. */
+        case TOOL_SELRECT:
+        case TOOL_LINE:
+        case TOOL_RECT:
+        case TOOL_OVAL:
+        case TOOL_FREEFORM: return [NSCursor crosshairCursor];
+
+        case TOOL_TEXT:     return [NSCursor IBeamCursor];
+
+        case TOOL_PENCIL:
+            return curseur_cache(&gCurPencil, CUR_PENCIL, NSMakePoint(0, 15));
+        case TOOL_ERASER:
+            /* Seize pixels de large, centrés : le carré du curseur EST la
+               surface effacée. */
+            return curseur_cache(&gCurEraser, CUR_ERASER, NSMakePoint(8, 8));
+        case TOOL_FILL:
+            /* La goutte, pas le seau. */
+            return curseur_cache(&gCurBucket, CUR_BUCKET, NSMakePoint(3, 14));
+        case TOOL_LASSO:
+            return curseur_cache(&gCurLasso,  CUR_LASSO,  NSMakePoint(0, 15));
+        case TOOL_SPRAY:
+            /* Dans le nuage : spray_stamp pulvérise AUTOUR de la souris. */
+            return curseur_cache(&gCurSpray,  CUR_SPRAY,  NSMakePoint(4, 3));
+
+        case TOOL_BRUSH:
+            if (!gCurBrush || gCurBrushPour != gBrush) {
+                NSImage *img = image_pinceau(gBrush);
+                if (!img) return [NSCursor crosshairCursor];
+                /* brush_stamp pose le bitmap à partir de (cx-8, cy-8) : le
+                 * pixel (8,8) de la brosse est donc celui de la souris. Le
+                 * décalage de un vient de la marge du halo. */
+                gCurBrush = [[NSCursor alloc] initWithImage:img
+                                                    hotSpot:NSMakePoint(9, 9)];
+                gCurBrushPour = gBrush;
+            }
+            return gCurBrush;
+    }
+    return [NSCursor arrowCursor];
+}
+
 @implementation WidthPalette
 
 /* Agir dès le PREMIER clic, même si le panneau n'est pas la fenêtre active.
@@ -354,6 +647,12 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 
                 gTool = (HCTool)tc->value;
                 gSelected = NULL;
+                /* Le pointeur suit l'outil. Ce chemin-ci est celui du CLIC
+                 * dans la palette ; « choose ... tool » passe par
+                 * cocoa_choose_tool, qui fait le même geste. Les deux doivent
+                 * s'accorder, sinon le curseur serait juste au script et faux
+                 * à la souris. */
+                hcv_curseur_maj();
 
                 /* Déposer un collage en attente. Une image plus grande que la
                  * carte n'a pas d'extérieur où cliquer pour la valider :
@@ -528,6 +827,11 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
         NSRect box = NSMakeRect(margin + col*(cell+gap), margin + row*(cell+gap), cell, cell);
         if (NSPointInRect(p, box)) {
             gBrush = i;
+            /* Le curseur du pinceau MONTRE la brosse : changer de brosse le
+             * périme. Sans cela, on choisirait l'oblique et l'on continuerait
+             * de voir le rond sous la souris. */
+            hcv_curseur_pinceau_perime();
+            hcv_curseur_maj();
             [self setNeedsDisplay:YES];
             break;
         }

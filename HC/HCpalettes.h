@@ -22,6 +22,24 @@ int pattern_bit(int pat, int x, int y);
 #define NUM_BRUSHES 12
 int brush_bit(int brush, int x, int y);
 
+/* Le curseur qui va avec un outil.
+ *
+ * Les curseurs système là où ils sont justes — croix, main, I-beam, flèche —
+ * et des silhouettes dessinées pour le crayon, la gomme, le seau, le lasso et
+ * l'aérographe. Le pinceau, lui, MONTRE SA FORME : il est construit depuis
+ * brush_bit(), si bien que choisir la brosse oblique fait apparaître une
+ * oblique sous la souris.
+ *
+ * Le point chaud de chacun a été relevé sur le code de dessin, pas choisi à
+ * l'œil : un curseur qui pointe à côté de l'endroit où la peinture tombe est
+ * pire que pas de curseur du tout. Voir le commentaire de la définition.
+ *
+ * L'objet rendu est mis en cache ; ne pas le libérer. */
+NSCursor *hcv_curseur_outil(int outil);
+
+/* À appeler quand gBrush change : le curseur du pinceau est alors périmé. */
+void hcv_curseur_pinceau_perime(void);
+
 @interface BrushPalette : NSView
 @end
 

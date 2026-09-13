@@ -1039,6 +1039,38 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
 
 static BOOL gMouseClicked = NO;
 
+/* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
+ * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
+ * que hcv_quelle_couleur a supprimé pour les couleurs. */
+static NSString *gCursorNom = @"arrow";
+
+/* Le pointeur est-il caché ? « set the cursor to none » le cache, et il faut
+ * bien que quelqu'un sache le remontrer. Cet état vivait deux mille lignes
+ * plus bas, hors de portée du changement d'outil qui doit le lever. */
+static BOOL gCursorHidden = NO;
+
+/* « set the cursor » l'emporte sur le curseur de l'outil, jusqu'au prochain
+ * changement d'outil.
+ *
+ * Les deux se disputent le même pointeur. Sans ce drapeau, les zones de
+ * curseur de la vue reposeraient le curseur de l'outil au premier mouvement
+ * de souris, et « set the cursor to watch » ne durerait pas le temps d'un
+ * battement de cils — alors que « the cursor » continuerait de répondre
+ * « watch ». La propriété décrirait un état qui n'existe plus. */
+static BOOL gCursorScripte = NO;
+
+/* Pose le bon curseur sur la vue de carte.
+ *
+ * On passe par les ZONES DE CURSEUR d'AppKit plutôt que par un [c set] : le
+ * système les réapplique tout seul quand la souris entre dans la vue, et les
+ * laisse tomber quand elle passe au-dessus d'une palette ou d'une autre
+ * fenêtre. Un [c set] posé au changement d'outil, lui, serait écrasé par la
+ * première palette survolée et ne reviendrait jamais. */
+void hcv_curseur_maj(void)
+{
+    if (gView) [[gView window] invalidateCursorRects:gView];
+}
+
 static void cocoa_choose_tool(const char *name) {
     if (!name) return;
     struct { const char *nom; HCTool t; } table[] = {
@@ -1091,6 +1123,13 @@ static void cocoa_choose_tool(const char *name) {
             gTool = neuf;
             gSelected = NULL;
             [gView stopSprayTimer];
+            /* Le pointeur suit l'outil. Et un script qui avait posé son propre
+             * curseur — ou CACHÉ le pointeur — rend la main ici : choisir un
+             * outil est un geste de l'utilisateur, qui doit toujours pouvoir
+             * reprendre le contrôle de ce qu'il a sous le bras. */
+            gCursorScripte = NO;
+            if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
+            hcv_curseur_maj();
             /* La palette entoure l'outil courant : « choose brush tool »
              * depuis un script doit déplacer ce cadre, sinon la palette
              * désigne un outil dont on ne se sert plus. */
@@ -1824,11 +1863,6 @@ static int hcv_quelle_couleur(const char *nom)
     return 0;
 }
 
-/* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
- * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
- * que hcv_quelle_couleur a supprimé pour les couleurs. */
-static NSString *gCursorNom = @"arrow";
-
 static const char *cocoa_global_get(const char *name) {
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
@@ -2156,8 +2190,6 @@ static const char *cocoa_global_get(const char *name) {
     return NULL;
 }
 
-static BOOL gCursorHidden = NO;
-
 static void cocoa_global_set(const char *name, const char *value) {
     int vrai = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 
@@ -2241,6 +2273,12 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v < 1) v = 1;
         if (v > NUM_BRUSHES) v = NUM_BRUSHES;
         gBrush = v - 1;
+        /* Même raison qu'au clic dans la palette des brosses : le curseur du
+         * pinceau porte la forme de la brosse, il est périmé dès qu'elle
+         * change. « set the brush to 10 » doit changer ce qu'on a sous la
+         * souris, pas seulement ce qui sortira du trait. */
+        hcv_curseur_pinceau_perime();
+        hcv_curseur_maj();
         hcv_palette_maj(gBrushPanel);
         [gView setNeedsDisplay:YES];
         return;
@@ -2277,23 +2315,57 @@ static void cocoa_global_set(const char *name, const char *value) {
         /* On retient le curseur RÉELLEMENT POSÉ, pas le mot demandé : « set
          * the cursor to zorglub » donne la flèche, et « the cursor » doit
          * alors rendre « arrow ». Rendre « zorglub » décrirait un état qui
-         * n'existe pas. */
+         * n'existe pas.
+         *
+         * LE VOCABULAIRE ÉTAIT INCOMPLET. HyperCard connaît arrow, busy,
+         * cross, hand, iBeam, none, plus et watch ; il en manquait trois, et
+         * « set the cursor to cross » — la forme la plus courante dans les
+         * piles d'époque, juste avant un tracé — donnait la flèche.
+         *
+         * Le drapeau gCursorScripte dit aux zones de curseur de la vue de se
+         * taire : sans lui, le premier mouvement de souris au-dessus de la
+         * carte reposerait le curseur de l'outil, et la demande du script
+         * n'aurait vécu qu'un instant. */
         if (strcasecmp(value, "none") == 0) {
             if (!gCursorHidden) { [NSCursor hide]; gCursorHidden = YES; }
             gCursorNom = @"none";
+            gCursorScripte = YES;
         } else {
             if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
+            gCursorScripte = YES;
             if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0) {
-                [[NSCursor operationNotAllowedCursor] set];
+                /* PAS operationNotAllowedCursor : c'est le 🚫 d'interdiction.
+                 * Le script dit « je travaille », l'utilisateur lisait « c'est
+                 * interdit » — deux messages opposés. macOS n'expose aucune
+                 * montre ni aucun sablier public ; la flèche ne ment au moins
+                 * sur rien, et « the cursor » continue de répondre « watch »
+                 * pour que le script s'y retrouve. */
+                [[NSCursor arrowCursor] set];
                 gCursorNom = @"watch";
             } else if (strcasecmp(value, "ibeam") == 0) {
                 [[NSCursor IBeamCursor] set];
                 gCursorNom = @"ibeam";
+            } else if (strcasecmp(value, "cross") == 0 ||
+                       strcasecmp(value, "plus")  == 0) {
+                /* HyperCard distingue la croix fine (plus) de la grande
+                 * croix (cross). macOS n'a qu'un réticule, et inventer une
+                 * différence que le système ne rend pas tromperait plus
+                 * qu'elle n'aiderait : on rend donc le mot demandé. */
+                [[NSCursor crosshairCursor] set];
+                gCursorNom = (strcasecmp(value, "plus") == 0) ? @"plus" : @"cross";
+            } else if (strcasecmp(value, "hand") == 0) {
+                [[NSCursor pointingHandCursor] set];
+                gCursorNom = @"hand";
             } else {
                 [[NSCursor arrowCursor] set];
                 gCursorNom = @"arrow";
+                /* Un mot inconnu n'est pas une demande : on rend la flèche ET
+                 * la main aux zones de curseur, sinon « set the cursor to
+                 * zorglub » gèlerait le pointeur sur la flèche pour de bon. */
+                gCursorScripte = NO;
             }
         }
+        hcv_curseur_maj();
         return;
     }
 
@@ -2622,6 +2694,26 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (BOOL)acceptsFirstResponder { return YES; }
+
+/* ═══ Le curseur de l'outil, sur la carte et nulle part ailleurs ═══════
+ *
+ * AppKit demande ses zones de curseur à la vue, et les réapplique tout seul
+ * chaque fois que la souris y entre. C'est ce qui fait qu'on retrouve son
+ * crayon en revenant d'une palette, sans que personne ait à s'en occuper.
+ *
+ * Un « set the cursor » venu d'un script l'emporte : le pointeur reste alors
+ * celui qu'il a demandé, y compris au-dessus de la carte, jusqu'au prochain
+ * changement d'outil. Et quand le script a caché le pointeur, on ne pose
+ * aucune zone du tout — en poser une le ferait réapparaître au premier
+ * mouvement. */
+- (void)resetCursorRects
+{
+    [super resetCursorRects];
+    if (gCursorHidden) return;
+    if (gCursorScripte) return;
+    NSCursor *c = hcv_curseur_outil((int)gTool);
+    if (c) [self addCursorRect:[self visibleRect] cursor:c];
+}
 
 - (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p {
     if (!o->contents || !*o->contents) return;
