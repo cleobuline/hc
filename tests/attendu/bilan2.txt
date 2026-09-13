@@ -22,7 +22,7 @@
    marche   multipleLines                -> true 
    marche   autoSelect                   -> true 
    INERTE   titleWidth                   -> [ERR]    !! propriété inconnue : titleWidth titleWidth of me 
-   marche   partNumber                   -> partNumber of me 
+   marche   partNumber                   -> 1 
    INERTE   family                       -> [ERR]    !! propriété inconnue : family family of me 
 
 ── FONCTIONS : rendent-elles quelque chose ?

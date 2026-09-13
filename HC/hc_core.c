@@ -5118,7 +5118,8 @@ static int is_prop_name(const char *w, int len)
         "marked",
         "selectedtext", "selectedchunk",
         "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
-        "textsize", "textheight", "script", "text", "contents", "style", NULL
+        "textsize", "textheight", "script", "text", "contents", "style",
+        "partnumber", NULL
     };
     for (int i = 0; tab[i]; i++)
         if ((int)strlen(tab[i]) == len && ci_nequal(w, tab[i], len)) return 1;
@@ -5306,6 +5307,18 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
     if (ci_equal(prop, "text") || ci_equal(prop, "contents"))
                                    { snprintf(out, outlen, "%s", hc_field_text(o)); return 1; }
     if (ci_equal(prop, "style"))   { snprintf(out, outlen, "%s", o->style ? o->style : "rectangle"); return 1; }
+    /* partNumber : le rang parmi TOUTES les parts du propriétaire, boutons et
+     * champs mêlés — et non le rang parmi les boutons, ni parmi les champs.
+     * C'est ce que compte HyperCard, et ce que hc_part_number faisait déjà
+     * pour l'interface sans que le langage sache le demander.
+     *
+     * En lecture seule : le rang décrit une POSITION dans la liste des parts,
+     * il ne se pose pas, il se constate. Le changer voudrait dire déplacer
+     * l'objet dans cette liste, ce qui est le travail de « send farther » et
+     * de ses voisins. */
+    if (ci_equal(prop, "partnumber")) {
+        snprintf(out, outlen, "%d", hc_part_number(o)); return 1;
+    }
     return 0;
 }
 

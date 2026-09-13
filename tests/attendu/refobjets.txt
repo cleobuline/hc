@@ -1,0 +1,26 @@
+=== le champ par son rang ===
+── put card field 1                            [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   texte du premier
+── put card field 2                               texte du second
+── put field 1                                    texte du premier
+── put the text of card field 1                   texte du premier
+── put card field "un"                            texte du premier
+── put the name of card field 2                   field "deux"
+── put the name of bg field 1                     field "fond1"
+── put the name of card field 9                   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
+   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
+   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
+   name of card field 9
+
+=== the partNumber : le rang parmi TOUTES les parts ===
+── put the partNumber of card field "un"          1
+── put the partNumber of card field "deux"        2
+── put the partNumber of card button "B"          3
+── put the partNumber of card button "C"          4
+── put the partNumber of me                       3
+── put partNumber of me                           3
+── put the partNumber of bg field "fond1"         1
+── put the partNumber of this card                0
+
+=== titleWidth reste inconnue, et le dit à sa façon ===
+── put the titleWidth of me                       titleWidth of me
