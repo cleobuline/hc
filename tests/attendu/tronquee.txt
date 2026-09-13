@@ -1,0 +1,9 @@
+── la pile de référence
+   sauvegarde : faite
+   relecture  : faite
+   le script du bouton : 61 octets
+
+── la même, coupée
+   au milieu d'un bloc « script »       refusée (attendu)
+   au milieu d'un bloc « contents »     refusée (attendu)
+   juste après « end stack »           ouverte  (attendu)
