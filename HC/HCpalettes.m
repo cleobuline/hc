@@ -195,6 +195,36 @@ static const char *CUR_SPRAY[16] = {
     "........######..",
 };
 
+/* La montre de « set the cursor to watch ».
+ *
+ * Ce n'est pas un outil : c'est un script qui dit « je travaille, attends ».
+ * Elle était rendue par operationNotAllowedCursor — le 🚫 d'interdiction —
+ * puis par la flèche, faute de mieux : macOS n'expose ni montre ni sablier
+ * public, et les curseurs d'attente du système sont privés.
+ *
+ * Alors on la dessine, comme le Macintosh d'origine : le cadran, ses deux
+ * brins de bracelet, et les aiguilles sur midi et trois heures. Elles ne
+ * tournent pas — une montre animée demanderait une minuterie, et une montre
+ * arrêtée dit déjà ce qu'il faut. */
+static const char *CUR_WATCH[16] = {
+    ".....######.....",
+    ".....#@@@@#.....",
+    "...##########...",
+    "..#@@@@@@@@@@#..",
+    ".#@@@@@@@@@@@@#.",
+    ".#@@@@@#@@@@@@#.",
+    ".#@@@@@#@@@@@@#.",
+    ".#@@@@@#@@@@@@#.",
+    ".#@@@@@#####@@#.",
+    ".#@@@@@@@@@@@@#.",
+    ".#@@@@@@@@@@@@#.",
+    "..#@@@@@@@@@@#..",
+    "...##########...",
+    ".....#@@@@#.....",
+    ".....######.....",
+    "................",
+};
+
 /* Fabrique une image 16x16 depuis une planche ASCII. Le blanc et le noir sont
  * OPAQUES, le point est transparent : c'est ce qui donne la silhouette. */
 static NSImage *image_16_depuis_ascii(const char **plan)
@@ -294,6 +324,15 @@ static NSCursor *curseur_cache(NSCursor * __strong *ou,
 }
 
 void hcv_curseur_pinceau_perime(void) { gCurBrush = nil; gCurBrushPour = -1; }
+
+/* Le point chaud est le centre du cadran, là où les aiguilles se rejoignent :
+ * une montre n'est pas un outil de visée, mais un pointeur doit bien pointer
+ * quelque part, et le centre est le seul endroit qui ne surprenne personne. */
+static NSCursor *gCurWatch = nil;
+NSCursor *hcv_curseur_montre(void)
+{
+    return curseur_cache(&gCurWatch, CUR_WATCH, NSMakePoint(7, 8));
+}
 
 NSCursor *hcv_curseur_outil(int outil)
 {

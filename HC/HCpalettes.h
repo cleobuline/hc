@@ -40,6 +40,11 @@ NSCursor *hcv_curseur_outil(int outil);
 /* À appeler quand gBrush change : le curseur du pinceau est alors périmé. */
 void hcv_curseur_pinceau_perime(void);
 
+/* La montre de « set the cursor to watch ». macOS n'expose ni montre ni
+ * sablier public — les curseurs d'attente du système sont privés — alors on
+ * la dessine, comme le Macintosh d'origine. */
+NSCursor *hcv_curseur_montre(void);
+
 @interface BrushPalette : NSView
 @end
 

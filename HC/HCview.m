@@ -2335,12 +2335,14 @@ static void cocoa_global_set(const char *name, const char *value) {
             gCursorScripte = YES;
             if (strcasecmp(value, "watch") == 0 || strcasecmp(value, "busy") == 0) {
                 /* PAS operationNotAllowedCursor : c'est le 🚫 d'interdiction.
-                 * Le script dit « je travaille », l'utilisateur lisait « c'est
-                 * interdit » — deux messages opposés. macOS n'expose aucune
-                 * montre ni aucun sablier public ; la flèche ne ment au moins
-                 * sur rien, et « the cursor » continue de répondre « watch »
-                 * pour que le script s'y retrouve. */
-                [[NSCursor arrowCursor] set];
+                 * Le script disait « je travaille », l'utilisateur lisait
+                 * « c'est interdit » — deux messages opposés.
+                 *
+                 * macOS n'expose ni montre ni sablier public : ses curseurs
+                 * d'attente sont privés. La flèche, posée ici en attendant, ne
+                 * mentait sur rien mais ne disait rien non plus. On dessine
+                 * donc la montre, comme le Macintosh d'origine. */
+                [hcv_curseur_montre() set];
                 gCursorNom = @"watch";
             } else if (strcasecmp(value, "ibeam") == 0) {
                 [[NSCursor IBeamCursor] set];
