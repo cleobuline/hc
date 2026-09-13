@@ -1,0 +1,29 @@
+=== une pile de 700 cartes, au-delà de l'ancien plafond de 512 ===
+── print all cards
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── print card 1 to 600
+   [hôte] 600 carte(s), de « C001 » à « C600 »
+── print card 690 to 700
+   [hôte] 11 carte(s), de « C690 » à « C700 »
+
+=== les plages démesurées ne gèlent plus ===
+── print card 1 to 2147483647
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── print card 0 to 3
+   [hôte] 3 carte(s), de « C001 » à « C003 »
+── print card 900 to 1000
+   [ERR]    !! print : rien à imprimer
+── put 10^300 into n
+  print card 1 to n
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+
+=== les marquées, au-delà de 512 aussi ===
+── mark all cards
+  print marked cards
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── unmark all cards
+  mark card 5
+  mark card 600
+  print marked cards
+   [hôte] 2 carte(s), de « C005 » à « C600 »

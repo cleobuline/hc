@@ -3381,10 +3381,12 @@ static void chunk_indices(const char *src, ChunkType ct, int ordinal,
         int n = chunk_count(src, ct);
         *a = n > 0 ? (rand() % n) + 1 : 0;
     } else {
-        char v[128]; double d = 0;
-        eval_expr(ia, v, sizeof v); as_num(v, &d); *a = (int)d;
+        /* Bornés comme leurs jumeaux de la v3 : « (int)d » sur un double hors
+         * plage est un comportement indéfini. */
+        char v[128];
+        eval_expr(ia, v, sizeof v); *a = hct_vers_rang(v, NULL);
         if (ib && *skip_spaces(ib)) {
-            eval_expr(ib, v, sizeof v); as_num(v, &d); *b = (int)d;
+            eval_expr(ib, v, sizeof v); *b = hct_vers_rang(v, NULL);
         }
     }
 }
@@ -3905,7 +3907,7 @@ static Object *chunk_target(const char *ref, int *st, int *en)
 
     Object *fld;
     int base_off = 0;
-    char *base = arena_buf();
+    const char *base;
 
     int inner_st, inner_en;
     Object *inner = chunk_target(rest, &inner_st, &inner_en);
@@ -3914,11 +3916,20 @@ static Object *chunk_target(const char *ref, int *st, int *en)
         base_off = inner_st;
         int len = inner_en - inner_st;
         if (len < 0) len = 0;
-        snprintf(base, HC_VAL, "%.*s", len, hc_field_text(fld) + inner_st);
+        /* Copie inévitable : il faut un sous-texte terminé par zéro. Le
+         * morceau porte déjà sur un morceau, donc il est borné. */
+        char *tampon = arena_buf();
+        snprintf(tampon, HC_VAL, "%.*s", len, hc_field_text(fld) + inner_st);
+        base = tampon;
     } else {
         fld = resolve(rest);
         if (!fld || fld->type != OBJ_FIELD) return NULL;
-        snprintf(base, HC_VAL, "%s", hc_field_text(fld));
+        /* Sans copie, comme v3_chunk_cible : le tampon faisait 64 Ko et un
+         * champ peut porter bien davantage. C'est ce qui faisait échouer
+         * « the textStyle of word 150 » dans un champ de 200 000 caractères,
+         * alors que « the number of words » y comptait bien ses 200 mots. On
+         * ne fait que LIRE ce texte. */
+        base = hc_field_text(fld);
     }
 
     int a, b, s2, e2;
@@ -4299,7 +4310,11 @@ static int split_args(const char *s, char args[][HC_VAL], int maxargs)
             len = 0; args[n][0] = '\0';
             continue;
         }
-        if (len < 511) args[n][len++] = *p;
+        /* HC_VAL - 1, et non 511 : args[][] fait HC_VAL. Le 511 était un
+         * vestige d'un « char one[512] » remplacé par l'arène sans qu'on
+         * enlève l'ancien plafond, et il coupait une expression un peu longue
+         * au milieu. */
+        if (len < HC_VAL - 1) args[n][len++] = *p;
     }
     args[n][len] = '\0';
     if (*skip_spaces(args[n])) n++;
@@ -8122,6 +8137,13 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
             if (ctx->erreur) return 1;
             int hors;
+            /* Même exigence que partout ailleurs : un rang doit être un
+             * nombre, pas seulement quelque chose que strtod avale. */
+            if (!hct_est_nombre(b1)) {
+                hct_ctx_faute(ctx, c->fils[0],
+                              "un rang numérique est attendu ici");
+                return 1;
+            }
             n1 = hct_vers_rang(b1, &hors);
             if (hors) { hct_ctx_faute(ctx, c->fils[0],
                                       "rang de morceau hors limites");
@@ -8129,6 +8151,11 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
                 if (ctx->erreur) return 1;
+                if (!hct_est_nombre(b2)) {
+                    hct_ctx_faute(ctx, c->fils[1],
+                                  "un rang numérique est attendu ici");
+                    return 1;
+                }
                 n2 = hct_vers_rang(b2, &hors);
                 if (hors) { hct_ctx_faute(ctx, c->fils[1],
                                           "rang de morceau hors limites");
@@ -8556,7 +8583,10 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
             if (*a == '"') inq = !inq;
             else if (!inq && *a == '(') depth++;
             else if (!inq && *a == ')') depth--;
-            if (len < 511) one[len++] = *a;
+            /* Même vestige qu'à split_args : « one » vient de l'arène et fait
+             * HC_VAL. « send "traite " & uneTresLongueExpression to me »
+             * voyait son argument coupé à 511 caractères. */
+            if (len < HC_VAL - 1) one[len++] = *a;
             a++;
         }
         one[len] = '\0';
@@ -8623,7 +8653,7 @@ static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
 
     Object *fld;
     int base_off = 0;
-    char *texte = arena_buf();
+    const char *texte;
 
     int dedans_st = 0, dedans_en = 0;
     Object *dedans = v3_chunk_cible(ctx, base, &dedans_st, &dedans_en);
@@ -8633,13 +8663,27 @@ static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
         base_off = dedans_st;
         int len = dedans_en - dedans_st;
         if (len < 0) len = 0;
-        snprintf(texte, HC_VAL, "%.*s", len, hc_field_text(fld) + dedans_st);
+        /* Ici une copie est inévitable : on a besoin d'un SOUS-TEXTE terminé
+         * par zéro, et il n'existe nulle part. Le morceau porte déjà sur un
+         * morceau, donc il est borné par construction. */
+        char *tampon = arena_buf();
+        snprintf(tampon, HC_VAL, "%.*s", len, hc_field_text(fld) + dedans_st);
+        texte = tampon;
     } else {
         if (base->genre != HCTN_OBJET) return NULL;
         fld = hct_resout(ctx, base);
         if (ctx->erreur) return NULL;
         if (!fld || fld->type != OBJ_FIELD) return NULL;
-        snprintf(texte, HC_VAL, "%s", hc_field_text(fld));
+        /* Le TEXTE DU CHAMP DIRECTEMENT, sans copie.
+         *
+         * On le recopiait dans un tampon de HC_VAL — soixante-quatre kilo-
+         * octets — alors qu'un champ peut en porter bien davantage : mesuré,
+         * un champ de 200 000 caractères a bien ses 200 mots, mais
+         * « set the textStyle of word 150 » répondait « morceau hors
+         * limites » parce que le mot 150 tombe après le tampon. La copie
+         * n'apportait rien : on ne fait que LIRE ce texte pour compter des
+         * morceaux. */
+        texte = hc_field_text(fld);
     }
 
     ChunkType ct = v3_sorte_chunk(ch->sorte);
@@ -8647,17 +8691,39 @@ static Object *v3_chunk_cible(HctContexte *ctx, const HctNoeud *ch,
     if (ch->ordinal != HCT_ORD_AUCUN) {
         a = hct_rang_ordinal(ch->ordinal, chunk_count(texte, ct));
     } else {
-        char v[128]; double d = 0;
+        /* Les bornes passent par hct_vers_rang comme partout ailleurs : le
+         * « (int)d » qui se trouvait ici était le dernier de sa famille, et
+         * convertir un double hors plage est un comportement indéfini. Le
+         * rang doit aussi être un NOMBRE — strtod rend zéro pour « canard ». */
+        char v[128];
         int nbornes = ch->nfils - 1;
         if (nbornes >= 1) {
             v3_val_texte(ctx, ch->fils[0], v, sizeof v);
             if (ctx->erreur) return NULL;
-            as_num(v, &d); a = (int)d;
+            int hors = 0;
+            if (!hct_est_nombre(v)) {
+                hct_ctx_faute(ctx, ch->fils[0],
+                              "un rang numérique est attendu ici");
+                return NULL;
+            }
+            a = hct_vers_rang(v, &hors);
+            if (hors) { hct_ctx_faute(ctx, ch->fils[0],
+                                      "rang de morceau hors limites");
+                        return NULL; }
         }
         if (nbornes >= 2) {
             v3_val_texte(ctx, ch->fils[1], v, sizeof v);
             if (ctx->erreur) return NULL;
-            d = 0; as_num(v, &d); b = (int)d;
+            int hors = 0;
+            if (!hct_est_nombre(v)) {
+                hct_ctx_faute(ctx, ch->fils[1],
+                              "un rang numérique est attendu ici");
+                return NULL;
+            }
+            b = hct_vers_rang(v, &hors);
+            if (hors) { hct_ctx_faute(ctx, ch->fils[1],
+                                      "rang de morceau hors limites");
+                        return NULL; }
         }
     }
 
@@ -9206,17 +9272,29 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
 
-    Object *liste[512];
+    /* La liste est ALLOUÉE à la taille de la pile, et non fixée à 512.
+     *
+     * Le tableau fixe tronquait en silence : « print all cards » sur une pile
+     * de sept cents cartes en imprimait cinq cent douze, sans un mot. Une
+     * pile n'a jamais plus de cartes qu'elle n'a de parties, donc une
+     * allocation à cette taille suffit toujours et ne peut pas déborder. */
+    int cap = pile ? pile->nparts + 1 : 1;
+    Object **liste = calloc((size_t)cap, sizeof *liste);
+    if (!liste) {
+        set_result("mémoire insuffisante");
+        emit(HC_ERR, "   !! print : mémoire insuffisante");
+        g_atop = sauve; return 1;
+    }
     int np = 0;
 
     if (ci_word(a, "stack") || ci_word(a, "all")) {
         if (pile)
-            for (int i = 0; i < pile->nparts && np < 512; i++)
+            for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD) liste[np++] = pile->parts[i];
     }
     else if (ci_word(a, "marked")) {
         if (pile)
-            for (int i = 0; i < pile->nparts && np < 512; i++)
+            for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
                     liste[np++] = pile->parts[i];
     }
@@ -9236,9 +9314,26 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
                 memcpy(brut, r, (size_t)len); brut[len] = '\0';
                 eval_checked(brut, v1, HC_VAL);
                 eval_checked(skip_spaces(to + 2), v2, HC_VAL);
-                int d = atoi(v1), f = atoi(v2);
+                /* LES BORNES SONT RAMENÉES À LA PILE avant de boucler.
+                 *
+                 * « print card 1 to 2147483647 » sur une pile de dix cartes
+                 * GELAIT l'application : passé la dixième, nth_card rendait
+                 * NULL, np cessait d'augmenter, la garde « np < 512 » restait
+                 * donc vraie, et la boucle parcourait deux milliards d'indices
+                 * pour rien. Au bout, « i++ » sur INT_MAX est en plus un
+                 * débordement signé, soit un comportement indéfini.
+                 *
+                 * Une faute de frappe suffisait. On borne donc à ce qui
+                 * existe, et le compte de cartes est la seule borne juste. */
+                int hors1 = 0, hors2 = 0;
+                int d = hct_vers_rang(v1, &hors1);
+                int f = hct_vers_rang(v2, &hors2);
+                int total = card_count(pile);
+                if (hors1) d = 1;
+                if (hors2) f = total;
                 if (d < 1) d = 1;
-                for (int i = d; i <= f && np < 512; i++) {
+                if (f > total) f = total;
+                for (int i = d; i <= f && np < cap; i++) {
                     Object *c = nth_card(pile, i - 1);
                     if (c) liste[np++] = c;
                 }
@@ -9262,7 +9357,7 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     if (np == 0) {
         set_result("No cards to print");
         emit(HC_ERR, "   !! print : rien à imprimer");
-        g_atop = sauve; return 1;
+        free(liste); g_atop = sauve; return 1;
     }
     if (g_host && g_host->print_cards) {
         g_host->print_cards(liste, np);
@@ -9271,6 +9366,7 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         set_result("Can't print");
         emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
     }
+    free(liste);
     g_atop = sauve;
     return 1;
 }
@@ -9375,7 +9471,15 @@ static int v3_cmd_read(HctContexte *ctx, const HctNoeud *n)
     /* Dire la troncature plutôt que de couper en silence : un script qui
      * lit un fichier trop gros doit pouvoir s'en apercevoir, et découper
      * sa lecture en plusieurs « read ... for N ». */
-    if (no >= HC_VAL - 1) {
+    /* Une ERREUR de lecture ne se distingue pas d'une fin de fichier par le
+     * seul EOF de fgetc : les deux rendent la même valeur. Sans ferror, un
+     * fichier illisible à mi-parcours rendait « End of file » ou même la
+     * chaîne vide comme succès, et le script prenait un fichier tronqué pour
+     * un fichier complet. */
+    if (ferror(f)) {
+        set_result("Read error");
+        emit(HC_ERR, "   !! read : erreur de lecture après %d octets", no);
+    } else if (no >= HC_VAL - 1) {
         set_result("Value too large");
         emit(HC_ERR, "   !! read : texte tronqué à %d octets", HC_VAL - 1);
     } else {
@@ -9433,9 +9537,34 @@ static int v3_cmd_write(HctContexte *ctx, const HctNoeud *n)
         }
     }
 
-    fwrite(txt, 1, strlen(txt), f);
-    fflush(f);      /* pour qu'un autre programme voie le texte tout de suite */
-    set_result("");
+    /* L'ÉCRITURE PEUT ÉCHOUER, ET IL FAUT LE DIRE.
+     *
+     * fwrite rend le nombre d'éléments écrits et fflush rend EOF sur erreur —
+     * ni l'un ni l'autre n'était regardé. Disque plein, quota dépassé, erreur
+     * d'entrée-sortie : le fichier était tronqué et « the result » restait
+     * vide, donc le script croyait son journal ou ses données en sécurité.
+     *
+     * C'est la même exigence que pour l'enregistrement d'une pile, qui la
+     * respecte depuis longtemps ; « write to file » avait été oublié. */
+    size_t lt = strlen(txt);
+    size_t ecrit = fwrite(txt, 1, lt, f);
+    int rince = fflush(f);   /* pour qu'un autre programme voie le texte tout de suite */
+
+    if (ecrit != lt) {
+        set_result("Disk full or write error");
+        emit(HC_ERR, "   !! write : écriture incomplète, %zu octets sur %zu",
+             ecrit, lt);
+    } else if (rince != 0 || ferror(f)) {
+        /* fwrite a tout pris — dans son TAMPON. C'est le vidage qui a buté
+         * sur le disque. Dire « incomplète, 37 sur 37 » se contredirait ;
+         * le nombre d'octets réellement parvenus au fichier n'est pas
+         * connaissable ici, et le dire est plus honnête que l'inventer. */
+        set_result("Disk full or write error");
+        emit(HC_ERR, "   !! write : le disque a refusé l'écriture "
+                     "(les %zu octets ne sont pas tous arrivés)", lt);
+    } else {
+        set_result("");
+    }
     g_atop = sauve;
     return 1;
 }
@@ -12381,7 +12510,7 @@ static void exec_line_body(Object *me, const char *line)
                 if (*a == '"') inq = !inq;
                 else if (!inq && *a == '(') depth++;
                 else if (!inq && *a == ')') depth--;
-                if (len < 511) one[len++] = *a;
+                if (len < HC_VAL - 1) one[len++] = *a;
                 a++;
             }
             one[len] = '\0';
@@ -13548,7 +13677,7 @@ static void exec_line_body(Object *me, const char *line)
                         if (*a == '"') inq = !inq;
                         else if (!inq && *a == '(') depth++;
                         else if (!inq && *a == ')') depth--;
-                        if (len < 511) one[len++] = *a;
+                        if (len < HC_VAL - 1) one[len++] = *a;
                         a++;
                     }
                     one[len] = '\0';

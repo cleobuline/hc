@@ -136,6 +136,15 @@ int hct_vers_bool(const char *s, int *valide)
     int n = 0;
     while (s[n] && s[n] != ' ' && s[n] != '\t') n++;
 
+    /* Et RIEN d'autre derrière que des blancs.
+     *
+     * On ne regardait que le premier mot : « true patate » était donc vrai,
+     * et « "true patate" is a boolean » répondait true — alors que le contrat
+     * dit que seuls true et false sont acceptés. Un test sur une variable mal
+     * remplie passait ainsi pour une réponse. */
+    const char *fin = saute_blancs(s + n);
+    if (*fin) { if (valide) *valide = 0; return 0; }
+
     if (n == 4 && !strncasecmp(s, "true", 4))  return 1;
     if (n == 5 && !strncasecmp(s, "false", 5)) return 0;
 
@@ -162,8 +171,26 @@ int hct_ecrit_nombre(double x, char *out, int taille)
         return snprintf(out, (size_t)taille, "%lld", e);
     }
 
+    /* LA FORME DÉCIMALE NE TIENT PAS TOUJOURS.
+     *
+     * « put 1e100 + 0 » demande cent un chiffres ; le tampon en fait
+     * soixante-quatre. L'ancien code rendait alors « taille - 1 » et laissait
+     * les soixante-deux premiers chiffres, c'est-à-dire un nombre
+     * COMPLÈTEMENT FAUX — 1e62 au lieu de 1e100 — sans un mot.
+     *
+     * snprintf dit ce qu'il AURAIT écrit : quand ça ne tient pas, on repasse
+     * en notation scientifique, qui tient toujours. Le commentaire en tête
+     * annonçait d'ailleurs « %.6g » depuis le début.
+     *
+     * La bascule se décide sur la PLACE et non sur une magnitude choisie à
+     * la main : « put 1e16 + 0 » continue donc de rendre ses dix-sept
+     * chiffres en clair, comme avant, parce qu'ils tiennent. */
     int n = snprintf(out, (size_t)taille, "%.6f", x);
-    if (n < 0 || n >= taille) return n < 0 ? 0 : taille - 1;
+    if (n < 0) { out[0] = 0; return 0; }
+    if (n >= taille) {
+        n = snprintf(out, (size_t)taille, "%g", x);
+        return (n < 0) ? 0 : (n >= taille ? taille - 1 : n);
+    }
 
     /* Retirer les zéros de fin, puis le point s'il ne reste que lui. */
     if (strchr(out, '.')) {
@@ -235,9 +262,17 @@ int hct_ecrit_nombre_format(double x, char *out, int taille)
     if (x > 1e308 || x < -1e308)
         return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
 
+    /* Même garde qu'au format par défaut : un gabarit ne peut pas mettre en
+     * forme ce qui ne tient pas dans le tampon, et rendre les premiers
+     * chiffres d'un nombre en donne un autre. Mieux vaut la notation
+     * scientifique, hors gabarit mais juste. */
     char brut[64];
     int n = snprintf(brut, sizeof brut, "%.*f", dmax, x);
     if (n < 0) { if (taille) out[0] = 0; return 0; }
+    if (n >= (int)sizeof brut) {
+        n = snprintf(out, (size_t)taille, "%g", x);
+        return (n < 0) ? 0 : (n >= taille ? taille - 1 : n);
+    }
 
     /* Retirer les décimales facultatives inutilisées, jamais les imposées. */
     char *pt = strchr(brut, '.');

@@ -1,0 +1,29 @@
+=== ce qui TIENT en décimal ne change pas ===
+── put 1e14 + 0                    [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   100000000000000
+── put 1e15 + 0                       1000000000000000
+── put 1e16 + 0                       10000000000000000
+── put 1e20 + 0                       100000000000000000000
+── put 3 + 4                          7
+── put 1.5 + 0.25                     1.75
+
+=== ce qui ne tient pas bascule en scientifique ===
+── put 1e100 + 0                      1e+100
+── put 2.5e100 * 2                    5e+100
+── put 1e308 + 0                      1e+308
+── put 0-1e100 + 0                    -1e+100
+
+=== l'infini reste l'infini ===
+── put 1e309 + 0                      INF
+
+=== les très petits, au format par défaut ===
+── put 1e-10 + 0                      0
+── put 0.25 + 0                       0.25
+
+=== booléens : rien d'autre derrière ===
+── put "true" is a boolean            true
+── put "false" is a boolean           true
+── put "  true  " is a boolean        true
+── put "true patate" is a boolean     false
+── put "patate" is a boolean          false
+── if "true" then put "pris"          pris
