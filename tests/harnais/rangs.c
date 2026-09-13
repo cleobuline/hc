@@ -48,6 +48,26 @@ int main(void){
   essai("numToChar normal",   "put numToChar(65)");
   essai("numToChar démesuré", "put 10^300 into n\n  put \"[\" & numToChar(n) & \"]\"");
 
+  /* UN RANG DOIT ÊTRE UN NOMBRE, pas seulement quelque chose que strtod
+   * avale. La lecture le vérifiait ; l'écriture et la suppression non, et
+   * strtod("canard") rend zéro. « put "X" into item n of x » avec n mal
+   * orthographié AJOUTAIT un item : une faute de frappe corrompait les
+   * données au lieu d'échouer. */
+  printf("── rang non numérique : lecture, écriture, suppression\n");
+  essai("lecture",     "put \"a,b,c\" into x\n  put \"canard\" into n\n"
+                       "  put item n of x & \"|\"");
+  essai("écriture",    "put \"a,b,c\" into x\n  put \"canard\" into n\n"
+                       "  put \"X\" into item n of x\n  put x");
+  essai("suppression", "put \"a,b,c\" into x\n  put \"canard\" into n\n"
+                       "  delete item n of x\n  put x");
+  essai("char, écriture","put \"abc\" into x\n  put \"canard\" into n\n"
+                       "  put \"Z\" into char n of x\n  put x");
+  essai("vide",        "put \"a,b,c\" into x\n  put \"\" into n\n"
+                       "  put \"X\" into item n of x\n  put x");
+  essai("un vrai rang marche toujours",
+                       "put \"a,b,c\" into x\n  put 2 into n\n"
+                       "  put \"X\" into item n of x\n  put x");
+
   /* param(n) : hors bornes vaut « pas de tel paramètre ». */
   essai("param démesuré", "put 10^300 into n\n  put \"[\" & param(n) & \"]\"");
   hc_free(st);return 0;}

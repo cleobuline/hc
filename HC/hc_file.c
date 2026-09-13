@@ -398,23 +398,43 @@ int hc_save(Object *stack, const char *path)
  * ligne l'exige, et se libère à la fin de la lecture. */
 typedef struct { char *p; size_t cap; } Ligne;
 
+/* TROIS RÉPONSES, et non deux : une ligne, une fin PROPRE, ou un échec.
+ *
+ * Cette fonction rendait 0 aussi bien à la fin du fichier qu'en cas d'échec
+ * de realloc, et ne regardait pas ferror après fgets. Une pénurie de mémoire
+ * ou une erreur d'entrée-sortie au milieu du fichier se lisait donc comme une
+ * fin de fichier : hc_load s'arrêtait là, rendait une pile AMPUTÉE, et
+ * l'appelant n'avait aucun moyen de le savoir.
+ *
+ * Le pire enchaînement est celui-là : chargement partiel, l'utilisateur ne
+ * voit pas tout de suite ce qui manque, il enregistre, et l'original est
+ * remplacé par la version incomplète.
+ *
+ *    1  une ligne est disponible
+ *    0  fin de fichier propre
+ *   -1  échec : mémoire ou lecture */
+#define LIGNE_ECHEC (-1)
 static int ligne_lit(Ligne *l, FILE *f)
 {
     if (!l->p) {
         l->cap = 512;
         l->p = malloc(l->cap);
-        if (!l->p) { l->cap = 0; return 0; }
+        if (!l->p) { l->cap = 0; return LIGNE_ECHEC; }
     }
     size_t used = 0;
     for (;;) {
         if (used + 1 >= l->cap) {
             size_t nc = l->cap * 2;
             char *np = realloc(l->p, nc);
-            if (!np) return 0;          /* l->p reste valide et libérable */
+            if (!np) return LIGNE_ECHEC;   /* l->p reste valide et libérable */
             l->p = np; l->cap = nc;
         }
-        if (!fgets(l->p + used, (int)(l->cap - used), f))
+        if (!fgets(l->p + used, (int)(l->cap - used), f)) {
+            /* fgets rend NULL pour la fin comme pour l'erreur : c'est ferror
+             * qui les sépare, et lui seul. */
+            if (ferror(f)) return LIGNE_ECHEC;
             return used > 0;            /* fin de fichier : ce qu'on tient */
+        }
         used += strlen(l->p + used);
         if (used && l->p[used - 1] == '\n') return 1;   /* ligne complète */
         if (feof(f)) return used > 0;                   /* dernière ligne */
@@ -619,7 +639,8 @@ Object *hc_load(const char *path)
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
 
-    while (ligne_lit(&lg, f)) {
+    int lecture = 0;
+    while ((lecture = ligne_lit(&lg, f)) == 1) {
         char *line = lg.p;
         rtrim(line);
         char *s = ltrim(line);
@@ -900,8 +921,13 @@ Object *hc_load(const char *path)
     /* Une seule allocation manquée pendant la lecture suffit à refuser toute
      * la pile. C'est brutal, et c'est voulu : rendre une pile où un script ou
      * le texte d'un champ a silencieusement perdu sa fin, c'est offrir à
-     * l'utilisateur de l'enregistrer par-dessus l'original. */
-    if (acc.manque) {
+     * l'utilisateur de l'enregistrer par-dessus l'original.
+     *
+     * Même verdict quand c'est le LECTEUR DE LIGNES qui a buté : il rend
+     * maintenant -1 pour un échec, là où il rendait 0 comme pour une fin de
+     * fichier ordinaire. La boucle s'arrêtait alors au même endroit dans les
+     * deux cas, et la pile tronquée passait pour complète. */
+    if (acc.manque || lecture == LIGNE_ECHEC) {
         if (stack) hc_free(stack);
         return NULL;
     }

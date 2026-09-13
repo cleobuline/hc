@@ -318,6 +318,14 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
             if (cible->nfils >= 2) {
                 HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
                 int hors;
+                /* Le rang doit être un NOMBRE, et pas seulement convertible.
+                 * hct_vers_rang passe par strtod, qui rend zéro pour
+                 * « canard » : « put "X" into item n of x » avec n mal
+                 * orthographié AJOUTAIT un item au lieu d'échouer. La
+                 * lecture refusait déjà ; l'écriture corrompait. */
+                if (!hct_est_nombre(a.txt))
+                    hct_ctx_faute(&x->ctx, cible->fils[0],
+                                  "un rang numérique est attendu ici");
                 n1 = hct_vers_rang(a.txt, &hors);
                 if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
                                         "rang de morceau hors limites");
@@ -326,6 +334,9 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
             if (cible->nfils >= 3) {
                 HctValeur b = hct_evalue(&x->ctx, cible->fils[1]);
                 int hors;
+                if (!hct_est_nombre(b.txt))
+                    hct_ctx_faute(&x->ctx, cible->fils[1],
+                                  "un rang numérique est attendu ici");
                 n2 = hct_vers_rang(b.txt, &hors);
                 if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                         "rang de morceau hors limites");
@@ -453,6 +464,12 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
         if (cible->nfils >= 2) {
             HctValeur a = hct_evalue(&x->ctx, cible->fils[0]);
             int hors;
+            /* Même exigence qu'à l'écriture : « delete item n of x » avec un
+             * n non numérique effaçait l'item zéro, c'est-à-dire rien, en
+             * annonçant que tout s'était bien passé. */
+            if (!hct_est_nombre(a.txt))
+                hct_ctx_faute(&x->ctx, cible->fils[0],
+                              "un rang numérique est attendu ici");
             n1 = hct_vers_rang(a.txt, &hors);
             if (hors) hct_ctx_faute(&x->ctx, cible->fils[0],
                                     "rang de morceau hors limites");
@@ -461,6 +478,9 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
         if (cible->nfils >= 3) {
             HctValeur b = hct_evalue(&x->ctx, cible->fils[1]);
             int hors;
+            if (!hct_est_nombre(b.txt))
+                hct_ctx_faute(&x->ctx, cible->fils[1],
+                              "un rang numérique est attendu ici");
             n2 = hct_vers_rang(b.txt, &hors);
             if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                     "rang de morceau hors limites");

@@ -27,6 +27,10 @@
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
 ── écrire puis relire en entier
    [abcdefghij]
 
@@ -50,4 +54,8 @@
 
 ── fichier non ouvert
    [ERR]    !! read : fichier non ouvert : /tmp/hc_absent.txt
+
+── disque plein pendant « write »
+   [ERR]    !! write : le disque a refusé l'écriture (les 15 octets ne sont pas tous arrivés)
+   the result = [Disk full or write error]
 

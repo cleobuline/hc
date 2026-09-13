@@ -62,4 +62,38 @@ int main(void){
     "  put \"[\" & it & \"]\"\n"
     "  close file nomf");
   essai("fichier non ouvert","read from file \"/tmp/hc_absent.txt\" for 3");
+
+  /* UNE ÉCRITURE QUI ÉCHOUE DOIT LE DIRE.
+   *
+   * fwrite rend le nombre d'éléments écrits et fflush rend EOF sur erreur —
+   * ni l'un ni l'autre n'était regardé. Disque plein, quota, erreur d'E/S :
+   * le fichier était tronqué et « the result » restait vide, donc le script
+   * croyait son journal en sécurité.
+   *
+   * La limite est posée JUSTE AUTOUR de l'écriture puis relevée : elle vaut
+   * pour tous les fichiers du processus, y compris la sortie de ce harnais,
+   * que le lanceur redirige. La laisser en place ferait disparaître tout ce
+   * qui suit — ce qui m'est arrivé au premier essai. */
+  /* UNE ÉCRITURE QUI ÉCHOUE DOIT LE DIRE.
+   *
+   * fwrite rend le nombre d'éléments écrits et fflush rend EOF sur erreur —
+   * ni l'un ni l'autre n'était regardé. Disque plein, quota, erreur d'E/S :
+   * le fichier était tronqué et « the result » restait vide, donc le script
+   * croyait son journal en sécurité.
+   *
+   * On écrit dans /dev/full, qui refuse toute écriture avec ENOSPC. C'est
+   * exactement le disque plein, sans toucher au processus.
+   *
+   * J'ai d'abord essayé RLIMIT_FSIZE, comme le harnais « sauve ». Mauvaise
+   * idée ici : la limite vaut pour TOUS les fichiers du processus, donc aussi
+   * pour la sortie de ce harnais, que le lanceur redirige. Elle vidait le
+   * tampon de stdout en pleine limite, perdait vingt-quatre lignes écrites
+   * bien avant, et posait sur le flux un drapeau d'erreur qui survivait au
+   * relèvement. /dev/full ne touche à rien d'autre qu'au fichier visé. */
+  essai("disque plein pendant « write »",
+    "open file \"/dev/full\"\n"
+    "  write \"quelques octets\" to file \"/dev/full\"\n"
+    "  put \"the result = [\" & the result & \"]\"\n"
+    "  close file \"/dev/full\"");
+
   hc_free(st);return 0;}
