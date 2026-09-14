@@ -1,6 +1,6 @@
-1. sauvegarde normale        : code 0, 40233 octets
+1. sauvegarde normale        : code 0, 40248 octets
 2. aucun temporaire resté    : oui
 3. disque plein en cours      : code -1 (doit être -1)
 3b. ni après l'échec         : oui
-4. l'ancienne pile            : 40233 octets (était 40233) -> INTACTE
+4. l'ancienne pile            : 40248 octets (était 40248) -> INTACTE
 5. et elle se relit           : oui

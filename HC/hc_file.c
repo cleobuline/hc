@@ -366,6 +366,18 @@ int hc_save(Object *stack, const char *path)
         if (c->type != OBJ_CARD) continue;
         fprintf(f, "card "); put_quoted(f, c->name);
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
+        /* L'ID DU FOND, ET POURQUOI LE NOM NE SUFFIT PAS.
+         *
+         * Rien n'interdit deux fonds homonymes, et la lecture prenait le
+         * PREMIER de ce nom : deux cartes attachées à deux fonds différents
+         * mais de même nom se retrouvaient toutes deux sur le premier après un
+         * aller-retour. Mesuré : la seconde carte perdait son fond ET tout
+         * son contenu de fond, sans un mot.
+         *
+         * Le nom RESTE écrit : un binaire plus ancien continue de lire ces
+         * fichiers, et il retrouvera le bon fond dans le cas courant où les
+         * noms sont distincts. L'id ne fait que lever l'ambiguïté. */
+        if (c->bg) fprintf(f, " backgroundid %d", c->bg->id);
         fprintf(f, "\n");
         fprintf(f, "id %d\n", c->id);
         if (c->marked)      fprintf(f, "marked\n");
@@ -693,6 +705,34 @@ static int hexval(int c)
     return -1;
 }
 
+/* Le fond d'identifiant `id`, ou NULL. L'id est unique par construction :
+ * hc_set_id garde le compteur au-dessus de tout ce qui a été lu. */
+static Object *find_bg_id(Object *stack, int id)
+{
+    if (id <= 0) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *o = stack->parts[i];
+        if (o->type == OBJ_BACKGROUND && o->id == id) return o;
+    }
+    return NULL;
+}
+
+/* Un mot-clé suivi d'un nombre, cherché HORS des guillemets.
+ *
+ * Une carte peut s'appeler « backgroundid 7 » : chercher le mot dans la ligne
+ * entière trouverait celui-là. On repart donc du dernier guillemet, après quoi
+ * il ne reste que les mots-clés. Rend -1 si le mot n'y est pas. */
+static int mot_nombre_apres_guillemets(const char *ligne, const char *mot)
+{
+    const char *fin = strrchr(ligne, '"');
+    const char *p = strstr(fin ? fin : ligne, mot);
+    if (!p) return -1;
+    p += strlen(mot);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p < '0' || *p > '9') return -1;
+    return atoi(p);
+}
+
 static Object *find_bg(Object *stack, const char *name)
 {
     for (int i = 0; i < stack->nparts; i++) {
@@ -909,7 +949,13 @@ Object *hc_load(const char *path)
         if (strncmp(s, "card ", 5) == 0) {
             get_quoted(s, 0, nm, sizeof nm);
             Object *bg = NULL;
-            if (get_quoted(s, 1, nm2, sizeof nm2)) bg = find_bg(stack, nm2);
+            /* L'ID D'ABORD : il est sans ambiguïté. Le nom ne sert plus que de
+             * repli, pour les fichiers écrits avant que l'id soit noté — et
+             * pour un fichier dont l'id désignerait un fond absent, où le nom
+             * reste la meilleure indication disponible. */
+            int bgid = mot_nombre_apres_guillemets(s, "backgroundid");
+            if (bgid > 0) bg = find_bg_id(stack, bgid);
+            if (!bg && get_quoted(s, 1, nm2, sizeof nm2)) bg = find_bg(stack, nm2);
             owner = hc_new_card(stack, bg, nm);
             target = owner;
             last_bgtext = -1;
