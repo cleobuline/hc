@@ -177,8 +177,46 @@ static int dans_rect(const char *pt, const char *rect)
     return p[0] >= r[0] && p[0] <= r[2] && p[1] >= r[1] && p[1] <= r[3];
 }
 
+/* Le calendrier, POUR LA BIBLIOTHÈQUE SEULE.
+ *
+ * Ce qui suit n'est pas un second analyseur de dates : c'est le sous-ensemble
+ * que hct_eval sait vérifier sans rien connaître du monde — la forme
+ * « m/j/a », celle que HyperTalk écrit. Dès qu'un hôte est branché, c'est LUI
+ * qui répond (voir plus bas), avec la définition dont `convert` se sert, et ce
+ * chemin-ci ne sert plus. Il existe pour que la bibliothèque employée seule
+ * réponde juste plutôt que de répondre toujours non.
+ *
+ * Ce qu'il corrige dans les deux cas : « sscanf(v, "%d/%d/%d") == 3 » ne
+ * regardait ni la QUEUE de la chaîne — « 12/25/96patate » passait — ni le
+ * CALENDRIER — « 99/99/99 » passait aussi, alors qu'il n'y a pas de 99e mois. */
+static int date_courte(const char *v)
+{
+    if (!v) return 0;
+    static const int t[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    int n[3], i = 0;
+    const char *p = v;
+    while (*p == ' ' || *p == '\t') p++;
+    for (i = 0; i < 3; i++) {
+        if (!isdigit((unsigned char)*p)) return 0;
+        int val = 0, chiffres = 0;
+        while (isdigit((unsigned char)*p) && chiffres < 9) { val = val*10 + (*p++ - '0'); chiffres++; }
+        if (isdigit((unsigned char)*p)) return 0;      /* un nombre démesuré */
+        n[i] = val;
+        if (i < 2) { if (*p != '/') return 0; p++; }
+    }
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p) return 0;                                   /* « 12/25/96patate » */
+
+    int mois = n[0], jour = n[1], an = n[2];
+    if (an < 100) an += (an < 70) ? 2000 : 1900;        /* comme le Macintosh */
+    if (mois < 1 || mois > 12) return 0;
+    int max = t[mois - 1];
+    if (mois == 2 && an % 4 == 0 && (an % 100 != 0 || an % 400 == 0)) max = 29;
+    return jour >= 1 && jour <= max;
+}
+
 /* « x is a number », « is an integer », « is a rect »… */
-static int est_de_type(const char *v, const char *type)
+static int est_de_type(HctContexte *ctx, const char *v, const char *type)
 {
     if (!strcasecmp(type, "number"))  return hct_est_nombre(v);
     if (!strcasecmp(type, "integer")) {
@@ -198,8 +236,25 @@ static int est_de_type(const char *v, const char *type)
         return sscanf(v, "%lf,%lf,%lf,%lf%c", &a, &b, &c, &d, &reste) == 4;
     }
     if (!strcasecmp(type, "date")) {
-        int j, m, an;
-        return sscanf(v, "%d/%d/%d", &m, &j, &an) == 3;
+        /* L'hôte a la définition complète — noms de mois, dateItems, secondes
+         * du Macintosh — et c'est la MÊME que celle de `convert`. Sans cela
+         * « if d is a date then convert d to seconds » refusait des dates que
+         * convert accepte : deux définitions qui se contredisent.
+         *
+         * Le nom du rappel contient des espaces : aucun identifiant HyperTalk
+         * n'en contient, un script ne peut donc pas le capter. */
+        if (ctx && ctx->hote.fonction) {
+            HctValeur arg = hct_val_texte(v ? v : ""), out;
+            int servi = ctx->hote.fonction(ctx->hote.donnees, "is a date",
+                                           &arg, 1, &out);
+            hct_val_libere(&arg);
+            if (servi) {
+                int vrai = out.txt && !strcmp(out.txt, "true");
+                hct_val_libere(&out);
+                return vrai;
+            }
+        }
+        return date_courte(v);
     }
     return 0;
 }
@@ -254,7 +309,7 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         memcpy(type, n->fils[1]->jeton.deb, (size_t)l);
         type[l] = '\0';
 
-        int vrai = est_de_type(g.txt, type);
+        int vrai = est_de_type(ctx, g.txt, type);
         hct_val_libere(&g);
         return hct_val_bool(!strcmp(op, "is a") ? vrai : !vrai);
     }
@@ -284,8 +339,8 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
     else if (!strcmp(op, "is not in"))  r = hct_val_bool(!contient(b.txt, a.txt));
     else if (!strcmp(op, "is within"))  r = hct_val_bool(dans_rect(a.txt, b.txt));
     else if (!strcmp(op, "is not within")) r = hct_val_bool(!dans_rect(a.txt, b.txt));
-    else if (!strcmp(op, "is a"))       r = hct_val_bool(est_de_type(a.txt, b.txt));
-    else if (!strcmp(op, "is not a"))   r = hct_val_bool(!est_de_type(a.txt, b.txt));
+    else if (!strcmp(op, "is a"))       r = hct_val_bool(est_de_type(ctx, a.txt, b.txt));
+    else if (!strcmp(op, "is not a"))   r = hct_val_bool(!est_de_type(ctx, a.txt, b.txt));
     else {
         hct_ctx_faute(ctx, n, "opérateur inconnu");
         r = hct_val_vide();

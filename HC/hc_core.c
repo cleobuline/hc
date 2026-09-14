@@ -4495,9 +4495,33 @@ static int name_index(const char *w, const char **tab, int n)
  * toujours séparés par des virgules, la date courte toujours par des
  * barres obliques. « 2026,8,7 » est donc une année-mois-jour, tandis que
  * « 8/7/26 » est un mois-jour-année. */
-static int parse_datetime(const char *s, struct tm *tm)
+static int jours_du_mois(int mon /* 0-11 */, int year)
 {
+    static const int t[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    if (mon < 0 || mon > 11) return 0;
+    if (mon == 1)
+        return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) ? 29 : 28;
+    return t[mon];
+}
+
+/* La variante qui dit AUSSI si la chaîne était une date EXACTE.
+ *
+ * Les deux questions sont différentes et le restent :
+ *
+ *   « interprète ceci du mieux possible »  — ce que fait `convert`, qui doit
+ *     accepter un 31 février et le normaliser en 3 mars ; c'est même tout
+ *     l'intérêt de « add 1 to item 3 of d » suivi d'un convert.
+ *   « ceci EST-il une date ? »             — ce que demande `is a date`, qui
+ *     doit répondre non à 99/99/99.
+ *
+ * `strict` porte la seconde. Il vaut 1 seulement si rien d'incompris n'a été
+ * rencontré ET si les composantes existent au calendrier — AVANT que mktime
+ * ne les normalise, car après il est trop tard : tout devient valide. */
+static int parse_datetime_ex(const char *s, struct tm *tm, int *strict)
+{
+    if (strict) *strict = 0;
     if (!s) return 0;
+    int inconnu = 0;   /* un mot qui n'est ni AM/PM, ni un mois, ni un jour */
 
     /* Les nombres sont accumulés en LONG LONG, pas en int.
      *
@@ -4554,6 +4578,7 @@ static int parse_datetime(const char *s, struct tm *tm)
                 int m = name_index(w, k_month, 12);
                 if (m >= 0) { mon = m; sawname = 1; }
                 else if (name_index(w, k_day, 7) >= 0) sawname = 1;  /* jour : ignoré */
+                else inconnu = 1;     /* « 12/25/96patate » : ce n'est pas une date */
             }
         }
     }
@@ -4567,6 +4592,7 @@ static int parse_datetime(const char *s, struct tm *tm)
         struct tm *lt = localtime(&t);
         if (!lt) return 0;
         *tm = *lt;
+        if (strict) *strict = 1;
         return 1;
     }
 
@@ -4609,6 +4635,20 @@ static int parse_datetime(const char *s, struct tm *tm)
     if (meridian == 2 && hh < 12) hh += 12;              /* 3 PM → 15 */
     if (meridian == 1 && hh == 12) hh = 0;               /* 12 AM → 0 */
 
+    /* Le verdict strict se rend ICI, sur les composantes telles qu'elles ont
+     * été lues. Après mktime, un 99/99/99 est devenu une date parfaitement
+     * valide de 2007 et plus rien ne permet de dire qu'il n'en était pas une. */
+    if (strict)
+        *strict = !inconnu
+               /* Une HEURE seule n'est pas une date, même si le code a comblé
+                * le jour avec celui d'aujourd'hui pour pouvoir la convertir. */
+               && (sawslash || sawname || nn >= 3)
+               && mon >= 0 && mon <= 11
+               && day >= 1 && day <= jours_du_mois(mon, year)
+               && hh >= 0 && hh <= 23
+               && mi >= 0 && mi <= 59
+               && ss >= 0 && ss <= 59;
+
     tm->tm_year = year - 1900;
     tm->tm_mon  = mon;
     tm->tm_mday = day;
@@ -4621,6 +4661,25 @@ static int parse_datetime(const char *s, struct tm *tm)
      * un 31 février devient un 3 mars, et le jour de la semaine suit. */
     if (mktime(tm) == (time_t)-1) return 0;
     return 1;
+}
+
+static int parse_datetime(const char *s, struct tm *tm)
+{
+    return parse_datetime_ex(s, tm, NULL);
+}
+
+/* « x is a date ». Une SEULE définition de ce qu'est une date : celle que
+ * `convert` emploie, prise dans son acception stricte. Sans cela les deux se
+ * contredisaient — la garde classique
+ *
+ *     if d is a date then convert d to seconds
+ *
+ * refusait « August 7, 2026 », que convert accepte très bien. */
+int hc_est_date(const char *s)
+{
+    struct tm tm; int strict = 0;
+    if (!parse_datetime_ex(s, &tm, &strict)) return 0;
+    return strict;
 }
 
 /* Nom de format → constante DF_*. Renvoie DF_NONE si le mot est inconnu. */
@@ -7504,6 +7563,16 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         { g_v1_porte = sauve_porte; } return 1;
     }
 
+    /* « x is a date » : la bibliothèque d'expressions ne connaît pas le
+     * calendrier, et il n'est pas question d'y recopier l'analyseur de dates —
+     * deux définitions de ce qu'est une date finiraient par diverger, comme
+     * elles avaient déjà divergé. Elle nous pose donc la question par ce
+     * rappel, sous un nom qui ne peut pas être écrit dans un script : il
+     * contient des espaces, aucun identifiant HyperTalk n'en contient. */
+    if (nargs == 1 && strcmp(nom, "is a date") == 0) {
+        *out = hct_val_bool(hc_est_date(args[0].txt));
+        { g_v1_porte = sauve_porte; } return 1;
+    }
 
     /* Les fonctions du monde, servies sans fabriquer ni relexer de chaîne.
      * Comme itemDelimiter, ce chemin n'emprunte rien à l'arène.

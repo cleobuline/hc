@@ -75,6 +75,12 @@ struct RunList { struct TextRun *v; int n, cap; };
  * HC_COLOR_INHERIT si ce n'en est pas une. Les noms sont acceptés en français
  * comme en anglais — vert, green, rouge, red… C'est le vocabulaire de
  * « set the textColor », ouvert pour que la peinture parle le même. */
+/* « x is a date ». La MÊME définition que celle dont `convert` se sert, prise
+ * dans son acception stricte : rien d'incompris dans la chaîne, et des
+ * composantes qui existent au calendrier. 99/99/99 est donc refusé, et
+ * « 12/25/96patate » aussi. Une heure seule n'est pas une date. */
+int hc_est_date(const char *s);
+
 int hc_color_from_name(const char *v);
 
 /* La même, avec l'opacité : « 255,0,0,128 ». `alpha` reçoit 0..255, et 255
