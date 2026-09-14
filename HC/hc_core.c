@@ -1426,10 +1426,40 @@ int hc_recent_distinct(Object **out, int max)
     return n;
 }
 
+/* Définie plus bas, après les globales qu'elle efface. */
+static void oublie_objet_interne(Object *mort);
+
 void hc_free(Object *o)
 {
     if (!o) return;
     histo_oublie(o);
+    /* LES RÉFÉRENCES INTERNES DU NOYAU, AU MÊME TITRE QUE CELLES DE L'HÔTE.
+     *
+     * object_gone, juste en dessous, protège remarquablement bien les
+     * pointeurs de l'interface. Le noyau ne s'appliquait pas le même principe
+     * à ses PROPRES références, une couche plus bas : la sélection, le
+     * résultat de la dernière recherche et la pile de navigation gardaient
+     * l'adresse d'un objet libéré. Trois lignes de HyperTalk suffisaient à
+     * lire de la mémoire morte — mesuré sous AddressSanitizer :
+     *
+     *     select char 1 to 2 of card field "x"
+     *     delete card field "x"
+     *     put the selection          -> lecture après libération
+     *
+     *     find "toto"
+     *     delete card field "x"
+     *     put the foundField         -> lecture après libération
+     *
+     *     push card
+     *     go next card
+     *     delete card "A"
+     *     pop card                   -> déréférencement d'une carte libérée
+     *
+     * Un seul endroit s'en charge, et c'est celui-ci : hc_free est le seul
+     * point où un objet meurt, et il descend lui-même dans ses enfants, donc
+     * un champ emporté par la suppression de sa carte est oublié lui aussi.
+     * Recenser les appelants un par un, c'est en oublier un. */
+    oublie_objet_interne(o);
     /* Prévenir l'hôte AVANT de libérer quoi que ce soit. C'est le seul
      * endroit où un objet meurt, donc le seul où le dire une fois pour
      * toutes — recenser les appelants un par un, c'est en oublier un. */
@@ -4040,6 +4070,78 @@ static Object *chunk_target(const char *ref, int *st, int *en)
  * un morceau (les plages se recalent) ou sur le champ entier (elles meurent). */
 static Object *g_edit_fld = NULL;
 static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
+
+/* TOUTES LES RÉFÉRENCES INTERNES À UN OBJET QUI MEURT, EN UN SEUL ENDROIT.
+ *
+ * Appelée au tout début de hc_free. Elle n'appelle RIEN qui puisse déréférencer
+ * `mort` : elle ne fait que comparer des adresses et remettre à zéro. En
+ * particulier elle ne passe pas par hc_set_selection, qui préviendrait l'hôte
+ * — celui-ci reçoit déjà object_gone trois lignes plus bas, et le prévenir
+ * deux fois d'un même décès avec un pointeur en cours de libération serait
+ * exactement le genre de finesse qui finit en plantage.
+ *
+ * La liste est celle des globales du noyau qui retiennent un Object* SANS EN
+ * ÊTRE PROPRIÉTAIRES. Les propriétaires — g_stacks, g_clipboard, g_clip_bg_copy
+ * — n'ont rien à faire ici : leur contenu ne meurt pas sous eux. */
+static void oublie_objet_interne(Object *mort)
+{
+    if (!mort) return;
+
+    /* la sélection de texte */
+    if (g_sel_field == mort) { g_sel_field = NULL; g_sel_start = g_sel_len = 0; }
+
+    /* le résultat de la dernière recherche */
+    if (g_found_field == mort) {
+        g_found_field = NULL;
+        g_found_text[0] = '\0';
+        g_found_line = g_found_start = g_found_len = 0;
+    }
+    if (g_found_card == mort) g_found_card = NULL;
+
+    /* la pile de navigation : on COMPACTE, sans quoi « pop card » descendrait
+     * sur un trou. Tous les exemplaires partent, une carte pouvant être
+     * empilée plusieurs fois. */
+    {
+        int k = 0;
+        for (int i = 0; i < g_navtop; i++)
+            if (g_navstack[i] != mort) g_navstack[k++] = g_navstack[i];
+        g_navtop = k;
+    }
+
+    /* la carte courante : NULL est la seule valeur sûre. Les lecteurs la
+     * testent déjà, puisqu'elle vaut NULL avant l'ouverture de la première
+     * pile. */
+    if (g_current_card == mort) g_current_card = NULL;
+
+    /* les piles « start using », maillons de la chaîne de messages */
+    {
+        int k = 0;
+        for (int i = 0; i < g_nusing; i++)
+            if (g_using[i] != mort) g_using[k++] = g_using[i];
+        g_nusing = k;
+    }
+
+    /* les champs à rafraîchir au déverrouillage de l'écran */
+    {
+        int k = 0;
+        for (int i = 0; i < g_verrou_n; i++)
+            if (g_verrou_champs[i] != mort) g_verrou_champs[k++] = g_verrou_champs[i];
+        g_verrou_n = k;
+    }
+
+    /* le fond EMPRUNTÉ du presse-papiers, et la pile d'où il vient */
+    if (g_clip_bg_live  == mort) g_clip_bg_live  = NULL;
+    if (g_clip_bg_stack == mort) g_clip_bg_stack = NULL;
+
+    /* l'intervalle de la dernière écriture dans un champ */
+    if (g_edit_fld == mort) { g_edit_fld = NULL; g_edit_at = -1; }
+
+    /* `me` et `the target`. Le report de libération les protège pendant qu'un
+     * gestionnaire tourne — c'est tout son objet — mais hors gestionnaire la
+     * libération est immédiate et ces deux-là resteraient pendants. */
+    if (g_me     == mort) g_me     = NULL;
+    if (g_target == mort) g_target = NULL;
+}
 
 /* Écrit dans un conteneur : champ, variable, ou morceau de l'un des deux.
  * mode : 0 remplacer, 1 après, 2 avant, 3 supprimer.

@@ -1,0 +1,37 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== la selection ne survit pas a son champ ===
+   [to]
+   [char 1 to 2 of card field "x"]
+   -- champ supprime --
+   []
+   []
+   []
+
+=== le resultat de la recherche non plus ===
+   [toto]
+   [field "x"]
+   -- champ supprime --
+   []
+   []
+   []
+   []
+
+=== une carte empilee puis supprimee sort de la pile de navigation ===
+   [B]
+   -- carte "A" supprimee --
+   [B]
+
+=== la meme carte empilee DEUX fois part deux fois ===
+   [B]
+
+=== supprimer le champ ne trouble pas ce qui l'entoure ===
+   -- champ supprime, carte vivante --
+   [A]
+   [0]
+   [|]
+
+=== supprimer la CARTE emporte la selection de son champ ===
+   -- carte "A" supprimee, avec son champ --
+   []
+   []
+   [B]
