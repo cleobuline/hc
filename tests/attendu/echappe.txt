@@ -1,3 +1,4 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 
 === cas 1 ===
    ok    nom de pile      [simple] -> [simple]
@@ -88,6 +89,13 @@
    ok    style            [  des blancs au bord  ] -> [  des blancs au bord  ]
    ok    police champ     [  des blancs au bord  ] -> [  des blancs au bord  ]
    ok    police plage     [  des blancs au bord  ] -> [  des blancs au bord  ]
+
+=== par le CHEMIN REEL : set the name ... & return & ... ===
+   ok    nom apres set    [hello\nworld] -> [hello\nworld]
+   ok    nom apres relecture [hello\nworld] -> [hello\nworld]
+   id retrouve : 2915
+   > [hello]
+   > [world]
 
 === une pile ECRITE AVANT ce changement se relit a l'identique ===
    ok    police ancienne  [A\Bc] -> [A\Bc]

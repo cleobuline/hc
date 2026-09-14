@@ -35,7 +35,8 @@
 #define FIC "/tmp/hc_echappe.stack"
 
 static int nko;
-static void ligne(HcLineKind k, int d, const char *t) { (void)k; (void)d; (void)t; }
+static void ligne(HcLineKind k, int d, const char *t)
+{ (void)d; if (k == HC_MSG) printf("   > [%s]\n", t ? t : ""); }
 
 static void montre(const char *s)
 {
@@ -78,6 +79,7 @@ int main(void)
 {
     setbuf(stdout, NULL);
     static HcHost h; memset(&h, 0, sizeof h); h.line = ligne; hc_set_host(&h);
+    hc_do("get 1");   /* la banniere v3 sort ici, pas au milieu d'un releve */
 
     for (int i = 0; i < NCAS; i++) {
         const char *v = CAS[i];
@@ -128,6 +130,59 @@ int main(void)
         compare("police plage",  v, police);
 
         hc_free(rl);
+    }
+
+    puts("\n=== par le CHEMIN REEL : set the name ... & return & ... ===");
+    /* Les cas ci-dessus ecrivent les noms directement dans la structure. Celui
+     * de l'utilisateur passe par le script : resolution de « button id N »,
+     * puis le poseur de propriete. C'est ce chemin-la qu'il faut tenir, et
+     * c'est exactement la ligne qui produisait
+     *
+     *     button "hello
+     *     world"
+     *
+     * soit un en-tete coupe en deux et un bouton relu nomme « hello ». */
+    {
+        Object *st = hc_new_stack("P");
+        hc_register_stack(st);
+        Object *bg = hc_new_background(st, "F");
+        Object *c  = hc_new_card(st, bg, "A");
+        hc_set_current_card(c);
+        Object *b  = hc_new_button(c, "Bouton");
+        hc_set_id(b, 2915);
+
+        hc_do("set the name of button id 2915 to \"hello\" & return & \"world\"");
+        compare("nom apres set", "hello\nworld", b->name);
+
+        remove(FIC);
+        int sauve = hc_save(st, FIC);
+        hc_unregister_stack(st);
+        hc_free(st);
+        if (sauve != 0) { puts("   ECHEC sauvegarde"); nko++; }
+        else {
+            Object *rl = hc_load(FIC);
+            if (!rl) { printf("   *** relecture REFUSEE : %s ***\n",
+                              hc_load_erreur() ? hc_load_erreur() : "?"); nko++; }
+            else {
+                hc_register_stack(rl);
+                Object *rb = NULL;
+                for (int k = 0; k < rl->nparts; k++) {
+                    if (rl->parts[k]->type != OBJ_CARD) continue;
+                    hc_set_current_card(rl->parts[k]);
+                    for (int j = 0; j < rl->parts[k]->nparts; j++)
+                        if (rl->parts[k]->parts[j]->type == OBJ_BUTTON)
+                            rb = rl->parts[k]->parts[j];
+                }
+                compare("nom apres relecture", "hello\nworld", rb ? rb->name : NULL);
+                printf("   id retrouve : %d\n", rb ? rb->id : 0);
+                /* Et le nom reste DECOUPABLE en deux lignes, ce qui est bien
+                 * ce que l'auteur du script a demande. */
+                hc_do("put line 1 of the short name of button id 2915");
+                hc_do("put line 2 of the short name of button id 2915");
+                hc_unregister_stack(rl);
+                hc_free(rl);
+            }
+        }
     }
 
     puts("\n=== une pile ECRITE AVANT ce changement se relit a l'identique ===");
