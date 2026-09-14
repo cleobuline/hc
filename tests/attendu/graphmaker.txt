@@ -1,5 +1,11 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-=== updateTotals : les pourcentages se calculent ===
+=== le script de PILE : wrongStack, et la portee a trois niveaux ===
+   hilite de bg btn id 68 avant : true
+   hilite de bg btn id 68 apres : false   (openStack l'eteint)
+   the userLevel apres openStack :
+   [msg] 5
+
+=== updateTotals : les pourcentages, par les VRAIES fonctions du fond ===
    Total         = [100]
    Percents      = [25 %
 40 %
@@ -9,19 +15,29 @@
    Percent Total = [100%]
 
 === drawChart : le camembert et sa legende ===
-   avant                  traces=0    clics=0    frappes=0   menus=0  outil=browse     motif=-   curseur=watch
-   apres                  traces=12   clics=17   frappes=12  menus=2  outil=browse     motif=2   curseur=watch
+   avant                    traces=0    clics=0    frappes=0   menus=0  outil=browse     motif=-   curseur=watch
+   apres                    traces=12   clics=17   frappes=12  menus=2  outil=browse     motif=2   curseur=watch
    Drew Data     = [true]
    rect Legend   = 280,30,414,135
    coin GrowLegend suit : oui
 
-=== openCard / closeCard : les objets se montrent et se cachent ===
-   apres openCard  : Legend visible = oui
-   apres closeCard : Legend visible = non
+=== closeCard : saveRect ecrit le rect dans le champ cache ===
+   Graph Rect    = [20,30,260,270
+252,262,264,274]
+   Graph Info visible : non
+
+=== openCard : relit le rect, et redessine si besoin ===
+   apres openCard           traces=12   clics=17   frappes=12  menus=2  outil=browse     motif=2   curseur=watch
+   Drew Data     = [true]   (openCard a relance drawChart)
 
 === sans donnees, il le dit au lieu de dessiner ===
    reponses demandees : 1
    message            : [Chart can not be drawn without data.]
+   rien dessine             traces=0    clics=0    frappes=0   menus=0  outil=browse     motif=2   curseur=watch
+
+=== closeStack ===
+   the userLevel, rendu par closeStack :
+   [msg] 5
 
 === ce que la v3 renvoie encore a l'ancien moteur ===
 [v3] — retours de la v3 vers l'ancien interpréteur —

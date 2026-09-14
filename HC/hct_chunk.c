@@ -20,6 +20,35 @@ static int est_blanc(char c)
            c == '\v' || c == '\f';
 }
 
+/* LA FIN DU MOT QUI COMMENCE EN `i`, GUILLEMETS COMPRIS.
+ *
+ * En HyperTalk un mot est « une suite de caractères sans espace, OU un texte
+ * entre guillemets ». Ce n'est pas un détail de confort : l'idiome canonique
+ * pour retrouver le nom de sa propre pile en dépend —
+ *
+ *     get the value of word 2 of the long name of me
+ *
+ * où « the long name » rend « stack "Graph Maker" ». Sans la règle, word 2
+ * valait « "Graph » — un guillemet ouvert, que « the value of » refusait
+ * ensuite avec « guillemet fermant manquant ». Mesuré sur le script de pile
+ * de Graph Maker 2.2, où c'est exactement ce que fait wrongStack().
+ *
+ * Le guillemet n'ouvre un mot que s'il COMMENCE le mot : « abc"def ghi" »
+ * garde ses deux mots, le premier étant « abc"def ». Un guillemet non refermé
+ * emporte le reste de la chaîne — c'est la seule réponse qui ne coupe pas le
+ * texte au milieu d'une citation. */
+static int fin_du_mot(const char *s, int i, int len)
+{
+    if (i < len && s[i] == '"') {
+        i++;
+        while (i < len && s[i] != '"') i++;
+        if (i < len) i++;          /* le guillemet fermant fait partie du mot */
+        return i;
+    }
+    while (i < len && !est_blanc(s[i])) i++;
+    return i;
+}
+
 /* ------------------------------------------------------------------ UTF-8 */
 
 int hct_utf8_octets(const char *s, int i, int len)
@@ -98,7 +127,7 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim)
                 while (i < len && est_blanc(s[i])) i++;
                 if (i >= len) break;
                 n++;
-                while (i < len && !est_blanc(s[i])) i++;
+                i = fin_du_mot(s, i, len);
             }
             return n;
         }
@@ -162,7 +191,7 @@ static HctBornes borne_simple(const char *s, HctSorteChunk sorte, int n,
             if (i >= len) break;
             k++;
             int deb = i;
-            while (i < len && !est_blanc(s[i])) i++;
+            i = fin_du_mot(s, i, len);
             if (k == n) { b.deb = deb; b.fin = i; b.trouve = 1; return b; }
         }
         b.deb = b.fin = len;

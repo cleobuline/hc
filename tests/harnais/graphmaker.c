@@ -1,40 +1,40 @@
-/* Graph Maker 2.2 : un VRAI script d'epoque, execute pour de bon.
+/* Graph Maker 2.2 : la pile ENTIÈRE, ses trois scripts d'époque.
  *
- * Le script de carte est dans donnees/graphmaker.txt, donne tel quel — les
- * coquilles de l'original comprises, et c'est precisement ce qu'un interprete
- * doit savoir traverser.
+ * Les trois couches sont les vraies, données par l'auteur et rangées telles
+ * quelles dans donnees/ : le script de PILE, celui du FOND, celui de la CARTE.
+ * Rien n'est réécrit — les coquilles de l'original en font partie, dont
+ * « set the foreclor to green » et un getMaxValue défini DEUX fois.
  *
- * Il n'est pas autonome : il appelle neuf gestionnaires qui vivent dans le
- * script de PILE. On les ecrit ici EN HYPERTALK plutot que de les simuler en
- * C, pour que l'appel script -> script soit lui aussi exerce — c'est la moitie
- * de ce qu'on veut mesurer.
+ * C'est ce qui fait la valeur de ce harnais : la chaîne de messages complète,
+ * carte -> fond -> pile, avec « pass », des globales, et neuf gestionnaires
+ * auxiliaires que la carte appelle et qui vivent dans le fond. Jusqu'ici je
+ * les avais écrits moi-même ; ce sont maintenant ceux de la pile.
  *
- * L'hote ne dessine rien : il COMPTE. Un camembert, c'est un nombre de traits,
- * de remplissages et de titres, et ces nombres se verifient.
+ * L'hôte ne dessine rien : il COMPTE. Un camembert, c'est un nombre de traits,
+ * de remplissages et de titres, et ces nombres se vérifient à la main.
  *
- * Ce que ce harnais exerce, et qu'aucun autre ne reunissait :
+ * Ce que ce harnais exerce et qu'aucun autre ne réunissait :
  *
- *   des gestionnaires a PARAMETRES multiples, appeles sans parentheses
- *     — « doPieChart chartRect,data,graphTitle »
- *   des fonctions utilisateur dans une expression — « getPattern(slice) »
- *   « rect of bg btn "Frame" » : une propriete SANS « the », sur un objet de
- *     fond, ecrite ET lue
- *   l'ecriture dans un ITEM d'une variable — « put minRight into item 3 of
- *     legendRect » — puis « set rect of ... to legendRect »
- *   « set bottomRight of A to bottomRight of B »
- *   « the value of theLine », « next repeat », « pass », « exit <nom> »
- *   les outils de peinture : text, oval, line, bucket, rectangle, select
- *   « the textHeight », « set pattern to », « set filled to true »
- *   « bg field data » sans guillemets, et « bg fld » abrege
+ *   wrongStack()   « the value of word 2 of the long name of me », l'idiome
+ *                  canonique pour retrouver le nom de sa propre pile. Il ne
+ *                  marche que si « word » traite un texte entre guillemets
+ *                  comme UN mot.
+ *   openStack      « set hilite of bg btn id 68 of cd 1 of bg "Graphs" » :
+ *                  trois niveaux de portée dans une seule référence.
+ *   openCard       lit un rect dans un champ caché, le pose sur deux boutons,
+ *                  puis « send "drawChart" to this card ».
+ *   les globales   déclarées dans trois gestionnaires différents.
+ *   deux « if »    dont le « then » est sur la ligne suivante.
+ *   « pass »       depuis la carte vers le fond vers la pile.
  */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <strings.h>
+#include <stdlib.h>
 
-/* ---- ce que l'hote compte ---- */
-static long nDrag, nClick, nType, nMenu, nSon;
+/* ---- ce que l'hôte compte ---- */
+static long nDrag, nClick, nType, nMenu;
 static char dernierOutil[32] = "browse";
 static char dernierMotif[16] = "";
 static char dernierCurseur[16] = "";
@@ -54,24 +54,22 @@ static void mon_click(int x,int y,const char *m)
 static void mon_type(const char *t,const char *m)
 { (void)t;(void)m; nType++; }
 static void mon_menu(const char *i) { (void)i; nMenu++; }
-static void mon_son(const char *n)  { (void)n; nSon++; }
 
-/* Les globales que le script pose et relit. On les retient, c'est tout ce que
- * le noyau demande d'un hote sans ecran. */
 static char gTextFont[32] = "geneva", gTextAlign[16] = "left",
             gTextStyle[32] = "plain";
-static int  gTextSize = 12, gFilled = 0;
+static int  gTextSize = 12, gTextHeight = 16, gFilled = 0;
 
 static void mon_set(const char *n, const char *v)
 {
     if (!n || !v) return;
-    if (!strcasecmp(n, "pattern"))        snprintf(dernierMotif, sizeof dernierMotif, "%s", v);
-    else if (!strcasecmp(n, "cursor"))    snprintf(dernierCurseur, sizeof dernierCurseur, "%s", v);
-    else if (!strcasecmp(n, "textFont"))  snprintf(gTextFont, sizeof gTextFont, "%s", v);
-    else if (!strcasecmp(n, "textAlign")) snprintf(gTextAlign, sizeof gTextAlign, "%s", v);
-    else if (!strcasecmp(n, "textStyle")) snprintf(gTextStyle, sizeof gTextStyle, "%s", v);
-    else if (!strcasecmp(n, "textSize"))  gTextSize = atoi(v);
-    else if (!strcasecmp(n, "filled"))    gFilled = !strcasecmp(v, "true");
+    if (!strcasecmp(n, "pattern"))         snprintf(dernierMotif, sizeof dernierMotif, "%s", v);
+    else if (!strcasecmp(n, "cursor"))     snprintf(dernierCurseur, sizeof dernierCurseur, "%s", v);
+    else if (!strcasecmp(n, "textFont"))   snprintf(gTextFont, sizeof gTextFont, "%s", v);
+    else if (!strcasecmp(n, "textAlign"))  snprintf(gTextAlign, sizeof gTextAlign, "%s", v);
+    else if (!strcasecmp(n, "textStyle"))  snprintf(gTextStyle, sizeof gTextStyle, "%s", v);
+    else if (!strcasecmp(n, "textSize"))   gTextSize = atoi(v);
+    else if (!strcasecmp(n, "textHeight")) gTextHeight = atoi(v);
+    else if (!strcasecmp(n, "filled"))     gFilled = !strcasecmp(v, "true");
 }
 
 static const char *mon_get(const char *n)
@@ -83,9 +81,13 @@ static const char *mon_get(const char *n)
     if (!strcasecmp(n, "textAlign"))  return gTextAlign;
     if (!strcasecmp(n, "textStyle"))  return gTextStyle;
     if (!strcasecmp(n, "textSize"))   { snprintf(b, sizeof b, "%d", gTextSize); return b; }
-    if (!strcasecmp(n, "textHeight")) { snprintf(b, sizeof b, "%d", gTextSize * 4 / 3); return b; }
+    if (!strcasecmp(n, "textHeight")) { snprintf(b, sizeof b, "%d", gTextHeight); return b; }
     if (!strcasecmp(n, "filled"))     return gFilled ? "true" : "false";
     if (!strcasecmp(n, "pattern"))    return dernierMotif;
+    /* checkUserCancel interroge la souris : sans écran, elle n'est jamais
+     * cliquée — sinon tout le tracé s'arrêterait par « exit to hyperCard ». */
+    if (!strcasecmp(n, "mouseClick")) return "false";
+    if (!strcasecmp(n, "mouse"))      return "up";
     return NULL;
 }
 
@@ -97,81 +99,8 @@ static const char *ma_reponse(const char *p, const char *b1, const char *b2, con
     return b1 ? b1 : "OK";
 }
 
-/* Les neuf gestionnaires que le script de carte appelle et qui vivent
- * ailleurs. Ecrits en HyperTalk exprès : l'appel script -> script fait partie
- * de ce qu'on mesure. */
-static const char *SCRIPT_PILE =
-"on showInfo flag\n"
-"  -- de l'affichage : rien a faire sans ecran\n"
-"end showInfo\n"
-"\n"
-"on checkUserCancel\n"
-"  -- commande-point : rien a faire sans clavier\n"
-"end checkUserCancel\n"
-"\n"
-"on clearScreen\n"
-"  choose select tool\n"
-"  doMenu \"Select All\"\n"
-"  doMenu \"Clear Picture\"\n"
-"  choose browse tool\n"
-"end clearScreen\n"
-"\n"
-"on setFont theFont,theSize,theAlign,theStyle\n"
-"  set the textFont to theFont\n"
-"  set the textSize to theSize\n"
-"  set the textAlign to theAlign\n"
-"  set the textStyle to theStyle\n"
-"end setFont\n"
-"\n"
-"function stripReturns txt\n"
-"  repeat while the last char of txt is return\n"
-"    delete the last char of txt\n"
-"  end repeat\n"
-"  return txt\n"
-"end stripReturns\n"
-"\n"
-"function validatedData raw\n"
-"  put empty into sortie\n"
-"  repeat with i = 1 to the number of lines of raw\n"
-"    put line i of raw into l\n"
-"    if l is empty then next repeat\n"
-"    put l & return after sortie\n"
-"  end repeat\n"
-"  if the last char of sortie is return then delete the last char of sortie\n"
-"  return sortie\n"
-"end validatedData\n"
-"\n"
-"function maxChars txt\n"
-"  put 0 into m\n"
-"  repeat with i = 1 to the number of lines of txt\n"
-"    put the number of chars of line i of txt into n\n"
-"    if n > m then put n into m\n"
-"  end repeat\n"
-"  return m\n"
-"end maxChars\n"
-"\n"
-"function rectHeight r\n"
-"  return item 4 of r - item 2 of r\n"
-"end rectHeight\n"
-"\n"
-"function rectWidth r\n"
-"  return item 3 of r - item 1 of r\n"
-"end rectWidth\n";
-
-static char *lire(const char *chemin)
-{
-    FILE *f = fopen(chemin, "rb");
-    if (!f) { printf("   *** %s introuvable ***\n", chemin); return NULL; }
-    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
-    char *s = malloc((size_t)n + 1);
-    if (!s) { fclose(f); return NULL; }
-    size_t lu = fread(s, 1, (size_t)n, f);
-    s[lu] = '\0'; fclose(f);
-    return s;
-}
-
-/* Le noyau n'expose pas de recherche par nom : on parcourt, comme les autres
- * harnais. Le fond d'abord, puisque tous les champs de Graph Maker y vivent. */
+/* ---- accès aux objets, par parcours : le noyau n'expose pas de recherche ---- */
+static Object *bgFond;
 static Object *trouve(Object *couche, ObjType type, const char *nom)
 {
     for (int i = 0; couche && i < couche->nparts; i++) {
@@ -180,27 +109,37 @@ static Object *trouve(Object *couche, ObjType type, const char *nom)
     }
     return NULL;
 }
-static Object *bgFond;
 static const char *texte_de(const char *nom)
 {
     Object *f = trouve(bgFond, OBJ_FIELD, nom);
     return f ? hc_field_text(f) : "(champ introuvable)";
 }
 
-static void champ(Object *ou, const char *nom, const char *val)
-{ Object *f = hc_new_field(ou, nom); if (val) hc_set_field_text(f, val); }
+static char *lire(const char *chemin)
+{
+    FILE *f = fopen(chemin, "rb");
+    if (!f) { printf("   *** %s introuvable ***\n", chemin); return NULL; }
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    char *s = malloc((size_t)n + 1);
+    if (!s) { fclose(f); return NULL; }
+    size_t lu = fread(s, 1, (size_t)n, f); s[lu] = '\0'; fclose(f);
+    return s;
+}
 
-static void bouton(Object *ou, const char *nom, int x, int y, int w, int hh)
-{ Object *b = hc_new_button(ou, nom); b->x = x; b->y = y; b->w = w; b->h = hh; }
+static Object *bouton(Object *ou, const char *nom, int x, int y, int w, int hh)
+{ Object *b = hc_new_button(ou, nom); b->x = x; b->y = y; b->w = w; b->h = hh; return b; }
 
 static void compte_rendu(const char *quand)
 {
-    printf("   %-22s traces=%-4ld clics=%-4ld frappes=%-3ld menus=%-2ld "
+    printf("   %-24s traces=%-4ld clics=%-4ld frappes=%-3ld menus=%-2ld "
            "outil=%-10s motif=%-3s curseur=%s\n",
            quand, nDrag, nClick, nType, nMenu, dernierOutil,
            dernierMotif[0] ? dernierMotif : "-",
            dernierCurseur[0] ? dernierCurseur : "-");
 }
+
+static void remet_a_zero(void)
+{ nDrag = nClick = nType = nMenu = 0; }
 
 int main(int argc, char **argv)
 {
@@ -209,54 +148,75 @@ int main(int argc, char **argv)
     h.line = ligne; h.answer = ma_reponse;
     h.global_get = mon_get; h.global_set = mon_set;
     h.choose_tool = mon_outil; h.drag = mon_drag; h.click_at = mon_click;
-    h.type_text = mon_type; h.do_menu = mon_menu; h.play_sound = mon_son;
+    h.type_text = mon_type; h.do_menu = mon_menu;
     hc_set_host(&h);
 
-    char *script = lire(argc > 1 ? argv[1] : "donnees/graphmaker.txt");
-    if (!script) return 1;
+    const char *dossier = argc > 1 ? argv[1] : "donnees";
+    char chemin[512];
+    snprintf(chemin, sizeof chemin, "%s/graphmaker_pile.txt", dossier);
+    char *sPile = lire(chemin);
+    snprintf(chemin, sizeof chemin, "%s/graphmaker_fond.txt", dossier);
+    char *sFond = lire(chemin);
+    snprintf(chemin, sizeof chemin, "%s/graphmaker.txt", dossier);
+    char *sCarte = lire(chemin);
+    if (!sPile || !sFond || !sCarte) return 1;
 
+    /* Le fond s'appelle « Graphs » : openStack le cherche par ce nom. */
     Object *st = hc_new_stack("Graph Maker"); hc_register_stack(st);
     st->w = 512; st->h = 342;
-    hc_set_script(st, SCRIPT_PILE);
+    hc_set_script(st, sPile);
 
-    Object *bg = hc_new_background(st, "Chart");
+    Object *bg = hc_new_background(st, "Graphs");
     bgFond = bg;
-    champ(bg, "Data",          NULL);
-    champ(bg, "Labels",        NULL);
-    champ(bg, "Labels Title",  NULL);
-    champ(bg, "Graph Title",   NULL);
-    champ(bg, "Total",         NULL);
-    champ(bg, "Percents",      NULL);
-    champ(bg, "Percent Total", NULL);
-    champ(bg, "Drew Data",     NULL);
-    bouton(bg, "Frame",       20,  30, 240, 240);
-    bouton(bg, "Legend",     280,  30, 120,  60);
-    bouton(bg, "GrowLegend", 388,  78,  12,  12);
-    bouton(bg, "Total:",      20, 290,  50,  16);
-    bouton(bg, "Total Frame", 70, 290,  80,  16);
+    hc_set_script(bg, sFond);
 
-    Object *c = hc_new_card(st, bg, "Une");
-    hc_set_script(c, script);
-    free(script);
+    const char *champs[] = { "Data", "Labels", "Labels Title", "Graph Title",
+                             "Units", "Total", "Percents", "Percent Total",
+                             "Drew Data", "Graph Rect", "Graph Info", NULL };
+    for (int i = 0; champs[i]; i++) hc_new_field(bg, champs[i]);
+
+    bouton(bg, "Frame",        20,  30, 240, 240);
+    bouton(bg, "Grow",        252, 262,  12,  12);
+    bouton(bg, "Legend",      280,  30, 120,  60);
+    bouton(bg, "GrowLegend",  388,  78,  12,  12);
+    bouton(bg, "Total:",       20, 290,  50,  16);
+    bouton(bg, "Total Frame",  70, 290,  80,  16);
+    bouton(bg, "About Graphs",420, 290,  80,  16);
+    /* openStack éteint « bg btn id 68 of cd 1 of bg "Graphs" » : le bouton de
+     * partage des données. Trois niveaux de portée dans une seule référence. */
+    Object *b68 = bouton(bg, "Shared Data", 420, 10, 80, 16);
+    hc_set_id(b68, 68);
+    b68->hilite = 1;
+
+    Object *c = hc_new_card(st, bg, "Pie");
+    hc_set_script(c, sCarte);
+    free(sPile); free(sFond); free(sCarte);
     hc_set_current_card(c);
 
-    /* LE TEXTE APRES LA CARTE, ET C'EST TOUT L'INTERET DU MODELE.
-     *
-     * Un champ de FOND non partage porte un texte PAR CARTE : chaque carte de
-     * Graph Maker est un graphique different, avec ses propres donnees. Les
-     * remplir avant d'avoir une carte courante ne posait rien nulle part, et
-     * « put bg field "Data" into brut » rendait vide — mon montage etait
-     * fautif, pas l'interprete. */
+    /* LE TEXTE APRÈS LA CARTE. Un champ de fond non partagé porte un texte PAR
+     * CARTE — chaque carte de Graph Maker est un graphique différent. */
     hc_set_field_text(trouve(bg, OBJ_FIELD, "Data"),
                       "25\n40\n10\n5\n20");
     hc_set_field_text(trouve(bg, OBJ_FIELD, "Labels"),
                       "Pommes\nPoires\nPrunes\nCerises\nAbricots");
     hc_set_field_text(trouve(bg, OBJ_FIELD, "Labels Title"), "Recolte 1987");
     hc_set_field_text(trouve(bg, OBJ_FIELD, "Graph Title"),  "Legende");
+    hc_set_field_text(trouve(bg, OBJ_FIELD, "Graph Rect"),
+                      "20,30,260,270\n252,262,264,274");
 
     hc_do("get 1");   /* la banniere v3 sort ici, pas au milieu d'un releve */
 
-    puts("=== updateTotals : les pourcentages se calculent ===");
+    puts("=== le script de PILE : wrongStack, et la portee a trois niveaux ===");
+    printf("   hilite de bg btn id 68 avant : %s\n",
+           hc_hilite_of(b68, c) ? "true" : "false");
+    hc_env_message("startUp");          /* ne fait rien, mais ne doit pas planter */
+    hc_send(st, "openStack");
+    printf("   hilite de bg btn id 68 apres : %s   (openStack l'eteint)\n",
+           hc_hilite_of(b68, c) ? "true" : "false");
+    printf("   the userLevel apres openStack :\n");
+    hc_do("put the userLevel");
+
+    puts("\n=== updateTotals : les pourcentages, par les VRAIES fonctions du fond ===");
     hc_send(c, "updateTotals");
     printf("   Total         = [%s]\n", texte_de("Total"));
     printf("   Percents      = [%s]\n", texte_de("Percents"));
@@ -264,6 +224,7 @@ int main(int argc, char **argv)
 
     puts("\n=== drawChart : le camembert et sa legende ===");
     hc_v3_bilan_remise_a_zero();
+    remet_a_zero();
     compte_rendu("avant");
     hc_send(c, "drawChart");
     compte_rendu("apres");
@@ -271,10 +232,6 @@ int main(int argc, char **argv)
     {
         Object *lg = trouve(bg, OBJ_BUTTON, "Legend");
         Object *gl = trouve(bg, OBJ_BUTTON, "GrowLegend");
-        /* La legende s'agrandit pour tenir les etiquettes, et GrowLegend suit
-         * son coin. C'est « set rect of ... to legendRect » apres avoir ecrit
-         * dans un ITEM de la variable, puis « set bottomRight of A to
-         * bottomRight of B » — deux formes qu'aucun autre harnais n'exerce. */
         printf("   rect Legend   = %d,%d,%d,%d\n", lg->x, lg->y,
                lg->x + lg->w, lg->y + lg->h);
         printf("   coin GrowLegend suit : %s\n",
@@ -282,19 +239,33 @@ int main(int argc, char **argv)
                ? "oui" : "NON");
     }
 
-    puts("\n=== openCard / closeCard : les objets se montrent et se cachent ===");
-    hc_send(c, "openCard");
-    Object *lg = trouve(bg, OBJ_BUTTON, "Legend");
-    printf("   apres openCard  : Legend visible = %s\n", lg && lg->visible ? "oui" : "non");
+    puts("\n=== closeCard : saveRect ecrit le rect dans le champ cache ===");
     hc_send(c, "closeCard");
-    printf("   apres closeCard : Legend visible = %s\n", lg && lg->visible ? "oui" : "non");
+    printf("   Graph Rect    = [%s]\n", texte_de("Graph Rect"));
+    printf("   Graph Info visible : %s\n",
+           trouve(bg, OBJ_FIELD, "Graph Info")->visible ? "oui" : "non");
+
+    puts("\n=== openCard : relit le rect, et redessine si besoin ===");
+    hc_set_field_text(trouve(bg, OBJ_FIELD, "Drew Data"), "");
+    remet_a_zero();
+    hc_send(c, "openCard");
+    compte_rendu("apres openCard");
+    printf("   Drew Data     = [%s]   (openCard a relance drawChart)\n",
+           texte_de("Drew Data"));
 
     puts("\n=== sans donnees, il le dit au lieu de dessiner ===");
     hc_set_field_text(trouve(bg, OBJ_FIELD, "Data"), "");
     nReponses = 0; premiereReponse[0] = '\0';
+    remet_a_zero();
     hc_send(c, "drawChart");
     printf("   reponses demandees : %d\n", nReponses);
     printf("   message            : [%s]\n", premiereReponse);
+    compte_rendu("rien dessine");
+
+    puts("\n=== closeStack ===");
+    hc_send(st, "closeStack");
+    printf("   the userLevel, rendu par closeStack :\n");
+    hc_do("put the userLevel");
 
     puts("\n=== ce que la v3 renvoie encore a l'ancien moteur ===");
     hc_v3_bilan();

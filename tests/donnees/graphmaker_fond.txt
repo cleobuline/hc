@@ -1,0 +1,187 @@
+-- Graph Maker 2.2 — script de FOND, donné tel quel.
+--
+-- C'est ici que vivent les neuf gestionnaires que le script de CARTE appelle :
+-- showInfo, checkUserCancel, clearScreen, setFont, stripReturns, validatedData,
+-- maxChars, rectHeight, rectWidth.
+--
+-- Deux curiosités de l'original, gardées : getMaxValue y est défini DEUX fois
+-- — HyperCard prend le premier —, et deux « if » portent leur « then » sur la
+-- ligne suivante.
+on openCard
+  global IsCommonData,theData,theLabels,theTitle,theDataTitle,theUnits
+  get bg field "Graph Rect"
+  if (line 1 of it is a rect) then
+    set rect of bg btn "Frame" to line 1 of it
+    set rect of bg btn "Grow" to line 2 of it
+    unlock screen
+    if IsCommonData is true then
+      put theData into bg field "Data"
+      put theLabels into bg field "Labels"
+      put theDataTitle into bg field "Labels Title"
+      put theTitle into bg field "Graph Title"
+      put theUnits into bg field "Units"
+    end if
+    if bg field "Drew Data" is not true then
+      send "drawChart" to this card
+      put true into bg field "Drew Data"
+    end if
+  end if
+  pass openCard
+end openCard
+
+on drawChart
+  -- do nothing; each card of this bkgnd has own routine
+end drawChart
+
+on closeCard
+  saveRect -- saves current frame size
+  showInfo false
+  lock screen
+  pass closeCard
+end closeCard
+
+on enterInField
+  if there is a cd btn "Drawgraph" then
+    click at the loc of cd btn "Drawgraph"
+  end if
+end enterInField
+
+on enterKey
+  if there is a cd btn "Drawgraph" then
+    click at the loc of cd btn "Drawgraph"
+  end if
+end enterKey
+
+-----  Misc  ----------------------------------------------------
+
+on doDragBtn btnID,left,top,right,bottom
+  -- drag a button within the card area
+  put (the clickH - item 1 of the loc of btnID) into horzStart
+  put (the clickV - item 2 of the loc of btnID) into vertStart
+  put width of btnID div 2 into horzOffset
+  put height of btnID div 2 into vertOffset
+  put horzOffset + left into cardLeft
+  put vertOffset + top into cardTop
+  put right - horzOffset into cardRight
+  put bottom - vertOffset into cardBottom
+  repeat until the mouse is up
+    put max(the mouseH - horzStart,cardLeft) into horz
+    put min(horz,cardRight) into item 1 of newLoc
+    put max(the mouseV - vertStart,cardTop) into vert
+    put min(vert,cardBottom) into item 2 of newLoc
+    set loc of btnID to newLoc
+  end repeat
+end doDragBtn
+
+on resetDrawFlag
+  put "11352,13427,12850,14091" into cardIdNums
+  put value(the target) into theData
+  repeat with count = 1 to 4
+    put false into bg field "Drew Data" of card id (item count of cardIDNums)
+  end repeat
+end resetDrawFlag
+
+on shareTheData
+  global IsCommonData,theData,theLabels,theTitle,theDataTitle,theUnits
+  if IsCommonData then
+    resetDrawFlag
+    put bg field "Data" into theData
+    put bg field "Labels" into theLabels
+    put bg field "Labels Title" into theDataTitle
+    put bg field "Graph Title" into theTitle
+    put bg field "Units" into theUnits
+  else put false into bg field "Drew Data"
+end shareTheData
+
+on showInfo showHide
+  set visible of bg field "Graph Info" to showHide
+  set hilite of bg btn "About Graphs" to not showHide
+end showInfo
+
+-----  Utilities  -----------------------------------------------
+
+on clearScreen
+  -- removes the paint from the card layer
+  choose "Select Tool"
+  doMenu "Select All"
+  doMenu "Clear Picture"
+end clearScreen
+
+on setFont fontName,fontSize,fontAlignment,fontStyle
+  if fontName is not empty then set textFont to fontName
+  if fontSize is not empty then set textSize to fontSize
+  if fontSize is not empty then set textheight to fontSize
+  if fontAlignment is not empty then set textAlign to fontAlignment
+  if fontStyle is not empty then set textStyle to fontStyle
+end setFont
+
+on saveRect
+  -- "Graph Rect" is a hidden field
+  put rect of bg btn "Frame" into line 1 of bg field "Graph Rect"
+  put rect of bg btn "Grow" into line 2 of bg field "Graph Rect"
+end saveRect
+
+on checkUserCancel
+  if the mouseClick then
+    choose browse tool
+    exit to hyperCard
+  end if
+end checkUserCancel
+
+function stripReturns theText -- remove all trailing return chars
+  repeat until last char of theText <> return
+    delete last char of theText
+  end repeat
+  return theText
+end stripReturns
+
+-----  Data Functions  -----------------------------------------------
+
+function validatedData data,labels
+  put max(number of lines in data,number of lines in labels) into numData
+  repeat with count = 1 to numData
+    if ((line count of data is not a number) or      (line count of data < 0) or (line count of data is empty))
+    then put zero into line count of data
+  end repeat
+  return data
+end validatedData
+
+function roundUp anyNumber
+  -- rounds a number to the nearest value divisible by 10,100,1000, etc
+  put trunc(anyNumber) into wholeNumber
+  put (10^(length(wholeNumber) - 1)) into divisor
+  if wholeNumber mod divisor = 0 then return wholeNumber
+  else return (trunc((wholeNumber/divisor) + 1)) * divisor
+end roundUp
+
+function rectWidth theRect
+  -- returns the width of a rectangle
+  return item 3 of theRect - item 1 of theRect
+end rectWidth
+
+function rectHeight theRect
+  -- returns the height of a rectangle
+  return item 4 of theRect - item 2 of theRect
+end rectHeight
+
+function getMaxValue dataList
+  -- returns the number with the highest value
+  sort dataList descending numeric
+  return line 1 of dataList +1
+end getMaxValue
+
+function maxChars textList
+  -- determines the longest word of a list
+  put 0 into longest
+  repeat with theLine = 1 to the number of lines in textList
+    if length(line theLine of textList) > longest
+    then put length(line theLine of textList) into longest
+  end repeat
+  return longest
+end maxChars
+
+function getMaxValue dataList
+-- returns the number with the highest value
+sort dataList descending numeric
+return line 1 of dataList
+end getMaxValue
