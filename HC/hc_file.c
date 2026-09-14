@@ -394,6 +394,20 @@ int hc_save(Object *stack, const char *path)
         fprintf(f, "end card\n\n");
     }
 
+    /* LA SIGNATURE DE FIN, ET CE QU'ELLE SEULE PEUT DIRE.
+     *
+     * Le format écrit l'en-tête, puis les fonds, puis les cartes — et rien ne
+     * certifiait que la dernière carte écrite était RÉELLEMENT la dernière. Un
+     * fichier coupé juste après un « end card » parfaitement valide se relisait
+     * donc comme une pile complète, amputée de tout ce qui suivait, et
+     * l'utilisateur pouvait la réenregistrer par-dessus l'original.
+     *
+     * Aucune vérification de structure ne peut attraper ce cas : le fichier
+     * tronqué est syntaxiquement irréprochable. Il faut une marque, et elle
+     * n'a de sens que si l'écrivain la pose toujours — d'où le numéro de
+     * format, qui dit au lecteur s'il a le droit de l'exiger. */
+    fprintf(f, "end hc-file\n");
+
     /* Les deux vérifications comptent : ferror voit ce qui a échoué en
      * cours de route, fclose ce qui a échoué en vidant le dernier bloc. */
     int mauvais = ferror(f);
@@ -713,6 +727,8 @@ Object *hc_load(const char *path)
     /* La version du format, lue sur la ligne « format N ». Absente : c'est
      * un fichier d'avant ce numéro, donc de la version 1. */
     int format_fichier = 1;
+    /* La signature de fin a-t-elle été vue ? Voir le verdict, tout en bas. */
+    int fin_vue = 0;
 
     int lecture = 0;
     while ((lecture = ligne_lit(&lg, f)) == 1) {
@@ -1007,9 +1023,20 @@ Object *hc_load(const char *path)
             part = NULL; target = owner; continue;
         }
         if (strcmp(s, "end card") == 0 || strcmp(s, "end background") == 0) {
+            /* Fermer la carte ferme aussi la part restée ouverte.
+             *
+             * Un fichier écrit à la main peut omettre « end field » : la carte
+             * se referme quand même, et ce n'est PAS une troncature — l'objet
+             * a bien une fin, elle est seulement implicite. Sans cette remise
+             * à zéro, le contrôle de fin de fichier voyait une part ouverte et
+             * refusait un fichier parfaitement lisible. Une coupure réelle au
+             * milieu d'une part, elle, laisse part ET owner ouverts, puisque
+             * ni l'un ni l'autre « end » n'a été rencontré. */
+            part = NULL;
             owner = NULL; target = stack; last_bgtext = -1; continue;
         }
         if (strcmp(s, "end stack") == 0) { target = NULL; continue; }
+        if (strcmp(s, "end hc-file") == 0) { fin_vue = 1; continue; }
     }
 
     free(acc.buf);
@@ -1038,7 +1065,32 @@ Object *hc_load(const char *path)
      * où il y en avait un. C'était le seul des trois cas qui restait. */
     int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext || in_icon;
 
-    if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert) {
+    /* UN OBJET RESTÉ OUVERT EST UNE TRONCATURE, LUI AUSSI.
+     *
+     * Le test ci-dessus ne regarde que les blocs de texte. Un fichier coupé
+     * ENTRE deux objets — après « rect 10,10,100,40 », avant « end button » —
+     * n'a aucun bloc ouvert et passait donc pour complet, avec un bouton sans
+     * fin et une carte sans fin.
+     *
+     * À une fin propre, part et owner sont tous deux nuls : « end button »
+     * remet part à NULL, « end card » remet owner à NULL. S'ils ne le sont
+     * pas, le fichier s'est arrêté au milieu de quelque chose. */
+    int objet_ouvert = (part != NULL) || (owner != NULL);
+
+    /* ET LA SIGNATURE DE FIN, pour les fichiers qui savent la porter.
+     *
+     * C'est la seule chose qui attrape une coupure sur une frontière PROPRE —
+     * juste après un « end card » —, où le fichier est syntaxiquement
+     * irréprochable et où il manque simplement toutes les cartes suivantes.
+     *
+     * Exigée de la version 2 seulement : les fichiers d'avant n'en ont pas,
+     * et les refuser rendrait illisible tout ce qui a été enregistré jusqu'ici.
+     * Ce cas-là reste donc indétectable sur un fichier v1, et c'est une raison
+     * de plus pour que les piles repassent par une sauvegarde. */
+    int signature_manque = (format_fichier >= 2) && !fin_vue;
+
+    if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert ||
+        objet_ouvert || signature_manque) {
         if (stack) hc_free(stack);
         return NULL;
     }
