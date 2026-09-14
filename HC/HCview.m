@@ -40,6 +40,13 @@ typedef struct {
 
     /* sélection et interaction */
     Object       *pressed;        /* objet sous le bouton de la souris */
+    /* LA CARTE SUR LAQUELLE LE CLIC A EU LIEU.
+     *
+     * `pressed` était retenu avant l'envoi du message, son contexte de carte
+     * ne l'était pas : la fin automatique du clic lisait la carte COURANTE
+     * après le gestionnaire, qu'un simple « go next card » avait déjà changée.
+     * Les deux voyagent maintenant ensemble. */
+    Object       *pressedCard;
     Object       *popupTarget;    /* menu popup ouvert */
     NSArray<NSString *> *popupItems;
     NSArray<NSNumber *> *popupItemLines; /* lignes HC, base 1 */
@@ -93,6 +100,7 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gEditView        (gDoc->editView)
 #define gEditPanel       (gDoc->editPanel)
 #define gPressed         (gDoc->pressed)
+#define gPressedCard     (gDoc->pressedCard)
 #define gPopupTarget     (gDoc->popupTarget)
 #define gPopupItems      (gDoc->popupItems)
 #define gPopupItemLines  (gDoc->popupItemLines)
@@ -255,22 +263,6 @@ static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     }
 }
 
-static void radio_exclusive(Object *card, Object *keep) {
-    if (!card) return;
-    for (int i = 0; i < card->nparts; i++) {
-        Object *o = card->parts[i];
-        if (o->type == OBJ_BUTTON && o != keep && o->style &&
-            (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-            hc_set_hilite(o, card, 0);
-    }
-    if (card->bg)
-        for (int i = 0; i < card->bg->nparts; i++) {
-            Object *o = card->bg->parts[i];
-            if (o->type == OBJ_BUTTON && o != keep && o->style &&
-                (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-                hc_set_hilite(o, card, 0);
-        }
-}
 
 /* La couleur du nom d'un bouton.
  *
@@ -4695,6 +4687,7 @@ static BOOL      gSansMessageChamp = NO;
                     }
                 }
                 gPressed = hit;
+                gPressedCard = hc_current_card();
                 hc_send(hit, "mouseDown");
                 /* mouseStillDown part en continu tant que le bouton reste
                  * enfoncé, même immobile — c'est ce qui fait marcher les
@@ -4711,6 +4704,7 @@ static BOOL      gSansMessageChamp = NO;
 
         if (hit) {
             gPressed = hit;
+            gPressedCard = hc_current_card();
             if (hit->type == OBJ_BUTTON && hit->autohilite &&
                 (!hit->style ||
                  (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
@@ -4728,6 +4722,7 @@ static BOOL      gSansMessageChamp = NO;
              * déjà fait en entrée du bloc TOOL_BROWSE, inutile de le refaire
              * ici. */
             gPressed = hc_current_card();
+            gPressedCard = gPressed;
             hc_send(gPressed, "mouseDown");
             [self startStillDownTimer];
         }
@@ -5035,27 +5030,27 @@ static BOOL      gSansMessageChamp = NO;
              * Comme aucun rappel ne peut mettre une variable locale à NULL,
              * c'est hc_object_is_live qui dit si l'objet est encore là. */
             Object *presse = gPressed;
+            Object *carteCliquee = gPressedCard;
             gPressed = NULL;
+            gPressedCard = NULL;
 
             /* Pour la carte elle-même, part_at rend NULL : on compare
              * donc à la carte courante plutôt qu'au résultat du test. */
             if (hit == presse || (!hit && presse == hc_current_card()))
                 hc_send(presse, "mouseUp");
 
-            if (presse && hc_object_is_live(presse) &&
-                presse->type == OBJ_BUTTON) {
-                Object *carte = hc_current_card();
-                const char *st = presse->style;
-                if (st && (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0))
-                    hc_set_hilite(presse, carte, !hc_hilite_of(presse, carte));
-                else if (st && (strcmp(st, "radioButton") == 0 ||
-                                strcmp(st, "radiobutton") == 0)) {
-                    hc_set_hilite(presse, carte, 1);
-                    radio_exclusive(carte, presse);
-                }
-                else if (presse->autohilite)
-                    hc_set_hilite(presse, carte, 0);
-            }
+            /* LA FIN DU CLIC S'APPLIQUE À LA CARTE DU CLIC.
+             *
+             * Elle lisait ici hc_current_card(), APRÈS le gestionnaire. Un
+             * « go next card » dans mouseUp suffisait à éteindre le bouton sur
+             * la carte d'arrivée ; avec un bouton de fond à sharedHilite faux
+             * et un saut vers une autre pile, on inscrivait dans une carte de B
+             * l'identifiant d'un bouton de A.
+             *
+             * La règle elle-même est descendue dans le noyau : c'est du modèle,
+             * pas de l'affichage, et elle y devient vérifiable sans AppKit.
+             * hc_fin_de_clic vérifie lui-même que les deux objets vivent. */
+            hc_fin_de_clic(presse, carteCliquee);
 
             [self setNeedsDisplay:YES];
         }
@@ -5215,7 +5210,8 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
 {
     if (!d) return;
     Object **emplacements[] = {
-        &d->editingField, &d->editTarget, &d->pressed, &d->popupTarget,
+        &d->editingField, &d->editTarget, &d->pressed, &d->pressedCard,
+        &d->popupTarget,
         &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
         &d->card,
     };

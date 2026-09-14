@@ -341,6 +341,20 @@ int     hc_card_count(Object *stack);
 void    hc_set_shared_text(Object *field, int shared);
 
 int     hc_hilite_of(Object *btn, Object *card);
+
+/* Vrai si l'allumage de ce bouton se range DANS LA CARTE et non sur le bouton :
+ * un bouton de fond dont sharedHilite est faux. La vue en a besoin pour savoir
+ * si la carte du clic lui est indispensable. */
+int     hc_hilite_par_carte(Object *btn);
+
+/* La fin automatique d'un clic : case qui bascule, radio qui s'allume et
+ * éteint ses voisins, bouton ordinaire qui s'éteint.
+ *
+ * `carte_cliquee` est la carte sur laquelle le CLIC a eu lieu, retenue avant
+ * l'envoi de mouseUp — et non la carte courante après, qu'un « go next card »
+ * dans le gestionnaire aurait déjà changée. Les deux objets sont vérifiés
+ * vivants ici ; l'appelant n'a rien à tester. */
+void    hc_fin_de_clic(Object *btn, Object *carte_cliquee);
 void    hc_set_hilite(Object *btn, Object *card, int on);
 /* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
 void    hc_set_hilite_raw(Object *card, int button_id, int on);

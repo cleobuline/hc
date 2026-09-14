@@ -1774,6 +1774,8 @@ void hc_set_hilite_raw(Object *card, int button_id, int on)
     card->nbghilites++;
 }
 
+int hc_hilite_par_carte(Object *btn) { return hilite_par_carte(btn); }
+
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
     if (!btn) return;
@@ -1781,6 +1783,73 @@ void hc_set_hilite(Object *btn, Object *card, int on)
 
     if (!card) card = g_current_card;
     hc_set_hilite_raw(card, btn->id, on);
+}
+
+/* Un bouton de style radio est-il de CE style ? Les scripts écrivent les deux
+ * casses, et l'ancien code de la vue comparait les deux à chaque endroit. */
+static int est_radio(Object *o)
+{
+    return o && o->type == OBJ_BUTTON && o->style &&
+           (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0);
+}
+
+static int est_case(Object *o)
+{
+    return o && o->type == OBJ_BUTTON && o->style &&
+           (strcmp(o->style, "checkBox") == 0 || strcmp(o->style, "checkbox") == 0);
+}
+
+/* Éteint tous les autres radios de la carte ET de son fond. Un groupe de
+ * radios se répartit souvent entre les deux couches. */
+static void radio_exclusif(Object *carte, Object *garde)
+{
+    if (!carte) return;
+    for (int i = 0; i < carte->nparts; i++)
+        if (carte->parts[i] != garde && est_radio(carte->parts[i]))
+            hc_set_hilite(carte->parts[i], carte, 0);
+    if (carte->bg)
+        for (int i = 0; i < carte->bg->nparts; i++)
+            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]))
+                hc_set_hilite(carte->bg->parts[i], carte, 0);
+}
+
+/* LA FIN AUTOMATIQUE D'UN CLIC, ET SUR QUELLE CARTE ELLE S'APPLIQUE.
+ *
+ * Ce que HyperCard fait tout seul quand mouseUp a rendu la main : la case à
+ * cocher bascule, le radio s'allume et éteint ses voisins, le bouton ordinaire
+ * s'éteint.
+ *
+ * `carte_cliquee` est la carte SUR LAQUELLE LE CLIC A EU LIEU, retenue avant
+ * l'envoi. La vue lisait la carte COURANTE après l'envoi, et un gestionnaire
+ * n'a rien d'exceptionnel à changer de carte :
+ *
+ *     on mouseUp
+ *       go next card
+ *     end mouseUp
+ *
+ * Pour un bouton de fond à sharedHilite false, l'allumage se range dans la
+ * table de la carte : l'extinction partait donc dans celle de la carte
+ * D'ARRIVÉE. Avec « go to card 1 of stack "B" », on inscrivait dans une carte
+ * de B l'identifiant d'un bouton de A — un état de bouton écrit sur une autre
+ * pile. Le pointeur du bouton avait bien été sauvegardé avant le script ; son
+ * contexte de carte ne l'avait pas été.
+ *
+ * Les deux doivent être encore vivants. Si la carte cliquée a disparu — le
+ * gestionnaire l'a supprimée — il n'y a plus de table où écrire et l'on ne
+ * retombe SURTOUT PAS sur la carte courante : c'est très exactement le défaut
+ * qu'on corrige. Un allumage qui ne dépend pas de la carte, lui, s'applique
+ * quand même : il vit sur le bouton. */
+void hc_fin_de_clic(Object *btn, Object *carte_cliquee)
+{
+    if (!btn || !hc_object_is_live(btn) || btn->type != OBJ_BUTTON) return;
+
+    Object *carte = (carte_cliquee && hc_object_is_live(carte_cliquee))
+                    ? carte_cliquee : NULL;
+    if (!carte && hilite_par_carte(btn)) return;
+
+    if (est_case(btn))        hc_set_hilite(btn, carte, !hc_hilite_of(btn, carte));
+    else if (est_radio(btn)) { hc_set_hilite(btn, carte, 1); radio_exclusif(carte, btn); }
+    else if (btn->autohilite) hc_set_hilite(btn, carte, 0);
 }
 
 int hc_card_count(Object *stack){
