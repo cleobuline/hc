@@ -2366,7 +2366,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gLineWidth);
         if (v < 1) v = 1;
         if (v > 8) v = 8;
         gLineWidth = v;
@@ -2375,7 +2375,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "pattern") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gPattern + 1);
         if (v < 1) v = 1;
         if (v > NUM_PATTERNS) v = NUM_PATTERNS;
         gPattern = v - 1;
@@ -2384,7 +2384,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "brush") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gBrush + 1);
         if (v < 1) v = 1;
         if (v > NUM_BRUSHES) v = NUM_BRUSHES;
         gBrush = v - 1;
@@ -2405,7 +2405,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textSize") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gTextSize);
         if (v < 4)  v = 4;
         if (v > 96) v = 96;
         gTextSize = v;
@@ -2414,7 +2414,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textHeight") == 0) {
-        int v = atoi(value);
+        int v = hc_entier(value, 1, HC_TEXTE_MAX, 0);
         if (v > 0) gTextHeight = v;
         return;
     }

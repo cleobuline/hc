@@ -642,14 +642,26 @@ static int parse_run(const char *s, int *start, int *len, int *style,
                      int *size, char *font, int fontlen, int *color)
 {
     *size = 0; font[0] = '\0'; *color = HC_COLOR_INHERIT;
-    if (sscanf(s, "%d,%d,%d", start, len, style) != 3) return 0;
+    /* LES TROIS PREMIERS CHAMPS SONT LUS BORNÉS, ET LEUR ÉCHEC EST DISTINGUÉ.
+     *
+     * « %d » est indéfini sur ce qui dépasse un int, et ces deux-là sont des
+     * DÉCALAGES dans le texte du champ : une valeur aberrante n'y reste pas
+     * cosmétique. hc_entier_lu borne et dit si quelque chose a été lu, ce qui
+     * garde la règle d'avant — trois nombres ou rien du tout. */
+    {
+        char q[3][32]; int lu = 0;
+        if (sscanf(s, "%31[^,],%31[^,],%31[^,]", q[0], q[1], q[2]) != 3) return 0;
+        *start = hc_entier_lu(q[0], 0, HC_COORD_MAX, 0, &lu);        if (!lu) return 0;
+        *len   = hc_entier_lu(q[1], 0, HC_COORD_MAX, 0, &lu);        if (!lu) return 0;
+        *style = hc_entier_lu(q[2], HC_STYLE_INHERIT, 0xFFFF, 0, &lu); if (!lu) return 0;
+    }
 
     const char *p = s;
     for (int commas = 0; *p && commas < 3; p++)
         if (*p == ',') commas++;
     if (!*p) return 1;                       /* forme courte : rien de plus */
 
-    *size = atoi(p);
+    *size = hc_entier(p, 0, HC_TEXTE_MAX, 0);
     const char *q = strchr(p, ',');
     if (!q) return 1;                        /* taille sans police */
     q++;
@@ -661,7 +673,7 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     const char *derniere = strrchr(q, ',');
     int n;
     if (derniere) {
-        *color = atoi(derniere + 1);
+        *color = hc_entier(derniere + 1, HC_COLOR_INHERIT, 0xFFFFFF, HC_COLOR_INHERIT);
         n = (int)(derniere - q);
     } else {
         n = (int)strlen(q);
@@ -730,7 +742,7 @@ static int mot_nombre_apres_guillemets(const char *ligne, const char *mot)
     p += strlen(mot);
     while (*p == ' ' || *p == '\t') p++;
     if (*p < '0' || *p > '9') return -1;
-    return atoi(p);
+    return hc_entier(p, 0, HC_ID_MAX, -1);
 }
 
 static Object *find_bg(Object *stack, const char *name)
@@ -874,7 +886,7 @@ Object *hc_load(const char *path)
         if (!*s || (s[0] == '-' && s[1] == '-')) continue;   /* vide / commentaire */
 
         if (strncmp(s, "format ", 7) == 0) {
-            int v = atoi(s + 7);
+            int v = hc_entier(s + 7, 0, HC_ID_MAX, 0);
             if (v > 0) format_fichier = v;
             continue;
         }
@@ -887,10 +899,11 @@ Object *hc_load(const char *path)
          * `owner` désigne le fond ou la carte en cours : on vérifie donc que
          * c'est bien une carte, un fond n'ayant pas de table d'allumage. */
         if (strncmp(s, "bghilite ", 9) == 0 && owner && owner->type == OBJ_CARD) {
-            hc_set_hilite_raw(owner, atoi(s + 9), 1);
+            int bid = hc_id(s + 9);
+            if (bid) hc_set_hilite_raw(owner, bid, 1);
             continue;
         }
-        if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
+        if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = hc_id(s + 7); continue; }
         if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
 
         /* --- icône de pile ---
@@ -899,7 +912,7 @@ Object *hc_load(const char *path)
          * dont le bloc serait tronqué garde donc ses octets manquants à zéro
          * plutôt que de disparaître. */
         if (strncmp(s, "iconres ", 8) == 0 && stack) {
-            int iid = atoi(s + 8);
+            int iid = hc_entier(s + 8, -HC_ID_MAX, HC_ID_MAX, 0);
             if (!get_quoted(s, 0, nm, sizeof nm)) nm[0] = 0;
             cur_icon = hc_icon_add(stack, iid, nm);
             icon_pos = 0;
@@ -934,9 +947,13 @@ Object *hc_load(const char *path)
         if (!stack) continue;   /* rien avant la pile */
 
         if (strncmp(s, "size ", 5) == 0) {
-            int sw, sh;
-            if (sscanf(s + 5, "%d,%d", &sw, &sh) == 2) {
-                stack->w = sw; stack->h = sh;
+            /* Même raison qu'au « rect » plus bas : « %d » est indéfini sur ce
+             * qui dépasse un int, et une pile de deux milliards de points de
+             * large n'est de toute façon pas une taille. */
+            char q[2][32];
+            if (sscanf(s + 5, "%31[^,],%31s", q[0], q[1]) == 2) {
+                stack->w = hc_coord(q[0], stack->w);
+                stack->h = hc_coord(q[1], stack->h);
             }
             continue;
         }
@@ -990,19 +1007,19 @@ Object *hc_load(const char *path)
             continue;
         }
         if (strncmp(s, "textheight ", 11) == 0 && part) {
-            part->textheight = atoi(s + 11);
+            part->textheight = hc_entier(s + 11, 0, HC_TEXTE_MAX, part->textheight);
             continue;
         }
         if (strncmp(s, "textsize ", 9) == 0 && part) {
-            part->textsize = atoi(s + 9);
+            part->textsize = hc_entier(s + 9, 0, HC_TEXTE_MAX, part->textsize);
             continue;
         }
         if (strncmp(s, "icon ", 5) == 0 && part) {
-            part->icon = atoi(s + 5);
+            part->icon = hc_entier(s + 5, -HC_ID_MAX, HC_ID_MAX, part->icon);
             continue;
         }
         if (strncmp(s, "selectedline ", 13) == 0 && part) {
-            part->selectedline = atoi(s + 13);
+            part->selectedline = hc_entier(s + 13, 0, HC_COORD_MAX, part->selectedline);
             continue;
         }
         if (strcmp(s, "locktext") == 0 && part)       { part->locktext = 1; continue; }
@@ -1011,7 +1028,7 @@ Object *hc_load(const char *path)
         if (strcmp(s, "autoselect") == 0 && part)     { part->auto_select = 1; continue; }
         if (strcmp(s, "multiplelines") == 0 && part)  { part->multiple_lines = 1; continue; }
         if (strcmp(s, "dontwrap") == 0 && part)       { part->dont_wrap = 1; continue; }
-        if (strncmp(s, "textalign ", 10) == 0 && part) { part->text_align = atoi(s + 10); continue; }
+        if (strncmp(s, "textalign ", 10) == 0 && part) { part->text_align = hc_entier(s + 10, 0, 2, part->text_align); continue; }
         if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
         if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
         if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }
@@ -1027,15 +1044,15 @@ Object *hc_load(const char *path)
             continue;
         }
         if (strncmp(s, "textstyle ", 10) == 0 && part) {
-            part->textstyle = atoi(s + 10);
+            part->textstyle = hc_entier(s + 10, 0, 0xFFFF, part->textstyle);
             continue;
         }
         if (strncmp(s, "id ", 3) == 0 && target) {
-            hc_set_id(target, atoi(s + 3));
+            hc_set_id(target, hc_id(s + 3));
             continue;
         }
         if (strncmp(s, "scroll ", 7) == 0 && part) {
-            part->scroll = atoi(s + 7);
+            part->scroll = hc_entier(s + 7, 0, HC_COORD_MAX, part->scroll);
             continue;
         }
         if (strcmp(s, "hidename") == 0 && part) {
@@ -1051,8 +1068,23 @@ Object *hc_load(const char *path)
             continue;
         }
         if (strncmp(s, "rect ", 5) == 0 && part) {
-            int a, b, c, d;
-            if (sscanf(s + 5, "%d,%d,%d,%d", &a, &b, &c, &d) == 4) {
+            /* LES QUATRE NOMBRES SONT BORNÉS AVANT D'ÊTRE SOUSTRAITS.
+             *
+             * « %d » accepte tout ce qui tient dans un int, et la soustraction
+             * qui suit débordait : « rect -2147483648,0,2147483647,10 » donnait
+             * une largeur de -1. Un fichier n'a pas besoin d'être malveillant
+             * pour en arriver là — un enregistrement fait après un calcul qui a
+             * dérapé suffit.
+             *
+             * On lit chaque nombre par hc_coord, qui borne à un million de
+             * points : mille fois la largeur d'une carte, et assez loin du bord
+             * d'un int pour que la soustraction ne puisse plus déborder. Un
+             * nombre hors bornes vaut zéro, et le rectangle reste lisible. */
+            char q[4][32];
+            if (sscanf(s + 5, "%31[^,],%31[^,],%31[^,],%31s",
+                       q[0], q[1], q[2], q[3]) == 4) {
+                int a = hc_coord(q[0], 0), b = hc_coord(q[1], 0);
+                int c = hc_coord(q[2], 0), d = hc_coord(q[3], 0);
                 part->x = a; part->y = b; part->w = c - a; part->h = d - b;
             }
             continue;

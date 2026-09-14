@@ -765,6 +765,54 @@ void        hc_set_id(Object *o, int id);
 int         hc_object_number(Object *o);
 int         hc_part_number(Object *o);
 int         hc_owner_is_bg(Object *o);
+
+/* ---- lire un entier venu d'un SCRIPT ou d'un FICHIER ----
+ *
+ * atoi ne dit jamais non. Il rend 0 sur du texte, s'arrête au premier
+ * caractère qu'il ne comprend pas, et déborde en silence sur ce qui dépasse
+ * un int — comportement INDÉFINI, pas seulement une valeur fausse.
+ *
+ * Trois conséquences mesurées :
+ *
+ *   set the width of … to 1e2     donnait 1, alors que « put 1e3 + 0 » vaut
+ *                                 1000. Le même texte, deux réponses, selon
+ *                                 le chemin qui l'a lu.
+ *   id 2147483647 dans un .stack  faisait passer le compteur d'identifiants à
+ *                                 -2147483648, et la carte suivante recevait
+ *                                 un id négatif.
+ *   rect -2147483648,0,2147483647 donnait une largeur de -1, par débordement
+ *                                 de la soustraction.
+ *
+ * hc_entier lit comme le reste du langage — notation scientifique comprise —
+ * et BORNE. Hors bornes ou illisible, il rend `defaut` : l'appelant décide
+ * quoi faire d'une valeur absurde, au lieu d'en recevoir une indéfinie.
+ *
+ * Les bornes ne sont pas décoratives : HC_COORD_MAX laisse la place aux
+ * additions et soustractions de rectangles sans jamais approcher du bord d'un
+ * int, ce qui est tout l'intérêt. */
+#define HC_COORD_MAX 1000000      /* un million de points : mille fois une carte */
+#define HC_ID_MAX    1000000000   /* et « id + 1 » reste très loin du débordement */
+#define HC_TEXTE_MAX 10000        /* corps, hauteur de ligne : au-delà, plus rien ne s'affiche */
+
+int hc_entier(const char *s, int mini, int maxi, int defaut);
+
+/* La même chose, en disant AUSSI si quelque chose a été lu. Certains
+ * appelants ont besoin de la différence entre « zéro » et « rien » : une
+ * ligne « run » dont les champs ne sont pas des nombres n'est pas une plage
+ * de style à zéro, c'est une ligne à ignorer. */
+int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu);
+
+/* Une coordonnée ou une dimension : bornée à +/- HC_COORD_MAX. */
+int hc_coord(const char *s, int defaut);
+
+/* Un identifiant d'objet, tel qu'il sort d'un script ou d'un fichier : entre
+ * 1 et HC_ID_MAX. Rend 0 sur tout le reste, et 0 n'est l'identifiant de
+ * personne — la recherche échoue donc franchement au lieu de trouver. */
+int hc_id(const char *s);
+
+/* Un rang, 1-based comme en HyperTalk. Rend 0 sur tout le reste, et les deux
+ * recherches par rang refusent déjà un rang inférieur à 1. */
+int hc_rang(const char *s);
 /* Nombre de parts d'un type donné chez un propriétaire (carte OU fond, sans
  * addition des deux : c'est ce que la numérotation par rang suppose). */
 int         hc_part_count(Object *owner, ObjType type);

@@ -401,7 +401,7 @@ static const char *console_answer(const char *prompt, const char *b1,
     printf(") ");
     fflush(stdout);
     if (!fgets(g_console_buf, sizeof g_console_buf, stdin)) return b1;
-    int c = atoi(g_console_buf);
+    int c = hc_entier(g_console_buf, 0, 9, 0);
     if (c == 3 && b3) return b3;
     if (c == 2 && b2) return b2;
     return b1 ? b1 : "OK";
@@ -806,9 +806,51 @@ static int     g_navtop = 0;
 
 /* Force l'identifiant d'un objet relu depuis un fichier, et garde le
  * compteur au-dessus pour ne jamais réattribuer un id existant. */
+int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu)
+{
+    if (lu) *lu = 0;
+    if (!s) return defaut;
+    /* strtod lit comme le reste du langage — « 1e3 » vaut mille, pas un — et
+     * son endptr dit ce qu'aucune variante d'atoi ne sait dire : si QUELQUE
+     * CHOSE a été lu. « abc » rend donc le défaut de l'appelant, et non zéro.
+     *
+     * Le test porte sur le DOUBLE, avant toute conversion vers int : comparer
+     * après coup ne sert à rien, le débordement a déjà eu lieu et il est
+     * indéfini. NaN échoue les deux comparaisons, donc tombe sur le défaut. */
+    char *fin = NULL;
+    double d = strtod(s, &fin);
+    if (fin == s) return defaut;
+    if (!(d >= (double)mini && d <= (double)maxi)) return defaut;
+    if (lu) *lu = 1;
+    return (int)d;
+}
+
+int hc_entier(const char *s, int mini, int maxi, int defaut)
+{
+    return hc_entier_lu(s, mini, maxi, defaut, NULL);
+}
+
+int hc_coord(const char *s, int defaut)
+{
+    return hc_entier(s, -HC_COORD_MAX, HC_COORD_MAX, defaut);
+}
+
+int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
+int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
+
 void hc_set_id(Object *o, int id)
 {
-    if (!o || id <= 0) return;
+    /* L'IDENTIFIANT EST BORNÉ, ET LE COMPTEUR AVEC.
+     *
+     * Un .stack portant « id 2147483647 » faisait passer g_next_id à
+     * INT_MIN — débordement signé, comportement indéfini — et la carte créée
+     * ensuite recevait un identifiant négatif. Le fichier n'avait pas besoin
+     * d'être malveillant pour cela : un compteur emballé ailleurs suffit.
+     *
+     * Au-delà de la borne, on REFUSE l'identifiant plutôt que de l'écrêter :
+     * deux objets ramenés à la même valeur se retrouveraient homonymes, ce qui
+     * est pire que de laisser celui-ci prendre un identifiant neuf. */
+    if (!o || id <= 0 || id > HC_ID_MAX) return;
     o->id = id;
     if (id >= g_next_id) g_next_id = id + 1;
 }
@@ -2665,7 +2707,7 @@ static Object *resolve(const char *ref)
             return NULL;
         }
         if (ci_word(ref, "id")) {
-            int wanted = atoi(skip_spaces(ref + 2));
+            int wanted = hc_id(skip_spaces(ref + 2));
             for (int i = 0; stack && i < stack->nparts; i++)
                 if (stack->parts[i]->type == OBJ_BACKGROUND &&
                     stack->parts[i]->id == wanted)
@@ -2680,7 +2722,7 @@ static Object *resolve(const char *ref)
                 if (val[0] && isdigit((unsigned char)val[0])) num = val;
             }
             if (isdigit((unsigned char)*num)) {
-                int n = atoi(num) - 1;          /* 1-based en HyperTalk */
+                int n = hc_rang(num) - 1;          /* 1-based en HyperTalk */
                 for (int i = 0; stack && i < stack->nparts; i++)
                     if (stack->parts[i]->type == OBJ_BACKGROUND && n-- == 0)
                         return stack->parts[i];
@@ -2712,15 +2754,15 @@ static Object *resolve(const char *ref)
         if (ci_word(after, "id")) {                    /* card id N */
             const char *a = skip_spaces(after + 2);
             int wanted;
-            if (isdigit((unsigned char)*a)) wanted = atoi(a);
-            else { char v[128]; eval_id_token(a, v, sizeof v); wanted = atoi(v); }
+            if (isdigit((unsigned char)*a)) wanted = hc_id(a);
+            else { char v[128]; eval_id_token(a, v, sizeof v); wanted = hc_id(v); }
             for (int i = 0; i < stack->nparts; i++)
                 if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->id == wanted)
                     return stack->parts[i];
             return NULL;
         }
         if (isdigit((unsigned char)*after))
-            return nth_card(stack, atoi(after) - 1);   /* 1-based en HyperTalk */
+            return nth_card(stack, hc_rang(after) - 1);   /* 1-based en HyperTalk */
 
         /* « go card canard » : HyperCard accepte un nom de carte sans
          * guillemets. On ne tente le nom nu que si ce qui suit n'est pas un
@@ -2755,7 +2797,7 @@ static Object *resolve(const char *ref)
 
             int nlen = (int)strlen(nm);
             if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
-                Object *c = nth_card(stack, atoi(nm) - 1);
+                Object *c = nth_card(stack, hc_rang(nm) - 1);
                 if (c) return c;
             }
             Object *c = find_card_by_name(stack, nm);
@@ -2863,12 +2905,12 @@ static Object *resolve(const char *ref)
         const char *a = skip_spaces(ref + 2);
         int wanted;
         if (isdigit((unsigned char)*a)) {
-            wanted = atoi(a);
+            wanted = hc_id(a);
         } else {
             /* « field id n » : l'identifiant vient d'une variable. */
             char v[128];
             eval_id_token(a, v, sizeof v);
-            wanted = atoi(v);
+            wanted = hc_id(v);
         }
         Object *o = find_part_by_id(card, t, wanted);
         if (!o) o = find_part_by_id(bg, t, wanted);
@@ -2877,7 +2919,7 @@ static Object *resolve(const char *ref)
 
     /* --- button N (par rang, 1-based) --- */
     if (isdigit((unsigned char)*ref)) {
-        int n = atoi(ref);
+        int n = hc_rang(ref);
         Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
         if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
         return o;
@@ -2913,7 +2955,7 @@ static Object *resolve(const char *ref)
         /* Un rang, si tout ce qui sort est un nombre. */
         int nlen = (int)strlen(nm);
         if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
-            int n = atoi(nm);
+            int n = hc_rang(nm);
             Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
             if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
             return o;
@@ -3613,6 +3655,19 @@ static int runs_split_at(struct RunList *rl, int pos)
     return 1;
 }
 
+/* Un canal de couleur, rabattu entre 0 et 255 comme l'écrêtage d'avant — mais
+ * AVANT la conversion vers int, et non après : « %d » suivi d'un écrêtage
+ * arrivait trop tard, le débordement avait déjà eu lieu et il est indéfini. */
+static int canal(const char *s)
+{
+    char *fin = NULL;
+    double d = strtod(s, &fin);
+    if (fin == s || !(d == d)) return 0;      /* rien de lisible, ou NaN */
+    if (d < 0.0)   return 0;
+    if (d > 255.0) return 255;
+    return (int)d;
+}
+
 /* Traduit un nom de couleur, ou « #RRGGBB », ou « r,v,b », en 0xRRGGBB.
  *
  * Les noms sont ceux qu'on écrit spontanément dans un script, en français
@@ -3654,7 +3709,15 @@ static int color_from_name_a(const char *v, int *alpha)
     for (unsigned i = 0; i < sizeof table / sizeof *table; i++)
         if (ci_equal(v, table[i].nom)) return table[i].rgb;
 
-    if (*v == '#') return (int)strtol(v + 1, NULL, 16);
+    /* strtol ne déborde pas — il SATURE à LONG_MAX —, mais le rabattre dans un
+     * int est défini par l'implémentation, et « #FFFFFFFFFF » rendait alors
+     * n'importe quelle couleur. On borne au domaine réel d'un RVB. */
+    if (*v == '#') {
+        long n = strtol(v + 1, NULL, 16);
+        if (n < 0)          n = 0;
+        if (n > 0xFFFFFF)   n = 0xFFFFFF;
+        return (int)n;
+    }
 
     /* « 255,128,0 » : la forme qu'emploient les scripts qui calculent leurs
      * couleurs, et celle que rend « the textColor ».
@@ -3664,24 +3727,26 @@ static int color_from_name_a(const char *v, int *alpha)
      * la conversion réussissait et l'on peignait opaque sans que rien ne le
      * dise. C'est le pire des cas — un script qui a l'air de marcher. */
     if (strchr(v, ',')) {
-        int r = 0, g = 0, b = 0, a = 255;
-        int n = sscanf(v, "%d , %d , %d , %d", &r, &g, &b, &a);
+        /* Les quatre nombres se lisent en TEXTE puis par hc_entier, qui borne
+         * avant de convertir : « %d » est indéfini sur ce qui dépasse un int,
+         * et l'écrêtage qui suivait arrivait trop tard pour y changer quoi que
+         * ce soit. Les bornes sont ici celles du canal, 0 à 255 ; hors d'elles
+         * on prend le bout le plus proche, comme avant. */
+        char q[4][32];
+        int n = sscanf(v, "%31[^,],%31[^,],%31[^,],%31s",
+                       q[0], q[1], q[2], q[3]);
         if (n >= 3) {
-            if (r < 0)   r = 0;
-            if (r > 255) r = 255;
-            if (g < 0)   g = 0;
-            if (g > 255) g = 255;
-            if (b < 0)   b = 0;
-            if (b > 255) b = 255;
-            if (n >= 4) {
-                if (a < 0)   a = 0;
-                if (a > 255) a = 255;
-                if (alpha) *alpha = a;
-            }
+            int r = canal(q[0]), g = canal(q[1]), b = canal(q[2]);
+            if (n >= 4 && alpha) *alpha = canal(q[3]);
             return (r << 16) | (g << 8) | b;
         }
     }
-    if (isdigit((unsigned char)*v)) return (int)strtol(v, NULL, 0);
+    if (isdigit((unsigned char)*v)) {
+        long n = strtol(v, NULL, 0);
+        if (n < 0)          n = 0;
+        if (n > 0xFFFFFF)   n = 0xFFFFFF;
+        return (int)n;
+    }
     return HC_COLOR_INHERIT;
 }
 
@@ -5066,7 +5131,7 @@ static int parse_ints(const char *s, int *v, int maxn)
     while (*s && n < maxn) {
         while (*s == ' ' || *s == '\t' || *s == ',') s++;
         if (!*s) break;
-        v[n++] = atoi(s);
+        v[n++] = hc_coord(s, 0);
         while (*s && *s != ',') s++;
     }
     return n;
@@ -5088,12 +5153,22 @@ static int geom_write(Object *o, const char *prop, const char *val)
         if (parse_ints(val, p, 2) == 2) { o->w += o->x - p[0]; o->h += o->y - p[1]; o->x = p[0]; o->y = p[1]; }
     } else if (ci_equal(prop, "botright") || ci_equal(prop, "bottomright")) {
         if (parse_ints(val, p, 2) == 2) { o->w = p[0] - o->x; o->h = p[1] - o->y; }
-    } else if (ci_equal(prop, "left"))   { o->x = atoi(val); }
-    else if (ci_equal(prop, "top"))      { o->y = atoi(val); }
-    else if (ci_equal(prop, "right"))    { o->w = atoi(val) - o->x; }
-    else if (ci_equal(prop, "bottom"))   { o->h = atoi(val) - o->y; }
-    else if (ci_equal(prop, "width"))    { o->w = atoi(val); }
-    else if (ci_equal(prop, "height"))   { o->h = atoi(val); }
+    /* LES GÉOMÉTRIES PASSENT PAR hc_coord, ET NON PAR atoi.
+     *
+     * « set the width of card field "x" to 1e2 » donnait UN : atoi s'arrête au
+     * « e ». Le même texte vaut mille dans « put 1e3 + 0 ». Un langage qui
+     * répond deux choses différentes au même nombre selon le chemin qui le lit
+     * est un langage dans lequel on ne peut pas raisonner.
+     *
+     * La valeur est bornée au passage : une largeur de deux milliards n'a pas
+     * de sens et déborde dès qu'on l'additionne à une abscisse. En cas de
+     * refus on garde la valeur actuelle plutôt que d'en inventer une. */
+    } else if (ci_equal(prop, "left"))   { o->x = hc_coord(val, o->x); }
+    else if (ci_equal(prop, "top"))      { o->y = hc_coord(val, o->y); }
+    else if (ci_equal(prop, "right"))    { o->w = hc_coord(val, o->x + o->w) - o->x; }
+    else if (ci_equal(prop, "bottom"))   { o->h = hc_coord(val, o->y + o->h) - o->y; }
+    else if (ci_equal(prop, "width"))    { o->w = hc_coord(val, o->w); }
+    else if (ci_equal(prop, "height"))   { o->h = hc_coord(val, o->h); }
     else if (ci_equal(prop, "loc") || ci_equal(prop, "location")) {
         if (parse_ints(val, p, 2) == 2) { o->x = p[0] - o->w/2; o->y = p[1] - o->h/2; }
     } else return 0;
@@ -5130,7 +5205,7 @@ int hc_resolve_icon(const char *text)
 {
     if (!text) return 0;
     if (gIconResolver) return gIconResolver(text);
-    return atoi(text);   /* sans résolveur : les numéros seulement */
+    return hc_entier(text, -HC_ID_MAX, HC_ID_MAX, 0);   /* sans résolveur : les numéros seulement */
 }
 
 static int is_prop_name(const char *w, int len)
@@ -6475,14 +6550,14 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
         case HCT_OBJ_BACKGROUND:
             switch (n->designateur) {
                 case HCT_DES_NOM:  return v3_bg_par_nom(stack, val);
-                case HCT_DES_ID:   return v3_bg_par_id(stack, atoi(val));
+                case HCT_DES_ID:   return v3_bg_par_id(stack, hc_id(val));
                 case HCT_DES_RANG: {
                     /* Un désignateur peut être un nom aussi bien qu'un rang :
                      * « bg i » où i vaut 2, mais aussi « bg commun ». On
                      * regarde CE QUI SORT de l'évaluation, comme resolve. */
                     int l = (int)strlen(val);
                     if (l > 0 && (int)strspn(val, "0123456789") == l)
-                        return v3_nth_bg(stack, atoi(val));
+                        return v3_nth_bg(stack, hc_rang(val));
                     return v3_bg_par_nom(stack, val);
                 }
                 /* UN FOND DÉSIGNÉ REND UN FOND.
@@ -6531,7 +6606,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
             switch (n->designateur) {
                 case HCT_DES_NOM: return find_card_by_name(stack, val);
                 case HCT_DES_ID: {
-                    int w = atoi(val);
+                    int w = hc_id(val);
                     for (int i = 0; stack && i < stack->nparts; i++)
                         if (stack->parts[i]->type == OBJ_CARD &&
                             stack->parts[i]->id == w)
@@ -6541,7 +6616,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                 case HCT_DES_RANG: {
                     int l = (int)strlen(val);
                     if (l > 0 && (int)strspn(val, "0123456789") == l)
-                        return nth_card(stack, atoi(val) - 1);
+                        return nth_card(stack, hc_rang(val) - 1);
                     return find_card_by_name(stack, val);
                 }
                 case HCT_DES_ORDINAL:
@@ -6580,7 +6655,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
 
             switch (n->designateur) {
                 case HCT_DES_ID: {
-                    int w = atoi(val);
+                    int w = hc_id(val);
                     Object *o = find_part_by_id(premier, t, w);
                     if (!o && repli) o = find_part_by_id(repli, t, w);
                     return o;
@@ -6593,7 +6668,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
                 case HCT_DES_RANG: {
                     int l = (int)strlen(val);
                     if (l > 0 && (int)strspn(val, "0123456789") == l) {
-                        int r = atoi(val);
+                        int r = hc_rang(val);
                         Object *o = find_part_by_rank(premier, t, r);
                         if (!o && repli) o = find_part_by_rank(repli, t, r);
                         return o;
@@ -7428,6 +7503,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         *out = hct_val_texte(sep);
         { g_v1_porte = sauve_porte; } return 1;
     }
+
 
     /* Les fonctions du monde, servies sans fabriquer ni relexer de chaîne.
      * Comme itemDelimiter, ce chemin n'emprunte rien à l'arène.
@@ -9073,7 +9149,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             }
             runs_set_attr(rl, cst, cen - cst, mask,
                           (mask & RA_STYLE) ? style_from_names(val) : 0,
-                          (mask & RA_SIZE)  ? atoi(val) : 0,
+                          (mask & RA_SIZE)  ? hc_entier(val, 0, HC_TEXTE_MAX, 0) : 0,
                           (mask & RA_FONT)  ? val : NULL,
                           (mask & RA_COLOR) ? color_from_name(val)
                                             : HC_COLOR_INHERIT);
@@ -9121,7 +9197,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         o->icon = hc_resolve_icon(val);
         notify_field(o);
     } else if (ci_equal(prop, "selectedline") || ci_equal(prop, "selectedlines")) {
-        o->selectedline = atoi(val);
+        o->selectedline = hc_entier(val, 0, HC_COORD_MAX, o->selectedline);
         notify_field(o);
     } else if (ci_equal(prop, "locktext")) {
         o->locktext = truthy(val); notify_field(o);
@@ -9169,7 +9245,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
          * seul rendrait le contenu inaccessible. */
         hc_set_shared_text(o, truthy(val));
     } else if (ci_equal(prop, "scroll")) {
-        o->scroll = atoi(val);
+        o->scroll = hc_coord(val, o->scroll);
         if (o->scroll < 0) o->scroll = 0;
         notify_field(o);
     } else if (ci_equal(prop, "textfont")) {
@@ -9186,11 +9262,11 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     } else if (ci_equal(prop, "autohilite")) {
         o->autohilite = truthy(val);
     } else if (ci_equal(prop, "textsize")) {
-        o->textsize = atoi(val);
+        o->textsize = hc_entier(val, 0, HC_TEXTE_MAX, o->textsize);
         notify_field(o);
     } else if (ci_equal(prop, "textheight")) {
         /* Zéro rétablit la valeur déduite du corps. */
-        int v = atoi(val);
+        int v = hc_entier(val, 0, HC_TEXTE_MAX, 0);
         o->textheight = v > 0 ? v : 0;
         notify_field(o);
     } else if (ci_equal(prop, "script")) {
@@ -10248,10 +10324,10 @@ static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
 
-    int x1 = atoi(p1), y1 = 0, x2 = atoi(p2), y2 = 0;
+    int x1 = hc_coord(p1, 0), y1 = 0, x2 = hc_coord(p2, 0), y2 = 0;
     const char *c1 = strchr(p1, ','), *c2 = strchr(p2, ',');
-    if (c1) y1 = atoi(c1 + 1);
-    if (c2) y2 = atoi(c2 + 1);
+    if (c1) y1 = hc_coord(c1 + 1, 0);
+    if (c2) y2 = hc_coord(c2 + 1, 0);
 
     g_visual_dirty = 1;
     { const char *t = host_global("tool");
@@ -10273,9 +10349,9 @@ static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
 
-    int x = atoi(pt), y = 0;
+    int x = hc_coord(pt, 0), y = 0;
     const char *c = strchr(pt, ',');
-    if (c) y = atoi(c + 1);
+    if (c) y = hc_coord(c + 1, 0);
 
     g_visual_dirty = 1;
     { const char *t = host_global("tool");
@@ -11076,7 +11152,7 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
     }
 
     if (n->designateur == HCT_DES_RANG) {
-        int r = atoi(b);
+        int r = hc_rang(b);
         return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
     }
     return menu_index(b);
@@ -11104,7 +11180,7 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     }
 
     if (n->designateur == HCT_DES_RANG) {
-        int r = atoi(b);
+        int r = hc_rang(b);
         return (r >= 1 && r <= g_menus[im].n) ? r - 1 : -1;
     }
     for (int j = 0; j < g_menus[im].n; j++)

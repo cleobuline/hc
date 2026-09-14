@@ -1,0 +1,48 @@
+=== la notation scientifique vaut la même chose partout ===
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   > 1000
+   apres 1e2                          x=20 y=100 w=100 h=100
+
+=== un texte illisible NE remet PAS la propriete a zero ===
+   apres "patate"                     x=20 y=100 w=100 h=100
+
+=== une valeur hors bornes est refusee, pas subie ===
+   apres 3 000 000                    x=20 y=100 w=100 h=100
+   apres -2147483648                  x=20 y=100 w=100 h=100
+
+=== ce qui est lisible ET dans les bornes passe, evidemment ===
+   apres 220 et 55                    x=20 y=100 w=220 h=55
+
+=== un .stack porteur d'un id extreme ne fait pas deborder le compteur ===
+   id relu de la carte A        : 7  (l'id du fichier est hors bornes, il est REFUSE)
+   id de la carte creee ensuite : 8  (positif)
+
+=== un rect extreme ne deborde plus a la soustraction ===
+   champ : x=0 y=0 w=0 h=10 textsize=0 scroll=0
+
+=== une taille de pile absurde ne passe pas non plus ===
+   taille relue : 512 x 342
+
+=== les couleurs se lisent bornees, elles aussi ===
+   hc_color_from_name("#FF8000") = 16744448
+   hc_color_from_name("#FFFFFFFFFF") = 16777215
+   hc_color_from_name("255,128,0") = 16744448
+   hc_color_from_name("99999999999,128,0") = 16744448
+   hc_color_from_name("-5,-5,-5") = 0
+   hc_color_from_name("patate") = -1
+
+=== hc_entier lui-meme, aux bords ===
+   hc_entier("42", 0, 100, -1) = 42
+   hc_entier("  42  ", 0, 100, -1) = 42
+   hc_entier("1e2", 0, 100, -1) = 100
+   hc_entier("42abc", 0, 100, -1) = 42
+   hc_entier("abc", 0, 100, -1) = -1
+   hc_entier("", 0, 100, -1) = -1
+   hc_entier("101", 0, 100, -1) = -1
+   hc_entier("-1", 0, 100, -1) = -1
+   hc_entier("2147483648", 0, 100, -1) = -1
+   hc_entier("1e400", 0, 100, -1) = -1
+   hc_entier("42.9", 0, 100, -1) = 42
+   hc_entier(NULL, ...) = -1
+   hc_id("0") = 0   hc_id("7") = 7   hc_id("abc") = 0
+   hc_rang("0") = 0  hc_rang("3") = 3  hc_rang("9e9") = 0
