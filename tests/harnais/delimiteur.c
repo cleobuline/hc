@@ -96,6 +96,51 @@ int main(void)
           "  put the number of items of \"a--b--c\" & \" [\""
           " & item 2 of \"a--b--c\" & \"]\"");
 
+    puts("\n=== un délimiteur LONG : plus aucun tampon fixe sur le chemin ===");
+    /* Le délimiteur tenait dans char[8], et la v3 le recopiait dans un char[8]
+     * à elle. Quatre « é » font huit octets : « set the itemDelimiter to
+     * "éééé" » rendait « ééé\xc3 », de l'UTF-8 invalide, et le découpage
+     * rendait « \xc3b » au lieu de « b ». On recréait exactement la classe de
+     * défaut que le passage de char à chaîne devait fermer. */
+    essai("quatre é, relu",
+          "set the itemDelimiter to \"éééé\"\n"
+          "  put \"[\" & the itemDelimiter & \"] \" & the length of the itemDelimiter"
+          " & \" caracteres\"");
+    essai("quatre é, découpage",
+          "set the itemDelimiter to \"éééé\"\n"
+          "  put \"a\" & the itemDelimiter & \"b\" & the itemDelimiter & \"c\" into v\n"
+          "  put the number of items of v & \" [\" & item 2 of v & \"]\"");
+    essai("un délimiteur de trente caractères",
+          "put \"\" into d\n"
+          "  repeat with i = 1 to 10\n    put \"éxy\" after d\n  end repeat\n"
+          "  set the itemDelimiter to d\n"
+          "  put \"a\" & d & \"b\" into v\n"
+          "  put the number of items of v & \" [\" & item 2 of v & \"] delim \""
+          " & the length of the itemDelimiter & \" caracteres\"");
+
+    puts("\n=== le TRI recolle avec le délimiteur ENTIER ===");
+    /* chunk_sep rendait un char : le tri recollait « cébéa » avec le seul
+     * octet \xc3, donnant « a\xc3b\xc3c » — de l'UTF-8 invalide — et
+     * « the number of items » retombait à un. */
+    essai("sort items, délimiteur « é »",
+          "set the itemDelimiter to \"é\"\n"
+          "  put \"cébéa\" into v\n  sort items of v\n"
+          "  put \"[\" & v & \"] \" & the number of items of v & \" items\"");
+    essai("sort items, délimiteur « -- »",
+          "set the itemDelimiter to \"--\"\n"
+          "  put \"c--b--a\" into v\n  sort items of v\n"
+          "  put \"[\" & v & \"] \" & the number of items of v & \" items\"");
+
+    puts("\n=== le remplissage au-delà du rang, avec un délimiteur long ===");
+    essai("put dans item 4 d'un seul item",
+          "set the itemDelimiter to \"é\"\n"
+          "  put \"a\" into v\n  put \"Q\" into item 4 of v\n"
+          "  put \"[\" & v & \"] \" & the number of items of v & \" items\"");
+    essai("idem avec « -- »",
+          "set the itemDelimiter to \"--\"\n"
+          "  put \"a\" into v\n  put \"Q\" into item 4 of v\n"
+          "  put \"[\" & v & \"] \" & the number of items of v & \" items\"");
+
     puts("\n=== un délimiteur vide retombe sur la virgule ===");
     essai("vide",
           "set the itemDelimiter to empty\n"

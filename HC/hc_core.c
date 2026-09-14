@@ -3497,13 +3497,40 @@ static ChunkType chunk_kind(const char *s, int *used)
  * propriété GLOBALE, et non celle d'un conteneur : elle vaut pour tout le
  * découpage tant qu'on ne la change pas, ce qui oblige les scripts prudents à
  * la remettre à la virgule après usage. */
-/* LE DÉLIMITEUR D'ITEMS EST UNE CHAÎNE.
+/* LE DÉLIMITEUR D'ITEMS EST UNE CHAÎNE, DE LONGUEUR QUELCONQUE.
  *
- * Il tenait dans un char, donc dans un octet : « set the itemDelimiter to "é" »
- * n'en retenait que le premier, et le découpage coupait au milieu de la
- * séquence UTF-8. Cinq octets suffisent pour tout point de code d'Unicode,
- * plus le zéro final. */
-static char g_item_delim[8] = ",";
+ * Il tenait d'abord dans un char, donc dans un octet : « set the itemDelimiter
+ * to "é" » n'en retenait que le premier et le découpage coupait au milieu de
+ * la séquence UTF-8.
+ *
+ * Le remplacer par char[8] a déplacé le défaut sans le fermer. Le reste du
+ * code accepte un délimiteur de PLUSIEURS CARACTÈRES — hct_chunk_* travaille
+ * sur une chaîne et avance de sa longueur —, si bien que huit octets étaient
+ * un compromis dangereux plutôt qu'une limite : quatre « é » font huit octets,
+ * et « set the itemDelimiter to "éééé" » rendait « ééé\xc3 », de l'UTF-8
+ * invalide. On recréait exactement la classe de défaut qu'on voulait fermer.
+ *
+ * Il est donc alloué. NULL vaut la virgule, ce qui évite d'allouer dans le cas
+ * courant et donne au noyau un état initial sans allocation.
+ *
+ * Ce pointeur reste vivant dans une globale jusqu'à la fin du processus :
+ * LeakSanitizer ne le signale pas, un bloc accessible depuis une racine
+ * n'étant pas une fuite. */
+static char *g_item_delim = NULL;
+
+static const char *item_delim(void)
+{
+    return (g_item_delim && g_item_delim[0]) ? g_item_delim : ",";
+}
+
+static void item_delim_pose(const char *v)
+{
+    if (!v || !*v) { free(g_item_delim); g_item_delim = NULL; return; }
+    char *neuf = dupstr(v);
+    if (!neuf) hc_memoire_epuisee("délimiteur d'items");
+    free(g_item_delim);
+    g_item_delim = neuf;
+}
 /* Levé dès que le noyau change quelque chose de visible ; lu et remis à zéro
  * par l'hôte. Sans lui, cocoa_idle ne peut pas savoir s'il doit repeindre :
  * l'architecture reposait sur un redessin inconditionnel à chaque tour de
@@ -3516,12 +3543,18 @@ int hc_take_visual_dirty(void)
     g_visual_dirty = 0;
     return d;
 }
-static char chunk_sep(ChunkType t)
+/* Le séparateur d'un type de morceau, EN CHAÎNE.
+ *
+ * Il rendait un char, ce qui marchait tant que le délimiteur d'items en était
+ * un. « sort items of "cébéa" » avec « é » pour délimiteur recollait donc le
+ * résultat avec le seul octet \xc3 : « a\xc3b\xc3c », de l'UTF-8 invalide, et
+ * « the number of items » retombait à un. Mesuré. */
+static const char *chunk_sep(ChunkType t)
 {
-    if (t == CH_ITEM) return g_item_delim[0];
-    if (t == CH_LINE) return '\n';
-    if (t == CH_WORD) return ' ';
-    return '\0';
+    if (t == CH_ITEM) return item_delim();
+    if (t == CH_LINE) return "\n";
+    if (t == CH_WORD) return " ";
+    return "";
 }
 
 /* ---- les morceaux : délégués à hct_chunk ----
@@ -3556,14 +3589,14 @@ static HctSorteChunk vers_sorte_v3(ChunkType t)
 static int chunk_count(const char *s, ChunkType t)
 {
     if (t == CH_NONE) return 0;
-    return hct_chunk_compte(s, vers_sorte_v3(t), g_item_delim);
+    return hct_chunk_compte(s, vers_sorte_v3(t), item_delim());
 }
 
 /* Bornes du n-ième morceau (1-based). Renvoie 0 s'il n'existe pas. */
 static int chunk_span1(const char *s, ChunkType t, int n, int *b, int *e)
 {
     if (t == CH_NONE) return 0;
-    HctBornes r = hct_chunk_bornes(s, vers_sorte_v3(t), n, 0, g_item_delim);
+    HctBornes r = hct_chunk_bornes(s, vers_sorte_v3(t), n, 0, item_delim());
     if (!r.trouve) return 0;
     *b = r.deb; *e = r.fin;
     return 1;
@@ -4542,12 +4575,18 @@ static int container_set_body(const char *ref, const char *val, int mode)
                      * « delete word 1 » retire « Sun » ET l'espace qui suit.
                      * Meme ajustement que plus bas, sinon les plages qui
                      * suivent se decalent d'un caractere de trop. */
-                    char sep = chunk_sep(ct);
+                    const char *sep = chunk_sep(ct);
+                    int ls = (int)strlen(sep);
                     const char *ft = hc_field_text(cf);
                     int fl = (int)strlen(ft);
-                    if (sep) {
-                        if      (cen < fl && ft[cen] == sep)  cen++;
-                        else if (cst > 0  && ft[cst-1] == sep) cst--;
+                    /* Le separateur peut faire PLUSIEURS octets — « é » en
+                     * fait deux — et meme plusieurs caracteres. On avance de
+                     * sa longueur, pas d'un octet. */
+                    if (ls) {
+                        if      (cen + ls <= fl && memcmp(ft + cen, sep, (size_t)ls) == 0)
+                            cen += ls;
+                        else if (cst >= ls && memcmp(ft + cst - ls, sep, (size_t)ls) == 0)
+                            cst -= ls;
                     }
                     g_edit_at = cst; g_edit_old = cen - cst; g_edit_new = 0;
                 }
@@ -4560,30 +4599,35 @@ static int container_set_body(const char *ref, const char *val, int mode)
         int a, b, st, en;
         chunk_indices(base, ct, ordinal, ia, ib, &a, &b);
 
-        char sepstr[2] = { chunk_sep(ct), '\0' };
+        const char *sepstr = chunk_sep(ct);
+        size_t lsep = strlen(sepstr);
         char *neuf = arena_buf();
 
         if (!chunk_span(base, ct, a, b, &st, &en)) {
             if (mode == 3) return 1;            /* rien à supprimer */
             /* Le rang visé dépasse le contenu : compléter avec des éléments
              * vides jusqu'à ce rang, comme le fait HyperTalk. */
-            if (sepstr[0] && a > 0) {
+            if (lsep && a > 0) {
+                /* On compte les separateurs PAR LEUR LONGUEUR : un « é » en
+                 * vaut un, pas deux, et « -- » un aussi. */
                 int have = 0;
                 if (*base) {
                     have = 1;
-                    for (const char *q = base; *q; q++)
-                        if (*q == sepstr[0]) have++;
+                    for (const char *q = base; *q; )
+                        if (strncmp(q, sepstr, lsep) == 0) { have++; q += lsep; }
+                        else q++;
                 }
                 int need = (have == 0) ? (a - 1) : (a - have);
                 int pos = 0;
                 pos += snprintf(neuf + pos, HC_VAL - pos, "%s", base);
-                for (int k = 0; k < need && pos < (int)HC_VAL - 2; k++)
-                    neuf[pos++] = sepstr[0];
+                for (int k = 0; k < need && pos + (int)lsep < (int)HC_VAL - 1; k++) {
+                    memcpy(neuf + pos, sepstr, lsep); pos += (int)lsep;
+                }
                 neuf[pos] = '\0';
                 snprintf(neuf + pos, HC_VAL - pos, "%s", val);
             } else {
                 snprintf(neuf, HC_VAL, "%s%s%s", base,
-                         (*base && sepstr[0]) ? sepstr : "", val);
+                         (*base && lsep) ? sepstr : "", val);
             }
         } else {
             char *old = arena_buf();
@@ -5075,7 +5119,7 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "itemdelimiter")) {
-            snprintf(out, outlen, "%s", g_item_delim); return 1;
+            snprintf(out, outlen, "%s", item_delim()); return 1;
         }
         /* Le gabarit vide se rend tel quel : c'est ce que HyperCard rendait
          * avant qu'on y touche, et « if the numberFormat is empty » doit
@@ -6403,8 +6447,8 @@ static int prop_globale_noyau(const char *prop, const char *val)
     /* Une chaîne vide ou de plusieurs caractères ramène à la virgule —
      * HyperCard ne retenait qu'un caractère. */
     if (ci_equal(prop, "itemdelimiter")) {
-        snprintf(g_item_delim, sizeof g_item_delim, "%s", val[0] ? val : ",");
-        emit(HC_INFO, "   → itemDelimiter ← \"%s\"", g_item_delim);
+        item_delim_pose(val);
+        emit(HC_INFO, "   → itemDelimiter ← \"%s\"", item_delim());
         return 1;
     }
 
@@ -7839,7 +7883,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * directement, c'est une globale de hc_core.c. Avant toute allocation :
      * c'est le cas le plus fréquent, et il n'a besoin de rien. */
     if (ci_equal(nom, "itemDelimiter")) {
-        const char *sep = g_item_delim;
+        const char *sep = item_delim();
         *out = hct_val_texte(sep);
         { g_v1_porte = sauve_porte; } return 1;
     }
@@ -8620,7 +8664,7 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
              * d'ordinaux à tenir d'accord, et « middle » a déjà été faux une
              * fois — total/2+1 et non (total+1)/2. */
             int total = hct_chunk_compte(hc_field_text(f), c->sorte,
-                                         g_item_delim);
+                                         item_delim());
             n1 = hct_rang_ordinal(c->ordinal, total);
             if (n1 <= 0) return 0;
         } else if (c->nfils >= 2) {
@@ -8657,7 +8701,7 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         }
 
         HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
-                                        n1, n2, g_item_delim);
+                                        n1, n2, item_delim());
         if (!bo.trouve) return 0;
         st = bo.deb; en = bo.fin;
     } else {
@@ -8889,16 +8933,19 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
          * On mesure d'abord, on alloue juste, on remplit sans garde : la
          * somme des longueurs plus un séparateur par élément ne peut pas
          * déborder ce qu'on vient de calculer. */
-        char sep[2] = { chunk_sep(morceau), '\0' };
+        const char *sep = chunk_sep(morceau);
+        size_t lsep = strlen(sep);
         size_t total = 0;
-        for (int i = 0; i < n2; i++) total += strlen(elems[i]) + 1;
+        for (int i = 0; i < n2; i++) total += strlen(elems[i]) + lsep;
         char *res = malloc(total + 1);
         if (!res) hc_memoire_epuisee("résultat d'un tri");
         size_t used = 0;
         for (int i = 0; i < n2; i++) {
             const char *el = elems[tab[i].rang];
             size_t l = strlen(el);
-            if (i) res[used++] = sep[0];
+            /* Le séparateur ENTIER : un seul octet recollait « cébéa » trié en
+             * « a\xc3b\xc3c », de l'UTF-8 invalide. */
+            if (i) { memcpy(res + used, sep, lsep); used += lsep; }
             memcpy(res + used, el, l); used += l;
         }
         res[used] = '\0';

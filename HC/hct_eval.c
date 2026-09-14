@@ -813,15 +813,26 @@ int hct_rang_ordinal(HctOrdinal o, int total)
  * On remplit un tampon de l'appelant plutôt que de rendre un pointeur : la
  * valeur de l'hôte est libérée en sortant, et en rendre l'adresse laisserait
  * l'appelant lire de la mémoire rendue. */
-static void delimiteur(HctContexte *ctx, char *out, size_t taille)
+static char *delimiteur(HctContexte *ctx)
 {
-    snprintf(out, taille, ",");
+    /* RIEN DE FIXE ICI NON PLUS.
+     *
+     * Ce tampon faisait huit octets, comme celui du noyau, et pour la même
+     * raison apparente : « cinq octets suffisent à un point de code ». Mais le
+     * délimiteur peut faire plusieurs CARACTÈRES — hct_chunk_* travaille sur
+     * une chaîne et avance de sa longueur —, et « éééé » en fait huit. Il en
+     * ressortait sept, coupés au milieu du dernier « é » : le découpage
+     * rendait alors « \xc3b » au lieu de « b ». Mesuré.
+     *
+     * On reprend donc la propriété de la chaîne rendue par l'hôte, que
+     * l'appelant libère. NULL vaut la virgule. */
     HctValeur v;
     if (ctx->hote.fonction &&
         ctx->hote.fonction(ctx->hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        if (v.txt && v.txt[0]) snprintf(out, taille, "%s", v.txt);
+        if (v.txt && v.txt[0]) return v.txt;   /* propriété reprise */
         hct_val_libere(&v);
     }
+    return NULL;
 }
 
 static int rang_de(HctContexte *ctx, const HctNoeud *n, int *ok)
@@ -851,24 +862,25 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
     HctValeur cible = hct_evalue(ctx, n->fils[n->nfils - 1]);
     if (ctx->erreur) return cible;
 
-    char d[8]; delimiteur(ctx, d, sizeof d);
+    char *dd = delimiteur(ctx); const char *d = dd ? dd : ",";
     int n1 = 0, n2 = 0;
 
     if (n->ordinal) {
         int total = hct_chunk_compte(cible.txt, n->sorte, d);
         n1 = hct_rang_ordinal(n->ordinal, total);
-        if (n1 < 1) { hct_val_libere(&cible); return hct_val_vide(); }
+        if (n1 < 1) { free(dd); hct_val_libere(&cible); return hct_val_vide(); }
     } else {
         int ok = 0;
         if (n->nfils >= 2) n1 = rang_de(ctx, n->fils[0], &ok);
-        if (!ok) { hct_val_libere(&cible); return hct_val_vide(); }
+        if (!ok) { free(dd); hct_val_libere(&cible); return hct_val_vide(); }
         if (n->nfils >= 3) {
             n2 = rang_de(ctx, n->fils[1], &ok);
-            if (!ok) { hct_val_libere(&cible); return hct_val_vide(); }
+            if (!ok) { free(dd); hct_val_libere(&cible); return hct_val_vide(); }
         }
     }
 
     HctValeur r = hct_chunk_lit(cible.txt, n->sorte, n1, n2, d);
+    free(dd);
     hct_val_libere(&cible);
     return r;
 }
@@ -1000,8 +1012,9 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             sur->nfils >= 1) {
             HctValeur cible = hct_evalue(ctx, sur->fils[sur->nfils - 1]);
             if (!ctx->erreur) {
-                char d[8]; delimiteur(ctx, d, sizeof d);
+                char *dd = delimiteur(ctx); const char *d = dd ? dd : ",";
                 int c = hct_chunk_compte(cible.txt, sur->sorte, d);
+                free(dd);
                 hct_val_libere(&cible);
                 free(nom);
                 return hct_val_nombre(c);
