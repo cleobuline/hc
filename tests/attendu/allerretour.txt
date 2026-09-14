@@ -1,0 +1,18 @@
+=== aller-retour : mémoire -> hc_save -> hc_load -> comparaison ===
+  abc                    [abc]  champ =  script =
+  abc + retour           [abc\n]  champ =  script =
+  abc + 2 espaces        [abc__]  champ =  script =
+  abc + tabulation       [abc\t]  champ =  script =
+  a retour b             [a\nb]  champ =  script =
+  a retour b retour      [a\nb\n]  champ =  script =
+  ligne vide au milieu   [a\n\nb]  champ =  script =
+  espaces devant         [__abc]  champ =  script =
+  deux retours           [a\n\n]  champ =  script =
+  juste un retour        [\n]  champ =  script =
+  texte vide             []  champ =  script =
+  accents                [été\nà_demain__]  champ =  script =
+  ligne de barre         [|_pas_un_separateur]  champ =  script =
+
+=== un fichier de l'ancien format se relit comme avant ===
+   champ relu : [abc\ndef\n]
+   (l'ancien lecteur rendait abc\ndef\n — même résultat attendu)

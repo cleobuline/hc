@@ -104,12 +104,29 @@ static char *dupstr_file(const char *s)
 
 /* ==================== écriture ==================== */
 
+/* UN « | » PAR SEGMENT, Y COMPRIS LE SEGMENT VIDE FINAL.
+ *
+ * L'ancienne boucle s'arrêtait sur « *p », si bien que « abc » et « abc\n »
+ * produisaient EXACTEMENT le même fichier : une seule ligne « | abc ». Le
+ * lecteur remettait ensuite un saut de ligne après chaque « | », et les deux
+ * revenaient en « abc\n ». Un champ enregistré puis relu n'était donc plus le
+ * même — et pas seulement dans les cas tordus : « abc » suffisait.
+ *
+ * Un texte de N sauts de ligne a N+1 segments. On les écrit tous, et le
+ * lecteur les joint ENTRE eux au lieu d'ajouter après chacun :
+ *
+ *     "abc"     -> ["abc"]          -> | abc
+ *     "abc\n"   -> ["abc", ""]      -> | abc      puis  |
+ *     "a\nb"    -> ["a", "b"]       -> | a        puis  | b
+ *     ""        -> [""]             -> |
+ *
+ * L'aller-retour est alors exact, et le format se relit sans ambiguïté. */
 static void put_block_wrap(FILE *f, const char *tag, const char *text, int wrap)
 {
     if (!text || !*text) return;
     fprintf(f, "%s\n", tag);
     const char *p = text;
-    while (*p) {
+    for (;;) {
         const char *nl = strchr(p, '\n');
         int len = nl ? (int)(nl - p) : (int)strlen(p);
         if (wrap) {
@@ -291,7 +308,23 @@ int hc_save(Object *stack, const char *path)
     FILE *f = fdopen(fd, "w");
     if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
 
-    fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
+    /* LE NUMÉRO DE FORMAT, ET POURQUOI IL ARRIVE MAINTENANT.
+     *
+     * La version 2 écrit les blocs de texte exactement : un « | » par
+     * segment, segment vide final compris, si bien qu'un champ relu est
+     * identique octet pour octet à ce qu'il était. La version 1 ne le
+     * pouvait pas — « abc » et « abc\n » y donnaient le même fichier.
+     *
+     * Les deux lectures ne sont donc pas interchangeables, et il faut savoir
+     * laquelle appliquer. Sans ce numéro, relire un ancien fichier à la
+     * nouvelle règle lui retirerait un saut de ligne par bloc : l'ancien
+     * écrivain n'écrivait pas le segment vide final, mais l'ancien lecteur en
+     * fabriquait un. Le numéro rend le choix explicite plutôt que deviné.
+     *
+     * Un fichier sans ligne « format » est de la version 1, par construction :
+     * elle n'existait pas quand ils ont été écrits. */
+    fprintf(f, "-- pile HyperCard (format maison)\n");
+    fprintf(f, "format 2\n\n");
 
     fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
@@ -452,6 +485,14 @@ static void rtrim(char *s)
         s[--n] = '\0';
 }
 
+/* La fin de ligne SEULE. Voir l'appel dans hc_load : les espaces de fin
+ * appartiennent au texte d'un bloc, la fin de ligne non. */
+static void strip_eol(char *s)
+{
+    int n = (int)strlen(s);
+    while (n > 0 && (s[n-1] == '\n' || s[n-1] == '\r')) s[--n] = '\0';
+}
+
 static char *ltrim(char *s)
 {
     while (*s == ' ' || *s == '\t') s++;
@@ -490,7 +531,7 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
  * Le drapeau est COLLANT : une fois posé il ne se retire plus, parce qu'un
  * script ou un texte tronqué est pire qu'un chargement refusé — l'utilisateur
  * réenregistrerait par-dessus l'original sans savoir ce qu'il a perdu. */
-typedef struct { char *buf; size_t len, cap; int manque; } Acc;
+typedef struct { char *buf; size_t len, cap; int manque; int nseg; } Acc;
 
 static void acc_line(Acc *a, const char *s)
 {
@@ -525,10 +566,40 @@ static void acc_join(Acc *a, const char *s)
     a->buf[a->len] = '\0';
 }
 
+/* UN SEGMENT DE BLOC, JOINT AUX PRÉCÉDENTS.
+ *
+ * acc_line, juste au-dessus, ajoute un saut de ligne APRÈS chaque « | ». Un
+ * texte relu finissait donc toujours par un saut de ligne, qu'il en eût un ou
+ * non : « abc » revenait en « abc\n ». C'est le pendant lecture du défaut que
+ * put_block_wrap vient de corriger côté écriture.
+ *
+ * Ici le saut se pose AVANT le segment, sauf pour le premier : N segments
+ * donnent N-1 sauts, et le texte revient exactement tel qu'il est parti.
+ *
+ * acc_line reste, et sert aux fichiers d'AVANT ce changement : eux n'écrivent
+ * pas le segment vide final, et les relire à la nouvelle règle leur retirerait
+ * un saut de ligne qu'ils étaient censés avoir. Voir `format_fichier`. */
+static void acc_seg(Acc *a, const char *s)
+{
+    size_t n = strlen(s);
+    size_t besoin = a->len + n + 2;
+    if (besoin > a->cap) {
+        size_t cap = a->cap ? a->cap * 2 : 256;
+        while (cap < besoin) cap *= 2;
+        char *p = realloc(a->buf, cap);
+        if (!p) { a->manque = 1; return; }
+        a->buf = p; a->cap = cap;
+    }
+    if (a->nseg++ > 0) a->buf[a->len++] = '\n';
+    memcpy(a->buf + a->len, s, n);
+    a->len += n;
+    a->buf[a->len] = '\0';
+}
+
 static char *acc_take(Acc *a)
 {
     char *r = a->buf;
-    a->buf = NULL; a->len = a->cap = 0;
+    a->buf = NULL; a->len = a->cap = 0; a->nseg = 0;
     return r;
 }
 
@@ -639,10 +710,21 @@ Object *hc_load(const char *path)
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
 
+    /* La version du format, lue sur la ligne « format N ». Absente : c'est
+     * un fichier d'avant ce numéro, donc de la version 1. */
+    int format_fichier = 1;
+
     int lecture = 0;
     while ((lecture = ligne_lit(&lg, f)) == 1) {
         char *line = lg.p;
-        rtrim(line);
+        /* NE RETIRER QUE LA FIN DE LIGNE.
+         *
+         * rtrim enlevait aussi les espaces et les tabulations, y compris sur
+         * le CONTENU d'un « | » : un champ valant « abc   » revenait « abc ».
+         * La fin de ligne, elle, n'appartient à personne — c'est le fichier
+         * qui la met. Les lignes de structure passent par rtrim juste
+         * au-dessous, où retirer des blancs de fin est sans conséquence. */
+        strip_eol(line);
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
@@ -663,9 +745,18 @@ Object *hc_load(const char *path)
                     }
                 }
                 else if (in_paint) acc_join(&acc, piece);   /* base64 : recoller */
-                else               acc_line(&acc, piece);
+                /* Version 2 : les segments se joignent entre eux, et le texte
+                 * revient exact. Version 1 : un saut après chaque « | », comme
+                 * l'ancien lecteur — ces fichiers-là n'ont pas de segment vide
+                 * final à joindre. */
+                else if (format_fichier >= 2) acc_seg(&acc, piece);
+                else                          acc_line(&acc, piece);
                 continue;
             }
+            /* Hors « | », la ligne est structurelle : ses blancs de fin ne
+             * veulent rien dire, et « end script » doit se reconnaître même
+             * suivi d'une espace. */
+            rtrim(s);
             if (strcmp(s, "end iconres") == 0) {
                 in_icon = 0; cur_icon = NULL; icon_pos = 0;
                 continue;
@@ -723,7 +814,14 @@ Object *hc_load(const char *path)
             continue;   /* ligne parasite dans un bloc : ignorée */
         }
 
+        rtrim(s);
         if (!*s || (s[0] == '-' && s[1] == '-')) continue;   /* vide / commentaire */
+
+        if (strncmp(s, "format ", 7) == 0) {
+            int v = atoi(s + 7);
+            if (v > 0) format_fichier = v;
+            continue;
+        }
 
         /* --- ouverture de blocs texte --- */
         if (strcmp(s, "script") == 0)   { in_script = 1;   continue; }
