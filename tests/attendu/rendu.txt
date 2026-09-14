@@ -1,1 +1,35 @@
-script introuvable
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+   [msg] arc-en-ciel : 0 ticks
+
+   768 segments tracés
+
+                 RRRRRRRR#######ooooooooooooooooooo#######RRRRRRRRR              
+             RRRRRRR####oooooooooooooooooooooooooooooooooooo####RRRRRRR          
+         RRRRRR####oooooooooJJJJJJJJJ#########JJJJJJJJJoooooooooo###RRRRRR       
+      RRRRRR###oooooooJJJJJ######VVVVVVVVVVVVVVVVV#######JJJJJooooooo###RRRRR    
+    RRRRR###ooooooJJJ####VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV####JJJJoooooo###RRRRR 
+   RRR###oooooJJJ###VVVVVVVVV########BBBBBBBB#########VVVVVVVVV###JJJoooooo###RRR
+   R##oooooJJ###VVVVVVV####BBBBBBBBBBBBBBBBBBBBBBBBBBBBB####VVVVVVV###JJJooooo##R
+   #ooooJJJ##VVVVVV###BBBBBBBBB#####################BBBBBBBBB###VVVVVV###JJooooo#
+   oooJJ###VVVVV###BBBBBBB####iiiiiiiiiiiiiiiiiiiiiii#####BBBBBBB###VVVVV##JJJooo
+   oJJ##VVVVV###BBBBB####iiiiiiiiiBBBBBBBBBBBBBBiiiiiiiiiii###BBBBBB###VVVV##JJJo
+   J##VVVVV##BBBBB###iiiiiiiBBBBBBB             BBBBBBBBiiiiiii###BBBBB##VVVV###J
+   #VVVVV##BBBB###iiiiiiBBBBB                          BBBBBiiiiii##BBBBB##VVVV##
+   VVVV##BBBB##iiiiiBBBBB                                  BBBBiiiii###BBBB##VVVV
+   VV##BBBB##iiiiiBBB                                         BBBBiiiii##BBBB##VV
+   V##BBB##iiiiBBB                                               BBBiiiii##BBB##V
+   #BBBB##iiiiBB                                                   BBBiiii##BBBB#
+   BBB##iiiiBB                                                       BBBiiii##BBB
+   BB##iiiiBB                                                          BBiiii##BB
+   B##iiiBBB                                                            BBBiii##B
+   ##iiiBB                                                                BBiii##
+   #iiiBB                                                                  BBiii#
+   iiiiB                                                                    Biiii
+   iiiB                                                                     BBiii
+   iiBB                                                                      BBii
+   iiB                                                                        Bii
+   i B                                                                        B i
+
+   R=rouge o=orange J=jaune V=vert B=bleu i=indigo v=violet

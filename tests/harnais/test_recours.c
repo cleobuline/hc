@@ -17,10 +17,10 @@ int main(void)
 
     Object *f1 = hc_new_field(card1, "IncremU");
     hc_set_field_text(f1, "5");
-    Object *bb = hc_new_button(bg, "\xe2\x80\x9cDepth\xe2\x80\x9d"); /* curly quotes UTF-8 */
+    Object *bb = hc_new_button(bg, "\xe2\x80\x9c" "Depth" "\xe2\x80\x9d"); /* curly quotes UTF-8 */
 
     run(btn, "hilite of bg btn avec guillemets typographiques",
-        "put hilite of bg btn \"\xe2\x80\x9cDepth\xe2\x80\x9d\" into dep\n  put dep");
+        "put hilite of bg btn \"\xe2\x80\x9c" "Depth" "\xe2\x80\x9d\" into dep\n  put dep");
 
     run(btn, "the value of fld", "put the value of fld \"IncremU\" into incU\n  put incU");
 

@@ -33,7 +33,29 @@ export LC_ALL=C
 export ASAN_OPTIONS=detect_leaks=1:abort_on_error=0
 export UBSAN_OPTIONS=print_stacktrace=1
 
-CFLAGS="-std=gnu99 -w -O1 -I$HC"
+# -w A DISPARU, ET LES ERREURS DE TYPE SONT FATALES.
+#
+# La suite compilait avec -w, qui éteint TOUS les avertissements. C'était
+# confortable et ça coûtait cher : le passage du délimiteur d'items de char à
+# const char* a laissé des appels qui passaient encore un caractère. gcc l'a
+# signalé, -w l'a tu, et le premier « delete item 2 of … » a déréférencé la
+# virgule comme une adresse. Segfault, découvert à l'exécution.
+#
+# -Werror=… seul n'aurait rien changé : -w supprime l'avertissement AVANT que
+# -Werror puisse le promouvoir, et l'un annule l'autre selon l'ordre. Il
+# fallait retirer -w.
+#
+# Mesuré avant de le faire : sans -w, les 176 harnais et le noyau n'émettaient
+# que sept avertissements, dont quatre étaient de vrais défauts —
+# « \xe2\x80\x9cDepth » où le D de Depth est un chiffre hexadécimal, si bien
+# que l'échappement dévorait la lettre et que le harnais ne testait pas les
+# guillemets qu'il croyait. Ils sont corrigés ; il ne reste rien à taire, sauf
+# format-truncation, deux cas connus et bénins de hc_core.c.
+#
+# Les trois -Werror ne sont jamais du style : ce sont des bugs, toujours.
+CFLAGS="-std=gnu99 -O1 -I$HC -Wno-format-truncation"
+CFLAGS="$CFLAGS -Werror=int-conversion -Werror=incompatible-pointer-types"
+CFLAGS="$CFLAGS -Werror=implicit-function-declaration"
 ENREGISTRE=0
 MOTIF=""
 for a in "$@"; do
@@ -64,6 +86,12 @@ arguments() {
     tortureh)           echo "donnees/torture_bouton.txt donnees/torture_pile.txt" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;
+    # Trois harnais cherchaient leur donnée dans le répertoire courant : elle
+    # est dans donnees/. Ils ne testaient donc plus rien — ils affichaient
+    # « fichier introuvable », et leur fichier de référence enregistrait ce
+    # message, si bien qu'ils passaient pour conformes.
+    test_exercice|test_exercice2) echo "donnees/exercice.txt" ;;
+    rendu)              echo "donnees/arcenciel.txt" ;;
     *)                  echo "" ;;
   esac
 }
@@ -100,8 +128,37 @@ for src in harnais/*.c; do
   # de l'environnement.
   timeout 120 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
-  if [ $code -ge 124 ]; then
+  # UN PLANTAGE N'EST PAS UN DÉPASSEMENT DE DÉLAI.
+  #
+  # Tout code >= 124 était annoncé « DÉLAI DÉPASSÉ ». Or 124 est celui que
+  # `timeout` rend quand IL tue le programme ; 128+N est celui d'un programme
+  # tué par le signal N — 139 pour un segfault, 134 pour un abort. Les trois
+  # se ressemblent en nombre et n'ont rien à voir en cause.
+  #
+  # Mesuré à mes dépens : un segfault que je venais d'introduire s'est annoncé
+  # « DÉLAI DÉPASSÉ », et j'ai cherché une boucle infinie pendant cinq minutes
+  # avant de regarder le vrai code de sortie.
+  #
+  # Et un code entre 1 et 123 — un exit(1) du noyau, par exemple — ne disait
+  # rien du tout : le harnais était simplement comparé à sa référence, et si sa
+  # sortie partielle correspondait, il passait pour conforme.
+  if [ $code -eq 124 ]; then
     echo "  DÉLAI DÉPASSÉ  $n"; rate=$((rate+1)); continue
+  fi
+  if [ $code -gt 128 ]; then
+    sig=$((code - 128))
+    nom_sig=$(kill -l $sig 2>/dev/null || echo "signal $sig")
+    echo "  TUÉ PAR $nom_sig  $n"; rate=$((rate+1)); continue
+  fi
+  if [ $code -ne 0 ]; then
+    # Un chronomètre dont la donnée manque ne peut pas tourner, et ce n'est pas
+    # une régression : sa sortie n'est de toute façon pas comparée. On le DIT —
+    # un chronomètre muet depuis des mois est un chronomètre inutile — sans
+    # rougir la suite pour autant.
+    case "$n" in
+      bench*|banc*) echo "  NE TOURNE PAS  $n (code $code)"; chrono=$((chrono+1)); continue ;;
+    esac
+    echo "  CODE $code        $n"; rate=$((rate+1)); continue
   fi
 
   if grep -qE 'AddressSanitizer|runtime error:|LeakSanitizer' "$TRAVAIL/sortie/$n"; then
