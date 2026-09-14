@@ -72,25 +72,25 @@ typedef struct {
  * « item 1 to 3 » ; passer n2 <= 0 pour un morceau simple.
  * `delim` est le séparateur d'items, ',' par défaut. */
 HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
-                           int n, int n2, char delim);
+                           int n, int n2, const char *delim);
 
 /* Combien de morceaux de cette sorte dans la chaîne ? */
-int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim);
+int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim);
 
 /* Lecture : rend une valeur neuve, vide si le rang dépasse. */
 HctValeur hct_chunk_lit(const char *s, HctSorteChunk sorte,
-                        int n, int n2, char delim);
+                        int n, int n2, const char *delim);
 
 /* Écriture : rend une chaîne neuve où le morceau visé vaut `val`.
  * Étend la chaîne si le rang dépasse, en créant les séparateurs manquants. */
 HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
-                          int n, int n2, char delim, const char *val);
+                          int n, int n2, const char *delim, const char *val);
 
 /* Suppression : rend une chaîne neuve d'où le morceau visé a disparu, AVEC
  * son séparateur — « delete item 2 of "a,b,c" » rend "a,c" et non "a,,c".
  * C'est ce qui la distingue d'une écriture de vide. Un rang hors limites
  * rend la chaîne inchangée. Voir la note à sa définition. */
 HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
-                             int n, int n2, char delim);
+                             int n, int n2, const char *delim);
 
 #endif

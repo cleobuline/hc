@@ -234,16 +234,24 @@ static int respire(HctExec *x)
     return x->hote.respire(x->hote.donnees);
 }
 
-static char delim_de(HctExec *x)
+/* LE DÉLIMITEUR EST UNE CHAÎNE, ET IL SE RECOPIE.
+ *
+ * Il ne retenait que le PREMIER OCTET de la valeur rendue par l'hôte : un
+ * délimiteur accentué y perdait sa seconde moitié, et le découpage coupait au
+ * milieu d'une séquence UTF-8.
+ *
+ * On remplit un tampon de l'appelant plutôt que de rendre un pointeur : la
+ * valeur de l'hôte est libérée en sortant, et en rendre l'adresse laisserait
+ * l'appelant lire de la mémoire rendue. */
+static void delim_de(HctExec *x, char *out, size_t taille)
 {
+    snprintf(out, taille, ",");
     HctValeur v;
     if (x->ctx.hote.fonction &&
         x->ctx.hote.fonction(x->ctx.hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        char d = v.txt[0] ? v.txt[0] : ',';
+        if (v.txt && v.txt[0]) snprintf(out, taille, "%s", v.txt);
         hct_val_libere(&v);
-        return d;
     }
-    return ',';
 }
 
 /* ------------------------------------------------------------ écriture
@@ -299,7 +307,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         HctValeur base = hct_evalue(&x->ctx, sous);
         if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
 
-        char d = delim_de(x);
+        char d[8]; delim_de(x, d, sizeof d);
         int n1 = 0, n2 = 0;
         if (cible->ordinal) {
             /* hct_rang_ordinal, et non une table recopiée ici.
@@ -455,7 +463,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
     HctValeur base = hct_evalue(&x->ctx, sous);
     if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
 
-    char d = delim_de(x);
+    char d[8]; delim_de(x, d, sizeof d);
     int n1 = 0, n2 = 0;
     if (cible->ordinal) {
         int total = hct_chunk_compte(base.txt, cible->sorte, d);
@@ -979,7 +987,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         HctValeur src = hct_evalue(&x->ctx, n->fils[1]);
         if (x->ctx.erreur) { free(nom); hct_val_libere(&src); return; }
 
-        char d = delim_de(x);
+        char d[8]; delim_de(x, d, sizeof d);
         int total = hct_chunk_compte(src.txt, n->sorte, d);
 
         for (int i = 1; i <= total; i++) {

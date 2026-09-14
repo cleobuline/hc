@@ -3246,7 +3246,13 @@ static ChunkType chunk_kind(const char *s, int *used)
  * propriété GLOBALE, et non celle d'un conteneur : elle vaut pour tout le
  * découpage tant qu'on ne la change pas, ce qui oblige les scripts prudents à
  * la remettre à la virgule après usage. */
-static char g_item_delim = ',';
+/* LE DÉLIMITEUR D'ITEMS EST UNE CHAÎNE.
+ *
+ * Il tenait dans un char, donc dans un octet : « set the itemDelimiter to "é" »
+ * n'en retenait que le premier, et le découpage coupait au milieu de la
+ * séquence UTF-8. Cinq octets suffisent pour tout point de code d'Unicode,
+ * plus le zéro final. */
+static char g_item_delim[8] = ",";
 /* Levé dès que le noyau change quelque chose de visible ; lu et remis à zéro
  * par l'hôte. Sans lui, cocoa_idle ne peut pas savoir s'il doit repeindre :
  * l'architecture reposait sur un redessin inconditionnel à chaque tour de
@@ -3261,7 +3267,7 @@ int hc_take_visual_dirty(void)
 }
 static char chunk_sep(ChunkType t)
 {
-    if (t == CH_ITEM) return g_item_delim;
+    if (t == CH_ITEM) return g_item_delim[0];
     if (t == CH_LINE) return '\n';
     if (t == CH_WORD) return ' ';
     return '\0';
@@ -4664,7 +4670,7 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "itemdelimiter")) {
-            snprintf(out, outlen, "%c", g_item_delim); return 1;
+            snprintf(out, outlen, "%s", g_item_delim); return 1;
         }
         /* Le gabarit vide se rend tel quel : c'est ce que HyperCard rendait
          * avant qu'on y touche, et « if the numberFormat is empty » doit
@@ -5982,8 +5988,8 @@ static int prop_globale_noyau(const char *prop, const char *val)
     /* Une chaîne vide ou de plusieurs caractères ramène à la virgule —
      * HyperCard ne retenait qu'un caractère. */
     if (ci_equal(prop, "itemdelimiter")) {
-        g_item_delim = val[0] ? val[0] : ',';
-        emit(HC_INFO, "   → itemDelimiter ← \"%c\"", g_item_delim);
+        snprintf(g_item_delim, sizeof g_item_delim, "%s", val[0] ? val : ",");
+        emit(HC_INFO, "   → itemDelimiter ← \"%s\"", g_item_delim);
         return 1;
     }
 
@@ -7418,7 +7424,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * directement, c'est une globale de hc_core.c. Avant toute allocation :
      * c'est le cas le plus fréquent, et il n'a besoin de rien. */
     if (ci_equal(nom, "itemDelimiter")) {
-        char sep[2] = { g_item_delim, 0 };
+        const char *sep = g_item_delim;
         *out = hct_val_texte(sep);
         { g_v1_porte = sauve_porte; } return 1;
     }

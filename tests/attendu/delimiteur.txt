@@ -1,0 +1,36 @@
+=== la virgule par défaut, et un délimiteur ASCII ===
+── virgule
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   3 b
+── point-virgule
+   3 b [;]
+
+=== un délimiteur accentué : deux octets ===
+── compter et lire
+   3 [b] [é]
+── le premier et le dernier
+   [a] [c]
+── une plage
+   [aéb]
+
+=== écrire : le délimiteur posé doit être entier ===
+── remplacer un item
+   [aéXéc] longueur 5
+── étendre au-delà de la fin
+   [aééX] 3
+
+=== supprimer : le délimiteur part en entier, pas à moitié ===
+── delete item 2
+   [aéc] longueur 3 (attendu 3)
+── delete item 1
+   [béc]
+── delete le dernier
+   [aéb]
+
+=== un délimiteur de plusieurs caractères ===
+── « -- » comme séparateur
+   3 [b]
+
+=== un délimiteur vide retombe sur la virgule ===
+── vide
+   3 [b]

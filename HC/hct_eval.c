@@ -749,16 +749,24 @@ int hct_rang_ordinal(HctOrdinal o, int total)
 
 /* Le séparateur d'items vient de l'hôte : « the itemDelimiter » est une
  * propriété globale, et un script peut la changer en cours de route. */
-static char delimiteur(HctContexte *ctx)
+/* LE DÉLIMITEUR EST UNE CHAÎNE, ET IL SE RECOPIE.
+ *
+ * Il ne retenait que le PREMIER OCTET de la valeur rendue par l'hôte : un
+ * délimiteur accentué y perdait sa seconde moitié, et le découpage coupait au
+ * milieu d'une séquence UTF-8.
+ *
+ * On remplit un tampon de l'appelant plutôt que de rendre un pointeur : la
+ * valeur de l'hôte est libérée en sortant, et en rendre l'adresse laisserait
+ * l'appelant lire de la mémoire rendue. */
+static void delimiteur(HctContexte *ctx, char *out, size_t taille)
 {
+    snprintf(out, taille, ",");
     HctValeur v;
     if (ctx->hote.fonction &&
         ctx->hote.fonction(ctx->hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        char d = v.txt[0] ? v.txt[0] : ',';
+        if (v.txt && v.txt[0]) snprintf(out, taille, "%s", v.txt);
         hct_val_libere(&v);
-        return d;
     }
-    return ',';
 }
 
 static int rang_de(HctContexte *ctx, const HctNoeud *n, int *ok)
@@ -788,7 +796,7 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
     HctValeur cible = hct_evalue(ctx, n->fils[n->nfils - 1]);
     if (ctx->erreur) return cible;
 
-    char d = delimiteur(ctx);
+    char d[8]; delimiteur(ctx, d, sizeof d);
     int n1 = 0, n2 = 0;
 
     if (n->ordinal) {
@@ -937,7 +945,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             sur->nfils >= 1) {
             HctValeur cible = hct_evalue(ctx, sur->fils[sur->nfils - 1]);
             if (!ctx->erreur) {
-                char d = delimiteur(ctx);
+                char d[8]; delimiteur(ctx, d, sizeof d);
                 int c = hct_chunk_compte(cible.txt, sur->sorte, d);
                 hct_val_libere(&cible);
                 free(nom);
