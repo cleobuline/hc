@@ -30,6 +30,24 @@ static HCDocument *gCurrentDoc = nil;
 
 + (void)setCurrent:(HCDocument *)doc {
     if (!doc || doc == gCurrentDoc) return;
+
+    /* LA SÉLECTION DE PEINTURE NE TRAVERSE PAS LES FENÊTRES.
+     *
+     * Elle porte sur les pixels d'une carte précise, mais l'état qui la
+     * retient est global : rectangle actif, points du lasso, fourmis. Passer
+     * d'une pile à l'autre laissait donc une sélection de la pile A vivante
+     * sous la pile B, et un « Effacer » ou un « Couper » dans B s'y appliquait
+     * — sur une zone que personne n'avait jamais sélectionnée là.
+     *
+     * On l'abandonne AVANT de faire suivre gView, pour que la minuterie des
+     * fourmis s'arrête sur la vue qui la portait.
+     *
+     * Perdre sa sélection en changeant de fenêtre est un petit désagrément ;
+     * la voir agir sur la mauvaise pile n'en est pas un. La garder par
+     * document — la ranger dans HCDoc, comme le reste de l'état de fenêtre —
+     * serait plus aimable, et c'est la suite naturelle de ce nettoyage. */
+    hcv_abandonne_selection();
+
     gCurrentDoc = doc;
 
     /* gView désigne la vue ACTIVE : c'est par lui que passent le noyau et les

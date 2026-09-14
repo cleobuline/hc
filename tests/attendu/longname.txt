@@ -1,0 +1,33 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   == les trois formes ==
+   Bouton
+   button "Bouton"
+   button "Bouton"
+   card button "Bouton" of card "Une" of stack "Pile"
+   == la forme longue, objet par objet ==
+   bkgnd button "DuFond" of bkgnd "Fond" of stack "Pile"
+   card field "Champ" of card "Une" of stack "Pile"
+   card "Une" of stack "Pile"
+   card id 102 of stack "Pile"
+   bkgnd "Fond" of stack "Pile"
+   stack "Pile"
+   card button "decl" of card "Une" of stack "Pile"
+   == et ca se RE-RESOUT, depuis une autre carte ==
+   on est sur : 102
+   Bouton / 2915
+   DuFond / 7
+   Champ / 9
+   Une / 101
+   120
+   == un nom qui contient « of » n'est pas une portee ==
+   Table of contents
+   card "Table of contents" of stack "Pile"
+   Table of contents / 103
+   17
+   == bkgnd est un synonyme de background ==
+   Fond
+   DuFond
+   == ce qui ne doit PAS changer ==
+   Pile
+   card "Une"
+   

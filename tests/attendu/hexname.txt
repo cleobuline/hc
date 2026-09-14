@@ -1,5 +1,5 @@
-litteral C             [â€Şpthâ€] octets: E2 80 DE 70 74 68 E2 80 9D
-apres hc_new_button    [â€Şpthâ€] octets: E2 80 DE 70 74 68 E2 80 9D
-hc_describe            [button "â€Şpthâ€"] octets: 62 75 74 74 6F 6E 20 22 E2 80 DE 70 74 68 E2 80 9D 22
+litteral C             [â€œDepthâ€] octets: E2 80 9C 44 65 70 74 68 E2 80 9D
+apres hc_new_button    [â€œDepthâ€] octets: E2 80 9C 44 65 70 74 68 E2 80 9D
+hc_describe            [button "â€œDepthâ€"] octets: 62 75 74 74 6F 6E 20 22 E2 80 9C 44 65 70 74 68 E2 80 9D 22
 resolution par nom : TROUVE
 sans les guillemets courbes : echec

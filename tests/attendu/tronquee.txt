@@ -6,4 +6,8 @@
 ── la même, coupée
    au milieu d'un bloc « script »       refusée (attendu)
    au milieu d'un bloc « contents »     refusée (attendu)
-   juste après « end stack »           ouverte  (attendu)
+   avant « end button »                 refusée (attendu)
+   avant « end card »                   refusée (attendu)
+   avant « end background »             refusée (attendu)
+   avant « end stack »                  refusée (attendu)
+   juste après « end stack » (sans signature) refusée (attendu)

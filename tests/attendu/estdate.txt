@@ -1,0 +1,37 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== ce qui EST une date ===
+   12/25/96                     ->    true
+   8/7/2026                     ->    true
+   2/29/2024                    ->    true
+   August 7, 2026               ->    true
+   Friday, August 7, 2026       ->    true
+   2026,8,7                     ->    true
+   2026,8,7,14,30,0,6           ->    true
+   3868905600                   ->    true
+
+=== ce qui n'en est PAS ===
+   99/99/99                     ->    false
+   13/1/96                      ->    false
+   2/30/1996                    ->    false
+   2/29/1900                    ->    false
+   12/25/96patate               ->    false
+   12/0/96                      ->    false
+   patate                       ->    false
+                                ->    false
+   3:30 PM                      ->    false
+   42                           ->    false
+
+=== 2/29 : une annee bissextile sur deux siecles ===
+   2/29/2000                    ->    true
+   2/29/2100                    ->    false
+
+=== la garde classique ne se contredit plus ===
+   3868905600
+
+=== convert reste SOUPLE : un 31 fevrier se normalise ===
+   false
+   3/2/96
+
+=== is not a date ===
+   true
+   false

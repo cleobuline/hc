@@ -20,6 +20,35 @@ static int est_blanc(char c)
            c == '\v' || c == '\f';
 }
 
+/* LA FIN DU MOT QUI COMMENCE EN `i`, GUILLEMETS COMPRIS.
+ *
+ * En HyperTalk un mot est « une suite de caractères sans espace, OU un texte
+ * entre guillemets ». Ce n'est pas un détail de confort : l'idiome canonique
+ * pour retrouver le nom de sa propre pile en dépend —
+ *
+ *     get the value of word 2 of the long name of me
+ *
+ * où « the long name » rend « stack "Graph Maker" ». Sans la règle, word 2
+ * valait « "Graph » — un guillemet ouvert, que « the value of » refusait
+ * ensuite avec « guillemet fermant manquant ». Mesuré sur le script de pile
+ * de Graph Maker 2.2, où c'est exactement ce que fait wrongStack().
+ *
+ * Le guillemet n'ouvre un mot que s'il COMMENCE le mot : « abc"def ghi" »
+ * garde ses deux mots, le premier étant « abc"def ». Un guillemet non refermé
+ * emporte le reste de la chaîne — c'est la seule réponse qui ne coupe pas le
+ * texte au milieu d'une citation. */
+static int fin_du_mot(const char *s, int i, int len)
+{
+    if (i < len && s[i] == '"') {
+        i++;
+        while (i < len && s[i] != '"') i++;
+        if (i < len) i++;          /* le guillemet fermant fait partie du mot */
+        return i;
+    }
+    while (i < len && !est_blanc(s[i])) i++;
+    return i;
+}
+
 /* ------------------------------------------------------------------ UTF-8 */
 
 int hct_utf8_octets(const char *s, int i, int len)
@@ -39,9 +68,46 @@ int hct_utf8_compte(const char *s)
     return n;
 }
 
+int hct_utf8_compte_prefixe(const char *s, int octets)
+{
+    if (!s || octets <= 0) return 0;
+    int n = 0;
+    for (int i = 0; i < octets && s[i]; i++)
+        if (((unsigned char)s[i] & 0xC0) != 0x80) n++;
+    return n;
+}
+
+/* LE SÉPARATEUR D'ITEMS EST UNE CHAÎNE, PAS UN OCTET.
+ *
+ * « set the itemDelimiter to "é" » ne retenait que le PREMIER OCTET de l'é,
+ * soit 0xC3. Le découpage coupait donc sur cet octet-là : « item 2 of "aébéc" »
+ * rendait « \xA9b » — la seconde moitié de l'é collée au b, une demi-séquence
+ * UTF-8 que rien ne sait afficher. Et « the itemDelimiter » relu rendait 0xC3
+ * seul, une chaîne invalide.
+ *
+ * Le compte, lui, donnait 3 PAR ACCIDENT : l'octet 0xC3 apparaît deux fois
+ * dans « aébéc », donc le nombre d'items était juste et le contenu faux — le
+ * pire des deux mondes pour qui cherche le défaut.
+ *
+ * HyperCard était en encodage mono-octet et la question ne se posait pas. Dès
+ * lors que HC est en UTF-8, un délimiteur peut occuper plusieurs octets.
+ *
+ * Un délimiteur vide est traité comme la virgule : c'est ce que faisait déjà
+ * l'ancien code (val[0] ? val[0] : ','), et découper sur rien n'a pas de sens. */
+static const char *sep_ou_virgule(const char *delim)
+{
+    return (delim && *delim) ? delim : ",";
+}
+
+/* Le séparateur commence-t-il à s[i] ? */
+static int sep_ici(const char *s, int i, int len, const char *sep, int lsep)
+{
+    return i + lsep <= len && memcmp(s + i, sep, (size_t)lsep) == 0;
+}
+
 /* ------------------------------------------------------------ comptage */
 
-int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
+int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim)
 {
     if (!s) return 0;
     int len = (int)strlen(s);
@@ -61,7 +127,7 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
                 while (i < len && est_blanc(s[i])) i++;
                 if (i >= len) break;
                 n++;
-                while (i < len && !est_blanc(s[i])) i++;
+                i = fin_du_mot(s, i, len);
             }
             return n;
         }
@@ -71,8 +137,12 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
              * trois. C'est l'inverse des lignes, où « a\nb\n » en vaut deux —
              * une dissymétrie de HyperCard, pas une inattention. */
             if (len == 0) return 0;
+            const char *sep = sep_ou_virgule(delim);
+            int lsep = (int)strlen(sep);
             int n = 1;
-            for (int i = 0; i < len; i++) if (s[i] == delim) n++;
+            for (int i = 0; i < len; )
+                if (sep_ici(s, i, len, sep, lsep)) { n++; i += lsep; }
+                else i++;
             return n;
         }
 
@@ -93,7 +163,7 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)
 
 /* Bornes du morceau simple de rang n (1-based). trouve=0 si dépassement. */
 static HctBornes borne_simple(const char *s, HctSorteChunk sorte, int n,
-                              char delim)
+                              const char *delim)
 {
     HctBornes b = { 0, 0, 0 };
     if (!s || n < 1) return b;
@@ -121,30 +191,38 @@ static HctBornes borne_simple(const char *s, HctSorteChunk sorte, int n,
             if (i >= len) break;
             k++;
             int deb = i;
-            while (i < len && !est_blanc(s[i])) i++;
+            i = fin_du_mot(s, i, len);
             if (k == n) { b.deb = deb; b.fin = i; b.trouve = 1; return b; }
         }
         b.deb = b.fin = len;
         return b;
     }
 
-    /* item et line : le séparateur crée un morceau, même vide. */
-    char sep = (sorte == HCT_CH_ITEM) ? delim : '\n';
+    /* item et line : le séparateur crée un morceau, même vide.
+     *
+     * Les lignes se séparent toujours sur un saut de ligne, qui fait un octet.
+     * Les items, eux, suivent itemDelimiter, qui peut en faire plusieurs — d'où
+     * le pas de `lsep` et non de 1 : avancer d'un seul octet couperait au
+     * milieu de la séquence et recommencerait sur sa seconde moitié. */
+    const char *sep = (sorte == HCT_CH_ITEM) ? sep_ou_virgule(delim) : "\n";
+    int lsep = (int)strlen(sep);
     int k = 1, deb = 0, i = 0;
-    for (; i <= len; i++) {
-        if (i == len || s[i] == sep) {
+    for (;;) {
+        int fin_atteinte = (i >= len);
+        if (fin_atteinte || sep_ici(s, i, len, sep, lsep)) {
             if (k == n) { b.deb = deb; b.fin = i; b.trouve = 1; return b; }
+            if (fin_atteinte) break;
             k++;
-            deb = i + 1;
-            if (i == len) break;
-        }
+            i  += lsep;
+            deb = i;
+        } else i++;
     }
     b.deb = b.fin = len;
     return b;
 }
 
 HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
-                           int n, int n2, char delim)
+                           int n, int n2, const char *delim)
 {
     HctBornes a = borne_simple(s, sorte, n, delim);
     if (n2 <= 0 || n2 == n) return a;
@@ -164,7 +242,7 @@ HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
 /* ------------------------------------------------------------ lecture */
 
 HctValeur hct_chunk_lit(const char *s, HctSorteChunk sorte,
-                        int n, int n2, char delim)
+                        int n, int n2, const char *delim)
 {
     if (!s) return hct_val_vide();
     HctBornes b = hct_chunk_bornes(s, sorte, n, n2, delim);
@@ -196,7 +274,7 @@ HctValeur hct_chunk_lit(const char *s, HctSorteChunk sorte,
  * "a,b,c". Étendre la chaîne pour y supprimer du vide n'aurait pas de sens,
  * et l'écriture, qui l'étend, le fait pour une raison qui ne vaut pas ici. */
 HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
-                             int n, int n2, char delim)
+                             int n, int n2, const char *delim)
 {
     if (!s) return hct_val_vide();
     int len = (int)strlen(s);
@@ -206,8 +284,17 @@ HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
 
     int deb = b.deb, fin = b.fin;
     if (sorte != HCT_CH_CHAR) {
-        if (fin < len)      fin++;      /* le séparateur qui suit  */
-        else if (deb > 0)   deb--;      /* à défaut, celui d'avant */
+        /* Le séparateur part AVEC le morceau — « delete item 2 of "a,b,c" »
+         * rend « a,c » et non « a,,c ». Sa longueur n'est pas toujours un
+         * octet : un itemDelimiter accentué en fait deux, et n'en retirer
+         * qu'un laisserait la moitié d'une séquence UTF-8 dans le résultat.
+         *
+         * Les mots et les lignes gardent le pas de un : leurs séparateurs
+         * — une espace, un saut de ligne — sont en ASCII par construction. */
+        int lsep = 1;
+        if (sorte == HCT_CH_ITEM) lsep = (int)strlen(sep_ou_virgule(delim));
+        if (fin < len)         fin += lsep;   /* le séparateur qui suit  */
+        else if (deb >= lsep)  deb -= lsep;   /* à défaut, celui d'avant */
     }
     if (deb < 0) deb = 0;
     if (fin > len) fin = len;
@@ -229,7 +316,7 @@ HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
 /* ------------------------------------------------------------ écriture */
 
 HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
-                          int n, int n2, char delim, const char *val)
+                          int n, int n2, const char *delim, const char *val)
 {
     if (!s) s = "";
     if (!val) val = "";
@@ -256,9 +343,13 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
      * « put "x" into item 5 of "a,b" » donne « a,b,,,x ». Pour char et word,
      * il ajoute simplement à la fin, avec un espace pour les mots. */
     int existants = hct_chunk_compte(s, sorte, delim);
-    char sep = (sorte == HCT_CH_ITEM) ? delim
-             : (sorte == HCT_CH_LINE) ? '\n'
-             : (sorte == HCT_CH_WORD) ? ' ' : '\0';
+    /* Le séparateur à INSÉRER. Une chaîne, comme celui sur lequel on découpe :
+     * étendre « aébéc » avec un délimiteur « é » doit poser l'é entier, pas
+     * son premier octet. Char n'en a pas, word pose une espace. */
+    const char *sep = (sorte == HCT_CH_ITEM) ? sep_ou_virgule(delim)
+                    : (sorte == HCT_CH_LINE) ? "\n"
+                    : (sorte == HCT_CH_WORD) ? " " : "";
+    int lsep = (int)strlen(sep);
 
     int manquants = 0;
     if (sorte == HCT_CH_ITEM || sorte == HCT_CH_LINE) {
@@ -266,8 +357,8 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
         if (manquants < 0) manquants = 0;
     }
 
-    int besoin_sep = (existants > 0 && sep) ? 1 : 0;
-    int taille = len + besoin_sep + manquants + lv;
+    int besoin_sep = (existants > 0 && lsep > 0) ? 1 : 0;
+    int taille = len + (besoin_sep + manquants) * lsep + lv;
 
     HctValeur r;
     r.txt = malloc((size_t)taille + 1);
@@ -275,8 +366,8 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
 
     int p = 0;
     memcpy(r.txt + p, s, (size_t)len); p += len;
-    if (besoin_sep) r.txt[p++] = sep;
-    for (int i = 0; i < manquants; i++) r.txt[p++] = sep;
+    if (besoin_sep) { memcpy(r.txt + p, sep, (size_t)lsep); p += lsep; }
+    for (int i = 0; i < manquants; i++) { memcpy(r.txt + p, sep, (size_t)lsep); p += lsep; }
     memcpy(r.txt + p, val, (size_t)lv); p += lv;
     r.txt[p] = '\0';
     r.len = p;

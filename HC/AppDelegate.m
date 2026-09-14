@@ -1098,10 +1098,19 @@ void cocoa_stack_changed(Object *stack) {
 - (BOOL)loadStackAtPath:(NSString *)path {
     Object *loaded = hc_load([path UTF8String]);
     if (!loaded) {
-        NSLog(@"échec du chargement : %@", path);
+        /* DIRE POURQUOI. « Pile illisible » suivi du seul nom de fichier
+         * laissait l'utilisateur sans le moindre geste à faire. Le noyau
+         * distingue maintenant le format trop récent du fichier abîmé, et les
+         * deux appellent des réactions très différentes. */
+        const char *pourquoi = hc_load_erreur();
+        NSLog(@"échec du chargement : %@ — %s", path,
+              pourquoi ? pourquoi : "raison inconnue");
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"Pile illisible"];
-        [a setInformativeText:[path lastPathComponent]];
+        [a setInformativeText:
+            pourquoi ? [NSString stringWithFormat:@"%@\n\n%s",
+                                 [path lastPathComponent], pourquoi]
+                     : [path lastPathComponent]];
         [a runModal];
         return NO;
     }

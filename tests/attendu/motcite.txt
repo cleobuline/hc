@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   == compter les mots ==
+   [stack "Graph Maker"]  -> 2 mots
+     word 1 = [stack]
+     word 2 = ["Graph Maker"]
+   [a b c]  -> 3 mots
+   [a "b c" d]  -> 3 mots
+     word 2 = ["b c"]
+     word 3 = [d]
+   == le guillemet n'ouvre un mot que s'il le COMMENCE ==
+   [abc"def ghi"]  -> 2 mots
+     word 1 = [abc"def]
+     word 2 = [ghi"]
+   == un guillemet NON REFERME emporte le reste ==
+   [a "b c d]  -> 2 mots
+     word 2 = ["b c d]
+   == une citation vide, et une citation seule ==
+   [a "" b]  -> 3 mots
+     word 2 = [""]
+   ["tout seul"]  -> 1 mots
+   == ce qui doit suivre : supprimer et ecrire un mot ==
+     apres delete word 2 : [stack]
+     apres put X into word 2 : [stack X]
+   == et l'idiome canonique, tel que Graph Maker l'ecrit ==
+     the long name of this stack = [stack "Graph Maker"]
+     word 2                      = ["Graph Maker"]
+     the value of word 2         = [Graph Maker]
+     line 1 of the stacks        = [Graph Maker]
+     wrongStack()                = false

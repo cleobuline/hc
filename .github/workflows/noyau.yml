@@ -37,3 +37,37 @@ jobs:
       # d'où un travail séparé : un échec ici ne cache pas un échec là-bas.
       - name: suite sous ASan + UBSan
         run: make test-asan
+
+  cocoa:
+    # LES QUINZE FICHIERS .m N'ÉTAIENT COMPILÉS NULLE PART.
+    #
+    # Les deux travaux ci-dessus vérifient le noyau, qui est du C99 pur. Toute
+    # l'interface — la vue, les palettes, le document, l'éditeur d'icônes — ne
+    # passait sous aucun compilateur avant qu'un humain n'ouvre Xcode. Deux
+    # erreurs ont déjà été découvertes ainsi, et non par la CI : un sélecteur
+    # AppKit qui n'existe pas (invalidateCursorRects: au lieu de
+    # invalidateCursorRectsForView:) et un pointeur __autoreleasing sous ARC.
+    # Ce sont des erreurs de COMPILATION, exactement ce qu'une CI doit voir.
+    #
+    # L'application n'est ni signée ni lancée : il s'agit de compiler. La
+    # signature demande une équipe de développement, qu'une machine
+    # d'intégration n'a pas, et lancer une application Cocoa demanderait une
+    # session graphique.
+    name: interface Cocoa
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: l'application compile
+        run: |
+          xcodebuild \
+            -project HC.xcodeproj \
+            -target HC \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            build

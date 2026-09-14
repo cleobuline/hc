@@ -1,0 +1,32 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   > == un descripteur dans une variable ==
+   > button "Bouton"
+   > Bouton
+   > 2915
+   > 120
+   > Bouton
+   > Champ
+   > DuFond
+   > == par une fonction utilisateur ==
+   > Bouton
+   > 120
+   > 2915
+   > Champ
+   > == ce qui ne doit PAS changer ==
+   > 3
+   > 3
+   > 3
+   > b
+   > == un mot inconnu garde le chemin d'avant ==
+   > short name of z
+   > short name of jamaisPosee
+   > == une variable qui se designe elle-meme ne boucle pas ==
+   > short name of o
+   > Bouton
+
+== et le relevé : plus rien ne repart dans l'ancien moteur ==
+   > Bouton
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)

@@ -86,7 +86,7 @@ static NSString * const kHCFauxBoldAttribute = @"HCFauxBold";
 /* Les plages du noyau sont des décalages en OCTETS dans le texte UTF-8, alors
  * que NSString compte en unités UTF-16. C'est identique tant que le texte est
  * en ASCII — le calendrier l'est — et faux dès le premier accent. */
-static NSUInteger utf16_from_byte(const char *utf8, int byteoff)
+NSUInteger utf16_from_byte(const char *utf8, int byteoff)
 {
     if (byteoff <= 0) return 0;
     NSString *pre = [[NSString alloc] initWithBytes:utf8

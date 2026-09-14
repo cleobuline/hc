@@ -40,6 +40,13 @@ typedef struct {
 
     /* sélection et interaction */
     Object       *pressed;        /* objet sous le bouton de la souris */
+    /* LA CARTE SUR LAQUELLE LE CLIC A EU LIEU.
+     *
+     * `pressed` était retenu avant l'envoi du message, son contexte de carte
+     * ne l'était pas : la fin automatique du clic lisait la carte COURANTE
+     * après le gestionnaire, qu'un simple « go next card » avait déjà changée.
+     * Les deux voyagent maintenant ensemble. */
+    Object       *pressedCard;
     Object       *popupTarget;    /* menu popup ouvert */
     NSArray<NSString *> *popupItems;
     NSArray<NSNumber *> *popupItemLines; /* lignes HC, base 1 */
@@ -93,6 +100,7 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gEditView        (gDoc->editView)
 #define gEditPanel       (gDoc->editPanel)
 #define gPressed         (gDoc->pressed)
+#define gPressedCard     (gDoc->pressedCard)
 #define gPopupTarget     (gDoc->popupTarget)
 #define gPopupItems      (gDoc->popupItems)
 #define gPopupItemLines  (gDoc->popupItemLines)
@@ -201,6 +209,32 @@ static CGFloat  gAntsPhase = 0.0;
 - (void)stopAntsTimer;
 @end
 
+/* ABANDONNER LA SÉLECTION DE PEINTURE, EN UN SEUL ENDROIT.
+ *
+ * Ce nettoyage existait, écrit à la main dans « choose … tool ». Le CLIC dans
+ * la palette d'outils, lui, ne le faisait pas : prendre la main en cliquant
+ * laissait les fourmis en place et la sélection vivante. Et un changement de
+ * carte ne le faisait pas davantage — la sélection suivait d'une carte à
+ * l'autre, portant sur des pixels qui n'étaient plus là.
+ *
+ * Deux chemins pour un même geste, dont un seul complet : c'est exactement la
+ * divergence qui s'installe quand on recopie au lieu d'appeler. Une fonction,
+ * et les trois chemins la partagent.
+ *
+ * La minuterie des fourmis s'arrête avec : sans elle, elle continuerait de
+ * redessiner un cadre qui n'entoure plus rien, quinze fois par seconde. */
+void hcv_abandonne_selection(void)
+{
+    gSelRectActive  = NO;
+    gSelRectDrawing = NO;
+    gLassoActive    = NO;
+    gLassoDrawing   = NO;
+    gLassoCount     = 0;
+    gFreeDrawing    = NO;
+    gFreeCount      = 0;
+    [gView stopAntsTimer];
+}
+
 /* Une partie mérite-t-elle d'être redessinée ? La marge couvre le cadre
  * d'édition et le liseré de sélection, qui débordent un peu. */
 static inline BOOL part_touche(Object *o, NSRect sale) {
@@ -229,22 +263,6 @@ static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     }
 }
 
-static void radio_exclusive(Object *card, Object *keep) {
-    if (!card) return;
-    for (int i = 0; i < card->nparts; i++) {
-        Object *o = card->parts[i];
-        if (o->type == OBJ_BUTTON && o != keep && o->style &&
-            (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-            hc_set_hilite(o, card, 0);
-    }
-    if (card->bg)
-        for (int i = 0; i < card->bg->nparts; i++) {
-            Object *o = card->bg->parts[i];
-            if (o->type == OBJ_BUTTON && o != keep && o->style &&
-                (strcmp(o->style, "radioButton") == 0 || strcmp(o->style, "radiobutton") == 0))
-                hc_set_hilite(o, card, 0);
-        }
-}
 
 /* La couleur du nom d'un bouton.
  *
@@ -1197,14 +1215,8 @@ static void cocoa_choose_tool(const char *name) {
              * première était remise à zéro : le rectangle en pointillés
              * survivait au changement d'outil, fourmis comprises. */
             HCTool neuf = table[i].t;
-            if (neuf != TOOL_SELRECT && neuf != TOOL_LASSO) {
-                gSelRectActive  = NO;
-                gSelRectDrawing = NO;
-                gLassoActive    = NO;
-                gLassoDrawing   = NO;
-                gLassoCount     = 0;
-                [gView stopAntsTimer];
-            }
+            if (neuf != TOOL_SELRECT && neuf != TOOL_LASSO)
+                hcv_abandonne_selection();
 
             gTool = neuf;
             gSelected = NULL;
@@ -1787,9 +1799,17 @@ static void cocoa_selection_changed(Object *field, int start, int len) {
     }
 
     if (gFieldEditor) {
+        /* OCTETS -> UTF-16. Le noyau donne des décalages en octets ; les
+         * passer tels quels à setSelectedRange: surlignait à côté dès le
+         * premier accent. « select char 1 of card field "x" » sur « été »
+         * demande les deux premiers octets, ce que Cocoa comprenait comme
+         * les deux premiers CARACTÈRES. */
+        const char *tx = hc_field_text(field);
         NSUInteger n = [[gFieldEditor string] length];
-        NSUInteger s = (NSUInteger)(start < 0 ? 0 : start);
-        NSUInteger l = (NSUInteger)(len   < 0 ? 0 : len);
+        NSUInteger s = utf16_from_byte(tx, start < 0 ? 0 : start);
+        NSUInteger f = utf16_from_byte(tx, (start < 0 ? 0 : start) +
+                                           (len   < 0 ? 0 : len));
+        NSUInteger l = f > s ? f - s : 0;
         if (s > n)     s = n;
         if (s + l > n) l = n - s;
         [gFieldEditor setSelectedRange:NSMakeRange(s, l)];
@@ -2338,7 +2358,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gLineWidth);
         if (v < 1) v = 1;
         if (v > 8) v = 8;
         gLineWidth = v;
@@ -2347,7 +2367,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "pattern") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gPattern + 1);
         if (v < 1) v = 1;
         if (v > NUM_PATTERNS) v = NUM_PATTERNS;
         gPattern = v - 1;
@@ -2356,7 +2376,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "brush") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gBrush + 1);
         if (v < 1) v = 1;
         if (v > NUM_BRUSHES) v = NUM_BRUSHES;
         gBrush = v - 1;
@@ -2377,7 +2397,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textSize") == 0) {
-        int v = atoi(value);
+        int v = hc_coord(value, gTextSize);
         if (v < 4)  v = 4;
         if (v > 96) v = 96;
         gTextSize = v;
@@ -2386,7 +2406,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textHeight") == 0) {
-        int v = atoi(value);
+        int v = hc_entier(value, 1, HC_TEXTE_MAX, 0);
         if (v > 0) gTextHeight = v;
         return;
     }
@@ -4107,6 +4127,12 @@ static BOOL      gSansMessageChamp = NO;
     if (gEditingField) [self endFieldEdit];
     [self dropFloating];
     gSelected = NULL;
+    /* La sélection de peinture porte sur les PIXELS DE CETTE CARTE. La garder
+     * en changeant de carte laissait un cadre de fourmis sur la nouvelle,
+     * autour de rien — et la première transformation du menu Paint se serait
+     * appliquée à cette zone-là, sur une image qui n'a jamais été
+     * sélectionnée. */
+    hcv_abandonne_selection();
 }
 
 - (void)toggleBackground:(id)sender {
@@ -4661,6 +4687,7 @@ static BOOL      gSansMessageChamp = NO;
                     }
                 }
                 gPressed = hit;
+                gPressedCard = hc_current_card();
                 hc_send(hit, "mouseDown");
                 /* mouseStillDown part en continu tant que le bouton reste
                  * enfoncé, même immobile — c'est ce qui fait marcher les
@@ -4677,6 +4704,7 @@ static BOOL      gSansMessageChamp = NO;
 
         if (hit) {
             gPressed = hit;
+            gPressedCard = hc_current_card();
             if (hit->type == OBJ_BUTTON && hit->autohilite &&
                 (!hit->style ||
                  (strcmp(hit->style, "checkBox") != 0 && strcmp(hit->style, "checkbox") != 0 &&
@@ -4694,6 +4722,7 @@ static BOOL      gSansMessageChamp = NO;
              * déjà fait en entrée du bloc TOOL_BROWSE, inutile de le refaire
              * ici. */
             gPressed = hc_current_card();
+            gPressedCard = gPressed;
             hc_send(gPressed, "mouseDown");
             [self startStillDownTimer];
         }
@@ -5001,27 +5030,27 @@ static BOOL      gSansMessageChamp = NO;
              * Comme aucun rappel ne peut mettre une variable locale à NULL,
              * c'est hc_object_is_live qui dit si l'objet est encore là. */
             Object *presse = gPressed;
+            Object *carteCliquee = gPressedCard;
             gPressed = NULL;
+            gPressedCard = NULL;
 
             /* Pour la carte elle-même, part_at rend NULL : on compare
              * donc à la carte courante plutôt qu'au résultat du test. */
             if (hit == presse || (!hit && presse == hc_current_card()))
                 hc_send(presse, "mouseUp");
 
-            if (presse && hc_object_is_live(presse) &&
-                presse->type == OBJ_BUTTON) {
-                Object *carte = hc_current_card();
-                const char *st = presse->style;
-                if (st && (strcmp(st, "checkBox") == 0 || strcmp(st, "checkbox") == 0))
-                    hc_set_hilite(presse, carte, !hc_hilite_of(presse, carte));
-                else if (st && (strcmp(st, "radioButton") == 0 ||
-                                strcmp(st, "radiobutton") == 0)) {
-                    hc_set_hilite(presse, carte, 1);
-                    radio_exclusive(carte, presse);
-                }
-                else if (presse->autohilite)
-                    hc_set_hilite(presse, carte, 0);
-            }
+            /* LA FIN DU CLIC S'APPLIQUE À LA CARTE DU CLIC.
+             *
+             * Elle lisait ici hc_current_card(), APRÈS le gestionnaire. Un
+             * « go next card » dans mouseUp suffisait à éteindre le bouton sur
+             * la carte d'arrivée ; avec un bouton de fond à sharedHilite faux
+             * et un saut vers une autre pile, on inscrivait dans une carte de B
+             * l'identifiant d'un bouton de A.
+             *
+             * La règle elle-même est descendue dans le noyau : c'est du modèle,
+             * pas de l'affichage, et elle y devient vérifiable sans AppKit.
+             * hc_fin_de_clic vérifie lui-même que les deux objets vivent. */
+            hc_fin_de_clic(presse, carteCliquee);
 
             [self setNeedsDisplay:YES];
         }
@@ -5181,7 +5210,8 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
 {
     if (!d) return;
     Object **emplacements[] = {
-        &d->editingField, &d->editTarget, &d->pressed, &d->popupTarget,
+        &d->editingField, &d->editTarget, &d->pressed, &d->pressedCard,
+        &d->popupTarget,
         &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
         &d->card,
     };
@@ -5840,8 +5870,19 @@ static NSTextField  *gSprayDensityLabel = nil;
     if ([note object] != gFieldEditor) return;
 
     NSRange r = [gFieldEditor selectedRange];
+    /* UTF-16 -> OCTETS. NSTextView compte en unités UTF-16, le noyau en
+     * octets. Passer la NSRange telle quelle marchait tant que tout était en
+     * ASCII, où les deux coïncident ; sur « été », sélectionner le premier é
+     * donne une longueur Cocoa de 1, et le noyau retenait alors UN octet —
+     * une demi-séquence UTF-8, que « the selection » ne pouvait plus rendre.
+     *
+     * byte_from_utf16 existait déjà et servait ailleurs dans ce fichier ; il
+     * ne manquait qu'ici. */
+    NSString *str = [gFieldEditor string];
+    int b0 = byte_from_utf16(str, r.location);
+    int b1 = byte_from_utf16(str, r.location + r.length);
     gApplyingSelection = YES;
-    hc_set_selection(gEditingField, (int)r.location, (int)r.length);
+    hc_set_selection(gEditingField, b0, b1 - b0);
     gApplyingSelection = NO;
 }
 

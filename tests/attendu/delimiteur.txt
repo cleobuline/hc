@@ -1,0 +1,56 @@
+=== la virgule par défaut, et un délimiteur ASCII ===
+── virgule
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   3 b
+── point-virgule
+   3 b [;]
+
+=== un délimiteur accentué : deux octets ===
+── compter et lire
+   3 [b] [é]
+── le premier et le dernier
+   [a] [c]
+── une plage
+   [aéb]
+
+=== écrire : le délimiteur posé doit être entier ===
+── remplacer un item
+   [aéXéc] longueur 5
+── étendre au-delà de la fin
+   [aééX] 3
+
+=== supprimer : le délimiteur part en entier, pas à moitié ===
+── delete item 2
+   [aéc] longueur 3 (attendu 3)
+── delete item 1
+   [béc]
+── delete le dernier
+   [aéb]
+
+=== un délimiteur de plusieurs caractères ===
+── « -- » comme séparateur
+   3 [b]
+
+=== un délimiteur LONG : plus aucun tampon fixe sur le chemin ===
+── quatre é, relu
+   [éééé] 4 caracteres
+── quatre é, découpage
+   3 [b]
+── un délimiteur de trente caractères
+   2 [b] delim 30 caracteres
+
+=== le TRI recolle avec le délimiteur ENTIER ===
+── sort items, délimiteur « é »
+   [aébéc] 3 items
+── sort items, délimiteur « -- »
+   [a--b--c] 3 items
+
+=== le remplissage au-delà du rang, avec un délimiteur long ===
+── put dans item 4 d'un seul item
+   [aéééQ] 4 items
+── idem avec « -- »
+   [a------Q] 4 items
+
+=== un délimiteur vide retombe sur la virgule ===
+── vide
+   3 [b]

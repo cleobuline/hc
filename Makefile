@@ -35,12 +35,29 @@ verifie:
 	@for f in $(SOURCES); do $(CC) $(CFLAGS) -fsyntax-only $$f || exit 1; done
 	@echo "le noyau compile"
 
+# LA CIBLE ÉCHOUE S'IL EN RESTE UN.
+#
+# Elle se contentait de COMPTER et rendait toujours zéro : l'intégration
+# continue affichait fidèlement « hc_core.c 3 » et passait au vert. Un
+# compteur que personne ne regarde ne compte rien ; c'est exactement ainsi
+# qu'on se réhabitue à des avertissements, et la suite a déjà payé ce
+# prix-là — le -w de lance.sh cachait un déréférencement de virgule.
+#
+# Le détail des avertissements est réaffiché pour le fichier fautif : un
+# nombre sans le message n'aide personne à corriger.
 avertissements:
-	@for f in $(SOURCES); do \
+	@echec=0; \
+	 for f in $(SOURCES); do \
 	   printf '%-16s ' $$(basename $$f); \
-	   n=$$($(CC) $(CFLAGS) $(AVERTIR) -c -o /dev/null $$f 2>&1 | grep -c 'warning:'); \
+	   msg=$$($(CC) $(CFLAGS) $(AVERTIR) -c -o /dev/null $$f 2>&1); \
+	   n=$$(printf '%s\n' "$$msg" | grep -c 'warning:'); \
 	   echo "$$n"; \
-	 done
+	   if [ "$$n" -ne 0 ]; then echec=1; printf '%s\n' "$$msg"; fi; \
+	 done; \
+	 if [ $$echec -ne 0 ]; then \
+	   echo "des avertissements : la cible echoue"; exit 1; \
+	 fi; \
+	 echo "aucun avertissement"
 
 propre:
 	@rm -rf tests/.travail

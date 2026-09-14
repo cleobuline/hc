@@ -1,0 +1,143 @@
+-- « surfaces » — script du bouton « Draw graph », donné tel quel.
+--
+-- Trace une surface paramétrique en projection isométrique. C'est le script
+-- que banc.c et banc_rom.c attendaient : sans lui, les deux chronomètres ne
+-- tournaient pas du tout.
+on mouseUp
+
+put the ticks into t
+
+debug raz
+  -- ==== Rectangle de dessin, en coordonnées carte ====
+  -- Le graphe est centré dedans ; la bande à GAUCHE de rectLeft est celle
+  -- que le script nettoie à la fin, c'est là que vivent les champs.
+  put 300 into rectLeft
+  put 700 into rectRight
+  put   0 into rectUp
+  put 341 into rectBottom
+
+  checkInput
+  if the optionKey = up then answer "Erase previous graph(s) ?" with "Yes" or "No"
+  else get "Yes"
+  if it = "Yes" then clearScreen
+if the hilite of bg button "lock screen" is true then lock screen
+  choose line tool
+  put the value of fld "IncremU" into incU
+  put the value of fld "IncremV" into incV
+  put hilite of bg btn "Connect u" into conU
+  put hilite of bg btn "Connect v" into conV
+  put fld "xEq" into xEq
+  put fld "yEq" into yEq
+  put fld "zEq" into zEq
+  put the value of fld "MaxX" into maxX
+  put the value of fld "MaxY" into maxY
+  put the value of fld "MaxZ" into maxZ
+  put maxX into fld "XMax"
+  put maxY into fld "YMax"
+  put maxZ into fld "ZMax"
+  put sqrt(3)/3 into s3
+  put hilite of bg btn "“Depth”" into dep
+  set lineSize to 1
+
+  -- ==== Centre et échelles, déduits du rectangle ====
+  -- ctrH  : le milieu horizontal, où passe l'axe z
+  -- scaleH: la demi-largeur ; (y-x) va de -1 à 1
+  -- scaleV: l'échelle verticale de la projection isométrique, liée à scaleH
+  --         par 2*sqrt(3)/3 — la changer indépendamment déformerait le solide
+  -- ctrV  : l'origine verticale, à scaleV sous le haut du rectangle
+  put (rectLeft + rectRight)/2 into ctrH
+  put (rectRight - rectLeft)/2 into scaleH
+  put scaleH * 2 * s3 into scaleV
+  put rectUp + scaleV into ctrV
+
+  if (not (conU or conV)) then
+    put the value of fld "StartU" into u
+    repeat until (the shiftKey = down and the commandKey = down) or u > (value of fld "EndU")
+      put the value of fld "StartV" into v
+      repeat until v > (value of fld "EndV")
+        put (the value of xEq)/maxX into x
+        put (the value of yEq)/maxY into y
+        put (the value of zEq)/maxZ into z
+        put round((y-x)*scaleH+ctrH) &","& round(((x+y)*s3)*scaleH-z*scaleV+ctrV) into p1
+        if dep then
+          get x+y
+          if it > 0.33 then set lineSize to 3
+          else if abs(it) <= 0.33 then set lineSize to 2
+          else set lineSize to 1
+        end if
+        if "NAN" is not in p1 then click at p1
+        add incV to v
+      end repeat
+      add incU to u
+    end repeat
+    put "("&char 1 to 5 of u&")" into fld "StpdU"
+  else if conV then
+    put the value of fld "StartU" into u
+    repeat until (the shiftKey = down and the commandKey = down) or u > (value of fld "EndU")
+      put the value of fld "StartV" into v
+      put "NAN" into p2
+      repeat until v > (value of fld "EndV")
+        put (the value of xEq)/maxX into x
+        put (the value of yEq)/maxY into y
+        put (the value of zEq)/maxZ into z
+        put round((y-x)*scaleH+ctrH) &","& round(((x+y)*s3)*scaleH-z*scaleV+ctrV) into p1
+        if dep then
+          get x+y
+          if it > 0.33 then set lineSize to 3
+          else if abs(it) <= 0.33 then set lineSize to 2
+          else set lineSize to 1
+        end if
+        if "NAN" is not in p2 then
+          if "NAN" is not in p1 then
+            drag from p1 to p2
+          end if
+        else if "NAN" is not in p1 then click at p1
+        put p1 into p2
+        add incV to v
+      end repeat
+      add incU to u
+    end repeat
+    put "("&char 1 to 5 of u&")" into fld "StpdU"
+  end if
+
+  if conU then
+    put the value of fld "StartV" into v
+    repeat until (the shiftKey = down and the commandKey = down) or v > (value of fld "EndV")
+      put the value of fld "StartU" into u
+      put "NAN" into p2
+      repeat until u > (value of fld "EndU")
+        put (the value of xEq)/maxX into x
+        put (the value of yEq)/maxY into y
+        put (the value of zEq)/maxZ into z
+        put round((y-x)*scaleH+ctrH) &","& round(((x+y)*s3)*scaleH-z*scaleV+ctrV) into p1
+        if dep then
+          get x+y
+          if it > 0.33 then set lineSize to 3
+          else if abs(it) <= 0.33 then set lineSize to 2
+          else set lineSize to 1
+        end if
+        if "NAN" is not in p2 then
+          if "NAN" is not in p1 then
+            drag from p1 to p2
+          end if
+        else if "NAN" is not in p1 then click at p1
+        put p1 into p2
+        add incU to u
+      end repeat
+      add incV to v
+    end repeat
+    put "("&char 1 to 5 of v&")" into fld "StpdV"
+  end if
+
+  choose select tool
+  drag from 0,0 to (rectLeft - 20),rectBottom
+  doMenu "Clear picture"
+  doMenu "Select All"
+  doMenu "Transparent"
+  choose browse tool
+unlock screen
+debug bilan
+unlock screen
+put the ticks - t
+
+end mouseUp

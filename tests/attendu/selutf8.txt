@@ -1,0 +1,32 @@
+=== en ASCII, les deux unités coïncident : rien ne doit changer ===
+── select char 2 of "abc"
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   b  char 2 to 2 of card field "x"
+
+=== un é occupe DEUX octets et UN caractère ===
+── select char 1 of "été"
+   é  char 1 to 1 of card field "x"
+── select char 2 of "été"
+   t  char 2 to 2 of card field "x"
+── select char 3 of "été"
+   é  char 3 to 3 of card field "x"
+── select char 1 to 3 of "été"
+   été  char 1 to 3 of card field "x"
+
+=== l'aller-retour : ce qu'annonce selectedChunk doit être vrai ===
+── relire le morceau annoncé
+   sélection : [té]
+   annoncé   : char 2 to 3 of card field "x"
+   relu      : [té]
+
+=== find : même règle ===
+── find "demain" dans "été demain"
+   [demain]  char 5 to 10 of card field "x"
+── find sur un motif accentué
+   [été]  char 7 to 9 of card field "x"
+
+=== caractères hors du plan de base : un emoji fait quatre octets ===
+── select char 2 of "a🐟b"
+   🐟  char 2 to 2 of card field "x"
+── select char 3 of "a🐟b"
+   b  char 3 to 3 of card field "x"

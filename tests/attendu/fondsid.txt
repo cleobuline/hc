@@ -1,0 +1,14 @@
+=== deux fonds du MÊME nom ===
+   avant la sauvegarde :
+   carte A   voit : champDuPremier
+   carte B   voit : champDuSecond
+   sauvegarde : faite
+   après la relecture :
+   carte A   voit : champDuPremier
+   carte B   voit : champDuSecond
+
+=== une carte nommée « backgroundid 7 » ne trompe pas le lecteur ===
+   carte backgroundid 7 voit : champDuDeux
+
+=== un fichier SANS backgroundid se lit par le nom, comme avant ===
+   carte A   voit : champDuSeul

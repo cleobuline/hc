@@ -1,1 +1,730 @@
-exercice.txt: No such file or directory
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+→ message "mouseUp" à button "Exercice"
+   · traité par button "Exercice"
+   → message "testCalcul" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testChaines" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testMorceaux" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → itemDelimiter ← "-"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → itemDelimiter ← ","
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testControle" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testFonctions" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "carre" à button "Exercice"
+         · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "combien" à button "Exercice"
+         · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "premier" à button "Exercice"
+         · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testConteneurs" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testProprietes" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → visible de button "Exercice" ← "true"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → visible de button "Exercice" ← "true"
+         → hilite de button "Exercice" ← "false"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → hilite de button "Exercice" ← "false"
+         → textSize de button "Exercice" ← "12"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → textSize de button "Exercice" ← "0"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testDates" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → 2025,9,11,16,0,0,5
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → 3029529600
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         → 1/1/00
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testTri" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testEnvoi" à button "Exercice"
+      · traité par button "Exercice"
+      → message "unMessage" à button "Exercice"
+         · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "avecArg" à button "Exercice"
+         · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testNavigation" à button "Exercice"
+      · traité par button "Exercice"
+         ⇒ empile la carte "Une"
+         ⇒ va à la carte "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ depile vers "Une"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         !! objet introuvable (v3, ligne 368 de button "Exercice".testNavigation)
+   → message "testExistence" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testPourChaque" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testChamps" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "ap[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card "carteQuiNexistePas" 1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 fonction aplat                        1
+[v3]    v1 fonction carre                        1
+[v3]    v1 terme recours expr                    1
+[v3]    v1 fonction recours expr                 1
+lat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   → message "testFichiers" à button "Exercice"
+      · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+   — retours de la v3 vers l'ancien interpréteur —
+      recours objet: card "carteQuiNexistePas" 1
+   — ce que l'ancien interprète exécute encore —
+      v1 fonction aplat                        1
+      v1 fonction carre                        1
+      v1 terme recours expr                    1
+      v1 fonction recours expr                 1
+
+===== CONTENU DU CHAMP "data 2" =====
+130 essais, 0 ratés
+ok   somme = 7
+ok   produit = 12
+ok   division = 2.5
+ok   div entier = 3
+ok   mod = 1
+ok   puissance = 8
+ok   priorite = 14
+ok   parentheses = 20
+ok   negatif = -5
+ok   compare < = true
+ok   compare >= = true
+ok   et = true
+ok   ou = true
+ok   non = true
+ok   egalite texte = true
+ok   difference = true
+ok   concat = ab
+ok   concat espace = a b
+ok   contains = true
+ok   is in = true
+ok   is not in = true
+ok   quote = 1
+ok   return = 1
+ok   empty = 0
+ok   space =  
+ok   tab = 1
+ok   item 2 = deux
+ok   last item = quatre
+ok   first item = un
+ok   middle item = c
+ok   item 2 to 3 = deux,trois
+ok   nb items = 4
+ok   word 2 = beta
+ok   nb mots = 3
+ok   char 1 to 5 = alpha
+ok   nb chars = 16
+ok   last char = a
+ok   line 2 = L2
+ok   nb lignes = 3
+ok   last line = L3
+ok   itemDelimiter = b
+ok   ecrire item = un,DEUX,trois
+ok   ecrire char = Xn,DEUX,trois
+ok   delete item = Xn,trois
+ok   put after morceau = aZbc
+ok   repeat with = 15
+ok   repeat down to = 5
+ok   repeat times = 3
+ok   repeat until = 4
+ok   repeat while = 3
+ok   exit repeat = 3
+ok   next repeat = 3
+ok   if then else = oui
+ok   if une ligne = b
+ok   abs = 5
+ok   round = 3
+ok   trunc = 2
+ok   sqrt = 3
+ok   min = 2
+ok   max = 8
+ok   sum = 15
+ok   average = 5
+ok   length() = 6
+ok   offset() = 3
+ok   charToNum = 65
+ok   numToChar = A
+ok   value() = 7
+ok   compound = 1.21
+ok   annuity = 1.7355
+ok   random borne = true
+ok   fonction perso = 25
+ok   paramCount = 2
+ok   param(1) = a
+ok   the result vide = true
+ok   put before = Xabc
+ok   put after = XabcY
+ok   add/sub/mul/div = 6
+ok   get puis it = 42
+ok   variable locale = global
+ok   do = 5
+ok   name contient button = true
+ok   short name dans long name = true
+ok   id positif = true
+ok   rect a 4 items = 4
+ok   width coherent = 120
+ok   height coherent = 24
+ok   loc a 2 items = 2
+ok   set/get visible = true
+ok   set/get hilite = false
+ok   set/get textSize = 12
+ok   nb de cartes >= 1 = true
+ok   nb de boutons >= 1 = true
+ok   nom de la carte non vide = true
+ok   the date non vide = true
+ok   the time non vide = true
+ok   long date plus longue = true
+ok   the seconds positif = true
+ok   the ticks numerique = true
+ok   dateItems a 7 items = 7
+ok   convert vers seconds = true
+ok   convert aller-retour = true
+ok   sort items numeric = 1,2,3
+ok   sort items text = a,b,c
+ok   sort descending = c,b,a
+ok   sort lines = L1/L2
+ok   send = recu
+ok   send avec argument = 7
+ok   go next puis retour = true
+ok   go previous ramene = 1
+ok   go first = 1
+ok   go last = 1
+ok   go card par rang = Une
+ok   pop card = Une
+ok   there is a me = true
+ok   there is no ... = false
+ok   there is a this card = true
+ok   repeat for each item = 4
+ok   repeat for each word = un.deux.trois.
+ok   repeat for each line = 2
+ok   ecrire un champ = alpha,beta,gamma
+ok   item d un champ = beta
+ok   nb items d un champ = 3
+ok   ecrire un item d un champ = alpha,BETA,gamma
+ok   put after un champ = alpha,BETA,gamma!
+ok   put before un champ = >alpha,BETA,gamma!
+ok   delete item d un champ = >alpha,gamma!
+ok   nb chars d un champ = 13
+ok   write sans erreur = true
+ok   read for 3 = abc
+ok   read until virgule = abc,
+

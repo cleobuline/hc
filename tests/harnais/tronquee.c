@@ -11,6 +11,16 @@
  * avait un. Et la première sauvegarde écrivait cette version-là par-dessus
  * l'original : le script était perdu pour de bon.
  *
+ * TROIS FAMILLES DE COUPURES, et il a fallu trois contrôles distincts :
+ *
+ *   dans un BLOC de texte      un « end script » manquant : le texte accumulé
+ *                              n'est jamais posé sur l'objet ;
+ *   entre deux OBJETS          « end button » ou « end card » manquant : part
+ *                              ou owner reste ouvert à la fin du fichier ;
+ *   sur une frontière PROPRE   rien ne manque syntaxiquement, il manque
+ *                              seulement la suite. Seule la signature finale
+ *                              « end hc-file » peut le dire.
+ *
  * On fabrique une vraie pile, on la sauvegarde, puis on la recoupe à
  * plusieurs endroits et on regarde ce que hc_load en dit. */
 #include "hc_core.h"
@@ -78,6 +88,9 @@ int main(void)
     Object *c  = hc_new_card(st, bg, "U");
     Object *f  = hc_new_field(c, "f");
     Object *b  = hc_new_button(c, "b");
+    /* Une SECONDE carte : sans elle, une coupure « juste après end card » ne
+     * perdrait rien, et le cas le plus sournois du lot ne se verrait pas. */
+    hc_new_card(st, bg, "Deux");
     hc_set_current_card(c);
     hc_set_field_text(f, "premiere ligne\ndeuxieme ligne\ntroisieme ligne");
     hc_set_script(b,
@@ -113,14 +126,36 @@ int main(void)
     if (coupe_avant("end contents")) verdict("au milieu d'un bloc « contents »", 0);
     else                             printf("   pas de « end contents » !\n");
 
-    /* Une coupure sur une frontière PROPRE — juste après « end stack », soit
-     * cinq lignes : l'en-tête, une ligne vide, « stack », « size », la
-     * fermeture — n'ouvre aucun bloc. Elle reste ACCEPTÉE : la pile est
-     * pauvre, mais elle n'a rien perdu en silence. C'est la limite du
-     * verdict, et il faut qu'elle se voie, sinon le test ne dirait plus que
-     * « hc_load refuse tout ». */
+    /* ENTRE DEUX OBJETS. Aucun bloc de texte n'est ouvert ici : le fichier
+     * s'arrête après « rect 10,10,100,40 », et il manque le « end » de la
+     * part, puis celui de la carte. C'est part et owner, restés ouverts à la
+     * fin du fichier, qui le disent. */
+    if (coupe_avant("end button"))     verdict("avant « end button »", 0);
+    else                               printf("   pas de « end button » !\n");
+    if (coupe_avant("end card"))       verdict("avant « end card »", 0);
+    else                               printf("   pas de « end card » !\n");
+    if (coupe_avant("end background")) verdict("avant « end background »", 0);
+    else                               printf("   pas de « end background » !\n");
+    if (coupe_avant("end stack"))      verdict("avant « end stack »", 0);
+    else                               printf("   pas de « end stack » !\n");
+
+    /* UNE COUPURE SUR UNE FRONTIÈRE PROPRE EST MAINTENANT ATTRAPÉE, ELLE AUSSI.
+     *
+     * Ce cas était le trou du contrôle : un fichier coupé juste après un
+     * « end stack » — ou après n'importe quel « end card » — est
+     * syntaxiquement irréprochable. Aucun bloc ouvert, aucun objet ouvert. Il
+     * manque seulement tout ce qui suivait, et rien dans le texte ne permet de
+     * le savoir.
+     *
+     * C'est la signature finale « end hc-file » qui le dit, et elle seule.
+     * L'écrivain la pose toujours ; son absence dans un fichier qui annonce le
+     * format 2 signifie que le fichier s'arrête avant sa fin.
+     *
+     * Sur un fichier v1, qui n'a pas de signature, ce cas reste indétectable —
+     * et c'est une raison de plus pour que les piles repassent par une
+     * sauvegarde. Le harnais « allerretour » vérifie qu'un v1 se relit bien. */
     coupe_a(5);
-    verdict("juste après « end stack »", 1);
+    verdict("juste après « end stack » (sans signature)", 0);
 
     remove(SRC); remove(CUT);
     hc_free(st);

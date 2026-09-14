@@ -234,16 +234,35 @@ static int respire(HctExec *x)
     return x->hote.respire(x->hote.donnees);
 }
 
-static char delim_de(HctExec *x)
+/* LE DÉLIMITEUR EST UNE CHAÎNE, ET IL SE RECOPIE.
+ *
+ * Il ne retenait que le PREMIER OCTET de la valeur rendue par l'hôte : un
+ * délimiteur accentué y perdait sa seconde moitié, et le découpage coupait au
+ * milieu d'une séquence UTF-8.
+ *
+ * On remplit un tampon de l'appelant plutôt que de rendre un pointeur : la
+ * valeur de l'hôte est libérée en sortant, et en rendre l'adresse laisserait
+ * l'appelant lire de la mémoire rendue. */
+static char *delim_de(HctExec *x)
 {
+    /* RIEN DE FIXE ICI NON PLUS.
+     *
+     * Ce tampon faisait huit octets, comme celui du noyau, et pour la même
+     * raison apparente : « cinq octets suffisent à un point de code ». Mais le
+     * délimiteur peut faire plusieurs CARACTÈRES — hct_chunk_* travaille sur
+     * une chaîne et avance de sa longueur —, et « éééé » en fait huit. Il en
+     * ressortait sept, coupés au milieu du dernier « é » : le découpage
+     * rendait alors « \xc3b » au lieu de « b ». Mesuré.
+     *
+     * On reprend donc la propriété de la chaîne rendue par l'hôte, que
+     * l'appelant libère. NULL vaut la virgule. */
     HctValeur v;
     if (x->ctx.hote.fonction &&
         x->ctx.hote.fonction(x->ctx.hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        char d = v.txt[0] ? v.txt[0] : ',';
+        if (v.txt && v.txt[0]) return v.txt;   /* propriété reprise */
         hct_val_libere(&v);
-        return d;
     }
-    return ',';
+    return NULL;
 }
 
 /* ------------------------------------------------------------ écriture
@@ -299,7 +318,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         HctValeur base = hct_evalue(&x->ctx, sous);
         if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
 
-        char d = delim_de(x);
+        char *dd = delim_de(x); const char *d = dd ? dd : ",";
         int n1 = 0, n2 = 0;
         if (cible->ordinal) {
             /* hct_rang_ordinal, et non une table recopiée ici.
@@ -347,7 +366,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
          * poursuivait sur n1 = 0, échouait plus bas et rendait « pas
          * traité » : la ligne repartait vers l'ancien interpréteur, qui
          * ajoutait un « ne sait pas faire » par-dessus la vraie erreur. */
-        if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
+        if (x->ctx.erreur) { free(dd); hct_val_libere(&base); return 1; }
 
         const char *aecrire = val;
         /* Pas de hct_val_vide() ici : on écrase compose.txt par un malloc
@@ -374,6 +393,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         /* Le morceau porte sur une cible que l'on ne sait peut-être pas
          * écrire non plus : le verdict se propage. */
         int ok = ecrit_dans(x, sous, neuf.txt, 0);
+        free(dd);
         hct_val_libere(&neuf);
         hct_val_libere(&compose);
         hct_val_libere(&base);
@@ -455,7 +475,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
     HctValeur base = hct_evalue(&x->ctx, sous);
     if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
 
-    char d = delim_de(x);
+    char *dd = delim_de(x); const char *d = dd ? dd : ",";
     int n1 = 0, n2 = 0;
     if (cible->ordinal) {
         int total = hct_chunk_compte(base.txt, cible->sorte, d);
@@ -487,10 +507,11 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
             hct_val_libere(&b);
         }
     }
-    if (x->ctx.erreur) { hct_val_libere(&base); return 1; }
+    if (x->ctx.erreur) { free(dd); hct_val_libere(&base); return 1; }
 
     HctValeur neuf = hct_chunk_supprime(base.txt, cible->sorte, n1, n2, d);
     int ok = ecrit_dans(x, sous, neuf.txt, 0);
+    free(dd);
     hct_val_libere(&neuf);
     hct_val_libere(&base);
     return ok;
@@ -979,7 +1000,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         HctValeur src = hct_evalue(&x->ctx, n->fils[1]);
         if (x->ctx.erreur) { free(nom); hct_val_libere(&src); return; }
 
-        char d = delim_de(x);
+        char *dd = delim_de(x); const char *d = dd ? dd : ",";
         int total = hct_chunk_compte(src.txt, n->sorte, d);
 
         for (int i = 1; i <= total; i++) {
@@ -995,6 +1016,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
             if (x->signal == HCT_SIG_EXIT_REPEAT) { x->signal = HCT_SIG_AUCUN; break; }
             if (x->signal) break;
         }
+        free(dd);
         hct_val_libere(&src);
         free(nom);
         return;

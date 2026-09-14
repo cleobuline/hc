@@ -716,6 +716,14 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                 if (gTool == TOOL_TEXT && tc->value != TOOL_TEXT)
                     [gView commitText];
 
+                /* La sélection de peinture s'abandonne quand on prend un
+                 * outil qui ne sélectionne pas — exactement comme le fait
+                 * « choose … tool » par script. Ce chemin-ci l'oubliait :
+                 * cliquer sur la main dans la palette laissait les fourmis en
+                 * place et la sélection vivante. */
+                if (tc->value != TOOL_SELRECT && tc->value != TOOL_LASSO)
+                    hcv_abandonne_selection();
+
                 gTool = (HCTool)tc->value;
                 gSelected = NULL;
                 /* Le pointeur suit l'outil. Ce chemin-ci est celui du CLIC

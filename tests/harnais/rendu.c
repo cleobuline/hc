@@ -42,7 +42,7 @@ static void trace(int x1,int y1,int x2,int y2,const char *m){
     if(cx>=0&&cx<W&&cy>=0&&cy<H) toile[cy][cx]=lettre();
   }
 }
-int main(void){
+int main(int argc, char **argv){
   for(int y=0;y<H;y++){ memset(toile[y],' ',W); toile[y][W]='\0'; }
   static HcHost h; memset(&h,0,sizeof h);
   h.line=ma_ligne; h.global_set=mon_set; h.global_get=mon_get; h.drag=trace;
@@ -52,7 +52,10 @@ int main(void){
   Object *bg=hc_new_background(st,"F");
   Object *c=hc_new_card(st,bg,"Une"); Object *b=hc_new_button(c,"B");
   hc_set_current_card(c);
-  FILE *f=fopen("arcenciel.txt","rb");
+  /* Le chemin vient du lanceur, comme pour les autres harnais à données :
+   * le chercher dans le répertoire courant le rendait introuvable, et ce
+   * harnais ne testait plus rien depuis. */
+  FILE *f=fopen(argc>1?argv[1]:"donnees/arcenciel.txt","rb");
   if(!f){ printf("script introuvable\n"); return 1; }
   static char src[16384]; size_t n=fread(src,1,sizeof src-1,f); src[n]='\0'; fclose(f);
   hc_set_script(b,src);

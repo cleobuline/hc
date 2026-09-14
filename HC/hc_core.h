@@ -75,6 +75,12 @@ struct RunList { struct TextRun *v; int n, cap; };
  * HC_COLOR_INHERIT si ce n'en est pas une. Les noms sont acceptés en français
  * comme en anglais — vert, green, rouge, red… C'est le vocabulaire de
  * « set the textColor », ouvert pour que la peinture parle le même. */
+/* « x is a date ». La MÊME définition que celle dont `convert` se sert, prise
+ * dans son acception stricte : rien d'incompris dans la chaîne, et des
+ * composantes qui existent au calendrier. 99/99/99 est donc refusé, et
+ * « 12/25/96patate » aussi. Une heure seule n'est pas une date. */
+int hc_est_date(const char *s);
+
 int hc_color_from_name(const char *v);
 
 /* La même, avec l'opacité : « 255,0,0,128 ». `alpha` reçoit 0..255, et 255
@@ -335,6 +341,20 @@ int     hc_card_count(Object *stack);
 void    hc_set_shared_text(Object *field, int shared);
 
 int     hc_hilite_of(Object *btn, Object *card);
+
+/* Vrai si l'allumage de ce bouton se range DANS LA CARTE et non sur le bouton :
+ * un bouton de fond dont sharedHilite est faux. La vue en a besoin pour savoir
+ * si la carte du clic lui est indispensable. */
+int     hc_hilite_par_carte(Object *btn);
+
+/* La fin automatique d'un clic : case qui bascule, radio qui s'allume et
+ * éteint ses voisins, bouton ordinaire qui s'éteint.
+ *
+ * `carte_cliquee` est la carte sur laquelle le CLIC a eu lieu, retenue avant
+ * l'envoi de mouseUp — et non la carte courante après, qu'un « go next card »
+ * dans le gestionnaire aurait déjà changée. Les deux objets sont vérifiés
+ * vivants ici ; l'appelant n'a rien à tester. */
+void    hc_fin_de_clic(Object *btn, Object *carte_cliquee);
 void    hc_set_hilite(Object *btn, Object *card, int on);
 /* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
 void    hc_set_hilite_raw(Object *card, int button_id, int on);
@@ -666,6 +686,23 @@ void    hc_do(const char *line);
 /* ---- Utilitaires ---- */
 const char *hc_typename(ObjType t);
 void        hc_describe(Object *o, char *buf, int buflen);
+
+/* ---- les trois formes du nom d'un objet ----
+ *
+ *   HC_NOM_COURT   Bouton
+ *   HC_NOM_ABREGE  button "Bouton"
+ *   HC_NOM_LONG    card button "Bouton" of card id 101 of stack "Pile"
+ *
+ * La forme LONGUE est faite pour être RE-RÉSOLUE : « the long name of me »
+ * passé à une fonction, puis employé comme référence depuis une autre carte,
+ * retrouve le même objet. Elle porte donc la couche — « card button » et
+ * « bkgnd button » ne désignent pas le même objet — et la portée jusqu'à la
+ * pile. Une part de fond s'ancre sur son FOND, dont elle ne dépend pas d'une
+ * carte à l'autre. */
+#define HC_NOM_COURT  0
+#define HC_NOM_ABREGE 1
+#define HC_NOM_LONG   2
+void        hc_nom_de(Object *o, int forme, char *out, int outlen);
 void        hc_trace(int on);
 
 /* Résout une référence d'objet (« button "toto" », « the field "notes" »,
@@ -765,6 +802,54 @@ void        hc_set_id(Object *o, int id);
 int         hc_object_number(Object *o);
 int         hc_part_number(Object *o);
 int         hc_owner_is_bg(Object *o);
+
+/* ---- lire un entier venu d'un SCRIPT ou d'un FICHIER ----
+ *
+ * atoi ne dit jamais non. Il rend 0 sur du texte, s'arrête au premier
+ * caractère qu'il ne comprend pas, et déborde en silence sur ce qui dépasse
+ * un int — comportement INDÉFINI, pas seulement une valeur fausse.
+ *
+ * Trois conséquences mesurées :
+ *
+ *   set the width of … to 1e2     donnait 1, alors que « put 1e3 + 0 » vaut
+ *                                 1000. Le même texte, deux réponses, selon
+ *                                 le chemin qui l'a lu.
+ *   id 2147483647 dans un .stack  faisait passer le compteur d'identifiants à
+ *                                 -2147483648, et la carte suivante recevait
+ *                                 un id négatif.
+ *   rect -2147483648,0,2147483647 donnait une largeur de -1, par débordement
+ *                                 de la soustraction.
+ *
+ * hc_entier lit comme le reste du langage — notation scientifique comprise —
+ * et BORNE. Hors bornes ou illisible, il rend `defaut` : l'appelant décide
+ * quoi faire d'une valeur absurde, au lieu d'en recevoir une indéfinie.
+ *
+ * Les bornes ne sont pas décoratives : HC_COORD_MAX laisse la place aux
+ * additions et soustractions de rectangles sans jamais approcher du bord d'un
+ * int, ce qui est tout l'intérêt. */
+#define HC_COORD_MAX 1000000      /* un million de points : mille fois une carte */
+#define HC_ID_MAX    1000000000   /* et « id + 1 » reste très loin du débordement */
+#define HC_TEXTE_MAX 10000        /* corps, hauteur de ligne : au-delà, plus rien ne s'affiche */
+
+int hc_entier(const char *s, int mini, int maxi, int defaut);
+
+/* La même chose, en disant AUSSI si quelque chose a été lu. Certains
+ * appelants ont besoin de la différence entre « zéro » et « rien » : une
+ * ligne « run » dont les champs ne sont pas des nombres n'est pas une plage
+ * de style à zéro, c'est une ligne à ignorer. */
+int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu);
+
+/* Une coordonnée ou une dimension : bornée à +/- HC_COORD_MAX. */
+int hc_coord(const char *s, int defaut);
+
+/* Un identifiant d'objet, tel qu'il sort d'un script ou d'un fichier : entre
+ * 1 et HC_ID_MAX. Rend 0 sur tout le reste, et 0 n'est l'identifiant de
+ * personne — la recherche échoue donc franchement au lieu de trouver. */
+int hc_id(const char *s);
+
+/* Un rang, 1-based comme en HyperTalk. Rend 0 sur tout le reste, et les deux
+ * recherches par rang refusent déjà un rang inférieur à 1. */
+int hc_rang(const char *s);
 /* Nombre de parts d'un type donné chez un propriétaire (carte OU fond, sans
  * addition des deux : c'est ce que la numérotation par rang suppose). */
 int         hc_part_count(Object *owner, ObjType type);

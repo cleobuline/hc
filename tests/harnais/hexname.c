@@ -9,7 +9,7 @@ static void dump(const char *label, const char *s)
 }
 int main(void)
 {
-    const char *nom = "\xe2\x80\x9cDepth\xe2\x80\x9d";
+    const char *nom = "\xe2\x80\x9c" "Depth" "\xe2\x80\x9d";
     dump("litteral C", nom);
     Object *stack = hc_new_stack("T");
     Object *bg    = hc_new_background(stack, "F");
@@ -19,7 +19,7 @@ int main(void)
     dump("apres hc_new_button", b->name);
     char d[128]; hc_describe(b, d, sizeof d);
     dump("hc_describe", d);
-    Object *r = hc_resolve("bg btn \"\xe2\x80\x9cDepth\xe2\x80\x9d\"");
+    Object *r = hc_resolve("bg btn \"\xe2\x80\x9c" "Depth" "\xe2\x80\x9d\"");
     printf("resolution par nom : %s\n", r ? "TROUVE" : "echec");
     Object *r2 = hc_resolve("bg btn \"Depth\"");
     printf("sans les guillemets courbes : %s\n", r2 ? "TROUVE" : "echec");

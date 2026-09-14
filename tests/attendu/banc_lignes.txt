@@ -1,0 +1,8 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── écriture par ligne dans un champ qui grandit
+  1 000 en descendant                  1000 lignes       2.8 ms     2.8 µs/ligne  (départ      0 car.)
+  5 000 en descendant                  5000 lignes      50.6 ms    10.1 µs/ligne  (départ      0 car.)
+  10 000 en descendant                10000 lignes     192.6 ms    19.3 µs/ligne  (départ      0 car.)
+  10 000 en descendant, déjà plein    10000 lignes     912.4 ms    91.2 µs/ligne  (départ  48893 car.)
+  10 000 en montant                   10000 lignes    1063.7 ms   106.4 µs/ligne  (départ      0 car.)
+  10 000 en montant, déjà plein       10000 lignes     915.8 ms    91.6 µs/ligne  (départ  48893 car.)

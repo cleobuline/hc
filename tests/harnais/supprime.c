@@ -6,7 +6,7 @@
 static int nko;
 static void cas(const char *s, HctSorteChunk so, int n, int n2,
                 const char *attendu, const char *quoi){
-  HctValeur v = hct_chunk_supprime(s, so, n, n2, ',');
+  HctValeur v = hct_chunk_supprime(s, so, n, n2, ",");
   int ok = v.txt && !strcmp(v.txt, attendu);
   if(!ok) nko++;
   printf("  %s  %-26s de [%s] -> [%s]%s\n", ok?"ok  ":"ECHEC", quoi, s,

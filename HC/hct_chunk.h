@@ -49,6 +49,17 @@ int hct_utf8_compte(const char *s);
  * moins 1, pour que l'appelant avance à coup sûr. */
 int hct_utf8_octets(const char *s, int i, int len);
 
+/* Combien de CARACTÈRES dans les `octets` premiers octets de `s` ?
+ *
+ * C'est le convertisseur de la frontière : le noyau garde ses positions en
+ * OCTETS — c'est ce que rendent hct_chunk_bornes, la recherche et le clic —
+ * mais HyperTalk compte en CARACTÈRES. Annoncer un offset d'octet comme un
+ * numéro de caractère donne « char 1 to 2 » pour le premier é d'« été ».
+ *
+ * Un offset qui tombe au MILIEU d'une séquence est compté au caractère qui
+ * le contient : mieux vaut une position voisine qu'un compte aberrant. */
+int hct_utf8_compte_prefixe(const char *s, int octets);
+
 /* Bornes d'un morceau dans une chaîne, en octets. `deb` et `fin` délimitent
  * le contenu ; `deb_sep` inclut le séparateur qui précède, ce dont l'écriture
  * a besoin pour remplacer proprement. */
@@ -61,25 +72,25 @@ typedef struct {
  * « item 1 to 3 » ; passer n2 <= 0 pour un morceau simple.
  * `delim` est le séparateur d'items, ',' par défaut. */
 HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
-                           int n, int n2, char delim);
+                           int n, int n2, const char *delim);
 
 /* Combien de morceaux de cette sorte dans la chaîne ? */
-int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim);
+int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim);
 
 /* Lecture : rend une valeur neuve, vide si le rang dépasse. */
 HctValeur hct_chunk_lit(const char *s, HctSorteChunk sorte,
-                        int n, int n2, char delim);
+                        int n, int n2, const char *delim);
 
 /* Écriture : rend une chaîne neuve où le morceau visé vaut `val`.
  * Étend la chaîne si le rang dépasse, en créant les séparateurs manquants. */
 HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
-                          int n, int n2, char delim, const char *val);
+                          int n, int n2, const char *delim, const char *val);
 
 /* Suppression : rend une chaîne neuve d'où le morceau visé a disparu, AVEC
  * son séparateur — « delete item 2 of "a,b,c" » rend "a,c" et non "a,,c".
  * C'est ce qui la distingue d'une écriture de vide. Un rang hors limites
  * rend la chaîne inchangée. Voir la note à sa définition. */
 HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
-                             int n, int n2, char delim);
+                             int n, int n2, const char *delim);
 
 #endif

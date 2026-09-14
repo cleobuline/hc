@@ -75,6 +75,28 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>    /* close, pour le fichier temporaire de hc_save */
+#include <sys/stat.h>  /* stat, fchmod : les permissions du fichier remplacé */
+
+/* LA DERNIÈRE VERSION DE FORMAT QUE CE BINAIRE COMPREND.
+ *
+ * Écrite par hc_save, exigée par hc_load : un seul endroit, sans quoi
+ * l'écrivain et le lecteur finiraient par ne plus parler de la même chose. */
+#define HC_FORMAT_MAX 2
+
+/* POURQUOI LE DERNIER hc_load A REFUSÉ.
+ *
+ * hc_load rendait NULL pour tout — fichier absent, tronqué, sans ligne
+ * « stack », d'un format inconnu — et l'interface n'avait que « Pile
+ * illisible » à en dire. « Format trop récent » et « fichier abîmé »
+ * appellent pourtant des gestes très différents de la part de l'utilisateur.
+ *
+ * Une phrase courte, en français, valable jusqu'au prochain hc_load. */
+static char g_load_erreur[160] = "";
+
+const char *hc_load_erreur(void)
+{
+    return g_load_erreur[0] ? g_load_erreur : NULL;
+}
 
 /* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
  * contre-obliques qu'elle contient. Sans ça, un objet nommé
@@ -82,14 +104,98 @@
  * s'écrivait  button "go card "canard""  et le lecteur, qui s'arrête au
  * guillemet suivant, ne relisait que « go card ». Le nom était donc perdu
  * à l'écriture, pas à la lecture. */
+/* UN RETOUR À LA LIGNE DANS UN NOM COUPAIT LE FICHIER EN DEUX.
+ *
+ * put_quoted n'échappait que le guillemet et la contre-oblique. Or le langage
+ * pose n'importe quelle chaîne comme nom :
+ *
+ *     set the name of card button 1 to "Bonjour" & return & "Monde"
+ *     save this stack
+ *
+ * L'en-tête sortait physiquement sur deux lignes —
+ *
+ *     button "Bonjour
+ *     Monde"
+ *
+ * — et la relecture rendait un bouton nommé « Bonjour », la ligne « Monde" »
+ * étant avalée comme une ligne inconnue. Sans un mot. Mesuré : le style et la
+ * police se coupaient de la même façon.
+ *
+ * Le sérialiseur ne doit pas dépendre d'une restriction implicite de
+ * l'interface : c'est le FORMAT qui sait encoder ce que le modèle accepte. */
 static void put_quoted(FILE *f, const char *s)
 {
     fputc('"', f);
     for (const char *p = s ? s : ""; *p; p++) {
-        if (*p == '"' || *p == '\\') fputc('\\', f);
-        fputc(*p, f);
+        switch (*p) {
+        case '"':  fputs("\\\"", f); break;
+        case '\\': fputs("\\\\", f); break;
+        case '\n': fputs("\\n",  f); break;
+        case '\r': fputs("\\r",  f); break;
+        default:   fputc(*p, f);
+        }
     }
     fputc('"', f);
+}
+
+/* Une chaîne écrite SANS GUILLEMETS, seule sur sa ligne ou dans une liste
+ * séparée par des virgules : une police de caractères.
+ *
+ * Le guillemet n'a rien à y faire, mais le retour à la ligne y couperait une
+ * ligne structurelle comme ailleurs, et la virgule y découperait un champ de
+ * trop. La virgule prend donc un échappement à elle, « \c », plutôt que
+ * « \, » : ainsi la chaîne écrite ne contient PLUS AUCUNE virgule, et le
+ * découpage des listes reste celui d'avant, à la virgule, sans rien savoir des
+ * échappements.
+ *
+ * Les échappements inconnus sont rendus tels quels à la lecture : une pile
+ * écrite avant ce changement, avec une police contenant une contre-oblique,
+ * se relit exactement comme avant. */
+static void put_echappe(FILE *f, const char *s)
+{
+    const char *d = s ? s : "";
+    size_t n = strlen(d);
+    for (size_t i = 0; i < n; i++) {
+        /* Le lecteur applique ltrim et rtrim aux lignes structurelles : un
+         * blanc AU BORD de la chaîne y serait mangé. Il suffit de protéger le
+         * premier et le dernier caractère — ceux du milieu sont à l'abri
+         * derrière eux. « Times New Roman » s'écrit donc toujours tel quel, et
+         * une police à blancs de bord revient enfin intacte. */
+        int bord = (i == 0 || i == n - 1);
+        switch (d[i]) {
+        case '\\': fputs("\\\\", f); break;
+        case '\n': fputs("\\n",  f); break;
+        case '\r': fputs("\\r",  f); break;
+        case ',':  fputs("\\c",  f); break;
+        case '\t': fputs("\\t",  f); break;
+        case ' ':  if (bord) fputs("\\s", f); else fputc(' ', f); break;
+        default:   fputc(d[i], f);
+        }
+    }
+}
+
+/* Le pendant lecture, SUR PLACE : la chaîne décodée n'est jamais plus longue
+ * que la chaîne encodée. */
+static void desechappe(char *s)
+{
+    if (!s) return;
+    char *e = s;
+    for (const char *p = s; *p; ) {
+        if (*p == '\\' && p[1]) {
+            switch (p[1]) {
+            case 'n':  *e++ = '\n'; p += 2; continue;
+            case 'r':  *e++ = '\r'; p += 2; continue;
+            case 'c':  *e++ = ',';  p += 2; continue;
+            case 't':  *e++ = '\t'; p += 2; continue;
+            case 's':  *e++ = ' ';  p += 2; continue;
+            case '\\': *e++ = '\\'; p += 2; continue;
+            case '"':  *e++ = '"';  p += 2; continue;
+            default: break;               /* inconnu : tel quel */
+            }
+        }
+        *e++ = *p++;
+    }
+    *e = '\0';
 }
 
 static char *dupstr_file(const char *s)
@@ -104,12 +210,29 @@ static char *dupstr_file(const char *s)
 
 /* ==================== écriture ==================== */
 
+/* UN « | » PAR SEGMENT, Y COMPRIS LE SEGMENT VIDE FINAL.
+ *
+ * L'ancienne boucle s'arrêtait sur « *p », si bien que « abc » et « abc\n »
+ * produisaient EXACTEMENT le même fichier : une seule ligne « | abc ». Le
+ * lecteur remettait ensuite un saut de ligne après chaque « | », et les deux
+ * revenaient en « abc\n ». Un champ enregistré puis relu n'était donc plus le
+ * même — et pas seulement dans les cas tordus : « abc » suffisait.
+ *
+ * Un texte de N sauts de ligne a N+1 segments. On les écrit tous, et le
+ * lecteur les joint ENTRE eux au lieu d'ajouter après chacun :
+ *
+ *     "abc"     -> ["abc"]          -> | abc
+ *     "abc\n"   -> ["abc", ""]      -> | abc      puis  |
+ *     "a\nb"    -> ["a", "b"]       -> | a        puis  | b
+ *     ""        -> [""]             -> |
+ *
+ * L'aller-retour est alors exact, et le format se relit sans ambiguïté. */
 static void put_block_wrap(FILE *f, const char *tag, const char *text, int wrap)
 {
     if (!text || !*text) return;
     fprintf(f, "%s\n", tag);
     const char *p = text;
-    while (*p) {
+    for (;;) {
         const char *nl = strchr(p, '\n');
         int len = nl ? (int)(nl - p) : (int)strlen(p);
         if (wrap) {
@@ -187,14 +310,17 @@ static void put_runs(FILE *f, const char *tag, const struct RunList *rl)
          *     s,l,style,corps,police,couleur
          * La police pouvant contenir des espaces mais jamais de virgule, la
          * couleur se lit sans ambiguïté après la dernière. */
-        if (r->size == 0 && !r->font && r->color == HC_COLOR_INHERIT)
+        if (r->size == 0 && !r->font && r->color == HC_COLOR_INHERIT) {
             fprintf(f, "%s %d,%d,%d\n", tag, r->start, r->len, r->style);
-        else if (r->color == HC_COLOR_INHERIT)
-            fprintf(f, "%s %d,%d,%d,%d,%s\n", tag, r->start, r->len,
-                    r->style, r->size, r->font ? r->font : "");
-        else
-            fprintf(f, "%s %d,%d,%d,%d,%s,%d\n", tag, r->start, r->len,
-                    r->style, r->size, r->font ? r->font : "", r->color);
+        } else {
+            /* La police passe par put_echappe : sa virgule devient « \c », si
+             * bien que la ligne n'en contient plus une seule de trop et que le
+             * découpage ci-dessous reste exactement celui d'avant. */
+            fprintf(f, "%s %d,%d,%d,%d,", tag, r->start, r->len, r->style, r->size);
+            put_echappe(f, r->font ? r->font : "");
+            if (r->color == HC_COLOR_INHERIT) fputc('\n', f);
+            else fprintf(f, ",%d\n", r->color);
+        }
     }
 }
 
@@ -203,7 +329,9 @@ static void put_part(FILE *f, Object *o)
     const char *kind = (o->type == OBJ_BUTTON) ? "button" : "field";
     fprintf(f, "%s ", kind); put_quoted(f, o->name); fputc('\n', f);
     fprintf(f, "rect %d,%d,%d,%d\n", o->x, o->y, o->x + o->w, o->y + o->h);
-    if (o->style) fprintf(f, "style \"%s\"\n", o->style);
+    /* Le style passait par un « %s » brut entre guillemets : un guillemet dans
+     * le style refermait la chaîne, un retour à la ligne coupait le fichier. */
+    if (o->style) { fprintf(f, "style "); put_quoted(f, o->style); fputc('\n', f); }
     put_block(f, "script", o->script);
     if (o->type == OBJ_FIELD || o->type == OBJ_BUTTON) put_block(f, "contents", o->contents);
     if (!o->visible) fprintf(f, "hidden\n");
@@ -241,7 +369,9 @@ static void put_part(FILE *f, Object *o)
     if (o->dont_search) fprintf(f, "dontsearch\n");
     if (o->cant_delete) fprintf(f, "cantdelete\n");
     if (o->shared_text) fprintf(f, "sharedtext\n");
-    if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
+    if (o->textfont && *o->textfont) {
+        fprintf(f, "textfont "); put_echappe(f, o->textfont); fputc('\n', f);
+    }
     if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
     if (o->type == OBJ_FIELD) put_runs(f, "run", &o->runs);
     if (o->scroll) fprintf(f, "scroll %d\n", o->scroll);
@@ -288,10 +418,64 @@ int hc_save(Object *stack, const char *path)
 
     int fd = mkstemp(tmp);
     if (fd < 0) { free(tmp); return -1; }
+
+    /* LES PERMISSIONS DU FICHIER REMPLACÉ SURVIVENT À LA SAUVEGARDE.
+     *
+     * mkstemp crée en 0600 — c'est bien ce qu'on veut d'un temporaire, dont
+     * personne d'autre n'a à lire le contenu pendant qu'on l'écrit. Mais
+     * rename() lui donne ensuite le nom du document, avec ses permissions à
+     * lui : une pile en 0644, partagée par un groupe ou publiée par un serveur
+     * de fichiers, repassait en 0600 à chaque enregistrement. Mesuré :
+     *
+     *     avant :  -rw-r--r--
+     *     après :  -rw-------
+     *
+     * Ce n'est pas le contenu de la pile, mais c'est bien le DOCUMENT de
+     * l'utilisateur qui change sous lui, sans qu'on le lui dise.
+     *
+     * On recopie donc le mode de l'original. Pour une pile neuve, il n'y a pas
+     * d'original : on prend ce que tout programme prend, 0666 filtré par le
+     * umask, plutôt que le 0600 d'un temporaire.
+     *
+     * Best-effort : un fchmod qui échoue ne doit pas faire échouer une
+     * sauvegarde par ailleurs valide — l'utilisateur garderait ses données au
+     * prix de ses permissions, jamais l'inverse.
+     *
+     * Ce que cela NE fait PAS : sous macOS, remplacer le fichier par un
+     * nouvel inode perd aussi les ACL et les attributs étendus (étiquettes du
+     * Finder comprises). copyfile(3) saurait les reporter ; ce code-là ne
+     * peut pas être exercé par la suite, qui tourne sous Linux, et il n'est
+     * donc pas écrit ici. */
+    {
+        struct stat sb;
+        if (stat(path, &sb) == 0) {
+            if (fchmod(fd, sb.st_mode & 07777) != 0) { /* tant pis */ }
+        } else {
+            mode_t m = umask(0); umask(m);
+            if (fchmod(fd, (mode_t)(0666 & ~m)) != 0) { /* tant pis */ }
+        }
+    }
+
     FILE *f = fdopen(fd, "w");
     if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
 
-    fprintf(f, "-- pile HyperCard (format maison v1)\n\n");
+    /* LE NUMÉRO DE FORMAT, ET POURQUOI IL ARRIVE MAINTENANT.
+     *
+     * La version 2 écrit les blocs de texte exactement : un « | » par
+     * segment, segment vide final compris, si bien qu'un champ relu est
+     * identique octet pour octet à ce qu'il était. La version 1 ne le
+     * pouvait pas — « abc » et « abc\n » y donnaient le même fichier.
+     *
+     * Les deux lectures ne sont donc pas interchangeables, et il faut savoir
+     * laquelle appliquer. Sans ce numéro, relire un ancien fichier à la
+     * nouvelle règle lui retirerait un saut de ligne par bloc : l'ancien
+     * écrivain n'écrivait pas le segment vide final, mais l'ancien lecteur en
+     * fabriquait un. Le numéro rend le choix explicite plutôt que deviné.
+     *
+     * Un fichier sans ligne « format » est de la version 1, par construction :
+     * elle n'existait pas quand ils ont été écrits. */
+    fprintf(f, "-- pile HyperCard (format maison)\n");
+    fprintf(f, "format %d\n\n", HC_FORMAT_MAX);
 
     fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
@@ -333,6 +517,18 @@ int hc_save(Object *stack, const char *path)
         if (c->type != OBJ_CARD) continue;
         fprintf(f, "card "); put_quoted(f, c->name);
         if (c->bg && c->bg->name) { fprintf(f, " background "); put_quoted(f, c->bg->name); }
+        /* L'ID DU FOND, ET POURQUOI LE NOM NE SUFFIT PAS.
+         *
+         * Rien n'interdit deux fonds homonymes, et la lecture prenait le
+         * PREMIER de ce nom : deux cartes attachées à deux fonds différents
+         * mais de même nom se retrouvaient toutes deux sur le premier après un
+         * aller-retour. Mesuré : la seconde carte perdait son fond ET tout
+         * son contenu de fond, sans un mot.
+         *
+         * Le nom RESTE écrit : un binaire plus ancien continue de lire ces
+         * fichiers, et il retrouvera le bon fond dans le cas courant où les
+         * noms sont distincts. L'id ne fait que lever l'ambiguïté. */
+        if (c->bg) fprintf(f, " backgroundid %d", c->bg->id);
         fprintf(f, "\n");
         fprintf(f, "id %d\n", c->id);
         if (c->marked)      fprintf(f, "marked\n");
@@ -360,6 +556,20 @@ int hc_save(Object *stack, const char *path)
         for (int j = 0; j < c->nparts; j++) put_part(f, c->parts[j]);
         fprintf(f, "end card\n\n");
     }
+
+    /* LA SIGNATURE DE FIN, ET CE QU'ELLE SEULE PEUT DIRE.
+     *
+     * Le format écrit l'en-tête, puis les fonds, puis les cartes — et rien ne
+     * certifiait que la dernière carte écrite était RÉELLEMENT la dernière. Un
+     * fichier coupé juste après un « end card » parfaitement valide se relisait
+     * donc comme une pile complète, amputée de tout ce qui suivait, et
+     * l'utilisateur pouvait la réenregistrer par-dessus l'original.
+     *
+     * Aucune vérification de structure ne peut attraper ce cas : le fichier
+     * tronqué est syntaxiquement irréprochable. Il faut une marque, et elle
+     * n'a de sens que si l'écrivain la pose toujours — d'où le numéro de
+     * format, qui dit au lecteur s'il a le droit de l'exiger. */
+    fprintf(f, "end hc-file\n");
 
     /* Les deux vérifications comptent : ferror voit ce qui a échoué en
      * cours de route, fclose ce qui a échoué en vidant le dernier bloc. */
@@ -452,6 +662,14 @@ static void rtrim(char *s)
         s[--n] = '\0';
 }
 
+/* La fin de ligne SEULE. Voir l'appel dans hc_load : les espaces de fin
+ * appartiennent au texte d'un bloc, la fin de ligne non. */
+static void strip_eol(char *s)
+{
+    int n = (int)strlen(s);
+    while (n > 0 && (s[n-1] == '\n' || s[n-1] == '\r')) s[--n] = '\0';
+}
+
 static char *ltrim(char *s)
 {
     while (*s == ' ' || *s == '\t') s++;
@@ -473,7 +691,18 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
                il ne referme pas la chaîne (voir put_quoted). */
             while (*p && *p != '"') {
                 char c = *p;
-                if (c == '\\' && (p[1] == '"' || p[1] == '\\')) { p++; c = *p; }
+                /* Les quatre échappements que put_quoted pose. Un échappement
+                 * inconnu est rendu tel quel, contre-oblique comprise : une
+                 * pile écrite avant ce changement se relit à l'identique. */
+                if (c == '\\' && p[1]) {
+                    switch (p[1]) {
+                    case '"':  c = '"';  p++; break;
+                    case '\\': c = '\\'; p++; break;
+                    case 'n':  c = '\n'; p++; break;
+                    case 'r':  c = '\r'; p++; break;
+                    default: break;
+                    }
+                }
                 if (keep && len < outlen - 1) out[len++] = c;
                 p++;
             }
@@ -490,7 +719,7 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
  * Le drapeau est COLLANT : une fois posé il ne se retire plus, parce qu'un
  * script ou un texte tronqué est pire qu'un chargement refusé — l'utilisateur
  * réenregistrerait par-dessus l'original sans savoir ce qu'il a perdu. */
-typedef struct { char *buf; size_t len, cap; int manque; } Acc;
+typedef struct { char *buf; size_t len, cap; int manque; int nseg; } Acc;
 
 static void acc_line(Acc *a, const char *s)
 {
@@ -525,10 +754,40 @@ static void acc_join(Acc *a, const char *s)
     a->buf[a->len] = '\0';
 }
 
+/* UN SEGMENT DE BLOC, JOINT AUX PRÉCÉDENTS.
+ *
+ * acc_line, juste au-dessus, ajoute un saut de ligne APRÈS chaque « | ». Un
+ * texte relu finissait donc toujours par un saut de ligne, qu'il en eût un ou
+ * non : « abc » revenait en « abc\n ». C'est le pendant lecture du défaut que
+ * put_block_wrap vient de corriger côté écriture.
+ *
+ * Ici le saut se pose AVANT le segment, sauf pour le premier : N segments
+ * donnent N-1 sauts, et le texte revient exactement tel qu'il est parti.
+ *
+ * acc_line reste, et sert aux fichiers d'AVANT ce changement : eux n'écrivent
+ * pas le segment vide final, et les relire à la nouvelle règle leur retirerait
+ * un saut de ligne qu'ils étaient censés avoir. Voir `format_fichier`. */
+static void acc_seg(Acc *a, const char *s)
+{
+    size_t n = strlen(s);
+    size_t besoin = a->len + n + 2;
+    if (besoin > a->cap) {
+        size_t cap = a->cap ? a->cap * 2 : 256;
+        while (cap < besoin) cap *= 2;
+        char *p = realloc(a->buf, cap);
+        if (!p) { a->manque = 1; return; }
+        a->buf = p; a->cap = cap;
+    }
+    if (a->nseg++ > 0) a->buf[a->len++] = '\n';
+    memcpy(a->buf + a->len, s, n);
+    a->len += n;
+    a->buf[a->len] = '\0';
+}
+
 static char *acc_take(Acc *a)
 {
     char *r = a->buf;
-    a->buf = NULL; a->len = a->cap = 0;
+    a->buf = NULL; a->len = a->cap = 0; a->nseg = 0;
     return r;
 }
 
@@ -545,14 +804,36 @@ static int parse_run(const char *s, int *start, int *len, int *style,
                      int *size, char *font, int fontlen, int *color)
 {
     *size = 0; font[0] = '\0'; *color = HC_COLOR_INHERIT;
-    if (sscanf(s, "%d,%d,%d", start, len, style) != 3) return 0;
+    /* LES TROIS PREMIERS CHAMPS SONT LUS BORNÉS, ET LEUR ÉCHEC EST DISTINGUÉ.
+     *
+     * « %d » est indéfini sur ce qui dépasse un int, et ces deux-là sont des
+     * DÉCALAGES dans le texte du champ : une valeur aberrante n'y reste pas
+     * cosmétique. hc_entier_lu borne et dit si quelque chose a été lu, ce qui
+     * garde la règle d'avant — trois nombres ou rien du tout. */
+    {
+        char q[3][32]; int lu = 0;
+        if (sscanf(s, "%31[^,],%31[^,],%31[^,]", q[0], q[1], q[2]) != 3) return 0;
+        *start = hc_entier_lu(q[0], 0, HC_COORD_MAX, 0, &lu);        if (!lu) return 0;
+        *len   = hc_entier_lu(q[1], 0, HC_COORD_MAX, 0, &lu);        if (!lu) return 0;
+        *style = hc_entier_lu(q[2], HC_STYLE_INHERIT, 0xFFFF, 0, &lu); if (!lu) return 0;
+    }
 
     const char *p = s;
     for (int commas = 0; *p && commas < 3; p++)
         if (*p == ',') commas++;
     if (!*p) return 1;                       /* forme courte : rien de plus */
 
-    *size = atoi(p);
+    /* Même raison qu'ailleurs : hc_entier veut TOUTE la chaîne, on lui donne
+     * donc le champ seul et non la fin de la ligne. */
+    {
+        const char *fin = p;
+        while (*fin && *fin != ',') fin++;
+        char champ[32];
+        size_t l = (size_t)(fin - p);
+        if (l >= sizeof champ) l = sizeof champ - 1;
+        memcpy(champ, p, l); champ[l] = '\0';
+        *size = hc_entier(champ, 0, HC_TEXTE_MAX, 0);
+    }
     const char *q = strchr(p, ',');
     if (!q) return 1;                        /* taille sans police */
     q++;
@@ -564,7 +845,7 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     const char *derniere = strrchr(q, ',');
     int n;
     if (derniere) {
-        *color = atoi(derniere + 1);
+        *color = hc_entier(derniere + 1, HC_COLOR_INHERIT, 0xFFFFFF, HC_COLOR_INHERIT);
         n = (int)(derniere - q);
     } else {
         n = (int)strlen(q);
@@ -573,19 +854,30 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     if (n >= fontlen) n = fontlen - 1;
     if (n < 0) n = 0;
     memcpy(font, q, (size_t)n); font[n] = '\0';
+    desechappe(font);
     return 1;
 }
 
-static void add_run(struct RunList *rl, int start, int len, int style,
-                    int size, const char *font, int color)
+/* Rend 0 SI UNE PLAGE A ÉTÉ PERDUE, et l'appelant refuse alors le fichier.
+ *
+ * Elle rendait void, et une pénurie de mémoire faisait simplement disparaître
+ * la plage : le champ revenait avec le bon texte et le mauvais style, sans un
+ * mot. Le pire enchaînement est le même que partout ailleurs dans ce lecteur —
+ * l'utilisateur ne voit pas tout de suite ce qui manque, il enregistre, et
+ * l'original est remplacé par la version appauvrie.
+ *
+ * Le refus de la plage pour cause de contenu — longueur nulle, plage muette
+ * sur tous les attributs — n'est PAS un échec : il n'y avait rien à garder. */
+static int add_run(struct RunList *rl, int start, int len, int style,
+                   int size, const char *font, int color)
 {
-    if (!rl || len <= 0 || start < 0) return;
+    if (!rl || len <= 0 || start < 0) return 1;
     if (style == HC_STYLE_INHERIT && size == 0 && (!font || !*font) &&
-        color == HC_COLOR_INHERIT) return;
+        color == HC_COLOR_INHERIT) return 1;
     if (rl->n == rl->cap) {
         int cap = rl->cap ? rl->cap * 2 : 8;
         struct TextRun *v = (struct TextRun *)realloc(rl->v, (size_t)cap * sizeof *v);
-        if (!v) return;
+        if (!v) return 0;
         rl->v = v; rl->cap = cap;
     }
     rl->v[rl->n].start = start;
@@ -595,6 +887,7 @@ static void add_run(struct RunList *rl, int start, int len, int style,
     rl->v[rl->n].font  = (font && *font) ? dupstr_file(font) : NULL;
     rl->v[rl->n].color = color;
     rl->n++;
+    return 1;
 }
 
 /* Un chiffre hexadécimal, ou -1. On ne se repose pas sur sscanf : une ligne
@@ -606,6 +899,34 @@ static int hexval(int c)
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     return -1;
+}
+
+/* Le fond d'identifiant `id`, ou NULL. L'id est unique par construction :
+ * hc_set_id garde le compteur au-dessus de tout ce qui a été lu. */
+static Object *find_bg_id(Object *stack, int id)
+{
+    if (id <= 0) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *o = stack->parts[i];
+        if (o->type == OBJ_BACKGROUND && o->id == id) return o;
+    }
+    return NULL;
+}
+
+/* Un mot-clé suivi d'un nombre, cherché HORS des guillemets.
+ *
+ * Une carte peut s'appeler « backgroundid 7 » : chercher le mot dans la ligne
+ * entière trouverait celui-là. On repart donc du dernier guillemet, après quoi
+ * il ne reste que les mots-clés. Rend -1 si le mot n'y est pas. */
+static int mot_nombre_apres_guillemets(const char *ligne, const char *mot)
+{
+    const char *fin = strrchr(ligne, '"');
+    const char *p = strstr(fin ? fin : ligne, mot);
+    if (!p) return -1;
+    p += strlen(mot);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p < '0' || *p > '9') return -1;
+    return hc_entier(p, 0, HC_ID_MAX, -1);
 }
 
 static Object *find_bg(Object *stack, const char *name)
@@ -620,6 +941,8 @@ static Object *find_bg(Object *stack, const char *name)
 
 Object *hc_load(const char *path)
 {
+    g_load_erreur[0] = '\0';
+
     FILE *f = fopen(path, "r");
     if (!f) return NULL;
 
@@ -639,10 +962,25 @@ Object *hc_load(const char *path)
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
 
+    /* La version du format, lue sur la ligne « format N ». Absente : c'est
+     * un fichier d'avant ce numéro, donc de la version 1. */
+    int format_fichier = 1;
+    int format_trop_recent = 0;
+    int icon_abimee = 0;
+    /* La signature de fin a-t-elle été vue ? Voir le verdict, tout en bas. */
+    int fin_vue = 0;
+
     int lecture = 0;
     while ((lecture = ligne_lit(&lg, f)) == 1) {
         char *line = lg.p;
-        rtrim(line);
+        /* NE RETIRER QUE LA FIN DE LIGNE.
+         *
+         * rtrim enlevait aussi les espaces et les tabulations, y compris sur
+         * le CONTENU d'un « | » : un champ valant « abc   » revenait « abc ».
+         * La fin de ligne, elle, n'appartient à personne — c'est le fichier
+         * qui la met. Les lignes de structure passent par rtrim juste
+         * au-dessous, où retirer des blancs de fin est sans conséquence. */
+        strip_eol(line);
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
@@ -653,20 +991,46 @@ Object *hc_load(const char *path)
                     /* Paires de chiffres hexadécimaux. On s'arrête au premier
                      * caractère qui n'en est pas un, et de toute façon à
                      * HC_ICON_BYTES : une ligne trop longue ne déborde pas. */
-                    for (const char *p = piece; p[0] && p[1]; p += 2) {
-                        int hi = hexval((unsigned char)p[0]);
-                        int lo = hexval((unsigned char)p[1]);
-                        if (hi < 0 || lo < 0) break;
-                        if (icon_pos >= HC_ICON_BYTES) break;
+                    for (const char *p = piece; p[0]; p += 2) {
+                        int hi = p[1] ? hexval((unsigned char)p[0]) : -1;
+                        int lo = p[1] ? hexval((unsigned char)p[1]) : -1;
+                        /* UNE ICÔNE ABÎMÉE REFUSE LE FICHIER, elle ne se
+                         * complète pas de zéros.
+                         *
+                         * On s'arrêtait au premier caractère qui n'était pas
+                         * hexadécimal, et les octets manquants restaient nuls :
+                         * l'icône revenait à moitié, en silence. C'était
+                         * revendiqué, et ça ne l'est plus — le lecteur refuse
+                         * une pile dont un texte a été amputé, il n'y a aucune
+                         * raison d'accepter une image qui l'est.
+                         *
+                         * Un chiffre isolé en fin de ligne compte aussi : une
+                         * paire coupée en deux n'est pas un octet. */
+                        if (hi < 0 || lo < 0 || icon_pos >= HC_ICON_BYTES) {
+                            icon_abimee = 1; break;
+                        }
                         if (cur_icon) cur_icon->bits[icon_pos] = (unsigned char)(hi * 16 + lo);
                         icon_pos++;
                     }
                 }
                 else if (in_paint) acc_join(&acc, piece);   /* base64 : recoller */
-                else               acc_line(&acc, piece);
+                /* Version 2 : les segments se joignent entre eux, et le texte
+                 * revient exact. Version 1 : un saut après chaque « | », comme
+                 * l'ancien lecteur — ces fichiers-là n'ont pas de segment vide
+                 * final à joindre. */
+                else if (format_fichier >= 2) acc_seg(&acc, piece);
+                else                          acc_line(&acc, piece);
                 continue;
             }
+            /* Hors « | », la ligne est structurelle : ses blancs de fin ne
+             * veulent rien dire, et « end script » doit se reconnaître même
+             * suivi d'une espace. */
+            rtrim(s);
             if (strcmp(s, "end iconres") == 0) {
+                /* Les 128 octets d'une icône, tous, ou le fichier est refusé.
+                 * Un bloc qui s'arrête plus tôt donnait une image complétée de
+                 * zéros — une corruption graphique silencieuse. */
+                if (icon_pos != HC_ICON_BYTES) icon_abimee = 1;
                 in_icon = 0; cur_icon = NULL; icon_pos = 0;
                 continue;
             }
@@ -693,6 +1057,12 @@ Object *hc_load(const char *path)
                         int cap = owner->capbgtexts ? owner->capbgtexts * 2 : 4;
                         struct BgText *bp = realloc(owner->bgtexts, (size_t)cap * sizeof *bp);
                         if (bp) { owner->bgtexts = bp; owner->capbgtexts = cap; }
+                        /* L'agrandissement échoué faisait disparaître TOUT le
+                         * texte de fond de cette carte sur cette carte-là, et
+                         * `free(t)` en dessous jetait les octets. Le texte d'un
+                         * champ de fond est du contenu utilisateur, pas un
+                         * réglage : on refuse le fichier. */
+                        else acc.manque = 1;
                     }
                     if (owner->nbgtexts < owner->capbgtexts) {
                         struct BgText *e = &owner->bgtexts[owner->nbgtexts];
@@ -723,7 +1093,27 @@ Object *hc_load(const char *path)
             continue;   /* ligne parasite dans un bloc : ignorée */
         }
 
+        rtrim(s);
         if (!*s || (s[0] == '-' && s[1] == '-')) continue;   /* vide / commentaire */
+
+        if (strncmp(s, "format ", 7) == 0) {
+            /* UN FORMAT PLUS RÉCENT SE REFUSE, IL NE S'IMPROVISE PAS.
+             *
+             * Tout numéro positif était accepté, et tout ce qui valait deux ou
+             * plus empruntait les règles de la version 2. Le jour où une
+             * version 3 existe, un binaire d'aujourd'hui l'ouvrirait donc
+             * comme s'il la connaissait, au lieu de dire qu'il ne la connaît
+             * pas — et l'enregistrement suivant écraserait l'original avec ce
+             * qu'il en aura compris. C'est la seule incompatibilité vraiment
+             * coûteuse : celle qui ne se voit pas.
+             *
+             * Le numéro de version n'a d'intérêt que si le lecteur s'en sert
+             * pour REFUSER. */
+            int v = hc_entier(s + 7, 0, HC_ID_MAX, 0);
+            if (v > HC_FORMAT_MAX) { format_trop_recent = v; break; }
+            if (v > 0) format_fichier = v;
+            continue;
+        }
 
         /* --- ouverture de blocs texte --- */
         if (strcmp(s, "script") == 0)   { in_script = 1;   continue; }
@@ -733,10 +1123,11 @@ Object *hc_load(const char *path)
          * `owner` désigne le fond ou la carte en cours : on vérifie donc que
          * c'est bien une carte, un fond n'ayant pas de table d'allumage. */
         if (strncmp(s, "bghilite ", 9) == 0 && owner && owner->type == OBJ_CARD) {
-            hc_set_hilite_raw(owner, atoi(s + 9), 1);
+            int bid = hc_id(s + 9);
+            if (bid) hc_set_hilite_raw(owner, bid, 1);
             continue;
         }
-        if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = atoi(s + 7); continue; }
+        if (strncmp(s, "bgtext ", 7) == 0) { bgtext_id = hc_id(s + 7); continue; }
         if (strcmp(s, "bgtextdata") == 0)  { in_bgtext = 1; continue; }
 
         /* --- icône de pile ---
@@ -745,7 +1136,7 @@ Object *hc_load(const char *path)
          * dont le bloc serait tronqué garde donc ses octets manquants à zéro
          * plutôt que de disparaître. */
         if (strncmp(s, "iconres ", 8) == 0 && stack) {
-            int iid = atoi(s + 8);
+            int iid = hc_entier(s + 8, -HC_ID_MAX, HC_ID_MAX, 0);
             if (!get_quoted(s, 0, nm, sizeof nm)) nm[0] = 0;
             cur_icon = hc_icon_add(stack, iid, nm);
             icon_pos = 0;
@@ -757,16 +1148,18 @@ Object *hc_load(const char *path)
         if (strncmp(s, "run ", 4) == 0) {
             int a, b, c, sz, co; char fn[128];
             if (part && part->type == OBJ_FIELD &&
-                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn, &co))
-                add_run(&part->runs, a, b, c, sz, fn, co);
+                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn, &co) &&
+                !add_run(&part->runs, a, b, c, sz, fn, co))
+                acc.manque = 1;   /* une plage perdue = fichier refusé */
             continue;
         }
         if (strncmp(s, "bgrun ", 6) == 0) {
             int a, b, c, sz, co; char fn[128];
             if (owner && owner->type == OBJ_CARD &&
                 last_bgtext >= 0 && last_bgtext < owner->nbgtexts &&
-                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn, &co))
-                add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn, co);
+                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn, &co) &&
+                !add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn, co))
+                acc.manque = 1;
             continue;
         }
 
@@ -780,9 +1173,13 @@ Object *hc_load(const char *path)
         if (!stack) continue;   /* rien avant la pile */
 
         if (strncmp(s, "size ", 5) == 0) {
-            int sw, sh;
-            if (sscanf(s + 5, "%d,%d", &sw, &sh) == 2) {
-                stack->w = sw; stack->h = sh;
+            /* Même raison qu'au « rect » plus bas : « %d » est indéfini sur ce
+             * qui dépasse un int, et une pile de deux milliards de points de
+             * large n'est de toute façon pas une taille. */
+            char q[2][32];
+            if (sscanf(s + 5, "%31[^,],%31s", q[0], q[1]) == 2) {
+                stack->w = hc_coord(q[0], stack->w);
+                stack->h = hc_coord(q[1], stack->h);
             }
             continue;
         }
@@ -795,7 +1192,13 @@ Object *hc_load(const char *path)
         if (strncmp(s, "card ", 5) == 0) {
             get_quoted(s, 0, nm, sizeof nm);
             Object *bg = NULL;
-            if (get_quoted(s, 1, nm2, sizeof nm2)) bg = find_bg(stack, nm2);
+            /* L'ID D'ABORD : il est sans ambiguïté. Le nom ne sert plus que de
+             * repli, pour les fichiers écrits avant que l'id soit noté — et
+             * pour un fichier dont l'id désignerait un fond absent, où le nom
+             * reste la meilleure indication disponible. */
+            int bgid = mot_nombre_apres_guillemets(s, "backgroundid");
+            if (bgid > 0) bg = find_bg_id(stack, bgid);
+            if (!bg && get_quoted(s, 1, nm2, sizeof nm2)) bg = find_bg(stack, nm2);
             owner = hc_new_card(stack, bg, nm);
             target = owner;
             last_bgtext = -1;
@@ -830,19 +1233,19 @@ Object *hc_load(const char *path)
             continue;
         }
         if (strncmp(s, "textheight ", 11) == 0 && part) {
-            part->textheight = atoi(s + 11);
+            part->textheight = hc_entier(s + 11, 0, HC_TEXTE_MAX, part->textheight);
             continue;
         }
         if (strncmp(s, "textsize ", 9) == 0 && part) {
-            part->textsize = atoi(s + 9);
+            part->textsize = hc_entier(s + 9, 0, HC_TEXTE_MAX, part->textsize);
             continue;
         }
         if (strncmp(s, "icon ", 5) == 0 && part) {
-            part->icon = atoi(s + 5);
+            part->icon = hc_entier(s + 5, -HC_ID_MAX, HC_ID_MAX, part->icon);
             continue;
         }
         if (strncmp(s, "selectedline ", 13) == 0 && part) {
-            part->selectedline = atoi(s + 13);
+            part->selectedline = hc_entier(s + 13, 0, HC_COORD_MAX, part->selectedline);
             continue;
         }
         if (strcmp(s, "locktext") == 0 && part)       { part->locktext = 1; continue; }
@@ -851,7 +1254,7 @@ Object *hc_load(const char *path)
         if (strcmp(s, "autoselect") == 0 && part)     { part->auto_select = 1; continue; }
         if (strcmp(s, "multiplelines") == 0 && part)  { part->multiple_lines = 1; continue; }
         if (strcmp(s, "dontwrap") == 0 && part)       { part->dont_wrap = 1; continue; }
-        if (strncmp(s, "textalign ", 10) == 0 && part) { part->text_align = atoi(s + 10); continue; }
+        if (strncmp(s, "textalign ", 10) == 0 && part) { part->text_align = hc_entier(s + 10, 0, 2, part->text_align); continue; }
         if (strcmp(s, "fixedlineheight") == 0 && part) { part->fixed_lh = 1; continue; }
         if (strcmp(s, "showlines") == 0 && part)      { part->show_lines = 1; continue; }
         if (strcmp(s, "autotab") == 0 && part)        { part->auto_tab = 1; continue; }
@@ -864,18 +1267,19 @@ Object *hc_load(const char *path)
         if (strncmp(s, "textfont ", 9) == 0 && part) {
             free(part->textfont);
             part->textfont = dupstr_file(s + 9);
+            desechappe(part->textfont);
             continue;
         }
         if (strncmp(s, "textstyle ", 10) == 0 && part) {
-            part->textstyle = atoi(s + 10);
+            part->textstyle = hc_entier(s + 10, 0, 0xFFFF, part->textstyle);
             continue;
         }
         if (strncmp(s, "id ", 3) == 0 && target) {
-            hc_set_id(target, atoi(s + 3));
+            hc_set_id(target, hc_id(s + 3));
             continue;
         }
         if (strncmp(s, "scroll ", 7) == 0 && part) {
-            part->scroll = atoi(s + 7);
+            part->scroll = hc_entier(s + 7, 0, HC_COORD_MAX, part->scroll);
             continue;
         }
         if (strcmp(s, "hidename") == 0 && part) {
@@ -891,8 +1295,23 @@ Object *hc_load(const char *path)
             continue;
         }
         if (strncmp(s, "rect ", 5) == 0 && part) {
-            int a, b, c, d;
-            if (sscanf(s + 5, "%d,%d,%d,%d", &a, &b, &c, &d) == 4) {
+            /* LES QUATRE NOMBRES SONT BORNÉS AVANT D'ÊTRE SOUSTRAITS.
+             *
+             * « %d » accepte tout ce qui tient dans un int, et la soustraction
+             * qui suit débordait : « rect -2147483648,0,2147483647,10 » donnait
+             * une largeur de -1. Un fichier n'a pas besoin d'être malveillant
+             * pour en arriver là — un enregistrement fait après un calcul qui a
+             * dérapé suffit.
+             *
+             * On lit chaque nombre par hc_coord, qui borne à un million de
+             * points : mille fois la largeur d'une carte, et assez loin du bord
+             * d'un int pour que la soustraction ne puisse plus déborder. Un
+             * nombre hors bornes vaut zéro, et le rectangle reste lisible. */
+            char q[4][32];
+            if (sscanf(s + 5, "%31[^,],%31[^,],%31[^,],%31s",
+                       q[0], q[1], q[2], q[3]) == 4) {
+                int a = hc_coord(q[0], 0), b = hc_coord(q[1], 0);
+                int c = hc_coord(q[2], 0), d = hc_coord(q[3], 0);
                 part->x = a; part->y = b; part->w = c - a; part->h = d - b;
             }
             continue;
@@ -909,9 +1328,20 @@ Object *hc_load(const char *path)
             part = NULL; target = owner; continue;
         }
         if (strcmp(s, "end card") == 0 || strcmp(s, "end background") == 0) {
+            /* Fermer la carte ferme aussi la part restée ouverte.
+             *
+             * Un fichier écrit à la main peut omettre « end field » : la carte
+             * se referme quand même, et ce n'est PAS une troncature — l'objet
+             * a bien une fin, elle est seulement implicite. Sans cette remise
+             * à zéro, le contrôle de fin de fichier voyait une part ouverte et
+             * refusait un fichier parfaitement lisible. Une coupure réelle au
+             * milieu d'une part, elle, laisse part ET owner ouverts, puisque
+             * ni l'un ni l'autre « end » n'a été rencontré. */
+            part = NULL;
             owner = NULL; target = stack; last_bgtext = -1; continue;
         }
         if (strcmp(s, "end stack") == 0) { target = NULL; continue; }
+        if (strcmp(s, "end hc-file") == 0) { fin_vue = 1; continue; }
     }
 
     free(acc.buf);
@@ -940,9 +1370,54 @@ Object *hc_load(const char *path)
      * où il y en avait un. C'était le seul des trois cas qui restait. */
     int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext || in_icon;
 
-    if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert) {
+    /* UN OBJET RESTÉ OUVERT EST UNE TRONCATURE, LUI AUSSI.
+     *
+     * Le test ci-dessus ne regarde que les blocs de texte. Un fichier coupé
+     * ENTRE deux objets — après « rect 10,10,100,40 », avant « end button » —
+     * n'a aucun bloc ouvert et passait donc pour complet, avec un bouton sans
+     * fin et une carte sans fin.
+     *
+     * À une fin propre, part et owner sont tous deux nuls : « end button »
+     * remet part à NULL, « end card » remet owner à NULL. S'ils ne le sont
+     * pas, le fichier s'est arrêté au milieu de quelque chose. */
+    int objet_ouvert = (part != NULL) || (owner != NULL);
+
+    /* ET LA SIGNATURE DE FIN, pour les fichiers qui savent la porter.
+     *
+     * C'est la seule chose qui attrape une coupure sur une frontière PROPRE —
+     * juste après un « end card » —, où le fichier est syntaxiquement
+     * irréprochable et où il manque simplement toutes les cartes suivantes.
+     *
+     * Exigée de la version 2 seulement : les fichiers d'avant n'en ont pas,
+     * et les refuser rendrait illisible tout ce qui a été enregistré jusqu'ici.
+     * Ce cas-là reste donc indétectable sur un fichier v1, et c'est une raison
+     * de plus pour que les piles repassent par une sauvegarde. */
+    int signature_manque = (format_fichier >= 2) && !fin_vue;
+
+    if (format_trop_recent)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Cette pile est au format %d ; cette version de HC ne connaît "
+                 "que le format %d.", format_trop_recent, HC_FORMAT_MAX);
+    else if (acc.manque)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Mémoire insuffisante pour lire cette pile en entier.");
+    else if (lecture == LIGNE_ECHEC)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Erreur de lecture au milieu du fichier.");
+    else if (bloc_ouvert || objet_ouvert || signature_manque)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Fichier incomplet : il s'arrête au milieu de la pile.");
+    else if (icon_abimee)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Une icône de cette pile est incomplète ou abîmée.");
+
+    if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert ||
+        objet_ouvert || signature_manque || format_trop_recent || icon_abimee) {
         if (stack) hc_free(stack);
         return NULL;
     }
+    if (!stack)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Ce fichier ne contient pas de pile.");
     return stack;
 }
