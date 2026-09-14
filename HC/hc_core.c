@@ -817,9 +817,34 @@ int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu)
      * Le test porte sur le DOUBLE, avant toute conversion vers int : comparer
      * après coup ne sert à rien, le débordement a déjà eu lieu et il est
      * indéfini. NaN échoue les deux comparaisons, donc tombe sur le défaut. */
+    /* strtod lit aussi l'HEXADÉCIMAL, « 0x10 » valant seize. HyperTalk n'a pas
+     * de littéral hexadécimal : « put 0x10 » n'y vaut pas seize, et le lecteur
+     * d'entiers ne doit pas connaître un dialecte que le langage ignore. */
+    {
+        const char *t = s;
+        while (*t == ' ' || *t == '\t') t++;
+        if (*t == '+' || *t == '-') t++;
+        if (t[0] == '0' && (t[1] == 'x' || t[1] == 'X')) return defaut;
+    }
+
     char *fin = NULL;
     double d = strtod(s, &fin);
     if (fin == s) return defaut;
+
+    /* ET CE QUI RESTE DERRIÈRE COMPTE AUSSI.
+     *
+     * « 42patate » rendait 42, comme atoi. C'était garder le pire d'atoi en
+     * croyant s'en débarrasser, et cela contredisait hct_est_nombre, dont le
+     * contrat est précisément que TOUTE la chaîne soit numérique. Conséquences
+     * directes : « set the width of field 1 to "100patate" » passait pour
+     * cent, et « id 42xyz » dans un .stack pour l'identifiant 42.
+     *
+     * Les blancs de fin restent tolérés : ils viennent du fichier ou d'une
+     * concaténation, pas de l'intention de l'auteur. « 42.9 » reste accepté et
+     * tronqué — c'est une conversion du langage, pas un déchet. */
+    while (*fin == ' ' || *fin == '\t' || *fin == '\n' || *fin == '\r') fin++;
+    if (*fin) return defaut;
+
     if (!(d >= (double)mini && d <= (double)maxi)) return defaut;
     if (lu) *lu = 1;
     return (int)d;
@@ -833,6 +858,25 @@ int hc_entier(const char *s, int mini, int maxi, int defaut)
 int hc_coord(const char *s, int defaut)
 {
     return hc_entier(s, -HC_COORD_MAX, HC_COORD_MAX, defaut);
+}
+
+/* Le nombre qui COMMENCE ICI et s'arrête à la virgule ou à la fin.
+ *
+ * hc_coord exige que toute la chaîne soit un nombre — c'est tout l'intérêt,
+ * « 100patate » n'est pas cent — et les listes « x,y » ou « g,h,d,b » lui
+ * donnaient le reste de la liste à digérer, virgule comprise. On isole donc le
+ * champ. Un seul endroit, parce qu'il y a quatre appelants et qu'ils le
+ * faisaient chacun à leur façon. */
+static int coord_champ(const char *s, int defaut)
+{
+    if (!s) return defaut;
+    const char *fin = s;
+    while (*fin && *fin != ',') fin++;
+    char champ[64];
+    size_t l = (size_t)(fin - s);
+    if (l >= sizeof champ) l = sizeof champ - 1;
+    memcpy(champ, s, l); champ[l] = '\0';
+    return hc_coord(champ, defaut);
 }
 
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
@@ -850,7 +894,14 @@ void hc_set_id(Object *o, int id)
      * Au-delà de la borne, on REFUSE l'identifiant plutôt que de l'écrêter :
      * deux objets ramenés à la même valeur se retrouveraient homonymes, ce qui
      * est pire que de laisser celui-ci prendre un identifiant neuf. */
-    if (!o || id <= 0 || id > HC_ID_MAX) return;
+    /* La borne est celle du COMPTEUR, pas seulement celle de l'identifiant.
+     *
+     * « id > HC_ID_MAX » acceptait exactement HC_ID_MAX, et g_next_id passait
+     * alors à HC_ID_MAX + 1 : l'objet créé ensuite recevait un identifiant que
+     * ce même lecteur refuse. Le trou était juste à la frontière, là où
+     * personne ne regarde — le harnais précédent essayait 2147483647, très
+     * au-delà. C'est g_next_id, et non id, qui doit tenir dans les bornes. */
+    if (!o || id <= 0 || id >= HC_ID_MAX) return;
     o->id = id;
     if (id >= g_next_id) g_next_id = id + 1;
 }
@@ -925,12 +976,57 @@ void hc_memoire_epuisee(const char *quoi)
 
 static void runs_free(struct RunList *rl);
 
+/* Un identifiant libre DANS CETTE PILE, quand le compteur est à bout.
+ *
+ * L'unicité ne vaut que dans une pile — « card id 7 » se résout à l'intérieur
+ * d'une pile, jamais entre elles —, donc la recherche s'y limite. Elle ne
+ * tourne jamais en usage normal : il faut avoir chargé un fichier portant un
+ * identifiant proche du plafond pour y arriver.
+ *
+ * Rend 0 si la pile est introuvable ou saturée. L'appelant garde alors le
+ * plafond : deux objets homonymes valent mieux qu'un identifiant que notre
+ * propre lecteur refuserait. */
+static Object *owning_stack(Object *o);
+
+static int id_pris_dans(Object *pile, int id)
+{
+    if (!pile) return 0;
+    if (pile->id == id) return 1;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *couche = pile->parts[i];
+        if (couche->id == id) return 1;
+        for (int j = 0; j < couche->nparts; j++)
+            if (couche->parts[j]->id == id) return 1;
+    }
+    return 0;
+}
+
+static int id_libre_dans(Object *pile)
+{
+    if (!pile) return 0;
+    for (int id = 1; id < HC_ID_MAX; id++)
+        if (!id_pris_dans(pile, id)) return id;
+    return 0;
+}
+
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));
     if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
-    o->id      = g_next_id++;
+    /* LE COMPTEUR NE DÉPASSE PAS LE PLAFOND DU LECTEUR.
+     *
+     * « o->id = g_next_id++ » n'avait aucune garde. Un fichier portant
+     * « id 999999999 » poussait le compteur à HC_ID_MAX, et l'objet créé
+     * ensuite recevait un identifiant que notre PROPRE lecteur refuse au
+     * rechargement suivant. Corriger la borne de hc_set_id ne faisait que
+     * déplacer le défaut d'un cran : il fallait le fermer ici aussi. */
+    if (g_next_id < HC_ID_MAX) {
+        o->id = g_next_id++;
+    } else {
+        int libre = id_libre_dans(owning_stack(owner));
+        o->id = libre ? libre : HC_ID_MAX - 1;
+    }
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
@@ -5375,7 +5471,7 @@ static int parse_ints(const char *s, int *v, int maxn)
     while (*s && n < maxn) {
         while (*s == ' ' || *s == '\t' || *s == ',') s++;
         if (!*s) break;
-        v[n++] = hc_coord(s, 0);
+        v[n++] = coord_champ(s, 0);
         while (*s && *s != ',') s++;
     }
     return n;
@@ -10582,10 +10678,10 @@ static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
 
-    int x1 = hc_coord(p1, 0), y1 = 0, x2 = hc_coord(p2, 0), y2 = 0;
+    int x1 = coord_champ(p1, 0), y1 = 0, x2 = coord_champ(p2, 0), y2 = 0;
     const char *c1 = strchr(p1, ','), *c2 = strchr(p2, ',');
-    if (c1) y1 = hc_coord(c1 + 1, 0);
-    if (c2) y2 = hc_coord(c2 + 1, 0);
+    if (c1) y1 = coord_champ(c1 + 1, 0);
+    if (c2) y2 = coord_champ(c2 + 1, 0);
 
     g_visual_dirty = 1;
     { const char *t = host_global("tool");
@@ -10607,9 +10703,9 @@ static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
 
-    int x = hc_coord(pt, 0), y = 0;
+    int x = coord_champ(pt, 0), y = 0;
     const char *c = strchr(pt, ',');
-    if (c) y = hc_coord(c + 1, 0);
+    if (c) y = coord_champ(c + 1, 0);
 
     g_visual_dirty = 1;
     { const char *t = host_global("tool");

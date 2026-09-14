@@ -763,7 +763,17 @@ static int parse_run(const char *s, int *start, int *len, int *style,
         if (*p == ',') commas++;
     if (!*p) return 1;                       /* forme courte : rien de plus */
 
-    *size = hc_entier(p, 0, HC_TEXTE_MAX, 0);
+    /* Même raison qu'ailleurs : hc_entier veut TOUTE la chaîne, on lui donne
+     * donc le champ seul et non la fin de la ligne. */
+    {
+        const char *fin = p;
+        while (*fin && *fin != ',') fin++;
+        char champ[32];
+        size_t l = (size_t)(fin - p);
+        if (l >= sizeof champ) l = sizeof champ - 1;
+        memcpy(champ, p, l); champ[l] = '\0';
+        *size = hc_entier(champ, 0, HC_TEXTE_MAX, 0);
+    }
     const char *q = strchr(p, ',');
     if (!q) return 1;                        /* taille sans police */
     q++;

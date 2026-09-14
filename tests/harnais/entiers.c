@@ -126,6 +126,64 @@ int main(void)
         }
     }
 
+    puts("\n=== la borne des identifiants, EXACTEMENT au bord ===");
+    /* L'ancien test essayait 2147483647, tres au-dela : il ne couvrait pas la
+     * frontiere, la ou le trou se trouvait. « id > HC_ID_MAX » acceptait
+     * HC_ID_MAX, g_next_id passait a HC_ID_MAX+1, et l'objet cree ensuite
+     * recevait un identifiant que ce meme lecteur refuse. */
+    {
+        /* DANS CET ORDRE, et pas un autre : g_next_id est un compteur de
+         * PROCESSUS. Les deux premiers cas sont refuses et ne le touchent pas ;
+         * le troisieme le pousse au plafond, ce qui change l'allocation pour
+         * tout ce qui suit — c'est justement ce qu'on veut voir. */
+        const long bords[] = { HC_ID_MAX + 1L, HC_ID_MAX, HC_ID_MAX - 1 };
+        for (unsigned i = 0; i < sizeof bords / sizeof *bords; i++) {
+            FILE *g = fopen(FIC, "w");
+            if (g) {
+                fprintf(g, "-- pile HyperCard (format maison)\n\n"
+                           "stack \"P\"\nsize 512,342\nend stack\n\n"
+                           "background \"F\"\nid 2\nend background\n\n"
+                           "card \"A\" background \"F\"\nid %ld\nend card\n", bords[i]);
+                fclose(g);
+            }
+            Object *rl = hc_load(FIC);
+            if (!rl) { printf("   id %-11ld : relecture REFUSEE\n", bords[i]); continue; }
+            Object *bg2 = NULL, *a = NULL;
+            for (int k = 0; k < rl->nparts; k++) {
+                if (rl->parts[k]->type == OBJ_BACKGROUND) bg2 = rl->parts[k];
+                if (rl->parts[k]->type == OBJ_CARD)       a   = rl->parts[k];
+            }
+            Object *neuve = hc_new_card(rl, bg2, "B");
+            int idA = a ? a->id : 0, idB = neuve ? neuve->id : 0;
+            printf("   id %-11ld : A=%-11d  suivante=%-11d  %s\n",
+                   bords[i], idA, idB,
+                   (idB > 0 && idB < HC_ID_MAX) ? "dans les bornes"
+                                                : "HORS BORNES");
+            hc_free(rl);
+        }
+    }
+
+    puts("\n=== le compteur au plafond : les identifiants restent uniques ===");
+    /* Le cas precedent vient de pousser g_next_id au plafond. Tout ce qui est
+     * cree ensuite passe par la recherche d'un identifiant libre DANS LA PILE —
+     * l'unicite ne vaut que la, « card id 7 » se resolvant dans une pile. */
+    {
+        Object *p2 = hc_new_stack("Q");
+        Object *b2 = hc_new_background(p2, "F");
+        int ids[6]; int ok = 1;
+        for (int i = 0; i < 6; i++) {
+            char nom[8]; snprintf(nom, sizeof nom, "c%d", i);
+            Object *c2 = hc_new_card(p2, b2, nom);
+            ids[i] = c2 ? c2->id : 0;
+            if (ids[i] <= 0 || ids[i] >= HC_ID_MAX) ok = 0;
+            for (int j = 0; j < i; j++) if (ids[j] == ids[i]) ok = 0;
+        }
+        printf("   six cartes creees : ");
+        for (int i = 0; i < 6; i++) printf("%d ", ids[i]);
+        printf("\n   toutes distinctes et dans les bornes : %s\n", ok ? "oui" : "NON");
+        hc_free(p2);
+    }
+
     puts("\n=== une taille de pile absurde ne passe pas non plus ===");
     {
         FILE *g = fopen(FIC, "w");
@@ -156,7 +214,11 @@ int main(void)
             { "42",          0, 100, -1 },
             { "  42  ",      0, 100, -1 },
             { "1e2",         0, 100, -1 },
-            { "42abc",       0, 100, -1 },
+            { "42abc",       0, 100, -1 },   /* la QUEUE compte */
+            { "42 ",         0, 100, -1 },   /* un blanc de fin, lui, non */
+            { "42\t\n",       0, 100, -1 },
+            { "42,3",        0, 100, -1 },   /* une liste n'est pas un nombre */
+            { "0x10",        0, 100, -1 },
             { "abc",         0, 100, -1 },
             { "",            0, 100, -1 },
             { "101",         0, 100, -1 },
