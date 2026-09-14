@@ -4836,8 +4836,8 @@ static int call_function_body(const char *t, char *out, int outlen)
          * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
          * celui d'HyperCard au repos. */
         if (ci_equal(name, "tool")) {
-            const char *t = host_global("tool");
-            snprintf(out, outlen, "%s", (t && *t) ? t : "browse tool");
+            const char *outil = host_global("tool");
+            snprintf(out, outlen, "%s", (outil && *outil) ? outil : "browse tool");
             return 1;
         }
         if (ci_equal(name, "selection") || ci_equal(name, "selectedtext")) {
@@ -4853,10 +4853,10 @@ static int call_function_body(const char *t, char *out, int outlen)
          * pile de le refaire à coups de « number of chars of line 1 to N ». */
         if (ci_equal(name, "selectedline")) {
             if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
-            const char *t = hc_field_text(g_sel_field);
+            const char *texte = hc_field_text(g_sel_field);
             int line = 1;
-            for (int i = 0; i < g_sel_start && t[i]; i++)
-                if (t[i] == '\n') line++;
+            for (int i = 0; i < g_sel_start && texte[i]; i++)
+                if (texte[i] == '\n') line++;
             snprintf(out, outlen, "%d", line);
             return 1;
         }
@@ -8597,13 +8597,17 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
              * directement sur l'élément. */
             if (ncle || cle) {
                 var_set("each", elems[i]);
-                ARENA_MARK;
+                /* Marque POSÉE À LA MAIN : la fonction en a déjà une, et
+                 * ARENA_MARK déclare toujours la même variable — imbriquées,
+                 * la seconde masquerait la première, ce que -Wshadow signale
+                 * à juste titre puisque l'ordre de libération en dépendrait. */
+                size_t marque_cle = g_atop;
                 char *v = arena_buf();
                 v[0] = '\0';
                 if (ncle) v3_val_texte(ctx, ncle, v, HC_VAL);
                 else      eval_checked(cle, v, HC_VAL);
                 cles[i] = dupstr(v);
-                ARENA_FREE;
+                g_atop = marque_cle;
             } else {
                 cles[i] = dupstr(elems[i]);
             }
