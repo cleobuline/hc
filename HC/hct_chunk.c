@@ -39,6 +39,15 @@ int hct_utf8_compte(const char *s)
     return n;
 }
 
+int hct_utf8_compte_prefixe(const char *s, int octets)
+{
+    if (!s || octets <= 0) return 0;
+    int n = 0;
+    for (int i = 0; i < octets && s[i]; i++)
+        if (((unsigned char)s[i] & 0xC0) != 0x80) n++;
+    return n;
+}
+
 /* ------------------------------------------------------------ comptage */
 
 int hct_chunk_compte(const char *s, HctSorteChunk sorte, char delim)

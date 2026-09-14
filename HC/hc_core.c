@@ -722,10 +722,28 @@ static Object *g_found_card  = NULL;
  * l'écran, via le callback selection_changed, parce que la surbrillance
  * appartient à l'éditeur de champ de l'interface et non au modèle.
  *
- * Les bornes sont en caractères, dans le texte rendu par hc_field_text, et
+ * LES BORNES SONT EN OCTETS, dans le texte rendu par hc_field_text, et
  * demi-ouvertes : [start, start+len). Une longueur nulle est un simple point
  * d'insertion, ce qui est exactement ce que veut dire « select before char N »
- * dans HyperTalk. */
+ * dans HyperTalk.
+ *
+ * Ce commentaire disait « en caractères » et le code comptait des octets —
+ * une contradiction sans conséquence tant que tout était en ASCII, et une
+ * source d'erreurs dès que char a su compter les caractères accentués.
+ *
+ * L'OCTET EST LA BONNE UNITÉ INTERNE, et ce n'est pas un pis-aller :
+ * hct_chunk_bornes rend des octets, la recherche rend des octets, le clic
+ * dans un champ rend des octets, et le rendu du texte les convertit déjà vers
+ * l'UTF-16 de Cocoa. Une seule convention à l'intérieur, et la conversion
+ * UNIQUEMENT aux frontières :
+ *
+ *     noyau            octets UTF-8
+ *     HyperTalk        numéros de caractères   (hct_utf8_compte_prefixe)
+ *     Cocoa            unités UTF-16           (HCtext.m, et l'éditeur)
+ *
+ * « the selection » lit ces octets et rend le bon texte. C'est « the
+ * selectedChunk » qui mentait : il annonçait l'offset d'octet comme un numéro
+ * de caractère, d'où « char 1 to 2 » pour le premier é d'« été ». */
 static Object *g_sel_field = NULL;
 static int     g_sel_start = 0;
 static int     g_sel_len   = 0;
@@ -4713,7 +4731,10 @@ static int call_function_body(const char *t, char *out, int outlen)
             char d[96];
             hc_describe(g_sel_field, d, sizeof d);
             snprintf(out, outlen, "char %d to %d of %s%s",
-                     g_sel_start + 1, g_sel_start + g_sel_len,
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start) + 1,
+                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start + g_sel_len),
                      hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
             return 1;
         }
@@ -4724,7 +4745,10 @@ static int call_function_body(const char *t, char *out, int outlen)
             char d[96];
             hc_describe(g_found_field, d, sizeof d);
             snprintf(out, outlen, "char %d to %d of %s%s",
-                     g_found_start + 1, g_found_start + g_found_len,
+                     hct_utf8_compte_prefixe(hc_field_text(g_found_field),
+                                         g_found_start) + 1,
+                 hct_utf8_compte_prefixe(hc_field_text(g_found_field),
+                                         g_found_start + g_found_len),
                      hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
             return 1;
         }
@@ -5245,7 +5269,10 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
             char d[96];
             hc_describe(o, d, sizeof d);
             snprintf(out, outlen, "char %d to %d of %s%s",
-                     g_sel_start + 1, g_sel_start + g_sel_len,
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start) + 1,
+                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start + g_sel_len),
                      hc_owner_is_bg(o) ? "bg " : "card ", d);
         } else snprintf(out, outlen, "%s", "");
         return 1;
@@ -7250,7 +7277,10 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         hc_describe(g_sel_field, d, sizeof d);
         char petit[160];
         snprintf(petit, sizeof petit, "char %d to %d of %s%s",
-                 g_sel_start + 1, g_sel_start + g_sel_len,
+                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start) + 1,
+                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                                         g_sel_start + g_sel_len),
                  hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
         *out = hct_val_texte(petit);
         return 1;
@@ -7261,7 +7291,10 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         hc_describe(g_found_field, d, sizeof d);
         char petit[160];
         snprintf(petit, sizeof petit, "char %d to %d of %s%s",
-                 g_found_start + 1, g_found_start + g_found_len,
+                 hct_utf8_compte_prefixe(hc_field_text(g_found_field),
+                                         g_found_start) + 1,
+                 hct_utf8_compte_prefixe(hc_field_text(g_found_field),
+                                         g_found_start + g_found_len),
                  hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
         *out = hct_val_texte(petit);
         return 1;

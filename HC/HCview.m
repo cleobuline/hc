@@ -1787,9 +1787,17 @@ static void cocoa_selection_changed(Object *field, int start, int len) {
     }
 
     if (gFieldEditor) {
+        /* OCTETS -> UTF-16. Le noyau donne des décalages en octets ; les
+         * passer tels quels à setSelectedRange: surlignait à côté dès le
+         * premier accent. « select char 1 of card field "x" » sur « été »
+         * demande les deux premiers octets, ce que Cocoa comprenait comme
+         * les deux premiers CARACTÈRES. */
+        const char *tx = hc_field_text(field);
         NSUInteger n = [[gFieldEditor string] length];
-        NSUInteger s = (NSUInteger)(start < 0 ? 0 : start);
-        NSUInteger l = (NSUInteger)(len   < 0 ? 0 : len);
+        NSUInteger s = utf16_from_byte(tx, start < 0 ? 0 : start);
+        NSUInteger f = utf16_from_byte(tx, (start < 0 ? 0 : start) +
+                                           (len   < 0 ? 0 : len));
+        NSUInteger l = f > s ? f - s : 0;
         if (s > n)     s = n;
         if (s + l > n) l = n - s;
         [gFieldEditor setSelectedRange:NSMakeRange(s, l)];
@@ -5840,8 +5848,19 @@ static NSTextField  *gSprayDensityLabel = nil;
     if ([note object] != gFieldEditor) return;
 
     NSRange r = [gFieldEditor selectedRange];
+    /* UTF-16 -> OCTETS. NSTextView compte en unités UTF-16, le noyau en
+     * octets. Passer la NSRange telle quelle marchait tant que tout était en
+     * ASCII, où les deux coïncident ; sur « été », sélectionner le premier é
+     * donne une longueur Cocoa de 1, et le noyau retenait alors UN octet —
+     * une demi-séquence UTF-8, que « the selection » ne pouvait plus rendre.
+     *
+     * byte_from_utf16 existait déjà et servait ailleurs dans ce fichier ; il
+     * ne manquait qu'ici. */
+    NSString *str = [gFieldEditor string];
+    int b0 = byte_from_utf16(str, r.location);
+    int b1 = byte_from_utf16(str, r.location + r.length);
     gApplyingSelection = YES;
-    hc_set_selection(gEditingField, (int)r.location, (int)r.length);
+    hc_set_selection(gEditingField, b0, b1 - b0);
     gApplyingSelection = NO;
 }
 

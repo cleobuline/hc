@@ -34,6 +34,14 @@ int                 style_bits_from_attrs(NSDictionary *a);
 /* ---- Conversion d'index : octets UTF-8 <-> unites UTF-16 ---- */
 int byte_from_utf16(NSString *s, NSUInteger u16);
 
+/* Et l'inverse : l'index UTF-16 correspondant à un décalage en OCTETS.
+ *
+ * Les deux vont par paire, et c'est la seule frontière entre la convention du
+ * noyau (octets UTF-8) et celle de Cocoa (unités UTF-16). Tout ce qui passe
+ * de l'un à l'autre doit emprunter l'une des deux, sans quoi une sélection
+ * accentuée tombe à côté. */
+NSUInteger utf16_from_byte(const char *utf8, int byteoff);
+
 /* ---- Geometrie : une seule source de verite pour le dessin et les clics ---- */
 NSRect  field_text_rect(Object *o);        /* le rectangle de texte, sans defilement */
 CGFloat field_max_scroll(Object *o);       /* ce qui depasse de la partie visible */
