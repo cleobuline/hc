@@ -36,6 +36,15 @@ BOOL hcv_menu_trappe(const char *article);
  * ne reviendrait jamais. Voir la définition dans HCview.m. */
 void hcv_curseur_maj(void);
 
+/* Abandonner la sélection de peinture — rectangle, lasso, tracé libre — et
+ * arrêter les fourmis.
+ *
+ * Un seul endroit pour un geste que trois chemins réclament : « choose … tool »
+ * par script, le clic dans la palette d'outils, et le changement de carte.
+ * Recopier le nettoyage à chacun est précisément ce qui avait laissé le clic
+ * de palette incomplet. Voir la définition dans HCview.m. */
+void hcv_abandonne_selection(void);
+
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
 /* La minuterie d'« idle ». Une seule pour toute l'application : elle envoie le

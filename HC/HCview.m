@@ -201,6 +201,32 @@ static CGFloat  gAntsPhase = 0.0;
 - (void)stopAntsTimer;
 @end
 
+/* ABANDONNER LA SÉLECTION DE PEINTURE, EN UN SEUL ENDROIT.
+ *
+ * Ce nettoyage existait, écrit à la main dans « choose … tool ». Le CLIC dans
+ * la palette d'outils, lui, ne le faisait pas : prendre la main en cliquant
+ * laissait les fourmis en place et la sélection vivante. Et un changement de
+ * carte ne le faisait pas davantage — la sélection suivait d'une carte à
+ * l'autre, portant sur des pixels qui n'étaient plus là.
+ *
+ * Deux chemins pour un même geste, dont un seul complet : c'est exactement la
+ * divergence qui s'installe quand on recopie au lieu d'appeler. Une fonction,
+ * et les trois chemins la partagent.
+ *
+ * La minuterie des fourmis s'arrête avec : sans elle, elle continuerait de
+ * redessiner un cadre qui n'entoure plus rien, quinze fois par seconde. */
+void hcv_abandonne_selection(void)
+{
+    gSelRectActive  = NO;
+    gSelRectDrawing = NO;
+    gLassoActive    = NO;
+    gLassoDrawing   = NO;
+    gLassoCount     = 0;
+    gFreeDrawing    = NO;
+    gFreeCount      = 0;
+    [gView stopAntsTimer];
+}
+
 /* Une partie mérite-t-elle d'être redessinée ? La marge couvre le cadre
  * d'édition et le liseré de sélection, qui débordent un peu. */
 static inline BOOL part_touche(Object *o, NSRect sale) {
@@ -1197,14 +1223,8 @@ static void cocoa_choose_tool(const char *name) {
              * première était remise à zéro : le rectangle en pointillés
              * survivait au changement d'outil, fourmis comprises. */
             HCTool neuf = table[i].t;
-            if (neuf != TOOL_SELRECT && neuf != TOOL_LASSO) {
-                gSelRectActive  = NO;
-                gSelRectDrawing = NO;
-                gLassoActive    = NO;
-                gLassoDrawing   = NO;
-                gLassoCount     = 0;
-                [gView stopAntsTimer];
-            }
+            if (neuf != TOOL_SELRECT && neuf != TOOL_LASSO)
+                hcv_abandonne_selection();
 
             gTool = neuf;
             gSelected = NULL;
@@ -4115,6 +4135,12 @@ static BOOL      gSansMessageChamp = NO;
     if (gEditingField) [self endFieldEdit];
     [self dropFloating];
     gSelected = NULL;
+    /* La sélection de peinture porte sur les PIXELS DE CETTE CARTE. La garder
+     * en changeant de carte laissait un cadre de fourmis sur la nouvelle,
+     * autour de rien — et la première transformation du menu Paint se serait
+     * appliquée à cette zone-là, sur une image qui n'a jamais été
+     * sélectionnée. */
+    hcv_abandonne_selection();
 }
 
 - (void)toggleBackground:(id)sender {
