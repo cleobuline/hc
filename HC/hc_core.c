@@ -364,6 +364,98 @@ void hc_describe(Object *o, char *buf, int buflen)
         snprintf(buf, buflen, "%s id %d", hc_typename(o->type), o->id);
 }
 
+/* Définis plus bas, mais hc_nom_de en a besoin. */
+static Object *owning_stack(Object *o);
+
+/* UN TERME DE DESCRIPTEUR : « card "Une" », ou « card id 101 » s'il n'a pas de
+ * nom. C'est la brique dont hc_nom_de compose la portée. */
+static void terme_objet(Object *o, const char *type, char *buf, int buflen)
+{
+    if (o->name && o->name[0])
+        snprintf(buf, buflen, "%s \"%s\"", type, o->name);
+    else
+        snprintf(buf, buflen, "%s id %d", type, o->id);
+}
+
+/* LE NOM D'UN OBJET, SOUS SES TROIS FORMES.
+ *
+ * Une seule définition, parce que les trois doivent rester cohérentes : ce que
+ * « the long name » écrit, le résolveur doit savoir le relire.
+ *
+ *   HC_NOM_COURT   Bouton
+ *   HC_NOM_ABREGE  button "Bouton"
+ *   HC_NOM_LONG    card button "Bouton" of card id 101 of stack "Pile"
+ *
+ * La forme LONGUE est faite pour être RE-RÉSOLUE, et c'est tout son intérêt :
+ * « the long name of me » passé à une fonction, puis employé comme référence
+ * depuis une autre carte, doit retrouver le même objet. Elle porte donc la
+ * couche — « card button » ou « bkgnd button », qui ne désignent pas le même
+ * objet — et la portée complète jusqu'à la pile.
+ *
+ * Une part de FOND s'ancre sur son FOND et non sur une carte : elle existe
+ * indépendamment de celle qu'on regarde, et son identité ne change pas d'une
+ * carte à l'autre.
+ *
+ * Ce que HyperCard met et que nous n'avons pas : le CHEMIN du fichier dans
+ * « stack "…" ». Le noyau ne connaît pas le chemin de ses piles — c'est le
+ * document qui le tient —, et le nom suffit pour retrouver une pile ouverte,
+ * ce qui est la propriété qu'on veut ici. */
+void hc_nom_de(Object *o, int forme, char *out, int outlen)
+{
+    if (!o || outlen <= 0) { if (outlen > 0) out[0] = '\0'; return; }
+
+    if (forme == HC_NOM_COURT) {
+        snprintf(out, outlen, "%s", o->name ? o->name : "");
+        return;
+    }
+    if (forme != HC_NOM_LONG) { hc_describe(o, out, outlen); return; }
+
+    Object *pile = owning_stack(o);
+    char pl[160];
+    if (pile) terme_objet(pile, "stack", pl, sizeof pl);
+    else      snprintf(pl, sizeof pl, "%s", "");
+
+    switch (o->type) {
+    case OBJ_STACK:
+        snprintf(out, outlen, "%s", pl);
+        return;
+
+    case OBJ_BACKGROUND: {
+        char t[160]; terme_objet(o, "bkgnd", t, sizeof t);
+        if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
+        else     snprintf(out, outlen, "%s", t);
+        return;
+    }
+    case OBJ_CARD: {
+        char t[160]; terme_objet(o, "card", t, sizeof t);
+        if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
+        else     snprintf(out, outlen, "%s", t);
+        return;
+    }
+    case OBJ_BUTTON:
+    case OBJ_FIELD: {
+        int fond = hc_owner_is_bg(o);
+        char t[160];
+        char type[32];
+        snprintf(type, sizeof type, "%s %s", fond ? "bkgnd" : "card",
+                 o->type == OBJ_BUTTON ? "button" : "field");
+        terme_objet(o, type, t, sizeof t);
+
+        /* La couche qui la porte : le fond pour une part de fond, la carte
+         * courante pour une part de carte — c'est bien celle-là, une part de
+         * carte n'existant que sur la sienne. */
+        Object *porteur = o->owner;
+        if (!porteur) { snprintf(out, outlen, "%s", t); return; }
+        char pc[160];
+        terme_objet(porteur, fond ? "bkgnd" : "card", pc, sizeof pc);
+        if (*pl) snprintf(out, outlen, "%s of %s of %s", t, pc, pl);
+        else     snprintf(out, outlen, "%s of %s", t, pc);
+        return;
+    }
+    }
+    hc_describe(o, out, outlen);
+}
+
 /* ---- hôte : sortie déléguée ---- */
 
 static void console_line(HcLineKind kind, int depth, const char *text)
@@ -2877,7 +2969,96 @@ static void eval_id_token(const char *ref, char *out, int outlen)
  *   me / the target
  *   stack
  */
+/* LA PORTÉE D'UN DESCRIPTEUR : « <part> of <carte> of <pile> ».
+ *
+ * resolve travaille RELATIVEMENT à la carte courante, et ignorait purement et
+ * simplement la queue « of … ». Mesuré : depuis une autre carte,
+ * « card button "Bouton" of card id 101 » ne résolvait rien — la portée était
+ * lue puis jetée.
+ *
+ * Ça n'avait pas d'importance tant que personne ne fabriquait de descripteur
+ * complet. Ça en a maintenant : « the long name of me » n'a d'intérêt que s'il
+ * se RE-RÉSOUT, sans quoi ce n'est qu'une décoration.
+ *
+ * Le mécanisme est celui du langage lui-même : on isole la DERNIÈRE portée, on
+ * la résout d'abord, on se place dessus le temps de résoudre la tête, puis on
+ * revient. La récursion gère les chaînes de plusieurs « of » sans rien ajouter.
+ *
+ * Un « of » entre GUILLEMETS n'en est pas un : une carte nommée « Table of
+ * contents » se désigne toujours par son nom entier.
+ *
+ * Tout échec retombe sur la résolution locale, celle d'avant : une variable
+ * dont le texte contient « of » sans être un descripteur ne doit rien changer. */
+static Object *resolve_local(const char *ref);
+
+/* La dernière occurrence de « of » hors guillemets, ou NULL. */
+static const char *derniere_portee(const char *s)
+{
+    const char *trouve = NULL;
+    int dans_guillemets = 0;
+    for (const char *p = s; *p; p++) {
+        if (*p == '"') { dans_guillemets = !dans_guillemets; continue; }
+        if (dans_guillemets) continue;
+        if ((p == s || p[-1] == ' ' || p[-1] == '\t') &&
+            (p[0] == 'o' || p[0] == 'O') && (p[1] == 'f' || p[1] == 'F') &&
+            (p[2] == ' ' || p[2] == '\t'))
+            trouve = p;
+    }
+    return trouve;
+}
+
 static Object *resolve(const char *ref)
+{
+    if (!ref) return NULL;
+    const char *of = derniere_portee(skip_spaces(ref));
+    if (!of) return resolve_local(ref);
+
+    static int profondeur = 0;
+    if (profondeur >= 8) return resolve_local(ref);
+
+    const char *deb = skip_spaces(ref);
+    size_t ltete = (size_t)(of - deb);
+    while (ltete > 0 && (deb[ltete-1] == ' ' || deb[ltete-1] == '\t')) ltete--;
+    if (ltete == 0 || ltete >= 256) return resolve_local(ref);
+
+    char tete[256];
+    memcpy(tete, deb, ltete); tete[ltete] = '\0';
+    const char *queue = skip_spaces(of + 2);
+    if (!*queue) return resolve_local(ref);
+
+    profondeur++;
+    Object *portee = resolve(queue);
+    Object *r = NULL;
+    if (portee) {
+        /* La portée est une CARTE, ou une pile — auquel cas on se place sur sa
+         * carte courante, ou sur la première si elle n'en a pas encore. */
+        Object *ou = NULL;
+        if (portee->type == OBJ_CARD) ou = portee;
+        else if (portee->type == OBJ_STACK) {
+            ou = (g_current_card && g_current_card->owner == portee)
+                 ? g_current_card : nth_card(portee, 0);
+        }
+        else if (portee->type == OBJ_BACKGROUND) {
+            /* « bg button "x" of background "F" » : la première carte de ce
+             * fond, faute de mieux — un fond n'est pas un lieu où se tenir. */
+            Object *pile = portee->owner;
+            for (int i = 0; pile && i < pile->nparts; i++)
+                if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->bg == portee) {
+                    ou = pile->parts[i]; break;
+                }
+        }
+        if (ou) {
+            Object *sauve = g_current_card;
+            g_current_card = ou;
+            r = resolve(tete);
+            g_current_card = sauve;
+        }
+    }
+    profondeur--;
+    return r ? r : resolve_local(ref);
+}
+
+static Object *resolve_local(const char *ref)
 {
     ref = skip_spaces(ref);
     Object *card = g_current_card;
@@ -2893,7 +3074,7 @@ static Object *resolve(const char *ref)
     if (ci_word(ref, "target")) return g_target;
 
     int want_bg = 0;
-    if (ci_word(ref, "bg") || ci_word(ref, "background")) {
+    if (ci_word(ref, "bg") || ci_word(ref, "background") || ci_word(ref, "bkgnd")) {
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (!*ref) return bg;   /* « background » seul = le fond de la carte courante */
@@ -5646,8 +5827,10 @@ static int prop_word_before_of(const char *t)
  * Rend 1 si `prop` a été reconnue et `out` renseigné, 0 sinon — auquel cas
  * l'appelant poursuit comme avant.
  *
- * `shortf` vaut 1 pour « the short name of » : seul `name` s'en sert. */
-static int obj_prop_read(Object *o, const char *prop, int shortf,
+ * `forme` est HC_NOM_COURT / ABREGE / LONG : seul `name` s'en sert. Il valait
+ * un simple booléen « court ou non », si bien que « long » était lu, reconnu,
+ * puis JETÉ — « the long name of me » rendait exactement « the name of me ». */
+static int obj_prop_read(Object *o, const char *prop, int forme,
                          char *out, int outlen)
 {
     if (geom_read(o, prop, out, outlen)) return 1;
@@ -5676,8 +5859,7 @@ static int obj_prop_read(Object *o, const char *prop, int shortf,
         return 0;
     }
     if (ci_equal(prop, "name")) {
-        if (shortf) snprintf(out, outlen, "%s", o->name ? o->name : "");
-        else        hc_describe(o, out, outlen);
+        hc_nom_de(o, forme, out, outlen);
         return 1;
     }
     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return 1; }
@@ -6005,9 +6187,12 @@ static void term_value_body(const char *t, char *out, int outlen)
     if (ci_word(t, "the") || prop_word_before_of(t)) {
         const char *w = ci_word(t, "the") ? skip_spaces(t + 3) : t;
 
-        int shortf = 0;
-        if (ci_word(w, "short")) { shortf = 1; w = skip_spaces(w + 5); }
-        else if (ci_word(w, "long")) { w = skip_spaces(w + 4); }
+        int forme = HC_NOM_ABREGE;
+        if (ci_word(w, "short")) { forme = HC_NOM_COURT; w = skip_spaces(w + 5); }
+        else if (ci_word(w, "long")) { forme = HC_NOM_LONG; w = skip_spaces(w + 4); }
+        else if (ci_word(w, "abbreviated")) { w = skip_spaces(w + 11); }
+        else if (ci_word(w, "abbrev")) { w = skip_spaces(w + 6); }
+        else if (ci_word(w, "abbr")) { w = skip_spaces(w + 4); }
 
         const char *of = find_kw(w, "of");
         if (of) {
@@ -6053,7 +6238,7 @@ static void term_value_body(const char *t, char *out, int outlen)
                 }
 
                 Object *o = resolve(of + 2);
-                if (o && obj_prop_read(o, prop, shortf, out, outlen))
+                if (o && obj_prop_read(o, prop, forme, out, outlen))
                     return;
             }
         }
@@ -12243,14 +12428,15 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
     };
 
     const char *p = prop;
-    int shortf = 0;
+    int forme = HC_NOM_ABREGE;
 
     while (*p == ' ' || *p == '\t') p++;
     for (int i = 0; ADJECTIFS[i]; i++) {
         size_t l = strlen(ADJECTIFS[i]);
         if (strncasecmp(p, ADJECTIFS[i], l) != 0) continue;
         if (p[l] != ' ' && p[l] != '\t') continue;   /* « shortcut » n'est pas « short » */
-        if (i == 0) shortf = 1;                       /* seul « short » change la lecture */
+        if (i == 0) forme = HC_NOM_COURT;
+        if (i == 1) forme = HC_NOM_LONG;   /* « long » était lu puis JETÉ */
         p += l;
         while (*p == ' ' || *p == '\t') p++;
         break;
@@ -12263,7 +12449,7 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
     char *buf = arena_buf();
     buf[0] = '\0';
 
-    int ok = obj_prop_read(o, p, shortf, buf, HC_VAL);
+    int ok = obj_prop_read(o, p, forme, buf, HC_VAL);
     if (ok) *out = hct_val_texte(buf);
 
     ARENA_FREE;

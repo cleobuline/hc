@@ -686,6 +686,23 @@ void    hc_do(const char *line);
 /* ---- Utilitaires ---- */
 const char *hc_typename(ObjType t);
 void        hc_describe(Object *o, char *buf, int buflen);
+
+/* ---- les trois formes du nom d'un objet ----
+ *
+ *   HC_NOM_COURT   Bouton
+ *   HC_NOM_ABREGE  button "Bouton"
+ *   HC_NOM_LONG    card button "Bouton" of card id 101 of stack "Pile"
+ *
+ * La forme LONGUE est faite pour être RE-RÉSOLUE : « the long name of me »
+ * passé à une fonction, puis employé comme référence depuis une autre carte,
+ * retrouve le même objet. Elle porte donc la couche — « card button » et
+ * « bkgnd button » ne désignent pas le même objet — et la portée jusqu'à la
+ * pile. Une part de fond s'ancre sur son FOND, dont elle ne dépend pas d'une
+ * carte à l'autre. */
+#define HC_NOM_COURT  0
+#define HC_NOM_ABREGE 1
+#define HC_NOM_LONG   2
+void        hc_nom_de(Object *o, int forme, char *out, int outlen);
 void        hc_trace(int on);
 
 /* Résout une référence d'objet (« button "toto" », « the field "notes" »,
