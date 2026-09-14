@@ -82,14 +82,98 @@
  * s'écrivait  button "go card "canard""  et le lecteur, qui s'arrête au
  * guillemet suivant, ne relisait que « go card ». Le nom était donc perdu
  * à l'écriture, pas à la lecture. */
+/* UN RETOUR À LA LIGNE DANS UN NOM COUPAIT LE FICHIER EN DEUX.
+ *
+ * put_quoted n'échappait que le guillemet et la contre-oblique. Or le langage
+ * pose n'importe quelle chaîne comme nom :
+ *
+ *     set the name of card button 1 to "Bonjour" & return & "Monde"
+ *     save this stack
+ *
+ * L'en-tête sortait physiquement sur deux lignes —
+ *
+ *     button "Bonjour
+ *     Monde"
+ *
+ * — et la relecture rendait un bouton nommé « Bonjour », la ligne « Monde" »
+ * étant avalée comme une ligne inconnue. Sans un mot. Mesuré : le style et la
+ * police se coupaient de la même façon.
+ *
+ * Le sérialiseur ne doit pas dépendre d'une restriction implicite de
+ * l'interface : c'est le FORMAT qui sait encoder ce que le modèle accepte. */
 static void put_quoted(FILE *f, const char *s)
 {
     fputc('"', f);
     for (const char *p = s ? s : ""; *p; p++) {
-        if (*p == '"' || *p == '\\') fputc('\\', f);
-        fputc(*p, f);
+        switch (*p) {
+        case '"':  fputs("\\\"", f); break;
+        case '\\': fputs("\\\\", f); break;
+        case '\n': fputs("\\n",  f); break;
+        case '\r': fputs("\\r",  f); break;
+        default:   fputc(*p, f);
+        }
     }
     fputc('"', f);
+}
+
+/* Une chaîne écrite SANS GUILLEMETS, seule sur sa ligne ou dans une liste
+ * séparée par des virgules : une police de caractères.
+ *
+ * Le guillemet n'a rien à y faire, mais le retour à la ligne y couperait une
+ * ligne structurelle comme ailleurs, et la virgule y découperait un champ de
+ * trop. La virgule prend donc un échappement à elle, « \c », plutôt que
+ * « \, » : ainsi la chaîne écrite ne contient PLUS AUCUNE virgule, et le
+ * découpage des listes reste celui d'avant, à la virgule, sans rien savoir des
+ * échappements.
+ *
+ * Les échappements inconnus sont rendus tels quels à la lecture : une pile
+ * écrite avant ce changement, avec une police contenant une contre-oblique,
+ * se relit exactement comme avant. */
+static void put_echappe(FILE *f, const char *s)
+{
+    const char *d = s ? s : "";
+    size_t n = strlen(d);
+    for (size_t i = 0; i < n; i++) {
+        /* Le lecteur applique ltrim et rtrim aux lignes structurelles : un
+         * blanc AU BORD de la chaîne y serait mangé. Il suffit de protéger le
+         * premier et le dernier caractère — ceux du milieu sont à l'abri
+         * derrière eux. « Times New Roman » s'écrit donc toujours tel quel, et
+         * une police à blancs de bord revient enfin intacte. */
+        int bord = (i == 0 || i == n - 1);
+        switch (d[i]) {
+        case '\\': fputs("\\\\", f); break;
+        case '\n': fputs("\\n",  f); break;
+        case '\r': fputs("\\r",  f); break;
+        case ',':  fputs("\\c",  f); break;
+        case '\t': fputs("\\t",  f); break;
+        case ' ':  if (bord) fputs("\\s", f); else fputc(' ', f); break;
+        default:   fputc(d[i], f);
+        }
+    }
+}
+
+/* Le pendant lecture, SUR PLACE : la chaîne décodée n'est jamais plus longue
+ * que la chaîne encodée. */
+static void desechappe(char *s)
+{
+    if (!s) return;
+    char *e = s;
+    for (const char *p = s; *p; ) {
+        if (*p == '\\' && p[1]) {
+            switch (p[1]) {
+            case 'n':  *e++ = '\n'; p += 2; continue;
+            case 'r':  *e++ = '\r'; p += 2; continue;
+            case 'c':  *e++ = ',';  p += 2; continue;
+            case 't':  *e++ = '\t'; p += 2; continue;
+            case 's':  *e++ = ' ';  p += 2; continue;
+            case '\\': *e++ = '\\'; p += 2; continue;
+            case '"':  *e++ = '"';  p += 2; continue;
+            default: break;               /* inconnu : tel quel */
+            }
+        }
+        *e++ = *p++;
+    }
+    *e = '\0';
 }
 
 static char *dupstr_file(const char *s)
@@ -204,14 +288,17 @@ static void put_runs(FILE *f, const char *tag, const struct RunList *rl)
          *     s,l,style,corps,police,couleur
          * La police pouvant contenir des espaces mais jamais de virgule, la
          * couleur se lit sans ambiguïté après la dernière. */
-        if (r->size == 0 && !r->font && r->color == HC_COLOR_INHERIT)
+        if (r->size == 0 && !r->font && r->color == HC_COLOR_INHERIT) {
             fprintf(f, "%s %d,%d,%d\n", tag, r->start, r->len, r->style);
-        else if (r->color == HC_COLOR_INHERIT)
-            fprintf(f, "%s %d,%d,%d,%d,%s\n", tag, r->start, r->len,
-                    r->style, r->size, r->font ? r->font : "");
-        else
-            fprintf(f, "%s %d,%d,%d,%d,%s,%d\n", tag, r->start, r->len,
-                    r->style, r->size, r->font ? r->font : "", r->color);
+        } else {
+            /* La police passe par put_echappe : sa virgule devient « \c », si
+             * bien que la ligne n'en contient plus une seule de trop et que le
+             * découpage ci-dessous reste exactement celui d'avant. */
+            fprintf(f, "%s %d,%d,%d,%d,", tag, r->start, r->len, r->style, r->size);
+            put_echappe(f, r->font ? r->font : "");
+            if (r->color == HC_COLOR_INHERIT) fputc('\n', f);
+            else fprintf(f, ",%d\n", r->color);
+        }
     }
 }
 
@@ -220,7 +307,9 @@ static void put_part(FILE *f, Object *o)
     const char *kind = (o->type == OBJ_BUTTON) ? "button" : "field";
     fprintf(f, "%s ", kind); put_quoted(f, o->name); fputc('\n', f);
     fprintf(f, "rect %d,%d,%d,%d\n", o->x, o->y, o->x + o->w, o->y + o->h);
-    if (o->style) fprintf(f, "style \"%s\"\n", o->style);
+    /* Le style passait par un « %s » brut entre guillemets : un guillemet dans
+     * le style refermait la chaîne, un retour à la ligne coupait le fichier. */
+    if (o->style) { fprintf(f, "style "); put_quoted(f, o->style); fputc('\n', f); }
     put_block(f, "script", o->script);
     if (o->type == OBJ_FIELD || o->type == OBJ_BUTTON) put_block(f, "contents", o->contents);
     if (!o->visible) fprintf(f, "hidden\n");
@@ -258,7 +347,9 @@ static void put_part(FILE *f, Object *o)
     if (o->dont_search) fprintf(f, "dontsearch\n");
     if (o->cant_delete) fprintf(f, "cantdelete\n");
     if (o->shared_text) fprintf(f, "sharedtext\n");
-    if (o->textfont && *o->textfont) fprintf(f, "textfont %s\n", o->textfont);
+    if (o->textfont && *o->textfont) {
+        fprintf(f, "textfont "); put_echappe(f, o->textfont); fputc('\n', f);
+    }
     if (o->textstyle) fprintf(f, "textstyle %d\n", o->textstyle);
     if (o->type == OBJ_FIELD) put_runs(f, "run", &o->runs);
     if (o->scroll) fprintf(f, "scroll %d\n", o->scroll);
@@ -540,7 +631,18 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
                il ne referme pas la chaîne (voir put_quoted). */
             while (*p && *p != '"') {
                 char c = *p;
-                if (c == '\\' && (p[1] == '"' || p[1] == '\\')) { p++; c = *p; }
+                /* Les quatre échappements que put_quoted pose. Un échappement
+                 * inconnu est rendu tel quel, contre-oblique comprise : une
+                 * pile écrite avant ce changement se relit à l'identique. */
+                if (c == '\\' && p[1]) {
+                    switch (p[1]) {
+                    case '"':  c = '"';  p++; break;
+                    case '\\': c = '\\'; p++; break;
+                    case 'n':  c = '\n'; p++; break;
+                    case 'r':  c = '\r'; p++; break;
+                    default: break;
+                    }
+                }
                 if (keep && len < outlen - 1) out[len++] = c;
                 p++;
             }
@@ -682,6 +784,7 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     if (n >= fontlen) n = fontlen - 1;
     if (n < 0) n = 0;
     memcpy(font, q, (size_t)n); font[n] = '\0';
+    desechappe(font);
     return 1;
 }
 
@@ -1060,6 +1163,7 @@ Object *hc_load(const char *path)
         if (strncmp(s, "textfont ", 9) == 0 && part) {
             free(part->textfont);
             part->textfont = dupstr_file(s + 9);
+            desechappe(part->textfont);
             continue;
         }
         if (strncmp(s, "textstyle ", 10) == 0 && part) {

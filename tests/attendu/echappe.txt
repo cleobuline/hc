@@ -1,0 +1,95 @@
+
+=== cas 1 ===
+   ok    nom de pile      [simple] -> [simple]
+   ok    nom de fond      [simple] -> [simple]
+   ok    nom de carte     [simple] -> [simple]
+   ok    nom de bouton    [simple] -> [simple]
+   ok    style            [simple] -> [simple]
+   ok    police champ     [simple] -> [simple]
+   ok    police plage     [simple] -> [simple]
+
+=== cas 2 ===
+   ok    nom de pile      [avec\nun saut] -> [avec\nun saut]
+   ok    nom de fond      [avec\nun saut] -> [avec\nun saut]
+   ok    nom de carte     [avec\nun saut] -> [avec\nun saut]
+   ok    nom de bouton    [avec\nun saut] -> [avec\nun saut]
+   ok    style            [avec\nun saut] -> [avec\nun saut]
+   ok    police champ     [avec\nun saut] -> [avec\nun saut]
+   ok    police plage     [avec\nun saut] -> [avec\nun saut]
+
+=== cas 3 ===
+   ok    nom de pile      [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    nom de fond      [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    nom de carte     [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    nom de bouton    [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    style            [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    police champ     [avec\r\nCRLF] -> [avec\r\nCRLF]
+   ok    police plage     [avec\r\nCRLF] -> [avec\r\nCRLF]
+
+=== cas 4 ===
+   ok    nom de pile      [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    nom de fond      [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    nom de carte     [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    nom de bouton    [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    style            [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    police champ     [avec "des guillemets"] -> [avec "des guillemets"]
+   ok    police plage     [avec "des guillemets"] -> [avec "des guillemets"]
+
+=== cas 5 ===
+   ok    nom de pile      [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    nom de fond      [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    nom de carte     [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    nom de bouton    [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    style            [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    police champ     [avec\une contre-oblique] -> [avec\une contre-oblique]
+   ok    police plage     [avec\une contre-oblique] -> [avec\une contre-oblique]
+
+=== cas 6 ===
+   ok    nom de pile      [avec,une virgule] -> [avec,une virgule]
+   ok    nom de fond      [avec,une virgule] -> [avec,une virgule]
+   ok    nom de carte     [avec,une virgule] -> [avec,une virgule]
+   ok    nom de bouton    [avec,une virgule] -> [avec,une virgule]
+   ok    style            [avec,une virgule] -> [avec,une virgule]
+   ok    police champ     [avec,une virgule] -> [avec,une virgule]
+   ok    police plage     [avec,une virgule] -> [avec,une virgule]
+
+=== cas 7 ===
+   ok    nom de pile      [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    nom de fond      [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    nom de carte     [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    nom de bouton    [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    style            [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    police champ     [avec\nun faux echappement] -> [avec\nun faux echappement]
+   ok    police plage     [avec\nun faux echappement] -> [avec\nun faux echappement]
+
+=== cas 8 ===
+   ok    nom de pile      [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    nom de fond      [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    nom de carte     [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    nom de bouton    [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    style            [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    police champ     [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+   ok    police plage     [avec\cun faux echappement de virgule] -> [avec\cun faux echappement de virgule]
+
+=== cas 9 ===
+   ok    nom de pile      [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    nom de fond      [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    nom de carte     [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    nom de bouton    [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    style            [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    police champ     [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+   ok    police plage     [tout\n"a\la,fois\r] -> [tout\n"a\la,fois\r]
+
+=== cas 10 ===
+   ok    nom de pile      [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    nom de fond      [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    nom de carte     [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    nom de bouton    [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    style            [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    police champ     [  des blancs au bord  ] -> [  des blancs au bord  ]
+   ok    police plage     [  des blancs au bord  ] -> [  des blancs au bord  ]
+
+=== une pile ECRITE AVANT ce changement se relit a l'identique ===
+   ok    police ancienne  [A\Bc] -> [A\Bc]
+
+   tout revient a l'identique
