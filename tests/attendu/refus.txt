@@ -1,0 +1,25 @@
+=== les permissions du document survivent a l'enregistrement ===
+   premiere sauvegarde        0644
+   apres chmod 0644           0644
+   apres chmod 0664           0664
+   apres chmod 0600           0600
+   apres chmod 0640           0640
+
+=== un format plus recent se refuse, il ne s'improvise pas ===
+   format 1                 acceptee
+   format 2                 acceptee
+   format 3                 REFUSEE  — Cette pile est au format 3 ; cette version de HC ne connaît que le format 2.
+   format 4                 REFUSEE  — Cette pile est au format 4 ; cette version de HC ne connaît que le format 2.
+
+=== une icone incomplete ou abimee refuse le fichier ===
+   128 octets, entiere      acceptee
+   127 octets               REFUSEE  — Une icône de cette pile est incomplète ou abîmée.
+   0 octet                  REFUSEE  — Une icône de cette pile est incomplète ou abîmée.
+   129 octets               REFUSEE  — Une icône de cette pile est incomplète ou abîmée.
+   127 + un chiffre seul    REFUSEE  — Une icône de cette pile est incomplète ou abîmée.
+   127 + du non-hexa        REFUSEE  — Une icône de cette pile est incomplète ou abîmée.
+
+=== une pile saine reste acceptee, et sans raison d'erreur ===
+   pile minimale            acceptee
+   fichier sans pile        REFUSEE  — Ce fichier ne contient pas de pile.
+   fichier tronque          REFUSEE  — Fichier incomplet : il s'arrête au milieu de la pile.

@@ -75,6 +75,28 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>    /* close, pour le fichier temporaire de hc_save */
+#include <sys/stat.h>  /* stat, fchmod : les permissions du fichier remplacé */
+
+/* LA DERNIÈRE VERSION DE FORMAT QUE CE BINAIRE COMPREND.
+ *
+ * Écrite par hc_save, exigée par hc_load : un seul endroit, sans quoi
+ * l'écrivain et le lecteur finiraient par ne plus parler de la même chose. */
+#define HC_FORMAT_MAX 2
+
+/* POURQUOI LE DERNIER hc_load A REFUSÉ.
+ *
+ * hc_load rendait NULL pour tout — fichier absent, tronqué, sans ligne
+ * « stack », d'un format inconnu — et l'interface n'avait que « Pile
+ * illisible » à en dire. « Format trop récent » et « fichier abîmé »
+ * appellent pourtant des gestes très différents de la part de l'utilisateur.
+ *
+ * Une phrase courte, en français, valable jusqu'au prochain hc_load. */
+static char g_load_erreur[160] = "";
+
+const char *hc_load_erreur(void)
+{
+    return g_load_erreur[0] ? g_load_erreur : NULL;
+}
 
 /* Écrit une chaîne entre guillemets, en protégeant les guillemets et les
  * contre-obliques qu'elle contient. Sans ça, un objet nommé
@@ -396,6 +418,44 @@ int hc_save(Object *stack, const char *path)
 
     int fd = mkstemp(tmp);
     if (fd < 0) { free(tmp); return -1; }
+
+    /* LES PERMISSIONS DU FICHIER REMPLACÉ SURVIVENT À LA SAUVEGARDE.
+     *
+     * mkstemp crée en 0600 — c'est bien ce qu'on veut d'un temporaire, dont
+     * personne d'autre n'a à lire le contenu pendant qu'on l'écrit. Mais
+     * rename() lui donne ensuite le nom du document, avec ses permissions à
+     * lui : une pile en 0644, partagée par un groupe ou publiée par un serveur
+     * de fichiers, repassait en 0600 à chaque enregistrement. Mesuré :
+     *
+     *     avant :  -rw-r--r--
+     *     après :  -rw-------
+     *
+     * Ce n'est pas le contenu de la pile, mais c'est bien le DOCUMENT de
+     * l'utilisateur qui change sous lui, sans qu'on le lui dise.
+     *
+     * On recopie donc le mode de l'original. Pour une pile neuve, il n'y a pas
+     * d'original : on prend ce que tout programme prend, 0666 filtré par le
+     * umask, plutôt que le 0600 d'un temporaire.
+     *
+     * Best-effort : un fchmod qui échoue ne doit pas faire échouer une
+     * sauvegarde par ailleurs valide — l'utilisateur garderait ses données au
+     * prix de ses permissions, jamais l'inverse.
+     *
+     * Ce que cela NE fait PAS : sous macOS, remplacer le fichier par un
+     * nouvel inode perd aussi les ACL et les attributs étendus (étiquettes du
+     * Finder comprises). copyfile(3) saurait les reporter ; ce code-là ne
+     * peut pas être exercé par la suite, qui tourne sous Linux, et il n'est
+     * donc pas écrit ici. */
+    {
+        struct stat sb;
+        if (stat(path, &sb) == 0) {
+            if (fchmod(fd, sb.st_mode & 07777) != 0) { /* tant pis */ }
+        } else {
+            mode_t m = umask(0); umask(m);
+            if (fchmod(fd, (mode_t)(0666 & ~m)) != 0) { /* tant pis */ }
+        }
+    }
+
     FILE *f = fdopen(fd, "w");
     if (!f) { close(fd); remove(tmp); free(tmp); return -1; }
 
@@ -415,7 +475,7 @@ int hc_save(Object *stack, const char *path)
      * Un fichier sans ligne « format » est de la version 1, par construction :
      * elle n'existait pas quand ils ont été écrits. */
     fprintf(f, "-- pile HyperCard (format maison)\n");
-    fprintf(f, "format 2\n\n");
+    fprintf(f, "format %d\n\n", HC_FORMAT_MAX);
 
     fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
@@ -881,6 +941,8 @@ static Object *find_bg(Object *stack, const char *name)
 
 Object *hc_load(const char *path)
 {
+    g_load_erreur[0] = '\0';
+
     FILE *f = fopen(path, "r");
     if (!f) return NULL;
 
@@ -903,6 +965,8 @@ Object *hc_load(const char *path)
     /* La version du format, lue sur la ligne « format N ». Absente : c'est
      * un fichier d'avant ce numéro, donc de la version 1. */
     int format_fichier = 1;
+    int format_trop_recent = 0;
+    int icon_abimee = 0;
     /* La signature de fin a-t-elle été vue ? Voir le verdict, tout en bas. */
     int fin_vue = 0;
 
@@ -927,11 +991,24 @@ Object *hc_load(const char *path)
                     /* Paires de chiffres hexadécimaux. On s'arrête au premier
                      * caractère qui n'en est pas un, et de toute façon à
                      * HC_ICON_BYTES : une ligne trop longue ne déborde pas. */
-                    for (const char *p = piece; p[0] && p[1]; p += 2) {
-                        int hi = hexval((unsigned char)p[0]);
-                        int lo = hexval((unsigned char)p[1]);
-                        if (hi < 0 || lo < 0) break;
-                        if (icon_pos >= HC_ICON_BYTES) break;
+                    for (const char *p = piece; p[0]; p += 2) {
+                        int hi = p[1] ? hexval((unsigned char)p[0]) : -1;
+                        int lo = p[1] ? hexval((unsigned char)p[1]) : -1;
+                        /* UNE ICÔNE ABÎMÉE REFUSE LE FICHIER, elle ne se
+                         * complète pas de zéros.
+                         *
+                         * On s'arrêtait au premier caractère qui n'était pas
+                         * hexadécimal, et les octets manquants restaient nuls :
+                         * l'icône revenait à moitié, en silence. C'était
+                         * revendiqué, et ça ne l'est plus — le lecteur refuse
+                         * une pile dont un texte a été amputé, il n'y a aucune
+                         * raison d'accepter une image qui l'est.
+                         *
+                         * Un chiffre isolé en fin de ligne compte aussi : une
+                         * paire coupée en deux n'est pas un octet. */
+                        if (hi < 0 || lo < 0 || icon_pos >= HC_ICON_BYTES) {
+                            icon_abimee = 1; break;
+                        }
                         if (cur_icon) cur_icon->bits[icon_pos] = (unsigned char)(hi * 16 + lo);
                         icon_pos++;
                     }
@@ -950,6 +1027,10 @@ Object *hc_load(const char *path)
              * suivi d'une espace. */
             rtrim(s);
             if (strcmp(s, "end iconres") == 0) {
+                /* Les 128 octets d'une icône, tous, ou le fichier est refusé.
+                 * Un bloc qui s'arrête plus tôt donnait une image complétée de
+                 * zéros — une corruption graphique silencieuse. */
+                if (icon_pos != HC_ICON_BYTES) icon_abimee = 1;
                 in_icon = 0; cur_icon = NULL; icon_pos = 0;
                 continue;
             }
@@ -1016,7 +1097,20 @@ Object *hc_load(const char *path)
         if (!*s || (s[0] == '-' && s[1] == '-')) continue;   /* vide / commentaire */
 
         if (strncmp(s, "format ", 7) == 0) {
+            /* UN FORMAT PLUS RÉCENT SE REFUSE, IL NE S'IMPROVISE PAS.
+             *
+             * Tout numéro positif était accepté, et tout ce qui valait deux ou
+             * plus empruntait les règles de la version 2. Le jour où une
+             * version 3 existe, un binaire d'aujourd'hui l'ouvrirait donc
+             * comme s'il la connaissait, au lieu de dire qu'il ne la connaît
+             * pas — et l'enregistrement suivant écraserait l'original avec ce
+             * qu'il en aura compris. C'est la seule incompatibilité vraiment
+             * coûteuse : celle qui ne se voit pas.
+             *
+             * Le numéro de version n'a d'intérêt que si le lecteur s'en sert
+             * pour REFUSER. */
             int v = hc_entier(s + 7, 0, HC_ID_MAX, 0);
+            if (v > HC_FORMAT_MAX) { format_trop_recent = v; break; }
             if (v > 0) format_fichier = v;
             continue;
         }
@@ -1300,10 +1394,30 @@ Object *hc_load(const char *path)
      * de plus pour que les piles repassent par une sauvegarde. */
     int signature_manque = (format_fichier >= 2) && !fin_vue;
 
+    if (format_trop_recent)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Cette pile est au format %d ; cette version de HC ne connaît "
+                 "que le format %d.", format_trop_recent, HC_FORMAT_MAX);
+    else if (acc.manque)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Mémoire insuffisante pour lire cette pile en entier.");
+    else if (lecture == LIGNE_ECHEC)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Erreur de lecture au milieu du fichier.");
+    else if (bloc_ouvert || objet_ouvert || signature_manque)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Fichier incomplet : il s'arrête au milieu de la pile.");
+    else if (icon_abimee)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Une icône de cette pile est incomplète ou abîmée.");
+
     if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert ||
-        objet_ouvert || signature_manque) {
+        objet_ouvert || signature_manque || format_trop_recent || icon_abimee) {
         if (stack) hc_free(stack);
         return NULL;
     }
+    if (!stack)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Ce fichier ne contient pas de pile.");
     return stack;
 }

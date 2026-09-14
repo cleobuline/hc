@@ -1576,6 +1576,16 @@ void hc_free(Object *o)
     free(o->bgtexts);
     runs_free(&o->runs);
     free(o->paint);
+    /* LA TABLE D'ICÔNES DE LA PILE.
+     *
+     * hc_icons_free existait, était déclarée dans l'en-tête, et n'était
+     * appelée NULLE PART : toute pile portant des icônes fuyait sa table
+     * entière — cent vingt-huit octets par icône, plus son nom — à chaque
+     * fermeture. Trouvé par le harnais « refus », le premier à charger puis
+     * libérer une pile avec des icônes sous LeakSanitizer.
+     *
+     * Elle ne concerne que les piles ; hc_icons_free l'ignore pour le reste. */
+    hc_icons_free(o);
     free(o);
 }
 
