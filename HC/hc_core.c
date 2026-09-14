@@ -7789,6 +7789,34 @@ static const char *V3_GLOBALES_HOTE[] = {
     NULL
 };
 
+/* CELLES QU'UN SCRIPT PEUT ÉCRIRE, parmi les précédentes.
+ *
+ * La liste au-dessus dit ce qui EXISTE ; celle-ci dit ce qui se POSE. La
+ * souris, les touches, le rectangle d'écran, l'espace disque se lisent et ne
+ * s'écrivent pas — « set the screenRect to … » n'a aucun sens, et l'accepter
+ * en silence serait exactement le défaut qu'on corrige, déplacé d'un nom à
+ * l'autre.
+ *
+ * Elle recense ce que l'hôte accepte réellement : les douze branches de
+ * cocoa_global_set, plus la famille des couleurs de peinture qu'il traite à
+ * part. lockScreen y figure parce que le noyau le lit ET le laisse passer —
+ * c'est la seule des trois propriétés du noyau à être partagée. */
+static const char *V3_GLOBALES_ECRIVABLES[] = {
+    "lockScreen", "editBkgnd", "cursor",
+    "filled", "lineSize", "pattern", "brush",
+    "textHeight", "textSize", "textFont", "textStyle", "textAlign",
+    "foreColor", "backColor", "foregroundColor", "backgroundColor",
+    "paintColor", "paintBackColor", "inkColor",
+    NULL
+};
+
+static int dans_liste(const char *nom, const char **liste)
+{
+    for (int i = 0; liste[i]; i++)
+        if (ci_equal(nom, liste[i])) return 1;
+    return 0;
+}
+
 /* Les propriétés du monde sans argument que call_function_body servait en
  * relexant « the » + nom : the result, the date (et ses formes longues et
  * courtes), the selection, the paramCount... Toutes des lectures directes
@@ -9650,6 +9678,40 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 
         if (prop_globale_noyau(prop, val)) {
             set_result("");
+            g_atop = sauve; return 1;
+        }
+
+        /* UNE PROPRIÉTÉ GLOBALE INCONNUE SE DIT, ELLE NE S'AVALE PAS.
+         *
+         * L'écriture partait droit chez l'hôte, quel que soit le nom. Une
+         * coquille ne produisait donc RIEN : ni effet, ni message. Trouvé dans
+         * Graph Maker 2.2, où l'auteur avait écrit
+         *
+         *     set the foreclor to green
+         *
+         * et où le trait est resté noir pendant trente-huit ans.
+         *
+         * L'incohérence était complète : « put the foreclor » rendait déjà
+         * « propriété ou fonction inconnue », et « set the widht of card
+         * button 1 » aussi. Seule l'écriture d'une GLOBALE passait. Un langage
+         * qui refuse de lire ce qu'il accepte d'écrire ment sur l'un des deux.
+         *
+         * La liste de référence est celle que la LECTURE emploie déjà : le
+         * noyau ne peut pas connaître ces propriétés seul — elles vivent chez
+         * l'hôte —, mais il sait lesquelles existent, et c'est tout ce qu'il
+         * faut pour refuser le reste. Un seul endroit, donc, et les deux sens
+         * du même nom ne peuvent plus diverger. */
+        if (!dans_liste(prop, V3_GLOBALES_ECRIVABLES)) {
+            /* Deux refus BIEN DISTINCTS, parce qu'ils appellent deux gestes
+             * différents : corriger une coquille, ou renoncer à écrire ce qui
+             * ne s'écrit pas. */
+            if (dans_liste(prop, V3_GLOBALES_HOTE)) {
+                set_result("propriété en lecture seule");
+                emit(HC_ERR, "   !! propriété en lecture seule : %s", prop);
+            } else {
+                set_result("propriété inconnue");
+                emit(HC_ERR, "   !! propriété inconnue : %s", prop);
+            }
             g_atop = sauve; return 1;
         }
 

@@ -16,6 +16,7 @@
 
 === drawChart : le camembert et sa legende ===
    avant                    traces=0    clics=0    frappes=0   menus=0  outil=browse     motif=-   curseur=watch
+   [ERR]    !! propriété inconnue : foreclor
    apres                    traces=12   clics=17   frappes=12  menus=2  outil=browse     motif=2   curseur=watch
    Drew Data     = [true]
    rect Legend   = 280,30,414,135
@@ -27,6 +28,7 @@
    Graph Info visible : non
 
 === openCard : relit le rect, et redessine si besoin ===
+   [ERR]    !! propriété inconnue : foreclor
    apres openCard           traces=12   clics=17   frappes=12  menus=2  outil=browse     motif=2   curseur=watch
    Drew Data     = [true]   (openCard a relance drawChart)
 
