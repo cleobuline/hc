@@ -305,7 +305,7 @@ HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
     int taille = deb + (len - fin);
     HctValeur r;
     r.txt = malloc((size_t)taille + 1);
-    if (!r.txt) { r.len = 0; return r; }
+    if (!r.txt) return hct_val_echec();
     memcpy(r.txt, s, (size_t)deb);
     memcpy(r.txt + deb, s + fin, (size_t)(len - fin));
     r.txt[taille] = '\0';
@@ -328,7 +328,7 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
         int taille = b.deb + lv + (len - b.fin);
         HctValeur r;
         r.txt = malloc((size_t)taille + 1);
-        if (!r.txt) { r.len = 0; return r; }
+        if (!r.txt) return hct_val_echec();
         memcpy(r.txt, s, (size_t)b.deb);
         memcpy(r.txt + b.deb, val, (size_t)lv);
         memcpy(r.txt + b.deb + lv, s + b.fin, (size_t)(len - b.fin));
@@ -362,7 +362,7 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
 
     HctValeur r;
     r.txt = malloc((size_t)taille + 1);
-    if (!r.txt) { r.len = 0; return r; }
+    if (!r.txt) return hct_val_echec();
 
     int p = 0;
     memcpy(r.txt + p, s, (size_t)len); p += len;

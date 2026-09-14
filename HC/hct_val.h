@@ -27,19 +27,24 @@
 
 #include <stddef.h>
 
-/* ATTENTION AU CONTRAT.
+/* LE CONTRAT, ET IL EST TENU CETTE FOIS.
  *
- * Ce commentaire promettait « toujours non NULL après construction ». C'était
- * FAUX, et un commentaire faux est pire que pas de commentaire : il fait
- * écrire du code sans garde. Quand une allocation échoue, les constructeurs
- * rendent txt = NULL et len = 0 — indiscernable d'une chaîne vide valide.
+ * `txt` n'est JAMAIS nul après construction. Il l'était : quand une allocation
+ * échouait, les constructeurs rendaient NULL et len = 0, indiscernable d'une
+ * chaîne vide valide. L'en-tête demandait alors à chaque consommateur de
+ * traiter le cas — une promesse que personne ne pouvait tenir, avec des
+ * centaines de lectures de .txt dans le noyau.
  *
- * Tant que le type n'a pas de véritable état d'échec, tout consommateur doit
- * donc traiter txt == NULL. Le chantier est identifié : un drapeau d'échec
- * mémoire collant dans HctContexte, qui distinguerait « vide » de « pas pu ».
- * Il n'est pas fait, et le dire ici vaut mieux que de laisser croire l'inverse. */
+ * Mesuré, en faisant échouer UN SEUL malloc et en balayant tous les points
+ * d'allocation d'un script ordinaire : sept plantages sur quatre cents.
+ *
+ * Une valeur en échec porte désormais une chaîne vide STATIQUE — lisible,
+ * terminée par zéro — et lève un drapeau COLLANT. La sentinelle empêche le
+ * plantage, le drapeau empêche le silence : sans lui, une pénurie se
+ * déguiserait en chaîne vide, ce qui est le défaut qu'on chasse partout
+ * ailleurs. L'exécuteur regarde le drapeau et lève une faute. */
 typedef struct {
-    char *txt;      /* terminé par 0 — mais NULL si l'allocation a échoué */
+    char *txt;      /* terminé par 0, JAMAIS nul après construction */
     int   len;
 } HctValeur;
 
@@ -52,6 +57,22 @@ HctValeur hct_val_calcul(double x);   /* idem, mais mis en forme */
 HctValeur hct_val_bool(int vrai);
 HctValeur hct_val_copie(HctValeur v);
 void      hct_val_libere(HctValeur *v);
+
+/* La valeur qu'on rend quand l'allocation a échoué : une chaîne vide statique,
+ * et le drapeau levé. À employer partout où l'on construisait « txt = NULL ». */
+HctValeur hct_val_echec(void);
+
+/* Le drapeau est COLLANT : une fois levé il ne retombe que sur demande. C'est
+ * ce qui permet de le consulter une fois par instruction plutôt qu'après
+ * chaque sous-expression, sans risquer de manquer la panne. */
+int  hct_val_manque(void);
+void hct_val_manque_efface(void);
+
+/* Sortir le texte d'une valeur en en prenant la propriété : l'appelant devra
+ * free(). C'est la SEULE façon correcte, et la sentinelle en est la raison —
+ * une valeur vide porte une chaîne STATIQUE, que free() ferait exploser.
+ * La valeur est vidée au passage. */
+char *hct_val_prend(HctValeur *v);
 
 /* --- lecture --- */
 

@@ -88,7 +88,7 @@ static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
     int n = a.len + le + b.len;
     HctValeur r;
     r.txt = malloc((size_t)n + 1);
-    if (!r.txt) { r.len = 0; return r; }
+    if (!r.txt) return hct_val_echec();
     memcpy(r.txt, a.txt, (size_t)a.len);
     if (le) memcpy(r.txt + a.len, entre, (size_t)le);
     memcpy(r.txt + a.len + le, b.txt, (size_t)b.len);
@@ -829,7 +829,7 @@ static char *delimiteur(HctContexte *ctx)
     HctValeur v;
     if (ctx->hote.fonction &&
         ctx->hote.fonction(ctx->hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        if (v.txt && v.txt[0]) return v.txt;   /* propriété reprise */
+        if (v.txt && v.txt[0]) return hct_val_prend(&v);   /* propriété reprise */
         hct_val_libere(&v);
     }
     return NULL;

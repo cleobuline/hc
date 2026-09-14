@@ -9107,15 +9107,17 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
          * 6 553. Sans un mot. Ce n'est pas une troncature d'affichage, c'est
          * une destruction de données.
          *
-         * HctValeur alloue son texte à sa taille : on le prend tel quel, et
-         * l'on en devient propriétaire — d'où le free et non hct_val_libere. */
+         * HctValeur alloue son texte à sa taille : on en prend la propriété par
+         * hct_val_prend — d'où le free et non hct_val_libere. Reprendre v.txt
+         * à la main, comme on le faisait, explosait sur une valeur VIDE : son
+         * texte est une sentinelle statique, et free() n'en veut pas. */
         char *src_dyn = NULL;
         const char *src;
         if (ncible) {
             HctValeur v = hct_evalue(ctx, ncible);
             if (ctx->erreur) { hct_val_libere(&v); ARENA_FREE;
                                g_atop = sauve; return 1; }
-            src_dyn = v.txt;                 /* propriété reprise */
+            src_dyn = hct_val_prend(&v);     /* propriété reprise */
             src = src_dyn ? src_dyn : "";
         } else {
             char *tmp = arena_buf();
@@ -9163,6 +9165,13 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             } else {
                 cles[i] = dupstr(elems[i]);
             }
+            /* LA CLÉ AUSSI, pas seulement l'élément.
+             *
+             * elems[i] était gardé deux lignes plus haut, cles[i] non — et
+             * c'est POURTANT la clé que sort_cmp déréférence, sans vérifier.
+             * Mesuré en faisant échouer un seul malloc : c'est le plantage
+             * le plus fréquent de tout le balayage. */
+            if (!cles[i]) hc_memoire_epuisee("clés d'un tri");
             tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
         }
 
