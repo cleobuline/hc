@@ -3019,8 +3019,20 @@ static void var_set(const char *name, const char *val)
     Frame *f = frame_for(name);
     for (int i = 0; i < f->n; i++)
         if (ci_equal(f->v[i].name, name)) {
+            /* LA COPIE D'ABORD, LA LIBÉRATION ENSUITE.
+             *
+             * L'ancienne valeur était libérée AVANT de savoir si la nouvelle
+             * tenait en mémoire. En cas de pénurie la variable devenait NULL,
+             * ce que var_get rend comme « pas de telle variable » : le mot
+             * retombait sous la règle « identificateur inconnu = son propre
+             * nom » et le script continuait avec son nom de variable en guise
+             * de valeur. Silencieusement, et avec l'ancienne valeur déjà
+             * perdue. Ici comme pour le realloc juste en dessous, une pénurie
+             * se dit. */
+            char *neuf = val ? dupstr(val) : NULL;
+            if (val && !neuf) hc_memoire_epuisee("valeur d'une variable");
             free(f->v[i].val);
-            f->v[i].val = dupstr(val);
+            f->v[i].val = neuf;
             return;
         }
     if (f->n == f->cap) {
@@ -3030,7 +3042,9 @@ static void var_set(const char *name, const char *val)
         f->v = p; f->cap = cap;
     }
     f->v[f->n].name = dupstr(name);
-    f->v[f->n].val  = dupstr(val);
+    f->v[f->n].val  = val ? dupstr(val) : NULL;
+    if (!f->v[f->n].name || (val && !f->v[f->n].val))
+        hc_memoire_epuisee("nom ou valeur d'une variable");
     f->n++;
 }
 

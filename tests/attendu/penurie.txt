@@ -1,0 +1,7 @@
+=== sans penurie ===
+   pile chargee : oui, plages 16/16, textes de fond 8/8
+
+=== un realloc en echec, a chaque point du chargement ===
+   piles chargees en ayant PERDU quelque chose : 0
+   (avant correction : 16 points sur 52 le faisaient)
+   aucune perte silencieuse

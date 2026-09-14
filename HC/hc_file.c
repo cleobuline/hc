@@ -685,16 +685,26 @@ static int parse_run(const char *s, int *start, int *len, int *style,
     return 1;
 }
 
-static void add_run(struct RunList *rl, int start, int len, int style,
-                    int size, const char *font, int color)
+/* Rend 0 SI UNE PLAGE A ÉTÉ PERDUE, et l'appelant refuse alors le fichier.
+ *
+ * Elle rendait void, et une pénurie de mémoire faisait simplement disparaître
+ * la plage : le champ revenait avec le bon texte et le mauvais style, sans un
+ * mot. Le pire enchaînement est le même que partout ailleurs dans ce lecteur —
+ * l'utilisateur ne voit pas tout de suite ce qui manque, il enregistre, et
+ * l'original est remplacé par la version appauvrie.
+ *
+ * Le refus de la plage pour cause de contenu — longueur nulle, plage muette
+ * sur tous les attributs — n'est PAS un échec : il n'y avait rien à garder. */
+static int add_run(struct RunList *rl, int start, int len, int style,
+                   int size, const char *font, int color)
 {
-    if (!rl || len <= 0 || start < 0) return;
+    if (!rl || len <= 0 || start < 0) return 1;
     if (style == HC_STYLE_INHERIT && size == 0 && (!font || !*font) &&
-        color == HC_COLOR_INHERIT) return;
+        color == HC_COLOR_INHERIT) return 1;
     if (rl->n == rl->cap) {
         int cap = rl->cap ? rl->cap * 2 : 8;
         struct TextRun *v = (struct TextRun *)realloc(rl->v, (size_t)cap * sizeof *v);
-        if (!v) return;
+        if (!v) return 0;
         rl->v = v; rl->cap = cap;
     }
     rl->v[rl->n].start = start;
@@ -704,6 +714,7 @@ static void add_run(struct RunList *rl, int start, int len, int style,
     rl->v[rl->n].font  = (font && *font) ? dupstr_file(font) : NULL;
     rl->v[rl->n].color = color;
     rl->n++;
+    return 1;
 }
 
 /* Un chiffre hexadécimal, ou -1. On ne se repose pas sur sscanf : une ligne
@@ -852,6 +863,12 @@ Object *hc_load(const char *path)
                         int cap = owner->capbgtexts ? owner->capbgtexts * 2 : 4;
                         struct BgText *bp = realloc(owner->bgtexts, (size_t)cap * sizeof *bp);
                         if (bp) { owner->bgtexts = bp; owner->capbgtexts = cap; }
+                        /* L'agrandissement échoué faisait disparaître TOUT le
+                         * texte de fond de cette carte sur cette carte-là, et
+                         * `free(t)` en dessous jetait les octets. Le texte d'un
+                         * champ de fond est du contenu utilisateur, pas un
+                         * réglage : on refuse le fichier. */
+                        else acc.manque = 1;
                     }
                     if (owner->nbgtexts < owner->capbgtexts) {
                         struct BgText *e = &owner->bgtexts[owner->nbgtexts];
@@ -924,16 +941,18 @@ Object *hc_load(const char *path)
         if (strncmp(s, "run ", 4) == 0) {
             int a, b, c, sz, co; char fn[128];
             if (part && part->type == OBJ_FIELD &&
-                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn, &co))
-                add_run(&part->runs, a, b, c, sz, fn, co);
+                parse_run(s + 4, &a, &b, &c, &sz, fn, sizeof fn, &co) &&
+                !add_run(&part->runs, a, b, c, sz, fn, co))
+                acc.manque = 1;   /* une plage perdue = fichier refusé */
             continue;
         }
         if (strncmp(s, "bgrun ", 6) == 0) {
             int a, b, c, sz, co; char fn[128];
             if (owner && owner->type == OBJ_CARD &&
                 last_bgtext >= 0 && last_bgtext < owner->nbgtexts &&
-                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn, &co))
-                add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn, co);
+                parse_run(s + 6, &a, &b, &c, &sz, fn, sizeof fn, &co) &&
+                !add_run(&owner->bgtexts[last_bgtext].runs, a, b, c, sz, fn, co))
+                acc.manque = 1;
             continue;
         }
 
