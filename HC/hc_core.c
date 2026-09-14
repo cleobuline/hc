@@ -8069,8 +8069,54 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
     if (v3_est_fenetre(ref)) return NULL;
 
     Object *o = hct_resout(ctx, ref);
-    if (!o && ref && ref->genre == HCTN_OBJET) g_v3_cible_manquee = ref;
-    return o;
+    if (o) return o;
+
+    /* UNE VARIABLE QUI CONTIENT UN DESCRIPTEUR D'OBJET EN DÉSIGNE UN.
+     *
+     * C'est l'idiome de toute fonction utilisateur qui prend un objet :
+     *
+     *     function nomme o
+     *       return the short name of o
+     *     end nomme
+     *     put nomme(me)
+     *
+     * hct_resout ne connaît que les nœuds OBJET. Devant un identificateur nu,
+     * il rendait NULL, le recours reconstituait le texte « the short name of
+     * o », l'ancien évaluateur cherchait un objet NOMMÉ « o », n'en trouvait
+     * pas, et la règle « identificateur inconnu = son propre nom » rendait le
+     * littéral « short name of o ». Sans erreur : le script avait l'air de
+     * marcher. Mesuré, avec un descripteur parfaitement formé dans la
+     * variable — « button "Bouton" » — le résultat était le même.
+     *
+     * On lit donc la variable et l'on confie SA VALEUR au résolveur de texte
+     * du noyau, qui sait lire « card button id 2915 » aussi bien que « button
+     * "Bouton" ». C'est ce que fait HyperTalk, et c'est ce qui rend
+     * « the name of me » utilisable comme on l'écrit partout.
+     *
+     * Seulement si l'identificateur EST une variable posée. Un mot inconnu
+     * garde le chemin d'avant : le prendre pour un nom d'objet ferait résoudre
+     * « the foo of bar » sur un objet nommé « bar » que personne n'a désigné.
+     *
+     * Le garde de profondeur n'est pas décoratif : resolve peut évaluer un
+     * sous-terme — « card id x » —, donc rappeler l'évaluateur, donc revenir
+     * ici. Une variable qui se désigne elle-même boucherait sans lui. */
+    if (ref && ref->genre == HCTN_IDENT) {
+        static int profondeur = 0;
+        if (profondeur < 4) {
+            char nom[64];
+            hct_texte(&ref->jeton, nom, sizeof nom);
+            const char *v = var_get(nom);
+            if (v && *v) {
+                profondeur++;
+                o = resolve(v);
+                profondeur--;
+                if (o) return o;
+            }
+        }
+    }
+
+    if (ref && ref->genre == HCTN_OBJET) g_v3_cible_manquee = ref;
+    return NULL;
 }
 
 /* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
