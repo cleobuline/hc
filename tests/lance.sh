@@ -92,6 +92,9 @@ arguments() {
     # message, si bien qu'ils passaient pour conformes.
     test_exercice|test_exercice2) echo "donnees/exercice.txt" ;;
     rendu)              echo "donnees/arcenciel.txt" ;;
+    # Les deux bancs attendaient « draw.txt » depuis toujours, et il n'était
+    # nulle part dans le dépôt : ils ne tournaient pas du tout.
+    banc|banc_rom)      echo "donnees/draw.txt" ;;
     *)                  echo "" ;;
   esac
 }
@@ -156,7 +159,7 @@ for src in harnais/*.c; do
     # un chronomètre muet depuis des mois est un chronomètre inutile — sans
     # rougir la suite pour autant.
     case "$n" in
-      bench*|banc*) echo "  NE TOURNE PAS  $n (code $code)"; chrono=$((chrono+1)); continue ;;
+      bench*) echo "  NE TOURNE PAS  $n (code $code)"; chrono=$((chrono+1)); continue ;;
     esac
     echo "  CODE $code        $n"; rate=$((rate+1)); continue
   fi
@@ -170,8 +173,22 @@ for src in harnais/*.c; do
   # Un CHRONOMÈTRE n'est pas un test de non-régression : sa sortie porte des
   # millisecondes, qui ne sont jamais deux fois les mêmes. On le fait tourner
   # — il doit au moins finir sans planter — mais on ne compare pas.
+  #
+  # LA RÈGLE EST LE PRÉFIXE, ET ELLE EST VRAIE : « bench » mesure du TEMPS,
+  # « banc » mesure un COMPORTEMENT. banc_lignes a donc été renommé
+  # bench_lignes — il affichait des millisecondes sous un nom qui promettait
+  # l'inverse, et une règle par préfixe qui traîne une liste d'exceptions
+  # finit toujours par être fausse quelque part.
+  #
+  # « banc » et « banc_rom » N'EN SONT PLUS. Ils portaient ce nom, mais leur
+  # sortie ne compte que des clics et des tracés : avec l'horloge gelée, elle
+  # est identique d'un passage à l'autre — vérifié. Les exempter revenait à
+  # jeter le test le plus exigeant de la suite : deux mille tracés produits par
+  # un vrai script de 1987, dont le moindre écart d'évaluation se verrait. Le
+  # relevé v3/v1 y figure aussi, si bien qu'un retour vers l'ancien moteur qui
+  # réapparaîtrait se signalerait tout seul.
   case "$n" in
-    bench*|banc*) chrono=$((chrono+1)); continue ;;
+    bench*) chrono=$((chrono+1)); continue ;;
   esac
 
   ref="attendu/$n.txt"

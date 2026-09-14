@@ -53,6 +53,18 @@ int main(int argc, char **argv)
     Object *b2 = hc_new_button(bg, "Connect v");  b2->hilite = 1;
     Object *b3 = hc_new_button(bg, "\xe2\x80\x9c" "Depth" "\xe2\x80\x9d"); b3->hilite = 0;
 
+    /* LES DEUX PIECES DE DECOR QUE LA PILE D'ORIGINE AVAIT.
+     *
+     * Le script les demande, et sans elles le banc s'executait quand meme —
+     * en crachant trois « objet introuvable » et un « personne ne repond a
+     * checkInput » qui n'apprenaient rien a personne. Ce ne sont pas des
+     * defauts de l'interprete : c'est du decor manquant.
+     *
+     * « lock screen » reste ETEINT : un banc qui verrouille l'ecran ne mesure
+     * plus le meme chemin, et c'est le trace qu'on chronometre ici. */
+    Object *b4 = hc_new_button(bg, "lock screen"); b4->hilite = 0;
+    hc_set_script(stack, "on checkInput\n  -- la pile verifie ses champs ; rien a faire ici\nend checkInput\n");
+
     char *s = lire(argc>1?argv[1]:"draw.txt");
     hc_set_script(btn, s);
     hc_send(btn, "mouseUp");
