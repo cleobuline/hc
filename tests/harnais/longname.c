@@ -106,9 +106,40 @@ int main(void)
         "  put the name of bg button \"DuFond\" into ab\n"
         "  put \"   et elle se re-resout : \" & the short name of ab\n"
 
+        "  put \"== une CIBLE CALCULEE, entre parentheses ==\"\n"
+        /* La variable intermediaire marchait deja ; la parenthese, non. Elle
+         * rendait le texte de la demande — « short name of (the name of card
+         * button "Bouton") » — sans la moindre erreur. */
+        "  put the short name of (the name of card button \"Bouton\")\n"
+        "  put the id of (the long name of card field \"Champ\")\n"
+        "  put the short name of (\"card button \" & quote & \"Bouton\" & quote)\n"
+        "  put the short name of (line 1 of lb)\n"
+
         "  put \"== ce qui ne doit PAS changer ==\"\n"
         "  put the short name of this stack\n"
         "  put the short name of card id 102\n"
+        "end mouseUp\n");
+    hc_send(decl, "mouseUp");
+
+    /* Une cible calculee qui ne designe rien doit le DIRE — et nommer l'OBJET,
+     * pas la propriete. A part, parce qu'une erreur arrete le gestionnaire :
+     * la mettre au milieu de celui d'au-dessus aurait fait disparaitre tout ce
+     * qui suit, et un harnais qui se coupe ne mesure plus rien.
+     *
+     * Le second cas est le garde-fou du premier : un texte calcule qui ne
+     * s'ecrit PAS comme un descripteur reste du texte, et « the number of
+     * chars » a le droit de le compter. Sans lui, la correction inventerait
+     * une erreur la ou il n'y en a pas. */
+    puts("\n== une cible calculee qui ne designe rien ==");
+    hc_set_script(decl,
+        "on mouseUp\n"
+        "  put the short name of (\"card button \" & quote & \"Absent\" & quote)\n"
+        "end mouseUp\n");
+    hc_send(decl, "mouseUp");
+    hc_set_script(decl,
+        "on mouseUp\n"
+        "  put the number of chars of (\"abc\" & \"d\")\n"
+        "  put the short name of (\"Bouton\")\n"
         "end mouseUp\n");
     hc_send(decl, "mouseUp");
 

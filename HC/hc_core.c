@@ -7470,6 +7470,9 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
+static int v3_lit_prop(void *d, void *objet, const char *prop,
+                       HctValeur *out);
+static HctHote v3_hote(void);
 
 static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
 
@@ -7498,6 +7501,72 @@ static int v3_prop_sur_objet(const HctNoeud *n)
     return sur == g_v3_cible_manquee;
 }
 
+/* Ce texte s'écrit-il comme un DESCRIPTEUR d'objet ?
+ *
+ * Sert à distinguer deux échecs que la sonde confondrait :
+ *
+ *     the short name of ("card button " & quote & "Absent" & quote)
+ *     the number of chars of ("abc" & "d")
+ *
+ * Dans les deux cas la sonde évalue son texte et resolve renonce. Mais le
+ * premier DÉSIGNE un objet — l'auteur a écrit « card button », il en veut un,
+ * et s'il n'y en a pas il faut le dire — tandis que le second ne désigne rien
+ * du tout : c'est du texte, et « the number of chars » a parfaitement le droit
+ * de le compter. Signaler « objet introuvable » sur « abcd » serait une erreur
+ * inventée, exactement le défaut qu'on est en train de corriger, à l'envers.
+ *
+ * On ne teste donc que le PREMIER MOT, sur le vocabulaire dont resolve_local
+ * fait ses branches. Un nom nu n'est pas un descripteur : « Bouton » tout seul
+ * ne dit ni la couche ni la sorte. */
+static int v3_ressemble_a_un_objet(const char *t)
+{
+    if (!t) return 0;
+    t = skip_spaces(t);
+    if (ci_word(t, "the")) t = skip_spaces(t + 3);
+    static const char *TETES[] = {
+        "card", "cd", "bkgnd", "bg", "background", "stack",
+        "button", "btn", "field", "fld", "part", NULL
+    };
+    for (int i = 0; TETES[i]; i++) if (ci_word(t, TETES[i])) return 1;
+    return 0;
+}
+
+/* Une cible que la sonde de v3_recours a le droit d'évaluer.
+ *
+ * La liste est fermée plutôt qu'ouverte : on nomme ce qu'on accepte, et non
+ * ce qu'on refuse. Un genre ajouté demain à l'arbre sera donc refusé par
+ * défaut, ce qui est le bon sens pour une évaluation SPÉCULATIVE — elle a
+ * lieu alors que rien ne dit encore qu'on en aura besoin.
+ *
+ * Ce qui en est exclu, et pourquoi :
+ *   HCTN_APPEL      un appel de fonction peut avoir des effets. Une sonde
+ *                   n'en déclenche pas.
+ *   HCTN_OBJET      hct_resout s'en occupe, et c'est lui qui doit échouer
+ *                   pour que « objet introuvable » nomme le bon coupable.
+ *   HCTN_IDENT      une variable nue : v3_resout la lit sans rien évaluer,
+ *                   ce qui est plus direct et bien moins cher.
+ *
+ * HCTN_BINAIRE est de la partie, et ce n'est pas un détail : c'est
+ * l'idiome courant,
+ *
+ *     the short name of ("card button " & quote & "Bouton" & quote)
+ *
+ * qui rendait jusqu'ici son propre texte, tronqué à la parenthèse. */
+static int v3_cible_calculable(const HctNoeud *t)
+{
+    if (!t) return 0;
+    switch (t->genre) {
+    case HCTN_CHAINE:
+    case HCTN_CHUNK:
+    case HCTN_OF:
+    case HCTN_BINAIRE:
+    case HCTN_UNAIRE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
@@ -7505,6 +7574,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * moteur d'expressions, sont encore atteints. Sans cette porte ils
      * comptaient sous « ? », et c'était justement le plus gros total. */
     const char *sauve_porte = v1_porte("recours expr");
+    int sonde_manquee = 0;
     (void)d;
 
     /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
@@ -7616,6 +7686,74 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
             snprintf(b, sizeof b, "%d", compte);
             *out = hct_val_texte(b);
             return 1;
+        }
+    }
+
+    /* UNE CIBLE QUI SE CALCULE.
+     *
+     *     put the short name of (the name of card button "Bouton")
+     *
+     * L'arbre est juste — of(short name, of(name, objet)) —, mais hct_resout
+     * ne sait résoudre qu'un nœud OBJET. La cible étant elle-même un « of »,
+     * la résolution renonçait, on arrivait ici, et l'ancien moteur rendait le
+     * TEXTE DE LA DEMANDE : « short name of (the name of card button… ».
+     * Sans erreur, comme toujours avec cette famille-là.
+     *
+     * C'est la même que « the short name of o » quand o est une variable,
+     * corrigée dans v3_resout. Mais celle-ci NE PEUT PAS se corriger au même
+     * endroit, et c'est la leçon de ce défaut :
+     *
+     * hct_eval appelle resout AVANT recours. Une sonde posée dans resout
+     * s'exécute donc avant que les cas particuliers d'ici aient eu leur tour,
+     * et elle évalue des cibles que le recours sait servir entières. Mesuré :
+     * « the number of menuItems of menu "3DEquations" » descendait dans la
+     * sonde, qui évaluait « menuItems of menu "3DEquations" » toute seule,
+     * n'y arrivait pas, et laissait passer trois « objet introuvable » émis
+     * directement vers l'hôte par eval_expr. menuprop et tortureh l'ont dit.
+     *
+     * La sonde a donc sa place ICI, après les cas particuliers et avant le
+     * retour au texte — au dernier moment où il reste quelque chose à tenter.
+     *
+     * Un contexte NEUF, comme le fait eval_expr : les variables sont
+     * globales, il ne manque donc rien, et une sonde qui échoue garde son
+     * erreur pour elle au lieu de la poser sur l'évaluation en cours.
+     *
+     * On n'évalue QUE des formes de LECTURE — un « of », une chaîne, un
+     * morceau — jamais un appel de fonction, dont l'évaluation spéculative
+     * pourrait avoir des effets. Le garde de profondeur ferme la récursion :
+     * la sonde rappelle l'évaluateur, donc peut revenir ici. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && v3_cible_calculable(n->fils[1])) {
+        static int prof_sonde = 0;
+        if (prof_sonde < 4) {
+            prof_sonde++;
+            HctContexte sonde;
+            hct_ctx_init(&sonde, v3_hote());
+            HctValeur v = hct_evalue(&sonde, n->fils[1]);
+            Object *cible = NULL;
+            int ressemblait = 0;
+            if (!sonde.erreur && v.txt && v.txt[0]) {
+                ressemblait = v3_ressemble_a_un_objet(v.txt);
+                cible = resolve(v.txt);
+            }
+            hct_val_libere(&v);
+            if (cible) {
+                char prop[64];
+                hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+                if (v3_lit_prop(NULL, cible, prop, out)) {
+                    prof_sonde--;
+                    g_v1_porte = sauve_porte;
+                    return 1;
+                }
+            } else if (ressemblait) {
+                /* La cible s'écrivait comme un objet et n'en désigne aucun :
+                 * c'est la même tromperie que « field "menu" » rendant son
+                 * propre texte. On le retient pour le garde final, qui rend 0
+                 * et laisse hct_eval lever « objet introuvable ». */
+                sonde_manquee = 1;
+            }
+            prof_sonde--;
         }
     }
 
@@ -7745,7 +7883,8 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n))) {
+    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n) ||
+                 sonde_manquee)) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;

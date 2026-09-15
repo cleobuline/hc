@@ -35,9 +35,19 @@
    bkgnd "Fond"
    stack "Pile"
       et elle se re-resout : DuFond
+   == une CIBLE CALCULEE, entre parentheses ==
+   Bouton
+   9
+   Bouton
+   Bouton
    == ce qui ne doit PAS changer ==
    Pile
    
+
+== une cible calculee qui ne designe rien ==
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "decl".mouseUp)
+   4
+   short name of ("Bouton"
 
 == le CHEMIN du fichier, une fois la pile enregistree ==
    avant enregistrement : chemin = [(aucun)]
