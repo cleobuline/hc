@@ -242,6 +242,16 @@ static Object *find_open_stack(const char *nom)
     for (int i = 0; i < g_nstacks; i++)
         if (g_stacks[i]->name && ci_equal(g_stacks[i]->name, nom))
             return g_stacks[i];
+    /* PAR SON CHEMIN, À DÉFAUT DE SON NOM.
+     *
+     * « the long name of this stack » rend maintenant le chemin du fichier,
+     * comme chez HyperCard. Une forme longue qui ne se relit pas ne serait
+     * qu'une décoration — c'est la leçon du « of … » —, donc le résolveur
+     * accepte les deux. Le chemin est comparé tel quel, casse comprise : un
+     * système de fichiers peut la distinguer, et deviner serait pire. */
+    for (int i = 0; i < g_nstacks; i++)
+        if (g_stacks[i]->path && strcmp(g_stacks[i]->path, nom) == 0)
+            return g_stacks[i];
     return NULL;
 }
 
@@ -408,12 +418,45 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
         snprintf(out, outlen, "%s", o->name ? o->name : "");
         return;
     }
-    if (forme != HC_NOM_LONG) { hc_describe(o, out, outlen); return; }
+    /* LA FORME ABRÉGÉE PORTE LA COUCHE, elle aussi.
+     *
+     * Elle rendait « button "ok" », ce qui ne désigne PAS un objet : une carte
+     * et son fond peuvent porter chacun un bouton de ce nom, et rien dans la
+     * réponse ne disait lequel. « the name of me » était donc inutilisable
+     * pour désigner l'objet dont il venait — or c'est tout ce qu'on lui
+     * demande.
+     *
+     * hc_describe, lui, ne change pas : c'est une ÉTIQUETTE de diagnostic, pas
+     * un descripteur. Les traces disent « button "ok" » et continueront.
+     *
+     * Le mot est « bkgnd », celui d'HyperCard, et le même que la forme longue
+     * emploie déjà : deux orthographes pour la même chose dans les deux formes
+     * d'un même nom seraient une invitation à l'erreur. */
+    if (forme != HC_NOM_LONG) {
+        switch (o->type) {
+        case OBJ_BACKGROUND: terme_objet(o, "bkgnd", out, outlen); return;
+        case OBJ_BUTTON:
+        case OBJ_FIELD: {
+            char type[32];
+            snprintf(type, sizeof type, "%s %s",
+                     hc_owner_is_bg(o) ? "bkgnd" : "card",
+                     o->type == OBJ_BUTTON ? "button" : "field");
+            terme_objet(o, type, out, outlen);
+            return;
+        }
+        default: hc_describe(o, out, outlen); return;
+        }
+    }
 
     Object *pile = owning_stack(o);
-    char pl[160];
-    if (pile) terme_objet(pile, "stack", pl, sizeof pl);
-    else      snprintf(pl, sizeof pl, "%s", "");
+    char pl[512];
+    if (!pile)                 snprintf(pl, sizeof pl, "%s", "");
+    /* LE CHEMIN PLUTÔT QUE LE NOM, quand on le connaît. C'est ce que met
+     * HyperCard, et c'est ce qui distingue deux piles ouvertes qui portent le
+     * même nom. resolve sait relire les deux. */
+    else if (pile->path && pile->path[0])
+        snprintf(pl, sizeof pl, "stack \"%s\"", pile->path);
+    else                       terme_objet(pile, "stack", pl, sizeof pl);
 
     switch (o->type) {
     case OBJ_STACK:
@@ -969,6 +1012,43 @@ static int coord_champ(const char *s, int defaut)
     if (l >= sizeof champ) l = sizeof champ - 1;
     memcpy(champ, s, l); champ[l] = '\0';
     return hc_coord(champ, defaut);
+}
+
+/* L'ENTIER QUI COMMENCE ICI, ET QUI S'ARRÊTE AU PREMIER BLANC.
+ *
+ * hc_entier exige que TOUTE la chaîne soit un nombre — c'est tout son intérêt,
+ * « 100patate » n'est pas cent. Mais un fichier ou une commande met souvent un
+ * nombre AU MILIEU d'une ligne, suivi d'autre chose :
+ *
+ *     iconres 20554 "Terminator"
+ *     card "Une" background "Fond" backgroundid 7
+ *
+ * Donner « 20554 "Terminator" » à hc_entier, c'est lui donner une chaîne qui
+ * n'est pas un nombre : il rend le défaut, et l'appelant croit avoir lu.
+ *
+ * La famille est connue : coord_champ existe déjà pour les listes séparées par
+ * des virgules, et quatre lecteurs y étaient déjà passés — parse_ints,
+ * « drag from », « click at », la taille d'une plage de style. L'en-tête d'une
+ * icône était le cinquième, et personne ne l'a vu : il n'y avait AUCUN harnais
+ * pour les icônes. Toutes les icônes d'une pile relue prenaient le numéro 0,
+ * et comme hc_icon_add remplace l'entrée de même numéro, quatre icônes n'en
+ * faisaient plus qu'une — « aucune icône » pour tous les boutons.
+ *
+ * Deux lecteurs plutôt qu'un seul permissif : celui qui veut toute la chaîne
+ * le dit, celui qui lit un champ le dit aussi. C'est à l'appel qu'on sait
+ * lequel on veut, pas dans la conversion. */
+int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
+{
+    if (!s) return defaut;
+    while (*s == ' ' || *s == '\t') s++;
+    const char *fin = s;
+    while (*fin && *fin != ' ' && *fin != '\t' &&
+           *fin != '\n' && *fin != '\r') fin++;
+    char champ[64];
+    size_t l = (size_t)(fin - s);
+    if (l >= sizeof champ) return defaut;   /* trop long pour être un entier */
+    memcpy(champ, s, l); champ[l] = '\0';
+    return hc_entier(champ, mini, maxi, defaut);
 }
 
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
@@ -1655,6 +1735,7 @@ void hc_free(Object *o)
     for (int i = 0; i < o->nparts; i++) hc_free(o->parts[i]);
     free(o->parts);
     free(o->name);
+    free(o->path);
     hc_arbre_oublie(o);          /* avant le script : les jetons y pointent */
     free(o->script);
     free(o->contents);
@@ -1973,6 +2054,20 @@ void hc_set_hilite_raw(Object *card, int button_id, int on)
 }
 
 int hc_hilite_par_carte(Object *btn) { return hilite_par_carte(btn); }
+
+const char *hc_stack_path(Object *stack)
+{
+    return (stack && stack->type == OBJ_STACK) ? stack->path : NULL;
+}
+
+void hc_set_stack_path(Object *stack, const char *path)
+{
+    if (!stack || stack->type != OBJ_STACK) return;
+    char *neuf = path ? dupstr(path) : NULL;
+    if (path && !neuf) hc_memoire_epuisee("chemin d'une pile");
+    free(stack->path);
+    stack->path = neuf;
+}
 
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
@@ -7412,6 +7507,9 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
+static int v3_lit_prop(void *d, void *objet, const char *prop,
+                       HctValeur *out);
+static HctHote v3_hote(void);
 
 static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
 
@@ -7440,6 +7538,72 @@ static int v3_prop_sur_objet(const HctNoeud *n)
     return sur == g_v3_cible_manquee;
 }
 
+/* Ce texte s'écrit-il comme un DESCRIPTEUR d'objet ?
+ *
+ * Sert à distinguer deux échecs que la sonde confondrait :
+ *
+ *     the short name of ("card button " & quote & "Absent" & quote)
+ *     the number of chars of ("abc" & "d")
+ *
+ * Dans les deux cas la sonde évalue son texte et resolve renonce. Mais le
+ * premier DÉSIGNE un objet — l'auteur a écrit « card button », il en veut un,
+ * et s'il n'y en a pas il faut le dire — tandis que le second ne désigne rien
+ * du tout : c'est du texte, et « the number of chars » a parfaitement le droit
+ * de le compter. Signaler « objet introuvable » sur « abcd » serait une erreur
+ * inventée, exactement le défaut qu'on est en train de corriger, à l'envers.
+ *
+ * On ne teste donc que le PREMIER MOT, sur le vocabulaire dont resolve_local
+ * fait ses branches. Un nom nu n'est pas un descripteur : « Bouton » tout seul
+ * ne dit ni la couche ni la sorte. */
+static int v3_ressemble_a_un_objet(const char *t)
+{
+    if (!t) return 0;
+    t = skip_spaces(t);
+    if (ci_word(t, "the")) t = skip_spaces(t + 3);
+    static const char *TETES[] = {
+        "card", "cd", "bkgnd", "bg", "background", "stack",
+        "button", "btn", "field", "fld", "part", NULL
+    };
+    for (int i = 0; TETES[i]; i++) if (ci_word(t, TETES[i])) return 1;
+    return 0;
+}
+
+/* Une cible que la sonde de v3_recours a le droit d'évaluer.
+ *
+ * La liste est fermée plutôt qu'ouverte : on nomme ce qu'on accepte, et non
+ * ce qu'on refuse. Un genre ajouté demain à l'arbre sera donc refusé par
+ * défaut, ce qui est le bon sens pour une évaluation SPÉCULATIVE — elle a
+ * lieu alors que rien ne dit encore qu'on en aura besoin.
+ *
+ * Ce qui en est exclu, et pourquoi :
+ *   HCTN_APPEL      un appel de fonction peut avoir des effets. Une sonde
+ *                   n'en déclenche pas.
+ *   HCTN_OBJET      hct_resout s'en occupe, et c'est lui qui doit échouer
+ *                   pour que « objet introuvable » nomme le bon coupable.
+ *   HCTN_IDENT      une variable nue : v3_resout la lit sans rien évaluer,
+ *                   ce qui est plus direct et bien moins cher.
+ *
+ * HCTN_BINAIRE est de la partie, et ce n'est pas un détail : c'est
+ * l'idiome courant,
+ *
+ *     the short name of ("card button " & quote & "Bouton" & quote)
+ *
+ * qui rendait jusqu'ici son propre texte, tronqué à la parenthèse. */
+static int v3_cible_calculable(const HctNoeud *t)
+{
+    if (!t) return 0;
+    switch (t->genre) {
+    case HCTN_CHAINE:
+    case HCTN_CHUNK:
+    case HCTN_OF:
+    case HCTN_BINAIRE:
+    case HCTN_UNAIRE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
@@ -7447,6 +7611,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * moteur d'expressions, sont encore atteints. Sans cette porte ils
      * comptaient sous « ? », et c'était justement le plus gros total. */
     const char *sauve_porte = v1_porte("recours expr");
+    int sonde_manquee = 0;
     (void)d;
 
     /* Étiquette fine : le genre seul ne dit rien quand la ligne monte à
@@ -7558,6 +7723,74 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
             snprintf(b, sizeof b, "%d", compte);
             *out = hct_val_texte(b);
             return 1;
+        }
+    }
+
+    /* UNE CIBLE QUI SE CALCULE.
+     *
+     *     put the short name of (the name of card button "Bouton")
+     *
+     * L'arbre est juste — of(short name, of(name, objet)) —, mais hct_resout
+     * ne sait résoudre qu'un nœud OBJET. La cible étant elle-même un « of »,
+     * la résolution renonçait, on arrivait ici, et l'ancien moteur rendait le
+     * TEXTE DE LA DEMANDE : « short name of (the name of card button… ».
+     * Sans erreur, comme toujours avec cette famille-là.
+     *
+     * C'est la même que « the short name of o » quand o est une variable,
+     * corrigée dans v3_resout. Mais celle-ci NE PEUT PAS se corriger au même
+     * endroit, et c'est la leçon de ce défaut :
+     *
+     * hct_eval appelle resout AVANT recours. Une sonde posée dans resout
+     * s'exécute donc avant que les cas particuliers d'ici aient eu leur tour,
+     * et elle évalue des cibles que le recours sait servir entières. Mesuré :
+     * « the number of menuItems of menu "3DEquations" » descendait dans la
+     * sonde, qui évaluait « menuItems of menu "3DEquations" » toute seule,
+     * n'y arrivait pas, et laissait passer trois « objet introuvable » émis
+     * directement vers l'hôte par eval_expr. menuprop et tortureh l'ont dit.
+     *
+     * La sonde a donc sa place ICI, après les cas particuliers et avant le
+     * retour au texte — au dernier moment où il reste quelque chose à tenter.
+     *
+     * Un contexte NEUF, comme le fait eval_expr : les variables sont
+     * globales, il ne manque donc rien, et une sonde qui échoue garde son
+     * erreur pour elle au lieu de la poser sur l'évaluation en cours.
+     *
+     * On n'évalue QUE des formes de LECTURE — un « of », une chaîne, un
+     * morceau — jamais un appel de fonction, dont l'évaluation spéculative
+     * pourrait avoir des effets. Le garde de profondeur ferme la récursion :
+     * la sonde rappelle l'évaluateur, donc peut revenir ici. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && v3_cible_calculable(n->fils[1])) {
+        static int prof_sonde = 0;
+        if (prof_sonde < 4) {
+            prof_sonde++;
+            HctContexte sonde;
+            hct_ctx_init(&sonde, v3_hote());
+            HctValeur v = hct_evalue(&sonde, n->fils[1]);
+            Object *cible = NULL;
+            int ressemblait = 0;
+            if (!sonde.erreur && v.txt && v.txt[0]) {
+                ressemblait = v3_ressemble_a_un_objet(v.txt);
+                cible = resolve(v.txt);
+            }
+            hct_val_libere(&v);
+            if (cible) {
+                char prop[64];
+                hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+                if (v3_lit_prop(NULL, cible, prop, out)) {
+                    prof_sonde--;
+                    g_v1_porte = sauve_porte;
+                    return 1;
+                }
+            } else if (ressemblait) {
+                /* La cible s'écrivait comme un objet et n'en désigne aucun :
+                 * c'est la même tromperie que « field "menu" » rendant son
+                 * propre texte. On le retient pour le garde final, qui rend 0
+                 * et laisse hct_eval lever « objet introuvable ». */
+                sonde_manquee = 1;
+            }
+            prof_sonde--;
         }
     }
 
@@ -7687,7 +7920,8 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n))) {
+    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n) ||
+                 sonde_manquee)) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;
@@ -7788,6 +8022,34 @@ static const char *V3_GLOBALES_HOTE[] = {
     "diskSpace", "heapSpace", "systemVersion", "windows", "programs",
     NULL
 };
+
+/* CELLES QU'UN SCRIPT PEUT ÉCRIRE, parmi les précédentes.
+ *
+ * La liste au-dessus dit ce qui EXISTE ; celle-ci dit ce qui se POSE. La
+ * souris, les touches, le rectangle d'écran, l'espace disque se lisent et ne
+ * s'écrivent pas — « set the screenRect to … » n'a aucun sens, et l'accepter
+ * en silence serait exactement le défaut qu'on corrige, déplacé d'un nom à
+ * l'autre.
+ *
+ * Elle recense ce que l'hôte accepte réellement : les douze branches de
+ * cocoa_global_set, plus la famille des couleurs de peinture qu'il traite à
+ * part. lockScreen y figure parce que le noyau le lit ET le laisse passer —
+ * c'est la seule des trois propriétés du noyau à être partagée. */
+static const char *V3_GLOBALES_ECRIVABLES[] = {
+    "lockScreen", "editBkgnd", "cursor",
+    "filled", "lineSize", "pattern", "brush",
+    "textHeight", "textSize", "textFont", "textStyle", "textAlign",
+    "foreColor", "backColor", "foregroundColor", "backgroundColor",
+    "paintColor", "paintBackColor", "inkColor",
+    NULL
+};
+
+static int dans_liste(const char *nom, const char **liste)
+{
+    for (int i = 0; liste[i]; i++)
+        if (ci_equal(nom, liste[i])) return 1;
+    return 0;
+}
 
 /* Les propriétés du monde sans argument que call_function_body servait en
  * relexant « the » + nom : the result, the date (et ses formes longues et
@@ -9107,15 +9369,17 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
          * 6 553. Sans un mot. Ce n'est pas une troncature d'affichage, c'est
          * une destruction de données.
          *
-         * HctValeur alloue son texte à sa taille : on le prend tel quel, et
-         * l'on en devient propriétaire — d'où le free et non hct_val_libere. */
+         * HctValeur alloue son texte à sa taille : on en prend la propriété par
+         * hct_val_prend — d'où le free et non hct_val_libere. Reprendre v.txt
+         * à la main, comme on le faisait, explosait sur une valeur VIDE : son
+         * texte est une sentinelle statique, et free() n'en veut pas. */
         char *src_dyn = NULL;
         const char *src;
         if (ncible) {
             HctValeur v = hct_evalue(ctx, ncible);
             if (ctx->erreur) { hct_val_libere(&v); ARENA_FREE;
                                g_atop = sauve; return 1; }
-            src_dyn = v.txt;                 /* propriété reprise */
+            src_dyn = hct_val_prend(&v);     /* propriété reprise */
             src = src_dyn ? src_dyn : "";
         } else {
             char *tmp = arena_buf();
@@ -9163,6 +9427,13 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             } else {
                 cles[i] = dupstr(elems[i]);
             }
+            /* LA CLÉ AUSSI, pas seulement l'élément.
+             *
+             * elems[i] était gardé deux lignes plus haut, cles[i] non — et
+             * c'est POURTANT la clé que sort_cmp déréférence, sans vérifier.
+             * Mesuré en faisant échouer un seul malloc : c'est le plantage
+             * le plus fréquent de tout le balayage. */
+            if (!cles[i]) hc_memoire_epuisee("clés d'un tri");
             tab[i].cle = cles[i]; tab[i].rang = i; tab[i].card = NULL;
         }
 
@@ -9562,6 +9833,46 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
                               const char *prop, const char *val);
 static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len);
 
+
+/* UNE VALEUR EN LISTE — « to 1,2,30,40 » — EST DÉJÀ DANS L'ARBRE.
+ *
+ * Le motif de `set` est « e to * », et l'étoile vaut « zéro à N expressions
+ * séparées par des virgules » : l'analyseur rend donc un enfant PAR ÉLÉMENT.
+ * v3_cmd_set ne lisait le sous-arbre que lorsqu'il y en avait exactement un,
+ * et retombait sinon sur eval_checked, qui relit le texte brut « 1,2,30,40 »
+ * comme UNE expression — hct_expression s'arrête à la première virgule.
+ *
+ * Résultat : parse_ints n'en comptait qu'un au lieu de quatre, l'écriture
+ * était abandonnée, et rien ne bougeait. Sans un mot, comme toujours.
+ *
+ *     set the rect of button "Ok" to 1,2,30,40     ne faisait rien
+ *     set the rect of button "Ok" to "1,2,30,40"   marchait
+ *     set the loc of button "Ok" to 200,200        ne faisait rien
+ *
+ * On évalue donc chaque élément et on les rejoint par des virgules, ce qui
+ * est très exactement ce que l'étoile a découpé. Chaque élément est une
+ * expression à part entière : « set the loc of X to item 1 of p, item 2 of p »
+ * marche pour la même raison.
+ *
+ * Rend le nombre d'éléments écrits ; s'arrête à la première erreur. */
+static int v3_val_liste(HctContexte *ctx, const HctNoeud *n, int premier,
+                        char *out, int outlen)
+{
+    int pos = 0, compte = 0;
+    out[0] = '\0';
+    for (int i = premier; i < n->nfils; i++) {
+        char un[256];
+        v3_val_texte(ctx, n->fils[i], un, sizeof un);
+        if (ctx->erreur) return compte;
+        int ecrit = snprintf(out + pos, (size_t)(outlen - pos),
+                             "%s%s", compte ? "," : "", un);
+        if (ecrit < 0 || ecrit >= outlen - pos) { out[outlen - 1] = '\0'; break; }
+        pos += ecrit;
+        compte++;
+    }
+    return compte;
+}
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
@@ -9641,6 +9952,40 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 
         if (prop_globale_noyau(prop, val)) {
             set_result("");
+            g_atop = sauve; return 1;
+        }
+
+        /* UNE PROPRIÉTÉ GLOBALE INCONNUE SE DIT, ELLE NE S'AVALE PAS.
+         *
+         * L'écriture partait droit chez l'hôte, quel que soit le nom. Une
+         * coquille ne produisait donc RIEN : ni effet, ni message. Trouvé dans
+         * Graph Maker 2.2, où l'auteur avait écrit
+         *
+         *     set the foreclor to green
+         *
+         * et où le trait est resté noir pendant trente-huit ans.
+         *
+         * L'incohérence était complète : « put the foreclor » rendait déjà
+         * « propriété ou fonction inconnue », et « set the widht of card
+         * button 1 » aussi. Seule l'écriture d'une GLOBALE passait. Un langage
+         * qui refuse de lire ce qu'il accepte d'écrire ment sur l'un des deux.
+         *
+         * La liste de référence est celle que la LECTURE emploie déjà : le
+         * noyau ne peut pas connaître ces propriétés seul — elles vivent chez
+         * l'hôte —, mais il sait lesquelles existent, et c'est tout ce qu'il
+         * faut pour refuser le reste. Un seul endroit, donc, et les deux sens
+         * du même nom ne peuvent plus diverger. */
+        if (!dans_liste(prop, V3_GLOBALES_ECRIVABLES)) {
+            /* Deux refus BIEN DISTINCTS, parce qu'ils appellent deux gestes
+             * différents : corriger une coquille, ou renoncer à écrire ce qui
+             * ne s'écrit pas. */
+            if (dans_liste(prop, V3_GLOBALES_HOTE)) {
+                set_result("propriété en lecture seule");
+                emit(HC_ERR, "   !! propriété en lecture seule : %s", prop);
+            } else {
+                set_result("propriété inconnue");
+                emit(HC_ERR, "   !! propriété inconnue : %s", prop);
+            }
             g_atop = sauve; return 1;
         }
 
@@ -9739,6 +10084,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
          * évite qu'on se demande pourquoi dans six mois. */
         if (n->nfils == 3) {
             v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else if (n->nfils > 3) {
+            /* « to 1,2,30,40 » : un enfant par élément. Voir v3_val_liste. */
+            v3_val_liste(ctx, n, 2, val, HC_VAL);
             if (ctx->erreur) { g_atop = sauve; return 1; }
         } else {
             eval_checked(to + 2, val, HC_VAL);

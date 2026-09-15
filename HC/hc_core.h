@@ -127,6 +127,20 @@ struct Object {
     ObjType  type;
     int      id;
     char    *name;      /* nom de l'objet (peut être NULL) */
+
+    /* LE CHEMIN DU FICHIER, pour une PILE seulement, ou NULL.
+     *
+     * Le noyau ne le connaissait pas : c'était le document qui le tenait, et
+     * « the long name of this stack » ne pouvait donc rendre que le NOM.
+     * HyperCard y met le chemin complet, et c'est ce qui rend la forme longue
+     * utilisable : deux piles ouvertes peuvent porter le même nom, leur chemin
+     * non.
+     *
+     * Posé par hc_load et par hc_save, les deux seuls endroits qui le
+     * connaissent. Il n'est JAMAIS écrit dans le .stack : le chemin dit où le
+     * fichier se trouve, pas ce qu'il contient, et l'y graver le rendrait faux
+     * au premier déplacement. */
+    char    *path;
     char    *script;    /* script HyperTalk brut */
 
     /* Arbre du script, analysé une seule fois et gardé.
@@ -346,6 +360,11 @@ int     hc_hilite_of(Object *btn, Object *card);
  * un bouton de fond dont sharedHilite est faux. La vue en a besoin pour savoir
  * si la carte du clic lui est indispensable. */
 int     hc_hilite_par_carte(Object *btn);
+
+/* Le chemin du fichier d'une pile, ou NULL si elle n'a jamais été lue ni
+ * enregistrée. hc_load et hc_save le posent ; personne d'autre n'a à le faire. */
+const char *hc_stack_path(Object *stack);
+void        hc_set_stack_path(Object *stack, const char *path);
 
 /* La fin automatique d'un clic : case qui bascule, radio qui s'allume et
  * éteint ses voisins, bouton ordinaire qui s'éteint.
@@ -840,6 +859,11 @@ int hc_entier(const char *s, int mini, int maxi, int defaut);
 int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu);
 
 /* Une coordonnée ou une dimension : bornée à +/- HC_COORD_MAX. */
+/* L'entier qui COMMENCE à `s` et s'arrête au premier blanc — pour les nombres
+ * écrits au milieu d'une ligne, suivis d'autre chose : « iconres 20554
+ * "Terminator" ». hc_entier, lui, exige que toute la chaîne soit un nombre. */
+int hc_entier_tete(const char *s, int mini, int maxi, int defaut);
+
 int hc_coord(const char *s, int defaut);
 
 /* Un identifiant d'objet, tel qu'il sort d'un script ou d'un fichier : entre

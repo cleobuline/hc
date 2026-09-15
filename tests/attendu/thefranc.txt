@@ -18,7 +18,7 @@
    [msg] true
    [msg] ["]
 ── les proprietes d'objet passent
-   [msg] button "B"
+   [msg] card button "B"
    [msg] 1
 ── adjectifs
    [msg] true

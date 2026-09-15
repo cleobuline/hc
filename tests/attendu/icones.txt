@@ -1,0 +1,23 @@
+== avant enregistrement ==
+   nombre d'icones : 4
+   icone 20554   : nom [Terminator]  octets intacts
+   icone 3071    : nom [Close Box]  octets intacts
+   icone -412    : nom []  octets intacts
+   icone 77      : nom [le "vrai" nom]  octets intacts
+   icone du bouton : 20554
+   sauvegarde : faite
+
+== apres relecture ==
+   nombre d'icones : 4
+   icone 20554   : nom [Terminator]  octets intacts
+   icone 3071    : nom [Close Box]  octets intacts
+   icone -412    : nom []  octets intacts
+   icone 77      : nom [le "vrai" nom]  octets intacts
+   icone du bouton : 20554
+   et elle existe  : oui
+
+== le registre, dans l'ordre ==
+   [0] id=20554 nom=[Terminator]
+   [1] id=3071 nom=[Close Box]
+   [2] id=-412 nom=[]
+   [3] id=77 nom=[le "vrai" nom]

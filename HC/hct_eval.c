@@ -88,7 +88,7 @@ static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
     int n = a.len + le + b.len;
     HctValeur r;
     r.txt = malloc((size_t)n + 1);
-    if (!r.txt) { r.len = 0; return r; }
+    if (!r.txt) return hct_val_echec();
     memcpy(r.txt, a.txt, (size_t)a.len);
     if (le) memcpy(r.txt + a.len, entre, (size_t)le);
     memcpy(r.txt + a.len + le, b.txt, (size_t)b.len);
@@ -829,7 +829,7 @@ static char *delimiteur(HctContexte *ctx)
     HctValeur v;
     if (ctx->hote.fonction &&
         ctx->hote.fonction(ctx->hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        if (v.txt && v.txt[0]) return v.txt;   /* propriété reprise */
+        if (v.txt && v.txt[0]) return hct_val_prend(&v);   /* propriété reprise */
         hct_val_libere(&v);
     }
     return NULL;
@@ -1161,12 +1161,26 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
         }
 
         /* Deux échecs bien différents sous le même « of ». Quand la CIBLE ne
-         * s'est pas résolue et qu'elle s'écrivait comme un objet, ce n'est pas
-         * la propriété qui manque, c'est l'objet — et c'est cela qu'il faut
-         * dire. Le recours vient de renoncer, donc l'ancien évaluateur n'en
-         * savait pas plus : « the width of card window », qu'il sait traiter,
-         * n'arrive jamais jusqu'ici. */
-        if (!objet && sur && sur->genre == HCTN_OBJET)
+         * s'est pas résolue, ce n'est pas la propriété qui manque, c'est
+         * l'objet — et c'est cela qu'il faut dire. Le recours vient de
+         * renoncer, donc l'hôte n'en savait pas plus : « the width of card
+         * window », qu'il sait traiter, n'arrive jamais jusqu'ici.
+         *
+         * Le test portait sur le GENRE de la cible — HCTN_OBJET —, et laissait
+         * donc de côté celles qui se CALCULENT :
+         *
+         *     the short name of ("card button " & quote & "Absent" & quote)
+         *
+         * L'hôte de HC vient de refuser cette cible-là précisément parce
+         * qu'elle s'écrivait comme un objet et n'en désignait aucun ; le
+         * message annonçait pourtant « propriété inconnue », en accusant
+         * « short name », qui n'y était pour rien.
+         *
+         * C'est le fait que la cible ne se soit PAS RÉSOLUE qui décide, et
+         * non la façon dont elle est écrite. Un hôte qui sert lui-même une
+         * cible non résolue le dit en rendant 1 depuis recours, et n'arrive
+         * jamais ici. */
+        if (!objet)
             hct_ctx_faute(ctx, n, "objet introuvable");
         else
             hct_ctx_faute(ctx, n, "propriété inconnue");

@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   == la liste NUE, celle qui ne marchait pas ==
+   1,2,30,40
+   5,6,50,60
+   7,8,70,80
+   200,150
+   10,20
+   90,100
+   == chaque element est une EXPRESSION ==
+   11,22
+   22,23
+   33,44
+   == ce qui marchait DEJA et ne doit pas bouger ==
+   3,4,33,44
+   9,9,99,99
+   60
+   == une liste de NOMS NUS reste litterale ==
+   bold,condense
+   plain
+
+   bouton, en direct : 9,9,60,90
+   champ,  en direct : style 0

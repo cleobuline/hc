@@ -1,7 +1,17 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-   1. une propriete qui existe :
+   1. une propriete qui se pose :
    [HOTE] brush <- 4
-   2. une qui n'existe pas :
-   3. une completement inventee :
-   4. et la LECTURE, corrigee ce matin :
-   [ERR]    !! propriété ou fonction inconnue : brushSize (v3, ligne 9 de button "B".mouseUp)
+      the result = []
+   2. une qui existe mais se LIT seule :
+   [ERR]    !! propriété en lecture seule : screenRect
+      the result = [propriété en lecture seule]
+      et elle se lit toujours : 0,0,512,342
+   3. une coquille — le cas de Graph Maker :
+   [ERR]    !! propriété inconnue : foreclor
+      the result = [propriété inconnue]
+   4. une qui n'existe pas :
+   [ERR]    !! propriété inconnue : brushSize
+   5. une completement inventee :
+   [ERR]    !! propriété inconnue : zorglub
+   6. et la LECTURE, qui refusait deja :
+   [ERR]    !! propriété ou fonction inconnue : brushSize (v3, ligne 17 de button "B".mouseUp)

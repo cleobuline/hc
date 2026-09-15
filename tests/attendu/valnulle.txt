@@ -1,0 +1,38 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== une valeur vide porte une chaine LISIBLE, pas un pointeur nul ===
+   ok    hct_val_vide().txt n'est pas nul
+   ok      et vaut la chaine vide
+   ok      et sa longueur est nulle
+   ok    liberer une valeur vide ne plante pas
+
+=== une valeur en ECHEC aussi, et elle leve un drapeau ===
+   ok    le drapeau part a zero
+   ok    hct_val_echec().txt n'est pas nul
+   ok      et vaut la chaine vide
+   ok    le drapeau est leve
+   ok      et il est COLLANT
+   ok      jusqu'a ce qu'on l'efface
+
+=== une chaine vide construite normalement suit la meme route ===
+   ok    hct_val_texte("").txt n'est pas nul
+   ok    hct_val_texte(NULL).txt non plus
+   ok    une copie de valeur vide non plus
+   ok    les trois se liberent sans broncher
+
+=== hct_val_prend : la SEULE porte de sortie d'un texte ===
+   ok    prend() sur une valeur vide rend non-nul
+   ok      et une chaine vide
+   ok      et la source est videe
+   ok      et free() l'accepte
+   ok    prend() sur un vrai texte rend le texte
+   ok      et la source est videe
+   ok      et free() l'accepte aussi
+
+=== et l'executeur ne CONTINUE PAS sur une valeur inventee ===
+   -- sans drapeau : le script va au bout --
+   [msg] undeux
+   -- drapeau leve avant l'envoi : il s'arrete et le dit --
+   [ERR]    !! mémoire insuffisante (v3, ligne 2 de button "b".mouseUp)
+   ok    le drapeau a ete consomme
+
+   le contrat est tenu

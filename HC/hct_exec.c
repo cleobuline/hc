@@ -259,7 +259,7 @@ static char *delim_de(HctExec *x)
     HctValeur v;
     if (x->ctx.hote.fonction &&
         x->ctx.hote.fonction(x->ctx.hote.donnees, "itemDelimiter", NULL, 0, &v)) {
-        if (v.txt && v.txt[0]) return v.txt;   /* propriété reprise */
+        if (v.txt && v.txt[0]) return hct_val_prend(&v);   /* propriété reprise */
         hct_val_libere(&v);
     }
     return NULL;
@@ -369,22 +369,31 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         if (x->ctx.erreur) { free(dd); hct_val_libere(&base); return 1; }
 
         const char *aecrire = val;
-        /* Pas de hct_val_vide() ici : on écrase compose.txt par un malloc
-         * juste après, ce qui perdrait l'octet alloué par la valeur vide. */
         HctValeur compose = { NULL, 0 };
         if (mode != 0) {
             HctValeur ancien = hct_chunk_lit(base.txt, cible->sorte, n1, n2, d);
             int la = ancien.len, lv = (int)strlen(val);
             compose.txt = malloc((size_t)la + lv + 1);
-            if (compose.txt) {
-                if (mode == 1) { memcpy(compose.txt, val, (size_t)lv);
-                                 memcpy(compose.txt + lv, ancien.txt, (size_t)la); }
-                else           { memcpy(compose.txt, ancien.txt, (size_t)la);
-                                 memcpy(compose.txt + la, val, (size_t)lv); }
-                compose.txt[la + lv] = '\0';
-                compose.len = la + lv;
-                aecrire = compose.txt;
+            if (!compose.txt) {
+                /* SANS LE MORCEAU ANCIEN, LE RÉSULTAT SERAIT FAUX.
+                 *
+                 * On retombait ici sur « aecrire = val », c'est-à-dire que
+                 * « put X after item 2 » écrivait X SEUL à la place de
+                 * l'item — une destruction silencieuse, sous pénurie. On
+                 * refuse plutôt que d'écrire n'importe quoi. */
+                hct_val_libere(&ancien);
+                hct_ctx_faute(&x->ctx, cible, "mémoire insuffisante");
+                free(dd);
+                hct_val_libere(&base);
+                return 1;
             }
+            if (mode == 1) { memcpy(compose.txt, val, (size_t)lv);
+                             memcpy(compose.txt + lv, ancien.txt, (size_t)la); }
+            else           { memcpy(compose.txt, ancien.txt, (size_t)la);
+                             memcpy(compose.txt + la, val, (size_t)lv); }
+            compose.txt[la + lv] = '\0';
+            compose.len = la + lv;
+            aecrire = compose.txt;
             hct_val_libere(&ancien);
         }
 
@@ -1086,6 +1095,22 @@ void hct_exec(HctExec *x, const HctNoeud *n)
             for (int i = 0; i < n->nfils; i++) {
                 hct_exec(x, n->fils[i]);
                 if (x->ctx.erreur || x->signal) return;
+                /* UNE PÉNURIE NE SE DÉGUISE PAS EN CHAÎNE VIDE.
+                 *
+                 * Une valeur dont l'allocation a échoué porte maintenant une
+                 * chaîne vide statique — de quoi ne pas planter — et lève un
+                 * drapeau collant. Sans cette lecture-ci, le script
+                 * continuerait sur cette chaîne vide et rendrait un résultat
+                 * FAUX en silence, ce qui est pire qu'un arrêt.
+                 *
+                 * Une fois par instruction suffit, précisément parce que le
+                 * drapeau est collant : il ne peut pas retomber entre le
+                 * moment où la panne arrive et celui où on le lit. */
+                if (hct_val_manque()) {
+                    hct_val_manque_efface();
+                    hct_ctx_faute(&x->ctx, n->fils[i], "mémoire insuffisante");
+                    return;
+                }
             }
             return;
 

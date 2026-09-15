@@ -219,11 +219,11 @@ e encore —
       (aucun)
    — ce que l'ancien interprète exécute encore —
       (rien)
->>> set puis get result
+>>> set the result : refuse
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      → result ← "coucou"
-      [message box] 
+      !! propriété inconnue : result
+      [message box] propriété inconnue
    — retours de la v3 vers l'ancien interpréteur —
       (aucun)
    — ce que l'ancien interprète exécute encore —

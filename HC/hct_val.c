@@ -9,11 +9,51 @@
 
 /* ------------------------------------------------------- construction */
 
+/* LE TEXTE D'UNE VALEUR N'EST PLUS JAMAIS NUL.
+ *
+ * Les constructeurs rendaient txt = NULL quand l'allocation échouait, et
+ * l'en-tête l'avouait : « indiscernable d'une chaîne vide valide. Tout
+ * consommateur doit donc traiter txt == NULL ». Personne ne pouvait tenir une
+ * telle promesse — il y a des centaines de lectures de .txt dans le noyau,
+ * et il suffit d'en oublier une.
+ *
+ * MESURÉ, en faisant échouer UN SEUL malloc et en balayant tous les points
+ * d'allocation d'un script ordinaire : sept plantages sur quatre cents.
+ *
+ * Deux choses le remplacent :
+ *
+ *   UNE SENTINELLE. Une valeur en échec porte une chaîne vide STATIQUE, donc
+ *   lisible et terminée par zéro. Aucun consommateur ne peut plus la
+ *   déréférencer de travers, même celui qu'on aurait oublié. hct_val_libere
+ *   la reconnaît et ne la libère pas.
+ *
+ *   UN DRAPEAU COLLANT. La sentinelle seule transformerait une pénurie en
+ *   chaîne vide silencieuse — le défaut qu'on passe la vie à chasser
+ *   ailleurs. Le drapeau dit qu'il s'est passé quelque chose, et l'exécuteur
+ *   lève une faute au lieu de continuer sur une valeur inventée.
+ *
+ * Et hct_val_vide n'alloue plus DU TOUT : elle rend la sentinelle. Une valeur
+ * vide était le seul cas où l'on demandait un octet au système pour n'y rien
+ * mettre, et c'était aussi un point de panne pour rien. */
+static char g_vide[1] = "";
+static int  g_manque = 0;
+
+HctValeur hct_val_echec(void)
+{
+    HctValeur v;
+    v.txt = g_vide;
+    v.len = 0;
+    g_manque = 1;
+    return v;
+}
+
+int  hct_val_manque(void)        { return g_manque; }
+void hct_val_manque_efface(void) { g_manque = 0; }
+
 HctValeur hct_val_vide(void)
 {
     HctValeur v;
-    v.txt = malloc(1);
-    if (v.txt) v.txt[0] = '\0';
+    v.txt = g_vide;
     v.len = 0;
     return v;
 }
@@ -22,9 +62,10 @@ HctValeur hct_val_texte_n(const char *s, int len)
 {
     HctValeur v;
     if (!s || len < 0) len = 0;
+    if (len == 0) return hct_val_vide();
     v.txt = malloc((size_t)len + 1);
-    if (!v.txt) { v.len = 0; return v; }
-    if (len) memcpy(v.txt, s, (size_t)len);
+    if (!v.txt) return hct_val_echec();
+    memcpy(v.txt, s, (size_t)len);
     v.txt[len] = '\0';
     v.len = len;
     return v;
@@ -61,10 +102,39 @@ HctValeur hct_val_copie(HctValeur v)
     return hct_val_texte_n(v.txt, v.len);
 }
 
+/* PRENDRE le texte d'une valeur, et la vider.
+ *
+ * L'appelant devient propriétaire, et devra free(). C'est la SEULE façon
+ * correcte de sortir un texte d'une HctValeur, et la sentinelle est la raison :
+ * une valeur vide ou en échec porte une chaîne STATIQUE, que free() ferait
+ * exploser. Mesuré, dès la première tentative : « free(): invalid pointer »
+ * dans le tri, où le texte à trier était repris à la main par « src_dyn =
+ * v.txt ».
+ *
+ * On rend alors une copie neuve — un octet — plutôt que la sentinelle. NULL
+ * seulement si même cet octet manque, et le drapeau est levé pour le dire. */
+char *hct_val_prend(HctValeur *v)
+{
+    if (!v || !v->txt) return NULL;
+    char *p;
+    if (v->txt == g_vide) {
+        p = malloc(1);
+        if (p) p[0] = '\0';
+        else   g_manque = 1;
+    } else {
+        p = v->txt;
+    }
+    v->txt = NULL;
+    v->len = 0;
+    return p;
+}
+
 void hct_val_libere(HctValeur *v)
 {
     if (!v) return;
-    free(v->txt);
+    /* La sentinelle est statique : la libérer serait une faute, et c'est le
+     * prix — le seul — d'une chaîne vide qu'on n'alloue pas. */
+    if (v->txt != g_vide) free(v->txt);
     v->txt = NULL;
     v->len = 0;
 }

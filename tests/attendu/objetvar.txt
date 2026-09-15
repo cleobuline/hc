@@ -1,6 +1,6 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
    > == un descripteur dans une variable ==
-   > button "Bouton"
+   > card button "Bouton"
    > Bouton
    > 2915
    > 120

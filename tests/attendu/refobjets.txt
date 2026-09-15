@@ -5,8 +5,8 @@
 ── put field 1                                    texte du premier
 ── put the text of card field 1                   texte du premier
 ── put card field "un"                            texte du premier
-── put the name of card field 2                   field "deux"
-── put the name of bg field 1                     field "fond1"
+── put the name of card field 2                   card field "deux"
+── put the name of bg field 1                     bkgnd field "fond1"
 ── put the name of card field 9                   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
    [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
    [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"

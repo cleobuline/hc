@@ -33,7 +33,10 @@ int main(void)
     run(btn, "the foundText (vide)", "put the foundText");
     run(btn, "the stacksInUse", "put the stacksInUse");
     run(btn, "the itemDelimiter", "put the itemDelimiter");
-    run(btn, "set puis get result", "set the result to \"coucou\"\n  put the result");
+    /* « the result » est une FONCTION, pas une propriete que l'on pose :
+     * « set the result to … » partait chez l'hote et n'y faisait rien, en
+     * silence. Il se refuse maintenant, comme toute globale inconnue. */
+    run(btn, "set the result : refuse", "set the result to \"coucou\"\n  put the result");
 
     hc_free(stack);
     return 0;

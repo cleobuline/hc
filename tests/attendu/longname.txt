@@ -1,8 +1,8 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
    == les trois formes ==
    Bouton
-   button "Bouton"
-   button "Bouton"
+   card button "Bouton"
+   card button "Bouton"
    card button "Bouton" of card "Une" of stack "Pile"
    == la forme longue, objet par objet ==
    bkgnd button "DuFond" of bkgnd "Fond" of stack "Pile"
@@ -27,7 +27,32 @@
    == bkgnd est un synonyme de background ==
    Fond
    DuFond
+   == la forme ABREGEE porte la couche, elle aussi ==
+   card button "Bouton"
+   bkgnd button "DuFond"
+   card field "Champ"
+   card "Une"
+   bkgnd "Fond"
+   stack "Pile"
+      et elle se re-resout : DuFond
+   == une CIBLE CALCULEE, entre parentheses ==
+   Bouton
+   9
+   Bouton
+   Bouton
    == ce qui ne doit PAS changer ==
    Pile
-   card "Une"
    
+
+== une cible calculee qui ne designe rien ==
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "decl".mouseUp)
+   4
+   short name of ("Bouton"
+
+== le CHEMIN du fichier, une fois la pile enregistree ==
+   avant enregistrement : chemin = [(aucun)]
+   sauvegarde : faite
+   apres               : chemin = [/tmp/hc_longname.stack]
+   stack "/tmp/hc_longname.stack"
+   card button "decl" of card "Une" of stack "/tmp/hc_longname.stack"
+      et la pile se retrouve par son chemin : Pile
