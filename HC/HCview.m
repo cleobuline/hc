@@ -3766,8 +3766,29 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
      *
      * Sans travail quand c'est déjà la bonne pile, donc gratuit au redessin. */
     {
+        /* UN REDESSIN NE DOIT JAMAIS VIDER LE CATALOGUE.
+         *
+         * On passait NULL dès que documentCard ne rendait rien, et
+         * hcicon_edit_bind(NULL) appelle hcicon_edit_sync(NULL), qui EFFACE la
+         * copie de travail : il ne reste alors que les icônes d'origine.
+         *
+         * Le panneau Icônes ouvert par le menu le déclenchait. Il devient la
+         * fenêtre active, la fenêtre de carte se redessine, et si ce redessin
+         * trouve documentCard à NULL — vue qui n'est pas le document courant,
+         * ou pile dont la carte n'est pas encore posée — les icônes de la pile
+         * disparaissaient de la grille sous les yeux de l'utilisatrice. Par
+         * l'autre porte, le bouton « Icon… » du panneau d'information, la
+         * fenêtre de carte n'est pas réactivée de la même façon : le défaut ne
+         * se voyait pas, ce qui est exactement ce qui le rendait difficile à
+         * situer.
+         *
+         * Rompre le lien est une décision, pas un effet de bord d'un dessin :
+         * Hcdocument le fait explicitement par hcicon_edit_sync(NULL) quand
+         * une pile se ferme, et c'est le seul endroit qui doive le faire. Un
+         * dessin qui ne sait pas quelle pile montrer ne sait rien — il ne
+         * décide donc rien, et laisse le catalogue tel quel. */
         Object *dc = [self documentCard];
-        hcicon_edit_bind(dc ? dc->owner : NULL);
+        if (dc && dc->owner) hcicon_edit_bind(dc->owner);
     }
 
     if (visual_pending()) {
