@@ -311,6 +311,15 @@ struct Object {
  * LIGNES sur 172 harnais, et ses 2 327 lignes ont pu partir. Les fonctions et
  * les termes, eux, comptaient 744 passages — ils restent. */
 void hc_v3_bilan(void);
+/* La version de HC, telle que le noyau la connaît.
+ *
+ * L'application Cocoa porte la sienne dans MARKETING_VERSION, et c'est ELLE
+ * qui fait foi pour le binaire livré : « the version » interroge d'abord
+ * l'hôte. Cette constante est la réponse pour tout ce qui tourne sans hôte —
+ * les 192 harnais, notamment —, et le repère à mettre à jour avec le projet
+ * Xcode quand la version change. */
+#define HC_VERSION "0.6.5"
+
 void hc_v3_bilan_remise_a_zero(void);
 
 /* Armer le relevé de fin de processus : si HC_V3_RELEVE nomme un fichier, les

@@ -2,8 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme bonjour                         1
-[v3]    v1 fonction bonjour                      1
+[v3]    (rien)
 
 ───── field data2 ─────
 arith  : 14

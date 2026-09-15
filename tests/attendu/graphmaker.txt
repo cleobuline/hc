@@ -45,24 +45,4 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme data                            1
-[v3]    v1 fonction data                         1
-[v3]    v1 terme green                           1
-[v3]    v1 fonction green                        1
-[v3]    v1 terme yellow                          1
-[v3]    v1 fonction yellow                       1
-[v3]    v1 terme geneva                          1
-[v3]    v1 fonction geneva                       1
-[v3]    v1 terme center                          1
-[v3]    v1 fonction center                       1
-[v3]    v1 terme bold                            1
-[v3]    v1 fonction bold                         1
 [v3]    v1 fonction getPattern                   1
-[v3]    v1 terme times                           1
-[v3]    v1 fonction times                        1
-[v3]    v1 terme left                            1
-[v3]    v1 fonction left                         1
-[v3]    v1 terme plain                           1
-[v3]    v1 fonction plain                        1
-[v3]    v1 terme right                           1
-[v3]    v1 fonction right                        1

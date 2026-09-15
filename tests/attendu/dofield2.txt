@@ -3,8 +3,6 @@
 [v3]    commande do: do "get line"&&lineNumber&& 1
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    v1 refusée recours v3                   1
-[v3]    v1 terme it                              1
-[v3]    v1 fonction it                           1
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours objet: card field "menu"         1
 [v3] — ce que l'ancien interprète exécute encore —

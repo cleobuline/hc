@@ -119,13 +119,13 @@
    OK    put the stacks                                
    MANQ  put the windows                                    !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "z".t)
    MANQ  put the programs                                   !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "z".t)
-   MANQ  put the sound                                      !! propriété ou fonction inconnue : sound (v3, ligne 2 de button "z".t)
+   OK    put the sound                                 
    OK    put the menus                                 
-   MANQ  put the version                                    !! propriété ou fonction inconnue : version (v3, ligne 2 de button "z".t)
+   OK    put the version                               
    MANQ  put the systemVersion                              !! propriété ou fonction inconnue : systemVersion (v3, ligne 2 de button "z".t)
-   MANQ  put the freeSize                                   !! propriété ou fonction inconnue : freeSize (v3, ligne 2 de button "z".t)
-   MANQ  put the size                                       !! propriété ou fonction inconnue : size (v3, ligne 2 de button "z".t)
-   MANQ  put the destination                                !! propriété ou fonction inconnue : destination (v3, ligne 2 de button "z".t)
+   OK    put the freeSize                              
+   OK    put the size                                  
+   OK    put the destination                           
 
 ── PROPRIETES
    OK    put the name of me                            
@@ -159,7 +159,7 @@
    OK    put the powerKeys                             
    OK    put the dragSpeed                             
    MANQ  put the editBkgnd                                  !! propriété ou fonction inconnue : editBkgnd (v3, ligne 2 de button "z".t)
-   MANQ  put the language                                   !! propriété ou fonction inconnue : language (v3, ligne 2 de button "z".t)
+   OK    put the language                              
    OK    put the freeSize of this stack                
    OK    put the name of this stack                    
    OK    put the number of this card                   

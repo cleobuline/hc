@@ -1,0 +1,62 @@
+== les six noms du monde qui manquaient ==
+   the version
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+      0.6.5
+   the destination
+      stack "Pile"
+   the language
+      English
+   the sound
+      done
+   the size
+      0
+   the freeSize
+      0
+
+== « the tool », le seul que l'ancien moteur servait vraiment ==
+   the tool
+      browse tool
+
+== ce que la v3 servait deja, et doit continuer a servir seule ==
+   the result
+      
+   the date
+      09/11/25
+   the time
+      16:00
+   the ticks
+      0
+   the paramCount
+      0
+   the itemDelimiter
+      ,
+   the numberFormat
+      
+   the lockScreen
+      false
+   the lockMessages
+      false
+   the userLevel
+      5
+   the dragSpeed
+      0
+   the blindTyping
+      false
+   the stacksInUse
+      
+   the selectedText
+      
+   the foundText
+      
+
+== un nom inconnu se DIT inconnu ==
+   the zorglub
+      [ERR]    !! propriété ou fonction inconnue : zorglub (v3, ligne 2 de button "B".mouseUp)
+   the maTemperature
+      [ERR]    !! propriété ou fonction inconnue : maTemperature (v3, ligne 2 de button "B".mouseUp)
+
+== et le bilan doit rester vide ==
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)

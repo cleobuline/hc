@@ -19,3 +19,9 @@ Object *hc_load(const char *path);
 const char *hc_load_erreur(void);
 
 #endif
+
+/* La TAILLE DU FICHIER d'une pile, en octets, ou -1 si elle n'est pas
+ * enregistrée ou introuvable. C'est ce que rend « the size of stack X » chez
+ * HyperCard — une propriété du FICHIER, pas de la machine, et c'est hc_file
+ * qui connaît les fichiers. Le noyau n'a donc pas à inclure <sys/stat.h>. */
+long hc_taille_fichier(const char *chemin);
