@@ -849,10 +849,28 @@ static NSMenu *gRecentMenu = nil;
      * seule quand l'application tourne depuis une image disque, et vaut
      * /Applications une fois installée — deux endroits où l'on n'enregistre
      * pas son travail. Ouvrir peut partir de l'application ; enregistrer, non. */
-    NSArray *docs = NSSearchPathForDirectoriesInDomains(
-        NSDocumentDirectory, NSUserDomainMask, YES);
-    if ([docs count] > 0)
-        [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
+    /* LE DOSSIER DE LA PILE D'ABORD, Documents seulement à défaut.
+     *
+     * Proposer Documents à une pile qui vit ailleurs, c'est proposer de
+     * l'enregistrer AILLEURS : on valide sans y penser, et le fichier
+     * d'origine ne reçoit rien. C'est la moitié du défaut qui a fait
+     * disparaître une carte collée — l'autre moitié était que cet article
+     * n'écrivait plus qu'une copie.
+     *
+     * Enregistrer là où la pile habite déjà doit être le geste par défaut. */
+    const char *ici = hc_stack_path(pile);
+    if (ici && *ici) {
+        NSString *chemin = [NSString stringWithUTF8String:ici];
+        [panel setDirectoryURL:
+            [NSURL fileURLWithPath:[chemin stringByDeletingLastPathComponent]
+                       isDirectory:YES]];
+        [panel setNameFieldStringValue:[chemin lastPathComponent]];
+    } else {
+        NSArray *docs = NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES);
+        if ([docs count] > 0)
+            [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
+    }
     /* Une FEUILLE attachée à la fenêtre de la pile, plutôt qu'un panneau
      * modal pour toute l'application.
      *
@@ -882,25 +900,26 @@ static NSMenu *gRecentMenu = nil;
          * détecte vraiment les fautes d'écriture — disque plein, quota — il
          * faut le DIRE : perdre une sauvegarde en silence est la pire chose
          * qu'un éditeur puisse faire. */
-        /* « SAVE A COPY » NE DÉMÉNAGE PAS L'ORIGINAL — sauf s'il n'a pas
-         * encore de domicile.
+        /* CET ARTICLE EST LE SEUL MOYEN D'ENREGISTRER : IL ENREGISTRE.
          *
-         * L'article s'appelle « Save a Copy… » et le code posait pourtant
-         * doc.path : c'était un « Save As » sous un autre nom, et « the long
-         * name of this stack » changeait de réponse après une opération censée
-         * ne rien changer à la pile ouverte.
+         * J'avais fait de lui une vraie « copie » — écrire ailleurs sans
+         * toucher à la pile ouverte — pour que son nom dise la vérité. C'était
+         * une faute, et elle a coûté du travail à l'utilisatrice : HC n'a
+         * AUCUN autre article d'enregistrement, HyperCard n'en ayant pas
+         * besoin puisqu'il écrivait en continu. Coller une carte, enregistrer,
+         * rouvrir — et la carte avait disparu, parce que la copie était partie
+         * dans Documents et que le fichier d'origine n'avait jamais rien reçu.
          *
-         * Mais une pile neuve n'a AUCUNE adresse, et c'est par là qu'elle en
-         * reçoit une : HC n'a pas d'article « Enregistrer », comme HyperCard
-         * qui écrivait en continu. Refuser d'adopter le chemin dans ce cas
-         * laisserait le travail sans fichier, ce qui est pire.
+         * La leçon : un contrat d'API et un article de menu ne se corrigent
+         * pas du même geste. La violation que l'audit signalait était celle de
+         * HcHost.save_stack, le rappel de « save stack X as Y » — un ordre de
+         * SCRIPT, qui a bien été corrigé, lui, en hc_save_copie. L'article de
+         * menu, lui, est la porte de sortie de l'utilisatrice, et la seule.
          *
-         * La règle est donc celle du nom : on adopte si la pile n'a pas
-         * d'adresse, on copie si elle en a une. */
-        BOOL premiere = (hc_stack_path(pile) == NULL || *hc_stack_path(pile) == '\0');
-        int r = premiere ? hc_save(pile, [path UTF8String])
-                         : hc_save_copie(pile, [path UTF8String]);
-        if (r != 0) {
+         * Il enregistre donc la pile à l'adresse choisie, et la pile habite
+         * désormais là. Son nom ment un peu ; c'est le nom qu'il faudra
+         * changer, pas ce comportement. */
+        if (hc_save(pile, [path UTF8String]) != 0) {
             NSAlert *a = [[NSAlert alloc] init];
             [a setMessageText:@"L'enregistrement a échoué."];
             [a setInformativeText:[NSString stringWithFormat:
@@ -912,8 +931,7 @@ static NSMenu *gRecentMenu = nil;
             [a runModal];
             return;                   /* le document garde son ancien chemin */
         }
-        /* Le document ne suit que si la pile a vraiment déménagé. */
-        if (premiere) doc.path = path;
+        doc.path = path;              /* « go to stack » cherchera à côté */
     };
 
     if (hote) [panel beginSheetModalForWindow:hote completionHandler:fini];

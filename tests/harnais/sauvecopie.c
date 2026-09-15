@@ -87,6 +87,41 @@ int main(void)
         hc_free(relue);
     }
 
+    /* ─── ET LE CYCLE QUI A FAIT PERDRE UNE CARTE ───────────────────────
+     *
+     * Coller une carte, enregistrer, rouvrir. C'est le geste le plus ordinaire
+     * qui soit, et il a cesse de marcher parce que j'avais fait de l'unique
+     * article d'enregistrement une vraie « copie » : le fichier d'origine ne
+     * recevait plus rien.
+     *
+     * Le noyau n'etait pas en cause — ce harnais le montre — mais il n'y avait
+     * AUCUN test qui parcourait ce cycle, et c'est pour cela que rien ne m'a
+     * arrete. Il y en a un maintenant. */
+    puts("\n== coller une carte, enregistrer, relire ==");
+    {
+        const char *F = "/tmp/hc_collecycle.stack";
+        remove(F);
+        printf("   copie de la carte : %s\n", hc_copy_card(c) ? "faite" : "ECHEC");
+        Object *n = hc_paste_card(st);
+        printf("   collage           : %s\n", n ? "fait" : "ECHEC");
+
+        int avant = 0;
+        for (int i = 0; i < st->nparts; i++)
+            if (st->parts[i]->type == OBJ_CARD) avant++;
+        printf("   en memoire        : %d carte(s)\n", avant);
+
+        printf("   enregistrement    : %s\n", hc_save(st, F) == 0 ? "fait" : "ECHEC");
+        Object *relue = hc_load(F);
+        if (!relue) { puts("   RELECTURE ECHOUEE"); return 1; }
+        int apres = 0;
+        for (int i = 0; i < relue->nparts; i++)
+            if (relue->parts[i]->type == OBJ_CARD) apres++;
+        printf("   apres relecture   : %d carte(s)  %s\n", apres,
+               apres == avant ? "(rien perdu)" : "!! UNE CARTE MANQUE");
+        hc_free(relue);
+        remove(F);
+    }
+
     hc_free(st);
     remove(A); remove(C);
     return 0;
