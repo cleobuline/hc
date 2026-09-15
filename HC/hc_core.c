@@ -2423,6 +2423,12 @@ static Object *clone_part(Object *o)
     return c;
 }
 
+/* Définies avec le reste du presse-papiers, plus bas : un bouton emporte son
+ * icône comme une carte emporte les siennes. */
+static void clip_bg_clear(void);
+static void clip_collect_icon_de(Object *stack, Object *p);
+static void transplant_icons_objet(Object *stack, Object *part);
+
 int hc_copy_part(Object *o)
 {
     Object *c = clone_part(o);
@@ -2439,6 +2445,13 @@ int hc_copy_part(Object *o)
     }
 
     if (g_clipboard) hc_free(g_clipboard);
+    /* LE BOUTON EMPORTE SON ICÔNE, comme une carte emporte les siennes.
+     *
+     * clip_bg_clear remet aussi la table d'icônes à zéro : sans cet appel, un
+     * bouton copié après une carte hériterait des icônes de celle-ci. */
+    clip_bg_clear();
+    clip_collect_icon_de(owning_stack(o), o);
+
     g_clipboard = c;
     return 1;
 }
@@ -2479,6 +2492,10 @@ Object *hc_paste_part(Object *owner)
     }
 
     add_part(owner, c);
+
+    /* Et son icône arrive avec lui. Voir transplant_icons_objet : sans cela le
+     * numéro désignait, dans la pile d'arrivée, un autre dessin ou aucun. */
+    transplant_icons_objet(owning_stack(owner), c);
     return c;
 }
 
@@ -2692,6 +2709,34 @@ static void clip_bg_clear(void)
 /* Trace du transport d'icônes. Mettre à 0 pour la faire taire. */
 #define HC_TRACE_ICONS 1
 
+/* Ramasse l'icône de pile qu'emploie CE bouton-ci. */
+static void clip_collect_icon_de(Object *stack, Object *p)
+{
+    if (!stack || !p) return;
+    if (p->type != OBJ_BUTTON || p->icon == 0) return;
+
+    struct StackIcon *src = hc_icon_get(stack, p->icon);
+    if (!src) return;                           /* icône d'origine : partout */
+
+    for (int k = 0; k < g_clip_nicons; k++)
+        if (g_clip_icons[k].id == p->icon) return;
+
+    struct StackIcon *t = realloc(g_clip_icons,
+                                  (size_t)(g_clip_nicons + 1) * sizeof *t);
+    if (!t) return;
+    g_clip_icons = t;
+
+    memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
+    g_clip_icons[g_clip_nicons].id   = src->id;
+    g_clip_icons[g_clip_nicons].name = dupstr(src->name);
+    memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
+    g_clip_nicons++;
+#if HC_TRACE_ICONS
+    fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
+            src->id, src->name ? src->name : "");
+#endif
+}
+
 /* Ramasse dans `layer` les icônes de pile qu'utilisent ses boutons. */
 static void clip_collect_icons(Object *stack, Object *layer)
 {
@@ -2707,38 +2752,8 @@ static void clip_collect_icons(Object *stack, Object *layer)
                 layer->parts[i]->name ? layer->parts[i]->name : "");
 #endif
 
-    for (int i = 0; i < layer->nparts; i++) {
-        Object *p = layer->parts[i];
-        if (p->type != OBJ_BUTTON || p->icon == 0) continue;
-
-        struct StackIcon *src = hc_icon_get(stack, p->icon);
-#if HC_TRACE_ICONS
-        if (!src)
-            fprintf(stderr, "[icone] bouton icon=%d absent de la pile source"
-                            " (icone d'origine ?)\n", p->icon);
-#endif
-        if (!src) continue;                     /* icône d'origine : partout */
-
-        int deja = 0;
-        for (int k = 0; k < g_clip_nicons && !deja; k++)
-            if (g_clip_icons[k].id == p->icon) deja = 1;
-        if (deja) continue;
-
-        struct StackIcon *t = realloc(g_clip_icons,
-                                      (size_t)(g_clip_nicons + 1) * sizeof *t);
-        if (!t) return;
-        g_clip_icons = t;
-
-        memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
-        g_clip_icons[g_clip_nicons].id   = src->id;
-        g_clip_icons[g_clip_nicons].name = dupstr(src->name);
-        memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
-        g_clip_nicons++;
-#if HC_TRACE_ICONS
-        fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
-                src->id, src->name ? src->name : "");
-#endif
-    }
+    for (int i = 0; i < layer->nparts; i++)
+        clip_collect_icon_de(stack, layer->parts[i]);
 }
 
 /* Un numéro libre dans cette pile, hors du catalogue d'origine, ET hors des
@@ -2789,43 +2804,74 @@ static void remap_button_icons(Object *layer, int oldid, int newid)
  * pas tant que réutilisation rime avec icônes identiques — mais il suffit
  * d'avoir retouché une icône entre le copier et le coller pour que les bits
  * diffèrent, et l'on abîmerait la pile entière pour une carte collée. */
+/* Poser l'entrée `i` du presse-papiers dans `stack`, et dire sous quel numéro.
+ * Rend 0 s'il n'y a rien à faire ou si la pose échoue. */
+static int pose_une_icone(Object *stack, int i, int *newid_out)
+{
+    int oldid = g_clip_icons[i].id;
+    int newid = oldid;
+
+    struct StackIcon *ex = hc_icon_get(stack, oldid);
+    int identique = ex &&
+        memcmp(ex->bits, g_clip_icons[i].bits, HC_ICON_BYTES) == 0;
+
+    if (!identique) {
+        if (ex) {
+            newid = icon_free_id_in(stack);
+#if HC_TRACE_ICONS
+            fprintf(stderr, "[icone] %d deja pris par un autre dessin"
+                            " -> %d\n", oldid, newid);
+#endif
+            if (!newid) return 0;               /* on laisse le numéro mort */
+        }
+        struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
+#if HC_TRACE_ICONS
+        fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
+                newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
+                e ? "ok" : "ECHEC");
+#endif
+        if (!e) return 0;
+        memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
+    }
+#if HC_TRACE_ICONS
+    else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
+#endif
+
+    *newid_out = newid;
+    return 1;
+}
+
 static void transplant_icons(Object *stack, Object *card, Object *bg)
 {
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] transplantation de %d icone(s)\n", g_clip_nicons);
 #endif
     for (int i = 0; i < g_clip_nicons; i++) {
-        int oldid = g_clip_icons[i].id;
-        int newid = oldid;
-
-        struct StackIcon *ex = hc_icon_get(stack, oldid);
-        int identique = ex &&
-            memcmp(ex->bits, g_clip_icons[i].bits, HC_ICON_BYTES) == 0;
-
-        if (!identique) {
-            if (ex) {
-                newid = icon_free_id_in(stack);
-#if HC_TRACE_ICONS
-                fprintf(stderr, "[icone] %d deja pris par un autre dessin"
-                                " -> %d\n", oldid, newid);
-#endif
-                if (!newid) continue;           /* on laisse le numéro mort */
-            }
-            struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
-#if HC_TRACE_ICONS
-            fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
-                    newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
-                    e ? "ok" : "ECHEC");
-#endif
-            if (!e) continue;
-            memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
-        }
-#if HC_TRACE_ICONS
-        else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
-#endif
-
+        int oldid = g_clip_icons[i].id, newid;
+        if (!pose_une_icone(stack, i, &newid)) continue;
         remap_button_icons(card, oldid, newid);
         remap_button_icons(bg,   oldid, newid);
+    }
+}
+
+/* LA MÊME TRANSPLANTATION, POUR UN OBJET SEUL.
+ *
+ * Copier un BOUTON — et non une carte — n'emportait aucune icône : ni
+ * hc_copy_part ni hc_paste_part ne les regardaient. Le bouton collé gardait
+ * son numéro, et à l'arrivée ce numéro appartenait à un autre dessin, ou à
+ * aucun. Mesuré : le bouton affichait l'icône de la pile de destination, et
+ * la sienne était perdue.
+ *
+ * C'est le même défaut que pour les cartes, corrigé pour elles seules. Un
+ * chemin sur deux, c'est le genre de moitié qui ne se voit pas — jusqu'à ce
+ * qu'on copie un bouton. */
+static void transplant_icons_objet(Object *stack, Object *part)
+{
+    if (!stack || !part) return;
+    for (int i = 0; i < g_clip_nicons; i++) {
+        int oldid = g_clip_icons[i].id, newid;
+        if (!pose_une_icone(stack, i, &newid)) continue;
+        if (part->type == OBJ_BUTTON && part->icon == oldid) part->icon = newid;
     }
 }
 

@@ -21,3 +21,20 @@
    [1] id=3071 nom=[Close Box]
    [2] id=-412 nom=[]
    [3] id=77 nom=[le "vrai" nom]
+
+== transport d'icones vers une pile ou le numero est PRIS ==
+   --- en copiant la CARTE ---
+[icone] examen de la carte "Une" : 1 part(s)
+[icone]   part 0 type=3 icon=20554 "Bouton"
+[icone] ramassee 20554 "Terminator"
+[icone] examen de le fond "Fond" : 0 part(s)
+[icone] transplantation de 1 icone(s)
+[icone] 20554 deja pris par un autre dessin -> 1000
+[icone] pose 1000 "Terminator" -> ok
+      bouton [Bouton] -> icone 1000 : SON dessin
+   --- en copiant le BOUTON seul ---
+[icone] ramassee 20554 "Terminator"
+[icone] 20554 deja pris par un autre dessin -> 1001
+[icone] pose 1001 "Terminator" -> ok
+      bouton [Bouton] -> icone 1001 : SON dessin
+   l'icone d'origine de l'arrivee : intacte

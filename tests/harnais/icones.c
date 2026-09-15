@@ -110,6 +110,69 @@ int main(void)
         printf("   [%d] id=%d nom=[%s]\n", i, ic->id, ic->name ? ic->name : "(nul)");
     }
 
+    /* ─── LE TRANSPORT D'ICONES, DEUX CHEMINS ET UN SEUL ETAIT COUVERT ──
+     *
+     * Copier une CARTE emportait ses icones : quand le numero est deja pris
+     * dans la pile d'arrivee par un AUTRE dessin, on en prend un libre et l'on
+     * reetiquette les boutons. Copier un BOUTON n'emportait rien du tout : ni
+     * hc_copy_part ni hc_paste_part ne regardaient les icones.
+     *
+     * Le bouton colle gardait donc son numero, et a l'arrivee ce numero
+     * designait un autre dessin. Mesure : le bouton affichait l'icone de la
+     * pile de destination, et la sienne etait perdue.
+     *
+     * Un chemin sur deux, c'est le genre de moitie qui ne se voit pas —
+     * jusqu'a ce qu'on copie un bouton. Les deux sont tenus ici. */
+    puts("\n== transport d'icones vers une pile ou le numero est PRIS ==");
+    {
+        Object *B  = hc_new_stack("Arrivee"); hc_register_stack(B);
+        Object *bB = hc_new_background(B, "fb");
+        Object *cB = hc_new_card(B, bB, "cb");
+        Object *deja = hc_new_button(cB, "DejaLa");
+        remplis(hc_icon_add(B, 20554, "autre dessin"), 9);   /* MEME numero */
+        deja->icon = 20554;
+
+        /* la source : le bouton de la pile d'origine porte l'icone 20554 */
+        b->icon = 20554;
+
+        puts("   --- en copiant la CARTE ---");
+        hc_set_current_card(c);
+        hc_copy_card(c);
+        hc_set_current_card(cB);
+        Object *nc = hc_paste_card(B);
+        for (int i = 0; nc && i < nc->nparts; i++) {
+            Object *p = nc->parts[i];
+            if (p->type != OBJ_BUTTON) continue;
+            struct StackIcon *ic = hc_icon_get(B, p->icon);
+            printf("      bouton [%s] -> icone %d : %s\n",
+                   p->name ? p->name : "", p->icon,
+                   ic ? (memes_bits(ic, 1) ? "SON dessin" : "le MAUVAIS dessin")
+                      : "INTROUVABLE");
+        }
+
+        puts("   --- en copiant le BOUTON seul ---");
+        hc_set_current_card(c);
+        hc_copy_part(b);
+        hc_set_current_card(cB);
+        Object *nb = hc_paste_part(cB);
+        if (nb) {
+            struct StackIcon *ic = hc_icon_get(B, nb->icon);
+            printf("      bouton [%s] -> icone %d : %s\n",
+                   nb->name ? nb->name : "", nb->icon,
+                   ic ? (memes_bits(ic, 1) ? "SON dessin" : "le MAUVAIS dessin")
+                      : "INTROUVABLE");
+        }
+
+        /* Et l'icone qui etait deja la n'a pas bouge : transplanter ne doit
+         * jamais abimer la pile d'arrivee. */
+        {
+            struct StackIcon *ic = hc_icon_get(B, deja->icon);
+            printf("   l'icone d'origine de l'arrivee : %s\n",
+                   (ic && memes_bits(ic, 9)) ? "intacte" : "ABIMEE");
+        }
+        hc_free(B);
+    }
+
     hc_free(st2); hc_free(st); remove(fic);
     return 0;
 }
