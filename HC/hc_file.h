@@ -7,6 +7,12 @@
 /* Écrit la pile dans un fichier. Renvoie 0 si tout va bien. */
 int hc_save(Object *stack, const char *path);
 
+/* Écrire une COPIE : le fichier est produit, mais la pile en mémoire garde son
+ * adresse. C'est ce que veut dire « save stack "X" as "Y" », et ce que promet
+ * le contrat de HcHost.save_stack. hc_save, lui, ADOPTE le chemin — c'est la
+ * façon dont une pile sans adresse en reçoit une. */
+int hc_save_copie(Object *stack, const char *path);
+
 /* Relit une pile. Renvoie NULL en cas d'échec. */
 Object *hc_load(const char *path);
 

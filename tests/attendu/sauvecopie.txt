@@ -1,0 +1,19 @@
+== une pile neuve n'a pas d'adresse ==
+   au depart              adresse = (aucune)
+
+== hc_save la lui donne ==
+   enregistrement : fait
+   apres hc_save          adresse = /tmp/hc_origine.stack
+
+== hc_save_copie ecrit ailleurs SANS demenager ==
+   copie : faite
+   apres hc_save_copie    adresse = /tmp/hc_origine.stack
+
+== et « the long name of this stack » ne bouge pas ==
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   stack "/tmp/hc_origine.stack"
+   copie a nouveau : faite
+   stack "/tmp/hc_origine.stack"
+
+== la copie est une VRAIE copie ==
+   relue : 1 carte(s), 2 bouton(s), nom [Pile]

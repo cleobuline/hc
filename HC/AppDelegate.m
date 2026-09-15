@@ -882,7 +882,25 @@ static NSMenu *gRecentMenu = nil;
          * détecte vraiment les fautes d'écriture — disque plein, quota — il
          * faut le DIRE : perdre une sauvegarde en silence est la pire chose
          * qu'un éditeur puisse faire. */
-        if (hc_save(pile, [path UTF8String]) != 0) {
+        /* « SAVE A COPY » NE DÉMÉNAGE PAS L'ORIGINAL — sauf s'il n'a pas
+         * encore de domicile.
+         *
+         * L'article s'appelle « Save a Copy… » et le code posait pourtant
+         * doc.path : c'était un « Save As » sous un autre nom, et « the long
+         * name of this stack » changeait de réponse après une opération censée
+         * ne rien changer à la pile ouverte.
+         *
+         * Mais une pile neuve n'a AUCUNE adresse, et c'est par là qu'elle en
+         * reçoit une : HC n'a pas d'article « Enregistrer », comme HyperCard
+         * qui écrivait en continu. Refuser d'adopter le chemin dans ce cas
+         * laisserait le travail sans fichier, ce qui est pire.
+         *
+         * La règle est donc celle du nom : on adopte si la pile n'a pas
+         * d'adresse, on copie si elle en a une. */
+        BOOL premiere = (hc_stack_path(pile) == NULL || *hc_stack_path(pile) == '\0');
+        int r = premiere ? hc_save(pile, [path UTF8String])
+                         : hc_save_copie(pile, [path UTF8String]);
+        if (r != 0) {
             NSAlert *a = [[NSAlert alloc] init];
             [a setMessageText:@"L'enregistrement a échoué."];
             [a setInformativeText:[NSString stringWithFormat:
@@ -894,7 +912,8 @@ static NSMenu *gRecentMenu = nil;
             [a runModal];
             return;                   /* le document garde son ancien chemin */
         }
-        doc.path = path;              /* « go to stack » cherchera à côté */
+        /* Le document ne suit que si la pile a vraiment déménagé. */
+        if (premiere) doc.path = path;
     };
 
     if (hote) [panel beginSheetModalForWindow:hote completionHandler:fini];

@@ -1053,10 +1053,13 @@ static Object *part_at(Object *card, NSPoint p) {
 static char gDlgBuf[512];
 static char gFileBuf[2048];
 
+/* Le rappel de « save stack "X" as "Y" ». Une COPIE, comme le dit le contrat
+ * dans hc_core.h : la pile en mémoire garde son adresse, et « the long name of
+ * this stack » répond la même chose avant et après. */
 static int cocoa_save_stack(Object *stack, const char *path) {
     if (!stack || !path || !*path) return 0;
     [gView flushPaintToKernel];
-    return hc_save(stack, path) == 0;
+    return hc_save_copie(stack, path) == 0;
 }
 
 static const char *cocoa_answer_file(const char *prompt) {
