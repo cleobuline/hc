@@ -9833,6 +9833,46 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
                               const char *prop, const char *val);
 static const HctNoeud *v3_set_cible_menu(const HctNoeud *n, char *prop, int len);
 
+
+/* UNE VALEUR EN LISTE — « to 1,2,30,40 » — EST DÉJÀ DANS L'ARBRE.
+ *
+ * Le motif de `set` est « e to * », et l'étoile vaut « zéro à N expressions
+ * séparées par des virgules » : l'analyseur rend donc un enfant PAR ÉLÉMENT.
+ * v3_cmd_set ne lisait le sous-arbre que lorsqu'il y en avait exactement un,
+ * et retombait sinon sur eval_checked, qui relit le texte brut « 1,2,30,40 »
+ * comme UNE expression — hct_expression s'arrête à la première virgule.
+ *
+ * Résultat : parse_ints n'en comptait qu'un au lieu de quatre, l'écriture
+ * était abandonnée, et rien ne bougeait. Sans un mot, comme toujours.
+ *
+ *     set the rect of button "Ok" to 1,2,30,40     ne faisait rien
+ *     set the rect of button "Ok" to "1,2,30,40"   marchait
+ *     set the loc of button "Ok" to 200,200        ne faisait rien
+ *
+ * On évalue donc chaque élément et on les rejoint par des virgules, ce qui
+ * est très exactement ce que l'étoile a découpé. Chaque élément est une
+ * expression à part entière : « set the loc of X to item 1 of p, item 2 of p »
+ * marche pour la même raison.
+ *
+ * Rend le nombre d'éléments écrits ; s'arrête à la première erreur. */
+static int v3_val_liste(HctContexte *ctx, const HctNoeud *n, int premier,
+                        char *out, int outlen)
+{
+    int pos = 0, compte = 0;
+    out[0] = '\0';
+    for (int i = premier; i < n->nfils; i++) {
+        char un[256];
+        v3_val_texte(ctx, n->fils[i], un, sizeof un);
+        if (ctx->erreur) return compte;
+        int ecrit = snprintf(out + pos, (size_t)(outlen - pos),
+                             "%s%s", compte ? "," : "", un);
+        if (ecrit < 0 || ecrit >= outlen - pos) { out[outlen - 1] = '\0'; break; }
+        pos += ecrit;
+        compte++;
+    }
+    return compte;
+}
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
@@ -10044,6 +10084,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
          * évite qu'on se demande pourquoi dans six mois. */
         if (n->nfils == 3) {
             v3_val_texte(ctx, n->fils[2], val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else if (n->nfils > 3) {
+            /* « to 1,2,30,40 » : un enfant par élément. Voir v3_val_liste. */
+            v3_val_liste(ctx, n, 2, val, HC_VAL);
             if (ctx->erreur) { g_atop = sauve; return 1; }
         } else {
             eval_checked(to + 2, val, HC_VAL);
