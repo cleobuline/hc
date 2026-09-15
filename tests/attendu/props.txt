@@ -24,7 +24,7 @@ the textStyle of card field "data"             [v3] — retours de la v3 vers l'
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
-      = field "data"
+      = card field "data"
 the name of card field "data"                  [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —

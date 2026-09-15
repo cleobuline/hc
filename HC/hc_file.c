@@ -582,6 +582,9 @@ int hc_save(Object *stack, const char *path)
         return -1;
     }
     free(tmp);
+    /* La pile habite maintenant ICI — et c'est vrai aussi d'un « save as »,
+     * qui est la seule façon pour une pile de changer d'adresse. */
+    hc_set_stack_path(stack, path);
     return 0;
 }
 
@@ -1419,5 +1422,8 @@ Object *hc_load(const char *path)
     if (!stack)
         snprintf(g_load_erreur, sizeof g_load_erreur,
                  "Ce fichier ne contient pas de pile.");
+    /* Le noyau apprend ICI où la pile habite — « the long name of this stack »
+     * en a besoin, et c'est le seul endroit qui le sache à la lecture. */
+    else hc_set_stack_path(stack, path);
     return stack;
 }

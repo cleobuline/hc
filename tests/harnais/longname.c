@@ -23,6 +23,7 @@
  * Une part de FOND s'ancre sur son fond et non sur une carte : elle existe
  * independamment de celle qu'on regarde. */
 #include "hc_core.h"
+#include "hc_file.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -91,12 +92,51 @@ int main(void)
         "  put \"bkgnd button \" & quote & \"DuFond\" & quote into bkb\n"
         "  put the short name of bkb\n"
 
+        "  put \"== la forme ABREGEE porte la couche, elle aussi ==\"\n"
+        /* Elle rendait « button "ok" », ce qui ne designe PAS un objet : une
+         * carte et son fond peuvent porter chacun un bouton de ce nom. « the
+         * name of me » etait donc inutilisable pour designer l'objet dont il
+         * venait — or c'est tout ce qu'on lui demande. */
+        "  put the name of card button \"Bouton\"\n"
+        "  put the name of bg button \"DuFond\"\n"
+        "  put the name of card field \"Champ\"\n"
+        "  put the name of this card\n"
+        "  put the name of this background\n"
+        "  put the name of this stack\n"
+        "  put the name of bg button \"DuFond\" into ab\n"
+        "  put \"   et elle se re-resout : \" & the short name of ab\n"
+
         "  put \"== ce qui ne doit PAS changer ==\"\n"
         "  put the short name of this stack\n"
-        "  put the name of this card\n"
         "  put the short name of card id 102\n"
         "end mouseUp\n");
     hc_send(decl, "mouseUp");
+
+    puts("\n== le CHEMIN du fichier, une fois la pile enregistree ==");
+    /* HyperCard met le chemin complet dans la forme longue d'une pile. Le
+     * noyau ne le connaissait pas — c'etait le document qui le tenait —, si
+     * bien que « the long name of this stack » ne rendait que le NOM. Deux
+     * piles ouvertes peuvent porter le meme nom ; leur chemin, non. */
+    {
+        const char *fic = "/tmp/hc_longname.stack";
+        remove(fic);
+        printf("   avant enregistrement : chemin = [%s]\n",
+               hc_stack_path(st) ? hc_stack_path(st) : "(aucun)");
+        printf("   sauvegarde : %s\n", hc_save(st, fic) == 0 ? "faite" : "ECHEC");
+        printf("   apres               : chemin = [%s]\n",
+               hc_stack_path(st) ? hc_stack_path(st) : "(aucun)");
+        hc_set_current_card(c1);
+        hc_set_script(decl,
+            "on mouseUp\n"
+            "  put the long name of this stack\n"
+            "  put the long name of me\n"
+            "  put the long name of this stack into lp\n"
+            "  put \"   et la pile se retrouve par son chemin : \""
+            " & the short name of lp\n"
+            "end mouseUp\n");
+        hc_send(decl, "mouseUp");
+        remove(fic);
+    }
 
     hc_unregister_stack(st);
     hc_free(st);

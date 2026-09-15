@@ -127,6 +127,20 @@ struct Object {
     ObjType  type;
     int      id;
     char    *name;      /* nom de l'objet (peut être NULL) */
+
+    /* LE CHEMIN DU FICHIER, pour une PILE seulement, ou NULL.
+     *
+     * Le noyau ne le connaissait pas : c'était le document qui le tenait, et
+     * « the long name of this stack » ne pouvait donc rendre que le NOM.
+     * HyperCard y met le chemin complet, et c'est ce qui rend la forme longue
+     * utilisable : deux piles ouvertes peuvent porter le même nom, leur chemin
+     * non.
+     *
+     * Posé par hc_load et par hc_save, les deux seuls endroits qui le
+     * connaissent. Il n'est JAMAIS écrit dans le .stack : le chemin dit où le
+     * fichier se trouve, pas ce qu'il contient, et l'y graver le rendrait faux
+     * au premier déplacement. */
+    char    *path;
     char    *script;    /* script HyperTalk brut */
 
     /* Arbre du script, analysé une seule fois et gardé.
@@ -346,6 +360,11 @@ int     hc_hilite_of(Object *btn, Object *card);
  * un bouton de fond dont sharedHilite est faux. La vue en a besoin pour savoir
  * si la carte du clic lui est indispensable. */
 int     hc_hilite_par_carte(Object *btn);
+
+/* Le chemin du fichier d'une pile, ou NULL si elle n'a jamais été lue ni
+ * enregistrée. hc_load et hc_save le posent ; personne d'autre n'a à le faire. */
+const char *hc_stack_path(Object *stack);
+void        hc_set_stack_path(Object *stack, const char *path);
 
 /* La fin automatique d'un clic : case qui bascule, radio qui s'allume et
  * éteint ses voisins, bouton ordinaire qui s'éteint.

@@ -242,6 +242,16 @@ static Object *find_open_stack(const char *nom)
     for (int i = 0; i < g_nstacks; i++)
         if (g_stacks[i]->name && ci_equal(g_stacks[i]->name, nom))
             return g_stacks[i];
+    /* PAR SON CHEMIN, À DÉFAUT DE SON NOM.
+     *
+     * « the long name of this stack » rend maintenant le chemin du fichier,
+     * comme chez HyperCard. Une forme longue qui ne se relit pas ne serait
+     * qu'une décoration — c'est la leçon du « of … » —, donc le résolveur
+     * accepte les deux. Le chemin est comparé tel quel, casse comprise : un
+     * système de fichiers peut la distinguer, et deviner serait pire. */
+    for (int i = 0; i < g_nstacks; i++)
+        if (g_stacks[i]->path && strcmp(g_stacks[i]->path, nom) == 0)
+            return g_stacks[i];
     return NULL;
 }
 
@@ -408,12 +418,45 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
         snprintf(out, outlen, "%s", o->name ? o->name : "");
         return;
     }
-    if (forme != HC_NOM_LONG) { hc_describe(o, out, outlen); return; }
+    /* LA FORME ABRÉGÉE PORTE LA COUCHE, elle aussi.
+     *
+     * Elle rendait « button "ok" », ce qui ne désigne PAS un objet : une carte
+     * et son fond peuvent porter chacun un bouton de ce nom, et rien dans la
+     * réponse ne disait lequel. « the name of me » était donc inutilisable
+     * pour désigner l'objet dont il venait — or c'est tout ce qu'on lui
+     * demande.
+     *
+     * hc_describe, lui, ne change pas : c'est une ÉTIQUETTE de diagnostic, pas
+     * un descripteur. Les traces disent « button "ok" » et continueront.
+     *
+     * Le mot est « bkgnd », celui d'HyperCard, et le même que la forme longue
+     * emploie déjà : deux orthographes pour la même chose dans les deux formes
+     * d'un même nom seraient une invitation à l'erreur. */
+    if (forme != HC_NOM_LONG) {
+        switch (o->type) {
+        case OBJ_BACKGROUND: terme_objet(o, "bkgnd", out, outlen); return;
+        case OBJ_BUTTON:
+        case OBJ_FIELD: {
+            char type[32];
+            snprintf(type, sizeof type, "%s %s",
+                     hc_owner_is_bg(o) ? "bkgnd" : "card",
+                     o->type == OBJ_BUTTON ? "button" : "field");
+            terme_objet(o, type, out, outlen);
+            return;
+        }
+        default: hc_describe(o, out, outlen); return;
+        }
+    }
 
     Object *pile = owning_stack(o);
-    char pl[160];
-    if (pile) terme_objet(pile, "stack", pl, sizeof pl);
-    else      snprintf(pl, sizeof pl, "%s", "");
+    char pl[512];
+    if (!pile)                 snprintf(pl, sizeof pl, "%s", "");
+    /* LE CHEMIN PLUTÔT QUE LE NOM, quand on le connaît. C'est ce que met
+     * HyperCard, et c'est ce qui distingue deux piles ouvertes qui portent le
+     * même nom. resolve sait relire les deux. */
+    else if (pile->path && pile->path[0])
+        snprintf(pl, sizeof pl, "stack \"%s\"", pile->path);
+    else                       terme_objet(pile, "stack", pl, sizeof pl);
 
     switch (o->type) {
     case OBJ_STACK:
@@ -1655,6 +1698,7 @@ void hc_free(Object *o)
     for (int i = 0; i < o->nparts; i++) hc_free(o->parts[i]);
     free(o->parts);
     free(o->name);
+    free(o->path);
     hc_arbre_oublie(o);          /* avant le script : les jetons y pointent */
     free(o->script);
     free(o->contents);
@@ -1973,6 +2017,20 @@ void hc_set_hilite_raw(Object *card, int button_id, int on)
 }
 
 int hc_hilite_par_carte(Object *btn) { return hilite_par_carte(btn); }
+
+const char *hc_stack_path(Object *stack)
+{
+    return (stack && stack->type == OBJ_STACK) ? stack->path : NULL;
+}
+
+void hc_set_stack_path(Object *stack, const char *path)
+{
+    if (!stack || stack->type != OBJ_STACK) return;
+    char *neuf = path ? dupstr(path) : NULL;
+    if (path && !neuf) hc_memoire_epuisee("chemin d'une pile");
+    free(stack->path);
+    stack->path = neuf;
+}
 
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
