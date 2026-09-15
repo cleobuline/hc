@@ -3082,6 +3082,24 @@ static BOOL paint_selection_active(void)
             Object *owner = (gEditBackground && card->bg) ? card->bg : card;
             Object *p = hc_paste_part(owner);
             if (p) {
+                /* LE CATALOGUE DE TRAVAIL DOIT APPRENDRE CE QUI VIENT D'ARRIVER.
+                 *
+                 * Coller un bouton transplante son icône dans la pile — et lui
+                 * donne un NUMÉRO NEUF quand l'ancien était déjà pris par un
+                 * autre dessin. HCicons ne voit pas stack->icons : il en tient
+                 * une copie, refaite par hcicon_edit_sync.
+                 *
+                 * Sans cet appel l'icône était bel et bien dans la pile, et
+                 * invisible partout : hcicon_find ne connaissait pas son
+                 * nouveau numéro, donc le bouton collé ne dessinait rien et le
+                 * panneau ne la listait pas. On la croyait perdue alors
+                 * qu'elle était seulement ignorée.
+                 *
+                 * Le chemin des CARTES faisait déjà cet appel, juste au-dessus.
+                 * Celui des objets l'avait oublié : l'invariant est que toute
+                 * pose qui touche stack->icons doit être suivie d'un sync. */
+                if (card->owner) hcicon_edit_sync(card->owner);
+
                 gSelected = p;
                 hc_send(p, p->type == OBJ_BUTTON ? "newButton" : "newField");
                 [gView setNeedsDisplay:YES];
