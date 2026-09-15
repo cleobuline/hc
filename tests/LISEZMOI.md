@@ -20,7 +20,8 @@ git clone https://github.com/cleobuline/hc.git
 cd hc/tests && ./lance.sh
 ```
 
-Sans git, l'archive suffit — le dépôt fait 7 Mo :
+Sans git, l'archive suffit — 1,1 Mo, contre 7 Mo pour le clone et son
+historique :
 
 ```sh
 curl -L https://github.com/cleobuline/hc/archive/refs/heads/main.tar.gz | tar xz
