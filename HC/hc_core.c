@@ -15,6 +15,7 @@
 #include <limits.h>
 #include "hct_bloc.h"
 #include "hct_chunk.h"   /* morceaux : étape 1 de la reprise v3 */
+#include "hc_file.h"     /* hc_taille_fichier : « the size » d'une pile */
 #include "hct_val.h"     /* valeurs  : étape 2 */
 #include "hct_exec.h"    /* exécuteur : étape 3 */
 #include "hct_eval.h"
@@ -8285,6 +8286,95 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         *out = hct_val_texte(g_messages_verrouilles ? "true" : "false"); return 1;
     }
     if (reglage_lit(nom, buf, HC_VAL)) { *out = hct_val_texte(buf); return 1; }
+
+    /* ═══ LES FONCTIONS DU MONDE QUE LA v3 NE SAVAIT PAS NOMMER ═══════
+     *
+     * Mesuré avant d'écrire une ligne : sur 192 harnais, 556 entrées dans
+     * term_value / call_function, dont 348 — 63 % — sont des SONDES DE NOM,
+     * une par nom et par processus. Et sur 118 noms sondés un par un, l'ancien
+     * moteur n'en sert qu'UN SEUL : « the tool ». Tous les autres renvoient le
+     * mot qu'on leur a donné.
+     *
+     * Ce qui manquait n'était donc pas un portage : c'était une LISTE. Voici
+     * la part que le noyau peut tenir lui-même.
+     *
+     * « the tool » d'abord, parce que c'est le seul que l'ancien moteur
+     * servait vraiment, et pour une raison minuscule : il a un DÉFAUT — « browse
+     * tool » — que la boucle sur V3_GLOBALES_HOTE n'avait pas. Quand l'hôte se
+     * tait, elle renonçait et sondait. Le défaut vit maintenant des deux côtés,
+     * et la dernière sonde utile disparaît. */
+    if (ci_equal(nom, "tool")) {
+        const char *t = host_global("tool");
+        *out = hct_val_texte((t && *t) ? t : "browse tool");
+        return 1;
+    }
+
+    /* La version de HC. L'hôte fait foi — c'est lui qui porte
+     * MARKETING_VERSION —, le noyau répond pour tout ce qui tourne sans lui. */
+    if (ci_equal(nom, "version")) {
+        const char *v = host_global("version");
+        *out = hct_val_texte((v && *v) ? v : HC_VERSION);
+        return 1;
+    }
+
+    /* « the language » : la langue des SCRIPTS, pas celle de l'utilisatrice.
+     * HyperCard rendait le nom du dialecte dans lequel on écrit, et ici on
+     * écrit de l'HyperTalk anglais — « put », « repeat », « end ». Rendre
+     * « French » parce que les commentaires le sont serait une jolie erreur :
+     * un script qui teste cette valeur pour choisir ses mots-clés se
+     * tromperait de mots. */
+    if (ci_equal(nom, "language")) {
+        const char *l = host_global("language");
+        *out = hct_val_texte((l && *l) ? l : "English");
+        return 1;
+    }
+
+    /* « the sound » : ce qui joue en ce moment, « done » quand rien ne joue.
+     * Seul l'hôte a une carte son ; sans lui, rien ne joue, et c'est une
+     * réponse exacte — pas une valeur décorative. */
+    if (ci_equal(nom, "sound")) {
+        const char *sn = host_global("sound");
+        *out = hct_val_texte((sn && *sn) ? sn : "done");
+        return 1;
+    }
+
+    /* « the destination » : la pile vers laquelle on va. Chez HyperCard elle
+     * se lit pendant un openStack, pour savoir d'où l'on vient et où l'on va ;
+     * hors navigation elle nomme la pile courante. C'est le nom LONG, celui
+     * qui porte le chemin depuis que hc_set_stack_path existe — deux piles
+     * peuvent porter le même nom, leur chemin non. */
+    if (ci_equal(nom, "destination")) {
+        Object *st = g_current_card ? owning_stack(g_current_card) : NULL;
+        if (!st) { *out = hct_val_texte(""); return 1; }
+        char nm[512];
+        hc_nom_de(st, HC_NOM_LONG, nm, sizeof nm);
+        *out = hct_val_texte(nm);
+        return 1;
+    }
+
+    /* « the size » et « the freeSize » : des propriétés du FICHIER de la pile,
+     * pas de la machine — c'est pourquoi elles ne sont pas dans
+     * V3_GLOBALES_HOTE avec diskSpace et heapSpace.
+     *
+     * size est la taille du fichier ; -1 devient 0, une pile jamais
+     * enregistrée n'occupant rien. freeSize est l'espace que les suppressions
+     * ont laissé DANS le fichier : hc_save le réécrit entier à chaque fois, il
+     * n'en laisse jamais. Zéro n'est pas ici un aveu d'ignorance, c'est la
+     * réponse juste, et « if the freeSize > 0 then compact » ne compactera
+     * donc jamais pour rien. */
+    if (ci_equal(nom, "size") || ci_equal(nom, "freesize")) {
+        char petit[24];
+        long n = 0;
+        if (ci_equal(nom, "size")) {
+            Object *st = g_current_card ? owning_stack(g_current_card) : NULL;
+            long t = st ? hc_taille_fichier(hc_stack_path(st)) : -1;
+            if (t > 0) n = t;
+        }
+        snprintf(petit, sizeof petit, "%ld", n);
+        *out = hct_val_texte(petit);
+        return 1;
+    }
+
     return 0;
 }
 
@@ -8328,6 +8418,47 @@ static void v1_note_muet(const char *nom)
     snprintf(g_muets[g_nmuets], sizeof g_muets[0], "%s", nom);
     g_nmuets++;
 }
+
+/* ═══ CE QUE L'ANCIEN MOTEUR SAIT SERVIR SANS ARGUMENT ════════════════
+ *
+ * La liste est EXTRAITE de call_function_body et de G_REGLAGES, pas devinée :
+ * ce sont tous les noms que « the <nom> » peut y trouver. Elle est fermée, et
+ * c'est le but — un nom qui n'y figure pas n'a rien à aller demander là-bas.
+ *
+ * POURQUOI ELLE EXISTE. v3_fonction sondait l'ancien moteur pour TOUT nom
+ * qu'elle ne servait pas elle-même : « est-ce que tu connais ça ? ». Mesuré
+ * sur les 192 harnais, cela faisait 348 sondes, 63 % de toutes les entrées
+ * dans term_value / call_function. Mesuré nom par nom sur 118 candidats,
+ * l'ancien moteur en servait UN : « the tool » — et seulement parce qu'il
+ * avait un défaut que la v3 n'avait pas. Ce défaut est maintenant des deux
+ * côtés, juste au-dessus.
+ *
+ * Autrement dit : on posait 348 questions pour une réponse, et la réponse
+ * tenait en une ligne. Le reste rendait le mot qu'on avait donné — un écho,
+ * que v1_note_muet mettait ensuite en cache. Tout ce mécanisme de mise en
+ * cache d'une non-réponse ne servait qu'à amortir une question qu'il ne
+ * fallait pas poser.
+ *
+ * ELLE NE DISPARAÎT PAS POUR AUTANT. La v3 sert aujourd'hui chacun de ces
+ * noms avant d'arriver ici, donc la sonde ne part plus jamais. Mais si
+ * quelqu'un ajoute demain un nom à call_function_body sans l'ajouter à la v3,
+ * cette liste le rattrape au lieu de le perdre en silence. Elle coûte une
+ * comparaison de chaînes sur un chemin déjà froid.
+ *
+ * tests/harnais/mondenoms.c tient l'invariant : chacun de ces noms doit être
+ * servi par la v3 SANS sonde. */
+static const char *V3_V1_FONCTIONS_0[] = {
+    /* call_function_body */
+    "date", "time", "result", "seconds", "secs", "ticks",
+    "foundchunk", "foundfield", "foundline", "foundtext",
+    "selectedchunk", "selectedfield", "selectedline", "selectedtext",
+    "selection", "stacksinuse", "params", "paramcount",
+    "itemdelimiter", "numberformat", "lockscreen", "lockmessages", "tool",
+    /* G_REGLAGES */
+    "userlevel", "dragspeed", "blindtyping", "powerkeys",
+    "lockrecent", "textarrows",
+    NULL
+};
 
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
@@ -8423,6 +8554,17 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char appel[160];
         snprintf(appel, sizeof appel, "the %s", nom);
         buf[0] = '\0';
+        /* Hors de la liste, l'ancien moteur n'a rien à en dire : on ne le
+         * dérange pas. Voir V3_V1_FONCTIONS_0 — 348 sondes pour une réponse. */
+        if (!dans_liste(nom, V3_V1_FONCTIONS_0)) {
+            if (v3_fonction_pile(nom, args, 0)) {
+                *out = hct_val_texte(g_result);
+                ARENA_FREE;
+                { g_v1_porte = sauve_porte; } return 1;
+            }
+            ARENA_FREE;
+            { g_v1_porte = sauve_porte; } return 0;
+        }
         if (v1_est_muet(nom)) {
             /* Déjà demandé, déjà sans réponse : on passe directement à la
              * suite, qui est le vrai chemin pour ce nom-là. */
@@ -8743,6 +8885,19 @@ static struct V3Releve g_v1[V3_RELEVE_MAX];
 static int  g_nv1 = 0;
 static void v1_compte(const char *quoi, const char *porte)
 {
+    /* ON ARME ICI, ET PAS À L'INSTALLATION DE L'HÔTE.
+     *
+     * La première version armait depuis hc_set_host, que je croyais être le
+     * point de passage obligé de tout programme. Mesuré après coup : 56 des
+     * 192 harnais ne l'appellent jamais — ils se contentent de l'hôte console
+     * par défaut. Le relevé de la phase 0 ne couvrait donc que 136
+     * programmes, pas 192, et je l'avais annoncé comme complet.
+     *
+     * Armer au premier comptage ne peut pas se manquer : s'il y a quelque
+     * chose à relever, on est passé par ici. Et s'il n'y a rien, il n'y a rien
+     * à armer. */
+    hc_v3_releve_arme();
+
     char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, porte && *porte ? porte : "?");
     for (int i = 0; i < g_nv1; i++)
@@ -8767,6 +8922,7 @@ static const char *v1_porte(const char *nom)
 
 static void v3_note(const char *quoi, const char *nom)
 {
+    hc_v3_releve_arme();          /* voir v1_compte : on arme au comptage */
     char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, nom && *nom ? nom : "?");
     for (int i = 0; i < g_nreleve; i++)
@@ -8836,6 +8992,46 @@ static void bilan_v1(void)
 }
 
 void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
+
+/* ═══ LE RELEVÉ DE TOUT LE CORPUS, ET POURQUOI IL NE PASSE PAS PAR LA SORTIE
+ *
+ * `debug bilan` écrit sur la sortie du harnais, donc dans sa référence. Pour
+ * mesurer LE CORPUS il faudrait l'ajouter aux 189 harnais, c'est-à-dire
+ * réenregistrer 189 références — et une référence qu'on réenregistre en masse
+ * ne prouve plus rien. Mesurés : 71 harnais sur 189 impriment un bilan, et
+ * chacun remet ses compteurs à zéro. Les 118 autres sont un angle mort, et
+ * c'est justement là que les surprises se logent : il n'y avait AUCUN harnais
+ * pour les icônes quand leur enregistrement s'est cassé.
+ *
+ * On écrit donc dans un FICHIER, en ajout, à la fin du processus, et
+ * uniquement si HC_V3_RELEVE le nomme. Rien sur la sortie, donc aucune
+ * référence touchée ; un enregistrement par processus, donc l'agrégat couvre
+ * la suite entière. Une ligne par compteur, préfixée du nom du programme pour
+ * qu'on puisse demander « qui » autant que « combien ».
+ *
+ * Éteint, cela coûte un getenv à la sortie du processus. */
+static void releve_fichier(void)
+{
+    const char *chemin = getenv("HC_V3_RELEVE");
+    if (!chemin || !*chemin) return;
+    FILE *f = fopen(chemin, "a");
+    if (!f) return;
+    const char *qui = getenv("HC_V3_RELEVE_QUI");
+    if (!qui) qui = "?";
+    for (int i = 0; i < g_nreleve; i++)
+        fprintf(f, "%s\trecours\t%s\t%ld\n", qui, g_releve[i].nom, g_releve[i].n);
+    for (int i = 0; i < g_nv1; i++)
+        fprintf(f, "%s\texec\t%s\t%ld\n", qui, g_v1[i].nom, g_v1[i].n);
+    fclose(f);
+}
+
+void hc_v3_releve_arme(void)
+{
+    static int arme = 0;
+    if (arme) return;
+    arme = 1;
+    if (getenv("HC_V3_RELEVE")) atexit(releve_fichier);
+}
 
 /* ===================================================================
  * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de
@@ -11780,6 +11976,39 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         dst = nth_card(owning_stack(g_current_card), 0);
     } else {
         dst = hct_resout(ctx, ref);
+
+        /* UN MOT NU APRÈS « go » EST UNE DESTINATION, PAS UNE EXPRESSION.
+         *
+         * « go prev », « go next », « go first ». hct_resout ne connaît que
+         * les nœuds OBJET et rendait NULL ; on tombait alors dans l'évaluation
+         * juste en dessous, qui traite `prev` comme une expression — donc
+         * comme une variable, puis comme une fonction. Ni l'une ni l'autre :
+         * c'est un désignateur de carte, et resolve sait le lire depuis
+         * toujours.
+         *
+         * Ce que cela coûtait, mesuré : la v3 ne sachant pas répondre,
+         * v3_fonction sondait l'ancien moteur, qui RÉSOLVAIT le mot et rendait
+         * la carte. La navigation marchait donc — par le plus long chemin
+         * possible, et au prix d'une entrée dans term_value par mot. Pire :
+         * quand j'ai fermé cette sonde, le mot est parti comme MESSAGE dans
+         * toute la hiérarchie. Une pile qui définit « on prev » l'aurait
+         * intercepté, et « go prev » aurait appelé son gestionnaire au lieu de
+         * changer de carte.
+         *
+         * LA VARIABLE GARDE LA PRIORITÉ, comme avant : « put "card 2" into p »
+         * puis « go p » doit suivre la variable, pas chercher une carte
+         * nommée p. On ne prend donc ce chemin que si le mot n'en nomme
+         * aucune — c'est exactement l'ordre qu'avait l'évaluation, lit_var
+         * passant avant tout le reste.
+         *
+         * Un mot qui ne désigne rien laisse dst à NULL et retombe sur
+         * l'évaluation : « go zorglub » se plaint comme avant. */
+        if (!dst && ref->genre == HCTN_IDENT && n->nfils == i + 1) {
+            char mot[64];
+            v3_brut(ref, mot, sizeof mot);
+            const char *v = var_get(mot);
+            if (!(v && *v)) dst = resolve(mot);
+        }
 
         /* « go x » : la variable porte la référence. On évalue, puis on
          * résout le texte obtenu — resolve fait ce que la v3 ne sait pas

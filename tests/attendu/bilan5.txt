@@ -17,13 +17,13 @@
    servi  the stacks               
    TROU   the windows              
    TROU   the programs             
-   TROU   the sound                
+   servi  the sound                done
    servi  the menus                
    TROU   the diskSpace            
    TROU   the heapSpace            
    TROU   the systemVersion        
-   TROU   the version              
-   TROU   the destination          
-   TROU   the size                 
-   TROU   the freeSize             
-   TROU   the language             
+   servi  the version              0.6.5
+   servi  the destination          stack "T"
+   servi  the size                 0
+   servi  the freeSize             0
+   servi  the language             English

@@ -2,8 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme blue                            1
-[v3]    v1 fonction blue                         1
+[v3]    (rien)
    [HÔTE] paintColor     <- 0,128,0
    [msg] relu : 0,128,0
    [HÔTE] paintColor     <- 64,255,30

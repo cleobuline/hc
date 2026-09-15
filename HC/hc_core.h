@@ -311,7 +311,27 @@ struct Object {
  * LIGNES sur 172 harnais, et ses 2 327 lignes ont pu partir. Les fonctions et
  * les termes, eux, comptaient 744 passages — ils restent. */
 void hc_v3_bilan(void);
+/* La version de HC, telle que le noyau la connaît.
+ *
+ * L'application Cocoa porte la sienne dans MARKETING_VERSION, et c'est ELLE
+ * qui fait foi pour le binaire livré : « the version » interroge d'abord
+ * l'hôte. Cette constante est la réponse pour tout ce qui tourne sans hôte —
+ * les 192 harnais, notamment —, et le repère à mettre à jour avec le projet
+ * Xcode quand la version change. */
+#define HC_VERSION "0.6.5"
+
 void hc_v3_bilan_remise_a_zero(void);
+
+/* Armer le relevé de fin de processus : si HC_V3_RELEVE nomme un fichier, les
+ * deux tableaux y sont AJOUTÉS à la sortie, sans rien écrire sur la sortie
+ * standard. C'est ce qui permet de mesurer le corpus entier sans toucher une
+ * seule référence de test.
+ *
+ * Appelée au PREMIER COMPTAGE, jamais depuis un point d'entrée : 56 des 192
+ * harnais n'appellent pas hc_set_host, et armer de là mesurait les deux tiers
+ * du corpus en le présentant comme entier. Idempotente, et sans effet si
+ * HC_V3_RELEVE n'est pas posé. */
+void hc_v3_releve_arme(void);
 
 Object *hc_new_stack(const char *name);
 Object *hc_new_background(Object *stack, const char *name);

@@ -1,12 +1,8 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    fonction next                            1
-[v3]    fonction prev                            1
+[v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme next                            1
-[v3]    v1 fonction next                         1
-[v3]    v1 terme prev                            1
-[v3]    v1 fonction prev                         1
+[v3]    (rien)
 === go next (bouton) ===
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
@@ -56,10 +52,6 @@
 --> carte apres 'go next card': Deux (attendu Deux)
 
 — retours de la v3 vers l'ancien interpréteur —
-   fonction next                            1
-   fonction prev                            1
+   (aucun)
 — ce que l'ancien interprète exécute encore —
-   v1 terme next                            1
-   v1 fonction next                         1
-   v1 terme prev                            1
-   v1 fonction prev                         1
+   (rien)

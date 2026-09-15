@@ -39,16 +39,16 @@
    servi  the stacks                 -> (vide)
    servi  the windows                -> (vide)
    servi  the programs               -> (vide)
-   servi  the sound                  -> (vide)
+   servi  the sound                  -> done
    servi  the menus                  -> (vide)
    servi  the diskSpace              -> (vide)
    servi  the heapSpace              -> (vide)
    servi  the systemVersion          -> (vide)
-   servi  the version                -> (vide)
-   servi  the destination            -> (vide)
-   servi  the size                   -> (vide)
-   servi  the freeSize               -> (vide)
-   servi  the language               -> (vide)
+   servi  the version                -> 0.6.5
+   servi  the destination            -> stack "T"
+   servi  the size                   -> 0
+   servi  the freeSize               -> 0
+   servi  the language               -> English
    servi  the cursor                 -> (vide)
    servi  the numberFormat           -> (vide)
    servi  the userLevel              -> 5

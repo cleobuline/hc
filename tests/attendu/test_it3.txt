@@ -2,8 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme calData                         1
-[v3]    v1 fonction calData                      1
+[v3]    (rien)
 → message "openCard" à card "Une"
    · traité par card "Une"
    → message "updateCalendar" à field "calendar"
@@ -20,5 +19,4 @@
 — retours de la v3 vers l'ancien interpréteur —
    (aucun)
 — ce que l'ancien interprète exécute encore —
-   v1 terme calData                         1
-   v1 fonction calData                      1
+   (rien)

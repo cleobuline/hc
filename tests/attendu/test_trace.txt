@@ -2,10 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme dayNameData                     1
-[v3]    v1 fonction dayNameData                  1
-[v3]    v1 terme spaces                          1
-[v3]    v1 fonction spaces                       1
+[v3]    (rien)
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
       [message box] [0] 2026,12,1,0,0,0,3
@@ -25,7 +22,4 @@
 — retours de la v3 vers l'ancien interpréteur —
    (aucun)
 — ce que l'ancien interprète exécute encore —
-   v1 terme dayNameData                     1
-   v1 fonction dayNameData                  1
-   v1 terme spaces                          1
-   v1 fonction spaces                       1
+   (rien)

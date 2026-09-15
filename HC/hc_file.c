@@ -1431,3 +1431,11 @@ Object *hc_load(const char *path)
     else hc_set_stack_path(stack, path);
     return stack;
 }
+
+long hc_taille_fichier(const char *chemin)
+{
+    if (!chemin || !*chemin) return -1;
+    struct stat st;
+    if (stat(chemin, &st) != 0) return -1;
+    return (long)st.st_size;
+}

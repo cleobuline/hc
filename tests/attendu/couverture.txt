@@ -57,9 +57,9 @@
   MANQUE put the heapSpace                               !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "B".t)
   MANQUE put the windows                                 !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "B".t)
   MANQUE put the programs                                !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "B".t)
-  MANQUE put the sound                                   !! propriété ou fonction inconnue : sound (v3, ligne 2 de button "B".t)
-  MANQUE put the freeSize                                !! propriété ou fonction inconnue : freeSize (v3, ligne 2 de button "B".t)
+  ok     put the sound                                
+  ok     put the freeSize                             
   ok     put the size of me                           
-  MANQUE put the destination                             !! propriété ou fonction inconnue : destination (v3, ligne 2 de button "B".t)
-  MANQUE put the language                                !! propriété ou fonction inconnue : language (v3, ligne 2 de button "B".t)
-  MANQUE put the version                                 !! propriété ou fonction inconnue : version (v3, ligne 2 de button "B".t)
+  ok     put the destination                          
+  ok     put the language                             
+  ok     put the version                              

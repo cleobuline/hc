@@ -10,8 +10,7 @@ get 1                                       [v3] — retours de la v3 vers l'anc
 add 1 to x                                  [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme x                               1
-[v3]    v1 fonction x                            1
+[v3]    (rien)
 subtract 1 from x                           [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —

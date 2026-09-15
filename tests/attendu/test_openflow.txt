@@ -165,18 +165,7 @@
               (pas de gestio[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme calData                         1
-[v3]    v1 fonction calData                      1
-[v3]    v1 terme watch                           1
-[v3]    v1 fonction watch                        1
-[v3]    v1 terme dayNameData                     1
-[v3]    v1 fonction dayNameData                  1
-[v3]    v1 terme spaces                          1
-[v3]    v1 fonction spaces                       1
-[v3]    v1 terme monthNameData                   1
-[v3]    v1 fonction monthNameData                1
-[v3]    v1 terme busy                            1
-[v3]    v1 fonction busy                         1
+[v3]    (rien)
 nnaire dans background "Fond")
               (pas de gestionnaire dans stack "Test")
             → cursor ← "busy"
@@ -248,15 +237,4 @@ Sun Mon Tue Wed Thu Fri Sat
 — retours de la v3 vers l'ancien interpréteur —
    (aucun)
 — ce que l'ancien interprète exécute encore —
-   v1 terme calData                         1
-   v1 fonction calData                      1
-   v1 terme watch                           1
-   v1 fonction watch                        1
-   v1 terme dayNameData                     1
-   v1 fonction dayNameData                  1
-   v1 terme spaces                          1
-   v1 fonction spaces                       1
-   v1 terme monthNameData                   1
-   v1 fonction monthNameData                1
-   v1 terme busy                            1
-   v1 fonction busy                         1
+   (rien)
