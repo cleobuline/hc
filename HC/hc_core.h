@@ -325,7 +325,12 @@ void hc_v3_bilan_remise_a_zero(void);
 /* Armer le relevé de fin de processus : si HC_V3_RELEVE nomme un fichier, les
  * deux tableaux y sont AJOUTÉS à la sortie, sans rien écrire sur la sortie
  * standard. C'est ce qui permet de mesurer le corpus entier sans toucher une
- * seule référence de test. Appelée par hc_set_host ; sans effet sinon. */
+ * seule référence de test.
+ *
+ * Appelée au PREMIER COMPTAGE, jamais depuis un point d'entrée : 56 des 192
+ * harnais n'appellent pas hc_set_host, et armer de là mesurait les deux tiers
+ * du corpus en le présentant comme entier. Idempotente, et sans effet si
+ * HC_V3_RELEVE n'est pas posé. */
 void hc_v3_releve_arme(void);
 
 Object *hc_new_stack(const char *name);

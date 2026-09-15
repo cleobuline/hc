@@ -567,14 +567,7 @@ static const HcHost g_console_host = {
 };
 static const HcHost *g_host = &g_console_host;
 
-void hc_set_host(const HcHost *h)
-{
-    g_host = h ? h : &g_console_host;
-    /* Le seul point par lequel TOUS les programmes passent — les 189 harnais
-     * comme l'application. Voir hc_v3_releve_arme : sans HC_V3_RELEVE, un
-     * getenv et rien d'autre. */
-    hc_v3_releve_arme();
-}
+void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
 
 /* Émet une ligne vers l'hôte. Le format ne doit PAS inclure le saut de ligne
    final ni l'indentation : l'hôte s'en charge. */
@@ -8464,26 +8457,6 @@ static const char *V3_V1_FONCTIONS_0[] = {
     /* G_REGLAGES */
     "userlevel", "dragspeed", "blindtyping", "powerkeys",
     "lockrecent", "textarrows",
-    /* LES DÉSIGNATEURS DE NAVIGATION, ET POURQUOI ILS SONT ICI.
-     *
-     * « go prev » évalue le mot `prev` comme une expression : il arrive donc
-     * jusqu'ici, et term_value lui répond — non comme à une fonction, mais en
-     * le RÉSOLVANT comme une carte. Ce n'est pas dans call_function_body,
-     * c'est dans resolve, et c'est pourquoi ma première extraction les a
-     * manqués : je n'avais lu que deux des trois sources. La suite l'a dit —
-     * test_bareprev, nav, test_gonext.
-     *
-     * Sans eux dans la liste, le mot part comme MESSAGE dans la hiérarchie :
-     * la navigation marchait encore, mais un « prev » se promenait de l'objet
-     * à la pile, et une pile qui définit « on prev » l'aurait intercepté.
-     *
-     * Ils n'ont rien à faire dans une liste de fonctions, et ils y sont quand
-     * même, parce que cette liste dit ce que la v1 SAIT SERVIR — pas ce qu'elle
-     * appelle une fonction. La vraie correction est ailleurs : « go » devrait
-     * résoudre sa destination au lieu de l'évaluer. C'est le premier article
-     * de la phase suivante, et il sortira ces six lignes d'ici. */
-    "prev", "previous", "next", "this", "first", "last",
-    "any", "mid", "middle", "back", "forth", "recent", "home",
     NULL
 };
 
@@ -8912,6 +8885,19 @@ static struct V3Releve g_v1[V3_RELEVE_MAX];
 static int  g_nv1 = 0;
 static void v1_compte(const char *quoi, const char *porte)
 {
+    /* ON ARME ICI, ET PAS À L'INSTALLATION DE L'HÔTE.
+     *
+     * La première version armait depuis hc_set_host, que je croyais être le
+     * point de passage obligé de tout programme. Mesuré après coup : 56 des
+     * 192 harnais ne l'appellent jamais — ils se contentent de l'hôte console
+     * par défaut. Le relevé de la phase 0 ne couvrait donc que 136
+     * programmes, pas 192, et je l'avais annoncé comme complet.
+     *
+     * Armer au premier comptage ne peut pas se manquer : s'il y a quelque
+     * chose à relever, on est passé par ici. Et s'il n'y a rien, il n'y a rien
+     * à armer. */
+    hc_v3_releve_arme();
+
     char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, porte && *porte ? porte : "?");
     for (int i = 0; i < g_nv1; i++)
@@ -8936,6 +8922,7 @@ static const char *v1_porte(const char *nom)
 
 static void v3_note(const char *quoi, const char *nom)
 {
+    hc_v3_releve_arme();          /* voir v1_compte : on arme au comptage */
     char cle[64];
     snprintf(cle, sizeof cle, "%s %s", quoi, nom && *nom ? nom : "?");
     for (int i = 0; i < g_nreleve; i++)
@@ -11989,6 +11976,39 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         dst = nth_card(owning_stack(g_current_card), 0);
     } else {
         dst = hct_resout(ctx, ref);
+
+        /* UN MOT NU APRÈS « go » EST UNE DESTINATION, PAS UNE EXPRESSION.
+         *
+         * « go prev », « go next », « go first ». hct_resout ne connaît que
+         * les nœuds OBJET et rendait NULL ; on tombait alors dans l'évaluation
+         * juste en dessous, qui traite `prev` comme une expression — donc
+         * comme une variable, puis comme une fonction. Ni l'une ni l'autre :
+         * c'est un désignateur de carte, et resolve sait le lire depuis
+         * toujours.
+         *
+         * Ce que cela coûtait, mesuré : la v3 ne sachant pas répondre,
+         * v3_fonction sondait l'ancien moteur, qui RÉSOLVAIT le mot et rendait
+         * la carte. La navigation marchait donc — par le plus long chemin
+         * possible, et au prix d'une entrée dans term_value par mot. Pire :
+         * quand j'ai fermé cette sonde, le mot est parti comme MESSAGE dans
+         * toute la hiérarchie. Une pile qui définit « on prev » l'aurait
+         * intercepté, et « go prev » aurait appelé son gestionnaire au lieu de
+         * changer de carte.
+         *
+         * LA VARIABLE GARDE LA PRIORITÉ, comme avant : « put "card 2" into p »
+         * puis « go p » doit suivre la variable, pas chercher une carte
+         * nommée p. On ne prend donc ce chemin que si le mot n'en nomme
+         * aucune — c'est exactement l'ordre qu'avait l'évaluation, lit_var
+         * passant avant tout le reste.
+         *
+         * Un mot qui ne désigne rien laisse dst à NULL et retombe sur
+         * l'évaluation : « go zorglub » se plaint comme avant. */
+        if (!dst && ref->genre == HCTN_IDENT && n->nfils == i + 1) {
+            char mot[64];
+            v3_brut(ref, mot, sizeof mot);
+            const char *v = var_get(mot);
+            if (!(v && *v)) dst = resolve(mot);
+        }
 
         /* « go x » : la variable porte la référence. On évalue, puis on
          * résout le texte obtenu — resolve fait ce que la v3 ne sait pas
