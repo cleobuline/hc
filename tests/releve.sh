@@ -29,8 +29,19 @@ R="${HC_RELEVE_FICHIER:-$TRAVAIL/releve.tsv}"
 
 rm -f "$R"
 n=0
+# N'EXÉCUTER QUE DES HARNAIS QUI EXISTENT ENCORE.
+#
+# .travail/bin garde les binaires des exécutions précédentes, y compris ceux
+# des harnais renommés ou supprimés depuis. Le relevé les lançait, et comptait
+# donc un corpus qui n'est plus celui du dépôt : mesuré, 193 programmes au lieu
+# de 192, dont « banc_lignes », renommé « bench_lignes » il y a des jours.
+#
+# Un clone neuf ne voyait rien — c'est un arbre de travail qui dérive. Et un
+# instrument qui mesure autre chose que ce qu'il annonce est précisément ce
+# qu'on ne veut pas ici : on l'aligne sur les SOURCES.
 for b in "$TRAVAIL"/bin/*; do
     [ -x "$b" ] || continue
+    [ -f "$ICI/harnais/$(basename "$b").c" ] || continue
     HC_V3_RELEVE="$R" HC_V3_RELEVE_QUI="$(basename "$b")" \
     HC_HORLOGE=1757606400 TZ=UTC LC_ALL=C \
         timeout 30 "$b" >/dev/null 2>&1 </dev/null
