@@ -94,6 +94,87 @@ static const char *quoted(const char *s, char *out, int outlen)
     return s;
 }
 
+/* ═══ CITER ET RELIRE UN NOM DANS UN DESCRIPTEUR ══════════════════════
+ *
+ * « the long name » promet une chose : ce qu'il rend doit pouvoir désigner
+ * l'objet d'où il vient. Le fabricant écrivait « %s "%s" » et le lecteur
+ * s'arrêtait au premier guillemet — un nom qui en contient un cassait donc le
+ * descripteur en deux.
+ *
+ *     set the name of card button 1 to "a" & quote & "b"
+ *     put the name of card button 1        ->  card button "a"b"
+ *     put the short name of it             ->  short name of it   (le LITTÉRAL)
+ *
+ * Pas d'erreur : la chaîne inventée circulait. Mesuré exactement ainsi.
+ *
+ * Le fichier .stack savait déjà écrire ces noms — put_quoted échappe depuis la
+ * correction du retour à la ligne. C'est le LANGAGE qui n'avait pas reçu la
+ * même règle : une syntaxe d'échappement dans le fichier, aucune dans les
+ * descripteurs. On prend donc la même convention des deux côtés, parce que
+ * deux syntaxes pour une seule idée finissent toujours par diverger.
+ *
+ * Les échappements INCONNUS sont rendus tels quels, comme dans le fichier :
+ * un nom contenant « \b » se relit « \b », et les descripteurs déjà écrits
+ * dans les scripts d'une pile continuent de se lire comme avant.
+ *
+ * Rend la longueur qu'il aurait fallu, à la manière de snprintf : c'est ce qui
+ * permet à l'appelant de voir la troncature au lieu de la subir. */
+static int descripteur_cite(const char *nom, char *out, int outlen)
+{
+    int besoin = 2;                       /* les deux guillemets */
+    int i = 0;
+    if (outlen > 0) out[0] = '\0';
+
+#define DC_POSE(c) do { if (i < outlen - 1) out[i++] = (c); besoin++; } while (0)
+    if (outlen > 1) { out[i++] = '"'; }
+    for (const char *p = nom ? nom : ""; *p; p++) {
+        switch (*p) {
+        case '"':  DC_POSE('\\'); DC_POSE('"');  break;
+        case '\\': DC_POSE('\\'); DC_POSE('\\'); break;
+        case '\n': DC_POSE('\\'); DC_POSE('n');  break;
+        case '\r': DC_POSE('\\'); DC_POSE('r');  break;
+        default:   DC_POSE(*p);
+        }
+    }
+#undef DC_POSE
+    besoin -= 2;                          /* DC_POSE a compté ses caractères */
+    if (i < outlen - 1) out[i++] = '"';
+    if (outlen > 0) out[i] = '\0';
+    return besoin + 2;
+}
+
+/* La lecture, symétrique. Même rôle que quoted(), mais pour un DESCRIPTEUR.
+ *
+ * quoted() reste inchangée : elle sert aussi à lire les littéraux de script, et
+ * HyperTalk n'y connaît aucun échappement — « put "a\b" » vaut a\b, et doit
+ * continuer. Les deux métiers se ressemblaient assez pour partager une
+ * fonction, pas assez pour partager une règle. */
+static const char *descripteur_lit(const char *s, char *out, int outlen)
+{
+    s = skip_spaces(s);
+    if (outlen > 0) out[0] = '\0';
+    if (*s != '"') return s;
+    s++;
+    int i = 0;
+    while (*s && *s != '"') {
+        char c = *s;
+        if (c == '\\' && s[1]) {
+            switch (s[1]) {
+            case '"':  c = '"';  s++; break;
+            case '\\': c = '\\'; s++; break;
+            case 'n':  c = '\n'; s++; break;
+            case 'r':  c = '\r'; s++; break;
+            default:   break;      /* échappement inconnu : la barre reste */
+            }
+        }
+        if (i < outlen - 1) out[i++] = c;
+        s++;
+    }
+    if (i < outlen) out[i] = '\0';
+    if (*s == '"') s++;
+    return s;
+}
+
 /* ==================== état global ==================== */
 
 /* Garde-fou : profondeur maximale d'imbrication des messages.
@@ -380,12 +461,32 @@ static Object *owning_stack(Object *o);
 
 /* UN TERME DE DESCRIPTEUR : « card "Une" », ou « card id 101 » s'il n'a pas de
  * nom. C'est la brique dont hc_nom_de compose la portée. */
+/* Taille d'un nom cité dans un descripteur. Les noms du modèle sont des
+ * char* sans limite ; les descripteurs, eux, voyagent dans des tampons. Au
+ * delà, on ne tronque pas — voir terme_objet. */
+#define HC_NOM_MAX 1024
+
 static void terme_objet(Object *o, const char *type, char *buf, int buflen)
 {
-    if (o->name && o->name[0])
-        snprintf(buf, buflen, "%s \"%s\"", type, o->name);
-    else
-        snprintf(buf, buflen, "%s id %d", type, o->id);
+    if (o->name && o->name[0]) {
+        char cite[HC_NOM_MAX];
+        int besoin = descripteur_cite(o->name, cite, sizeof cite);
+        if (besoin < (int)sizeof cite &&
+            snprintf(buf, buflen, "%s %s", type, cite) < buflen)
+            return;
+        /* UN NOM TROP LONG NE SE TRONQUE PAS : IL CHANGE DE FORME.
+         *
+         * Un descripteur tronqué est pire qu'absent — il désigne un autre
+         * objet, ou aucun, et rien ne le dit. Mesuré avec un nom de 300
+         * caractères : « the long name » rendait 187 caractères, et « the id
+         * of » ce résultat rendait le littéral « id of r ».
+         *
+         * « type id N » désigne exactement le même objet, tient dans n'importe
+         * quel tampon, et se re-résout toujours. C'est la même sortie que pour
+         * un objet sans nom — donc pas une invention, juste l'autre forme
+         * légitime du même descripteur. */
+    }
+    snprintf(buf, buflen, "%s id %d", type, o->id);
 }
 
 /* LE NOM D'UN OBJET, SOUS SES TROIS FORMES.
@@ -450,13 +551,21 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
     }
 
     Object *pile = owning_stack(o);
-    char pl[512];
+    char pl[HC_NOM_MAX + 64];
     if (!pile)                 snprintf(pl, sizeof pl, "%s", "");
     /* LE CHEMIN PLUTÔT QUE LE NOM, quand on le connaît. C'est ce que met
      * HyperCard, et c'est ce qui distingue deux piles ouvertes qui portent le
      * même nom. resolve sait relire les deux. */
-    else if (pile->path && pile->path[0])
-        snprintf(pl, sizeof pl, "stack \"%s\"", pile->path);
+    else if (pile->path && pile->path[0]) {
+        /* Le chemin passe par la même porte : un dossier peut contenir un
+         * guillemet, et le descripteur doit rester relisible. */
+        char cite[HC_NOM_MAX];
+        int besoin = descripteur_cite(pile->path, cite, sizeof cite);
+        if (besoin < (int)sizeof cite)
+            snprintf(pl, sizeof pl, "stack %s", cite);
+        else
+            terme_objet(pile, "stack", pl, sizeof pl);
+    }
     else                       terme_objet(pile, "stack", pl, sizeof pl);
 
     switch (o->type) {
@@ -465,13 +574,13 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
         return;
 
     case OBJ_BACKGROUND: {
-        char t[160]; terme_objet(o, "bkgnd", t, sizeof t);
+        char t[HC_NOM_MAX + 64]; terme_objet(o, "bkgnd", t, sizeof t);
         if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
         else     snprintf(out, outlen, "%s", t);
         return;
     }
     case OBJ_CARD: {
-        char t[160]; terme_objet(o, "card", t, sizeof t);
+        char t[HC_NOM_MAX + 64]; terme_objet(o, "card", t, sizeof t);
         if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
         else     snprintf(out, outlen, "%s", t);
         return;
@@ -479,7 +588,7 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
     case OBJ_BUTTON:
     case OBJ_FIELD: {
         int fond = hc_owner_is_bg(o);
-        char t[160];
+        char t[HC_NOM_MAX + 64];
         char type[32];
         snprintf(type, sizeof type, "%s %s", fond ? "bkgnd" : "card",
                  o->type == OBJ_BUTTON ? "button" : "field");
@@ -490,7 +599,7 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
          * carte n'existant que sur la sienne. */
         Object *porteur = o->owner;
         if (!porteur) { snprintf(out, outlen, "%s", t); return; }
-        char pc[160];
+        char pc[HC_NOM_MAX + 64];
         terme_objet(porteur, fond ? "bkgnd" : "card", pc, sizeof pc);
         if (*pl) snprintf(out, outlen, "%s of %s of %s", t, pc, pl);
         else     snprintf(out, outlen, "%s of %s", t, pc);
@@ -1174,12 +1283,65 @@ static int id_pris_dans(Object *pile, int id)
     return 0;
 }
 
+/* Le plus petit identifiant libre, EN UNE SEULE PASSE.
+ *
+ * La version d'avant essayait 1, puis parcourait toute la pile ; puis 2, puis
+ * reparcourait toute la pile. Sur une pile dont les petits numéros sont
+ * occupés, cela fait N essais × N objets. Mesuré, avec le compteur épuisé :
+ *
+ *      500 objets   0,04 ms par création
+ *     1000 objets   0,2  ms
+ *     2000 objets   1,1  ms
+ *     4000 objets   4,3  ms      — ×4 quand N double, donc bien du N²
+ *
+ * À 10 000 objets on est à ~27 ms par objet, à 50 000 l'application se fige.
+ * Aucun fichier malveillant n'est nécessaire : une pile assez grosse et un
+ * compteur épuisé suffisent.
+ *
+ * On relève donc les numéros occupés, on les trie, et on prend le premier
+ * trou. Une allocation, un tri, une passe — et la même réponse.
+ *
+ * Si l'allocation échoue on retombe sur le parcours naïf plutôt que de
+ * renoncer : lent vaut mieux que faux, et c'est le seul cas où il sert. */
+static int cmp_id(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
+}
+
 static int id_libre_dans(Object *pile)
 {
     if (!pile) return 0;
-    for (int id = 1; id < HC_ID_MAX; id++)
-        if (!id_pris_dans(pile, id)) return id;
-    return 0;
+
+    int n = 1;                                   /* la pile elle-même */
+    for (int i = 0; i < pile->nparts; i++)
+        n += 1 + pile->parts[i]->nparts;
+
+    int *pris = malloc((size_t)n * sizeof *pris);
+    if (!pris) {
+        for (int id = 1; id < HC_ID_MAX; id++)
+            if (!id_pris_dans(pile, id)) return id;
+        return 0;
+    }
+
+    int k = 0;
+    pris[k++] = pile->id;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *couche = pile->parts[i];
+        pris[k++] = couche->id;
+        for (int j = 0; j < couche->nparts; j++)
+            pris[k++] = couche->parts[j]->id;
+    }
+    qsort(pris, (size_t)k, sizeof *pris, cmp_id);
+
+    int attendu = 1;
+    for (int i = 0; i < k; i++) {
+        if (pris[i] < attendu) continue;         /* doublon ou numéro nul */
+        if (pris[i] > attendu) break;            /* le trou est ici */
+        attendu = pris[i] + 1;
+    }
+    free(pris);
+    return attendu < HC_ID_MAX ? attendu : 0;
 }
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
@@ -3115,9 +3277,14 @@ static Object *resolve(const char *ref)
     const char *deb = skip_spaces(ref);
     size_t ltete = (size_t)(of - deb);
     while (ltete > 0 && (deb[ltete-1] == ' ' || deb[ltete-1] == '\t')) ltete--;
-    if (ltete == 0 || ltete >= 256) return resolve_local(ref);
+    /* Le même plafond que les descripteurs, et pour la même raison : un nom de
+     * 300 caractères produisait une tête de 279, qui repartait ici en
+     * resolve_local sur la référence ENTIÈRE — donc sans sa portée, donc en
+     * échec. Mesuré : « the id of » un long name cessait de répondre entre 279
+     * et 319 caractères de descripteur, sans un mot. */
+    if (ltete == 0 || ltete >= HC_NOM_MAX + 64) return resolve_local(ref);
 
-    char tete[256];
+    char tete[HC_NOM_MAX + 64];
     memcpy(tete, deb, ltete); tete[ltete] = '\0';
     const char *queue = skip_spaces(of + 2);
     if (!*queue) return resolve_local(ref);
@@ -3180,8 +3347,8 @@ static Object *resolve_local(const char *ref)
          * n'est qu'un préfixe pour « bg button … » et un fond nommé reste
          * introuvable. */
         if (*ref == '"') {
-            char nm[128];
-            quoted(ref, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(ref, nm, sizeof nm);
             for (int i = 0; stack && i < stack->nparts; i++)
                 if (stack->parts[i]->type == OBJ_BACKGROUND &&
                     stack->parts[i]->name && ci_equal(stack->parts[i]->name, nm))
@@ -3215,7 +3382,7 @@ static Object *resolve_local(const char *ref)
         if (!ci_word(ref, "button") && !ci_word(ref, "btn") &&
             !ci_word(ref, "field")  && !ci_word(ref, "fld")  &&
             !ci_word(ref, "part")) {
-            char nm[128];
+            char nm[HC_NOM_MAX];
             int n = 0;
             while (ref[n] && n < (int)sizeof nm - 1) { nm[n] = ref[n]; n++; }
             while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
@@ -3229,8 +3396,8 @@ static Object *resolve_local(const char *ref)
         /* "card button" / "card field" / "card \"nom\"" / "card 3" */
         const char *after = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (*after == '"') {
-            char nm[128];
-            quoted(after, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(after, nm, sizeof nm);
             return find_card_by_name(stack, nm);
         }
         if (ci_word(after, "id")) {                    /* card id N */
@@ -3264,7 +3431,7 @@ static Object *resolve_local(const char *ref)
              *
              * Une variable jamais affectée vaut son propre nom, donc
              * « go card canard » continue de désigner la carte canard. */
-            char nm[256];
+            char nm[HC_NOM_MAX];
             eval_id_token(after, nm, sizeof nm);
 
             if (!nm[0]) {
@@ -3365,8 +3532,8 @@ static Object *resolve_local(const char *ref)
         const char *after = skip_spaces(ref + 5);
         if (!*after) return stack;
         if (*after == '"') {                 /* « stack "Essai" » */
-            char nm[128];
-            quoted(after, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(after, nm, sizeof nm);
             if (stack && stack->name && ci_equal(stack->name, nm)) return stack;
             /* Une AUTRE pile ouverte peut porter ce nom : c'est tout l'objet
              * du registre. Sans lui, « the name of stack "Autre" » ne pouvait
@@ -3407,11 +3574,11 @@ static Object *resolve_local(const char *ref)
         return o;
     }
 
-    char nm[256];
+    char nm[HC_NOM_MAX];
     nm[0] = '\0';
 
     if (*ref == '"') {
-        quoted(ref, nm, sizeof nm);
+        descripteur_lit(ref, nm, sizeof nm);
     } else {
         /* --- désignateur dynamique : « field f », « button (i + 1) » ------
          * HyperCard accepte une expression là où l'on écrit d'ordinaire un

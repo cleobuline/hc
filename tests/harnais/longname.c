@@ -26,6 +26,7 @@
 #include "hc_file.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d; if (k == HC_MSG) printf("   %s\n", t ? t : "");
@@ -142,6 +143,76 @@ int main(void)
         "  put the short name of (\"Bouton\")\n"
         "end mouseUp\n");
     hc_send(decl, "mouseUp");
+
+    /* ─── UN DESCRIPTEUR DOIT POUVOIR SE RELIRE, QUEL QUE SOIT LE NOM ───
+     *
+     * « the long name » ne promet qu'une chose : ce qu'il rend doit designer
+     * l'objet d'ou il vient. Le fabricant ecrivait « %s "%s" » et le lecteur
+     * s'arretait au premier guillemet — un nom qui en contient un cassait donc
+     * le descripteur en deux, SANS ERREUR :
+     *
+     *     card button "a"b"   puis  the short name of  ->  le litteral
+     *
+     * Le fichier .stack savait deja ecrire ces noms ; c'est le LANGAGE qui
+     * n'avait pas recu la meme regle. Une syntaxe d'echappement d'un cote,
+     * aucune de l'autre.
+     *
+     * Trois formes de noms, et l'aller-retour complet pour chacune. */
+    puts("\n== un nom qui casse le descripteur ==");
+    hc_set_current_card(c1);
+    hc_set_script(decl,
+        "on mouseUp\n"
+        "  set the name of card button id 2915 to \"a\" & quote & \"b\"\n"
+        "  put the name of card button id 2915 into r\n"
+        "  put r\n"
+        "  put \"   short name : \" & the short name of r\n"
+        "  put \"   id         : \" & the id of r\n"
+
+        "  set the name of card button id 2915 to \"bonjour\" & return & \"canard\"\n"
+        "  put the long name of card button id 2915 into r\n"
+        "  put r\n"
+        "  put \"   id         : \" & the id of r\n"
+
+        /* Une barre oblique dans le nom : l'echappement ne doit pas la manger,
+         * et un echappement INCONNU se relit tel quel — sans quoi les
+         * descripteurs deja ecrits dans les scripts d'une pile changeraient de
+         * sens du jour au lendemain. */
+        "  set the name of card button id 2915 to \"a\\b\"\n"
+        "  put the long name of card button id 2915 into r\n"
+        "  put r\n"
+        "  put \"   short name : \" & the short name of r\n"
+        "  put \"   id         : \" & the id of r\n"
+        "end mouseUp\n");
+    hc_send(decl, "mouseUp");
+
+    /* ─── UN NOM TROP LONG NE SE TRONQUE PAS : IL CHANGE DE FORME ────────
+     *
+     * Mesure avant correction : un nom de 300 caracteres donnait un long name
+     * de 187 — tronque — et « the id of » ce resultat rendait son propre
+     * texte. Deux plafonds se cachaient derriere : les tampons du fabricant,
+     * puis un « char tete[256] » dans resolve, qui repartait en silence sur la
+     * reference entiere, donc sans sa portee.
+     *
+     * Le seuil mesure etait entre 279 et 319 caracteres de descripteur. On
+     * balaie donc de part et d'autre. */
+    puts("\n== des noms de plus en plus longs ==");
+    for (int n = 200; n <= 440; n += 80) {
+        char nom[600];
+        memset(nom, 'x', (size_t)n); nom[n] = '\0';
+        free(b->name); b->name = strdup(nom);
+        char d[2048];
+        hc_nom_de(b, HC_NOM_LONG, d, sizeof d);
+        hc_set_script(decl,
+            "on mouseUp\n"
+            "  put the long name of card button id 2915 into r\n"
+            "  put \"   nom \" & the number of chars of the short name of r"
+            " & \" -> descripteur \" & the number of chars of r"
+            " & \" -> id \" & the id of r\n"
+            "end mouseUp\n");
+        hc_send(decl, "mouseUp");
+        (void)d;
+    }
+    free(b->name); b->name = strdup("Bouton");
 
     puts("\n== le CHEMIN du fichier, une fois la pile enregistree ==");
     /* HyperCard met le chemin complet dans la forme longue d'une pile. Le

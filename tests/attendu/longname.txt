@@ -49,6 +49,22 @@
    4
    short name of ("Bouton"
 
+== un nom qui casse le descripteur ==
+   card button "a\"b"
+      short name : a"b
+      id         : 2915
+   card button "bonjour\ncanard" of card "Une" of stack "Pile"
+      id         : 2915
+   card button "a\\b" of card "Une" of stack "Pile"
+      short name : a\b
+      id         : 2915
+
+== des noms de plus en plus longs ==
+      nom 200 -> descripteur 244 -> id 2915
+      nom 280 -> descripteur 324 -> id 2915
+      nom 360 -> descripteur 404 -> id 2915
+      nom 440 -> descripteur 484 -> id 2915
+
 == le CHEMIN du fichier, une fois la pile enregistree ==
    avant enregistrement : chemin = [(aucun)]
    sauvegarde : faite
