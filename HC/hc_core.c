@@ -1014,6 +1014,43 @@ static int coord_champ(const char *s, int defaut)
     return hc_coord(champ, defaut);
 }
 
+/* L'ENTIER QUI COMMENCE ICI, ET QUI S'ARRÊTE AU PREMIER BLANC.
+ *
+ * hc_entier exige que TOUTE la chaîne soit un nombre — c'est tout son intérêt,
+ * « 100patate » n'est pas cent. Mais un fichier ou une commande met souvent un
+ * nombre AU MILIEU d'une ligne, suivi d'autre chose :
+ *
+ *     iconres 20554 "Terminator"
+ *     card "Une" background "Fond" backgroundid 7
+ *
+ * Donner « 20554 "Terminator" » à hc_entier, c'est lui donner une chaîne qui
+ * n'est pas un nombre : il rend le défaut, et l'appelant croit avoir lu.
+ *
+ * La famille est connue : coord_champ existe déjà pour les listes séparées par
+ * des virgules, et quatre lecteurs y étaient déjà passés — parse_ints,
+ * « drag from », « click at », la taille d'une plage de style. L'en-tête d'une
+ * icône était le cinquième, et personne ne l'a vu : il n'y avait AUCUN harnais
+ * pour les icônes. Toutes les icônes d'une pile relue prenaient le numéro 0,
+ * et comme hc_icon_add remplace l'entrée de même numéro, quatre icônes n'en
+ * faisaient plus qu'une — « aucune icône » pour tous les boutons.
+ *
+ * Deux lecteurs plutôt qu'un seul permissif : celui qui veut toute la chaîne
+ * le dit, celui qui lit un champ le dit aussi. C'est à l'appel qu'on sait
+ * lequel on veut, pas dans la conversion. */
+int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
+{
+    if (!s) return defaut;
+    while (*s == ' ' || *s == '\t') s++;
+    const char *fin = s;
+    while (*fin && *fin != ' ' && *fin != '\t' &&
+           *fin != '\n' && *fin != '\r') fin++;
+    char champ[64];
+    size_t l = (size_t)(fin - s);
+    if (l >= sizeof champ) return defaut;   /* trop long pour être un entier */
+    memcpy(champ, s, l); champ[l] = '\0';
+    return hc_entier(champ, mini, maxi, defaut);
+}
+
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 

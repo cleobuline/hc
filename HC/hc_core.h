@@ -859,6 +859,11 @@ int hc_entier(const char *s, int mini, int maxi, int defaut);
 int hc_entier_lu(const char *s, int mini, int maxi, int defaut, int *lu);
 
 /* Une coordonnée ou une dimension : bornée à +/- HC_COORD_MAX. */
+/* L'entier qui COMMENCE à `s` et s'arrête au premier blanc — pour les nombres
+ * écrits au milieu d'une ligne, suivis d'autre chose : « iconres 20554
+ * "Terminator" ». hc_entier, lui, exige que toute la chaîne soit un nombre. */
+int hc_entier_tete(const char *s, int mini, int maxi, int defaut);
+
 int hc_coord(const char *s, int defaut);
 
 /* Un identifiant d'objet, tel qu'il sort d'un script ou d'un fichier : entre

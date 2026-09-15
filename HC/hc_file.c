@@ -929,7 +929,9 @@ static int mot_nombre_apres_guillemets(const char *ligne, const char *mot)
     p += strlen(mot);
     while (*p == ' ' || *p == '\t') p++;
     if (*p < '0' || *p > '9') return -1;
-    return hc_entier(p, 0, HC_ID_MAX, -1);
+    /* Le mot-clé cherché n'est pas forcément le dernier de la ligne : on ne
+     * lit que le champ, pas ce qui le suit. */
+    return hc_entier_tete(p, 0, HC_ID_MAX, -1);
 }
 
 static Object *find_bg(Object *stack, const char *name)
@@ -1139,7 +1141,9 @@ Object *hc_load(const char *path)
          * dont le bloc serait tronqué garde donc ses octets manquants à zéro
          * plutôt que de disparaître. */
         if (strncmp(s, "iconres ", 8) == 0 && stack) {
-            int iid = hc_entier(s + 8, -HC_ID_MAX, HC_ID_MAX, 0);
+            /* Le nom SUIT le numéro sur cette ligne : hc_entier, qui veut
+             * toute la chaîne, rendait donc 0 pour toutes les icônes. */
+            int iid = hc_entier_tete(s + 8, -HC_ID_MAX, HC_ID_MAX, 0);
             if (!get_quoted(s, 0, nm, sizeof nm)) nm[0] = 0;
             cur_icon = hc_icon_add(stack, iid, nm);
             icon_pos = 0;
