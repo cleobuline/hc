@@ -9,6 +9,33 @@ Aucun ne touche à Cocoa. C'est délibéré : le noyau et l'interprète sont du
 C99 pur, ils se compilent et s'exécutent partout, et c'est ce qui rend cette
 suite utilisable en intégration continue.
 
+## Sur une machine neuve
+
+La suite ne dépend de rien d'autre que du dépôt et d'un compilateur C. Elle a
+été vérifiée sur un clone nu, sans réglage préalable.
+
+```sh
+sudo apt install build-essential git      # Ubuntu / Debian
+git clone https://github.com/cleobuline/hc.git
+cd hc/tests && ./lance.sh
+```
+
+Sans git, l'archive suffit — le dépôt fait 7 Mo :
+
+```sh
+curl -L https://github.com/cleobuline/hc/archive/refs/heads/main.tar.gz | tar xz
+cd hc-main/tests && ./lance.sh
+```
+
+**Le dossier `tests/` ne se télécharge pas seul** : les harnais compilent le
+noyau depuis `../HC`. C'est voulu — une suite qui testerait une copie figée du
+code ne testerait plus le code. Il faut donc le dépôt, pas le dossier.
+
+Rien à installer côté Cocoa : aucun harnais ne le touche, et c'est ce qui
+permet de faire tourner la suite sous Linux alors que l'application est
+macOS. `--asan` n'a pas de prérequis supplémentaire sur Ubuntu : les
+bibliothèques des sanitizers viennent avec gcc.
+
 ## Lancer
 
 ```sh
