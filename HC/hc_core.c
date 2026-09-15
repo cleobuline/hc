@@ -566,7 +566,14 @@ static const HcHost g_console_host = {
 };
 static const HcHost *g_host = &g_console_host;
 
-void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
+void hc_set_host(const HcHost *h)
+{
+    g_host = h ? h : &g_console_host;
+    /* Le seul point par lequel TOUS les programmes passent — les 189 harnais
+     * comme l'application. Voir hc_v3_releve_arme : sans HC_V3_RELEVE, un
+     * getenv et rien d'autre. */
+    hc_v3_releve_arme();
+}
 
 /* Émet une ligne vers l'hôte. Le format ne doit PAS inclure le saut de ligne
    final ni l'indentation : l'hôte s'en charge. */
@@ -8836,6 +8843,46 @@ static void bilan_v1(void)
 }
 
 void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
+
+/* ═══ LE RELEVÉ DE TOUT LE CORPUS, ET POURQUOI IL NE PASSE PAS PAR LA SORTIE
+ *
+ * `debug bilan` écrit sur la sortie du harnais, donc dans sa référence. Pour
+ * mesurer LE CORPUS il faudrait l'ajouter aux 189 harnais, c'est-à-dire
+ * réenregistrer 189 références — et une référence qu'on réenregistre en masse
+ * ne prouve plus rien. Mesurés : 71 harnais sur 189 impriment un bilan, et
+ * chacun remet ses compteurs à zéro. Les 118 autres sont un angle mort, et
+ * c'est justement là que les surprises se logent : il n'y avait AUCUN harnais
+ * pour les icônes quand leur enregistrement s'est cassé.
+ *
+ * On écrit donc dans un FICHIER, en ajout, à la fin du processus, et
+ * uniquement si HC_V3_RELEVE le nomme. Rien sur la sortie, donc aucune
+ * référence touchée ; un enregistrement par processus, donc l'agrégat couvre
+ * la suite entière. Une ligne par compteur, préfixée du nom du programme pour
+ * qu'on puisse demander « qui » autant que « combien ».
+ *
+ * Éteint, cela coûte un getenv à la sortie du processus. */
+static void releve_fichier(void)
+{
+    const char *chemin = getenv("HC_V3_RELEVE");
+    if (!chemin || !*chemin) return;
+    FILE *f = fopen(chemin, "a");
+    if (!f) return;
+    const char *qui = getenv("HC_V3_RELEVE_QUI");
+    if (!qui) qui = "?";
+    for (int i = 0; i < g_nreleve; i++)
+        fprintf(f, "%s\trecours\t%s\t%ld\n", qui, g_releve[i].nom, g_releve[i].n);
+    for (int i = 0; i < g_nv1; i++)
+        fprintf(f, "%s\texec\t%s\t%ld\n", qui, g_v1[i].nom, g_v1[i].n);
+    fclose(f);
+}
+
+void hc_v3_releve_arme(void)
+{
+    static int arme = 0;
+    if (arme) return;
+    arme = 1;
+    if (getenv("HC_V3_RELEVE")) atexit(releve_fichier);
+}
 
 /* ===================================================================
  * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de

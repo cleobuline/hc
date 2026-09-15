@@ -313,6 +313,12 @@ struct Object {
 void hc_v3_bilan(void);
 void hc_v3_bilan_remise_a_zero(void);
 
+/* Armer le relevé de fin de processus : si HC_V3_RELEVE nomme un fichier, les
+ * deux tableaux y sont AJOUTÉS à la sortie, sans rien écrire sur la sortie
+ * standard. C'est ce qui permet de mesurer le corpus entier sans toucher une
+ * seule référence de test. Appelée par hc_set_host ; sans effet sinon. */
+void hc_v3_releve_arme(void);
+
 Object *hc_new_stack(const char *name);
 Object *hc_new_background(Object *stack, const char *name);
 Object *hc_new_card(Object *stack, Object *bg, const char *name);
