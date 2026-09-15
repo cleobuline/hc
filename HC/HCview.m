@@ -47,6 +47,12 @@ typedef struct {
      * après le gestionnaire, qu'un simple « go next card » avait déjà changée.
      * Les deux voyagent maintenant ensemble. */
     Object       *pressedCard;
+    /* LE MINUTEUR APPARTIENT AU GESTE, DONC AU DOCUMENT.
+     *
+     * Il était un global de processus alors que `pressed` est par document :
+     * deux fenêtres ne pouvaient pas avoir un geste chacune, et surtout
+     * startStillDownTimer arrêtait celui de l'autre fenêtre en passant. */
+    NSTimer      *stillDownTimer;
     Object       *popupTarget;    /* menu popup ouvert */
     NSArray<NSString *> *popupItems;
     NSArray<NSNumber *> *popupItemLines; /* lignes HC, base 1 */
@@ -90,7 +96,6 @@ typedef struct {
 
 static HCDoc  gDoc0;
 static HCDoc *gDoc = &gDoc0;
-static NSTimer *gStillDownTimer = nil;
 void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 
 #define gEditingField    (gDoc->editingField)
@@ -6041,9 +6046,23 @@ static NSTextField  *gSprayDensityLabel = nil;
     if (champ && !gSansMessageChamp)
         hc_send(champ, change ? "closeField" : "exitField");
 }
+/* LE GESTE DE LA FENÊTRE A DOIT GARDER L'ÉTAT DE A.
+ *
+ * Ces trois méthodes passaient par gDoc — le document ACTIF — alors que le
+ * geste appartient à la vue qui l'a commencé. Le scénario qui casse :
+ *
+ *     souris enfoncée dans la pile A ;
+ *     le mouseDown de A fait « go to stack "B" » ;
+ *     B devient le document actif, donc gDoc pointe sur B ;
+ *     le minuteur créé par A se déclenche et lit gPressed — celui de B.
+ *
+ * Résultat : mouseStillDown ne part plus, ou part au mauvais objet. Et comme
+ * le minuteur était un GLOBAL, la fenêtre B écrasait en plus celui de A.
+ *
+ * On travaille donc sur _doc, l'état de CETTE vue, jamais sur gDoc. */
 - (void)startStillDownTimer {
     [self stopStillDownTimer];
-    gStillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
+    _doc.stillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
                                                        target:self
                                                      selector:@selector(stillDownTick:)
                                                      userInfo:nil
@@ -6056,22 +6075,27 @@ static NSTextField  *gSprayDensityLabel = nil;
      * Tolérance nulle : macOS regroupe volontiers les déclenchements pour
      * économiser l'énergie, ce qui produit exactement les à-coups qu'on
      * cherche à supprimer. */
-    [[NSRunLoop currentRunLoop] addTimer:gStillDownTimer
+    [[NSRunLoop currentRunLoop] addTimer:_doc.stillDownTimer
                                  forMode:NSRunLoopCommonModes];
-    [gStillDownTimer setTolerance:0];
+    [_doc.stillDownTimer setTolerance:0];
 }
 
 - (void)stopStillDownTimer {
-    [gStillDownTimer invalidate];
-    gStillDownTimer = nil;
+    [_doc.stillDownTimer invalidate];
+    _doc.stillDownTimer = nil;
 }
 
 - (void)stillDownTick:(NSTimer *)t {
     (void)t;
-       if (!gPressed || !([NSEvent pressedMouseButtons] & 1)) {
+    /* _doc, et non gPressed : voir startStillDownTimer. */
+    Object *presse = _doc.pressed;
+    /* Une vue sans fenêtre n'a plus de geste en cours. Un minuteur RETIENT sa
+     * cible : sans cette sortie, fermer la fenêtre pendant que le bouton est
+     * enfoncé laisserait la vue en vie et le minuteur battre dans le vide. */
+    if (![self window] || !presse || !([NSEvent pressedMouseButtons] & 1)) {
         [self stopStillDownTimer];
         return;
     }
-    hc_send(gPressed, "mouseStillDown");
+    hc_send(presse, "mouseStillDown");
 }
 @end
