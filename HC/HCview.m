@@ -923,9 +923,41 @@ static void draw_part(Object *o) {
         }
 
         int fstart = 0, flen = 0;
+        NSUInteger fdeb = 0, flg = 0;
         if (o != gEditingField &&
-            hc_found_range(o, &fstart, &flen) && flen > 0 &&
-            fstart + flen <= (int)[s length]) {
+            hc_found_range(o, &fstart, &flen) && flen > 0) {
+            /* OCTETS -> UTF-16, comme pour la sélection.
+             *
+             * hc_found_range rend le décalage du motif EN OCTETS — c'est ce
+             * que le noyau calcule, « hit - tx ». On le passait tel quel à
+             * glyphRangeForCharacterRange:, qui compte en unités UTF-16 : la
+             * boîte noire glissait d'un cran par octet supplémentaire, donc
+             * d'autant que le champ contient d'accents, de guillemets « » ou
+             * de tirets longs AVANT le motif. Elle coupait les mots.
+             *
+             * Mesuré sur un texte français ordinaire : le motif commençait à
+             * l'octet 52 et au caractère 47 — cinq de décalage, et cinq
+             * lettres avalées au début du surlignage.
+             *
+             * La conversion existait déjà, six cents lignes plus haut, pour
+             * « select char N of field X », avec un commentaire décrivant le
+             * même défaut. Ce chemin-ci ne l'avait jamais reçue : un jumeau
+             * corrigé, l'autre oublié. Le noyau, lui, est juste — « the
+             * foundChunk » rend bien un rang de CARACTÈRE.
+             *
+             * Le bornage se fait APRÈS la conversion : comparer un décalage
+             * en octets à [s length], qui est en UTF-16, laissait passer des
+             * plages hors du texte sur un champ très accentué. */
+            const char *tx = hc_field_text(o);
+            NSUInteger u0 = utf16_from_byte(tx, fstart);
+            NSUInteger u1 = utf16_from_byte(tx, fstart + flen);
+            NSUInteger n  = [s length];
+            if (u0 > n) u0 = n;
+            if (u1 > n) u1 = n;
+            fdeb = u0;
+            flg  = u1 > u0 ? u1 - u0 : 0;
+        }
+        if (flg > 0) {
 
             /* La mise en page du TRACÉ, comme pour le test de clic.
              *
@@ -938,7 +970,7 @@ static void draw_part(Object *o) {
             NSTextContainer *tc = nil;
             NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
 
-            NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fstart, flen)
+            NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fdeb, flg)
                                        actualCharacterRange:NULL];
             NSRect box = [lm boundingRectForGlyphRange:glyphs inTextContainer:tc];
             box.origin.x += tr.origin.x;
@@ -950,7 +982,7 @@ static void draw_part(Object *o) {
             NSRectFill(box);
 
             NSMutableAttributedString *sub =
-                [[as attributedSubstringFromRange:NSMakeRange(fstart, flen)] mutableCopy];
+                [[as attributedSubstringFromRange:NSMakeRange(fdeb, flg)] mutableCopy];
             [sub addAttribute:NSForegroundColorAttributeName
                         value:[NSColor whiteColor]
                         range:NSMakeRange(0, [sub length])];
