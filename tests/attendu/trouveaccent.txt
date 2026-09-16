@@ -11,3 +11,11 @@
 == un motif APRES encore plus d'accents ==
    foundChunk : char 79 to 85 of card field "texte"
    relu       : [zorglub]
+
+== l'encadre se retire, la reponse demeure ==
+   montre apres find      : oui
+   hc_found_cache rend    : 1  (1 = il y avait a effacer)
+   montre apres le clic   : non
+   et une seconde fois    : 0  (0 = plus rien a effacer)
+   foundChunk apres le clic : char 79 to 85 of card field "texte"
+   relu : [zorglub]

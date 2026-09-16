@@ -806,6 +806,14 @@ int         hc_text_height(Object *o);
  * le motif. Ce n'était pas écrit, et le dessin l'a payé. */
 int         hc_found_range(Object *field, int *start, int *len);
 
+/* Retirer l'encadré du texte trouvé — HyperCard l'enlève au premier clic.
+ * Les FONCTIONS ne sont pas touchées : « the foundChunk » et « the foundText »
+ * restent valides jusqu'à la recherche suivante, ce qui permet de cliquer
+ * entre un « find » et le « select the foundChunk » qui le suit.
+ * Rend 1 si quelque chose était montré, pour que l'hôte ne redessine que
+ * lorsqu'il y a de quoi. */
+int         hc_found_cache(void);
+
 /* ---- Sélection de texte ----
  * Posée par le verbe « select » et lue par « the selection ». L'hôte l'appelle
  * aussi quand l'utilisateur sélectionne à la souris, pour que les scripts

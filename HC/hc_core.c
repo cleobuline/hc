@@ -961,6 +961,20 @@ static int     g_found_start = 0;   /* offset du motif dans le texte du champ */
 static int     g_found_len   = 0;   /* longueur du motif, 0 = rien de trouve */
 static Object *g_found_card  = NULL;
 
+/* LA BOÎTE EST MONTRÉE, OU ELLE NE L'EST PLUS — et c'est autre chose que
+ * « quelque chose a été trouvé ».
+ *
+ * HyperCard encadre le texte trouvé, et cet encadré disparaît au premier clic.
+ * Les fonctions, elles, continuent de répondre : « the foundChunk » reste
+ * valide jusqu'à la recherche suivante, c'est ce qui permet d'écrire
+ *
+ *     find "x"
+ *     if the result is empty then select the foundChunk
+ *
+ * après avoir cliqué entre les deux. Un seul drapeau pour les deux notions
+ * aurait donc effacé la réponse en même temps que le dessin. */
+static int     g_found_montre = 0;
+
 /* ---- sélection de texte ----
  * « select char 3 to 9 of field "toc" » pose une plage ; « the selection » la
  * relit. Le noyau ne fait que la RETENIR : c'est l'hôte qui la montre à
@@ -4795,6 +4809,7 @@ static void oublie_objet_interne(Object *mort)
         g_found_line = g_found_start = g_found_len = 0;
     }
     if (g_found_card == mort) g_found_card = NULL;
+    if (!g_found_field) g_found_montre = 0;
 
     /* la pile de navigation : on COMPACTE, sans quoi « pop card » descendrait
      * sur un trou. Tous les exemplaires partent, une carte pouvant être
@@ -10014,6 +10029,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     g_found_start = (int)(hit - tx);
                     g_found_len   = (int)strlen(pat);
                     g_found_card  = cd;
+                    g_found_montre = 1;
 
                     if (cd != g_current_card) {      /* naviguer si besoin */
                         Object *old = g_current_card;
@@ -10035,6 +10051,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     }
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
     g_found_start = g_found_len = 0; g_found_card = NULL;
+    g_found_montre = 0;
     set_result("not found");
     g_atop = sauve;
     return 1;
@@ -14348,10 +14365,23 @@ static int field_is_percard(Object *field)
  * le texte trouve, et remplit start et len. */
 int hc_found_range(Object *field, int *start, int *len)
 {
+    if (!g_found_montre) return 0;
     if (!field || field != g_found_field || g_found_len <= 0) return 0;
     if (g_found_card && g_found_card != g_current_card) return 0;
     if (start) *start = g_found_start;
     if (len)   *len   = g_found_len;
+    return 1;
+}
+
+/* Retirer l'encadré du texte trouvé, comme HyperCard au premier clic.
+ *
+ * Ne touche PAS à « the foundChunk » ni à « the foundText » : voir
+ * g_found_montre. Rend 1 si quelque chose était montré — l'hôte sait alors
+ * qu'il doit redessiner, et seulement alors. */
+int hc_found_cache(void)
+{
+    if (!g_found_montre) return 0;
+    g_found_montre = 0;
     return 1;
 }
 
