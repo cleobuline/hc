@@ -78,6 +78,40 @@ int main(void)
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 
+    /* ─── L'ENCADRE DISPARAIT AU CLIC, LES FONCTIONS RESTENT ────────────
+     *
+     * HyperCard retire l'encadre du texte trouve des le premier clic. Rien ne
+     * l'effacait ici : la boite noire restait sur le champ tant qu'on ne
+     * changeait pas de carte ou qu'on ne relancait pas une recherche.
+     *
+     * Mais retirer le dessin ne doit PAS retirer la reponse : « the
+     * foundChunk » reste valide jusqu'a la recherche suivante, sans quoi
+     *
+     *     find "x"
+     *     -- l'utilisatrice clique
+     *     select the foundChunk
+     *
+     * cesserait de marcher. Deux notions, deux drapeaux. */
+    puts("\n== l'encadre se retire, la reponse demeure ==");
+    {
+        int deb = 0, lg = 0;
+        printf("   montre apres find      : %s\n",
+               hc_found_range(f, &deb, &lg) ? "oui" : "non");
+        printf("   hc_found_cache rend    : %d  (1 = il y avait a effacer)\n",
+               hc_found_cache());
+        printf("   montre apres le clic   : %s\n",
+               hc_found_range(f, &deb, &lg) ? "oui" : "non");
+        printf("   et une seconde fois    : %d  (0 = plus rien a effacer)\n",
+               hc_found_cache());
+    }
+    hc_set_script(b,
+        "on mouseUp\n"
+        "  put \"foundChunk apres le clic : \" & the foundChunk\n"
+        "  put the foundChunk into ou\n"
+        "  put \"relu : [\" & value(ou) & \"]\"\n"
+        "end mouseUp\n");
+    hc_send(b, "mouseUp");
+
     hc_free(st);
     return 0;
 }

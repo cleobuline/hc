@@ -4476,6 +4476,18 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
+    /* L'ENCADRÉ DE « find » DISPARAÎT AU PREMIER CLIC, comme dans HyperCard.
+     *
+     * Rien ne l'effaçait : la boîte noire restait sur le champ tant qu'on ne
+     * changeait pas de carte ou qu'on ne relançait pas une recherche. Cliquer
+     * ailleurs — dans le champ ou en dehors — la laissait en place.
+     *
+     * hc_found_cache ne touche qu'à l'AFFICHAGE : « the foundChunk » et
+     * « the foundText » continuent de répondre jusqu'à la recherche suivante.
+     * C'est ce qui permet d'écrire « find "x" », de cliquer, puis
+     * « select the foundChunk » — un idiome que ces piles emploient. */
+    if (hc_found_cache()) [self setNeedsDisplay:YES];
+
     Object *hit = part_at(hc_current_card(), p);
 
     gClickPoint = p;
