@@ -94,6 +94,87 @@ static const char *quoted(const char *s, char *out, int outlen)
     return s;
 }
 
+/* ═══ CITER ET RELIRE UN NOM DANS UN DESCRIPTEUR ══════════════════════
+ *
+ * « the long name » promet une chose : ce qu'il rend doit pouvoir désigner
+ * l'objet d'où il vient. Le fabricant écrivait « %s "%s" » et le lecteur
+ * s'arrêtait au premier guillemet — un nom qui en contient un cassait donc le
+ * descripteur en deux.
+ *
+ *     set the name of card button 1 to "a" & quote & "b"
+ *     put the name of card button 1        ->  card button "a"b"
+ *     put the short name of it             ->  short name of it   (le LITTÉRAL)
+ *
+ * Pas d'erreur : la chaîne inventée circulait. Mesuré exactement ainsi.
+ *
+ * Le fichier .stack savait déjà écrire ces noms — put_quoted échappe depuis la
+ * correction du retour à la ligne. C'est le LANGAGE qui n'avait pas reçu la
+ * même règle : une syntaxe d'échappement dans le fichier, aucune dans les
+ * descripteurs. On prend donc la même convention des deux côtés, parce que
+ * deux syntaxes pour une seule idée finissent toujours par diverger.
+ *
+ * Les échappements INCONNUS sont rendus tels quels, comme dans le fichier :
+ * un nom contenant « \b » se relit « \b », et les descripteurs déjà écrits
+ * dans les scripts d'une pile continuent de se lire comme avant.
+ *
+ * Rend la longueur qu'il aurait fallu, à la manière de snprintf : c'est ce qui
+ * permet à l'appelant de voir la troncature au lieu de la subir. */
+static int descripteur_cite(const char *nom, char *out, int outlen)
+{
+    int besoin = 2;                       /* les deux guillemets */
+    int i = 0;
+    if (outlen > 0) out[0] = '\0';
+
+#define DC_POSE(c) do { if (i < outlen - 1) out[i++] = (c); besoin++; } while (0)
+    if (outlen > 1) { out[i++] = '"'; }
+    for (const char *p = nom ? nom : ""; *p; p++) {
+        switch (*p) {
+        case '"':  DC_POSE('\\'); DC_POSE('"');  break;
+        case '\\': DC_POSE('\\'); DC_POSE('\\'); break;
+        case '\n': DC_POSE('\\'); DC_POSE('n');  break;
+        case '\r': DC_POSE('\\'); DC_POSE('r');  break;
+        default:   DC_POSE(*p);
+        }
+    }
+#undef DC_POSE
+    besoin -= 2;                          /* DC_POSE a compté ses caractères */
+    if (i < outlen - 1) out[i++] = '"';
+    if (outlen > 0) out[i] = '\0';
+    return besoin + 2;
+}
+
+/* La lecture, symétrique. Même rôle que quoted(), mais pour un DESCRIPTEUR.
+ *
+ * quoted() reste inchangée : elle sert aussi à lire les littéraux de script, et
+ * HyperTalk n'y connaît aucun échappement — « put "a\b" » vaut a\b, et doit
+ * continuer. Les deux métiers se ressemblaient assez pour partager une
+ * fonction, pas assez pour partager une règle. */
+static const char *descripteur_lit(const char *s, char *out, int outlen)
+{
+    s = skip_spaces(s);
+    if (outlen > 0) out[0] = '\0';
+    if (*s != '"') return s;
+    s++;
+    int i = 0;
+    while (*s && *s != '"') {
+        char c = *s;
+        if (c == '\\' && s[1]) {
+            switch (s[1]) {
+            case '"':  c = '"';  s++; break;
+            case '\\': c = '\\'; s++; break;
+            case 'n':  c = '\n'; s++; break;
+            case 'r':  c = '\r'; s++; break;
+            default:   break;      /* échappement inconnu : la barre reste */
+            }
+        }
+        if (i < outlen - 1) out[i++] = c;
+        s++;
+    }
+    if (i < outlen) out[i] = '\0';
+    if (*s == '"') s++;
+    return s;
+}
+
 /* ==================== état global ==================== */
 
 /* Garde-fou : profondeur maximale d'imbrication des messages.
@@ -380,12 +461,32 @@ static Object *owning_stack(Object *o);
 
 /* UN TERME DE DESCRIPTEUR : « card "Une" », ou « card id 101 » s'il n'a pas de
  * nom. C'est la brique dont hc_nom_de compose la portée. */
+/* Taille d'un nom cité dans un descripteur. Les noms du modèle sont des
+ * char* sans limite ; les descripteurs, eux, voyagent dans des tampons. Au
+ * delà, on ne tronque pas — voir terme_objet. */
+#define HC_NOM_MAX 1024
+
 static void terme_objet(Object *o, const char *type, char *buf, int buflen)
 {
-    if (o->name && o->name[0])
-        snprintf(buf, buflen, "%s \"%s\"", type, o->name);
-    else
-        snprintf(buf, buflen, "%s id %d", type, o->id);
+    if (o->name && o->name[0]) {
+        char cite[HC_NOM_MAX];
+        int besoin = descripteur_cite(o->name, cite, sizeof cite);
+        if (besoin < (int)sizeof cite &&
+            snprintf(buf, buflen, "%s %s", type, cite) < buflen)
+            return;
+        /* UN NOM TROP LONG NE SE TRONQUE PAS : IL CHANGE DE FORME.
+         *
+         * Un descripteur tronqué est pire qu'absent — il désigne un autre
+         * objet, ou aucun, et rien ne le dit. Mesuré avec un nom de 300
+         * caractères : « the long name » rendait 187 caractères, et « the id
+         * of » ce résultat rendait le littéral « id of r ».
+         *
+         * « type id N » désigne exactement le même objet, tient dans n'importe
+         * quel tampon, et se re-résout toujours. C'est la même sortie que pour
+         * un objet sans nom — donc pas une invention, juste l'autre forme
+         * légitime du même descripteur. */
+    }
+    snprintf(buf, buflen, "%s id %d", type, o->id);
 }
 
 /* LE NOM D'UN OBJET, SOUS SES TROIS FORMES.
@@ -450,13 +551,21 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
     }
 
     Object *pile = owning_stack(o);
-    char pl[512];
+    char pl[HC_NOM_MAX + 64];
     if (!pile)                 snprintf(pl, sizeof pl, "%s", "");
     /* LE CHEMIN PLUTÔT QUE LE NOM, quand on le connaît. C'est ce que met
      * HyperCard, et c'est ce qui distingue deux piles ouvertes qui portent le
      * même nom. resolve sait relire les deux. */
-    else if (pile->path && pile->path[0])
-        snprintf(pl, sizeof pl, "stack \"%s\"", pile->path);
+    else if (pile->path && pile->path[0]) {
+        /* Le chemin passe par la même porte : un dossier peut contenir un
+         * guillemet, et le descripteur doit rester relisible. */
+        char cite[HC_NOM_MAX];
+        int besoin = descripteur_cite(pile->path, cite, sizeof cite);
+        if (besoin < (int)sizeof cite)
+            snprintf(pl, sizeof pl, "stack %s", cite);
+        else
+            terme_objet(pile, "stack", pl, sizeof pl);
+    }
     else                       terme_objet(pile, "stack", pl, sizeof pl);
 
     switch (o->type) {
@@ -465,13 +574,13 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
         return;
 
     case OBJ_BACKGROUND: {
-        char t[160]; terme_objet(o, "bkgnd", t, sizeof t);
+        char t[HC_NOM_MAX + 64]; terme_objet(o, "bkgnd", t, sizeof t);
         if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
         else     snprintf(out, outlen, "%s", t);
         return;
     }
     case OBJ_CARD: {
-        char t[160]; terme_objet(o, "card", t, sizeof t);
+        char t[HC_NOM_MAX + 64]; terme_objet(o, "card", t, sizeof t);
         if (*pl) snprintf(out, outlen, "%s of %s", t, pl);
         else     snprintf(out, outlen, "%s", t);
         return;
@@ -479,7 +588,7 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
     case OBJ_BUTTON:
     case OBJ_FIELD: {
         int fond = hc_owner_is_bg(o);
-        char t[160];
+        char t[HC_NOM_MAX + 64];
         char type[32];
         snprintf(type, sizeof type, "%s %s", fond ? "bkgnd" : "card",
                  o->type == OBJ_BUTTON ? "button" : "field");
@@ -490,7 +599,7 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
          * carte n'existant que sur la sienne. */
         Object *porteur = o->owner;
         if (!porteur) { snprintf(out, outlen, "%s", t); return; }
-        char pc[160];
+        char pc[HC_NOM_MAX + 64];
         terme_objet(porteur, fond ? "bkgnd" : "card", pc, sizeof pc);
         if (*pl) snprintf(out, outlen, "%s of %s of %s", t, pc, pl);
         else     snprintf(out, outlen, "%s of %s", t, pc);
@@ -1174,12 +1283,65 @@ static int id_pris_dans(Object *pile, int id)
     return 0;
 }
 
+/* Le plus petit identifiant libre, EN UNE SEULE PASSE.
+ *
+ * La version d'avant essayait 1, puis parcourait toute la pile ; puis 2, puis
+ * reparcourait toute la pile. Sur une pile dont les petits numéros sont
+ * occupés, cela fait N essais × N objets. Mesuré, avec le compteur épuisé :
+ *
+ *      500 objets   0,04 ms par création
+ *     1000 objets   0,2  ms
+ *     2000 objets   1,1  ms
+ *     4000 objets   4,3  ms      — ×4 quand N double, donc bien du N²
+ *
+ * À 10 000 objets on est à ~27 ms par objet, à 50 000 l'application se fige.
+ * Aucun fichier malveillant n'est nécessaire : une pile assez grosse et un
+ * compteur épuisé suffisent.
+ *
+ * On relève donc les numéros occupés, on les trie, et on prend le premier
+ * trou. Une allocation, un tri, une passe — et la même réponse.
+ *
+ * Si l'allocation échoue on retombe sur le parcours naïf plutôt que de
+ * renoncer : lent vaut mieux que faux, et c'est le seul cas où il sert. */
+static int cmp_id(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
+}
+
 static int id_libre_dans(Object *pile)
 {
     if (!pile) return 0;
-    for (int id = 1; id < HC_ID_MAX; id++)
-        if (!id_pris_dans(pile, id)) return id;
-    return 0;
+
+    int n = 1;                                   /* la pile elle-même */
+    for (int i = 0; i < pile->nparts; i++)
+        n += 1 + pile->parts[i]->nparts;
+
+    int *pris = malloc((size_t)n * sizeof *pris);
+    if (!pris) {
+        for (int id = 1; id < HC_ID_MAX; id++)
+            if (!id_pris_dans(pile, id)) return id;
+        return 0;
+    }
+
+    int k = 0;
+    pris[k++] = pile->id;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *couche = pile->parts[i];
+        pris[k++] = couche->id;
+        for (int j = 0; j < couche->nparts; j++)
+            pris[k++] = couche->parts[j]->id;
+    }
+    qsort(pris, (size_t)k, sizeof *pris, cmp_id);
+
+    int attendu = 1;
+    for (int i = 0; i < k; i++) {
+        if (pris[i] < attendu) continue;         /* doublon ou numéro nul */
+        if (pris[i] > attendu) break;            /* le trou est ici */
+        attendu = pris[i] + 1;
+    }
+    free(pris);
+    return attendu < HC_ID_MAX ? attendu : 0;
 }
 
 static Object *new_object(ObjType type, Object *owner, const char *name)
@@ -2261,6 +2423,12 @@ static Object *clone_part(Object *o)
     return c;
 }
 
+/* Définies avec le reste du presse-papiers, plus bas : un bouton emporte son
+ * icône comme une carte emporte les siennes. */
+static void clip_bg_clear(void);
+static void clip_collect_icon_de(Object *stack, Object *p);
+static void transplant_icons_objet(Object *stack, Object *part);
+
 int hc_copy_part(Object *o)
 {
     Object *c = clone_part(o);
@@ -2277,6 +2445,13 @@ int hc_copy_part(Object *o)
     }
 
     if (g_clipboard) hc_free(g_clipboard);
+    /* LE BOUTON EMPORTE SON ICÔNE, comme une carte emporte les siennes.
+     *
+     * clip_bg_clear remet aussi la table d'icônes à zéro : sans cet appel, un
+     * bouton copié après une carte hériterait des icônes de celle-ci. */
+    clip_bg_clear();
+    clip_collect_icon_de(owning_stack(o), o);
+
     g_clipboard = c;
     return 1;
 }
@@ -2317,6 +2492,10 @@ Object *hc_paste_part(Object *owner)
     }
 
     add_part(owner, c);
+
+    /* Et son icône arrive avec lui. Voir transplant_icons_objet : sans cela le
+     * numéro désignait, dans la pile d'arrivée, un autre dessin ou aucun. */
+    transplant_icons_objet(owning_stack(owner), c);
     return c;
 }
 
@@ -2530,6 +2709,34 @@ static void clip_bg_clear(void)
 /* Trace du transport d'icônes. Mettre à 0 pour la faire taire. */
 #define HC_TRACE_ICONS 1
 
+/* Ramasse l'icône de pile qu'emploie CE bouton-ci. */
+static void clip_collect_icon_de(Object *stack, Object *p)
+{
+    if (!stack || !p) return;
+    if (p->type != OBJ_BUTTON || p->icon == 0) return;
+
+    struct StackIcon *src = hc_icon_get(stack, p->icon);
+    if (!src) return;                           /* icône d'origine : partout */
+
+    for (int k = 0; k < g_clip_nicons; k++)
+        if (g_clip_icons[k].id == p->icon) return;
+
+    struct StackIcon *t = realloc(g_clip_icons,
+                                  (size_t)(g_clip_nicons + 1) * sizeof *t);
+    if (!t) return;
+    g_clip_icons = t;
+
+    memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
+    g_clip_icons[g_clip_nicons].id   = src->id;
+    g_clip_icons[g_clip_nicons].name = dupstr(src->name);
+    memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
+    g_clip_nicons++;
+#if HC_TRACE_ICONS
+    fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
+            src->id, src->name ? src->name : "");
+#endif
+}
+
 /* Ramasse dans `layer` les icônes de pile qu'utilisent ses boutons. */
 static void clip_collect_icons(Object *stack, Object *layer)
 {
@@ -2545,38 +2752,8 @@ static void clip_collect_icons(Object *stack, Object *layer)
                 layer->parts[i]->name ? layer->parts[i]->name : "");
 #endif
 
-    for (int i = 0; i < layer->nparts; i++) {
-        Object *p = layer->parts[i];
-        if (p->type != OBJ_BUTTON || p->icon == 0) continue;
-
-        struct StackIcon *src = hc_icon_get(stack, p->icon);
-#if HC_TRACE_ICONS
-        if (!src)
-            fprintf(stderr, "[icone] bouton icon=%d absent de la pile source"
-                            " (icone d'origine ?)\n", p->icon);
-#endif
-        if (!src) continue;                     /* icône d'origine : partout */
-
-        int deja = 0;
-        for (int k = 0; k < g_clip_nicons && !deja; k++)
-            if (g_clip_icons[k].id == p->icon) deja = 1;
-        if (deja) continue;
-
-        struct StackIcon *t = realloc(g_clip_icons,
-                                      (size_t)(g_clip_nicons + 1) * sizeof *t);
-        if (!t) return;
-        g_clip_icons = t;
-
-        memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
-        g_clip_icons[g_clip_nicons].id   = src->id;
-        g_clip_icons[g_clip_nicons].name = dupstr(src->name);
-        memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
-        g_clip_nicons++;
-#if HC_TRACE_ICONS
-        fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
-                src->id, src->name ? src->name : "");
-#endif
-    }
+    for (int i = 0; i < layer->nparts; i++)
+        clip_collect_icon_de(stack, layer->parts[i]);
 }
 
 /* Un numéro libre dans cette pile, hors du catalogue d'origine, ET hors des
@@ -2627,43 +2804,74 @@ static void remap_button_icons(Object *layer, int oldid, int newid)
  * pas tant que réutilisation rime avec icônes identiques — mais il suffit
  * d'avoir retouché une icône entre le copier et le coller pour que les bits
  * diffèrent, et l'on abîmerait la pile entière pour une carte collée. */
+/* Poser l'entrée `i` du presse-papiers dans `stack`, et dire sous quel numéro.
+ * Rend 0 s'il n'y a rien à faire ou si la pose échoue. */
+static int pose_une_icone(Object *stack, int i, int *newid_out)
+{
+    int oldid = g_clip_icons[i].id;
+    int newid = oldid;
+
+    struct StackIcon *ex = hc_icon_get(stack, oldid);
+    int identique = ex &&
+        memcmp(ex->bits, g_clip_icons[i].bits, HC_ICON_BYTES) == 0;
+
+    if (!identique) {
+        if (ex) {
+            newid = icon_free_id_in(stack);
+#if HC_TRACE_ICONS
+            fprintf(stderr, "[icone] %d deja pris par un autre dessin"
+                            " -> %d\n", oldid, newid);
+#endif
+            if (!newid) return 0;               /* on laisse le numéro mort */
+        }
+        struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
+#if HC_TRACE_ICONS
+        fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
+                newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
+                e ? "ok" : "ECHEC");
+#endif
+        if (!e) return 0;
+        memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
+    }
+#if HC_TRACE_ICONS
+    else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
+#endif
+
+    *newid_out = newid;
+    return 1;
+}
+
 static void transplant_icons(Object *stack, Object *card, Object *bg)
 {
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] transplantation de %d icone(s)\n", g_clip_nicons);
 #endif
     for (int i = 0; i < g_clip_nicons; i++) {
-        int oldid = g_clip_icons[i].id;
-        int newid = oldid;
-
-        struct StackIcon *ex = hc_icon_get(stack, oldid);
-        int identique = ex &&
-            memcmp(ex->bits, g_clip_icons[i].bits, HC_ICON_BYTES) == 0;
-
-        if (!identique) {
-            if (ex) {
-                newid = icon_free_id_in(stack);
-#if HC_TRACE_ICONS
-                fprintf(stderr, "[icone] %d deja pris par un autre dessin"
-                                " -> %d\n", oldid, newid);
-#endif
-                if (!newid) continue;           /* on laisse le numéro mort */
-            }
-            struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
-#if HC_TRACE_ICONS
-            fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
-                    newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
-                    e ? "ok" : "ECHEC");
-#endif
-            if (!e) continue;
-            memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
-        }
-#if HC_TRACE_ICONS
-        else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
-#endif
-
+        int oldid = g_clip_icons[i].id, newid;
+        if (!pose_une_icone(stack, i, &newid)) continue;
         remap_button_icons(card, oldid, newid);
         remap_button_icons(bg,   oldid, newid);
+    }
+}
+
+/* LA MÊME TRANSPLANTATION, POUR UN OBJET SEUL.
+ *
+ * Copier un BOUTON — et non une carte — n'emportait aucune icône : ni
+ * hc_copy_part ni hc_paste_part ne les regardaient. Le bouton collé gardait
+ * son numéro, et à l'arrivée ce numéro appartenait à un autre dessin, ou à
+ * aucun. Mesuré : le bouton affichait l'icône de la pile de destination, et
+ * la sienne était perdue.
+ *
+ * C'est le même défaut que pour les cartes, corrigé pour elles seules. Un
+ * chemin sur deux, c'est le genre de moitié qui ne se voit pas — jusqu'à ce
+ * qu'on copie un bouton. */
+static void transplant_icons_objet(Object *stack, Object *part)
+{
+    if (!stack || !part) return;
+    for (int i = 0; i < g_clip_nicons; i++) {
+        int oldid = g_clip_icons[i].id, newid;
+        if (!pose_une_icone(stack, i, &newid)) continue;
+        if (part->type == OBJ_BUTTON && part->icon == oldid) part->icon = newid;
     }
 }
 
@@ -3115,9 +3323,14 @@ static Object *resolve(const char *ref)
     const char *deb = skip_spaces(ref);
     size_t ltete = (size_t)(of - deb);
     while (ltete > 0 && (deb[ltete-1] == ' ' || deb[ltete-1] == '\t')) ltete--;
-    if (ltete == 0 || ltete >= 256) return resolve_local(ref);
+    /* Le même plafond que les descripteurs, et pour la même raison : un nom de
+     * 300 caractères produisait une tête de 279, qui repartait ici en
+     * resolve_local sur la référence ENTIÈRE — donc sans sa portée, donc en
+     * échec. Mesuré : « the id of » un long name cessait de répondre entre 279
+     * et 319 caractères de descripteur, sans un mot. */
+    if (ltete == 0 || ltete >= HC_NOM_MAX + 64) return resolve_local(ref);
 
-    char tete[256];
+    char tete[HC_NOM_MAX + 64];
     memcpy(tete, deb, ltete); tete[ltete] = '\0';
     const char *queue = skip_spaces(of + 2);
     if (!*queue) return resolve_local(ref);
@@ -3180,8 +3393,8 @@ static Object *resolve_local(const char *ref)
          * n'est qu'un préfixe pour « bg button … » et un fond nommé reste
          * introuvable. */
         if (*ref == '"') {
-            char nm[128];
-            quoted(ref, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(ref, nm, sizeof nm);
             for (int i = 0; stack && i < stack->nparts; i++)
                 if (stack->parts[i]->type == OBJ_BACKGROUND &&
                     stack->parts[i]->name && ci_equal(stack->parts[i]->name, nm))
@@ -3215,7 +3428,7 @@ static Object *resolve_local(const char *ref)
         if (!ci_word(ref, "button") && !ci_word(ref, "btn") &&
             !ci_word(ref, "field")  && !ci_word(ref, "fld")  &&
             !ci_word(ref, "part")) {
-            char nm[128];
+            char nm[HC_NOM_MAX];
             int n = 0;
             while (ref[n] && n < (int)sizeof nm - 1) { nm[n] = ref[n]; n++; }
             while (n > 0 && isspace((unsigned char)nm[n-1])) n--;
@@ -3229,8 +3442,8 @@ static Object *resolve_local(const char *ref)
         /* "card button" / "card field" / "card \"nom\"" / "card 3" */
         const char *after = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (*after == '"') {
-            char nm[128];
-            quoted(after, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(after, nm, sizeof nm);
             return find_card_by_name(stack, nm);
         }
         if (ci_word(after, "id")) {                    /* card id N */
@@ -3264,7 +3477,7 @@ static Object *resolve_local(const char *ref)
              *
              * Une variable jamais affectée vaut son propre nom, donc
              * « go card canard » continue de désigner la carte canard. */
-            char nm[256];
+            char nm[HC_NOM_MAX];
             eval_id_token(after, nm, sizeof nm);
 
             if (!nm[0]) {
@@ -3365,8 +3578,8 @@ static Object *resolve_local(const char *ref)
         const char *after = skip_spaces(ref + 5);
         if (!*after) return stack;
         if (*after == '"') {                 /* « stack "Essai" » */
-            char nm[128];
-            quoted(after, nm, sizeof nm);
+            char nm[HC_NOM_MAX];
+            descripteur_lit(after, nm, sizeof nm);
             if (stack && stack->name && ci_equal(stack->name, nm)) return stack;
             /* Une AUTRE pile ouverte peut porter ce nom : c'est tout l'objet
              * du registre. Sans lui, « the name of stack "Autre" » ne pouvait
@@ -3407,11 +3620,11 @@ static Object *resolve_local(const char *ref)
         return o;
     }
 
-    char nm[256];
+    char nm[HC_NOM_MAX];
     nm[0] = '\0';
 
     if (*ref == '"') {
-        quoted(ref, nm, sizeof nm);
+        descripteur_lit(ref, nm, sizeof nm);
     } else {
         /* --- désignateur dynamique : « field f », « button (i + 1) » ------
          * HyperCard accepte une expression là où l'on écrit d'ordinaire un
@@ -4658,8 +4871,25 @@ static void oublie_objet_interne(Object *mort)
 #define HC_MENUS_MAX     16
 #define HC_ARTICLES_MAX  64
 
+/* Le nom d'un menu. Soixante-quatre octets, c'était court — et surtout la
+ * troncature était SILENCIEUSE : un menu créé sous un nom trop long recevait
+ * un nom amputé, et « menu "NomComplet" » ne le retrouvait plus jamais, puisque
+ * menu_index compare le nom entier. Le script créait un menu et ne pouvait plus
+ * le désigner.
+ *
+ * Deux-cent-cinquante-six laisse de la marge, et au-delà on REFUSE en le
+ * disant, comme partout ailleurs ici. Un menu n'a pas de seconde forme — pas
+ * de « menu id N » — donc contrairement à un descripteur d'objet il n'y a rien
+ * sur quoi se rabattre : il ne reste qu'à prévenir. */
+#define HC_MENU_NOM_MAX 256
+
+/* Un chemin de fichier. PATH_MAX vaut 1024 sur macOS, et un seul composant
+ * peut y prendre 255 octets — un dossier nommé par une phrase, ce qui arrive
+ * tous les jours. */
+#define HC_CHEMIN_MAX 1024
+
 typedef struct {
-    char  nom[64];
+    char  nom[HC_MENU_NOM_MAX];
     char *article[HC_ARTICLES_MAX];   /* le texte affiché             */
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
@@ -4699,6 +4929,11 @@ static int menu_creer(const char *nom)
     if (menu_index(nom) >= 0) return 0;          /* déjà là */
     if (g_nmenus >= HC_MENUS_MAX) {
         emit(HC_ERR, "   !! trop de menus (%d au plus)", HC_MENUS_MAX);
+        return 0;
+    }
+    if (strlen(nom) >= HC_MENU_NOM_MAX) {
+        emit(HC_ERR, "   !! nom de menu trop long (%d caractères au plus)",
+             HC_MENU_NOM_MAX - 1);
         return 0;
     }
     HcMenuBarre *m = &g_menus[g_nmenus++];
@@ -10078,7 +10313,9 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         char prop[64];
         const HctNoeud *obj = v3_set_cible_menu(n, prop, sizeof prop);
         if (obj && n->nfils >= 3) {
-            char val[256];
+            /* Même marge que pour la création : un nom trop long doit
+             * arriver trop long pour que v3_menu_prop_ecrit le refuse. */
+            char val[HC_MENU_NOM_MAX + 2];
             v3_val_texte(ctx, n->fils[n->nfils - 1], val, sizeof val);
             if (ctx->erreur) return 1;
             if (v3_menu_prop_ecrit(ctx, obj, prop, val)) { set_result(""); return 1; }
@@ -12049,7 +12286,12 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
     if (!v3_est_motcle(n, 0, "file")) return 0;
     if (n->nfils != 2) return 0;
 
-    char nom[512];
+    /* Un chemin macOS va jusqu'à 1024 octets, et un seul dossier peut en
+     * prendre 255 : 512 amputait le nom AVANT même que l'invite soit
+     * composée, si bien qu'agrandir l'invite seule n'y changeait rien.
+     * Mesuré : « open file » sur un nom de 600 caractères produisait une
+     * invite de 538. */
+    char nom[HC_CHEMIN_MAX + 2];
     v3_val_texte(ctx, n->fils[1], nom, sizeof nom);
     if (ctx->erreur) return 1;
 
@@ -12361,7 +12603,17 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
      * toutes les piles — se lit alors directement dans le jeton. Une
      * expression, elle, exige un contexte : sans lui on renonce, et la ligne
      * repart par le chemin ordinaire. */
-    char b[64];
+    /* LE MÊME PLAFOND QUE LE NOM POSÉ, ET C'EST TOUT L'ENJEU.
+     *
+     * C'était « char b[64] ». Le nom CHERCHÉ était donc amputé exactement
+     * comme le nom POSÉ l'était, et les deux amputations se correspondaient :
+     * « there is a menu "<200 caractères>" » répondait true — par accident.
+     * Deux menus longs et différents se seraient confondus de la même façon.
+     *
+     * Corriger la pose sans corriger la recherche a fait tomber ce faux vrai,
+     * et c'est le harnais qui l'a dit : il ne suffit pas d'agrandir un tampon,
+     * il faut agrandir LES DEUX BOUTS de la comparaison. */
+    char b[HC_MENU_NOM_MAX + 2];
     if (ctx) {
         v3_val_texte(ctx, n->fils[0], b, sizeof b);
         if (ctx->erreur) return -1;
@@ -12389,7 +12641,7 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     if (im < 0) return -1;
     *imenu = im;
 
-    char b[64];
+    char b[HC_MENU_NOM_MAX + 2];   /* même plafond : voir v3_menu_index */
     if (ctx) {
         v3_val_texte(ctx, n->fils[0], b, sizeof b);
         if (ctx->erreur) return -1;
@@ -12473,6 +12725,13 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
         int i = v3_menu_index(ctx, obj);
         if (i < 0) return 0;
         if (ci_equal(prop, "name")) {
+            /* Même règle qu'à la création : on refuse plutôt que d'amputer.
+             * Un menu renommé trop long deviendrait introuvable sous son
+             * nouveau nom ET perdu sous l'ancien. */
+            if (strlen(val) >= HC_MENU_NOM_MAX) {
+                hct_ctx_faute(ctx, obj, "nom de menu trop long");
+                return 1;
+            }
             snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
             menus_prevenir(); return 1;
         }
@@ -12540,7 +12799,17 @@ static int v3_cmd_create(HctContexte *ctx, const HctNoeud *n)
     if (o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_MENU) return 0;
     if (o->nfils < 1) return 0;
 
-    char nom[64];
+    /* UN OCTET DE MARGE, ET C'EST TOUT L'INTÉRÊT.
+     *
+     * C'était « char nom[64] » : le nom arrivait déjà amputé à 63 caractères,
+     * bien avant le garde de menu_creer — qui ne voyait donc jamais de nom
+     * trop long et ne refusait jamais rien. Pire, deux noms longs et
+     * différents se ramenaient aux mêmes 63 octets et devenaient le même menu.
+     *
+     * Le tampon dépasse maintenant la limite d'un cran : un nom trop long
+     * ARRIVE trop long, et menu_creer peut le dire. Corriger le plafond sans
+     * cette marge n'aurait fait que déplacer le silence. */
+    char nom[HC_MENU_NOM_MAX + 2];
     v3_val_texte(ctx, o->fils[0], nom, sizeof nom);
     if (ctx->erreur) return 1;
 
@@ -13443,9 +13712,31 @@ static int file_open(const char *nom)
     if (!f) {
         const char *reel = NULL;
         if (g_host && g_host->answer_file) {
-            char inv[256];
-            snprintf(inv, sizeof inv, "Où est le fichier « %s » ?", nom);
+            /* L'INVITE DOIT TENIR LE NOM ENTIER.
+             *
+             * Elle était composée dans un tampon de 256 octets. Un chemin
+             * macOS va jusqu'à 1024, et un dossier peut à lui seul en prendre
+             * 255 : la question « Où est le fichier « /Users/…/Docum » ? »
+             * perdait précisément le renseignement qu'elle apportait.
+             *
+             * On mesure d'abord, on alloue seulement s'il le faut : le cas
+             * courant — un nom court — ne touche pas au tas. Et si
+             * l'allocation échoue, l'invite tronquée vaut mieux que pas
+             * d'invite du tout ; on la pose, elle est seulement moins
+             * bavarde. */
+            static const char *FMT = "Où est le fichier « %s » ?";
+            char  court[256];
+            char *inv = court;
+            char *dyn = NULL;
+            int   besoin = snprintf(NULL, 0, FMT, nom);
+
+            if (besoin >= (int)sizeof court) {
+                dyn = malloc((size_t)besoin + 1);
+                if (dyn) inv = dyn;
+            }
+            snprintf(inv, dyn ? (size_t)besoin + 1 : sizeof court, FMT, nom);
             reel = g_host->answer_file(inv);
+            free(dyn);            /* `reel` appartient à l'hôte, pas à `inv` */
         }
         if (reel && *reel) {
             f = fopen(reel, "r+b");

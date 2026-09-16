@@ -849,10 +849,28 @@ static NSMenu *gRecentMenu = nil;
      * seule quand l'application tourne depuis une image disque, et vaut
      * /Applications une fois installée — deux endroits où l'on n'enregistre
      * pas son travail. Ouvrir peut partir de l'application ; enregistrer, non. */
-    NSArray *docs = NSSearchPathForDirectoriesInDomains(
-        NSDocumentDirectory, NSUserDomainMask, YES);
-    if ([docs count] > 0)
-        [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
+    /* LE DOSSIER DE LA PILE D'ABORD, Documents seulement à défaut.
+     *
+     * Proposer Documents à une pile qui vit ailleurs, c'est proposer de
+     * l'enregistrer AILLEURS : on valide sans y penser, et le fichier
+     * d'origine ne reçoit rien. C'est la moitié du défaut qui a fait
+     * disparaître une carte collée — l'autre moitié était que cet article
+     * n'écrivait plus qu'une copie.
+     *
+     * Enregistrer là où la pile habite déjà doit être le geste par défaut. */
+    const char *ici = hc_stack_path(pile);
+    if (ici && *ici) {
+        NSString *chemin = [NSString stringWithUTF8String:ici];
+        [panel setDirectoryURL:
+            [NSURL fileURLWithPath:[chemin stringByDeletingLastPathComponent]
+                       isDirectory:YES]];
+        [panel setNameFieldStringValue:[chemin lastPathComponent]];
+    } else {
+        NSArray *docs = NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES);
+        if ([docs count] > 0)
+            [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
+    }
     /* Une FEUILLE attachée à la fenêtre de la pile, plutôt qu'un panneau
      * modal pour toute l'application.
      *
@@ -882,6 +900,25 @@ static NSMenu *gRecentMenu = nil;
          * détecte vraiment les fautes d'écriture — disque plein, quota — il
          * faut le DIRE : perdre une sauvegarde en silence est la pire chose
          * qu'un éditeur puisse faire. */
+        /* CET ARTICLE EST LE SEUL MOYEN D'ENREGISTRER : IL ENREGISTRE.
+         *
+         * J'avais fait de lui une vraie « copie » — écrire ailleurs sans
+         * toucher à la pile ouverte — pour que son nom dise la vérité. C'était
+         * une faute, et elle a coûté du travail à l'utilisatrice : HC n'a
+         * AUCUN autre article d'enregistrement, HyperCard n'en ayant pas
+         * besoin puisqu'il écrivait en continu. Coller une carte, enregistrer,
+         * rouvrir — et la carte avait disparu, parce que la copie était partie
+         * dans Documents et que le fichier d'origine n'avait jamais rien reçu.
+         *
+         * La leçon : un contrat d'API et un article de menu ne se corrigent
+         * pas du même geste. La violation que l'audit signalait était celle de
+         * HcHost.save_stack, le rappel de « save stack X as Y » — un ordre de
+         * SCRIPT, qui a bien été corrigé, lui, en hc_save_copie. L'article de
+         * menu, lui, est la porte de sortie de l'utilisatrice, et la seule.
+         *
+         * Il enregistre donc la pile à l'adresse choisie, et la pile habite
+         * désormais là. Son nom ment un peu ; c'est le nom qu'il faudra
+         * changer, pas ce comportement. */
         if (hc_save(pile, [path UTF8String]) != 0) {
             NSAlert *a = [[NSAlert alloc] init];
             [a setMessageText:@"L'enregistrement a échoué."];

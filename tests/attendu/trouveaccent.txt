@@ -1,0 +1,13 @@
+== l'ecart entre octets et caracteres ==
+   le motif commence a l'octet 52, au caractere 47 (ecart 5)
+
+== et « the foundChunk » designe bien le motif ==
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   foundText  : [un mot nu vaut son nom]
+   foundChunk : char 48 to 69 of card field "texte"
+   foundLine  : line 3 of field "texte"
+   relu       : [un mot nu vaut son nom]
+
+== un motif APRES encore plus d'accents ==
+   foundChunk : char 79 to 85 of card field "texte"
+   relu       : [zorglub]

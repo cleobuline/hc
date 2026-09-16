@@ -394,7 +394,7 @@ static void put_part(FILE *f, Object *o)
  *
  * En cas d'échec, le fichier temporaire est retiré et l'ancienne pile est
  * intacte — l'utilisateur perd sa sauvegarde, pas son travail. */
-int hc_save(Object *stack, const char *path)
+static int ecrit_pile(Object *stack, const char *path, int adopte)
 {
     if (!stack || stack->type != OBJ_STACK || !path) return -1;
 
@@ -582,10 +582,34 @@ int hc_save(Object *stack, const char *path)
         return -1;
     }
     free(tmp);
-    /* La pile habite maintenant ICI — et c'est vrai aussi d'un « save as »,
-     * qui est la seule façon pour une pile de changer d'adresse. */
-    hc_set_stack_path(stack, path);
+    if (adopte) hc_set_stack_path(stack, path);
     return 0;
+}
+
+/* ENREGISTRER, ET COPIER, NE SONT PAS LA MÊME CHOSE.
+ *
+ * hc_save adoptait le chemin dans tous les cas. Or son appelant le plus
+ * fréquent est le rappel save_stack de l'hôte, dont le contrat écrit dans
+ * hc_core.h dit exactement le contraire :
+ *
+ *     « Enregistre une COPIE de la pile sous un autre nom. C'est ce que veut
+ *       dire "save stack X as Y" : dupliquer, et non enregistrer les
+ *       modifications en cours. »
+ *
+ * Mesuré : « save this stack as "copie.stack" » déplaçait la pile en mémoire,
+ * si bien que « the long name of this stack » changeait de réponse APRÈS une
+ * commande censée ne rien changer. Un script qui fait une sauvegarde de
+ * sécurité déménageait son propre document.
+ *
+ * Deux fonctions, donc, et le nom dit laquelle on veut. */
+int hc_save(Object *stack, const char *path)
+{
+    return ecrit_pile(stack, path, 1);
+}
+
+int hc_save_copie(Object *stack, const char *path)
+{
+    return ecrit_pile(stack, path, 0);
 }
 
 /* ==================== lecture ==================== */

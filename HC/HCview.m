@@ -47,6 +47,12 @@ typedef struct {
      * après le gestionnaire, qu'un simple « go next card » avait déjà changée.
      * Les deux voyagent maintenant ensemble. */
     Object       *pressedCard;
+    /* LE MINUTEUR APPARTIENT AU GESTE, DONC AU DOCUMENT.
+     *
+     * Il était un global de processus alors que `pressed` est par document :
+     * deux fenêtres ne pouvaient pas avoir un geste chacune, et surtout
+     * startStillDownTimer arrêtait celui de l'autre fenêtre en passant. */
+    NSTimer      *stillDownTimer;
     Object       *popupTarget;    /* menu popup ouvert */
     NSArray<NSString *> *popupItems;
     NSArray<NSNumber *> *popupItemLines; /* lignes HC, base 1 */
@@ -90,7 +96,6 @@ typedef struct {
 
 static HCDoc  gDoc0;
 static HCDoc *gDoc = &gDoc0;
-static NSTimer *gStillDownTimer = nil;
 void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 
 #define gEditingField    (gDoc->editingField)
@@ -918,9 +923,41 @@ static void draw_part(Object *o) {
         }
 
         int fstart = 0, flen = 0;
+        NSUInteger fdeb = 0, flg = 0;
         if (o != gEditingField &&
-            hc_found_range(o, &fstart, &flen) && flen > 0 &&
-            fstart + flen <= (int)[s length]) {
+            hc_found_range(o, &fstart, &flen) && flen > 0) {
+            /* OCTETS -> UTF-16, comme pour la sélection.
+             *
+             * hc_found_range rend le décalage du motif EN OCTETS — c'est ce
+             * que le noyau calcule, « hit - tx ». On le passait tel quel à
+             * glyphRangeForCharacterRange:, qui compte en unités UTF-16 : la
+             * boîte noire glissait d'un cran par octet supplémentaire, donc
+             * d'autant que le champ contient d'accents, de guillemets « » ou
+             * de tirets longs AVANT le motif. Elle coupait les mots.
+             *
+             * Mesuré sur un texte français ordinaire : le motif commençait à
+             * l'octet 52 et au caractère 47 — cinq de décalage, et cinq
+             * lettres avalées au début du surlignage.
+             *
+             * La conversion existait déjà, six cents lignes plus haut, pour
+             * « select char N of field X », avec un commentaire décrivant le
+             * même défaut. Ce chemin-ci ne l'avait jamais reçue : un jumeau
+             * corrigé, l'autre oublié. Le noyau, lui, est juste — « the
+             * foundChunk » rend bien un rang de CARACTÈRE.
+             *
+             * Le bornage se fait APRÈS la conversion : comparer un décalage
+             * en octets à [s length], qui est en UTF-16, laissait passer des
+             * plages hors du texte sur un champ très accentué. */
+            const char *tx = hc_field_text(o);
+            NSUInteger u0 = utf16_from_byte(tx, fstart);
+            NSUInteger u1 = utf16_from_byte(tx, fstart + flen);
+            NSUInteger n  = [s length];
+            if (u0 > n) u0 = n;
+            if (u1 > n) u1 = n;
+            fdeb = u0;
+            flg  = u1 > u0 ? u1 - u0 : 0;
+        }
+        if (flg > 0) {
 
             /* La mise en page du TRACÉ, comme pour le test de clic.
              *
@@ -933,7 +970,7 @@ static void draw_part(Object *o) {
             NSTextContainer *tc = nil;
             NSLayoutManager *lm = field_layout(o, s, at, tr.size.width, &tc);
 
-            NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fstart, flen)
+            NSRange glyphs = [lm glyphRangeForCharacterRange:NSMakeRange(fdeb, flg)
                                        actualCharacterRange:NULL];
             NSRect box = [lm boundingRectForGlyphRange:glyphs inTextContainer:tc];
             box.origin.x += tr.origin.x;
@@ -945,7 +982,7 @@ static void draw_part(Object *o) {
             NSRectFill(box);
 
             NSMutableAttributedString *sub =
-                [[as attributedSubstringFromRange:NSMakeRange(fstart, flen)] mutableCopy];
+                [[as attributedSubstringFromRange:NSMakeRange(fdeb, flg)] mutableCopy];
             [sub addAttribute:NSForegroundColorAttributeName
                         value:[NSColor whiteColor]
                         range:NSMakeRange(0, [sub length])];
@@ -1053,10 +1090,13 @@ static Object *part_at(Object *card, NSPoint p) {
 static char gDlgBuf[512];
 static char gFileBuf[2048];
 
+/* Le rappel de « save stack "X" as "Y" ». Une COPIE, comme le dit le contrat
+ * dans hc_core.h : la pile en mémoire garde son adresse, et « the long name of
+ * this stack » répond la même chose avant et après. */
 static int cocoa_save_stack(Object *stack, const char *path) {
     if (!stack || !path || !*path) return 0;
     [gView flushPaintToKernel];
-    return hc_save(stack, path) == 0;
+    return hc_save_copie(stack, path) == 0;
 }
 
 static const char *cocoa_answer_file(const char *prompt) {
@@ -3074,6 +3114,24 @@ static BOOL paint_selection_active(void)
             Object *owner = (gEditBackground && card->bg) ? card->bg : card;
             Object *p = hc_paste_part(owner);
             if (p) {
+                /* LE CATALOGUE DE TRAVAIL DOIT APPRENDRE CE QUI VIENT D'ARRIVER.
+                 *
+                 * Coller un bouton transplante son icône dans la pile — et lui
+                 * donne un NUMÉRO NEUF quand l'ancien était déjà pris par un
+                 * autre dessin. HCicons ne voit pas stack->icons : il en tient
+                 * une copie, refaite par hcicon_edit_sync.
+                 *
+                 * Sans cet appel l'icône était bel et bien dans la pile, et
+                 * invisible partout : hcicon_find ne connaissait pas son
+                 * nouveau numéro, donc le bouton collé ne dessinait rien et le
+                 * panneau ne la listait pas. On la croyait perdue alors
+                 * qu'elle était seulement ignorée.
+                 *
+                 * Le chemin des CARTES faisait déjà cet appel, juste au-dessus.
+                 * Celui des objets l'avait oublié : l'invariant est que toute
+                 * pose qui touche stack->icons doit être suivie d'un sync. */
+                if (card->owner) hcicon_edit_sync(card->owner);
+
                 gSelected = p;
                 hc_send(p, p->type == OBJ_BUTTON ? "newButton" : "newField");
                 [gView setNeedsDisplay:YES];
@@ -6038,9 +6096,23 @@ static NSTextField  *gSprayDensityLabel = nil;
     if (champ && !gSansMessageChamp)
         hc_send(champ, change ? "closeField" : "exitField");
 }
+/* LE GESTE DE LA FENÊTRE A DOIT GARDER L'ÉTAT DE A.
+ *
+ * Ces trois méthodes passaient par gDoc — le document ACTIF — alors que le
+ * geste appartient à la vue qui l'a commencé. Le scénario qui casse :
+ *
+ *     souris enfoncée dans la pile A ;
+ *     le mouseDown de A fait « go to stack "B" » ;
+ *     B devient le document actif, donc gDoc pointe sur B ;
+ *     le minuteur créé par A se déclenche et lit gPressed — celui de B.
+ *
+ * Résultat : mouseStillDown ne part plus, ou part au mauvais objet. Et comme
+ * le minuteur était un GLOBAL, la fenêtre B écrasait en plus celui de A.
+ *
+ * On travaille donc sur _doc, l'état de CETTE vue, jamais sur gDoc. */
 - (void)startStillDownTimer {
     [self stopStillDownTimer];
-    gStillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
+    _doc.stillDownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
                                                        target:self
                                                      selector:@selector(stillDownTick:)
                                                      userInfo:nil
@@ -6053,22 +6125,27 @@ static NSTextField  *gSprayDensityLabel = nil;
      * Tolérance nulle : macOS regroupe volontiers les déclenchements pour
      * économiser l'énergie, ce qui produit exactement les à-coups qu'on
      * cherche à supprimer. */
-    [[NSRunLoop currentRunLoop] addTimer:gStillDownTimer
+    [[NSRunLoop currentRunLoop] addTimer:_doc.stillDownTimer
                                  forMode:NSRunLoopCommonModes];
-    [gStillDownTimer setTolerance:0];
+    [_doc.stillDownTimer setTolerance:0];
 }
 
 - (void)stopStillDownTimer {
-    [gStillDownTimer invalidate];
-    gStillDownTimer = nil;
+    [_doc.stillDownTimer invalidate];
+    _doc.stillDownTimer = nil;
 }
 
 - (void)stillDownTick:(NSTimer *)t {
     (void)t;
-       if (!gPressed || !([NSEvent pressedMouseButtons] & 1)) {
+    /* _doc, et non gPressed : voir startStillDownTimer. */
+    Object *presse = _doc.pressed;
+    /* Une vue sans fenêtre n'a plus de geste en cours. Un minuteur RETIENT sa
+     * cible : sans cette sortie, fermer la fenêtre pendant que le bouton est
+     * enfoncé laisserait la vue en vie et le minuteur battre dans le vide. */
+    if (![self window] || !presse || !([NSEvent pressedMouseButtons] & 1)) {
         [self stopStillDownTimer];
         return;
     }
-    hc_send(gPressed, "mouseStillDown");
+    hc_send(presse, "mouseStillDown");
 }
 @end

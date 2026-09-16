@@ -1,0 +1,14 @@
+== les numeros en place ==
+   1* 2* 3* 4 5 6 7* 8* 9 10 11 12 
+   (* = pris)
+
+== les six creations suivantes prennent les plus petits trous ==
+   creation 1 -> id 4
+   creation 2 -> id 5
+   creation 3 -> id 6
+   creation 4 -> id 9
+   creation 5 -> id 10
+   creation 6 -> id 11
+
+== et aucun numero n'est porte deux fois ==
+   doublons : 0

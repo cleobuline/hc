@@ -797,7 +797,13 @@ int         hc_run_add_color(Object *field, int start, int len,
  * calculeraient sur un interligne différent de celui qu'ils voient. */
 int         hc_text_height(Object *o);
 
-/* Plage surlignee par le dernier « find » dans ce champ. 1 si trouve. */
+/* Plage surlignée par le dernier « find » dans ce champ. 1 si trouvé.
+ *
+ * `start` et `len` sont EN OCTETS, comme partout dans le noyau — c'est
+ * « hit - tx » dans le texte UTF-8 du champ. Un hôte qui indexe en caractères
+ * ou en UTF-16 doit convertir : passer ces valeurs telles quelles décale le
+ * surlignage d'autant que le texte contient de caractères multi-octets avant
+ * le motif. Ce n'était pas écrit, et le dessin l'a payé. */
 int         hc_found_range(Object *field, int *start, int *len);
 
 /* ---- Sélection de texte ----
