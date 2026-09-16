@@ -49,11 +49,20 @@ export UBSAN_OPTIONS=print_stacktrace=1
 # que sept avertissements, dont quatre étaient de vrais défauts —
 # « \xe2\x80\x9cDepth » où le D de Depth est un chiffre hexadécimal, si bien
 # que l'échappement dévorait la lettre et que le harnais ne testait pas les
-# guillemets qu'il croyait. Ils sont corrigés ; il ne reste rien à taire, sauf
-# format-truncation, deux cas connus et bénins de hc_core.c.
+# guillemets qu'il croyait. Ils sont corrigés ; il ne reste plus RIEN à taire.
+#
+# -Wno-format-truncation est parti lui aussi. Il couvrait « deux cas connus et
+# bénins » — c'est ce que disait ce commentaire, et c'était faux pour l'un des
+# deux : le nom d'un menu était amputé à 64 octets EN SILENCE, après quoi
+# « menu "NomComplet" » ne le retrouvait plus, menu_index comparant le nom
+# entier. Un script pouvait créer un menu et ne plus pouvoir le désigner.
+#
+# La leçon est sur le drapeau, pas sur le défaut : on avait jugé la famille
+# bénigne sans l'examiner cas par cas. Un avertissement qu'on éteint est un
+# avertissement qu'on ne relit plus.
 #
 # Les trois -Werror ne sont jamais du style : ce sont des bugs, toujours.
-CFLAGS="-std=gnu99 -O1 -I$HC -Wno-format-truncation"
+CFLAGS="-std=gnu99 -O1 -I$HC"
 CFLAGS="$CFLAGS -Werror=int-conversion -Werror=incompatible-pointer-types"
 CFLAGS="$CFLAGS -Werror=implicit-function-declaration"
 ENREGISTRE=0

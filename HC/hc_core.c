@@ -4871,8 +4871,25 @@ static void oublie_objet_interne(Object *mort)
 #define HC_MENUS_MAX     16
 #define HC_ARTICLES_MAX  64
 
+/* Le nom d'un menu. Soixante-quatre octets, c'était court — et surtout la
+ * troncature était SILENCIEUSE : un menu créé sous un nom trop long recevait
+ * un nom amputé, et « menu "NomComplet" » ne le retrouvait plus jamais, puisque
+ * menu_index compare le nom entier. Le script créait un menu et ne pouvait plus
+ * le désigner.
+ *
+ * Deux-cent-cinquante-six laisse de la marge, et au-delà on REFUSE en le
+ * disant, comme partout ailleurs ici. Un menu n'a pas de seconde forme — pas
+ * de « menu id N » — donc contrairement à un descripteur d'objet il n'y a rien
+ * sur quoi se rabattre : il ne reste qu'à prévenir. */
+#define HC_MENU_NOM_MAX 256
+
+/* Un chemin de fichier. PATH_MAX vaut 1024 sur macOS, et un seul composant
+ * peut y prendre 255 octets — un dossier nommé par une phrase, ce qui arrive
+ * tous les jours. */
+#define HC_CHEMIN_MAX 1024
+
 typedef struct {
-    char  nom[64];
+    char  nom[HC_MENU_NOM_MAX];
     char *article[HC_ARTICLES_MAX];   /* le texte affiché             */
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
@@ -4912,6 +4929,11 @@ static int menu_creer(const char *nom)
     if (menu_index(nom) >= 0) return 0;          /* déjà là */
     if (g_nmenus >= HC_MENUS_MAX) {
         emit(HC_ERR, "   !! trop de menus (%d au plus)", HC_MENUS_MAX);
+        return 0;
+    }
+    if (strlen(nom) >= HC_MENU_NOM_MAX) {
+        emit(HC_ERR, "   !! nom de menu trop long (%d caractères au plus)",
+             HC_MENU_NOM_MAX - 1);
         return 0;
     }
     HcMenuBarre *m = &g_menus[g_nmenus++];
@@ -10291,7 +10313,9 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         char prop[64];
         const HctNoeud *obj = v3_set_cible_menu(n, prop, sizeof prop);
         if (obj && n->nfils >= 3) {
-            char val[256];
+            /* Même marge que pour la création : un nom trop long doit
+             * arriver trop long pour que v3_menu_prop_ecrit le refuse. */
+            char val[HC_MENU_NOM_MAX + 2];
             v3_val_texte(ctx, n->fils[n->nfils - 1], val, sizeof val);
             if (ctx->erreur) return 1;
             if (v3_menu_prop_ecrit(ctx, obj, prop, val)) { set_result(""); return 1; }
@@ -12262,7 +12286,12 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
     if (!v3_est_motcle(n, 0, "file")) return 0;
     if (n->nfils != 2) return 0;
 
-    char nom[512];
+    /* Un chemin macOS va jusqu'à 1024 octets, et un seul dossier peut en
+     * prendre 255 : 512 amputait le nom AVANT même que l'invite soit
+     * composée, si bien qu'agrandir l'invite seule n'y changeait rien.
+     * Mesuré : « open file » sur un nom de 600 caractères produisait une
+     * invite de 538. */
+    char nom[HC_CHEMIN_MAX + 2];
     v3_val_texte(ctx, n->fils[1], nom, sizeof nom);
     if (ctx->erreur) return 1;
 
@@ -12574,7 +12603,17 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
      * toutes les piles — se lit alors directement dans le jeton. Une
      * expression, elle, exige un contexte : sans lui on renonce, et la ligne
      * repart par le chemin ordinaire. */
-    char b[64];
+    /* LE MÊME PLAFOND QUE LE NOM POSÉ, ET C'EST TOUT L'ENJEU.
+     *
+     * C'était « char b[64] ». Le nom CHERCHÉ était donc amputé exactement
+     * comme le nom POSÉ l'était, et les deux amputations se correspondaient :
+     * « there is a menu "<200 caractères>" » répondait true — par accident.
+     * Deux menus longs et différents se seraient confondus de la même façon.
+     *
+     * Corriger la pose sans corriger la recherche a fait tomber ce faux vrai,
+     * et c'est le harnais qui l'a dit : il ne suffit pas d'agrandir un tampon,
+     * il faut agrandir LES DEUX BOUTS de la comparaison. */
+    char b[HC_MENU_NOM_MAX + 2];
     if (ctx) {
         v3_val_texte(ctx, n->fils[0], b, sizeof b);
         if (ctx->erreur) return -1;
@@ -12602,7 +12641,7 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     if (im < 0) return -1;
     *imenu = im;
 
-    char b[64];
+    char b[HC_MENU_NOM_MAX + 2];   /* même plafond : voir v3_menu_index */
     if (ctx) {
         v3_val_texte(ctx, n->fils[0], b, sizeof b);
         if (ctx->erreur) return -1;
@@ -12686,6 +12725,13 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
         int i = v3_menu_index(ctx, obj);
         if (i < 0) return 0;
         if (ci_equal(prop, "name")) {
+            /* Même règle qu'à la création : on refuse plutôt que d'amputer.
+             * Un menu renommé trop long deviendrait introuvable sous son
+             * nouveau nom ET perdu sous l'ancien. */
+            if (strlen(val) >= HC_MENU_NOM_MAX) {
+                hct_ctx_faute(ctx, obj, "nom de menu trop long");
+                return 1;
+            }
             snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
             menus_prevenir(); return 1;
         }
@@ -12753,7 +12799,17 @@ static int v3_cmd_create(HctContexte *ctx, const HctNoeud *n)
     if (o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_MENU) return 0;
     if (o->nfils < 1) return 0;
 
-    char nom[64];
+    /* UN OCTET DE MARGE, ET C'EST TOUT L'INTÉRÊT.
+     *
+     * C'était « char nom[64] » : le nom arrivait déjà amputé à 63 caractères,
+     * bien avant le garde de menu_creer — qui ne voyait donc jamais de nom
+     * trop long et ne refusait jamais rien. Pire, deux noms longs et
+     * différents se ramenaient aux mêmes 63 octets et devenaient le même menu.
+     *
+     * Le tampon dépasse maintenant la limite d'un cran : un nom trop long
+     * ARRIVE trop long, et menu_creer peut le dire. Corriger le plafond sans
+     * cette marge n'aurait fait que déplacer le silence. */
+    char nom[HC_MENU_NOM_MAX + 2];
     v3_val_texte(ctx, o->fils[0], nom, sizeof nom);
     if (ctx->erreur) return 1;
 
@@ -13656,9 +13712,31 @@ static int file_open(const char *nom)
     if (!f) {
         const char *reel = NULL;
         if (g_host && g_host->answer_file) {
-            char inv[256];
-            snprintf(inv, sizeof inv, "Où est le fichier « %s » ?", nom);
+            /* L'INVITE DOIT TENIR LE NOM ENTIER.
+             *
+             * Elle était composée dans un tampon de 256 octets. Un chemin
+             * macOS va jusqu'à 1024, et un dossier peut à lui seul en prendre
+             * 255 : la question « Où est le fichier « /Users/…/Docum » ? »
+             * perdait précisément le renseignement qu'elle apportait.
+             *
+             * On mesure d'abord, on alloue seulement s'il le faut : le cas
+             * courant — un nom court — ne touche pas au tas. Et si
+             * l'allocation échoue, l'invite tronquée vaut mieux que pas
+             * d'invite du tout ; on la pose, elle est seulement moins
+             * bavarde. */
+            static const char *FMT = "Où est le fichier « %s » ?";
+            char  court[256];
+            char *inv = court;
+            char *dyn = NULL;
+            int   besoin = snprintf(NULL, 0, FMT, nom);
+
+            if (besoin >= (int)sizeof court) {
+                dyn = malloc((size_t)besoin + 1);
+                if (dyn) inv = dyn;
+            }
+            snprintf(inv, dyn ? (size_t)besoin + 1 : sizeof court, FMT, nom);
             reel = g_host->answer_file(inv);
+            free(dyn);            /* `reel` appartient à l'hôte, pas à `inv` */
         }
         if (reel && *reel) {
             f = fopen(reel, "r+b");
