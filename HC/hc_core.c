@@ -1183,6 +1183,8 @@ int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX - 1, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 
+static int id_pris_par_un_autre(Object *pile, int id, Object *moi);
+
 void hc_set_id(Object *o, int id)
 {
     /* L'IDENTIFIANT EST BORNÉ, ET LE COMPTEUR AVEC.
@@ -1203,6 +1205,39 @@ void hc_set_id(Object *o, int id)
      * personne ne regarde — le harnais précédent essayait 2147483647, très
      * au-delà. C'est g_next_id, et non id, qui doit tenir dans les bornes. */
     if (!o || id <= 0 || id >= HC_ID_MAX) return;
+
+    /* LES BORNES NE SUFFISENT PAS : IL FAUT AUSSI L'UNICITÉ.
+     *
+     * Cette fonction vérifiait que l'identifiant tient dans les bornes, et
+     * s'arrêtait là. Un .stack portant deux fois « id 4 » chargeait donc deux
+     * objets homonymes. Mesuré, et le résultat est pire qu'un doublon :
+     *
+     *   card field id 4              ->  (vide)
+     *   the name of card field id 4  ->  (vide)
+     *
+     * Les DEUX champs deviennent inatteignables — pas seulement le seconde.
+     * Et hc_save réécrit « id 4 » deux fois, si bien que le défaut survit au
+     * rechargement : le fichier se transmet sa propre corruption.
+     *
+     * Le seul appelant est le lecteur de fichier, donc un doublon ne peut
+     * venir que d'un .stack — édité à la main, fusionné, ou abîmé. C'est
+     * précisément le cas où il faut le dire plutôt que de le subir.
+     *
+     * ON REFUSE, ET L'OBJET GARDE l'identifiant neuf que sa création lui a
+     * donné. Il reste donc atteignable, sous un autre numéro. L'écraser à
+     * l'identique aurait rendu les deux objets muets ; le renuméroter en
+     * silence aurait fait mentir un « card id N » écrit dans un script. On
+     * nomme donc l'objet et les deux numéros, pour que la pile soit
+     * réparable. */
+    Object *pile = owning_stack(o);
+    if (pile && id_pris_par_un_autre(pile, id, o)) {
+        char d[HC_NOM_MAX];
+        hc_describe(o, d, sizeof d);
+        emit(HC_ERR, "   !! identifiant %d déjà pris dans cette pile : "
+                     "%s garde %d", id, d, o->id);
+        return;
+    }
+
     o->id = id;
     if (id >= g_next_id) g_next_id = id + 1;
 }
@@ -1298,6 +1333,24 @@ static int id_pris_dans(Object *pile, int id)
         if (couche->id == id) return 1;
         for (int j = 0; j < couche->nparts; j++)
             if (couche->parts[j]->id == id) return 1;
+    }
+    return 0;
+}
+
+/* Comme id_pris_dans, mais SANS COMPTER `moi`.
+ *
+ * hc_set_id pose un identifiant sur un objet DÉJÀ attaché à sa pile : sans
+ * cette exclusion, reposer sur un objet l'identifiant qu'il porte déjà le
+ * ferait se déclarer en conflit avec lui-même. */
+static int id_pris_par_un_autre(Object *pile, int id, Object *moi)
+{
+    if (!pile) return 0;
+    if (pile != moi && pile->id == id) return 1;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *couche = pile->parts[i];
+        if (couche != moi && couche->id == id) return 1;
+        for (int j = 0; j < couche->nparts; j++)
+            if (couche->parts[j] != moi && couche->parts[j]->id == id) return 1;
     }
     return 0;
 }
