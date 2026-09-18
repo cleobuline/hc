@@ -127,10 +127,27 @@ int main(void)
      * la mettre au milieu de celui d'au-dessus aurait fait disparaitre tout ce
      * qui suit, et un harnais qui se coupe ne mesure plus rien.
      *
-     * Le second cas est le garde-fou du premier : un texte calcule qui ne
-     * s'ecrit PAS comme un descripteur reste du texte, et « the number of
-     * chars » a le droit de le compter. Sans lui, la correction inventerait
-     * une erreur la ou il n'y en a pas. */
+     * Le second bloc porte DEUX cas qu'il ne faut pas confondre, et c'est tout
+     * son interet :
+     *
+     *   the number of chars of ("abc" & "d")   -> 4
+     *   the short name of ("Bouton")           -> objet introuvable
+     *
+     * Le premier est le garde-fou : un texte calcule qui ne s'ecrit pas comme
+     * un descripteur reste du texte, et « the number of chars » a le droit de
+     * le compter. Sans lui, la correction inventerait une erreur la ou il n'y
+     * en a pas.
+     *
+     * Le second rendait autrefois « short name of ("Bouton" » — l'echo. Cette
+     * reference l'enregistrait, si bien qu'un echo passait pour un resultat
+     * voulu. Il ne l'etait pas : « short name » n'a de sens que sur un objet,
+     * et un nom nu n'en designe aucun chez nous — il ne dit ni la couche ni
+     * la sorte (voir v3_ressemble_a_un_objet). L'erreur est donc la bonne
+     * reponse, et c'est la PROPRIETE qui la decide, pas la tete de la cible.
+     *
+     * Les deux lignes tiennent ensemble la frontiere : meme forme de cible,
+     * meme parenthese, meme texte calcule — seule la propriete differe, et
+     * c'est elle qui doit trancher. */
     puts("\n== une cible calculee qui ne designe rien ==");
     hc_set_script(decl,
         "on mouseUp\n"

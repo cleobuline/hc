@@ -248,6 +248,13 @@ static int      g_nstacks  = 0;
 static int      g_capstacks = 0;
 
 static void emit(HcLineKind kind, const char *fmt, ...);
+
+/* Les lignes d'erreur du gestionnaire en cours, et l'objet fautif.
+ * Voir emit() et la sortie de hc_send_args. */
+static char    g_err_texte[2048];
+static int     g_err_n = 0;
+static Object *g_err_objet = NULL;
+
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
 static char g_visual_speed[16]  = "";
@@ -691,6 +698,26 @@ static void emit(HcLineKind kind, const char *fmt, ...)
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     if (g_host && g_host->line) g_host->line(kind, g_depth, buf);
+
+    /* ON RETIENT LES ERREURS POUR LES DIRE À LA FIN, EN UNE FOIS.
+     *
+     * Une seule erreur produit plusieurs lignes — le message, l'extrait du
+     * script, le résumé. Les donner au dialogue une par une en ouvrirait
+     * trois. On les accumule donc, et v3 les remet à la sortie du
+     * gestionnaire le plus extérieur.
+     *
+     * Hors gestionnaire (g_depth == 0), rien à accumuler : personne n'attend
+     * derrière, et l'appelant a déjà eu la ligne. */
+    if (kind == HC_ERR && g_depth > 0) {
+        if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
+        int reste = (int)sizeof g_err_texte - g_err_n - 2;
+        if (reste > 0) {
+            int mis = snprintf(g_err_texte + g_err_n, (size_t)reste + 1,
+                               "%s%s", g_err_n ? "\n" : "", buf);
+            if (mis > reste) mis = reste;   /* tronqué : on garde ce qui tient */
+            g_err_n += mis;
+        }
+    }
 }
 
 /* ==================== arène de tampons ====================
@@ -8026,16 +8053,35 @@ static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
  * évaluateur a rendu son entrée inchangée, c'est-à-dire s'il n'a rien
  * reconnu. « the width of card window » et « the checkmark of menuItem 2 of
  * menu "X" », qu'il sait traiter, n'arrivent jamais jusqu'ici. */
+static int v3_prop_exige_un_objet(const char *prop);
+
 static int v3_prop_sur_objet(const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
     const HctNoeud *sur = n->fils[1];
-    if (!sur || sur->genre != HCTN_OBJET) return 0;
+    if (!sur) return 0;
     /* C'est bien CETTE cible-ci que la résolution vient de manquer. Sans cette
      * égalité, « the owner of me » — cible présente, propriété que le noyau ne
      * sert pas — tomberait sous la même règle, alors qu'il ne s'agit pas du
      * même défaut et que le message serait faux. */
-    return sur == g_v3_cible_manquee;
+    if (sur != g_v3_cible_manquee) return 0;
+
+    /* UN NŒUD D'OBJET SUFFIT ; UNE VARIABLE DEMANDE L'AVIS DE LA PROPRIÉTÉ.
+     *
+     * « field "menu" » écrit en toutes lettres désigne un champ : s'il n'y en
+     * a pas, il faut le dire, quelle que soit la propriété demandée.
+     *
+     * Une VARIABLE, elle, ne dit rien d'elle-même — « the short name of z » et
+     * « the number of chars of z » s'écrivent pareil. C'est alors la propriété
+     * qui tranche : « short name » n'a de sens que sur un objet, « number of
+     * chars » compte du texte. Trier ici plutôt que sur la tête de la valeur
+     * couvre le cas où celle-ci ne ressemble à rien — et c'était précisément
+     * le trou. */
+    if (sur->genre == HCTN_OBJET) return 1;
+
+    char prop[64];
+    hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+    return v3_prop_exige_un_objet(prop);
 }
 
 /* Ce texte s'écrit-il comme un DESCRIPTEUR d'objet ?
@@ -8055,6 +8101,69 @@ static int v3_prop_sur_objet(const HctNoeud *n)
  * On ne teste donc que le PREMIER MOT, sur le vocabulaire dont resolve_local
  * fait ses branches. Un nom nu n'est pas un descripteur : « Bouton » tout seul
  * ne dit ni la couche ni la sorte. */
+/* Cette propriété n'a-t-elle de sens QUE sur un objet ?
+ *
+ * LE MANQUE QUE CELA COMBLE. La garde finale ne regardait que la CIBLE : si
+ * elle s'écrivait comme un descripteur et n'en désignait aucun, on levait
+ * « objet introuvable ». Mais « the short name of z », où z contient le texte
+ * « inconnu », ne ressemble à rien — et rendait donc la chaîne « short name
+ * of z ». Mesuré sur quatre formes, toutes muettes :
+ *
+ *   the short name of z            (z = "inconnu")      -> short name of z
+ *   the short name of jamaisPosee  (jamais posée)       -> short name of jamaisPosee
+ *   the short name of o            (o = "o")            -> short name of o
+ *   the short name of k            (objet inexistant)   -> short name of k
+ *
+ * C'est le même écho que « nExistePas(3) » et que « owner of me » avant sa
+ * correction : la question rendue comme réponse, sans erreur.
+ *
+ * LA BONNE CLÉ EST LA PROPRIÉTÉ, PAS LA CIBLE. « short name » n'a de sens que
+ * sur un objet, quelle que soit la tête de sa cible ; « number of chars » n'en
+ * exige aucun, et doit continuer de compter « abcd ». Trier par la propriété
+ * est donc plus juste que de deviner d'après le texte de la cible, et cela
+ * couvre les cas où la cible ne ressemble à rien.
+ *
+ * CE QUI EN EST EXCLU, ET POURQUOI. Tout ce qui peut porter sur un MORCEAU de
+ * texte plutôt que sur un objet : textFont, textSize, textStyle, textHeight,
+ * textAlign, textColor — « the textFont of char 1 to 5 of field X » est
+ * légitime. Et tout ce qui a un sens hors objet : text, contents, number,
+ * length, size, scroll, selectedText, selectedChunk, selectedLine. En cas de
+ * doute on EXCLUT : laisser passer un écho est désagréable, inventer une
+ * erreur sur une tournure valide est pire. */
+static int v3_prop_exige_un_objet(const char *prop)
+{
+    if (!prop) return 0;
+    const char *p = skip_spaces(prop);
+    /* Les adjectifs sont collés au nom par l'analyseur : « the short name of »
+     * arrive en un seul jeton « short name ». On les détache comme le fait
+     * v3_lit_prop, sinon « short name » ne serait jamais reconnu. */
+    static const char *ADJ[] = { "short", "long", "abbreviated", "abbrev",
+                                 "abbr", "english", "plain", "numeric", NULL };
+    for (int i = 0; ADJ[i]; i++) {
+        size_t l = strlen(ADJ[i]);
+        if (strncasecmp(p, ADJ[i], l) == 0 && (p[l] == ' ' || p[l] == '\t')) {
+            p = skip_spaces(p + l);
+            break;
+        }
+    }
+    static const char *OBJET_SEUL[] = {
+        "name", "owner", "id", "partnumber",
+        "rect", "rectangle", "topleft", "botright", "bottomright",
+        "left", "top", "right", "bottom", "width", "height",
+        "loc", "location",
+        "visible", "showname", "shownname", "enabled", "marked",
+        "style", "family", "titlewidth", "icon",
+        "hilite", "highlight", "autohilite",
+        "locktext", "widemargins", "fixedlineheight", "showlines",
+        "autotab", "dontsearch", "cantdelete", "sharedtext", "sharedhilite",
+        "autoselect", "multiplelines", "dontwrap",
+        "script", NULL
+    };
+    for (int i = 0; OBJET_SEUL[i]; i++)
+        if (ci_equal(p, OBJET_SEUL[i])) return 1;
+    return 0;
+}
+
 static int v3_ressemble_a_un_objet(const char *t)
 {
     if (!t) return 0;
@@ -8283,12 +8392,23 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
                     g_v1_porte = sauve_porte;
                     return 1;
                 }
-            } else if (ressemblait) {
-                /* La cible s'écrivait comme un objet et n'en désigne aucun :
-                 * c'est la même tromperie que « field "menu" » rendant son
-                 * propre texte. On le retient pour le garde final, qui rend 0
-                 * et laisse hct_eval lever « objet introuvable ». */
-                sonde_manquee = 1;
+            } else {
+                /* AUCUNE CIBLE. Deux raisons de le signaler plutôt que de
+                 * laisser l'ancien moteur rendre le texte de la question :
+                 *
+                 *   - la cible s'ÉCRIVAIT comme un objet et n'en désigne
+                 *     aucun — la tromperie de « field "menu" » ;
+                 *   - ou la PROPRIÉTÉ en exige un, quelle que soit la tête de
+                 *     la cible : « the short name of z » où z contient du
+                 *     texte ordinaire n'a pas de réponse, et rendre « short
+                 *     name of z » en tient lieu depuis trop longtemps.
+                 *
+                 * Le garde final rend alors 0, et hct_eval lève « objet
+                 * introuvable » en nommant la ligne. */
+                char prop[64];
+                hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+                if (ressemblait || v3_prop_exige_un_objet(prop))
+                    sonde_manquee = 1;
             }
             prof_sonde--;
         }
@@ -9247,7 +9367,24 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
         }
     }
 
-    if (ref && ref->genre == HCTN_OBJET) g_v3_cible_manquee = ref;
+    /* ON RETIENT AUSSI LES IDENTIFICATEURS MANQUÉS, PAS SEULEMENT LES NŒUDS
+     * D'OBJET.
+     *
+     * Seul HCTN_OBJET était noté, si bien que « the short name of z », où z
+     * contient du texte ordinaire, n'était retenu par personne : la garde
+     * finale ne voyait rien à signaler et l'ancien moteur rendait la chaîne
+     * « short name of z ». Quatre formes muettes, toutes mesurées :
+     *
+     *   the short name of z            (z = "inconnu")
+     *   the short name of jamaisPosee  (jamais posée)
+     *   the short name of o            (o = "o", se désigne elle-même)
+     *   the short name of k            (k = descripteur d'un objet absent)
+     *
+     * Noter l'identificateur ne décide de rien à lui seul : v3_prop_sur_objet
+     * n'en tire une erreur que si la PROPRIÉTÉ exige un objet. « the number of
+     * chars of txt » passe donc exactement comme avant. */
+    if (ref && (ref->genre == HCTN_OBJET || ref->genre == HCTN_IDENT))
+        g_v3_cible_manquee = ref;
     return NULL;
 }
 
@@ -14403,6 +14540,20 @@ static int hc_send_args_k_body(Object *target, const char *message,
     g_me     = saved_me;
     g_target = saved_target;
     g_script_clipped = saved_clipped;
+
+    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT.
+     *
+     * Ici seulement, pour qu'un clic ne produise qu'un dialogue quel que soit
+     * le nombre de gestionnaires imbriqués. On vide AVANT d'appeler, pour que
+     * l'hôte puisse relancer un script depuis son dialogue sans se voir
+     * resservir l'erreur précédente. */
+    if (g_depth == 0 && g_err_n > 0) {
+        char copie[sizeof g_err_texte];
+        memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
+        Object *coupable = g_err_objet;
+        g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+        if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+    }
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)

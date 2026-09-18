@@ -81,15 +81,64 @@ int main(void)
         "  put \"a,b,c\" into v\n"
         "  put the number of items of v\n"
         "  put item 2 of v\n"
-        "  put \"== un mot inconnu garde le chemin d'avant ==\"\n"
+        "end mouseUp\n");
+    hc_send(b, "mouseUp");
+
+    /* ─── CHAQUE ECHEC DANS SON PROPRE GESTIONNAIRE ───────────────────────
+     *
+     * Ces quatre cas LEVENT desormais une erreur, et une erreur ARRETE le
+     * gestionnaire. Les enchainer dans un seul, comme avant, faisait
+     * disparaitre tout ce qui suit la premiere : mesure, quatre verifications
+     * perdues d'un coup, dont celle de la variable qui se designe elle-meme.
+     * Un harnais qui se coupe ne mesure plus rien.
+     *
+     * CE QUI A CHANGE, ET POURQUOI. « the short name of z », ou z contient du
+     * texte ordinaire, rendait la chaine « short name of z ». Pas d'erreur :
+     * la question rendue comme reponse. Le meme echo que « nExistePas(3) » et
+     * que « owner of me » avant sa correction.
+     *
+     * La regle est desormais portee par la PROPRIETE, pas par la tete de la
+     * cible : « short name » n'a de sens que sur un objet, donc l'absence
+     * d'objet est une erreur ; « number of chars » compte du texte et continue
+     * de le compter — c'est le bloc « ce qui ne doit PAS changer » ci-dessus
+     * qui le tient. */
+    puts("\n== une propriete d'OBJET sans objet : chacune dans son gestionnaire ==");
+    {
+        static const char *cas[] = {
+            "un mot inconnu",
+                "  put \"inconnu\" into z\n  put the short name of z\n",
+            "une variable jamais posee",
+                "  put the short name of jamaisPosee\n",
+            "une variable qui se designe elle-meme",
+                "  put \"o\" into o\n  put the short name of o\n",
+            /* Celui-ci RESOUT, et c'est le point : le bouton id 2915 existe
+             * dans cette pile. Il est ici pour montrer qu'une variable
+             * contenant un vrai descripteur n'est pas emportee par la
+             * correction — elle repond, comme avant. */
+            "un VRAI descripteur dans une variable (doit repondre)",
+                "  put \"card button id 2915\" into cycle\n"
+                "  put the short name of cycle\n",
+            NULL
+        };
+        for (int i = 0; cas[i]; i += 2) {
+            char sc[400];
+            snprintf(sc, sizeof sc, "on mouseUp\n%send mouseUp\n", cas[i + 1]);
+            printf("   %s\n", cas[i]);
+            hc_set_script(b, sc);
+            hc_send(b, "mouseUp");
+        }
+    }
+
+    /* Le garde-fou, isole lui aussi : la MEME cible, la MEME variable, une
+     * propriete de TEXTE. Elle doit repondre, sinon la correction aurait
+     * invente une erreur au lieu d'en reveler une. */
+    puts("\n== la meme cible, mais une propriete de TEXTE : elle repond ==");
+    hc_set_script(b,
+        "on mouseUp\n"
         "  put \"inconnu\" into z\n"
-        "  put the short name of z\n"
-        "  put the short name of jamaisPosee\n"
-        "  put \"== une variable qui se designe elle-meme ne boucle pas ==\"\n"
-        "  put \"o\" into o\n"
-        "  put the short name of o\n"
-        "  put \"card button id 2915\" into cycle\n"
-        "  put the short name of cycle\n"
+        "  put the number of chars of z\n"
+        "  put the length of z\n"
+        "  put the number of words of z\n"
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 

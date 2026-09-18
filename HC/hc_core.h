@@ -484,6 +484,28 @@ typedef struct {
     void (*line)(HcLineKind kind, int depth, const char *text);
     void (*field_changed)(Object *field);   /* champ modifié : rafraîchir l'affichage */
 
+    /* UNE ERREUR DE SCRIPT VIENT D'ARRÊTER UN GESTIONNAIRE.
+     *
+     * `line(HC_ERR, …)` sert à TRACER : elle part ligne par ligne, pendant
+     * l'exécution, et une interface est libre de l'envoyer au journal. C'est
+     * ce que faisait la nôtre — NSLog, et rien d'autre. Résultat : toutes les
+     * erreurs de script étaient invisibles pour qui n'avait pas lancé
+     * l'application depuis Xcode. Pas seulement les nôtres : la syntaxe,
+     * l'objet introuvable, le verbe inconnu. Depuis toujours.
+     *
+     * Celle-ci sert à AVERTIR. Elle part UNE FOIS, à la fin du gestionnaire le
+     * plus extérieur, avec toutes les lignes d'erreur accumulées. Une erreur
+     * arrête le gestionnaire : il y a donc au plus un appel par clic, et une
+     * interface peut ouvrir un dialogue sans craindre d'en ouvrir cent.
+     *
+     * `objet` est celui dont le script s'exécutait — de quoi proposer
+     * « Script » et ouvrir l'éditeur au bon endroit, comme HyperCard. Il peut
+     * être NULL.
+     *
+     * Facultatif : un hôte qui ne la pose pas garde exactement le
+     * comportement d'avant. */
+    void (*erreur)(const char *texte, Object *objet);
+
     /* Mémoire épuisée : le noyau ne peut plus continuer et va s'arrêter.
      * DERNIÈRE CHANCE pour l'hôte de sauver ce qui est ouvert et de le dire à
      * l'utilisateur. Il ne faut rien allouer ici — c'est précisément ce qui

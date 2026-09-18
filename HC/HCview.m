@@ -1168,7 +1168,60 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
         [gMsgBox setStringValue:[NSString stringWithUTF8String:text]];
         return;
     }
+    /* Le journal reste : il garde la trace ligne par ligne, avec le contexte,
+     * et c'est ce qu'on veut sous le débogueur. Ce qui manquait n'était pas
+     * une trace mais un AVERTISSEMENT — voir cocoa_erreur juste dessous. */
     if (kind == HC_ERR || getenv("HC_TRACE")) NSLog(@"%s", text);
+}
+
+/* UNE ERREUR DE SCRIPT S'ANNONCE À L'UTILISATEUR, COMME DANS HYPERCARD.
+ *
+ * Avant : NSLog, et rien d'autre. Toutes les erreurs de script étaient
+ * invisibles pour qui n'avait pas lancé l'application depuis Xcode — pas
+ * seulement les nouvelles : la syntaxe, l'objet introuvable, le verbe
+ * inconnu. Depuis toujours. Un script qui échouait ne faisait rien, et rien
+ * ne le disait.
+ *
+ * Le noyau appelle ce rappel UNE FOIS, à la fin du gestionnaire le plus
+ * extérieur, avec toutes les lignes d'erreur accumulées : une erreur arrête
+ * le gestionnaire, donc il y a au plus un dialogue par clic. C'est ce qui
+ * rend le modal supportable — brancher NSAlert sur `line` en aurait ouvert
+ * trois pour une seule erreur de syntaxe.
+ *
+ * « Script » ouvre l'éditeur sur l'objet fautif, comme le bouton du même nom
+ * dans HyperCard. Le noyau nous donne cet objet ; il peut être NULL, et le
+ * bouton n'apparaît alors pas plutôt que de ne rien faire. */
+static void cocoa_erreur(const char *texte, Object *objet) {
+    if (!texte || !*texte) return;
+
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setAlertStyle:NSAlertStyleWarning];
+
+    /* La PREMIÈRE ligne en titre, le reste en détail. Les messages du noyau
+     * commencent par le fait — « objet introuvable » — et poursuivent par le
+     * contexte : l'extrait du script, la ligne, l'objet. C'est exactement la
+     * division que demande une alerte. */
+    NSString *tout = [NSString stringWithUTF8String:texte];
+    NSRange saut = [tout rangeOfString:@"\n"];
+    NSString *titre = (saut.location == NSNotFound)
+                      ? tout : [tout substringToIndex:saut.location];
+    NSString *detail = (saut.location == NSNotFound)
+                       ? @"" : [tout substringFromIndex:saut.location + 1];
+
+    /* Les « !! » du noyau sont une marque de journal, pas de dialogue. */
+    titre = [titre stringByTrimmingCharactersInSet:
+             [NSCharacterSet whitespaceCharacterSet]];
+    if ([titre hasPrefix:@"!! "]) titre = [titre substringFromIndex:3];
+
+    [a setMessageText:titre];
+    if ([detail length]) [a setInformativeText:detail];
+
+    [a addButtonWithTitle:@"OK"];
+    if (objet && gView) [a addButtonWithTitle:@"Script"];
+
+    NSModalResponse rep = [a runModal];
+    if (objet && gView && rep == NSAlertSecondButtonReturn)
+        [gView editScriptOf:objet];
 }
 
 static BOOL gMouseClicked = NO;
@@ -5455,6 +5508,7 @@ static void hcv_survol(HCView *v, Object *carte)
 
     static HcHost host;
     host.line          = cocoa_line;
+    host.erreur        = cocoa_erreur;
     host.field_changed = cocoa_field_changed;
     host.selection_changed = cocoa_selection_changed;
     host.ask           = cocoa_ask;

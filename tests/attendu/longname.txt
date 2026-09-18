@@ -47,7 +47,7 @@
 == une cible calculee qui ne designe rien ==
    [ERR]    !! objet introuvable (v3, ligne 2 de button "decl".mouseUp)
    4
-   short name of ("Bouton"
+   [ERR]    !! objet introuvable (v3, ligne 3 de button "decl".mouseUp)
 
 == un nom qui casse le descripteur ==
    card button "a\"b"

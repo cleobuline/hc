@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. une erreur, plusieurs lignes, UN SEUL appel ==
+   un objet qui n'existe pas
+      appels au dialogue : 1
+      objet fautif       : button "Bouton"
+      lignes du message  : 1
+            !! objet introuvable (v3, ligne 2 de button "Bouton".mouseUp)
+
+   une erreur de syntaxe
+      appels au dialogue : 1
+      objet fautif       : button "Bouton"
+      lignes du message  : 3
+            !! script, ligne 2 colonne 21 : « to » attendu
+                 repeat with i = 1 up to 5
+            !! « to » attendu (v3, ligne 2 de button "Bouton".mouseUp)
+
+== 2. des gestionnaires IMBRIQUES : toujours un seul ==
+   deux niveaux d'imbrication
+      appels au dialogue : 1
+      objet fautif       : button "Bouton"
+      lignes du message  : 1
+            !! objet introuvable (v3, ligne 2 de button "Bouton".un)
+
+== 3. un script SANS erreur n'appelle rien ==
+   tout se passe bien
+      appels au dialogue : 0
+
+== 4. et l'appel suivant repart a zero ==
+   apres une erreur, un script sain
+      appels au dialogue : 0
+
