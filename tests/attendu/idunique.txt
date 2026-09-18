@@ -1,0 +1,23 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== la pile saine ==
+   premier id 4, second id 5
+
+== on abime le fichier a la main ==
+   « id 5 » du second devient « id 4 »
+
+== rechargement ==
+         !! identifiant 4 déjà pris dans cette pile : field "second" garde 10
+
+== les identifiants apres relecture ==
+   premier    id 4
+   second     id 10
+   doublons : 0
+
+== chacun reste atteignable ==
+   card field id 4
+      je suis le premier
+   card field id 10
+      je suis le second
+
+== reposer son propre identifiant n'est pas un conflit ==
+   premier : 4 -> 4  inchange, aucun message
