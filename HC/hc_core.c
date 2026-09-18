@@ -248,6 +248,13 @@ static int      g_nstacks  = 0;
 static int      g_capstacks = 0;
 
 static void emit(HcLineKind kind, const char *fmt, ...);
+
+/* Les lignes d'erreur du gestionnaire en cours, et l'objet fautif.
+ * Voir emit() et la sortie de hc_send_args. */
+static char    g_err_texte[2048];
+static int     g_err_n = 0;
+static Object *g_err_objet = NULL;
+
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
 static char g_visual_speed[16]  = "";
@@ -691,6 +698,26 @@ static void emit(HcLineKind kind, const char *fmt, ...)
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     if (g_host && g_host->line) g_host->line(kind, g_depth, buf);
+
+    /* ON RETIENT LES ERREURS POUR LES DIRE À LA FIN, EN UNE FOIS.
+     *
+     * Une seule erreur produit plusieurs lignes — le message, l'extrait du
+     * script, le résumé. Les donner au dialogue une par une en ouvrirait
+     * trois. On les accumule donc, et v3 les remet à la sortie du
+     * gestionnaire le plus extérieur.
+     *
+     * Hors gestionnaire (g_depth == 0), rien à accumuler : personne n'attend
+     * derrière, et l'appelant a déjà eu la ligne. */
+    if (kind == HC_ERR && g_depth > 0) {
+        if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
+        int reste = (int)sizeof g_err_texte - g_err_n - 2;
+        if (reste > 0) {
+            int mis = snprintf(g_err_texte + g_err_n, (size_t)reste + 1,
+                               "%s%s", g_err_n ? "\n" : "", buf);
+            if (mis > reste) mis = reste;   /* tronqué : on garde ce qui tient */
+            g_err_n += mis;
+        }
+    }
 }
 
 /* ==================== arène de tampons ====================
@@ -14513,6 +14540,20 @@ static int hc_send_args_k_body(Object *target, const char *message,
     g_me     = saved_me;
     g_target = saved_target;
     g_script_clipped = saved_clipped;
+
+    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT.
+     *
+     * Ici seulement, pour qu'un clic ne produise qu'un dialogue quel que soit
+     * le nombre de gestionnaires imbriqués. On vide AVANT d'appeler, pour que
+     * l'hôte puisse relancer un script depuis son dialogue sans se voir
+     * resservir l'erreur précédente. */
+    if (g_depth == 0 && g_err_n > 0) {
+        char copie[sizeof g_err_texte];
+        memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
+        Object *coupable = g_err_objet;
+        g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+        if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+    }
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)
