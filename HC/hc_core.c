@@ -2291,6 +2291,27 @@ static void eteint_la_famille(Object *btn, Object *card)
     }
 }
 
+/* POSER LA FAMILLE, ET LA SEULE PORTE POUR LE FAIRE.
+ *
+ * Le dialogue Infos bouton écrivait o->family en direct dans sa première
+ * version. Entrer dans une famille en étant allumé doit éteindre les autres,
+ * sinon le groupe se retrouve avec deux boutons allumés — un état qu'aucun
+ * clic ne peut produire, et qui n'apparaît qu'à la fermeture du panneau.
+ * L'écriture par script passait déjà par cette règle ; le panneau ne devait
+ * pas en avoir une seconde.
+ *
+ * Rend 0 et ne touche à rien hors de 0..15, pour que l'appelant puisse le
+ * dire. On n'écrête pas : ramener 20 à 15 rangerait le bouton avec des frères
+ * qu'il n'a pas choisis. */
+int hc_set_family(Object *btn, int famille)
+{
+    if (!btn || btn->type != OBJ_BUTTON) return 0;
+    if (famille < 0 || famille > 15) return 0;
+    btn->family = famille;
+    if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+    return 1;
+}
+
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
     if (!btn) return;
@@ -10933,11 +10954,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             set_result("famille hors bornes");
             g_atop = sauve; return 1;
         }
-        o->family = v;
-        /* Entrer dans une famille alors qu'on est allumé, c'est en éteindre
-         * les autres : sinon le groupe aurait deux boutons allumés, un état
-         * qu'aucun clic ne peut produire. */
-        if (v > 0 && hc_hilite_of(o, NULL)) eteint_la_famille(o, NULL);
+        /* Une seule porte, partagée avec le dialogue Infos bouton : c'est
+         * elle qui éteint les frères quand on entre dans une famille en
+         * étant allumé. */
+        hc_set_family(o, v);
         notify_field(o);
     } else if (ci_equal(prop, "titlewidth")) {
         o->titlewidth = hc_entier(val, 0, HC_TEXTE_MAX, o->titlewidth);

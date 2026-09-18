@@ -412,6 +412,12 @@ void        hc_set_stack_path(Object *stack, const char *path);
  * vivants ici ; l'appelant n'a rien à tester. */
 void    hc_fin_de_clic(Object *btn, Object *carte_cliquee);
 void    hc_set_hilite(Object *btn, Object *card, int on);
+/* Pose la famille d'un bouton radio (0 = aucune, 1 à 15). Rend 0 et ne touche
+ * à rien hors de ces bornes — on n'écrête pas : ramener 20 à 15 rangerait le
+ * bouton avec des frères qu'il n'a pas choisis. Éteint les frères de la
+ * famille rejointe si le bouton est déjà allumé. C'est la SEULE porte, pour
+ * le script comme pour le dialogue Infos bouton. */
+int     hc_set_family(Object *btn, int famille);
 /* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
 void    hc_set_hilite_raw(Object *card, int button_id, int on);
 

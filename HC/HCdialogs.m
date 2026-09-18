@@ -39,6 +39,10 @@ static NSButton     *gInfoAutoHilite = nil;
 static NSButton     *gInfoEnabled = nil;
 static NSButton     *gInfoSharedHilite = nil;
 static NSTextField  *gInfoIconField = nil;
+/* Le groupement des boutons radio. Sans ce contrôle, la famille n'était
+ * accessible qu'au script : tous les boutons radio d'une carte restaient à
+ * zéro, donc dans le même vivier, donc « ils réagissent tous ensemble ». */
+static NSPopUpButton *gInfoFamily = nil;
 static NSTextField  *gInfoTextSize = nil;
 
 /* ---------- panneau « Text Style » ----------
@@ -588,6 +592,49 @@ void hc_sync_size_field(Object *o)
     [gInfoIconField setStringValue:[NSString stringWithFormat:@"%d", obj->icon]];
     [c addSubview:gInfoIconField];
 
+    /* --- famille : le groupement des boutons radio ---
+     *
+     * « None » est la valeur par défaut et n'est PAS la famille zéro : c'est
+     * l'absence de famille. Un bouton sans famille ne s'exclut qu'avec les
+     * autres boutons radio sans famille, comportement de toutes les piles
+     * écrites jusqu'ici ; lui donner une famille le sort de ce vivier commun
+     * et le lie aux seuls boutons de la même famille.
+     *
+     * Le rang dans le menu EST le numéro de famille : index 0 = None = 0,
+     * index 1 = famille 1, et ainsi de suite jusqu'à 15. Pas de table de
+     * correspondance à tenir à jour, donc pas de table à désynchroniser. */
+    /* PLACEMENT : à droite du bouton « Text Style… », qui va de x=16 à x=112
+     * et de y=88 à y=116. La première version posait le menu en x=70 et le
+     * recouvrait — invisible ici, faute d'AppKit pour compiler, et visible
+     * seulement à l'écran. On relève donc les rectangles voisins plutôt que
+     * de poser au jugé : « Shared Hilite » occupe y=112..132, la rangée de
+     * boutons y=52..80. La bande x=130..344, y=88..112 est libre. */
+    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 92, 54, 18)];
+    [fl setStringValue:@"Family:"];
+    [fl setBezeled:NO]; [fl setDrawsBackground:NO]; [fl setEditable:NO];
+    [c addSubview:fl];
+
+    gInfoFamily = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(186, 88, 80, 24)];
+    [gInfoFamily addItemWithTitle:@"None"];
+    for (int i = 1; i <= 15; i++)
+        [gInfoFamily addItemWithTitle:[NSString stringWithFormat:@"%d", i]];
+    {
+        int f = obj->family;
+        [gInfoFamily selectItemAtIndex:(f >= 0 && f <= 15) ? f : 0];
+    }
+    /* TOUJOURS ACTIF, ET C'EST DÉLIBÉRÉ.
+     *
+     * La première version grisait le menu hors d'un bouton radio, comme
+     * « Shared Hilite » l'est hors d'un bouton de fond. Mais le STYLE se
+     * change dans ce même panneau : on aurait choisi « radioButton » dans le
+     * menu du dessus pour trouver la famille encore inerte, et il aurait
+     * fallu valider puis rouvrir pour la poser. Un piège que rien ne signale.
+     *
+     * Une famille sur un bouton qui n'est pas radio ne fait rien : elle est
+     * rangée, et prend effet le jour où le style le devient. Rien à griser,
+     * donc rien à resynchroniser. */
+    [c addSubview:gInfoFamily];
+
     // --- boutons ---
     NSButton *(^mk)(NSString*, SEL, CGFloat, CGFloat) =
         ^NSButton*(NSString *t, SEL a, CGFloat x, CGFloat y) {
@@ -1004,6 +1051,7 @@ void hcicon_panel_stack_closing(Object *stack)
     if (hcv_menu_trappe("Icon…")) return;   /* la pile détourne l'article */
     gInfoTarget = (gSelected && gSelected->type == OBJ_BUTTON) ? gSelected : NULL;
     gInfoIconField = nil;
+    gInfoFamily    = nil;   /* même raison : infoOK: y écrirait dans le vide */
     [self infoIcon:sender];
 }
 
@@ -1289,6 +1337,16 @@ void hcicon_panel_stack_closing(Object *stack)
             o->enabled    = ([gInfoEnabled state]    == NSControlStateValueOn);
             o->shared_hilite = ([gInfoSharedHilite state] == NSControlStateValueOn);
             o->icon = [[gInfoIconField stringValue] intValue];
+            /* Le rang EST le numéro : index 0 = None = pas de famille.
+             *
+             * On passe par hc_set_family plutôt que d'écrire o->family :
+             * entrer dans une famille en étant allumé doit éteindre les
+             * autres, sinon le groupe aurait deux boutons allumés — un état
+             * qu'aucun clic ne peut produire. Écrire le champ en direct
+             * aurait donné exactement cette incohérence, visible seulement
+             * à la fermeture du panneau. */
+            if (gInfoFamily)
+                hc_set_family(o, (int)[gInfoFamily indexOfSelectedItem]);
         }
     [gInfoPanel close];
     close_style_panel();

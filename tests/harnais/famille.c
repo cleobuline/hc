@@ -172,6 +172,33 @@ int main(void)
     hc_fin_de_clic(r2, c);
     etat("clic sur R2", rad, nomsr, 3);
 
+    puts("\n== 9. hc_set_family : la porte unique ==");
+    /* Le dialogue Infos bouton passe par elle, pas par o->family. Sa valeur
+     * de retour est ce qui permet a l'appelant de dire non — le panneau ne
+     * peut pas produire un numero hors bornes, mais un futur appelant le
+     * pourrait, et un echec silencieux serait pire. */
+    /* L'APPEL D'ABORD, LA LECTURE ENSUITE.
+     *
+     * La premiere version ecrivait printf("... %d, %d", hc_set_family(a1, 9),
+     * a1->family) : l'ordre d'evaluation des arguments n'est pas defini, et
+     * gcc lisait a1->family AVANT l'appel. La sortie annoncait « rend 1,
+     * famille 15 » — un resultat qui aurait envoye chercher un defaut dans
+     * hc_set_family, ou il n'y en a pas. */
+    {
+        int r;
+        r = hc_set_family(a1, 9);
+        printf("   hc_set_family(A1, 9)    rend %d, famille %d\n", r, a1->family);
+        r = hc_set_family(a1, 16);
+        printf("   hc_set_family(A1, 16)   rend %d, famille %d (inchangee)\n", r, a1->family);
+        r = hc_set_family(a1, -1);
+        printf("   hc_set_family(A1, -1)   rend %d, famille %d (inchangee)\n", r, a1->family);
+        r = hc_set_family(a1, 0);
+        printf("   hc_set_family(A1, 0)    rend %d, famille %d\n", r, a1->family);
+        /* Sur autre chose qu'un bouton : refus, sans rien toucher. */
+        r = hc_set_family(c, 3);
+        printf("   hc_set_family(la carte, 3) rend %d\n", r);
+    }
+
     puts("\n== 7. enregistrement et relecture ==");
     fais("  set the family of button \"A2\" to 7\n"
          "  set the titleWidth of button \"A2\" to 42\n");
