@@ -335,7 +335,7 @@ void hc_v3_bilan(void);
  * l'hôte. Cette constante est la réponse pour tout ce qui tourne sans hôte —
  * les 192 harnais, notamment —, et le repère à mettre à jour avec le projet
  * Xcode quand la version change. */
-#define HC_VERSION "0.6.5"
+#define HC_VERSION "0.6.6"
 
 void hc_v3_bilan_remise_a_zero(void);
 
