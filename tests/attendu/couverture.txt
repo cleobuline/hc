@@ -59,7 +59,7 @@
   MANQUE put the programs                                !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "B".t)
   ok     put the sound                                
   ok     put the freeSize                             
-  ok     put the size of me                           
+  MANQUE put the size of me                              !! propriété inconnue (v3, ligne 2 de button "B".t)
   ok     put the destination                          
   ok     put the language                             
   ok     put the version                              
