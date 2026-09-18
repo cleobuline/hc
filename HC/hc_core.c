@@ -6348,7 +6348,7 @@ static int is_prop_name(const char *w, int len)
         "rect", "rectangle", "topleft", "botright", "bottomright",
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location", "id", "name", "visible", "showname", "shownname",
-        "enabled", "owner", "size", "family", "titlewidth",
+        "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
         "sharedtext",
@@ -6480,6 +6480,23 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
         if (o->type != OBJ_STACK) return 0;
         long t = hc_taille_fichier(hc_stack_path(o));
         snprintf(out, outlen, "%ld", t > 0 ? t : 0L);
+        return 1;
+    }
+    /* « the freeSize of <pile> » : l'espace que les suppressions ont laissé
+     * DANS le fichier. hc_save le réécrit entier à chaque fois et n'en laisse
+     * jamais : zéro n'est pas un aveu d'ignorance, c'est la réponse juste, et
+     * « if the freeSize > 0 then compact » ne compactera donc jamais pour
+     * rien. Même réponse que la fonction du monde « the freeSize », qui la
+     * servait déjà pour la pile courante.
+     *
+     * Elle manquait ici, et la forme « of <pile> » rendait donc la chaîne
+     * « freeSize of this stack ». Le harnais bilan l'enregistrait comme « OK »,
+     * sa logique comptant « pas d'erreur » pour « la propriété marche » : un
+     * écho passait pour un résultat. C'est la troisième référence du jour dans
+     * ce cas. */
+    if (ci_equal(prop, "freesize")) {
+        if (o->type != OBJ_STACK) return 0;
+        snprintf(out, outlen, "0");
         return 1;
     }
     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return 1; }
@@ -8055,6 +8072,38 @@ static const HctNoeud *g_v3_cible_manquee;   /* voir v3_resout */
  * menu "X" », qu'il sait traiter, n'arrivent jamais jusqu'ici. */
 static int v3_prop_exige_un_objet(const char *prop);
 
+/* LA CIBLE S'EST RÉSOLUE, ET PERSONNE NE SAIT SERVIR LA PROPRIÉTÉ.
+ *
+ * L'autre moitié du même défaut, et celle que j'avais laissée : « the schrink
+ * of me » rendait la chaîne « schrink of me », sans erreur. L'objet existe —
+ * c'est « me » —, seul le nom de la propriété est inventé. Une faute de frappe
+ * dans un script passait donc pour un résultat.
+ *
+ * hct_eval SAIT DÉJÀ dire la bonne chose :
+ *
+ *     if (!objet) hct_ctx_faute(ctx, n, "objet introuvable");
+ *     else        hct_ctx_faute(ctx, n, "propriété inconnue");
+ *
+ * Il ne manquait que d'y arriver : le recours rendait l'écho au lieu de rendre
+ * la main. On rend donc 0, et le message juste sort tout seul.
+ *
+ * ON SE LIMITE AUX NŒUDS D'OBJET ÉCRITS EN TOUTES LETTRES — « me », « this
+ * card », « card field "Champ" ». Une cible en variable demanderait de
+ * distinguer « elle s'est résolue » de « on ne l'a jamais essayée », et
+ * g_v3_cible_manquee ne porte pas cette nuance : une valeur restée d'une
+ * évaluation précédente ferait conclure à tort. Le cas est donc laissé, et
+ * c'est dit ici plutôt que tu. */
+static int v3_prop_inconnue_sur_objet(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
+    const HctNoeud *sur = n->fils[1];
+    if (!sur || sur->genre != HCTN_OBJET) return 0;
+    /* Manquée : c'est « objet introuvable », pas « propriété inconnue ».
+     * Les deux messages ne désignent pas le même coupable. */
+    if (sur == g_v3_cible_manquee) return 0;
+    return 1;
+}
+
 static int v3_prop_sur_objet(const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
@@ -8541,7 +8590,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
     if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n) ||
-                 sonde_manquee)) {
+                 sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;

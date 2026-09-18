@@ -1,3 +1,32 @@
+/* CE HARNAIS PROUVE DESORMAIS L'INVERSE DE SON NOM, ET C'EST LE BUT.
+ *
+ * Il a ete ecrit pour verifier que le RECOURS vers l'ancien moteur servait
+ * bien quatre tournures que la v3 ne savait pas traiter. Sa reference
+ * enregistrait donc des bilans pleins :
+ *
+ *     recours objet: bg btn "GoBtn2"           3
+ *     recours of hilite                        1
+ *     v1 terme recours expr                    6
+ *
+ * Les trois premieres tournures sont maintenant servies par la v3 elle-meme :
+ * bilan vide, « (aucun) » et « (rien) ». Le harnais n'en garde pas moins tout
+ * son interet — il tient l'invariant « ces formes-la n'ont plus besoin de
+ * l'ancien moteur », et un bilan qui redeviendrait plein signalerait un
+ * retour en arriere.
+ *
+ * LA QUATRIEME A CHANGE AUTREMENT. « the hilite of bg btn "GoBtn2" », ou ce
+ * bouton n'existe pas, faisait ceci :
+ *
+ *     !! objet introuvable dans « bg btn "GoBtn2" »
+ *     -> message "hilite" a button "GoBtn"
+ *          (pas de gestionnaire dans button "GoBtn")
+ *          (pas de gestionnaire dans card "Une")
+ *          ... toute la hierarchie ...
+ *     [message box] hilite of bg btn "GoBtn2"
+ *
+ * Lire une propriete sur un objet absent DIFFUSAIT le nom de la propriete
+ * comme un message dans toute la hierarchie, puis rendait l'echo. Desormais :
+ * une erreur nommee, et le gestionnaire s'arrete. */
 #include "hc_core.h"
 #include <stdio.h>
 static void run(Object *btn, const char *label, const char *body) {

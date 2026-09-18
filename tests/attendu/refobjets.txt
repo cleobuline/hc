@@ -9,8 +9,7 @@
 ── put the name of bg field 1                     bkgnd field "fond1"
 ── put the name of card field 9                   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
    [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
-   [ERR]    !! objet introuvable (colonne 2) dans «  card field 9 » — objet : button "B"
-   name of card field 9
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
 
 === the partNumber : le rang parmi TOUTES les parts ===
 ── put the partNumber of card field "un"          1
