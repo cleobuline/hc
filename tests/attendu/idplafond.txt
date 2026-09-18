@@ -19,4 +19,9 @@
 ── et aucun doublon dans la pile
   paires en double : 0
 
+── le repli, quand le compteur est au plafond
+  deux piles neuves            id 999999999 et id 999999999  (identiques, et sans conséquence : fichiers séparés)
+  l'identifiant de la pile neuve     id 999999999   relu 999999999   ok
+  deux objets neufs DANS la pile id 13 et id 14  (distincts)
+
   fautes : 0

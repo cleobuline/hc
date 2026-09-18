@@ -103,6 +103,41 @@ int main(void)
     printf("  paires en double : %d\n", doublons);
     if (doublons) fautes++;
 
+    /* LE REPLI, ET CE QU'IL FAIT VRAIMENT.
+     *
+     * id_neuf rend « HC_ID_MAX - 1 » quand id_libre_dans ne trouve aucun trou.
+     * On a longtemps porté ce cas au registre des défauts — « fabrique un
+     * doublon ». La mesure dit autre chose, et il vaut mieux l'écrire ici que
+     * de le corriger à l'aveugle.
+     *
+     * DANS une pile, le repli ne peut pas fabriquer de doublon : id_libre_dans
+     * ne rend 0 que si les identifiants 1..HC_ID_MAX-1 sont TOUS pris, soit un
+     * milliard d'objets. Et deux créations de suite ne se marchent pas dessus,
+     * parce que chaque hc_new_* attache son objet avant qu'on rappelle.
+     *
+     * Le seul cas atteignable est la PILE elle-même : son propriétaire est
+     * NULL, donc id_libre_dans n'a rien à fouiller et rend 0. Deux piles
+     * créées pendant que le compteur est au plafond portent alors le même
+     * identifiant. C'est SANS CONSÉQUENCE : une pile est seule dans son
+     * fichier, les identifiants ne se rencontrent jamais. On le constate ici
+     * plutôt que de le corriger, pour que la prochaine lecture du code n'ait
+     * pas à refaire le raisonnement. */
+    puts("\n── le repli, quand le compteur est au plafond");
+    Object *p1 = hc_new_stack("P1");
+    Object *p2 = hc_new_stack("P2");
+    printf("  deux piles neuves            id %d et id %d  (%s)\n",
+           p1->id, p2->id,
+           p1->id == p2->id ? "identiques, et sans conséquence : fichiers séparés"
+                            : "distincts");
+    juge("l'identifiant de la pile neuve", p1->id);
+
+    Object *n1 = hc_new_button(c1, "n1");
+    Object *n2 = hc_new_button(c1, "n2");
+    printf("  deux objets neufs DANS la pile id %d et id %d  (%s)\n",
+           n1->id, n2->id, n1->id == n2->id ? "*** DOUBLON ***" : "distincts");
+    if (n1->id == n2->id) fautes++;
+    hc_free(p1); hc_free(p2);
+
     printf("\n  fautes : %d\n", fautes);
     hc_free(st);
     return 0;
