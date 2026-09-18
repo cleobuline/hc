@@ -25,7 +25,7 @@
    hote   the commandKey             -> <hote>
    hote   the tool                   -> <hote>
    hote   the screenRect             -> <hote>
-   servi  the target                 -> B
+   servi  the target                 -> card button "B"
    servi  the paramCount             -> 0
    servi  the params                 -> t
    servi  the itemDelimiter          -> ,
