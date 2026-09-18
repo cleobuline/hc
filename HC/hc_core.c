@@ -2263,9 +2263,38 @@ void hc_set_stack_path(Object *stack, const char *path)
     stack->path = neuf;
 }
 
+/* LES BOUTONS RADIO : allumer l'un éteint ses frères de famille.
+ *
+ * Toute la mécanique radio d'HyperCard tient là. Elle n'appartient pas à
+ * l'interface : un script qui fait « set the hilite of button "Oui" to true »
+ * doit éteindre « Non » exactement comme un clic le ferait, sinon les deux
+ * chemins divergent et l'un des deux ment.
+ *
+ * LA FAMILLE NE TRAVERSE PAS LES COUCHES. Deux boutons de familles égales,
+ * l'un sur la carte et l'autre sur le fond, ne s'excluent pas : ce sont deux
+ * groupes distincts, comme dans HyperCard. On compare donc le propriétaire,
+ * pas seulement le numéro.
+ *
+ * Famille 0 n'exclut rien — c'est l'absence de famille, pas la famille
+ * numéro zéro. Éteindre n'exclut rien non plus : décocher le dernier bouton
+ * d'un groupe laisse le groupe vide, ce qui est un état légitime. */
+static void eteint_la_famille(Object *btn, Object *card)
+{
+    if (!btn || btn->family <= 0 || !btn->owner) return;
+    Object *couche = btn->owner;
+    for (int i = 0; i < couche->nparts; i++) {
+        Object *f = couche->parts[i];
+        if (f == btn || f->type != OBJ_BUTTON) continue;
+        if (f->family != btn->family) continue;
+        if (!hilite_par_carte(f)) f->hilite = 0;
+        else hc_set_hilite_raw(card ? card : g_current_card, f->id, 0);
+    }
+}
+
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
     if (!btn) return;
+    if (on) eteint_la_famille(btn, card);
     if (!hilite_par_carte(btn)) { btn->hilite = on ? 1 : 0; return; }
 
     if (!card) card = g_current_card;
@@ -2274,6 +2303,8 @@ void hc_set_hilite(Object *btn, Object *card, int on)
 
 /* Un bouton de style radio est-il de CE style ? Les scripts écrivent les deux
  * casses, et l'ancien code de la vue comparait les deux à chaque endroit. */
+static void eteint_la_famille(Object *btn, Object *card);
+
 static int est_radio(Object *o)
 {
     return o && o->type == OBJ_BUTTON && o->style &&
@@ -2288,15 +2319,38 @@ static int est_case(Object *o)
 
 /* Éteint tous les autres radios de la carte ET de son fond. Un groupe de
  * radios se répartit souvent entre les deux couches. */
+/* DEUX MÉCANISMES D'EXCLUSION, ET COMMENT ILS SE PARTAGENT LE TRAVAIL.
+ *
+ * Celui-ci existait avant la famille : au clic, un bouton de style radio
+ * éteint tous les autres boutons de style radio de la carte ET du fond.
+ * L'arrivée de « the family of » en crée un second, par NUMÉRO et dans la
+ * seule couche. Laisser les deux courir côte à côte, c'était deux réponses à
+ * la même question — et le clic aurait éteint ce que le script gardait.
+ *
+ * LE PARTAGE. Dès qu'un bouton a une famille (1 à 15), c'est elle qui décide,
+ * ici comme dans hc_set_hilite : même règle, même portée, les deux chemins ne
+ * peuvent plus diverger. Sans famille — c'est-à-dire pour toutes les piles
+ * écrites jusqu'ici — l'ancienne règle s'applique telle quelle, à ceci près
+ * qu'elle ne touche plus les boutons QUI ONT une famille : ceux-là
+ * appartiennent à un groupe, pas au vivier des non-groupés.
+ *
+ * Autrement dit, une pile existante se comporte exactement comme avant, et
+ * poser une famille sur un bouton le sort du vivier commun. C'est la seule
+ * lecture qui n'oblige personne à modifier ses piles. */
 static void radio_exclusif(Object *carte, Object *garde)
 {
     if (!carte) return;
+
+    if (garde && garde->family > 0) { eteint_la_famille(garde, carte); return; }
+
     for (int i = 0; i < carte->nparts; i++)
-        if (carte->parts[i] != garde && est_radio(carte->parts[i]))
+        if (carte->parts[i] != garde && est_radio(carte->parts[i]) &&
+            carte->parts[i]->family == 0)
             hc_set_hilite(carte->parts[i], carte, 0);
     if (carte->bg)
         for (int i = 0; i < carte->bg->nparts; i++)
-            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]))
+            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]) &&
+                carte->bg->parts[i]->family == 0)
                 hc_set_hilite(carte->bg->parts[i], carte, 0);
 }
 
@@ -6165,7 +6219,7 @@ static int is_prop_name(const char *w, int len)
         "rect", "rectangle", "topleft", "botright", "bottomright",
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location", "id", "name", "visible", "showname", "shownname",
-        "enabled", "owner", "size",
+        "enabled", "owner", "size", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
         "sharedtext",
@@ -6303,6 +6357,8 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return 1; }
     if (ci_equal(prop, "enabled")) { snprintf(out, outlen, "%s", o->enabled ? "true" : "false"); return 1; }
     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return 1; }
+    if (ci_equal(prop, "family")) { snprintf(out, outlen, "%d", o->family); return 1; }
+    if (ci_equal(prop, "titlewidth")) { snprintf(out, outlen, "%d", o->titlewidth); return 1; }
     /* selectedLine : deux choses selon l'objet.
      *
      * Sur un BOUTON popup, c'est l'article choisi dans le menu
@@ -10861,6 +10917,30 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         notify_field(o);
     } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
         hc_set_hilite(o, NULL, truthy(val));
+        notify_field(o);
+    } else if (ci_equal(prop, "family")) {
+        /* HORS BORNES, ON REFUSE — on n'écrête pas.
+         *
+         * La famille va de 0 à 15. Ramener 20 à 15 rangerait silencieusement
+         * le bouton dans le groupe 15, avec des frères qu'il n'a pas choisis,
+         * et « set the family to 20 » suivi de « get the family » rendrait
+         * 15 sans que rien ne l'ait dit. Un refus visible vaut mieux qu'un
+         * groupement inventé. */
+        int v = hc_entier(val, -1, 1000000, -1);
+        if (v < 0 || v > 15) {
+            emit(HC_ERR, "   !! la famille d'un bouton va de 0 à 15 "
+                         "(0 = aucune) ; reçu « %s »", val);
+            set_result("famille hors bornes");
+            g_atop = sauve; return 1;
+        }
+        o->family = v;
+        /* Entrer dans une famille alors qu'on est allumé, c'est en éteindre
+         * les autres : sinon le groupe aurait deux boutons allumés, un état
+         * qu'aucun clic ne peut produire. */
+        if (v > 0 && hc_hilite_of(o, NULL)) eteint_la_famille(o, NULL);
+        notify_field(o);
+    } else if (ci_equal(prop, "titlewidth")) {
+        o->titlewidth = hc_entier(val, 0, HC_TEXTE_MAX, o->titlewidth);
         notify_field(o);
     } else if (ci_equal(prop, "autohilite")) {
         o->autohilite = truthy(val);

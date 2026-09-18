@@ -351,6 +351,16 @@ static void put_part(FILE *f, Object *o)
     if (o->type == OBJ_BUTTON && !o->shared_hilite)
         fprintf(f, "unsharedhilite\n");
     if (o->icon) fprintf(f, "icon %d\n", o->icon);
+    /* ÉCRITES SEULEMENT SI ELLES VALENT AUTRE CHOSE QUE LE DÉFAUT.
+     *
+     * Une pile écrite par cette version et relue par une version plus
+     * ancienne ne doit pas se retrouver plus petite ni différente : les clés
+     * inconnues sont ignorées à la lecture, et tant qu'on n'écrit rien pour
+     * un bouton ordinaire, le fichier reste OCTET POUR OCTET celui d'avant.
+     * C'est la condition pour que l'ajout de deux propriétés ne fasse pas
+     * d'un .stack existant un fichier « modifié » aux yeux d'un diff. */
+    if (o->family)     fprintf(f, "family %d\n", o->family);
+    if (o->titlewidth) fprintf(f, "titlewidth %d\n", o->titlewidth);
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
     if (o->locktext) fprintf(f, "locktext\n");
     if (o->wide_margins) fprintf(f, "widemargins\n");
@@ -1273,6 +1283,17 @@ Object *hc_load(const char *path)
         }
         if (strncmp(s, "icon ", 5) == 0 && part) {
             part->icon = hc_entier(s + 5, -HC_ID_MAX, HC_ID_MAX, part->icon);
+            continue;
+        }
+        if (strncmp(s, "family ", 7) == 0 && part) {
+            /* Bornée à la lecture comme à l'écriture par script : un fichier
+             * portant « family 99 » donnerait un groupe fantôme qu'aucune
+             * commande ne peut créer. Hors bornes, on garde le défaut. */
+            part->family = hc_entier(s + 7, 0, 15, part->family);
+            continue;
+        }
+        if (strncmp(s, "titlewidth ", 11) == 0 && part) {
+            part->titlewidth = hc_entier(s + 11, 0, HC_TEXTE_MAX, part->titlewidth);
             continue;
         }
         if (strncmp(s, "selectedline ", 13) == 0 && part) {

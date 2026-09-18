@@ -208,6 +208,23 @@ struct Object {
     int      enabled;
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
     int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
+    /* FAMILLE : le groupement des boutons radio, 0 à 15 (0 = aucune).
+     *
+     * Deux boutons de la même couche et de la même famille s'excluent : en
+     * allumer un éteint l'autre. C'est tout le mécanisme des boutons radio
+     * d'HyperCard, et il tient dans hc_set_hilite — pas dans l'interface, qui
+     * n'a rien à décider ici.
+     *
+     * Zéro n'est pas une famille mais son absence : un bouton de famille 0
+     * n'exclut personne et personne ne l'exclut. C'est ce qui permet à la
+     * valeur par défaut d'être « pas de groupement » sans cas particulier. */
+    int      family;
+    /* Largeur du titre d'un bouton popup, en points (0 = aucune réserve).
+     *
+     * La zone à gauche du menu où s'affiche le nom du bouton. Rangée ici
+     * parce que c'est une propriété de l'objet que les scripts lisent et
+     * écrivent ; son emploi au dessin appartient à l'interface. */
+    int      titlewidth;
 
     /* propriétés de champ */
     int      locktext;       /* le champ est-il non modifiable ? */

@@ -1,0 +1,41 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. allumer un bouton eteint ses freres ==
+   familles posees                    A1=1 A2=1 A3=1
+   apres avoir allume A1              A1=on  A2=off A3=off
+   apres avoir allume A2              A1=off A2=on  A3=off
+   apres avoir allume A3              A1=off A2=off A3=on 
+
+== 2. la famille 0 n'est pas un groupe ==
+   Libre (famille 0) allume          oui
+   et A3 n'a pas bouge                A1=off A2=off A3=on 
+   allumer A3 n'eteint pas Libre      Libre=on  A3=on 
+
+== 3. la famille ne traverse pas les couches ==
+   Fond1 famille 1, allume            oui
+   A3 (carte, famille 1) intact       A1=off A2=off A3=on 
+
+== 4. eteindre n'exclut rien ==
+   le groupe est vide                 A1=off A2=off A3=off
+
+== 5. entrer dans une famille en etant allume ==
+   A1 hors famille, A2 en famille 1   A1=on  A2=on  A3=off
+   A1 rejoint la famille 1            A1=on  A2=off A3=off
+
+== 6. hors bornes : refus, pas ecretage ==
+      [ERR]    !! la famille d'un bouton va de 0 à 15 (0 = aucune) ; reçu « 20 »
+   A1 garde sa famille                1
+      [ERR]    !! la famille d'un bouton va de 0 à 15 (0 = aucune) ; reçu « -1 »
+   A1 garde sa famille                1
+   15 est accepte                     15
+
+== 8. le clic suit la meme regle que le script ==
+   sans famille, clic sur R1          R1=on  R2=off R3=off
+   sans famille, clic sur R2          R1=off R2=on  R3=off
+   familles 3 et 4, les deux allumes  R1=on  R2=on  R3=off
+   R3 sans famille, clic              R1=on  R2=on  R3=on 
+   R1 et R2 famille 3, clic sur R1    R1=on  R2=off R3=on 
+   clic sur R2                        R1=off R2=on  R3=on 
+
+== 7. enregistrement et relecture ==
+   A2 relu : famille 7, titleWidth 42
+   Libre relu : famille 0 (defaut)
