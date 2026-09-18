@@ -1,0 +1,22 @@
+── le compteur est au plafond (un objet porte id 999999998)
+  le bouton lui-meme                 id 999999998   relu 999999998   ok
+
+── coller une PART (hc_paste_part)
+  la part collée                    id 999999999   relu 999999999   ok
+
+── coller une CARTE (hc_paste_card : couche + ses parts)
+  la carte collée                   id 4           relu 4           ok
+  sa part 1                          id 6           relu 6           ok
+  sa part 2                          id 7           relu 7           ok
+  sa part 3                          id 8           relu 8           ok
+
+── dupliquer une carte (hc_duplicate_card)
+  la carte dupliquée                id 9           relu 9           ok
+  sa part 1                          id 10          relu 10          ok
+  sa part 2                          id 11          relu 11          ok
+  sa part 3                          id 12          relu 12          ok
+
+── et aucun doublon dans la pile
+  paires en double : 0
+
+  fautes : 0

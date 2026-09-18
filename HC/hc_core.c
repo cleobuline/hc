@@ -1175,7 +1175,12 @@ int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
     return hc_entier(champ, mini, maxi, defaut);
 }
 
-int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
+/* La borne du LECTEUR est celle du POSEUR, à un cran près et pour cause :
+ * hc_set_id refuse « id >= HC_ID_MAX », donc aucun objet ne peut porter
+ * HC_ID_MAX. hc_id l'acceptait quand même et rendait 1000000000 sur un
+ * fichier qui portait cette valeur — un identifiant déclaré valide que rien
+ * ne pouvait jamais détenir. Les deux disent maintenant la même chose. */
+int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX - 1, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 
 void hc_set_id(Object *o, int id)
@@ -1358,24 +1363,36 @@ static int id_libre_dans(Object *pile)
     return attendu < HC_ID_MAX ? attendu : 0;
 }
 
+/* UN IDENTIFIANT NEUF, ET LE SEUL ENDROIT QUI EN FABRIQUE.
+ *
+ * « o->id = g_next_id++ » n'avait aucune garde. Un fichier portant
+ * « id 999999999 » pousse le compteur au plafond, et l'objet créé ensuite
+ * reçoit un identifiant que notre PROPRE lecteur refuse au rechargement :
+ * hc_id() rend 0 dessus, l'objet change silencieusement de numéro, et toute
+ * référence « card id N » écrite dans un script cesse de désigner quoi que
+ * ce soit.
+ *
+ * new_object avait reçu cette garde ; trois écritures l'avaient manquée —
+ * hc_paste_part, et place_layer_clone pour la couche ET chacune de ses
+ * parts. Encore un chemin corrigé et son jumeau oublié. D'où cette
+ * fonction : il n'y a plus qu'un seul endroit à garder.
+ *
+ * `pile` sert au repli. Il faut qu'elle contienne DÉJÀ l'objet en cours de
+ * numérotation et ses frères, sinon deux appels de suite rendent le même
+ * trou — d'où l'ordre « attacher puis numéroter » chez les appelants. */
+static int id_neuf(Object *pile)
+{
+    if (g_next_id < HC_ID_MAX) return g_next_id++;
+    int libre = id_libre_dans(pile);
+    return libre ? libre : HC_ID_MAX - 1;
+}
+
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));
     if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
-    /* LE COMPTEUR NE DÉPASSE PAS LE PLAFOND DU LECTEUR.
-     *
-     * « o->id = g_next_id++ » n'avait aucune garde. Un fichier portant
-     * « id 999999999 » poussait le compteur à HC_ID_MAX, et l'objet créé
-     * ensuite recevait un identifiant que notre PROPRE lecteur refuse au
-     * rechargement suivant. Corriger la borne de hc_set_id ne faisait que
-     * déplacer le défaut d'un cran : il fallait le fermer ici aussi. */
-    if (g_next_id < HC_ID_MAX) {
-        o->id = g_next_id++;
-    } else {
-        int libre = id_libre_dans(owning_stack(owner));
-        o->id = libre ? libre : HC_ID_MAX - 1;
-    }
+    o->id      = id_neuf(owning_stack(owner));
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
@@ -2486,8 +2503,8 @@ Object *hc_paste_part(Object *owner)
 
     /* Identifiant NEUF. Deux objets de même id rendraient « field id 42 »
      * ambigu, et hc_save écrirait deux fois la même clé. */
-    c->id = g_next_id++;
     c->owner = owner;
+    c->id = id_neuf(owning_stack(owner));
 
     /* Le propriétaire décide de la nature : coller sur une carte un bouton
      * pris sur un fond en fait un bouton de carte. C'est le comportement
@@ -2684,12 +2701,23 @@ static Object *place_layer_clone(Object *stack, Object *modele, ObjType type,
     Object *c = clone_layer(modele, type);
     if (!c) return NULL;
 
-    c->id    = g_next_id++;
     c->owner = stack;
     c->bg    = bg;
-    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = g_next_id++;
 
     add_part(stack, c);            /* d'abord en fin, puis on le remonte */
+
+    /* ON NUMÉROTE APRÈS AVOIR ATTACHÉ, ET PAS AVANT.
+     *
+     * Le repli d'id_neuf cherche un trou DANS LA PILE. Tant que la couche
+     * n'y est pas, deux parts de suite reçoivent le même trou — on aurait
+     * échangé un identifiant illisible contre un doublon, ce qui est pire.
+     * L'ordre n'est donc pas cosmétique : c'est lui qui rend le repli juste.
+     *
+     * Les identifiants que clone_layer a recopiés du modèle sont encore en
+     * place à cet instant ; id_libre_dans les compte comme pris et les
+     * évite, ce qui est exactement ce qu'on veut. */
+    c->id = id_neuf(stack);
+    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = id_neuf(stack);
 
     /* Insertion juste après `apres`, comme HyperCard qui colle derrière la
      * carte courante. parts[] mêle fonds et cartes : on décale bêtement, la
@@ -2720,8 +2748,10 @@ static void clip_bg_clear(void)
     g_clip_nicons = 0;
 }
 
-/* Trace du transport d'icônes. Mettre à 0 pour la faire taire. */
-#define HC_TRACE_ICONS 1
+/* Trace du transport d'icônes, éteinte. Elle était restée à 1 depuis la mise
+ * au point du transport : l'application expédiée écrivait sur stderr à chaque
+ * copie et à chaque collage. Mettre à 1 pour la rallumer. */
+#define HC_TRACE_ICONS 0
 
 /* Ramasse l'icône de pile qu'emploie CE bouton-ci. */
 static void clip_collect_icon_de(Object *stack, Object *p)
