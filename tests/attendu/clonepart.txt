@@ -1,0 +1,55 @@
+== un CHAMP ==
+   position         11,22 -> 19,30 (decale, voulu)
+   w                133    transmis
+   h                44     transmis
+   visible          0      transmis
+   showname         0      transmis
+   locktext         1      transmis
+   wide_margins     1      transmis
+   fixed_lh         1      transmis
+   show_lines       1      transmis
+   auto_tab         1      transmis
+   dont_search      1      transmis
+   cant_delete      1      transmis
+   text_align       2      transmis
+   auto_select      1      transmis
+   multiple_lines   1      transmis
+   dont_wrap        1      transmis
+   textsize         18     transmis
+   textheight       27     transmis
+   textstyle        3      transmis
+   scroll           7      transmis
+   name             [source] transmis
+   script           [on mouseUp
+  put 1
+end mouseUp
+] transmis
+   contents         [du texte] transmis
+   shared_text      0 sur la carte (remis a faux : voulu)
+
+== un BOUTON ==
+   position         5,6 -> 13,14 (decale, voulu)
+   w                77     transmis
+   h                28     transmis
+   visible          1      transmis
+   showname         0      transmis
+   enabled          0      transmis
+   autohilite       1      transmis
+   shared_hilite    0      transmis
+   icon             20554  transmis
+   selectedline     3      transmis
+   family           5      transmis
+   titlewidth       48     transmis
+   textsize         14     transmis
+   textheight       19     transmis
+   name             [bouton] transmis
+   script           [on mouseUp
+  beep
+end mouseUp
+] transmis
+   style            [] transmis
+
+== ce qui doit DIFFERER ==
+   id           source 6, copie 7 : different, voulu
+
+   proprietes perdues : 0
