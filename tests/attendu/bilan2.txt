@@ -21,9 +21,9 @@
    marche   showLines                    -> true 
    marche   multipleLines                -> true 
    marche   autoSelect                   -> true 
-   INERTE   titleWidth                   -> [ERR]    !! propriété inconnue : titleWidth titleWidth of me 
+   marche   titleWidth                   -> 40 
    marche   partNumber                   -> 1 
-   INERTE   family                       -> [ERR]    !! propriété inconnue : family family of me 
+   marche   family                       -> 2 
 
 ── FONCTIONS : rendent-elles quelque chose ?
    marche   the stacks                   ->  

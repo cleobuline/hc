@@ -19,12 +19,7 @@
    relue : 1 carte(s), 2 bouton(s), nom [Pile]
 
 == coller une carte, enregistrer, relire ==
-[icone] examen de la carte "Une" : 2 part(s)
-[icone]   part 0 type=3 icon=0 "Bouton"
-[icone]   part 1 type=3 icon=0 "d"
-[icone] examen de le fond "Fond" : 0 part(s)
    copie de la carte : faite
-[icone] transplantation de 0 icone(s)
    collage           : fait
    en memoire        : 2 carte(s)
    enregistrement    : fait

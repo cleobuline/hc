@@ -23,4 +23,4 @@
 ── put the partNumber of this card                0
 
 === titleWidth reste inconnue, et le dit à sa façon ===
-── put the titleWidth of me                       titleWidth of me
+── put the titleWidth of me                       0

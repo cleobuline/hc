@@ -87,26 +87,7 @@ for u in $UNITES; do
 done
 echo ' fait'
 
-# Les harnais qui attendent un fichier en argument, et lequel.
-arguments() {
-  case "$1" in
-    calreel)            echo "donnees/calendrier.txt" ;;
-    navharn|navharn2|navharn3) echo "donnees/navtest.txt" ;;
-    tortureh)           echo "donnees/torture_bouton.txt donnees/torture_pile.txt" ;;
-    quelgest|analyse)   echo "donnees/rawchart.txt" ;;
-    profond)            echo "donnees/endmanquant.txt" ;;
-    # Trois harnais cherchaient leur donnée dans le répertoire courant : elle
-    # est dans donnees/. Ils ne testaient donc plus rien — ils affichaient
-    # « fichier introuvable », et leur fichier de référence enregistrait ce
-    # message, si bien qu'ils passaient pour conformes.
-    test_exercice|test_exercice2) echo "donnees/exercice.txt" ;;
-    rendu)              echo "donnees/arcenciel.txt" ;;
-    # Les deux bancs attendaient « draw.txt » depuis toujours, et il n'était
-    # nulle part dans le dépôt : ils ne tournaient pas du tout.
-    banc|banc_rom)      echo "donnees/draw.txt" ;;
-    *)                  echo "" ;;
-  esac
-}
+. "$ICI/arguments.sh"   # la table des arguments, partagée avec releve.sh
 
 ok=0; rate=0; neuf=0; saute=0; chrono=0
 cd "$ICI"

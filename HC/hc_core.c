@@ -1175,7 +1175,12 @@ int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
     return hc_entier(champ, mini, maxi, defaut);
 }
 
-int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX, 0); }
+/* La borne du LECTEUR est celle du POSEUR, à un cran près et pour cause :
+ * hc_set_id refuse « id >= HC_ID_MAX », donc aucun objet ne peut porter
+ * HC_ID_MAX. hc_id l'acceptait quand même et rendait 1000000000 sur un
+ * fichier qui portait cette valeur — un identifiant déclaré valide que rien
+ * ne pouvait jamais détenir. Les deux disent maintenant la même chose. */
+int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX - 1, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 
 void hc_set_id(Object *o, int id)
@@ -1358,24 +1363,36 @@ static int id_libre_dans(Object *pile)
     return attendu < HC_ID_MAX ? attendu : 0;
 }
 
+/* UN IDENTIFIANT NEUF, ET LE SEUL ENDROIT QUI EN FABRIQUE.
+ *
+ * « o->id = g_next_id++ » n'avait aucune garde. Un fichier portant
+ * « id 999999999 » pousse le compteur au plafond, et l'objet créé ensuite
+ * reçoit un identifiant que notre PROPRE lecteur refuse au rechargement :
+ * hc_id() rend 0 dessus, l'objet change silencieusement de numéro, et toute
+ * référence « card id N » écrite dans un script cesse de désigner quoi que
+ * ce soit.
+ *
+ * new_object avait reçu cette garde ; trois écritures l'avaient manquée —
+ * hc_paste_part, et place_layer_clone pour la couche ET chacune de ses
+ * parts. Encore un chemin corrigé et son jumeau oublié. D'où cette
+ * fonction : il n'y a plus qu'un seul endroit à garder.
+ *
+ * `pile` sert au repli. Il faut qu'elle contienne DÉJÀ l'objet en cours de
+ * numérotation et ses frères, sinon deux appels de suite rendent le même
+ * trou — d'où l'ordre « attacher puis numéroter » chez les appelants. */
+static int id_neuf(Object *pile)
+{
+    if (g_next_id < HC_ID_MAX) return g_next_id++;
+    int libre = id_libre_dans(pile);
+    return libre ? libre : HC_ID_MAX - 1;
+}
+
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));
     if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
-    /* LE COMPTEUR NE DÉPASSE PAS LE PLAFOND DU LECTEUR.
-     *
-     * « o->id = g_next_id++ » n'avait aucune garde. Un fichier portant
-     * « id 999999999 » poussait le compteur à HC_ID_MAX, et l'objet créé
-     * ensuite recevait un identifiant que notre PROPRE lecteur refuse au
-     * rechargement suivant. Corriger la borne de hc_set_id ne faisait que
-     * déplacer le défaut d'un cran : il fallait le fermer ici aussi. */
-    if (g_next_id < HC_ID_MAX) {
-        o->id = g_next_id++;
-    } else {
-        int libre = id_libre_dans(owning_stack(owner));
-        o->id = libre ? libre : HC_ID_MAX - 1;
-    }
+    o->id      = id_neuf(owning_stack(owner));
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
@@ -2246,9 +2263,59 @@ void hc_set_stack_path(Object *stack, const char *path)
     stack->path = neuf;
 }
 
+/* LES BOUTONS RADIO : allumer l'un éteint ses frères de famille.
+ *
+ * Toute la mécanique radio d'HyperCard tient là. Elle n'appartient pas à
+ * l'interface : un script qui fait « set the hilite of button "Oui" to true »
+ * doit éteindre « Non » exactement comme un clic le ferait, sinon les deux
+ * chemins divergent et l'un des deux ment.
+ *
+ * LA FAMILLE NE TRAVERSE PAS LES COUCHES. Deux boutons de familles égales,
+ * l'un sur la carte et l'autre sur le fond, ne s'excluent pas : ce sont deux
+ * groupes distincts, comme dans HyperCard. On compare donc le propriétaire,
+ * pas seulement le numéro.
+ *
+ * Famille 0 n'exclut rien — c'est l'absence de famille, pas la famille
+ * numéro zéro. Éteindre n'exclut rien non plus : décocher le dernier bouton
+ * d'un groupe laisse le groupe vide, ce qui est un état légitime. */
+static void eteint_la_famille(Object *btn, Object *card)
+{
+    if (!btn || btn->family <= 0 || !btn->owner) return;
+    Object *couche = btn->owner;
+    for (int i = 0; i < couche->nparts; i++) {
+        Object *f = couche->parts[i];
+        if (f == btn || f->type != OBJ_BUTTON) continue;
+        if (f->family != btn->family) continue;
+        if (!hilite_par_carte(f)) f->hilite = 0;
+        else hc_set_hilite_raw(card ? card : g_current_card, f->id, 0);
+    }
+}
+
+/* POSER LA FAMILLE, ET LA SEULE PORTE POUR LE FAIRE.
+ *
+ * Le dialogue Infos bouton écrivait o->family en direct dans sa première
+ * version. Entrer dans une famille en étant allumé doit éteindre les autres,
+ * sinon le groupe se retrouve avec deux boutons allumés — un état qu'aucun
+ * clic ne peut produire, et qui n'apparaît qu'à la fermeture du panneau.
+ * L'écriture par script passait déjà par cette règle ; le panneau ne devait
+ * pas en avoir une seconde.
+ *
+ * Rend 0 et ne touche à rien hors de 0..15, pour que l'appelant puisse le
+ * dire. On n'écrête pas : ramener 20 à 15 rangerait le bouton avec des frères
+ * qu'il n'a pas choisis. */
+int hc_set_family(Object *btn, int famille)
+{
+    if (!btn || btn->type != OBJ_BUTTON) return 0;
+    if (famille < 0 || famille > 15) return 0;
+    btn->family = famille;
+    if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+    return 1;
+}
+
 void hc_set_hilite(Object *btn, Object *card, int on)
 {
     if (!btn) return;
+    if (on) eteint_la_famille(btn, card);
     if (!hilite_par_carte(btn)) { btn->hilite = on ? 1 : 0; return; }
 
     if (!card) card = g_current_card;
@@ -2257,6 +2324,8 @@ void hc_set_hilite(Object *btn, Object *card, int on)
 
 /* Un bouton de style radio est-il de CE style ? Les scripts écrivent les deux
  * casses, et l'ancien code de la vue comparait les deux à chaque endroit. */
+static void eteint_la_famille(Object *btn, Object *card);
+
 static int est_radio(Object *o)
 {
     return o && o->type == OBJ_BUTTON && o->style &&
@@ -2271,15 +2340,38 @@ static int est_case(Object *o)
 
 /* Éteint tous les autres radios de la carte ET de son fond. Un groupe de
  * radios se répartit souvent entre les deux couches. */
+/* DEUX MÉCANISMES D'EXCLUSION, ET COMMENT ILS SE PARTAGENT LE TRAVAIL.
+ *
+ * Celui-ci existait avant la famille : au clic, un bouton de style radio
+ * éteint tous les autres boutons de style radio de la carte ET du fond.
+ * L'arrivée de « the family of » en crée un second, par NUMÉRO et dans la
+ * seule couche. Laisser les deux courir côte à côte, c'était deux réponses à
+ * la même question — et le clic aurait éteint ce que le script gardait.
+ *
+ * LE PARTAGE. Dès qu'un bouton a une famille (1 à 15), c'est elle qui décide,
+ * ici comme dans hc_set_hilite : même règle, même portée, les deux chemins ne
+ * peuvent plus diverger. Sans famille — c'est-à-dire pour toutes les piles
+ * écrites jusqu'ici — l'ancienne règle s'applique telle quelle, à ceci près
+ * qu'elle ne touche plus les boutons QUI ONT une famille : ceux-là
+ * appartiennent à un groupe, pas au vivier des non-groupés.
+ *
+ * Autrement dit, une pile existante se comporte exactement comme avant, et
+ * poser une famille sur un bouton le sort du vivier commun. C'est la seule
+ * lecture qui n'oblige personne à modifier ses piles. */
 static void radio_exclusif(Object *carte, Object *garde)
 {
     if (!carte) return;
+
+    if (garde && garde->family > 0) { eteint_la_famille(garde, carte); return; }
+
     for (int i = 0; i < carte->nparts; i++)
-        if (carte->parts[i] != garde && est_radio(carte->parts[i]))
+        if (carte->parts[i] != garde && est_radio(carte->parts[i]) &&
+            carte->parts[i]->family == 0)
             hc_set_hilite(carte->parts[i], carte, 0);
     if (carte->bg)
         for (int i = 0; i < carte->bg->nparts; i++)
-            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]))
+            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]) &&
+                carte->bg->parts[i]->family == 0)
                 hc_set_hilite(carte->bg->parts[i], carte, 0);
 }
 
@@ -2486,8 +2578,8 @@ Object *hc_paste_part(Object *owner)
 
     /* Identifiant NEUF. Deux objets de même id rendraient « field id 42 »
      * ambigu, et hc_save écrirait deux fois la même clé. */
-    c->id = g_next_id++;
     c->owner = owner;
+    c->id = id_neuf(owning_stack(owner));
 
     /* Le propriétaire décide de la nature : coller sur une carte un bouton
      * pris sur un fond en fait un bouton de carte. C'est le comportement
@@ -2684,12 +2776,23 @@ static Object *place_layer_clone(Object *stack, Object *modele, ObjType type,
     Object *c = clone_layer(modele, type);
     if (!c) return NULL;
 
-    c->id    = g_next_id++;
     c->owner = stack;
     c->bg    = bg;
-    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = g_next_id++;
 
     add_part(stack, c);            /* d'abord en fin, puis on le remonte */
+
+    /* ON NUMÉROTE APRÈS AVOIR ATTACHÉ, ET PAS AVANT.
+     *
+     * Le repli d'id_neuf cherche un trou DANS LA PILE. Tant que la couche
+     * n'y est pas, deux parts de suite reçoivent le même trou — on aurait
+     * échangé un identifiant illisible contre un doublon, ce qui est pire.
+     * L'ordre n'est donc pas cosmétique : c'est lui qui rend le repli juste.
+     *
+     * Les identifiants que clone_layer a recopiés du modèle sont encore en
+     * place à cet instant ; id_libre_dans les compte comme pris et les
+     * évite, ce qui est exactement ce qu'on veut. */
+    c->id = id_neuf(stack);
+    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = id_neuf(stack);
 
     /* Insertion juste après `apres`, comme HyperCard qui colle derrière la
      * carte courante. parts[] mêle fonds et cartes : on décale bêtement, la
@@ -2720,8 +2823,10 @@ static void clip_bg_clear(void)
     g_clip_nicons = 0;
 }
 
-/* Trace du transport d'icônes. Mettre à 0 pour la faire taire. */
-#define HC_TRACE_ICONS 1
+/* Trace du transport d'icônes, éteinte. Elle était restée à 1 depuis la mise
+ * au point du transport : l'application expédiée écrivait sur stderr à chaque
+ * copie et à chaque collage. Mettre à 1 pour la rallumer. */
+#define HC_TRACE_ICONS 0
 
 /* Ramasse l'icône de pile qu'emploie CE bouton-ci. */
 static void clip_collect_icon_de(Object *stack, Object *p)
@@ -6135,7 +6240,7 @@ static int is_prop_name(const char *w, int len)
         "rect", "rectangle", "topleft", "botright", "bottomright",
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location", "id", "name", "visible", "showname", "shownname",
-        "enabled",
+        "enabled", "owner", "size", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
         "sharedtext",
@@ -6208,10 +6313,73 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
         hc_nom_de(o, forme, out, outlen);
         return 1;
     }
+    /* « the owner of X » : le nom de l'objet qui le contient.
+     *
+     * Elle ne rendait rien — ni valeur ni erreur. Le recours reconstituait le
+     * texte, l'ancien moteur ne la connaissait pas davantage, et la règle
+     * « mot inconnu = son propre nom » rendait la chaîne « owner of me ». Un
+     * script qui testait « if the owner of me is ... » comparait donc deux
+     * textes et se trompait en silence. Mesurée au relevé du corpus, c'est
+     * l'une des quatre propriétés encore dans ce cas.
+     *
+     * LA HIÉRARCHIE N'EST PAS CELLE DU MODÈLE. Chez nous card->owner est la
+     * PILE et card->bg le fond ; pour HyperCard le propriétaire d'une carte
+     * est son FOND. On suit HyperCard, qui décrit la superposition telle que
+     * l'utilisateur la voit, et non notre chaînage interne.
+     *
+     * `forme` s'applique comme pour `name` : « the short owner of me » rend
+     * « Une », « the owner of me » le descripteur long. Une pile n'a pas de
+     * propriétaire et rend vide — pas une erreur : c'est le haut de la
+     * hiérarchie, et « the owner of this stack » est une question légitime
+     * dont la réponse juste est « rien ». */
+    if (ci_equal(prop, "owner")) {
+        Object *pro = (o->type == OBJ_CARD) ? o->bg : o->owner;
+        if (!pro) { snprintf(out, outlen, "%s", ""); return 1; }
+        /* SANS ADJECTIF, LE NOM LONG — et c'est le seul point de cette
+         * propriété que je n'ai pas pu vérifier ici.
+         *
+         * HyperCard rend, d'après sa documentation, le nom long : « card id
+         * 3517 of stack "Home" ». Je n'ai pas HyperCard sous la main pour le
+         * confirmer, et le contraire se défend — `name` rend l'abrégé sans
+         * adjectif, et l'on pourrait vouloir la même règle ici.
+         *
+         * J'ai tranché pour le long parce qu'un nom long se raccourcit dans
+         * le script (« the short name of the owner of me ») alors qu'un nom
+         * abrégé a PERDU la pile et ne se rallonge pas. Entre deux lectures
+         * possibles, celle qui conserve l'information.
+         *
+         * LA VERRUE, dite plutôt que tue : l'analyseur ne distingue pas
+         * « the owner » de « the abbr owner » — les deux arrivent en
+         * HC_NOM_ABREGE. « the abbr owner of me » rend donc le nom long lui
+         * aussi. « short » et « long » explicites, eux, sont respectés. */
+        hc_nom_de(pro, forme == HC_NOM_ABREGE ? HC_NOM_LONG : forme,
+                  out, outlen);
+        return 1;
+    }
+    /* « the size of this stack » : la taille du FICHIER, en octets.
+     *
+     * La fonction du monde « the size » la servait déjà pour la pile
+     * courante ; la forme « of <pile> », elle, partait au recours et rendait
+     * « size of this stack ». Deux écritures de la même question, une seule
+     * réponse — exactement le genre d'écart qui fait douter d'un langage.
+     *
+     * Une pile jamais enregistrée n'a pas de fichier : zéro, comme la
+     * fonction du monde. Sur autre chose qu'une pile on ne répond pas (0),
+     * et l'appelant poursuit : « the size of a button » n'est pas une
+     * question dont nous connaissions la réponse, et inventer un nombre
+     * serait pire que de laisser le chemin suivant s'exprimer. */
+    if (ci_equal(prop, "size")) {
+        if (o->type != OBJ_STACK) return 0;
+        long t = hc_taille_fichier(hc_stack_path(o));
+        snprintf(out, outlen, "%ld", t > 0 ? t : 0L);
+        return 1;
+    }
     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return 1; }
     if (ci_equal(prop, "showname") || ci_equal(prop, "shownname")) { snprintf(out, outlen, "%s", o->showname ? "true" : "false"); return 1; }
     if (ci_equal(prop, "enabled")) { snprintf(out, outlen, "%s", o->enabled ? "true" : "false"); return 1; }
     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return 1; }
+    if (ci_equal(prop, "family")) { snprintf(out, outlen, "%d", o->family); return 1; }
+    if (ci_equal(prop, "titlewidth")) { snprintf(out, outlen, "%d", o->titlewidth); return 1; }
     /* selectedLine : deux choses selon l'objet.
      *
      * Sur un BOUTON popup, c'est l'article choisi dans le menu
@@ -8710,6 +8878,49 @@ static const char *V3_V1_FONCTIONS_0[] = {
     NULL
 };
 
+/* ═══ CE QUE L'ANCIEN MOTEUR SAIT SERVIR AVEC UN ARGUMENT ════════════
+ *
+ * Le pendant de la liste au-dessus, pour l'autre porte. Le chemin à un
+ * argument numérique n'en avait aucune : il sondait call_function pour TOUT
+ * nom, et les noms qui arrivent là sont précisément ceux que la v3 ne sert
+ * pas — c'est-à-dire les FONCTIONS DE L'UTILISATEUR. On demandait donc à
+ * l'ancien moteur s'il connaissait « double », « spectre », « getPattern »,
+ * pour s'entendre répondre non à chaque nouveau nom.
+ *
+ * Mesuré sur les 197 harnais : 8 sondes, soit 3 % des 252 entrées restantes.
+ * Ce n'est plus le gros du trafic — la liste à zéro argument a déjà pris
+ * 348 sondes sur 420 — mais c'est la totalité de ce qui reste sur cette
+ * porte-là, et ça se ferme de la même façon.
+ *
+ * LA LISTE EST EXTRAITE, PAS ÉCRITE DE MÉMOIRE. C'est exactement l'erreur
+ * commise pour la table des désignateurs : j'avais lu deux des trois sources
+ * et « prev » a cessé de marcher. Ici la source est unique — call_function
+ * n'appelle que call_function_body — et la liste est le résultat de :
+ *
+ *   awk 'NR>=5642 && NR<=6021' HC/hc_core.c \
+ *     | grep -o 'ci_equal(name, *"[A-Za-z0-9]*"' | sed 's/.*"\(.*\)"/\1/' \
+ *     | sort -u
+ *
+ * Elle contient donc AUSSI les noms sans argument. C'est volontaire : la
+ * définition « tout ce que call_function_body connaît » se revérifie d'une
+ * commande, alors qu'un tri à la main entre les deux familles serait à
+ * refaire — et à rater — à chaque relecture. Un nom en trop coûte une sonde
+ * qui serait partie de toute façon ; un nom en moins casse une fonction.
+ *
+ * tests/harnais/fonctions1.c tient l'invariant : une fonction utilisateur à
+ * un argument numérique ne doit produire AUCUNE sonde. */
+static const char *V3_V1_FONCTIONS_1[] = {
+    "abs", "annuity", "atan", "average", "avg", "charToNum", "compound",
+    "cos", "date", "exp", "exp1", "exp2", "foundchunk", "foundfield",
+    "foundline", "foundtext", "itemdelimiter", "length", "ln", "ln1",
+    "lockmessages", "lockscreen", "log2", "max", "min", "numToChar",
+    "numberformat", "offset", "param", "paramcount", "params", "random",
+    "result", "round", "seconds", "secs", "selectedchunk", "selectedfield",
+    "selectedline", "selectedtext", "selection", "sin", "sqrt",
+    "stacksinuse", "sum", "tan", "ticks", "time", "tool", "trunc", "value",
+    NULL
+};
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -8853,7 +9064,8 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
      * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom)) {
+    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom) &&
+        dans_liste(nom, V3_V1_FONCTIONS_1)) {
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
@@ -9241,7 +9453,34 @@ static void bilan_v1(void)
         bilan_ligne("   %-40s %ld", g_v1[i].nom, g_v1[i].n);
 }
 
-void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
+static void releve_fichier(void);
+
+/* REMETTRE À ZÉRO NE DOIT PAS EFFACER CE QUE LE RELEVÉ DU CORPUS N'A PAS
+ * ENCORE VU.
+ *
+ * Le relevé écrit dans son fichier à la SORTIE du processus. Un harnais qui
+ * fait « debug bilan raz » en cours de route vidait donc les compteurs avant
+ * que le fichier ne les voie, et tout ce qui précédait la remise à zéro
+ * disparaissait de l'agrégat.
+ *
+ * Mesuré : le relevé annonçait 8 sondes de nom sur tout le corpus. Les
+ * références des harnais en montraient d'autres, « aplat » et « carre », que
+ * l'agrégat ne comptait pas — parce que test_exercice remet ses compteurs à
+ * zéro entre deux bilans. Un instrument qui sous-compte fait croire le
+ * chantier plus avancé qu'il n'est : c'est la deuxième fois que celui-ci s'y
+ * prend, après l'armement depuis hc_set_host qui ne couvrait que 136 des 192
+ * programmes.
+ *
+ * On vide donc dans le fichier avant de vider les compteurs. releve_fichier
+ * ne fait rien si HC_V3_RELEVE n'est pas posé, et l'agrégat somme déjà les
+ * lignes de même clé — deux enregistrements pour un processus s'additionnent
+ * sans rien changer au script. */
+void hc_v3_bilan_remise_a_zero(void)
+{
+    releve_fichier();
+    g_nreleve = 0;
+    g_nv1 = 0;
+}
 
 /* ═══ LE RELEVÉ DE TOUT LE CORPUS, ET POURQUOI IL NE PASSE PAS PAR LA SORTIE
  *
@@ -10699,6 +10938,29 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         notify_field(o);
     } else if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) {
         hc_set_hilite(o, NULL, truthy(val));
+        notify_field(o);
+    } else if (ci_equal(prop, "family")) {
+        /* HORS BORNES, ON REFUSE — on n'écrête pas.
+         *
+         * La famille va de 0 à 15. Ramener 20 à 15 rangerait silencieusement
+         * le bouton dans le groupe 15, avec des frères qu'il n'a pas choisis,
+         * et « set the family to 20 » suivi de « get the family » rendrait
+         * 15 sans que rien ne l'ait dit. Un refus visible vaut mieux qu'un
+         * groupement inventé. */
+        int v = hc_entier(val, -1, 1000000, -1);
+        if (v < 0 || v > 15) {
+            emit(HC_ERR, "   !! la famille d'un bouton va de 0 à 15 "
+                         "(0 = aucune) ; reçu « %s »", val);
+            set_result("famille hors bornes");
+            g_atop = sauve; return 1;
+        }
+        /* Une seule porte, partagée avec le dialogue Infos bouton : c'est
+         * elle qui éteint les frères quand on entre dans une famille en
+         * étant allumé. */
+        hc_set_family(o, v);
+        notify_field(o);
+    } else if (ci_equal(prop, "titlewidth")) {
+        o->titlewidth = hc_entier(val, 0, HC_TEXTE_MAX, o->titlewidth);
         notify_field(o);
     } else if (ci_equal(prop, "autohilite")) {
         o->autohilite = truthy(val);

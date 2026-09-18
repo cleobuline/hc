@@ -49,11 +49,6 @@
   put the number of cards & "/" & the result
    2/
 === la copie emporte les verrous ===
-[icone] examen de la carte "Une" : 2 part(s)
-[icone]   part 0 type=4 icon=0 "x"
-[icone]   part 1 type=3 icon=0 "B"
-[icone] examen de le fond "F" : 0 part(s)
-[icone] transplantation de 0 icone(s)
    collée : dontSearch=1 cantDelete=1
 === enregistrement puis relecture ===
    hc_save = 0 (0 = réussi)

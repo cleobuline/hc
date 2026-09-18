@@ -208,6 +208,23 @@ struct Object {
     int      enabled;
     int      icon;      /* identifiant de ressource ICON (0 = aucune) */
     int      selectedline; /* ligne choisie d'un bouton popup (1..n, 0 = aucune) */
+    /* FAMILLE : le groupement des boutons radio, 0 à 15 (0 = aucune).
+     *
+     * Deux boutons de la même couche et de la même famille s'excluent : en
+     * allumer un éteint l'autre. C'est tout le mécanisme des boutons radio
+     * d'HyperCard, et il tient dans hc_set_hilite — pas dans l'interface, qui
+     * n'a rien à décider ici.
+     *
+     * Zéro n'est pas une famille mais son absence : un bouton de famille 0
+     * n'exclut personne et personne ne l'exclut. C'est ce qui permet à la
+     * valeur par défaut d'être « pas de groupement » sans cas particulier. */
+    int      family;
+    /* Largeur du titre d'un bouton popup, en points (0 = aucune réserve).
+     *
+     * La zone à gauche du menu où s'affiche le nom du bouton. Rangée ici
+     * parce que c'est une propriété de l'objet que les scripts lisent et
+     * écrivent ; son emploi au dessin appartient à l'interface. */
+    int      titlewidth;
 
     /* propriétés de champ */
     int      locktext;       /* le champ est-il non modifiable ? */
@@ -395,6 +412,12 @@ void        hc_set_stack_path(Object *stack, const char *path);
  * vivants ici ; l'appelant n'a rien à tester. */
 void    hc_fin_de_clic(Object *btn, Object *carte_cliquee);
 void    hc_set_hilite(Object *btn, Object *card, int on);
+/* Pose la famille d'un bouton radio (0 = aucune, 1 à 15). Rend 0 et ne touche
+ * à rien hors de ces bornes — on n'écrête pas : ramener 20 à 15 rangerait le
+ * bouton avec des frères qu'il n'a pas choisis. Éteint les frères de la
+ * famille rejointe si le bouton est déjà allumé. C'est la SEULE porte, pour
+ * le script comme pour le dialogue Infos bouton. */
+int     hc_set_family(Object *btn, int famille);
 /* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
 void    hc_set_hilite_raw(Object *card, int button_id, int on);
 

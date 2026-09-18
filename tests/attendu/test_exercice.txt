@@ -542,8 +542,6 @@
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    v1 terme recours expr                    2
 [v3]    v1 fonction recours expr                 2
-[v3]    v1 fonction aplat                        1
-[v3]    v1 fonction carre                        1
 [v3]    v1 refusée recours v3                   1
 tton "Exercice"
       · traité par button "Exercice"
@@ -567,6 +565,4 @@ tton "Exercice"
    — ce que l'ancien interprète exécute encore —
       v1 terme recours expr                    2
       v1 fonction recours expr                 2
-      v1 fonction aplat                        1
-      v1 fonction carre                        1
       v1 refusée recours v3                   1

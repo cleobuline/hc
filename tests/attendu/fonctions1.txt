@@ -1,0 +1,55 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours appel: nExistePas(3              1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    3
+[v3]    v1 fonction recours expr                 3
+[v3]    v3 relit recours expr                    3
+== 1. fonctions de l'utilisateur, argument numerique ==
+   double(21)
+      42
+   spectre(7)
+      teinte 7
+   daysInMonth(2)
+      28
+   double(double(5))
+      20
+   spectre("x")
+      teinte x
+
+== 2. ce que l'ancien moteur sert vraiment, toujours servi ==
+   abs(-3)
+      3
+   sqrt(16)
+      4
+   trunc(7.9)
+      7
+   round(2.5)
+      3
+   length("abcde")
+      5
+   numToChar(65)
+      A
+   charToNum("A")
+      65
+   value("2+3")
+      5
+   min(4,9)
+      4
+   max(4,9)
+      9
+   sum(1,2,3)
+      6
+
+== 3. un nom inconnu : parti au recours, PAS avale par la liste ==
+   (il rend son propre texte : comportement anterieur, voir en-tete)
+   nExistePas(3)
+      nExistePas (3)
+
+== le bilan : aucune sonde de nom ne doit apparaitre ==
+   — retours de la v3 vers l'ancien interpréteur —
+      recours appel: nExistePas(3              1
+   — ce que l'ancien interprète exécute encore —
+      v1 terme recours expr                    3
+      v1 fonction recours expr                 3
+      v3 relit recours expr                    3

@@ -27,6 +27,7 @@ R="${HC_RELEVE_FICHIER:-$TRAVAIL/releve.tsv}"
 "$ICI/lance.sh" >/dev/null 2>&1 || true
 [ -d "$TRAVAIL/bin" ] || { echo "rien à mesurer : lancez ./lance.sh d'abord" >&2; exit 1; }
 
+. "$ICI/arguments.sh"
 rm -f "$R"
 n=0
 # N'EXÉCUTER QUE DES HARNAIS QUI EXISTENT ENCORE.
@@ -42,9 +43,11 @@ n=0
 for b in "$TRAVAIL"/bin/*; do
     [ -x "$b" ] || continue
     [ -f "$ICI/harnais/$(basename "$b").c" ] || continue
+    # AVEC LEURS ARGUMENTS, comme lance.sh — voir arguments.sh.
+    ARGS=$(arguments "$(basename "$b")")
     HC_V3_RELEVE="$R" HC_V3_RELEVE_QUI="$(basename "$b")" \
     HC_HORLOGE=1757606400 TZ=UTC LC_ALL=C \
-        timeout 30 "$b" >/dev/null 2>&1 </dev/null
+        timeout 30 "$b" $ARGS >/dev/null 2>&1 </dev/null
     n=$((n + 1))
 done
 touch "$R"

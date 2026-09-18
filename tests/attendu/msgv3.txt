@@ -2,7 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 fonction double                       1
+[v3]    (rien)
    4
    x survit : 1
    le double : 42
