@@ -1,7 +1,7 @@
 == les six noms du monde qui manquaient ==
    the version
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-      0.6.5
+      0.6.6
    the destination
       stack "Pile"
    the language

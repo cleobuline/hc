@@ -2513,6 +2513,34 @@ static Object *clone_part(Object *o)
     c->shared_text  = o->shared_text;
     c->textstyle    = o->textstyle;
     c->scroll       = o->scroll;
+    /* SEPT PROPRIÉTÉS QUE CETTE LISTE AVAIT LAISSÉES DERRIÈRE.
+     *
+     * Une recopie écrite champ par champ dérive : chaque propriété ajoutée à
+     * Object depuis des mois devait être ajoutée ici aussi, et ne l'a pas
+     * été. Mesuré, en posant les propriétés puis en copiant-collant :
+     *
+     *   text_align       source 2     copie 0     PERDU
+     *   auto_select      source 1     copie 0     PERDU
+     *   multiple_lines   source 1     copie 0     PERDU
+     *   dont_wrap        source 1     copie 0     PERDU
+     *   textheight       source 27    copie 0     PERDU
+     *   family           source 5     copie 0     PERDU
+     *   titlewidth       source 48    copie 0     PERDU
+     *
+     * Cinq de ces sept étaient là bien avant la famille : un champ « ne pas
+     * couper les mots », copié-collé, se remettait à couper. Sans message,
+     * et sur un objet qui a l'air identique.
+     *
+     * tests/harnais/clonepart.c compare désormais TOUS les champs scalaires
+     * d'un original et de sa copie, un par un. C'est lui la garde : ajouter
+     * un champ à Object sans l'ajouter ici fera tomber la suite. */
+    c->text_align    = o->text_align;
+    c->auto_select   = o->auto_select;
+    c->multiple_lines = o->multiple_lines;
+    c->dont_wrap     = o->dont_wrap;
+    c->textheight    = o->textheight;
+    c->family        = o->family;
+    c->titlewidth    = o->titlewidth;
 
     /* Les plages de style : chaque nom de police est duppé à son tour, sinon
      * deux objets partageraient le même pointeur et le second hc_free()

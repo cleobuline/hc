@@ -22,7 +22,7 @@
    TROU   the diskSpace            
    TROU   the heapSpace            
    TROU   the systemVersion        
-   servi  the version              0.6.5
+   servi  the version              0.6.6
    servi  the destination          stack "T"
    servi  the size                 0
    servi  the freeSize             0

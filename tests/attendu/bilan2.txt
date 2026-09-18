@@ -34,7 +34,7 @@
    INERTE   the diskSpace                -> [ERR]    !! propriété ou fonction inconnue : diskSpace (v3, ligne 2 de button "B".t) 
    INERTE   the heapSpace                -> [ERR]    !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "B".t) 
    INERTE   the systemVersion            -> [ERR]    !! propriété ou fonction inconnue : systemVersion (v3, ligne 2 de button "B".t) 
-   marche   the version                  -> 0.6.5 
+   marche   the version                  -> 0.6.6 
    marche   the destination              -> stack "T" 
    marche   the size                     -> 0 
    marche   the freeSize                 -> 0 
