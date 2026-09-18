@@ -8740,6 +8740,49 @@ static const char *V3_V1_FONCTIONS_0[] = {
     NULL
 };
 
+/* ═══ CE QUE L'ANCIEN MOTEUR SAIT SERVIR AVEC UN ARGUMENT ════════════
+ *
+ * Le pendant de la liste au-dessus, pour l'autre porte. Le chemin à un
+ * argument numérique n'en avait aucune : il sondait call_function pour TOUT
+ * nom, et les noms qui arrivent là sont précisément ceux que la v3 ne sert
+ * pas — c'est-à-dire les FONCTIONS DE L'UTILISATEUR. On demandait donc à
+ * l'ancien moteur s'il connaissait « double », « spectre », « getPattern »,
+ * pour s'entendre répondre non à chaque nouveau nom.
+ *
+ * Mesuré sur les 197 harnais : 8 sondes, soit 3 % des 252 entrées restantes.
+ * Ce n'est plus le gros du trafic — la liste à zéro argument a déjà pris
+ * 348 sondes sur 420 — mais c'est la totalité de ce qui reste sur cette
+ * porte-là, et ça se ferme de la même façon.
+ *
+ * LA LISTE EST EXTRAITE, PAS ÉCRITE DE MÉMOIRE. C'est exactement l'erreur
+ * commise pour la table des désignateurs : j'avais lu deux des trois sources
+ * et « prev » a cessé de marcher. Ici la source est unique — call_function
+ * n'appelle que call_function_body — et la liste est le résultat de :
+ *
+ *   awk 'NR>=5642 && NR<=6021' HC/hc_core.c \
+ *     | grep -o 'ci_equal(name, *"[A-Za-z0-9]*"' | sed 's/.*"\(.*\)"/\1/' \
+ *     | sort -u
+ *
+ * Elle contient donc AUSSI les noms sans argument. C'est volontaire : la
+ * définition « tout ce que call_function_body connaît » se revérifie d'une
+ * commande, alors qu'un tri à la main entre les deux familles serait à
+ * refaire — et à rater — à chaque relecture. Un nom en trop coûte une sonde
+ * qui serait partie de toute façon ; un nom en moins casse une fonction.
+ *
+ * tests/harnais/fonctions1.c tient l'invariant : une fonction utilisateur à
+ * un argument numérique ne doit produire AUCUNE sonde. */
+static const char *V3_V1_FONCTIONS_1[] = {
+    "abs", "annuity", "atan", "average", "avg", "charToNum", "compound",
+    "cos", "date", "exp", "exp1", "exp2", "foundchunk", "foundfield",
+    "foundline", "foundtext", "itemdelimiter", "length", "ln", "ln1",
+    "lockmessages", "lockscreen", "log2", "max", "min", "numToChar",
+    "numberformat", "offset", "param", "paramcount", "params", "random",
+    "result", "round", "seconds", "secs", "selectedchunk", "selectedfield",
+    "selectedline", "selectedtext", "selection", "sin", "sqrt",
+    "stacksinuse", "sum", "tan", "ticks", "time", "tool", "trunc", "value",
+    NULL
+};
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -8883,7 +8926,8 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
      * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom)) {
+    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom) &&
+        dans_liste(nom, V3_V1_FONCTIONS_1)) {
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';
@@ -9271,7 +9315,34 @@ static void bilan_v1(void)
         bilan_ligne("   %-40s %ld", g_v1[i].nom, g_v1[i].n);
 }
 
-void hc_v3_bilan_remise_a_zero(void) { g_nreleve = 0; g_nv1 = 0; }
+static void releve_fichier(void);
+
+/* REMETTRE À ZÉRO NE DOIT PAS EFFACER CE QUE LE RELEVÉ DU CORPUS N'A PAS
+ * ENCORE VU.
+ *
+ * Le relevé écrit dans son fichier à la SORTIE du processus. Un harnais qui
+ * fait « debug bilan raz » en cours de route vidait donc les compteurs avant
+ * que le fichier ne les voie, et tout ce qui précédait la remise à zéro
+ * disparaissait de l'agrégat.
+ *
+ * Mesuré : le relevé annonçait 8 sondes de nom sur tout le corpus. Les
+ * références des harnais en montraient d'autres, « aplat » et « carre », que
+ * l'agrégat ne comptait pas — parce que test_exercice remet ses compteurs à
+ * zéro entre deux bilans. Un instrument qui sous-compte fait croire le
+ * chantier plus avancé qu'il n'est : c'est la deuxième fois que celui-ci s'y
+ * prend, après l'armement depuis hc_set_host qui ne couvrait que 136 des 192
+ * programmes.
+ *
+ * On vide donc dans le fichier avant de vider les compteurs. releve_fichier
+ * ne fait rien si HC_V3_RELEVE n'est pas posé, et l'agrégat somme déjà les
+ * lignes de même clé — deux enregistrements pour un processus s'additionnent
+ * sans rien changer au script. */
+void hc_v3_bilan_remise_a_zero(void)
+{
+    releve_fichier();
+    g_nreleve = 0;
+    g_nv1 = 0;
+}
 
 /* ═══ LE RELEVÉ DE TOUT LE CORPUS, ET POURQUOI IL NE PASSE PAS PAR LA SORTIE
  *

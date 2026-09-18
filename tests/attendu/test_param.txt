@@ -2,7 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 fonction daysInMonth                  1
+[v3]    (rien)
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
    → message "drawCal" à button "GoBtn"
@@ -16,4 +16,4 @@
 — retours de la v3 vers l'ancien interpréteur —
    (aucun)
 — ce que l'ancien interprète exécute encore —
-   v1 fonction daysInMonth                  1
+   (rien)
