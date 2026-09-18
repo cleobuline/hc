@@ -6165,7 +6165,7 @@ static int is_prop_name(const char *w, int len)
         "rect", "rectangle", "topleft", "botright", "bottomright",
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location", "id", "name", "visible", "showname", "shownname",
-        "enabled",
+        "enabled", "owner", "size",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
         "sharedtext",
@@ -6236,6 +6236,67 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     }
     if (ci_equal(prop, "name")) {
         hc_nom_de(o, forme, out, outlen);
+        return 1;
+    }
+    /* « the owner of X » : le nom de l'objet qui le contient.
+     *
+     * Elle ne rendait rien — ni valeur ni erreur. Le recours reconstituait le
+     * texte, l'ancien moteur ne la connaissait pas davantage, et la règle
+     * « mot inconnu = son propre nom » rendait la chaîne « owner of me ». Un
+     * script qui testait « if the owner of me is ... » comparait donc deux
+     * textes et se trompait en silence. Mesurée au relevé du corpus, c'est
+     * l'une des quatre propriétés encore dans ce cas.
+     *
+     * LA HIÉRARCHIE N'EST PAS CELLE DU MODÈLE. Chez nous card->owner est la
+     * PILE et card->bg le fond ; pour HyperCard le propriétaire d'une carte
+     * est son FOND. On suit HyperCard, qui décrit la superposition telle que
+     * l'utilisateur la voit, et non notre chaînage interne.
+     *
+     * `forme` s'applique comme pour `name` : « the short owner of me » rend
+     * « Une », « the owner of me » le descripteur long. Une pile n'a pas de
+     * propriétaire et rend vide — pas une erreur : c'est le haut de la
+     * hiérarchie, et « the owner of this stack » est une question légitime
+     * dont la réponse juste est « rien ». */
+    if (ci_equal(prop, "owner")) {
+        Object *pro = (o->type == OBJ_CARD) ? o->bg : o->owner;
+        if (!pro) { snprintf(out, outlen, "%s", ""); return 1; }
+        /* SANS ADJECTIF, LE NOM LONG — et c'est le seul point de cette
+         * propriété que je n'ai pas pu vérifier ici.
+         *
+         * HyperCard rend, d'après sa documentation, le nom long : « card id
+         * 3517 of stack "Home" ». Je n'ai pas HyperCard sous la main pour le
+         * confirmer, et le contraire se défend — `name` rend l'abrégé sans
+         * adjectif, et l'on pourrait vouloir la même règle ici.
+         *
+         * J'ai tranché pour le long parce qu'un nom long se raccourcit dans
+         * le script (« the short name of the owner of me ») alors qu'un nom
+         * abrégé a PERDU la pile et ne se rallonge pas. Entre deux lectures
+         * possibles, celle qui conserve l'information.
+         *
+         * LA VERRUE, dite plutôt que tue : l'analyseur ne distingue pas
+         * « the owner » de « the abbr owner » — les deux arrivent en
+         * HC_NOM_ABREGE. « the abbr owner of me » rend donc le nom long lui
+         * aussi. « short » et « long » explicites, eux, sont respectés. */
+        hc_nom_de(pro, forme == HC_NOM_ABREGE ? HC_NOM_LONG : forme,
+                  out, outlen);
+        return 1;
+    }
+    /* « the size of this stack » : la taille du FICHIER, en octets.
+     *
+     * La fonction du monde « the size » la servait déjà pour la pile
+     * courante ; la forme « of <pile> », elle, partait au recours et rendait
+     * « size of this stack ». Deux écritures de la même question, une seule
+     * réponse — exactement le genre d'écart qui fait douter d'un langage.
+     *
+     * Une pile jamais enregistrée n'a pas de fichier : zéro, comme la
+     * fonction du monde. Sur autre chose qu'une pile on ne répond pas (0),
+     * et l'appelant poursuit : « the size of a button » n'est pas une
+     * question dont nous connaissions la réponse, et inventer un nombre
+     * serait pire que de laisser le chemin suivant s'exprimer. */
+    if (ci_equal(prop, "size")) {
+        if (o->type != OBJ_STACK) return 0;
+        long t = hc_taille_fichier(hc_stack_path(o));
+        snprintf(out, outlen, "%ld", t > 0 ? t : 0L);
         return 1;
     }
     if (ci_equal(prop, "visible")) { snprintf(out, outlen, "%s", o->visible ? "true" : "false"); return 1; }

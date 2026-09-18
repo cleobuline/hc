@@ -1,0 +1,27 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la hierarchie de HyperCard ==
+   the owner of me                          -> card "Une" of stack "Pile"
+   the owner of card field "champ"          -> card "Une" of stack "Pile"
+   the owner of this card                   -> bkgnd "Fond" of stack "Pile"
+
+== 2. les adjectifs ==
+   the short owner of me                    -> Une
+   the long owner of me                     -> card "Une" of stack "Pile"
+   the short owner of this card             -> Fond
+
+== 3. le haut de la hierarchie ==
+   the owner of this stack                  -> 
+
+== 4. les deux ecritures de « the size » ==
+   the size of this stack                   -> 0
+   the size                                 -> 0
+
+== 5. ce qui ne doit pas avoir bouge ==
+   the name of me                           -> card button "Bouton"
+   the short name of me                     -> Bouton
+   the long name of me                      -> card button "Bouton" of card "Une" of stack "Pile"
+
+== 6. la taille suit le fichier ==
+   le fichier fait des octets                -> oui
+   les deux ecritures s'accordent
+taille non nulle
