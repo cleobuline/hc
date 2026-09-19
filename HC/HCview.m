@@ -2976,6 +2976,37 @@ static BOOL object_selection_active(void)
     return (gSelected != NULL && gTool != TOOL_BROWSE) ? YES : NO;
 }
 
+/* LE CALQUE DE PEINTURE, VU DU NOYAU — pour la VALIDATION des menus.
+ *
+ * Le pendant de paintLayer, sans passer par une vue. Il existe parce que
+ * valider un article de menu et l'exécuter ne se font pas depuis le même
+ * endroit :
+ *
+ *   - à l'EXÉCUTION, `self` est la vue à qui l'action a été envoyée, et
+ *     paintLayer est ce qu'il faut : elle tient aussi la comptabilité du
+ *     changement de carte ;
+ *   - à la VALIDATION, `self` est la vue que le MENU A CAPTURÉE à sa
+ *     construction — AppDelegate fait « [mi setTarget:view] » avec la vue du
+ *     démarrage. documentCard ne répond vraiment que pour le document ACTIF
+ *     (« if (gDoc == &_doc) ») et rend sinon la carte qu'elle gardait, ou
+ *     rien. D'où quatre articles grisés pour de bon : Keep, Revert, et les
+ *     deux qu'on venait d'ajouter.
+ *
+ * Tous les autres articles de ce menu se valident sur des globales —
+ * paint_selection_active, juste en dessous, lit gTool et gSelRectActive — et
+ * c'est exactement pour ça qu'ils n'ont jamais eu ce défaut.
+ *
+ * Elle ne touche à RIEN, et c'est voulu : documentCard oublie l'instantané
+ * de Keep quand la carte a changé, ce qui n'a aucune raison d'arriver
+ * pendant qu'on ouvre un menu pour regarder. */
+static Object *hcv_calque_courant(void)
+{
+    Object *card = hc_current_card();
+    if (!card) return NULL;
+    Object *layer = gEditBackground ? card->bg : card;
+    return layer ? layer : card;
+}
+
 static BOOL paint_selection_active(void)
 {
     return ((gTool == TOOL_SELRECT && gSelRectActive) ||
@@ -3220,41 +3251,28 @@ static BOOL paint_selection_active(void)
      * peinture. HyperCard les grisait de même — et c'est plus sûr que de les
      * laisser cliquables pour ne rien faire.
      *
-     * Keep et Revert font exception : ils portent sur la carte entière. Les
-     * griser faute de sélection les rendrait inaccessibles au moment précis où
-     * on les cherche — juste après un dessin raté, quand plus rien n'est
-     * sélectionné. Revert reste grisé tant qu'il n'y a nulle part où revenir :
-     * c'est la seule information vraie qu'on puisse en donner d'avance. */
+     * Quatre font exception, parce qu'ils ne transforment pas une sélection :
+     * Keep et Revert portent sur la carte entière, Select All en crée une,
+     * Clear Picture la vide. Les griser faute de sélection les rendrait
+     * inaccessibles au moment précis où on les cherche — juste après un
+     * dessin raté, quand plus rien n'est sélectionné. Revert reste grisé tant
+     * qu'il n'y a nulle part où revenir : c'est la seule information vraie
+     * qu'on puisse en donner d'avance. */
     if (a == @selector(paintOp:)) {
         NSInteger t = [item tag];
 
         /* LES QUATRE QUI NE DEMANDENT PAS DE SÉLECTION. Les griser faute de
          * sélection rendrait « Select All » impossible à atteindre — il est
-         * fait pour en CRÉER une —, et « Clear Picture » inutilisable au
+         * fait pour en CRÉER une — et « Clear Picture » inutilisable au
          * moment où l'on veut vider un calque entier.
          *
-         * LA CONDITION PORTE SUR LE NOYAU, PAS SUR `self`. Première version :
-         * « [self paintLayer] != NULL ». Les deux articles restaient grisés.
-         *
-         * `self` est ici la vue que le menu a CAPTURÉE à sa construction —
-         * AppDelegate fait « [mi setTarget:view] » avec la vue du démarrage —
-         * et paintLayer passe par documentCard, qui ne répond vraiment que
-         * pour le document ACTIF : « if (gDoc == &_doc) ». Dès que la vue
-         * visée n'est plus celle-là, la méthode rend la carte qu'elle gardait
-         * en mémoire, ou rien.
-         *
-         * Tous les autres articles de ce menu se valident sur des GLOBALES —
-         * paint_selection_active() lit gTool et gSelRectActive — et c'est
-         * pour ça qu'ils n'ont jamais eu ce problème. Les miens étaient les
-         * seuls à interroger un objet. hc_current_card() répond à la vraie
-         * question, « y a-t-il une carte ? », sans dépendre de quelle vue on
-         * a demandé.
-         *
-         * Keep et Revert, juste en dessous, gardent cette dépendance : elle
-         * les précède, et la corriger sans pouvoir l'essayer serait changer
-         * deux choses à la fois. */
+         * TOUTES CES VALIDATIONS PASSENT PAR hcv_calque_courant, et pas par
+         * [self paintLayer] : `self` est ici la vue que le MENU a capturée à
+         * sa construction, pas la vue active. C'est ce qui gardait Keep,
+         * Revert, Select All et Clear Picture grisés pour de bon. Le
+         * pourquoi est en tête de hcv_calque_courant. */
         if (t == HCV_PAINT_SELECTALL || t == HCV_PAINT_CLEAR)
-            return hc_current_card() != NULL;
+            return hcv_calque_courant() != NULL;
 
         /* Opaque et Transparent portent une COCHE : c'est un mode, pas une
          * action, et l'utilisateur doit voir lequel des deux est en cours.
@@ -3268,13 +3286,13 @@ static BOOL paint_selection_active(void)
             return YES;
         }
 
-        if (t == HCV_PAINT_KEEP) return [self paintLayer] != NULL;
+        if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
              * l'instantané si la carte a changé depuis. Lire gKeepSnap avant
              * lui donnerait un article actif pointant sur un instantané que le
              * clic suivant aurait déjà jeté. */
-            Object *l = [self paintLayer];
+            Object *l = hcv_calque_courant();
             return l != NULL && gKeepSnap != nil && gKeepLayer == l;
         }
         return paint_selection_active();
