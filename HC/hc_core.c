@@ -7833,9 +7833,47 @@ static const HctNoeud *v3_noeud_cible(const HctNoeud *n)
  * passage obligé de toute résolution d'objet : c'est le seul endroit qui voit
  * les trois.
  *
- * Remis à zéro au début de chaque ligne exécutée, pour qu'un échec d'une
- * ligne précédente ne contamine pas le diagnostic de la suivante. */
-static int g_objet_manque = 0;
+ * UN BOOLÉEN NE SUFFISAIT PAS, ET LE COMMENTAIRE QUI EST ICI MENTAIT.
+ *
+ * Il annonçait « remis à zéro au début de chaque ligne exécutée ». Le code ne
+ * le faisait pas : la remise à zéro n'a lieu que dans le répartiteur, et une
+ * ligne servie entièrement par l'exécuteur v3 n'y passe jamais. Le drapeau
+ * survivait donc à la ligne qui l'avait levé.
+ *
+ * Pire, il se lève pour des absences PARFAITEMENT NORMALES. « there is a
+ * field "Absent" » est une question, pas une faute : l'évaluateur résout, ne
+ * trouve pas, et répond false — mais la résolution ratée lève le drapeau au
+ * passage. Mesuré :
+ *
+ *     put there is a field "Absent" into x
+ *     help
+ *     -> « objet introuvable : help »   et   the result = "No such object"
+ *
+ * alors que « help » ne contient pas le moindre objet. Même chose pour
+ * « dial "555" », « open printing », « palette "x" ». Un diagnostic périmé
+ * est pire qu'un diagnostic vague : il est faux avec assurance, et il envoie
+ * chercher là où il n'y a rien.
+ *
+ * ON RETIENT DONC LE NŒUD, PAS UN OUI/NON. Le diagnostic ne s'en sert que si
+ * l'échec APPARTIENT à la commande qu'il est en train d'expliquer — c'est
+ * v3_noeud_contient, juste en dessous. « put x into card field "Absent" »
+ * résout sa cible dans l'exécuteur, donc avant le répartiteur, mais ce nœud
+ * est bien dans l'arbre de la commande : ce cas-là continue de marcher.
+ *
+ * Le pointeur n'est JAMAIS déréférencé — on ne compare que des adresses —,
+ * de sorte qu'un nœud d'un arbre déjà libéré ne peut pas faire de dégât : au
+ * pire il ne correspond à rien, ce qui est la réponse voulue. */
+static const HctNoeud *g_objet_manque = NULL;
+
+/* `cherche` est-il ce nœud, ou l'un de ses descendants ? */
+static int v3_noeud_contient(const HctNoeud *racine, const HctNoeud *cherche)
+{
+    if (!racine || !cherche) return 0;
+    if (racine == cherche) return 1;
+    for (int i = 0; i < racine->nfils; i++)
+        if (v3_noeud_contient(racine->fils[i], cherche)) return 1;
+    return 0;
+}
 
 static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
@@ -7847,7 +7885,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
     /* Seul un nœud d'OBJET compte. « show all cards » n'en est pas un : le
      * gestionnaire a raison de passer la main, et ce n'est pas un objet
      * manquant. C'est cette distinction qui manquait. */
-    if (!o && n && n->genre == HCTN_OBJET) g_objet_manque = 1;
+    if (!o && n && n->genre == HCTN_OBJET) g_objet_manque = n;
     return o;
 }
 
@@ -13761,7 +13799,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
                 const char *sauve = v1_porte(n->op);
                 int fait = V3_VERBES[i].fn(ctx, n);
                 g_v1_porte = sauve;
-                if (fait) { g_objet_manque = 0; return 1; }
+                if (fait) { g_objet_manque = NULL; return 1; }
                 break;                 /* forme non portée : ancien chemin */
             }
 
@@ -13832,7 +13870,10 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * pas résolu pendant cette ligne. S'il est levé, c'est l'objet qu'il faut
      * nommer, pas le verbe — et « the result » doit dire autre chose que
      * « Can't understand », que HyperTalk réserve à une ligne incomprise. */
-    else if (g_objet_manque) {
+    /* ET SEULEMENT SI CET ÉCHEC EST LE SIEN. Le drapeau porte le nœud qui
+     * n'a pas su se résoudre ; s'il n'est pas dans l'arbre de CETTE commande,
+     * il vient d'une ligne précédente et n'explique rien ici. */
+    else if (v3_noeud_contient(n, g_objet_manque)) {
         emit(HC_ERR, "   !! objet introuvable : %s", ligne);
         set_result("No such object");
     }
@@ -13841,7 +13882,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
         emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
         set_result("Can't understand");
     }
-    g_objet_manque = 0;
+    g_objet_manque = NULL;
     ARENA_FREE;
     return 1;
 }
