@@ -43,17 +43,17 @@
    OK    start using stack "z"                         
    OK    stop using stack "z"                          
    OK    print card                                    
-   OK    save this stack                               
+   MANQ  save this stack                                    !! personne ne répond à « save this stack »
    OK    send "t" to me                                
-   OK    dial "555"                                    
-   OK    export paint to file "z"                      
-   OK    import paint from file "z"                    
-   OK    edit script of me                             
-   OK    palette "z"                                   
-   OK    picture "z"                                   
-   OK    request "z" from program "z"                  
-   OK    reply "z"                                     
-   OK    help                                          
+   MANQ  dial "555"                                         !! ne sait pas faire : dial "555"
+   MANQ  export paint to file "z"                           !! ne sait pas faire : export paint to file "z"
+   MANQ  import paint from file "z"                         !! ne sait pas faire : import paint from file "z"
+   MANQ  edit script of me                                  !! ne sait pas faire : edit script of me
+   MANQ  palette "z"                                        !! ne sait pas faire : palette "z"
+   MANQ  picture "z"                                        !! ne sait pas faire : picture "z"
+   MANQ  request "z" from program "z"                       !! ne sait pas faire : request "z" from program "z"
+   MANQ  reply "z"                                          !! ne sait pas faire : reply "z"
+   MANQ  help                                               !! ne sait pas faire : help
    OK    do "beep"                                     
    OK    global g                                      
    OK    exit t                                        
@@ -64,7 +64,7 @@
    OK    ask password "a"                              
    OK    answer program "a"                            
    OK    select empty                                  
-   OK    select card button 1                          
+   MANQ  select card button 1                               !! ne sait pas faire : select card button 1
 
 ── FONCTIONS
    OK    put the date                                  
@@ -81,17 +81,17 @@
    OK    put the selectedChunk                         
    OK    put the selectedField                         
    OK    put the selectedLine                          
-   MANQ  put the clickText                                  !! propriété ou fonction inconnue : clickText (v3, ligne 2 de button "z".t)
-   MANQ  put the clickLoc                                   !! propriété ou fonction inconnue : clickLoc (v3, ligne 2 de button "z".t)
-   MANQ  put the clickChunk                                 !! propriété ou fonction inconnue : clickChunk (v3, ligne 2 de button "z".t)
-   MANQ  put the mouse                                      !! propriété ou fonction inconnue : mouse (v3, ligne 2 de button "z".t)
-   MANQ  put the mouseLoc                                   !! propriété ou fonction inconnue : mouseLoc (v3, ligne 2 de button "z".t)
-   MANQ  put the mouseClick                                 !! propriété ou fonction inconnue : mouseClick (v3, ligne 2 de button "z".t)
-   MANQ  put the shiftKey                                   !! propriété ou fonction inconnue : shiftKey (v3, ligne 2 de button "z".t)
-   MANQ  put the optionKey                                  !! propriété ou fonction inconnue : optionKey (v3, ligne 2 de button "z".t)
-   MANQ  put the commandKey                                 !! propriété ou fonction inconnue : commandKey (v3, ligne 2 de button "z".t)
+   OK    put the clickText                             
+   OK    put the clickLoc                              
+   OK    put the clickChunk                            
+   OK    put the mouse                                 
+   OK    put the mouseLoc                              
+   OK    put the mouseClick                            
+   OK    put the shiftKey                              
+   OK    put the optionKey                             
+   OK    put the commandKey                            
    OK    put the tool                                  
-   MANQ  put the screenRect                                 !! propriété ou fonction inconnue : screenRect (v3, ligne 2 de button "z".t)
+   OK    put the screenRect                            
    OK    put the target                                
    OK    put the me                                    
    OK    put the params                                
@@ -114,15 +114,15 @@
    OK    put the charToNum of "a"                      
    OK    put the numToChar of 65                       
    OK    put the offset of "a","bab"                   
-   MANQ  put the diskSpace                                  !! propriété ou fonction inconnue : diskSpace (v3, ligne 2 de button "z".t)
-   MANQ  put the heapSpace                                  !! propriété ou fonction inconnue : heapSpace (v3, ligne 2 de button "z".t)
+   OK    put the diskSpace                             
+   OK    put the heapSpace                             
    OK    put the stacks                                
-   MANQ  put the windows                                    !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "z".t)
-   MANQ  put the programs                                   !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "z".t)
+   OK    put the windows                               
+   OK    put the programs                              
    OK    put the sound                                 
    OK    put the menus                                 
    OK    put the version                               
-   MANQ  put the systemVersion                              !! propriété ou fonction inconnue : systemVersion (v3, ligne 2 de button "z".t)
+   OK    put the systemVersion                         
    OK    put the freeSize                              
    OK    put the size                                  
    OK    put the destination                           
@@ -148,7 +148,7 @@
    OK    put the enabled of me                         
    OK    put the showName of me                        
    OK    put the family of me                          
-   MANQ  put the cursor                                     !! propriété ou fonction inconnue : cursor (v3, ligne 2 de button "z".t)
+   OK    put the cursor                                
    OK    put the itemDelimiter                         
    OK    put the numberFormat                          
    OK    put the lockScreen                            
@@ -158,7 +158,7 @@
    OK    put the blindTyping                           
    OK    put the powerKeys                             
    OK    put the dragSpeed                             
-   MANQ  put the editBkgnd                                  !! propriété ou fonction inconnue : editBkgnd (v3, ligne 2 de button "z".t)
+   OK    put the editBkgnd                             
    OK    put the language                              
    OK    put the freeSize of this stack                
    OK    put the name of this stack                    

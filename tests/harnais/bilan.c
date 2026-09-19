@@ -7,29 +7,55 @@
 
 static int g_err;
 static char g_dernier[512];
+/* « the result » de la derniere ligne essayee : c'est lui qui dit si le noyau
+ * a COMPRIS la commande. Voir essai(). */
+static char g_resultat[512];
 static void ma_ligne(HcLineKind k, int d, const char *t) {
     (void)d;
     if (k == HC_ERR) { g_err = 1; snprintf(g_dernier, sizeof g_dernier, "%s", t); }
+    else if (k == HC_MSG) snprintf(g_resultat, sizeof g_resultat, "%s", t ? t : "");
 }
 static void mon_set(const char *n, const char *v) { (void)n; (void)v; }
 static const char *mon_get(const char *n) { (void)n; return NULL; }
 
 static Object *b;
 
-/* Rend 1 si la ligne passe sans erreur d'analyse ou de verbe inconnu. */
+/* Rend 1 si la ligne est COMPRISE — pas seulement si elle ne se plaint pas.
+ *
+ * L'ANCIEN CRITERE CHERCHAIT DES MOTS DANS LE MESSAGE D'ERREUR, et ces
+ * mots-la n'existent plus. Le noyau dit aujourd'hui « ne sait pas faire : … »,
+ * qui ne contient ni « inconnu », ni « syntaxe », ni « compris ». Onze
+ * commandes que HC refuse — dial, reply, request, picture, palette, open
+ * printing, close printing, import paint, export paint, help, edit script —
+ * etaient donc declarees OK. Mesure :
+ *
+ *   dial "555"     ->  result=[Can't understand]  + erreur
+ *   help           ->  result=[Can't understand]  + erreur
+ *
+ * Un recensement qui declare douze commandes de plus qu'il n'en existe est
+ * pire qu'un recensement absent : on s'y fie.
+ *
+ * LE NOUVEAU CRITERE LIT « the result », qui est le signal PREVU pour cela :
+ * le noyau y ecrit « Can't understand » quand il ne comprend pas la ligne, et
+ * le laisse vide quand elle passe. On ne devine plus dans un texte libre, on
+ * lit une valeur que le code pose expres — et qui ne changera pas sous nos
+ * pieds a la prochaine reformulation d'un message.
+ *
+ * Une erreur d'EXECUTION (fichier absent, objet introuvable) laisse un autre
+ * resultat, ou aucun : elle prouve que la commande EXISTE, et compte donc
+ * toujours comme un succes de recensement. C'etait deja l'intention ; elle est
+ * maintenant portee par un signal fiable. */
 static int essai(const char *ligne)
 {
     char script[1024];
-    snprintf(script, sizeof script, "on t\n  %s\nend t\n", ligne);
+    /* « put the result » APRES la ligne : c'est le seul moyen de le lire
+     * depuis un script, et g_dernier le recoit par le rappel. */
+    snprintf(script, sizeof script,
+             "on t\n  %s\n  put the result\nend t\n", ligne);
     hc_set_script(b, script);
-    g_err = 0; g_dernier[0] = 0;
+    g_err = 0; g_dernier[0] = 0; g_resultat[0] = 0;
     hc_send(b, "t");
-    if (!g_err) return 1;
-    /* Une erreur d'EXÉCUTION (fichier absent, objet introuvable) prouve que
-     * la commande existe. Seul le refus de COMPRENDRE compte comme manquant. */
-    if (strstr(g_dernier, "verbe inconnu") || strstr(g_dernier, "inconnu") ||
-        strstr(g_dernier, "Syntax") || strstr(g_dernier, "syntaxe") ||
-        strstr(g_dernier, "compris")) return 0;
+    if (strstr(g_resultat, "Can't understand")) return 0;
     return 1;
 }
 
@@ -53,6 +79,19 @@ int main(void)
     Object *bg = hc_new_background(st, "F");
     Object *c  = hc_new_card(st, bg, "Une");
     b = hc_new_button(c, "B");
+    /* UN CHAMP, SANS QUOI LE RECENSEMENT MESURE AUTRE CHOSE.
+     *
+     * La pile d'essai n'en avait aucun. « show card field 1 », « hide card
+     * field 1 », « select text of card field 1 » echouaient donc parce que
+     * l'objet MANQUAIT, et non parce que la commande n'existe pas — ce que le
+     * recensement est cense mesurer. Avec un champ, les trois passent.
+     *
+     * Le defaut ne se voyait pas tant que l'echec disait « ne sait pas
+     * faire » : ce message accusait le verbe. Depuis qu'il dit « objet
+     * introuvable », la cause saute aux yeux. Un bon diagnostic ne repare
+     * rien tout seul — il montre ou regarder. */
+    Object *ch = hc_new_field(c, "Champ");
+    hc_set_field_text(ch, "du texte");
     hc_set_current_card(c);
 
     static const char *commandes[] = {

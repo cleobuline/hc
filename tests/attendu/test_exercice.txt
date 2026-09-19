@@ -557,7 +557,7 @@ tton "Exercice"
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-      !! ne sait pas faire : put rapport & return & gSortie into field "data 2"
+      !! objet introuvable : put rapport & return & gSortie into field "data 2"
    — retours de la v3 vers l'ancien interpréteur —
       recours objet: card "carteQuiNexistePas" 1
       recours objet: field "data 2"            1
