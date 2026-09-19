@@ -1755,39 +1755,18 @@ static void cocoa_menus_changed(void)
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
  
-    if (strcasecmp(item, "Clear Picture") == 0 ||
-        strcasecmp(item, "Clear") == 0) {
-        /* La sélection d'abord, tout le calque seulement s'il n'y en a pas. */
-        if (gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = hc_current_card();
-            if (!card) return;
-            Object *layer = gEditBackground ? card->bg : card;
-            if (!layer) layer = card;
-            NSBitmapImageRep *rep =
-                paint_bitmap(layer, (int)[gView bounds].size.width,
-                                    (int)[gView bounds].size.height);
-            [gView beginPaintUndo];
-            erase_rect(rep, gSelStart, gSelEnd);
-            gSelRectActive = NO;
-            [gView stopAntsTimer];
-            [gView setNeedsDisplay:YES];
-            return;
-        }
-        [gView eraseAll];
-        return;
-    }
+    /* « Clear Picture », « Select All », « Opaque » et « Transparent » ne
+     * sont plus traités ici : leur corps est remonté dans paintOpTag:, avec
+     * les autres articles du menu Paint, et la table ci-dessous les y
+     * envoie.
+     *
+     * Ce n'était pas un rangement. Ces corps ne vivaient QUE dans cette
+     * fonction, appelée par le seul « doMenu » : les scripts avaient Select
+     * All et Clear Picture, la SOURIS ne les avait pas — aucun article de
+     * menu ne les servait. Une mise en œuvre, trois portes, plus rien qui
+     * puisse diverger. */
 
-    if (strcasecmp(item, "Select All") == 0) {
-        NSRect b = [gView bounds];
-        gSelStart = NSMakePoint(0, 0);
-        gSelEnd   = NSMakePoint(b.size.width, b.size.height);
-        gSelRectActive = YES;
-        [gView startAntsTimer];
-        [gView setNeedsDisplay:YES];
-        return;
-    }
-
-    /* Les transformations du menu Paint, atteignables par script :
+    /* Les articles du menu Paint, atteignables par script :
      * « doMenu "Invert" ». Avant la table des articles d'interface, qui
      * enverrait une action à gView — laquelle n'a pas d'étiquette à lire. */
     {
@@ -1803,6 +1782,14 @@ static void cocoa_do_menu(const char *item) {
             { "Fill",            HCV_PAINT_FILL    },
             { "Keep",            HCV_PAINT_KEEP    },
             { "Revert",          HCV_PAINT_REVERT  },
+            { "Select All",      HCV_PAINT_SELECTALL   },
+            { "Clear Picture",   HCV_PAINT_CLEAR       },
+            /* « Clear » tout court : l'abréviation que des piles d'époque
+             * emploient, et que l'ancien code acceptait déjà. La retirer
+             * casserait des scripts qui marchent. */
+            { "Clear",           HCV_PAINT_CLEAR       },
+            { "Opaque",          HCV_PAINT_OPAQUE      },
+            { "Transparent",     HCV_PAINT_TRANSPARENT },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -2989,6 +2976,37 @@ static BOOL object_selection_active(void)
     return (gSelected != NULL && gTool != TOOL_BROWSE) ? YES : NO;
 }
 
+/* LE CALQUE DE PEINTURE, VU DU NOYAU — pour la VALIDATION des menus.
+ *
+ * Le pendant de paintLayer, sans passer par une vue. Il existe parce que
+ * valider un article de menu et l'exécuter ne se font pas depuis le même
+ * endroit :
+ *
+ *   - à l'EXÉCUTION, `self` est la vue à qui l'action a été envoyée, et
+ *     paintLayer est ce qu'il faut : elle tient aussi la comptabilité du
+ *     changement de carte ;
+ *   - à la VALIDATION, `self` est la vue que le MENU A CAPTURÉE à sa
+ *     construction — AppDelegate fait « [mi setTarget:view] » avec la vue du
+ *     démarrage. documentCard ne répond vraiment que pour le document ACTIF
+ *     (« if (gDoc == &_doc) ») et rend sinon la carte qu'elle gardait, ou
+ *     rien. D'où quatre articles grisés pour de bon : Keep, Revert, et les
+ *     deux qu'on venait d'ajouter.
+ *
+ * Tous les autres articles de ce menu se valident sur des globales —
+ * paint_selection_active, juste en dessous, lit gTool et gSelRectActive — et
+ * c'est exactement pour ça qu'ils n'ont jamais eu ce défaut.
+ *
+ * Elle ne touche à RIEN, et c'est voulu : documentCard oublie l'instantané
+ * de Keep quand la carte a changé, ce qui n'a aucune raison d'arriver
+ * pendant qu'on ouvre un menu pour regarder. */
+static Object *hcv_calque_courant(void)
+{
+    Object *card = hc_current_card();
+    if (!card) return NULL;
+    Object *layer = gEditBackground ? card->bg : card;
+    return layer ? layer : card;
+}
+
 static BOOL paint_selection_active(void)
 {
     return ((gTool == TOOL_SELRECT && gSelRectActive) ||
@@ -3233,20 +3251,48 @@ static BOOL paint_selection_active(void)
      * peinture. HyperCard les grisait de même — et c'est plus sûr que de les
      * laisser cliquables pour ne rien faire.
      *
-     * Keep et Revert font exception : ils portent sur la carte entière. Les
-     * griser faute de sélection les rendrait inaccessibles au moment précis où
-     * on les cherche — juste après un dessin raté, quand plus rien n'est
-     * sélectionné. Revert reste grisé tant qu'il n'y a nulle part où revenir :
-     * c'est la seule information vraie qu'on puisse en donner d'avance. */
+     * Quatre font exception, parce qu'ils ne transforment pas une sélection :
+     * Keep et Revert portent sur la carte entière, Select All en crée une,
+     * Clear Picture la vide. Les griser faute de sélection les rendrait
+     * inaccessibles au moment précis où on les cherche — juste après un
+     * dessin raté, quand plus rien n'est sélectionné. Revert reste grisé tant
+     * qu'il n'y a nulle part où revenir : c'est la seule information vraie
+     * qu'on puisse en donner d'avance. */
     if (a == @selector(paintOp:)) {
         NSInteger t = [item tag];
-        if (t == HCV_PAINT_KEEP) return [self paintLayer] != NULL;
+
+        /* LES QUATRE QUI NE DEMANDENT PAS DE SÉLECTION. Les griser faute de
+         * sélection rendrait « Select All » impossible à atteindre — il est
+         * fait pour en CRÉER une — et « Clear Picture » inutilisable au
+         * moment où l'on veut vider un calque entier.
+         *
+         * TOUTES CES VALIDATIONS PASSENT PAR hcv_calque_courant, et pas par
+         * [self paintLayer] : `self` est ici la vue que le MENU a capturée à
+         * sa construction, pas la vue active. C'est ce qui gardait Keep,
+         * Revert, Select All et Clear Picture grisés pour de bon. Le
+         * pourquoi est en tête de hcv_calque_courant. */
+        if (t == HCV_PAINT_SELECTALL || t == HCV_PAINT_CLEAR)
+            return hcv_calque_courant() != NULL;
+
+        /* Opaque et Transparent portent une COCHE : c'est un mode, pas une
+         * action, et l'utilisateur doit voir lequel des deux est en cours.
+         * La palette des outils montre déjà le même état ; les deux lisent
+         * la même variable, donc elles ne peuvent pas se contredire. */
+        if (t == HCV_PAINT_OPAQUE || t == HCV_PAINT_TRANSPARENT) {
+            BOOL coche = (t == HCV_PAINT_TRANSPARENT) ? gTransparentBg
+                                                      : !gTransparentBg;
+            [item setState:coche ? NSControlStateValueOn
+                                 : NSControlStateValueOff];
+            return YES;
+        }
+
+        if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
              * l'instantané si la carte a changé depuis. Lire gKeepSnap avant
              * lui donnerait un article actif pointant sur un instantané que le
              * clic suivant aurait déjà jeté. */
-            Object *l = [self paintLayer];
+            Object *l = hcv_calque_courant();
             return l != NULL && gKeepSnap != nil && gKeepLayer == l;
         }
         return paint_selection_active();
@@ -3719,6 +3765,69 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * juste après un dessin raté, quand plus rien n'est sélectionné. */
     if (quoi == HCV_PAINT_KEEP)   { [self keepPaint];   return; }
     if (quoi == HCV_PAINT_REVERT) { [self revertPaint]; return; }
+
+    /* SELECT ALL, CLEAR PICTURE, OPAQUE ET TRANSPARENT, pour la même raison :
+     * aucun ne transforme une sélection. Les deux premiers en FONT une ou la
+     * vident, les deux derniers changent le mode de dessin.
+     *
+     * Le corps de Select All et de Clear Picture vivait dans cocoa_do_menu,
+     * qui n'est appelé que par « doMenu ». Les scripts les avaient donc, la
+     * SOURIS non : aucun article de menu ne les servait. Les remonter ici
+     * donne une seule mise en œuvre et trois portes — l'article de menu, le
+     * script, et la palette pour la transparence — qui ne peuvent plus
+     * diverger. C'est la règle qu'on s'applique partout ailleurs. */
+    if (quoi == HCV_PAINT_SELECTALL) {
+        NSRect b = [self bounds];
+        gSelStart = NSMakePoint(0, 0);
+        gSelEnd   = NSMakePoint(b.size.width, b.size.height);
+        gSelRectActive = YES;
+        gLassoActive   = NO;
+        gLassoCount    = 0;
+        [self startAntsTimer];
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    if (quoi == HCV_PAINT_CLEAR) {
+        /* La SÉLECTION d'abord, tout le calque seulement s'il n'y en a pas.
+         * C'est ce que fait HyperCard, et c'est la seule lecture qui ne
+         * détruise pas plus que ce qu'on montrait à l'écran. */
+        if (gTool == TOOL_SELRECT && gSelRectActive) {
+            Object *card = [self documentCard];
+            if (!card) return;
+            Object *layer = gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            NSBitmapImageRep *rep =
+                paint_bitmap(layer, (int)[self bounds].size.width,
+                                    (int)[self bounds].size.height);
+            if (!rep) return;
+            [self beginPaintUndo];
+            erase_rect(rep, gSelStart, gSelEnd);
+            gSelRectActive = NO;
+            [self stopAntsTimer];
+            [self setNeedsDisplay:YES];
+            return;
+        }
+        [self eraseAll];
+        return;
+    }
+
+    /* Le fond des formes et du texte : opaque le recouvre, transparent le
+     * laisse voir. La palette des trames portait déjà cette bascule ; elle
+     * n'était ni dans un menu ni atteignable par script. On POSE la valeur
+     * au lieu de la basculer — « doMenu "Transparent" » doit rendre le
+     * dessin transparent, pas l'inverser : un script qui l'appelle deux fois
+     * ne doit pas défaire son propre travail. */
+    if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
+        gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
+        [self setNeedsDisplay:YES];
+        /* La palette des OUTILS montre cet état — c'est elle qui porte la
+         * case, pas celle des trames. Sans ce rafraîchissement elle
+         * resterait à l'ancienne valeur, et les deux se contrediraient sous
+         * les yeux de l'utilisateur. */
+        hcv_palette_maj(gToolPanel);
+        return;
+    }
 
     int x0, y0, x1, y1, npoly;
     NSPoint *poly;

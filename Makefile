@@ -10,7 +10,7 @@ CFLAGS  ?= -std=gnu99 -O2 -I HC
 AVERTIR  = -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings \
            -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition
 
-SOURCES  = $(wildcard HC/hc_core.c HC/hc_file.c HC/hc_icons.c HC/hct_*.c)
+SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
 
 .PHONY: test test-asan test-enregistre verifie avertissements propre aide
 

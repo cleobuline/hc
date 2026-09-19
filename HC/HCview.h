@@ -22,7 +22,19 @@ enum {
     HCV_PAINT_INVERT = 1, HCV_PAINT_DARKEN, HCV_PAINT_LIGHTEN,
     HCV_PAINT_TRACE,      HCV_PAINT_FLIPH,  HCV_PAINT_FLIPV,
     HCV_PAINT_ROTL,       HCV_PAINT_ROTR,   HCV_PAINT_FILL,
-    HCV_PAINT_KEEP,       HCV_PAINT_REVERT
+    HCV_PAINT_KEEP,       HCV_PAINT_REVERT,
+    /* Les quatre qui NE TRANSFORMENT PAS une sélection — ils la font, la
+     * vident, ou changent le mode de dessin. Comme Keep et Revert, ils
+     * passent avant le test de sélection dans paintOpTag:.
+     *
+     * « Select All » et « Clear Picture » existaient déjà, mais SEULEMENT
+     * pour les scripts : leur code vivait dans cocoa_do_menu, qui n'est
+     * appelé que par « doMenu ». Aucun article de menu ne les servait, si
+     * bien qu'on ne pouvait ni tout sélectionner ni vider un calque à la
+     * souris. « Transparent » n'était atteignable que par la palette des
+     * trames, et pas du tout par script. */
+    HCV_PAINT_SELECTALL,  HCV_PAINT_CLEAR,
+    HCV_PAINT_OPAQUE,     HCV_PAINT_TRANSPARENT
 };
 
 BOOL hcv_menu_trappe(const char *article);
