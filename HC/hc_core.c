@@ -10110,18 +10110,7 @@ void hc_v3_releve_arme(void)
     if (getenv("HC_V3_RELEVE")) atexit(releve_fichier);
 }
 
-/* ===================================================================
- * Remplace le v3_commande actuel de hc_core.c (le bloc qui va de
- * « static int v3_commande » jusqu'à sa fermeture, juste avant la
- * déclaration de v3_hote).
- *
- * Un seul changement ailleurs : « #define HC_MAX_LOOP 1000000 » est
- * aujourd'hui à la ligne 6344, donc APRÈS ce bloc, qui s'en sert pour
- * borner « wait until ». Il faut le remonter avant — près des autres
- * constantes du haut du fichier — et retirer la définition d'origine.
- * =================================================================== */
-
-/* ------------------------------------------------- répartiteur des commandes
+/* ==================== répartiteur des commandes ==================== *
  *
  * Chaque verbe porté est une fonction qui reçoit le NŒUD. Ses arguments sont
  * des sous-arbres qu'on évalue avec hct_evalue, ses références d'objets des
@@ -12786,23 +12775,20 @@ static int v3_cmd_wait(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* ===================================================================
- * Groupe B — à insérer dans hc_core.c juste AVANT la table V3_VERBES,
- * c'est-à-dire après v3_cmd_wait et avant « typedef int (*V3Verbe) ».
- * Les entrées à ajouter à la table sont données à la fin.
+/* =========== navigation, fichiers, et piles « en usage » ============ *
  *
- * Deux ajustements ailleurs dans le fichier :
+ * Les verbes qui font CHANGER DE LIEU ou qui touchent au disque :
  *
- *   - les trois variables de l'effet visuel sont définies ligne 6923,
- *     donc APRÈS ce bloc, qui s'en sert dans « go ». Il faut remonter
- *     leurs trois lignes au-dessus du répartiteur :
- *         static char g_visual_effect[64] = "";
- *         static char g_visual_speed[16]  = "";
- *         static char g_visual_image[16]  = "";
+ *     go            se déplacer de carte en carte, ou de pile en pile
+ *     open / close  un fichier texte
+ *     save          une pile, sous un autre nom
+ *     start/stop using   une pile ajoutée à la chaîne des messages
  *
- *   - file_open et marked_card_ref sont définis plus bas : les deux
- *     déclarations anticipées sont incluses ci-dessous, rien à faire.
- * =================================================================== */
+ * Ils partagent un besoin que les autres n'ont pas : désigner une pile QUI
+ * N'EST PAS ENCORE LÀ. hct_resout ne peut rien pour elle — il n'y a pas
+ * d'objet à trouver —, d'où v3_nom_pile, qui rend le NOM plutôt que l'objet.
+ * C'est ce qui les regroupe ici.
+ * ==================================================================== */
 
 static int     file_open(const char *nom);          /* défini plus bas */
 static Object *marked_card_ref(const char *r, int *concerne);
@@ -13322,17 +13308,25 @@ static int v3_cmd_using(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* ================= entrées à ajouter à la table V3_VERBES =================
- * Dans l'ordre alphabétique de la table existante :
+/* ============ menus, effet visuel, appel d'un gestionnaire ============ *
  *
- *     { "close",  v3_cmd_fichier },
- *     { "go",     v3_cmd_go      },
- *     { "open",   v3_cmd_fichier },
- *     { "save",   v3_cmd_save    },
- *     { "start",  v3_cmd_using   },
- *     { "stop",   v3_cmd_using   },
- * ========================================================================= */
-/* ------------------------------------------------------------- la table */
+ * Trois familles que le répartiteur sert et qui n'ont pas trouvé de meilleur
+ * voisinage :
+ *
+ *   - l'appel d'un GESTIONNAIRE écrit dans une pile, le pendant exact de
+ *     v3_fonction_pile pour les commandes ;
+ *   - l'effet VISUEL, qui ne fait que retenir trois réglages pour le « go »
+ *     qui suivra ;
+ *   - et surtout les MENUS : un menu n'est pas un Object, donc hct_resout ne
+ *     peut rien pour lui, et toute sa mécanique — index, propriétés,
+ *     articles — vit ici. « the selectedButton of family » leur tient
+ *     compagnie pour la même raison : une famille n'est pas un objet non
+ *     plus.
+ *
+ * La TABLE des verbes, elle, est cinq cents lignes plus bas. Cet en-tête
+ * annonçait « la table » et couvrait tout ce qui précède : on cherchait un
+ * tableau et on tombait sur les menus.
+ * ====================================================================== */
 /* Gestionnaire écrit dans une pile, appelé comme commande —
  * « selectline it, the name of me ».
  *
@@ -13857,6 +13851,13 @@ static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* ==================== la table des verbes portés ==================== *
+ *
+ * Elle fut le tableau d'avancement de la migration : ce qui n'y figure pas
+ * est ce qui n'a jamais été porté. Ce n'est plus un état des lieux mais une
+ * FRONTIÈRE — depuis que l'ancien exécuteur de lignes a disparu, un verbe
+ * absent d'ici est refusé, avec un message, au lieu d'être rendu à personne.
+ * ==================================================================== */
 static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "answer",      v3_cmd_reponse         },
     { "answer file", v3_cmd_reponse_fichier },
@@ -14358,13 +14359,16 @@ static HctHote v3_hote(void)
     return h;
 }
 
-/* ==================================================================
- * eval_expr, version v3 — remplace l'ancienne
+/* ==================== évaluation d'une expression ==================== *
+ *
+ * eval_expr est la porte par laquelle TOUT le noyau évalue une expression
+ * écrite en texte : les commandes non portées, les désignateurs, les clés de
+ * tri. Elle lexe, analyse et évalue par la v3.
  *
  * Une réserve par appel : l'arbre naît et meurt avec l'expression. Plus
  * coûteux qu'un arbre mis en cache, mais correct — on optimisera quand on
  * aura MESURÉ, pas avant.
- * ================================================================== */
+ * ==================================================================== */
 
 static void eval_expr(const char *s, char *out, int outlen)
 {
