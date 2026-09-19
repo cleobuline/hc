@@ -1,0 +1,33 @@
+== references d'objets et proprietes ==
+   resout           recoit SES donnees
+   lit_prop         recoit SES donnees
+   recours          recoit SES donnees
+   ecrit_message    recoit SES donnees
+   resout           recoit SES donnees
+   lit_objet        recoit SES donnees
+   recours          recoit SES donnees
+   ecrit_message    recoit SES donnees
+
+== recours et commandes ==
+   lit_var          recoit SES donnees
+   fonction         recoit SES donnees
+   ecrit_message    recoit SES donnees
+   commande         recoit SES donnees
+   commande         recoit SES donnees
+
+== ecritures ==
+   resout           recoit SES donnees
+   ecrit_objet      recoit SES donnees
+   commande         recoit SES donnees
+   ecrit_message    recoit SES donnees
+
+== globales et fonctions ==
+   globale          recoit SES donnees
+   lit_var          recoit SES donnees
+   fonction         recoit SES donnees
+   ecrit_message    recoit SES donnees
+   lit_var          recoit SES donnees
+   fonction         recoit SES donnees
+
+   rappels ayant recu LEURS donnees : 23
+   rappels ayant recu AUTRE CHOSE   : 0
