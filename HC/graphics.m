@@ -716,8 +716,6 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
     [gPaintCache setObject:canvas forKey:key];
     return canvas;
 }
-// éteint tous les radioButtons de la carte sauf 'keep'
-
 void erase_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
     if (!rep || n < 3) return;
     int W = (int)[rep pixelsWide];

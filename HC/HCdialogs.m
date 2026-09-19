@@ -40,8 +40,9 @@ static NSButton     *gInfoEnabled = nil;
 static NSButton     *gInfoSharedHilite = nil;
 static NSTextField  *gInfoIconField = nil;
 /* Le groupement des boutons radio. Sans ce contrôle, la famille n'était
- * accessible qu'au script : tous les boutons radio d'une carte restaient à
- * zéro, donc dans le même vivier, donc « ils réagissent tous ensemble ». */
+ * accessible qu'au script, et depuis que famille 0 ne groupe plus rien —
+ * comme dans HyperCard — c'est ce menu qui rend les boutons radio exclusifs.
+ * Il n'est donc plus un confort : c'est la seule porte de l'interface. */
 static NSPopUpButton *gInfoFamily = nil;
 static NSTextField  *gInfoTextSize = nil;
 
@@ -595,10 +596,15 @@ void hc_sync_size_field(Object *o)
     /* --- famille : le groupement des boutons radio ---
      *
      * « None » est la valeur par défaut et n'est PAS la famille zéro : c'est
-     * l'absence de famille. Un bouton sans famille ne s'exclut qu'avec les
-     * autres boutons radio sans famille, comportement de toutes les piles
-     * écrites jusqu'ici ; lui donner une famille le sort de ce vivier commun
-     * et le lie aux seuls boutons de la même famille.
+     * l'absence de famille, et elle NE GROUPE RIEN. Deux boutons radio sans
+     * famille sont deux boutons indépendants — c'est la règle d'HyperCard, et
+     * c'est précisément pourquoi « the family of » y a été introduit en 2.0.
+     *
+     * Ce commentaire a dit le contraire un temps : « un bouton sans famille
+     * ne s'exclut qu'avec les autres boutons radio sans famille ». C'était
+     * vrai d'une commodité que nous avions ajoutée au CLIC, et que le SCRIPT
+     * n'appliquait pas — les deux chemins donnaient deux états de pile
+     * différents. La commodité est partie ; il ne reste qu'une règle.
      *
      * Le rang dans le menu EST le numéro de famille : index 0 = None = 0,
      * index 1 = famille 1, et ainsi de suite jusqu'à 15. Pas de table de

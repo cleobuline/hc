@@ -24,13 +24,29 @@
  *   7. la famille et titleWidth survivent a l'enregistrement ;
  *   8. LE CLIC suit exactement la meme regle que le script.
  *
- * Le point 8 est celui qui a failli manquer. Une exclusion par STYLE existait
- * deja au clic — un bouton de style radio eteignait tous les autres boutons
- * radio de la carte et du fond. La famille en ajoutait une seconde, par
- * numero. Deux mecanismes concurrents pour une meme question : le clic aurait
- * eteint ce que le script gardait. C'est le motif « un chemin corrige, son
- * jumeau oublie » qui a deja coute le catalogue d'icones et la conversion
- * octets/UTF-16.
+ * Le point 8 est celui qui a failli manquer, et son histoire a eu une suite.
+ *
+ * Une exclusion par STYLE existait au clic — un bouton de style radio
+ * eteignait tous les autres boutons radio de la carte et du fond. La famille
+ * en ajoutait une seconde, par numero. Deux mecanismes concurrents pour une
+ * meme question. La premiere version de ce harnais les faisait cohabiter :
+ * la famille decidait quand il y en avait une, l'ancienne regle sinon.
+ *
+ * ELLE NE SUFFISAIT PAS, et un audit exterieur l'a montre. Sans famille, le
+ * SCRIPT n'appliquait pas l'ancienne regle — seul le clic le faisait :
+ *
+ *     par SCRIPT (set the hilite) :  R1=true   R2=true
+ *     par CLIC                    :  R1=false  R2=true
+ *
+ * Le meme etat de pile selon la porte empruntee. Ce harnais ne le voyait pas
+ * parce qu'il ne testait l'ancienne regle que par le clic.
+ *
+ * LE CHOIX, pris par l'auteure du projet : famille 0 ne groupe RIEN, comme
+ * dans HyperCard — c'est precisement pourquoi « the family of » a ete invente
+ * en 2.0. L'ancienne regle disparait donc, et avec elle la divergence : il
+ * n'y a plus qu'un chemin, hc_set_hilite, que le clic et le script traversent
+ * l'un comme l'autre. Ils ne peuvent plus diverger parce qu'il n'y en a plus
+ * deux.
  */
 #include "hc_core.h"
 #include "hc_file.h"
@@ -148,11 +164,21 @@ int main(void)
     Object *rad[3] = { r1, r2, r3 };
     const char *nomsr[3] = { "R1", "R2", "R3" };
 
-    /* Sans famille : l'ancienne regle, inchangee. */
+    /* SANS FAMILLE, RIEN NE GROUPE — et c'est la ligne qui a change.
+     * Elle rendait « R1=off R2=on » du temps ou le clic portait l'ancienne
+     * regle ; elle rend « R1=on R2=on » depuis que famille 0 ne groupe plus,
+     * ce qui est le comportement d'HyperCard : deux radios sans famille sont
+     * deux boutons independants. */
     hc_fin_de_clic(r1, c);
     etat("sans famille, clic sur R1", rad, nomsr, 3);
     hc_fin_de_clic(r2, c);
     etat("sans famille, clic sur R2", rad, nomsr, 3);
+    /* Et par SCRIPT, exactement pareil : c'est le point du test. */
+    fais("  set the hilite of button \"R1\" to false\n"
+         "  set the hilite of button \"R2\" to false\n"
+         "  set the hilite of button \"R1\" to true\n"
+         "  set the hilite of button \"R2\" to true\n");
+    etat("sans famille, par SCRIPT", rad, nomsr, 3);
 
     /* Avec familles distinctes : R1 et R2 cessent de s'exclure. */
     fais("  set the family of button \"R1\" to 3\n"

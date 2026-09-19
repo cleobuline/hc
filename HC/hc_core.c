@@ -2440,42 +2440,36 @@ static int est_case(Object *o)
            (strcmp(o->style, "checkBox") == 0 || strcmp(o->style, "checkbox") == 0);
 }
 
-/* Éteint tous les autres radios de la carte ET de son fond. Un groupe de
- * radios se répartit souvent entre les deux couches. */
-/* DEUX MÉCANISMES D'EXCLUSION, ET COMMENT ILS SE PARTAGENT LE TRAVAIL.
+/* UN SEUL MÉCANISME D'EXCLUSION : LA FAMILLE. FAMILLE 0 NE GROUPE RIEN.
  *
- * Celui-ci existait avant la famille : au clic, un bouton de style radio
- * éteint tous les autres boutons de style radio de la carte ET du fond.
- * L'arrivée de « the family of » en crée un second, par NUMÉRO et dans la
- * seule couche. Laisser les deux courir côte à côte, c'était deux réponses à
- * la même question — et le clic aurait éteint ce que le script gardait.
+ * Il y en avait deux. Le premier, antérieur aux familles, éteignait AU CLIC
+ * tous les autres boutons de style radio de la carte et du fond — une
+ * commodité que nous avions ajoutée, et qu'HyperCard n'a jamais eue. Le
+ * second, par numéro de famille, est celui d'HyperCard.
  *
- * LE PARTAGE. Dès qu'un bouton a une famille (1 à 15), c'est elle qui décide,
- * ici comme dans hc_set_hilite : même règle, même portée, les deux chemins ne
- * peuvent plus diverger. Sans famille — c'est-à-dire pour toutes les piles
- * écrites jusqu'ici — l'ancienne règle s'applique telle quelle, à ceci près
- * qu'elle ne touche plus les boutons QUI ONT une famille : ceux-là
- * appartiennent à un groupe, pas au vivier des non-groupés.
+ * DEUX MÉCANISMES, C'ÉTAIT DEUX RÉPONSES À LA MÊME QUESTION, et elles se
+ * contredisaient. Mesuré, sur deux radios SANS famille :
  *
- * Autrement dit, une pile existante se comporte exactement comme avant, et
- * poser une famille sur un bouton le sort du vivier commun. C'est la seule
- * lecture qui n'oblige personne à modifier ses piles. */
-static void radio_exclusif(Object *carte, Object *garde)
-{
-    if (!carte) return;
-
-    if (garde && garde->family > 0) { eteint_la_famille(garde, carte); return; }
-
-    for (int i = 0; i < carte->nparts; i++)
-        if (carte->parts[i] != garde && est_radio(carte->parts[i]) &&
-            carte->parts[i]->family == 0)
-            hc_set_hilite(carte->parts[i], carte, 0);
-    if (carte->bg)
-        for (int i = 0; i < carte->bg->nparts; i++)
-            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]) &&
-                carte->bg->parts[i]->family == 0)
-                hc_set_hilite(carte->bg->parts[i], carte, 0);
-}
+ *     par SCRIPT (set the hilite) :  R1=true   R2=true
+ *     par CLIC                    :  R1=false  R2=true
+ *
+ * Le script laissait les deux allumés, le clic n'en gardait qu'un. Le même
+ * état de pile selon la porte empruntée.
+ *
+ * LE CHOIX EST CELUI D'HYPERCARD, et il est de l'auteure du projet :
+ * famille 0 est l'ABSENCE de famille, pas un groupe. C'est précisément
+ * pourquoi « the family of » a été inventé en 2.0 — avant elle, un script
+ * devait éteindre ses voisins lui-même. La commodité du clic disparaît donc,
+ * et avec elle la divergence : il ne reste qu'une règle, dans hc_set_hilite,
+ * que le clic et le script traversent l'un comme l'autre. Ils ne peuvent
+ * plus diverger parce qu'il n'y a plus qu'un chemin.
+ *
+ * CE QUE ÇA CHANGE POUR LES PILES EXISTANTES, et il faut le dire net : des
+ * boutons radio sans famille cessent de s'éteindre mutuellement. Il faut
+ * leur donner une famille — par le panneau Infos bouton, ou par
+ * « set the family of button "X" to 1 ». C'est le prix du choix, il a été
+ * pesé, et il rend la pile conforme à ce qu'un HyperCard d'époque en aurait
+ * fait. */
 
 /* LA FIN AUTOMATIQUE D'UN CLIC, ET SUR QUELLE CARTE ELLE S'APPLIQUE.
  *
@@ -2512,7 +2506,10 @@ void hc_fin_de_clic(Object *btn, Object *carte_cliquee)
     if (!carte && hilite_par_carte(btn)) return;
 
     if (est_case(btn))        hc_set_hilite(btn, carte, !hc_hilite_of(btn, carte));
-    else if (est_radio(btn)) { hc_set_hilite(btn, carte, 1); radio_exclusif(carte, btn); }
+    /* Un seul appel : hc_set_hilite éteint déjà la famille. Il y avait ici un
+     * second appel, radio_exclusif, qui portait l'ancienne règle sans
+     * famille — c'est lui qui faisait diverger le clic et le script. */
+    else if (est_radio(btn)) hc_set_hilite(btn, carte, 1);
     else if (btn->autohilite) hc_set_hilite(btn, carte, 0);
 }
 

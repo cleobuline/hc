@@ -20,9 +20,10 @@
    premier clic sur A1                A1=1  A2=0  B1=0
    deuxieme clic sur A1               A1=0  A2=0  B1=0
 
-=== le radio eteint ses voisins, carte ET fond, sur la carte du clic ===
+=== le radio eteint ses freres de FAMILLE, sur la carte du clic ===
    avant : b=0 r2=1 r3=1
-   apres : b=1 r2=0 r3=0   (sur A1)
+   apres : b=1 r2=0 r3=1   (sur A1)
+   (r3 est sur la CARTE : meme numero, autre groupe)
    et sur A2, ou l'on se trouve : b=0 r2=0
 
 === un RADIO dont le gestionnaire saute dans une autre pile ===
