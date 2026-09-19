@@ -323,6 +323,33 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     if (!val) val = "";
     int len = (int)strlen(s), lv = (int)strlen(val);
 
+    /* UN RANG INFÉRIEUR À 1 N'EXISTE PAS — ET L'ÉCRITURE L'IGNORAIT.
+     *
+     * borne_simple refuse déjà « n < 1 » : à la lecture comme à la
+     * suppression, « item -1 » et « item 0 » sont des morceaux ABSENTS. Mais
+     * l'écriture ne passait pas par ce refus : ne trouvant pas le morceau,
+     * elle tombait dans la branche d'EXTENSION, où
+     *
+     *     manquants = n - existants - 1;
+     *     if (manquants < 0) manquants = 0;
+     *
+     * ramenait le compte à zéro et ajoutait tranquillement un séparateur et
+     * la valeur. Mesuré, sur « a,b » :
+     *
+     *     put item -1 of v        -> (vide)     absent
+     *     delete item -1 of v     -> a,b        rien
+     *     put "X" into item -1 of v -> a,b,X    AJOUTÉ
+     *
+     * Trois réponses à la même question : le même morceau y est à la fois
+     * inexistant, insupprimable, et synonyme de « à la fin ». Un script qui
+     * calcule un rang et tombe sur zéro — « item (i-1) » avec i valant 1 —
+     * écrivait donc un item de plus au lieu de ne rien faire, sans un mot.
+     *
+     * On rend la chaîne INCHANGÉE, comme la suppression : c'est la réponse
+     * que les deux autres chemins donnent déjà, et le point est qu'il n'y en
+     * ait qu'une. */
+    if (n < 1 || (n2 != 0 && n2 < 1)) return hct_val_texte_n(s, len);
+
     HctBornes b = hct_chunk_bornes(s, sorte, n, n2, delim);
 
     if (b.trouve) {

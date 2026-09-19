@@ -1,0 +1,46 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les trois operations s'accordent enfin, sur item ==
+   lecture, rang -1
+      []
+   suppression, rang -1
+      a,b
+   ECRITURE, rang -1
+      a,b
+   ECRITURE, rang 0
+      a,b
+
+== 2. les autres sortes de morceaux suivent la meme regle ==
+   char 0
+      abc
+   char -1
+      abc
+   word 0
+      un deux
+   line -2
+      a
+
+== 3. LE CAS QUI FAIT MAL : un rang calcule qui tombe a zero ==
+   item (i-1) avec i valant 1
+      a,b   (2 items)
+
+== 4. les plages aussi ==
+   item 0 to 2
+      a,b,c
+   item -1 to 1
+      a,b,c
+
+== 5. LES RANGS LEGITIMES N'ONT PAS BOUGE ==
+   remplacer un item existant
+      a,B,c
+   etendre au-dela de la fin
+      a,b,,,X
+   le tout premier
+      A,b
+   une plage legitime
+      a,X
+   char 1, word 1, line 1
+      Zbc
+      UN deux
+      L1
+   etendre des lignes
+      3 lignes
