@@ -3231,10 +3231,30 @@ static BOOL paint_selection_active(void)
         /* LES QUATRE QUI NE DEMANDENT PAS DE SÉLECTION. Les griser faute de
          * sélection rendrait « Select All » impossible à atteindre — il est
          * fait pour en CRÉER une —, et « Clear Picture » inutilisable au
-         * moment où l'on veut vider un calque entier. Même raison que pour
-         * Keep et Revert, juste en dessous. */
+         * moment où l'on veut vider un calque entier.
+         *
+         * LA CONDITION PORTE SUR LE NOYAU, PAS SUR `self`. Première version :
+         * « [self paintLayer] != NULL ». Les deux articles restaient grisés.
+         *
+         * `self` est ici la vue que le menu a CAPTURÉE à sa construction —
+         * AppDelegate fait « [mi setTarget:view] » avec la vue du démarrage —
+         * et paintLayer passe par documentCard, qui ne répond vraiment que
+         * pour le document ACTIF : « if (gDoc == &_doc) ». Dès que la vue
+         * visée n'est plus celle-là, la méthode rend la carte qu'elle gardait
+         * en mémoire, ou rien.
+         *
+         * Tous les autres articles de ce menu se valident sur des GLOBALES —
+         * paint_selection_active() lit gTool et gSelRectActive — et c'est
+         * pour ça qu'ils n'ont jamais eu ce problème. Les miens étaient les
+         * seuls à interroger un objet. hc_current_card() répond à la vraie
+         * question, « y a-t-il une carte ? », sans dépendre de quelle vue on
+         * a demandé.
+         *
+         * Keep et Revert, juste en dessous, gardent cette dépendance : elle
+         * les précède, et la corriger sans pouvoir l'essayer serait changer
+         * deux choses à la fois. */
         if (t == HCV_PAINT_SELECTALL || t == HCV_PAINT_CLEAR)
-            return [self paintLayer] != NULL;
+            return hc_current_card() != NULL;
 
         /* Opaque et Transparent portent une COCHE : c'est un mode, pas une
          * action, et l'utilisateur doit voir lequel des deux est en cours.
