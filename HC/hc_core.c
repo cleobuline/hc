@@ -3586,6 +3586,29 @@ static Object *resolve(const char *ref)
 
     profondeur++;
     Object *portee = resolve(queue);
+
+    /* LA PORTÉE N'EXISTE PAS : ON S'ARRÊTE, ON NE RETOMBE PAS SUR LA CARTE
+     * COURANTE.
+     *
+     * C'est le jumeau, dans l'ancien moteur, du défaut corrigé dans
+     * hct_resout_corps. La dernière ligne de cette fonction disait
+     * « return r ? r : resolve_local(ref) », et resolve_local IGNORE le
+     * « of X » : elle lit la tête et la cherche là où l'on se trouve. Donc
+     * « field "X" of card "Absente" », quand cette carte n'existe pas,
+     * rendait le champ « X » DE LA CARTE COURANTE.
+     *
+     * La v3 étant corrigée la première, la lecture continuait pourtant de
+     * mentir : l'échec de la v3 passe le relais au recours, et le recours
+     * tombait ici. Une seule des deux portes réparée ne répare rien — c'est
+     * le motif qu'on traque depuis des semaines, et il a mordu dans l'heure
+     * même où on le nommait.
+     *
+     * Ce garde-fou ne vise QUE la portée introuvable. Les sorties anticipées
+     * au-dessus — pas de « of », découpage impossible, profondeur épuisée —
+     * gardent leur repli : là, la référence n'a pas été comprise comme ayant
+     * une portée, et resolve_local reste la lecture honnête de ce qu'on a. */
+    if (!portee) { profondeur--; return NULL; }
+
     Object *r = NULL;
     if (portee) {
         /* La portée est une CARTE, ou une pile — auquel cas on se place sur sa
@@ -3613,7 +3636,21 @@ static Object *resolve(const char *ref)
         }
     }
     profondeur--;
-    return r ? r : resolve_local(ref);
+
+    /* ET SI L'OBJET N'EST PAS DANS CETTE PORTÉE-LÀ, IL N'EST PAS AILLEURS.
+     *
+     * Le repli « r ? r : resolve_local(ref) » avait le même vice que le cas
+     * ci-dessus, d'un cran plus fin : la carte existe, mais le champ n'y est
+     * pas — et resolve_local, qui ignore le « of X », allait le chercher sur
+     * la carte COURANTE. Mesuré, avec un champ « X » sur la carte Une
+     * seulement :
+     *
+     *     put field "X" of card "Deux"   -> SUR UNE
+     *
+     * Le script nomme une carte et obtient le contenu d'une autre. Une
+     * portée qu'on a su lire et où l'on a su entrer est une portée qu'il
+     * faut respecter : l'échec dedans est un échec tout court. */
+    return r;
 }
 
 static Object *resolve_local(const char *ref)
@@ -7721,14 +7758,6 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n);
  * Les enfants d'un HCTN_OBJET sont, dans l'ordre : le désignateur quand il
  * en faut un — nom, rang, id — puis la cible du « of ». On regarde donc le
  * DERNIER enfant, et seulement s'il est lui-même une référence d'objet. */
-static Object *v3_cible(HctContexte *ctx, const HctNoeud *n)
-{
-    if (n->nfils < 1) return NULL;
-    const HctNoeud *dernier = n->fils[n->nfils - 1];
-    if (dernier->genre != HCTN_OBJET) return NULL;
-    return hct_resout(ctx, dernier);
-}
-
 /* Le nœud du désignateur, ou NULL quand il n'y en a pas. */
 static const HctNoeud *v3_designateur(const HctNoeud *n)
 {
@@ -7736,6 +7765,43 @@ static const HctNoeud *v3_designateur(const HctNoeud *n)
         n->designateur != HCT_DES_RANG &&
         n->designateur != HCT_DES_ID) return NULL;
     return n->nfils >= 1 ? n->fils[0] : NULL;
+}
+
+/* LE NŒUD de la cible explicite — « … of X » —, ou NULL s'il n'y en a pas.
+ *
+ * SÉPARÉ DE SA RÉSOLUTION, ET C'EST TOUT L'ENJEU. Ces deux questions ont
+ * longtemps partagé une seule réponse :
+ *
+ *     y a-t-il un « of X » ?          -> NULL si non
+ *     ce « of X » désigne-t-il quoi ? -> NULL si l'objet n'existe pas
+ *
+ * L'appelant recevait NULL dans les deux cas et, ne sachant pas les
+ * distinguer, continuait sur la CARTE COURANTE. Mesuré, avec une carte
+ * « Une » portant un champ « X » et aucune carte « Absente » :
+ *
+ *     put field "X" of card "Absente"           -> BONJOUR
+ *     put "OUPS" into field "X" of card "Absente"
+ *                     -> écrit OUPS dans le champ de la carte COURANTE
+ *     put there is a field "X" of card "Absente" -> true
+ *     put the name of card 1 of stack "PileAbsente" -> card "Une"
+ *
+ * La lecture ment ; l'écriture, elle, modifie des données dans un objet que
+ * le script n'a jamais nommé, et paraît avoir réussi. C'est le défaut le
+ * plus grave rencontré dans ce dépôt.
+ *
+ * LE DÉSIGNATEUR N'EST PAS UNE CIBLE. Quand le nœud n'a qu'un fils et que ce
+ * fils EST le désignateur — « field (me) », où l'on nomme le champ par une
+ * expression qui se trouve être un objet —, ce fils ne doit pas être pris
+ * pour un « of X ». On le compare donc explicitement plutôt que de se fier à
+ * son seul genre : sans cela, la correction ci-dessous transformerait une
+ * méprise silencieuse en refus catégorique. */
+static const HctNoeud *v3_noeud_cible(const HctNoeud *n)
+{
+    if (n->nfils < 1) return NULL;
+    const HctNoeud *dernier = n->fils[n->nfils - 1];
+    if (dernier->genre != HCTN_OBJET) return NULL;
+    if (dernier == v3_designateur(n)) return NULL;
+    return dernier;
 }
 
 /* ------------------------------------------------------------ l'entrée */
@@ -7794,8 +7860,16 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
     Object *stack = card ? card->owner : NULL;
 
     /* Une cible explicite déplace le contexte : « bg field "x" of card 3 »
-     * cherche le champ dans la carte 3, pas dans la carte courante. */
-    Object *cible = v3_cible(ctx, n);
+     * cherche le champ dans la carte 3, pas dans la carte courante.
+     *
+     * ET SI ELLE NE SE RÉSOUT PAS, ON S'ARRÊTE LÀ. « of X » où X n'existe
+     * pas n'est PAS la même chose que « sans of » : voir v3_noeud_cible.
+     * Retomber sur la carte courante faisait lire — et écrire — dans un
+     * objet que le script n'avait pas nommé. On rend NULL, et l'appelant
+     * dira « objet introuvable » en nommant la ligne. */
+    const HctNoeud *cible_n = v3_noeud_cible(n);
+    Object *cible = cible_n ? hct_resout(ctx, cible_n) : NULL;
+    if (cible_n && !cible) return NULL;
     if (cible) {
         if (cible->type == OBJ_CARD) {
             card = cible;

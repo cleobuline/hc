@@ -1,0 +1,49 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la PORTEE n'existe pas : refus, pas de repli ==
+     put field "X" of card "Absente"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
+     put there is a field "X" of card "Absente"
+      false
+     put the name of card 1 of stack "PileAbsente"
+      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B"
+      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
+     put bg field "Partage" of card "Absente"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
+
+== 2. et surtout : L'ECRITURE ne va nulle part ==
+     put "OUPS" into field "X" of card "Absente"
+      [ERR]    !! objet introuvable : put "OUPS" into field "X" of card "Absente"
+     put "le champ de la carte courante : " & field "X"
+      le champ de la carte courante : SUR UNE
+
+== 3. la portee existe, l'objet n'y est pas ==
+     put field "X" of card "Deux"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
+     put "OUPS" into field "X" of card "Deux"
+      [ERR]    !! objet introuvable : put "OUPS" into field "X" of card "Deux"
+     put "le champ de la carte courante : " & field "X"
+      le champ de la carte courante : SUR UNE
+
+== 4. LES PORTEES LEGITIMES MARCHENT TOUJOURS ==
+     put field "Y" of card "Deux"
+      SUR DEUX
+     put field "Y" of card 2
+      SUR DEUX
+     put field "X" of this card
+      SUR UNE
+     put the name of card 2 of stack "Pile"
+      card "Deux"
+     put the short name of bg field "Partage" of card "Deux"
+      Partage
+     put field "Z" of card "Alpha" of stack "Autre"
+      AILLEURS
+     put the number of cards of stack "Autre"
+      1
+
+== 5. et l'ecriture dans une portee legitime aboutit ==
+     put "ECRIT AILLEURS" into field "Y" of card "Deux"
+  put field "Y" of card "Deux"
+      ECRIT AILLEURS
+     put "le champ X de la carte courante n'a pas bouge : " & field "X"
+      le champ X de la carte courante n'a pas bouge : SUR UNE
