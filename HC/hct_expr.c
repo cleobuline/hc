@@ -319,7 +319,54 @@ static HctNoeud *rang_produit(HctAnalyseur *a)
  * C'est la seule exception de tout le langage, et le guide la signale
  * explicitement. La récursion à droite suffit à l'obtenir. */
 
+/* LE GARDE-FOU COMPTE ICI AUSSI, ET IL NE LE FAISAIT PAS.
+ *
+ * HCT_PROF_MAX n'était surveillé que par rang_ou, entré une fois par
+ * expression — et une fois de plus par parenthèse ouvrante, ce qui explique
+ * que « ((((((… » se fasse bien arrêter. Mais rang_puissance et rang_unaire
+ * se rappellent DIRECTEMENT, sans toucher au compteur :
+ *
+ *     return binaire(a, "^", j, g, rang_puissance(a));
+ *     return unaire(a, "not", j, rang_unaire(a));
+ *
+ * Un script n'avait donc qu'à empiler des « not », des moins unaires ou des
+ * « ^ » pour creuser la pile C aussi profond qu'il voulait. Mesuré : 20 000
+ * « not » passent, 60 000 font un SEGFAULT — sans jamais produire
+ * « expression trop imbriquée ». L'application meurt sur un script, et c'est
+ * ce que le garde-fou existait pour empêcher.
+ *
+ * UN SEUL COMPTEUR POUR LES TROIS, parce que c'est une seule pile C qu'on
+ * protège. Le budget de 400 est donc partagé entre parenthèses et unaires ;
+ * mesuré, une parenthèse en coûte maintenant deux, soit 200 niveaux
+ * d'imbrication réels — très au-delà de ce qu'un script écrit à la main
+ * atteint, et sans commune mesure avec les dizaines de milliers qu'il
+ * fallait pour tuer le processus. */
+static HctNoeud *rang_puissance_corps(HctAnalyseur *a);
+static HctNoeud *rang_unaire_corps(HctAnalyseur *a);
+
 static HctNoeud *rang_puissance(HctAnalyseur *a)
+{
+    if (++a->prof > HCT_PROF_MAX) {
+        a->prof--;
+        return faute(a, "expression trop imbriquée");
+    }
+    HctNoeud *n = rang_puissance_corps(a);
+    a->prof--;
+    return n;
+}
+
+static HctNoeud *rang_unaire(HctAnalyseur *a)
+{
+    if (++a->prof > HCT_PROF_MAX) {
+        a->prof--;
+        return faute(a, "expression trop imbriquée");
+    }
+    HctNoeud *n = rang_unaire_corps(a);
+    a->prof--;
+    return n;
+}
+
+static HctNoeud *rang_puissance_corps(HctAnalyseur *a)
 {
     HctNoeud *g = rang_unaire(a);
     if (!fini(a) && op_ici(a, "^")) {
@@ -335,7 +382,7 @@ static HctNoeud *rang_puissance(HctAnalyseur *a)
  * « not x = y » vaut donc « (not x) = y ». C'est contre-intuitif mais c'est
  * bien ce que dit l'annexe E, et HyperCard se comporte ainsi. */
 
-static HctNoeud *rang_unaire(HctAnalyseur *a)
+static HctNoeud *rang_unaire_corps(HctAnalyseur *a)
 {
     if (fini(a)) return faute(a, "expression attendue");
 

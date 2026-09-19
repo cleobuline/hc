@@ -1,0 +1,25 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. au-dela de la borne : un MESSAGE, pas un plantage ==
+   not empiles              x1000  -> !! script, ligne 2 colonne 1599 : expression trop imbriquée
+   moins unaires            x1000  -> !! script, ligne 2 colonne 803 : expression trop imbriquée
+   puissances a droite      x1000  -> !! script, ligne 2 colonne 803 : expression trop imbriquée
+
+== 2. les parentheses restent gardees ==
+   parentheses ouvrantes    x1000  -> !! script, ligne 2 colonne 140 : parenthèse fermante attendue
+
+== 3. les imbrications NORMALES passent ==
+      true
+   not empiles              x40    -> accepte, aucune faute
+      1
+   moins unaires            x40    -> accepte, aucune faute
+      1
+   puissances a droite      x40    -> accepte, aucune faute
+      1
+   parentheses              x40    -> accepte, aucune faute
+
+== 4. et les expressions ordinaires ne bougent pas ==
+      true
+      -7
+      512
+      true
+      21
