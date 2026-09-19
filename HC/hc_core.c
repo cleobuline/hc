@@ -6115,9 +6115,26 @@ static int call_function_body(const char *t, char *out, int outlen)
      * et il y a trois lignes à changer. */
     if (ci_equal(name, "length")) { snprintf(out, outlen, "%d", hct_utf8_compte(vals[0])); return 1; }
     if (ci_equal(name, "abs"))    { put_num(a < 0 ? -a : a, out, outlen); return 1; }
-    if (ci_equal(name, "trunc"))  { put_num((double)(long long)a, out, outlen); return 1; }
-    if (ci_equal(name, "round"))  { put_num(a < 0 ? -(double)(long long)(-a + 0.5)
-                                                  :  (double)(long long)( a + 0.5), out, outlen); return 1; }
+    /* trunc ET round PASSENT PAR LA BIBLIOTHEQUE, PAS PAR UN CAST.
+     *
+     * « (double)(long long)a » est un comportement INDEFINI dès que `a` sort
+     * de la plage d'un long long — et as_num accepte « 1e300 » sans broncher.
+     * Le chemin v3 a été corrigé en son temps ; ces trois-ci, dans l'ancien
+     * moteur, étaient restés. Signalé par un audit extérieur.
+     *
+     * Je n'ai PAS su les atteindre : la v3 sert trunc, round, div, mod et
+     * « is an integer » avant que l'ancien moteur n'en voie la couleur, et
+     * quatre sondes n'ont pas trouvé d'entrée. On corrige quand même — une
+     * conversion sûre ne coûte rien, et « je n'ai pas su l'atteindre » n'est
+     * pas « c'est inatteignable ».
+     *
+     * trunc(3) tronque vers zéro, ce que faisait le cast ; le round
+     * d'HyperTalk s'écarte de round(3) pour les négatifs à demi — il arrondit
+     * -2.5 vers zéro, soit -2, quand round() rend -3 —, donc on garde la
+     * formule d'origine et on remplace seulement la conversion. */
+    if (ci_equal(name, "trunc"))  { put_num(trunc(a), out, outlen); return 1; }
+    if (ci_equal(name, "round"))  { put_num(a < 0 ? -trunc(-a + 0.5)
+                                                  :  trunc( a + 0.5), out, outlen); return 1; }
     if (ci_equal(name, "sqrt"))   { put_num(a >= 0 ? sqrt(a) : 0, out, outlen); return 1; }
     if (ci_equal(name, "exp"))    { put_num(exp(a), out, outlen); return 1; }
     if (ci_equal(name, "ln"))     { put_num(a > 0 ? log(a) : 0, out, outlen); return 1; }
@@ -7137,8 +7154,10 @@ static void parse_product(const char **p, char *out, int outlen)
         as_num(out, &a); as_num(rhs, &b);
         if      (op == '*') r = a * b;
         else if (op == '/') r = (b != 0) ? a / b : 0;
-        else if (op == 'd') r = (b != 0) ? (double)(long long)(a / b) : 0;
-        else                r = (b != 0) ? a - b * (double)(long long)(a / b) : 0;
+        /* Même raison que pour trunc plus haut : le cast est indéfini hors
+         * plage. « div » tronque vers zéro et « mod » en découle. */
+        else if (op == 'd') r = (b != 0) ? trunc(a / b) : 0;
+        else                r = (b != 0) ? a - b * trunc(a / b) : 0;
         put_num(r, out, outlen);
     }
     ARENA_FREE;
@@ -7387,7 +7406,14 @@ static int is_int_str(const char *s)
 {
     double d;
     if (!as_num(s, &d)) return 0;
-    return d == (double)(long long)d;
+    /* « d == (double)(long long)d » était indéfini dès que d sortait de la
+     * plage d'un long long, et as_num accepte « 1e300 ». trunc() répond à la
+     * même question — « ce nombre a-t-il une partie fractionnaire ? » — sans
+     * jamais quitter le domaine des flottants. Un infini n'est pas un entier,
+     * et un NaN n'est égal à rien, y compris à lui-même : les deux sont donc
+     * traités au passage. */
+    if (!(d == d) || d > 1e308 || d < -1e308) return 0;
+    return d == trunc(d);
 }
 
 /* nombre d'items entiers séparés par des virgules ; -1 si l'un ne l'est pas */
