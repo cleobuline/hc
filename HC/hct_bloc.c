@@ -21,7 +21,7 @@
  *
  *   repeat                            sans fin, sortie par « exit repeat »
  *   repeat forever
- *   repeat N [times]
+ *   repeat [for] N [times]
  *   repeat while C
  *   repeat until C
  *   repeat with v = D to F [by P]     « down to » pour décompter
@@ -336,6 +336,10 @@ static HctNoeud *analyse_repeat(HctAnalyseur *a)
     HctNoeud *n = ouvre(a, HCTN_REPETE, "repeat", 1);
     if (!n) return NULL;
 
+    /* Combien de fautes AVANT l'en-tête : voir le contrôle de fin de ligne,
+     * plus bas, qui ne doit pas s'ajouter à une plainte déjà émise. */
+    int fautes_avant = a->nerreurs;
+
     if (mot_ici_b(a, "forever")) {
         hct_expr_avance(a);
         n->op = "forever";
@@ -401,12 +405,69 @@ static HctNoeud *analyse_repeat(HctAnalyseur *a)
         else hct_ajoute_fils(a->reserve, n, hct_expr_faute(a, "« in » attendu"));
         hct_ajoute_fils(a->reserve, n, hct_expression(a));       /* la source */
     } else if (hct_expr_jeton(a)->genre != HCT_EOL) {
-        /* repeat N [times] */
+        /* repeat [for] N [times]
+         *
+         * LE « FOR » EST FACULTATIF CHEZ HYPERCARD, et il manquait ici. La
+         * grammaire d'origine est « repeat [for] <nombre> [times] » : les
+         * deux mots encadrants s'omettent séparément, si bien que
+         * « repeat 3 », « repeat 3 times », « repeat for 3 » et
+         * « repeat for 3 times » sont la même boucle. Nous n'en acceptions
+         * que les deux premières.
+         *
+         * « for » n'arrive ici que s'il n'est PAS suivi de « each » — la
+         * branche du dessus a déjà pris « repeat for each line L in … ». Le
+         * mot ne peut donc rien désigner d'autre, et le consommer ne ferme
+         * aucune porte.
+         *
+         * Ce que ça donnait : « instruction attendue » à la colonne du
+         * nombre, puis « texte inattendu en fin de ligne », puis ZÉRO tour
+         * de boucle. Un script d'époque parfaitement valide ne tournait pas,
+         * et les deux messages parlaient de la ligne sans nommer le mot qui
+         * gênait. */
+        if (mot_ici_b(a, "for")) hct_expr_avance(a);
         n->op = "times";
         hct_ajoute_fils(a->reserve, n, hct_expression(a));
         if (mot_ici_b(a, "times") || mot_ici_b(a, "time")) hct_expr_avance(a);
     } else {
         n->op = "forever";       /* « repeat » nu : boucle sans fin */
+    }
+
+    /* L'EN-TÊTE DOIT FINIR AVEC SA LIGNE, comme toute autre instruction.
+     *
+     * corps() pose ce contrôle après CHAQUE instruction — mais pour un
+     * repeat, « l'instruction » englobe le corps et le « end repeat », si
+     * bien que le contrôle tombe après le « end » et que ce qui traînait sur
+     * la ligne d'en-tête a déjà été avalé par le corps. Le mot en trop
+     * devenait alors la PREMIÈRE INSTRUCTION DE LA BOUCLE, réexécutée à
+     * chaque tour :
+     *
+     *     repeat with i = 1 to 10 step 3      -- « step » n'est pas d'HyperTalk
+     *     -> « personne ne répond à "step 3" », dix fois, et dix tours
+     *
+     * Dix messages qui parlent d'un envoi imaginaire, là où un seul devait
+     * dire que la ligne d'en-tête n'est pas correcte. On signale ici, et on
+     * saute jusqu'au bout de la ligne — exactement ce que fait corps() — de
+     * sorte que le corps commence là où il doit.
+     *
+     * MAIS PAS DEUX PLAINTES POUR UNE SEULE FAUTE. Quand l'en-tête a déjà
+     * échoué, ce qui reste sur la ligne est le RESTE de cette faute-là, pas
+     * une seconde :
+     *
+     *     repeat with i = 1 up to 5           -- « up to » n'est pas d'HyperTalk
+     *     -> « to » attendu                    (la vraie cause)
+     *     -> texte inattendu en fin de ligne   (la même, redite)
+     *
+     * L'auteur sait déjà quoi corriger après la première ligne ; la seconde
+     * ne fait que désigner le même mot sous un autre nom. On ne la dit donc
+     * que si l'en-tête s'est lu SANS faute — on saute quand même jusqu'au
+     * bout de la ligne, sinon le mot en trop redeviendrait la première
+     * instruction du corps, ce qu'on vient justement d'empêcher. */
+    if (!fin_instruction(hct_expr_jeton(a))) {
+        if (a->nerreurs == fautes_avant)
+            hct_ajoute_fils(a->reserve, n,
+                            hct_expr_faute(a, "texte inattendu en fin de ligne"));
+        while (!fin_instruction(hct_expr_jeton(a)))
+            hct_expr_avance(a);
     }
 
     static const char *FINS[] = { "end", NULL };

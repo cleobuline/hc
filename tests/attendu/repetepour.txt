@@ -1,0 +1,52 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les quatre ecritures du comptage donnent la MEME boucle ==
+   repeat 3
+      3
+   repeat 3 times
+      3
+   repeat for 3
+      3
+   repeat for 3 times
+      3
+   repeat for 1+2 times
+      3
+
+== 2. les autres formes ne bougent pas ==
+   repeat nu + exit repeat
+      3
+   repeat forever
+      3
+   repeat while
+      3
+   repeat until
+      3
+   repeat with ... to
+      6
+   repeat with ... down to
+      6
+   repeat with ... by
+      4
+
+== 3. « for each » se reconnait toujours au deuxieme mot ==
+   repeat for each line
+      abg
+   repeat for each item
+      abc
+
+== 4. du texte en trop sur l'en-tete : UN message, pas un par tour ==
+   step, qui n'est pas d'HyperTalk
+      [ERR]    !! script, ligne 3 colonne 27 : texte inattendu en fin de ligne
+      [ERR]         repeat with i = 1 to 10 step 3
+      10
+   un mot quelconque
+      [ERR]    !! script, ligne 2 colonne 12 : texte inattendu en fin de ligne
+      [ERR]         repeat 2 blabla
+      tour
+      tour
+      fini
+
+== 5. une seule faute, un seul message ==
+   up to : « to » attendu, et rien de plus
+      [ERR]    !! script, ligne 2 colonne 21 : « to » attendu
+      [ERR]         repeat with i = 1 up to 5
+      [ERR]    !! « to » attendu (v3, ligne 2 de button "B".essaie)
