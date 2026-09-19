@@ -230,10 +230,11 @@ static int lit_prop_pont(void *d, void *objet, const char *prop, HctValeur *out)
          ? x->hote.lit_prop(x->hote.donnees, objet, prop, out) : 0;
 }
 
-static int recours_pont(void *d, const HctNoeud *n, HctValeur *out)
+static int recours_pont(void *d, const HctNoeud *n, HctValeur *out,
+                        HctContexte *ctx)
 {
     HctExec *x = (HctExec *)d;
-    return x->hote.recours ? x->hote.recours(x->hote.donnees, n, out) : 0;
+    return x->hote.recours ? x->hote.recours(x->hote.donnees, n, out, ctx) : 0;
 }
 
 static int commande_pont(void *d, const HctNoeud *n, HctContexte *ctx)

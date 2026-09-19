@@ -49,8 +49,31 @@ typedef struct {
      * évaluateur : c'est ce que fait HC pendant la transition, où hc_core.c
      * garde la résolution d'objets pendant que la v3 prend le reste.
      *
+     * LE CONTEXTE VIENT AVEC, comme pour `commande` juste en dessous.
+     *
+     * Il n'y était pas, et `commande` l'a toujours eu — le port des
+     * instructions passait le contexte, celui des expressions non, sans
+     * raison qu'on ait su retrouver. L'hôte ne pouvait donc rien ÉVALUER
+     * pendant un recours : il lisait les désignateurs littéraux dans les
+     * jetons et s'arrêtait là.
+     *
+     * Ce que ça coûtait, mesuré :
+     *
+     *     put the selectedButton of family 1    -> répond
+     *     put the selectedButton of family n    -> écho + faute de syntaxe
+     *     put the selectedButton of family (1+0) -> erreur d'analyse
+     *
+     * et la même limite, écrite noir sur blanc dans trois commentaires de
+     * hc_core.c, pour les menus et leurs articles. Une famille ou un menu
+     * n'étant pas un Object, hct_resout ne peut rien pour eux : le recours
+     * est leur SEUL chemin, et il était aveugle aux variables.
+     *
+     * L'hôte peut passer NULL s'il n'en a pas — l'exécuteur, lui, donne
+     * toujours le sien.
+     *
      * Rend 0 si l'hôte ne sait pas non plus. */
-    int (*recours)(void *d, const HctNoeud *n, HctValeur *out);
+    int (*recours)(void *d, const HctNoeud *n, HctValeur *out,
+                   HctContexte *ctx);
 
     /* Recours pour les COMMANDES, symétrique du précédent.
      *

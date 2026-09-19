@@ -584,6 +584,21 @@ static const struct { const char *mot; HctTypeObjet type; } TYPES_OBJ[] = {
  *
  * Les autres types n'ont pas besoin de ce garde : personne n'appelle sa
  * fonction « card » ou « background ». « menu », si. */
+/* Mots qui ne peuvent pas être un désignateur : ils appartiennent à la
+ * commande ou à l'expression qui entoure la référence. Sans cette liste,
+ * « set rect of card c to X » verrait « to » pris pour le nom de la carte.
+ *
+ * Elle est remontée ici parce que designateur_suit, juste en dessous, la
+ * consulte aussi : c'est elle qui empêche « put menu into x » de devenir un
+ * menu nommé « into ». Une seule liste pour les deux, sans quoi l'une des
+ * deux dériverait. */
+static const char *STRUCTURELS[] = {
+    "of", "in", "to", "into", "from", "before", "after", "by", "with", "at",
+    "then", "else", "end", "is", "and", "or", "not", "contains", "while",
+    "until", "down", "times", "time", "for", "as", "using", "the", "there",
+    "div", "mod", "up", "repeat", NULL
+};
+
 static int designateur_suit(HctAnalyseur *a)
 {
     int k = a->i + 1;
@@ -593,13 +608,40 @@ static int designateur_suit(HctAnalyseur *a)
     if (mot_est(j, "id")) return 1;
     /* Une parenthèse DÉTACHÉE désigne encore : « menu (i) ». Collée au mot,
      * c'est un appel de fonction — le cas de menuItems() —, et seul l'écart
-     * dans le source les distingue.
-     *
-     * On s'arrête là. « menu maVariable » serait légal en HyperTalk, mais
-     * l'accepter ferait de « put menu into x » un menu nommé « into » : le
-     * mot suivant est un identifiant comme un autre. Entre reconnaître une
-     * forme rare et casser une forme courante, le choix est vite fait. */
+     * dans le source les distingue. */
     if (op_est(j, "(")) return j->deb != ici(a)->deb + ici(a)->len;
+
+    /* UN MOT NU DÉSIGNE AUSSI, S'IL N'EST PAS STRUCTUREL.
+     *
+     * Ce commentaire disait le contraire : « on s'arrête là ; "menu
+     * maVariable" serait légal en HyperTalk, mais l'accepter ferait de
+     * "put menu into x" un menu nommé into ». L'objection était juste et le
+     * remède trop large — il suffit d'exclure les mots qui STRUCTURENT une
+     * phrase, ce que la liste STRUCTURELS fait déjà pour les autres types
+     * d'objets depuis toujours.
+     *
+     * Les deux formes qu'il fallait protéger le sont par cette liste :
+     *
+     *     put menu into x            « into » est structurel   -> pas un menu
+     *     the family of button "X"   « of »   est structurel   -> pas une famille
+     *
+     * et la seconde comptait double, « family » étant aussi un nom de
+     * propriété : sans ce garde, « family of » se lirait comme une famille
+     * désignée par une variable nommée « of ».
+     *
+     * Ce qui s'ouvre, en revanche, est ce que la référence HyperTalk promet
+     * — un intExpr, une EXPRESSION entière :
+     *
+     *     put 6 into n
+     *     put the selectedButton of family n
+     *
+     * qui rendait jusqu'ici un ÉCHO suivi d'une faute de syntaxe. Même chose
+     * pour « the name of menu i ». */
+    if (j->genre == HCT_IDENT) {
+        for (int s = 0; STRUCTURELS[s]; s++)
+            if (mot_est(j, STRUCTURELS[s])) return 0;
+        return 1;
+    }
     return 0;
 }
 
@@ -643,16 +685,6 @@ static int portee_ici(HctAnalyseur *a, HctPortee *p)
     *p = HCT_PORTEE_AUCUNE;
     return 0;
 }
-
-/* Mots qui ne peuvent pas être un désignateur : ils appartiennent à la
- * commande ou à l'expression qui entoure la référence. Sans cette liste,
- * « set rect of card c to X » verrait « to » pris pour le nom de la carte. */
-static const char *STRUCTURELS[] = {
-    "of", "in", "to", "into", "from", "before", "after", "by", "with", "at",
-    "then", "else", "end", "is", "and", "or", "not", "contains", "while",
-    "until", "down", "times", "time", "for", "as", "using", "the", "there",
-    "div", "mod", "up", "repeat", NULL
-};
 
 static int mot_structurel(HctAnalyseur *a)
 {

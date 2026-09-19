@@ -1,0 +1,45 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   mise en place : Oui et Non en famille 6, Non allume
+      pret
+
+== 1. les quatre ecritures du designateur donnent la meme chose ==
+   un chiffre
+      card button "Non"
+   une variable
+      card button "Non"
+   une parenthese
+      card button "Non"
+   un calcul en variable
+      card button "Non"
+   une variable TEXTE
+      card button "Non"
+
+== 2. la portee explicite marche avec un designateur calcule ==
+   card family n
+      card button "Non"
+   bg family n
+      bkgnd button "Bleu"
+
+== 3. une famille sans choix, une famille hors bornes ==
+   famille legale, personne d'allume
+      []
+   hors bornes, par variable
+      [ERR]    !! objet introuvable (colonne 2) dans «  family n » — objet : button "B"
+      [ERR]    !! objet introuvable (colonne 2) dans «  family n » — objet : button "B"
+      [ERR]    !! objet introuvable (v3, ligne 3 de button "B".essaie)
+
+== 4. LES DEUX PIEGES QUE LA LISTE DOIT ARRETER ==
+   the family of button, la propriete
+      6
+   put menu into x, la variable
+      une valeur
+
+== 5. les MENUS, que la meme correction repare ==
+   menu par chiffre
+      M
+   menu par variable
+      M
+   menu par calcul
+      M
+   there is a menu
+      true

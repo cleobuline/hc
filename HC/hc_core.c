@@ -8246,7 +8246,8 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
 /* Définis plus bas, avec les autres commandes de menu ; v3_recours en a
  * besoin pour « there is a menu "X" ». */
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
-static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen);
+static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
+                                    char *out, int outlen);
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
 static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out);
@@ -8465,7 +8466,8 @@ static int v3_cible_calculable(const HctNoeud *t)
     }
 }
 
-static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
+static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
+                      HctContexte *ctx)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
      * entière. C'est par ici que term_value et call_function, le vieux
@@ -8505,10 +8507,10 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 
         int existe;
         if (n->fils[0]->typeobj == HCT_OBJ_MENU)
-            existe = v3_menu_index(NULL, n->fils[0]) >= 0;
+            existe = v3_menu_index(ctx, n->fils[0]) >= 0;
         else {
             int im = -1;
-            existe = v3_article_index(NULL, n->fils[0], &im) >= 0;
+            existe = v3_article_index(ctx, n->fils[0], &im) >= 0;
         }
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
@@ -8519,9 +8521,10 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * menuItem 2 of menu "X" », « the name of menu 1 ». Comme pour
      * « there is a menu », resout ne peut rien pour elles.
      *
-     * Sans contexte — v3_recours n'en reçoit pas —, les deux résolveurs
-     * lisent le désignateur littéral dans le jeton, ce qui couvre la forme
-     * qu'emploient les piles. */
+     * Le contexte VIENT MAINTENANT avec le recours, si bien que les deux
+     * résolveurs évaluent leur désignateur : « menu 1 » comme « menu i ».
+     * Ils gardent leur repli littéral pour un appelant qui n'en aurait
+     * pas. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
         n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
@@ -8529,7 +8532,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
          n->fils[1]->typeobj == HCT_OBJ_MENUITEM)) {
         char prop[64];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
-        if (v3_menu_prop_lit(NULL, n->fils[1], prop, out)) return 1;
+        if (v3_menu_prop_lit(ctx, n->fils[1], prop, out)) return 1;
     }
 
     /* « the selectedButton of [card|bg] family <n> ». Même forme que les
@@ -8544,7 +8547,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (ci_equal(prop, "selectedbutton")) {
             char nom[HC_NOM_MAX];
-            if (v3_famille_bouton_choisi(n->fils[1], nom, sizeof nom)) {
+            if (v3_famille_bouton_choisi(ctx, n->fils[1], nom, sizeof nom)) {
                 *out = hct_val_texte(nom);
                 { g_v1_porte = sauve_porte; } return 1;
             }
@@ -13452,19 +13455,34 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
  * script n'a pas à distinguer « le groupe est vide » de « ce numéro n'est pas
  * un groupe ». Hors de ces bornes — « family 99 » — on ne sert pas, et
  * l'appelant lève son erreur : là, la question n'a effectivement pas de sens. */
-static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen)
+static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
+                                    char *out, int outlen)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_FAMILY) return 0;
     if (n->nfils < 1 || !n->fils[0]) return 0;
 
-    /* Comme pour les menus : v3_recours ne reçoit pas de contexte, donc on ne
-     * lit qu'un désignateur LITTÉRAL. « family 6 » est la forme qu'emploient
-     * les piles ; « family n » repartira par le chemin ordinaire plutôt que
-     * de rendre une réponse fausse. */
-    HctGenreNoeud g = n->fils[0]->genre;
-    if (g != HCTN_NOMBRE && g != HCTN_CHAINE) return 0;
+    /* LE DÉSIGNATEUR EST ÉVALUÉ QUAND ON A UN CONTEXTE.
+     *
+     * Il ne l'était pas : on lisait le jeton littéral, et « family 6 »
+     * marchait quand « family n » ou « family (1+0) » ne marchaient pas —
+     * le premier rendait un ÉCHO suivi d'une faute de syntaxe, le second une
+     * erreur d'analyse. La référence HyperTalk donne pourtant un intExpr :
+     * une EXPRESSION entière, pas un chiffre écrit à la main.
+     *
+     * Le commentaire disait « v3_recours ne reçoit pas de contexte » — c'était
+     * vrai, et c'était la vraie cause. Elle est corrigée à sa source : le
+     * rappel `recours` porte maintenant le contexte, comme `commande` l'a
+     * toujours porté. Le repli littéral reste pour un appelant qui n'en a
+     * pas. */
     char b[32];
-    hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    if (ctx) {
+        v3_val_texte(ctx, n->fils[0], b, sizeof b);
+        if (ctx->erreur) return 0;
+    } else {
+        HctGenreNoeud g = n->fils[0]->genre;
+        if (g != HCTN_NOMBRE && g != HCTN_CHAINE) return 0;
+        hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    }
     int fam = hc_entier(b, 0, 15, -1);
     if (fam < 0) return 0;              /* hors bornes : pas notre affaire */
 

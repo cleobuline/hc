@@ -391,7 +391,7 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
 
         HctValeur vr;
         if (ctx->hote.recours &&
-            ctx->hote.recours(ctx->hote.donnees, n, &vr)) return vr;
+            ctx->hote.recours(ctx->hote.donnees, n, &vr, ctx)) return vr;
         return hct_val_bool(0);
     }
 
@@ -756,7 +756,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
      *
      * L'hôte reçoit le nœud et retrouve le texte source exact. */
     if (!fait && ctx->hote.recours)
-        fait = ctx->hote.recours(ctx->hote.donnees, n, &r);
+        fait = ctx->hote.recours(ctx->hote.donnees, n, &r, ctx);
 
     if (!fait) {
         /* LE NOM, PAS SEULEMENT LA CATÉGORIE.
@@ -951,7 +951,7 @@ static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
     }
 
     if (ctx->hote.recours &&
-        ctx->hote.recours(ctx->hote.donnees, n, &v)) return v;
+        ctx->hote.recours(ctx->hote.donnees, n, &v, ctx)) return v;
 
     if (!ctx->hote.resout || !ctx->hote.lit_objet) {
         hct_ctx_faute(ctx, n, "aucun hôte pour résoudre cet objet");
@@ -1085,7 +1085,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
             sur->typeobj != HCT_OBJ_ME && sur->typeobj != HCT_OBJ_TARGET) {
             HctValeur vr;
             if (ctx->hote.recours &&
-                ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
+                ctx->hote.recours(ctx->hote.donnees, n, &vr, ctx)) {
                 free(nom);
                 return vr;
             }
@@ -1129,7 +1129,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
 
             HctValeur vr;
             if (ctx->hote.recours &&
-                ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
+                ctx->hote.recours(ctx->hote.donnees, n, &vr, ctx)) {
                 free(nom);
                 return vr;
             }
@@ -1192,7 +1192,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
         }
 
         if (ctx->hote.recours &&
-            ctx->hote.recours(ctx->hote.donnees, n, &vr)) {
+            ctx->hote.recours(ctx->hote.donnees, n, &vr, ctx)) {
             free(nom);
             return vr;
         }
