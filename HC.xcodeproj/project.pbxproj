@@ -78,7 +78,7 @@
 		4D482C5A303BA13B0071BC2B /* hct_verif.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_verif.h; sourceTree = "<group>"; };
 		4D482C5E303C81270071BC2B /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
-		4D9E256F3031F6D000C2D5EE /* HCdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCdocument.h; sourceTree = "<group>"; };
+		4D9E256F3031F6D000C2D5EE /* Hcdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Hcdocument.h; sourceTree = "<group>"; };
 		4DA09F853043C745003F1A35 /* hc_icons.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_icons.c; sourceTree = "<group>"; };
 		4DA09F8C3043CC60003F1A35 /* Hciconedit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hciconedit.m; sourceTree = "<group>"; };
 		4DA09F8F3043CCA2003F1A35 /* Hciconedit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Hciconedit.h; sourceTree = "<group>"; };
@@ -221,7 +221,7 @@
 				4DF5FB4E3014BE74006AE901 /* AppDelegate.m */,
 				4D482C26303899710071BC2B /* AppIcon.icns */,
 				4D482C27303899710071BC2B /* stack.icns */,
-				4D9E256F3031F6D000C2D5EE /* HCdocument.h */,
+				4D9E256F3031F6D000C2D5EE /* Hcdocument.h */,
 				4D9E256C3031EB1800C2D5EE /* Hcdocument.m */,
 				4DF5FB77301CC7F6006AE901 /* HCglobals.h */,
 				4DF5FB603014C004006AE901 /* hc_file.h */,
