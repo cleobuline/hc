@@ -924,9 +924,31 @@ static void notify_field(Object *field)
     if (g_host && g_host->field_changed) g_host->field_changed(field);
 }
 
-/* Propriété globale lue chez l'hôte. NULL = nom inconnu. */
+/* Propriété globale lue chez l'hôte. NULL = nom inconnu.
+ *
+ * « cmdKey » EST « commandKey », ET PERSONNE NE LE SAVAIT.
+ *
+ * HyperTalk accepte les deux orthographes pour la même touche, et la table
+ * V3_GLOBALES_HOTE les annonce toutes les deux. Mais un hôte implémente ce
+ * qu'il lit dans une documentation, pas ce qu'une table du noyau promet : ni
+ * l'hôte Cocoa ni l'hôte console n'avaient de branche « cmdKey ». Le noyau
+ * transmettait donc fidèlement un nom que personne ne servait, et
+ * « if the cmdKey is down » — une ligne ordinaire dans une pile de 1990 —
+ * répondait « propriété ou fonction inconnue » au lieu de « up ».
+ *
+ * La traduction se fait ICI plutôt que dans chaque hôte, et c'est le point :
+ * un synonyme d'orthographe n'est pas une connaissance de l'hôte. Réparé chez
+ * l'un, il serait resté cassé chez l'autre — c'est exactement la faute qu'on
+ * répète depuis des semaines, un chemin corrigé et son jumeau oublié. Un seul
+ * passage obligé, et les deux hôtes guérissent ensemble, comme guérira celui
+ * qu'on n'a pas encore écrit.
+ *
+ * Les couleurs, elles, ne sont pas ici : leurs cinq synonymes sont résolus
+ * par une table de l'hôte qui sert la lecture ET l'écriture. Les y laisser
+ * évite de partager une même liste entre deux fichiers. */
 static const char *host_global(const char *name)
 {
+    if (name && ci_equal(name, "cmdKey")) name = "commandKey";
     if (g_host && g_host->global_get) return g_host->global_get(name);
     return NULL;
 }
@@ -2358,15 +2380,55 @@ void hc_set_stack_path(Object *stack, const char *path)
  * Famille 0 n'exclut rien — c'est l'absence de famille, pas la famille
  * numéro zéro. Éteindre n'exclut rien non plus : décocher le dernier bouton
  * d'un groupe laisse le groupe vide, ce qui est un état légitime. */
+/* Éteint l'entrée par carte d'un bouton sur TOUTES les cartes d'un fond.
+ *
+ * Voir eteint_la_famille : un bouton allumé PARTOUT ne peut pas laisser un
+ * frère allumé sur une seule carte. */
+static void eteint_partout_dans_le_fond(Object *fond, int button_id)
+{
+    Object *pile = fond ? fond->owner : NULL;
+    if (!pile) return;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *c = pile->parts[i];
+        if (c->type == OBJ_CARD && c->bg == fond)
+            hc_set_hilite_raw(c, button_id, 0);
+    }
+}
+
+/* LA PORTÉE DE L'EXTINCTION SUIT CELLE DE L'ALLUMAGE.
+ *
+ * Un bouton de fond a deux façons de s'allumer, et c'est tout le problème :
+ * sharedHilite VRAI l'allume sur TOUTES les cartes du fond à la fois,
+ * sharedHilite FAUX lui donne un état par carte, rangé dans la carte.
+ *
+ * L'extinction, elle, ne connaissait qu'une carte. Mesuré, avec R1 partagé et
+ * R2 par carte, tous deux de famille 3 :
+ *
+ *     R2 allumé sur la carte B
+ *     on se place sur A, on allume R1
+ *     -> sur A : R1=1 R2=0        (juste)
+ *     -> sur B : R1=1 R2=1        (DEUX de la famille 3 allumés)
+ *
+ * R1 s'allume partout puisqu'il est partagé ; R2 n'est éteint que sur la
+ * carte où l'on se trouve. La famille est violée sur toutes les autres, et
+ * l'utilisateur ne le voit qu'en y allant.
+ *
+ * LA RÈGLE : si le bouton qu'on allume s'allume PARTOUT, ses frères à état
+ * par carte doivent s'éteindre partout aussi. S'il ne s'allume que sur une
+ * carte, éteindre sur cette carte suffit — et c'est le cas courant, qui ne
+ * coûte rien de plus qu'avant. */
 static void eteint_la_famille(Object *btn, Object *card)
 {
     if (!btn || btn->family <= 0 || !btn->owner) return;
     Object *couche = btn->owner;
+    /* L'allumage de btn porte-t-il sur toutes les cartes du fond ? */
+    int btn_partout = !hilite_par_carte(btn) && couche->type == OBJ_BACKGROUND;
     for (int i = 0; i < couche->nparts; i++) {
         Object *f = couche->parts[i];
         if (f == btn || f->type != OBJ_BUTTON) continue;
         if (f->family != btn->family) continue;
         if (!hilite_par_carte(f)) f->hilite = 0;
+        else if (btn_partout)     eteint_partout_dans_le_fond(couche, f->id);
         else hc_set_hilite_raw(card ? card : g_current_card, f->id, 0);
     }
 }
@@ -2388,7 +2450,35 @@ int hc_set_family(Object *btn, int famille)
     if (!btn || btn->type != OBJ_BUTTON) return 0;
     if (famille < 0 || famille > 15) return 0;
     btn->family = famille;
-    if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+    if (famille <= 0) return 1;
+
+    /* ON RÉCONCILIE SUR CHAQUE CARTE OÙ CE BOUTON EST ALLUMÉ.
+     *
+     * Cette ligne ne regardait que la carte courante :
+     *
+     *     if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+     *
+     * Or un bouton de FOND à sharedHilite faux a un état PAR CARTE : il peut
+     * être éteint ici et allumé sur cinq autres. Lui donner une famille le
+     * faisait alors entrer dans un groupe déjà pourvu, sur chacune de ces
+     * cinq cartes, sans que rien ne soit éteint — l'état à deux allumés
+     * qu'aucun clic ne peut produire, et qui n'apparaît qu'en allant voir.
+     *
+     * Le parcours ne coûte que pour ce cas-là : un bouton de carte, ou un
+     * bouton de fond partagé, n'a qu'un seul état et sort par la branche du
+     * dessous. */
+    if (hilite_par_carte(btn)) {
+        Object *fond = btn->owner;
+        Object *pile = fond ? fond->owner : NULL;
+        for (int i = 0; pile && i < pile->nparts; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD || c->bg != fond) continue;
+            if (hc_hilite_of(btn, c)) eteint_la_famille(btn, c);
+        }
+        return 1;
+    }
+
+    if (hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
     return 1;
 }
 
@@ -2418,42 +2508,36 @@ static int est_case(Object *o)
            (strcmp(o->style, "checkBox") == 0 || strcmp(o->style, "checkbox") == 0);
 }
 
-/* Éteint tous les autres radios de la carte ET de son fond. Un groupe de
- * radios se répartit souvent entre les deux couches. */
-/* DEUX MÉCANISMES D'EXCLUSION, ET COMMENT ILS SE PARTAGENT LE TRAVAIL.
+/* UN SEUL MÉCANISME D'EXCLUSION : LA FAMILLE. FAMILLE 0 NE GROUPE RIEN.
  *
- * Celui-ci existait avant la famille : au clic, un bouton de style radio
- * éteint tous les autres boutons de style radio de la carte ET du fond.
- * L'arrivée de « the family of » en crée un second, par NUMÉRO et dans la
- * seule couche. Laisser les deux courir côte à côte, c'était deux réponses à
- * la même question — et le clic aurait éteint ce que le script gardait.
+ * Il y en avait deux. Le premier, antérieur aux familles, éteignait AU CLIC
+ * tous les autres boutons de style radio de la carte et du fond — une
+ * commodité que nous avions ajoutée, et qu'HyperCard n'a jamais eue. Le
+ * second, par numéro de famille, est celui d'HyperCard.
  *
- * LE PARTAGE. Dès qu'un bouton a une famille (1 à 15), c'est elle qui décide,
- * ici comme dans hc_set_hilite : même règle, même portée, les deux chemins ne
- * peuvent plus diverger. Sans famille — c'est-à-dire pour toutes les piles
- * écrites jusqu'ici — l'ancienne règle s'applique telle quelle, à ceci près
- * qu'elle ne touche plus les boutons QUI ONT une famille : ceux-là
- * appartiennent à un groupe, pas au vivier des non-groupés.
+ * DEUX MÉCANISMES, C'ÉTAIT DEUX RÉPONSES À LA MÊME QUESTION, et elles se
+ * contredisaient. Mesuré, sur deux radios SANS famille :
  *
- * Autrement dit, une pile existante se comporte exactement comme avant, et
- * poser une famille sur un bouton le sort du vivier commun. C'est la seule
- * lecture qui n'oblige personne à modifier ses piles. */
-static void radio_exclusif(Object *carte, Object *garde)
-{
-    if (!carte) return;
-
-    if (garde && garde->family > 0) { eteint_la_famille(garde, carte); return; }
-
-    for (int i = 0; i < carte->nparts; i++)
-        if (carte->parts[i] != garde && est_radio(carte->parts[i]) &&
-            carte->parts[i]->family == 0)
-            hc_set_hilite(carte->parts[i], carte, 0);
-    if (carte->bg)
-        for (int i = 0; i < carte->bg->nparts; i++)
-            if (carte->bg->parts[i] != garde && est_radio(carte->bg->parts[i]) &&
-                carte->bg->parts[i]->family == 0)
-                hc_set_hilite(carte->bg->parts[i], carte, 0);
-}
+ *     par SCRIPT (set the hilite) :  R1=true   R2=true
+ *     par CLIC                    :  R1=false  R2=true
+ *
+ * Le script laissait les deux allumés, le clic n'en gardait qu'un. Le même
+ * état de pile selon la porte empruntée.
+ *
+ * LE CHOIX EST CELUI D'HYPERCARD, et il est de l'auteure du projet :
+ * famille 0 est l'ABSENCE de famille, pas un groupe. C'est précisément
+ * pourquoi « the family of » a été inventé en 2.0 — avant elle, un script
+ * devait éteindre ses voisins lui-même. La commodité du clic disparaît donc,
+ * et avec elle la divergence : il ne reste qu'une règle, dans hc_set_hilite,
+ * que le clic et le script traversent l'un comme l'autre. Ils ne peuvent
+ * plus diverger parce qu'il n'y a plus qu'un chemin.
+ *
+ * CE QUE ÇA CHANGE POUR LES PILES EXISTANTES, et il faut le dire net : des
+ * boutons radio sans famille cessent de s'éteindre mutuellement. Il faut
+ * leur donner une famille — par le panneau Infos bouton, ou par
+ * « set the family of button "X" to 1 ». C'est le prix du choix, il a été
+ * pesé, et il rend la pile conforme à ce qu'un HyperCard d'époque en aurait
+ * fait. */
 
 /* LA FIN AUTOMATIQUE D'UN CLIC, ET SUR QUELLE CARTE ELLE S'APPLIQUE.
  *
@@ -2490,7 +2574,10 @@ void hc_fin_de_clic(Object *btn, Object *carte_cliquee)
     if (!carte && hilite_par_carte(btn)) return;
 
     if (est_case(btn))        hc_set_hilite(btn, carte, !hc_hilite_of(btn, carte));
-    else if (est_radio(btn)) { hc_set_hilite(btn, carte, 1); radio_exclusif(carte, btn); }
+    /* Un seul appel : hc_set_hilite éteint déjà la famille. Il y avait ici un
+     * second appel, radio_exclusif, qui portait l'ancienne règle sans
+     * famille — c'est lui qui faisait diverger le clic et le script. */
+    else if (est_radio(btn)) hc_set_hilite(btn, carte, 1);
     else if (btn->autohilite) hc_set_hilite(btn, carte, 0);
 }
 
@@ -3564,6 +3651,29 @@ static Object *resolve(const char *ref)
 
     profondeur++;
     Object *portee = resolve(queue);
+
+    /* LA PORTÉE N'EXISTE PAS : ON S'ARRÊTE, ON NE RETOMBE PAS SUR LA CARTE
+     * COURANTE.
+     *
+     * C'est le jumeau, dans l'ancien moteur, du défaut corrigé dans
+     * hct_resout_corps. La dernière ligne de cette fonction disait
+     * « return r ? r : resolve_local(ref) », et resolve_local IGNORE le
+     * « of X » : elle lit la tête et la cherche là où l'on se trouve. Donc
+     * « field "X" of card "Absente" », quand cette carte n'existe pas,
+     * rendait le champ « X » DE LA CARTE COURANTE.
+     *
+     * La v3 étant corrigée la première, la lecture continuait pourtant de
+     * mentir : l'échec de la v3 passe le relais au recours, et le recours
+     * tombait ici. Une seule des deux portes réparée ne répare rien — c'est
+     * le motif qu'on traque depuis des semaines, et il a mordu dans l'heure
+     * même où on le nommait.
+     *
+     * Ce garde-fou ne vise QUE la portée introuvable. Les sorties anticipées
+     * au-dessus — pas de « of », découpage impossible, profondeur épuisée —
+     * gardent leur repli : là, la référence n'a pas été comprise comme ayant
+     * une portée, et resolve_local reste la lecture honnête de ce qu'on a. */
+    if (!portee) { profondeur--; return NULL; }
+
     Object *r = NULL;
     if (portee) {
         /* La portée est une CARTE, ou une pile — auquel cas on se place sur sa
@@ -3591,7 +3701,21 @@ static Object *resolve(const char *ref)
         }
     }
     profondeur--;
-    return r ? r : resolve_local(ref);
+
+    /* ET SI L'OBJET N'EST PAS DANS CETTE PORTÉE-LÀ, IL N'EST PAS AILLEURS.
+     *
+     * Le repli « r ? r : resolve_local(ref) » avait le même vice que le cas
+     * ci-dessus, d'un cran plus fin : la carte existe, mais le champ n'y est
+     * pas — et resolve_local, qui ignore le « of X », allait le chercher sur
+     * la carte COURANTE. Mesuré, avec un champ « X » sur la carte Une
+     * seulement :
+     *
+     *     put field "X" of card "Deux"   -> SUR UNE
+     *
+     * Le script nomme une carte et obtient le contenu d'une autre. Une
+     * portée qu'on a su lire et où l'on a su entrer est une portée qu'il
+     * faut respecter : l'échec dedans est un échec tout court. */
+    return r;
 }
 
 static Object *resolve_local(const char *ref)
@@ -6056,9 +6180,26 @@ static int call_function_body(const char *t, char *out, int outlen)
      * et il y a trois lignes à changer. */
     if (ci_equal(name, "length")) { snprintf(out, outlen, "%d", hct_utf8_compte(vals[0])); return 1; }
     if (ci_equal(name, "abs"))    { put_num(a < 0 ? -a : a, out, outlen); return 1; }
-    if (ci_equal(name, "trunc"))  { put_num((double)(long long)a, out, outlen); return 1; }
-    if (ci_equal(name, "round"))  { put_num(a < 0 ? -(double)(long long)(-a + 0.5)
-                                                  :  (double)(long long)( a + 0.5), out, outlen); return 1; }
+    /* trunc ET round PASSENT PAR LA BIBLIOTHEQUE, PAS PAR UN CAST.
+     *
+     * « (double)(long long)a » est un comportement INDEFINI dès que `a` sort
+     * de la plage d'un long long — et as_num accepte « 1e300 » sans broncher.
+     * Le chemin v3 a été corrigé en son temps ; ces trois-ci, dans l'ancien
+     * moteur, étaient restés. Signalé par un audit extérieur.
+     *
+     * Je n'ai PAS su les atteindre : la v3 sert trunc, round, div, mod et
+     * « is an integer » avant que l'ancien moteur n'en voie la couleur, et
+     * quatre sondes n'ont pas trouvé d'entrée. On corrige quand même — une
+     * conversion sûre ne coûte rien, et « je n'ai pas su l'atteindre » n'est
+     * pas « c'est inatteignable ».
+     *
+     * trunc(3) tronque vers zéro, ce que faisait le cast ; le round
+     * d'HyperTalk s'écarte de round(3) pour les négatifs à demi — il arrondit
+     * -2.5 vers zéro, soit -2, quand round() rend -3 —, donc on garde la
+     * formule d'origine et on remplace seulement la conversion. */
+    if (ci_equal(name, "trunc"))  { put_num(trunc(a), out, outlen); return 1; }
+    if (ci_equal(name, "round"))  { put_num(a < 0 ? -trunc(-a + 0.5)
+                                                  :  trunc( a + 0.5), out, outlen); return 1; }
     if (ci_equal(name, "sqrt"))   { put_num(a >= 0 ? sqrt(a) : 0, out, outlen); return 1; }
     if (ci_equal(name, "exp"))    { put_num(exp(a), out, outlen); return 1; }
     if (ci_equal(name, "ln"))     { put_num(a > 0 ? log(a) : 0, out, outlen); return 1; }
@@ -7078,8 +7219,10 @@ static void parse_product(const char **p, char *out, int outlen)
         as_num(out, &a); as_num(rhs, &b);
         if      (op == '*') r = a * b;
         else if (op == '/') r = (b != 0) ? a / b : 0;
-        else if (op == 'd') r = (b != 0) ? (double)(long long)(a / b) : 0;
-        else                r = (b != 0) ? a - b * (double)(long long)(a / b) : 0;
+        /* Même raison que pour trunc plus haut : le cast est indéfini hors
+         * plage. « div » tronque vers zéro et « mod » en découle. */
+        else if (op == 'd') r = (b != 0) ? trunc(a / b) : 0;
+        else                r = (b != 0) ? a - b * trunc(a / b) : 0;
         put_num(r, out, outlen);
     }
     ARENA_FREE;
@@ -7328,7 +7471,14 @@ static int is_int_str(const char *s)
 {
     double d;
     if (!as_num(s, &d)) return 0;
-    return d == (double)(long long)d;
+    /* « d == (double)(long long)d » était indéfini dès que d sortait de la
+     * plage d'un long long, et as_num accepte « 1e300 ». trunc() répond à la
+     * même question — « ce nombre a-t-il une partie fractionnaire ? » — sans
+     * jamais quitter le domaine des flottants. Un infini n'est pas un entier,
+     * et un NaN n'est égal à rien, y compris à lui-même : les deux sont donc
+     * traités au passage. */
+    if (!(d == d) || d > 1e308 || d < -1e308) return 0;
+    return d == trunc(d);
 }
 
 /* nombre d'items entiers séparés par des virgules ; -1 si l'un ne l'est pas */
@@ -7699,14 +7849,6 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n);
  * Les enfants d'un HCTN_OBJET sont, dans l'ordre : le désignateur quand il
  * en faut un — nom, rang, id — puis la cible du « of ». On regarde donc le
  * DERNIER enfant, et seulement s'il est lui-même une référence d'objet. */
-static Object *v3_cible(HctContexte *ctx, const HctNoeud *n)
-{
-    if (n->nfils < 1) return NULL;
-    const HctNoeud *dernier = n->fils[n->nfils - 1];
-    if (dernier->genre != HCTN_OBJET) return NULL;
-    return hct_resout(ctx, dernier);
-}
-
 /* Le nœud du désignateur, ou NULL quand il n'y en a pas. */
 static const HctNoeud *v3_designateur(const HctNoeud *n)
 {
@@ -7714,6 +7856,43 @@ static const HctNoeud *v3_designateur(const HctNoeud *n)
         n->designateur != HCT_DES_RANG &&
         n->designateur != HCT_DES_ID) return NULL;
     return n->nfils >= 1 ? n->fils[0] : NULL;
+}
+
+/* LE NŒUD de la cible explicite — « … of X » —, ou NULL s'il n'y en a pas.
+ *
+ * SÉPARÉ DE SA RÉSOLUTION, ET C'EST TOUT L'ENJEU. Ces deux questions ont
+ * longtemps partagé une seule réponse :
+ *
+ *     y a-t-il un « of X » ?          -> NULL si non
+ *     ce « of X » désigne-t-il quoi ? -> NULL si l'objet n'existe pas
+ *
+ * L'appelant recevait NULL dans les deux cas et, ne sachant pas les
+ * distinguer, continuait sur la CARTE COURANTE. Mesuré, avec une carte
+ * « Une » portant un champ « X » et aucune carte « Absente » :
+ *
+ *     put field "X" of card "Absente"           -> BONJOUR
+ *     put "OUPS" into field "X" of card "Absente"
+ *                     -> écrit OUPS dans le champ de la carte COURANTE
+ *     put there is a field "X" of card "Absente" -> true
+ *     put the name of card 1 of stack "PileAbsente" -> card "Une"
+ *
+ * La lecture ment ; l'écriture, elle, modifie des données dans un objet que
+ * le script n'a jamais nommé, et paraît avoir réussi. C'est le défaut le
+ * plus grave rencontré dans ce dépôt.
+ *
+ * LE DÉSIGNATEUR N'EST PAS UNE CIBLE. Quand le nœud n'a qu'un fils et que ce
+ * fils EST le désignateur — « field (me) », où l'on nomme le champ par une
+ * expression qui se trouve être un objet —, ce fils ne doit pas être pris
+ * pour un « of X ». On le compare donc explicitement plutôt que de se fier à
+ * son seul genre : sans cela, la correction ci-dessous transformerait une
+ * méprise silencieuse en refus catégorique. */
+static const HctNoeud *v3_noeud_cible(const HctNoeud *n)
+{
+    if (n->nfils < 1) return NULL;
+    const HctNoeud *dernier = n->fils[n->nfils - 1];
+    if (dernier->genre != HCTN_OBJET) return NULL;
+    if (dernier == v3_designateur(n)) return NULL;
+    return dernier;
 }
 
 /* ------------------------------------------------------------ l'entrée */
@@ -7745,9 +7924,47 @@ static const HctNoeud *v3_designateur(const HctNoeud *n)
  * passage obligé de toute résolution d'objet : c'est le seul endroit qui voit
  * les trois.
  *
- * Remis à zéro au début de chaque ligne exécutée, pour qu'un échec d'une
- * ligne précédente ne contamine pas le diagnostic de la suivante. */
-static int g_objet_manque = 0;
+ * UN BOOLÉEN NE SUFFISAIT PAS, ET LE COMMENTAIRE QUI EST ICI MENTAIT.
+ *
+ * Il annonçait « remis à zéro au début de chaque ligne exécutée ». Le code ne
+ * le faisait pas : la remise à zéro n'a lieu que dans le répartiteur, et une
+ * ligne servie entièrement par l'exécuteur v3 n'y passe jamais. Le drapeau
+ * survivait donc à la ligne qui l'avait levé.
+ *
+ * Pire, il se lève pour des absences PARFAITEMENT NORMALES. « there is a
+ * field "Absent" » est une question, pas une faute : l'évaluateur résout, ne
+ * trouve pas, et répond false — mais la résolution ratée lève le drapeau au
+ * passage. Mesuré :
+ *
+ *     put there is a field "Absent" into x
+ *     help
+ *     -> « objet introuvable : help »   et   the result = "No such object"
+ *
+ * alors que « help » ne contient pas le moindre objet. Même chose pour
+ * « dial "555" », « open printing », « palette "x" ». Un diagnostic périmé
+ * est pire qu'un diagnostic vague : il est faux avec assurance, et il envoie
+ * chercher là où il n'y a rien.
+ *
+ * ON RETIENT DONC LE NŒUD, PAS UN OUI/NON. Le diagnostic ne s'en sert que si
+ * l'échec APPARTIENT à la commande qu'il est en train d'expliquer — c'est
+ * v3_noeud_contient, juste en dessous. « put x into card field "Absent" »
+ * résout sa cible dans l'exécuteur, donc avant le répartiteur, mais ce nœud
+ * est bien dans l'arbre de la commande : ce cas-là continue de marcher.
+ *
+ * Le pointeur n'est JAMAIS déréférencé — on ne compare que des adresses —,
+ * de sorte qu'un nœud d'un arbre déjà libéré ne peut pas faire de dégât : au
+ * pire il ne correspond à rien, ce qui est la réponse voulue. */
+static const HctNoeud *g_objet_manque = NULL;
+
+/* `cherche` est-il ce nœud, ou l'un de ses descendants ? */
+static int v3_noeud_contient(const HctNoeud *racine, const HctNoeud *cherche)
+{
+    if (!racine || !cherche) return 0;
+    if (racine == cherche) return 1;
+    for (int i = 0; i < racine->nfils; i++)
+        if (v3_noeud_contient(racine->fils[i], cherche)) return 1;
+    return 0;
+}
 
 static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
@@ -7759,7 +7976,7 @@ static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
     /* Seul un nœud d'OBJET compte. « show all cards » n'en est pas un : le
      * gestionnaire a raison de passer la main, et ce n'est pas un objet
      * manquant. C'est cette distinction qui manquait. */
-    if (!o && n && n->genre == HCTN_OBJET) g_objet_manque = 1;
+    if (!o && n && n->genre == HCTN_OBJET) g_objet_manque = n;
     return o;
 }
 
@@ -7772,8 +7989,16 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
     Object *stack = card ? card->owner : NULL;
 
     /* Une cible explicite déplace le contexte : « bg field "x" of card 3 »
-     * cherche le champ dans la carte 3, pas dans la carte courante. */
-    Object *cible = v3_cible(ctx, n);
+     * cherche le champ dans la carte 3, pas dans la carte courante.
+     *
+     * ET SI ELLE NE SE RÉSOUT PAS, ON S'ARRÊTE LÀ. « of X » où X n'existe
+     * pas n'est PAS la même chose que « sans of » : voir v3_noeud_cible.
+     * Retomber sur la carte courante faisait lire — et écrire — dans un
+     * objet que le script n'avait pas nommé. On rend NULL, et l'appelant
+     * dira « objet introuvable » en nommant la ligne. */
+    const HctNoeud *cible_n = v3_noeud_cible(n);
+    Object *cible = cible_n ? hct_resout(ctx, cible_n) : NULL;
+    if (cible_n && !cible) return NULL;
     if (cible) {
         if (cible->type == OBJ_CARD) {
             card = cible;
@@ -8089,7 +8314,8 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
 /* Définis plus bas, avec les autres commandes de menu ; v3_recours en a
  * besoin pour « there is a menu "X" ». */
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
-static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen);
+static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
+                                    char *out, int outlen);
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
 static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out);
@@ -8308,7 +8534,8 @@ static int v3_cible_calculable(const HctNoeud *t)
     }
 }
 
-static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
+static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
+                      HctContexte *ctx)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
      * entière. C'est par ici que term_value et call_function, le vieux
@@ -8348,10 +8575,10 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
 
         int existe;
         if (n->fils[0]->typeobj == HCT_OBJ_MENU)
-            existe = v3_menu_index(NULL, n->fils[0]) >= 0;
+            existe = v3_menu_index(ctx, n->fils[0]) >= 0;
         else {
             int im = -1;
-            existe = v3_article_index(NULL, n->fils[0], &im) >= 0;
+            existe = v3_article_index(ctx, n->fils[0], &im) >= 0;
         }
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
@@ -8362,9 +8589,10 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * menuItem 2 of menu "X" », « the name of menu 1 ». Comme pour
      * « there is a menu », resout ne peut rien pour elles.
      *
-     * Sans contexte — v3_recours n'en reçoit pas —, les deux résolveurs
-     * lisent le désignateur littéral dans le jeton, ce qui couvre la forme
-     * qu'emploient les piles. */
+     * Le contexte VIENT MAINTENANT avec le recours, si bien que les deux
+     * résolveurs évaluent leur désignateur : « menu 1 » comme « menu i ».
+     * Ils gardent leur repli littéral pour un appelant qui n'en aurait
+     * pas. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
         n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
@@ -8372,7 +8600,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
          n->fils[1]->typeobj == HCT_OBJ_MENUITEM)) {
         char prop[64];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
-        if (v3_menu_prop_lit(NULL, n->fils[1], prop, out)) return 1;
+        if (v3_menu_prop_lit(ctx, n->fils[1], prop, out)) return 1;
     }
 
     /* « the selectedButton of [card|bg] family <n> ». Même forme que les
@@ -8387,7 +8615,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (ci_equal(prop, "selectedbutton")) {
             char nom[HC_NOM_MAX];
-            if (v3_famille_bouton_choisi(n->fils[1], nom, sizeof nom)) {
+            if (v3_famille_bouton_choisi(ctx, n->fils[1], nom, sizeof nom)) {
                 *out = hct_val_texte(nom);
                 { g_v1_porte = sauve_porte; } return 1;
             }
@@ -8654,7 +8882,35 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n) ||
+    /* UN APPEL DE FONCTION NON PLUS NE SE REND PAS LUI-MÊME EN CLAIR.
+     *
+     * Même raisonnement que pour les références d'objet, et même défaut :
+     *
+     *     put maFonction("ok")      -- la fonction n'existe nulle part
+     *     -> maFonction ("ok")
+     *
+     * Le script continuait sans broncher, et cette chaîne — avec l'espace
+     * que la reconstitution insère avant la parenthèse — partait dans un
+     * champ, dans une comparaison, dans un calcul. Une faute de frappe dans
+     * un nom de fonction ne disait donc RIEN, et le résultat ressemblait
+     * assez à du texte pour passer inaperçu longtemps.
+     *
+     * Un mot nu peut légitimement valoir lui-même ; une PARENTHÈSE
+     * D'APPEL jamais. L'auteur qui écrit « maFonction("ok") » demande un
+     * calcul, pas une citation. Si personne ne sait le faire, il faut le
+     * dire — hct_eval lève « fonction inconnue : maFonction » en nommant la
+     * ligne.
+     *
+     * Le cas où la fonction EXISTE ne passe pas par ici : term_value la
+     * trouve, rend autre chose que la demande, et il n'y a pas d'écho. Seul
+     * l'échec des deux moteurs change de comportement.
+     *
+     * Effet de bord mesuré, et bienvenu : l'échec coûtait QUATRE parcours
+     * complets de la chaîne des messages — term_value, la reprise avec
+     * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
+     * ici en supprime la moitié. */
+    if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
+                 v3_prop_sur_objet(n) ||
                  sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;
@@ -10262,7 +10518,19 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
     ChunkType morceau = CH_LINE;    /* pour un conteneur */
 
     if (ci_word(a, "this")) a = skip_spaces(a + 4);
-    if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
+    /* « MARKED » EST LU, ET IL COMPTE DÉSORMAIS.
+     *
+     * Il était « accepté, ignoré » — le mot passait, le tri portait sur
+     * TOUTES les cartes. Mesuré, avec quatre cartes D B C A dont deux
+     * marquées : « sort marked cards by the short name of this card » rendait
+     * A B C D, c'est-à-dire tout trié. Un script qui marque un sous-ensemble
+     * pour le ranger réordonnait la pile entière.
+     *
+     * La règle d'HyperCard est un tri EN PLACE : les cartes marquées se
+     * redistribuent entre les seules positions qu'elles occupaient déjà, et
+     * les autres ne bougent pas d'un cran. */
+    int marquees = 0;
+    if (ci_word(a, "marked")) { marquees = 1; a = skip_spaces(a + 6); }
 
     if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
     else if (ci_word(a, "cards")) {
@@ -10291,7 +10559,8 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
         int n2 = 0;
         for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD) n2++;
+            if (stack->parts[i]->type == OBJ_CARD &&
+                (!marquees || stack->parts[i]->marked)) n2++;
         if (n2 < 2) { g_atop = sauve; return 1; }
 
         SortItem *tab = calloc((size_t)n2, sizeof *tab);
@@ -10303,6 +10572,7 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
         for (int i = 0; i < stack->nparts; i++) {
             Object *c = stack->parts[i];
             if (c->type != OBJ_CARD) continue;
+            if (marquees && !c->marked) continue;
             /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
              * doit désigner le champ de celle-ci, pas de la carte de
              * départ. C'est tout le sens du tri par contenu. */
@@ -10323,10 +10593,15 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
         qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
 
         /* Réécrire les cartes dans leur nouvel ordre, en laissant les
-         * fonds à leur place : ils occupent aussi parts[]. */
+         * fonds à leur place : ils occupent aussi parts[].
+         *
+         * Et, pour « sort marked », en ne touchant QUE les emplacements qui
+         * portaient une carte marquée : c'est ce qui fait du tri un tri en
+         * place. Les cartes non marquées gardent leur rang exact. */
         k = 0;
         for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD)
+            if (stack->parts[i]->type == OBJ_CARD &&
+                (!marquees || stack->parts[i]->marked))
                 stack->parts[i] = tab[k++].card;
 
         for (int i = 0; i < n2; i++) free(cles[i]);
@@ -13267,19 +13542,34 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
  * script n'a pas à distinguer « le groupe est vide » de « ce numéro n'est pas
  * un groupe ». Hors de ces bornes — « family 99 » — on ne sert pas, et
  * l'appelant lève son erreur : là, la question n'a effectivement pas de sens. */
-static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen)
+static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
+                                    char *out, int outlen)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_FAMILY) return 0;
     if (n->nfils < 1 || !n->fils[0]) return 0;
 
-    /* Comme pour les menus : v3_recours ne reçoit pas de contexte, donc on ne
-     * lit qu'un désignateur LITTÉRAL. « family 6 » est la forme qu'emploient
-     * les piles ; « family n » repartira par le chemin ordinaire plutôt que
-     * de rendre une réponse fausse. */
-    HctGenreNoeud g = n->fils[0]->genre;
-    if (g != HCTN_NOMBRE && g != HCTN_CHAINE) return 0;
+    /* LE DÉSIGNATEUR EST ÉVALUÉ QUAND ON A UN CONTEXTE.
+     *
+     * Il ne l'était pas : on lisait le jeton littéral, et « family 6 »
+     * marchait quand « family n » ou « family (1+0) » ne marchaient pas —
+     * le premier rendait un ÉCHO suivi d'une faute de syntaxe, le second une
+     * erreur d'analyse. La référence HyperTalk donne pourtant un intExpr :
+     * une EXPRESSION entière, pas un chiffre écrit à la main.
+     *
+     * Le commentaire disait « v3_recours ne reçoit pas de contexte » — c'était
+     * vrai, et c'était la vraie cause. Elle est corrigée à sa source : le
+     * rappel `recours` porte maintenant le contexte, comme `commande` l'a
+     * toujours porté. Le repli littéral reste pour un appelant qui n'en a
+     * pas. */
     char b[32];
-    hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    if (ctx) {
+        v3_val_texte(ctx, n->fils[0], b, sizeof b);
+        if (ctx->erreur) return 0;
+    } else {
+        HctGenreNoeud g = n->fils[0]->genre;
+        if (g != HCTN_NOMBRE && g != HCTN_CHAINE) return 0;
+        hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    }
     int fam = hc_entier(b, 0, 15, -1);
     if (fam < 0) return 0;              /* hors bornes : pas notre affaire */
 
@@ -13637,7 +13927,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
                 const char *sauve = v1_porte(n->op);
                 int fait = V3_VERBES[i].fn(ctx, n);
                 g_v1_porte = sauve;
-                if (fait) { g_objet_manque = 0; return 1; }
+                if (fait) { g_objet_manque = NULL; return 1; }
                 break;                 /* forme non portée : ancien chemin */
             }
 
@@ -13708,7 +13998,10 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * pas résolu pendant cette ligne. S'il est levé, c'est l'objet qu'il faut
      * nommer, pas le verbe — et « the result » doit dire autre chose que
      * « Can't understand », que HyperTalk réserve à une ligne incomprise. */
-    else if (g_objet_manque) {
+    /* ET SEULEMENT SI CET ÉCHEC EST LE SIEN. Le drapeau porte le nœud qui
+     * n'a pas su se résoudre ; s'il n'est pas dans l'arbre de CETTE commande,
+     * il vient d'une ligne précédente et n'explique rien ici. */
+    else if (v3_noeud_contient(n, g_objet_manque)) {
         emit(HC_ERR, "   !! objet introuvable : %s", ligne);
         set_result("No such object");
     }
@@ -13717,7 +14010,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
         emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
         set_result("Can't understand");
     }
-    g_objet_manque = 0;
+    g_objet_manque = NULL;
     ARENA_FREE;
     return 1;
 }

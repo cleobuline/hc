@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 
 /* Un blanc au sens des MOTS de HyperTalk.
  *
@@ -322,10 +323,46 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     if (!val) val = "";
     int len = (int)strlen(s), lv = (int)strlen(val);
 
+    /* UN RANG INFÉRIEUR À 1 N'EXISTE PAS — ET L'ÉCRITURE L'IGNORAIT.
+     *
+     * borne_simple refuse déjà « n < 1 » : à la lecture comme à la
+     * suppression, « item -1 » et « item 0 » sont des morceaux ABSENTS. Mais
+     * l'écriture ne passait pas par ce refus : ne trouvant pas le morceau,
+     * elle tombait dans la branche d'EXTENSION, où
+     *
+     *     manquants = n - existants - 1;
+     *     if (manquants < 0) manquants = 0;
+     *
+     * ramenait le compte à zéro et ajoutait tranquillement un séparateur et
+     * la valeur. Mesuré, sur « a,b » :
+     *
+     *     put item -1 of v        -> (vide)     absent
+     *     delete item -1 of v     -> a,b        rien
+     *     put "X" into item -1 of v -> a,b,X    AJOUTÉ
+     *
+     * Trois réponses à la même question : le même morceau y est à la fois
+     * inexistant, insupprimable, et synonyme de « à la fin ». Un script qui
+     * calcule un rang et tombe sur zéro — « item (i-1) » avec i valant 1 —
+     * écrivait donc un item de plus au lieu de ne rien faire, sans un mot.
+     *
+     * On rend la chaîne INCHANGÉE, comme la suppression : c'est la réponse
+     * que les deux autres chemins donnent déjà, et le point est qu'il n'y en
+     * ait qu'une. */
+    if (n < 1 || (n2 != 0 && n2 < 1)) return hct_val_texte_n(s, len);
+
     HctBornes b = hct_chunk_bornes(s, sorte, n, n2, delim);
 
     if (b.trouve) {
-        int taille = b.deb + lv + (len - b.fin);
+        /* Même comptabilité que dans la branche d'extension, plus bas, et
+         * pour la même raison : `len` et `lv` sont deux longueurs
+         * indépendantes, et leur somme peut dépasser INT_MAX sans que l'une
+         * ni l'autre y touche. Le cas est autrement plus lointain que celui
+         * du produit — il demande deux chaînes de plus d'un gigaoctet —, mais
+         * n'en garder qu'une des deux, c'est précisément la faute qu'on
+         * répète : un chemin vérifié, son jumeau laissé tel quel. */
+        size_t besoin = (size_t)b.deb + (size_t)lv + (size_t)(len - b.fin);
+        if (besoin > (size_t)INT_MAX) return hct_val_echec();
+        int taille = (int)besoin;
         HctValeur r;
         r.txt = malloc((size_t)taille + 1);
         if (!r.txt) return hct_val_echec();
@@ -358,7 +395,45 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     }
 
     int besoin_sep = (existants > 0 && lsep > 0) ? 1 : 0;
-    int taille = len + (besoin_sep + manquants) * lsep + lv;
+
+    /* TOUTE LA COMPTABILITÉ EN size_t, ET UN REFUS EXPLICITE AU-DELÀ.
+     *
+     * Le calcul se faisait en `int` :
+     *
+     *     int taille = len + (besoin_sep + manquants) * lsep + lv;
+     *
+     * `manquants` monte jusqu'à HCT_RANG_MAX, soit 16 777 216, et `lsep` est
+     * une CHAÎNE de longueur libre — « set the itemDelimiter to … » ne borne
+     * rien. Le produit dépasse donc INT_MAX, et un débordement signé est un
+     * comportement indéfini, pas un simple nombre faux.
+     *
+     * CE QUE ÇA DONNAIT, reproduit sous les sanitizers avec un délimiteur de
+     * 512 octets et « put "x" into item 8388609 of v » — les chiffres sont
+     * choisis pour que (1 + manquants) × 512 vaille exactement 2^32, donc
+     * ZÉRO une fois tronqué :
+     *
+     *     hct_chunk.c:361 runtime error: signed integer overflow
+     *     AddressSanitizer: heap-buffer-overflow
+     *     WRITE of size 512 ... 0 bytes after 3-byte region
+     *
+     * `taille` retombait à trois octets, malloc réussissait, et la boucle
+     * juste en dessous écrivait quand même ses huit millions de séparateurs.
+     * Un script HyperTalk pouvait donc écraser le tas — la pire sorte de
+     * défaut, celui qui sort du langage.
+     *
+     * Que les 208 harnais passent sous ASan ne prouvait rien contre lui :
+     * aucun ne demandait ce cas. Un instrument ne voit que ce qu'on lui
+     * montre.
+     *
+     * Le plafond est INT_MAX et non SIZE_MAX parce que HctValeur.len reste un
+     * `int` : allouer plus que ce qu'on saura mesurer déplacerait seulement
+     * le débordement d'un cran. Au-delà, hct_val_echec — la même réponse
+     * qu'un malloc refusé, ce qu'un item list de quatre gigaoctets est de
+     * toute façon. */
+    size_t besoin = (size_t)len + (size_t)lv
+                  + ((size_t)besoin_sep + (size_t)manquants) * (size_t)lsep;
+    if (besoin > (size_t)INT_MAX) return hct_val_echec();
+    int taille = (int)besoin;
 
     HctValeur r;
     r.txt = malloc((size_t)taille + 1);

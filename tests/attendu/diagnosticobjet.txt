@@ -1,0 +1,53 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. une commande non portee, SEULE : le verbe est en cause ==
+   help
+      [ERR]    !! ne sait pas faire : help
+        the result = Can't understand
+   dial
+      [ERR]    !! ne sait pas faire : dial "555"
+        the result = Can't understand
+   open printing
+      [ERR]    !! ne sait pas faire : open printing
+        the result = Can't understand
+   palette
+      [ERR]    !! ne sait pas faire : palette "x"
+        the result = Can't understand
+
+== 2. LA MEME, apres une question dont la reponse est false ==
+   there is, puis help
+      [ERR]    !! ne sait pas faire : help
+        the result = Can't understand
+   there is, puis dial
+      [ERR]    !! ne sait pas faire : dial "555"
+        the result = Can't understand
+   there is, puis open printing
+      [ERR]    !! ne sait pas faire : open printing
+        the result = Can't understand
+
+== 3. et « there is » repond toujours juste ==
+   sur un champ absent
+      false
+        the result = 
+   sur un champ present
+      true
+        the result = 
+
+== 4. un VRAI objet manquant reste nomme comme tel ==
+   show sur un champ absent
+      [ERR]    !! objet introuvable : show field "Absent"
+        the result = No such object
+   put into un champ absent
+      [ERR]    !! objet introuvable : put "x" into card field "Absent"
+        the result = No such object
+   show sur un champ present
+        the result = 
+
+== 5. deux fautes de suite : chacune garde la sienne ==
+   objet absent, puis verbe inconnu
+      [ERR]    !! objet introuvable : show field "Absent"
+      [ERR]    !! ne sait pas faire : help
+        the result = Can't understand
+   verbe inconnu, puis objet absent
+      [ERR]    !! ne sait pas faire : help
+      [ERR]    !! objet introuvable : show field "Absent"
+        the result = No such object

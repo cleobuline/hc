@@ -76,8 +76,8 @@ static int   h_lit_objet(void *d, void *o, HctValeur *v)
 { (void)o; (void)v; verifie("lit_objet", d); return 0; }
 static int   h_lit_prop(void *d, void *o, const char *p, HctValeur *v)
 { (void)o; (void)p; (void)v; verifie("lit_prop", d); return 0; }
-static int   h_recours(void *d, const HctNoeud *n, HctValeur *o)
-{ (void)n; verifie("recours", d); *o = hct_val_texte(""); return 1; }
+static int   h_recours(void *d, const HctNoeud *n, HctValeur *o, HctContexte *c)
+{ (void)n; (void)c; verifie("recours", d); *o = hct_val_texte(""); return 1; }
 static int   h_commande(void *d, const HctNoeud *n, HctContexte *c)
 { (void)n; (void)c; verifie("commande", d); return 1; }
 static int   h_ecrit_message(void *d, const char *v, int m)

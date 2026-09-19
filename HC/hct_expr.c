@@ -319,7 +319,54 @@ static HctNoeud *rang_produit(HctAnalyseur *a)
  * C'est la seule exception de tout le langage, et le guide la signale
  * explicitement. La récursion à droite suffit à l'obtenir. */
 
+/* LE GARDE-FOU COMPTE ICI AUSSI, ET IL NE LE FAISAIT PAS.
+ *
+ * HCT_PROF_MAX n'était surveillé que par rang_ou, entré une fois par
+ * expression — et une fois de plus par parenthèse ouvrante, ce qui explique
+ * que « ((((((… » se fasse bien arrêter. Mais rang_puissance et rang_unaire
+ * se rappellent DIRECTEMENT, sans toucher au compteur :
+ *
+ *     return binaire(a, "^", j, g, rang_puissance(a));
+ *     return unaire(a, "not", j, rang_unaire(a));
+ *
+ * Un script n'avait donc qu'à empiler des « not », des moins unaires ou des
+ * « ^ » pour creuser la pile C aussi profond qu'il voulait. Mesuré : 20 000
+ * « not » passent, 60 000 font un SEGFAULT — sans jamais produire
+ * « expression trop imbriquée ». L'application meurt sur un script, et c'est
+ * ce que le garde-fou existait pour empêcher.
+ *
+ * UN SEUL COMPTEUR POUR LES TROIS, parce que c'est une seule pile C qu'on
+ * protège. Le budget de 400 est donc partagé entre parenthèses et unaires ;
+ * mesuré, une parenthèse en coûte maintenant deux, soit 200 niveaux
+ * d'imbrication réels — très au-delà de ce qu'un script écrit à la main
+ * atteint, et sans commune mesure avec les dizaines de milliers qu'il
+ * fallait pour tuer le processus. */
+static HctNoeud *rang_puissance_corps(HctAnalyseur *a);
+static HctNoeud *rang_unaire_corps(HctAnalyseur *a);
+
 static HctNoeud *rang_puissance(HctAnalyseur *a)
+{
+    if (++a->prof > HCT_PROF_MAX) {
+        a->prof--;
+        return faute(a, "expression trop imbriquée");
+    }
+    HctNoeud *n = rang_puissance_corps(a);
+    a->prof--;
+    return n;
+}
+
+static HctNoeud *rang_unaire(HctAnalyseur *a)
+{
+    if (++a->prof > HCT_PROF_MAX) {
+        a->prof--;
+        return faute(a, "expression trop imbriquée");
+    }
+    HctNoeud *n = rang_unaire_corps(a);
+    a->prof--;
+    return n;
+}
+
+static HctNoeud *rang_puissance_corps(HctAnalyseur *a)
 {
     HctNoeud *g = rang_unaire(a);
     if (!fini(a) && op_ici(a, "^")) {
@@ -335,7 +382,7 @@ static HctNoeud *rang_puissance(HctAnalyseur *a)
  * « not x = y » vaut donc « (not x) = y ». C'est contre-intuitif mais c'est
  * bien ce que dit l'annexe E, et HyperCard se comporte ainsi. */
 
-static HctNoeud *rang_unaire(HctAnalyseur *a)
+static HctNoeud *rang_unaire_corps(HctAnalyseur *a)
 {
     if (fini(a)) return faute(a, "expression attendue");
 
@@ -537,6 +584,21 @@ static const struct { const char *mot; HctTypeObjet type; } TYPES_OBJ[] = {
  *
  * Les autres types n'ont pas besoin de ce garde : personne n'appelle sa
  * fonction « card » ou « background ». « menu », si. */
+/* Mots qui ne peuvent pas être un désignateur : ils appartiennent à la
+ * commande ou à l'expression qui entoure la référence. Sans cette liste,
+ * « set rect of card c to X » verrait « to » pris pour le nom de la carte.
+ *
+ * Elle est remontée ici parce que designateur_suit, juste en dessous, la
+ * consulte aussi : c'est elle qui empêche « put menu into x » de devenir un
+ * menu nommé « into ». Une seule liste pour les deux, sans quoi l'une des
+ * deux dériverait. */
+static const char *STRUCTURELS[] = {
+    "of", "in", "to", "into", "from", "before", "after", "by", "with", "at",
+    "then", "else", "end", "is", "and", "or", "not", "contains", "while",
+    "until", "down", "times", "time", "for", "as", "using", "the", "there",
+    "div", "mod", "up", "repeat", NULL
+};
+
 static int designateur_suit(HctAnalyseur *a)
 {
     int k = a->i + 1;
@@ -546,13 +608,40 @@ static int designateur_suit(HctAnalyseur *a)
     if (mot_est(j, "id")) return 1;
     /* Une parenthèse DÉTACHÉE désigne encore : « menu (i) ». Collée au mot,
      * c'est un appel de fonction — le cas de menuItems() —, et seul l'écart
-     * dans le source les distingue.
-     *
-     * On s'arrête là. « menu maVariable » serait légal en HyperTalk, mais
-     * l'accepter ferait de « put menu into x » un menu nommé « into » : le
-     * mot suivant est un identifiant comme un autre. Entre reconnaître une
-     * forme rare et casser une forme courante, le choix est vite fait. */
+     * dans le source les distingue. */
     if (op_est(j, "(")) return j->deb != ici(a)->deb + ici(a)->len;
+
+    /* UN MOT NU DÉSIGNE AUSSI, S'IL N'EST PAS STRUCTUREL.
+     *
+     * Ce commentaire disait le contraire : « on s'arrête là ; "menu
+     * maVariable" serait légal en HyperTalk, mais l'accepter ferait de
+     * "put menu into x" un menu nommé into ». L'objection était juste et le
+     * remède trop large — il suffit d'exclure les mots qui STRUCTURENT une
+     * phrase, ce que la liste STRUCTURELS fait déjà pour les autres types
+     * d'objets depuis toujours.
+     *
+     * Les deux formes qu'il fallait protéger le sont par cette liste :
+     *
+     *     put menu into x            « into » est structurel   -> pas un menu
+     *     the family of button "X"   « of »   est structurel   -> pas une famille
+     *
+     * et la seconde comptait double, « family » étant aussi un nom de
+     * propriété : sans ce garde, « family of » se lirait comme une famille
+     * désignée par une variable nommée « of ».
+     *
+     * Ce qui s'ouvre, en revanche, est ce que la référence HyperTalk promet
+     * — un intExpr, une EXPRESSION entière :
+     *
+     *     put 6 into n
+     *     put the selectedButton of family n
+     *
+     * qui rendait jusqu'ici un ÉCHO suivi d'une faute de syntaxe. Même chose
+     * pour « the name of menu i ». */
+    if (j->genre == HCT_IDENT) {
+        for (int s = 0; STRUCTURELS[s]; s++)
+            if (mot_est(j, STRUCTURELS[s])) return 0;
+        return 1;
+    }
     return 0;
 }
 
@@ -596,16 +685,6 @@ static int portee_ici(HctAnalyseur *a, HctPortee *p)
     *p = HCT_PORTEE_AUCUNE;
     return 0;
 }
-
-/* Mots qui ne peuvent pas être un désignateur : ils appartiennent à la
- * commande ou à l'expression qui entoure la référence. Sans cette liste,
- * « set rect of card c to X » verrait « to » pris pour le nom de la carte. */
-static const char *STRUCTURELS[] = {
-    "of", "in", "to", "into", "from", "before", "after", "by", "with", "at",
-    "then", "else", "end", "is", "and", "or", "not", "contains", "while",
-    "until", "down", "times", "time", "for", "as", "using", "the", "there",
-    "div", "mod", "up", "repeat", NULL
-};
 
 static int mot_structurel(HctAnalyseur *a)
 {

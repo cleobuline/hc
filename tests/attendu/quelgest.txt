@@ -16,11 +16,10 @@
 
 ── updateTotals   [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours appel: validatedData(bg field "Data" 1
-[v3]    recours appel: validatedData (bg field "Data" 1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    6
-[v3]    v1 fonction recours expr                 6
-[v3]    v3 relit recours expr                    6
+[v3]    v1 terme recours expr                    2
+[v3]    v1 fonction recours expr                 2
+[v3]    v3 relit recours expr                    2
 
 ── openCard       [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
@@ -34,17 +33,15 @@
 
 ── closeField     [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours appel: validatedData(bg field "Data" 1
-[v3]    recours appel: validatedData (bg field "Data" 1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    6
-[v3]    v1 fonction recours expr                 6
-[v3]    v3 relit recours expr                    6
+[v3]    v1 terme recours expr                    2
+[v3]    v1 fonction recours expr                 2
+[v3]    v3 relit recours expr                    2
 
 ── exitField      [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours appel: validatedData(bg field "Data" 1
-[v3]    recours appel: validatedData (bg field "Data" 1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    6
-[v3]    v1 fonction recours expr                 6
-[v3]    v3 relit recours expr                    6
+[v3]    v1 terme recours expr                    2
+[v3]    v1 fonction recours expr                 2
+[v3]    v3 relit recours expr                    2
 

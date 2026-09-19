@@ -70,7 +70,22 @@ MOTIF=""
 for a in "$@"; do
   case "$a" in
     --enregistre) ENREGISTRE=1 ;;
-    --asan)       CFLAGS="$CFLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -g" ;;
+    # float-cast-overflow EST A PART, et ce n'est pas un detail.
+    #
+    # « -fsanitize=undefined » ne l'active PAS avec ce gcc — verifie sur un
+    # programme de trois lignes : « (long long)1e300 » passe sans un mot sous
+    # -fsanitize=undefined seul, et se fait prendre des qu'on nomme
+    # float-cast-overflow. Toute une famille de comportements indefinis
+    # echappait donc a « --asan », qui annonce pourtant « memoire et
+    # comportement indefini ».
+    #
+    # Trouve en cherchant a reproduire un defaut signale par un audit : les
+    # conversions double -> long long de l'ancien moteur. Elles n'ont pas pu
+    # etre atteintes, mais le trou dans l'instrument, lui, etait bien reel —
+    # et c'est le genre de chose qu'on ne decouvre qu'en cherchant autre
+    # chose.
+    --asan)       CFLAGS="$CFLAGS -fsanitize=address,undefined,float-cast-overflow"
+                  CFLAGS="$CFLAGS -fno-omit-frame-pointer -g" ;;
     --*)          echo "option inconnue : $a" >&2; exit 2 ;;
     *)            MOTIF="$a" ;;
   esac

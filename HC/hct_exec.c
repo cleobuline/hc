@@ -230,10 +230,11 @@ static int lit_prop_pont(void *d, void *objet, const char *prop, HctValeur *out)
          ? x->hote.lit_prop(x->hote.donnees, objet, prop, out) : 0;
 }
 
-static int recours_pont(void *d, const HctNoeud *n, HctValeur *out)
+static int recours_pont(void *d, const HctNoeud *n, HctValeur *out,
+                        HctContexte *ctx)
 {
     HctExec *x = (HctExec *)d;
-    return x->hote.recours ? x->hote.recours(x->hote.donnees, n, out) : 0;
+    return x->hote.recours ? x->hote.recours(x->hote.donnees, n, out, ctx) : 0;
 }
 
 static int commande_pont(void *d, const HctNoeud *n, HctContexte *ctx)
@@ -1353,16 +1354,49 @@ void hct_exec_init(HctExec *x, HctHote hote)
     HctHote pont;
     memset(&pont, 0, sizeof pont);
     pont.donnees   = x;
+    /* PAR UN TRAMPOLINE — MAIS SEULEMENT SI L'HÔTE SERT LE RAPPEL.
+     *
+     * `pont.donnees` vaut x, donc un rappel copié tel quel depuis l'hôte
+     * recevrait l'exécuteur au lieu des données de l'hôte : d'où les
+     * trampolines (voir le bloc de commentaire au-dessus).
+     *
+     * MAIS UN TRAMPOLINE POSÉ SANS CONDITION MENT SUR LA PRÉSENCE. La
+     * première version de cette correction les installait tous, et son
+     * commentaire annonçait « aucun changement de comportement ». C'était
+     * vrai pour HC, dont l'hôte sert tout ; c'était faux pour tout hôte
+     * PARTIEL, et cette phrase affirmait plus que la mesure ne montrait.
+     *
+     * Car le pointeur ne sert pas qu'à appeler : ailleurs dans ce fichier il
+     * sert à SAVOIR si l'hôte possède la faculté —
+     *
+     *     int sait = ... : (x->ctx.hote.ecrit_message != NULL);
+     *     if (!sait && x->ctx.hote.commande) { ... déléguer ... }
+     *
+     * — et la réponse devenait « oui, toujours ». Mesuré avec un hôte qui
+     * fournit `commande` sans `ecrit_message` : « put "bonjour" » ne
+     * déléguait plus, appelait le trampoline, qui constatait le NULL et
+     * rendait 0… retour que l'appelant n'examine pas. Le texte disparaissait.
+     * Même chose pour `globale` : « global g » avalé sans un mot. Et pour
+     * resout/ecrit_objet, cible_connue() croyait la cible inscriptible et
+     * évaluait l'opérande avant de le découvrir — soit la double évaluation
+     * que cette fonction existe précisément pour empêcher.
+     *
+     * NULL RESTE DONC NULL. C'est la même leçon que pour les cibles d'objets :
+     * « absent » est une information, et la changer en un pointeur générique
+     * fait prendre une mauvaise décision à l'étage du dessus.
+     *
+     * lit_var, ecrit_var et fonction font exception À BON DROIT : l'exécuteur
+     * y ajoute sa propre logique — les portées locales, la priorité d'un
+     * gestionnaire du script sur une fonction de l'hôte — et doit donc les
+     * servir même quand l'hôte ne fournit rien. */
     pont.lit_var   = lit_var_pont;
     pont.ecrit_var = ecrit_var_pont;
-    /* TOUS PAR UN TRAMPOLINE, sans exception. `pont.donnees` vaut x, donc un
-     * rappel copié tel quel depuis l'hôte recevrait l'exécuteur au lieu des
-     * données de l'hôte. Voir le bloc de commentaire au-dessus des ponts. */
-    pont.globale   = globale_pont;
     pont.fonction  = fonction_pont;
-    pont.resout    = resout_pont;
-    pont.lit_objet = lit_objet_pont;
-    pont.lit_prop  = lit_prop_pont;
+
+    pont.globale   = hote.globale   ? globale_pont   : NULL;
+    pont.resout    = hote.resout    ? resout_pont    : NULL;
+    pont.lit_objet = hote.lit_objet ? lit_objet_pont : NULL;
+    pont.lit_prop  = hote.lit_prop  ? lit_prop_pont  : NULL;
     /* Ces deux-là manquaient, et rien ne le disait.
      *
      * `recours` est la porte de sortie de l'évaluateur pour tout ce qu'il ne
@@ -1370,10 +1404,10 @@ void hct_exec_init(HctExec *x, HctHote hote)
      * est la même porte pour les instructions. Ne pas les transmettre au
      * contexte revenait à les couper : l'exécuteur les recevait de son
      * appelant et ne les passait jamais à l'évaluateur qu'il pilote. */
-    pont.recours   = recours_pont;
-    pont.commande  = commande_pont;
-    pont.ecrit_objet = ecrit_objet_pont;
-    pont.ecrit_message = ecrit_message_pont;
+    pont.recours       = hote.recours       ? recours_pont       : NULL;
+    pont.commande      = hote.commande      ? commande_pont      : NULL;
+    pont.ecrit_objet   = hote.ecrit_objet   ? ecrit_objet_pont   : NULL;
+    pont.ecrit_message = hote.ecrit_message ? ecrit_message_pont : NULL;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);

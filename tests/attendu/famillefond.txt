@@ -1,0 +1,20 @@
+== 1. LE CAS SIGNALE : R1 partage, R2 par carte ==
+      R2 allume sur B                A: R1=0 R2=0   B: R1=0 R2=1   C: R1=0 R2=0
+      puis R1 allume depuis A        A: R1=1 R2=0   B: R1=1 R2=0   C: R1=1 R2=0
+      sur B, deux de la famille 3 ? non
+
+== 2. les trois autres combinaisons de partage ==
+      les deux par carte             A: R1=1 R2=0   B: R1=0 R2=1   C: R1=0 R2=0
+      les deux partages              A: R1=1 R2=0   B: R1=1 R2=0   C: R1=1 R2=0
+      R1 par carte, R2 partage       A: R1=1 R2=0   B: R1=0 R2=0   C: R1=0 R2=0
+
+== 3. L'AUTRE PORTE : poser la famille ==
+      avant la pose de famille       A: R1=1 R2=0   B: R1=1 R2=1   C: R1=1 R2=1
+      apres set the family de R2     A: R1=0 R2=0   B: R1=0 R2=1   C: R1=0 R2=1
+      une carte avec deux allumes ? non
+
+== 4. un AUTRE fond n'est pas touche ==
+      E1, sur l'autre fond, reste allume ? oui
+
+== 5. et les familles DIFFERENTES ne se touchent pas ==
+      R1 famille 3, R2 famille 4     A: R1=1 R2=0   B: R1=1 R2=1   C: R1=1 R2=0

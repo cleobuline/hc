@@ -1,0 +1,21 @@
+== 1. hote COMPLET : rien ne doit changer ==
+   put "bonjour"
+      le pont annonce : ecrit_message=oui  globale=oui  commande=oui
+      boite : bonjour
+      appels : commande=0  ecrit_message=1  globale=0
+
+== 2. hote SANS ecrit_message : le texte doit partir a commande ==
+   put "bonjour"
+      le pont annonce : ecrit_message=non  globale=oui  commande=oui
+      appels : commande=1  ecrit_message=0  globale=0
+
+== 3. hote SANS globale : la declaration doit partir a commande ==
+   global g
+      le pont annonce : ecrit_message=oui  globale=non  commande=oui
+      appels : commande=1  ecrit_message=0  globale=0
+
+== 4. hote sans NI l'un NI l'autre ==
+   global g, puis put
+      le pont annonce : ecrit_message=non  globale=non  commande=oui
+      appels : commande=2  ecrit_message=0  globale=0
+

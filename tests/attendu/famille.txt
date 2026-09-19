@@ -30,7 +30,8 @@
 
 == 8. le clic suit la meme regle que le script ==
    sans famille, clic sur R1          R1=on  R2=off R3=off
-   sans famille, clic sur R2          R1=off R2=on  R3=off
+   sans famille, clic sur R2          R1=on  R2=on  R3=off
+   sans famille, par SCRIPT           R1=on  R2=on  R3=off
    familles 3 et 4, les deux allumes  R1=on  R2=on  R3=off
    R3 sans famille, clic              R1=on  R2=on  R3=on 
    R1 et R2 famille 3, clic sur R1    R1=on  R2=off R3=on 
