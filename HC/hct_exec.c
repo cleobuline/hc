@@ -178,6 +178,90 @@ static int ecrit_var_pont(void *d, const char *nom, const char *val)
     return 1;
 }
 
+/* ─── LES RAPPELS DE L'HÔTE, REPASSÉS AVEC SES PROPRES DONNÉES ───────────
+ *
+ * LE DÉFAUT QUE CECI CORRIGE. hct_exec_init construit un « pont » — un HctHote
+ * destiné à l'évaluateur — dont `donnees` pointe sur l'EXÉCUTEUR, parce que
+ * lit_var, ecrit_var et fonction sont servis par l'exécuteur lui-même. Mais
+ * huit autres rappels y étaient copiés DIRECTEMENT depuis l'hôte :
+ *
+ *     pont.donnees = x;              (l'exécuteur)
+ *     pont.resout  = hote.resout;    (qui attend hote.donnees)
+ *
+ * Chacun recevait donc un HctExec* là où il attendait le pointeur que
+ * l'appelant lui avait confié. Mesuré avec un hôte qui vérifie l'adresse
+ * reçue : resout, recours, commande et ecrit_message reçoivent « autre
+ * chose » ; seul fonction est juste, parce qu'il passait déjà par un
+ * trampoline.
+ *
+ * POURQUOI PERSONNE NE L'AVAIT VU. Les rappels v3_* de hc_core.c font tous
+ * « (void)d; » — ils ignorent le pointeur et lisent des variables globales.
+ * Le défaut était donc parfaitement invisible pour le seul hôte existant, et
+ * ne se serait manifesté que chez le suivant, sous la forme d'un
+ * déréférencement de mauvais type : plantage ou corruption silencieuse.
+ *
+ * IL AVAIT POURTANT DÉJÀ MORDU. Le commentaire de resultat_vide, plus bas,
+ * explique qu'on s'adresse à « x->hote, et non x->ctx.hote » parce que les
+ * données du pont pointent sur l'exécuteur. Quelqu'un s'est cogné dedans et a
+ * contourné à UN site d'appel au lieu de remonter à la cause — c'est
+ * exactement le motif qu'on traque depuis deux jours : un chemin corrigé, la
+ * règle générale laissée fausse.
+ *
+ * LE REMÈDE est mécanique : un trampoline par rappel, qui retrouve l'hôte réel
+ * dans x->hote et lui rend ses données. Aucun changement de signature, aucun
+ * changement de comportement pour HC — la suite ne bouge pas d'une ligne, et
+ * c'est ce qu'on attend d'une correction qui remet un pointeur à sa place. */
+static void *resout_pont(void *d, const HctNoeud *ref, HctContexte *ctx)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.resout ? x->hote.resout(x->hote.donnees, ref, ctx) : NULL;
+}
+
+static int lit_objet_pont(void *d, void *objet, HctValeur *out)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.lit_objet ? x->hote.lit_objet(x->hote.donnees, objet, out) : 0;
+}
+
+static int lit_prop_pont(void *d, void *objet, const char *prop, HctValeur *out)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.lit_prop
+         ? x->hote.lit_prop(x->hote.donnees, objet, prop, out) : 0;
+}
+
+static int recours_pont(void *d, const HctNoeud *n, HctValeur *out)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.recours ? x->hote.recours(x->hote.donnees, n, out) : 0;
+}
+
+static int commande_pont(void *d, const HctNoeud *n, HctContexte *ctx)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.commande ? x->hote.commande(x->hote.donnees, n, ctx) : 0;
+}
+
+static int ecrit_objet_pont(void *d, void *objet, const char *val, int mode)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.ecrit_objet
+         ? x->hote.ecrit_objet(x->hote.donnees, objet, val, mode) : 0;
+}
+
+static int ecrit_message_pont(void *d, const char *val, int mode)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.ecrit_message
+         ? x->hote.ecrit_message(x->hote.donnees, val, mode) : 0;
+}
+
+static int globale_pont(void *d, const char *nom)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.globale ? x->hote.globale(x->hote.donnees, nom) : 0;
+}
+
 static int fonction_pont(void *d, const char *nom, HctValeur *a, int n,
                          HctValeur *out)
 {
@@ -1271,11 +1355,14 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.donnees   = x;
     pont.lit_var   = lit_var_pont;
     pont.ecrit_var = ecrit_var_pont;
-    pont.globale   = hote.globale;
+    /* TOUS PAR UN TRAMPOLINE, sans exception. `pont.donnees` vaut x, donc un
+     * rappel copié tel quel depuis l'hôte recevrait l'exécuteur au lieu des
+     * données de l'hôte. Voir le bloc de commentaire au-dessus des ponts. */
+    pont.globale   = globale_pont;
     pont.fonction  = fonction_pont;
-    pont.resout    = hote.resout;
-    pont.lit_objet = hote.lit_objet;
-    pont.lit_prop  = hote.lit_prop;
+    pont.resout    = resout_pont;
+    pont.lit_objet = lit_objet_pont;
+    pont.lit_prop  = lit_prop_pont;
     /* Ces deux-là manquaient, et rien ne le disait.
      *
      * `recours` est la porte de sortie de l'évaluateur pour tout ce qu'il ne
@@ -1283,10 +1370,10 @@ void hct_exec_init(HctExec *x, HctHote hote)
      * est la même porte pour les instructions. Ne pas les transmettre au
      * contexte revenait à les couper : l'exécuteur les recevait de son
      * appelant et ne les passait jamais à l'évaluateur qu'il pilote. */
-    pont.recours   = hote.recours;
-    pont.commande  = hote.commande;
-    pont.ecrit_objet = hote.ecrit_objet;
-    pont.ecrit_message = hote.ecrit_message;
+    pont.recours   = recours_pont;
+    pont.commande  = commande_pont;
+    pont.ecrit_objet = ecrit_objet_pont;
+    pont.ecrit_message = ecrit_message_pont;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);
