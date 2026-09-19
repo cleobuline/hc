@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+1. touche relachee
+      up
+      up
+2. touche enfoncee
+      down
+      down
+3. les deux orthographes s'accordent, quel que soit l'etat
+      true
+      true
+4. « is down » decide, c'est l'ecriture des vrais scripts
+      pomme enfoncee
+      pomme relachee
+5. les autres touches ne bougent pas
+      down
+      up
+      up
+6. un nom que l'hote ignore reste un refus franc
+      [ERR]    !! propriété ou fonction inconnue : clickText (v3, ligne 2 de button "B".mouseUp)
+7. la casse ne compte pas, comme pour tout le reste
+      down
+      down

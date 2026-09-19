@@ -924,9 +924,31 @@ static void notify_field(Object *field)
     if (g_host && g_host->field_changed) g_host->field_changed(field);
 }
 
-/* Propriété globale lue chez l'hôte. NULL = nom inconnu. */
+/* Propriété globale lue chez l'hôte. NULL = nom inconnu.
+ *
+ * « cmdKey » EST « commandKey », ET PERSONNE NE LE SAVAIT.
+ *
+ * HyperTalk accepte les deux orthographes pour la même touche, et la table
+ * V3_GLOBALES_HOTE les annonce toutes les deux. Mais un hôte implémente ce
+ * qu'il lit dans une documentation, pas ce qu'une table du noyau promet : ni
+ * l'hôte Cocoa ni l'hôte console n'avaient de branche « cmdKey ». Le noyau
+ * transmettait donc fidèlement un nom que personne ne servait, et
+ * « if the cmdKey is down » — une ligne ordinaire dans une pile de 1990 —
+ * répondait « propriété ou fonction inconnue » au lieu de « up ».
+ *
+ * La traduction se fait ICI plutôt que dans chaque hôte, et c'est le point :
+ * un synonyme d'orthographe n'est pas une connaissance de l'hôte. Réparé chez
+ * l'un, il serait resté cassé chez l'autre — c'est exactement la faute qu'on
+ * répète depuis des semaines, un chemin corrigé et son jumeau oublié. Un seul
+ * passage obligé, et les deux hôtes guérissent ensemble, comme guérira celui
+ * qu'on n'a pas encore écrit.
+ *
+ * Les couleurs, elles, ne sont pas ici : leurs cinq synonymes sont résolus
+ * par une table de l'hôte qui sert la lecture ET l'écriture. Les y laisser
+ * évite de partager une même liste entre deux fichiers. */
 static const char *host_global(const char *name)
 {
+    if (name && ci_equal(name, "cmdKey")) name = "commandKey";
     if (g_host && g_host->global_get) return g_host->global_get(name);
     return NULL;
 }
