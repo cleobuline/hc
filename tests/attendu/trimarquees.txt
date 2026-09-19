@@ -1,0 +1,30 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le tri d'un sous-ensemble marque ==
+      ordre de depart : DCBA
+   on marque les cartes 2 et 3, soit C et B
+      2 marquees
+      apres sort MARKED : DBCA
+
+== 2. les cartes NON marquees n'ont pas bouge d'un cran ==
+   la place 1 et la place 4
+      place 1 : D
+      place 4 : A
+   et elles ne sont toujours pas marquees
+      card 1 marquee : false
+      card 4 marquee : false
+
+== 3. le tri COMPLET, lui, n'a pas change ==
+      apres sort TOUT : ABCD
+
+== 4. les cas ou « marked » ne peut rien trier ==
+   on demarque tout
+      0 marquees
+      sort marked sans aucune marquee : ABCD
+   une seule marquee
+      1 marquee
+      sort marked avec une seule : ABCD
+
+== 5. « sort marked cards » descendant ==
+   on remarque deux cartes
+      2 marquees
+      descendant : BACD

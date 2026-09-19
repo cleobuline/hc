@@ -10450,7 +10450,19 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
     ChunkType morceau = CH_LINE;    /* pour un conteneur */
 
     if (ci_word(a, "this")) a = skip_spaces(a + 4);
-    if (ci_word(a, "marked")) a = skip_spaces(a + 6);   /* accepté, ignoré */
+    /* « MARKED » EST LU, ET IL COMPTE DÉSORMAIS.
+     *
+     * Il était « accepté, ignoré » — le mot passait, le tri portait sur
+     * TOUTES les cartes. Mesuré, avec quatre cartes D B C A dont deux
+     * marquées : « sort marked cards by the short name of this card » rendait
+     * A B C D, c'est-à-dire tout trié. Un script qui marque un sous-ensemble
+     * pour le ranger réordonnait la pile entière.
+     *
+     * La règle d'HyperCard est un tri EN PLACE : les cartes marquées se
+     * redistribuent entre les seules positions qu'elles occupaient déjà, et
+     * les autres ne bougent pas d'un cran. */
+    int marquees = 0;
+    if (ci_word(a, "marked")) { marquees = 1; a = skip_spaces(a + 6); }
 
     if (ci_word(a, "stack")) { cartes = 1; a = skip_spaces(a + 5); }
     else if (ci_word(a, "cards")) {
@@ -10479,7 +10491,8 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
 
         int n2 = 0;
         for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD) n2++;
+            if (stack->parts[i]->type == OBJ_CARD &&
+                (!marquees || stack->parts[i]->marked)) n2++;
         if (n2 < 2) { g_atop = sauve; return 1; }
 
         SortItem *tab = calloc((size_t)n2, sizeof *tab);
@@ -10491,6 +10504,7 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
         for (int i = 0; i < stack->nparts; i++) {
             Object *c = stack->parts[i];
             if (c->type != OBJ_CARD) continue;
+            if (marquees && !c->marked) continue;
             /* Se placer SUR la carte pour évaluer sa clé : « field "nom" »
              * doit désigner le champ de celle-ci, pas de la carte de
              * départ. C'est tout le sens du tri par contenu. */
@@ -10511,10 +10525,15 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
         qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
 
         /* Réécrire les cartes dans leur nouvel ordre, en laissant les
-         * fonds à leur place : ils occupent aussi parts[]. */
+         * fonds à leur place : ils occupent aussi parts[].
+         *
+         * Et, pour « sort marked », en ne touchant QUE les emplacements qui
+         * portaient une carte marquée : c'est ce qui fait du tri un tri en
+         * place. Les cartes non marquées gardent leur rang exact. */
         k = 0;
         for (int i = 0; i < stack->nparts; i++)
-            if (stack->parts[i]->type == OBJ_CARD)
+            if (stack->parts[i]->type == OBJ_CARD &&
+                (!marquees || stack->parts[i]->marked))
                 stack->parts[i] = tab[k++].card;
 
         for (int i = 0; i < n2; i++) free(cles[i]);
