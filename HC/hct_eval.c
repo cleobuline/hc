@@ -910,7 +910,37 @@ static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
 
     if (ctx->hote.resout && ctx->hote.lit_objet) {
         void *o = ctx->hote.resout(ctx->hote.donnees, n, ctx);
-        if (o && ctx->hote.lit_objet(ctx->hote.donnees, o, &v)) return v;
+        if (o) {
+            /* « THE TARGET » RÉPOND UN DESCRIPTEUR ; « TARGET » RÉPOND LE
+             * CONTENU. HyperTalk fait cette distinction exprès, et elle est
+             * réelle : « target » est un CONTENEUR — on peut y lire et y
+             * écrire comme dans un champ —, tandis que « the target » NOMME
+             * l'objet qui a reçu le message d'origine.
+             *
+             * Sans cette règle, les deux rendaient la même chose, et dans un
+             * gestionnaire de champ « put the target » donnait le texte du
+             * champ au lieu de « card field "Champ" ». Mesuré :
+             *
+             *   the target             -> contenu du champ      (faux)
+             *   target                 -> contenu du champ      (juste)
+             *   the name of the target -> card field "Champ"    (juste)
+             *
+             * Le contournement existait, mais un script écrit pour HyperCard
+             * ne l'emploie pas : il écrit « the target » et attend un nom.
+             *
+             * L'ANALYSEUR GARDAIT DÉJÀ LA DISTINCTION — n->article vaut 1 si
+             * « the » était là. Seule l'évaluation la perdait. On ne touche
+             * donc ni à la grammaire ni au modèle : on lit un drapeau qui
+             * était posé et qu'on ignorait.
+             *
+             * `me` n'a pas d'équivalent : il s'écrit toujours nu, et « the
+             * me » n'existe pas. La règle ne vaut donc que pour target. */
+            if (n->typeobj == HCT_OBJ_TARGET && n->article &&
+                ctx->hote.lit_prop &&
+                ctx->hote.lit_prop(ctx->hote.donnees, o, "name", &v))
+                return v;
+            if (ctx->hote.lit_objet(ctx->hote.donnees, o, &v)) return v;
+        }
     }
 
     if (ctx->hote.recours &&

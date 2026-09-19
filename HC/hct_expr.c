@@ -519,6 +519,10 @@ static const struct { const char *mot; HctTypeObjet type; } TYPES_OBJ[] = {
      * un nom de fonction que les piles emploient réellement. */
     { "menuitem",   HCT_OBJ_MENUITEM   },
     { "menu",       HCT_OBJ_MENU       },
+    /* Pas de pluriel : « the families » n'existe pas, et « family » seul n'a
+     * aucun sens — une famille est toujours DÉSIGNÉE par son numéro. Le
+     * garde de menu_designe_ici s'applique donc à elle aussi. */
+    { "family",     HCT_OBJ_FAMILY     },
     { NULL, 0 }
 };
 
@@ -557,7 +561,8 @@ static int type_obj_ici(HctAnalyseur *a, HctTypeObjet *t)
     for (int k = 0; TYPES_OBJ[k].mot; k++)
         if (mot_ici(a, TYPES_OBJ[k].mot)) {
             if ((TYPES_OBJ[k].type == HCT_OBJ_MENU ||
-                 TYPES_OBJ[k].type == HCT_OBJ_MENUITEM) &&
+                 TYPES_OBJ[k].type == HCT_OBJ_MENUITEM ||
+                 TYPES_OBJ[k].type == HCT_OBJ_FAMILY) &&
                 !designateur_suit(a))
                 return 0;                 /* un simple mot, pas un objet */
             *t = TYPES_OBJ[k].type;
@@ -566,9 +571,13 @@ static int type_obj_ici(HctAnalyseur *a, HctTypeObjet *t)
     return 0;
 }
 
-/* La portée n'a de sens que devant un bouton, un champ ou une part : « card »
- * seul est un type, « card field » une portée. On ne consomme donc le mot que
- * si un type le suit. */
+/* La portée n'a de sens que devant un bouton, un champ, une part — ou une
+ * FAMILLE : « card » seul est un type, « card field » une portée. On ne
+ * consomme donc le mot que si un type le suit.
+ *
+ * « card family 6 » et « bg family 6 » sont deux groupes DISTINCTS, exactement
+ * comme « card field 1 » et « bg field 1 » sont deux objets distincts. Sans la
+ * portée, on ne saurait pas lequel interroger. */
 static int portee_ici(HctAnalyseur *a, HctPortee *p)
 {
     const char *m = NULL;
@@ -580,7 +589,8 @@ static int portee_ici(HctAnalyseur *a, HctPortee *p)
     a->i++;
     HctTypeObjet t;
     if (type_obj_ici(a, &t) &&
-        (t == HCT_OBJ_BUTTON || t == HCT_OBJ_FIELD || t == HCT_OBJ_PART))
+        (t == HCT_OBJ_BUTTON || t == HCT_OBJ_FIELD || t == HCT_OBJ_PART ||
+         t == HCT_OBJ_FAMILY))
         return 1;                 /* le type suivant sera lu par l'appelant */
     a->i = garde;
     *p = HCT_PORTEE_AUCUNE;

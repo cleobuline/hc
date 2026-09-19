@@ -25,7 +25,7 @@
    servi    the commandKey         -> → message "t" à button "B"· traité par button "B"→ me
    servi    the tool               -> → message "t" à button "B"· traité par button "B"browse
    servi    the screenRect         -> → message "t" à button "B"· traité par button "B"→ me
-   servi    the target             -> → message "t" à button "B"· traité par button "B"B
+   servi    the target             -> → message "t" à button "B"· traité par button "B"card b
    servi    the paramCount         -> → message "t" à button "B"· traité par button "B"0
    servi    the params             -> → message "t" à button "B"· traité par button "B"t
    servi    the stacks             -> → message "t" à button "B"· traité par button "B"

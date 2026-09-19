@@ -1,0 +1,23 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. message envoye au CHAMP, gestionnaire sur la CARTE ==
+      the target : card field "Champ"
+      target      : contenu du champ
+      me          : card "Une"
+
+== 2. message envoye au BOUTON ==
+      the target : card button "B"
+      target      : B
+      me          : card "Une"
+
+== 3. le descripteur rendu se RE-RESOUT ==
+      la variable contient : card field "Champ"
+      et elle designe l'objet d'id 4
+      dont le contenu est : contenu du champ
+
+== 4. « target » reste un CONTENEUR : on peut y ecrire ==
+      le champ contient : [ecrit par le script]
+
+== 5. « me » n'est pas touche ==
+      me          : contenu du champ
+      the name of me : card field "Champ"
+      the target  : card field "Champ"

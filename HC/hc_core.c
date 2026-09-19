@@ -8044,6 +8044,7 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
 /* Définis plus bas, avec les autres commandes de menu ; v3_recours en a
  * besoin pour « there is a menu "X" ». */
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
+static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen);
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
 static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out);
@@ -8327,6 +8328,25 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
         char prop[64];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (v3_menu_prop_lit(NULL, n->fils[1], prop, out)) return 1;
+    }
+
+    /* « the selectedButton of [card|bg] family <n> ». Même forme que les
+     * menus juste au-dessus, et pour la même raison : une famille n'est pas
+     * un Object, donc hct_resout ne peut rien en faire et c'est ici qu'on la
+     * sert. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
+        n->fils[1]->typeobj == HCT_OBJ_FAMILY) {
+        char prop[64];
+        hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+        if (ci_equal(prop, "selectedbutton")) {
+            char nom[HC_NOM_MAX];
+            if (v3_famille_bouton_choisi(n->fils[1], nom, sizeof nom)) {
+                *out = hct_val_texte(nom);
+                { g_v1_porte = sauve_porte; } return 1;
+            }
+        }
     }
 
     /* « the number of menuItems of menu "X" » : un comptage, dont l'arbre
@@ -13174,6 +13194,70 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
         return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
     }
     return menu_index(b);
+}
+
+/* LE BOUTON ALLUMÉ D'UNE FAMILLE : « the selectedButton of card family 6 ».
+ *
+ * Le compagnon indispensable de « family ». Sans lui, on peut grouper des
+ * boutons radio mais pas savoir lequel est choisi — le groupement se voit à
+ * l'écran et reste illisible depuis un script, ce qui lui ôte l'essentiel de
+ * son intérêt. HyperCard rend le nom du bouton allumé, ou vide si le groupe
+ * n'en a aucun.
+ *
+ * LA PORTÉE DÉCIDE DE LA COUCHE. « card family 6 » interroge les boutons de la
+ * carte, « bg family 6 » ceux du fond : deux groupes distincts, comme
+ * « card field 1 » et « bg field 1 » sont deux objets distincts. Sans portée,
+ * on prend la carte — c'est là que sont les boutons dans le cas courant.
+ *
+ * On rend le nom ABRÉGÉ, « card button "Oui" », comme « the name of ». Un nom
+ * qui porte sa couche se re-résout ; un nom nu ne dirait ni la sorte ni la
+ * couche, et « the selectedButton » ne servirait qu'à l'affichage.
+ *
+ * FAMILLE 0 RÉPOND VIDE, ET NE LÈVE PAS D'ERREUR. Zéro est une valeur légale
+ * de la propriété — « set the family to 0 » retire un bouton de son groupe —
+ * mais ce n'est pas un groupe : personne n'en est membre. « Aucun bouton
+ * choisi » est donc la réponse juste, et non une question mal posée.
+ *
+ * La propriété est ainsi TOTALE sur 0 à 15 : elle répond toujours, et un
+ * script n'a pas à distinguer « le groupe est vide » de « ce numéro n'est pas
+ * un groupe ». Hors de ces bornes — « family 99 » — on ne sert pas, et
+ * l'appelant lève son erreur : là, la question n'a effectivement pas de sens. */
+static int v3_famille_bouton_choisi(const HctNoeud *n, char *out, int outlen)
+{
+    if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_FAMILY) return 0;
+    if (n->nfils < 1 || !n->fils[0]) return 0;
+
+    /* Comme pour les menus : v3_recours ne reçoit pas de contexte, donc on ne
+     * lit qu'un désignateur LITTÉRAL. « family 6 » est la forme qu'emploient
+     * les piles ; « family n » repartira par le chemin ordinaire plutôt que
+     * de rendre une réponse fausse. */
+    HctGenreNoeud g = n->fils[0]->genre;
+    if (g != HCTN_NOMBRE && g != HCTN_CHAINE) return 0;
+    char b[32];
+    hct_texte(&n->fils[0]->jeton, b, sizeof b);
+    int fam = hc_entier(b, 0, 15, -1);
+    if (fam < 0) return 0;              /* hors bornes : pas notre affaire */
+
+    Object *carte = g_current_card;
+    if (!carte) return 0;
+    Object *couche = (n->portee == HCT_PORTEE_FOND) ? carte->bg : carte;
+    if (!couche) return 0;
+
+    /* Famille 0 : aucun membre par définition, donc la boucle ne peut rien
+     * trouver. On la saute plutôt que de compter sur elle — un bouton dont
+     * family vaut 0 ET qui serait allumé ne doit pas être rendu comme « le
+     * choix du groupe 0 ». */
+    for (int i = 0; fam > 0 && i < couche->nparts; i++) {
+        Object *b2 = couche->parts[i];
+        if (b2->type != OBJ_BUTTON || b2->family != fam) continue;
+        if (!hc_hilite_of(b2, carte)) continue;
+        hc_nom_de(b2, HC_NOM_ABREGE, out, outlen);
+        return 1;
+    }
+    /* Aucun allumé : la réponse est VIDE, et c'est une réponse — un groupe
+     * sans choix est un état légitime, pas une erreur. */
+    snprintf(out, (size_t)outlen, "%s", "");
+    return 1;
 }
 
 /* Un nœud « menuItem <désignateur> of menu <…> » → l'indice de l'article, et

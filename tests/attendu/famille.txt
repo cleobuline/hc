@@ -43,6 +43,17 @@
    hc_set_family(A1, 0)    rend 1, famille 0
    hc_set_family(la carte, 3) rend 0
 
+== 10. « the selectedButton of family <n> » ==
+      vide au depart : []
+      carte : card button "Non"
+      fond  : bkgnd button "Bleu"
+      carte famille 6 : card button "Non"
+      fond  famille 6 : bkgnd button "Bleu"
+      sans portee     : card button "Non"
+      et il se re-resout : 14
+      famille 0  : []
+      famille 12 : []
+
 == 7. enregistrement et relecture ==
    A2 relu : famille 7, titleWidth 42
    Libre relu : famille 0 (defaut)
