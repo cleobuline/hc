@@ -759,7 +759,14 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         fait = ctx->hote.recours(ctx->hote.donnees, n, &r);
 
     if (!fait) {
-        hct_ctx_faute(ctx, n, "fonction inconnue");
+        /* LE NOM, PAS SEULEMENT LA CATÉGORIE.
+         *
+         * « fonction inconnue (v3, ligne 4 de …) » dit où chercher, mais pas
+         * QUOI chercher — et une ligne peut porter deux appels. Or ce refus
+         * naît neuf fois sur dix d'une faute de frappe : c'est justement le
+         * nom qu'on veut lire. Toutes les autres fautes de nom de ce fichier
+         * l'indiquent déjà ; celle-ci était la dernière à s'en passer. */
+        hct_ctx_faute_nom(ctx, n, "fonction inconnue", nom);
         r = hct_val_vide();
     }
 

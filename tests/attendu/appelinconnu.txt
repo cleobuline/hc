@@ -1,0 +1,38 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la fonction EXISTE : rien ne change ==
+   maFonction("ok")
+      ok!
+   the maFonction of "ok"
+      ok!
+   imbriquee
+      ok!!
+   dans un calcul
+      3
+
+== 2. la fonction est INCONNUE : un refus qui la nomme ==
+   inconnue, un argument
+      [ERR]    !! fonction inconnue : pasLa (v3, ligne 8 de button "B".essaie)
+   inconnue, deux arguments
+      [ERR]    !! fonction inconnue : pasLaNonPlus (v3, ligne 8 de button "B".essaie)
+   inconnue, sans argument
+      [ERR]    !! fonction inconnue : pasLaDuTout (v3, ligne 8 de button "B".essaie)
+
+== 3. le gestionnaire s'ARRETE : la suite ne tourne pas ==
+   la ligne d'apres
+      [ERR]    !! fonction inconnue : pasLa (v3, ligne 8 de button "B".essaie)
+
+== 4. une fonction qui rend VIDE reste legitime ==
+   rienDuTout(1)
+      vide, et sans erreur : []
+
+== 5. les fonctions du noyau ne sont pas touchees ==
+   length
+      5
+   offset
+      3
+   sqrt
+      4
+
+== 6. « the result » porte la valeur d'un appel qui a marche ==
+   get maFonction("ok"), puis the result
+      result : [ok!]

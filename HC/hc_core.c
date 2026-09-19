@@ -8676,7 +8676,35 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out)
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
      * travaillant tranquillement sur la chaîne « field "menu" ». */
-    if (echo && (n->genre == HCTN_OBJET || v3_prop_sur_objet(n) ||
+    /* UN APPEL DE FONCTION NON PLUS NE SE REND PAS LUI-MÊME EN CLAIR.
+     *
+     * Même raisonnement que pour les références d'objet, et même défaut :
+     *
+     *     put maFonction("ok")      -- la fonction n'existe nulle part
+     *     -> maFonction ("ok")
+     *
+     * Le script continuait sans broncher, et cette chaîne — avec l'espace
+     * que la reconstitution insère avant la parenthèse — partait dans un
+     * champ, dans une comparaison, dans un calcul. Une faute de frappe dans
+     * un nom de fonction ne disait donc RIEN, et le résultat ressemblait
+     * assez à du texte pour passer inaperçu longtemps.
+     *
+     * Un mot nu peut légitimement valoir lui-même ; une PARENTHÈSE
+     * D'APPEL jamais. L'auteur qui écrit « maFonction("ok") » demande un
+     * calcul, pas une citation. Si personne ne sait le faire, il faut le
+     * dire — hct_eval lève « fonction inconnue : maFonction » en nommant la
+     * ligne.
+     *
+     * Le cas où la fonction EXISTE ne passe pas par ici : term_value la
+     * trouve, rend autre chose que la demande, et il n'y a pas d'écho. Seul
+     * l'échec des deux moteurs change de comportement.
+     *
+     * Effet de bord mesuré, et bienvenu : l'échec coûtait QUATRE parcours
+     * complets de la chaîne des messages — term_value, la reprise avec
+     * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
+     * ici en supprime la moitié. */
+    if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
+                 v3_prop_sur_objet(n) ||
                  sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;

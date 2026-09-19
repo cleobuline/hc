@@ -24,13 +24,23 @@
  * Le point 3 garde le point 1 : une liste qui laisse tout passer sans rien
  * servir donnerait aussi « zero sonde ».
  *
- * CE QUE LE POINT 3 REVELE, et qui n'est pas corrige ici. « nExistePas(3) »
- * ne produit aucune erreur : il rend son propre texte, « nExistePas (3) ».
- * Verifie avant ET apres la liste — le comportement est ANTERIEUR, ce n'est
- * pas une regression. C'est la vieille regle « nom inconnu = son propre
- * nom », la meme qui faisait passer « short name of o » pour un resultat.
- * HyperCard, lui, disait « No such function ». On l'enregistre ici pour que
- * le jour ou on le corrige, l'ecart se voie dans cette reference.
+ * CE QUE LE POINT 3 REVELAIT — ET QUI EST CORRIGE DEPUIS. « nExistePas(3) »
+ * ne produisait aucune erreur : il rendait son propre texte, « nExistePas
+ * (3) ». Verifie avant ET apres la liste a l'epoque, le comportement etait
+ * ANTERIEUR et n'etait donc pas une regression : c'etait la vieille regle
+ * « nom inconnu = son propre nom », la meme qui faisait passer « short name
+ * of o » pour un resultat. HyperCard, lui, disait « No such function ».
+ *
+ * Ce commentaire disait : « on l'enregistre ici pour que le jour ou on le
+ * corrige, l'ecart se voie dans cette reference ». Ce jour est venu, et
+ * l'ecart s'est vu exactement la — cette reference a bouge d'une ligne quand
+ * v3_recours a cesse de rendre en clair les appels de fonction. La ligne 47
+ * porte desormais :
+ *
+ *   !! fonction inconnue : nExistePas (v3, ligne 15 de …)
+ *
+ * Le detail de la correction et ce qu'elle tient sont dans appelinconnu.c ;
+ * ici on garde seulement la trace que le point 3 a fini par servir.
  */
 #include "hc_core.h"
 #include <stdio.h>
@@ -114,7 +124,7 @@ int main(void)
     demande("sum(1,2,3)");
 
     puts("\n== 3. un nom inconnu : parti au recours, PAS avale par la liste ==");
-    puts("   (il rend son propre texte : comportement anterieur, voir en-tete)");
+    puts("   (il dit desormais franchement qu'il ne connait pas ce nom)");
     demande("nExistePas(3)");
 
     puts("\n== le bilan : aucune sonde de nom ne doit apparaitre ==");
