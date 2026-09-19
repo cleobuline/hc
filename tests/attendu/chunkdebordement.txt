@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. LE CAS QUI DEBORDAIT : refus net, et on revient vivant ==
+   delimiteur de 512 octets, item 8388609
+      [ERR]    !! mémoire insuffisante (v3, ligne 4 de button "B".essaie)
+
+== 2. deux autres combinaisons du meme genre ==
+   delimiteur de 256 octets, item 16777216
+      [ERR]    !! mémoire insuffisante (v3, ligne 4 de button "B".essaie)
+   lignes, rang maximal, separateur d'un octet
+      1000000
+
+== 3. LES EXTENSIONS RAISONNABLES MARCHENT TOUJOURS ==
+   item 5 d'une valeur a deux items
+      a,b,,,x
+   avec un delimiteur multi-octets
+      a--b----x
+   ligne 3 d'une valeur a une ligne
+      3 lignes
+   remplacer un item qui EXISTE
+      a,B,c
+   un delimiteur long mais un rang petit
+      3 items, 130 octets
