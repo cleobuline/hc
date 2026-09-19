@@ -199,6 +199,64 @@ int main(void)
         printf("   hc_set_family(la carte, 3) rend %d\n", r);
     }
 
+    puts("\n== 10. « the selectedButton of family <n> » ==");
+    /* LE COMPAGNON INDISPENSABLE DE family. Sans lui on peut grouper des
+     * boutons radio mais pas savoir lequel est choisi : le groupement se voit
+     * a l'ecran et reste illisible depuis un script, ce qui lui ote
+     * l'essentiel de son interet.
+     *
+     * L'analyseur ne connaissait meme pas le mot : « put the selectedButton of
+     * family 6 » s'arretait sur « texte inattendu en fin de ligne ». */
+    {
+        Object *o1 = hc_new_button(c, "Oui");
+        Object *o2 = hc_new_button(c, "Non");
+        Object *g1 = hc_new_button(bg, "Bleu");
+        Object *g2 = hc_new_button(bg, "Rouge");
+        hc_set_family(o1, 6); hc_set_family(o2, 6);
+        hc_set_family(g1, 4); hc_set_family(g2, 4);
+
+        /* Aucun allume : la reponse est VIDE, et c'est une REPONSE — un
+         * groupe sans choix est un etat legitime, pas une erreur. */
+        fais("  put \"vide au depart : [\" & the selectedButton of family 6 & \"]\"\n");
+
+        hc_set_hilite(o2, c, 1);
+        fais("  put \"carte : \" & the selectedButton of family 6\n");
+        hc_set_hilite(g1, c, 1);
+        fais("  put \"fond  : \" & the selectedButton of bg family 4\n");
+
+        /* LA PORTEE DECIDE DE LA COUCHE, et ce point est le coeur du test :
+         * deux familles de MEME numero, l'une sur la carte, l'autre sur le
+         * fond, sont deux groupes distincts. Une implementation qui
+         * chercherait dans les deux couches les confondrait. */
+        hc_set_family(g1, 6);
+        hc_set_family(g2, 6);
+        fais("  put \"carte famille 6 : \" & the selectedButton of card family 6\n"
+             "  put \"fond  famille 6 : \" & the selectedButton of bg family 6\n");
+
+        /* Sans portee, c'est la CARTE — la ou sont les boutons dans le cas
+         * courant. */
+        fais("  put \"sans portee     : \" & the selectedButton of family 6\n");
+
+        /* Le nom rendu est ABREGE et porte sa couche, donc il SE RE-RESOUT.
+         * Un nom nu ne dirait ni la sorte ni la couche, et la propriete ne
+         * servirait qu'a l'affichage. */
+        fais("  put the selectedButton of family 6 into d\n"
+             "  put \"et il se re-resout : \" & the id of d\n");
+
+        /* FAMILLE 0 REPOND VIDE, sans erreur. Zero est une valeur legale de
+         * la propriete — « set the family to 0 » retire un bouton de son
+         * groupe — mais ce n'est pas un groupe : personne n'en est membre.
+         * « Aucun bouton choisi » est donc la reponse juste.
+         *
+         * Le point delicat : le bouton « Pilote » de ce harnais est de
+         * famille 0. S'il etait allume, une implementation naive le rendrait
+         * comme « le choix du groupe 0 ». */
+        fais("  put \"famille 0  : [\" & the selectedButton of family 0 & \"]\"\n");
+        /* Un groupe legal mais vide rend vide, pas une erreur : la propriete
+         * est TOTALE sur 0 a 15. */
+        fais("  put \"famille 12 : [\" & the selectedButton of family 12 & \"]\"\n");
+    }
+
     puts("\n== 7. enregistrement et relecture ==");
     fais("  set the family of button \"A2\" to 7\n"
          "  set the titleWidth of button \"A2\" to 42\n");

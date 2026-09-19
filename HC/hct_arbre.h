@@ -67,7 +67,19 @@ typedef enum {
      * autres : « menu "Outils" », « menuItem 4 of menu "Outils" ». Sans cette
      * entrée, « delete menu "Outils" » s'arrêtait sur le mot « menu » et
      * perdait le nom en chemin. */
-    HCT_OBJ_MENU, HCT_OBJ_MENUITEM
+    HCT_OBJ_MENU, HCT_OBJ_MENUITEM,
+    /* UNE FAMILLE DE BOUTONS RADIO. Pas un objet non plus — c'est un
+     * GROUPE, désigné par son numéro : « family 6 », « bg family 4 ».
+     *
+     * HyperCard la traite grammaticalement comme un objet pour pouvoir
+     * écrire « the selectedButton of card family 6 », qui rend le nom du
+     * bouton allumé du groupe. Sans cette entrée, la ligne s'arrêtait sur le
+     * mot « family » : « texte inattendu en fin de ligne ».
+     *
+     * La PORTÉE compte autant que le numéro : une famille de la carte et une
+     * famille du fond portant le même numéro sont deux groupes distincts.
+     * C'est HctPortee qui la porte, comme pour « card field » / « bg field ». */
+    HCT_OBJ_FAMILY
 } HctTypeObjet;
 
 /* « card field 1 » et « bg field 1 » sont DEUX objets différents : la
