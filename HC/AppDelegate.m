@@ -465,12 +465,19 @@ static NSMenu *gRecentMenu = nil;
 
     /* --- menu Paint ---
      *
-     * Les transformations d'image d'HyperCard, dans son ordre. Huit pour
-     * l'instant : celles qui ne font que relire des pixels et en écrire
-     * d'autres. Manquent encore Select, Fill, Pickup, Opaque, Transparent,
-     * Keep et Revert, qui demandent chacune autre chose que du calcul — un
-     * second calque, un mode de transparence, un instantané nommé. Mieux vaut
-     * un menu court et vrai qu'un menu complet à moitié grisé pour toujours.
+     * Les articles d'image d'HyperCard, dans son ordre. Ce commentaire a dit
+     * longtemps qu'il en manquait sept — « Select, Fill, Pickup, Opaque,
+     * Transparent, Keep et Revert » —, et il est resté tel quel pendant que
+     * Fill, Keep et Revert arrivaient. Un commentaire qui recense ce qui
+     * manque vieillit mal : il devient une liste de reproches périmés.
+     *
+     * Ce qu'on a maintenant : la sélection, l'effacement, les cinq
+     * transformations, les quatre rotations et retournements, le mode de
+     * fond, et les deux articles de séance.
+     *
+     * IL MANQUE ENCORE « Pickup », qui demande un second calque à prélever.
+     * Mieux vaut un menu court et vrai qu'un menu complet à moitié grisé pour
+     * toujours.
      *
      * Pas de raccourcis clavier : ceux d'HyperCard sont pris ici (⌘S pour
      * enregistrer, ⌘A pour tout sélectionner), et deux fidélités qui se
@@ -482,6 +489,15 @@ static NSMenu *gRecentMenu = nil;
     NSMenuItem *paintItem = [[NSMenuItem alloc] init];
     NSMenu *paintMenu = [[NSMenu alloc] initWithTitle:@"Paint"];
     struct { NSString *titre; NSInteger tag; } peint[] = {
+        /* En haut, les deux qui ne transforment pas : l'un FAIT la sélection
+         * que tous les autres exigent, l'autre la vide — ou vide le calque
+         * entier s'il n'y en a pas. Ils existaient pour les scripts
+         * (« doMenu "Select All" ») et pour eux seuls : aucun article ne les
+         * servait, si bien qu'on ne pouvait ni tout sélectionner ni effacer à
+         * la souris. */
+        { @"Select All",      HCV_PAINT_SELECTALL },
+        { @"Clear Picture",   HCV_PAINT_CLEAR     },
+        { nil,                0                   },   /* séparateur */
         { @"Fill",            HCV_PAINT_FILL    },
         { @"Invert",          HCV_PAINT_INVERT  },
         { @"Darken",          HCV_PAINT_DARKEN  },
@@ -493,9 +509,16 @@ static NSMenu *gRecentMenu = nil;
         { @"Flip Vertical",   HCV_PAINT_FLIPV   },
         { @"Flip Horizontal", HCV_PAINT_FLIPH   },
         { nil,                0                 },   /* séparateur */
+        /* Le MODE de fond, pas une action : les deux portent une coche, et
+         * validateMenuItem: dit lequel est en cours. La palette des outils
+         * porte la même bascule et lit la même variable — elles ne peuvent
+         * donc pas se contredire. « Transparent » n'était jusqu'ici ni dans
+         * un menu ni atteignable par script. */
+        { @"Opaque",          HCV_PAINT_OPAQUE      },
+        { @"Transparent",     HCV_PAINT_TRANSPARENT },
+        { nil,                0                 },   /* séparateur */
         /* En bas du menu, comme dans HyperCard : ce sont les deux seuls
-         * articles qui ne transforment pas une sélection mais toute la
-         * séance de peinture. */
+         * articles qui portent sur toute la séance de peinture. */
         { @"Keep",            HCV_PAINT_KEEP    },
         { @"Revert",          HCV_PAINT_REVERT  },
     };
