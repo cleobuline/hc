@@ -2380,15 +2380,55 @@ void hc_set_stack_path(Object *stack, const char *path)
  * Famille 0 n'exclut rien — c'est l'absence de famille, pas la famille
  * numéro zéro. Éteindre n'exclut rien non plus : décocher le dernier bouton
  * d'un groupe laisse le groupe vide, ce qui est un état légitime. */
+/* Éteint l'entrée par carte d'un bouton sur TOUTES les cartes d'un fond.
+ *
+ * Voir eteint_la_famille : un bouton allumé PARTOUT ne peut pas laisser un
+ * frère allumé sur une seule carte. */
+static void eteint_partout_dans_le_fond(Object *fond, int button_id)
+{
+    Object *pile = fond ? fond->owner : NULL;
+    if (!pile) return;
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *c = pile->parts[i];
+        if (c->type == OBJ_CARD && c->bg == fond)
+            hc_set_hilite_raw(c, button_id, 0);
+    }
+}
+
+/* LA PORTÉE DE L'EXTINCTION SUIT CELLE DE L'ALLUMAGE.
+ *
+ * Un bouton de fond a deux façons de s'allumer, et c'est tout le problème :
+ * sharedHilite VRAI l'allume sur TOUTES les cartes du fond à la fois,
+ * sharedHilite FAUX lui donne un état par carte, rangé dans la carte.
+ *
+ * L'extinction, elle, ne connaissait qu'une carte. Mesuré, avec R1 partagé et
+ * R2 par carte, tous deux de famille 3 :
+ *
+ *     R2 allumé sur la carte B
+ *     on se place sur A, on allume R1
+ *     -> sur A : R1=1 R2=0        (juste)
+ *     -> sur B : R1=1 R2=1        (DEUX de la famille 3 allumés)
+ *
+ * R1 s'allume partout puisqu'il est partagé ; R2 n'est éteint que sur la
+ * carte où l'on se trouve. La famille est violée sur toutes les autres, et
+ * l'utilisateur ne le voit qu'en y allant.
+ *
+ * LA RÈGLE : si le bouton qu'on allume s'allume PARTOUT, ses frères à état
+ * par carte doivent s'éteindre partout aussi. S'il ne s'allume que sur une
+ * carte, éteindre sur cette carte suffit — et c'est le cas courant, qui ne
+ * coûte rien de plus qu'avant. */
 static void eteint_la_famille(Object *btn, Object *card)
 {
     if (!btn || btn->family <= 0 || !btn->owner) return;
     Object *couche = btn->owner;
+    /* L'allumage de btn porte-t-il sur toutes les cartes du fond ? */
+    int btn_partout = !hilite_par_carte(btn) && couche->type == OBJ_BACKGROUND;
     for (int i = 0; i < couche->nparts; i++) {
         Object *f = couche->parts[i];
         if (f == btn || f->type != OBJ_BUTTON) continue;
         if (f->family != btn->family) continue;
         if (!hilite_par_carte(f)) f->hilite = 0;
+        else if (btn_partout)     eteint_partout_dans_le_fond(couche, f->id);
         else hc_set_hilite_raw(card ? card : g_current_card, f->id, 0);
     }
 }
@@ -2410,7 +2450,35 @@ int hc_set_family(Object *btn, int famille)
     if (!btn || btn->type != OBJ_BUTTON) return 0;
     if (famille < 0 || famille > 15) return 0;
     btn->family = famille;
-    if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+    if (famille <= 0) return 1;
+
+    /* ON RÉCONCILIE SUR CHAQUE CARTE OÙ CE BOUTON EST ALLUMÉ.
+     *
+     * Cette ligne ne regardait que la carte courante :
+     *
+     *     if (famille > 0 && hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+     *
+     * Or un bouton de FOND à sharedHilite faux a un état PAR CARTE : il peut
+     * être éteint ici et allumé sur cinq autres. Lui donner une famille le
+     * faisait alors entrer dans un groupe déjà pourvu, sur chacune de ces
+     * cinq cartes, sans que rien ne soit éteint — l'état à deux allumés
+     * qu'aucun clic ne peut produire, et qui n'apparaît qu'en allant voir.
+     *
+     * Le parcours ne coûte que pour ce cas-là : un bouton de carte, ou un
+     * bouton de fond partagé, n'a qu'un seul état et sort par la branche du
+     * dessous. */
+    if (hilite_par_carte(btn)) {
+        Object *fond = btn->owner;
+        Object *pile = fond ? fond->owner : NULL;
+        for (int i = 0; pile && i < pile->nparts; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD || c->bg != fond) continue;
+            if (hc_hilite_of(btn, c)) eteint_la_famille(btn, c);
+        }
+        return 1;
+    }
+
+    if (hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
     return 1;
 }
 
