@@ -7,7 +7,7 @@
       !! personne ne répond à « dessineLeChat 3 »
 
 ── PORTE 2 bis : commande que la v3 ne sait pas faire
-      !! ne sait pas faire : put "x" into field "absentDeToutesLesCartes"
+      !! objet introuvable : put "x" into field "absentDeToutesLesCartes"
 
 ── PORTE 3 : article de menu du noyau
    carte : Deux

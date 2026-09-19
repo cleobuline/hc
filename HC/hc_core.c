@@ -7718,7 +7718,52 @@ static const HctNoeud *v3_designateur(const HctNoeud *n)
 
 /* ------------------------------------------------------------ l'entrée */
 
+/* UN NŒUD D'OBJET QUI NE S'EST PAS RÉSOLU PENDANT CETTE LIGNE.
+ *
+ * LE DÉFAUT QUE CECI CORRIGE. Un gestionnaire de commande rend 0 dans DEUX
+ * cas que rien ne distinguait : « ce n'est pas ma forme » — « show all
+ * cards », qui n'est pas un objet — et « l'objet n'existe pas ». Le
+ * répartiteur concluait dans les deux cas « ne sait pas faire », et posait
+ * « Can't understand » dans le résultat.
+ *
+ * Or HC comprend parfaitement « show » : la commande marche dès que le champ
+ * existe. Le verbe était compris, c'est l'OBJET qui manquait. Mesuré, même
+ * cause et quatre diagnostics :
+ *
+ *   show card field "Absent"            ->  Can't understand    FAUX
+ *   hide card field "Absent"            ->  Can't understand    FAUX
+ *   put "x" into card field "Absent"    ->  Can't understand    FAUX
+ *   set the visible of ... to false     ->  objet introuvable    juste
+ *
+ * Un diagnostic faux envoie chercher au mauvais endroit : il m'a fait
+ * conclure que « show » n'était pas implémenté, alors qu'il ne manquait qu'un
+ * champ dans mon banc d'essai.
+ *
+ * POURQUOI ICI. Trois routes différentes mènent au même message — les
+ * gestionnaires de hc_core.c, le chemin d'écriture de hct_exec.c, et le
+ * recours. Les rapiécer une à une laisserait la quatrième. hct_resout est le
+ * passage obligé de toute résolution d'objet : c'est le seul endroit qui voit
+ * les trois.
+ *
+ * Remis à zéro au début de chaque ligne exécutée, pour qu'un échec d'une
+ * ligne précédente ne contamine pas le diagnostic de la suivante. */
+static int g_objet_manque = 0;
+
+static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
+
+/* L'enveloppe, pour n'avoir qu'UN endroit à instrumenter. Le corps a une
+ * dizaine de sorties ; les marquer une à une, c'est en oublier une. */
 static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
+{
+    Object *o = hct_resout_corps(ctx, n);
+    /* Seul un nœud d'OBJET compte. « show all cards » n'en est pas un : le
+     * gestionnaire a raison de passer la main, et ce n'est pas un objet
+     * manquant. C'est cette distinction qui manquait. */
+    if (!o && n && n->genre == HCTN_OBJET) g_objet_manque = 1;
+    return o;
+}
+
+static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET) return NULL;
 
@@ -13571,6 +13616,17 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
 {
     (void)d;
+    /* LA REMISE À ZÉRO EST APRÈS LE VERDICT, PAS AVANT.
+     *
+     * Ma première version l'avait mise ici, à l'entrée. Elle effaçait alors ce
+     * qu'il fallait justement lire : « put x into card field "Absent" » résout
+     * sa cible dans l'EXÉCUTEUR, donc AVANT d'arriver au répartiteur, et le
+     * drapeau posé par cette résolution était balayé en entrant. La commande
+     * redisait « Can't understand ».
+     *
+     * On efface donc quand on a conclu — soit qu'une commande ait réussi,
+     * soit qu'on ait rendu le diagnostic. Un diagnostic périmé est pire qu'un
+     * diagnostic vague : il est faux avec assurance. */
     if (n->genre == HCTN_COMMANDE && n->op)
         for (int i = 0; V3_VERBES[i].verbe; i++)
             if (ci_equal(V3_VERBES[i].verbe, n->op)) {
@@ -13581,7 +13637,7 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
                 const char *sauve = v1_porte(n->op);
                 int fait = V3_VERBES[i].fn(ctx, n);
                 g_v1_porte = sauve;
-                if (fait) return 1;
+                if (fait) { g_objet_manque = 0; return 1; }
                 break;                 /* forme non portée : ancien chemin */
             }
 
@@ -13636,11 +13692,32 @@ static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
      * ce n'est pas la même faute pour qui lit, et HyperCard les nommait
      * différemment aussi. */
     v1_compte("v1 refusée", "recours v3");
-    if (n->genre == HCTN_MESSAGE)
+    if (n->genre == HCTN_MESSAGE) {
         emit(HC_ERR, "   !! personne ne répond à « %s »", ligne);
-    else
+        set_result("Can't understand");
+    }
+    /* LE VERBE ÉTAIT-IL COMPRIS, OU L'OBJET MANQUAIT-IL ?
+     *
+     * Deux fautes distinctes, qui recevaient le même message. « show card
+     * field "Absent" » disait « ne sait pas faire » alors que HC comprend
+     * parfaitement « show » — la commande marche dès que le champ existe.
+     * Le diagnostic envoyait chercher du côté du verbe, où il n'y avait
+     * rien.
+     *
+     * g_objet_manque est posé par hct_resout quand un nœud d'OBJET ne s'est
+     * pas résolu pendant cette ligne. S'il est levé, c'est l'objet qu'il faut
+     * nommer, pas le verbe — et « the result » doit dire autre chose que
+     * « Can't understand », que HyperTalk réserve à une ligne incomprise. */
+    else if (g_objet_manque) {
+        emit(HC_ERR, "   !! objet introuvable : %s", ligne);
+        set_result("No such object");
+    }
+    /* Quelle qu'ait été la conclusion, la ligne suivante repart à neuf. */
+    else {
         emit(HC_ERR, "   !! ne sait pas faire : %s", ligne);
-    set_result("Can't understand");
+        set_result("Can't understand");
+    }
+    g_objet_manque = 0;
     ARENA_FREE;
     return 1;
 }

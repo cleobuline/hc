@@ -7,21 +7,21 @@
 [v3]    v1 refusée recours v3                   15
 [v3]    v1 terme recours expr                    14
 [v3]    v1 fonction recours expr                 14
-[ERR]    !! ne sait pas faire : put empty into card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
-[ERR]    !! ne sait pas faire : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put empty into card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
+[ERR]    !! objet introuvable : put texte into line sortieLigne of card field "data2" of card id sortieCarte
 
 ───── data2 ─────
 
