@@ -1,9 +1,29 @@
 # Réglages personnels d'Xcode : ils changent à chaque ouverture et
 # n'intéressent que la machine qui les produit.
+#
+# LE PRÉFIXE « **/ » N'EST PAS DÉCORATIF. Un motif qui contient une barre
+# oblique est ANCRÉ au dossier du .gitignore — donc à la racine. L'ancienne
+# ligne « *.xcworkspace/xcshareddata/… » ne pouvait matcher qu'un
+# « <nom>.xcworkspace » posé à la racine, alors que le vrai chemin est
+# « HC.xcodeproj/project.xcworkspace/xcshareddata/… », deux niveaux plus bas.
+# Le motif existait, paraissait juste, et n'a jamais rien ignoré. Vérifié par
+# git check-ignore, qui dit « SUIVI » là où l'on croyait « ignoré ».
+#
+# C'est pour cela qu'Xcode réclamait sans cesse de ranger des modifications :
+# il réécrit ces fichiers à chaque ouverture, git les voyait, et sa couche de
+# contrôle de version lançait stash et rebase pour les mettre de côté.
 *.xcuserdatad/
 xcuserdata/
-*.xcworkspace/xcuserdata/
-*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+**/xcuserdata/
+**/xcshareddata/WorkspaceSettings.xcsettings
+**/xcshareddata/IDEWorkspaceChecks.plist
+**/xcshareddata/swiftpm/
+
+# PAS de « **/xcshareddata/ » en bloc : ce dossier peut aussi porter les
+# SCHÉMAS de compilation, qui se partagent volontairement — c'est le sens de
+# « shared ». L'intégration continue n'en a pas besoin (elle compile avec
+# « -target HC », pas « -scheme »), mais les ignorer en masse empêcherait un
+# jour d'en partager un. On ne nomme donc que ce qui est certainement local.
 
 # Produits de construction
 build/
