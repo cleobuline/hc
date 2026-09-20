@@ -207,6 +207,7 @@ static BOOL gSelRectActive = NO;
 static NSPanel *gPatternPanel = nil;
 static NSPanel *gToolPanel = nil;
 static NSPanel *gWidthPanel = nil;
+static NSPanel *gPolySidesPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
 /* ═══ Prévenir une palette qu'un script vient de changer son réglage ═════
@@ -226,6 +227,8 @@ static void hcv_palette_maj(NSPanel *p)
 {
     if (p && [p isVisible]) [(NSView *)[p contentView] setNeedsDisplay:YES];
 }
+
+void hcv_palette_outils_maj(void) { hcv_palette_maj(gToolPanel); }
 
 static BOOL gTextUnderline = NO;
 
@@ -1498,6 +1501,18 @@ static void cocoa_choose_tool(const char *name) {
         { "rect",           TOOL_RECT     },
         { "bucket",         TOOL_FILL     },
         { "oval",           TOOL_OVAL     },
+        /* Plusieurs orthographes acceptées EN ENTRÉE, une seule rendue en
+         * sortie. Les piles d'époque écrivent « round rect » ; je ne sais pas
+         * de mémoire si HyperCard acceptait aussi « round rectangle », et
+         * refuser une forme plausible coûte plus cher que d'en accepter une
+         * de trop — un script qui ne choisit pas son outil dessine avec le
+         * précédent, sans rien dire. */
+        { "round rect",     TOOL_ROUNDRECT },
+        { "round rectangle",TOOL_ROUNDRECT },
+        { "roundrect",      TOOL_ROUNDRECT },
+        { "regular polygon",TOOL_REGPOLY  },
+        { "regular poly",   TOOL_REGPOLY  },
+        { "regpoly",        TOOL_REGPOLY  },
         { "curve",          TOOL_FREEFORM },
         { "text",           TOOL_TEXT     },
         { "polygon",        TOOL_FREEFORM },
@@ -1638,7 +1653,13 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
         case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
         case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
+        /* Le polygone régulier se lit CENTRE → RAYON : a est son centre, z
+         * donne le rayon et l'angle. Il n'a donc pas de boîte à normaliser,
+         * et c'est justement pour cela qu'il est dans le même cas que les
+         * autres ici — « drag from a to b » lui passe déjà les deux points
+         * tels quels. */
         case TOOL_RECT: case TOOL_OVAL: case TOOL_FREEFORM:
+        case TOOL_ROUNDRECT: case TOOL_REGPOLY:
             if (gShapeFilled) fill_shape(rep, gTool, a, z);
             else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
             break;
@@ -1739,8 +1760,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
      * Sans ce cas, ils ne dessinaient rien du tout, en silence. */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH  ||
         gTool == TOOL_ERASER || gTool == TOOL_SPRAY  ||
-        gTool == TOOL_LINE   || gTool == TOOL_RECT   ||
-        gTool == TOOL_OVAL   || gTool == TOOL_FREEFORM) {
+        gTool == TOOL_FREEFORM || hcv_outil_forme(gTool)) {
 
         Object *card = hc_current_card();
         if (!card) return;
@@ -2019,6 +2039,8 @@ static void cocoa_do_menu(const char *item) {
             { "Transparent",     HCV_PAINT_TRANSPARENT },
             { "Grid",            HCV_PAINT_GRID        },
             { "FatBits",         HCV_PAINT_FATBITS     },
+            { "Polygon Sides",   HCV_PAINT_POLYSIDES   },
+            { "Polygon Sides…",  HCV_PAINT_POLYSIDES   },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -2506,6 +2528,10 @@ static const char *cocoa_global_get(const char *name) {
         return gShapeFilled ? "true" : "false";
     if (strcasecmp(name, "grid") == 0)
         return gGrid ? "true" : "false";
+    if (strcasecmp(name, "polySides") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gPolySides);
+        return gGlobBuf;
+    }
     if (strcasecmp(name, "lineSize") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gLineWidth);
         return gGlobBuf;
@@ -2535,6 +2561,8 @@ static const char *cocoa_global_get(const char *name) {
             case TOOL_RECT:     n = "rectangle"; break;
             case TOOL_FILL:     n = "bucket";    break;
             case TOOL_OVAL:     n = "oval";      break;
+            case TOOL_ROUNDRECT: n = "round rect";       break;
+            case TOOL_REGPOLY:   n = "regular polygon";  break;
             case TOOL_FREEFORM: n = "curve";     break;
             case TOOL_TEXT:     n = "text";      break;
                 
@@ -2670,6 +2698,19 @@ static void cocoa_global_set(const char *name, const char *value) {
     }
     if (strcasecmp(name, "grid") == 0) {
         gGrid = vrai ? YES : NO;
+        return;
+    }
+    if (strcasecmp(name, "polySides") == 0) {
+        /* Les bornes sont ici ET dans shape_sommets, et ce n'est pas un
+         * doublon : celle-ci REFUSE une valeur qui n'a pas de sens, celle-là
+         * protège le tableau de sommets contre tout ce qui arriverait par un
+         * autre chemin. La première parle à l'utilisateur, la seconde au
+         * programme. */
+        int v = hc_coord(value, gPolySides);
+        if (v < 3)  v = 3;
+        if (v > 50) v = 50;
+        gPolySides = v;
+        [gView setNeedsDisplay:YES];
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
@@ -3598,6 +3639,10 @@ static int parts_du_calque(Object *o)
             return hcv_outil_peint();
         }
 
+        /* Pas de coche : il OUVRE une boîte, il ne bascule pas un état. Le
+         * cocher laisserait croire qu'un réglage est en cours. */
+        if (t == HCV_PAINT_POLYSIDES) return hcv_outil_peint();
+
         if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
@@ -3967,6 +4012,34 @@ static int gColorTarget = 0;
     [self setNeedsDisplay:YES];
 }
 
+- (void)installPolySidesPalette {
+    /* Les mêmes mesures que la palette, lues au même endroit : une taille
+     * recopiée ici aurait fini par ne plus correspondre au contenu. */
+    CGFloat cell = 46, gap = 3, margin = 6;
+    CGFloat w = margin*2 + NUM_POLYCHOIX*cell + (NUM_POLYCHOIX-1)*gap;
+    CGFloat h = margin*2 + cell;
+    gPolySidesPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(220, 170, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow |
+                             NSWindowStyleMaskClosable | NSWindowStyleMaskNonactivatingPanel)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gPolySidesPanel setTitle:@"Polygon Sides"];
+    [gPolySidesPanel setFloatingPanel:YES];
+    [gPolySidesPanel setBecomesKeyOnlyIfNeeded:YES];
+    [gPolySidesPanel setHidesOnDeactivate:YES];
+    [gPolySidesPanel setReleasedWhenClosed:NO];
+    PolySidesPalette *grid =
+        [[PolySidesPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [gPolySidesPanel setContentView:grid];
+    [gPolySidesPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)showPolySidesPalette {
+    if (!gPolySidesPanel) { [self installPolySidesPalette]; return; }
+    [gPolySidesPanel makeKeyAndOrderFront:nil];
+    hcv_palette_maj(gPolySidesPanel);
+}
+
 - (void)installWidthPalette {
     int cols = 4, rows = 3;
     CGFloat cell = 40, gap = 3, margin = 6;
@@ -4144,6 +4217,11 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * on tomberait sur le coin supérieur gauche du calque, qui n'est presque
      * jamais ce qu'on était en train de regarder — et il faudrait ⌘-glisser
      * jusqu'à son ouvrage avant de pouvoir y toucher. */
+    if (quoi == HCV_PAINT_POLYSIDES) {
+        [gView showPolySidesPalette];
+        return;
+    }
+
     if (quoi == HCV_PAINT_FATBITS) {
         gFatBits = !gFatBits;
         if (gFatBits) hcv_fat_centre(gFatDernier, [gView bounds]);
@@ -4456,6 +4534,28 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
             preview = [NSBezierPath bezierPathWithRect:box];
         } else if (gTool == TOOL_OVAL) {
             preview = [NSBezierPath bezierPathWithOvalInRect:box];
+        } else {
+            /* LES FORMES POLYGONALES, par les mêmes sommets que la gravure.
+             *
+             * Le polygone régulier se lit CENTRE → RAYON : on lui passe les
+             * deux points BRUTS, car `box` les a normalisés en rectangle et
+             * aurait perdu à la fois son centre et son angle. Le rectangle
+             * arrondi, lui, est bien une boîte.
+             *
+             * L'aperçu et la gravure lisent la même fonction : ce qu'on voit
+             * pendant le geste est ce qu'on obtient en relâchant. */
+            NSPoint a = (gTool == TOOL_REGPOLY) ? gShapeStart : box.origin;
+            NSPoint z = (gTool == TOOL_REGPOLY)
+                        ? gShapeEnd
+                        : NSMakePoint(NSMaxX(box), NSMaxY(box));
+            NSPoint som[HC_SOMMETS_MAX];
+            int nsom = shape_sommets(gTool, a, z, som, HC_SOMMETS_MAX);
+            if (nsom >= 3) {
+                preview = [NSBezierPath bezierPath];
+                [preview moveToPoint:som[0]];
+                for (int i = 1; i < nsom; i++) [preview lineToPoint:som[i]];
+                [preview closePath];
+            }
         }
         [preview setLineWidth:1];
         [preview stroke];
@@ -5198,8 +5298,8 @@ static BOOL      gSansMessageChamp = NO;
 
     /* 6. Préparation Undo pour les outils de dessin */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
-        gTool == TOOL_SPRAY  || gTool == TOOL_LINE  || gTool == TOOL_RECT   ||
-        gTool == TOOL_OVAL   || gTool == TOOL_FILL  || gTool == TOOL_FREEFORM)
+        gTool == TOOL_SPRAY  || gTool == TOOL_FILL  || gTool == TOOL_FREEFORM ||
+        hcv_outil_forme(gTool))
         [self beginPaintUndo];
 
     /* 7. Traitement des outils continus */
@@ -5235,7 +5335,7 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
-    if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
+    if (hcv_outil_forme(gTool)) {
         gShapeStart = hcv_cale_pt(p);
         gShapeEnd = gShapeStart;
         gShapeDrawing = YES;
@@ -5725,6 +5825,17 @@ static BOOL      gSansMessageChamp = NO;
             } else {
                 paint_shape(rep, TOOL_LINE, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);
             }
+        } else if (gTool == TOOL_REGPOLY) {
+            /* CENTRE → RAYON, sans passer par la boîte : finalStart et
+             * finalEnd sont les coins du rectangle englobant, et s'en servir
+             * ici aurait placé le polygone dans un coin, plus petit, et sans
+             * l'angle du geste. L'aperçu, lui, montrait la bonne forme — on
+             * aurait donc eu un outil qui grave autre chose que ce qu'il
+             * annonce, ce qui est la pire des deux erreurs. */
+            if (gShapeFilled)
+                fill_shape(rep, gTool, gShapeStart, gShapeEnd);
+            paint_shape(rep, gTool, gShapeStart, gShapeEnd,
+                        [NSColor blackColor], gLineWidth);
         } else {
             if (gShapeFilled)
                 fill_shape(rep, gTool, finalStart, finalEnd);

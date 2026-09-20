@@ -42,6 +42,30 @@ void spray_stamp(NSBitmapImageRep *rep, int cx, int cy, int radius, int density)
 void spray_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to,
                   int radius, int density);
 
+/* LES SOMMETS D'UNE FORME POLYGONALE inscrite entre deux points.
+ *
+ * Le rectangle arrondi et le polygone régulier passent par ici, et par ici
+ * SEULEMENT : le contour et le remplissage lisent la MÊME liste. Tracer un
+ * chemin de Bézier et remplir par balayage aurait donné deux définitions de
+ * la même forme, qui se seraient écartées d'un pixel dans les coins — un
+ * liseré de fond entre le trait et l'intérieur, visible et inexplicable.
+ *
+ * Rend le nombre de points posés, 0 si la forme n'est pas de celles-là. */
+#define HC_SOMMETS_MAX 256
+int  shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max);
+
+/* LES SOMMETS D'UN POLYGONE RÉGULIER, côtés donnés plutôt que lus.
+ *
+ * Extrait de shape_sommets pour que la boîte « Polygon Sides » dessine ses
+ * six choix avec LE MÊME calcul que l'outil. Une boîte qui montre un
+ * hexagone pendant que l'outil en trace un autre est pire qu'une boîte
+ * absente : elle a l'autorité d'un aperçu.
+ *
+ * `centre` est le centre, `vers` donne à la fois le rayon et l'angle du
+ * premier sommet. Rend le nombre de points, 0 si le rayon est nul. */
+int  poly_sommets(int cotes, NSPoint centre, NSPoint vers,
+                  NSPoint *out, int max);
+
 void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b);
 void flood_fill(NSBitmapImageRep *rep, int sx, int sy);

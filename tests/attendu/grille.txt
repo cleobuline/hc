@@ -37,3 +37,27 @@
 === 6. le témoin : une propriété voisine n'a pas bougé ===
    put the filled
    false
+=== 7. « the polySides », l'autre réglage posé au même endroit ===
+   (ajoutée aux deux MÊMES listes ; si l'une avait été oubliée,
+    elle se lirait sans s'écrire, ou l'inverse)
+   put the polySides
+   4
+   set the polySides to 6
+   [HOTE] polySides <- « 6 » donc 6
+   put the polySides
+   6
+=== 8. hors domaine : l'hôte ramène dans les bornes ===
+   (un polygone à deux côtés n'enferme rien, et à mille il n'est
+    plus qu'un cercle — mais c'est l'hôte qui tranche, pas le
+    noyau : il ne connaît pas le sens de cette propriété)
+   set the polySides to 2
+   [HOTE] polySides <- « 2 » donc 3
+   put the polySides
+   3
+   set the polySides to 9999
+   [HOTE] polySides <- « 9999 » donc 50
+   put the polySides
+   50
+=== 9. et la coquille reste refusée ===
+   set the polySide to 6
+   [ERR]    !! propriété inconnue : polySide

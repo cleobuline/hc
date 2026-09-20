@@ -189,6 +189,16 @@ void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
 
 void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
     if (!rep) return;
+
+    /* Les formes polygonales passent par le remplissage de polygone, avec les
+     * sommets qui ont servi au CONTOUR. Une seule définition de la forme, donc
+     * pas de liseré entre le trait et l'intérieur. */
+    {
+        NSPoint som[HC_SOMMETS_MAX];
+        int nsom = shape_sommets(tool, a, b, som, HC_SOMMETS_MAX);
+        if (nsom >= 3) { fill_freeform(rep, som, nsom); return; }
+    }
+
     int W = (int)[rep pixelsWide];
     int H = (int)[rep pixelsHigh];
     unsigned char *data = [rep bitmapData];
@@ -272,6 +282,86 @@ void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
 }
 
 
+/* LE RAYON DES COINS du rectangle arrondi, en pixels.
+ *
+ * HyperCard en avait un fixe, celui des boutons du Système 6. Huit est le
+ * choix qui lui ressemble ; c'est une décision d'allure, pas une mesure, et
+ * elle est écrite ici plutôt que dispersée dans le calcul. Il se rabat à la
+ * moitié du plus petit côté, sans quoi un rectangle plat verrait ses coins
+ * se croiser et la forme se retournerait. */
+#define HC_COIN_RAYON 8
+
+/* Combien de segments par quart de tour. Huit suffit : à l'échelle 1 les
+ * marches sont d'un pixel, et FatBits montre de toute façon le pixel. */
+#define HC_COIN_PAS   8
+
+int poly_sommets(int cotes, NSPoint centre, NSPoint vers,
+                 NSPoint *out, int max)
+{
+    if (!out || max < 3) return 0;
+    int n = cotes;
+    if (n < 3)   n = 3;
+    if (n > 50)  n = 50;
+    if (n > max) n = max;
+    double dx = vers.x - centre.x, dy = vers.y - centre.y;
+    double r  = sqrt(dx*dx + dy*dy);
+    if (r < 1) return 0;
+    double a0 = atan2(dy, dx);
+    for (int i = 0; i < n; i++) {
+        double t = a0 + 2.0 * M_PI * i / n;
+        out[i] = NSMakePoint(centre.x + r * cos(t), centre.y + r * sin(t));
+    }
+    return n;
+}
+
+int shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max)
+{
+    if (!out || max < 3) return 0;
+
+    if (tool == TOOL_REGPOLY) {
+        /* CENTRE AU POINT DE DÉPART, rayon jusqu'au point courant, et le
+         * premier sommet pointe VERS le curseur : le polygone tourne donc
+         * avec le geste. C'est notre choix — je ne sais pas reproduire de
+         * mémoire ce que faisait exactement HyperCard, et une fidélité
+         * inventée vaut moins qu'une décision assumée. */
+        return poly_sommets(gPolySides, a, b, out, max);
+    }
+
+    if (tool == TOOL_ROUNDRECT) {
+        double x0 = MIN(a.x, b.x), x1 = MAX(a.x, b.x);
+        double y0 = MIN(a.y, b.y), y1 = MAX(a.y, b.y);
+        double w = x1 - x0, h = y1 - y0;
+        if (w < 1 || h < 1) return 0;
+        double r = HC_COIN_RAYON;
+        if (r > w / 2) r = w / 2;
+        if (r > h / 2) r = h / 2;
+
+        /* LES QUATRE ARCS, chacun balayant +90°, dans un ordre tel que
+         * chaque arc FINISSE là où le suivant commence.
+         *
+         * La première version les faisait tourner à l'envers : les arcs se
+         * croisaient et la forme sortait en nœud papillon. Trouvé en
+         * rastérisant la même construction pour en faire l'icône de la
+         * palette — un dessin de 32×32 qu'on REGARDE dit en une seconde ce
+         * qu'aucune relecture ne m'avait dit. C'est le seul test que cette
+         * géométrie pouvait recevoir ici, et il a servi. */
+        const double cx[4] = { x1 - r, x1 - r, x0 + r, x0 + r };
+        const double cy[4] = { y0 + r, y1 - r, y1 - r, y0 + r };
+        const double a0[4] = { -M_PI_2, 0.0, M_PI_2, M_PI };
+
+        int n = 0;
+        for (int c = 0; c < 4; c++) {
+            for (int i = 0; i <= HC_COIN_PAS && n < max; i++) {
+                double t = a0[c] + M_PI_2 * i / HC_COIN_PAS;
+                out[n++] = NSMakePoint(cx[c] + r * cos(t), cy[c] + r * sin(t));
+            }
+        }
+        return n;
+    }
+
+    return 0;
+}
+
 void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width) {
     if (!rep) return;
     if (width <= 0 && tool != TOOL_LINE) return;   // épaisseur 0 : pas de contour (sauf ligne)
@@ -303,7 +393,13 @@ void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSCol
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
-    if (tool == TOOL_LINE) {
+    NSPoint som[HC_SOMMETS_MAX];
+    int nsom = shape_sommets(tool, a, b, som, HC_SOMMETS_MAX);
+    if (nsom >= 3) {
+        [path moveToPoint:som[0]];
+        for (int i = 1; i < nsom; i++) [path lineToPoint:som[i]];
+        [path closePath];
+    } else if (tool == TOOL_LINE) {
         [path moveToPoint:a];
         [path lineToPoint:b];
     } else if (tool == TOOL_RECT) {
