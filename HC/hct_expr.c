@@ -789,10 +789,34 @@ static HctNoeud *reference(HctAnalyseur *a)
 
     HctTypeObjet type;
     if (!type_obj_ici(a, &type)) return faute(a, "type d'objet attendu");
+    /* LE JETON DU NŒUD COUVRE JUSQU'AU TYPE, et pas seulement le premier mot.
+     *
+     * Même remède que pour « this background », dix lignes plus haut, et il
+     * n'avait jamais été appliqué ici. v3_source reconstitue le texte d'un
+     * sous-arbre en prenant les bornes des jetons qu'il contient : quand un
+     * DÉSIGNATEUR suit le type — « card field 1 » —, le jeton de l'enfant
+     * pousse la borne au-delà du mot « field » et la reconstitution est
+     * juste par accident. Un ordinal n'a pas d'enfant : le nœud ne couvrait
+     * donc que « second », et le pont envoyait « second » tout court à
+     * l'ancien moteur.
+     *
+     * Mesuré, et c'est une MAUVAISE RÉPONSE, pas une erreur :
+     *
+     *     put the name of second button   ->  card "Deux"
+     *     put the name of third button    ->  card "Trois"
+     *
+     * L'ordinal survivait, le type disparaissait, et l'ancien moteur lisait
+     * « second » comme la deuxième CARTE. On étend donc les bornes du jeton
+     * au mot de type, ce qui rend la reconstitution exacte quel que soit le
+     * désignateur — et, au passage, nomme la référence entière dans les
+     * messages d'erreur. */
+    const HctJeton *jtype = ici(a);
     avance(a);
 
     HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);
     if (!n) return NULL;
+    if (jtype && jtype->deb && j.deb && jtype->deb >= j.deb)
+        n->jeton.len = (int)((jtype->deb + jtype->len) - j.deb);
     n->typeobj = type;
     n->portee = portee;
 
