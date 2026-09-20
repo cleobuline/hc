@@ -1055,7 +1055,8 @@ void hcicon_panel_stack_closing(Object *stack)
  * reviendrait à peindre dans le vide. */
 - (void)editIcon:(id)sender {
     if (hcv_menu_trappe("Icon…")) return;   /* la pile détourne l'article */
-    gInfoTarget = (gSelected && gSelected->type == OBJ_BUTTON) ? gSelected : NULL;
+    Object *sel = hcv_selection();
+    gInfoTarget = (sel && sel->type == OBJ_BUTTON) ? sel : NULL;
     gInfoIconField = nil;
     gInfoFamily    = nil;   /* même raison : infoOK: y écrirait dans le vide */
     [self infoIcon:sender];

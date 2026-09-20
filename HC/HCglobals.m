@@ -16,8 +16,8 @@ BOOL    gTransparentBg = NO;
 NSColor *gInkColor  = nil;   /* noir  — voir hc_colors_init() */
 NSColor *gBackColor = nil;   /* blanc — idem */
 
-/* ---- Selection et vue ---- */
-Object *gSelected    = NULL;
+/* ---- Selection et vue ----
+ * gSelected est parti dans HCDoc : il est par FENETRE. Voir HCglobals.h. */
 Object *gFontTarget  = NULL;
 HCView *gView        = nil;
 

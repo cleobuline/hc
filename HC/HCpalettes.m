@@ -725,7 +725,7 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                     hcv_abandonne_selection();
 
                 gTool = (HCTool)tc->value;
-                gSelected = NULL;
+                hcv_selectionne(NULL);
                 /* Le pointeur suit l'outil. Ce chemin-ci est celui du CLIC
                  * dans la palette ; « choose ... tool » passe par
                  * cocoa_choose_tool, qui fait le même geste. Les deux doivent

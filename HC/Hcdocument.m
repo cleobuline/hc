@@ -48,6 +48,28 @@ static HCDocument *gCurrentDoc = nil;
      * serait plus aimable, et c'est la suite naturelle de ce nettoyage. */
     hcv_abandonne_selection();
 
+    /* ET LA SÉLECTION D'OBJET ? ELLE N'A PLUS BESOIN DE RIEN ICI.
+     *
+     * Elle a traversé les fenêtres longtemps : gSelected était un global de
+     * processus, et gTool l'est toujours, si bien qu'en passant de la pile A
+     * à la pile B avec l'outil Bouton en main, object_selection_active()
+     * restait vrai sur un objet de A. Couper le supprimait dans la fenêtre du
+     * dessous, Bring Closer y changeait l'ordre de superposition, changeFont:
+     * le restylait, et drawRect peignait son cadre rouge par-dessus la carte
+     * de B, aux coordonnées d'un objet absent.
+     *
+     * Le premier correctif l'effaçait ici, d'une ligne, comme la sélection de
+     * peinture juste au-dessus. Elle est maintenant un champ de HCDoc, donc
+     * PAR FENÊTRE : il n'y a plus rien à effacer, puisque hc_set_active_doc
+     * échange déjà tout le bloc quelques lignes plus bas. Revenir sur la pile
+     * A y retrouve sa sélection, au lieu de l'avoir perdue.
+     *
+     * Et c'est mieux qu'un effacement : effacer suppose qu'on n'oublie aucun
+     * chemin de bascule ; ranger supprime la question. Le paragraphe
+     * ci-dessus disait « la garder par document serait plus aimable, et c'est
+     * la suite naturelle de ce nettoyage » — pour la peinture, elle reste à
+     * faire. */
+
     gCurrentDoc = doc;
 
     /* gView désigne la vue ACTIVE : c'est par lui que passent le noyau et les
