@@ -17,6 +17,7 @@
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static void ma_ligne(HcLineKind k, int d, const char *t)
 { (void)d; if (k == HC_MSG) printf("   %s\n", t);
@@ -26,6 +27,7 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
  * traduit la valeur comme le fait l'interface — non vide et différent de
  * « false » vaut vrai. */
 static int  g_grille  = 0;
+static int  g_cotes   = 4;
 static int  g_repond  = 1;     /* l'hôte connaît-il « grid » ? */
 static void mon_set(const char *n, const char *v)
 {
@@ -34,13 +36,23 @@ static void mon_set(const char *n, const char *v)
                     strcmp(v, "0") != 0);
         printf("   [HOTE] grid <- « %s » donc %s\n", v ? v : "",
                g_grille ? "vrai" : "faux");
+    } else if (!strcasecmp(n, "polySides")) {
+        /* L'hôte borne, comme cocoa_global_set : trois est le minimum qui
+         * enferme une surface. */
+        int k = v ? atoi(v) : g_cotes;
+        if (k < 3)  k = 3;
+        if (k > 50) k = 50;
+        g_cotes = k;
+        printf("   [HOTE] polySides <- « %s » donc %d\n", v ? v : "", g_cotes);
     } else {
         printf("   [HOTE] ignore « %s »\n", n);
     }
 }
 static const char *mon_get(const char *n)
 {
+    static char b[32];
     if (!strcasecmp(n, "grid") && g_repond) return g_grille ? "true" : "false";
+    if (!strcasecmp(n, "polySides")) { snprintf(b, sizeof b, "%d", g_cotes); return b; }
     if (!strcasecmp(n, "filled")) return "false";
     return NULL;
 }
@@ -98,5 +110,24 @@ int main(void)
 
     printf("=== 6. le témoin : une propriété voisine n'a pas bougé ===\n");
     fais("put the filled");
+
+    printf("=== 7. « the polySides », l'autre réglage posé au même endroit ===\n");
+    printf("   (ajoutée aux deux MÊMES listes ; si l'une avait été oubliée,\n");
+    printf("    elle se lirait sans s'écrire, ou l'inverse)\n");
+    fais("put the polySides");
+    fais("set the polySides to 6");
+    fais("put the polySides");
+
+    printf("=== 8. hors domaine : l'hôte ramène dans les bornes ===\n");
+    printf("   (un polygone à deux côtés n'enferme rien, et à mille il n'est\n");
+    printf("    plus qu'un cercle — mais c'est l'hôte qui tranche, pas le\n");
+    printf("    noyau : il ne connaît pas le sens de cette propriété)\n");
+    fais("set the polySides to 2");
+    fais("put the polySides");
+    fais("set the polySides to 9999");
+    fais("put the polySides");
+
+    printf("=== 9. et la coquille reste refusée ===\n");
+    fais("set the polySide to 6");
     return 0;
 }

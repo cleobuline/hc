@@ -42,6 +42,18 @@ void spray_stamp(NSBitmapImageRep *rep, int cx, int cy, int radius, int density)
 void spray_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to,
                   int radius, int density);
 
+/* LES SOMMETS D'UNE FORME POLYGONALE inscrite entre deux points.
+ *
+ * Le rectangle arrondi et le polygone régulier passent par ici, et par ici
+ * SEULEMENT : le contour et le remplissage lisent la MÊME liste. Tracer un
+ * chemin de Bézier et remplir par balayage aurait donné deux définitions de
+ * la même forme, qui se seraient écartées d'un pixel dans les coins — un
+ * liseré de fond entre le trait et l'intérieur, visible et inexplicable.
+ *
+ * Rend le nombre de points posés, 0 si la forme n'est pas de celles-là. */
+#define HC_SOMMETS_MAX 256
+int  shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max);
+
 void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b);
 void flood_fill(NSBitmapImageRep *rep, int sx, int sy);

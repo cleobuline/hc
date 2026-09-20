@@ -8516,7 +8516,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     "tool", "screenRect",
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
-    "filled", "lineSize", "pattern", "brush", "grid",
+    "filled", "lineSize", "pattern", "brush", "grid", "polySides",
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -8549,7 +8549,7 @@ static const char *V3_GLOBALES_HOTE[] = {
  * c'est la seule des trois propriétés du noyau à être partagée. */
 static const char *V3_GLOBALES_ECRIVABLES[] = {
     "lockScreen", "editBkgnd", "cursor",
-    "filled", "lineSize", "pattern", "brush", "grid",
+    "filled", "lineSize", "pattern", "brush", "grid", "polySides",
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",

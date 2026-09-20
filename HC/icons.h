@@ -12,6 +12,12 @@ extern const char *ICON_FREEFORM32[32];
 extern const char *ICON_SELRECT32[32];
 extern const char *ICON_BUTTON32[32] ;
 extern const char *ICON_FIELD32[32] ;
+/* Le rectangle arrondi et le polygone régulier. Dessinés par rastérisation
+ * de la MÊME construction que shape_sommets, ce qui a servi deux fois : ces
+ * icônes sont fidèles à ce que l'outil trace, et c'est en les regardant
+ * qu'on a vu que la construction était fausse. */
+extern const char *ICON_ROUNDRECT32[32];
+extern const char *ICON_REGPOLY32[32];
 extern const char *ICON_RECT32[32] ;
 extern const char *ICON_LINE32[32];
 extern const char *ICON_OVAL32[32];
