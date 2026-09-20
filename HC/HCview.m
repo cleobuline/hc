@@ -288,6 +288,47 @@ static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
     }
 }
 
+/* ═══ LA GRILLE ════════════════════════════════════════════════════════
+ *
+ * Huit pixels, le pas d'HyperCard. Ce n'est pas un chiffre rond gratuit :
+ * c'est le côté d'une trame, si bien qu'une forme calée tombe sur les bords
+ * du motif qui la remplit.
+ *
+ * CE QUI SE CALE, ET CE QUI NE SE CALE PAS. Les outils de FORME — ligne,
+ * rectangle, ovale —, le rectangle de sélection, et les objets qu'on
+ * déplace, redimensionne ou crée. PAS le crayon, le pinceau, l'aérographe,
+ * la gomme, le tracé libre ni le lasso : caler une main levée sur huit
+ * pixels ne la contraint pas, elle la rend inutilisable — on ne dessinerait
+ * plus que des pointillés. La règle est donc « ce qui a des COINS se cale »,
+ * et elle se tient sans exception à retenir.
+ *
+ * LES OBJETS SONT UNE EXTENSION À NOUS. Chez HyperCard la grille ne touche
+ * que la peinture ; les boutons se traînent au pixel. Mais aligner deux
+ * boutons est justement ce pour quoi on allume une grille, et s'en priver
+ * par fidélité aurait été fidèle à la lettre contre l'usage. C'est écrit ici
+ * pour qu'on sache lequel des deux on a choisi, et pourquoi.
+ *
+ * On cale le RÉSULTAT et non la souris : deux boutons posés grille allumée
+ * ont exactement le même x, ce qui est le service rendu. Caler l'écart de
+ * la souris n'aurait aligné que les gestes, pas les objets.
+ *
+ * Grille éteinte, les deux fonctions sont l'identité — les appelants n'ont
+ * donc aucun test à faire, et aucun ne peut oublier d'en faire un. */
+#define HCV_GRILLE 8
+
+static int hcv_cale(int v)
+{
+    if (!gGrid) return v;
+    return (int)lround((double)v / HCV_GRILLE) * HCV_GRILLE;
+}
+
+static NSPoint hcv_cale_pt(NSPoint p)
+{
+    if (!gGrid) return p;
+    return NSMakePoint((CGFloat)hcv_cale((int)lround(p.x)),
+                       (CGFloat)hcv_cale((int)lround(p.y)));
+}
+
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     if (centered) {
         CGFloat dx = fabs(end.x - start.x);
@@ -1826,6 +1867,7 @@ static void cocoa_do_menu(const char *item) {
             { "Clear",           HCV_PAINT_CLEAR       },
             { "Opaque",          HCV_PAINT_OPAQUE      },
             { "Transparent",     HCV_PAINT_TRANSPARENT },
+            { "Grid",            HCV_PAINT_GRID        },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -2311,6 +2353,8 @@ static const char *cocoa_global_get(const char *name) {
 
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
+    if (strcasecmp(name, "grid") == 0)
+        return gGrid ? "true" : "false";
     if (strcasecmp(name, "lineSize") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gLineWidth);
         return gGlobBuf;
@@ -2471,6 +2515,10 @@ static void cocoa_global_set(const char *name, const char *value) {
         gShapeFilled = vrai ? YES : NO;
         hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (strcasecmp(name, "grid") == 0) {
+        gGrid = vrai ? YES : NO;
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
@@ -3379,6 +3427,16 @@ static int parts_du_calque(Object *o)
             return YES;
         }
 
+        /* La grille porte une COCHE et ne demande AUCUNE sélection : c'est un
+         * réglage de dessin, pas une transformation. La griser faute de
+         * sélection la rendrait inatteignable au moment précis où on
+         * l'allume — avant de dessiner. */
+        if (t == HCV_PAINT_GRID) {
+            [item setState:gGrid ? NSControlStateValueOn
+                                 : NSControlStateValueOff];
+            return YES;
+        }
+
         if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
@@ -3911,6 +3969,16 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * au lieu de la basculer — « doMenu "Transparent" » doit rendre le
      * dessin transparent, pas l'inverser : un script qui l'appelle deux fois
      * ne doit pas défaire son propre travail. */
+    /* LA GRILLE BASCULE, elle ne se pose pas : l'article de menu d'HyperCard
+     * est une coche, et « doMenu "Grid" » fait exactement ce que ferait le
+     * clic. Pour la POSER à une valeur précise il y a « set the grid to true »,
+     * qui passe par cocoa_global_set — deux portes, deux gestes distincts, et
+     * le même état derrière. */
+    if (quoi == HCV_PAINT_GRID) {
+        gGrid = !gGrid;
+        return;
+    }
+
     if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
         gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
         [self setNeedsDisplay:YES];
@@ -4886,8 +4954,8 @@ static BOOL      gSansMessageChamp = NO;
     }
 
     if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
-        gShapeStart = p;
-        gShapeEnd = p;
+        gShapeStart = hcv_cale_pt(p);
+        gShapeEnd = gShapeStart;
         gShapeDrawing = YES;
         [self setNeedsDisplay:YES];
         return;
@@ -4925,7 +4993,7 @@ static BOOL      gSansMessageChamp = NO;
 
     if (gTool == TOOL_SELRECT) {
         [[self window] makeFirstResponder:self];
-        gSelStart = p; gSelEnd = p;
+        gSelStart = hcv_cale_pt(p); gSelEnd = gSelStart;
         gSelRectDrawing = YES;
         gSelRectActive = NO;
         [self stopAntsTimer];
@@ -5207,13 +5275,18 @@ static BOOL      gSansMessageChamp = NO;
     }
 
     if (gTool == TOOL_SELRECT && gSelRectDrawing) {
-        gSelEnd = shiftDown ? constrain_to_axis(gSelStart, p) : p;
+        gSelEnd = hcv_cale_pt(shiftDown ? constrain_to_axis(gSelStart, p) : p);
         [self setNeedsDisplay:YES];
         return;
     }
 
     if (gShapeDrawing) {
-        gShapeEnd = shiftDown ? constrain_to_axis(gShapeStart, p) : p;
+        /* Le calage APRÈS la contrainte d'axe : caler d'abord ferait dévier
+         * le point de la ligne que shift venait de rendre droite, et la
+         * droiture se perdrait sur un pixel. Dans cet ordre les deux tiennent
+         * — un axe conservé, et les deux bouts sur la grille. */
+        gShapeEnd = hcv_cale_pt(shiftDown ? constrain_to_axis(gShapeStart, p)
+                                          : p);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5231,8 +5304,12 @@ static BOOL      gSansMessageChamp = NO;
         }
         if (w < 8) w = 8;
         if (h < 8) h = 8;
-        gSelected->x = x; gSelected->y = y;
-        gSelected->w = w; gSelected->h = h;
+        /* Le calage APRÈS le plancher de huit : caler d'abord aurait pu
+         * ramener une largeur à zéro, que le plancher aurait relevée à huit —
+         * donc un coin qui ne bouge plus et une poignée qui semble coincée.
+         * Dans cet ordre, huit est déjà sur la grille et rien ne se perd. */
+        gSelected->x = hcv_cale(x); gSelected->y = hcv_cale(y);
+        gSelected->w = hcv_cale(w); gSelected->h = hcv_cale(h);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5247,8 +5324,12 @@ static BOOL      gSansMessageChamp = NO;
         NSPoint currentP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
         int dx = (int)(currentP.x - gMoveStart.x);
         int dy = (int)(currentP.y - gMoveStart.y);
-        gSelected->x = gObjStartX + dx;
-        gSelected->y = gObjStartY + dy;
+        /* C'est la POSITION qui se cale, pas l'écart de la souris : deux
+         * boutons traînés l'un après l'autre ont alors exactement le même x.
+         * Caler l'écart n'aurait aligné que les gestes — chaque bouton
+         * resterait décalé de là où il était parti. */
+        gSelected->x = hcv_cale(gObjStartX + dx);
+        gSelected->y = hcv_cale(gObjStartY + dy);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5259,7 +5340,13 @@ static BOOL      gSansMessageChamp = NO;
     CGFloat y = MIN(gDragStart.y, currentP.y);
     CGFloat w = fabs(currentP.x - gDragStart.x);
     CGFloat h = fabs(currentP.y - gDragStart.y);
-    gDragRect = NSMakeRect(x, y, w, h);
+    /* Un objet NAÎT sur la grille, sans quoi il faudrait le recaler juste
+     * après l'avoir tiré — et l'aperçu montrerait autre chose que ce qu'on
+     * obtiendrait. */
+    gDragRect = NSMakeRect((CGFloat)hcv_cale((int)lround(x)),
+                           (CGFloat)hcv_cale((int)lround(y)),
+                           (CGFloat)hcv_cale((int)lround(w)),
+                           (CGFloat)hcv_cale((int)lround(h)));
     [self setNeedsDisplay:YES];
 }
 

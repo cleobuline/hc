@@ -13,6 +13,7 @@ int     gBrush        = 5;
 BOOL    gShapeFilled  = NO;
 int     gTextSize     = 16;
 BOOL    gTransparentBg = NO;
+BOOL    gGrid         = NO;
 NSColor *gInkColor  = nil;   /* noir  — voir hc_colors_init() */
 NSColor *gBackColor = nil;   /* blanc — idem */
 

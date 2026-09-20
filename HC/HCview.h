@@ -34,7 +34,13 @@ enum {
      * souris. « Transparent » n'était atteignable que par la palette des
      * trames, et pas du tout par script. */
     HCV_PAINT_SELECTALL,  HCV_PAINT_CLEAR,
-    HCV_PAINT_OPAQUE,     HCV_PAINT_TRANSPARENT
+    HCV_PAINT_OPAQUE,     HCV_PAINT_TRANSPARENT,
+    /* LA GRILLE. Un mode, comme Opaque et Transparent : elle porte une coche
+     * et ne demande aucune sélection. Elle est dans cette énumération et pas
+     * dans une autre parce qu'elle emprunte le même chemin — l'article de
+     * menu, « doMenu "Grid" », et la propriété « the grid » — et qu'une
+     * troisième porte vers le même état serait une de trop. */
+    HCV_PAINT_GRID
 };
 
 BOOL hcv_menu_trappe(const char *article);
