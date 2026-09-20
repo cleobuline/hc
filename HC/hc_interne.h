@@ -54,6 +54,32 @@ int     icon_id_is_builtin(int id);
  * manque. */
 int     runs_room(struct RunList *rl, int need);
 
+/* ---- ce que hc_core.c prête à hc_script.c ------------------------------ */
+
+/* UNE ERREUR VERS L'HÔTE, sans exporter `emit`.
+ *
+ * hc_core.c a un `emit(HcLineKind, fmt, …)` qui sert partout ; hc_script.c
+ * n'en emploie qu'une forme, HC_ERR, cinq fois. Exporter `emit` aurait mis un
+ * nom de trois lettres — parmi les plus courants qui soient — dans l'espace
+ * des symboles que l'éditeur de liens partage avec AppKit et le reste. Un nom
+ * préfixé ne coûte rien et ne peut entrer en collision avec personne.
+ *
+ * L'attribut de format est là pour que gcc vérifie les arguments comme il le
+ * ferait pour printf : sans lui, une erreur de format dans un message
+ * d'erreur ne se verrait qu'au moment où ce message sort. */
+void    hc_emet_erreur(const char *fmt, ...)
+        __attribute__((format(printf, 1, 2)));
+
+/* ---- ce que hc_script.c prête à hc_core.c ------------------------------ */
+
+/* L'ARBRE D'UN SCRIPT, analysé une fois et gardé dans l'objet.
+ *
+ * Rend NULL si le script est vide, ou si l'analyse a échoué — auquel cas
+ * elle a déjà été tentée et ne le sera plus : l'objet retient son échec.
+ * Le type est opaque ici ; hc_script.c et le pont v3 incluent hct_arbre.h. */
+struct HctNoeud;
+const struct HctNoeud *script_arbre(Object *o);
+
 /* ---- ce que hc_presse_papiers.c prête à hc_core.c ---------------------- */
 
 /* UN OBJET MEURT : que le presse-papiers oublie ce qu'il en retenait.

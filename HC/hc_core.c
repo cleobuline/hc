@@ -255,6 +255,10 @@ static void emit(HcLineKind kind, const char *fmt, ...);
 static char    g_err_texte[2048];
 static int     g_err_n = 0;
 static Object *g_err_objet = NULL;
+/* Une ligne tapée dans la BOÎTE DE MESSAGE compte comme un gestionnaire pour
+ * l'accumulation des erreurs, bien qu'elle tourne à g_depth == 0. Voir emit_v
+ * et hc_do. */
+static int     g_msg_box = 0;
 
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
@@ -687,16 +691,45 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
 
 /* Émet une ligne vers l'hôte. Le format ne doit PAS inclure le saut de ligne
    final ni l'indentation : l'hôte s'en charge. */
-static void emit(HcLineKind kind, const char *fmt, ...)
+/* LE CORPS, EN va_list — pour n'avoir qu'UNE mise en œuvre.
+ *
+ * emit reste la porte ordinaire ; hc_emet_erreur, plus bas, est celle que les
+ * autres fichiers du noyau empruntent. Les deux passent par ici.
+ *
+ * Écrire hc_emet_erreur comme une copie de emit aurait marché le premier
+ * jour : elle aurait envoyé la ligne à l'hôte. Elle aurait manqué la
+ * SECONDE moitié du travail — l'accumulation des erreurs pour le dialogue de
+ * fin — et les fautes de syntaxe, qui viennent toutes de hc_script.c,
+ * seraient sorties dans la console sans jamais paraître dans la fenêtre. Un
+ * corps partagé rend cet oubli impossible. */
+/* REMET LES ERREURS ACCUMULÉES À L'HÔTE, EN UNE FOIS.
+ *
+ * Une seule faute produit plusieurs lignes — le message, l'extrait du script,
+ * le résumé —, et les donner une par une ouvrirait trois dialogues. On vide
+ * AVANT d'appeler, pour que l'hôte puisse relancer un script depuis son
+ * dialogue sans se voir resservir l'erreur précédente.
+ *
+ * DEUX APPELANTS, UNE SEULE MISE EN ŒUVRE : la fin du gestionnaire le plus
+ * extérieur, et la fin d'une ligne de la boîte de message. Ce corps était
+ * écrit dans le premier ; la boîte de message n'avait rien, et ses erreurs
+ * n'arrivaient qu'à la console. */
+static void erreurs_vide(void)
+{
+    if (g_err_n <= 0) return;
+    char copie[sizeof g_err_texte];
+    memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
+    Object *coupable = g_err_objet;
+    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+    if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+}
+
+static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
 {
     /* Tampon propre, hors arène : arena_buf() appelle emit() en cas de
      * saturation, et une récursion mutuelle entre l'allocateur et le
      * rapporteur d'erreurs serait fatale. Les messages sont courts. */
     char buf[1024];
-    va_list ap;
-    va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
-    va_end(ap);
     if (g_host && g_host->line) g_host->line(kind, g_depth, buf);
 
     /* ON RETIENT LES ERREURS POUR LES DIRE À LA FIN, EN UNE FOIS.
@@ -706,9 +739,27 @@ static void emit(HcLineKind kind, const char *fmt, ...)
      * trois. On les accumule donc, et v3 les remet à la sortie du
      * gestionnaire le plus extérieur.
      *
-     * Hors gestionnaire (g_depth == 0), rien à accumuler : personne n'attend
-     * derrière, et l'appelant a déjà eu la ligne. */
-    if (kind == HC_ERR && g_depth > 0) {
+     * LA BOÎTE DE MESSAGE COMPTE, elle aussi, et ce commentaire a dit le
+     * contraire pendant des semaines : « hors gestionnaire, rien à accumuler,
+     * personne n'attend derrière, et l'appelant a déjà eu la ligne ».
+     *
+     * « L'appelant a déjà eu la ligne » voulait dire : elle est partie par
+     * le rappel `line`, que l'hôte Cocoa écrit dans la console de Xcode. Ce
+     * qui revient, pour qui utilise l'application, à ne RIEN recevoir.
+     * Mesuré, en tapant dans la boîte de message :
+     *
+     *     put the zorglub of this card   -> console seulement, pas de dialogue
+     *     put field "Absent"             -> idem
+     *     zorglub                        -> idem
+     *     repeat with i = 1 up to 5      -> idem
+     *
+     * Les quatre sortes d'erreur, pas seulement la première. Et c'est
+     * justement là qu'on a le plus besoin du dialogue : on vient de taper une
+     * ligne et on attend une réponse.
+     *
+     * hc_do pose donc g_msg_box le temps de sa ligne, et vide comme le fait
+     * le gestionnaire le plus extérieur. */
+    if (kind == HC_ERR && (g_depth > 0 || g_msg_box)) {
         if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
         int reste = (int)sizeof g_err_texte - g_err_n - 2;
         if (reste > 0) {
@@ -718,6 +769,24 @@ static void emit(HcLineKind kind, const char *fmt, ...)
             g_err_n += mis;
         }
     }
+}
+
+static void emit(HcLineKind kind, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    emit_v(kind, fmt, ap);
+    va_end(ap);
+}
+
+/* La porte des erreurs pour les AUTRES fichiers du noyau. Voir hc_interne.h,
+ * qui dit pourquoi on n'exporte pas `emit` lui-même. */
+void hc_emet_erreur(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    emit_v(HC_ERR, fmt, ap);
+    va_end(ap);
 }
 
 /* ==================== arène de tampons ====================
@@ -1554,348 +1623,6 @@ Object *hc_new_field(Object *owner, const char *name)
     return o;
 }
 
-/* Normalise les fins de ligne : « \r\n » (Windows) et « \r » seul (Mac
- * classique) deviennent « \n ». Sans ça, un script en « \r » n'est qu'une
- * seule ligne géante : find_handler reconnaît bien « on mouseUp », mais le
- * corps — cherché après le premier « \n » — est vide. Le gestionnaire est
- * alors annoncé comme traité et ne fait rien, ce qui est très déroutant.
- * Les scripts d'HyperCard d'origine sont tous en « \r ». */
-/* Caractères spéciaux du Macintosh. Les scripts d'origine sont encodés en
- * MacRoman ; recopiés depuis un navigateur ils arrivent en UTF-8. On accepte
- * les deux, car on ne peut pas savoir d'où vient la pile :
- *
- *     ¬   0xC2   /  0xC2 0xAC        continuation : la ligne suivante suit
- *     ≠   0xAD   /  0xE2 0x89 0xA0   devient « <> »
- *     ≤   0xB2   /  0xE2 0x89 0xA4   devient « <= »
- *     ≥   0xB3   /  0xE2 0x89 0xA5   devient « >= »
- *
- * L'ambiguïté du 0xC2 se lève seule : en UTF-8 il est toujours suivi d'un
- * octet de continuation (0x80-0xBF), et l'unique séquence qui nous intéresse
- * est 0xC2 0xAC. Un 0xC2 suivi d'autre chose est un ¬ MacRoman ; un 0xC2
- * suivi d'un octet de continuation autre que 0xAC est un caractère UTF-8
- * quelconque (« ² », « ° »…) qu'on recopie intact.
- *
- * La sortie peut être plus longue que l'entrée (un octet « ≠ » devient deux),
- * d'où l'allocation au double. */
-static int is_utf8_cont(unsigned char c) { return c >= 0x80 && c <= 0xBF; }
-
-static char *dup_script(const char *s)
-{
-    if (!s) return NULL;
-    size_t n = strlen(s);
-    char *d = (char *)malloc(2 * n + 2);
-    if (!d) return NULL;
-    char *w = d;
-
-    for (const unsigned char *p = (const unsigned char *)s; *p; ) {
-        /* --- continuation de ligne --- */
-        int cont = 0;
-        if (p[0] == 0xC2 && p[1] == 0xAC)              { cont = 1; p += 2; }
-        else if (p[0] == 0xC2 && !is_utf8_cont(p[1]))  { cont = 1; p += 1; }
-        if (cont) {
-            /* avaler les blancs puis la fin de ligne : les deux lignes n'en
-             * font plus qu'une, séparées par une espace. */
-            while (*p == ' ' || *p == '\t') p++;
-            if (*p == '\r') { p++; if (*p == '\n') p++; }
-            else if (*p == '\n') p++;
-            *w++ = ' ';
-            continue;
-        }
-
-        /* --- opérateurs de comparaison --- */
-        if (p[0] == 0xE2 && p[1] == 0x89) {
-            if (p[2] == 0xA0) { *w++ = '<'; *w++ = '>'; p += 3; continue; }
-            if (p[2] == 0xA4) { *w++ = '<'; *w++ = '='; p += 3; continue; }
-            if (p[2] == 0xA5) { *w++ = '>'; *w++ = '='; p += 3; continue; }
-        }
-        if (p[0] == 0xAD) { *w++ = '<'; *w++ = '>'; p++; continue; }
-        if (p[0] == 0xB2) { *w++ = '<'; *w++ = '='; p++; continue; }
-        if (p[0] == 0xB3) { *w++ = '>'; *w++ = '='; p++; continue; }
-
-        /* --- caractère UTF-8 multi-octets : recopie intégrale --- */
-        if (p[0] >= 0xC2 && p[0] <= 0xF4) {
-            int len = p[0] >= 0xF0 ? 4 : p[0] >= 0xE0 ? 3 : 2;
-            for (int i = 0; i < len && p[i]; i++) *w++ = (char)p[i];
-            while (len-- && *p) p++;
-            continue;
-        }
-
-        /* --- fins de ligne --- */
-        if (p[0] == '\r') {
-            p++;
-            if (*p == '\n') p++;          /* \r\n : une seule fin de ligne */
-            *w++ = '\n';
-            continue;
-        }
-
-        *w++ = (char)*p++;
-    }
-    *w = '\0';
-    return d;
-}
-
-/* Jette l'arbre d'un objet. Appelé dès que son script change, et par hc_free.
- *
- * Les jetons pointent DANS le texte du script : libérer l'un sans l'autre
- * laisserait des pointeurs dans de la mémoire rendue. Les trois morceaux
- * naissent et meurent donc ensemble. */
-void hc_arbre_oublie(Object *o)
-{
-    if (!o) return;
-
-    /* L'arbre tourne : on ne peut rien libérer sous ses pieds. On marque, et
-     * v3_execute nettoiera en sortant. */
-    if (o->arbre_usage > 0) { o->arbre_perime = 1; return; }
-
-    if (o->reserve) { hct_reserve_libere((HctReserve *)o->reserve); free(o->reserve); }
-    if (o->lot)     { hct_lot_libere((HctLot *)o->lot);             free(o->lot); }
-    o->arbre = NULL;
-    o->reserve = NULL;
-    o->lot = NULL;
-    o->arbre_sain = 0;
-    o->arbre_signale = 0;
-    o->arbre_perime = 0;
-
-    /* Les anciens textes mis de côté ne servent plus : plus aucun jeton n'y
-     * pointe, puisque le lot vient d'être libéré. */
-    for (int i = 0; i < o->ntextes_gardes; i++) free(o->textes_gardes[i]);
-    free(o->textes_gardes);
-    o->textes_gardes = NULL;
-    o->ntextes_gardes = 0;
-}
-
-/* Met un texte de script de côté au lieu de le libérer.
- *
- * Les jetons de l'arbre en cours d'exécution pointent dedans : le libérer
- * maintenant les ferait viser de la mémoire rendue. On le garde jusqu'à ce
- * que l'arbre lui-même parte. */
-static void garde_texte(Object *o, char *texte)
-{
-    if (!texte) return;
-    char **t = realloc(o->textes_gardes,
-                       (size_t)(o->ntextes_gardes + 1) * sizeof *t);
-    /* FAUTE DE PLACE, ON FUIT — délibérément.
-     *
-     * Ce texte est celui d'un script EN COURS D'EXÉCUTION : les jetons de
-     * l'arbre pointent dedans, c'est toute la raison d'être de cette liste.
-     * Le libérer parce qu'on ne peut pas l'inscrire — ce que faisait la ligne
-     * « faute de mieux » — le fait viser de la mémoire rendue par le
-     * gestionnaire qui tourne : un use-after-free, exactement ce que la liste
-     * existe pour empêcher.
-     *
-     * Entre perdre quelques centaines d'octets jusqu'à la fermeture de la
-     * pile et lire de la mémoire libérée, le choix n'est pas difficile. Et
-     * ce n'est pas un cas où l'on peut s'arrêter par hc_memoire_epuisee :
-     * l'application marche encore très bien, elle a seulement un texte de
-     * plus qu'elle ne rendra pas. */
-    if (!t) return;
-    o->textes_gardes = t;
-    o->textes_gardes[o->ntextes_gardes++] = texte;
-}
-
-/* Parcourt l'arbre et signale chaque nœud d'erreur, avec la ligne, la colonne
- * et le texte de la ligne fautive.
- *
- * L'analyseur ne s'arrête pas à la première faute : il en pose une et
- * continue, pour pouvoir toutes les montrer d'un coup. On les montre donc
- * toutes — mais pas plus de vingt, un script vraiment cassé en produirait
- * autant que de lignes. */
-static void v3_dis_les_fautes_r(Object *o, const HctNoeud *n, int *reste)
-{
-    if (!n || *reste <= 0) return;
-
-    if (n->genre == HCTN_ERREUR) {
-        if (!o->arbre_faute_ligne) o->arbre_faute_ligne = n->jeton.ligne;
-
-        /* La ligne du script telle qu'elle est écrite, pour n'avoir pas à
-         * compter les lignes dans l'éditeur. */
-        char ligne[160] = "";
-        if (o->script) {
-            const char *p = o->script;
-            for (int l = 1; l < n->jeton.ligne && *p; p++)
-                if (*p == '\n') l++;
-            int k = 0;
-            while (*p && *p != '\n' && *p != '\r' && k < (int)sizeof ligne - 1)
-                ligne[k++] = *p++;
-            ligne[k] = '\0';
-        }
-
-        emit(HC_ERR, "   !! script, ligne %d colonne %d : %s",
-             n->jeton.ligne, n->jeton.col, n->msg ? n->msg : "forme non comprise");
-        if (*ligne) emit(HC_ERR, "      %s", ligne);
-        (*reste)--;
-    }
-
-    for (int i = 0; i < n->nfils; i++)
-        v3_dis_les_fautes_r(o, n->fils[i], reste);
-}
-
-static void v3_dis_les_fautes(Object *o, const HctNoeud *racine)
-{
-    int reste = 20;
-    v3_dis_les_fautes_r(o, racine, &reste);
-}
-
-/* Les fautes qui COÛTENT quelque chose : celles qui sont dans un
- * gestionnaire, et qui le privent donc de la v3.
- *
- * Depuis qu'une bannière hors gestionnaire n'empêche plus rien, la signaler
- * serait du bruit : le cadre de « ∞ » des piles d'époque produit des dizaines
- * de « caractère inattendu » qui ne changent rien à l'exécution. Mais se
- * taire sur TOUT serait pire — une coquille dans un gestionnaire lui coûte
- * l'exécuteur v3, et l'auteur doit l'apprendre.
- *
- * On descend donc par gestionnaire, et on laisse le décor tranquille. */
-static void v3_dis_les_fautes_utiles(Object *o, const HctNoeud *racine)
-{
-    if (!racine) return;
-    int reste = 20;
-    for (int i = 0; i < racine->nfils; i++)
-        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE)
-            v3_dis_les_fautes_r(o, racine->fils[i], &reste);
-}
-
-/* L'arbre du script, analysé à la première demande et gardé ensuite.
- *
- * Rend NULL si le script est vide, ou si l'analyse a signalé la moindre
- * faute. Ce dernier point est délibéré : mieux vaut confier tout le script à
- * l'ancien interpréteur que d'en exécuter la moitié avec le nouveau et de
- * s'arrêter au milieu sur une forme mal comprise. La frontière se déplacera
- * quand la v3 saura tout lire, pas avant. */
-static const HctNoeud *script_arbre(Object *o)
-{
-    if (!o || !o->script || !*o->script) return NULL;
-    if (o->arbre) return o->arbre_sain ? (const HctNoeud *)o->arbre : NULL;
-    if (o->lot) return NULL;          /* déjà tenté, et rejeté */
-
-    HctLot *lot = calloc(1, sizeof *lot);
-    HctReserve *res = calloc(1, sizeof *res);
-    if (!lot || !res) { free(lot); free(res); return NULL; }
-
-    o->lot = lot;
-    o->reserve = res;
-
-    int sain = hct_lex(o->script, lot);
-
-    HctAnalyseur a;
-    hct_analyseur_init(&a, lot, res);
-    HctNoeud *racine = hct_bloc_script(&a);
-
-    /* Une faute ne condamne plus TOUT le script, seulement le gestionnaire qui
-     * la porte — trouve_gestionnaire l'écartera, et ce message-là repartira à
-     * l'ancien interpréteur.
-     *
-     * CE QU'ON EXIGE : qu'il reste au moins un gestionnaire. Rien de plus.
-     * Ni que le lexeur soit propre, ni que tout enfant de la racine soit un
-     * gestionnaire — deux conditions posées ici et qui condamnaient des
-     * scripts parfaitement utilisables.
-     *
-     * POURQUOI ELLES SAUTENT. Les piles d'époque s'ouvrent presque toutes sur
-     * une bannière — un cadre de « ∞ », le nom du programme, la liste de ses
-     * gestionnaires — écrite hors de tout « on … end ». HyperCard l'ignorait :
-     * seuls les blocs on/function comptaient, le reste était du décor. Nous,
-     * on refusait le script ENTIER. Mesuré sur Graph Maker 2.2 : onze lignes
-     * de bannière coûtaient 374 lignes exécutées par la v1 et près de 500
-     * réanalyses, pour un script que la v3 savait parfaitement lire dès qu'on
-     * commentait l'en-tête.
-     *
-     * CE QUI PROTÈGE ENCORE, et qui suffit : trouve_gestionnaire écarte, un
-     * par un, les gestionnaires qui portent une faute. Contrôle plus fin que
-     * celui qu'on retire, puisqu'il examine le gestionnaire qu'on s'apprête à
-     * exécuter plutôt que son voisinage.
-     *
-     * Le cas qu'on redoutait — un « end » manquant qui fait avaler le
-     * gestionnaire suivant — ne laisse d'ailleurs PAS de nœuds nus à la
-     * racine : il produit un gestionnaire fautif, que le contrôle par
-     * gestionnaire écarte, et l'avalé n'est simplement pas trouvé. Il repart
-     * à l'ancien interpréteur, ce qui est exactement ce qu'on veut. Le veto
-     * global ne rattrapait donc rien que l'autre ne rattrape déjà — vérifié
-     * en construisant le cas.
-     *
-     * Une faute de LEXIQUE suit la même règle : dans un gestionnaire elle le
-     * rend fautif et il est écarté ; dans la bannière elle ne regarde
-     * personne. */
-    int gestionnaires = 0;
-    for (int i = 0; racine && i < racine->nfils; i++)
-        if (racine->fils[i]->genre == HCTN_GESTIONNAIRE) gestionnaires++;
-
-    if (racine && gestionnaires > 0) {
-        o->arbre = racine;
-        o->arbre_sain = 1;
-        /* Sur a.nerreurs OU sur une faute de lexique : le lexeur pose des
-         * jetons d'erreur que l'analyseur ne compte pas toujours, et se taire
-         * sur eux ferait disparaître « caractère inattendu » d'un script qui
-         * en contient un — le diagnostic était rendu par le refus, et le
-         * refus n'a plus lieu. */
-        if (a.nerreurs || !sain) {
-            o->arbre_faute_ligne = 0;
-            v3_dis_les_fautes_utiles(o, racine);
-        }
-        return racine;
-    }
-
-    /* Analyse douteuse : on garde le lot et la réserve pour ne pas
-     * recommencer à chaque message, mais on ne rendra jamais l'arbre.
-     *
-     * On dit AUSSI pourquoi, et où. « analyse non propre » tout court
-     * n'apprenait rien : un script de trois cents lignes refusé pour une
-     * virgule se cherchait à la main. Une faute suffit à écarter le script
-     * entier, donc la première ligne signalée est celle à corriger. */
-    o->arbre_sain = 0;
-    o->arbre_faute_ligne = 0;
-
-    for (int i = 0; i < lot->n; i++)
-        if (lot->jetons[i].genre == HCT_ERREUR) {
-            if (!o->arbre_faute_ligne) o->arbre_faute_ligne = lot->jetons[i].ligne;
-            emit(HC_ERR, "   !! script, ligne %d colonne %d : %s",
-                 lot->jetons[i].ligne, lot->jetons[i].col,
-                 lot->jetons[i].msg ? lot->jetons[i].msg : "jeton mal formé");
-        }
-    v3_dis_les_fautes(o, racine);
-
-    return NULL;
-}
-
-void hc_set_script(Object *o, const char *script)
-{
-    if (o->arbre_usage > 0) {
-        /* Le script se réécrit pendant qu'il s'exécute — le calendrier
-         * d'Apple range ses données dans le sien. On ne libère donc ni
-         * l'arbre ni son texte : le premier est marqué périmé, le second mis
-         * de côté, et tout partira quand l'exécution sera finie.
-         *
-         * Le gestionnaire en cours continue sur l'ANCIEN texte, ce qui est le
-         * comportement de HyperCard : la réécriture ne prend effet qu'au
-         * prochain appel. */
-        /* Le NOUVEAU texte d'abord, l'ancien mis de côté ensuite.
-         *
-         * Dans l'ordre inverse, un dup_script qui échoue laissait o->script à
-         * NULL alors que l'ancien venait d'être confié à la liste : l'objet
-         * se retrouvait sans script, et la réécriture perdue. En le
-         * construisant d'abord, un échec ne change rien du tout — le
-         * gestionnaire continue sur son texte, et le script reste celui
-         * d'avant. */
-        char *neuf = dup_script(script);
-        if (script && !neuf) {
-            emit(HC_ERR, "   !! mémoire insuffisante : script inchangé");
-            return;
-        }
-        o->arbre_perime = 1;
-        garde_texte(o, o->script);
-        o->script = neuf;
-        return;
-    }
-
-    /* Même ordre ici, et pour la même raison. */
-    char *neuf = dup_script(script);
-    if (script && !neuf) {
-        emit(HC_ERR, "   !! mémoire insuffisante : script inchangé");
-        return;
-    }
-    hc_arbre_oublie(o);          /* AVANT de libérer le texte : les jetons y pointent */
-    free(o->script);
-    o->script = neuf;
-}
 
 /* ═══ L'HISTORIQUE DE NAVIGATION ═══════════════════════════════════════
  *
@@ -2782,48 +2509,102 @@ static Object *find_part_by_rank(Object *owner, ObjType type, int rank)
     return NULL;
 }
 
-static Object *find_card_by_name(Object *stack, const char *name)
+/* ═══ LES CARTES D'UN FOND ══════════════════════════════════════════════
+ *
+ * « card 1 of bg 2 » désigne la PREMIÈRE CARTE QUI UTILISE LE FOND 2, pas la
+ * première carte de la pile. Toutes les recherches de carte ignoraient ce
+ * « of » : elles indexaient dans la pile entière, et rendaient donc une carte
+ * — la mauvaise — sans le moindre message. Mesuré, sur une pile A B C D dont
+ * A et B sont sur le fond 1 et C et D sur le fond 2 :
+ *
+ *     card 1 of bg 2   ->  A     (c'est C)
+ *     card 2 of bg 2   ->  B     (c'est D)
+ *     go card 1 of bg 2 -> reste sur A
+ *
+ * Le COMPTAGE, lui, était juste : « the number of cards of bg 2 » rendait
+ * bien 2. Une boucle écrite à la main, à un seul endroit, qui savait ce que
+ * les quatre résolveurs ignoraient. C'est le signe habituel — une règle
+ * connue d'un seul site est une règle que les autres n'appliquent pas.
+ *
+ * `fond` à NULL prend toute la pile : les versions sans fond ci-dessous ne
+ * sont plus que des appels à celles-ci, si bien qu'aucune des deux familles
+ * ne peut dériver de l'autre. */
+
+static int card_count_de(Object *stack, Object *fond)
+{
+    int n = 0;
+    if (!stack) return 0;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        n++;
+    }
+    return n;
+}
+
+/* n-ième carte du fond, 0-based. */
+static Object *nth_card_de(Object *stack, Object *fond, int n)
+{
+    if (!stack || n < 0) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        if (n-- == 0) return c;
+    }
+    return NULL;
+}
+
+/* Son rang dans le fond, 0-based ; -1 si elle n'y est pas. */
+static int card_index_de(Object *stack, Object *fond, Object *card)
+{
+    int n = 0;
+    if (!stack || !card) return -1;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        if (c == card) return n;
+        n++;
+    }
+    return -1;
+}
+
+static Object *card_par_nom_de(Object *stack, Object *fond, const char *name)
 {
     if (!stack) return NULL;
     for (int i = 0; i < stack->nparts; i++) {
         Object *p = stack->parts[i];
-        if (p->type == OBJ_CARD && p->name && ci_equal(p->name, name)) return p;
+        if (p->type != OBJ_CARD) continue;
+        if (fond && p->bg != fond) continue;
+        if (p->name && ci_equal(p->name, name)) return p;
+    }
+    return NULL;
+}
+
+static Object *card_par_id_de(Object *stack, Object *fond, int id)
+{
+    if (!stack) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *p = stack->parts[i];
+        if (p->type != OBJ_CARD) continue;
+        if (fond && p->bg != fond) continue;
+        if (p->id == id) return p;
     }
     return NULL;
 }
 
 /* ---- cartes : l'ordre, pour « go next card » ---- */
 
-static int card_count(Object *stack)
-{
-    int n = 0;
-    if (!stack) return 0;
-    for (int i = 0; i < stack->nparts; i++)
-        if (stack->parts[i]->type == OBJ_CARD) n++;
-    return n;
-}
+static int card_count(Object *stack) { return card_count_de(stack, NULL); }
 
 /* n-ième carte, 0-based, en ne comptant que les cartes */
-static Object *nth_card(Object *stack, int n)
-{
-    if (!stack || n < 0) return NULL;
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i]->type != OBJ_CARD) continue;
-        if (n-- == 0) return stack->parts[i];
-    }
-    return NULL;
-}
+static Object *nth_card(Object *stack, int n) { return nth_card_de(stack, NULL, n); }
 
 static int card_index(Object *stack, Object *card)
 {
-    int n = 0;
-    if (!stack || !card) return -1;
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i]->type != OBJ_CARD) continue;
-        if (stack->parts[i] == card) return n;
-        n++;
-    }
-    return -1;
+    return card_index_de(stack, NULL, card);
 }
 
 /* Déclarés ici parce que resolve() en a besoin : un descripteur d'objet peut
@@ -2921,6 +2702,11 @@ static const char *derniere_portee(const char *s)
     return trouve;
 }
 
+/* Le FOND dans lequel resolve travaille, quand « of bg … » en a nommé un.
+ * NULL le reste du temps, et « NULL » veut dire « toute la pile » pour les
+ * cinq recherches de carte. Voir leur commentaire commun, plus haut. */
+static Object *g_portee_fond = NULL;
+
 static Object *resolve(const char *ref)
 {
     if (!ref) return NULL;
@@ -2991,8 +2777,24 @@ static Object *resolve(const char *ref)
         }
         if (ou) {
             Object *sauve = g_current_card;
+            /* LE FOND RESTE UNE PORTÉE, PAS SEULEMENT UN POINT DE DÉPART.
+             *
+             * Se poser sur une carte du fond suffit pour « bg field "x" of
+             * background "F" » — un champ de fond est le même partout. Ça ne
+             * suffit PAS pour désigner une CARTE : « card "A" of bg 2 »
+             * repartait en cherchant « A » dans toute la pile, et la trouvait
+             * même posée sur un autre fond.
+             *
+             * Mesuré, sur A B (fond 1) C D (fond 2), une fois la v3
+             * corrigée : elle refusait, l'ancien moteur rendait A. Deux
+             * portes, deux réponses — le motif qu'on traque, et cette fois il
+             * s'est vu tout de suite parce qu'on cherchait le jumeau avant de
+             * commiter. */
+            Object *sauve_fond = g_portee_fond;
+            if (portee->type == OBJ_BACKGROUND) g_portee_fond = portee;
             g_current_card = ou;
             r = resolve(tete);
+            g_portee_fond = sauve_fond;
             g_current_card = sauve;
         }
     }
@@ -3091,20 +2893,17 @@ static Object *resolve_local(const char *ref)
         if (*after == '"') {
             char nm[HC_NOM_MAX];
             descripteur_lit(after, nm, sizeof nm);
-            return find_card_by_name(stack, nm);
+            return card_par_nom_de(stack, g_portee_fond, nm);
         }
         if (ci_word(after, "id")) {                    /* card id N */
             const char *a = skip_spaces(after + 2);
             int wanted;
             if (isdigit((unsigned char)*a)) wanted = hc_id(a);
             else { char v[128]; eval_id_token(a, v, sizeof v); wanted = hc_id(v); }
-            for (int i = 0; i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->id == wanted)
-                    return stack->parts[i];
-            return NULL;
+            return card_par_id_de(stack, g_portee_fond, wanted);
         }
         if (isdigit((unsigned char)*after))
-            return nth_card(stack, hc_rang(after) - 1);   /* 1-based en HyperTalk */
+            return nth_card_de(stack, g_portee_fond, hc_rang(after) - 1);
 
         /* « go card canard » : HyperCard accepte un nom de carte sans
          * guillemets. On ne tente le nom nu que si ce qui suit n'est pas un
@@ -3139,10 +2938,10 @@ static Object *resolve_local(const char *ref)
 
             int nlen = (int)strlen(nm);
             if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
-                Object *c = nth_card(stack, hc_rang(nm) - 1);
+                Object *c = nth_card_de(stack, g_portee_fond, hc_rang(nm) - 1);
                 if (c) return c;
             }
-            Object *c = find_card_by_name(stack, nm);
+            Object *c = card_par_nom_de(stack, g_portee_fond, nm);
             if (c) return c;
         }
         ref = after;
@@ -7297,6 +7096,18 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
      * Retomber sur la carte courante faisait lire — et écrire — dans un
      * objet que le script n'avait pas nommé. On rend NULL, et l'appelant
      * dira « objet introuvable » en nommant la ligne. */
+    /* LE FOND A-T-IL ÉTÉ NOMMÉ, ou est-ce seulement celui de la carte
+     * courante ? La distinction décide de tout pour « card <n> » :
+     *
+     *     card 1            la première carte de la PILE
+     *     card 1 of bg 2    la première carte QUI UTILISE le fond 2
+     *
+     * `bg` vaut par défaut le fond de la carte courante, et s'en servir pour
+     * restreindre ferait de « card 1 » la première carte du fond courant —
+     * ce qui n'est pas ce que dit HyperTalk. Seul un « of » explicite
+     * restreint. */
+    int fond_nomme = 0;
+
     const HctNoeud *cible_n = v3_noeud_cible(n);
     Object *cible = cible_n ? hct_resout(ctx, cible_n) : NULL;
     if (cible_n && !cible) return NULL;
@@ -7308,7 +7119,7 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
              * cherche dans la pile de CETTE carte. */
             stack = owning_stack(card);
         }
-        else if (cible->type == OBJ_BACKGROUND) { bg = cible; }
+        else if (cible->type == OBJ_BACKGROUND) { bg = cible; fond_nomme = 1; }
         else if (cible->type == OBJ_STACK) {
             /* Une pile désignée explicitement gagne. Recalculer la pile
              * depuis g_current_card juste après, comme on le faisait, la
@@ -7391,26 +7202,22 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
                 default: return bg;
             }
 
-        case HCT_OBJ_CARD:
+        case HCT_OBJ_CARD: {
+            /* Le fond ne restreint QUE s'il a été nommé : voir fond_nomme,
+             * en tête de cette fonction. NULL veut dire « toute la pile ». */
+            Object *ou = fond_nomme ? bg : NULL;
             switch (n->designateur) {
-                case HCT_DES_NOM: return find_card_by_name(stack, val);
-                case HCT_DES_ID: {
-                    int w = hc_id(val);
-                    for (int i = 0; stack && i < stack->nparts; i++)
-                        if (stack->parts[i]->type == OBJ_CARD &&
-                            stack->parts[i]->id == w)
-                            return stack->parts[i];
-                    return NULL;
-                }
+                case HCT_DES_NOM: return card_par_nom_de(stack, ou, val);
+                case HCT_DES_ID:  return card_par_id_de(stack, ou, hc_id(val));
                 case HCT_DES_RANG: {
                     int l = (int)strlen(val);
                     if (l > 0 && (int)strspn(val, "0123456789") == l)
-                        return nth_card(stack, hc_rang(val) - 1);
-                    return find_card_by_name(stack, val);
+                        return nth_card_de(stack, ou, hc_rang(val) - 1);
+                    return card_par_nom_de(stack, ou, val);
                 }
                 case HCT_DES_ORDINAL:
-                    return nth_card(stack,
-                        v3_rang_ordinal(n->ordinal, card_count(stack)) - 1);
+                    return nth_card_de(stack, ou,
+                        v3_rang_ordinal(n->ordinal, card_count_de(stack, ou)) - 1);
                 case HCT_DES_RELATIF: {
                     if (n->relatif == HCT_REL_CE) return card;
                     /* « go next card » depuis la dernière mène à la PREMIÈRE,
@@ -7422,14 +7229,15 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
                      * « go previous card », et la navigation s'arrêtait là,
                      * silencieusement : le résultat restait vide, aucun
                      * message d'erreur, juste plus rien qui bouge. */
-                    int nc = card_count(stack);
-                    int i  = card_index(stack, card);
+                    int nc = card_count_de(stack, ou);
+                    int i  = card_index_de(stack, ou, card);
                     if (nc <= 0 || i < 0) return NULL;
                     int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
-                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
+                    return nth_card_de(stack, ou, ((i + pas) % nc + nc) % nc);
                 }
                 default: return card;
             }
+        }
 
         case HCT_OBJ_BUTTON:
         case HCT_OBJ_FIELD:
@@ -14349,19 +14157,8 @@ static int hc_send_args_k_body(Object *target, const char *message,
     g_target = saved_target;
     g_script_clipped = saved_clipped;
 
-    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT.
-     *
-     * Ici seulement, pour qu'un clic ne produise qu'un dialogue quel que soit
-     * le nombre de gestionnaires imbriqués. On vide AVANT d'appeler, pour que
-     * l'hôte puisse relancer un script depuis son dialogue sans se voir
-     * resservir l'erreur précédente. */
-    if (g_depth == 0 && g_err_n > 0) {
-        char copie[sizeof g_err_texte];
-        memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
-        Object *coupable = g_err_objet;
-        g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
-        if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
-    }
+    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT. */
+    if (g_depth == 0) erreurs_vide();
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)
@@ -15018,6 +14815,11 @@ void hc_do(const char *line)
      * porte, et de loin la plus fréquentée. */
     const char *sauve_porte = v1_porte("msg/do");
     ARENA_MARK;
+    /* Le temps de cette ligne, les erreurs s'accumulent comme dans un
+     * gestionnaire — voir emit_v. Un compteur et non un booléen : « do » peut
+     * s'appeler lui-même, et le premier à sortir ne doit pas éteindre la
+     * collecte du suivant. */
+    g_msg_box++;
     g_depth  = 0;
     g_pass   = 0;
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
@@ -15031,4 +14833,7 @@ void hc_do(const char *line)
     }
     ARENA_FREE;
     g_v1_porte = sauve_porte;
+    /* Ce qui reste ici est à NOUS : un gestionnaire appelé depuis cette
+     * ligne a déjà vidé le sien en redescendant à g_depth == 0. */
+    if (--g_msg_box == 0) erreurs_vide();
 }
