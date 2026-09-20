@@ -76,6 +76,13 @@
      put the partNumber of part "pin pon"
       4
 
-== 8. ET L'ORDRE SURVIT AU FICHIER ==
+== 8. CE DONT « BRING CLOSER » ET « SEND FARTHER » DEPENDENT ==
+   la part du dessus                  pin pon au rang 4
+   un pas de plus vers le haut        rang 4
+   la part du dessous                 champ au rang 1
+   un pas de plus vers le bas         rang 1
+   rien n'a bouge                     1:champ 2:pilote 3:note 4:pin pon
+
+== 9. ET L'ORDRE SURVIT AU FICHIER ==
    apres aller-retour                 1:champ 2:pilote 3:note 4:pin pon
    le fond aussi                      1:suivant 2:entete 3:pied

@@ -98,6 +98,21 @@ void hcv_abandonne_selection(void);
 - (void)clearPaintCache;
 - (void)resetForNewStack;
 - (void)toggleBackground:(id)sender;
+
+/* L'ORDRE DE SUPERPOSITION DE L'OBJET SÉLECTIONNÉ.
+ *
+ * « Bring Closer » le rapproche du spectateur, « Send Farther » l'en éloigne.
+ * C'est le rang de part du noyau : la part 1 est dessous, la dernière dessus,
+ * et la vue dessine dans cet ordre-là — parts[] croissant — en testant les
+ * clics à rebours. Les deux se contentent donc de déplacer la part d'un cran.
+ *
+ * deplaceSelectionDe: porte le corps, les deux actions ne font que lui donner
+ * le sens. C'est la leçon des articles du menu Paint : une mise en œuvre,
+ * plusieurs portes — l'article de menu et « doMenu » — et plus rien qui
+ * puisse diverger. */
+- (void)bringCloser:(id)sender;
+- (void)sendFarther:(id)sender;
+- (void)deplaceSelectionDe:(int)pas;
 - (void)installPatternPalette;
 - (void)applyStackSize;
 - (void)installWidthPalette;

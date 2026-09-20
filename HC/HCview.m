@@ -1646,6 +1646,11 @@ static void cocoa_menu_hypercard(const char *item)
         { "Paste Card",     "paste:"             },
         { "New Background", "newBackground:"     },
         { "Background",     "toggleBackground:"  },
+        /* L'ordre de superposition, atteignable par script comme par menu.
+         * « Send Farther » est l'orthographe de HyperCard ; on n'invente pas
+         * d'alias faute de pile d'époque qui en emploie un autre. */
+        { "Bring Closer",   "bringCloser:"       },
+        { "Send Farther",   "sendFarther:"       },
         { "Card Info",      "showCardInfo"       },
         { "Bkgnd Info",     "showBackgroundInfo" },
         { "Stack Info",     "showStackInfo"      },
@@ -3014,6 +3019,45 @@ static BOOL paint_selection_active(void)
             gFloating) ? YES : NO;
 }
 
+/* Le nombre de parts du calque qui porte cet objet — boutons et champs
+ * mêlés, comme les compte hc_part_number. Le noyau les compte par type ; les
+ * additionner ici évite un symbole de plus pour une addition. */
+static int parts_du_calque(Object *o)
+{
+    if (!o || !o->owner) return 0;
+    return hc_part_count(o->owner, OBJ_BUTTON) +
+           hc_part_count(o->owner, OBJ_FIELD);
+}
+
+/* ═══ BRING CLOSER / SEND FARTHER ═══════════════════════════════════════
+ *
+ * Il n'y avait AUCUN moyen de changer l'ordre de superposition : un bouton
+ * posé sous un champ y restait pour toujours. Le noyau sait déplacer une
+ * part depuis « set the partNumber » ; il ne manquait que ces deux portes.
+ *
+ * Le sens : la part 1 est DESSOUS. drawRect parcourt parts[] en croissant,
+ * donc la dernière est dessinée par-dessus, et part_at_layer teste les clics
+ * à rebours pour attraper celle du dessus. Rapprocher, c'est donc monter
+ * d'un rang. Les deux lectures s'accordent, et c'est ce qui fait que le
+ * déplacement se voit ET se clique.
+ *
+ * L'ÉCRÊTAGE EST DANS LE NOYAU, pas ici : hc_set_part_number borne le rang à
+ * [1, nombre de parts]. Un article de menu grisé aux extrémités et un noyau
+ * qui écrête disent la même chose, mais le grisage est un CONFORT — « doMenu
+ * "Bring Closer" » ne passe pas par la validation, et doit rester sans
+ * effet plutôt que de déborder. */
+- (void)deplaceSelectionDe:(int)pas
+{
+    if (!object_selection_active()) { NSBeep(); return; }
+    int r = hc_part_number(gSelected);
+    if (r <= 0) { NSBeep(); return; }
+    hc_set_part_number(gSelected, r + pas);
+    [self setNeedsDisplay:YES];
+}
+
+- (void)bringCloser:(id)sender { (void)sender; [self deplaceSelectionDe:1]; }
+- (void)sendFarther:(id)sender { (void)sender; [self deplaceSelectionDe:-1]; }
+
 - (void)copy:(id)sender {
     if (object_selection_active()) {
         if (hc_copy_part(gSelected)) return;
@@ -3246,6 +3290,24 @@ static BOOL paint_selection_active(void)
 
     if (a == @selector(copy:) || a == @selector(cut:))
         return object_selection_active() || paint_selection_active();
+
+    /* Bring Closer et Send Farther n'ont de sens que sur un objet
+     * sélectionné, et chacun se grise À SON EXTRÉMITÉ : la part du dessus ne
+     * peut pas monter, celle du dessous ne peut pas descendre. C'est la seule
+     * information vraie qu'on puisse donner d'avance, et elle évite de
+     * chercher pourquoi « ça ne fait rien ».
+     *
+     * Aucun appel à `self` ici, contrairement aux articles de peinture :
+     * gSelected est une globale, donc la vue que le MENU a capturée à sa
+     * construction n'entre pas en jeu — c'est ce qui avait gardé Keep et
+     * Revert grisés pour de bon. */
+    if (a == @selector(bringCloser:) || a == @selector(sendFarther:)) {
+        if (!object_selection_active()) return NO;
+        int r = hc_part_number(gSelected);
+        if (r <= 0) return NO;
+        return (a == @selector(bringCloser:))
+               ? (r < parts_du_calque(gSelected)) : (r > 1);
+    }
 
     /* Les articles du menu Paint n'ont de sens que sur une sélection de
      * peinture. HyperCard les grisait de même — et c'est plus sûr que de les

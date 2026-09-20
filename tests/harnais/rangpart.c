@@ -166,7 +166,33 @@ int main(void)
     execute("  put the name of part \"pin pon\"");
     execute("  put the partNumber of part \"pin pon\"");
 
-    puts("\n== 8. ET L'ORDRE SURVIT AU FICHIER ==");
+    puts("\n== 8. CE DONT « BRING CLOSER » ET « SEND FARTHER » DEPENDENT ==");
+    /* Les deux articles du menu Objets ne font qu'un pas de +1 ou -1 sur le
+     * rang. Leur seule subtilite est aux EXTREMITES : la part du dessus ne
+     * peut pas monter, celle du dessous ne peut pas descendre. L'article se
+     * grise alors, mais « doMenu "Bring Closer" » ne passe PAS par la
+     * validation — il doit donc rester sans effet plutot que de deborder, et
+     * c'est l'ecretage du noyau qui le garantit.
+     *
+     * Le menu vit dans du Objective-C que cette suite ne compile pas. Le
+     * CONTRAT sur lequel il s'appuie, lui, se tient ici. */
+    {
+        Object *dessus = c->parts[c->nparts - 1];
+        Object *dessous = c->parts[0];
+        printf("   %-34s %s au rang %d\n", "la part du dessus",
+               dessus->name, hc_part_number(dessus));
+        hc_set_part_number(dessus, hc_part_number(dessus) + 1);
+        printf("   %-34s rang %d\n", "un pas de plus vers le haut",
+               hc_part_number(dessus));
+        printf("   %-34s %s au rang %d\n", "la part du dessous",
+               dessous->name, hc_part_number(dessous));
+        hc_set_part_number(dessous, hc_part_number(dessous) - 1);
+        printf("   %-34s rang %d\n", "un pas de plus vers le bas",
+               hc_part_number(dessous));
+        ordre("rien n'a bouge", c);
+    }
+
+    puts("\n== 9. ET L'ORDRE SURVIT AU FICHIER ==");
     /* Un plan qui se remettrait a plat au rechargement ne servirait a rien.
      * L'ordre n'est ecrit nulle part en toutes lettres : c'est l'ordre des
      * lignes du .stack qui le porte. */
