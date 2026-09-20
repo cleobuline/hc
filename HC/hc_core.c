@@ -1392,6 +1392,67 @@ int hc_part_number(Object *o)
     return 0;
 }
 
+/* DÉPLACER UNE PART DANS LA LISTE DE SON PROPRIÉTAIRE.
+ *
+ * Le rang d'une part n'est pas qu'un numéro : c'est l'ORDRE DE SUPERPOSITION
+ * — la part de rang 1 est dessous, la dernière est dessus — et c'est aussi
+ * l'ordre de tabulation. HyperCard le change par « Bring Closer » et « Send
+ * Farther », et par « set the partNumber ». Nous ne savions faire ni l'un ni
+ * l'autre : un bouton posé par erreur sous un champ y restait pour toujours.
+ *
+ * ON ÉCRÊTE PLUTÔT QUE DE REFUSER, contrairement à `family`. Les deux cas
+ * n'ont rien à voir : une famille hors bornes rangerait le bouton dans un
+ * groupe qu'il n'a pas choisi, avec des frères inventés, alors qu'un rang
+ * hors bornes n'a qu'une lecture possible — le premier ou le dernier. Et
+ * « set the partNumber to 999 » pour mettre au-dessus de tout est l'idiome
+ * courant : le refuser casserait ce qu'on vient d'ajouter.
+ *
+ * ON DÉPLACE PAR ROTATION, et non par échange avec l'occupant du rang visé :
+ * échanger bousculerait un troisième objet qui n'a rien demandé. La rotation
+ * conserve l'ordre relatif de tous les autres, ce qui est le seul
+ * comportement qu'un « amener au premier plan » puisse avoir.
+ *
+ * Rend 1 si la part a bougé ou y était déjà, 0 si l'objet n'est pas une part
+ * ou n'a pas de propriétaire. */
+int hc_set_part_number(Object *o, int rang)
+{
+    if (!o || (o->type != OBJ_BUTTON && o->type != OBJ_FIELD)) return 0;
+    Object *pr = o->owner;
+    if (!pr) return 0;
+
+    /* Première passe : combien de parts, et où est celle-ci. */
+    int total = 0, depuis = -1;
+    for (int i = 0; i < pr->nparts; i++) {
+        Object *p = pr->parts[i];
+        if (p->type != OBJ_BUTTON && p->type != OBJ_FIELD) continue;
+        total++;
+        if (p == o) depuis = i;
+    }
+    if (depuis < 0 || total == 0) return 0;
+
+    if (rang < 1)     rang = 1;
+    if (rang > total) rang = total;
+
+    /* Seconde passe : l'index de celle qui occupe le rang visé. On ne peut
+     * pas le calculer dans la première — il faut connaître `total` pour
+     * écrêter, et écrêter pour savoir ce qu'on cherche. */
+    int n = 0, cible = -1;
+    for (int i = 0; i < pr->nparts; i++) {
+        Object *p = pr->parts[i];
+        if (p->type != OBJ_BUTTON && p->type != OBJ_FIELD) continue;
+        if (++n == rang) { cible = i; break; }
+    }
+    if (cible < 0 || cible == depuis) return 1;
+
+    Object *moi = pr->parts[depuis];
+    if (depuis < cible)
+        for (int i = depuis; i < cible; i++) pr->parts[i] = pr->parts[i + 1];
+    else
+        for (int i = depuis; i > cible; i--) pr->parts[i] = pr->parts[i - 1];
+    pr->parts[cible] = moi;
+    return 1;
+}
+
 int hc_owner_is_bg(Object *o)
 {
     return (o && o->owner && o->owner->type == OBJ_BACKGROUND) ? 1 : 0;
@@ -2511,35 +2572,64 @@ static const char *find_handler(const char *script, const char *message,
 
 /* ==================== résolution de références ==================== */
 
-static Object *find_part(Object *owner, ObjType type, const char *name)
+/* « PART » NE TRIE PAS : il compte les boutons et les champs mêlés.
+ *
+ * Les trois recherches ci-dessous prenaient un ObjType et ne savaient donc
+ * répondre qu'à « le troisième BOUTON » ou « le troisième CHAMP ». Le
+ * résolveur, faute de mieux, rangeait « part 3 » dans le seau des champs :
+ * mesuré, sur une carte « un(bouton) deux(champ) trois(bouton)
+ * quatre(champ) »,
+ *
+ *     part 1  ->  card field "deux"      au lieu de button "un"
+ *     part 2  ->  card field "quatre"    au lieu de field "deux"
+ *     part 3  ->  objet introuvable
+ *
+ * Une MAUVAISE RÉPONSE, pas une erreur : le script recevait un objet, et le
+ * mauvais. Le comptage, lui, savait déjà compter les parts mêlées — « the
+ * number of parts » rendait bien 4. Une règle connue d'un seul site, que les
+ * autres n'appliquaient pas ; c'est la forme qui revient le plus souvent ici.
+ *
+ * Le sentinelle vit donc DANS LES TROIS RECHERCHES, et non chez l'appelant :
+ * corriger le rang en laissant le nom et l'identifiant au champ aurait
+ * refabriqué la même divergence un cran plus bas. */
+#define HC_PART_QUELCONQUE (-1)
+
+static int part_du_type(const Object *p, int type)
+{
+    if (type == HC_PART_QUELCONQUE)
+        return p->type == OBJ_BUTTON || p->type == OBJ_FIELD;
+    return (int)p->type == type;
+}
+
+static Object *find_part(Object *owner, int type, const char *name)
 {
     if (!owner) return NULL;
     for (int i = 0; i < owner->nparts; i++) {
         Object *p = owner->parts[i];
-        if (p->type == type && p->name && ci_equal(p->name, name)) return p;
+        if (part_du_type(p, type) && p->name && ci_equal(p->name, name)) return p;
     }
     return NULL;
 }
 
 /* part par id absolu */
-static Object *find_part_by_id(Object *owner, ObjType type, int id)
+static Object *find_part_by_id(Object *owner, int type, int id)
 {
     if (!owner) return NULL;
     for (int i = 0; i < owner->nparts; i++) {
         Object *p = owner->parts[i];
-        if (p->type == type && p->id == id) return p;
+        if (part_du_type(p, type) && p->id == id) return p;
     }
     return NULL;
 }
 
 /* part par rang parmi les objets de ce type (1-based) */
-static Object *find_part_by_rank(Object *owner, ObjType type, int rank)
+static Object *find_part_by_rank(Object *owner, int type, int rank)
 {
     if (!owner || rank < 1) return NULL;
     int n = 0;
     for (int i = 0; i < owner->nparts; i++) {
         Object *p = owner->parts[i];
-        if (p->type == type && ++n == rank) return p;
+        if (part_du_type(p, type) && ++n == rank) return p;
     }
     return NULL;
 }
@@ -5911,10 +6001,11 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
      * C'est ce que compte HyperCard, et ce que hc_part_number faisait déjà
      * pour l'interface sans que le langage sache le demander.
      *
-     * En lecture seule : le rang décrit une POSITION dans la liste des parts,
-     * il ne se pose pas, il se constate. Le changer voudrait dire déplacer
-     * l'objet dans cette liste, ce qui est le travail de « send farther » et
-     * de ses voisins. */
+     * ELLE S'ÉCRIT AUSSI, depuis qu'on sait déplacer une part : voir la
+     * branche « partnumber » de v3_cmd_set. Le commentaire qui tenait ici
+     * disait « en lecture seule », et justifiait ce refus par le travail de
+     * « send farther et de ses voisins » — des commandes que ce projet n'a
+     * jamais eues. Un manque déguisé en choix. */
     if (ci_equal(prop, "partnumber")) {
         snprintf(out, outlen, "%d", hc_part_number(o)); return 1;
     }
@@ -7277,7 +7368,9 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
         case HCT_OBJ_BUTTON:
         case HCT_OBJ_FIELD:
         case HCT_OBJ_PART: {
-            ObjType t = (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
+            /* « part » prend les deux, et c'est tout le propos du mot. */
+            int t = (n->typeobj == HCT_OBJ_PART)   ? HC_PART_QUELCONQUE
+                  : (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
 
             /* La portée décide où chercher. Sans portée explicite, HyperCard
              * cherche d'abord sur la carte, puis se rabat sur le fond — c'est
@@ -10799,6 +10892,52 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
         hc_set_field_text(o, val);
         notify_field(o);
+    } else if (ci_equal(prop, "partnumber")) {
+        /* LE RANG SE POSE, il ne se constate pas seulement.
+         *
+         * Signalé à l'usage : « set the partNumber of button "pin pon" to 1 »
+         * répondait « propriété inconnue : partNumber » — alors que la
+         * lecture la sert depuis toujours. Le message envoyait donc chercher
+         * du côté du nom, le seul endroit où il n'y avait rien ; c'est la
+         * quatrième fois qu'on corrige cette forme-là.
+         *
+         * Le refus lui-même se justifiait, dans le commentaire de la lecture,
+         * par « c'est le travail de send farther et de ses voisins ». Or ces
+         * voisins n'existent nulle part dans le projet. Un commentaire qui
+         * renvoie à une commande absente ne justifie rien : il déguise un
+         * manque en choix.
+         *
+         * SEULES LES PARTS ONT UN RANG. Une carte, un fond, une pile n'en ont
+         * pas, et le dire vaut mieux que d'écrire dans le vide : hc_part_number
+         * leur rend déjà 0 en lecture. */
+        if (o->type != OBJ_BUTTON && o->type != OBJ_FIELD) {
+            emit(HC_ERR, "   !! seul un bouton ou un champ a un rang de part");
+            /* « propriété inconnue » mentirait ici, et ce serait la faute
+             * même qu'on répare : la propriété est connue, c'est la CIBLE qui
+             * n'en a pas. Un script qui lit `the result` doit pouvoir faire
+             * la différence. */
+            set_result("pas une part");
+            g_atop = sauve; return 1;
+        }
+        /* UN NOMBRE, OU RIEN. hc_entier écrête et refuse d'un même geste, ce
+         * qui confondrait « 999 » — légitime, et qu'on écrête — avec
+         * « patate », qui est une faute et doit se dire. hc_entier_lu les
+         * sépare, et l'écrêtage se fait dans hc_set_part_number, où vit la
+         * seule borne qui compte : le nombre de parts. */
+        int lu = 0;
+        int v = hc_entier_lu(val, -HC_COORD_MAX, HC_COORD_MAX, 0, &lu);
+        if (!lu) {
+            emit(HC_ERR, "   !! le rang d'une part est un nombre entier ; "
+                         "reçu « %s »", val);
+            set_result("rang de part invalide");
+            g_atop = sauve; return 1;
+        }
+        hc_set_part_number(o, v);
+        /* TOUTE LA COUCHE EST À REDESSINER, et pas seulement l'objet déplacé :
+         * celui qui le recouvrait doit se redessiner lui aussi, sans quoi le
+         * bouton passé au-dessus resterait caché à l'écran alors que le modèle
+         * l'a déjà remonté. On prévient donc pour chaque part du propriétaire. */
+        for (int i = 0; i < o->owner->nparts; i++) notify_field(o->owner->parts[i]);
     } else if (geom_write(o, prop, val)) {
         notify_field(o);
     } else {

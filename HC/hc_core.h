@@ -901,6 +901,13 @@ int         hc_object_number(Object *o);
 int         hc_part_number(Object *o);
 int         hc_owner_is_bg(Object *o);
 
+/* Déplacer une part au rang voulu chez son propriétaire — c'est-à-dire
+ * changer l'ORDRE DE SUPERPOSITION, la part de rang 1 étant dessous. Le rang
+ * est écrêté à [1, nombre de parts] : hors bornes, il n'a qu'une lecture
+ * possible, et « set the partNumber to 999 » pour passer au-dessus de tout
+ * est l'idiome courant. Rend 0 si l'objet n'est pas une part. */
+int         hc_set_part_number(Object *o, int rang);
+
 /* ---- lire un entier venu d'un SCRIPT ou d'un FICHIER ----
  *
  * atoi ne dit jamais non. Il rend 0 sur du texte, s'arrête au premier

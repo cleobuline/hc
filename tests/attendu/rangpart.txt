@@ -1,0 +1,81 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. LE CAS SIGNALE ==
+   au depart                          1:pilote 2:champ 3:pin pon 4:note
+     put the partNumber of button "pin pon"
+      3
+     set the partNumber of button "pin pon" to 1
+   apres le deplacement               1:pin pon 2:pilote 3:champ 4:note
+
+== 2. LES DEUX SENS, ET L'ORDRE RELATIF DES AUTRES ==
+     set the partNumber of button "pin pon" to 4
+   « pin pon » renvoye au rang 4    1:pilote 2:champ 3:note 4:pin pon
+     set the partNumber of field "note" to 2
+   « note » amene au rang 2         1:pilote 2:note 3:champ 4:pin pon
+
+== 3. LE RANG EST ECRETE, PAS REFUSE ==
+     set the partNumber of button "pilote" to 999
+  put the partNumber of button "pilote"
+      4
+   « pilote » envoye a 999          1:note 2:champ 3:pin pon 4:pilote
+     set the partNumber of button "pilote" to 0
+  put the partNumber of button "pilote"
+      1
+   « pilote » envoye a 0            1:pilote 2:note 3:champ 4:pin pon
+     set the partNumber of button "pilote" to -5
+  put the partNumber of button "pilote"
+      1
+   « pilote » envoye a -5           1:pilote 2:note 3:champ 4:pin pon
+
+== 4. CE QU'IL FAUT REFUSER ==
+     set the partNumber of button "pin pon" to "patate"
+  put the result
+      [ERR]    !! le rang d'une part est un nombre entier ; reçu « patate »
+      rang de part invalide
+   l'ordre n'a pas bouge              1:pilote 2:note 3:champ 4:pin pon
+     set the partNumber of this card to 1
+  put the result
+      [ERR]    !! seul un bouton ou un champ a un rang de part
+      pas une part
+     set the partNumber of this background to 1
+      [ERR]    !! seul un bouton ou un champ a un rang de part
+     set the partNumber of this stack to 1
+      [ERR]    !! seul un bouton ou un champ a un rang de part
+
+== 5. LE FOND A SA PROPRE NUMEROTATION ==
+   le fond au depart                  1:entete 2:suivant 3:pied
+     set the partNumber of bg button "suivant" to 1
+   « suivant » amene au rang 1      1:suivant 2:entete 3:pied
+   la carte n'a pas bouge             1:pilote 2:note 3:champ 4:pin pon
+
+== 6. L'AUTRE COMPTEUR SUIT ==
+     put "note est le field" && the number of card field "note"
+      note est le field 1
+     put "champ est le field" && the number of card field "champ"
+      champ est le field 2
+     set the partNumber of field "champ" to 1
+   « champ » amene au rang 1        1:champ 2:pilote 3:note 4:pin pon
+     put "note est le field" && the number of card field "note"
+      note est le field 2
+     put "champ est le field" && the number of card field "champ"
+      champ est le field 1
+
+== 7. « PART N » NE TRIAIT PAS, IL PRENAIT LES CHAMPS ==
+   l'ordre courant                    1:champ 2:pilote 3:note 4:pin pon
+     put the number of parts
+      7
+     put the name of part 1
+      card field "champ"
+     put the name of part 2
+      card button "pilote"
+     put the name of part 3
+      card field "note"
+     put the name of part 4
+      card button "pin pon"
+     put the name of part "pin pon"
+      card button "pin pon"
+     put the partNumber of part "pin pon"
+      4
+
+== 8. ET L'ORDRE SURVIT AU FICHIER ==
+   apres aller-retour                 1:champ 2:pilote 3:note 4:pin pon
+   le fond aussi                      1:suivant 2:entete 3:pied
