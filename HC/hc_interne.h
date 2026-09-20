@@ -46,6 +46,14 @@ Object *owning_stack(Object *o);
  * ou collé passe par elle, sans quoi deux objets porteraient le même numéro. */
 int     id_neuf(Object *pile);
 
+/* Reprendre un identifiant D'ORIGINE, si la pile ne l'a pas déjà donné à
+ * quelqu'un d'autre. Rend 1 s'il a été repris, 0 si l'objet garde le sien.
+ *
+ * Le compteur des identifiants est privé à hc_core.c, et c'est lui qu'il faut
+ * avancer en même temps — d'où un verbe ici plutôt qu'une écriture directe
+ * dans o->id, qui laisserait le compteur en arrière. */
+int     id_adopte(Object *pile, Object *o, int souhaite);
+
 /* Cet identifiant d'icône est-il celui d'une icône livrée avec HC ? Une
  * icône intégrée n'est pas transportée avec l'objet : elle existe partout. */
 int     icon_id_is_builtin(int id);

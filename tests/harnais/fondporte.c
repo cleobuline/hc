@@ -167,9 +167,15 @@ int main(void)
     puts("\n== 6. la pile source fermee, la correspondance part avec ==");
     /* La table retient quatre pointeurs par ligne et n'en possede aucun. Une
      * pile fermee les rend caducs : il ne faut meme plus les COMPARER, une
-     * adresse liberee pouvant etre rendue a quelqu'un d'autre. On purge, et
-     * le collage suivant recree — ce qui est la bonne reponse, faute de
-     * savoir si ce qu'on retenait existe encore. */
+     * adresse liberee pouvant etre rendue a quelqu'un d'autre. On purge donc
+     * la table, et c'est ce que ce cas verifie.
+     *
+     * LE COMPTE NE MONTE PLUS POUR AUTANT, et il faut dire pourquoi : le
+     * presse-papiers garde encore la COPIE du fond — clip_bg_clear n'est pas
+     * appelee ici —, si bien que la reconnaissance par l'apparence retrouve
+     * dans A le fond qu'on y avait deja porte. La table a bien ete purgee ;
+     * c'est l'autre voie qui repond. Avant qu'elle existe, ce collage creait
+     * un quatrieme fond. */
     {
         hc_set_current_card(b1); hc_copy_card(b1);
         hc_clipboard_stack_closing(B);

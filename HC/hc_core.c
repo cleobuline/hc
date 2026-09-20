@@ -1557,6 +1557,41 @@ int id_neuf(Object *pile)
     return libre ? libre : HC_ID_MAX - 1;
 }
 
+/* REPRENDRE L'IDENTIFIANT D'ORIGINE, QUAND LA PLACE EST LIBRE.
+ *
+ * Une couche portée d'une pile à l'autre reçoit un identifiant neuf, et perd
+ * donc le sien. Deux choses s'y perdent avec lui : un script qui dit
+ * « bg field id 12 » ne désigne plus rien là-bas, et la pile d'accueil n'a
+ * plus aucune trace de CE dont son fond est la copie — trace qui, elle,
+ * survivrait à l'enregistrement, puisque les identifiants sont écrits dans
+ * le .stack.
+ *
+ * On reprend donc l'ancien numéro quand personne ne l'occupe, et l'on garde
+ * le numéro neuf sinon. Le repli n'est pas un cas rare : le compteur repart
+ * à 1 dans chaque session, si bien que deux piles écrites séparément se
+ * disputent les petits numéros. C'est pour cela que la reconnaissance d'un
+ * fond ne peut pas REPOSER sur l'identifiant — il aide quand il est là, il
+ * ne prouve rien par son absence.
+ *
+ * ON AVANCE LE COMPTEUR, comme hc_set_id : un identifiant repris au-dessus
+ * de g_next_id serait redistribué par id_neuf quelques objets plus tard, et
+ * le doublon qu'on vient d'éviter reviendrait par la porte de derrière.
+ *
+ * Silencieuse, contrairement à hc_set_id : celui-ci lit un FICHIER, où un
+ * doublon signale une pile abîmée qu'il faut pouvoir réparer. Ici le
+ * conflit est la situation normale de deux piles étrangères, et il a une
+ * réponse — garder le numéro neuf — qui ne demande rien à personne. */
+int id_adopte(Object *pile, Object *o, int souhaite)
+{
+    if (!pile || !o) return 0;
+    if (souhaite <= 0 || souhaite >= HC_ID_MAX) return 0;
+    if (id_pris_par_un_autre(pile, souhaite, o)) return 0;
+
+    o->id = souhaite;
+    if (souhaite >= g_next_id) g_next_id = souhaite + 1;
+    return 1;
+}
+
 static Object *new_object(ObjType type, Object *owner, const char *name)
 {
     Object *o = calloc(1, sizeof(Object));

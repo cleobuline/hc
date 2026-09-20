@@ -1,0 +1,34 @@
+== 1. session 1 : on porte UNE carte, puis on enregistre ==
+   A apres avoir colle Une              2 fond(s)
+   le fond porte a repris son id        oui
+
+== 2. on relance : les piles reviennent du fichier ==
+   A au chargement                      2 fond(s)
+   A apres avoir colle Deux             2 fond(s)
+   Une et Deux sur le MEME fond         oui
+   Une  -> [note de Une]
+   Deux -> [note de Deux]
+
+== 3. meme nom et meme id, mais PAS LA MEME STRUCTURE ==
+   A au depart                          1 fond(s)
+   A apres le collage                   2 fond(s)
+   Une rattachee au fond de A           non
+
+== 4. meme nom, memes parts, mais PAS LA MEME PEINTURE ==
+   A au depart                          1 fond(s)
+   A apres le collage                   2 fond(s)
+   Une rattachee au fond de A           non
+
+== 5. un fond SANS SIGNE PARTICULIER n'est pas reconnu ==
+   A au depart                          1 fond(s)
+   A apres le collage                   2 fond(s)
+
+== 6. l'id d'origine DEJA PRIS dans la pile d'accueil ==
+   le fond porte a repris son id        non
+   A au chargement                      2 fond(s)
+   A apres avoir colle Deux             2 fond(s)
+   Une et Deux sur le MEME fond         oui
+
+== 7. retoucher le fond porte ne defait pas la correspondance ==
+   A apres avoir colle Une              2 fond(s)
+   A apres avoir repeint puis colle     2 fond(s)
