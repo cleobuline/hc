@@ -20,4 +20,9 @@
    B : 2 -> 2 fond(s)
 
 == 6. la pile source fermee, la correspondance part avec ==
-   colle apres la fermeture de B                4 fond(s)
+   colle apres la fermeture de B                3 fond(s)
+   colle une SECONDE fois apres la fermeture    3 fond(s)
+
+== 7. et pour un fond SANS SIGNE PARTICULIER ==
+   W : colle apres la fermeture de V            2 fond(s)
+   W : colle une SECONDE fois                   2 fond(s)

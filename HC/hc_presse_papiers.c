@@ -272,8 +272,12 @@ static Object *g_clip_bg_stack = NULL;   /* la pile de g_clip_bg_live */
  * problèmes plus grands que celui-ci. */
 #define HC_BG_PORTES_MAX 32
 typedef struct {
-    Object *src_bg;     /* le fond d'origine */
-    Object *src_pile;   /* sa pile, pour purger à la fermeture */
+    /* SOUS QUELLE IDENTITÉ le fond copié est retenu : le fond d'origine tant
+     * qu'il vit, la copie du presse-papiers une fois sa pile fermée. Voir
+     * hc_paste_card, qui choisit — aucune des deux ne couvre à elle seule la
+     * durée voulue. Jamais DÉRÉFÉRENCÉE : seulement comparée. */
+    Object *src_bg;
+    Object *src_pile;   /* la pile du fond d'origine, pour purger à sa fermeture */
     Object *pile;       /* la pile d'accueil */
     Object *cree;       /* le fond qu'on y a recréé */
 } BgPorte;
@@ -315,6 +319,122 @@ static void bg_note_porte(Object *src_bg, Object *src_pile,
     g_bg_portes[g_nbg_portes].pile     = pile;
     g_bg_portes[g_nbg_portes].cree     = cree;
     g_nbg_portes++;
+}
+
+/* ═══ RECONNAÎTRE UN FOND QU'ON Y A DÉJÀ PORTÉ, APRÈS UNE RELANCE ══════
+ *
+ * CE QUE LA TABLE NE PEUT PAS FAIRE. Elle vit en mémoire : elle répond
+ * parfaitement tant que l'application tourne, et ne répond plus rien après
+ * un redémarrage. Mesuré :
+ *
+ *     session 1 : copier Une dans B, coller dans A  -> A gagne « Commun »
+ *     quitter, relancer
+ *     session 2 : copier Deux dans B, coller dans A -> A gagne un SECOND
+ *                                                      « Commun »
+ *
+ * C'est le défaut d'origine, décalé d'une relance. Or rapatrier des cartes
+ * une par une est justement ce qu'on fait sur plusieurs jours.
+ *
+ * OÙ METTRE LA MÉMOIRE. Pas dans un fichier à côté : il faudrait y désigner
+ * la pile source, donc par son chemin ou son nom, et l'utilisateur a le
+ * droit de renommer ou de déplacer ses piles — la correspondance mentirait
+ * au premier renommage, en silence. La seule mémoire qui ne mente pas est
+ * CELLE QUE LE FOND PORTE SUR LUI, dans la pile d'accueil, et qui part avec
+ * elle quoi qu'il arrive à la pile d'origine.
+ *
+ * CE QU'ON COMPARE : ce que la carte PERDRAIT si on la rattachait au mauvais
+ * fond, et c'est cela qui fait la sûreté du procédé. Le nom du fond, sa
+ * peinture, et ses parts — nombre, type, nom et rectangle, dans le même
+ * ordre. Un fond qui répond oui à tout cela ressemble, à l'écran, EXACTEMENT
+ * à celui d'où la carte vient.
+ *
+ * CE QU'ON NE COMPARE PAS, et pourquoi :
+ *
+ *   - l'IDENTIFIANT, parce qu'il n'est pas toujours reprenable. Le compteur
+ *     repart à 1 dans chaque session, donc deux piles écrites séparément se
+ *     disputent les petits numéros : porter un fond « id 2 » dans une pile
+ *     qui a déjà un « id 2 » oblige à en donner un neuf. Exiger l'égalité
+ *     ferait échouer la reconnaissance dans le cas le plus ordinaire qui
+ *     soit. Il sert donc de DÉPARTAGE quand plusieurs fonds conviennent,
+ *     et id_adopte le reprend quand la place est libre — ce qui rend la
+ *     reconnaissance certaine dans ce cas-là, et rend au passage leur sens
+ *     aux scripts qui disent « bg field id 12 ».
+ *
+ *   - le SCRIPT, parce qu'il est invisible et qu'il est ce qu'on adapte le
+ *     plus volontiers dans la pile d'accueil. L'exiger ferait réapparaître
+ *     le fond en double à la première retouche. Il départage, lui aussi.
+ *
+ * ON REFUSE DE RECONNAÎTRE UN FOND SANS SIGNE PARTICULIER — ni nom, ni
+ * peinture, ni parts. Deux fonds vides ne se distinguent par rien, et c'est
+ * précisément pour cela qu'il ne faut pas les confondre : la ressemblance ne
+ * prouve plus rien, alors qu'un fond de plus ne coûte rien.
+ *
+ * CE PROCÉDÉ N'EST PAS CERTAIN, et il est fait pour échouer du bon côté : si
+ * le fond d'accueil a été retouché depuis, on ne le reconnaît plus et l'on
+ * en crée un second — le comportement d'avant, agaçant. Jamais l'inverse :
+ * on ne rattache pas une carte à un fond qui ne ressemble pas au sien. */
+
+static int meme_texte(const char *a, const char *b)
+{
+    if (!a) a = "";
+    if (!b) b = "";
+    return strcmp(a, b) == 0;
+}
+
+/* Ce fond a-t-il de quoi être reconnu ? */
+static int fond_a_un_signe(const Object *f)
+{
+    if (!f) return 0;
+    if (f->nparts > 0) return 1;
+    if (f->name  && f->name[0])  return 1;
+    if (f->paint && f->paint[0]) return 1;
+    return 0;
+}
+
+/* Les deux fonds se ressemblent-ils AU POINT QU'UNE CARTE NE VERRAIT PAS LA
+ * DIFFÉRENCE ? L'ordre des parts compte : c'est par POSITION que
+ * remap_bgtexts rattache le texte par carte aux champs du fond retenu. */
+static int fond_meme_apparence(const Object *a, const Object *b)
+{
+    if (!a || !b) return 0;
+    if (a->nparts != b->nparts) return 0;
+    if (!meme_texte(a->name,  b->name))  return 0;
+    if (!meme_texte(a->paint, b->paint)) return 0;
+
+    for (int i = 0; i < a->nparts; i++) {
+        const Object *pa = a->parts[i], *pb = b->parts[i];
+        if (pa->type != pb->type) return 0;
+        if (pa->x != pb->x || pa->y != pb->y) return 0;
+        if (pa->w != pb->w || pa->h != pb->h) return 0;
+        if (!meme_texte(pa->name, pb->name)) return 0;
+    }
+    return 1;
+}
+
+/* Le fond de cette pile qui est le portrait du modèle, ou NULL.
+ *
+ * Plusieurs peuvent convenir — la pile contient déjà deux copies du même
+ * fond, par exemple parce qu'une version antérieure les a dupliquées. On
+ * prend alors celui qui a gardé l'identifiant d'origine, sinon celui dont le
+ * script est le même, sinon le premier venu : ils se valent, puisqu'ils se
+ * ressemblent tous. */
+static Object *fond_reconnu_dans(const Object *modele, Object *pile)
+{
+    if (!modele || !pile) return NULL;
+    if (!fond_a_un_signe(modele)) return NULL;
+
+    Object *premier = NULL, *meme_script = NULL;
+
+    for (int i = 0; i < pile->nparts; i++) {
+        Object *f = pile->parts[i];
+        if (f->type != OBJ_BACKGROUND) continue;
+        if (!fond_meme_apparence(modele, f)) continue;
+
+        if (f->id == modele->id) return f;
+        if (!meme_script && meme_texte(f->script, modele->script)) meme_script = f;
+        if (!premier) premier = f;
+    }
+    return meme_script ? meme_script : premier;
 }
 
 /* Retire toutes les correspondances qui mentionnent cet objet. */
@@ -742,19 +862,58 @@ Object *hc_paste_card(Object *stack)
      *
      *   - on colle DANS LA PILE D'OÙ L'ON A COPIÉ : le fond d'origine est là,
      *     c'est lui ;
-     *   - on colle AILLEURS : on l'y a peut-être déjà porté, et la table des
-     *     correspondances le dit.
+     *   - on colle AILLEURS, PENDANT CETTE SESSION : on l'y a peut-être déjà
+     *     porté, et la table des correspondances le dit ;
+     *   - on colle AILLEURS, ET ON A REDÉMARRÉ DEPUIS : la table est vide, et
+     *     c'est le fond d'accueil lui-même qu'on interroge — il ressemble au
+     *     nôtre, ou il ne lui ressemble pas.
      *
-     * Le second cas manquait, et c'est tout le défaut : coller deux cartes
-     * qui partagent un fond y créait deux fonds. */
+     * Le deuxième cas manquait, et c'était tout le défaut : coller deux cartes
+     * qui partagent un fond y créait deux fonds. Le troisième manquait aussi,
+     * mais il ne se voyait qu'après une relance. */
     Object *bg = NULL;
     int bg_recree = 0;               /* le fond a-t-il été créé à l'instant ? */
+
+    /* SOUS QUELLE IDENTITÉ LA TABLE RETIENT CE FOND — et il en faut DEUX,
+     * parce qu'aucune ne couvre à elle seule la durée voulue.
+     *
+     * g_clip_bg_live est le fond D'ORIGINE. Il traverse les copies
+     * successives : copier Une puis Deux, qui partagent un fond, donne deux
+     * contenus de presse-papiers mais le même fond vivant — c'est lui qui
+     * fait tenir la correspondance d'une copie à l'autre. Mais il s'efface
+     * quand sa pile ferme, et il le doit : une adresse libérée ne se compare
+     * même plus.
+     *
+     * g_clip_bg_copy est la COPIE que le presse-papiers possède. Elle ne
+     * traverse pas les copies — chacune la remplace — mais elle SURVIT à la
+     * mort de la pile source, puisque c'est nous qui la tenons.
+     *
+     * Le défaut que ceci corrige, mesuré : après la fermeture de la pile
+     * source, bg_note_porte recevait NULL et refusait d'enregistrer, si bien
+     * que DEUX COLLAGES DE SUITE créaient deux fonds. La reconnaissance par
+     * l'apparence l'avait masqué pour un fond qui a un signe distinctif,
+     * mais pas pour un fond vide, qu'elle refuse de reconnaître — et c'était
+     * la même ligne qui manquait dans les deux cas.
+     *
+     * L'adresse de la copie ne peut pas être confondue avec celle d'une
+     * copie plus ancienne : hc_free purge la table par hc_pp_oublie avant
+     * que l'allocateur ne puisse rendre l'adresse à quelqu'un d'autre. */
+    Object *cle = g_clip_bg_live ? g_clip_bg_live : g_clip_bg_copy;
 
     if (g_clip_bg_live && g_clip_bg_stack == stack) {
         for (int i = 0; i < stack->nparts; i++)
             if (stack->parts[i] == g_clip_bg_live) { bg = g_clip_bg_live; break; }
     }
-    if (!bg) bg = bg_deja_porte(g_clip_bg_live, stack);
+    if (!bg) bg = bg_deja_porte(cle, stack);
+
+    /* Rien en mémoire : on regarde la pile d'accueil. Et l'on NOTE ce qu'on y
+     * trouve, pour que les collages suivants passent par l'identité plutôt
+     * que par la ressemblance — retoucher le fond après le premier collage ne
+     * doit pas défaire la correspondance au milieu d'une session. */
+    if (!bg && g_clip_bg_copy) {
+        bg = fond_reconnu_dans(g_clip_bg_copy, stack);
+        if (bg) bg_note_porte(cle, g_clip_bg_stack, stack, bg);
+    }
 
     /* Absent : on le recrée depuis la copie, et ON NOTE la correspondance —
      * pas en écrasant g_clip_bg_live, qui désigne le fond D'ORIGINE et dont
@@ -764,7 +923,24 @@ Object *hc_paste_card(Object *stack)
         bg = place_layer_clone(stack, g_clip_bg_copy, OBJ_BACKGROUND, NULL, NULL);
         if (!bg) return NULL;
         bg_recree = 1;
-        bg_note_porte(g_clip_bg_live, g_clip_bg_stack, stack, bg);
+
+        /* LES IDENTIFIANTS D'ORIGINE, QUAND LA PLACE EST LIBRE.
+         *
+         * Ils ne servent pas à reconnaître le fond — fond_reconnu_dans ne
+         * s'appuie pas dessus, justement parce qu'ils ne sont pas toujours
+         * reprenables — mais ils le reconnaissent À COUP SÛR quand ils ont pu
+         * être repris. Et ils rendent leur sens aux scripts qui désignent un
+         * champ de fond par « bg field id 12 ».
+         *
+         * Le fond D'ABORD, ses parts ENSUITE, et chacune pour son compte : un
+         * numéro déjà pris laisse simplement celui que place_layer_clone
+         * vient de donner. C'est un mieux opportuniste, jamais une
+         * obligation. */
+        id_adopte(stack, bg, g_clip_bg_copy->id);
+        for (int i = 0; i < bg->nparts && i < g_clip_bg_copy->nparts; i++)
+            id_adopte(stack, bg->parts[i], g_clip_bg_copy->parts[i]->id);
+
+        bg_note_porte(cle, g_clip_bg_stack, stack, bg);
     }
     if (!bg) return NULL;
 
