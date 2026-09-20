@@ -57,6 +57,14 @@ void hcv_curseur_maj(void);
  * de palette incomplet. Voir la définition dans HCview.m. */
 void hcv_abandonne_selection(void);
 
+/* L'OBJET SÉLECTIONNÉ DU DOCUMENT ACTIF, et sa pose.
+ *
+ * Il vit dans HCDoc, avec le reste de l'état de fenêtre, et HCDoc est privé
+ * à HCview.m. Ces deux verbes sont ce qu'en voient la palette des outils et
+ * le dialogue Infos — les seuls à en avoir besoin de l'extérieur. */
+Object *hcv_selection(void);
+void    hcv_selectionne(Object *o);
+
 @interface HCView : NSView <NSTextViewDelegate>
 - (void)installMessageBox;
 /* La minuterie d'« idle ». Une seule pour toute l'application : elle envoie le

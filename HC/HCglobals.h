@@ -31,8 +31,15 @@ extern BOOL     gTransparentBg;
  * sans branche supplementaire nulle part. */
 extern NSColor *gInkColor;
 extern NSColor *gBackColor;
-/* ---- Selection et vue ---- */
-extern Object  *gSelected;
+/* ---- Selection et vue ----
+ *
+ * gSelected N'EST PLUS ICI : l'objet selectionne est un champ de HCDoc, donc
+ * PAR FENETRE, comme la carte affichee et le champ en edition. Il se lit et
+ * se pose par hcv_selection et hcv_selectionne, declares dans HCview.h.
+ *
+ * Tant qu'il etait global, passer d'une pile a l'autre laissait Couper,
+ * Copier, Bring Closer et le panneau des polices braques sur un objet de la
+ * pile qu'on venait de quitter. */
 extern Object  *gFontTarget;   /* objet vise par le panneau des polices */
 extern HCView  *gView;
 

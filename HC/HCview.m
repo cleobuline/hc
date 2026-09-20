@@ -39,6 +39,24 @@ typedef struct {
     NSPanel      *editPanel;
 
     /* sélection et interaction */
+
+    /* L'OBJET SÉLECTIONNÉ, PAR DOCUMENT — et il a mis du temps à arriver ici.
+     *
+     * Il est resté un global de processus pendant que tout ce qui l'entoure
+     * déménageait dans cette structure. gTool étant global lui aussi, passer
+     * de la pile A à la pile B avec l'outil Bouton en main laissait
+     * object_selection_active() vrai sur un objet de A : Couper le supprimait
+     * dans la fenêtre du dessous, Bring Closer y changeait l'ordre de
+     * superposition, et drawRect peignait son cadre rouge par-dessus la carte
+     * de B, aux coordonnées d'un objet absent.
+     *
+     * Le premier correctif l'ABANDONNAIT au changement de fenêtre, comme la
+     * sélection de peinture. Le ranger ici vaut mieux et coûte moins : il n'y
+     * a plus rien à effacer, puisque chaque fenêtre a la sienne. Revenir sur
+     * la pile A y retrouve sa sélection, et la question « à qui appartient
+     * l'objet sélectionné ? » n'a plus qu'une réponse possible. */
+    Object       *selected;
+
     Object       *pressed;        /* objet sous le bouton de la souris */
     /* LA CARTE SUR LAQUELLE LE CLIC A EU LIEU.
      *
@@ -104,6 +122,7 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gEditTarget      (gDoc->editTarget)
 #define gEditView        (gDoc->editView)
 #define gEditPanel       (gDoc->editPanel)
+#define gSelected        (gDoc->selected)
 #define gPressed         (gDoc->pressed)
 #define gPressedCard     (gDoc->pressedCard)
 #define gPopupTarget     (gDoc->popupTarget)
@@ -228,6 +247,18 @@ static CGFloat  gAntsPhase = 0.0;
  *
  * La minuterie des fourmis s'arrête avec : sans elle, elle continuerait de
  * redessiner un cadre qui n'entoure plus rien, quinze fois par seconde. */
+/* LA SÉLECTION D'OBJET, VUE DU DEHORS.
+ *
+ * gSelected est un champ de HCDoc depuis qu'il est par document, et gDoc est
+ * privé à ce fichier. La palette des outils et le dialogue Infos en ont
+ * pourtant besoin : deux verbes plutôt qu'une variable partagée, et le
+ * document actif reste le seul à décider de quoi on parle.
+ *
+ * C'est la même raison qui avait fait de hc_pp_oublie un verbe plutôt que
+ * deux globales sorties de leur fichier. */
+Object *hcv_selection(void)          { return gSelected; }
+void    hcv_selectionne(Object *o)   { gSelected = o; }
+
 void hcv_abandonne_selection(void)
 {
     gSelRectActive  = NO;
@@ -5525,6 +5556,7 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
 {
     if (!d) return;
     Object **emplacements[] = {
+        &d->selected,
         &d->editingField, &d->editTarget, &d->pressed, &d->pressedCard,
         &d->popupTarget,
         &d->scrollField,  &d->clickField, &d->paintUndoLayer, &d->keepLayer,
@@ -5538,7 +5570,15 @@ static void cocoa_object_gone(Object *mort)
 {
     if (!mort) return;
 
-    if (gSelected     == mort) gSelected     = NULL;
+    /* gSelected N'EST PLUS ICI, ET C'ÉTAIT LE PIÈGE DU DÉMÉNAGEMENT.
+     *
+     * Tant qu'il était global, l'effacer d'une ligne suffisait. Devenu un
+     * champ de HCDoc, la même ligne n'aurait nettoyé QUE le document actif —
+     * un objet peut mourir dans une pile qui n'est pas celle du dessus, et
+     * la fenêtre d'à côté aurait gardé l'adresse d'un objet libéré. Il est
+     * donc passé dans la liste de hcv_oublie_dans, qui est appelée pour
+     * chaque document ; c'est exactement ce que le commentaire de cette
+     * liste réclame de tout Object * ajouté à HCDoc. */
     if (gFontTarget   == mort) gFontTarget   = NULL;
     if (gSurvole      == mort) gSurvole      = NULL;
     if (gSurvoleCarte == mort) gSurvoleCarte = NULL;
