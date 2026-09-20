@@ -429,7 +429,26 @@ static void hcv_fat_centre(NSPoint sur, NSRect vue)
     if (y < 0) y = 0;
     if (x > vue.size.width  - w) x = vue.size.width  - w;
     if (y > vue.size.height - h) y = vue.size.height - h;
-    gFatOrigine = NSMakePoint(x, y);
+
+    /* L'ORIGINE EST UN NOMBRE ENTIER DE PIXELS DE CALQUE, et c'est ce qui
+     * fait tenir la grille sur le dessin.
+     *
+     * Elle ne l'était pas : « sur − moitié de la vue » tombe sur un demi, un
+     * quart, ce qu'on veut. Un pixel de calque L s'affiche en (L − origine)
+     * × 8 ; avec une origine fractionnaire il tombe entre deux multiples de
+     * huit, alors que les traits de la grille, eux, sont posés SUR les
+     * multiples de huit. Les deux glissaient donc l'un par rapport à l'autre,
+     * d'une fraction de case — visible à l'œil dès qu'on dessine.
+     *
+     * Arrondir ici et pas au moment de tracer : c'est l'origine qui doit être
+     * entière, puisque c'est elle que partagent le dessin et la grille.
+     * Arrondir à l'affichage aurait recalé les traits sur eux-mêmes et laissé
+     * le décalage où il était.
+     *
+     * Après l'arrondi les bornes tiennent encore : les deux extrémités du
+     * domaine, 0 et (taille − w), sont des multiples de huit dès que la carte
+     * l'est, et floor ne fait que rapprocher de zéro. */
+    gFatOrigine = NSMakePoint(floor(x), floor(y));
 }
 
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
