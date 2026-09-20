@@ -182,7 +182,12 @@ static BOOL    gPenDrawing = NO;
  * redécider à chaque segment ferait clignoter le crayon le long de son
  * propre tracé : il effacerait ce qu'il vient de poser dès qu'il repasse
  * dessus, ce qui est exactement ce qu'on ne veut pas. C'est aussi ce que
- * fait l'éditeur d'icônes, qui pose _drawValue une fois. */
+ * fait l'éditeur d'icônes, qui pose _drawValue une fois.
+ *
+ * CE QU'« EFFACER » VEUT DIRE dépend du mode de fond, et la question est
+ * posée dans unink_stroke, pas ici : transparent, le calque du dessous
+ * réapparaît ; opaque, on pose du blanc qui couvre — la bascule est alors
+ * noir/blanc, comme chez HyperCard. */
 static BOOL    gPenEfface = NO;
 
 typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
@@ -1649,8 +1654,8 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
              * script et au geste deux décisions différentes sur le même
              * pixel — le défaut qu'on venait justement d'éviter en traitant
              * les trois sites ensemble. */
-            if (paint_pixel_pose(rep, (int)floor(a.x), (int)floor(a.y)))
-                erase_stroke(rep, a, z, gLineWidth);
+            if (paint_pixel_encre(rep, (int)floor(a.x), (int)floor(a.y)))
+                unink_stroke(rep, a, z, gLineWidth);
             else
                 paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
             break;
@@ -5340,10 +5345,10 @@ static BOOL      gSansMessageChamp = NO;
              * la souris y donne des coordonnées presque entières, dont la
              * fraction dépasse rarement un demi. */
             gPenEfface = (gTool == TOOL_PENCIL) &&
-                         paint_pixel_pose(rep, (int)floor(p.x),
-                                               (int)floor(p.y));
+                         paint_pixel_encre(rep, (int)floor(p.x),
+                                                (int)floor(p.y));
             if (gTool == TOOL_PENCIL) {
-                if (gPenEfface) erase_stroke(rep, p, p, gLineWidth);
+                if (gPenEfface) unink_stroke(rep, p, p, gLineWidth);
                 else paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
             }
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
@@ -5679,7 +5684,7 @@ static BOOL      gSansMessageChamp = NO;
 
         if (gTool == TOOL_PENCIL) {
             /* Le sens vient du mouseDown : voir gPenEfface. */
-            if (gPenEfface) erase_stroke(rep, gPenLast, p, gLineWidth);
+            if (gPenEfface) unink_stroke(rep, gPenLast, p, gLineWidth);
             else paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
         } else if (gTool == TOOL_BRUSH) {
             brush_stroke(rep, gPenLast, p);

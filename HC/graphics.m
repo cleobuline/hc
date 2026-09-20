@@ -660,7 +660,7 @@ void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *colo
 
     [NSGraphicsContext restoreGraphicsState];
 }
-int paint_pixel_pose(NSBitmapImageRep *rep, int x, int y)
+int paint_pixel_encre(NSBitmapImageRep *rep, int x, int y)
 {
     if (!rep) return 0;
     int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
@@ -669,7 +669,62 @@ int paint_pixel_pose(NSBitmapImageRep *rep, int x, int y)
     if (!data) return 0;
     NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
     unsigned char *px = data + y*bpr + x*spp;
-    return ((spp >= 4) ? px[3] : 255) != 0;
+
+    if (((spp >= 4) ? px[3] : 255) == 0) return 0;   /* rien du tout */
+
+    /* LE FOND OPAQUE N'EST PAS DE L'ENCRE. Sans ce second test, un pixel que
+     * le crayon vient de blanchir en mode opaque resterait « encré » : le
+     * clic suivant voudrait l'effacer encore, et le crayon ne pourrait plus
+     * jamais repeindre là où il a effacé. La bascule se serait coincée d'un
+     * seul côté.
+     *
+     * Tolérance ZÉRO, comme le flot de remplissage juste au-dessus : seul le
+     * fond EXACT compte pour du vide. Un blanc obtenu autrement — un lavis,
+     * une trame éclaircie — reste de l'encre, et c'est le bon choix : le
+     * crayon ne doit pas décider que ce qui est clair n'existe pas. */
+    unsigned char br, bg, bb;
+    color_rgb(gBackColor, [NSColor whiteColor], &br, &bg, &bb, NULL);
+    if (px[0] == br && px[1] == bg && px[2] == bb) return 0;
+
+    return 1;
+}
+
+void unink_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width)
+{
+    /* TRANSPARENT : on retire pour de bon, et le calque du dessous
+     * réapparaît — c'est ce que fait la gomme, et ce que faisait le crayon
+     * jusqu'ici. */
+    if (gTransparentBg) { erase_stroke(rep, from, to, width); return; }
+
+    /* OPAQUE : on pose la couleur de FOND, qui couvre. C'est le blanc
+     * d'HyperCard, dont les images n'ont pas de calque en dessous.
+     *
+     * Le mode ne dit pas autre chose ailleurs : pour les motifs, « opaque »
+     * veut déjà dire que la partie non-encre couvre au lieu de laisser
+     * passer. Le crayon ne fait donc qu'appliquer une question déjà posée,
+     * au lieu d'en poser une nouvelle. */
+    if (!rep) return;
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return;
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+    [ctx setShouldAntialias:NO];
+
+    CGFloat H = [rep pixelsHigh];
+    NSAffineTransform *flip = [NSAffineTransform transform];
+    [flip translateXBy:0 yBy:H];
+    [flip scaleXBy:1 yBy:-1];
+    [flip concat];
+
+    [(gBackColor ? gBackColor : [NSColor whiteColor]) setStroke];
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:from];
+    [path lineToPoint:to];
+    [path setLineWidth:width > 0 ? width : 1];
+    [path setLineCapStyle:NSLineCapStyleRound];
+    [path stroke];
+
+    [NSGraphicsContext restoreGraphicsState];
 }
 
 // efface un segment (remet à transparent) au lieu de peindre
