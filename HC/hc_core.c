@@ -7425,6 +7425,50 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n);
 static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
                                     char *out, int outlen);
+/* ═══ POURQUOI UNE PROPRIÉTÉ DE MENU N'A PAS PU ÊTRE SERVIE ═════════════
+ *
+ * LE DÉFAUT QUE CECI CORRIGE. Trois échecs bien distincts se disaient de la
+ * même façon, et la façon était fausse deux fois sur trois :
+ *
+ *     set the checkMark of menu "Essai" to true
+ *     set the checkMark of menuItem 9 of menu "Essai" to true
+ *     set the checkMark of menuItem 1 of menu "Absent" to true
+ *     -> « propriété de menu inconnue : checkMark », les trois fois
+ *
+ * Or checkMark EXISTE, et marche : sur un article qui existe, dans un menu
+ * qui existe, elle se lit et s'écrit. Le message envoyait donc chercher du
+ * côté du nom de la propriété — le seul endroit où il n'y avait rien.
+ *
+ * LA LECTURE MENTAIT AUSSI, dans l'autre sens : les mêmes trois cas, plus
+ * « the zorglub of menuItem 1 », disaient tous « objet introuvable », même
+ * quand le menu et l'article étaient là.
+ *
+ * C'est la troisième fois qu'on corrige cette forme-là — après
+ * « Can't understand » posé sur un objet manquant, et « propriété inconnue »
+ * posé sur une cible absente. Un diagnostic faux coûte plus cher qu'un
+ * diagnostic vague : le vague fait chercher partout, le faux fait chercher
+ * au mauvais endroit et donne confiance en le faisant.
+ *
+ * La raison est posée LÀ OÙ L'ÉCHEC SE PRODUIT — v3_menu_index sait que le
+ * menu manque, v3_article_index que l'article manque, les deux tables de
+ * propriétés que le nom est inconnu — et lue par les deux appelants. */
+typedef enum {
+    V3_MENU_RIEN = 0,          /* pas une forme de menu, ou pas d'échec */
+    V3_MENU_MENU_ABSENT,
+    V3_MENU_ARTICLE_ABSENT,
+    V3_MENU_PROP_INCONNUE
+} V3MenuEchec;
+static V3MenuEchec g_menu_echec = V3_MENU_RIEN;
+
+static const char *v3_menu_raison(void)
+{
+    switch (g_menu_echec) {
+        case V3_MENU_MENU_ABSENT:    return "menu introuvable";
+        case V3_MENU_ARTICLE_ABSENT: return "article de menu introuvable";
+        default:                     return "propriété de menu inconnue";
+    }
+}
+
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
 static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out);
@@ -7710,6 +7754,18 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
         char prop[64];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (v3_menu_prop_lit(ctx, n->fils[1], prop, out)) return 1;
+        /* ÉCHOUÉ, ET ON SAIT POURQUOI. Sans ceci, la ligne repartait jusqu'à
+         * l'écho, et hct_eval concluait « objet introuvable » — même quand le
+         * menu ET l'article existaient et que seul le nom de la propriété
+         * était inventé. On pose la faute ici : hct_eval garde la PREMIÈRE,
+         * donc la sienne, plus vague, ne la remplacera pas. */
+        if (ctx && g_menu_echec != V3_MENU_RIEN) {
+            if (g_menu_echec == V3_MENU_PROP_INCONNUE)
+                hct_ctx_faute_nom(ctx, n, "propriété de menu inconnue", prop);
+            else
+                hct_ctx_faute(ctx, n, v3_menu_raison());
+            { g_v1_porte = sauve_porte; } return 0;
+        }
     }
 
     /* « the selectedButton of [card|bg] family <n> ». Même forme que les
@@ -10280,8 +10336,17 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             v3_val_texte(ctx, n->fils[n->nfils - 1], val, sizeof val);
             if (ctx->erreur) return 1;
             if (v3_menu_prop_ecrit(ctx, obj, prop, val)) { set_result(""); return 1; }
-            emit(HC_ERR, "   !! propriété de menu inconnue : %s", prop);
-            set_result("propriété inconnue");
+            /* LAQUELLE DES TROIS ? Voir V3MenuEchec : le menu, l'article, ou
+             * le nom de la propriété. Seule la troisième a une raison de
+             * nommer `prop` — les deux autres l'accuseraient à tort. */
+            if (g_menu_echec == V3_MENU_PROP_INCONNUE || g_menu_echec == V3_MENU_RIEN) {
+                emit(HC_ERR, "   !! propriété de menu inconnue : %s", prop);
+                set_result("propriété inconnue");
+            } else {
+                emit(HC_ERR, "   !! %s", v3_menu_raison());
+                set_result(g_menu_echec == V3_MENU_MENU_ABSENT
+                           ? "No such menu" : "No such menu item");
+            }
             return 1;
         }
     }
@@ -12706,7 +12771,7 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
     if (n->nfils < 2) return -1;
 
     int im = v3_menu_index(ctx, n->fils[n->nfils - 1]);
-    if (im < 0) return -1;
+    if (im < 0) { g_menu_echec = V3_MENU_MENU_ABSENT; return -1; }
     *imenu = im;
 
     char b[HC_MENU_NOM_MAX + 2];   /* même plafond : voir v3_menu_index */
@@ -12721,10 +12786,13 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
 
     if (n->designateur == HCT_DES_RANG) {
         int r = hc_rang(b);
-        return (r >= 1 && r <= g_menus[im].n) ? r - 1 : -1;
+        if (r >= 1 && r <= g_menus[im].n) return r - 1;
+        g_menu_echec = V3_MENU_ARTICLE_ABSENT;
+        return -1;
     }
     for (int j = 0; j < g_menus[im].n; j++)
         if (ci_equal(g_menus[im].article[j], b)) return j;
+    g_menu_echec = V3_MENU_ARTICLE_ABSENT;
     return -1;
 }
 
@@ -12740,10 +12808,11 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out)
 {
     char b[128];
+    g_menu_echec = V3_MENU_RIEN;
 
     if (obj->typeobj == HCT_OBJ_MENU) {
         int i = v3_menu_index(ctx, obj);
-        if (i < 0) return 0;
+        if (i < 0) { g_menu_echec = V3_MENU_MENU_ABSENT; return 0; }
         if (ci_equal(prop, "name")) { *out = hct_val_texte(g_menus[i].nom); return 1; }
         if (ci_equal(prop, "enabled")) {
             *out = hct_val_texte(g_menus[i].actif_menu ? "true" : "false");
@@ -12754,13 +12823,14 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
             *out = hct_val_texte(b);
             return 1;
         }
+        g_menu_echec = V3_MENU_PROP_INCONNUE;
         return 0;
     }
 
     if (obj->typeobj == HCT_OBJ_MENUITEM) {
         int im = -1;
         int j = v3_article_index(ctx, obj, &im);
-        if (j < 0) return 0;
+        if (j < 0) return 0;          /* v3_article_index a dit laquelle */          /* v3_article_index a dit laquelle */
         HcMenuBarre *m = &g_menus[im];
 
         if (ci_equal(prop, "checkmark")) {
@@ -12779,6 +12849,7 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
             snprintf(b, sizeof b, "%d", j + 1);
             *out = hct_val_texte(b); return 1;
         }
+        g_menu_echec = V3_MENU_PROP_INCONNUE;
         return 0;
     }
     return 0;
@@ -12788,10 +12859,11 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
                               const char *prop, const char *val)
 {
     int vrai = truthy(val);
+    g_menu_echec = V3_MENU_RIEN;
 
     if (obj->typeobj == HCT_OBJ_MENU) {
         int i = v3_menu_index(ctx, obj);
-        if (i < 0) return 0;
+        if (i < 0) { g_menu_echec = V3_MENU_MENU_ABSENT; return 0; }
         if (ci_equal(prop, "name")) {
             /* Même règle qu'à la création : on refuse plutôt que d'amputer.
              * Un menu renommé trop long deviendrait introuvable sous son
@@ -12807,13 +12879,14 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             g_menus[i].actif_menu = vrai;
             menus_prevenir(); return 1;
         }
+        g_menu_echec = V3_MENU_PROP_INCONNUE;
         return 0;
     }
 
     if (obj->typeobj == HCT_OBJ_MENUITEM) {
         int im = -1;
         int j = v3_article_index(ctx, obj, &im);
-        if (j < 0) return 0;
+        if (j < 0) return 0;          /* v3_article_index a dit laquelle */
         HcMenuBarre *m = &g_menus[im];
 
         if (ci_equal(prop, "checkmark")) {
@@ -12836,6 +12909,7 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             free(m->message[j]); m->message[j] = t;
             menus_prevenir(); return 1;
         }
+        g_menu_echec = V3_MENU_PROP_INCONNUE;
         return 0;
     }
     return 0;

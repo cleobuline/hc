@@ -1,0 +1,67 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. mise en place ==
+     create menu "Essai"
+  put "Alpha,Beta,Gamma" into menu "Essai"
+  put the number of menuItems of menu "Essai" & " articles"
+      3 articles
+
+== 2. CE QUI MARCHE, ET QUI DOIT CONTINUER ==
+     set the checkMark of menuItem 1 of menu "Essai" to true
+  put the checkMark of menuItem 1 of menu "Essai"
+      true
+     set the checkMark of menuItem "Beta" of menu "Essai" to true
+  put the checkMark of menuItem "Beta" of menu "Essai"
+      true
+     set the checkMark of menuItem 1 of menu "Essai" to false
+  put the checkMark of menuItem 1 of menu "Essai"
+      false
+     put the name of menuItem 2 of menu "Essai"
+      Beta
+     put the number of menuItem "Gamma" of menu "Essai"
+      3
+     set the enabled of menuItem 3 of menu "Essai" to false
+  put the enabled of menuItem 3 of menu "Essai"
+      false
+     put the name of menu "Essai"
+      Essai
+     put the enabled of menu "Essai"
+      true
+
+== 3. LES TROIS ECHECS, CHACUN NOMME ==
+   -- la PROPRIETE n'existe pas --
+     set the checkMark of menu "Essai" to true
+      [ERR]    !! propriété de menu inconnue : checkMark
+     put the checkMark of menu "Essai"
+      [ERR]    !! propriété de menu inconnue : checkMark (v3, ligne 2 de button "B".essaie)
+     set the zorglub of menuItem 1 of menu "Essai" to true
+      [ERR]    !! propriété de menu inconnue : zorglub
+     put the zorglub of menuItem 1 of menu "Essai"
+      [ERR]    !! propriété de menu inconnue : zorglub (v3, ligne 2 de button "B".essaie)
+   -- l'ARTICLE n'existe pas --
+     set the checkMark of menuItem 9 of menu "Essai" to true
+      [ERR]    !! article de menu introuvable
+     put the checkMark of menuItem 9 of menu "Essai"
+      [ERR]    !! article de menu introuvable (v3, ligne 2 de button "B".essaie)
+     set the checkMark of menuItem "Zorglub" of menu "Essai" to true
+      [ERR]    !! article de menu introuvable
+   -- le MENU n'existe pas --
+     set the checkMark of menuItem 1 of menu "Absent" to true
+      [ERR]    !! menu introuvable
+     put the checkMark of menuItem 1 of menu "Absent"
+      [ERR]    !! menu introuvable (v3, ligne 2 de button "B".essaie)
+     put the name of menu "Absent"
+      [ERR]    !! menu introuvable (v3, ligne 2 de button "B".essaie)
+
+== 4. et « the result » suit le message ==
+     set the checkMark of menuItem 1 of menu "Absent" to true
+  put the result
+      [ERR]    !! menu introuvable
+      No such menu
+     set the checkMark of menuItem 9 of menu "Essai" to true
+  put the result
+      [ERR]    !! article de menu introuvable
+      No such menu item
+     set the zorglub of menuItem 1 of menu "Essai" to true
+  put the result
+      [ERR]    !! propriété de menu inconnue : zorglub
+      propriété inconnue
