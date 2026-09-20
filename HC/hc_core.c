@@ -4658,11 +4658,18 @@ static int menu_supprimer(const char *nom)
  *
  * Les lignes VIDES comptent : la liste des messages est parallèle à celle des
  * articles, et un séparateur « - » n'a pas de message. Les sauter décalerait
- * tout le reste — chaque article enverrait le message du suivant. */
-static int liste_decoupe(const char *src, char sep, char **out, int max)
+ * tout le reste — chaque article enverrait le message du suivant.
+ *
+ * `deborde` dit qu'il RESTAIT du texte quand le plafond a été atteint. Sans
+ * lui la troncature était muette : une liste de soixante-dix articles en
+ * posait soixante-quatre et le script ne l'apprenait jamais. L'appelant en
+ * fait ce qu'il veut — ici, refuser plutôt que d'amputer. */
+static int liste_decoupe(const char *src, char sep, char **out, int max,
+                         int *deborde)
 {
     int n = 0;
     const char *p = src ? src : "";
+    if (deborde) *deborde = 0;
     while (n < max) {
         const char *f = strchr(p, sep);
         int len = f ? (int)(f - p) : (int)strlen(p);
@@ -4671,31 +4678,104 @@ static int liste_decoupe(const char *src, char sep, char **out, int max)
         if (!t) break;
         memcpy(t, p, (size_t)len); t[len] = '\0';
         out[n++] = t;
-        if (!f) break;
+        if (!f) return n;              /* c'était le dernier : rien ne reste */
         p = f + 1;
     }
+    if (deborde) *deborde = 1;
     return n;
 }
 
-static void menu_articles(int i, const char *articles, const char *messages)
+/* Poser des articles dans un menu.
+ *
+ * `pos` est l'indice où ils se posent, `remplace` le nombre d'articles déjà
+ * là qu'ils chassent à partir de cet indice. Les trois prépositions
+ * d'HyperTalk s'y ramènent, et c'est tout l'intérêt d'une seule fonction :
+ *
+ *     into   menu        pos = 0,   remplace = tout
+ *     before menu        pos = 0,   remplace = 0
+ *     after  menu        pos = n,   remplace = 0
+ *     into   menuItem j  pos = j,   remplace = 1
+ *     before menuItem j  pos = j,   remplace = 0
+ *     after  menuItem j  pos = j+1, remplace = 0
+ *
+ * Les articles qui SURVIVENT gardent leur message, leur coche et leur état :
+ * insérer en tête ne doit pas relever ce qui était désactivé plus bas. Seuls
+ * les nouveaux naissent actifs et sans marque.
+ *
+ * Rend 0 — sans rien changer — si le résultat ne tiendrait pas. On refuse en
+ * entier plutôt que de poser ce qui rentre : un menu à moitié écrit est plus
+ * difficile à diagnostiquer qu'un menu inchangé et une erreur. */
+static int menu_insere(int i, int pos, int remplace,
+                       const char *articles, const char *messages)
 {
-    if (i < 0 || i >= g_nmenus) return;
+    if (i < 0 || i >= g_nmenus) return 0;
     HcMenuBarre *m = &g_menus[i];
-    menu_vide(m);
 
-    char sep = strchr(articles ? articles : "", '\n') ? '\n' : ',';
-    m->n = liste_decoupe(articles, sep, m->article, HC_ARTICLES_MAX);
+    if (pos < 0) pos = 0;
+    if (pos > m->n) pos = m->n;
+    if (remplace < 0) remplace = 0;
+    if (pos + remplace > m->n) remplace = m->n - pos;
+
+    char *art[HC_ARTICLES_MAX], *msg[HC_ARTICLES_MAX];
+    int   deborde = 0;
+    char  sep = strchr(articles ? articles : "", '\n') ? '\n' : ',';
+    int   na  = liste_decoupe(articles, sep, art, HC_ARTICLES_MAX, &deborde);
+    int   nm  = 0;
 
     if (messages && *messages) {
-        char *msg[HC_ARTICLES_MAX];
         char sepm = strchr(messages, '\n') ? '\n' : ',';
-        int nm = liste_decoupe(messages, sepm, msg, HC_ARTICLES_MAX);
-        for (int j = 0; j < m->n; j++)
-            m->message[j] = (j < nm) ? msg[j] : NULL;
-        for (int j = m->n; j < nm; j++) free(msg[j]);   /* liste plus longue */
+        /* Une liste de messages plus longue que celle des articles est sans
+         * conséquence : le surplus se jette. Elle ne fait donc pas déborder. */
+        nm = liste_decoupe(messages, sepm, msg, HC_ARTICLES_MAX, NULL);
     }
-    for (int j = 0; j < m->n; j++) { m->actif[j] = 1; m->coche[j] = 0; }
+
+    int garde = m->n - remplace;
+    if (deborde || garde + na > HC_ARTICLES_MAX) {
+        emit(HC_ERR, "   !! trop d'articles de menu (%d au plus)",
+             HC_ARTICLES_MAX);
+        for (int k = 0; k < na; k++) free(art[k]);
+        for (int k = 0; k < nm; k++) free(msg[k]);
+        return 0;
+    }
+
+    for (int k = pos; k < pos + remplace; k++) {
+        free(m->article[k]); m->article[k] = NULL;
+        free(m->message[k]); m->message[k] = NULL;
+    }
+
+    int queue = m->n - (pos + remplace);
+    if (queue > 0 && na != remplace) {
+        size_t q = (size_t)queue;
+        memmove(&m->article[pos + na], &m->article[pos + remplace],
+                q * sizeof *m->article);
+        memmove(&m->message[pos + na], &m->message[pos + remplace],
+                q * sizeof *m->message);
+        memmove(&m->actif[pos + na],   &m->actif[pos + remplace],
+                q * sizeof *m->actif);
+        memmove(&m->coche[pos + na],   &m->coche[pos + remplace],
+                q * sizeof *m->coche);
+    }
+
+    for (int k = 0; k < na; k++) {
+        m->article[pos + k] = art[k];
+        m->message[pos + k] = (k < nm) ? msg[k] : NULL;
+        m->actif[pos + k]   = 1;
+        m->coche[pos + k]   = 0;
+    }
+    for (int k = na; k < nm; k++) free(msg[k]);   /* liste plus longue */
+
+    /* La queue a pu descendre : les cases au-delà du nouveau compte tiennent
+     * encore des pointeurs recopiés. menu_vide s'arrête à m->n et ne les
+     * touchera pas, mais un double free n'attend qu'une boucle écrite sur
+     * HC_ARTICLES_MAX. On ferme le piège plutôt que de compter dessus. */
+    for (int k = garde + na; k < m->n; k++) {
+        m->article[k] = NULL;
+        m->message[k] = NULL;
+    }
+
+    m->n = garde + na;
     menus_prevenir();
+    return 1;
 }
 
 static void menus_reset(void)
@@ -13315,24 +13395,63 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
     return 0;                       /* enable d'autre chose : pas pour nous */
 }
 
-/* put <articles> into menu <nom> [with menuMsg <messages>]
+/* put <articles> into|before|after  menu <nom> | menuItem <d> of menu <nom>
+ *                [with menuMsg <messages>]
  *
  * L'exécuteur nous confie la ligne ENTIÈRE, non évaluée, parce que
  * cible_connue refuse les menus : on évalue donc soi-même, et une seule fois.
- * L'arbre est « e into <objet menu> [with menumsg e] ». */
+ * L'arbre est « e <préposition> <objet> [with menumsg e] ».
+ *
+ * DEUX MANQUES, ET LE SECOND ÉTAIT LE PIRE.
+ *
+ * « menuItem N of menu "X" » n'était pas reconnu comme cible : on rendait 0,
+ * et la ligne finissait en « ne sait pas faire ». Un refus, au moins.
+ *
+ * Mais LA PRÉPOSITION ÉTAIT IGNORÉE — on lisait fils[2] sans jamais regarder
+ * fils[1]. « put "Aide" after menu "X" » remplaçait le menu entier par cet
+ * unique article, en silence et en rendant un résultat vide. Une commande
+ * d'ajout qui efface : le script croit compléter son menu et le détruit. On
+ * ne le voyait pas parce que la forme `into`, la seule écrite dans les
+ * harnais, donne justement le bon résultat par accident.
+ *
+ * Les trois prépositions se ramènent à un (pos, remplace) que menu_insere
+ * applique ; le tableau des six cas est chez elle. */
 static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 3) return 0;
     const HctNoeud *cible = n->fils[2];
-    if (!cible || cible->genre != HCTN_OBJET ||
-        cible->typeobj != HCT_OBJ_MENU) return 0;
+    if (!cible || cible->genre != HCTN_OBJET) return 0;
+    if (cible->typeobj != HCT_OBJ_MENU &&
+        cible->typeobj != HCT_OBJ_MENUITEM) return 0;
 
-    int i = v3_menu_index(ctx, cible);
-    if (ctx->erreur) return 1;
-    if (i < 0) {
-        emit(HC_ERR, "   !! menu introuvable");
-        set_result("menu introuvable");
-        return 1;
+    int avant = v3_est_motcle(n, 1, "before");
+    int apres = v3_est_motcle(n, 1, "after");
+
+    int i = -1, pos = 0, remplace = 0;
+    if (cible->typeobj == HCT_OBJ_MENU) {
+        i = v3_menu_index(ctx, cible);
+        if (ctx->erreur) return 1;
+        if (i < 0) {
+            emit(HC_ERR, "   !! menu introuvable");
+            set_result("menu introuvable");
+            return 1;
+        }
+        pos      = apres ? g_menus[i].n : 0;
+        remplace = (!avant && !apres) ? g_menus[i].n : 0;
+    } else {
+        g_menu_echec = V3_MENU_RIEN;
+        int j = v3_article_index(ctx, cible, &i);
+        if (ctx->erreur) return 1;
+        if (j < 0) {
+            /* Dire LEQUEL manque : « menuItem 2 of menu "Absent" » échoue sur
+             * le menu, pas sur l'article, et v3_article_index le sait. */
+            const char *raison = v3_menu_raison();
+            emit(HC_ERR, "   !! %s", raison);
+            set_result(raison);
+            return 1;
+        }
+        pos      = apres ? j + 1 : j;
+        remplace = (!avant && !apres) ? 1 : 0;
     }
 
     ARENA_MARK;
@@ -13351,9 +13470,10 @@ static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
             v3_val_texte(ctx, d, messages, HC_VAL);
     }
 
-    if (!ctx->erreur) menu_articles(i, articles, messages);
+    int pose = 1;
+    if (!ctx->erreur) pose = menu_insere(i, pos, remplace, articles, messages);
     ARENA_FREE;
-    set_result("");
+    set_result(pose ? "" : "trop d'articles de menu");
     return 1;
 }
 

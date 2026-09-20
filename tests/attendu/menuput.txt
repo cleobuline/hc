@@ -1,0 +1,70 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. les trois prépositions sur le MENU ===
+   (« into » remplace tout, « before » pose en tête, « after » au bout)
+   put "NEUF" into menu "Essai"
+      menu « Essai » : [1]NEUF
+   put "NEUF" before menu "Essai"
+      menu « Essai » : [1]NEUF [2]un [3]deux [4]trois
+   put "NEUF" after menu "Essai"
+      menu « Essai » : [1]un [2]deux [3]trois [4]NEUF
+=== 2. les trois prépositions sur un ARTICLE ===
+   put "DEUX" into menuItem 2 of menu "Essai"
+      menu « Essai » : [1]un [2]DEUX [3]trois
+   put "DEUX" before menuItem 2 of menu "Essai"
+      menu « Essai » : [1]un [2]DEUX [3]deux [4]trois
+   put "DEUX" after menuItem 2 of menu "Essai"
+      menu « Essai » : [1]un [2]deux [3]DEUX [4]trois
+=== 3. aux deux bouts, là où un décalage se voit ===
+   put "AV" before menuItem 1 of menu "Essai"
+      menu « Essai » : [1]AV [2]un [3]deux [4]trois
+   put "AP" after menuItem 3 of menu "Essai"
+      menu « Essai » : [1]un [2]deux [3]trois [4]AP
+=== 4. l'article désigné par son NOM, pas par son rang ===
+   put "DEUX" into menuItem "deux" of menu "Essai"
+      menu « Essai » : [1]un [2]DEUX [3]trois
+   put "X" after menuItem "trois" of menu "Essai"
+      menu « Essai » : [1]un [2]deux [3]trois [4]X
+=== 5. une LISTE dans un seul article ===
+   (l'article visé s'en va, les trois nouveaux prennent sa place)
+   put "a,b,c" into menuItem 2 of menu "Essai"
+      menu « Essai » : [1]un [2]a [3]b [4]c [5]trois
+=== 6. ce que les survivants gardent ===
+   (insérer en tête ne doit pas relever ce qui était désactivé)
+   disable menuItem 2 of menu "Essai"
+      menu « Essai » : [1]un [2]deux(off) [3]trois
+   set the checkMark of menuItem 3 of menu "Essai" to true
+      menu « Essai » : [1]un [2]deux(off) [3]trois✓
+   put "AV" before menuItem 1 of menu "Essai"
+      menu « Essai » : [1]AV [2]un [3]deux(off) [4]trois✓
+=== 7. le MESSAGE suit l'article, pas son rang ===
+   (on choisit un article et on regarde ce qui part)
+      menu « Essai » : [1]un [2]deux
+   on choisit l'article 2 (« deux ») :
+   [msg] -> disDeux
+      menu « Essai » : [1]zero [2]un [3]deux
+   « deux » est maintenant l'article 3 ; on le choisit :
+   [msg] -> disDeux
+   et l'article 1, le nouveau :
+   [msg] -> disZero
+   on REMPLACE l'article 2 et son message :
+      menu « Essai » : [1]zero [2]UN [3]deux
+   [msg] -> disDeux
+=== 8. ce qui n'existe pas, et la raison exacte ===
+   put "x" into menuItem 2 of menu "Absent"
+   [ERR]    !! menu introuvable
+      menu « Essai » : [1]un [2]deux [3]trois
+   put "x" into menuItem 9 of menu "Essai"
+   [ERR]    !! article de menu introuvable
+      menu « Essai » : [1]un [2]deux [3]trois
+   put "x" after menuItem "jamais" of menu "Essai"
+   [ERR]    !! article de menu introuvable
+      menu « Essai » : [1]un [2]deux [3]trois
+   put "x" into menu "Absent"
+   [ERR]    !! menu introuvable
+      menu « Essai » : [1]un [2]deux [3]trois
+=== 9. le plafond : on refuse EN ENTIER, on n'ampute pas ===
+   [ERR]    !! trop d'articles de menu (64 au plus)
+   [msg] trop d'articles de menu / 3
+      menu « Essai » : [1]un [2]deux [3]trois
+=== 10. les notifications de l'hôte ===
+      60 notification(s) en tout
