@@ -284,6 +284,29 @@ static NSMenu *gRecentMenu = nil;
                                                  keyEquivalent:@""];
         [ciItem setTarget:view];
         [fileMenu addItem:ciItem];
+
+        /* --- l'ordre de superposition ---
+         *
+         * Leur place chez HyperCard : dans le menu Objets, après les Info et
+         * avant les créations. ⌘+ et ⌘− comme là-bas.
+         *
+         * La cible est posée explicitement, comme pour les voisins servis par
+         * la vue : sans elle l'envoi remonte la chaîne des réponses, et un
+         * champ en cours d'édition pourrait avaler le message. Les deux se
+         * grisent d'eux-mêmes — voir validateMenuItem: — faute d'objet
+         * sélectionné, et chacun à son extrémité. */
+        [fileMenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *bcItem = [[NSMenuItem alloc] initWithTitle:@"Bring Closer"
+                                                        action:@selector(bringCloser:)
+                                                 keyEquivalent:@"+"];
+        [bcItem setTarget:view];
+        [fileMenu addItem:bcItem];
+        NSMenuItem *sfItem = [[NSMenuItem alloc] initWithTitle:@"Send Farther"
+                                                        action:@selector(sendFarther:)
+                                                 keyEquivalent:@"-"];
+        [sfItem setTarget:view];
+        [fileMenu addItem:sfItem];
+
         [fileMenu addItem:[NSMenuItem separatorItem]];
     [fileMenu addItemWithTitle:@"Dither Selection"
                             action:@selector(ditherSelection:)
