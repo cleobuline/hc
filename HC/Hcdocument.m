@@ -48,6 +48,41 @@ static HCDocument *gCurrentDoc = nil;
      * serait plus aimable, et c'est la suite naturelle de ce nettoyage. */
     hcv_abandonne_selection();
 
+    /* ET LA SÉLECTION D'OBJET NE LA TRAVERSE PAS DAVANTAGE.
+     *
+     * Le raisonnement du paragraphe ci-dessus valait mot pour mot pour
+     * gSelected, et on ne l'y avait pas appliqué. Le commentaire d'en dessous
+     * annonce pourtant que l'état de document suit la fenêtre « sans cela,
+     * toutes les vues partageraient […] un même objet sélectionné » : c'est
+     * hc_set_active_doc qui fait suivre HCDoc, et gSelected n'y est pas. Il
+     * est resté un global de processus pendant que `pressed`, le champ en
+     * édition, les minuteries et la carte déménageaient dans HCDoc.
+     *
+     * CE QUE ÇA COÛTAIT. gTool est global lui aussi, donc en passant de la
+     * pile A à la pile B avec l'outil Bouton ou Champ en main,
+     * object_selection_active() restait VRAI sur un objet de A :
+     *
+     *   - « Couper » supprimait une part de A, fenêtre au second plan, sans
+     *     que rien ne l'affiche — la vue redessinée est celle de B ;
+     *   - « Copier » emportait un objet de A ;
+     *   - « Bring Closer » et « Send Farther » changeaient l'ordre de
+     *     superposition dans A ;
+     *   - et drawRect, qui dessine le cadre dès que gSelected n'est pas nul
+     *     sans regarder à quelle carte l'objet appartient, peignait le cadre
+     *     rouge de l'objet de A PAR-DESSUS la carte de B, aux coordonnées
+     *     d'un objet qui n'est pas là.
+     *
+     * Les deux articles de menu ajoutés récemment n'ont rien cassé — ils ont
+     * rendu un vieux décalage plus facile à atteindre, en le mettant dans le
+     * menu Objets avec un raccourci clavier.
+     *
+     * ON L'ABANDONNE, comme la sélection de peinture et pour la même raison.
+     * La ranger dans HCDoc serait mieux, et reste la suite naturelle : elle
+     * demande un accesseur, gDoc étant privé à HCview.m alors que la palette
+     * des outils écrit dans gSelected. Une sélection perdue en changeant de
+     * fenêtre se voit ; une suppression dans la pile d'à côté, non. */
+    gSelected = NULL;
+
     gCurrentDoc = doc;
 
     /* gView désigne la vue ACTIVE : c'est par lui que passent le noyau et les
