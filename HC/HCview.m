@@ -329,6 +329,109 @@ static NSPoint hcv_cale_pt(NSPoint p)
                        (CGFloat)hcv_cale((int)lround(p.y)));
 }
 
+/* ═══ FATBITS ══════════════════════════════════════════════════════════
+ *
+ * Le calque grossi huit fois, pour poser les pixels un par un.
+ *
+ * TOUT TIENT DANS UNE TRANSFORMATION, ET C'EST LE SEUL MOYEN QUE CE SOIT SÛR.
+ *
+ * Le chemin de peinture traite quatre-vingt-six points comme des coordonnées
+ * de calque — le crayon, les formes, le lasso, la sélection, le texte, la
+ * sélection flottante. Les convertir un à un aurait demandé de tous les
+ * trouver, et celui qu'on aurait oublié aurait dessiné à côté : une écriture
+ * qui se pose ailleurs que là où on l'envoie, exactement la famille de défaut
+ * qu'on passe ses soirées à traquer.
+ *
+ * Mais ces quatre-vingt-six points viennent tous de DEUX lignes — la
+ * conversion en tête de mouseDown: et de mouseDragged:. Les cinq autres
+ * conversions du fichier servent aux menus surgissants, au survol, à la
+ * molette et au clic de l'outil main : toutes sous l'outil BROWSE, donc hors
+ * de FatBits par construction. Transformer à la frontière laisse donc les
+ * quatre-vingt-six sites inchangés, et il n'y a rien à oublier.
+ *
+ * Le dessin, lui, passe par une seule NSAffineTransform posée autour du
+ * corps de drawRect:. D'où la séparation en drawCardContent: — le corps a
+ * plusieurs `return`, et un état graphique sauvé avant eux se serait perdu
+ * sur l'un des chemins. Le wrapper restaure toujours, quel que soit le
+ * chemin qu'a pris le corps.
+ *
+ * FATBITS N'EST ACTIF QU'AVEC UN OUTIL DE PEINTURE, et cela règle trois
+ * choses d'un coup : l'éditeur de champ est une vraie sous-vue d'AppKit et
+ * ne suivrait pas la transformation ; les menus surgissants et le survol
+ * gardent leurs coordonnées ; et choisir la main fait sortir de FatBits sans
+ * qu'on ait à le débrancher — l'état reste, et revient avec le crayon.
+ *
+ * CE QUI EST DE NOUS : le déplacement à ⌘-glisser. HyperCard fait défiler
+ * FatBits tout seul quand on dessine près du bord ; je ne sais pas le
+ * reproduire de mémoire avec assez de certitude pour le prétendre, et une
+ * fidélité inventée vaut moins qu'un choix assumé. ⌘ est libre — aucun outil
+ * de peinture ne s'en sert. */
+#define HCV_FATBITS 8
+
+static NSPoint gFatOrigine  = {0, 0};  /* coin du calque montré, en pixels de calque */
+static NSPoint gFatDernier  = {0, 0};  /* dernier point peint : on centre dessus */
+/* LE DÉPLACEMENT SE MESURE CONTRE CE QUI NE BOUGE PAS.
+ *
+ * On garde le point de la VUE et l'origine, tous deux pris À LA SAISIE. La
+ * première version soustrayait le point de CALQUE courant — lequel se
+ * calcule à partir de l'origine, qui venait justement de changer : chaque
+ * mouvement se mesurait contre une référence qu'il avait lui-même déplacée,
+ * et le glissement s'emballait. Le point de vue, lui, ne dépend de rien. */
+static BOOL    gFatGlisse   = NO;      /* ⌘-glisser en cours */
+static NSPoint gFatSaisiVue = {0, 0};  /* le point de la VUE à la saisie */
+static NSPoint gFatSaisiOrg = {0, 0};  /* l'origine à la saisie */
+
+/* Un outil qui DESSINE, par opposition à ceux qui manipulent des objets.
+ *
+ * Écrit une fois, parce que la question se pose à trois endroits — le
+ * dessin, la souris, la coche du menu — et que trois copies du même « tout
+ * sauf BROWSE, BUTTON et FIELD » auraient divergé au premier outil ajouté. */
+static BOOL hcv_outil_peint(void)
+{
+    return gTool != TOOL_BROWSE && gTool != TOOL_BUTTON && gTool != TOOL_FIELD;
+}
+
+/* FatBits est-il EN VIGUEUR ? Allumé ne suffit pas : il faut aussi un outil
+ * qui peigne. Les deux questions sont ici, une fois. */
+static BOOL hcv_fat(void)
+{
+    return gFatBits && hcv_outil_peint();
+}
+
+/* Le point de la vue → le point du calque. L'identité hors FatBits, donc les
+ * appelants n'ont aucun test à faire — la même règle que hcv_cale_pt. */
+static NSPoint hcv_vue_vers_calque(NSPoint p)
+{
+    if (!hcv_fat()) return p;
+    return NSMakePoint(gFatOrigine.x + p.x / HCV_FATBITS,
+                       gFatOrigine.y + p.y / HCV_FATBITS);
+}
+
+/* Le morceau de calque que la vue montre. En dehors de FatBits, la vue
+ * entière — ce qui est exactement ce que le dessin attendait déjà. */
+static NSRect hcv_fat_zone(NSRect vue)
+{
+    if (!hcv_fat()) return vue;
+    return NSMakeRect(gFatOrigine.x, gFatOrigine.y,
+                      vue.size.width  / HCV_FATBITS,
+                      vue.size.height / HCV_FATBITS);
+}
+
+/* Centrer la fenêtre grossie sur un point du calque, sans sortir du calque.
+ * Appelé quand on ALLUME FatBits : sans cela on tomberait sur le coin
+ * supérieur gauche, qui n'est presque jamais ce qu'on regardait. */
+static void hcv_fat_centre(NSPoint sur, NSRect vue)
+{
+    CGFloat w = vue.size.width  / HCV_FATBITS;
+    CGFloat h = vue.size.height / HCV_FATBITS;
+    CGFloat x = sur.x - w / 2, y = sur.y - h / 2;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > vue.size.width  - w) x = vue.size.width  - w;
+    if (y > vue.size.height - h) y = vue.size.height - h;
+    gFatOrigine = NSMakePoint(x, y);
+}
+
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     if (centered) {
         CGFloat dx = fabs(end.x - start.x);
@@ -1868,6 +1971,7 @@ static void cocoa_do_menu(const char *item) {
             { "Opaque",          HCV_PAINT_OPAQUE      },
             { "Transparent",     HCV_PAINT_TRANSPARENT },
             { "Grid",            HCV_PAINT_GRID        },
+            { "FatBits",         HCV_PAINT_FATBITS     },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -3437,6 +3541,16 @@ static int parts_du_calque(Object *o)
             return YES;
         }
 
+        /* FatBits porte sa coche comme la grille, mais se GRISE sous un outil
+         * qui ne peint pas : là il n'a aucun effet, et un article cochable
+         * qui ne fait rien est pire qu'un article grisé. C'est la même règle
+         * que partout ailleurs dans ce menu — ne proposer que ce qui agira. */
+        if (t == HCV_PAINT_FATBITS) {
+            [item setState:gFatBits ? NSControlStateValueOn
+                                    : NSControlStateValueOff];
+            return hcv_outil_peint();
+        }
+
         if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
@@ -3979,6 +4093,17 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
         return;
     }
 
+    /* FATBITS. On CENTRE à l'allumage sur le dernier point peint : sans cela
+     * on tomberait sur le coin supérieur gauche du calque, qui n'est presque
+     * jamais ce qu'on était en train de regarder — et il faudrait ⌘-glisser
+     * jusqu'à son ouvrage avant de pouvoir y toucher. */
+    if (quoi == HCV_PAINT_FATBITS) {
+        gFatBits = !gFatBits;
+        if (gFatBits) hcv_fat_centre(gFatDernier, [gView bounds]);
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
         gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
         [self setNeedsDisplay:YES];
@@ -4136,7 +4261,12 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
      respectFlipped:YES hints:nil];
 }
 
-- (void)drawRect:(NSRect)dirtyRect {
+/* Le dessin de la carte, en coordonnées de CALQUE.
+ *
+ * Séparé de drawRect: pour FatBits : ce corps a plusieurs `return`, et un
+ * état graphique sauvé avant eux se perdrait sur l'un des chemins. Le
+ * wrapper restaure toujours, quel que soit le chemin pris ici. */
+- (void)drawCardContent:(NSRect)dirtyRect {
     /* Lier le catalogue d'icônes à la pile de CETTE fenêtre, avant tout dessin.
      *
      * HCicons ne retient qu'une copie de travail, alors que plusieurs piles
@@ -4373,6 +4503,84 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     }
 
     draw_popup_menu();
+}
+
+/* La grille de FatBits : un trait par pixel de calque, plus marqué tous les
+ * huit. Sans repères on ne se situe pas dans un damier — c'est la leçon déjà
+ * tirée dans l'éditeur d'icônes, et la seule chose qu'on lui emprunte : sa
+ * grille à lui est câblée sur 32×32 et lit les bits d'une icône, pas un
+ * calque, donc il n'y avait rien d'autre à reprendre.
+ *
+ * Dessinée APRÈS la restauration, donc en coordonnées de VUE : des traits
+ * d'un pixel tracés sous la transformation en feraient huit. */
+- (void)drawFatGrid
+{
+    NSRect b = [self bounds];
+
+    [[NSColor colorWithWhite:0.80 alpha:1.0] setStroke];
+    NSBezierPath *g = [NSBezierPath bezierPath];
+    for (CGFloat x = 0; x <= b.size.width; x += HCV_FATBITS) {
+        [g moveToPoint:NSMakePoint(x + 0.5, 0)];
+        [g lineToPoint:NSMakePoint(x + 0.5, b.size.height)];
+    }
+    for (CGFloat y = 0; y <= b.size.height; y += HCV_FATBITS) {
+        [g moveToPoint:NSMakePoint(0, y + 0.5)];
+        [g lineToPoint:NSMakePoint(b.size.width, y + 0.5)];
+    }
+    [g setLineWidth:1];
+    [g stroke];
+
+    /* Tous les huit PIXELS DE CALQUE, soit soixante-quatre points à l'écran :
+     * c'est le pas de la grille d'alignement, donc les deux modes se lisent
+     * l'un dans l'autre au lieu de se contredire. Le décalage de l'origine
+     * compte — sans lui les repères glisseraient au défilement et ne
+     * repéreraient plus rien. */
+    CGFloat dx = fmod(gFatOrigine.x, 8) * HCV_FATBITS;
+    CGFloat dy = fmod(gFatOrigine.y, 8) * HCV_FATBITS;
+    [[NSColor colorWithWhite:0.50 alpha:1.0] setStroke];
+    NSBezierPath *q = [NSBezierPath bezierPath];
+    for (CGFloat x = -dx; x <= b.size.width; x += 8 * HCV_FATBITS) {
+        [q moveToPoint:NSMakePoint(x + 0.5, 0)];
+        [q lineToPoint:NSMakePoint(x + 0.5, b.size.height)];
+    }
+    for (CGFloat y = -dy; y <= b.size.height; y += 8 * HCV_FATBITS) {
+        [q moveToPoint:NSMakePoint(0, y + 0.5)];
+        [q lineToPoint:NSMakePoint(b.size.width, y + 0.5)];
+    }
+    [q setLineWidth:1];
+    [q stroke];
+}
+
+- (void)drawRect:(NSRect)dirtyRect
+{
+    if (!hcv_fat()) { [self drawCardContent:dirtyRect]; return; }
+
+    /* Le rectangle sale d'AppKit ne veut plus rien dire sous la
+     * transformation : on redessine la fenêtre grossie en entier, et on donne
+     * au corps la zone de CALQUE qu'elle montre. Huit fois moins de surface à
+     * couvrir, donc le coût reste celui d'un redessin ordinaire. */
+    [[NSColor whiteColor] setFill];
+    NSRectFill([self bounds]);
+
+    [NSGraphicsContext saveGraphicsState];
+    /* SANS INTERPOLATION : le grossissement doit montrer des CARRÉS. Lissé,
+     * FatBits afficherait des pixels flous et ne servirait plus à rien — on y
+     * vient justement pour voir où est le pixel. */
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+
+    /* L'ordre des deux appels est celui du point, à l'envers : la DERNIÈRE
+     * opération posée est la PREMIÈRE appliquée. On veut (calque − origine)
+     * × 8, donc la translation en dernier. */
+    NSAffineTransform *t = [NSAffineTransform transform];
+    [t scaleXBy:HCV_FATBITS yBy:HCV_FATBITS];
+    [t translateXBy:-gFatOrigine.x yBy:-gFatOrigine.y];
+    [t concat];
+
+    [self drawCardContent:hcv_fat_zone([self bounds])];
+
+    [NSGraphicsContext restoreGraphicsState];
+    [self drawFatGrid];
 }
 
 /* ═══ openField, closeField, exitField ══════════════════════════════════
@@ -4785,6 +4993,25 @@ static BOOL      gSansMessageChamp = NO;
 
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    /* LA FRONTIÈRE DE FATBITS. Tout ce qui suit travaille en coordonnées de
+     * CALQUE ; hors FatBits la conversion est l'identité, donc rien ne
+     * change pour les quatre-vingt-six sites en aval. Voir l'en-tête de
+     * hcv_vue_vers_calque. */
+    NSPoint pvue = p;         /* gardé brut : le déplacement s'y mesure */
+    p = hcv_vue_vers_calque(p);
+    gFatDernier = p;          /* on centrera là-dessus si FatBits s'allume */
+
+    /* ⌘-GLISSER DÉPLACE LA FENÊTRE GROSSIE. Avant tout le reste : sous
+     * FatBits on ne voit qu'un huitième du calque, et sans moyen de bouger
+     * le mode ne servirait qu'au coin où l'on est entré. ⌘ est libre —
+     * aucun outil de peinture ne s'en sert. C'est NOTRE choix, pas celui
+     * d'HyperCard : voir l'en-tête. */
+    if (hcv_fat() && ([event modifierFlags] & NSEventModifierFlagCommand)) {
+        gFatGlisse   = YES;
+        gFatSaisiVue = pvue;
+        gFatSaisiOrg = gFatOrigine;
+        return;
+    }
 
     /* 1. Menus Popup */
     if (gPopupTarget) {
@@ -5179,6 +5406,26 @@ static BOOL      gSansMessageChamp = NO;
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    /* Le déplacement de la fenêtre grossie, AVANT la conversion : il se
+     * mesure en points de vue, contre ce qui a été saisi et ne bouge plus.
+     * La portion sous le curseur reste sous le curseur, comme une main qui
+     * tient la feuille. */
+    if (gFatGlisse) {
+        NSRect vue = [self bounds];
+        CGFloat w = vue.size.width  / HCV_FATBITS;
+        CGFloat h = vue.size.height / HCV_FATBITS;
+        NSPoint org = NSMakePoint(
+            gFatSaisiOrg.x - (p.x - gFatSaisiVue.x) / HCV_FATBITS,
+            gFatSaisiOrg.y - (p.y - gFatSaisiVue.y) / HCV_FATBITS);
+        /* hcv_fat_centre borne au calque, et prend un CENTRE : on lui donne
+         * celui qui correspond à l'origine voulue, plutôt que de recopier ici
+         * le bornage — une seconde copie qui aurait divergé de la première. */
+        hcv_fat_centre(NSMakePoint(org.x + w / 2, org.y + h / 2), vue);
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    p = hcv_vue_vers_calque(p);          /* la même frontière qu'au mouseDown */
     BOOL shiftDown = ([event modifierFlags] & NSEventModifierFlagShift) != 0;
 
     if (gPopupTarget && !gPopupFlashTimer) {
@@ -5351,6 +5598,8 @@ static BOOL      gSansMessageChamp = NO;
 }
 
 - (void)mouseUp:(NSEvent *)event {
+    if (gFatGlisse) { gFatGlisse = NO; return; }
+
     if (gPopupTarget && !gPopupFlashTimer) {
         NSPoint pp = [self convertPoint:[event locationInWindow] fromView:nil];
         NSInteger row = popup_row_at_point(pp);

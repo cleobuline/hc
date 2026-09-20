@@ -561,8 +561,8 @@ static NSMenu *gRecentMenu = nil;
 
     /* --- menu Options ---
      *
-     * HyperCard en met treize ici. HC n'en pose qu'UN, et c'est délibéré :
-     * des douze autres, quatre existent déjà ailleurs dans HC et n'auraient
+     * HyperCard en met treize ici. HC n'en pose que DEUX, et c'est délibéré :
+     * des onze autres, quatre existent déjà ailleurs dans HC et n'auraient
      * ajouté qu'un second chemin vers la même chose —
      *
      *     Draw Filled    la palette d'outils le bascule déjà
@@ -570,25 +570,31 @@ static NSMenu *gRecentMenu = nil;
      *     Line Size…     menu Tools, ⌘3
      *     Brush Shape…   menu Tools, ⌘4
      *
-     * — et les huit derniers (FatBits, Draw Multiple, Edit Pattern…, Polygon
-     * Sides… et les quatre transformations libres) n'ont rien derrière eux.
-     * « Polygon Sides… » n'aurait même rien à régler : HC n'a pas d'outil
-     * polygone.
+     * — et les sept derniers (Draw Multiple, Edit Pattern…, Polygon Sides… et
+     * les quatre transformations libres) n'ont rien derrière eux. « Polygon
+     * Sides… » n'aurait même rien à régler : HC n'a pas d'outil polygone.
      *
-     * Un menu d'un seul article a l'air pauvre. Un menu de treize dont douze
+     * Un menu de deux articles a l'air pauvre. Un menu de treize dont onze
      * mentent l'est davantage, et on ne s'en aperçoit qu'après avoir cliqué.
      *
-     * LA GRILLE, elle, n'existait nulle part, et elle sert aux deux gestes
-     * qu'on répète le plus : aligner des boutons, et tirer un trait droit. */
+     * LES DEUX QU'ON POSE n'existaient nulle part ailleurs. La grille sert
+     * aux deux gestes qu'on répète le plus — aligner des boutons, tirer un
+     * trait droit ; FatBits est le seul moyen de poser un pixel précis. */
     NSMenuItem *optItem = [[NSMenuItem alloc] init];
     NSMenu *optMenu = [[NSMenu alloc] initWithTitle:@"Options"];
-    NSMenuItem *gridItem =
-        [[NSMenuItem alloc] initWithTitle:@"Grid"
-                                   action:@selector(paintOp:)
-                            keyEquivalent:@""];
-    [gridItem setTag:HCV_PAINT_GRID];
-    [gridItem setTarget:view];
-    [optMenu addItem:gridItem];
+    struct { NSString *titre; NSInteger tag; } opts[] = {
+        { @"Grid",    HCV_PAINT_GRID    },
+        { @"FatBits", HCV_PAINT_FATBITS },
+    };
+    for (int i = 0; i < (int)(sizeof opts / sizeof *opts); i++) {
+        NSMenuItem *mi =
+            [[NSMenuItem alloc] initWithTitle:opts[i].titre
+                                       action:@selector(paintOp:)
+                                keyEquivalent:@""];
+        [mi setTag:opts[i].tag];
+        [mi setTarget:view];
+        [optMenu addItem:mi];
+    }
     [optItem setSubmenu:optMenu];
     [mainMenu addItem:optItem];
 

@@ -40,7 +40,10 @@ enum {
      * dans une autre parce qu'elle emprunte le même chemin — l'article de
      * menu, « doMenu "Grid" », et la propriété « the grid » — et qu'une
      * troisième porte vers le même état serait une de trop. */
-    HCV_PAINT_GRID
+    HCV_PAINT_GRID,
+    /* FATBITS, l'autre mode du menu Options. Comme la grille : une coche,
+     * aucune sélection demandée, et le même chemin unique. */
+    HCV_PAINT_FATBITS
 };
 
 BOOL hcv_menu_trappe(const char *article);
