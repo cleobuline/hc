@@ -2466,48 +2466,102 @@ static Object *find_part_by_rank(Object *owner, ObjType type, int rank)
     return NULL;
 }
 
-static Object *find_card_by_name(Object *stack, const char *name)
+/* ═══ LES CARTES D'UN FOND ══════════════════════════════════════════════
+ *
+ * « card 1 of bg 2 » désigne la PREMIÈRE CARTE QUI UTILISE LE FOND 2, pas la
+ * première carte de la pile. Toutes les recherches de carte ignoraient ce
+ * « of » : elles indexaient dans la pile entière, et rendaient donc une carte
+ * — la mauvaise — sans le moindre message. Mesuré, sur une pile A B C D dont
+ * A et B sont sur le fond 1 et C et D sur le fond 2 :
+ *
+ *     card 1 of bg 2   ->  A     (c'est C)
+ *     card 2 of bg 2   ->  B     (c'est D)
+ *     go card 1 of bg 2 -> reste sur A
+ *
+ * Le COMPTAGE, lui, était juste : « the number of cards of bg 2 » rendait
+ * bien 2. Une boucle écrite à la main, à un seul endroit, qui savait ce que
+ * les quatre résolveurs ignoraient. C'est le signe habituel — une règle
+ * connue d'un seul site est une règle que les autres n'appliquent pas.
+ *
+ * `fond` à NULL prend toute la pile : les versions sans fond ci-dessous ne
+ * sont plus que des appels à celles-ci, si bien qu'aucune des deux familles
+ * ne peut dériver de l'autre. */
+
+static int card_count_de(Object *stack, Object *fond)
+{
+    int n = 0;
+    if (!stack) return 0;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        n++;
+    }
+    return n;
+}
+
+/* n-ième carte du fond, 0-based. */
+static Object *nth_card_de(Object *stack, Object *fond, int n)
+{
+    if (!stack || n < 0) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        if (n-- == 0) return c;
+    }
+    return NULL;
+}
+
+/* Son rang dans le fond, 0-based ; -1 si elle n'y est pas. */
+static int card_index_de(Object *stack, Object *fond, Object *card)
+{
+    int n = 0;
+    if (!stack || !card) return -1;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *c = stack->parts[i];
+        if (c->type != OBJ_CARD) continue;
+        if (fond && c->bg != fond) continue;
+        if (c == card) return n;
+        n++;
+    }
+    return -1;
+}
+
+static Object *card_par_nom_de(Object *stack, Object *fond, const char *name)
 {
     if (!stack) return NULL;
     for (int i = 0; i < stack->nparts; i++) {
         Object *p = stack->parts[i];
-        if (p->type == OBJ_CARD && p->name && ci_equal(p->name, name)) return p;
+        if (p->type != OBJ_CARD) continue;
+        if (fond && p->bg != fond) continue;
+        if (p->name && ci_equal(p->name, name)) return p;
+    }
+    return NULL;
+}
+
+static Object *card_par_id_de(Object *stack, Object *fond, int id)
+{
+    if (!stack) return NULL;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *p = stack->parts[i];
+        if (p->type != OBJ_CARD) continue;
+        if (fond && p->bg != fond) continue;
+        if (p->id == id) return p;
     }
     return NULL;
 }
 
 /* ---- cartes : l'ordre, pour « go next card » ---- */
 
-static int card_count(Object *stack)
-{
-    int n = 0;
-    if (!stack) return 0;
-    for (int i = 0; i < stack->nparts; i++)
-        if (stack->parts[i]->type == OBJ_CARD) n++;
-    return n;
-}
+static int card_count(Object *stack) { return card_count_de(stack, NULL); }
 
 /* n-ième carte, 0-based, en ne comptant que les cartes */
-static Object *nth_card(Object *stack, int n)
-{
-    if (!stack || n < 0) return NULL;
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i]->type != OBJ_CARD) continue;
-        if (n-- == 0) return stack->parts[i];
-    }
-    return NULL;
-}
+static Object *nth_card(Object *stack, int n) { return nth_card_de(stack, NULL, n); }
 
 static int card_index(Object *stack, Object *card)
 {
-    int n = 0;
-    if (!stack || !card) return -1;
-    for (int i = 0; i < stack->nparts; i++) {
-        if (stack->parts[i]->type != OBJ_CARD) continue;
-        if (stack->parts[i] == card) return n;
-        n++;
-    }
-    return -1;
+    return card_index_de(stack, NULL, card);
 }
 
 /* Déclarés ici parce que resolve() en a besoin : un descripteur d'objet peut
@@ -2605,6 +2659,11 @@ static const char *derniere_portee(const char *s)
     return trouve;
 }
 
+/* Le FOND dans lequel resolve travaille, quand « of bg … » en a nommé un.
+ * NULL le reste du temps, et « NULL » veut dire « toute la pile » pour les
+ * cinq recherches de carte. Voir leur commentaire commun, plus haut. */
+static Object *g_portee_fond = NULL;
+
 static Object *resolve(const char *ref)
 {
     if (!ref) return NULL;
@@ -2675,8 +2734,24 @@ static Object *resolve(const char *ref)
         }
         if (ou) {
             Object *sauve = g_current_card;
+            /* LE FOND RESTE UNE PORTÉE, PAS SEULEMENT UN POINT DE DÉPART.
+             *
+             * Se poser sur une carte du fond suffit pour « bg field "x" of
+             * background "F" » — un champ de fond est le même partout. Ça ne
+             * suffit PAS pour désigner une CARTE : « card "A" of bg 2 »
+             * repartait en cherchant « A » dans toute la pile, et la trouvait
+             * même posée sur un autre fond.
+             *
+             * Mesuré, sur A B (fond 1) C D (fond 2), une fois la v3
+             * corrigée : elle refusait, l'ancien moteur rendait A. Deux
+             * portes, deux réponses — le motif qu'on traque, et cette fois il
+             * s'est vu tout de suite parce qu'on cherchait le jumeau avant de
+             * commiter. */
+            Object *sauve_fond = g_portee_fond;
+            if (portee->type == OBJ_BACKGROUND) g_portee_fond = portee;
             g_current_card = ou;
             r = resolve(tete);
+            g_portee_fond = sauve_fond;
             g_current_card = sauve;
         }
     }
@@ -2775,20 +2850,17 @@ static Object *resolve_local(const char *ref)
         if (*after == '"') {
             char nm[HC_NOM_MAX];
             descripteur_lit(after, nm, sizeof nm);
-            return find_card_by_name(stack, nm);
+            return card_par_nom_de(stack, g_portee_fond, nm);
         }
         if (ci_word(after, "id")) {                    /* card id N */
             const char *a = skip_spaces(after + 2);
             int wanted;
             if (isdigit((unsigned char)*a)) wanted = hc_id(a);
             else { char v[128]; eval_id_token(a, v, sizeof v); wanted = hc_id(v); }
-            for (int i = 0; i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->id == wanted)
-                    return stack->parts[i];
-            return NULL;
+            return card_par_id_de(stack, g_portee_fond, wanted);
         }
         if (isdigit((unsigned char)*after))
-            return nth_card(stack, hc_rang(after) - 1);   /* 1-based en HyperTalk */
+            return nth_card_de(stack, g_portee_fond, hc_rang(after) - 1);
 
         /* « go card canard » : HyperCard accepte un nom de carte sans
          * guillemets. On ne tente le nom nu que si ce qui suit n'est pas un
@@ -2823,10 +2895,10 @@ static Object *resolve_local(const char *ref)
 
             int nlen = (int)strlen(nm);
             if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
-                Object *c = nth_card(stack, hc_rang(nm) - 1);
+                Object *c = nth_card_de(stack, g_portee_fond, hc_rang(nm) - 1);
                 if (c) return c;
             }
-            Object *c = find_card_by_name(stack, nm);
+            Object *c = card_par_nom_de(stack, g_portee_fond, nm);
             if (c) return c;
         }
         ref = after;
@@ -6981,6 +7053,18 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
      * Retomber sur la carte courante faisait lire — et écrire — dans un
      * objet que le script n'avait pas nommé. On rend NULL, et l'appelant
      * dira « objet introuvable » en nommant la ligne. */
+    /* LE FOND A-T-IL ÉTÉ NOMMÉ, ou est-ce seulement celui de la carte
+     * courante ? La distinction décide de tout pour « card <n> » :
+     *
+     *     card 1            la première carte de la PILE
+     *     card 1 of bg 2    la première carte QUI UTILISE le fond 2
+     *
+     * `bg` vaut par défaut le fond de la carte courante, et s'en servir pour
+     * restreindre ferait de « card 1 » la première carte du fond courant —
+     * ce qui n'est pas ce que dit HyperTalk. Seul un « of » explicite
+     * restreint. */
+    int fond_nomme = 0;
+
     const HctNoeud *cible_n = v3_noeud_cible(n);
     Object *cible = cible_n ? hct_resout(ctx, cible_n) : NULL;
     if (cible_n && !cible) return NULL;
@@ -6992,7 +7076,7 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
              * cherche dans la pile de CETTE carte. */
             stack = owning_stack(card);
         }
-        else if (cible->type == OBJ_BACKGROUND) { bg = cible; }
+        else if (cible->type == OBJ_BACKGROUND) { bg = cible; fond_nomme = 1; }
         else if (cible->type == OBJ_STACK) {
             /* Une pile désignée explicitement gagne. Recalculer la pile
              * depuis g_current_card juste après, comme on le faisait, la
@@ -7075,26 +7159,22 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
                 default: return bg;
             }
 
-        case HCT_OBJ_CARD:
+        case HCT_OBJ_CARD: {
+            /* Le fond ne restreint QUE s'il a été nommé : voir fond_nomme,
+             * en tête de cette fonction. NULL veut dire « toute la pile ». */
+            Object *ou = fond_nomme ? bg : NULL;
             switch (n->designateur) {
-                case HCT_DES_NOM: return find_card_by_name(stack, val);
-                case HCT_DES_ID: {
-                    int w = hc_id(val);
-                    for (int i = 0; stack && i < stack->nparts; i++)
-                        if (stack->parts[i]->type == OBJ_CARD &&
-                            stack->parts[i]->id == w)
-                            return stack->parts[i];
-                    return NULL;
-                }
+                case HCT_DES_NOM: return card_par_nom_de(stack, ou, val);
+                case HCT_DES_ID:  return card_par_id_de(stack, ou, hc_id(val));
                 case HCT_DES_RANG: {
                     int l = (int)strlen(val);
                     if (l > 0 && (int)strspn(val, "0123456789") == l)
-                        return nth_card(stack, hc_rang(val) - 1);
-                    return find_card_by_name(stack, val);
+                        return nth_card_de(stack, ou, hc_rang(val) - 1);
+                    return card_par_nom_de(stack, ou, val);
                 }
                 case HCT_DES_ORDINAL:
-                    return nth_card(stack,
-                        v3_rang_ordinal(n->ordinal, card_count(stack)) - 1);
+                    return nth_card_de(stack, ou,
+                        v3_rang_ordinal(n->ordinal, card_count_de(stack, ou)) - 1);
                 case HCT_DES_RELATIF: {
                     if (n->relatif == HCT_REL_CE) return card;
                     /* « go next card » depuis la dernière mène à la PREMIÈRE,
@@ -7106,14 +7186,15 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
                      * « go previous card », et la navigation s'arrêtait là,
                      * silencieusement : le résultat restait vide, aucun
                      * message d'erreur, juste plus rien qui bouge. */
-                    int nc = card_count(stack);
-                    int i  = card_index(stack, card);
+                    int nc = card_count_de(stack, ou);
+                    int i  = card_index_de(stack, ou, card);
                     if (nc <= 0 || i < 0) return NULL;
                     int pas = (n->relatif == HCT_REL_SUIVANT) ? +1 : -1;
-                    return nth_card(stack, ((i + pas) % nc + nc) % nc);
+                    return nth_card_de(stack, ou, ((i + pas) % nc + nc) % nc);
                 }
                 default: return card;
             }
+        }
 
         case HCT_OBJ_BUTTON:
         case HCT_OBJ_FIELD:

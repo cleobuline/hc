@@ -1,0 +1,68 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le rang, dans le fond nomme ==
+     put the short name of card 1 of bg 2
+      C
+     put the short name of card 2 of bg 2
+      D
+     put the short name of card 1 of bg 1
+      A
+     put the short name of card 2 of bg 1
+      B
+
+== 2. LE CAS SIGNALE : go ==
+     go card 1 of bg 2
+  put "arrive sur : " & the short name of this card
+      arrive sur : C
+     go to card 2 of background "Un"
+  put "arrive sur : " & the short name of this card
+      arrive sur : B
+     go card 1
+  put "retour sur : " & the short name of this card
+      retour sur : A
+
+== 3. les ordinaux ==
+     put the short name of first card of bg 2
+      C
+     put the short name of second card of bg 2
+      D
+     put the short name of last card of bg 2
+      D
+     put the short name of last card of bg 1
+      B
+
+== 4. par nom, par identifiant ==
+     put the short name of card "C" of bg 2
+      C
+     put the id of card 1 of bg 2 = the id of card "C"
+      true
+     put the short name of card "A" of bg 2
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
+
+== 5. la portee imbriquee : un champ d'une carte d'un fond ==
+     put field "X" of card 1 of bg 2
+      sur C
+     put field "X" of card 2 of bg 1
+      sur B
+     put field "X" of last card of bg 2
+      sur D
+
+== 6. le comptage, qui lui etait deja juste ==
+     put the number of cards of bg 1 & " et " & the number of cards of bg 2
+      2 et 2
+     put the number of cards
+      4
+
+== 7. SANS FOND NOMME, RIEN N'A CHANGE ==
+     go card 3
+  put "on est sur : " & the short name of this card
+      on est sur : B
+     put the short name of card 1
+      A
+     put the short name of card 4
+      D
+     put the short name of first card
+      A
+     put the short name of last card
+      D
+     put field "X" of card 1
+      sur A
