@@ -1644,7 +1644,12 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
          * tort sans qu'on puisse le voir. Le sens se décide sur le point de
          * DÉPART, comme au mouseDown. */
         case TOOL_PENCIL:
-            if (paint_pixel_pose(rep, (int)lround(a.x), (int)lround(a.y)))
+            /* floor, pour la même raison qu'au mouseDown : le pixel N couvre
+             * [N, N+1). Corriger un seul des deux chemins aurait donné au
+             * script et au geste deux décisions différentes sur le même
+             * pixel — le défaut qu'on venait justement d'éviter en traitant
+             * les trois sites ensemble. */
+            if (paint_pixel_pose(rep, (int)floor(a.x), (int)floor(a.y)))
                 erase_stroke(rep, a, z, gLineWidth);
             else
                 paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
@@ -5316,9 +5321,27 @@ static BOOL      gSansMessageChamp = NO;
             gLockedAxis = AXIS_NONE;
             /* Le sens du crayon se décide ICI, sur le pixel du premier
              * point, et ne rebascule plus jusqu'au relâchement. */
+            /* floor ET PAS lround : le pixel N occupe l'intervalle [N, N+1),
+             * donc la coordonnée continue X est DANS le pixel floor(X).
+             *
+             * lround lisait le pixel d'à côté dès que la fraction dépassait
+             * un demi, et sous FatBits c'est le cas de tous les clics posés
+             * au milieu d'une case — le centre du pixel N vaut exactement
+             * N + 0,5, que lround remonte à N+1. Un clic sur deux décidait
+             * donc d'après le pixel VOISIN : quand il était blanc, le crayon
+             * peignait du noir sur du noir, et rien ne bougeait.
+             *
+             * « Il peine à démarrer et il efface un pixel sur deux », dans
+             * les termes de l'usage — et l'un sur deux n'était pas une
+             * approximation, c'était la fréquence à laquelle le voisin
+             * différait.
+             *
+             * Hors de FatBits le défaut existait aussi, simplement invisible :
+             * la souris y donne des coordonnées presque entières, dont la
+             * fraction dépasse rarement un demi. */
             gPenEfface = (gTool == TOOL_PENCIL) &&
-                         paint_pixel_pose(rep, (int)lround(p.x),
-                                               (int)lround(p.y));
+                         paint_pixel_pose(rep, (int)floor(p.x),
+                                               (int)floor(p.y));
             if (gTool == TOOL_PENCIL) {
                 if (gPenEfface) erase_stroke(rep, p, p, gLineWidth);
                 else paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
