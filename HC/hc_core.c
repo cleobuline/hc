@@ -255,6 +255,10 @@ static void emit(HcLineKind kind, const char *fmt, ...);
 static char    g_err_texte[2048];
 static int     g_err_n = 0;
 static Object *g_err_objet = NULL;
+/* Une ligne tapée dans la BOÎTE DE MESSAGE compte comme un gestionnaire pour
+ * l'accumulation des erreurs, bien qu'elle tourne à g_depth == 0. Voir emit_v
+ * et hc_do. */
+static int     g_msg_box = 0;
 
 static int g_visual_dirty = 0;
 static char g_visual_effect[64] = "";
@@ -698,6 +702,27 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
  * fin — et les fautes de syntaxe, qui viennent toutes de hc_script.c,
  * seraient sorties dans la console sans jamais paraître dans la fenêtre. Un
  * corps partagé rend cet oubli impossible. */
+/* REMET LES ERREURS ACCUMULÉES À L'HÔTE, EN UNE FOIS.
+ *
+ * Une seule faute produit plusieurs lignes — le message, l'extrait du script,
+ * le résumé —, et les donner une par une ouvrirait trois dialogues. On vide
+ * AVANT d'appeler, pour que l'hôte puisse relancer un script depuis son
+ * dialogue sans se voir resservir l'erreur précédente.
+ *
+ * DEUX APPELANTS, UNE SEULE MISE EN ŒUVRE : la fin du gestionnaire le plus
+ * extérieur, et la fin d'une ligne de la boîte de message. Ce corps était
+ * écrit dans le premier ; la boîte de message n'avait rien, et ses erreurs
+ * n'arrivaient qu'à la console. */
+static void erreurs_vide(void)
+{
+    if (g_err_n <= 0) return;
+    char copie[sizeof g_err_texte];
+    memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
+    Object *coupable = g_err_objet;
+    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+    if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+}
+
 static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
 {
     /* Tampon propre, hors arène : arena_buf() appelle emit() en cas de
@@ -714,9 +739,27 @@ static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
      * trois. On les accumule donc, et v3 les remet à la sortie du
      * gestionnaire le plus extérieur.
      *
-     * Hors gestionnaire (g_depth == 0), rien à accumuler : personne n'attend
-     * derrière, et l'appelant a déjà eu la ligne. */
-    if (kind == HC_ERR && g_depth > 0) {
+     * LA BOÎTE DE MESSAGE COMPTE, elle aussi, et ce commentaire a dit le
+     * contraire pendant des semaines : « hors gestionnaire, rien à accumuler,
+     * personne n'attend derrière, et l'appelant a déjà eu la ligne ».
+     *
+     * « L'appelant a déjà eu la ligne » voulait dire : elle est partie par
+     * le rappel `line`, que l'hôte Cocoa écrit dans la console de Xcode. Ce
+     * qui revient, pour qui utilise l'application, à ne RIEN recevoir.
+     * Mesuré, en tapant dans la boîte de message :
+     *
+     *     put the zorglub of this card   -> console seulement, pas de dialogue
+     *     put field "Absent"             -> idem
+     *     zorglub                        -> idem
+     *     repeat with i = 1 up to 5      -> idem
+     *
+     * Les quatre sortes d'erreur, pas seulement la première. Et c'est
+     * justement là qu'on a le plus besoin du dialogue : on vient de taper une
+     * ligne et on attend une réponse.
+     *
+     * hc_do pose donc g_msg_box le temps de sa ligne, et vide comme le fait
+     * le gestionnaire le plus extérieur. */
+    if (kind == HC_ERR && (g_depth > 0 || g_msg_box)) {
         if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
         int reste = (int)sizeof g_err_texte - g_err_n - 2;
         if (reste > 0) {
@@ -14114,19 +14157,8 @@ static int hc_send_args_k_body(Object *target, const char *message,
     g_target = saved_target;
     g_script_clipped = saved_clipped;
 
-    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT.
-     *
-     * Ici seulement, pour qu'un clic ne produise qu'un dialogue quel que soit
-     * le nombre de gestionnaires imbriqués. On vide AVANT d'appeler, pour que
-     * l'hôte puisse relancer un script depuis son dialogue sans se voir
-     * resservir l'erreur précédente. */
-    if (g_depth == 0 && g_err_n > 0) {
-        char copie[sizeof g_err_texte];
-        memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
-        Object *coupable = g_err_objet;
-        g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
-        if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
-    }
+    /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT. */
+    if (g_depth == 0) erreurs_vide();
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)
@@ -14783,6 +14815,11 @@ void hc_do(const char *line)
      * porte, et de loin la plus fréquentée. */
     const char *sauve_porte = v1_porte("msg/do");
     ARENA_MARK;
+    /* Le temps de cette ligne, les erreurs s'accumulent comme dans un
+     * gestionnaire — voir emit_v. Un compteur et non un booléen : « do » peut
+     * s'appeler lui-même, et le premier à sortir ne doit pas éteindre la
+     * collecte du suivant. */
+    g_msg_box++;
     g_depth  = 0;
     g_pass   = 0;
     g_me     = g_current_card;   /* dans la boîte de message, `me` = la carte */
@@ -14796,4 +14833,7 @@ void hc_do(const char *line)
     }
     ARENA_FREE;
     g_v1_porte = sauve_porte;
+    /* Ce qui reste ici est à NOUS : un gestionnaire appelé depuis cette
+     * ligne a déjà vidé le sien en redescendant à g_depth == 0. */
+    if (--g_msg_box == 0) erreurs_vide();
 }
