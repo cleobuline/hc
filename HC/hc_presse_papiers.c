@@ -233,8 +233,102 @@ Object *hc_paste_part(Object *owner)
  * visée. Et hc_clipboard_stack_closing l'efface quand sa pile disparaît, ce
  * qui interdit même la comparaison avec un pointeur mort. */
 static Object *g_clip_bg_copy  = NULL;   /* possédée */
-static Object *g_clip_bg_live  = NULL;   /* empruntée, ou NULL */
-static Object *g_clip_bg_stack = NULL;   /* pile de g_clip_bg_live */
+static Object *g_clip_bg_live  = NULL;   /* le fond D'ORIGINE, emprunté */
+static Object *g_clip_bg_stack = NULL;   /* la pile de g_clip_bg_live */
+
+/* ═══ CE QU'ON A DÉJÀ PORTÉ, ET OÙ ══════════════════════════════════════
+ *
+ * LE DÉFAUT QUE CECI CORRIGE. Coller dans une autre pile deux cartes qui
+ * PARTAGENT un fond y créait DEUX fonds :
+ *
+ *     pile B : un fond « Commun », les cartes Une et Deux dessus
+ *     copier Une, coller dans A   -> A gagne un fond « Commun »
+ *     copier Deux, coller dans A  -> A gagne un SECOND fond « Commun »
+ *
+ * Les deux cartes se retrouvaient sur des fonds distincts, alors qu'elles en
+ * partageaient un. Modifier le fond n'en changeait plus qu'une, et le texte
+ * des champs de fond cessait d'être commun. Sur une pile où l'on rapatrie
+ * des cartes une par une, on finit avec autant de fonds que de cartes.
+ *
+ * POURQUOI LA MÉMOIRE EXISTANTE NE SUFFISAIT PAS. g_clip_bg_live retenait
+ * déjà « le fond, et la pile où il est », et hc_paste_card l'écrasait après
+ * avoir recréé un fond, si bien que coller DEUX FOIS LA MÊME CARTE
+ * réutilisait bien. Mais hc_copy_card la repose à chaque copie : la
+ * correspondance était attachée au CONTENU DU PRESSE-PAPIERS, et mourait
+ * avec lui. Or ce qu'il faut retenir n'a rien à voir avec le presse-papiers ;
+ * c'est une propriété des PILES : « le fond F de B a déjà été porté dans A,
+ * et c'est celui-ci ».
+ *
+ * D'où cette table, qui survit aux copies. Elle ne DÉRÉFÉRENCE jamais
+ * src_bg ni src_pile — seulement des comparaisons d'adresses — et le fond
+ * recréé est cherché dans les parts[] de sa pile avant d'être rendu : s'il a
+ * été supprimé entre-temps, on en recrée un, ce qui est la bonne réponse.
+ *
+ * SA TAILLE EST BORNÉE, et le dire vaut mieux que de le cacher : au-delà de
+ * trente-deux correspondances vivantes, la plus ancienne part. Le
+ * comportement retombe alors sur celui d'avant — un fond de plus — au lieu
+ * de refuser le collage. Trente-deux, c'est trente-deux couples (fond, pile
+ * d'accueil) simultanés ; une pile qui en demanderait plus aurait des
+ * problèmes plus grands que celui-ci. */
+#define HC_BG_PORTES_MAX 32
+typedef struct {
+    Object *src_bg;     /* le fond d'origine */
+    Object *src_pile;   /* sa pile, pour purger à la fermeture */
+    Object *pile;       /* la pile d'accueil */
+    Object *cree;       /* le fond qu'on y a recréé */
+} BgPorte;
+static BgPorte g_bg_portes[HC_BG_PORTES_MAX];
+static int     g_nbg_portes = 0;
+
+/* Ce fond a-t-il déjà été porté dans cette pile ? NULL sinon. */
+static Object *bg_deja_porte(Object *src_bg, Object *pile)
+{
+    if (!src_bg || !pile) return NULL;
+    for (int i = 0; i < g_nbg_portes; i++) {
+        if (g_bg_portes[i].src_bg != src_bg) continue;
+        if (g_bg_portes[i].pile   != pile)   continue;
+        /* Toujours là ? L'utilisateur a pu le supprimer depuis. */
+        for (int k = 0; k < pile->nparts; k++)
+            if (pile->parts[k] == g_bg_portes[i].cree) return g_bg_portes[i].cree;
+        return NULL;
+    }
+    return NULL;
+}
+
+static void bg_note_porte(Object *src_bg, Object *src_pile,
+                          Object *pile, Object *cree)
+{
+    if (!src_bg || !pile || !cree) return;
+    for (int i = 0; i < g_nbg_portes; i++)
+        if (g_bg_portes[i].src_bg == src_bg && g_bg_portes[i].pile == pile) {
+            g_bg_portes[i].cree = cree;
+            g_bg_portes[i].src_pile = src_pile;
+            return;
+        }
+    if (g_nbg_portes == HC_BG_PORTES_MAX) {
+        memmove(&g_bg_portes[0], &g_bg_portes[1],
+                sizeof g_bg_portes[0] * (HC_BG_PORTES_MAX - 1));
+        g_nbg_portes--;
+    }
+    g_bg_portes[g_nbg_portes].src_bg   = src_bg;
+    g_bg_portes[g_nbg_portes].src_pile = src_pile;
+    g_bg_portes[g_nbg_portes].pile     = pile;
+    g_bg_portes[g_nbg_portes].cree     = cree;
+    g_nbg_portes++;
+}
+
+/* Retire toutes les correspondances qui mentionnent cet objet. */
+static void bg_portes_oublie(Object *mort)
+{
+    int k = 0;
+    for (int i = 0; i < g_nbg_portes; i++) {
+        BgPorte *e = &g_bg_portes[i];
+        if (e->src_bg == mort || e->src_pile == mort ||
+            e->pile   == mort || e->cree     == mort) continue;
+        g_bg_portes[k++] = *e;
+    }
+    g_nbg_portes = k;
+}
 
 /* Les icônes que la carte copiée utilise, et qui appartiennent à SA pile.
  *
@@ -642,23 +736,35 @@ Object *hc_paste_card(Object *stack)
      * On le reconnaît par IDENTITÉ, pas par identifiant : deux piles chargées
      * de fichiers différents peuvent porter le même numéro sans rien avoir de
      * commun, et rattacher la carte au mauvais fond lui ferait perdre sa mise
-     * en page sans le moindre avertissement. */
+     * en page sans le moindre avertissement.
+     *
+     * DEUX CAS, UNE SEULE QUESTION — « ce fond est-il déjà ici ? » :
+     *
+     *   - on colle DANS LA PILE D'OÙ L'ON A COPIÉ : le fond d'origine est là,
+     *     c'est lui ;
+     *   - on colle AILLEURS : on l'y a peut-être déjà porté, et la table des
+     *     correspondances le dit.
+     *
+     * Le second cas manquait, et c'est tout le défaut : coller deux cartes
+     * qui partagent un fond y créait deux fonds. */
     Object *bg = NULL;
     int bg_recree = 0;               /* le fond a-t-il été créé à l'instant ? */
+
     if (g_clip_bg_live && g_clip_bg_stack == stack) {
         for (int i = 0; i < stack->nparts; i++)
             if (stack->parts[i] == g_clip_bg_live) { bg = g_clip_bg_live; break; }
     }
+    if (!bg) bg = bg_deja_porte(g_clip_bg_live, stack);
 
-    /* Absent : on le recrée depuis la copie. Et on le retient comme fond
-     * vivant de cette pile, pour que coller une deuxième fois la même carte
-     * réutilise ce fond au lieu d'en empiler un second. */
+    /* Absent : on le recrée depuis la copie, et ON NOTE la correspondance —
+     * pas en écrasant g_clip_bg_live, qui désigne le fond D'ORIGINE et dont
+     * la prochaine copie a besoin. C'est exactement ce que faisait l'ancienne
+     * version, et pourquoi la mémoire mourait avec le presse-papiers. */
     if (!bg && g_clip_bg_copy) {
         bg = place_layer_clone(stack, g_clip_bg_copy, OBJ_BACKGROUND, NULL, NULL);
         if (!bg) return NULL;
-        bg_recree       = 1;
-        g_clip_bg_live  = bg;
-        g_clip_bg_stack = stack;
+        bg_recree = 1;
+        bg_note_porte(g_clip_bg_live, g_clip_bg_stack, stack, bg);
     }
     if (!bg) return NULL;
 
@@ -704,7 +810,12 @@ Object *hc_duplicate_card(Object *card)
  * pour un fond qu'il n'est pas. */
 void hc_clipboard_stack_closing(Object *stack)
 {
-    if (!stack || g_clip_bg_stack != stack) return;
+    if (!stack) return;
+    /* Les correspondances qui la mentionnent — d'un côté comme de l'autre —
+     * partent avec elle : leurs pointeurs ne désigneraient plus rien, et on
+     * ne doit même pas les COMPARER à une adresse réutilisée depuis. */
+    bg_portes_oublie(stack);
+    if (g_clip_bg_stack != stack) return;
     g_clip_bg_live  = NULL;
     g_clip_bg_stack = NULL;
 }
@@ -744,4 +855,9 @@ void hc_pp_oublie(Object *mort)
     if (!mort) return;
     if (g_clip_bg_live  == mort) g_clip_bg_live  = NULL;
     if (g_clip_bg_stack == mort) g_clip_bg_stack = NULL;
+    /* La table retient quatre pointeurs par ligne, et aucun n'est possédé :
+     * un fond supprimé à la main, une pile fermée, et la ligne désigne du
+     * vide. On la retire plutôt que de risquer une comparaison avec une
+     * adresse que l'allocateur a rendue à quelqu'un d'autre. */
+    bg_portes_oublie(mort);
 }
