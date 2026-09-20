@@ -1,0 +1,60 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. LE CAS SIGNALE : l'ECRITURE ==
+   au depart                              carte="Une"  champ="alpha"  champ="beta"  champ="gamma"
+     set the name of first field to "toto"
+   apres                                  carte="Une"  champ="toto"  champ="beta"  champ="gamma"
+
+== 2. et la LECTURE, qui passe par l'autre moteur ==
+     put the name of first field
+      card field "toto"
+     put the name of second field
+      card field "beta"
+     put the name of third field
+      card field "gamma"
+     put the name of last field
+      card field "gamma"
+     put the name of middle field
+      card field "beta"
+
+== 3. LES CARTES N'ONT RIEN PERDU ==
+     put the name of first card
+      card "Une"
+     put the name of second card
+      card "Deux"
+     put the name of last card
+      card "Trois"
+     put the name of middle card
+      card "Deux"
+
+== 4. LA PORTEE : le fond a sa propre numerotation ==
+     put the name of last card field
+      card field "gamma"
+     put the name of last bg field
+      bkgnd field "pied"
+     put the name of first bg field
+      bkgnd field "pied"
+     put the name of last bg button
+      bkgnd button "suivant"
+
+== 5. LE REPLI SUR LE FOND, SANS PORTEE ECRITE ==
+     put the name of first button
+      card button "pilote"
+     put the name of second button
+      [ERR]    !! objet introuvable (colonne 2) dans «  second button » — objet : button "pilote"
+      [ERR]    !! objet introuvable (colonne 2) dans «  second button » — objet : button "pilote"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "pilote".essaie)
+
+== 6. CE QUI N'EXISTE PAS SE DIT ==
+     put the name of tenth field
+      [ERR]    !! objet introuvable (colonne 2) dans «  tenth field » — objet : button "pilote"
+      [ERR]    !! objet introuvable (colonne 2) dans «  tenth field » — objet : button "pilote"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "pilote".essaie)
+     set the name of tenth field to "raté"
+      [ERR]    !! objet introuvable : tenth field
+   rien n'a bouge                         carte="Une"  champ="toto"  champ="beta"  champ="gamma"
+
+== 7. L'ECRITURE SUR LE FOND ==
+     set the name of last bg field to "bas de page"
+     put the name of last bg field
+      bkgnd field "bas de page"
+   la carte est intacte                   carte="Une"  champ="toto"  champ="beta"  champ="gamma"

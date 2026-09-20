@@ -2623,6 +2623,50 @@ static Object *find_part_by_id(Object *owner, int type, int id)
 }
 
 /* part par rang parmi les objets de ce type (1-based) */
+/* Combien de parts de ce type chez ce propriétaire — avec la même règle que
+ * find_part_by_rank, sentinelle comprise. Les ordinaux en ont besoin : « last
+ * field » ne veut rien dire sans savoir combien il y en a, et le total dépend
+ * de la COUCHE qu'on interroge. hc_part_count ne sait compter que par
+ * ObjType, donc pas « part » ; il ne pouvait pas servir ici. */
+static int compte_parts(Object *owner, int type)
+{
+    if (!owner) return 0;
+    int n = 0;
+    for (int i = 0; i < owner->nparts; i++)
+        if (part_du_type(owner->parts[i], type)) n++;
+    return n;
+}
+
+/* UN ORDINAL ÉCRIT EN TOUTES LETTRES, et ce qui le suit.
+ *
+ * L'analyseur v3 a la même table dans hct_expr.c, pour des JETONS ; celle-ci
+ * lit du TEXTE, parce que « set » reconstruit sa cible en texte et la confie
+ * à l'ancien résolveur. Deux lectures, soit — mais un seul endroit décide de
+ * ce que « last » ou « middle » VEUT DIRE : v3_rang_ordinal, que les deux
+ * appellent. C'est la divergence qu'on veut éviter, pas la duplication du
+ * tableau de mots. */
+static int v3_rang_ordinal(HctOrdinal o, int total);
+
+static int ordinal_mot(const char *s, HctOrdinal *o, const char **apres)
+{
+    static const struct { const char *mot; HctOrdinal ord; } ORD[] = {
+        { "first", HCT_ORD_PREMIER },   { "second", HCT_ORD_DEUXIEME },
+        { "third", HCT_ORD_TROISIEME }, { "fourth", HCT_ORD_QUATRIEME },
+        { "fifth", HCT_ORD_CINQUIEME }, { "sixth", HCT_ORD_SIXIEME },
+        { "seventh", HCT_ORD_SEPTIEME },{ "eighth", HCT_ORD_HUITIEME },
+        { "ninth", HCT_ORD_NEUVIEME },  { "tenth", HCT_ORD_DIXIEME },
+        { "middle", HCT_ORD_MILIEU },   { "last", HCT_ORD_DERNIER },
+        { "any", HCT_ORD_QUELCONQUE },  { NULL, HCT_ORD_AUCUN }
+    };
+    for (int k = 0; ORD[k].mot; k++)
+        if (ci_word(s, ORD[k].mot)) {
+            *o = ORD[k].ord;
+            *apres = skip_spaces(s + strlen(ORD[k].mot));
+            return 1;
+        }
+    return 0;
+}
+
 static Object *find_part_by_rank(Object *owner, int type, int rank)
 {
     if (!owner || rank < 1) return NULL;
@@ -3084,6 +3128,80 @@ static Object *resolve_local(const char *ref)
      * cartes jusqu'à en croiser une dont le fond diffère, avec bouclage comme
      * « go next card ». Sans ceci, « next » ignorait le mot qui le suit et
      * « go next background » se comportait comme « go next card ». */
+    /* CE BLOC PASSE AVANT CELUI DES FONDS, et l'ordre n'est pas cosmétique.
+     *
+     * Celui d'en dessous reconnaît « last bg » et rend la première carte de
+     * ce fond — sans regarder le mot d'APRÈS. « set the name of last bg
+     * field to "x" » renommait donc une CARTE. C'est exactement la faute
+     * qu'on corrige ici, un cran plus haut : un mot lu, le suivant ignoré.
+     * Essayer d'abord la forme la plus LONGUE est la seule façon de ne pas
+     * avoir à réparer les deux blocs séparément.
+     *
+     * Quand la forme n'est pas une part — « first background » —, ce bloc
+     * ne rend rien et laisse celui d'en dessous faire son travail. */
+    /* UN ORDINAL EST UN PRÉFIXE : CE QUI LE SUIT DÉCIDE DE CE QU'IL DÉSIGNE.
+     *
+     * Ces deux lignes disaient « first » -> première CARTE et « last » ->
+     * dernière carte, SANS REGARDER LE MOT SUIVANT. Signalé à l'usage :
+     *
+     *     set the name of first field to "toto"   renommait la CARTE
+     *
+     * Une écriture qui se pose ailleurs que là où on l'envoie, en silence.
+     * En lecture, « the name of first field » rendait « card "Une" » — une
+     * mauvaise réponse, pas une erreur. Et « second field » disait « objet
+     * introuvable », ce qui rendait le défaut plus trompeur encore : la forme
+     * la plus courante était justement celle qui mentait sans rien dire.
+     *
+     * LE BLOC AU-DESSUS FAISAIT DÉJÀ CE TEST pour les fonds — « first
+     * background » regarde le mot qui suit depuis longtemps. La règle était
+     * connue trois lignes plus haut et ces deux-ci ne l'appliquaient pas.
+     *
+     * On traite donc les treize ordinaux, et pas seulement first et last :
+     * l'exécuteur v3 les connaît tous, et n'en servir que deux ici ferait
+     * répondre différemment à « the name of third field » selon le chemin
+     * emprunté — lecture par v3, écriture par « set ». */
+    {
+        HctOrdinal o = HCT_ORD_AUCUN;
+        const char *ap = NULL;
+        if (ordinal_mot(ref, &o, &ap)) {
+            int fond = want_bg, vu_fond = 0;
+            if      (ci_word(ap, "card"))       { ap = skip_spaces(ap + 4);  fond = 0; }
+            else if (ci_word(ap, "cd"))         { ap = skip_spaces(ap + 2);  fond = 0; }
+            else if (ci_word(ap, "background")) { ap = skip_spaces(ap + 10); fond = 1; vu_fond = 1; }
+            else if (ci_word(ap, "bkgnd"))      { ap = skip_spaces(ap + 5);  fond = 1; vu_fond = 1; }
+            else if (ci_word(ap, "bg"))         { ap = skip_spaces(ap + 2);  fond = 1; vu_fond = 1; }
+
+            int tp = -1;
+            if      (ci_word(ap, "button") || ci_word(ap, "btn")) tp = OBJ_BUTTON;
+            else if (ci_word(ap, "field")  || ci_word(ap, "fld")) tp = OBJ_FIELD;
+
+            if (tp >= 0) {
+                /* LE TOTAL SE COMPTE PAR COUCHE : « last field » n'a pas le
+                 * même sens sur la carte et sur le fond. Sans portée écrite,
+                 * on cherche sur la carte puis on se rabat sur le fond, comme
+                 * partout ailleurs — en RECOMPTANT, sans quoi le repli
+                 * chercherait un rang calculé pour l'autre couche. */
+                Object *couche = fond ? bg : card;
+                int r = v3_rang_ordinal(o, compte_parts(couche, tp));
+                Object *p = r > 0 ? find_part_by_rank(couche, tp, r) : NULL;
+                if (!p && !fond) {
+                    int r2 = v3_rang_ordinal(o, compte_parts(bg, tp));
+                    if (r2 > 0) p = find_part_by_rank(bg, tp, r2);
+                }
+                return p;
+            }
+
+            /* Pas une part : c'est une CARTE — « first card », ou « first »
+             * tout seul, la forme des scripts d'époque. Les fonds sont déjà
+             * partis plus haut ; s'il en reste un ici, on ne s'en mêle pas. */
+            if (!vu_fond) {
+                int r = v3_rang_ordinal(o, card_count(stack));
+                if (r > 0) return nth_card(stack, r - 1);
+                return NULL;
+            }
+        }
+    }
+
     /* « next/previous/first/last background » : HyperCard ne se tient jamais
      * sur un fond, on rend donc une CARTE — la première de ce fond. Sans ceci,
      * « next » et consorts ignoraient le mot qui les suit, et « go next
@@ -3142,8 +3260,6 @@ static Object *resolve_local(const char *ref)
         if (nc <= 0 || i < 0) return NULL;
         return nth_card(stack, ((i + pas) % nc + nc) % nc);
     }
-    if (ci_word(ref, "first")) return nth_card(stack, 0);
-    if (ci_word(ref, "last"))  return nth_card(stack, card_count(stack) - 1);
 
     if (ci_word(ref, "stack")) {
         const char *after = skip_spaces(ref + 5);
@@ -7388,6 +7504,39 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
                 case HCT_DES_NOM: {
                     Object *o = find_part(premier, t, val);
                     if (!o && repli) o = find_part(repli, t, val);
+                    return o;
+                }
+                /* « first field », « last button », « any part ».
+                 *
+                 * CETTE BRANCHE MANQUAIT, et son absence ne se voyait pas
+                 * comme une absence. Le désignateur tombait sur le `default`
+                 * juste en dessous, hct_resout rendait NULL, et le pont
+                 * repassait la phrase à l'ancien moteur — qui ne connaît pas
+                 * l'ordinal devant un type de part et rendait LA CARTE.
+                 * Mesuré :
+                 *
+                 *     put the name of first field   ->  card "Une"
+                 *     put the name of last field    ->  card "Deux"
+                 *     set the name of first field to "titi"
+                 *                                   ->  renomme la CARTE
+                 *
+                 * Une mauvaise réponse, pas une erreur, et une écriture qui
+                 * va se poser ailleurs que là où on l'envoie. « second field »
+                 * disait bien « objet introuvable », ce qui rendait le défaut
+                 * encore plus trompeur : le cas le plus courant — first —
+                 * était justement celui qui mentait en silence.
+                 *
+                 * LE TOTAL SE COMPTE PAR COUCHE, et c'est tout le soin à
+                 * prendre ici : « last field » n'a pas le même sens sur la
+                 * carte et sur le fond. On compte donc là où l'on cherche,
+                 * puis on recompte pour le repli. */
+                case HCT_DES_ORDINAL: {
+                    int r = v3_rang_ordinal(n->ordinal, compte_parts(premier, t));
+                    Object *o = r > 0 ? find_part_by_rank(premier, t, r) : NULL;
+                    if (!o && repli) {
+                        int r2 = v3_rang_ordinal(n->ordinal, compte_parts(repli, t));
+                        if (r2 > 0) o = find_part_by_rank(repli, t, r2);
+                    }
                     return o;
                 }
                 case HCT_DES_RANG: {
