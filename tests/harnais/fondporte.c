@@ -181,6 +181,46 @@ int main(void)
         hc_clipboard_stack_closing(B);
         hc_set_current_card(derniere(A)); hc_paste_card(A);
         etat("colle apres la fermeture de B", A);
+
+        /* ET DEUX FOIS DE SUITE, ce qui est tout autre chose.
+         *
+         * bg_note_porte refusait d'enregistrer quand le fond d'origine avait
+         * disparu — elle recevait NULL et sortait sans rien dire —, si bien
+         * que le second collage recreait un fond. Le cas ne se voyait pas
+         * ici : cette section ne collait QU'UNE FOIS.
+         *
+         * La reconnaissance par l'apparence le masquait pour un fond qui a
+         * un signe distinctif, et le laissait entier pour un fond vide,
+         * qu'elle refuse de reconnaitre. Ce second collage tient donc la
+         * ligne qui manquait, et non la reconnaissance. */
+        hc_set_current_card(derniere(A)); hc_paste_card(A);
+        etat("colle une SECONDE fois apres la fermeture", A);
+    }
+
+    puts("\n== 7. et pour un fond SANS SIGNE PARTICULIER ==");
+    /* Le meme enchainement sur un fond que l'apparence refuse de
+     * reconnaitre — ni nom, ni peinture, ni parts. C'est le cas qui a
+     * demasque le defaut, parce que rien d'autre ne le rattrape. */
+    {
+        Object *V  = hc_new_stack("V");
+        Object *fv = hc_new_background(V, NULL);
+        Object *v1 = hc_new_card(V, fv, "Vide");
+        hc_register_stack(V);
+
+        Object *W  = hc_new_stack("W");
+        Object *fw = hc_new_background(W, "Sien");
+        hc_new_card(W, fw, "Origine");
+        hc_register_stack(W);
+
+        hc_set_current_card(v1); hc_copy_card(v1);
+        hc_clipboard_stack_closing(V);
+        hc_set_current_card(derniere(W)); hc_paste_card(W);
+        etat("W : colle apres la fermeture de V", W);
+        hc_set_current_card(derniere(W)); hc_paste_card(W);
+        etat("W : colle une SECONDE fois", W);
+
+        hc_free(W);
+        hc_free(V);
     }
 
     hc_free(A);

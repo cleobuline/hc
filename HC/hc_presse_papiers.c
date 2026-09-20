@@ -272,8 +272,12 @@ static Object *g_clip_bg_stack = NULL;   /* la pile de g_clip_bg_live */
  * problèmes plus grands que celui-ci. */
 #define HC_BG_PORTES_MAX 32
 typedef struct {
-    Object *src_bg;     /* le fond d'origine */
-    Object *src_pile;   /* sa pile, pour purger à la fermeture */
+    /* SOUS QUELLE IDENTITÉ le fond copié est retenu : le fond d'origine tant
+     * qu'il vit, la copie du presse-papiers une fois sa pile fermée. Voir
+     * hc_paste_card, qui choisit — aucune des deux ne couvre à elle seule la
+     * durée voulue. Jamais DÉRÉFÉRENCÉE : seulement comparée. */
+    Object *src_bg;
+    Object *src_pile;   /* la pile du fond d'origine, pour purger à sa fermeture */
     Object *pile;       /* la pile d'accueil */
     Object *cree;       /* le fond qu'on y a recréé */
 } BgPorte;
@@ -870,11 +874,37 @@ Object *hc_paste_card(Object *stack)
     Object *bg = NULL;
     int bg_recree = 0;               /* le fond a-t-il été créé à l'instant ? */
 
+    /* SOUS QUELLE IDENTITÉ LA TABLE RETIENT CE FOND — et il en faut DEUX,
+     * parce qu'aucune ne couvre à elle seule la durée voulue.
+     *
+     * g_clip_bg_live est le fond D'ORIGINE. Il traverse les copies
+     * successives : copier Une puis Deux, qui partagent un fond, donne deux
+     * contenus de presse-papiers mais le même fond vivant — c'est lui qui
+     * fait tenir la correspondance d'une copie à l'autre. Mais il s'efface
+     * quand sa pile ferme, et il le doit : une adresse libérée ne se compare
+     * même plus.
+     *
+     * g_clip_bg_copy est la COPIE que le presse-papiers possède. Elle ne
+     * traverse pas les copies — chacune la remplace — mais elle SURVIT à la
+     * mort de la pile source, puisque c'est nous qui la tenons.
+     *
+     * Le défaut que ceci corrige, mesuré : après la fermeture de la pile
+     * source, bg_note_porte recevait NULL et refusait d'enregistrer, si bien
+     * que DEUX COLLAGES DE SUITE créaient deux fonds. La reconnaissance par
+     * l'apparence l'avait masqué pour un fond qui a un signe distinctif,
+     * mais pas pour un fond vide, qu'elle refuse de reconnaître — et c'était
+     * la même ligne qui manquait dans les deux cas.
+     *
+     * L'adresse de la copie ne peut pas être confondue avec celle d'une
+     * copie plus ancienne : hc_free purge la table par hc_pp_oublie avant
+     * que l'allocateur ne puisse rendre l'adresse à quelqu'un d'autre. */
+    Object *cle = g_clip_bg_live ? g_clip_bg_live : g_clip_bg_copy;
+
     if (g_clip_bg_live && g_clip_bg_stack == stack) {
         for (int i = 0; i < stack->nparts; i++)
             if (stack->parts[i] == g_clip_bg_live) { bg = g_clip_bg_live; break; }
     }
-    if (!bg) bg = bg_deja_porte(g_clip_bg_live, stack);
+    if (!bg) bg = bg_deja_porte(cle, stack);
 
     /* Rien en mémoire : on regarde la pile d'accueil. Et l'on NOTE ce qu'on y
      * trouve, pour que les collages suivants passent par l'identité plutôt
@@ -882,7 +912,7 @@ Object *hc_paste_card(Object *stack)
      * doit pas défaire la correspondance au milieu d'une session. */
     if (!bg && g_clip_bg_copy) {
         bg = fond_reconnu_dans(g_clip_bg_copy, stack);
-        if (bg) bg_note_porte(g_clip_bg_live, g_clip_bg_stack, stack, bg);
+        if (bg) bg_note_porte(cle, g_clip_bg_stack, stack, bg);
     }
 
     /* Absent : on le recrée depuis la copie, et ON NOTE la correspondance —
@@ -910,7 +940,7 @@ Object *hc_paste_card(Object *stack)
         for (int i = 0; i < bg->nparts && i < g_clip_bg_copy->nparts; i++)
             id_adopte(stack, bg->parts[i], g_clip_bg_copy->parts[i]->id);
 
-        bg_note_porte(g_clip_bg_live, g_clip_bg_stack, stack, bg);
+        bg_note_porte(cle, g_clip_bg_stack, stack, bg);
     }
     if (!bg) return NULL;
 
