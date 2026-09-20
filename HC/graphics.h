@@ -12,6 +12,17 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h);
 
 void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width);
 void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width);
+/* CE PIXEL PORTE-T-IL QUELQUE CHOSE ?
+ *
+ * « Posé » veut dire alpha non nul, et c'est la convention que suivent déjà
+ * le flot de remplissage et les transformations de zone : « a == 0 :
+ * transparent, intact ». La reformuler ici — un seuil, une luminance —
+ * aurait donné deux définitions du même mot dans le même fichier.
+ *
+ * x et y sont des coordonnées de VUE, donc de ligne : la vue de carte est
+ * retournée, et les lignes de bitmapData se comptent depuis le haut. C'est
+ * ce que font déjà brush_stamp et spray_stamp. */
+int  paint_pixel_pose(NSBitmapImageRep *rep, int x, int y);
 void brush_stamp(NSBitmapImageRep *rep, int cx, int cy);
 void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to);
 

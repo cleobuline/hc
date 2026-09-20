@@ -167,6 +167,24 @@ static int     gObjStartW, gObjStartH;
 static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
 
+/* LE CRAYON BASCULE, IL NE NOIRCIT PAS.
+ *
+ * Chez HyperCard, un crayon posé sur un pixel déjà noir EFFACE, et continue
+ * d'effacer tant qu'on ne relâche pas. C'est ce qui permet de retoucher un
+ * dessin sans changer d'outil, et c'est le geste que tout le monde connaît.
+ *
+ * LA RÈGLE ÉTAIT DÉJÀ DANS LE PROGRAMME : l'éditeur d'icônes la tient depuis
+ * toujours, dans son _drawValue. Le crayon de la carte ne l'appliquait pas —
+ * il noircissait, toujours. Deux crayons dans le même logiciel, deux
+ * comportements, et celui de la carte était le faux.
+ *
+ * Le sens est décidé au PREMIER point et vaut pour tout le trait. Le
+ * redécider à chaque segment ferait clignoter le crayon le long de son
+ * propre tracé : il effacerait ce qu'il vient de poser dès qu'il repasse
+ * dessus, ce qui est exactement ce qu'on ne veut pas. C'est aussi ce que
+ * fait l'éditeur d'icônes, qui pose _drawValue une fois. */
+static BOOL    gPenEfface = NO;
+
 typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
 static HCAxisLock gLockedAxis = AXIS_NONE;
 
@@ -1605,7 +1623,17 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
         z = constrain_to_axis(a, z);
     }
     switch (gTool) {
-        case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
+        /* LA MÊME RÈGLE PAR SCRIPT. « drag from x,y to x,y » avec le crayon
+         * doit faire ce que ferait la souris, sans quoi un script et un
+         * geste donneraient deux résultats — et c'est le script qui aurait
+         * tort sans qu'on puisse le voir. Le sens se décide sur le point de
+         * DÉPART, comme au mouseDown. */
+        case TOOL_PENCIL:
+            if (paint_pixel_pose(rep, (int)lround(a.x), (int)lround(a.y)))
+                erase_stroke(rep, a, z, gLineWidth);
+            else
+                paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
+            break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
         case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
@@ -5186,7 +5214,15 @@ static BOOL      gSansMessageChamp = NO;
             gPenLast = p;
             gPenDrawing = YES;
             gLockedAxis = AXIS_NONE;
-            if (gTool == TOOL_PENCIL)      paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
+            /* Le sens du crayon se décide ICI, sur le pixel du premier
+             * point, et ne rebascule plus jusqu'au relâchement. */
+            gPenEfface = (gTool == TOOL_PENCIL) &&
+                         paint_pixel_pose(rep, (int)lround(p.x),
+                                               (int)lround(p.y));
+            if (gTool == TOOL_PENCIL) {
+                if (gPenEfface) erase_stroke(rep, p, p, gLineWidth);
+                else paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
+            }
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
             else if (gTool == TOOL_SPRAY) {
                 spray_stamp(rep, (int)lround(p.x), (int)lround(p.y),
@@ -5519,7 +5555,9 @@ static BOOL      gSansMessageChamp = NO;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
 
         if (gTool == TOOL_PENCIL) {
-            paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
+            /* Le sens vient du mouseDown : voir gPenEfface. */
+            if (gPenEfface) erase_stroke(rep, gPenLast, p, gLineWidth);
+            else paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
         } else if (gTool == TOOL_BRUSH) {
             brush_stroke(rep, gPenLast, p);
         } else if (gTool == TOOL_SPRAY) {
