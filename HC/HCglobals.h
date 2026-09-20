@@ -23,6 +23,21 @@ extern int      gBrush;
 extern BOOL     gShapeFilled;
 extern int      gTextSize;
 extern BOOL     gTransparentBg;
+/* LA GRILLE : le dessin et les objets se calent sur huit pixels.
+ *
+ * Huit, c'est le pas d'HyperCard, et ce n'est pas un chiffre rond par hasard :
+ * c'est le côté d'une trame. Une forme calée sur la grille tombe donc sur les
+ * bords du motif qui la remplit.
+ *
+ * Elle vit ici, avec les autres réglages d'outil, et non dans HCDoc : la
+ * palette d'outils est unique pour toute l'application, et une grille active
+ * dans une fenêtre et pas dans l'autre se lirait comme une panne. */
+extern BOOL     gGrid;
+/* FATBITS : le calque grossi huit fois, pour poser les pixels un par un.
+ * Ici pour la même raison que gGrid — un réglage d'outil, donc unique pour
+ * toute l'application. Le détail de son fonctionnement est en tête de
+ * HCview.m, là où vit la transformation. */
+extern BOOL     gFatBits;
 /* Couleur d'encre et couleur de fond du dessin.
  *
  * gInk reste ce qu'il etait : un MODE — peindre, peindre en fond, effacer.

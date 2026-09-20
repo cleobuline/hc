@@ -167,6 +167,24 @@ static int     gObjStartW, gObjStartH;
 static NSPoint gPenLast;
 static BOOL    gPenDrawing = NO;
 
+/* LE CRAYON BASCULE, IL NE NOIRCIT PAS.
+ *
+ * Chez HyperCard, un crayon posé sur un pixel déjà noir EFFACE, et continue
+ * d'effacer tant qu'on ne relâche pas. C'est ce qui permet de retoucher un
+ * dessin sans changer d'outil, et c'est le geste que tout le monde connaît.
+ *
+ * LA RÈGLE ÉTAIT DÉJÀ DANS LE PROGRAMME : l'éditeur d'icônes la tient depuis
+ * toujours, dans son _drawValue. Le crayon de la carte ne l'appliquait pas —
+ * il noircissait, toujours. Deux crayons dans le même logiciel, deux
+ * comportements, et celui de la carte était le faux.
+ *
+ * Le sens est décidé au PREMIER point et vaut pour tout le trait. Le
+ * redécider à chaque segment ferait clignoter le crayon le long de son
+ * propre tracé : il effacerait ce qu'il vient de poser dès qu'il repasse
+ * dessus, ce qui est exactement ce qu'on ne veut pas. C'est aussi ce que
+ * fait l'éditeur d'icônes, qui pose _drawValue une fois. */
+static BOOL    gPenEfface = NO;
+
 typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
 static HCAxisLock gLockedAxis = AXIS_NONE;
 
@@ -286,6 +304,169 @@ static NSPoint constrain_to_axis(NSPoint start, NSPoint current) {
     } else {
         return NSMakePoint(start.x, current.y);
     }
+}
+
+/* ═══ LA GRILLE ════════════════════════════════════════════════════════
+ *
+ * Huit pixels, le pas d'HyperCard. Ce n'est pas un chiffre rond gratuit :
+ * c'est le côté d'une trame, si bien qu'une forme calée tombe sur les bords
+ * du motif qui la remplit.
+ *
+ * CE QUI SE CALE, ET CE QUI NE SE CALE PAS. Les outils de FORME — ligne,
+ * rectangle, ovale —, le rectangle de sélection, et les objets qu'on
+ * déplace, redimensionne ou crée. PAS le crayon, le pinceau, l'aérographe,
+ * la gomme, le tracé libre ni le lasso : caler une main levée sur huit
+ * pixels ne la contraint pas, elle la rend inutilisable — on ne dessinerait
+ * plus que des pointillés. La règle est donc « ce qui a des COINS se cale »,
+ * et elle se tient sans exception à retenir.
+ *
+ * LES OBJETS SONT UNE EXTENSION À NOUS. Chez HyperCard la grille ne touche
+ * que la peinture ; les boutons se traînent au pixel. Mais aligner deux
+ * boutons est justement ce pour quoi on allume une grille, et s'en priver
+ * par fidélité aurait été fidèle à la lettre contre l'usage. C'est écrit ici
+ * pour qu'on sache lequel des deux on a choisi, et pourquoi.
+ *
+ * On cale le RÉSULTAT et non la souris : deux boutons posés grille allumée
+ * ont exactement le même x, ce qui est le service rendu. Caler l'écart de
+ * la souris n'aurait aligné que les gestes, pas les objets.
+ *
+ * Grille éteinte, les deux fonctions sont l'identité — les appelants n'ont
+ * donc aucun test à faire, et aucun ne peut oublier d'en faire un. */
+#define HCV_GRILLE 8
+
+static int hcv_cale(int v)
+{
+    if (!gGrid) return v;
+    return (int)lround((double)v / HCV_GRILLE) * HCV_GRILLE;
+}
+
+static NSPoint hcv_cale_pt(NSPoint p)
+{
+    if (!gGrid) return p;
+    return NSMakePoint((CGFloat)hcv_cale((int)lround(p.x)),
+                       (CGFloat)hcv_cale((int)lround(p.y)));
+}
+
+/* ═══ FATBITS ══════════════════════════════════════════════════════════
+ *
+ * Le calque grossi huit fois, pour poser les pixels un par un.
+ *
+ * TOUT TIENT DANS UNE TRANSFORMATION, ET C'EST LE SEUL MOYEN QUE CE SOIT SÛR.
+ *
+ * Le chemin de peinture traite quatre-vingt-six points comme des coordonnées
+ * de calque — le crayon, les formes, le lasso, la sélection, le texte, la
+ * sélection flottante. Les convertir un à un aurait demandé de tous les
+ * trouver, et celui qu'on aurait oublié aurait dessiné à côté : une écriture
+ * qui se pose ailleurs que là où on l'envoie, exactement la famille de défaut
+ * qu'on passe ses soirées à traquer.
+ *
+ * Mais ces quatre-vingt-six points viennent tous de DEUX lignes — la
+ * conversion en tête de mouseDown: et de mouseDragged:. Les cinq autres
+ * conversions du fichier servent aux menus surgissants, au survol, à la
+ * molette et au clic de l'outil main : toutes sous l'outil BROWSE, donc hors
+ * de FatBits par construction. Transformer à la frontière laisse donc les
+ * quatre-vingt-six sites inchangés, et il n'y a rien à oublier.
+ *
+ * Le dessin, lui, passe par une seule NSAffineTransform posée autour du
+ * corps de drawRect:. D'où la séparation en drawCardContent: — le corps a
+ * plusieurs `return`, et un état graphique sauvé avant eux se serait perdu
+ * sur l'un des chemins. Le wrapper restaure toujours, quel que soit le
+ * chemin qu'a pris le corps.
+ *
+ * FATBITS N'EST ACTIF QU'AVEC UN OUTIL DE PEINTURE, et cela règle trois
+ * choses d'un coup : l'éditeur de champ est une vraie sous-vue d'AppKit et
+ * ne suivrait pas la transformation ; les menus surgissants et le survol
+ * gardent leurs coordonnées ; et choisir la main fait sortir de FatBits sans
+ * qu'on ait à le débrancher — l'état reste, et revient avec le crayon.
+ *
+ * CE QUI EST DE NOUS : le déplacement à ⌘-glisser. HyperCard fait défiler
+ * FatBits tout seul quand on dessine près du bord ; je ne sais pas le
+ * reproduire de mémoire avec assez de certitude pour le prétendre, et une
+ * fidélité inventée vaut moins qu'un choix assumé. ⌘ est libre — aucun outil
+ * de peinture ne s'en sert. */
+#define HCV_FATBITS 8
+
+static NSPoint gFatOrigine  = {0, 0};  /* coin du calque montré, en pixels de calque */
+static NSPoint gFatDernier  = {0, 0};  /* dernier point peint : on centre dessus */
+/* LE DÉPLACEMENT SE MESURE CONTRE CE QUI NE BOUGE PAS.
+ *
+ * On garde le point de la VUE et l'origine, tous deux pris À LA SAISIE. La
+ * première version soustrayait le point de CALQUE courant — lequel se
+ * calcule à partir de l'origine, qui venait justement de changer : chaque
+ * mouvement se mesurait contre une référence qu'il avait lui-même déplacée,
+ * et le glissement s'emballait. Le point de vue, lui, ne dépend de rien. */
+static BOOL    gFatGlisse   = NO;      /* ⌘-glisser en cours */
+static NSPoint gFatSaisiVue = {0, 0};  /* le point de la VUE à la saisie */
+static NSPoint gFatSaisiOrg = {0, 0};  /* l'origine à la saisie */
+
+/* Un outil qui DESSINE, par opposition à ceux qui manipulent des objets.
+ *
+ * Écrit une fois, parce que la question se pose à trois endroits — le
+ * dessin, la souris, la coche du menu — et que trois copies du même « tout
+ * sauf BROWSE, BUTTON et FIELD » auraient divergé au premier outil ajouté. */
+static BOOL hcv_outil_peint(void)
+{
+    return gTool != TOOL_BROWSE && gTool != TOOL_BUTTON && gTool != TOOL_FIELD;
+}
+
+/* FatBits est-il EN VIGUEUR ? Allumé ne suffit pas : il faut aussi un outil
+ * qui peigne. Les deux questions sont ici, une fois. */
+static BOOL hcv_fat(void)
+{
+    return gFatBits && hcv_outil_peint();
+}
+
+/* Le point de la vue → le point du calque. L'identité hors FatBits, donc les
+ * appelants n'ont aucun test à faire — la même règle que hcv_cale_pt. */
+static NSPoint hcv_vue_vers_calque(NSPoint p)
+{
+    if (!hcv_fat()) return p;
+    return NSMakePoint(gFatOrigine.x + p.x / HCV_FATBITS,
+                       gFatOrigine.y + p.y / HCV_FATBITS);
+}
+
+/* Le morceau de calque que la vue montre. En dehors de FatBits, la vue
+ * entière — ce qui est exactement ce que le dessin attendait déjà. */
+static NSRect hcv_fat_zone(NSRect vue)
+{
+    if (!hcv_fat()) return vue;
+    return NSMakeRect(gFatOrigine.x, gFatOrigine.y,
+                      vue.size.width  / HCV_FATBITS,
+                      vue.size.height / HCV_FATBITS);
+}
+
+/* Centrer la fenêtre grossie sur un point du calque, sans sortir du calque.
+ * Appelé quand on ALLUME FatBits : sans cela on tomberait sur le coin
+ * supérieur gauche, qui n'est presque jamais ce qu'on regardait. */
+static void hcv_fat_centre(NSPoint sur, NSRect vue)
+{
+    CGFloat w = vue.size.width  / HCV_FATBITS;
+    CGFloat h = vue.size.height / HCV_FATBITS;
+    CGFloat x = sur.x - w / 2, y = sur.y - h / 2;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > vue.size.width  - w) x = vue.size.width  - w;
+    if (y > vue.size.height - h) y = vue.size.height - h;
+
+    /* L'ORIGINE EST UN NOMBRE ENTIER DE PIXELS DE CALQUE, et c'est ce qui
+     * fait tenir la grille sur le dessin.
+     *
+     * Elle ne l'était pas : « sur − moitié de la vue » tombe sur un demi, un
+     * quart, ce qu'on veut. Un pixel de calque L s'affiche en (L − origine)
+     * × 8 ; avec une origine fractionnaire il tombe entre deux multiples de
+     * huit, alors que les traits de la grille, eux, sont posés SUR les
+     * multiples de huit. Les deux glissaient donc l'un par rapport à l'autre,
+     * d'une fraction de case — visible à l'œil dès qu'on dessine.
+     *
+     * Arrondir ici et pas au moment de tracer : c'est l'origine qui doit être
+     * entière, puisque c'est elle que partagent le dessin et la grille.
+     * Arrondir à l'affichage aurait recalé les traits sur eux-mêmes et laissé
+     * le décalage où il était.
+     *
+     * Après l'arrondi les bornes tiennent encore : les deux extrémités du
+     * domaine, 0 et (taille − w), sont des multiples de huit dès que la carte
+     * l'est, et floor ne fait que rapprocher de zéro. */
+    gFatOrigine = NSMakePoint(floor(x), floor(y));
 }
 
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
@@ -1442,7 +1623,17 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
         z = constrain_to_axis(a, z);
     }
     switch (gTool) {
-        case TOOL_PENCIL: paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth); break;
+        /* LA MÊME RÈGLE PAR SCRIPT. « drag from x,y to x,y » avec le crayon
+         * doit faire ce que ferait la souris, sans quoi un script et un
+         * geste donneraient deux résultats — et c'est le script qui aurait
+         * tort sans qu'on puisse le voir. Le sens se décide sur le point de
+         * DÉPART, comme au mouseDown. */
+        case TOOL_PENCIL:
+            if (paint_pixel_pose(rep, (int)lround(a.x), (int)lround(a.y)))
+                erase_stroke(rep, a, z, gLineWidth);
+            else
+                paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
+            break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
         case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
@@ -1826,6 +2017,8 @@ static void cocoa_do_menu(const char *item) {
             { "Clear",           HCV_PAINT_CLEAR       },
             { "Opaque",          HCV_PAINT_OPAQUE      },
             { "Transparent",     HCV_PAINT_TRANSPARENT },
+            { "Grid",            HCV_PAINT_GRID        },
+            { "FatBits",         HCV_PAINT_FATBITS     },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -2311,6 +2504,8 @@ static const char *cocoa_global_get(const char *name) {
 
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
+    if (strcasecmp(name, "grid") == 0)
+        return gGrid ? "true" : "false";
     if (strcasecmp(name, "lineSize") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gLineWidth);
         return gGlobBuf;
@@ -2471,6 +2666,10 @@ static void cocoa_global_set(const char *name, const char *value) {
         gShapeFilled = vrai ? YES : NO;
         hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (strcasecmp(name, "grid") == 0) {
+        gGrid = vrai ? YES : NO;
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
@@ -3379,6 +3578,26 @@ static int parts_du_calque(Object *o)
             return YES;
         }
 
+        /* La grille porte une COCHE et ne demande AUCUNE sélection : c'est un
+         * réglage de dessin, pas une transformation. La griser faute de
+         * sélection la rendrait inatteignable au moment précis où on
+         * l'allume — avant de dessiner. */
+        if (t == HCV_PAINT_GRID) {
+            [item setState:gGrid ? NSControlStateValueOn
+                                 : NSControlStateValueOff];
+            return YES;
+        }
+
+        /* FatBits porte sa coche comme la grille, mais se GRISE sous un outil
+         * qui ne peint pas : là il n'a aucun effet, et un article cochable
+         * qui ne fait rien est pire qu'un article grisé. C'est la même règle
+         * que partout ailleurs dans ce menu — ne proposer que ce qui agira. */
+        if (t == HCV_PAINT_FATBITS) {
+            [item setState:gFatBits ? NSControlStateValueOn
+                                    : NSControlStateValueOff];
+            return hcv_outil_peint();
+        }
+
         if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
@@ -3911,6 +4130,27 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * au lieu de la basculer — « doMenu "Transparent" » doit rendre le
      * dessin transparent, pas l'inverser : un script qui l'appelle deux fois
      * ne doit pas défaire son propre travail. */
+    /* LA GRILLE BASCULE, elle ne se pose pas : l'article de menu d'HyperCard
+     * est une coche, et « doMenu "Grid" » fait exactement ce que ferait le
+     * clic. Pour la POSER à une valeur précise il y a « set the grid to true »,
+     * qui passe par cocoa_global_set — deux portes, deux gestes distincts, et
+     * le même état derrière. */
+    if (quoi == HCV_PAINT_GRID) {
+        gGrid = !gGrid;
+        return;
+    }
+
+    /* FATBITS. On CENTRE à l'allumage sur le dernier point peint : sans cela
+     * on tomberait sur le coin supérieur gauche du calque, qui n'est presque
+     * jamais ce qu'on était en train de regarder — et il faudrait ⌘-glisser
+     * jusqu'à son ouvrage avant de pouvoir y toucher. */
+    if (quoi == HCV_PAINT_FATBITS) {
+        gFatBits = !gFatBits;
+        if (gFatBits) hcv_fat_centre(gFatDernier, [gView bounds]);
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
         gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
         [self setNeedsDisplay:YES];
@@ -4068,7 +4308,12 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
      respectFlipped:YES hints:nil];
 }
 
-- (void)drawRect:(NSRect)dirtyRect {
+/* Le dessin de la carte, en coordonnées de CALQUE.
+ *
+ * Séparé de drawRect: pour FatBits : ce corps a plusieurs `return`, et un
+ * état graphique sauvé avant eux se perdrait sur l'un des chemins. Le
+ * wrapper restaure toujours, quel que soit le chemin pris ici. */
+- (void)drawCardContent:(NSRect)dirtyRect {
     /* Lier le catalogue d'icônes à la pile de CETTE fenêtre, avant tout dessin.
      *
      * HCicons ne retient qu'une copie de travail, alors que plusieurs piles
@@ -4305,6 +4550,84 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     }
 
     draw_popup_menu();
+}
+
+/* La grille de FatBits : un trait par pixel de calque, plus marqué tous les
+ * huit. Sans repères on ne se situe pas dans un damier — c'est la leçon déjà
+ * tirée dans l'éditeur d'icônes, et la seule chose qu'on lui emprunte : sa
+ * grille à lui est câblée sur 32×32 et lit les bits d'une icône, pas un
+ * calque, donc il n'y avait rien d'autre à reprendre.
+ *
+ * Dessinée APRÈS la restauration, donc en coordonnées de VUE : des traits
+ * d'un pixel tracés sous la transformation en feraient huit. */
+- (void)drawFatGrid
+{
+    NSRect b = [self bounds];
+
+    [[NSColor colorWithWhite:0.80 alpha:1.0] setStroke];
+    NSBezierPath *g = [NSBezierPath bezierPath];
+    for (CGFloat x = 0; x <= b.size.width; x += HCV_FATBITS) {
+        [g moveToPoint:NSMakePoint(x + 0.5, 0)];
+        [g lineToPoint:NSMakePoint(x + 0.5, b.size.height)];
+    }
+    for (CGFloat y = 0; y <= b.size.height; y += HCV_FATBITS) {
+        [g moveToPoint:NSMakePoint(0, y + 0.5)];
+        [g lineToPoint:NSMakePoint(b.size.width, y + 0.5)];
+    }
+    [g setLineWidth:1];
+    [g stroke];
+
+    /* Tous les huit PIXELS DE CALQUE, soit soixante-quatre points à l'écran :
+     * c'est le pas de la grille d'alignement, donc les deux modes se lisent
+     * l'un dans l'autre au lieu de se contredire. Le décalage de l'origine
+     * compte — sans lui les repères glisseraient au défilement et ne
+     * repéreraient plus rien. */
+    CGFloat dx = fmod(gFatOrigine.x, 8) * HCV_FATBITS;
+    CGFloat dy = fmod(gFatOrigine.y, 8) * HCV_FATBITS;
+    [[NSColor colorWithWhite:0.50 alpha:1.0] setStroke];
+    NSBezierPath *q = [NSBezierPath bezierPath];
+    for (CGFloat x = -dx; x <= b.size.width; x += 8 * HCV_FATBITS) {
+        [q moveToPoint:NSMakePoint(x + 0.5, 0)];
+        [q lineToPoint:NSMakePoint(x + 0.5, b.size.height)];
+    }
+    for (CGFloat y = -dy; y <= b.size.height; y += 8 * HCV_FATBITS) {
+        [q moveToPoint:NSMakePoint(0, y + 0.5)];
+        [q lineToPoint:NSMakePoint(b.size.width, y + 0.5)];
+    }
+    [q setLineWidth:1];
+    [q stroke];
+}
+
+- (void)drawRect:(NSRect)dirtyRect
+{
+    if (!hcv_fat()) { [self drawCardContent:dirtyRect]; return; }
+
+    /* Le rectangle sale d'AppKit ne veut plus rien dire sous la
+     * transformation : on redessine la fenêtre grossie en entier, et on donne
+     * au corps la zone de CALQUE qu'elle montre. Huit fois moins de surface à
+     * couvrir, donc le coût reste celui d'un redessin ordinaire. */
+    [[NSColor whiteColor] setFill];
+    NSRectFill([self bounds]);
+
+    [NSGraphicsContext saveGraphicsState];
+    /* SANS INTERPOLATION : le grossissement doit montrer des CARRÉS. Lissé,
+     * FatBits afficherait des pixels flous et ne servirait plus à rien — on y
+     * vient justement pour voir où est le pixel. */
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+
+    /* L'ordre des deux appels est celui du point, à l'envers : la DERNIÈRE
+     * opération posée est la PREMIÈRE appliquée. On veut (calque − origine)
+     * × 8, donc la translation en dernier. */
+    NSAffineTransform *t = [NSAffineTransform transform];
+    [t scaleXBy:HCV_FATBITS yBy:HCV_FATBITS];
+    [t translateXBy:-gFatOrigine.x yBy:-gFatOrigine.y];
+    [t concat];
+
+    [self drawCardContent:hcv_fat_zone([self bounds])];
+
+    [NSGraphicsContext restoreGraphicsState];
+    [self drawFatGrid];
 }
 
 /* ═══ openField, closeField, exitField ══════════════════════════════════
@@ -4717,6 +5040,25 @@ static BOOL      gSansMessageChamp = NO;
 
 - (void)mouseDown:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    /* LA FRONTIÈRE DE FATBITS. Tout ce qui suit travaille en coordonnées de
+     * CALQUE ; hors FatBits la conversion est l'identité, donc rien ne
+     * change pour les quatre-vingt-six sites en aval. Voir l'en-tête de
+     * hcv_vue_vers_calque. */
+    NSPoint pvue = p;         /* gardé brut : le déplacement s'y mesure */
+    p = hcv_vue_vers_calque(p);
+    gFatDernier = p;          /* on centrera là-dessus si FatBits s'allume */
+
+    /* ⌘-GLISSER DÉPLACE LA FENÊTRE GROSSIE. Avant tout le reste : sous
+     * FatBits on ne voit qu'un huitième du calque, et sans moyen de bouger
+     * le mode ne servirait qu'au coin où l'on est entré. ⌘ est libre —
+     * aucun outil de peinture ne s'en sert. C'est NOTRE choix, pas celui
+     * d'HyperCard : voir l'en-tête. */
+    if (hcv_fat() && ([event modifierFlags] & NSEventModifierFlagCommand)) {
+        gFatGlisse   = YES;
+        gFatSaisiVue = pvue;
+        gFatSaisiOrg = gFatOrigine;
+        return;
+    }
 
     /* 1. Menus Popup */
     if (gPopupTarget) {
@@ -4872,7 +5214,15 @@ static BOOL      gSansMessageChamp = NO;
             gPenLast = p;
             gPenDrawing = YES;
             gLockedAxis = AXIS_NONE;
-            if (gTool == TOOL_PENCIL)      paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
+            /* Le sens du crayon se décide ICI, sur le pixel du premier
+             * point, et ne rebascule plus jusqu'au relâchement. */
+            gPenEfface = (gTool == TOOL_PENCIL) &&
+                         paint_pixel_pose(rep, (int)lround(p.x),
+                                               (int)lround(p.y));
+            if (gTool == TOOL_PENCIL) {
+                if (gPenEfface) erase_stroke(rep, p, p, gLineWidth);
+                else paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
+            }
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
             else if (gTool == TOOL_SPRAY) {
                 spray_stamp(rep, (int)lround(p.x), (int)lround(p.y),
@@ -4886,8 +5236,8 @@ static BOOL      gSansMessageChamp = NO;
     }
 
     if (gTool == TOOL_LINE || gTool == TOOL_RECT || gTool == TOOL_OVAL) {
-        gShapeStart = p;
-        gShapeEnd = p;
+        gShapeStart = hcv_cale_pt(p);
+        gShapeEnd = gShapeStart;
         gShapeDrawing = YES;
         [self setNeedsDisplay:YES];
         return;
@@ -4925,7 +5275,7 @@ static BOOL      gSansMessageChamp = NO;
 
     if (gTool == TOOL_SELRECT) {
         [[self window] makeFirstResponder:self];
-        gSelStart = p; gSelEnd = p;
+        gSelStart = hcv_cale_pt(p); gSelEnd = gSelStart;
         gSelRectDrawing = YES;
         gSelRectActive = NO;
         [self stopAntsTimer];
@@ -5111,6 +5461,26 @@ static BOOL      gSansMessageChamp = NO;
 
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    /* Le déplacement de la fenêtre grossie, AVANT la conversion : il se
+     * mesure en points de vue, contre ce qui a été saisi et ne bouge plus.
+     * La portion sous le curseur reste sous le curseur, comme une main qui
+     * tient la feuille. */
+    if (gFatGlisse) {
+        NSRect vue = [self bounds];
+        CGFloat w = vue.size.width  / HCV_FATBITS;
+        CGFloat h = vue.size.height / HCV_FATBITS;
+        NSPoint org = NSMakePoint(
+            gFatSaisiOrg.x - (p.x - gFatSaisiVue.x) / HCV_FATBITS,
+            gFatSaisiOrg.y - (p.y - gFatSaisiVue.y) / HCV_FATBITS);
+        /* hcv_fat_centre borne au calque, et prend un CENTRE : on lui donne
+         * celui qui correspond à l'origine voulue, plutôt que de recopier ici
+         * le bornage — une seconde copie qui aurait divergé de la première. */
+        hcv_fat_centre(NSMakePoint(org.x + w / 2, org.y + h / 2), vue);
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
+    p = hcv_vue_vers_calque(p);          /* la même frontière qu'au mouseDown */
     BOOL shiftDown = ([event modifierFlags] & NSEventModifierFlagShift) != 0;
 
     if (gPopupTarget && !gPopupFlashTimer) {
@@ -5185,7 +5555,9 @@ static BOOL      gSansMessageChamp = NO;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
 
         if (gTool == TOOL_PENCIL) {
-            paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
+            /* Le sens vient du mouseDown : voir gPenEfface. */
+            if (gPenEfface) erase_stroke(rep, gPenLast, p, gLineWidth);
+            else paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
         } else if (gTool == TOOL_BRUSH) {
             brush_stroke(rep, gPenLast, p);
         } else if (gTool == TOOL_SPRAY) {
@@ -5207,13 +5579,18 @@ static BOOL      gSansMessageChamp = NO;
     }
 
     if (gTool == TOOL_SELRECT && gSelRectDrawing) {
-        gSelEnd = shiftDown ? constrain_to_axis(gSelStart, p) : p;
+        gSelEnd = hcv_cale_pt(shiftDown ? constrain_to_axis(gSelStart, p) : p);
         [self setNeedsDisplay:YES];
         return;
     }
 
     if (gShapeDrawing) {
-        gShapeEnd = shiftDown ? constrain_to_axis(gShapeStart, p) : p;
+        /* Le calage APRÈS la contrainte d'axe : caler d'abord ferait dévier
+         * le point de la ligne que shift venait de rendre droite, et la
+         * droiture se perdrait sur un pixel. Dans cet ordre les deux tiennent
+         * — un axe conservé, et les deux bouts sur la grille. */
+        gShapeEnd = hcv_cale_pt(shiftDown ? constrain_to_axis(gShapeStart, p)
+                                          : p);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5231,8 +5608,12 @@ static BOOL      gSansMessageChamp = NO;
         }
         if (w < 8) w = 8;
         if (h < 8) h = 8;
-        gSelected->x = x; gSelected->y = y;
-        gSelected->w = w; gSelected->h = h;
+        /* Le calage APRÈS le plancher de huit : caler d'abord aurait pu
+         * ramener une largeur à zéro, que le plancher aurait relevée à huit —
+         * donc un coin qui ne bouge plus et une poignée qui semble coincée.
+         * Dans cet ordre, huit est déjà sur la grille et rien ne se perd. */
+        gSelected->x = hcv_cale(x); gSelected->y = hcv_cale(y);
+        gSelected->w = hcv_cale(w); gSelected->h = hcv_cale(h);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5247,8 +5628,12 @@ static BOOL      gSansMessageChamp = NO;
         NSPoint currentP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
         int dx = (int)(currentP.x - gMoveStart.x);
         int dy = (int)(currentP.y - gMoveStart.y);
-        gSelected->x = gObjStartX + dx;
-        gSelected->y = gObjStartY + dy;
+        /* C'est la POSITION qui se cale, pas l'écart de la souris : deux
+         * boutons traînés l'un après l'autre ont alors exactement le même x.
+         * Caler l'écart n'aurait aligné que les gestes — chaque bouton
+         * resterait décalé de là où il était parti. */
+        gSelected->x = hcv_cale(gObjStartX + dx);
+        gSelected->y = hcv_cale(gObjStartY + dy);
         [self setNeedsDisplay:YES];
         return;
     }
@@ -5259,11 +5644,19 @@ static BOOL      gSansMessageChamp = NO;
     CGFloat y = MIN(gDragStart.y, currentP.y);
     CGFloat w = fabs(currentP.x - gDragStart.x);
     CGFloat h = fabs(currentP.y - gDragStart.y);
-    gDragRect = NSMakeRect(x, y, w, h);
+    /* Un objet NAÎT sur la grille, sans quoi il faudrait le recaler juste
+     * après l'avoir tiré — et l'aperçu montrerait autre chose que ce qu'on
+     * obtiendrait. */
+    gDragRect = NSMakeRect((CGFloat)hcv_cale((int)lround(x)),
+                           (CGFloat)hcv_cale((int)lround(y)),
+                           (CGFloat)hcv_cale((int)lround(w)),
+                           (CGFloat)hcv_cale((int)lround(h)));
     [self setNeedsDisplay:YES];
 }
 
 - (void)mouseUp:(NSEvent *)event {
+    if (gFatGlisse) { gFatGlisse = NO; return; }
+
     if (gPopupTarget && !gPopupFlashTimer) {
         NSPoint pp = [self convertPoint:[event locationInWindow] fromView:nil];
         NSInteger row = popup_row_at_point(pp);

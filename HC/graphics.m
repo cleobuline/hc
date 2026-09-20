@@ -564,6 +564,18 @@ void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *colo
 
     [NSGraphicsContext restoreGraphicsState];
 }
+int paint_pixel_pose(NSBitmapImageRep *rep, int x, int y)
+{
+    if (!rep) return 0;
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    if (x < 0 || x >= W || y < 0 || y >= H) return 0;
+    unsigned char *data = [rep bitmapData];
+    if (!data) return 0;
+    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+    unsigned char *px = data + y*bpr + x*spp;
+    return ((spp >= 4) ? px[3] : 255) != 0;
+}
+
 // efface un segment (remet à transparent) au lieu de peindre
 
 void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width) {

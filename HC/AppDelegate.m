@@ -498,9 +498,11 @@ static NSMenu *gRecentMenu = nil;
      * transformations, les quatre rotations et retournements, le mode de
      * fond, et les deux articles de séance.
      *
-     * IL MANQUE ENCORE « Pickup », qui demande un second calque à prélever.
-     * Mieux vaut un menu court et vrai qu'un menu complet à moitié grisé pour
-     * toujours.
+     * CE COMMENTAIRE A LONGTEMPS DIT QU'IL MANQUAIT « Pickup ». Vérification
+     * faite sur une vraie HyperCard : cet article n'existe pas. Il était donc
+     * reproché au menu de ne pas contenir quelque chose qui n'a jamais été là,
+     * et l'affirmation avait l'autorité d'un commentaire sans en avoir la
+     * source. Un manque inventé se recopie aussi bien qu'un manque réel.
      *
      * Pas de raccourcis clavier : ceux d'HyperCard sont pris ici (⌘S pour
      * enregistrer, ⌘A pour tout sélectionner), et deux fidélités qui se
@@ -556,6 +558,45 @@ static NSMenu *gRecentMenu = nil;
     }
     [paintItem setSubmenu:paintMenu];
     [mainMenu addItem:paintItem];
+
+    /* --- menu Options ---
+     *
+     * HyperCard en met treize ici. HC n'en pose que DEUX, et c'est délibéré :
+     * des onze autres, quatre existent déjà ailleurs dans HC et n'auraient
+     * ajouté qu'un second chemin vers la même chose —
+     *
+     *     Draw Filled    la palette d'outils le bascule déjà
+     *     Draw Centered  la touche Option le fait déjà
+     *     Line Size…     menu Tools, ⌘3
+     *     Brush Shape…   menu Tools, ⌘4
+     *
+     * — et les sept derniers (Draw Multiple, Edit Pattern…, Polygon Sides… et
+     * les quatre transformations libres) n'ont rien derrière eux. « Polygon
+     * Sides… » n'aurait même rien à régler : HC n'a pas d'outil polygone.
+     *
+     * Un menu de deux articles a l'air pauvre. Un menu de treize dont onze
+     * mentent l'est davantage, et on ne s'en aperçoit qu'après avoir cliqué.
+     *
+     * LES DEUX QU'ON POSE n'existaient nulle part ailleurs. La grille sert
+     * aux deux gestes qu'on répète le plus — aligner des boutons, tirer un
+     * trait droit ; FatBits est le seul moyen de poser un pixel précis. */
+    NSMenuItem *optItem = [[NSMenuItem alloc] init];
+    NSMenu *optMenu = [[NSMenu alloc] initWithTitle:@"Options"];
+    struct { NSString *titre; NSInteger tag; } opts[] = {
+        { @"Grid",    HCV_PAINT_GRID    },
+        { @"FatBits", HCV_PAINT_FATBITS },
+    };
+    for (int i = 0; i < (int)(sizeof opts / sizeof *opts); i++) {
+        NSMenuItem *mi =
+            [[NSMenuItem alloc] initWithTitle:opts[i].titre
+                                       action:@selector(paintOp:)
+                                keyEquivalent:@""];
+        [mi setTag:opts[i].tag];
+        [mi setTarget:view];
+        [optMenu addItem:mi];
+    }
+    [optItem setSubmenu:optMenu];
+    [mainMenu addItem:optItem];
 
     NSMenuItem *toolsItem = [[NSMenuItem alloc] init];
     NSMenu *toolsMenu = [[NSMenu alloc] initWithTitle:@"Tools"];

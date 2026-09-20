@@ -1,0 +1,39 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. elle se LIT ===
+   put the grid
+   false
+=== 2. elle s'ÉCRIT, et la lecture suit ===
+   set the grid to true
+   [HOTE] grid <- « true » donc vrai
+   put the grid
+   true
+   set the grid to false
+   [HOTE] grid <- « false » donc faux
+   put the grid
+   false
+=== 3. l'aller-retour dans un même script ===
+   (une pile qui cale un réglage et le rend : l'usage réel)
+   put the grid into avant
+  set the grid to true
+  put "pendant : " & the grid
+  set the grid to avant
+  put "après : " & the grid
+   [HOTE] grid <- « true » donc vrai
+   pendant : true
+   [HOTE] grid <- « false » donc faux
+   après : false
+=== 4. on ne l'a PAS rendue écrivable au prix d'une porte ouverte ===
+   (une coquille doit toujours se plaindre — c'est tout l'objet
+    de setmuet.c, et une liste élargie pourrait l'avoir défait)
+   set the gird to true
+   [ERR]    !! propriété inconnue : gird
+   put the gird
+   [ERR]    !! propriété ou fonction inconnue : gird (v3, ligne 2 de stack "Grille".essai)
+   set the screenRect to "0,0,1,1"
+   [ERR]    !! propriété en lecture seule : screenRect
+=== 5. si l'hôte ne répond pas, on ne se tait pas : on le dit ===
+   put the grid
+   [ERR]    !! propriété ou fonction inconnue : grid (v3, ligne 2 de stack "Grille".essai)
+=== 6. le témoin : une propriété voisine n'a pas bougé ===
+   put the filled
+   false
