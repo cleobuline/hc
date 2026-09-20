@@ -295,6 +295,25 @@ void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
  * marches sont d'un pixel, et FatBits montre de toute façon le pixel. */
 #define HC_COIN_PAS   8
 
+int poly_sommets(int cotes, NSPoint centre, NSPoint vers,
+                 NSPoint *out, int max)
+{
+    if (!out || max < 3) return 0;
+    int n = cotes;
+    if (n < 3)   n = 3;
+    if (n > 50)  n = 50;
+    if (n > max) n = max;
+    double dx = vers.x - centre.x, dy = vers.y - centre.y;
+    double r  = sqrt(dx*dx + dy*dy);
+    if (r < 1) return 0;
+    double a0 = atan2(dy, dx);
+    for (int i = 0; i < n; i++) {
+        double t = a0 + 2.0 * M_PI * i / n;
+        out[i] = NSMakePoint(centre.x + r * cos(t), centre.y + r * sin(t));
+    }
+    return n;
+}
+
 int shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max)
 {
     if (!out || max < 3) return 0;
@@ -305,19 +324,7 @@ int shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max)
          * avec le geste. C'est notre choix — je ne sais pas reproduire de
          * mémoire ce que faisait exactement HyperCard, et une fidélité
          * inventée vaut moins qu'une décision assumée. */
-        int n = gPolySides;
-        if (n < 3)  n = 3;
-        if (n > 50) n = 50;
-        if (n > max) n = max;
-        double dx = b.x - a.x, dy = b.y - a.y;
-        double r  = sqrt(dx*dx + dy*dy);
-        if (r < 1) return 0;
-        double a0 = atan2(dy, dx);
-        for (int i = 0; i < n; i++) {
-            double t = a0 + 2.0 * M_PI * i / n;
-            out[i] = NSMakePoint(a.x + r * cos(t), a.y + r * sin(t));
-        }
-        return n;
+        return poly_sommets(gPolySides, a, b, out, max);
     }
 
     if (tool == TOOL_ROUNDRECT) {

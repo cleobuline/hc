@@ -54,6 +54,18 @@ void spray_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to,
 #define HC_SOMMETS_MAX 256
 int  shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max);
 
+/* LES SOMMETS D'UN POLYGONE RÉGULIER, côtés donnés plutôt que lus.
+ *
+ * Extrait de shape_sommets pour que la boîte « Polygon Sides » dessine ses
+ * six choix avec LE MÊME calcul que l'outil. Une boîte qui montre un
+ * hexagone pendant que l'outil en trace un autre est pire qu'une boîte
+ * absente : elle a l'autorité d'un aperçu.
+ *
+ * `centre` est le centre, `vers` donne à la fois le rayon et l'angle du
+ * premier sommet. Rend le nombre de points, 0 si le rayon est nul. */
+int  poly_sommets(int cotes, NSPoint centre, NSPoint vers,
+                  NSPoint *out, int max);
+
 void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSColor *color, CGFloat width);
 void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b);
 void flood_fill(NSBitmapImageRep *rep, int sx, int sy);

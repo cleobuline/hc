@@ -6,6 +6,8 @@
 //
 
 #import "HCpalettes.h"
+#import "graphics.h"   /* poly_sommets : la boîte « Polygon Sides »
+                             * dessine ses choix avec le calcul de l'outil */
 #import "icons.h"
 #import "HCview.h"
 #import "HCicons.h"
@@ -493,6 +495,94 @@ NSCursor *hcv_curseur_outil(int outil)
 
 
 
+/* ==================== Polygon Sides ====================
+ *
+ * LES SIX VALEURS, relevées sur la boîte de la vraie HyperCard : un
+ * triangle, un carré, puis des polygones de plus en plus ronds — le dernier
+ * ne se distingue plus d'un cercle à l'œil, ce qui est précisément son
+ * intérêt. Douze est le choix de l'utilisatrice pour celui-là ; les quatre
+ * premières valeurs sont lisibles sur la capture, la cinquième est une
+ * interpolation et se corrige en changeant un chiffre ici.
+ *
+ * Une seule table, et la palette comme le menu la lisent : deux listes de
+ * choix auraient fini par ne plus dire la même chose. */
+const int POLYCHOIX[NUM_POLYCHOIX] = { 3, 4, 5, 6, 8, 12 };
+
+#define POLY_CELL   46
+#define POLY_GAP    3
+#define POLY_MARGE  6
+
+static NSRect poly_case(int i)
+{
+    return NSMakeRect(POLY_MARGE + i * (POLY_CELL + POLY_GAP),
+                      POLY_MARGE, POLY_CELL, POLY_CELL);
+}
+
+@implementation PolySidesPalette
+
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { (void)event; return YES; }
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
+    NSRectFill(dirtyRect);
+
+    for (int i = 0; i < NUM_POLYCHOIX; i++) {
+        NSRect box = poly_case(i);
+        BOOL active = (gPolySides == POLYCHOIX[i]);
+
+        [(active ? [NSColor whiteColor]
+                 : [NSColor colorWithWhite:0.82 alpha:1.0]) setFill];
+        NSRectFill(box);
+
+        /* LE POLYGONE, par le calcul de l'outil. Pointe en HAUT : la vue est
+         * retournée, donc « vers le haut » s'écrit en y décroissant. */
+        NSPoint centre = NSMakePoint(NSMidX(box), NSMidY(box));
+        NSPoint vers   = NSMakePoint(centre.x, centre.y - (POLY_CELL/2 - 7));
+        NSPoint som[HC_SOMMETS_MAX];
+        int n = poly_sommets(POLYCHOIX[i], centre, vers, som, HC_SOMMETS_MAX);
+        if (n >= 3) {
+            NSBezierPath *pth = [NSBezierPath bezierPath];
+            [pth moveToPoint:som[0]];
+            for (int k = 1; k < n; k++) [pth lineToPoint:som[k]];
+            [pth closePath];
+            [[NSColor blackColor] setStroke];
+            [pth setLineWidth:1];
+            [pth stroke];
+        }
+
+        if (active) {
+            [[NSColor redColor] setStroke];
+            NSBezierPath *fr =
+                [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+            [fr setLineWidth:2];
+            [fr stroke];
+        } else {
+            [[NSColor colorWithWhite:0.6 alpha:1.0] setStroke];
+            NSFrameRect(box);
+        }
+    }
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+    for (int i = 0; i < NUM_POLYCHOIX; i++) {
+        if (NSPointInRect(p, poly_case(i))) {
+            gPolySides = POLYCHOIX[i];
+            /* Choisir un nombre de côtés CHOISIT AUSSI L'OUTIL, comme dans
+             * HyperCard : on n'ouvre pas cette boîte pour régler un outil
+             * qu'on ne va pas prendre. */
+            gTool = TOOL_REGPOLY;
+            hcv_palette_outils_maj();
+            hcv_curseur_maj();
+            [self setNeedsDisplay:YES];
+            break;
+        }
+    }
+}
+
+@end
+
 // ==================== palette d'outils custom (grille + sélection encadrée) ====================
 typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
@@ -766,8 +856,13 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                         case TOOL_ERASER: [gView eraseAll]; break;
                         case TOOL_PENCIL: case TOOL_LINE:
                     case TOOL_RECT:   case TOOL_OVAL:   case TOOL_FREEFORM:
-                    case TOOL_ROUNDRECT: case TOOL_REGPOLY:
+                    case TOOL_ROUNDRECT:
                         [gView showWidthPalette]; break;
+                        /* Le polygone régulier a SA boîte, comme le pinceau a
+                         * la sienne : c'est le nombre de côtés qu'on vient
+                         * régler, pas l'épaisseur du trait. */
+                    case TOOL_REGPOLY:
+                        [gView showPolySidesPalette]; break;
                     default: break;
                     }
                 }

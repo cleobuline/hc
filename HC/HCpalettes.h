@@ -19,6 +19,17 @@ int pattern_bit(int pat, int x, int y);
 
 @interface WidthPalette : NSView
 @end
+
+/* LES SIX CHOIX DE « POLYGON SIDES ».
+ *
+ * Six cases, comme la boîte d'HyperCard, et chacune dessine son polygone
+ * avec poly_sommets — le même calcul que l'outil. Une case qui montrerait
+ * autre chose que ce qui sera tracé aurait l'autorité d'un aperçu sans en
+ * avoir la fidélité. */
+@interface PolySidesPalette : NSView
+@end
+#define NUM_POLYCHOIX 6
+extern const int POLYCHOIX[NUM_POLYCHOIX];
 #define NUM_BRUSHES 12
 int brush_bit(int brush, int x, int y);
 

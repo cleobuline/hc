@@ -207,6 +207,7 @@ static BOOL gSelRectActive = NO;
 static NSPanel *gPatternPanel = nil;
 static NSPanel *gToolPanel = nil;
 static NSPanel *gWidthPanel = nil;
+static NSPanel *gPolySidesPanel = nil;
 static NSPanel *gBrushPanel = nil;
 
 /* ═══ Prévenir une palette qu'un script vient de changer son réglage ═════
@@ -226,6 +227,8 @@ static void hcv_palette_maj(NSPanel *p)
 {
     if (p && [p isVisible]) [(NSView *)[p contentView] setNeedsDisplay:YES];
 }
+
+void hcv_palette_outils_maj(void) { hcv_palette_maj(gToolPanel); }
 
 static BOOL gTextUnderline = NO;
 
@@ -2036,6 +2039,8 @@ static void cocoa_do_menu(const char *item) {
             { "Transparent",     HCV_PAINT_TRANSPARENT },
             { "Grid",            HCV_PAINT_GRID        },
             { "FatBits",         HCV_PAINT_FATBITS     },
+            { "Polygon Sides",   HCV_PAINT_POLYSIDES   },
+            { "Polygon Sides…",  HCV_PAINT_POLYSIDES   },
             { NULL, 0 }
         };
         for (int i = 0; PEINTURE[i].nom; i++)
@@ -3634,6 +3639,10 @@ static int parts_du_calque(Object *o)
             return hcv_outil_peint();
         }
 
+        /* Pas de coche : il OUVRE une boîte, il ne bascule pas un état. Le
+         * cocher laisserait croire qu'un réglage est en cours. */
+        if (t == HCV_PAINT_POLYSIDES) return hcv_outil_peint();
+
         if (t == HCV_PAINT_KEEP) return hcv_calque_courant() != NULL;
         if (t == HCV_PAINT_REVERT) {
             /* paintLayer d'abord : il passe par documentCard, qui peut oublier
@@ -4003,6 +4012,34 @@ static int gColorTarget = 0;
     [self setNeedsDisplay:YES];
 }
 
+- (void)installPolySidesPalette {
+    /* Les mêmes mesures que la palette, lues au même endroit : une taille
+     * recopiée ici aurait fini par ne plus correspondre au contenu. */
+    CGFloat cell = 46, gap = 3, margin = 6;
+    CGFloat w = margin*2 + NUM_POLYCHOIX*cell + (NUM_POLYCHOIX-1)*gap;
+    CGFloat h = margin*2 + cell;
+    gPolySidesPanel = [[NSPanel alloc]
+        initWithContentRect:NSMakeRect(220, 170, w, h)
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskUtilityWindow |
+                             NSWindowStyleMaskClosable | NSWindowStyleMaskNonactivatingPanel)
+                    backing:NSBackingStoreBuffered defer:NO];
+    [gPolySidesPanel setTitle:@"Polygon Sides"];
+    [gPolySidesPanel setFloatingPanel:YES];
+    [gPolySidesPanel setBecomesKeyOnlyIfNeeded:YES];
+    [gPolySidesPanel setHidesOnDeactivate:YES];
+    [gPolySidesPanel setReleasedWhenClosed:NO];
+    PolySidesPalette *grid =
+        [[PolySidesPalette alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    [gPolySidesPanel setContentView:grid];
+    [gPolySidesPanel makeKeyAndOrderFront:nil];
+}
+
+- (void)showPolySidesPalette {
+    if (!gPolySidesPanel) { [self installPolySidesPalette]; return; }
+    [gPolySidesPanel makeKeyAndOrderFront:nil];
+    hcv_palette_maj(gPolySidesPanel);
+}
+
 - (void)installWidthPalette {
     int cols = 4, rows = 3;
     CGFloat cell = 40, gap = 3, margin = 6;
@@ -4180,6 +4217,11 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * on tomberait sur le coin supérieur gauche du calque, qui n'est presque
      * jamais ce qu'on était en train de regarder — et il faudrait ⌘-glisser
      * jusqu'à son ouvrage avant de pouvoir y toucher. */
+    if (quoi == HCV_PAINT_POLYSIDES) {
+        [gView showPolySidesPalette];
+        return;
+    }
+
     if (quoi == HCV_PAINT_FATBITS) {
         gFatBits = !gFatBits;
         if (gFatBits) hcv_fat_centre(gFatDernier, [gView bounds]);

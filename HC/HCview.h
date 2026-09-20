@@ -43,7 +43,11 @@ enum {
     HCV_PAINT_GRID,
     /* FATBITS, l'autre mode du menu Options. Comme la grille : une coche,
      * aucune sélection demandée, et le même chemin unique. */
-    HCV_PAINT_FATBITS
+    HCV_PAINT_FATBITS,
+    /* « Polygon Sides… » ouvre une boîte au lieu de basculer un mode : il ne
+     * porte donc pas de coche, et se grise quand l'outil ne peint pas — la
+     * même règle que FatBits. */
+    HCV_PAINT_POLYSIDES
 };
 
 BOOL hcv_menu_trappe(const char *article);
@@ -56,6 +60,17 @@ BOOL hcv_menu_trappe(const char *article);
  * un curseur posé à la main serait écrasé par la première palette survolée et
  * ne reviendrait jamais. Voir la définition dans HCview.m. */
 void hcv_curseur_maj(void);
+
+/* REDEMANDER À LA PALETTE D'OUTILS DE SE REDESSINER.
+ *
+ * Nécessaire dès qu'un AUTRE panneau change gTool : la palette d'outils ne
+ * l'apprend pas toute seule, et resterait à montrer l'outil précédent comme
+ * actif — deux fenêtres qui se contredisent sous les yeux de l'utilisateur.
+ *
+ * Sans paramètre exprès : le panneau lui-même est privé à HCview.m, et
+ * l'exposer pour qu'un appelant le repasse n'aurait servi qu'à lui donner
+ * l'occasion de se tromper de panneau. */
+void hcv_palette_outils_maj(void);
 
 /* Abandonner la sélection de peinture — rectangle, lasso, tracé libre — et
  * arrêter les fourmis.
@@ -149,6 +164,10 @@ void    hcv_selectionne(Object *o);
 - (void)togglePalette:(id)sender;
 - (BOOL)paletteVisibleForTag:(NSInteger)tag;
 - (void)showWidthPalette;
+/* La boîte « Polygon Sides » : le double-clic sur l'outil l'ouvre, et
+ * l'article du menu Options aussi. Voir HCview.m. */
+- (void)installPolySidesPalette;
+- (void)showPolySidesPalette;
 - (void)showBrushPalette;
 - (void)newBackground:(id)sender;
 - (void)updateWindowTitle;

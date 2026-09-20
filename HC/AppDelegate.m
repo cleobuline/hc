@@ -561,30 +561,36 @@ static NSMenu *gRecentMenu = nil;
 
     /* --- menu Options ---
      *
-     * HyperCard en met treize ici. HC n'en pose que DEUX, et c'est délibéré :
-     * des onze autres, quatre existent déjà ailleurs dans HC et n'auraient
-     * ajouté qu'un second chemin vers la même chose —
+     * HyperCard en met treize ici. HC n'en pose que TROIS, et c'est
+     * délibéré : des dix autres, quatre existent déjà ailleurs dans HC et
+     * n'auraient ajouté qu'un second chemin vers la même chose —
      *
      *     Draw Filled    la palette d'outils le bascule déjà
      *     Draw Centered  la touche Option le fait déjà
      *     Line Size…     menu Tools, ⌘3
      *     Brush Shape…   menu Tools, ⌘4
      *
-     * — et les sept derniers (Draw Multiple, Edit Pattern…, Polygon Sides… et
-     * les quatre transformations libres) n'ont rien derrière eux. « Polygon
-     * Sides… » n'aurait même rien à régler : HC n'a pas d'outil polygone.
+     * — et les six derniers (Draw Multiple, Edit Pattern… et les quatre
+     * transformations libres) n'ont rien derrière eux.
      *
-     * Un menu de deux articles a l'air pauvre. Un menu de treize dont onze
+     * « Polygon Sides… » a longtemps été dans cette seconde liste, faute
+     * d'outil polygone. Il en sort avec lui.
+     *
+     * Un menu de trois articles a l'air pauvre. Un menu de treize dont dix
      * mentent l'est davantage, et on ne s'en aperçoit qu'après avoir cliqué.
      *
-     * LES DEUX QU'ON POSE n'existaient nulle part ailleurs. La grille sert
+     * LES TROIS QU'ON POSE n'existaient nulle part ailleurs. La grille sert
      * aux deux gestes qu'on répète le plus — aligner des boutons, tirer un
-     * trait droit ; FatBits est le seul moyen de poser un pixel précis. */
+     * trait droit ; FatBits est le seul moyen de poser un pixel précis ; et
+     * le nombre de côtés n'avait que « set the polySides » pour se régler. */
     NSMenuItem *optItem = [[NSMenuItem alloc] init];
     NSMenu *optMenu = [[NSMenu alloc] initWithTitle:@"Options"];
     struct { NSString *titre; NSInteger tag; } opts[] = {
         { @"Grid",    HCV_PAINT_GRID    },
         { @"FatBits", HCV_PAINT_FATBITS },
+        /* Les trois points disent qu'une boîte s'ouvre — la convention Mac,
+         * et le titre exact d'HyperCard. */
+        { @"Polygon Sides…", HCV_PAINT_POLYSIDES },
     };
     for (int i = 0; i < (int)(sizeof opts / sizeof *opts); i++) {
         NSMenuItem *mi =
