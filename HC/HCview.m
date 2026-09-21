@@ -281,11 +281,38 @@ static int     gPolyCount   = 0;
 static BOOL    gPolyDrawing = NO;
 static NSPoint gPolyVise    = {0, 0};
 
+/* FAIRE SUIVRE — OU NON — LES DÉPLACEMENTS DE SOURIS À LA FENÊTRE.
+ *
+ * HC ne les fait PAS suivre par défaut, et c'est une décision d'architecture
+ * assumée : le survol des boutons se traite au temps mort, dix fois par
+ * seconde, au lieu d'une fois par pixel parcouru. Le commentaire de
+ * hcv_survol l'explique, et sur une carte à cent boutons la différence est
+ * celle qu'on a passé du temps à obtenir.
+ *
+ * L'élastique de la ligne brisée, lui, a besoin de savoir où va la souris
+ * ENTRE deux clics — c'est la seule chose dans HC qui en ait besoin en
+ * dehors des menus surgissants. On l'allume donc pour la durée du tracé, et
+ * on l'éteint après : ce qui coûte est borné à un geste rare et délibéré,
+ * et l'état par défaut reste celui que l'architecture veut.
+ *
+ * LE GARDE SUR gPopupTarget n'est pas une coquetterie : le menu surgissant
+ * allume le même drapeau et ne l'éteint jamais. Sans ce test, terminer une
+ * ligne brisée pendant qu'un menu est ouvert aurait coupé les déplacements
+ * sous les pieds du menu — le tracé aurait réparé son propre état en
+ * cassant celui du voisin. */
+static void hcv_suivi_souris(int veut)
+{
+    if (!gView) return;
+    if (!veut && gPopupTarget) return;
+    [[gView window] setAcceptsMouseMovedEvents:veut ? YES : NO];
+}
+
 /* Graver la ligne et repartir à zéro. Appelée par le double-clic. */
 static void hcv_ligne_brisee_termine(void)
 {
     if (!gPolyDrawing) return;
     gPolyDrawing = NO;
+    hcv_suivi_souris(0);
 
     /* DEUX SOMMETS AU MOINS. Un seul clic suivi d'un double-clic ne trace
      * rien : c'est un geste annulé, pas un point à poser. Le crayon est là
@@ -376,6 +403,7 @@ void hcv_abandonne_selection(void)
      * mon intuition. */
     gPolyDrawing    = NO;
     gPolyCount      = 0;
+    hcv_suivi_souris(0);
     [gView stopAntsTimer];
 }
 
@@ -5493,6 +5521,15 @@ static BOOL      gSansMessageChamp = NO;
             [self beginPaintUndo];     /* une seule fois, avant le premier trait */
             gPolyDrawing = YES;
             gPolyCount   = 0;
+            /* mouseMoved: ne part qu'au PREMIER RÉPONDANT, et la fenêtre ne
+             * fait suivre les déplacements que si on le lui demande. Les
+             * deux, donc, sinon l'élastique reste d'une longueur nulle —
+             * invisible, ce qui ressemble à « il n'y a pas de ligne bleue »
+             * et non à « les événements n'arrivent pas ». C'est exactement
+             * ce que fait le menu surgissant, pour la même raison. */
+            [[self window] makeFirstResponder:self];
+            hcv_suivi_souris(1);
+            gPolyVise = p;
         }
         /* Le plafond atteint, on TERMINE au lieu d'ignorer le clic : une
          * ligne qui cesse de répondre sans rien dire est pire qu'une ligne
