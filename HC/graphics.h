@@ -38,6 +38,16 @@ int  paint_pixel_encre(NSBitmapImageRep *rep, int x, int y);
  * La question est posée ICI et nulle part ailleurs : les deux chemins du
  * crayon, le clic et « drag » par script, l'appellent tous deux. */
 void unink_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width);
+
+/* LA LARGEUR DE LA GOMME.
+ *
+ * Elle était écrite « 16 » aux QUATRE endroits qui la passent — le clic, le
+ * glisse, le clic scripté et « drag » — et les quatre lignes viennent d'être
+ * touchées ensemble pour une autre raison. La poser ici maintenant coûte
+ * zéro ; la poser plus tard aurait voulu dire retrouver les quatre, et
+ * changer la taille de la gomme dans trois sur quatre donne un outil qui
+ * n'efface pas de la même façon selon le geste. */
+#define HC_GOMME_LARGEUR 16
 void brush_stamp(NSBitmapImageRep *rep, int cx, int cy);
 void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to);
 

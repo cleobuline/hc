@@ -1660,7 +1660,7 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
                 paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
             break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
-        case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
+        case TOOL_ERASER: unink_stroke(rep, a, z, HC_GOMME_LARGEUR); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
         case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
         /* Le polygone régulier se lit CENTRE → RAYON : a est son centre, z
@@ -1787,7 +1787,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                 marge = 24;
                 break;
             case TOOL_ERASER:
-                erase_stroke(rep, p, p, 16);
+                unink_stroke(rep, p, p, HC_GOMME_LARGEUR);
                 marge = 20;
                 break;
             case TOOL_SPRAY:
@@ -4310,6 +4310,18 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
     [self setNeedsDisplay:YES];
 }
 
+/* VIDER LE CALQUE — et non « effacer » au sens de la gomme.
+ *
+ * Celui-ci NE SUIT PAS le mode opaque/transparent, exprès. La gomme est un
+ * geste de dessin : ce qu'elle laisse derrière elle est une question de
+ * mode, comme pour les trames. Vider un calque est autre chose — c'est
+ * retirer son contenu, pas peindre par-dessus. En mode opaque, le faire
+ * suivre la règle aurait rempli la carte entière de blanc FRANC, masquant le
+ * fond pour toujours au lieu de le découvrir, et « Clear Picture » serait
+ * devenu destructeur sans le dire.
+ *
+ * Écrit ici pour qu'on ne « corrige » pas cette incohérence apparente plus
+ * tard : elle est le résultat d'un choix, pas d'un oubli. */
 - (void)eraseAll {
     Object *card = [self documentCard];
     if (!card) return;
@@ -5357,7 +5369,7 @@ static BOOL      gSansMessageChamp = NO;
                             gSprayRadius, gSprayDensity);
                 [self startSprayTimer];
             }
-            else                           erase_stroke(rep, p, p, 16);
+            else                           unink_stroke(rep, p, p, HC_GOMME_LARGEUR);
             [self setNeedsDisplay:YES];
         }
         return;
@@ -5691,7 +5703,7 @@ static BOOL      gSansMessageChamp = NO;
         } else if (gTool == TOOL_SPRAY) {
             spray_stroke(rep, gPenLast, p, gSprayRadius, gSprayDensity);
         } else if (gTool == TOOL_ERASER) {
-            erase_stroke(rep, gPenLast, p, 16);
+            unink_stroke(rep, gPenLast, p, HC_GOMME_LARGEUR);
         }
 
         gPenLast = p;
