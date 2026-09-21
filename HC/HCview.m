@@ -2657,6 +2657,8 @@ static const char *cocoa_global_get(const char *name) {
 
     if (strcasecmp(name, "filled") == 0)
         return gShapeFilled ? "true" : "false";
+    if (strcasecmp(name, "transparent") == 0)
+        return gTransparentBg ? "true" : "false";
     if (strcasecmp(name, "grid") == 0)
         return gGrid ? "true" : "false";
     if (strcasecmp(name, "polySides") == 0) {
@@ -2824,6 +2826,34 @@ static void cocoa_global_set(const char *name, const char *value) {
 
     if (strcasecmp(name, "filled") == 0) {
         gShapeFilled = vrai ? YES : NO;
+        hcv_palette_maj(gToolPanel);
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+    /* LE MODE DE FOND, écrit exactement comme « filled » juste au-dessus.
+     *
+     * Les deux sont des cases VOISINES de la palette d'outils, et un seul des
+     * deux se posait par script : « set the filled to true » marchait, « set
+     * the transparent to true » disait « propriété inconnue ». Signalé à
+     * l'usage, et c'est notre motif de toujours — une règle appliquée à un
+     * endroit et pas à son voisin immédiat.
+     *
+     * Il gouverne aujourd'hui quatre choses : le fond des trames, celui du
+     * pinceau, et ce que « retirer l'encre » veut dire pour le crayon et la
+     * gomme. Un script qui ne pouvait pas le poser ne pouvait donc pas régler
+     * la moitié du comportement des outils.
+     *
+     * PAS DE PROPRIÉTÉ HYPERTALK DE CE NOM : la référence connaît filled,
+     * centered, grid, multiple, polySides, lineSize — pas transparent. Celle-ci
+     * est à nous, comme l'est déjà le choix opaque/transparent sur le crayon.
+     * Aucune collision avec « the style of button X », qui vaut parfois
+     * « transparent » : l'une est une globale de dessin, l'autre une propriété
+     * d'objet, et elles ne passent pas par le même chemin.
+     *
+     * hcv_palette_maj pour la même raison que filled : la palette porte la
+     * case, et sans rafraîchissement elle montrerait l'ancien état. */
+    if (strcasecmp(name, "transparent") == 0) {
+        gTransparentBg = vrai ? YES : NO;
         hcv_palette_maj(gToolPanel);
         [gView setNeedsDisplay:YES];
         return;

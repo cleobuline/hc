@@ -61,3 +61,16 @@
 === 9. et la coquille reste refusée ===
    set the polySide to 6
    [ERR]    !! propriété inconnue : polySide
+=== 10. « the transparent », le voisin de « the filled » ===
+   (les deux sont des cases VOISINES de la palette d'outils, et
+    un seul des deux se posait — le motif de toujours)
+   put the filled & " / " & the transparent
+   false / false
+   set the transparent to true
+   [HOTE] transparent <- « true » donc vrai
+   put the transparent
+   true
+   set the transparent to false
+   [HOTE] transparent <- « false » donc faux
+   put the transparent
+   false
