@@ -4343,15 +4343,35 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 }
 
 /* Séparée de l'action pour que « doMenu "Invert" » y arrive aussi : un script
- * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire. */
+ * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire.
+ *
+ * TOUT PASSE PAR gView, ET AUCUN `self` NE SUBSISTE ICI.
+ *
+ * `self` est la vue que le MENU a capturée à sa construction — la première
+ * fenêtre ouverte — et non celle qu'on regarde. Le fichier avertit de ce
+ * piège à deux endroits déjà, pour Keep, Revert et les validations, et cette
+ * méthode l'ignorait sur onze lignes.
+ *
+ * Signalé à l'usage sous sa forme la plus spectaculaire : « Clear Picture »
+ * choisi dans la pile demo EFFAÇAIT la carte de la pile « Sans titre ». Et
+ * pour cause — [self documentCard] rendait la carte de la vue capturée, qui
+ * n'est pas le document actif ; toute la méthode travaillait donc sur la
+ * mauvaise pile dès qu'il y avait plus d'une fenêtre.
+ *
+ * On ne corrige pas « Clear Picture » : on retire le `self` de la méthode.
+ * N'en traiter qu'un aurait laissé les dix autres, qui sont le même défaut
+ * attendant un autre signalement.
+ *
+ * L'autre chemin, « doMenu » venu d'un script, appelle déjà
+ * [gView paintOpTag:] : self y valait gView, et rien n'y change. */
 - (void)paintOpTag:(NSInteger)quoi
 {
     /* Keep et Revert portent sur la carte entière, pas sur une sélection : ils
      * passent donc AVANT qu'on en cherche une. Les exiger derrière le test de
      * zone les rendrait inutilisables au moment où on en a le plus besoin —
      * juste après un dessin raté, quand plus rien n'est sélectionné. */
-    if (quoi == HCV_PAINT_KEEP)   { [self keepPaint];   return; }
-    if (quoi == HCV_PAINT_REVERT) { [self revertPaint]; return; }
+    if (quoi == HCV_PAINT_KEEP)   { [gView keepPaint];   return; }
+    if (quoi == HCV_PAINT_REVERT) { [gView revertPaint]; return; }
 
     /* SELECT ALL, CLEAR PICTURE, OPAQUE ET TRANSPARENT, pour la même raison :
      * aucun ne transforme une sélection. Les deux premiers en FONT une ou la
@@ -4376,8 +4396,8 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
         gSelRectActive = YES;
         gLassoActive   = NO;
         gLassoCount    = 0;
-        [self startAntsTimer];
-        [self setNeedsDisplay:YES];
+        [gView startAntsTimer];
+        [gView setNeedsDisplay:YES];
         return;
     }
 
@@ -4386,22 +4406,22 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
          * C'est ce que fait HyperCard, et c'est la seule lecture qui ne
          * détruise pas plus que ce qu'on montrait à l'écran. */
         if (gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = [self documentCard];
+            Object *card = [gView documentCard];
             if (!card) return;
             Object *layer = gEditBackground ? card->bg : card;
             if (!layer) layer = card;
             NSBitmapImageRep *rep =
-                paint_bitmap(layer, (int)[self bounds].size.width,
-                                    (int)[self bounds].size.height);
+                paint_bitmap(layer, (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
             if (!rep) return;
-            [self beginPaintUndo];
+            [gView beginPaintUndo];
             erase_rect(rep, gSelStart, gSelEnd);
             gSelRectActive = NO;
-            [self stopAntsTimer];
-            [self setNeedsDisplay:YES];
+            [gView stopAntsTimer];
+            [gView setNeedsDisplay:YES];
             return;
         }
-        [self eraseAll];
+        [gView eraseAll];
         return;
     }
 
@@ -4439,7 +4459,7 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 
     if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
         gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         /* La palette des OUTILS montre cet état — c'est elle qui porte la
          * case, pas celle des trames. Sans ce rafraîchissement elle
          * resterait à l'ancienne valeur, et les deux se contrediraient sous
@@ -4452,16 +4472,16 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
     NSPoint *poly;
     if (!hcv_zone_peinture(&x0, &y0, &x1, &y1, &poly, &npoly)) { NSBeep(); return; }
 
-    Object *card = [self documentCard];
+    Object *card = [gView documentCard];
     if (!card) return;
     Object *layer = gEditBackground ? card->bg : card;
     if (!layer) layer = card;
 
-    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                (int)[self bounds].size.height);
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[gView bounds].size.width,
+                                                (int)[gView bounds].size.height);
     if (!rep) return;
 
-    [self beginPaintUndo];
+    [gView beginPaintUndo];
 
     switch (quoi) {
         case HCV_PAINT_INVERT:  paint_invert(rep, x0,y0,x1,y1, poly,npoly);      break;
@@ -4499,13 +4519,13 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
             gSelStart = NSMakePoint(NSMinX(neuf), NSMinY(neuf));
             gSelEnd   = NSMakePoint(NSMaxX(neuf), NSMaxY(neuf));
             gSelRectActive = YES;
-            [self startAntsTimer];
+            [gView startAntsTimer];
             break;
         }
         default: return;
     }
 
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 
 /* VIDER LE CALQUE — et non « effacer » au sens de la gomme.

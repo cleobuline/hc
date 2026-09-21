@@ -269,6 +269,22 @@ static NSMenu *gRecentMenu = nil;
     NSMenuItem *siItem = [[NSMenuItem alloc] initWithTitle:@"Stack Info…"
                                                         action:@selector(showStackInfo)
                                                  keyEquivalent:@""];
+        /* ATTENTION, PIÈGE : `view` est la vue de la PREMIÈRE fenêtre, celle
+         * qui existe au moment où la barre de menus se construit. Elle ne
+         * change plus ensuite, quel que soit le nombre de piles ouvertes.
+         *
+         * Une action de menu qui lit l'état de SA vue — [self documentCard],
+         * [self bounds] — travaille donc sur la mauvaise pile dès qu'il y a
+         * deux fenêtres. « Clear Picture » choisi dans une pile effaçait la
+         * carte d'une autre ; paintOpTag: en portait dix-huit occurrences.
+         *
+         * Les actions qui passent par hc_current_card() ou par les macros
+         * gDoc-> n'ont pas ce problème : elles désignent le document ACTIF.
+         * C'est le cas de toutes les autres, vérifié — mais la prochaine
+         * qu'on écrira ne le sera pas d'office.
+         *
+         * RÈGLE : une action de menu ne lit jamais `self` pour savoir sur
+         * quoi travailler. Elle demande au noyau, ou à gView. */
         [siItem setTarget:view];
         [fileMenu addItem:siItem];
         [fileMenu addItemWithTitle:@"New Card"
