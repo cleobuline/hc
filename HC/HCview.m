@@ -4677,32 +4677,31 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         [preview stroke];
     }
 
-    /* LA LIGNE BRISÉE EN COURS : les segments déjà posés en trait plein, puis
-     * l'élastique en pointillé jusqu'au curseur. Le pointillé distingue ce
-     * qui est acquis de ce qui suit la souris — sans lui on ne saurait pas
-     * où l'on en est. Bleu, comme tous les aperçus de ce fichier : la
-     * couleur dit « pas encore inscrit ». */
+    /* LA LIGNE BRISÉE EN COURS : les segments posés, puis l'élastique jusqu'au
+     * curseur — d'un seul trait bleu continu, comme l'aperçu de l'outil
+     * ligne. C'est le même geste, il doit se voir de la même façon.
+     *
+     * L'APERÇU NE FERME JAMAIS, même quand la gravure fermera.
+     *
+     * Je l'avais fermé, au nom de « montrer ce qu'on obtiendra ». À l'usage
+     * c'est déroutant : à chaque sommet posé, le segment de fermeture saute
+     * d'un bout à l'autre du dessin et masque ce qu'on est en train de
+     * tracer. Signalé dès le premier essai.
+     *
+     * La règle « l'aperçu montre le résultat » avait raison sur le polygone
+     * régulier, où la forme est ENTIÈRE à chaque instant du glissement. Ici
+     * la figure n'existe qu'une fois le dernier sommet posé : jusque-là il
+     * n'y a qu'un chemin en train de s'écrire, et le montrer fermé, c'est
+     * montrer une figure que l'utilisateur n'a pas encore décrite. La
+     * fermeture est un acte TERMINAL — elle appartient à la gravure. */
     if (gPolyDrawing && gPolyCount > 0) {
         [[NSColor blueColor] setStroke];
-        if (gPolyCount > 1) {
-            NSBezierPath *lb = [NSBezierPath bezierPath];
-            [lb moveToPoint:gPolyPts[0]];
-            for (int i = 1; i < gPolyCount; i++) [lb lineToPoint:gPolyPts[i]];
-            /* L'aperçu FERME quand la gravure fermera. Montrer une ligne
-             * ouverte pour inscrire une figure close serait le défaut qu'on
-             * a évité de justesse sur le polygone régulier : un outil qui
-             * annonce autre chose que ce qu'il fait. */
-            if (gShapeFilled && gPolyCount >= 3) [lb closePath];
-            [lb setLineWidth:1];
-            [lb stroke];
-        }
-        NSBezierPath *el = [NSBezierPath bezierPath];
-        [el moveToPoint:gPolyPts[gPolyCount - 1]];
-        [el lineToPoint:gPolyVise];
-        CGFloat tirets[] = {4, 4};
-        [el setLineDash:tirets count:2 phase:0];
-        [el setLineWidth:1];
-        [el stroke];
+        NSBezierPath *lb = [NSBezierPath bezierPath];
+        [lb moveToPoint:gPolyPts[0]];
+        for (int i = 1; i < gPolyCount; i++) [lb lineToPoint:gPolyPts[i]];
+        [lb lineToPoint:gPolyVise];
+        [lb setLineWidth:1];
+        [lb stroke];
     }
 
     if (gFreeDrawing && gFreeCount > 1) {
