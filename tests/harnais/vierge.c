@@ -16,8 +16,22 @@
 static void ma_ligne(HcLineKind k, int d, const char *t)
 { (void)d; if (k == HC_ERR) printf("   [ERR] %s\n", t); }
 
+/* Mesurer, puis RENDRE LA PILE.
+ *
+ * Ce harnais en crée une par cas, et la première version n'en libérait
+ * aucune : quatorze kilo-octets fuités, que la suite ordinaire ne voit pas
+ * et que --asan a refusés. Le harnais qui vérifie la mémoire des autres doit
+ * commencer par la sienne.
+ *
+ * La carte courante d'abord, sans quoi le noyau garderait un pointeur sur
+ * une carte libérée — et le défaut ne se verrait qu'au harnais SUIVANT. */
 static void dis(const char *quoi, Object *st)
-{ printf("   %-42s %s\n", quoi, hc_stack_vierge(st) ? "vierge" : "A SERVI"); }
+{
+    printf("   %-42s %s\n", quoi, hc_stack_vierge(st) ? "vierge" : "A SERVI");
+    hc_set_current_card(NULL);
+    hc_unregister_stack(st);
+    hc_free(st);
+}
 
 /* Une pile neuve, comme celle du démarrage : un fond, une carte, rien. */
 static Object *neuve(const char *nom, Object **fond, Object **carte)
