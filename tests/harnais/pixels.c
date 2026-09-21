@@ -1,75 +1,180 @@
-#include <stdio.h>
+/* LES TRANSFORMATIONS DU MENU PAINT, MESURÉES.
+ *
+ * hc_pixels.h le demandait depuis le premier jour, dans son propre en-tête :
+ * « un banc d'essai peut l'inclure à son tour et vérifier chaque
+ * transformation sur des images de quelques pixels, ce qu'aucun test à
+ * l'écran ne ferait aussi bien ». L'invitation était écrite ; personne ne
+ * l'avait acceptée, et c'est un défaut de Trace Edges qui l'a fait ouvrir.
+ *
+ * SIGNALÉ : « si le trait est noir sur transparent, Trace Edges trace les
+ * bords ; mais si c'est une trace noire sur du peint en blanc, Trace Edges
+ * rend la sélection transparente ».
+ *
+ * La cause : « posé » ne regardait que l'alpha. Sur du blanc OPAQUE, tous
+ * les pixels sont posés — bloc plein, aucun bord, tout se vide. Le même
+ * défaut que celui du crayon, corrigé la veille, dont le jumeau était resté
+ * ici.
+ *
+ * Les images font quelques pixels et se lisent à l'œil : c'est le seul
+ * format où une erreur d'un pixel se VOIT.
+ */
 #include "hc_pixels.h"
+#include <stdio.h>
 
-#define W 6
-#define H 4
+#define W 8
+#define H 6
 #define SPP 4
-static unsigned char img[H][W][SPP];
-static long bpr = W*SPP;
+#define BPR (W * SPP)
 
-static void vide_tout(void){ memset(img,0,sizeof img); }
-static void pose(int x,int y){ img[y][x][0]=img[y][x][1]=img[y][x][2]=0; img[y][x][3]=255; }
-static void blanc(int x,int y){ img[y][x][0]=img[y][x][1]=img[y][x][2]=255; img[y][x][3]=255; }
-static void montre(const char *titre){
-  printf("%s\n", titre);
-  for(int y=0;y<H;y++){ printf("      ");
-    for(int x=0;x<W;x++){
-      unsigned char *p=img[y][x];
-      putchar(p[3]==0 ? '.' : (p[0]<128 ? '#' : 'o'));
+static unsigned char img[H * BPR];
+
+static void efface(void)        { memset(img, 0, sizeof img); }
+static unsigned char *px(int x, int y) { return HCP_PX(img, BPR, SPP, x, y); }
+
+static void pose(int x, int y, unsigned char r, unsigned char g,
+                 unsigned char b, unsigned char a)
+{ unsigned char *p = px(x, y); p[0]=r; p[1]=g; p[2]=b; p[3]=a; }
+
+/* '#' encre, '.' vide, 'o' fond opaque (blanc), '?' autre chose */
+static void montre(const char *titre)
+{
+    printf("   %s\n", titre);
+    for (int y = 0; y < H; y++) {
+        printf("      ");
+        for (int x = 0; x < W; x++) {
+            unsigned char *p = px(x, y);
+            char c;
+            if (p[3] == 0)                              c = '.';
+            else if (p[0]==0   && p[1]==0   && p[2]==0) c = '#';
+            else if (p[0]==255 && p[1]==255 && p[2]==255) c = 'o';
+            else                                        c = '?';
+            putchar(c);
+        }
+        putchar('\n');
     }
-    putchar('\n');
-  }
 }
-/* « depuis » : dessine une figure repérable, un L asymétrique */
-static void figure(void){
-  vide_tout();
-  pose(1,1); pose(1,2); pose(2,2); pose(3,2);
+
+/* Un carré plein de 4x4, en (2,1). */
+static void carre_sur_vide(void)
+{
+    efface();
+    for (int y = 1; y <= 4; y++)
+        for (int x = 2; x <= 5; x++) pose(x, y, 0, 0, 0, 255);
 }
-int main(void){
-  printf("  . = vide   # = encre   o = blanc opaque\n\n");
 
-  figure(); montre("figure de depart (un L)");
+/* Le même carré, mais posé sur un fond BLANC OPAQUE partout. */
+static void carre_sur_blanc(void)
+{
+    efface();
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) pose(x, y, 255, 255, 255, 255);
+    for (int y = 1; y <= 4; y++)
+        for (int x = 2; x <= 5; x++) pose(x, y, 0, 0, 0, 255);
+}
 
-  figure(); hcp_invert((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, NULL,0);
-  montre("\ninvert sur x1..3 y1..2  (le vide devient encre, l'encre devient blanc)");
+int main(void)
+{
+    printf("=== 1. Trace Edges sur du NOIR SUR TRANSPARENT ===\n");
+    printf("   (le cas qui marchait déjà)\n");
+    hcp_fond_pose(0, 255, 255, 255);
+    carre_sur_vide();
+    montre("avant :");
+    hcp_trace_edges(img, BPR, SPP, W, H, 0, 0, W-1, H-1, NULL, 0);
+    montre("après : un contour creux");
 
-  figure(); hcp_flip((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, 1);
-  montre("\nflip horizontal sur x1..3 y1..2");
+    printf("=== 2. Trace Edges sur du NOIR SUR BLANC OPAQUE ===\n");
+    printf("   (le cas signalé : tout devenait transparent)\n");
+    hcp_fond_pose(1, 255, 255, 255);
+    carre_sur_blanc();
+    montre("avant :");
+    hcp_trace_edges(img, BPR, SPP, W, H, 0, 0, W-1, H-1, NULL, 0);
+    montre("après : le même contour, et l'intérieur repeint en fond");
 
-  figure(); hcp_flip((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, 0);
-  montre("\nflip vertical sur x1..3 y1..2");
+    printf("=== 3. ce que « retirer » laisse, selon le mode ===\n");
+    hcp_fond_pose(0, 255, 255, 255);
+    carre_sur_vide();
+    hcp_trace_edges(img, BPR, SPP, W, H, 0, 0, W-1, H-1, NULL, 0);
+    montre("transparent : l'intérieur redevient vide");
 
-  {int a,b,c,d; figure();
-   hcp_rotate((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, +1, &a,&b,&c,&d);
-   char t[80]; snprintf(t,sizeof t,"\nrotate DROITE de x1..3 y1..2  ->  nouveau rect x%d..%d y%d..%d",a,c,b,d);
-   montre(t);}
+    printf("=== 4. Invert : le vide noircit, l'encre s'efface ===\n");
+    printf("   (inverser du blanc donne du noir, comme chez HyperCard)\n");
+    hcp_fond_pose(0, 255, 255, 255);
+    carre_sur_vide();
+    hcp_invert(img, BPR, SPP, W, H, 2, 1, 5, 4, NULL, 0);
+    montre("le carré inversé sur lui-même :");
 
-  {int a,b,c,d; figure();
-   hcp_rotate((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, -1, &a,&b,&c,&d);
-   char t[80]; snprintf(t,sizeof t,"\nrotate GAUCHE de x1..3 y1..2  ->  nouveau rect x%d..%d y%d..%d",a,c,b,d);
-   montre(t);}
+    printf("=== 5. Flip horizontal : un coin marqué doit changer de côté ===\n");
+    efface();
+    pose(1, 1, 0, 0, 0, 255);
+    hcp_flip(img, BPR, SPP, W, H, 0, 0, W-1, H-1, 1);
+    montre("le point est passé à droite :");
 
-  figure(); hcp_trace_edges((unsigned char*)img,bpr,SPP,W,H, 0,0,W-1,H-1, NULL,0);
-  montre("\ntrace edges sur toute l'image (le L s'efface, son contour reste)");
+    printf("=== 6. Flip vertical ===\n");
+    efface();
+    pose(1, 1, 0, 0, 0, 255);
+    hcp_flip(img, BPR, SPP, W, H, 0, 0, W-1, H-1, 0);
+    montre("le point est passé en bas :");
 
-  vide_tout(); blanc(2,1); blanc(3,1);
-  hcp_invert((unsigned char*)img,bpr,SPP,W,H, 2,1,3,1, NULL,0);
-  montre("\ninvert sur deux pixels BLANCS opaques (doivent devenir encre)");
-
-  /* Darken et Lighten : on ne peut pas prédire QUELS pixels, mais on peut
-     vérifier que la proportion est la bonne et qu'ils restent dans la zone. */
-  {
-    int poses=0, hors=0;
-    vide_tout();
-    for(int k=0;k<200;k++) hcp_darken((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, NULL,0);
-    for(int y=0;y<H;y++) for(int x=0;x<W;x++){
-      int dedans = (x>=1&&x<=3&&y>=1&&y<=2);
-      if(img[y][x][3]) { poses++; if(!dedans) hors++; }
+    printf("=== 7. Rotation : un rectangle 4x2 devient 2x4, même centre ===\n");
+    efface();
+    for (int y = 2; y <= 3; y++)
+        for (int x = 2; x <= 5; x++) pose(x, y, 0, 0, 0, 255);
+    montre("avant :");
+    {
+        int nx0, ny0, nx1, ny1;
+        hcp_rotate(img, BPR, SPP, W, H, 2, 2, 5, 3, 1, &nx0, &ny0, &nx1, &ny1);
+        montre("après :");
+        printf("      la sélection devient %d,%d - %d,%d\n", nx0, ny0, nx1, ny1);
     }
-    printf("\ndarken x200 sur x1..3 y1..2 : %d pixels poses sur 6 possibles, %d hors zone\n", poses, hors);
-    for(int k=0;k<200;k++) hcp_lighten((unsigned char*)img,bpr,SPP,W,H, 1,1,3,2, NULL,0);
-    poses=0; for(int y=0;y<H;y++) for(int x=0;x<W;x++) if(img[y][x][3]) poses++;
-    printf("lighten x200 ensuite            : %d pixels restants (0 attendu)\n", poses);
-  }
-  return 0;
+
+    printf("=== 8. Darken et Lighten sont ALÉATOIRES ===\n");
+    printf("   (un pixel sur huit, tiré au sort : on ne mesure donc que le\n");
+    printf("    SENS — darken ajoute de l'encre, lighten en retire — et non\n");
+    printf("    quels pixels. Un golden sur un tirage serait un golden sur\n");
+    printf("    l'implémentation de rand, pas sur la nôtre.)\n");
+    srand(1);
+    efface();
+    int avant = 0, apres = 0;
+    hcp_darken(img, BPR, SPP, W, H, 0, 0, W-1, H-1, NULL, 0);
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+        if (hcp_pose(px(x, y), SPP)) apres++;
+    printf("   darken sur une image vide : %d posés au départ, %d après\n",
+           avant, apres);
+
+    hcp_fond_pose(0, 255, 255, 255);
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+        pose(x, y, 0, 0, 0, 255);
+    avant = W * H; apres = 0;
+    hcp_lighten(img, BPR, SPP, W, H, 0, 0, W-1, H-1, NULL, 0);
+    for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+        if (hcp_pose(px(x, y), SPP)) apres++;
+    printf("   lighten sur une image pleine : %d posés au départ, %d après\n",
+           avant, apres);
+
+    printf("=== 9. « posé » : les trois réponses ===\n");
+    hcp_fond_pose(1, 255, 255, 255);
+    efface();
+    pose(0, 0, 0, 0, 0, 255);          /* encre    */
+    pose(1, 0, 255, 255, 255, 255);    /* fond     */
+    pose(2, 0, 128, 0, 0, 255);        /* couleur  */
+    printf("   noir opaque      : %d\n", hcp_pose(px(0,0), SPP));
+    printf("   blanc opaque     : %d   (le fond n'est pas de l'encre)\n",
+           hcp_pose(px(1,0), SPP));
+    printf("   rouge sombre     : %d   (une couleur EST de l'encre)\n",
+           hcp_pose(px(2,0), SPP));
+    printf("   transparent      : %d\n", hcp_pose(px(3,0), SPP));
+
+    printf("=== 10. le remplissage au motif ===\n");
+    printf("   (touché ici parce que ce harnais inclut tout hc_pixels.h :\n");
+    printf("    une fonction jamais appelée est une fonction jamais vue)\n");
+    {
+        static const unsigned char damier[8] =
+            { 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55 };
+        hcp_fond_pose(0, 255, 255, 255);
+        efface();
+        hcp_remplit(img, BPR, SPP, W, H, 1, 1, 6, 4, NULL, 0,
+                    damier, 0, 0, 0, 255, 255, 255, 255, 1);
+        montre("un damier, fond transparent :");
+    }
+    return 0;
 }
