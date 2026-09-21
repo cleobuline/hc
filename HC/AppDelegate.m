@@ -1057,7 +1057,7 @@ static NSMenu *gRecentMenu = nil;
 
     HCDocument *actif = [HCDocument current];
     BOOL vierge = actif && actif.path == nil && actif.stack &&
-                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+                  hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
         Object *ancienne = actif.stack;
@@ -1249,10 +1249,17 @@ void cocoa_stack_changed(Object *stack) {
      * Ouvrir une pile ne ferme plus celle qu'on regardait : c'est le sens même
      * du multi-piles, et c'est ce que faisait HyperCard. La seule exception
      * est le document initial resté vierge — remplacer une pile « Sans titre »
-     * où l'on n'a rien fait évite d'accumuler des fenêtres vides. */
+     * où l'on n'a rien fait évite d'accumuler des fenêtres vides.
+     *
+     * « VIERGE » A ÉTÉ FAUX. Le test comptait les CARTES : une pile d'une
+     * seule carte où l'on avait dessiné, posé des boutons et écrit un script
+     * passait pour vide et partait à hc_free, sans confirmation ni message.
+     * hc_stack_vierge cherche maintenant une TRACE — une part, de la
+     * peinture, un script — et il est dans le noyau parce que ce test
+     * s'écrivait ici en deux exemplaires, et parce que là-bas il se mesure. */
     HCDocument *actif = [HCDocument current];
     BOOL vierge = actif && actif.path == nil && actif.stack &&
-                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+                  hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
         Object *ancienne = actif.stack;

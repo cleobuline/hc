@@ -2411,6 +2411,54 @@ int hc_card_count(Object *stack){
     return n;
 }
 
+/* UNE PILE N'A-T-ELLE VRAIMENT JAMAIS SERVI ?
+ *
+ * L'interface remplace la pile « Sans titre » du démarrage quand on en ouvre
+ * une autre, plutôt que d'accumuler des fenêtres vides. C'est commode, et
+ * c'était FAUX : le test ne comptait que les CARTES. Une pile d'une seule
+ * carte où l'on avait dessiné, posé des boutons et écrit un script passait
+ * donc pour vierge, et partait à hc_free sans que rien ne le dise.
+ *
+ * « J'ouvre une autre pile et la pile sans titre disparaît » — et avec elle
+ * tout ce qu'elle contenait.
+ *
+ * LA QUESTION EST ICI ET PAS DANS L'INTERFACE, pour deux raisons. Elle
+ * s'écrivait en DEUX exemplaires dans AppDelegate.m — « nouvelle pile » et
+ * « ouvrir une pile » — qui auraient divergé au premier critère ajouté ; et
+ * elle ne regarde que l'arbre des objets, donc elle se MESURE, ce que rien
+ * de ce qui touche aux fenêtres ne peut faire.
+ *
+ * CE QUI COMPTE POUR UNE TRACE : plus d'une carte, une part quelque part,
+ * de la peinture, un script. Rien d'autre n'est vérifiable sans supposer ce
+ * qu'est une pile « par défaut » — et dans le doute on rend « pas vierge »,
+ * parce que se tromper dans ce sens fait garder une fenêtre de trop, tandis
+ * que se tromper dans l'autre efface le travail de quelqu'un. */
+int hc_stack_vierge(Object *stack)
+{
+    if (!stack) return 0;
+
+    const char *sc = hc_script_of(stack);
+    if (sc && *sc) return 0;
+
+    int cartes = 0;
+    for (int i = 0; i < stack->nparts; i++) {
+        Object *o = stack->parts[i];
+        if (!o) continue;
+
+        /* Les fonds comptent autant que les cartes : on peut avoir tout
+         * dessiné sur le fond sans jamais toucher la carte. */
+        if (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND) {
+            if (o->type == OBJ_CARD && ++cartes > 1) return 0;
+            if (o->nparts > 0) return 0;
+            const char *p = hc_paint_of(o);
+            if (p && *p) return 0;
+            const char *s2 = hc_script_of(o);
+            if (s2 && *s2) return 0;
+        }
+    }
+    return 1;
+}
+
 /* Boutons/champs : même règle que pour les cartes. La pile de gardes coupe
  * aussi les cycles A -> B -> A, que l'ancien pointeur unique laissait passer. */
 int hc_delete_part(Object *o)
