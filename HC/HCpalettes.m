@@ -355,6 +355,7 @@ const char *hcv_curseur_nom_outil(int outil)
         case TOOL_ROUNDRECT:
         case TOOL_OVAL:
         case TOOL_REGPOLY:
+        case TOOL_POLY:
         case TOOL_FREEFORM: return "cross";
         default:            return "arrow";
     }
@@ -380,6 +381,7 @@ NSCursor *hcv_curseur_outil(int outil)
         case TOOL_ROUNDRECT:
         case TOOL_OVAL:
         case TOOL_REGPOLY:
+        case TOOL_POLY:
         case TOOL_FREEFORM: return [NSCursor crosshairCursor];
 
         case TOOL_TEXT:     return [NSCursor IBeamCursor];
@@ -598,6 +600,7 @@ static const ToolCell TOOLCELLS[] = {
     {"▢", 0, TOOL_ROUNDRECT},
     {"○", 0, TOOL_OVAL},
     {"⬠", 0, TOOL_REGPOLY},
+    {"∠", 0, TOOL_POLY},
     {"💧", 0, TOOL_FILL},
     {"✎", 0, TOOL_FREEFORM},
     {"⬚", 0, TOOL_LASSO},
@@ -776,6 +779,8 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                            draw_icon_ascii(ICON_ROUNDRECT32, box);
                } else if (tc->kind == 0 && tc->value == TOOL_REGPOLY) {
                            draw_icon_ascii(ICON_REGPOLY32, box);
+               } else if (tc->kind == 0 && tc->value == TOOL_POLY) {
+                           draw_icon_ascii(ICON_POLY32, box);
                 }else{
                     NSString *g = [NSString stringWithUTF8String:tc->glyph];
                     NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
@@ -856,7 +861,7 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
                         case TOOL_ERASER: [gView eraseAll]; break;
                         case TOOL_PENCIL: case TOOL_LINE:
                     case TOOL_RECT:   case TOOL_OVAL:   case TOOL_FREEFORM:
-                    case TOOL_ROUNDRECT:
+                    case TOOL_ROUNDRECT: case TOOL_POLY:
                         [gView showWidthPalette]; break;
                         /* Le polygone régulier a SA boîte, comme le pinceau a
                          * la sienne : c'est le nombre de côtés qu'on vient

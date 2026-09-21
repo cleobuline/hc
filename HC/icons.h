@@ -16,6 +16,10 @@ extern const char *ICON_FIELD32[32] ;
  * de la MÊME construction que shape_sommets, ce qui a servi deux fois : ces
  * icônes sont fidèles à ce que l'outil trace, et c'est en les regardant
  * qu'on a vu que la construction était fausse. */
+/* La ligne brisée, avec ses sommets marqués. OUVERTE : c'est ce que
+ * l'outil trace par défaut ; « filled » la referme, mais l'icône montre
+ * le cas sans réglage, comme les autres. */
+extern const char *ICON_POLY32[32];
 extern const char *ICON_ROUNDRECT32[32];
 extern const char *ICON_REGPOLY32[32];
 extern const char *ICON_RECT32[32] ;

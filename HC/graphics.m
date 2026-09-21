@@ -245,7 +245,8 @@ void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
 }
 // dessine une forme libre (contour fermé) à partir d'une liste de points
 
-void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
+void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width,
+                    int ferme) {
     if (!rep || n < 2) return;
     if (width <= 0) return;   // épaisseur 0 : pas de contour
 
@@ -274,7 +275,7 @@ void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width) {
     [path moveToPoint:pts[0]];
     for (int i = 1; i < n; i++)
         [path lineToPoint:pts[i]];
-    [path closePath];              // ferme le contour (relie au premier point)
+    if (ferme) [path closePath];   // relie au premier point : voir graphics.h
     [path setLineWidth:width];
     [path stroke];
 
