@@ -12,17 +12,42 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h);
 
 void paint_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, NSColor *color, CGFloat width);
 void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width);
-/* CE PIXEL PORTE-T-IL QUELQUE CHOSE ?
+/* CE PIXEL PORTE-T-IL DE L'ENCRE ?
  *
- * « Posé » veut dire alpha non nul, et c'est la convention que suivent déjà
- * le flot de remplissage et les transformations de zone : « a == 0 :
- * transparent, intact ». La reformuler ici — un seuil, une luminance —
- * aurait donné deux définitions du même mot dans le même fichier.
+ * Deux façons de n'en pas porter : le VIDE — alpha nul, la convention que
+ * suivent déjà le flot de remplissage et les transformations de zone —, et
+ * le FOND OPAQUE, c'est-à-dire la couleur de fond posée franchement.
+ *
+ * Le second cas n'existait pas tant que le crayon n'effaçait qu'en
+ * transparent. Il est né avec le mode opaque : sans lui, un pixel blanchi
+ * resterait « encré », le clic suivant voudrait l'effacer encore, et la
+ * bascule se coincerait d'un côté.
  *
  * x et y sont des coordonnées de VUE, donc de ligne : la vue de carte est
  * retournée, et les lignes de bitmapData se comptent depuis le haut. C'est
  * ce que font déjà brush_stamp et spray_stamp. */
-int  paint_pixel_pose(NSBitmapImageRep *rep, int x, int y);
+int  paint_pixel_encre(NSBitmapImageRep *rep, int x, int y);
+
+/* RETIRER L'ENCRE D'UN SEGMENT — la moitié « efface » du crayon.
+ *
+ * CE QUE « RETIRER » VEUT DIRE DÉPEND DU MODE DE FOND, et c'est la seule
+ * question que pose cette fonction : transparent, on retire pour de bon et
+ * le calque du dessous réapparaît ; opaque, on pose la couleur de fond, qui
+ * couvre — le blanc d'HyperCard.
+ *
+ * La question est posée ICI et nulle part ailleurs : les deux chemins du
+ * crayon, le clic et « drag » par script, l'appellent tous deux. */
+void unink_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width);
+
+/* LA LARGEUR DE LA GOMME.
+ *
+ * Elle était écrite « 16 » aux QUATRE endroits qui la passent — le clic, le
+ * glisse, le clic scripté et « drag » — et les quatre lignes viennent d'être
+ * touchées ensemble pour une autre raison. La poser ici maintenant coûte
+ * zéro ; la poser plus tard aurait voulu dire retrouver les quatre, et
+ * changer la taille de la gomme dans trois sur quatre donne un outil qui
+ * n'efface pas de la même façon selon le geste. */
+#define HC_GOMME_LARGEUR 16
 void brush_stamp(NSBitmapImageRep *rep, int cx, int cy);
 void brush_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to);
 

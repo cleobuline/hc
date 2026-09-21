@@ -182,7 +182,12 @@ static BOOL    gPenDrawing = NO;
  * redécider à chaque segment ferait clignoter le crayon le long de son
  * propre tracé : il effacerait ce qu'il vient de poser dès qu'il repasse
  * dessus, ce qui est exactement ce qu'on ne veut pas. C'est aussi ce que
- * fait l'éditeur d'icônes, qui pose _drawValue une fois. */
+ * fait l'éditeur d'icônes, qui pose _drawValue une fois.
+ *
+ * CE QU'« EFFACER » VEUT DIRE dépend du mode de fond, et la question est
+ * posée dans unink_stroke, pas ici : transparent, le calque du dessous
+ * réapparaît ; opaque, on pose du blanc qui couvre — la bascule est alors
+ * noir/blanc, comme chez HyperCard. */
 static BOOL    gPenEfface = NO;
 
 typedef enum { AXIS_NONE, AXIS_HORIZONTAL, AXIS_VERTICAL } HCAxisLock;
@@ -1644,13 +1649,18 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
          * tort sans qu'on puisse le voir. Le sens se décide sur le point de
          * DÉPART, comme au mouseDown. */
         case TOOL_PENCIL:
-            if (paint_pixel_pose(rep, (int)lround(a.x), (int)lround(a.y)))
-                erase_stroke(rep, a, z, gLineWidth);
+            /* floor, pour la même raison qu'au mouseDown : le pixel N couvre
+             * [N, N+1). Corriger un seul des deux chemins aurait donné au
+             * script et au geste deux décisions différentes sur le même
+             * pixel — le défaut qu'on venait justement d'éviter en traitant
+             * les trois sites ensemble. */
+            if (paint_pixel_encre(rep, (int)floor(a.x), (int)floor(a.y)))
+                unink_stroke(rep, a, z, gLineWidth);
             else
                 paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
             break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
-        case TOOL_ERASER: erase_stroke(rep, a, z, 16); break;
+        case TOOL_ERASER: unink_stroke(rep, a, z, HC_GOMME_LARGEUR); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
         case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
         /* Le polygone régulier se lit CENTRE → RAYON : a est son centre, z
@@ -1777,7 +1787,7 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                 marge = 24;
                 break;
             case TOOL_ERASER:
-                erase_stroke(rep, p, p, 16);
+                unink_stroke(rep, p, p, HC_GOMME_LARGEUR);
                 marge = 20;
                 break;
             case TOOL_SPRAY:
@@ -4300,6 +4310,18 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
     [self setNeedsDisplay:YES];
 }
 
+/* VIDER LE CALQUE — et non « effacer » au sens de la gomme.
+ *
+ * Celui-ci NE SUIT PAS le mode opaque/transparent, exprès. La gomme est un
+ * geste de dessin : ce qu'elle laisse derrière elle est une question de
+ * mode, comme pour les trames. Vider un calque est autre chose — c'est
+ * retirer son contenu, pas peindre par-dessus. En mode opaque, le faire
+ * suivre la règle aurait rempli la carte entière de blanc FRANC, masquant le
+ * fond pour toujours au lieu de le découvrir, et « Clear Picture » serait
+ * devenu destructeur sans le dire.
+ *
+ * Écrit ici pour qu'on ne « corrige » pas cette incohérence apparente plus
+ * tard : elle est le résultat d'un choix, pas d'un oubli. */
 - (void)eraseAll {
     Object *card = [self documentCard];
     if (!card) return;
@@ -5316,11 +5338,29 @@ static BOOL      gSansMessageChamp = NO;
             gLockedAxis = AXIS_NONE;
             /* Le sens du crayon se décide ICI, sur le pixel du premier
              * point, et ne rebascule plus jusqu'au relâchement. */
+            /* floor ET PAS lround : le pixel N occupe l'intervalle [N, N+1),
+             * donc la coordonnée continue X est DANS le pixel floor(X).
+             *
+             * lround lisait le pixel d'à côté dès que la fraction dépassait
+             * un demi, et sous FatBits c'est le cas de tous les clics posés
+             * au milieu d'une case — le centre du pixel N vaut exactement
+             * N + 0,5, que lround remonte à N+1. Un clic sur deux décidait
+             * donc d'après le pixel VOISIN : quand il était blanc, le crayon
+             * peignait du noir sur du noir, et rien ne bougeait.
+             *
+             * « Il peine à démarrer et il efface un pixel sur deux », dans
+             * les termes de l'usage — et l'un sur deux n'était pas une
+             * approximation, c'était la fréquence à laquelle le voisin
+             * différait.
+             *
+             * Hors de FatBits le défaut existait aussi, simplement invisible :
+             * la souris y donne des coordonnées presque entières, dont la
+             * fraction dépasse rarement un demi. */
             gPenEfface = (gTool == TOOL_PENCIL) &&
-                         paint_pixel_pose(rep, (int)lround(p.x),
-                                               (int)lround(p.y));
+                         paint_pixel_encre(rep, (int)floor(p.x),
+                                                (int)floor(p.y));
             if (gTool == TOOL_PENCIL) {
-                if (gPenEfface) erase_stroke(rep, p, p, gLineWidth);
+                if (gPenEfface) unink_stroke(rep, p, p, gLineWidth);
                 else paint_stroke(rep, p, p, [NSColor blackColor], gLineWidth);
             }
             else if (gTool == TOOL_BRUSH)  brush_stroke(rep, p, p);
@@ -5329,7 +5369,7 @@ static BOOL      gSansMessageChamp = NO;
                             gSprayRadius, gSprayDensity);
                 [self startSprayTimer];
             }
-            else                           erase_stroke(rep, p, p, 16);
+            else                           unink_stroke(rep, p, p, HC_GOMME_LARGEUR);
             [self setNeedsDisplay:YES];
         }
         return;
@@ -5656,14 +5696,14 @@ static BOOL      gSansMessageChamp = NO;
 
         if (gTool == TOOL_PENCIL) {
             /* Le sens vient du mouseDown : voir gPenEfface. */
-            if (gPenEfface) erase_stroke(rep, gPenLast, p, gLineWidth);
+            if (gPenEfface) unink_stroke(rep, gPenLast, p, gLineWidth);
             else paint_stroke(rep, gPenLast, p, [NSColor blackColor], gLineWidth);
         } else if (gTool == TOOL_BRUSH) {
             brush_stroke(rep, gPenLast, p);
         } else if (gTool == TOOL_SPRAY) {
             spray_stroke(rep, gPenLast, p, gSprayRadius, gSprayDensity);
         } else if (gTool == TOOL_ERASER) {
-            erase_stroke(rep, gPenLast, p, 16);
+            unink_stroke(rep, gPenLast, p, HC_GOMME_LARGEUR);
         }
 
         gPenLast = p;
