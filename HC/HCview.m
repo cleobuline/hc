@@ -57,6 +57,29 @@ typedef struct {
      * l'objet sélectionné ? » n'a plus qu'une réponse possible. */
     Object       *selected;
 
+    /* LA SÉLECTION DE PEINTURE, PAR DOCUMENT — le jumeau que j'avais laissé.
+     *
+     * Le commentaire ci-dessus disait déjà « le premier correctif
+     * l'ABANDONNAIT au changement de fenêtre, comme la sélection de
+     * peinture ». Celle-ci ne l'abandonnait même pas : elle était un GLOBAL
+     * DE PROCESSUS, donc partagée par toutes les fenêtres à la fois.
+     *
+     * Signalé à l'usage : ouvrir HC, ouvrir une seconde pile, « Select All »
+     * — et deux rectangles de fourmis apparaissaient, un par fenêtre, tous
+     * deux à la taille de la PREMIÈRE carte. Couper ou transformer en aurait
+     * appliqué l'effet à un calque et dessiné la marque sur l'autre.
+     *
+     * Le lasso voyage avec, pour la même raison : ses points sont l'autre
+     * forme de la même sélection, et n'en déménager qu'une aurait laissé la
+     * moitié du défaut. */
+    NSPoint       lassoPts[4096];
+    int           lassoCount;
+    BOOL          lassoDrawing;
+    BOOL          lassoActive;
+    NSPoint       selStart, selEnd;
+    BOOL          selRectDrawing;
+    BOOL          selRectActive;
+
     Object       *pressed;        /* objet sous le bouton de la souris */
     /* LA CARTE SUR LAQUELLE LE CLIC A EU LIEU.
      *
@@ -151,6 +174,14 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gPaintUndoLayer  (gDoc->paintUndoLayer)
 #define gKeepSnap        (gDoc->keepSnap)
 #define gKeepLayer       (gDoc->keepLayer)
+#define gLassoPts        (gDoc->lassoPts)
+#define gLassoCount      (gDoc->lassoCount)
+#define gLassoDrawing    (gDoc->lassoDrawing)
+#define gLassoActive     (gDoc->lassoActive)
+#define gSelStart        (gDoc->selStart)
+#define gSelEnd          (gDoc->selEnd)
+#define gSelRectDrawing  (gDoc->selRectDrawing)
+#define gSelRectActive   (gDoc->selRectActive)
 
 static NSTextField *gMsgBox = nil;
 static NSPanel *gMsgPanel = nil;
@@ -200,14 +231,8 @@ static int       gTextHeight = 0;
 static NSString *gTextStyleName = nil;
 static NSString *gTextAlign = nil;
  
-static NSPoint gLassoPts[4096];
-static int gLassoCount = 0;
-static BOOL gLassoDrawing = NO;
-static BOOL gLassoActive = NO;
-
-static NSPoint gSelStart, gSelEnd;
-static BOOL gSelRectDrawing = NO;
-static BOOL gSelRectActive = NO;
+/* La sélection de peinture vit dans HCDoc : voir la structure. Elle était
+ * ici, en globaux de processus, et toutes les fenêtres la partageaient. */
 
 static NSPanel *gPatternPanel = nil;
 static NSPanel *gToolPanel = nil;
@@ -3296,6 +3321,21 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 }
 
 - (void)stopAntsTimer {
+    /* LE MINUTEUR EST UNIQUE, LES SÉLECTIONS NE LE SONT PLUS.
+     *
+     * Tant que la sélection était un global, l'arrêter quand elle disparaît
+     * était juste. Depuis qu'elle est par document, la fenêtre qui abandonne
+     * la sienne arrêterait les fourmis de la fenêtre d'à côté, dont la
+     * sélection est toujours là : elle se figerait sans raison visible.
+     *
+     * C'est le défaut que ma propre correction introduisait, et il est de la
+     * famille qu'on traque depuis trois jours — un chemin corrigé, son jumeau
+     * oublié. On ne s'arrête donc que si PLUS AUCUN document n'a de
+     * sélection. */
+    for (HCDocument *d in [HCDocument allDocuments]) {
+        HCDoc *e = (HCDoc *)[d.view docState];
+        if (e && (e->selRectActive || e->lassoActive)) return;
+    }
     if (gAntsTimer) { [gAntsTimer invalidate]; gAntsTimer = nil; }
 }
 
@@ -4303,15 +4343,35 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 }
 
 /* Séparée de l'action pour que « doMenu "Invert" » y arrive aussi : un script
- * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire. */
+ * n'a pas d'article de menu à envoyer, donc pas d'étiquette à lire.
+ *
+ * TOUT PASSE PAR gView, ET AUCUN `self` NE SUBSISTE ICI.
+ *
+ * `self` est la vue que le MENU a capturée à sa construction — la première
+ * fenêtre ouverte — et non celle qu'on regarde. Le fichier avertit de ce
+ * piège à deux endroits déjà, pour Keep, Revert et les validations, et cette
+ * méthode l'ignorait sur onze lignes.
+ *
+ * Signalé à l'usage sous sa forme la plus spectaculaire : « Clear Picture »
+ * choisi dans la pile demo EFFAÇAIT la carte de la pile « Sans titre ». Et
+ * pour cause — [self documentCard] rendait la carte de la vue capturée, qui
+ * n'est pas le document actif ; toute la méthode travaillait donc sur la
+ * mauvaise pile dès qu'il y avait plus d'une fenêtre.
+ *
+ * On ne corrige pas « Clear Picture » : on retire le `self` de la méthode.
+ * N'en traiter qu'un aurait laissé les dix autres, qui sont le même défaut
+ * attendant un autre signalement.
+ *
+ * L'autre chemin, « doMenu » venu d'un script, appelle déjà
+ * [gView paintOpTag:] : self y valait gView, et rien n'y change. */
 - (void)paintOpTag:(NSInteger)quoi
 {
     /* Keep et Revert portent sur la carte entière, pas sur une sélection : ils
      * passent donc AVANT qu'on en cherche une. Les exiger derrière le test de
      * zone les rendrait inutilisables au moment où on en a le plus besoin —
      * juste après un dessin raté, quand plus rien n'est sélectionné. */
-    if (quoi == HCV_PAINT_KEEP)   { [self keepPaint];   return; }
-    if (quoi == HCV_PAINT_REVERT) { [self revertPaint]; return; }
+    if (quoi == HCV_PAINT_KEEP)   { [gView keepPaint];   return; }
+    if (quoi == HCV_PAINT_REVERT) { [gView revertPaint]; return; }
 
     /* SELECT ALL, CLEAR PICTURE, OPAQUE ET TRANSPARENT, pour la même raison :
      * aucun ne transforme une sélection. Les deux premiers en FONT une ou la
@@ -4324,14 +4384,20 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
      * script, et la palette pour la transparence — qui ne peuvent plus
      * diverger. C'est la règle qu'on s'applique partout ailleurs. */
     if (quoi == HCV_PAINT_SELECTALL) {
-        NSRect b = [self bounds];
+        /* gView ET PAS self. `self` est ici la vue que le MENU a capturée à
+         * sa construction — la première fenêtre ouverte —, pas celle qu'on
+         * regarde. Le fichier le dit déjà pour Keep, Revert et les
+         * validations, et Select All l'ignorait : la sélection prenait la
+         * taille de la carte de la PREMIÈRE pile, appliquée à la carte de la
+         * seconde. Signalé à l'usage, exactement sous cette forme. */
+        NSRect b = [gView bounds];
         gSelStart = NSMakePoint(0, 0);
         gSelEnd   = NSMakePoint(b.size.width, b.size.height);
         gSelRectActive = YES;
         gLassoActive   = NO;
         gLassoCount    = 0;
-        [self startAntsTimer];
-        [self setNeedsDisplay:YES];
+        [gView startAntsTimer];
+        [gView setNeedsDisplay:YES];
         return;
     }
 
@@ -4340,22 +4406,22 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
          * C'est ce que fait HyperCard, et c'est la seule lecture qui ne
          * détruise pas plus que ce qu'on montrait à l'écran. */
         if (gTool == TOOL_SELRECT && gSelRectActive) {
-            Object *card = [self documentCard];
+            Object *card = [gView documentCard];
             if (!card) return;
             Object *layer = gEditBackground ? card->bg : card;
             if (!layer) layer = card;
             NSBitmapImageRep *rep =
-                paint_bitmap(layer, (int)[self bounds].size.width,
-                                    (int)[self bounds].size.height);
+                paint_bitmap(layer, (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
             if (!rep) return;
-            [self beginPaintUndo];
+            [gView beginPaintUndo];
             erase_rect(rep, gSelStart, gSelEnd);
             gSelRectActive = NO;
-            [self stopAntsTimer];
-            [self setNeedsDisplay:YES];
+            [gView stopAntsTimer];
+            [gView setNeedsDisplay:YES];
             return;
         }
-        [self eraseAll];
+        [gView eraseAll];
         return;
     }
 
@@ -4393,7 +4459,7 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 
     if (quoi == HCV_PAINT_OPAQUE || quoi == HCV_PAINT_TRANSPARENT) {
         gTransparentBg = (quoi == HCV_PAINT_TRANSPARENT);
-        [self setNeedsDisplay:YES];
+        [gView setNeedsDisplay:YES];
         /* La palette des OUTILS montre cet état — c'est elle qui porte la
          * case, pas celle des trames. Sans ce rafraîchissement elle
          * resterait à l'ancienne valeur, et les deux se contrediraient sous
@@ -4406,16 +4472,16 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
     NSPoint *poly;
     if (!hcv_zone_peinture(&x0, &y0, &x1, &y1, &poly, &npoly)) { NSBeep(); return; }
 
-    Object *card = [self documentCard];
+    Object *card = [gView documentCard];
     if (!card) return;
     Object *layer = gEditBackground ? card->bg : card;
     if (!layer) layer = card;
 
-    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                (int)[self bounds].size.height);
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[gView bounds].size.width,
+                                                (int)[gView bounds].size.height);
     if (!rep) return;
 
-    [self beginPaintUndo];
+    [gView beginPaintUndo];
 
     switch (quoi) {
         case HCV_PAINT_INVERT:  paint_invert(rep, x0,y0,x1,y1, poly,npoly);      break;
@@ -4453,13 +4519,13 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
             gSelStart = NSMakePoint(NSMinX(neuf), NSMinY(neuf));
             gSelEnd   = NSMakePoint(NSMaxX(neuf), NSMaxY(neuf));
             gSelRectActive = YES;
-            [self startAntsTimer];
+            [gView startAntsTimer];
             break;
         }
         default: return;
     }
 
-    [self setNeedsDisplay:YES];
+    [gView setNeedsDisplay:YES];
 }
 
 /* VIDER LE CALQUE — et non « effacer » au sens de la gomme.
@@ -4771,29 +4837,45 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         [pv stroke];
     }
 
-    /* Lasso avec animation fourmis de feu */
-    if ((gLassoDrawing || gLassoActive) && gLassoCount > 1) {
-        [[NSColor blackColor] setStroke];
-        NSBezierPath *pv = [NSBezierPath bezierPath];
-        [pv moveToPoint:gLassoPts[0]];
-        for (int i = 1; i < gLassoCount; i++) [pv lineToPoint:gLassoPts[i]];
-        if (gLassoActive) [pv closePath];
-        [pv setLineWidth:1];
-        CGFloat dash[] = {4, 4};
-        [pv setLineDash:dash count:2 phase:gAntsPhase];
-        [pv stroke];
-    }
+    /* LA SÉLECTION SE DESSINE DEPUIS *CE* DOCUMENT, PAS DEPUIS L'ACTIF.
+     *
+     * Les macros gSel… et gLasso… passent par gDoc, qui désigne le document
+     * ACTIF — celui de la fenêtre au premier plan. Or drawRect: s'exécute
+     * pour TOUTES les fenêtres : la ranger dans HCDoc ne suffisait pas, la
+     * fenêtre du dessous aurait continué de peindre la sélection de celle du
+     * dessus, à ses coordonnées.
+     *
+     * C'était la moitié que ma première correction laissait. Le déménagement
+     * réparait le stockage ; il fallait aussi réparer la LECTURE. `moi` est
+     * le document de la vue qui dessine, et lui seul. */
+    {
+        HCDoc *moi = &_doc;
 
-    /* Sélection rectangulaire avec animation fourmis de feu */
-    if (gSelRectDrawing || gSelRectActive) {
-        NSRect sel = NSMakeRect(MIN(gSelStart.x,gSelEnd.x), MIN(gSelStart.y,gSelEnd.y),
-                                fabs(gSelEnd.x-gSelStart.x), fabs(gSelEnd.y-gSelStart.y));
-        [[NSColor blackColor] setStroke];
-        NSBezierPath *pv = [NSBezierPath bezierPathWithRect:sel];
-        [pv setLineWidth:1];
-        CGFloat dash[] = {4, 4};
-        [pv setLineDash:dash count:2 phase:gAntsPhase];
-        [pv stroke];
+        if ((moi->lassoDrawing || moi->lassoActive) && moi->lassoCount > 1) {
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *pv = [NSBezierPath bezierPath];
+            [pv moveToPoint:moi->lassoPts[0]];
+            for (int i = 1; i < moi->lassoCount; i++)
+                [pv lineToPoint:moi->lassoPts[i]];
+            if (moi->lassoActive) [pv closePath];
+            [pv setLineWidth:1];
+            CGFloat dash[] = {4, 4};
+            [pv setLineDash:dash count:2 phase:gAntsPhase];
+            [pv stroke];
+        }
+
+        if (moi->selRectDrawing || moi->selRectActive) {
+            NSRect sel = NSMakeRect(MIN(moi->selStart.x, moi->selEnd.x),
+                                    MIN(moi->selStart.y, moi->selEnd.y),
+                                    fabs(moi->selEnd.x - moi->selStart.x),
+                                    fabs(moi->selEnd.y - moi->selStart.y));
+            [[NSColor blackColor] setStroke];
+            NSBezierPath *pv = [NSBezierPath bezierPathWithRect:sel];
+            [pv setLineWidth:1];
+            CGFloat dash[] = {4, 4};
+            [pv setLineDash:dash count:2 phase:gAntsPhase];
+            [pv stroke];
+        }
     }
 
     if (gFloating && gClipboard) {
