@@ -245,6 +245,78 @@ static NSPoint gFreePts[4096];
 static int gFreeCount = 0;
 static BOOL gFreeDrawing = NO;
 
+/* ═══ LA LIGNE BRISÉE ══════════════════════════════════════════════════
+ *
+ * Le polygone irrégulier d'HyperCard. Un clic pose un sommet, le double-clic
+ * termine — et c'est « filled » qui décide s'il FERME :
+ *
+ *     filled éteint  ->  une ligne brisée, ouverte, sans intérieur
+ *     filled allumé  ->  la figure se referme et se remplit
+ *
+ * Relevé par l'utilisatrice sur la vraie HyperCard, où elle l'appelle « une
+ * curiosité ». C'en est une à l'usage, mais elle se déduit : un chemin
+ * ouvert ne peut pas être rempli, donc remplir oblige à fermer. Le tracé
+ * libre fait exactement pareil trois cents lignes plus bas — la règle
+ * existait déjà dans HC, elle attendait son second outil.
+ *
+ * Un clic pose un sommet, le double-clic termine. C'est le seul outil de
+ * peinture de HC dont l'état DURE entre deux gestes — tous les autres
+ * naissent au mouseDown et meurent au mouseUp. D'où des variables à part
+ * plutôt qu'un réemploi de gFreePts : le tracé libre accumule pendant un
+ * glissement et grave au relâchement, ce qui n'est ni le même cycle de vie
+ * ni la même fin. Partager le tableau aurait mis deux lignes de vie
+ * différentes dans un seul état, et l'un des deux outils aurait fini par
+ * trouver les restes de l'autre.
+ *
+ * gPolyVise est la position courante de la souris, pour l'élastique — le
+ * segment en pointillé qui va du dernier sommet au curseur. Sans lui on
+ * poserait des sommets à l'aveugle.
+ *
+ * MILLE VINGT-QUATRE SOMMETS : une ligne brisée de mille clics est déjà
+ * absurde, et le plafond est là pour qu'un script emballé ne déborde pas le
+ * tableau, pas pour brider qui que ce soit. */
+#define HCV_POLY_MAX 1024
+static NSPoint gPolyPts[HCV_POLY_MAX];
+static int     gPolyCount   = 0;
+static BOOL    gPolyDrawing = NO;
+static NSPoint gPolyVise    = {0, 0};
+
+/* Graver la ligne et repartir à zéro. Appelée par le double-clic. */
+static void hcv_ligne_brisee_termine(void)
+{
+    if (!gPolyDrawing) return;
+    gPolyDrawing = NO;
+
+    /* DEUX SOMMETS AU MOINS. Un seul clic suivi d'un double-clic ne trace
+     * rien : c'est un geste annulé, pas un point à poser. Le crayon est là
+     * pour poser un point. */
+    /* DEUX sommets suffisent pour une ligne ; il en faut TROIS pour enfermer
+     * une surface. fill_freeform le sait déjà et refuse en dessous ; on le
+     * redit ici seulement parce que le contour, lui, se fermerait quand même
+     * sur deux points — un aller-retour sur le même segment, tracé deux
+     * fois, plus épais par endroits. */
+    if (gPolyCount >= 2 && gView) {
+        Object *card = hc_current_card();
+        Object *layer = card ? (gEditBackground ? card->bg : card) : NULL;
+        if (!layer) layer = card;
+        if (layer) {
+            NSBitmapImageRep *rep =
+                paint_bitmap(layer, (int)[gView bounds].size.width,
+                                    (int)[gView bounds].size.height);
+            /* La fermeture SUIT « filled », et le remplissage vient avant le
+             * contour pour que le trait couvre la frange du remplissage —
+             * l'ordre qu'emploie déjà le tracé libre, et les formes. */
+            int ferme = (gShapeFilled && gPolyCount >= 3);
+            if (rep) {
+                if (ferme) fill_freeform(rep, gPolyPts, gPolyCount);
+                paint_freeform(rep, gPolyPts, gPolyCount, gLineWidth, ferme);
+            }
+        }
+    }
+    gPolyCount = 0;
+    [gView setNeedsDisplay:YES];
+}
+
 static BOOL gFloatDragging = NO;
 static NSPoint gFloatGrab;
 static NSFont *gTextFont = nil;
@@ -294,6 +366,16 @@ void hcv_abandonne_selection(void)
     gLassoCount     = 0;
     gFreeDrawing    = NO;
     gFreeCount      = 0;
+    /* La ligne brisée en cours est JETÉE, pas gravée, comme le tracé libre
+     * juste au-dessus. C'est la convention de cette fonction — elle laisse
+     * tomber ce qui n'est pas terminé — et l'aperçu est en bleu, la couleur
+     * que ce fichier emploie pour ce qui n'est pas encore inscrit.
+     *
+     * Graver à l'abandon aurait été défendable, et c'est même ce que
+     * j'allais faire ; la convention qui existait déjà a tranché mieux que
+     * mon intuition. */
+    gPolyDrawing    = NO;
+    gPolyCount      = 0;
     [gView stopAntsTimer];
 }
 
@@ -1518,6 +1600,10 @@ static void cocoa_choose_tool(const char *name) {
         { "regular polygon",TOOL_REGPOLY  },
         { "regular poly",   TOOL_REGPOLY  },
         { "regpoly",        TOOL_REGPOLY  },
+        /* Le polygone TOUT COURT est l'irrégulier, chez HyperCard comme ici :
+         * c'est le régulier qui porte un adjectif. */
+        { "polygon",        TOOL_POLY     },
+        { "poly",           TOOL_POLY     },
         { "curve",          TOOL_FREEFORM },
         { "text",           TOOL_TEXT     },
         { "polygon",        TOOL_FREEFORM },
@@ -1659,6 +1745,13 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
             else
                 paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
             break;
+        /* Par script, « drag from a to b » avec le polygone trace UN segment.
+         * C'est la seule lecture qui ait un sens : la commande donne deux
+         * points, et l'outil en attend une suite indéfinie que seul le
+         * double-clic termine. Un script qui veut une ligne brisée enchaîne
+         * les drags, ou passe par « choose line tool ». */
+        case TOOL_POLY:   paint_shape(rep, TOOL_LINE, a, z,
+                                      [NSColor blackColor], gLineWidth); break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
         case TOOL_ERASER: unink_stroke(rep, a, z, HC_GOMME_LARGEUR); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
@@ -2573,6 +2666,7 @@ static const char *cocoa_global_get(const char *name) {
             case TOOL_OVAL:     n = "oval";      break;
             case TOOL_ROUNDRECT: n = "round rect";       break;
             case TOOL_REGPOLY:   n = "regular polygon";  break;
+            case TOOL_POLY:      n = "polygon";          break;
             case TOOL_FREEFORM: n = "curve";     break;
             case TOOL_TEXT:     n = "text";      break;
                 
@@ -4583,6 +4677,34 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         [preview stroke];
     }
 
+    /* LA LIGNE BRISÉE EN COURS : les segments déjà posés en trait plein, puis
+     * l'élastique en pointillé jusqu'au curseur. Le pointillé distingue ce
+     * qui est acquis de ce qui suit la souris — sans lui on ne saurait pas
+     * où l'on en est. Bleu, comme tous les aperçus de ce fichier : la
+     * couleur dit « pas encore inscrit ». */
+    if (gPolyDrawing && gPolyCount > 0) {
+        [[NSColor blueColor] setStroke];
+        if (gPolyCount > 1) {
+            NSBezierPath *lb = [NSBezierPath bezierPath];
+            [lb moveToPoint:gPolyPts[0]];
+            for (int i = 1; i < gPolyCount; i++) [lb lineToPoint:gPolyPts[i]];
+            /* L'aperçu FERME quand la gravure fermera. Montrer une ligne
+             * ouverte pour inscrire une figure close serait le défaut qu'on
+             * a évité de justesse sur le polygone régulier : un outil qui
+             * annonce autre chose que ce qu'il fait. */
+            if (gShapeFilled && gPolyCount >= 3) [lb closePath];
+            [lb setLineWidth:1];
+            [lb stroke];
+        }
+        NSBezierPath *el = [NSBezierPath bezierPath];
+        [el moveToPoint:gPolyPts[gPolyCount - 1]];
+        [el lineToPoint:gPolyVise];
+        CGFloat tirets[] = {4, 4};
+        [el setLineDash:tirets count:2 phase:0];
+        [el setLineWidth:1];
+        [el stroke];
+    }
+
     if (gFreeDrawing && gFreeCount > 1) {
         [[NSColor blueColor] setStroke];
         NSBezierPath *pv = [NSBezierPath bezierPath];
@@ -5144,6 +5266,17 @@ static BOOL      gSansMessageChamp = NO;
 }
 
 - (void)mouseMoved:(NSEvent *)event {
+    /* L'ÉLASTIQUE DE LA LIGNE BRISÉE, avant les menus surgissants : elle est
+     * le seul outil qui ait besoin de savoir où va la souris ENTRE deux
+     * clics. Les deux cas ne se rencontrent pas — les menus n'existent que
+     * sous l'outil main —, mais l'ordre est choisi plutôt que subi. */
+    if (gPolyDrawing) {
+        gPolyVise = hcv_vue_vers_calque(
+            [self convertPoint:[event locationInWindow] fromView:nil]);
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (!gPopupTarget || gPopupFlashTimer) return;
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
     NSInteger row = popup_row_at_point(p);
@@ -5219,7 +5352,23 @@ static BOOL      gSansMessageChamp = NO;
     }
 
     /* 3. Double-clic sur un objet (Édition des infos ou du script) */
-    if (gTool != TOOL_BROWSE && hit && [event clickCount] == 2) {
+    /* LE DOUBLE-CLIC OUVRE LA FICHE D'UN OBJET — sous les OUTILS D'OBJET, et
+     * sous eux seuls.
+     *
+     * La condition était « tout sauf la main », ce qui embarquait les douze
+     * outils de peinture : double-cliquer sur un bouton le crayon en main
+     * ouvrait sa fiche, alors qu'on était en train de dessiner. Personne ne
+     * l'avait signalé, et pour cause — on ne double-clique pas en peignant.
+     *
+     * La ligne brisée, elle, s'y heurtait de plein fouet : son double-clic
+     * de FIN passait ici d'abord, et terminer un tracé au-dessus d'un bouton
+     * ouvrait une fiche au lieu de graver la ligne.
+     *
+     * Corrigé à la racine plutôt qu'en exceptant le nouvel outil : une
+     * exception aurait fait tomber le suivant dans le même trou, et la
+     * condition dit maintenant ce qu'elle veut dire. */
+    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) &&
+        hit && [event clickCount] == 2) {
         if (hit->type == OBJ_BUTTON)      [self showButtonInfo:hit];
         else if (hit->type == OBJ_FIELD)  [self showFieldInfo:hit];
         else                              [self editScriptOf:hit];
@@ -5318,11 +5467,44 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
-    /* 6. Préparation Undo pour les outils de dessin */
+    /* 6. Préparation Undo pour les outils de dessin.
+     *
+     * La ligne brisée n'est PAS dans cette liste : son instantané se prend au
+     * PREMIER clic seulement, dans son propre bloc. Le prendre à chaque clic
+     * le remplacerait par un état déjà entamé, et « annuler » ne retirerait
+     * plus que le dernier segment au lieu de la ligne entière — alors que la
+     * gravure, elle, est unique et se fait à la fin. */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
         gTool == TOOL_SPRAY  || gTool == TOOL_FILL  || gTool == TOOL_FREEFORM ||
         hcv_outil_forme(gTool))
         [self beginPaintUndo];
+
+    /* 6 bis. LA LIGNE BRISÉE — le seul outil dont l'état traverse plusieurs
+     * clics.
+     *
+     * LE DOUBLE-CLIC NE POSE PAS DE SOMMET DE PLUS. AppKit envoie d'abord un
+     * mouseDown de clickCount 1, PUIS un de clickCount 2 : le premier a déjà
+     * posé le dernier sommet. Ne pas regarder le compte l'aurait posé deux
+     * fois, et la ligne se serait terminée par un segment de longueur nulle —
+     * invisible à l'écran, bien présent dans le bitmap. */
+    if (gTool == TOOL_POLY) {
+        if ([event clickCount] >= 2) { hcv_ligne_brisee_termine(); return; }
+
+        if (!gPolyDrawing) {
+            [self beginPaintUndo];     /* une seule fois, avant le premier trait */
+            gPolyDrawing = YES;
+            gPolyCount   = 0;
+        }
+        /* Le plafond atteint, on TERMINE au lieu d'ignorer le clic : une
+         * ligne qui cesse de répondre sans rien dire est pire qu'une ligne
+         * qui s'achève. */
+        if (gPolyCount >= HCV_POLY_MAX) { hcv_ligne_brisee_termine(); return; }
+
+        gPolyPts[gPolyCount++] = p;
+        gPolyVise = p;
+        [self setNeedsDisplay:YES];
+        return;
+    }
 
     /* 7. Traitement des outils continus */
     if (gTool == TOOL_PENCIL || gTool == TOOL_BRUSH || gTool == TOOL_ERASER ||
@@ -5895,7 +6077,7 @@ static BOOL      gSansMessageChamp = NO;
             NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
             if (gShapeFilled && gFreeCount >= 3)
                 fill_freeform(rep, gFreePts, gFreeCount);
-            paint_freeform(rep, gFreePts, gFreeCount, gLineWidth);
+            paint_freeform(rep, gFreePts, gFreeCount, gLineWidth, 1);
         }
         gFreeCount = 0;
         [self setNeedsDisplay:YES];

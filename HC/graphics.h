@@ -95,7 +95,18 @@ void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSCol
 void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b);
 void flood_fill(NSBitmapImageRep *rep, int sx, int sy);
 
-void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width);
+/* Tracer une suite de points.
+ *
+ * `ferme` relie le dernier au premier. La ligne brisée le demande quand elle
+ * doit être remplie — on ne remplit pas un chemin ouvert — et pas autrement ;
+ * le tracé libre le demande toujours. C'est donc une décision de l'appelant,
+ * pas une propriété de la fonction.
+ *
+ * Un paramètre plutôt qu'une seconde fonction presque identique : deux
+ * copies auraient divergé au premier réglage d'épaisseur ou de mode
+ * d'encre. */
+void paint_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n, CGFloat width,
+                    int ferme);
 void fill_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n);
 void erase_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n);
 void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b);

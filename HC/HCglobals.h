@@ -15,7 +15,7 @@
 typedef enum { TOOL_BROWSE, TOOL_BUTTON, TOOL_FIELD, TOOL_PENCIL, TOOL_ERASER,
                TOOL_LINE, TOOL_RECT, TOOL_OVAL, TOOL_FILL, TOOL_FREEFORM,
                TOOL_LASSO, TOOL_SELRECT, TOOL_BRUSH , TOOL_TEXT,TOOL_SPRAY,
-               TOOL_ROUNDRECT, TOOL_REGPOLY } HCTool;
+               TOOL_ROUNDRECT, TOOL_REGPOLY, TOOL_POLY } HCTool;
 
 /* UN OUTIL DE FORME : celui qui se tire au cerf-volant entre deux points, et
  * dont le tracé n'existe qu'au relâchement.
@@ -37,6 +37,15 @@ static inline int hcv_outil_forme(HCTool t)
            t == TOOL_OVAL      || t == TOOL_ROUNDRECT ||
            t == TOOL_REGPOLY;
 }
+
+/* LE POLYGONE IRRÉGULIER N'EN EST PAS UN, et c'est la raison de ce
+ * commentaire plutôt que d'une ligne de plus au-dessus.
+ *
+ * Les outils de forme se tirent entre DEUX points et ne s'inscrivent qu'au
+ * relâchement. Celui-ci se pose par clics successifs et se termine au
+ * double-clic : ni le même nombre de points, ni le même moment, ni la même
+ * fin. Le ranger avec eux aurait fait passer un état qui dure plusieurs
+ * clics dans du code écrit pour un geste unique. */
 
 typedef enum { INK_BLACK, INK_WHITE, INK_ERASE } HCInk;
 
