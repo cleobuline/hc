@@ -28,6 +28,7 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
  * « false » vaut vrai. */
 static int  g_grille  = 0;
 static int  g_cotes   = 4;
+static int  g_transp  = 0;
 static int  g_repond  = 1;     /* l'hôte connaît-il « grid » ? */
 static void mon_set(const char *n, const char *v)
 {
@@ -44,6 +45,10 @@ static void mon_set(const char *n, const char *v)
         if (k > 50) k = 50;
         g_cotes = k;
         printf("   [HOTE] polySides <- « %s » donc %d\n", v ? v : "", g_cotes);
+    } else if (!strcasecmp(n, "transparent")) {
+        g_transp = (v && *v && strcasecmp(v, "false") != 0 && strcmp(v, "0") != 0);
+        printf("   [HOTE] transparent <- « %s » donc %s\n", v ? v : "",
+               g_transp ? "vrai" : "faux");
     } else {
         printf("   [HOTE] ignore « %s »\n", n);
     }
@@ -53,6 +58,7 @@ static const char *mon_get(const char *n)
     static char b[32];
     if (!strcasecmp(n, "grid") && g_repond) return g_grille ? "true" : "false";
     if (!strcasecmp(n, "polySides")) { snprintf(b, sizeof b, "%d", g_cotes); return b; }
+    if (!strcasecmp(n, "transparent")) return g_transp ? "true" : "false";
     if (!strcasecmp(n, "filled")) return "false";
     return NULL;
 }
@@ -129,5 +135,14 @@ int main(void)
 
     printf("=== 9. et la coquille reste refusée ===\n");
     fais("set the polySide to 6");
+
+    printf("=== 10. « the transparent », le voisin de « the filled » ===\n");
+    printf("   (les deux sont des cases VOISINES de la palette d'outils, et\n");
+    printf("    un seul des deux se posait — le motif de toujours)\n");
+    fais("put the filled & \" / \" & the transparent");
+    fais("set the transparent to true");
+    fais("put the transparent");
+    fais("set the transparent to false");
+    fais("put the transparent");
     return 0;
 }

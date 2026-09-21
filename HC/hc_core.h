@@ -378,6 +378,10 @@ int     hc_delete_card(Object *card);
 
 /* Nombre de cartes d'une pile. */
 int     hc_card_count(Object *stack);
+/* Cette pile n'a-t-elle VRAIMENT jamais servi ? Voir hc_core.c : c'est le
+ * test qui autorise l'interface à remplacer la pile « Sans titre » du
+ * démarrage, et il comptait les cartes là où il fallait chercher une trace. */
+int     hc_stack_vierge(Object *stack);
 
 /* ---- allumage d'un bouton ----
  * LE seul chemin d'accès. Pour un bouton de fond dont sharedHilite est faux,

@@ -1,0 +1,28 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. la pile du démarrage : un fond, une carte, rien dessus ===
+   neuve                                      vierge
+=== 2. ce qui compte pour une trace ===
+   un bouton sur la carte                     A SERVI
+   un champ sur la carte                      A SERVI
+   un bouton sur le FOND                      A SERVI
+   un script de pile                          A SERVI
+   un script de carte                         A SERVI
+   un script de FOND                          A SERVI
+   de la peinture sur la carte                A SERVI
+   de la peinture sur le FOND                 A SERVI
+   (le fond compte autant : on peut avoir tout dessiné
+    dessus sans jamais toucher la carte)
+   une seconde carte                          A SERVI
+=== 3. ce qui NE compte pas — et c'est voulu ===
+   (nom de la pile : « Mes essais »)
+   la pile renommée, rien d'autre            vierge
+   (on ne sait pas dire quel nom est « celui par défaut » sans
+    le supposer ; dans le doute on ne retient pas ce signal)
+=== 4. un script VIDE n'est pas un script ===
+   script de pile vide                        vierge
+   (sans quoi ouvrir puis refermer l'éditeur de script suffirait
+    à rendre une pile ineffaçable)
+=== 5. le cas dégénéré ===
+   NULL                                       A SERVI
+   (NULL n'est pas une pile vierge : rendre « vierge » ici
+    autoriserait l'appelant à remplacer ce qu'il n'a pas)

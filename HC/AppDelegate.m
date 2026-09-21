@@ -1056,8 +1056,25 @@ static NSMenu *gRecentMenu = nil;
     }
 
     HCDocument *actif = [HCDocument current];
+
+    /* LA PEINTURE D'ABORD, SINON LA QUESTION PORTE SUR RIEN.
+     *
+     * Le dessin vit dans le cache de l'interface — un NSBitmapImageRep par
+     * calque — et ne rejoint l'objet du noyau qu'à l'enregistrement ou au
+     * changement de carte. hc_paint_of rendait donc VIDE sur une pile
+     * couverte de dessin, et hc_stack_vierge, qui ne peut interroger que le
+     * noyau, répondait « vierge » en toute bonne foi.
+     *
+     * C'est pourquoi le premier correctif n'a rien changé pour qui ne fait
+     * que DESSINER : les boutons, les champs et les scripts, eux, sont dans
+     * le noyau dès qu'on les pose, et ceux-là étaient bien vus.
+     *
+     * Une question posée au noyau exige que le noyau soit à jour. Le défaut
+     * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
+    if (actif) [actif.view flushPaintToKernel];
+
     BOOL vierge = actif && actif.path == nil && actif.stack &&
-                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+                  hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
         Object *ancienne = actif.stack;
@@ -1249,10 +1266,34 @@ void cocoa_stack_changed(Object *stack) {
      * Ouvrir une pile ne ferme plus celle qu'on regardait : c'est le sens même
      * du multi-piles, et c'est ce que faisait HyperCard. La seule exception
      * est le document initial resté vierge — remplacer une pile « Sans titre »
-     * où l'on n'a rien fait évite d'accumuler des fenêtres vides. */
+     * où l'on n'a rien fait évite d'accumuler des fenêtres vides.
+     *
+     * « VIERGE » A ÉTÉ FAUX. Le test comptait les CARTES : une pile d'une
+     * seule carte où l'on avait dessiné, posé des boutons et écrit un script
+     * passait pour vide et partait à hc_free, sans confirmation ni message.
+     * hc_stack_vierge cherche maintenant une TRACE — une part, de la
+     * peinture, un script — et il est dans le noyau parce que ce test
+     * s'écrivait ici en deux exemplaires, et parce que là-bas il se mesure. */
     HCDocument *actif = [HCDocument current];
+
+    /* LA PEINTURE D'ABORD, SINON LA QUESTION PORTE SUR RIEN.
+     *
+     * Le dessin vit dans le cache de l'interface — un NSBitmapImageRep par
+     * calque — et ne rejoint l'objet du noyau qu'à l'enregistrement ou au
+     * changement de carte. hc_paint_of rendait donc VIDE sur une pile
+     * couverte de dessin, et hc_stack_vierge, qui ne peut interroger que le
+     * noyau, répondait « vierge » en toute bonne foi.
+     *
+     * C'est pourquoi le premier correctif n'a rien changé pour qui ne fait
+     * que DESSINER : les boutons, les champs et les scripts, eux, sont dans
+     * le noyau dès qu'on les pose, et ceux-là étaient bien vus.
+     *
+     * Une question posée au noyau exige que le noyau soit à jour. Le défaut
+     * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
+    if (actif) [actif.view flushPaintToKernel];
+
     BOOL vierge = actif && actif.path == nil && actif.stack &&
-                  hc_card_count(actif.stack) <= 1 && actif.cardCount == 0;
+                  hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
         Object *ancienne = actif.stack;
