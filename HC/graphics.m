@@ -1144,7 +1144,22 @@ static double *poly_a_plat(NSPoint *pts, int n)
     if (!data) return;                                              \
     int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];       \
     long bpr = (long)[rep bytesPerRow];                             \
-    int spp = (int)[rep samplesPerPixel]
+    int spp = (int)[rep samplesPerPixel];                           \
+    /* LE FOND, AVANT TOUTE TRANSFORMATION.                          \
+     *                                                               \
+     * hc_pixels.h est du C pur : il ne connaît ni gBackColor ni     \
+     * gTransparentBg, et c'est exprès. On les lui passe donc ici —  \
+     * dans le prologue, qui est le seul point par lequel passent    \
+     * TOUTES les transformations. Le poser chez chacune aurait      \
+     * donné six copies, dont l'une aurait fini par être oubliée.    \
+     *                                                               \
+     * Il sert à deux choses : savoir ce qui n'est PAS de l'encre    \
+     * (un blanc opaque n'en est pas), et savoir ce qu'on laisse en  \
+     * retirant. */                                                  \
+    { unsigned char br_, bg_, bb_;                                   \
+      color_rgb(gBackColor, [NSColor whiteColor], &br_, &bg_, &bb_, NULL); \
+      hcp_fond_pose(gTransparentBg ? 0 : 1, br_, bg_, bb_); }        \
+    (void)0
 
 void paint_invert(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
                   NSPoint *poly, int npoly)

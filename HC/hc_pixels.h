@@ -37,10 +37,46 @@
 /* Un pixel du tampon. */
 #define HCP_PX(data, bpr, spp, x, y)  ((data) + (long)(y) * (bpr) + (long)(x) * (spp))
 
-/* Est-il posé ? Sans canal alpha, tout l'est. */
+/* ═══ LE FOND : CE QUI N'EST PAS DE L'ENCRE ════════════════════════════
+ *
+ * Deux façons de ne pas porter d'encre : le VIDE — alpha nul —, et le FOND
+ * OPAQUE, c'est-à-dire la couleur de fond posée franchement.
+ *
+ * LE SECOND CAS MANQUAIT, ET C'EST TOUT LE DÉFAUT DE TRACE EDGES.
+ *
+ * « posé » ne regardait que l'alpha. Sur un dessin noir posé sur du blanc
+ * OPAQUE, tous les pixels sont donc « posés » : Trace Edges voyait un bloc
+ * plein sans aucun bord, ne trouvait aucun contour, et vidait la sélection
+ * entière. Sur du noir sur transparent, en revanche, il marchait — d'où un
+ * symptôme qui dépendait de la façon dont l'image avait été faite.
+ *
+ * C'est le MÊME défaut que celui du crayon, corrigé la veille dans
+ * paint_pixel_encre, et dont le jumeau est resté ici. Un chemin corrigé, son
+ * jumeau oublié : la famille de tout le week-end, et cette fois de ma main.
+ *
+ * TOLÉRANCE ZÉRO sur la comparaison, comme le flot de remplissage et le
+ * crayon : seul le fond EXACT compte pour du vide. Un blanc obtenu autrement
+ * — un lavis, une trame éclaircie — reste de l'encre.
+ *
+ * L'appelant pose la couleur avant chaque transformation ; par défaut, blanc
+ * et transparent, c'est-à-dire ce que faisait le code d'avant. */
+static int           hcp_fond_opaque = 0;
+static unsigned char hcp_fond_r = 255, hcp_fond_g = 255, hcp_fond_b = 255;
+
+static void hcp_fond_pose(int opaque, unsigned char r, unsigned char g,
+                          unsigned char b)
+{
+    hcp_fond_opaque = opaque;
+    hcp_fond_r = r; hcp_fond_g = g; hcp_fond_b = b;
+}
+
+/* Ce pixel porte-t-il de l'ENCRE ? */
 static int hcp_pose(const unsigned char *px, int spp)
 {
-    return spp < 4 || px[3] != 0;
+    if (spp >= 4 && px[3] == 0) return 0;          /* rien du tout */
+    if (px[0] == hcp_fond_r && px[1] == hcp_fond_g && px[2] == hcp_fond_b)
+        return 0;                                   /* le fond n'est pas de l'encre */
+    return 1;
 }
 
 static void hcp_encre(unsigned char *px, int spp)
@@ -49,10 +85,28 @@ static void hcp_encre(unsigned char *px, int spp)
     if (spp >= 4) px[3] = 255;
 }
 
+/* VIDER pour de bon : le résultat d'un calcul, pas un geste. */
 static void hcp_vide(unsigned char *px, int spp)
 {
     px[0] = 0; px[1] = 0; px[2] = 0;
     if (spp >= 4) px[3] = 0;
+}
+
+/* RETIRER L'ENCRE — ce que fait une transformation qui efface.
+ *
+ * Transparent, on retire et le calque du dessous réapparaît ; opaque, on
+ * pose la couleur de fond, qui couvre. La même règle que le crayon et la
+ * gomme, et elle est posée ici plutôt que recopiée chez chaque
+ * transformation.
+ *
+ * hcp_vide subsiste pour le seul cas qui n'est PAS un geste : le résultat
+ * d'un mélange dont l'opacité tombe à zéro. Là, le pixel n'a rien reçu ; il
+ * n'a pas été effacé. */
+static void hcp_retire(unsigned char *px, int spp)
+{
+    if (!hcp_fond_opaque) { hcp_vide(px, spp); return; }
+    px[0] = hcp_fond_r; px[1] = hcp_fond_g; px[2] = hcp_fond_b;
+    if (spp >= 4) px[3] = 255;
 }
 
 /* ═══ Composition d'une encre semi-opaque ═══════════════════════════════
@@ -173,7 +227,7 @@ static void hcp_lighten(unsigned char *data, long bpr, int spp, int W, int H,
         for (int x = x0; x <= x1; x++) {
             if (rand() % 8) continue;
             if (!hcp_dans_poly(poly, npoly, x, y)) continue;
-            hcp_vide(HCP_PX(data, bpr, spp, x, y), spp);
+            hcp_retire(HCP_PX(data, bpr, spp, x, y), spp);
         }
 }
 
@@ -219,7 +273,7 @@ static void hcp_trace_edges(unsigned char *data, long bpr, int spp, int W, int H
         for (int x = x0; x <= x1; x++) {
             unsigned char q = neuf[(y-y0)*w + (x-x0)];
             if (q == 1) hcp_encre(HCP_PX(data, bpr, spp, x, y), spp);
-            else if (q == 2) hcp_vide(HCP_PX(data, bpr, spp, x, y), spp);
+            else if (q == 2) hcp_retire(HCP_PX(data, bpr, spp, x, y), spp);
         }
     free(neuf);
 }
@@ -295,7 +349,7 @@ static void hcp_rotate(unsigned char *data, long bpr, int spp, int W, int H,
 
     for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
-            hcp_vide(HCP_PX(data, bpr, spp, x, y), spp);
+            hcp_retire(HCP_PX(data, bpr, spp, x, y), spp);
 
     for (int dy = 0; dy < nh; dy++)
         for (int dx = 0; dx < nw; dx++) {
