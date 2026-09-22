@@ -8565,7 +8565,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent",
+    "transparent", "centered",
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -8599,7 +8599,7 @@ static const char *V3_GLOBALES_HOTE[] = {
 static const char *V3_GLOBALES_ECRIVABLES[] = {
     "lockScreen", "editBkgnd", "cursor",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent",
+    "transparent", "centered",
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",

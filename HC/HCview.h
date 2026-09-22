@@ -47,7 +47,12 @@ enum {
     /* « Polygon Sides… » ouvre une boîte au lieu de basculer un mode : il ne
      * porte donc pas de coche, et se grise quand l'outil ne peint pas — la
      * même règle que FatBits. */
-    HCV_PAINT_POLYSIDES
+    HCV_PAINT_POLYSIDES,
+    /* « Draw Centered ». Une coche, comme la grille, et le même chemin
+     * unique : l'article de menu, « doMenu "Draw Centered" » et « the
+     * centered » posent le MÊME état. Il ne se grise pas faute de sélection
+     * — c'est un réglage qu'on allume AVANT de dessiner. */
+    HCV_PAINT_CENTERED
 };
 
 BOOL hcv_menu_trappe(const char *article);

@@ -74,3 +74,34 @@
    [HOTE] transparent <- « false » donc faux
    put the transparent
    false
+=== 11. « the centered », signalée par une pile réelle ===
+   (une pile de traceur de courbes la pose à chaque idle ; sans
+    elle, le gestionnaire tombait en erreur à chaque battement)
+   put the centered
+   false
+   set the centered to true
+   [HOTE] centered <- « true » donc vrai
+   put the centered
+   true
+   set the centered to false
+   [HOTE] centered <- « false » donc faux
+   put the centered
+   false
+=== 12. la ligne EXACTE de la pile signalée ===
+   (« if not the centered then set the centered to false » : la
+    propriété est lue par « not », donc elle doit rendre un
+    booléen que le noyau sait nier, pas une chaîne quelconque)
+   if not the centered then set the centered to false
+  put "idle survécu, centered = " & the centered
+   [HOTE] centered <- « false » donc faux
+   idle survécu, centered = false
+   set the centered to true
+  if not the centered then set the centered to false
+  put "restée : " & the centered
+   [HOTE] centered <- « true » donc vrai
+   restée : true
+=== 13. et la coquille reste refusée ===
+   set the centred to true
+   [ERR]    !! propriété inconnue : centred
+   put the centred
+   [ERR]    !! propriété ou fonction inconnue : centred (v3, ligne 2 de stack "Grille".essai)
