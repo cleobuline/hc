@@ -1,0 +1,30 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. une seule faute : rien ne change ===
+   (le compte ne s'affiche qu'à partir de deux)
+   --- ce que le dialogue reçoit ---
+   |    !! click : « NAN(004) » n'est pas une coordonnée
+=== 2. la même faute sept fois : une ligne et son compte ===
+   (c'est le cas signalé : « click at » dans une boucle de tracé)
+   --- ce que le dialogue reçoit ---
+   |    !! click : « NAN(004) » n'est pas une coordonnée (× 7)
+=== 3. deux fautes DIFFÉRENTES restent toutes les deux ===
+   (ne garder que la première ferait d'un rapport une devinette)
+   --- ce que le dialogue reçoit ---
+   |    !! click : « NAN(004) » n'est pas une coordonnée
+   |    !! drag : « NAN(004) » n'est pas une coordonnée
+   |    !! propriété inconnue (v3, ligne 5 de stack "Repetition".essai)
+=== 4. et elles gardent chacune son compte ===
+   (deux boucles à la suite, deux fautes distinctes)
+   --- ce que le dialogue reçoit ---
+   |    !! click : « NAN(004) » n'est pas une coordonnée (× 3)
+   |    !! drag : « NAN(004) » n'est pas une coordonnée (× 5)
+=== 5. seules les lignes CONSÉCUTIVES fusionnent ===
+   (deux fautes qui alternent restent lisibles : on veut voir
+    qu'elles alternent, c'est une information sur la boucle)
+   --- ce que le dialogue reçoit ---
+   |    !! click : « NAN(004) » n'est pas une coordonnée
+   |    !! drag : « NAN(004) » n'est pas une coordonnée
+   |    !! click : « NAN(004) » n'est pas une coordonnée
+   |    !! drag : « NAN(004) » n'est pas une coordonnée
+=== 6. le témoin : un script sans faute n'ouvre rien ===
+   (aucun dialogue ci-dessus : c'est le résultat attendu)
