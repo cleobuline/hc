@@ -305,6 +305,7 @@ HctValeur hct_chunk_supprime(const char *s, HctSorteChunk sorte,
      * hct_chunk_ecrit, juste en dessous. */
     int taille = deb + (len - fin);
     HctValeur r;
+    r.a_brut = 0; r.brut = 0;   /* un morceau de texte n'a pas de nombre brut */
     r.txt = malloc((size_t)taille + 1);
     if (!r.txt) return hct_val_echec();
     memcpy(r.txt, s, (size_t)deb);
@@ -364,6 +365,7 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
         if (besoin > (size_t)INT_MAX) return hct_val_echec();
         int taille = (int)besoin;
         HctValeur r;
+        r.a_brut = 0; r.brut = 0;   /* idem : du texte, pas un nombre */
         r.txt = malloc((size_t)taille + 1);
         if (!r.txt) return hct_val_echec();
         memcpy(r.txt, s, (size_t)b.deb);
@@ -436,6 +438,7 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     int taille = (int)besoin;
 
     HctValeur r;
+    r.a_brut = 0; r.brut = 0;   /* un morceau de texte n'a pas de nombre brut */
     r.txt = malloc((size_t)taille + 1);
     if (!r.txt) return hct_val_echec();
 

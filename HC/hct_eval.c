@@ -100,6 +100,11 @@ static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
     int le = entre ? (int)strlen(entre) : 0;
     int n = a.len + le + b.len;
     HctValeur r;
+    /* LA CONCATÉNATION REND DU TEXTE, jamais un nombre brut — et c'est
+     * mesuré : sous le gabarit « 0.0 », « put sqrt(2) & "" » rend 1.4 chez
+     * HyperCard comme ici. Le « & » est une conversion en texte, donc il met
+     * en forme, à la différence de « * ». */
+    r.a_brut = 0; r.brut = 0;
     r.txt = malloc((size_t)n + 1);
     if (!r.txt) return hct_val_echec();
     memcpy(r.txt, a.txt, (size_t)a.len);
@@ -142,8 +147,23 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
         hct_ctx_faute(ctx, n, "un nombre est attendu ici");
         return hct_val_vide();
     }
-    double x = est_vide(a.txt) ? 0 : hct_vers_nombre(a.txt);
-    double y = est_vide(b.txt) ? 0 : hct_vers_nombre(b.txt);
+    /* LE SEUL ENDROIT QUI REGARDE LE NOMBRE BRUT.
+     *
+     * Quand l'opérande sort d'une fonction, son texte a déjà été mis en forme
+     * — c'est ce que fait HyperCard aussi dès qu'on l'affiche ou qu'on le
+     * range — mais l'ARITHMÉTIQUE, elle, doit travailler sur la valeur non
+     * arrondie. Mesuré : « put 10*sqrt(2) » rend 14.1 sous le gabarit « 0.0 »,
+     * et « put 1000*sin(z) » rend 21.8 ; HC rendait 14.0 et 0.0, parce qu'il
+     * relisait le texte arrondi de son propre retour.
+     *
+     * Le 0.0 était le plus parlant : mille fois un sinus arrondi à zéro font
+     * zéro. Ce n'était plus un arrondi, c'était la valeur entière perdue.
+     *
+     * Le résultat, lui, repart en hct_val_calcul : les opérateurs mettent en
+     * forme. C'est ce qui fait « put 1/3*3 » -> 0.9, mesuré, et qui serait
+     * faux si l'on propageait le brut. */
+    double x = a.a_brut ? a.brut : (est_vide(a.txt) ? 0 : hct_vers_nombre(a.txt));
+    double y = b.a_brut ? b.brut : (est_vide(b.txt) ? 0 : hct_vers_nombre(b.txt));
     double r = 0;
 
     if      (!strcmp(op, "+")) r = x + y;
@@ -638,7 +658,12 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
     if (nargs == 1 && hct_est_nombre(args[0].txt)) {
         double y;
         if (math_un_arg(nom, hct_vers_nombre(args[0].txt), &y)) {
-            r = hct_val_calcul(y); fait = 1;
+            /* LE RETOUR GARDE SON NOMBRE NON ARRONDI À CÔTÉ DU TEXTE. Le
+             * texte reste celui d'avant — mis en forme —, si bien qu'un
+             * affichage, une concaténation ou un rangement ne changent pas
+             * d'un caractère. Seul l'opérateur arithmétique lira le brut.
+             * Voir la note sur HctValeur dans hct_val.h. */
+            r = hct_val_fonction(y); fait = 1;
         } else if (!strcasecmp(nom, "numtochar")) {
             /* numToChar : le code passe par un entier BORNÉ. « numToChar(10^300) »
              * convertissait un double hors bornes, ce qui est indéfini.
@@ -1263,7 +1288,11 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
                     math_un_arg(nom, hct_vers_nombre(a.txt), &y)) {
                     hct_val_libere(&a);
                     free(nom);
-                    return hct_val_calcul(y);
+                    /* LE JUMEAU de l'appel à parenthèses : « the sqrt of 2 »
+                     * et « sqrt(2) » doivent rendre la même chose. Corriger
+                     * l'un sans l'autre laisserait deux arithmétiques dans le
+                     * même noyau selon la tournure employée. */
+                    return hct_val_fonction(y);
                 }
                 hct_val_libere(&a);
             }

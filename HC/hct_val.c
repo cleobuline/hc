@@ -43,6 +43,7 @@ HctValeur hct_val_echec(void)
     HctValeur v;
     v.txt = g_vide;
     v.len = 0;
+    v.a_brut = 0; v.brut = 0;
     g_manque = 1;
     return v;
 }
@@ -55,6 +56,7 @@ HctValeur hct_val_vide(void)
     HctValeur v;
     v.txt = g_vide;
     v.len = 0;
+    v.a_brut = 0; v.brut = 0;
     return v;
 }
 
@@ -68,6 +70,9 @@ HctValeur hct_val_texte_n(const char *s, int len)
     memcpy(v.txt, s, (size_t)len);
     v.txt[len] = '\0';
     v.len = len;
+    /* TOUT CE QUI VIENT DU TEXTE EST SANS NOMBRE BRUT. C'est le défaut, et il
+     * doit l'être : seul hct_val_fonction pose le drapeau. */
+    v.a_brut = 0; v.brut = 0;
     return v;
 }
 
@@ -90,6 +95,16 @@ HctValeur hct_val_calcul(double x)
     char buf[64];
     int n = hct_ecrit_nombre_format(x, buf, sizeof buf);
     return hct_val_texte_n(buf, n);
+}
+
+/* LE RETOUR D'UNE FONCTION : même texte qu'un calcul, plus le nombre non
+ * arrondi à côté. Voir la note sur HctValeur dans hct_val.h — c'est elle qui
+ * porte les mesures et la raison de ne pas typer davantage. */
+HctValeur hct_val_fonction(double x)
+{
+    HctValeur v = hct_val_calcul(x);
+    if (v.txt != g_vide) { v.a_brut = 1; v.brut = x; }
+    return v;
 }
 
 HctValeur hct_val_bool(int vrai)

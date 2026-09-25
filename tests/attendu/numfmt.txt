@@ -48,9 +48,16 @@
 ── les OPERATEURS suivent le gabarit : conforme a HyperCard
    1/3*3         -> 0.9   (HyperCard : 0.9)
    value(1/3*3)  -> 0.9   (HyperCard : 0.9)
-── les FONCTIONS ne devraient PAS le suivre : ECART connu
-   10*sqrt(2)    -> 14.0   ECART, HyperCard : 14.1
-   1000*sin(z)   -> 0.0   ECART, HyperCard : 21.8
-   sin(z) seul   -> 0.0   ecrase avant la multiplication
+── les FONCTIONS ne le suivent PAS : conforme a HyperCard
+   10*sqrt(2)    -> 14.1   (HyperCard : 14.1)
+   1000*sin(z)   -> 21.8   (HyperCard : 21.8)
+   sin(z) seul   -> 0.0   mis en forme : c'est une CONCATENATION
+── le JUMEAU : « the sqrt of » doit suivre « sqrt() »
+   10*(the sqrt of 2) -> 14.1   (HyperCard : 14.1)
+── LA ROSACE, telle que la pile la calcule
+   r*cos(t),r*sin(t) -> 6.3,2.0
+      (avant, cos(t) etait arrondi a UNE decimale avant la
+       multiplication : vingt-et-une valeurs pour tout un
+       cercle, d'ou les marches de douze pixels)
 ── l'affichage direct, lui, est conforme
    sqrt(2)       -> 1.414   (HyperCard : 1.414)

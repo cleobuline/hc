@@ -90,44 +90,77 @@ int main(void){
    *     les FONCTIONS ne le font jamais ;
    *     la conversion en TEXTE met en forme.
    *
-   * CE QUE HC FAIT DE DIFFÉRENT, et c'est un défaut ouvert : il met en forme
-   * le RETOUR des fonctions. « 1000*sin(z) » rend donc 0.0 au lieu de 21.8,
-   * parce que sin(z) a été écrasé à 0.0 avant la multiplication.
+   * CE QUE HC FAISAIT DE DIFFÉRENT, et c'est corrigé : il mettait en forme le
+   * RETOUR des fonctions. « 1000*sin(z) » rendait 0.0 au lieu de 21.8, parce
+   * que sin(z) était écrasé à 0.0 AVANT la multiplication. Mille fois zéro
+   * font zéro — ce n'était plus un arrondi, c'était la valeur perdue.
    *
-   * CE QUE ÇA COÛTE. Un traceur polaire d'époque qui pose « set the
-   * numberFormat to 0.0 » dans sa boucle sort une rosace en marches
+   * CE QUE ÇA COÛTAIT. Un traceur polaire d'époque qui pose « set the
+   * numberFormat to 0.0 » dans sa boucle sortait une rosace en marches
    * d'escalier de douze pixels là où HyperCard en trace une lisse — deux
-   * captures côte à côte l'ont montré. Et le dessin n'est que la partie
-   * visible : TOUT calcul scientifique sous gabarit étroit est faussé, en
-   * silence.
+   * captures côte à côte l'ont montré. cos(t) ne valait plus que 0.0, 0.1,
+   * 0.2 : vingt-et-une valeurs pour tout un cercle. Et le dessin n'était que
+   * la partie visible ; TOUT calcul scientifique sous gabarit étroit était
+   * faussé, en silence.
    *
-   * POURQUOI CE N'EST PAS CORRIGÉ ICI. La correction tient en deux lignes —
-   * rendre hct_val_nombre au lieu de hct_val_calcul dans les deux sites qui
-   * enveloppent math_un_arg — mais elle rend l'affichage faux en échange :
-   * « put sqrt(2) » montrerait 1.414214 là où HyperCard montre 1.414. Les deux
-   * sont vrais en même temps chez HyperCard parce que ses valeurs sont TYPÉES :
-   * il garde le nombre entier et ne met en forme qu'à la conversion. HC n'a que
-   * du texte, et une seule représentation ne peut pas servir les deux usages.
+   * POURQUOI LA CORRECTION ÉVIDENTE ÉTAIT FAUSSE, et elle a dormi des
+   * semaines dans un bloc-notes à ce titre : rendre hct_val_nombre au lieu de
+   * hct_val_calcul dans les deux sites qui enveloppent math_un_arg corrige
+   * bien « 10*sqrt(2) », mais casse l'affichage en échange — « put sqrt(2) »
+   * montrerait 1.414214 là où HyperCard montre 1.414.
    *
-   * La vraie correction est donc de typer les valeurs. En attendant, les trois
-   * sections ci-dessous mesurent ce que HC fait AUJOURD'HUI — pas ce qu'il
-   * devrait faire. Les lignes marquées « ÉCART » sont celles qui diffèrent de
-   * HyperCard, avec sa valeur en face.
+   * CE QUI A DÉBLOQUÉ, ce sont CINQ MESURES prises en parallèle dans
+   * Basilisk II et dans HC, avec une sonde qui accumule pour ne pas effacer
+   * sa propre preuve :
    *
-   * Un contournement existe et marche : écrire « 0.000 » plutôt que « 0.0 »
-   * dans la pile. C'est ce que fait la pile qui a servi de banc d'essai. */
+   *     set the numberFormat to 0.0 / put sqrt(2) into x
+   *     A  put x                  1.4        l'affichage met en forme
+   *     B  put 10*x               14.0       RANGER A FIGÉ la mise en forme
+   *     C  put sqrt(2) & \"\"       1.4        la concaténation aussi
+   *     D  put sqrt(2)            1.4        idem
+   *     E  gabarit effacé, put x  1.4        x est bien du texte figé
+   *
+   * LES CINQ SONT IDENTIQUES DES DEUX CÔTÉS. HC était donc déjà fidèle
+   * partout, et il ne restait qu'un seul chemin fautif : celui où le retour
+   * d'une fonction part DIRECTEMENT dans un opérateur, sans être rangé, ni
+   * concaténé, ni affiché.
+   *
+   * D'OÙ LA CORRECTION, qui n'est pas un typage : le texte reste EXACTEMENT
+   * celui d'avant — mis en forme au retour — et le nombre non arrondi voyage
+   * à côté, dans HctValeur.brut. Seul l'opérateur arithmétique le regarde.
+   * Tout ce qui lit .txt voit le même texte qu'hier, donc ne peut pas bouger,
+   * et le reste de la suite l'a confirmé : sur 234 harnais, celui-ci est le
+   * seul qui ait changé.
+   *
+   * Le drapeau n'est JAMAIS posé par un opérateur. « put 1/3*3 » rend 0.9, ce
+   * qui n'est vrai que si « / » arrondit son résultat avant la multiplication.
+   *
+   * Le contournement « 0.000 » plutôt que « 0.0 » n'est plus nécessaire. */
   essai("les OPERATEURS suivent le gabarit : conforme a HyperCard",
    "  set the numberFormat to \"0.0\"\n"
    "  put \"1/3*3         -> \" & (1/3*3) & \"   (HyperCard : 0.9)\"\n"
    "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   (HyperCard : 0.9)\"");
 
-  essai("les FONCTIONS ne devraient PAS le suivre : ECART connu",
+  essai("les FONCTIONS ne le suivent PAS : conforme a HyperCard",
    "  set the numberFormat to \"0.######\"\n"
    "  put pi/144 into z\n"
    "  set the numberFormat to \"0.0\"\n"
-   "  put \"10*sqrt(2)    -> \" & (10*sqrt(2)) & \"   ECART, HyperCard : 14.1\"\n"
-   "  put \"1000*sin(z)   -> \" & (1000*sin(z)) & \"   ECART, HyperCard : 21.8\"\n"
-   "  put \"sin(z) seul   -> \" & sin(z) & \"   ecrase avant la multiplication\"");
+   "  put \"10*sqrt(2)    -> \" & (10*sqrt(2)) & \"   (HyperCard : 14.1)\"\n"
+   "  put \"1000*sin(z)   -> \" & (1000*sin(z)) & \"   (HyperCard : 21.8)\"\n"
+   "  put \"sin(z) seul   -> \" & sin(z) & \"   mis en forme : c'est une CONCATENATION\"");
+
+  essai("le JUMEAU : « the sqrt of » doit suivre « sqrt() »",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"10*(the sqrt of 2) -> \" & (10*(the sqrt of 2)) & \"   (HyperCard : 14.1)\"");
+
+  essai("LA ROSACE, telle que la pile la calcule",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put 0.3 into t\n"
+   "  put 8*cos(2*t) into r\n"
+   "  put \"r*cos(t),r*sin(t) -> \" & (r*cos(t)) & \",\" & (r*sin(t))\n"
+   "  put \"   (avant, cos(t) etait arrondi a UNE decimale avant la\"\n"
+   "  put \"    multiplication : vingt-et-une valeurs pour tout un\"\n"
+   "  put \"    cercle, d'ou les marches de douze pixels)\"");
 
   essai("l'affichage direct, lui, est conforme",
    "  set the numberFormat to \"0.000\"\n"

@@ -491,7 +491,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
         if (x->ctx.erreur) { free(dd); hct_val_libere(&base); return 1; }
 
         const char *aecrire = val;
-        HctValeur compose = { NULL, 0 };
+        HctValeur compose = { NULL, 0, 0, 0 };
         if (mode != 0) {
             HctValeur ancien = hct_chunk_lit(base.txt, cible->sorte, n1, n2, d);
             int la = ancien.len, lv = (int)strlen(val);
