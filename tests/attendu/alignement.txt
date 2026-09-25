@@ -1,0 +1,23 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. le défaut, et les trois valeurs que le panneau propose ===
+   (l'indice du bouton radio EST le codage du noyau : 0 1 2)
+   left
+   left
+   center
+   right
+=== 2. les formes indulgentes qu'on rencontre dans les scripts ===
+   center
+   center
+=== 3. un mot inconnu retombe à gauche, sans échouer ===
+   (HyperCard est indulgent sur celle-ci ; refuser casserait des
+    piles qui marchaient)
+   left
+=== 4. L'ENREGISTREMENT : le choix survit-il à la relecture ? ===
+   (c'est LA question que pose l'ajout du dialogue. Un alignement
+    posé à la souris qui repartirait à la réouverture aurait l'air
+    d'avoir marché, ce qui est pire que de ne pas exister)
+   left enregistré, relu : left
+   center enregistré, relu : center
+   right enregistré, relu : right
+=== 5. le témoin : une coquille voisine reste refusée ===
+   [ERR]    !! propriété inconnue : textAline

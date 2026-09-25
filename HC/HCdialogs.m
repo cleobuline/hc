@@ -26,6 +26,7 @@
 @interface HCView (DialogsPrivate)
 - (void)styleOK:(id)sender;
 - (void)styleFont:(id)sender;
+- (void)styleAlign:(id)sender;
 - (void)autoSelectToggled:(id)sender;
 @end
 
@@ -57,6 +58,11 @@ static Object   *gStyleTarget = NULL;
 static NSButton *gStyleBox[8] = {nil};
 static NSPopUpButton *gStyleFont = nil;
 static NSTextField   *gStyleSize = nil;
+static NSButton      *gStyleAlign[3] = {nil};
+
+/* Dans l'ordre du codage du noyau : 0 gauche, 1 centre, 2 droite. Comme pour
+ * les cases de style, l'indice EST la valeur — pas de table à tenir à jour. */
+static const char *ALIGN_LABELS[3] = { "Left", "Center", "Right" };
 
 /* Même ordre que les bits, pour que l'indice de la case soit son décalage. */
 static const char *STYLE_LABELS[8] = {
@@ -90,6 +96,17 @@ static void commit_style_panel(void)
     int sz = [gStyleSize intValue];
     if (sz > 0) o->textsize = sz;
 
+    /* L'ALIGNEMENT. Le noyau le connaît depuis toujours — « the textAlign of
+     * field X » se lit, s'écrit et se relit du fichier — mais ce panneau ne
+     * l'offrait pas, alors que le dialogue de HyperCard le pose juste sous
+     * les cases de style. Une propriété qu'un script pouvait poser et que la
+     * souris ne pouvait pas : le défaut de famille, à l'envers. */
+    for (int i = 0; i < 3; i++)
+        if ([gStyleAlign[i] state] == NSControlStateValueOn) {
+            o->text_align = i;
+            break;
+        }
+
     /* Garder la case « taille » du dialogue parent en accord : sinon son OK
      * réécrira l'ancienne valeur par-dessus celle qu'on vient de poser. */
     hc_sync_size_field(o);
@@ -113,9 +130,22 @@ static void show_style_panel(id owner, Object *o)
     if (!o) return;
     gStyleTarget = o;
 
+    /* L'ALIGNEMENT N'EST OFFERT QUE POUR UN CHAMP.
+     *
+     * field_attr_string est le seul à lire text_align : le titre d'un bouton
+     * est toujours centré, et la propriété n'y change rien. HyperCard pose
+     * bien le groupe dans les deux dialogues, mais c'est chez lui un contrôle
+     * inerte, et ce n'est pas une raison de le copier — un bouton radio qui
+     * ne fait rien coûte plus cher que son absence.
+     *
+     * Le panneau du bouton garde donc EXACTEMENT sa géométrie d'avant : dy
+     * vaut zéro, et toutes les ordonnées retrouvent leur valeur d'origine. */
+    BOOL avecAlign = (o->type == OBJ_FIELD);
+    CGFloat dy = avecAlign ? 100 : 0;
+
     if (gStylePanel) [gStylePanel close];
     gStylePanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(340, 300, 240, 300)
+        initWithContentRect:NSMakeRect(340, 300, 240, 300 + dy)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gStylePanel setTitle:@"Text Style"];
@@ -123,12 +153,12 @@ static void show_style_panel(id owner, Object *o)
     NSView *c = [gStylePanel contentView];
 
     /* --- police --- */
-    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 70, 18)];
+    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262 + dy, 70, 18)];
     [fl setStringValue:@"Text font:"];
     [fl setBezeled:NO]; [fl setDrawsBackground:NO]; [fl setEditable:NO];
     [c addSubview:fl];
 
-    gStyleFont = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(90, 258, 134, 24)];
+    gStyleFont = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(90, 258 + dy, 134, 24)];
     [gStyleFont addItemsWithTitles:
         [[[NSFontManager sharedFontManager] availableFontFamilies]
             sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)]];
@@ -148,23 +178,61 @@ static void show_style_panel(id owner, Object *o)
     [c addSubview:gStyleFont];
 
     /* --- corps --- */
-    NSTextField *zl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 234, 70, 18)];
+    NSTextField *zl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 234 + dy, 70, 18)];
     [zl setStringValue:@"Text size:"];
     [zl setBezeled:NO]; [zl setDrawsBackground:NO]; [zl setEditable:NO];
     [c addSubview:zl];
 
-    gStyleSize = [[NSTextField alloc] initWithFrame:NSMakeRect(90, 232, 60, 22)];
+    gStyleSize = [[NSTextField alloc] initWithFrame:NSMakeRect(90, 232 + dy, 60, 22)];
     [gStyleSize setIntValue:o->textsize];
     [c addSubview:gStyleSize];
 
     for (int i = 0; i < 8; i++) {
         gStyleBox[i] = [[NSButton alloc]
-            initWithFrame:NSMakeRect(20, 202 - i * 22, 150, 20)];
+            initWithFrame:NSMakeRect(20, 202 + dy - i * 22, 150, 20)];
         [gStyleBox[i] setButtonType:NSButtonTypeSwitch];
         [gStyleBox[i] setTitle:[NSString stringWithUTF8String:STYLE_LABELS[i]]];
         [gStyleBox[i] setState:(o->textstyle & (1 << i)) ? NSControlStateValueOn
                                                          : NSControlStateValueOff];
         [c addSubview:gStyleBox[i]];
+    }
+
+    /* --- alignement ---
+     *
+     * Trois boutons radio, sous les cases de style, comme chez HyperCard.
+     * L'EXCLUSION EST FAITE À LA MAIN dans styleAlign:. AppKit groupe bien
+     * tout seul les radios qui partagent vue et action, mais s'en remettre à
+     * cette règle rendrait le panneau dépendant d'un détail d'implémentation
+     * qu'aucun harnais ici ne peut mesurer — rien de ce fichier ne se
+     * compile hors de Xcode. Trois lignes explicites coûtent moins cher
+     * qu'une exclusivité qui cesse de fonctionner sans qu'on sache pourquoi.
+     *
+     * Remis à nil pour un bouton : commit_style_panel parcourt le tableau, et
+     * des pointeurs restés d'une ouverture précédente lui feraient poser un
+     * alignement que personne n'a choisi. [nil state] rend bien zéro, mais ce
+     * n'est pas au hasard d'une règle du langage de tenir la correction. */
+    for (int i = 0; i < 3; i++) gStyleAlign[i] = nil;
+
+    if (avecAlign) {
+        NSTextField *al = [[NSTextField alloc]
+            initWithFrame:NSMakeRect(16, 120, 70, 18)];
+        [al setStringValue:@"Align:"];
+        [al setBezeled:NO]; [al setDrawsBackground:NO]; [al setEditable:NO];
+        [c addSubview:al];
+
+        int aln = (o->text_align >= 0 && o->text_align <= 2) ? o->text_align : 0;
+        for (int i = 0; i < 3; i++) {
+            gStyleAlign[i] = [[NSButton alloc]
+                initWithFrame:NSMakeRect(24, 96 - i * 22, 150, 20)];
+            [gStyleAlign[i] setButtonType:NSButtonTypeRadio];
+            [gStyleAlign[i] setTitle:
+                [NSString stringWithUTF8String:ALIGN_LABELS[i]]];
+            [gStyleAlign[i] setState:(i == aln) ? NSControlStateValueOn
+                                                : NSControlStateValueOff];
+            [gStyleAlign[i] setTarget:owner];
+            [gStyleAlign[i] setAction:@selector(styleAlign:)];
+            [c addSubview:gStyleAlign[i]];
+        }
     }
 
     NSButton *fnt = [[NSButton alloc] initWithFrame:NSMakeRect(16, 8, 80, 28)];
@@ -412,6 +480,15 @@ static NSTextField  *gFldTextSize = nil;
     /* Auto Select impose le verrouillage : la case se coche d'elle-même, pour
      * que l'utilisateur voie tout de suite ce qu'implique son choix. */
     if (on) [gFldLock setState:NSControlStateValueOn];
+}
+
+/* Un seul alignement à la fois. Voir la note de la construction : l'exclusion
+ * est explicite plutôt que déduite du groupage automatique d'AppKit. */
+- (void)styleAlign:(id)sender {
+    for (int i = 0; i < 3; i++)
+        [gStyleAlign[i] setState:(gStyleAlign[i] == sender)
+                                 ? NSControlStateValueOn
+                                 : NSControlStateValueOff];
 }
 
 - (void)styleFont:(id)sender {
