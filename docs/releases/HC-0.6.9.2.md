@@ -100,9 +100,36 @@ The NaN code travels in the NaN's payload and **survives subsequent
 arithmetic**, which is what lets `…/(x+1/2)/5` still produce `NAN(004)` after
 its division by five.
 
-`mod` by zero returns `NAN` with no code. SANE has one for an invalid
-remainder, but it could not be verified here, and an unverified number would
-be worse than none.
+**The SANE codes are measured, not deduced.** Three of them were read in
+HyperCard's own message box, running under Basilisk II:
+
+```
+put ln(-1)     ->  NAN(036)
+put sqrt(-1)   -> -NAN(001)      (with the minus sign)
+put 0*(1/0)    ->  NAN(008)
+```
+
+C gives none of these — on this machine all three produce a NaN with a zero
+payload — so the code and the sign are set explicitly. Guessing would have
+been wrong: 022 was the plausible value for the logarithm, and it is 036.
+
+`mod` by zero still returns `NAN` with no code. SANE has one for an invalid
+remainder, it has not been measured, and an unverified number would be worse
+than none.
+
+**A silent corruption found on the way.** `strtod` reads a NaN's payload with
+base 0, so a leading zero makes it **octal**. Four of the six codes HyperCard
+writes were being corrupted on any string round-trip:
+
+```
+NAN(008) -> 0     NAN(009) -> 0
+NAN(036) -> 30    NAN(037) -> 31
+```
+
+`NAN(037)` is hard-coded in HypoGraph — `if y≠"NAN(037)"` — and because the
+code travels in the payload, the corruption would have survived every
+subsequent calculation with nothing to report it. Payloads are now read in
+decimal, as they are written.
 
 ### 4. The vertical bar across the plot — two defects, one of them introduced by this release
 

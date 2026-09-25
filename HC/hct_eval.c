@@ -135,7 +135,12 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
 
     if      (!strcmp(op, "+")) r = x + y;
     else if (!strcmp(op, "-")) r = x - y;
-    else if (!strcmp(op, "*")) r = x * y;
+    /* ZÉRO FOIS L'INFINI est le produit invalide de SANE, et il porte son
+     * propre code — mesuré : « put 0*(1/0) » rend NAN(008). Le C rend là
+     * aussi un NaN sans charge. */
+    else if (!strcmp(op, "*"))
+        r = ((x == 0 && isinf(y)) || (isinf(x) && y == 0))
+            ? hct_nan_code(8) : x * y;
     /* DIVISER PAR ZÉRO REND UNE VALEUR, PAS UNE ERREUR.
      *
      * C'est l'arithmétique SANE du Macintosh, celle dont HyperCard se sert :
@@ -525,10 +530,24 @@ int hct_evalue_texte(HctContexte *ctx, const char *src,
  * résultats.
  *
  * Rend 0 si le nom n'en est pas une. */
+/* LES CODES SANE DES DOMAINES INVALIDES, MESURÉS SOUS HYPERCARD.
+ *
+ * Le C ne les donne pas : sur cette machine log(-1), sqrt(-1) et 0*INF
+ * rendent tous un NaN de charge NULLE. Il faut donc poser le code, et le
+ * SIGNE, à la main — et les trois relevés ne se ressemblent pas :
+ *
+ *     put ln(-1)    -> NAN(036)
+ *     put sqrt(-1)  -> -NAN(001)     <- avec le moins
+ *     put 0*(1/0)   -> NAN(008)
+ *
+ * Relevés dans la boîte de message de HyperCard sous Basilisk II, pas
+ * déduits d'une table : je m'étais trompé en pensant 022 pour le logarithme.
+ * Les autres codes de SANE restent absents tant qu'on ne les a pas vus. */
 static int math_un_arg(const char *nom, double x, double *y)
 {
     if      (!strcasecmp(nom, "abs"))   *y = fabs(x);
-    else if (!strcasecmp(nom, "sqrt"))  *y = sqrt(x);
+    else if (!strcasecmp(nom, "sqrt"))
+        *y = (x < 0) ? hct_nan_signe(1, 1) : sqrt(x);
     else if (!strcasecmp(nom, "trunc")) *y = trunc(x);
     else if (!strcasecmp(nom, "round")) *y = round(x);
     else if (!strcasecmp(nom, "sin"))   *y = sin(x);
@@ -538,9 +557,11 @@ static int math_un_arg(const char *nom, double x, double *y)
     else if (!strcasecmp(nom, "exp"))   *y = exp(x);
     else if (!strcasecmp(nom, "exp1"))  *y = expm1(x);
     else if (!strcasecmp(nom, "exp2"))  *y = exp2(x);
-    else if (!strcasecmp(nom, "ln"))    *y = log(x);
-    else if (!strcasecmp(nom, "ln1"))   *y = log1p(x);
-    else if (!strcasecmp(nom, "log2"))  *y = log2(x);
+    /* ln(0) vaut -INF et non un NaN : c'est une limite, pas un domaine
+     * invalide, et le C la donne déjà. Seul l'argument NÉGATIF est fautif. */
+    else if (!strcasecmp(nom, "ln"))    *y = (x < 0) ? hct_nan_code(36) : log(x);
+    else if (!strcasecmp(nom, "ln1"))   *y = (x < -1) ? hct_nan_code(36) : log1p(x);
+    else if (!strcasecmp(nom, "log2"))  *y = (x < 0) ? hct_nan_code(36) : log2(x);
     else return 0;
     return 1;
 }
