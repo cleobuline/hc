@@ -47,12 +47,18 @@
    signaler dans le même noyau, dont une seule arrête. C'est
    antérieur à ce travail et ça le dépasse ; on l'inscrit ici pour
    ne pas le redécouvrir, et pour voir si ça bouge.
+
+   LA FAUTE A CHANGÉ, PAS CE QU'ELLE MONTRE : la coordonnée non
+   finie de HypoGraph ne lève plus d'erreur du tout — mesuré,
+   HyperCard n'ouvre aucune alerte dans ce cas. On garde la forme
+   du gestionnaire et on prend l'autre faute que « drag » émet
+   sans arrêter : l'hôte de ce harnais ne gère pas la souris.
    point 1
    point 2
-   [ERR]    !! drag : « NAN(004) » n'est pas une coordonnée
+   [ERR]    !! drag : l'hôte ne gère pas la souris
    point 3
    la boucle est allée au bout
-   [boîte à un bouton]    !! drag : « NAN(004) » n'est pas une coordonnée
+   [boîte à un bouton]    !! drag : l'hôte ne gère pas la souris
    [ERR]    !! choose : l'hôte ne gère pas les outils
    [DIALOGUE HÔTE]    !! choose : l'hôte ne gère pas les outils
 === 8. le témoin : une coquille voisine reste refusée ===

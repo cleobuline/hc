@@ -197,11 +197,16 @@ int main(void)
          "    put \"le garde n'a pas pris — c'est la barre\"\n"
          "  end if");
 
-    printf("=== 7d. et si une pile y va quand même : on REFUSE de dessiner ===\n");
+    printf("=== 7d. et si une pile y va quand même : on NE DESSINE PAS ===\n");
     printf("   (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —\n");
     printf("    quand il ne sait pas lire. Zéro est une coordonnée valide :\n");
     printf("    rien ne distinguait le bord de la carte d'une valeur qu'on\n");
-    printf("    n'avait pas su lire, et c'est ce qui rendait la barre muette)\n");
+    printf("    n'avait pas su lire, et c'est ce qui rendait la barre muette.\n");
+    printf("\n");
+    printf("    MAIS AUCUNE ERREUR N'EST LEVÉE, et c'est mesuré : sous\n");
+    printf("    HyperCard le même traceur en mode point, qui clique AVANT son\n");
+    printf("    test de bornes, n'ouvre aucune alerte. Il n'y a donc rien\n");
+    printf("    ci-dessous — la ligne part au moniteur, pas au dialogue)\n");
     fais("put 0/0 into ny\n"
          "  drag from 10,20 to 224,ny\n"
          "  click at 224,ny\n"

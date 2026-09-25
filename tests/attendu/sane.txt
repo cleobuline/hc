@@ -82,13 +82,16 @@
    ERR: x=-0.5,y=NAN(004)
    y=0/0 (indeterminate)
    crayon levé : la courbe aura un TROU, pas une barre
-=== 7d. et si une pile y va quand même : on REFUSE de dessiner ===
+=== 7d. et si une pile y va quand même : on NE DESSINE PAS ===
    (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —
     quand il ne sait pas lire. Zéro est une coordonnée valide :
     rien ne distinguait le bord de la carte d'une valeur qu'on
-    n'avait pas su lire, et c'est ce qui rendait la barre muette)
-   [ERR]    !! drag : « NAN(004) » n'est pas une coordonnée
-   [ERR]    !! click : « NAN(004) » n'est pas une coordonnée
+    n'avait pas su lire, et c'est ce qui rendait la barre muette.
+
+    MAIS AUCUNE ERREUR N'EST LEVÉE, et c'est mesuré : sous
+    HyperCard le même traceur en mode point, qui clique AVANT son
+    test de bornes, n'ouvre aucune alerte. Il n'y a donc rien
+    ci-dessous — la ligne part au moniteur, pas au dialogue)
    et le témoin, lui, passe :
    [ERR]    !! drag : l'hôte ne gère pas la souris
 === 7e. LES TROIS CODES MESURÉS SOUS HYPERCARD ===
