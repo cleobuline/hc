@@ -1,0 +1,114 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. LE TÉMOIN : une faute, qui arrête ===
+   (hct_ctx_faute. « APRÈS » ne doit PAS sortir)
+   — lecture d'une propriété inconnue
+     put the zorglub of this card
+   avant
+   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Arret".essai)
+=== 2. GENRE 1 : vraies erreurs HyperTalk ===
+   (celles que le chantier vise. « APRÈS » sort aujourd'hui,
+    et c'est ce qu'il faudra changer)
+   — écriture d'une propriété inconnue
+     set the zorglub of this card to 1
+   avant
+   [ERR]    !! propriété inconnue : zorglub
+   APRÈS
+   — convert sans « to »
+     convert "hier"
+   avant
+   [ERR]    !! personne ne répond à « convert "hier" »
+   APRÈS
+   — date incomprise
+     convert "pas une date" to seconds
+   avant
+   [ERR]    !! date incomprise : « pas une date »
+   APRÈS
+   — read d'un fichier non ouvert
+     read from file "nexistepas" for 4
+   avant
+   [ERR]    !! read : fichier non ouvert : nexistepas
+   APRÈS
+   — write vers un fichier non ouvert
+     write "x" to file "nexistepas"
+   avant
+   [ERR]    !! write : fichier non ouvert : nexistepas
+   APRÈS
+   — reset mal formé
+     reset zorglub
+   avant
+   [ERR]    !! reset : seul « reset paint » est reconnu
+   APRÈS
+   — show … at mal formé
+     show card at zorglub
+   avant
+   [moniteur]    → card "Une" : visible en zorglub
+   APRÈS
+=== 3. GENRE 2 : « l'hôte ne sait pas faire » ===
+   (ils ne disent rien sur HyperTalk et tout sur CET hôte :
+    sous Cocoa ils ne se déclenchent jamais. Ils doivent
+    RESTER non bloquants, et « APRÈS » doit continuer de sortir)
+   — pas de souris
+     drag from 1,2 to 3,4
+   avant
+   [ERR]    !! drag : l'hôte ne gère pas la souris
+   APRÈS
+   — pas d'outils
+     choose line tool
+   avant
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+   APRÈS
+   — pas de clavier
+     type "a"
+   avant
+   [ERR]    !! type : l'hôte ne gère pas le clavier
+   APRÈS
+   — pas d'imprimante
+     print this card
+   avant
+   [ERR]    !! print : l'hôte ne sait pas imprimer
+   APRÈS
+=== 4. GENRE 3 : ceux qui posent « the result » ===
+   (la convention d'HyperTalk pour ce qui n'est PAS une erreur.
+    Les faire arrêter la contredirait — et leur emit(HC_ERR)
+    est déjà douteux, puisqu'il ouvre un dialogue pour ce que
+    le langage veut silencieux)
+   — rien à supprimer
+     delete zorglub
+   avant
+   [moniteur]    → supprimé : zorglub
+   APRÈS
+   — pile introuvable
+     go to stack "nexistepas"
+   avant
+   [ERR]    !! go : pile introuvable : nexistepas
+   APRÈS
+=== 5. ET CE QUE « THE RESULT » DIT DANS CES CAS-LÀ ===
+   (s'il est posé, le script a le moyen de se garder lui-même,
+    et c'est exactement pour cela qu'il ne faut pas arrêter)
+   [moniteur]    → supprimé : zorglub
+   result après delete : []
+   [ERR]    !! go : pile introuvable : nexistepas
+   result après go : [No such stack]
+=== 6. DEUX SILENCES TROUVÉS EN INVENTORIANT ===
+   (je ne les cherchais pas. Ils ne sont pas du chantier, mais
+    ils en sont la forme extrême : au lieu de signaler sans
+    arrêter, ceux-là ne signalent RIEN et annoncent une réussite)
+
+   6a. « delete <n'importe quel mot> » RÉUSSIT toujours.
+   container_set(d, "", 3) rend vrai pour un nom inconnu — il
+   crée puis vide une variable de ce nom. La branche « rien à
+   supprimer » est donc INATTEIGNABLE pour un mot seul, et le
+   script reçoit « → supprimé » et un result vide.
+   [moniteur]    → supprimé : zorglub
+   result : []
+
+   6b. « show card at <pas une coordonnée> » l'accepte.
+   Le emit(HC_ERR) « point mal formé » existe et n'est pas
+   atteint : la position n'est pas vérifiée du tout. C'est la
+   MÊME famille que la coordonnée non finie de « click at » —
+   une valeur illisible qui passe pour une position valide.
+   [moniteur]    → card "Une" : visible en zorglub
+
+   CE QUE JE NE SAIS PAS : ce que fait HyperCard dans ces deux
+   cas. Ce n'est pas mesuré, donc ce n'est pas décidé. On les
+   inscrit pour ne pas les reperdre, et rien de plus.
