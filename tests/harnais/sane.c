@@ -129,29 +129,50 @@ int main(void)
          "  put \"y = 5            : \" & (y = 5)\n"
          "  put \"y is not 5       : \" & (y is not 5)");
 
-    printf("=== 7b. L'ORDRE est faux DANS LES DEUX SENS ===\n");
-    printf("   (c'est le test qui compte. hct_compare rend 0 sur un NaN —\n");
-    printf("    ni inférieur ni supérieur — et sans garde « <= » et « >= »\n");
-    printf("    auraient tous deux répondu VRAI. Une pile qui borne ses points\n");
-    printf("    par « if ny > itt » aurait tracé vers un point inexistant)\n");
+    printf("=== 7b. L'ORDRE se fait sur le TEXTE, et c'est la pile qui tranche ===\n");
+    printf("   (j'avais d'abord fait rendre false aux quatre, au nom de la\n");
+    printf("    virgule flottante. C'était raisonner sur IEEE au lieu de\n");
+    printf("    regarder la pile — voir 7c, qui est la mesure qui compte)\n");
     fais("put 0/0 into y\n"
          "  put \"y > 625   : \" & (y > 625)\n"
          "  put \"y < 625   : \" & (y < 625)\n"
-         "  put \"y >= 625  : \" & (y >= 625)\n"
-         "  put \"y <= 625  : \" & (y <= 625)\n"
-         "  put \"y > y     : \" & (y > y)\n"
-         "  put \"y <= y    : \" & (y <= y)");
+         "  put \"y = 5     : \" & (y = 5)");
 
-    printf("=== 7c. la ligne de bornage de la pile, telle qu'elle est écrite ===\n");
-    printf("   (if ny > itt or ny < -itt or nx > itt or nx < -itt then …)\n");
+    printf("=== 7c. LE GARDE DE LA PILE, tel qu'il est écrit ===\n");
+    printf("   (if ny > itt or ny < -itt or nx > itt or nx < -itt then\n");
+    printf("      if y contains \"NAN\" or y is \"INF\" then …\n");
+    printf("      put empty into nx        -- on lève le crayon\n");
+    printf("\n");
+    printf("    Le traitement du NaN est DANS le test de bornes : pour être\n");
+    printf("    seulement atteignable, « ny > itt » doit répondre VRAI sur un\n");
+    printf("    NaN. Avec l'ordre à false le garde ne partait pas, la pile\n");
+    printf("    traçait vers un point non fini, et la courbe recevait une\n");
+    printf("    barre verticale en travers. Mesuré à l'écran)\n");
     fais("put 625 into itt\n"
-         "  put 0/0 into ny\n"
-         "  put 100 into nx\n"
+         "  put 0/0 into y\n"
+         "  put round(-(y-0) * 64 + 171) into ny\n"
+         "  put 224 into nx\n"
+         "  put \"ny vaut \" & ny\n"
          "  if ny > itt or ny < -itt or nx > itt or nx < -itt then\n"
-         "    put \"hors bornes\"\n"
+         "    if y contains \"NAN\" or y is \"INF\" then\n"
+         "      put \"ERR: x=-0.5,y=\" & y\n"
+         "      if y is \"NAN(004)\" then put \"y=0/0 (indeterminate)\"\n"
+         "    end if\n"
+         "    put \"crayon levé : la courbe aura un TROU, pas une barre\"\n"
          "  else\n"
-         "    put \"dans les bornes (le NaN ne déclenche aucune borne)\"\n"
+         "    put \"le garde n'a pas pris — c'est la barre\"\n"
          "  end if");
+
+    printf("=== 7d. et si une pile y va quand même : on REFUSE de dessiner ===\n");
+    printf("   (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —\n");
+    printf("    quand il ne sait pas lire. Zéro est une coordonnée valide :\n");
+    printf("    rien ne distinguait le bord de la carte d'une valeur qu'on\n");
+    printf("    n'avait pas su lire, et c'est ce qui rendait la barre muette)\n");
+    fais("put 0/0 into ny\n"
+         "  drag from 10,20 to 224,ny\n"
+         "  click at 224,ny\n"
+         "  put \"et le témoin, lui, passe :\"\n"
+         "  drag from 10,20 to 30,40");
 
     printf("=== 8. mod par zéro : NAN sans code ===\n");
     printf("   (SANE en a un pour le reste invalide ; je n'en ai pas la preuve\n");

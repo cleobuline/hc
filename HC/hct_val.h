@@ -121,10 +121,6 @@ const char *hct_format_nombre_lu(void);
  * des nombres — utile pour les messages d'erreur et pour les tests. */
 int hct_compare(const char *a, const char *b, int *numerique);
 
-/* Rend 0 si l'ordre n'a pas de sens entre ces deux valeurs — c'est-à-dire si
- * un NaN est en jeu. Les opérateurs < > <= >= doivent alors répondre false,
- * tous les quatre. L'égalité, elle, reste tranchée par hct_compare. */
-int hct_ordonnable(const char *a, const char *b);
 
 /* Égalité au sens de HyperTalk : numérique si les deux sont des nombres,
  * sinon textuelle et insensible à la casse. */

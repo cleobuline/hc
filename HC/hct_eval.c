@@ -356,21 +356,13 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         r = hct_val_bool(hct_egal(a.txt, b.txt));
     else if (!strcmp(op, "<>") || !strcmp(op, "is not"))
         r = hct_val_bool(!hct_egal(a.txt, b.txt));
-    /* L'ORDRE demande que l'ordre ait un sens. Avec un NaN en jeu il n'en a
-     * pas, et les quatre opérateurs rendent false — sans quoi hct_compare
-     * rendrait 0 et « <= » comme « >= » auraient répondu vrai. */
-    else if (!strcmp(op, "<"))
-        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
-                         hct_compare(a.txt, b.txt, NULL) <  0);
-    else if (!strcmp(op, ">"))
-        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
-                         hct_compare(a.txt, b.txt, NULL) >  0);
-    else if (!strcmp(op, "<="))
-        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
-                         hct_compare(a.txt, b.txt, NULL) <= 0);
-    else if (!strcmp(op, ">="))
-        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
-                         hct_compare(a.txt, b.txt, NULL) >= 0);
+    /* L'ordre passe par hct_compare, qui traite un NaN comme du TEXTE. Voir la
+     * note qui y est : c'est ce que la pile d'époque attend, et c'est elle qui
+     * l'a tranché. */
+    else if (!strcmp(op, "<"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <  0);
+    else if (!strcmp(op, ">"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >  0);
+    else if (!strcmp(op, "<=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <= 0);
+    else if (!strcmp(op, ">=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >= 0);
     else if (!strcmp(op, "contains"))   r = hct_val_bool(contient(a.txt, b.txt));
     else if (!strcmp(op, "is in"))      r = hct_val_bool(contient(b.txt, a.txt));
     else if (!strcmp(op, "is not in"))  r = hct_val_bool(!contient(b.txt, a.txt));

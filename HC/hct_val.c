@@ -170,12 +170,12 @@ int hct_est_nombre(const char *s)
      * la division par cinq. Refuser NAN en lecture donnait « un nombre est
      * attendu ici » — un dialogue de moins, un autre à la place.
      *
-     * Ce qu'il ne faut pas perdre en échange, c'est la comparaison : NaN n'est
+     * Ce qu'il ne faut pas perdre en échange, c'est la COMPARAISON : NaN n'est
      * ni inférieur ni supérieur à quoi que ce soit, et hct_compare rendrait
-     * donc « égal ». D'où hct_ordonnable, plus bas, que les opérateurs d'ordre
-     * consultent, et le repli sur le TEXTE pour l'égalité — sans quoi
-     * « if y = 5 » aurait répondu vrai sur un NaN, et « if y is "NAN(004)" »,
-     * que la pile écrit, aurait répondu faux. */
+     * donc « égal » — « if y = 5 » aurait répondu vrai. D'où le repli sur le
+     * texte, décrit dans hct_compare : un NaN se compare comme la chaîne qu'il
+     * est, à l'ordre comme à l'égalité. Lisible en calcul, textuel en
+     * comparaison : les deux besoins sont servis sans que l'un abîme l'autre. */
     if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
         (s[2] == 'f' || s[2] == 'F') && *saute_blancs(s + 3) == '\0')
         return 1;
@@ -496,11 +496,33 @@ int hct_compare(const char *a, const char *b, int *numerique)
          * c'est exactement le genre de réponse fausse et silencieuse qu'on
          * cherche à ne pas produire.
          *
-         * On retombe donc sur le TEXTE, ce qui donne aussi ce que la pile
-         * attend : « if y is "NAN(004)" » compare deux fois la même chaîne et
-         * répond vrai, « if y is "NAN(037)" » répond faux. L'ORDRE, lui, ne
-         * doit rien rendre du tout — voir hct_ordonnable, que les opérateurs
-         * < > <= >= consultent avant d'appeler ici. */
+         * On retombe donc sur le TEXTE — pour l'ÉGALITÉ COMME POUR L'ORDRE.
+         *
+         * J'avais d'abord fait rendre false aux quatre opérateurs d'ordre, au
+         * nom de la virgule flottante : un NaN n'est ni inférieur ni supérieur
+         * à quoi que ce soit. C'était raisonner sur la norme IEEE au lieu de
+         * regarder la pile, et la pile dit le contraire. HypoGraph borne ses
+         * points ainsi :
+         *
+         *     if ny > itt or ny < -itt or nx > itt or nx < -itt then
+         *       if y contains "NAN" or y is "INF" then …
+         *       put empty into nx        -- on lève le crayon
+         *
+         * Le traitement du NaN est DANS le test de bornes. Pour qu'il soit
+         * seulement atteignable, « ny > itt » doit répondre VRAI sur un NaN —
+         * ce que donne la comparaison de texte, « N » venant après « 6 ». Avec
+         * l'ordre à false, le garde ne se déclenchait pas, la pile traçait
+         * jusqu'à un point non fini, et la courbe recevait une barre verticale
+         * en travers. Mesuré à l'écran.
+         *
+         * La règle est donc simple, et elle vaut pour les deux : un NaN n'est
+         * pas un nombre COMPARABLE, il se compare comme la chaîne qu'il est.
+         * Il reste lisible en ARITHMÉTIQUE, ce qui est une autre question et
+         * que le /5 de l'équation exige.
+         *
+         * Ce qu'on ne perd pas au passage : « if y = 5 » reste faux, puisque
+         * « NAN(004) » et « 5 » ne sont pas le même texte. C'était la seule
+         * raison d'avoir touché à l'ordre. */
         if (isnan(x) || isnan(y)) {
             if (numerique) *numerique = 0;
             int t = strcasecmp(a, b);
@@ -518,23 +540,6 @@ int hct_compare(const char *a, const char *b, int *numerique)
     /* Texte : la comparaison de HyperTalk ignore la casse. */
     int r = strcasecmp(a, b);
     return r < 0 ? -1 : (r > 0 ? 1 : 0);
-}
-
-/* Ces deux opérandes se COMPARENT-ILS EN ORDRE ?
- *
- * Non dès qu'un NaN est en jeu : « NAN(004) > 625 », « NAN < 3 » et leurs
- * inverses sont tous FAUX, comme le veut l'arithmétique à virgule flottante.
- * Rendre l'un d'eux vrai serait pire qu'une erreur — une pile qui borne ses
- * points par « if ny > itt » aurait tracé vers un point qui n'existe pas.
- *
- * L'égalité n'en dépend pas : elle passe par hct_compare, qui se replie sur le
- * texte et rend donc « NAN(004) is "NAN(004)" » vrai, ce que la pile écrit. */
-int hct_ordonnable(const char *a, const char *b)
-{
-    if (!a) a = "";
-    if (!b) b = "";
-    if (!hct_est_nombre(a) || !hct_est_nombre(b)) return 1;   /* texte : ordonnable */
-    return !(isnan(hct_vers_nombre(a)) || isnan(hct_vers_nombre(b)));
 }
 
 int hct_egal(const char *a, const char *b)

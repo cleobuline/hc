@@ -12235,6 +12235,48 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* UNE COORDONNÉE QUI N'EN EST PAS UNE NE SE DESSINE PAS.
+ *
+ * coord_champ passe par hc_coord, qui exige que TOUT le champ soit un nombre
+ * et rend le DÉFAUT sinon — zéro, ici. C'est la faute que le commentaire de
+ * hc_entier_tete décrit quelques milliers de lignes plus haut : « il rend le
+ * défaut, et l'appelant croit avoir lu ».
+ *
+ * Mesuré sur une pile réelle. Un traceur de courbes calcule
+ * « round(-(y-cy)*yScale + 171) » avec y valant NAN(004) : la coordonnée
+ * devient zéro, drag trace jusqu'au bord supérieur de la carte, puis en
+ * revient au point suivant. Deux segments quasi verticaux, et une barre en
+ * travers de la courbe — pour un point sur mille, et sans un mot.
+ *
+ * Zéro est une coordonnée PARFAITEMENT VALIDE : rien ne distingue le bord de
+ * la carte d'une valeur qu'on n'a pas su lire. C'est ce qui rend ce défaut
+ * muet, et c'est pourquoi le refus doit être explicite.
+ *
+ * Rend 1 si le point est lisible, 0 après avoir dit ce qui cloche. */
+static int coord_finie(const char *champ)
+{
+    if (!hct_est_nombre(champ)) return 0;
+    double d = hct_vers_nombre(champ);
+    return !isnan(d) && !isinf(d);
+}
+
+static int v3_point_lisible(const char *p, const char *verbe)
+{
+    const char *virgule = strchr(p, ',');
+    char gx[64];
+    size_t l = virgule ? (size_t)(virgule - p) : strlen(p);
+    if (l >= sizeof gx) l = sizeof gx - 1;
+    memcpy(gx, p, l); gx[l] = '\0';
+
+    const char *mauvais = NULL;
+    if (!coord_finie(gx))                          mauvais = gx;
+    else if (virgule && !coord_finie(virgule + 1)) mauvais = virgule + 1;
+    if (!mauvais) return 1;
+
+    emit(HC_ERR, "   !! %s : « %s » n'est pas une coordonnée", verbe, mauvais);
+    return 0;
+}
+
 static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
 {
     int ito = v3_indice_motcle(n, "to", 0);
@@ -12249,6 +12291,8 @@ static int v3_cmd_drag(HctContexte *ctx, const HctNoeud *n)
     v3_point(ctx, n, ito + 1, iwith >= 0 ? iwith : n->nfils, p2, sizeof p2);
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
+
+    if (!v3_point_lisible(p1, "drag") || !v3_point_lisible(p2, "drag")) return 1;
 
     int x1 = coord_champ(p1, 0), y1 = 0, x2 = coord_champ(p2, 0), y2 = 0;
     const char *c1 = strchr(p1, ','), *c2 = strchr(p2, ',');
@@ -12274,6 +12318,8 @@ static int v3_cmd_click(HctContexte *ctx, const HctNoeud *n)
     v3_point(ctx, n, deb, iwith >= 0 ? iwith : n->nfils, pt, sizeof pt);
     if (ctx->erreur) return 1;
     v3_touches(n, iwith >= 0 ? iwith + 1 : n->nfils, mods, sizeof mods);
+
+    if (!v3_point_lisible(pt, "click")) return 1;
 
     int x = coord_champ(pt, 0), y = 0;
     const char *c = strchr(pt, ',');

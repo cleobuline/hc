@@ -37,20 +37,36 @@
    y is NAN(037)    : false
    y = 5            : false
    y is not 5       : true
-=== 7b. L'ORDRE est faux DANS LES DEUX SENS ===
-   (c'est le test qui compte. hct_compare rend 0 sur un NaN —
-    ni inférieur ni supérieur — et sans garde « <= » et « >= »
-    auraient tous deux répondu VRAI. Une pile qui borne ses points
-    par « if ny > itt » aurait tracé vers un point inexistant)
-   y > 625   : false
+=== 7b. L'ORDRE se fait sur le TEXTE, et c'est la pile qui tranche ===
+   (j'avais d'abord fait rendre false aux quatre, au nom de la
+    virgule flottante. C'était raisonner sur IEEE au lieu de
+    regarder la pile — voir 7c, qui est la mesure qui compte)
+   y > 625   : true
    y < 625   : false
-   y >= 625  : false
-   y <= 625  : false
-   y > y     : false
-   y <= y    : false
-=== 7c. la ligne de bornage de la pile, telle qu'elle est écrite ===
-   (if ny > itt or ny < -itt or nx > itt or nx < -itt then …)
-   dans les bornes (le NaN ne déclenche aucune borne)
+   y = 5     : false
+=== 7c. LE GARDE DE LA PILE, tel qu'il est écrit ===
+   (if ny > itt or ny < -itt or nx > itt or nx < -itt then
+      if y contains "NAN" or y is "INF" then …
+      put empty into nx        -- on lève le crayon
+
+    Le traitement du NaN est DANS le test de bornes : pour être
+    seulement atteignable, « ny > itt » doit répondre VRAI sur un
+    NaN. Avec l'ordre à false le garde ne partait pas, la pile
+    traçait vers un point non fini, et la courbe recevait une
+    barre verticale en travers. Mesuré à l'écran)
+   ny vaut NAN(004)
+   ERR: x=-0.5,y=NAN(004)
+   y=0/0 (indeterminate)
+   crayon levé : la courbe aura un TROU, pas une barre
+=== 7d. et si une pile y va quand même : on REFUSE de dessiner ===
+   (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —
+    quand il ne sait pas lire. Zéro est une coordonnée valide :
+    rien ne distinguait le bord de la carte d'une valeur qu'on
+    n'avait pas su lire, et c'est ce qui rendait la barre muette)
+   [ERR]    !! drag : « NAN(004) » n'est pas une coordonnée
+   [ERR]    !! click : « NAN(004) » n'est pas une coordonnée
+   et le témoin, lui, passe :
+   [ERR]    !! drag : l'hôte ne gère pas la souris
 === 8. mod par zéro : NAN sans code ===
    (SANE en a un pour le reste invalide ; je n'en ai pas la preuve
     sous les yeux, et un numéro non vérifié serait pire que rien)
