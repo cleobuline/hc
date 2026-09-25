@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. le gestionnaire accentué de HypoGraph, exécuté ===
+   aide : clique ici
+=== 2. variables accentuées, et l'arithmétique par-dessus ===
+   é + Ç = 7
+   français
+   Noël en français
+=== 3. une fonction au nom accentué, définie et appelée ===
+   côté(3) = 12
+=== 4. LE PIÈGE : « ≠ » ne se colle PAS au mot précédent ===
+   (la ligne exacte de la pile : if y≠"NAN(037)" then …)
+   <> reste un opérateur
+   <= aussi
+   >= aussi
+=== 5. « × » et « ÷ » ne sont PAS des lettres ===
+   (ils vivent dans le MÊME bloc UTF-8 que À-ÿ ; les prendre pour
+    des lettres aurait fait de « a×3 » un seul nom, et le calcul
+    aurait rendu la chaîne « a×3 » sans rien dire)
+   [ERR]    !! script, ligne 3 colonne 8 : texte inattendu en fin de ligne
+   [ERR]         put a×3
+   2
+   [ERR]    !! texte inattendu en fin de ligne (v3, ligne 3 de stack "Accents".essai)
+=== 6. les symboles à trois octets restent refusés franchement ===
+   (« ∞ » n'est pas un nom : on veut l'erreur, pas le silence)
+   [ERR]    !! script, ligne 2 colonne 14 : caractère inattendu
+   [ERR]         put 1 into ∞
+   [ERR]    !! ne sait pas faire : put 1 into ∞
+=== 7. le témoin : un nom sans accent n'a pas bougé ===
+   12

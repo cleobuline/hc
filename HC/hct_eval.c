@@ -136,16 +136,42 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
     if      (!strcmp(op, "+")) r = x + y;
     else if (!strcmp(op, "-")) r = x - y;
     else if (!strcmp(op, "*")) r = x * y;
+    /* DIVISER PAR ZÉRO REND UNE VALEUR, PAS UNE ERREUR.
+     *
+     * C'est l'arithmétique SANE du Macintosh, celle dont HyperCard se sert :
+     * « 1/0 » vaut INF, « 0/0 » vaut NAN(004). Mesuré sur une pile d'époque —
+     * HypoGraph 0.91 — dont le traceur affiche « -.500,NAN(004) » là où la
+     * courbe traverse sa singularité. HC y ouvrait un dialogue « division par
+     * zéro », et c'était doublement faux : l'erreur n'existe pas chez
+     * HyperCard, et la pile avait justement écrit le code qui traite ces
+     * valeurs — « if y contains "NAN" or y is "INF" then … » — code qui ne
+     * pouvait donc jamais s'exécuter.
+     *
+     * L'équation en cause vaut la peine d'être citée, parce qu'elle explique
+     * pourquoi ce n'est pas un cas tordu :
+     *
+     *     y = (x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5
+     *
+     * Le facteur (x+1/2) est au numérateur ET au dénominateur. La courbe est
+     * lisse partout, y compris en -1/2 où elle a une valeur limite
+     * parfaitement définie — seul le CALCUL y passe par 0/0. Avec theScale à
+     * 64, la souris avance par pas de 1/64 et frappe -0.5 exactement. La
+     * courbe était donc intraçable, pour un point sur mille.
+     *
+     * Le C fait déjà le bon travail pour x≠0 : x/0 rend ±INF en respectant le
+     * signe. On ne s'occupe donc que de 0/0, dont le NaN naturel ne porte
+     * aucun code — on y met le 4 de SANE.
+     *
+     * « mod » reste sans code : SANE en a un pour le reste invalide, mais je
+     * n'en ai pas la preuve sous les yeux, et écrire un numéro non vérifié
+     * serait pire que de n'en écrire aucun. Il rend donc « NAN » tout court. */
     else if (!strcmp(op, "/")) {
-        if (y == 0) { hct_ctx_faute(ctx, n, "division par zéro"); return hct_val_vide(); }
-        r = x / y;
+        r = (x == 0 && y == 0) ? hct_nan_code(4) : x / y;
     }
     else if (!strcmp(op, "div")) {
-        if (y == 0) { hct_ctx_faute(ctx, n, "division par zéro"); return hct_val_vide(); }
-        r = trunc(x / y);
+        r = (x == 0 && y == 0) ? hct_nan_code(4) : trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
-        if (y == 0) { hct_ctx_faute(ctx, n, "division par zéro"); return hct_val_vide(); }
         r = fmod(x, y);
     }
     else if (!strcmp(op, "^")) r = pow(x, y);
@@ -330,10 +356,21 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
         r = hct_val_bool(hct_egal(a.txt, b.txt));
     else if (!strcmp(op, "<>") || !strcmp(op, "is not"))
         r = hct_val_bool(!hct_egal(a.txt, b.txt));
-    else if (!strcmp(op, "<"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <  0);
-    else if (!strcmp(op, ">"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >  0);
-    else if (!strcmp(op, "<=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <= 0);
-    else if (!strcmp(op, ">=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >= 0);
+    /* L'ORDRE demande que l'ordre ait un sens. Avec un NaN en jeu il n'en a
+     * pas, et les quatre opérateurs rendent false — sans quoi hct_compare
+     * rendrait 0 et « <= » comme « >= » auraient répondu vrai. */
+    else if (!strcmp(op, "<"))
+        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
+                         hct_compare(a.txt, b.txt, NULL) <  0);
+    else if (!strcmp(op, ">"))
+        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
+                         hct_compare(a.txt, b.txt, NULL) >  0);
+    else if (!strcmp(op, "<="))
+        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
+                         hct_compare(a.txt, b.txt, NULL) <= 0);
+    else if (!strcmp(op, ">="))
+        r = hct_val_bool(hct_ordonnable(a.txt, b.txt) &&
+                         hct_compare(a.txt, b.txt, NULL) >= 0);
     else if (!strcmp(op, "contains"))   r = hct_val_bool(contient(a.txt, b.txt));
     else if (!strcmp(op, "is in"))      r = hct_val_bool(contient(b.txt, a.txt));
     else if (!strcmp(op, "is not in"))  r = hct_val_bool(!contient(b.txt, a.txt));

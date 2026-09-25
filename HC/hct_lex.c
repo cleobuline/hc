@@ -77,6 +77,49 @@ char *hct_texte(const HctJeton *j, char *out, size_t taille)
     return out;
 }
 
+/* ------------------------------------------------- lettres accentuées
+ *
+ * HyperCard nommait ses variables et ses gestionnaires en Mac Roman, et les
+ * piles d'époque s'en servent : HypoGraph écrit « on ayudar cómo », et son
+ * texte d'aide espagnol passe par ce paramètre. Avec isalpha() seul, le « ó »
+ * partait en « caractère inattendu » — deux fautes par ligne, et le script
+ * entier refusé pour un accent.
+ *
+ * ON N'ACCEPTE QUE LES LETTRES, ET SUR DEUX OCTETS.
+ *
+ * La tentation serait de prendre tout octet ≥ 0x80. Ce serait un défaut
+ * immédiat : « ≠ » (E2 89 A0) se collerait au mot qui le précède, et
+ * « if y≠"NAN(037)" » — une ligne de la même pile — deviendrait un seul
+ * identifiant « y≠ ». On se limite donc au supplément Latin-1 (C3 80..BF,
+ * de À à ÿ) et aux trois lettres que Mac Roman ajoute (Œ œ Ÿ), en retirant
+ * × et ÷ qui y sont des OPÉRATEURS, pas des lettres.
+ *
+ * Les symboles à trois octets — ≤ ≥ ≠ • π ∞ — gardent donc leur chemin,
+ * celui des opérateurs ou celui de l'erreur franche, et ° ± µ (deux octets,
+ * mais C2) ne sont pas des lettres non plus.
+ *
+ * Rend 1 si `p` ouvre une lettre accentuée, qui pèse alors exactement deux
+ * octets. */
+static int lettre_accentuee(const char *p)
+{
+    unsigned char a = (unsigned char)p[0];
+    if (a != 0xC3 && a != 0xC5) return 0;
+
+    /* p[1] ne se lit QU'APRÈS avoir reconnu un premier octet valide.
+     *
+     * La première version lisait les deux d'un coup. Sur le dernier octet du
+     * source, p[1] est alors un octet au-delà du tampon : asan l'a signalé
+     * sur dix-neuf harnais d'un coup, et c'est précisément ce qu'on lui
+     * demande. Le terminateur n'est ni C3 ni C5, donc le test ci-dessus suffit
+     * à s'arrêter à temps — mais il doit venir AVANT la lecture, pas après. */
+    unsigned char b = (unsigned char)p[1];
+    if (a == 0xC3) {                     /* À-ÿ, sauf × et ÷ */
+        if (b < 0x80 || b > 0xBF) return 0;
+        return !(b == 0x97 || b == 0xB7);
+    }
+    return b == 0x92 || b == 0x93 || b == 0xB8;   /* Œ œ Ÿ */
+}
+
 /* ------------------------------------------------------------- accumulation */
 
 static int pousse(HctLot *lot, HctGenre genre, const char *deb, int len,
@@ -244,10 +287,14 @@ int hct_lex(const char *src, HctLot *lot)
          * Lettres, chiffres et souligné. HyperTalk autorise le chiffre à
          * l'intérieur d'un nom, mais pas en tête — ce cas est déjà pris par
          * la branche des nombres. */
-        if (isalpha((unsigned char)*p) || *p == '_') {
+        if (isalpha((unsigned char)*p) || *p == '_' || lettre_accentuee(p)) {
             const char *q = p;
             int col = COL(p);
-            while (isalnum((unsigned char)*q) || *q == '_') q++;
+            for (;;) {
+                if (isalnum((unsigned char)*q) || *q == '_') { q++; continue; }
+                if (lettre_accentuee(q)) { q += 2; continue; }
+                break;
+            }
             int len = (int)(q - p);
             if (!pousse(lot, HCT_IDENT, p, len, ligne, col,
                         hct_synonyme(p, len), NULL)) return 0;

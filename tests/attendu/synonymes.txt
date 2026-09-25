@@ -1,0 +1,113 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. LA DÉFINITION s'accepte, pour les vingt-neuf ===
+   (c'est exactement ce que la correction change : le « end »
+    reprend le nom, et le gestionnaire existe. On le prouve en
+    APPELANT un voisin du même script : s'il répond, c'est que le
+    script tout entier a survécu à la définition d'à côté — ce
+    qui était faux avant, où une seule suffisait à tout perdre)
+   voisin vivant après « function abbr » : 42
+   voisin vivant après « function abbrev » : 42
+   voisin vivant après « function bg » : 42
+   voisin vivant après « function bkgnd » : 42
+   voisin vivant après « function bgs » : 42
+   voisin vivant après « function bkgnds » : 42
+   voisin vivant après « function botright » : 42
+   voisin vivant après « function btn » : 42
+   voisin vivant après « function btns » : 42
+   voisin vivant après « function cd » : 42
+   voisin vivant après « function cds » : 42
+   voisin vivant après « function char » : 42
+   voisin vivant après « function chars » : 42
+   voisin vivant après « function fld » : 42
+   voisin vivant après « function flds » : 42
+   voisin vivant après « function grey » : 42
+   voisin vivant après « function hilite » : 42
+   voisin vivant après « function highlite » : 42
+   voisin vivant après « function hilight » : 42
+   voisin vivant après « function loc » : 42
+   voisin vivant après « function mid » : 42
+   voisin vivant après « function msg » : 42
+   voisin vivant après « function poly » : 42
+   voisin vivant après « function prev » : 42
+   voisin vivant après « function rect » : 42
+   voisin vivant après « function reg » : 42
+   voisin vivant après « function sec » : 42
+   voisin vivant après « function secs » : 42
+   voisin vivant après « function tick » : 42
+   -> 0 script(s) perdu(s) sur 29
+=== 1b. L'APPEL, lui, dépend du nom : onze restent masqués ===
+   (« cd(21) » se lit « card 21 », « char(21) » attend « of », et
+    « msg » est la boîte de message. Ce n'est PAS le défaut qu'on
+    corrige, et HyperCard les masquait de même : un mot-clé de
+    type l'emporte sur une fonction de l'auteur. On l'inscrit ici
+    pour que la frontière soit écrite quelque part, et pour voir
+    si elle bouge un jour sans qu'on l'ait voulu)
+   abbr(21) = 42
+   abbrev(21) = 42
+   bg(21) = background "Fond"
+   bkgnd(21) = background "Fond"
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : bgs
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : bkgnds
+   botright(21) = 42
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : btn
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : btns
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : cd
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : cds
+   [ERR]    !! script, ligne 5 colonne 31 : « of » attendu après un morceau
+   [ERR]         put "char(21) = " & char(21)
+   [ERR]    !! « of » attendu après un morceau (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : char
+   [ERR]    !! script, ligne 5 colonne 33 : « of » attendu après un morceau
+   [ERR]         put "chars(21) = " & chars(21)
+   [ERR]    !! « of » attendu après un morceau (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : chars
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : fld
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : flds
+   grey(21) = 42
+   hilite(21) = 42
+   highlite(21) = 42
+   hilight(21) = 42
+   loc(21) = 42
+   mid(21) = 42
+   [ERR]    !! script, ligne 5 colonne 25 : texte inattendu en fin de ligne
+   [ERR]         put "msg(21) = " & msg(21)
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : msg
+   poly(21) = 42
+   prev(21) = 42
+   rect(21) = 42
+   reg(21) = 42
+   sec(21) = 42
+   secs(21) = 42
+   tick(21) = 42
+   -> 11 nom(s) masqué(s) à l'appel sur 29
+=== 2. « on » aussi, pas seulement « function » ===
+   gestionnaire msg reçoit : bonjour
+=== 3. les trois fonctions de HypoGraph, dont « sec » ===
+   (csc et cot ne sont pas des synonymes et passaient déjà ;
+    sec tombait, et emportait les deux autres avec tout le script)
+   sec(0) = 1
+   csc(pi/2) = 1
+   cot(pi/4) = 1
+=== 4. le voisin : « wait 2 sec » reste une durée ===
+   (si le synonyme avait cessé d'en être un, on aurait échangé
+    un défaut contre un autre)
+   les attentes s'analysent, et sec(0) vaut 1
+=== 5. et un « end » qui se trompe VRAIMENT se plaint ===
+   (la correction ne devait pas consister à ne plus comparer.
+    Le rapport des fautes est paresseux : il sort à l'usage, pas
+    à la pose — d'où le send)
+   [ERR]    !! script, ligne 3 colonne 5 : « end » ne reprend pas le nom
+   [ERR]       end cosec
+   [ERR]    !! gestionnaire illisible : stack "Synonymes".sec (son en-tête ou son « end »)
+   
+=== 6. le témoin : un nom ordinaire n'a pas bougé ===
+   tangente(0) = 0

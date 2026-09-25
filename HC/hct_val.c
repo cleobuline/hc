@@ -155,6 +155,43 @@ int hct_est_nombre(const char *s)
 
     if (*s == '+' || *s == '-') s++;
 
+    /* INF ET NAN SE LISENT COMME DES NOMBRES, et il le FAUT.
+     *
+     * J'ai d'abord voulu n'accepter que INF, en me disant que NAN est un
+     * diagnostic qu'on lit et pas un opérande qu'on calcule. Mesuré : ça ne
+     * marche pas, et la pile elle-même dit pourquoi.
+     *
+     *     y = (x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5
+     *
+     * Le 0/0 est SUIVI d'une division par cinq. Chaque opérateur repasse par
+     * une chaîne, si bien que le NaN doit se relire pour traverser le reste de
+     * l'expression. Et la preuve qu'il le traverse est à l'écran : HyperCard
+     * affiche « -.500,NAN(004) » pour cette équation-là, code compris, APRÈS
+     * la division par cinq. Refuser NAN en lecture donnait « un nombre est
+     * attendu ici » — un dialogue de moins, un autre à la place.
+     *
+     * Ce qu'il ne faut pas perdre en échange, c'est la comparaison : NaN n'est
+     * ni inférieur ni supérieur à quoi que ce soit, et hct_compare rendrait
+     * donc « égal ». D'où hct_ordonnable, plus bas, que les opérateurs d'ordre
+     * consultent, et le repli sur le TEXTE pour l'égalité — sans quoi
+     * « if y = 5 » aurait répondu vrai sur un NaN, et « if y is "NAN(004)" »,
+     * que la pile écrit, aurait répondu faux. */
+    if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
+        (s[2] == 'f' || s[2] == 'F') && *saute_blancs(s + 3) == '\0')
+        return 1;
+    if ((s[0] == 'n' || s[0] == 'N') && (s[1] == 'a' || s[1] == 'A') &&
+        (s[2] == 'n' || s[2] == 'N')) {
+        const char *q = s + 3;
+        if (*q == '(') {                 /* NAN(004) : le code de SANE */
+            q++;
+            if (!isdigit((unsigned char)*q)) return 0;
+            while (isdigit((unsigned char)*q)) q++;
+            if (*q != ')') return 0;
+            q++;
+        }
+        return *saute_blancs(q) == '\0';
+    }
+
     int chiffres = 0;
     while (isdigit((unsigned char)*s)) { s++; chiffres++; }
     if (*s == '.') {
@@ -222,6 +259,58 @@ int hct_vers_bool(const char *s, int *valide)
     return 0;
 }
 
+/* INF ET NAN : L'ÉCRITURE, EN UN SEUL ENDROIT.
+ *
+ * SANE — l'arithmétique du Macintosh, dont HyperCard se sert — ne fait pas
+ * d'erreur sur une division par zéro : elle rend une VALEUR, et cette valeur
+ * porte la raison. « 1/0 » vaut INF, « 0/0 » vaut NAN(004), et une pile
+ * d'époque s'en sert : HypoGraph 0.91 écrit « else if y is "NAN(004)" then
+ * put "y=0/0 (indeterminate)" », et teste ailleurs « if y≠"NAN(037)" ».
+ *
+ * Mesuré sur la pile originelle, sous HyperCard : au point où la courbe
+ * traverse sa singularité, le traceur affiche « -.500,NAN(004) ». HC y
+ * répondait « division par zéro » et ouvrait un dialogue.
+ *
+ * Le code voyage dans la charge utile du NaN, et il SURVIT aux calculs
+ * suivants — mesuré : nan("4")/5 et nan("4")*2+1 la gardent. C'est ce qui
+ * permet à « (…)/(x+1/2)/5 » de rendre encore NAN(004) après sa division par
+ * cinq. Charge nulle — le NaN que le matériel fabrique tout seul — s'écrit
+ * « NAN » sans parenthèses, faute d'avoir une raison à donner.
+ *
+ * DEUX PORTES, celle du format par défaut et celle du numberFormat, et la
+ * pile emprunte la seconde : elle pose « set the numberFormat to "0.000" ».
+ * D'où cette fonction plutôt que deux copies.
+ *
+ * Rend le nombre d'octets écrits, ou -1 si x est fini — auquel cas l'appelant
+ * poursuit son chemin normal. */
+static int ecrit_non_fini(double x, char *out, int taille)
+{
+    if (isnan(x)) {
+        unsigned long long u = 0;
+        memcpy(&u, &x, sizeof x < sizeof u ? sizeof x : sizeof u);
+        unsigned long code = (unsigned long)(u & 0x7FFFFFFFFFFFFULL);
+        if (code) return snprintf(out, (size_t)taille, "NAN(%03lu)", code);
+        return snprintf(out, (size_t)taille, "NAN");
+    }
+    if (isinf(x))
+        return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
+    return -1;
+}
+
+/* Un NaN qui porte sa RAISON, à la façon de SANE.
+ *
+ * L'exposant tout à un et le bit « silencieux » font le NaN ; les bits bas
+ * portent le code. On le pose par les bits plutôt que par nan("4") pour
+ * n'avoir pas à passer par une chaîne, et parce que le masque dit exactement
+ * ce qui est écrit. */
+double hct_nan_code(unsigned long code)
+{
+    unsigned long long u = 0x7FF8000000000000ULL | (code & 0x7FFFFFFFFFFFFULL);
+    double d = 0;
+    memcpy(&d, &u, sizeof d < sizeof u ? sizeof d : sizeof u);
+    return d;
+}
+
 /* ------------------------------------------------- écriture d'un nombre
  *
  * Le format par défaut de HyperCard est « %.6g » à ceci près qu'un entier
@@ -238,9 +327,13 @@ int hct_ecrit_nombre(double x, char *out, int taille)
      * parfaitement représentable, et s'écrivait pourtant « INF ». « put 1.5e308 »
      * répondait INF, et « put 1e308 * 1.5 » aussi — alors que la seconde a bien
      * un résultat. isinf et isnan disent exactement ce qu'on voulait savoir. */
-    if (isnan(x)) return snprintf(out, (size_t)taille, "NAN");
-    if (isinf(x))
-        return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
+    /* Ni fini ni formatable : INF et NAN s'écrivent de la même façon des deux
+     * côtés. Une seule définition, ci-dessus — les avoir recopiées aurait
+     * garanti qu'un jour l'une des deux change seule. */
+    {
+        int n = ecrit_non_fini(x, out, taille);
+        if (n >= 0) return n;
+    }
 
     /* Entier exact et représentable : on l'écrit tel quel. */
     if (x == floor(x) && fabs(x) < 1e15) {
@@ -337,9 +430,13 @@ int hct_ecrit_nombre_format(double x, char *out, int taille)
 
     /* Même correction qu'au format par défaut : la borne 1e308 déclarait
      * infinis des nombres finis jusqu'à 1,797e308. */
-    if (isnan(x)) return snprintf(out, (size_t)taille, "NAN");
-    if (isinf(x))
-        return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
+    /* Ni fini ni formatable : INF et NAN s'écrivent de la même façon des deux
+     * côtés. Une seule définition, ci-dessus — les avoir recopiées aurait
+     * garanti qu'un jour l'une des deux change seule. */
+    {
+        int n = ecrit_non_fini(x, out, taille);
+        if (n >= 0) return n;
+    }
 
     /* Même garde qu'au format par défaut : un gabarit ne peut pas mettre en
      * forme ce qui ne tient pas dans le tampon, et rendre les premiers
@@ -391,8 +488,26 @@ int hct_compare(const char *a, const char *b, int *numerique)
      * condition, « 10 » et « 9a » se compareraient de deux façons selon
      * l'ordre des opérandes. */
     if (hct_est_nombre(a) && hct_est_nombre(b)) {
-        if (numerique) *numerique = 1;
         double x = hct_vers_nombre(a), y = hct_vers_nombre(b);
+
+        /* UN NaN NE SE COMPARE PAS EN NOMBRE : il n'est ni inférieur ni
+         * supérieur, et les trois tests ci-dessous rendraient donc 0 —
+         * c'est-à-dire ÉGAL. « if y = 5 » aurait répondu vrai sur un NaN, et
+         * c'est exactement le genre de réponse fausse et silencieuse qu'on
+         * cherche à ne pas produire.
+         *
+         * On retombe donc sur le TEXTE, ce qui donne aussi ce que la pile
+         * attend : « if y is "NAN(004)" » compare deux fois la même chaîne et
+         * répond vrai, « if y is "NAN(037)" » répond faux. L'ORDRE, lui, ne
+         * doit rien rendre du tout — voir hct_ordonnable, que les opérateurs
+         * < > <= >= consultent avant d'appeler ici. */
+        if (isnan(x) || isnan(y)) {
+            if (numerique) *numerique = 0;
+            int t = strcasecmp(a, b);
+            return t < 0 ? -1 : (t > 0 ? 1 : 0);
+        }
+
+        if (numerique) *numerique = 1;
         if (x < y) return -1;
         if (x > y) return  1;
         return 0;
@@ -403,6 +518,23 @@ int hct_compare(const char *a, const char *b, int *numerique)
     /* Texte : la comparaison de HyperTalk ignore la casse. */
     int r = strcasecmp(a, b);
     return r < 0 ? -1 : (r > 0 ? 1 : 0);
+}
+
+/* Ces deux opérandes se COMPARENT-ILS EN ORDRE ?
+ *
+ * Non dès qu'un NaN est en jeu : « NAN(004) > 625 », « NAN < 3 » et leurs
+ * inverses sont tous FAUX, comme le veut l'arithmétique à virgule flottante.
+ * Rendre l'un d'eux vrai serait pire qu'une erreur — une pile qui borne ses
+ * points par « if ny > itt » aurait tracé vers un point qui n'existe pas.
+ *
+ * L'égalité n'en dépend pas : elle passe par hct_compare, qui se replie sur le
+ * texte et rend donc « NAN(004) is "NAN(004)" » vrai, ce que la pile écrit. */
+int hct_ordonnable(const char *a, const char *b)
+{
+    if (!a) a = "";
+    if (!b) b = "";
+    if (!hct_est_nombre(a) || !hct_est_nombre(b)) return 1;   /* texte : ordonnable */
+    return !(isnan(hct_vers_nombre(a)) || isnan(hct_vers_nombre(b)));
 }
 
 int hct_egal(const char *a, const char *b)

@@ -104,6 +104,10 @@ int hct_vers_bool(const char *s, int *valide);
  * `the numberFormat`. On s'en tient ici au format par défaut, qui est
  * l'entier quand la valeur en est un, et jusqu'à six décimales sinon,
  * zéros de fin retirés. */
+/* Un NaN portant le code SANE `code` : 4 pour 0/0, comme HyperCard l'écrit.
+ * Le code ressort tel quel de hct_ecrit_nombre, sous la forme NAN(004). */
+double hct_nan_code(unsigned long code);
+
 int hct_ecrit_nombre(double x, char *out, int taille);
 int hct_ecrit_nombre_format(double x, char *out, int taille);
 
@@ -116,6 +120,11 @@ const char *hct_format_nombre_lu(void);
  * Rend -1, 0 ou +1. `numerique` reçoit 1 si la comparaison a été faite sur
  * des nombres — utile pour les messages d'erreur et pour les tests. */
 int hct_compare(const char *a, const char *b, int *numerique);
+
+/* Rend 0 si l'ordre n'a pas de sens entre ces deux valeurs — c'est-à-dire si
+ * un NaN est en jeu. Les opérateurs < > <= >= doivent alors répondre false,
+ * tous les quatre. L'égalité, elle, reste tranchée par hct_compare. */
+int hct_ordonnable(const char *a, const char *b);
 
 /* Égalité au sens de HyperTalk : numérique si les deux sont des nombres,
  * sinon textuelle et insensible à la casse. */

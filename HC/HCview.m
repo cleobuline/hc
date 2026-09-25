@@ -2491,7 +2491,17 @@ static const char *cocoa_global_get(const char *name) {
 
     if (strcasecmp(name, "optionKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagOption) ? "down" : "up";
-    if (strcasecmp(name, "commandKey") == 0)
+    /* « cmdKey » est le synonyme que l'annexe I donne à « commandKey », et
+     * V3_GLOBALES_HOTE le déclare depuis toujours à côté de lui. Mais cette
+     * branche ne connaissait que le nom long : l'hôte rendait NULL, le noyau
+     * reprenait son chemin normal, et « put the cmdKey » répondait
+     * « propriété ou fonction inconnue ».
+     *
+     * Le défaut de famille, une fois de plus : le noyau annonce une porte
+     * que l'interface n'a pas percée. Relevé en croisant les deux listes du
+     * noyau contre tous les strcasecmp de ce fichier — cmdKey était le seul
+     * des quarante-trois noms à manquer. */
+    if (strcasecmp(name, "commandKey") == 0 || strcasecmp(name, "cmdKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagCommand) ? "down" : "up";
     if (strcasecmp(name, "shiftKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagShift) ? "down" : "up";

@@ -1,0 +1,66 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. les trois cas de base ===
+   INF
+   -INF
+   NAN(004)
+=== 2. LE CAS DE LA PILE : l'équation, au point qui cassait ===
+   (x = -32/64, soit -0.5 exactement, avec son numberFormat)
+   -0.500,NAN(004)
+=== 3. et le point d'à côté, qui marchait déjà ===
+   (x = -31/64 : elle lit « -0.484,1.188 » à l'écran, et c'est
+    bien 1.188 et non 1.194 — le numberFormat arrondit AUSSI les
+    calculs intermédiaires, comme chez HyperCard)
+   -0.484,1.188
+=== 4. le CODE survit aux calculs qui suivent ===
+   (dans l'équation, le 0/0 est suivi d'une division par cinq :
+    si le code ne voyageait pas, on lirait « NAN » tout court)
+   z      = NAN(004)
+   z/5    = NAN(004)
+   z*2+1  = NAN(004)
+=== 5. « divide by 0 », le JUMEAU : la commande, pas l'opérateur ===
+   (une pile peut employer l'une ou l'autre ; corriger la seule
+    expression aurait laissé la moitié du défaut en place)
+   7 divisé par 0 : INF
+   0 divisé par 0 : NAN(004)
+=== 6. INF s'ORDONNE : c'est un nombre ===
+   (« if ny > itt » de la pile doit trancher sur des nombres)
+   y is INF      : true
+   y > 625       : true
+   -1/0 < -625   : true
+   INF + 1       : INF
+=== 7. NAN se CALCULE, mais ne s'ORDONNE pas ===
+   (les deux comparaisons que la pile écrit doivent répondre vrai,
+    et « y = 5 » doit répondre FAUX : un NaN n'est égal à rien
+    d'autre qu'à un NaN du même code)
+   y contains NAN   : true
+   y is NAN(004)    : true
+   y is NAN(037)    : false
+   y = 5            : false
+   y is not 5       : true
+=== 7b. L'ORDRE est faux DANS LES DEUX SENS ===
+   (c'est le test qui compte. hct_compare rend 0 sur un NaN —
+    ni inférieur ni supérieur — et sans garde « <= » et « >= »
+    auraient tous deux répondu VRAI. Une pile qui borne ses points
+    par « if ny > itt » aurait tracé vers un point inexistant)
+   y > 625   : false
+   y < 625   : false
+   y >= 625  : false
+   y <= 625  : false
+   y > y     : false
+   y <= y    : false
+=== 7c. la ligne de bornage de la pile, telle qu'elle est écrite ===
+   (if ny > itt or ny < -itt or nx > itt or nx < -itt then …)
+   dans les bornes (le NaN ne déclenche aucune borne)
+=== 8. mod par zéro : NAN sans code ===
+   (SANE en a un pour le reste invalide ; je n'en ai pas la preuve
+    sous les yeux, et un numéro non vérifié serait pire que rien)
+   NAN
+=== 9. div par zéro suit la même règle que « / » ===
+   INF
+   NAN(004)
+=== 10. les témoins : ce qui marchait marche encore ===
+   6/3     = 2
+   7 div 2 = 3
+   7 mod 2 = 1
+   1e308*2 = INF
+   1.5e308 = 1.5e+308
