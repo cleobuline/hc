@@ -19,8 +19,17 @@
  * LES TROIS GENRES, qu'il faut séparer avant de toucher à quoi que ce soit :
  *
  *   1. LES VRAIES ERREURS HYPERTALK — propriété inconnue, morceau hors
- *      limites, fichier non ouvert. Chez HyperCard elles arrêtent. Ce sont
- *      elles, et elles seules, que le chantier vise.
+ *      limites, fichier non ouvert. Je les croyais bloquantes chez
+ *      HyperCard, et c'est POUR ELLES que le chantier existait.
+ *
+ *      MESURÉ, et l'inverse : HyperCard ouvre son dialogue et CONTINUE.
+ *      La sonde accumule, pour que la boîte n'efface pas sa preuve —
+ *      « put "1" / set the zorglub of this card to 1 / put msg & "2" »
+ *      laisse « 12 » dans la boîte. Le « 2 » est là.
+ *
+ *      Ces cinquante sites sont donc FIDÈLES TELS QUELS, et ce harnais,
+ *      écrit pour préparer leur correction, sert maintenant à prouver
+ *      qu'il ne faut pas les corriger.
  *
  *   2. « L'HÔTE NE SAIT PAS FAIRE » — sept sites qui ne disent rien sur
  *      HyperTalk et tout sur le HÔTE COURANT : pas de souris, pas
@@ -83,14 +92,17 @@ int main(void)
     g_carte = hc_new_card(g_pile, fond, "Une");
     hc_set_current_card(g_carte);
 
-    printf("=== 1. LE TÉMOIN : une faute, qui arrête ===\n");
-    printf("   (hct_ctx_faute. « APRÈS » ne doit PAS sortir)\n");
+    printf("=== 1. LA FAUTE, QUI ARRÊTE — ET QUI S'ÉCARTE D'HYPERCARD ===\n");
+    printf("   (hct_ctx_faute. « APRÈS » ne sort pas. Je l'avais mise ici\n");
+    printf("    comme TÉMOIN du bon comportement ; la mesure en fait le seul\n");
+    printf("    cas douteux de la page, puisque HyperCard, lui, continue)\n");
     essaie("lecture d'une propriété inconnue",
            "put the zorglub of this card");
 
     printf("=== 2. GENRE 1 : vraies erreurs HyperTalk ===\n");
-    printf("   (celles que le chantier vise. « APRÈS » sort aujourd'hui,\n");
-    printf("    et c'est ce qu'il faudra changer)\n");
+    printf("   (« APRÈS » sort, et il DOIT sortir : mesuré sous Basilisk,\n");
+    printf("    HyperCard ouvre son dialogue et continue. Ces lignes-là\n");
+    printf("    étaient la cible du chantier ; elles en sont la réfutation)\n");
     essaie("écriture d'une propriété inconnue",
            "set the zorglub of this card to 1");
     essaie("convert sans « to »",       "convert \"hier\"");
