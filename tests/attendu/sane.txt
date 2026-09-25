@@ -102,12 +102,20 @@
    sqrt(4)   = 2
    0*5       = 0
    2*(1/0)   = INF
-=== 8. mod par zéro : NAN sans code ===
-   (SANE en a un pour le reste invalide ; je n'en ai toujours pas
-    la preuve sous les yeux, et un numéro non vérifié serait pire
-    que rien. Les trois d'au-dessus, eux, ont été MESURÉS)
-   -NAN
-=== 9. div par zéro suit la même règle que « / » ===
+=== 8. « mod » par zéro est une ERREUR, pas une valeur ===
+   (MESURÉ : « put 5 mod 0 » sous HyperCard ouvre un dialogue,
+    « can't mod by 0 ». J'avais supposé qu'il rendait un NaN comme
+    la division, faute d'en connaître le code SANE — faux. Les deux
+    opérations se ressemblent et HyperCard ne les traite pas pareil,
+    ce qui est précisément pourquoi on mesure au lieu de déduire)
+   [ERR]    !! modulo par zéro (v3, ligne 3 de stack "SANE".essai)
+   1
+=== 9. « div » par zéro : PAS ENCORE MESURÉ ===
+   (il suit ici la règle de « / » — INF et NAN(004) — parce que
+    c'est une division. Mais « mod » vient de montrer qu'une
+    opération voisine peut être traitée autrement, et personne n'a
+    encore tapé « put 7 div 0 » dans HyperCard. Ce qui suit est donc
+    une HYPOTHÈSE inscrite comme telle, pas une mesure)
    INF
    NAN(004)
 === 10. les témoins : ce qui marchait marche encore ===

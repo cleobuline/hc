@@ -167,9 +167,17 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
      * signe. On ne s'occupe donc que de 0/0, dont le NaN naturel ne porte
      * aucun code — on y met le 4 de SANE.
      *
-     * « mod » reste sans code : SANE en a un pour le reste invalide, mais je
-     * n'en ai pas la preuve sous les yeux, et écrire un numéro non vérifié
-     * serait pire que de n'en écrire aucun. Il rend donc « NAN » tout court. */
+     * « MOD » EST L'EXCEPTION, ET IL A FALLU LA MESURER POUR LE SAVOIR.
+     *
+     * J'avais supposé qu'il suivait la même règle et rendait un NaN, faute
+     * d'en connaître le code SANE. Faux : « put 5 mod 0 » sous HyperCard
+     * ouvre un dialogue, « can't mod by 0 ». Le reste par zéro est donc une
+     * ERREUR là où la division est une valeur — les deux opérations se
+     * ressemblent, et HyperCard ne les traite pas pareil.
+     *
+     * On garde donc la faute pour « mod » seul. Supposer qu'une règle
+     * s'étend à l'opération d'à côté est exactement ce qui fabrique les
+     * défauts que ce dépôt passe son temps à corriger. */
     else if (!strcmp(op, "/")) {
         r = (x == 0 && y == 0) ? hct_nan_code(4) : x / y;
     }
@@ -177,6 +185,10 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
         r = (x == 0 && y == 0) ? hct_nan_code(4) : trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
+        if (y == 0) {
+            hct_ctx_faute(ctx, n, "modulo par zéro");
+            return hct_val_vide();
+        }
         r = fmod(x, y);
     }
     else if (!strcmp(op, "^")) r = pow(x, y);

@@ -221,13 +221,21 @@ int main(void)
          "  put \"0*5       = \" & 0*5\n"
          "  put \"2*(1/0)   = \" & 2*(1/0)");
 
-    printf("=== 8. mod par zéro : NAN sans code ===\n");
-    printf("   (SANE en a un pour le reste invalide ; je n'en ai toujours pas\n");
-    printf("    la preuve sous les yeux, et un numéro non vérifié serait pire\n");
-    printf("    que rien. Les trois d'au-dessus, eux, ont été MESURÉS)\n");
+    printf("=== 8. « mod » par zéro est une ERREUR, pas une valeur ===\n");
+    printf("   (MESURÉ : « put 5 mod 0 » sous HyperCard ouvre un dialogue,\n");
+    printf("    « can't mod by 0 ». J'avais supposé qu'il rendait un NaN comme\n");
+    printf("    la division, faute d'en connaître le code SANE — faux. Les deux\n");
+    printf("    opérations se ressemblent et HyperCard ne les traite pas pareil,\n");
+    printf("    ce qui est précisément pourquoi on mesure au lieu de déduire)\n");
     fais("set the numberFormat to \"0.######\"\n  put 5 mod 0");
+    fais("put 5 mod 2");
 
-    printf("=== 9. div par zéro suit la même règle que « / » ===\n");
+    printf("=== 9. « div » par zéro : PAS ENCORE MESURÉ ===\n");
+    printf("   (il suit ici la règle de « / » — INF et NAN(004) — parce que\n");
+    printf("    c'est une division. Mais « mod » vient de montrer qu'une\n");
+    printf("    opération voisine peut être traitée autrement, et personne n'a\n");
+    printf("    encore tapé « put 7 div 0 » dans HyperCard. Ce qui suit est donc\n");
+    printf("    une HYPOTHÈSE inscrite comme telle, pas une mesure)\n");
     fais("put 7 div 0");
     fais("put 0 div 0");
 

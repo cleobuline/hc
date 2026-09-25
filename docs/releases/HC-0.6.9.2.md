@@ -113,9 +113,15 @@ C gives none of these — on this machine all three produce a NaN with a zero
 payload — so the code and the sign are set explicitly. Guessing would have
 been wrong: 022 was the plausible value for the logarithm, and it is 036.
 
-`mod` by zero still returns `NAN` with no code. SANE has one for an invalid
-remainder, it has not been measured, and an unverified number would be worse
-than none.
+**`mod` by zero is an error, not a value** — and that too was measured rather
+than deduced. `put 5 mod 0` under HyperCard opens a dialog: *"can't mod by
+0"*. The assumption had been that it returned a NaN like division does, merely
+with an unknown code. It does not. Two operations that look alike are not
+treated alike, which is the whole reason for measuring.
+
+`div` by zero follows the `/` rule here — `INF` and `NAN(004)` — because it is
+a division. That is an **assumption, recorded as one** in the harness: nobody
+has yet typed `put 7 div 0` into HyperCard.
 
 **A silent corruption found on the way.** `strtod` reads a NaN's payload with
 base 0, so a leading zero makes it **octal**. Four of the six codes HyperCard
