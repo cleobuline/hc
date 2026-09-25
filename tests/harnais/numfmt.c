@@ -68,4 +68,35 @@ int main(void){
    "  put 5 into x\n  add 1 to x\n  put x\n  divide x by 4\n  put x\n"
    "  put \"-- mais l'operateur, lui, suit toujours :\"\n"
    "  put 5/4");
+  /* CES TROIS-LÀ ONT ÉTÉ RELEVÉES DANS HYPERCARD, sous Basilisk II, avec le
+   * gabarit « 0.0 ». HC rendait déjà les mêmes ; c'est ce qui a clos une
+   * longue hésitation sur le moment où le gabarit s'applique.
+   *
+   *     put 1/3*3              ->  0.9      (et non 1.0)
+   *     put value("1/3*3")     ->  0.9
+   *     put 6*cos(3*0.0436)    ->  6.0      (et non 5.9)
+   *
+   * LA PREMIÈRE dit que les intermédiaires sont arrondis : 1/3 devient 0.3
+   * AVANT la multiplication, sans quoi le produit vaudrait exactement 1.
+   *
+   * LA TROISIÈME dit que le résultat des FONCTIONS l'est aussi.
+   * cos(0.1308) vaut 0.9915 ; sans arrondi, le produit donnerait 5.9. Il
+   * donne 6.0, donc le cosinus est passé par 1.0.
+   *
+   * CE QUE ÇA COÛTE, et c'est visible à l'écran : un traceur polaire qui pose
+   * ce gabarit dans sa boucle voit sin(t) tomber à 0.0 pour les petits
+   * angles, puis sauter à 0.1. Trois points identiques, puis un bond de douze
+   * pixels. La courbe sort en escalier — et c'est le comportement JUSTE, celui
+   * d'HyperCard. La faute est au script qui pose le gabarit là, pas au moteur.
+   *
+   * Inscrit ici parce que j'ai cherché le défaut dans le moteur pendant deux
+   * heures avant de penser à mesurer. */
+  essai("mesure contre HyperCard : intermediaires ET fonctions arrondis",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"1/3*3            -> \" & (1/3*3)\n"
+   "  put \"value(1/3*3)     -> \" & value(\"1/3*3\")\n"
+   "  put \"6*cos(3*0.0436)  -> \" & (6*cos(3*0.0436))\n"
+   "  put \"sin(0.0218)      -> \" & sin(0.0218)\n"
+   "  put \"sin(0.0654)      -> \" & sin(0.0654)");
+
   hc_free(st);return 0;}
