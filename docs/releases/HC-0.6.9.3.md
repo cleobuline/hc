@@ -87,7 +87,36 @@ code would simply have answered false, and nothing would have said why.
 Payloads are now read in decimal, as they are written. `hct_vers_nombre`
 handles `INF` and `NAN` itself and hands only ordinary numbers to `strtod`.
 
-### 4. The application now reports its own version
+### 4. A NaN sorts after any number — whatever its spelling
+
+Adding the sign broke something half an hour later, and the mechanism is worth
+recording.
+
+0.6.9.2 made an ordering comparison involving a NaN fall back to **text**. That
+worked — `"NAN(004)" > "625"` because `N` comes after `6` — and it is what a
+period stack needs, since HypoGraph's NaN handling sits *inside* its bounds
+test. But it worked **by an accident of alphabet**.
+
+The unary minus flips a NaN's sign bit, so the stack's own expression
+
+```
+round(-(y-cy)*yScale + 171)
+```
+
+started producing `-NAN(004)`, which sorts *before* `"625"`. The guard stopped
+firing and the plotter went back to drawing toward a non-finite point.
+
+The rule is now **stated rather than inherited from a character sort**: a NaN
+sorts after any number, whatever its code and whatever its sign. Sign and code
+are diagnostics; they take no part in ordering. Two NaNs compare as text
+between themselves, so `y is "NAN(004)"` is true and `y is "NAN(037)"` is
+false, which is what the stack writes.
+
+This one is **inferred from the stack, not measured**: what the stack proves is
+that a NaN must trip that guard; the direction of the ordering is the simplest
+reading that produces it.
+
+### 5. The application now reports its own version
 
 `MARKETING_VERSION` had been left at `0.6.5`, so 0.6.8, 0.6.9 and 0.6.9.1 all
 announced "0.6.5" in the Finder and in the About box. Fixed in 0.6.9.2, but

@@ -539,43 +539,49 @@ int hct_compare(const char *a, const char *b, int *numerique)
     if (hct_est_nombre(a) && hct_est_nombre(b)) {
         double x = hct_vers_nombre(a), y = hct_vers_nombre(b);
 
-        /* UN NaN NE SE COMPARE PAS EN NOMBRE : il n'est ni inférieur ni
-         * supérieur, et les trois tests ci-dessous rendraient donc 0 —
-         * c'est-à-dire ÉGAL. « if y = 5 » aurait répondu vrai sur un NaN, et
-         * c'est exactement le genre de réponse fausse et silencieuse qu'on
-         * cherche à ne pas produire.
+        /* UN NaN NE S'ORDONNE PAS, ET LA RÈGLE NE DOIT PAS DÉPENDRE DE
+         * SON ÉCRITURE.
          *
-         * On retombe donc sur le TEXTE — pour l'ÉGALITÉ COMME POUR L'ORDRE.
-         *
-         * J'avais d'abord fait rendre false aux quatre opérateurs d'ordre, au
-         * nom de la virgule flottante : un NaN n'est ni inférieur ni supérieur
-         * à quoi que ce soit. C'était raisonner sur la norme IEEE au lieu de
-         * regarder la pile, et la pile dit le contraire. HypoGraph borne ses
-         * points ainsi :
+         * Première version : repli sur la comparaison de TEXTE. Ça marchait —
+         * « NAN(004) » > « 625 » parce que « N » vient après « 6 » — et c'est
+         * précisément ce que la pile attend, son traitement du NaN étant DANS
+         * son test de bornes :
          *
          *     if ny > itt or ny < -itt or nx > itt or nx < -itt then
          *       if y contains "NAN" or y is "INF" then …
          *       put empty into nx        -- on lève le crayon
          *
-         * Le traitement du NaN est DANS le test de bornes. Pour qu'il soit
-         * seulement atteignable, « ny > itt » doit répondre VRAI sur un NaN —
-         * ce que donne la comparaison de texte, « N » venant après « 6 ». Avec
-         * l'ordre à false, le garde ne se déclenchait pas, la pile traçait
-         * jusqu'à un point non fini, et la courbe recevait une barre verticale
-         * en travers. Mesuré à l'écran.
+         * Mais ça marchait par ACCIDENT D'ALPHABET. Le jour où l'écriture a
+         * gagné un signe — « sqrt(-1) » rend « -NAN(001) » chez HyperCard, et
+         * le moins unaire retourne le bit de signe —, « -NAN(004) » s'est mis
+         * à comparer AVANT « 625 », le garde de la pile a cessé de partir, et
+         * le traceur est retourné dessiner vers un point non fini. Mesuré à
+         * l'écran, une demi-heure après avoir ajouté le signe.
          *
-         * La règle est donc simple, et elle vaut pour les deux : un NaN n'est
-         * pas un nombre COMPARABLE, il se compare comme la chaîne qu'il est.
-         * Il reste lisible en ARITHMÉTIQUE, ce qui est une autre question et
-         * que le /5 de l'équation exige.
+         * LA RÈGLE EST DONC ÉNONCÉE, PAS DÉDUITE D'UN TRI DE CARACTÈRES : un
+         * NaN se range APRÈS tout nombre. C'est ce qui fait qu'un contrôle de
+         * bornes l'attrape, quel que soit son code et quel que soit son signe.
+         * Le signe et le code sont des diagnostics ; ils ne prennent aucune
+         * part à l'ordre.
          *
-         * Ce qu'on ne perd pas au passage : « if y = 5 » reste faux, puisque
-         * « NAN(004) » et « 5 » ne sont pas le même texte. C'était la seule
-         * raison d'avoir touché à l'ordre. */
-        if (isnan(x) || isnan(y)) {
+         * Deux NaN entre eux se comparent en texte : « y is "NAN(004)" » doit
+         * répondre vrai et « y is "NAN(037)" » faux, ce que la pile écrit.
+         *
+         * Ce qu'on ne perd pas : « if y = 5 » reste faux, puisque le NaN se
+         * range après et n'est donc égal à rien.
+         *
+         * INFÉRÉ DE LA PILE, PAS MESURÉ. Personne n'a encore tapé
+         * « put (0/0) > 625 » dans HyperCard. Ce que la pile prouve, c'est
+         * qu'un NaN doit déclencher ce garde ; le sens exact de l'ordre est la
+         * lecture la plus simple qui produise ça. */
+        int na = isnan(x), nb = isnan(y);
+        if (na || nb) {
             if (numerique) *numerique = 0;
-            int t = strcasecmp(a, b);
-            return t < 0 ? -1 : (t > 0 ? 1 : 0);
+            if (na && nb) {
+                int t = strcasecmp(a, b);
+                return t < 0 ? -1 : (t > 0 ? 1 : 0);
+            }
+            return na ? 1 : -1;          /* le NaN se range après */
         }
 
         if (numerique) *numerique = 1;

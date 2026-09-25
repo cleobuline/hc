@@ -138,6 +138,40 @@ int main(void)
          "  put \"y < 625   : \" & (y < 625)\n"
          "  put \"y = 5     : \" & (y = 5)");
 
+    printf("=== 7b-bis. L'ORDRE NE DÉPEND PAS DE L'ÉCRITURE DU NaN ===\n");
+    printf("   (RÉGRESSION VÉCUE, une demi-heure après avoir ajouté le signe.\n");
+    printf("    La première règle se repliait sur la comparaison de TEXTE, et\n");
+    printf("    marchait par accident d'alphabet : « NAN(004) » > « 625 »\n");
+    printf("    parce que « N » vient après « 6 ». Le moins unaire retourne le\n");
+    printf("    bit de signe d'un NaN, si bien que la chaîne de la pile —\n");
+    printf("      round(-(y-cy)*yScale + 171)\n");
+    printf("    rendait « -NAN(004) », qui compare AVANT « 625 ». Le garde a\n");
+    printf("    cessé de partir et le traceur est reparti dessiner vers un\n");
+    printf("    point non fini.\n");
+    printf("\n");
+    printf("    La règle est maintenant ÉNONCÉE : un NaN se range APRÈS tout\n");
+    printf("    nombre, quel que soit son code et quel que soit son signe)\n");
+    fais("put \"NAN(004)  > 625 : \" & ((0/0) > 625)\n"
+         "  put \"-NAN(004) > 625 : \" & ((-(0/0)) > 625)\n"
+         "  put \"-NAN(001) > 625 : \" & (sqrt(-1) > 625)\n"
+         "  put \"NAN(036)  > 625 : \" & (ln(-1) > 625)\n"
+         "  put \"et dans l'autre sens, tous faux :\"\n"
+         "  put \"NAN(004)  < 625 : \" & ((0/0) < 625)\n"
+         "  put \"-NAN(004) < 625 : \" & ((-(0/0)) < 625)");
+
+    printf("=== 7b-ter. LA CHAÎNE EXACTE DE LA PILE, bout à bout ===\n");
+    printf("   (c'est la ligne qui a cassé : le calcul, puis le garde)\n");
+    fais("set the numberFormat to \"0.######\"\n"
+         "  put 0/0 into y\n"
+         "  put 0 into cy\n"
+         "  put round(-(y-cy)*64 + 171) into ny\n"
+         "  put \"ny vaut \" & ny\n"
+         "  if ny > 625 or ny < -625 then\n"
+         "    put \"le garde part : crayon levé\"\n"
+         "  else\n"
+         "    put \"le garde a MANQUÉ — c'est la régression\"\n"
+         "  end if");
+
     printf("=== 7c. LE GARDE DE LA PILE, tel qu'il est écrit ===\n");
     printf("   (if ny > itt or ny < -itt or nx > itt or nx < -itt then\n");
     printf("      if y contains \"NAN\" or y is \"INF\" then …\n");
