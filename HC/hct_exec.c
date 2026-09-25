@@ -952,7 +952,37 @@ static void commande(HctExec *x, const HctNoeud *n)
              * l'opérateur. Les deux ne peuvent pas diverger. */
             r = (xc == 0 && xv == 0) ? hct_nan_code(4) : xc / xv;
         }
-        HctValeur res = hct_val_calcul(r);
+        /* LES COMMANDES D'ACCUMULATION NE PASSENT PAS PAR LE numberFormat.
+         *
+         * MESURÉ, et le contraire figeait une pile réelle. HypoGraph 0.91
+         * pose, DANS sa boucle de tracé polaire :
+         *
+         *     set the numberFormat to 0.0
+         *     ...
+         *     add theInt to t          -- theInt vaut pi/144, soit 0.0218
+         *
+         * Avec hct_val_calcul, le gabarit remettait en forme le résultat :
+         * t valait 0.0 après le premier tour, 0.0 après le deuxième, et
+         * « repeat until t > 2*pi » ne finissait jamais. Sous HyperCard dans
+         * Basilisk II, le même bouton trace sa courbe et s'arrête — la boucle
+         * avance donc là-bas, et « add » n'y est pas mis en forme.
+         *
+         * LA FRONTIÈRE N'EST PAS CELLE QU'ON CROIRAIT. Le numberFormat
+         * s'applique bien aux calculs, y compris intermédiaires : mesuré
+         * aussi, le traceur affiche 1.188 et non 1.194 là où le gabarit vaut
+         * « 0.000 ». Ce sont les COMMANDES qui y échappent, pas les
+         * opérateurs. Un accumulateur garde sa valeur ; une expression se
+         * montre.
+         *
+         * Ce qui se tient : « add » écrit dans un conteneur pour qu'on
+         * continue à compter avec, pas pour qu'on le lise. Lui appliquer un
+         * format d'affichage détruit l'accumulation elle-même.
+         *
+         * MESURÉ POUR « add » SEUL. Les trois autres — subtract, multiply,
+         * divide — partagent cette ligne et la même forme de phrase ; les
+         * traiter autrement demanderait une raison, et il n'y en a pas. Mais
+         * c'est une extension, pas un relevé, et ça se dit. */
+        HctValeur res = hct_val_nombre(r);
         int delegue = 0;
         if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);

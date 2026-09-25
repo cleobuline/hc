@@ -41,7 +41,31 @@ int main(void){
    "  set the numberFormat to \"0.000\"\n"
    "  put the sqrt of 2\n  put the round of 1.5\n  put the average of 1,2\n"
    "  put the abs of -3");
-  essai("add / subtract suivent aussi",
+  /* LES COMMANDES D'ACCUMULATION NE SUIVENT PAS. CETTE SECTION DISAIT LE
+   * CONTRAIRE, ET ELLE AVAIT TORT.
+   *
+   * Elle s'appelait « add / subtract suivent aussi » et attendait 6.00 puis
+   * 1.50. C'était une EXTENSION : ayant établi que le gabarit s'applique aux
+   * calculs, on l'avait étendu aux commandes qui en font, sans le mesurer.
+   *
+   * Mesuré depuis, sur la pile qui s'en sert. Le bouton de tracé polaire de
+   * HypoGraph 0.91 pose « set the numberFormat to 0.0 » DANS sa boucle et y
+   * fait « add theInt to t », theInt valant pi/144. Si le gabarit s'appliquait,
+   * t vaudrait 0.0 à chaque tour et « repeat until t > 2*pi » ne finirait
+   * jamais. Sous HyperCard dans Basilisk II, ce bouton trace sa courbe et
+   * s'arrête : la boucle avance donc là-bas.
+   *
+   * LA FRONTIÈRE PASSE ENTRE LES OPÉRATEURS ET LES COMMANDES, pas entre
+   * « calcul » et « autre chose ». Les sections précédentes de ce harnais
+   * restent vraies mot pour mot — un opérateur MONTRE un résultat, une
+   * commande d'accumulation COMPTE avec. Appliquer un format d'affichage à un
+   * accumulateur détruit l'accumulation.
+   *
+   * On garde donc la section, avec ses valeurs retournées : c'est le même
+   * test, et sa nouvelle référence dit ce que HyperCard fait. */
+  essai("les commandes d'accumulation ne suivent PAS",
    "  set the numberFormat to \"0.00\"\n"
-   "  put 5 into x\n  add 1 to x\n  put x\n  divide x by 4\n  put x");
+   "  put 5 into x\n  add 1 to x\n  put x\n  divide x by 4\n  put x\n"
+   "  put \"-- mais l'operateur, lui, suit toujours :\"\n"
+   "  put 5/4");
   hc_free(st);return 0;}

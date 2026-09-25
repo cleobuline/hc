@@ -11,12 +11,36 @@
    mille tours : n = 1000
    somme de 1 à 100 = 5050
    quatre articles : n = 4
-=== 5. LA CAUSE, chez la pile qui l'a signalé ===
-   (trois « add » suffisent à la montrer : inutile d'en faire dix
-    millions pour comprendre pourquoi t n'avance pas)
-   pi/144 vaut 0.021817
-   après un add   : t = 0.0
-   après deux add : t = 0.0
-   après trois add : t = 0.0
-=== 6. et sans le gabarit, le même compteur avance ===
-   la boucle a fait 288 tours, t = 6.283296
+=== 5. LA BOUCLE DE LA PILE, écrite comme elle l'écrit ===
+   (« put pi/144 into theInt » AVANT, au format par défaut, puis
+    « add theInt to t » DANS la boucle, sous un gabarit à une
+    décimale. Une VARIABLE, pas une expression : la distinction
+    est tout le sujet.
+
+    Avant correction, t valait 0.0 à chaque tour et la boucle ne
+    finissait jamais)
+   theInt vaut 0.021817
+   la boucle a fait 289 tours, t = 6.305113
+=== 6. ET L'EXPRESSION, ELLE, RESTE MISE EN FORME ===
+   (c'est l'autre mesure, et elle vient du traceur cartésien de
+    la même pile : sous HyperCard il affiche 1.188 et non 1.194,
+    ce qui prouve que le gabarit s'applique aux calculs, y compris
+    intermédiaires.
+
+    La frontière n'est donc pas « le numberFormat s'applique ou
+    non » : elle passe entre les OPÉRATEURS, qui montrent, et les
+    COMMANDES d'accumulation, qui comptent. Corriger l'un sans
+    vérifier l'autre aurait cassé le traceur pour réparer le
+    tracé polaire)
+   pi/144 en expression : 0.022
+   le traceur doit lire 1.188 : 1.188
+=== 7. les quatre commandes d'accumulation, ensemble ===
+   (MESURÉ pour « add » seul. Les trois autres partagent la même
+    ligne de code et la même forme de phrase ; les traiter
+    autrement demanderait une raison, et il n'y en a pas. Mais
+    c'est une extension, pas un relevé, et ça se dit)
+   p vaut 0.333333 (calculé AVANT le gabarit étroit)
+   add      : 1.333333
+   subtract : 0.666667
+   multiply : 0.333333
+   divide   : 0.333333

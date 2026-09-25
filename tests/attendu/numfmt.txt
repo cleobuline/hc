@@ -40,6 +40,8 @@
    2.000
    1.500
    3.000
-── add / subtract suivent aussi
-   6.00
-   1.50
+── les commandes d'accumulation ne suivent PAS
+   6
+   1.5
+   -- mais l'operateur, lui, suit toujours :
+   1.25
