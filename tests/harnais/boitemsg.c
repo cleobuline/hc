@@ -108,7 +108,32 @@ int main(void)
          "  put \"DEUX\" into item 2 of msg\n"
          "  put msg");
 
-    printf("=== 9. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===\n");
+    printf("=== 9. LA LIGNE TAPÉE EST LE CONTENU DE LA BOÎTE ===\n");
+    printf("   (signalé à l'écran, et juste : quand on valide une ligne dans\n");
+    printf("    la boîte, elle EST la boîte au moment où le script la lit.\n");
+    printf("    « put word 3 of msg » a pour mots put(1) word(2) 3(3), donc 3 ;\n");
+    printf("    et « put msg » s'affiche lui-même. C'est le petit vertige\n");
+    printf("    classique d'HyperCard, pas un défaut.\n");
+    printf("\n");
+    printf("    CE QUE CETTE SECTION GARDE VRAIMENT : le contrat entre le\n");
+    printf("    noyau et messageBoxEntered: de HCview.m, qui pose le contenu\n");
+    printf("    AVANT d'exécuter. L'Objective-C ne se compile pas ici ; cette\n");
+    printf("    séquence est la seule garde contre une régression de ce\n");
+    printf("    côté-là, et c'est pourquoi elle imite le chemin Cocoa\n");
+    printf("    exactement : hc_message_ecrit, puis hc_do)\n");
+    for (int i = 0; i < 4; i++) {
+        static const char *LIGNES[] = {
+            "put word 3 of msg",
+            "put the number of words of msg",
+            "put char 1 to 3 of msg",
+            "put msg"
+        };
+        printf("   > %s\n", LIGNES[i]);
+        hc_message_ecrit(LIGNES[i]);       /* ce que fait la fenêtre */
+        hc_do(LIGNES[i]);                  /* puis ce qu'elle exécute */
+    }
+
+    printf("=== 10. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===\n");
     printf("   (« the visible of msg » reste « objet introuvable ». La\n");
     printf("    fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.\n");
     printf("    On l'inscrit pour ne pas croire le chantier terminé)\n");

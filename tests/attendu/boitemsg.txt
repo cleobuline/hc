@@ -46,7 +46,28 @@
    [boîte] deux
    [boîte] deux,DEUX
    [boîte] deux,DEUX
-=== 9. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
+=== 9. LA LIGNE TAPÉE EST LE CONTENU DE LA BOÎTE ===
+   (signalé à l'écran, et juste : quand on valide une ligne dans
+    la boîte, elle EST la boîte au moment où le script la lit.
+    « put word 3 of msg » a pour mots put(1) word(2) 3(3), donc 3 ;
+    et « put msg » s'affiche lui-même. C'est le petit vertige
+    classique d'HyperCard, pas un défaut.
+
+    CE QUE CETTE SECTION GARDE VRAIMENT : le contrat entre le
+    noyau et messageBoxEntered: de HCview.m, qui pose le contenu
+    AVANT d'exécuter. L'Objective-C ne se compile pas ici ; cette
+    séquence est la seule garde contre une régression de ce
+    côté-là, et c'est pourquoi elle imite le chemin Cocoa
+    exactement : hc_message_ecrit, puis hc_do)
+   > put word 3 of msg
+   [boîte] 3
+   > put the number of words of msg
+   [boîte] 7
+   > put char 1 to 3 of msg
+   [boîte] put
+   > put msg
+   [boîte] put msg
+=== 10. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
    (« the visible of msg » reste « objet introuvable ». La
     fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.
     On l'inscrit pour ne pas croire le chantier terminé)
