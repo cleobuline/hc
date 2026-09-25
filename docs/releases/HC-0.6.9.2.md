@@ -131,9 +131,10 @@ The consistency is legible once seen: `div` and `mod` are **integer**
 operations, and the SANE arithmetic that produces `INF` and the NaNs is
 floating-point. It does not apply, and HyperCard checks before dividing.
 
-`divide … by 0`, the *command*, follows the `/` rule here, being the imperative
-form of the same floating-point division. That is an **assumption, recorded as
-one** in the harness: nobody has typed `divide n by 0` into HyperCard.
+`divide … by 0`, the *command*, returns `INF` — also measured. So the dividing
+line is not between expression and command, but between **floating-point and
+integer**: `/` and `divide` are the same floating division written two ways;
+`div` and `mod` are integer and refuse.
 
 **A silent corruption found on the way.** `strtod` reads a NaN's payload with
 base 0, so a leading zero makes it **octal**. Four of the six codes HyperCard

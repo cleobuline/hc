@@ -123,12 +123,19 @@
    [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
    [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
    3
-=== 9b. « divide … by 0 », la commande : PAS ENCORE MESURÉE ===
-   (elle suit ici « / » puisqu'elle en est la forme impérative.
-    C'est raisonnable et ce n'est pas un relevé : personne n'a tapé
-    « divide n by 0 » dans HyperCard. Inscrit comme hypothèse —
-    le voisinage vient de me démentir deux fois)
+=== 9b. « divide … by 0 », la commande : une VALEUR ===
+   (MESURÉ, et il le fallait, puisque les deux opérations d'à côté
+    font l'inverse. La ligne de partage ne passe donc pas entre
+    l'expression et la commande, mais entre le FLOTTANT et
+    l'ENTIER : « / » et « divide » sont la même division flottante
+    sous deux écritures, « div » et « mod » sont entières et
+    refusent.
+
+    Le cas 0/0 de la commande n'a pas été relevé à part et n'a pas
+    à l'être : il emprunte la même ligne de code que l'opérateur,
+    les deux ne peuvent pas diverger)
    7 divisé par 0 : INF
+   0 divisé par 0 : NAN(004)
 === 10. les témoins : ce qui marchait marche encore ===
    6/3     = 2
    7 div 2 = 3

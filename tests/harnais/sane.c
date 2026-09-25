@@ -244,14 +244,23 @@ int main(void)
     fais("put 0 div 0");
     fais("put 7 div 2");
 
-    printf("=== 9b. « divide … by 0 », la commande : PAS ENCORE MESURÉE ===\n");
-    printf("   (elle suit ici « / » puisqu'elle en est la forme impérative.\n");
-    printf("    C'est raisonnable et ce n'est pas un relevé : personne n'a tapé\n");
-    printf("    « divide n by 0 » dans HyperCard. Inscrit comme hypothèse —\n");
-    printf("    le voisinage vient de me démentir deux fois)\n");
+    printf("=== 9b. « divide … by 0 », la commande : une VALEUR ===\n");
+    printf("   (MESURÉ, et il le fallait, puisque les deux opérations d'à côté\n");
+    printf("    font l'inverse. La ligne de partage ne passe donc pas entre\n");
+    printf("    l'expression et la commande, mais entre le FLOTTANT et\n");
+    printf("    l'ENTIER : « / » et « divide » sont la même division flottante\n");
+    printf("    sous deux écritures, « div » et « mod » sont entières et\n");
+    printf("    refusent.\n");
+    printf("\n");
+    printf("    Le cas 0/0 de la commande n'a pas été relevé à part et n'a pas\n");
+    printf("    à l'être : il emprunte la même ligne de code que l'opérateur,\n");
+    printf("    les deux ne peuvent pas diverger)\n");
     fais("put 7 into n\n"
          "  divide n by 0\n"
          "  put \"7 divisé par 0 : \" & n");
+    fais("put 0 into n\n"
+         "  divide n by 0\n"
+         "  put \"0 divisé par 0 : \" & n");
 
     printf("=== 10. les témoins : ce qui marchait marche encore ===\n");
     fais("set the numberFormat to \"0.######\"\n"
