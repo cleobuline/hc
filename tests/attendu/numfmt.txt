@@ -45,9 +45,12 @@
    1.5
    -- mais l'operateur, lui, suit toujours :
    1.25
-── mesure contre HyperCard : intermediaires ET fonctions arrondis
-   1/3*3            -> 0.9
-   value(1/3*3)     -> 0.9
-   6*cos(3*0.0436)  -> 6.0
-   sin(0.0218)      -> 0.0
-   sin(0.0654)      -> 0.1
+── les OPERATEURS suivent le gabarit : conforme a HyperCard
+   1/3*3         -> 0.9   (HyperCard : 0.9)
+   value(1/3*3)  -> 0.9   (HyperCard : 0.9)
+── les FONCTIONS ne devraient PAS le suivre : ECART connu
+   10*sqrt(2)    -> 14.0   ECART, HyperCard : 14.1
+   1000*sin(z)   -> 0.0   ECART, HyperCard : 21.8
+   sin(z) seul   -> 0.0   ecrase avant la multiplication
+── l'affichage direct, lui, est conforme
+   sqrt(2)       -> 1.414   (HyperCard : 1.414)
