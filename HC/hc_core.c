@@ -250,6 +250,12 @@ static int      g_capstacks = 0;
 
 static void emit(HcLineKind kind, const char *fmt, ...);
 
+/* Déclarées ici parce que erreurs_vide, tout en tête, en a besoin : la table
+ * des réglages vit six mille lignes plus bas, et l'envoi de message huit mille
+ * encore après. Le détournement de « lockErrorDialogs » relie les trois. */
+static int  reglage_valeur(const char *nom);
+static void reglage_eteint(const char *nom);
+
 /* Les lignes d'erreur du gestionnaire en cours, et l'objet fautif.
  * Voir emit() et la sortie de hc_send_args. */
 static char    g_err_texte[2048];
@@ -713,6 +719,41 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
  * extérieur, et la fin d'une ligne de la boîte de message. Ce corps était
  * écrit dans le premier ; la boîte de message n'avait rien, et ses erreurs
  * n'arrivaient qu'à la console. */
+/* « the lockErrorDialogs » : L'ERREUR PART EN MESSAGE, PAS EN DIALOGUE.
+ *
+ * C'est la serrure dont HC avait la porte sans la clé. hct_verif.c listait
+ * « errordialog » parmi les messages système légitimes depuis toujours, mais
+ * RIEN ne l'envoyait jamais, et la propriété qui l'allume n'existait pas.
+ * Une moitié de mécanisme, et aucun moyen de s'en apercevoir sans une pile
+ * qui l'emploie.
+ *
+ * HypoGraph 0.91 l'emploie, aux deux bouts. Dans son script de pile :
+ *
+ *     on errorDialog them
+ *       answer them with "Cancel"
+ *       choose browse tool
+ *     end errorDialog
+ *
+ * et dans son bouton « draw », en tête du gestionnaire :
+ *
+ *     --  set the lockErrorDialogs to true
+ *
+ * L'auteur traçait des milliers de points et ne voulait pas du dialogue
+ * d'erreur de HyperCard à chacun — celui qui propose d'ouvrir l'éditeur de
+ * script — mais le sien, avec un seul bouton.
+ *
+ * SI PERSONNE NE PREND LE MESSAGE, on ne remet pas le dialogue : la pile a
+ * demandé le silence, et le lui rendre contre son gré viderait la propriété
+ * de son sens. Mais on ne se tait pas non plus — la ligne est déjà partie au
+ * moniteur par emit_v, et on y ajoute de quoi comprendre, sinon une pile qui
+ * pose la serrure sans écrire le gestionnaire deviendrait aveugle sans savoir
+ * pourquoi.
+ *
+ * LE GARDE-FOU : si le gestionnaire errorDialog tombe lui-même en erreur, le
+ * détournement l'enverrait à errorDialog, et ainsi de suite. Pendant son
+ * exécution on repasse donc par le dialogue ordinaire. */
+static int g_dans_errordialog = 0;
+
 static void erreurs_vide(void)
 {
     if (g_err_n <= 0) return;
@@ -720,6 +761,18 @@ static void erreurs_vide(void)
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
     Object *coupable = g_err_objet;
     g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+
+    Object *carte = hc_current_card();
+    if (reglage_valeur("lockerrordialogs") && !g_dans_errordialog && carte) {
+        g_dans_errordialog = 1;
+        int pris = hc_send_arg(carte, "errorDialog", copie);
+        g_dans_errordialog = 0;
+        if (!pris)
+            emit(HC_ERR, "   !! lockErrorDialogs est posé et aucun "
+                         "gestionnaire « on errorDialog » n'a pris l'erreur");
+        return;
+    }
+
     if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
 }
 
@@ -6835,6 +6888,12 @@ static struct {
     { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1     },
     { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1     },
     { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1     },
+    /* « set the lockErrorDialogs to true » : l'erreur ne va plus au dialogue,
+     * elle part en message « errorDialog » à la carte courante. Voir
+     * erreurs_vide. Remise à false en retombant au repos, comme lockScreen —
+     * une pile qui la pose et sort par un « exit » resterait sinon muette
+     * pour toujours. */
+    { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
 
@@ -6843,6 +6902,28 @@ static int reglage_index(const char *nom)
     for (int i = 0; i < HC_NREGLAGES; i++)
         if (ci_equal(nom, G_REGLAGES[i].nom)) return i;
     return -1;
+}
+
+/* La valeur courante d'un réglage, pour le noyau lui-même. Zéro si le nom
+ * n'en est pas un — aucun appelant interne ne peut se tromper de nom sans
+ * qu'un harnais le voie, et rendre zéro vaut mieux qu'un plantage. */
+static int reglage_valeur(const char *nom)
+{
+    int i = reglage_index(nom);
+    return i < 0 ? 0 : G_REGLAGES[i].valeur;
+}
+
+/* ÉTEINDRE un réglage booléen. Sert au déverrouillage automatique en
+ * retombant au repos — voir hc_send_args_k.
+ *
+ * Pas de « remise au défaut » générale : la table ne garde pas les valeurs
+ * d'origine, et en inventer une par nom donnerait un jour « remet userLevel à
+ * 5 » sous couvert de propreté. Éteindre un booléen est ce dont on a besoin,
+ * et c'est tout ce que cette fonction promet. */
+static void reglage_eteint(const char *nom)
+{
+    int i = reglage_index(nom);
+    if (i >= 0 && G_REGLAGES[i].type == REG_BOOL) G_REGLAGES[i].valeur = 0;
 }
 
 /* Poser. Rend 1 si le nom en est un — même quand la valeur est refusée :
@@ -14812,6 +14893,14 @@ static int hc_send_args_k(Object *target, const char *message,
      * laisserait la pile MUETTE pour toujours — plus un seul openCard, et
      * rien pour dire pourquoi. */
     if (g_depth == 0) g_messages_verrouilles = 0;
+
+    /* Et pour lockErrorDialogs. La remise à zéro vient APRÈS erreurs_vide,
+     * qui s'exécute à la fin du corps : le détournement doit encore valoir
+     * pour l'erreur qui termine le gestionnaire — c'est même le cas
+     * principal. HypoGraph pose la serrure en tête de son « on mouseUp » et
+     * ne la retire jamais : sans cette ligne, tout le reste de la session
+     * partirait en errorDialog. */
+    if (g_depth == 0) reglage_eteint("lockerrordialogs");
 
     /* Une commande « delete this card » peut avoir détaché l'objet dont le
      * gestionnaire vient juste de finir. C'est seulement ici que plus aucun

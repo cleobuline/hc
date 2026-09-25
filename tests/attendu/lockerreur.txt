@@ -1,0 +1,60 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. elle se LIT et elle s'ÉCRIT ===
+   (les deux sens : c'est le défaut de famille de ce noyau)
+   false
+   true
+   false
+=== 2. SANS la serrure : l'hôte ouvre son dialogue ===
+   [ERR]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
+   [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
+=== 3. AVEC la serrure : le gestionnaire prend l'erreur ===
+   (et l'hôte doit se taire — s'il parle, rien n'a été détourné)
+   [ERR]    !! propriété inconnue (v3, ligne 6 de stack "Verrou".essai)
+   MON gestionnaire a reçu :    !! propriété inconnue (v3, ligne 6 de stack "Verrou".essai)
+=== 4. la serrure s'ÉTEINT en retombant au repos ===
+   (HypoGraph la pose et ne la retire jamais ; sans cette remise
+    à zéro tout le reste de la session partirait en errorDialog,
+    exactement le défaut que lockScreen a déjà eu)
+   false
+=== 5. LE PIÈGE : errorDialog qui tombe lui-même en erreur ===
+   (sans garde-fou il s'enverrait à errorDialog, sans fin. On
+    repasse par le dialogue ordinaire pendant son exécution)
+   [ERR]    !! propriété inconnue (v3, ligne 7 de stack "Verrou".essai)
+   errorDialog a reçu :    !! propriété inconnue (v3, ligne 7 de stack "Verrou".essai)
+   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
+   [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
+=== 6. serrure posée, AUCUN gestionnaire : on ne remet pas le
+       dialogue, mais on ne se tait pas non plus ===
+   (la pile a demandé le silence ; le lui rendre contre son gré
+    viderait la propriété de son sens. Mais une pile qui pose la
+    serrure sans écrire le gestionnaire deviendrait aveugle, et
+    rien ne lui dirait pourquoi)
+   [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".essai)
+   [ERR]    !! lockErrorDialogs est posé et aucun gestionnaire « on errorDialog » n'a pris l'erreur
+=== 7. le cas de HypoGraph, bout à bout ===
+   (son errorDialog appelle « answer », qu'aucun hôte ne sert ici ;
+    on garde la forme et on remplace answer par put)
+
+   CE QUE CETTE SECTION MONTRE ET QUI RESTE À FAIRE : la boucle va
+   AU BOUT, et errorDialog ne reçoit l'erreur qu'à la sortie du
+   gestionnaire le plus extérieur. Chez HyperCard une erreur ARRÊTE
+   le gestionnaire, et errorDialog part aussitôt.
+
+   La différence ne vient pas du verrou mais de la façon dont les
+   COMMANDES signalent : « put the zorglub » lève une faute et
+   interrompt — section 3 le montre —, tandis que « drag » se
+   contente d'un emit(HC_ERR) et rend « traité ». Deux façons de
+   signaler dans le même noyau, dont une seule arrête. C'est
+   antérieur à ce travail et ça le dépasse ; on l'inscrit ici pour
+   ne pas le redécouvrir, et pour voir si ça bouge.
+   point 1
+   point 2
+   [ERR]    !! drag : « NAN(004) » n'est pas une coordonnée
+   point 3
+   la boucle est allée au bout
+   [boîte à un bouton]    !! drag : « NAN(004) » n'est pas une coordonnée
+   [ERR]    !! choose : l'hôte ne gère pas les outils
+   [DIALOGUE HÔTE]    !! choose : l'hôte ne gère pas les outils
+=== 8. le témoin : une coquille voisine reste refusée ===
+   [ERR]    !! propriété inconnue : lockErrorDialog
+   [DIALOGUE HÔTE]    !! propriété inconnue : lockErrorDialog
