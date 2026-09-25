@@ -26,6 +26,7 @@
 @interface HCView (DialogsPrivate)
 - (void)styleOK:(id)sender;
 - (void)styleFont:(id)sender;
+- (void)styleAlign:(id)sender;
 - (void)autoSelectToggled:(id)sender;
 @end
 
@@ -57,6 +58,12 @@ static Object   *gStyleTarget = NULL;
 static NSButton *gStyleBox[8] = {nil};
 static NSPopUpButton *gStyleFont = nil;
 static NSTextField   *gStyleSize = nil;
+static NSButton      *gStyleAlign[3] = {nil};
+static NSTextField   *gStyleLH = nil;
+
+/* Dans l'ordre du codage du noyau : 0 gauche, 1 centre, 2 droite. Comme pour
+ * les cases de style, l'indice EST la valeur — pas de table à tenir à jour. */
+static const char *ALIGN_LABELS[3] = { "Left", "Center", "Right" };
 
 /* Même ordre que les bits, pour que l'indice de la case soit son décalage. */
 static const char *STYLE_LABELS[8] = {
@@ -90,6 +97,27 @@ static void commit_style_panel(void)
     int sz = [gStyleSize intValue];
     if (sz > 0) o->textsize = sz;
 
+    /* L'ALIGNEMENT. Le noyau le connaît depuis toujours — « the textAlign of
+     * field X » se lit, s'écrit et se relit du fichier — mais ce panneau ne
+     * l'offrait pas, alors que le dialogue de HyperCard le pose juste sous
+     * les cases de style. Une propriété qu'un script pouvait poser et que la
+     * souris ne pouvait pas : le défaut de famille, à l'envers. */
+    for (int i = 0; i < 3; i++)
+        if ([gStyleAlign[i] state] == NSControlStateValueOn) {
+            o->text_align = i;
+            break;
+        }
+
+    /* L'INTERLIGNE. Vide — ou zéro, ou négatif — remet l'automatique : c'est
+     * la seule façon de REVENIR en arrière après avoir posé une valeur, et
+     * sans elle le réglage serait à sens unique. gStyleLH est nil pour un
+     * bouton, et [nil stringValue] rend nil, d'où le test explicite. */
+    if (gStyleLH) {
+        NSString *t = [gStyleLH stringValue];
+        int lh = [t intValue];
+        o->textheight = ([t length] && lh > 0) ? lh : 0;
+    }
+
     /* Garder la case « taille » du dialogue parent en accord : sinon son OK
      * réécrira l'ancienne valeur par-dessus celle qu'on vient de poser. */
     hc_sync_size_field(o);
@@ -113,9 +141,23 @@ static void show_style_panel(id owner, Object *o)
     if (!o) return;
     gStyleTarget = o;
 
+    /* ALIGNEMENT ET INTERLIGNE NE SONT OFFERTS QUE POUR UN CHAMP.
+     *
+     * field_attr_string est le seul à lire text_align et hc_text_height : le
+     * titre d'un bouton est toujours centré et tient sur une ligne, et les
+     * deux propriétés n'y changent rien. HyperCard pose bien ces contrôles
+     * dans les deux dialogues, mais ce sont chez lui des contrôles inertes,
+     * et ce n'est pas une raison de les copier — un réglage qui ne fait rien
+     * coûte plus cher que son absence.
+     *
+     * Le panneau du bouton garde donc EXACTEMENT sa géométrie d'avant : dy
+     * vaut zéro, et toutes les ordonnées retrouvent leur valeur d'origine. */
+    BOOL estChamp = (o->type == OBJ_FIELD);
+    CGFloat dy = estChamp ? 130 : 0;
+
     if (gStylePanel) [gStylePanel close];
     gStylePanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(340, 300, 240, 300)
+        initWithContentRect:NSMakeRect(340, 300, 240, 300 + dy)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gStylePanel setTitle:@"Text Style"];
@@ -123,12 +165,12 @@ static void show_style_panel(id owner, Object *o)
     NSView *c = [gStylePanel contentView];
 
     /* --- police --- */
-    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 70, 18)];
+    NSTextField *fl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262 + dy, 70, 18)];
     [fl setStringValue:@"Text font:"];
     [fl setBezeled:NO]; [fl setDrawsBackground:NO]; [fl setEditable:NO];
     [c addSubview:fl];
 
-    gStyleFont = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(90, 258, 134, 24)];
+    gStyleFont = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(90, 258 + dy, 134, 24)];
     [gStyleFont addItemsWithTitles:
         [[[NSFontManager sharedFontManager] availableFontFamilies]
             sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)]];
@@ -148,23 +190,93 @@ static void show_style_panel(id owner, Object *o)
     [c addSubview:gStyleFont];
 
     /* --- corps --- */
-    NSTextField *zl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 234, 70, 18)];
+    NSTextField *zl = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 234 + dy, 70, 18)];
     [zl setStringValue:@"Text size:"];
     [zl setBezeled:NO]; [zl setDrawsBackground:NO]; [zl setEditable:NO];
     [c addSubview:zl];
 
-    gStyleSize = [[NSTextField alloc] initWithFrame:NSMakeRect(90, 232, 60, 22)];
+    gStyleSize = [[NSTextField alloc] initWithFrame:NSMakeRect(90, 232 + dy, 60, 22)];
     [gStyleSize setIntValue:o->textsize];
     [c addSubview:gStyleSize];
 
     for (int i = 0; i < 8; i++) {
         gStyleBox[i] = [[NSButton alloc]
-            initWithFrame:NSMakeRect(20, 202 - i * 22, 150, 20)];
+            initWithFrame:NSMakeRect(20, 202 + dy - i * 22, 150, 20)];
         [gStyleBox[i] setButtonType:NSButtonTypeSwitch];
         [gStyleBox[i] setTitle:[NSString stringWithUTF8String:STYLE_LABELS[i]]];
         [gStyleBox[i] setState:(o->textstyle & (1 << i)) ? NSControlStateValueOn
                                                          : NSControlStateValueOff];
         [c addSubview:gStyleBox[i]];
+    }
+
+    /* --- alignement ---
+     *
+     * Trois boutons radio, sous les cases de style, comme chez HyperCard.
+     * L'EXCLUSION EST FAITE À LA MAIN dans styleAlign:. AppKit groupe bien
+     * tout seul les radios qui partagent vue et action, mais s'en remettre à
+     * cette règle rendrait le panneau dépendant d'un détail d'implémentation
+     * qu'aucun harnais ici ne peut mesurer — rien de ce fichier ne se
+     * compile hors de Xcode. Trois lignes explicites coûtent moins cher
+     * qu'une exclusivité qui cesse de fonctionner sans qu'on sache pourquoi.
+     *
+     * Remis à nil pour un bouton : commit_style_panel parcourt le tableau, et
+     * des pointeurs restés d'une ouverture précédente lui feraient poser un
+     * alignement que personne n'a choisi. [nil state] rend bien zéro, mais ce
+     * n'est pas au hasard d'une règle du langage de tenir la correction. */
+    for (int i = 0; i < 3; i++) gStyleAlign[i] = nil;
+    gStyleLH = nil;
+
+    if (estChamp) {
+        NSTextField *al = [[NSTextField alloc]
+            initWithFrame:NSMakeRect(16, 150, 70, 18)];
+        [al setStringValue:@"Align:"];
+        [al setBezeled:NO]; [al setDrawsBackground:NO]; [al setEditable:NO];
+        [c addSubview:al];
+
+        int aln = (o->text_align >= 0 && o->text_align <= 2) ? o->text_align : 0;
+        for (int i = 0; i < 3; i++) {
+            gStyleAlign[i] = [[NSButton alloc]
+                initWithFrame:NSMakeRect(24, 126 - i * 22, 150, 20)];
+            [gStyleAlign[i] setButtonType:NSButtonTypeRadio];
+            [gStyleAlign[i] setTitle:
+                [NSString stringWithUTF8String:ALIGN_LABELS[i]]];
+            [gStyleAlign[i] setState:(i == aln) ? NSControlStateValueOn
+                                                : NSControlStateValueOff];
+            [gStyleAlign[i] setTarget:owner];
+            [gStyleAlign[i] setAction:@selector(styleAlign:)];
+            [c addSubview:gStyleAlign[i]];
+        }
+
+        /* --- interligne ---
+         *
+         * ZÉRO VEUT DIRE « AUTOMATIQUE », et c'est ce qui décide de la forme
+         * de ce contrôle. hc_text_height rend alors les quatre tiers du corps,
+         * arrondis comme HyperCard : un champ dont on grossit le texte suit
+         * tout seul.
+         *
+         * Afficher cette valeur calculée dans la case aurait été le piège :
+         * il aurait suffi d'ouvrir le panneau et de faire OK pour FIGER
+         * l'interligne, et le champ aurait cessé de suivre son corps sans que
+         * personne ait rien demandé. La case reste donc VIDE tant que rien
+         * n'est posé, et la valeur calculée s'affiche en filigrane — on voit
+         * ce qu'on aurait, sans l'avoir écrit.
+         *
+         * L'interligne ne se VOIT que si « Fixed Line Height » est coché dans
+         * le dialogue du champ : c'est le sens de cette propriété chez
+         * HyperCard, et HCtext.m ne l'impose que là. On ne duplique pas la
+         * case ici — un même réglage à deux endroits finit par diverger. */
+        NSTextField *hl = [[NSTextField alloc]
+            initWithFrame:NSMakeRect(16, 52, 80, 18)];
+        [hl setStringValue:@"Line height:"];
+        [hl setBezeled:NO]; [hl setDrawsBackground:NO]; [hl setEditable:NO];
+        [c addSubview:hl];
+
+        gStyleLH = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 50, 60, 22)];
+        if (o->textheight > 0) [gStyleLH setIntValue:o->textheight];
+        else [gStyleLH setStringValue:@""];
+        [gStyleLH setPlaceholderString:
+            [NSString stringWithFormat:@"%d", hc_text_height(o)]];
+        [c addSubview:gStyleLH];
     }
 
     NSButton *fnt = [[NSButton alloc] initWithFrame:NSMakeRect(16, 8, 80, 28)];
@@ -412,6 +524,15 @@ static NSTextField  *gFldTextSize = nil;
     /* Auto Select impose le verrouillage : la case se coche d'elle-même, pour
      * que l'utilisateur voie tout de suite ce qu'implique son choix. */
     if (on) [gFldLock setState:NSControlStateValueOn];
+}
+
+/* Un seul alignement à la fois. Voir la note de la construction : l'exclusion
+ * est explicite plutôt que déduite du groupage automatique d'AppKit. */
+- (void)styleAlign:(id)sender {
+    for (int i = 0; i < 3; i++)
+        [gStyleAlign[i] setState:(gStyleAlign[i] == sender)
+                                 ? NSControlStateValueOn
+                                 : NSControlStateValueOff];
 }
 
 - (void)styleFont:(id)sender {
