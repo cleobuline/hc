@@ -230,14 +230,28 @@ int main(void)
     fais("set the numberFormat to \"0.######\"\n  put 5 mod 0");
     fais("put 5 mod 2");
 
-    printf("=== 9. « div » par zéro : PAS ENCORE MESURÉ ===\n");
-    printf("   (il suit ici la règle de « / » — INF et NAN(004) — parce que\n");
-    printf("    c'est une division. Mais « mod » vient de montrer qu'une\n");
-    printf("    opération voisine peut être traitée autrement, et personne n'a\n");
-    printf("    encore tapé « put 7 div 0 » dans HyperCard. Ce qui suit est donc\n");
-    printf("    une HYPOTHÈSE inscrite comme telle, pas une mesure)\n");
+    printf("=== 9. « div » par zéro REFUSE aussi ===\n");
+    printf("   (MESURÉ : « put 7 div 0 » ET « put 0 div 0 » ouvrent tous deux\n");
+    printf("    le dialogue « can't div by zero ». J'avais fait suivre à div la\n");
+    printf("    règle de « / » parce que c'est une division — deuxième fois que\n");
+    printf("    la déduction se fait démentir sur la même famille.\n");
+    printf("\n");
+    printf("    La cohérence est lisible une fois qu'on la voit : div et mod\n");
+    printf("    sont des opérations ENTIÈRES, et l'arithmétique SANE qui\n");
+    printf("    fabrique INF et les NaN est celle des FLOTTANTS. Seule « / »\n");
+    printf("    y a droit)\n");
     fais("put 7 div 0");
     fais("put 0 div 0");
+    fais("put 7 div 2");
+
+    printf("=== 9b. « divide … by 0 », la commande : PAS ENCORE MESURÉE ===\n");
+    printf("   (elle suit ici « / » puisqu'elle en est la forme impérative.\n");
+    printf("    C'est raisonnable et ce n'est pas un relevé : personne n'a tapé\n");
+    printf("    « divide n by 0 » dans HyperCard. Inscrit comme hypothèse —\n");
+    printf("    le voisinage vient de me démentir deux fois)\n");
+    fais("put 7 into n\n"
+         "  divide n by 0\n"
+         "  put \"7 divisé par 0 : \" & n");
 
     printf("=== 10. les témoins : ce qui marchait marche encore ===\n");
     fais("set the numberFormat to \"0.######\"\n"

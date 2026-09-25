@@ -167,22 +167,37 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
      * signe. On ne s'occupe donc que de 0/0, dont le NaN naturel ne porte
      * aucun code — on y met le 4 de SANE.
      *
-     * « MOD » EST L'EXCEPTION, ET IL A FALLU LA MESURER POUR LE SAVOIR.
+     * SEULE « / » REND UNE VALEUR. « div » ET « mod » REFUSENT.
      *
-     * J'avais supposé qu'il suivait la même règle et rendait un NaN, faute
-     * d'en connaître le code SANE. Faux : « put 5 mod 0 » sous HyperCard
-     * ouvre un dialogue, « can't mod by 0 ». Le reste par zéro est donc une
-     * ERREUR là où la division est une valeur — les deux opérations se
-     * ressemblent, et HyperCard ne les traite pas pareil.
+     * Mesuré sous HyperCard, les trois cas séparément :
      *
-     * On garde donc la faute pour « mod » seul. Supposer qu'une règle
-     * s'étend à l'opération d'à côté est exactement ce qui fabrique les
-     * défauts que ce dépôt passe son temps à corriger. */
+     *     put 1/0      ->  INF          une valeur
+     *     put 7 div 0  ->  dialogue « can't div by zero »
+     *     put 0 div 0  ->  dialogue « can't div by zero »
+     *     put 5 mod 0  ->  dialogue « can't mod by 0 »
+     *
+     * Et il a fallu les mesurer un par un. Ayant établi que « / » rendait une
+     * valeur, j'ai étendu la règle aux deux autres — en notant que je n'étais
+     * pas sûr de leur CODE SANE, et pas du tout que je n'étais pas sûr de la
+     * NATURE de la réponse. J'ai douté du chiffre et pas de la forme.
+     *
+     * La cohérence est pourtant lisible une fois qu'on la voit : « div » et
+     * « mod » sont des opérations ENTIÈRES. L'arithmétique SANE, qui fabrique
+     * INF et les NaN, est celle des flottants ; elle ne s'applique pas, et
+     * HyperCard vérifie explicitement avant de diviser.
+     *
+     * Reste « divide … by 0 », la COMMANDE, dans hct_exec.c : elle suit la
+     * règle de « / » puisqu'elle en est la forme impérative, et ce n'est pas
+     * encore mesuré. C'est écrit là-bas. */
     else if (!strcmp(op, "/")) {
         r = (x == 0 && y == 0) ? hct_nan_code(4) : x / y;
     }
     else if (!strcmp(op, "div")) {
-        r = (x == 0 && y == 0) ? hct_nan_code(4) : trunc(x / y);
+        if (y == 0) {
+            hct_ctx_faute(ctx, n, "division entière par zéro");
+            return hct_val_vide();
+        }
+        r = trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
         if (y == 0) {

@@ -901,10 +901,17 @@ static void commande(HctExec *x, const HctNoeud *n)
         else if (!strcasecmp(v, "subtract")) r = xc - xv;
         else if (!strcasecmp(v, "multiply")) r = xc * xv;
         else {
-            /* « divide x by 0 » : la même règle que l'opérateur « / ». Le
-             * jumeau, à ne pas oublier — c'est la commande, pas l'expression,
-             * et une pile peut employer l'une ou l'autre. Voir la note dans
-             * hct_eval.c pour la raison de rendre INF plutôt qu'une erreur. */
+            /* « divide x by 0 » : la règle de l'opérateur « / », donc une
+             * valeur — INF ou NAN(004) — et non une erreur. C'est la forme
+             * impérative de la même division flottante.
+             *
+             * PAS ENCORE MESURÉ, et je l'écris parce que le voisinage vient
+             * de me démentir : « div » et « mod » par zéro ouvrent tous deux
+             * un dialogue sous HyperCard, alors que « / » rend une valeur.
+             * Supposer que « divide » suit « / » est raisonnable — c'est la
+             * même opération — mais personne n'a encore tapé « divide n by
+             * 0 » dans HyperCard. Tant que ce n'est pas fait, ceci est une
+             * hypothèse, pas un relevé. */
             r = (xc == 0 && xv == 0) ? hct_nan_code(4) : xc / xv;
         }
         HctValeur res = hct_val_calcul(r);

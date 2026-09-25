@@ -113,15 +113,27 @@ C gives none of these — on this machine all three produce a NaN with a zero
 payload — so the code and the sign are set explicitly. Guessing would have
 been wrong: 022 was the plausible value for the logarithm, and it is 036.
 
-**`mod` by zero is an error, not a value** — and that too was measured rather
-than deduced. `put 5 mod 0` under HyperCard opens a dialog: *"can't mod by
-0"*. The assumption had been that it returned a NaN like division does, merely
-with an unknown code. It does not. Two operations that look alike are not
-treated alike, which is the whole reason for measuring.
+**Only `/` returns a value. `div` and `mod` refuse**, and each of those had to
+be measured separately:
 
-`div` by zero follows the `/` rule here — `INF` and `NAN(004)` — because it is
-a division. That is an **assumption, recorded as one** in the harness: nobody
-has yet typed `put 7 div 0` into HyperCard.
+```
+put 1/0      ->  INF
+put 7 div 0  ->  dialog, "can't div by zero"
+put 0 div 0  ->  dialog, "can't div by zero"
+put 5 mod 0  ->  dialog, "can't mod by 0"
+```
+
+Having established that `/` returns a value, the rule was extended to the other
+two — noting uncertainty about their SANE *code*, and none at all about the
+*nature* of the answer. The doubt was aimed at the number, not at the shape.
+
+The consistency is legible once seen: `div` and `mod` are **integer**
+operations, and the SANE arithmetic that produces `INF` and the NaNs is
+floating-point. It does not apply, and HyperCard checks before dividing.
+
+`divide … by 0`, the *command*, follows the `/` rule here, being the imperative
+form of the same floating-point division. That is an **assumption, recorded as
+one** in the harness: nobody has typed `divide n by 0` into HyperCard.
 
 **A silent corruption found on the way.** `strtod` reads a NaN's payload with
 base 0, so a leading zero makes it **octal**. Four of the six codes HyperCard

@@ -110,14 +110,25 @@
     ce qui est précisément pourquoi on mesure au lieu de déduire)
    [ERR]    !! modulo par zéro (v3, ligne 3 de stack "SANE".essai)
    1
-=== 9. « div » par zéro : PAS ENCORE MESURÉ ===
-   (il suit ici la règle de « / » — INF et NAN(004) — parce que
-    c'est une division. Mais « mod » vient de montrer qu'une
-    opération voisine peut être traitée autrement, et personne n'a
-    encore tapé « put 7 div 0 » dans HyperCard. Ce qui suit est donc
-    une HYPOTHÈSE inscrite comme telle, pas une mesure)
-   INF
-   NAN(004)
+=== 9. « div » par zéro REFUSE aussi ===
+   (MESURÉ : « put 7 div 0 » ET « put 0 div 0 » ouvrent tous deux
+    le dialogue « can't div by zero ». J'avais fait suivre à div la
+    règle de « / » parce que c'est une division — deuxième fois que
+    la déduction se fait démentir sur la même famille.
+
+    La cohérence est lisible une fois qu'on la voit : div et mod
+    sont des opérations ENTIÈRES, et l'arithmétique SANE qui
+    fabrique INF et les NaN est celle des FLOTTANTS. Seule « / »
+    y a droit)
+   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
+   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
+   3
+=== 9b. « divide … by 0 », la commande : PAS ENCORE MESURÉE ===
+   (elle suit ici « / » puisqu'elle en est la forme impérative.
+    C'est raisonnable et ce n'est pas un relevé : personne n'a tapé
+    « divide n by 0 » dans HyperCard. Inscrit comme hypothèse —
+    le voisinage vient de me démentir deux fois)
+   7 divisé par 0 : INF
 === 10. les témoins : ce qui marchait marche encore ===
    6/3     = 2
    7 div 2 = 3
