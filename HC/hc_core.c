@@ -754,6 +754,12 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
  * exécution on repasse donc par le dialogue ordinaire. */
 static int g_dans_errordialog = 0;
 
+/* La dernière ligne accumulée, pour compter ses répétitions plutôt que de les
+ * empiler. Voir la note dans emit_v. */
+static char g_err_derniere[1024];
+static int  g_err_dernier_deb = -1;
+static int  g_err_repete = 0;
+
 static void erreurs_vide(void)
 {
     if (g_err_n <= 0) return;
@@ -761,6 +767,7 @@ static void erreurs_vide(void)
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
     Object *coupable = g_err_objet;
     g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+    g_err_dernier_deb = -1; g_err_repete = 0; g_err_derniere[0] = '\0';
 
     Object *carte = hc_current_card();
     if (reglage_valeur("lockerrordialogs") && !g_dans_errordialog && carte) {
@@ -814,12 +821,45 @@ static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
      * le gestionnaire le plus extérieur. */
     if (kind == HC_ERR && (g_depth > 0 || g_msg_box)) {
         if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
+
+        /* UNE MÊME LIGNE RÉPÉTÉE SE COMPTE, ELLE NE S'EMPILE PAS.
+         *
+         * Une faute dans une boucle produit autant de lignes que de tours.
+         * Signalé à l'écran : un traceur de courbes en mode point appelle
+         * « click at » une fois par abscisse, et le refus d'une coordonnée non
+         * finie remplissait le dialogue de sept lignes identiques — puis de
+         * mille, sur une courbe plus fine.
+         *
+         * Sept copies n'apprennent rien de plus qu'une. Le NOMBRE, lui,
+         * apprend quelque chose : il dit si la faute est un accident ou toute
+         * la boucle. On garde donc la ligne une fois, suivie de son compte.
+         *
+         * Seules les lignes CONSÉCUTIVES et IDENTIQUES fusionnent : deux
+         * fautes différentes qui alternent restent toutes les deux visibles,
+         * ce qui est le cas où l'on a besoin de les voir. */
+        if (g_err_dernier_deb >= 0 && strcmp(buf, g_err_derniere) == 0) {
+            g_err_repete++;
+            int place = (int)sizeof g_err_texte - g_err_dernier_deb - 2;
+            if (place > 0) {
+                int mis = snprintf(g_err_texte + g_err_dernier_deb,
+                                   (size_t)place + 1, "%s (× %d)",
+                                   g_err_derniere, g_err_repete);
+                if (mis > place) mis = place;
+                g_err_n = g_err_dernier_deb + mis;
+            }
+            return;
+        }
+
         int reste = (int)sizeof g_err_texte - g_err_n - 2;
         if (reste > 0) {
+            int debut = g_err_n + (g_err_n ? 1 : 0);   /* après le saut de ligne */
             int mis = snprintf(g_err_texte + g_err_n, (size_t)reste + 1,
                                "%s%s", g_err_n ? "\n" : "", buf);
             if (mis > reste) mis = reste;   /* tronqué : on garde ce qui tient */
             g_err_n += mis;
+            g_err_dernier_deb = debut;
+            g_err_repete = 1;
+            snprintf(g_err_derniere, sizeof g_err_derniere, "%s", buf);
         }
     }
 }
