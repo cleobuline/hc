@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. « repeat N times » au-delà du plafond ===
+   (et la ligne d'après NE DOIT PAS s'exécuter : la faute
+    interrompt le gestionnaire, elle ne se contente pas de sortir)
+   [ERR]    !! boucle emballée : arrêtée après 10000000 tours (v3, ligne 2 de stack "Emballee".essai)
+=== 2. « repeat until » dont la condition ne vient jamais ===
+   [ERR]    !! boucle emballée : arrêtée après 10000000 tours (v3, ligne 2 de stack "Emballee".essai)
+=== 3. « repeat while » de même ===
+   [ERR]    !! boucle emballée : arrêtée après 10000000 tours (v3, ligne 2 de stack "Emballee".essai)
+=== 4. les témoins : une boucle normale ne dit rien ===
+   mille tours : n = 1000
+   somme de 1 à 100 = 5050
+   quatre articles : n = 4
+=== 5. LA CAUSE, chez la pile qui l'a signalé ===
+   (trois « add » suffisent à la montrer : inutile d'en faire dix
+    millions pour comprendre pourquoi t n'avance pas)
+   pi/144 vaut 0.021817
+   après un add   : t = 0.0
+   après deux add : t = 0.0
+   après trois add : t = 0.0
+=== 6. et sans le gabarit, le même compteur avance ===
+   la boucle a fait 288 tours, t = 6.283296

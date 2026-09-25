@@ -18,6 +18,19 @@ void hct_ctx_init(HctContexte *ctx, HctHote hote)
 }
  
 
+/* ATTENTION : `msg` EST GARDÉ PAR POINTEUR, IL N'EST PAS COPIÉ.
+ *
+ * Il doit donc vivre au moins aussi longtemps que le contexte : un littéral,
+ * ou ctx->message. Un tampon de pile ne convient PAS — le message n'est lu
+ * qu'au vidage des erreurs, bien après le retour de l'appelant.
+ *
+ * Le contrat n'était écrit nulle part parce que tous les appelants passaient
+ * un littéral, ce qui le rendait vrai par accident. Le premier à composer son
+ * message dynamiquement — le rapport de boucle emballée — est tombé dedans
+ * immédiatement, et asan l'a signalé d'un « stack-use-after-return ».
+ *
+ * Pour un message composé, voir hct_ctx_faute_nom juste en dessous, qui copie
+ * dans ctx->message, ou faire de même. */
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg)
 {
     if (ctx->erreur) return;        /* on garde la PREMIÈRE faute */

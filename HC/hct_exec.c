@@ -313,6 +313,36 @@ static int est_motcle(const HctNoeud *n, const char *m)
  * la file d'événements n'était pas vidée, l'état de la souris ne changeait
  * plus, et rien ne se redessinait. L'ancien exécuteur appelait host_idle()
  * à chaque tour ; il fallait la même porte ici. */
+/* La boucle a franchi le plafond : on le DIT, et on interrompt.
+ *
+ * Voir la note au-dessus de PLAFOND. Un « break » muet laissait le
+ * gestionnaire continuer sur un résultat faux.
+ *
+ * PAS hct_ctx_faute : IL GARDE LE POINTEUR, IL NE COPIE PAS.
+ *
+ * Tous ses appelants lui passent un littéral, qui vit aussi longtemps que le
+ * programme, si bien que le contrat n'était écrit nulle part. Ma première
+ * version formatait le compte dans un tampon de PILE et le lui passait : le
+ * tampon mourait au retour d'ici, et le message était lu plus tard, au vidage
+ * des erreurs. asan l'a signalé du premier coup — « stack-use-after-return »,
+ * lecture de cinquante et un octets dans une trame rendue.
+ *
+ * ctx->message existe précisément pour ça : c'est le tampon que
+ * hct_ctx_faute_nom emploie pour ses messages composés, et il vit aussi
+ * longtemps que le contexte. On s'aligne dessus, plutôt que d'inventer une
+ * troisième durée de vie.
+ *
+ * La règle de la PREMIÈRE faute est respectée comme ailleurs : si une erreur
+ * est déjà posée, c'est elle qui compte. */
+static void plafond_atteint(HctExec *x, const HctNoeud *n, long plafond)
+{
+    if (x->ctx.erreur) return;
+    snprintf(x->ctx.message, sizeof x->ctx.message,
+             "boucle emballée : arrêtée après %ld tours", plafond);
+    x->ctx.erreur = x->ctx.message;
+    x->ctx.fautif = n;
+}
+
 static int respire(HctExec *x)
 {
     if (!x->hote.respire) return 1;
@@ -1049,6 +1079,26 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
     /* Garde-fou : une boucle sans fin bloquerait l'essai en ligne de commande.
      * HyperCard, lui, laisse la main à l'utilisateur — c'est à l'hôte de
      * décider quand interrompre, via la fonction « doit_interrompre ». */
+    /* LE PLAFOND SE VOIT, IL NE SE FRANCHIT PAS EN SILENCE.
+     *
+     * Dix millions de tours protègent d'un gel définitif. Mais les trois
+     * sorties étaient de simples « break » : la boucle s'arrêtait, et le
+     * gestionnaire CONTINUAIT comme si elle s'était terminée normalement. Le
+     * script rendait un résultat faux, sans un mot.
+     *
+     * Le commentaire de v3_respire promettait pourtant l'inverse depuis le
+     * début — « le même message : une boucle emballée doit se voir ». Le
+     * message n'a jamais existé.
+     *
+     * Mesuré sur une pile réelle : « set the numberFormat to 0.0 » posé DANS
+     * la boucle remet en forme le compteur à chaque « add pi/144 to t », si
+     * bien que t reste à 0.0 et que « repeat until t > 2*pi » ne finit jamais.
+     * L'application a l'air figée plusieurs minutes, puis repart sans rien
+     * avoir tracé et sans rien expliquer.
+     *
+     * On lève donc une faute, qui interrompt le gestionnaire et remonte au
+     * dialogue : la boucle n'a PAS fait ce que le script demandait, et c'est
+     * exactement ce qu'une erreur sert à dire. */
     const long PLAFOND = 10000000L;
     long tours = 0;
 
@@ -1080,7 +1130,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
 
         for (double i = deb; descend ? i >= fin : i <= fin;
              i += descend ? -pas : pas) {
-            if (++tours > PLAFOND) break;
+            if (++tours > PLAFOND) { plafond_atteint(x, n, PLAFOND); break; }
             HctValeur vi = hct_val_nombre(i);
             var_ecrit(x, nom, vi.txt);
             hct_val_libere(&vi);
@@ -1115,7 +1165,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
         int total = hct_chunk_compte(src.txt, n->sorte, d);
 
         for (int i = 1; i <= total; i++) {
-            if (++tours > PLAFOND) break;
+            if (++tours > PLAFOND) { plafond_atteint(x, n, PLAFOND); break; }
             HctValeur m = hct_chunk_lit(src.txt, n->sorte, i, 0, d);
             var_ecrit(x, nom, m.txt);
             hct_val_libere(&m);
@@ -1160,7 +1210,7 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
     }
 
     for (;;) {
-        if (++tours > PLAFOND) break;
+        if (++tours > PLAFOND) { plafond_atteint(x, n, PLAFOND); break; }
         if (limite >= 0 && tours > limite) break;
 
         if (!strcasecmp(forme, "while") || !strcasecmp(forme, "until")) {
