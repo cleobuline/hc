@@ -512,8 +512,35 @@ static HctNoeud *analyse_gestionnaire(HctAnalyseur *a, int fonction)
         return n;
     }
     hct_expr_avance(a);
+
+    /* LE NOM SE COMPARE SOUS SA FORME NORMALISÉE, DES DEUX CÔTÉS.
+     *
+     * mot() compare le jeton par sa forme normalisée quand il en a une :
+     * « end sec » y arrive comme « seconds », puisque le lexer déplie les
+     * synonymes de l'annexe F partout, sans regarder la position.
+     *
+     * Or on lui présentait ici le texte BRUT du nom d'ouverture — « sec ».
+     * « seconds » ≠ « sec », et « function sec x … end sec » se faisait
+     * refuser d'un « end ne reprend pas le nom » parfaitement faux : le nom
+     * était bien repris, c'est la comparaison qui lisait les deux côtés dans
+     * deux formes différentes.
+     *
+     * Dix-sept noms étaient inutilisables comme gestionnaire ou fonction —
+     * sec, secs, abbr, abbrev, bg, bkgnd, btn, cd, char, fld, grey, hilite,
+     * loc, mid, msg, poly, prev, rect, reg, tick — et une seule d'entre elles
+     * suffisait à faire tomber TOUT le script : HypoGraph définit
+     * « function sec x » pour la sécante, si bien que ses dix autres
+     * gestionnaires, openStack compris, n'existaient plus.
+     *
+     * On normalise donc le nom attendu comme mot() normalise le jeton : une
+     * seule forme, comparée à elle-même. */
     char attendu[128];
-    hct_texte(&nom, attendu, sizeof attendu);
+    if (nom.norme) {
+        size_t l = strlen(nom.norme);
+        if (l >= sizeof attendu) l = sizeof attendu - 1;
+        memcpy(attendu, nom.norme, l);
+        attendu[l] = '\0';
+    } else hct_texte(&nom, attendu, sizeof attendu);
     if (!mot_ici_b(a, attendu))
         hct_ajoute_fils(a->reserve, n,
                         hct_expr_faute(a, "« end » ne reprend pas le nom"));

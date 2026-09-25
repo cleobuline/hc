@@ -15,6 +15,7 @@ int     gTextSize     = 16;
 BOOL    gTransparentBg = NO;
 BOOL    gGrid         = NO;
 BOOL    gFatBits      = NO;
+BOOL    gCentered     = NO;
 int     gPolySides    = 4;
 NSColor *gInkColor  = nil;   /* noir  — voir hc_colors_init() */
 NSColor *gBackColor = nil;   /* blanc — idem */

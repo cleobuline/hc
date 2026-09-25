@@ -29,6 +29,7 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
 static int  g_grille  = 0;
 static int  g_cotes   = 4;
 static int  g_transp  = 0;
+static int  g_centre  = 0;
 static int  g_repond  = 1;     /* l'hôte connaît-il « grid » ? */
 static void mon_set(const char *n, const char *v)
 {
@@ -49,6 +50,10 @@ static void mon_set(const char *n, const char *v)
         g_transp = (v && *v && strcasecmp(v, "false") != 0 && strcmp(v, "0") != 0);
         printf("   [HOTE] transparent <- « %s » donc %s\n", v ? v : "",
                g_transp ? "vrai" : "faux");
+    } else if (!strcasecmp(n, "centered")) {
+        g_centre = (v && *v && strcasecmp(v, "false") != 0 && strcmp(v, "0") != 0);
+        printf("   [HOTE] centered <- « %s » donc %s\n", v ? v : "",
+               g_centre ? "vrai" : "faux");
     } else {
         printf("   [HOTE] ignore « %s »\n", n);
     }
@@ -59,6 +64,7 @@ static const char *mon_get(const char *n)
     if (!strcasecmp(n, "grid") && g_repond) return g_grille ? "true" : "false";
     if (!strcasecmp(n, "polySides")) { snprintf(b, sizeof b, "%d", g_cotes); return b; }
     if (!strcasecmp(n, "transparent")) return g_transp ? "true" : "false";
+    if (!strcasecmp(n, "centered")) return g_centre ? "true" : "false";
     if (!strcasecmp(n, "filled")) return "false";
     return NULL;
 }
@@ -144,5 +150,28 @@ int main(void)
     fais("put the transparent");
     fais("set the transparent to false");
     fais("put the transparent");
+
+    printf("=== 11. « the centered », signalée par une pile réelle ===\n");
+    printf("   (une pile de traceur de courbes la pose à chaque idle ; sans\n");
+    printf("    elle, le gestionnaire tombait en erreur à chaque battement)\n");
+    fais("put the centered");
+    fais("set the centered to true");
+    fais("put the centered");
+    fais("set the centered to false");
+    fais("put the centered");
+
+    printf("=== 12. la ligne EXACTE de la pile signalée ===\n");
+    printf("   (« if not the centered then set the centered to false » : la\n");
+    printf("    propriété est lue par « not », donc elle doit rendre un\n");
+    printf("    booléen que le noyau sait nier, pas une chaîne quelconque)\n");
+    fais("if not the centered then set the centered to false\n"
+         "  put \"idle survécu, centered = \" & the centered");
+    fais("set the centered to true\n"
+         "  if not the centered then set the centered to false\n"
+         "  put \"restée : \" & the centered");
+
+    printf("=== 13. et la coquille reste refusée ===\n");
+    fais("set the centred to true");
+    fais("put the centred");
     return 0;
 }

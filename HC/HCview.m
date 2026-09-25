@@ -612,6 +612,28 @@ static void hcv_fat_centre(NSPoint sur, NSRect vue)
     gFatOrigine = NSMakePoint(floor(x), floor(y));
 }
 
+/* LE CENTRAGE EST-IL ACTIF EN CE MOMENT ?
+ *
+ * Deux sources, et elles ne sont pas de même nature : gCentered est un MODE —
+ * l'article de menu, « set the centered to true » —, la touche Option est un
+ * GESTE, le temps d'un tracé.
+ *
+ * Elles se combinent par OU EXCLUSIF, et non par OU : quand le mode est
+ * allumé, Option rend l'autre comportement — coin à coin — au lieu de ne
+ * plus rien faire. Une touche morte la moitié du temps se lit comme une
+ * panne, et un modificateur qui INVERSE le réglage est la convention qu'on
+ * attend partout ailleurs.
+ *
+ * Une seule fonction pour les deux appels — l'aperçu bleu pendant le glissé
+ * et la gravure au relâchement. Ils lisaient chacun leur propre
+ * « optionDown » : deux copies d'une même règle, dont l'une aurait fini par
+ * ignorer gCentered et montrer autre chose que ce qu'elle grave. */
+static BOOL hcv_centre_actif(NSEventModifierFlags flags)
+{
+    BOOL option = (flags & NSEventModifierFlagOption) != 0;
+    return gCentered ? !option : option;
+}
+
 static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
     if (centered) {
         CGFloat dx = fabs(end.x - start.x);
@@ -2194,6 +2216,12 @@ static void cocoa_do_menu(const char *item) {
             { "Opaque",          HCV_PAINT_OPAQUE      },
             { "Transparent",     HCV_PAINT_TRANSPARENT },
             { "Grid",            HCV_PAINT_GRID        },
+            /* Le titre exact d'HyperCard, et lui seul. « Centered » tout
+             * court serait un alias INVENTÉ : « Clear », deux lignes plus
+             * haut, n'en est pas un — des piles d'époque l'emploient, et
+             * l'ancien code l'acceptait déjà. La règle est écrite au même
+             * endroit pour « Send Farther » ; elle vaut ici. */
+            { "Draw Centered",   HCV_PAINT_CENTERED    },
             { "FatBits",         HCV_PAINT_FATBITS     },
             { "Polygon Sides",   HCV_PAINT_POLYSIDES   },
             { "Polygon Sides…",  HCV_PAINT_POLYSIDES   },
@@ -2463,7 +2491,17 @@ static const char *cocoa_global_get(const char *name) {
 
     if (strcasecmp(name, "optionKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagOption) ? "down" : "up";
-    if (strcasecmp(name, "commandKey") == 0)
+    /* « cmdKey » est le synonyme que l'annexe I donne à « commandKey », et
+     * V3_GLOBALES_HOTE le déclare depuis toujours à côté de lui. Mais cette
+     * branche ne connaissait que le nom long : l'hôte rendait NULL, le noyau
+     * reprenait son chemin normal, et « put the cmdKey » répondait
+     * « propriété ou fonction inconnue ».
+     *
+     * Le défaut de famille, une fois de plus : le noyau annonce une porte
+     * que l'interface n'a pas percée. Relevé en croisant les deux listes du
+     * noyau contre tous les strcasecmp de ce fichier — cmdKey était le seul
+     * des quarante-trois noms à manquer. */
+    if (strcasecmp(name, "commandKey") == 0 || strcasecmp(name, "cmdKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagCommand) ? "down" : "up";
     if (strcasecmp(name, "shiftKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagShift) ? "down" : "up";
@@ -2686,6 +2724,8 @@ static const char *cocoa_global_get(const char *name) {
         return gTransparentBg ? "true" : "false";
     if (strcasecmp(name, "grid") == 0)
         return gGrid ? "true" : "false";
+    if (strcasecmp(name, "centered") == 0)
+        return gCentered ? "true" : "false";
     if (strcasecmp(name, "polySides") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gPolySides);
         return gGlobBuf;
@@ -2885,6 +2925,24 @@ static void cocoa_global_set(const char *name, const char *value) {
     }
     if (strcasecmp(name, "grid") == 0) {
         gGrid = vrai ? YES : NO;
+        return;
+    }
+    /* LE DESSIN CENTRÉ, une vraie propriété d'HyperTalk celle-là — à la
+     * différence de « transparent », qui est à nous.
+     *
+     * Elle manquait parce que la touche Option faisait déjà le geste, et le
+     * raisonnement s'arrêtait là. Il oubliait qu'une touche ne se lit pas
+     * depuis un script : une pile qui fait « if not the centered then set the
+     * centered to false » à chaque idle n'avait aucun moyen d'y arriver, et
+     * tombait en erreur à chaque battement du gestionnaire.
+     *
+     * Pas de rafraîchissement de palette : aucune case ne la porte. Mais
+     * setNeedsDisplay tout de même — si une forme est en cours de tracé,
+     * l'aperçu bleu doit changer de centre à l'instant où la valeur change,
+     * sans quoi il montrerait autre chose que ce qu'il grave. */
+    if (strcasecmp(name, "centered") == 0) {
+        gCentered = vrai ? YES : NO;
+        [gView setNeedsDisplay:YES];
         return;
     }
     if (strcasecmp(name, "polySides") == 0) {
@@ -3831,6 +3889,14 @@ static int parts_du_calque(Object *o)
             return YES;
         }
 
+        /* « Draw Centered » : la coche de la grille, et pour la même raison
+         * elle ne se grise pas — on l'allume AVANT de tracer la forme. */
+        if (t == HCV_PAINT_CENTERED) {
+            [item setState:gCentered ? NSControlStateValueOn
+                                     : NSControlStateValueOff];
+            return YES;
+        }
+
         /* FatBits porte sa coche comme la grille, mais se GRISE sous un outil
          * qui ne peint pas : là il n'a aucun effet, et un article cochable
          * qui ne fait rien est pire qu'un article grisé. C'est la même règle
@@ -4441,6 +4507,17 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
         return;
     }
 
+    /* Le dessin centré bascule comme la grille, et pour les mêmes raisons :
+     * l'article est une coche, « doMenu "Draw Centered" » fait ce que ferait
+     * le clic, et « set the centered to true » reste la porte pour POSER une
+     * valeur précise. setNeedsDisplay pour la même raison qu'à l'écriture par
+     * script — l'aperçu en cours doit suivre. */
+    if (quoi == HCV_PAINT_CENTERED) {
+        gCentered = !gCentered;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     /* FATBITS. On CENTRE à l'allumage sur le dernier point peint : sans cela
      * on tomberait sur le coin supérieur gauche du calque, qui n'est presque
      * jamais ce qu'on était en train de regarder — et il faudrait ⌘-glisser
@@ -4755,14 +4832,14 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     /* Aperçu dynamique des formes géométriques */
     if (gShapeDrawing) {
-        BOOL optionDown = ([NSEvent modifierFlags] & NSEventModifierFlagOption) != 0;
-        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, optionDown);
+        BOOL centre = hcv_centre_actif([NSEvent modifierFlags]);
+        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, centre);
 
         [[NSColor blueColor] setStroke];
         NSBezierPath *preview = nil;
         if (gTool == TOOL_LINE) {
             preview = [NSBezierPath bezierPath];
-            if (optionDown) {
+            if (centre) {
                 NSPoint opposite = NSMakePoint(2 * gShapeStart.x - gShapeEnd.x,
                                                2 * gShapeStart.y - gShapeEnd.y);
                 [preview moveToPoint:opposite];
@@ -6176,8 +6253,8 @@ static BOOL      gSansMessageChamp = NO;
     /* Gravure des formes géométriques */
     if (gShapeDrawing) {
         gShapeDrawing = NO;
-        BOOL optionDown = ([event modifierFlags] & NSEventModifierFlagOption) != 0;
-        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, optionDown);
+        BOOL centre = hcv_centre_actif([event modifierFlags]);
+        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, centre);
 
         NSPoint finalStart = box.origin;
         NSPoint finalEnd = NSMakePoint(box.origin.x + box.size.width, box.origin.y + box.size.height);
@@ -6188,7 +6265,7 @@ static BOOL      gSansMessageChamp = NO;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
 
         if (gTool == TOOL_LINE) {
-            if (optionDown) {
+            if (centre) {
                 NSPoint opposite = NSMakePoint(2 * gShapeStart.x - gShapeEnd.x,
                                                2 * gShapeStart.y - gShapeEnd.y);
                 paint_shape(rep, TOOL_LINE, opposite, gShapeEnd, [NSColor blackColor], gLineWidth);

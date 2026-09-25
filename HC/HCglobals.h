@@ -73,6 +73,18 @@ extern BOOL     gGrid;
  * toute l'application. Le détail de son fonctionnement est en tête de
  * HCview.m, là où vit la transformation. */
 extern BOOL     gFatBits;
+/* DESSIN CENTRÉ : les formes partent du CENTRE au lieu d'un coin.
+ *
+ * La touche Option le faisait déjà, et c'est pour cela que l'article de menu
+ * d'HyperCard n'avait pas été posé. Une pile réelle a montré ce que ce
+ * raisonnement oubliait : « the centered » est une PROPRIÉTÉ, qu'un script
+ * lit et pose, et une touche enfoncée ne se lit pas depuis HyperTalk. Un
+ * traceur de courbes qui la remet à faux à chaque idle tombait en erreur à
+ * chaque battement.
+ *
+ * Ici et non dans HCDoc, comme gGrid et gFatBits : c'est un réglage d'outil,
+ * et la palette est unique pour toute l'application. */
+extern BOOL     gCentered;
 /* Le nombre de côtés du polygone régulier. Quatre par défaut, comme
  * HyperCard. Les bornes vivent là où on l'écrit — trois est le minimum qui
  * enferme une surface, et au-delà d'une cinquantaine un polygone ne se

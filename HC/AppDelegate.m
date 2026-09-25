@@ -577,12 +577,11 @@ static NSMenu *gRecentMenu = nil;
 
     /* --- menu Options ---
      *
-     * HyperCard en met treize ici. HC n'en pose que TROIS, et c'est
-     * délibéré : des dix autres, quatre existent déjà ailleurs dans HC et
+     * HyperCard en met treize ici. HC n'en pose que QUATRE, et c'est
+     * délibéré : des neuf autres, trois existent déjà ailleurs dans HC et
      * n'auraient ajouté qu'un second chemin vers la même chose —
      *
      *     Draw Filled    la palette d'outils le bascule déjà
-     *     Draw Centered  la touche Option le fait déjà
      *     Line Size…     menu Tools, ⌘3
      *     Brush Shape…   menu Tools, ⌘4
      *
@@ -592,18 +591,29 @@ static NSMenu *gRecentMenu = nil;
      * « Polygon Sides… » a longtemps été dans cette seconde liste, faute
      * d'outil polygone. Il en sort avec lui.
      *
-     * Un menu de trois articles a l'air pauvre. Un menu de treize dont dix
+     * « DRAW CENTERED » Y ÉTAIT AUSSI, sous le motif « la touche Option le
+     * fait déjà ». Le geste, oui. Mais l'article de menu n'est pas qu'un
+     * geste : il porte un MODE, qui dure, et que « the centered » lit et
+     * pose. Une pile réelle — un traceur de courbes qui remet la propriété à
+     * faux à chaque idle — tombait en erreur à chaque battement, faute de
+     * cette propriété ; et une touche enfoncée ne se lit pas depuis
+     * HyperTalk. Une commodité au clavier n'a jamais remplacé un réglage.
+     *
+     * Un menu de quatre articles a l'air pauvre. Un menu de treize dont neuf
      * mentent l'est davantage, et on ne s'en aperçoit qu'après avoir cliqué.
      *
-     * LES TROIS QU'ON POSE n'existaient nulle part ailleurs. La grille sert
+     * LES QUATRE QU'ON POSE n'existaient nulle part ailleurs. La grille sert
      * aux deux gestes qu'on répète le plus — aligner des boutons, tirer un
-     * trait droit ; FatBits est le seul moyen de poser un pixel précis ; et
-     * le nombre de côtés n'avait que « set the polySides » pour se régler. */
+     * trait droit ; FatBits est le seul moyen de poser un pixel précis ; le
+     * nombre de côtés n'avait que « set the polySides » pour se régler ; et
+     * le dessin centré n'avait que la touche Option, qu'aucun script
+     * n'atteint. */
     NSMenuItem *optItem = [[NSMenuItem alloc] init];
     NSMenu *optMenu = [[NSMenu alloc] initWithTitle:@"Options"];
     struct { NSString *titre; NSInteger tag; } opts[] = {
         { @"Grid",    HCV_PAINT_GRID    },
         { @"FatBits", HCV_PAINT_FATBITS },
+        { @"Draw Centered", HCV_PAINT_CENTERED },
         /* Les trois points disent qu'une boîte s'ouvre — la convention Mac,
          * et le titre exact d'HyperCard. */
         { @"Polygon Sides…", HCV_PAINT_POLYSIDES },

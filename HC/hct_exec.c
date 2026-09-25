@@ -901,9 +901,11 @@ static void commande(HctExec *x, const HctNoeud *n)
         else if (!strcasecmp(v, "subtract")) r = xc - xv;
         else if (!strcasecmp(v, "multiply")) r = xc * xv;
         else {
-            if (xv == 0) { hct_ctx_faute(&x->ctx, n, "division par zéro");
-                           hct_val_libere(&val); hct_val_libere(&act); return; }
-            r = xc / xv;
+            /* « divide x by 0 » : la même règle que l'opérateur « / ». Le
+             * jumeau, à ne pas oublier — c'est la commande, pas l'expression,
+             * et une pile peut employer l'une ou l'autre. Voir la note dans
+             * hct_eval.c pour la raison de rendre INF plutôt qu'une erreur. */
+            r = (xc == 0 && xv == 0) ? hct_nan_code(4) : xc / xv;
         }
         HctValeur res = hct_val_calcul(r);
         int delegue = 0;
