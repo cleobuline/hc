@@ -257,6 +257,13 @@ static int ecrit_message_pont(void *d, const char *val, int mode)
          ? x->hote.ecrit_message(x->hote.donnees, val, mode) : 0;
 }
 
+static int lit_message_pont(void *d, HctValeur *out)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.lit_message
+         ? x->hote.lit_message(x->hote.donnees, out) : 0;
+}
+
 static int globale_pont(void *d, const char *nom)
 {
     HctExec *x = (HctExec *)d;
@@ -1505,6 +1512,7 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.commande      = hote.commande      ? commande_pont      : NULL;
     pont.ecrit_objet   = hote.ecrit_objet   ? ecrit_objet_pont   : NULL;
     pont.ecrit_message = hote.ecrit_message ? ecrit_message_pont : NULL;
+    pont.lit_message   = hote.lit_message   ? lit_message_pont   : NULL;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);

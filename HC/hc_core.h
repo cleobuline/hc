@@ -800,6 +800,23 @@ Object     *hc_resolve(const char *ref);
 /* Script brut d'un objet (peut être NULL). */
 const char *hc_script_of(Object *o);
 
+/* ---- La boîte de messages ----
+ *
+ * Le noyau en garde le contenu : « put X » et « put X into msg » l'écrivent,
+ * « put msg » le relit. Avant, rien ne le retenait et la lecture donnait
+ * « objet introuvable ».
+ *
+ * L'hôte s'en sert aux deux bouts. hc_message_lu() donne ce qu'il doit
+ * AFFICHER dans la fenêtre — il le reçoit déjà par HC_MSG, mais il en a
+ * besoin aussi à l'ouverture de la fenêtre, quand aucun message n'est passé
+ * depuis. hc_message_ecrit() sert à l'inverse : quand l'utilisateur TAPE
+ * dans la boîte, le noyau doit le savoir, sans quoi le script relirait ce
+ * qu'il a écrit lui-même et non ce qu'on voit à l'écran.
+ *
+ * hc_message_lu ne rend jamais NULL. */
+const char *hc_message_lu(void);
+void        hc_message_ecrit(const char *s);
+
 /* Pose le contenu textuel d'un champ (pour l'édition interactive). */
 void        hc_set_field_text(Object *field, const char *text);
 /* Texte effectif d'un champ : propre à la carte courante s'il s'agit d'un

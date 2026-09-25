@@ -1,0 +1,54 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. écrire puis relire ===
+   (c'est le cas signalé : « objet introuvable » avant)
+   [boîte] bonjour
+   [boîte] bonjour
+=== 2. les trois noms désignent la même boîte ===
+   [boîte] un
+   [boîte] un
+   [boîte] deux
+   [boîte] deux
+=== 3. « put » sans destination écrit dans la boîte ===
+   (et c'est pour cela qu'on peut le relire)
+   [boîte] direct
+   [boîte] direct
+=== 4. elle SURVIT d'un gestionnaire au suivant ===
+   (sans quoi elle ne serait pas un bloc-notes)
+   [boîte] memoire
+   [boîte] memoire
+=== 5. en expression, comme n'importe quel conteneur ===
+   [boîte] abc
+   [boîte] 3
+   [boîte] oui
+   [boîte] la condition lit la boîte
+   [boîte] jeton
+   [boîte] jeton!
+=== 6. after et before AJOUTENT, ils n'affichent plus une ligne ===
+   (le `mode` que le rappel d'écriture ignorait : la boîte
+    d'HyperCard est un champ unique, pas un journal)
+   [boîte] a
+   [boîte] ab
+   [boîte] ab
+   [boîte] monde
+   [boîte] bonjour monde
+   [boîte] bonjour monde
+=== 7. les morceaux, qui demandent les deux sens à la fois ===
+   [boîte] un,deux,trois
+   [boîte] un,DEUX,trois
+   [boîte] deux un,DEUX,trois
+=== 8. LE PIÈGE, et ce n'en est pas un défaut ===
+   (« put item 2 of msg » sans destination ÉCRIT dans la boîte :
+    la ligne suivante ne travaille donc plus sur « un,deux,trois »
+    mais sur « deux ». Je m'y suis pris les pieds en mesurant ;
+    HyperCard fait exactement pareil, et un script qui relit la
+    boîte doit en tenir compte)
+   [boîte] un,deux,trois
+   [boîte] deux
+   [boîte] deux,DEUX
+   [boîte] deux,DEUX
+=== 9. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
+   (« the visible of msg » reste « objet introuvable ». La
+    fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.
+    On l'inscrit pour ne pas croire le chantier terminé)
+   [ERR]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)
+   [DIALOGUE]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)

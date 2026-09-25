@@ -127,6 +127,25 @@ typedef struct {
      * Rend 0 si l'hôte n'a pas de boîte ; l'exécuteur se rabat sur
      * `commande`. */
     int (*ecrit_message)(void *d, const char *val, int mode);
+
+    /* LIRE la boîte de messages : « put msg », « the length of msg »,
+     * « put \"x\" into char 1 of msg ».
+     *
+     * Le pendant d'ecrit_message, et il manquait. La boîte était un
+     * conteneur en ÉCRITURE SEULE : l'analyseur savait la reconnaître,
+     * l'exécuteur savait y écrire, et la lire donnait « objet introuvable ».
+     * Mesuré sous les cinq formes — msg, the message box, en expression,
+     * après un put sans destination — toutes refusées.
+     *
+     * Une moitié de conteneur, comme lockErrorDialogs était une moitié de
+     * mécanisme : l'autre moitié n'avait jamais été écrite.
+     *
+     * L'hôte rend 1 et pose *out s'il tient une boîte, 0 sinon — auquel cas
+     * la lecture repart par le chemin des objets, qui dira ce qu'il sait.
+     * Un hôte sans boîte persistante (un harnais qui se contente
+     * d'imprimer) n'a qu'à ne pas le fournir. */
+    int (*lit_message)(void *d, HctValeur *out);
+
     int (*globale)(void *d, const char *nom);
 
     /* Vider « the result ».

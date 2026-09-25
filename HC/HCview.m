@@ -2256,6 +2256,11 @@ static void cocoa_type_text(const char *text, const char *mods) {
     } else if (gMsgBox) {
         [gMsgBox setStringValue:
             [[gMsgBox stringValue] stringByAppendingString:s]];
+        /* « type » écrit dans la boîte comme le ferait une main : le noyau
+         * doit l'apprendre, sans quoi « type "x" » suivi de « put msg »
+         * rendrait l'état d'avant. Le délégué ne se déclenche pas ici —
+         * setStringValue: n'est pas une frappe. */
+        hc_message_ecrit([[gMsgBox stringValue] UTF8String]);
     }
     [gView setNeedsDisplay:YES];
 }
@@ -6665,6 +6670,17 @@ static void hcv_survol(HCView *v, Object *carte)
     [gMsgBox setStringValue:@""];
     [gMsgBox setTarget:self];
     [gMsgBox setAction:@selector(messageBoxEntered:)];
+    /* LE NOYAU TIENT LE CONTENU DE LA BOÎTE, la fenêtre ne fait que le
+     * montrer. « put msg » lit hc_message_lu(), et il faut donc que les deux
+     * ne divergent jamais — sinon un script relirait ce qu'il a écrit
+     * lui-même au lieu de ce qu'on voit à l'écran.
+     *
+     * Trois chemins écrivent dans cette fenêtre : le script (par HC_MSG, déjà
+     * synchrone puisque le noyau est la source), la FRAPPE de l'utilisateur,
+     * et la commande « type ». Les deux derniers doivent prévenir le noyau ;
+     * c'est à quoi servent le délégué ci-dessous et hc_message_ecrit. */
+    [gMsgBox setDelegate:(id)self];
+    [gMsgBox setStringValue:[NSString stringWithUTF8String:hc_message_lu()]];
     [[gMsgPanel contentView] addSubview:gMsgBox];
     [gMsgPanel makeKeyAndOrderFront:nil];
 
@@ -6707,9 +6723,23 @@ static void hcv_survol(HCView *v, Object *carte)
     cocoa_menus_changed();
 }
 
+/* L'UTILISATEUR TAPE : le noyau doit le savoir tout de suite.
+ *
+ * Sans cela « put msg » rendait la dernière valeur qu'un SCRIPT y avait
+ * mise, en ignorant ce qui est à l'écran. Le délégué est appelé à chaque
+ * frappe, ce qui est exactement la granularité voulue : un script lancé
+ * depuis un bouton pendant qu'on tape doit voir le texte en cours. */
+- (void)controlTextDidChange:(NSNotification *)note {
+    if ([note object] == gMsgBox)
+        hc_message_ecrit([[gMsgBox stringValue] UTF8String]);
+}
+
 - (void)messageBoxEntered:(id)sender {
     NSString *cmd = [gMsgBox stringValue];
     if ([cmd length] == 0) return;
+    /* La ligne qu'on valide EST le contenu de la boîte : un script lancé
+     * d'ici peut la relire, et c'est une tournure courante. */
+    hc_message_ecrit([cmd UTF8String]);
     hc_do([cmd UTF8String]);
 
     [gView applyStackSize];
@@ -6871,7 +6901,15 @@ static NSTextField  *gSprayDensityLabel = nil;
         default: return;
     }
     if ([p isVisible]) [p orderOut:nil];
-    else               [p makeKeyAndOrderFront:nil];
+    else {
+        /* La boîte a pu continuer de vivre pendant que sa fenêtre était
+         * fermée : un script qui y écrit ne l'ouvre pas forcément. On la
+         * remet d'accord avec le noyau avant de la montrer. */
+        if (p == gMsgPanel && gMsgBox)
+            [gMsgBox setStringValue:
+                [NSString stringWithUTF8String:hc_message_lu()]];
+        [p makeKeyAndOrderFront:nil];
+    }
 }
 
 - (BOOL)paletteVisibleForTag:(NSInteger)tag {

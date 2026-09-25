@@ -989,6 +989,20 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
  * l'hôte sait résoudre et lire ; l'évaluateur ne fait que transmettre. */
 static HctValeur objet(HctContexte *ctx, const HctNoeud *n)
 {
+    /* LA BOÎTE DE MESSAGES N'EST PAS UN OBJET DE LA PILE, et c'est pour cela
+     * qu'elle se lisait « objet introuvable ». Elle n'a ni propriétaire ni
+     * rang ; resout() n'a rien à quoi la rattacher. Elle a donc son propre
+     * rappel, exactement comme du côté de l'écriture — où ecrit_dans() la
+     * détourne avant d'appeler resout, dans hct_exec.c.
+     *
+     * L'asymétrie était là depuis toujours : on savait y écrire, pas la
+     * lire. C'est ce qui rend ce défaut discret — un script qui ne fait
+     * qu'afficher marche parfaitement. */
+    if (n->typeobj == HCT_OBJ_MESSAGE && ctx->hote.lit_message) {
+        HctValeur m;
+        if (ctx->hote.lit_message(ctx->hote.donnees, &m)) return m;
+    }
+
     /* L'ARBRE d'abord, le texte ensuite.
      *
      * L'ordre inverse — recours en tête — rendait resout et lit_objet

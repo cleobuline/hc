@@ -42,6 +42,12 @@
     type l'emporte sur une fonction de l'auteur. On l'inscrit ici
     pour que la frontière soit écrite quelque part, et pour voir
     si elle bouge un jour sans qu'on l'ait voulu)
+
+    LA LIGNE « msg(21) = ... » SURPREND et elle est juste : depuis
+    que la boîte de messages se LIT, « msg » s'évalue et rend son
+    contenu — ici ce que le tour précédent y a laissé. C'est le
+    « (21) » qui reste sur la ligne et la fait échouer. Le nom est
+    toujours masqué, et on voit maintenant PAR QUOI.
    abbr(21) = 42
    abbrev(21) = 42
    bg(21) = background "Fond"
@@ -79,7 +85,8 @@
    mid(21) = 42
    [ERR]    !! script, ligne 5 colonne 25 : texte inattendu en fin de ligne
    [ERR]         put "msg(21) = " & msg(21)
-   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   msg(21) = mid(21) = 42
+   [ERR]    !! texte inattendu en fin de ligne (v3, ligne 5 de stack "Synonymes".essai)
    masqué : msg
    poly(21) = 42
    prev(21) = 42

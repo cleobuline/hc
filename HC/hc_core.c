@@ -14164,17 +14164,80 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
 
 /* --- la boîte de messages ---
  *
- * « put X » sans destination, et « put X into the message box ». HC n'a pas
- * de boîte persistante : la valeur part sur la sortie, comme le fait
- * l'ancien exécuteur, qui émettait HC_MSG au même endroit.
+ * ELLE ÉTAIT EN ÉCRITURE SEULE, et c'est le défaut qu'on corrige ici.
  *
- * `mode` est donc sans objet ici — on ne peut rien ajouter à la suite de ce
- * qui a déjà été affiché. On l'ignore et l'on rend 1 : refuser renverrait la
- * ligne à l'ancien interpréteur, qui n'en ferait pas davantage. */
+ * MESURÉ AVANT, sous les cinq formes : « put msg », « put the message box »,
+ * « the length of msg », après un « put » sans destination, et « put X after
+ * msg ». Toutes rendaient « objet introuvable ». L'analyseur savait
+ * reconnaître la boîte, l'exécuteur savait y écrire — et personne ne savait
+ * la lire, parce qu'il n'y avait rien à lire : HC n'en gardait pas le
+ * contenu. La valeur partait sur la sortie et disparaissait.
+ *
+ * C'est la même forme de défaut que lockErrorDialogs : une moitié de
+ * mécanisme, invisible tant qu'aucune pile ne se sert de l'autre. Un script
+ * qui ne fait qu'AFFICHER marche parfaitement ; celui qui relit ce qu'il
+ * vient d'écrire — et HyperTalk s'en sert comme d'un bloc-notes — tombe.
+ *
+ * On garde donc le contenu. Trois conséquences, toutes voulues :
+ *
+ *   — « put msg » rend enfin ce qu'on y a mis ;
+ *   — « put X after msg » AJOUTE au lieu d'afficher une seconde ligne : la
+ *     boîte d'HyperCard est un champ unique, pas un journal. Le `mode` que
+ *     ce rappel ignorait sert maintenant ;
+ *   — l'hôte reçoit par emit(HC_MSG) le CONTENU RÉSULTANT de la boîte, non
+ *     le fragment écrit. Pour un remplacement — le cas courant — c'est le
+ *     même texte qu'avant.
+ *
+ * Le tampon est dynamique : la boîte de message accepte du texte long, et
+ * une taille fixe ferait une troncature silencieuse de plus. */
+static char *g_msg;            /* contenu de la boîte, jamais lu comme NULL */
+
+/* Poser le contenu, en prenant une copie. Rend 0 si la mémoire manque, et
+ * laisse alors l'ancien contenu en place plutôt qu'une boîte à moitié
+ * écrite. */
+static int msg_pose(const char *s)
+{
+    if (!s) s = "";
+    char *neuf = malloc(strlen(s) + 1);
+    if (!neuf) return 0;
+    strcpy(neuf, s);
+    free(g_msg);
+    g_msg = neuf;
+    return 1;
+}
+
+const char *hc_message_lu(void)   { return g_msg ? g_msg : ""; }
+void        hc_message_ecrit(const char *s) { msg_pose(s); }
+
 static int v3_ecrit_message(void *d, const char *val, int mode)
 {
-    (void)d; (void)mode;
-    emit(HC_MSG, "%s", val ? val : "");
+    (void)d;
+    const char *v = val ? val : "";
+
+    if (mode == 0) {
+        if (!msg_pose(v)) return 0;
+    } else {
+        /* 1 insère AVANT, 2 ajoute APRÈS — la convention d'ecrit_objet. */
+        const char *a = hc_message_lu();
+        size_t la = strlen(a), lv = strlen(v);
+        char *both = malloc(la + lv + 1);
+        if (!both) return 0;
+        if (mode == 1) { memcpy(both, v, lv); memcpy(both + lv, a, la); }
+        else           { memcpy(both, a, la); memcpy(both + la, v, lv); }
+        both[la + lv] = '\0';
+        free(g_msg);
+        g_msg = both;
+    }
+
+    emit(HC_MSG, "%s", hc_message_lu());
+    return 1;
+}
+
+/* Le pendant, celui qui manquait. */
+static int v3_lit_message(void *d, HctValeur *out)
+{
+    (void)d;
+    *out = hct_val_texte(hc_message_lu());
     return 1;
 }
 /* « global a, b » : l'exécuteur nous passe les noms un par un, puisque c'est
@@ -14212,6 +14275,7 @@ static HctHote v3_hote(void)
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;
     h.ecrit_message = v3_ecrit_message;
+    h.lit_message   = v3_lit_message;
     h.resultat_vide = v3_resultat_vide;
 
     return h;
