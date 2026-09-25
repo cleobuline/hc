@@ -174,14 +174,93 @@ int main(void)
          "  put \"et le témoin, lui, passe :\"\n"
          "  drag from 10,20 to 30,40");
 
-    printf("=== 8. mod par zéro : NAN sans code ===\n");
-    printf("   (SANE en a un pour le reste invalide ; je n'en ai pas la preuve\n");
-    printf("    sous les yeux, et un numéro non vérifié serait pire que rien)\n");
-    fais("set the numberFormat to \"0.######\"\n  put 5 mod 0");
+    printf("=== 7e. LES TROIS CODES MESURÉS SOUS HYPERCARD ===\n");
+    printf("   (relevés dans la boîte de message de HyperCard sous Basilisk II,\n");
+    printf("    pas déduits d'une table — je m'étais trompé en pensant 022 pour\n");
+    printf("    le logarithme. Le C ne les donne pas : sur cette machine les\n");
+    printf("    trois rendent un NaN de charge NULLE, il faut les poser)\n");
+    fais("set the numberFormat to \"0.######\"\n"
+         "  put \"ln(-1)    = \" & ln(-1)\n"
+         "  put \"sqrt(-1)  = \" & sqrt(-1)\n"
+         "  put \"0*(1/0)   = \" & 0*(1/0)");
 
-    printf("=== 9. div par zéro suit la même règle que « / » ===\n");
+    printf("=== 7f. le SIGNE compte : sqrt(-1) porte un moins, pas les autres ===\n");
+    printf("   (le bit de signe d'un NaN n'a aucun sens arithmétique, mais SANE\n");
+    printf("    le montre et une pile peut le comparer)\n");
+    fais("put sqrt(-1) into y\n"
+         "  put \"y is -NAN(001) : \" & (y is \"-NAN(001)\")\n"
+         "  put \"y is NAN(001)  : \" & (y is \"NAN(001)\")\n"
+         "  put \"y contains NAN : \" & (y contains \"NAN\")");
+
+    printf("=== 7g. LA CHARGE SE LIT EN DÉCIMAL, PAS EN OCTAL ===\n");
+    printf("   (strtod lit la charge d'un NaN en base 0 : un zéro de tête la\n");
+    printf("    fait passer en OCTAL, et quatre des six codes que HyperCard\n");
+    printf("    écrit se corrompaient en silence —\n");
+    printf("      NAN(008) -> 0    NAN(009) -> 0\n");
+    printf("      NAN(036) -> 30   NAN(037) -> 31\n");
+    printf("    NAN(037) est écrit EN DUR dans la pile, et le code voyage dans\n");
+    printf("    la charge : la corruption aurait survécu à tous les calculs)\n");
+    fais("set the numberFormat to \"0.######\"\n"
+         "  put \"NAN(001) relu : \" & (\"NAN(001)\" + 0)\n"
+         "  put \"NAN(008) relu : \" & (\"NAN(008)\" + 0)\n"
+         "  put \"NAN(009) relu : \" & (\"NAN(009)\" + 0)\n"
+         "  put \"NAN(036) relu : \" & (\"NAN(036)\" + 0)\n"
+         "  put \"NAN(037) relu : \" & (\"NAN(037)\" + 0)\n"
+         "  put \"-NAN(001) relu : \" & (\"-NAN(001)\" + 0)");
+
+    printf("=== 7h. et le code survit aux calculs, comme celui de 0/0 ===\n");
+    fais("set the numberFormat to \"0.######\"\n"
+         "  put \"ln(-1)/5   = \" & ln(-1)/5\n"
+         "  put \"sqrt(-1)*2 = \" & sqrt(-1)*2");
+
+    printf("=== 7i. le témoin : les domaines VALIDES n'ont pas bougé ===\n");
+    fais("set the numberFormat to \"0.######\"\n"
+         "  put \"ln(1)     = \" & ln(1)\n"
+         "  put \"ln(0)     = \" & ln(0)\n"
+         "  put \"sqrt(4)   = \" & sqrt(4)\n"
+         "  put \"0*5       = \" & 0*5\n"
+         "  put \"2*(1/0)   = \" & 2*(1/0)");
+
+    printf("=== 8. « mod » par zéro est une ERREUR, pas une valeur ===\n");
+    printf("   (MESURÉ : « put 5 mod 0 » sous HyperCard ouvre un dialogue,\n");
+    printf("    « can't mod by 0 ». J'avais supposé qu'il rendait un NaN comme\n");
+    printf("    la division, faute d'en connaître le code SANE — faux. Les deux\n");
+    printf("    opérations se ressemblent et HyperCard ne les traite pas pareil,\n");
+    printf("    ce qui est précisément pourquoi on mesure au lieu de déduire)\n");
+    fais("set the numberFormat to \"0.######\"\n  put 5 mod 0");
+    fais("put 5 mod 2");
+
+    printf("=== 9. « div » par zéro REFUSE aussi ===\n");
+    printf("   (MESURÉ : « put 7 div 0 » ET « put 0 div 0 » ouvrent tous deux\n");
+    printf("    le dialogue « can't div by zero ». J'avais fait suivre à div la\n");
+    printf("    règle de « / » parce que c'est une division — deuxième fois que\n");
+    printf("    la déduction se fait démentir sur la même famille.\n");
+    printf("\n");
+    printf("    La cohérence est lisible une fois qu'on la voit : div et mod\n");
+    printf("    sont des opérations ENTIÈRES, et l'arithmétique SANE qui\n");
+    printf("    fabrique INF et les NaN est celle des FLOTTANTS. Seule « / »\n");
+    printf("    y a droit)\n");
     fais("put 7 div 0");
     fais("put 0 div 0");
+    fais("put 7 div 2");
+
+    printf("=== 9b. « divide … by 0 », la commande : une VALEUR ===\n");
+    printf("   (MESURÉ, et il le fallait, puisque les deux opérations d'à côté\n");
+    printf("    font l'inverse. La ligne de partage ne passe donc pas entre\n");
+    printf("    l'expression et la commande, mais entre le FLOTTANT et\n");
+    printf("    l'ENTIER : « / » et « divide » sont la même division flottante\n");
+    printf("    sous deux écritures, « div » et « mod » sont entières et\n");
+    printf("    refusent.\n");
+    printf("\n");
+    printf("    Le cas 0/0 de la commande n'a pas été relevé à part et n'a pas\n");
+    printf("    à l'être : il emprunte la même ligne de code que l'opérateur,\n");
+    printf("    les deux ne peuvent pas diverger)\n");
+    fais("put 7 into n\n"
+         "  divide n by 0\n"
+         "  put \"7 divisé par 0 : \" & n");
+    fais("put 0 into n\n"
+         "  divide n by 0\n"
+         "  put \"0 divisé par 0 : \" & n");
 
     printf("=== 10. les témoins : ce qui marchait marche encore ===\n");
     fais("set the numberFormat to \"0.######\"\n"

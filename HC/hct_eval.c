@@ -135,7 +135,12 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
 
     if      (!strcmp(op, "+")) r = x + y;
     else if (!strcmp(op, "-")) r = x - y;
-    else if (!strcmp(op, "*")) r = x * y;
+    /* ZÉRO FOIS L'INFINI est le produit invalide de SANE, et il porte son
+     * propre code — mesuré : « put 0*(1/0) » rend NAN(008). Le C rend là
+     * aussi un NaN sans charge. */
+    else if (!strcmp(op, "*"))
+        r = ((x == 0 && isinf(y)) || (isinf(x) && y == 0))
+            ? hct_nan_code(8) : x * y;
     /* DIVISER PAR ZÉRO REND UNE VALEUR, PAS UNE ERREUR.
      *
      * C'est l'arithmétique SANE du Macintosh, celle dont HyperCard se sert :
@@ -162,16 +167,43 @@ static HctValeur arith(HctContexte *ctx, const HctNoeud *n, const char *op,
      * signe. On ne s'occupe donc que de 0/0, dont le NaN naturel ne porte
      * aucun code — on y met le 4 de SANE.
      *
-     * « mod » reste sans code : SANE en a un pour le reste invalide, mais je
-     * n'en ai pas la preuve sous les yeux, et écrire un numéro non vérifié
-     * serait pire que de n'en écrire aucun. Il rend donc « NAN » tout court. */
+     * SEULE « / » REND UNE VALEUR. « div » ET « mod » REFUSENT.
+     *
+     * Mesuré sous HyperCard, les trois cas séparément :
+     *
+     *     put 1/0      ->  INF          une valeur
+     *     put 7 div 0  ->  dialogue « can't div by zero »
+     *     put 0 div 0  ->  dialogue « can't div by zero »
+     *     put 5 mod 0  ->  dialogue « can't mod by 0 »
+     *
+     * Et il a fallu les mesurer un par un. Ayant établi que « / » rendait une
+     * valeur, j'ai étendu la règle aux deux autres — en notant que je n'étais
+     * pas sûr de leur CODE SANE, et pas du tout que je n'étais pas sûr de la
+     * NATURE de la réponse. J'ai douté du chiffre et pas de la forme.
+     *
+     * La cohérence est pourtant lisible une fois qu'on la voit : « div » et
+     * « mod » sont des opérations ENTIÈRES. L'arithmétique SANE, qui fabrique
+     * INF et les NaN, est celle des flottants ; elle ne s'applique pas, et
+     * HyperCard vérifie explicitement avant de diviser.
+     *
+     * Reste « divide … by 0 », la COMMANDE, dans hct_exec.c : elle suit la
+     * règle de « / » puisqu'elle en est la forme impérative, et ce n'est pas
+     * encore mesuré. C'est écrit là-bas. */
     else if (!strcmp(op, "/")) {
         r = (x == 0 && y == 0) ? hct_nan_code(4) : x / y;
     }
     else if (!strcmp(op, "div")) {
-        r = (x == 0 && y == 0) ? hct_nan_code(4) : trunc(x / y);
+        if (y == 0) {
+            hct_ctx_faute(ctx, n, "division entière par zéro");
+            return hct_val_vide();
+        }
+        r = trunc(x / y);
     }
     else if (!strcmp(op, "mod")) {
+        if (y == 0) {
+            hct_ctx_faute(ctx, n, "modulo par zéro");
+            return hct_val_vide();
+        }
         r = fmod(x, y);
     }
     else if (!strcmp(op, "^")) r = pow(x, y);
@@ -525,10 +557,24 @@ int hct_evalue_texte(HctContexte *ctx, const char *src,
  * résultats.
  *
  * Rend 0 si le nom n'en est pas une. */
+/* LES CODES SANE DES DOMAINES INVALIDES, MESURÉS SOUS HYPERCARD.
+ *
+ * Le C ne les donne pas : sur cette machine log(-1), sqrt(-1) et 0*INF
+ * rendent tous un NaN de charge NULLE. Il faut donc poser le code, et le
+ * SIGNE, à la main — et les trois relevés ne se ressemblent pas :
+ *
+ *     put ln(-1)    -> NAN(036)
+ *     put sqrt(-1)  -> -NAN(001)     <- avec le moins
+ *     put 0*(1/0)   -> NAN(008)
+ *
+ * Relevés dans la boîte de message de HyperCard sous Basilisk II, pas
+ * déduits d'une table : je m'étais trompé en pensant 022 pour le logarithme.
+ * Les autres codes de SANE restent absents tant qu'on ne les a pas vus. */
 static int math_un_arg(const char *nom, double x, double *y)
 {
     if      (!strcasecmp(nom, "abs"))   *y = fabs(x);
-    else if (!strcasecmp(nom, "sqrt"))  *y = sqrt(x);
+    else if (!strcasecmp(nom, "sqrt"))
+        *y = (x < 0) ? hct_nan_signe(1, 1) : sqrt(x);
     else if (!strcasecmp(nom, "trunc")) *y = trunc(x);
     else if (!strcasecmp(nom, "round")) *y = round(x);
     else if (!strcasecmp(nom, "sin"))   *y = sin(x);
@@ -538,9 +584,11 @@ static int math_un_arg(const char *nom, double x, double *y)
     else if (!strcasecmp(nom, "exp"))   *y = exp(x);
     else if (!strcasecmp(nom, "exp1"))  *y = expm1(x);
     else if (!strcasecmp(nom, "exp2"))  *y = exp2(x);
-    else if (!strcasecmp(nom, "ln"))    *y = log(x);
-    else if (!strcasecmp(nom, "ln1"))   *y = log1p(x);
-    else if (!strcasecmp(nom, "log2"))  *y = log2(x);
+    /* ln(0) vaut -INF et non un NaN : c'est une limite, pas un domaine
+     * invalide, et le C la donne déjà. Seul l'argument NÉGATIF est fautif. */
+    else if (!strcasecmp(nom, "ln"))    *y = (x < 0) ? hct_nan_code(36) : log(x);
+    else if (!strcasecmp(nom, "ln1"))   *y = (x < -1) ? hct_nan_code(36) : log1p(x);
+    else if (!strcasecmp(nom, "log2"))  *y = (x < 0) ? hct_nan_code(36) : log2(x);
     else return 0;
     return 1;
 }

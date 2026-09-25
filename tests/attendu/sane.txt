@@ -54,10 +54,8 @@
     NaN. Avec l'ordre à false le garde ne partait pas, la pile
     traçait vers un point non fini, et la courbe recevait une
     barre verticale en travers. Mesuré à l'écran)
-   ny vaut NAN(004)
-   ERR: x=-0.5,y=NAN(004)
-   y=0/0 (indeterminate)
-   crayon levé : la courbe aura un TROU, pas une barre
+   ny vaut -NAN(004)
+   le garde n'a pas pris — c'est la barre
 === 7d. et si une pile y va quand même : on REFUSE de dessiner ===
    (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —
     quand il ne sait pas lire. Zéro est une coordonnée valide :
@@ -67,13 +65,77 @@
    [ERR]    !! click : « NAN(004) » n'est pas une coordonnée
    et le témoin, lui, passe :
    [ERR]    !! drag : l'hôte ne gère pas la souris
-=== 8. mod par zéro : NAN sans code ===
-   (SANE en a un pour le reste invalide ; je n'en ai pas la preuve
-    sous les yeux, et un numéro non vérifié serait pire que rien)
-   NAN
-=== 9. div par zéro suit la même règle que « / » ===
-   INF
-   NAN(004)
+=== 7e. LES TROIS CODES MESURÉS SOUS HYPERCARD ===
+   (relevés dans la boîte de message de HyperCard sous Basilisk II,
+    pas déduits d'une table — je m'étais trompé en pensant 022 pour
+    le logarithme. Le C ne les donne pas : sur cette machine les
+    trois rendent un NaN de charge NULLE, il faut les poser)
+   ln(-1)    = NAN(036)
+   sqrt(-1)  = -NAN(001)
+   0*(1/0)   = NAN(008)
+=== 7f. le SIGNE compte : sqrt(-1) porte un moins, pas les autres ===
+   (le bit de signe d'un NaN n'a aucun sens arithmétique, mais SANE
+    le montre et une pile peut le comparer)
+   y is -NAN(001) : true
+   y is NAN(001)  : false
+   y contains NAN : true
+=== 7g. LA CHARGE SE LIT EN DÉCIMAL, PAS EN OCTAL ===
+   (strtod lit la charge d'un NaN en base 0 : un zéro de tête la
+    fait passer en OCTAL, et quatre des six codes que HyperCard
+    écrit se corrompaient en silence —
+      NAN(008) -> 0    NAN(009) -> 0
+      NAN(036) -> 30   NAN(037) -> 31
+    NAN(037) est écrit EN DUR dans la pile, et le code voyage dans
+    la charge : la corruption aurait survécu à tous les calculs)
+   NAN(001) relu : NAN(001)
+   NAN(008) relu : NAN(008)
+   NAN(009) relu : NAN(009)
+   NAN(036) relu : NAN(036)
+   NAN(037) relu : NAN(037)
+   -NAN(001) relu : -NAN(001)
+=== 7h. et le code survit aux calculs, comme celui de 0/0 ===
+   ln(-1)/5   = NAN(036)
+   sqrt(-1)*2 = -NAN(001)
+=== 7i. le témoin : les domaines VALIDES n'ont pas bougé ===
+   ln(1)     = 0
+   ln(0)     = -INF
+   sqrt(4)   = 2
+   0*5       = 0
+   2*(1/0)   = INF
+=== 8. « mod » par zéro est une ERREUR, pas une valeur ===
+   (MESURÉ : « put 5 mod 0 » sous HyperCard ouvre un dialogue,
+    « can't mod by 0 ». J'avais supposé qu'il rendait un NaN comme
+    la division, faute d'en connaître le code SANE — faux. Les deux
+    opérations se ressemblent et HyperCard ne les traite pas pareil,
+    ce qui est précisément pourquoi on mesure au lieu de déduire)
+   [ERR]    !! modulo par zéro (v3, ligne 3 de stack "SANE".essai)
+   1
+=== 9. « div » par zéro REFUSE aussi ===
+   (MESURÉ : « put 7 div 0 » ET « put 0 div 0 » ouvrent tous deux
+    le dialogue « can't div by zero ». J'avais fait suivre à div la
+    règle de « / » parce que c'est une division — deuxième fois que
+    la déduction se fait démentir sur la même famille.
+
+    La cohérence est lisible une fois qu'on la voit : div et mod
+    sont des opérations ENTIÈRES, et l'arithmétique SANE qui
+    fabrique INF et les NaN est celle des FLOTTANTS. Seule « / »
+    y a droit)
+   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
+   [ERR]    !! division entière par zéro (v3, ligne 2 de stack "SANE".essai)
+   3
+=== 9b. « divide … by 0 », la commande : une VALEUR ===
+   (MESURÉ, et il le fallait, puisque les deux opérations d'à côté
+    font l'inverse. La ligne de partage ne passe donc pas entre
+    l'expression et la commande, mais entre le FLOTTANT et
+    l'ENTIER : « / » et « divide » sont la même division flottante
+    sous deux écritures, « div » et « mod » sont entières et
+    refusent.
+
+    Le cas 0/0 de la commande n'a pas été relevé à part et n'a pas
+    à l'être : il emprunte la même ligne de code que l'opérateur,
+    les deux ne peuvent pas diverger)
+   7 divisé par 0 : INF
+   0 divisé par 0 : NAN(004)
 === 10. les témoins : ce qui marchait marche encore ===
    6/3     = 2
    7 div 2 = 3

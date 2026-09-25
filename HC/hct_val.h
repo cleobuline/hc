@@ -108,6 +108,10 @@ int hct_vers_bool(const char *s, int *valide);
  * Le code ressort tel quel de hct_ecrit_nombre, sous la forme NAN(004). */
 double hct_nan_code(unsigned long code);
 
+/* Le même, en choisissant le bit de signe. Mesuré sous HyperCard :
+ * « put sqrt(-1) » rend « -NAN(001) », avec le moins. */
+double hct_nan_signe(unsigned long code, int negatif);
+
 int hct_ecrit_nombre(double x, char *out, int taille);
 int hct_ecrit_nombre_format(double x, char *out, int taille);
 

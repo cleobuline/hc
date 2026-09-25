@@ -100,9 +100,55 @@ The NaN code travels in the NaN's payload and **survives subsequent
 arithmetic**, which is what lets `…/(x+1/2)/5` still produce `NAN(004)` after
 its division by five.
 
-`mod` by zero returns `NAN` with no code. SANE has one for an invalid
-remainder, but it could not be verified here, and an unverified number would
-be worse than none.
+**The SANE codes are measured, not deduced.** Three of them were read in
+HyperCard's own message box, running under Basilisk II:
+
+```
+put ln(-1)     ->  NAN(036)
+put sqrt(-1)   -> -NAN(001)      (with the minus sign)
+put 0*(1/0)    ->  NAN(008)
+```
+
+C gives none of these — on this machine all three produce a NaN with a zero
+payload — so the code and the sign are set explicitly. Guessing would have
+been wrong: 022 was the plausible value for the logarithm, and it is 036.
+
+**Only `/` returns a value. `div` and `mod` refuse**, and each of those had to
+be measured separately:
+
+```
+put 1/0      ->  INF
+put 7 div 0  ->  dialog, "can't div by zero"
+put 0 div 0  ->  dialog, "can't div by zero"
+put 5 mod 0  ->  dialog, "can't mod by 0"
+```
+
+Having established that `/` returns a value, the rule was extended to the other
+two — noting uncertainty about their SANE *code*, and none at all about the
+*nature* of the answer. The doubt was aimed at the number, not at the shape.
+
+The consistency is legible once seen: `div` and `mod` are **integer**
+operations, and the SANE arithmetic that produces `INF` and the NaNs is
+floating-point. It does not apply, and HyperCard checks before dividing.
+
+`divide … by 0`, the *command*, returns `INF` — also measured. So the dividing
+line is not between expression and command, but between **floating-point and
+integer**: `/` and `divide` are the same floating division written two ways;
+`div` and `mod` are integer and refuse.
+
+**A silent corruption found on the way.** `strtod` reads a NaN's payload with
+base 0, so a leading zero makes it **octal**. Four of the six codes HyperCard
+writes were being corrupted on any string round-trip:
+
+```
+NAN(008) -> 0     NAN(009) -> 0
+NAN(036) -> 30    NAN(037) -> 31
+```
+
+`NAN(037)` is hard-coded in HypoGraph — `if y≠"NAN(037)"` — and because the
+code travels in the payload, the corruption would have survived every
+subsequent calculation with nothing to report it. Payloads are now read in
+decimal, as they are written.
 
 ### 4. The vertical bar across the plot — two defects, one of them introduced by this release
 

@@ -217,6 +217,47 @@ int hct_est_nombre(const char *s)
 double hct_vers_nombre(const char *s)
 {
     if (!s) return 0.0;
+
+    /* INF ET NAN SE LISENT ICI, PAS PAR strtod.
+     *
+     * strtod lit la charge d'un NaN avec strtoull en base 0 : un zéro de tête
+     * la fait donc lire en OCTAL. Mesuré, et c'est pire qu'une curiosité —
+     * quatre des six codes que HyperCard écrit se corrompent en silence :
+     *
+     *     NAN(008) -> 0     (8 n'est pas un chiffre octal)
+     *     NAN(009) -> 0
+     *     NAN(036) -> 30
+     *     NAN(037) -> 31
+     *
+     * NAN(037) est écrit EN DUR dans HypoGraph — « if y≠"NAN(037)" » — et un
+     * simple aller-retour par une chaîne aurait suffi à en faire NAN(031).
+     * Comme le code voyage dans la charge utile, la corruption aurait survécu
+     * à tous les calculs suivants sans qu'aucun message ne la signale.
+     *
+     * On lit donc la charge en décimal, comme elle s'écrit. */
+    const char *p = s;
+    while (*p == ' ' || *p == '\t') p++;
+    int negatif = 0;
+    if (*p == '+' || *p == '-') { negatif = (*p == '-'); p++; }
+
+    if ((p[0] == 'i' || p[0] == 'I') && (p[1] == 'n' || p[1] == 'N') &&
+        (p[2] == 'f' || p[2] == 'F'))
+        return negatif ? -INFINITY : INFINITY;
+
+    if ((p[0] == 'n' || p[0] == 'N') && (p[1] == 'a' || p[1] == 'A') &&
+        (p[2] == 'n' || p[2] == 'N')) {
+        unsigned long code = 0;
+        if (p[3] == '(') {
+            const char *q = p + 4;
+            while (isdigit((unsigned char)*q)) {
+                code = code * 10 + (unsigned long)(*q - '0');
+                if (code > 0x7FFFFFFFFFFFFULL) code = 0;   /* absurde : sans code */
+                q++;
+            }
+        }
+        return hct_nan_signe(code, negatif);
+    }
+
     return strtod(s, NULL);
 }
 
@@ -286,11 +327,16 @@ int hct_vers_bool(const char *s, int *valide)
 static int ecrit_non_fini(double x, char *out, int taille)
 {
     if (isnan(x)) {
+        /* LE SIGNE S'ÉCRIT AUSSI. Mesuré sous HyperCard : « put sqrt(-1) »
+         * rend « -NAN(001) », avec le moins, tandis que « put ln(-1) » rend
+         * « NAN(036) » sans. Le bit de signe d'un NaN n'a aucun sens
+         * arithmétique, mais SANE le montre et une pile peut le comparer. */
         unsigned long long u = 0;
         memcpy(&u, &x, sizeof x < sizeof u ? sizeof x : sizeof u);
         unsigned long code = (unsigned long)(u & 0x7FFFFFFFFFFFFULL);
-        if (code) return snprintf(out, (size_t)taille, "NAN(%03lu)", code);
-        return snprintf(out, (size_t)taille, "NAN");
+        const char *sg = signbit(x) ? "-" : "";
+        if (code) return snprintf(out, (size_t)taille, "%sNAN(%03lu)", sg, code);
+        return snprintf(out, (size_t)taille, "%sNAN", sg);
     }
     if (isinf(x))
         return snprintf(out, (size_t)taille, x > 0 ? "INF" : "-INF");
@@ -303,13 +349,16 @@ static int ecrit_non_fini(double x, char *out, int taille)
  * portent le code. On le pose par les bits plutôt que par nan("4") pour
  * n'avoir pas à passer par une chaîne, et parce que le masque dit exactement
  * ce qui est écrit. */
-double hct_nan_code(unsigned long code)
+double hct_nan_signe(unsigned long code, int negatif)
 {
     unsigned long long u = 0x7FF8000000000000ULL | (code & 0x7FFFFFFFFFFFFULL);
+    if (negatif) u |= 0x8000000000000000ULL;
     double d = 0;
     memcpy(&d, &u, sizeof d < sizeof u ? sizeof d : sizeof u);
     return d;
 }
+
+double hct_nan_code(unsigned long code) { return hct_nan_signe(code, 0); }
 
 /* ------------------------------------------------- écriture d'un nombre
  *
