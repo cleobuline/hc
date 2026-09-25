@@ -45,9 +45,24 @@
    1.5
    -- mais l'operateur, lui, suit toujours :
    1.25
-── les OPERATEURS suivent le gabarit : conforme a HyperCard
-   1/3*3         -> 0.9   (HyperCard : 0.9)
-   value(1/3*3)  -> 0.9   (HyperCard : 0.9)
+── les OPERATEURS suivent le gabarit : ECART, HyperCard n'arrondit pas
+   1/3*3         -> 0.9   ECART, HyperCard : 1.0
+   value(1/3*3)  -> 0.9   ECART, HyperCard : 1.0
+── LES QUATRE BOOLEENS, immunises contre l'affichage
+   (0.34*1 = 0.34)   -> false   HyperCard : true
+   (1/3*3 = 1)       -> false   HyperCard : true
+   (1/3 = 0.3)       -> true   HyperCard : false
+   (sqrt(2)*1 = 1.4) -> true   HyperCard : false
+── RANGER dans une variable : HyperCard ne fige pas, HC si
+   (x = 1.4)         -> true   HyperCard : false
+   (10*x = 14)       -> true   HyperCard : false
+── UN TEXTE reste un texte : le gabarit ne le touche pas
+   un litteral de texte -> 1.414214   les deux : 1.414214
+   un nombre calcule     -> 1.4   HyperCard : 1.4
+── LA CHAINE DE TRACE, dix points — la rosace en chiffres
+   416.0 416.0 416.0 416.0 416.0 416.0 416.0 416.0 416.0 416.0 
+   HyperCard : 416.0 416.0 414.0 413.0 410.0 407.0 403.0 398.0 392.0 386.0
+      (la courbe de HC ne bouge pas : c'est le palier plat a l'ecran)
 ── les FONCTIONS ne le suivent PAS : conforme a HyperCard
    10*sqrt(2)    -> 14.1   (HyperCard : 14.1)
    1000*sin(z)   -> 21.8   (HyperCard : 21.8)

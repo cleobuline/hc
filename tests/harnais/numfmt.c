@@ -78,17 +78,58 @@ int main(void){
    *
    * CINQ RELEVÉS SOUS HYPERCARD, dans Basilisk II :
    *
-   *     gabarit "0.0"    put 1/3*3               ->  0.9
    *     gabarit "0.0"    put 10*sqrt(2)          ->  14.1
    *     gabarit "0.0"    put 1000*sin(z)         ->  21.8    z = pi/144
    *     gabarit "0.0"    put 1000*sin(0.021817)  ->  21.8
    *     gabarit "0.000"  put sqrt(2)             ->  1.414
    *
-   * LA RÈGLE qu'ils dessinent, et la seule qui les explique tous les cinq :
+   * UNE SIXIÈME FIGURAIT ICI ET ELLE ÉTAIT FAUSSE. On lisait « gabarit 0.0,
+   * put 1/3*3 -> 0.9, HyperCard ». C'est la valeur de HC, pas celle
+   * d'HyperCard, relevée un soir avec les deux fenêtres côte à côte. Le
+   * booléen l'a démentie sans appel :
    *
-   *     les OPÉRATEURS mettent en forme leur résultat ;
-   *     les FONCTIONS ne le font jamais ;
-   *     la conversion en TEXTE met en forme.
+   *     gabarit "0.0"    put (1/3*3 = 1)         ->  true    HyperCard
+   *                                                  false   HC
+   *
+   * La comparaison est immunisée contre l'affichage — « true » n'est pas un
+   * nombre, le gabarit ne peut pas le toucher. Chez HyperCard « 1/3*3 » vaut
+   * donc EXACTEMENT un, ce qui interdit que la division ait été arrondie.
+   *
+   * C'EST LA MÉTHODE QUI COMPTE ICI, plus que le chiffre : tant qu'on
+   * AFFICHE, on mesure l'affichage autant que le calcul, et on ne peut pas
+   * les séparer. En comparant, on voit le calcul seul.
+   *
+   * LA RÈGLE, RELEVÉE PAR QUATRE BOOLÉENS SOUS LE GABARIT « 0.0 » :
+   *
+   *                              HyperCard    HC
+   *     (0.34*1 = 0.34)            true      false
+   *     (1/3*3 = 1)                true      false
+   *     (1/3 = 0.3)                false     true
+   *     (sqrt(2)*1 = 1.4)          false     true
+   *     (sqrt(2) into x, x = 1.4)  false     true
+   *     (… puis 10*x = 14)         false     true
+   *
+   * HyperCard n'arrondit RIEN — ni les opérateurs, ni le rangement dans une
+   * variable. HC arrondit tout. La règle est donc :
+   *
+   *     l'arithmétique garde toute sa précision, et le RANGEMENT aussi ;
+   *     le gabarit n'intervient qu'à la SORTIE — affichage, concaténation.
+   *
+   * ET LA PREUVE EN GRANDEUR NATURE, dix points de la chaîne de tracé :
+   *
+   *     HyperCard        416.0 416.0 414.0 413.0 410.0 407.0 403.0 …
+   *     HC               416.0 416.0 416.0 416.0 416.0 416.0 416.0 …
+   *     HC sans gabarit  416   416   414   413   410   407   403   …
+   *
+   * Les nombres d'HyperCard sont EXACTEMENT ceux de HC sans gabarit, avec un
+   * « .0 » ajouté : le gabarit n'a touché que la sortie. Chez HC la courbe
+   * ne bouge pas pendant dix points — c'est le palier plat que l'on voit à
+   * l'écran.
+   *
+   * CE QUI RESTE FAUX DANS HC, et qui n'est PAS corrigé à ce jour : les
+   * opérateurs mettent en forme leur résultat, et le rangement conserve ce
+   * texte arrondi. Les sections ci-dessous mesurent ce que HC fait
+   * AUJOURD'HUI, avec la valeur d'HyperCard en face quand elle diffère.
    *
    * CE QUE HC FAISAIT DE DIFFÉRENT, et c'est corrigé : il mettait en forme le
    * RETOUR des fonctions. « 1000*sin(z) » rendait 0.0 au lieu de 21.8, parce
@@ -136,10 +177,41 @@ int main(void){
    * qui n'est vrai que si « / » arrondit son résultat avant la multiplication.
    *
    * Le contournement « 0.000 » plutôt que « 0.0 » n'est plus nécessaire. */
-  essai("les OPERATEURS suivent le gabarit : conforme a HyperCard",
+  essai("les OPERATEURS suivent le gabarit : ECART, HyperCard n'arrondit pas",
    "  set the numberFormat to \"0.0\"\n"
-   "  put \"1/3*3         -> \" & (1/3*3) & \"   (HyperCard : 0.9)\"\n"
-   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   (HyperCard : 0.9)\"");
+   "  put \"1/3*3         -> \" & (1/3*3) & \"   ECART, HyperCard : 1.0\"\n"
+   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   ECART, HyperCard : 1.0\"");
+
+  essai("LES QUATRE BOOLEENS, immunises contre l'affichage",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"(0.34*1 = 0.34)   -> \" & (0.34*1 = 0.34) & \"   HyperCard : true\"\n"
+   "  put \"(1/3*3 = 1)       -> \" & (1/3*3 = 1) & \"   HyperCard : true\"\n"
+   "  put \"(1/3 = 0.3)       -> \" & (1/3 = 0.3) & \"   HyperCard : false\"\n"
+   "  put \"(sqrt(2)*1 = 1.4) -> \" & (sqrt(2)*1 = 1.4) & \"   HyperCard : false\"");
+
+  essai("RANGER dans une variable : HyperCard ne fige pas, HC si",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put sqrt(2) into x\n"
+   "  put \"(x = 1.4)         -> \" & (x = 1.4) & \"   HyperCard : false\"\n"
+   "  put \"(10*x = 14)       -> \" & (10*x = 14) & \"   HyperCard : false\"");
+
+  essai("UN TEXTE reste un texte : le gabarit ne le touche pas",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"un litteral de texte -> \" & \"1.414214\" & \"   les deux : 1.414214\"\n"
+   "  put \"un nombre calcule     -> \" & (1.414214*1) & \"   HyperCard : 1.4\"");
+
+  essai("LA CHAINE DE TRACE, dix points — la rosace en chiffres",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put empty into s\n"
+   "  put 0 into t\n"
+   "  repeat 10 times\n"
+   "    put 8*cos(3*t) into r\n"
+   "    put s & round(r*cos(t)*20+256) & \" \" into s\n"
+   "    add pi/144 to t\n"
+   "  end repeat\n"
+   "  put s\n"
+   "  put \"HyperCard : 416.0 416.0 414.0 413.0 410.0 407.0 403.0 398.0 392.0 386.0\"\n"
+   "  put \"   (la courbe de HC ne bouge pas : c'est le palier plat a l'ecran)\"");
 
   essai("les FONCTIONS ne le suivent PAS : conforme a HyperCard",
    "  set the numberFormat to \"0.######\"\n"
