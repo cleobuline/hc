@@ -12356,7 +12356,7 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* UNE COORDONNÉE QUI N'EN EST PAS UNE NE SE DESSINE PAS.
+/* UNE COORDONNÉE QUI N'EN EST PAS UNE NE SE DESSINE PAS — ET NE SE PLAINT PAS.
  *
  * coord_champ passe par hc_coord, qui exige que TOUT le champ soit un nombre
  * et rend le DÉFAUT sinon — zéro, ici. C'est la faute que le commentaire de
@@ -12365,15 +12365,29 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
  *
  * Mesuré sur une pile réelle. Un traceur de courbes calcule
  * « round(-(y-cy)*yScale + 171) » avec y valant NAN(004) : la coordonnée
- * devient zéro, drag trace jusqu'au bord supérieur de la carte, puis en
- * revient au point suivant. Deux segments quasi verticaux, et une barre en
+ * devenait zéro, drag traçait jusqu'au bord supérieur de la carte, puis en
+ * revenait au point suivant. Deux segments quasi verticaux, et une barre en
  * travers de la courbe — pour un point sur mille, et sans un mot.
  *
  * Zéro est une coordonnée PARFAITEMENT VALIDE : rien ne distingue le bord de
- * la carte d'une valeur qu'on n'a pas su lire. C'est ce qui rend ce défaut
- * muet, et c'est pourquoi le refus doit être explicite.
+ * la carte d'une valeur qu'on n'a pas su lire. C'est ce qui rendait ce défaut
+ * muet, et c'est pourquoi il fallait cesser de dessiner.
  *
- * Rend 1 si le point est lisible, 0 après avoir dit ce qui cloche. */
+ * MAIS PAS LEVER UNE ERREUR, et c'est une décision que j'avais prise par
+ * raisonnement avant de la mesurer. Sous HyperCard, le même traceur en mode
+ * point — qui clique AVANT son test de bornes, donc avec un NaN en main —
+ * n'ouvre AUCUNE alerte. Il ne dessine rien et passe au point suivant.
+ *
+ * HC faisait autrement : il levait une faute, qui remontait au dialogue et
+ * interrompait. Sur une courbe de mille points, cent quarante-deux fois.
+ *
+ * On s'aligne : rien n'est dessiné, rien n'est interrompu, et la ligne part
+ * au MONITEUR seulement — HC_INFO, pas HC_ERR. Le dialogue reste muet comme
+ * chez HyperCard, et qui regarde la trace voit quand même passer les points
+ * écartés. Le silence mesuré ne vaut que pour l'utilisateur, pas pour qui
+ * cherche un défaut.
+ *
+ * Rend 1 si le point est lisible, 0 après l'avoir noté. */
 static int coord_finie(const char *champ)
 {
     if (!hct_est_nombre(champ)) return 0;
@@ -12394,7 +12408,8 @@ static int v3_point_lisible(const char *p, const char *verbe)
     else if (virgule && !coord_finie(virgule + 1)) mauvais = virgule + 1;
     if (!mauvais) return 1;
 
-    emit(HC_ERR, "   !! %s : « %s » n'est pas une coordonnée", verbe, mauvais);
+    emit(HC_INFO, "   · %s : « %s » n'est pas une coordonnée, point écarté",
+         verbe, mauvais);
     return 0;
 }
 

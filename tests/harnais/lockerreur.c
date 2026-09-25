@@ -138,6 +138,12 @@ int main(void)
     printf("   signaler dans le même noyau, dont une seule arrête. C'est\n");
     printf("   antérieur à ce travail et ça le dépasse ; on l'inscrit ici pour\n");
     printf("   ne pas le redécouvrir, et pour voir si ça bouge.\n");
+    printf("\n");
+    printf("   LA FAUTE A CHANGÉ, PAS CE QU'ELLE MONTRE : la coordonnée non\n");
+    printf("   finie de HypoGraph ne lève plus d'erreur du tout — mesuré,\n");
+    printf("   HyperCard n'ouvre aucune alerte dans ce cas. On garde la forme\n");
+    printf("   du gestionnaire et on prend l'autre faute que « drag » émet\n");
+    printf("   sans arrêter : l'hôte de ce harnais ne gère pas la souris.\n");
     hc_set_script(g_pile,
         "on errorDialog them\n"
         "  put \"[boîte à un bouton] \" & them\n"
@@ -148,7 +154,7 @@ int main(void)
         "  put 0 into cy\n"
         "  repeat with i = 1 to 3\n"
         "    put \"point \" & i\n"
-        "    if i is 2 then drag from 10,20 to 30,(0/0)\n"
+        "    if i is 2 then drag from 10,20 to 30,40\n"
         "  end repeat\n"
         "  put \"la boucle est allée au bout\"\n"
         "end mouseUp\n");
