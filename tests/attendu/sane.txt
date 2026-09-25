@@ -44,6 +44,30 @@
    y > 625   : true
    y < 625   : false
    y = 5     : false
+=== 7b-bis. L'ORDRE NE DÉPEND PAS DE L'ÉCRITURE DU NaN ===
+   (RÉGRESSION VÉCUE, une demi-heure après avoir ajouté le signe.
+    La première règle se repliait sur la comparaison de TEXTE, et
+    marchait par accident d'alphabet : « NAN(004) » > « 625 »
+    parce que « N » vient après « 6 ». Le moins unaire retourne le
+    bit de signe d'un NaN, si bien que la chaîne de la pile —
+      round(-(y-cy)*yScale + 171)
+    rendait « -NAN(004) », qui compare AVANT « 625 ». Le garde a
+    cessé de partir et le traceur est reparti dessiner vers un
+    point non fini.
+
+    La règle est maintenant ÉNONCÉE : un NaN se range APRÈS tout
+    nombre, quel que soit son code et quel que soit son signe)
+   NAN(004)  > 625 : true
+   -NAN(004) > 625 : true
+   -NAN(001) > 625 : true
+   NAN(036)  > 625 : true
+   et dans l'autre sens, tous faux :
+   NAN(004)  < 625 : false
+   -NAN(004) < 625 : false
+=== 7b-ter. LA CHAÎNE EXACTE DE LA PILE, bout à bout ===
+   (c'est la ligne qui a cassé : le calcul, puis le garde)
+   ny vaut -NAN(004)
+   le garde part : crayon levé
 === 7c. LE GARDE DE LA PILE, tel qu'il est écrit ===
    (if ny > itt or ny < -itt or nx > itt or nx < -itt then
       if y contains "NAN" or y is "INF" then …
@@ -55,7 +79,9 @@
     traçait vers un point non fini, et la courbe recevait une
     barre verticale en travers. Mesuré à l'écran)
    ny vaut -NAN(004)
-   le garde n'a pas pris — c'est la barre
+   ERR: x=-0.5,y=NAN(004)
+   y=0/0 (indeterminate)
+   crayon levé : la courbe aura un TROU, pas une barre
 === 7d. et si une pile y va quand même : on REFUSE de dessiner ===
    (coord_champ passe par hc_coord, qui rend le DÉFAUT — zéro —
     quand il ne sait pas lire. Zéro est une coordonnée valide :
