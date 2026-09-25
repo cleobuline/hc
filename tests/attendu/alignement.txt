@@ -19,5 +19,28 @@
    left enregistré, relu : left
    center enregistré, relu : center
    right enregistré, relu : right
-=== 5. le témoin : une coquille voisine reste refusée ===
+=== 5. « the textHeight » : ZÉRO VEUT DIRE AUTOMATIQUE ===
+   (hc_text_height rend alors les quatre tiers du corps, arrondis
+    comme HyperCard. C'est ce qui décide de la forme du contrôle :
+    la case reste VIDE tant que rien n'est posé, et la valeur
+    calculée s'affiche en filigrane. L'afficher POUR DE BON aurait
+    figé l'interligne au premier OK, et le champ aurait cessé de
+    suivre son corps sans que personne l'ait demandé)
+   corps 12, interligne 16
+   corps 24, interligne 32
+=== 6. posé à la main, il ne suit plus le corps ===
+   posé : 32
+   corps 9 mais interligne 32
+=== 7. et zéro le REND à l'automatique ===
+   (sans ce retour le réglage serait à sens unique : une fois posé
+    à la souris, plus moyen de revenir. C'est pour ça que la case
+    vide du panneau écrit zéro plutôt que de ne rien faire)
+   rendu à l'automatique : 12
+=== 8. L'ENREGISTREMENT de l'interligne ===
+   (posé ET automatique : zéro ne s'écrit pas dans le fichier, et
+    doit donc se relire comme un automatique, pas comme un zéro)
+   posé à 20, relu : 20
+   posé à 0, relu : 16
+=== 9. les témoins : deux coquilles voisines restent refusées ===
    [ERR]    !! propriété inconnue : textAline
+   [ERR]    !! propriété inconnue : textHeigth

@@ -1,11 +1,11 @@
-/* « the textAlign » d'un champ : le noyau, bout à bout.
+/* « the textAlign » et « the textHeight » d'un champ : le noyau, bout à bout.
  *
  * CE QUE CE HARNAIS PEUT PROUVER, ET CE QU'IL NE PEUT PAS.
  *
- * Le dialogue lui-même — les trois boutons radio « Left / Center / Right » du
- * panneau Text Style — vit dans HCdialogs.m et demande AppKit : il ne se
- * vérifie qu'à la compilation Xcode, et rien ici ne le mesure. Le dire est
- * plus utile que de faire semblant.
+ * Le dialogue lui-même — les trois boutons radio « Left / Center / Right » et
+ * la case « Line height » du panneau Text Style — vit dans HCdialogs.m et
+ * demande AppKit : il ne se vérifie qu'à la compilation Xcode, et rien ici ne
+ * le mesure. Le dire est plus utile que de faire semblant.
  *
  * Mais le dialogue ne fait qu'OUVRIR UNE PORTE, et c'est la pièce derrière
  * qu'on mesure : la propriété se pose, se relit, et surtout SURVIT À
@@ -111,8 +111,64 @@ int main(void)
         hc_free(rl);
     }
 
-    printf("=== 5. le témoin : une coquille voisine reste refusée ===\n");
+    printf("=== 5. « the textHeight » : ZÉRO VEUT DIRE AUTOMATIQUE ===\n");
+    printf("   (hc_text_height rend alors les quatre tiers du corps, arrondis\n");
+    printf("    comme HyperCard. C'est ce qui décide de la forme du contrôle :\n");
+    printf("    la case reste VIDE tant que rien n'est posé, et la valeur\n");
+    printf("    calculée s'affiche en filigrane. L'afficher POUR DE BON aurait\n");
+    printf("    figé l'interligne au premier OK, et le champ aurait cessé de\n");
+    printf("    suivre son corps sans que personne l'ait demandé)\n");
+    fais("set the textSize of cd fld \"texte\" to 12\n"
+         "  put \"corps 12, interligne \" & the textHeight of cd fld \"texte\"");
+    fais("set the textSize of cd fld \"texte\" to 24\n"
+         "  put \"corps 24, interligne \" & the textHeight of cd fld \"texte\"");
+
+    printf("=== 6. posé à la main, il ne suit plus le corps ===\n");
+    fais("set the textHeight of cd fld \"texte\" to 32\n"
+         "  put \"posé : \" & the textHeight of cd fld \"texte\"");
+    fais("set the textSize of cd fld \"texte\" to 9\n"
+         "  put \"corps 9 mais interligne \" & the textHeight of cd fld \"texte\"");
+
+    printf("=== 7. et zéro le REND à l'automatique ===\n");
+    printf("   (sans ce retour le réglage serait à sens unique : une fois posé\n");
+    printf("    à la souris, plus moyen de revenir. C'est pour ça que la case\n");
+    printf("    vide du panneau écrit zéro plutôt que de ne rien faire)\n");
+    fais("set the textHeight of cd fld \"texte\" to 0\n"
+         "  put \"rendu à l'automatique : \" & the textHeight of cd fld \"texte\"");
+
+    printf("=== 8. L'ENREGISTREMENT de l'interligne ===\n");
+    printf("   (posé ET automatique : zéro ne s'écrit pas dans le fichier, et\n");
+    printf("    doit donc se relire comme un automatique, pas comme un zéro)\n");
+    {
+        int valeurs[2] = { 20, 0 };
+        for (int k = 0; k < 2; k++) {
+            char ligne[160];
+            snprintf(ligne, sizeof ligne,
+                     "set the textSize of cd fld \"texte\" to 12\n"
+                     "  set the textHeight of cd fld \"texte\" to %d", valeurs[k]);
+            fais(ligne);
+            if (hc_save(g_pile, FIC) != 0) { printf("   [ERR] enregistrement\n"); continue; }
+            Object *rl = hc_load(FIC);
+            if (!rl) { printf("   [ERR] relecture\n"); continue; }
+            Object *c2 = NULL;
+            for (int j = 0; j < rl->nparts; j++)
+                if (rl->parts[j]->type == OBJ_CARD) { c2 = rl->parts[j]; break; }
+            if (!c2) { printf("   [ERR] pas de carte relue\n"); hc_free(rl); continue; }
+            Object *sp = g_pile, *sc = g_carte;
+            g_pile = rl; g_carte = c2; hc_set_current_card(c2);
+            char v[200];
+            snprintf(v, sizeof v,
+                     "put \"posé à %d, relu : \" & the textHeight of cd fld \"texte\"",
+                     valeurs[k]);
+            fais(v);
+            g_pile = sp; g_carte = sc; hc_set_current_card(g_carte);
+            hc_free(rl);
+        }
+    }
+
+    printf("=== 9. les témoins : deux coquilles voisines restent refusées ===\n");
     fais("set the textAline of cd fld \"texte\" to \"right\"");
+    fais("set the textHeigth of cd fld \"texte\" to 20");
     remove(FIC);
     return 0;
 }
