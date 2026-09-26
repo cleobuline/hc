@@ -87,8 +87,8 @@ int main(void)
     printf("    non 1.194 — le numberFormat arrondit AUSSI les calculs\n");
     printf("    intermédiaires, comme chez HyperCard ». Le 1.188 vient du\n");
     printf("    rapport de bogue sur HC, pas d'une mesure dans Basilisk II ;\n");
-    printf("    voir la section 6 du harnais emballee. Le modèle mesuré\n");
-    printf("    prédit 1.194, et c'est ce qu'on rend — à confirmer)\n");
+    printf("    voir la section 6 du harnais emballee. MESURÉ DEPUIS :\n");
+    printf("    HyperCard rend 1.194, comme nous)\n");
     fais("put \"(x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5\" into thev\n"
          "  set the numberFormat to \"0.000\"\n"
          "  put -31/64 into x\n"

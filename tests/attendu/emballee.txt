@@ -37,11 +37,12 @@
     leur précision. C'est ce que HC rend maintenant, et c'est
     cohérent avec les six booléens et la chaîne de tracé.
 
-    À CONFIRMER DANS BASILISK II, avec exactement ces quatre
-    lignes. Tant que ce n'est pas fait, la valeur ci-dessous est
-    celle de HC et de rien d'autre)
+    CONFIRMÉ DANS BASILISK II, avec exactement ces quatre lignes :
+    HyperCard rend 1.194 lui aussi. Le modèle tient, et le 1.188
+    n'a jamais été qu'une valeur de HC recopiée au mauvais
+    endroit)
    pi/144 en expression : 0.022
-   le modele predit 1.194 (a confirmer) : 1.194
+   HyperCard : 1.194 -> 1.194
 === 7. les quatre commandes d'accumulation, ensemble ===
    (MESURÉ pour « add » seul. Les trois autres partagent la même
     ligne de code et la même forme de phrase ; les traiter
