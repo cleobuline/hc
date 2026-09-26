@@ -11488,6 +11488,35 @@ static int v3_val_liste(HctContexte *ctx, const HctNoeud *n, int premier,
     return compte;
 }
 
+/* LA BASE d'une référence de morceau : ce qui reste quand on a épluché tous
+ * les morceaux emboîtés. « word 2 of line 1 of card field "x" » a pour base
+ * « card field "x" ».
+ *
+ * Elle sert à répondre à la question « lequel des deux manque ? » : le morceau
+ * ou l'objet qui le porte. Sans elle on ne pouvait que regarder la FORME de la
+ * référence, ce qui ne dit rien de la cause. */
+static const char *chunk_base_ref(const char *ref)
+{
+    ChunkType t; char a[128], bb[128]; const char *r; int o;
+    const char *cour = ref;
+    /* Un plafond de profondeur, pas par méfiance envers parse_chunk mais parce
+     * qu'une boucle qui ne rend pas la main sur une référence tordue vaut un
+     * gel de l'application, et qu'aucune référence réelle n'emboîte dix
+     * morceaux. */
+    for (int garde = 0; garde < 16; garde++) {
+        if (!parse_chunk(cour, &t, a, sizeof a, bb, sizeof bb, &r, &o)) break;
+        if (!r) break;
+        /* parse_chunk rend le reste JUSTE APRÈS le « of », espace compris.
+         * Le garder ferait échouer resolve() sur une référence parfaitement
+         * valide, et l'on annoncerait « objet introuvable » pour un objet qui
+         * existe — la faute inverse de celle qu'on corrige ici. */
+        const char *suite = skip_spaces(r);
+        if (suite == cour) break;
+        cour = suite;
+    }
+    return cour;
+}
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
@@ -11785,8 +11814,34 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
          * envoyait chercher au mauvais endroit. */
         ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
         if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
-            set_result("morceau hors limites");
-            emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+            /* LEQUEL DES DEUX MANQUE ? Le critère était SYNTAXIQUE — « est-ce
+             * ÉCRIT comme un morceau ? » — et pas causal. « set the textStyle
+             * of word 2 of card field "absent" » annonçait donc « morceau hors
+             * limites », c'est-à-dire qu'on allait chercher le défaut dans le
+             * texte d'un champ qui n'existe pas. Écrire du TEXTE dans ce même
+             * champ absent dit « objet introuvable », comme il faut : c'était
+             * ce chemin-ci, et lui seul, qui se trompait de cause.
+             *
+             * Un diagnostic périmé est pire qu'un diagnostic vague : il est
+             * faux avec assurance. On regarde donc si la BASE se résout, et
+             * c'est elle qu'on nomme quand c'est elle qui manque. */
+            const char *base = chunk_base_ref(refbuf);
+            Object *ob = (base && *base) ? resolve(base) : NULL;
+            if (base && *base && !ob) {
+                set_result("objet introuvable");
+                emit(HC_ERR, "   !! objet introuvable : %s", base);
+            } else if (ob && ob->type != OBJ_FIELD) {
+                /* La base existe et n'a pas de texte : un bouton n'a ni mots
+                 * ni lignes. « morceau hors limites » ferait croire à un rang
+                 * trop grand, et l'on irait compter les mots d'un bouton. */
+                char dsc[64]; hc_describe(ob, dsc, sizeof dsc);
+                set_result("morceau sur un objet sans texte");
+                emit(HC_ERR, "   !! %s n'a pas de texte : pas de morceau à y"
+                             " designer", dsc);
+            } else {
+                set_result("morceau hors limites");
+                emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+            }
         } else {
             set_result("objet introuvable");
             emit(HC_ERR, "   !! objet introuvable : %s", refbuf);

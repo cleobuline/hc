@@ -55,4 +55,23 @@ int main(void){
   essai("set the textStyle of word 99 of card field \"cal\" to bold");
   essai("set the textStyle of word 2 of card field \"absent\" to bold");
   essai("set the rect of word 2 of card field \"cal\" to \"1,2,3,4\"");
+
+  /* ─── LEQUEL DES DEUX MANQUE : LE MORCEAU, OU L'OBJET ? ────────────────
+   *
+   * Le code annonçait « morceau hors limites » dès que la référence était
+   * ÉCRITE comme un morceau. Un critère syntaxique, pas causal : « word 2 of
+   * card field "absent" » disait donc que le morceau était hors limites, soit
+   * qu'on allait chercher le défaut dans le texte d'un champ qui n'existe pas.
+   * Écrire du TEXTE dans ce même champ absent répond « objet introuvable »,
+   * comme il faut — c'était ce chemin-ci, et lui seul, qui se trompait.
+   *
+   * Les quatre causes sont maintenant nommées séparément, et c'est ici qu'on
+   * s'en assure : un champ absent, un objet absent, un objet qui existe mais
+   * n'a pas de texte, et un vrai rang hors limites. Un diagnostic faux avec
+   * assurance coûte plus cher qu'un diagnostic vague : il envoie corriger
+   * ailleurs. */
+  essai("set the textStyle of word 2 of line 1 of card field \"absent\" to bold");
+  essai("set the textStyle of word 2 of card button \"pasLa\" to bold");
+  essai("set the textStyle of word 2 of card button \"B\" to bold");
+  essai("set the textStyle of line 9 of card field \"cal\" to bold");
   hc_free(st);return 0;}
