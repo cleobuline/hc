@@ -67,7 +67,39 @@
    [boîte] put
    > put msg
    [boîte] put msg
-=== 10. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
+=== 10. LA SÉRIE COMPLÈTE DES MOTS, mot par mot ===
+   (deux lectures d'affilée ont été signalées comme suspectes :
+    « put word 3 of msg --> 3 », puis « put word 2 of msg -->
+    word ». Les deux sont JUSTES, et la série entière le montre
+    mieux qu'un seul cas : chaque réponse est le mot de rang N de
+    la commande elle-même.
+
+    ON L'INSCRIT POUR QU'ELLE NE SOIT PLUS SIGNALÉE, et parce
+    qu'une réponse juste qui a l'air fausse deux fois de suite
+    mérite sa garde autant qu'un défaut : si un jour l'une de ces
+    six lignes change, c'est que le contrat de la section 9 a
+    bougé)
+   > put word 1 of msg
+   [boîte] put
+   > put word 2 of msg
+   [boîte] word
+   > put word 3 of msg
+   [boîte] 3
+   > put word 4 of msg
+   [boîte] of
+   > put word 5 of msg
+   [boîte] msg
+   > put the number of words of msg
+   [boîte] 7
+=== 11. ET LA LECTURE POUR DE VRAI, depuis un gestionnaire ===
+   (depuis la boîte, AUCUNE ligne ne peut lire autre chose
+    qu'elle-même : elle s'y est écrite juste avant. Il faut deux
+    lignes, donc un script, pour voir la lecture faire son
+    travail. Le « into lu » est indispensable : sans lui, le put
+    réécrirait la boîte avant qu'on puisse s'en servir)
+   [boîte] un deux trois
+   [boîte] word 2 = deux
+=== 12. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
    (« the visible of msg » reste « objet introuvable ». La
     fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.
     On l'inscrit pour ne pas croire le chantier terminé)
