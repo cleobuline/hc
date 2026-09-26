@@ -133,7 +133,43 @@ int main(void)
         hc_do(LIGNES[i]);                  /* puis ce qu'elle exécute */
     }
 
-    printf("=== 10. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===\n");
+    printf("=== 10. LA SÉRIE COMPLÈTE DES MOTS, mot par mot ===\n");
+    printf("   (deux lectures d'affilée ont été signalées comme suspectes :\n");
+    printf("    « put word 3 of msg --> 3 », puis « put word 2 of msg -->\n");
+    printf("    word ». Les deux sont JUSTES, et la série entière le montre\n");
+    printf("    mieux qu'un seul cas : chaque réponse est le mot de rang N de\n");
+    printf("    la commande elle-même.\n");
+    printf("\n");
+    printf("    ON L'INSCRIT POUR QU'ELLE NE SOIT PLUS SIGNALÉE, et parce\n");
+    printf("    qu'une réponse juste qui a l'air fausse deux fois de suite\n");
+    printf("    mérite sa garde autant qu'un défaut : si un jour l'une de ces\n");
+    printf("    six lignes change, c'est que le contrat de la section 9 a\n");
+    printf("    bougé)\n");
+    for (int i = 0; i < 6; i++) {
+        static const char *MOTS[] = {
+            "put word 1 of msg",  /* put  */
+            "put word 2 of msg",  /* word */
+            "put word 3 of msg",  /* 3    */
+            "put word 4 of msg",  /* of   */
+            "put word 5 of msg",  /* msg  */
+            "put the number of words of msg"
+        };
+        printf("   > %s\n", MOTS[i]);
+        hc_message_ecrit(MOTS[i]);
+        hc_do(MOTS[i]);
+    }
+
+    printf("=== 11. ET LA LECTURE POUR DE VRAI, depuis un gestionnaire ===\n");
+    printf("   (depuis la boîte, AUCUNE ligne ne peut lire autre chose\n");
+    printf("    qu'elle-même : elle s'y est écrite juste avant. Il faut deux\n");
+    printf("    lignes, donc un script, pour voir la lecture faire son\n");
+    printf("    travail. Le « into lu » est indispensable : sans lui, le put\n");
+    printf("    réécrirait la boîte avant qu'on puisse s'en servir)\n");
+    fais("put \"un deux trois\"\n"
+         "  put word 2 of msg into lu\n"
+         "  put \"word 2 = \" & lu");
+
+    printf("=== 12. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===\n");
     printf("   (« the visible of msg » reste « objet introuvable ». La\n");
     printf("    fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.\n");
     printf("    On l'inscrit pour ne pas croire le chantier terminé)\n");
