@@ -124,27 +124,30 @@ int main(void){
   essai("4b. et revenir dans la pile de depart le remet aussi",
    "  put \"de retour dans A : [\" & the numberFormat & \"]\"");
 
-  /* §6 — CE QU'ON N'A PAS TRANCHÉ, et qu'on inscrit plutôt que de le taire.
+  /* §6 — DEUX ÉTATS DISTINCTS, ET IL A FALLU DEUX MESURES POUR LES SÉPARER.
    *
-   * HC rend le gabarit par défaut comme une chaîne VIDE ; HyperCard, dans la
-   * mesure ci-dessus, l'a rendu « 0.###### ». Les deux se COMPORTENT pareil —
-   * six décimales, zéros de fin retirés — mais ils ne se LISENT pas pareil, et
-   * « if the numberFormat is empty » ne dit donc pas la même chose des deux
-   * côtés.
+   *     HyperCard neuf, rien n'y a touché   put the numberFormat  ->  vide
+   *     HyperCard après un go to stack      put the numberFormat  ->  0.######
    *
-   * Le commentaire de hc_core.c affirme « c'est ce que HyperCard rendait avant
-   * qu'on y touche ». C'est une affirmation, pas un relevé, et elle vient
-   * d'être contredite de biais. On ne la corrige pas au jugé : il faut la
-   * mesure directe, dans un HyperCard frais, avant que quoi que ce soit ait
-   * posé un gabarit :
+   * HyperCard n'EFFACE donc pas le gabarit en changeant de pile : il
+   * l'ASSIGNE à son défaut explicite. « Jamais touché » et « remis au
+   * défaut » se lisent différemment, et un script qui fait « if the
+   * numberFormat is empty » pour savoir s'il doit sauvegarder l'ancien n'aura
+   * pas la même réponse dans les deux cas.
    *
-   *     put the numberFormat        ->  ?
+   * LA PREMIÈRE CORRECTION VIDAIT, et c'était faux d'un cran : elle alignait
+   * le comportement sans aligner la lecture. La seconde mesure — « put the
+   * numberFormat » dans un HyperCard frais — a montré que les deux états
+   * existent, et c'est seulement en les mettant côte à côte qu'on voit
+   * lequel est lequel.
    *
-   * En attendant, cette section enregistre ce que HC fait AUJOURD'HUI. */
-  essai("6. LE DEFAUT SE LIT-IL VIDE OU 0.###### ? (a mesurer)",
-   "  put \"HC rend : [\" & the numberFormat & \"]\"\n"
-   "  put \"   HyperCard apres un go to stack : 0.###### — reste a confirmer\"\n"
-   "  put \"   le COMPORTEMENT est le meme : \" & (1/3)");
+   * LE COMPORTEMENT EST IDENTIQUE dans les deux états, vérifié sur 1/3,
+   * sqrt(2), 1/7, 2+3, 1/8, 100000/3 et length(100 div 10) : vide et
+   * « 0.###### » mettent en forme exactement pareil. Seule la lecture change,
+   * et c'est elle qu'on a alignée. */
+  essai("6. deux etats distincts : jamais touche, et remis au defaut",
+   "  put \"apres un changement de pile : [\" & the numberFormat & \"]   HyperCard : 0.######\"\n"
+   "  put \"   et le comportement est le meme qu'a vide : \" & (1/3) & \"  \" & sqrt(2)");
 
   essai("5. LE CALCUL DE GRAPH MAKER, tel qu'il est ecrit dans la pile",
    "  set the numberFormat to empty\n"

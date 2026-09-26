@@ -474,13 +474,29 @@ void hc_trace(int on) { g_trace = on; }
  * changement de carte, donc de pile. Le gabarit ne bouge QUE si la pile
  * change — aller d'une carte à l'autre dans la même pile le laisse en place,
  * ce qui est le cas mesuré le plus fréquent et celui dont dépendent les
- * scripts qui posent un gabarit avant de parcourir leurs cartes. */
+ * scripts qui posent un gabarit avant de parcourir leurs cartes.
+ *
+ * ON ASSIGNE « 0.###### », ON NE VIDE PAS, et ces deux-là ne sont pas la même
+ * chose. Deux mesures le disent ensemble :
+ *
+ *     HyperCard neuf, rien n'y a touché   put the numberFormat  ->  vide
+ *     HyperCard après un go to stack      put the numberFormat  ->  0.######
+ *
+ * HyperCard n'EFFACE donc pas le gabarit en changeant de pile : il l'ASSIGNE
+ * à son défaut explicite. L'état « jamais touché » et l'état « remis au
+ * défaut » se lisent différemment, et c'est un détail qui compte — un script
+ * qui fait « if the numberFormat is empty » pour savoir s'il doit sauvegarder
+ * l'ancien n'aurait pas la même réponse.
+ *
+ * Le COMPORTEMENT, lui, est identique : vide et « 0.###### » mettent en forme
+ * exactement pareil, vérifié sur 1/3, sqrt(2), 1/7, 2+3, 1/8, 100000/3 et
+ * length(100 div 10). Seule la lecture change, et c'est elle qu'on aligne. */
 void hc_set_current_card(Object *card)
 {
     Object *avant = g_current_card ? g_current_card->owner : NULL;
     Object *apres = card ? card->owner : NULL;
     g_current_card = card;
-    if (avant && apres && avant != apres) hct_format_nombre("");
+    if (avant && apres && avant != apres) hct_format_nombre("0.######");
 }
 
 Object *hc_current_card(void) { return g_current_card; }
