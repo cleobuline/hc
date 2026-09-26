@@ -5,10 +5,28 @@
 
 /* Icones ICON 32x32 d'origine HyperCard (Apple / FileMaker).
    bits : 128 octets, 32 lignes de 4 octets, bit de poids fort a gauche. */
+struct HcIconCouleur;
+
 typedef struct {
     int   id;
     const char *name;
     unsigned char bits[128];
+
+    /* LA COULEUR, quand l'icone en a une. NULL pour les icones d'origine —
+     * les six mille lignes d'initialiseurs de HCICONS ne mentionnent pas ce
+     * champ, et C le met a zero pour elles, ce qui est exactement ce qu'on
+     * veut.
+     *
+     * POSSEDEE PAR LE CATALOGUE DE TRAVAIL, pas par la pile : le catalogue
+     * COPIE deja les 128 bits plutot que de pointer dedans, pour la raison
+     * ecrite plus bas — un pointeur garde le temps d'un dessin ne doit pas
+     * pendre si la pile est rechargee entre-temps. La couleur suit la meme
+     * regle, et se libere avec l'entree.
+     *
+     * `bits` reste JUSTE meme ici : le noyau y tient la silhouette, tout
+     * pixel non transparent etant de l'encre. Un dessin qui ignore ce champ
+     * rend donc l'icone en noir et blanc au lieu de ne rien rendre. */
+    struct HcIconCouleur *couleur;
 } HCIcon;
 
 extern const HCIcon HCICONS[];

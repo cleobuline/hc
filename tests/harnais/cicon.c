@@ -194,6 +194,43 @@ int main(void)
         }
     }
 
+    printf("=== 9. L'ICONE, DESSINEE — la garde contre une transposition ===\n");
+    printf("   (l'Objective-C ne se compile pas ici, donc hcicon_draw n'a aucun\n");
+    printf("    test. Ce qu'on PEUT garder, c'est l'indexation : ce dessin\n");
+    printf("    utilise pixels[row*32+col], exactement celle de hcicon_draw.\n");
+    printf("    Une ligne et une colonne echangees se verraient ici d'un coup\n");
+    printf("    d'oeil, alors qu'elles passeraient inapercues dans un compte\n");
+    printf("    de pixels — le motif est expres dissymetrique : cadre, aplat\n");
+    printf("    central, et UNE diagonale qui descend vers la droite)\n");
+    {
+        /* On relit depuis le fichier plutot que depuis la memoire : le dessin
+         * garde ainsi l'aller-retour autant que l'indexation. */
+        hc_save(st, FIC);
+        Object *r3 = hc_load(FIC);
+        struct StackIcon *i3 = r3 ? hc_icon_get(r3, 20554) : NULL;
+        struct HcIconCouleur *c3 = i3 ? hc_icon_couleur(i3) : NULL;
+        if (!c3) printf("   [ERR] relecture pour le dessin\n");
+        else {
+            static const char CAR[] = " 1234567890";
+            for (int y = 0; y < HC_ICON_COTE; y++) {
+                printf("   ");
+                for (int x = 0; x < HC_ICON_COTE; x++) {
+                    /* « . » pour la transparence, le chiffre de l'index
+                     * sinon, et « ? » RESERVE a un index hors palette : ce
+                     * caractere-la ne doit jamais apparaitre, et s'il
+                     * apparait il dit tout de suite quoi chercher. */
+                    int v = c3->pixels[y * HC_ICON_COTE + x];
+                    putchar(v == 0 ? '.'
+                            : (v > 0 && v < c3->ncouleurs && v < (int)sizeof CAR - 1)
+                              ? CAR[v] : '?');
+                }
+                putchar('\n');
+            }
+            printf("   (. = transparent ; 1 rouge, cadre ; 2 vert, aplat ; 3 bleu, diagonale)\n");
+        }
+        if (r3) hc_free(r3);
+    }
+
     hc_free(rl); hc_free(st);
     remove(FIC);
     return 0;

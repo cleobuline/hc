@@ -31,3 +31,44 @@
     on a décidé une fois pour toutes que ça n'est pas acceptable)
    relecture : refusée
    raison    : Une icône de cette pile est incomplète ou abîmée.
+=== 9. L'ICONE, DESSINEE — la garde contre une transposition ===
+   (l'Objective-C ne se compile pas ici, donc hcicon_draw n'a aucun
+    test. Ce qu'on PEUT garder, c'est l'indexation : ce dessin
+    utilise pixels[row*32+col], exactement celle de hcicon_draw.
+    Une ligne et une colonne echangees se verraient ici d'un coup
+    d'oeil, alors qu'elles passeraient inapercues dans un compte
+    de pixels — le motif est expres dissymetrique : cadre, aplat
+    central, et UNE diagonale qui descend vers la droite)
+   11111111111111111111111111111111
+   13.............................1
+   1.3............................1
+   1..3...........................1
+   1...3..........................1
+   1....3.........................1
+   1.....3........................1
+   1......3.......................1
+   1.......3222222222222222.......1
+   1.......2322222222222222.......1
+   1.......2232222222222222.......1
+   1.......2223222222222222.......1
+   1.......2222322222222222.......1
+   1.......2222232222222222.......1
+   1.......2222223222222222.......1
+   1.......2222222322222222.......1
+   1.......2222222232222222.......1
+   1.......2222222223222222.......1
+   1.......2222222222322222.......1
+   1.......2222222222232222.......1
+   1.......2222222222223222.......1
+   1.......2222222222222322.......1
+   1.......2222222222222232.......1
+   1.......2222222222222223.......1
+   1.......................3......1
+   1........................3.....1
+   1.........................3....1
+   1..........................3...1
+   1...........................3..1
+   1............................3.1
+   1.............................31
+   11111111111111111111111111111111
+   (. = transparent ; 1 rouge, cadre ; 2 vert, aplat ; 3 bleu, diagonale)
