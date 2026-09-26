@@ -62,6 +62,10 @@ int hct_appelle(HctExec *x, const HctNoeud *script, const char *nom,
 /* Accès aux variables, pour l'hôte et les tests. */
 int  hct_var_lit(HctExec *x, const char *nom, HctValeur *out);
 void hct_var_ecrit(HctExec *x, const char *nom, const char *val);
+/* Idem, en gardant le nombre non arrondi à côté du texte mis en forme.
+ * Voir ecrit_var_nombre dans hct_eval.h pour la mesure qui l'impose. */
+void hct_var_ecrit_nombre(HctExec *x, const char *nom, const char *val,
+                          double brut, int a_brut);
 void hct_var_globale(HctExec *x, const char *nom);
 
 #endif

@@ -43,6 +43,7 @@ HctValeur hct_val_echec(void)
     HctValeur v;
     v.txt = g_vide;
     v.len = 0;
+    v.a_brut = 0; v.brut = 0;
     g_manque = 1;
     return v;
 }
@@ -55,6 +56,7 @@ HctValeur hct_val_vide(void)
     HctValeur v;
     v.txt = g_vide;
     v.len = 0;
+    v.a_brut = 0; v.brut = 0;
     return v;
 }
 
@@ -68,6 +70,9 @@ HctValeur hct_val_texte_n(const char *s, int len)
     memcpy(v.txt, s, (size_t)len);
     v.txt[len] = '\0';
     v.len = len;
+    /* TOUT CE QUI VIENT DU TEXTE EST SANS NOMBRE BRUT. C'est le défaut, et il
+     * doit l'être : seul hct_val_fonction pose le drapeau. */
+    v.a_brut = 0; v.brut = 0;
     return v;
 }
 
@@ -83,13 +88,38 @@ HctValeur hct_val_nombre(double x)
     return hct_val_texte_n(buf, n);
 }
 
-/* Le résultat d'un CALCUL : celui-là passe par le numberFormat. Voir la note
- * au-dessus de hct_format_nombre pour la raison d'avoir deux portes. */
-HctValeur hct_val_calcul(double x)
+/* LE RETOUR D'UNE FONCTION, et depuis la mesure c'est aussi celui d'un
+ * OPÉRATEUR : le texte mis en forme, et le nombre entier à côté. */
+HctValeur hct_val_fonction(double x)
 {
     char buf[64];
     int n = hct_ecrit_nombre_format(x, buf, sizeof buf);
-    return hct_val_texte_n(buf, n);
+    HctValeur v = hct_val_texte_n(buf, n);
+    if (v.txt != g_vide) { v.a_brut = 1; v.brut = x; }
+    return v;
+}
+
+/* Le résultat d'un CALCUL : son TEXTE passe par le numberFormat — c'est ce
+ * qu'on affiche — mais le NOMBRE non arrondi voyage à côté.
+ *
+ * MESURÉ CHEZ HYPERCARD, sous le gabarit « 0.0 », par comparaison plutôt que
+ * par affichage (« true » n'est pas un nombre : le gabarit ne peut pas le
+ * toucher, et l'on voit le calcul seul) :
+ *
+ *                                 HyperCard    HC avant
+ *     (0.34*1 = 0.34)               true        false
+ *     (1/3*3 = 1)                   true        false
+ *     (1/3 = 0.3)                   false       true
+ *     (sqrt(2) into x, x = 1.4)     false       true
+ *     (… puis 10*x = 14)            false       true
+ *
+ * HyperCard n'arrondit RIEN : ni les opérateurs, ni le rangement. Le gabarit
+ * n'intervient qu'à la SORTIE. HC arrondissait tout et rangeait le texte
+ * arrondi, si bien qu'un traceur sous « 0.0 » voyait sa courbe s'immobiliser
+ * dix points d'affilée. */
+HctValeur hct_val_calcul(double x)
+{
+    return hct_val_fonction(x);
 }
 
 HctValeur hct_val_bool(int vrai)

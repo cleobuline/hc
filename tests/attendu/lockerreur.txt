@@ -35,18 +35,41 @@
    (son errorDialog appelle « answer », qu'aucun hôte ne sert ici ;
     on garde la forme et on remplace answer par put)
 
-   CE QUE CETTE SECTION MONTRE ET QUI RESTE À FAIRE : la boucle va
-   AU BOUT, et errorDialog ne reçoit l'erreur qu'à la sortie du
-   gestionnaire le plus extérieur. Chez HyperCard une erreur ARRÊTE
-   le gestionnaire, et errorDialog part aussitôt.
+   CE QUE CETTE SECTION AFFIRMAIT ÉTAIT FAUX, et c'est moi qui
+   l'avais écrit. Elle disait : « chez HyperCard une erreur ARRÊTE
+   le gestionnaire, la boucle de HC va au bout, c'est à corriger ».
+   Aucune mesure derrière — un raisonnement, et il était faux.
 
-   La différence ne vient pas du verrou mais de la façon dont les
-   COMMANDES signalent : « put the zorglub » lève une faute et
-   interrompt — section 3 le montre —, tandis que « drag » se
-   contente d'un emit(HC_ERR) et rend « traité ». Deux façons de
-   signaler dans le même noyau, dont une seule arrête. C'est
-   antérieur à ce travail et ça le dépasse ; on l'inscrit ici pour
-   ne pas le redécouvrir, et pour voir si ça bouge.
+   MESURÉ, sous Basilisk, avec une sonde qui ACCUMULE pour que la
+   boîte n'efface pas sa propre preuve :
+
+       on mouseUp
+         put "1"
+         set the zorglub of this card to 1
+         put msg & "2"
+       end mouseUp                         -> la boîte contient 12
+
+   HyperCard OUVRE le dialogue et CONTINUE quand même. Le « 2 »
+   est là. Une erreur de script n'interrompt donc pas.
+
+   La boucle de HC qui va au bout n'est pas un défaut : c'est le
+   comportement. Un chantier de cinquante sites — faire lever une
+   faute à chaque emit(HC_ERR) de commande — a été annulé par
+   cette mesure-là, avant d'avoir été commencé.
+
+   IL RESTE UNE DISSYMÉTRIE, et elle est réelle : dans le même
+   noyau, « put the zorglub » lève une faute et INTERROMPT — la
+   section 3 le montre — tandis que « drag » se contente d'un
+   emit(HC_ERR) et rend « traité ». C'est le PREMIER qui s'écarte
+   d'HyperCard, pas le second. Ce qu'on croyait être le sens de la
+   correction est exactement l'inverse.
+
+   CE QUI N'EST PAS MESURÉ, et qui reste donc ouvert : QUAND
+   errorDialog part. Ici il part à la sortie du gestionnaire le
+   plus extérieur. Puisque HyperCard continue, il devrait sans
+   doute partir AU POINT D'ERREUR — mais « sans doute » est
+   précisément le mot qui vient de me coûter un chantier, et on
+   ne touchera à rien sans l'avoir relevé.
 
    LA FAUTE A CHANGÉ, PAS CE QU'ELLE MONTRE : la coordonnée non
    finie de HypoGraph ne lève plus d'erreur du tout — mesuré,

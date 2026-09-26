@@ -7,10 +7,13 @@
    (x = -32/64, soit -0.5 exactement, avec son numberFormat)
    -0.500,NAN(004)
 === 3. et le point d'à côté, qui marchait déjà ===
-   (x = -31/64 : elle lit « -0.484,1.188 » à l'écran, et c'est
-    bien 1.188 et non 1.194 — le numberFormat arrondit AUSSI les
-    calculs intermédiaires, comme chez HyperCard)
-   -0.484,1.188
+   (x = -31/64. CETTE ANNOTATION DISAIT « et c'est bien 1.188 et
+    non 1.194 — le numberFormat arrondit AUSSI les calculs
+    intermédiaires, comme chez HyperCard ». Le 1.188 vient du
+    rapport de bogue sur HC, pas d'une mesure dans Basilisk II ;
+    voir la section 6 du harnais emballee. Le modèle mesuré
+    prédit 1.194, et c'est ce qu'on rend — à confirmer)
+   -0.484,1.194
 === 4. le CODE survit aux calculs qui suivent ===
    (dans l'équation, le 0/0 est suivi d'une division par cinq :
     si le code ne voyageait pas, on lirait « NAN » tout court)

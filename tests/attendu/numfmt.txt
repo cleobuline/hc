@@ -45,12 +45,40 @@
    1.5
    -- mais l'operateur, lui, suit toujours :
    1.25
-── les OPERATEURS suivent le gabarit : conforme a HyperCard
-   1/3*3         -> 0.9   (HyperCard : 0.9)
-   value(1/3*3)  -> 0.9   (HyperCard : 0.9)
-── les FONCTIONS ne devraient PAS le suivre : ECART connu
-   10*sqrt(2)    -> 14.0   ECART, HyperCard : 14.1
-   1000*sin(z)   -> 0.0   ECART, HyperCard : 21.8
-   sin(z) seul   -> 0.0   ecrase avant la multiplication
+── les OPERATEURS n'arrondissent plus leur resultat : conforme
+   1/3*3         -> 1.0   HyperCard : 1.0
+   value(1/3*3)  -> 1.0   HyperCard : 1.0
+── LES QUATRE BOOLEENS, immunises contre l'affichage : conformes
+   (0.34*1 = 0.34)   -> true   HyperCard : true
+   (1/3*3 = 1)       -> true   HyperCard : true
+   (1/3 = 0.3)       -> false   HyperCard : false
+   (sqrt(2)*1 = 1.4) -> false   HyperCard : false
+── RANGER dans une variable : ni l'un ni l'autre ne fige, conforme
+   (x = 1.4)         -> false   HyperCard : false
+   (10*x = 14)       -> false   HyperCard : false
+── UN TEXTE reste un texte : le gabarit ne le touche pas
+   un litteral de texte -> 1.414214   les deux : 1.414214
+   un nombre calcule     -> 1.4   HyperCard : 1.4
+── LA CHAINE DE TRACE, dix points — la rosace en chiffres
+   416.0 416.0 414.0 413.0 410.0 407.0 403.0 398.0 392.0 386.0 
+   HyperCard : 416.0 416.0 414.0 413.0 410.0 407.0 403.0 398.0 392.0 386.0
+      (la courbe de HC ne bouge pas : c'est le palier plat a l'ecran)
+── les FONCTIONS ne le suivent PAS : conforme a HyperCard
+   10*sqrt(2)    -> 14.1   (HyperCard : 14.1)
+   1000*sin(z)   -> 21.8   (HyperCard : 21.8)
+   sin(z) seul   -> 0.0   mis en forme : c'est une CONCATENATION
+── le JUMEAU : « the sqrt of » doit suivre « sqrt() »
+   10*(the sqrt of 2) -> 14.1   (HyperCard : 14.1)
+── LA ROSACE, telle que la pile la calcule
+   r*cos(t),r*sin(t) -> 6.3,2.0
+      (avant, cos(t) etait arrondi a UNE decimale avant la
+       multiplication : vingt-et-une valeurs pour tout un
+       cercle, d'ou les marches de douze pixels)
 ── l'affichage direct, lui, est conforme
    sqrt(2)       -> 1.414   (HyperCard : 1.414)
+── la batterie A-E : le B attend une contre-mesure
+   A  x            -> 1.4   HyperCard : 1.4
+   B  10*x         -> 14.1   releve d'epoque : 14.0 (douteux)
+   C  sqrt(2) & _  -> 1.4   HyperCard : 1.4
+   D  sqrt(2)      -> 1.4   HyperCard : 1.4
+   E  gabarit vide -> 1.4   HyperCard : 1.4

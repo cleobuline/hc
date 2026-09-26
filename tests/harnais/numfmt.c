@@ -78,59 +78,213 @@ int main(void){
    *
    * CINQ RELEVÉS SOUS HYPERCARD, dans Basilisk II :
    *
-   *     gabarit "0.0"    put 1/3*3               ->  0.9
    *     gabarit "0.0"    put 10*sqrt(2)          ->  14.1
    *     gabarit "0.0"    put 1000*sin(z)         ->  21.8    z = pi/144
    *     gabarit "0.0"    put 1000*sin(0.021817)  ->  21.8
    *     gabarit "0.000"  put sqrt(2)             ->  1.414
    *
-   * LA RÈGLE qu'ils dessinent, et la seule qui les explique tous les cinq :
+   * UNE SIXIÈME FIGURAIT ICI ET ELLE ÉTAIT FAUSSE. On lisait « gabarit 0.0,
+   * put 1/3*3 -> 0.9, HyperCard ». C'est la valeur de HC, pas celle
+   * d'HyperCard, relevée un soir avec les deux fenêtres côte à côte. Le
+   * booléen l'a démentie sans appel :
    *
-   *     les OPÉRATEURS mettent en forme leur résultat ;
-   *     les FONCTIONS ne le font jamais ;
-   *     la conversion en TEXTE met en forme.
+   *     gabarit "0.0"    put (1/3*3 = 1)         ->  true    HyperCard
+   *                                                  false   HC
    *
-   * CE QUE HC FAIT DE DIFFÉRENT, et c'est un défaut ouvert : il met en forme
-   * le RETOUR des fonctions. « 1000*sin(z) » rend donc 0.0 au lieu de 21.8,
-   * parce que sin(z) a été écrasé à 0.0 avant la multiplication.
+   * La comparaison est immunisée contre l'affichage — « true » n'est pas un
+   * nombre, le gabarit ne peut pas le toucher. Chez HyperCard « 1/3*3 » vaut
+   * donc EXACTEMENT un, ce qui interdit que la division ait été arrondie.
    *
-   * CE QUE ÇA COÛTE. Un traceur polaire d'époque qui pose « set the
-   * numberFormat to 0.0 » dans sa boucle sort une rosace en marches
+   * C'EST LA MÉTHODE QUI COMPTE ICI, plus que le chiffre : tant qu'on
+   * AFFICHE, on mesure l'affichage autant que le calcul, et on ne peut pas
+   * les séparer. En comparant, on voit le calcul seul.
+   *
+   * LA RÈGLE, RELEVÉE PAR QUATRE BOOLÉENS SOUS LE GABARIT « 0.0 » :
+   *
+   *                              HyperCard    HC
+   *     (0.34*1 = 0.34)            true      false
+   *     (1/3*3 = 1)                true      false
+   *     (1/3 = 0.3)                false     true
+   *     (sqrt(2)*1 = 1.4)          false     true
+   *     (sqrt(2) into x, x = 1.4)  false     true
+   *     (… puis 10*x = 14)         false     true
+   *
+   * HyperCard n'arrondit RIEN — ni les opérateurs, ni le rangement dans une
+   * variable. HC arrondit tout. La règle est donc :
+   *
+   *     l'arithmétique garde toute sa précision, et le RANGEMENT aussi ;
+   *     le gabarit n'intervient qu'à la SORTIE — affichage, concaténation.
+   *
+   * ET LA PREUVE EN GRANDEUR NATURE, dix points de la chaîne de tracé :
+   *
+   *     HyperCard        416.0 416.0 414.0 413.0 410.0 407.0 403.0 …
+   *     HC               416.0 416.0 416.0 416.0 416.0 416.0 416.0 …
+   *     HC sans gabarit  416   416   414   413   410   407   403   …
+   *
+   * Les nombres d'HyperCard sont EXACTEMENT ceux de HC sans gabarit, avec un
+   * « .0 » ajouté : le gabarit n'a touché que la sortie. Chez HC la courbe
+   * ne bouge pas pendant dix points — c'est le palier plat que l'on voit à
+   * l'écran.
+   *
+   * CE QUI ÉTAIT FAUX DANS HC, et qui EST CORRIGÉ depuis : les opérateurs
+   * mettaient en forme leur résultat, et le rangement conservait ce texte
+   * arrondi. Les six booléens sont maintenant dans la colonne d'HyperCard, et
+   * la chaîne de tracé donne ses dix valeurs au chiffre près. Les sections
+   * ci-dessous mesurent ce que HC fait AUJOURD'HUI, avec la valeur
+   * d'HyperCard en face à chaque fois.
+   *
+   * CE QUE HC FAISAIT DE DIFFÉRENT, et c'est corrigé : il mettait en forme le
+   * RETOUR des fonctions. « 1000*sin(z) » rendait 0.0 au lieu de 21.8, parce
+   * que sin(z) était écrasé à 0.0 AVANT la multiplication. Mille fois zéro
+   * font zéro — ce n'était plus un arrondi, c'était la valeur perdue.
+   *
+   * CE QUE ÇA COÛTAIT. Un traceur polaire d'époque qui pose « set the
+   * numberFormat to 0.0 » dans sa boucle sortait une rosace en marches
    * d'escalier de douze pixels là où HyperCard en trace une lisse — deux
-   * captures côte à côte l'ont montré. Et le dessin n'est que la partie
-   * visible : TOUT calcul scientifique sous gabarit étroit est faussé, en
-   * silence.
+   * captures côte à côte l'ont montré. cos(t) ne valait plus que 0.0, 0.1,
+   * 0.2 : vingt-et-une valeurs pour tout un cercle. Et le dessin n'était que
+   * la partie visible ; TOUT calcul scientifique sous gabarit étroit était
+   * faussé, en silence.
    *
-   * POURQUOI CE N'EST PAS CORRIGÉ ICI. La correction tient en deux lignes —
-   * rendre hct_val_nombre au lieu de hct_val_calcul dans les deux sites qui
-   * enveloppent math_un_arg — mais elle rend l'affichage faux en échange :
-   * « put sqrt(2) » montrerait 1.414214 là où HyperCard montre 1.414. Les deux
-   * sont vrais en même temps chez HyperCard parce que ses valeurs sont TYPÉES :
-   * il garde le nombre entier et ne met en forme qu'à la conversion. HC n'a que
-   * du texte, et une seule représentation ne peut pas servir les deux usages.
+   * POURQUOI LA CORRECTION ÉVIDENTE ÉTAIT FAUSSE, et elle a dormi des
+   * semaines dans un bloc-notes à ce titre : rendre hct_val_nombre au lieu de
+   * hct_val_calcul dans les deux sites qui enveloppent math_un_arg corrige
+   * bien « 10*sqrt(2) », mais casse l'affichage en échange — « put sqrt(2) »
+   * montrerait 1.414214 là où HyperCard montre 1.414.
    *
-   * La vraie correction est donc de typer les valeurs. En attendant, les trois
-   * sections ci-dessous mesurent ce que HC fait AUJOURD'HUI — pas ce qu'il
-   * devrait faire. Les lignes marquées « ÉCART » sont celles qui diffèrent de
-   * HyperCard, avec sa valeur en face.
+   * CE QUI A DÉBLOQUÉ, ce sont CINQ MESURES prises en parallèle dans
+   * Basilisk II et dans HC, avec une sonde qui accumule pour ne pas effacer
+   * sa propre preuve :
    *
-   * Un contournement existe et marche : écrire « 0.000 » plutôt que « 0.0 »
-   * dans la pile. C'est ce que fait la pile qui a servi de banc d'essai. */
-  essai("les OPERATEURS suivent le gabarit : conforme a HyperCard",
+   *     set the numberFormat to 0.0 / put sqrt(2) into x
+   *     A  put x                  1.4        l'affichage met en forme
+   *     B  put 10*x               14.0       RANGER A FIGÉ la mise en forme
+   *     C  put sqrt(2) & \"\"       1.4        la concaténation aussi
+   *     D  put sqrt(2)            1.4        idem
+   *     E  gabarit effacé, put x  1.4        x est bien du texte figé
+   *
+   * ON LES A CRUES IDENTIQUES DES DEUX CÔTÉS, et on en a conclu que HC était
+   * déjà fidèle partout sauf sur un seul chemin : celui où le retour d'une
+   * fonction part DIRECTEMENT dans un opérateur. C'ÉTAIT UNE CONCLUSION DE
+   * TROP, et le B en est la cause : il dit que ranger fige, les booléens et
+   * la chaîne de tracé disent que non. La dernière section du harnais expose
+   * la contradiction et dit pourquoi on a suivi les booléens.
+   *
+   * D'OÙ LA CORRECTION : le texte reste EXACTEMENT celui d'avant — mis en
+   * forme à la sortie — et le nombre non arrondi voyage à côté, dans
+   * HctValeur.brut. Seuls le regardent l'arithmétique, la comparaison, les
+   * arguments de fonction et les opérandes d'accumulation. Tout ce qui lit
+   * .txt voit le même texte qu'hier, donc ne peut pas bouger, et le reste de
+   * la suite l'a confirmé : sur 234 harnais, celui-ci est le seul qui ait
+   * changé.
+   *
+   * IL A FALLU CINQ FRONTIÈRES, et chacune annulait la précédente : le retour
+   * des fonctions, puis les opérateurs, puis le rangement dans une variable,
+   * puis les arguments de fonction, puis les opérandes d'accumulation, et
+   * enfin le LITTÉRAL NUMÉRIQUE lui-même. Tant que « 0.34 » écrit dans le
+   * script n'était qu'un texte, « (0.34*1 = 0.34) » comparait un nombre à un
+   * texte arrondi et la comparaison retombait sur le texte : quatre booléens
+   * restaient faux alors que tout le reste était corrigé. Une correction de
+   * précision qui s'arrête à une frontière est défaite par la suivante.
+   *
+   * Le contournement « 0.000 » plutôt que « 0.0 » n'est plus nécessaire. */
+  essai("les OPERATEURS n'arrondissent plus leur resultat : conforme",
    "  set the numberFormat to \"0.0\"\n"
-   "  put \"1/3*3         -> \" & (1/3*3) & \"   (HyperCard : 0.9)\"\n"
-   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   (HyperCard : 0.9)\"");
+   "  put \"1/3*3         -> \" & (1/3*3) & \"   HyperCard : 1.0\"\n"
+   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   HyperCard : 1.0\"");
 
-  essai("les FONCTIONS ne devraient PAS le suivre : ECART connu",
+  essai("LES QUATRE BOOLEENS, immunises contre l'affichage : conformes",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"(0.34*1 = 0.34)   -> \" & (0.34*1 = 0.34) & \"   HyperCard : true\"\n"
+   "  put \"(1/3*3 = 1)       -> \" & (1/3*3 = 1) & \"   HyperCard : true\"\n"
+   "  put \"(1/3 = 0.3)       -> \" & (1/3 = 0.3) & \"   HyperCard : false\"\n"
+   "  put \"(sqrt(2)*1 = 1.4) -> \" & (sqrt(2)*1 = 1.4) & \"   HyperCard : false\"");
+
+  essai("RANGER dans une variable : ni l'un ni l'autre ne fige, conforme",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put sqrt(2) into x\n"
+   "  put \"(x = 1.4)         -> \" & (x = 1.4) & \"   HyperCard : false\"\n"
+   "  put \"(10*x = 14)       -> \" & (10*x = 14) & \"   HyperCard : false\"");
+
+  essai("UN TEXTE reste un texte : le gabarit ne le touche pas",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"un litteral de texte -> \" & \"1.414214\" & \"   les deux : 1.414214\"\n"
+   "  put \"un nombre calcule     -> \" & (1.414214*1) & \"   HyperCard : 1.4\"");
+
+  essai("LA CHAINE DE TRACE, dix points — la rosace en chiffres",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put empty into s\n"
+   "  put 0 into t\n"
+   "  repeat 10 times\n"
+   "    put 8*cos(3*t) into r\n"
+   "    put s & round(r*cos(t)*20+256) & \" \" into s\n"
+   "    add pi/144 to t\n"
+   "  end repeat\n"
+   "  put s\n"
+   "  put \"HyperCard : 416.0 416.0 414.0 413.0 410.0 407.0 403.0 398.0 392.0 386.0\"\n"
+   "  put \"   (la courbe de HC ne bouge pas : c'est le palier plat a l'ecran)\"");
+
+  essai("les FONCTIONS ne le suivent PAS : conforme a HyperCard",
    "  set the numberFormat to \"0.######\"\n"
    "  put pi/144 into z\n"
    "  set the numberFormat to \"0.0\"\n"
-   "  put \"10*sqrt(2)    -> \" & (10*sqrt(2)) & \"   ECART, HyperCard : 14.1\"\n"
-   "  put \"1000*sin(z)   -> \" & (1000*sin(z)) & \"   ECART, HyperCard : 21.8\"\n"
-   "  put \"sin(z) seul   -> \" & sin(z) & \"   ecrase avant la multiplication\"");
+   "  put \"10*sqrt(2)    -> \" & (10*sqrt(2)) & \"   (HyperCard : 14.1)\"\n"
+   "  put \"1000*sin(z)   -> \" & (1000*sin(z)) & \"   (HyperCard : 21.8)\"\n"
+   "  put \"sin(z) seul   -> \" & sin(z) & \"   mis en forme : c'est une CONCATENATION\"");
+
+  essai("le JUMEAU : « the sqrt of » doit suivre « sqrt() »",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put \"10*(the sqrt of 2) -> \" & (10*(the sqrt of 2)) & \"   (HyperCard : 14.1)\"");
+
+  essai("LA ROSACE, telle que la pile la calcule",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put 0.3 into t\n"
+   "  put 8*cos(2*t) into r\n"
+   "  put \"r*cos(t),r*sin(t) -> \" & (r*cos(t)) & \",\" & (r*sin(t))\n"
+   "  put \"   (avant, cos(t) etait arrondi a UNE decimale avant la\"\n"
+   "  put \"    multiplication : vingt-et-une valeurs pour tout un\"\n"
+   "  put \"    cercle, d'ou les marches de douze pixels)\"");
 
   essai("l'affichage direct, lui, est conforme",
    "  set the numberFormat to \"0.000\"\n"
    "  put \"sqrt(2)       -> \" & sqrt(2) & \"   (HyperCard : 1.414)\"");
+
+  /* LA BATTERIE A-E, ET LA SEULE MESURE QUI RESTE EN CONTRADICTION.
+   *
+   * Elle ne figurait que dans un commentaire ; on l'inscrit ici pour qu'elle
+   * soit surveillée, parce que le B a bougé avec ce chantier et qu'il faut
+   * que ça se voie.
+   *
+   * RELEVÉ SOUS HYPERCARD :  A 1.4   B 14.0   C 1.4   D 1.4   E 1.4
+   * HC AUJOURD'HUI :         A 1.4   B 14.1   C 1.4   D 1.4   E 1.4
+   *
+   * LE B EST INCOMPATIBLE AVEC DEUX AUTRES MESURES, et ce n'est pas une
+   * nuance : si « put sqrt(2) into x » figeait le texte « 1.4 » sous le
+   * gabarit 0.0, alors 10*x vaudrait quatorze EXACTEMENT, donc :
+   *
+   *     (10*x = 14)  serait  true      — relevé sous HyperCard : false
+   *
+   * et la chaîne de tracé ne pourrait pas donner ses valeurs. On l'a
+   * vérifiée au crayon sur le quatrième point : avec un r figé à une
+   * décimale on obtient 412, sans figeage 413. HyperCard donne 413.
+   *
+   * DEUX MESURES CONTRE UNE, dont une en grandeur nature sur dix points :
+   * c'est le rangement qui ne fige pas, et « B 14.0 » a dû être lu dans la
+   * fenêtre de HC — la même méprise que « 1/3*3 -> 0.9 » plus haut, prise le
+   * même soir avec les deux fenêtres côte à côte.
+   *
+   * ON NE TRANCHE PAS DÉFINITIVEMENT POUR AUTANT : la référence enregistrée
+   * ci-dessous est ce que HC fait, et la ligne du B porte la valeur d'époque
+   * à côté. Si une nouvelle mesure dans Basilisk II redonne 14.0, c'est tout
+   * le modèle du rangement qu'il faudra reprendre, pas cette ligne. */
+  essai("la batterie A-E : le B attend une contre-mesure",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put sqrt(2) into x\n"
+   "  put \"A  x            -> \" & x & \"   HyperCard : 1.4\"\n"
+   "  put \"B  10*x         -> \" & (10*x) & \"   releve d'epoque : 14.0 (douteux)\"\n"
+   "  put \"C  sqrt(2) & _  -> \" & (sqrt(2) & \"\") & \"   HyperCard : 1.4\"\n"
+   "  put \"D  sqrt(2)      -> \" & sqrt(2) & \"   HyperCard : 1.4\"\n"
+   "  set the numberFormat to empty\n"
+   "  put \"E  gabarit vide -> \" & x & \"   HyperCard : 1.4\"");
 
   hc_free(st);return 0;}
