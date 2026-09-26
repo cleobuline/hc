@@ -128,7 +128,7 @@ static const HctCommande TABLE[] = {
     { "picture",    "*" },
     { "play",       "*" },
     { "pop",        "card [into c]" },
-    { "print",      "* [with e]" },
+    { "print",      "[all|marked] * [to e] [with e]" },
     { "push",       "*" },
     /* Le groupe « with menuMsg » ne sert qu'à « put <articles> into menu
      * <nom> with menuMsg <messages> » : chaque article y reçoit SON message,

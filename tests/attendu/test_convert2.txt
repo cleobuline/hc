@@ -2,7 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v3 relit print                           2
+[v3]    (rien)
 >>> convert une date vers dateItems
    [1] → message "mouseUp" à button "GoBtn"
    [1] · traité par button "GoBtn"
@@ -28,4 +28,4 @@
    [3] — retours de la v3 vers l'ancien interpréteur —
    [3]    (aucun)
    [3] — ce que l'ancien interprète exécute encore —
-   [3]    v3 relit print                           2
+   [3]    (rien)

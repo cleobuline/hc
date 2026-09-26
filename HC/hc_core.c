@@ -12115,15 +12115,36 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
  * « with <rapport> » en fait partie mais reste ignoré : l'ancien exécuteur
  * ne le lisait déjà pas, une mise en page de rapport demandant un
  * imprimeur que le noyau n'a jamais eu. */
+/* « print » : LES ARGUMENTS SE LISENT DANS L'ARBRE.
+ *
+ * Le relevé du corpus disait « v3 relit print » seize fois. Comme « find »
+ * avant lui, il était PORTÉ et recomposait pourtant sa ligne avec v3_reste
+ * pour la redécouper au mot : ci_word pour reconnaître « stack », « all »,
+ * « marked », « card », « cd », un saut de quatre ou deux lettres selon le mot
+ * trouvé, find_kw pour le « to », et eval_checked sur les morceaux.
+ *
+ * Le motif de commande porte maintenant « [all|marked] * [to e] [with e] », et
+ * l'arbre donne tout : le mot-clé, l'objet désigné, la borne. Les seize formes
+ * de tests/harnais/impression.c ont été relevées AVANT ce portage et ne
+ * bougent pas d'un caractère — c'est le seul moyen de dire qu'un portage est
+ * neutre.
+ *
+ * DEUX COMPORTEMENTS SONT REPRODUITS À L'IDENTIQUE alors qu'ils sont
+ * discutables, parce que les changer ici les mêlerait au portage :
+ *
+ *   · le côté GAUCHE d'une plage est lu comme un NOMBRE, pas résolu comme une
+ *     carte. « print card "C005" to 8 » imprime donc de la carte 1 à la 8 : un
+ *     nom n'est pas un rang, la borne retombe à 1 en silence.
+ *
+ *   · « print <document> with <application> » ne fait rien. Le « [with e] » du
+ *     motif ne colle même pas — « * » avale « with » comme un littéral nu
+ *     avant que le groupe ne soit essayé —, et l'exécuteur n'en ferait rien de
+ *     toute façon.
+ *
+ * Les deux sont inscrits dans le harnais et se corrigent séparément. */
 static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    if (ci_word(a, "this")) a = skip_spaces(a + 4);
 
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
@@ -12143,70 +12164,81 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     }
     int np = 0;
 
-    if (ci_word(a, "stack") || ci_word(a, "all")) {
+    /* « all » et « marked » sont des mots-clés du motif ; ils ne sont donc
+     * plus cherchés dans le texte. */
+    int toutes  = v3_est_motcle(n, 0, "all");
+    int marques = v3_est_motcle(n, 0, "marked");
+    int i0 = (toutes || marques) ? 1 : 0;
+    const HctNoeud *quoi = (i0 < n->nfils && n->fils[i0]->genre != HCTN_MOTCLE)
+                         ? n->fils[i0] : NULL;
+
+    if (quoi && quoi->genre == HCTN_OBJET) {
+        /* « print stack » : toute la pile. Le type de l'objet le dit, plus un
+         * mot à comparer. */
+        if (quoi->typeobj == HCT_OBJ_STACK) toutes = 1;
+        /* « print marked cards » sans passer par le mot-clé : le nœud porte
+         * le drapeau de marquage, comme pour « the number of marked cards ».
+         * Le motif prend le mot avant lui aujourd'hui, mais le drapeau reste
+         * le sens réel et la forme peut revenir par une autre route. */
+        if (quoi->marque) marques = 1;
+    }
+
+    const HctNoeud *nto = NULL;
+    {
+        int ito = v3_indice_motcle(n, "to", i0);
+        if (ito >= 0 && ito + 1 < n->nfils) nto = n->fils[ito + 1];
+    }
+
+    if (toutes) {
         if (pile)
             for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD) liste[np++] = pile->parts[i];
     }
-    else if (ci_word(a, "marked")) {
+    else if (marques) {
         if (pile)
             for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
                     liste[np++] = pile->parts[i];
     }
-    else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
-        const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
-        if (!*r) {
-            /* « print card » nu : la carte courante. */
-            if (g_current_card) liste[np++] = g_current_card;
-        } else {
-            /* « print card 3 », « print card "index" », « print card 2 to 7 » */
-            const char *to = find_kw(r, "to");
-            if (to) {
-                char *v1 = arena_buf(), *v2 = arena_buf();
-                int len = (int)(to - r);
-                char brut[256];
-                if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-                memcpy(brut, r, (size_t)len); brut[len] = '\0';
-                eval_checked(brut, v1, HC_VAL);
-                eval_checked(skip_spaces(to + 2), v2, HC_VAL);
-                /* LES BORNES SONT RAMENÉES À LA PILE avant de boucler.
-                 *
-                 * « print card 1 to 2147483647 » sur une pile de dix cartes
-                 * GELAIT l'application : passé la dixième, nth_card rendait
-                 * NULL, np cessait d'augmenter, la garde « np < 512 » restait
-                 * donc vraie, et la boucle parcourait deux milliards d'indices
-                 * pour rien. Au bout, « i++ » sur INT_MAX est en plus un
-                 * débordement signé, soit un comportement indéfini.
-                 *
-                 * Une faute de frappe suffisait. On borne donc à ce qui
-                 * existe, et le compte de cartes est la seule borne juste. */
-                int hors1 = 0, hors2 = 0;
-                int d = hct_vers_rang(v1, &hors1);
-                int f = hct_vers_rang(v2, &hors2);
-                int total = card_count(pile);
-                if (hors1) d = 1;
-                if (hors2) f = total;
-                if (d < 1) d = 1;
-                if (f > total) f = total;
-                for (int i = d; i <= f && np < cap; i++) {
-                    Object *c = nth_card(pile, i - 1);
-                    if (c) liste[np++] = c;
-                }
-            } else {
-                Object *c = resolve(r);
-                if (!c) {
-                    char *v = arena_buf();
-                    eval_checked(r, v, HC_VAL);
-                    c = resolve(v);
-                    if (!c) {
-                        char ref[128];
-                        snprintf(ref, sizeof ref, "card %s", v);
-                        c = resolve(ref);
-                    }
-                }
-                if (c && c->type == OBJ_CARD) liste[np++] = c;
+    else if (!quoi) {
+        /* « print » nu : la carte courante. */
+        if (g_current_card) liste[np++] = g_current_card;
+    }
+    else if (quoi->genre == HCTN_OBJET && quoi->typeobj == HCT_OBJ_CARD) {
+        if (nto) {
+            /* UNE PLAGE. Les bornes se lisent comme des NOMBRES — voir
+             * l'en-tête : c'est l'ancien comportement, reproduit tel quel.
+             *
+             * LES BORNES SONT RAMENÉES À LA PILE avant de boucler.
+             *
+             * « print card 1 to 2147483647 » sur une pile de dix cartes
+             * GELAIT l'application : passé la dixième, nth_card rendait
+             * NULL, np cessait d'augmenter, la garde « np < 512 » restait
+             * donc vraie, et la boucle parcourait deux milliards d'indices
+             * pour rien. Au bout, « i++ » sur INT_MAX est en plus un
+             * débordement signé, soit un comportement indéfini.
+             *
+             * Une faute de frappe suffisait. On borne donc à ce qui existe,
+             * et le compte de cartes est la seule borne juste. */
+            char v1[HC_VAL] = "", v2[HC_VAL] = "";
+            if (quoi->nfils > 0) v3_val_texte(ctx, quoi->fils[0], v1, sizeof v1);
+            v3_val_texte(ctx, nto, v2, sizeof v2);
+            if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+            int hors1 = 0, hors2 = 0;
+            int d = hct_vers_rang(v1, &hors1);
+            int f = hct_vers_rang(v2, &hors2);
+            int total = card_count(pile);
+            if (hors1) d = 1;
+            if (hors2) f = total;
+            if (d < 1) d = 1;
+            if (f > total) f = total;
+            for (int i = d; i <= f && np < cap; i++) {
+                Object *c = nth_card(pile, i - 1);
+                if (c) liste[np++] = c;
             }
+        } else {
+            Object *c = hct_resout(ctx, quoi);
+            if (c && c->type == OBJ_CARD) liste[np++] = c;
         }
     }
 
