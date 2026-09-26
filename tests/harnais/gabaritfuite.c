@@ -43,11 +43,22 @@
  * ces lignes diront d'où vient le 4 et qui l'a mesuré. C'est le genre de
  * comportement qu'on répare par erreur.
  *
- * MESURÉ AUSSI, ET C'ÉTAIT LA DERNIÈRE QUESTION OUVERTE : le gabarit traverse
- * les PILES chez HyperCard aussi. « set the numberFormat to 0.0 / go to stack
- * X / put the numberFormat » rend 0.0 là-bas. HC est donc fidèle sur les trois
- * points — la mise en forme que length() voit, la survie au gestionnaire, la
- * survie au changement de pile. Rien à corriger.
+ * ET VOICI L'ÉCART, RELEVÉ EN DERNIER ET CORRIGÉ. On a d'abord cru HC fidèle
+ * sur les trois points ; une relecture de la mesure a montré que non.
+ *
+ *     set the numberFormat to "0.0"
+ *     go to stack X
+ *     put the numberFormat        ->  0.######   HyperCard
+ *                                     0.0        HC avant
+ *
+ * CHANGER DE PILE REMET LE GABARIT À SON DÉFAUT. Le premier relevé avait
+ * donné 0.0 des deux côtés — mais le « go to stack » n'avait pas eu lieu, et
+ * on relisait le gabarit dans la pile de départ. Une mesure peut échouer sans
+ * le dire : celle-ci a failli clore le dossier sur une fidélité inventée.
+ *
+ * La remise à zéro est posée dans hc_set_current_card, seul passage obligé du
+ * changement de carte donc de pile, et elle ne se déclenche QUE si la pile
+ * change — parcourir les cartes d'une même pile laisse le gabarit en place.
  *
  * POURQUOI ÇA SE VOIT AUJOURD'HUI ET PAS AVANT, car c'est la vraie histoire.
  * Le piège était armé depuis toujours et n'avait jamais été déclenché : le
@@ -95,18 +106,45 @@ int main(void){
    "  put \"relu dans un gestionnaire suivant : [\" & the numberFormat & \"]\"\n"
    "  put \"   HyperCard : 0.0 aussi — mesure au bouton\"");
 
-  /* §4 — MESURÉ DES DEUX CÔTÉS. C'était la dernière question ouverte du
-   * dossier ; elle ne l'est plus. */
-  printf("── 4. et il traverse meme les PILES : HyperCard pareil\n");
+  /* §4 — L'ÉCART, ET SA CORRECTION. Changer de pile remet le gabarit au
+   * défaut, comme HyperCard. C'est ce qui sauve Graph Maker. */
+  printf("── 4. mais CHANGER DE PILE le remet au defaut\n");
   Object *st2=hc_new_stack("B");Object *bg2=hc_new_background(st2,"F2");
   Object *c2=hc_new_card(st2,bg2,"v");
   Object *b2=hc_new_button(c2,"B2");hc_set_current_card(c2);
   hc_set_script(b2,"on t\n"
     "  put \"dans une AUTRE pile : [\" & the numberFormat & \"]\"\n"
-    "  put \"   HyperCard : 0.0 aussi — mesure par go to stack\"\n"
+    "  put \"   HyperCard : 0.###### — c'est son defaut\"\n"
+    "  put \"   length(100 div 10) = \" & length(100 div 10) & \"   (retrouve son 2)\"\n"
     "end t\n");
   hc_send(b2,"t");
   hc_set_current_card(c);
+
+  /* §4b — LE RETOUR : revenir dans la pile de depart le remet aussi. */
+  essai("4b. et revenir dans la pile de depart le remet aussi",
+   "  put \"de retour dans A : [\" & the numberFormat & \"]\"");
+
+  /* §6 — CE QU'ON N'A PAS TRANCHÉ, et qu'on inscrit plutôt que de le taire.
+   *
+   * HC rend le gabarit par défaut comme une chaîne VIDE ; HyperCard, dans la
+   * mesure ci-dessus, l'a rendu « 0.###### ». Les deux se COMPORTENT pareil —
+   * six décimales, zéros de fin retirés — mais ils ne se LISENT pas pareil, et
+   * « if the numberFormat is empty » ne dit donc pas la même chose des deux
+   * côtés.
+   *
+   * Le commentaire de hc_core.c affirme « c'est ce que HyperCard rendait avant
+   * qu'on y touche ». C'est une affirmation, pas un relevé, et elle vient
+   * d'être contredite de biais. On ne la corrige pas au jugé : il faut la
+   * mesure directe, dans un HyperCard frais, avant que quoi que ce soit ait
+   * posé un gabarit :
+   *
+   *     put the numberFormat        ->  ?
+   *
+   * En attendant, cette section enregistre ce que HC fait AUJOURD'HUI. */
+  essai("6. LE DEFAUT SE LIT-IL VIDE OU 0.###### ? (a mesurer)",
+   "  put \"HC rend : [\" & the numberFormat & \"]\"\n"
+   "  put \"   HyperCard apres un go to stack : 0.###### — reste a confirmer\"\n"
+   "  put \"   le COMPORTEMENT est le meme : \" & (1/3)");
 
   essai("5. LE CALCUL DE GRAPH MAKER, tel qu'il est ecrit dans la pile",
    "  set the numberFormat to empty\n"

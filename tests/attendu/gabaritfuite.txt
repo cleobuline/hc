@@ -8,9 +8,16 @@
 ── 3. LE GABARIT SURVIT AU GESTIONNAIRE QUI L'A POSE
    relu dans un gestionnaire suivant : [0.0]
       HyperCard : 0.0 aussi — mesure au bouton
-── 4. et il traverse meme les PILES : HyperCard pareil
-   dans une AUTRE pile : [0.0]
-      HyperCard : 0.0 aussi — mesure par go to stack
+── 4. mais CHANGER DE PILE le remet au defaut
+   dans une AUTRE pile : []
+      HyperCard : 0.###### — c'est son defaut
+      length(100 div 10) = 2   (retrouve son 2)
+── 4b. et revenir dans la pile de depart le remet aussi
+   de retour dans A : []
+── 6. LE DEFAUT SE LIT-IL VIDE OU 0.###### ? (a mesurer)
+   HC rend : []
+      HyperCard apres un go to stack : 0.###### — reste a confirmer
+      le COMPORTEMENT est le meme : 0.333333
 ── 5. LE CALCUL DE GRAPH MAKER, tel qu'il est ecrit dans la pile
    sans gabarit : divisor = 100   colWidth = 0.3
    avec 0.0     : divisor = 10000.0  colWidth = 0.0

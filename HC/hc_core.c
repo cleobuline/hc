@@ -444,7 +444,45 @@ static Object *g_target = NULL;  /* le destinataire initial du message    → `t
 static int     g_depth = 0;   /* profondeur, pour l'indentation de la trace */
 
 void hc_trace(int on) { g_trace = on; }
-void hc_set_current_card(Object *card) { g_current_card = card; }
+/* CHANGER DE PILE REMET LE numberFormat À SON DÉFAUT.
+ *
+ * MESURÉ dans Basilisk II : « set the numberFormat to 0.0 » dans une pile,
+ * puis « go to stack X », puis « put the numberFormat » là-bas — HyperCard
+ * rend « 0.###### », son défaut. HC le gardait indéfiniment.
+ *
+ * CE QUE ÇA COÛTAIT, relevé sur une vraie pile. Le traceur polaire de
+ * HypoGraph pose « set the numberFormat to 0.0 » dans sa boucle et s'en va
+ * sans le retirer. Graph Maker 2.2, ouverte ensuite, ne dessinait plus une
+ * seule barre : elle compte les chiffres d'un nombre par
+ * « length(maxValue div 10) », length lit le texte MIS EN FORME, « 10 »
+ * devenait « 10.0 », length passait de 2 à 4, le diviseur de 100 à 10000, et
+ * toutes les barres tombaient à une largeur nulle. Chargée ici, la pile donne
+ * 27 drag sous le gabarit par défaut et 1017 sous « 0.0 », dont 1016 nuls.
+ *
+ * DEUX PILES CORRECTES SÉPARÉMENT SE CASSAIENT L'UNE L'AUTRE, et c'est
+ * exactement ce que cette remise à zéro empêche. Aucune des deux n'avait tort :
+ * en 1991 le gabarit ne franchissait pas la frontière d'une pile, et une pile
+ * pouvait donc supposer le défaut sans se garder.
+ *
+ * POURQUOI LE DÉFAUT NE S'EST VU QU'AUJOURD'HUI : le piège était armé depuis
+ * toujours et jamais déclenché, parce que le traceur polaire ne TERMINAIT PAS.
+ * Sous 0.6.9.3 son « add theInt to t » était remis en forme à chaque tour, t
+ * restait à zéro, et la boucle s'emballait jusqu'au plafond. En réparant
+ * l'accumulation on lui a donné son premier détonateur.
+ *
+ * ICI ET PAS AILLEURS : hc_set_current_card est le seul passage obligé du
+ * changement de carte, donc de pile. Le gabarit ne bouge QUE si la pile
+ * change — aller d'une carte à l'autre dans la même pile le laisse en place,
+ * ce qui est le cas mesuré le plus fréquent et celui dont dépendent les
+ * scripts qui posent un gabarit avant de parcourir leurs cartes. */
+void hc_set_current_card(Object *card)
+{
+    Object *avant = g_current_card ? g_current_card->owner : NULL;
+    Object *apres = card ? card->owner : NULL;
+    g_current_card = card;
+    if (avant && apres && avant != apres) hct_format_nombre("");
+}
+
 Object *hc_current_card(void) { return g_current_card; }
 
 /* Un script est-il en cours ? Sert à l'hôte pour ne pas envoyer « idle »
