@@ -40,8 +40,26 @@ ne plus le retaper :
 ### 1. La version
 
 `MARKETING_VERSION` dans les deux configurations de `HC.xcodeproj`. C'est lui
-que `CFBundleShortVersionString` référence, donc lui que le Finder et la
-fenêtre « À propos » annoncent.
+que `CFBundleShortVersionString` référence, donc lui que le Finder, la fenêtre
+« À propos » **et `the version` en HyperTalk** annoncent — `cocoa_global_get`
+le lit depuis le bundle.
+
+**Et `HC_VERSION` dans `HC/hc_core.h`**, qui n'est que le repli des harnais
+mais doit rester juste. Il est resté à `0.6.6` pendant trois versions parce que
+le noyau annonçait interroger l'hôte et qu'aucun `.m` ne répondait.
+
+    grep -n "HC_VERSION\|MARKETING_VERSION" HC/hc_core.h HC.xcodeproj/project.pbxproj
+
+Changer `HC_VERSION` fait bouger **cinq références** de la suite, qui
+inventorient `the version` en affichant sa valeur : `bilan2`, `bilan3`,
+`bilan4`, `bilan5`, `mondenoms`. C'est voulu — un inventaire qui masque la
+valeur ne vérifie plus rien — mais il faut les réenregistrer :
+
+    ./tests/lance.sh --enregistre bilan2   # puis bilan3, bilan4, bilan5, mondenoms
+    ./tests/lance.sh                       # et vérifier que RIEN d'autre n'a bougé
+
+Ce « rien d'autre » est la vraie vérification : si un autre harnais change en
+même temps, ce n'est pas la version qui l'a fait.
 
 **Le piège de 0.6.9.2 :** il avait été corrigé APRÈS la construction du DMG,
 si bien que le binaire livré annonçait encore `0.6.5`. Version d'abord, tag

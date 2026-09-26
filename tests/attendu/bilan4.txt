@@ -44,7 +44,7 @@
    servi  the diskSpace              -> (vide)
    servi  the heapSpace              -> (vide)
    servi  the systemVersion          -> (vide)
-   servi  the version                -> 0.6.6
+   servi  the version                -> 0.6.9.4
    servi  the destination            -> stack "T"
    servi  the size                   -> 0
    servi  the freeSize               -> 0
