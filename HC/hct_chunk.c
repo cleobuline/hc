@@ -378,9 +378,30 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
 
     /* Le rang dépasse : on étend.
      *
-     * Pour item et line, HyperCard crée les morceaux vides intermédiaires —
-     * « put "x" into item 5 of "a,b" » donne « a,b,,,x ». Pour char et word,
-     * il ajoute simplement à la fin, avec un espace pour les mots. */
+     * Pour item et line, on crée les morceaux vides intermédiaires — « put "x"
+     * into item 5 of "a,b" » donne « a,b,,,x ». Pour char et word, on ajoute
+     * simplement à la fin, avec une espace pour les mots.
+     *
+     * CE N'EST PAS UN CAPRICE, ET CE N'EST PLUS UNE AFFIRMATION. La règle est
+     * : on remplit là où le morceau vide EXISTE, on ajoute là où il ne peut
+     * pas exister. Mesuré dans tests/harnais/chunkdebordement.c §4 :
+     *
+     *     put "X" into line 5 of "Sun"          -> 5 lignes, line 5 rend X
+     *     put "X" into item 5 of "a,b"          -> 5 items,  item 5 rend X
+     *     put "X" into word 99 of "Sun Mon Tue" -> 4 mots,   word 4 rend X
+     *
+     * Un mot vide n'existe pas : le séparateur des mots est une SUITE
+     * d'espaces, et deux espaces côte à côte ne délimitent aucun mot entre
+     * eux. Les 96 espaces posés à la main sont dans le harnais : le texte
+     * pèse 108 octets au lieu de 13, et il compte toujours QUATRE mots. Le
+     * remplissage ne rendrait donc pas « word 99 » lisible — il ne rendrait
+     * rien du tout —, et l'ajout est celui des deux qui ne laisse pas 95
+     * espaces derrière lui. Le caractère, lui, n'a pas de séparateur : il n'y
+     * a rien à poser entre deux.
+     *
+     * Ce qu'HyperCard fait EXACTEMENT pour les mots — ajouter, ou remplir
+     * inutilement — n'est pas mesuré ; la longueur le dirait, 13 contre 108.
+     * Le comportement observable est le même des deux côtés. */
     int existants = hct_chunk_compte(s, sorte, delim);
     /* Le séparateur à INSÉRER. Une chaîne, comme celui sur lequel on découpe :
      * étendre « aébéc » avec un délimiteur « é » doit poser l'é entier, pas

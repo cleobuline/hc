@@ -131,6 +131,61 @@ int main(void)
             "  put the number of items of v & \" items, \" "
             "& the length of v & \" octets\"");
 
+    /* ── 4. POURQUOI MOT ET CARACTERE NE SE REMPLISSENT PAS ───────────────
+     *
+     * Les trois sections ci-dessus ne parlent que d'items et de lignes. Le
+     * code, lui, traite les mots et les caracteres AUTREMENT : il ajoute a la
+     * fin au lieu de creer les morceaux manquants. C'etait ecrit dans un
+     * commentaire, sans mesure, et personne ne l'exercait.
+     *
+     *     put "X" into word 99 of "Sun Mon Tue"   ->  Sun Mon Tue X
+     *
+     * « il manque 97 espaces » est la remarque qui vient, et la reponse est
+     * qu'ils ne serviraient a RIEN : on les pose ici a la main, et le compte
+     * de mots ne bouge pas d'un cran. Un mot VIDE n'existe pas — le
+     * separateur des mots est une SUITE d'espaces, et deux espaces cote a cote
+     * ne delimitent aucun mot entre eux.
+     *
+     * D'ou la regle, qui n'est pas un caprice : on remplit la ou le morceau
+     * vide EXISTE — un item vide, une ligne vide, ca se compte et ca se
+     * relit — et l'on ajoute a la fin la ou il ne peut pas exister. Pour les
+     * lignes et les items, « put X into line 5 » puis « line 5 » rend bien X ;
+     * pour les mots, ni le remplissage ni l'ajout ne le rendraient, et
+     * l'ajout est celui des deux qui ne laisse pas 95 espaces derriere lui.
+     *
+     * CE QUI RESTE NON MESURE, et qui se voit d'une seule ligne : HyperCard
+     * pourrait remplir quand meme, inutilement. La longueur le dirait — 13
+     * octets si l'on ajoute, 108 si l'on remplit. Le COMPORTEMENT observable,
+     * lui, serait le meme des deux cotes : 4 mots, et word 4 qui rend X. */
+    puts("\n== 4. POURQUOI MOT ET CARACTERE NE SE REMPLISSENT PAS ==");
+    execute("put dans word 99 : on ajoute a la fin", 0,
+            "  put \"Sun Mon Tue\" into v\n"
+            "  put \"X\" into word 99 of v\n"
+            "  put \"[\" & v & \"]  \" & the number of words of v & \" mots, \" "
+            "& the length of v & \" octets\"");
+    execute("les 96 espaces poses A LA MAIN ne creent aucun mot", 0,
+            "  put \"Sun Mon Tue\" into v\n"
+            "  repeat 96 times\n    put space after v\n  end repeat\n"
+            "  put \"X\" after v\n"
+            "  put the number of words of v & \" mots, \" & the length of v "
+            "& \" octets\"\n"
+            "  put \"word 4 : [\" & word 4 of v & \"]   word 99 : [\" "
+            "& word 99 of v & \"]\"");
+    execute("la ligne, elle, se relit a son rang", 0,
+            "  put \"Sun\" into v\n"
+            "  put \"X\" into line 5 of v\n"
+            "  put the number of lines of v & \" lignes, line 5 : [\" "
+            "& line 5 of v & \"]\"");
+    execute("et l'item aussi", 0,
+            "  put \"a,b\" into v\n"
+            "  put \"X\" into item 5 of v\n"
+            "  put the number of items of v & \" items, item 5 : [\" "
+            "& item 5 of v & \"]\"");
+    execute("le caractere n'a pas de separateur du tout", 0,
+            "  put \"Sun\" into v\n"
+            "  put \"X\" into char 99 of v\n"
+            "  put \"[\" & v & \"]  \" & the length of v & \" octets\"");
+
     hc_free(st);
     return 0;
 }
