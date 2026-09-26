@@ -3,49 +3,49 @@
    1 find deux mots      : []   HyperCard : trouvé
    2 find chars deux mots: []   HyperCard : trouvé
    3 find string         : []   HyperCard : trouvé
-   4 find whole          : [not found]   HyperCard : not found
+   4 find whole          : [Not found]   HyperCard : Not found
    5 find whole exact    : []   HyperCard : trouvé
-   6 find word partiel   : [not found]   HyperCard : not found
+   6 find word partiel   : [Not found]   HyperCard : Not found
    7 find word entier    : []   HyperCard : trouvé
    8 find ordre inverse  : []   HyperCard : trouvé
 ── 2. LA RECHERCHE EST PAR CARTE, pas par champ
    un mot par champ : []   HyperCard : trouvé
-── 3. « the foundText » rend LE MOT, pas le motif
+── 3. « the foundText » rend LE MOT, et le désignateur dit la COUCHE
    foundText  : beta    HyperCard : beta
-   foundChunk : char 7 to 10 of card field "A"
-   foundField : field "A"
-      (HyperCard ecrit « card field 1 » la ou l'on ecrit le nom :
-       c'est le format du designateur, pas la recherche. Inscrit
-       ici, pas corrige au juge)
+   foundChunk : char 7 to 10 of card field 1
+   foundField : card field 1   (couche + numéro)
+   foundLine  : line 1 of card field 1
 ── 4. RÉPÉTER AVANCE, ET ÇA BOUCLE
    1er : un
    2e  : deux
    3e  : un
-      (HyperCard : carte 1, carte 2, carte 1)
-── 5. UN MOTIF DIFFÉRENT REPART DE LA CARTE COURANTE
-   find delta (neuf)    : un
-   puis alpha (neuf)    : un
-   puis la meme         : deux
-      (une recherche NEUVE ne doit pas heriter du compteur de la
-       precedente : on chercherait a partir d'un endroit que rien
-       n'explique. Seule la REPETITION avance)
-── 6. NAVIGUER AILLEURS : (a) ou (b) ? — À MESURER
-   trouve en   : un
-   depuis trois: un
-      (« un » = HC repart de la carte courante ; « deux » aurait
-       voulu dire qu'il continue son balayage. HyperCard : PAS
-       ENCORE MESURE — voir le commentaire de ce harnais)
+      (HyperCard : carte 1, carte 2, carte 1 — le tour se referme)
+── 5. UN MOTIF NEUF HÉRITE DU CURSEUR — mesuré, contre l'intuition
+   trouvé en            : un
+   motif neuf, ensuite  : deux
+      (HyperCard : « deux ». Il reprend APRÈS la trouvaille
+       précédente, alors que le motif a changé)
+── 6. NAVIGUER AILLEURS NE REMET PAS LE CURSEUR À ZÉRO
+   trouvé en   : un
+   depuis trois: deux
+      (HyperCard : « deux » — il continue son balayage. « un »
+       aurait voulu dire qu'il repart de la carte courante)
 ── 7. RIEN TROUVÉ : le résultat le dit, et foundText se vide
-   result    : [not found]
+   result    : [Not found]   (majuscule : « Not found »)
    foundText : []
 ── 8. « in <champ> » restreint la recherche
-   omeg dans le champ A : [not found]   (omeg est dans B)
+   omeg dans le champ A : [Not found]   (omeg est dans B)
    omeg dans le champ B : []
-── 9. « international » : ACCEPTÉ, pas encore replié
-   result : []   (il s'analyse, et se comporte
-      comme la forme de base — le repli des accents reste A FAIRE)
-── 10. « of marked cards » : ACCEPTÉ, IGNORÉ
-   result : []   (aucune carte n'est marquee,
-      donc HyperCard ne trouverait RIEN. On trouve quand meme :
-      la restriction est ignoree, et c'est inscrit ici pour ne pas
-      croire le chantier fini)
+── 9. LES ACCENTS : la forme de BASE replie, « international » NON
+   1 base, sans accent      : []   HyperCard : trouvé
+   2 international           : [Not found]   HyperCard : Not found
+   3 international, tréma    : [Not found]   HyperCard : Not found
+   4 base, avec accent       : []   HyperCard : trouvé
+── 10. « of marked cards » RESTREINT POUR DE VRAI
+   aucune marquée   : [Not found]   HyperCard : Not found
+   carte deux seule : []   HyperCard : trouvé
+   carte atteinte   : deux   HyperCard : deux
+── 11. « card field » ou « bkgnd field » selon la couche
+   trouvé dans le fond  : bkgnd field 1
+   le morceau           : char 1 to 5 of bkgnd field 1
+   trouvé dans la carte : card field 2

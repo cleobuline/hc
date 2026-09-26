@@ -4,12 +4,12 @@
 == et « the foundChunk » designe bien le motif ==
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
    foundText  : [un mot nu vaut son nom]
-   foundChunk : char 48 to 69 of card field "texte"
-   foundLine  : line 3 of field "texte"
+   foundChunk : char 48 to 69 of card field 1
+   foundLine  : line 3 of card field 1
    relu       : [un mot nu vaut son nom]
 
 == un motif APRES encore plus d'accents ==
-   foundChunk : char 79 to 85 of card field "texte"
+   foundChunk : char 79 to 85 of card field 1
    relu       : [zorglub]
 
 == l'encadre se retire, la reponse demeure ==
@@ -17,5 +17,5 @@
    hc_found_cache rend    : 1  (1 = il y avait a effacer)
    montre apres le clic   : non
    et une seconde fois    : 0  (0 = plus rien a effacer)
-   foundChunk apres le clic : char 79 to 85 of card field "texte"
+   foundChunk apres le clic : char 79 to 85 of card field 1
    relu : [zorglub]

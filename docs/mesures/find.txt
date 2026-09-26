@@ -195,3 +195,88 @@ ATTENTION EN LE TAPANT
 · « unmark all cards » et « mark this card » existent dans HyperCard 2.x ;
   si ta version les refuse, saute le bloc E et dis-le
 · le champ R doit être VIDE au départ, sinon son contenu se fait trouver
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — les deux colonnes, puis les verdicts
+═══════════════════════════════════════════════════════════════════════════
+
+Joué dans HyperCard (Basilisk II) et dans HC. La pile d'HyperCard comptait
+plus de trois cartes, donc les NUMÉROS de carte des deux colonnes ne se
+comparent pas ligne à ligne ; ce qui se compare, et ce qui décide, c'est le
+MOUVEMENT : repart-on du début, ou continue-t-on ?
+
+
+HYPERCARD                         HC (avant)          verdict
+────────────────────────────────  ──────────────────  ──────────────────────
+A1..A8   les huit formes          identiques          rien à faire
+B1 B2    carte / champ, « in »    identiques          rien à faire
+C2 foundChunk  char .. of         char .. of          FORMAT DIFFÉRENT
+         bkgnd field 1              field "T"
+C3 foundField  bkgnd field 1      field "T"           FORMAT DIFFÉRENT
+C4 foundLine   line 1 of          line 1 of           (même format, corrigé
+         bkgnd field 1              field "T"          par le même coup)
+D1 motif neuf            carte 2  carte 1             LE CURSEUR SURVIT
+D2 D3 répétitions        avance   avançait            rien à faire
+D4 après navigation      continue repartait de zéro   LE CURSEUR SURVIT
+E1 aucune marquée      Not found  trouvait quand même CLAUSE IGNORÉE
+E3 carte atteinte        carte 2  n'importe laquelle  CLAUSE IGNORÉE
+F1 « eleve » sans accent  trouvé  not found           LA BASE REPLIE
+F2 international       Not found  trouvait            INTERNATIONAL NE
+F3 international, tréma Not found trouvait             REPLIE PAS
+F4 « élève » avec accent  trouvé  trouvé              rien à faire
+G1 rien trouvé         Not found  not found           MAJUSCULE
+G2 foundText se vide       vide   vide                rien à faire
+
+
+LES CINQ DIVERGENCES, ET CE QU'ELLES COÛTAIENT
+----------------------------------------------
+
+1. LE DÉSIGNATEUR. « the foundField » rendait un NOM nu, sans la couche. Deux
+   champs du même nom, l'un sur la carte l'autre sur le fond, se confondaient,
+   et une pile qui relit le désignateur pour y écrire visait le mauvais.
+
+2. « Not found » PORTE UNE MAJUSCULE. Une pile qui compare « the result » à la
+   chaîne exacte — c'est la façon normale de tester une recherche — se
+   trompait à tous les coups.
+
+3. « of marked cards » ÉTAIT IGNORÉ. La recherche trouvait des cartes que la
+   pile n'avait pas demandées, en silence.
+
+4. LES ACCENTS À L'ENVERS. C'est la forme DE BASE qui replie — « find "eleve" »
+   trouve « élève » — et « international » qui compare octet à octet. On avait
+   supposé le contraire, et c'était écrit dans le harnais comme un chantier
+   ouvert : une supposition inscrite comme un trou.
+
+5. LE CURSEUR NE SE REMET JAMAIS À ZÉRO. Ni la navigation ni le changement de
+   motif ne le ramènent au début. HC remettait à zéro dans les deux cas.
+
+
+ET UN SIXIÈME DÉFAUT, QUE SEUL LE BANC POUVAIT VOIR
+---------------------------------------------------
+
+Le balayage ne REBOUCLAIT PAS dans la carte de départ. Il la visitait une
+seule fois, et sous la restriction du curseur : le début de cette carte
+n'était donc jamais revu, et une recherche relancée juste après une trouvaille
+dans la même carte rendait « Not found » là où HyperCard reboucle. Les onze
+mesures d'origine ne touchaient pas ce cas — il a fallu enchaîner deux
+recherches différentes dans une même carte pour qu'il apparaisse.
+
+Il est né de la correction n° 5 : le curseur, à peine posé, empêchait de
+revenir en arrière là où il fallait. C'est la trace habituelle — on corrige, et
+il faut remesurer le voisin.
+
+
+CE QUI RESTE NON MESURÉ, et qui n'est donc pas prétendu
+------------------------------------------------------
+
+· Une recherche qui ÉCHOUE remet-elle le curseur à zéro ? HC le fait, parce
+  que son curseur n'est rien d'autre que la dernière trouvaille et que
+  « the foundText » se vide — ça, c'est mesuré. Ce qu'HyperCard fait de son
+  curseur après un échec, personne ne l'a regardé.
+
+· « the selectedChunk » rend encore un nom nu — « char 1 to 2 of card field
+  "x" » — alors que « the foundChunk » rend désormais le numéro. C'est le SITE
+  JUMEAU du n° 1, et il n'est pas corrigé parce qu'il n'est pas mesuré :
+  HyperCard écrit probablement « card field 1 » là aussi, mais probablement ne
+  suffit pas.

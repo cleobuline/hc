@@ -12,14 +12,14 @@
   set the dontSearch of card "Trois" to true
   find "aiguille"
   put the short name of this card & "/" & the result
-   Une/not found
+   Une/Not found
 ── go to card "Une"
   set the dontSearch of card "Deux" to false
   set the dontSearch of card "Trois" to false
   set the dontSearch of bg "F" to true
   find "aiguille"
   put the short name of this card & "/" & the result
-   Une/not found
+   Une/Not found
 ── set the dontSearch of bg "F" to false
   put the dontSearch of bg "F"
    false

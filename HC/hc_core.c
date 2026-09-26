@@ -1246,6 +1246,46 @@ static Object *g_found_card  = NULL;
  * recherche neuve. */
 static char    g_find_motif[256] = "";
 
+/* LE DÉSIGNATEUR D'UN CHAMP TROUVÉ, tel que HyperCard l'écrit.
+ *
+ * MESURÉ, sur un champ de fond NOMMÉ « T » :
+ *
+ *     the foundChunk  ->  char 7 to 10 of bkgnd field 1
+ *     the foundField  ->  bkgnd field 1
+ *     the foundLine   ->  line 1 of bkgnd field 1
+ *
+ * Trois choses s'en déduisent, et HC les manquait toutes les trois :
+ *
+ *   · LE NUMÉRO, PAS LE NOM, même quand le champ EST nommé. HC écrivait
+ *     « field "T" ». Un script qui compare le foundField à un désignateur
+ *     qu'il a construit lui-même ne pouvait donc pas tomber juste.
+ *   · « bkgnd », pas « bg ». C'est l'abréviation qu'HyperCard affiche.
+ *   · LA COUCHE EST TOUJOURS LÀ, y compris pour foundField — HC l'omettait
+ *     là et la mettait dans foundChunk, ce qui faisait deux réponses
+ *     incohérentes à la même question.
+ *
+ * Le numéro compte les CHAMPS seuls, pas les parts : hc_part_number mêle les
+ * boutons aux champs, et « field 1 » ne veut pas dire la même chose. */
+static int find_numero_champ(Object *fl)
+{
+    if (!fl || !fl->owner) return 0;
+    int n = 0;
+    for (int i = 0; i < fl->owner->nparts; i++) {
+        Object *p = fl->owner->parts[i];
+        if (p->type != OBJ_FIELD) continue;
+        n++;
+        if (p == fl) return n;
+    }
+    return 0;
+}
+
+static void find_designe(Object *fl, char *out, int outlen)
+{
+    if (!fl) { if (outlen > 0) out[0] = 0; return; }
+    snprintf(out, (size_t)outlen, "%s field %d",
+             hc_owner_is_bg(fl) ? "bkgnd" : "card", find_numero_champ(fl));
+}
+
 /* LA BOÎTE EST MONTRÉE, OU ELLE NE L'EST PLUS — et c'est autre chose que
  * « quelque chose a été trouvé ».
  *
@@ -5733,24 +5773,27 @@ static int call_function_body(const char *t, char *out, int outlen)
             if (!g_found_field || g_found_len <= 0) {
                 snprintf(out, outlen, "%s", ""); return 1;
             }
+            /* LE SITE JUMEAU. Les trois propriétés se lisent par DEUX
+             * chemins — celui-ci par le nom, l'autre par l'arbre v3 — et
+             * corriger l'un sans l'autre aurait donné deux réponses
+             * différentes à la même question selon la façon de la poser. */
             char d[96];
-            hc_describe(g_found_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            find_designe(g_found_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start + g_found_len),
-                     hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+                     d);
             return 1;
         }
         if (ci_equal(name, "foundfield")) {
-            if (g_found_field) hc_describe(g_found_field, out, outlen);
-            else snprintf(out, outlen, "%s", "");
+            find_designe(g_found_field, out, outlen);
             return 1;
         }
         if (ci_equal(name, "foundline")) {
             if (g_found_field && g_found_line > 0) {
-                char d[96]; hc_describe(g_found_field, d, sizeof d);
+                char d[96]; find_designe(g_found_field, d, sizeof d);
                 snprintf(out, outlen, "line %d of %s", g_found_line, d);
             } else snprintf(out, outlen, "%s", "");
             return 1;
@@ -9003,27 +9046,26 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     if (ci_equal(nom, "foundchunk")) {
         if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
         char d[96];
-        hc_describe(g_found_field, d, sizeof d);
+        find_designe(g_found_field, d, sizeof d);
         char petit[160];
-        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+        snprintf(petit, sizeof petit, "char %d to %d of %s",
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start + g_found_len),
-                 hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+                 d);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundfield")) {
         char petit[96];
-        if (g_found_field) hc_describe(g_found_field, petit, sizeof petit);
-        else petit[0] = '\0';
+        find_designe(g_found_field, petit, sizeof petit);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundline")) {
         if (g_found_field && g_found_line > 0) {
-            char d[96]; hc_describe(g_found_field, d, sizeof d);
+            char d[96]; find_designe(g_found_field, d, sizeof d);
             char petit[128];
             snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
             *out = hct_val_texte(petit);
@@ -10601,6 +10643,85 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
  * porte annoncée et non percée est ce qu'on a passé la journée à débusquer,
  * il n'est pas question d'en ouvrir une de plus en silence. */
 
+/* REPLIER LES ACCENTS, ET C'EST LA FORME DE BASE QUI LE FAIT.
+ *
+ * MESURÉ, sur un champ contenant « élève à Noël » :
+ *
+ *     find "eleve"                 trouvé
+ *     find international "eleve"   Not found
+ *     find "élève"                 trouvé
+ *
+ * C'EST L'INVERSE DE CE QU'ON AVAIT ÉCRIT. Le harnais annonçait
+ * « international = repli des accents, pas encore fait ». La mesure dit le
+ * contraire : la forme de BASE replie, et « international » compare
+ * strictement. Encore une déduction prise pour un relevé.
+ *
+ * LE REPLI EST SUR L'UTF-8 DIRECTEMENT, sans table de 256 entrées : les
+ * lettres latines accentuées vivent toutes dans les blocs C3 80..C3 BF et
+ * C4..C5, et l'on n'a besoin que de leur rendre leur lettre de base. Ce qui
+ * n'est pas une lettre latine accentuée passe tel quel — un idéogramme ou un
+ * caractère cyrillique se compare octet à octet, ce qui est le bon défaut :
+ * on ne sait pas replier ce qu'on ne connaît pas.
+ *
+ * On travaille sur des COPIES repliées plutôt que de replier à la volée
+ * pendant la comparaison : les offsets rendus par la recherche doivent rester
+ * ceux du texte D'ORIGINE, sinon foundChunk désignerait une position dans un
+ * texte qui n'existe nulle part. Replier change la longueur — « é » pèse deux
+ * octets, « e » un seul —, donc il faut aussi savoir revenir. */
+static const char *find_pli_utf8(const unsigned char *p, int *avance)
+{
+    /* Rend la lettre de base d'un caractère accentué, ou NULL. */
+    *avance = 1;
+    if (p[0] < 0x80) return NULL;
+    if (p[0] == 0xC3 && p[1]) {
+        *avance = 2;
+        unsigned char c = p[1];
+        /* À-Å / à-å */ if ((c >= 0x80 && c <= 0x85) || (c >= 0xA0 && c <= 0xA5))
+            return (c < 0xA0) ? "A" : "a";
+        /* Ç / ç   */ if (c == 0x87) return "C";
+        if (c == 0xA7) return "c";
+        /* È-Ë / è-ë */ if ((c >= 0x88 && c <= 0x8B)) return "E";
+        if ((c >= 0xA8 && c <= 0xAB)) return "e";
+        /* Ì-Ï / ì-ï */ if ((c >= 0x8C && c <= 0x8F)) return "I";
+        if ((c >= 0xAC && c <= 0xAF)) return "i";
+        /* Ñ / ñ   */ if (c == 0x91) return "N";
+        if (c == 0xB1) return "n";
+        /* Ò-Ö / ò-ö */ if ((c >= 0x92 && c <= 0x96)) return "O";
+        if ((c >= 0xB2 && c <= 0xB6)) return "o";
+        /* Ù-Ü / ù-ü */ if ((c >= 0x99 && c <= 0x9C)) return "U";
+        if ((c >= 0xB9 && c <= 0xBC)) return "u";
+        /* Ý / ý ÿ */ if (c == 0x9D) return "Y";
+        if (c == 0xBD || c == 0xBF) return "y";
+        return NULL;
+    }
+    return NULL;
+}
+
+/* Replie `src` dans `dst`, et note pour chaque octet de `dst` d'où il vient
+ * dans `src`. C'est cette carte qui permet de rendre un offset D'ORIGINE
+ * après avoir cherché dans le texte replié. */
+static int find_replie(const char *src, char *dst, int *carte, int max)
+{
+    const unsigned char *p = (const unsigned char *)src;
+    int j = 0;
+    for (int i = 0; p[i] && j < max - 1; ) {
+        int av = 1;
+        const char *base = find_pli_utf8(p + i, &av);
+        if (base) {
+            for (const char *b = base; *b && j < max - 1; b++) {
+                dst[j] = *b; carte[j] = i; j++;
+            }
+        } else {
+            dst[j] = (char)p[i]; carte[j] = i; j++;
+            av = 1;
+        }
+        i += av;
+    }
+    dst[j] = 0;
+    carte[j] = (int)strlen(src);
+    return j;
+}
+
 /* Un mot du texte commence-t-il ici ? */
 static int find_debut_mot(const char *tx, const char *q)
 {
@@ -10629,31 +10750,123 @@ static void find_mot_autour(const char *tx, const char *hit, size_t plen,
 /* Chercher UN morceau de motif dans un texte.
  * mode 0 = début de mot, 1 = n'importe où, 2 = mot entier.
  * Rend la position, ou NULL. */
-static const char *find_dans_texte(const char *tx, const char *pat, int mode)
+static const char *find_dans_texte(const char *tx, const char *pat, int mode,
+                                   int replier, int depuis)
 {
     size_t plen = strlen(pat);
     if (!plen) return NULL;
-    for (const char *q = tx; *q; q++) {
-        if (mode != 1 && !find_debut_mot(tx, q)) continue;
-        if (strncasecmp(q, pat, plen) != 0) continue;
-        if (mode == 2 && !find_fin_mot(q + plen)) continue;
-        return q;
+
+    /* SANS REPLI — « find international » —, on compare le texte tel quel.
+     * C'est le chemin le plus court, et c'est aussi celui qui garde les
+     * offsets sans rien calculer. */
+    if (!replier) {
+        for (const char *q = tx; *q; q++) {
+            if (q - tx < depuis) continue;
+            if (mode != 1 && !find_debut_mot(tx, q)) continue;
+            if (strncasecmp(q, pat, plen) != 0) continue;
+            if (mode == 2 && !find_fin_mot(q + plen)) continue;
+            return q;
+        }
+        return NULL;
     }
-    return NULL;
+
+    /* AVEC REPLI, on cherche dans une COPIE repliée et l'on rend l'offset
+     * D'ORIGINE grâce à la carte. Chercher directement dans le texte replié
+     * et rendre son offset désignerait une position dans un texte qui
+     * n'existe nulle part — foundChunk pointerait à côté dès le premier
+     * accent. */
+    size_t n = strlen(tx);
+    if (n > 8192) n = 8192;
+    char *ftx = malloc(n * 2 + 2);
+    int  *car = malloc((n * 2 + 2) * sizeof *car);
+    char  fpat[256];
+    int   cpat[256];
+    if (!ftx || !car) { free(ftx); free(car); return NULL; }
+    find_replie(tx, ftx, car, (int)(n * 2 + 2));
+    find_replie(pat, fpat, cpat, (int)sizeof fpat);
+
+    size_t fplen = strlen(fpat);
+    const char *res = NULL;
+    if (fplen) {
+        for (const char *q = ftx; *q; q++) {
+            if (car[q - ftx] < depuis) continue;
+            if (mode != 1 && !find_debut_mot(ftx, q)) continue;
+            if (strncasecmp(q, fpat, fplen) != 0) continue;
+            if (mode == 2 && !find_fin_mot(q + fplen)) continue;
+            res = tx + car[q - ftx];
+            break;
+        }
+    }
+    free(ftx); free(car);
+    return res;
 }
 
 /* Chercher une PHRASE contiguë. mode 3 = n'importe où, 4 = aux frontières. */
-static const char *find_phrase(const char *tx, const char *pat, int mode)
+static const char *find_phrase(const char *tx, const char *pat, int mode,
+                               int replier, int depuis)
 {
     size_t plen = strlen(pat);
     if (!plen) return NULL;
-    for (const char *q = tx; *q; q++) {
-        if (strncasecmp(q, pat, plen) != 0) continue;
-        if (mode == 4 && (!find_debut_mot(tx, q) || !find_fin_mot(q + plen)))
-            continue;
-        return q;
+
+    if (!replier) {
+        for (const char *q = tx; *q; q++) {
+            if (q - tx < depuis) continue;
+            if (strncasecmp(q, pat, plen) != 0) continue;
+            if (mode == 4 && (!find_debut_mot(tx, q) || !find_fin_mot(q + plen)))
+                continue;
+            return q;
+        }
+        return NULL;
     }
-    return NULL;
+
+    size_t n = strlen(tx);
+    if (n > 8192) n = 8192;
+    char *ftx = malloc(n * 2 + 2);
+    int  *car = malloc((n * 2 + 2) * sizeof *car);
+    char  fpat[256];
+    int   cpat[256];
+    if (!ftx || !car) { free(ftx); free(car); return NULL; }
+    find_replie(tx, ftx, car, (int)(n * 2 + 2));
+    find_replie(pat, fpat, cpat, (int)sizeof fpat);
+
+    size_t fplen = strlen(fpat);
+    const char *res = NULL;
+    if (fplen) {
+        for (const char *q = ftx; *q; q++) {
+            if (car[q - ftx] < depuis) continue;
+            if (strncasecmp(q, fpat, fplen) != 0) continue;
+            if (mode == 4 && (!find_debut_mot(ftx, q) || !find_fin_mot(q + fplen)))
+                continue;
+            res = tx + car[q - ftx];
+            break;
+        }
+    }
+    free(ftx); free(car);
+    return res;
+}
+
+/* LE RANG DU CHAMP DANS L'ORDRE OÙ LA RECHERCHE LE PARCOURT : les champs de
+ * carte d'abord, ceux du fond ensuite. Comparer deux rangs dit lequel a déjà
+ * été dépassé, et les champs déjà dépassés dans la carte de reprise ne se
+ * refouillent pas — sans ça un champ situé plus tôt dans la liste ramènerait
+ * le curseur en arrière et « find » tournerait en rond entre deux champs.
+ *
+ * La première version comparait les positions DANS UNE SEULE COUCHE, et se
+ * trompait dès que le curseur et le champ examiné n'étaient pas de la même :
+ * un champ de fond était déclaré « avant » un champ de carte alors que la
+ * recherche le voit après, si bien qu'une moitié de la carte de reprise était
+ * sautée. Un rang unique pour les deux couches supprime la question. */
+static int find_rang_champ(Object *cd, Object *fl)
+{
+    int r = 0;
+    Object *couches[2] = { cd, cd ? cd->bg : NULL };
+    for (int L = 0; L < 2; L++) {
+        Object *lay = couches[L];
+        if (!lay) continue;
+        for (int i = 0; i < lay->nparts; i++, r++)
+            if (lay->parts[i] == fl) return r;
+    }
+    return -1;
 }
 
 /* Le champ est-il cherchable, et fait-il partie de la restriction « in » ? */
@@ -10693,6 +10906,9 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     int mode = 0;   /* 0 début de mot, 1 n'importe où, 2 mot entier,
                        3 phrase n'importe où, 4 phrase aux frontières */
     int par_mots = 1;
+    /* LA FORME DE BASE REPLIE LES ACCENTS, « international » NON. C'est la
+     * mesure, et c'est l'inverse de ce qu'on avait supposé. */
+    int international = 0;
     for (;;) {
         const char *apres = NULL;
         if      (ci_word(r, "characters") || ci_word(r, "character") ||
@@ -10700,11 +10916,43 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         else if (ci_word(r, "words") || ci_word(r, "word"))  { mode = 2; }
         else if (ci_word(r, "string")) { mode = 3; par_mots = 0; }
         else if (ci_word(r, "whole"))  { mode = 4; par_mots = 0; }
-        else if (ci_word(r, "international")) { /* accepté, pas encore replié */ }
+        else if (ci_word(r, "international")) { international = 1; }
         else break;
         apres = r;
         while (*apres && !isspace((unsigned char)*apres)) apres++;
         r = skip_spaces(apres);
+    }
+
+    /* « OF MARKED CARDS » : RESTREINDRE AUX CARTES MARQUÉES.
+     *
+     * MESURÉ : sans aucune carte marquée, HyperCard rend « Not found » ;
+     * avec la carte 2 marquée, il la trouve et s'y rend. HC ACCEPTAIT la
+     * clause et l'IGNORAIT — une pile qui s'en sert trouvait donc des cartes
+     * qu'elle n'avait pas demandées, et rien ne le disait.
+     *
+     * On coupe la clause du motif avant de l'évaluer : « find "x" of marked
+     * cards » aurait sinon cherché la chaîne « x of marked cards ». */
+    int marquees_seules = 0;
+    {
+        int inq2 = 0;
+        for (const char *q = r; *q; q++) {
+            if (*q == '"') { inq2 = !inq2; continue; }
+            if (inq2) continue;
+            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "of")) {
+                const char *ap = skip_spaces(q + 2);
+                if (ci_word(ap, "marked")) {
+                    marquees_seules = 1;
+                    /* tronquer le motif ici : on recopie ce qui précède */
+                    static char coupe[256];
+                    int l = (int)(q - r);
+                    if (l > (int)sizeof coupe - 1) l = (int)sizeof coupe - 1;
+                    memcpy(coupe, r, (size_t)l);
+                    coupe[l] = 0;
+                    r = coupe;
+                    break;
+                }
+            }
+        }
     }
 
     /* séparer le motif de l'éventuel « in <champ> » */
@@ -10726,11 +10974,11 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     } else {
         eval_expr(r, pat, sizeof pat);
     }
-    if (!pat[0]) { set_result("not found"); g_atop = sauve; return 1; }
+    if (!pat[0]) { set_result("Not found"); g_atop = sauve; return 1; }
 
     Object *stack = g_current_card ? g_current_card->owner : NULL;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
-    if (!stack) { set_result("not found"); g_atop = sauve; return 1; }
+    if (!stack) { set_result("Not found"); g_atop = sauve; return 1; }
 
     /* LE MOTIF DÉCOUPÉ EN MOTS, pour les trois formes qui le font. */
     char morceaux[16][64];
@@ -10749,24 +10997,67 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         }
     }
     if (par_mots && nmorceaux == 0) {
-        set_result("not found"); g_atop = sauve; return 1;
+        set_result("Not found"); g_atop = sauve; return 1;
     }
 
     int total = card_count(stack);
     int start = card_index(stack, g_current_card);
     if (start < 0) start = 0;
 
-    /* AVANCER SI C'EST LA MÊME RECHERCHE. Voir la note sur g_find_motif :
-     * mesuré chez HyperCard, répéter « find » passe à l'occurrence suivante
-     * et boucle. */
-    if (g_found_card == g_current_card && g_found_card &&
-        strcmp(g_find_motif, pat) == 0)
-        start = (start + 1) % (total > 0 ? total : 1);
+    /* UN CURSEUR, PAS UN « RECOMMENCER ». Et la première version de ce code
+     * avait la règle fausse.
+     *
+     * On avait écrit : « on avance si c'est la même recherche et qu'on est
+     * resté sur la carte trouvée ». C'était un RAISONNEMENT, et le banc de
+     * mesure l'a démoli d'une ligne. Sur une pile où la carte 1 contient
+     * « alpha » :
+     *
+     *     find "bet alph"   -> trouve « beta », char 7 à 10 de la carte 1
+     *     go to card 1
+     *     find "alpha"      -> HyperCard rend la carte 2, PAS la carte 1
+     *
+     * Motif différent, et pourtant il ne repart pas du début. Il reprend
+     * APRÈS le caractère 10 : le reste du champ n'a pas d'« alpha », donc il
+     * passe à la carte suivante. Et « go to card 3 » entre deux recherches
+     * identiques n'y change rien non plus — il continue de là où il en était.
+     *
+     * LE MODÈLE EST DONC : un seul curseur — champ, position —, avancé après
+     * chaque trouvaille, que NI la navigation NI le changement de motif ne
+     * remettent à zéro. C'est plus simple que ce qu'on avait imaginé, et
+     * c'est ce qui rend « find » utilisable en tapant Retour : on parcourt
+     * toutes les occurrences, une par une, sans jamais revenir en arrière.
+     *
+     * g_find_motif ne sert donc plus à décider, seulement à la trace. */
+    Object  *reprise_carte  = NULL;
+    Object  *reprise_champ  = NULL;
+    int      reprise_offset = 0;
+    if (g_found_card && card_index(stack, g_found_card) >= 0) {
+        reprise_carte  = g_found_card;
+        reprise_champ  = g_found_field;
+        reprise_offset = g_found_start + g_found_len;
+        start = card_index(stack, g_found_card);
+        if (start < 0) start = 0;
+    }
     snprintf(g_find_motif, sizeof g_find_motif, "%s", pat);
 
-    for (int k = 0; k < total; k++) {
+    /* UN TOUR DE PISTE, PLUS LE RETOUR DANS LA CARTE DE DÉPART.
+     *
+     * MESURÉ : trois « find "alpha" » d'affilée sur une pile de trois cartes
+     * donnent carte 1, carte 2, carte 1 — ÇA BOUCLE. Or le balayage ne
+     * visitait la carte de reprise qu'UNE fois, et sous la restriction du
+     * curseur : le début de cette carte n'était donc jamais revu, et la
+     * recherche rendait « Not found » là où HyperCard rebouclait. C'est ce qui
+     * faisait échouer « find chars "ph be" » juste après une trouvaille dans
+     * la même carte.
+     *
+     * Une passe de plus, sans la restriction, ferme le cercle. La restriction
+     * ne vaut donc que pour la PREMIÈRE visite (k == 0). */
+    int passes = reprise_carte ? total + 1 : total;
+
+    for (int k = 0; k < passes; k++) {
         Object *cd = nth_card(stack, (start + k) % total);
         if (!cd) continue;
+        int restreint = (k == 0 && reprise_carte != NULL);
 
         /* « Don't Search This Card » : on saute la carte ENTIÈRE, et pas
          * seulement tel ou tel champ. Le verrou du FOND vaut pour toutes ses
@@ -10774,6 +11065,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
          * d'index hors des résultats sans avoir à cocher chaque champ. */
         if (cd->dont_search) continue;
         if (cd->bg && cd->bg->dont_search) continue;
+        if (marquees_seules && !cd->marked) continue;
 
         Object *layers[2] = { cd, cd->bg };
         Object *trouve_fl = NULL;
@@ -10797,7 +11089,22 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                         Object *fl = lay->parts[i];
                         if (!find_champ_ok(fl, where)) continue;
                         const char *tx = hc_field_text(fl);
-                        const char *hit = find_dans_texte(tx, morceaux[m], mode);
+                        /* LE CURSEUR NE VAUT QUE POUR LE PREMIER MORCEAU.
+                         * Les suivants ne servent qu'à dire si la CARTE
+                         * convient — les exiger après le curseur eux aussi
+                         * rendrait « find "gam bet" » dépendant de l'ordre,
+                         * alors qu'il est mesuré comme n'en ayant pas. */
+                        int plancher = 0;
+                        if (restreint && m == 0) {
+                            if (fl == reprise_champ) plancher = reprise_offset;
+                            else {
+                                int rf = find_rang_champ(cd, fl);
+                                int rr = find_rang_champ(cd, reprise_champ);
+                                if (rr >= 0 && rf >= 0 && rf < rr) continue;
+                            }
+                        }
+                        const char *hit = find_dans_texte(tx, morceaux[m], mode,
+                                                          !international, plancher);
                         if (!hit) continue;
                         vu = 1;
                         /* C'est le PREMIER morceau du motif qui est désigné
@@ -10820,7 +11127,17 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     Object *fl = lay->parts[i];
                     if (!find_champ_ok(fl, where)) continue;
                     const char *tx = hc_field_text(fl);
-                    const char *hit = find_phrase(tx, pat, mode);
+                    int plancher = 0;
+                    if (restreint) {
+                        if (fl == reprise_champ) plancher = reprise_offset;
+                        else {
+                            int rf = find_rang_champ(cd, fl);
+                            int rr = find_rang_champ(cd, reprise_champ);
+                            if (rr >= 0 && rf >= 0 && rf < rr) continue;
+                        }
+                    }
+                    const char *hit = find_phrase(tx, pat, mode, !international,
+                                                  plancher);
                     if (!hit) continue;
                     ok = 1;
                     trouve_fl  = fl;
@@ -10875,7 +11192,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
     g_found_start = g_found_len = 0; g_found_card = NULL;
     g_found_montre = 0;
-    set_result("not found");
+    set_result("Not found");
     g_atop = sauve;
     return 1;
 }

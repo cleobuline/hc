@@ -21,9 +21,9 @@
 
 === find : même règle ===
 ── find "demain" dans "été demain"
-   [demain]  char 5 to 10 of card field "x"
+   [demain]  char 5 to 10 of card field 1
 ── find sur un motif accentué
-   [été]  char 7 to 9 of card field "x"
+   [été]  char 7 to 9 of card field 1
 
 === caractères hors du plan de base : un emoji fait quatre octets ===
 ── select char 2 of "a🐟b"

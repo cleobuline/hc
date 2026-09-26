@@ -9,7 +9,7 @@
 
 === le resultat de la recherche non plus ===
    [toto]
-   [field "x"]
+   [card field 1]
    -- champ supprime --
    []
    []
