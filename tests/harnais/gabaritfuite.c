@@ -43,10 +43,29 @@
  * ces lignes diront d'où vient le 4 et qui l'a mesuré. C'est le genre de
  * comportement qu'on répare par erreur.
  *
- * RESTE UNE QUESTION OUVERTE, et elle est notée telle quelle : chez HC le
- * gabarit traverse aussi les PILES (§4). On n'a pas mesuré si HyperCard le
- * remet à zéro en ouvrant une pile. Si oui, l'écart est là et nulle part
- * ailleurs. */
+ * MESURÉ AUSSI, ET C'ÉTAIT LA DERNIÈRE QUESTION OUVERTE : le gabarit traverse
+ * les PILES chez HyperCard aussi. « set the numberFormat to 0.0 / go to stack
+ * X / put the numberFormat » rend 0.0 là-bas. HC est donc fidèle sur les trois
+ * points — la mise en forme que length() voit, la survie au gestionnaire, la
+ * survie au changement de pile. Rien à corriger.
+ *
+ * POURQUOI ÇA SE VOIT AUJOURD'HUI ET PAS AVANT, car c'est la vraie histoire.
+ * Le piège était armé depuis toujours et n'avait jamais été déclenché : le
+ * traceur polaire qui pose le gabarit ne TERMINAIT PAS. Sous 0.6.9.3, son
+ * « add theInt to t » était remis en forme à chaque tour, t restait à zéro, et
+ * « repeat until t > 2*pi » partait à dix millions de tours avant de se faire
+ * couper. Mesuré sur les deux versions, même script :
+ *
+ *     HC-0.6.9.3   tours = 2001   t = 0.0        la boucle s'emballe
+ *     aujourd'hui  tours = 289    t = 6.305113   elle finit
+ *
+ * En réparant l'accumulation on a donné au piège son premier détonateur. Une
+ * pile réparée en empoisonne une autre, et aucune des deux n'a tort.
+ *
+ * ET AUCUNE SUITE DE TESTS NE POUVAIT L'ATTRAPER : chaque harnais tourne dans
+ * son propre processus, donc aucun n'hérite du gabarit d'un autre. Le défaut
+ * n'existe qu'entre deux piles, dans une même session. C'est pour ça qu'il a
+ * fallu une vraie pile, une vraie session, et une mesure prise dedans. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -76,16 +95,15 @@ int main(void){
    "  put \"relu dans un gestionnaire suivant : [\" & the numberFormat & \"]\"\n"
    "  put \"   HyperCard : 0.0 aussi — mesure au bouton\"");
 
-  /* §4 — LA SEULE CHOSE QUI RESTE À MESURER. On l'inscrit pour ne pas croire
-   * le dossier clos : chez HC le gabarit traverse les piles. Si HyperCard le
-   * remet à zéro en ouvrant une pile, l'écart est là. */
-  printf("── 4. et il traverse meme les PILES (A CONFIRMER chez HyperCard)\n");
+  /* §4 — MESURÉ DES DEUX CÔTÉS. C'était la dernière question ouverte du
+   * dossier ; elle ne l'est plus. */
+  printf("── 4. et il traverse meme les PILES : HyperCard pareil\n");
   Object *st2=hc_new_stack("B");Object *bg2=hc_new_background(st2,"F2");
   Object *c2=hc_new_card(st2,bg2,"v");
   Object *b2=hc_new_button(c2,"B2");hc_set_current_card(c2);
   hc_set_script(b2,"on t\n"
     "  put \"dans une AUTRE pile : [\" & the numberFormat & \"]\"\n"
-    "  put \"   (HyperCard : pas encore mesure)\"\n"
+    "  put \"   HyperCard : 0.0 aussi — mesure par go to stack\"\n"
     "end t\n");
   hc_send(b2,"t");
   hc_set_current_card(c);

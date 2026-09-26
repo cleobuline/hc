@@ -8,9 +8,9 @@
 ── 3. LE GABARIT SURVIT AU GESTIONNAIRE QUI L'A POSE
    relu dans un gestionnaire suivant : [0.0]
       HyperCard : 0.0 aussi — mesure au bouton
-── 4. et il traverse meme les PILES (A CONFIRMER chez HyperCard)
+── 4. et il traverse meme les PILES : HyperCard pareil
    dans une AUTRE pile : [0.0]
-      (HyperCard : pas encore mesure)
+      HyperCard : 0.0 aussi — mesure par go to stack
 ── 5. LE CALCUL DE GRAPH MAKER, tel qu'il est ecrit dans la pile
    sans gabarit : divisor = 100   colWidth = 0.3
    avec 0.0     : divisor = 10000.0  colWidth = 0.0
