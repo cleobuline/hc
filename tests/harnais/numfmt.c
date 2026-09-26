@@ -166,9 +166,11 @@ int main(void){
    * ON LES A CRUES IDENTIQUES DES DEUX CÔTÉS, et on en a conclu que HC était
    * déjà fidèle partout sauf sur un seul chemin : celui où le retour d'une
    * fonction part DIRECTEMENT dans un opérateur. C'ÉTAIT UNE CONCLUSION DE
-   * TROP, et le B en est la cause : il dit que ranger fige, les booléens et
-   * la chaîne de tracé disent que non. La dernière section du harnais expose
-   * la contradiction et dit pourquoi on a suivi les booléens.
+   * TROP, et le B en était la cause : il disait que ranger fige, les booléens
+   * et la chaîne de tracé disaient que non. MESURÉ DEPUIS : HyperCard rend
+   * 14.1, donc le B d'époque était faux et ranger ne fige pas. La dernière
+   * section du harnais garde l'affaire entière, parce que la méthode compte
+   * autant que le chiffre.
    *
    * D'OÙ LA CORRECTION : le texte reste EXACTEMENT celui d'avant — mis en
    * forme à la sortie — et le nombre non arrondi voyage à côté, dans
@@ -249,18 +251,18 @@ int main(void){
    "  set the numberFormat to \"0.000\"\n"
    "  put \"sqrt(2)       -> \" & sqrt(2) & \"   (HyperCard : 1.414)\"");
 
-  /* LA BATTERIE A-E, ET LA SEULE MESURE QUI RESTE EN CONTRADICTION.
+  /* LA BATTERIE A-E, ET COMMENT SON B A ÉTÉ TRANCHÉ.
    *
    * Elle ne figurait que dans un commentaire ; on l'inscrit ici pour qu'elle
-   * soit surveillée, parce que le B a bougé avec ce chantier et qu'il faut
-   * que ça se voie.
+   * soit surveillée, parce que le B a bougé avec ce chantier.
    *
-   * RELEVÉ SOUS HYPERCARD :  A 1.4   B 14.0   C 1.4   D 1.4   E 1.4
-   * HC AUJOURD'HUI :         A 1.4   B 14.1   C 1.4   D 1.4   E 1.4
+   * PREMIER RELEVÉ :  A 1.4   B 14.0   C 1.4   D 1.4   E 1.4
+   * APRÈS MESURE :    A 1.4   B 14.1   C 1.4   D 1.4   E 1.4
    *
-   * LE B EST INCOMPATIBLE AVEC DEUX AUTRES MESURES, et ce n'est pas une
-   * nuance : si « put sqrt(2) into x » figeait le texte « 1.4 » sous le
-   * gabarit 0.0, alors 10*x vaudrait quatorze EXACTEMENT, donc :
+   * LE B D'ÉPOQUE ÉTAIT INCOMPATIBLE AVEC DEUX AUTRES MESURES, et ce n'était
+   * pas une nuance d'arrondi : si « put sqrt(2) into x » figeait le texte
+   * « 1.4 » sous le gabarit 0.0, alors 10*x vaudrait quatorze EXACTEMENT,
+   * donc :
    *
    *     (10*x = 14)  serait  true      — relevé sous HyperCard : false
    *
@@ -268,20 +270,20 @@ int main(void){
    * vérifiée au crayon sur le quatrième point : avec un r figé à une
    * décimale on obtient 412, sans figeage 413. HyperCard donne 413.
    *
-   * DEUX MESURES CONTRE UNE, dont une en grandeur nature sur dix points :
-   * c'est le rangement qui ne fige pas, et « B 14.0 » a dû être lu dans la
-   * fenêtre de HC — la même méprise que « 1/3*3 -> 0.9 » plus haut, prise le
-   * même soir avec les deux fenêtres côte à côte.
+   * ON A SUIVI LES DEUX CONTRE UNE, en le disant, et on a demandé la
+   * contre-mesure plutôt que de clore le dossier. ELLE EST TOMBÉE :
+   * HyperCard rend 14.1. Le « B 14.0 » avait bien été lu dans la fenêtre de
+   * HC — la même méprise que « 1/3*3 -> 0.9 » plus haut, prise le même soir
+   * avec les deux fenêtres côte à côte.
    *
-   * ON NE TRANCHE PAS DÉFINITIVEMENT POUR AUTANT : la référence enregistrée
-   * ci-dessous est ce que HC fait, et la ligne du B porte la valeur d'époque
-   * à côté. Si une nouvelle mesure dans Basilisk II redonne 14.0, c'est tout
-   * le modèle du rangement qu'il faudra reprendre, pas cette ligne. */
-  essai("la batterie A-E : le B attend une contre-mesure",
+   * TROIS VOIES INDÉPENDANTES DISENT DONC LA MÊME CHOSE : les booléens, les
+   * dix points de la chaîne, et maintenant le B lui-même. Ranger dans une
+   * variable ne fige pas la mise en forme. */
+  essai("la batterie A-E : cinq sur cinq, le B compris",
    "  set the numberFormat to \"0.0\"\n"
    "  put sqrt(2) into x\n"
    "  put \"A  x            -> \" & x & \"   HyperCard : 1.4\"\n"
-   "  put \"B  10*x         -> \" & (10*x) & \"   releve d'epoque : 14.0 (douteux)\"\n"
+   "  put \"B  10*x         -> \" & (10*x) & \"   HyperCard : 14.1\"\n"
    "  put \"C  sqrt(2) & _  -> \" & (sqrt(2) & \"\") & \"   HyperCard : 1.4\"\n"
    "  put \"D  sqrt(2)      -> \" & sqrt(2) & \"   HyperCard : 1.4\"\n"
    "  set the numberFormat to empty\n"

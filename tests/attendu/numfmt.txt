@@ -76,9 +76,9 @@
        cercle, d'ou les marches de douze pixels)
 ── l'affichage direct, lui, est conforme
    sqrt(2)       -> 1.414   (HyperCard : 1.414)
-── la batterie A-E : le B attend une contre-mesure
+── la batterie A-E : cinq sur cinq, le B compris
    A  x            -> 1.4   HyperCard : 1.4
-   B  10*x         -> 14.1   releve d'epoque : 14.0 (douteux)
+   B  10*x         -> 14.1   HyperCard : 14.1
    C  sqrt(2) & _  -> 1.4   HyperCard : 1.4
    D  sqrt(2)      -> 1.4   HyperCard : 1.4
    E  gabarit vide -> 1.4   HyperCard : 1.4

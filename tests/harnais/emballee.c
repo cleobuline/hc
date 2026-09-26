@@ -132,14 +132,15 @@ int main(void)
     printf("    leur précision. C'est ce que HC rend maintenant, et c'est\n");
     printf("    cohérent avec les six booléens et la chaîne de tracé.\n");
     printf("\n");
-    printf("    À CONFIRMER DANS BASILISK II, avec exactement ces quatre\n");
-    printf("    lignes. Tant que ce n'est pas fait, la valeur ci-dessous est\n");
-    printf("    celle de HC et de rien d'autre)\n");
+    printf("    CONFIRMÉ DANS BASILISK II, avec exactement ces quatre lignes :\n");
+    printf("    HyperCard rend 1.194 lui aussi. Le modèle tient, et le 1.188\n");
+    printf("    n'a jamais été qu'une valeur de HC recopiée au mauvais\n");
+    printf("    endroit)\n");
     fais("set the numberFormat to \"0.000\"\n"
          "  put \"pi/144 en expression : \" & (pi/144)\n"
          "  put \"(x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5\" into thev\n"
          "  put -31/64 into x\n"
-         "  put \"le modele predit 1.194 (a confirmer) : \" & value(thev)");
+         "  put \"HyperCard : 1.194 -> \" & value(thev)");
 
     printf("=== 7. les quatre commandes d'accumulation, ensemble ===\n");
     printf("   (MESURÉ pour « add » seul. Les trois autres partagent la même\n");
