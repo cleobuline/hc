@@ -1,0 +1,33 @@
+=== 1. une icône neuve est en NOIR ET BLANC ===
+   couleur : non — c'est le défaut
+=== 2. la passer en couleur, et la peindre ===
+   couleurs de la palette : 4
+   pixels non transparents : 394 sur 1024
+=== 3. LA SILHOUETTE se dérive : tout pixel peint est de l'encre ===
+   bits d'encre : 394   (doit égaler le compte ci-dessus)
+   les deux comptes concordent
+=== 4. ALLER-RETOUR par le fichier, pixel par pixel ===
+   nom          : « Terminator »
+   couleur      : retrouvée
+   palette      : 4 entrées, 0 différentes
+   pixels       : 0 différents sur 1024
+   IDENTIQUE au pixel près
+   silhouette   : 394 bits d'encre relus
+=== 5. LES DEUX BLOCS sont dans le fichier ===
+   (iconres pour un binaire d'avant, ciconres pour la couleur :
+    une pile qui gagne de la couleur ne devient pas illisible)
+   iconres  : présent
+   ciconres : présent
+   lignes de pixels : 32   (une par ligne de l'icône)
+=== 6. RETIRER la couleur garde la silhouette ===
+   (l'effacer avec les couleurs ferait disparaître l'icône entière
+    pour qui voulait seulement lui retirer sa couleur)
+   couleur : retirée
+   bits    : 394 avant, 394 après
+=== 7. une icône NOIR ET BLANC n'écrit pas de bloc couleur ===
+   ciconres dans le fichier : non, comme il se doit
+=== 8. UN BLOC ABÎMÉ REFUSE LE FICHIER ===
+   (une image complétée de zéros revient à moitié en silence ;
+    on a décidé une fois pour toutes que ça n'est pas acceptable)
+   relecture : refusée
+   raison    : Une icône de cette pile est incomplète ou abîmée.

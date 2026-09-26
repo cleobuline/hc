@@ -116,12 +116,68 @@ struct BgHilite { int button_id; int hilite; };
  * Le noyau ne sait pas dessiner : ces octets lui sont opaques, comme l'est
  * déjà le base64 de `paint`. */
 #define HC_ICON_BYTES 128
+#define HC_ICON_COTE   32                  /* une icône est carrée */
+#define HC_ICON_PIXELS (HC_ICON_COTE * HC_ICON_COTE)   /* 1024 */
+#define HC_ICON_COULEURS_MAX 256
+
+/* UN CICON : LA MÊME ICÔNE, EN COULEUR.
+ *
+ * Un octet par pixel, index dans la palette de l'icône. L'INDEX 0 EST
+ * TRANSPARENT — c'est ce qui remplace le masque 1 bit d'une ressource cicn du
+ * Macintosh, et ça évite d'avoir deux images à tenir d'accord.
+ *
+ * LA PALETTE APPARTIENT À L'ICÔNE, pas à la pile. Une icône copiée d'une pile
+ * à l'autre emporte donc ses couleurs, comme une ressource cicn emportait sa
+ * table. Le prix est quelques octets répétés entre deux icônes de la même
+ * famille ; le bénéfice est qu'aucune icône ne peut changer de couleurs parce
+ * qu'une autre a été modifiée.
+ *
+ * POURQUOI UN INDEX ET NON DU RVBA DIRECT. Le format de pile est du TEXTE, et
+ * le noyau doit pouvoir tenir un cicon sans savoir dessiner — c'est ce qui
+ * rend la chose testable sous Linux, où tournent les harnais. Un PNG en base64
+ * aurait été plus court à écrire et opaque au noyau : tout le cicon aurait
+ * vécu dans la couche Cocoa, la seule qui n'a aucun test.
+ *
+ * ET LE CHOIX D'UN OCTET PLEIN plutôt que quatre bits : 256 couleurs au lieu
+ * de 16, et surtout aucun dépaquetage de demi-octets. Mille vingt-quatre
+ * octets par icône, écrits en hexadécimal comme les cent vingt-huit du noir et
+ * blanc — une ligne du fichier reste une ligne de l'icône, et le dessin se
+ * devine encore à l'œil nu. */
+struct HcIconCouleur {
+    int           ncouleurs;                             /* 1..HC_ICON_COULEURS_MAX */
+    unsigned char palette[HC_ICON_COULEURS_MAX][3];      /* RVB ; [0] inutilisé */
+    unsigned char pixels[HC_ICON_PIXELS];                /* index, 0 = transparent */
+};
 
 struct StackIcon {
     int           id;
     char         *name;                    /* possédé : libéré par hc_free */
     unsigned char bits[HC_ICON_BYTES];
+
+    /* NULL tant que l'icône est en noir et blanc, et c'est le cas de toutes
+     * celles d'avant. Quand il est posé, `bits` reste JUSTE : il porte la
+     * silhouette, dérivée automatiquement (tout pixel non transparent est de
+     * l'encre). Tout ce qui dessinait une icône avant continue donc de
+     * marcher sans le savoir, et une pile en couleur reste utilisable là où
+     * seul le noir et blanc est disponible. */
+    struct HcIconCouleur *couleur;
 };
+
+/* --- couleur d'une icône ---
+ * hc_icon_couleur      : NULL si l'icône est en noir et blanc.
+ * hc_icon_couleur_cree : la crée si besoin, toute transparente, et la rend.
+ *                        Rend NULL si la mémoire manque.
+ * hc_icon_couleur_ote  : retour au noir et blanc ; `bits` est conservé tel
+ *                        quel, donc la silhouette survit à la perte des
+ *                        couleurs.
+ * hc_icon_silhouette   : redérive `bits` depuis les pixels. Appelée par le
+ *                        noyau après chaque écriture qu'il fait lui-même ;
+ *                        un hôte qui touche `pixels` directement doit
+ *                        l'appeler, sinon la silhouette date. */
+struct HcIconCouleur *hc_icon_couleur(struct StackIcon *ic);
+struct HcIconCouleur *hc_icon_couleur_cree(struct StackIcon *ic);
+void                  hc_icon_couleur_ote(struct StackIcon *ic);
+void                  hc_icon_silhouette(struct StackIcon *ic);
 
 struct Object {
     ObjType  type;

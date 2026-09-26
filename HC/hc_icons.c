@@ -84,9 +84,67 @@ void hc_icon_remove(Object *stack, int id)
     if (!e) return;
 
     free(e->name);
+    free(e->couleur);
     int i = (int)(e - stack->icons);
     memmove(e, e + 1, (size_t)(stack->nicons - i - 1) * sizeof *e);
     stack->nicons--;
+}
+
+/* ---------------------------------------------------------- couleur ---- */
+
+struct HcIconCouleur *hc_icon_couleur(struct StackIcon *ic)
+{
+    return ic ? ic->couleur : NULL;
+}
+
+/* REDÉRIVER LA SILHOUETTE, et c'est ce qui fait tenir tout l'édifice.
+ *
+ * `bits` reste la vérité pour tout ce qui ne sait pas dessiner en couleur :
+ * l'affichage d'un bouton sur un écran en noir et blanc, une pile relue par
+ * un binaire d'avant, et surtout les cent chemins de code qui lisent `bits`
+ * sans se demander s'il y a une couleur à côté. Plutôt que de les convertir
+ * un par un, on garantit que `bits` DIT TOUJOURS LA VÉRITÉ : tout pixel non
+ * transparent est de l'encre.
+ *
+ * La disposition est celle d'une ressource ICON : 32 lignes de 4 octets, bit
+ * de poids fort à gauche. */
+void hc_icon_silhouette(struct StackIcon *ic)
+{
+    if (!ic || !ic->couleur) return;
+    memset(ic->bits, 0, HC_ICON_BYTES);
+    for (int y = 0; y < HC_ICON_COTE; y++)
+        for (int x = 0; x < HC_ICON_COTE; x++)
+            if (ic->couleur->pixels[y * HC_ICON_COTE + x])
+                ic->bits[y * 4 + x / 8] |= (unsigned char)(0x80 >> (x % 8));
+}
+
+struct HcIconCouleur *hc_icon_couleur_cree(struct StackIcon *ic)
+{
+    if (!ic) return NULL;
+    if (ic->couleur) return ic->couleur;
+
+    struct HcIconCouleur *c = calloc(1, sizeof *c);
+    if (!c) return NULL;
+    /* Une palette a toujours au moins son entrée 0, la transparence. Compter
+     * zéro couleur rendrait un bloc de fichier sans aucune ligne « c », et le
+     * relecteur ne saurait pas distinguer « pas encore peinte » de « abîmée ». */
+    c->ncouleurs = 1;
+    ic->couleur = c;
+    /* Les pixels sont tous transparents : la silhouette devient vide, et
+     * c'est juste — une icône en couleur qui n'a rien de peint ne montre
+     * rien. Celle qui vient du noir et blanc se repeint par-dessus. */
+    hc_icon_silhouette(ic);
+    return c;
+}
+
+void hc_icon_couleur_ote(struct StackIcon *ic)
+{
+    if (!ic || !ic->couleur) return;
+    free(ic->couleur);
+    ic->couleur = NULL;
+    /* On NE TOUCHE PAS à `bits` : la silhouette est la dernière trace de ce
+     * qui a été peint, et l'effacer avec les couleurs ferait disparaître
+     * l'icône entière pour qui voulait seulement lui retirer sa couleur. */
 }
 
 /* Pas de « numéro libre » ici : le noyau ne voit que la pile, alors qu'un
@@ -97,7 +155,10 @@ void hc_icon_remove(Object *stack, int id)
 void hc_icons_free(Object *stack)
 {
     if (!is_stack(stack)) return;
-    for (int i = 0; i < stack->nicons; i++) free(stack->icons[i].name);
+    for (int i = 0; i < stack->nicons; i++) {
+        free(stack->icons[i].name);
+        free(stack->icons[i].couleur);
+    }
     free(stack->icons);
     stack->icons    = NULL;
     stack->nicons   = 0;
