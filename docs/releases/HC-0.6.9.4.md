@@ -26,6 +26,36 @@ Measured in HyperCard under Basilisk II, with the format set to `0.0`:
 
 ---
 
+### Installing: macOS will say the app is damaged. It is not.
+
+**This release is not notarised.** macOS quarantines anything downloaded from
+the internet, and Gatekeeper refuses an app it cannot trace to a notarised
+Developer ID — with a message that says the wrong thing:
+
+> *"HC is damaged and can't be opened. You should move it to the Trash."*
+
+The app is not damaged. It is unnotarised, which is a different problem, and
+the wording sends people to the Trash for no reason.
+
+Copy `HC.app` to `/Applications`, then clear the quarantine flag once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/HC.app
+```
+
+It opens normally after that, and the flag does not come back.
+
+Notarising properly needs a paid Apple Developer account and a `notarytool`
+step in the release process. Until that exists, this line is the whole
+installation procedure — and worth knowing that it is only the *download* that
+triggers this. An app you build yourself from this repository is never
+quarantined.
+
+**The binary is universal** — `x86_64 arm64`, verified with `lipo`. It runs on
+Apple Silicon (M1 and later) and on Intel. Deployment target is macOS 10.13.
+
+---
+
 ### 1. How the model was found: compare, do not display
 
 Six weeks of careful reasoning had built a model of HyperCard that was wrong
