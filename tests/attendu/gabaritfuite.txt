@@ -1,0 +1,17 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── 1. length() d'un nombre, SANS gabarit
+   100 div 10        -> 10        HyperCard : 10
+   length(100 div 10)-> 2         HyperCard : 2
+── 2. LE MEME, sous le gabarit du traceur polaire
+   100 div 10        -> 10.0      HyperCard : 10.0
+   length(100 div 10)-> 4         HyperCard : 4   <<< MESURE
+── 3. LE GABARIT SURVIT AU GESTIONNAIRE QUI L'A POSE
+   relu dans un gestionnaire suivant : [0.0]
+      HyperCard : 0.0 aussi — mesure au bouton
+── 4. et il traverse meme les PILES (A CONFIRMER chez HyperCard)
+   dans une AUTRE pile : [0.0]
+      (HyperCard : pas encore mesure)
+── 5. LE CALCUL DE GRAPH MAKER, tel qu'il est ecrit dans la pile
+   sans gabarit : divisor = 100   colWidth = 0.3
+   avec 0.0     : divisor = 10000.0  colWidth = 0.0
+      (colWidth nul : les quatorze barres sont larges de zero pixel)
