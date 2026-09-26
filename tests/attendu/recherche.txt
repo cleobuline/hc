@@ -49,3 +49,9 @@
    trouvé dans le fond  : bkgnd field 1
    le morceau           : char 1 to 5 of bkgnd field 1
    trouvé dans la carte : card field 2
+── 12. les formes que le motif de commande doit tenir
+   in + marked, aucune  : [Not found]   (Not found)
+   in + marked, la 3e   : []   (trouvé)
+   et le champ          : bkgnd field 1
+   motif calculé        : []   (trouvé)
+   in sur champ absent  : [Not found]   (Not found)

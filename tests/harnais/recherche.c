@@ -301,6 +301,55 @@ int main(void)
      "  find \"omeg\"\n"
      "  put \"trouvé dans la carte : \" & the foundField");
 
+    /* §12 — LES FORMES QUE LE MOTIF DE COMMANDE DOIT TENIR.
+     *
+     * « find » a cessé de recomposer sa ligne pour la relexer : le motif de
+     * hct_cmd.c porte maintenant la syntaxe entière — modificateurs,
+     * « in <champ> », « of marked cards » — et l'exécuteur lit l'arbre. Le
+     * relevé le dit : « v3 relit find » a disparu de quireste, test_v3 et
+     * test_v3c, et c'est là que la non-régression se joue.
+     *
+     * Ce qu'il fallait vérifier ici, c'est ce que le passage à l'arbre pouvait
+     * casser EN SILENCE :
+     *
+     *   · « in <champ> of marked cards » : le désignateur d'objet AVALE la
+     *     clause, « of » étant son opérateur de cible. Le champ devient
+     *     « T of marked cards », qui n'existe pas — la recherche ne trouverait
+     *     plus rien, sans un mot. L'ancienne version par texte coupait la
+     *     clause avant de séparer le « in », donc elle tenait les deux formes.
+     *
+     *   · un motif CALCULÉ : « find z & "pha" ». C'est le cas qui justifie
+     *     qu'un motif de commande demande une expression et pas un littéral.
+     *
+     *   · « in » sur un champ ABSENT de la carte : la carte doit être sautée
+     *     entière. Prendre « pas de restriction résolue » pour « pas de
+     *     restriction » ferait fouiller toute la carte, soit l'inverse de ce
+     *     que « in » demande. */
+    essai("12. les formes que le motif de commande doit tenir",
+     "  go to card \"trois\"\n"
+     "  put \"sigma tau\" into bg field \"T\"\n"
+     "  unmark all cards\n"
+     "  go to card \"un\"\n"
+     "  find \"sigma\" in bg field \"T\" of marked cards\n"
+     "  put \"in + marked, aucune  : [\" & the result & \"]   (Not found)\"\n"
+     "  go to card \"trois\"\n"
+     "  mark this card\n"
+     "  go to card \"un\"\n"
+     "  find \"zorglub\"\n"
+     "  find \"sigma\" in bg field \"T\" of marked cards\n"
+     "  put \"in + marked, la 3e   : [\" & the result & \"]   (trouvé)\"\n"
+     "  put \"et le champ          : \" & the foundField\n"
+     "  unmark all cards\n"
+     "  find \"zorglub\"\n"
+     "  put \"si\" into z\n"
+     "  find z & \"gma\"\n"
+     "  put \"motif calculé        : [\" & the result & \"]   (trouvé)\"\n"
+     "  find \"zorglub\"\n"
+     "  find \"sigma\" in card field \"AbsentDePartout\"\n"
+     "  put \"in sur champ absent  : [\" & the result & \"]   (Not found)\"\n"
+     "  go to card \"trois\"\n"
+     "  put empty into bg field \"T\"");
+
     hc_free(st);
     return 0;
 }

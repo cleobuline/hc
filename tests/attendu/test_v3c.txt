@@ -54,7 +54,7 @@ pomme
    [ask] ton nom ? [Bob] [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v3 relit find                            1
+[v3]    (rien)
       [message box] 
 
 ### 7) send
@@ -78,4 +78,4 @@ pomme
 — retours de la v3 vers l'ancien interpréteur —
    (aucun)
 — ce que l'ancien interprète exécute encore —
-   v3 relit find                            1
+   (rien)

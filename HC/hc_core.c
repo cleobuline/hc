@@ -10869,14 +10869,16 @@ static int find_rang_champ(Object *cd, Object *fl)
     return -1;
 }
 
-/* Le champ est-il cherchable, et fait-il partie de la restriction « in » ? */
-static int find_champ_ok(Object *fl, const char *where)
+/* Le champ est-il cherchable, et est-ce CELUI que « in » désigne ?
+ *
+ * `seul` est un objet déjà résolu, plus un texte à re-résoudre. L'ancienne
+ * version appelait resolve() pour CHAQUE champ de CHAQUE carte, avec le nom
+ * écrit dans le script — autant d'analyses de texte que de champs visités,
+ * là où une seule par carte suffit. */
+static int find_champ_ok(Object *fl, Object *seul)
 {
     if (!fl || fl->type != OBJ_FIELD || fl->dont_search) return 0;
-    if (where && where[0]) {
-        Object *only = resolve(where);
-        if (only != fl) return 0;
-    }
+    if (seul && seul != fl) return 0;
     return 1;
 }
 
@@ -10890,90 +10892,95 @@ static int find_ligne_de(const char *tx, const char *hit)
 
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
 
-    const char *r = skip_spaces(mots);
-
-    /* LE MODE, en sautant le MOT plutôt qu'en comptant ses lettres.
+    /* LES ARGUMENTS SE LISENT DANS L'ARBRE, plus dans le texte.
      *
-     * L'ancien code faisait « r + 6 » après avoir reconnu « chars ». Or le
-     * lexeur applique l'annexe F avant tout : « chars » arrive écrit
-     * « characters », et le saut de six caractères tombait au milieu du mot.
-     * Un décalage silencieux, qui aurait donné un motif tronqué. */
+     * Le relevé disait « v3 relit find », une fois par recherche : la commande
+     * était PORTÉE, et elle recomposait pourtant la ligne avec v3_reste pour
+     * la relexer aussitôt avec eval_expr. Trois analyseurs de texte écrits à
+     * la main — le mode, « of marked cards », « in <champ> » — pour une ligne
+     * que l'analyseur avait déjà découpée. Chacun était une occasion de se
+     * tromper, et l'un l'avait fait : le saut du mot de mode comptait six
+     * lettres pour « chars », que le lexeur avait déjà réécrit
+     * « characters », et le motif partait amputé.
+     *
+     * Le motif de hct_cmd.c porte désormais la syntaxe entière, et les
+     * mots-clés restent dans l'arbre pour qu'on s'y repère sans redécouper. */
     int mode = 0;   /* 0 début de mot, 1 n'importe où, 2 mot entier,
                        3 phrase n'importe où, 4 phrase aux frontières */
     int par_mots = 1;
     /* LA FORME DE BASE REPLIE LES ACCENTS, « international » NON. C'est la
      * mesure, et c'est l'inverse de ce qu'on avait supposé. */
     int international = 0;
-    for (;;) {
-        const char *apres = NULL;
-        if      (ci_word(r, "characters") || ci_word(r, "character") ||
-                 ci_word(r, "chars") || ci_word(r, "char")) { mode = 1; }
-        else if (ci_word(r, "words") || ci_word(r, "word"))  { mode = 2; }
-        else if (ci_word(r, "string")) { mode = 3; par_mots = 0; }
-        else if (ci_word(r, "whole"))  { mode = 4; par_mots = 0; }
-        else if (ci_word(r, "international")) { international = 1; }
+    /* `im` et non `i` : les boucles de champs, plus bas, ont leur propre `i`,
+     * et -Wshadow a raison de refuser deux noms identiques dans la même
+     * fonction — le lecteur, lui, ne voit pas la portée. */
+    int im = 0;
+    for (; im < n->nfils; im++) {
+        /* LES QUATRE ORTHOGRAPHES, et pas une normalisation supposée. Le
+         * lexeur réécrit « chars » en « characters » — annexe F —, mais il
+         * laisse « word », « words » et « character » tels quels. Mesuré au
+         * vidage de l'arbre : ne comparer qu'aux formes plurielles laisserait
+         * « find word "x" » sans mode, donc cherché comme la forme de base. */
+        if      (v3_est_motcle(n, im, "characters") ||
+                 v3_est_motcle(n, im, "character"))  mode = 1;
+        else if (v3_est_motcle(n, im, "words") ||
+                 v3_est_motcle(n, im, "word"))       mode = 2;
+        else if (v3_est_motcle(n, im, "string")) { mode = 3; par_mots = 0; }
+        else if (v3_est_motcle(n, im, "whole"))  { mode = 4; par_mots = 0; }
+        else if (v3_est_motcle(n, im, "international")) international = 1;
         else break;
-        apres = r;
-        while (*apres && !isspace((unsigned char)*apres)) apres++;
-        r = skip_spaces(apres);
     }
 
-    /* « OF MARKED CARDS » : RESTREINDRE AUX CARTES MARQUÉES.
+    const HctNoeud *nmotif = (im < n->nfils) ? n->fils[im] : NULL;
+    if (!nmotif || nmotif->genre == HCTN_MOTCLE) {
+        set_result("Not found"); g_atop = sauve; return 1;
+    }
+
+    /* « OF MARKED CARDS » ARRIVE PAR DEUX CHEMINS, et il faut les deux.
      *
-     * MESURÉ : sans aucune carte marquée, HyperCard rend « Not found » ;
-     * avec la carte 2 marquée, il la trouve et s'y rend. HC ACCEPTAIT la
-     * clause et l'IGNORAIT — une pile qui s'en sert trouvait donc des cartes
-     * qu'elle n'avait pas demandées, et rien ne le disait.
+     * Sans « in », le motif de commande prend les trois mots et les laisse en
+     * mots-clés de premier niveau : « find "x" of marked cards ».
      *
-     * On coupe la clause du motif avant de l'évaluer : « find "x" of marked
-     * cards » aurait sinon cherché la chaîne « x of marked cards ». */
-    int marquees_seules = 0;
-    {
-        int inq2 = 0;
-        for (const char *q = r; *q; q++) {
-            if (*q == '"') { inq2 = !inq2; continue; }
-            if (inq2) continue;
-            if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "of")) {
-                const char *ap = skip_spaces(q + 2);
-                if (ci_word(ap, "marked")) {
-                    marquees_seules = 1;
-                    /* tronquer le motif ici : on recopie ce qui précède */
-                    static char coupe[256];
-                    int l = (int)(q - r);
-                    if (l > (int)sizeof coupe - 1) l = (int)sizeof coupe - 1;
-                    memcpy(coupe, r, (size_t)l);
-                    coupe[l] = 0;
-                    r = coupe;
-                    break;
-                }
+     * Avec « in », le désignateur d'objet AVALE la clause — « of » est son
+     * opérateur de cible — et « marked cards » devient le dernier fils du
+     * champ : « find "x" in bg field "T" of marked cards » donne un nœud
+     * « bg field » à deux fils, dont le second porte le drapeau `marque`.
+     * Ne traiter que le premier chemin ferait chercher dans un champ nommé
+     * « T of marked cards », qui n'existe pas : la recherche ne trouverait
+     * plus rien du tout, en silence. L'ancien code par texte coupait la
+     * clause avant de séparer le « in », et couvrait donc les deux ;
+     * l'oublier ici aurait été une régression. */
+    int marquees_seules = v3_indice_motcle(n, "of", im + 1) >= 0;
+
+    /* « in <champ> » : le nœud, pas son texte. */
+    const HctNoeud *nchamp = NULL;
+    HctNoeud champ_sans_marque;
+    memset(&champ_sans_marque, 0, sizeof champ_sans_marque);
+    int ki = v3_indice_motcle(n, "in", im + 1);
+    if (ki >= 0 && ki + 1 < n->nfils) {
+        nchamp = n->fils[ki + 1];
+        if (nchamp->nfils > 0) {
+            const HctNoeud *q = nchamp->fils[nchamp->nfils - 1];
+            if (q && q->genre == HCTN_OBJET && q->marque) {
+                /* ON NE TOUCHE PAS À L'ARBRE. Il est analysé une fois et
+                 * relu à chaque exécution du gestionnaire : en retirer un
+                 * fils marcherait la première fois et seulement celle-là.
+                 * Une COPIE de surface avec un fils de moins cache la clause
+                 * sans rien modifier — `fils` est un tableau, baisser `nfils`
+                 * suffit. */
+                marquees_seules = 1;
+                champ_sans_marque = *nchamp;
+                champ_sans_marque.nfils = nchamp->nfils - 1;
+                nchamp = &champ_sans_marque;
             }
         }
     }
 
-    /* séparer le motif de l'éventuel « in <champ> » */
-    const char *kw = NULL;
-    int inq = 0;
-    for (const char *q = r; *q; q++) {
-        if (*q == '"') { inq = !inq; continue; }
-        if (inq) continue;
-        if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
-    }
-    char pat[256] = "", where[128] = "";
-    if (kw) {
-        char e[256];
-        int len = (int)(kw - r);
-        if (len > (int)sizeof e - 1) len = (int)sizeof e - 1;
-        memcpy(e, r, (size_t)len); e[len] = 0;
-        eval_expr(e, pat, sizeof pat);
-        snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
-    } else {
-        eval_expr(r, pat, sizeof pat);
-    }
+    char pat[256];
+    v3_val_texte(ctx, nmotif, pat, sizeof pat);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
     if (!pat[0]) { set_result("Not found"); g_atop = sauve; return 1; }
 
     Object *stack = g_current_card ? g_current_card->owner : NULL;
@@ -11076,6 +11083,26 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         Object *saved = g_current_card;
         g_current_card = cd;                     /* pour le texte par carte */
 
+        /* « in <champ> » SE RÉSOUT CARTE PAR CARTE, et c'est voulu.
+         *
+         * Le champ nommé n'est pas le même objet d'une carte à l'autre quand
+         * c'est un champ de CARTE : « find "x" in card field "A" » doit
+         * regarder le champ A de chaque carte, pas celui de la carte d'où
+         * l'on est parti. C'est ce que faisait la version par texte, qui
+         * re-résolvait le nom à l'intérieur de la boucle ; le garder évite
+         * une régression silencieuse — une recherche restreinte ne trouvant
+         * plus que dans la carte de départ. Un champ de FOND, lui, est un
+         * objet unique, et se résout au même quoi qu'il arrive.
+         *
+         * Si le champ n'existe pas sur cette carte, la carte est sautée
+         * ENTIÈRE : sans restriction résolue on fouillerait tout, soit
+         * l'inverse de ce que « in » demande. */
+        Object *seul = NULL;
+        if (nchamp) {
+            seul = hct_resout(ctx, nchamp);
+            if (!seul) { g_current_card = saved; continue; }
+        }
+
         if (par_mots) {
             /* TOUS les morceaux doivent être dans la carte, chacun n'importe
              * où, sans ordre imposé et sans devoir partager un champ. */
@@ -11087,7 +11114,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     if (!lay) continue;
                     for (int i = 0; i < lay->nparts && !vu; i++) {
                         Object *fl = lay->parts[i];
-                        if (!find_champ_ok(fl, where)) continue;
+                        if (!find_champ_ok(fl, seul)) continue;
                         const char *tx = hc_field_text(fl);
                         /* LE CURSEUR NE VAUT QUE POUR LE PREMIER MORCEAU.
                          * Les suivants ne servent qu'à dire si la CARTE
@@ -11125,7 +11152,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                 if (!lay) continue;
                 for (int i = 0; i < lay->nparts && !ok; i++) {
                     Object *fl = lay->parts[i];
-                    if (!find_champ_ok(fl, where)) continue;
+                    if (!find_champ_ok(fl, seul)) continue;
                     const char *tx = hc_field_text(fl);
                     int plancher = 0;
                     if (restreint) {
