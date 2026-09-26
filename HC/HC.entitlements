@@ -2,6 +2,29 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- CE FICHIER NE FAISAIT RIEN, ET IL FAUT LE DIRE PLUTÔT QUE DE LE
+	     CORRIGER EN SILENCE.
+
+	     Les deux clés ci-dessous sont des entitlements DE SANDBOX. Elles
+	     n'ont d'effet que si « com.apple.security.app-sandbox » est vrai —
+	     et il ne l'a jamais été. Le fichier donnait donc l'impression que
+	     HC tournait en bac à sable ; il n'y a jamais tourné.
+
+	     ON NE MET PAS LE SANDBOX POUR AUTANT. Hors App Store, il est
+	     OPTIONNEL : seul le Hardened Runtime est exigé pour la
+	     notarisation, et il est activé dans le projet
+	     (ENABLE_HARDENED_RUNTIME = YES, les deux configurations).
+
+	     L'activer coûterait cher pour rien : HC ouvre et enregistre des
+	     piles n'importe où sur le disque, par un chemin que l'utilisateur
+	     donne. Sous sandbox, chaque accès passerait par un dialogue
+	     d'ouverture système ou une autorisation persistante à gérer — un
+	     chantier entier, pour une contrainte qu'Apple ne demande pas dans
+	     notre mode de distribution.
+
+	     ON GARDE LES DEUX CLÉS. Elles sont inoffensives, elles décrivent
+	     exactement ce que HC ferait s'il passait un jour en bac à sable,
+	     et les retirer perdrait cette information. -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.print</key>

@@ -2491,6 +2491,32 @@ static int hcv_quelle_couleur(const char *nom)
 }
 
 static const char *cocoa_global_get(const char *name) {
+    /* « the version » : UNE SEULE SOURCE DE VÉRITÉ, le bundle.
+     *
+     * Le noyau demande d'abord à l'hôte et retombe sur HC_VERSION, son
+     * #define, si l'hôte ne répond pas. Or aucun .m ne répondait à
+     * « version » : le #define gagnait toujours, et il était resté à 0.6.6
+     * quand l'application annonçait 0.6.9.4. Un script d'époque qui teste
+     * « the version » pour décider quoi faire se trompait donc de trois
+     * versions.
+     *
+     * C'est le défaut de MARKETING_VERSION une deuxième fois, sous un autre
+     * nom : une version recopiée à la main finit toujours par dater. Ici on
+     * ne la recopie plus — on lit CFBundleShortVersionString, qui vaut
+     * $(MARKETING_VERSION), donc le même numéro que le Finder et la fenêtre
+     * « À propos ». HC_VERSION ne sert plus que de repli aux harnais, qui
+     * n'ont pas de bundle. */
+    if (strcasecmp(name, "version") == 0) {
+        static char v[64];
+        if (!v[0]) {
+            NSString *s = [[NSBundle mainBundle]
+                              objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+            if (![s length]) return NULL;   /* pas de bundle : le noyau reprend */
+            snprintf(v, sizeof v, "%s", [s UTF8String]);
+        }
+        return v;
+    }
+
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
 

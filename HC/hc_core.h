@@ -333,9 +333,23 @@ void hc_v3_bilan(void);
  * L'application Cocoa porte la sienne dans MARKETING_VERSION, et c'est ELLE
  * qui fait foi pour le binaire livré : « the version » interroge d'abord
  * l'hôte. Cette constante est la réponse pour tout ce qui tourne sans hôte —
- * les 192 harnais, notamment —, et le repère à mettre à jour avec le projet
- * Xcode quand la version change. */
-#define HC_VERSION "0.6.6"
+ * les harnais, notamment —, et le repère à mettre à jour avec le projet
+ * Xcode quand la version change.
+ *
+ * CE PARAGRAPHE DÉCRIVAIT UNE INTENTION, PAS LA RÉALITÉ, et il faut le dire
+ * ici parce que c'est le défaut de famille du projet. « the version
+ * interroge d'abord l'hôte » était vrai du noyau — mais AUCUN .m ne
+ * répondait à « version ». La porte était annoncée et jamais percée, si bien
+ * que le #define gagnait toujours : il est resté à 0.6.6 pendant que
+ * l'application annonçait 0.6.9.4, et un script qui teste « the version » se
+ * trompait de trois versions. Relevé en cherchant "version" dans les deux
+ * .m : zéro occurrence.
+ *
+ * cocoa_global_get répond maintenant depuis CFBundleShortVersionString, donc
+ * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
+ * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
+ * rappelle à l'étape « la version ». */
+#define HC_VERSION "0.6.9.4"
 
 void hc_v3_bilan_remise_a_zero(void);
 

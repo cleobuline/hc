@@ -444,7 +444,45 @@ static Object *g_target = NULL;  /* le destinataire initial du message    → `t
 static int     g_depth = 0;   /* profondeur, pour l'indentation de la trace */
 
 void hc_trace(int on) { g_trace = on; }
-void hc_set_current_card(Object *card) { g_current_card = card; }
+/* CHANGER DE PILE REMET LE numberFormat À SON DÉFAUT.
+ *
+ * MESURÉ dans Basilisk II : « set the numberFormat to 0.0 » dans une pile,
+ * puis « go to stack X », puis « put the numberFormat » là-bas — HyperCard
+ * rend « 0.###### », son défaut. HC le gardait indéfiniment.
+ *
+ * CE QUE ÇA COÛTAIT, relevé sur une vraie pile. Le traceur polaire de
+ * HypoGraph pose « set the numberFormat to 0.0 » dans sa boucle et s'en va
+ * sans le retirer. Graph Maker 2.2, ouverte ensuite, ne dessinait plus une
+ * seule barre : elle compte les chiffres d'un nombre par
+ * « length(maxValue div 10) », length lit le texte MIS EN FORME, « 10 »
+ * devenait « 10.0 », length passait de 2 à 4, le diviseur de 100 à 10000, et
+ * toutes les barres tombaient à une largeur nulle. Chargée ici, la pile donne
+ * 27 drag sous le gabarit par défaut et 1017 sous « 0.0 », dont 1016 nuls.
+ *
+ * DEUX PILES CORRECTES SÉPARÉMENT SE CASSAIENT L'UNE L'AUTRE, et c'est
+ * exactement ce que cette remise à zéro empêche. Aucune des deux n'avait tort :
+ * en 1991 le gabarit ne franchissait pas la frontière d'une pile, et une pile
+ * pouvait donc supposer le défaut sans se garder.
+ *
+ * POURQUOI LE DÉFAUT NE S'EST VU QU'AUJOURD'HUI : le piège était armé depuis
+ * toujours et jamais déclenché, parce que le traceur polaire ne TERMINAIT PAS.
+ * Sous 0.6.9.3 son « add theInt to t » était remis en forme à chaque tour, t
+ * restait à zéro, et la boucle s'emballait jusqu'au plafond. En réparant
+ * l'accumulation on lui a donné son premier détonateur.
+ *
+ * ICI ET PAS AILLEURS : hc_set_current_card est le seul passage obligé du
+ * changement de carte, donc de pile. Le gabarit ne bouge QUE si la pile
+ * change — aller d'une carte à l'autre dans la même pile le laisse en place,
+ * ce qui est le cas mesuré le plus fréquent et celui dont dépendent les
+ * scripts qui posent un gabarit avant de parcourir leurs cartes. */
+void hc_set_current_card(Object *card)
+{
+    Object *avant = g_current_card ? g_current_card->owner : NULL;
+    Object *apres = card ? card->owner : NULL;
+    g_current_card = card;
+    if (avant && apres && avant != apres) hct_format_nombre("");
+}
+
 Object *hc_current_card(void) { return g_current_card; }
 
 /* Un script est-il en cours ? Sert à l'hôte pour ne pas envoyer « idle »
@@ -9776,7 +9814,7 @@ static void releve_fichier(void);
  * ENCORE VU.
  *
  * Le relevé écrit dans son fichier à la SORTIE du processus. Un harnais qui
- * fait « debug bilan raz » en cours de route vidait donc les compteurs avant
+ * fait « debug raz » en cours de route vidait donc les compteurs avant
  * que le fichier ne les voie, et tout ce qui précédait la remise à zéro
  * disparaissait de l'agrégat.
  *
@@ -12054,13 +12092,34 @@ static int v3_cmd_beep(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* « debug raz », « debug bilan », « debug bilan raz ».
+ *
+ * CETTE COMMANDE NE LISAIT QUE SON PREMIER MOT, et c'est un défaut qui a
+ * survécu parce que la suite de tests ne l'a jamais touché : tous les harnais
+ * et toutes les piles de tests/donnees écrivent « debug raz », la forme qui
+ * marchait. Seul un COMMENTAIRE de ce fichier documentait « debug bilan raz »
+ * — la lecture naturelle, et celle qu'on tape spontanément.
+ *
+ * Ce que ça donnait : « debug bilan raz » comparait « bilan » à « raz »,
+ * n'y voyait pas de remise à zéro, et imprimait un rapport. Les compteurs
+ * restaient intacts. On croyait donc mesurer un gestionnaire et on mesurait
+ * tout depuis le lancement — un instrument qui SUR-compte, après celui qui
+ * sous-comptait dont parle hc_v3_bilan_remise_a_zero. Les deux erreurs ont
+ * la même forme : une porte annoncée et jamais percée.
+ *
+ * ON CHERCHE DONC « raz » PARMI TOUS LES MOTS, et pas seulement au premier.
+ * « debug raz » et « debug bilan raz » font la même chose, silencieusement,
+ * parce qu'un relevé imprimé avant une remise à zéro n'apprend rien que le
+ * relevé précédent n'ait déjà dit. */
 static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
-    char quoi[32];
-    quoi[0] = '\0';
-    if (n->nfils >= 1) v3_brut(n->fils[0], quoi, sizeof quoi);
-    if (ci_equal(quoi, "raz")) { hc_v3_bilan_remise_a_zero(); return 1; }
+    for (int i = 0; i < n->nfils; i++) {
+        char mot[32];
+        mot[0] = '\0';
+        v3_brut(n->fils[i], mot, sizeof mot);
+        if (ci_equal(mot, "raz")) { hc_v3_bilan_remise_a_zero(); return 1; }
+    }
     hc_v3_bilan();
     return 1;
 }
