@@ -282,6 +282,51 @@ static void put_icon(FILE *f, const struct StackIcon *ic)
     fprintf(f, "end iconres\n");
 }
 
+/* UNE ICÔNE EN COULEUR : un bloc À PART, et c'est voulu.
+ *
+ *     ciconres 20554 "Terminator"
+ *     | c 1 FF0000
+ *     | c 2 00FF00
+ *     | 000102...            (32 lignes de 64 chiffres hexadécimaux)
+ *     end ciconres
+ *
+ * POURQUOI UN BLOC SÉPARÉ plutôt qu'une extension d'« iconres ». Un binaire
+ * d'avant ne comprend pas « ciconres » et le saute, exactement comme il
+ * sautait « iconres » avant que celui-ci n'existe — mais il lit quand même le
+ * bloc « iconres » qui précède, donc il retrouve l'icône EN NOIR ET BLANC au
+ * lieu de ne rien retrouver. C'est la silhouette de hc_icon_silhouette qui
+ * paye ici : elle est écrite pour de vrai dans le fichier, pas seulement
+ * calculée en mémoire.
+ *
+ * Toute icône en couleur écrit donc SES DEUX BLOCS. Le prix est cent
+ * vingt-huit octets répétés ; le bénéfice est qu'aucune pile ne devient
+ * illisible en gagnant de la couleur.
+ *
+ * Les lignes de palette viennent AVANT les pixels : le relecteur peut ainsi
+ * vérifier qu'un index désigne une couleur connue au moment où il le lit,
+ * plutôt qu'à la fin du bloc. */
+static void put_cicon(FILE *f, const struct StackIcon *ic)
+{
+    const struct HcIconCouleur *c = ic->couleur;
+    if (!c) return;
+
+    fprintf(f, "ciconres %d ", ic->id);
+    put_quoted(f, ic->name ? ic->name : "");
+    fputc('\n', f);
+    for (int i = 1; i < c->ncouleurs; i++)
+        fprintf(f, "| c %d %02X%02X%02X\n",
+                i, c->palette[i][0], c->palette[i][1], c->palette[i][2]);
+    /* Une ligne du fichier = une ligne de l'icône, comme pour iconres : le
+     * dessin se devine à l'œil nu, et une ligne perdue se voit. */
+    for (int y = 0; y < HC_ICON_COTE; y++) {
+        fputs("| ", f);
+        for (int x = 0; x < HC_ICON_COTE; x++)
+            fprintf(f, "%02X", c->pixels[y * HC_ICON_COTE + x]);
+        fputc('\n', f);
+    }
+    fprintf(f, "end ciconres\n");
+}
+
 /* Plages de style d'un champ, une par ligne :
  *     run <start>,<len>,<style>
  * Les offsets sont en octets dans le texte du champ, comme dans le noyau
@@ -492,7 +537,10 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
     put_block(f, "script", stack->script);
     /* Les icônes tiennent dans le bloc de la pile : elles lui appartiennent,
      * et se relisent donc avant la première carte susceptible de s'y référer. */
-    for (int i = 0; i < stack->nicons; i++) put_icon(f, &stack->icons[i]);
+    for (int i = 0; i < stack->nicons; i++) {
+        put_icon(f, &stack->icons[i]);
+        put_cicon(f, &stack->icons[i]);   /* rien si l'icône est en noir et blanc */
+    }
     fprintf(f, "end stack\n\n");
 
     /* les fonds d'abord : les cartes s'y réfèrent par leur nom */
@@ -995,6 +1043,8 @@ Object *hc_load(const char *path)
     Acc acc = {0};
     int in_script = 0, in_contents = 0, in_paint = 0, in_bgtext = 0;
     int in_icon = 0;
+    int in_cicon = 0;                    /* dans un bloc « ciconres » */
+    int cicon_pos = 0;                   /* pixels déjà lus, 0..HC_ICON_PIXELS */
     struct StackIcon *cur_icon = NULL;   /* icône en cours de remplissage */
     int icon_pos = 0;                    /* octets déjà lus, 0..HC_ICON_BYTES */
     int bgtext_id = 0;
@@ -1023,9 +1073,51 @@ Object *hc_load(const char *path)
         char *s = ltrim(line);
 
         /* --- lignes d'un bloc --- */
-        if (in_script || in_contents || in_paint || in_bgtext || in_icon) {
+        if (in_script || in_contents || in_paint || in_bgtext || in_icon ||
+            in_cicon) {
             if (s[0] == '|') {
                 const char *piece = (s[1] == ' ') ? s + 2 : s + 1;
+                if (in_cicon) {
+                    /* Deux formes de ligne : une entrée de palette, ou une
+                     * ligne de pixels.
+                     *
+                     * UNE LIGNE ABÎMÉE REFUSE LE FICHIER, comme pour iconres.
+                     * Une icône complétée de zéros revient à moitié en
+                     * silence, et on a décidé une fois pour toutes que ça
+                     * n'était pas acceptable pour une image. */
+                    if (piece[0] == 'c' && piece[1] == ' ') {
+                        int idx = 0, r = 0, v = 0, b = 0;
+                        if (sscanf(piece + 2, "%d %2x%2x%2x", &idx, &r, &v, &b) != 4 ||
+                            idx < 1 || idx >= HC_ICON_COULEURS_MAX) {
+                            icon_abimee = 1;
+                            continue;
+                        }
+                        if (cur_icon) {
+                            struct HcIconCouleur *c = hc_icon_couleur_cree(cur_icon);
+                            if (!c) { acc.manque = 1; continue; }
+                            c->palette[idx][0] = (unsigned char)r;
+                            c->palette[idx][1] = (unsigned char)v;
+                            c->palette[idx][2] = (unsigned char)b;
+                            /* La palette monte jusqu'au plus grand index vu :
+                             * un fichier qui saute une entrée garde un trou
+                             * noir plutôt que de décaler tout ce qui suit. */
+                            if (idx >= c->ncouleurs) c->ncouleurs = idx + 1;
+                        }
+                        continue;
+                    }
+                    for (const char *p = piece; p[0]; p += 2) {
+                        int hi = p[1] ? hexval((unsigned char)p[0]) : -1;
+                        int lo = p[1] ? hexval((unsigned char)p[1]) : -1;
+                        if (hi < 0 || lo < 0 || cicon_pos >= HC_ICON_PIXELS) {
+                            icon_abimee = 1; break;
+                        }
+                        if (cur_icon && cur_icon->couleur)
+                            cur_icon->couleur->pixels[cicon_pos] =
+                                (unsigned char)(hi * 16 + lo);
+                        cicon_pos++;
+                    }
+                    continue;
+                }
                 if (in_icon) {
                     /* Paires de chiffres hexadécimaux. On s'arrête au premier
                      * caractère qui n'en est pas un, et de toute façon à
@@ -1065,6 +1157,18 @@ Object *hc_load(const char *path)
              * veulent rien dire, et « end script » doit se reconnaître même
              * suivi d'une espace. */
             rtrim(s);
+            if (strcmp(s, "end ciconres") == 0) {
+                /* Les mille vingt-quatre pixels, tous. Et la silhouette se
+                 * redérive ICI : le bloc « iconres » qui précède a posé des
+                 * bits, mais ce sont les pixels en couleur qui font foi dès
+                 * qu'il y en a. Sans cette ligne, une icône dont on aurait
+                 * modifié la couleur à la main dans le fichier garderait
+                 * l'ancienne silhouette. */
+                if (cicon_pos != HC_ICON_PIXELS) icon_abimee = 1;
+                else if (cur_icon) hc_icon_silhouette(cur_icon);
+                in_cicon = 0; cur_icon = NULL; cicon_pos = 0;
+                continue;
+            }
             if (strcmp(s, "end iconres") == 0) {
                 /* Les 128 octets d'une icône, tous, ou le fichier est refusé.
                  * Un bloc qui s'arrête plus tôt donnait une image complétée de
@@ -1174,6 +1278,21 @@ Object *hc_load(const char *path)
          * L'entrée est créée vide, les lignes « | » la remplissent ; une icône
          * dont le bloc serait tronqué garde donc ses octets manquants à zéro
          * plutôt que de disparaître. */
+        /* --- icône de pile EN COULEUR ---
+         * Le bloc suit celui de « iconres » et porte le même numéro : il
+         * retrouve donc l'entrée déjà créée et lui ajoute ses couleurs. S'il
+         * arrivait seul — fichier écrit à la main —, l'entrée se crée ici, et
+         * sa silhouette sera dérivée à la fermeture du bloc. */
+        if (strncmp(s, "ciconres ", 9) == 0 && stack) {
+            int iid = hc_entier_tete(s + 9, -HC_ID_MAX, HC_ID_MAX, 0);
+            if (!get_quoted(s, 0, nm, sizeof nm)) nm[0] = 0;
+            cur_icon = hc_icon_add(stack, iid, nm);
+            if (cur_icon && !hc_icon_couleur_cree(cur_icon)) acc.manque = 1;
+            cicon_pos = 0;
+            in_cicon  = 1;
+            continue;
+        }
+
         if (strncmp(s, "iconres ", 8) == 0 && stack) {
             /* Le nom SUIT le numéro sur cette ligne : hc_entier, qui veut
              * toute la chaîne, rendait donc 0 pour toutes les icônes. */
@@ -1420,7 +1539,8 @@ Object *hc_load(const char *path)
      * sans sa fin — n'est même jamais posé sur l'objet, faute du « end » qui
      * l'y pose. La pile s'ouvrait donc, l'air complète, avec un script VIDE là
      * où il y en avait un. C'était le seul des trois cas qui restait. */
-    int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext || in_icon;
+    int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext ||
+                      in_icon || in_cicon;
 
     /* UN OBJET RESTÉ OUVERT EST UNE TRONCATURE, LUI AUSSI.
      *

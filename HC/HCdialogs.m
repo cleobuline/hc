@@ -314,6 +314,8 @@ static IconGrid    *gIconGrid = nil;
 static NSTextField *gIconLabel = nil;
 /* moitie edition du panneau Icones */
 static HCFatBits   *gIconBits = nil;
+static HCIconPalette *gIconPal  = nil;    /* la bande de couleurs */
+static NSButton      *gIconCoul = nil;    /* la case « Couleur » */
 static NSTextField *gIconName = nil;
 /* Quelle icône le champ Nom est en train de nommer. Indispensable : quand on
  * clique une autre icône, la sélection a déjà changé au moment où l'on valide,
@@ -1203,8 +1205,14 @@ void hcicon_panel_stack_closing(Object *stack)
     const CGFloat LX = 12, RX = LX + gw + 16 + 16;
     const CGFloat W  = RX + bits + 12;
     /* 452 et non 420 : la seconde rangée de boutons descend jusqu'à y=64, et
-     * la rangée du bas occupe 20..48. Trente-deux points de plus les séparent. */
-    const CGFloat H  = 452;
+     * la rangée du bas occupe 20..48. Trente-deux points de plus les séparent.
+     *
+     * Et +72 pour la couleur : la case à cocher sur une ligne, la bande de
+     * palette sur deux rangées de 22. Tout ce qui est SOUS la grille descend
+     * d'autant — c'est pourquoi le décalage est nommé plutôt que recopié à
+     * chaque ordonnée : un oubli mettrait deux vues l'une sur l'autre. */
+    const CGFloat COUL = 24 + [HCIconPalette height] + 8;
+    const CGFloat H  = 452 + COUL;
     const CGFloat TOP = H - 16;              /* haut commun aux deux colonnes */
 
     gIconPanel = [[NSPanel alloc]
@@ -1243,14 +1251,34 @@ void hcicon_panel_stack_closing(Object *stack)
     gIconBits.action = @selector(iconEdited:);
     [c addSubview:gIconBits];
 
+    /* ---- la couleur, entre la grille et le nom ---- */
+    gIconCoul = [[NSButton alloc]
+        initWithFrame:NSMakeRect(RX, TOP - bits - 22, bits, 20)];
+    [gIconCoul setButtonType:NSButtonTypeSwitch];
+    [gIconCoul setTitle:@"Couleur"];
+    [gIconCoul setFont:[NSFont systemFontOfSize:11]];
+    [gIconCoul setTarget:self];
+    [gIconCoul setAction:@selector(iconCouleur:)];
+    [c addSubview:gIconCoul];
+
+    gIconPal = [[HCIconPalette alloc]
+        initWithFrame:NSMakeRect(RX, TOP - bits - 22 - [HCIconPalette height] - 2,
+                                 bits, [HCIconPalette height])];
+    gIconPal.stack  = gIconStack;
+    gIconPal.iconId = o ? o->icon : 0;
+    gIconPal.grille = gIconBits;
+    gIconPal.target = self;
+    gIconPal.action = @selector(iconEdited:);
+    [c addSubview:gIconPal];
+
     gIconName = [[NSTextField alloc]
-        initWithFrame:NSMakeRect(RX, TOP - bits - 30, bits, 22)];
+        initWithFrame:NSMakeRect(RX, TOP - bits - 30 - COUL, bits, 22)];
     [gIconName setTarget:self];
     [gIconName setAction:@selector(iconRename:)];
     [c addSubview:gIconName];
 
     gIconInfo = [[NSTextField alloc]
-        initWithFrame:NSMakeRect(RX, TOP - bits - 52, bits, 18)];
+        initWithFrame:NSMakeRect(RX, TOP - bits - 52 - COUL, bits, 18)];
     [gIconInfo setBezeled:NO]; [gIconInfo setDrawsBackground:NO];
     [gIconInfo setEditable:NO];
     [c addSubview:gIconInfo];
@@ -1258,7 +1286,7 @@ void hcicon_panel_stack_closing(Object *stack)
     NSButton *(^mkEB)(NSString*, SEL, CGFloat, int) =
         ^NSButton*(NSString *t, SEL a, CGFloat x, int rangee) {
         NSButton *b = [[NSButton alloc]
-            initWithFrame:NSMakeRect(x, TOP - bits - 84 - rangee * 32, 62, 26)];
+            initWithFrame:NSMakeRect(x, TOP - bits - 84 - COUL - rangee * 32, 62, 26)];
         [b setTitle:t];
         [b setBezelStyle:NSBezelStyleRounded];
         [b setFont:[NSFont systemFontOfSize:10]];
@@ -1272,6 +1300,7 @@ void hcicon_panel_stack_closing(Object *stack)
     mkEB(@"Effacer",  @selector(iconErase:),     RX + 128, 0);
     mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192, 0);
     mkEB(@"Pivoter",  @selector(iconRotate:),    RX,       1);
+    mkEB(@"Coller",   @selector(iconColler:),    RX + 64,  1);
 
     /* ---- rangee du bas, commune ---- */
     NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
@@ -1341,9 +1370,50 @@ void hcicon_panel_stack_closing(Object *stack)
     [gIconLabel setStringValue:
         [NSString stringWithFormat:@"%d icônes", hcicon_catalog_count()]];
 
+    /* ---- la couleur ----
+     * La bande suit l'icône choisie, et la case à cocher dit son état. Les
+     * deux passent par ICI et nulle part ailleurs : c'est ce qui évite qu'une
+     * action oublie d'en remettre une à jour et qu'on peigne dans la palette
+     * de l'icône précédente. */
+    gIconPal.iconId = id;
+    gIconPal.stack  = gIconStack;
+    gIconPal.grille = gIconBits;
+
+    int en_couleur = hcicon_edit_est_couleur(gIconStack, id);
+    [gIconCoul setState:en_couleur ? NSControlStateValueOn : NSControlStateValueOff];
+    /* Une icône d'origine n'est pas encore dans la pile : cocher la case la
+     * recopiera, donc la case reste active. Sans icône du tout, elle ne veut
+     * rien dire. */
+    [gIconCoul setEnabled:(id != 0)];
+
+    /* LA COULEUR CHOISIE REVIENT À UN INDEX VALIDE quand on change d'icône :
+     * la palette de la suivante est plus courte, et garder l'index d'avant
+     * ferait peindre avec une couleur qui n'existe pas — donc en « ? », le
+     * caractère qui ne doit jamais apparaître. */
+    if (en_couleur) {
+        struct HcIconCouleur *cc = own ? hc_icon_couleur(own) : NULL;
+        if (!cc || gIconBits.couleurCourante >= cc->ncouleurs ||
+            gIconBits.couleurCourante < 0)
+            gIconBits.couleurCourante = (cc && cc->ncouleurs > 1) ? 1 : 0;
+    }
+
     [gIconGrid reload];
     [gIconBits setNeedsDisplay:YES];
+    [gIconPal  setNeedsDisplay:YES];
     [self setNeedsDisplay:YES];
+}
+
+/* La case « Couleur ». Allumer ne perd pas le dessin — chaque pixel d'encre
+ * devient l'index 1, noir —, éteindre garde la silhouette. Les deux gestes
+ * sont donc réversibles tant qu'on n'a pas repeint, ce qui permet d'essayer
+ * sans rien risquer. */
+- (void)iconCouleur:(id)sender {
+    (void)sender;
+    int id = gIconGrid ? gIconGrid.selected : 0;
+    if (id == 0) return;
+    hcicon_edit_couleur(gIconStack, id,
+                        [gIconCoul state] == NSControlStateValueOn);
+    [self iconRefresh];
 }
 
 - (void)iconSelect:(int)id {
@@ -1377,6 +1447,35 @@ void hcicon_panel_stack_closing(Object *stack)
     [self iconCommitName];
     hcicon_edit_rotate(gIconStack, gIconGrid.selected);
     [self iconRefresh];
+}
+
+/* Coller une image du presse-papiers dans l'icône.
+ *
+ * On ne se demande pas s'il y a une image : hcicon_edit_colle rend 0 quand il
+ * n'y en a pas, et l'on dit alors pourquoi. Un bouton qui ne fait rien sans
+ * expliquer est plus agaçant qu'un bouton grisé — mais on ne peut pas le
+ * griser à coup sûr, le presse-papiers changeant sous nos pieds. */
+- (void)iconColler:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    int id = gIconGrid ? gIconGrid.selected : 0;
+    if (id == 0) return;
+
+    int n = hcicon_edit_colle(gIconStack, id);
+    [self iconRefresh];
+
+    if (n == 0) {
+        [gIconInfo setStringValue:@"Le presse-papiers ne contient pas d'image."];
+        return;
+    }
+    /* Le compte de couleurs DIT s'il y a eu perte : 255 tout rond veut dire
+     * que la découpe médiane a travaillé, moins veut dire que les couleurs
+     * tenaient et que le collage est exact. C'est une information qu'on ne
+     * peut pas lire sur le dessin. */
+    [gIconInfo setStringValue:
+        [NSString stringWithFormat:@"Collé — %d couleur%@%@", n - 1,
+            (n - 1) > 1 ? @"s" : @"",
+            (n >= HC_ICON_COULEURS_MAX) ? @" (image réduite)" : @" (exact)"]];
 }
 
 - (void)iconErase:(id)sender {

@@ -23,8 +23,61 @@
 @property (assign) Object  *stack;
 @property (assign) id       target;
 @property (assign) SEL      action;
+
+/* L'INDEX DE PALETTE QUE POSE LE PINCEAU, quand l'icone est en couleur.
+ *
+ * Ignore sur une icone en noir et blanc : la grille y garde son bascule
+ * d'origine, encre ou blanc. Zero peint de la transparence, ce qui est la
+ * gomme — et c'est pourquoi la bande de palette montre le zero comme une
+ * case a part plutot que de le cacher. */
+@property (assign) int      couleurCourante;
 + (CGFloat)side;                      /* cote de la vue, en points */
 @end
+
+/* LA BANDE DE PALETTE, sous la grille.
+ *
+ * Une case par index, la premiere etant la transparence. La derniere case
+ * porte un « + » : elle ouvre le selecteur de couleurs du systeme et ajoute
+ * ce qu'on y choisit. Un double-clic sur une case existante rouvre le meme
+ * selecteur pour la MODIFIER — toutes les icones qui s'en servent changent
+ * du meme coup, puisque la palette appartient a l'icone.
+ *
+ * ELLE NE MONTRE QUE CE QUI TIENT, deux rangees, soit vingt-deux cases. Une
+ * palette plus riche — celle que produira le collage d'une image — reste
+ * entiere dans le fichier et s'affiche entiere dans l'icone ; seules les
+ * couleurs au-dela ne se choisissent pas a la main. C'est une limite de
+ * l'outil, pas du format, et elle est ecrite ici pour qu'on ne la prenne pas
+ * un jour pour un defaut. */
+@interface HCIconPalette : NSView
+@property (assign) int      iconId;
+@property (assign) Object  *stack;
+@property (assign) id       target;   /* prevenu quand la palette change */
+@property (assign) SEL      action;
+@property (assign) HCFatBits *grille; /* a qui dire quelle couleur est choisie */
++ (CGFloat)height;
+@end
+
+/* Passer une icone en couleur, ou l'en sortir.
+ * Allumer NE PERD PAS le dessin : chaque pixel d'encre devient l'index 1,
+ * noir. Eteindre garde la silhouette. Rend 1 si l'etat a change. */
+int hcicon_edit_couleur(Object *stack, int id, int allume);
+
+/* L'icone est-elle en couleur ? */
+int hcicon_edit_est_couleur(Object *stack, int id);
+
+/* COLLER CE QU'IL Y A DANS LE PRESSE-PAPIERS.
+ *
+ * N'importe quelle image : un bout de carte copie dans HC, une capture, un
+ * fichier glisse depuis le Finder. Elle est mise a l'echelle pour TENIR dans
+ * 32x32 sans se deformer, centree, le reste restant transparent.
+ *
+ * L'icone passe en couleur si elle ne l'est pas — coller une image dans une
+ * icone en noir et blanc et n'en garder que la silhouette serait une facon
+ * bizarre de decevoir.
+ *
+ * Rend le nombre de couleurs de la palette obtenue, ou 0 si le presse-papiers
+ * ne contient pas d'image. */
+int hcicon_edit_colle(Object *stack, int id);
 
 /* ---- operations sur le catalogue de la pile ----
  * Celles qui rendent un int rendent le numero a selectionner ensuite, ou 0. */

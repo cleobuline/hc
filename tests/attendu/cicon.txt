@@ -1,0 +1,264 @@
+=== 1. une icône neuve est en NOIR ET BLANC ===
+   couleur : non — c'est le défaut
+=== 2. la passer en couleur, et la peindre ===
+   couleurs de la palette : 4
+   pixels non transparents : 394 sur 1024
+=== 3. LA SILHOUETTE se dérive : tout pixel peint est de l'encre ===
+   bits d'encre : 394   (doit égaler le compte ci-dessus)
+   les deux comptes concordent
+=== 4. ALLER-RETOUR par le fichier, pixel par pixel ===
+   nom          : « Terminator »
+   couleur      : retrouvée
+   palette      : 4 entrées, 0 différentes
+   pixels       : 0 différents sur 1024
+   IDENTIQUE au pixel près
+   silhouette   : 394 bits d'encre relus
+=== 5. LES DEUX BLOCS sont dans le fichier ===
+   (iconres pour un binaire d'avant, ciconres pour la couleur :
+    une pile qui gagne de la couleur ne devient pas illisible)
+   iconres  : présent
+   ciconres : présent
+   lignes de pixels : 32   (une par ligne de l'icône)
+=== 6. RETIRER la couleur garde la silhouette ===
+   (l'effacer avec les couleurs ferait disparaître l'icône entière
+    pour qui voulait seulement lui retirer sa couleur)
+   couleur : retirée
+   bits    : 394 avant, 394 après
+=== 7. une icône NOIR ET BLANC n'écrit pas de bloc couleur ===
+   ciconres dans le fichier : non, comme il se doit
+=== 8. UN BLOC ABÎMÉ REFUSE LE FICHIER ===
+   (une image complétée de zéros revient à moitié en silence ;
+    on a décidé une fois pour toutes que ça n'est pas acceptable)
+   relecture : refusée
+   raison    : Une icône de cette pile est incomplète ou abîmée.
+=== 9. L'ICONE, DESSINEE — la garde contre une transposition ===
+   (l'Objective-C ne se compile pas ici, donc hcicon_draw n'a aucun
+    test. Ce qu'on PEUT garder, c'est l'indexation : ce dessin
+    utilise pixels[row*32+col], exactement celle de hcicon_draw.
+    Une ligne et une colonne echangees se verraient ici d'un coup
+    d'oeil, alors qu'elles passeraient inapercues dans un compte
+    de pixels — le motif est expres dissymetrique : cadre, aplat
+    central, et UNE diagonale qui descend vers la droite)
+   11111111111111111111111111111111
+   13.............................1
+   1.3............................1
+   1..3...........................1
+   1...3..........................1
+   1....3.........................1
+   1.....3........................1
+   1......3.......................1
+   1.......3222222222222222.......1
+   1.......2322222222222222.......1
+   1.......2232222222222222.......1
+   1.......2223222222222222.......1
+   1.......2222322222222222.......1
+   1.......2222232222222222.......1
+   1.......2222223222222222.......1
+   1.......2222222322222222.......1
+   1.......2222222232222222.......1
+   1.......2222222223222222.......1
+   1.......2222222222322222.......1
+   1.......2222222222232222.......1
+   1.......2222222222223222.......1
+   1.......2222222222222322.......1
+   1.......2222222222222232.......1
+   1.......2222222222222223.......1
+   1.......................3......1
+   1........................3.....1
+   1.........................3....1
+   1..........................3...1
+   1...........................3..1
+   1............................3.1
+   1.............................31
+   11111111111111111111111111111111
+   (. = transparent ; 1 rouge, cadre ; 2 vert, aplat ; 3 bleu, diagonale)
+=== 10. METTRE EN COULEUR NE PERD PAS LE DESSIN ===
+   (le geste de l'editeur : une icone noir et blanc passe en
+    couleur, chaque pixel d'encre devenant l'index 1. Si elle se
+    vidait, on perdrait son travail au premier clic pour voir)
+   encre avant : 256   pixels peints apres : 256
+   palette : 2 entrees
+   le dessin est intact
+   et le geste est IDEMPOTENT (un double clic ne doit pas
+   reduire l'icone a deux couleurs) :
+   palette apres un second appel : 3 entrees
+=== 11. LA ROTATION, ET SON SENS ===
+   (une icone tournee du MAUVAIS cote a exactement le meme
+    nombre d'encres : aucun compte ne peut le voir. Le dessin,
+    lui, le montre — et c'est comme ca qu'on a trouve que les
+    deux chemins, couleur et noir et blanc, tournaient en sens
+    OPPOSES a la premiere ecriture)
+   avant :
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   1111....1111....1111....1111....
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   ....1111....1111....1111....1111
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   ................................
+   apres un quart de tour :
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ....................1111....1111
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   ................1111....1111....
+   (le bloc du haut doit etre passe a DROITE)
+=== 12. LA PALETTE : poser, retrouver, deborder ===
+   index 0 refuse (c'est la transparence) : refuse
+   rouge -> index 1
+   vert  -> index 2
+   rouge de nouveau -> index 1   (la meme, pas une nouvelle)
+   palette : 3 entrees
+   pleine a 256 entrees ; une couleur de plus -> index 0
+   (0 veut dire « choisis la plus proche toi-meme » : le noyau
+    ne dessine pas, et « la plus proche » est une question de
+    perception, pas d'arithmetique)
+=== 13. UN PIXEL POSE MET LA SILHOUETTE A JOUR ===
+   (sinon `bits` serait faux entre deux enregistrements — et
+    c'est justement entre-temps que l'interface le lit pour
+    afficher le bouton)
+   bits au depart : 0
+   apres un pixel : 1   (lu : 1)
+   apres l'avoir efface : 0
+   hors bornes ne deborde pas : bits = 0, lu hors bornes = 0
+=== 14. COLLER UNE IMAGE : peu de couleurs, donc SANS PERTE ===
+   (le cas courant — un bout de dessin, un logo, un aplat. Les
+    couleurs distinctes tiennent dans la palette, on les reprend
+    telles quelles, et aucun pixel ne change de teinte)
+   palette : 5 entrees (4 couleurs + la transparence)
+   pixels dont la teinte a change : 0   (transparents : 16)
+   COLLAGE SANS PERTE
+   et le dessin :
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+=== 15. COLLER UNE IMAGE DE PLUS DE 255 COULEURS ===
+   (une photo, ou un degrade. La decoupe mediane construit
+    255 boites, chacune rendant la moyenne de ce qu'elle
+    contient. On coupe la boite la plus ETENDUE et non la plus
+    peuplee : une photo a des milliers de pixels de ciel et
+    quelques-uns de rouge vif, et couper par population
+    noierait le rouge)
+   1024 couleurs distinctes en entree -> 256 en palette
+   ecart maximal sur un canal : 12 sur 255
+   ecart moyen                : 4
+   (un ecart maximal de quelques unites veut dire que l'oeil
+    ne verra pas la difference ; c'est ce qu'on attend d'une
+    decoupe qui dispose de 255 couleurs pour 1024 pixels)
+=== 16. UNE IMAGE ENTIEREMENT TRANSPARENTE VIDE L'ICONE ===
+   (et c'est la bonne reponse : coller du vide donne du vide,
+    pas une icone noire ni un refus)
+   palette : 1   pixels peints : 0   bits d'encre : 0
+=== 17. LE COLLAGE SURVIT A L'ALLER-RETOUR ===
+   256 couleurs, 0 differentes ; 0 pixels differents
+   IDENTIQUE
+=== 18. COPIER UNE ICONE EMPORTE SA COULEUR ===
+   (releve a l'usage : « la copie de carte vers une autre stack
+    copie en noir et blanc ». Le presse-papiers recopiait les 128
+    bits a la main, donc la SILHOUETTE passait et la couleur non.
+    Le defaut etait discret pour cette raison meme : l'icone etait
+    la, au bon endroit, juste decoloree — on aurait cherche du
+    cote de l'affichage)
+   la copie a une couleur : oui
+   meme dessin : oui
+   pixels differents : 0   palette : 4 contre 4
+=== 19. « MEME DESSIN » REGARDE LA COULEUR, PAS SEULEMENT LES BITS ===
+   (c'est ce test qui decidait si le presse-papiers pouvait
+    reutiliser l'icone deja presente a ce numero. En ne
+    comparant que les bits, une icone EN COULEUR passait pour
+    identique a la version noir et blanc de meme silhouette :
+    on croyait eviter un doublon, on perdait la couleur)
+   memes bits           : oui
+   meme dessin          : non   <<< la reponse qui compte
+   et deux icones en couleur qui ne different que par UNE
+   entree de palette — meme dessin, meme silhouette :
+   memes bits  : oui
+   meme dessin : non
+=== 20. COPIER DEPUIS UNE ICONE NOIR ET BLANC RETIRE LA COULEUR ===
+   (sinon une icone en couleur recevant le dessin d'une icone
+    monochrome garderait sa vieille palette et ses vieux
+    pixels sous une silhouette neuve — deux dessins l'un sur
+    l'autre, dont un invisible)
+   couleur apres : retiree
+   meme dessin que la source : oui

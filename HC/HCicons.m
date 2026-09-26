@@ -6311,8 +6311,10 @@ static HCIcon *gStackIcons = NULL;
 static int     gStackCount = 0;
 
 static void hcicon_free_stack_icons(void) {
-    for (int i = 0; i < gStackCount; i++)
+    for (int i = 0; i < gStackCount; i++) {
         free((void *)gStackIcons[i].name);   /* strdup ci-dessous */
+        free(gStackIcons[i].couleur);        /* copiee, donc a liberer ici */
+    }
     free(gStackIcons);
     gStackIcons = NULL;
     gStackCount = 0;
@@ -6329,6 +6331,16 @@ void hcicon_use_stack_icons(const struct StackIcon *tab, int n) {
         gStackIcons[i].id   = tab[i].id;
         gStackIcons[i].name = strdup(tab[i].name ? tab[i].name : "");
         memcpy(gStackIcons[i].bits, tab[i].bits, 128);
+        /* La couleur se COPIE, comme les bits et pour la meme raison : le
+         * pointeur rendu par hcicon_find survit au dessin, pas au rechargement
+         * de la pile. Une copie manquante laisse simplement l'icone en noir et
+         * blanc — sa silhouette est deja la, donc rien ne disparait. */
+        if (tab[i].couleur) {
+            gStackIcons[i].couleur = malloc(sizeof *gStackIcons[i].couleur);
+            if (gStackIcons[i].couleur)
+                memcpy(gStackIcons[i].couleur, tab[i].couleur,
+                       sizeof *gStackIcons[i].couleur);
+        }
     }
     gStackCount = n;
 }
@@ -6462,6 +6474,24 @@ static void icon_outside(const HCIcon *ic, unsigned char out[32][32]) {
     }
 }
 
+/* LA COULEUR D'UN PIXEL, ou nil s'il est transparent.
+ *
+ * L'index 0 est la transparence — c'est ce qui remplace le masque d'une
+ * ressource cicn, et c'est pourquoi la palette ne commence qu'a 1. Un index
+ * qui depasse la palette est traite comme transparent plutot que comme du
+ * noir : un fichier legerement abime laisse alors un trou visible, ce qui se
+ * remarque, au lieu d'un aplat noir qu'on prendrait pour du dessin. */
+static NSColor *icon_couleur_de(const HCIcon *ic, int row, int col) {
+    const struct HcIconCouleur *c = ic->couleur;
+    if (!c) return nil;
+    int idx = c->pixels[row * 32 + col];
+    if (idx <= 0 || idx >= c->ncouleurs) return nil;
+    return [NSColor colorWithCalibratedRed:c->palette[idx][0] / 255.0
+                                     green:c->palette[idx][1] / 255.0
+                                      blue:c->palette[idx][2] / 255.0
+                                     alpha:1.0];
+}
+
 void hcicon_draw_inverted(const HCIcon *ic, NSRect r, CGFloat px) {
     if (!ic) return;
 
@@ -6473,27 +6503,66 @@ void hcicon_draw_inverted(const HCIcon *ic, NSRect r, CGFloat px) {
     CGFloat ox = r.origin.x + (r.size.width  - 32*px) / 2;
     CGFloat oy = r.origin.y + (r.size.height - 32*px) / 2;
 
+    [NSGraphicsContext saveGraphicsState];
     for (int row = 0; row < 32; row++) {
         for (int col = 0; col < 32; col++) {
             int encre = (ic->bits[row*4 + col/8] & (0x80 >> (col & 7))) ? 1 : 0;
             if (!encre && dehors[row][col]) continue;      /* le fond ne bouge pas */
 
-            [(encre ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
+            /* L'ALLUMAGE D'UNE ICONE EN COULEUR INVERSE SES COULEURS, il ne
+             * la blanchit pas. Le noir et blanc echange encre et fond ; la
+             * couleur fait le geste equivalent, 255 moins chaque composante,
+             * si bien qu'on voit toujours QUE l'icone a change d'etat sans
+             * perdre ce qu'elle represente. Les trous interieurs virent au
+             * noir comme avant : ce sont eux qui donnent l'impression de
+             * creux, et ils n'ont pas de couleur a inverser. */
+            NSColor *co = encre ? icon_couleur_de(ic, row, col) : nil;
+            if (co)
+                [[NSColor colorWithCalibratedRed:1.0 - [co redComponent]
+                                           green:1.0 - [co greenComponent]
+                                            blue:1.0 - [co blueComponent]
+                                           alpha:1.0] setFill];
+            else
+                [(encre ? [NSColor whiteColor] : [NSColor blackColor]) setFill];
             NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
         }
     }
+    [NSGraphicsContext restoreGraphicsState];
 }
 
 void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px) {
     if (!ic) return;
-   
+
     CGFloat ox = r.origin.x + (r.size.width  - 32*px) / 2;
     CGFloat oy = r.origin.y + (r.size.height - 32*px) / 2;
+
+    /* EN NOIR ET BLANC, RIEN NE CHANGE : on remplit avec la couleur que
+     * l'appelant a posee, comme depuis toujours. C'est ce qui fait qu'un
+     * bouton, un catalogue ou une palette continuent de teinter leurs icones
+     * sans rien savoir de ce qui suit. */
+    if (!ic->couleur) {
+        for (int row = 0; row < 32; row++) {
+            for (int col = 0; col < 32; col++) {
+                unsigned char byte = ic->bits[row*4 + col/8];
+                if (byte & (0x80 >> (col & 7)))
+                    NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
+            }
+        }
+        return;
+    }
+
+    /* EN COULEUR, l'icone impose la sienne — et il faut donc RENDRE celle de
+     * l'appelant en partant. Sans ce save/restore, la premiere icone en
+     * couleur d'une palette repeindrait toutes les suivantes avec sa derniere
+     * teinte, et le defaut ne se verrait que sur les icones d'apres. */
+    [NSGraphicsContext saveGraphicsState];
     for (int row = 0; row < 32; row++) {
         for (int col = 0; col < 32; col++) {
-            unsigned char byte = ic->bits[row*4 + col/8];
-            if (byte & (0x80 >> (col & 7)))
-                NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
+            NSColor *co = icon_couleur_de(ic, row, col);
+            if (!co) continue;
+            [co setFill];
+            NSRectFill(NSMakeRect(ox + col*px, oy + row*px, px, px));
         }
     }
+    [NSGraphicsContext restoreGraphicsState];
 }

@@ -116,12 +116,149 @@ struct BgHilite { int button_id; int hilite; };
  * Le noyau ne sait pas dessiner : ces octets lui sont opaques, comme l'est
  * déjà le base64 de `paint`. */
 #define HC_ICON_BYTES 128
+#define HC_ICON_COTE   32                  /* une icône est carrée */
+#define HC_ICON_PIXELS (HC_ICON_COTE * HC_ICON_COTE)   /* 1024 */
+#define HC_ICON_COULEURS_MAX 256
+
+/* UN CICON : LA MÊME ICÔNE, EN COULEUR.
+ *
+ * Un octet par pixel, index dans la palette de l'icône. L'INDEX 0 EST
+ * TRANSPARENT — c'est ce qui remplace le masque 1 bit d'une ressource cicn du
+ * Macintosh, et ça évite d'avoir deux images à tenir d'accord.
+ *
+ * LA PALETTE APPARTIENT À L'ICÔNE, pas à la pile. Une icône copiée d'une pile
+ * à l'autre emporte donc ses couleurs, comme une ressource cicn emportait sa
+ * table. Le prix est quelques octets répétés entre deux icônes de la même
+ * famille ; le bénéfice est qu'aucune icône ne peut changer de couleurs parce
+ * qu'une autre a été modifiée.
+ *
+ * POURQUOI UN INDEX ET NON DU RVBA DIRECT. Le format de pile est du TEXTE, et
+ * le noyau doit pouvoir tenir un cicon sans savoir dessiner — c'est ce qui
+ * rend la chose testable sous Linux, où tournent les harnais. Un PNG en base64
+ * aurait été plus court à écrire et opaque au noyau : tout le cicon aurait
+ * vécu dans la couche Cocoa, la seule qui n'a aucun test.
+ *
+ * ET LE CHOIX D'UN OCTET PLEIN plutôt que quatre bits : 256 couleurs au lieu
+ * de 16, et surtout aucun dépaquetage de demi-octets. Mille vingt-quatre
+ * octets par icône, écrits en hexadécimal comme les cent vingt-huit du noir et
+ * blanc — une ligne du fichier reste une ligne de l'icône, et le dessin se
+ * devine encore à l'œil nu. */
+struct HcIconCouleur {
+    int           ncouleurs;                             /* 1..HC_ICON_COULEURS_MAX */
+    unsigned char palette[HC_ICON_COULEURS_MAX][3];      /* RVB ; [0] inutilisé */
+    unsigned char pixels[HC_ICON_PIXELS];                /* index, 0 = transparent */
+};
 
 struct StackIcon {
     int           id;
     char         *name;                    /* possédé : libéré par hc_free */
     unsigned char bits[HC_ICON_BYTES];
+
+    /* NULL tant que l'icône est en noir et blanc, et c'est le cas de toutes
+     * celles d'avant. Quand il est posé, `bits` reste JUSTE : il porte la
+     * silhouette, dérivée automatiquement (tout pixel non transparent est de
+     * l'encre). Tout ce qui dessinait une icône avant continue donc de
+     * marcher sans le savoir, et une pile en couleur reste utilisable là où
+     * seul le noir et blanc est disponible. */
+    struct HcIconCouleur *couleur;
 };
+
+/* --- couleur d'une icône ---
+ * hc_icon_couleur      : NULL si l'icône est en noir et blanc.
+ * hc_icon_couleur_cree : la crée si besoin, toute transparente, et la rend.
+ *                        Rend NULL si la mémoire manque.
+ * hc_icon_couleur_ote  : retour au noir et blanc ; `bits` est conservé tel
+ *                        quel, donc la silhouette survit à la perte des
+ *                        couleurs.
+ * hc_icon_silhouette   : redérive `bits` depuis les pixels. Appelée par le
+ *                        noyau après chaque écriture qu'il fait lui-même ;
+ *                        un hôte qui touche `pixels` directement doit
+ *                        l'appeler, sinon la silhouette date. */
+struct HcIconCouleur *hc_icon_couleur(struct StackIcon *ic);
+struct HcIconCouleur *hc_icon_couleur_cree(struct StackIcon *ic);
+void                  hc_icon_couleur_ote(struct StackIcon *ic);
+void                  hc_icon_silhouette(struct StackIcon *ic);
+
+/* --- édition d'une icône en couleur ---
+ *
+ * TOUTE LA LOGIQUE EST ICI, ET C'EST DÉLIBÉRÉ. L'éditeur est en Objective-C,
+ * donc sans aucun test automatique ; ce qu'on peut faire tenir dans le noyau y
+ * gagne un harnais. Hciconedit.m ne garde que les clics et le dessin.
+ *
+ * hc_icon_couleur_depuis_bits : passe une icône NOIR ET BLANC en couleur SANS
+ *     perdre son dessin — chaque pixel d'encre devient l'index 1, peint de la
+ *     couleur donnée. C'est le geste « mettre en couleur » de l'éditeur, et il
+ *     doit être sans perte : une icône qui se viderait en gagnant la couleur
+ *     ferait perdre un travail au premier clic.
+ *
+ * hc_icon_pixel_pose / _lu : un pixel par son index. Poser met la silhouette à
+ *     jour, si bien que `bits` ne peut pas dater d'un coup de pinceau.
+ *     Rendent 0 (ou ne font rien) hors des bornes plutôt que de déborder.
+ *
+ * hc_icon_palette_pose : pose une couleur à un index, en agrandissant la
+ *     palette si besoin. Refuse l'index 0, qui EST la transparence.
+ *
+ * hc_icon_palette_index : l'index de cette couleur, en la créant si elle n'y
+ *     est pas. Rend 0 si la palette est pleine — l'appelant doit alors choisir
+ *     la plus proche, ce que le noyau ne sait pas faire (il ne dessine pas).
+ *     C'est cette porte que le collage d'une image utilisera.
+ *
+ * hc_icon_tourne : un quart de tour horaire, couleur comprise. */
+int  hc_icon_couleur_depuis_bits(struct StackIcon *ic,
+                                 unsigned char r, unsigned char v, unsigned char b);
+void hc_icon_pixel_pose(struct StackIcon *ic, int x, int y, int index);
+int  hc_icon_pixel_lu(const struct StackIcon *ic, int x, int y);
+int  hc_icon_palette_pose(struct StackIcon *ic, int index,
+                          unsigned char r, unsigned char v, unsigned char b);
+int  hc_icon_palette_index(struct StackIcon *ic,
+                           unsigned char r, unsigned char v, unsigned char b);
+void hc_icon_tourne(struct StackIcon *ic);
+
+/* COLLER UNE IMAGE DANS UNE ICÔNE.
+ *
+ * `rvba` fait HC_ICON_PIXELS × 4 octets, rouge-vert-bleu-alpha, ligne par
+ * ligne du haut vers le bas. L'hôte s'occupe de découper et de mettre à
+ * l'échelle — lui seul sait lire un PNG ou un presse-papiers ; le noyau ne
+ * reçoit que des octets.
+ *
+ * UN ALPHA SOUS 128 DEVIENT TRANSPARENT, index 0. Le seuil plutôt qu'un
+ * mélange : une icône n'a pas de demi-transparence, et prétendre le contraire
+ * obligerait à inventer un fond pour mélanger avec.
+ *
+ * LA PALETTE SE CONSTRUIT SEULE :
+ *   · 255 couleurs distinctes ou moins → elles sont reprises EXACTEMENT. Le
+ *     collage est alors sans perte, et c'est le cas courant — un bout de
+ *     dessin, un logo, un aplat.
+ *   · au-delà → découpe médiane (median cut) en 255 boîtes, chaque boîte
+ *     rendant la moyenne de ce qu'elle contient. C'est ce qui arrive sur une
+ *     photo ou un tramé dense, où 256 couleurs sur 32×32 sont de toute façon
+ *     un luxe.
+ *
+ * PAS DE TRAMAGE. Sur 32×32 un tramage ressemble à du bruit, il salit les
+ * aplats, et il rend le dessin impossible à retoucher à la main ensuite —
+ * ce qui est justement ce qu'on vient à faire dans un éditeur d'icônes.
+ *
+ * Rend le nombre de couleurs de la palette, ou 0 en cas d'échec. */
+int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba);
+
+/* --- copier une icône, et comparer deux icônes ---
+ *
+ * TOUT CE QUI DUPLIQUE UNE ICÔNE DOIT PASSER PAR ICI. Le presse-papiers le
+ * faisait à la main, avec un memcpy des 128 bits — donc une icône en couleur
+ * copiée d'une pile à l'autre arrivait EN NOIR ET BLANC. Le défaut était
+ * discret parce que la silhouette, elle, passait : l'icône était là, au bon
+ * endroit, juste décolorée. On aurait cherché du côté de l'affichage.
+ *
+ * hc_icon_meme_dessin compare les DEUX : le presse-papiers s'en sert pour
+ * savoir si l'icône du même numéro, là-bas, est déjà la bonne. Ne comparer
+ * que les bits ferait passer une icône en couleur pour identique à la version
+ * noir et blanc qui porte la même silhouette — et la couleur serait perdue en
+ * croyant avoir évité un doublon.
+ *
+ * hc_icon_copie_dessin ne touche NI le numéro NI le nom : ce sont des
+ * identités, pas du dessin, et l'appelant les a déjà décidés. */
+int  hc_icon_copie_dessin(struct StackIcon *dst, const struct StackIcon *src);
+int  hc_icon_meme_dessin(const struct StackIcon *a, const struct StackIcon *b);
 
 struct Object {
     ObjType  type;
