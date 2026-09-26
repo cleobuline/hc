@@ -83,9 +83,12 @@ int main(void)
          "  put x & \",\" & value(thev)");
 
     printf("=== 3. et le point d'à côté, qui marchait déjà ===\n");
-    printf("   (x = -31/64 : elle lit « -0.484,1.188 » à l'écran, et c'est\n");
-    printf("    bien 1.188 et non 1.194 — le numberFormat arrondit AUSSI les\n");
-    printf("    calculs intermédiaires, comme chez HyperCard)\n");
+    printf("   (x = -31/64. CETTE ANNOTATION DISAIT « et c'est bien 1.188 et\n");
+    printf("    non 1.194 — le numberFormat arrondit AUSSI les calculs\n");
+    printf("    intermédiaires, comme chez HyperCard ». Le 1.188 vient du\n");
+    printf("    rapport de bogue sur HC, pas d'une mesure dans Basilisk II ;\n");
+    printf("    voir la section 6 du harnais emballee. Le modèle mesuré\n");
+    printf("    prédit 1.194, et c'est ce qu'on rend — à confirmer)\n");
     fais("put \"(x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5\" into thev\n"
          "  set the numberFormat to \"0.000\"\n"
          "  put -31/64 into x\n"

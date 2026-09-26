@@ -116,22 +116,30 @@ int main(void)
          "  set the numberFormat to \"0.######\"\n"
          "  put \"la boucle a fait \" & tours & \" tours, t = \" & t");
 
-    printf("=== 6. ET L'EXPRESSION, ELLE, RESTE MISE EN FORME ===\n");
-    printf("   (c'est l'autre mesure, et elle vient du traceur cartésien de\n");
-    printf("    la même pile : sous HyperCard il affiche 1.188 et non 1.194,\n");
-    printf("    ce qui prouve que le gabarit s'applique aux calculs, y compris\n");
-    printf("    intermédiaires.\n");
+    printf("=== 6. L'EXPRESSION DU TRACEUR CARTÉSIEN ===\n");
+    printf("   (CETTE SECTION A PORTÉ UNE RÉFÉRENCE FAUSSE, et il faut le\n");
+    printf("    dire ici plutôt que de la corriger en silence. Elle affirmait\n");
+    printf("    « sous HyperCard il affiche 1.188 et non 1.194 », et concluait\n");
+    printf("    que le gabarit s'applique aux calculs intermédiaires.\n");
     printf("\n");
-    printf("    La frontière n'est donc pas « le numberFormat s'applique ou\n");
-    printf("    non » : elle passe entre les OPÉRATEURS, qui montrent, et les\n");
-    printf("    COMMANDES d'accumulation, qui comptent. Corriger l'un sans\n");
-    printf("    vérifier l'autre aurait cassé le traceur pour réparer le\n");
-    printf("    tracé polaire)\n");
+    printf("    LE 1.188 N'EST PAS UNE MESURE D'HYPERCARD. Il vient du\n");
+    printf("    rapport de bogue initial, où il décrivait ce que HC affichait,\n");
+    printf("    et il a été recopié comme s'il venait de Basilisk II. C'est la\n");
+    printf("    même méprise que « 1/3*3 -> 0.9 » dans le harnais numfmt.\n");
+    printf("\n");
+    printf("    CE QUE LE MODÈLE MESURÉ PRÉDIT, lui, c'est 1.194 : le gabarit\n");
+    printf("    n'intervient qu'à la sortie, donc les intermédiaires gardent\n");
+    printf("    leur précision. C'est ce que HC rend maintenant, et c'est\n");
+    printf("    cohérent avec les six booléens et la chaîne de tracé.\n");
+    printf("\n");
+    printf("    À CONFIRMER DANS BASILISK II, avec exactement ces quatre\n");
+    printf("    lignes. Tant que ce n'est pas fait, la valeur ci-dessous est\n");
+    printf("    celle de HC et de rien d'autre)\n");
     fais("set the numberFormat to \"0.000\"\n"
          "  put \"pi/144 en expression : \" & (pi/144)\n"
          "  put \"(x+2)*(x-3/2)^2*(x+1/2)/(x+1/2)/5\" into thev\n"
          "  put -31/64 into x\n"
-         "  put \"le traceur doit lire 1.188 : \" & value(thev)");
+         "  put \"le modele predit 1.194 (a confirmer) : \" & value(thev)");
 
     printf("=== 7. les quatre commandes d'accumulation, ensemble ===\n");
     printf("   (MESURÉ pour « add » seul. Les trois autres partagent la même\n");

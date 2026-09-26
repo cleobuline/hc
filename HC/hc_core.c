@@ -3503,7 +3503,11 @@ static Object *resolve_local(const char *ref)
  * sauf si celui-ci l'a déclarée `global`. La boîte de message, elle,
  * travaille directement dans l'espace global. */
 
-typedef struct { char *name, *val; } Var;
+/* Le NOMBRE non arrondi voyage avec le texte mis en forme : voir
+ * ecrit_var_nombre dans hct_eval.h pour la mesure qui l'impose.
+ * « put -31/64 into x » rangeait « -0.484 » et perdait le nombre
+ * avant même que le calcul commence. */
+typedef struct { char *name, *val; double brut; int a_brut; } Var;
 
 typedef struct Frame {
     Var   *v;   int n,   cap;
@@ -3537,7 +3541,8 @@ static const char *var_get(const char *name)
     return NULL;
 }
 
-static void var_set(const char *name, const char *val)
+static void var_set_num(const char *name, const char *val,
+                        double brut, int a_brut)
 {
     Frame *f = frame_for(name);
     for (int i = 0; i < f->n; i++)
@@ -3556,6 +3561,8 @@ static void var_set(const char *name, const char *val)
             if (val && !neuf) hc_memoire_epuisee("valeur d'une variable");
             free(f->v[i].val);
             f->v[i].val = neuf;
+            f->v[i].brut = brut;
+            f->v[i].a_brut = a_brut;
             return;
         }
     if (f->n == f->cap) {
@@ -3566,9 +3573,28 @@ static void var_set(const char *name, const char *val)
     }
     f->v[f->n].name = dupstr(name);
     f->v[f->n].val  = val ? dupstr(val) : NULL;
+    f->v[f->n].brut = brut;
+    f->v[f->n].a_brut = a_brut;
     if (!f->v[f->n].name || (val && !f->v[f->n].val))
         hc_memoire_epuisee("nom ou valeur d'une variable");
     f->n++;
+}
+
+/* L'ancienne porte : ce qu'on range par ici n'est pas un nombre, et le
+ * drapeau retombe. C'est voulu — un nom de carte rangé dans une variable ne
+ * doit pas hériter du nombre qu'elle contenait avant. */
+static void var_set(const char *name, const char *val)
+{
+    var_set_num(name, val, 0, 0);
+}
+
+/* Retrouver l'enregistrement, pour en lire le nombre autant que le texte. */
+static Var *var_rec(const char *name)
+{
+    Frame *f = frame_for(name);
+    for (int i = 0; i < f->n; i++)
+        if (ci_equal(f->v[i].name, name)) return &f->v[i];
+    return NULL;
 }
 
 static void frame_declare_global(Frame *f, const char *name)
@@ -7324,9 +7350,11 @@ static void v3_source(const HctNoeud *n, char *out, int outlen)
 static int v3_lit_var(void *d, const char *nom, HctValeur *out)
 {
     (void)d;
-    const char *v = var_get(nom);
-    if (!v) return 0;
-    *out = hct_val_texte(v);
+    Var *r = var_rec(nom);
+    if (!r || !r->val) return 0;
+    *out = hct_val_texte(r->val);
+    /* Le texte pour l'affichage, le nombre pour le calcul. */
+    if (r->a_brut && out->txt) { out->a_brut = 1; out->brut = r->brut; }
     return 1;
 }
 
@@ -7334,6 +7362,14 @@ static int v3_ecrit_var(void *d, const char *nom, const char *val)
 {
     (void)d;
     var_set(nom, val ? val : "");
+    return 1;
+}
+
+static int v3_ecrit_var_nombre(void *d, const char *nom, const char *val,
+                               double brut)
+{
+    (void)d;
+    var_set_num(nom, val ? val : "", brut, 1);
     return 1;
 }
 
@@ -14265,6 +14301,7 @@ static HctHote v3_hote(void)
     memset(&h, 0, sizeof h);
     h.lit_var   = v3_lit_var;
     h.ecrit_var = v3_ecrit_var;
+    h.ecrit_var_nombre = v3_ecrit_var_nombre;
     h.globale   = v3_globale;
     h.fonction  = v3_fonction;
     h.recours   = v3_recours;

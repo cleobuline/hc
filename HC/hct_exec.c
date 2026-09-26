@@ -10,7 +10,9 @@
 
 /* ------------------------------------------------------------- portées */
 
-typedef struct { char *nom; char *val; } Var;
+/* Le nombre non arrondi voyage avec le texte : voir ecrit_var_nombre
+ * dans hct_eval.h pour la mesure qui l'impose. */
+typedef struct { char *nom; char *val; double brut; int a_brut; } Var;
 
 struct HctPortee {
     Var   *v;    int n, cap;
@@ -44,7 +46,8 @@ static Var *portee_trouve(Portee *p, const char *nom)
     return NULL;
 }
 
-static void portee_pose(Portee *p, const char *nom, const char *val)
+static void portee_pose_num(Portee *p, const char *nom, const char *val,
+                            double brut, int a_brut)
 {
     if (!p || !nom) return;
     Var *v = portee_trouve(p, nom);
@@ -53,6 +56,7 @@ static void portee_pose(Portee *p, const char *nom, const char *val)
         if (!n) return;
         free(v->val);
         v->val = n;
+        v->brut = brut; v->a_brut = a_brut;
         return;
     }
     if (p->n == p->cap) {
@@ -66,7 +70,17 @@ static void portee_pose(Portee *p, const char *nom, const char *val)
     if (!nn || !nv) { free(nn); free(nv); return; }
     p->v[p->n].nom = nn;
     p->v[p->n].val = nv;
+    p->v[p->n].brut = brut;
+    p->v[p->n].a_brut = a_brut;
     p->n++;
+}
+
+/* L'ancienne porte, pour tout ce qui range du TEXTE — un nom de carte, le
+ * contenu de « it », un morceau recomposé. Elle efface le nombre, et c'est
+ * juste : ce qu'on y met n'en est pas un. */
+static void portee_pose(Portee *p, const char *nom, const char *val)
+{
+    portee_pose_num(p, nom, val, 0, 0);
 }
 
 static int portee_est_globale(Portee *p, const char *nom)
@@ -93,33 +107,50 @@ static void portee_declare_globale(Portee *p, const char *nom)
 
 /* ------------------------------------------------------- API variables */
 
+/* Rendre une variable AVEC son nombre : le texte pour l'affichage, le double
+ * pour l'arithmétique. Voir ecrit_var_nombre dans hct_eval.h. */
+static HctValeur var_valeur(Var *v)
+{
+    HctValeur r = hct_val_texte(v->val);
+    if (v->a_brut && r.txt) { r.a_brut = 1; r.brut = v->brut; }
+    return r;
+}
+
 int hct_var_lit(HctExec *x, const char *nom, HctValeur *out)
 {
     Portee *loc = x->locales;
     if (loc && portee_est_globale(loc, nom)) {
         Var *v = portee_trouve(x->globales, nom);
         if (!v) return 0;
-        *out = hct_val_texte(v->val);
+        *out = var_valeur(v);
         return 1;
     }
     if (loc) {
         Var *v = portee_trouve(loc, nom);
-        if (v) { *out = hct_val_texte(v->val); return 1; }
+        if (v) { *out = var_valeur(v); return 1; }
     }
     /* Hors gestionnaire — la boîte de message — on travaille directement
      * dans l'espace global, comme HyperCard. */
     if (!loc) {
         Var *v = portee_trouve(x->globales, nom);
-        if (v) { *out = hct_val_texte(v->val); return 1; }
+        if (v) { *out = var_valeur(v); return 1; }
     }
     return 0;
 }
 
 void hct_var_ecrit(HctExec *x, const char *nom, const char *val)
 {
+    hct_var_ecrit_nombre(x, nom, val, 0, 0);
+}
+
+void hct_var_ecrit_nombre(HctExec *x, const char *nom, const char *val,
+                          double brut, int a_brut)
+{
     Portee *loc = x->locales;
-    if (!loc || portee_est_globale(loc, nom)) portee_pose(x->globales, nom, val);
-    else portee_pose(loc, nom, val);
+    if (!loc || portee_est_globale(loc, nom))
+        portee_pose_num(x->globales, nom, val, brut, a_brut);
+    else
+        portee_pose_num(loc, nom, val, brut, a_brut);
 }
 
 void hct_var_globale(HctExec *x, const char *nom)
@@ -165,6 +196,22 @@ static void var_ecrit(HctExec *x, const char *nom, const char *val)
         x->hote.ecrit_var(x->hote.donnees, nom, val ? val : "");
     else
         hct_var_ecrit(x, nom, val);
+}
+
+/* La même, en gardant le nombre non arrondi quand la valeur en porte un.
+ * L'hôte qui ne fournit pas ecrit_var_nombre retombe sur l'ancienne porte :
+ * ses variables perdent la précision, exactement comme avant. */
+static void var_ecrit_val(HctExec *x, const char *nom, HctValeur v)
+{
+    if (!v.a_brut) { var_ecrit(x, nom, v.txt); return; }
+    if (hote_tient_les_vars(x)) {
+        if (x->hote.ecrit_var_nombre &&
+            x->hote.ecrit_var_nombre(x->hote.donnees, nom, v.txt, v.brut))
+            return;
+        x->hote.ecrit_var(x->hote.donnees, nom, v.txt ? v.txt : "");
+        return;
+    }
+    hct_var_ecrit_nombre(x, nom, v.txt, v.brut, 1);
 }
 
 static int lit_var_pont(void *d, const char *nom, HctValeur *out)
@@ -403,16 +450,24 @@ static char *delim_de(HctExec *x)
  * la traitera avec son propre interpréteur. Poser une faute ici arrêtait le
  * gestionnaire sur « put x into card field "data" », ce qui condamnait tout
  * script touchant à un champ. */
-static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
+/* ON REÇOIT LA VALEUR, PLUS SEULEMENT SON TEXTE.
+ *
+ * Il fallait ce changement de signature pour que le nombre non arrondi
+ * survive au rangement. Mesuré : « put -31/64 into x » suivi de l'équation
+ * du traceur rend 1.194 chez HyperCard et rendait 1.193 chez nous, parce que
+ * la variable ne gardait que « -0.484 ». Les quatre appelants avaient déjà
+ * la HctValeur sous la main et n'en passaient que le .txt. */
+static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
                       int mode)
 {
+    const char *val = vv.txt ? vv.txt : "";
     if (!cible) return 0;
 
     if (cible->genre == HCTN_IDENT) {
         char *nom = texte(cible);
         if (!nom) return 0 ;
         if (mode == 0) {
-            var_ecrit(x, nom, val);
+            var_ecrit_val(x, nom, vv);
         } else {
             HctValeur ancien;
             if (!var_lit(x, nom, &ancien)) ancien = hct_val_vide();
@@ -523,7 +578,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, const char *val,
                                          aecrire);
         /* Le morceau porte sur une cible que l'on ne sait peut-être pas
          * écrire non plus : le verdict se propage. */
-        int ok = ecrit_dans(x, sous, neuf.txt, 0);
+        int ok = ecrit_dans(x, sous, neuf, 0);
         free(dd);
         hct_val_libere(&neuf);
         hct_val_libere(&compose);
@@ -641,7 +696,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
     if (x->ctx.erreur) { free(dd); hct_val_libere(&base); return 1; }
 
     HctValeur neuf = hct_chunk_supprime(base.txt, cible->sorte, n1, n2, d);
-    int ok = ecrit_dans(x, sous, neuf.txt, 0);
+    int ok = ecrit_dans(x, sous, neuf, 0);
     free(dd);
     hct_val_libere(&neuf);
     hct_val_libere(&base);
@@ -659,6 +714,22 @@ static int nombre_ou_vide(const char *s, double *x)
     if (!hct_est_nombre(s)) return 0;
     *x = hct_vers_nombre(s);
     return 1;
+}
+
+/* LA MÊME, MAIS SUR LA VALEUR ET NON SUR SON TEXTE.
+ *
+ * MESURÉ : « add pi/144 to t » sous le gabarit « 0.0 » laissait t à ZÉRO.
+ * Le résultat de l'accumulation échappait bien au gabarit — c'était la
+ * correction précédente — mais son OPÉRANDE était relu dans le texte mis en
+ * forme, où « pi/144 » s'écrit « 0.0 ». On ajoutait donc zéro, indéfiniment.
+ *
+ * Le harnais ne l'avait pas vu parce qu'il range pi/144 dans une variable
+ * AVANT de poser le gabarit étroit, comme le fait la pile. L'écrire
+ * directement en expression suffisait à le déclencher. */
+static int nombre_de_val(HctValeur v, double *x)
+{
+    if (v.a_brut) { *x = v.brut; return 1; }
+    return nombre_ou_vide(v.txt, x);
 }
 
 /* ------------------------------------------------------------ commandes */
@@ -778,7 +849,7 @@ static void commande(HctExec *x, const HctNoeud *n)
         if (n->nfils >= 3) {
             int mode = est_motcle(n->fils[1], "before") ? 1
                      : est_motcle(n->fils[1], "after")  ? 2 : 0;
-            if (!ecrit_dans(x, n->fils[2], val.txt, mode) &&
+            if (!ecrit_dans(x, n->fils[2], val, mode) &&
                 x->ctx.hote.commande) {
                 x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
                 delegue = 1;
@@ -929,7 +1000,7 @@ static void commande(HctExec *x, const HctNoeud *n)
         }
 
         double xv, xc, r = 0;
-        if (!nombre_ou_vide(val.txt, &xv) || !nombre_ou_vide(act.txt, &xc)) {
+        if (!nombre_de_val(val, &xv) || !nombre_de_val(act, &xc)) {
             hct_ctx_faute(&x->ctx, n, "un nombre est attendu ici");
             hct_val_libere(&val); hct_val_libere(&act);
             return;
@@ -991,7 +1062,7 @@ static void commande(HctExec *x, const HctNoeud *n)
          * c'est une extension, pas un relevé, et ça se dit. */
         HctValeur res = hct_val_nombre(r);
         int delegue = 0;
-        if (!ecrit_dans(x, ncible, res.txt, 0) && x->ctx.hote.commande) {
+        if (!ecrit_dans(x, ncible, res, 0) && x->ctx.hote.commande) {
             x->ctx.hote.commande(x->ctx.hote.donnees, n, &x->ctx);
             delegue = 1;
         }

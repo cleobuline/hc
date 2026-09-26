@@ -30,6 +30,25 @@ typedef struct {
     int (*lit_var)(void *d, const char *nom, HctValeur *out);
     int (*ecrit_var)(void *d, const char *nom, const char *val);
 
+    /* ÉCRIRE UNE VARIABLE EN GARDANT LE NOMBRE NON ARRONDI.
+     *
+     * MESURÉ chez HyperCard : « put -31/64 into x » puis l'équation du
+     * traceur rend 1.194 ; HC rendait 1.193, parce qu'il rangeait le TEXTE
+     * mis en forme — « -0.484 » — et perdait le nombre avant même que le
+     * calcul commence. Sous le gabarit « 0.0 » d'un traceur polaire, la même
+     * perte immobilisait la courbe dix points d'affilée.
+     *
+     * Le texte rangé reste celui d'avant, mis en forme : c'est lui qu'on
+     * AFFICHE, et « put sqrt(2) into x / put x » doit bien rendre 1.4 des
+     * deux côtés. Le double voyage à côté, et seuls l'arithmétique et la
+     * comparaison le regardent.
+     *
+     * Facultatif : un hôte qui ne le fournit pas retombe sur ecrit_var, et
+     * ses variables perdent la précision comme avant. Rend 1 s'il a pris la
+     * valeur en charge. */
+    int (*ecrit_var_nombre)(void *d, const char *nom, const char *val,
+                            double brut);
+
     /* Lire une propriété ou le contenu d'un objet désigné par un nœud
      * HCTN_OBJET déjà résolu par l'hôte. `objet` est ce que rend resout(). */
     void *(*resout)(void *d, const HctNoeud *ref, HctContexte *ctx);

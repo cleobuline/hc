@@ -126,10 +126,12 @@ int main(void){
    * ne bouge pas pendant dix points — c'est le palier plat que l'on voit à
    * l'écran.
    *
-   * CE QUI RESTE FAUX DANS HC, et qui n'est PAS corrigé à ce jour : les
-   * opérateurs mettent en forme leur résultat, et le rangement conserve ce
-   * texte arrondi. Les sections ci-dessous mesurent ce que HC fait
-   * AUJOURD'HUI, avec la valeur d'HyperCard en face quand elle diffère.
+   * CE QUI ÉTAIT FAUX DANS HC, et qui EST CORRIGÉ depuis : les opérateurs
+   * mettaient en forme leur résultat, et le rangement conservait ce texte
+   * arrondi. Les six booléens sont maintenant dans la colonne d'HyperCard, et
+   * la chaîne de tracé donne ses dix valeurs au chiffre près. Les sections
+   * ci-dessous mesurent ce que HC fait AUJOURD'HUI, avec la valeur
+   * d'HyperCard en face à chaque fois.
    *
    * CE QUE HC FAISAIT DE DIFFÉRENT, et c'est corrigé : il mettait en forme le
    * RETOUR des fonctions. « 1000*sin(z) » rendait 0.0 au lieu de 21.8, parce
@@ -161,35 +163,44 @@ int main(void){
    *     D  put sqrt(2)            1.4        idem
    *     E  gabarit effacé, put x  1.4        x est bien du texte figé
    *
-   * LES CINQ SONT IDENTIQUES DES DEUX CÔTÉS. HC était donc déjà fidèle
-   * partout, et il ne restait qu'un seul chemin fautif : celui où le retour
-   * d'une fonction part DIRECTEMENT dans un opérateur, sans être rangé, ni
-   * concaténé, ni affiché.
+   * ON LES A CRUES IDENTIQUES DES DEUX CÔTÉS, et on en a conclu que HC était
+   * déjà fidèle partout sauf sur un seul chemin : celui où le retour d'une
+   * fonction part DIRECTEMENT dans un opérateur. C'ÉTAIT UNE CONCLUSION DE
+   * TROP, et le B en est la cause : il dit que ranger fige, les booléens et
+   * la chaîne de tracé disent que non. La dernière section du harnais expose
+   * la contradiction et dit pourquoi on a suivi les booléens.
    *
-   * D'OÙ LA CORRECTION, qui n'est pas un typage : le texte reste EXACTEMENT
-   * celui d'avant — mis en forme au retour — et le nombre non arrondi voyage
-   * à côté, dans HctValeur.brut. Seul l'opérateur arithmétique le regarde.
-   * Tout ce qui lit .txt voit le même texte qu'hier, donc ne peut pas bouger,
-   * et le reste de la suite l'a confirmé : sur 234 harnais, celui-ci est le
-   * seul qui ait changé.
+   * D'OÙ LA CORRECTION : le texte reste EXACTEMENT celui d'avant — mis en
+   * forme à la sortie — et le nombre non arrondi voyage à côté, dans
+   * HctValeur.brut. Seuls le regardent l'arithmétique, la comparaison, les
+   * arguments de fonction et les opérandes d'accumulation. Tout ce qui lit
+   * .txt voit le même texte qu'hier, donc ne peut pas bouger, et le reste de
+   * la suite l'a confirmé : sur 234 harnais, celui-ci est le seul qui ait
+   * changé.
    *
-   * Le drapeau n'est JAMAIS posé par un opérateur. « put 1/3*3 » rend 0.9, ce
-   * qui n'est vrai que si « / » arrondit son résultat avant la multiplication.
+   * IL A FALLU CINQ FRONTIÈRES, et chacune annulait la précédente : le retour
+   * des fonctions, puis les opérateurs, puis le rangement dans une variable,
+   * puis les arguments de fonction, puis les opérandes d'accumulation, et
+   * enfin le LITTÉRAL NUMÉRIQUE lui-même. Tant que « 0.34 » écrit dans le
+   * script n'était qu'un texte, « (0.34*1 = 0.34) » comparait un nombre à un
+   * texte arrondi et la comparaison retombait sur le texte : quatre booléens
+   * restaient faux alors que tout le reste était corrigé. Une correction de
+   * précision qui s'arrête à une frontière est défaite par la suivante.
    *
    * Le contournement « 0.000 » plutôt que « 0.0 » n'est plus nécessaire. */
-  essai("les OPERATEURS suivent le gabarit : ECART, HyperCard n'arrondit pas",
+  essai("les OPERATEURS n'arrondissent plus leur resultat : conforme",
    "  set the numberFormat to \"0.0\"\n"
-   "  put \"1/3*3         -> \" & (1/3*3) & \"   ECART, HyperCard : 1.0\"\n"
-   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   ECART, HyperCard : 1.0\"");
+   "  put \"1/3*3         -> \" & (1/3*3) & \"   HyperCard : 1.0\"\n"
+   "  put \"value(1/3*3)  -> \" & value(\"1/3*3\") & \"   HyperCard : 1.0\"");
 
-  essai("LES QUATRE BOOLEENS, immunises contre l'affichage",
+  essai("LES QUATRE BOOLEENS, immunises contre l'affichage : conformes",
    "  set the numberFormat to \"0.0\"\n"
    "  put \"(0.34*1 = 0.34)   -> \" & (0.34*1 = 0.34) & \"   HyperCard : true\"\n"
    "  put \"(1/3*3 = 1)       -> \" & (1/3*3 = 1) & \"   HyperCard : true\"\n"
    "  put \"(1/3 = 0.3)       -> \" & (1/3 = 0.3) & \"   HyperCard : false\"\n"
    "  put \"(sqrt(2)*1 = 1.4) -> \" & (sqrt(2)*1 = 1.4) & \"   HyperCard : false\"");
 
-  essai("RANGER dans une variable : HyperCard ne fige pas, HC si",
+  essai("RANGER dans une variable : ni l'un ni l'autre ne fige, conforme",
    "  set the numberFormat to \"0.0\"\n"
    "  put sqrt(2) into x\n"
    "  put \"(x = 1.4)         -> \" & (x = 1.4) & \"   HyperCard : false\"\n"
@@ -237,5 +248,43 @@ int main(void){
   essai("l'affichage direct, lui, est conforme",
    "  set the numberFormat to \"0.000\"\n"
    "  put \"sqrt(2)       -> \" & sqrt(2) & \"   (HyperCard : 1.414)\"");
+
+  /* LA BATTERIE A-E, ET LA SEULE MESURE QUI RESTE EN CONTRADICTION.
+   *
+   * Elle ne figurait que dans un commentaire ; on l'inscrit ici pour qu'elle
+   * soit surveillée, parce que le B a bougé avec ce chantier et qu'il faut
+   * que ça se voie.
+   *
+   * RELEVÉ SOUS HYPERCARD :  A 1.4   B 14.0   C 1.4   D 1.4   E 1.4
+   * HC AUJOURD'HUI :         A 1.4   B 14.1   C 1.4   D 1.4   E 1.4
+   *
+   * LE B EST INCOMPATIBLE AVEC DEUX AUTRES MESURES, et ce n'est pas une
+   * nuance : si « put sqrt(2) into x » figeait le texte « 1.4 » sous le
+   * gabarit 0.0, alors 10*x vaudrait quatorze EXACTEMENT, donc :
+   *
+   *     (10*x = 14)  serait  true      — relevé sous HyperCard : false
+   *
+   * et la chaîne de tracé ne pourrait pas donner ses valeurs. On l'a
+   * vérifiée au crayon sur le quatrième point : avec un r figé à une
+   * décimale on obtient 412, sans figeage 413. HyperCard donne 413.
+   *
+   * DEUX MESURES CONTRE UNE, dont une en grandeur nature sur dix points :
+   * c'est le rangement qui ne fige pas, et « B 14.0 » a dû être lu dans la
+   * fenêtre de HC — la même méprise que « 1/3*3 -> 0.9 » plus haut, prise le
+   * même soir avec les deux fenêtres côte à côte.
+   *
+   * ON NE TRANCHE PAS DÉFINITIVEMENT POUR AUTANT : la référence enregistrée
+   * ci-dessous est ce que HC fait, et la ligne du B porte la valeur d'époque
+   * à côté. Si une nouvelle mesure dans Basilisk II redonne 14.0, c'est tout
+   * le modèle du rangement qu'il faudra reprendre, pas cette ligne. */
+  essai("la batterie A-E : le B attend une contre-mesure",
+   "  set the numberFormat to \"0.0\"\n"
+   "  put sqrt(2) into x\n"
+   "  put \"A  x            -> \" & x & \"   HyperCard : 1.4\"\n"
+   "  put \"B  10*x         -> \" & (10*x) & \"   releve d'epoque : 14.0 (douteux)\"\n"
+   "  put \"C  sqrt(2) & _  -> \" & (sqrt(2) & \"\") & \"   HyperCard : 1.4\"\n"
+   "  put \"D  sqrt(2)      -> \" & sqrt(2) & \"   HyperCard : 1.4\"\n"
+   "  set the numberFormat to empty\n"
+   "  put \"E  gabarit vide -> \" & x & \"   HyperCard : 1.4\"");
 
   hc_free(st);return 0;}

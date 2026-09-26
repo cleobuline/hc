@@ -21,19 +21,27 @@
     finissait jamais)
    theInt vaut 0.021817
    la boucle a fait 289 tours, t = 6.305113
-=== 6. ET L'EXPRESSION, ELLE, RESTE MISE EN FORME ===
-   (c'est l'autre mesure, et elle vient du traceur cartésien de
-    la même pile : sous HyperCard il affiche 1.188 et non 1.194,
-    ce qui prouve que le gabarit s'applique aux calculs, y compris
-    intermédiaires.
+=== 6. L'EXPRESSION DU TRACEUR CARTÉSIEN ===
+   (CETTE SECTION A PORTÉ UNE RÉFÉRENCE FAUSSE, et il faut le
+    dire ici plutôt que de la corriger en silence. Elle affirmait
+    « sous HyperCard il affiche 1.188 et non 1.194 », et concluait
+    que le gabarit s'applique aux calculs intermédiaires.
 
-    La frontière n'est donc pas « le numberFormat s'applique ou
-    non » : elle passe entre les OPÉRATEURS, qui montrent, et les
-    COMMANDES d'accumulation, qui comptent. Corriger l'un sans
-    vérifier l'autre aurait cassé le traceur pour réparer le
-    tracé polaire)
+    LE 1.188 N'EST PAS UNE MESURE D'HYPERCARD. Il vient du
+    rapport de bogue initial, où il décrivait ce que HC affichait,
+    et il a été recopié comme s'il venait de Basilisk II. C'est la
+    même méprise que « 1/3*3 -> 0.9 » dans le harnais numfmt.
+
+    CE QUE LE MODÈLE MESURÉ PRÉDIT, lui, c'est 1.194 : le gabarit
+    n'intervient qu'à la sortie, donc les intermédiaires gardent
+    leur précision. C'est ce que HC rend maintenant, et c'est
+    cohérent avec les six booléens et la chaîne de tracé.
+
+    À CONFIRMER DANS BASILISK II, avec exactement ces quatre
+    lignes. Tant que ce n'est pas fait, la valeur ci-dessous est
+    celle de HC et de rien d'autre)
    pi/144 en expression : 0.022
-   le traceur doit lire 1.188 : 1.188
+   le modele predit 1.194 (a confirmer) : 1.194
 === 7. les quatre commandes d'accumulation, ensemble ===
    (MESURÉ pour « add » seul. Les trois autres partagent la même
     ligne de code et la même forme de phrase ; les traiter

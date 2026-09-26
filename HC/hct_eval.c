@@ -352,6 +352,57 @@ static int est_de_type(HctContexte *ctx, const char *v, const char *type)
 
 /* ------------------------------------------------------------ binaires */
 
+/* COMPARER DEUX VALEURS, EN PRÉFÉRANT LE NOMBRE AU TEXTE.
+ *
+ * MESURÉ : sous le gabarit « 0.0 », « put sqrt(2) into x » puis « x = 1.4 »
+ * rend FAUX chez HyperCard. La variable contient le nombre entier, pas son
+ * affichage arrondi. HC rendait VRAI, parce qu'il comparait « 1.4 » à
+ * « 1.4 » — le texte mis en forme des deux côtés.
+ *
+ * On lit donc le nombre non arrondi dès qu'il est là. Deux réserves :
+ *
+ *   — il faut que les DEUX en aient un. Comparer le double de l'un au texte
+ *     de l'autre remettrait la dissymétrie qu'on chasse : « x = 1.4 »
+ *     changerait de sens selon l'ordre des opérandes.
+ *
+ *   — jamais pour un NaN. La règle du NaN est énoncée dans hct_compare et
+ *     elle passe par le TEXTE, parce que c'est ce que la pile d'époque
+ *     attend de son test de bornes. Un NaN qui reviendrait à l'ordre IEEE
+ *     ferait retomber le garde, et la barre infinie reviendrait avec.
+ *
+ * Hors de ces deux cas, on retombe exactement sur l'ancien chemin. */
+static int vals_ont_nombres(HctValeur a, HctValeur b)
+{
+    return a.a_brut && b.a_brut &&
+           !isnan(a.brut) && !isnan(b.brut);
+}
+
+static int vals_egales(HctValeur a, HctValeur b)
+{
+    if (vals_ont_nombres(a, b)) return a.brut == b.brut;
+    return hct_egal(a.txt, b.txt);
+}
+
+static int vals_compare(HctValeur a, HctValeur b)
+{
+    if (vals_ont_nombres(a, b))
+        return a.brut < b.brut ? -1 : (a.brut > b.brut ? 1 : 0);
+    return hct_compare(a.txt, b.txt, NULL);
+}
+
+/* LIRE UNE VALEUR COMME NOMBRE, en préférant le non-arrondi.
+ *
+ * MESURÉ : « cos(3*t) » sous le gabarit « 0.0 » recevait 0.1 au lieu de
+ * 0.065451, parce que l'argument était relu dans son TEXTE mis en forme.
+ * Corriger les opérateurs sans corriger l'entrée des fonctions ne servait à
+ * rien : la précision se reperdait au premier appel. C'est le même défaut
+ * que celui du rangement, un cran plus loin — et c'est la troisième fois
+ * dans ce chantier qu'une frontière oubliée annule les autres. */
+static double nombre_de(HctValeur v)
+{
+    return v.a_brut ? v.brut : hct_vers_nombre(v.txt);
+}
+
 static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
 {
     const char *op = n->op ? n->op : "";
@@ -418,16 +469,17 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
              !strcmp(op, "^"))
         r = arith(ctx, n, op, a, b);
     else if (!strcmp(op, "=") || !strcmp(op, "is"))
-        r = hct_val_bool(hct_egal(a.txt, b.txt));
+        r = hct_val_bool(vals_egales(a, b));
     else if (!strcmp(op, "<>") || !strcmp(op, "is not"))
-        r = hct_val_bool(!hct_egal(a.txt, b.txt));
+        r = hct_val_bool(!vals_egales(a, b));
     /* L'ordre passe par hct_compare, qui traite un NaN comme du TEXTE. Voir la
      * note qui y est : c'est ce que la pile d'époque attend, et c'est elle qui
-     * l'a tranché. */
-    else if (!strcmp(op, "<"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <  0);
-    else if (!strcmp(op, ">"))  r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >  0);
-    else if (!strcmp(op, "<=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) <= 0);
-    else if (!strcmp(op, ">=")) r = hct_val_bool(hct_compare(a.txt, b.txt, NULL) >= 0);
+     * l'a tranché. Le nombre non arrondi prime quand les deux en ont un et
+     * qu'aucun n'est un NaN — voir vals_egales juste au-dessus. */
+    else if (!strcmp(op, "<"))  r = hct_val_bool(vals_compare(a, b) <  0);
+    else if (!strcmp(op, ">"))  r = hct_val_bool(vals_compare(a, b) >  0);
+    else if (!strcmp(op, "<=")) r = hct_val_bool(vals_compare(a, b) <= 0);
+    else if (!strcmp(op, ">=")) r = hct_val_bool(vals_compare(a, b) >= 0);
     else if (!strcmp(op, "contains"))   r = hct_val_bool(contient(a.txt, b.txt));
     else if (!strcmp(op, "is in"))      r = hct_val_bool(contient(b.txt, a.txt));
     else if (!strcmp(op, "is not in"))  r = hct_val_bool(!contient(b.txt, a.txt));
@@ -503,12 +555,12 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
         if (!hct_est_nombre(a.txt)) {
             hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
             r = hct_val_vide();
-        } else r = hct_val_calcul(-hct_vers_nombre(a.txt));
+        } else r = hct_val_calcul(-nombre_de(a));
     } else {
         if (!hct_est_nombre(a.txt)) {
             hct_ctx_faute(ctx, n->fils[0], "un nombre est attendu ici");
             r = hct_val_vide();
-        } else r = hct_val_calcul(-hct_vers_nombre(a.txt));
+        } else r = hct_val_calcul(-nombre_de(a));
     }
     hct_val_libere(&a);
     return r;
@@ -519,7 +571,20 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
 
 static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
 {
-    if (n->genre == HCTN_NOMBRE || n->genre == HCTN_CHAINE)
+    if (n->genre == HCTN_NOMBRE) {
+        /* Un littéral numérique écrit dans le script EST un nombre : il porte
+         * sa valeur exacte à côté de son texte. Sans cela « 0.34 » n'était
+         * qu'un texte, et « (0.34*1 = 0.34) » comparait le texte arrondi par
+         * le numberFormat au lieu des deux nombres. Le texte, lui, reste celui
+         * de la source : c'est ce que HyperCard affiche. */
+        HctValeur v = hct_val_texte_n(n->jeton.deb, n->jeton.len);
+        if (v.txt && hct_est_nombre(v.txt)) {
+            v.a_brut = 1;
+            v.brut   = hct_vers_nombre(v.txt);
+        }
+        return v;
+    }
+    if (n->genre == HCTN_CHAINE)
         return hct_val_texte_n(n->jeton.deb, n->jeton.len);
 
     /* HCTN_IDENT : constante, variable, ou son propre nom. */
@@ -657,7 +722,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
      * lui reviennent. */
     if (nargs == 1 && hct_est_nombre(args[0].txt)) {
         double y;
-        if (math_un_arg(nom, hct_vers_nombre(args[0].txt), &y)) {
+        if (math_un_arg(nom, nombre_de(args[0]), &y)) {
             /* LE RETOUR GARDE SON NOMBRE NON ARRONDI À CÔTÉ DU TEXTE. Le
              * texte reste celui d'avant — mis en forme —, si bien qu'un
              * affichage, une concaténation ou un rangement ne changent pas
@@ -676,7 +741,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
              * comment. La borne monte donc à 0x10FFFF, le dernier point de
              * code d'Unicode, et les demi-codets (D800-DFFF), qui n'encodent
              * rien, sont refusés. */
-            double d = hct_vers_nombre(args[0].txt);
+            double d = nombre_de(args[0]);
             long code = (d >= 0 && d <= 0x10FFFF) ? (long)d : 0;
             if (code >= 0xD800 && code <= 0xDFFF) code = 0;
             char c[5]; int k = 0;
@@ -733,7 +798,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
          * Le plafond est celui de hct_vers_rang plutôt que LONG_MAX : « rand()
          * % m » ne tire de toute façon qu'au plus RAND_MAX, donc un m plus
          * grand ne rend pas la fonction plus riche, seulement moins honnête. */
-        double m = hct_vers_nombre(args[0].txt);
+        double m = nombre_de(args[0]);
         if (!(m >= 1 && m <= (double)HCT_RANG_MAX)) {
             if (m >= 1) {
                 /* Marquer la faute et LAISSER LA FONCTION SE TERMINER, au lieu
@@ -783,8 +848,8 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
     if (!fait && nargs == 2 &&
         hct_est_nombre(args[0].txt) && hct_est_nombre(args[1].txt) &&
         (!strcasecmp(nom, "annuity") || !strcasecmp(nom, "compound"))) {
-        double taux = hct_vers_nombre(args[0].txt);
-        double per  = hct_vers_nombre(args[1].txt);
+        double taux = nombre_de(args[0]);
+        double per  = nombre_de(args[1]);
         double y;
         if (!strcasecmp(nom, "compound")) y = pow(1.0 + taux, per);
         else y = (taux == 0) ? per : (1.0 - pow(1.0 + taux, -per)) / taux;
@@ -1285,7 +1350,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
                     hct_val_libere(&a); free(nom); return hct_val_vide();
                 }
                 if (hct_est_nombre(a.txt) &&
-                    math_un_arg(nom, hct_vers_nombre(a.txt), &y)) {
+                    math_un_arg(nom, nombre_de(a), &y)) {
                     hct_val_libere(&a);
                     free(nom);
                     /* LE JUMEAU de l'appel à parenthèses : « the sqrt of 2 »
