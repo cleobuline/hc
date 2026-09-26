@@ -1226,6 +1226,26 @@ static int     g_found_start = 0;   /* offset du motif dans le texte du champ */
 static int     g_found_len   = 0;   /* longueur du motif, 0 = rien de trouve */
 static Object *g_found_card  = NULL;
 
+/* LE MOTIF DE LA DERNIÈRE RECHERCHE, pour savoir si « find » doit AVANCER.
+ *
+ * MESURÉ chez HyperCard, deux cartes portant chacune « alpha » :
+ *
+ *     find "alpha"   ->  card id 2414
+ *     find "alpha"   ->  card id 5370
+ *     find "alpha"   ->  card id 2414
+ *
+ * Répéter la même recherche passe donc à l'occurrence suivante, et boucle.
+ * C'est TOUT l'usage de find : on tape une fois, puis on appuie sur Retour
+ * pour faire défiler. HC restait collé sur la première carte, ce qui rendait
+ * la commande à peu près inutile en interactif.
+ *
+ * On garde donc le motif ET la carte trouvée. Si la recherche suivante porte
+ * le même motif et qu'on est resté sur cette carte, le balayage commence à la
+ * SUIVANTE. Tout autre cas — motif différent, ou l'utilisateur a navigué
+ * ailleurs — repart de la carte courante, ce qui est ce qu'on attend d'une
+ * recherche neuve. */
+static char    g_find_motif[256] = "";
+
 /* LA BOÎTE EST MONTRÉE, OU ELLE NE L'EST PLUS — et c'est autre chose que
  * « quelque chose a été trouvé ».
  *
@@ -10538,14 +10558,123 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
     }
 }
 
-/* find [string|chars|whole|word] "motif" [in <champ>]
+/* LA RECHERCHE, TELLE QU'ELLE A ÉTÉ MESURÉE.
  *
- * Motif hct_cmd.c : « * », sans borne — l'analyseur découpe la ligne entière
- * mot à mot, exactement comme pour « sort » et « visual ». Même remède :
- * v3_reste rend le texte EXACT que lisait l'ancien exécuteur, et son
- * algorithme — lecture du mode, recherche de « in » hors des guillemets,
- * balayage carte par carte puis champ par champ — s'applique tel quel au
- * résultat. */
+ * Huit lignes tapées dans HyperCard sous Basilisk II, sur un champ contenant
+ * « alpha beta gamma delta », ont donné le modèle entier. Aucune de ces
+ * réponses n'était devinable — la troisième surtout :
+ *
+ *     find "bet gam"          trouvé    le motif est DÉCOUPÉ EN MOTS
+ *     find chars "ph be"      trouvé    découpé aussi
+ *     find string "a bet"     trouvé    la phrase ENTIÈRE, à cheval sur deux
+ *                                       mots : « alph[a bet]a »
+ *     find whole "a bet"      NON       la phrase, mais aux frontières de mots
+ *     find whole "beta gamma" trouvé
+ *     find word "bet"         NON       le mot entier seulement
+ *     find word "beta"        trouvé
+ *     find "gamma alpha"      trouvé    L'ORDRE NE COMPTE PAS
+ *
+ * D'où les deux familles, et c'est la distinction qui structure tout :
+ *
+ *   PAR MOTS — find, chars, word. Le motif est découpé ; chaque morceau doit
+ *   se trouver quelque part DANS LA CARTE, indépendamment des autres, dans
+ *   n'importe quel ordre et pas forcément dans le même champ (mesuré : un
+ *   mot dans un champ, l'autre dans un second champ de la même carte, et
+ *   c'est trouvé). Ce qui change d'une forme à l'autre est seulement ce que
+ *   « se trouver » veut dire : début de mot, n'importe où, ou mot entier.
+ *
+ *   PAR PHRASE — string, whole. Le motif n'est PAS découpé : on cherche la
+ *   suite de caractères telle quelle, contiguë, donc forcément dans un seul
+ *   champ. « whole » exige en plus que les deux bouts tombent sur des
+ *   frontières de mots.
+ *
+ * CE QUE « the foundText » REND, et je l'aurais écrit faux : le MOT TROUVÉ,
+ * entier, pas le motif cherché. « find "bet alph" » répond « beta ». Et
+ * foundChunk couvre ce mot entier — quatre caractères pour beta, pas les
+ * trois cherchées. Quand le motif a plusieurs mots, c'est le PREMIER qui est
+ * désigné.
+ *
+ * CE QUI N'EST PAS ENCORE FAIT, et qui est dit plutôt que tu : « find
+ * international » est ACCEPTÉ par la grammaire mais ne replie pas encore les
+ * accents ; il se comporte comme la forme de base. « of marked cards » est
+ * accepté et ignoré. Les deux sont inscrits dans le harnais comme tels — une
+ * porte annoncée et non percée est ce qu'on a passé la journée à débusquer,
+ * il n'est pas question d'en ouvrir une de plus en silence. */
+
+/* Un mot du texte commence-t-il ici ? */
+static int find_debut_mot(const char *tx, const char *q)
+{
+    return q == tx || isspace((unsigned char)q[-1]);
+}
+
+/* Un mot du texte finit-il juste avant ici ? */
+static int find_fin_mot(const char *q)
+{
+    return *q == 0 || isspace((unsigned char)*q);
+}
+
+/* Le mot ENTIER qui contient la position `hit`, rendu par ses bornes. C'est
+ * lui que foundText et foundChunk désignent, pas le morceau cherché. */
+static void find_mot_autour(const char *tx, const char *hit, size_t plen,
+                            int *deb, int *len)
+{
+    const char *a = hit;
+    while (a > tx && !isspace((unsigned char)a[-1])) a--;
+    const char *b = hit + plen;
+    while (*b && !isspace((unsigned char)*b)) b++;
+    *deb = (int)(a - tx);
+    *len = (int)(b - a);
+}
+
+/* Chercher UN morceau de motif dans un texte.
+ * mode 0 = début de mot, 1 = n'importe où, 2 = mot entier.
+ * Rend la position, ou NULL. */
+static const char *find_dans_texte(const char *tx, const char *pat, int mode)
+{
+    size_t plen = strlen(pat);
+    if (!plen) return NULL;
+    for (const char *q = tx; *q; q++) {
+        if (mode != 1 && !find_debut_mot(tx, q)) continue;
+        if (strncasecmp(q, pat, plen) != 0) continue;
+        if (mode == 2 && !find_fin_mot(q + plen)) continue;
+        return q;
+    }
+    return NULL;
+}
+
+/* Chercher une PHRASE contiguë. mode 3 = n'importe où, 4 = aux frontières. */
+static const char *find_phrase(const char *tx, const char *pat, int mode)
+{
+    size_t plen = strlen(pat);
+    if (!plen) return NULL;
+    for (const char *q = tx; *q; q++) {
+        if (strncasecmp(q, pat, plen) != 0) continue;
+        if (mode == 4 && (!find_debut_mot(tx, q) || !find_fin_mot(q + plen)))
+            continue;
+        return q;
+    }
+    return NULL;
+}
+
+/* Le champ est-il cherchable, et fait-il partie de la restriction « in » ? */
+static int find_champ_ok(Object *fl, const char *where)
+{
+    if (!fl || fl->type != OBJ_FIELD || fl->dont_search) return 0;
+    if (where && where[0]) {
+        Object *only = resolve(where);
+        if (only != fl) return 0;
+    }
+    return 1;
+}
+
+/* La ligne où tombe une position, 1 pour la première. */
+static int find_ligne_de(const char *tx, const char *hit)
+{
+    int n = 1;
+    for (const char *q = tx; q < hit; q++) if (*q == '\n') n++;
+    return n;
+}
+
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
@@ -10554,12 +10683,31 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     v3_reste(n, mots, HC_VAL);
 
     const char *r = skip_spaces(mots);
-    int mode = 0;                  /* 0 = debut de mot, 1 = n'importe ou, 2 = mot entier */
-    if      (ci_word(r, "string") || ci_word(r, "chars")) { mode = 1; r = skip_spaces(r + 6); }
-    else if (ci_word(r, "whole"))  { mode = 1; r = skip_spaces(r + 5); }
-    else if (ci_word(r, "word"))   { mode = 2; r = skip_spaces(r + 4); }
 
-    /* separer le motif de l'eventuel « in <champ> » */
+    /* LE MODE, en sautant le MOT plutôt qu'en comptant ses lettres.
+     *
+     * L'ancien code faisait « r + 6 » après avoir reconnu « chars ». Or le
+     * lexeur applique l'annexe F avant tout : « chars » arrive écrit
+     * « characters », et le saut de six caractères tombait au milieu du mot.
+     * Un décalage silencieux, qui aurait donné un motif tronqué. */
+    int mode = 0;   /* 0 début de mot, 1 n'importe où, 2 mot entier,
+                       3 phrase n'importe où, 4 phrase aux frontières */
+    int par_mots = 1;
+    for (;;) {
+        const char *apres = NULL;
+        if      (ci_word(r, "characters") || ci_word(r, "character") ||
+                 ci_word(r, "chars") || ci_word(r, "char")) { mode = 1; }
+        else if (ci_word(r, "words") || ci_word(r, "word"))  { mode = 2; }
+        else if (ci_word(r, "string")) { mode = 3; par_mots = 0; }
+        else if (ci_word(r, "whole"))  { mode = 4; par_mots = 0; }
+        else if (ci_word(r, "international")) { /* accepté, pas encore replié */ }
+        else break;
+        apres = r;
+        while (*apres && !isspace((unsigned char)*apres)) apres++;
+        r = skip_spaces(apres);
+    }
+
+    /* séparer le motif de l'éventuel « in <champ> » */
     const char *kw = NULL;
     int inq = 0;
     for (const char *q = r; *q; q++) {
@@ -10584,9 +10732,37 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
     if (!stack) { set_result("not found"); g_atop = sauve; return 1; }
 
+    /* LE MOTIF DÉCOUPÉ EN MOTS, pour les trois formes qui le font. */
+    char morceaux[16][64];
+    int nmorceaux = 0;
+    if (par_mots) {
+        const char *q = skip_spaces(pat);
+        while (*q && nmorceaux < 16) {
+            const char *d = q;
+            while (*q && !isspace((unsigned char)*q)) q++;
+            int l = (int)(q - d);
+            if (l > 63) l = 63;
+            memcpy(morceaux[nmorceaux], d, (size_t)l);
+            morceaux[nmorceaux][l] = 0;
+            nmorceaux++;
+            q = skip_spaces(q);
+        }
+    }
+    if (par_mots && nmorceaux == 0) {
+        set_result("not found"); g_atop = sauve; return 1;
+    }
+
     int total = card_count(stack);
     int start = card_index(stack, g_current_card);
     if (start < 0) start = 0;
+
+    /* AVANCER SI C'EST LA MÊME RECHERCHE. Voir la note sur g_find_motif :
+     * mesuré chez HyperCard, répéter « find » passe à l'occurrence suivante
+     * et boucle. */
+    if (g_found_card == g_current_card && g_found_card &&
+        strcmp(g_find_motif, pat) == 0)
+        start = (start + 1) % (total > 0 ? total : 1);
+    snprintf(g_find_motif, sizeof g_find_motif, "%s", pat);
 
     for (int k = 0; k < total; k++) {
         Object *cd = nth_card(stack, (start + k) % total);
@@ -10595,78 +10771,107 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         /* « Don't Search This Card » : on saute la carte ENTIÈRE, et pas
          * seulement tel ou tel champ. Le verrou du FOND vaut pour toutes ses
          * cartes — c'est ainsi qu'on tient un mode d'emploi ou une carte
-         * d'index hors des résultats sans avoir à cocher chaque champ.
-         *
-         * La carte COURANTE n'échappe pas à la règle : HyperCard non plus, et
-         * une exception ici ferait qu'une recherche trouve sur place ce
-         * qu'elle ne retrouvera jamais en repassant. */
+         * d'index hors des résultats sans avoir à cocher chaque champ. */
         if (cd->dont_search) continue;
         if (cd->bg && cd->bg->dont_search) continue;
 
-        /* champs de la carte puis du fond */
         Object *layers[2] = { cd, cd->bg };
-        for (int L = 0; L < 2; L++) {
-            Object *lay = layers[L];
-            if (!lay) continue;
-            for (int i = 0; i < lay->nparts; i++) {
-                Object *fl = lay->parts[i];
-                if (fl->type != OBJ_FIELD || fl->dont_search) continue;
-                if (where[0]) {          /* recherche restreinte a un champ */
-                    Object *only = resolve(where);
-                    if (only != fl) continue;
-                }
+        Object *trouve_fl = NULL;
+        const char *trouve_tx = NULL, *trouve_hit = NULL;
+        size_t trouve_len = 0;
+        int ok = 0;
 
-                Object *saved = g_current_card;
-                g_current_card = cd;                 /* pour le texte par carte */
-                const char *tx = hc_field_text(fl);
-                const char *hit = NULL;
-                int line = 1;
+        Object *saved = g_current_card;
+        g_current_card = cd;                     /* pour le texte par carte */
 
-                for (const char *q = tx; *q; q++) {
-                    if (*q == '\n') { line++; continue; }
-                    int atword = (q == tx) || isspace((unsigned char)q[-1]);
-                    if (mode == 1 || atword) {
-                        size_t plen = strlen(pat);
-                        if (strncasecmp(q, pat, plen) == 0) {
-                            if (mode == 2) {         /* mot entier */
-                                char nx = q[plen];
-                                if (nx && !isspace((unsigned char)nx) &&
-                                    !ispunct((unsigned char)nx)) continue;
-                            }
-                            hit = q;
-                            break;
+        if (par_mots) {
+            /* TOUS les morceaux doivent être dans la carte, chacun n'importe
+             * où, sans ordre imposé et sans devoir partager un champ. */
+            ok = 1;
+            for (int m = 0; m < nmorceaux && ok; m++) {
+                int vu = 0;
+                for (int L = 0; L < 2 && !vu; L++) {
+                    Object *lay = layers[L];
+                    if (!lay) continue;
+                    for (int i = 0; i < lay->nparts && !vu; i++) {
+                        Object *fl = lay->parts[i];
+                        if (!find_champ_ok(fl, where)) continue;
+                        const char *tx = hc_field_text(fl);
+                        const char *hit = find_dans_texte(tx, morceaux[m], mode);
+                        if (!hit) continue;
+                        vu = 1;
+                        /* C'est le PREMIER morceau du motif qui est désigné
+                         * par foundText et foundChunk. */
+                        if (m == 0) {
+                            trouve_fl  = fl;
+                            trouve_tx  = tx;
+                            trouve_hit = hit;
+                            trouve_len = strlen(morceaux[m]);
                         }
                     }
                 }
-                g_current_card = saved;
-
-                if (hit) {
-                    snprintf(g_found_text, sizeof g_found_text, "%s", pat);
-                    g_found_field = fl;
-                    g_found_line = line;
-                    g_found_start = (int)(hit - tx);
-                    g_found_len   = (int)strlen(pat);
-                    g_found_card  = cd;
-                    g_found_montre = 1;
-
-                    if (cd != g_current_card) {      /* naviguer si besoin */
-                        Object *old = g_current_card;
-                        Object *oldbg = old ? old->bg : NULL;
-                        if (old) hc_send_systeme(old, "closeCard");
-                        if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
-                        g_current_card = cd;
-                        if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
-                        hc_send_systeme(cd, "openCard");
-                    }
-                    set_result("");
-                    emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
-                         pat, cd->name ? cd->name : "?");
-                    g_atop = sauve;
-                    return 1;
+                if (!vu) ok = 0;
+            }
+        } else {
+            for (int L = 0; L < 2 && !ok; L++) {
+                Object *lay = layers[L];
+                if (!lay) continue;
+                for (int i = 0; i < lay->nparts && !ok; i++) {
+                    Object *fl = lay->parts[i];
+                    if (!find_champ_ok(fl, where)) continue;
+                    const char *tx = hc_field_text(fl);
+                    const char *hit = find_phrase(tx, pat, mode);
+                    if (!hit) continue;
+                    ok = 1;
+                    trouve_fl  = fl;
+                    trouve_tx  = tx;
+                    trouve_hit = hit;
+                    trouve_len = strlen(pat);
                 }
             }
         }
+
+        g_current_card = saved;
+
+        if (!ok || !trouve_fl) continue;
+
+        /* CE QUE DÉSIGNE LA TROUVAILLE : le MOT entier pour les formes par
+         * mots, la phrase telle quelle pour les autres. Mesuré : « find
+         * "bet alph" » rend foundText = « beta », quatre caractères. */
+        int deb, len;
+        if (par_mots && mode != 1)
+            find_mot_autour(trouve_tx, trouve_hit, trouve_len, &deb, &len);
+        else {
+            deb = (int)(trouve_hit - trouve_tx);
+            len = (int)trouve_len;
+        }
+        if (len > (int)sizeof g_found_text - 1) len = (int)sizeof g_found_text - 1;
+        memcpy(g_found_text, trouve_tx + deb, (size_t)len);
+        g_found_text[len] = 0;
+
+        g_found_field  = trouve_fl;
+        g_found_line   = find_ligne_de(trouve_tx, trouve_tx + deb);
+        g_found_start  = deb;
+        g_found_len    = len;
+        g_found_card   = cd;
+        g_found_montre = 1;
+
+        if (cd != g_current_card) {              /* naviguer si besoin */
+            Object *old = g_current_card;
+            Object *oldbg = old ? old->bg : NULL;
+            if (old) hc_send_systeme(old, "closeCard");
+            if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
+            g_current_card = cd;
+            if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
+            hc_send_systeme(cd, "openCard");
+        }
+        set_result("");
+        emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
+             g_found_text, cd->name ? cd->name : "?");
+        g_atop = sauve;
+        return 1;
     }
+
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
     g_found_start = g_found_len = 0; g_found_card = NULL;
     g_found_montre = 0;

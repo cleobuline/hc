@@ -16,6 +16,15 @@
  * le morceau rendu par « the foundChunk » doit relire exactement le motif.
  * Si un jour quelqu'un fait rendre les octets a foundChunk « pour aligner les
  * deux », ce test le dira tout de suite.
+ *
+ * IL DISAIT « find », IL DIT MAINTENANT « find string », ET CE N'EST PAS UN
+ * CONTOURNEMENT. Mesure faite depuis dans HyperCard : « find » DECOUPE son
+ * motif en mots et ne designe que le PREMIER — « find "bet alph" » rend
+ * foundText = « beta ». La forme qui cherche une phrase entiere, contiguë,
+ * est « find string ». Ce harnais voulait un LONG motif place apres plusieurs
+ * accents ; c'est donc « find string » qu'il lui fallait depuis le debut, et
+ * « find » ne lui donnait ce qu'il attendait que parce que HC ne decoupait
+ * pas encore. Voir tests/harnais/recherche.c pour les onze mesures.
  */
 #include "hc_core.h"
 #include <stdio.h>
@@ -58,7 +67,7 @@ int main(void)
     puts("\n== et « the foundChunk » designe bien le motif ==");
     hc_set_script(b,
         "on mouseUp\n"
-        "  find \"un mot nu vaut son nom\"\n"
+        "  find string \"un mot nu vaut son nom\"\n"
         "  put \"foundText  : [\" & the foundText & \"]\"\n"
         "  put \"foundChunk : \" & the foundChunk\n"
         "  put \"foundLine  : \" & the foundLine\n"
