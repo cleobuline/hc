@@ -1,0 +1,83 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card field "nExistePas"   2
+[v3]    recours of width                         1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    4
+[v3]    v1 fonction recours expr                 4
+[v3]    v3 relit recours expr                    2
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    recours objet: card field "nExistePas"   2
+[v3]    recours of width                         1
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    v1 terme recours expr                    4
+[v3]    v1 fonction recours expr                 4
+[v3]    v3 relit recours expr                    2
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+── 1. AU DEPART : rien n'a tourne, le bilan doit etre vide
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+── 2. LE TEMOIN POSITIF tourne
+── 2b. et le bilan doit maintenant compter
+   — retours de la v3 vers l'ancien interpréteur —
+      recours objet: card field "nExistePas"   2
+      recours of width                         1
+   — ce que l'ancien interprète exécute encore —
+      v1 terme recours expr                    4
+      v1 fonction recours expr                 4
+      v3 relit recours expr                    2
+── 3. « debug raz »
+── 3b. le bilan doit etre revenu a vide
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+── 4. LE TEMOIN tourne de nouveau
+── 4b. et le bilan compte de nouveau
+   — retours de la v3 vers l'ancien interpréteur —
+      recours objet: card field "nExistePas"   2
+      recours of width                         1
+   — ce que l'ancien interprète exécute encore —
+      v1 terme recours expr                    4
+      v1 fonction recours expr                 4
+      v3 relit recours expr                    2
+── 5. « debug bilan raz » — LA FORME QUI NE MARCHAIT PAS
+── 5b. le bilan doit etre revenu a vide, comme en 3b
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+── 6. « debug raz bilan », l'ordre inverse
+── 6b. vide aussi : « raz » est cherche parmi TOUS les mots
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)
+── 7. du HyperTalk ordinaire ne doit RIEN compter
+   (la chaine de trace de la rosace, vingt tours)
+── 7b. et c'est bien le cas : la v3 fait tout
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

@@ -9776,7 +9776,7 @@ static void releve_fichier(void);
  * ENCORE VU.
  *
  * Le relevé écrit dans son fichier à la SORTIE du processus. Un harnais qui
- * fait « debug bilan raz » en cours de route vidait donc les compteurs avant
+ * fait « debug raz » en cours de route vidait donc les compteurs avant
  * que le fichier ne les voie, et tout ce qui précédait la remise à zéro
  * disparaissait de l'agrégat.
  *
@@ -12054,13 +12054,34 @@ static int v3_cmd_beep(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* « debug raz », « debug bilan », « debug bilan raz ».
+ *
+ * CETTE COMMANDE NE LISAIT QUE SON PREMIER MOT, et c'est un défaut qui a
+ * survécu parce que la suite de tests ne l'a jamais touché : tous les harnais
+ * et toutes les piles de tests/donnees écrivent « debug raz », la forme qui
+ * marchait. Seul un COMMENTAIRE de ce fichier documentait « debug bilan raz »
+ * — la lecture naturelle, et celle qu'on tape spontanément.
+ *
+ * Ce que ça donnait : « debug bilan raz » comparait « bilan » à « raz »,
+ * n'y voyait pas de remise à zéro, et imprimait un rapport. Les compteurs
+ * restaient intacts. On croyait donc mesurer un gestionnaire et on mesurait
+ * tout depuis le lancement — un instrument qui SUR-compte, après celui qui
+ * sous-comptait dont parle hc_v3_bilan_remise_a_zero. Les deux erreurs ont
+ * la même forme : une porte annoncée et jamais percée.
+ *
+ * ON CHERCHE DONC « raz » PARMI TOUS LES MOTS, et pas seulement au premier.
+ * « debug raz » et « debug bilan raz » font la même chose, silencieusement,
+ * parce qu'un relevé imprimé avant une remise à zéro n'apprend rien que le
+ * relevé précédent n'ait déjà dit. */
 static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
-    char quoi[32];
-    quoi[0] = '\0';
-    if (n->nfils >= 1) v3_brut(n->fils[0], quoi, sizeof quoi);
-    if (ci_equal(quoi, "raz")) { hc_v3_bilan_remise_a_zero(); return 1; }
+    for (int i = 0; i < n->nfils; i++) {
+        char mot[32];
+        mot[0] = '\0';
+        v3_brut(n->fils[i], mot, sizeof mot);
+        if (ci_equal(mot, "raz")) { hc_v3_bilan_remise_a_zero(); return 1; }
+    }
     hc_v3_bilan();
     return 1;
 }
