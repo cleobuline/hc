@@ -173,3 +173,63 @@
    apres un pixel : 1   (lu : 1)
    apres l'avoir efface : 0
    hors bornes ne deborde pas : bits = 0, lu hors bornes = 0
+=== 14. COLLER UNE IMAGE : peu de couleurs, donc SANS PERTE ===
+   (le cas courant — un bout de dessin, un logo, un aplat. Les
+    couleurs distinctes tiennent dans la palette, on les reprend
+    telles quelles, et aucun pixel ne change de teinte)
+   palette : 5 entrees (4 couleurs + la transparence)
+   pixels dont la teinte a change : 0   (transparents : 16)
+   COLLAGE SANS PERTE
+   et le dessin :
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   ....1111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   11111111111111112222222222222222
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+   33333333333333334444444444444444
+=== 15. COLLER UNE IMAGE DE PLUS DE 255 COULEURS ===
+   (une photo, ou un degrade. La decoupe mediane construit
+    255 boites, chacune rendant la moyenne de ce qu'elle
+    contient. On coupe la boite la plus ETENDUE et non la plus
+    peuplee : une photo a des milliers de pixels de ciel et
+    quelques-uns de rouge vif, et couper par population
+    noierait le rouge)
+   1024 couleurs distinctes en entree -> 256 en palette
+   ecart maximal sur un canal : 12 sur 255
+   ecart moyen                : 4
+   (un ecart maximal de quelques unites veut dire que l'oeil
+    ne verra pas la difference ; c'est ce qu'on attend d'une
+    decoupe qui dispose de 255 couleurs pour 1024 pixels)
+=== 16. UNE IMAGE ENTIEREMENT TRANSPARENTE VIDE L'ICONE ===
+   (et c'est la bonne reponse : coller du vide donne du vide,
+    pas une icone noire ni un refus)
+   palette : 1   pixels peints : 0   bits d'encre : 0
+=== 17. LE COLLAGE SURVIT A L'ALLER-RETOUR ===
+   256 couleurs, 0 differentes ; 0 pixels differents
+   IDENTIQUE

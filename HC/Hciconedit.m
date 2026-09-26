@@ -549,3 +549,81 @@ static int gPalIndexEnCours = 0;
 }
 
 @end
+
+/* ==================== coller une image ==================== */
+
+int hcicon_edit_colle(Object *stack, int id)
+{
+    NSArray *img = [[NSPasteboard generalPasteboard]
+                      readObjectsForClasses:@[[NSImage class]] options:nil];
+    if ([img count] == 0) return 0;
+    NSImage *src = img[0];
+
+    struct StackIcon *e = hcicon_edit_editable(stack, id);
+    if (!e) return 0;
+
+    /* LE TAMPON EST PREMULTIPLIE, et il faut le defaire avant de lire.
+     *
+     * CoreGraphics ne sait pas dessiner dans un contexte non premultiplie :
+     * demander NSBitmapFormatAlphaNonpremultiplied rend un contexte nul, et
+     * le collage echouerait sans rien dire. On prend donc le format par
+     * defaut et l'on divise par l'alpha a la lecture. Sans cette division,
+     * un pixel a demi transparent arriverait ASSOMBRI — et comme on seuille
+     * l'alpha juste apres, il resterait sombre sans raison visible. */
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL
+                      pixelsWide:HC_ICON_COTE
+                      pixelsHigh:HC_ICON_COTE
+                   bitsPerSample:8
+                 samplesPerPixel:4
+                        hasAlpha:YES
+                        isPlanar:NO
+                  colorSpaceName:NSCalibratedRGBColorSpace
+                     bytesPerRow:HC_ICON_COTE * 4
+                    bitsPerPixel:32];
+    if (!rep) return 0;
+
+    NSGraphicsContext *ctx =
+        [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return 0;
+
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:ctx];
+    [[NSColor clearColor] setFill];
+    NSRectFill(NSMakeRect(0, 0, HC_ICON_COTE, HC_ICON_COTE));
+
+    /* TENIR SANS SE DEFORMER, et centre. Une image large ecrasee au carre
+     * devient illisible a cette taille, et c'est justement a cette taille
+     * qu'on a le moins de pixels a perdre. */
+    NSSize sz = [src size];
+    CGFloat ech = (sz.width <= 0 || sz.height <= 0) ? 1.0
+                : fmin(HC_ICON_COTE / sz.width, HC_ICON_COTE / sz.height);
+    CGFloat w = sz.width * ech, h = sz.height * ech;
+    [src drawInRect:NSMakeRect((HC_ICON_COTE - w) / 2, (HC_ICON_COTE - h) / 2,
+                               w, h)
+           fromRect:NSZeroRect
+          operation:NSCompositingOperationSourceOver
+           fraction:1.0];
+    [NSGraphicsContext restoreGraphicsState];
+
+    unsigned char *src_px = [rep bitmapData];
+    if (!src_px) return 0;
+
+    static unsigned char rvba[HC_ICON_PIXELS * 4];
+    for (int i = 0; i < HC_ICON_PIXELS; i++) {
+        int a = src_px[i * 4 + 3];
+        for (int k = 0; k < 3; k++) {
+            int v = src_px[i * 4 + k];
+            /* defaire la premultiplication ; a == 0 n'a pas de couleur a
+             * retrouver, et le pixel sera transparent de toute facon */
+            rvba[i * 4 + k] = (a > 0 && a < 255)
+                ? (unsigned char)((v * 255 + a / 2) / a)
+                : (unsigned char)v;
+        }
+        rvba[i * 4 + 3] = (unsigned char)a;
+    }
+
+    int n = hc_icon_colle_rvba(e, rvba);
+    if (n) hcicon_edit_sync(stack);
+    return n;
+}

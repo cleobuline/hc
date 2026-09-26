@@ -319,6 +319,117 @@ int main(void)
         hc_free(s3);
     }
 
+    printf("=== 14. COLLER UNE IMAGE : peu de couleurs, donc SANS PERTE ===\n");
+    printf("   (le cas courant — un bout de dessin, un logo, un aplat. Les\n");
+    printf("    couleurs distinctes tiennent dans la palette, on les reprend\n");
+    printf("    telles quelles, et aucun pixel ne change de teinte)\n");
+    {
+        Object *s4 = hc_new_stack("S");
+        Object *b4 = hc_new_background(s4, "F");
+        hc_new_card(s4, b4, "u");
+        struct StackIcon *p1 = hc_icon_add(s4, 1, "quatre aplats");
+
+        static unsigned char img[HC_ICON_PIXELS * 4];
+        /* quatre quadrants francs, plus un coin transparent */
+        for (int y = 0; y < HC_ICON_COTE; y++)
+            for (int x = 0; x < HC_ICON_COTE; x++) {
+                int i = (y * HC_ICON_COTE + x) * 4;
+                int haut = y < 16, gauche = x < 16;
+                img[i]   = haut ? (gauche ? 0xFF : 0x00) : (gauche ? 0x00 : 0xFF);
+                img[i+1] = haut ? (gauche ? 0x00 : 0xFF) : (gauche ? 0x00 : 0xFF);
+                img[i+2] = haut ? (gauche ? 0x00 : 0x00) : (gauche ? 0xFF : 0x00);
+                img[i+3] = (x < 4 && y < 4) ? 0 : 255;      /* coin transparent */
+            }
+        int nc = hc_icon_colle_rvba(p1, img);
+        struct HcIconCouleur *cp = hc_icon_couleur(p1);
+        printf("   palette : %d entrees (4 couleurs + la transparence)\n", nc);
+
+        /* verifier PIXEL PAR PIXEL que la teinte est la meme qu'a l'entree */
+        int faux = 0, transp = 0;
+        for (int i = 0; i < HC_ICON_PIXELS; i++) {
+            int idx = cp->pixels[i];
+            if (img[i*4+3] < 128) { if (idx != 0) faux++; else transp++; continue; }
+            if (idx == 0) { faux++; continue; }
+            if (cp->palette[idx][0] != img[i*4]   ||
+                cp->palette[idx][1] != img[i*4+1] ||
+                cp->palette[idx][2] != img[i*4+2]) faux++;
+        }
+        printf("   pixels dont la teinte a change : %d   (transparents : %d)\n",
+               faux, transp);
+        printf("   %s\n", faux == 0 ? "COLLAGE SANS PERTE" : "ECART");
+        printf("   et le dessin :\n");
+        dessine(cp);
+
+        printf("=== 15. COLLER UNE IMAGE DE PLUS DE 255 COULEURS ===\n");
+        printf("   (une photo, ou un degrade. La decoupe mediane construit\n");
+        printf("    255 boites, chacune rendant la moyenne de ce qu'elle\n");
+        printf("    contient. On coupe la boite la plus ETENDUE et non la plus\n");
+        printf("    peuplee : une photo a des milliers de pixels de ciel et\n");
+        printf("    quelques-uns de rouge vif, et couper par population\n");
+        printf("    noierait le rouge)\n");
+        struct StackIcon *p2 = hc_icon_add(s4, 2, "degrade");
+        for (int y = 0; y < HC_ICON_COTE; y++)
+            for (int x = 0; x < HC_ICON_COTE; x++) {
+                int i = (y * HC_ICON_COTE + x) * 4;
+                /* un degrade continu : 1024 couleurs toutes differentes */
+                img[i]   = (unsigned char)(x * 8);
+                img[i+1] = (unsigned char)(y * 8);
+                img[i+2] = (unsigned char)((x + y) * 4);
+                img[i+3] = 255;
+            }
+        int nc2 = hc_icon_colle_rvba(p2, img);
+        struct HcIconCouleur *cq2 = hc_icon_couleur(p2);
+        printf("   1024 couleurs distinctes en entree -> %d en palette\n", nc2);
+
+        /* l'erreur maximale et moyenne, en distance sur un canal */
+        long pire = 0, somme = 0;
+        for (int i = 0; i < HC_ICON_PIXELS; i++) {
+            int idx = cq2->pixels[i];
+            long d = 0;
+            for (int k = 0; k < 3; k++) {
+                long e = (long)img[i*4+k] - cq2->palette[idx][k];
+                if (e < 0) e = -e;
+                if (e > d) d = e;
+            }
+            somme += d;
+            if (d > pire) pire = d;
+        }
+        printf("   ecart maximal sur un canal : %ld sur 255\n", pire);
+        printf("   ecart moyen                : %ld\n", somme / HC_ICON_PIXELS);
+        printf("   (un ecart maximal de quelques unites veut dire que l'oeil\n");
+        printf("    ne verra pas la difference ; c'est ce qu'on attend d'une\n");
+        printf("    decoupe qui dispose de 255 couleurs pour 1024 pixels)\n");
+
+        printf("=== 16. UNE IMAGE ENTIEREMENT TRANSPARENTE VIDE L'ICONE ===\n");
+        printf("   (et c'est la bonne reponse : coller du vide donne du vide,\n");
+        printf("    pas une icone noire ni un refus)\n");
+        struct StackIcon *p3 = hc_icon_add(s4, 3, "rien");
+        memset(img, 0, sizeof img);
+        int nc3 = hc_icon_colle_rvba(p3, img);
+        struct HcIconCouleur *cq3 = hc_icon_couleur(p3);
+        printf("   palette : %d   pixels peints : %d   bits d'encre : %d\n",
+               nc3, compte_non_transparents(cq3), compte_encre(p3->bits));
+
+        printf("=== 17. LE COLLAGE SURVIT A L'ALLER-RETOUR ===\n");
+        hc_save(s4, FIC);
+        Object *r4 = hc_load(FIC);
+        struct StackIcon *q2 = r4 ? hc_icon_get(r4, 2) : NULL;
+        struct HcIconCouleur *cr = q2 ? hc_icon_couleur(q2) : NULL;
+        if (!cr) printf("   [ERR] relecture\n");
+        else {
+            int dp = 0, dc = 0;
+            for (int i = 0; i < HC_ICON_PIXELS; i++)
+                if (cr->pixels[i] != cq2->pixels[i]) dp++;
+            for (int i = 0; i < cq2->ncouleurs; i++)
+                if (memcmp(cr->palette[i], cq2->palette[i], 3)) dc++;
+            printf("   %d couleurs, %d differentes ; %d pixels differents\n",
+                   cr->ncouleurs, dc, dp);
+            printf("   %s\n", (!dp && !dc) ? "IDENTIQUE" : "ECART");
+        }
+        if (r4) hc_free(r4);
+        hc_free(s4);
+    }
+
     hc_free(rl); hc_free(st);
     remove(FIC);
     return 0;

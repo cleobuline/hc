@@ -65,6 +65,20 @@ int hcicon_edit_couleur(Object *stack, int id, int allume);
 /* L'icone est-elle en couleur ? */
 int hcicon_edit_est_couleur(Object *stack, int id);
 
+/* COLLER CE QU'IL Y A DANS LE PRESSE-PAPIERS.
+ *
+ * N'importe quelle image : un bout de carte copie dans HC, une capture, un
+ * fichier glisse depuis le Finder. Elle est mise a l'echelle pour TENIR dans
+ * 32x32 sans se deformer, centree, le reste restant transparent.
+ *
+ * L'icone passe en couleur si elle ne l'est pas — coller une image dans une
+ * icone en noir et blanc et n'en garder que la silhouette serait une facon
+ * bizarre de decevoir.
+ *
+ * Rend le nombre de couleurs de la palette obtenue, ou 0 si le presse-papiers
+ * ne contient pas d'image. */
+int hcicon_edit_colle(Object *stack, int id);
+
 /* ---- operations sur le catalogue de la pile ----
  * Celles qui rendent un int rendent le numero a selectionner ensuite, ou 0. */
 

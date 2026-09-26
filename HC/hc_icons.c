@@ -312,3 +312,177 @@ void hc_icons_free(Object *stack)
     stack->nicons   = 0;
     stack->capicons = 0;
 }
+
+/* ----------------------------------------------------- coller ---------- */
+
+/* LA DÉCOUPE MÉDIANE, en une page.
+ *
+ * On range les couleurs opaques dans une boîte, puis on coupe toujours la
+ * boîte la PLUS ÉTENDUE en deux, sur son canal le plus étendu, à sa médiane.
+ * Répété jusqu'à obtenir autant de boîtes que de couleurs voulues, chaque
+ * boîte rend la moyenne de ce qu'elle contient.
+ *
+ * POURQUOI LA PLUS ÉTENDUE ET NON LA PLUS PEUPLÉE : une photo a des milliers
+ * de pixels de ciel et quelques-uns de rouge vif. Couper par population
+ * donnerait deux cents nuances de bleu et un seul rouge moyen pour tout le
+ * reste ; couper par étendue garde les couleurs rares qui font l'image.
+ *
+ * C'est l'algorithme de Heckbert, de 1980 — contemporain des piles qu'on
+ * cherche à lire. */
+
+typedef struct { unsigned char r, v, b; } RVB;
+
+typedef struct { int deb, fin; } Boite;   /* [deb, fin) dans le tableau trié */
+
+static int rvb_canal(const RVB *c, int k)
+{
+    return k == 0 ? c->r : (k == 1 ? c->v : c->b);
+}
+
+/* Étendue d'une boîte sur un canal, et le canal le plus étendu. */
+static int boite_etendue(const RVB *t, Boite bo, int *canal)
+{
+    int meilleur = -1, quel = 0;
+    for (int k = 0; k < 3; k++) {
+        int lo = 255, hi = 0;
+        for (int i = bo.deb; i < bo.fin; i++) {
+            int v = rvb_canal(&t[i], k);
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+        }
+        if (hi - lo > meilleur) { meilleur = hi - lo; quel = k; }
+    }
+    if (canal) *canal = quel;
+    return meilleur;
+}
+
+static int g_tri_canal;
+
+static int rvb_compare(const void *a, const void *b)
+{
+    return rvb_canal((const RVB *)a, g_tri_canal) -
+           rvb_canal((const RVB *)b, g_tri_canal);
+}
+
+int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
+{
+    if (!ic || !rvba) return 0;
+
+    struct HcIconCouleur *c = hc_icon_couleur_cree(ic);
+    if (!c) return 0;
+
+    /* Les couleurs opaques, une entrée par pixel. On garde les doublons :
+     * la découpe médiane a besoin de la DENSITÉ pour placer ses coupes, et
+     * dédoublonner d'abord donnerait le même poids à un pixel isolé qu'à un
+     * aplat de cinq cents. */
+    RVB *t = malloc(sizeof *t * HC_ICON_PIXELS);
+    if (!t) return 0;
+    int n = 0;
+    for (int i = 0; i < HC_ICON_PIXELS; i++) {
+        if (rvba[i * 4 + 3] < 128) continue;          /* transparent */
+        t[n].r = rvba[i * 4];
+        t[n].v = rvba[i * 4 + 1];
+        t[n].b = rvba[i * 4 + 2];
+        n++;
+    }
+
+    /* Tout transparent : l'icône se vide, et c'est la bonne réponse. */
+    if (n == 0) {
+        memset(c->pixels, 0, HC_ICON_PIXELS);
+        c->ncouleurs = 1;
+        hc_icon_silhouette(ic);
+        free(t);
+        return 1;
+    }
+
+    /* Combien de couleurs DISTINCTES ? Si elles tiennent, on les prend telles
+     * quelles et le collage est sans perte. */
+    c->ncouleurs = 1;
+    int exact = 1;
+    for (int i = 0; i < n; i++) {
+        int trouve = 0;
+        for (int k = 1; k < c->ncouleurs; k++)
+            if (c->palette[k][0] == t[i].r && c->palette[k][1] == t[i].v &&
+                c->palette[k][2] == t[i].b) { trouve = 1; break; }
+        if (trouve) continue;
+        if (c->ncouleurs >= HC_ICON_COULEURS_MAX) { exact = 0; break; }
+        c->palette[c->ncouleurs][0] = t[i].r;
+        c->palette[c->ncouleurs][1] = t[i].v;
+        c->palette[c->ncouleurs][2] = t[i].b;
+        c->ncouleurs++;
+    }
+
+    if (!exact) {
+        /* DÉCOUPE MÉDIANE. Une seule boîte au départ, et l'on coupe toujours
+         * la plus étendue jusqu'à en avoir 255. */
+        int vise = HC_ICON_COULEURS_MAX - 1;          /* l'index 0 est pris */
+        Boite *bo = malloc(sizeof *bo * (size_t)vise);
+        if (!bo) { free(t); return 0; }
+        bo[0].deb = 0; bo[0].fin = n;
+        int nb = 1;
+
+        while (nb < vise) {
+            /* la boîte la plus étendue, et sur quel canal */
+            int quelle = -1, etendue = 0, canal = 0;
+            for (int i = 0; i < nb; i++) {
+                if (bo[i].fin - bo[i].deb < 2) continue;   /* rien à couper */
+                int k, e = boite_etendue(t, bo[i], &k);
+                if (e > etendue) { etendue = e; quelle = i; canal = k; }
+            }
+            /* Plus rien à couper : toutes les boîtes sont uniformes ou
+             * singulières. C'est une fin normale, pas un échec — une image de
+             * dix couleurs répétées n'a pas besoin de 255 boîtes. */
+            if (quelle < 0 || etendue == 0) break;
+
+            g_tri_canal = canal;
+            qsort(t + bo[quelle].deb,
+                  (size_t)(bo[quelle].fin - bo[quelle].deb), sizeof *t,
+                  rvb_compare);
+            int mil = (bo[quelle].deb + bo[quelle].fin) / 2;
+            bo[nb].deb = mil; bo[nb].fin = bo[quelle].fin;
+            bo[quelle].fin = mil;
+            nb++;
+        }
+
+        c->ncouleurs = 1;
+        for (int i = 0; i < nb; i++) {
+            long sr = 0, sv = 0, sb = 0;
+            int m = bo[i].fin - bo[i].deb;
+            if (m <= 0) continue;
+            for (int j = bo[i].deb; j < bo[i].fin; j++) {
+                sr += t[j].r; sv += t[j].v; sb += t[j].b;
+            }
+            c->palette[c->ncouleurs][0] = (unsigned char)(sr / m);
+            c->palette[c->ncouleurs][1] = (unsigned char)(sv / m);
+            c->palette[c->ncouleurs][2] = (unsigned char)(sb / m);
+            c->ncouleurs++;
+        }
+        free(bo);
+    }
+
+    /* CHAQUE PIXEL VA À LA COULEUR LA PLUS PROCHE, distance au carré dans le
+     * cube RVB. Mille vingt-quatre pixels par deux cent cinquante-cinq
+     * couleurs : deux cent soixante mille comparaisons, ce qui ne se sent pas.
+     *
+     * On refait le tour même dans le cas exact : la couleur y est retrouvée à
+     * distance nulle, donc le résultat est le même, et l'on n'a pas deux
+     * chemins d'assignation qui pourraient diverger. */
+    for (int i = 0; i < HC_ICON_PIXELS; i++) {
+        if (rvba[i * 4 + 3] < 128) { c->pixels[i] = 0; continue; }
+        int r = rvba[i * 4], v = rvba[i * 4 + 1], b = rvba[i * 4 + 2];
+        long meilleure = -1; int choix = 1;
+        for (int k = 1; k < c->ncouleurs; k++) {
+            long dr = r - c->palette[k][0];
+            long dv = v - c->palette[k][1];
+            long db = b - c->palette[k][2];
+            long d = dr * dr + dv * dv + db * db;
+            if (meilleure < 0 || d < meilleure) { meilleure = d; choix = k; }
+            if (d == 0) break;
+        }
+        c->pixels[i] = (unsigned char)choix;
+    }
+
+    hc_icon_silhouette(ic);
+    free(t);
+    return c->ncouleurs;
+}

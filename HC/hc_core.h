@@ -214,6 +214,33 @@ int  hc_icon_palette_index(struct StackIcon *ic,
                            unsigned char r, unsigned char v, unsigned char b);
 void hc_icon_tourne(struct StackIcon *ic);
 
+/* COLLER UNE IMAGE DANS UNE ICÔNE.
+ *
+ * `rvba` fait HC_ICON_PIXELS × 4 octets, rouge-vert-bleu-alpha, ligne par
+ * ligne du haut vers le bas. L'hôte s'occupe de découper et de mettre à
+ * l'échelle — lui seul sait lire un PNG ou un presse-papiers ; le noyau ne
+ * reçoit que des octets.
+ *
+ * UN ALPHA SOUS 128 DEVIENT TRANSPARENT, index 0. Le seuil plutôt qu'un
+ * mélange : une icône n'a pas de demi-transparence, et prétendre le contraire
+ * obligerait à inventer un fond pour mélanger avec.
+ *
+ * LA PALETTE SE CONSTRUIT SEULE :
+ *   · 255 couleurs distinctes ou moins → elles sont reprises EXACTEMENT. Le
+ *     collage est alors sans perte, et c'est le cas courant — un bout de
+ *     dessin, un logo, un aplat.
+ *   · au-delà → découpe médiane (median cut) en 255 boîtes, chaque boîte
+ *     rendant la moyenne de ce qu'elle contient. C'est ce qui arrive sur une
+ *     photo ou un tramé dense, où 256 couleurs sur 32×32 sont de toute façon
+ *     un luxe.
+ *
+ * PAS DE TRAMAGE. Sur 32×32 un tramage ressemble à du bruit, il salit les
+ * aplats, et il rend le dessin impossible à retoucher à la main ensuite —
+ * ce qui est justement ce qu'on vient à faire dans un éditeur d'icônes.
+ *
+ * Rend le nombre de couleurs de la palette, ou 0 en cas d'échec. */
+int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba);
+
 struct Object {
     ObjType  type;
     int      id;

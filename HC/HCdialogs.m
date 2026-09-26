@@ -1300,6 +1300,7 @@ void hcicon_panel_stack_closing(Object *stack)
     mkEB(@"Effacer",  @selector(iconErase:),     RX + 128, 0);
     mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192, 0);
     mkEB(@"Pivoter",  @selector(iconRotate:),    RX,       1);
+    mkEB(@"Coller",   @selector(iconColler:),    RX + 64,  1);
 
     /* ---- rangee du bas, commune ---- */
     NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
@@ -1446,6 +1447,35 @@ void hcicon_panel_stack_closing(Object *stack)
     [self iconCommitName];
     hcicon_edit_rotate(gIconStack, gIconGrid.selected);
     [self iconRefresh];
+}
+
+/* Coller une image du presse-papiers dans l'icône.
+ *
+ * On ne se demande pas s'il y a une image : hcicon_edit_colle rend 0 quand il
+ * n'y en a pas, et l'on dit alors pourquoi. Un bouton qui ne fait rien sans
+ * expliquer est plus agaçant qu'un bouton grisé — mais on ne peut pas le
+ * griser à coup sûr, le presse-papiers changeant sous nos pieds. */
+- (void)iconColler:(id)sender {
+    (void)sender;
+    [self iconCommitName];
+    int id = gIconGrid ? gIconGrid.selected : 0;
+    if (id == 0) return;
+
+    int n = hcicon_edit_colle(gIconStack, id);
+    [self iconRefresh];
+
+    if (n == 0) {
+        [gIconInfo setStringValue:@"Le presse-papiers ne contient pas d'image."];
+        return;
+    }
+    /* Le compte de couleurs DIT s'il y a eu perte : 255 tout rond veut dire
+     * que la découpe médiane a travaillé, moins veut dire que les couleurs
+     * tenaient et que le collage est exact. C'est une information qu'on ne
+     * peut pas lire sur le dessin. */
+    [gIconInfo setStringValue:
+        [NSString stringWithFormat:@"Collé — %d couleur%@%@", n - 1,
+            (n - 1) > 1 ? @"s" : @"",
+            (n >= HC_ICON_COULEURS_MAX) ? @" (image réduite)" : @" (exact)"]];
 }
 
 - (void)iconErase:(id)sender {
