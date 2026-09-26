@@ -241,6 +241,25 @@ void hc_icon_tourne(struct StackIcon *ic);
  * Rend le nombre de couleurs de la palette, ou 0 en cas d'échec. */
 int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba);
 
+/* --- copier une icône, et comparer deux icônes ---
+ *
+ * TOUT CE QUI DUPLIQUE UNE ICÔNE DOIT PASSER PAR ICI. Le presse-papiers le
+ * faisait à la main, avec un memcpy des 128 bits — donc une icône en couleur
+ * copiée d'une pile à l'autre arrivait EN NOIR ET BLANC. Le défaut était
+ * discret parce que la silhouette, elle, passait : l'icône était là, au bon
+ * endroit, juste décolorée. On aurait cherché du côté de l'affichage.
+ *
+ * hc_icon_meme_dessin compare les DEUX : le presse-papiers s'en sert pour
+ * savoir si l'icône du même numéro, là-bas, est déjà la bonne. Ne comparer
+ * que les bits ferait passer une icône en couleur pour identique à la version
+ * noir et blanc qui porte la même silhouette — et la couleur serait perdue en
+ * croyant avoir évité un doublon.
+ *
+ * hc_icon_copie_dessin ne touche NI le numéro NI le nom : ce sont des
+ * identités, pas du dessin, et l'appelant les a déjà décidés. */
+int  hc_icon_copie_dessin(struct StackIcon *dst, const struct StackIcon *src);
+int  hc_icon_meme_dessin(const struct StackIcon *a, const struct StackIcon *b);
+
 struct Object {
     ObjType  type;
     int      id;

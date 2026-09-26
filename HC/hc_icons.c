@@ -295,6 +295,53 @@ void hc_icon_tourne(struct StackIcon *ic)
     memcpy(ic->bits, out, HC_ICON_BYTES);
 }
 
+/* Copier le DESSIN d'une icône dans une autre : les bits et la couleur.
+ * Le numéro et le nom ne bougent pas — ce sont des identités, pas du dessin,
+ * et l'appelant les a déjà décidés. */
+int hc_icon_copie_dessin(struct StackIcon *dst, const struct StackIcon *src)
+{
+    if (!dst || !src) return 0;
+    memcpy(dst->bits, src->bits, HC_ICON_BYTES);
+
+    if (!src->couleur) { hc_icon_couleur_ote(dst); return 1; }
+
+    struct HcIconCouleur *d = hc_icon_couleur_cree(dst);
+    if (!d) return 0;
+    memcpy(d, src->couleur, sizeof *d);
+    /* La silhouette est déjà celle de la source, recopiée deux lignes plus
+     * haut ; on la redérive quand même, pour que l'invariant ne dépende pas
+     * de la justesse de la source. Une icône dont les bits auraient dérivé
+     * de ses pixels se répare ainsi en se copiant. */
+    hc_icon_silhouette(dst);
+    return 1;
+}
+
+/* Deux icônes ont-elles le MÊME DESSIN ? Bits ET couleur.
+ *
+ * Ne comparer que les bits ferait passer une icône en couleur pour identique
+ * à la version noir et blanc qui porte la même silhouette — et c'est
+ * exactement ce que faisait le presse-papiers, qui perdait alors la couleur
+ * en croyant avoir évité un doublon. */
+int hc_icon_meme_dessin(const struct StackIcon *a, const struct StackIcon *b)
+{
+    if (!a || !b) return 0;
+    if (memcmp(a->bits, b->bits, HC_ICON_BYTES) != 0) return 0;
+    if ((a->couleur != NULL) != (b->couleur != NULL)) return 0;
+    if (!a->couleur) return 1;
+
+    if (a->couleur->ncouleurs != b->couleur->ncouleurs) return 0;
+    if (memcmp(a->couleur->pixels, b->couleur->pixels, HC_ICON_PIXELS) != 0)
+        return 0;
+    /* Seules les entrées UTILISÉES comptent : la palette est un tableau de
+     * 256 lignes dont la fin est du remplissage, et la comparer en entier
+     * ferait différer deux icônes identiques selon ce qui traînait en
+     * mémoire avant elles. */
+    for (int i = 1; i < a->couleur->ncouleurs; i++)
+        if (memcmp(a->couleur->palette[i], b->couleur->palette[i], 3) != 0)
+            return 0;
+    return 1;
+}
+
 /* Pas de « numéro libre » ici : le noyau ne voit que la pile, alors qu'un
  * numéro libre doit l'être aussi dans le catalogue compilé dans l'application.
  * C'est hcicon_edit_free_id, côté Cocoa, qui tranche. */

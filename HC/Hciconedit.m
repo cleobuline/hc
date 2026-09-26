@@ -17,6 +17,19 @@
 
 /* ==================== operations ==================== */
 
+/* Le catalogue rend des HCIcon, la pile des StackIcon : deux structures
+ * differentes qui portent le meme dessin. On passe par un StackIcon
+ * temporaire pour n'avoir qu'UNE logique de copie, celle du noyau, plutot
+ * qu'une seconde ecrite ici qui oublierait la couleur un jour. */
+static void hc_icon_copie_dessin_hcicon(struct StackIcon *dst, const HCIcon *src)
+{
+    struct StackIcon tmp;
+    memset(&tmp, 0, sizeof tmp);
+    memcpy(tmp.bits, src->bits, HC_ICON_BYTES);
+    tmp.couleur = src->couleur;          /* emprunte, jamais libere ici */
+    hc_icon_copie_dessin(dst, &tmp);
+}
+
 /* Pile a laquelle le catalogue est actuellement lie. */
 static Object *gBoundStack = NULL;
 
@@ -47,7 +60,7 @@ struct StackIcon *hcicon_edit_editable(Object *stack, int id)
     if (!src) return NULL;
 
     e = hc_icon_add(stack, id, src->name);
-    if (e) memcpy(e->bits, src->bits, HC_ICON_BYTES);
+    if (e) hc_icon_copie_dessin_hcicon(e, src);
     hcicon_edit_sync(stack);
     return e;
 }
@@ -86,18 +99,12 @@ int hcicon_edit_duplicate(Object *stack, int id)
     if (!nid) return 0;
     struct StackIcon *e = hc_icon_add(stack, nid, src->name);
     if (!e) return 0;
-    memcpy(e->bits, src->bits, HC_ICON_BYTES);
-    /* LA COPIE EMPORTE LA COULEUR. Sans cette ligne, dupliquer une icone en
-     * couleur rendait sa SILHOUETTE en noir et blanc — une icone qui se
-     * decolore en se dupliquant, ce qui a l'air d'un defaut d'affichage
-     * plutot que d'une perte, et qu'on ne chercherait pas au bon endroit. */
-    if (src->couleur) {
-        struct HcIconCouleur *d = hc_icon_couleur_cree(e);
-        if (d) {
-            memcpy(d, src->couleur, sizeof *d);
-            hc_icon_silhouette(e);
-        }
-    }
+    /* UNE SEULE PORTE POUR DUPLIQUER UN DESSIN, celle du noyau, qui a un
+     * harnais. Ce fichier en avait une a lui — un memcpy des bits, puis la
+     * couleur ajoutee a cote — et le presse-papiers en avait une troisieme.
+     * Trois copies a la main, dont deux avaient deja oublie la couleur : une
+     * de moins est une occasion de moins de l'oublier. */
+    hc_icon_copie_dessin_hcicon(e, src);
     hcicon_edit_sync(stack);
     return nid;
 }
@@ -589,6 +596,27 @@ int hcicon_edit_colle(Object *stack, int id)
 
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:ctx];
+
+    /* AUCUNE INTERPOLATION, ET C'EST LE POINT LE PLUS IMPORTANT DE CETTE
+     * FONCTION.
+     *
+     * Par defaut Cocoa LISSE quand il met a l'echelle. Sur une photo c'est ce
+     * qu'on veut ; sur une TRAME — un damier de deux couleurs, comme en
+     * produit la palette de motifs — c'est un desastre : chaque pixel du
+     * resultat devient une MOYENNE de ses voisins, et deux couleurs franches
+     * en donnent des dizaines d'intermediaires. On collait une trame rouge et
+     * blanche et l'on recuperait quarante roses.
+     *
+     * Releve a l'usage, sur une vraie trame : « le coller rajoute des
+     * couleurs quand j'ai copie des trames en couleurs ». La decoupe mediane
+     * n'y etait pour rien — elle recevait deja les quarante roses.
+     *
+     * Le plus proche voisin garde donc les couleurs EXACTES de la source, ce
+     * qui rend le collage sans perte dans le cas qui compte le plus : un bout
+     * de dessin fait dans HC, avec les motifs de HC. */
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+
     [[NSColor clearColor] setFill];
     NSRectFill(NSMakeRect(0, 0, HC_ICON_COTE, HC_ICON_COTE));
 

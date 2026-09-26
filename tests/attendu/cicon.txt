@@ -233,3 +233,32 @@
 === 17. LE COLLAGE SURVIT A L'ALLER-RETOUR ===
    256 couleurs, 0 differentes ; 0 pixels differents
    IDENTIQUE
+=== 18. COPIER UNE ICONE EMPORTE SA COULEUR ===
+   (releve a l'usage : « la copie de carte vers une autre stack
+    copie en noir et blanc ». Le presse-papiers recopiait les 128
+    bits a la main, donc la SILHOUETTE passait et la couleur non.
+    Le defaut etait discret pour cette raison meme : l'icone etait
+    la, au bon endroit, juste decoloree — on aurait cherche du
+    cote de l'affichage)
+   la copie a une couleur : oui
+   meme dessin : oui
+   pixels differents : 0   palette : 4 contre 4
+=== 19. « MEME DESSIN » REGARDE LA COULEUR, PAS SEULEMENT LES BITS ===
+   (c'est ce test qui decidait si le presse-papiers pouvait
+    reutiliser l'icone deja presente a ce numero. En ne
+    comparant que les bits, une icone EN COULEUR passait pour
+    identique a la version noir et blanc de meme silhouette :
+    on croyait eviter un doublon, on perdait la couleur)
+   memes bits           : oui
+   meme dessin          : non   <<< la reponse qui compte
+   et deux icones en couleur qui ne different que par UNE
+   entree de palette — meme dessin, meme silhouette :
+   memes bits  : oui
+   meme dessin : non
+=== 20. COPIER DEPUIS UNE ICONE NOIR ET BLANC RETIRE LA COULEUR ===
+   (sinon une icone en couleur recevant le dessin d'une icone
+    monochrome garderait sa vieille palette et ses vieux
+    pixels sous une silhouette neuve — deux dessins l'un sur
+    l'autre, dont un invisible)
+   couleur apres : retiree
+   meme dessin que la source : oui

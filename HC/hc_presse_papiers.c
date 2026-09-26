@@ -630,7 +630,10 @@ static void clip_bg_clear(void)
     g_clip_bg_live  = NULL;
     g_clip_bg_stack = NULL;
 
-    for (int i = 0; i < g_clip_nicons; i++) free(g_clip_icons[i].name);
+    for (int i = 0; i < g_clip_nicons; i++) {
+        free(g_clip_icons[i].name);
+        free(g_clip_icons[i].couleur);   /* posée par hc_icon_copie_dessin */
+    }
     free(g_clip_icons);
     g_clip_icons  = NULL;
     g_clip_nicons = 0;
@@ -661,7 +664,12 @@ static void clip_collect_icon_de(Object *stack, Object *p)
     memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
     g_clip_icons[g_clip_nicons].id   = src->id;
     g_clip_icons[g_clip_nicons].name = dupstr(src->name);
-    memcpy(g_clip_icons[g_clip_nicons].bits, src->bits, HC_ICON_BYTES);
+    /* LE DESSIN ENTIER, couleur comprise. Un memcpy des 128 bits suffisait
+     * tant que les icônes étaient en noir et blanc ; depuis qu'elles peuvent
+     * être en couleur, il faisait arriver l'icône DÉCOLORÉE dans la pile de
+     * destination — et le défaut était discret, la silhouette passant très
+     * bien. On aurait cherché du côté de l'affichage. */
+    hc_icon_copie_dessin(&g_clip_icons[g_clip_nicons], src);
     g_clip_nicons++;
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
@@ -744,8 +752,11 @@ static int pose_une_icone(Object *stack, int i, int *newid_out)
     int newid = oldid;
 
     struct StackIcon *ex = hc_icon_get(stack, oldid);
-    int identique = ex &&
-        memcmp(ex->bits, g_clip_icons[i].bits, HC_ICON_BYTES) == 0;
+    /* LA COMPARAISON PORTE SUR LE DESSIN ENTIER. Ne regarder que les bits
+     * ferait passer l'icône en couleur pour identique à la version noir et
+     * blanc du même numéro qui porte la même silhouette — on croirait avoir
+     * évité un doublon, et la couleur serait perdue. */
+    int identique = ex && hc_icon_meme_dessin(ex, &g_clip_icons[i]);
 
     if (!identique) {
         if (ex) {
@@ -763,7 +774,7 @@ static int pose_une_icone(Object *stack, int i, int *newid_out)
                 e ? "ok" : "ECHEC");
 #endif
         if (!e) return 0;
-        memcpy(e->bits, g_clip_icons[i].bits, HC_ICON_BYTES);
+        hc_icon_copie_dessin(e, &g_clip_icons[i]);
     }
 #if HC_TRACE_ICONS
     else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);

@@ -430,6 +430,73 @@ int main(void)
         hc_free(s4);
     }
 
+    printf("=== 18. COPIER UNE ICONE EMPORTE SA COULEUR ===\n");
+    printf("   (releve a l'usage : « la copie de carte vers une autre stack\n");
+    printf("    copie en noir et blanc ». Le presse-papiers recopiait les 128\n");
+    printf("    bits a la main, donc la SILHOUETTE passait et la couleur non.\n");
+    printf("    Le defaut etait discret pour cette raison meme : l'icone etait\n");
+    printf("    la, au bon endroit, juste decoloree — on aurait cherche du\n");
+    printf("    cote de l'affichage)\n");
+    {
+        Object *s5 = hc_new_stack("T");
+        Object *b5 = hc_new_background(s5, "F");
+        hc_new_card(s5, b5, "u");
+        struct StackIcon *a = hc_icon_add(s5, 1, "source");
+        struct HcIconCouleur *ca = hc_icon_couleur_cree(a);
+        peins(ca);
+        hc_icon_silhouette(a);
+
+        struct StackIcon *bb = hc_icon_add(s5, 2, "copie");
+        hc_icon_copie_dessin(bb, a);
+        struct HcIconCouleur *cb = hc_icon_couleur(bb);
+        printf("   la copie a une couleur : %s\n", cb ? "oui" : "NON — defaut");
+        printf("   meme dessin : %s\n",
+               hc_icon_meme_dessin(a, bb) ? "oui" : "NON — defaut");
+        if (cb) {
+            int d = 0;
+            for (int i = 0; i < HC_ICON_PIXELS; i++)
+                if (ca->pixels[i] != cb->pixels[i]) d++;
+            printf("   pixels differents : %d   palette : %d contre %d\n",
+                   d, ca->ncouleurs, cb->ncouleurs);
+        }
+
+        printf("=== 19. « MEME DESSIN » REGARDE LA COULEUR, PAS SEULEMENT LES BITS ===\n");
+        printf("   (c'est ce test qui decidait si le presse-papiers pouvait\n");
+        printf("    reutiliser l'icone deja presente a ce numero. En ne\n");
+        printf("    comparant que les bits, une icone EN COULEUR passait pour\n");
+        printf("    identique a la version noir et blanc de meme silhouette :\n");
+        printf("    on croyait eviter un doublon, on perdait la couleur)\n");
+        struct StackIcon *m = hc_icon_add(s5, 3, "meme silhouette, sans couleur");
+        memcpy(m->bits, a->bits, HC_ICON_BYTES);      /* la MEME silhouette */
+        printf("   memes bits           : %s\n",
+               memcmp(m->bits, a->bits, HC_ICON_BYTES) == 0 ? "oui" : "non");
+        printf("   meme dessin          : %s   <<< la reponse qui compte\n",
+               hc_icon_meme_dessin(a, m) ? "OUI — defaut" : "non");
+
+        printf("   et deux icones en couleur qui ne different que par UNE\n");
+        printf("   entree de palette — meme dessin, meme silhouette :\n");
+        struct StackIcon *n2 = hc_icon_add(s5, 4, "une teinte de plus");
+        hc_icon_copie_dessin(n2, a);
+        hc_icon_palette_pose(n2, 1, 0x00, 0x00, 0x01);   /* rouge -> presque noir */
+        printf("   memes bits  : %s\n",
+               memcmp(n2->bits, a->bits, HC_ICON_BYTES) == 0 ? "oui" : "non");
+        printf("   meme dessin : %s\n",
+               hc_icon_meme_dessin(a, n2) ? "OUI — defaut" : "non");
+
+        printf("=== 20. COPIER DEPUIS UNE ICONE NOIR ET BLANC RETIRE LA COULEUR ===\n");
+        printf("   (sinon une icone en couleur recevant le dessin d'une icone\n");
+        printf("    monochrome garderait sa vieille palette et ses vieux\n");
+        printf("    pixels sous une silhouette neuve — deux dessins l'un sur\n");
+        printf("    l'autre, dont un invisible)\n");
+        hc_icon_copie_dessin(n2, m);
+        printf("   couleur apres : %s\n",
+               hc_icon_couleur(n2) ? "encore la — defaut" : "retiree");
+        printf("   meme dessin que la source : %s\n",
+               hc_icon_meme_dessin(n2, m) ? "oui" : "NON — defaut");
+
+        hc_free(s5);
+    }
+
     hc_free(rl); hc_free(st);
     remove(FIC);
     return 0;
