@@ -27,3 +27,43 @@
   mark card 600
   print marked cards
    [hôte] 2 carte(s), de « C005 » à « C600 »
+
+=== TOUTES LES FORMES, relevées avant le portage vers l'arbre ===
+── unmark all cards
+  go to card 1
+  print
+   [hôte] 1 carte(s), de « C001 » à « C001 »
+── print this card
+   [hôte] 1 carte(s), de « C001 » à « C001 »
+── print card
+   [hôte] 1 carte(s), de « C001 » à « C001 »
+── print card 3
+   [hôte] 1 carte(s), de « C003 » à « C003 »
+── print card "C005"
+   [hôte] 1 carte(s), de « C005 » à « C005 »
+── print cd 7
+   [hôte] 1 carte(s), de « C007 » à « C007 »
+── print stack
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── print all
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── print all cards
+   [hôte] 700 carte(s), de « C001 » à « C700 »
+── print marked
+   [ERR]    !! print : rien à imprimer
+── go to card 4
+  print
+   [hôte] 1 carte(s), de « C004 » à « C004 »
+── go to card 1
+  print card 3 to 5
+   [hôte] 3 carte(s), de « C003 » à « C005 »
+── print card "C005" to 8
+   [hôte] 8 carte(s), de « C001 » à « C008 »
+── print card 99999
+   [ERR]    !! print : rien à imprimer
+── print card "PasLa"
+   [ERR]    !! print : rien à imprimer
+── print 2 to 7
+   [ERR]    !! print : rien à imprimer
+── print "doc.txt" with "TeachText"
+   [ERR]    !! print : rien à imprimer
