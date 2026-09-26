@@ -179,6 +179,41 @@ struct HcIconCouleur *hc_icon_couleur_cree(struct StackIcon *ic);
 void                  hc_icon_couleur_ote(struct StackIcon *ic);
 void                  hc_icon_silhouette(struct StackIcon *ic);
 
+/* --- édition d'une icône en couleur ---
+ *
+ * TOUTE LA LOGIQUE EST ICI, ET C'EST DÉLIBÉRÉ. L'éditeur est en Objective-C,
+ * donc sans aucun test automatique ; ce qu'on peut faire tenir dans le noyau y
+ * gagne un harnais. Hciconedit.m ne garde que les clics et le dessin.
+ *
+ * hc_icon_couleur_depuis_bits : passe une icône NOIR ET BLANC en couleur SANS
+ *     perdre son dessin — chaque pixel d'encre devient l'index 1, peint de la
+ *     couleur donnée. C'est le geste « mettre en couleur » de l'éditeur, et il
+ *     doit être sans perte : une icône qui se viderait en gagnant la couleur
+ *     ferait perdre un travail au premier clic.
+ *
+ * hc_icon_pixel_pose / _lu : un pixel par son index. Poser met la silhouette à
+ *     jour, si bien que `bits` ne peut pas dater d'un coup de pinceau.
+ *     Rendent 0 (ou ne font rien) hors des bornes plutôt que de déborder.
+ *
+ * hc_icon_palette_pose : pose une couleur à un index, en agrandissant la
+ *     palette si besoin. Refuse l'index 0, qui EST la transparence.
+ *
+ * hc_icon_palette_index : l'index de cette couleur, en la créant si elle n'y
+ *     est pas. Rend 0 si la palette est pleine — l'appelant doit alors choisir
+ *     la plus proche, ce que le noyau ne sait pas faire (il ne dessine pas).
+ *     C'est cette porte que le collage d'une image utilisera.
+ *
+ * hc_icon_tourne : un quart de tour horaire, couleur comprise. */
+int  hc_icon_couleur_depuis_bits(struct StackIcon *ic,
+                                 unsigned char r, unsigned char v, unsigned char b);
+void hc_icon_pixel_pose(struct StackIcon *ic, int x, int y, int index);
+int  hc_icon_pixel_lu(const struct StackIcon *ic, int x, int y);
+int  hc_icon_palette_pose(struct StackIcon *ic, int index,
+                          unsigned char r, unsigned char v, unsigned char b);
+int  hc_icon_palette_index(struct StackIcon *ic,
+                           unsigned char r, unsigned char v, unsigned char b);
+void hc_icon_tourne(struct StackIcon *ic);
+
 struct Object {
     ObjType  type;
     int      id;

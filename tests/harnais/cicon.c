@@ -59,6 +59,22 @@ static void peins(struct HcIconCouleur *c)
         }
 }
 
+/* Le dessin, avec l'indexation de hcicon_draw : pixels[row*32+col]. */
+static void dessine(const struct HcIconCouleur *c)
+{
+    static const char CAR[] = " 1234567890";
+    for (int y = 0; y < HC_ICON_COTE; y++) {
+        printf("   ");
+        for (int x = 0; x < HC_ICON_COTE; x++) {
+            int v = c->pixels[y * HC_ICON_COTE + x];
+            putchar(v == 0 ? '.'
+                    : (v > 0 && v < c->ncouleurs && v < (int)sizeof CAR - 1)
+                      ? CAR[v] : '?');
+        }
+        putchar('\n');
+    }
+}
+
 static int compte_encre(const unsigned char *bits)
 {
     int n = 0;
@@ -211,24 +227,96 @@ int main(void)
         struct HcIconCouleur *c3 = i3 ? hc_icon_couleur(i3) : NULL;
         if (!c3) printf("   [ERR] relecture pour le dessin\n");
         else {
-            static const char CAR[] = " 1234567890";
-            for (int y = 0; y < HC_ICON_COTE; y++) {
-                printf("   ");
-                for (int x = 0; x < HC_ICON_COTE; x++) {
-                    /* « . » pour la transparence, le chiffre de l'index
-                     * sinon, et « ? » RESERVE a un index hors palette : ce
-                     * caractere-la ne doit jamais apparaitre, et s'il
-                     * apparait il dit tout de suite quoi chercher. */
-                    int v = c3->pixels[y * HC_ICON_COTE + x];
-                    putchar(v == 0 ? '.'
-                            : (v > 0 && v < c3->ncouleurs && v < (int)sizeof CAR - 1)
-                              ? CAR[v] : '?');
-                }
-                putchar('\n');
-            }
+            /* « . » pour la transparence, le chiffre de l'index sinon, et
+             * « ? » RESERVE a un index hors palette : ce caractere-la ne doit
+             * jamais apparaitre, et s'il apparait il dit quoi chercher. */
+            dessine(c3);
             printf("   (. = transparent ; 1 rouge, cadre ; 2 vert, aplat ; 3 bleu, diagonale)\n");
         }
         if (r3) hc_free(r3);
+    }
+
+    printf("=== 10. METTRE EN COULEUR NE PERD PAS LE DESSIN ===\n");
+    printf("   (le geste de l'editeur : une icone noir et blanc passe en\n");
+    printf("    couleur, chaque pixel d'encre devenant l'index 1. Si elle se\n");
+    printf("    vidait, on perdrait son travail au premier clic pour voir)\n");
+    {
+        Object *s3 = hc_new_stack("R");
+        Object *b3 = hc_new_background(s3, "F");
+        hc_new_card(s3, b3, "u");
+        struct StackIcon *m = hc_icon_add(s3, 7, "damier");
+        /* un damier de huit : dissymetrique verticalement, donc une rotation
+         * du mauvais cote se verrait */
+        for (int y = 0; y < HC_ICON_COTE; y++)
+            for (int x = 0; x < HC_ICON_COTE; x++)
+                if (y < 16 && ((x / 4 + y / 4) % 2) == 0)
+                    m->bits[y * 4 + x / 8] |= (unsigned char)(0x80 >> (x % 8));
+        int avant_bits = compte_encre(m->bits);
+        hc_icon_couleur_depuis_bits(m, 0x20, 0x40, 0xC0);
+        struct HcIconCouleur *cm = hc_icon_couleur(m);
+        printf("   encre avant : %d   pixels peints apres : %d\n",
+               avant_bits, compte_non_transparents(cm));
+        printf("   palette : %d entrees\n", cm->ncouleurs);
+        printf("   %s\n", avant_bits == compte_non_transparents(cm)
+                            ? "le dessin est intact" : "ECART");
+        printf("   et le geste est IDEMPOTENT (un double clic ne doit pas\n");
+        printf("   reduire l'icone a deux couleurs) :\n");
+        hc_icon_palette_pose(m, 2, 0xFF, 0x00, 0x00);
+        hc_icon_couleur_depuis_bits(m, 0x00, 0xFF, 0x00);
+        printf("   palette apres un second appel : %d entrees\n", cm->ncouleurs);
+
+        printf("=== 11. LA ROTATION, ET SON SENS ===\n");
+        printf("   (une icone tournee du MAUVAIS cote a exactement le meme\n");
+        printf("    nombre d'encres : aucun compte ne peut le voir. Le dessin,\n");
+        printf("    lui, le montre — et c'est comme ca qu'on a trouve que les\n");
+        printf("    deux chemins, couleur et noir et blanc, tournaient en sens\n");
+        printf("    OPPOSES a la premiere ecriture)\n");
+        printf("   avant :\n");
+        dessine(cm);
+        hc_icon_tourne(m);
+        printf("   apres un quart de tour :\n");
+        dessine(cm);
+        printf("   (le bloc du haut doit etre passe a DROITE)\n");
+
+        printf("=== 12. LA PALETTE : poser, retrouver, deborder ===\n");
+        struct StackIcon *q = hc_icon_add(s3, 8, "palette");
+        struct HcIconCouleur *cq = hc_icon_couleur_cree(q);
+        printf("   index 0 refuse (c'est la transparence) : %s\n",
+               hc_icon_palette_pose(q, 0, 1, 2, 3) ? "ACCEPTE — defaut" : "refuse");
+        printf("   rouge -> index %d\n", hc_icon_palette_index(q, 0xFF, 0, 0));
+        printf("   vert  -> index %d\n", hc_icon_palette_index(q, 0, 0xFF, 0));
+        printf("   rouge de nouveau -> index %d   (la meme, pas une nouvelle)\n",
+               hc_icon_palette_index(q, 0xFF, 0, 0));
+        printf("   palette : %d entrees\n", cq->ncouleurs);
+        /* remplir jusqu'au bord */
+        for (int i = cq->ncouleurs; i < HC_ICON_COULEURS_MAX; i++)
+            hc_icon_palette_pose(q, i, (unsigned char)i, (unsigned char)i,
+                                 (unsigned char)i);
+        printf("   pleine a %d entrees ; une couleur de plus -> index %d\n",
+               cq->ncouleurs, hc_icon_palette_index(q, 1, 2, 3));
+        printf("   (0 veut dire « choisis la plus proche toi-meme » : le noyau\n");
+        printf("    ne dessine pas, et « la plus proche » est une question de\n");
+        printf("    perception, pas d'arithmetique)\n");
+
+        printf("=== 13. UN PIXEL POSE MET LA SILHOUETTE A JOUR ===\n");
+        printf("   (sinon `bits` serait faux entre deux enregistrements — et\n");
+        printf("    c'est justement entre-temps que l'interface le lit pour\n");
+        printf("    afficher le bouton)\n");
+        struct StackIcon *z = hc_icon_add(s3, 9, "un pixel");
+        hc_icon_couleur_cree(z);
+        hc_icon_palette_pose(z, 1, 0xFF, 0xFF, 0x00);
+        printf("   bits au depart : %d\n", compte_encre(z->bits));
+        hc_icon_pixel_pose(z, 5, 5, 1);
+        printf("   apres un pixel : %d   (lu : %d)\n",
+               compte_encre(z->bits), hc_icon_pixel_lu(z, 5, 5));
+        hc_icon_pixel_pose(z, 5, 5, 0);
+        printf("   apres l'avoir efface : %d\n", compte_encre(z->bits));
+        printf("   hors bornes ne deborde pas : ");
+        hc_icon_pixel_pose(z, -1, 99, 1);
+        printf("bits = %d, lu hors bornes = %d\n",
+               compte_encre(z->bits), hc_icon_pixel_lu(z, 99, 99));
+
+        hc_free(s3);
     }
 
     hc_free(rl); hc_free(st);

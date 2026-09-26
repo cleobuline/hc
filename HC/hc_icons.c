@@ -147,6 +147,154 @@ void hc_icon_couleur_ote(struct StackIcon *ic)
      * l'icône entière pour qui voulait seulement lui retirer sa couleur. */
 }
 
+/* ------------------------------------------------------- édition ------- */
+
+/* PASSER EN COULEUR SANS PERDRE LE DESSIN.
+ *
+ * Chaque pixel d'encre devient l'index 1, peint de la couleur demandée. C'est
+ * le geste « mettre en couleur » de l'éditeur, et il DOIT être sans perte :
+ * une icône qui se viderait en gagnant la couleur ferait perdre son travail à
+ * qui clique pour voir ce que ça donne.
+ *
+ * Une icône déjà en couleur n'est pas touchée — le geste est idempotent, ce
+ * qui évite qu'un double clic ne réduise une icône à deux couleurs. */
+int hc_icon_couleur_depuis_bits(struct StackIcon *ic,
+                                unsigned char r, unsigned char v, unsigned char b)
+{
+    if (!ic) return 0;
+    if (ic->couleur) return 1;
+
+    /* LA SILHOUETTE D'ABORD, ET C'EST INDISPENSABLE.
+     *
+     * hc_icon_couleur_cree pose des pixels tous transparents PUIS redérive la
+     * silhouette — donc elle vide `bits`. Lire `ic->bits` après elle ne rend
+     * que des zéros, et l'icône passait en couleur entièrement effacée.
+     *
+     * Le défaut ne se voyait dans aucun compte séparé : la palette était
+     * juste, les pixels étaient tous valides, l'aller-retour marchait. C'est
+     * la comparaison « 256 encres avant, 0 peints après » qui l'a montré. */
+    unsigned char source[HC_ICON_BYTES];
+    memcpy(source, ic->bits, HC_ICON_BYTES);
+
+    struct HcIconCouleur *c = hc_icon_couleur_cree(ic);
+    if (!c) return 0;
+
+    c->ncouleurs   = 2;
+    c->palette[1][0] = r; c->palette[1][1] = v; c->palette[1][2] = b;
+    for (int y = 0; y < HC_ICON_COTE; y++)
+        for (int x = 0; x < HC_ICON_COTE; x++)
+            c->pixels[y * HC_ICON_COTE + x] =
+                (source[y * 4 + x / 8] & (0x80 >> (x % 8))) ? 1 : 0;
+    /* La silhouette ne change pas — on vient de la recopier — mais on la
+     * redérive quand même : c'est la seule façon que l'invariant « bits dit
+     * toujours la vérité » ne dépende pas de la justesse du code ci-dessus. */
+    hc_icon_silhouette(ic);
+    return 1;
+}
+
+int hc_icon_pixel_lu(const struct StackIcon *ic, int x, int y)
+{
+    if (!ic || !ic->couleur) return 0;
+    if (x < 0 || y < 0 || x >= HC_ICON_COTE || y >= HC_ICON_COTE) return 0;
+    return ic->couleur->pixels[y * HC_ICON_COTE + x];
+}
+
+void hc_icon_pixel_pose(struct StackIcon *ic, int x, int y, int index)
+{
+    if (!ic || !ic->couleur) return;
+    if (x < 0 || y < 0 || x >= HC_ICON_COTE || y >= HC_ICON_COTE) return;
+    if (index < 0 || index >= HC_ICON_COULEURS_MAX) return;
+
+    unsigned char *p = &ic->couleur->pixels[y * HC_ICON_COTE + x];
+    if (*p == (unsigned char)index) return;
+    *p = (unsigned char)index;
+
+    /* LA SILHOUETTE SUIT CHAQUE COUP DE PINCEAU. On pourrait la redériver
+     * seulement à l'enregistrement, mais alors `bits` serait faux entre-temps
+     * — et c'est justement entre-temps que l'interface le lit pour afficher
+     * le bouton. Mille vingt-quatre pixels relus par clic ne coûtent rien à
+     * cette échelle. */
+    hc_icon_silhouette(ic);
+}
+
+int hc_icon_palette_pose(struct StackIcon *ic, int index,
+                         unsigned char r, unsigned char v, unsigned char b)
+{
+    if (!ic || !ic->couleur) return 0;
+    /* L'INDEX 0 EST LA TRANSPARENCE, il n'a pas de couleur à porter. Le
+     * laisser écrire donnerait une entrée de palette que rien ne peut
+     * afficher, et qu'on chercherait longtemps. */
+    if (index < 1 || index >= HC_ICON_COULEURS_MAX) return 0;
+
+    struct HcIconCouleur *c = ic->couleur;
+    c->palette[index][0] = r;
+    c->palette[index][1] = v;
+    c->palette[index][2] = b;
+    if (index >= c->ncouleurs) c->ncouleurs = index + 1;
+    return 1;
+}
+
+int hc_icon_palette_index(struct StackIcon *ic,
+                          unsigned char r, unsigned char v, unsigned char b)
+{
+    if (!ic || !ic->couleur) return 0;
+    struct HcIconCouleur *c = ic->couleur;
+
+    for (int i = 1; i < c->ncouleurs; i++)
+        if (c->palette[i][0] == r && c->palette[i][1] == v &&
+            c->palette[i][2] == b)
+            return i;
+
+    /* PALETTE PLEINE : on rend 0 plutôt que d'écraser une couleur au hasard.
+     * L'appelant — le collage d'une image — doit alors choisir la plus
+     * proche, ce que le noyau ne sait pas faire : il ne dessine pas, et
+     * « la plus proche » est une question de perception, pas d'arithmétique. */
+    if (c->ncouleurs >= HC_ICON_COULEURS_MAX) return 0;
+
+    int i = c->ncouleurs;
+    c->palette[i][0] = r; c->palette[i][1] = v; c->palette[i][2] = b;
+    c->ncouleurs = i + 1;
+    return i;
+}
+
+/* Un quart de tour horaire : le pixel qui arrive en (ligne, colonne) vient de
+ * (31 - colonne, ligne). On écrit dans un tampon plutôt qu'en place — la
+ * rotation lit des pixels qu'elle a déjà réécrits, et la faire sur le tableau
+ * lui-même brouillerait le dessin dès la première ligne.
+ *
+ * La palette ne tourne pas, évidemment : seuls les index bougent.
+ *
+ * LES DEUX CHEMINS DOIVENT TOURNER DANS LE MÊME SENS, et la première version
+ * de celui en couleur tournait à l'envers — out[y][x] = in[x][31-y] au lieu de
+ * in[31-x][y]. Ça ne se voit dans aucun compte de pixels : une icône tournée
+ * du mauvais côté a exactement le même nombre d'encres. C'est le dessin du
+ * harnais qui le montre, et c'est précisément pour ça qu'il est là. */
+void hc_icon_tourne(struct StackIcon *ic)
+{
+    if (!ic) return;
+
+    if (ic->couleur) {
+        unsigned char out[HC_ICON_PIXELS];
+        for (int y = 0; y < HC_ICON_COTE; y++)
+            for (int x = 0; x < HC_ICON_COTE; x++)
+                out[y * HC_ICON_COTE + x] =
+                    ic->couleur->pixels[(HC_ICON_COTE - 1 - x) * HC_ICON_COTE + y];
+        memcpy(ic->couleur->pixels, out, sizeof out);
+        hc_icon_silhouette(ic);
+        return;
+    }
+
+    unsigned char out[HC_ICON_BYTES];
+    memset(out, 0, sizeof out);
+    for (int y = 0; y < HC_ICON_COTE; y++)
+        for (int x = 0; x < HC_ICON_COTE; x++) {
+            int sx = y, sy = HC_ICON_COTE - 1 - x;
+            if (ic->bits[sy * 4 + sx / 8] & (0x80 >> (sx % 8)))
+                out[y * 4 + x / 8] |= (unsigned char)(0x80 >> (x % 8));
+        }
+    memcpy(ic->bits, out, HC_ICON_BYTES);
+}
+
 /* Pas de « numéro libre » ici : le noyau ne voit que la pile, alors qu'un
  * numéro libre doit l'être aussi dans le catalogue compilé dans l'application.
  * C'est hcicon_edit_free_id, côté Cocoa, qui tranche. */
