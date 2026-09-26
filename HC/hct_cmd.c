@@ -64,7 +64,27 @@ static const HctCommande TABLE[] = {
     { "enterkey",   "" },
     { "exit",       "[to] *" },
     { "export",     "paint to file e" },
-    { "find",       "*" },
+    /* « find » : le MODIFICATEUR doit être un mot-clé du motif, pas une
+     * expression.
+     *
+     * Avec « * » seul, « find word "x" » et « find chars "x" » ne passaient
+     * même pas l'analyseur : « word » et « char » sont des mots de MORCEAU en
+     * HyperTalk — « word 2 of f » —, si bien que la grammaire lisait le début
+     * d'un morceau et réclamait « of ». Deux formes sur cinq étaient donc
+     * inaccessibles avant même qu'on parle de sémantique, et l'erreur ne
+     * nommait pas « find ».
+     *
+     * ON ÉCRIT « characters » ET NON « chars » : le lexeur applique l'annexe F
+     * avant que le motif ne voie quoi que ce soit, et « chars » y est un
+     * synonyme de « characters ». Une alternative écrite « chars » ne colle
+     * donc JAMAIS — ce qui s'est vu tout de suite pour chars, et ne se serait
+     * pas vu pour un mot dont le synonyme est plus rare.
+     *
+     * Les mots pris deviennent des HCTN_MOTCLE, que v3_reste recompose dans
+     * le texte brut — sous leur forme PLEINE. Le lecteur de mode de
+     * v3_cmd_find saute donc le mot au lieu d'en compter les lettres. */
+    { "find",       "[characters|character|words|word|string|whole]"
+                    " [international] *" },
     { "functionkey","e" },
     { "get",        "e" },
     { "global",     "*" },

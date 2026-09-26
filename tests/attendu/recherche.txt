@@ -1,0 +1,51 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── 1. LES HUIT MESURES, rejouées telles quelles
+   1 find deux mots      : []   HyperCard : trouvé
+   2 find chars deux mots: []   HyperCard : trouvé
+   3 find string         : []   HyperCard : trouvé
+   4 find whole          : [not found]   HyperCard : not found
+   5 find whole exact    : []   HyperCard : trouvé
+   6 find word partiel   : [not found]   HyperCard : not found
+   7 find word entier    : []   HyperCard : trouvé
+   8 find ordre inverse  : []   HyperCard : trouvé
+── 2. LA RECHERCHE EST PAR CARTE, pas par champ
+   un mot par champ : []   HyperCard : trouvé
+── 3. « the foundText » rend LE MOT, pas le motif
+   foundText  : beta    HyperCard : beta
+   foundChunk : char 7 to 10 of card field "A"
+   foundField : field "A"
+      (HyperCard ecrit « card field 1 » la ou l'on ecrit le nom :
+       c'est le format du designateur, pas la recherche. Inscrit
+       ici, pas corrige au juge)
+── 4. RÉPÉTER AVANCE, ET ÇA BOUCLE
+   1er : un
+   2e  : deux
+   3e  : un
+      (HyperCard : carte 1, carte 2, carte 1)
+── 5. UN MOTIF DIFFÉRENT REPART DE LA CARTE COURANTE
+   find delta (neuf)    : un
+   puis alpha (neuf)    : un
+   puis la meme         : deux
+      (une recherche NEUVE ne doit pas heriter du compteur de la
+       precedente : on chercherait a partir d'un endroit que rien
+       n'explique. Seule la REPETITION avance)
+── 6. NAVIGUER AILLEURS : (a) ou (b) ? — À MESURER
+   trouve en   : un
+   depuis trois: un
+      (« un » = HC repart de la carte courante ; « deux » aurait
+       voulu dire qu'il continue son balayage. HyperCard : PAS
+       ENCORE MESURE — voir le commentaire de ce harnais)
+── 7. RIEN TROUVÉ : le résultat le dit, et foundText se vide
+   result    : [not found]
+   foundText : []
+── 8. « in <champ> » restreint la recherche
+   omeg dans le champ A : [not found]   (omeg est dans B)
+   omeg dans le champ B : []
+── 9. « international » : ACCEPTÉ, pas encore replié
+   result : []   (il s'analyse, et se comporte
+      comme la forme de base — le repli des accents reste A FAIRE)
+── 10. « of marked cards » : ACCEPTÉ, IGNORÉ
+   result : []   (aucune carte n'est marquee,
+      donc HyperCard ne trouverait RIEN. On trouve quand meme :
+      la restriction est ignoree, et c'est inscrit ici pour ne pas
+      croire le chantier fini)

@@ -1,0 +1,197 @@
+BANC DE MESURE — « find »
+=========================
+
+À faire tourner dans HyperCard (Basilisk II) ET dans HC, puis comparer les
+deux rapports ligne à ligne.
+
+
+LA PILE À PRÉPARER
+------------------
+
+Une pile neuve de TROIS cartes partageant le même fond, avec :
+
+  · un CHAMP DE FOND       nommé  T     (présent sur les trois cartes)
+  · un CHAMP DE CARTE      nommé  U     sur la carte 1 seulement
+  · un CHAMP DE CARTE      nommé  R     sur la carte 1, grand et défilant
+                                        (il recevra le rapport)
+  · un BOUTON              sur la carte 1, portant le script ci-dessous
+
+Le champ R doit rester VIDE pendant les recherches — le script ne l'écrit
+qu'à la toute fin, sinon son contenu polluerait les résultats. C'est aussi
+pour ça qu'il ne faut rien taper d'autre dans les champs : le script pose
+lui-même tous les textes.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  -- ---- préparation ----
+  put empty into card field "R"
+  set the numberFormat to empty
+
+  go to card 1
+  put "alpha beta gamma delta" into bg field "T"
+  put "omega" into card field "U"
+  go to card 2
+  put "alpha zeta" into bg field "T"
+  go to card 3
+  put "élève à Noël" into bg field "T"
+
+  go to card 1
+  put empty into r
+
+  -- ---- A. les cinq formes ----
+  put "-- A. les cinq formes --" & return after r
+  go to card 1
+  find "bet gam"
+  put "A1 find deux mots   : " & the result & return after r
+  go to card 1
+  find chars "ph be"
+  put "A2 find chars       : " & the result & return after r
+  go to card 1
+  find string "a bet"
+  put "A3 find string      : " & the result & return after r
+  go to card 1
+  find whole "a bet"
+  put "A4 find whole cheval: " & the result & return after r
+  go to card 1
+  find whole "beta gamma"
+  put "A5 find whole exact : " & the result & return after r
+  go to card 1
+  find word "bet"
+  put "A6 find word partiel: " & the result & return after r
+  go to card 1
+  find word "beta"
+  put "A7 find word entier : " & the result & return after r
+  go to card 1
+  find "gamma alpha"
+  put "A8 ordre inverse    : " & the result & return after r
+
+  -- ---- B. par carte, pas par champ ----
+  put return & "-- B. carte ou champ --" & return after r
+  go to card 1
+  find "bet omeg"
+  put "B1 fond + carte     : " & the result & return after r
+  go to card 1
+  find "bet omeg" in bg field "T"
+  put "B2 restreint au fond: " & the result & return after r
+
+  -- ---- C. ce que la trouvaille désigne ----
+  put return & "-- C. la trouvaille --" & return after r
+  go to card 1
+  find "bet alph"
+  put "C1 foundText        : " & the foundText & return after r
+  put "C2 foundChunk       : " & the foundChunk & return after r
+  put "C3 foundField       : " & the foundField & return after r
+  put "C4 foundLine        : " & the foundLine & return after r
+
+  -- ---- D. LA RÈGLE DE NAVIGATION — la question ouverte ----
+  put return & "-- D. navigation --" & return after r
+  go to card 1
+  find "alpha"
+  put "D1 1er              : " & the number of this card & return after r
+  find "alpha"
+  put "D2 repete           : " & the number of this card & return after r
+  find "alpha"
+  put "D3 repete encore    : " & the number of this card & return after r
+
+  -- D4 est LA mesure qui manque : on navigue A LA MAIN entre deux
+  -- recherches identiques. « 1 » veut dire que find repart de la carte
+  -- courante ; « 2 » veut dire qu'il continue son balayage d'avant.
+  go to card 1
+  find "alpha"
+  go to card 3
+  find "alpha"
+  put "D4 apres navigation : " & the number of this card & return after r
+
+  -- D5 : un motif NEUF doit-il repartir de zéro ?
+  go to card 1
+  find "alpha"
+  find "delta"
+  put "D5 motif neuf       : " & the number of this card & return after r
+
+  -- ---- E. « of marked cards » ----
+  put return & "-- E. marked --" & return after r
+  unmark all cards
+  go to card 1
+  find "alpha" of marked cards
+  put "E1 aucune marquee   : " & the result & return after r
+  go to card 2
+  mark this card
+  go to card 1
+  find "alpha" of marked cards
+  put "E2 carte 2 marquee  : " & the result & return after r
+  put "E3 carte atteinte   : " & the number of this card & return after r
+  unmark all cards
+
+  -- ---- F. « international » : le repli des accents ----
+  put return & "-- F. international --" & return after r
+  go to card 1
+  find "eleve"
+  put "F1 sans accent, base: " & the result & return after r
+  go to card 1
+  find international "eleve"
+  put "F2 international    : " & the result & return after r
+  go to card 1
+  find international "noel"
+  put "F3 noel -> Noel     : " & the result & return after r
+  go to card 1
+  find "élève"
+  put "F4 avec accent      : " & the result & return after r
+
+  -- ---- G. rien trouvé ----
+  put return & "-- G. rien --" & return after r
+  go to card 1
+  find "zorglub"
+  put "G1 result           : " & the result & return after r
+  put "G2 foundText        : [" & the foundText & "]" & return after r
+
+  go to card 1
+  put r into card field "R"
+end mouseUp
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   les cinq formes. Déjà mesuré chez toi, on le rejoue pour être sûr que la
+    pile de test est montée comme il faut — si A ne redonne pas les mêmes
+    réponses qu'avant, c'est le banc qui est faux, pas HC.
+
+B   B1 doit trouver (un mot dans le fond, l'autre dans un champ de carte).
+    B2 le restreint au champ de fond : « omeg » n'y est pas, donc « not
+    found » — c'est ce qui prouve que « in » restreint vraiment.
+
+C   ce que la trouvaille DÉSIGNE quand le motif a plusieurs mots. Le C3 est
+    celui où HC et HyperCard divergent déjà : « card field 1 » contre
+    « field "A" ». C4 dit si la ligne est comptée pareil.
+
+D   LA QUESTION OUVERTE. D4 est la seule qui compte vraiment : on cherche,
+    on navigue à la main, on relance la MÊME recherche.
+        « 1 » -> find repart de la carte où l'on est
+        « 2 » -> find continue le balayage commencé avant
+    Les deux règles collent aux mesures d'hier ; celle-ci les sépare.
+
+E   « of marked cards ». Aujourd'hui HC l'IGNORE. E1 doit donner « not
+    found » (aucune carte marquée), et E3 doit donner 2 (seule la carte
+    marquée compte). Si HC répond autre chose, c'est mesuré.
+
+F   le repli des accents, pas encore fait dans HC. F1 dit si la forme de base
+    replie déjà (probablement non des deux côtés), F2 et F3 disent ce que
+    « international » apporte, F4 sert de témoin — chercher avec l'accent
+    doit trouver dans tous les cas.
+
+G   le cas négatif, et surtout que foundText se VIDE. Une recherche qui
+    échoue en laissant la précédente en place ferait lire une vieille
+    réponse pour une nouvelle question.
+
+
+ATTENTION EN LE TAPANT
+----------------------
+
+· les accents de « élève » et « Noël » doivent être tapés pour de vrai ;
+  c'est tout l'objet du bloc F
+· « unmark all cards » et « mark this card » existent dans HyperCard 2.x ;
+  si ta version les refuse, saute le bloc E et dis-le
+· le champ R doit être VIDE au départ, sinon son contenu se fait trouver
