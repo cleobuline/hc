@@ -5261,6 +5261,21 @@ static BOOL      gSansMessageChamp = NO;
         default: break;
     }
 
+    /* CERTAINES TOUCHES DE FONCTION N'ARRIVENT JAMAIS ICI, et ce n'est pas
+     * notre affaire. Sur un Mac moderne, F1 à F12 sont des touches SYSTÈME —
+     * luminosité, Mission Control, Spotlight, volume — interceptées avant
+     * l'application. Seules celles que le système ne réclame pas descendent
+     * jusqu'à keyDown:, d'où le relevé d'usage : « ça marche pour certaines
+     * function keys ».
+     *
+     * Tenir « fn » enfoncé, ou cocher « Utiliser F1, F2, etc. comme touches de
+     * fonction standard » dans les réglages du clavier, les rend toutes.
+     * Vérifié de notre côté : aucun menu de HC ne pose d'équivalent clavier en
+     * F-quelque-chose, aucune sortie anticipée de keyDown: ne les attrape, et
+     * le chemin du message est mesuré bon — « functionKey 3 » depuis un script
+     * atteint son gestionnaire.
+     *
+     * C'est écrit pour que personne ne recherche un défaut qui n'est pas là. */
     if (!msg && key >= NSF1FunctionKey && key <= NSF15FunctionKey) {
         msg = "functionKey";
         snprintf(arg, sizeof arg, "%d", (int)(key - NSF1FunctionKey) + 1);
