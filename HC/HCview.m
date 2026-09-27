@@ -5172,10 +5172,58 @@ static BOOL      gSansMessageChamp = NO;
  * gestionnaire qui fait « pass » rend 0, et la touche retrouve son effet
  * habituel — le même accord qu'avec returnInField.
  *
- * commandKeyDown n'y est pas : Cmd+lettre est intercepté par les équivalents
- * clavier des menus AVANT que keyDown: soit appelé. Il faudrait
- * performKeyEquivalent:, c'est-à-dire se placer devant la barre de menus, et
- * cela mérite d'être fait séparément plutôt qu'en passant. */
+ * commandKeyDown n'y est pas, et ne peut pas y être : Cmd+lettre est pris par
+ * les équivalents clavier des menus AVANT que keyDown: soit appelé. Il lui
+ * faut performKeyEquivalent:, juste en dessous. */
+/* ═══ commandKeyDown ════════════════════════════════════════════════════
+ *
+ * SIGNALÉ À L'USAGE : « ça ça marche pas », avec le gestionnaire sous les
+ * yeux. Et le commentaire juste au-dessus le disait déjà — « il faudrait
+ * performKeyEquivalent: » —, sans que personne l'ait percé. Une porte
+ * annoncée et jamais ouverte, la signature de ce dépôt.
+ *
+ * POURQUOI keyDown: NE SUFFIT PAS. Cmd+lettre ne descend jamais jusque-là :
+ * AppKit propose d'abord l'événement comme ÉQUIVALENT CLAVIER, et c'est la
+ * barre de menus qui le mange. Se placer devant elle demande d'intercepter
+ * performKeyEquivalent:, que la fenêtre propose à sa hiérarchie de vues avant
+ * de laisser le menu décider.
+ *
+ * LE CONTRAT EST CELUI DES AUTRES TOUCHES, et c'est lui qui rend la chose
+ * sûre : on rend YES seulement si un gestionnaire a VRAIMENT pris le message.
+ * Un « pass », ou l'absence de gestionnaire, rend NO — et le raccourci de menu
+ * garde exactement son effet d'aujourd'hui. Une pile sans « on commandKeyDown »
+ * ne voit donc aucune différence.
+ *
+ * LE PIÈGE, ET IL EST DIT : une pile qui prend TOUT sans jamais passer capture
+ * aussi Cmd+Q. HyperCard avait exactement le même, et c'est le prix de la
+ * fidélité — protéger Cmd+Q ici serait inventer une règle qu'HyperCard n'a
+ * pas. Il reste à forcer la fermeture ; ce n'est pas agréable, mais c'est
+ * récupérable, et une pile qui fait ça le fait exprès.
+ *
+ * On ne touche qu'aux événements portant COMMANDE, et l'on écarte les touches
+ * de fonction et les caractères de contrôle : ceux-là passent par keyDown: et
+ * ont déjà leur message. */
+- (BOOL)performKeyEquivalent:(NSEvent *)event
+{
+    NSUInteger mods = [event modifierFlags] &
+                      NSEventModifierFlagDeviceIndependentFlagsMask;
+    if (!(mods & NSEventModifierFlagCommand)) return NO;
+
+    Object *carte = hc_current_card();
+    if (!carte) return NO;
+
+    NSString *nues = [event charactersIgnoringModifiers];
+    if ([nues length] == 0) return NO;
+    unichar k = [nues characterAtIndex:0];
+    if (k < 32 || k == 0x7F) return NO;             /* contrôle, pas caractère */
+    if (k >= 0xF700 && k <= 0xF8FF) return NO;      /* touche de fonction */
+
+    /* La casse est celle que l'utilisateur a frappée : charactersIgnoringModifiers
+     * laisse passer Majuscule, donc Cmd+B donne « b » et Cmd+Maj+B donne « B ».
+     * C'est ce que « on commandKeyDown c » doit recevoir. */
+    return hc_send_arg(carte, "commandKeyDown", [nues UTF8String]) ? YES : NO;
+}
+
 - (BOOL)envoieToucheHyperCard:(NSEvent *)event
 {
     Object *carte = hc_current_card();
