@@ -12,9 +12,21 @@
 --      pile : un bouton ne les voit jamais. C'est donc ici qu'ils
 --      doivent etre ecrits, et nulle part ailleurs.
 --
---  UNE FOIS LA PILE OUVERTE, les touches marchent pour de vrai : tapez
---  une lettre, une fleche, tabulation, entree — le journal gVus les
---  note, et le bouton « clavier » le relit.
+--  ILS SONT ETEINTS PAR DEFAUT, ET C'EST UN DEFAUT REPARE.
+--
+--  Ecrits sans « pass », ils AVALAIENT toutes les touches : la pile
+--  ouverte, on ne pouvait plus rien taper — ni dans la boite de message,
+--  ni ailleurs. Un banc qui rend son propre terrain inutilisable.
+--
+--  Chacun regarde donc gClavier : eteint, il repasse la touche
+--  immediatement et la frappe suit son cours ; allume, il la note dans
+--  gVus sans la repasser, ce qui est la mesure. La section 5 l'allume le
+--  temps de ses dix essais et l'eteint apres, et « razCompteurs »
+--  l'eteint aussi — si un essai tombait en cours de route, le clavier
+--  resterait mort sans cela.
+--
+--  POUR ESSAYER LES TOUCHES A LA MAIN : cliquez « clavier » une premiere
+--  fois (il allume le journal), tapez, puis recliquez pour le lire.
 -- ════════════════════════════════════════════════════════════════════
 
 
@@ -98,7 +110,12 @@ on bilan
 end bilan
 
 on razCompteurs
-  global gOK, gKO, gNotes
+  global gOK, gKO, gNotes, gClavier
+  -- Le journal du clavier s'eteint ici aussi : si un essai de la section 5
+  -- tombait en cours de route, les touches resteraient avalees et la pile
+  -- deviendrait intapable. Un bouton qui remet tout a zero doit remettre
+  -- CELA a zero.
+  put "off" into gClavier
   put 0 into gOK
   put 0 into gKO
   put 0 into gNotes
@@ -145,42 +162,62 @@ end errorDialog
 -- dans le champ du rapport melangerait la mesure et son compte rendu.
 
 on keyDown k
+  global gClavier
+  if gClavier is not "on" then pass keyDown
   vu "keyDown " & k
 end keyDown
 
 on commandKeyDown k
+  global gClavier
+  if gClavier is not "on" then pass commandKeyDown
   vu "commandKeyDown " & k
 end commandKeyDown
 
 on controlKey n
+  global gClavier
+  if gClavier is not "on" then pass controlKey
   vu "controlKey " & n
 end controlKey
 
 on functionKey n
+  global gClavier
+  if gClavier is not "on" then pass functionKey
   vu "functionKey " & n
 end functionKey
 
 on arrowKey d
+  global gClavier
+  if gClavier is not "on" then pass arrowKey
   vu "arrowKey " & d
 end arrowKey
 
 on enterKey
+  global gClavier
+  if gClavier is not "on" then pass enterKey
   vu "enterKey"
 end enterKey
 
 on returnKey
+  global gClavier
+  if gClavier is not "on" then pass returnKey
   vu "returnKey"
 end returnKey
 
 on tabKey
+  global gClavier
+  if gClavier is not "on" then pass tabKey
   vu "tabKey"
 end tabKey
 
 on enterInField
+  global gClavier
+  if gClavier is not "on" then pass enterInField
   vu "enterInField"
 end enterInField
 
 on returnInField
+  global gClavier
+  if gClavier is not "on" then pass returnInField
   vu "returnInField"
 end returnInField
 
@@ -203,14 +240,21 @@ end vu
 
 -- Bouton « clavier » : relit le journal des touches, puis le vide.
 on relitClavier
-  global gVus
+  global gVus, gClavier
   if gVus is empty then
-    answer "Rien de tape. Tapez une lettre, une fleche, tabulation, entree, puis recliquez."
+    -- Premier clic : on ALLUME le journal, et l'on dit quoi faire. Sans
+    -- cela l'utilisatrice taperait dans le vide, les gestionnaires etant
+    -- eteints par defaut pour que la pile reste tapable.
+    put "on" into gClavier
+    answer "Journal du clavier ALLUME. Tapez une lettre, une fleche, tabulation, entree, puis recliquez ici. (Les touches ne feront plus rien d'autre tant qu'il est allume.)"
   else
     journal empty
     journal "== les touches tapees, dans l'ordre =="
     journal "  " & gVus
     put empty into gVus
+    -- Et l'on ETEINT : la pile redevient tapable. Deux clics pour une
+    -- mesure, et pas un clavier mort pour tout le reste de la seance.
+    put "off" into gClavier
   end if
 end relitClavier
 
@@ -353,3 +397,132 @@ on essaiLire
   global gCh
   egal "lire une propriete sur <variable>", the name of gCh, "card field " & quote & "A" & quote
 end essaiLire
+
+
+-- ---- SECTION 0 : LE TERRAIN, avant tout le reste ------------------
+--
+-- UN BANC DOIT VERIFIER SON PROPRE TERRAIN, et celui-ci ne le faisait
+-- pas. Il a coute une soiree.
+--
+-- Joue dans HyperCard sur une pile montee a la main, il a rendu QUATRE
+-- ECHECS qui contredisaient tous quatre des mesures deja prises du meme
+-- cote. Une seule cause : les cartes n'etaient pas NOMMEES. Et en
+-- HyperTalk « go to card "Deux" » sur une carte qui n'existe pas NE LEVE
+-- PAS — il pose « the result » et reste sur place, en silence. Toute la
+-- preparation ecrivait donc dans la meme carte, chaque ligne ecrasant la
+-- precedente : plus d'accents nulle part, un seul « alpha » dans la
+-- pile, et « mark this card » marquant la mauvaise.
+--
+-- Quatre defauts annonces qui n'existaient pas. C'est la cinquieme fois
+-- sur ce chantier que l'instrument, et non le code, etait en cause, et
+-- la seule qui aurait ete evitee par dix lignes de verification.
+--
+-- LE RAPPORT PASSE PAR « answer » ET NON PAR LE CHAMP R : si c'est R qui
+-- manque, « journal » leverait, et en HyperCard une erreur arrete TOUT
+-- le script — on n'aurait meme pas le diagnostic. Le seul canal sur
+-- lequel on puisse compter quand on ne sait pas encore ce qui existe est
+-- le dialogue.
+
+function terrainBon
+  global gTerrain, gTerrainDit
+  put "bon" into gTerrain
+  put empty into gTerrainDit
+
+  if the number of cards < 4 then
+    manque "il faut QUATRE cartes au moins ; il y en a " & the number of cards
+  end if
+
+  exigeCarte "Atelier"
+  exigeCarte "Deux"
+  exigeCarte "Trois"
+  exigeCarte "Quatre"
+
+  -- ON NE VA A L'ATELIER QUE S'IL EXISTE, et c'est la troisieme fois que
+  -- ce piege se referme dans cette seule section : « go to card » leve, et
+  -- l'erreur emporte la verification elle-meme. Une fonction qui leve rend
+  -- VIDE, et « vide is false » ne mord pas — d'ou le « is not true » chez
+  -- l'appelant.
+  if there is not a card "Atelier" then
+    manque "la premiere carte doit se nommer « Atelier »"
+  else
+    go to card "Atelier"
+    if the number of card fields < 3 then
+      manque "l'Atelier doit porter TROIS champs de carte, A puis B puis R ; il en a " & the number of card fields
+    else
+      if the short name of card field 1 is not "A" then
+        manque "card field 1 doit se nommer « A » ; il se nomme « " & the short name of card field 1 & " » — L'ORDRE DE CREATION EST LE NUMERO, et les sections 3, 4 et 7 le verifient"
+      end if
+      if the short name of card field 2 is not "B" then
+        manque "card field 2 doit se nommer « B » ; il se nomme « " & the short name of card field 2 & " »"
+      end if
+      if the short name of card field 3 is not "R" then
+        manque "card field 3 doit se nommer « R » ; il se nomme « " & the short name of card field 3 & " »"
+      end if
+      if the dontSearch of card field "R" is not true then
+        manque "le champ R doit avoir dontSearch a VRAI : il porte le nom de chaque essai, donc tous les motifs cherches, et la section 1 se trouverait elle-meme"
+      end if
+    end if
+    if the number of bkgnd fields < 1 then
+      manque "il faut un champ de FOND nomme « T », present sur les quatre cartes"
+    else
+      if the short name of bkgnd field 1 is not "T" then
+        manque "bkgnd field 1 doit se nommer « T » ; il se nomme « " & the short name of bkgnd field 1 & " »"
+      end if
+    end if
+  end if
+
+  return gTerrain is "bon"
+end terrainBon
+
+-- « THERE IS A CARD » ET NON « GO TO CARD », et ma premiere version s'est
+-- fait prendre par exactement le defaut qu'elle venait corriger.
+--
+-- Elle allait a la carte et regardait ou l'on avait atterri. Or « go to
+-- card "Absente" » LEVE dans HC — mesure — et l'erreur arretait ce
+-- gestionnaire-ci AVANT qu'il ait pu noter le manque. La verification
+-- rendait donc « terrain bon » sur une pile toute cassee, et le banc
+-- partait quand meme : sur une pile montee expres de travers, cinq cartes
+-- sans nom et les champs dans le mauvais ordre, il annoncait
+-- « 0 reussites » et une avalanche d'erreurs au lieu du diagnostic.
+--
+-- Une auto-verification qui ne se declenche pas ne vaut rien, et la seule
+-- facon de le savoir est de la jouer sur une pile CASSEE. C'est ce que
+-- fait le harnais.
+--
+-- « there is a card <nom> » rend false sans lever : c'est la seule
+-- tournure qui reponde a la question « existe-t-elle ? » sans supposer
+-- que oui.
+--
+-- AU PASSAGE, UNE DIVERGENCE A MESURER : HyperCard, lui, ne leve PAS sur
+-- « go to card "Absente" » — il pose « the result » a « No such card » et
+-- reste sur place. C'est precisement ce silence qui a produit les quatre
+-- faux echecs. HC leve, et laisse « the result » vide. Lequel des deux a
+-- raison n'est pas tranche, et rien n'est corrige de ce cote.
+on exigeCarte quel
+  if there is not a card quel then
+    manque "pas de carte nommee « " & quel & " »"
+  end if
+end exigeCarte
+
+on manque quoi
+  global gTerrain, gTerrainDit
+  put "casse" into gTerrain
+  if gTerrainDit is empty then put quoi into gTerrainDit
+  else put gTerrainDit & return & return & quoi into gTerrainDit
+end manque
+
+-- LE DIAGNOSTIC PASSE PAR DEUX CANAUX, et ce n'est pas du zele.
+--
+-- « answer » ouvre un dialogue : c'est le bon canal dans l'application, et
+-- le seul sur lequel on puisse compter quand on ne sait pas encore quels
+-- champs existent. Mais un hote sans dialogue — le harnais de la suite —
+-- n'en voit RIEN : le garde-fou mordait, et sa morsure etait muette.
+--
+-- « put » vers la boite de message, lui, arrive partout. D'abord le put,
+-- ensuite le dialogue : si le dialogue attend une main qui ne viendra
+-- jamais, le diagnostic est deja sorti.
+on bilanTerrain
+  global gTerrainDit
+  put "LE BANC N'EST PAS MONTE COMME IL FAUT : " & gTerrainDit
+  answer "LE BANC N'EST PAS MONTE COMME IL FAUT, et il ne tournera pas : ses resultats seraient faux sans le dire." & return & return & gTerrainDit
+end bilanTerrain

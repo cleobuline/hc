@@ -1,9 +1,17 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[ERR]    !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
-98 reussites, aucun echec, 2 a mesurer.
+105 reussites, aucun echec, 2 a mesurer.
+[ERR]    !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
 
 ───── champ « R » ─────
 == 1. la recherche
+  ok     on atterrit bien sur Deux
+  ok     on atterrit bien sur Trois
+  ok     on atterrit bien sur Quatre
+  ok     et l'on revient a l'Atelier
+  ok     la donnee tient sur l'Atelier
+  ok     le fond n'est PAS partage
+  ok     et Trois a garde le sien
+  ok     et l'Atelier le sien
   ok     deux mots, deux prefixes
   ok     chars : n'importe ou dans le mot
   ok     string : la phrase, a cheval
@@ -45,7 +53,6 @@
   ok     line 3 pose ses sauts
   ok     style d'un mot absent
   ok     style d'un mot present
-  ok     un champ absent leve
 
 == 3. la selection
   ok     selectedChunk : couche et numero
@@ -118,8 +125,13 @@
   ok     lire une propriete sur <variable>
 
 ==============================
-98 reussites, aucun echec, 2 a mesurer.
+105 reussites, aucun echec, 2 a mesurer.
+
+== 8. la faute voulue, en dernier
+  Ce qui suit doit LEVER : le style d'un mot dans un champ qui
+  n'existe pas. Le bloc des erreurs, en bas, le nomme.
+  (En HyperCard le script s'arrete ici ; en HC il continue.)
 
 == les erreurs levees, et elles sont VOULUES ==
-     !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
+     !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
 

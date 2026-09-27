@@ -18,7 +18,7 @@ arguments() {
     calreel)            echo "donnees/calendrier.txt" ;;
     navharn|navharn2|navharn3) echo "donnees/navtest.txt" ;;
     tortureh)           echo "donnees/torture_bouton.txt donnees/torture_pile.txt" ;;
-    torture2)           echo "donnees/torture2_bouton.txt donnees/torture2_pile.txt" ;;
+    torture2|torturecasse) echo "donnees/torture2_bouton.txt donnees/torture2_pile.txt" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;
     # Trois harnais cherchaient leur donnée dans le répertoire courant : elle
