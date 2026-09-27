@@ -232,3 +232,46 @@ Trois lectures possibles, qu'une seule question sépare :
 
 LA QUESTION À POSER : y a-t-il eu un dialogue à la ligne C, et si oui, que
 disait-il exactement ? HC, lui, écrit la ligne ET trois messages.
+
+
+───────────────────────────────────────────────────────────────────────────
+C — RÉSOLU : HyperCard LÈVE UNE ERREUR ET ARRÊTE LE SCRIPT      CORRIGÉ
+───────────────────────────────────────────────────────────────────────────
+
+Le dialogue d'erreur de script paraît — Debug / Script / Cancel — et le
+gestionnaire s'arrête. La ligne « C style » ne s'écrit donc jamais. (Le « FIN »
+du relevé reste inexpliqué ; il ne change rien à la réponse.)
+
+    the textStyle of word 2 of card field "Absent"
+        HyperCard : erreur, arrêt
+        HC avant  : la phrase, et le gestionnaire CONTINUE
+
+C'est le plus grave des deux défauts : un nom de champ mal orthographié
+laissait le gestionnaire travailler sur une phrase pendant tout le reste de son
+cours, au lieu de s'arrêter net.
+
+LE POINT EXACT. Lire un MORCEAU d'un champ absent s'arrêtait DÉJÀ
+correctement : « put word 2 of card field "Absent" » lève « objet introuvable »
+et stoppe. Seule la propriété DU morceau avalait l'erreur, parce que v3_recours
+annonçait un SUCCÈS là où il n'avait fait que se replier sur le littéral nu.
+
+La règle était déjà écrite trois fois dans v3_recours — « un mot nu peut
+légitimement valoir lui-même ; une référence d'objet jamais ; un appel de
+fonction jamais » — et il lui manquait un quatrième cas : une propriété de
+texte sur un morceau. v3_prop_sur_morceau, jumeau de v3_prop_sur_objet, le
+ferme, restreint aux quatre propriétés de plage mesurées. Élargir sans mesure
+ferait s'arrêter des scripts là où HyperCard les laisse passer, ce qui est la
+faute symétrique et pas meilleure.
+
+L'AUTRE MOITIÉ est dans term_value_body : quand le champ EXISTE et que seul le
+morceau manque, la propriété se lit sur une plage VIDE placée à la FIN du
+texte. À la fin et non au début — un champ dont le premier mot est en gras
+rendrait « bold » pour un mot qui n'existe pas. Les deux moitiés se composent
+sans se connaître : la lecture rendant « plain », il n'y a plus d'écho, donc
+plus rien à refuser.
+
+CE QUI RESTE : le champ absent produit TROIS messages là où un seul suffirait —
+deux sondes du chemin de repli, puis la vraie erreur. Ce n'est pas propre au
+morceau : « the textStyle of card field "Absent" », sans morceau du tout, en
+produit exactement trois aussi, et le faisait déjà avant cette correction.
+C'est le coût du repli, et il tombera quand la lecture se lira dans l'ARBRE.

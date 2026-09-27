@@ -3937,6 +3937,7 @@ typedef enum { CH_NONE, CH_CHAR, CH_WORD, CH_ITEM, CH_LINE } ChunkType;
 
 static void eval_expr(const char *s, char *out, int outlen);
 static const char *find_kw(const char *s, const char *w);   /* défini plus bas */
+static const char *chunk_base_ref(const char *ref);        /* défini plus bas */
 static int hc_send_args(Object *target, const char *message,
                         char argv[][HC_VAL], int argc);   /* défini plus bas */
 static int hc_call_user_function(Object *target, const char *name,
@@ -6696,6 +6697,36 @@ static void term_value_body(const char *t, char *out, int outlen)
                     ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor")) {
                     int cst, cen;
                     Object *cf = chunk_target(of + 2, &cst, &cen);
+                    if (!cf) {
+                        /* LE MORCEAU N'EXISTE PAS : DEUX CAS, ET DEUX
+                         * RÉPONSES DIFFÉRENTES. Mesuré dans HyperCard le
+                         * 27/09/2026, sur un champ contenant « Sun Mon Tue » :
+                         *
+                         *   the textStyle of word 99 of card field "T"
+                         *       -> plain            le champ EXISTE
+                         *   the textStyle of word 2 of card field "Absent"
+                         *       -> erreur, et le script S'ARRÊTE
+                         *
+                         * HC rendait dans les deux cas SA PROPRE PHRASE —
+                         * « textStyle of word 99 of card field "T" ». Un
+                         * « if the textStyle of word 99 of f is "bold" »
+                         * comparait donc à une phrase, et la comparaison
+                         * était fausse sans jamais se plaindre.
+                         *
+                         * Ici on traite le premier cas : le champ est là, le
+                         * morceau non, et la propriété vaut son défaut. On
+                         * lit une plage VIDE placée à la FIN du texte — pas
+                         * au début : un champ dont le premier mot est en gras
+                         * rendrait « bold » pour un mot qui n'existe pas. Le
+                         * second cas est refusé par v3_prop_sur_morceau, qui
+                         * rend la main à hct_eval pour qu'il lève l'erreur. */
+                        const char *base = chunk_base_ref(of + 2);
+                        Object *ob = (base && *base) ? resolve(base) : NULL;
+                        if (ob && ob->type == OBJ_FIELD) {
+                            cf = ob;
+                            cst = cen = (int)strlen(hc_field_text(ob));
+                        }
+                    }
                     if (cf) {
                         struct RunList *rl = runs_of(cf);
                         if (ci_equal(prop, "textcolor")) {
@@ -8237,6 +8268,41 @@ static int v3_prop_sur_objet(const HctNoeud *n)
     return v3_prop_exige_un_objet(prop);
 }
 
+/* UNE PROPRIÉTÉ DE TEXTE SUR UN MORCEAU NE SE REND PAS ELLE-MÊME EN CLAIR.
+ *
+ * Le troisième cas de la même règle, après la référence d'objet et l'appel de
+ * fonction : un mot nu peut légitimement valoir lui-même, « the textStyle of
+ * word 2 of card field "Absent" » jamais. L'auteur demande un style.
+ *
+ * MESURÉ : HyperCard lève une erreur et ARRÊTE le script — le dialogue
+ * Debug / Script / Cancel. HC rendait la phrase et continuait, si bien qu'un
+ * champ mal orthographié laissait le gestionnaire travailler sur une phrase
+ * pendant tout le reste de son cours. Lire un MORCEAU d'un champ absent
+ * s'arrêtait déjà correctement ; seule la propriété DU morceau avalait
+ * l'erreur, parce que le recours annonçait un succès là où il n'avait fait que
+ * se replier sur le littéral.
+ *
+ * Restreint aux quatre propriétés de plage de texte, celles qui se mesurent :
+ * élargir sans mesure ferait s'arrêter des scripts là où HyperCard les laisse
+ * passer, ce qui est la faute symétrique et pas meilleure.
+ *
+ * Le cas où le CHAMP existe et où seul le morceau manque n'arrive pas ici : la
+ * lecture rend « plain » — la valeur par défaut, voir term_value_body —, donc
+ * il n'y a pas d'écho et rien à refuser. Les deux moitiés se composent sans se
+ * connaître. */
+static int v3_prop_sur_morceau(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
+    const HctNoeud *sur = n->fils[1];
+    if (!sur || sur->genre != HCTN_CHUNK) return 0;
+    if (!n->fils[0]) return 0;
+
+    char prop[64];
+    hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+    return ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
+           ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor");
+}
+
 /* Ce texte s'écrit-il comme un DESCRIPTEUR d'objet ?
  *
  * Sert à distinguer deux échecs que la sonde confondrait :
@@ -8754,7 +8820,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
      * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
      * ici en supprime la moitié. */
     if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
-                 v3_prop_sur_objet(n) ||
+                 v3_prop_sur_objet(n) || v3_prop_sur_morceau(n) ||
                  sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;

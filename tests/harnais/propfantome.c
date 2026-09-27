@@ -1,53 +1,56 @@
 /* LIRE UNE PROPRIÉTÉ SUR UN MORCEAU QUI N'EXISTE PAS.
  *
- * HYPERCARD REND « plain ». HC rend la PHRASE ELLE-MÊME :
+ * DEUX CAS, DEUX RÉPONSES, et HC donnait la même mauvaise aux deux. Mesuré
+ * dans HyperCard le 27/09/2026, sur un champ contenant « Sun Mon Tue » :
  *
- *     the textStyle of word 99 of card field "T"
+ *     the textStyle of word 99 of card field "T"      le CHAMP existe
  *         HyperCard -> plain
- *         HC        -> textStyle of word 99 of card field "T"
+ *         HC avant  -> textStyle of word 99 of card field "T"
  *
- * C'est un défaut, et la conséquence pour les piles est directe :
+ *     the textStyle of word 2 of card field "Absent"  le champ MANQUE
+ *         HyperCard -> une ERREUR, et le script S'ARRÊTE
+ *                      (le dialogue Debug / Script / Cancel)
+ *         HC avant  -> textStyle of word 2 of card field "Absent",
+ *                      et le gestionnaire CONTINUE
  *
- *     if the textStyle of word 99 of f is "bold" then …
+ * HC rendait sa propre phrase dans les deux cas. Un « if the textStyle of
+ * word 99 of f is "bold" » comparait donc à une phrase, et la comparaison
+ * était fausse sans jamais se plaindre ; et un nom de champ mal orthographié
+ * laissait le gestionnaire travailler sur cette phrase pendant tout le reste
+ * de son cours au lieu de s'arrêter net.
  *
- * compare à une phrase, et la comparaison est fausse sans se plaindre.
+ * LE POINT EXACT DU DÉFAUT : lire un MORCEAU d'un champ absent s'arrêtait
+ * déjà correctement — « put word 2 of card field "Absent" » lève « objet
+ * introuvable » et stoppe. Seule la propriété DU morceau avalait l'erreur,
+ * parce que v3_recours annonçait un SUCCÈS là où il n'avait fait que se
+ * replier sur le littéral nu. La règle « un mot nu peut valoir lui-même, une
+ * référence d'objet jamais, un appel de fonction jamais » avait un troisième
+ * cas manquant : une propriété de texte sur un morceau. C'est
+ * v3_prop_sur_morceau, jumeau de v3_prop_sur_objet, qui le ferme.
  *
- * J'AI CRU LE CONTRAIRE PENDANT UN COMMIT, ET IL FAUT DIRE POURQUOI. Un
- * premier relevé m'était arrivé sans être étiqueté ; j'y ai lu HyperCard
- * alors que c'était HC, j'ai conclu que HC était fidèle, retiré l'accusation
- * et écrit un harnais pour VERROUILLER la phrase. Le relevé suivant, marqué
- * « dans hypercard », donne « plain ».
+ * Et l'autre moitié est ailleurs, dans term_value_body : quand le champ EXISTE
+ * et que seul le morceau manque, la propriété se lit sur une plage VIDE placée
+ * à la FIN du texte. À la fin et non au début : un champ dont le premier mot
+ * est en gras rendrait « bold » pour un mot qui n'existe pas. Les deux moitiés
+ * se composent sans se connaître — la lecture rendant « plain », il n'y a plus
+ * d'écho, donc plus rien à refuser.
  *
- * La leçon n'est pas « vérifier d'où vient un relevé », même si c'est vrai :
+ * J'AI CRU HC FIDÈLE PENDANT UN COMMIT, ET IL FAUT DIRE POURQUOI. Un premier
+ * relevé m'était arrivé sans être étiqueté ; j'y ai lu HyperCard alors que
+ * c'était HC, j'ai retiré l'accusation et écrit ce harnais pour VERROUILLER la
+ * phrase. La leçon n'est pas « vérifier l'étiquette », même si c'est vrai :
  * c'est qu'un relevé qui CONFIRME ce que fait déjà le code mérite plus de
  * méfiance qu'un relevé qui le contredit. Le second fait travailler, le
- * premier fait conclure — et j'ai conclu.
+ * premier fait conclure.
  *
- * CE QUI SE MESURE ICI, en attendant la correction :
- *
- *   1. le morceau qui existe : « plain », juste des deux côtés ;
- *   2. le morceau absent : la phrase, là où HyperCard dit « plain » ;
- *   3. le champ absent : la phrase ET TROIS MESSAGES, là où HyperCard
- *      n'affiche rien ;
- *   4. l'écriture au-delà de la fin : « Sun Mon TueX », 12 octets, 3 mots —
- *      corrigé, et fidèle depuis la mesure du 27/09.
- *
- * D'OÙ VIENT LE DÉFAUT, relevé sous backtrace, trois fois la même pile :
- *
- *     noeud_of -> recours_pont -> v3_recours -> term_value -> call_function
- *              -> eval_expr
- *
- * La lecture d'une propriété sur un MORCEAU n'est pas portée sur l'arbre :
- * noeud_of résout sa cible par hote.resout, qui ne sait résoudre qu'un OBJET,
- * échoue sur un nœud de morceau, et confie tout à l'ancien évaluateur — deux
- * fois depuis v3_recours, une troisième par l'analyseur v1. Chaque tentative
- * signale l'objet introuvable, puis l'ensemble se replie sur le littéral nu,
- * d'où la phrase.
- *
- * Le remède est le SITE JUMEAU MANQUANT de v3_chunk_cible, qui fait déjà ce
- * travail pour l'ÉCRITURE — « set the textStyle of word 3 of line 3 of me to
- * bold » lit ses rangs dans l'arbre depuis des jours. La lecture, elle, n'a
- * jamais eu son chemin. */
+ * CE QUI RESTE, ET QUI EST INSCRIT : le champ absent produit TROIS messages
+ * là où un seul suffirait — deux sondes du chemin de repli, puis la vraie
+ * erreur qui arrête le gestionnaire. Ce n'est pas propre au morceau : « the
+ * textStyle of card field "Absent" », sans morceau du tout, en produit
+ * exactement trois aussi, et le faisait déjà. C'est le coût du repli, et il
+ * tombera quand la lecture de propriété sur un morceau se lira dans l'ARBRE —
+ * v3_chunk_cible le fait déjà pour l'ÉCRITURE, c'est son site jumeau qui
+ * manque. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -84,14 +87,26 @@ int main(void)
      "  put \"[\" & the textStyle of word 2 of card field \"T\" & \"]\"\n"
      "  put \"   (HyperCard : plain)\"");
 
-    essai("2. le MORCEAU manque : HC rend la phrase, HyperCard dit « plain »",
+    essai("2. le MORCEAU manque, le champ est la : la valeur par DEFAUT",
      "  put \"[\" & the textStyle of word 99 of card field \"T\" & \"]\"\n"
-     "  put \"   (HyperCard : plain — DEFAUT, mesure du 27/09)\"");
+     "  put \"   (HyperCard : plain — corrige, mesure du 27/09)\"");
 
-    essai("3. le CHAMP manque : la phrase, ET TROIS MESSAGES",
+    essai("2 bis. et le defaut est celui du CHAMP, pas du premier mot",
+     "  set the textStyle of word 1 of card field \"T\" to bold\n"
+     "  put \"word 1  : [\" & the textStyle of word 1 of card field \"T\" & \"]\"\n"
+     "  put \"word 99 : [\" & the textStyle of word 99 of card field \"T\" & \"]\"\n"
+     "  put \"   (la plage vide se lit a la FIN : « bold » ici voudrait dire\"\n"
+     "  put \"    qu'un mot inexistant herite du premier)\"\n"
+     "  set the textStyle of word 1 of card field \"T\" to plain");
+
+    /* §3 — LE GESTIONNAIRE DOIT S'ARRÊTER ICI. La ligne qui suit la lecture
+     * ne doit JAMAIS paraître : si elle reparaît un jour, c'est que l'erreur
+     * est redevenue un littéral, et le harnais le dira sans qu'on le cherche.
+     * Les deux premiers messages sont les sondes du chemin de repli ; seul le
+     * troisième, celui qui nomme la ligne, arrête. */
+    essai("3. le CHAMP manque : erreur, et le gestionnaire S'ARRETE",
      "  put \"[\" & the textStyle of word 2 of card field \"Absent\" & \"]\"\n"
-     "  put \"   (HyperCard n'affiche RIEN, et n'ecrit meme pas la ligne :\"\n"
-     "  put \"    a confirmer, voir docs/mesures/morceaux.txt)\"");
+     "  put \"   >>> CETTE LIGNE NE DOIT PAS PARAITRE\"");
 
     essai("4. ECRIRE au-dela de la fin : on ajoute SANS espace",
      "  put \"Sun Mon Tue\" into card field \"T\"\n"
