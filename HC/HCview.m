@@ -1571,13 +1571,20 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * faire. La ligne peut valoir 0 — l'éditeur s'ouvre alors en haut, comme
  * avant.
  *
- * CE QUI MANQUE ENCORE, et qui est dit plutôt que bricolé : HyperCard a un
- * TROISIÈME bouton, « Debug », qui ouvre le même éditeur en ENCADRANT la ligne
- * fautive d'un rectangle — l'indicateur de ligne courante de son débogueur. Ce
- * rectangle demande de dessiner par-dessus la vue de texte, et le reste du
- * débogueur — pas à pas, reprise, espion de variables — n'existe pas du tout.
- * Un bouton « Debug » qui ferait la même chose que « Script » serait un
- * mensonge d'interface : deux boutons, un seul comportement. */
+ * PAS DE TROISIÈME BOUTON « Debug », ET C'EST UNE DÉCISION, PAS UN TROU.
+ *
+ * HyperCard en a un : il ouvre le même éditeur en ENCADRANT la ligne fautive
+ * d'un rectangle, l'indicateur de ligne courante de son débogueur. Une fois
+ * « Script » posé sur la bonne ligne, il ne reste entre les deux que la
+ * différence entre une sélection et un cadre — pour le même geste, au même
+ * endroit. Écarté à l'usage, le 27/09/2026 : « oublie le bouton debug ça
+ * ferait double emploi ».
+ *
+ * C'est écrit ici parce qu'un manque et un choix se ressemblent dans le code,
+ * et que ce dépôt a déjà payé l'inverse — des portes annoncées dans un
+ * commentaire et jamais percées. Celle-ci est fermée exprès. Le jour où le
+ * débogueur existera vraiment — pas à pas, reprise, espion de variables —, le
+ * bouton aura de quoi se distinguer, et la question se rouvrira d'elle-même. */
 static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     if (!texte || !*texte) return;
 
