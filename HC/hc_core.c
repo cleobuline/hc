@@ -4922,28 +4922,53 @@ static int menu_creer(const char *nom)
         emit(HC_ERR, "   !! trop de menus (%d au plus)", HC_MENUS_MAX);
         return 0;
     }
-    if (strlen(nom) >= HC_MENU_NOM_MAX) {
+    /* LA LONGUEUR SE MESURE UNE FOIS, ET C'EST ELLE QUI COPIE.
+     *
+     * Le refus était déjà là et il est juste : un nom trop long est REFUSÉ, il
+     * n'a jamais été amputé. Mais snprintf ne le sait pas, et gcc non plus :
+     * il voyait une source pouvant peser 257 octets pour une destination de
+     * 256 et le disait, à -O1 seulement. J'ai lu cet avertissement comme un
+     * défaut — « le nom d'un menu amputé en silence » — et je l'ai répété sans
+     * jamais lire les huit lignes au-dessus. Un avertissement n'est pas une
+     * mesure : c'est une question posée au code, et il faut aller lire la
+     * réponse.
+     *
+     * memcpy sur la longueur DÉJÀ VÉRIFIÉE rend la borne évidente pour le
+     * compilateur comme pour le lecteur, et épargne une seconde traversée de
+     * la chaîne. */
+    size_t ln = strlen(nom);
+    if (ln >= HC_MENU_NOM_MAX) {
         emit(HC_ERR, "   !! nom de menu trop long (%d caractères au plus)",
              HC_MENU_NOM_MAX - 1);
         return 0;
     }
     HcMenuBarre *m = &g_menus[g_nmenus++];
     memset(m, 0, sizeof *m);
-    snprintf(m->nom, sizeof m->nom, "%s", nom);
+    memcpy(m->nom, nom, ln + 1);
     m->actif_menu = 1;
     menus_prevenir();
     return 1;
 }
 
-static int menu_supprimer(const char *nom)
+/* Retirer le menu de RANG i.
+ *
+ * IL N'Y A PLUS DE SUPPRESSION PAR LE NOM, et c'est le fond de l'affaire.
+ * menu_supprimer(nom) refaisait une recherche par nom pour un appelant qui
+ * tenait déjà le rang — un seul appelant, v3_cmd_delete, qui recopiait donc le
+ * nom dans soixante-quatre octets pour le lui redonner. Un nom plus long
+ * arrivait tronqué, ne correspondait plus à rien, et le menu survivait.
+ *
+ * La recherche par nom n'existait que pour ce détour. En retirant le détour,
+ * elle n'avait plus d'appelant du tout : le compilateur l'a dit, et elle est
+ * partie avec. Un chemin qui ne sert qu'à revenir où l'on était est rarement
+ * innocent. */
+static void menu_oter(int i)
 {
-    int i = menu_index(nom);
-    if (i < 0) return 0;
+    if (i < 0 || i >= g_nmenus) return;
     menu_vide(&g_menus[i]);
     for (int k = i; k < g_nmenus - 1; k++) g_menus[k] = g_menus[k + 1];
     g_nmenus--;
     menus_prevenir();
-    return 1;
 }
 
 /* Découper une liste d'articles.
@@ -12956,9 +12981,24 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             int i = v3_menu_index(ctx, o);
             if (ctx->erreur) return 1;
             if (i < 0) { set_result("menu introuvable"); return 1; }
-            char nom[64];
-            snprintf(nom, sizeof nom, "%s", g_menus[i].nom);
-            menu_supprimer(nom);
+            /* PAR LE RANG, PAS PAR LE NOM.
+             *
+             * On recopiait le nom du menu dans soixante-quatre octets pour le
+             * redonner à une recherche par nom. Un nom plus long
+             * arrivait donc TRONQUÉ, ne correspondait plus à rien, et le menu
+             * survivait — « the result » restant vide, c'est-à-dire annonçant
+             * la réussite. Mesuré : 63 caractères se supprime, 64 ne se
+             * supprime pas, et rien ne le dit.
+             *
+             * Le rang est là, juste au-dessus. Il n'y avait aucune raison de
+             * repasser par le nom, et c'est ce détour qui portait le défaut.
+             *
+             * gcc le signalait — « output between 1 and 256 bytes into a
+             * destination of size 64 » — mais à -O0 SEULEMENT, et la porte du
+             * projet compile en -O2. Elle compile désormais aux trois
+             * niveaux : un avertissement qui dépend de l'optimisation reste un
+             * avertissement, et celui-ci cachait un vrai défaut. */
+            menu_oter(i);
             set_result("");
             return 1;
         }
@@ -14332,11 +14372,14 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             /* Même règle qu'à la création : on refuse plutôt que d'amputer.
              * Un menu renommé trop long deviendrait introuvable sous son
              * nouveau nom ET perdu sous l'ancien. */
-            if (strlen(val) >= HC_MENU_NOM_MAX) {
+            size_t lv = strlen(val);
+            if (lv >= HC_MENU_NOM_MAX) {
                 hct_ctx_faute(ctx, obj, "nom de menu trop long");
                 return 1;
             }
-            snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
+            /* memcpy sur la longueur vérifiée, comme à la création : même
+             * borne, même raison. Voir menu_creer. */
+            memcpy(g_menus[i].nom, val, lv + 1);
             menus_prevenir(); return 1;
         }
         if (ci_equal(prop, "enabled")) {

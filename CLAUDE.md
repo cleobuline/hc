@@ -42,9 +42,16 @@ minute de distance.
 `--asan` PASSE AVANT DE POUSSER, et l'on attend son résultat. Les témoins se
 réenregistrent après avoir LU le diff, jamais avant.
 
-`make avertissements` compile en `-O2` et `lance.sh` en `-O1` : deux
-`-Wformat-truncation` ne se voient qu'au second. Un avertissement qui dépend du
-niveau d'optimisation reste un avertissement.
+`make avertissements` compile aux TROIS niveaux `-O0 -O1 -O2`, et ce n'est pas
+du zèle : `-Wformat-truncation` a besoin de bornes que l'analyse de flot
+propage différemment selon `-O`. « delete menu » sur un nom de plus de 63
+caractères échouait en annonçant la réussite ; gcc le disait, à `-O0`
+seulement, et la porte compilait en `-O2`.
+
+Et un avertissement n'est pas une mesure : c'est une QUESTION posée au code.
+J'ai annoncé trois fois « le nom d'un menu amputé en silence » sur la foi d'un
+`-Wformat-truncation`, sans lire les huit lignes au-dessus où le refus est
+écrit. Aller lire la réponse, toujours.
 
 ## LA MÉTHODE
 

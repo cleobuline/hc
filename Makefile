@@ -10,6 +10,23 @@ CFLAGS  ?= -std=gnu99 -O2 -I HC
 AVERTIR  = -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings \
            -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition
 
+# LES AVERTISSEMENTS SE COMPTENT À PLUSIEURS NIVEAUX D'OPTIMISATION.
+#
+# Certains ne se voient qu'à un seul, parce qu'ils dépendent de ce que le
+# compilateur a su propager : -Wformat-truncation a besoin des bornes, et les
+# bornes viennent de l'analyse de flot, qui change avec -O.
+#
+# Mesuré, et ce n'est pas théorique : « delete menu "<nom de plus de 63
+# caractères>" » recopiait le nom dans un tampon de 64 octets et ne retrouvait
+# plus le menu — il survivait, « the result » annonçant la réussite. gcc le
+# disait, « output between 1 and 256 bytes into a destination of size 64 », À
+# -O0 SEULEMENT. Cette cible compilait en -O2, donc personne ne l'a jamais lu.
+#
+# Trois niveaux suffisent : -O3 n'a rien montré que -O2 ne montrait déjà, et
+# chaque niveau coûte une compilation complète du noyau.
+NIVEAUX  = -O0 -O1 -O2
+BASE     = -std=gnu99 -I HC
+
 SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
 
 .PHONY: test test-asan test-enregistre verifie avertissements propre aide
@@ -48,16 +65,24 @@ verifie:
 avertissements:
 	@echec=0; \
 	 for f in $(SOURCES); do \
-	   printf '%-16s ' $$(basename $$f); \
-	   msg=$$($(CC) $(CFLAGS) $(AVERTIR) -c -o /dev/null $$f 2>&1); \
-	   n=$$(printf '%s\n' "$$msg" | grep -c 'warning:'); \
-	   echo "$$n"; \
-	   if [ "$$n" -ne 0 ]; then echec=1; printf '%s\n' "$$msg"; fi; \
+	   printf '%-20s ' $$(basename $$f); \
+	   detail=''; \
+	   for o in $(NIVEAUX); do \
+	     msg=$$($(CC) $(BASE) $$o $(AVERTIR) -c -o /dev/null $$f 2>&1); \
+	     n=$$(printf '%s\n' "$$msg" | grep -c 'warning:'); \
+	     printf '%s:%s ' "$$o" "$$n"; \
+	     if [ "$$n" -ne 0 ]; then \
+	       echec=1; \
+	       detail="$$detail\n--- $$f $$o ---\n$$msg"; \
+	     fi; \
+	   done; \
+	   echo ""; \
+	   if [ -n "$$detail" ]; then printf '%b\n' "$$detail"; fi; \
 	 done; \
 	 if [ $$echec -ne 0 ]; then \
 	   echo "des avertissements : la cible echoue"; exit 1; \
 	 fi; \
-	 echo "aucun avertissement"
+	 echo "aucun avertissement, aux trois niveaux"
 
 propre:
 	@rm -rf tests/.travail
