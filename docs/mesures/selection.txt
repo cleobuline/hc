@@ -105,3 +105,74 @@ SI QUELQUE CHOSE REFUSE DE SE TAPER
 « select empty » existe en HyperTalk 2.x pour défaire la sélection ; si ta
 version le refuse, remplace-le par un clic sur un endroit vide de la carte,
 ou saute-le — il ne sert qu'à ce que le bloc D parte proprement.
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — 27 septembre 2026
+═══════════════════════════════════════════════════════════════════════════
+
+HYPERCARD (Basilisk II)              HC (avant)
+───────────────────────────────────  ──────────────────────────────────────
+A1  char 2 to 4 of card field 1      char 2 to 4 of card field "A"
+A2  (vide)                           field "A"
+A3  (vide)                           1
+B1  char 1 to 5 of card field 3      char 1 to 5 of card field "B"
+B2  (vide)                           field "B"
+C1  char 7 to 9 of bkgnd field 1     char 7 to 9 of bg field "T"
+C2  (vide)                           field "T"
+D1  char 7 to 10 of card field 1     identique
+D2  card field 1                     identique
+
+Le premier relevé envoyé était celui de HC — la barre de menus le disait —, et
+il ne servait qu'à confirmer notre propre sortie. Celui-ci est le bon, pris
+dans Basilisk.
+
+
+1. selectedChunk : LE NUMÉRO, ET « bkgnd »                          CORRIGÉ
+---------------------------------------------------------------------------
+
+HyperCard écrit la couche et le NUMÉRO, exactement comme pour foundChunk, et
+il écrit « bkgnd » là où HC écrivait « bg ». Les deux familles partagent donc
+la même écriture : le code aussi, désormais — champ_designe, qui ne servait
+qu'aux « found… », sert les deux. Il s'appelait find_designe ; un nom qui dit
+« find » sur un chemin qui sert la sélection ferait chercher un rapport qui
+n'existe pas.
+
+TROIS SITES, parce que la propriété se lit par trois chemins : la lecture
+globale par le nom, la lecture sur un objet — « the selectedChunk of card
+field "A" » —, et la lecture v3. Corriger l'un sans les autres aurait donné
+deux réponses à la même question selon la tournure employée.
+
+Vérifié : le désignateur SE RELIT. « put the selectedChunk into ou » puis
+« value(ou) » rend « beta » pour la carte et « tau » pour le fond. C'est tout
+l'intérêt de la propriété, et c'est ce qu'un numéro faux aurait cassé en
+silence.
+
+Le B1 d'HyperCard dit « card field 3 » là où le nôtre dit 2, parce que la pile
+de Basilisk portait un champ de plus entre les deux. Le numéro est bien celui
+du champ, et c'est ce qu'on voulait savoir.
+
+
+2. selectedField ET selectedLine : VIDES chez HyperCard        À CONFIRMER
+---------------------------------------------------------------------------
+
+Les deux rendent VIDE dans Basilisk, avec une sélection pourtant bien posée —
+selectedChunk la décrit au même instant. HC rend « field "A" » et « 1 ».
+
+C'est assez surprenant pour ne pas se corriger sur une seule lecture. Deux
+explications tiennent debout :
+
+  (a) les deux propriétés N'EXISTENT PAS dans cette version d'HyperCard, et
+      une propriété inconnue s'y lit comme du vide ;
+
+  (b) elles existent et ne se remplissent que lorsque la sélection vient de
+      l'UTILISATEUR — un champ en cours d'édition — et non d'un « select »
+      lancé par un script.
+
+Une ligne les sépare : lire une propriété au nom INVENTÉ. Si « the zorglubulle »
+rend vide elle aussi, c'est (a) ; si elle rend autre chose — son propre texte,
+une erreur —, c'est que selectedField existe bel et bien, et c'est (b).
+
+Tant que ce n'est pas tranché, HC garde ses valeurs : rendre vide sur la
+lecture (a) casserait les piles qui s'en servent, pour une fidélité qu'on
+n'aurait pas mesurée.

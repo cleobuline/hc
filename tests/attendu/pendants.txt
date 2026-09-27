@@ -1,7 +1,7 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 === la selection ne survit pas a son champ ===
    [to]
-   [char 1 to 2 of card field "x"]
+   [char 1 to 2 of card field 1]
    -- champ supprime --
    []
    []

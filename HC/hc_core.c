@@ -1295,7 +1295,20 @@ static int find_numero_champ(Object *fl)
     return 0;
 }
 
-static void find_designe(Object *fl, char *out, int outlen)
+/* Le désignateur d'un champ SOUS LA FORME D'HYPERCARD : la couche et le
+ * NUMÉRO, jamais le nom — « card field 1 », « bkgnd field 3 ».
+ *
+ * Il s'appelait find_designe et ne servait qu'aux « found… ». La mesure du
+ * 27/09 montre que les « selected… » s'écrivent pareil :
+ *
+ *     select char 2 to 4 of card field 1
+ *     the selectedChunk -> char 2 to 4 of card field 1     (HyperCard)
+ *                       -> char 2 to 4 of card field "A"   (HC avant)
+ *
+ * Les deux familles partagent donc la même écriture, et rien ne justifiait
+ * deux codes. Le nom aussi a changé : un nom qui dit « find » sur un chemin
+ * qui sert la sélection ferait chercher un rapport qui n'existe pas. */
+static void champ_designe(Object *fl, char *out, int outlen)
 {
     if (!fl) { if (outlen > 0) out[0] = 0; return; }
     snprintf(out, (size_t)outlen, "%s field %d",
@@ -5802,13 +5815,13 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "selectedchunk")) {
             if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
             char d[96];
-            hc_describe(g_sel_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            champ_designe(g_sel_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
-                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                     hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+                     d);
             return 1;
         }
         if (ci_equal(name, "foundchunk")) {
@@ -5820,7 +5833,7 @@ static int call_function_body(const char *t, char *out, int outlen)
              * corriger l'un sans l'autre aurait donné deux réponses
              * différentes à la même question selon la façon de la poser. */
             char d[96];
-            find_designe(g_found_field, d, sizeof d);
+            champ_designe(g_found_field, d, sizeof d);
             snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start) + 1,
@@ -5830,12 +5843,12 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "foundfield")) {
-            find_designe(g_found_field, out, outlen);
+            champ_designe(g_found_field, out, outlen);
             return 1;
         }
         if (ci_equal(name, "foundline")) {
             if (g_found_field && g_found_line > 0) {
-                char d[96]; find_designe(g_found_field, d, sizeof d);
+                char d[96]; champ_designe(g_found_field, d, sizeof d);
                 snprintf(out, outlen, "line %d of %s", g_found_line, d);
             } else snprintf(out, outlen, "%s", "");
             return 1;
@@ -6451,13 +6464,13 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "selectedchunk")) {
         if (o->type == OBJ_FIELD && g_sel_field == o) {
             char d[96];
-            hc_describe(o, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            champ_designe(o, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
-                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+                     d);
         } else snprintf(out, outlen, "%s", "");
         return 1;
     }
@@ -9139,21 +9152,21 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     if (ci_equal(nom, "selectedchunk")) {
         if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
         char d[96];
-        hc_describe(g_sel_field, d, sizeof d);
+        champ_designe(g_sel_field, d, sizeof d);
         char petit[160];
-        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+        snprintf(petit, sizeof petit, "char %d to %d of %s",
                  hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                 hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+                 d);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundchunk")) {
         if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
         char d[96];
-        find_designe(g_found_field, d, sizeof d);
+        champ_designe(g_found_field, d, sizeof d);
         char petit[160];
         snprintf(petit, sizeof petit, "char %d to %d of %s",
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
@@ -9166,13 +9179,13 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     if (ci_equal(nom, "foundfield")) {
         char petit[96];
-        find_designe(g_found_field, petit, sizeof petit);
+        champ_designe(g_found_field, petit, sizeof petit);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundline")) {
         if (g_found_field && g_found_line > 0) {
-            char d[96]; find_designe(g_found_field, d, sizeof d);
+            char d[96]; champ_designe(g_found_field, d, sizeof d);
             char petit[128];
             snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
             *out = hct_val_texte(petit);
