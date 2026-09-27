@@ -277,6 +277,25 @@ static int lit_prop_pont(void *d, void *objet, const char *prop, HctValeur *out)
          ? x->hote.lit_prop(x->hote.donnees, objet, prop, out) : 0;
 }
 
+/* Le jumeau de lit_prop_pont pour la propriété d'un MORCEAU. Sans lui, le
+ * rappel restait NULL dans le pont et l'évaluateur croyait l'hôte incapable :
+ * la lecture repartait au recours, exactement comme avant qu'elle existe.
+ *
+ * C'est la faute que le grand commentaire ci-dessus raconte, refaite dans
+ * l'autre sens : là il s'agissait de rappels posés SANS condition et qui
+ * mentaient sur leur présence ; ici d'un rappel qu'on a oublié de poser, et
+ * qui ment sur son absence. Le pont doit être tenu à jour à CHAQUE rappel
+ * ajouté à l'hôte — il n'y a pas de valeur par défaut correcte. */
+static int lit_prop_morceau_pont(void *d, const HctNoeud *morceau,
+                                 const char *prop, HctContexte *ctx,
+                                 HctValeur *out)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.lit_prop_morceau
+         ? x->hote.lit_prop_morceau(x->hote.donnees, morceau, prop, ctx, out)
+         : 0;
+}
+
 static int recours_pont(void *d, const HctNoeud *n, HctValeur *out,
                         HctContexte *ctx)
 {
@@ -1572,6 +1591,8 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.resout    = hote.resout    ? resout_pont    : NULL;
     pont.lit_objet = hote.lit_objet ? lit_objet_pont : NULL;
     pont.lit_prop  = hote.lit_prop  ? lit_prop_pont  : NULL;
+    pont.lit_prop_morceau = hote.lit_prop_morceau
+                          ? lit_prop_morceau_pont : NULL;
     /* Ces deux-là manquaient, et rien ne le disait.
      *
      * `recours` est la porte de sortie de l'évaluateur pour tout ce qu'il ne

@@ -55,6 +55,26 @@ typedef struct {
     int   (*lit_objet)(void *d, void *objet, HctValeur *out);
     int   (*lit_prop)(void *d, void *objet, const char *prop, HctValeur *out);
 
+    /* LA PROPRIÉTÉ D'UN MORCEAU DE TEXTE : « the textStyle of word 3 of
+     * field "cal" ».
+     *
+     * lit_prop ne peut pas la servir, parce qu'un MORCEAU N'EST PAS UN OBJET :
+     * `resout` rend NULL sur un nœud de morceau, et toute la lecture partait
+     * donc au recours, c'est-à-dire à l'ancien évaluateur. Mesuré : TROIS
+     * évaluations de la même expression, et trois messages identiques quand
+     * elle échoue — deux sondes du repli, puis la vraie erreur.
+     *
+     * L'hôte reçoit donc le NŒUD DU MORCEAU, qu'il sait résoudre lui-même —
+     * champ, début, fin. Il rend 1 s'il a traité la demande, 0 pour laisser
+     * la suite s'en occuper ; et il peut poser une faute par hct_ctx_faute
+     * tout en rendant 1, quand le morceau désigne un objet qui n'existe pas.
+     *
+     * L'écriture du même genre de propriété lit déjà l'arbre depuis
+     * longtemps ; c'était son site jumeau qui manquait. */
+    int   (*lit_prop_morceau)(void *d, const HctNoeud *morceau,
+                              const char *prop, HctContexte *ctx,
+                              HctValeur *out);
+
     /* Fonctions que seul l'hôte peut calculer : the ticks, the mouse,
      * the date… Rend 0 si le nom est inconnu de l'hôte. */
     int (*fonction)(void *d, const char *nom, HctValeur *args, int nargs,

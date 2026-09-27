@@ -11,8 +11,6 @@
       (la plage vide se lit a la FIN : « bold » ici voudrait dire
        qu'un mot inexistant herite du premier)
 == 3. le CHAMP manque : erreur, et le gestionnaire S'ARRETE
-   [ERR]    !! objet introuvable (colonne 12) dans «  word 2 of card field "Absent" » — objet : button "B"
-   [ERR]    !! objet introuvable (colonne 12) dans «  word 2 of card field "Absent" » — objet : button "B"
    [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
 == 4. ECRIRE au-dela de la fin : on ajoute SANS espace
    [Sun Mon TueX]  12 octets, 3 mots

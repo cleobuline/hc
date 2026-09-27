@@ -15045,6 +15045,118 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
     return ok;
 }
 
+/* La BASE d'une référence de morceau, DANS L'ARBRE : « word 2 of line 1 of
+ * card field "x" » a pour base le nœud « card field "x" ».
+ *
+ * Jumeau de chunk_base_ref, qui fait la même chose sur le TEXTE. Les deux
+ * existent parce que les deux chemins existent encore ; celui-ci part avec
+ * l'avantage de ne rien avoir à redécouper. */
+static const HctNoeud *chunk_base_noeud(const HctNoeud *ch)
+{
+    /* Un plafond, comme pour la version texte : une référence tordue ne doit
+     * pas pouvoir faire tourner cette boucle sans fin. */
+    for (int garde = 0; garde < 16; garde++) {
+        if (!ch || ch->genre != HCTN_CHUNK || ch->nfils < 1) break;
+        ch = ch->fils[ch->nfils - 1];
+    }
+    return ch;
+}
+
+/* LA PROPRIÉTÉ D'UN MORCEAU DE TEXTE, LUE DANS L'ARBRE.
+ *
+ *     the textStyle of word 3 of line 2 of card field "cal"
+ *
+ * LE SITE JUMEAU MANQUANT de v3_chunk_cible, qui fait ce travail pour
+ * l'ÉCRITURE depuis des jours. La lecture, elle, n'avait pas de chemin :
+ * `resout` rend NULL sur un nœud de morceau — un morceau n'est pas un objet —,
+ * donc noeud_of confiait tout au recours, c'est-à-dire à l'ancien évaluateur.
+ *
+ * CE QUE ÇA COÛTAIT, relevé sous backtrace : TROIS évaluations de la même
+ * expression — deux depuis v3_recours, une par l'analyseur v1 — et, quand
+ * elle échoue, TROIS messages identiques là où HyperCard n'en montre qu'un.
+ *
+ * TROIS SORTIES, et chacune a sa raison :
+ *
+ *   · le morceau se résout          -> la valeur de la plage ;
+ *   · le CHAMP existe, le morceau non -> la valeur par DÉFAUT, lue sur une
+ *     plage vide placée à la FIN du texte. À la fin et non au début : un champ
+ *     dont le premier mot est en gras rendrait « bold » pour un mot qui
+ *     n'existe pas. C'est « plain » qu'HyperCard rend, mesuré le 27/09 ;
+ *   · le champ n'existe pas         -> une faute, et le gestionnaire s'arrête,
+ *     comme HyperCard qui ouvre son dialogue Debug/Script/Cancel.
+ *
+ * ET UNE QUATRIÈME SORTIE QUI REND 0 : une base qui existe mais n'est pas un
+ * champ — « the textStyle of word 2 of card button "B" ». Ce cas-là n'est pas
+ * mesuré, donc on laisse l'ancien chemin le traiter exactement comme avant
+ * plutôt que d'inventer une réponse. */
+static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
+                               const char *prop, HctContexte *ctx,
+                               HctValeur *out)
+{
+    (void)d;
+    if (!morceau || !prop || !ctx || !out) return 0;
+
+    /* LE CONTRAT : qui rend 1 a écrit `*out`. Les sorties en faute n'ont rien
+     * à y mettre, et l'oublier laissait l'appelant repartir avec la pile.
+     * On le pose ici une fois pour toutes plutôt qu'à chaque sortie. */
+    *out = hct_val_vide();
+
+    /* Les quatre propriétés de PLAGE DE TEXTE, et elles seules — le même
+     * ensemble que l'écriture, et que la mesure. Élargir sans mesurer ferait
+     * répondre ici des propriétés dont on ne sait pas ce qu'elles valent sur
+     * un morceau. */
+    int est_style = ci_equal(prop, "textstyle");
+    int est_font  = ci_equal(prop, "textfont");
+    int est_size  = ci_equal(prop, "textsize");
+    int est_color = ci_equal(prop, "textcolor");
+    if (!est_style && !est_font && !est_size && !est_color) return 0;
+
+    int cst = 0, cen = 0;
+    Object *cf = v3_chunk_cible(ctx, morceau, &cst, &cen);
+    if (ctx->erreur) return 1;             /* la faute est déjà posée */
+
+    if (!cf) {
+        const HctNoeud *base = chunk_base_noeud(morceau);
+        Object *ob = base ? hct_resout(ctx, base) : NULL;
+        if (ctx->erreur) return 1;
+        if (!ob) {
+            hct_ctx_faute(ctx, base ? base : morceau, "objet introuvable");
+            return 1;
+        }
+        if (ob->type != OBJ_FIELD) return 0;      /* non mesuré : l'ancien chemin */
+        cf  = ob;
+        cst = cen = (int)strlen(hc_field_text(ob));
+    }
+
+    ARENA_MARK;
+    char *buf = arena_buf();
+    buf[0] = '\0';
+    struct RunList *rl = runs_of(cf);
+    int len = cen - cst;
+
+    if (est_color) {
+        /* Rendue en « r,v,b » : la forme qu'un script peut décomposer avec
+         * « item 1 of », et celle que « set the textColor » réaccepte. */
+        int col = runs_get_color(rl, cst, len);
+        if      (col == HC_COLOR_INHERIT) snprintf(buf, HC_VAL, "0,0,0");
+        else if (col < 0)                 snprintf(buf, HC_VAL, "mixed");
+        else snprintf(buf, HC_VAL, "%d,%d,%d",
+                      (col >> 16) & 255, (col >> 8) & 255, col & 255);
+    } else if (est_style) {
+        style_to_names(runs_get_style(rl, cst, len, cf->textstyle), buf, HC_VAL);
+    } else if (est_font) {
+        runs_get_font(rl, cst, len, cf->textfont, buf, HC_VAL);
+    } else {
+        int sz = runs_get_size(rl, cst, len, cf->textsize);
+        if (sz < 0) snprintf(buf, HC_VAL, "mixed");
+        else        snprintf(buf, HC_VAL, "%d", sz);
+    }
+
+    *out = hct_val_texte(buf);
+    ARENA_FREE;
+    return 1;
+}
+
 /* --- la boîte de messages ---
  *
  * ELLE ÉTAIT EN ÉCRITURE SEULE, et c'est le défaut qu'on corrige ici.
@@ -15155,6 +15267,7 @@ static HctHote v3_hote(void)
     h.resout    = v3_resout;
     h.lit_objet = v3_lit_objet;
     h.lit_prop  = v3_lit_prop;
+    h.lit_prop_morceau = v3_lit_prop_morceau;
     h.commande  = v3_commande;
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;

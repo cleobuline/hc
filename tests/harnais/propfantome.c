@@ -99,11 +99,17 @@ int main(void)
      "  put \"    qu'un mot inexistant herite du premier)\"\n"
      "  set the textStyle of word 1 of card field \"T\" to plain");
 
-    /* §3 — LE GESTIONNAIRE DOIT S'ARRÊTER ICI. La ligne qui suit la lecture
-     * ne doit JAMAIS paraître : si elle reparaît un jour, c'est que l'erreur
-     * est redevenue un littéral, et le harnais le dira sans qu'on le cherche.
-     * Les deux premiers messages sont les sondes du chemin de repli ; seul le
-     * troisième, celui qui nomme la ligne, arrête. */
+    /* §3 — LE GESTIONNAIRE DOIT S'ARRÊTER ICI, SUR UN SEUL MESSAGE.
+     *
+     * La ligne qui suit la lecture ne doit JAMAIS paraître : si elle
+     * reparaît un jour, c'est que l'erreur est redevenue un littéral, et le
+     * harnais le dira sans qu'on le cherche.
+     *
+     * Et le NOMBRE de messages compte autant. Il y en avait TROIS — deux
+     * sondes du chemin de repli, puis la vraie erreur — parce que la lecture
+     * repartait à l'ancien évaluateur. Il n'y en a plus qu'UN depuis qu'elle
+     * se fait dans l'arbre. Une seconde ligne qui réapparaîtrait ici voudrait
+     * dire que le repli est revenu. */
     essai("3. le CHAMP manque : erreur, et le gestionnaire S'ARRETE",
      "  put \"[\" & the textStyle of word 2 of card field \"Absent\" & \"]\"\n"
      "  put \"   >>> CETTE LIGNE NE DOIT PAS PARAITRE\"");
