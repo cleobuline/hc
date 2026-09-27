@@ -352,20 +352,37 @@ on sectionSelection
   put "omega" into card field "B"
   put "sigma tau" into bg field "T"
 
+  -- ON LIT D'ABORD, ON JUGE ENSUITE — ET C'EST UNE MESURE QUI L'EXIGE.
+  --
+  -- « egal » ecrit dans le champ du rapport. Or chez HYPERCARD une
+  -- ecriture dans un autre champ DEFAIT la selection : selectedChunk
+  -- repondait, et selectedText, lu juste apres le premier « egal »,
+  -- rendait vide. HC, lui, garde la selection — il est plus genereux, et
+  -- c'est desormais mesure des deux cotes, non suppose.
+  --
+  -- C'est l'hypothese (b) de docs/mesures/selection.txt, confirmee en
+  -- direct : chez HyperCard la PREMIERE lecture apres un select repond,
+  -- les suivantes non. Un banc qui ecrit entre deux lectures mesure donc
+  -- son propre geste. Toutes les lectures d'un meme select vont dans des
+  -- variables AVANT le premier verdict.
   select char 2 to 4 of card field "A"
-  egal "selectedChunk : couche et numero", the selectedChunk, "char 2 to 4 of card field 1"
-  egal "selectedText", the selectedText, "lph"
+  put the selectedChunk into a1
+  put the selectedText into a2
+  egal "selectedChunk : couche et numero", a1, "char 2 to 4 of card field 1"
+  egal "selectedText", a2, "lph"
 
   select word 1 of card field "B"
-  egal "le numero suit le champ", the selectedChunk, "char 1 to 5 of card field 2"
-
-  select word 2 of bg field "T"
-  egal "« bkgnd » et non « bg »", the selectedChunk, "char 7 to 9 of bkgnd field 1"
+  put the selectedChunk into b1
+  egal "le numero suit le champ", b1, "char 1 to 5 of card field 2"
 
   -- LE DESIGNATEUR SE RELIT : c'est tout l'interet de la propriete, et
-  -- c'est ce qu'un numero faux aurait casse en silence.
-  put the selectedChunk into ou
-  egal "le designateur se relit", value(ou), "tau"
+  -- c'est ce qu'un numero faux aurait casse en silence. La relecture se
+  -- fait AVANT le premier verdict, pour la meme raison.
+  select word 2 of bg field "T"
+  put the selectedChunk into c1
+  put value(c1) into c2
+  egal "« bkgnd » et non « bg »", c1, "char 7 to 9 of bkgnd field 1"
+  egal "le designateur se relit", c2, "tau"
 
   -- TRANCHE LE 27/09, DANS BASILISK. La question tenait depuis une
   -- semaine : apres un « select » DE SCRIPT, un premier releve montrait
@@ -408,7 +425,19 @@ on sectionCouches
   egal "un champ de fond", the number of bkgnd fields, 1
   egal "card field 1 est A", card field 1, "surCarte"
   egal "bkgnd field 1 est T", bkgnd field 1, "auFond"
-  egal "« field » sans couche vise la carte", field 1, "surCarte"
+  -- « FIELD » SANS COUCHE : LA DIVERGENCE LA PLUS LOURDE DE LA SOIREE.
+  --
+  -- Mesure dans HyperCard : « field 1 » rend « auFond », c'est-a-dire le
+  -- champ de FOND. HC rend « surCarte », le champ de carte. Or « field
+  -- "nom" » sans couche est la tournure la plus courante des piles de
+  -- 1987 : une pile qui porte un champ de carte ET un champ de fond du
+  -- meme numero vise donc l'autre couche chez nous.
+  --
+  -- RIEN N'EST CORRIGE : le changement touche toute la resolution des
+  -- champs, et il lui faut sa propre mesure et son propre harnais. La
+  -- ligne reste donc une QUESTION, avec la reponse d'HyperCard ecrite a
+  -- cote — c'est le seul « ? » de ce banc qui ait deja sa reponse.
+  note "« field » sans couche rend (HyperCard dit auFond)", field 1
   egal "le nom et le numero designent le meme", card field "A", card field 1
 
   -- Le champ de fond n'est pas partage : chaque carte a son texte.
@@ -518,8 +547,13 @@ on sectionChemins
   put "alpha beta gamma delta" into card field "A"
   put "auFond" into bg field "T"
 
-  -- les deux noms d'une longueur
-  egal "length et number of chars", the length of card field "A", the number of chars of card field "A"
+  -- LES DEUX NOMS D'UNE LONGUEUR — et « characters » en entier.
+  --
+  -- « the number of chars of » ARRETE HYPERCARD : « Can't understand
+  -- arguments of "egal" ». Le synonyme « chars » vaut pour un morceau
+  -- (« char 1 to 5 »), pas pour un comptage. Mesure : le banc mourait ici
+  -- et les sections 7 et 6 ne tournaient jamais de ce cote.
+  egal "length et number of characters", the length of card field "A", the number of characters of card field "A"
 
   -- char et chars designent le meme morceau
   egal "char et chars", char 1 to 5 of card field "A", chars 1 to 5 of card field "A"

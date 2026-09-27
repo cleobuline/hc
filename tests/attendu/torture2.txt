@@ -1,5 +1,5 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-105 reussites, aucun echec, 2 a mesurer.
+104 reussites, aucun echec, 3 a mesurer.
 [ERR]    !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
 
 ───── champ « R » ─────
@@ -68,7 +68,7 @@
   ok     un champ de fond
   ok     card field 1 est A
   ok     bkgnd field 1 est T
-  ok     « field » sans couche vise la carte
+  ?      « field » sans couche rend (HyperCard dit auFond) : [surCarte]
   ok     le nom et le numero designent le meme
   ok     le fond garde un texte par carte
   ok     et l'autre le sien
@@ -87,7 +87,7 @@
   ok     trois de suite, dans l'ordre
 
 == 7. deux chemins, une seule reponse
-  ok     length et number of chars
+  ok     length et number of characters
   ok     char et chars
   ok     bg et bkgnd
   ok     bkgnd et background
@@ -125,7 +125,7 @@
   ok     lire une propriete sur <variable>
 
 ==============================
-105 reussites, aucun echec, 2 a mesurer.
+104 reussites, aucun echec, 3 a mesurer.
 
 == 8. la faute voulue, en dernier
   Ce qui suit doit LEVER : le style d'un mot dans un champ qui

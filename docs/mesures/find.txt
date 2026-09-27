@@ -314,6 +314,19 @@ lequel les champs d'une carte sont visités :
 Elle explique les deux lignes d'un coup, ce qui est en sa faveur, et elle
 n'est pas mesurée, ce qui suffit à ne rien corriger.
 
+CONFIRMÉE UNE SECONDE FOIS le même soir, sur une pile dont le terrain était
+cette fois entièrement vérifié — quatre cartes nommées, le fond non partagé, la
+navigation contrôlée à chaque pas. Les deux mêmes lignes, les deux mêmes
+valeurs. Ce n'est donc pas un artefact du montage.
+
+ET UN INDICE DE PLUS, venu d'ailleurs : la section 4 de la même pile a mesuré
+que « field 1 » sans couche désigne le champ de FOND chez HyperCard et le champ
+de CARTE chez HC (voir docs/mesures/couche_implicite.txt). Deux divergences qui
+portent toutes deux sur la PRIORITÉ DES COUCHES, le même soir, par deux chemins
+indépendants. Il se pourrait qu'il n'y ait qu'une seule cause — l'ordre dans
+lequel HyperCard visite les couches — et que la corriger ferme les deux. Se
+pourrait : le banc de cinq lignes ci-dessous le dira.
+
 CE QU'IL FAUT POUR TRANCHER : un banc qui pose le MÊME mot dans un champ de
 carte et dans un champ de fond de la même carte, et qui regarde lequel
 « the foundField » nomme.

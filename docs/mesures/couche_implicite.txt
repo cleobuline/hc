@@ -1,0 +1,70 @@
+MESURE — « field 1 » SANS COUCHE DÉSIGNE LE FOND
+================================================
+
+Mesuré dans HyperCard (Basilisk II) le 27 septembre 2026, par la section 4 de
+la pile de torture. C'est la divergence la plus lourde trouvée à ce jour, et
+elle tient en trois lignes :
+
+    put "surCarte" into card field "A"      -- card field 1
+    put "auFond"   into bg field "T"        -- bkgnd field 1
+    put field 1
+
+        HyperCard -> auFond        le champ de FOND
+        HC        -> surCarte      le champ de CARTE
+
+POURQUOI C'EST LOURD, et ce n'est pas un cas de bord : « field "nom" » sans
+couche est la tournure la plus courante des piles de 1987. Les auteurs
+écrivaient « put x into field "Total" » sans y penser. Une pile qui porte un
+champ de carte ET un champ de fond au même rang — ou du même nom — vise donc
+l'AUTRE couche chez nous, silencieusement, et lit ou écrit le mauvais texte.
+
+Et le silence est complet : aucune erreur, aucun message, un texte plausible.
+C'est la même famille de défaut que « find … in <variable> » qui rendait
+« Not found » — la réponse fausse qui ne se dénonce pas.
+
+
+CE QUI N'EST PAS ENCORE MESURÉ
+------------------------------
+
+· LE NOM, et non le numéro. « field "T" » où T n'existe qu'au fond : HC le
+  trouve-t-il par repli ? Et « field "A" » où A n'existe que sur la carte ?
+  Si les deux se replient sur l'autre couche quand la première est vide, le
+  défaut ne se voit QUE lorsque les deux couches portent le même nom — ce qui
+  est plus rare, et rendrait le chantier moins urgent.
+
+· L'ÉCRITURE autant que la lecture : « put x into field 1 » vise-t-il aussi le
+  fond ? Il n'y a aucune raison que non, mais aucune raison ne vaut une mesure.
+
+· Les autres désignateurs implicites de la même famille : « button 1 »,
+  « the name of field 1 », « hide field 1 », « select field 1 ». Le défaut est
+  dans la RÉSOLUTION, donc probablement partout — et « probablement » est
+  exactement le mot qui a coûté cher trois fois cette semaine.
+
+LE BANC POUR LES TROIS, à jouer DANS HYPERCARD :
+
+    on mouseUp
+      put "surCarte" into card field "A"
+      put "auFond"   into bg field "T"
+      put empty into card field "R"
+      put "A1 field 1        : " & field 1 & return after card field "R"
+      put "A2 field par nom  : " & field "T" & return after card field "R"
+      put "A3 field par nom  : " & field "A" & return after card field "R"
+      put "zzz" into field 1
+      put "A4 apres ecriture : carte [" & card field "A" & "] fond [" & bg field "T" & "]" & return after card field "R"
+      put "A5 le nom de field 1 : " & the name of field 1 & return after card field "R"
+      put "FIN" & return after card field "R"
+    end mouseUp
+
+
+POURQUOI RIEN N'EST CORRIGÉ
+---------------------------
+
+Le changement touche la résolution de TOUS les champs, donc tous les harnais du
+corpus qui écrivent « field N » — il y en a. Il lui faut sa propre mesure
+complète (le banc ci-dessus), son propre harnais, et une relecture du relevé
+v3. Poser un correctif d'une ligne à cette heure-ci, sur la foi d'une seule
+ligne de mesure, serait exactement ce que ce dépôt a appris à ne pas faire.
+
+La ligne de la pile de torture est donc devenue un « ? » — le seul du banc qui
+porte DÉJÀ la réponse d'HyperCard à côté de la nôtre. Elle attend qu'on s'en
+occupe à froid.
