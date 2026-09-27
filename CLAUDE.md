@@ -18,6 +18,12 @@ Donc, après toute modification d'un `.m` ou d'un `.h` d'interface :
    fait ;
 4. en cas d'échec, `get_job_logs` donne les erreurs du compilateur.
 
+Et lire le `conclusion` DU JOB, au sommet de la réponse. Chercher
+`"status": "completed"` dans le texte brut tombe sur la première ÉTAPE
+terminée — « Set up job » l'est au bout de deux secondes — et l'on croit le
+job fini alors qu'il compile encore : `conclusion` vaut alors `null`, ce qui
+ressemble à un échec sans en être un. Fait, et refait une fois de plus ici.
+
 Ça a coûté trois allers-retours de ne pas y penser : `icon_couleur_de`,
 `hc_icon_copie_dessin_hcicon` et `selectLine:inTextView:` étaient toutes trois
 des références en avant, refusées par le seul compilateur qui ne tourne pas
