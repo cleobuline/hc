@@ -1,0 +1,81 @@
+BANC DE MESURE — LIRE ET ÉCRIRE UN MORCEAU QUI N'EXISTE PAS
+===========================================================
+
+À taper dans HyperCard (Basilisk II). Trois questions, un seul bouton.
+
+
+LA PILE À PRÉPARER
+------------------
+
+UNE carte, avec :
+
+  · un CHAMP DE CARTE nommé  T   (petit, il ne portera que trois mots)
+  · un CHAMP DE CARTE nommé  R   (grand et défilant : il reçoit le rapport)
+  · un BOUTON portant le script ci-dessous
+
+Rien d'autre. Le champ R doit être vide au départ.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  put "Sun Mon Tue" into card field "T"
+
+  -- A. ÉCRIRE dans un mot qui n'existe pas
+  put "X" into word 99 of card field "T"
+  put "A texte : [" & card field "T" & "]" & return after card field "R"
+  put "A long  : " & the length of card field "T" & return after card field "R"
+  put "A mots  : " & the number of words of card field "T" & return after card field "R"
+
+  -- B. LIRE le style d'un mot qui n'existe pas
+  put "Sun Mon Tue" into card field "T"
+  put "B ici" & return after card field "R"
+  put "B style : [" & the textStyle of word 99 of card field "T" & "]" & return after card field "R"
+
+  -- C. LIRE le style dans un champ qui n'existe pas
+  put "C ici" & return after card field "R"
+  put "C style : [" & the textStyle of word 2 of card field "Absent" & "]" & return after card field "R"
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+POURQUOI LE RAPPORT S'ÉCRIT LIGNE À LIGNE
+----------------------------------------
+
+Chaque ligne va DIRECTEMENT dans le champ R, et non dans une variable recopiée
+à la fin. Les lignes B et C peuvent faire s'arrêter le script sur un dialogue
+d'erreur : si le rapport était dans une variable, tout serait perdu et l'on ne
+saurait même pas jusqu'où il est allé. Les marqueurs « B ici » et « C ici »
+sont là pour ça.
+
+SI UN DIALOGUE APPARAÎT, C'EST UNE RÉPONSE, pas un échec du banc : noter son
+TEXTE EXACT et après quel marqueur il est tombé, puis cliquer sur ce qu'il
+faut pour continuer.
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   ce qu'HyperCard fait d'un rang de mot au-delà du contenu. HC ajoute
+    simplement à la fin : « Sun Mon Tue X », 13 octets, 4 mots. S'il remplit,
+    la LONGUEUR le dira — 108 octets au lieu de 13 — et le nombre de mots
+    restera 4 de toute façon : un mot vide n'existe pas, deux espaces côte à
+    côte ne délimitent rien entre eux (mesuré dans chunkdebordement §4). Cette
+    ligne ne départage donc que la propreté du texte, pas le comportement.
+
+B   LA QUESTION QUI COMPTE. HC rend aujourd'hui « textStyle of word 99 of card
+    field "T" » — LA PHRASE ELLE-MÊME, comme valeur. Un script qui écrit
+    « if the textStyle of word 99 of f is "bold" » compare donc à une phrase,
+    et la comparaison est fausse sans jamais se plaindre.
+        vide          -> HC doit rendre vide
+        « plain »     -> HC doit rendre plain
+        un dialogue   -> HC doit lever une erreur, et surtout ne rien rendre
+    N'importe laquelle des trois vaut mieux que ce qu'on fait.
+
+C   le même défaut quand c'est le CHAMP qui manque. HC y ajoute une deuxième
+    faute : il émet TROIS FOIS « objet introuvable » pour une seule expression,
+    puis rend lui aussi son texte source. Le nombre de messages compte ici :
+    un seul est attendu.
