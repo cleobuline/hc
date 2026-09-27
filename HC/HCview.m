@@ -5194,11 +5194,23 @@ static BOOL      gSansMessageChamp = NO;
  * garde exactement son effet d'aujourd'hui. Une pile sans « on commandKeyDown »
  * ne voit donc aucune différence.
  *
- * LE PIÈGE, ET IL EST DIT : une pile qui prend TOUT sans jamais passer capture
- * aussi Cmd+Q. HyperCard avait exactement le même, et c'est le prix de la
- * fidélité — protéger Cmd+Q ici serait inventer une règle qu'HyperCard n'a
- * pas. Il reste à forcer la fermeture ; ce n'est pas agréable, mais c'est
- * récupérable, et une pile qui fait ça le fait exprès.
+ * ET C'EST LÀ QUE SERT LE MESSAGE : supprimer un raccourci de menu dont on ne
+ * veut pas. C'est l'idiome d'HyperCard, et il est SÉLECTIF —
+ *
+ *     on commandKeyDown k
+ *       if k is "n" then exit commandKeyDown   -- Cmd+N ne fera rien
+ *       pass commandKeyDown                    -- tout le reste au menu
+ *     end commandKeyDown
+ *
+ * — parce qu'un gestionnaire qui finit normalement, « exit » compris, compte
+ * pour une prise, tandis que « pass » rend la main. Mesuré dans
+ * tests/harnais/clavier.c §5.
+ *
+ * LE REVERS EST LE MÊME MÉCANISME : une pile qui prend tout sans jamais passer
+ * capture aussi Cmd+Q. HyperCard avait exactement le même, et protéger Cmd+Q
+ * ici serait inventer une règle qu'il n'a pas. Il reste à forcer la fermeture ;
+ * ce n'est pas agréable, mais c'est récupérable, et une pile qui fait ça le
+ * fait exprès.
  *
  * On ne touche qu'aux événements portant COMMANDE, et l'on écarte les touches
  * de fonction et les caractères de contrôle : ceux-là passent par keyDown: et

@@ -127,6 +127,47 @@ int main(void)
     depuis_script("tabKey");
     depuis_script("returnKey");
 
+    /* ── 5. SUPPRIMER UN RACCOURCI DE MENU, TOUCHE PAR TOUCHE ──────────────
+     *
+     * C'est l'usage que l'utilisatrice a trouvé au message dès qu'il a marché,
+     * et il vaut mieux que l'avertissement que j'avais écrit à côté : je
+     * décrivais une pile qui prend TOUT comme un piège — Cmd+Q compris —, sans
+     * voir qu'une pile qui prend CE QU'ELLE VEUT est la raison d'être du
+     * message. Le piège et la fonction sont le même mécanisme vu de deux
+     * côtés ; il n'y avait qu'un côté dans le commentaire.
+     *
+     * TOUT REPOSE SUR LA VALEUR RENDUE, et elle est mesurée ici :
+     *
+     *     exit commandKeyDown  -> pris  -> l'interface rend YES, le menu se tait
+     *     pass commandKeyDown  -> passe -> l'interface rend NO,  le menu agit
+     *
+     * Un gestionnaire qui finit normalement compte pour une prise, comme
+     * « exit ». La sélectivité vient donc du « pass » : on ne passe que ce
+     * qu'on veut laisser au menu. */
+    puts("\n== 5. SUPPRIMER UN RACCOURCI DE MENU, touche par touche ==");
+    hc_set_script(st,
+        "on commandKeyDown k\n"
+        "  if k is \"n\" then\n"
+        "    put \"Cmd+N : supprime par la pile\"\n"
+        "    exit commandKeyDown\n"
+        "  end if\n"
+        "  if k is \"z\" then\n"
+        "    put \"Cmd+Z : traite par la pile\"\n"
+        "  else\n"
+        "    pass commandKeyDown\n"
+        "  end if\n"
+        "end commandKeyDown\n");
+    {
+        static const char *touches[] = { "n", "z", "q", NULL };
+        for (int i = 0; touches[i]; i++) {
+            int pris = hc_send_arg(hc_current_card(), "commandKeyDown", touches[i]);
+            printf("Cmd+%s  pris=%d  -> le menu %s\n",
+                   touches[i], pris, pris ? "NE FAIT RIEN" : "agit");
+        }
+        puts("   (Cmd+Q doit rester a 0 : une pile ordinaire ne doit pas");
+        puts("    empecher de quitter sans l'avoir voulu)");
+    }
+
     hc_free(st);
     return 0;
 }

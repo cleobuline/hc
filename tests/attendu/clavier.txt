@@ -43,3 +43,12 @@ returnKey       pris=0  (aucun gestionnaire)
    [ERR]    !! ne sait pas faire : tabKey
    returnKey                
    [ERR]    !! ne sait pas faire : returnKey
+
+== 5. SUPPRIMER UN RACCOURCI DE MENU, touche par touche ==
+   [msg] Cmd+N : supprime par la pile
+Cmd+n  pris=1  -> le menu NE FAIT RIEN
+   [msg] Cmd+Z : traite par la pile
+Cmd+z  pris=1  -> le menu NE FAIT RIEN
+Cmd+q  pris=0  -> le menu agit
+   (Cmd+Q doit rester a 0 : une pile ordinaire ne doit pas
+    empecher de quitter sans l'avoir voulu)
