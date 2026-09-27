@@ -17,9 +17,19 @@
 --  quatre cartes Atelier / Deux / Trois / Quatre, les champs de carte
 --  A, B et R sur l'Atelier (dans cet ordre), et le champ de fond T.
 --
---  UNE ERREUR S'AFFICHERA, ET C'EST VOULU : la section 2 lit le style
---  d'un mot dans un champ qui n'existe pas, justement pour verifier
---  que HC s'en plaint au lieu de rendre sa propre phrase.
+--  UNE SEULE ERREUR S'AFFICHERA, ET C'EST VOULU : la section 2 lit le
+--  style d'un mot dans un champ qui n'existe pas, justement pour
+--  verifier que HC s'en plaint au lieu de rendre sa propre phrase. Elle
+--  est isolee dans son propre gestionnaire — une erreur n'arrete que
+--  celui-la — donc le rapport va jusqu'au bilan. Cliquez ce qu'il faut
+--  pour continuer.
+--
+--  CE QUI N'EST PAS ENCORE MESURE A SON PROPRE BOUTON, « ouvert ». Ces
+--  essais-la LEVENT pour de vrai — « hide ch » le premier — et une
+--  erreur, dans l'application, arrete le script sur un dialogue. Les
+--  laisser ici faisait perdre la fin du rapport et le bilan : le banc
+--  s'arretait la ou il ne voulait qu'observer. C'est la quatrieme fois
+--  que l'instrument, et non le code, est en cause.
 -- ════════════════════════════════════════════════════════════════════
 
 on mouseUp
@@ -35,7 +45,6 @@ on mouseUp
   sectionCouches
   sectionClavier
   sectionChemins
-  sectionOuvert
   bilan
 end mouseUp
 
@@ -485,56 +494,3 @@ on sectionChemins
   set the itemDelimiter to ","
   put "alpha beta gamma delta" into card field "A"
 end sectionChemins
-
-
--- ==== 6. CE QUI RESTE OUVERT ========================================
---
--- Aucune de ces lignes ne compte : elles affichent ce que HC fait
--- aujourd'hui, pour qu'on le compare dans Basilisk. Les inscrire en
--- reussites serait inscrire une supposition comme un fait.
-
-on sectionOuvert
-  titre "6. a mesurer dans HyperCard"
-  go to card "Atelier"
-  put "alpha beta" & return & "gamma delta" into card field "A"
-
-  -- Un morceau DANS un morceau : HC dit « ne sait pas faire ».
-  note "le nombre de mots de la ligne 2", the number of words of line 2 of card field "A"
-  note "le style d'un mot d'une ligne", the textStyle of word 1 of line 2 of card field "A"
-
-  -- Une recherche qui ECHOUE remet-elle le curseur a zero ? HC le fait,
-  -- parce que son curseur n'est rien d'autre que la derniere trouvaille.
-  -- Ce qu'HyperCard en fait, personne ne l'a regarde.
-  go to card "Atelier"
-  put "alpha beta gamma delta" into bg field "T"
-  find "alpha"
-  find "zorglub"
-  find "alpha"
-  note "apres un echec, la recherche repart de", the short name of this card
-
-  -- Le nombre de messages d'erreur pour une seule expression fautive.
-  note "foundChunk apres un echec", the foundChunk
-
-  -- LES SITES JUMEAUX DU DESIGNATEUR CALCULE.
-  --
-  -- « select the foundChunk » ne marchait pas ; c'est corrige, parce que
-  -- l'idiome est dans le manuel et que le designateur n'existe que pour
-  -- etre relu. Les QUATRE AUTRES commandes qui prennent un designateur
-  -- ont ete mesurees du meme coup, et aucune n'est tranchee : HyperCard
-  -- exige peut-etre « do "hide" && ch » pour toutes. On les affiche, on
-  -- ne corrige rien. Le banc est dans
-  -- docs/mesures/designateur_calcule.txt.
-  go to card "Atelier"
-  put "alpha beta" into card field "A"
-  put "card field 1" into ch
-  hide ch
-  note "hide <variable> : le champ est encore visible", the visible of card field 1
-  show card field 1
-  find "bet" in ch
-  note "find in <variable>", the result
-  put "card " & quote & "Deux" & quote into ca
-  go to ca
-  note "go to <variable> : carte atteinte", the short name of this card
-  go to card "Atelier"
-  note "lire une propriete sur <variable>", the name of ch
-end sectionOuvert

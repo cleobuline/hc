@@ -204,3 +204,100 @@ on relitSelection
   journal "  attendu (mesure dans Basilisk, selection a la main) :"
   journal "    card field 1  et  line 1 of card field 1"
 end relitSelection
+
+
+-- ---- ce qui reste ouvert : le bouton « ouvert » --------------------
+--
+-- CES ESSAIS-LA SONT A PART, ET POUR UNE RAISON MESUREE : certains
+-- LEVENT — « hide ch » le premier — et une erreur, dans l'application,
+-- arrete le script sur un dialogue. Ils etaient d'abord dans le script
+-- du bouton TORTURE, a la suite des autres : le rapport s'arretait sur
+-- « hide ch » et l'on perdait la fin, le bilan compris. Le banc
+-- s'arretait la ou il ne voulait QU'OBSERVER.
+--
+-- Deux precautions, donc :
+--
+--   1. leur propre bouton, pour que le rapport principal aille jusqu'au
+--      bout sans un seul dialogue ;
+--   2. UN GESTIONNAIRE PAR ESSAI RISQUE. Une erreur n'arrete que le
+--      gestionnaire ou elle tombe : isoler chaque essai fait que le
+--      suivant se joue quand meme. Sans cela, le premier refus emporte
+--      les cinq autres et l'on ne mesure qu'une ligne sur six.
+--
+-- Aucune de ces lignes ne compte. Elles affichent ce que HC fait
+-- aujourd'hui, pour qu'on le compare dans Basilisk : les inscrire en
+-- reussites serait inscrire une supposition comme un fait.
+
+on sectionOuvert
+  global gCh, gCa
+  titre "6. a mesurer dans HyperCard"
+
+  -- Un morceau DANS un morceau.
+  go to card "Atelier"
+  put "alpha beta" & return & "gamma delta" into card field "A"
+  note "le nombre de mots de la ligne 2", the number of words of line 2 of card field "A"
+  note "le style d'un mot d'une ligne", the textStyle of word 1 of line 2 of card field "A"
+
+  -- Une recherche qui ECHOUE remet-elle le curseur a zero ? HC le fait,
+  -- parce que son curseur n'est rien d'autre que la derniere trouvaille.
+  -- Ce qu'HyperCard en fait, personne ne l'a regarde.
+  go to card "Atelier"
+  put "alpha beta gamma delta" into bg field "T"
+  find "alpha"
+  find "zorglub"
+  find "alpha"
+  note "apres un echec, la recherche repart de", the short name of this card
+  note "foundChunk apres un echec", the foundChunk
+
+  -- LES SITES JUMEAUX DU DESIGNATEUR CALCULE.
+  --
+  -- « select the foundChunk » ne marchait pas ; c'est corrige, parce que
+  -- l'idiome est dans le manuel et que le designateur n'existe que pour
+  -- etre relu. Les QUATRE AUTRES commandes qui prennent un designateur
+  -- ont ete mesurees du meme coup, et aucune n'est tranchee : HyperCard
+  -- exige peut-etre « do "hide" && ch » pour toutes. Le banc est dans
+  -- docs/mesures/designateur_calcule.txt.
+  --
+  -- gCh et gCa sont des GLOBALES, et non des variables locales : chaque
+  -- essai vit dans son propre gestionnaire, et une locale n'y survivrait
+  -- pas d'un appel a l'autre.
+  go to card "Atelier"
+  put "alpha beta" into card field "A"
+  put "card field 1" into gCh
+  put "card " & quote & "Deux" & quote into gCa
+
+  essaiHide
+  note "hide <variable> : le champ est-il encore visible", the visible of card field 1
+  show card field 1
+
+  essaiFindIn
+  note "find in <variable>", the result
+
+  essaiGoTo
+  note "go to <variable> : carte atteinte", the short name of this card
+  go to card "Atelier"
+
+  essaiLire
+end sectionOuvert
+
+-- Les cinq essais, un par gestionnaire. Celui qui leve n'emporte que
+-- lui-meme, et « note » s'ecrit dans sectionOuvert, APRES le retour.
+on essaiHide
+  global gCh
+  hide gCh
+end essaiHide
+
+on essaiFindIn
+  global gCh
+  find "bet" in gCh
+end essaiFindIn
+
+on essaiGoTo
+  global gCa
+  go to gCa
+end essaiGoTo
+
+on essaiLire
+  global gCh
+  note "lire une propriete sur <variable>", the name of gCh
+end essaiLire

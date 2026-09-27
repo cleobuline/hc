@@ -1,7 +1,7 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[ERR]    !! objet introuvable (v3, ligne 244 de button "TORTURE".essaiChampAbsent)
-[ERR]    !! ne sait pas faire : hide ch
-86 reussites, aucun echec, 13 a mesurer.
+[ERR]    !! objet introuvable (v3, ligne 253 de button "TORTURE".essaiChampAbsent)
+86 reussites, aucun echec, 5 a mesurer.
+[ERR]    !! ne sait pas faire : hide gCh
 
 ───── champ « R » ─────
 == 1. la recherche
@@ -107,16 +107,16 @@
   ok     itemDelimiter return : items = lignes
   ok     et le deuxieme item est la deuxieme ligne
 
+==============================
+86 reussites, aucun echec, 5 a mesurer.
+
 == 6. a mesurer dans HyperCard
   ?      le nombre de mots de la ligne 2 : [2]
   ?      le style d'un mot d'une ligne : [plain]
   ?      apres un echec, la recherche repart de : [Atelier]
   ?      foundChunk apres un echec : [char 1 to 5 of card field 1]
-  ?      hide <variable> : le champ est encore visible : [true]
+  ?      hide <variable> : le champ est-il encore visible : [true]
   ?      find in <variable> : [Not found]
   ?      go to <variable> : carte atteinte : [Deux]
   ?      lire une propriete sur <variable> : [card field "A"]
-
-==============================
-86 reussites, aucun echec, 13 a mesurer.
 

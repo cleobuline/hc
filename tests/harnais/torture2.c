@@ -107,7 +107,12 @@ int main(int argc, char **argv)
      * s'arrête à 288, les boutons occupent la bande du dessous. Posé d'abord
      * à y=450, il sortait de la carte — invisible dans l'application, alors
      * que le harnais, qui lit le contenu et non l'écran, ne s'en plaignait
-     * pas. La géométrie est le seul endroit où ce harnais ne mesure rien. */
+     * pas. La géométrie est le seul endroit où ce harnais ne mesure rien, et
+     * elle s'est trompée DEUX FOIS : le cinquième bouton, ajouté ensuite, a
+     * d'abord été posé sur une deuxième rangée à y=328, qui dépasse elle aussi.
+     * D'où une seule rangée de cinq, calculée : 5 × 90 + 4 × 4 = 466, posée de
+     * 20 à 486, et 302 + 22 = 324, sous les 342. Un commentaire qui décrit le
+     * piège ne l'évite pas ; un calcul écrit, oui. */
     Object *r = pose_champ(c1, "R", 20, 88, 470, 200, "scrolling");
     /* Le champ du rapport porte tous les motifs cherchés, puisqu'il nomme
      * chaque essai : sans dontSearch, la section 1 se trouverait elle-même.
@@ -121,17 +126,27 @@ int main(int argc, char **argv)
      * servent qu'à celui-ci. Tout mettre dans le script de la pile aurait
      * donné un « on mouseUp » au niveau de la pile, qui aurait intercepté les
      * clics de tous les autres objets. */
-    Object *bt = pose_bouton(c1, "TORTURE", 20, 300, 100, 24, src_bouton);
-    pose_bouton(c1, "clavier", 140, 300, 100, 24,
+    Object *bt = pose_bouton(c1, "TORTURE", 20, 302, 90, 22, src_bouton);
+    pose_bouton(c1, "clavier", 114, 302, 90, 22,
                 "-- Relit les touches tapées POUR DE VRAI, depuis le journal que\n"
                 "-- tiennent les dix gestionnaires du script de la pile.\n"
                 "on mouseUp\n  relitClavier\nend mouseUp\n");
-    pose_bouton(c1, "selection", 260, 300, 100, 24,
+    pose_bouton(c1, "selection", 208, 302, 90, 22,
                 "-- Cliquez d'abord DANS le champ A, puis ici : c'est la seule\n"
                 "-- façon de mesurer une sélection posée à la main.\n"
                 "on mouseUp\n  relitSelection\nend mouseUp\n");
-    pose_bouton(c1, "Effacer", 380, 300, 100, 24,
+    pose_bouton(c1, "Effacer", 302, 302, 90, 22,
                 "on mouseUp\n  razCompteurs\nend mouseUp\n");
+    /* LE BOUTON DES QUESTIONNES OUVERTES EST À PART, et ce n'est pas du rangement :
+     * ses essais LÈVENT — « hide ch » le premier — et dans l'application une
+     * erreur arrête le script sur un dialogue. Ils étaient d'abord à la suite
+     * des autres, et le rapport s'arrêtait là : on perdait la fin et le bilan.
+     * Le banc s'arrêtait là où il ne voulait qu'OBSERVER. */
+    Object *bo = pose_bouton(c1, "ouvert", 396, 302, 90, 22,
+                "-- Ce qui n'est pas encore mesuré. Chaque essai lève peut-être :\n"
+                "-- cliquez ce qu'il faut pour continuer, le suivant se joue\n"
+                "-- quand même.\n"
+                "on mouseUp\n  sectionOuvert\nend mouseUp\n");
 
     hc_set_script(st, src_pile);
     hc_set_current_card(c1);
@@ -147,6 +162,10 @@ int main(int argc, char **argv)
     }
 
     hc_send(bt, "mouseUp");
+    /* Le second bouton tout de suite après : le harnais, lui, n'a pas de
+     * dialogue à cliquer, et les lignes « ? » doivent rester sous la suite —
+     * une question qu'on cesse de poser est une question qu'on oublie. */
+    hc_send(bo, "mouseUp");
 
     {   /* Le rapport vit dans le champ, ligne à ligne, et non dans la boîte
          * de message : « put » vers elle passe par un tampon de 1024 octets
