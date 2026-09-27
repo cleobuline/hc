@@ -1,0 +1,87 @@
+OBSERVATION — L'ÉCRAN NE BOUGE PAS PENDANT UN SCRIPT
+====================================================
+
+Vu dans l'application le 27 septembre 2026, en jouant la pile de torture :
+
+    « on voit HyperCard changer de carte et sélectionner, mais pas HC »
+    « si, hide field "b" fonctionne ; ce qui m'a trompé c'est que c'est ultra
+      rapide, on voit rien »
+
+Les deux phrases disent la même chose, et la seconde clôt une fausse piste : il
+n'y a AUCUN défaut de « hide ». Le champ est bien caché, puis remontré deux
+lignes plus loin, et l'écran ne montre ni l'un ni l'autre. J'ai cherché un
+défaut de « hide » pendant un quart d'heure ; il n'y en avait pas.
+
+
+LA CAUSE — ET J'AI D'ABORD CONCLU TROP VITE
+------------------------------------------
+
+Premier relevé : HCview.m contient 126 « setNeedsDisplay:YES » et UN SEUL
+affichage immédiat. setNeedsDisplay ne dessine pas, il marque la vue sale ;
+AppKit redessine quand la boucle d'événements reprend la main. J'en ai conclu
+que rien n'était jamais dessiné pendant un script.
+
+C'ÉTAIT FAUX, et la réponse était huit lignes au-dessus du chiffre. Le seul
+affichage immédiat est dans « cocoa_idle », qui redessine ET vide la file
+d'événements, et le noyau l'appelle par « v3_respire » — lequel rend la main À
+TOUT DE SUITE dès que quelque chose de visible a changé. C'est ce qui fait
+qu'une animation marche : le dé qui rebondit dessine une image par tour, et le
+commentaire de v3_respire raconte qu'il a fallu le régler pour que le dé ne
+traverse pas l'écran d'un trait.
+
+LA VRAIE FRONTIÈRE EST LE « REPEAT ». v3_respire est appelé À CHAQUE TOUR DE
+BOUCLE, et nulle part ailleurs. Donc :
+
+    dans un repeat          l'écran suit, image par image
+    en ligne droite         rien n'est dessiné avant la fin du gestionnaire
+
+Les sections de la pile de torture sont en ligne droite — « go to card »,
+« select », « hide », « show », les unes après les autres, sans boucle. Aucune
+n'atteint jamais v3_respire. D'où un gel, puis l'état final d'un coup.
+
+C'est la troisième fois que je prends une mesure pour une conclusion : le
+chiffre « 126 contre 1 » était juste, et ce qu'il voulait dire ne l'était pas.
+Un avertissement, un comptage, un relevé, c'est une QUESTION posée au code —
+aller lire la réponse, toujours.
+
+
+POURQUOI ÇA COMPTE QUAND MÊME
+-----------------------------
+
+Une pile qui affiche sa progression sans boucle — trois cartes visitées à la
+suite, un champ rempli puis vidé — reste invisible. Et « visual effect » entre
+deux « go to card » écrits l'un sous l'autre n'a personne pour le voir.
+
+« LOCK SCREEN », lui, N'EST PAS décoratif : le commentaire de v3_respire montre
+qu'il compte, et qu'il a même rendu des boucles plus lentes avant qu'on le
+corrige. L'argument d'incohérence interne que je croyais tenir ne vaut donc que
+pour le code en ligne droite — où il n'y a de toute façon rien à verrouiller.
+
+CE QUI N'EST PAS DÉCIDÉ, ET POURQUOI RIEN N'EST TOUCHÉ
+------------------------------------------------------
+
+Le geste serait d'appeler v3_respire aux frontières d'INSTRUCTION et non
+seulement à chaque tour de boucle. Le mécanisme est déjà là, entièrement :
+l'étranglement à soixante hertz, la branche « quelque chose de visible a
+changé », le respect de l'écran verrouillé. Il ne manque que les points
+d'appel.
+
+SON COÛT EST LA QUESTION, et il se mesure : le dépôt a des chronomètres pour
+ça. « banc » joue deux mille tracés d'un script de 1987 ; « bench_lignes »
+compte les millisecondes. Un redessin synchrone par instruction, sur une boucle
+de tracé, peut multiplier le temps par dix — ou ne rien coûter, la vue étant
+petite. PERSONNE NE LE SAIT, et c'est exactement le genre de chose qu'on ne
+devine pas.
+
+À FAIRE, dans cet ordre :
+
+  1. mesurer le coût d'un « display » synchrone : un chronomètre qui joue le
+     même script avec et sans, et l'écart en millisecondes ;
+  2. décider de la granularité — chaque instruction, ou seulement la navigation
+     et les changements de sélection et de visibilité, qui sont ce qu'on voit ;
+  3. vérifier que « lock screen » devient observable EN LIGNE DROITE aussi —
+     c'est le témoin que la correction porte, et il se mesure : le même script
+     avec et sans verrou doit alors différer à l'écran.
+
+Le mécanisme existe et il est réglé. Ce qui manque, ce sont les points d'appel,
+et la mesure de ce qu'ils coûtent.
