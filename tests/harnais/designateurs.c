@@ -25,6 +25,20 @@
  * aucun témoin : deux propriétés que les piles lisent couramment, et pas une
  * ligne de harnais. C'est ce trou-là que ce fichier ferme.
  *
+ * DEUX QUESTIONS RESTENT OUVERTES, et ce harnais n'en tranche aucune :
+ *
+ *   · chez HyperCard, après un « select » lancé par un SCRIPT, selectedField
+ *     et selectedLine rendent VIDE quand selectedChunk répond. Deux
+ *     explications y collent — la propriété, ou l'écriture qui suit et qui
+ *     défait la sélection — et la mesure qui les oppose reste à faire ;
+ *
+ *   · le même banc joué DANS L'APPLICATION HC rend vide pour les deux, là où
+ *     ce harnais — sans interface — répond. Ce n'est donc pas le noyau mais
+ *     le chemin Cocoa, que rien ici ne peut atteindre.
+ *
+ * Ce fichier tient donc le FORMAT, qui est mesuré, et pas la présence, qui ne
+ * l'est pas. Voir docs/mesures/selection.txt.
+ *
  * L'ALLER-RETOUR EST LA SEULE VÉRIFICATION QUI COMPTE. Un désignateur sert à
  * être RELU — « put the selectedChunk into ou » puis « value(ou) ». Un numéro
  * faux casserait cet aller-retour en silence, là où une forme simplement

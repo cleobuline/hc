@@ -153,48 +153,78 @@ de Basilisk portait un champ de plus entre les deux. Le numéro est bien celui
 du champ, et c'est ce qu'on voulait savoir.
 
 
-2. selectedField ET selectedLine : MON BANC LES A VIDÉS LUI-MÊME    CORRIGÉ
+2. selectedField ET selectedLine APRÈS UN « select » DE SCRIPT    OUVERT
 ---------------------------------------------------------------------------
 
-LES DEUX ONT RENDU VIDE dans le premier relevé, et j'ai failli en tirer une
-règle. Un second essai, la sélection posée A LA MAIN puis lue depuis un
-bouton, rend :
+DEUX RELEVÉS D'HYPERCARD, ET ILS NE SE CONTREDISENT PAS :
 
-    the selectedField -> card field 1
-    the selectedLine  -> line 1 of card field 1
+    (1) sélection posée PAR LE SCRIPT, lue dans la foulée
+            A1 chunk : char 2 to 4 of card field 1     répond
+            A2 field : (vide)
+            A3 line  : (vide)
+            B1 chunk : char 1 to 5 of card field 3     répond
+            B2 field : (vide)
+            C1 chunk : char 7 to 9 of bkgnd field 1    répond
+            C2 field : (vide)
+            D2 field : card field 1                    (foundField : répond)
 
-Elles existent donc, et elles répondent. LE VIDE VENAIT DU BANC LUI-MÊME.
+    (2) sélection posée A LA MAIN, lue depuis un bouton
+            the selectedField -> card field 1
+            the selectedLine  -> line 1 of card field 1
 
-Relis l'ordre des lignes : chaque lecture est enveloppée dans un « put … after
-card field "R" », c'est-à-dire une ÉCRITURE DANS UN AUTRE CHAMP. Et le relevé
-dessine exactement ce motif —
+Le (2) donne le FORMAT, et c'est lui qui a servi à corriger. Le (1) laisse une
+question ouverte, et DEUX explications y collent également :
 
-    A1  premier accès après le select   -> répond
-    A2  après une écriture dans R       -> vide
-    A3  après une autre                 -> vide
-    B1  premier après le select suivant -> répond
-    B2  après une écriture              -> vide
-    C1  premier après le select suivant -> répond
-    C2  après une écriture              -> vide
+  (a) par PROPRIÉTÉ : selectedChunk répond à un select de script, selectedField
+      et selectedLine non — elles n'existent que pour la sélection de
+      l'utilisateur ;
 
-— la PREMIÈRE lecture qui suit chaque « select » répond, toutes les suivantes
-non. Le banc défaisait la sélection qu'il venait de poser, et je lisais le
-résultat de sa propre destruction.
+  (b) par POSITION : chaque lecture du banc est enveloppée dans un « put …
+      after card field "R" », donc une écriture dans un autre champ, et cette
+      écriture défait la sélection. La PREMIÈRE lecture après chaque select
+      répond, les suivantes non.
 
-C'est la faute la plus coûteuse du lot, parce qu'elle a l'air d'une mesure. Un
-instrument qui modifie ce qu'il observe ne se dénonce pas : il rend des
-chiffres réguliers, et « les deux rendent vide » est une phrase parfaitement
-présentable.
+Les deux expliquent les mêmes lignes, parce que le chunk venait toujours en
+premier. Le relevé (2) ne les départage pas non plus : sa seule lecture est
+aussi la première.
 
-CE QUE ÇA LAISSE OUVERT, et qui n'est pas mesuré : ÉCRIRE DANS UN CHAMP
-DÉFAIT-IL LA SÉLECTION ? C'est ce que suggère le motif ci-dessus chez
-HyperCard. HC, lui, la garde — A2 et A3 y répondent. La question mérite son
-propre banc, écrit cette fois pour ne pas se marcher dessus : lire la
-sélection dans une VARIABLE, et n'écrire dans le champ de rapport qu'à la
-toute fin.
+LA MESURE QUI LES OPPOSE, et qu'il faut faire DANS BASILISK — lire dans des
+VARIABLES, sans aucune écriture entre le select et la lecture :
 
     select char 2 to 4 of card field 1
     put the selectedField into a
-    put "x" into card field 2          -- une écriture, ailleurs
-    put the selectedField into b
-    put "[" & a & "] [" & b & "]"      -- a répond, b vide ?
+    put the selectedChunk into b
+    put "[" & a & "] [" & b & "]"
+
+    a vide, b plein   -> (a), c'est la propriété
+    a plein           -> (b), c'est l'écriture qui défait
+
+Tant que ce n'est pas tranché, RIEN N'EST CORRIGÉ de ce côté : HC répond dans
+les deux cas, ce qui est plus généreux, et rendre muet sur la mauvaise lecture
+retirerait une réponse utile aux piles qui s'en servent.
+
+
+3. ET UN DÉFAUT DE HC QUE LE HARNAIS NE PEUT PAS VOIR              OUVERT
+---------------------------------------------------------------------------
+
+Le même banc, joué DANS L'APPLICATION HC, rend « [] [] » — les deux vides.
+Dans le harnais sans interface, le noyau rend « card field 1 » pour les deux.
+
+Ce n'est donc pas le noyau : c'est le chemin Cocoa. Un « select » lancé par un
+script passe par hc_set_selection, qui prévient l'hôte ; cocoa_selection_changed
+referme alors l'édition en cours et en ouvre une sur le champ visé. Quelque
+part dans cet aller-retour, la sélection que le noyau venait de poser se perd.
+
+LA MESURE QUI DIT OÙ REGARDER, à faire dans HC :
+
+    select char 2 to 4 of card field 1
+    put "chunk [" & the selectedChunk & "]  field [" & the selectedField
+        & "]  texte [" & the selectedText & "]"
+
+    les TROIS vides  -> le noyau n'a plus de sélection du tout, et le
+                        problème est dans l'aller-retour Cocoa
+    chunk plein      -> les propriétés divergent entre elles, ce qui est
+                        impossible d'après le code : elles lisent toutes
+                        g_sel_field
+
+
