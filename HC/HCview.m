@@ -1565,10 +1565,20 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * rend le modal supportable — brancher NSAlert sur `line` en aurait ouvert
  * trois pour une seule erreur de syntaxe.
  *
- * « Script » ouvre l'éditeur sur l'objet fautif, comme le bouton du même nom
- * dans HyperCard. Le noyau nous donne cet objet ; il peut être NULL, et le
- * bouton n'apparaît alors pas plutôt que de ne rien faire. */
-static void cocoa_erreur(const char *texte, Object *objet) {
+ * « Script » ouvre l'éditeur sur l'objet fautif ET SUR SA LIGNE, comme le
+ * bouton du même nom dans HyperCard. Le noyau nous donne les deux ; l'objet
+ * peut être NULL, et le bouton n'apparaît alors pas plutôt que de ne rien
+ * faire. La ligne peut valoir 0 — l'éditeur s'ouvre alors en haut, comme
+ * avant.
+ *
+ * CE QUI MANQUE ENCORE, et qui est dit plutôt que bricolé : HyperCard a un
+ * TROISIÈME bouton, « Debug », qui ouvre le même éditeur en ENCADRANT la ligne
+ * fautive d'un rectangle — l'indicateur de ligne courante de son débogueur. Ce
+ * rectangle demande de dessiner par-dessus la vue de texte, et le reste du
+ * débogueur — pas à pas, reprise, espion de variables — n'existe pas du tout.
+ * Un bouton « Debug » qui ferait la même chose que « Script » serait un
+ * mensonge d'interface : deux boutons, un seul comportement. */
+static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     if (!texte || !*texte) return;
 
     NSAlert *a = [[NSAlert alloc] init];
@@ -1598,7 +1608,7 @@ static void cocoa_erreur(const char *texte, Object *objet) {
 
     NSModalResponse rep = [a runModal];
     if (objet && gView && rep == NSAlertSecondButtonReturn)
-        [gView editScriptOf:objet];
+        [gView editScriptOf:objet atLine:ligne];
 }
 
 static BOOL gMouseClicked = NO;
@@ -6971,6 +6981,25 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 
 - (void)editScriptOf:(Object *)obj {
+    [self editScriptOf:obj atLine:0];
+}
+
+/* OUVRIR LE SCRIPT SUR LA LIGNE FAUTIVE.
+ *
+ * Signalé à l'usage : « le bouton script n'envoie pas sur la ligne fautive ».
+ * L'éditeur s'ouvrait en haut d'un script qui peut en compter trois cents, et
+ * l'on relisait tout pour retrouver ce que le noyau savait déjà — il l'écrit
+ * même dans le message, « ligne 3 de button "B".casse », mais dans du TEXTE,
+ * d'où l'interface ne pouvait pas le reprendre sans l'analyser. Il arrive
+ * maintenant comme un nombre, par le rappel « erreur ».
+ *
+ * selectLine:inTextView: existait déjà et servait au bouton « Vérifier » : le
+ * mécanisme était là, c'est le dialogue d'erreur qui ne s'en servait pas.
+ *
+ * La sélection se pose APRÈS makeKeyAndOrderFront : sur une fenêtre pas encore
+ * affichée, scrollRangeToVisible n'a pas de géométrie à défiler et ne fait
+ * rien. */
+- (void)editScriptOf:(Object *)obj atLine:(int)ligne {
     gEditTarget = obj;
     NSPanel *panel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(300, 200, 480, 340)
@@ -7009,6 +7038,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     gEditPanel = panel;
     [panel makeKeyAndOrderFront:nil];
+    if (ligne > 0) [self selectLine:ligne inTextView:tv];
 }
 
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {

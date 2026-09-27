@@ -37,8 +37,8 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
 }
 /* L'hôte : c'est LUI qui ouvrirait le dialogue. S'il parle, le détournement
  * n'a pas eu lieu. */
-static void mon_erreur(const char *t, Object *o)
-{ (void)o; printf("   [DIALOGUE HÔTE] %s\n", t); }
+static void mon_erreur(const char *t, Object *o, int l)
+{ (void)o; (void)l; printf("   [DIALOGUE HÔTE] %s\n", t); }
 
 static Object *g_pile, *g_carte;
 

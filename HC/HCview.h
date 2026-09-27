@@ -126,6 +126,21 @@ void    hcv_selectionne(Object *o);
 - (void)installToolPalette;
 - (void)toolChosen:(id)sender;
 - (void)editScriptOf:(Object *)obj;
+/* La même, ouverte SUR UNE LIGNE : l'éditeur défile jusqu'à elle et la
+ * sélectionne. `ligne` vaut 1 pour la première, 0 pour « n'importe où ».
+ * C'est ce que fait le bouton « Script » du dialogue d'erreur. */
+- (void)editScriptOf:(Object *)obj atLine:(int)ligne;
+/* DÉCLARÉE ICI PARCE QU'ELLE EST APPELÉE PLUS HAUT QU'ELLE N'EST DÉFINIE.
+ *
+ * Elle vivait sans déclaration : ses deux appels venaient après sa définition,
+ * et le compilateur n'avait rien à redire. editScriptOf:atLine: l'appelle
+ * AVANT, et un envoi à un sélecteur qu'aucune @interface ne déclare est refusé.
+ *
+ * C'est la troisième fois de ce projet qu'une référence en avant traverse le
+ * seul compilateur qui ne tourne pas ici — icon_couleur_de et
+ * hc_icon_copie_dessin_hcicon avant elle. La déclarer est plus sûr que de
+ * compter sur l'ordre des définitions, qui change au premier déplacement. */
+- (void)selectLine:(int)ligne inTextView:(NSTextView *)tv;
 - (void)saveScript:(id)sender;
 - (void)beginFieldEdit:(Object *)field;
 - (void)endFieldEdit;

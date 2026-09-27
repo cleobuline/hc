@@ -45,11 +45,12 @@ static void ligne(HcLineKind k, int d, const char *t)
 
 /* L'hote qui montre le dialogue. On retient le NOMBRE d'appels : c'est lui
  * que la correction devait preserver, pas seulement le fait qu'il y en ait. */
-static void erreur(const char *texte, Object *objet)
+static void erreur(const char *texte, Object *objet, int ligne)
 {
     g_dialogues++;
     printf("      >>> DIALOGUE : %s\n", texte ? texte : "");
     printf("          objet fautif : %s\n", objet ? "oui" : "aucun");
+    printf("          ligne fautive : %d\n", ligne);
 }
 
 static void essai(const char *titre, const char *l)

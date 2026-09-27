@@ -808,6 +808,20 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
  * exécution on repasse donc par le dialogue ordinaire. */
 static int g_dans_errordialog = 0;
 
+/* LA LIGNE FAUTIVE, pour que « Script » y envoie l'éditeur.
+ *
+ * LA PREMIÈRE NON NULLE GAGNE, et ce n'est pas un détail. Une erreur dans un
+ * gestionnaire appelé par un autre est signalée à CHAQUE niveau en remontant :
+ * garder la dernière donnerait la ligne du gestionnaire EXTÉRIEUR alors que
+ * `g_err_objet` retient l'objet INTÉRIEUR — l'éditeur s'ouvrirait sur le bon
+ * script, à une ligne qui appartient à un autre. Les deux doivent venir du
+ * même niveau, et c'est le plus intérieur qui a levé l'erreur. */
+static int g_err_ligne = 0;
+static void err_ligne_pose(int ligne)
+{
+    if (ligne > 0 && g_err_ligne == 0) g_err_ligne = ligne;
+}
+
 /* La dernière ligne accumulée, pour compter ses répétitions plutôt que de les
  * empiler. Voir la note dans emit_v. */
 static char g_err_derniere[1024];
@@ -820,7 +834,8 @@ static void erreurs_vide(void)
     char copie[sizeof g_err_texte];
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
     Object *coupable = g_err_objet;
-    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+    int ligne_fautive = g_err_ligne;
+    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL; g_err_ligne = 0;
     g_err_dernier_deb = -1; g_err_repete = 0; g_err_derniere[0] = '\0';
 
     Object *carte = hc_current_card();
@@ -834,7 +849,8 @@ static void erreurs_vide(void)
         return;
     }
 
-    if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+    if (g_host && g_host->erreur)
+        g_host->erreur(copie, coupable, ligne_fautive);
 }
 
 static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
@@ -14909,8 +14925,10 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     if (x.ctx.erreur) {
         char qui[64];
         hc_describe(o, qui, sizeof qui);
+        int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
+        err_ligne_pose(ligne);
         emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0, qui, message);
+             ligne, qui, message);
     }
 
     hct_exec_libere(&x);
@@ -16433,9 +16451,11 @@ static int v3_do_ligne(const char *line)
     hct_exec(&x, bloc);
 
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
-    if (x.ctx.erreur)
-        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+    if (x.ctx.erreur) {
+        int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
+        err_ligne_pose(ligne);
+        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur, ligne);
+    }
 
     hct_exec_libere(&x);
     hct_reserve_libere(&res);
