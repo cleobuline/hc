@@ -1,0 +1,107 @@
+BANC DE MESURE — CE QUE DÉSIGNENT LES « selected… »
+===================================================
+
+À taper dans HyperCard (Basilisk II). Une seule question, posée quatre fois :
+SOUS QUELLE FORME HyperCard écrit-il la sélection ?
+
+POURQUOI CE BANC. Les « found… » ont été mesurés le 27/09 et corrigés : ils
+rendent la COUCHE et le NUMÉRO — « char 8 to 11 of bkgnd field 1 ». Les
+« selected… » de HC, eux, n'ont jamais été mesurés, et rendent trois formes
+différentes :
+
+    foundChunk       char 7 to 10 of card field 1      couche + numéro
+    selectedChunk    char 2 to 4 of card field "A"     couche + NOM
+    selectedField    field "A"                          NI couche ni numéro
+    selectedLine     1                                  un simple NOMBRE
+
+Trois écarts internes, donc, pour des renseignements de même nature. Lequel
+des deux formats est le bon n'est PAS une question de goût : un script relit
+ces désignateurs pour y écrire, et « field "A" » ne dit pas si c'est celui de
+la carte ou celui du fond. Deux champs du même nom se confondent.
+
+On ne corrige rien avant d'avoir la réponse. Une symétrie qui paraît évidente
+s'est déjà révélée fausse deux fois cette semaine — la forme de base de
+« find » replie les accents et « international » non, l'écriture au-delà d'un
+mot n'insère pas d'espace.
+
+
+LA PILE À PRÉPARER
+------------------
+
+UNE carte, avec :
+
+  · DEUX champs de CARTE nommés  A  et  B
+  · UN champ de FOND nommé       T
+  · un champ  R  grand et défilant, pour le rapport
+  · un bouton portant le script ci-dessous
+
+Le champ A doit être le PREMIER champ de carte et B le DEUXIÈME : c'est le
+numéro qui nous intéresse, et il faut pouvoir le distinguer du nom.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  put "alpha beta gamma" into card field "A"
+  put "omega" into card field "B"
+  put "sigma tau" into bg field "T"
+
+  -- A. un champ de CARTE, le premier
+  select char 2 to 4 of card field "A"
+  put "A1 chunk : " & the selectedChunk & return after card field "R"
+  put "A2 field : " & the selectedField & return after card field "R"
+  put "A3 line  : " & the selectedLine  & return after card field "R"
+  put "A4 text  : " & the selectedText  & return after card field "R"
+
+  -- B. le DEUXIÈME champ de carte : le numéro doit changer
+  select word 1 of card field "B"
+  put "B1 chunk : " & the selectedChunk & return after card field "R"
+  put "B2 field : " & the selectedField & return after card field "R"
+
+  -- C. un champ de FOND : la couche doit se voir
+  select word 2 of bg field "T"
+  put "C1 chunk : " & the selectedChunk & return after card field "R"
+  put "C2 field : " & the selectedField & return after card field "R"
+  put "C3 line  : " & the selectedLine  & return after card field "R"
+
+  -- D. et les « found… » du même coup, pour comparer sur la MÊME pile
+  select empty
+  find "bet"
+  put "D1 chunk : " & the foundChunk & return after card field "R"
+  put "D2 field : " & the foundField & return after card field "R"
+  put "D3 line  : " & the foundLine  & return after card field "R"
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   la forme de base. « card field 1 » ou « card field "A" » ? Et surtout ce
+    que vaut « the selectedLine » : un nombre, ou un morceau entier comme
+    « line 1 of card field 1 » ?
+
+B   le NUMÉRO. Si A et B rendent tous deux un nom, ce bloc n'apprend rien de
+    plus ; s'ils rendent des numéros, celui de B doit être 2. C'est la seule
+    façon de vérifier que le numéro est bien celui du champ et non un 1 collé
+    là par hasard.
+
+C   la COUCHE. C'est le bloc qui compte le plus : « bkgnd field » doit se
+    distinguer de « card field », sans quoi deux champs du même nom sont
+    indiscernables. HC rend aujourd'hui « field "T" » pour le fond et
+    « field "A" » pour la carte — la même chose.
+
+D   le témoin. Les « found… » ont déjà été mesurés, mais sur une AUTRE pile.
+    Les remesurer ici, à côté des « selected… », dit si les deux familles
+    s'écrivent pareil ou non — et c'est exactement la question.
+
+
+SI QUELQUE CHOSE REFUSE DE SE TAPER
+-----------------------------------
+
+« select empty » existe en HyperTalk 2.x pour défaire la sélection ; si ta
+version le refuse, remplace-le par un clic sur un endroit vide de la carte,
+ou saute-le — il ne sert qu'à ce que le bloc D parte proprement.
