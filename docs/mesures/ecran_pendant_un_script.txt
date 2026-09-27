@@ -85,3 +85,70 @@ devine pas.
 
 Le mécanisme existe et il est réglé. Ce qui manque, ce sont les points d'appel,
 et la mesure de ce qu'ils coûtent.
+
+
+═══════════════════════════════════════════════════════════════════════════
+LE TÉMOIN POSITIF, ET LA QUESTION SE FERME PRESQUE ENTIÈREMENT
+═══════════════════════════════════════════════════════════════════════════
+
+    « j'ai mis des wait 1 second, on voit bien les changements de carte ;
+      c'est tellement rapide que l'œil ne suit pas »
+
+C'EST LE TÉMOIN POSITIF QUE JE N'AVAIS PAS FAIT, et il change la conclusion.
+
+« wait » est le SECOND point où le noyau rend la main à l'hôte — host_idle() est
+appelé dans sa boucle d'attente, comme v3_respire le fait à chaque tour de
+« repeat ». Avec un « wait » entre deux instructions, chaque état intermédiaire
+est donc dessiné, et il tient une seconde. On le voit.
+
+Ce qui prouve que LES ÉTATS SONT BIEN ATTEINTS : la navigation a lieu, la
+sélection a lieu, le champ est caché puis remontré. Il n'y avait rien à
+réparer là non plus.
+
+
+ET LA CORRECTION QUE J'ENVISAGEAIS N'AURAIT PROBABLEMENT RIEN DONNÉ
+------------------------------------------------------------------
+
+Appeler v3_respire aux frontières d'instruction ferait dessiner chaque état…
+pendant les quelques dizaines de microsecondes qui séparent deux instructions.
+L'œil n'y verrait rien de plus. Vingt états dessinés en trois millisecondes,
+c'est un clignotement, pas une progression.
+
+CE QUI RENDAIT HYPERCARD VISIBLE, C'EST QU'IL ÉTAIT LENT. Un Mac Plus mettait
+deux cents millisecondes à changer de carte ; on le voyait travailler parce
+qu'il travaillait lentement. Ce n'est pas un comportement à reproduire, c'est
+une époque.
+
+La question se ferme donc presque entièrement, et sans une ligne de code :
+
+· il n'y a pas de défaut de « hide », ni de « go to », ni de « select » ;
+· les états intermédiaires sont atteints, et un « wait » suffit à les voir ;
+· un auteur qui VEUT montrer une progression écrit « wait », exactement comme
+  on vient de le faire pour la voir — et c'est ce qu'on faisait déjà en 1987,
+  où « wait 30 ticks » abonde dans les piles.
+
+CE QUI RESTE, et c'est mince : une séquence en ligne droite, sans boucle et sans
+wait, dont un état intermédiaire devrait rester à l'écran un moment parce que
+la suite est LONGUE — un long calcul après avoir rempli un champ. Là, le champ
+resterait vide pendant le calcul. Mais un long calcul est presque toujours une
+boucle, et une boucle passe par v3_respire.
+
+Aucun cas réel n'a encore été rencontré. C'est noté comme mince, pas comme
+inexistant.
+
+
+LA LEÇON, ET ELLE EST À MOI
+---------------------------
+
+Trois étapes pour une seule question, et j'ai eu tort aux deux premières :
+
+  1. « hide ne marche pas »          -> non : on ne le voyait pas
+  2. « rien n'est jamais dessiné »   -> non : la réponse était huit lignes
+                                        au-dessus de mon chiffre, dans
+                                        v3_respire
+  3. « il faut redessiner à chaque
+      instruction »                  -> non : ça ne se verrait pas davantage
+
+Chaque fois, c'est la mesure suivante qui a corrigé la précédente, et deux de
+ces trois mesures viennent de l'utilisatrice, devant l'écran, là où le harnais
+ne va pas. Un « wait 1 second » valait mes trois hypothèses.
