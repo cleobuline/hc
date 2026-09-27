@@ -1,0 +1,97 @@
+BANC DE MESURE — L'ACTION PAR DÉFAUT DES TOUCHES
+================================================
+
+À faire tourner dans HyperCard (Basilisk II). Une seule question, dix fois :
+QUE FAIT UNE TOUCHE QUE PERSONNE N'INTERCEPTE ?
+
+HC sait désormais porter les dix messages du clavier jusqu'au gestionnaire de
+la pile, par l'interface comme depuis un script. Ce qu'il ne sait pas, c'est
+quoi faire quand il n'y a PAS de gestionnaire — et il le dit, « ne sait pas
+faire », plutôt que d'inventer.
+
+
+LA PILE À PRÉPARER
+------------------
+
+TROIS cartes partageant un fond, avec sur la carte 1 :
+
+  · DEUX champs de carte nommés  A  et  B
+  · un champ  R  grand et défilant, pour le rapport
+  · un bouton portant le script ci-dessous
+
+AUCUN gestionnaire de touche nulle part — ni pile, ni fond, ni carte. C'est
+tout l'objet du banc : on mesure le DÉFAUT.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+
+  -- A. LES FLÈCHES : naviguent-elles, et dans quel sens ?
+  go to card 2
+  arrowKey "left"
+  put "A1 apres left  : " & the number of this card & return after card field "R"
+  go to card 2
+  arrowKey "right"
+  put "A2 apres right : " & the number of this card & return after card field "R"
+  go to card 2
+  arrowKey "up"
+  put "A3 apres up    : " & the number of this card & return after card field "R"
+  go to card 2
+  arrowKey "down"
+  put "A4 apres down  : " & the number of this card & return after card field "R"
+
+  -- B. TABULATION : choisit-elle un champ ?
+  go to card 1
+  click at the loc of card field "A"
+  tabKey
+  put "B1 apres tab   : [" & the selectedField & "]" & return after card field "R"
+  tabKey
+  put "B2 encore      : [" & the selectedField & "]" & return after card field "R"
+
+  -- C. LES AUTRES : quelque chose de visible ?
+  go to card 1
+  put empty into card field "A"
+  click at the loc of card field "A"
+  keyDown "z"
+  put "C1 keyDown z   : [" & card field "A" & "]" & return after card field "R"
+  returnKey
+  put "C2 apres return: carte " & the number of this card & return after card field "R"
+  enterKey
+  put "C3 apres enter : carte " & the number of this card & return after card field "R"
+  functionKey 1
+  put "C4 apres F1    : carte " & the number of this card & return after card field "R"
+  controlKey 1
+  put "C5 apres ctrl1 : carte " & the number of this card & return after card field "R"
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   LE PLUS IMPORTANT, et le plus employé : la navigation par les flèches.
+    Quatre réponses attendues, en numéros de carte au départ de la 2 :
+        1 -> la flèche recule      3 -> elle avance      2 -> elle ne fait rien
+    Les quatre sens se mesurent séparément : rien ne dit que « up » fasse la
+    même chose que « left ».
+
+B   tabKey sans gestionnaire choisit-il le champ suivant ? « the selectedField »
+    le dira. Deux tabulations de suite disent aussi si ça boucle.
+
+C   les six autres. On regarde s'il se passe quoi que ce soit de visible : un
+    caractère inséré pour keyDown, un changement de carte, autre chose.
+    « rien du tout » est une réponse parfaitement acceptable — c'est même la
+    plus probable pour functionKey et controlKey, et alors HC n'aura rien à
+    faire pour eux.
+
+
+SI UN DIALOGUE D'ERREUR PARAÎT
+------------------------------
+
+C'est une réponse : noter son texte exact et après quelle ligne il tombe. Le
+rapport s'écrit LIGNE À LIGNE dans le champ R justement pour qu'un arrêt
+laisse voir jusqu'où l'on est allé.

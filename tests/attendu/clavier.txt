@@ -1,4 +1,5 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. L'INTERFACE ENVOIE : hc_send_arg, comme quand on tape ==
    [msg] flèche : left
 arrowKey left   pris=1
    [msg] flèche : right
@@ -10,3 +11,35 @@ functionKey 3   pris=1
    [msg] tab
 tabKey          pris=1
 returnKey       pris=0  (aucun gestionnaire)
+
+== 2. UN SCRIPT LES ÉCRIT : les dix atteignent le gestionnaire ==
+   arrowKey "left"          
+   [msg] flèche : left
+   keyDown "x"              
+   [msg] touche : x
+   controlKey 1             
+   [msg] ctrl 1
+   functionKey 3            
+   [msg] F3
+   commandKeyDown "b"       
+   [msg] cmd b
+   enterKey                 
+   [msg] entrée
+   tabKey                   
+   [msg] tab
+   enterInField             
+   [msg] entrée dans le champ
+   returnInField            
+   [msg] retour dans le champ
+
+== 3. « pass » vaut DEPUIS UN SCRIPT AUSSI ==
+   arrowKey "right"         
+   [msg] flèche : right
+
+== 4. SANS GESTIONNAIRE : le refus, faute d'action par défaut ==
+   arrowKey "left"          
+   [ERR]    !! ne sait pas faire : arrowKey "left"
+   tabKey                   
+   [ERR]    !! ne sait pas faire : tabKey
+   returnKey                
+   [ERR]    !! ne sait pas faire : returnKey

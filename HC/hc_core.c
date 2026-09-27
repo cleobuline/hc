@@ -14538,6 +14538,47 @@ static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* LES DIX MESSAGES DU CLAVIER, APPELÉS COMME COMMANDES.
+ *
+ *     arrowKey · returnKey · enterKey · tabKey · keyDown · controlKey
+ *     functionKey · commandKeyDown · enterInField · returnInField
+ *
+ * L'interface les ENVOIE déjà quand on tape — HCview.m les nomme et appelle
+ * hc_send_arg. Mais un SCRIPT qui les écrit se heurtait à « ne sait pas
+ * faire », même quand la pile avait le gestionnaire sous la main :
+ *
+ *     on arrowKey d          -- dans le script de pile
+ *       ...
+ *     end arrowKey
+ *
+ *     arrowKey "right"       -- dans un bouton : ERREUR
+ *
+ * LE DÉFAUT TIENT EN UNE PHRASE : être dans la table des commandes empêche
+ * d'être un message. hct_cmd.c leur donne un motif — c'est ce qui fait que
+ * « arrowKey "left" » s'analyse —, donc le nœud est une COMMANDE ; le
+ * répartiteur cherche le verbe parmi les verbes portés, ne le trouve pas, et
+ * la branche qui aurait proposé le nom à la pile ne s'applique qu'aux nœuds
+ * MESSAGE. Les dix tombaient entre les deux.
+ *
+ * C'est courant dans les piles réelles : la navigation par les flèches, la
+ * tabulation d'un champ au suivant, les raccourcis. Le relevé ne le voyait
+ * pas — il compte le corpus de TEST, et un harnais n'appuie jamais sur une
+ * touche. Classer par ce compteur m'a fait ranger ces dix-là en queue de
+ * liste ; c'est l'usage qui les a remis devant.
+ *
+ * ON PROPOSE LE MESSAGE, ET RIEN DE PLUS. Si personne ne le prend, on rend 0
+ * et l'ancien chemin dit « ne sait pas faire » comme avant : l'ACTION PAR
+ * DÉFAUT — ce que fait une flèche que nul n'intercepte — n'est pas mesurée,
+ * et une action inventée serait pire qu'un refus franc. Le banc qui la
+ * mesurera est dans docs/mesures/clavier.txt. */
+static int v3_cmd_touche(HctContexte *ctx, const HctNoeud *n)
+{
+    ARENA_MARK;
+    int fait = v3_message_pile(ctx, n);
+    ARENA_FREE;
+    return fait;
+}
+
 /* ==================== la table des verbes portés ==================== *
  *
  * Elle fut le tableau d'avancement de la migration : ce qui n'y figure pas
@@ -14564,6 +14605,17 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
     { "find",   v3_cmd_find    },
+    /* Les dix du clavier, tous vers le même : voir v3_cmd_touche. */
+    { "arrowkey",       v3_cmd_touche },
+    { "commandkeydown", v3_cmd_touche },
+    { "controlkey",     v3_cmd_touche },
+    { "enterinfield",   v3_cmd_touche },
+    { "enterkey",       v3_cmd_touche },
+    { "functionkey",    v3_cmd_touche },
+    { "keydown",        v3_cmd_touche },
+    { "returninfield",  v3_cmd_touche },
+    { "returnkey",      v3_cmd_touche },
+    { "tabkey",         v3_cmd_touche },
     { "go",     v3_cmd_go      },
     { "hide",   v3_cmd_montre  },
     { "lock",   v3_cmd_verrou  },
