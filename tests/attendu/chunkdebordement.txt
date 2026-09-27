@@ -21,9 +21,9 @@
    un delimiteur long mais un rang petit
       3 items, 130 octets
 
-== 4. POURQUOI MOT ET CARACTERE NE SE REMPLISSENT PAS ==
-   put dans word 99 : on ajoute a la fin
-      [Sun Mon Tue X]  4 mots, 13 octets
+== 4. MOT ET CARACTERE : NI REMPLISSAGE, NI SEPARATEUR ==
+   put dans word 99 : on ajoute, SANS espace
+      [Sun Mon TueX]  3 mots, 12 octets
    les 96 espaces poses A LA MAIN ne creent aucun mot
       4 mots, 108 octets
       word 4 : [X]   word 99 : []

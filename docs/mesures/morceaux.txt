@@ -149,3 +149,86 @@ v3_chunk_cible, qui fait déjà ce travail pour l'ÉCRITURE — « set the textS
 of word 3 of line 3 of me to bold » lit ses rangs dans l'arbre depuis des
 jours. Nettoyer les messages sans porter la lecture traiterait le symptôme et
 laisserait les trois évaluations.
+
+
+═══════════════════════════════════════════════════════════════════════════
+RECTIFICATIF — le relevé ci-dessus n'était PAS HyperCard
+═══════════════════════════════════════════════════════════════════════════
+
+LE VRAI RELEVÉ D'HYPERCARD, marqué comme tel :
+
+    A texte : [Sun Mon TueX]
+    A long  : 12
+    A mots  : 3
+    B ici
+    B style : [plain]
+    C ici
+    FIN
+
+Le premier relevé — « Sun Mon Tue X », 13 octets, 4 mots, et la phrase pour
+B et C — venait de HC. Il m'était arrivé sans étiquette, j'y ai lu HyperCard,
+et j'en ai conclu que HC était fidèle sur les trois points. Il ne l'était sur
+aucun.
+
+LA LEÇON N'EST PAS « VÉRIFIER D'OÙ VIENT UN RELEVÉ », même si c'est vrai.
+C'est qu'un relevé qui CONFIRME ce que fait déjà le code mérite plus de
+méfiance qu'un relevé qui le contredit. Le second fait travailler, le premier
+fait conclure — et il m'a fait conclure, retirer une accusation juste, et
+écrire un harnais pour verrouiller le défaut.
+
+
+A — L'ÉCRITURE : NI REMPLISSAGE, NI SÉPARATEUR                      CORRIGÉ
+---------------------------------------------------------------------------
+
+    HyperCard : Sun Mon TueX    12 octets, 3 mots
+    HC avant  : Sun Mon Tue X   13 octets, 4 mots
+
+Pas d'espace. HC en posait une, et c'était une invention : le mot se comporte
+exactement comme le caractère, on ajoute sans rien insérer. hct_chunk.c ne
+donne plus de séparateur à HCT_CH_WORD.
+
+Le raisonnement d'hier — « un mot vide n'existe pas, donc remplir ne sert à
+rien » — désignait le bon camp et pas la bonne valeur. Il fallait la mesure.
+
+
+B — LA LECTURE D'UN MORCEAU ABSENT : « plain »                    À CORRIGER
+---------------------------------------------------------------------------
+
+    HyperCard : plain
+    HC        : textStyle of word 99 of card field "T"
+
+HC replie sur le littéral nu et rend sa propre phrase. HyperCard donne la
+valeur par défaut du style. C'était bien un défaut, comme annoncé la première
+fois.
+
+La cause est relevée sous backtrace, trois fois la même pile :
+
+    noeud_of -> recours_pont -> v3_recours -> term_value -> call_function
+             -> eval_expr
+
+La lecture d'une propriété sur un MORCEAU n'est pas portée sur l'arbre :
+noeud_of résout sa cible par hote.resout, qui ne sait résoudre qu'un OBJET,
+échoue sur un nœud de morceau, et confie tout à l'ancien évaluateur. Le remède
+est le site jumeau manquant de v3_chunk_cible, qui fait déjà ce travail pour
+l'ÉCRITURE.
+
+
+C — LE CHAMP ABSENT : LA LIGNE N'EST PAS ÉCRITE               À COMPRENDRE
+--------------------------------------------------------------------------
+
+Chez HyperCard, « C ici » paraît, « C style : … » NE PARAÎT PAS, et « FIN »
+paraît quand même. C'est contradictoire pour un gestionnaire ordinaire : une
+instruction qui échoue arrête le gestionnaire, donc FIN ne devrait pas s'écrire ;
+une instruction qui réussit écrit sa ligne, ne serait-ce que « C style : [] ».
+
+Trois lectures possibles, qu'une seule question sépare :
+
+  (a) un dialogue est apparu, il a été écarté, et le gestionnaire a REPRIS —
+      alors HyperCard signale l'objet absent, une fois, et continue ;
+  (b) aucun dialogue, et l'expression entière vaut vide dès qu'un opérande
+      échoue — « put empty after field » n'ajoute rien, pas même le texte
+      littéral qui l'entoure. Ce serait une règle forte, et surprenante ;
+  (c) le gestionnaire s'est arrêté là, et FIN vient d'un autre passage.
+
+LA QUESTION À POSER : y a-t-il eu un dialogue à la ligne C, et si oui, que
+disait-il exactement ? HC, lui, écrit la ligne ET trois messages.

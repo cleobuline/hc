@@ -379,36 +379,35 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     /* Le rang dépasse : on étend.
      *
      * Pour item et line, on crée les morceaux vides intermédiaires — « put "x"
-     * into item 5 of "a,b" » donne « a,b,,,x ». Pour char et word, on ajoute
-     * simplement à la fin, avec une espace pour les mots.
+     * into item 5 of "a,b" » donne « a,b,,,x ». Pour char ET POUR WORD, on
+     * ajoute à la fin SANS RIEN INSÉRER.
      *
-     * CE N'EST PAS UN CAPRICE, ET CE N'EST PLUS UNE AFFIRMATION. La règle est
-     * : on remplit là où le morceau vide EXISTE, on ajoute là où il ne peut
-     * pas exister. Mesuré dans tests/harnais/chunkdebordement.c §4 :
+     * LA RÈGLE, MESURÉE DES DEUX CÔTÉS : on remplit là où le morceau vide
+     * EXISTE, on ajoute là où il ne peut pas exister. Un item vide et une
+     * ligne vide se comptent et se relisent ; un mot vide n'existe pas, le
+     * séparateur des mots étant une SUITE d'espaces — deux espaces côte à côte
+     * ne délimitent aucun mot entre eux.
      *
      *     put "X" into line 5 of "Sun"          -> 5 lignes, line 5 rend X
      *     put "X" into item 5 of "a,b"          -> 5 items,  item 5 rend X
-     *     put "X" into word 99 of "Sun Mon Tue" -> 4 mots,   word 4 rend X
+     *     put "X" into word 99 of "Sun Mon Tue" -> « Sun Mon TueX », 3 mots
      *
-     * Un mot vide n'existe pas : le séparateur des mots est une SUITE
-     * d'espaces, et deux espaces côte à côte ne délimitent aucun mot entre
-     * eux. Les 96 espaces posés à la main sont dans le harnais : le texte
-     * pèse 108 octets au lieu de 13, et il compte toujours QUATRE mots. Le
-     * remplissage ne rendrait donc pas « word 99 » lisible — il ne rendrait
-     * rien du tout —, et l'ajout est celui des deux qui ne laisse pas 95
-     * espaces derrière lui. Le caractère, lui, n'a pas de séparateur : il n'y
-     * a rien à poser entre deux.
+     * LA TROISIÈME LIGNE EST UNE CORRECTION, et elle vient d'HyperCard. On
+     * posait une ESPACE avant la valeur : « Sun Mon Tue X », 13 octets, quatre
+     * mots. HyperCard rend « Sun Mon TueX », 12 octets, TROIS mots — mesuré le
+     * 27/09/2026, docs/mesures/morceaux.txt. Il ne sépare rien du tout : le mot
+     * se comporte exactement comme le caractère.
      *
-     * Ce qu'HyperCard fait EXACTEMENT pour les mots — ajouter, ou remplir
-     * inutilement — n'est pas mesuré ; la longueur le dirait, 13 contre 108.
-     * Le comportement observable est le même des deux côtés. */
+     * J'avais d'abord raisonné qu'une espace était « le moins faux » des deux
+     * remplissages possibles. Le raisonnement était bon et la réponse était
+     * ailleurs : HyperCard ne remplit ni ne sépare. C'est la mesure qui l'a
+     * dit, pas la logique. */
     int existants = hct_chunk_compte(s, sorte, delim);
     /* Le séparateur à INSÉRER. Une chaîne, comme celui sur lequel on découpe :
      * étendre « aébéc » avec un délimiteur « é » doit poser l'é entier, pas
      * son premier octet. Char n'en a pas, word pose une espace. */
     const char *sep = (sorte == HCT_CH_ITEM) ? sep_ou_virgule(delim)
-                    : (sorte == HCT_CH_LINE) ? "\n"
-                    : (sorte == HCT_CH_WORD) ? " " : "";
+                    : (sorte == HCT_CH_LINE) ? "\n" : "";
     int lsep = (int)strlen(sep);
 
     int manquants = 0;
