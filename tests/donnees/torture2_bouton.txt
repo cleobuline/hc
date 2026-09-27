@@ -1,0 +1,515 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE 2 — LE SCRIPT DU BOUTON « TORTURE »
+--
+--  Il eprouve ce que les bancs de « docs/mesures » ont MESURE dans
+--  HyperCard : la recherche, les morceaux qui debordent, ce que
+--  designent les « selected... », les couches, et les dix messages du
+--  clavier.
+--
+--  TROIS SORTES DE LIGNES dans le rapport :
+--
+--    ok       l'essai a rendu ce qu'HyperCard rend      (mesure)
+--    ECHEC    il a rendu autre chose — les deux valeurs suivent
+--    ?        personne n'a encore mesure ce cas : la valeur est
+--             affichee SANS verdict, a comparer dans Basilisk
+--
+--  IL FAUT : le bloc « torture2_pile » dans le script de la pile, les
+--  quatre cartes Atelier / Deux / Trois / Quatre, les champs de carte
+--  A, B et R sur l'Atelier (dans cet ordre), et le champ de fond T.
+--
+--  AUCUN DIALOGUE A CLIQUER, ET C'EST VOULU AUSSI. Le banc PROVOQUE des
+--  erreurs — la section 2 lit le style d'un mot dans un champ qui
+--  n'existe pas, la section 6 en provoque une autre — parce que c'est
+--  ainsi qu'on verifie que HC s'en plaint. « lockErrorDialogs » les
+--  detourne vers « on errorDialog » (script de la pile), qui les ECRIT A
+--  LA FIN DU RAPPORT. Chaque essai risque vit en outre dans son propre
+--  gestionnaire : une erreur n'arrete que celui-la.
+--
+--  Ce qui n'est pas encore mesure — les lignes « ? » — se rejoue seul par
+--  le bouton « ouvert ».
+-- ════════════════════════════════════════════════════════════════════
+
+on mouseUp
+  razCompteurs
+  -- Les erreurs provoquees par le banc partent dans « on errorDialog »
+  -- (script de la pile) et s'ecrivent a la fin du rapport, au lieu
+  -- d'ouvrir une alerte a cliquer. Voir la note qui accompagne ce
+  -- gestionnaire : le reglage doit rester pose jusqu'a la SORTIE.
+  set the lockErrorDialogs to true
+  -- Le champ du rapport ne doit JAMAIS se faire trouver : il contient
+  -- le nom de chaque essai, donc tous les motifs cherches. Sans cette
+  -- ligne, la section 1 se trouverait elle-meme.
+  set the dontSearch of card field "R" of card "Atelier" to true
+
+  sectionFind
+  sectionMorceaux
+  sectionSelection
+  sectionCouches
+  sectionClavier
+  sectionChemins
+  -- La section 6 est revenue dans la course. Elle en etait sortie parce que
+  -- ses essais LEVENT et que le dialogue arretait tout ; sans dialogue, la
+  -- seule raison de la mettre a part tombe. Le bouton « ouvert » la garde
+  -- pour la rejouer seule.
+  sectionOuvert
+  bilan
+end mouseUp
+
+
+-- ==== 1. LA RECHERCHE ===============================================
+--
+-- Mesures prises dans Basilisk II le 27/09, consignees dans
+-- docs/mesures/find.txt. Quatre d'entre elles ont fait tomber un
+-- defaut : le designateur sans couche, la majuscule de « Not found »,
+-- « of marked cards » ignore, et le curseur remis a zero.
+
+on sectionFind
+  titre "1. la recherche"
+
+  -- les textes, un par carte
+  go to card "Deux"
+  put "alpha zeta" into bg field "T"
+  go to card "Trois"
+  put "élève à Noël" into bg field "T"
+  go to card "Quatre"
+  put empty into bg field "T"
+  go to card "Atelier"
+  put "alpha beta gamma delta" into bg field "T"
+  put "omega" into card field "A"
+  put empty into card field "B"
+
+  -- A. les huit formes. « go to card » avant chacune, comme le banc.
+  go to card "Atelier"
+  find "bet gam"
+  egal "deux mots, deux prefixes", the result, empty
+  go to card "Atelier"
+  find chars "ph be"
+  egal "chars : n'importe ou dans le mot", the result, empty
+  go to card "Atelier"
+  find string "a bet"
+  egal "string : la phrase, a cheval", the result, empty
+  go to card "Atelier"
+  find whole "a bet"
+  egal "whole : refuse le cheval", the result, "Not found"
+  go to card "Atelier"
+  find whole "beta gamma"
+  egal "whole : accepte les mots entiers", the result, empty
+  go to card "Atelier"
+  find word "bet"
+  egal "word : refuse le prefixe", the result, "Not found"
+  go to card "Atelier"
+  find word "beta"
+  egal "word : accepte le mot entier", the result, empty
+  go to card "Atelier"
+  find "gamma alpha"
+  egal "l'ordre des mots ne compte pas", the result, empty
+
+  -- B. la recherche porte sur la CARTE, pas sur un champ
+  go to card "Atelier"
+  find "bet omeg"
+  egal "un mot au fond, l'autre sur la carte", the result, empty
+  go to card "Atelier"
+  find "bet omeg" in bg field "T"
+  egal "« in » restreint pour de vrai", the result, "Not found"
+
+  -- C. ce que la trouvaille DESIGNE. « bkgnd field 1 » et non
+  -- « field "T" » : deux champs du meme nom, l'un sur la carte l'autre
+  -- sur le fond, se confondaient, et une pile qui relit le
+  -- designateur pour y ecrire visait le mauvais.
+  go to card "Atelier"
+  find "bet alph"
+  egal "foundText : le mot trouve", the foundText, "beta"
+  egal "foundChunk : couche et numero", the foundChunk, "char 7 to 10 of bkgnd field 1"
+  egal "foundField : la couche y est", the foundField, "bkgnd field 1"
+  egal "foundLine  : la couche aussi", the foundLine, "line 1 of bkgnd field 1"
+
+  -- D. « of marked cards » : ignore, la recherche trouvait des cartes
+  -- que la pile n'avait pas demandees, en silence.
+  unmark all cards
+  go to card "Atelier"
+  find "alpha" of marked cards
+  egal "aucune carte marquee : rien", the result, "Not found"
+  go to card "Deux"
+  mark this card
+  go to card "Atelier"
+  find "alpha" of marked cards
+  egal "une seule marquee : trouve", the result, empty
+  egal "et c'est ELLE qu'on atteint", the short name of this card, "Deux"
+  unmark all cards
+
+  -- E. les accents. C'est la forme DE BASE qui replie, et
+  -- « international » qui compare octet a octet — on avait suppose le
+  -- contraire.
+  go to card "Atelier"
+  find "eleve"
+  egal "sans accent : la base replie", the result, empty
+  go to card "Atelier"
+  find international "eleve"
+  egal "international ne replie pas", the result, "Not found"
+  go to card "Atelier"
+  find international "noel"
+  egal "ni le trema", the result, "Not found"
+  go to card "Atelier"
+  find "élève"
+  egal "avec l'accent : trouve", the result, empty
+
+  -- F. rien trouve. La MAJUSCULE compte : une pile qui compare « the
+  -- result » a la chaine exacte se trompait a tous les coups.
+  go to card "Atelier"
+  find "zorglub"
+  egal "« Not found » porte une majuscule", the result, "Not found"
+  egal "et foundText se vide", the foundText, empty
+
+  -- G. dontSearch. Un champ ecarte de la recherche l'est vraiment.
+  go to card "Atelier"
+  set the dontSearch of card field "B" to true
+  put "zorglub" into card field "B"
+  go to card "Atelier"
+  find "zorglub"
+  egal "un champ dontSearch est saute", the result, "Not found"
+  set the dontSearch of card field "B" to false
+  go to card "Atelier"
+  find "zorglub"
+  egal "et retrouve des qu'on le rend", the result, empty
+  put empty into card field "B"
+
+  -- H. LE CURSEUR. Ni la navigation ni un motif neuf ne le ramenent au
+  -- debut — c'est mesure — et le balayage REBOUCLE dans la carte de
+  -- depart pour en revoir le debut.
+  --
+  -- LE REBOUCLAGE, LUI, EST DEDUIT et non releve : il decoule du tour
+  -- complet que fait la recherche d'HyperCard, et le banc de « find »
+  -- n'a pas pose la question a Basilisk. C'est la seule ligne de cette
+  -- section qui ne vienne pas d'une mesure directe.
+  go to card "Atelier"
+  find "alpha"
+  egal "la premiere trouvaille", the short name of this card, "Atelier"
+  find "alpha"
+  egal "la meme recherche avance", the short name of this card, "Deux"
+
+  -- Le curseur est maintenant dans la carte Deux. On revient a la main,
+  -- et l'on cherche « delta », qui est APRES « alpha » dans le champ de
+  -- l'Atelier : la navigation n'a pas remis le curseur a zero, et la
+  -- recherche trouve quand meme.
+  go to card "Atelier"
+  find "delta"
+  egal "un motif neuf part du curseur", the result, empty
+  egal "et trouve dans la carte courante", the short name of this card, "Atelier"
+
+  -- ET VOICI LE REBOUCLAGE. « beta » n'existe que dans l'Atelier, et
+  -- AVANT le curseur, qui est reste sur « delta ». Les trois autres
+  -- cartes ne l'ont pas. Sans la passe de rebouclage, la recherche rend
+  -- « Not found » alors que le mot est la, deux mots plus haut.
+  --
+  -- La passe de rebouclage vient EN DERNIER, apres les autres cartes :
+  -- si le mot existe ailleurs, c'est ailleurs qu'on le trouve. Attendre
+  -- l'inverse — et c'est ce que j'attendais — fait echouer un essai qui
+  -- a raison.
+  find "beta"
+  egal "le balayage reboucle", the result, empty
+  egal "dans la carte de depart", the short name of this card, "Atelier"
+  egal "sur le mot d'avant le curseur", the foundText, "beta"
+end sectionFind
+
+
+-- ==== 2. LES MORCEAUX QUI DEBORDENT =================================
+--
+-- Mesure : docs/mesures/morceaux.txt. « Sun Mon TueX », douze octets,
+-- trois mots — l'ecriture au-dela du dernier mot N'INSERE RIEN. Et le
+-- style d'un mot absent vaut « plain », pas la phrase elle-meme.
+
+on sectionMorceaux
+  titre "2. les morceaux qui debordent"
+  go to card "Atelier"
+
+  put "Sun Mon Tue" into card field "A"
+  put "X" into word 99 of card field "A"
+  egal "ecrire au-dela : rien d'insere", card field "A", "Sun Mon TueX"
+  egal "et la longueur le dit", the length of card field "A", 12
+  egal "le nombre de mots ne bouge pas", the number of words of card field "A", 3
+
+  -- UN ITEM ET UNE LIGNE, EUX, POSENT LEUR SEPARATEUR — mesure Basilisk du
+  -- 27/09 : « a,b,,c » et trois lignes, identique a HC. C'est le separateur
+  -- qui fait l'item ; un espace ne fait pas le mot, et c'est pour ca que les
+  -- mots ne posent rien. La difference est donc REELLE, des deux cotes.
+  put "a,b" into card field "A"
+  put "c" into item 4 of card field "A"
+  egal "item 4 pose ses virgules", card field "A", "a,b,,c"
+  put "un" into card field "A"
+  put "trois" into line 3 of card field "A"
+  egal "line 3 pose ses sauts", the number of lines of card field "A", 3
+
+  -- LA LECTURE D'UNE PROPRIETE SUR UN MORCEAU ABSENT. HC rendait « the
+  -- textStyle of word 99 of card field "A" » — la phrase elle-meme,
+  -- comme valeur : « if the textStyle of word 99 of f is "bold" »
+  -- comparait donc a une phrase, faux sans jamais se plaindre.
+  put "Sun Mon Tue" into card field "A"
+  egal "style d'un mot absent", the textStyle of word 99 of card field "A", "plain"
+  egal "style d'un mot present", the textStyle of word 2 of card field "A", "plain"
+
+  -- Le meme defaut quand c'est le CHAMP qui manque : il doit LEVER,
+  -- une fois, et ne rien rendre. Dans un gestionnaire a part, l'erreur
+  -- n'arretant que celui-la.
+  global gFaute
+  put "pas leve" into gFaute
+  essaiChampAbsent
+  egal "un champ absent leve", gFaute, "leve"
+end sectionMorceaux
+
+on essaiChampAbsent
+  global gFaute
+  put "leve" into gFaute
+  put the textStyle of word 2 of card field "Absent" into z
+  put "pas leve" into gFaute
+end essaiChampAbsent
+
+
+-- ==== 3. CE QUE DESIGNENT LES « selected... » =======================
+--
+-- Mesure : docs/mesures/selection.txt. HyperCard ecrit la couche et le
+-- NUMERO — « char 2 to 4 of card field 1 » —, exactement comme
+-- foundChunk, et « bkgnd » la ou HC ecrivait « bg ».
+
+on sectionSelection
+  titre "3. la selection"
+  go to card "Atelier"
+  put "alpha beta gamma" into card field "A"
+  put "omega" into card field "B"
+  put "sigma tau" into bg field "T"
+
+  select char 2 to 4 of card field "A"
+  egal "selectedChunk : couche et numero", the selectedChunk, "char 2 to 4 of card field 1"
+  egal "selectedText", the selectedText, "lph"
+
+  select word 1 of card field "B"
+  egal "le numero suit le champ", the selectedChunk, "char 1 to 5 of card field 2"
+
+  select word 2 of bg field "T"
+  egal "« bkgnd » et non « bg »", the selectedChunk, "char 7 to 9 of bkgnd field 1"
+
+  -- LE DESIGNATEUR SE RELIT : c'est tout l'interet de la propriete, et
+  -- c'est ce qu'un numero faux aurait casse en silence.
+  put the selectedChunk into ou
+  egal "le designateur se relit", value(ou), "tau"
+
+  -- TRANCHE LE 27/09, DANS BASILISK. La question tenait depuis une
+  -- semaine : apres un « select » DE SCRIPT, un premier releve montrait
+  -- selectedField et selectedLine VIDES, et deux explications collaient
+  -- aux memes lignes — la propriete qui ne repondrait qu'a une selection
+  -- humaine, ou l'ecriture entre deux lectures qui defait la selection.
+  --
+  -- La mesure qui les oppose lit les quatre proprietes DANS DES VARIABLES,
+  -- sans rien ecrire entre elles. HyperCard rend les quatre :
+  --
+  --     card field 1   et   line 1 of card field 1
+  --
+  -- C'etait donc l'ECRITURE, et HC avait raison de repondre. Ne rien
+  -- corriger etait la bonne decision ; ces deux lignes passent de
+  -- question a mesure.
+  select char 2 to 4 of card field "A"
+  put the selectedField into sf
+  put the selectedLine into sl
+  egal "selectedField apres un select de script", sf, "card field 1"
+  egal "selectedLine  apres un select de script", sl, "line 1 of card field 1"
+
+  -- LE TEMOIN DE LA SELECTION A LA MAIN : cliquez dans le champ A, puis
+  -- sur le bouton « selection ». S'il rend autre chose que
+  -- « card field 1 » / « line 1 of card field 1 », c'est un defaut.
+end sectionSelection
+
+
+-- ==== 4. LES COUCHES ================================================
+--
+-- La carte et le fond, a la place ou les designateurs se trompent : un
+-- numero, un nom, et une couche omise.
+
+on sectionCouches
+  titre "4. les couches"
+  go to card "Atelier"
+  put "surCarte" into card field "A"
+  put "auFond"   into bg field "T"
+
+  egal "trois champs de carte", the number of card fields, 3
+  egal "un champ de fond", the number of bkgnd fields, 1
+  egal "card field 1 est A", card field 1, "surCarte"
+  egal "bkgnd field 1 est T", bkgnd field 1, "auFond"
+  egal "« field » sans couche vise la carte", field 1, "surCarte"
+  egal "le nom et le numero designent le meme", card field "A", card field 1
+
+  -- Le champ de fond n'est pas partage : chaque carte a son texte.
+  go to card "Deux"
+  put "chezDeux" into bg field "T"
+  go to card "Atelier"
+  egal "le fond garde un texte par carte", bg field "T", "auFond"
+  go to card "Deux"
+  egal "et l'autre le sien", bg field "T", "chezDeux"
+  go to card "Atelier"
+end sectionCouches
+
+
+-- ==== 5. LES DIX MESSAGES DU CLAVIER ================================
+--
+-- Les dix partent d'ici comme COMMANDES, remontent a la pile, et les
+-- gestionnaires du script de la pile les notent dans gVus. Ce qui est
+-- mesure, c'est la LIVRAISON ; ce que fait une touche que personne
+-- n'intercepte reste ouvert (docs/mesures/clavier.txt).
+
+on sectionClavier
+  global gVus
+  titre "5. les dix messages du clavier"
+  go to card "Atelier"
+
+  put empty into gVus
+  keyDown "z"
+  egal "keyDown", gVus, "keyDown z"
+
+  put empty into gVus
+  commandKeyDown "q"
+  egal "commandKeyDown", gVus, "commandKeyDown q"
+
+  put empty into gVus
+  controlKey 1
+  egal "controlKey", gVus, "controlKey 1"
+
+  put empty into gVus
+  functionKey 4
+  egal "functionKey", gVus, "functionKey 4"
+
+  put empty into gVus
+  arrowKey "left"
+  egal "arrowKey", gVus, "arrowKey left"
+
+  put empty into gVus
+  enterKey
+  egal "enterKey", gVus, "enterKey"
+
+  put empty into gVus
+  returnKey
+  egal "returnKey", gVus, "returnKey"
+
+  put empty into gVus
+  tabKey
+  egal "tabKey", gVus, "tabKey"
+
+  put empty into gVus
+  enterInField
+  egal "enterInField", gVus, "enterInField"
+
+  put empty into gVus
+  returnInField
+  egal "returnInField", gVus, "returnInField"
+
+  -- LES DIX A LA SUITE, pour voir qu'aucun n'en avale un autre.
+  put empty into gVus
+  keyDown "a"
+  arrowKey "right"
+  tabKey
+  egal "trois de suite, dans l'ordre", gVus, "keyDown a,arrowKey right,tabKey"
+  put empty into gVus
+
+  -- AU CLAVIER, POUR DE VRAI : tapez une lettre, une fleche, tabulation,
+  -- entree, puis cliquez le bouton « clavier ». Il relit gVus. C'est le
+  -- seul essai que ce script ne peut pas faire tout seul — une commande
+  -- part du script, une touche part de l'interface, et ce sont deux
+  -- chemins differents dans HC.
+end sectionClavier
+
+
+-- ==== 7. DEUX CHEMINS, UNE SEULE REPONSE ============================
+--
+-- CETTE SECTION N'A PAS BESOIN D'HYPERCARD POUR AVOIR RAISON, et c'est
+-- ce qui en fait la plus dure. Elle ne demande pas « qu'est-ce que
+-- HyperCard rend ? » mais « les deux tournures qui posent LA MEME
+-- question rendent-elles LA MEME chose ? ». Un ecart ici est un defaut
+-- de HC, quel que soit le comportement d'HyperCard : c'est ainsi qu'on
+-- a trouve « selectedChunk » qui rendait un nom la ou « foundChunk »
+-- rendait un numero — trois reponses pour un seul renseignement.
+--
+-- Une ligne qui echoue ici nomme donc directement le site a corriger.
+
+on sectionChemins
+  titre "7. deux chemins, une seule reponse"
+  go to card "Atelier"
+  put "alpha beta gamma delta" into card field "A"
+  put "auFond" into bg field "T"
+
+  -- les deux noms d'une longueur
+  egal "length et number of chars", the length of card field "A", the number of chars of card field "A"
+
+  -- char et chars designent le meme morceau
+  egal "char et chars", char 1 to 5 of card field "A", chars 1 to 5 of card field "A"
+
+  -- les trois orthographes de la couche du fond
+  egal "bg et bkgnd", bg field "T", bkgnd field "T"
+  egal "bkgnd et background", bkgnd field "T", background field "T"
+
+  -- le nom et le numero designent le meme champ
+  egal "le nom et le numero", word 2 of card field "A", word 2 of card field 1
+
+  -- le dernier mot, compte ou nomme
+  egal "last word et word n", last word of card field "A", word (the number of words of card field "A") of card field "A"
+
+  -- un designateur relu par « value » vaut ce qu'il designe
+  egal "value d'un designateur", value("card field 1"), card field "A"
+
+  -- le nom long et le nom court de la carte
+  egal "the name of this card", the name of this card, "card " & quote & "Atelier" & quote
+  egal "the short name", the short name of this card, "Atelier"
+  egal "le numero de cette carte", the number of this card, the number of card "Atelier"
+
+  -- l'existence, dans les deux sens
+  verifie "there is a card field A", there is a card field "A"
+  verifie "there is not a card field Absent", there is not a card field "Absent"
+
+  -- le compte, avec et sans portee explicite
+  egal "the number of card fields", the number of card fields, the number of card fields of this card
+
+  -- aller et retour par un champ
+  put "aller-retour" into card field "B"
+  egal "ce qu'on ecrit est ce qu'on relit", card field "B", "aller-retour"
+  put empty into card field "B"
+
+  -- LE RECTANGLE ET SES QUATRE BORDS. « the rect » est reconstitue a
+  -- partir des quatre proprietes qui le composent : si l'un des cinq
+  -- chemins compte a partir d'un autre coin, l'egalite tombe.
+  put the left of card field "A" & "," & the top of card field "A" into rc
+  put rc & "," & the right of card field "A" & "," & the bottom of card field "A" into rc
+  egal "the rect et ses quatre bords", the rect of card field "A", rc
+
+  -- LA VISIBILITE, dans les deux sens.
+  hide card field "B"
+  egal "hide met visible a false", the visible of card field "B", "false"
+  show card field "B"
+  egal "show le remet a true", the visible of card field "B", "true"
+
+  -- LES DEUX FAMILLES DE DESIGNATEURS DOIVENT S'ECRIRE PAREIL, et c'est
+  -- l'idiome meme du manuel : « if the result is empty then select the
+  -- foundChunk ». Si les deux ecritures divergent, ce seul idiome se
+  -- met a viser a cote, en silence.
+  go to card "Atelier"
+  put "alpha beta gamma delta" into bg field "T"
+  find "bet"
+  select the foundChunk
+  egal "select the foundChunk", the selectedChunk, the foundChunk
+  egal "et le texte suit", the selectedText, the foundText
+
+  -- LE TEXTE D'UN MORCEAU, par le morceau et par la propriete.
+  egal "selectedText et value(selectedChunk)", the selectedText, value(the selectedChunk)
+
+  -- LE STYLE POSE SUR UNE PLAGE SE RELIT SUR CETTE PLAGE.
+  put "alpha beta gamma" into card field "A"
+  set the textStyle of word 2 of card field "A" to bold
+  egal "le style pose se relit", the textStyle of word 2 of card field "A", "bold"
+  egal "et le voisin n'a pas bouge", the textStyle of word 1 of card field "A", "plain"
+  -- Mesure Basilisk : « plain », et non « mixed » — HC rendait deja cela.
+  egal "le style du champ a deux plages", the textStyle of card field "A", "plain"
+  set the textStyle of card field "A" to plain
+
+  -- LE DELIMITEUR D'ITEMS : avec « return », les items sont les lignes.
+  put "un" & return & "deux" & return & "trois" into card field "A"
+  set the itemDelimiter to return
+  egal "itemDelimiter return : items = lignes", the number of items of card field "A", the number of lines of card field "A"
+  egal "et le deuxieme item est la deuxieme ligne", item 2 of card field "A", line 2 of card field "A"
+  set the itemDelimiter to ","
+  put "alpha beta gamma delta" into card field "A"
+end sectionChemins

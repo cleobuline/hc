@@ -1,0 +1,232 @@
+BANC DE MESURE — LES TREIZE QUESTIONS DE LA PILE DE TORTURE
+===========================================================
+
+À faire tourner dans HyperCard (Basilisk II). Ce sont les treize lignes que le
+rapport de la pile de torture marque « ? » : HC y répond quelque chose, et
+personne n'a regardé ce qu'HyperCard répond. Tant que la colonne de droite est
+vide, RIEN n'est corrigé de ce côté — une supposition inscrite comme un fait
+coûte plus cher qu'un trou.
+
+Un seul bouton, pour ne taper qu'une fois.
+
+CE QUI REND CE BANC FIABLE. Le rapport de la pile de torture a été comparé
+LIGNE À LIGNE entre l'application (Cocoa) et le harnais sans interface : 119
+lignes identiques, à un saut de ligne de copier-coller près. Les quinze
+réponses de la colonne « HC » ci-dessous sont donc celles des deux chemins, pas
+celles d'un seul. C'est ce qui manquait aux mesures précédentes, où l'on a trois
+fois pris un relevé pour un autre.
+
+
+LA PILE À PRÉPARER
+------------------
+
+UNE carte, avec DEUX champs de carte, dans cet ordre :
+
+  · « A »  petit — il doit être le PREMIER champ de carte, donc
+           « card field 1 » ; c'est lui que les désignateurs calculés visent
+  · « R »  grand et défilant : il reçoit le rapport, et il doit être VIDE au
+           départ
+
+Rien d'autre. L'ordre de création est le numéro, et le bloc D en dépend.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  set the numberFormat to empty
+
+  -- ---- A. ÉCRIRE AU-DELÀ DE LA FIN ----
+  put "a,b" into card field "A"
+  put "c" into item 4 of card field "A"
+  put "A1 item 4   : [" & card field "A" & "]" & return after card field "R"
+  put "un" into card field "A"
+  put "trois" into line 3 of card field "A"
+  put "A2 line 3   : " & the number of lines of card field "A" & return after card field "R"
+  put "A3 texte    : [" & card field "A" & "]" & return after card field "R"
+
+  -- ---- B. UN MORCEAU DANS UN MORCEAU ----
+  put "alpha beta" & return & "gamma delta" into card field "A"
+  put "B1 mots l.2 : " & the number of words of line 2 of card field "A" & return after card field "R"
+  put "B2 style    : [" & the textStyle of word 1 of line 2 of card field "A" & "]" & return after card field "R"
+
+  -- ---- C. LE STYLE D'UN CHAMP QUI PORTE DEUX PLAGES ----
+  put "alpha beta gamma" into card field "A"
+  set the textStyle of word 2 of card field "A" to bold
+  put "C1 le mot   : [" & the textStyle of word 2 of card field "A" & "]" & return after card field "R"
+  put "C2 le champ : [" & the textStyle of card field "A" & "]" & return after card field "R"
+  set the textStyle of card field "A" to plain
+
+  -- ---- D. LA SÉLECTION APRÈS UN « select » DE SCRIPT ----
+  --
+  -- LES QUATRE LECTURES VONT DANS DES VARIABLES, ET RIEN NE S'ÉCRIT ENTRE
+  -- ELLES. C'est la mesure qui départage les deux explications, et elle a
+  -- déjà été ratée une fois parce que le banc écrivait dans un champ entre
+  -- chaque lecture — ce qui défait peut-être ce qu'il mesure.
+  put "alpha beta gamma" into card field "A"
+  select char 2 to 4 of card field "A"
+  put the selectedChunk into d1
+  put the selectedField into d2
+  put the selectedLine  into d3
+  put the selectedText  into d4
+  put "D1 chunk    : [" & d1 & "]" & return after card field "R"
+  put "D2 field    : [" & d2 & "]" & return after card field "R"
+  put "D3 line     : [" & d3 & "]" & return after card field "R"
+  put "D4 text     : [" & d4 & "]" & return after card field "R"
+
+  -- ---- E. LE DÉSIGNATEUR CALCULÉ — CE BLOC PEUT LEVER ----
+  --
+  -- C'est LE bloc qui compte : quatre commandes, et chacune peut ouvrir un
+  -- dialogue « Can't understand… ». SI UN DIALOGUE APPARAÎT, C'EST UNE
+  -- RÉPONSE : noter son texte exact et après quel marqueur il est tombé.
+  -- Chaque marqueur s'écrit AVANT sa commande, pour qu'on sache toujours
+  -- où le script s'est arrêté.
+  put "alpha beta" into card field "A"
+  put "card field 1" into ch
+
+  put "E1 avant hide" & return after card field "R"
+  hide ch
+  put "E1 hide     : visible " & the visible of card field 1 & return after card field "R"
+  show card field 1
+
+  put "E2 avant find in" & return after card field "R"
+  find "bet" in ch
+  put "E2 find in  : [" & the result & "]" & return after card field "R"
+
+  put "E3 avant set of" & return after card field "R"
+  set the textStyle of ch to bold
+  put "E3 set of   : [" & the textStyle of card field 1 & "]" & return after card field "R"
+  set the textStyle of card field 1 to plain
+
+  put "E4 avant lire" & return after card field "R"
+  put "E4 lire     : [" & the name of ch & "]" & return after card field "R"
+
+  put "E5 avant select" & return after card field "R"
+  put "char 7 to 10 of card field 1" into ou
+  select ou
+  put "E5 select   : [" & the selectedChunk & "]" & return after card field "R"
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   ce qu'HyperCard met dans les items et les lignes qu'on saute. Mesuré pour
+    les MOTS — l'écriture au-delà du dernier mot n'insère RIEN, « Sun Mon TueX »
+    — et c'est justement parce que cette mesure a démenti ce qu'on croyait
+    qu'il faut poser la même question aux items et aux lignes plutôt que de
+    l'en déduire. HC rend « a,b,,c » et trois lignes.
+
+B   un morceau DANS un morceau. HC répond (2, plain) ; le « select » de la
+    même forme, lui, dit « ne sait pas faire ». Si HyperCard répond aussi, il
+    n'y a rien à faire ; s'il refuse, c'est HC qui est trop permissif.
+
+C   le style d'un champ dont les mots n'ont pas le même. HC rend « plain ».
+    HyperCard rend peut-être « mixed » — auquel cas un script qui teste le
+    style d'un champ entier lit aujourd'hui une réponse fausse.
+
+D   LA QUESTION DU 27 SEPTEMBRE, restée ouverte. Deux explications collaient
+    aux mesures :
+        (a) par PROPRIÉTÉ — selectedChunk répond à un select de script,
+            selectedField et selectedLine non ;
+        (b) par POSITION — c'est l'écriture entre deux lectures qui défait la
+            sélection, et seule la première lecture répond.
+    Ce bloc les oppose : rien ne s'écrit entre les quatre lectures.
+        D2 et D3 vides, D1 plein  -> (a), c'est la propriété
+        D2 et D3 pleins           -> (b), et HC a raison de répondre
+    HC répond aux quatre : « card field 1 » et « line 1 of card field 1 ».
+
+E   LES CINQ SITES DU DÉSIGNATEUR CALCULÉ. E5 est le TÉMOIN : « select » a été
+    corrigé dans HC — l'idiome « select the foundChunk » est dans le manuel —,
+    donc E5 doit marcher des deux côtés. Les quatre autres décident :
+        elles marchent   -> HC doit les accepter aussi, et c'est un seul
+                            endroit à toucher (select_cible est déjà écrit
+                            pour être appelé de plusieurs commandes)
+        elles refusent   -> HC a raison de refuser, et le « do » d'HyperCard
+                            existe précisément pour ça
+    Les rendre permissives à tort rendrait HC plus tolérant qu'HyperCard : une
+    pile écrite ici ne tournerait plus ailleurs, et ça ne se verrait que le
+    jour où quelqu'un l'essaierait.
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — la colonne HC ; celle d'HyperCard est À REMPLIR
+═══════════════════════════════════════════════════════════════════════════
+
+                                   HC (avant)          HYPERCARD
+─────────────────────────────────  ──────────────────  ────────────────────
+A1 item 4 au-delà de deux items    a,b,,c              a,b,,c          ✓
+A2 line 3 au-delà d'une ligne      3 lignes            3 lignes        ✓
+B1 mots de la ligne 2              2                   2               ✓
+B2 style d'un mot d'une ligne      plain               plain           ✓
+C1 le style du mot                 bold                bold            ✓
+C2 le style du champ, deux plages  plain               plain           ✓
+D1 selectedChunk                   char 2 to 4 of      IDENTIQUE       ✓
+                                     card field 1
+D2 selectedField                   card field 1        card field 1    ✓
+D3 selectedLine                    line 1 of           IDENTIQUE       ✓
+                                     card field 1
+D4 selectedText                    lph                 lph             ✓
+E1 hide <variable>                 ne sait pas faire   VISIBLE FALSE   ✗
+E2 find in <variable>              Not found           TROUVE          ✗
+E3 set the textStyle of <variable> objet introuvable   BOLD            ✗
+E4 lire une propriété              card field "A"      card field "A"  ✓
+E5 select <variable>  (témoin)     char 7 to 10 of     IDENTIQUE       ✓
+                                     card field 1
+
+ONZE LIGNES SUR QUATORZE DISAIENT DÉJÀ LA MÊME CHOSE. C'est le résultat le
+plus utile du banc, et le moins spectaculaire : les onze « ? » que HC portait
+étaient onze bonnes réponses qu'on n'osait pas compter. Elles sont devenues des
+essais qui décident — le rapport de la pile de torture est passé de
+« 86 réussites, 13 à mesurer » à « 98 réussites, 2 à mesurer ».
+
+Et le témoin E5 a fait son travail : « select <variable> », corrigé la veille
+sur la seule foi du manuel, marche bien des deux côtés. Sans lui, trois refus
+de suite en E1..E3 auraient pu venir du banc plutôt que du code.
+
+
+LES TROIS DÉFAUTS, ET CE QU'ILS COÛTAIENT
+-----------------------------------------
+
+HyperCard ÉVALUE une référence d'objet avant de la résoudre. HC ne le faisait
+qu'au chemin de LECTURE (E4) et, depuis la veille, pour « select » (E5).
+
+1. « hide ch » / « show ch » — refus franc, « ne sait pas faire ». Le moins
+   grave des trois : il se voit.
+
+2. « find "bet" in ch » — LE PIRE. Une recherche restreinte à un champ
+   introuvable ne fouille rien, et répond « Not found » : la pile lit que le
+   mot n'y est pas, alors que personne n'a regardé. Aucune erreur, aucun
+   dialogue, une réponse fausse et plausible.
+
+3. « set the textStyle of ch to bold » — « objet introuvable », et l'écriture
+   disparaît.
+
+CORRIGÉ À DEUX ENDROITS, parce qu'il y a deux mécanismes dans ce noyau : hide,
+show et « find … in » résolvent par l'ARBRE (v3_resout_calcule), « set … of »
+par le TEXTE (resolve_calcule). Une seule aide aurait couvert l'un et laissé
+l'autre — l'incohérence interne exacte que la section 7 de la pile de torture
+traque. Les deux partagent v3_relit, qui réanalyse le texte et que « select »
+employait déjà.
+
+LES TÉMOINS NÉGATIFS TIENNENT (harnais selectcalcule, §10) : « hide rien »,
+« set the textStyle of rien » et « find in rien », où rien porte « zorglub »,
+refusent toujours. Un mot nu vaut lui-même en HyperTalk, et n'a donc rien à
+résoudre. Une correction qui accepte tout n'aurait rien corrigé.
+
+
+CE QUI RESTE OUVERT — deux lignes, et ce banc ne les couvre pas
+--------------------------------------------------------------
+
+Le CURSEUR DE « find » APRÈS UN ÉCHEC : une recherche qui ne trouve rien
+remet-elle le balayage au début ? HC le fait, parce que son curseur n'est rien
+d'autre que la dernière trouvaille et que « the foundText » se vide — ça, c'est
+mesuré. Ce qu'HyperCard fait de son curseur après un échec, personne ne l'a
+regardé.
+
+Il faut PLUSIEURS CARTES pour le voir, ce que ce banc n'a pas : d'où son
+absence ici. Les deux lignes « ? » qui restent dans la pile de torture sont
+celles-là.

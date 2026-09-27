@@ -1,0 +1,125 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[ERR]    !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
+98 reussites, aucun echec, 2 a mesurer.
+
+───── champ « R » ─────
+== 1. la recherche
+  ok     deux mots, deux prefixes
+  ok     chars : n'importe ou dans le mot
+  ok     string : la phrase, a cheval
+  ok     whole : refuse le cheval
+  ok     whole : accepte les mots entiers
+  ok     word : refuse le prefixe
+  ok     word : accepte le mot entier
+  ok     l'ordre des mots ne compte pas
+  ok     un mot au fond, l'autre sur la carte
+  ok     « in » restreint pour de vrai
+  ok     foundText : le mot trouve
+  ok     foundChunk : couche et numero
+  ok     foundField : la couche y est
+  ok     foundLine  : la couche aussi
+  ok     aucune carte marquee : rien
+  ok     une seule marquee : trouve
+  ok     et c'est ELLE qu'on atteint
+  ok     sans accent : la base replie
+  ok     international ne replie pas
+  ok     ni le trema
+  ok     avec l'accent : trouve
+  ok     « Not found » porte une majuscule
+  ok     et foundText se vide
+  ok     un champ dontSearch est saute
+  ok     et retrouve des qu'on le rend
+  ok     la premiere trouvaille
+  ok     la meme recherche avance
+  ok     un motif neuf part du curseur
+  ok     et trouve dans la carte courante
+  ok     le balayage reboucle
+  ok     dans la carte de depart
+  ok     sur le mot d'avant le curseur
+
+== 2. les morceaux qui debordent
+  ok     ecrire au-dela : rien d'insere
+  ok     et la longueur le dit
+  ok     le nombre de mots ne bouge pas
+  ok     item 4 pose ses virgules
+  ok     line 3 pose ses sauts
+  ok     style d'un mot absent
+  ok     style d'un mot present
+  ok     un champ absent leve
+
+== 3. la selection
+  ok     selectedChunk : couche et numero
+  ok     selectedText
+  ok     le numero suit le champ
+  ok     « bkgnd » et non « bg »
+  ok     le designateur se relit
+  ok     selectedField apres un select de script
+  ok     selectedLine  apres un select de script
+
+== 4. les couches
+  ok     trois champs de carte
+  ok     un champ de fond
+  ok     card field 1 est A
+  ok     bkgnd field 1 est T
+  ok     « field » sans couche vise la carte
+  ok     le nom et le numero designent le meme
+  ok     le fond garde un texte par carte
+  ok     et l'autre le sien
+
+== 5. les dix messages du clavier
+  ok     keyDown
+  ok     commandKeyDown
+  ok     controlKey
+  ok     functionKey
+  ok     arrowKey
+  ok     enterKey
+  ok     returnKey
+  ok     tabKey
+  ok     enterInField
+  ok     returnInField
+  ok     trois de suite, dans l'ordre
+
+== 7. deux chemins, une seule reponse
+  ok     length et number of chars
+  ok     char et chars
+  ok     bg et bkgnd
+  ok     bkgnd et background
+  ok     le nom et le numero
+  ok     last word et word n
+  ok     value d'un designateur
+  ok     the name of this card
+  ok     the short name
+  ok     le numero de cette carte
+  ok     there is a card field A
+  ok     there is not a card field Absent
+  ok     the number of card fields
+  ok     ce qu'on ecrit est ce qu'on relit
+  ok     the rect et ses quatre bords
+  ok     hide met visible a false
+  ok     show le remet a true
+  ok     select the foundChunk
+  ok     et le texte suit
+  ok     selectedText et value(selectedChunk)
+  ok     le style pose se relit
+  ok     et le voisin n'a pas bouge
+  ok     le style du champ a deux plages
+  ok     itemDelimiter return : items = lignes
+  ok     et le deuxieme item est la deuxieme ligne
+
+== 6. a mesurer dans HyperCard
+  ok     les mots d'une ligne
+  ok     le style d'un mot d'une ligne
+  ?      apres un echec, la recherche repart de : [Atelier]
+  ?      foundChunk apres un echec : [char 1 to 5 of card field 1]
+  ok     hide <variable> cache le champ
+  ok     find in <variable> trouve
+  ok     set la propriete de <variable>
+  ok     go to <variable>
+  ok     lire une propriete sur <variable>
+
+==============================
+98 reussites, aucun echec, 2 a mesurer.
+
+== les erreurs levees, et elles sont VOULUES ==
+     !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
+

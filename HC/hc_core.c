@@ -10333,43 +10333,125 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * MOTS, pas des expressions. Une pile qui aurait une variable nommée
  * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
  * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
-/* select — la sélection de texte dans un champ.
+/* ═══ LE DÉSIGNATEUR CALCULÉ ═══════════════════════════════════════════
  *
- *   select empty                     rien de sélectionné
- *   select text of <champ>           tout le contenu
- *   select <champ>                   idem, forme courte
- *   select char 3 to 5 of <champ>    un morceau
- *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
+ * MESURÉ DANS BASILISK II, le 27 septembre 2026, et ce n'était pas gagné —
+ * l'hypothèse inverse était défendable, le « do » d'HyperCard existant
+ * peut-être précisément pour ça :
  *
- * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
- * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte.
+ *     put "card field 1" into ch
+ *     hide ch                       -> HyperCard CACHE le champ
+ *     find "bet" in ch              -> HyperCard TROUVE
+ *     set the textStyle of ch to bold -> HyperCard POSE le style
+ *     the name of ch                -> card field "A"   (HC le faisait déjà)
+ *     select ou                     -> marche des deux côtés (témoin)
  *
- * Rend 0 sur les formes non couvertes — un ordinal (« select last line
- * of… »), une cible qui n'est pas un champ —, et l'ancien exécuteur les
- * reprend intactes. */
-static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+ * HyperCard ÉVALUE donc une référence d'objet avant de la résoudre, et HC
+ * refusait les trois premières : « ne sait pas faire », « Not found »,
+ * « objet introuvable ». Trois refus pour une tournure que HyperCard accepte,
+ * et le banc est dans docs/mesures/designateur_calcule.txt.
+ *
+ * DEUX AIDES, parce qu'il y a deux mécanismes dans ce noyau : hide, show et
+ * « find … in » résolvent par l'ARBRE (hct_resout), « set … of » par le TEXTE
+ * (resolve). Une seule aide aurait couvert un des deux et laissé l'autre —
+ * c'est exactement l'incohérence interne que la section 7 de la pile de
+ * torture traque.
+ *
+ * v3_relit est partagée avec v3_cmd_select, qui faisait déjà ce détour pour
+ * « select the foundChunk » : le lexer, l'analyseur, la réserve à libérer.
+ * L'écrire deux fois aurait donné deux façons de réanalyser un désignateur. */
+typedef struct {
+    HctLot     lot;
+    HctReserve res;
+    int        ouvert;      /* le lot et la réserve sont-ils à libérer ? */
+} V3Relu;
+
+/* Réanalyse un TEXTE comme UNE expression complète. Rend le nœud, ou NULL.
+ * Dans les deux cas l'appelant doit appeler v3_relu_libere. */
+static HctNoeud *v3_relit(const char *txt, V3Relu *r)
 {
-    int i = 0, avant = 0, apres = 0;
+    memset(r, 0, sizeof *r);
+    if (!txt || !*txt) return NULL;
+    if (!hct_lex(txt, &r->lot)) { hct_lot_libere(&r->lot); return NULL; }
+    r->ouvert = 1;
 
-    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
-        char m[16];
-        v3_brut(n->fils[i], m, sizeof m);
-        if      (ci_equal(m, "before")) { avant = 1; i++; }
-        else if (ci_equal(m, "after"))  { apres = 1; i++; }
+    HctAnalyseur a;
+    hct_analyseur_init(&a, &r->lot, &r->res);
+    HctNoeud *n = hct_expression(&a);
+
+    /* TOUT le texte doit avoir été consommé, et sans faute : un désignateur
+     * analysé à moitié viserait à côté en silence. */
+    const HctJeton *reste = &r->lot.jetons[a.i];
+    if (!n || a.nerreurs ||
+        (reste->genre != HCT_FIN && reste->genre != HCT_EOL))
+        return NULL;
+    return n;
+}
+
+static void v3_relu_libere(V3Relu *r)
+{
+    if (!r->ouvert) return;
+    hct_reserve_libere(&r->res);
+    hct_lot_libere(&r->lot);
+    r->ouvert = 0;
+}
+
+/* hct_resout, plus le désignateur calculé. Rend NULL comme hct_resout, et
+ * SANS laisser d'erreur derrière elle : un « hide menuBar » ou un « show all
+ * cards » doit continuer de repartir intact à l'ancien chemin, qui porte son
+ * propre message. C'est pourquoi l'erreur éventuelle de l'évaluation est
+ * remise comme elle était — sinon un mot qui ne désigne rien ferait tomber le
+ * gestionnaire là où il ne faisait que changer de chemin. */
+static Object *v3_resout_calcule(HctContexte *ctx, const HctNoeud *n)
+{
+    Object *o = hct_resout(ctx, n);
+    if (o || ctx->erreur) return o;
+
+    /* UN NŒUD QUI EST DÉJÀ UNE RÉFÉRENCE D'OBJET N'A RIEN À ÉVALUER.
+     *
+     * « hide card field 1 » sur une carte qui n'a pas ce champ est un objet
+     * INTROUVABLE, pas un désignateur calculé. L'évaluer n'aboutit à rien — un
+     * nœud OBJET n'est pas une expression — et part donc chez v3_recours,
+     * c'est-à-dire chez l'ANCIEN moteur : trois emprunts de plus au relevé,
+     * « recours objet: card field 1 » en tête, pour une tournure qui
+     * fonctionnait déjà.
+     *
+     * C'est le harnais quireste qui l'a dit, et c'est son seul métier :
+     * mesurer ce qui repart vers v1. Une correction qui rouvre une porte qu'on
+     * passe des mois à fermer n'en est pas une. */
+    if (n->genre == HCTN_OBJET || n->genre == HCTN_CHUNK) return NULL;
+
+    const char *err_avant = ctx->erreur;
+    const HctNoeud *fautif_avant = ctx->fautif;
+
+    ARENA_MARK;
+    char *txt = arena_buf();
+    v3_val_texte(ctx, n, txt, HC_VAL);
+
+    Object *res = NULL;
+    if (!ctx->erreur) {
+        V3Relu r;
+        HctNoeud *relu = v3_relit(txt, &r);
+        /* Le nœud relu doit être une RÉFÉRENCE D'OBJET. Sans ce test, le
+         * texte « bonjour » repartirait en résolution et l'on ne saurait plus
+         * dire d'où vient un refus. */
+        if (relu && relu->genre == HCTN_OBJET) res = hct_resout(ctx, relu);
+        v3_relu_libere(&r);
     }
+    if (!res) { ctx->erreur = err_avant; ctx->fautif = fautif_avant; }
+    ARENA_FREE;
+    return res;
+}
 
-    /* « select » nu : plus rien de sélectionné. */
-    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
-
-    const HctNoeud *c = n->fils[i];
-
-    if (c->genre == HCTN_IDENT) {
-        char m[16];
-        v3_brut(c, m, sizeof m);
-        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
-        return 0;                       /* une variable : ancien chemin */
-    }
-
+/* Le DÉSIGNATEUR d'un « select », résolu en (champ, début, fin).
+ *
+ * Extrait de v3_cmd_select pour pouvoir être appelé DEUX FOIS : une fois sur
+ * le nœud écrit dans le script, une fois sur le nœud obtenu en réanalysant un
+ * désignateur CALCULÉ — « select the foundChunk ». Rend 1 s'il a visé
+ * quelque chose, 0 si la forme ne lui dit rien. */
+static int select_cible(HctContexte *ctx, const HctNoeud *c,
+                        Object **pf, int *pst, int *pen)
+{
     Object *f = NULL;
     int st = 0, en = 0;
 
@@ -10449,6 +10531,109 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         st = bo.deb; en = bo.fin;
     } else {
         return 0;
+    }
+
+    *pf = f; *pst = st; *pen = en;
+    return 1;
+}
+
+/* select — la sélection de texte dans un champ.
+ *
+ *   select empty                     rien de sélectionné
+ *   select text of <champ>           tout le contenu
+ *   select <champ>                   idem, forme courte
+ *   select char 3 to 5 of <champ>    un morceau
+ *   select last word of <champ>      un ordinal
+ *   select the foundChunk            un désignateur CALCULÉ
+ *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
+ *
+ * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
+ * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte. La seule
+ * exception est le désignateur calculé, qui est du texte par nature — c'est
+ * une valeur, pas une écriture — et qu'il faut donc réanalyser.
+ *
+ * Rend 0 sur ce qui ne désigne rien — un mot nu, une cible qui n'est pas un
+ * champ —, et l'ancien exécuteur, qui n'a pas de « select » du tout, le refuse
+ * alors tout haut. Ce refus est une chance : c'est lui qui a rendu visible
+ * « select the foundChunk », au lieu d'une sélection silencieusement inchangée. */
+static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = 0, avant = 0, apres = 0;
+
+    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(n->fils[i], m, sizeof m);
+        if      (ci_equal(m, "before")) { avant = 1; i++; }
+        else if (ci_equal(m, "after"))  { apres = 1; i++; }
+    }
+
+    /* « select » nu : plus rien de sélectionné. */
+    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
+
+    const HctNoeud *c = n->fils[i];
+
+    if (c->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(c, m, sizeof m);
+        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
+    }
+
+    Object *f = NULL;
+    int st = 0, en = 0;
+
+    if (!select_cible(ctx, c, &f, &st, &en)) {
+        if (ctx->erreur) return 1;
+        /* LE SITE JUMEAU du garde-fou de v3_resout_calcule, et il était là
+         * aussi : « select card field "Absente" » ou « select word 99 of … »
+         * sont des désignateurs ÉCRITS qui n'ont rien donné, pas des
+         * désignateurs calculés. Les évaluer ne peut rien rendre et fait un
+         * détour par l'ancien moteur. */
+        if (c->genre == HCTN_OBJET || c->genre == HCTN_CHUNK) return 0;
+
+        /* LE DÉSIGNATEUR CALCULÉ, et c'est l'idiome du manuel lui-même :
+         *
+         *     if the result is empty then select the foundChunk
+         *     put the foundChunk into ou ... select ou
+         *
+         * Les deux rendaient « ne sait pas faire » — mesuré. Le nœud n'est
+         * alors ni un objet ni un morceau mais une LECTURE (une propriété,
+         * une variable, un appel), et sa VALEUR est le désignateur. On
+         * l'évalue, on réanalyse ce texte, et l'on revise la même cible.
+         *
+         * UNE SEULE FOIS : le nœud réanalysé doit être un désignateur pour de
+         * bon. Sans cette borne, « select x » où x contient « x » tournerait
+         * en rond, et un mot nu — « select zorglub » — repartirait à l'ancien
+         * interprète après un détour inutile. C'est aussi ce que fait
+         * hct_evalue_texte pour « the value of », avec la même prudence.
+         *
+         * Rendre 0 quand le texte n'est pas un désignateur laisse le refus
+         * inchangé : « ne sait pas faire : select zorglub ». */
+        ARENA_MARK;
+        char *txt = arena_buf();
+        v3_val_texte(ctx, c, txt, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+
+        HctLot lot;
+        HctReserve res;
+        memset(&res, 0, sizeof res);
+        if (!hct_lex(txt, &lot)) { hct_lot_libere(&lot); ARENA_FREE; return 0; }
+
+        HctAnalyseur a;
+        hct_analyseur_init(&a, &lot, &res);
+        HctNoeud *relu = hct_expression(&a);
+
+        /* Tout le texte doit avoir été consommé, et sans faute : un
+         * désignateur à moitié analysé viserait à côté en silence. */
+        const HctJeton *reste = &lot.jetons[a.i];
+        int pris = 0;
+        if (relu && !a.nerreurs &&
+            (reste->genre == HCT_FIN || reste->genre == HCT_EOL))
+            pris = select_cible(ctx, relu, &f, &st, &en);
+
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        ARENA_FREE;
+        if (!pris) return ctx->erreur ? 1 : 0;
     }
 
     if      (avant) hc_set_selection(f, st, 0);
@@ -11232,7 +11417,12 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
          * l'inverse de ce que « in » demande. */
         Object *seul = NULL;
         if (nchamp) {
-            seul = hct_resout(ctx, nchamp);
+            /* v3_resout_calcule : « find "bet" in ch », où ch porte
+             * « card field 1 », TROUVE chez HyperCard — mesuré — et rendait
+             * ici « Not found », ce qui est le pire des refus : une recherche
+             * restreinte à un champ introuvable ne fouille rien, et répond
+             * comme si le mot n'y était pas. */
+            seul = v3_resout_calcule(ctx, nchamp);
             if (!seul) { g_current_card = saved; continue; }
         }
 
@@ -11650,6 +11840,52 @@ static const char *chunk_base_ref(const char *ref)
     return cour;
 }
 
+/* resolve(), plus le désignateur CALCULÉ — la version par le TEXTE.
+ *
+ * « set … of » ne résout pas par l'arbre mais par la référence reconstituée,
+ * si bien que v3_resout_calcule ne lui sert de rien. Le geste est le même, au
+ * matériau près.
+ *
+ * UN SEUL MOT, ET C'EST LA CONDITION QUI COMPTE. Une référence de plusieurs
+ * mots — « card field 1 » — est un désignateur : resolve l'a déjà vue, et
+ * l'évaluer serait pire qu'inutile, puisque « card field 1 » ÉVALUÉ rend le
+ * TEXTE du champ et non sa désignation. On n'évalue donc que ce qui peut être
+ * une variable : un mot nu. Un mot nu qui n'est pas une variable vaut
+ * lui-même en HyperTalk — le refus reste alors intact, ce qui est le témoin
+ * négatif du harnais.
+ *
+ * Mesuré dans Basilisk : « set the textStyle of ch to bold » POSE le style.
+ * Voir docs/mesures/designateur_calcule.txt. */
+static Object *resolve_calcule(const char *ref)
+{
+    Object *o = resolve(ref);
+    if (o || !ref) return o;
+
+    const char *s = skip_spaces(ref);
+    if (!*s) return NULL;
+    const char *p = s;
+    while (*p && !isspace((unsigned char)*p)) p++;
+    if (*skip_spaces(p)) return NULL;          /* plusieurs mots : pas une variable */
+
+    char nom[64];
+    snprintf(nom, sizeof nom, "%.*s", (int)(p - s), s);
+
+    /* var_get ET NON eval_expr, et le relevé l'a exigé.
+     *
+     * eval_expr est l'évaluateur de l'ANCIEN moteur : l'appeler ici comptait
+     * trois emprunts de plus au relevé — « v1 terme recours expr », « v1
+     * fonction recours expr », « recours objet: card field 1 » — alors que
+     * tout ce qu'on veut est la valeur d'une variable. Une correction qui
+     * rouvre une porte qu'on passe des mois à fermer n'en est pas une, et
+     * c'est le harnais quireste, dont c'est le seul métier, qui l'a dit.
+     *
+     * var_get rend NULL si le mot n'est pas une variable : le refus reste
+     * alors intact, ce qui est exactement le témoin négatif voulu. */
+    const char *val = var_get(nom);
+    if (!val || !*val) return NULL;
+    return resolve(val);
+}
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
@@ -11939,7 +12175,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
     }
 
-    Object *o = resolve(refbuf);
+    Object *o = resolve_calcule(refbuf);
     if (!o) {
         /* Distinguer les deux echecs : une reference d'objet inconnue, ou
          * un morceau de texte qui n'existe pas (champ vide, rang au-dela
@@ -12941,8 +13177,14 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils < 1) return 0;
 
     /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
-     * NULL et l'ancien chemin s'en charge, avec son message d'erreur. */
-    Object *o = hct_resout(ctx, n->fils[0]);
+     * NULL et l'ancien chemin s'en charge, avec son message d'erreur.
+     *
+     * v3_resout_calcule et non hct_resout : « hide ch », où ch porte
+     * « card field 1 », CACHE le champ chez HyperCard — mesuré dans Basilisk —
+     * et rendait ici « ne sait pas faire ». Les deux mots-clés ci-dessus
+     * repartent comme avant : ils ne se résolvent pas davantage une fois
+     * évalués. */
+    Object *o = v3_resout_calcule(ctx, n->fils[0]);
     if (!o) return 0;
 
     g_visual_dirty = 1;

@@ -1,0 +1,184 @@
+BANC DE MESURE — LE DÉSIGNATEUR CALCULÉ
+=======================================
+
+À faire tourner dans HyperCard (Basilisk II). Une seule question, posée cinq
+fois : UNE COMMANDE ACCEPTE-T-ELLE UN DÉSIGNATEUR QU'ELLE DOIT D'ABORD
+ÉVALUER ?
+
+    select the foundChunk              une lecture de propriété
+    put the foundChunk into ou         ... puis une variable
+    select ou
+    hide ou
+    find "bet" in ou
+    set the textStyle of ou to bold
+    go to ou
+
+C'est le contraire d'un cas exotique : « the foundChunk » et « the
+selectedChunk » n'existent QUE pour être relus, et l'idiome est dans le manuel
+d'HyperCard, mot pour mot :
+
+    find "bet"
+    if the result is empty then select the foundChunk
+
+D'où vient ce banc : la pile de torture (harnais torture2, section 7) ne
+compare pas HC à HyperCard, elle compare HC à LUI-MÊME — deux tournures qui
+posent la même question doivent rendre la même chose. « select char 7 to 10 of
+card field 1 » sélectionnait ; « select the foundChunk », qui vaut ce même
+texte, rendait « ne sait pas faire ». L'écart interne a suffi à le trouver, et
+il n'a fallu aucune mesure pour savoir qu'il y avait un défaut.
+
+Les QUATRE AUTRES commandes ont été mesurées du même coup, et elles ne sont
+PAS tranchées : HyperCard exige peut-être « do "hide" && ou » pour toutes. Ce
+banc est là pour le dire.
+
+
+LA PILE À PRÉPARER
+------------------
+
+DEUX cartes partageant un fond, avec sur la carte 1 :
+
+  · un CHAMP DE CARTE nommé  A   (« card field 1 »)
+  · un CHAMP DE FOND  nommé  T
+  · un champ  R  grand et défilant, pour le rapport
+  · un bouton portant le script ci-dessous
+
+La deuxième carte ne sert qu'au « go to ».
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  put "alpha beta gamma" into card field "A"
+  put "sigma tau" into bg field "T"
+
+  -- A. L'IDIOME DU MANUEL
+  find "bet"
+  if the result is empty then select the foundChunk
+  put "A1 foundChunk    : " & the foundChunk & return after card field "R"
+  put "A2 selectedChunk : " & the selectedChunk & return after card field "R"
+  put "A3 selectedText  : " & the selectedText & return after card field "R"
+
+  -- B. LE MÊME DÉSIGNATEUR, RANGÉ DANS UNE VARIABLE
+  select empty
+  put the foundChunk into ou
+  select ou
+  put "B1 selectedChunk : " & the selectedChunk & return after card field "R"
+
+  -- C. LES QUATRE AUTRES COMMANDES
+  put "card field 1" into ch
+  hide ch
+  put "C1 hide     : visible " & the visible of card field 1 & return after card field "R"
+  show card field 1
+  find "bet" in ch
+  put "C2 find in  : [" & the result & "]" & return after card field "R"
+  set the textStyle of ch to bold
+  put "C3 set of   : " & the textStyle of card field 1 & return after card field "R"
+  set the textStyle of card field 1 to plain
+  put "C4 lire     : " & the name of ch & return after card field "R"
+  put "card 2" into ca
+  go to ca
+  put "C5 go to    : carte " & the number of this card & return after card field "R"
+  go to card 1
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+SI UN DIALOGUE APPARAÎT, C'EST UNE RÉPONSE, pas un échec du banc : noter son
+TEXTE EXACT et après quelle ligne il est tombé. « Can't understand hide ch »
+est précisément le renseignement cherché.
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   l'idiome du manuel. Il DOIT marcher — c'est écrit noir sur blanc dans le
+    Script Language Guide, et « the foundChunk » ne sert à rien d'autre.
+    Corrigé dans HC sans attendre Basilisk, pour cette raison et parce que
+    l'écart était interne.
+
+B   la même chose par une variable. Si A marche et B non, c'est que HyperCard
+    évalue la propriété mais pas la variable, ce qui serait une distinction
+    surprenante — à savoir tout de même.
+
+C   LES QUATRE SITES JUMEAUX, et c'est le vrai objet du banc. Rien n'est
+    corrigé de ce côté tant qu'on ne sait pas : accepter partout un
+    désignateur calculé rendrait HC plus permissif qu'HyperCard, et une pile
+    écrite pour HC ne tournerait plus ailleurs. Le « do » d'HyperCard existe
+    peut-être justement parce que ces commandes refusent.
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — la colonne HC, le 27 septembre 2026
+═══════════════════════════════════════════════════════════════════════════
+
+                                  HC (avant)          HYPERCARD
+────────────────────────────────  ──────────────────  ──────────────────────
+A2 select the foundChunk          ne sait pas faire   marche          ✓
+B1 select <variable>              ne sait pas faire   marche          ✓
+C1 hide <variable>                ne sait pas faire   CACHE LE CHAMP  ✗
+C2 find in <variable>             Not found           TROUVE          ✗
+C3 set the textStyle of <var>     objet introuvable   POSE LE STYLE   ✗
+C4 lire une propriété             card field "A"      card field "A"  ✓
+C5 go to <variable>               marche              marche          ✓
+
+MESURÉ DANS BASILISK II LE 27 SEPTEMBRE 2026, et l'hypothèse prudente était
+FAUSSE. On avait écrit ici que « le do d'HyperCard existe peut-être précisément
+parce que ces commandes refusent » : non. HyperCard ÉVALUE une référence
+d'objet avant de la résoudre, partout, et « do » sert à autre chose — à
+construire une commande entière, pas un désignateur.
+
+C'est la troisième fois cette semaine qu'une symétrie qui paraissait évidente
+s'est révélée fausse dans l'autre sens : la forme de base de « find » replie
+les accents et « international » non, l'écriture au-delà d'un mot n'insère pas
+d'espace, et maintenant les commandes acceptent ce qu'on les croyait faites
+pour refuser. Chaque fois, la prudence allait dans le mauvais sens — et chaque
+fois, ne rien corriger AVANT la mesure était quand même la bonne décision.
+
+
+LES TROIS CORRECTIONS
+---------------------
+
+LE PIRE DES TROIS EST « find in ». Les deux autres refusent tout haut ;
+celui-là répond « Not found ». Une recherche restreinte à un champ introuvable
+ne fouille rien et rend la même réponse que si le mot n'y était pas : la pile
+lit une réponse fausse, plausible, et sans un mot d'avertissement. Un refus
+franc est un cadeau — c'est lui qui a fait trouver « select the foundChunk » du
+premier coup.
+
+DEUX MÉCANISMES, DONC DEUX AIDES :
+
+    v3_resout_calcule   par l'ARBRE  — hide, show, find … in
+    resolve_calcule     par le TEXTE — set … of
+
+« set » ne résout pas par le nœud mais par la référence reconstituée, si bien
+que la première ne lui servait de rien. N'en écrire qu'une aurait corrigé deux
+commandes sur trois et laissé la troisième — l'incohérence interne exacte que
+la section 7 de la pile de torture traque. Les deux partagent v3_relit, le
+détour par le lexer et l'analyseur que « select » faisait déjà : l'écrire deux
+fois aurait donné deux façons de réanalyser un désignateur.
+
+resolve_calcule N'ÉVALUE QU'UN SEUL MOT, et c'est la condition qui compte. Une
+référence de plusieurs mots est un désignateur : resolve l'a déjà vue, et
+l'évaluer serait pire qu'inutile — « card field 1 » ÉVALUÉ rend le TEXTE du
+champ, pas sa désignation. On n'évalue donc que ce qui peut être une variable.
+
+LES TÉMOINS NÉGATIFS (harnais selectcalcule, §10) : « hide rien », « set the
+textStyle of rien » et « find in rien », où rien porte « zorglub », refusent
+toujours. Un mot nu vaut lui-même en HyperTalk, et n'a rien à résoudre.
+
+
+LES SITES QUI RESTENT, ET ILS SONT NOMMÉS
+-----------------------------------------
+
+hct_resout est appelée à dix-sept endroits de hc_core.c ; trois viennent d'être
+corrigés, deux marchaient déjà. Les autres — delete, push, pop, sort, la
+suppression d'objet, la fenêtre de pile — n'ont PAS été mesurés, et ne sont
+donc pas touchés. La mesure d'aujourd'hui rend probable qu'ils acceptent tous
+un désignateur calculé chez HyperCard, mais probable ne suffit pas : c'est
+exactement le raisonnement qui a fait écrire, plus haut dans ce fichier, que
+« do » existait parce que les commandes refusaient.
+
+Le banc s'étend d'une ligne par commande. Il suffit de le rejouer.
