@@ -32,12 +32,13 @@
  *     explications y collent — la propriété, ou l'écriture qui suit et qui
  *     défait la sélection — et la mesure qui les oppose reste à faire ;
  *
- *   · le même banc joué DANS L'APPLICATION HC rend vide pour les deux, là où
- *     ce harnais — sans interface — répond. Ce n'est donc pas le noyau mais
- *     le chemin Cocoa, que rien ici ne peut atteindre.
+ * Côté HC en revanche il n'y a rien : mesuré dans l'application, la sélection
+ * survit au « select » d'un script ET à une écriture dans un autre champ, et
+ * les trois propriétés répondent. Un « [] [] » relevé d'abord venait de la
+ * boîte de message, où les variables ne survivent pas d'une ligne à l'autre.
  *
- * Ce fichier tient donc le FORMAT, qui est mesuré, et pas la présence, qui ne
- * l'est pas. Voir docs/mesures/selection.txt.
+ * Ce fichier tient donc le FORMAT, qui est mesuré des deux côtés, et pas la
+ * présence chez HyperCard, qui ne l'est pas. Voir docs/mesures/selection.txt.
  *
  * L'ALLER-RETOUR EST LA SEULE VÉRIFICATION QUI COMPTE. Un désignateur sert à
  * être RELU — « put the selectedChunk into ou » puis « value(ou) ». Un numéro

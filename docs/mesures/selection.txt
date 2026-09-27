@@ -204,27 +204,40 @@ les deux cas, ce qui est plus généreux, et rendre muet sur la mauvaise lecture
 retirerait une réponse utile aux piles qui s'en servent.
 
 
-3. ET UN DÉFAUT DE HC QUE LE HARNAIS NE PEUT PAS VOIR              OUVERT
+3. LE « DÉFAUT DE HC » N'EXISTAIT PAS                             CLOS
 ---------------------------------------------------------------------------
 
-Le même banc, joué DANS L'APPLICATION HC, rend « [] [] » — les deux vides.
-Dans le harnais sans interface, le noyau rend « card field 1 » pour les deux.
-
-Ce n'est donc pas le noyau : c'est le chemin Cocoa. Un « select » lancé par un
-script passe par hc_set_selection, qui prévient l'hôte ; cocoa_selection_changed
-referme alors l'édition en cours et en ouvre une sur le champ visé. Quelque
-part dans cet aller-retour, la sélection que le noyau venait de poser se perd.
-
-LA MESURE QUI DIT OÙ REGARDER, à faire dans HC :
+Le même banc joué dans l'application avait rendu « [] [] », et j'en ai conclu
+que le chemin Cocoa perdait la sélection. Mesure suivante, dans un BOUTON :
 
     select char 2 to 4 of card field 1
-    put "chunk [" & the selectedChunk & "]  field [" & the selectedField
-        & "]  texte [" & the selectedText & "]"
+    put the selectedField into avant
+    put "x" into card field 2
+    put the selectedField into apres
+    -> AVANT [card field 1]   APRES [card field 1]
 
-    les TROIS vides  -> le noyau n'a plus de sélection du tout, et le
-                        problème est dans l'aller-retour Cocoa
-    chunk plein      -> les propriétés divergent entre elles, ce qui est
-                        impossible d'après le code : elles lisent toutes
-                        g_sel_field
+et, en lisant les trois propriétés d'un coup :
 
+    chunk [char 2 to 4 of card field 1]  field [card field 1]  texte [lph]
 
+Tout répond. La sélection survit au « select » d'un script ET à une écriture
+dans un autre champ.
+
+LE « [] [] » VENAIT DE LA BOÎTE DE MESSAGE. J'avais donné ces cinq lignes en
+vrac, sans dire qu'elles allaient dans un bouton, et c'est l'usage qu'elles
+invitent. Or les variables n'y survivent pas d'une ligne à l'autre : « a » et
+« b » y sont vides sans que la sélection y soit pour rien.
+
+TROIS FOIS SUR CETTE SEULE QUESTION, C'EST L'INSTRUMENT QUI A MENTI :
+
+    · un relevé non étiqueté, pris pour HyperCard alors qu'il venait de HC ;
+    · un banc qui écrivait dans un champ entre chaque lecture, ce qui pouvait
+      défaire ce qu'il mesurait ;
+    · un banc donné en lignes détachées, joué là où les variables ne vivent
+      pas.
+
+Les trois sont de ma main. J'ai passé la journée à répéter qu'il faut mesurer
+plutôt que raisonner, et les erreurs qui ont coûté le plus cher ne venaient pas
+d'un raisonnement : elles venaient de bancs qui ne mesuraient pas ce que je
+croyais. Un banc se vérifie comme le code — avec un témoin positif, et en
+disant COMMENT le jouer.
