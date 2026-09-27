@@ -1,0 +1,36 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. LA SÉLECTION dans un champ de CARTE
+   chunk : char 2 to 4 of card field 1
+   field : card field 1
+   line  : line 1 of card field 1
+   text  : lph
+      (HyperCard : char 2 to 4 of card field 1 / card field 1
+       / line 1 of card field 1)
+== 2. LA SÉLECTION dans un champ de FOND : « bkgnd », pas « bg »
+   chunk : char 7 to 9 of bkgnd field 1
+   field : bkgnd field 1
+   line  : line 1 of bkgnd field 1
+== 3. LE NUMÉRO EST CELUI DU CHAMP, et il change
+   field : card field 2   (le DEUXIÈME champ de carte)
+== 4. LA SECONDE LIGNE : le numéro de ligne suit la sélection
+   line  : line 2 of card field 1
+   chunk : char 18 to 30 of card field 1
+      (et un morceau DE morceau, que select ne sait pas faire :)
+   [ERR]    !! ne sait pas faire : select word 1 of line 2 of card field "A"
+== 5. LA FAMILLE « found… », qui s'écrit pareil
+   chunk : char 7 to 10 of card field 1
+   field : card field 1
+   line  : line 1 of card field 1
+== 6. L'ALLER-RETOUR : le désignateur SE RELIT
+   carte : char 7 to 10 of card field 1  ->  [beta]
+   fond  : char 7 to 9 of bkgnd field 1  ->  [tau]
+== 7. LE NIVEAU OBJET dit la même chose que le niveau global
+   global : char 2 to 4 of card field 1
+   objet  : char 2 to 4 of card field 1
+   ligne  : line 1 of card field 1
+      (un autre champ ne porte pas la sélection :)
+   autre  : []
+== 8. SANS SÉLECTION, les trois sont vides
+   chunk : []
+   field : []
+   line  : []

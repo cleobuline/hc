@@ -153,26 +153,48 @@ de Basilisk portait un champ de plus entre les deux. Le numéro est bien celui
 du champ, et c'est ce qu'on voulait savoir.
 
 
-2. selectedField ET selectedLine : VIDES chez HyperCard        À CONFIRMER
+2. selectedField ET selectedLine : MON BANC LES A VIDÉS LUI-MÊME    CORRIGÉ
 ---------------------------------------------------------------------------
 
-Les deux rendent VIDE dans Basilisk, avec une sélection pourtant bien posée —
-selectedChunk la décrit au même instant. HC rend « field "A" » et « 1 ».
+LES DEUX ONT RENDU VIDE dans le premier relevé, et j'ai failli en tirer une
+règle. Un second essai, la sélection posée A LA MAIN puis lue depuis un
+bouton, rend :
 
-C'est assez surprenant pour ne pas se corriger sur une seule lecture. Deux
-explications tiennent debout :
+    the selectedField -> card field 1
+    the selectedLine  -> line 1 of card field 1
 
-  (a) les deux propriétés N'EXISTENT PAS dans cette version d'HyperCard, et
-      une propriété inconnue s'y lit comme du vide ;
+Elles existent donc, et elles répondent. LE VIDE VENAIT DU BANC LUI-MÊME.
 
-  (b) elles existent et ne se remplissent que lorsque la sélection vient de
-      l'UTILISATEUR — un champ en cours d'édition — et non d'un « select »
-      lancé par un script.
+Relis l'ordre des lignes : chaque lecture est enveloppée dans un « put … after
+card field "R" », c'est-à-dire une ÉCRITURE DANS UN AUTRE CHAMP. Et le relevé
+dessine exactement ce motif —
 
-Une ligne les sépare : lire une propriété au nom INVENTÉ. Si « the zorglubulle »
-rend vide elle aussi, c'est (a) ; si elle rend autre chose — son propre texte,
-une erreur —, c'est que selectedField existe bel et bien, et c'est (b).
+    A1  premier accès après le select   -> répond
+    A2  après une écriture dans R       -> vide
+    A3  après une autre                 -> vide
+    B1  premier après le select suivant -> répond
+    B2  après une écriture              -> vide
+    C1  premier après le select suivant -> répond
+    C2  après une écriture              -> vide
 
-Tant que ce n'est pas tranché, HC garde ses valeurs : rendre vide sur la
-lecture (a) casserait les piles qui s'en servent, pour une fidélité qu'on
-n'aurait pas mesurée.
+— la PREMIÈRE lecture qui suit chaque « select » répond, toutes les suivantes
+non. Le banc défaisait la sélection qu'il venait de poser, et je lisais le
+résultat de sa propre destruction.
+
+C'est la faute la plus coûteuse du lot, parce qu'elle a l'air d'une mesure. Un
+instrument qui modifie ce qu'il observe ne se dénonce pas : il rend des
+chiffres réguliers, et « les deux rendent vide » est une phrase parfaitement
+présentable.
+
+CE QUE ÇA LAISSE OUVERT, et qui n'est pas mesuré : ÉCRIRE DANS UN CHAMP
+DÉFAIT-IL LA SÉLECTION ? C'est ce que suggère le motif ci-dessus chez
+HyperCard. HC, lui, la garde — A2 et A3 y répondent. La question mérite son
+propre banc, écrit cette fois pour ne pas se marcher dessus : lire la
+sélection dans une VARIABLE, et n'écrire dans le champ de rapport qu'à la
+toute fin.
+
+    select char 2 to 4 of card field 1
+    put the selectedField into a
+    put "x" into card field 2          -- une écriture, ailleurs
+    put the selectedField into b
+    put "[" & a & "] [" & b & "]"      -- a répond, b vide ?

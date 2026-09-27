@@ -5786,20 +5786,31 @@ static int call_function_body(const char *t, char *out, int outlen)
             selection_text(out, outlen); return 1;
         }
         if (ci_equal(name, "selectedfield")) {
-            if (g_sel_field) hc_describe(g_sel_field, out, outlen);
+            if (g_sel_field) champ_designe(g_sel_field, out, outlen);
             else snprintf(out, outlen, "%s", "");
             return 1;
         }
-        /* Numéro de la ligne sélectionnée, ou vide. C'est ce que lisent les
-         * sommaires pour savoir où aller ; le calculer ici évite à chaque
-         * pile de le refaire à coups de « number of chars of line 1 to N ». */
+        /* LA LIGNE SÉLECTIONNÉE EST UN MORCEAU, PAS UN NUMÉRO.
+         *
+         *     the selectedLine -> line 1 of card field 1     (HyperCard)
+         *                      -> 1                          (HC avant)
+         *
+         * Mesuré dans Basilisk le 27/09. C'est la même forme que foundLine, et
+         * c'est ce qui la rend utile : un sommaire relit le morceau pour y
+         * aller, là où un numéro nu oblige à savoir de quel champ il parle.
+         *
+         * Le niveau OBJET — « the selectedLine of card field "A" » — rendait
+         * déjà cette forme-là : le code connaissait la réponse à un endroit et
+         * pas à l'autre. */
         if (ci_equal(name, "selectedline")) {
             if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
             const char *texte = hc_field_text(g_sel_field);
             int line = 1;
             for (int i = 0; i < g_sel_start && texte[i]; i++)
                 if (texte[i] == '\n') line++;
-            snprintf(out, outlen, "%d", line);
+            char d[96];
+            champ_designe(g_sel_field, d, sizeof d);
+            snprintf(out, outlen, "line %d of %s", line, d);
             return 1;
         }
         /* ---- désignations de morceau ----
@@ -6425,9 +6436,8 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
             for (int i = 0; i < g_sel_start && t[i]; i++)
                 if (t[i] == '\n') line++;
             char d[96];
-            hc_describe(o, d, sizeof d);
-            snprintf(out, outlen, "line %d of %s%s", line,
-                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+            champ_designe(o, d, sizeof d);
+            snprintf(out, outlen, "line %d of %s", line, d);
             return 1;
         }
         snprintf(out, outlen, "%d", o->selectedline); return 1;
@@ -9134,7 +9144,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     if (ci_equal(nom, "selectedfield")) {
         char petit[96];
-        if (g_sel_field) hc_describe(g_sel_field, petit, sizeof petit);
+        if (g_sel_field) champ_designe(g_sel_field, petit, sizeof petit);
         else petit[0] = '\0';
         *out = hct_val_texte(petit);
         return 1;
@@ -9145,7 +9155,10 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         int line = 1;
         for (int i = 0; i < g_sel_start && t[i]; i++)
             if (t[i] == '\n') line++;
-        char petit[16]; snprintf(petit, sizeof petit, "%d", line);
+        char d[96];
+        champ_designe(g_sel_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "line %d of %s", line, d);
         *out = hct_val_texte(petit);
         return 1;
     }
