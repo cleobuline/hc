@@ -62,7 +62,8 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
      * la réussite en trompe-l'œil. */
     else if (k == HC_INFO) printf("   [moniteur] %s\n", t);
 }
-static void mon_erreur(const char *t, Object *o) { (void)t; (void)o; }
+static void mon_erreur(const char *t, Object *o, int l)
+{ (void)t; (void)o; (void)l; }
 
 static Object *g_pile, *g_carte;
 

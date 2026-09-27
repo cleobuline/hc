@@ -110,7 +110,7 @@ convert "1/1/90" to seconds                 [v3] — retours de la v3 vers l'anc
 find "z"                                    [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v3 relit find                            1
+[v3]    (rien)
 click at 1,1                                [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —

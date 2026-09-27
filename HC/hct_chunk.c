@@ -378,16 +378,36 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
 
     /* Le rang dépasse : on étend.
      *
-     * Pour item et line, HyperCard crée les morceaux vides intermédiaires —
-     * « put "x" into item 5 of "a,b" » donne « a,b,,,x ». Pour char et word,
-     * il ajoute simplement à la fin, avec un espace pour les mots. */
+     * Pour item et line, on crée les morceaux vides intermédiaires — « put "x"
+     * into item 5 of "a,b" » donne « a,b,,,x ». Pour char ET POUR WORD, on
+     * ajoute à la fin SANS RIEN INSÉRER.
+     *
+     * LA RÈGLE, MESURÉE DES DEUX CÔTÉS : on remplit là où le morceau vide
+     * EXISTE, on ajoute là où il ne peut pas exister. Un item vide et une
+     * ligne vide se comptent et se relisent ; un mot vide n'existe pas, le
+     * séparateur des mots étant une SUITE d'espaces — deux espaces côte à côte
+     * ne délimitent aucun mot entre eux.
+     *
+     *     put "X" into line 5 of "Sun"          -> 5 lignes, line 5 rend X
+     *     put "X" into item 5 of "a,b"          -> 5 items,  item 5 rend X
+     *     put "X" into word 99 of "Sun Mon Tue" -> « Sun Mon TueX », 3 mots
+     *
+     * LA TROISIÈME LIGNE EST UNE CORRECTION, et elle vient d'HyperCard. On
+     * posait une ESPACE avant la valeur : « Sun Mon Tue X », 13 octets, quatre
+     * mots. HyperCard rend « Sun Mon TueX », 12 octets, TROIS mots — mesuré le
+     * 27/09/2026, docs/mesures/morceaux.txt. Il ne sépare rien du tout : le mot
+     * se comporte exactement comme le caractère.
+     *
+     * J'avais d'abord raisonné qu'une espace était « le moins faux » des deux
+     * remplissages possibles. Le raisonnement était bon et la réponse était
+     * ailleurs : HyperCard ne remplit ni ne sépare. C'est la mesure qui l'a
+     * dit, pas la logique. */
     int existants = hct_chunk_compte(s, sorte, delim);
     /* Le séparateur à INSÉRER. Une chaîne, comme celui sur lequel on découpe :
      * étendre « aébéc » avec un délimiteur « é » doit poser l'é entier, pas
      * son premier octet. Char n'en a pas, word pose une espace. */
     const char *sep = (sorte == HCT_CH_ITEM) ? sep_ou_virgule(delim)
-                    : (sorte == HCT_CH_LINE) ? "\n"
-                    : (sorte == HCT_CH_WORD) ? " " : "";
+                    : (sorte == HCT_CH_LINE) ? "\n" : "";
     int lsep = (int)strlen(sep);
 
     int manquants = 0;

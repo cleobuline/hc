@@ -1,0 +1,21 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le morceau EXISTE : juste des deux cotes
+   [plain]
+      (HyperCard : plain)
+== 2. le MORCEAU manque, le champ est la : la valeur par DEFAUT
+   [plain]
+      (HyperCard : plain — corrige, mesure du 27/09)
+== 2 bis. et le defaut est celui du CHAMP, pas du premier mot
+   word 1  : [bold]
+   word 99 : [plain]
+      (la plage vide se lit a la FIN : « bold » ici voudrait dire
+       qu'un mot inexistant herite du premier)
+== 3. le CHAMP manque : erreur, et le gestionnaire S'ARRETE
+   [ERR]    !! objet introuvable (v3, ligne 2 de button "B".t)
+== 4. ECRIRE au-dela de la fin : on ajoute SANS espace
+   [Sun Mon TueX]  12 octets, 3 mots
+      (HyperCard : 12 octets, 3 mots — corrige et fidele)
+== 5. et le mot ainsi allonge garde son rang
+   [TueX]
+   word 3  : [bold]
+   word 99 : [plain]

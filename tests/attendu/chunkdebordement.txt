@@ -20,3 +20,16 @@
       a,B,c
    un delimiteur long mais un rang petit
       3 items, 130 octets
+
+== 4. MOT ET CARACTERE : NI REMPLISSAGE, NI SEPARATEUR ==
+   put dans word 99 : on ajoute, SANS espace
+      [Sun Mon TueX]  3 mots, 12 octets
+   les 96 espaces poses A LA MAIN ne creent aucun mot
+      4 mots, 108 octets
+      word 4 : [X]   word 99 : []
+   la ligne, elle, se relit a son rang
+      5 lignes, line 5 : [X]
+   et l'item aussi
+      5 items, item 5 : [X]
+   le caractere n'a pas de separateur du tout
+      [SunX]  4 octets

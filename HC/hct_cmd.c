@@ -64,27 +64,51 @@ static const HctCommande TABLE[] = {
     { "enterkey",   "" },
     { "exit",       "[to] *" },
     { "export",     "paint to file e" },
-    /* « find » : le MODIFICATEUR doit être un mot-clé du motif, pas une
-     * expression.
+    /* « find » : LA SYNTAXE ENTIÈRE DANS LE MOTIF.
      *
-     * Avec « * » seul, « find word "x" » et « find chars "x" » ne passaient
-     * même pas l'analyseur : « word » et « char » sont des mots de MORCEAU en
-     * HyperTalk — « word 2 of f » —, si bien que la grammaire lisait le début
-     * d'un morceau et réclamait « of ». Deux formes sur cinq étaient donc
-     * inaccessibles avant même qu'on parle de sémantique, et l'erreur ne
-     * nommait pas « find ».
+     * Trois états successifs, et chacun corrigeait le précédent.
+     *
+     * 1. « * » seul. « find word "x" » et « find chars "x" » ne passaient même
+     *    pas l'analyseur : « word » et « char » sont des mots de MORCEAU en
+     *    HyperTalk — « word 2 of f » —, si bien que la grammaire lisait le
+     *    début d'un morceau et réclamait « of ». Deux formes sur cinq étaient
+     *    inaccessibles avant qu'on parle de sémantique, et l'erreur ne nommait
+     *    pas « find ».
+     *
+     * 2. Les modificateurs en mots-clés, le reste en « * ». L'analyseur
+     *    passait, mais l'exécuteur recomposait la ligne et la RELEXAIT pour y
+     *    retrouver le motif, « in <champ> » et « of marked cards ». Le relevé
+     *    le disait à voix haute — « v3 relit find », une fois par recherche.
+     *
+     * 3. La syntaxe complète, ici. Plus rien à redécouper : l'exécuteur lit
+     *    l'arbre.
      *
      * ON ÉCRIT « characters » ET NON « chars » : le lexeur applique l'annexe F
      * avant que le motif ne voie quoi que ce soit, et « chars » y est un
      * synonyme de « characters ». Une alternative écrite « chars » ne colle
      * donc JAMAIS — ce qui s'est vu tout de suite pour chars, et ne se serait
-     * pas vu pour un mot dont le synonyme est plus rare.
+     * pas vu pour un mot dont le synonyme est plus rare. Le lexeur ne
+     * normalise en revanche NI « word » NI « character » : l'exécuteur compare
+     * les quatre orthographes.
      *
-     * Les mots pris deviennent des HCTN_MOTCLE, que v3_reste recompose dans
-     * le texte brut — sous leur forme PLEINE. Le lecteur de mode de
-     * v3_cmd_find saute donc le mot au lieu d'en compter les lettres. */
-    { "find",       "[characters|character|words|word|string|whole]"
-                    " [international] *" },
+     * « international » FIGURE DEUX FOIS, avant et après le modificateur.
+     * HyperCard l'accepte des deux côtés — « find international chars "x" » et
+     * « find chars international "x" » —, et un groupe facultatif est sauté
+     * dès que son premier élément ne colle pas, donc un seul emplacement en
+     * refuserait un des deux ordres. Le prix est d'accepter « find
+     * international international "x" », qui ne veut rien dire de plus.
+     *
+     * « of marked cards » EST AVALÉ PAR LE DÉSIGNATEUR quand « in » est là :
+     * « of » est l'opérateur de cible d'une référence d'objet, si bien que
+     * « find "x" in bg field "T" of marked cards » donne un nœud de champ dont
+     * le dernier fils porte le drapeau `marque`. Le motif ne peut pas l'éviter
+     * — c'est l'analyseur d'expressions qui décide —, donc v3_cmd_find
+     * reconnaît la clause SOUS SES DEUX FORMES. Le groupe est gardé ici pour
+     * la forme sans « in », où il empêche l'expression d'avaler les trois
+     * mots. */
+    { "find",       "[international]"
+                    " [characters|character|words|word|string|whole]"
+                    " [international] e [in r] [of marked cards]" },
     { "functionkey","e" },
     { "get",        "e" },
     { "global",     "*" },
@@ -104,7 +128,7 @@ static const HctCommande TABLE[] = {
     { "picture",    "*" },
     { "play",       "*" },
     { "pop",        "card [into c]" },
-    { "print",      "* [with e]" },
+    { "print",      "[all|marked] * [to e] [with e]" },
     { "push",       "*" },
     /* Le groupe « with menuMsg » ne sert qu'à « put <articles> into menu
      * <nom> with menuMsg <messages> » : chaque article y reçoit SON message,

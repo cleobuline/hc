@@ -1,0 +1,30 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. LE CYCLE COMPLET, de part et d'autre des 64 caractères ==
+── un nom de 10 caractères
+     cree   : 1 menu(s)
+     detruit: 0 menu(s)   result=[]
+── un nom de 63 caractères
+     cree   : 1 menu(s)
+     detruit: 0 menu(s)   result=[]
+── un nom de 64 caractères
+     cree   : 1 menu(s)
+     detruit: 0 menu(s)   result=[]
+── un nom de 200 caractères
+     cree   : 1 menu(s)
+     detruit: 0 menu(s)   result=[]
+
+== 2. LA CRÉATION REFUSE AU-DELÀ DE 255, et le dit ==
+── un nom de 255 caractères
+     cree   : 1 menu(s)
+     detruit: 0 menu(s)   result=[]
+── un nom de 256 caractères
+   [ERR]    !! nom de menu trop long (255 caractères au plus)
+     cree   : 0 menu(s)
+     detruit: 0 menu(s)   result=[menu introuvable]
+── un nom de 300 caractères
+   [ERR]    !! nom de menu trop long (255 caractères au plus)
+     cree   : 0 menu(s)
+     detruit: 0 menu(s)   result=[menu introuvable]
+
+== 3. ET LE COMPTE RETOMBE BIEN À ZÉRO ==
+   menus restants : 0

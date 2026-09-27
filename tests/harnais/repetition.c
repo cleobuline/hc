@@ -33,9 +33,9 @@
 static void ma_ligne(HcLineKind k, int d, const char *t)
 { (void)d; (void)k; (void)t; }      /* muet : seul le dialogue nous intéresse */
 
-static void mon_erreur(const char *t, Object *o)
+static void mon_erreur(const char *t, Object *o, int ligne)
 {
-    (void)o;
+    (void)o; (void)ligne;
     printf("   --- ce que le dialogue reçoit ---\n");
     for (const char *p = t; *p; ) {
         const char *fin = strchr(p, '\n');

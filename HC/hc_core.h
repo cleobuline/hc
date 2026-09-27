@@ -654,12 +654,20 @@ typedef struct {
      * interface peut ouvrir un dialogue sans craindre d'en ouvrir cent.
      *
      * `objet` est celui dont le script s'exécutait — de quoi proposer
-     * « Script » et ouvrir l'éditeur au bon endroit, comme HyperCard. Il peut
-     * être NULL.
+     * « Script » et ouvrir l'éditeur sur le bon script, comme HyperCard. Il
+     * peut être NULL.
+     *
+     * `ligne` EST LE RANG DE LA LIGNE FAUTIVE dans ce script, 1 pour la
+     * première, 0 si le noyau ne l'a pas située. Sans elle, « Script »
+     * ouvrait l'éditeur en haut d'un script qui peut en compter trois cents,
+     * et l'on relisait tout pour retrouver ce que le noyau savait déjà —
+     * signalé à l'usage : « le bouton script n'envoie pas sur la ligne
+     * fautive ». Le message la porte depuis toujours, mais dans son TEXTE,
+     * d'où personne ne peut la reprendre sans l'analyser.
      *
      * Facultatif : un hôte qui ne la pose pas garde exactement le
      * comportement d'avant. */
-    void (*erreur)(const char *texte, Object *objet);
+    void (*erreur)(const char *texte, Object *objet, int ligne);
 
     /* Mémoire épuisée : le noyau ne peut plus continuer et va s'arrêter.
      * DERNIÈRE CHANCE pour l'hôte de sauver ce qui est ouvert et de le dire à

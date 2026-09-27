@@ -1,0 +1,31 @@
+== 1. LES NOMS CONNUS ne disent rien ==
+   on mouseUp          (connu)
+   on opencard         (connu)
+   on COMMANDKEYDOWN   (connu)
+   on idle             (connu)
+   on doMenu           (connu)
+
+== 2. LE PRÉFIXE D'UN SEUL message : on nomme le message ==
+   on commandKey       « commandKey » n'est pas un message système connu — vouliez-vous dire « commandKeyDown » ?
+   on arrowke          « arrowke » n'est pas un message système connu — vouliez-vous dire « arrowKey » ?
+   on returnInFiel     « returnInFiel » n'est pas un message système connu — vouliez-vous dire « returnInField » ?
+
+== 3. UNE OU DEUX LETTRES DE TRAVERS ==
+   on mouseDwon        « mouseDwon » n'est pas un message système connu — vouliez-vous dire « mouseDown » ?
+   on closeCrad        « closeCrad » n'est pas un message système connu — vouliez-vous dire « closeCard » ?
+   on newcrad          « newcrad » n'est pas un message système connu — vouliez-vous dire « newCard » ?
+   on errorDialogue    « errorDialogue » n'est pas un message système connu — vouliez-vous dire « errorDialog » ?
+
+== 4. UN PRÉFIXE AMBIGU NE CONSEILLE RIEN ==
+   on mouse            « mouse » n'est pas un message système connu
+   on close            « close » n'est pas un message système connu
+   on new              « new » n'est pas un message système connu
+
+== 5. ET CE QUI N'EST PAS UNE COQUILLE non plus ==
+   on zorglub          « zorglub » n'est pas un message système connu
+   on calculeTout      « calculeTout » n'est pas un message système connu
+   on markToday        « markToday » n'est pas un message système connu
+
+== 6. LES FAUTES DE SYNTAXE PASSENT AVANT ==
+   repeat sans « to »    erreurs=1
+      ligne 2 : « to » attendu

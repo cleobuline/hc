@@ -4,21 +4,25 @@
       [console]    !! propriété inconnue (v3, ligne 1)
       >>> DIALOGUE :    !! propriété inconnue (v3, ligne 1)
           objet fautif : oui
+          ligne fautive : 1
       [dialogues ouverts : 1]
    objet introuvable
       [console]    !! objet introuvable (v3, ligne 1)
       >>> DIALOGUE :    !! objet introuvable (v3, ligne 1)
           objet fautif : oui
+          ligne fautive : 1
       [dialogues ouverts : 1]
    verbe que personne ne sert
       [console]    !! personne ne répond à « zorglub »
       >>> DIALOGUE :    !! personne ne répond à « zorglub »
           objet fautif : oui
+          ligne fautive : 0
       [dialogues ouverts : 1]
    ligne refusee par l'analyseur
       [console]    !! ne sait pas lire : repeat with i = 1 up to 5
       >>> DIALOGUE :    !! ne sait pas lire : repeat with i = 1 up to 5
           objet fautif : oui
+          ligne fautive : 0
       [dialogues ouverts : 1]
 
 == 2. UNE LIGNE QUI REUSSIT N'OUVRE RIEN ==
@@ -37,11 +41,13 @@
       [console]    !! propriété inconnue (v3, ligne 2 de card "Une".fautif)
       >>> DIALOGUE :    !! propriété inconnue (v3, ligne 2 de card "Une".fautif)
           objet fautif : oui
+          ligne fautive : 2
       [dialogues ouverts : 1]
    deux fautes sur une ligne
       [console]    !! propriété inconnue (v3, ligne 1)
       >>> DIALOGUE :    !! propriété inconnue (v3, ligne 1)
           objet fautif : oui
+          ligne fautive : 1
       [dialogues ouverts : 1]
 
 == 4. et le gestionnaire ordinaire n'a pas bouge ==
@@ -49,4 +55,5 @@
       [console]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
       >>> DIALOGUE :    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
           objet fautif : oui
+          ligne fautive : 2
       [dialogues ouverts : 1]

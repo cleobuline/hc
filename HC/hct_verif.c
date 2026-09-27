@@ -71,19 +71,24 @@ const HctSignalement *hct_premier(const HctRapport *r)
  * dira : le gestionnaire est simplement ignoré. C'est le genre de faute qui
  * coûte une heure, et qu'aucune grammaire ne peut détecter.
  */
+/* ÉCRITS DANS LEUR CASSE D'ORIGINE, celle du guide. Les comparaisons sont
+ * toutes insensibles à la casse — « on OPENCARD » reste reconnu —, mais ces
+ * noms se RECOPIENT désormais dans les remarques, et « vouliez-vous dire
+ * commandkeydown ? » à côté d'un script qui écrit commandKeyDown donne un
+ * conseil qui a l'air faux. */
 static const char *MESSAGES_SYSTEME[] = {
-    "openstack","closestack","suspendstack","resumestack","startup","quit",
-    "opencard","closecard","openbackground","closebackground",
-    "openfield","closefield","exitfield","returninfield","enterinfield",
-    "mouseup","mousedown","mousestilldown","mouseenter","mouseleave",
-    "mousewithin","mousedoubleclick",
-    "keydown","arrowkey","controlkey","commandkeydown","functionkey",
-    "enterkey","returnkey","tabkey",
-    "idle","newcard","newbackground","newfield","newbutton","newstack",
-    "deletecard","deletebackground","deletefield","deletebutton","deletestack",
-    "domenu","help","hide","show","resume","suspend",
-    "opennow","closenow","hidewindow","showwindow","moveWindow","sizewindow",
-    "appleevent","errordialog",
+    "openStack","closeStack","suspendStack","resumeStack","startUp","quit",
+    "openCard","closeCard","openBackground","closeBackground",
+    "openField","closeField","exitField","returnInField","enterInField",
+    "mouseUp","mouseDown","mouseStillDown","mouseEnter","mouseLeave",
+    "mouseWithin","mouseDoubleClick",
+    "keyDown","arrowKey","controlKey","commandKeyDown","functionKey",
+    "enterKey","returnKey","tabKey",
+    "idle","newCard","newBackground","newField","newButton","newStack",
+    "deleteCard","deleteBackground","deleteField","deleteButton","deleteStack",
+    "doMenu","help","hide","show","resume","suspend",
+    "openNow","closeNow","hideWindow","showWindow","moveWindow","sizeWindow",
+    "appleEvent","errorDialog",
     NULL
 };
 
@@ -92,6 +97,96 @@ static int connu(const char **table, const char *mot)
     for (int i = 0; table[i]; i++)
         if (!strcasecmp(table[i], mot)) return 1;
     return 0;
+}
+
+/* Distance d'édition, plafonnée. Deux chaînes qui diffèrent de plus de `max`
+ * n'ont pas à être comparées jusqu'au bout : on rend max + 1 dès qu'on le
+ * dépasse, ce qui suffit à les écarter.
+ *
+ * Deux lignes de 64 octets sur la pile : les noms de gestionnaires sont bornés
+ * par l'appelant, et une allocation ici serait un chemin d'échec de plus dans
+ * un code qui ne sert qu'à rendre un conseil. */
+#define VERIF_NOM_MAX 64
+static int distance(const char *a, const char *b, int max)
+{
+    int la = (int)strlen(a), lb = (int)strlen(b);
+    if (la >= VERIF_NOM_MAX || lb >= VERIF_NOM_MAX) return max + 1;
+    if (la - lb > max || lb - la > max) return max + 1;
+
+    int prec[VERIF_NOM_MAX + 1], cour[VERIF_NOM_MAX + 1];
+    for (int j = 0; j <= lb; j++) prec[j] = j;
+
+    for (int i = 1; i <= la; i++) {
+        cour[0] = i;
+        int meilleur = cour[0];
+        for (int j = 1; j <= lb; j++) {
+            int cout = (tolower((unsigned char)a[i-1]) ==
+                        tolower((unsigned char)b[j-1])) ? 0 : 1;
+            int d = prec[j] + 1;
+            if (cour[j-1] + 1 < d) d = cour[j-1] + 1;
+            if (prec[j-1] + cout < d) d = prec[j-1] + cout;
+            cour[j] = d;
+            if (d < meilleur) meilleur = d;
+        }
+        if (meilleur > max) return max + 1;      /* inutile de continuer */
+        for (int j = 0; j <= lb; j++) prec[j] = cour[j];
+    }
+    return prec[lb];
+}
+
+/* LE MESSAGE SYSTÈME LE PLUS PROCHE, ou NULL.
+ *
+ * « n'est pas un message système connu » est vrai et n'apprend rien : il ne
+ * dit pas ce que l'auteur voulait écrire. Le cas qui a motivé ceci est venu de
+ * l'usage — un script portait « on commandKey » à côté de « on
+ * commandKeyDown », et le premier ne se déclenche jamais. La remarque disait
+ * bien qu'il était inconnu ; elle ne disait pas qu'il manquait quatre lettres.
+ *
+ * DEUX SIGNAUX, du plus sûr au moins sûr :
+ *
+ *   1. le nom écrit est un PRÉFIXE d'un message connu — « commandKey » dans
+ *      « commandKeyDown ». C'est le cas le plus net : on a arrêté d'écrire
+ *      trop tôt. Limité à huit lettres de différence, sans quoi « on » serait
+ *      proposé comme un préfixe de tout.
+ *
+ *   2. une distance d'édition de 1 ou 2 — « mouseDwon » pour « mouseDown ».
+ *      Réservée aux noms d'au moins cinq lettres : en dessous, deux fautes
+ *      changent le mot entier et le conseil serait du hasard.
+ *
+ * On rend le plus proche, et rien du tout si personne n'approche. Un conseil
+ * faux est pire que pas de conseil : il envoie corriger ce qui va bien. */
+static const char *proche(const char *nom)
+{
+    size_t ln = strlen(nom);
+    if (ln < 3) return NULL;
+
+    const char *meilleur = NULL;
+    int meilleure = 3;                     /* strictement mieux que 3 */
+    const char *prefixe = NULL;
+    int nprefixes = 0;
+
+    for (int i = 0; MESSAGES_SYSTEME[i]; i++) {
+        const char *cand = MESSAGES_SYSTEME[i];
+        size_t lc = strlen(cand);
+
+        if (lc > ln && lc - ln <= 8 && !strncasecmp(cand, nom, ln)) {
+            if (!nprefixes) prefixe = cand;
+            nprefixes++;
+            continue;
+        }
+
+        if (ln < 5) continue;
+        int d = distance(nom, cand, 2);
+        if (d < meilleure) { meilleure = d; meilleur = cand; }
+    }
+
+    /* UN PRÉFIXE AMBIGU NE CONSEILLE RIEN. « on mouse » est le début de cinq
+     * messages ; en proposer un serait tirer au sort, et un conseil faux
+     * envoie corriger ce qui va bien. « commandKey » n'en a qu'un, et c'est
+     * justement pour ce cas-là que la remarque existe. */
+    if (nprefixes == 1) return prefixe;
+    if (nprefixes > 1)  return NULL;
+    return meilleur;
 }
 
 /* ------------------------------------------------------- parcours de l'arbre */
@@ -129,10 +224,16 @@ static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
          * explicitement — ce qui arrive, d'où le simple avertissement. */
         if (n->op && !strcasecmp(n->op, "on") &&
             !connu(MESSAGES_SYSTEME, nom)) {
-            char msg[160];
-            snprintf(msg, sizeof msg,
-                     "« %.40s » n'est pas un message système connu",
-                     nom);
+            char msg[220];
+            const char *voisin = proche(nom);
+            if (voisin)
+                snprintf(msg, sizeof msg,
+                         "« %.40s » n'est pas un message système connu — "
+                         "vouliez-vous dire « %.40s » ?", nom, voisin);
+            else
+                snprintf(msg, sizeof msg,
+                         "« %.40s » n'est pas un message système connu",
+                         nom);
             ajoute(r, HCT_V_AVERTISSEMENT, n->fils[0]->jeton.ligne,
                    n->fils[0]->jeton.col, msg, nom, (int)strlen(nom));
         }

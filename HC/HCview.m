@@ -1565,10 +1565,27 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * rend le modal supportable — brancher NSAlert sur `line` en aurait ouvert
  * trois pour une seule erreur de syntaxe.
  *
- * « Script » ouvre l'éditeur sur l'objet fautif, comme le bouton du même nom
- * dans HyperCard. Le noyau nous donne cet objet ; il peut être NULL, et le
- * bouton n'apparaît alors pas plutôt que de ne rien faire. */
-static void cocoa_erreur(const char *texte, Object *objet) {
+ * « Script » ouvre l'éditeur sur l'objet fautif ET SUR SA LIGNE, comme le
+ * bouton du même nom dans HyperCard. Le noyau nous donne les deux ; l'objet
+ * peut être NULL, et le bouton n'apparaît alors pas plutôt que de ne rien
+ * faire. La ligne peut valoir 0 — l'éditeur s'ouvre alors en haut, comme
+ * avant.
+ *
+ * PAS DE TROISIÈME BOUTON « Debug », ET C'EST UNE DÉCISION, PAS UN TROU.
+ *
+ * HyperCard en a un : il ouvre le même éditeur en ENCADRANT la ligne fautive
+ * d'un rectangle, l'indicateur de ligne courante de son débogueur. Une fois
+ * « Script » posé sur la bonne ligne, il ne reste entre les deux que la
+ * différence entre une sélection et un cadre — pour le même geste, au même
+ * endroit. Écarté à l'usage, le 27/09/2026 : « oublie le bouton debug ça
+ * ferait double emploi ».
+ *
+ * C'est écrit ici parce qu'un manque et un choix se ressemblent dans le code,
+ * et que ce dépôt a déjà payé l'inverse — des portes annoncées dans un
+ * commentaire et jamais percées. Celle-ci est fermée exprès. Le jour où le
+ * débogueur existera vraiment — pas à pas, reprise, espion de variables —, le
+ * bouton aura de quoi se distinguer, et la question se rouvrira d'elle-même. */
+static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     if (!texte || !*texte) return;
 
     NSAlert *a = [[NSAlert alloc] init];
@@ -1598,7 +1615,7 @@ static void cocoa_erreur(const char *texte, Object *objet) {
 
     NSModalResponse rep = [a runModal];
     if (objet && gView && rep == NSAlertSecondButtonReturn)
-        [gView editScriptOf:objet];
+        [gView editScriptOf:objet atLine:ligne];
 }
 
 static BOOL gMouseClicked = NO;
@@ -5155,10 +5172,70 @@ static BOOL      gSansMessageChamp = NO;
  * gestionnaire qui fait « pass » rend 0, et la touche retrouve son effet
  * habituel — le même accord qu'avec returnInField.
  *
- * commandKeyDown n'y est pas : Cmd+lettre est intercepté par les équivalents
- * clavier des menus AVANT que keyDown: soit appelé. Il faudrait
- * performKeyEquivalent:, c'est-à-dire se placer devant la barre de menus, et
- * cela mérite d'être fait séparément plutôt qu'en passant. */
+ * commandKeyDown n'y est pas, et ne peut pas y être : Cmd+lettre est pris par
+ * les équivalents clavier des menus AVANT que keyDown: soit appelé. Il lui
+ * faut performKeyEquivalent:, juste en dessous. */
+/* ═══ commandKeyDown ════════════════════════════════════════════════════
+ *
+ * SIGNALÉ À L'USAGE : « ça ça marche pas », avec le gestionnaire sous les
+ * yeux. Et le commentaire juste au-dessus le disait déjà — « il faudrait
+ * performKeyEquivalent: » —, sans que personne l'ait percé. Une porte
+ * annoncée et jamais ouverte, la signature de ce dépôt.
+ *
+ * POURQUOI keyDown: NE SUFFIT PAS. Cmd+lettre ne descend jamais jusque-là :
+ * AppKit propose d'abord l'événement comme ÉQUIVALENT CLAVIER, et c'est la
+ * barre de menus qui le mange. Se placer devant elle demande d'intercepter
+ * performKeyEquivalent:, que la fenêtre propose à sa hiérarchie de vues avant
+ * de laisser le menu décider.
+ *
+ * LE CONTRAT EST CELUI DES AUTRES TOUCHES, et c'est lui qui rend la chose
+ * sûre : on rend YES seulement si un gestionnaire a VRAIMENT pris le message.
+ * Un « pass », ou l'absence de gestionnaire, rend NO — et le raccourci de menu
+ * garde exactement son effet d'aujourd'hui. Une pile sans « on commandKeyDown »
+ * ne voit donc aucune différence.
+ *
+ * ET C'EST LÀ QUE SERT LE MESSAGE : supprimer un raccourci de menu dont on ne
+ * veut pas. C'est l'idiome d'HyperCard, et il est SÉLECTIF —
+ *
+ *     on commandKeyDown k
+ *       if k is "n" then exit commandKeyDown   -- Cmd+N ne fera rien
+ *       pass commandKeyDown                    -- tout le reste au menu
+ *     end commandKeyDown
+ *
+ * — parce qu'un gestionnaire qui finit normalement, « exit » compris, compte
+ * pour une prise, tandis que « pass » rend la main. Mesuré dans
+ * tests/harnais/clavier.c §5.
+ *
+ * LE REVERS EST LE MÊME MÉCANISME : une pile qui prend tout sans jamais passer
+ * capture aussi Cmd+Q. HyperCard avait exactement le même, et protéger Cmd+Q
+ * ici serait inventer une règle qu'il n'a pas. Il reste à forcer la fermeture ;
+ * ce n'est pas agréable, mais c'est récupérable, et une pile qui fait ça le
+ * fait exprès.
+ *
+ * On ne touche qu'aux événements portant COMMANDE, et l'on écarte les touches
+ * de fonction et les caractères de contrôle : ceux-là passent par keyDown: et
+ * ont déjà leur message. */
+- (BOOL)performKeyEquivalent:(NSEvent *)event
+{
+    NSUInteger mods = [event modifierFlags] &
+                      NSEventModifierFlagDeviceIndependentFlagsMask;
+    if (!(mods & NSEventModifierFlagCommand)) return NO;
+
+    Object *carte = hc_current_card();
+    if (!carte) return NO;
+
+    NSString *nues = [event charactersIgnoringModifiers];
+    if ([nues length] == 0) return NO;
+    unichar k = [nues characterAtIndex:0];
+    if (k < 32 || k == 0x7F) return NO;             /* contrôle, pas caractère */
+    if (k >= 0xF700 && k <= 0xF8FF) return NO;      /* touche de fonction */
+
+    /* La casse est celle que l'utilisateur a frappée : charactersIgnoringModifiers
+     * laisse passer Majuscule, donc Cmd+B donne « b » et Cmd+Maj+B donne « B ».
+     * C'est ce que « on commandKeyDown c » doit recevoir. */
+    return hc_send_arg(carte, "commandKeyDown", [nues UTF8String]) ? YES : NO;
+}
+
 - (BOOL)envoieToucheHyperCard:(NSEvent *)event
 {
     Object *carte = hc_current_card();
@@ -5184,6 +5261,21 @@ static BOOL      gSansMessageChamp = NO;
         default: break;
     }
 
+    /* CERTAINES TOUCHES DE FONCTION N'ARRIVENT JAMAIS ICI, et ce n'est pas
+     * notre affaire. Sur un Mac moderne, F1 à F12 sont des touches SYSTÈME —
+     * luminosité, Mission Control, Spotlight, volume — interceptées avant
+     * l'application. Seules celles que le système ne réclame pas descendent
+     * jusqu'à keyDown:, d'où le relevé d'usage : « ça marche pour certaines
+     * function keys ».
+     *
+     * Tenir « fn » enfoncé, ou cocher « Utiliser F1, F2, etc. comme touches de
+     * fonction standard » dans les réglages du clavier, les rend toutes.
+     * Vérifié de notre côté : aucun menu de HC ne pose d'équivalent clavier en
+     * F-quelque-chose, aucune sortie anticipée de keyDown: ne les attrape, et
+     * le chemin du message est mesuré bon — « functionKey 3 » depuis un script
+     * atteint son gestionnaire.
+     *
+     * C'est écrit pour que personne ne recherche un défaut qui n'est pas là. */
     if (!msg && key >= NSF1FunctionKey && key <= NSF15FunctionKey) {
         msg = "functionKey";
         snprintf(arg, sizeof arg, "%d", (int)(key - NSF1FunctionKey) + 1);
@@ -6971,6 +7063,25 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 
 - (void)editScriptOf:(Object *)obj {
+    [self editScriptOf:obj atLine:0];
+}
+
+/* OUVRIR LE SCRIPT SUR LA LIGNE FAUTIVE.
+ *
+ * Signalé à l'usage : « le bouton script n'envoie pas sur la ligne fautive ».
+ * L'éditeur s'ouvrait en haut d'un script qui peut en compter trois cents, et
+ * l'on relisait tout pour retrouver ce que le noyau savait déjà — il l'écrit
+ * même dans le message, « ligne 3 de button "B".casse », mais dans du TEXTE,
+ * d'où l'interface ne pouvait pas le reprendre sans l'analyser. Il arrive
+ * maintenant comme un nombre, par le rappel « erreur ».
+ *
+ * selectLine:inTextView: existait déjà et servait au bouton « Vérifier » : le
+ * mécanisme était là, c'est le dialogue d'erreur qui ne s'en servait pas.
+ *
+ * La sélection se pose APRÈS makeKeyAndOrderFront : sur une fenêtre pas encore
+ * affichée, scrollRangeToVisible n'a pas de géométrie à défiler et ne fait
+ * rien. */
+- (void)editScriptOf:(Object *)obj atLine:(int)ligne {
     gEditTarget = obj;
     NSPanel *panel = [[NSPanel alloc]
         initWithContentRect:NSMakeRect(300, 200, 480, 340)
@@ -7009,6 +7120,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     gEditPanel = panel;
     [panel makeKeyAndOrderFront:nil];
+    if (ligne > 0) [self selectLine:ligne inTextView:tv];
 }
 
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {

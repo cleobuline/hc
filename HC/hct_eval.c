@@ -1378,6 +1378,31 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
         HctValeur vr;
         void *objet = NULL;
 
+        /* UN MORCEAU N'EST PAS UN OBJET, et resout rend NULL dessus.
+         *
+         * « the textStyle of word 3 of field "cal" » partait donc entièrement
+         * au recours, c'est-à-dire à l'ancien évaluateur — trois fois la même
+         * expression, et trois messages identiques quand elle échoue.
+         * lit_prop_morceau reçoit le nœud du morceau et le résout lui-même.
+         *
+         * AVANT lit_prop, comme lit_prop l'est avant le recours, et pour la
+         * même raison : le plus précis d'abord. resout ne saurait de toute
+         * façon rien faire de ce nœud-là. */
+        if (ctx->hote.lit_prop_morceau && sur->genre == HCTN_CHUNK) {
+            /* INITIALISÉE, et ce n'est pas de la prudence décorative : un
+             * rappel qui rend 1 en posant une FAUTE n'a rien à écrire dans
+             * `out`, et la valeur repartait alors avec un pointeur de pile.
+             * Segfault à -O1 ; rien sous AddressSanitizer à -O0, où la pile
+             * se trouvait à zéro. L'appelant ne doit pas dépendre de ce que
+             * le rappel a bien voulu remplir. */
+            HctValeur rm = hct_val_vide();
+            if (ctx->hote.lit_prop_morceau(ctx->hote.donnees, sur, nom,
+                                           ctx, &rm)) {
+                free(nom);
+                return rm;
+            }
+        }
+
         if (ctx->hote.resout && ctx->hote.lit_prop) {
             objet = ctx->hote.resout(ctx->hote.donnees, sur, ctx);
             if (objet) {

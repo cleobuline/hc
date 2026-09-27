@@ -53,4 +53,42 @@ int main(void){
   printf("\n=== les marquées, au-delà de 512 aussi ===\n");
   essai("mark all cards\n  print marked cards");
   essai("unmark all cards\n  mark card 5\n  mark card 600\n  print marked cards");
+  /* ─── TOUTES LES FORMES, RELEVÉES AVANT TOUT PORTAGE ──────────────────
+   *
+   * Le harnais n'en couvrait que trois — « all cards », les plages, les
+   * marquées — et c'est exactement ce qui manque avant de toucher à la
+   * commande. « print » lit encore sa ligne en texte : le relevé du corpus dit
+   * « v3 relit print » seize fois, et le portage vers l'arbre est le genre de
+   * changement qui déplace une forme non couverte sans qu'on le voie.
+   *
+   * Ces lignes sont donc enregistrées comme un ÉTAT, pas comme un idéal :
+   * elles disent ce que la commande fait aujourd'hui, y compris là où elle
+   * refuse. Le portage devra les laisser mot pour mot. Ce qui est refusé ici
+   * et qui aurait dû marcher se corrigera après, et séparément — sinon on ne
+   * saurait plus lequel des deux changements a bougé la sortie. */
+  printf("\n=== TOUTES LES FORMES, relevées avant le portage vers l'arbre ===\n");
+  essai("unmark all cards\n  go to card 1\n  print");
+  essai("print this card");
+  essai("print card");
+  essai("print card 3");
+  essai("print card \"C005\"");
+  essai("print cd 7");
+  essai("print stack");
+  essai("print all");
+  essai("print all cards");
+  essai("print marked");
+  essai("go to card 4\n  print");
+  essai("go to card 1\n  print card 3 to 5");
+  essai("print card \"C005\" to 8");
+  essai("print card 99999");
+  essai("print card \"PasLa\"");
+  /* Les deux formes que la commande NE sait pas faire, inscrites comme telles :
+   * une plage sans le mot « card », et l'impression d'un document. La seconde
+   * est une vraie forme d'HyperCard — « print <document> with <application> » —
+   * et le motif de commande la prévoit déjà par son « [with e] », mais
+   * l'exécuteur n'en fait rien. C'est une porte annoncée et non percée ; elle
+   * est nommée ici pour ne pas croire le chantier fini. */
+  essai("print 2 to 7");
+  essai("print \"doc.txt\" with \"TeachText\"");
+
   hc_unregister_stack(st);hc_free(st);return 0;}

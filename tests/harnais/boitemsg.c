@@ -37,8 +37,8 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
     if (k == HC_MSG) printf("   [boîte] %s\n", t);
     else if (k == HC_ERR) printf("   [ERR] %s\n", t);
 }
-static void mon_erreur(const char *t, Object *o)
-{ (void)o; printf("   [DIALOGUE] %s\n", t); }
+static void mon_erreur(const char *t, Object *o, int l)
+{ (void)o; (void)l; printf("   [DIALOGUE] %s\n", t); }
 
 static Object *g_pile, *g_carte;
 

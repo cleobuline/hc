@@ -1,10 +1,8 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    recours of textStyle                     1
+[v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v3 relit recours expr                    2
-[v3]    v1 fonction recours expr                 1
-[v3]    v1 terme recours expr                    1
+[v3]    (rien)
 >>> set name d'un objet
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
@@ -29,11 +27,6 @@
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
       → textStyle de [0..6[ ← "bold,italic"
-   → message "textStyle" à button "GoBtn"
-        (pas de gestionnaire dans button "GoBtn")
-        (pas de gestionnaire dans card "Une")
-        (pas de gestionnaire dans background "Fond")
-        (pas de gestionnaire dans stack "Test")
       [message box] bold,italic
 >>> set global : itemDelimiter
 → message "mouseUp" à button "GoBtn"
@@ -55,8 +48,6 @@
    · traité par button "GoBtn"
       !! propriété inconnue : frobnicate
 — retours de la v3 vers l'ancien interpréteur —
-   recours of textStyle                     1
+   (aucun)
 — ce que l'ancien interprète exécute encore —
-   v3 relit recours expr                    2
-   v1 fonction recours expr                 1
-   v1 terme recours expr                    1
+   (rien)

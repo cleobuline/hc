@@ -2,7 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v3 relit print                           2
+[v3]    (rien)
 >>> convert une date vers dateItems
 >>> convert un conteneur (variable) vers short date
 >>> print carte courante

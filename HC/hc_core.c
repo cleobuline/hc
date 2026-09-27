@@ -808,6 +808,20 @@ void hc_set_host(const HcHost *h) { g_host = h ? h : &g_console_host; }
  * exécution on repasse donc par le dialogue ordinaire. */
 static int g_dans_errordialog = 0;
 
+/* LA LIGNE FAUTIVE, pour que « Script » y envoie l'éditeur.
+ *
+ * LA PREMIÈRE NON NULLE GAGNE, et ce n'est pas un détail. Une erreur dans un
+ * gestionnaire appelé par un autre est signalée à CHAQUE niveau en remontant :
+ * garder la dernière donnerait la ligne du gestionnaire EXTÉRIEUR alors que
+ * `g_err_objet` retient l'objet INTÉRIEUR — l'éditeur s'ouvrirait sur le bon
+ * script, à une ligne qui appartient à un autre. Les deux doivent venir du
+ * même niveau, et c'est le plus intérieur qui a levé l'erreur. */
+static int g_err_ligne = 0;
+static void err_ligne_pose(int ligne)
+{
+    if (ligne > 0 && g_err_ligne == 0) g_err_ligne = ligne;
+}
+
 /* La dernière ligne accumulée, pour compter ses répétitions plutôt que de les
  * empiler. Voir la note dans emit_v. */
 static char g_err_derniere[1024];
@@ -820,7 +834,8 @@ static void erreurs_vide(void)
     char copie[sizeof g_err_texte];
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
     Object *coupable = g_err_objet;
-    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL;
+    int ligne_fautive = g_err_ligne;
+    g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL; g_err_ligne = 0;
     g_err_dernier_deb = -1; g_err_repete = 0; g_err_derniere[0] = '\0';
 
     Object *carte = hc_current_card();
@@ -834,7 +849,8 @@ static void erreurs_vide(void)
         return;
     }
 
-    if (g_host && g_host->erreur) g_host->erreur(copie, coupable);
+    if (g_host && g_host->erreur)
+        g_host->erreur(copie, coupable, ligne_fautive);
 }
 
 static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
@@ -1245,6 +1261,59 @@ static Object *g_found_card  = NULL;
  * ailleurs — repart de la carte courante, ce qui est ce qu'on attend d'une
  * recherche neuve. */
 static char    g_find_motif[256] = "";
+
+/* LE DÉSIGNATEUR D'UN CHAMP TROUVÉ, tel que HyperCard l'écrit.
+ *
+ * MESURÉ, sur un champ de fond NOMMÉ « T » :
+ *
+ *     the foundChunk  ->  char 7 to 10 of bkgnd field 1
+ *     the foundField  ->  bkgnd field 1
+ *     the foundLine   ->  line 1 of bkgnd field 1
+ *
+ * Trois choses s'en déduisent, et HC les manquait toutes les trois :
+ *
+ *   · LE NUMÉRO, PAS LE NOM, même quand le champ EST nommé. HC écrivait
+ *     « field "T" ». Un script qui compare le foundField à un désignateur
+ *     qu'il a construit lui-même ne pouvait donc pas tomber juste.
+ *   · « bkgnd », pas « bg ». C'est l'abréviation qu'HyperCard affiche.
+ *   · LA COUCHE EST TOUJOURS LÀ, y compris pour foundField — HC l'omettait
+ *     là et la mettait dans foundChunk, ce qui faisait deux réponses
+ *     incohérentes à la même question.
+ *
+ * Le numéro compte les CHAMPS seuls, pas les parts : hc_part_number mêle les
+ * boutons aux champs, et « field 1 » ne veut pas dire la même chose. */
+static int find_numero_champ(Object *fl)
+{
+    if (!fl || !fl->owner) return 0;
+    int n = 0;
+    for (int i = 0; i < fl->owner->nparts; i++) {
+        Object *p = fl->owner->parts[i];
+        if (p->type != OBJ_FIELD) continue;
+        n++;
+        if (p == fl) return n;
+    }
+    return 0;
+}
+
+/* Le désignateur d'un champ SOUS LA FORME D'HYPERCARD : la couche et le
+ * NUMÉRO, jamais le nom — « card field 1 », « bkgnd field 3 ».
+ *
+ * Il s'appelait find_designe et ne servait qu'aux « found… ». La mesure du
+ * 27/09 montre que les « selected… » s'écrivent pareil :
+ *
+ *     select char 2 to 4 of card field 1
+ *     the selectedChunk -> char 2 to 4 of card field 1     (HyperCard)
+ *                       -> char 2 to 4 of card field "A"   (HC avant)
+ *
+ * Les deux familles partagent donc la même écriture, et rien ne justifiait
+ * deux codes. Le nom aussi a changé : un nom qui dit « find » sur un chemin
+ * qui sert la sélection ferait chercher un rapport qui n'existe pas. */
+static void champ_designe(Object *fl, char *out, int outlen)
+{
+    if (!fl) { if (outlen > 0) out[0] = 0; return; }
+    snprintf(out, (size_t)outlen, "%s field %d",
+             hc_owner_is_bg(fl) ? "bkgnd" : "card", find_numero_champ(fl));
+}
 
 /* LA BOÎTE EST MONTRÉE, OU ELLE NE L'EST PLUS — et c'est autre chose que
  * « quelque chose a été trouvé ».
@@ -3897,6 +3966,7 @@ typedef enum { CH_NONE, CH_CHAR, CH_WORD, CH_ITEM, CH_LINE } ChunkType;
 
 static void eval_expr(const char *s, char *out, int outlen);
 static const char *find_kw(const char *s, const char *w);   /* défini plus bas */
+static const char *chunk_base_ref(const char *ref);        /* défini plus bas */
 static int hc_send_args(Object *target, const char *message,
                         char argv[][HC_VAL], int argc);   /* défini plus bas */
 static int hc_call_user_function(Object *target, const char *name,
@@ -4865,28 +4935,53 @@ static int menu_creer(const char *nom)
         emit(HC_ERR, "   !! trop de menus (%d au plus)", HC_MENUS_MAX);
         return 0;
     }
-    if (strlen(nom) >= HC_MENU_NOM_MAX) {
+    /* LA LONGUEUR SE MESURE UNE FOIS, ET C'EST ELLE QUI COPIE.
+     *
+     * Le refus était déjà là et il est juste : un nom trop long est REFUSÉ, il
+     * n'a jamais été amputé. Mais snprintf ne le sait pas, et gcc non plus :
+     * il voyait une source pouvant peser 257 octets pour une destination de
+     * 256 et le disait, à -O1 seulement. J'ai lu cet avertissement comme un
+     * défaut — « le nom d'un menu amputé en silence » — et je l'ai répété sans
+     * jamais lire les huit lignes au-dessus. Un avertissement n'est pas une
+     * mesure : c'est une question posée au code, et il faut aller lire la
+     * réponse.
+     *
+     * memcpy sur la longueur DÉJÀ VÉRIFIÉE rend la borne évidente pour le
+     * compilateur comme pour le lecteur, et épargne une seconde traversée de
+     * la chaîne. */
+    size_t ln = strlen(nom);
+    if (ln >= HC_MENU_NOM_MAX) {
         emit(HC_ERR, "   !! nom de menu trop long (%d caractères au plus)",
              HC_MENU_NOM_MAX - 1);
         return 0;
     }
     HcMenuBarre *m = &g_menus[g_nmenus++];
     memset(m, 0, sizeof *m);
-    snprintf(m->nom, sizeof m->nom, "%s", nom);
+    memcpy(m->nom, nom, ln + 1);
     m->actif_menu = 1;
     menus_prevenir();
     return 1;
 }
 
-static int menu_supprimer(const char *nom)
+/* Retirer le menu de RANG i.
+ *
+ * IL N'Y A PLUS DE SUPPRESSION PAR LE NOM, et c'est le fond de l'affaire.
+ * menu_supprimer(nom) refaisait une recherche par nom pour un appelant qui
+ * tenait déjà le rang — un seul appelant, v3_cmd_delete, qui recopiait donc le
+ * nom dans soixante-quatre octets pour le lui redonner. Un nom plus long
+ * arrivait tronqué, ne correspondait plus à rien, et le menu survivait.
+ *
+ * La recherche par nom n'existait que pour ce détour. En retirant le détour,
+ * elle n'avait plus d'appelant du tout : le compilateur l'a dit, et elle est
+ * partie avec. Un chemin qui ne sert qu'à revenir où l'on était est rarement
+ * innocent. */
+static void menu_oter(int i)
 {
-    int i = menu_index(nom);
-    if (i < 0) return 0;
+    if (i < 0 || i >= g_nmenus) return;
     menu_vide(&g_menus[i]);
     for (int k = i; k < g_nmenus - 1; k++) g_menus[k] = g_menus[k + 1];
     g_nmenus--;
     menus_prevenir();
-    return 1;
 }
 
 /* Découper une liste d'articles.
@@ -5691,20 +5786,31 @@ static int call_function_body(const char *t, char *out, int outlen)
             selection_text(out, outlen); return 1;
         }
         if (ci_equal(name, "selectedfield")) {
-            if (g_sel_field) hc_describe(g_sel_field, out, outlen);
+            if (g_sel_field) champ_designe(g_sel_field, out, outlen);
             else snprintf(out, outlen, "%s", "");
             return 1;
         }
-        /* Numéro de la ligne sélectionnée, ou vide. C'est ce que lisent les
-         * sommaires pour savoir où aller ; le calculer ici évite à chaque
-         * pile de le refaire à coups de « number of chars of line 1 to N ». */
+        /* LA LIGNE SÉLECTIONNÉE EST UN MORCEAU, PAS UN NUMÉRO.
+         *
+         *     the selectedLine -> line 1 of card field 1     (HyperCard)
+         *                      -> 1                          (HC avant)
+         *
+         * Mesuré dans Basilisk le 27/09. C'est la même forme que foundLine, et
+         * c'est ce qui la rend utile : un sommaire relit le morceau pour y
+         * aller, là où un numéro nu oblige à savoir de quel champ il parle.
+         *
+         * Le niveau OBJET — « the selectedLine of card field "A" » — rendait
+         * déjà cette forme-là : le code connaissait la réponse à un endroit et
+         * pas à l'autre. */
         if (ci_equal(name, "selectedline")) {
             if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
             const char *texte = hc_field_text(g_sel_field);
             int line = 1;
             for (int i = 0; i < g_sel_start && texte[i]; i++)
                 if (texte[i] == '\n') line++;
-            snprintf(out, outlen, "%d", line);
+            char d[96];
+            champ_designe(g_sel_field, d, sizeof d);
+            snprintf(out, outlen, "line %d of %s", line, d);
             return 1;
         }
         /* ---- désignations de morceau ----
@@ -5720,37 +5826,40 @@ static int call_function_body(const char *t, char *out, int outlen)
         if (ci_equal(name, "selectedchunk")) {
             if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
             char d[96];
-            hc_describe(g_sel_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            champ_designe(g_sel_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
-                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                     hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+                     d);
             return 1;
         }
         if (ci_equal(name, "foundchunk")) {
             if (!g_found_field || g_found_len <= 0) {
                 snprintf(out, outlen, "%s", ""); return 1;
             }
+            /* LE SITE JUMEAU. Les trois propriétés se lisent par DEUX
+             * chemins — celui-ci par le nom, l'autre par l'arbre v3 — et
+             * corriger l'un sans l'autre aurait donné deux réponses
+             * différentes à la même question selon la façon de la poser. */
             char d[96];
-            hc_describe(g_found_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            champ_designe(g_found_field, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start + g_found_len),
-                     hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+                     d);
             return 1;
         }
         if (ci_equal(name, "foundfield")) {
-            if (g_found_field) hc_describe(g_found_field, out, outlen);
-            else snprintf(out, outlen, "%s", "");
+            champ_designe(g_found_field, out, outlen);
             return 1;
         }
         if (ci_equal(name, "foundline")) {
             if (g_found_field && g_found_line > 0) {
-                char d[96]; hc_describe(g_found_field, d, sizeof d);
+                char d[96]; champ_designe(g_found_field, d, sizeof d);
                 snprintf(out, outlen, "line %d of %s", g_found_line, d);
             } else snprintf(out, outlen, "%s", "");
             return 1;
@@ -6327,9 +6436,8 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
             for (int i = 0; i < g_sel_start && t[i]; i++)
                 if (t[i] == '\n') line++;
             char d[96];
-            hc_describe(o, d, sizeof d);
-            snprintf(out, outlen, "line %d of %s%s", line,
-                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+            champ_designe(o, d, sizeof d);
+            snprintf(out, outlen, "line %d of %s", line, d);
             return 1;
         }
         snprintf(out, outlen, "%d", o->selectedline); return 1;
@@ -6366,13 +6474,13 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "selectedchunk")) {
         if (o->type == OBJ_FIELD && g_sel_field == o) {
             char d[96];
-            hc_describe(o, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s%s",
+            champ_designe(o, d, sizeof d);
+            snprintf(out, outlen, "char %d to %d of %s",
                      hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
-                 hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
+                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                     hc_owner_is_bg(o) ? "bg " : "card ", d);
+                     d);
         } else snprintf(out, outlen, "%s", "");
         return 1;
     }
@@ -6653,6 +6761,36 @@ static void term_value_body(const char *t, char *out, int outlen)
                     ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor")) {
                     int cst, cen;
                     Object *cf = chunk_target(of + 2, &cst, &cen);
+                    if (!cf) {
+                        /* LE MORCEAU N'EXISTE PAS : DEUX CAS, ET DEUX
+                         * RÉPONSES DIFFÉRENTES. Mesuré dans HyperCard le
+                         * 27/09/2026, sur un champ contenant « Sun Mon Tue » :
+                         *
+                         *   the textStyle of word 99 of card field "T"
+                         *       -> plain            le champ EXISTE
+                         *   the textStyle of word 2 of card field "Absent"
+                         *       -> erreur, et le script S'ARRÊTE
+                         *
+                         * HC rendait dans les deux cas SA PROPRE PHRASE —
+                         * « textStyle of word 99 of card field "T" ». Un
+                         * « if the textStyle of word 99 of f is "bold" »
+                         * comparait donc à une phrase, et la comparaison
+                         * était fausse sans jamais se plaindre.
+                         *
+                         * Ici on traite le premier cas : le champ est là, le
+                         * morceau non, et la propriété vaut son défaut. On
+                         * lit une plage VIDE placée à la FIN du texte — pas
+                         * au début : un champ dont le premier mot est en gras
+                         * rendrait « bold » pour un mot qui n'existe pas. Le
+                         * second cas est refusé par v3_prop_sur_morceau, qui
+                         * rend la main à hct_eval pour qu'il lève l'erreur. */
+                        const char *base = chunk_base_ref(of + 2);
+                        Object *ob = (base && *base) ? resolve(base) : NULL;
+                        if (ob && ob->type == OBJ_FIELD) {
+                            cf = ob;
+                            cst = cen = (int)strlen(hc_field_text(ob));
+                        }
+                    }
                     if (cf) {
                         struct RunList *rl = runs_of(cf);
                         if (ci_equal(prop, "textcolor")) {
@@ -8194,6 +8332,41 @@ static int v3_prop_sur_objet(const HctNoeud *n)
     return v3_prop_exige_un_objet(prop);
 }
 
+/* UNE PROPRIÉTÉ DE TEXTE SUR UN MORCEAU NE SE REND PAS ELLE-MÊME EN CLAIR.
+ *
+ * Le troisième cas de la même règle, après la référence d'objet et l'appel de
+ * fonction : un mot nu peut légitimement valoir lui-même, « the textStyle of
+ * word 2 of card field "Absent" » jamais. L'auteur demande un style.
+ *
+ * MESURÉ : HyperCard lève une erreur et ARRÊTE le script — le dialogue
+ * Debug / Script / Cancel. HC rendait la phrase et continuait, si bien qu'un
+ * champ mal orthographié laissait le gestionnaire travailler sur une phrase
+ * pendant tout le reste de son cours. Lire un MORCEAU d'un champ absent
+ * s'arrêtait déjà correctement ; seule la propriété DU morceau avalait
+ * l'erreur, parce que le recours annonçait un succès là où il n'avait fait que
+ * se replier sur le littéral.
+ *
+ * Restreint aux quatre propriétés de plage de texte, celles qui se mesurent :
+ * élargir sans mesure ferait s'arrêter des scripts là où HyperCard les laisse
+ * passer, ce qui est la faute symétrique et pas meilleure.
+ *
+ * Le cas où le CHAMP existe et où seul le morceau manque n'arrive pas ici : la
+ * lecture rend « plain » — la valeur par défaut, voir term_value_body —, donc
+ * il n'y a pas d'écho et rien à refuser. Les deux moitiés se composent sans se
+ * connaître. */
+static int v3_prop_sur_morceau(const HctNoeud *n)
+{
+    if (!n || n->genre != HCTN_OF || n->nfils < 2) return 0;
+    const HctNoeud *sur = n->fils[1];
+    if (!sur || sur->genre != HCTN_CHUNK) return 0;
+    if (!n->fils[0]) return 0;
+
+    char prop[64];
+    hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+    return ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
+           ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor");
+}
+
 /* Ce texte s'écrit-il comme un DESCRIPTEUR d'objet ?
  *
  * Sert à distinguer deux échecs que la sonde confondrait :
@@ -8711,7 +8884,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
      * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
      * ici en supprime la moitié. */
     if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
-                 v3_prop_sur_objet(n) ||
+                 v3_prop_sur_objet(n) || v3_prop_sur_morceau(n) ||
                  sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
         ARENA_FREE;
         g_v3_recours_prof--;
@@ -8971,7 +9144,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     if (ci_equal(nom, "selectedfield")) {
         char petit[96];
-        if (g_sel_field) hc_describe(g_sel_field, petit, sizeof petit);
+        if (g_sel_field) champ_designe(g_sel_field, petit, sizeof petit);
         else petit[0] = '\0';
         *out = hct_val_texte(petit);
         return 1;
@@ -8982,48 +9155,50 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         int line = 1;
         for (int i = 0; i < g_sel_start && t[i]; i++)
             if (t[i] == '\n') line++;
-        char petit[16]; snprintf(petit, sizeof petit, "%d", line);
+        char d[96];
+        champ_designe(g_sel_field, d, sizeof d);
+        char petit[160];
+        snprintf(petit, sizeof petit, "line %d of %s", line, d);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "selectedchunk")) {
         if (!g_sel_field) { *out = hct_val_texte(""); return 1; }
         char d[96];
-        hc_describe(g_sel_field, d, sizeof d);
+        champ_designe(g_sel_field, d, sizeof d);
         char petit[160];
-        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+        snprintf(petit, sizeof petit, "char %d to %d of %s",
                  hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
                                          g_sel_start + g_sel_len),
-                 hc_owner_is_bg(g_sel_field) ? "bg " : "card ", d);
+                 d);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundchunk")) {
         if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
         char d[96];
-        hc_describe(g_found_field, d, sizeof d);
+        champ_designe(g_found_field, d, sizeof d);
         char petit[160];
-        snprintf(petit, sizeof petit, "char %d to %d of %s%s",
+        snprintf(petit, sizeof petit, "char %d to %d of %s",
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start) + 1,
                  hct_utf8_compte_prefixe(hc_field_text(g_found_field),
                                          g_found_start + g_found_len),
-                 hc_owner_is_bg(g_found_field) ? "bg " : "card ", d);
+                 d);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundfield")) {
         char petit[96];
-        if (g_found_field) hc_describe(g_found_field, petit, sizeof petit);
-        else petit[0] = '\0';
+        champ_designe(g_found_field, petit, sizeof petit);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundline")) {
         if (g_found_field && g_found_line > 0) {
-            char d[96]; hc_describe(g_found_field, d, sizeof d);
+            char d[96]; champ_designe(g_found_field, d, sizeof d);
             char petit[128];
             snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
             *out = hct_val_texte(petit);
@@ -10601,6 +10776,85 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
  * porte annoncée et non percée est ce qu'on a passé la journée à débusquer,
  * il n'est pas question d'en ouvrir une de plus en silence. */
 
+/* REPLIER LES ACCENTS, ET C'EST LA FORME DE BASE QUI LE FAIT.
+ *
+ * MESURÉ, sur un champ contenant « élève à Noël » :
+ *
+ *     find "eleve"                 trouvé
+ *     find international "eleve"   Not found
+ *     find "élève"                 trouvé
+ *
+ * C'EST L'INVERSE DE CE QU'ON AVAIT ÉCRIT. Le harnais annonçait
+ * « international = repli des accents, pas encore fait ». La mesure dit le
+ * contraire : la forme de BASE replie, et « international » compare
+ * strictement. Encore une déduction prise pour un relevé.
+ *
+ * LE REPLI EST SUR L'UTF-8 DIRECTEMENT, sans table de 256 entrées : les
+ * lettres latines accentuées vivent toutes dans les blocs C3 80..C3 BF et
+ * C4..C5, et l'on n'a besoin que de leur rendre leur lettre de base. Ce qui
+ * n'est pas une lettre latine accentuée passe tel quel — un idéogramme ou un
+ * caractère cyrillique se compare octet à octet, ce qui est le bon défaut :
+ * on ne sait pas replier ce qu'on ne connaît pas.
+ *
+ * On travaille sur des COPIES repliées plutôt que de replier à la volée
+ * pendant la comparaison : les offsets rendus par la recherche doivent rester
+ * ceux du texte D'ORIGINE, sinon foundChunk désignerait une position dans un
+ * texte qui n'existe nulle part. Replier change la longueur — « é » pèse deux
+ * octets, « e » un seul —, donc il faut aussi savoir revenir. */
+static const char *find_pli_utf8(const unsigned char *p, int *avance)
+{
+    /* Rend la lettre de base d'un caractère accentué, ou NULL. */
+    *avance = 1;
+    if (p[0] < 0x80) return NULL;
+    if (p[0] == 0xC3 && p[1]) {
+        *avance = 2;
+        unsigned char c = p[1];
+        /* À-Å / à-å */ if ((c >= 0x80 && c <= 0x85) || (c >= 0xA0 && c <= 0xA5))
+            return (c < 0xA0) ? "A" : "a";
+        /* Ç / ç   */ if (c == 0x87) return "C";
+        if (c == 0xA7) return "c";
+        /* È-Ë / è-ë */ if ((c >= 0x88 && c <= 0x8B)) return "E";
+        if ((c >= 0xA8 && c <= 0xAB)) return "e";
+        /* Ì-Ï / ì-ï */ if ((c >= 0x8C && c <= 0x8F)) return "I";
+        if ((c >= 0xAC && c <= 0xAF)) return "i";
+        /* Ñ / ñ   */ if (c == 0x91) return "N";
+        if (c == 0xB1) return "n";
+        /* Ò-Ö / ò-ö */ if ((c >= 0x92 && c <= 0x96)) return "O";
+        if ((c >= 0xB2 && c <= 0xB6)) return "o";
+        /* Ù-Ü / ù-ü */ if ((c >= 0x99 && c <= 0x9C)) return "U";
+        if ((c >= 0xB9 && c <= 0xBC)) return "u";
+        /* Ý / ý ÿ */ if (c == 0x9D) return "Y";
+        if (c == 0xBD || c == 0xBF) return "y";
+        return NULL;
+    }
+    return NULL;
+}
+
+/* Replie `src` dans `dst`, et note pour chaque octet de `dst` d'où il vient
+ * dans `src`. C'est cette carte qui permet de rendre un offset D'ORIGINE
+ * après avoir cherché dans le texte replié. */
+static int find_replie(const char *src, char *dst, int *carte, int max)
+{
+    const unsigned char *p = (const unsigned char *)src;
+    int j = 0;
+    for (int i = 0; p[i] && j < max - 1; ) {
+        int av = 1;
+        const char *base = find_pli_utf8(p + i, &av);
+        if (base) {
+            for (const char *b = base; *b && j < max - 1; b++) {
+                dst[j] = *b; carte[j] = i; j++;
+            }
+        } else {
+            dst[j] = (char)p[i]; carte[j] = i; j++;
+            av = 1;
+        }
+        i += av;
+    }
+    dst[j] = 0;
+    carte[j] = (int)strlen(src);
+    return j;
+}
+
 /* Un mot du texte commence-t-il ici ? */
 static int find_debut_mot(const char *tx, const char *q)
 {
@@ -10629,41 +10883,135 @@ static void find_mot_autour(const char *tx, const char *hit, size_t plen,
 /* Chercher UN morceau de motif dans un texte.
  * mode 0 = début de mot, 1 = n'importe où, 2 = mot entier.
  * Rend la position, ou NULL. */
-static const char *find_dans_texte(const char *tx, const char *pat, int mode)
+static const char *find_dans_texte(const char *tx, const char *pat, int mode,
+                                   int replier, int depuis)
 {
     size_t plen = strlen(pat);
     if (!plen) return NULL;
-    for (const char *q = tx; *q; q++) {
-        if (mode != 1 && !find_debut_mot(tx, q)) continue;
-        if (strncasecmp(q, pat, plen) != 0) continue;
-        if (mode == 2 && !find_fin_mot(q + plen)) continue;
-        return q;
+
+    /* SANS REPLI — « find international » —, on compare le texte tel quel.
+     * C'est le chemin le plus court, et c'est aussi celui qui garde les
+     * offsets sans rien calculer. */
+    if (!replier) {
+        for (const char *q = tx; *q; q++) {
+            if (q - tx < depuis) continue;
+            if (mode != 1 && !find_debut_mot(tx, q)) continue;
+            if (strncasecmp(q, pat, plen) != 0) continue;
+            if (mode == 2 && !find_fin_mot(q + plen)) continue;
+            return q;
+        }
+        return NULL;
     }
-    return NULL;
+
+    /* AVEC REPLI, on cherche dans une COPIE repliée et l'on rend l'offset
+     * D'ORIGINE grâce à la carte. Chercher directement dans le texte replié
+     * et rendre son offset désignerait une position dans un texte qui
+     * n'existe nulle part — foundChunk pointerait à côté dès le premier
+     * accent. */
+    size_t n = strlen(tx);
+    if (n > 8192) n = 8192;
+    char *ftx = malloc(n * 2 + 2);
+    int  *car = malloc((n * 2 + 2) * sizeof *car);
+    char  fpat[256];
+    int   cpat[256];
+    if (!ftx || !car) { free(ftx); free(car); return NULL; }
+    find_replie(tx, ftx, car, (int)(n * 2 + 2));
+    find_replie(pat, fpat, cpat, (int)sizeof fpat);
+
+    size_t fplen = strlen(fpat);
+    const char *res = NULL;
+    if (fplen) {
+        for (const char *q = ftx; *q; q++) {
+            if (car[q - ftx] < depuis) continue;
+            if (mode != 1 && !find_debut_mot(ftx, q)) continue;
+            if (strncasecmp(q, fpat, fplen) != 0) continue;
+            if (mode == 2 && !find_fin_mot(q + fplen)) continue;
+            res = tx + car[q - ftx];
+            break;
+        }
+    }
+    free(ftx); free(car);
+    return res;
 }
 
 /* Chercher une PHRASE contiguë. mode 3 = n'importe où, 4 = aux frontières. */
-static const char *find_phrase(const char *tx, const char *pat, int mode)
+static const char *find_phrase(const char *tx, const char *pat, int mode,
+                               int replier, int depuis)
 {
     size_t plen = strlen(pat);
     if (!plen) return NULL;
-    for (const char *q = tx; *q; q++) {
-        if (strncasecmp(q, pat, plen) != 0) continue;
-        if (mode == 4 && (!find_debut_mot(tx, q) || !find_fin_mot(q + plen)))
-            continue;
-        return q;
+
+    if (!replier) {
+        for (const char *q = tx; *q; q++) {
+            if (q - tx < depuis) continue;
+            if (strncasecmp(q, pat, plen) != 0) continue;
+            if (mode == 4 && (!find_debut_mot(tx, q) || !find_fin_mot(q + plen)))
+                continue;
+            return q;
+        }
+        return NULL;
     }
-    return NULL;
+
+    size_t n = strlen(tx);
+    if (n > 8192) n = 8192;
+    char *ftx = malloc(n * 2 + 2);
+    int  *car = malloc((n * 2 + 2) * sizeof *car);
+    char  fpat[256];
+    int   cpat[256];
+    if (!ftx || !car) { free(ftx); free(car); return NULL; }
+    find_replie(tx, ftx, car, (int)(n * 2 + 2));
+    find_replie(pat, fpat, cpat, (int)sizeof fpat);
+
+    size_t fplen = strlen(fpat);
+    const char *res = NULL;
+    if (fplen) {
+        for (const char *q = ftx; *q; q++) {
+            if (car[q - ftx] < depuis) continue;
+            if (strncasecmp(q, fpat, fplen) != 0) continue;
+            if (mode == 4 && (!find_debut_mot(ftx, q) || !find_fin_mot(q + fplen)))
+                continue;
+            res = tx + car[q - ftx];
+            break;
+        }
+    }
+    free(ftx); free(car);
+    return res;
 }
 
-/* Le champ est-il cherchable, et fait-il partie de la restriction « in » ? */
-static int find_champ_ok(Object *fl, const char *where)
+/* LE RANG DU CHAMP DANS L'ORDRE OÙ LA RECHERCHE LE PARCOURT : les champs de
+ * carte d'abord, ceux du fond ensuite. Comparer deux rangs dit lequel a déjà
+ * été dépassé, et les champs déjà dépassés dans la carte de reprise ne se
+ * refouillent pas — sans ça un champ situé plus tôt dans la liste ramènerait
+ * le curseur en arrière et « find » tournerait en rond entre deux champs.
+ *
+ * La première version comparait les positions DANS UNE SEULE COUCHE, et se
+ * trompait dès que le curseur et le champ examiné n'étaient pas de la même :
+ * un champ de fond était déclaré « avant » un champ de carte alors que la
+ * recherche le voit après, si bien qu'une moitié de la carte de reprise était
+ * sautée. Un rang unique pour les deux couches supprime la question. */
+static int find_rang_champ(Object *cd, Object *fl)
+{
+    int r = 0;
+    Object *couches[2] = { cd, cd ? cd->bg : NULL };
+    for (int L = 0; L < 2; L++) {
+        Object *lay = couches[L];
+        if (!lay) continue;
+        for (int i = 0; i < lay->nparts; i++, r++)
+            if (lay->parts[i] == fl) return r;
+    }
+    return -1;
+}
+
+/* Le champ est-il cherchable, et est-ce CELUI que « in » désigne ?
+ *
+ * `seul` est un objet déjà résolu, plus un texte à re-résoudre. L'ancienne
+ * version appelait resolve() pour CHAQUE champ de CHAQUE carte, avec le nom
+ * écrit dans le script — autant d'analyses de texte que de champs visités,
+ * là où une seule par carte suffit. */
+static int find_champ_ok(Object *fl, Object *seul)
 {
     if (!fl || fl->type != OBJ_FIELD || fl->dont_search) return 0;
-    if (where && where[0]) {
-        Object *only = resolve(where);
-        if (only != fl) return 0;
-    }
+    if (seul && seul != fl) return 0;
     return 1;
 }
 
@@ -10677,60 +11025,100 @@ static int find_ligne_de(const char *tx, const char *hit)
 
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
 
-    const char *r = skip_spaces(mots);
-
-    /* LE MODE, en sautant le MOT plutôt qu'en comptant ses lettres.
+    /* LES ARGUMENTS SE LISENT DANS L'ARBRE, plus dans le texte.
      *
-     * L'ancien code faisait « r + 6 » après avoir reconnu « chars ». Or le
-     * lexeur applique l'annexe F avant tout : « chars » arrive écrit
-     * « characters », et le saut de six caractères tombait au milieu du mot.
-     * Un décalage silencieux, qui aurait donné un motif tronqué. */
+     * Le relevé disait « v3 relit find », une fois par recherche : la commande
+     * était PORTÉE, et elle recomposait pourtant la ligne avec v3_reste pour
+     * la relexer aussitôt avec eval_expr. Trois analyseurs de texte écrits à
+     * la main — le mode, « of marked cards », « in <champ> » — pour une ligne
+     * que l'analyseur avait déjà découpée. Chacun était une occasion de se
+     * tromper, et l'un l'avait fait : le saut du mot de mode comptait six
+     * lettres pour « chars », que le lexeur avait déjà réécrit
+     * « characters », et le motif partait amputé.
+     *
+     * Le motif de hct_cmd.c porte désormais la syntaxe entière, et les
+     * mots-clés restent dans l'arbre pour qu'on s'y repère sans redécouper. */
     int mode = 0;   /* 0 début de mot, 1 n'importe où, 2 mot entier,
                        3 phrase n'importe où, 4 phrase aux frontières */
     int par_mots = 1;
-    for (;;) {
-        const char *apres = NULL;
-        if      (ci_word(r, "characters") || ci_word(r, "character") ||
-                 ci_word(r, "chars") || ci_word(r, "char")) { mode = 1; }
-        else if (ci_word(r, "words") || ci_word(r, "word"))  { mode = 2; }
-        else if (ci_word(r, "string")) { mode = 3; par_mots = 0; }
-        else if (ci_word(r, "whole"))  { mode = 4; par_mots = 0; }
-        else if (ci_word(r, "international")) { /* accepté, pas encore replié */ }
+    /* LA FORME DE BASE REPLIE LES ACCENTS, « international » NON. C'est la
+     * mesure, et c'est l'inverse de ce qu'on avait supposé. */
+    int international = 0;
+    /* `im` et non `i` : les boucles de champs, plus bas, ont leur propre `i`,
+     * et -Wshadow a raison de refuser deux noms identiques dans la même
+     * fonction — le lecteur, lui, ne voit pas la portée. */
+    int im = 0;
+    for (; im < n->nfils; im++) {
+        /* LES QUATRE ORTHOGRAPHES, et pas une normalisation supposée. Le
+         * lexeur réécrit « chars » en « characters » — annexe F —, mais il
+         * laisse « word », « words » et « character » tels quels. Mesuré au
+         * vidage de l'arbre : ne comparer qu'aux formes plurielles laisserait
+         * « find word "x" » sans mode, donc cherché comme la forme de base. */
+        if      (v3_est_motcle(n, im, "characters") ||
+                 v3_est_motcle(n, im, "character"))  mode = 1;
+        else if (v3_est_motcle(n, im, "words") ||
+                 v3_est_motcle(n, im, "word"))       mode = 2;
+        else if (v3_est_motcle(n, im, "string")) { mode = 3; par_mots = 0; }
+        else if (v3_est_motcle(n, im, "whole"))  { mode = 4; par_mots = 0; }
+        else if (v3_est_motcle(n, im, "international")) international = 1;
         else break;
-        apres = r;
-        while (*apres && !isspace((unsigned char)*apres)) apres++;
-        r = skip_spaces(apres);
     }
 
-    /* séparer le motif de l'éventuel « in <champ> » */
-    const char *kw = NULL;
-    int inq = 0;
-    for (const char *q = r; *q; q++) {
-        if (*q == '"') { inq = !inq; continue; }
-        if (inq) continue;
-        if ((q == r || isspace((unsigned char)q[-1])) && ci_word(q, "in")) { kw = q; break; }
+    const HctNoeud *nmotif = (im < n->nfils) ? n->fils[im] : NULL;
+    if (!nmotif || nmotif->genre == HCTN_MOTCLE) {
+        set_result("Not found"); g_atop = sauve; return 1;
     }
-    char pat[256] = "", where[128] = "";
-    if (kw) {
-        char e[256];
-        int len = (int)(kw - r);
-        if (len > (int)sizeof e - 1) len = (int)sizeof e - 1;
-        memcpy(e, r, (size_t)len); e[len] = 0;
-        eval_expr(e, pat, sizeof pat);
-        snprintf(where, sizeof where, "%s", skip_spaces(kw + 2));
-    } else {
-        eval_expr(r, pat, sizeof pat);
+
+    /* « OF MARKED CARDS » ARRIVE PAR DEUX CHEMINS, et il faut les deux.
+     *
+     * Sans « in », le motif de commande prend les trois mots et les laisse en
+     * mots-clés de premier niveau : « find "x" of marked cards ».
+     *
+     * Avec « in », le désignateur d'objet AVALE la clause — « of » est son
+     * opérateur de cible — et « marked cards » devient le dernier fils du
+     * champ : « find "x" in bg field "T" of marked cards » donne un nœud
+     * « bg field » à deux fils, dont le second porte le drapeau `marque`.
+     * Ne traiter que le premier chemin ferait chercher dans un champ nommé
+     * « T of marked cards », qui n'existe pas : la recherche ne trouverait
+     * plus rien du tout, en silence. L'ancien code par texte coupait la
+     * clause avant de séparer le « in », et couvrait donc les deux ;
+     * l'oublier ici aurait été une régression. */
+    int marquees_seules = v3_indice_motcle(n, "of", im + 1) >= 0;
+
+    /* « in <champ> » : le nœud, pas son texte. */
+    const HctNoeud *nchamp = NULL;
+    HctNoeud champ_sans_marque;
+    memset(&champ_sans_marque, 0, sizeof champ_sans_marque);
+    int ki = v3_indice_motcle(n, "in", im + 1);
+    if (ki >= 0 && ki + 1 < n->nfils) {
+        nchamp = n->fils[ki + 1];
+        if (nchamp->nfils > 0) {
+            const HctNoeud *q = nchamp->fils[nchamp->nfils - 1];
+            if (q && q->genre == HCTN_OBJET && q->marque) {
+                /* ON NE TOUCHE PAS À L'ARBRE. Il est analysé une fois et
+                 * relu à chaque exécution du gestionnaire : en retirer un
+                 * fils marcherait la première fois et seulement celle-là.
+                 * Une COPIE de surface avec un fils de moins cache la clause
+                 * sans rien modifier — `fils` est un tableau, baisser `nfils`
+                 * suffit. */
+                marquees_seules = 1;
+                champ_sans_marque = *nchamp;
+                champ_sans_marque.nfils = nchamp->nfils - 1;
+                nchamp = &champ_sans_marque;
+            }
+        }
     }
-    if (!pat[0]) { set_result("not found"); g_atop = sauve; return 1; }
+
+    char pat[256];
+    v3_val_texte(ctx, nmotif, pat, sizeof pat);
+    if (ctx->erreur) { g_atop = sauve; return 1; }
+    if (!pat[0]) { set_result("Not found"); g_atop = sauve; return 1; }
 
     Object *stack = g_current_card ? g_current_card->owner : NULL;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
-    if (!stack) { set_result("not found"); g_atop = sauve; return 1; }
+    if (!stack) { set_result("Not found"); g_atop = sauve; return 1; }
 
     /* LE MOTIF DÉCOUPÉ EN MOTS, pour les trois formes qui le font. */
     char morceaux[16][64];
@@ -10749,24 +11137,67 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         }
     }
     if (par_mots && nmorceaux == 0) {
-        set_result("not found"); g_atop = sauve; return 1;
+        set_result("Not found"); g_atop = sauve; return 1;
     }
 
     int total = card_count(stack);
     int start = card_index(stack, g_current_card);
     if (start < 0) start = 0;
 
-    /* AVANCER SI C'EST LA MÊME RECHERCHE. Voir la note sur g_find_motif :
-     * mesuré chez HyperCard, répéter « find » passe à l'occurrence suivante
-     * et boucle. */
-    if (g_found_card == g_current_card && g_found_card &&
-        strcmp(g_find_motif, pat) == 0)
-        start = (start + 1) % (total > 0 ? total : 1);
+    /* UN CURSEUR, PAS UN « RECOMMENCER ». Et la première version de ce code
+     * avait la règle fausse.
+     *
+     * On avait écrit : « on avance si c'est la même recherche et qu'on est
+     * resté sur la carte trouvée ». C'était un RAISONNEMENT, et le banc de
+     * mesure l'a démoli d'une ligne. Sur une pile où la carte 1 contient
+     * « alpha » :
+     *
+     *     find "bet alph"   -> trouve « beta », char 7 à 10 de la carte 1
+     *     go to card 1
+     *     find "alpha"      -> HyperCard rend la carte 2, PAS la carte 1
+     *
+     * Motif différent, et pourtant il ne repart pas du début. Il reprend
+     * APRÈS le caractère 10 : le reste du champ n'a pas d'« alpha », donc il
+     * passe à la carte suivante. Et « go to card 3 » entre deux recherches
+     * identiques n'y change rien non plus — il continue de là où il en était.
+     *
+     * LE MODÈLE EST DONC : un seul curseur — champ, position —, avancé après
+     * chaque trouvaille, que NI la navigation NI le changement de motif ne
+     * remettent à zéro. C'est plus simple que ce qu'on avait imaginé, et
+     * c'est ce qui rend « find » utilisable en tapant Retour : on parcourt
+     * toutes les occurrences, une par une, sans jamais revenir en arrière.
+     *
+     * g_find_motif ne sert donc plus à décider, seulement à la trace. */
+    Object  *reprise_carte  = NULL;
+    Object  *reprise_champ  = NULL;
+    int      reprise_offset = 0;
+    if (g_found_card && card_index(stack, g_found_card) >= 0) {
+        reprise_carte  = g_found_card;
+        reprise_champ  = g_found_field;
+        reprise_offset = g_found_start + g_found_len;
+        start = card_index(stack, g_found_card);
+        if (start < 0) start = 0;
+    }
     snprintf(g_find_motif, sizeof g_find_motif, "%s", pat);
 
-    for (int k = 0; k < total; k++) {
+    /* UN TOUR DE PISTE, PLUS LE RETOUR DANS LA CARTE DE DÉPART.
+     *
+     * MESURÉ : trois « find "alpha" » d'affilée sur une pile de trois cartes
+     * donnent carte 1, carte 2, carte 1 — ÇA BOUCLE. Or le balayage ne
+     * visitait la carte de reprise qu'UNE fois, et sous la restriction du
+     * curseur : le début de cette carte n'était donc jamais revu, et la
+     * recherche rendait « Not found » là où HyperCard rebouclait. C'est ce qui
+     * faisait échouer « find chars "ph be" » juste après une trouvaille dans
+     * la même carte.
+     *
+     * Une passe de plus, sans la restriction, ferme le cercle. La restriction
+     * ne vaut donc que pour la PREMIÈRE visite (k == 0). */
+    int passes = reprise_carte ? total + 1 : total;
+
+    for (int k = 0; k < passes; k++) {
         Object *cd = nth_card(stack, (start + k) % total);
         if (!cd) continue;
+        int restreint = (k == 0 && reprise_carte != NULL);
 
         /* « Don't Search This Card » : on saute la carte ENTIÈRE, et pas
          * seulement tel ou tel champ. Le verrou du FOND vaut pour toutes ses
@@ -10774,6 +11205,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
          * d'index hors des résultats sans avoir à cocher chaque champ. */
         if (cd->dont_search) continue;
         if (cd->bg && cd->bg->dont_search) continue;
+        if (marquees_seules && !cd->marked) continue;
 
         Object *layers[2] = { cd, cd->bg };
         Object *trouve_fl = NULL;
@@ -10783,6 +11215,26 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 
         Object *saved = g_current_card;
         g_current_card = cd;                     /* pour le texte par carte */
+
+        /* « in <champ> » SE RÉSOUT CARTE PAR CARTE, et c'est voulu.
+         *
+         * Le champ nommé n'est pas le même objet d'une carte à l'autre quand
+         * c'est un champ de CARTE : « find "x" in card field "A" » doit
+         * regarder le champ A de chaque carte, pas celui de la carte d'où
+         * l'on est parti. C'est ce que faisait la version par texte, qui
+         * re-résolvait le nom à l'intérieur de la boucle ; le garder évite
+         * une régression silencieuse — une recherche restreinte ne trouvant
+         * plus que dans la carte de départ. Un champ de FOND, lui, est un
+         * objet unique, et se résout au même quoi qu'il arrive.
+         *
+         * Si le champ n'existe pas sur cette carte, la carte est sautée
+         * ENTIÈRE : sans restriction résolue on fouillerait tout, soit
+         * l'inverse de ce que « in » demande. */
+        Object *seul = NULL;
+        if (nchamp) {
+            seul = hct_resout(ctx, nchamp);
+            if (!seul) { g_current_card = saved; continue; }
+        }
 
         if (par_mots) {
             /* TOUS les morceaux doivent être dans la carte, chacun n'importe
@@ -10795,9 +11247,24 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                     if (!lay) continue;
                     for (int i = 0; i < lay->nparts && !vu; i++) {
                         Object *fl = lay->parts[i];
-                        if (!find_champ_ok(fl, where)) continue;
+                        if (!find_champ_ok(fl, seul)) continue;
                         const char *tx = hc_field_text(fl);
-                        const char *hit = find_dans_texte(tx, morceaux[m], mode);
+                        /* LE CURSEUR NE VAUT QUE POUR LE PREMIER MORCEAU.
+                         * Les suivants ne servent qu'à dire si la CARTE
+                         * convient — les exiger après le curseur eux aussi
+                         * rendrait « find "gam bet" » dépendant de l'ordre,
+                         * alors qu'il est mesuré comme n'en ayant pas. */
+                        int plancher = 0;
+                        if (restreint && m == 0) {
+                            if (fl == reprise_champ) plancher = reprise_offset;
+                            else {
+                                int rf = find_rang_champ(cd, fl);
+                                int rr = find_rang_champ(cd, reprise_champ);
+                                if (rr >= 0 && rf >= 0 && rf < rr) continue;
+                            }
+                        }
+                        const char *hit = find_dans_texte(tx, morceaux[m], mode,
+                                                          !international, plancher);
                         if (!hit) continue;
                         vu = 1;
                         /* C'est le PREMIER morceau du motif qui est désigné
@@ -10818,9 +11285,19 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
                 if (!lay) continue;
                 for (int i = 0; i < lay->nparts && !ok; i++) {
                     Object *fl = lay->parts[i];
-                    if (!find_champ_ok(fl, where)) continue;
+                    if (!find_champ_ok(fl, seul)) continue;
                     const char *tx = hc_field_text(fl);
-                    const char *hit = find_phrase(tx, pat, mode);
+                    int plancher = 0;
+                    if (restreint) {
+                        if (fl == reprise_champ) plancher = reprise_offset;
+                        else {
+                            int rf = find_rang_champ(cd, fl);
+                            int rr = find_rang_champ(cd, reprise_champ);
+                            if (rr >= 0 && rf >= 0 && rf < rr) continue;
+                        }
+                    }
+                    const char *hit = find_phrase(tx, pat, mode, !international,
+                                                  plancher);
                     if (!hit) continue;
                     ok = 1;
                     trouve_fl  = fl;
@@ -10875,7 +11352,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
     g_found_start = g_found_len = 0; g_found_card = NULL;
     g_found_montre = 0;
-    set_result("not found");
+    set_result("Not found");
     g_atop = sauve;
     return 1;
 }
@@ -11142,6 +11619,35 @@ static int v3_val_liste(HctContexte *ctx, const HctNoeud *n, int premier,
         compte++;
     }
     return compte;
+}
+
+/* LA BASE d'une référence de morceau : ce qui reste quand on a épluché tous
+ * les morceaux emboîtés. « word 2 of line 1 of card field "x" » a pour base
+ * « card field "x" ».
+ *
+ * Elle sert à répondre à la question « lequel des deux manque ? » : le morceau
+ * ou l'objet qui le porte. Sans elle on ne pouvait que regarder la FORME de la
+ * référence, ce qui ne dit rien de la cause. */
+static const char *chunk_base_ref(const char *ref)
+{
+    ChunkType t; char a[128], bb[128]; const char *r; int o;
+    const char *cour = ref;
+    /* Un plafond de profondeur, pas par méfiance envers parse_chunk mais parce
+     * qu'une boucle qui ne rend pas la main sur une référence tordue vaut un
+     * gel de l'application, et qu'aucune référence réelle n'emboîte dix
+     * morceaux. */
+    for (int garde = 0; garde < 16; garde++) {
+        if (!parse_chunk(cour, &t, a, sizeof a, bb, sizeof bb, &r, &o)) break;
+        if (!r) break;
+        /* parse_chunk rend le reste JUSTE APRÈS le « of », espace compris.
+         * Le garder ferait échouer resolve() sur une référence parfaitement
+         * valide, et l'on annoncerait « objet introuvable » pour un objet qui
+         * existe — la faute inverse de celle qu'on corrige ici. */
+        const char *suite = skip_spaces(r);
+        if (suite == cour) break;
+        cour = suite;
+    }
+    return cour;
 }
 
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
@@ -11441,8 +11947,34 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
          * envoyait chercher au mauvais endroit. */
         ChunkType xt; char xa[128], xb[128]; const char *xr; int xo;
         if (parse_chunk(refbuf, &xt, xa, sizeof xa, xb, sizeof xb, &xr, &xo)) {
-            set_result("morceau hors limites");
-            emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+            /* LEQUEL DES DEUX MANQUE ? Le critère était SYNTAXIQUE — « est-ce
+             * ÉCRIT comme un morceau ? » — et pas causal. « set the textStyle
+             * of word 2 of card field "absent" » annonçait donc « morceau hors
+             * limites », c'est-à-dire qu'on allait chercher le défaut dans le
+             * texte d'un champ qui n'existe pas. Écrire du TEXTE dans ce même
+             * champ absent dit « objet introuvable », comme il faut : c'était
+             * ce chemin-ci, et lui seul, qui se trompait de cause.
+             *
+             * Un diagnostic périmé est pire qu'un diagnostic vague : il est
+             * faux avec assurance. On regarde donc si la BASE se résout, et
+             * c'est elle qu'on nomme quand c'est elle qui manque. */
+            const char *base = chunk_base_ref(refbuf);
+            Object *ob = (base && *base) ? resolve(base) : NULL;
+            if (base && *base && !ob) {
+                set_result("objet introuvable");
+                emit(HC_ERR, "   !! objet introuvable : %s", base);
+            } else if (ob && ob->type != OBJ_FIELD) {
+                /* La base existe et n'a pas de texte : un bouton n'a ni mots
+                 * ni lignes. « morceau hors limites » ferait croire à un rang
+                 * trop grand, et l'on irait compter les mots d'un bouton. */
+                char dsc[64]; hc_describe(ob, dsc, sizeof dsc);
+                set_result("morceau sur un objet sans texte");
+                emit(HC_ERR, "   !! %s n'a pas de texte : pas de morceau à y"
+                             " designer", dsc);
+            } else {
+                set_result("morceau hors limites");
+                emit(HC_ERR, "   !! morceau hors limites : %s", refbuf);
+            }
         } else {
             set_result("objet introuvable");
             emit(HC_ERR, "   !! objet introuvable : %s", refbuf);
@@ -11771,15 +12303,36 @@ static int v3_cmd_convert(HctContexte *ctx, const HctNoeud *n)
  * « with <rapport> » en fait partie mais reste ignoré : l'ancien exécuteur
  * ne le lisait déjà pas, une mise en page de rapport demandant un
  * imprimeur que le noyau n'a jamais eu. */
+/* « print » : LES ARGUMENTS SE LISENT DANS L'ARBRE.
+ *
+ * Le relevé du corpus disait « v3 relit print » seize fois. Comme « find »
+ * avant lui, il était PORTÉ et recomposait pourtant sa ligne avec v3_reste
+ * pour la redécouper au mot : ci_word pour reconnaître « stack », « all »,
+ * « marked », « card », « cd », un saut de quatre ou deux lettres selon le mot
+ * trouvé, find_kw pour le « to », et eval_checked sur les morceaux.
+ *
+ * Le motif de commande porte maintenant « [all|marked] * [to e] [with e] », et
+ * l'arbre donne tout : le mot-clé, l'objet désigné, la borne. Les seize formes
+ * de tests/harnais/impression.c ont été relevées AVANT ce portage et ne
+ * bougent pas d'un caractère — c'est le seul moyen de dire qu'un portage est
+ * neutre.
+ *
+ * DEUX COMPORTEMENTS SONT REPRODUITS À L'IDENTIQUE alors qu'ils sont
+ * discutables, parce que les changer ici les mêlerait au portage :
+ *
+ *   · le côté GAUCHE d'une plage est lu comme un NOMBRE, pas résolu comme une
+ *     carte. « print card "C005" to 8 » imprime donc de la carte 1 à la 8 : un
+ *     nom n'est pas un rang, la borne retombe à 1 en silence.
+ *
+ *   · « print <document> with <application> » ne fait rien. Le « [with e] » du
+ *     motif ne colle même pas — « * » avale « with » comme un littéral nu
+ *     avant que le groupe ne soit essayé —, et l'exécuteur n'en ferait rien de
+ *     toute façon.
+ *
+ * Les deux sont inscrits dans le harnais et se corrigent séparément. */
 static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     size_t sauve = g_atop;
-    char *mots = arena_buf();
-    v3_reste(n, mots, HC_VAL);
-
-    const char *a = skip_spaces(mots);
-    if (ci_word(a, "this")) a = skip_spaces(a + 4);
 
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
@@ -11799,70 +12352,81 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
     }
     int np = 0;
 
-    if (ci_word(a, "stack") || ci_word(a, "all")) {
+    /* « all » et « marked » sont des mots-clés du motif ; ils ne sont donc
+     * plus cherchés dans le texte. */
+    int toutes  = v3_est_motcle(n, 0, "all");
+    int marques = v3_est_motcle(n, 0, "marked");
+    int i0 = (toutes || marques) ? 1 : 0;
+    const HctNoeud *quoi = (i0 < n->nfils && n->fils[i0]->genre != HCTN_MOTCLE)
+                         ? n->fils[i0] : NULL;
+
+    if (quoi && quoi->genre == HCTN_OBJET) {
+        /* « print stack » : toute la pile. Le type de l'objet le dit, plus un
+         * mot à comparer. */
+        if (quoi->typeobj == HCT_OBJ_STACK) toutes = 1;
+        /* « print marked cards » sans passer par le mot-clé : le nœud porte
+         * le drapeau de marquage, comme pour « the number of marked cards ».
+         * Le motif prend le mot avant lui aujourd'hui, mais le drapeau reste
+         * le sens réel et la forme peut revenir par une autre route. */
+        if (quoi->marque) marques = 1;
+    }
+
+    const HctNoeud *nto = NULL;
+    {
+        int ito = v3_indice_motcle(n, "to", i0);
+        if (ito >= 0 && ito + 1 < n->nfils) nto = n->fils[ito + 1];
+    }
+
+    if (toutes) {
         if (pile)
             for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD) liste[np++] = pile->parts[i];
     }
-    else if (ci_word(a, "marked")) {
+    else if (marques) {
         if (pile)
             for (int i = 0; i < pile->nparts && np < cap; i++)
                 if (pile->parts[i]->type == OBJ_CARD && pile->parts[i]->marked)
                     liste[np++] = pile->parts[i];
     }
-    else if (ci_word(a, "card") || ci_word(a, "cd") || !*a) {
-        const char *r = *a ? skip_spaces(a + (ci_word(a, "cd") ? 2 : 4)) : "";
-        if (!*r) {
-            /* « print card » nu : la carte courante. */
-            if (g_current_card) liste[np++] = g_current_card;
-        } else {
-            /* « print card 3 », « print card "index" », « print card 2 to 7 » */
-            const char *to = find_kw(r, "to");
-            if (to) {
-                char *v1 = arena_buf(), *v2 = arena_buf();
-                int len = (int)(to - r);
-                char brut[256];
-                if (len > (int)sizeof brut - 1) len = (int)sizeof brut - 1;
-                memcpy(brut, r, (size_t)len); brut[len] = '\0';
-                eval_checked(brut, v1, HC_VAL);
-                eval_checked(skip_spaces(to + 2), v2, HC_VAL);
-                /* LES BORNES SONT RAMENÉES À LA PILE avant de boucler.
-                 *
-                 * « print card 1 to 2147483647 » sur une pile de dix cartes
-                 * GELAIT l'application : passé la dixième, nth_card rendait
-                 * NULL, np cessait d'augmenter, la garde « np < 512 » restait
-                 * donc vraie, et la boucle parcourait deux milliards d'indices
-                 * pour rien. Au bout, « i++ » sur INT_MAX est en plus un
-                 * débordement signé, soit un comportement indéfini.
-                 *
-                 * Une faute de frappe suffisait. On borne donc à ce qui
-                 * existe, et le compte de cartes est la seule borne juste. */
-                int hors1 = 0, hors2 = 0;
-                int d = hct_vers_rang(v1, &hors1);
-                int f = hct_vers_rang(v2, &hors2);
-                int total = card_count(pile);
-                if (hors1) d = 1;
-                if (hors2) f = total;
-                if (d < 1) d = 1;
-                if (f > total) f = total;
-                for (int i = d; i <= f && np < cap; i++) {
-                    Object *c = nth_card(pile, i - 1);
-                    if (c) liste[np++] = c;
-                }
-            } else {
-                Object *c = resolve(r);
-                if (!c) {
-                    char *v = arena_buf();
-                    eval_checked(r, v, HC_VAL);
-                    c = resolve(v);
-                    if (!c) {
-                        char ref[128];
-                        snprintf(ref, sizeof ref, "card %s", v);
-                        c = resolve(ref);
-                    }
-                }
-                if (c && c->type == OBJ_CARD) liste[np++] = c;
+    else if (!quoi) {
+        /* « print » nu : la carte courante. */
+        if (g_current_card) liste[np++] = g_current_card;
+    }
+    else if (quoi->genre == HCTN_OBJET && quoi->typeobj == HCT_OBJ_CARD) {
+        if (nto) {
+            /* UNE PLAGE. Les bornes se lisent comme des NOMBRES — voir
+             * l'en-tête : c'est l'ancien comportement, reproduit tel quel.
+             *
+             * LES BORNES SONT RAMENÉES À LA PILE avant de boucler.
+             *
+             * « print card 1 to 2147483647 » sur une pile de dix cartes
+             * GELAIT l'application : passé la dixième, nth_card rendait
+             * NULL, np cessait d'augmenter, la garde « np < 512 » restait
+             * donc vraie, et la boucle parcourait deux milliards d'indices
+             * pour rien. Au bout, « i++ » sur INT_MAX est en plus un
+             * débordement signé, soit un comportement indéfini.
+             *
+             * Une faute de frappe suffisait. On borne donc à ce qui existe,
+             * et le compte de cartes est la seule borne juste. */
+            char v1[HC_VAL] = "", v2[HC_VAL] = "";
+            if (quoi->nfils > 0) v3_val_texte(ctx, quoi->fils[0], v1, sizeof v1);
+            v3_val_texte(ctx, nto, v2, sizeof v2);
+            if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+            int hors1 = 0, hors2 = 0;
+            int d = hct_vers_rang(v1, &hors1);
+            int f = hct_vers_rang(v2, &hors2);
+            int total = card_count(pile);
+            if (hors1) d = 1;
+            if (hors2) f = total;
+            if (d < 1) d = 1;
+            if (f > total) f = total;
+            for (int i = d; i <= f && np < cap; i++) {
+                Object *c = nth_card(pile, i - 1);
+                if (c) liste[np++] = c;
             }
+        } else {
+            Object *c = hct_resout(ctx, quoi);
+            if (c && c->type == OBJ_CARD) liste[np++] = c;
         }
     }
 
@@ -12443,9 +13007,24 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             int i = v3_menu_index(ctx, o);
             if (ctx->erreur) return 1;
             if (i < 0) { set_result("menu introuvable"); return 1; }
-            char nom[64];
-            snprintf(nom, sizeof nom, "%s", g_menus[i].nom);
-            menu_supprimer(nom);
+            /* PAR LE RANG, PAS PAR LE NOM.
+             *
+             * On recopiait le nom du menu dans soixante-quatre octets pour le
+             * redonner à une recherche par nom. Un nom plus long
+             * arrivait donc TRONQUÉ, ne correspondait plus à rien, et le menu
+             * survivait — « the result » restant vide, c'est-à-dire annonçant
+             * la réussite. Mesuré : 63 caractères se supprime, 64 ne se
+             * supprime pas, et rien ne le dit.
+             *
+             * Le rang est là, juste au-dessus. Il n'y avait aucune raison de
+             * repasser par le nom, et c'est ce détour qui portait le défaut.
+             *
+             * gcc le signalait — « output between 1 and 256 bytes into a
+             * destination of size 64 » — mais à -O0 SEULEMENT, et la porte du
+             * projet compile en -O2. Elle compile désormais aux trois
+             * niveaux : un avertissement qui dépend de l'optimisation reste un
+             * avertissement, et celui-ci cachait un vrai défaut. */
+            menu_oter(i);
             set_result("");
             return 1;
         }
@@ -13819,11 +14398,14 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             /* Même règle qu'à la création : on refuse plutôt que d'amputer.
              * Un menu renommé trop long deviendrait introuvable sous son
              * nouveau nom ET perdu sous l'ancien. */
-            if (strlen(val) >= HC_MENU_NOM_MAX) {
+            size_t lv = strlen(val);
+            if (lv >= HC_MENU_NOM_MAX) {
                 hct_ctx_faute(ctx, obj, "nom de menu trop long");
                 return 1;
             }
-            snprintf(g_menus[i].nom, sizeof g_menus[i].nom, "%s", val);
+            /* memcpy sur la longueur vérifiée, comme à la création : même
+             * borne, même raison. Voir menu_creer. */
+            memcpy(g_menus[i].nom, val, lv + 1);
             menus_prevenir(); return 1;
         }
         if (ci_equal(prop, "enabled")) {
@@ -14025,6 +14607,47 @@ static int v3_cmd_put_menu(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* LES DIX MESSAGES DU CLAVIER, APPELÉS COMME COMMANDES.
+ *
+ *     arrowKey · returnKey · enterKey · tabKey · keyDown · controlKey
+ *     functionKey · commandKeyDown · enterInField · returnInField
+ *
+ * L'interface les ENVOIE déjà quand on tape — HCview.m les nomme et appelle
+ * hc_send_arg. Mais un SCRIPT qui les écrit se heurtait à « ne sait pas
+ * faire », même quand la pile avait le gestionnaire sous la main :
+ *
+ *     on arrowKey d          -- dans le script de pile
+ *       ...
+ *     end arrowKey
+ *
+ *     arrowKey "right"       -- dans un bouton : ERREUR
+ *
+ * LE DÉFAUT TIENT EN UNE PHRASE : être dans la table des commandes empêche
+ * d'être un message. hct_cmd.c leur donne un motif — c'est ce qui fait que
+ * « arrowKey "left" » s'analyse —, donc le nœud est une COMMANDE ; le
+ * répartiteur cherche le verbe parmi les verbes portés, ne le trouve pas, et
+ * la branche qui aurait proposé le nom à la pile ne s'applique qu'aux nœuds
+ * MESSAGE. Les dix tombaient entre les deux.
+ *
+ * C'est courant dans les piles réelles : la navigation par les flèches, la
+ * tabulation d'un champ au suivant, les raccourcis. Le relevé ne le voyait
+ * pas — il compte le corpus de TEST, et un harnais n'appuie jamais sur une
+ * touche. Classer par ce compteur m'a fait ranger ces dix-là en queue de
+ * liste ; c'est l'usage qui les a remis devant.
+ *
+ * ON PROPOSE LE MESSAGE, ET RIEN DE PLUS. Si personne ne le prend, on rend 0
+ * et l'ancien chemin dit « ne sait pas faire » comme avant : l'ACTION PAR
+ * DÉFAUT — ce que fait une flèche que nul n'intercepte — n'est pas mesurée,
+ * et une action inventée serait pire qu'un refus franc. Le banc qui la
+ * mesurera est dans docs/mesures/clavier.txt. */
+static int v3_cmd_touche(HctContexte *ctx, const HctNoeud *n)
+{
+    ARENA_MARK;
+    int fait = v3_message_pile(ctx, n);
+    ARENA_FREE;
+    return fait;
+}
+
 /* ==================== la table des verbes portés ==================== *
  *
  * Elle fut le tableau d'avancement de la migration : ce qui n'y figure pas
@@ -14051,6 +14674,17 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
     { "find",   v3_cmd_find    },
+    /* Les dix du clavier, tous vers le même : voir v3_cmd_touche. */
+    { "arrowkey",       v3_cmd_touche },
+    { "commandkeydown", v3_cmd_touche },
+    { "controlkey",     v3_cmd_touche },
+    { "enterinfield",   v3_cmd_touche },
+    { "enterkey",       v3_cmd_touche },
+    { "functionkey",    v3_cmd_touche },
+    { "keydown",        v3_cmd_touche },
+    { "returninfield",  v3_cmd_touche },
+    { "returnkey",      v3_cmd_touche },
+    { "tabkey",         v3_cmd_touche },
     { "go",     v3_cmd_go      },
     { "hide",   v3_cmd_montre  },
     { "lock",   v3_cmd_verrou  },
@@ -14412,8 +15046,10 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     if (x.ctx.erreur) {
         char qui[64];
         hc_describe(o, qui, sizeof qui);
+        int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
+        err_ligne_pose(ligne);
         emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0, qui, message);
+             ligne, qui, message);
     }
 
     hct_exec_libere(&x);
@@ -14476,6 +15112,118 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
 
     ARENA_FREE;
     return ok;
+}
+
+/* La BASE d'une référence de morceau, DANS L'ARBRE : « word 2 of line 1 of
+ * card field "x" » a pour base le nœud « card field "x" ».
+ *
+ * Jumeau de chunk_base_ref, qui fait la même chose sur le TEXTE. Les deux
+ * existent parce que les deux chemins existent encore ; celui-ci part avec
+ * l'avantage de ne rien avoir à redécouper. */
+static const HctNoeud *chunk_base_noeud(const HctNoeud *ch)
+{
+    /* Un plafond, comme pour la version texte : une référence tordue ne doit
+     * pas pouvoir faire tourner cette boucle sans fin. */
+    for (int garde = 0; garde < 16; garde++) {
+        if (!ch || ch->genre != HCTN_CHUNK || ch->nfils < 1) break;
+        ch = ch->fils[ch->nfils - 1];
+    }
+    return ch;
+}
+
+/* LA PROPRIÉTÉ D'UN MORCEAU DE TEXTE, LUE DANS L'ARBRE.
+ *
+ *     the textStyle of word 3 of line 2 of card field "cal"
+ *
+ * LE SITE JUMEAU MANQUANT de v3_chunk_cible, qui fait ce travail pour
+ * l'ÉCRITURE depuis des jours. La lecture, elle, n'avait pas de chemin :
+ * `resout` rend NULL sur un nœud de morceau — un morceau n'est pas un objet —,
+ * donc noeud_of confiait tout au recours, c'est-à-dire à l'ancien évaluateur.
+ *
+ * CE QUE ÇA COÛTAIT, relevé sous backtrace : TROIS évaluations de la même
+ * expression — deux depuis v3_recours, une par l'analyseur v1 — et, quand
+ * elle échoue, TROIS messages identiques là où HyperCard n'en montre qu'un.
+ *
+ * TROIS SORTIES, et chacune a sa raison :
+ *
+ *   · le morceau se résout          -> la valeur de la plage ;
+ *   · le CHAMP existe, le morceau non -> la valeur par DÉFAUT, lue sur une
+ *     plage vide placée à la FIN du texte. À la fin et non au début : un champ
+ *     dont le premier mot est en gras rendrait « bold » pour un mot qui
+ *     n'existe pas. C'est « plain » qu'HyperCard rend, mesuré le 27/09 ;
+ *   · le champ n'existe pas         -> une faute, et le gestionnaire s'arrête,
+ *     comme HyperCard qui ouvre son dialogue Debug/Script/Cancel.
+ *
+ * ET UNE QUATRIÈME SORTIE QUI REND 0 : une base qui existe mais n'est pas un
+ * champ — « the textStyle of word 2 of card button "B" ». Ce cas-là n'est pas
+ * mesuré, donc on laisse l'ancien chemin le traiter exactement comme avant
+ * plutôt que d'inventer une réponse. */
+static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
+                               const char *prop, HctContexte *ctx,
+                               HctValeur *out)
+{
+    (void)d;
+    if (!morceau || !prop || !ctx || !out) return 0;
+
+    /* LE CONTRAT : qui rend 1 a écrit `*out`. Les sorties en faute n'ont rien
+     * à y mettre, et l'oublier laissait l'appelant repartir avec la pile.
+     * On le pose ici une fois pour toutes plutôt qu'à chaque sortie. */
+    *out = hct_val_vide();
+
+    /* Les quatre propriétés de PLAGE DE TEXTE, et elles seules — le même
+     * ensemble que l'écriture, et que la mesure. Élargir sans mesurer ferait
+     * répondre ici des propriétés dont on ne sait pas ce qu'elles valent sur
+     * un morceau. */
+    int est_style = ci_equal(prop, "textstyle");
+    int est_font  = ci_equal(prop, "textfont");
+    int est_size  = ci_equal(prop, "textsize");
+    int est_color = ci_equal(prop, "textcolor");
+    if (!est_style && !est_font && !est_size && !est_color) return 0;
+
+    int cst = 0, cen = 0;
+    Object *cf = v3_chunk_cible(ctx, morceau, &cst, &cen);
+    if (ctx->erreur) return 1;             /* la faute est déjà posée */
+
+    if (!cf) {
+        const HctNoeud *base = chunk_base_noeud(morceau);
+        Object *ob = base ? hct_resout(ctx, base) : NULL;
+        if (ctx->erreur) return 1;
+        if (!ob) {
+            hct_ctx_faute(ctx, base ? base : morceau, "objet introuvable");
+            return 1;
+        }
+        if (ob->type != OBJ_FIELD) return 0;      /* non mesuré : l'ancien chemin */
+        cf  = ob;
+        cst = cen = (int)strlen(hc_field_text(ob));
+    }
+
+    ARENA_MARK;
+    char *buf = arena_buf();
+    buf[0] = '\0';
+    struct RunList *rl = runs_of(cf);
+    int len = cen - cst;
+
+    if (est_color) {
+        /* Rendue en « r,v,b » : la forme qu'un script peut décomposer avec
+         * « item 1 of », et celle que « set the textColor » réaccepte. */
+        int col = runs_get_color(rl, cst, len);
+        if      (col == HC_COLOR_INHERIT) snprintf(buf, HC_VAL, "0,0,0");
+        else if (col < 0)                 snprintf(buf, HC_VAL, "mixed");
+        else snprintf(buf, HC_VAL, "%d,%d,%d",
+                      (col >> 16) & 255, (col >> 8) & 255, col & 255);
+    } else if (est_style) {
+        style_to_names(runs_get_style(rl, cst, len, cf->textstyle), buf, HC_VAL);
+    } else if (est_font) {
+        runs_get_font(rl, cst, len, cf->textfont, buf, HC_VAL);
+    } else {
+        int sz = runs_get_size(rl, cst, len, cf->textsize);
+        if (sz < 0) snprintf(buf, HC_VAL, "mixed");
+        else        snprintf(buf, HC_VAL, "%d", sz);
+    }
+
+    *out = hct_val_texte(buf);
+    ARENA_FREE;
+    return 1;
 }
 
 /* --- la boîte de messages ---
@@ -14588,6 +15336,7 @@ static HctHote v3_hote(void)
     h.resout    = v3_resout;
     h.lit_objet = v3_lit_objet;
     h.lit_prop  = v3_lit_prop;
+    h.lit_prop_morceau = v3_lit_prop_morceau;
     h.commande  = v3_commande;
     h.respire   = v3_respire;
     h.ecrit_objet = v3_ecrit_objet;
@@ -15936,9 +16685,11 @@ static int v3_do_ligne(const char *line)
     hct_exec(&x, bloc);
 
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
-    if (x.ctx.erreur)
-        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur,
-             x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0);
+    if (x.ctx.erreur) {
+        int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
+        err_ligne_pose(ligne);
+        emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur, ligne);
+    }
 
     hct_exec_libere(&x);
     hct_reserve_libere(&res);

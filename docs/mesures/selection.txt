@@ -1,0 +1,243 @@
+BANC DE MESURE — CE QUE DÉSIGNENT LES « selected… »
+===================================================
+
+À taper dans HyperCard (Basilisk II). Une seule question, posée quatre fois :
+SOUS QUELLE FORME HyperCard écrit-il la sélection ?
+
+POURQUOI CE BANC. Les « found… » ont été mesurés le 27/09 et corrigés : ils
+rendent la COUCHE et le NUMÉRO — « char 8 to 11 of bkgnd field 1 ». Les
+« selected… » de HC, eux, n'ont jamais été mesurés, et rendent trois formes
+différentes :
+
+    foundChunk       char 7 to 10 of card field 1      couche + numéro
+    selectedChunk    char 2 to 4 of card field "A"     couche + NOM
+    selectedField    field "A"                          NI couche ni numéro
+    selectedLine     1                                  un simple NOMBRE
+
+Trois écarts internes, donc, pour des renseignements de même nature. Lequel
+des deux formats est le bon n'est PAS une question de goût : un script relit
+ces désignateurs pour y écrire, et « field "A" » ne dit pas si c'est celui de
+la carte ou celui du fond. Deux champs du même nom se confondent.
+
+On ne corrige rien avant d'avoir la réponse. Une symétrie qui paraît évidente
+s'est déjà révélée fausse deux fois cette semaine — la forme de base de
+« find » replie les accents et « international » non, l'écriture au-delà d'un
+mot n'insère pas d'espace.
+
+
+LA PILE À PRÉPARER
+------------------
+
+UNE carte, avec :
+
+  · DEUX champs de CARTE nommés  A  et  B
+  · UN champ de FOND nommé       T
+  · un champ  R  grand et défilant, pour le rapport
+  · un bouton portant le script ci-dessous
+
+Le champ A doit être le PREMIER champ de carte et B le DEUXIÈME : c'est le
+numéro qui nous intéresse, et il faut pouvoir le distinguer du nom.
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  put "alpha beta gamma" into card field "A"
+  put "omega" into card field "B"
+  put "sigma tau" into bg field "T"
+
+  -- A. un champ de CARTE, le premier
+  select char 2 to 4 of card field "A"
+  put "A1 chunk : " & the selectedChunk & return after card field "R"
+  put "A2 field : " & the selectedField & return after card field "R"
+  put "A3 line  : " & the selectedLine  & return after card field "R"
+  put "A4 text  : " & the selectedText  & return after card field "R"
+
+  -- B. le DEUXIÈME champ de carte : le numéro doit changer
+  select word 1 of card field "B"
+  put "B1 chunk : " & the selectedChunk & return after card field "R"
+  put "B2 field : " & the selectedField & return after card field "R"
+
+  -- C. un champ de FOND : la couche doit se voir
+  select word 2 of bg field "T"
+  put "C1 chunk : " & the selectedChunk & return after card field "R"
+  put "C2 field : " & the selectedField & return after card field "R"
+  put "C3 line  : " & the selectedLine  & return after card field "R"
+
+  -- D. et les « found… » du même coup, pour comparer sur la MÊME pile
+  select empty
+  find "bet"
+  put "D1 chunk : " & the foundChunk & return after card field "R"
+  put "D2 field : " & the foundField & return after card field "R"
+  put "D3 line  : " & the foundLine  & return after card field "R"
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   la forme de base. « card field 1 » ou « card field "A" » ? Et surtout ce
+    que vaut « the selectedLine » : un nombre, ou un morceau entier comme
+    « line 1 of card field 1 » ?
+
+B   le NUMÉRO. Si A et B rendent tous deux un nom, ce bloc n'apprend rien de
+    plus ; s'ils rendent des numéros, celui de B doit être 2. C'est la seule
+    façon de vérifier que le numéro est bien celui du champ et non un 1 collé
+    là par hasard.
+
+C   la COUCHE. C'est le bloc qui compte le plus : « bkgnd field » doit se
+    distinguer de « card field », sans quoi deux champs du même nom sont
+    indiscernables. HC rend aujourd'hui « field "T" » pour le fond et
+    « field "A" » pour la carte — la même chose.
+
+D   le témoin. Les « found… » ont déjà été mesurés, mais sur une AUTRE pile.
+    Les remesurer ici, à côté des « selected… », dit si les deux familles
+    s'écrivent pareil ou non — et c'est exactement la question.
+
+
+SI QUELQUE CHOSE REFUSE DE SE TAPER
+-----------------------------------
+
+« select empty » existe en HyperTalk 2.x pour défaire la sélection ; si ta
+version le refuse, remplace-le par un clic sur un endroit vide de la carte,
+ou saute-le — il ne sert qu'à ce que le bloc D parte proprement.
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — 27 septembre 2026
+═══════════════════════════════════════════════════════════════════════════
+
+HYPERCARD (Basilisk II)              HC (avant)
+───────────────────────────────────  ──────────────────────────────────────
+A1  char 2 to 4 of card field 1      char 2 to 4 of card field "A"
+A2  (vide)                           field "A"
+A3  (vide)                           1
+B1  char 1 to 5 of card field 3      char 1 to 5 of card field "B"
+B2  (vide)                           field "B"
+C1  char 7 to 9 of bkgnd field 1     char 7 to 9 of bg field "T"
+C2  (vide)                           field "T"
+D1  char 7 to 10 of card field 1     identique
+D2  card field 1                     identique
+
+Le premier relevé envoyé était celui de HC — la barre de menus le disait —, et
+il ne servait qu'à confirmer notre propre sortie. Celui-ci est le bon, pris
+dans Basilisk.
+
+
+1. selectedChunk : LE NUMÉRO, ET « bkgnd »                          CORRIGÉ
+---------------------------------------------------------------------------
+
+HyperCard écrit la couche et le NUMÉRO, exactement comme pour foundChunk, et
+il écrit « bkgnd » là où HC écrivait « bg ». Les deux familles partagent donc
+la même écriture : le code aussi, désormais — champ_designe, qui ne servait
+qu'aux « found… », sert les deux. Il s'appelait find_designe ; un nom qui dit
+« find » sur un chemin qui sert la sélection ferait chercher un rapport qui
+n'existe pas.
+
+TROIS SITES, parce que la propriété se lit par trois chemins : la lecture
+globale par le nom, la lecture sur un objet — « the selectedChunk of card
+field "A" » —, et la lecture v3. Corriger l'un sans les autres aurait donné
+deux réponses à la même question selon la tournure employée.
+
+Vérifié : le désignateur SE RELIT. « put the selectedChunk into ou » puis
+« value(ou) » rend « beta » pour la carte et « tau » pour le fond. C'est tout
+l'intérêt de la propriété, et c'est ce qu'un numéro faux aurait cassé en
+silence.
+
+Le B1 d'HyperCard dit « card field 3 » là où le nôtre dit 2, parce que la pile
+de Basilisk portait un champ de plus entre les deux. Le numéro est bien celui
+du champ, et c'est ce qu'on voulait savoir.
+
+
+2. selectedField ET selectedLine APRÈS UN « select » DE SCRIPT    OUVERT
+---------------------------------------------------------------------------
+
+DEUX RELEVÉS D'HYPERCARD, ET ILS NE SE CONTREDISENT PAS :
+
+    (1) sélection posée PAR LE SCRIPT, lue dans la foulée
+            A1 chunk : char 2 to 4 of card field 1     répond
+            A2 field : (vide)
+            A3 line  : (vide)
+            B1 chunk : char 1 to 5 of card field 3     répond
+            B2 field : (vide)
+            C1 chunk : char 7 to 9 of bkgnd field 1    répond
+            C2 field : (vide)
+            D2 field : card field 1                    (foundField : répond)
+
+    (2) sélection posée A LA MAIN, lue depuis un bouton
+            the selectedField -> card field 1
+            the selectedLine  -> line 1 of card field 1
+
+Le (2) donne le FORMAT, et c'est lui qui a servi à corriger. Le (1) laisse une
+question ouverte, et DEUX explications y collent également :
+
+  (a) par PROPRIÉTÉ : selectedChunk répond à un select de script, selectedField
+      et selectedLine non — elles n'existent que pour la sélection de
+      l'utilisateur ;
+
+  (b) par POSITION : chaque lecture du banc est enveloppée dans un « put …
+      after card field "R" », donc une écriture dans un autre champ, et cette
+      écriture défait la sélection. La PREMIÈRE lecture après chaque select
+      répond, les suivantes non.
+
+Les deux expliquent les mêmes lignes, parce que le chunk venait toujours en
+premier. Le relevé (2) ne les départage pas non plus : sa seule lecture est
+aussi la première.
+
+LA MESURE QUI LES OPPOSE, et qu'il faut faire DANS BASILISK — lire dans des
+VARIABLES, sans aucune écriture entre le select et la lecture :
+
+    select char 2 to 4 of card field 1
+    put the selectedField into a
+    put the selectedChunk into b
+    put "[" & a & "] [" & b & "]"
+
+    a vide, b plein   -> (a), c'est la propriété
+    a plein           -> (b), c'est l'écriture qui défait
+
+Tant que ce n'est pas tranché, RIEN N'EST CORRIGÉ de ce côté : HC répond dans
+les deux cas, ce qui est plus généreux, et rendre muet sur la mauvaise lecture
+retirerait une réponse utile aux piles qui s'en servent.
+
+
+3. LE « DÉFAUT DE HC » N'EXISTAIT PAS                             CLOS
+---------------------------------------------------------------------------
+
+Le même banc joué dans l'application avait rendu « [] [] », et j'en ai conclu
+que le chemin Cocoa perdait la sélection. Mesure suivante, dans un BOUTON :
+
+    select char 2 to 4 of card field 1
+    put the selectedField into avant
+    put "x" into card field 2
+    put the selectedField into apres
+    -> AVANT [card field 1]   APRES [card field 1]
+
+et, en lisant les trois propriétés d'un coup :
+
+    chunk [char 2 to 4 of card field 1]  field [card field 1]  texte [lph]
+
+Tout répond. La sélection survit au « select » d'un script ET à une écriture
+dans un autre champ.
+
+LE « [] [] » VENAIT DE LA BOÎTE DE MESSAGE. J'avais donné ces cinq lignes en
+vrac, sans dire qu'elles allaient dans un bouton, et c'est l'usage qu'elles
+invitent. Or les variables n'y survivent pas d'une ligne à l'autre : « a » et
+« b » y sont vides sans que la sélection y soit pour rien.
+
+TROIS FOIS SUR CETTE SEULE QUESTION, C'EST L'INSTRUMENT QUI A MENTI :
+
+    · un relevé non étiqueté, pris pour HyperCard alors qu'il venait de HC ;
+    · un banc qui écrivait dans un champ entre chaque lecture, ce qui pouvait
+      défaire ce qu'il mesurait ;
+    · un banc donné en lignes détachées, joué là où les variables ne vivent
+      pas.
+
+Les trois sont de ma main. J'ai passé la journée à répéter qu'il faut mesurer
+plutôt que raisonner, et les erreurs qui ont coûté le plus cher ne venaient pas
+d'un raisonnement : elles venaient de bancs qui ne mesuraient pas ce que je
+croyais. Un banc se vérifie comme le code — avec un témoin positif, et en
+disant COMMENT le jouer.

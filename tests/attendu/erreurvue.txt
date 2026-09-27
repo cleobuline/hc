@@ -3,12 +3,14 @@
    un objet qui n'existe pas
       appels au dialogue : 1
       objet fautif       : button "Bouton"
+      ligne fautive      : 2
       lignes du message  : 1
             !! objet introuvable (v3, ligne 2 de button "Bouton".mouseUp)
 
    une erreur de syntaxe
       appels au dialogue : 1
       objet fautif       : button "Bouton"
+      ligne fautive      : 2
       lignes du message  : 3
             !! script, ligne 2 colonne 21 : « to » attendu
                  repeat with i = 1 up to 5
@@ -18,8 +20,14 @@
    deux niveaux d'imbrication
       appels au dialogue : 1
       objet fautif       : button "Bouton"
+      ligne fautive      : 2
       lignes du message  : 1
             !! objet introuvable (v3, ligne 2 de button "Bouton".un)
+
+   deux OBJETS imbriques
+      appels au dialogue : 1
+      objet fautif       : button "Bouton"
+      ligne fautive      : 3   (3 chez le bouton, pas 5)
 
 == 3. un script SANS erreur n'appelle rien ==
    tout se passe bien
