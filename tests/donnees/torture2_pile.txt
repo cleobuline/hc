@@ -105,6 +105,38 @@ on razCompteurs
   put empty into card field "R" of card "Atelier"
 end razCompteurs
 
+-- LES ERREURS N'OUVRENT PLUS DE DIALOGUE : ELLES S'ECRIVENT DANS LE RAPPORT.
+--
+-- Le banc PROVOQUE des erreurs — c'est ainsi qu'on verifie que HC s'en
+-- plaint au lieu de rendre sa propre phrase — et chacune ouvrait une
+-- alerte modale qu'il fallait cliquer. Deux prix a cela : la course
+-- s'arretait pour de bon si l'on cliquait de travers, et l'utilisatrice
+-- n'avait plus qu'a commenter la ligne fautive pour en finir — ce qui
+-- fait echouer l'essai qui la surveille, et a juste titre, puisque plus
+-- rien ne leve.
+--
+-- « set the lockErrorDialogs to true » detourne les erreurs vers ce
+-- gestionnaire. MESURE : le detournement marche, et l'erreur arrete
+-- toujours le gestionnaire ou elle tombe — c'est ce qu'on veut, et c'est
+-- ce que les essais isoles mesurent.
+--
+-- ATTENTION AU MOMENT : les erreurs sont accumulees et videes a la sortie
+-- du gestionnaire LE PLUS EXTERIEUR. Ce bloc s'ecrit donc APRES le bilan,
+-- tout a la fin du rapport, et « gErr » ne peut pas se relire dans le
+-- meme clic. Mon premier essai remettait le reglage a false avant la
+-- sortie : le dialogue revenait, et j'ai cru une seconde que
+-- lockErrorDialogs ne marchait pas.
+on errorDialog quoi
+  journal empty
+  journal "== les erreurs levees, et elles sont VOULUES =="
+  repeat with i = 1 to the number of lines of quoi
+    journal "  " & line i of quoi
+  end repeat
+  -- On rend la main aux dialogues : le reglage est global, et une pile qui
+  -- avale les erreurs suivantes en silence serait pire que le dialogue.
+  set the lockErrorDialogs to false
+end errorDialog
+
 
 -- ---- les dix gestionnaires du clavier -------------------------------
 --

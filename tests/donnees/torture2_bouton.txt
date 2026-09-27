@@ -17,23 +17,25 @@
 --  quatre cartes Atelier / Deux / Trois / Quatre, les champs de carte
 --  A, B et R sur l'Atelier (dans cet ordre), et le champ de fond T.
 --
---  UNE SEULE ERREUR S'AFFICHERA, ET C'EST VOULU : la section 2 lit le
---  style d'un mot dans un champ qui n'existe pas, justement pour
---  verifier que HC s'en plaint au lieu de rendre sa propre phrase. Elle
---  est isolee dans son propre gestionnaire — une erreur n'arrete que
---  celui-la — donc le rapport va jusqu'au bilan. Cliquez ce qu'il faut
---  pour continuer.
+--  AUCUN DIALOGUE A CLIQUER, ET C'EST VOULU AUSSI. Le banc PROVOQUE des
+--  erreurs — la section 2 lit le style d'un mot dans un champ qui
+--  n'existe pas, la section 6 en provoque une autre — parce que c'est
+--  ainsi qu'on verifie que HC s'en plaint. « lockErrorDialogs » les
+--  detourne vers « on errorDialog » (script de la pile), qui les ECRIT A
+--  LA FIN DU RAPPORT. Chaque essai risque vit en outre dans son propre
+--  gestionnaire : une erreur n'arrete que celui-la.
 --
---  CE QUI N'EST PAS ENCORE MESURE A SON PROPRE BOUTON, « ouvert ». Ces
---  essais-la LEVENT pour de vrai — « hide ch » le premier — et une
---  erreur, dans l'application, arrete le script sur un dialogue. Les
---  laisser ici faisait perdre la fin du rapport et le bilan : le banc
---  s'arretait la ou il ne voulait qu'observer. C'est la quatrieme fois
---  que l'instrument, et non le code, est en cause.
+--  Ce qui n'est pas encore mesure — les lignes « ? » — se rejoue seul par
+--  le bouton « ouvert ».
 -- ════════════════════════════════════════════════════════════════════
 
 on mouseUp
   razCompteurs
+  -- Les erreurs provoquees par le banc partent dans « on errorDialog »
+  -- (script de la pile) et s'ecrivent a la fin du rapport, au lieu
+  -- d'ouvrir une alerte a cliquer. Voir la note qui accompagne ce
+  -- gestionnaire : le reglage doit rester pose jusqu'a la SORTIE.
+  set the lockErrorDialogs to true
   -- Le champ du rapport ne doit JAMAIS se faire trouver : il contient
   -- le nom de chaque essai, donc tous les motifs cherches. Sans cette
   -- ligne, la section 1 se trouverait elle-meme.
@@ -45,6 +47,11 @@ on mouseUp
   sectionCouches
   sectionClavier
   sectionChemins
+  -- La section 6 est revenue dans la course. Elle en etait sortie parce que
+  -- ses essais LEVENT et que le dialogue arretait tout ; sans dialogue, la
+  -- seule raison de la mettre a part tombe. Le bouton « ouvert » la garde
+  -- pour la rejouer seule.
+  sectionOuvert
   bilan
 end mouseUp
 

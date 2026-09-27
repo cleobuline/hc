@@ -143,10 +143,17 @@ int main(int argc, char **argv)
      * des autres, et le rapport s'arrêtait là : on perdait la fin et le bilan.
      * Le banc s'arrêtait là où il ne voulait qu'OBSERVER. */
     Object *bo = pose_bouton(c1, "ouvert", 396, 302, 90, 22,
-                "-- Ce qui n'est pas encore mesuré. Chaque essai lève peut-être :\n"
-                "-- cliquez ce qu'il faut pour continuer, le suivant se joue\n"
-                "-- quand même.\n"
-                "on mouseUp\n  sectionOuvert\nend mouseUp\n");
+                "-- Rejoue SEULES les questions ouvertes — les lignes « ? » —\n"
+                "-- sans reprendre les quatre-vingt-six essais. Le bouton TORTURE\n"
+                "-- les joue déjà en passant.\n"
+                "--\n"
+                "-- « lockErrorDialogs » est reposé ici : le gestionnaire\n"
+                "-- « on errorDialog » le rend à false en sortant, pour ne pas\n"
+                "-- laisser une pile qui avale les erreurs suivantes en silence.\n"
+                "on mouseUp\n"
+                "  set the lockErrorDialogs to true\n"
+                "  sectionOuvert\n"
+                "end mouseUp\n");
 
     hc_set_script(st, src_pile);
     hc_set_current_card(c1);
@@ -161,11 +168,13 @@ int main(int argc, char **argv)
         printf("pile écrite : %s\n", argv[3]);
     }
 
+    /* UN SEUL CLIC SUFFIT : la section 6 est revenue dans la course, les
+     * erreurs ne s'ouvrant plus en dialogue. Envoyer aussi « mouseUp » au
+     * bouton « ouvert » ne ferait que rejouer ces huit lignes une seconde fois
+     * dans la référence — du bruit, pas une mesure. Le bouton reste pour
+     * l'usage humain : rejouer les questions ouvertes sans tout reprendre. */
+    (void)bo;
     hc_send(bt, "mouseUp");
-    /* Le second bouton tout de suite après : le harnais, lui, n'a pas de
-     * dialogue à cliquer, et les lignes « ? » doivent rester sous la suite —
-     * une question qu'on cesse de poser est une question qu'on oublie. */
-    hc_send(bo, "mouseUp");
 
     {   /* Le rapport vit dans le champ, ligne à ligne, et non dans la boîte
          * de message : « put » vers elle passe par un tampon de 1024 octets
