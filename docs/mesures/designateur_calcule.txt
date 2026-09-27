@@ -1,0 +1,153 @@
+BANC DE MESURE — LE DÉSIGNATEUR CALCULÉ
+=======================================
+
+À faire tourner dans HyperCard (Basilisk II). Une seule question, posée cinq
+fois : UNE COMMANDE ACCEPTE-T-ELLE UN DÉSIGNATEUR QU'ELLE DOIT D'ABORD
+ÉVALUER ?
+
+    select the foundChunk              une lecture de propriété
+    put the foundChunk into ou         ... puis une variable
+    select ou
+    hide ou
+    find "bet" in ou
+    set the textStyle of ou to bold
+    go to ou
+
+C'est le contraire d'un cas exotique : « the foundChunk » et « the
+selectedChunk » n'existent QUE pour être relus, et l'idiome est dans le manuel
+d'HyperCard, mot pour mot :
+
+    find "bet"
+    if the result is empty then select the foundChunk
+
+D'où vient ce banc : la pile de torture (harnais torture2, section 7) ne
+compare pas HC à HyperCard, elle compare HC à LUI-MÊME — deux tournures qui
+posent la même question doivent rendre la même chose. « select char 7 to 10 of
+card field 1 » sélectionnait ; « select the foundChunk », qui vaut ce même
+texte, rendait « ne sait pas faire ». L'écart interne a suffi à le trouver, et
+il n'a fallu aucune mesure pour savoir qu'il y avait un défaut.
+
+Les QUATRE AUTRES commandes ont été mesurées du même coup, et elles ne sont
+PAS tranchées : HyperCard exige peut-être « do "hide" && ou » pour toutes. Ce
+banc est là pour le dire.
+
+
+LA PILE À PRÉPARER
+------------------
+
+DEUX cartes partageant un fond, avec sur la carte 1 :
+
+  · un CHAMP DE CARTE nommé  A   (« card field 1 »)
+  · un CHAMP DE FOND  nommé  T
+  · un champ  R  grand et défilant, pour le rapport
+  · un bouton portant le script ci-dessous
+
+La deuxième carte ne sert qu'au « go to ».
+
+
+LE SCRIPT DU BOUTON
+-------------------
+
+on mouseUp
+  put empty into card field "R"
+  put "alpha beta gamma" into card field "A"
+  put "sigma tau" into bg field "T"
+
+  -- A. L'IDIOME DU MANUEL
+  find "bet"
+  if the result is empty then select the foundChunk
+  put "A1 foundChunk    : " & the foundChunk & return after card field "R"
+  put "A2 selectedChunk : " & the selectedChunk & return after card field "R"
+  put "A3 selectedText  : " & the selectedText & return after card field "R"
+
+  -- B. LE MÊME DÉSIGNATEUR, RANGÉ DANS UNE VARIABLE
+  select empty
+  put the foundChunk into ou
+  select ou
+  put "B1 selectedChunk : " & the selectedChunk & return after card field "R"
+
+  -- C. LES QUATRE AUTRES COMMANDES
+  put "card field 1" into ch
+  hide ch
+  put "C1 hide     : visible " & the visible of card field 1 & return after card field "R"
+  show card field 1
+  find "bet" in ch
+  put "C2 find in  : [" & the result & "]" & return after card field "R"
+  set the textStyle of ch to bold
+  put "C3 set of   : " & the textStyle of card field 1 & return after card field "R"
+  set the textStyle of card field 1 to plain
+  put "C4 lire     : " & the name of ch & return after card field "R"
+  put "card 2" into ca
+  go to ca
+  put "C5 go to    : carte " & the number of this card & return after card field "R"
+  go to card 1
+
+  put "FIN" & return after card field "R"
+end mouseUp
+
+
+SI UN DIALOGUE APPARAÎT, C'EST UNE RÉPONSE, pas un échec du banc : noter son
+TEXTE EXACT et après quelle ligne il est tombé. « Can't understand hide ch »
+est précisément le renseignement cherché.
+
+
+CE QUE CHAQUE BLOC DÉCIDE
+-------------------------
+
+A   l'idiome du manuel. Il DOIT marcher — c'est écrit noir sur blanc dans le
+    Script Language Guide, et « the foundChunk » ne sert à rien d'autre.
+    Corrigé dans HC sans attendre Basilisk, pour cette raison et parce que
+    l'écart était interne.
+
+B   la même chose par une variable. Si A marche et B non, c'est que HyperCard
+    évalue la propriété mais pas la variable, ce qui serait une distinction
+    surprenante — à savoir tout de même.
+
+C   LES QUATRE SITES JUMEAUX, et c'est le vrai objet du banc. Rien n'est
+    corrigé de ce côté tant qu'on ne sait pas : accepter partout un
+    désignateur calculé rendrait HC plus permissif qu'HyperCard, et une pile
+    écrite pour HC ne tournerait plus ailleurs. Le « do » d'HyperCard existe
+    peut-être justement parce que ces commandes refusent.
+
+
+═══════════════════════════════════════════════════════════════════════════
+CE QUE LE BANC A RENDU — la colonne HC, le 27 septembre 2026
+═══════════════════════════════════════════════════════════════════════════
+
+                                  HC (avant)          HC (après)
+────────────────────────────────  ──────────────────  ──────────────────────
+A2 select the foundChunk          ne sait pas faire   char 7 to 10 of
+                                                        card field 1
+B1 select <variable>              ne sait pas faire   char 7 to 10 of
+                                                        card field 1
+C1 hide <variable>                ne sait pas faire   inchangé
+C2 find in <variable>             Not found           inchangé
+C3 set the textStyle of <var>     objet introuvable   inchangé
+C4 lire une propriété             card field "A"      inchangé
+C5 go to <variable>               marche              inchangé
+
+LA COLONNE HYPERCARD EST VIDE, ET ELLE EST À REMPLIR. Aucune ligne de C n'a
+été mesurée dans Basilisk ; les quatre « inchangé » ne sont donc pas des
+verdicts, seulement l'état des lieux.
+
+
+CE QUI A ÉTÉ CORRIGÉ, ET POURQUOI SEULEMENT CELA
+------------------------------------------------
+
+v3_cmd_select ne regardait que la FORME du nœud. Un morceau écrit en clair
+passait ; une LECTURE dont la valeur est ce même texte rendait la main à
+l'ancien interprète, qui n'a pas de « select » du tout — d'où un refus, et non
+un silence, ce qui est la seule raison pour laquelle on l'a vu du premier coup.
+
+La résolution du désignateur est devenue une fonction à part, select_cible,
+appelée DEUX FOIS : sur le nœud du script, puis sur le nœud obtenu en
+réanalysant le texte. Une seule fois, pas plus : le texte réanalysé doit être
+un désignateur pour de bon, sinon le refus reste. « select zorglub » et
+« select ou » où ou contient « bonjour les amis » rendent toujours « ne sait
+pas faire » — c'est le témoin négatif du harnais selectcalcule, et une
+correction qui accepte tout n'aurait rien corrigé.
+
+C4 MÉRITE D'ÊTRE REGARDÉ DE PRÈS quand la mesure viendra : lire une propriété
+sur un désignateur calculé marche déjà, l'ÉCRIRE non (C3). Deux chemins pour
+la même désignation, deux réponses — c'est la forme exacte du défaut que la
+section 7 de la pile de torture cherche, et celui-là est encore ouvert.

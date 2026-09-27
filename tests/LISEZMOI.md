@@ -95,4 +95,45 @@ construit une pile, envoie des messages, et imprime. Puis
 avant de la commiter — c'est elle qui fera foi ensuite.
 
 Un harnais qui a besoin d'un fichier en argument s'ajoute à la fonction
-`arguments()` de `lance.sh`, avec ses données dans `donnees/`.
+`arguments()` de `arguments.sh` — la table est partagée entre `lance.sh` et
+`releve.sh`, et c'est tout son intérêt : `releve.sh` lançait les mêmes
+binaires sans argument, et cinq harnais y étaient comptés alors qu'ils
+sortaient aussitôt. Ses données vont dans `donnees/`.
+
+## Les deux piles de torture
+
+`tortureh` et `torture2` ne sont pas des harnais comme les autres : leur
+HyperTalk vit dans `donnees/`, pas dans le C. C'est voulu — ce sont des
+centaines de lignes faites pour être relues, modifiées, et surtout
+**recopiées telles quelles dans HyperCard** pour comparer les deux côtés. Un
+script enfermé dans des guillemets C ne se recopie pas.
+
+`torture2` sait en outre s'écrire sur le disque :
+
+```sh
+tests/.travail/bin/torture2 tests/donnees/torture2_bouton.txt \
+                            tests/donnees/torture2_pile.txt  torture.stack
+```
+
+produit une pile qu'on ouvre dans l'application pour cliquer soi-même. Le
+même programme sert donc au test de non-régression et à la pile livrée :
+monter la pile deux fois aurait donné deux piles qui divergent au premier
+changement.
+
+Son rapport a **trois sortes de lignes**, et la troisième est la plus
+importante :
+
+| | |
+|---|---|
+| `ok` | l'essai rend ce qu'HyperCard a été mesuré rendre |
+| `ECHEC` | il rend autre chose — les deux valeurs suivent |
+| `?` | personne n'a mesuré ce cas : la valeur s'affiche **sans verdict** |
+
+Une ligne `?` ne se compte ni en réussite ni en échec. Les compter serait
+inscrire une supposition comme un fait — et c'est ce qui a coûté le plus cher
+dans ce projet.
+
+Sa **section 7** ne demande pas ce que fait HyperCard mais si les deux
+tournures qui posent la même question rendent la même chose. Un écart y est un
+défaut de HC quel que soit HyperCard, et c'est ainsi que
+« select the foundChunk » a été trouvé.

@@ -1,0 +1,19 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+-- 1. l'idiome du manuel --
+foundChunk    [char 7 to 10 of card field 1]
+selectedChunk [char 7 to 10 of card field 1]
+selectedText  [beta]
+-- 2. par une variable --
+selectedChunk [char 7 to 10 of card field 1]
+-- 3. la couche du fond survit au detour --
+selectedChunk [char 7 to 9 of bkgnd field 1]
+selectedText  [tau]
+-- 3 bis. before et after, sur un designateur calcule --
+before [char 2 to 1 of card field 1]
+after  [char 5 to 4 of card field 1]
+-- 4. temoin negatif : un mot nu ne designe rien --
+[ERR]    !! ne sait pas faire : select zorglub
+selectedChunk []
+-- 5. temoin negatif : un texte qui n'est pas un morceau --
+[ERR]    !! ne sait pas faire : select ou
+selectedChunk []

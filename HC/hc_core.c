@@ -10333,43 +10333,15 @@ static const char *sort_options(const char *s, int *desc, SortStyle *style)
  * MOTS, pas des expressions. Une pile qui aurait une variable nommée
  * « cards » ne doit pas voir sa valeur s'y substituer — exactement le
  * comportement de l'ancien chemin, qui travaillait déjà sur du texte brut. */
-/* select — la sélection de texte dans un champ.
+/* Le DÉSIGNATEUR d'un « select », résolu en (champ, début, fin).
  *
- *   select empty                     rien de sélectionné
- *   select text of <champ>           tout le contenu
- *   select <champ>                   idem, forme courte
- *   select char 3 to 5 of <champ>    un morceau
- *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
- *
- * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
- * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte.
- *
- * Rend 0 sur les formes non couvertes — un ordinal (« select last line
- * of… »), une cible qui n'est pas un champ —, et l'ancien exécuteur les
- * reprend intactes. */
-static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+ * Extrait de v3_cmd_select pour pouvoir être appelé DEUX FOIS : une fois sur
+ * le nœud écrit dans le script, une fois sur le nœud obtenu en réanalysant un
+ * désignateur CALCULÉ — « select the foundChunk ». Rend 1 s'il a visé
+ * quelque chose, 0 si la forme ne lui dit rien. */
+static int select_cible(HctContexte *ctx, const HctNoeud *c,
+                        Object **pf, int *pst, int *pen)
 {
-    int i = 0, avant = 0, apres = 0;
-
-    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
-        char m[16];
-        v3_brut(n->fils[i], m, sizeof m);
-        if      (ci_equal(m, "before")) { avant = 1; i++; }
-        else if (ci_equal(m, "after"))  { apres = 1; i++; }
-    }
-
-    /* « select » nu : plus rien de sélectionné. */
-    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
-
-    const HctNoeud *c = n->fils[i];
-
-    if (c->genre == HCTN_IDENT) {
-        char m[16];
-        v3_brut(c, m, sizeof m);
-        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
-        return 0;                       /* une variable : ancien chemin */
-    }
-
     Object *f = NULL;
     int st = 0, en = 0;
 
@@ -10449,6 +10421,103 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         st = bo.deb; en = bo.fin;
     } else {
         return 0;
+    }
+
+    *pf = f; *pst = st; *pen = en;
+    return 1;
+}
+
+/* select — la sélection de texte dans un champ.
+ *
+ *   select empty                     rien de sélectionné
+ *   select text of <champ>           tout le contenu
+ *   select <champ>                   idem, forme courte
+ *   select char 3 to 5 of <champ>    un morceau
+ *   select last word of <champ>      un ordinal
+ *   select the foundChunk            un désignateur CALCULÉ
+ *   select before|after <ce qui précède>   point d'insertion à l'une des bornes
+ *
+ * Tout se fait depuis l'ARBRE : la cible est résolue par hct_resout et les
+ * bornes du morceau par hct_chunk_bornes, sans reconstituer de texte. La seule
+ * exception est le désignateur calculé, qui est du texte par nature — c'est
+ * une valeur, pas une écriture — et qu'il faut donc réanalyser.
+ *
+ * Rend 0 sur ce qui ne désigne rien — un mot nu, une cible qui n'est pas un
+ * champ —, et l'ancien exécuteur, qui n'a pas de « select » du tout, le refuse
+ * alors tout haut. Ce refus est une chance : c'est lui qui a rendu visible
+ * « select the foundChunk », au lieu d'une sélection silencieusement inchangée. */
+static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
+{
+    int i = 0, avant = 0, apres = 0;
+
+    if (i < n->nfils && n->fils[i] && n->fils[i]->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(n->fils[i], m, sizeof m);
+        if      (ci_equal(m, "before")) { avant = 1; i++; }
+        else if (ci_equal(m, "after"))  { apres = 1; i++; }
+    }
+
+    /* « select » nu : plus rien de sélectionné. */
+    if (i >= n->nfils || !n->fils[i]) { hc_set_selection(NULL, 0, 0); return 1; }
+
+    const HctNoeud *c = n->fils[i];
+
+    if (c->genre == HCTN_IDENT) {
+        char m[16];
+        v3_brut(c, m, sizeof m);
+        if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
+    }
+
+    Object *f = NULL;
+    int st = 0, en = 0;
+
+    if (!select_cible(ctx, c, &f, &st, &en)) {
+        if (ctx->erreur) return 1;
+
+        /* LE DÉSIGNATEUR CALCULÉ, et c'est l'idiome du manuel lui-même :
+         *
+         *     if the result is empty then select the foundChunk
+         *     put the foundChunk into ou ... select ou
+         *
+         * Les deux rendaient « ne sait pas faire » — mesuré. Le nœud n'est
+         * alors ni un objet ni un morceau mais une LECTURE (une propriété,
+         * une variable, un appel), et sa VALEUR est le désignateur. On
+         * l'évalue, on réanalyse ce texte, et l'on revise la même cible.
+         *
+         * UNE SEULE FOIS : le nœud réanalysé doit être un désignateur pour de
+         * bon. Sans cette borne, « select x » où x contient « x » tournerait
+         * en rond, et un mot nu — « select zorglub » — repartirait à l'ancien
+         * interprète après un détour inutile. C'est aussi ce que fait
+         * hct_evalue_texte pour « the value of », avec la même prudence.
+         *
+         * Rendre 0 quand le texte n'est pas un désignateur laisse le refus
+         * inchangé : « ne sait pas faire : select zorglub ». */
+        ARENA_MARK;
+        char *txt = arena_buf();
+        v3_val_texte(ctx, c, txt, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+
+        HctLot lot;
+        HctReserve res;
+        memset(&res, 0, sizeof res);
+        if (!hct_lex(txt, &lot)) { hct_lot_libere(&lot); ARENA_FREE; return 0; }
+
+        HctAnalyseur a;
+        hct_analyseur_init(&a, &lot, &res);
+        HctNoeud *relu = hct_expression(&a);
+
+        /* Tout le texte doit avoir été consommé, et sans faute : un
+         * désignateur à moitié analysé viserait à côté en silence. */
+        const HctJeton *reste = &lot.jetons[a.i];
+        int pris = 0;
+        if (relu && !a.nerreurs &&
+            (reste->genre == HCT_FIN || reste->genre == HCT_EOL))
+            pris = select_cible(ctx, relu, &f, &st, &en);
+
+        hct_reserve_libere(&res);
+        hct_lot_libere(&lot);
+        ARENA_FREE;
+        if (!pris) return ctx->erreur ? 1 : 0;
     }
 
     if      (avant) hc_set_selection(f, st, 0);

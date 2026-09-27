@@ -1,0 +1,206 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE 2 — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Il porte deux choses :
+--
+--   1. L'ECHAFAUDAGE du rapport — journal, titre, egal, note, bilan.
+--      Il est ICI et non sur le bouton pour que n'importe quel bouton de
+--      n'importe quelle carte puisse s'en servir.
+--
+--   2. LES DIX GESTIONNAIRES DU CLAVIER. Les messages du clavier sont
+--      livres a la carte courante, d'ou ils remontent au fond puis a la
+--      pile : un bouton ne les voit jamais. C'est donc ici qu'ils
+--      doivent etre ecrits, et nulle part ailleurs.
+--
+--  UNE FOIS LA PILE OUVERTE, les touches marchent pour de vrai : tapez
+--  une lettre, une fleche, tabulation, entree — le journal gVus les
+--  note, et le bouton « clavier » le relit.
+-- ════════════════════════════════════════════════════════════════════
+
+
+-- ---- l'echafaudage du rapport --------------------------------------
+
+-- Une ligne de plus dans le rapport, ECRITE TOUT DE SUITE.
+--
+-- Le rapport ne passe pas par une variable recopiee a la fin : si un
+-- essai leve une erreur, tout ce qui precede est deja dans le champ et
+-- l'on sait jusqu'ou le script est alle. Un rapport garde en memoire
+-- serait perdu par la premiere faute.
+--
+-- « texte & return after » et non « return & texte after » : le second
+-- met le saut de ligne DEVANT, ce qui laisse une premiere ligne vide et
+-- decale tout le rapport d'un cran.
+on journal texte
+  put texte & return after card field "R" of card "Atelier"
+end journal
+
+-- Une ligne vide AVANT chaque titre, sauf le premier.
+on titre t
+  if card field "R" of card "Atelier" is not empty then journal empty
+  journal "== " & t
+end titre
+
+-- UN ESSAI QUI A UNE REPONSE ATTENDUE, et qui dit les DEUX valeurs
+-- quand il echoue. « ECHEC find whole » n'apprend rien ; « attendu
+-- [Not found] obtenu [not found] » nomme la cause a lui seul.
+on egal quoi, obtenu, attendu
+  global gOK, gKO
+  if obtenu is attendu then
+    journal "  ok     " & quoi
+    add 1 to gOK
+  else
+    journal "  ECHEC  " & quoi
+    journal "         attendu [" & attendu & "]"
+    journal "         obtenu  [" & obtenu & "]"
+    add 1 to gKO
+  end if
+end egal
+
+-- La forme courte, pour une condition deja ecrite dans l'appel.
+on verifie quoi, cond
+  global gOK, gKO
+  if cond then
+    journal "  ok     " & quoi
+    add 1 to gOK
+  else
+    journal "  ECHEC  " & quoi
+    add 1 to gKO
+  end if
+end verifie
+
+-- CE QUI N'EST PAS MESURE NE SE COMPTE PAS.
+--
+-- « note » affiche une valeur SANS verdict : personne n'a encore
+-- regarde ce qu'HyperCard en fait. Une ligne « note » n'est ni une
+-- reussite ni un echec — c'est une question posee, a jouer dans
+-- Basilisk a cote pour la trancher. Les compter en reussites serait
+-- inscrire une supposition comme un fait.
+on note quoi, valeur
+  global gNotes
+  journal "  ?      " & quoi & " : [" & valeur & "]"
+  add 1 to gNotes
+end note
+
+-- Le detail est deja dans le champ, ligne a ligne ; la boite de message
+-- ne recoit que le resume — « put » vers elle passe par un tampon de
+-- 1024 octets et couperait un long rapport en silence.
+on bilan
+  global gOK, gKO, gNotes
+  journal empty
+  journal "=============================="
+  if gKO is 0 then
+    journal gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+    put gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+  else
+    journal gOK & " reussites, " & gKO & " ECHECS, " & gNotes & " a mesurer."
+    put gOK & " reussites, " & gKO & " ECHECS — voir le champ R."
+  end if
+end bilan
+
+on razCompteurs
+  global gOK, gKO, gNotes
+  put 0 into gOK
+  put 0 into gKO
+  put 0 into gNotes
+  put empty into card field "R" of card "Atelier"
+end razCompteurs
+
+
+-- ---- les dix gestionnaires du clavier -------------------------------
+--
+-- Chacun note son nom et son argument dans gVus, et RIEN D'AUTRE : le
+-- bouton « clavier » relit ce journal. Un gestionnaire qui ecrirait
+-- dans le champ du rapport melangerait la mesure et son compte rendu.
+
+on keyDown k
+  vu "keyDown " & k
+end keyDown
+
+on commandKeyDown k
+  vu "commandKeyDown " & k
+end commandKeyDown
+
+on controlKey n
+  vu "controlKey " & n
+end controlKey
+
+on functionKey n
+  vu "functionKey " & n
+end functionKey
+
+on arrowKey d
+  vu "arrowKey " & d
+end arrowKey
+
+on enterKey
+  vu "enterKey"
+end enterKey
+
+on returnKey
+  vu "returnKey"
+end returnKey
+
+on tabKey
+  vu "tabKey"
+end tabKey
+
+on enterInField
+  vu "enterInField"
+end enterInField
+
+on returnInField
+  vu "returnInField"
+end returnInField
+
+-- Le journal des touches, dans une globale pour qu'il survive d'un
+-- message a l'autre.
+on vu quoi
+  global gVus
+  if gVus is empty then put quoi into gVus
+  else put gVus & "," & quoi into gVus
+end vu
+
+
+-- ---- les trois boutons d'appoint -----------------------------------
+--
+-- Ce que le script ne peut PAS mesurer tout seul : une touche tapee
+-- pour de vrai, et une selection posee a la main. Une commande part du
+-- script, une touche part de l'interface, et ce sont deux chemins
+-- differents dans HC — c'est justement celui de l'interface qu'aucun
+-- harnais ne peut emprunter.
+
+-- Bouton « clavier » : relit le journal des touches, puis le vide.
+on relitClavier
+  global gVus
+  if gVus is empty then
+    answer "Rien de tape. Tapez une lettre, une fleche, tabulation, entree, puis recliquez."
+  else
+    journal empty
+    journal "== les touches tapees, dans l'ordre =="
+    journal "  " & gVus
+    put empty into gVus
+  end if
+end relitClavier
+
+-- Bouton « selection » : lit les quatre proprietes de la selection SANS
+-- rien ecrire entre elles.
+--
+-- L'ORDRE DE CES QUATRE LIGNES COMPTE, et c'est une lecon payee cher :
+-- un banc qui ecrivait dans un champ entre chaque lecture pouvait
+-- defaire la selection qu'il mesurait, et l'on a cru trois fois a un
+-- defaut de HC qui n'existait pas. Les quatre valeurs sont donc prises
+-- d'affilee dans des variables, et le rapport s'ecrit APRES.
+on relitSelection
+  put the selectedChunk into ch
+  put the selectedField into fl
+  put the selectedLine  into li
+  put the selectedText  into tx
+  journal empty
+  journal "== la selection posee a la main =="
+  journal "  selectedChunk : [" & ch & "]"
+  journal "  selectedField : [" & fl & "]"
+  journal "  selectedLine  : [" & li & "]"
+  journal "  selectedText  : [" & tx & "]"
+  journal "  attendu (mesure dans Basilisk, selection a la main) :"
+  journal "    card field 1  et  line 1 of card field 1"
+end relitSelection

@@ -40,3 +40,15 @@ tests/.travail/
 *.rej
 * copie.m
 * copy.m
+
+# La pile de torture, ÉCRITE par le harnais torture2 :
+#
+#   tests/.travail/bin/torture2 tests/donnees/torture2_bouton.txt \
+#                              tests/donnees/torture2_pile.txt  torture.stack
+#
+# Elle n'est pas versionnée à dessein. Ses SOURCES le sont — les deux scripts
+# de donnees/ et le harnais qui monte la pile —, et un fichier engendré, posé à
+# côté d'eux, dérive dès la première modification sans que rien ne le signale.
+# Un fichier qui a l'air d'une source et n'en est pas coûte plus cher que la
+# commande à retaper.
+torture.stack
