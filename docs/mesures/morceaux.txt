@@ -282,3 +282,28 @@ deux sondes du chemin de repli, puis la vraie erreur. Ce n'est pas propre au
 morceau : « the textStyle of card field "Absent" », sans morceau du tout, en
 produit exactement trois aussi, et le faisait déjà avant cette correction.
 C'est le coût du repli, et il tombera quand la lecture se lira dans l'ARBRE.
+
+
+═══════════════════════════════════════════════════════════════════════════
+ET LES ITEMS ET LES LIGNES — mesuré le 27 septembre 2026
+═══════════════════════════════════════════════════════════════════════════
+
+Le bloc A ci-dessus ne portait que sur les MOTS, et il a démenti ce qu'on
+croyait : l'écriture au-delà du dernier mot N'INSÈRE RIEN — « Sun Mon TueX »,
+douze octets, trois mots. La question restait entière pour les items et les
+lignes, et on s'est gardé de la déduire, justement parce que la première
+déduction avait été fausse.
+
+    put "a,b" into card field "A"
+    put "c" into item 4 of card field "A"      -> a,b,,c        (identique)
+    put "un" into card field "A"
+    put "trois" into line 3 of card field "A"  -> trois lignes  (identique)
+
+HyperCard POSE les séparateurs manquants pour les items et les lignes, et HC
+faisait déjà de même. La différence avec les mots est donc RÉELLE des deux
+côtés, et elle a une raison : c'est le séparateur qui fait l'item et le saut de
+ligne qui fait la ligne, tandis qu'un espace ne fait pas le mot — deux espaces
+côte à côte ne délimitent rien entre eux (mesuré dans chunkdebordement §4). Un
+mot vide n'existe pas ; un item vide, si.
+
+Les deux lignes sont maintenant des essais de la pile de torture, section 2.

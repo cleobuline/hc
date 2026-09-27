@@ -114,40 +114,71 @@ C   LES QUATRE SITES JUMEAUX, et c'est le vrai objet du banc. Rien n'est
 CE QUE LE BANC A RENDU — la colonne HC, le 27 septembre 2026
 ═══════════════════════════════════════════════════════════════════════════
 
-                                  HC (avant)          HC (après)
+                                  HC (avant)          HYPERCARD
 ────────────────────────────────  ──────────────────  ──────────────────────
-A2 select the foundChunk          ne sait pas faire   char 7 to 10 of
-                                                        card field 1
-B1 select <variable>              ne sait pas faire   char 7 to 10 of
-                                                        card field 1
-C1 hide <variable>                ne sait pas faire   inchangé
-C2 find in <variable>             Not found           inchangé
-C3 set the textStyle of <var>     objet introuvable   inchangé
-C4 lire une propriété             card field "A"      inchangé
-C5 go to <variable>               marche              inchangé
+A2 select the foundChunk          ne sait pas faire   marche          ✓
+B1 select <variable>              ne sait pas faire   marche          ✓
+C1 hide <variable>                ne sait pas faire   CACHE LE CHAMP  ✗
+C2 find in <variable>             Not found           TROUVE          ✗
+C3 set the textStyle of <var>     objet introuvable   POSE LE STYLE   ✗
+C4 lire une propriété             card field "A"      card field "A"  ✓
+C5 go to <variable>               marche              marche          ✓
 
-LA COLONNE HYPERCARD EST VIDE, ET ELLE EST À REMPLIR. Aucune ligne de C n'a
-été mesurée dans Basilisk ; les quatre « inchangé » ne sont donc pas des
-verdicts, seulement l'état des lieux.
+MESURÉ DANS BASILISK II LE 27 SEPTEMBRE 2026, et l'hypothèse prudente était
+FAUSSE. On avait écrit ici que « le do d'HyperCard existe peut-être précisément
+parce que ces commandes refusent » : non. HyperCard ÉVALUE une référence
+d'objet avant de la résoudre, partout, et « do » sert à autre chose — à
+construire une commande entière, pas un désignateur.
+
+C'est la troisième fois cette semaine qu'une symétrie qui paraissait évidente
+s'est révélée fausse dans l'autre sens : la forme de base de « find » replie
+les accents et « international » non, l'écriture au-delà d'un mot n'insère pas
+d'espace, et maintenant les commandes acceptent ce qu'on les croyait faites
+pour refuser. Chaque fois, la prudence allait dans le mauvais sens — et chaque
+fois, ne rien corriger AVANT la mesure était quand même la bonne décision.
 
 
-CE QUI A ÉTÉ CORRIGÉ, ET POURQUOI SEULEMENT CELA
-------------------------------------------------
+LES TROIS CORRECTIONS
+---------------------
 
-v3_cmd_select ne regardait que la FORME du nœud. Un morceau écrit en clair
-passait ; une LECTURE dont la valeur est ce même texte rendait la main à
-l'ancien interprète, qui n'a pas de « select » du tout — d'où un refus, et non
-un silence, ce qui est la seule raison pour laquelle on l'a vu du premier coup.
+LE PIRE DES TROIS EST « find in ». Les deux autres refusent tout haut ;
+celui-là répond « Not found ». Une recherche restreinte à un champ introuvable
+ne fouille rien et rend la même réponse que si le mot n'y était pas : la pile
+lit une réponse fausse, plausible, et sans un mot d'avertissement. Un refus
+franc est un cadeau — c'est lui qui a fait trouver « select the foundChunk » du
+premier coup.
 
-La résolution du désignateur est devenue une fonction à part, select_cible,
-appelée DEUX FOIS : sur le nœud du script, puis sur le nœud obtenu en
-réanalysant le texte. Une seule fois, pas plus : le texte réanalysé doit être
-un désignateur pour de bon, sinon le refus reste. « select zorglub » et
-« select ou » où ou contient « bonjour les amis » rendent toujours « ne sait
-pas faire » — c'est le témoin négatif du harnais selectcalcule, et une
-correction qui accepte tout n'aurait rien corrigé.
+DEUX MÉCANISMES, DONC DEUX AIDES :
 
-C4 MÉRITE D'ÊTRE REGARDÉ DE PRÈS quand la mesure viendra : lire une propriété
-sur un désignateur calculé marche déjà, l'ÉCRIRE non (C3). Deux chemins pour
-la même désignation, deux réponses — c'est la forme exacte du défaut que la
-section 7 de la pile de torture cherche, et celui-là est encore ouvert.
+    v3_resout_calcule   par l'ARBRE  — hide, show, find … in
+    resolve_calcule     par le TEXTE — set … of
+
+« set » ne résout pas par le nœud mais par la référence reconstituée, si bien
+que la première ne lui servait de rien. N'en écrire qu'une aurait corrigé deux
+commandes sur trois et laissé la troisième — l'incohérence interne exacte que
+la section 7 de la pile de torture traque. Les deux partagent v3_relit, le
+détour par le lexer et l'analyseur que « select » faisait déjà : l'écrire deux
+fois aurait donné deux façons de réanalyser un désignateur.
+
+resolve_calcule N'ÉVALUE QU'UN SEUL MOT, et c'est la condition qui compte. Une
+référence de plusieurs mots est un désignateur : resolve l'a déjà vue, et
+l'évaluer serait pire qu'inutile — « card field 1 » ÉVALUÉ rend le TEXTE du
+champ, pas sa désignation. On n'évalue donc que ce qui peut être une variable.
+
+LES TÉMOINS NÉGATIFS (harnais selectcalcule, §10) : « hide rien », « set the
+textStyle of rien » et « find in rien », où rien porte « zorglub », refusent
+toujours. Un mot nu vaut lui-même en HyperTalk, et n'a rien à résoudre.
+
+
+LES SITES QUI RESTENT, ET ILS SONT NOMMÉS
+-----------------------------------------
+
+hct_resout est appelée à dix-sept endroits de hc_core.c ; trois viennent d'être
+corrigés, deux marchaient déjà. Les autres — delete, push, pop, sort, la
+suppression d'objet, la fenêtre de pile — n'ont PAS été mesurés, et ne sont
+donc pas touchés. La mesure d'aujourd'hui rend probable qu'ils acceptent tous
+un désignateur calculé chez HyperCard, mais probable ne suffit pas : c'est
+exactement le raisonnement qui a fait écrire, plus haut dans ce fichier, que
+« do » existait parce que les commandes refusaient.
+
+Le banc s'étend d'une ligne par commande. Il suffit de le rejouer.

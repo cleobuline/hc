@@ -264,11 +264,15 @@ on sectionOuvert
   global gCh, gCa
   titre "6. a mesurer dans HyperCard"
 
-  -- Un morceau DANS un morceau.
+  -- UN MORCEAU DANS UN MORCEAU — mesure Basilisk du 27/09 : HyperCard
+  -- repond 2 et « plain », comme HC. Ces deux lignes etaient des questions
+  -- parce que « select word 1 of line 2 of … », de la MEME forme, dit « ne
+  -- sait pas faire » : la lecture et la selection divergeaient, et rien ne
+  -- disait laquelle avait raison. C'est la LECTURE.
   go to card "Atelier"
   put "alpha beta" & return & "gamma delta" into card field "A"
-  note "le nombre de mots de la ligne 2", the number of words of line 2 of card field "A"
-  note "le style d'un mot d'une ligne", the textStyle of word 1 of line 2 of card field "A"
+  egal "les mots d'une ligne", the number of words of line 2 of card field "A", 2
+  egal "le style d'un mot d'une ligne", the textStyle of word 1 of line 2 of card field "A", "plain"
 
   -- Une recherche qui ECHOUE remet-elle le curseur a zero ? HC le fait,
   -- parce que son curseur n'est rien d'autre que la derniere trouvaille.
@@ -281,32 +285,43 @@ on sectionOuvert
   note "apres un echec, la recherche repart de", the short name of this card
   note "foundChunk apres un echec", the foundChunk
 
-  -- LES SITES JUMEAUX DU DESIGNATEUR CALCULE.
+  -- LES CINQ SITES DU DESIGNATEUR CALCULE — MESURES, ET CORRIGES.
   --
-  -- « select the foundChunk » ne marchait pas ; c'est corrige, parce que
-  -- l'idiome est dans le manuel et que le designateur n'existe que pour
-  -- etre relu. Les QUATRE AUTRES commandes qui prennent un designateur
-  -- ont ete mesurees du meme coup, et aucune n'est tranchee : HyperCard
-  -- exige peut-etre « do "hide" && ch » pour toutes. Le banc est dans
+  -- Ils etaient cinq questions ; Basilisk a repondu le 27/09, et la reponse
+  -- a dementi l'hypothese prudente qu'on gardait. HyperCard EVALUE une
+  -- reference d'objet avant de la resoudre :
+  --
+  --     hide ch                        cache le champ
+  --     find "bet" in ch               trouve
+  --     set the textStyle of ch to bold pose le style
+  --     the name of ch                 repondait deja
+  --     select ou                      le temoin, corrige la veille
+  --
+  -- HC refusait les trois premieres. Le banc est dans
   -- docs/mesures/designateur_calcule.txt.
   --
-  -- gCh et gCa sont des GLOBALES, et non des variables locales : chaque
-  -- essai vit dans son propre gestionnaire, et une locale n'y survivrait
-  -- pas d'un appel a l'autre.
+  -- gCh et gCa restent des GLOBALES, et les essais gardent leur
+  -- gestionnaire : si l'un de ces cinq REGRESSE, il leve, et une erreur
+  -- n'arrete que le gestionnaire ou elle tombe. Les quatre autres se
+  -- mesurent quand meme, au lieu d'etre emportes par le premier.
   go to card "Atelier"
   put "alpha beta" into card field "A"
   put "card field 1" into gCh
   put "card " & quote & "Deux" & quote into gCa
 
   essaiHide
-  note "hide <variable> : le champ est-il encore visible", the visible of card field 1
+  egal "hide <variable> cache le champ", the visible of card field 1, "false"
   show card field 1
 
   essaiFindIn
-  note "find in <variable>", the result
+  egal "find in <variable> trouve", the result, empty
+
+  essaiSetOf
+  egal "set la propriete de <variable>", the textStyle of card field 1, "bold"
+  set the textStyle of card field 1 to plain
 
   essaiGoTo
-  note "go to <variable> : carte atteinte", the short name of this card
+  egal "go to <variable>", the short name of this card, "Deux"
   go to card "Atelier"
 
   essaiLire
@@ -324,6 +339,11 @@ on essaiFindIn
   find "bet" in gCh
 end essaiFindIn
 
+on essaiSetOf
+  global gCh
+  set the textStyle of gCh to bold
+end essaiSetOf
+
 on essaiGoTo
   global gCa
   go to gCa
@@ -331,5 +351,5 @@ end essaiGoTo
 
 on essaiLire
   global gCh
-  note "lire une propriete sur <variable>", the name of gCh
+  egal "lire une propriete sur <variable>", the name of gCh, "card field " & quote & "A" & quote
 end essaiLire

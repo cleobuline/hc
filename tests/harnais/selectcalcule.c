@@ -1,4 +1,4 @@
-/* « select the foundChunk » — LE DÉSIGNATEUR CALCULÉ.
+/* LE DÉSIGNATEUR CALCULÉ — cinq commandes, et un témoin négatif.
  *
  * L'idiome du manuel, mot pour mot :
  *
@@ -22,6 +22,22 @@
  *
  * §4 est le TÉMOIN NÉGATIF : un mot nu qui ne désigne rien doit continuer de
  * se faire refuser. Une correction qui accepte tout n'aurait rien corrigé.
+ *
+ * §6 À §8 SONT VENUS APRÈS, ET DE LA MESURE. Le banc joué dans Basilisk II le
+ * 27/09 a répondu pour les quatre AUTRES commandes qui prennent un
+ * désignateur, et il a démenti l'hypothèse prudente qu'on gardait :
+ *
+ *     put "card field 1" into ch
+ *     hide ch                          -> HyperCard CACHE le champ
+ *     find "bet" in ch                 -> HyperCard TROUVE
+ *     set the textStyle of ch to bold   -> HyperCard POSE le style
+ *
+ * HC rendait « ne sait pas faire », « Not found » et « objet introuvable ».
+ * Le deuxième était le plus vicieux : une recherche restreinte à un champ
+ * introuvable ne fouille rien et répond comme si le mot n'y était pas.
+ *
+ * « go to ch » et « the name of ch » marchaient déjà : ils sont ici comme
+ * TÉMOINS POSITIFS, pour qu'une régression sur eux se voie aussi.
  */
 #include "hc_core.h"
 #include <stdio.h>
@@ -90,6 +106,36 @@ int main(void)
         "  put \"bonjour les amis\" into ou\n"
         "  select ou\n"
         "  put \"selectedChunk [\" & the selectedChunk & \"]\"\n"
+        "\n"
+        "  put \"-- 6. hide et show --\"\n"
+        "  put \"card field 1\" into ch\n"
+        "  hide ch\n"
+        "  put \"apres hide ch  : visible \" & the visible of card field 1\n"
+        "  show ch\n"
+        "  put \"apres show ch  : visible \" & the visible of card field 1\n"
+        "\n"
+        "  put \"-- 7. set la propriete d'un designateur calcule --\"\n"
+        "  set the textStyle of ch to bold\n"
+        "  put \"textStyle       : \" & the textStyle of card field 1\n"
+        "  set the textStyle of ch to plain\n"
+        "  put \"remis a plain   : \" & the textStyle of card field 1\n"
+        "\n"
+        "  put \"-- 8. find restreint a un designateur calcule --\"\n"
+        "  find \"sigm\" in ch\n"
+        "  put \"dans le champ de carte : [\" & the result & \"]\"\n"
+        "  put \"bkgnd field 1\" into cb\n"
+        "  find \"sigm\" in cb\n"
+        "  put \"dans le champ de fond  : [\" & the result & \"] \" & the foundText\n"
+        "\n"
+        "  put \"-- 9. temoins POSITIFS : ils marchaient deja --\"\n"
+        "  put \"the name of ch  : \" & the name of ch\n"
+        "\n"
+        "  put \"-- 10. temoin negatif sur les trois nouvelles --\"\n"
+        "  put \"zorglub\" into rien\n"
+        "  hide rien\n"
+        "  set the textStyle of rien to bold\n"
+        "  find \"sigm\" in rien\n"
+        "  put \"apres les trois refus : [\" & the result & \"]\"\n"
         "end mouseUp\n");
 
     hc_send(b, "mouseUp");

@@ -153,7 +153,7 @@ de Basilisk portait un champ de plus entre les deux. Le numéro est bien celui
 du champ, et c'est ce qu'on voulait savoir.
 
 
-2. selectedField ET selectedLine APRÈS UN « select » DE SCRIPT    OUVERT
+2. selectedField ET selectedLine APRÈS UN « select » DE SCRIPT    CLOS
 ---------------------------------------------------------------------------
 
 DEUX RELEVÉS D'HYPERCARD, ET ILS NE SE CONTREDISENT PAS :
@@ -199,9 +199,27 @@ VARIABLES, sans aucune écriture entre le select et la lecture :
     a vide, b plein   -> (a), c'est la propriété
     a plein           -> (b), c'est l'écriture qui défait
 
-Tant que ce n'est pas tranché, RIEN N'EST CORRIGÉ de ce côté : HC répond dans
-les deux cas, ce qui est plus généreux, et rendre muet sur la mauvaise lecture
-retirerait une réponse utile aux piles qui s'en servent.
+TRANCHÉ LE 27 SEPTEMBRE 2026, DANS BASILISK. La mesure a été jouée telle
+qu'écrite ci-dessus — les quatre lectures dans des variables, rien d'écrit
+entre elles :
+
+    D1 chunk : char 2 to 4 of card field 1
+    D2 field : card field 1
+    D3 line  : line 1 of card field 1
+    D4 text  : lph
+
+HyperCard rend LES QUATRE. C'est donc (b) : c'était l'ÉCRITURE entre deux
+lectures qui défaisait la sélection, et non la propriété qui aurait refusé de
+répondre à un select de script. HC répondait juste, dans la même forme, et
+n'avait rien à corriger.
+
+NE RIEN CORRIGER ÉTAIT LA BONNE DÉCISION, et c'est la première fois sur ce
+chantier qu'on peut le dire après coup plutôt que l'espérer. Rendre muettes
+selectedField et selectedLine aurait retiré une réponse juste à toute pile qui
+s'en sert, sur la foi d'un relevé qu'un banc mal fait avait faussé.
+
+Les deux lignes sont maintenant des ESSAIS dans la pile de torture, section 3 :
+« egal » et non « note ». Ce qui était une question compte désormais.
 
 
 3. LE « DÉFAUT DE HC » N'EXISTAIT PAS                             CLOS

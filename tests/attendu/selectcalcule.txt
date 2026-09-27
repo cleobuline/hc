@@ -17,3 +17,18 @@ selectedChunk []
 -- 5. temoin negatif : un texte qui n'est pas un morceau --
 [ERR]    !! ne sait pas faire : select ou
 selectedChunk []
+-- 6. hide et show --
+apres hide ch  : visible false
+apres show ch  : visible true
+-- 7. set la propriete d'un designateur calcule --
+textStyle       : bold
+remis a plain   : plain
+-- 8. find restreint a un designateur calcule --
+dans le champ de carte : [Not found]
+dans le champ de fond  : [] sigma
+-- 9. temoins POSITIFS : ils marchaient deja --
+the name of ch  : card field "A"
+-- 10. temoin negatif sur les trois nouvelles --
+[ERR]    !! ne sait pas faire : hide rien
+[ERR]    !! objet introuvable : rien
+apres les trois refus : [Not found]

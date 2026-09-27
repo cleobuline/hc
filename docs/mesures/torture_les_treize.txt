@@ -156,24 +156,77 @@ E   LES CINQ SITES DU DÉSIGNATEUR CALCULÉ. E5 est le TÉMOIN : « select » a 
 CE QUE LE BANC A RENDU — la colonne HC ; celle d'HyperCard est À REMPLIR
 ═══════════════════════════════════════════════════════════════════════════
 
-                                   HC                  HYPERCARD
+                                   HC (avant)          HYPERCARD
 ─────────────────────────────────  ──────────────────  ────────────────────
-A1 item 4 au-delà de deux items    a,b,,c
-A2 line 3 au-delà d'une ligne      3 lignes
-B1 mots de la ligne 2              2
-B2 style d'un mot d'une ligne      plain
-C1 le style du mot                 bold
-C2 le style du champ, deux plages  plain
-D1 selectedChunk                   char 2 to 4 of card field 1
-D2 selectedField                   card field 1
-D3 selectedLine                    line 1 of card field 1
-D4 selectedText                    lph
-E1 hide <variable>                 ne sait pas faire
-E2 find in <variable>              Not found
-E3 set the textStyle of <variable> objet introuvable
-E4 lire une propriété              card field "A"
-E5 select <variable>               char 7 to 10 of card field 1  (corrigé)
+A1 item 4 au-delà de deux items    a,b,,c              a,b,,c          ✓
+A2 line 3 au-delà d'une ligne      3 lignes            3 lignes        ✓
+B1 mots de la ligne 2              2                   2               ✓
+B2 style d'un mot d'une ligne      plain               plain           ✓
+C1 le style du mot                 bold                bold            ✓
+C2 le style du champ, deux plages  plain               plain           ✓
+D1 selectedChunk                   char 2 to 4 of      IDENTIQUE       ✓
+                                     card field 1
+D2 selectedField                   card field 1        card field 1    ✓
+D3 selectedLine                    line 1 of           IDENTIQUE       ✓
+                                     card field 1
+D4 selectedText                    lph                 lph             ✓
+E1 hide <variable>                 ne sait pas faire   VISIBLE FALSE   ✗
+E2 find in <variable>              Not found           TROUVE          ✗
+E3 set the textStyle of <variable> objet introuvable   BOLD            ✗
+E4 lire une propriété              card field "A"      card field "A"  ✓
+E5 select <variable>  (témoin)     char 7 to 10 of     IDENTIQUE       ✓
+                                     card field 1
 
-CETTE COLONNE DE DROITE EST LA SEULE QUI DÉCIDE. Les quinze lignes de gauche
-ne sont que l'état des lieux : elles disent ce que HC fait, pas ce qu'il doit
-faire.
+ONZE LIGNES SUR QUATORZE DISAIENT DÉJÀ LA MÊME CHOSE. C'est le résultat le
+plus utile du banc, et le moins spectaculaire : les onze « ? » que HC portait
+étaient onze bonnes réponses qu'on n'osait pas compter. Elles sont devenues des
+essais qui décident — le rapport de la pile de torture est passé de
+« 86 réussites, 13 à mesurer » à « 98 réussites, 2 à mesurer ».
+
+Et le témoin E5 a fait son travail : « select <variable> », corrigé la veille
+sur la seule foi du manuel, marche bien des deux côtés. Sans lui, trois refus
+de suite en E1..E3 auraient pu venir du banc plutôt que du code.
+
+
+LES TROIS DÉFAUTS, ET CE QU'ILS COÛTAIENT
+-----------------------------------------
+
+HyperCard ÉVALUE une référence d'objet avant de la résoudre. HC ne le faisait
+qu'au chemin de LECTURE (E4) et, depuis la veille, pour « select » (E5).
+
+1. « hide ch » / « show ch » — refus franc, « ne sait pas faire ». Le moins
+   grave des trois : il se voit.
+
+2. « find "bet" in ch » — LE PIRE. Une recherche restreinte à un champ
+   introuvable ne fouille rien, et répond « Not found » : la pile lit que le
+   mot n'y est pas, alors que personne n'a regardé. Aucune erreur, aucun
+   dialogue, une réponse fausse et plausible.
+
+3. « set the textStyle of ch to bold » — « objet introuvable », et l'écriture
+   disparaît.
+
+CORRIGÉ À DEUX ENDROITS, parce qu'il y a deux mécanismes dans ce noyau : hide,
+show et « find … in » résolvent par l'ARBRE (v3_resout_calcule), « set … of »
+par le TEXTE (resolve_calcule). Une seule aide aurait couvert l'un et laissé
+l'autre — l'incohérence interne exacte que la section 7 de la pile de torture
+traque. Les deux partagent v3_relit, qui réanalyse le texte et que « select »
+employait déjà.
+
+LES TÉMOINS NÉGATIFS TIENNENT (harnais selectcalcule, §10) : « hide rien »,
+« set the textStyle of rien » et « find in rien », où rien porte « zorglub »,
+refusent toujours. Un mot nu vaut lui-même en HyperTalk, et n'a donc rien à
+résoudre. Une correction qui accepte tout n'aurait rien corrigé.
+
+
+CE QUI RESTE OUVERT — deux lignes, et ce banc ne les couvre pas
+--------------------------------------------------------------
+
+Le CURSEUR DE « find » APRÈS UN ÉCHEC : une recherche qui ne trouve rien
+remet-elle le balayage au début ? HC le fait, parce que son curseur n'est rien
+d'autre que la dernière trouvaille et que « the foundText » se vide — ça, c'est
+mesuré. Ce qu'HyperCard fait de son curseur après un échec, personne ne l'a
+regardé.
+
+Il faut PLUSIEURS CARTES pour le voir, ce que ce banc n'a pas : d'où son
+absence ici. Les deux lignes « ? » qui restent dans la pile de torture sont
+celles-là.

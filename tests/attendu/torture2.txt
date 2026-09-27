@@ -1,7 +1,6 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[ERR]    !! objet introuvable (v3, ligne 260 de button "TORTURE".essaiChampAbsent)
-[ERR]    !! ne sait pas faire : hide gCh
-86 reussites, aucun echec, 13 a mesurer.
+[ERR]    !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
+98 reussites, aucun echec, 2 a mesurer.
 
 ───── champ « R » ─────
 == 1. la recherche
@@ -42,8 +41,8 @@
   ok     ecrire au-dela : rien d'insere
   ok     et la longueur le dit
   ok     le nombre de mots ne bouge pas
-  ?      item 4 au-dela de deux items : [a,b,,c]
-  ?      line 3 au-dela d'une ligne : [3]
+  ok     item 4 pose ses virgules
+  ok     line 3 pose ses sauts
   ok     style d'un mot absent
   ok     style d'un mot present
   ok     un champ absent leve
@@ -54,8 +53,8 @@
   ok     le numero suit le champ
   ok     « bkgnd » et non « bg »
   ok     le designateur se relit
-  ?      selectedField apres un select de script : [card field 1]
-  ?      selectedLine  apres un select de script : [line 1 of card field 1]
+  ok     selectedField apres un select de script
+  ok     selectedLine  apres un select de script
 
 == 4. les couches
   ok     trois champs de carte
@@ -103,24 +102,24 @@
   ok     selectedText et value(selectedChunk)
   ok     le style pose se relit
   ok     et le voisin n'a pas bouge
-  ?      le style du champ entier, deux plages : [plain]
+  ok     le style du champ a deux plages
   ok     itemDelimiter return : items = lignes
   ok     et le deuxieme item est la deuxieme ligne
 
 == 6. a mesurer dans HyperCard
-  ?      le nombre de mots de la ligne 2 : [2]
-  ?      le style d'un mot d'une ligne : [plain]
+  ok     les mots d'une ligne
+  ok     le style d'un mot d'une ligne
   ?      apres un echec, la recherche repart de : [Atelier]
   ?      foundChunk apres un echec : [char 1 to 5 of card field 1]
-  ?      hide <variable> : le champ est-il encore visible : [true]
-  ?      find in <variable> : [Not found]
-  ?      go to <variable> : carte atteinte : [Deux]
-  ?      lire une propriete sur <variable> : [card field "A"]
+  ok     hide <variable> cache le champ
+  ok     find in <variable> trouve
+  ok     set la propriete de <variable>
+  ok     go to <variable>
+  ok     lire une propriete sur <variable>
 
 ==============================
-86 reussites, aucun echec, 13 a mesurer.
+98 reussites, aucun echec, 2 a mesurer.
 
 == les erreurs levees, et elles sont VOULUES ==
-     !! objet introuvable (v3, ligne 260 de button "TORTURE".essaiChampAbsent)
-     !! ne sait pas faire : hide gCh
+     !! objet introuvable (v3, ligne 262 de button "TORTURE".essaiChampAbsent)
 
