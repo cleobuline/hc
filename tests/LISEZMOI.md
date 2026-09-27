@@ -137,3 +137,27 @@ Sa **section 7** ne demande pas ce que fait HyperCard mais si les deux
 tournures qui posent la même question rendent la même chose. Un écart y est un
 défaut de HC quel que soit HyperCard, et c'est ainsi que
 « select the foundChunk » a été trouvé.
+
+### Rejouer le banc dans HyperCard
+
+Il faut y recopier les deux scripts à la main, dans Basilisk. Ils font 1162
+lignes, dont les deux tiers sont des commentaires — précieux ici, inutiles
+là-bas : la pile d'HyperCard est un instrument jetable, on la monte, on relève,
+on la jette.
+
+```sh
+tests/denude.sh tests/donnees/torture2_bouton.txt > bouton_nu.txt
+tests/denude.sh tests/donnees/torture2_pile.txt   > pile_nu.txt
+```
+
+543 lignes au lieu de 1162, et le banc dénudé rend exactement la même chose —
+vérifié, pas supposé.
+
+La pile à monter de l'autre côté : quatre cartes nommées `Atelier`, `Deux`,
+`Trois`, `Quatre` ; un champ de fond `T` **non partagé** ; sur l'Atelier trois
+champs de carte **dans cet ordre** — `A`, `B`, `R` —, `R` défilant et
+`dontSearch` vrai ; un bouton portant le script du bouton.
+
+Le banc vérifie tout cela lui-même au démarrage et le nomme dans un dialogue
+s'il manque quelque chose. Il ne l'a pas toujours fait : une carte nommée
+« troix » a produit trois échecs qui accusaient `find` et les cartes marquées.

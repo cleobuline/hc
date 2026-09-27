@@ -1,0 +1,291 @@
+on mouseUp
+  razCompteurs
+  set the lockErrorDialogs to true
+  set the dontSearch of card field "R" of card "Atelier" to true
+  if terrainBon() is not true then
+    bilanTerrain
+    exit mouseUp
+  end if
+  sectionFind
+  sectionMorceaux
+  sectionSelection
+  sectionCouches
+  sectionClavier
+  sectionChemins
+  sectionOuvert
+  bilan
+  sectionFaute
+end mouseUp
+on sectionFaute
+  titre "8. la faute voulue, en dernier"
+  journal "  Ce qui suit doit LEVER : le style d'un mot dans un champ qui"
+  journal "  n'existe pas. Le bloc des erreurs, en bas, le nomme."
+  journal "  (En HyperCard le script s'arrete ici ; en HC il continue.)"
+  go to card "Atelier"
+  put the textStyle of word 2 of card field "Absent" into z
+  journal "  ECHEC  la faute n'a PAS leve"
+end sectionFaute
+on sectionFind
+  titre "1. la recherche"
+  go to card "Deux"
+  egal "on atterrit bien sur Deux", the short name of this card, "Deux"
+  put "alpha zeta" into bg field "T"
+  go to card "Trois"
+  egal "on atterrit bien sur Trois", the short name of this card, "Trois"
+  put "élève à Noël" into bg field "T"
+  go to card "Quatre"
+  egal "on atterrit bien sur Quatre", the short name of this card, "Quatre"
+  put empty into bg field "T"
+  go to card "Atelier"
+  egal "et l'on revient a l'Atelier", the short name of this card, "Atelier"
+  put "alpha beta gamma delta" into bg field "T"
+  egal "la donnee tient sur l'Atelier", bg field "T", "alpha beta gamma delta"
+  put "omega" into card field "A"
+  put empty into card field "B"
+  go to card "Deux"
+  egal "le fond n'est PAS partage", bg field "T", "alpha zeta"
+  go to card "Trois"
+  egal "et Trois a garde le sien", bg field "T", "élève à Noël"
+  go to card "Atelier"
+  egal "et l'Atelier le sien", bg field "T", "alpha beta gamma delta"
+  go to card "Atelier"
+  find "bet gam"
+  egal "deux mots, deux prefixes", the result, empty
+  go to card "Atelier"
+  find chars "ph be"
+  egal "chars : n'importe ou dans le mot", the result, empty
+  go to card "Atelier"
+  find string "a bet"
+  egal "string : la phrase, a cheval", the result, empty
+  go to card "Atelier"
+  find whole "a bet"
+  egal "whole : refuse le cheval", the result, "Not found"
+  go to card "Atelier"
+  find whole "beta gamma"
+  egal "whole : accepte les mots entiers", the result, empty
+  go to card "Atelier"
+  find word "bet"
+  egal "word : refuse le prefixe", the result, "Not found"
+  go to card "Atelier"
+  find word "beta"
+  egal "word : accepte le mot entier", the result, empty
+  go to card "Atelier"
+  find "gamma alpha"
+  egal "l'ordre des mots ne compte pas", the result, empty
+  go to card "Atelier"
+  find "bet omeg"
+  egal "un mot au fond, l'autre sur la carte", the result, empty
+  go to card "Atelier"
+  find "bet omeg" in bg field "T"
+  egal "« in » restreint pour de vrai", the result, "Not found"
+  go to card "Atelier"
+  find "bet alph"
+  egal "foundText : le mot trouve", the foundText, "beta"
+  egal "foundChunk : couche et numero", the foundChunk, "char 7 to 10 of bkgnd field 1"
+  egal "foundField : la couche y est", the foundField, "bkgnd field 1"
+  egal "foundLine  : la couche aussi", the foundLine, "line 1 of bkgnd field 1"
+  unmark all cards
+  go to card "Atelier"
+  find "alpha" of marked cards
+  egal "aucune carte marquee : rien", the result, "Not found"
+  go to card "Deux"
+  mark this card
+  go to card "Atelier"
+  find "alpha" of marked cards
+  egal "une seule marquee : trouve", the result, empty
+  egal "et c'est ELLE qu'on atteint", the short name of this card, "Deux"
+  unmark all cards
+  go to card "Atelier"
+  find "eleve"
+  egal "sans accent : la base replie", the result, empty
+  go to card "Atelier"
+  find international "eleve"
+  egal "international ne replie pas", the result, "Not found"
+  go to card "Atelier"
+  find international "noel"
+  egal "ni le trema", the result, "Not found"
+  go to card "Atelier"
+  find "élève"
+  egal "avec l'accent : trouve", the result, empty
+  go to card "Atelier"
+  find "zorglub"
+  egal "« Not found » porte une majuscule", the result, "Not found"
+  egal "et foundText se vide", the foundText, empty
+  go to card "Atelier"
+  set the dontSearch of card field "B" to true
+  put "zorglub" into card field "B"
+  go to card "Atelier"
+  find "zorglub"
+  egal "un champ dontSearch est saute", the result, "Not found"
+  set the dontSearch of card field "B" to false
+  go to card "Atelier"
+  find "zorglub"
+  egal "et retrouve des qu'on le rend", the result, empty
+  put empty into card field "B"
+  go to card "Atelier"
+  find "alpha"
+  egal "la premiere trouvaille", the short name of this card, "Atelier"
+  find "alpha"
+  egal "la meme recherche avance", the short name of this card, "Deux"
+  go to card "Atelier"
+  find "delta"
+  egal "un motif neuf part du curseur", the result, empty
+  egal "et trouve dans la carte courante", the short name of this card, "Atelier"
+  find "beta"
+  egal "le balayage reboucle", the result, empty
+  egal "dans la carte de depart", the short name of this card, "Atelier"
+  egal "sur le mot d'avant le curseur", the foundText, "beta"
+end sectionFind
+on sectionMorceaux
+  titre "2. les morceaux qui debordent"
+  go to card "Atelier"
+  put "Sun Mon Tue" into card field "A"
+  put "X" into word 99 of card field "A"
+  egal "ecrire au-dela : rien d'insere", card field "A", "Sun Mon TueX"
+  egal "et la longueur le dit", the length of card field "A", 12
+  egal "le nombre de mots ne bouge pas", the number of words of card field "A", 3
+  put "a,b" into card field "A"
+  put "c" into item 4 of card field "A"
+  egal "item 4 pose ses virgules", card field "A", "a,b,,c"
+  put "un" into card field "A"
+  put "trois" into line 3 of card field "A"
+  egal "line 3 pose ses sauts", the number of lines of card field "A", 3
+  put "Sun Mon Tue" into card field "A"
+  egal "style d'un mot absent", the textStyle of word 99 of card field "A", "plain"
+  egal "style d'un mot present", the textStyle of word 2 of card field "A", "plain"
+end sectionMorceaux
+on sectionSelection
+  titre "3. la selection"
+  go to card "Atelier"
+  put "alpha beta gamma" into card field "A"
+  put "omega" into card field "B"
+  put "sigma tau" into bg field "T"
+  select char 2 to 4 of card field "A"
+  put the selectedChunk into a1
+  put the selectedText into a2
+  egal "selectedChunk : couche et numero", a1, "char 2 to 4 of card field 1"
+  egal "selectedText", a2, "lph"
+  select word 1 of card field "B"
+  put the selectedChunk into b1
+  egal "le numero suit le champ", b1, "char 1 to 5 of card field 2"
+  select word 2 of bg field "T"
+  put the selectedChunk into c1
+  put value(c1) into c2
+  egal "« bkgnd » et non « bg »", c1, "char 7 to 9 of bkgnd field 1"
+  egal "le designateur se relit", c2, "tau"
+  select char 2 to 4 of card field "A"
+  put the selectedField into sf
+  put the selectedLine into sl
+  egal "selectedField apres un select de script", sf, "card field 1"
+  egal "selectedLine  apres un select de script", sl, "line 1 of card field 1"
+end sectionSelection
+on sectionCouches
+  titre "4. les couches"
+  go to card "Atelier"
+  put "surCarte" into card field "A"
+  put "auFond"   into bg field "T"
+  egal "trois champs de carte", the number of card fields, 3
+  egal "un champ de fond", the number of bkgnd fields, 1
+  egal "card field 1 est A", card field 1, "surCarte"
+  egal "bkgnd field 1 est T", bkgnd field 1, "auFond"
+  note "« field » sans couche rend (HyperCard dit auFond)", field 1
+  egal "le nom et le numero designent le meme", card field "A", card field 1
+  go to card "Deux"
+  put "chezDeux" into bg field "T"
+  go to card "Atelier"
+  egal "le fond garde un texte par carte", bg field "T", "auFond"
+  go to card "Deux"
+  egal "et l'autre le sien", bg field "T", "chezDeux"
+  go to card "Atelier"
+end sectionCouches
+on sectionClavier
+  global gVus, gClavier
+  titre "5. les dix messages du clavier"
+  go to card "Atelier"
+  put "on" into gClavier
+  put empty into gVus
+  keyDown "z"
+  egal "keyDown", gVus, "keyDown z"
+  put empty into gVus
+  commandKeyDown "q"
+  egal "commandKeyDown", gVus, "commandKeyDown q"
+  put empty into gVus
+  controlKey 1
+  egal "controlKey", gVus, "controlKey 1"
+  put empty into gVus
+  functionKey 4
+  egal "functionKey", gVus, "functionKey 4"
+  put empty into gVus
+  arrowKey "left"
+  egal "arrowKey", gVus, "arrowKey left"
+  put empty into gVus
+  enterKey
+  egal "enterKey", gVus, "enterKey"
+  put empty into gVus
+  returnKey
+  egal "returnKey", gVus, "returnKey"
+  put empty into gVus
+  tabKey
+  egal "tabKey", gVus, "tabKey"
+  put empty into gVus
+  enterInField
+  egal "enterInField", gVus, "enterInField"
+  put empty into gVus
+  returnInField
+  egal "returnInField", gVus, "returnInField"
+  put empty into gVus
+  keyDown "a"
+  arrowKey "right"
+  tabKey
+  egal "trois de suite, dans l'ordre", gVus, "keyDown a,arrowKey right,tabKey"
+  put empty into gVus
+  put "off" into gClavier
+end sectionClavier
+on sectionChemins
+  titre "7. deux chemins, une seule reponse"
+  go to card "Atelier"
+  put "alpha beta gamma delta" into card field "A"
+  put "auFond" into bg field "T"
+  egal "length et number of characters", the length of card field "A", the number of characters of card field "A"
+  egal "char et chars", char 1 to 5 of card field "A", chars 1 to 5 of card field "A"
+  egal "bg et bkgnd", bg field "T", bkgnd field "T"
+  egal "bkgnd et background", bkgnd field "T", background field "T"
+  egal "le nom et le numero", word 2 of card field "A", word 2 of card field 1
+  egal "last word et word n", last word of card field "A", word (the number of words of card field "A") of card field "A"
+  egal "value d'un designateur", value("card field 1"), card field "A"
+  egal "the name of this card", the name of this card, "card " & quote & "Atelier" & quote
+  egal "the short name", the short name of this card, "Atelier"
+  egal "le numero de cette carte", the number of this card, the number of card "Atelier"
+  verifie "there is a card field A", there is a card field "A"
+  verifie "there is not a card field Absent", there is not a card field "Absent"
+  egal "the number of card fields", the number of card fields, the number of card fields of this card
+  put "aller-retour" into card field "B"
+  egal "ce qu'on ecrit est ce qu'on relit", card field "B", "aller-retour"
+  put empty into card field "B"
+  put the left of card field "A" & "," & the top of card field "A" into rc
+  put rc & "," & the right of card field "A" & "," & the bottom of card field "A" into rc
+  egal "the rect et ses quatre bords", the rect of card field "A", rc
+  hide card field "B"
+  egal "hide met visible a false", the visible of card field "B", "false"
+  show card field "B"
+  egal "show le remet a true", the visible of card field "B", "true"
+  go to card "Atelier"
+  put "alpha beta gamma delta" into bg field "T"
+  find "bet"
+  select the foundChunk
+  egal "select the foundChunk", the selectedChunk, the foundChunk
+  egal "et le texte suit", the selectedText, the foundText
+  egal "selectedText et value(selectedChunk)", the selectedText, value(the selectedChunk)
+  put "alpha beta gamma" into card field "A"
+  set the textStyle of word 2 of card field "A" to bold
+  egal "le style pose se relit", the textStyle of word 2 of card field "A", "bold"
+  egal "et le voisin n'a pas bouge", the textStyle of word 1 of card field "A", "plain"
+  egal "le style du champ a deux plages", the textStyle of card field "A", "plain"
+  set the textStyle of card field "A" to plain
+  put "un" & return & "deux" & return & "trois" into card field "A"
+  set the itemDelimiter to return
+  egal "itemDelimiter return : items = lignes", the number of items of card field "A", the number of lines of card field "A"
+  egal "et le deuxieme item est la deuxieme ligne", item 2 of card field "A", line 2 of card field "A"
+  set the itemDelimiter to ","
+  put "alpha beta gamma delta" into card field "A"
+end sectionChemins
