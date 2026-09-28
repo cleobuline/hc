@@ -1,0 +1,47 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== les numeros poses ==
+   fond 2, carte une 3, carte deux 4
+   champ du fond id 1, champ de la une id 1, bouton de la deux id 1
+   champ de la deux id 4 (le numero de sa carte, 4)
+
+== chacun se resout dans sa couche ==
+   sur la carte une :
+      texte de la une
+      texte du fond, sur la une
+      card field "de la une"
+      bkgnd field "du fond"
+   sur la carte deux :
+      card button "de la deux"
+      bkgnd field "du fond"
+         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+
+== sans prefixe, la carte passe avant le fond ==
+      texte de la une
+      bkgnd field "du fond"
+      texte du fond, sur la deux
+
+== une portee explicite ne se replie pas ==
+         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+         !! objet introuvable (colonne 2) dans «  card field id 1 » — objet : button "pilote"
+         !! objet introuvable (colonne 2) dans «  card field id 1 » — objet : button "pilote"
+         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+      aucun
+         !! objet introuvable (colonne 2) dans «  bg button id 1 » — objet : button "pilote"
+         !! objet introuvable (colonne 2) dans «  bg button id 1 » — objet : button "pilote"
+         !! objet introuvable (v3, ligne 2 de button "pilote".t)
+      aucun
+
+== enregistre puis relu ==
+   fond 2, carte une 3, carte deux 4
+   fond      : du fond          id 1
+   carte une : de la une        id 1
+   carte une : pilote           id 9
+   carte deux: de la deux       id 1
+   carte deux: comme sa carte   id 4
+
+== controle positif : deux parts de meme numero dans une MEME couche ==
+         !! identifiant 1 déjà pris dans cette couche : field "second de la une" garde 19
+   second de la une : 19 -> 19  refuse, et il garde le sien
+
+== et le meme numero dans une autre couche reste accepte ==
+   de la trois : 21 -> 1  accepte : ce n'est pas le meme espace

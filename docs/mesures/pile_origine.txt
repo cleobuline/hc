@@ -652,12 +652,19 @@ d'appariement. La pile du harnais en porte un exprès.
 
 CE QUI RESTE NON MESURÉ
 -----------------------
-LES IDENTIFIANTS DE PART NE SURVIVENT PAS. hc_new_field et hc_new_button
-attribuent les NÔTRES ; celui d'origine est perdu. Un script qui dit « card field
-id 5 » ne retrouvera donc pas son champ, et « the id of » rendra autre chose.
-C'est le prochain point à régler de ce chantier — les noms et les rangs
-survivent, les identifiants non. Le tour complet compare donc les parts par
-POSITION, ce qui est un aveu et non une méthode.
+LES IDENTIFIANTS DE PART SURVIVENT DEPUIS, et ce paragraphe disait le contraire.
+Il annonçait « hc_new_field et hc_new_button attribuent les NÔTRES ; celui
+d'origine est perdu », et c'était le prochain point du chantier. Il est fait :
+140 parts et 32 couches de nos trois piles gardent leur numéro, à l'import comme
+à travers notre format. Il a fallu pour cela que l'espace de noms d'une part
+devienne SA COUCHE, comme chez HyperCard — 45 % des parts d'une de ces piles
+partagent leur numéro avec une part d'une autre couche. Tout est dans
+docs/mesures/identifiants_de_part.txt, la mesure qui l'a décidé comme le défaut
+de portee qu'elle a fait sortir.
+
+Et le tour complet compare toujours les parts par RANG, mais ce n'est plus un
+aveu : l'identifiant étant devenu une propriété mesurée, il ne peut pas servir de
+clé à l'instrument qui le mesure.
 
 HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
 n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs

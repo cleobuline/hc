@@ -97,7 +97,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
  propriété qui se perd en chemin se dénonce ici)
 hc_save : écrit
   orphelin  carte 1 texte propre,  part 99 : aucune part de ce rang
-91 valeurs comparées, 0 perdues, 1 contenu orphelin
+94 valeurs comparées, 0 perdues, 1 contenu orphelin
 
 === les témoins négatifs : ce qui doit être REFUSÉ ===
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)

@@ -6,7 +6,7 @@
    « id 5 » du second devient « id 4 »
 
 == rechargement ==
-         !! identifiant 4 déjà pris dans cette pile : field "second" garde 10
+         !! identifiant 4 déjà pris dans cette couche : field "second" garde 10
 
 == les identifiants apres relecture ==
    premier    id 4

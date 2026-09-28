@@ -42,17 +42,27 @@ void    add_part(Object *owner, Object *o);
 /* La pile qui contient cet objet — l'objet lui-même si c'en est une. */
 Object *owning_stack(Object *o);
 
-/* Un identifiant libre dans cette pile. La fabrique unique : tout objet neuf
- * ou collé passe par elle, sans quoi deux objets porteraient le même numéro. */
-int     id_neuf(Object *pile);
+/* Un identifiant libre dans cet ESPACE DE NOMS. La fabrique unique : tout objet
+ * neuf ou collé passe par elle, sans quoi deux objets porteraient le même
+ * numéro.
+ *
+ * L'espace n'est pas toujours la pile : les parts se numérotent dans LEUR
+ * COUCHE, les couches dans leur pile. Passer la couche pour une part, la pile
+ * pour une couche. Voir espace_du_numero dans hc_core.c, et la mesure sur trois
+ * piles d'origine qui l'a imposé. */
+int     id_neuf(Object *espace);
 
-/* Reprendre un identifiant D'ORIGINE, si la pile ne l'a pas déjà donné à
- * quelqu'un d'autre. Rend 1 s'il a été repris, 0 si l'objet garde le sien.
+/* Reprendre un identifiant D'ORIGINE, si personne d'autre ne l'a déjà dans le
+ * même espace de noms. Rend 1 s'il a été repris, 0 si l'objet garde le sien.
  *
  * Le compteur des identifiants est privé à hc_core.c, et c'est lui qu'il faut
  * avancer en même temps — d'où un verbe ici plutôt qu'une écriture directe
- * dans o->id, qui laisserait le compteur en arrière. */
-int     id_adopte(Object *pile, Object *o, int souhaite);
+ * dans o->id, qui laisserait le compteur en arrière.
+ *
+ * L'espace de noms se déduit de `o`, qui doit donc être déjà attaché à son
+ * propriétaire : une part se compare à ses sœurs, une couche aux couches de sa
+ * pile. */
+int     id_adopte(Object *o, int souhaite);
 
 /* Cet identifiant d'icône est-il celui d'une icône livrée avec HC ? Une
  * icône intégrée n'est pas transportée avec l'objet : elle existe partout. */

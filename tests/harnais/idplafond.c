@@ -85,22 +85,37 @@ int main(void)
         }
     }
 
-    /* Aucun doublon non plus : un identifiant neuf qui en répète un autre
-     * rendrait « card id N » ambigu et ferait écrire deux fois la même clé. */
-    puts("\n── et aucun doublon dans la pile");
-    int doublons = 0;
+    /* AUCUN DOUBLON — MAIS DANS LE BON ESPACE DE NOMS, et ce harnais l'a appris.
+     *
+     * Il comptait les doublons dans la pile ENTIÈRE, et annonçait cinq paires le
+     * jour où l'espace de noms d'une part est devenu SA COUCHE : la carte
+     * dupliquée reçoit les mêmes numéros de part que son modèle — 1, 2, 3 — et
+     * c'est ce que fait HyperCard, où « card button id 1 » se résout dans la
+     * carte et jamais ailleurs. Mesuré sur trois piles d'origine : 45 % des
+     * parts de l'une d'elles partagent leur numéro avec une part d'une autre
+     * couche.
+     *
+     * Le doublon qui compte est donc celui qui rend une désignation AMBIGUË :
+     * deux couches de même identifiant dans la pile, ou deux parts de même
+     * identifiant dans une même couche. Les croisés sont la règle ; on les
+     * affiche quand même, pour que personne ne les reprenne un jour pour des
+     * fautes. */
+    puts("\n── et aucun doublon dans le bon espace de noms");
+    int doublons = 0, croises = 0;
     for (int i = 0; i < st->nparts; i++) {
         Object *ca = st->parts[i];
-        for (int j = 0; j < st->nparts; j++) {
-            if (i != j && ca->id == st->parts[j]->id) doublons++;
-            for (int k = 0; k < st->parts[j]->nparts; k++)
-                if (ca->id == st->parts[j]->parts[k]->id) doublons++;
-        }
+        for (int j = i + 1; j < st->nparts; j++)
+            if (ca->id == st->parts[j]->id) doublons++;      /* deux couches */
         for (int k = 0; k < ca->nparts; k++)
             for (int m = k + 1; m < ca->nparts; m++)
                 if (ca->parts[k]->id == ca->parts[m]->id) doublons++;
+        for (int j = i + 1; j < st->nparts; j++)
+            for (int k = 0; k < ca->nparts; k++)
+                for (int m = 0; m < st->parts[j]->nparts; m++)
+                    if (ca->parts[k]->id == st->parts[j]->parts[m]->id) croises++;
     }
-    printf("  paires en double : %d\n", doublons);
+    printf("  paires ambigues : %d\n", doublons);
+    printf("  memes numeros dans deux couches differentes : %d  (la regle)\n", croises);
     if (doublons) fautes++;
 
     /* LE REPLI, ET CE QU'IL FAIT VRAIMENT.

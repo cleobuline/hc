@@ -1537,7 +1537,10 @@ int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX - 1, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 
-static int id_pris_par_un_autre(Object *pile, int id, Object *moi);
+/* L'espace de noms d'un identifiant — la couche d'une part, la pile d'une
+ * couche. Défini plus bas, avec la mesure qui l'a imposé. */
+static Object *espace_du_numero(Object *o);
+static int id_pris_par_un_autre(Object *espace, int id, Object *moi);
 
 void hc_set_id(Object *o, int id)
 {
@@ -1583,12 +1586,14 @@ void hc_set_id(Object *o, int id)
      * silence aurait fait mentir un « card id N » écrit dans un script. On
      * nomme donc l'objet et les deux numéros, pour que la pile soit
      * réparable. */
-    Object *pile = owning_stack(o);
-    if (pile && id_pris_par_un_autre(pile, id, o)) {
+    Object *espace = espace_du_numero(o);
+    if (espace && id_pris_par_un_autre(espace, id, o)) {
         char d[HC_NOM_MAX];
         hc_describe(o, d, sizeof d);
-        emit(HC_ERR, "   !! identifiant %d déjà pris dans cette pile : "
-                     "%s garde %d", id, d, o->id);
+        emit(HC_ERR, "   !! identifiant %d déjà pris dans %s : "
+                     "%s garde %d", id,
+             espace->type == OBJ_STACK ? "cette pile" : "cette couche",
+             d, o->id);
         return;
     }
 
@@ -1727,45 +1732,81 @@ void hc_memoire_epuisee(const char *quoi)
 
 static void runs_free(struct RunList *rl);
 
-/* Un identifiant libre DANS CETTE PILE, quand le compteur est à bout.
+/* Un identifiant libre DANS CET ESPACE, quand le compteur est à bout.
  *
- * L'unicité ne vaut que dans une pile — « card id 7 » se résout à l'intérieur
- * d'une pile, jamais entre elles —, donc la recherche s'y limite. Elle ne
- * tourne jamais en usage normal : il faut avoir chargé un fichier portant un
- * identifiant proche du plafond pour y arriver.
+ * L'espace est celui d'espace_du_numero : les parts d'une couche, ou les
+ * couches d'une pile. La recherche s'y limite parce que l'unicité s'y limite —
+ * « card id 7 » se résout dans une pile et jamais entre elles, « card field
+ * id 7 » dans une couche et jamais entre elles. Elle ne tourne jamais en usage
+ * normal : il faut avoir chargé un fichier portant un identifiant proche du
+ * plafond pour y arriver.
  *
- * Rend 0 si la pile est introuvable ou saturée. L'appelant garde alors le
+ * Rend 0 si l'espace est introuvable ou saturé. L'appelant garde alors le
  * plafond : deux objets homonymes valent mieux qu'un identifiant que notre
  * propre lecteur refuserait. */
 
-static int id_pris_dans(Object *pile, int id)
+/* ═══ DEUX ESPACES DE NOMS, ET NON UN ══════════════════════════
+ *
+ * Les identifiants de COUCHE — cartes et fonds — sont uniques dans la pile :
+ * « go to card id 2619 » se résout sur la pile entière. Ceux des PARTS sont
+ * uniques dans LEUR COUCHE seulement : « card field id 5 » se résout dans la
+ * carte, « bg field id 5 » dans le fond, et find_part_by_id ne cherche jamais
+ * ailleurs que chez le propriétaire qu'on lui donne.
+ *
+ * CE FICHIER N'EN VOYAIT QU'UN, LA PILE, et c'était faux. Mesuré sur les trois
+ * piles HyperCard d'origine que nous avons, en simulant l'adoption dans l'ordre
+ * où l'importateur bâtit :
+ *
+ *     3D Parametric Equations   105 parts,  47 en conflit (45 %)
+ *     Découvrir HyperCard        28 parts,   5 en conflit
+ *     TEST3                       7 parts,   1 en conflit
+ *     les 32 couches des trois piles :  AUCUN conflit
+ *
+ * Les conflits sont tous des parts contre des parts d'une AUTRE couche — la
+ * part 4 d'une carte contre la part 4 de son fond, par exemple, ce que
+ * « Découvrir HyperCard » porte vraiment. Jamais une part contre une couche, et
+ * jamais deux fois le même numéro dans une couche : la règle d'HyperCard se lit
+ * dans ses octets.
+ *
+ * Avec un seul espace, 45 % des parts d'une pile importée recevaient donc un
+ * numéro neuf, et tout « card button id N » de ses scripts désignait le vide —
+ * en silence, et sur les piles les plus riches d'abord.
+ *
+ * D'où `espace_du_numero` : la part se compte parmi ses SŒURS, la couche parmi
+ * les couches de sa pile. C'est le seul endroit qui décide, et les trois
+ * prédicats plus bas ne regardent plus qu'UN niveau — les parts d'une couche,
+ * ou les couches d'une pile — au lieu de deux. */
+static Object *espace_du_numero(Object *o)
 {
-    if (!pile) return 0;
-    if (pile->id == id) return 1;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        if (couche->id == id) return 1;
-        for (int j = 0; j < couche->nparts; j++)
-            if (couche->parts[j]->id == id) return 1;
-    }
+    if (!o) return NULL;
+    if (o->type == OBJ_BUTTON || o->type == OBJ_FIELD) return o->owner;
+    return owning_stack(o);
+}
+
+/* La pile compte SON PROPRE identifiant parmi ceux de ses couches ; une couche
+ * ne compte pas le sien parmi ceux de ses parts, puisqu'il n'est pas du même
+ * espace. Une part peut donc porter le numéro de sa carte, comme dans
+ * HyperCard. */
+static int id_pris_dans(Object *espace, int id)
+{
+    if (!espace) return 0;
+    if (espace->type == OBJ_STACK && espace->id == id) return 1;
+    for (int i = 0; i < espace->nparts; i++)
+        if (espace->parts[i]->id == id) return 1;
     return 0;
 }
 
 /* Comme id_pris_dans, mais SANS COMPTER `moi`.
  *
- * hc_set_id pose un identifiant sur un objet DÉJÀ attaché à sa pile : sans
- * cette exclusion, reposer sur un objet l'identifiant qu'il porte déjà le
- * ferait se déclarer en conflit avec lui-même. */
-static int id_pris_par_un_autre(Object *pile, int id, Object *moi)
+ * hc_set_id pose un identifiant sur un objet DÉJÀ attaché : sans cette
+ * exclusion, reposer sur un objet l'identifiant qu'il porte déjà le ferait se
+ * déclarer en conflit avec lui-même. */
+static int id_pris_par_un_autre(Object *espace, int id, Object *moi)
 {
-    if (!pile) return 0;
-    if (pile != moi && pile->id == id) return 1;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        if (couche != moi && couche->id == id) return 1;
-        for (int j = 0; j < couche->nparts; j++)
-            if (couche->parts[j] != moi && couche->parts[j]->id == id) return 1;
-    }
+    if (!espace) return 0;
+    if (espace->type == OBJ_STACK && espace != moi && espace->id == id) return 1;
+    for (int i = 0; i < espace->nparts; i++)
+        if (espace->parts[i] != moi && espace->parts[i]->id == id) return 1;
     return 0;
 }
 
@@ -1795,29 +1836,23 @@ static int cmp_id(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
-static int id_libre_dans(Object *pile)
+static int id_libre_dans(Object *espace)
 {
-    if (!pile) return 0;
+    if (!espace) return 0;
 
-    int n = 1;                                   /* la pile elle-même */
-    for (int i = 0; i < pile->nparts; i++)
-        n += 1 + pile->parts[i]->nparts;
+    int n = 1 + espace->nparts;                  /* l'espace, puis ses enfants */
 
     int *pris = malloc((size_t)n * sizeof *pris);
     if (!pris) {
         for (int id = 1; id < HC_ID_MAX; id++)
-            if (!id_pris_dans(pile, id)) return id;
+            if (!id_pris_dans(espace, id)) return id;
         return 0;
     }
 
     int k = 0;
-    pris[k++] = pile->id;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        pris[k++] = couche->id;
-        for (int j = 0; j < couche->nparts; j++)
-            pris[k++] = couche->parts[j]->id;
-    }
+    if (espace->type == OBJ_STACK) pris[k++] = espace->id;
+    for (int i = 0; i < espace->nparts; i++)
+        pris[k++] = espace->parts[i]->id;
     qsort(pris, (size_t)k, sizeof *pris, cmp_id);
 
     int attendu = 1;
@@ -1844,13 +1879,18 @@ static int id_libre_dans(Object *pile)
  * parts. Encore un chemin corrigé et son jumeau oublié. D'où cette
  * fonction : il n'y a plus qu'un seul endroit à garder.
  *
- * `pile` sert au repli. Il faut qu'elle contienne DÉJÀ l'objet en cours de
- * numérotation et ses frères, sinon deux appels de suite rendent le même
- * trou — d'où l'ordre « attacher puis numéroter » chez les appelants. */
-int id_neuf(Object *pile)
+ * `espace` sert au repli, et c'est celui d'espace_du_numero : LA COUCHE pour
+ * une part, la pile pour une couche. Passer la pile pour une part ferait
+ * chercher le trou dans le mauvais ensemble — sans doublon à la clé, puisque
+ * l'ensemble est plus large, mais en refusant des numéros libres.
+ *
+ * Il faut qu'il contienne DÉJÀ l'objet en cours de numérotation et ses frères,
+ * sinon deux appels de suite rendent le même trou — d'où l'ordre « attacher
+ * puis numéroter » chez les appelants. */
+int id_neuf(Object *espace)
 {
     if (g_next_id < HC_ID_MAX) return g_next_id++;
-    int libre = id_libre_dans(pile);
+    int libre = id_libre_dans(espace);
     return libre ? libre : HC_ID_MAX - 1;
 }
 
@@ -1877,12 +1917,19 @@ int id_neuf(Object *pile)
  * Silencieuse, contrairement à hc_set_id : celui-ci lit un FICHIER, où un
  * doublon signale une pile abîmée qu'il faut pouvoir réparer. Ici le
  * conflit est la situation normale de deux piles étrangères, et il a une
- * réponse — garder le numéro neuf — qui ne demande rien à personne. */
-int id_adopte(Object *pile, Object *o, int souhaite)
+ * réponse — garder le numéro neuf — qui ne demande rien à personne.
+ *
+ * L'ESPACE VIENT DE L'OBJET, et non de l'appelant : c'est espace_du_numero qui
+ * sait si l'on compare à des parts sœurs ou à des couches. L'appelant passait
+ * la pile, et l'aurait passée pour une part aussi — la faute aurait été
+ * invisible, l'adoption échouant seulement plus souvent. L'objet doit donc
+ * être DÉJÀ attaché à son propriétaire quand on l'appelle. */
+int id_adopte(Object *o, int souhaite)
 {
-    if (!pile || !o) return 0;
+    Object *espace = espace_du_numero(o);
+    if (!espace) return 0;
     if (souhaite <= 0 || souhaite >= HC_ID_MAX) return 0;
-    if (id_pris_par_un_autre(pile, souhaite, o)) return 0;
+    if (id_pris_par_un_autre(espace, souhaite, o)) return 0;
 
     o->id = souhaite;
     if (souhaite >= g_next_id) g_next_id = souhaite + 1;
@@ -1894,7 +1941,12 @@ static Object *new_object(ObjType type, Object *owner, const char *name)
     Object *o = calloc(1, sizeof(Object));
     if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
-    o->id      = id_neuf(owning_stack(owner));
+    /* L'espace de noms dépend du type — voir espace_du_numero — et on ne peut pas
+     * l'appeler ici : ni o->owner ni l'attache à owner->parts ne sont encore
+     * posés. D'où le choix explicite : une part se numérote parmi les parts de sa
+     * couche, une couche parmi les couches de sa pile. */
+    o->id      = id_neuf((type == OBJ_BUTTON || type == OBJ_FIELD)
+                         ? owner : owning_stack(owner));
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
@@ -3284,7 +3336,34 @@ static Object *resolve_local(const char *ref)
     if (ci_word(ref, "me")) return g_me;
     if (ci_word(ref, "target")) return g_target;
 
-    int want_bg = 0;
+    /* DEUX DRAPEAUX, PAS UN, et l'absence du second était un défaut.
+     *
+     * Ce résolveur ne notait que « on a dit fond ». Le préfixe « card » était
+     * simplement CONSOMMÉ quelques lignes plus bas — « ref = after » — sans
+     * laisser de trace, si bien que « card field X » et « field X » devenaient la
+     * même phrase, celle qui se replie sur le fond quand la carte n'a rien.
+     * D'où, mesuré :
+     *
+     *     put card field id 1            ->  le texte du champ DU FOND
+     *     the name of card field id 1    ->  bkgnd field « du fond »
+     *
+     * On a écrit « card » et l'on reçoit le fond. HyperCard ne se replie que
+     * sur une désignation SANS préfixe ; « card » est une portion, pas un
+     * ornement.
+     *
+     * L'exécuteur v3 répondait juste — il ne trouvait rien — et c'est le repli
+     * du pont vers ce résolveur-ci qui changeait « introuvable » en « le
+     * mauvais ». Une bonne réponse ne rattrape pas une mauvaise : il suffit
+     * d'une des deux portes pour mentir.
+     *
+     * Le défaut est ANCIEN et il était presque inatteignable : tant que les
+     * identifiants étaient uniques dans la pile entière, une carte et son fond
+     * ne pouvaient pas se disputer un numéro, et le repli tombait sur du vide.
+     * Depuis que l'espace de noms d'une part est SA COUCHE — comme chez
+     * HyperCard, et comme le mesurent les piles d'origine où 45 % des parts
+     * partagent leur numéro avec une autre couche — le cas devient ordinaire
+     * dans toute pile importée. */
+    int want_bg = 0, want_card = 0;
     if (ci_word(ref, "bg") || ci_word(ref, "background") || ci_word(ref, "bkgnd")) {
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
@@ -3397,6 +3476,7 @@ static Object *resolve_local(const char *ref)
             Object *c = card_par_nom_de(stack, g_portee_fond, nm);
             if (c) return c;
         }
+        want_card = 1;          /* « card button » / « card field » : pas de repli */
         ref = after;
     }
 
@@ -3578,8 +3658,14 @@ static Object *resolve_local(const char *ref)
             eval_id_token(a, v, sizeof v);
             wanted = hc_id(v);
         }
-        Object *o = find_part_by_id(card, t, wanted);
-        if (!o) o = find_part_by_id(bg, t, wanted);
+        /* ET CETTE BRANCHE IGNORAIT LES DEUX PORTÉES, pas seulement celle de la
+         * carte : ses voisines d'en dessous — le rang, le nom — écrivaient déjà
+         * « want_bg ? bg : card », celle-ci cherchait sur la carte TOUJOURS puis se
+         * repliait sur le fond TOUJOURS. Donc « bg field id 5 » rendait le champ
+         * de la CARTE quand le fond n'en a pas de 5 — l'inverse du défaut décrit
+         * plus haut, dans la même ligne de code. */
+        Object *o = find_part_by_id(want_bg ? bg : card, t, wanted);
+        if (!o && !want_bg && !want_card) o = find_part_by_id(bg, t, wanted);
         return o;
     }
 
@@ -3587,7 +3673,7 @@ static Object *resolve_local(const char *ref)
     if (isdigit((unsigned char)*ref)) {
         int n = hc_rang(ref);
         Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-        if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
+        if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
         return o;
     }
 
@@ -3623,7 +3709,7 @@ static Object *resolve_local(const char *ref)
         if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
             int n = hc_rang(nm);
             Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-            if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
+            if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
             return o;
         }
     }
@@ -3635,7 +3721,8 @@ static Object *resolve_local(const char *ref)
         o = find_part(bg, t, nm);
     } else {
         o = find_part(card, t, nm);
-        if (!o) o = find_part(bg, t, nm);   /* repli sur le fond */
+        /* Repli sur le fond SEULEMENT si l'on n'a pas dit « card ». */
+        if (!o && !want_card) o = find_part(bg, t, nm);
     }
     return o;
 }

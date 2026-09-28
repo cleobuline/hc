@@ -661,6 +661,21 @@ static void compare_part(const char *ou, const HcOrigPart *q, Object *o)
     char quoi[128];
     #define Q(champ) (snprintf(quoi, sizeof quoi, "%s %s", ou, champ), quoi)
     egal_int(Q("genre"), q->genre == HC_ORIG_BOUTON ? OBJ_BUTTON : OBJ_FIELD, (int)o->type);
+    /* L'IDENTIFIANT EST UNE PROPRIÉTÉ, ET C'EST LA DERNIÈRE QUI MANQUAIT ICI.
+     *
+     * Une part à sa place, avec son nom, son texte et ses vingt propriétés, mais
+     * sous un autre numéro, est une part que « card field id 5 » ne trouve plus.
+     * Rien ne le montre à l'écran : ça ne se voit qu'à l'exécution d'un script
+     * de 1993, c'est-à-dire trop tard.
+     *
+     * ET C'EST POURQUOI L'APPARIEMENT SE FAIT PAR RANG, ci-dessous, et non par
+     * identifiant : la clé d'un instrument ne doit pas être ce qu'il mesure.
+     * Apparier par identifiant rendrait « part absente » là où la vérité est
+     * « part présente, mal numérotée » — le même compte de pertes, une cause
+     * illisible. J'avais écrit dans la doc que le rang était « un aveu et non une
+     * méthode » ; c'était vrai tant que l'identifiant ne se conservait pas, et
+     * c'est devenu faux à la ligne d'à côté. */
+    egal_int(Q("id"), q->id, o->id);
     egal_txt(Q("nom"), q->nom, o->name);
     egal_int(Q("x"), q->gauche, o->x);
     egal_int(Q("y"), q->haut, o->y);
@@ -709,8 +724,12 @@ static Object *nieme(Object *couche, int rang)
     return (couche && rang < couche->nparts) ? couche->parts[rang] : NULL;
 }
 
-/* LA PART VISÉE PAR UN CONTENU, par POSITION et non par identifiant — les
- * identifiants de nos parts sont les nôtres. Réécrit ici plutôt qu'appelé depuis
+/* LA PART VISÉE PAR UN CONTENU, par le RANG de l'identifiant d'ORIGINE.
+ *
+ * Ce n'est pas « par identifiant » au sens de o->id : on cherche l'identifiant
+ * d'origine dans la liste d'origine, et l'on prend notre part de même rang. Ça
+ * reste juste quand un identifiant n'a pas pu être repris — et ça ne prend pas
+ * pour clé ce que compare_part mesure. Réécrit ici plutôt qu'appelé depuis
  * hc_importe.c, pour la même raison que la normalisation des scripts. */
 static Object *visee(Object *couche, const HcOrigCouche *k, int id_origine)
 {

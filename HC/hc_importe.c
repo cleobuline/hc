@@ -20,6 +20,7 @@
  *      hc_set_field_text ne sait pas dans quelle carte ranger le texte.
  */
 #include "hc_importe.h"
+#include "hc_interne.h"   /* id_adopte : reprendre les identifiants d'origine */
 
 #include <stdlib.h>
 #include <string.h>
@@ -105,6 +106,32 @@ static Object *pose_part(Object *proprio, const HcOrigPart *q)
     }
 
     if (q->script && *q->script) hc_set_script(o, q->script);
+
+    /* L'IDENTIFIANT D'ORIGINE, ET C'EST UNE PROPRIÉTÉ COMME LES AUTRES.
+     *
+     * Sans lui, « card field id 5 » écrit dans un script de 1993 ne désigne
+     * plus rien : la part existe, elle est à sa place, elle a son texte, et le
+     * script qui la vise regarde ailleurs. C'est la pire sorte de perte — elle
+     * ne se voit pas sur l'écran, elle se voit à l'exécution.
+     *
+     * id_adopte compare aux parts de LA COUCHE, ce qui est l'espace de noms
+     * d'HyperCard : mesuré sur nos trois piles, les 140 parts le gardent toutes.
+     * Un conflit — deux parts de même numéro dans une même couche, qu'aucune
+     * pile saine ne porte — laisse simplement le numéro neuf, et la part reste
+     * atteignable autrement. On le compte plutôt que de le taire : c'est le
+     * genre de chiffre qui doit rester à zéro.
+     *
+     * id_adopte plutôt que hc_set_id, qui est la porte du LECTEUR DE FICHIER :
+     * celui-là crie sur un conflit, et il a raison de le faire pour un .stack
+     * édité à la main. Ici le conflit n'a pas de remède à proposer à
+     * l'utilisatrice au moment de l'import, et une boîte de dialogue par part
+     * ferait fuir. Ce qui compte est qu'il reste à zéro, et c'est le TOUR COMPLET
+     * du harnais qui le mesure — il compare désormais les identifiants un par un.
+     *
+     * Le retour est ignoré à dessein : échouer à reprendre un numéro n'est pas
+     * une raison de perdre la part, qui garde alors celui de sa création et
+     * reste atteignable par son nom et par son rang. */
+    id_adopte(o, q->id);
     return o;
 }
 
@@ -198,6 +225,11 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         if (!bg) { free(fonds); free(ids); hc_free(st); return NULL; }
         fonds[i] = bg;
         ids[i]   = k->id;
+        /* L'identifiant du fond, repris quand la place est libre : « go to bg
+         * id 2619 » et « the id of » en dépendent. Mesuré sur nos trois piles :
+         * les 32 couches gardent le leur, les identifiants de couche étant
+         * uniques dans la pile chez HyperCard comme chez nous. */
+        id_adopte(bg, k->id);
         bg->dont_search = k->dont_search;
         bg->cant_delete = k->cant_delete;
         if (k->script && *k->script) hc_set_script(bg, k->script);
@@ -225,6 +257,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
 
         Object *cd = hc_new_card(st, bg, k->nom ? k->nom : "");
         if (!cd) { free(fonds); free(ids); hc_free(st); return NULL; }
+        id_adopte(cd, k->id);            /* même raison que pour les fonds */
         cd->marked      = k->marque;
         cd->dont_search = k->dont_search;
         cd->cant_delete = k->cant_delete;
