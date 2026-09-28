@@ -508,8 +508,92 @@ même identifiant faisaient de même. L'occupation se suit désormais à part.
     sur un défaut mémoire coûte plus cher que lire la trace une fois. Elle
     nommait la ligne exacte.
 
+LA CONVERSION, ET LE TOUR COMPLET QUI S'ARBITRE LUI-MÊME
+--------------------------------------------------------
+
+HC/hc_importe.c bâtit une pile HC à partir d'une pile d'origine lue. La
+séparation avec hc_origine.c est voulue, et c'est la même raison qui fait qu'un
+extracteur précède un importateur : l'un est un ANALYSEUR qui ne dépend pas de
+hc_core.h, l'autre un BÂTISSEUR qui ne touche pas un octet du format d'Apple. Le
+jour où une pile arrive de travers, on sait lequel des deux interroger.
+
+L'INSTRUMENT : lire, convertir, sauver dans NOTRE format, relire, et comparer à
+ce que le lecteur d'origine avait annoncé. C'est le seul oracle qui ne demande ni
+HyperCard ni personne, et il tourne à chaque passage de la suite.
+
+    la pile synthétique du harnais      89 valeurs,  0 perdue
+    TEST3 (notre torture)              196 valeurs,  0 perdue
+    3D Parametric Equations           2736 valeurs,  0 perdue
+    Découvrir HyperCard (Apple)        779 valeurs,  0 perdue
+
+IL A TROUVÉ UN DÉFAUT À SON PREMIER PASSAGE, et c'était le mien. L'alignement du
+texte : Apple écrit 0 gauche, 1 centre, -1 DROITE ; nous écrivons 0, 1, 2. Ma
+conversion recopiait la valeur brute. hc_file.c refuse -1 à bon droit — notre
+intervalle valide est 0..2 — et retombait donc sur zéro : TOUS les champs alignés
+à droite de TOUTES les piles importées se seraient retrouvés alignés à gauche,
+sans une erreur, sans un message. Deux conventions qui se ressemblent assez pour
+qu'on ne regarde pas.
+
+TROIS GESTES DONT L'ORDRE COMPTE, et chacun donnerait un résultat plausible et
+faux s'il était inversé :
+
+  - les FONDS avant les CARTES, puisqu'une carte désigne son fond ;
+  - `shared_text` AVANT d'écrire le texte d'un champ de fond, parce que
+    hc_set_field_text route vers les bgtexts de la CARTE quand le champ est un
+    champ de fond non partagé, et vers le champ lui-même sinon ;
+  - la carte COURANTE avant ce même texte, et retirée avant de poser le texte
+    par DÉFAUT du fond — sans quoi ce dernier irait dans les bgtexts de la
+    dernière carte.
+
+ET UNE ERREUR DE LECTURE DU FORMAT, RATTRAPÉE AVANT DE NUIRE : `du_fond` dit
+« cette part est une part de FOND », dans l'absolu, et non « elle appartient à une
+autre couche ». Dans un bloc BKGD, les parts du fond sont SES PROPRES parts, donc
+marquées ainsi. Je l'avais écrit comme « propre contre autre », et le texte par
+défaut des champs de fond aurait été purement ignoré — sans erreur, sans message,
+des champs vides dans une pile qui en a. « Découvrir HyperCard » le dit : elle
+porte des contenus marqués fond SOUS son fond.
+
+LES ÉCARTS DE SCRIPT N'EN ÉTAIENT PAS
+-------------------------------------
+
+Dix scripts des vraies piles semblaient perdus. Mesuré octet par octet :
+
+    origine  C2 AC 0A   « ¬ » + fin de ligne   ->  relu  20        une espace
+    origine  E2 89 A4   « ≤ »                  ->  relu  3C 3D     « <= »
+
+C'est la normalisation DÉLIBÉRÉE de hc_set_script, documentée dans hc_script.c.
+Mon instrument comparait le texte brut au texte normalisé.
+
+PLUTÔT QU'UN CONTOURNEMENT, ÇA DEVIENT UN TEST : la pile du harnais porte
+désormais un « ≤ » et un « ¬ », et la règle est RÉÉCRITE dans le harnais au lieu
+d'être appelée. Partager la fonction ferait comparer une transformation à
+elle-même, ce qui ne teste rien. Cette transformation n'avait aucun témoin.
+
+    ET LA RÉÉCRITURE ÉTAIT FAUSSE, ce qui est le meilleur argument pour la
+    méthode : j'avalais aussi l'indentation de la ligne SUIVANTE. Le tour complet
+    l'a dit aussitôt — « put "une ligne"  & … » contre « put "une ligne"       &
+    … ». dup_script n'avale que les blancs AVANT la fin de ligne. C'est la règle
+    du noyau qui a corrigé la mienne.
+
+    DEUX FAUTES DANS MON PROPRE TÉMOIN, AVANT ÇA. Le « ¬ » de MacRoman est 0xC2
+    et non 0xAC — 0xAC est le tréma « ¨ » — si bien que la continuation n'était
+    pas exercée DU TOUT : le harnais et la normalisation étaient d'accord pour ne
+    rien faire, et le test passait en ne testant rien. hc_script.c le disait noir
+    sur blanc depuis toujours.
+
+    Les deux branches sont désormais vérifiées PAR MUTATION : les casser une à
+    une fait passer le compte de 0 à 1 perdue. Un test dont on n'a pas vu
+    l'échec ne prouve rien — c'est la leçon de la garde terrainBon.
+
 CE QUI RESTE NON MESURÉ
 -----------------------
+LES IDENTIFIANTS DE PART NE SURVIVENT PAS. hc_new_field et hc_new_button
+attribuent les NÔTRES ; celui d'origine est perdu. Un script qui dit « card field
+id 5 » ne retrouvera donc pas son champ, et « the id of » rendra autre chose.
+C'est le prochain point à régler de ce chantier — les noms et les rangs
+survivent, les identifiants non. Le tour complet compare donc les parts par
+POSITION, ce qui est un aveu et non une méthode.
+
 HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
 n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs
 CARD et BKGD est décalé de quatre octets. Le décalage est documenté et

@@ -851,6 +851,17 @@ static int lit_interne(const unsigned char *octets, size_t n,
         }
         k->id = b->id;
 
+        /* Les drapeaux de la COUCHE, à 0x14, les mêmes pour CARD et BKGD :
+         * bit 11 dontSearch, bit 14 cantDelete. Et l'identifiant du bloc BMAP à
+         * 0x10 — le dessin n'est pas lu, mais savoir qu'il existe évite de
+         * prendre une couche illustrée pour une couche vide. */
+        {
+            unsigned f = u16(v, bloc + 0x14);
+            k->dont_search  = (f & 0x0800u) ? 1 : 0;
+            k->cant_delete  = (f & 0x4000u) ? 1 : 0;
+            k->bloc_image   = (int)s32(v, bloc + 0x10);
+        }
+
         int r;
         if (est_carte) {
             k->fond = (int)s32(v, bloc + 0x24);

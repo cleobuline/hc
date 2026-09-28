@@ -97,7 +97,7 @@ done
 # LIE dans aucun harnais tant qu'il n'est pas nommé ici. L'oubli ne se voit pas
 # comme un oubli — il se voit comme un harnais qui « NE COMPILE PAS », ce qui
 # envoie chercher le défaut dans le harnais.
-UNITES="hc_core hc_script hc_presse_papiers hc_file hc_icons hc_origine hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
+UNITES="hc_core hc_script hc_presse_papiers hc_file hc_icons hc_origine hc_importe hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
 
 mkdir -p "$TRAVAIL/obj" "$TRAVAIL/bin" "$TRAVAIL/sortie" "$ICI/attendu"
 

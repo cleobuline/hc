@@ -112,6 +112,14 @@ typedef struct {
     int   fond;                 /* carte : l'id de son fond ; fond : 0 */
     int   marque;               /* carte marquée (« marked ») ; vient de la liste */
     int   debut_de_fond;        /* première carte de son fond, selon la liste */
+    /* Les drapeaux de la COUCHE, qui ne sont pas ceux de ses parts : ils vivent
+     * dans l'en-tête du bloc, à 0x14. */
+    int   dont_search;
+    int   cant_delete;
+    int   bloc_image;           /* l'id du bloc BMAP, ou 0 si la couche est
+                                 * transparente. LE DESSIN N'EST PAS LU — c'est
+                                 * l'étape 3 — mais savoir qu'il y en a un évite
+                                 * de croire une couche vide. */
     char *nom;                  /* UTF-8, jamais NULL */
     char *script;               /* UTF-8, NULL s'il n'y en a pas */
     HcOrigPart *parts;

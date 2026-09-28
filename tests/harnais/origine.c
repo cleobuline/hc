@@ -34,6 +34,8 @@
  * dira la vérité le jour où on lui en donnera une.
  */
 #include "hc_origine.h"
+#include "hc_importe.h"
+#include "hc_file.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,7 +173,29 @@ static const char SCRIPT_CARTE[] =
     "  " C_CEDIL "a marche\r"
     "end mouseUp";
 
-static const char SCRIPT_BOUTON[] = "on mouseUp\r  beep\rend mouseUp";
+/* CE SCRIPT PORTE LES QUATRE CARACTÈRES QUE hc_set_script NORMALISE, et c'est
+ * délibéré : « ≤ » (0xB2 en MacRoman) devient « <= », et « ¬ » (0xAC) est une
+ * continuation de ligne qui aboute la ligne suivante.
+ *
+ * Sans eux, le tour complet croyait comparer des scripts identiques et ne
+ * testait rien de cette transformation — qui n'avait aucun témoin dans ce
+ * harnais. Les vraies piles en sont pleines : dix des scripts de « 3D Parametric
+ * Equations » et de la pile d'Apple les portent, et c'est ce qui a fait croire
+ * un instant à dix pertes. */
+#define INFEG   "\xB2"                  /* ≤ */
+/* LE « ¬ » DE MACROMAN EST 0xC2, PAS 0xAC. J'avais écrit 0xAC, qui est « ¨ » —
+ * le tréma — si bien que la continuation n'était pas exercée du tout : le harnais
+ * et la normalisation étaient d'accord pour ne rien faire, et le test passait en
+ * ne testant rien. hc_script.c le dit noir sur blanc depuis toujours : « ¬ 0xC2
+ * / 0xC2 0xAC ». Vérifié par mutation des DEUX branches, cette fois. */
+#define CONTIN  "\xC2"                  /* ¬ */
+
+static const char SCRIPT_BOUTON[] =
+    "on mouseUp\r"
+    "  if the number of cards " INFEG " 3 then beep\r"
+    "  put \"une ligne\" " CONTIN "\r"
+    "     & \" coupee en deux\"\r"
+    "end mouseUp";
 static const char SCRIPT_FOND[]   = "on openCard\r  pass openCard\rend openCard";
 
 static void pose_stak(Tampon *t, unsigned long format, unsigned long nfonds,
@@ -528,6 +552,234 @@ static void la_table(void)
     free(a); free(c);
 }
 
+/* ------------------------------------------------------------------ */
+/* LE TOUR COMPLET, QUI S'ARBITRE LUI-MÊME                             */
+/* ------------------------------------------------------------------ */
+
+/* Lire, convertir, sauver dans NOTRE format, relire, et comparer à ce que le
+ * lecteur d'origine avait annoncé.
+ *
+ * C'EST LE SEUL ORACLE QUI NE DEMANDE NI HYPERCARD NI PERSONNE. Toute propriété
+ * qui se perd en chemin — dans la traduction, dans l'écriture de notre format ou
+ * dans sa relecture — se dénonce ici, à chaque passage de la suite. Une
+ * propriété traduite et jamais écrite est exactement le genre de manque qui ne
+ * se voit pas : la pile s'ouvre, elle a l'air juste, et un champ n'a pas ses
+ * marges.
+ *
+ * LES PARTS SE COMPARENT PAR POSITION, ET C'EST UN AVEU. Les identifiants que
+ * hc_new_field et hc_new_button attribuent sont les NÔTRES : l'identifiant
+ * d'origine est perdu. Un script qui dit « card field id 5 » ne retrouvera donc
+ * pas son champ. C'est noté dans docs/mesures/pile_origine.txt comme le
+ * prochain point à régler ; ici on compare dans l'ordre de création, qui est
+ * celui du fichier d'origine. */
+static int compares, perdus;
+
+static void egal_int(const char *quoi, int attendu, int obtenu)
+{
+    compares++;
+    if (attendu == obtenu) return;
+    perdus++;
+    printf("  PERDU  %-34s attendu %d, obtenu %d\n", quoi, attendu, obtenu);
+}
+
+static void egal_txt(const char *quoi, const char *attendu, const char *obtenu)
+{
+    compares++;
+    if (!attendu) attendu = "";
+    if (!obtenu)  obtenu  = "";
+    if (!strcmp(attendu, obtenu)) return;
+    perdus++;
+    printf("  PERDU  %-34s attendu « %s », obtenu « %s »\n", quoi, attendu, obtenu);
+}
+
+/* LA NORMALISATION DE hc_set_script, RÉÉCRITE ICI EXPRÈS.
+ *
+ * hc_set_script ne garde pas le script tel quel : dup_script (hc_script.c) y
+ * remplace « ≠ ≤ ≥ » par « <> <= >= » et traite « ¬ » en fin de ligne comme une
+ * continuation, la ligne suivante étant aboutée après un espace. C'est voulu et
+ * documenté ; comparer le texte BRUT au texte stocké faisait donc apparaître des
+ * pertes qui n'en sont pas.
+ *
+ * La règle est réécrite ici plutôt qu'appelée : dup_script est statique, et même
+ * s'il ne l'était pas, comparer une transformation à elle-même ne testerait
+ * rien. Deux expressions indépendantes de la même règle, c'est ce qui fait un
+ * test — et celui-ci n'existait pas.
+ *
+ * Rend une chaîne à libérer. Les formes UTF-8 sont celles que hc_origine_utf8
+ * produit depuis MacRoman. */
+static char *comme_hc(const char *s)
+{
+    if (!s) return NULL;
+    size_t n = strlen(s);
+    char *d = malloc(2 * n + 2);
+    if (!d) return NULL;
+    char *w = d;
+    for (const char *p = s; *p; ) {
+        if (!memcmp(p, "\xE2\x89\xA0", 3)) { *w++='<'; *w++='>'; p += 3; continue; }  /* ≠ */
+        if (!memcmp(p, "\xE2\x89\xA4", 3)) { *w++='<'; *w++='='; p += 3; continue; }  /* ≤ */
+        if (!memcmp(p, "\xE2\x89\xA5", 3)) { *w++='>'; *w++='='; p += 3; continue; }  /* ≥ */
+        if (!memcmp(p, "\xC2\xAC", 2)) {                                            /* ¬ */
+            const char *q = p + 2;
+            while (*q == ' ' || *q == '\t') q++;
+            /* UNE ESPACE, ET L'INDENTATION DE LA LIGNE SUIVANTE RESTE.
+             *
+             * J'avais écrit le contraire — les blancs de tête de la ligne
+             * suivante avalés eux aussi — et le tour complet l'a dit aussitôt :
+             * « put "une ligne"  & … » contre « put "une ligne"       & … ».
+             * dup_script (hc_script.c) n'avale que les blancs AVANT la fin de
+             * ligne, puis la fin de ligne, et pose une espace. C'est la règle du
+             * noyau qui a corrigé ma réécriture, et c'est exactement ce qu'on
+             * attend de deux expressions indépendantes de la même règle. */
+            if (*q == '\r' || *q == '\n') {
+                if (*q == '\r' && q[1] == '\n') q++;
+                q++;
+                *w++ = ' ';
+                p = q;
+                continue;
+            }
+            *w++ = p[0]; *w++ = p[1]; p += 2; continue;
+        }
+        *w++ = *p++;
+    }
+    *w = '\0';
+    return d;
+}
+
+static void egal_script(const char *quoi, const char *attendu, const char *obtenu)
+{
+    char *norme = comme_hc(attendu);
+    egal_txt(quoi, norme ? norme : attendu, obtenu);
+    free(norme);
+}
+
+static void compare_part(const char *ou, const HcOrigPart *q, Object *o)
+{
+    char quoi[128];
+    #define Q(champ) (snprintf(quoi, sizeof quoi, "%s %s", ou, champ), quoi)
+    egal_int(Q("genre"), q->genre == HC_ORIG_BOUTON ? OBJ_BUTTON : OBJ_FIELD, (int)o->type);
+    egal_txt(Q("nom"), q->nom, o->name);
+    egal_int(Q("x"), q->gauche, o->x);
+    egal_int(Q("y"), q->haut, o->y);
+    egal_int(Q("largeur"), q->droite - q->gauche, o->w);
+    egal_int(Q("hauteur"), q->bas - q->haut, o->h);
+    egal_txt(Q("style"), q->style, o->style);
+    egal_script(Q("script"), q->script, o->script);
+    egal_int(Q("visible"), q->visible, o->visible);
+    egal_int(Q("dontWrap"), q->dont_wrap, o->dont_wrap);
+    egal_int(Q("dontSearch"), q->dont_search, o->dont_search);
+    egal_int(Q("sharedText"), q->shared_text, o->shared_text);
+    egal_int(Q("fixedLineHeight"), q->fixed_lh, o->fixed_lh);
+    egal_int(Q("autoTab"), q->auto_tab, o->auto_tab);
+    egal_int(Q("famille"), q->family, o->family);
+    /* LA RÈGLE EST RÉÉCRITE ICI, EXPRÈS, et non appelée depuis hc_importe.c :
+     * partager la fonction ferait qu'une traduction fausse serait comparée à
+     * elle-même et passerait. Deux expressions indépendantes de la même règle,
+     * c'est ce qui donne un test. */
+    egal_int(Q("alignement"),
+             q->text_align == 1 ? 1 : (q->text_align == -1 ? 2 : 0),
+             o->text_align);
+    egal_int(Q("corps"), q->textsize, o->textsize);
+    egal_int(Q("styleDuTexte"), q->textstyle, o->textstyle);
+    egal_int(Q("hauteurDeLigne"), q->textheight, o->textheight);
+    egal_txt(Q("police"), q->police, o->textfont);
+    if (q->genre == HC_ORIG_BOUTON) {
+        egal_int(Q("enabled"), q->enabled, o->enabled);
+        egal_int(Q("showName"), q->showname, o->showname);
+        egal_int(Q("hilite"), q->hilite, o->hilite);
+        egal_int(Q("autoHilite"), q->autohilite, o->autohilite);
+        egal_int(Q("sharedHilite"), q->shared_hilite, o->shared_hilite);
+        egal_int(Q("largeurTitre"), q->titlewidth, o->titlewidth);
+        egal_int(Q("icone"), q->icon, o->icon);
+    } else {
+        egal_int(Q("lockText"), q->locktext, o->locktext);
+        egal_int(Q("showLines"), q->show_lines, o->show_lines);
+        egal_int(Q("wideMargins"), q->wide_margins, o->wide_margins);
+        egal_int(Q("multipleLines"), q->multiple_lines, o->multiple_lines);
+        egal_int(Q("autoSelect"), q->auto_select, o->auto_select);
+    }
+    #undef Q
+}
+
+static Object *nieme(Object *couche, int rang)
+{
+    return (couche && rang < couche->nparts) ? couche->parts[rang] : NULL;
+}
+
+static void le_tour_complet(const unsigned char *octets, size_t n)
+{
+    puts("=== le tour complet : lire, convertir, sauver, relire, comparer ===");
+    puts("(le seul oracle qui ne demande ni HyperCard ni personne : toute");
+    puts(" propriété qui se perd en chemin se dénonce ici)");
+
+    HcOrigPile pile;
+    char pourquoi[160];
+    if (hc_origine_lit(octets, n, &pile, pourquoi, sizeof pourquoi) != 0) {
+        printf("la lecture a refusé : %s\n", pourquoi);
+        return;
+    }
+
+    Object *st = hc_importe_pile(&pile, "Tour");
+    if (!st) { puts("la conversion a échoué"); hc_origine_libere(&pile); return; }
+
+    const char *chemin = "/tmp/hc_tour.stack";
+    int r = hc_save(st, chemin);
+    printf("hc_save : %s\n", r == 0 ? "écrit" : "ÉCHEC");
+    hc_free(st);
+
+    Object *st2 = hc_load(chemin);
+    if (!st2) {
+        printf("hc_load a refusé : %s\n", hc_load_erreur() ? hc_load_erreur() : "(sans raison)");
+        remove(chemin); hc_origine_libere(&pile); return;
+    }
+
+    compares = perdus = 0;
+    egal_int("largeur de la pile", pile.largeur, st2->w);
+    egal_int("hauteur de la pile", pile.hauteur, st2->h);
+    egal_script("script de la pile", pile.script, st2->script);
+
+    /* Les fonds et les cartes, dans l'ordre de leur création — celui du
+     * fichier d'origine pour les fonds, celui de la LISTE pour les cartes. */
+    int ifond = 0, icarte = 0;
+    for (int i = 0; i < st2->nparts; i++) {
+        Object *o = st2->parts[i];
+        char ou[64];
+        if (o->type == OBJ_BACKGROUND && ifond < pile.nfonds_lus) {
+            const HcOrigCouche *k = &pile.fonds[ifond];
+            snprintf(ou, sizeof ou, "fond %d", ifond);
+            egal_txt("nom du fond", k->nom, o->name);
+            egal_script("script du fond", k->script, o->script);
+            egal_int("dontSearch du fond", k->dont_search, o->dont_search);
+            for (int j = 0; j < k->nparts; j++) {
+                char q[80]; snprintf(q, sizeof q, "%s part %d", ou, j);
+                Object *p = nieme(o, j);
+                if (!p) { printf("  PERDU  %s : absente\n", q); perdus++; compares++; continue; }
+                compare_part(q, &k->parts[j], p);
+            }
+            ifond++;
+        } else if (o->type == OBJ_CARD && icarte < pile.ncartes_lues) {
+            const HcOrigCouche *k = &pile.cartes[icarte];
+            snprintf(ou, sizeof ou, "carte %d", icarte);
+            egal_txt("nom de la carte", k->nom, o->name);
+            egal_script("script de la carte", k->script, o->script);
+            egal_int("marked de la carte", k->marque, o->marked);
+            for (int j = 0; j < k->nparts; j++) {
+                char q[80]; snprintf(q, sizeof q, "%s part %d", ou, j);
+                Object *p = nieme(o, j);
+                if (!p) { printf("  PERDU  %s : absente\n", q); perdus++; compares++; continue; }
+                compare_part(q, &k->parts[j], p);
+            }
+            icarte++;
+        }
+    }
+
+    printf("%d valeurs comparées, %d perdue%s\n",
+           compares, perdus, perdus == 1 ? "" : "s");
+
+    hc_free(st2);
+    remove(chemin);
+    hc_origine_libere(&pile);
+}
+
 int main(int argc, char **argv)
 {
     la_table();
@@ -548,6 +800,9 @@ int main(int argc, char **argv)
         fclose(f);
         fprintf(stderr, "ecrit : %s (%lu octets)\n", argv[1], (unsigned long)t.n);
     }
+
+    puts("");
+    le_tour_complet(t.o, t.n);
 
     puts("");
     puts("=== les témoins négatifs : ce qui doit être REFUSÉ ===");

@@ -39,18 +39,18 @@ b » (3 octets)
 b » (3 octets)
 
 === la pile montée au format d'origine ===
-2304 octets
+2400 octets
 --- pile HyperCard 2.x : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
 format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -84,10 +84,18 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+
+=== le tour complet : lire, convertir, sauver, relire, comparer ===
+(le seul oracle qui ne demande ni HyperCard ni personne : toute
+ propriété qui se perd en chemin se dénonce ici)
+hc_save : écrit
+89 valeurs comparées, 0 perdues
 
 === les témoins négatifs : ce qui doit être REFUSÉ ===
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
@@ -96,18 +104,18 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
 --- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
 --- pile HyperCard 1.x : REFUSE — pile HyperCard 1.x : blocs decales, lecture non ecrite (offset 0x10)
 --- plus de cartes que de blocs : REFUSE — plus de cartes ou de fonds que de blocs (offset 0x24)
---- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x79C)
+--- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x7E8)
 --- somme de la LISTE fausse d'un bit : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
 format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -139,7 +147,9 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
@@ -151,11 +161,11 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint 
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -187,7 +197,9 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
@@ -199,11 +211,11 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint 
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc ZORG id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc ZORG id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -235,7 +247,9 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
@@ -247,11 +261,11 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint 
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -283,7 +297,9 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
@@ -295,11 +311,11 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint 
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -333,7 +349,9 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script :
     | on mouseUp
-    |   beep
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
@@ -343,11 +361,11 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint 
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
-  bloc CARD id   3000 taille   288 offset 0x0700
-  bloc CARD id   3001 taille    64 offset 0x0820
-  bloc LIST id   4803 taille    64 offset 0x0860
-  bloc PAGE id   4804 taille    64 offset 0x08A0
-  bloc TAIL id     -1 taille    32 offset 0x08E0
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc LIST id   4803 taille    64 offset 0x08C0
+  bloc PAGE id   4804 taille    64 offset 0x0900
+  bloc TAIL id     -1 taille    32 offset 0x0940
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
