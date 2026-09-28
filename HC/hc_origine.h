@@ -263,6 +263,24 @@ int  hc_origine_lit(const unsigned char *octets, size_t n,
                     HcOrigPile *pile, char *pourquoi, size_t npourquoi);
 void hc_origine_libere(HcOrigPile *pile);
 
+/* CE FICHIER EST-IL UNE PILE AU FORMAT D'ORIGINE ?
+ *
+ * La question se pose au moment d'OUVRIR : notre format est du texte, le sien
+ * est du binaire gros-boutiste, et l'application doit choisir son lecteur sans
+ * rien demander à personne. Les quatre lettres du premier bloc suffisent —
+ * elles sont à l'offset 4, et une pile HyperCard commence TOUJOURS par son bloc
+ * STAK.
+ *
+ * Aucune confusion possible avec le nôtre : un .stack de HC commence par
+ * « stack », donc ses octets 4 à 8 sont « k » et ce qui suit le nom. Et se
+ * tromper ne coûte rien : hc_origine_lit refuse avec un motif écrit en clair,
+ * exactement comme il le fait déjà pour un fichier abîmé.
+ *
+ * On ne va pas plus loin ICI — ni somme de contrôle, ni chaîne de blocs. Ce
+ * n'est pas une validation, c'est un AIGUILLAGE : valider est le travail de
+ * hc_origine_lit, qui le fait mieux et qui sait dire pourquoi. */
+int  hc_origine_reconnait(const unsigned char *octets, size_t n);
+
 /* MacRoman -> UTF-8, et les « \r » du Mac classique -> « \n ».
  *
  * Exporté parce qu'il se teste SEUL, et exhaustivement : 256 octets, 256

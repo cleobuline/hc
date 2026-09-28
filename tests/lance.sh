@@ -140,7 +140,23 @@ for src in harnais/*.c; do
   # Ces deux harnais annoncent d'ailleurs « stdin vide -> defaut » dans leur
   # propre titre. Cette ligne rend cette phrase VRAIE, au lieu de l'espérer
   # de l'environnement.
-  timeout 120 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
+  # LE DÉLAI EST À 300 SECONDES, ET IL ÉTAIT À 120, CE QUI ÉTAIT TROP JUSTE.
+  #
+  # Mesuré sur `groschamp` — un champ de 200 000 octets et 20 000 lignes qu'on
+  # trie — dans le conteneur d'intégration, sous ASan, UBSan et
+  # LeakSanitizer : 124 secondes, machine au repos. Quatre de plus que le
+  # budget. Le même test était passé le matin même, et avait été mis sur le
+  # compte de la charge ; il a retimé out machine vide, ce qui a tranché.
+  #
+  # Sa sortie est IDENTIQUE au témoin quand on le laisse finir : il
+  # n'échouait pas, il se faisait tuer. Une porte qui dépend de l'humeur de la
+  # machine est pire qu'une porte lente — elle apprend à ne plus lire les
+  # échecs, et c'est exactement ce qu'on ne veut pas d'un garde-fou.
+  #
+  # 300 laisse de la marge sans rien cacher : une vraie boucle infinie se fait
+  # toujours prendre, et les 248 autres harnais tournent en moins d'une
+  # seconde chacun — le délai ne coûte donc rien tant que rien ne se bloque.
+  timeout 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
   # UN PLANTAGE N'EST PAS UN DÉPASSEMENT DE DÉLAI.
   #

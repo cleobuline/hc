@@ -1313,6 +1313,14 @@ static int lit_interne(const unsigned char *octets, size_t n,
  * calleur n'a plus rien à savoir. On perd le recensement partiel d'un fichier
  * refusé — aucun appelant ne s'en servait, et une API qui ne peut pas fuir vaut
  * mieux qu'une API avec une mise en garde. */
+int hc_origine_reconnait(const unsigned char *octets, size_t n)
+{
+    /* Seize octets, c'est la taille d'un en-tête de bloc : moins que ça et il
+     * n'y a pas de premier bloc du tout. */
+    if (!octets || n < 16) return 0;
+    return memcmp(octets + 4, "STAK", 4) == 0;
+}
+
 int hc_origine_lit(const unsigned char *octets, size_t n,
                    HcOrigPile *pile, char *pourquoi, size_t npourquoi)
 {

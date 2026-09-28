@@ -1219,6 +1219,28 @@ int main(int argc, char **argv)
     puts("");
     le_tour_complet(t.o, t.n);
 
+    /* L'AIGUILLAGE, qui est la porte de l'application : à l'ouverture il faut
+     * choisir un lecteur sans rien demander à personne. On le mesure ici parce
+     * qu'il est dans le noyau — c'est tout l'intérêt de l'y avoir mis. */
+    puts("");
+    puts("=== reconnaître une pile d'origine, pour choisir le lecteur ===");
+    {
+        static const struct { const char *quoi; const char *octets; size_t n; } CAS[] = {
+            { "notre format a nous",      "stack \"Pile\"\nid 1\n",              18 },
+            { "un fichier vide",          "",                                      0 },
+            { "quinze octets",            "\0\0\0\x20STAKxxxxxxx",              15 },
+            { "seize octets, bloc STAK",  "\0\0\0\x20STAK\0\0\0\1\0\0\0\0", 16 },
+            { "un bloc, mais pas STAK",   "\0\0\0\x20ZORG\0\0\0\1\0\0\0\0", 16 },
+            { "du texte quelconque",      "Bonjour, ceci n'est pas une pile.",    33 },
+        };
+        for (unsigned i = 0; i < sizeof CAS / sizeof *CAS; i++)
+            printf("  %-26s -> %s\n", CAS[i].quoi,
+                   hc_origine_reconnait((const unsigned char *)CAS[i].octets, CAS[i].n)
+                       ? "PILE D'ORIGINE" : "non");
+        printf("  %-26s -> %s\n", "la pile de ce harnais",
+               hc_origine_reconnait(t.o, t.n) ? "PILE D'ORIGINE" : "non");
+    }
+
     puts("");
     puts("=== les témoins négatifs : ce qui doit être REFUSÉ ===");
 

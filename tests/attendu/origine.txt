@@ -159,6 +159,15 @@ hc_save : écrit
 94 valeurs comparées, 0 perdues, 1 contenu orphelin
 3072 pixels de dessin comparés, 0 faux
 
+=== reconnaître une pile d'origine, pour choisir le lecteur ===
+  notre format a nous        -> non
+  un fichier vide            -> non
+  quinze octets              -> non
+  seize octets, bloc STAK    -> PILE D'ORIGINE
+  un bloc, mais pas STAK     -> non
+  du texte quelconque        -> non
+  la pile de ce harnais      -> PILE D'ORIGINE
+
 === les témoins négatifs : ce qui doit être REFUSÉ ===
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
 --- taille de bloc au-dela du fichier : REFUSE — taille de bloc impossible (offset 0x0)
