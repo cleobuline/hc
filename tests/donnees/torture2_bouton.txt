@@ -41,6 +41,20 @@ on mouseUp
   -- ligne, la section 1 se trouverait elle-meme.
   set the dontSearch of card field "R" of card "Atelier" to true
 
+  -- LE TERRAIN D'ABORD. Un banc qui tourne sur une pile mal montee rend
+  -- des echecs qui n'en sont pas — quatre, mesures, un soir ou la pile
+  -- avait ete refaite a la main dans HyperCard sans nommer les cartes.
+  -- Mieux vaut ne rien mesurer que mesurer faux en silence. Voir
+  -- « terrainBon » dans le script de la pile.
+  -- « IS NOT TRUE » ET NON « IS FALSE » : une fonction qui leve en cours de
+  -- route rend VIDE, et « vide is false » ne mord pas. Le banc partait alors
+  -- sur une pile cassee en croyant l'avoir verifiee. On n'accepte donc que le
+  -- « true » explicite, et tout le reste vaut refus.
+  if terrainBon() is not true then
+    bilanTerrain
+    exit mouseUp
+  end if
+
   sectionFind
   sectionMorceaux
   sectionSelection
@@ -53,7 +67,26 @@ on mouseUp
   -- pour la rejouer seule.
   sectionOuvert
   bilan
+
+  -- ET LA FAUTE VOULUE EN DERNIER, APRES LE BILAN.
+  --
+  -- En HyperCard une erreur arrete tout le script : mise plus haut, elle
+  -- emportait le reste du rapport ET le bilan. Ici, tout est deja ecrit,
+  -- et le bloc « les erreurs levees » que « on errorDialog » ajoute a la
+  -- toute fin en fait foi. Les deux cotes montrent alors la meme chose,
+  -- chacun a sa facon d'arreter.
+  sectionFaute
 end mouseUp
+
+on sectionFaute
+  titre "8. la faute voulue, en dernier"
+  journal "  Ce qui suit doit LEVER : le style d'un mot dans un champ qui"
+  journal "  n'existe pas. Le bloc des erreurs, en bas, le nomme."
+  journal "  (En HyperCard le script s'arrete ici ; en HC il continue.)"
+  go to card "Atelier"
+  put the textStyle of word 2 of card field "Absent" into z
+  journal "  ECHEC  la faute n'a PAS leve"
+end sectionFaute
 
 
 -- ==== 1. LA RECHERCHE ===============================================
@@ -66,17 +99,57 @@ end mouseUp
 on sectionFind
   titre "1. la recherche"
 
-  -- les textes, un par carte
+  -- LES TEXTES, UN PAR CARTE — ET ON VERIFIE QUE L'ECRITURE A TENU.
+  --
+  -- Ces quatre essais ne mesurent rien d'HyperCard : ils verifient que le
+  -- banc a bien pose SA PROPRE DONNEE. Ils sont nes de trois echecs
+  -- mysterieux, joues dans HyperCard sur une pile montee a la main : la
+  -- carte « Deux » ne portait pas son « alpha zeta », et les trois
+  -- accusaient « of marked cards » et le curseur de la recherche.
+  --
+  -- LE CHAMP DE FOND NE DOIT PAS ETRE PARTAGE (sharedText faux) : c'est
+  -- toute la raison de ces quatre lignes. Partage, il n'y a qu'un texte
+  -- pour les quatre cartes, la derniere ecriture gagne, et la recherche
+  -- ne trouve plus qu'une seule carte — ce qui ressemble trait pour trait
+  -- a un defaut de « find ».
+  --
+  -- Un banc verifie son terrain, et aussi sa donnee. Le terrain sait
+  -- compter les cartes et les champs ; lui seul ne voit pas qu'un champ
+  -- de fond est partage.
+  -- ON VERIFIE OU L'ON A ATTERRI, ET PAS SEULEMENT CE QU'ON A ECRIT.
+  --
+  -- Relire le champ juste apres l'ecriture ne prouve RIEN : si « go to
+  -- card » n'a pas bouge, on ecrit et l'on relit la meme mauvaise carte,
+  -- et l'essai passe. Mesure : une pile ou la carte « Trois » manquait a
+  -- vu « élève à Noël » ecraser le « alpha zeta » de la carte Deux, et
+  -- les trois echecs qui suivaient accusaient « of marked cards » et le
+  -- curseur de la recherche. La navigation est le premier maillon.
   go to card "Deux"
+  egal "on atterrit bien sur Deux", the short name of this card, "Deux"
   put "alpha zeta" into bg field "T"
   go to card "Trois"
+  egal "on atterrit bien sur Trois", the short name of this card, "Trois"
   put "élève à Noël" into bg field "T"
   go to card "Quatre"
+  egal "on atterrit bien sur Quatre", the short name of this card, "Quatre"
   put empty into bg field "T"
   go to card "Atelier"
+  egal "et l'on revient a l'Atelier", the short name of this card, "Atelier"
   put "alpha beta gamma delta" into bg field "T"
+  egal "la donnee tient sur l'Atelier", bg field "T", "alpha beta gamma delta"
   put "omega" into card field "A"
   put empty into card field "B"
+  -- Et le temoin qui nomme le PARTAGE : si le champ de fond a sharedText,
+  -- il n'y a qu'un texte pour les quatre cartes, la derniere ecriture gagne,
+  -- et la recherche ne trouve plus qu'une carte — ce qui ressemble trait
+  -- pour trait a un defaut de « find ». Le terrain sait compter les cartes
+  -- et les champs ; lui seul ne voit pas cela.
+  go to card "Deux"
+  egal "le fond n'est PAS partage", bg field "T", "alpha zeta"
+  go to card "Trois"
+  egal "et Trois a garde le sien", bg field "T", "élève à Noël"
+  go to card "Atelier"
+  egal "et l'Atelier le sien", bg field "T", "alpha beta gamma delta"
 
   -- A. les huit formes. « go to card » avant chacune, comme le banc.
   go to card "Atelier"
@@ -247,21 +320,23 @@ on sectionMorceaux
   egal "style d'un mot absent", the textStyle of word 99 of card field "A", "plain"
   egal "style d'un mot present", the textStyle of word 2 of card field "A", "plain"
 
-  -- Le meme defaut quand c'est le CHAMP qui manque : il doit LEVER,
-  -- une fois, et ne rien rendre. Dans un gestionnaire a part, l'erreur
-  -- n'arretant que celui-la.
-  global gFaute
-  put "pas leve" into gFaute
-  essaiChampAbsent
-  egal "un champ absent leve", gFaute, "leve"
+  -- LA FAUTE VOULUE A DEMENAGE, ET LA MESURE L'A EXIGE.
+  --
+  -- Elle etait ici : lire le style d'un mot dans un champ qui n'existe
+  -- pas, pour verifier que HC s'en plaint. Isolee dans son propre
+  -- gestionnaire, parce qu'en HC une erreur n'arrete QUE celui-la.
+  --
+  -- MESURE DANS HYPERCARD : la, une erreur arrete TOUT LE SCRIPT. Le
+  -- rapport s'arretait donc au milieu de la section 2, et les sections 3
+  -- a 7 ne tournaient JAMAIS de ce cote — quatre-vingts essais qu'on ne
+  -- pouvait pas comparer. Elle est maintenant la DERNIERE chose que fait
+  -- le bouton, apres le bilan (voir « sectionFaute »).
+  --
+  -- Et son verdict ne passe plus par un « egal » : en HyperCard, la ligne
+  -- qui suivrait la faute ne s'executerait pas. C'est le bloc
+  -- « les erreurs levees » qui en fait foi, et lui s'ecrit des deux
+  -- cotes — mesure.
 end sectionMorceaux
-
-on essaiChampAbsent
-  global gFaute
-  put "leve" into gFaute
-  put the textStyle of word 2 of card field "Absent" into z
-  put "pas leve" into gFaute
-end essaiChampAbsent
 
 
 -- ==== 3. CE QUE DESIGNENT LES « selected... » =======================
@@ -277,20 +352,37 @@ on sectionSelection
   put "omega" into card field "B"
   put "sigma tau" into bg field "T"
 
+  -- ON LIT D'ABORD, ON JUGE ENSUITE — ET C'EST UNE MESURE QUI L'EXIGE.
+  --
+  -- « egal » ecrit dans le champ du rapport. Or chez HYPERCARD une
+  -- ecriture dans un autre champ DEFAIT la selection : selectedChunk
+  -- repondait, et selectedText, lu juste apres le premier « egal »,
+  -- rendait vide. HC, lui, garde la selection — il est plus genereux, et
+  -- c'est desormais mesure des deux cotes, non suppose.
+  --
+  -- C'est l'hypothese (b) de docs/mesures/selection.txt, confirmee en
+  -- direct : chez HyperCard la PREMIERE lecture apres un select repond,
+  -- les suivantes non. Un banc qui ecrit entre deux lectures mesure donc
+  -- son propre geste. Toutes les lectures d'un meme select vont dans des
+  -- variables AVANT le premier verdict.
   select char 2 to 4 of card field "A"
-  egal "selectedChunk : couche et numero", the selectedChunk, "char 2 to 4 of card field 1"
-  egal "selectedText", the selectedText, "lph"
+  put the selectedChunk into a1
+  put the selectedText into a2
+  egal "selectedChunk : couche et numero", a1, "char 2 to 4 of card field 1"
+  egal "selectedText", a2, "lph"
 
   select word 1 of card field "B"
-  egal "le numero suit le champ", the selectedChunk, "char 1 to 5 of card field 2"
-
-  select word 2 of bg field "T"
-  egal "« bkgnd » et non « bg »", the selectedChunk, "char 7 to 9 of bkgnd field 1"
+  put the selectedChunk into b1
+  egal "le numero suit le champ", b1, "char 1 to 5 of card field 2"
 
   -- LE DESIGNATEUR SE RELIT : c'est tout l'interet de la propriete, et
-  -- c'est ce qu'un numero faux aurait casse en silence.
-  put the selectedChunk into ou
-  egal "le designateur se relit", value(ou), "tau"
+  -- c'est ce qu'un numero faux aurait casse en silence. La relecture se
+  -- fait AVANT le premier verdict, pour la meme raison.
+  select word 2 of bg field "T"
+  put the selectedChunk into c1
+  put value(c1) into c2
+  egal "« bkgnd » et non « bg »", c1, "char 7 to 9 of bkgnd field 1"
+  egal "le designateur se relit", c2, "tau"
 
   -- TRANCHE LE 27/09, DANS BASILISK. La question tenait depuis une
   -- semaine : apres un « select » DE SCRIPT, un premier releve montrait
@@ -333,7 +425,19 @@ on sectionCouches
   egal "un champ de fond", the number of bkgnd fields, 1
   egal "card field 1 est A", card field 1, "surCarte"
   egal "bkgnd field 1 est T", bkgnd field 1, "auFond"
-  egal "« field » sans couche vise la carte", field 1, "surCarte"
+  -- « FIELD » SANS COUCHE : LA DIVERGENCE LA PLUS LOURDE DE LA SOIREE.
+  --
+  -- Mesure dans HyperCard : « field 1 » rend « auFond », c'est-a-dire le
+  -- champ de FOND. HC rend « surCarte », le champ de carte. Or « field
+  -- "nom" » sans couche est la tournure la plus courante des piles de
+  -- 1987 : une pile qui porte un champ de carte ET un champ de fond du
+  -- meme numero vise donc l'autre couche chez nous.
+  --
+  -- RIEN N'EST CORRIGE : le changement touche toute la resolution des
+  -- champs, et il lui faut sa propre mesure et son propre harnais. La
+  -- ligne reste donc une QUESTION, avec la reponse d'HyperCard ecrite a
+  -- cote — c'est le seul « ? » de ce banc qui ait deja sa reponse.
+  note "« field » sans couche rend (HyperCard dit auFond)", field 1
   egal "le nom et le numero designent le meme", card field "A", card field 1
 
   -- Le champ de fond n'est pas partage : chaque carte a son texte.
@@ -355,9 +459,15 @@ end sectionCouches
 -- n'intercepte reste ouvert (docs/mesures/clavier.txt).
 
 on sectionClavier
-  global gVus
+  global gVus, gClavier
   titre "5. les dix messages du clavier"
   go to card "Atelier"
+
+  -- ON ALLUME LE JOURNAL le temps de la section. Eteints, les dix
+  -- gestionnaires repassent la touche sans la noter — c'est ce qui rend la
+  -- pile tapable le reste du temps. Voir la note qui les accompagne dans
+  -- le script de la pile.
+  put "on" into gClavier
 
   put empty into gVus
   keyDown "z"
@@ -407,6 +517,10 @@ on sectionClavier
   egal "trois de suite, dans l'ordre", gVus, "keyDown a,arrowKey right,tabKey"
   put empty into gVus
 
+  -- ON ETEINT : la suite du rapport, et tout ce qui vient apres, doit
+  -- pouvoir se taper.
+  put "off" into gClavier
+
   -- AU CLAVIER, POUR DE VRAI : tapez une lettre, une fleche, tabulation,
   -- entree, puis cliquez le bouton « clavier ». Il relit gVus. C'est le
   -- seul essai que ce script ne peut pas faire tout seul — une commande
@@ -433,11 +547,28 @@ on sectionChemins
   put "alpha beta gamma delta" into card field "A"
   put "auFond" into bg field "T"
 
-  -- les deux noms d'une longueur
-  egal "length et number of chars", the length of card field "A", the number of chars of card field "A"
+  -- LES DEUX NOMS D'UNE LONGUEUR — et « characters » en entier.
+  --
+  -- « the number of chars of » ARRETE HYPERCARD : « Can't understand
+  -- arguments of "egal" ». Le synonyme « chars » vaut pour un morceau
+  -- (« char 1 to 5 »), pas pour un comptage. Mesure : le banc mourait ici
+  -- et les sections 7 et 6 ne tournaient jamais de ce cote.
+  egal "length et number of characters", the length of card field "A", the number of characters of card field "A"
 
-  -- char et chars designent le meme morceau
-  egal "char et chars", char 1 to 5 of card field "A", chars 1 to 5 of card field "A"
+  -- « CHARS » N'EST PAS UN MOT D'HYPERCARD, et c'est mesure.
+  --
+  -- « chars 1 to 5 of » arrete HyperCard net — « Can't understand » — alors
+  -- que « find chars "ph be" » passe : le meme mot existe comme modificateur
+  -- de « find » et PAS comme morceau. HC accepte les deux, son lexeur
+  -- appliquant les synonymes de l'annexe F avant que rien ne les voie ; c'est
+  -- une TOLERANCE de plus, pas une fidelite, et une pile ecrite ici avec
+  -- « chars » ne tournerait pas ailleurs.
+  --
+  -- L'essai ne compare donc plus « char » a « chars » mais une PLAGE a la
+  -- somme de ses parties, ce qui n'emploie que « char » — le seul des trois
+  -- qu'HyperCard ait confirme. L'invariant est aussi bon : si les bornes
+  -- glissaient d'un cran, les deux cotes differeraient.
+  egal "une plage vaut la somme de ses parties", char 1 to 5 of card field "A", char 1 of card field "A" & char 2 to 5 of card field "A"
 
   -- les trois orthographes de la couche du fond
   egal "bg et bkgnd", bg field "T", bkgnd field "T"
@@ -461,8 +592,21 @@ on sectionChemins
   verifie "there is a card field A", there is a card field "A"
   verifie "there is not a card field Absent", there is not a card field "Absent"
 
-  -- le compte, avec et sans portee explicite
-  egal "the number of card fields", the number of card fields, the number of card fields of this card
+  -- LA PORTEE EXPLICITE D'UN COMPTAGE EST REFUSEE PAR HYPERCARD.
+  --
+  -- « the number of card fields of this card » l'arrete net. Le comptage nu,
+  -- lui, passe des deux cotes — la section 4 le verifie. C'est donc « of this
+  -- card » qu'il refuse derriere un comptage, et HC l'accepte : une tolerance
+  -- de plus, comme « chars ».
+  --
+  -- ET LA MESURE VENAIT DE LA COURSE PRECEDENTE : la section 4 avait deja
+  -- rendu « ok » sur le comptage nu du meme cote. Deux relevés du meme soir
+  -- se sont departagés tout seuls — c'est ce que gagne un banc qui garde ses
+  -- essais petits et nombreux.
+  --
+  -- L'invariant devient celui des deux orthographes de la couche, qui sont
+  -- confirmees des deux cotes.
+  egal "bkgnd fields et background fields", the number of bkgnd fields, the number of background fields
 
   -- aller et retour par un champ
   put "aller-retour" into card field "B"

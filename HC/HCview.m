@@ -2284,6 +2284,49 @@ static void cocoa_type_text(const char *text, const char *mods) {
 
 static void cocoa_field_changed(Object *field)
 {
+    /* UN CHAMP QU'ON CACHE DOIT PERDRE SON ÉDITEUR, et il ne le perdait pas.
+     *
+     * gFieldEditor est une vraie NSTextView posée PAR-DESSUS le champ pendant
+     * l'édition. draw_part, lui, saute les objets invisibles — le dessin était
+     * donc correct, et le champ restait pourtant à l'écran : c'est la
+     * NSTextView qu'on voyait, présente et tapable, alors que « the visible »
+     * répondait déjà « false ».
+     *
+     * Le noyau cache, l'écran non.
+     *
+     * CE DÉFAUT N'EST PAS OBSERVÉ, IL EST LU. Il a été trouvé en cherchant
+     * autre chose — « hide ch », où ch porte un désignateur, ne cachait rien,
+     * et c'était le désignateur calculé du noyau, corrigé ailleurs. En suivant
+     * le chemin Cocoa on est tombé sur celui-ci, qui est d'une autre nature et
+     * que personne n'a encore vu à l'écran.
+     *
+     * Il est corrigé quand même, parce qu'il ne demande aucun arbitrage : un
+     * champ dont « the visible » répond « false » et dans lequel on peut
+     * encore taper est incohérent avec lui-même, quoi que fasse HyperCard. Ce
+     * n'est pas une question de fidélité, c'est une contradiction interne.
+     *
+     * LA VÉRIFICATION, à faire dans l'application, tient en trois gestes :
+     * cliquer DANS un champ, puis depuis un bouton « hide card field 1 », et
+     * regarder si le champ disparaît. S'il reste, ce commentaire décrit ce qui
+     * s'est passé ; s'il disparaît, c'est qu'un autre chemin éteignait déjà
+     * l'éditeur et cette garde ne coûte rien.
+     *
+     * Invisible pour la suite de non-régression de toute façon : elle ne voit
+     * que o->visible, qui était juste.
+     *
+     * DOUZE ENDROITS appelaient endFieldEdit — changement d'outil, clic
+     * ailleurs, fermeture de carte — et aucun n'était lié à la VISIBILITÉ.
+     * C'est le défaut signature de ce dépôt : une porte annoncée ailleurs et
+     * jamais percée ici.
+     *
+     * endFieldEdit recopie d'abord le texte de l'éditeur dans le champ : ce
+     * qu'on venait de taper n'est pas perdu, il est seulement rangé. */
+    if (field && field == gEditingField && !field->visible) {
+        [gView endFieldEdit];
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     if (field && field == gEditingField && gFieldEditor) {
         const char *tx  = hc_field_text(field);
         NSString *noyau = [NSString stringWithUTF8String:tx ? tx : ""];

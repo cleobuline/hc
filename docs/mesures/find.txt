@@ -280,3 +280,67 @@ CE QUI RESTE NON MESURÉ, et qui n'est donc pas prétendu
   JUMEAU du n° 1, et il n'est pas corrigé parce qu'il n'est pas mesuré :
   HyperCard écrit probablement « card field 1 » là aussi, mais probablement ne
   suffit pas.
+
+
+═══════════════════════════════════════════════════════════════════════════
+UNE DIVERGENCE NEUVE — l'ORDRE DES CHAMPS DANS UNE CARTE
+═══════════════════════════════════════════════════════════════════════════
+
+Trouvée le 27 septembre 2026 en jouant la pile de torture DANS HYPERCARD, une
+fois les cartes correctement nommées. Deux essais de la section 1 divergent, et
+eux seuls :
+
+    go to card "Atelier"
+    find "alpha"
+        HC        -> carte Atelier
+        HyperCard -> carte DEUX
+    find "alpha"
+        HC        -> carte Deux
+        HyperCard -> carte ATELIER
+
+HyperCard SAUTE l'« alpha » de la carte de départ au premier coup, puis y
+revient au second. HC fait l'inverse.
+
+L'HYPOTHÈSE, ET ELLE N'EST QU'UNE HYPOTHÈSE : le curseur entre dans ce bloc
+depuis l'essai précédent, qui a trouvé « zorglub » dans le CHAMP DE CARTE B de
+l'Atelier. Ce qui reste à fouiller sur l'Atelier dépend alors de l'ordre dans
+lequel les champs d'une carte sont visités :
+
+    HC        champs de CARTE, puis champs de FOND
+              -> après B il reste le fond, qui porte « alpha » : trouvé ici
+    HyperCard peut-être le FOND d'abord
+              -> après B il ne reste rien : on passe à la carte Deux
+
+Elle explique les deux lignes d'un coup, ce qui est en sa faveur, et elle
+n'est pas mesurée, ce qui suffit à ne rien corriger.
+
+CONFIRMÉE UNE SECONDE FOIS le même soir, sur une pile dont le terrain était
+cette fois entièrement vérifié — quatre cartes nommées, le fond non partagé, la
+navigation contrôlée à chaque pas. Les deux mêmes lignes, les deux mêmes
+valeurs. Ce n'est donc pas un artefact du montage.
+
+ET UN INDICE DE PLUS, venu d'ailleurs : la section 4 de la même pile a mesuré
+que « field 1 » sans couche désigne le champ de FOND chez HyperCard et le champ
+de CARTE chez HC (voir docs/mesures/couche_implicite.txt). Deux divergences qui
+portent toutes deux sur la PRIORITÉ DES COUCHES, le même soir, par deux chemins
+indépendants. Il se pourrait qu'il n'y ait qu'une seule cause — l'ordre dans
+lequel HyperCard visite les couches — et que la corriger ferme les deux. Se
+pourrait : le banc de cinq lignes ci-dessous le dira.
+
+CE QU'IL FAUT POUR TRANCHER : un banc qui pose le MÊME mot dans un champ de
+carte et dans un champ de fond de la même carte, et qui regarde lequel
+« the foundField » nomme.
+
+    -- un seul mot, dans les deux couches de la MÊME carte
+    put "cible" into card field "A"
+    put "cible" into bg field "T"
+    go to card 1
+    find "cible"
+    put "foundField : " & the foundField
+
+        card field 1   -> les champs de carte d'abord (comme HC)
+        bkgnd field 1  -> le fond d'abord, et c'est HC qui doit changer
+
+C'est la question la plus utile qui reste sur « find », parce qu'elle décide de
+l'ORDRE DE TOUTES les trouvailles, pas d'un cas de bord : deux champs qui
+portent le même mot, et la pile visite le mauvais.

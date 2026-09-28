@@ -1,0 +1,16 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[ERR]    !! objet introuvable : put empty into card field "R" of card "Atelier"
+[ERR]    !! objet introuvable : card field "R" of card "Atelier"
+LE BANC N'EST PAS MONTE COMME IL FAUT : pas de carte nommee « Atelier »
+
+pas de carte nommee « Deux »
+
+pas de carte nommee « Trois »
+
+pas de carte nommee « Quatre »
+
+la premiere carte doit se nommer « Atelier »
+[ERR]    !! objet introuvable : put texte & return after card field "R" of card "Atelier"
+[ERR]    !! objet introuvable : put texte & return after card field "R" of card "Atelier"
+[ERR]    !! objet introuvable : put texte & return after card field "R" of card "Atelier"
+[ERR]    !! objet introuvable : put texte & return after card field "R" of card "Atelier"

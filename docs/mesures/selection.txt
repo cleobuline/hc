@@ -259,3 +259,36 @@ plutôt que raisonner, et les erreurs qui ont coûté le plus cher ne venaient p
 d'un raisonnement : elles venaient de bancs qui ne mesuraient pas ce que je
 croyais. Un banc se vérifie comme le code — avec un témoin positif, et en
 disant COMMENT le jouer.
+
+
+═══════════════════════════════════════════════════════════════════════════
+ET LA QUESTION (b) EST MESURÉE POUR DE BON — 27 septembre 2026, au soir
+═══════════════════════════════════════════════════════════════════════════
+
+Plus haut, ce fichier conclut que c'était (b) — l'écriture entre deux lectures —
+parce qu'HyperCard rendait les quatre propriétés quand rien ne s'écrivait entre
+elles. C'était la bonne conclusion, mais elle ne disait pas ce que l'écriture
+fait VRAIMENT. La pile de torture, jouée dans HyperCard, l'a montré en direct :
+
+    select char 2 to 4 of card field "A"
+    egal "selectedChunk …", the selectedChunk, "…"   <- « egal » ECRIT dans R
+    egal "selectedText",    the selectedText,  "lph"
+
+        HyperCard   selectedChunk repond, puis selectedText rend VIDE
+        HC          les deux repondent
+
+L'ÉCRITURE DANS UN AUTRE CHAMP DÉFAIT DONC LA SÉLECTION CHEZ HYPERCARD, et pas
+chez nous. HC est plus généreux, et ce n'est plus une supposition : c'est
+mesuré des deux côtés, sur le même banc, le même soir.
+
+DEUX CONSÉQUENCES, et la première est pour les bancs :
+
+· toutes les lectures d'un même « select » vont dans des VARIABLES avant le
+  premier verdict. Un banc qui écrit entre deux lectures mesure son propre
+  geste. La section 3 de la pile de torture est écrite ainsi depuis.
+
+· HC ne sera pas aligné là-dessus sans une raison plus forte. Perdre la
+  sélection à la première écriture est un comportement d'HyperCard 2.x dont
+  aucune pile ne dépend pour FONCTIONNER — elles en souffrent plutôt. Le
+  rendre fidèlement reviendrait à recopier une limite. À décider à froid, et
+  noté ici pour que le choix soit un choix et non un oubli.

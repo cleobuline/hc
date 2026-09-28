@@ -45,6 +45,20 @@ tests/.travail/
 #
 #   tests/.travail/bin/torture2 tests/donnees/torture2_bouton.txt \
 #                              tests/donnees/torture2_pile.txt  torture.stack
+
+# Et les scripts DÉNUDÉS, produits par tests/denude.sh pour être recopiés dans
+# Basilisk :
+#
+#   tests/denude.sh tests/donnees/torture2_bouton.txt > bouton_nu.txt
+#
+# Ils sont entrés dans le dépôt par un « git add -A » distrait, et ils n'y ont
+# pas leur place pour la raison exacte qui vaut pour torture.stack : un fichier
+# engendré posé à côté de sa source dérive dès la première modification, sans
+# que rien ne le signale. Ici c'est pire qu'ailleurs — ce sont les MÊMES scripts
+# amputés de leurs commentaires, donc deux copies du même HyperTalk dans le
+# dépôt, dont une muette.
+bouton_nu.txt
+pile_nu.txt
 #
 # Elle n'est pas versionnée à dessein. Ses SOURCES le sont — les deux scripts
 # de donnees/ et le harnais qui monte la pile —, et un fichier engendré, posé à

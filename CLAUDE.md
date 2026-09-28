@@ -63,6 +63,22 @@ relevé qui le contredit : le second fait travailler, le premier fait conclure.
 Et vérifier de quel côté vient un relevé — HyperCard ou HC — avant d'en tirer
 quoi que ce soit.
 
+### DEMANDER UN BANC EN DISANT DE QUEL CÔTÉ ON LE VEUT
+
+Quatre fois un relevé non étiqueté a failli passer pour l'autre côté, et la
+première fois ça m'a fait RETIRER une accusation qui était juste. La charge de
+l'étiquette ne revient pas à l'utilisatrice : elle revient à celui qui demande
+la mesure. Donc, en donnant un banc à jouer, écrire lequel des deux on veut, en
+toutes lettres et dans la phrase même :
+
+    « à jouer DANS HYPERCARD (Basilisk II) »      pour l'oracle
+    « à jouer DANS HC (l'application) »           pour notre côté
+
+Et quand un relevé arrive sans étiquette : demander, avant d'en tirer la
+moindre conclusion. Le dernier, sur le curseur de « find » après un échec,
+rendait « carte 1 » — ce que HC fait DÉJÀ. Pris pour HyperCard, il aurait clos
+une question qu'il ne tranchait pas.
+
 Chercher le SITE JUMEAU de chaque correction. Une porte annoncée dans un
 commentaire et jamais percée est le défaut signature de ce projet.
 
