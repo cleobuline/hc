@@ -92,6 +92,13 @@ void hcv_abandonne_selection(void);
  * à HCview.m. Ces deux verbes sont ce qu'en voient la palette des outils et
  * le dialogue Infos — les seuls à en avoir besoin de l'extérieur. */
 Object *hcv_selection(void);
+
+/* UNE CHAÎNE POUR APPKIT, JAMAIS NIL.
+ *
+ * +stringWithUTF8String: rend NIL dès que les octets ne sont pas de l'UTF-8
+ * valide, et -setStringValue: lève alors une assertion qui ARRÊTE
+ * l'application. Voir HCview.m pour la mesure qui a fait percer ce trou. */
+NSString *hcv_texte(const char *s);
 void    hcv_selectionne(Object *o);
 
 @interface HCView : NSView <NSTextViewDelegate>

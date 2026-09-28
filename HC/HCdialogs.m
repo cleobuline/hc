@@ -520,7 +520,7 @@ static NSTextField  *gFldTextSize = nil;
     [c addSubview:lb];
 
     gFldName = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 280, 262, 22)];
-    [gFldName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [gFldName setStringValue:hcv_texte(obj->name)];
     [c addSubview:gFldName];
 
     // --- identifiants ---
@@ -750,7 +750,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gInfoName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 260, 232, 22)];
-    [gInfoName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [gInfoName setStringValue:hcv_texte(obj->name)];
     [c addSubview:gInfoName];
 
     // --- identifiants (lecture seule) ---
@@ -935,7 +935,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 178, 214, 22)];
-    [gCardName setStringValue:[NSString stringWithUTF8String:card->name ? card->name : ""]];
+    [gCardName setStringValue:hcv_texte(card->name)];
     [c addSubview:gCardName];
 
     // rang de la carte dans la pile et total
@@ -1048,7 +1048,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 198, 184, 22)];
-    [gBgName setStringValue:[NSString stringWithUTF8String:bg->name ? bg->name : ""]];
+    [gBgName setStringValue:hcv_texte(bg->name)];
     [c addSubview:gBgName];
 
     // combien de cartes partagent ce fond ?
@@ -1149,7 +1149,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gStackName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
-    [gStackName setStringValue:[NSString stringWithUTF8String:stack->name ? stack->name : ""]];
+    [gStackName setStringValue:hcv_texte(stack->name)];
     [c addSubview:gStackName];
 
     int nCards = 0, nBgs = 0;
@@ -1476,8 +1476,7 @@ void hcicon_panel_stack_closing(Object *stack)
     gIconBits.iconId = id;
     gIconBits.stack  = gIconStack;
 
-    [gIconName setStringValue:
-        (ic && ic->name) ? [NSString stringWithUTF8String:ic->name] : @""];
+    [gIconName setStringValue:hcv_texte(ic ? ic->name : NULL)];
     /* Une icone d'origine ne se renomme pas : elle est const. Elle le devient
      * des qu'on la dessine, hcicon_edit_editable la recopiant dans la pile. */
     [gIconName setEditable:(own != NULL)];

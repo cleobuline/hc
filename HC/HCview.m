@@ -932,6 +932,36 @@ static void flash_popup_selection(HCView *view, NSInteger row) {
     [view setNeedsDisplay:YES];
 }
 
+/* UNE CHAÎNE POUR APPKIT, JAMAIS NIL.
+ *
+ * +stringWithUTF8String: rend NIL dès que les octets ne sont pas de l'UTF-8
+ * valide. Passé tel quel à -setStringValue:, AppKit lève une assertion et
+ * l'application S'ARRÊTE :
+ *
+ *     Invalid parameter not satisfying: aString != nil
+ *     -[NSCell setStringValue:] ... -[HCView(Dialogs) iconRefresh]
+ *
+ * Relevé à l'usage, dans l'éditeur d'icônes. La cause était ailleurs — un
+ * pointeur pendant, corrigé dans Hciconedit.m — mais la trace a montré une
+ * famille : HUIT endroits passaient le résultat de +stringWithUTF8String:
+ * directement à -setStringValue:, pour un nom de bouton, de champ, de carte,
+ * de fond, de pile, d'icône, ou pour la boîte de message. Tous ces noms
+ * viennent du FICHIER, et un .stack édité à la main ou tronqué peut porter
+ * n'importe quels octets. Un seul suffit pour arrêter l'application.
+ *
+ * ON SE RABAT SUR LATIN-1, qui ne peut PAS échouer : chacun de ses 256 octets
+ * a un caractère. Ce n'est pas deviner l'encodage — c'est montrer ce qu'il y a
+ * plutôt que de s'arrêter. Un nom qui s'affiche de travers se répare ; une
+ * application qui plante, non. */
+NSString *hcv_texte(const char *s)
+{
+    if (!s) return @"";
+    NSString *t = [NSString stringWithUTF8String:s];
+    if (t) return t;
+    t = [NSString stringWithCString:s encoding:NSISOLatin1StringEncoding];
+    return t ? t : @"";
+}
+
 static void draw_part(Object *o) {
     if (!o->visible) return;
 
@@ -1537,7 +1567,7 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
     [a addButtonWithTitle:@"Annuler"];
 
     NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
-    [tf setStringValue:[NSString stringWithUTF8String:deflt ? deflt : ""]];
+    [tf setStringValue:hcv_texte(deflt)];
     [a setAccessoryView:tf];
     [[a window] setInitialFirstResponder:tf];
 
@@ -1569,7 +1599,7 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
     if (kind == HC_MSG && gMsgBox) {
         if (gMsgPanel && ![gMsgPanel isVisible])
             [gMsgPanel orderFront:nil];
-        [gMsgBox setStringValue:[NSString stringWithUTF8String:text]];
+        [gMsgBox setStringValue:hcv_texte(text)];
         return;
     }
     /* Le journal reste : il garde la trace ligne par ligne, avec le contexte,
@@ -6874,7 +6904,7 @@ static void hcv_survol(HCView *v, Object *carte)
      * et la commande « type ». Les deux derniers doivent prévenir le noyau ;
      * c'est à quoi servent le délégué ci-dessous et hc_message_ecrit. */
     [gMsgBox setDelegate:(id)self];
-    [gMsgBox setStringValue:[NSString stringWithUTF8String:hc_message_lu()]];
+    [gMsgBox setStringValue:hcv_texte(hc_message_lu())];
     [[gMsgPanel contentView] addSubview:gMsgBox];
     [gMsgPanel makeKeyAndOrderFront:nil];
 
