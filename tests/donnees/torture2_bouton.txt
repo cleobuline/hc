@@ -555,8 +555,20 @@ on sectionChemins
   -- et les sections 7 et 6 ne tournaient jamais de ce cote.
   egal "length et number of characters", the length of card field "A", the number of characters of card field "A"
 
-  -- char et chars designent le meme morceau
-  egal "char et chars", char 1 to 5 of card field "A", chars 1 to 5 of card field "A"
+  -- « CHARS » N'EST PAS UN MOT D'HYPERCARD, et c'est mesure.
+  --
+  -- « chars 1 to 5 of » arrete HyperCard net — « Can't understand » — alors
+  -- que « find chars "ph be" » passe : le meme mot existe comme modificateur
+  -- de « find » et PAS comme morceau. HC accepte les deux, son lexeur
+  -- appliquant les synonymes de l'annexe F avant que rien ne les voie ; c'est
+  -- une TOLERANCE de plus, pas une fidelite, et une pile ecrite ici avec
+  -- « chars » ne tournerait pas ailleurs.
+  --
+  -- L'essai ne compare donc plus « char » a « chars » mais une PLAGE a la
+  -- somme de ses parties, ce qui n'emploie que « char » — le seul des trois
+  -- qu'HyperCard ait confirme. L'invariant est aussi bon : si les bornes
+  -- glissaient d'un cran, les deux cotes differeraient.
+  egal "une plage vaut la somme de ses parties", char 1 to 5 of card field "A", char 1 of card field "A" & char 2 to 5 of card field "A"
 
   -- les trois orthographes de la couche du fond
   egal "bg et bkgnd", bg field "T", bkgnd field "T"

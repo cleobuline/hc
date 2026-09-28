@@ -88,7 +88,7 @@
 
 == 7. deux chemins, une seule reponse
   ok     length et number of characters
-  ok     char et chars
+  ok     une plage vaut la somme de ses parties
   ok     bg et bkgnd
   ok     bkgnd et background
   ok     le nom et le numero

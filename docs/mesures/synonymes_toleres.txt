@@ -1,0 +1,92 @@
+MESURE — CE QUE HC ACCEPTE ET QU'HYPERCARD REFUSE
+=================================================
+
+Mesuré dans HyperCard (Basilisk II) le 28 septembre 2026, en jouant la pile de
+torture. Ces écarts-là ne sont pas des défauts au sens habituel : HC est PLUS
+PERMISSIF. Mais la permissivité a un coût, et il est réel — une pile écrite ici
+ne tourne alors pas ailleurs, et son auteur ne l'apprend que le jour où il
+l'essaie sur un vrai HyperCard.
+
+
+1. « chars » COMME MORCEAU                                      TOLÉRANCE
+----------------------------------------------------------------------------
+
+    chars 1 to 5 of card field "A"      HyperCard -> Can't understand
+    char 1 to 5 of card field "A"       les deux  -> marche
+    the number of chars of X            HyperCard -> Can't understand
+    the number of characters of X       les deux  -> marche
+
+    find chars "ph be"                  les deux  -> marche
+
+LE MÊME MOT EXISTE CHEZ HYPERCARD COMME MODIFICATEUR DE « find » ET PAS COMME
+MORCEAU. C'est ce qui rend la mesure utile : on aurait pu croire « chars »
+inconnu tout court, et la section 1 de la pile de torture prouve le contraire —
+« find chars » passe des deux côtés, depuis le premier jour.
+
+HC, lui, applique les synonymes de l'annexe F dans son LEXEUR, avant que le
+moindre motif de commande les voie. « chars » y arrive donc comme
+« characters » partout, uniformément. C'est plus simple et plus tolérant que
+l'original.
+
+CE QUE ÇA A COÛTÉ, CONCRÈTEMENT : deux arrêts de la pile de torture dans
+HyperCard, à deux endroits, séparés par une heure. Le premier — « the number of
+chars of » — a empêché les sections 7 et 6 de tourner du tout ; le second —
+« chars 1 to 5 of » — a fait la même chose une fois le premier corrigé. Un banc
+écrit dans le dialecte tolérant ne se joue pas chez l'original.
+
+
+LA DÉCISION EST PRISE : ON GARDE LA TOLÉRANCE
+---------------------------------------------
+
+    « l'expression avec chars 1 to 5 passe dans HC, c'est une bonne chose je
+      trouve »
+
+C'est la décision de l'autrice du projet, et elle tranche : HC accepte plus que
+l'original, et c'est voulu. Refuser « chars » casserait toute pile déjà écrite
+ici, et personne ne se plaint qu'un dialecte accepte davantage. La question ne
+se rouvre pas sans une raison neuve.
+
+DEUX RÈGLES EN DÉCOULENT, ET LA SECONDE EST LA LEÇON DE LA SOIRÉE :
+
+1. DANS LE LANGAGE : tolérance. Les synonymes de l'annexe F s'appliquent dans
+   le lexeur, uniformément, et un script écrit pour HC peut s'en servir.
+
+2. DANS LES BANCS : stricte fidélité. Un banc destiné à se jouer des DEUX côtés
+   n'emploie que ce qu'HyperCard comprend, sinon il ne compare rien — il
+   s'arrête. C'est exactement ce qui est arrivé deux fois : « the number of
+   chars of » a empêché les sections 7 et 6 de tourner, puis « chars 1 to 5 »
+   a refait la même chose une heure plus tard.
+
+La tolérance est donc une propriété du LANGAGE, pas des instruments qui le
+mesurent. La pile de torture n'emploie plus que du HyperTalk portable.
+
+UN MODE STRICT reste possible — un drapeau qui refuserait ce qu'HyperCard
+refuse, pour vérifier qu'une pile est portable avant de la partager. Le noyau a
+déjà HC_V3 et HC_AVEC_V1. Ce n'est pas demandé, c'est noté comme faisable.
+
+
+CE QU'IL FAUT CHERCHER MAINTENANT
+---------------------------------
+
+L'annexe F compte des dizaines de synonymes, et HC les applique tous dans son
+lexeur. Chacun est un candidat au même écart. Ceux que la pile de torture
+emploie et qui sont donc DÉJÀ confirmés des deux côtés :
+
+    bg / bkgnd / background field        les trois passent
+    char                                 passe
+    find chars / find words / find string / find whole   passent
+
+Ceux qu'elle n'emploie pas et dont personne ne sait rien :
+
+    chars, characters (comme morceau)    « characters » est probable, non mesuré
+    words / lines / items (pluriels)     « word 1 » sûr, « words 1 to 2 » non
+    secs / ticks, cd / bg / btn / fld    non mesurés
+    the abbr / abbrev / abbreviated      non mesurés
+
+LE BANC EST LE MÊME POUR TOUS, et il tient en une ligne par synonyme :
+
+    put chars 1 to 3 of "abcdef"        -- et l'on note ce qui arrête
+
+À jouer DANS HYPERCARD. Chaque arrêt est une tolérance de HC à inscrire ici ;
+chaque ligne qui passe est un synonyme qu'on peut employer dans un banc sans
+craindre qu'il ne se joue que d'un côté.
