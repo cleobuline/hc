@@ -597,18 +597,57 @@ static const char *STYLES[] = {
 
 /* CERTAINS STYLES N'APPARTIENNENT QU'À UN GENRE, et ça donne un recoupement
  * gratuit sur l'octet de style — le seul qu'on ait, faute d'oracle qui lise les
- * propriétés. Un « scrolling » sur un bouton, ou un « checkbox » sur un champ,
+ * propriétés. Un « scrolling » sur un bouton, ou un « checkBox » sur un champ,
  * voudrait dire qu'on lit le mauvais octet. Compté en anomalie, jamais fatal :
- * une pile étrange ne doit pas faire perdre ses scripts. */
+ * une pile étrange ne doit pas faire perdre ses scripts.
+ *
+ * ET « shadow » N'EN EST PAS UN, CONTRAIREMENT À CE QUE CETTE FONCTION DISAIT.
+ *
+ * J'avais écrit ici, en toutes lettres : « vérifié sur les trois vraies piles
+ * avant d'y croire — checkbox, radio, standard et shadow n'apparaissent QUE sur
+ * des boutons ». C'était un relevé juste et une conclusion fausse : trois piles
+ * ne font pas une population, et j'ai pris une absence pour une interdiction.
+ *
+ * « Stack Templates » la dit fausse : SEIZE champs de style `shadow`, tous
+ * nommés « About This Template », tous au même rectangle, une fois par carte.
+ * C'est un encadré dessiné exprès, pas un octet mal lu.
+ *
+ * Et la contradiction était DANS CE DÉPÔT, à deux fichiers de distance :
+ * HCdialogs.m offre exactement cinq styles à un champ — transparent, opaque,
+ * rectangle, SHADOW, scrolling — qui sont les cinq d'HyperCard. Notre propre
+ * sélecteur savait donc ce que mon extracteur ignorait. Une règle tirée de
+ * l'observation doit être confrontée à ce que le reste du code affirme déjà.
+ *
+ * Restent réservés au bouton ceux qu'aucune des deux listes ne donne à un
+ * champ : roundRect, oval, checkBox, radioButton, standard, default, popup.
+ *
+ * LA RÈGLE QUI RESTE, ELLE, EST MESURÉE — sur 574 parts et quatre piles, pas
+ * sur 180 et trois (docs/mesures/pile_origine.txt porte le tableau) :
+ *
+ *     style          champs  boutons
+ *     transparent       257      124
+ *     rectangle          75       18
+ *     shadow             16       22     <- des DEUX côtés, et c'est le point
+ *     opaque              4       20
+ *     scrolling          11        0
+ *     checkBox            0       11
+ *     radioButton         0       11
+ *     roundRect           0        4
+ *     standard            0        1
+ *
+ * `default`, `oval` et `popup` N'APPARAISSENT NULLE PART dans ce corpus : leur
+ * réserve au bouton n'est pas mesurée, elle est reprise de gInfoStyle. Si un
+ * jour une pile en montre un sur un champ, c'est cette ligne-là qu'il faudra
+ * corriger, et non refaire le raisonnement de zéro. */
 static int style_va_au_genre(int istyle, int genre)
 {
     switch (istyle) {
-        case 5: case 6: case 8: case 9: case 11:   /* checkbox radio standard default popup */
-        case 3: case 4: case 10:                   /* roundrect shadow oval */
+        case 5: case 6: case 8: case 9: case 11:   /* checkBox radioButton standard default popup */
+        case 3: case 10:                           /* roundRect oval */
             return genre == HC_ORIG_BOUTON;
         case 7:                                    /* scrolling */
             return genre == HC_ORIG_CHAMP;
-        default:                                   /* transparent, opaque, rectangle */
+        default:                                   /* transparent, opaque, rectangle, shadow */
             return 1;
     }
 }
@@ -1016,14 +1055,43 @@ static int lit_interne(const unsigned char *octets, size_t n,
     if (!pile->blocs) { motif(pourquoi, npourquoi, "memoire epuisee", 0); return -1; }
 
     size_t p = 0;
+    int recouvrees = 0;              /* tailles réparées : voir plus bas */
+    unsigned long premiere_reparee = 0;
     while (p + ENTETE <= n) {
-        unsigned long taille = u32(v, p);
+        unsigned long brut = u32(v, p), taille = brut;
         /* Une taille nulle, ou plus petite que l'en-tête, boucle sans fin.
          * Une taille qui dépasse la fin lit des octets qui n'existent pas. Les
          * deux se refusent, et c'est ici que se joue la sûreté du module. */
         if (taille < ENTETE || taille > n - p) {
-            motif(pourquoi, npourquoi, "taille de bloc impossible", (unsigned long)p);
-            return -1;
+            /* LE CHAMP DE TAILLE EST PARFOIS ABÎMÉ, ET LA SPÉCIFICATION LE DIT :
+             * « The size of the block, including the header. Don't rely too much
+             * on it, it is sometimes corrupted. » Ce n'est donc pas une
+             * exception qu'on invente pour faire passer un fichier.
+             *
+             * RELEVÉ À L'USAGE, sur « Stack Templates » : « taille de bloc
+             * impossible (offset 0x2C00) ». Le bloc MAST y annonce 0x40000400.
+             * Ses trois octets de poids faible donnent 1024, qui est une taille
+             * plausible — et c'est l'octet de poids FORT qui porte le parasite.
+             *
+             * MESURÉ SUR QUATRE PILES, 158 blocs en tout : trois n'ont pas un
+             * seul octet haut non nul, la quatrième en a EXACTEMENT UN, sur son
+             * bloc MAST, et il vaut 0x40. Le masque ne change donc rien à ce qui
+             * marchait déjà.
+             *
+             * ON NE RÉPARE QUE CE QUI EST CASSÉ : tant que la taille brute tient
+             * debout, elle est prise telle quelle — un bloc légitimement plus
+             * grand que 16 Mio garde donc sa taille entière, et ce n'est pas ce
+             * masque qui le tronquera. */
+            unsigned long reparee = brut & 0x00FFFFFFUL;
+            if (reparee >= ENTETE && reparee <= n - p) {
+                if (!recouvrees) premiere_reparee = (unsigned long)p;
+                recouvrees++;
+                pile->anomalies++;
+                taille = reparee;
+            } else {
+                motif(pourquoi, npourquoi, "taille de bloc impossible", (unsigned long)p);
+                return -1;
+            }
         }
         if (pile->nblocs >= cap) {
             if (cap >= BLOCS_MAX) { motif(pourquoi, npourquoi, "trop de blocs", (unsigned long)p); return -1; }
@@ -1045,6 +1113,23 @@ static int lit_interne(const unsigned char *octets, size_t n,
         p += taille;
     }
     pile->chaine_atteint_la_fin = (p == n);
+
+    /* UNE TAILLE RÉPARÉE N'EST CRUE QUE SI LA CHAÎNE RETOMBE SUR SES PIEDS.
+     *
+     * C'est la preuve, et c'est la seule qu'on ait : masquer le bon octet mène
+     * à un enchaînement de blocs qui tombe EXACTEMENT sur la fin du fichier —
+     * soixante-cinq blocs pour « Stack Templates » — tandis que masquer le
+     * mauvais décale tout ce qui suit et n'a aucune raison d'y retomber.
+     *
+     * Sans ce garde-fou, la réparation serait une supposition qu'on s'autorise
+     * une fois et qui lit des octets au hasard la fois suivante. Avec lui, elle
+     * ne sert que là où elle se vérifie ; ailleurs, le refus d'avant revient. */
+    if (recouvrees > 0 && !pile->chaine_atteint_la_fin) {
+        motif(pourquoi, npourquoi,
+              "taille de bloc impossible, et la reparation ne retombe pas juste",
+              premiere_reparee);
+        return -1;
+    }
 
     /* --- 2. STAK --- */
     if (pile->nblocs == 0 || memcmp(octets + 4, "STAK", 4) != 0) {

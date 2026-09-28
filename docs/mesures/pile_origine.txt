@@ -706,3 +706,106 @@ nom de la carte, donc son script.
 Une carte sans parts ni contenus laisse les deux tampons du harnais vides, donc
 leur pointeur nul. Rien ne se voit à l'exécution ; UBSan l'a dit, et c'est la
 seule raison pour laquelle on le sait.
+
+SEIZE ANOMALIES SUR DIX-SEPT ÉTAIENT DE MOI
+-------------------------------------------
+
+Le 28 septembre 2026, au retour d'une quatrième pile — « Stack Templates »,
+133 952 octets, 17 fonds, 17 cartes, 65 blocs.
+
+Elle a d'abord été REFUSÉE : « taille de bloc impossible (offset 0x2C00) ». Puis,
+réparation faite, elle s'est lue en annonçant DIX-SEPT ANOMALIES. Un nombre qu'on
+rapporte est un nombre qu'on doit pouvoir expliquer, donc on les a attribuées, en
+instrumentant une copie :
+
+    1  x  la taille du bloc MAST, réparée
+    16 x  « un style qui ne va pas au genre »
+
+Les seize sont SEIZE CHAMPS de style `shadow`, tous nommés « About This
+Template », tous au même rectangle (62,52,280,461), un par carte. Un encadré
+dessiné exprès, seize fois. Pas un octet mal lu : une règle fausse de mon côté.
+
+CE QUE J'AVAIS ÉCRIT, ET POURQUOI C'ÉTAIT FAUX
+
+    « vérifié sur les trois vraies piles avant d'y croire — checkbox, radio,
+      standard et shadow n'apparaissent QUE sur des boutons »
+
+Le relevé était juste. La conclusion ne l'était pas : trois piles ne sont pas une
+population, et j'ai lu une ABSENCE comme une INTERDICTION. C'est exactement le
+piège que ce dossier décrit ailleurs — un relevé qui confirme ce que fait déjà le
+code fait conclure au lieu de faire travailler.
+
+ET LA CONTRADICTION ÉTAIT DANS CE DÉPÔT, À DEUX FICHIERS DE DISTANCE
+
+HCdialogs.m offre depuis toujours à un champ exactement cinq styles :
+
+    HCdialogs.m:551   transparent, opaque, rectangle, SHADOW, scrolling
+    HCdialogs.m:785   transparent, opaque, rectangle, shadow, roundRect,
+                      checkBox, radioButton, standard, default, oval, popup
+
+Notre propre sélecteur de propriétés savait donc ce que mon extracteur ignorait.
+Une règle tirée de l'observation doit être confrontée à ce que le reste du code
+affirme déjà, AVANT de compter des anomalies avec.
+
+LE CROISEMENT, MAINTENANT MESURÉ — 574 PARTS, QUATRE PILES
+
+    style          champs  boutons
+    transparent       257      124
+    rectangle          75       18
+    shadow             16       22     <- des DEUX côtés
+    opaque              4       20
+    scrolling          11        0
+    checkBox            0       11
+    radioButton         0       11
+    roundRect           0        4
+    standard            0        1
+    TOTAL             363      211
+
+Ce qui reste réservé au bouton l'est donc sur 574 parts et non sur 180. Et ce qui
+n'est PAS mesuré s'écrit comme non mesuré : `default`, `oval` et `popup`
+n'apparaissent NULLE PART dans ce corpus. Leur réserve au bouton est reprise de
+gInfoStyle, pas relevée. Si une pile en montre un jour un sur un champ, c'est
+cette ligne-là qu'il faudra corriger.
+
+LE CORPUS ENTIER, APRÈS CORRECTION
+
+    3D Parametric Equations   45 blocs,  3 fonds, 11 cartes   0 anomalie
+    Découvrir HyperCard       32 blocs,  1 fond,  11 cartes   0 anomalie
+    TEST3                     16 blocs,  1 fond,   5 cartes   0 anomalie
+    Stack Templates           65 blocs, 17 fonds, 17 cartes   1 anomalie
+
+Une seule anomalie sur quatre piles, et c'est la seule qu'on sache expliquer :
+l'octet de poids fort de la taille du bloc MAST.
+
+LA TAILLE DE BLOC RÉPARÉE, ET SES CINQ TÉMOINS
+----------------------------------------------
+
+Le bloc MAST de « Stack Templates » annonce 0x40000400 là où il fait 1024. La
+spec prévient : « Don't rely too much on it, it is sometimes corrupted. » On
+masque donc l'octet haut — mais un masque est une permission tant qu'il n'est pas
+tenu par une preuve. La preuve est que la chaîne des 65 blocs retombe EXACTEMENT
+sur la fin du fichier ; une réparation qui décale quoi que ce soit n'a aucune
+raison d'y retomber.
+
+Mesuré avant d'y croire : sur les quatre piles et 158 blocs, trois n'ont pas un
+seul octet haut non nul, et la quatrième en a EXACTEMENT UN. Le masque ne change
+rien à ce qui marchait déjà.
+
+Cinq témoins tiennent la réparation par ses deux bouts, dans tests/harnais/origine.c :
+
+    octet HAUT abîmé                        -> LU, 1 anomalie, somme FAUSSE
+    un autre octet abîmé                    -> REFUSÉ (le masque n'y peut rien)
+    octet haut + taille vraie changée       -> REFUSÉ (le bloc suivant ne parse plus)
+    quatre octets de trop, SANS réparation  -> LU, « chaine N'ATTEINT PAS la fin »
+    les mêmes quatre, AVEC réparation       -> REFUSÉ, « la reparation ne retombe pas juste »
+
+LES DEUX DERNIERS NE VALENT QUE CÔTE À CÔTE, et c'est tout leur intérêt : pris
+seul, le quatrième dit qu'on tolère des octets en trop, le cinquième qu'on refuse
+un fichier. C'est leur DIFFÉRENCE qui montre le garde-fou — une seule mesure ne
+l'aurait pas atteint, et le garde-fou n'avait aucun témoin avant celui-là.
+
+Le premier témoin s'appelait « taille de bloc au-dela du fichier » et attendait un
+REFUS : il posait 0x7F dans l'octet haut, c'est-à-dire précisément le parasite que
+la réparation enlève. Renommé plutôt que retiré. Rien ne passe en silence pour
+autant : l'anomalie est comptée, et la somme de contrôle reste FAUSSE puisque
+l'octet abîmé est dans le bloc STAK lui-même.

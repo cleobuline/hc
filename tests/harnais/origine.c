@@ -1253,10 +1253,59 @@ int main(int argc, char **argv)
         lis_et_dis("taille du premier bloc nulle", c, t.n, 0);
         free(c);
     }
+    /* LE CHAMP DE TAILLE EST PARFOIS ABÎMÉ — la spec le dit, « Stack Templates »
+     * le montre (son bloc MAST annonce 0x40000400 pour 1024). On le répare en
+     * masquant l'octet de poids fort, et TROIS témoins tiennent cette réparation
+     * par ses deux bouts : ce qu'elle rattrape, et ce qu'elle ne rattrape pas.
+     *
+     * Ce premier témoin s'appelait « taille de bloc au-dela du fichier » et
+     * attendait un REFUS : il posait 0x7F dans l'octet haut, c'est-à-dire
+     * exactement le parasite que la réparation enlève. Le renommer plutôt que le
+     * retirer : le fichier se lit, l'anomalie est comptée, et la somme de
+     * contrôle reste FAUSSE — l'octet abîmé est dans le bloc STAK — donc rien ne
+     * passe en silence. */
     {
         unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
-        c[0] = 0x7F;                                     /* taille au-dela de la fin */
-        lis_et_dis("taille de bloc au-dela du fichier", c, t.n, 0);
+        c[0] = 0x7F;                    /* l'octet HAUT : la reparation retombe juste */
+        lis_et_dis("octet haut de la taille abime (REPARE, 1 anomalie)", c, t.n, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        c[1] = 0xFF;                    /* pas l'octet haut : le masque n'y peut rien */
+        lis_et_dis("taille de bloc au-dela du fichier (le masque n'y peut rien)", c, t.n, 0);
+        free(c);
+    }
+    /* ET LE GARDE-FOU QUI FAIT CROIRE À LA RÉPARATION : une taille réparée n'est
+     * pas crue sur parole, elle est crue parce que la chaîne des blocs retombe
+     * EXACTEMENT sur la fin du fichier. Le décalage le plus simple à écrire abîme
+     * l'octet haut ET la taille vraie : la valeur réparée est plausible, elle est
+     * fausse, et ce qui suit ne parse plus du tout — refusé, mais par la borne du
+     * bloc suivant, pas par le garde-fou.
+     *
+     * DEUX MESURES CÔTE À CÔTE l'atteignent, et une seule ne l'aurait pas fait :
+     * quatre octets ajoutés à la fin du fichier laissent la chaîne s'arrêter
+     * avant la fin. Seuls, ils sont tolérés — la pile se lit, « chaine N'ATTEINT
+     * PAS la fin » le dit. Avec une taille réparée, le même fichier est REFUSÉ.
+     * C'est la différence entre les deux qui montre le garde-fou ; l'un des deux
+     * relevés, pris seul, ne prouve rien. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        c[0] = 0x7F; c[3] = (unsigned char)(c[3] ^ 0x04);
+        lis_et_dis("taille reparee plausible mais FAUSSE (le bloc suivant ne parse plus)", c, t.n, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n + 4); memcpy(c, t.o, t.n);
+        memset(c + t.n, 0, 4);
+        lis_et_dis("quatre octets de trop a la fin, SANS reparation (tolere)", c, t.n + 4, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n + 4); memcpy(c, t.o, t.n);
+        memset(c + t.n, 0, 4);
+        c[0] = 0x7F;                    /* la meme reparation que plus haut */
+        lis_et_dis("les memes quatre octets, AVEC une taille reparee", c, t.n + 4, 0);
         free(c);
     }
     {
@@ -1367,9 +1416,32 @@ int main(int argc, char **argv)
      * bouton : en trouver un du mauvais côté voudrait dire qu'on lit le mauvais
      * octet. Compté, jamais fatal.
      *
-     * Vérifié sur les trois vraies piles avant d'y croire : sur environ 180
-     * parts, checkbox, radio, standard et shadow n'apparaissent QUE sur des
-     * boutons, et scrolling QUE sur des champs. Pas une violation. */
+     * J'AVAIS ÉCRIT ICI UNE RÈGLE FAUSSE, et ces deux témoins sont là pour
+     * qu'elle ne revienne pas. Le texte disait : « vérifié sur les trois vraies
+     * piles avant d'y croire : sur environ 180 parts, checkbox, radio, standard
+     * et shadow n'apparaissent QUE sur des boutons ». Le relevé était juste, la
+     * conclusion fausse : trois piles ne sont pas une population, et j'ai lu
+     * une absence comme une interdiction.
+     *
+     * « Stack Templates » la dit fausse : seize CHAMPS de style `shadow`, tous
+     * nommés « About This Template », tous au même rectangle, un par carte —
+     * seize anomalies inventées par mon extracteur. Et la contradiction était
+     * dans ce dépôt : HCdialogs.m offre à un champ exactement transparent,
+     * opaque, rectangle, SHADOW, scrolling.
+     *
+     * D'où deux témoins côte à côte sur le MÊME octet : `shadow` sur un champ
+     * ne compte RIEN, `checkbox` sur un champ compte UN. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        /* le champ « A » porte le style 7 (scrolling) : on le passe à 4
+         * (shadow), qui est l'un des cinq styles de champ d'HyperCard */
+        for (size_t i = 0; i + 8 < t.n; i++)
+            if (memcmp(c + i, "A", 1) == 0 && c[i+1] == 0 && i > 0x1E && c[i - 0x1E + 0x0F] == 7) {
+                c[i - 0x1E + 0x0F] = 4; break;
+            }
+        lis_et_dis("un « shadow » sur un CHAMP (ce n'est PAS une anomalie)", c, t.n, 1);
+        free(c);
+    }
     {
         unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
         /* le champ « A » porte le style 7 (scrolling) : on le passe à 5
