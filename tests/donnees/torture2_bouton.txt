@@ -592,8 +592,21 @@ on sectionChemins
   verifie "there is a card field A", there is a card field "A"
   verifie "there is not a card field Absent", there is not a card field "Absent"
 
-  -- le compte, avec et sans portee explicite
-  egal "the number of card fields", the number of card fields, the number of card fields of this card
+  -- LA PORTEE EXPLICITE D'UN COMPTAGE EST REFUSEE PAR HYPERCARD.
+  --
+  -- « the number of card fields of this card » l'arrete net. Le comptage nu,
+  -- lui, passe des deux cotes — la section 4 le verifie. C'est donc « of this
+  -- card » qu'il refuse derriere un comptage, et HC l'accepte : une tolerance
+  -- de plus, comme « chars ».
+  --
+  -- ET LA MESURE VENAIT DE LA COURSE PRECEDENTE : la section 4 avait deja
+  -- rendu « ok » sur le comptage nu du meme cote. Deux relevés du meme soir
+  -- se sont departagés tout seuls — c'est ce que gagne un banc qui garde ses
+  -- essais petits et nombreux.
+  --
+  -- L'invariant devient celui des deux orthographes de la couche, qui sont
+  -- confirmees des deux cotes.
+  egal "bkgnd fields et background fields", the number of bkgnd fields, the number of background fields
 
   -- aller et retour par un champ
   put "aller-retour" into card field "B"

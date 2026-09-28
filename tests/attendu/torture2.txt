@@ -99,7 +99,7 @@
   ok     le numero de cette carte
   ok     there is a card field A
   ok     there is not a card field Absent
-  ok     the number of card fields
+  ok     bkgnd fields et background fields
   ok     ce qu'on ecrit est ce qu'on relit
   ok     the rect et ses quatre bords
   ok     hide met visible a false

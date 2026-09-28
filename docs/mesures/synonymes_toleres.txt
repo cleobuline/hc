@@ -65,6 +65,28 @@ refuse, pour vérifier qu'une pile est portable avant de la partager. Le noyau a
 déjà HC_V3 et HC_AVEC_V1. Ce n'est pas demandé, c'est noté comme faisable.
 
 
+2. LA PORTÉE EXPLICITE D'UN COMPTAGE                            TOLÉRANCE
+----------------------------------------------------------------------------
+
+    the number of card fields                 les deux  -> marche
+    the number of card fields of this card    HyperCard -> Can't understand
+
+HyperCard refuse « of this card » derrière un comptage. HC l'accepte.
+
+ET C'EST LA COURSE PRÉCÉDENTE QUI A DÉSIGNÉ LE COUPABLE, sans mesure
+supplémentaire : la section 4 avait déjà rendu « ok » sur le comptage nu, du
+même côté, une heure plus tôt. Le comptage n'était donc pas en cause — seul le
+suffixe. Deux relevés du même soir se sont départagés tout seuls.
+
+C'est le bénéfice d'un banc fait de BEAUCOUP DE PETITS ESSAIS plutôt que de
+quelques gros : chacun est une mesure indépendante, et ils s'éclairent les uns
+les autres. Un banc de dix essais monolithiques n'aurait rien dit.
+
+L'essai devient l'invariant des deux orthographes de la couche — « the number of
+bkgnd fields » contre « the number of background fields » —, toutes deux
+confirmées des deux côtés le même soir.
+
+
 CE QU'IL FAUT CHERCHER MAINTENANT
 ---------------------------------
 
@@ -82,6 +104,9 @@ Ceux qu'elle n'emploie pas et dont personne ne sait rien :
     words / lines / items (pluriels)     « word 1 » sûr, « words 1 to 2 » non
     secs / ticks, cd / bg / btn / fld    non mesurés
     the abbr / abbrev / abbreviated      non mesurés
+    « of this card » derrière d'autres comptages : the number of card buttons
+    of this card, the number of cards of this background — non mesurés, et la
+    tolérance n° 2 les rend probables
 
 LE BANC EST LE MÊME POUR TOUS, et il tient en une ligne par synonyme :
 
