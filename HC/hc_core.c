@@ -12732,8 +12732,74 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         if (quoi->marque) marques = 1;
     }
 
-    const HctNoeud *nto = NULL;
+    /* LE DÉCOUPAGE, ET LE PIÈGE QU'IL POSE.
+     *
+     * « print card from 0,0 to 512,304 » n'imprime qu'une partie de la carte.
+     * Trois fonds de « Stack Templates » l'écrivent, et le motif de la commande
+     * vient de l'accepter — mais le « to » du RECTANGLE est le même mot que le
+     * « to » d'une PLAGE DE CARTES, « print card 1 to 600 ».
+     *
+     * Sans ce qui suit, v3_indice_motcle prenait le premier « to » venu : la
+     * commande d'Apple aurait imprimé les cartes 0 à 512 au lieu d'une portion de
+     * la carte courante. Une MAUVAISE RÉPONSE SILENCIEUSE, et c'est pire que le
+     * refus qu'on vient de lever — le refus se voit.
+     *
+     * Le « from » tranche : quand il est là, le « to » est celui du rectangle et
+     * jamais celui d'une plage. Mesuré à côté de son témoin, « print card 1 to
+     * 600 », que le harnais impression.c tient depuis longtemps.
+     *
+     * CE QUI N'EST PAS MESURÉ, et qui s'écrit comme non mesuré : la GÉOMÉTRIE DE
+     * LA PAGE sous un découpage. On garde la bande de la carte entière et l'on
+     * n'y dessine que la portion demandée — le reste de la page reste blanc.
+     * HyperCard recadrait peut-être la page sur le rectangle ; on n'a pas de banc
+     * pour le dire, et inventer un recadrage serait décider seul. Ce qui EST
+     * mesuré est l'intention de l'auteur, écrite dans son propre commentaire :
+     * « does not print the buttons along the bottom ». */
+    int decoupe[4];
+    const int *pdecoupe = NULL;
     {
+        int ifrom = v3_indice_motcle(n, "from", i0);
+        int ito   = v3_indice_motcle(n, "to", i0);
+        if (ifrom >= 0) {
+            /* UN « from » PRÉSENT MAIS ILLISIBLE SE REFUSE, IL NE RETOMBE PAS
+             * SUR LA PLAGE DE CARTES. Sans ce refus, « print card from 0 to
+             * 512 » — deux points au lieu de quatre nombres — repartait en
+             * « print card … to 512 » et imprimait cinq cents cartes. On
+             * préfère l'échec bruyant : c'est la règle de ce module, et c'est
+             * exactement le genre de repli qui donne confiance en se trompant. */
+            int forme = (ito > ifrom && ito + 2 < n->nfils && ito - ifrom == 3);
+            char v[4][HC_VAL];
+            int bon = forme;
+            if (forme) {
+                const HctNoeud *e[4] = { n->fils[ifrom + 1], n->fils[ifrom + 2],
+                                         n->fils[ito + 1],   n->fils[ito + 2] };
+                for (int k = 0; k < 4 && bon; k++) {
+                    v3_val_texte(ctx, e[k], v[k], sizeof v[k]);
+                    if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+                    if (!hct_est_nombre(v[k])) bon = 0;
+                    else decoupe[k] = (int)hct_vers_nombre(v[k]);
+                }
+            }
+            if (!bon) {
+                set_result("Bad rectangle");
+                emit(HC_ERR, "   !! print : « from … to … » demande deux points, "
+                             "soit quatre nombres");
+                free(liste); g_atop = sauve; return 1;
+            }
+            /* Un rectangle vide ou retourné n'imprimerait rien : on le dit,
+             * plutôt que de rendre une page blanche qui ressemble à une panne
+             * d'imprimante. */
+            if (decoupe[2] <= decoupe[0] || decoupe[3] <= decoupe[1]) {
+                set_result("Bad rectangle");
+                emit(HC_ERR, "   !! print : le rectangle de découpe est vide");
+                free(liste); g_atop = sauve; return 1;
+            }
+            pdecoupe = decoupe;
+        }
+    }
+
+    const HctNoeud *nto = NULL;
+    if (!pdecoupe) {
         int ito = v3_indice_motcle(n, "to", i0);
         if (ito >= 0 && ito + 1 < n->nfils) nto = n->fils[ito + 1];
     }
@@ -12797,7 +12863,7 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         free(liste); g_atop = sauve; return 1;
     }
     if (g_host && g_host->print_cards) {
-        g_host->print_cards(liste, np);
+        g_host->print_cards(liste, np, pdecoupe);
         set_result("");
     } else {
         set_result("Can't print");
@@ -14547,6 +14613,22 @@ typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENU) return -1;
+
+    /* UN ORDINAL N'A PAS D'ENFANT, ET LE TEST DE nfils L'ÉCARTAIT.
+     *
+     * « first menu », « last menu » : le désignateur est dans le NŒUD, pas dans
+     * un fils, donc nfils vaut zéro et la porte se fermait avant tout le reste.
+     *
+     * Ce chemin vient d'être ouvert dans l'analyseur — un ordinal devant
+     * « menu » ou « menuItem » désigne déjà, ce que le garde de menu ignorait —
+     * et l'ouvrir SANS ouvrir ici aurait donné le pire résultat : une syntaxe
+     * acceptée, puis « objet introuvable » à l'exécution. Mesuré avant de le
+     * croire, avec un menu de trois articles réellement posé. */
+    if (n->designateur == HCT_DES_ORDINAL) {
+        int r = v3_rang_ordinal(n->ordinal, g_nmenus);
+        return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
+    }
+
     if (n->nfils < 1) return -1;
 
     /* Le contexte peut manquer : v3_recours n'en reçoit pas, et c'est lui
@@ -14665,11 +14747,32 @@ static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENUITEM) return -1;
-    if (n->nfils < 2) return -1;
+
+    /* UN ORDINAL N'A PAS D'ENFANT : « last menuItem of menu "T" » n'en porte
+     * qu'un, la cible du « of », là où « menuItem "A" of menu "T" » en porte
+     * deux. Le seuil de deux fils écartait donc toute la forme ordinale.
+     *
+     * Relevé sept fois dans « Stack Templates » d'Apple :
+     *
+     *     disable last menuItem of menu "Templates"
+     *     set name of last menuItem of menu "Templates" to "Show Palette"
+     *
+     * SITE JUMEAU de v3_menu_index, corrigé du même coup : le désignateur y est
+     * aussi dans le nœud. Corriger l'un sans l'autre laissait « last menu »
+     * accepté et introuvable. */
+    int ordinal_seul = (n->designateur == HCT_DES_ORDINAL);
+    if (n->nfils < (ordinal_seul ? 1 : 2)) return -1;
 
     int im = v3_menu_index(ctx, n->fils[n->nfils - 1]);
     if (im < 0) { g_menu_echec = V3_MENU_MENU_ABSENT; return -1; }
     *imenu = im;
+
+    if (ordinal_seul) {
+        int r = v3_rang_ordinal(n->ordinal, g_menus[im].n);
+        if (r >= 1 && r <= g_menus[im].n) return r - 1;
+        g_menu_echec = V3_MENU_ARTICLE_ABSENT;
+        return -1;
+    }
 
     char b[HC_MENU_NOM_MAX + 2];   /* même plafond : voir v3_menu_index */
     if (ctx) {

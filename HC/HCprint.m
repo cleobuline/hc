@@ -21,6 +21,10 @@
 @property (assign) int       count;
 @property (assign) NSSize    cardSize;
 @property (assign) int       pageEnCours;
+/* Le decoupage de « print card from x,y to x,y ». decoupeVue vaut NO pour la
+ * carte entiere. */
+@property (assign) BOOL      decoupeVue;
+@property (assign) NSRect    decoupe;
 @end
 
 @implementation HCPrintView
@@ -66,6 +70,17 @@
     NSRect r = NSMakeRect(0, 0, self.cardSize.width, self.cardSize.height);
     [[NSColor whiteColor] setFill];
     NSRectFill(r);
+    /* « print card from 0,0 to 512,304 » n'imprime qu'une PARTIE de la carte :
+     * trois fonds de « Stack Templates » l'ecrivent, et leur auteur dit
+     * pourquoi — « does not print the buttons along the bottom ». On DECOUPE
+     * apres avoir blanchi la page, de sorte que ce qui est exclu reste blanc.
+     *
+     * CE QUI N'EST PAS MESURE, et qui s'ecrit comme non mesure : la page garde
+     * la bande de la carte ENTIERE. HyperCard recadrait peut-etre la page sur le
+     * rectangle ; on n'a pas de banc pour le dire, et inventer un recadrage
+     * serait decider seul de ce qu'il faisait. Ce qui est mesure est l'intention
+     * de l'auteur, ecrite dans son propre commentaire. */
+    if (self.decoupeVue) NSRectClip(self.decoupe);
     [gView drawRect:r];
     [NSGraphicsContext restoreGraphicsState];
 
@@ -74,7 +89,7 @@
 
 @end
 
-void cocoa_print_cards(Object **cards, int n) {
+void cocoa_print_cards(Object **cards, int n, const int *decoupe) {
     if (!cards || n <= 0 || !gView) return;
 
     /* La taille de la première carte : une pile a une taille unique, et
@@ -97,6 +112,11 @@ void cocoa_print_cards(Object **cards, int n) {
     pv.cards    = copie;
     pv.count    = n;
     pv.cardSize = NSMakeSize(w, h);
+    if (decoupe) {
+        pv.decoupeVue = YES;
+        pv.decoupe = NSMakeRect(decoupe[0], decoupe[1],
+                                decoupe[2] - decoupe[0], decoupe[3] - decoupe[1]);
+    }
 
     NSPrintInfo *info = [[NSPrintInfo sharedPrintInfo] copy];
     [info setTopMargin:36];  [info setBottomMargin:36];

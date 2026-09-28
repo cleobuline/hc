@@ -82,8 +82,32 @@ static char *dup_script(const char *s)
         else if (p[0] == 0xC2 && !is_utf8_cont(p[1]))  { cont = 1; p += 1; }
         if (cont) {
             /* avaler les blancs puis la fin de ligne : les deux lignes n'en
-             * font plus qu'une, séparées par une espace. */
+             * font plus qu'une, séparées par une espace.
+             *
+             * ET LE COMMENTAIRE QUI PEUT S'INTERCALER, qui se jette. Relevé
+             * dans « Stack Templates », bouton « Find… » d'Apple :
+             *
+             *     answer "…any cards containing" && ¬ -- ∆
+             *     "“" & it & "”."
+             *
+             * Mesuré DANS HYPERCARD (Basilisk II) : le dialogue affiche « un
+             * deux », sans un mot. Le commentaire est donc toléré.
+             *
+             * ICI IL FAUT LE JETER, ET PAS SEULEMENT LE SAUTER : on fabrique
+             * une ligne PHYSIQUE unique, et un « -- » laissé dedans mettrait en
+             * commentaire toute la suite de la ligne jointe — ce qui donnerait
+             * un appel silencieusement amputé, la pire des trois issues.
+             *
+             * SITE JUMEAU DE hct_lex.c, et c'est ce qui compte : le même trou
+             * existait aux deux étages, et corriger le lexer seul ne changeait
+             * RIEN À L'EXÉCUTION, puisque dup_script passe le premier. Le
+             * vérificateur disait « accepté » et le gestionnaire échouait
+             * toujours — un désaccord entre les deux étages, qui est le pire
+             * état possible. Les deux sont nécessaires : hct_verifie est aussi
+             * appelé sans passer par ici. */
             while (*p == ' ' || *p == '\t') p++;
+            if (p[0] == '-' && p[1] == '-')
+                while (*p && *p != '\n' && *p != '\r') p++;
             if (*p == '\r') { p++; if (*p == '\n') p++; }
             else if (*p == '\n') p++;
             *w++ = ' ';

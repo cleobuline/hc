@@ -67,3 +67,28 @@
    [ERR]    !! print : rien à imprimer
 ── print "doc.txt" with "TeachText"
    [ERR]    !! print : rien à imprimer
+
+=== « print card from x,y to x,y » : une PARTIE de la carte ===
+── go to card 1
+  print card from 0,0 to 512,304
+   [hôte] 1 carte(s), de « C001 » à « C001 », découpe 0,0,512,304
+── print card from 3,19 to 504,337
+   [hôte] 1 carte(s), de « C001 » à « C001 », découpe 3,19,504,337
+── print card from 4,63 to 293,338
+   [hôte] 1 carte(s), de « C001 » à « C001 », découpe 4,63,293,338
+── print card 1 to 3
+   [hôte] 3 carte(s), de « C001 » à « C003 »
+── print card
+   [hôte] 1 carte(s), de « C001 » à « C001 »
+── put 10 into x
+  put 20 into y
+  print card from x,y to 300,300
+   [hôte] 1 carte(s), de « C001 » à « C001 », découpe 10,20,300,300
+── print card from 0,0 to 0,0
+   [ERR]    !! print : le rectangle de découpe est vide
+── print card from 100,100 to 50,50
+   [ERR]    !! print : le rectangle de découpe est vide
+── print card from 0 to 512
+   [ERR]    !! print : « from … to … » demande deux points, soit quatre nombres
+── print card from 0,0 to 512
+   [ERR]    !! print : « from … to … » demande deux points, soit quatre nombres

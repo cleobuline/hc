@@ -2,7 +2,8 @@
 #include <stdio.h>
 
 static int g_printed_n = 0;
-static void mon_print(Object **cartes, int n) {
+static void mon_print(Object **cartes, int n, const int *decoupe) {
+  (void)decoupe;
     (void)cartes;
     g_printed_n = n;
     printf("   [hote] print_cards appele avec %d carte(s)\n", n);

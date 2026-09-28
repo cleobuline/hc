@@ -768,8 +768,22 @@ typedef struct {
      * Une carte par page : HyperCard en disposait plusieurs sur une feuille,
      * mais ses piles faisaient toutes 512×342. Avec des tailles libres, une
      * grille demanderait de décider quoi faire d'une carte plus large que la
-     * page — pour un gain qui ne vaut pas cette complication. */
-    void (*print_cards)(Object **cartes, int n);
+     * page — pour un gain qui ne vaut pas cette complication.
+     *
+     * LE DÉCOUPAGE EST UN ARGUMENT, ET NON UN SECOND CROCHET.
+     *
+     * « print card from 0,0 to 512,304 » n'imprime qu'une PARTIE de la carte :
+     * trois fonds de « Stack Templates » l'écrivent, avec le commentaire de leur
+     * auteur — « prints only the invoice part of the card, does not print the
+     * buttons along the bottom ». `decoupe` vaut NULL pour une carte entière, ou
+     * pointe quatre entiers en coordonnées carte : gauche, haut, droite, bas.
+     *
+     * Passé dans la signature plutôt que dans un second crochet facultatif, et
+     * c'est délibéré : un hôte qui l'oublierait ne compilerait pas, là où un
+     * crochet séparé aurait laissé l'ancien chemin imprimer la carte ENTIÈRE
+     * sans un mot. Le site jumeau qu'on ne peut pas rater est celui que le
+     * compilateur réclame. */
+    void (*print_cards)(Object **cartes, int n, const int *decoupe);
     void    (*stack_changed)(Object *stack);
 
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul

@@ -20,7 +20,8 @@ static void ma_ligne(HcLineKind k,int d,const char *t){(void)d;
  * ce qu'on lui a demandé d'imprimer — et c'est la seule façon de le vérifier
  * d'ici. Rien ne le couvrait : les harnais d'impression existants ne testent
  * que « print card », « print all cards » et « print card 1 to 3 ». */
-static void mon_print(Object **cartes, int n){
+static void mon_print(Object **cartes, int n, const int *decoupe){
+  (void)decoupe;
   printf("   [hôte] imprimer %d carte(s) :", n);
   for (int i = 0; i < n; i++)
     printf(" %s", cartes[i]->name ? cartes[i]->name : "?");

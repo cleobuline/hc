@@ -110,3 +110,64 @@ ok   garde : « the family of button » n'est pas une famille nommee « of » ->
  passe pas pour un oubli.)
 ok   window NOMMEE : refus assume, pas un oubli           -> erreur    (texte inattendu en fin de ligne)
 ok   temoin : « card window », que hc_core.c sert deja  -> rien    
+
+=== 5. les memes formes, A L'EXECUTION et non au vérificateur ===
+(ET C'EST CETTE SECTION QUI COMPTE. La section 4 n'interroge que
+ hct_verifie : elle disait « accepte » sur DEUX formes qui echouaient
+ encore a l'execution, et je l'ai cru. Un verificateur plus permissif
+ que l'executeur est le pire des deux etats — il promet ce que la pile
+ ne tiendra pas. Toute forme ouverte dans l'analyseur se rejoue donc
+ ici, et le resultat lui-meme est imprime.)
+
+--- 5a. le ¬ suivi d'un commentaire fait-il VRAIMENT une ligne ? ---
+(hc_script.c joignait deja les lignes continuees, AVANT tout lexer, et
+ avec le meme trou : corriger hct_lex.c seul ne changeait RIEN ici. Le
+ site jumeau, encore. Attendu : « un deux », comme HyperCard.)
+-- la ligne d'Apple, jouee
+     un deux
+     le gestionnaire est alle au bout
+-- temoin : sans commentaire derriere le ¬
+     un deux
+     le gestionnaire est alle au bout
+-- temoin : sans ¬ du tout, deux instructions
+     un
+     deux
+     le gestionnaire est alle au bout
+
+--- 5b. un ordinal sur un menu et sur un article se RESOUT-il ? ---
+(v3_menu_index et v3_article_index exigeaient un fils pour le
+ designateur. Un ordinal n'en a pas : il est dans le NOEUD. Les deux
+ rendaient donc « objet introuvable » sur une syntaxe que l'analyseur
+ venait d'accepter. Deux sites jumeaux, corriges du meme coup.)
+-- poser un menu de trois articles
+     A
+     le gestionnaire est alle au bout
+-- last menuItem : attendu C
+     C
+     le gestionnaire est alle au bout
+-- first menuItem : attendu A
+     A
+     le gestionnaire est alle au bout
+-- middle menuItem : attendu B
+     B
+     le gestionnaire est alle au bout
+-- disable last menuItem, puis relire son « enabled »
+     false
+     le gestionnaire est alle au bout
+-- la ligne d'Apple : set name of last menuItem
+     Show Palette
+     le gestionnaire est alle au bout
+-- last menu : l'ordinal sur le MENU aussi
+     Tpl
+     le gestionnaire est alle au bout
+-- temoin : le nom cite, qui marchait deja
+     B
+     le gestionnaire est alle au bout
+-- un ordinal au-dela du menu reste introuvable
+     [ERREUR]    !! article de menu introuvable (v3, ligne 2 de button "B".t)
+
+--- 5c. « print card from x,y to x,y » : voir impression.c ---
+(le « to » d'un rectangle est le meme mot que celui d'une plage de
+ cartes : sans le « from » pour trancher, la ligne d'Apple aurait
+ imprime les cartes 0 a 512. Les deux releves sont cote a cote dans
+ tests/harnais/impression.c, qui a l'hote imprimeur qu'il faut.)

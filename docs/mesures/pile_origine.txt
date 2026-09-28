@@ -917,3 +917,84 @@ CE QUI RESTE REFUSÉ, ET CE N'EST PAS UN OUBLI
    ENTIER, donc les 300 lignes du script de pile de « Stack Templates » sont
    perdues pour une seule référence. Si les fenêtres nommées se font un chantier,
    c'est cette ligne-là qui le justifie, pas la syntaxe.
+
+ET DEUX DES QUATRE CORRECTIONS NE S'EXÉCUTAIENT PAS
+---------------------------------------------------
+
+Le même jour, après avoir poussé les quatre corrections ci-dessus et lu les trois
+jobs de l'intégration continue : les témoins de la section 4 de pilereelle.c
+n'interrogeaient que hct_verifie, et hct_verifie disait « accepté » sur DEUX
+formes qui échouaient encore à l'exécution.
+
+UN VÉRIFICATEUR PLUS PERMISSIF QUE L'EXÉCUTEUR EST LE PIRE DES DEUX ÉTATS : il
+promet ce que la pile ne tiendra pas, et le refus franc qu'on venait de lever
+était moins coûteux. Le seul relevé qui le dise est de JOUER la forme.
+
+1. LE ¬ SUIVI D'UN COMMENTAIRE — LE SITE JUMEAU, ENCORE
+
+   hc_script.c joint les lignes continuées dans dup_script, AVANT que le moindre
+   lexer les voie, et avec exactement le même trou. Corriger hct_lex.c seul ne
+   changeait donc RIEN à l'exécution :
+
+       vérificateur  : accepté
+       exécution     : « expression attendue », ligne 2
+
+   Et ici le commentaire doit être JETÉ, pas seulement sauté : on fabrique une
+   ligne PHYSIQUE unique, et un « -- » laissé dedans mettrait en commentaire
+   toute la suite de la ligne jointe — un appel silencieusement amputé, la pire
+   des trois issues. Les deux étages sont nécessaires : hct_verifie est aussi
+   appelé sans passer par dup_script.
+
+2. L'ORDINAL SUR UN MENU ET SUR UN ARTICLE — DEUX SITES JUMEAUX DE PLUS
+
+   v3_menu_index et v3_article_index exigeaient un fils pour le désignateur. Un
+   ordinal n'en a pas : il est dans le NŒUD. Les deux rendaient donc « objet
+   introuvable » sur une syntaxe que l'analyseur venait d'accepter.
+
+   Mesuré sur un menu de trois articles réellement posé :
+
+       last menuItem of menu "Tpl"       ->  C
+       first menuItem of menu "Tpl"      ->  A
+       middle menuItem of menu "Tpl"     ->  B
+       last menu                         ->  Tpl
+       tenth menuItem of menu "Tpl"      ->  « article de menu introuvable »
+
+   Le dernier compte autant que les autres : l'échec reste PRÉCIS, il ne retombe
+   pas sur « objet introuvable ».
+
+3. « print card from x,y to x,y » — LE PIÈGE QUE J'ALLAIS POSER MOI-MÊME
+
+   Le « to » d'un rectangle est le MÊME MOT que celui d'une plage de cartes.
+   v3_cmd_print prenait le premier « to » venu : la ligne d'Apple aurait imprimé
+   LES CARTES 0 À 512 au lieu d'une portion de la carte courante. Une mauvaise
+   réponse silencieuse, pire que le refus qu'on venait de lever.
+
+   Le « from » tranche. Et un « from » présent mais illisible se REFUSE au lieu
+   de retomber sur la plage :
+
+       print card from 0,0 to 512,304   ->  1 carte, découpe 0,0,512,304
+       print card 1 to 3                ->  3 cartes, carte entière   (témoin)
+       print card from 0,0 to 0,0       ->  « le rectangle de découpe est vide »
+       print card from 100,100 to 50,50 ->  idem (rectangle retourné)
+       print card from 0 to 512         ->  « demande deux points, quatre nombres »
+
+   LE DÉCOUPAGE TRAVERSE JUSQU'À L'HÔTE, et il est passé DANS LA SIGNATURE de
+   host.print_cards plutôt que par un second crochet facultatif. C'est délibéré :
+   un hôte qui l'oublierait ne compilerait pas, là où un crochet séparé aurait
+   laissé l'ancien chemin imprimer la carte ENTIÈRE sans un mot. Le site jumeau
+   qu'on ne peut pas rater est celui que le compilateur réclame — et six appelants
+   ont dû être touchés, ce qui est le prix et la preuve.
+
+   CE QUI N'EST PAS MESURÉ : la GÉOMÉTRIE DE LA PAGE sous un découpage. On garde
+   la bande de la carte entière et l'on n'y dessine que la portion demandée ; le
+   reste de la page reste blanc. HyperCard recadrait peut-être la page sur le
+   rectangle — aucun banc ne le dit, et inventer un recadrage serait décider seul.
+   Ce qui EST mesuré est l'intention de l'auteur, écrite dans son propre
+   commentaire : « does not print the buttons along the bottom ».
+
+LA LEÇON, ET ELLE EST DE MÉTHODE
+
+Toute forme ouverte dans l'analyseur se rejoue maintenant à L'EXÉCUTION, section 5
+de tests/harnais/pilereelle.c, avec son résultat imprimé. Ouvrir une syntaxe sans
+vérifier qu'elle s'exécute n'est pas une demi-correction : c'est un défaut neuf,
+qui remplace un refus visible par une promesse fausse.

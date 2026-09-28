@@ -280,6 +280,66 @@ int main(void)
     verif("temoin : « card window », que hc_core.c sert deja",
           "on t\n  put the width of card window into x\nend t\n", "rien");
 
+    /* ------------------------------------------------------------------ */
+    /* 5. LES MÊMES FORMES, À L'EXÉCUTION                                 */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 5. les memes formes, A L'EXECUTION et non au vérificateur ===");
+    puts("(ET C'EST CETTE SECTION QUI COMPTE. La section 4 n'interroge que");
+    puts(" hct_verifie : elle disait « accepte » sur DEUX formes qui echouaient");
+    puts(" encore a l'execution, et je l'ai cru. Un verificateur plus permissif");
+    puts(" que l'executeur est le pire des deux etats — il promet ce que la pile");
+    puts(" ne tiendra pas. Toute forme ouverte dans l'analyseur se rejoue donc");
+    puts(" ici, et le resultat lui-meme est imprime.)");
+
+    puts("");
+    puts("--- 5a. le ¬ suivi d'un commentaire fait-il VRAIMENT une ligne ? ---");
+    puts("(hc_script.c joignait deja les lignes continuees, AVANT tout lexer, et");
+    puts(" avec le meme trou : corriger hct_lex.c seul ne changeait RIEN ici. Le");
+    puts(" site jumeau, encore. Attendu : « un deux », comme HyperCard.)");
+    joue("la ligne d'Apple, jouee",
+         "put \"un\" && \xc2\xac -- commentaire\n  \"deux\"");
+    joue("temoin : sans commentaire derriere le ¬",
+         "put \"un\" && \xc2\xac\n  \"deux\"");
+    joue("temoin : sans ¬ du tout, deux instructions",
+         "put \"un\"\n  put \"deux\"");
+
+    puts("");
+    puts("--- 5b. un ordinal sur un menu et sur un article se RESOUT-il ? ---");
+    puts("(v3_menu_index et v3_article_index exigeaient un fils pour le");
+    puts(" designateur. Un ordinal n'en a pas : il est dans le NOEUD. Les deux");
+    puts(" rendaient donc « objet introuvable » sur une syntaxe que l'analyseur");
+    puts(" venait d'accepter. Deux sites jumeaux, corriges du meme coup.)");
+    joue("poser un menu de trois articles",
+         "create menu \"Tpl\"\n  put \"A,B,C\" into menu \"Tpl\"\n"
+         "  put the name of menuItem \"A\" of menu \"Tpl\"");
+    joue("last menuItem : attendu C",
+         "put the name of last menuItem of menu \"Tpl\"");
+    joue("first menuItem : attendu A",
+         "put the name of first menuItem of menu \"Tpl\"");
+    joue("middle menuItem : attendu B",
+         "put the name of middle menuItem of menu \"Tpl\"");
+    joue("disable last menuItem, puis relire son « enabled »",
+         "disable last menuItem of menu \"Tpl\"\n"
+         "  put the enabled of last menuItem of menu \"Tpl\"");
+    joue("la ligne d'Apple : set name of last menuItem",
+         "set name of last menuItem of menu \"Tpl\" to \"Show Palette\"\n"
+         "  put the name of last menuItem of menu \"Tpl\"");
+    joue("last menu : l'ordinal sur le MENU aussi",
+         "put the name of last menu");
+    joue("temoin : le nom cite, qui marchait deja",
+         "put the name of menuItem \"B\" of menu \"Tpl\"");
+    joue("un ordinal au-dela du menu reste introuvable",
+         "put the name of tenth menuItem of menu \"Tpl\"");
+
+    puts("");
+    puts("--- 5c. « print card from x,y to x,y » : voir impression.c ---");
+    puts("(le « to » d'un rectangle est le meme mot que celui d'une plage de");
+    puts(" cartes : sans le « from » pour trancher, la ligne d'Apple aurait");
+    puts(" imprime les cartes 0 a 512. Les deux releves sont cote a cote dans");
+    puts(" tests/harnais/impression.c, qui a l'hote imprimeur qu'il faut.)");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

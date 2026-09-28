@@ -4107,7 +4107,7 @@ static int parts_du_calque(Object *o)
      
     if (!card) return;
     Object *tab[1] = { card };
-    cocoa_print_cards(tab, 1);
+    cocoa_print_cards(tab, 1, NULL);   /* le menu imprime la carte ENTIERE */
 }
 
 - (void)changeColor:(id)sender {
