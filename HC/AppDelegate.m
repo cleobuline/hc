@@ -1393,10 +1393,23 @@ void cocoa_stack_changed(Object *stack) {
                             @"carte que la liste ne nomme pas.\n\n",
                 douteux, douteux == 1 ? "" : "s", douteux == 1 ? "" : "nt"];
         }
-        if (decores > 0)
-            [m appendFormat:@"%d texte%s portai%s des styles par plage : le "
-                            @"texte est là, les styles non.\n\n",
-                decores, decores == 1 ? "" : "s", decores == 1 ? "t" : "ent"];
+        /* CETTE PHRASE DISAIT « le texte est là, les styles non », ET C'EST
+         * DEVENU FAUX : le bloc STBL est lu, et les plages de style arrivent
+         * jusqu'au modèle — mesuré d'un bout à l'autre, import, hc_save et
+         * hc_load compris, dans tests/harnais/origine.c.
+         *
+         * Elle disparaît plutôt que de se reformuler, et c'est la règle de cette
+         * boîte : on ne parle que quand il y a quelque chose à dire. « 40 textes
+         * portent des styles par plage » est un fait sur la pile, pas un manque —
+         * une ligne de plus qu'on apprendrait à écarter sans lire, et c'est le
+         * jour où elle dirait quelque chose qu'on ne le verrait pas.
+         *
+         * Ce qui RESTE non lu se dirait ici si ça arrivait : une plage dont le
+         * décalage tombe dans un caractère, ou qui renvoie à une décoration
+         * absente. Sur les quatre piles du corpus, zéro des deux. Pas de phrase
+         * pour un cas qu'on n'a jamais vu — juste le compteur d'anomalies, qui
+         * est là pour ça. */
+        (void)decores;
         [m appendString:@"Cette pile n'a pas encore de fichier : « Enregistrer » "
                         @"demandera un nom, et l'original ne sera pas touché."];
 

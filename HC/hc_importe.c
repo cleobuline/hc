@@ -294,9 +294,57 @@ static Object *part_visee(Object *couche, const HcOrigCouche *k, int id_origine)
     return NULL;
 }
 
+/* LES PLAGES DE STYLE D'UN CONTENU, reportées dans notre modèle.
+ *
+ * Les deux modèles se correspondent terme à terme, et ce n'est pas un hasard :
+ * les huit bits de style sont l'octet Style de QuickDraw des deux côtés, dans le
+ * même ordre — gras, italique, souligné, contour, ombré, condensé, étendu,
+ * groupé — et les trois sentinelles d'héritage sont les mêmes trois attributs.
+ *
+ *     HyperCard                       nous
+ *     police -1                       font NULL
+ *     style  -1                       HC_STYLE_INHERIT
+ *     corps  -1                       size 0
+ *
+ * LA PLAGE COURT JUSQU'À LA SUIVANTE, ou jusqu'à la fin du texte : le fichier ne
+ * donne que des DÉBUTS. Et les débuts sont en octets MacRoman, que hc_origine a
+ * déjà reportés en UTF-8 — un décalage qu'il n'a pas su reporter vaut -1, et
+ * cette plage-là se jette au lieu de se poser un caractère à côté.
+ *
+ * VÉRIFIÉ PAR L'USAGE AVANT D'Y CROIRE, sur « Stack Templates » : le style 0x80
+ * — « groupé », notre HC_GROUP — est posé sur chaque nom de gabarit de la carte
+ * de sommaire (« Names & Addresses », « To Do List »…) et sur AUCUN des sauts de
+ * ligne entre eux. C'est exactement à quoi sert le style Groupe d'HyperCard : il
+ * fait répondre une phrase entière à « the clickText ». Une interprétation qui
+ * tombe juste sur l'usage vaut mieux qu'une table recopiée. */
+static void pose_les_plages(Object *p, const HcOrigPile *orig,
+                            const HcOrigContenu *ct)
+{
+    if (!p || !ct || ct->nplages <= 0 || !ct->plages || !ct->decalages_utf8) return;
+    if (p->type != OBJ_FIELD) return;      /* un bouton n'a pas de plages */
+
+    int fin_texte = ct->texte ? (int)strlen(ct->texte) : 0;
+    for (int j = 0; j < ct->nplages; j++) {
+        int debut = ct->decalages_utf8[j];
+        if (debut < 0) continue;           /* décalage non reportable : on jette */
+        int fin = fin_texte;
+        for (int q = j + 1; q < ct->nplages; q++)
+            if (ct->decalages_utf8[q] >= 0) { fin = ct->decalages_utf8[q]; break; }
+        if (fin <= debut || fin > fin_texte) continue;
+
+        const HcOrigDeco *d = hc_origine_deco(orig, ct->plages[j].deco);
+        if (!d) continue;                  /* renvoi mort : la plage ne dit rien */
+
+        hc_run_add_full(p, debut, fin - debut,
+                        d->style < 0 ? HC_STYLE_INHERIT : d->style,
+                        d->corps < 0 ? 0 : d->corps,
+                        d->police_nom);
+    }
+}
+
 static void pose_les_textes(Object *couche, const HcOrigCouche *k,
                             Object *fond, const HcOrigCouche *kfond,
-                            int couche_est_fond)
+                            int couche_est_fond, const HcOrigPile *orig)
 {
     for (int i = 0; i < k->ncontenus; i++) {
         const HcOrigContenu *ct = &k->contenus[i];
@@ -306,6 +354,11 @@ static void pose_les_textes(Object *couche, const HcOrigCouche *k,
         if (!p) continue;
         if (p->type != OBJ_FIELD && p->type != OBJ_BUTTON) continue;
         hc_set_field_text(p, ct->texte ? ct->texte : "");
+        /* LES PLAGES APRÈS LE TEXTE, ET JAMAIS AVANT : hc_set_field_text pose le
+         * texte et, pour un champ de fond non partagé, décide dans quel bgtext
+         * il va. Les plages s'attachent au même endroit — une inversion les
+         * poserait sur le texte d'avant, puis les verrait effacer. */
+        pose_les_plages(p, orig, ct);
     }
 }
 
@@ -382,7 +435,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         /* La carte courante, pour que le texte d'un champ de fond aille dans SES
          * bgtexts et non dans le champ du fond. */
         hc_set_current_card(cd);
-        pose_les_textes(cd, k, bg, &orig->fonds[rang_du_fond], 0);
+        pose_les_textes(cd, k, bg, &orig->fonds[rang_du_fond], 0, orig);
     }
 
     /* Le texte par défaut des champs de fond se pose APRÈS les cartes : posé
@@ -395,7 +448,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
      * ici il nuirait. */
     hc_set_current_card(NULL);
     for (int i = 0; i < orig->nfonds_lus; i++)
-        pose_les_textes(fonds[i], &orig->fonds[i], NULL, NULL, 1);
+        pose_les_textes(fonds[i], &orig->fonds[i], NULL, NULL, 1, orig);
 
     hc_set_current_card(precedente);
     free(fonds);

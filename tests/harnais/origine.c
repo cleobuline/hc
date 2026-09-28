@@ -134,6 +134,76 @@ static void pose_ftbl(Tampon *t)
     ecris32(t, deb, (unsigned long)(t->n - deb));
 }
 
+/* UN CONTENU DÉCORÉ : la liste des plages, puis le texte.
+ *
+ * Le quatrième octet n'est PAS le zéro d'un texte nu : c'est un mot de seize bits
+ * qui donne la taille de la liste des plages, EN SE COMPTANT — d'où le +2 —, et
+ * dont le bit de poids fort est toujours posé et se jette. C'est ce bit, et le
+ * zéro de l'autre forme, qui distinguent les deux.
+ *
+ * Chaque plage fait quatre octets : un décalage dans le texte, un identifiant de
+ * décoration à chercher dans le bloc STBL.
+ *
+ * `plages` est un tableau de paires terminé par un décalage négatif. */
+static void pose_contenu_decore(Tampon *t, int id, const char *texte,
+                                const int *plages)
+{
+    size_t deb = t->n;
+    pose16(t, (unsigned)(id & 0xFFFF));
+    pose16(t, 0);                               /* taille, réécrite */
+    int n = 0;
+    while (plages[2 * n] >= 0) n++;
+    pose16(t, (unsigned)(0x8000u | (unsigned)(2 + 4 * n)));
+    for (int i = 0; i < n; i++) {
+        pose16(t, (unsigned)plages[2 * i]);
+        pose16(t, (unsigned)plages[2 * i + 1]);
+    }
+    for (const char *q = texte; *q; q++) pose8(t, (unsigned char)*q);
+    size_t taille = t->n - deb - 4;
+    t->o[deb+2] = (unsigned char)((taille >> 8) & 0xFF);
+    t->o[deb+3] = (unsigned char)(taille & 0xFF);
+    if ((t->n - deb) % 2) pose8(t, 0);
+}
+
+/* LE BLOC STBL, la table des décorations. Vingt-quatre octets chacune, dont
+ * trois champs seulement portent quelque chose : la police, le style et le
+ * corps. La spec dit des six autres « should be …, but never used ».
+ *
+ * Le style occupe les bits 8 à 15 du mot à 0x0E — l'octet Style de QuickDraw
+ * logé dans le haut d'un SInt16 — et -1 sur l'un des trois veut dire « comme le
+ * champ ». Les deux cas sont montés ici, sans quoi l'héritage n'aurait pas de
+ * témoin. */
+static void pose_stbl(Tampon *t)
+{
+    static const int DECOS[][4] = {
+        /* id   police  style(octet)  corps */
+        {  4,      3,     0x01,        12 },   /* Geneva, gras, 12 */
+        {  5,  16383,     0x05,        18 },   /* Chicago, gras+souligné, 18 */
+        {  6,     -1,     0x80,        -1 },   /* GROUPÉ, tout le reste hérité */
+        {  7,     -1,       -1,        -1 },   /* tout hérité : ne dit rien */
+        {  8,      3,     0x29,        -1 },   /* gras+contour+condensé, corps hérité */
+    };
+    size_t deb = t->n;
+    pose32(t, 0);
+    for (const char *q = "STBL"; *q; q++) pose8(t, (unsigned char)*q);
+    pose32(t, 7000);
+    pose32(t, 0);
+    pose32(t, (unsigned long)(sizeof DECOS / sizeof DECOS[0]));   /* 0x10 */
+    pose32(t, 100);                             /* 0x14 prochain identifiant */
+    for (size_t i = 0; i < sizeof DECOS / sizeof DECOS[0]; i++) {
+        pose32(t, (unsigned long)DECOS[i][0]);  /* 0x00 identifiant */
+        pose32(t, 1);                           /* 0x04 nombre de plages */
+        pose16(t, 0); pose16(t, 0);             /* 0x08 0x0A jamais employés */
+        pose16(t, (unsigned)(DECOS[i][1] & 0xFFFF));                 /* 0x0C */
+        pose16(t, DECOS[i][2] < 0 ? 0xFFFFu
+                                  : (unsigned)((DECOS[i][2] & 0xFF) << 8)); /* 0x0E */
+        pose16(t, (unsigned)(DECOS[i][3] & 0xFFFF));                 /* 0x10 */
+        pose16(t, 0); pose16(t, 0); pose16(t, 0); /* 0x12 couleur, jamais employée */
+    }
+    while ((t->n - deb) % 32) pose8(t, 0);
+    ecris32(t, deb, (unsigned long)(t->n - deb));
+}
+
 /* Un contenu de part : id, taille, marqueur de texte nu, la donnée. */
 static void pose_contenu(Tampon *t, int id, const char *texte)
 {
@@ -359,8 +429,9 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
     pose32(t, (unsigned long)bmap);             /* 0x10 le bloc BMAP, 0 si aucun */
 
     int carte = (strcmp(type, "CARD") == 0);
-    unsigned nparts = (unsigned)(avec_bouton + avec_champ);
-    unsigned ncont  = (unsigned)(avec_contenu ? 3 : 0);
+    unsigned nparts_sup = (unsigned)(avec_champ ? 1 : 0);   /* le champ « DECORE » */
+    unsigned nparts = (unsigned)(avec_bouton + avec_champ) + nparts_sup;
+    unsigned ncont  = (unsigned)(avec_contenu ? 5 : 0);
 
     /* Les parts et les contenus se montent à part, pour connaître leur taille
      * totale avant d'écrire les en-têtes qui l'annoncent. */
@@ -382,6 +453,17 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
                                0x0031u, 0x50u, 7, 3, 12, "A", NULL);
     if (avec_bouton) pose_part(&parts, 2, 1, 302, 20, 324, 110,
                                0x0087u, 0xA5u, 5, 16383, 9, "TORTURE", SCRIPT_BOUTON);
+    /* UN TROISIÈME PART, UN CHAMP, POUR LES PLAGES DE STYLE, et il lui en fallait
+     * un à lui : les deux autres portent déjà un contenu NU, et deux contenus
+     * pour la même part se recouvriraient — le modèle garderait le dernier, et
+     * l'on ne saurait plus lequel des deux témoins a parlé.
+     *
+     * Son corps est 10 et sa police Chicago (16383) : ni l'un ni l'autre ne
+     * coïncide avec ce que les décorations posent, sans quoi hc_run_add jetterait
+     * les plages comme « redisant le style du champ » — ce qu'il fait à raison, et
+     * qui priverait le témoin de son objet. */
+    if (avec_champ)  pose_part(&parts, 3, 0, 120, 20, 170, 250,
+                               0x0000u, 0x00u, 1, 16383, 10, "DECORE", NULL);
     /* DEUX CONTENUS, ET LE SIGNE DE L'IDENTIFIANT EST TOUT L'OBJET : -1 désigne
      * la part 1 DE CETTE COUCHE, tandis que +1 désigne le champ 1 DU FOND dont
      * cette carte-là porte son propre texte. Les confondre ferait afficher le
@@ -393,6 +475,37 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
          * en portent — cinq dans « 3D Parametric Equations » — et sans ce témoin
          * le cas n'aurait aucune trace dans la référence. */
         pose_contenu(&conts, -99, "un texte sans part");
+        /* UN CONTENU DÉCORÉ, sur le champ 1 DU FOND, avec cinq plages qui
+         * couvrent tout ce que le format peut dire. Il vise le champ 3 DE CETTE
+         * COUCHE, qui n'a pas d'autre contenu :
+         *
+         *   0  deco 4  gras 12 Geneva      un style, une police et un corps
+         *   6  deco 6  GROUPÉ, tout hérité  le seul attribut posé est le groupe
+         *  13  deco 7  tout hérité          elle ne dit RIEN, et se jette
+         *  20  deco 8  corps hérité         l'héritage PARTIEL
+         *  27  deco 42 INTROUVABLE          un renvoi mort, que la pile porte
+         *
+         * Le texte est en ASCII pur, exprès : le report des décalages en UTF-8 se
+         * mesure sur l'accent DANS LE TEXTE DE LA CARTE, à part, sans quoi les
+         * deux mesures se mêleraient. */
+        {
+            static const int PLAGES[] = { 0,4, 6,6, 13,7, 19,8, 27,42, -1,-1 };
+            pose_contenu_decore(&conts, -3, "gras  groupe rien  partiel mort", PLAGES);
+        }
+        /* ET LE REPORT DES DÉCALAGES, sur un texte qui porte un ACCENT. En
+         * MacRoman « é » est UN octet ; en UTF-8 il en fait DEUX. Une plage qui
+         * commence après l'accent doit donc se décaler, et une plage qui
+         * commence DANS le caractère ne se reporte pas du tout. C'est le seul
+         * témoin qui distingue les deux, et le défaut qu'il garde — un style
+         * posé un caractère à côté — ne se cherche nulle part. */
+        {
+            /* « élève » en MacRoman : 0x8E 'l' 0x8F 'v' 0x8F, cinq octets. */
+            static const int PLAGES[] = { 0,4, 1,5, 5,6, 7,42, -1,-1 };
+            /* Sur le champ 3 DU FOND, donc un texte propre à cette carte : les
+             * plages doivent suivre le texte dans les bgtexts de la carte et non
+             * dans le champ du fond. */
+            pose_contenu_decore(&conts, 3, "\x8El\x8Fv\x8F ici", PLAGES);
+        }
     }
 
     if (carte) {
@@ -525,6 +638,7 @@ static Tampon monte_la_pile(unsigned long format, unsigned protection)
     Tampon t = {0,0,0};
     pose_stak(&t, format, 1, 2, protection);
     pose_ftbl(&t);
+    pose_stbl(&t);
     pose_couche(&t, "BKGD", 2000, 0, 0, 1, 0, 5000, "Fond", SCRIPT_FOND);
     pose_couche(&t, "CARD", 3000, 2000, 1, 1, 1, 5001, "Atelier", SCRIPT_CARTE);
     /* La troisième couche n'a PAS de dessin : c'est le témoin du cas où
@@ -625,7 +739,13 @@ static void verifie_les_transformations(const HcOrigDessin *d)
     }
 }
 
-static void dis_couche(const char *quoi, const HcOrigCouche *k)
+/* LA PILE PASSE EN ARGUMENT, et non par une variable de fichier : les plages
+ * renvoient à la table des décorations par un identifiant, et cette table
+ * appartient à la PILE. Un pointeur global posé par lis_et_dis aurait marché et
+ * aurait été une dépendance cachée — le genre qu'on oublie le jour où l'on
+ * appelle dis_couche d'ailleurs. */
+static void dis_couche(const char *quoi, const HcOrigCouche *k,
+                       const HcOrigPile *pile_en_cours)
 {
     printf("%s id %d", quoi, k->id);
     if (k->fond) printf(", fond %d", k->fond);
@@ -666,11 +786,40 @@ static void dis_couche(const char *quoi, const HcOrigCouche *k)
     /* LE SIGNE DE L'IDENTIFIANT EST LA CHOSE À VOIR : « propre » contre
      * « du fond », c'est-à-dire le texte de la part de cette couche contre le
      * texte qu'une CARTE porte pour un champ du FOND. */
-    for (int i = 0; i < k->ncontenus; i++)
+    for (int i = 0; i < k->ncontenus; i++) {
+        const HcOrigContenu *ct = &k->contenus[i];
         printf("  contenu %s part %d : « %s »%s\n",
-               k->contenus[i].du_fond ? "DU FOND," : "propre,  ",
-               k->contenus[i].id_part, k->contenus[i].texte,
-               k->contenus[i].decore ? "   [décoré : styles non lus]" : "");
+               ct->du_fond ? "DU FOND," : "propre,  ",
+               ct->id_part, ct->texte, ct->decore ? "   [décoré]" : "");
+        /* LES PLAGES, TELLES QUE LE FICHIER LES DONNE, et le décalage reporté à
+         * côté. Les deux se lisent ensemble ou pas du tout : sur un texte en
+         * ASCII ils coïncident, et c'est l'ACCENT qui les sépare — « é » fait un
+         * octet en MacRoman et deux en UTF-8. Un témoin qui n'afficherait que le
+         * décalage reporté ne dirait pas d'où il vient.
+         *
+         * « hors » marque un décalage que la conversion n'a pas su reporter :
+         * il tombe DANS un caractère. Ces plages-là se jettent plutôt que de se
+         * poser un caractère à côté — un style décalé d'un cran se voit à
+         * l'écran des mois plus tard et ne se cherche nulle part. */
+        for (int j = 0; j < ct->nplages; j++) {
+            const HcOrigDeco *d = hc_origine_deco(pile_en_cours, ct->plages[j].deco);
+            printf("      plage a %2d (utf8 ", ct->plages[j].debut);
+            if (ct->decalages_utf8[j] < 0) printf("hors");
+            else printf("%4d", ct->decalages_utf8[j]);
+            printf(") deco %2d : ", ct->plages[j].deco);
+            if (!d) { printf("INTROUVABLE (renvoi mort)\n"); continue; }
+            if (d->style < 0) printf("style hérité");
+            else printf("style 0x%02X%s%s%s%s%s%s%s%s", d->style,
+                        d->style & 1   ? " gras"   : "", d->style & 2   ? " ital" : "",
+                        d->style & 4   ? " soul"   : "", d->style & 8   ? " cont" : "",
+                        d->style & 16  ? " ombr"   : "", d->style & 32  ? " cond" : "",
+                        d->style & 64  ? " eten"   : "", d->style & 128 ? " GROUPE" : "");
+            if (d->corps < 0) printf(", corps hérité"); else printf(", corps %d", d->corps);
+            if (d->police < 0) printf(", police héritée\n");
+            else printf(", police %d « %s »\n", d->police,
+                        d->police_nom ? d->police_nom : "(inconnue)");
+        }
+    }
     dis_dessin(&k->dessin);
 }
 
@@ -704,8 +853,8 @@ static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int 
                    pile.blocs[i].type, pile.blocs[i].id,
                    pile.blocs[i].taille, pile.blocs[i].offset);
         dis_script("script de la pile", pile.script);
-        for (int i = 0; i < pile.nfonds_lus; i++)  dis_couche("fond ", &pile.fonds[i]);
-        for (int i = 0; i < pile.ncartes_lues; i++) dis_couche("carte", &pile.cartes[i]);
+        for (int i = 0; i < pile.nfonds_lus; i++)  dis_couche("fond ", &pile.fonds[i], &pile);
+        for (int i = 0; i < pile.ncartes_lues; i++) dis_couche("carte", &pile.cartes[i], &pile);
     }
     hc_origine_libere(&pile);
 }
@@ -936,6 +1085,66 @@ static Object *visee(Object *couche, const HcOrigCouche *k, int id_origine)
  *
  * La carte courante compte : le texte d'un champ de fond non partagé vit dans
  * les bgtexts de la CARTE, et hc_field_text le cherche là. */
+/* ═══ LES PLAGES DE STYLE, D'UN BOUT À L'AUTRE ══════════════════════════
+ *
+ * Le fichier d'origine donne des DÉBUTS et des identifiants de décoration ; notre
+ * modèle donne des intervalles avec leurs attributs. La comparaison n'est donc
+ * pas terme à terme, et deux différences sont LÉGITIMES — les affirmer ici est
+ * tout l'objet de ce témoin, parce que les confondre avec des pertes ferait
+ * ajouter du code pour rattraper ce qui va bien :
+ *
+ *  1. UNE PLAGE QUI NE DIT RIEN SE JETTE. Une décoration dont les trois champs
+ *     valent -1 n'ajoute rien au style du champ ; runs_tidy la supprime, et c'est
+ *     ce qu'il doit faire.
+ *
+ *  2. UNE PLAGE QUI REDIT LE STYLE DU CHAMP SE JETTE AUSSI. hc_run_add ramène
+ *     aux sentinelles ce qui coïncide avec le champ — sans quoi un simple gras
+ *     figerait au passage la police du champ dans chaque plage.
+ *
+ * On compte donc, plutôt que d'exiger l'égalité : combien de plages le fichier
+ * porte, combien disaient quelque chose, combien le modèle en garde. Le compte
+ * DOIT SE FERMER, et c'est cela qu'on vérifie.
+ *
+ * Et l'on affiche les plages retenues, avec le texte qu'elles couvrent : un
+ * compte juste avec des bornes décalées serait un compte juste. */
+static long plages_fichier, plages_parlantes, plages_gardees;
+
+static void compare_plages(const char *quoi, const HcOrigContenu *ct,
+                           Object *p, const HcOrigPile *pile)
+{
+    if (!ct->decore || p->type != OBJ_FIELD) return;
+
+    int parlantes = 0;
+    for (int j = 0; j < ct->nplages; j++) {
+        plages_fichier++;
+        if (ct->decalages_utf8[j] < 0) continue;
+        const HcOrigDeco *d = hc_origine_deco(pile, ct->plages[j].deco);
+        if (!d) continue;
+        if (d->style < 0 && d->corps < 0 && d->police < 0) continue;
+        parlantes++;
+    }
+    plages_parlantes += parlantes;
+
+    int n = hc_run_count(p);
+    plages_gardees += n;
+    printf("  plages    %s : %d au fichier, %d parlantes, %d gardées\n",
+           quoi, ct->nplages, parlantes, n);
+    const char *tx = hc_field_text(p);
+    int L = tx ? (int)strlen(tx) : 0;
+    for (int i = 0; i < n; i++) {
+        int deb, len, style, corps; const char *police;
+        if (!hc_run_attrs(p, i, &deb, &len, &style, &corps, &police)) continue;
+        int fin = deb + len;
+        if (fin > L) fin = L;
+        printf("      [%2d..%2d[ style 0x%02X%s corps %2d police %-8s « %.*s »\n",
+               deb, deb + len, style & 0xFF, style & HC_GROUP ? " GROUPE" : "",
+               corps, police ? police : "(nulle)",
+               fin > deb ? fin - deb : 0, tx ? tx + deb : "");
+    }
+}
+
+static const HcOrigPile *pile_du_tour;
+
 static void compare_textes(Object *couche, const HcOrigCouche *k,
                            Object *fond, const HcOrigCouche *kfond,
                            int couche_est_fond, const char *ou)
@@ -966,6 +1175,7 @@ static void compare_textes(Object *couche, const HcOrigCouche *k,
             continue;
         }
         egal_txt(quoi, ct->texte, hc_field_text(p));
+        compare_plages(quoi, ct, p, pile_du_tour);
     }
 }
 
@@ -1102,6 +1312,8 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
 
     compares = perdus = orphelins = 0;
     dessins_compares = dessins_faux = 0;
+    plages_fichier = plages_parlantes = plages_gardees = 0;
+    pile_du_tour = &pile;
     egal_int("largeur de la pile", pile.largeur, st2->w);
     egal_int("hauteur de la pile", pile.hauteur, st2->h);
     egal_script("script de la pile", pile.script, st2->script);
@@ -1174,6 +1386,12 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
            compares, perdus, perdus == 1 ? "" : "s",
            orphelins, orphelins == 1 ? "" : "s", orphelins == 1 ? "" : "s");
     printf("%ld pixels de dessin comparés, %ld faux\n", dessins_compares, dessins_faux);
+    /* LE COMPTE DES PLAGES DOIT SE FERMER, et c'est la seule chose qu'on puisse
+     * exiger : le fichier en porte N, certaines ne disent rien, le modèle garde
+     * le reste — moins celles que hc_run_add ramène au style du champ. Une
+     * inégalité ici est un fait à expliquer, pas forcément une perte. */
+    printf("plages de style : %ld au fichier, %ld parlantes, %ld gardées par le modèle\n",
+           plages_fichier, plages_parlantes, plages_gardees);
 
     hc_free(st2);
     remove(chemin);

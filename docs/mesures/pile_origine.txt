@@ -1051,3 +1051,105 @@ rien ; c'est leur contraste qui montre où passe la ligne :
 Et les dix autres témoins négatifs du harnais portent désormais leur compte de
 pertes dans la ligne de résumé, ce qui a permis de vérifier les quatorze
 classements d'un coup d'œil au lieu de les croire.
+
+LES STYLES PAR PLAGE SONT LUS : LE BLOC STBL
+--------------------------------------------
+
+La boîte d'import disait « 40 textes portaient des styles par plage : le texte
+est là, les styles non ». C'était vrai, et ce ne l'est plus.
+
+CE QU'IL FALLAIT, ET CE QU'IL NE FALLAIT PAS. Notre modèle avait DÉJÀ les plages
+— struct TextRun, struct RunList, hc_run_add_full — depuis l'éditeur de texte. Le
+manque n'était donc pas dans le moteur mais dans la lecture, et la greffe tient en
+trois pièces : la table du bloc STBL, les plages gardées au lieu d'être sautées, et
+la conversion vers nos plages.
+
+LES DEUX MODÈLES SE CORRESPONDENT TERME À TERME, et ce n'est pas un hasard : les
+huit bits de style sont l'octet Style de QuickDraw des deux côtés, dans le même
+ordre — gras, italique, souligné, contour, ombré, condensé, étendu, groupé. Dans
+le fichier ils occupent les bits 8 à 15 d'un mot ; les redescendre de huit est
+TOUTE la traduction.
+
+    HyperCard                       nous
+    police -1                       font NULL
+    style  -1                       HC_STYLE_INHERIT
+    corps  -1                       size 0
+
+MON SONDEUR A MENTI DEUX FOIS, ET LE CODE ZÉRO
+
+Premier mensonge : il affichait `deco->style & 0xFF`, ce qui montre -1 comme 0xFF.
+J'ai donc lu « tous les styles posés » là où le fichier dit « hérite ». Les octets
+bruts du bloc — 24 par décoration, dumpés à la main — ont tranché en une minute
+ce que dix minutes de raisonnement n'avaient pas tranché.
+
+Second mensonge, et c'est le piège que j'avais documenté LE MATIN MÊME : pour
+trouver le genre d'une part visée, il cherchait l'identifiant dans TOUS les fonds
+et prenait le premier. Or les identifiants de part sont uniques PAR COUCHE. Il
+annonçait trois contenus visant un BOUTON ; il n'y en a aucun.
+
+Sixième fois que mon instrument mesure autre chose que ce qu'il annonce. Le
+remède qui a marché les deux fois : instrumenter le CODE RÉEL — une copie de
+hc_importe.c avec des compteurs — au lieu de réécrire son raisonnement à côté.
+
+0x80 EST « GROUPÉ », ET C'EST L'USAGE QUI LE DIT
+
+Le seul bit dont le sens ne se déduisait pas de son nom. Relevé : il est posé sur
+CHAQUE nom de gabarit de la carte de sommaire de « Stack Templates » — « Names &
+Addresses », « To Do List », « Time Log »… — et sur AUCUN des sauts de ligne entre
+eux. C'est exactement à quoi sert le style Groupe d'HyperCard : il fait répondre
+une phrase entière à « the clickText ». Une interprétation qui tombe juste sur
+l'usage vaut mieux qu'une table recopiée.
+
+LE COMPTE SE FERME, SUR LES QUATRE PILES
+
+    pile                      contenus  plages  vides  muettes  tentées  gardées
+    3D Parametric Equations         12      51      0        3       48       48
+    Découvrir HyperCard             10      22      0       11       11       11
+    TEST3                            0       0      0        0        0        0
+    Stack Templates                 40     100      2       46       52       40
+
+    « vides »    une plage de longueur nulle — deux plages au même décalage, ou
+                 une plage au tout dernier octet du texte
+    « muettes »  les trois attributs hérités : la plage ne dit RIEN, et se jette
+    « gardées »  ce que le modèle retient après normalisation
+
+Les douze plages que le noyau jette sur « Stack Templates » REDISAIENT le style du
+champ : hc_run_add ramène aux sentinelles ce qui coïncide avec le champ, sans quoi
+un simple gras figerait au passage la police du champ dans chaque plage. Le rendu
+est identique ; ce n'est pas une perte, et c'est pourquoi le témoin COMPTE au lieu
+d'exiger l'égalité.
+
+ZÉRO renvoi mort, ZÉRO décalage non reportable, ZÉRO contenu visant une part
+absente, sur les quatre piles.
+
+LE REPORT DES DÉCALAGES EN UTF-8, ET POURQUOI IL EST FAIT UNE FOIS
+
+Le fichier donne des décalages en octets MACROMAN. Notre texte est en UTF-8, où
+« é » prend deux octets : les décalages ne s'y transposent pas tels quels. Le
+report se fait dans hc_origine, une fois, plutôt que chez chaque appelant qui le
+referait autrement — et il REFUSE quand le décalage tombe dans un caractère, ou
+dans un « \r\n » que la conversion réduit à un seul octet. -1 alors, et la plage
+se jette : un style posé un caractère à côté se voit à l'écran des mois plus tard
+et ne se cherche nulle part.
+
+Témoin dans la pile de torture, sur « élèvè ici » — cinq octets MacRoman pour
+cinq caractères, huit en UTF-8 :
+
+    plage à 0  ->  utf8 0
+    plage à 1  ->  utf8 2
+    plage à 5  ->  utf8 8
+    plage à 7  ->  utf8 10
+
+Et le même jeu de plages sur un texte ASCII pur, où les deux coïncident : c'est
+leur DIFFÉRENCE qui montre le report, et un témoin seul ne l'aurait pas montrée.
+
+LE TOUR COMPLET LE VÉRIFIE
+
+Les plages traversent la conversion, hc_save et hc_load : neuf plages au fichier,
+six parlantes, six gardées après relecture. Notre propre format les préserve donc,
+ce qui n'allait pas de soi et n'avait jamais été mesuré.
+
+CE QUI RESTE DEHORS : les motifs, les icônes du fork de ressources, HyperCard 1.x,
+les piles à accès privé. Et les six champs d'une décoration dont la spec dit
+« should be …, but never used » — hauteur de ligne, ascendante, et les trois
+composantes de couleur — qui ne sont pas lus parce qu'ils ne portent rien.

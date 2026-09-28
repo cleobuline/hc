@@ -98,12 +98,57 @@ typedef struct {
  *
  * Les contenus appartiennent à la COUCHE et non à la part : une seule
  * propriété de chaque pointeur, donc aucune double libération possible. */
+/* UNE PLAGE DE STYLE, telle que le fichier la porte : un décalage dans le texte
+ * et l'identifiant d'une décoration à chercher dans la table du bloc STBL.
+ *
+ * LE DÉCALAGE EST EN OCTETS DU TEXTE D'ORIGINE, en MacRoman. Notre texte est
+ * converti en UTF-8, où un accent prend deux octets : les décalages ne s'y
+ * transposent donc PAS tels quels. C'est au bâtisseur de les reporter, et
+ * `decalages_utf8` lui donne de quoi le faire sans refaire la conversion —
+ * voir hc_importe.c. Les laisser en octets MacRoman ici est délibéré : ce
+ * module dit ce que le FICHIER contient, pas ce qu'on en fera. */
+typedef struct {
+    int debut;                  /* décalage en octets MacRoman, base 0 */
+    int deco;                   /* identifiant dans la table du bloc STBL */
+} HcOrigPlage;
+
 typedef struct {
     int   id_part;
     int   du_fond;              /* 1 : part du fond, texte propre à cette carte */
     char *texte;                /* UTF-8, jamais NULL */
-    int   decore;               /* portait des styles par plage, NON LUS */
+    int   decore;               /* portait des styles par plage */
+    /* LES PLAGES, ET LEURS DÉCALAGES REPORTÉS EN UTF-8.
+     *
+     * `plages` est ce que le fichier dit, en octets MacRoman. `decalages_utf8`
+     * est le même nombre d'entrées, converti dans le texte qu'on rend — la
+     * conversion se fait UNE fois, ici, plutôt que chez chaque appelant qui la
+     * referait autrement. -1 pour un décalage qui tombe hors du texte. */
+    HcOrigPlage *plages;
+    int         *decalages_utf8;
+    int          nplages;
 } HcOrigContenu;
+
+/* UNE DÉCORATION de la table du bloc STBL : c'est une structure de l'API
+ * TextEdit du Macintosh, et HyperCard s'en servait telle quelle.
+ *
+ * -1 sur l'un des trois champs veut dire « comme le champ qui contient », ce qui
+ * est exactement la sentinelle d'héritage de notre struct TextRun. Les deux
+ * modèles se correspondent donc terme à terme, et ce n'est pas un hasard : les
+ * huit bits de style sont l'octet Style de QuickDraw des deux côtés, dans le
+ * même ordre — gras, italique, souligné, contour, ombré, condensé, étendu,
+ * groupé. Dans le fichier ils occupent les bits 8 à 15 ; on les redescend ici
+ * en 0 à 7, ce qui donne exactement HC_BOLD..HC_GROUP. */
+typedef struct {
+    int id;
+    int police;                 /* identifiant de police, ou -1 : hérite */
+    int style;                  /* bits 0..7, ou -1 : hérite */
+    int corps;                  /* corps en points, ou -1 : hérite */
+    /* Le NOM de la police, résolu par la table FTBL comme pour une part, ou NULL
+     * — soit que la décoration hérite, soit que la table ne connaisse pas cet
+     * identifiant. Résolu ici pour que l'appelant n'ait pas à refaire une
+     * recherche que ce module fait déjà pour les parts. */
+    char *police_nom;
+} HcOrigDeco;
 
 /* ═══ LE DESSIN D'UNE COUCHE ══════════════════════════════════
  *
@@ -263,11 +308,26 @@ typedef struct {
     struct { int id; char *nom; } *polices;
     int           npolices;
 
-    /* Combien de contenus portaient des styles par plage. Ils ne sont pas lus —
-     * il faudrait le bloc STBL — et leur TEXTE l'est. Compté pour que le manque
-     * soit visible plutôt qu'oublié. */
+    /* Combien de contenus portaient des styles par plage. Le compteur reste,
+     * maintenant que les plages SONT lues : il dit combien de textes en portent,
+     * ce qui est un fait sur la pile et non un manque. */
     int           contenus_decores;
+
+    /* LA TABLE DES DÉCORATIONS, du bloc STBL. Les plages des contenus y
+     * renvoient par leur identifiant ; hc_origine_deco fait la recherche.
+     *
+     * Vide quand la pile n'a pas de bloc STBL, ce qui est le cas courant d'une
+     * pile sans texte décoré. Une plage qui renvoie à une décoration absente est
+     * comptée en anomalie par le bâtisseur, pas ici : ce module dit ce que le
+     * fichier contient, et un renvoi mort EST ce qu'il contient. */
+    HcOrigDeco   *decos;
+    int           ndecos;
 } HcOrigPile;
+
+/* La décoration d'identifiant `id`, ou NULL. Une recherche linéaire : les piles
+ * du corpus en ont moins de cent, et une table de hachage pour cela serait du
+ * zèle qu'il faudrait ensuite maintenir. */
+const HcOrigDeco *hc_origine_deco(const HcOrigPile *pile, int id);
 
 /* Rend 0 en cas de succès, et remplit `pourquoi` sinon.
  *

@@ -78,6 +78,16 @@ static char *pose_utf8(char *w, unsigned long cp)
     return w;
 }
 
+/* Combien d'octets `pose_utf8` va écrire. Les DEUX fonctions doivent s'accorder,
+ * et c'est pourquoi celle-ci est collée à l'autre : le report des décalages de
+ * plage de style les compare, et une divergence d'un octet décalerait un style
+ * d'un caractère sans rien casser d'autre — le genre de défaut qui se voit à
+ * l'écran des mois plus tard et ne se cherche nulle part. */
+static int long_utf8(unsigned long cp)
+{
+    return cp < 0x80 ? 1 : (cp < 0x800 ? 2 : 3);
+}
+
 char *hc_origine_utf8(const unsigned char *octets, size_t n)
 {
     if (!octets) return NULL;
@@ -861,22 +871,79 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
 
         size_t debut = 0;
         long   len   = -1;
+        size_t deb_plages = 0;
+        int    nplages = 0;
         if (taille >= 1 && v->o[p + 4] == 0) {
             debut = p + 5;                       /* texte nu */
             len   = (long)taille - 1;
         } else if (taille >= 2) {
+            /* LE BIT DE POIDS FORT EST TOUJOURS POSÉ, ET SE JETTE : c'est ce que
+             * dit la spécification, et c'est aussi ce qui distingue un contenu
+             * décoré d'un contenu nu — dont le cinquième octet est zéro. */
             unsigned octets_plages = u16(v, p + 4) & 0x7FFFu;
             ct->decore = 1;
             pile->contenus_decores++;
             if (octets_plages >= 2 && octets_plages <= taille) {
                 debut = p + 4 + octets_plages;
                 len   = (long)taille - (long)octets_plages;
+                /* La taille annoncée COMPTE ce champ de deux octets : ce qui
+                 * reste est la liste des plages, quatre octets chacune. */
+                deb_plages = p + 6;
+                nplages    = (int)((octets_plages - 2) / 4);
             }
         }
-        if (len < 0 || debut + (size_t)len > bloc_fin) { pile->anomalies++, pile->perdus++; len = 0; debut = p + 4; }
+        if (len < 0 || debut + (size_t)len > bloc_fin) {
+            pile->anomalies++, pile->perdus++;
+            len = 0; debut = p + 4; nplages = 0;
+        }
 
         ct->texte = dit(v, debut, len);
         if (!ct->texte) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)debut); return 0; }
+
+        /* LES PLAGES DE STYLE, ET LEURS DÉCALAGES REPORTÉS EN UTF-8.
+         *
+         * Le fichier donne un décalage en octets MACROMAN et l'identifiant d'une
+         * décoration ; la plage court jusqu'à la suivante, ou jusqu'à la fin du
+         * texte. Notre texte est en UTF-8, où un accent prend deux octets : les
+         * décalages ne s'y transposent PAS tels quels, et les y reporter est le
+         * genre de calcul que chaque appelant referait autrement. Il se fait donc
+         * une fois, ici.
+         *
+         * Le report se refuse quand le décalage tombe DANS un caractère — ou dans
+         * un « \r\n » que la conversion réduit à un seul octet : -1 alors, plutôt
+         * qu'un décalage approché. Un style posé un caractère à côté est un défaut
+         * qui se voit des mois plus tard et ne se cherche nulle part. */
+        if (nplages > 0) {
+            ct->plages         = calloc((size_t)nplages, sizeof *ct->plages);
+            ct->decalages_utf8 = calloc((size_t)nplages, sizeof *ct->decalages_utf8);
+            if (!ct->plages || !ct->decalages_utf8) {
+                motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)deb_plages);
+                return 0;
+            }
+            for (int j = 0; j < nplages; j++) {
+                ct->plages[j].debut = (int)u16(v, deb_plages + 4 * (size_t)j);
+                ct->plages[j].deco  = (int)u16(v, deb_plages + 4 * (size_t)j + 2);
+                ct->nplages = j + 1;
+            }
+            if (v->debord) { motif(pourquoi, npourquoi, "lecture hors du fichier", (unsigned long)deb_plages); return 0; }
+
+            for (int j = 0; j < ct->nplages; j++) {
+                int cible = ct->plages[j].debut;
+                ct->decalages_utf8[j] = -1;
+                if (cible < 0 || (long)cible > len) continue;
+                long mr = 0; int o = 0;
+                while (mr < len && mr < (long)cible) {
+                    unsigned char c = v->o[debut + (size_t)mr];
+                    if (c == '\r') {
+                        if (mr + 1 < len && v->o[debut + (size_t)mr + 1] == '\n') mr++;
+                        mr++; o += 1; continue;
+                    }
+                    if (c < 0x80) { mr++; o += 1; continue; }
+                    mr++; o += long_utf8(macroman_haut[c - 0x80]);
+                }
+                if (mr == (long)cible) ct->decalages_utf8[j] = o;
+            }
+        }
 
         p += 4 + taille;
         /* LE CALAGE SE COMPTE DEPUIS LE DÉBUT DU BLOC, pas depuis celui du
@@ -1231,6 +1298,87 @@ static int lit_interne(const unsigned char *octets, size_t n,
         break;
     }
 
+    /* --- 3bis. la table des décorations --- */
+
+    /* LE BLOC STBL, ET CE QU'IL FALLAIT POUR L'OUVRIR. Il porte la table des
+     * DÉCORATIONS — police, style, corps — auxquelles les plages des contenus
+     * renvoient par un identifiant. Sans lui, un texte décoré rendait son texte
+     * et perdait ses styles ; « Stack Templates » en a quarante.
+     *
+     * Une décoration est une structure de l'API TextEdit du Macintosh, reprise
+     * telle quelle par HyperCard, et trois de ses dix champs seulement portent
+     * quelque chose : la spécification dit des six autres « should be …, but
+     * never used ». On ne lit donc que les trois, et l'on n'invente pas de sens
+     * aux autres.
+     *
+     * -1 VEUT DIRE « COMME LE CHAMP », et c'est ce qui rend la greffe directe :
+     * c'est exactement la sentinelle d'héritage de notre struct TextRun.
+     *
+     * Le bloc est FACULTATIF, comme FTBL : une pile sans texte décoré n'en a
+     * pas, et son absence n'est pas une faute. */
+    for (int i = 0; i < pile->nblocs; i++) {
+        if (memcmp(octets + pile->blocs[i].offset + 4, "STBL", 4) != 0) continue;
+        size_t bloc = (size_t)pile->blocs[i].offset;
+        size_t fin  = bloc + (size_t)pile->blocs[i].taille;
+        unsigned long combien = u32(v, bloc + 0x10);
+        if (v->debord || combien == 0) break;
+        /* UNE ENTRÉE FAIT VINGT-QUATRE OCTETS, taille fixe : le bloc borne donc
+         * leur nombre exactement, sans qu'on ait à croire l'entier annoncé. Même
+         * garde que pour FTBL, et pour la même raison — un nombre abîmé ou forgé
+         * ferait demander quatre milliards d'entrées à calloc. */
+        if (combien > (unsigned long)(pile->blocs[i].taille) / 24) {
+            pile->anomalies++, pile->perdus++;
+            break;
+        }
+        pile->decos = calloc(combien, sizeof *pile->decos);
+        if (!pile->decos) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)bloc); return -1; }
+
+        size_t q = bloc + 0x18;
+        for (unsigned long j = 0; j < combien; j++) {
+            if (q + 24 > fin) { pile->anomalies++, pile->perdus++; break; }
+            pile->decos[j].id     = (int)u32(v, q + 0x00);
+            /* LES HUIT BITS DE STYLE SE REDESCENDENT DE 8 À 0. Dans le fichier
+             * ils occupent les bits 8 à 15 du mot — bit 8 gras, 9 italique, 10
+             * souligné, 11 contour, 12 ombré, 13 condensé, 14 étendu, 15 groupé.
+             * C'est l'octet Style de QuickDraw, logé dans le haut d'un SInt16, et
+             * nos HC_BOLD..HC_GROUP sont les mêmes huit bits dans le même ordre.
+             * Le décalage de huit est donc toute la traduction. */
+            {
+                int st = s16(v, q + 0x0E);
+                pile->decos[j].style = (st == -1) ? -1 : ((st >> 8) & 0xFF);
+            }
+            /* TOUT NÉGATIF VAUT « HÉRITE », et police_de n'est donc PAS appelée
+             * sur un négatif. Elle applique la règle de la spec pour les parts —
+             * « un identifiant négatif vaut -valeur-1 » — qui transformerait le
+             * -1 d'une décoration en 0, soit une police bien réelle. La spec ne
+             * donne cette règle que pour la part ; pour une décoration elle ne
+             * dit que « If -1, same as containing field ».
+             *
+             * CE QUI N'EST PAS MESURÉ : un négatif AUTRE que -1. Aucune des
+             * quatre piles n'en porte, et on le traite comme -1 plutôt que de
+             * deviner une seconde règle. */
+            pile->decos[j].police = s16(v, q + 0x0C);
+            pile->decos[j].corps  = s16(v, q + 0x10);
+            if (pile->decos[j].police >= 0) {
+                const char *nm = police_de(pile, pile->decos[j].police);
+                if (nm) {
+                    pile->decos[j].police_nom = malloc(strlen(nm) + 1);
+                    if (!pile->decos[j].police_nom) {
+                        motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)q);
+                        return -1;
+                    }
+                    memcpy(pile->decos[j].police_nom, nm, strlen(nm) + 1);
+                }
+            } else {
+                pile->decos[j].police = -1;
+            }
+            pile->ndecos = (int)(j + 1);
+            q += 24;
+        }
+        break;
+    }
+    if (v->debord) { motif(pourquoi, npourquoi, "lecture hors du fichier", 0); return -1; }
+
     /* --- 4. les fonds et les cartes --- */
 
     /* IL NE PEUT PAS Y AVOIR PLUS DE CARTES QUE DE BLOCS : chaque carte a le
@@ -1420,6 +1568,19 @@ int hc_origine_lit(const unsigned char *octets, size_t n,
     return r;
 }
 
+/* LA RECHERCHE EST LINÉAIRE, ET C'EST ASSEZ : les piles du corpus ont moins de
+ * cent décorations, et une table de hachage ici serait du zèle qu'il faudrait
+ * ensuite maintenir. Rend NULL sur un identifiant absent, ce qui est un état
+ * légitime — un renvoi mort est ce que le fichier contient, et c'est au
+ * bâtisseur de décider quoi en faire. */
+const HcOrigDeco *hc_origine_deco(const HcOrigPile *pile, int id)
+{
+    if (!pile) return NULL;
+    for (int i = 0; i < pile->ndecos; i++)
+        if (pile->decos[i].id == id) return &pile->decos[i];
+    return NULL;
+}
+
 void hc_origine_libere(HcOrigPile *pile)
 {
     if (!pile) return;
@@ -1427,6 +1588,8 @@ void hc_origine_libere(HcOrigPile *pile)
     free(pile->script);
     for (int i = 0; i < pile->npolices; i++) free(pile->polices[i].nom);
     free(pile->polices);
+    for (int i = 0; i < pile->ndecos; i++) free(pile->decos[i].police_nom);
+    free(pile->decos);
     for (int quoi = 0; quoi < 2; quoi++) {
         HcOrigCouche *tab = quoi ? pile->cartes : pile->fonds;
         int combien = quoi ? (int)pile->ncartes : (int)pile->nfonds;
@@ -1440,7 +1603,11 @@ void hc_origine_libere(HcOrigPile *pile)
                 free(tab[i].parts[j].police);
             }
             free(tab[i].parts);
-            for (int j = 0; j < tab[i].ncontenus; j++) free(tab[i].contenus[j].texte);
+            for (int j = 0; j < tab[i].ncontenus; j++) {
+                free(tab[i].contenus[j].texte);
+                free(tab[i].contenus[j].plages);
+                free(tab[i].contenus[j].decalages_utf8);
+            }
             free(tab[i].contenus);
             free(tab[i].dessin.image);
             free(tab[i].dessin.masque);
