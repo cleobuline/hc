@@ -42,7 +42,7 @@ b » (3 octets)
 2720 octets
 --- pile HyperCard 2.x : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -172,12 +172,12 @@ hc_save : écrit
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
 --- octet haut de la taille abime (REPARE, 1 anomalie) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme FAUSSE, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme FAUSSE, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
 --- taille de bloc au-dela du fichier (le masque n'y peut rien) : REFUSE — taille de bloc impossible (offset 0x0)
 --- taille reparee plausible mais FAUSSE (le bloc suivant ne parse plus) : REFUSE — taille de bloc impossible (offset 0x644)
 --- quatre octets de trop a la fin, SANS reparation (tolere) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine N'ATTEINT PAS la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine N'ATTEINT PAS la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
 --- les memes quatre octets, AVEC une taille reparee : REFUSE — taille de bloc impossible, et la reparation ne retombe pas juste (offset 0x0)
 --- premier bloc pas STAK : REFUSE — le premier bloc n'est pas STAK (offset 0x0)
 --- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
@@ -186,7 +186,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine N'ATTEI
 --- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x7E8)
 --- somme de la LISTE fausse d'un bit : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -290,7 +290,7 @@ carte id 3001, fond 2000, nom «  », 0 parts
   dessin : AUCUN
 --- somme d'une PAGE fausse d'un bit : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -394,7 +394,7 @@ carte id 3001, fond 2000, nom «  », 0 parts
   dessin : AUCUN
 --- la PAGE que la liste nomme est introuvable : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -498,7 +498,7 @@ carte id 3001, fond 2000, nom «  », 0 parts
   dessin : AUCUN
 --- les deux nombres de cartes de la liste se contredisent : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -602,7 +602,7 @@ carte id 3001, fond 2000, nom «  », 0 parts
   dessin : AUCUN
 --- un « shadow » sur un CHAMP (ce n'est PAS une anomalie) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -706,7 +706,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     23                                                                   0000000000000000
 --- un « checkbox » sur un CHAMP (le style ne va pas au genre) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -808,9 +808,21 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     21                                                                   0000000000000000
     22                                                                   0000000000000000
     23                                                                   0000000000000000
+--- anomalie SANS perte : une taille de bloc reparee : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme FAUSSE, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
+--- anomalie SANS perte : un style qui ne va pas au genre : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
+--- anomalie AVEC perte : un dessin abandonne : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
+--- anomalie AVEC perte : un script abandonne : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
 --- marqueur de script d'une part abime (faute LOCALE) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -909,7 +921,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     23                                                                   0000000000000000
 --- un code opération refusé dans le dessin (faute LOCALE) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -1013,7 +1025,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     23                                                                   0000000000000000
 --- la taille du dessin dépasse son bloc (faute LOCALE) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
@@ -1093,7 +1105,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     23                                                                   0000000000000000
 --- une constante du bloc BMAP abimée (anomalie, pas un refus) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680

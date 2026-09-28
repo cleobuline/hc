@@ -232,6 +232,30 @@ typedef struct {
      * savait lire. */
     int           anomalies;
 
+    /* ET PARMI LES FAUTES LOCALES, CELLES QUI ONT VRAIMENT PERDU QUELQUE CHOSE.
+     *
+     * LE DÉFAUT QUE CECI CORRIGE, relevé À L'USAGE : la boîte d'import annonçait
+     * « 1 anomalie relevée en chemin : quelque chose n'a pas pu être lu et a été
+     * laissé de côté ». Sur « Stack Templates », cette anomalie unique est une
+     * TAILLE DE BLOC RÉPARÉE — l'octet de poids fort du bloc MAST. Rien n'a été
+     * laissé de côté : le bloc a été lu, et la chaîne des 65 blocs retombe
+     * exactement sur la fin du fichier, ce qui est la preuve qu'elle a été bien
+     * lue. Le message énonçait donc une PERTE là où il n'y en avait pas.
+     *
+     * C'est la quatrième fois dans ce projet qu'un diagnostic faux coûte plus
+     * cher qu'un diagnostic vague : le vague fait chercher partout, le faux fait
+     * chercher au mauvais endroit et donne confiance en le faisant. Ici il aurait
+     * fait douter d'une pile entière.
+     *
+     * `anomalies` compte donc la MÉFIANCE — un recoupement qui ne tombe pas
+     * juste, une taille réparée, un style qui ne va pas au genre, une carte que
+     * la liste ne nomme pas — et `perdus` compte ce qui MANQUE dans le résultat :
+     * un dessin abandonné, un script abandonné, un nom de police abandonné.
+     * `perdus` est toujours inférieur ou égal à `anomalies`. Zéro perdu avec des
+     * anomalies veut dire « tout est là, et quelque chose demande à être vérifié
+     * » — ce qui est exactement l'état de « Stack Templates ». */
+    int           perdus;
+
     /* LA TABLE DES POLICES, et elle n'est pas un luxe : les identifiants de
      * police n'étaient PAS les mêmes d'un Macintosh à l'autre, si bien
      * qu'HyperCard rangeait les NOMS dans la pile. Sans ce bloc, « police 3 »

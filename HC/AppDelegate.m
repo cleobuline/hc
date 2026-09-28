@@ -1323,6 +1323,7 @@ void cocoa_stack_changed(Object *stack) {
     /* On retient de quoi parler AVANT de libérer : la structure de lecture ne
      * survit pas à cette ligne. */
     int anomalies = orig.anomalies;
+    int perdus    = orig.perdus;
     int ordre_lu  = orig.ordre_lu;
     int nfonds    = orig.nfonds_lus;
     int ncartes   = orig.ncartes_lues;
@@ -1364,11 +1365,34 @@ void cocoa_stack_changed(Object *stack) {
                             @"sommes de contrôle de la liste ne tombent pas "
                             @"juste. Les cartes sont dans l'ordre du FICHIER, "
                             @"qui n'est pas forcément celui de la pile.\n\n"];
-        if (anomalies > 0)
-            [m appendFormat:@"%d anomalie%s relevée%s en chemin : quelque chose "
-                            @"n'a pas pu être lu et a été laissé de côté. Le "
-                            @"reste de la pile est là.\n\n",
-                anomalies, anomalies == 1 ? "" : "s", anomalies == 1 ? "" : "s"];
+        /* DEUX PHRASES, PARCE QU'IL Y A DEUX FAITS, ET L'UNE DES DEUX ÉTAIT
+         * FAUSSE. Ce message disait « quelque chose n'a pas pu être lu et a été
+         * laissé de côté » dès qu'une anomalie était comptée. Sur « Stack
+         * Templates » l'anomalie unique est une TAILLE DE BLOC RÉPARÉE : rien
+         * n'a été laissé de côté, et la chaîne des 65 blocs retombe exactement
+         * sur la fin du fichier, ce qui est la preuve qu'elle a été bien lue.
+         *
+         * Le message annonçait donc une PERTE là où il n'y en avait pas, sur une
+         * pile entièrement lue. Un diagnostic faux coûte plus cher qu'un
+         * diagnostic vague : ici il faisait douter de toute la pile.
+         *
+         * `perdus` dit ce qui MANQUE, `anomalies` dit ce qui DEMANDE À ÊTRE
+         * VÉRIFIÉ. Zéro perdu avec des anomalies est un état parfaitement
+         * légitime, et c'est celui-là qu'il fallait savoir dire. */
+        if (perdus > 0)
+            [m appendFormat:@"%d chose%s n'%s pas pu être lue%s et %s été laissée%s "
+                            @"de côté. Le reste de la pile est là.\n\n",
+                perdus, perdus == 1 ? "" : "s",
+                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s",
+                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s"];
+        if (anomalies > perdus) {
+            int douteux = anomalies - perdus;
+            [m appendFormat:@"%d recoupement%s du fichier ne tombe%s pas juste : "
+                            @"tout a été lu, mais quelque chose mérite un œil — "
+                            @"une taille de bloc réparée, un style inattendu, une "
+                            @"carte que la liste ne nomme pas.\n\n",
+                douteux, douteux == 1 ? "" : "s", douteux == 1 ? "" : "nt"];
+        }
         if (decores > 0)
             [m appendFormat:@"%d texte%s portai%s des styles par plage : le "
                             @"texte est là, les styles non.\n\n",

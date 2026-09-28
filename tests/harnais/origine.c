@@ -688,7 +688,7 @@ static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int 
                          : "NON LU — les cartes restent dans l'ordre du FICHIER",
            pile.npages);
     printf("format %lu, %lu fond(s), %lu carte(s), %dx%d, somme %s, %d bloc%s, "
-           "chaine %s la fin, TAIL %s, LIST %s, %d anomalie(s), "
+           "chaine %s la fin, TAIL %s, LIST %s, %d anomalie(s) dont %d perdue(s), "
            "%d police(s), %d contenu(s) décoré(s)\n",
            pile.format, pile.nfonds, pile.ncartes, pile.largeur, pile.hauteur,
            pile.somme_juste ? "juste" : "FAUSSE",
@@ -696,7 +696,7 @@ static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int 
            pile.chaine_atteint_la_fin ? "atteint" : "N'ATTEINT PAS",
            pile.tail_vu ? "vu" : "absent",
            pile.liste_vue ? "vu" : "ABSENT (l'ordre des cartes n'est donc pas connu)",
-           pile.anomalies, pile.npolices, pile.contenus_decores);
+           pile.anomalies, pile.perdus, pile.npolices, pile.contenus_decores);
 
     if (tout) {
         for (int i = 0; i < pile.nblocs; i++)
@@ -1451,6 +1451,56 @@ int main(int argc, char **argv)
                 c[i - 0x1E + 0x0F] = 5; break;
             }
         lis_et_dis("un « checkbox » sur un CHAMP (le style ne va pas au genre)", c, t.n, 1);
+        free(c);
+    }
+
+    /* ═══ ANOMALIE N'EST PAS PERTE, ET LE MESSAGE LE DISAIT MAL ══════════
+     *
+     * LE DÉFAUT RELEVÉ À L'USAGE : la boîte d'import annonçait « 1 anomalie
+     * relevée en chemin : quelque chose n'a pas pu être lu et a été laissé de
+     * côté » sur « Stack Templates », dont l'anomalie unique est une TAILLE DE
+     * BLOC RÉPARÉE. Rien n'avait été laissé de côté — la chaîne des 65 blocs
+     * retombe exactement sur la fin du fichier, ce qui est la preuve qu'elle a
+     * été bien lue. Le message énonçait une perte inexistante sur une pile
+     * entièrement lue, et faisait douter de tout.
+     *
+     * D'où deux compteurs, et TROIS TÉMOINS CÔTE À CÔTE pour les séparer. Chacun
+     * seul ne dirait rien : c'est leur contraste qui montre où passe la ligne.
+     *
+     *     anomalie SANS perte   une taille réparée, un style inattendu
+     *     anomalie AVEC perte   un dessin abandonné, un script abandonné
+     *
+     * Le compte de perdus est lu dans la ligne de résumé, « N anomalie(s) dont
+     * M perdue(s) ». */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        c[0] = 0x7F;                    /* taille réparée : rien n'est perdu */
+        lis_et_dis("anomalie SANS perte : une taille de bloc reparee", c, t.n, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        /* le champ « A » passe de scrolling (7) à checkbox (5) : un style qui ne
+         * va pas au genre est une MÉFIANCE, le style reste lu */
+        for (size_t i = 0; i + 8 < t.n; i++)
+            if (memcmp(c + i, "A", 1) == 0 && c[i+1] == 0 && i > 0x1E && c[i - 0x1E + 0x0F] == 7) {
+                c[i - 0x1E + 0x0F] = 5; break;
+            }
+        lis_et_dis("anomalie SANS perte : un style qui ne va pas au genre", c, t.n, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x41 < t.n; i++)
+            if (memcmp(c + i + 4, "BMAP", 4) == 0) { c[i + 0x40] = 0x87; break; }
+        lis_et_dis("anomalie AVEC perte : un dessin abandonne", c, t.n, 0);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 8 < t.n; i++)
+            if (memcmp(c + i, "TORTURE", 7) == 0 && c[i+7] == 0 && c[i+8] == 0) { c[i+8] = 'X'; break; }
+        lis_et_dis("anomalie AVEC perte : un script abandonne", c, t.n, 0);
         free(c);
     }
 

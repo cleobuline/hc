@@ -998,3 +998,56 @@ Toute forme ouverte dans l'analyseur se rejoue maintenant à L'EXÉCUTION, secti
 de tests/harnais/pilereelle.c, avec son résultat imprimé. Ouvrir une syntaxe sans
 vérifier qu'elle s'exécute n'est pas une demi-correction : c'est un défaut neuf,
 qui remplace un refus visible par une promesse fausse.
+
+« 1 ANOMALIE » NE VOULAIT PAS DIRE « QUELQUE CHOSE A ÉTÉ PERDU »
+----------------------------------------------------------------
+
+Relevé à l'usage, en ouvrant « Stack Templates » dans l'application. La boîte
+disait :
+
+    1 anomalie relevée en chemin : quelque chose n'a pas pu être lu et a été
+    laissé de côté. Le reste de la pile est là.
+
+C'ÉTAIT FAUX. Cette anomalie unique est la TAILLE DE BLOC RÉPARÉE du bloc MAST.
+Rien n'a été laissé de côté : le bloc a été lu, et la chaîne des 65 blocs retombe
+exactement sur la fin du fichier — ce qui est précisément la preuve qu'elle a été
+bien lue. Le message annonçait une perte inexistante sur une pile entièrement
+lue, et faisait douter de tout.
+
+C'est la quatrième fois dans ce projet qu'un diagnostic faux coûte plus cher qu'un
+diagnostic vague. Le vague fait chercher partout ; le faux fait chercher au
+mauvais endroit, et donne confiance en le faisant.
+
+DEUX COMPTEURS, PARCE QU'IL Y A DEUX FAITS
+
+    anomalies   ce qui demande à être VÉRIFIÉ : un recoupement qui ne tombe pas
+                juste, une taille réparée, un style qui ne va pas au genre, une
+                carte que la liste ne nomme pas
+    perdus      ce qui MANQUE dans le résultat : un dessin abandonné, un script
+                abandonné, un nom de police abandonné
+
+`perdus` est toujours inférieur ou égal à `anomalies`. Treize des vingt-quatre
+sites d'anomalie sont des pertes ; les onze autres sont des méfiances.
+
+LE CORPUS, MESURÉ
+
+    3D Parametric Equations    0 anomalie,  0 perdue
+    Découvrir HyperCard        0 anomalie,  0 perdue
+    TEST3                      0 anomalie,  0 perdue
+    Stack Templates            1 anomalie,  0 PERDUE
+
+Zéro perdu avec une anomalie est un état parfaitement légitime, et c'est celui-là
+qu'il fallait savoir dire. La boîte dit maintenant deux phrases distinctes, et
+n'en dit que celle qui s'applique.
+
+QUATRE TÉMOINS CÔTE À CÔTE, dans tests/harnais/origine.c. Chacun seul ne dirait
+rien ; c'est leur contraste qui montre où passe la ligne :
+
+    une taille de bloc réparée          1 anomalie, 0 perdue
+    un style qui ne va pas au genre     1 anomalie, 0 perdue
+    un dessin abandonné                 1 anomalie, 1 perdue
+    un script abandonné                 1 anomalie, 1 perdue
+
+Et les dix autres témoins négatifs du harnais portent désormais leur compte de
+pertes dans la ligne de résumé, ce qui a permis de vérifier les quatorze
+classements d'un coup d'œil au lieu de les croire.

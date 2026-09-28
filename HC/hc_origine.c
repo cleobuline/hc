@@ -475,7 +475,7 @@ static void lit_le_dessin(Vue *v, HcOrigPile *pile, HcOrigCouche *k)
         trouve = 1;
         break;
     }
-    if (!trouve) { pile->anomalies++; return; }     /* la couche annonce un dessin absent */
+    if (!trouve) { pile->anomalies++, pile->perdus++; return; }     /* la couche annonce un dessin absent */
 
     /* DEUX CONSTANTES À VÉRIFIER PLUTÔT QU'À SAUTER : les deux mots de 0x10 et
      * 0x14 valent 0 et 0x10000 dans tous les blocs que la spécification décrit.
@@ -490,16 +490,16 @@ static void lit_le_dessin(Vue *v, HcOrigPile *pile, HcOrigCouche *k)
     int it = s16(v, bloc + 0x28), il = s16(v, bloc + 0x2A);
     int ib = s16(v, bloc + 0x2C), ir = s16(v, bloc + 0x2E);
     unsigned long tm = u32(v, bloc + 0x38), ti = u32(v, bloc + 0x3C);
-    if (v->debord) { pile->anomalies++; return; }
+    if (v->debord) { pile->anomalies++, pile->perdus++; return; }
 
     int w = cr - cl, h = cb - ct;
     /* Les bornes sont celles d'une carte plausible : HyperCard n'allait pas
      * au-delà de 1280x1024, on laisse large sans laisser n'importe quoi. */
-    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) { pile->anomalies++; return; }
-    if (cl % 8) { pile->anomalies++; return; }       /* on ne sait pas décaler d'un bit */
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) { pile->anomalies++, pile->perdus++; return; }
+    if (cl % 8) { pile->anomalies++, pile->perdus++; return; }       /* on ne sait pas décaler d'un bit */
 
     /* Les données des deux plans doivent tenir DANS le bloc. */
-    if (bloc + 0x40 + tm + ti > fin) { pile->anomalies++; return; }
+    if (bloc + 0x40 + tm + ti > fin) { pile->anomalies++, pile->perdus++; return; }
 
     /* LES TAILLES ANNONCÉES SE NOTENT AVANT DE DÉCOMPRESSER, et `reste` reste à
      * -1 tant que le plan n'est pas lu : sinon un plan refusé s'affichait
@@ -513,7 +513,7 @@ static void lit_le_dessin(Vue *v, HcOrigPile *pile, HcOrigCouche *k)
     int rb = (w + 31) / 32 * 4;
     unsigned char *image  = calloc((size_t)rb * (size_t)h, 1);
     unsigned char *masque = calloc((size_t)rb * (size_t)h, 1);
-    if (!image || !masque) { free(image); free(masque); pile->anomalies++; return; }
+    if (!image || !masque) { free(image); free(masque); pile->anomalies++, pile->perdus++; return; }
 
     int pose = 0;
     for (int plan = 0; plan < 2; plan++) {          /* 0 le masque, 1 l'image */
@@ -534,15 +534,15 @@ static void lit_le_dessin(Vue *v, HcOrigPile *pile, HcOrigCouche *k)
          * tombe à côté — ce qui se voit, au moins. */
         int L = l & ~31, R = (r + 31) & ~31;
         int rbp = (R - L) / 8, hp = b - t;
-        if (rbp <= 0 || hp <= 0 || (L - cl) % 8) { pile->anomalies++; continue; }
+        if (rbp <= 0 || hp <= 0 || (L - cl) % 8) { pile->anomalies++, pile->perdus++; continue; }
 
         unsigned char *tampon = calloc((size_t)rbp * (size_t)hp, 1);
-        if (!tampon) { pile->anomalies++; continue; }
+        if (!tampon) { pile->anomalies++, pile->perdus++; continue; }
         int reste = 0;
         char pq[120];
         if (woba_decompresse(v->o + bloc + 0x40 + (plan ? tm : 0), taille,
                              rbp, hp, tampon, &reste, pq, sizeof pq) != 0) {
-            pile->anomalies++;
+            pile->anomalies++, pile->perdus++;
             free(tampon);
             continue;
         }
@@ -796,7 +796,7 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
             if (v->o[apres] != 0) {
                 /* Faute LOCALE : on perd le script de cette part, pas les
                  * autres. Comptée, jamais tue. */
-                pile->anomalies++;
+                pile->anomalies++, pile->perdus++;
             } else {
                 size_t d = apres + 1;
                 size_t f = p + taille;
@@ -873,7 +873,7 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
                 len   = (long)taille - (long)octets_plages;
             }
         }
-        if (len < 0 || debut + (size_t)len > bloc_fin) { pile->anomalies++; len = 0; debut = p + 4; }
+        if (len < 0 || debut + (size_t)len > bloc_fin) { pile->anomalies++, pile->perdus++; len = 0; debut = p + 4; }
 
         ct->texte = dit(v, debut, len);
         if (!ct->texte) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)debut); return 0; }
@@ -1212,7 +1212,7 @@ static int lit_interne(const unsigned char *octets, size_t n,
         if (v->debord || combien == 0) break;
         /* Une entrée fait au moins trois octets — un identifiant et un nom
          * vide — donc le bloc borne leur nombre sans qu'on ait à le croire. */
-        if (combien > (unsigned long)(pile->blocs[i].taille) / 3) { pile->anomalies++; break; }
+        if (combien > (unsigned long)(pile->blocs[i].taille) / 3) { pile->anomalies++, pile->perdus++; break; }
 
         pile->polices = calloc(combien, sizeof *pile->polices);
         if (!pile->polices) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)bloc); return -1; }
@@ -1220,7 +1220,7 @@ static int lit_interne(const unsigned char *octets, size_t n,
         size_t q = bloc + 0x18;
         for (unsigned long j = 0; j < combien; j++) {
             long ln = longueur_chaine(v, q + 2);
-            if (ln < 0 || q + 2 + (size_t)ln + 1 > fin) { pile->anomalies++; break; }
+            if (ln < 0 || q + 2 + (size_t)ln + 1 > fin) { pile->anomalies++, pile->perdus++; break; }
             pile->polices[j].id  = s16(v, q);
             pile->polices[j].nom = dit(v, q + 2, ln);
             if (!pile->polices[j].nom) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)q); return -1; }
