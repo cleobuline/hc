@@ -1,0 +1,162 @@
+MESURE — LIRE UNE PILE HYPERCARD AU FORMAT D'ORIGINE
+====================================================
+
+Le 28 septembre 2026. Premier pas d'un chantier neuf : extraire les SCRIPTS
+d'une pile binaire écrite par HyperCard lui-même, entre 1987 et 1998.
+
+D'OÙ VIENT CE CHANTIER, ET CE QU'IL N'EST PAS
+---------------------------------------------
+
+Le constat de départ, vérifié et non supposé : hc_file.c (1606 lignes) ne lit
+qu'UN format, le nôtre, un texte qui commence par « -- pile HyperCard (format
+maison) ». Il n'existe aucun analyseur du format binaire d'Apple dans le dépôt.
+Le premier grep semblait en trouver dans quarante fichiers ; c'étaient des
+« #import » d'Objective-C.
+
+Ce module est un EXTRACTEUR, pas un importateur, et la distinction porte tout :
+
+    un importateur doit rendre une pile qui MARCHE  -> couplé à tout le noyau
+    un extracteur n'a qu'à dire la vérité           -> couplé à rien
+
+L'importateur reste pour la fin de la mise au point, et c'est sa place : « une
+pile de 1993 s'ouvre et tourne » est le meilleur test d'acceptation que ce
+projet puisse avoir, et il ne se prononce qu'à la fin. L'extracteur, lui, ne
+pouvait pas attendre pour une raison asymétrique : si la lecture d'une vraie
+pile révèle un manque STRUCTUREL dans notre modèle de données, l'apprendre à la
+toute fin est le moment le plus cher du projet.
+
+LES SOURCES, ET LA QUESTION DE LICENCE
+--------------------------------------
+
+Deux descriptions publiques et INDÉPENDANTES du format ont servi :
+
+    StackFormat.md, de HyperCardPreview (P. Lorenzi) — 752 lignes, la plus
+      complète ; rétro-ingénierie sur des piles et sur l'assembleur
+    stakread.py, de mystextract (A. Plotkin) — 443 lignes, un lecteur qui
+      TOURNE, en Python
+
+Elles CONCORDENT sur tout ce qui est utilisé ici : en-tête de bloc
+(taille 4, type 4, id 4, calage 4), CARD (nombre de parts 0x28, taille de la
+liste 0x2C, contenus 0x30, parts 0x36), BKGD (0x24, 0x28, 0x2C, 0x32), part
+(taille 0x0, id 0x2, drapeaux 0x4, rectangle 0x6, nom 0x1E), script de la pile
+à 0x600 fixe, taille de la pile à 0x1B8 en ordre Quickdraw (hauteur d'abord).
+
+AUCUNE LIGNE DE CODE N'A ÉTÉ REPRISE. Ni l'un ni l'autre dépôt ne porte de
+fichier LICENSE — vérifié, 404 sur les deux — donc aucune licence n'est
+accordée, donc on n'emprunte rien. Les offsets sont des faits sur un format ;
+le code est le nôtre. Ça compte si HC va un jour sur l'App Store.
+
+Une troisième source, « Definitive Guide to the HyperCard Stack File Format »
+(R. Bettencourt), n'a pas pu être lue : kreativekorp.com est refusé par la
+politique de sortie du conteneur. À lire si une question reste ouverte.
+
+CE QUI EST MESURÉ
+-----------------
+
+1. LA TABLE MACROMAN, exhaustivement. Les 128 caractères hauts ont été produits
+   par le codec « mac_roman » de Python, octet par octet — pas écrits de
+   mémoire — et les 256 conversions sont dans tests/attendu/origine.txt. Un
+   doigt qui glisse dans la table casse un test, au lieu de casser un accent
+   qu'on découvrirait dans dix ans.
+
+   ET C'ÉTAIT UN VRAI TROU DU NOYAU : dup_script (hc_script.c) ne convertit que
+   les quatre caractères dont la SYNTAXE a besoin — ¬ ≠ ≤ ≥. Il n'existait
+   aucune table complète. Un « é » d'une pile d'origine, 0x8E, arrivait tel quel
+   dans un monde UTF-8 : octet invalide. Les piles d'archive françaises en sont
+   pleines.
+
+   UNE SEULE ENTRÉE EST UN CHOIX ET NON UN FAIT : 0xDB. Le MacRoman d'origine y
+   portait le signe monétaire « ¤ » (U+00A4) ; Mac OS 8.5 l'a remplacé par
+   l'euro (U+20AC), et c'est ce que rend le codec. Une pile de 1993 voulait dire
+   « ¤ » — l'euro n'existait pas. On suit le codec pour rester comparable à
+   l'arbitre, et c'est une décision écrite, pas un oubli.
+
+2. L'ACCORD D'UN LECTEUR TIERS SUR NOS OCTETS. Le harnais monte une pile au
+   format d'origine ; stakread.py la relit et rend LES MÊMES scripts, les mêmes
+   noms, les mêmes ids, les mêmes noms de parts. « prêt », « élève à Noël »,
+   « ça marche » traversent deux chaînes de transcodage écrites par deux
+   personnes différentes, dans deux langages, et arrivent identiques.
+
+   C'EST LE SEUL CONTREPOIDS QUI VAILLE. Sans lui, mon écrivain et mon lecteur
+   seraient d'accord parce qu'ils partagent la même croyance, et se
+   tromperaient ensemble en silence pendant que le test passerait au vert.
+   C'est le rôle que Basilisk joue pour le langage : un oracle.
+
+3. LA SOMME DE CONTRÔLE DU BLOC STAK. Le format exige que les 384 entiers de
+   32 bits allant de 0 à 0x600 totalisent zéro. L'écrivain du harnais doit la
+   satisfaire : une règle du dehors, qu'on ne peut pas assouplir pour se faire
+   plaisir.
+
+4. LE RECOUPEMENT DE LA LISTE DES PARTS, que les deux lecteurs publics ne font
+   PAS. Le bloc CARD porte deux informations indépendantes sur la même
+   frontière : le nombre de parts, et la taille totale de leur liste. Parcourir
+   les parts une à une doit tomber PILE sur la fin annoncée. La spec avertit que
+   la taille d'un bloc « est parfois corrompue » ; ce recoupement est ce qui
+   transforme la lecture d'un fichier abîmé en refus plutôt qu'en scripts
+   vraisemblables. Un témoin négatif abîme cette taille d'UN octet, et le
+   lecteur refuse.
+
+CE QUI N'EST PAS MESURÉ, ET IL FAUT LE LIRE
+-------------------------------------------
+
+AUCUNE VRAIE PILE DE 1993 N'EST PASSÉE ICI. C'est le manque principal, et il
+n'est pas comblable de ce côté : archive.org et kreativekorp sont refusés par
+la politique de sortie du conteneur, et le dépôt n'en porte aucune. Tout ce qui
+est écrit ci-dessus est vrai d'une pile que NOUS avons montée, arbitrée par un
+lecteur tiers. C'est beaucoup, et ce n'est pas la même chose.
+
+    CE QU'IL FAUT : une petite pile d'origine, la plus simple possible,
+    déposée dans le dépôt. Vérifier que sa taille n'est pas nulle après la
+    copie hors du Mac — si elle l'est, tout était dans le resource fork et il
+    faudra passer par un .hqx.
+
+L'ORDRE DES CARTES N'EST PAS LU. Il ne vient pas de l'ordre des blocs CARD dans
+le fichier mais des blocs LIST et PAGE, recensés et non interprétés. Pour des
+scripts ça suffit — chacun arrive avec l'id de sa carte. Pour un importateur,
+non.
+
+    Et c'est L'ORACLE QUI L'A TROUVÉ : stakread.py a refusé notre pile de
+    démonstration avec « ERROR: no LIST block ». Sans lui je l'aurais écrite
+    sans m'en apercevoir, et j'aurais cru l'ordre du fichier. D'où un drapeau
+    affiché à chaque lecture : un manque visible vaut mieux qu'un manque oublié.
+
+LE GENRE D'UNE PART — bouton ou champ, bit 8 de l'entier de 0x4 — est le SEUL
+champ que nos deux sources ne corroborent pas : l'une le décrit, l'autre ne le
+lit jamais. Écrit comme non mesuré dans hc_origine.c. Une vraie pile tranchera.
+
+HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
+n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs
+CARD et BKGD est décalé de quatre octets. Le décalage est documenté et
+tiendrait en vingt lignes ; il n'est pas écrit parce qu'il n'est pas mesuré. Le
+recensement des blocs, lui, marche des deux côtés.
+
+UNE PILE À ACCÈS PRIVÉ se refuse aussi : ses blocs sont chiffrés. La spec décrit
+la procédure ; elle n'est pas écrite.
+
+CE QUI N'EST PAS EXTRAIT, ET C'EST VOULU : les dessins (blocs BMAP, compressés),
+le texte des champs, les polices, les styles, les motifs, les icônes. Un
+extracteur de scripts n'en a pas besoin.
+
+CE QUE ÇA RAPPORTE TOUT DE SUITE
+--------------------------------
+
+Le jour où une vraie pile arrive, cet extracteur donne un CORPUS : quelques
+centaines de scripts de 1993, écrits par des gens qui ne cherchaient pas à nous
+faire plaisir. À passer dans hct_verif, pour obtenir une mesure que nous n'avons
+pas aujourd'hui — quelle part du HyperTalk RÉEL notre v3 comprend-il ?
+
+Aucune pile de torture ne peut donner ça : j'invente les tournures que je
+connais déjà, ce qui est le défaut natif de l'exercice.
+
+DEUX DÉFAUTS TROUVÉS EN CHEMIN
+------------------------------
+
+Le calage sur 16 bits des contenus de part se compte DEPUIS LE DÉBUT DU BLOC et
+non du fichier. Rien ne garantit qu'un bloc commence à une adresse paire ;
+compter depuis le fichier décalait d'un octet tout ce qui suit les contenus — le
+nom de la carte, donc son script.
+
+« memcpy(dst, NULL, 0) » est un comportement indéfini, même pour zéro octet.
+Une carte sans parts ni contenus laisse les deux tampons du harnais vides, donc
+leur pointeur nul. Rien ne se voit à l'exécution ; UBSan l'a dit, et c'est la
+seule raison pour laquelle on le sait.

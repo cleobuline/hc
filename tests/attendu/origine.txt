@@ -1,0 +1,114 @@
+=== MacRoman -> UTF-8, les 256 octets ===
+(comparés un par un au codec « mac_roman » de Python : voir
+ docs/mesures/pile_origine.txt. Cette référence les fige.)
+   00=--  01=01  02=02  03=03  04=04  05=05  06=06  07=07
+   08=08  09=09  0A=0A  0B=0B  0C=0C  0D=0A  0E=0E  0F=0F
+   10=10  11=11  12=12  13=13  14=14  15=15  16=16  17=17
+   18=18  19=19  1A=1A  1B=1B  1C=1C  1D=1D  1E=1E  1F=1F
+   20=20  21=21  22=22  23=23  24=24  25=25  26=26  27=27
+   28=28  29=29  2A=2A  2B=2B  2C=2C  2D=2D  2E=2E  2F=2F
+   30=30  31=31  32=32  33=33  34=34  35=35  36=36  37=37
+   38=38  39=39  3A=3A  3B=3B  3C=3C  3D=3D  3E=3E  3F=3F
+   40=40  41=41  42=42  43=43  44=44  45=45  46=46  47=47
+   48=48  49=49  4A=4A  4B=4B  4C=4C  4D=4D  4E=4E  4F=4F
+   50=50  51=51  52=52  53=53  54=54  55=55  56=56  57=57
+   58=58  59=59  5A=5A  5B=5B  5C=5C  5D=5D  5E=5E  5F=5F
+   60=60  61=61  62=62  63=63  64=64  65=65  66=66  67=67
+   68=68  69=69  6A=6A  6B=6B  6C=6C  6D=6D  6E=6E  6F=6F
+   70=70  71=71  72=72  73=73  74=74  75=75  76=76  77=77
+   78=78  79=79  7A=7A  7B=7B  7C=7C  7D=7D  7E=7E  7F=7F
+   80=C384  81=C385  82=C387  83=C389  84=C391  85=C396  86=C39C  87=C3A1
+   88=C3A0  89=C3A2  8A=C3A4  8B=C3A3  8C=C3A5  8D=C3A7  8E=C3A9  8F=C3A8
+   90=C3AA  91=C3AB  92=C3AD  93=C3AC  94=C3AE  95=C3AF  96=C3B1  97=C3B3
+   98=C3B2  99=C3B4  9A=C3B6  9B=C3B5  9C=C3BA  9D=C3B9  9E=C3BB  9F=C3BC
+   A0=E280A0  A1=C2B0  A2=C2A2  A3=C2A3  A4=C2A7  A5=E280A2  A6=C2B6  A7=C39F
+   A8=C2AE  A9=C2A9  AA=E284A2  AB=C2B4  AC=C2A8  AD=E289A0  AE=C386  AF=C398
+   B0=E2889E  B1=C2B1  B2=E289A4  B3=E289A5  B4=C2A5  B5=C2B5  B6=E28882  B7=E28891
+   B8=E2888F  B9=CF80  BA=E288AB  BB=C2AA  BC=C2BA  BD=CEA9  BE=C3A6  BF=C3B8
+   C0=C2BF  C1=C2A1  C2=C2AC  C3=E2889A  C4=C692  C5=E28988  C6=E28886  C7=C2AB
+   C8=C2BB  C9=E280A6  CA=C2A0  CB=C380  CC=C383  CD=C395  CE=C592  CF=C593
+   D0=E28093  D1=E28094  D2=E2809C  D3=E2809D  D4=E28098  D5=E28099  D6=C3B7  D7=E2978A
+   D8=C3BF  D9=C5B8  DA=E28184  DB=E282AC  DC=E280B9  DD=E280BA  DE=EFAC81  DF=EFAC82
+   E0=E280A1  E1=C2B7  E2=E2809A  E3=E2809E  E4=E280B0  E5=C382  E6=C38A  E7=C381
+   E8=C38B  E9=C388  EA=C38D  EB=C38E  EC=C38F  ED=C38C  EE=C393  EF=C394
+   F0=EFA3BF  F1=C392  F2=C39A  F3=C39B  F4=C399  F5=C4B1  F6=CB86  F7=CB9C
+   F8=C2AF  F9=CB98  FA=CB99  FB=CB9A  FC=C2B8  FD=CB9D  FE=CB9B  FF=CB87
+ « a\rb » -> « a
+b » (3 octets)
+ « a\r\nb » -> « a
+b » (3 octets)
+
+=== la pile montée au format d'origine ===
+2080 octets
+--- pile HyperCard 2.x : lu
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 5 blocs, chaine atteint la fin, TAIL vu, LIST ABSENT (l'ordre des cartes n'est donc pas connu), 0 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc TAIL id     -1 taille    32 offset 0x0800
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script :
+    | on mouseUp
+    |   beep
+    | end mouseUp
+carte id 3001, fond 2000, nom «  », 0 parts
+  script : aucun
+
+=== les témoins négatifs : ce qui doit être REFUSÉ ===
+--- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
+--- taille de bloc au-dela du fichier : REFUSE — taille de bloc impossible (offset 0x0)
+--- premier bloc pas STAK : REFUSE — le premier bloc n'est pas STAK (offset 0x0)
+--- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
+--- pile HyperCard 1.x : REFUSE — pile HyperCard 1.x : blocs decales, lecture non ecrite (offset 0x10)
+--- plus de cartes que de blocs : REFUSE — plus de cartes ou de fonds que de blocs (offset 0x24)
+--- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x75C)
+--- marqueur de script d'une part abime (faute LOCALE) : lu
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 5 blocs, chaine atteint la fin, TAIL vu, LIST ABSENT (l'ordre des cartes n'est donc pas connu), 1 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc TAIL id     -1 taille    32 offset 0x0800
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script : aucun
+carte id 3001, fond 2000, nom «  », 0 parts
+  script : aucun

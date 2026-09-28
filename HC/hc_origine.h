@@ -1,0 +1,147 @@
+/* hc_origine.h — Lecture d'une pile HyperCard D'ORIGINE (le format d'Apple).
+ *
+ * À ne pas confondre avec hc_file.c, qui lit et écrit NOTRE format, un texte
+ * qui s'ouvre dans un éditeur (« -- pile HyperCard (format maison) »). Ici il
+ * s'agit du fichier binaire qu'HyperCard écrivait lui-même, entre 1987 et
+ * 1998 : une suite de blocs de quatre lettres, STAK, MAST, CARD, BKGD, TAIL,
+ * en gros-boutiste.
+ *
+ * CE QUE CE MODULE FAIT, ET CE QU'IL NE FAIT PAS.
+ *
+ * Il extrait les SCRIPTS et les NOMS — de la pile, des fonds, des cartes, des
+ * boutons et des champs — et rien d'autre. Pas les dessins (blocs BMAP,
+ * compressés), pas le texte des champs, pas les polices ni les styles. C'est
+ * délibéré et ce n'est pas un premier jet honteux : un extracteur de scripts
+ * n'a besoin d'aucune de ces choses, et il rapporte tout de suite ce qu'aucune
+ * pile de torture écrite par nous ne peut donner — du vrai HyperTalk, écrit
+ * par des gens qui ne cherchaient pas à nous faire plaisir.
+ *
+ * L'IMPORTATEUR, LUI, N'EST PAS ÉCRIT, et c'est voulu. Un importateur doit
+ * rendre une pile qui MARCHE : il est couplé à tout le noyau, et chaque trou
+ * de HC devient un de ses bugs, si bien qu'on ne sait plus si l'on a mal lu le
+ * bloc ou si HC ne sait pas faire. Un extracteur n'a qu'à dire la vérité sur
+ * ce qu'il voit. Il est donc juste, ou refuse.
+ *
+ * D'OÙ VIENNENT LES OFFSETS. De deux descriptions publiques et indépendantes
+ * du format, citées dans docs/mesures/pile_origine.txt, qui CONCORDENT sur
+ * tout ce qui est utilisé ici. Aucune ligne de code n'a été reprise d'un autre
+ * projet : ni HyperCardPreview ni mystextract ne portent de fichier LICENSE,
+ * donc aucune licence n'est accordée, donc on n'emprunte rien — les offsets
+ * sont des faits sur un format, le code est le nôtre.
+ */
+#ifndef HC_ORIGINE_H
+#define HC_ORIGINE_H
+
+#include <stddef.h>
+
+/* Un bouton ou un champ. */
+enum { HC_ORIG_CHAMP = 0, HC_ORIG_BOUTON = 1 };
+
+typedef struct {
+    int   genre;                /* HC_ORIG_CHAMP ou HC_ORIG_BOUTON */
+    int   id;
+    int   haut, gauche, bas, droite;
+    char *nom;                  /* UTF-8, jamais NULL (« » si sans nom) */
+    char *script;               /* UTF-8, NULL s'il n'y en a pas */
+} HcOrigPart;
+
+/* Une carte ou un fond : les deux blocs ont la même queue (parts, contenus,
+ * nom, script) et ne diffèrent que par leur en-tête. */
+typedef struct {
+    int   id;
+    int   fond;                 /* carte : l'id de son fond ; fond : 0 */
+    char *nom;                  /* UTF-8, jamais NULL */
+    char *script;               /* UTF-8, NULL s'il n'y en a pas */
+    HcOrigPart *parts;
+    int   nparts;
+} HcOrigCouche;
+
+/* Le recensement des blocs, avant toute interprétation. C'est la seule partie
+ * qui ne dépend que de l'en-tête de bloc — la brique dont on est le plus sûr —
+ * et elle se valide SEULE : une chaîne qui part de 0 et tombe pile sur la fin
+ * du fichier, avec des types de quatre lettres imprimables, confirme la
+ * disposition sur des octets qu'on n'a pas écrits. */
+typedef struct {
+    char type[5];
+    int  id;
+    unsigned long taille;
+    unsigned long offset;
+} HcOrigBloc;
+
+typedef struct {
+    /* --- le recensement --- */
+    HcOrigBloc   *blocs;
+    int           nblocs;
+    int           chaine_atteint_la_fin;  /* la somme des tailles == n */
+    int           tail_vu;                /* un bloc TAIL a terminé la chaîne */
+
+    /* L'ORDRE DES CARTES N'EST PAS LU, et il faut le dire fort.
+     *
+     * Il ne vient pas de l'ordre des blocs CARD dans le fichier : il vient des
+     * blocs LIST et PAGE, que ce module recense sans les interpréter. Les
+     * cartes sont donc rendues dans l'ordre où le FICHIER les porte, qui n'est
+     * pas forcément celui de la pile.
+     *
+     * Pour extraire des scripts, ça suffit — chaque script arrive avec l'id de
+     * sa carte, qui l'identifie sans ambiguïté. Pour un importateur, non : il
+     * lui faudra ces deux blocs. Trouvé par le lecteur tiers, qui a refusé la
+     * pile de démonstration du harnais avec « no LIST block » ; sans lui je
+     * l'aurais écrite sans m'en apercevoir. D'où ce drapeau, affiché à chaque
+     * lecture : un manque visible vaut mieux qu'un manque qu'on oublie. */
+    int           liste_vue;              /* un bloc LIST est présent */
+
+    /* --- STAK --- */
+    unsigned long format;       /* 8 : HyperCard 1.x ; 10 : 2.x */
+    unsigned long ncartes;      /* ce que STAK ANNONCE */
+    unsigned long nfonds;       /* idem */
+    int           largeur, hauteur;
+    int           somme_juste;  /* la somme de contrôle de STAK totalise zéro */
+    int           protegee;     /* accès privé : les blocs sont chiffrés */
+    char         *script;       /* UTF-8, NULL s'il n'y en a pas */
+
+    /* --- les couches --- */
+    HcOrigCouche *fonds;   int nfonds_lus;
+    HcOrigCouche *cartes;  int ncartes_lues;
+
+    /* DEUX SORTES DE FAUTE, ET ELLES NE SE TRAITENT PAS PAREIL.
+     *
+     * Une faute STRUCTURELLE — une taille de bloc nulle, une chaîne qui sort
+     * du fichier, une liste de parts qui ne tombe pas où sa propre taille
+     * annoncée le dit — arrête la lecture : on ne peut pas continuer sans
+     * inventer, et inventer est exactement ce qu'on refuse.
+     *
+     * Une faute LOCALE — l'octet marqueur d'un script de part qui n'est pas le
+     * zéro que les deux sources annoncent — ne doit pas faire perdre les cent
+     * autres scripts du fichier. Elle est COMPTÉE ici, et la part concernée
+     * rend un script nul. Refuser le fichier entier pour un octet serait aussi
+     * malhonnête que de deviner : dans les deux cas on perdrait ce qu'on
+     * savait lire. */
+    int           anomalies;
+} HcOrigPile;
+
+/* Rend 0 en cas de succès, et remplit `pourquoi` sinon. REFUSE plutôt que de
+ * deviner : une taille de bloc nulle, une chaîne qui sort du fichier, une
+ * liste de parts qui ne tombe pas où sa taille annoncée le dit, une chaîne de
+ * caractères sans son zéro — tout cela arrête la lecture avec un motif écrit
+ * en clair. Un lecteur qui rend des scripts vraisemblables à partir d'octets
+ * qu'il a mal compris est bien pire qu'un lecteur qui dit non. */
+int  hc_origine_lit(const unsigned char *octets, size_t n,
+                    HcOrigPile *pile, char *pourquoi, size_t npourquoi);
+void hc_origine_libere(HcOrigPile *pile);
+
+/* MacRoman -> UTF-8, et les « \r » du Mac classique -> « \n ».
+ *
+ * Exporté parce qu'il se teste SEUL, et exhaustivement : 256 octets, 256
+ * réponses, et la référence de la suite les porte toutes. Le noyau n'avait
+ * aucune table MacRoman complète — dup_script (hc_script.c) ne convertit que
+ * les quatre caractères dont la SYNTAXE a besoin (¬ ≠ ≤ ≥) — si bien qu'un
+ * « é » d'une pile d'origine, 0x8E, arrivait tel quel dans un monde UTF-8.
+ *
+ * Et il n'y a pas de doublon avec dup_script : celui-ci accepte déjà les
+ * formes UTF-8 de ≠ ≤ ≥ ¬ aussi bien que les octets MacRoman. On transcode
+ * donc fidèlement ici, et la syntaxe reste son affaire à lui.
+ *
+ * Rend une chaîne à libérer, ou NULL si la mémoire manque. */
+char *hc_origine_utf8(const unsigned char *octets, size_t n);
+
+#endif
