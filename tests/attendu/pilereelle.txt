@@ -47,3 +47,66 @@ ok   # nu dans un gestionnaire : toujours une faute       -> erreur    (caractè
 -- les deux ne sont pas la meme chose
      2.4.1 / 0.6.9.4
      le gestionnaire est alle au bout
+
+=== 4. « Stack Templates » : de 94,4 % a 99,5 % de ses 198 scripts ===
+(la premiere pile de PRODUCTION d'Apple du corpus. Onze gestionnaires
+ refuses, en quatre defauts — et chacun se mesure a cote de la forme
+ VOISINE qui passait deja, sans quoi on chercherait la cause au
+ mauvais etage.)
+
+--- 4a. le ¬ de continuation suivi d'un COMMENTAIRE ---
+(bouton « Find... » d'Apple. Le ¬ etait avale, la ligne N'ETAIT PAS
+ continuee, et rien ne le disait : la faute tombait trois lignes plus
+ loin. MESURE DANS HYPERCARD (Basilisk II) avant d'y toucher : le
+ dialogue affiche « un deux », sans un mot.)
+ok   ¬ puis un commentaire, puis la suite de la ligne    -> rien    
+ok   temoin : ¬ sans commentaire (passait deja)          -> rien    
+ok   la ligne d'Apple, mot pour mot                       -> rien    
+
+--- 4b. « else » n'appartient a aucune expression ---
+(bouton « Log In » d'Apple : « if bg field "Log Name" then logIn else
+ logOut ». Le si sur une ligne etait ecrit et teste depuis longtemps ;
+ ce qui manquait est un etage plus bas. Les deux mesures COTE A COTE
+ nomment la cause — l'argument facultatif d'une commande.)
+ok   if C then <commande a argument facultatif> else <cmd> -> rien    
+ok   temoin : « into y » sature le motif, donc passait deja -> rien    
+ok   la ligne d'Apple, mot pour mot                       -> rien    
+ok   « return » a aussi un argument facultatif          -> rien    
+ok   « then ... else ... » en tete de la ligne suivante -> rien    
+
+--- 4c. « print card from x,y to x,y » : une PARTIE de la carte ---
+(trois fonds l'ecrivent, avec le commentaire de l'auteur : « prints
+ only the invoice part of the card ». Et « print card 1 to 600 », que
+ tout un harnais tient, doit continuer de passer : c'est le butoir du
+ motif qui decide, et c'est lui qu'il a fallu corriger.)
+ok   print card from 0,0 to 512,304                       -> rien    
+ok   temoin : print card 1 to 600 (le « to » sans « from ») -> rien    
+ok   temoin : print all cards                             -> rien    
+ok   temoin : print marked cards                          -> rien    
+ok   temoin : print this card                             -> rien    
+
+--- 4d. un ORDINAL devant « menuItem » designe deja ---
+(sept sites dans la pile. Le garde de menu exige qu'un designateur
+ SUIVE le mot de type, pour que « put menu into x » ne devienne pas un
+ menu nomme « into ». « last menuItem of menu "T" » met le sien
+ DEVANT, et ce qui suit est « of ». Deux sites jumeaux a corriger : la
+ lecture, et le guichet qui decide si l'on y entre.)
+ok   disable last menuItem of menu                        -> rien    
+ok   enable last menuItem of menu                         -> rien    
+ok   set name of last menuItem of menu ... to ...         -> rien    
+ok   the name of first menu                               -> rien    
+ok   temoin : menuItem CITE passait deja                  -> rien    
+ok   garde : « put menu into x » n'est pas un menu nomme « into » -> rien    
+ok   garde : « the family of button » n'est pas une famille nommee « of » -> rien    
+
+--- 4e. CE QUI RESTE REFUSE, ET POURQUOI ---
+(« get visible of window "StackTemplatePal" » : une fenetre NOMMEE.
+ Ce n'est pas un trou de syntaxe, c'est un type d'objet que l'arbre
+ n'a pas — hc_core.c le dit en toutes lettres pour « card window », et
+ ne sert que ses quatre proprietes de geometrie. Notre application n'a
+ ni palette, ni fenetre Outils, ni fenetre Motifs : repondre quoi que
+ ce soit a « the visible of window "X" » serait DECIDER SEUL de ce
+ qu'HyperCard aurait repondu. Refus assume, ecrit ici pour qu'il ne
+ passe pas pour un oubli.)
+ok   window NOMMEE : refus assume, pas un oubli           -> erreur    (texte inattendu en fin de ligne)
+ok   temoin : « card window », que hc_core.c sert deja  -> rien    

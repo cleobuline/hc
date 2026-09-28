@@ -169,19 +169,34 @@ int hct_lex(const char *src, HctLot *lot)
         if (*p == ' ' || *p == '\t') { p++; continue; }
 
         /* --- continuation de ligne -----------------------------------
-         * Le caractère « soft return » du Mac classique, ¬ (0xAC en MacRoman,
-         * "\xC2\xAC" en UTF-8). La ligne logique se poursuit : on avale le
-         * saut de ligne qui suit et on n'émet aucun EOL. */
-        if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xAC) {
-            p += 2;
+         * Le caractère « soft return » du Mac classique, ¬ — l'octet 0xC2 en
+         * MacRoman, qui vaut U+00AC, donc "\xC2\xAC" une fois converti en UTF-8.
+         * (L'octet 0xAC de MacRoman est le tréma « ¨ », pas celui-là ; c'est le
+         * commentaire d'avant qui se trompait, pas le code.) La ligne logique se
+         * poursuit : on avale le saut de ligne qui suit et on n'émet aucun EOL.
+         *
+         * ET UN COMMENTAIRE PEUT S'INTERCALER ENTRE LE ¬ ET LE SAUT DE LIGNE.
+         * Relevé dans « Stack Templates », bouton « Find… » d'Apple :
+         *
+         *     answer "Sorry, but I was unable to find any cards containing" && ¬ -- ∆
+         *     "“" & it & "”."
+         *
+         * MESURÉ DANS HYPERCARD (Basilisk II) avant d'y toucher, parce que
+         * « Apple l'a livré » ne prouve rien — HyperCard ne compile un
+         * gestionnaire qu'à l'exécution, et ce bouton n'a peut-être jamais été
+         * cliqué. Le banc joué là-bas affiche « un deux » sans un mot : le
+         * commentaire est toléré et la ligne continue.
+         *
+         * Le défaut qu'on corrige était le pire des deux mondes : le ¬ était
+         * avalé, la ligne N'ÉTAIT PAS continuée, et rien ne le disait. Le
+         * gestionnaire se refusait trois lignes plus loin, sur « expression
+         * attendue », à un endroit qui ne nomme pas la cause. */
+        if (((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xAC)
+            || (unsigned char)p[0] == 0xAC) {       /* 0xAC seul : Latin-1 non converti */
+            p += ((unsigned char)p[0] == 0xC2) ? 2 : 1;
             while (*p == ' ' || *p == '\t') p++;
-            if (*p == '\r') p++;
-            if (*p == '\n') { p++; ligne++; deb_ligne = p; }
-            continue;
-        }
-        if ((unsigned char)p[0] == 0xAC) {          /* MacRoman non converti */
-            p++;
-            while (*p == ' ' || *p == '\t') p++;
+            if (p[0] == '-' && p[1] == '-')
+                while (*p && *p != '\n' && *p != '\r') p++;
             if (*p == '\r') p++;
             if (*p == '\n') { p++; ligne++; deb_ligne = p; }
             continue;

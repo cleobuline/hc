@@ -1,9 +1,11 @@
 /* pilereelle.c — Ce qu'une VRAIE pile de 1993 a appris au vérificateur et au
  * lexer.
  *
- * Les deux défauts corrigés ici viennent de « Découvrir HyperCard », la pile
- * d'initiation d'Apple localisée en français, lue avec HC/hc_origine.c. Aucune
- * pile de torture écrite par nous ne les aurait trouvés : on invente les
+ * Les deux premiers défauts corrigés ici viennent de « Découvrir HyperCard », la
+ * pile d'initiation d'Apple localisée en français, lue avec HC/hc_origine.c. La
+ * section 4 vient de « Stack Templates », d'Apple aussi, et bien plus grosse :
+ * 198 gestionnaires, 2164 lignes, des palettes, des menus et de l'impression.
+ * Aucune pile de torture écrite par nous ne les aurait trouvés : on invente les
  * tournures qu'on connaît déjà.
  *
  * La pile elle-même n'est pas versionnable — « ©Copyright 1993-1995 by Apple
@@ -175,6 +177,108 @@ int main(void)
     joue("the hcVersion, sous son propre nom", "put the hcVersion");
     joue("les deux ne sont pas la meme chose",
          "put the version & \" / \" & the hcVersion");
+
+    /* ------------------------------------------------------------------ */
+    /* 4. Ce que « Stack Templates » a appris                             */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 4. « Stack Templates » : de 94,4 % a 99,5 % de ses 198 scripts ===");
+    puts("(la premiere pile de PRODUCTION d'Apple du corpus. Onze gestionnaires");
+    puts(" refuses, en quatre defauts — et chacun se mesure a cote de la forme");
+    puts(" VOISINE qui passait deja, sans quoi on chercherait la cause au");
+    puts(" mauvais etage.)");
+
+    puts("");
+    puts("--- 4a. le ¬ de continuation suivi d'un COMMENTAIRE ---");
+    puts("(bouton « Find... » d'Apple. Le ¬ etait avale, la ligne N'ETAIT PAS");
+    puts(" continuee, et rien ne le disait : la faute tombait trois lignes plus");
+    puts(" loin. MESURE DANS HYPERCARD (Basilisk II) avant d'y toucher : le");
+    puts(" dialogue affiche « un deux », sans un mot.)");
+    verif("¬ puis un commentaire, puis la suite de la ligne",
+          "on t\n  answer \"un\" && \xc2\xac -- commentaire\n  \"deux\"\nend t\n", "rien");
+    verif("temoin : ¬ sans commentaire (passait deja)",
+          "on t\n  answer \"un\" && \xc2\xac\n  \"deux\"\nend t\n", "rien");
+    /* La ligne d'Apple elle-même, mot pour mot, guillemets courbes compris. */
+    verif("la ligne d'Apple, mot pour mot",
+          "on t\n  find \"x\"\n  if the result = \"Not Found\" then\n"
+          "    answer \"unable to find any cards containing\" && \xc2\xac -- \xe2\x88\x86\n"
+          "    \"\xe2\x80\x9c\" & it & \"\xe2\x80\x9d.\"\n  end if\nend t\n", "rien");
+
+    puts("");
+    puts("--- 4b. « else » n'appartient a aucune expression ---");
+    puts("(bouton « Log In » d'Apple : « if bg field \"Log Name\" then logIn else");
+    puts(" logOut ». Le si sur une ligne etait ecrit et teste depuis longtemps ;");
+    puts(" ce qui manquait est un etage plus bas. Les deux mesures COTE A COTE");
+    puts(" nomment la cause — l'argument facultatif d'une commande.)");
+    verif("if C then <commande a argument facultatif> else <cmd>",
+          "on t\n  if x then beep else beep\nend t\n", "rien");
+    verif("temoin : « into y » sature le motif, donc passait deja",
+          "on t\n  if x then put 1 into y else beep\nend t\n", "rien");
+    verif("la ligne d'Apple, mot pour mot",
+          "on t\n  if bg field \"Log Name\" then logIn else logOut\nend t\n", "rien");
+    verif("« return » a aussi un argument facultatif",
+          "on t\n  if x then return 1 else return 2\nend t\n", "rien");
+    /* Et la forme où le « then » ouvre la ligne SUIVANTE : trois fonds de la
+     * pile l'écrivent, et c'était le même défaut, pas un second. */
+    verif("« then ... else ... » en tete de la ligne suivante",
+          "on returnKey\n  if x is not empty and the selectedField is empty\n"
+          "  then findText else pass returnKey\nend returnKey\n", "rien");
+
+    puts("");
+    puts("--- 4c. « print card from x,y to x,y » : une PARTIE de la carte ---");
+    puts("(trois fonds l'ecrivent, avec le commentaire de l'auteur : « prints");
+    puts(" only the invoice part of the card ». Et « print card 1 to 600 », que");
+    puts(" tout un harnais tient, doit continuer de passer : c'est le butoir du");
+    puts(" motif qui decide, et c'est lui qu'il a fallu corriger.)");
+    verif("print card from 0,0 to 512,304",
+          "on t\n  print card from 0,0 to 512,304\nend t\n", "rien");
+    verif("temoin : print card 1 to 600 (le « to » sans « from »)",
+          "on t\n  print card 1 to 600\nend t\n", "rien");
+    verif("temoin : print all cards",  "on t\n  print all cards\nend t\n", "rien");
+    verif("temoin : print marked cards","on t\n  print marked cards\nend t\n", "rien");
+    verif("temoin : print this card",  "on t\n  print this card\nend t\n", "rien");
+
+    puts("");
+    puts("--- 4d. un ORDINAL devant « menuItem » designe deja ---");
+    puts("(sept sites dans la pile. Le garde de menu exige qu'un designateur");
+    puts(" SUIVE le mot de type, pour que « put menu into x » ne devienne pas un");
+    puts(" menu nomme « into ». « last menuItem of menu \"T\" » met le sien");
+    puts(" DEVANT, et ce qui suit est « of ». Deux sites jumeaux a corriger : la");
+    puts(" lecture, et le guichet qui decide si l'on y entre.)");
+    verif("disable last menuItem of menu",
+          "on t\n  disable last menuItem of menu \"Templates\"\nend t\n", "rien");
+    verif("enable last menuItem of menu",
+          "on t\n  enable last menuItem of menu \"Templates\"\nend t\n", "rien");
+    verif("set name of last menuItem of menu ... to ...",
+          "on t\n  set name of last menuItem of menu \"T\" to \"Show Palette\"\nend t\n",
+          "rien");
+    verif("the name of first menu",
+          "on t\n  put the name of first menu into x\nend t\n", "rien");
+    verif("temoin : menuItem CITE passait deja",
+          "on t\n  set checkMark of menuItem \"A\" of menu \"T\" to true\nend t\n", "rien");
+    /* LE GARDE DOIT TENIR : c'est lui qu'on vient d'assouplir, et ces deux
+     * témoins sont la seule raison de croire qu'on ne l'a pas ouvert trop
+     * grand. Sans ordinal devant, rien ne change. */
+    verif("garde : « put menu into x » n'est pas un menu nomme « into »",
+          "on t\n  put menu into x\nend t\n", "rien");
+    verif("garde : « the family of button » n'est pas une famille nommee « of »",
+          "on t\n  put the family of button \"X\" into x\nend t\n", "rien");
+
+    puts("");
+    puts("--- 4e. CE QUI RESTE REFUSE, ET POURQUOI ---");
+    puts("(« get visible of window \"StackTemplatePal\" » : une fenetre NOMMEE.");
+    puts(" Ce n'est pas un trou de syntaxe, c'est un type d'objet que l'arbre");
+    puts(" n'a pas — hc_core.c le dit en toutes lettres pour « card window », et");
+    puts(" ne sert que ses quatre proprietes de geometrie. Notre application n'a");
+    puts(" ni palette, ni fenetre Outils, ni fenetre Motifs : repondre quoi que");
+    puts(" ce soit a « the visible of window \"X\" » serait DECIDER SEUL de ce");
+    puts(" qu'HyperCard aurait repondu. Refus assume, ecrit ici pour qu'il ne");
+    puts(" passe pas pour un oubli.)");
+    verif("window NOMMEE : refus assume, pas un oubli",
+          "on t\n  get visible of window \"StackTemplatePal\"\nend t\n", "erreur");
+    verif("temoin : « card window », que hc_core.c sert deja",
+          "on t\n  put the width of card window into x\nend t\n", "rien");
 
     hc_unregister_stack(st);
     hc_free(st);

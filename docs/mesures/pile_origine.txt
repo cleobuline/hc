@@ -809,3 +809,111 @@ REFUS : il posait 0x7F dans l'octet haut, c'est-à-dire précisément le parasit
 la réparation enlève. Renommé plutôt que retiré. Rien ne passe en silence pour
 autant : l'anomalie est comptée, et la somme de contrôle reste FAUSSE puisque
 l'octet abîmé est dans le bloc STAK lui-même.
+
+LE CORPUS, QUATRIÈME PILE : DE 94,4 % À 99,5 %
+----------------------------------------------
+
+« Stack Templates » est la première pile de PRODUCTION d'Apple du corpus, et
+c'est la première qui ne soit pas à 100 % :
+
+    pile                        scripts  lignes  acceptes par v3
+    3D Parametric Equations          66     804  100 %
+    Découvrir HyperCard              28     164  100 %
+    TEST3                             4     941  100 %
+    Stack Templates                 198    2164   94,4 %  ->  99,5 %
+    ------------------------------------------------------------------
+    TOTAL                           296    4073   96,3 %  ->  99,7 %
+
+Onze gestionnaires refusés, QUATRE défauts. Le chiffre de onze n'était pas une
+mesure de quatre défauts : trois formes tombaient sur la même cause, et il a
+fallu les isoler hors de la pile, une par une, pour le savoir.
+
+ET CHACUN SE MESURE À CÔTÉ DE LA FORME VOISINE QUI PASSAIT DÉJÀ. C'est ce qui a
+nommé l'étage de la cause à chaque fois ; le relevé seul aurait envoyé chercher
+au mauvais endroit.
+
+1. LE ¬ DE CONTINUATION SUIVI D'UN COMMENTAIRE
+
+       answer "…unable to find any cards containing" && ¬ -- ∆
+       "“" & it & "”."
+
+   Le lexer avalait le ¬, ne trouvait pas de fin de ligne derrière, et NE
+   CONTINUAIT PAS la ligne. Le pire des deux mondes : ni continuation, ni
+   plainte sur le ¬ — la faute tombait trois lignes plus loin, sur « expression
+   attendue », à un endroit qui ne nomme pas la cause.
+
+   MESURÉ DANS HYPERCARD (Basilisk II) avant d'y toucher, et il fallait le
+   mesurer : « Apple l'a livré » ne prouve rien, puisque HyperCard ne compile un
+   gestionnaire qu'à son appel et que ce bouton n'a peut-être jamais été cliqué.
+   Le banc joué là-bas affiche « un deux », sans un mot.
+
+2. « else » N'APPARTIENT À AUCUNE EXPRESSION
+
+       if bg field "Log Name" then logIn else logOut
+
+   Le si sur une ligne était écrit et testé depuis longtemps. Ce qui manquait
+   était un étage plus bas :
+
+       if x then put 1 into y else beep     ACCEPTÉ  (« into y » sature le motif)
+       if x then beep else beep             REFUSÉ   (« beep » a un argument [e])
+
+   « logIn » est un envoi de message, donc une commande à argument FACULTATIF, et
+   le motif décidait d'attacher cet argument sur la seule question « reste-t-il
+   quelque chose sur la ligne ? ». Il restait « else » : l'argument se collait,
+   « else » devenait une variable, et c'est le mot d'après qui portait la faute.
+
+   Réparé dans fini(), au plus bas : toute commande à argument facultatif avait
+   le même défaut. Corriger « beep » aurait laissé cinquante portes jumelles.
+
+   Et la forme où le « then » ouvre la ligne suivante — trois fonds l'écrivent —
+   était le MÊME défaut, pas un second. C'est l'isolement hors de la pile qui l'a
+   dit ; comptée depuis la pile, elle faisait une cause de plus.
+
+3. « print card from 0,0 to 512,304 » — UNE PARTIE DE LA CARTE
+
+   Trois fonds l'écrivent, avec le commentaire de l'auteur à côté : « prints only
+   the invoice part of the card, does not print the buttons along the bottom ».
+
+   Le défaut n'était pas dans le motif de « print » mais dans le calcul du
+   BUTOIR : il s'arrêtait au premier emplacement d'expression du motif, si bien
+   que « * [to e] [with e] » donnait le butoir « to » et non « to|with ». Le trou
+   ne se voyait pas — aucun script du corpus n'écrit « print x with y » — et il
+   s'est vu en ajoutant le groupe « [from * to *] », qui aurait réduit le butoir
+   à « from » et cassé « print card 1 to 600 », que le harnais impression.c tient
+   depuis longtemps. Un emplacement d'expression se SAUTE maintenant au lieu de
+   fermer la collecte, et le butoir est complet.
+
+4. UN ORDINAL DEVANT « menuItem » DÉSIGNE DÉJÀ
+
+       disable last menuItem of menu "Templates"
+       set name of last menuItem of menu "Templates" to "Show Palette"
+
+   Sept sites. Le garde de menu exige qu'un désignateur SUIVE le mot de type,
+   pour que « put menu into x » ne devienne pas un menu nommé « into ». Ici le
+   désignateur est DEVANT, et ce qui suit est « of », qui est structurel.
+
+       menuItem "A" of menu "T"     ACCEPTÉ  (nom cité : le garde est satisfait)
+       last menuItem of menu "T"    REFUSÉ   (l'ordinal ne compte pas)
+
+   DEUX SITES JUMEAUX, et le premier seul ne changeait RIEN : la lecture, dans
+   reference(), et le guichet reference_ici() qui décide si l'on y entre. C'est
+   le défaut signature de ce projet, et il s'est reproduit ici même.
+
+CE QUI RESTE REFUSÉ, ET CE N'EST PAS UN OUBLI
+
+       get visible of window "StackTemplatePal"
+
+   Une fenêtre NOMMÉE. Ce n'est pas un trou de syntaxe : c'est un type d'objet
+   que l'arbre de v3 n'a pas, et hc_core.c le dit déjà en toutes lettres pour
+   « card window », dont il ne sert que les quatre propriétés de géométrie.
+
+   Notre application n'a ni palette externe, ni fenêtre Outils, ni fenêtre
+   Motifs. Répondre quoi que ce soit à « the visible of window "X" » serait
+   décider seul de ce qu'HyperCard aurait répondu — exactement ce que le
+   commentaire de « card window » refuse de faire. Refus assumé, et écrit dans
+   tests/harnais/pilereelle.c pour qu'il ne passe pas pour un oubli.
+
+   Le coût est réel et il faut le nommer : script_arbre() refuse le script
+   ENTIER, donc les 300 lignes du script de pile de « Stack Templates » sont
+   perdues pour une seule référence. Si les fenêtres nommées se font un chantier,
+   c'est cette ligne-là qui le justifie, pas la syntaxe.

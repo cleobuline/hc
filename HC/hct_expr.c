@@ -15,10 +15,42 @@ static const HctJeton *ici(HctAnalyseur *a)
     return &a->lot->jetons[a->i];
 }
 
+/* UNE EXPRESSION S'ARRÊTE AUSSI DEVANT « else », ET PAS SEULEMENT EN FIN DE
+ * LIGNE. C'est le mot qui sépare les deux branches d'un si écrit sur une ligne,
+ * et il n'appartient à aucune expression de HyperTalk — on ne peut ni le
+ * nommer, ni en faire une variable, ni le passer en argument.
+ *
+ * RELEVÉ DANS « Stack Templates », bouton « Log In » d'Apple :
+ *
+ *     if bg field "Log Name" then logIn else logOut
+ *
+ * refusé sur « texte inattendu en fin de ligne [logOut] ». Le si sur une ligne
+ * était pourtant écrit et testé depuis longtemps ; ce qui manquait est un
+ * niveau plus bas. « logIn » est un envoi de message, donc une commande à
+ * argument FACULTATIF, et le motif décide d'attacher cet argument sur la seule
+ * question « reste-t-il quelque chose sur la ligne ? ». Il restait « else » :
+ * l'argument se collait, « else » devenait une variable, et c'est « logOut »
+ * qui portait la faute — à un mot de la cause, ce qui est le plus cher.
+ *
+ * Deux mesures côte à côte le disent, et une seule ne l'aurait pas dit :
+ *
+ *     if x then put 1 into y else beep     ACCEPTÉ  (« into y » sature le motif)
+ *     if x then beep else beep             REFUSÉ   (« beep » a un argument [e])
+ *
+ * La deuxième seule aurait fait chercher du côté du si ; les deux ensemble
+ * nomment l'argument facultatif.
+ *
+ * Réparé ici plutôt que dans hct_cmd.c, et c'est le site qui compte : toute
+ * commande à argument facultatif a le même défaut — « return else … », « exit
+ * else … », un envoi de message quelconque. Corriger « beep » aurait laissé
+ * cinquante portes jumelles ouvertes. Le bloc, lui, ne perd rien : il repère
+ * son « else » par mot_ici_b, pas par cette fonction. */
+static int mot_est(const HctJeton *j, const char *mot);
+
 static int fini(HctAnalyseur *a)
 {
-    HctGenre g = ici(a)->genre;
-    return g == HCT_FIN || g == HCT_EOL;
+    const HctJeton *j = ici(a);
+    return j->genre == HCT_FIN || j->genre == HCT_EOL || mot_est(j, "else");
 }
 
 static void avance(HctAnalyseur *a)
@@ -645,19 +677,46 @@ static int designateur_suit(HctAnalyseur *a)
     return 0;
 }
 
-static int type_obj_ici(HctAnalyseur *a, HctTypeObjet *t)
+/* UN ORDINAL DEVANT LE TYPE DÉSIGNE DÉJÀ, et le garde de menu ne doit pas s'y
+ * appliquer. Le garde est là pour que « put menu into x » ne devienne pas un
+ * menu nommé « into » : il exige qu'un désignateur SUIVE le mot de type. Mais
+ * « last menuItem of menu "Templates" » met son désignateur DEVANT — et ce qui
+ * suit est « of », qui est structurel. Le garde refusait donc le type, l'ordinal
+ * était rendu, et la faute tombait sur « menuItem » : « texte inattendu en fin
+ * de ligne ».
+ *
+ * Relevé sept fois dans « Stack Templates » d'Apple, sous quatre formes :
+ *
+ *     disable last menuItem of menu "Templates"
+ *     enable  last menuItem of menu "Templates"
+ *     set name of last menuItem of menu "Templates" to "Show Palette"
+ *
+ * « menuItem "A" of menu "T" » passait déjà, et c'est ce qui rendait le défaut
+ * invisible : le désignateur cité satisfait le garde. Deux mesures côte à côte
+ * le nomment — le nom cité passe, l'ordinal non — là où la seule forme fautive
+ * aurait fait chercher du côté de « disable ».
+ *
+ * L'argument dit donc au garde qu'un désignateur a DÉJÀ été lu. Il n'est vrai
+ * qu'aux deux appels qui suivent un ordinal ; partout ailleurs il vaut zéro, et
+ * le garde travaille comme avant. */
+static int type_obj_ici_d(HctAnalyseur *a, HctTypeObjet *t, int deja_designe)
 {
     for (int k = 0; TYPES_OBJ[k].mot; k++)
         if (mot_ici(a, TYPES_OBJ[k].mot)) {
             if ((TYPES_OBJ[k].type == HCT_OBJ_MENU ||
                  TYPES_OBJ[k].type == HCT_OBJ_MENUITEM ||
                  TYPES_OBJ[k].type == HCT_OBJ_FAMILY) &&
-                !designateur_suit(a))
+                !deja_designe && !designateur_suit(a))
                 return 0;                 /* un simple mot, pas un objet */
             *t = TYPES_OBJ[k].type;
             return 1;
         }
     return 0;
+}
+
+static int type_obj_ici(HctAnalyseur *a, HctTypeObjet *t)
+{
+    return type_obj_ici_d(a, t, 0);
 }
 
 /* La portée n'a de sens que devant un bouton, un champ, une part — ou une
@@ -780,7 +839,7 @@ static HctNoeud *reference(HctAnalyseur *a)
         HctPortee p2 = HCT_PORTEE_AUCUNE;
         HctTypeObjet t2;
         portee_ici(a, &p2);
-        if (!type_obj_ici(a, &t2)) { a->i = garde; ord = HCT_ORD_AUCUN; }
+        if (!type_obj_ici_d(a, &t2, 1)) { a->i = garde; ord = HCT_ORD_AUCUN; }
         else a->i = garde + 1;    /* on garde l'ordinal, on relit la suite */
     }
 
@@ -788,7 +847,8 @@ static HctNoeud *reference(HctAnalyseur *a)
     portee_ici(a, &portee);
 
     HctTypeObjet type;
-    if (!type_obj_ici(a, &type)) return faute(a, "type d'objet attendu");
+    if (!type_obj_ici_d(a, &type, ord != HCT_ORD_AUCUN))
+        return faute(a, "type d'objet attendu");
     /* LE JETON DU NŒUD COUVRE JUSQU'AU TYPE, et pas seulement le premier mot.
      *
      * Même remède que pour « this background », dix lignes plus haut, et il
@@ -890,7 +950,13 @@ static int reference_ici(HctAnalyseur *a)
         HctAnalyseur b = *a; b.i = a->i + 1;
         HctPortee p;
         portee_ici(&b, &p);
-        if (type_obj_ici(&b, &t)) return 1;
+        /* L'ordinal DÉSIGNE : même argument qu'à type_obj_ici_d, et il fallait
+         * le porter ici AUSSI. Sans lui, « last menuItem of menu "T" » était
+         * écarté avant même d'être lu — ce guichet décide si l'on entre dans
+         * reference(), et corriger la lecture sans corriger le guichet ne
+         * changeait rien. Le site jumeau est ce que ce projet rate le plus
+         * souvent. */
+        if (type_obj_ici_d(&b, &t, 1)) return 1;
     }
     return 0;
 }
