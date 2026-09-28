@@ -1,0 +1,80 @@
+L'INTERLIGNE D'UN CHAMP
+=======================
+
+LA RÈGLE PAR DÉFAUT : QUATRE TIERS DU CORPS, TRONQUÉS
+------------------------------------------------------
+
+`hc_text_height` rendait `(corps * 4 + 1) / 3` — l'arrondi au plus proche — sous
+un commentaire qui annonçait « arrondi comme HyperCard ». Les deux formules ne
+diffèrent que pour les corps dont le quadruple n'est pas divisible par trois,
+soit un corps sur trois : la faute pouvait vivre longtemps sans se montrer, et
+aucun témoin de la suite ne l'exerçait.
+
+MESURÉ SUR LES 140 PARTS des trois piles, corps par corps :
+
+    corps  9 -> 12 (×2), 13 (×6), 16 (×58)
+    corps 10 -> 13 (×6), 16 (×2)
+    corps 12 -> 16 (×54)
+    corps 14 -> 18 (×12)
+
+Le corps 14 est le SEUL cas où les deux formules se séparent : la troncature rend
+18, l'arrondi 19. Douze parts disent 18, aucune ne dit 19. Les trois autres corps
+sont d'accord avec les deux formules — ils ne tranchent rien, mais ils confirment
+le rapport de quatre tiers, 12 → 16 sur cinquante-quatre parts.
+
+Les valeurs qui s'écartent du rapport — 9 → 16, cinquante-huit fois — sont des
+choix d'auteur et non des défauts : un interligne généreux sur un petit corps. On
+ne les compte donc pas contre la règle.
+
+Témoin : `tests/harnais/interligne.c`, qui affiche les DEUX formules côte à côte
+pour chaque corps. Un témoin qui ne montrerait que le résultat laisserait croire
+qu'il mesure quelque chose là où les deux calculs tombent d'accord.
+
+CE QUI RESTE OUVERT : L'INTERLIGNE QUAND « fixedLineHeight » EST FAUX
+--------------------------------------------------------------------
+
+RELEVÉ À L'USAGE, dans HC : « le champ body déborde un peu ; interligne 18, ça se
+cadre bien avec 16 ».
+
+Ce que le fichier dit de ce champ, lu dans les octets d'Apple :
+
+    field "Body"   rect 121,2,477,261   (356 × 259 pixels)
+    textsize 14    textheight 18    textfont Palatino
+    fixedlineheight ABSENT  -> la propriété est FAUSSE
+
+Ce que HC fait de ces valeurs, lu dans HCtext.m : l'interligne n'est imposé QUE
+si `fixedLineHeight` est vrai. Faux, chaque ligne prend la hauteur que lui donne
+la police — celle de Palatino 14 SUR LE MAC D'AUJOURD'HUI, et non celle du Mac de
+1993 avec laquelle la pile a été mise en page. Si elle est plus haute d'un pixel
+ou deux, l'écart s'accumule ligne après ligne et la dernière déborde. « Un peu »,
+exactement.
+
+DEUX CHOSES NE SONT PAS MESURÉES, et il ne faut pas les confondre :
+
+1. CE QU'HYPERCARD FAIT quand `fixedLineHeight` est faux. Sa documentation dit
+   que la hauteur suit alors la plus grande police de la ligne. Reste à savoir ce
+   que ça donne pour un texte d'une seule police : la hauteur naturelle de
+   Palatino 14 sur un Mac de 1993 valait-elle 18, c'est-à-dire exactement le
+   `textHeight` stocké ?
+
+   À JOUER DANS HYPERCARD (Basilisk II), sur la pile d'origine, et c'est une
+   seule ligne qui tranche :
+
+       set the fixedLineHeight of bg field "Body" to true
+
+   Si la mise en page NE BOUGE PAS, c'est que la hauteur naturelle valait déjà
+   `textHeight`, et HC doit alors se servir de `textHeight` dans les deux cas —
+   c'est la seule valeur que la pile transporte, et les métriques
+   d'aujourd'hui ne sont pas celles d'alors. Si elle BOUGE, les deux modes sont
+   bien distincts et c'est notre rendu de la police qu'il faut regarder.
+
+2. CE QUE L'AUTRICE A FAIT pour arriver à 16. Le panneau « Text Style » n'allume
+   pas `fixedLineHeight` — son commentaire le dit et le code le fait. Poser 16
+   dans ce panneau ne devrait donc RIEN changer au rendu d'un champ dont la
+   propriété est fausse. Ou bien la case du dialogue de champ a été cochée en
+   même temps, ou bien notre rendu applique l'interligne là où il ne devrait pas.
+   La question lui est posée : la réponse désigne deux corrections différentes.
+
+La correction de la formule ci-dessus ne règle PAS ce cas : le champ « Body »
+porte un `textHeight` explicite, donc la formule par défaut ne le concerne pas.
+Les deux points sont voisins, ils ne sont pas le même.

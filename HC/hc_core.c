@@ -2395,12 +2395,36 @@ int hc_delete_card(Object *card)
     return 1;
 }
 
+/* L'INTERLIGNE PAR DÉFAUT : QUATRE TIERS DU CORPS, TRONQUÉS.
+ *
+ * Cette ligne disait « arrondi comme HyperCard » et arrondissait au plus proche,
+ * ce qui n'est pas la même chose. Les deux formules ne diffèrent que pour un
+ * corps sur trois — celui dont le quadruple n'est pas divisible par trois — et
+ * c'est ce qui a permis à la faute de vivre longtemps.
+ *
+ * MESURÉ SUR LES PARTS DES TROIS PILES D'APPLE, corps par corps :
+ *
+ *     corps 9  -> 12 (×2), 13 (×6), 16 (×58)
+ *     corps 10 -> 13 (×6), 16 (×2)
+ *     corps 12 -> 16 (×54)
+ *     corps 14 -> 18 (×12)
+ *
+ * Le corps 14 est le seul cas où les deux formules se séparent : la troncature
+ * rend 18, l'arrondi 19. Douze parts disent 18, aucune ne dit 19. Les trois
+ * autres corps sont d'accord avec les deux formules et ne tranchent rien, mais
+ * ils confirment au passage le rapport de quatre tiers — 12 → 16 sur
+ * cinquante-quatre parts.
+ *
+ * Les valeurs qui s'écartent du rapport — 9 → 16, cinquante-huit fois — sont des
+ * choix d'auteur, pas des défauts : un interligne généreux sur un petit corps.
+ * On ne les compte donc pas contre la règle ; c'est le corps 14 qui la décide,
+ * et il est unanime. */
 int hc_text_height(Object *o)
 {
     if (!o) return 16;
     if (o->textheight > 0) return o->textheight;
     int sz = o->textsize > 0 ? o->textsize : 12;
-    return (sz * 4 + 1) / 3;      /* quatre tiers, arrondi comme HyperCard */
+    return sz * 4 / 3;
 }
 
 /* ---- allumage d'un bouton ----
