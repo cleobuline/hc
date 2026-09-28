@@ -251,7 +251,7 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
 
     int carte = (strcmp(type, "CARD") == 0);
     unsigned nparts = (unsigned)(avec_bouton + avec_champ);
-    unsigned ncont  = (unsigned)(avec_contenu ? 2 : 0);
+    unsigned ncont  = (unsigned)(avec_contenu ? 3 : 0);
 
     /* Les parts et les contenus se montent à part, pour connaître leur taille
      * totale avant d'écrire les en-têtes qui l'annoncent. */
@@ -280,6 +280,10 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
     if (avec_contenu) {
         pose_contenu(&conts, -1, "du texte a la carte");
         pose_contenu(&conts,  1, "du texte au fond");
+        /* UN ORPHELIN, exprès : la part 99 n'existe nulle part. Les vraies piles
+         * en portent — cinq dans « 3D Parametric Equations » — et sans ce témoin
+         * le cas n'aurait aucune trace dans la référence. */
+        pose_contenu(&conts, -99, "un texte sans part");
     }
 
     if (carte) {
@@ -572,7 +576,7 @@ static void la_table(void)
  * pas son champ. C'est noté dans docs/mesures/pile_origine.txt comme le
  * prochain point à régler ; ici on compare dans l'ordre de création, qui est
  * celui du fichier d'origine. */
-static int compares, perdus;
+static int compares, perdus, orphelins;
 
 static void egal_int(const char *quoi, int attendu, int obtenu)
 {
@@ -705,6 +709,64 @@ static Object *nieme(Object *couche, int rang)
     return (couche && rang < couche->nparts) ? couche->parts[rang] : NULL;
 }
 
+/* LA PART VISÉE PAR UN CONTENU, par POSITION et non par identifiant — les
+ * identifiants de nos parts sont les nôtres. Réécrit ici plutôt qu'appelé depuis
+ * hc_importe.c, pour la même raison que la normalisation des scripts. */
+static Object *visee(Object *couche, const HcOrigCouche *k, int id_origine)
+{
+    if (!couche || !k) return NULL;
+    for (int j = 0; j < k->nparts && j < couche->nparts; j++)
+        if (k->parts[j].id == id_origine) return couche->parts[j];
+    return NULL;
+}
+
+/* LE TEXTE DES CHAMPS, ET C'EST LE TROU QUI A LAISSÉ PASSER UN VRAI DÉFAUT.
+ *
+ * Le tour complet comparait les propriétés et les scripts — 3711 valeurs sur
+ * trois vraies piles — et JAMAIS le texte. Pendant ce temps hc_importe.c
+ * appariait les contenus par identifiant, donc n'en trouvait aucun, et le
+ * fichier converti ne portait pas une seule ligne « contents » : tous les champs
+ * de toutes les piles importées arrivaient vides. C'est l'autrice qui l'a vu,
+ * dans l'application.
+ *
+ * Un instrument qui compare beaucoup de choses n'est pas un instrument qui
+ * compare les bonnes. Celui-ci vérifie désormais ce qu'un utilisateur REGARDE.
+ *
+ * La carte courante compte : le texte d'un champ de fond non partagé vit dans
+ * les bgtexts de la CARTE, et hc_field_text le cherche là. */
+static void compare_textes(Object *couche, const HcOrigCouche *k,
+                           Object *fond, const HcOrigCouche *kfond,
+                           int couche_est_fond, const char *ou)
+{
+    for (int i = 0; i < k->ncontenus; i++) {
+        const HcOrigContenu *ct = &k->contenus[i];
+        Object *p = (couche_est_fond || !ct->du_fond)
+                  ? visee(couche, k, ct->id_part)
+                  : visee(fond, kfond, ct->id_part);
+        char quoi[120];
+        snprintf(quoi, sizeof quoi, "%s texte %s part %d", ou,
+                 ct->du_fond ? "du fond," : "propre, ", ct->id_part);
+        /* UN CONTENU ORPHELIN N'EST PAS UNE PERTE, et la nuance a été mesurée.
+         *
+         * « 3D Parametric Equations » porte cinq textes dont la part n'existe
+         * pas dans la couche qui les porte : la part 25 y est réclamée par des
+         * cartes du fond 2815, où elle n'existe pas — elle est dans le fond
+         * 7925. Un texte laissé derrière par une part supprimée, ou par une
+         * carte qui a changé de fond. HyperCard en laisse, et lui aussi les
+         * ignore : il n'y a aucune part pour les afficher.
+         *
+         * On les COMPTE donc, séparément, plutôt que de les appeler pertes — il
+         * n'y a rien à perdre — et séparément plutôt que de les taire, parce
+         * qu'un jour la cause pourrait être un vrai défaut d'appariement. */
+        if (!p) {
+            printf("  orphelin  %s : aucune part de ce rang\n", quoi);
+            orphelins++;
+            continue;
+        }
+        egal_txt(quoi, ct->texte, hc_field_text(p));
+    }
+}
+
 static void le_tour_complet(const unsigned char *octets, size_t n)
 {
     puts("=== le tour complet : lire, convertir, sauver, relire, comparer ===");
@@ -732,7 +794,7 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
         remove(chemin); hc_origine_libere(&pile); return;
     }
 
-    compares = perdus = 0;
+    compares = perdus = orphelins = 0;
     egal_int("largeur de la pile", pile.largeur, st2->w);
     egal_int("hauteur de la pile", pile.hauteur, st2->h);
     egal_script("script de la pile", pile.script, st2->script);
@@ -755,6 +817,9 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
                 if (!p) { printf("  PERDU  %s : absente\n", q); perdus++; compares++; continue; }
                 compare_part(q, &k->parts[j], p);
             }
+            /* Le texte par DÉFAUT d'un champ de fond : sans carte courante. */
+            hc_set_current_card(NULL);
+            compare_textes(o, k, NULL, NULL, 1, ou);
             ifond++;
         } else if (o->type == OBJ_CARD && icarte < pile.ncartes_lues) {
             const HcOrigCouche *k = &pile.cartes[icarte];
@@ -768,12 +833,37 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
                 if (!p) { printf("  PERDU  %s : absente\n", q); perdus++; compares++; continue; }
                 compare_part(q, &k->parts[j], p);
             }
+            /* Le texte de CETTE carte, y compris pour les champs du fond.
+             *
+             * ET IL FAUT LE BON FOND, pas le premier. J'avais pris le premier
+             * OBJ_BACKGROUND venu, ce qui marche par accident tant qu'il n'y en a
+             * qu'un — la pile de ce harnais — et donne 78 fausses pertes sur une
+             * pile à trois fonds. Quatrième fois que mon instrument mesure autre
+             * chose que ce qu'il annonce ; le convertisseur, lui, apparie par
+             * identifiant et avait raison.
+             *
+             * Les fonds sont créés dans l'ordre de `orig->fonds`, donc le j-ième
+             * OBJ_BACKGROUND de la pile relue est le j-ième du fichier. */
+            Object *bg = NULL; const HcOrigCouche *kbg = NULL;
+            for (int j = 0; j < pile.nfonds_lus; j++)
+                if (pile.fonds[j].id == k->fond) {
+                    kbg = &pile.fonds[j];
+                    int vus = 0;
+                    for (int q2 = 0; q2 < st2->nparts; q2++)
+                        if (st2->parts[q2]->type == OBJ_BACKGROUND && vus++ == j) {
+                            bg = st2->parts[q2]; break;
+                        }
+                    break;
+                }
+            hc_set_current_card(o);
+            compare_textes(o, k, bg, kbg, 0, ou);
             icarte++;
         }
     }
 
-    printf("%d valeurs comparées, %d perdue%s\n",
-           compares, perdus, perdus == 1 ? "" : "s");
+    printf("%d valeurs comparées, %d perdue%s, %d contenu%s orphelin%s\n",
+           compares, perdus, perdus == 1 ? "" : "s",
+           orphelins, orphelins == 1 ? "" : "s", orphelins == 1 ? "" : "s");
 
     hc_free(st2);
     remove(chemin);

@@ -585,6 +585,71 @@ elle-même, ce qui ne teste rien. Cette transformation n'avait aucun témoin.
     une fait passer le compte de 0 à 1 perdue. Un test dont on n'a pas vu
     l'échec ne prouve rien — c'est la leçon de la garde terrainBon.
 
+TROIS DÉFAUTS TROUVÉS DANS L'APPLICATION, PAS PAR MES TESTS
+-----------------------------------------------------------
+
+L'autrice a ouvert « Découvrir HyperCard » convertie dans HC et a vu trois
+choses. Deux étaient de vrais défauts, le troisième n'en était pas.
+
+1. LE BOUTON RADIO SE DESSINAIT EN RECTANGLE. Ma table de styles avait des noms
+   INVENTÉS : « radio » n'existe nulle part dans ce dépôt — le noyau attend
+   « radioButton » (hc_core.c:2560) et le rendu aussi (HCview.m:6126). Les noms
+   sont désormais ceux du sélecteur de style de l'application, mot pour mot
+   (HCdialogs.m). Deux autres passaient par chance, la comparaison acceptant les
+   minuscules : « checkbox » et « roundrect ».
+
+2. AUCUN CHAMP N'AVAIT SON TEXTE, et c'est le plus grave. hc_importe.c appariait
+   un contenu à sa part en comparant l'identifiant d'origine à `p->id` — or
+   `p->id` est le NÔTRE, attribué par hc_new_field. Aucune part n'était donc
+   trouvée, et le fichier converti ne portait PAS UNE SEULE ligne « contents » :
+   tous les champs de toutes les piles importées arrivaient vides.
+
+   ET JE L'AVAIS ÉCRIT NOIR SUR BLANC DANS CE DOCUMENT — « les identifiants de
+   part ne survivent pas » — sans voir que MON PROPRE CODE en dépendait. Savoir
+   nommer un défaut ne suffit pas à ne pas le commettre. L'appariement se fait
+   maintenant par POSITION, les parts étant créées dans l'ordre du fichier.
+
+3. LES BOUTONS DU MENU N'AFFICHENT PAS LEUR NOM — et c'est JUSTE. Mesuré sur les
+   octets : les quatorze boutons du fond portent 0xE = 0x21, soit le bit 5
+   (autoHilite) et la famille 1 ; « Welcome » porte 0x61, plus le bit 6 (hilite)
+   parce que c'est la carte courante. Le bit 7, showName, est éteint sur les
+   quatorze. Une famille de quatorze boutons « transparent », un seul allumé :
+   c'est l'idiome du menu HyperCard, et LES LIBELLÉS SONT PEINTS dans l'image du
+   fond. Il manque le dessin, pas la propriété.
+
+   La numérotation des bits est confirmée au passage, sur la même mesure :
+   « Welcome » porte 0x0100 à l'offset 0x4. En numérotation LSB c'est un bouton ;
+   en MSB ce serait un champ. Or il s'appelle Welcome et il a un hilite.
+
+LE TROU ÉTAIT DANS L'INSTRUMENT
+-------------------------------
+
+Le tour complet comparait les propriétés et les scripts — 3711 valeurs sur trois
+vraies piles, zéro perdue — ET JAMAIS LE TEXTE. Un instrument qui compare
+beaucoup de choses n'est pas un instrument qui compare les bonnes. Il vérifie
+désormais ce qu'un utilisateur REGARDE.
+
+Et en le comblant, mon instrument a menti une quatrième fois : il annonçait 78
+pertes sur la pile 3D. Mes deux outils de mesure prenaient LE PREMIER fond de la
+pile relue, ce qui marche par accident tant qu'il n'y en a qu'un — la pile du
+harnais — et se trompe sur une pile à trois fonds. Le convertisseur, lui,
+appariait par identifiant et avait raison.
+
+UN CONTENU ORPHELIN N'EST PAS UNE PERTE, et il restait cinq cas. Mesuré : la
+part 25 est réclamée par des cartes du fond 2815, où elle n'existe pas — elle est
+dans le fond 7925. Un texte laissé derrière par une part supprimée, ou par une
+carte qui a changé de fond. HyperCard en laisse, et lui aussi les ignore : il n'y
+a aucune part pour les afficher. Ils sont COMPTÉS séparément — il n'y a rien à
+perdre — et non tus, parce qu'un jour la cause pourrait être un vrai défaut
+d'appariement. La pile du harnais en porte un exprès.
+
+    LE BILAN, TEXTE COMPRIS :
+
+        la pile du harnais       91 valeurs,  0 perdue,  1 orphelin (voulu)
+        TEST3                   202 valeurs,  0 perdue,  0
+        3D Parametric          2963 valeurs,  0 perdue,  5 orphelins mesurés
+        Découvrir HyperCard     796 valeurs,  0 perdue,  0
+
 CE QUI RESTE NON MESURÉ
 -----------------------
 LES IDENTIFIANTS DE PART NE SURVIVENT PAS. hc_new_field et hc_new_button

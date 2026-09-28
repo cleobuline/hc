@@ -194,9 +194,20 @@ static int genre_de(unsigned drapeaux) { return (drapeaux & 0x0100u) ? HC_ORIG_B
 /* Les douze styles de part, dans l'ordre du format. Les noms sont ceux de notre
  * propre format (hc_file.c les écrit tels quels), si bien qu'un importateur n'a
  * rien à traduire. */
+/* LES NOMS SONT CEUX DU SÉLECTEUR DE STYLE DE L'APPLICATION, mot pour mot —
+ * HCdialogs.m les liste pour le dialogue « Informations ». Je les avais inventés,
+ * et « radio » n'existe nulle part : le noyau attend « radioButton »
+ * (hc_core.c:2560) et le rendu aussi (HCview.m:6126). Résultat mesuré dans
+ * l'application par l'autrice — le bouton radio d'une pile d'Apple se dessinait
+ * en RECTANGLE.
+ *
+ * Deux autres passaient par chance, la comparaison acceptant la variante en
+ * minuscules : « checkbox » et « roundrect ». Ils sont écrits en camelCase ici
+ * quand même, parce que select_style compare exactement et que le dialogue
+ * affichait sinon le mauvais choix. */
 static const char *STYLES[] = {
-    "transparent", "opaque", "rectangle", "roundrect", "shadow", "checkbox",
-    "radio", "scrolling", "standard", "default", "oval", "popup"
+    "transparent", "opaque", "rectangle", "roundRect", "shadow", "checkBox",
+    "radioButton", "scrolling", "standard", "default", "oval", "popup"
 };
 #define NSTYLES ((int)(sizeof STYLES / sizeof STYLES[0]))
 

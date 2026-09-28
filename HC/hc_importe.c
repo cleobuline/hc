@@ -126,20 +126,47 @@ static Object *pose_part(Object *proprio, const HcOrigPart *q)
  * courante, après quoi hc_set_field_text sait où le ranger — à condition que
  * `shared_text` du champ soit déjà à zéro, ce que pose_part a fait puisque les
  * fonds sont bâtis avant les cartes. */
-static void pose_les_textes(Object *couche, Object *fond, const HcOrigCouche *k,
+/* LA PART VISÉE SE TROUVE PAR POSITION, PAS PAR IDENTIFIANT, et c'est une
+ * correction qui vaut d'être racontée.
+ *
+ * J'appariais un contenu à sa part en comparant l'identifiant d'origine à
+ * `p->id`. Or `p->id` est le NÔTRE — hc_new_field l'attribue — et il ne
+ * correspond à rien du fichier d'origine. Aucune part n'était donc jamais
+ * trouvée, et le fichier converti ne portait PAS UNE SEULE ligne « contents » :
+ * tous les champs de toutes les piles importées arrivaient vides.
+ *
+ * Et je l'avais écrit noir sur blanc dans la doc — « les identifiants de part ne
+ * survivent pas, un script qui dit card field id 5 ne retrouvera pas son
+ * champ » — sans voir que MON PROPRE CODE en dépendait. Savoir nommer un défaut
+ * ne suffit pas à ne pas le commettre.
+ *
+ * Trouvé par l'autrice dans l'application, pas par le tour complet : celui-ci
+ * comparait les propriétés et les scripts, et jamais LE TEXTE. Le trou était
+ * dans l'instrument, et il est comblé.
+ *
+ * La position, elle, correspond : les parts sont créées dans l'ordre de
+ * `k->parts[]`, donc la j-ième part de la couche bâtie est la j-ième du
+ * fichier. */
+static Object *part_visee(Object *couche, const HcOrigCouche *k, int id_origine)
+{
+    if (!couche || !k) return NULL;
+    for (int j = 0; j < k->nparts && j < couche->nparts; j++)
+        if (k->parts[j].id == id_origine) return couche->parts[j];
+    return NULL;
+}
+
+static void pose_les_textes(Object *couche, const HcOrigCouche *k,
+                            Object *fond, const HcOrigCouche *kfond,
                             int couche_est_fond)
 {
     for (int i = 0; i < k->ncontenus; i++) {
         const HcOrigContenu *ct = &k->contenus[i];
-        Object *proprio = couche_est_fond ? couche : (ct->du_fond ? fond : couche);
-        if (!proprio) continue;
-        for (int j = 0; j < proprio->nparts; j++) {
-            Object *p = proprio->parts[j];
-            if (p->id != ct->id_part) continue;
-            if (p->type != OBJ_FIELD && p->type != OBJ_BUTTON) continue;
-            hc_set_field_text(p, ct->texte ? ct->texte : "");
-            break;
-        }
+        Object *p = (couche_est_fond || !ct->du_fond)
+                  ? part_visee(couche, k, ct->id_part)
+                  : part_visee(fond, kfond, ct->id_part);
+        if (!p) continue;
+        if (p->type != OBJ_FIELD && p->type != OBJ_BUTTON) continue;
+        hc_set_field_text(p, ct->texte ? ct->texte : "");
     }
 }
 
@@ -164,6 +191,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         ids   = calloc((size_t)orig->nfonds_lus, sizeof *ids);
         if (!fonds || !ids) { free(fonds); free(ids); hc_free(st); return NULL; }
     }
+    int rang_du_fond = -1;      /* l'index, pour retrouver AUSSI sa couche d'origine */
     for (int i = 0; i < orig->nfonds_lus; i++) {
         const HcOrigCouche *k = &orig->fonds[i];
         Object *bg = hc_new_background(st, k->nom ? k->nom : "");
@@ -189,8 +217,11 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         /* Une carte dont le fond est introuvable prend le premier : elle existe,
          * et la perdre coûterait plus que la mal ranger. Sans fond du tout, il
          * n'y a rien à faire — hc_new_card en exige un. */
-        if (!bg && orig->nfonds_lus > 0) bg = fonds[0];
-        if (!bg) continue;
+        rang_du_fond = -1;
+        for (int j = 0; j < orig->nfonds_lus; j++)
+            if (ids[j] == k->fond) { rang_du_fond = j; break; }
+        if (!bg && orig->nfonds_lus > 0) { bg = fonds[0]; rang_du_fond = 0; }
+        if (!bg || rang_du_fond < 0) continue;
 
         Object *cd = hc_new_card(st, bg, k->nom ? k->nom : "");
         if (!cd) { free(fonds); free(ids); hc_free(st); return NULL; }
@@ -204,7 +235,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         /* La carte courante, pour que le texte d'un champ de fond aille dans SES
          * bgtexts et non dans le champ du fond. */
         hc_set_current_card(cd);
-        pose_les_textes(cd, bg, k, 0);
+        pose_les_textes(cd, k, bg, &orig->fonds[rang_du_fond], 0);
     }
 
     /* Le texte par défaut des champs de fond se pose APRÈS les cartes : posé
@@ -217,7 +248,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
      * ici il nuirait. */
     hc_set_current_card(NULL);
     for (int i = 0; i < orig->nfonds_lus; i++)
-        pose_les_textes(fonds[i], NULL, &orig->fonds[i], 1);
+        pose_les_textes(fonds[i], &orig->fonds[i], NULL, NULL, 1);
 
     hc_set_current_card(precedente);
     free(fonds);

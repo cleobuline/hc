@@ -78,7 +78,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -90,12 +90,14 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 
 === le tour complet : lire, convertir, sauver, relire, comparer ===
 (le seul oracle qui ne demande ni HyperCard ni personne : toute
  propriété qui se perd en chemin se dénonce ici)
 hc_save : écrit
-89 valeurs comparées, 0 perdues
+  orphelin  carte 1 texte propre,  part 99 : aucune part de ce rang
+91 valeurs comparées, 0 perdues, 1 contenu orphelin
 
 === les témoins négatifs : ce qui doit être REFUSÉ ===
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
@@ -141,7 +143,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -153,6 +155,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
 --- somme d'une PAGE fausse d'un bit : lu
@@ -191,7 +194,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -203,6 +206,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
 --- la PAGE que la liste nomme est introuvable : lu
@@ -241,7 +245,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -253,6 +257,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
 --- les deux nombres de cartes de la liste se contredisent : lu
@@ -291,7 +296,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -303,6 +308,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
 --- un « checkbox » sur un CHAMP (le style ne va pas au genre) : lu
@@ -325,7 +331,7 @@ fond  id 2000, nom « Fond », 1 part
     | on openCard
     |   pass openCard
     | end openCard
-  champ  id 1 « A » (54,20,80,250) checkbox
+  champ  id 1 « A » (54,20,80,250) checkBox
     visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
@@ -343,7 +349,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -355,6 +361,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
 --- marqueur de script d'une part abime (faute LOCALE) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
 format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
@@ -393,10 +400,11 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkbox
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
     script : aucun
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
