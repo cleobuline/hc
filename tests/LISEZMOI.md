@@ -153,6 +153,23 @@ tests/denude.sh tests/donnees/torture2_pile.txt   > pile_nu.txt
 543 lignes au lieu de 1162, et le banc dénudé rend exactement la même chose —
 vérifié, pas supposé.
 
+Et quand une seule section pose question, `isole.sh` la met dans son propre
+bouton, cinquante lignes, avec quatre marqueurs :
+
+```sh
+tests/isole.sh tests/donnees/torture2_bouton.txt sectionChemins > sept.txt
+```
+
+    aucun marqueur          le script de la PILE est en cause (journal)
+    « le bouton demarre »   l'appel échoue, pas le contenu
+    « on entre »            c'est dans la section, et le dernier « ok » dit où
+    les quatre              la section est bonne : la GROSSE copie est abîmée
+
+Ces deux outils existent pour la même raison : **un collage tronqué ressemble
+trait pour trait à un défaut du code.** 291 lignes par le presse-papiers d'un
+émulateur, et l'on cherche dans HC un « egal » qu'HyperCard refusait, alors que
+la section n'avait jamais été collée en entier. Trois allers-retours perdus.
+
 La pile à monter de l'autre côté : quatre cartes nommées `Atelier`, `Deux`,
 `Trois`, `Quatre` ; un champ de fond `T` **non partagé** ; sur l'Atelier trois
 champs de carte **dans cet ordre** — `A`, `B`, `R` —, `R` défilant et
