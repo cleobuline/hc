@@ -207,18 +207,131 @@ Le contrat inverse n'était écrit nulle part, et le premier appelant écrit hor
 harnais l'a oublié — moi, dix minutes après avoir écrit le module. Une API dont
 le bon usage n'est pas évident finira toujours par être mal appelée.
 
+L'ORDRE DES CARTES — LU, ET VÉRIFIÉ PAR HYPERCARD LUI-MÊME
+----------------------------------------------------------
+
+Il ne vient pas de l'ordre des blocs CARD dans le fichier mais des blocs LIST et
+PAGE. C'est L'ORACLE QUI AVAIT TROUVÉ LE MANQUE : stakread.py refusait notre pile
+de démonstration avec « ERROR: no LIST block », et sans lui j'aurais cru l'ordre
+du fichier.
+
+Et le format offre bien mieux qu'une lecture : DEUX SOMMES DE CONTRÔLE, une sur
+la liste et une par page, chacune avec une rotation de trois bits vers la droite
+entre ses termes. Elles viennent de l'assembleur d'HyperCard. Si elles tombent
+juste, les identifiants rendus sont ceux qu'HyperCard a écrits, dans son ordre —
+pas une suite d'entiers vraisemblables. Plus trois recoupements gratuits : le
+nombre total de cartes est écrit DEUX FOIS dans la liste (0x18 et 0x28), il doit
+valoir celui de STAK, et la taille d'une référence doit s'accorder avec le nombre
+d'entiers de hachage qu'elle porte.
+
+QUATRE CONFIRMATIONS INDÉPENDANTES SUR « 3D Parametric Equations » :
+
+1. la somme de la liste tombe juste ;
+2. la somme de sa page tombe juste ;
+3. L'ORDRE OBTENU A UN SENS, et celui du fichier n'en avait pas. Les cartes
+   sortent groupées par fond — 5286, 2983, 3666, 5828 pour Curves ; 7953, 7580,
+   2360, 10136, 11086, 7160 pour Surfaces ; 9649 « Help! » en dernier. Dans
+   l'ordre du FICHIER, la carte 2360 du fond Surfaces arrivait en deuxième
+   position, coincée entre deux cartes du fond Curves ;
+4. LE DRAPEAU « DÉBUT D'UN FOND » TOMBE SUR LES FRONTIÈRES. Il est allumé pour
+   exactement trois cartes — 5286, 7953, 9649 — aux positions 0, 4 et 10 de
+   l'ordre calculé. Si l'ordre était faux, ces drapeaux ne tomberaient pas sur
+   les bords des groupes. C'est une vérification de l'ORDRE lui-même, pas
+   seulement des identifiants.
+
+LA NUMÉROTATION DES BITS EST MESURÉE, pas supposée, et le témoin est unique :
+le bit 7 (« porte un nom ») est allumé pour la SEULE carte nommée de la pile,
+9649 « Help! ». Avec le bit 6 ci-dessus, ça fixe la numérotation, et le bit 4
+(« marked ») en découle. Aucune carte marquée n'est encore passée ici : ça reste
+à voir, et il suffirait d'en marquer une dans Basilisk.
+
+UN RECOUPEMENT DE PLUS, GRATUIT ET POSÉ DANS LE CODE : le drapeau « porte un
+nom » de la liste et le nom lu dans le bloc CARD sont deux sources du même fait.
+Elles doivent s'accorder — sinon on a apparié la mauvaise référence avec le
+mauvais bloc, exactement la faute qu'un ordre mal lu produirait et qui autrement
+ne se verrait pas. Zéro désaccord sur les onze cartes.
+
+L'ORDRE SE REFUSE SANS QUE LE FICHIER SE REFUSE. Perdre les 66 scripts d'une
+pile parce que la somme d'une page est fausse serait un mauvais échange : l'ordre
+n'est pas nécessaire pour lire un script en sûreté. Mais se rabattre en SILENCE
+sur l'ordre du fichier serait malhonnête. Donc `ordre_lu` à zéro, une anomalie
+comptée, et le harnais montre LES DEUX ordres dans sa référence — c'est ce qui
+rend ces témoins lisibles, et ce qui ferait tomber le test si le
+réordonnancement cassait.
+
+    La liste du harnais dit l'ordre INVERSE du fichier, et c'est tout l'objet du
+    test : une liste qui répéterait l'ordre du fichier ne distinguerait rien.
+
+TROIS AUTRES VRAIES PILES
+-------------------------
+
+    TEST3          188416 o, 5 cartes, 1 fond   — notre pile de torture,
+                   reconstruite À LA MAIN dans HyperCard par l'autrice
+    Découvrir      40960 o, 11 cartes, 480x296  — la pile d'initiation d'APPLE,
+      HyperCard    localisée en français
+    Graph Maker    121045 o                      — REFUSÉE, et à juste titre :
+                   c'est notre format maison, déjà converti
+
+TEST3 EST L'ORACLE DANS L'AUTRE SENS, et c'est le plus fort de tous : pour la
+première fois je connais la réponse à l'avance, parce que je l'ai écrite dans
+tests/harnais/torture2.c. Le lecteur rend « Atelier, Deux, Trois, Quatre »
+exactement dans l'ordre de ces quatre appels à hc_new_card, avec le champ T au
+fond et les champs A, B, R sur la carte. Cinquième confirmation de l'ordre, et
+celle-ci ne vient pas du fichier du tout.
+
+Les accents survivent un tour de QUATRE étapes : source C en UTF-8 -> presse-
+papiers de Basilisk -> MacRoman dans HyperCard -> sauvegarde binaire -> notre
+lecteur. « élève », « Noël », « à », les guillemets français, tout revient.
+
+CE QUI NE SURVIT PAS : un caractère hors de MacRoman. Mes bandeaux de
+commentaires en « ═ » (U+2550) sont revenus en « ¢§ » répété — trois octets
+UTF-8 devenus deux octets MacRoman, 0xA2 0xA4. Notre lecteur est irréprochable :
+0xA2 0xA4 EST « ¢§ » en MacRoman, il a décodé ce qu'HyperCard contenait, et
+l'autrice le voit à l'identique dans l'éditeur de script d'HyperCard. La perte
+s'est donc faite dans le presse-papiers, avant le stockage. Le mécanisme exact
+est hors d'atteinte d'ici : non mesuré. La conséquence, elle, est dure — le
+format d'origine ne peut pas porter ce que MacRoman ne code pas.
+
+« Découvrir HyperCard » confirme l'ORDRE QUICKDRAW sur des octets réels :
+480x296, une taille de carte non standard. Avec 512x342 le défaut serait
+invisible ; ici, hauteur et largeur inversées rendraient 296x480, absurde pour un
+écran Mac.
+
+    NI L'UNE NI L'AUTRE N'EST VERSIONNABLE. « Découvrir HyperCard » porte
+    « ©Copyright 1993-1995 by Apple Computer,Inc. / Tous droits réservés. ».
+    C'est la pile d'initiation d'Apple. Elle mesure, elle ne se commite pas.
+
+LE CORPUS, ET MON INSTRUMENT QUI MENTAIT ENCORE
+-----------------------------------------------
+
+« Découvrir HyperCard » a d'abord donné 24 scripts acceptés sur 28, 85,7 %. Le
+premier vrai trou du chantier, croyais-je. C'était mon instrument.
+
+Le script de la pile d'Apple commence par un bandeau de copyright QUI N'EST PAS
+COMMENTÉ — pas de « -- » : un trait de « ∞ », le titre, la version, le
+copyright, les auteurs, un second trait, et c'est seulement APRÈS que les
+« -- » commencent.
+
+Ça s'accorde avec ce qu'on avait mesuré le 27 : en HyperCard un gestionnaire est
+COMPILÉ À SON APPEL. Du texte hors de tout « on … end » n'est jamais compilé,
+donc jamais refusé.
+
+    ET NOTRE EXÉCUTEUR FAIT PAREIL — mesuré, quatre cas : bandeau non commenté
+    d'Apple, bandeau commenté, rien devant, et du charabia APRÈS le
+    gestionnaire. Les quatre le trouvent et l'exécutent. LES PILES D'APPLE
+    TOURNERONT.
+
+Le défaut est donc dans hct_verifie seul, et il est précis : son propre en-tête
+définit ERREUR comme « le script ne peut pas s'exécuter tel quel — HyperCard
+refuserait aussi ». Ici ni HyperCard ni notre exécuteur ne refusent. Du texte
+hors gestionnaire relève au plus de l'AVERTISSEMENT.
+
+Troisième fois en deux jours qu'un instrument à moi mesure autre chose que ce
+qu'il annonce. Le chiffre honnête n'est pas encore écrit : il faudra reprendre
+la mesure avec un instrument qui exerce l'exécuteur, pas le vérificateur.
+
 CE QUI RESTE NON MESURÉ
 -----------------------
-L'ORDRE DES CARTES N'EST PAS LU. Il ne vient pas de l'ordre des blocs CARD dans
-le fichier mais des blocs LIST et PAGE, recensés et non interprétés. Pour des
-scripts ça suffit — chacun arrive avec l'id de sa carte. Pour un importateur,
-non.
-
-    Et c'est L'ORACLE QUI L'A TROUVÉ : stakread.py a refusé notre pile de
-    démonstration avec « ERROR: no LIST block ». Sans lui je l'aurais écrite
-    sans m'en apercevoir, et j'aurais cru l'ordre du fichier. D'où un drapeau
-    affiché à chaque lecture : un manque visible vaut mieux qu'un manque oublié.
-
 HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
 n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs
 CARD et BKGD est décalé de quatre octets. Le décalage est documenté et

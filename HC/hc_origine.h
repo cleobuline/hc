@@ -50,6 +50,8 @@ typedef struct {
 typedef struct {
     int   id;
     int   fond;                 /* carte : l'id de son fond ; fond : 0 */
+    int   marque;               /* carte marquée (« marked ») ; vient de la liste */
+    int   debut_de_fond;        /* première carte de son fond, selon la liste */
     char *nom;                  /* UTF-8, jamais NULL */
     char *script;               /* UTF-8, NULL s'il n'y en a pas */
     HcOrigPart *parts;
@@ -89,6 +91,20 @@ typedef struct {
      * l'aurais écrite sans m'en apercevoir. D'où ce drapeau, affiché à chaque
      * lecture : un manque visible vaut mieux qu'un manque qu'on oublie. */
     int           liste_vue;              /* un bloc LIST est présent */
+
+    /* L'ORDRE, QUAND IL A PU ÊTRE LU ET VÉRIFIÉ.
+     *
+     * `ordre_lu` ne dit pas « il y avait un bloc LIST » — ça, c'est
+     * `liste_vue`. Il dit que la chaîne LIST -> PAGE -> références de cartes a
+     * été parcourue ET que les sommes de contrôle de la liste et de chacune de
+     * ses pages tombent juste. C'est une garantie d'un autre ordre de grandeur :
+     * les identifiants rendus sont ceux qu'HyperCard a écrits, dans son ordre,
+     * et pas une suite d'entiers vraisemblables.
+     *
+     * À zéro, `cartes` reste dans l'ordre du FICHIER, qui n'est pas celui de la
+     * pile. Le drapeau est donc à regarder avant de croire l'ordre. */
+    int           ordre_lu;
+    int           npages;                 /* pages de la liste des cartes */
 
     /* --- STAK --- */
     unsigned long format;       /* 8 : HyperCard 1.x ; 10 : 2.x */

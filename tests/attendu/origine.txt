@@ -39,14 +39,62 @@ b » (3 octets)
 b » (3 octets)
 
 === la pile montée au format d'origine ===
-2080 octets
+2208 octets
 --- pile HyperCard 2.x : lu
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 5 blocs, chaine atteint la fin, TAIL vu, LIST ABSENT (l'ordre des cartes n'est donc pas connu), 0 anomalie(s)
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc BKGD id   2000 taille   128 offset 0x0640
   bloc CARD id   3000 taille   256 offset 0x06C0
   bloc CARD id   3001 taille    64 offset 0x07C0
-  bloc TAIL id     -1 taille    32 offset 0x0800
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc PAGE id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script :
+    | on mouseUp
+    |   beep
+    | end mouseUp
+
+=== les témoins négatifs : ce qui doit être REFUSÉ ===
+--- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
+--- taille de bloc au-dela du fichier : REFUSE — taille de bloc impossible (offset 0x0)
+--- premier bloc pas STAK : REFUSE — le premier bloc n'est pas STAK (offset 0x0)
+--- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
+--- pile HyperCard 1.x : REFUSE — pile HyperCard 1.x : blocs decales, lecture non ecrite (offset 0x10)
+--- plus de cartes que de blocs : REFUSE — plus de cartes ou de fonds que de blocs (offset 0x24)
+--- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x75C)
+--- somme de la LISTE fausse d'un bit : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc PAGE id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -73,22 +121,16 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
     | end mouseUp
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
-
-=== les témoins négatifs : ce qui doit être REFUSÉ ===
---- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
---- taille de bloc au-dela du fichier : REFUSE — taille de bloc impossible (offset 0x0)
---- premier bloc pas STAK : REFUSE — le premier bloc n'est pas STAK (offset 0x0)
---- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
---- pile HyperCard 1.x : REFUSE — pile HyperCard 1.x : blocs decales, lecture non ecrite (offset 0x10)
---- plus de cartes que de blocs : REFUSE — plus de cartes ou de fonds que de blocs (offset 0x24)
---- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x75C)
---- marqueur de script d'une part abime (faute LOCALE) : lu
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 5 blocs, chaine atteint la fin, TAIL vu, LIST ABSENT (l'ordre des cartes n'est donc pas connu), 1 anomalie(s)
+--- somme d'une PAGE fausse d'un bit : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc BKGD id   2000 taille   128 offset 0x0640
   bloc CARD id   3000 taille   256 offset 0x06C0
   bloc CARD id   3001 taille    64 offset 0x07C0
-  bloc TAIL id     -1 taille    32 offset 0x0800
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc PAGE id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -109,6 +151,114 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   champ  id 1 « A » (54,20,80,250)
     script : aucun
   bouton id 2 « TORTURE » (302,20,324,110)
-    script : aucun
+    script :
+    | on mouseUp
+    |   beep
+    | end mouseUp
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
+--- la PAGE que la liste nomme est introuvable : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc ZORG id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script :
+    | on mouseUp
+    |   beep
+    | end mouseUp
+carte id 3001, fond 2000, nom «  », 0 parts
+  script : aucun
+--- les deux nombres de cartes de la liste se contredisent : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc PAGE id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script :
+    | on mouseUp
+    |   beep
+    | end mouseUp
+carte id 3001, fond 2000, nom «  », 0 parts
+  script : aucun
+--- marqueur de script d'une part abime (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 7 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc BKGD id   2000 taille   128 offset 0x0640
+  bloc CARD id   3000 taille   256 offset 0x06C0
+  bloc CARD id   3001 taille    64 offset 0x07C0
+  bloc LIST id   4803 taille    64 offset 0x0800
+  bloc PAGE id   4804 taille    64 offset 0x0840
+  bloc TAIL id     -1 taille    32 offset 0x0880
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  script : aucun
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250)
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110)
+    script : aucun

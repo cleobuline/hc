@@ -43,6 +43,11 @@
 /* Un écrivain, uniquement pour le test                                */
 /* ------------------------------------------------------------------ */
 
+#define NHASH   4                       /* entiers de hachage par référence */
+#define REFSZ   (4 + 4 * NHASH)         /* 20, comme la vraie pile mesurée */
+#define ID_LIST 4803
+#define ID_PAGE 4804
+
 typedef struct { unsigned char *o; size_t n, cap; } Tampon;
 
 static void grossis(Tampon *t, size_t combien)
@@ -145,7 +150,9 @@ static void pose_stak(Tampon *t, unsigned long format, unsigned long nfonds,
     pose32(t, nfonds);                          /* 0x24 */
     pose32(t, 0);                               /* 0x28 premier fond */
     pose32(t, ncartes);                         /* 0x2C */
-    pose_zeros(t, 0x4C - 0x30);
+    pose32(t, 0);                               /* 0x30 premiere carte */
+    pose32(t, (unsigned long)ID_LIST);          /* 0x34 le bloc LIST */
+    pose_zeros(t, 0x4C - 0x38);
     pose16(t, protection);                      /* 0x4C */
     pose_zeros(t, 0x1B8 - 0x4E);
     pose16(t, 342);                             /* 0x1B8 hauteur (Quickdraw) */
@@ -228,6 +235,83 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
     ecris32(t, deb, (unsigned long)(t->n - deb));
 }
 
+/* ------------------------------------------------------------------ */
+/* La liste des cartes                                                 */
+/* ------------------------------------------------------------------ */
+
+/* Les deux sommes de contrôle de la liste, qui viennent de l'assembleur
+ * d'HyperCard et pas de nous : une rotation de trois bits vers la droite entre
+ * chaque terme. Si l'écrivain d'ici les calcule mal, le lecteur refuse l'ordre
+ * — c'est une règle du dehors, et c'est tout son intérêt. */
+static unsigned long rot3(unsigned long x)
+{
+    x &= 0xFFFFFFFFUL;
+    return ((x >> 3) | (x << 29)) & 0xFFFFFFFFUL;
+}
+
+/* L'ORDRE DE LA LISTE EST L'INVERSE DE CELUI DU FICHIER, et c'est tout l'objet
+ * du test. Le fichier porte CARD 3000 puis CARD 3001 ; la liste dit 3001 puis
+ * 3000. Un lecteur qui se contenterait de l'ordre du fichier rendrait donc
+ * l'inverse de ce qu'on attend, et la référence le verrait. Une liste qui
+ * répéterait l'ordre du fichier ne distinguerait rien. */
+static const int ORDRE[2]  = { 3001, 3000 };
+/* bit 6 : début d'un fond — la première carte de l'ordre, les deux partageant
+ * le même fond. bit 7 : porte un nom — 3000 s'appelle « Atelier », 3001 non.
+ * bit 5 : porte du texte, sur les deux. */
+static const unsigned FLAGS[2] = { 0x20 | 0x40, 0x20 | 0x80 };
+
+static void pose_page(Tampon *t)
+{
+    size_t deb = t->n;
+    pose32(t, 0);
+    for (const char *s = "PAGE"; *s; s++) pose8(t, (unsigned char)*s);
+    pose32(t, (unsigned long)ID_PAGE);
+    pose32(t, 0);
+    pose32(t, (unsigned long)ID_LIST);          /* 0x10 */
+    size_t ou_somme = t->n;
+    pose32(t, 0);                               /* 0x14 somme, réécrite */
+    unsigned long somme = 0;
+    for (int i = 0; i < 2; i++) {               /* 0x18 les références */
+        pose32(t, (unsigned long)ORDRE[i]);
+        pose8(t, FLAGS[i]);
+        pose_zeros(t, REFSZ - 5);               /* le hachage de recherche */
+        somme = (somme + (unsigned long)ORDRE[i]) & 0xFFFFFFFFUL;
+        somme = rot3(somme);
+    }
+    ecris32(t, ou_somme, somme);
+    while ((t->n - deb) % 32) pose8(t, 0);
+    ecris32(t, deb, (unsigned long)(t->n - deb));
+}
+
+static void pose_liste(Tampon *t)
+{
+    size_t deb = t->n;
+    pose32(t, 0);
+    for (const char *s = "LIST"; *s; s++) pose8(t, (unsigned char)*s);
+    pose32(t, (unsigned long)ID_LIST);
+    pose32(t, 0);
+    pose32(t, 1);                               /* 0x10 une page */
+    pose32(t, 0x800);                           /* 0x14 taille d'une page */
+    pose32(t, 2);                               /* 0x18 nombre de cartes */
+    pose16(t, REFSZ);                           /* 0x1C */
+    pose16(t, 2);                               /* 0x1E toujours 2 */
+    pose16(t, NHASH);                           /* 0x20 */
+    pose16(t, 0);                               /* 0x22 */
+    size_t ou_somme = t->n;
+    pose32(t, 0);                               /* 0x24 somme, réécrite */
+    pose32(t, 2);                               /* 0x28 le nombre, une 2e fois */
+    pose_zeros(t, 4);                           /* 0x2C */
+    unsigned long somme = 0;                    /* 0x30 références de pages */
+    pose32(t, (unsigned long)ID_PAGE);
+    pose16(t, 2);
+    somme = (somme + (unsigned long)ID_PAGE) & 0xFFFFFFFFUL;
+    somme = rot3(somme);
+    somme = (somme + 2) & 0xFFFFFFFFUL;
+    ecris32(t, ou_somme, somme);
+    while ((t->n - deb) % 32) pose8(t, 0);
+    ecris32(t, deb, (unsigned long)(t->n - deb));
+}
+
 static void pose_tail(Tampon *t)
 {
     size_t deb = t->n;
@@ -247,6 +331,8 @@ static Tampon monte_la_pile(unsigned long format, unsigned protection)
     pose_couche(&t, "BKGD", 2000, 0, 0, 1, 0, "Fond", SCRIPT_FOND);
     pose_couche(&t, "CARD", 3000, 2000, 1, 1, 1, "Atelier", SCRIPT_CARTE);
     pose_couche(&t, "CARD", 3001, 2000, 0, 0, 0, "", NULL);
+    pose_liste(&t);
+    pose_page(&t);
     pose_tail(&t);
     return t;
 }
@@ -273,6 +359,8 @@ static void dis_couche(const char *quoi, const HcOrigCouche *k)
 {
     printf("%s id %d", quoi, k->id);
     if (k->fond) printf(", fond %d", k->fond);
+    if (k->debut_de_fond) printf(", DEBUT DE FOND");
+    if (k->marque) printf(", MARQUEE");
     printf(", nom « %s », %d part%s\n", k->nom ? k->nom : "(nul)",
            k->nparts, k->nparts == 1 ? "" : "s");
     dis_script("script", k->script);
@@ -294,6 +382,10 @@ static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int 
     if (r != 0) { printf("REFUSE — %s\n", pourquoi); hc_origine_libere(&pile); return; }
     printf("lu\n");
 
+    printf("ordre : %s, %d page(s)\n",
+           pile.ordre_lu ? "LU ET VERIFIE (sommes de la liste et des pages)"
+                         : "NON LU — les cartes restent dans l'ordre du FICHIER",
+           pile.npages);
     printf("format %lu, %lu fond(s), %lu carte(s), %dx%d, somme %s, %d bloc%s, "
            "chaine %s la fin, TAIL %s, LIST %s, %d anomalie(s)\n",
            pile.format, pile.nfonds, pile.ncartes, pile.largeur, pile.hauteur,
@@ -425,6 +517,67 @@ int main(int argc, char **argv)
         lis_et_dis("taille de la liste des parts fausse d'un octet", c, t.n, 0);
         free(c);
     }
+    /* L'ORDRE SE REFUSE SANS QUE LE FICHIER SE REFUSE, et c'est le point.
+     *
+     * Perdre les scripts d'une pile parce que la somme d'une page est fausse
+     * serait un mauvais échange : l'ordre n'est pas nécessaire pour lire un
+     * script en sûreté. Mais se rabattre en SILENCE sur l'ordre du fichier
+     * serait malhonnête. Donc « ordre NON LU », une anomalie comptée, et les
+     * cartes reviennent dans l'ordre du fichier — Atelier d'abord, et non
+     * l'inverse comme la liste le voulait. La référence montre les deux ordres,
+     * c'est ce qui rend ces témoins lisibles. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 8 <= t.n; ) {
+            unsigned long taille = ((unsigned long)c[i] << 24) | ((unsigned long)c[i+1] << 16)
+                                 | ((unsigned long)c[i+2] << 8) | c[i+3];
+            if (memcmp(c + i + 4, "LIST", 4) == 0) { c[i + 0x27] ^= 0x01; break; }
+            if (taille < 16) break;
+            i += taille;
+        }
+        lis_et_dis("somme de la LISTE fausse d'un bit", c, t.n, 1);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 8 <= t.n; ) {
+            unsigned long taille = ((unsigned long)c[i] << 24) | ((unsigned long)c[i+1] << 16)
+                                 | ((unsigned long)c[i+2] << 8) | c[i+3];
+            if (memcmp(c + i + 4, "PAGE", 4) == 0) { c[i + 0x17] ^= 0x01; break; }
+            if (taille < 16) break;
+            i += taille;
+        }
+        lis_et_dis("somme d'une PAGE fausse d'un bit", c, t.n, 1);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 8 <= t.n; ) {
+            unsigned long taille = ((unsigned long)c[i] << 24) | ((unsigned long)c[i+1] << 16)
+                                 | ((unsigned long)c[i+2] << 8) | c[i+3];
+            if (memcmp(c + i + 4, "PAGE", 4) == 0) { memcpy(c + i + 4, "ZORG", 4); break; }
+            if (taille < 16) break;
+            i += taille;
+        }
+        lis_et_dis("la PAGE que la liste nomme est introuvable", c, t.n, 1);
+        free(c);
+    }
+    /* Le nombre total de cartes est écrit DEUX FOIS dans la liste, à 0x18 et à
+     * 0x28. Les désaccorder doit se voir : c'est un recoupement que le format
+     * nous offre et que les deux lecteurs publics ne font pas. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 8 <= t.n; ) {
+            unsigned long taille = ((unsigned long)c[i] << 24) | ((unsigned long)c[i+1] << 16)
+                                 | ((unsigned long)c[i+2] << 8) | c[i+3];
+            if (memcmp(c + i + 4, "LIST", 4) == 0) { c[i + 0x2B] = 9; break; }
+            if (taille < 16) break;
+            i += taille;
+        }
+        lis_et_dis("les deux nombres de cartes de la liste se contredisent", c, t.n, 1);
+        free(c);
+    }
+
     /* Une faute LOCALE, qui ne doit PAS faire refuser le fichier : l'octet nul
      * qui précède le script d'une part. On perd ce script, on compte
      * l'anomalie, et les autres scripts restent lisibles. */

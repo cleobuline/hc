@@ -161,6 +161,16 @@ static void motif(char *ou, size_t combien, const char *quoi, unsigned long ou_c
     if (ou && combien) snprintf(ou, combien, "%s (offset 0x%lX)", quoi, ou_ca);
 }
 
+/* La rotation de trois bits vers la droite, sur 32 bits. Elle vient des deux
+ * sommes de contrôle de la liste des cartes, et c'est la seule arithmétique
+ * bizarre de ce fichier : elle est dans l'assembleur d'HyperCard, pas dans
+ * notre tête. */
+static unsigned long rotd3(unsigned long x)
+{
+    x &= 0xFFFFFFFFUL;
+    return ((x >> 3) | (x << 29)) & 0xFFFFFFFFUL;
+}
+
 /* ------------------------------------------------------------------ */
 /* Les parts                                                           */
 /* ------------------------------------------------------------------ */
@@ -317,6 +327,97 @@ static int lit_la_couche(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
 }
 
 /* ------------------------------------------------------------------ */
+/* L'ordre des cartes                                                  */
+/* ------------------------------------------------------------------ */
+
+/* Lit la chaîne LIST -> PAGE -> références de cartes, et VÉRIFIE les deux
+ * sommes de contrôle que le format y met. Remplit `ordre` (les identifiants,
+ * dans l'ordre de la pile) et `drapeaux` (l'octet de drapeaux de chaque
+ * référence). Rend 1 si l'ordre a été lu ET vérifié, 0 sinon.
+ *
+ * ELLE NE REFUSE JAMAIS LE FICHIER, et c'est un choix. L'ordre des cartes n'est
+ * pas nécessaire pour lire des scripts en sûreté : perdre les 66 scripts d'une
+ * pile parce que la somme d'une page est fausse serait un mauvais échange. Mais
+ * se rabattre en silence sur l'ordre du fichier serait malhonnête — d'où
+ * `ordre_lu` à zéro, et une anomalie comptée si la liste existait sans se
+ * vérifier.
+ *
+ * TROIS RECOUPEMENTS EN PLUS DES SOMMES, tous gratuits : le nombre total de
+ * cartes est écrit DEUX FOIS dans la liste (0x18 et 0x28, l'assembleur recopie
+ * simplement le premier) ; il doit valoir celui que STAK annonce ; et la taille
+ * d'une référence doit s'accorder avec le nombre d'entiers de hachage qu'elle
+ * porte, refsz == 4 + 4 * nhash. */
+static int lit_l_ordre(Vue *v, HcOrigPile *pile, const unsigned char *octets,
+                       int *ordre, unsigned char *drapeaux)
+{
+    size_t liste = 0;
+    int trouvee = 0;
+    for (int i = 0; i < pile->nblocs && !trouvee; i++)
+        if (memcmp(octets + pile->blocs[i].offset + 4, "LIST", 4) == 0) {
+            liste = (size_t)pile->blocs[i].offset;
+            trouvee = 1;
+        }
+    if (!trouvee) return 0;          /* pas de liste : rien à reprocher */
+
+    unsigned long npages  = u32(v, liste + 0x10);
+    unsigned long ntotal  = u32(v, liste + 0x18);
+    unsigned      refsz   = u16(v, liste + 0x1C);
+    unsigned      nhash   = u16(v, liste + 0x20);
+    unsigned long attendu = u32(v, liste + 0x24);
+    unsigned long ntotal2 = u32(v, liste + 0x28);
+    pile->npages = (int)npages;
+
+    if (v->debord) { pile->anomalies++; return 0; }
+    if (ntotal != ntotal2 || ntotal != pile->ncartes) { pile->anomalies++; return 0; }
+    if (refsz < 4 || refsz != 4 + 4 * nhash)          { pile->anomalies++; return 0; }
+    if (npages > (unsigned long)pile->nblocs)         { pile->anomalies++; return 0; }
+
+    /* La somme de la liste, sur ses références de pages. */
+    unsigned long somme = 0;
+    for (unsigned long p = 0; p < npages; p++) {
+        size_t r = liste + 0x30 + 6 * (size_t)p;
+        somme = (somme + u32(v, r)) & 0xFFFFFFFFUL;
+        somme = rotd3(somme);
+        somme = (somme + u16(v, r + 4)) & 0xFFFFFFFFUL;
+    }
+    if (v->debord || somme != attendu) { pile->anomalies++; return 0; }
+
+    /* Puis chaque page, avec SA somme, et les identifiants qu'elle porte. */
+    unsigned long rang = 0;
+    for (unsigned long p = 0; p < npages; p++) {
+        size_t r = liste + 0x30 + 6 * (size_t)p;
+        long   idpage = s32(v, r);
+        unsigned ncartes = u16(v, r + 4);
+
+        size_t page = 0;
+        int vue = 0;
+        for (int i = 0; i < pile->nblocs && !vue; i++)
+            if (memcmp(octets + pile->blocs[i].offset + 4, "PAGE", 4) == 0
+                && pile->blocs[i].id == (int)idpage) {
+                page = (size_t)pile->blocs[i].offset;
+                vue = 1;
+            }
+        if (!vue) { pile->anomalies++; return 0; }
+
+        unsigned long som_page = 0, att_page = u32(v, page + 0x14);
+        for (unsigned k = 0; k < ncartes; k++) {
+            size_t ref = page + 0x18 + (size_t)k * refsz;
+            som_page = (som_page + u32(v, ref)) & 0xFFFFFFFFUL;
+            som_page = rotd3(som_page);
+            if (rang < ntotal) {
+                ordre[rang]    = (int)s32(v, ref);
+                drapeaux[rang] = (ref + 4 < v->n) ? octets[ref + 4] : 0;
+                rang++;
+            }
+        }
+        if (v->debord || som_page != att_page) { pile->anomalies++; return 0; }
+    }
+
+    if (rang != ntotal) { pile->anomalies++; return 0; }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Le fichier entier                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -328,6 +429,17 @@ static int lit_interne(const unsigned char *octets, size_t n,
 {
     memset(pile, 0, sizeof *pile);
     if (!octets || n < ENTETE) { motif(pourquoi, npourquoi, "fichier trop court pour un en-tete", 0); return -1; }
+
+    /* NOTRE PROPRE FORMAT SE RECONNAÎT ET SE NOMME.
+     *
+     * Un fichier du format maison donnait « taille de bloc impossible », ce qui
+     * est vrai et inutile : on cherche le défaut dans la pile alors qu'on s'est
+     * trompé de lecteur. Mesuré en essayant d'ouvrir Graph_Maker.stack, déjà
+     * converti, avec ce module-ci. */
+    if (n >= 8 && memcmp(octets, "-- pile ", 8) == 0) {
+        motif(pourquoi, npourquoi, "c'est le format maison, pas une pile d'origine : hc_load", 0);
+        return -1;
+    }
 
     Vue vue = { octets, n, 0 };
     Vue *v = &vue;
@@ -451,6 +563,20 @@ static int lit_interne(const unsigned char *octets, size_t n,
         if (!pile->cartes) { motif(pourquoi, npourquoi, "memoire epuisee", 0x2C); return -1; }
     }
 
+    /* L'ORDRE D'ABORD, LES CARTES ENSUITE. Sans lui on ne saurait pas où ranger
+     * une carte, et l'ordre du fichier n'est pas celui de la pile. */
+    int           *ordre    = NULL;
+    unsigned char *drapeaux = NULL;
+    if (pile->ncartes) {
+        ordre    = calloc(pile->ncartes, sizeof *ordre);
+        drapeaux = calloc(pile->ncartes, sizeof *drapeaux);
+        if (!ordre || !drapeaux) {
+            free(ordre); free(drapeaux);
+            motif(pourquoi, npourquoi, "memoire epuisee", 0x34); return -1;
+        }
+        pile->ordre_lu = lit_l_ordre(v, pile, octets, ordre, drapeaux);
+    }
+
     for (int i = 0; i < pile->nblocs; i++) {
         HcOrigBloc *b = &pile->blocs[i];
         size_t bloc = (size_t)b->offset, fin = bloc + (size_t)b->taille;
@@ -464,7 +590,33 @@ static int lit_interne(const unsigned char *octets, size_t n,
         HcOrigCouche *k;
         if (est_carte) {
             if ((unsigned long)pile->ncartes_lues >= pile->ncartes) continue;
-            k = &pile->cartes[pile->ncartes_lues];
+            /* LA PLACE VIENT DE LA LISTE, pas du rang dans le fichier. Une carte
+             * que la liste ne nomme pas est comptée en anomalie et rangée à la
+             * suite : elle existe, elle n'est simplement pas à sa place. */
+            long place = -1;
+            if (pile->ordre_lu) {
+                for (unsigned long q = 0; q < pile->ncartes; q++)
+                    if (ordre[q] == b->id) { place = (long)q; break; }
+                if (place < 0) pile->anomalies++;
+            }
+            if (place < 0) {
+                /* la première case encore vide, pour ne jamais en écraser une */
+                for (unsigned long q = 0; q < pile->ncartes; q++)
+                    if (!pile->cartes[q].id) { place = (long)q; break; }
+                if (place < 0) continue;
+            }
+            k = &pile->cartes[place];
+            if (pile->ordre_lu) {
+                /* LA NUMÉROTATION DES BITS EST MESURÉE, pas supposée. Sur une
+                 * vraie pile de 1990, le bit 7 est allumé pour l'unique carte
+                 * qui porte un nom, et le bit 6 pour les trois premières
+                 * cartes de chacun des trois fonds — aux positions 0, 4 et 10
+                 * de l'ordre calculé ici. Deux témoins, dont un unique. Le
+                 * bit 4 (« marked ») découle de la même numérotation ; aucune
+                 * carte marquée n'est passée ici, ça reste à voir. */
+                k->marque        = (drapeaux[place] & 0x10) ? 1 : 0;
+                k->debut_de_fond = (drapeaux[place] & 0x40) ? 1 : 0;
+            }
         } else {
             if ((unsigned long)pile->nfonds_lus >= pile->nfonds) continue;
             k = &pile->fonds[pile->nfonds_lus];
@@ -478,10 +630,23 @@ static int lit_interne(const unsigned char *octets, size_t n,
         } else {
             r = lit_la_couche(v, k, pile, bloc, fin, 0x24, 0x28, 0x2C, 0x32, pourquoi, npourquoi);
         }
-        if (r != 0) return -1;
+        if (r != 0) { free(ordre); free(drapeaux); return -1; }
+
+        /* DEUX SOURCES POUR LE MÊME FAIT, donc un recoupement gratuit : la
+         * référence de la liste dit si la carte porte un nom (bit 7), et le
+         * bloc CARD porte le nom lui-même. Elles doivent s'accorder. Si elles
+         * ne s'accordent pas, c'est qu'on a apparié la mauvaise référence avec
+         * le mauvais bloc — exactement la faute qu'un ordre mal lu produirait,
+         * et qui autrement ne se verrait pas. */
+        if (est_carte && pile->ordre_lu) {
+            int annonce = (drapeaux[k - pile->cartes] & 0x80) ? 1 : 0;
+            int reel    = (k->nom && k->nom[0]) ? 1 : 0;
+            if (annonce != reel) pile->anomalies++;
+        }
 
         if (est_carte) pile->ncartes_lues++; else pile->nfonds_lus++;
     }
+    free(ordre); free(drapeaux);
 
     if (v->debord) { motif(pourquoi, npourquoi, "lecture hors du fichier", 0); return -1; }
     return 0;
