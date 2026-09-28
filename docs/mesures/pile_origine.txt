@@ -1153,3 +1153,61 @@ CE QUI RESTE DEHORS : les motifs, les icônes du fork de ressources, HyperCard 1
 les piles à accès privé. Et les six champs d'une décoration dont la spec dit
 « should be …, but never used » — hauteur de ligne, ascendante, et les trois
 composantes de couleur — qui ne sont pas lus parce qu'ils ne portent rien.
+
+UN NOM CITÉ AVALAIT L'OPÉRATEUR QUI LE SUIVAIT
+----------------------------------------------
+
+Relevé à l'usage, dans HC :
+
+    updateCalendar bg field "Year" + 1,"scroll left"
+
+    -> « un nombre est attendu ici »
+
+CAUSE. Le désignateur cité se lisait avec rang_somme, le niveau 5, qui laisse
+passer l'arithmétique. Le champ devenait donc « celui dont le NOM est "Year" + 1 »,
+et la faute était annoncée sur une ligne où rien n'a l'air d'un nombre.
+
+L'arbre le disait en trois lignes, et c'est ce qui a tranché en une minute :
+
+    objet bg.field par-nom
+      binaire +
+        chaine [Year]
+        nombre [1]
+
+LE RANG GARDE SON DROIT À L'ARITHMÉTIQUE, et la différence n'est pas un caprice :
+un RANG est un nombre, donc calculer dessus a un sens — « card i + 1 » désigne la
+carte suivante, et c'était écrit et voulu. Un nom CITÉ est un littéral, et
+« "Year" + 1 » n'en est pas un. Rien ne peut le prolonger.
+
+MESURÉ SUR LE CORPUS AVANT D'Y TOUCHER — 4369 lignes de HyperTalk d'Apple, quatre
+piles. Un désignateur cité suivi d'un opérateur arithmétique y paraît TROIS fois :
+
+    updateCalendar bg field "Year" + 1,"scroll left"
+    updateCalendar bg field "Year" - 1,"scroll right"
+    put round(height of bg field "Monday" / textHeight of bg field "Monday")
+
+Les trois veulent « la valeur de la chose, puis l'opération ». ZÉRO contre-exemple :
+pas une ligne du corpus ne nomme un objet par une expression arithmétique.
+
+Et la troisième est celle que je n'aurais pas cherchée — une DIVISION entre deux
+propriétés — dont la faute était encore plus trompeuse : « propriété ou fonction
+inconnue : textHeight », parce que le nom avait avalé tout le reste de la ligne.
+Chercher le SITE JUMEAU dans le corpus a donc rapporté un troisième cas que le
+relevé de l'utilisatrice ne montrait pas.
+
+Ces trois lignes sont dans le gabarit « Month Calendar », sur les boutons d'année
+suivante et précédente. Elles tournent à chaque clic.
+
+TÉMOINS, section 6 de tests/harnais/pilereelle.c, et par PAIRES :
+
+    bg field "Year" + 1        1994    le nom ne prend plus l'opérateur
+    bg field 1 + 0             1993    le rang calcule encore
+    card i + 1                 card "Deux"
+    card i + 0                 card "Une"
+    card id n + 0              card "Une"
+
+La seconde colonne est la moitié de la correction : sans elle on ne saurait pas si
+la porte a été fermée trop grand. Et « card i + 1 » a demandé une SECONDE CARTE
+dans le harnais — sans elle il échouait sur « objet introuvable », ce qui est juste
+et parfaitement ambigu : un témoin qui peut échouer pour deux raisons n'en mesure
+aucune.

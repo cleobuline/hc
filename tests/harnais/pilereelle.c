@@ -340,6 +340,81 @@ int main(void)
     puts(" imprime les cartes 0 a 512. Les deux releves sont cote a cote dans");
     puts(" tests/harnais/impression.c, qui a l'hote imprimeur qu'il faut.)");
 
+    /* ------------------------------------------------------------------ */
+    /* 6. UN NOM CITÉ NE PREND AUCUN OPÉRATEUR                            */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 6. « bg field \"Year\" + 1 » : le nom avalait le « + 1 » ===");
+    puts("(relevé a l'usage sur le gabarit « Month Calendar » d'Apple, boutons");
+    puts(" d'annee suivante et precedente. Le designateur cite se lisait avec");
+    puts(" rang_somme, qui laisse passer l'arithmetique : le champ devenait");
+    puts(" « celui dont le NOM est \"Year\" + 1 », et la faute annoncee etait");
+    puts(" « un nombre est attendu ici » — sur une ligne ou rien n'a l'air d'un");
+    puts(" nombre.)");
+    puts("");
+    puts("MESURE SUR LE CORPUS avant d'y toucher : 4369 lignes de HyperTalk");
+    puts("d'Apple, quatre piles. Un designateur cite suivi d'un operateur");
+    puts("arithmetique y parait TROIS fois, et les trois veulent « la valeur de la");
+    puts("chose, puis l'operation ». ZERO contre-exemple.");
+
+    /* Un champ de fond nommé « Year », partagé, qui porte un nombre. C'est le
+     * montage exact du gabarit d'Apple. */
+    {
+        Object *an = hc_new_field(bg, "Year");
+        hc_set_shared_text(an, 1);
+        hc_set_field_text(an, "1993");
+        Object *large = hc_new_field(bg, "Monday");
+        hc_set_shared_text(large, 1);
+        hc_set_field_text(large, "");
+    }
+
+    puts("");
+    puts("--- 6a. les trois lignes d'Apple, jouees ---");
+    joue("bg field \"Year\" + 1  (attendu 1994)",
+         "put bg field \"Year\" + 1");
+    joue("bg field \"Year\" - 1  (attendu 1992)",
+         "put bg field \"Year\" - 1");
+    joue("la DIVISION : height / textHeight",
+         "put the height of bg field \"Monday\" / the textHeight of bg field \"Monday\"");
+    /* LA LIGNE ENTIÈRE, mot pour mot celle que l'utilisatrice a rapportée. Ce
+     * harnais n'a pas de gestionnaire « updateCalendar », donc la réponse
+     * attendue est « personne ne répond » — et c'est précisément ce qui en fait
+     * un témoin : AVANT la correction, la ligne mourait sur « un nombre est
+     * attendu ici » et n'atteignait jamais l'envoi. Passer d'une faute de
+     * lecture à la réponse normale d'HyperCard pour un gestionnaire absent est
+     * tout ce qu'on demande ici ; les valeurs, elles, sont mesurées au-dessus. */
+    joue("la ligne ENTIERE (« personne ne repond » est la BONNE reponse)",
+         "updateCalendar bg field \"Year\" + 1,\"scroll left\"");
+
+    puts("");
+    puts("--- 6b. LE RANG GARDE SON DROIT A L'ARITHMETIQUE ---");
+    puts("(et c'est la moitie de la correction : un RANG est un nombre, donc");
+    puts(" calculer dessus a un sens — « card i + 1 » designe la suivante. Un nom");
+    puts(" CITE est un litteral, et « \"Year\" + 1 » n'en est pas un. Les deux");
+    puts(" temoins cote a cote, sans quoi on ne saurait pas si la correction a");
+    puts(" ferme la porte trop grand.)");
+    joue("bg field 1 + 0 : le rang calcule encore",
+         "put bg field 1 + 0");
+    /* UNE SECONDE CARTE, pour que « card i + 1 » ait quelque chose à désigner.
+     * Sans elle le témoin échouait sur « objet introuvable » — ce qui est juste,
+     * la pile n'ayant qu'une carte, et parfaitement AMBIGU : on n'aurait pas su
+     * si le rang avait été calculé ou non. Un témoin qui peut échouer pour deux
+     * raisons n'en mesure aucune. */
+    hc_new_card(st, bg, "Deux");
+    joue("card i + 1 : la carte suivante (attendu card \"Deux\")",
+         "put 1 into i\n  put the name of card i + 1");
+    joue("card i + 0 : et la carte elle-meme",
+         "put 1 into i\n  put the name of card i + 0");
+    joue("card id n + 0 : l'identifiant calcule aussi",
+         "put the id of this card into n\n  put the name of card id n + 0");
+
+    puts("");
+    puts("--- 6c. ET LE NOM CITE RESTE UN NOM ---");
+    joue("bg field \"Year\" tout court",   "put bg field \"Year\"");
+    joue("un nom cite suivi d'un « of »",  "put bg field \"Year\" of this card");
+    joue("un nom CALCULE se parenthese",   "put \"Ye\" & \"ar\" into nm\n  put bg field nm");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

@@ -895,8 +895,40 @@ static HctNoeud *reference(HctAnalyseur *a)
     } else if (ici(a)->genre == HCT_CHAINE) {
         n->designateur = HCT_DES_NOM;
         a->sans_of++;
-        /* Idem : un nom cité ne doit pas avaler un « && » qui suit. */
-        hct_ajoute_fils(a->reserve, n, rang_somme(a));
+        /* UN NOM CITÉ NE PREND AUCUN OPÉRATEUR, ET C'EST LA DIFFÉRENCE AVEC LE
+         * RANG. C'était rang_somme (5), qui laisse passer l'arithmétique :
+         *
+         *     updateCalendar bg field "Year" + 1,"scroll left"
+         *
+         * devenait « le champ dont le NOM est "Year" + 1 », et l'on obtenait
+         * « un nombre est attendu ici » — une faute qui ne nomme pas sa cause,
+         * sur une ligne où rien n'a l'air d'un nombre.
+         *
+         * LE RANG GARDE SON DROIT À L'ARITHMÉTIQUE, lui, et c'est voulu : « card
+         * i + 1 » désigne la carte suivante, et le bloc d'en dessous le dit. La
+         * différence n'est pas un caprice : un RANG est un nombre, donc calculer
+         * dessus a un sens ; un nom CITÉ est un littéral, et « "Year" + 1 » n'en
+         * est pas un. Rien ne peut le prolonger.
+         *
+         * MESURÉ SUR LE CORPUS avant d'y toucher — 4369 lignes de HyperTalk
+         * d'Apple, quatre piles. Un désignateur cité suivi d'un opérateur
+         * arithmétique y paraît TROIS fois, et les trois veulent « la valeur de
+         * la chose, puis l'opération » :
+         *
+         *     updateCalendar bg field "Year" + 1,"scroll left"
+         *     updateCalendar bg field "Year" - 1,"scroll right"
+         *     put round(height of bg field "Monday" / textHeight of bg field "Monday")
+         *
+         * ZÉRO contre-exemple : pas une ligne du corpus ne nomme un objet par une
+         * expression arithmétique. Et la troisième est celle que je n'aurais pas
+         * cherchée — une DIVISION entre deux propriétés — dont la faute était
+         * encore plus trompeuse : « propriété ou fonction inconnue : textHeight »,
+         * parce que le nom avait avalé tout le reste de la ligne.
+         *
+         * Ces trois lignes sont dans le gabarit « Month Calendar » d'Apple, sur
+         * les boutons d'année suivante et précédente. Elles tournent à chaque
+         * clic : une pile livrée ne les porterait pas si HyperCard les refusait. */
+        hct_ajoute_fils(a->reserve, n, facteur(a));
         a->sans_of--;
     } else if (ici(a)->genre == HCT_NOMBRE || op_ici(a, "(")) {
         n->designateur = HCT_DES_RANG;
