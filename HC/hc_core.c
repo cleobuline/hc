@@ -9276,10 +9276,24 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         return 1;
     }
 
-    /* La version de HC. L'hôte fait foi — c'est lui qui porte
-     * MARKETING_VERSION —, le noyau répond pour tout ce qui tourne sans lui. */
+    /* LA VERSION D'HYPERCARD, ET NON LA NÔTRE. Le pourquoi est dans hc_core.h,
+     * avec la pile d'Apple qui l'a montré : un script qui demande « the
+     * version » veut savoir quelle version d'HyperCard il a sous les pieds, et
+     * répondre « 0.6.9.4 » fermait toute pile portant une porte de version.
+     *
+     * L'hôte n'est PAS interrogé ici : la réponse ne dépend pas de notre
+     * numéro, donc la faire dépendre de lui serait un chemin de plus pour rien,
+     * et un chemin qui pourrait un jour répondre autre chose. */
     if (ci_equal(nom, "version")) {
-        const char *v = host_global("version");
+        *out = hct_val_texte(HC_VERSION_HYPERCARD);
+        return 1;
+    }
+
+    /* LA VERSION DE HC, sous son propre nom. L'hôte fait foi — c'est lui qui
+     * porte MARKETING_VERSION —, le noyau répond pour tout ce qui tourne sans
+     * lui, les harnais notamment. */
+    if (ci_equal(nom, "hcversion")) {
+        const char *v = host_global("hcversion");
         *out = hct_val_texte((v && *v) ? v : HC_VERSION);
         return 1;
     }

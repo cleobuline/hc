@@ -17,7 +17,7 @@
    servi  the stacks               
    servi  the sound                done
    servi  the menus                
-   servi  the version              0.6.9.4
+   servi  the version              2.4.1
    servi  the destination          stack "T"
    servi  the size                 0
    servi  the freeSize             0

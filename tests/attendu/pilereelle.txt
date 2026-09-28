@@ -29,3 +29,21 @@ ok   # nu dans un gestionnaire : toujours une faute       -> erreur    (caractè
      [ERREUR]    !! caractère inattendu (v3, ligne 2 de button "B".t)
 -- temoin : rien de particulier
      le gestionnaire est alle au bout
+
+=== 3. « the version » rend celle d'HYPERCARD, pas la notre ===
+(le script de fond de la pile d'Apple porte « if the version < 2.2 »
+ et refusait de tourner : « Vous utilisez la version 0.6.9.4 ». La
+ porte de version etait une pratique standard en 1993, jusque chez
+ Apple : toute pile qui en porte une restait fermee, sans recours.)
+-- the version
+     2.4.1
+     le gestionnaire est alle au bout
+-- la porte d'Apple, mot pour mot
+     la pile accepte de tourner
+     le gestionnaire est alle au bout
+-- the hcVersion, sous son propre nom
+     0.6.9.4
+     le gestionnaire est alle au bout
+-- les deux ne sont pas la meme chose
+     2.4.1 / 0.6.9.4
+     le gestionnaire est alle au bout

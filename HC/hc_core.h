@@ -488,6 +488,35 @@ void hc_v3_bilan(void);
  * rappelle à l'étape « la version ». */
 #define HC_VERSION "0.6.9.4"
 
+/* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
+ *
+ * Mesuré, et pas supposé : la pile d'initiation d'Apple, « Découvrir
+ * HyperCard », porte ceci dans le script de son fond —
+ *
+ *     on checkHCVersion
+ *       if the version < 2.2 then
+ *         answer … "requiert la version 2.2 d'HyperCard" … the version …
+ *
+ * — et importée dans HC elle s'ouvre, exécute ce gestionnaire, et refuse
+ * poliment de tourner : « Vous utilisez la version 0.6.9.4 ». Le script fait
+ * exactement son travail.
+ *
+ * ET CE N'EST PAS UN CAS ISOLÉ : la porte de version était une pratique
+ * standard en 1993, jusque chez Apple. Toute pile d'archive qui en porte une
+ * resterait fermée, définitivement, sans recours pour l'utilisatrice — et sans
+ * qu'aucune pile de 1993 puisse apprendre l'existence de HC.
+ *
+ * Donc « the version » rend la dernière version d'HyperCard. La question que
+ * pose un script n'est pas « quelle est ta version ? » mais « quelle version
+ * d'HyperCard ai-je sous les pieds ? », et y répondre par notre numérotation
+ * est le vrai contresens : aucun stack n'attend cette réponse. C'est ce que
+ * fait toute couche de compatibilité.
+ *
+ * LA NÔTRE RESTE LISIBLE, sous « the hcVersion » : un script peut donc
+ * s'adapter à HC en connaissance de cause, ce qui n'était pas possible en
+ * confondant les deux. Décision de l'autrice, prise en voyant le refus. */
+#define HC_VERSION_HYPERCARD "2.4.1"
+
 void hc_v3_bilan_remise_a_zero(void);
 
 /* Armer le relevé de fin de processus : si HC_V3_RELEVE nomme un fichier, les

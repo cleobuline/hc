@@ -2565,8 +2565,14 @@ static const char *cocoa_global_get(const char *name) {
      * ne la recopie plus — on lit CFBundleShortVersionString, qui vaut
      * $(MARKETING_VERSION), donc le même numéro que le Finder et la fenêtre
      * « À propos ». HC_VERSION ne sert plus que de repli aux harnais, qui
-     * n'ont pas de bundle. */
-    if (strcasecmp(name, "version") == 0) {
+     * n'ont pas de bundle.
+     *
+     * ET LE NOM A CHANGÉ : c'est « hcVersion », pas « version ». « the version »
+     * rend désormais la dernière version d'HYPERCARD, sans passer par l'hôte —
+     * voir hc_core.h, et la pile d'initiation d'Apple qui refusait de tourner en
+     * lisant notre numéro. Notre version garde son propre nom, et c'est lui que
+     * l'hôte sert ici. */
+    if (strcasecmp(name, "hcversion") == 0) {
         static char v[64];
         if (!v[0]) {
             NSString *s = [[NSBundle mainBundle]

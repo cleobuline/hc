@@ -151,6 +151,31 @@ int main(void)
     joue("temoin : rien de particulier",
          "beep");
 
+    /* ------------------------------------------------------------------ */
+    /* 3. La porte de version                                             */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 3. « the version » rend celle d'HYPERCARD, pas la notre ===");
+    puts("(le script de fond de la pile d'Apple porte « if the version < 2.2 »");
+    puts(" et refusait de tourner : « Vous utilisez la version 0.6.9.4 ». La");
+    puts(" porte de version etait une pratique standard en 1993, jusque chez");
+    puts(" Apple : toute pile qui en porte une restait fermee, sans recours.)");
+
+    joue("the version", "put the version");
+    joue("la porte d'Apple, mot pour mot",
+         "if the version < 2.2 then\n"
+         "    put \"REFUSE : trop vieux\"\n"
+         "  else\n"
+         "    put \"la pile accepte de tourner\"\n"
+         "  end if");
+    /* ET LA NÔTRE RESTE LISIBLE, ce qui est la moitié de la décision : un script
+     * peut s'adapter à HC en connaissance de cause, ce qu'on ne pouvait pas
+     * faire quand les deux valeurs étaient confondues. */
+    joue("the hcVersion, sous son propre nom", "put the hcVersion");
+    joue("les deux ne sont pas la meme chose",
+         "put the version & \" / \" & the hcVersion");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;
