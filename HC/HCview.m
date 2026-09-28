@@ -688,17 +688,28 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     const char *st = o->style ? o->style : "rectangle";
 
     if (strcmp(st, "transparent") == 0) {
-        /* Noir franc, et non un voile gris : HyperCard INVERSAIT la zone d'un
-         * bouton transparent allumé, le noir passant au blanc et
-         * réciproquement. Le reste du code suit déjà cette logique — l'icône
-         * et le nom se dessinent en blanc quand `on`.
+        /* INVERSER, ET NON NOIRCIR — et le commentaire qui était ici disait déjà
+         * la bonne règle : « HyperCard INVERSAIT la zone d'un bouton transparent
+         * allumé ». Il l'annonçait, et la ligne d'en dessous remplissait la zone
+         * de noir franc. Une porte annoncée et jamais percée, encore.
          *
-         * Mais un bouton à ICÔNE ne s'inverse pas du tout par son fond : seule
-         * l'encre de l'icône passe au blanc, ce dont draw_part se charge. On
-         * ne touche donc à rien ici quand une icône est posée. */
+         * Ça ne se voyait pas tant qu'une carte était blanche : inverser du
+         * blanc ou le noircir donne le même rectangle noir. Le dessin importé l'a
+         * rendu flagrant. « Découvrir HyperCard » peint les libellés de ses
+         * quatorze boutons de menu DANS l'image du fond ; le bouton de la carte
+         * courante, allumé, effaçait donc le sien sous un pavé noir — relevé à
+         * l'usage, sur la capture d'écran de la pile convertie.
+         *
+         * La différence avec du blanc est l'inversion : 255 - D par composante.
+         * Elle ne touche pas l'alpha, la destination étant opaque.
+         *
+         * Un bouton à ICÔNE ne s'inverse toujours pas par son fond : seule
+         * l'encre de l'icône passe au blanc, ce dont draw_part se charge, et
+         * c'est une décision prise à l'usage — « ni carré noir, ni icône qui
+         * disparaît sur fond blanc ». On n'y touche pas. */
         if (on && o->icon == 0) {
-            [[NSColor blackColor] setFill];
-            NSRectFill(r);
+            [[NSColor whiteColor] setFill];
+            NSRectFillUsingOperation(r, NSCompositingOperationDifference);
         }
         return;
     }
@@ -1046,8 +1057,22 @@ static void draw_part(Object *o) {
             }
         }
         else if (isTransp) {
-            draw_btn_frame(o, r, on);
-            draw_edit_outline(r);
+            /* LE NOM D'ABORD, L'INVERSION ENSUITE, et l'ordre est tout.
+             *
+             * Il était inverse, et le nom se dessinait en NOIR par-dessus le pavé
+             * noir que posait draw_btn_frame : un bouton transparent allumé
+             * perdait purement et simplement son libellé. La branche voisine, celle
+             * des boutons à icône, prenait bien soin d'écrire en blanc quand
+             * `on` — celle-ci l'avait oublié. Deux chemins, un seul corrigé : le
+             * défaut signature de ce dépôt.
+             *
+             * En inversant APRÈS, il n'y a plus de couleur à choisir : le nom est
+             * écrit en noir, l'inversion le rend blanc, et le dessin qui est
+             * dessous s'inverse avec lui. C'est exactement ce que faisait
+             * HyperCard, dont l'allumage retourne la zone entière du bouton.
+             *
+             * Le liseré de l'outil Bouton reste EN DERNIER : il repère un objet
+             * pour qui édite, il n'appartient pas au dessin et ne s'inverse pas. */
             if (o->showname) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 16;
                 NSMutableParagraphStyle *ps = [[NSMutableParagraphStyle alloc] init];
@@ -1059,6 +1084,8 @@ static void draw_part(Object *o) {
                 btr.origin.y += (r.size.height - fs * 1.2) / 2;
                 [s drawInRect:btr withAttributes:bat];
             }
+            draw_btn_frame(o, r, on);
+            draw_edit_outline(r);
         }
         else if (isPopup) {
             /* LE TITRE, À GAUCHE ET HORS DU CADRE.
