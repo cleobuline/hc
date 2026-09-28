@@ -116,7 +116,7 @@ for src in harnais/*.c; do
   n=$(basename "$src" .c)
   [ -n "$MOTIF" ] && case "$n" in *"$MOTIF"*) ;; *) continue ;; esac
 
-  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm 2>/dev/null; then
+  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm -lz 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
 

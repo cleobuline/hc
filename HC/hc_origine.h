@@ -105,6 +105,35 @@ typedef struct {
     int   decore;               /* portait des styles par plage, NON LUS */
 } HcOrigContenu;
 
+/* ═══ LE DESSIN D'UNE COUCHE ══════════════════════════════════
+ *
+ * Deux plans d'un bit par pixel, l'image et le masque, tels que le bloc BMAP les
+ * porte. C'est tout ce que ce module en dit : la règle des couleurs — image à 1
+ * donne du noir, sinon masque à 1 donne du blanc, sinon transparent — est une
+ * INTERPRÉTATION, et elle appartient au bâtisseur. Ici on ne fait que
+ * décompresser et placer.
+ *
+ * Les deux plans font la taille du rectangle de la CARTE, même quand les
+ * données ne couvrent qu'une partie : le bloc porte trois rectangles — la
+ * carte, le masque, l'image — et les deux derniers se posent dans le premier.
+ * Un appelant qui devrait les recoller lui-même refarait ce calcul, et les
+ * arrondis à 32 bits qui vont avec.
+ *
+ * Bit 7 du premier octet = pixel de GAUCHE, comme QuickDraw. `octets_par_ligne`
+ * est calé sur 32 bits, comme dans le fichier. */
+typedef struct {
+    int present;                /* 0 : pas de bloc BMAP, ou il a été refusé */
+    int largeur, hauteur;       /* le rectangle de la carte, en pixels */
+    int octets_par_ligne;
+    unsigned char *image;       /* NULL si `present` est nul */
+    unsigned char *masque;
+    /* CE QUI A ÉTÉ LU, pour la mesure. Les tailles annoncées sont calées sur
+     * quatre octets ; `reste_*` dit combien d'octets le flot a laissés derrière
+     * lui, ce qui doit rester entre 0 et 3. */
+    unsigned long taille_masque, taille_image;
+    int reste_masque, reste_image;
+} HcOrigDessin;
+
 /* Une carte ou un fond : les deux blocs ont la même queue (parts, contenus,
  * nom, script) et ne diffèrent que par leur en-tête. */
 typedef struct {
@@ -117,9 +146,8 @@ typedef struct {
     int   dont_search;
     int   cant_delete;
     int   bloc_image;           /* l'id du bloc BMAP, ou 0 si la couche est
-                                 * transparente. LE DESSIN N'EST PAS LU — c'est
-                                 * l'étape 3 — mais savoir qu'il y en a un évite
-                                 * de croire une couche vide. */
+                                 * transparente. */
+    HcOrigDessin dessin;        /* le dessin lu, quand il y en a un */
     char *nom;                  /* UTF-8, jamais NULL */
     char *script;               /* UTF-8, NULL s'il n'y en a pas */
     HcOrigPart *parts;

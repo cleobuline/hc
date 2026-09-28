@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>     /* le calque de peinture est du RVBA compressé */
 
 /* ------------------------------------------------------------------ */
 /* Un écrivain, uniquement pour le test                                */
@@ -236,18 +237,126 @@ static void pose_stak(Tampon *t, unsigned long format, unsigned long nfonds,
     ecris32(t, deb + 0x70, (0x100000000ULL - somme) & 0xFFFFFFFFUL);
 }
 
+/* ------------------------------------------------------------------ */
+/* Le dessin : un bloc BMAP ecrit a la main                            */
+/* ------------------------------------------------------------------ */
+
+/* LE FLOT WOBA DU FOND : 24 lignes de 8 octets, et il exerce EXPRES les deux
+ * codes que les deux vraies piles n'emploient jamais.
+ *
+ * Mesure des 22 plans de « Decouvrir HyperCard » et de « 3D Parametric
+ * Equations » : 0x82 (ligne noire) et 0x88 (dh=16) n'y apparaissent PAS une
+ * seule fois. Sans ce flot ecrit a la main, ces deux branches ne seraient
+ * exercees par rien — et une branche que rien n'exerce n'est pas du code, c'est
+ * un espoir.
+ *
+ * Les quatre lignes transformees (14 a 17) ont leur resultat attendu ECRIT EN
+ * DUR plus bas. Il n'a pas ete obtenu en faisant tourner ce decodeur : il a ete
+ * calcule a part, depuis la phrase de la specification — « la ligne devient le
+ * XOR d'elle-meme et de toutes ses copies decalees de dh, 2dh, 3dh... bits ».
+ * Deux expressions independantes de la meme regle, c'est ce qui fait un test.
+ *
+ * Les deux derniers octets sont du CALAGE : la taille annoncee est un multiple
+ * de quatre, le flot s'arrete quand l'image est pleine. Ils valent 0xFF et non
+ * zero, comme dans « Decouvrir HyperCard » ou deux plans en laissent de
+ * pareils — c'est ce qui interdit d'exiger qu'ils soient nuls. */
+static const unsigned char WOBA_FOND[] = {
+    0x81,                                              /* 0  ligne blanche     */
+    0x82,                                              /* 1  ligne NOIRE       */
+    0x80, 0x12,0x34,0x56,0x78,0x9A,0xBC,0xDE,0xF0,     /* 2  ligne brute       */
+    0x83, 0xF0,                                        /* 3  motif, et retenu  */
+    0x85,                                              /* 4  copie la 3        */
+    0x86,                                              /* 5  copie la 3 (y-2)  */
+    0x84,                                              /* 6  motif de la ligne */
+    0x26, 0xA1,0xA2,                                   /* 7  6 zeros, 2 donnees*/
+    0xE1,                                              /* 8,9  16 zeros        */
+    0xC2, 0x01,0x23,0x45,0x67,0x89,0xAB,0xCD,0xEF,     /* 10,11  16 donnees    */
+          0xFE,0xDC,0xBA,0x98,0x76,0x54,0x32,0x10,
+    0xA2, 0x81,                                        /* 12,13  deux blanches */
+    0x8C, 0xC1, 0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88, /* 14  dh=1           */
+    0x8A, 0xC1, 0xAA,0xBB,0xCC,0xDD,0xEE,0xFF,0x01,0x02, /* 15  dv=1           */
+    0x88, 0xC1, 0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08, /* 16  dh=16          */
+    0x8E, 0xC1, 0xF1,0xE2,0xD3,0xC4,0xB5,0xA6,0x97,0x88, /* 17  dh=2, dv=2     */
+    /* 18 et 19 : une repetition sur une instruction QUI PORTE DES DONNEES.
+     * C'EST NOTRE LECTURE, ET ELLE N'EST PAS MESUREE : les 78 repetitions des
+     * deux vraies piles portent toutes sur une instruction sans donnees — 0x81,
+     * 0x84, 0x85, 0x86. « Repeter l'instruction suivante » peut donc se lire de
+     * deux facons pour une instruction a operandes : relire des octets neufs a
+     * chaque tour, ou reposer les memes. On relit, et le temoin est ici pour
+     * que ce choix soit visible si un jour une pile le contredit. Se tromper
+     * ne se fait pas en silence : le compte de lignes tombe faux et le plan
+     * est refuse. */
+    0x89, 0xA2, 0xC1, 0x0F,0x1E,0x2D,0x3C,0x4B,0x5A,0x69,0x78,
+                      0x87,0x96,0xA5,0xB4,0xC3,0xD2,0xE1,0xF0,
+    0xA4, 0x81,                                        /* 20..23 quatre blanches */
+    0xFF, 0xFF                                         /* le calage sur quatre  */
+};
+
+/* Le flot de la CARTE : huit lignes de quatre octets, dans un rectangle POSE
+ * ailleurs que dans le coin. Son rectangle d'image est 4,40..12,60 dans une
+ * carte de 0,0..24,64 : arrondi a 32 bits il devient 32..64, donc quatre octets
+ * par ligne et un decalage de quatre octets vers la droite. C'est ce decalage
+ * qui est teste ici — une image posee au mauvais endroit est le genre de defaut
+ * qui ne se voit que sur un dessin qu'on connait. */
+static const unsigned char WOBA_CARTE[] = {
+    0x40, 0xF0,0x00,0x00,0x00,
+    0x40, 0x00,0xF0,0x00,0x00,
+    0x40, 0x00,0x00,0xF0,0x00,
+    0x40, 0x00,0x00,0x00,0xF0,
+    0x40, 0x0F,0x00,0x00,0x00,
+    0x40, 0x00,0x0F,0x00,0x00,
+    0x40, 0x00,0x00,0x0F,0x00,
+    0x40, 0x00,0x00,0x00,0x0F
+};
+
+/* Un bloc BMAP. `masque_plein` demande un masque SANS DONNEES dont le rectangle
+ * couvre la carte : la specification dit que les pixels y valent alors 1, donc
+ * toute la carte est opaque. C'est ce que porte le fond de « Decouvrir
+ * HyperCard », et sans cette regle sa peinture arriverait transparente. */
+static void pose_bmap(Tampon *t, int id,
+                      int ct, int cl, int cb, int cr,
+                      int masque_plein,
+                      int it, int il, int ib, int ir,
+                      const unsigned char *flot, size_t nflot)
+{
+    size_t deb = t->n;
+    pose32(t, 0);                               /* taille, reecrite */
+    pose_texte(t, "BMAP"); t->n--;
+    pose32(t, (unsigned long)id);
+    pose32(t, 0);                               /* calage */
+    pose32(t, 0);                               /* 0x10 constante */
+    pose32(t, 0x10000);                         /* 0x14 constante */
+    pose16(t, (unsigned)ct); pose16(t, (unsigned)cl);
+    pose16(t, (unsigned)cb); pose16(t, (unsigned)cr);
+    if (masque_plein) {                         /* 0x20 rectangle du masque */
+        pose16(t, (unsigned)ct); pose16(t, (unsigned)cl);
+        pose16(t, (unsigned)cb); pose16(t, (unsigned)cr);
+    } else {
+        pose16(t, 0); pose16(t, 0); pose16(t, 0); pose16(t, 0);
+    }
+    pose16(t, (unsigned)it); pose16(t, (unsigned)il);   /* 0x28 rectangle image */
+    pose16(t, (unsigned)ib); pose16(t, (unsigned)ir);
+    pose32(t, 0);                               /* 0x30 */
+    pose32(t, 0);                               /* 0x34 */
+    pose32(t, 0);                               /* 0x38 taille du masque : AUCUNE */
+    pose32(t, (unsigned long)nflot);            /* 0x3C taille de l'image */
+    for (size_t i = 0; i < nflot; i++) pose8(t, flot[i]);
+    while ((t->n - deb) % 32) pose8(t, 0);
+    ecris32(t, deb, (unsigned long)(t->n - deb));
+}
+
 /* La queue commune : parts, contenus, nom, script. `poseur` décrit ce qu'on
  * met, pour ne pas écrire deux fois le même code pour CARD et BKGD. */
 static void pose_couche(Tampon *t, const char *type, int id, int fond,
                         int avec_bouton, int avec_champ, int avec_contenu,
-                        const char *nom, const char *script)
+                        int bmap, const char *nom, const char *script)
 {
     size_t deb = t->n;
     pose32(t, 0);                               /* taille, réécrite */
     for (const char *s = type; *s; s++) pose8(t, (unsigned char)*s);
     pose32(t, (unsigned long)id);
     pose32(t, 0);                               /* calage */
-    pose32(t, 0);                               /* 0x10 bloc BMAP : aucun */
+    pose32(t, (unsigned long)bmap);             /* 0x10 le bloc BMAP, 0 si aucun */
 
     int carte = (strcmp(type, "CARD") == 0);
     unsigned nparts = (unsigned)(avec_bouton + avec_champ);
@@ -416,9 +525,18 @@ static Tampon monte_la_pile(unsigned long format, unsigned protection)
     Tampon t = {0,0,0};
     pose_stak(&t, format, 1, 2, protection);
     pose_ftbl(&t);
-    pose_couche(&t, "BKGD", 2000, 0, 0, 1, 0, "Fond", SCRIPT_FOND);
-    pose_couche(&t, "CARD", 3000, 2000, 1, 1, 1, "Atelier", SCRIPT_CARTE);
-    pose_couche(&t, "CARD", 3001, 2000, 0, 0, 0, "", NULL);
+    pose_couche(&t, "BKGD", 2000, 0, 0, 1, 0, 5000, "Fond", SCRIPT_FOND);
+    pose_couche(&t, "CARD", 3000, 2000, 1, 1, 1, 5001, "Atelier", SCRIPT_CARTE);
+    /* La troisième couche n'a PAS de dessin : c'est le témoin du cas où
+     * `bloc_image` vaut zéro, qui doit laisser la peinture absente et non vide. */
+    pose_couche(&t, "CARD", 3001, 2000, 0, 0, 0, 0, "", NULL);
+    /* LES DEUX BLOCS BMAP. Le fond porte un masque SANS DONNÉES couvrant toute la
+     * carte — donc opaque partout — et la carte un masque VIDE, donc son dessin
+     * ne masque pas celui du fond. Les deux règles du format, côte à côte. */
+    pose_bmap(&t, 5000, 0, 0, 24, 64, 1, 0, 0, 24, 64,
+              WOBA_FOND, sizeof WOBA_FOND);
+    pose_bmap(&t, 5001, 0, 0, 24, 64, 0, 4, 40, 12, 60,
+              WOBA_CARTE, sizeof WOBA_CARTE);
     pose_liste(&t);
     pose_page(&t);
     pose_tail(&t);
@@ -440,6 +558,70 @@ static void dis_script(const char *quoi, const char *s)
         printf("    | %.*s\n", n, d);
         if (!f) break;
         d = f + 1;
+    }
+}
+
+/* LE DESSIN, MONTRÉ EN ENTIER, et c'est voulu : la référence porte les octets,
+ * si bien qu'un pixel qui bouge se lit dans le diff. Les trois états y sont
+ * distincts — « # » l'encre, « . » le blanc opaque, l'espace le transparent —
+ * parce que confondre les deux derniers est exactement le défaut qui ferait
+ * disparaître le dessin d'un fond derrière une carte. */
+static void dis_dessin(const HcOrigDessin *d)
+{
+    if (!d->present) { printf("  dessin : AUCUN\n"); return; }
+    printf("  dessin %dx%d, %d octets par ligne ; masque %lu octet%s (%s), "
+           "image %lu octet%s (%s)\n",
+           d->largeur, d->hauteur, d->octets_par_ligne,
+           d->taille_masque, d->taille_masque == 1 ? "" : "s",
+           d->reste_masque < 0 ? "REFUSE" : d->reste_masque ? "calage" : "juste",
+           d->taille_image,  d->taille_image  == 1 ? "" : "s",
+           d->reste_image  < 0 ? "REFUSE" : d->reste_image  ? "calage" : "juste");
+    for (int y = 0; y < d->hauteur; y++) {
+        const unsigned char *li = d->image  + (size_t)y * d->octets_par_ligne;
+        const unsigned char *lm = d->masque + (size_t)y * d->octets_par_ligne;
+        printf("    %2d ", y);
+        for (int x = 0; x < d->largeur; x++) {
+            int im = (li[x >> 3] >> (7 - (x & 7))) & 1;
+            int ma = (lm[x >> 3] >> (7 - (x & 7))) & 1;
+            putchar(im ? '#' : ma ? '.' : ' ');
+        }
+        printf("  ");
+        for (int b = 0; b < d->octets_par_ligne; b++) printf("%02X", li[b]);
+        printf("\n");
+    }
+}
+
+/* LES QUATRE LIGNES TRANSFORMÉES, contre un résultat CALCULÉ AILLEURS.
+ *
+ * Ces seize octets ne sortent pas de ce décodeur : ils viennent de la phrase de
+ * la spécification, appliquée à part — « la ligne devient le XOR d'elle-même et
+ * de toutes ses copies décalées de dh, 2dh, 3dh... bits », puis, pour dv, « XOR
+ * avec la ligne dv lignes plus haut ». C'est le seul endroit du harnais où une
+ * valeur attendue est écrite en dur, et c'est justement parce que `dh` et `dv`
+ * sont les deux choses que l'oracle du format NE VOIT PAS : ils transforment une
+ * ligne déjà remplie, donc ils ne changent pas un octet du décompte.
+ *
+ * L'autre juge est l'œil, et il a déjà parlé : le fond de « Découvrir
+ * HyperCard » porte ses libellés PEINTS, et l'on y lit « Bienvenue » en clair.
+ * Une transformation fausse étale le texte en diagonale. */
+static void verifie_les_transformations(const HcOrigDessin *d)
+{
+    static const struct { int y; unsigned char attendu[8]; const char *quoi; } CAS[] = {
+        { 14, {0x1E,0x3C,0x22,0x78,0x66,0x44,0x5A,0xF0}, "dh=1"        },
+        { 15, {0xB4,0x87,0xEE,0xA5,0x88,0xBB,0x5B,0xF2}, "dv=1"        },
+        { 16, {0x01,0x02,0x02,0x06,0x07,0x00,0x00,0x08}, "dh=16"       },
+        { 17, {0x75,0x05,0xAD,0xA0,0x4C,0x3C,0x1D,0xF8}, "dh=2 et dv=2"},
+    };
+    puts("--- les transformations dh et dv, contre un calcul fait à part ---");
+    if (!d || !d->present || d->octets_par_ligne != 8) { puts("  pas de dessin à vérifier"); return; }
+    for (unsigned c = 0; c < sizeof CAS / sizeof *CAS; c++) {
+        const unsigned char *lg = d->image + (size_t)CAS[c].y * d->octets_par_ligne;
+        int bon = memcmp(lg, CAS[c].attendu, 8) == 0;
+        printf("  ligne %2d (%-12s) ", CAS[c].y, CAS[c].quoi);
+        for (int b = 0; b < 8; b++) printf("%02X", lg[b]);
+        printf("  %s", bon ? "conforme" : "DIFFÈRE de ");
+        if (!bon) for (int b = 0; b < 8; b++) printf("%02X", CAS[c].attendu[b]);
+        printf("\n");
     }
 }
 
@@ -489,6 +671,7 @@ static void dis_couche(const char *quoi, const HcOrigCouche *k)
                k->contenus[i].du_fond ? "DU FOND," : "propre,  ",
                k->contenus[i].id_part, k->contenus[i].texte,
                k->contenus[i].decore ? "   [décoré : styles non lus]" : "");
+    dis_dessin(&k->dessin);
 }
 
 static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int tout)
@@ -570,12 +753,12 @@ static void la_table(void)
  * se voit pas : la pile s'ouvre, elle a l'air juste, et un champ n'a pas ses
  * marges.
  *
- * LES PARTS SE COMPARENT PAR POSITION, ET C'EST UN AVEU. Les identifiants que
- * hc_new_field et hc_new_button attribuent sont les NÔTRES : l'identifiant
- * d'origine est perdu. Un script qui dit « card field id 5 » ne retrouvera donc
- * pas son champ. C'est noté dans docs/mesures/pile_origine.txt comme le
- * prochain point à régler ; ici on compare dans l'ordre de création, qui est
- * celui du fichier d'origine. */
+ * LES PARTS SE COMPARENT PAR POSITION, ET CE N'EST PLUS UN AVEU. Ça l'était
+ * tant que l'identifiant d'origine se perdait ; il se conserve depuis, et c'est
+ * justement pour ça que le rang doit rester la clé — la clé d'un instrument ne
+ * peut pas être ce qu'il mesure. Apparier par identifiant rendrait « part
+ * absente » là où la vérité est « part présente, mal numérotée ». Voir
+ * docs/mesures/identifiants_de_part.txt. */
 static int compares, perdus, orphelins;
 
 static void egal_int(const char *quoi, int attendu, int obtenu)
@@ -786,6 +969,110 @@ static void compare_textes(Object *couche, const HcOrigCouche *k,
     }
 }
 
+/* ═══ LE DESSIN, D'UN BOUT À L'AUTRE ════════════════════════════════════
+ *
+ * hc_importe écrit le calque au format HCP1 — « HCP1 », largeur, hauteur, puis
+ * du RVBA compressé par zlib, le tout en base64. C'est celui qu'écrit
+ * hcp_encode côté Cocoa, et le noyau ne sait pas le relire : c'est donc ici
+ * qu'il faut le relire, sans quoi le dessin serait la seule chose que le tour
+ * complet écrirait sans jamais la vérifier.
+ *
+ * LA RÈGLE DES TROIS ÉTATS EST RÉÉCRITE, comme celle des scripts et celle de
+ * l'alignement : appeler la fonction de hc_importe.c ferait comparer une
+ * traduction fausse à elle-même. */
+static long dessins_compares, dessins_faux;
+
+static int val64(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static unsigned char *de_base64(const char *s, size_t *nout)
+{
+    size_t n = strlen(s);
+    unsigned char *d = malloc(n + 1);
+    if (!d) return NULL;
+    size_t k = 0;
+    int acc = 0, bits = 0;
+    for (size_t i = 0; i < n; i++) {
+        int v = val64((unsigned char)s[i]);
+        if (v < 0) continue;                 /* '=' et sauts de ligne */
+        acc = (acc << 6) | v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            d[k++] = (unsigned char)((acc >> bits) & 0xFF);
+            /* ON JETTE CE QU'ON A SORTI, et l'oubli était un vrai défaut : sans
+             * cette ligne `acc` accumule sans fin, et sur un calque de 55 Ko il
+             * dépasse la capacité d'un int. UBSan l'a dit — « left shift of
+             * 303092748 by 6 places cannot be represented in type int » — et
+             * c'était dans l'INSTRUMENT, pas dans le noyau : le décodeur base64
+             * du harnais. Un instrument à comportement indéfini ne mesure rien. */
+            acc &= (1 << bits) - 1;
+        }
+    }
+    *nout = k;
+    return d;
+}
+
+static void compare_dessin(const char *ou, const HcOrigDessin *d, Object *o)
+{
+    const char *b64 = hc_paint_of(o);
+    if (!d->present) {
+        if (b64 && *b64) { printf("  PEINTURE APPARUE  %s : la couche n'a pas de dessin\n", ou); dessins_faux++; }
+        return;
+    }
+    if (!b64 || !*b64) { printf("  PERDU  %s : le dessin n'est pas arrivé\n", ou); dessins_faux++; return; }
+
+    size_t nb = 0;
+    unsigned char *brut = de_base64(b64, &nb);
+    if (!brut || nb < 12 || memcmp(brut, "HCP1", 4) != 0) {
+        printf("  PERDU  %s : ce n'est pas du HCP1\n", ou); dessins_faux++; free(brut); return;
+    }
+    long w = ((long)brut[4] << 24) | ((long)brut[5] << 16) | ((long)brut[6] << 8) | brut[7];
+    long h = ((long)brut[8] << 24) | ((long)brut[9] << 16) | ((long)brut[10] << 8) | brut[11];
+    if (w != d->largeur || h != d->hauteur) {
+        printf("  PERDU  %s : %ldx%ld au lieu de %dx%d\n", ou, w, h, d->largeur, d->hauteur);
+        dessins_faux++; free(brut); return;
+    }
+    uLongf attendu = (uLongf)(w * h * 4), obtenu = attendu;
+    unsigned char *rgba = malloc((size_t)attendu);
+    if (!rgba) { free(brut); return; }
+    if (uncompress(rgba, &obtenu, brut + 12, (uLong)(nb - 12)) != Z_OK || obtenu != attendu) {
+        printf("  PERDU  %s : zlib refuse le calque\n", ou);
+        dessins_faux++; free(rgba); free(brut); return;
+    }
+    free(brut);
+
+    long mauvais = 0;
+    for (int y = 0; y < d->hauteur; y++) {
+        const unsigned char *li = d->image  + (size_t)y * d->octets_par_ligne;
+        const unsigned char *lm = d->masque + (size_t)y * d->octets_par_ligne;
+        for (int x = 0; x < d->largeur; x++) {
+            int im = (li[x >> 3] >> (7 - (x & 7))) & 1;
+            int ma = (lm[x >> 3] >> (7 - (x & 7))) & 1;
+            unsigned char ar, ag, ab, aa;
+            if (im)      { ar = ag = ab = 0;   aa = 255; }   /* l'encre */
+            else if (ma) { ar = ag = ab = 255; aa = 255; }   /* le blanc opaque */
+            else         { ar = ag = ab = 0;   aa = 0;   }   /* le transparent */
+            const unsigned char *q = rgba + ((size_t)y * d->largeur + x) * 4;
+            dessins_compares++;
+            if (q[0] != ar || q[1] != ag || q[2] != ab || q[3] != aa) mauvais++;
+        }
+    }
+    if (mauvais) {
+        printf("  PERDU  %s : %ld pixels faux sur %ld\n", ou, mauvais,
+               (long)d->largeur * d->hauteur);
+        dessins_faux += mauvais;
+    }
+    free(rgba);
+}
+
 static void le_tour_complet(const unsigned char *octets, size_t n)
 {
     puts("=== le tour complet : lire, convertir, sauver, relire, comparer ===");
@@ -814,6 +1101,7 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
     }
 
     compares = perdus = orphelins = 0;
+    dessins_compares = dessins_faux = 0;
     egal_int("largeur de la pile", pile.largeur, st2->w);
     egal_int("hauteur de la pile", pile.hauteur, st2->h);
     egal_script("script de la pile", pile.script, st2->script);
@@ -839,6 +1127,7 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
             /* Le texte par DÉFAUT d'un champ de fond : sans carte courante. */
             hc_set_current_card(NULL);
             compare_textes(o, k, NULL, NULL, 1, ou);
+            compare_dessin(ou, &k->dessin, o);
             ifond++;
         } else if (o->type == OBJ_CARD && icarte < pile.ncartes_lues) {
             const HcOrigCouche *k = &pile.cartes[icarte];
@@ -876,6 +1165,7 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
                 }
             hc_set_current_card(o);
             compare_textes(o, k, bg, kbg, 0, ou);
+            compare_dessin(ou, &k->dessin, o);
             icarte++;
         }
     }
@@ -883,6 +1173,7 @@ static void le_tour_complet(const unsigned char *octets, size_t n)
     printf("%d valeurs comparées, %d perdue%s, %d contenu%s orphelin%s\n",
            compares, perdus, perdus == 1 ? "" : "s",
            orphelins, orphelins == 1 ? "" : "s", orphelins == 1 ? "" : "s");
+    printf("%ld pixels de dessin comparés, %ld faux\n", dessins_compares, dessins_faux);
 
     hc_free(st2);
     remove(chemin);
@@ -908,6 +1199,21 @@ int main(int argc, char **argv)
         fwrite(t.o, 1, t.n, f);
         fclose(f);
         fprintf(stderr, "ecrit : %s (%lu octets)\n", argv[1], (unsigned long)t.n);
+    }
+
+    /* LES DEUX TRANSFORMATIONS, contre un calcul fait ailleurs. On relit la pile
+     * pour ça plutôt que de faire rendre l'état par lis_et_dis : ce harnais tient
+     * à ce que chaque section parte d'une lecture propre. */
+    {
+        HcOrigPile pile;
+        char pourquoi[160];
+        puts("");
+        if (hc_origine_lit(t.o, t.n, &pile, pourquoi, sizeof pourquoi) == 0) {
+            verifie_les_transformations(pile.nfonds_lus > 0 ? &pile.fonds[0].dessin : NULL);
+            hc_origine_libere(&pile);
+        } else {
+            printf("la lecture a refusé : %s\n", pourquoi);
+        }
     }
 
     puts("");
@@ -1063,6 +1369,36 @@ int main(int argc, char **argv)
         for (size_t i = 0; i + 8 < t.n; i++)
             if (memcmp(c + i, "TORTURE", 7) == 0 && c[i+7] == 0 && c[i+8] == 0) { c[i+8] = 'X'; break; }
         lis_et_dis("marqueur de script d'une part abime (faute LOCALE)", c, t.n, 1);
+        free(c);
+    }
+
+    /* LE DESSIN ABÎMÉ EST UNE FAUTE LOCALE, et c'est tout l'objet de ces deux
+     * témoins : une couche sans son dessin reste une couche, avec son nom, ses
+     * parts, son texte et son script. Refuser la pile entière pour un dessin
+     * abîmé serait hors de proportion — on compte l'anomalie et l'on continue. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x41 < t.n; i++)
+            if (memcmp(c + i + 4, "BMAP", 4) == 0) { c[i + 0x40] = 0x87; break; }
+        lis_et_dis("un code opération refusé dans le dessin (faute LOCALE)", c, t.n, 1);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x41 < t.n; i++)
+            if (memcmp(c + i + 4, "BMAP", 4) == 0) { c[i + 0x3D] = 0xFF; break; }
+        lis_et_dis("la taille du dessin dépasse son bloc (faute LOCALE)", c, t.n, 1);
+        free(c);
+    }
+    /* Les deux constantes du bloc BMAP — 0 à 0x10 et 0x10000 à 0x14 — sont un
+     * recoupement gratuit sur un bloc dont on va croire six rectangles. En
+     * abîmer une compte une anomalie ET laisse le dessin se lire : ce n'est pas
+     * une raison de perdre l'image, c'est une raison de se méfier. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x41 < t.n; i++)
+            if (memcmp(c + i + 4, "BMAP", 4) == 0) { c[i + 0x17] = 0x01; break; }
+        lis_et_dis("une constante du bloc BMAP abimée (anomalie, pas un refus)", c, t.n, 1);
         free(c);
     }
 

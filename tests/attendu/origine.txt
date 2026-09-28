@@ -39,18 +39,20 @@ b » (3 octets)
 b » (3 octets)
 
 === la pile montée au format d'origine ===
-2400 octets
+2720 octets
 --- pile HyperCard 2.x : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -65,8 +67,34 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -91,6 +119,37 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+
+--- les transformations dh et dv, contre un calcul fait à part ---
+  ligne 14 (dh=1        ) 1E3C227866445AF0  conforme
+  ligne 15 (dv=1        ) B487EEA588BB5BF2  conforme
+  ligne 16 (dh=16       ) 0102020607000008  conforme
+  ligne 17 (dh=2 et dv=2) 7505ADA04C3C1DF8  conforme
 
 === le tour complet : lire, convertir, sauver, relire, comparer ===
 (le seul oracle qui ne demande ni HyperCard ni personne : toute
@@ -98,6 +157,7 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
 hc_save : écrit
   orphelin  carte 1 texte propre,  part 99 : aucune part de ce rang
 94 valeurs comparées, 0 perdues, 1 contenu orphelin
+3072 pixels de dessin comparés, 0 faux
 
 === les témoins négatifs : ce qui doit être REFUSÉ ===
 --- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
@@ -109,15 +169,17 @@ hc_save : écrit
 --- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x7E8)
 --- somme de la LISTE fausse d'un bit : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -132,6 +194,31 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -156,19 +243,47 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 --- somme d'une PAGE fausse d'un bit : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -183,6 +298,31 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -207,19 +347,47 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 --- la PAGE que la liste nomme est introuvable : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc ZORG id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc ZORG id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -234,6 +402,31 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -258,19 +451,47 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 --- les deux nombres de cartes de la liste se contredisent : lu
 ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -285,6 +506,31 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -309,19 +555,47 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 --- un « checkbox » sur un CHAMP (le style ne va pas au genre) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -336,8 +610,34 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -362,17 +662,44 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
 --- marqueur de script d'une part abime (faute LOCALE) : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 8 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc BKGD id   2000 taille   128 offset 0x0680
   bloc CARD id   3000 taille   384 offset 0x0700
   bloc CARD id   3001 taille    64 offset 0x0880
-  bloc LIST id   4803 taille    64 offset 0x08C0
-  bloc PAGE id   4804 taille    64 offset 0x0900
-  bloc TAIL id     -1 taille    32 offset 0x0940
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
   script de la pile :
     | on openStack
     |   put "prêt" into card field 1
@@ -387,8 +714,34 @@ fond  id 2000, nom « Fond », 1 part
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
   script : aucun
+  dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 2 parts
   script :
     | on mouseUp
@@ -408,3 +761,316 @@ carte id 3000, fond 2000, nom « Atelier », 2 parts
   contenu propre,   part 1 : « du texte a la carte »
   contenu DU FOND, part 1 : « du texte au fond »
   contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- un code opération refusé dans le dessin (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc BKGD id   2000 taille   128 offset 0x0680
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (REFUSE)
+     0 ................................................................  0000000000000000
+     1 ................................................................  0000000000000000
+     2 ................................................................  0000000000000000
+     3 ................................................................  0000000000000000
+     4 ................................................................  0000000000000000
+     5 ................................................................  0000000000000000
+     6 ................................................................  0000000000000000
+     7 ................................................................  0000000000000000
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 ................................................................  0000000000000000
+    11 ................................................................  0000000000000000
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ................................................................  0000000000000000
+    15 ................................................................  0000000000000000
+    16 ................................................................  0000000000000000
+    17 ................................................................  0000000000000000
+    18 ................................................................  0000000000000000
+    19 ................................................................  0000000000000000
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- la taille du dessin dépasse son bloc (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc BKGD id   2000 taille   128 offset 0x0680
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin : AUCUN
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- une constante du bloc BMAP abimée (anomalie, pas un refus) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 10 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s), 2 police(s), 0 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc BKGD id   2000 taille   128 offset 0x0680
+  bloc CARD id   3000 taille   384 offset 0x0700
+  bloc CARD id   3001 taille    64 offset 0x0880
+  bloc BMAP id   5000 taille   192 offset 0x08C0
+  bloc BMAP id   5001 taille   128 offset 0x0980
+  bloc LIST id   4803 taille    64 offset 0x0A00
+  bloc PAGE id   4804 taille    64 offset 0x0A40
+  bloc TAIL id     -1 taille    32 offset 0x0A80
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 1 part
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 2 parts
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000

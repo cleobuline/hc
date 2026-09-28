@@ -675,9 +675,12 @@ recensement des blocs, lui, marche des deux côtés.
 UNE PILE À ACCÈS PRIVÉ se refuse aussi : ses blocs sont chiffrés. La spec décrit
 la procédure ; elle n'est pas écrite.
 
-CE QUI N'EST PAS EXTRAIT, ET C'EST VOULU : les dessins (blocs BMAP, compressés),
-le texte des champs, les polices, les styles, les motifs, les icônes. Un
-extracteur de scripts n'en a pas besoin.
+CE QUI N'ÉTAIT PAS EXTRAIT quand ce document a été écrit : les dessins, le texte
+des champs, les polices, les styles, les motifs, les icônes. Un extracteur de
+scripts n'en avait pas besoin. Depuis, le texte, les polices et LES DESSINS sont
+lus — voir docs/mesures/dessins.txt pour le compactage WOBA, ses deux juges et ce
+qu'il laisse encore de côté. Restent dehors : les motifs, les styles par plage et
+les icônes, celles-là pour une raison de transport et non de lecture.
 
 CE QUE ÇA RAPPORTE TOUT DE SUITE
 --------------------------------

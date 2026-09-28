@@ -178,6 +178,390 @@ static unsigned long rotd3(unsigned long x)
 }
 
 /* ------------------------------------------------------------------ */
+/* WOBA — le compactage des dessins                                    */
+/* ------------------------------------------------------------------ */
+
+/* « Wrath of Bill Atkinson », ainsi baptisé par Rebecca Bettencourt qui l'a
+ * retrouvé par rétro-ingénierie. Rien ici n'est copié de son code : ce sont les
+ * OFFSETS et les CODES OPÉRATION qui sont documents, et c'est d'eux qu'on part.
+ *
+ * L'ORACLE EST DANS LE FORMAT LUI-MÊME, et il est plus fort qu'il n'y paraît : un
+ * flot d'instructions doit remplir EXACTEMENT le nombre de lignes que son
+ * rectangle annonce, et s'arrêter à la fin des données. Une seule instruction
+ * mal dimensionnée décale tout ce qui suit et le compte de lignes tombe faux.
+ * Mesuré sur les 22 plans des deux vraies piles : les 22 tombent juste.
+ *
+ * CE QUE CET ORACLE NE VOIT PAS, ce sont `dh` et `dv` — ils transforment une
+ * ligne DÉJÀ remplie, donc ils ne changent pas un octet du décompte. Pour
+ * ceux-là le juge est l'ŒIL : le fond de « Découvrir HyperCard » porte les
+ * libellés de ses boutons PEINTS, et l'on y lit « Bienvenue » en clair. Une
+ * transformation fausse étale le texte en diagonale ; celle-là se voit du
+ * premier coup d'œil.
+ *
+ * DEUX CODES NE SONT PAS EXERCÉS PAR CES PILES, et c'est écrit plutôt que tu :
+ * 0x82 (ligne noire) et 0x88 (dh=16). Le harnais leur fabrique un flot à la
+ * main, faute de vraie pile qui les porte. */
+
+typedef struct {
+    const unsigned char *src;
+    size_t n, i;
+    unsigned char *dst;
+    int rowbytes, hauteur;
+    int y, x, dh, dv;
+    unsigned char patron[8];
+    unsigned char *tampon;      /* une ligne, pour la transformation */
+    int faute;
+} Woba;
+
+/* Le décalage d'une ligne vers la DROITE, en bits, gros-boutiste : le bit 7 de
+ * l'octet 0 est le pixel le plus à gauche, donc « vers la droite » va vers les
+ * octets de poids fort en indice croissant. */
+static void woba_decale(unsigned char *l, int n, int bits)
+{
+    int oct = bits >> 3, rest = bits & 7;
+    if (oct) {
+        for (int i = n - 1; i >= 0; i--) l[i] = (i - oct >= 0) ? l[i - oct] : 0;
+    }
+    if (rest) {
+        unsigned char report = 0;
+        for (int i = 0; i < n; i++) {
+            unsigned char v = l[i];
+            l[i] = (unsigned char)((v >> rest) | report);
+            report = (unsigned char)(v << (8 - rest));
+        }
+    }
+}
+
+static int woba_tout_zero(const unsigned char *l, int n)
+{
+    for (int i = 0; i < n; i++) if (l[i]) return 0;
+    return 1;
+}
+
+/* LA FIN D'UNE LIGNE BÂTIE PAR MORCEAUX, avec ses deux transformations.
+ *
+ * `dh` est une INTÉGRATION horizontale : la ligne devient le XOR d'elle-même et
+ * de toutes ses copies décalées de dh, 2dh, 3dh... bits. La boucle s'arrête
+ * quand la copie décalée est vide, c'est-à-dire quand tous les bits sont sortis.
+ * `dv` est la même chose verticalement, mais d'un seul cran : la ligne est XORée
+ * avec celle de dv lignes plus haut, déjà transformée.
+ *
+ * Les lignes bâties d'UNE SEULE instruction (0x80 à 0x87) n'y passent pas : la
+ * spécification les en exclut nommément, et c'est ce qui permet à une ligne
+ * blanche ou noire de rester blanche ou noire au milieu d'un dégradé. */
+static void woba_fin_ligne(Woba *w)
+{
+    unsigned char *lg = w->dst + (size_t)w->y * w->rowbytes;
+    if (w->dh) {
+        memcpy(w->tampon, lg, (size_t)w->rowbytes);
+        for (;;) {
+            woba_decale(w->tampon, w->rowbytes, w->dh);
+            if (woba_tout_zero(w->tampon, w->rowbytes)) break;
+            for (int k = 0; k < w->rowbytes; k++) lg[k] ^= w->tampon[k];
+        }
+    }
+    if (w->dv && w->y >= w->dv) {
+        const unsigned char *av = w->dst + (size_t)(w->y - w->dv) * w->rowbytes;
+        for (int k = 0; k < w->rowbytes; k++) lg[k] ^= av[k];
+    }
+    w->y++;
+    w->x = 0;
+}
+
+/* Un octet de plus dans la ligne en cours. La ligne se termine d'elle-même
+ * quand elle est pleine — c'est l'une des deux fins possibles que décrit la
+ * spécification, l'autre étant un code de 0x80 à 0xBF. */
+static void woba_pose(Woba *w, unsigned char octet)
+{
+    if (w->y >= w->hauteur) return;
+    w->dst[(size_t)w->y * w->rowbytes + w->x] = octet;
+    if (++w->x == w->rowbytes) woba_fin_ligne(w);
+}
+
+/* Une ligne entière d'un coup, SANS transformation. */
+static void woba_ligne_entiere(Woba *w, const unsigned char *octets, int valeur)
+{
+    if (w->y >= w->hauteur) return;
+    unsigned char *lg = w->dst + (size_t)w->y * w->rowbytes;
+    if (octets) memcpy(lg, octets, (size_t)w->rowbytes);
+    else        memset(lg, valeur, (size_t)w->rowbytes);
+    w->y++;
+    w->x = 0;
+}
+
+/* Décompresse `n` octets vers un plan de `rowbytes` × `hauteur`.
+ *
+ * Rend 0 si le flot remplit exactement le plan, -1 sinon, et `*reste` reçoit le
+ * nombre d'octets non consommés — la taille annoncée dans le bloc est calée sur
+ * quatre, donc 1 à 3 octets traînent souvent derrière. Mesuré : six des dix
+ * plans de « Découvrir HyperCard » en laissent, et ces octets ne sont pas
+ * toujours nuls — deux valent 0xFF. C'est donc bien du calage et non des
+ * données, et on ne peut pas exiger qu'ils soient à zéro. */
+static int woba_decompresse(const unsigned char *src, size_t n,
+                            int rowbytes, int hauteur, unsigned char *dst,
+                            int *reste, char *pourquoi, size_t npourquoi)
+{
+    Woba w;
+    int repete = 1;
+
+    if (rowbytes <= 0 || hauteur <= 0) { motif(pourquoi, npourquoi, "rectangle vide", 0); return -1; }
+
+    memset(dst, 0, (size_t)rowbytes * (size_t)hauteur);
+    memset(&w, 0, sizeof w);
+    w.src = src; w.n = n; w.dst = dst;
+    w.rowbytes = rowbytes; w.hauteur = hauteur;
+    for (int k = 0; k < 8; k++) w.patron[k] = (k & 1) ? 0x55 : 0xAA;  /* le gris */
+    w.tampon = malloc((size_t)rowbytes);
+    if (!w.tampon) { motif(pourquoi, npourquoi, "mémoire", 0); return -1; }
+
+    while (w.i < w.n && w.y < w.hauteur) {
+        unsigned op = w.src[w.i++];
+
+        if (op < 0x80) {                        /* dz : z zéros puis d données */
+            int d = (int)(op >> 4), z = (int)(op & 0x0F);
+            while (repete-- > 0) {
+                for (int k = 0; k < z; k++) woba_pose(&w, 0);
+                for (int k = 0; k < d; k++) {
+                    if (w.i >= w.n) { w.faute = 1; break; }
+                    woba_pose(&w, w.src[w.i++]);
+                }
+            }
+        } else if (op >= 0xE0) {                 /* z*16 zéros */
+            int z = (int)(op & 0x1F) * 16;
+            while (repete-- > 0)
+                for (int k = 0; k < z; k++) woba_pose(&w, 0);
+        } else if (op >= 0xC0) {                 /* d*8 données */
+            int d = (int)(op & 0x1F) * 8;
+            while (repete-- > 0)
+                for (int k = 0; k < d; k++) {
+                    if (w.i >= w.n) { w.faute = 1; break; }
+                    woba_pose(&w, w.src[w.i++]);
+                }
+        } else if (op >= 0xA0) {                 /* répéter l'instruction suivante */
+            repete = (int)(op & 0x1F);
+            continue;                            /* sans le remettre à un */
+        } else switch (op) {                     /* 0x80 à 0x9F */
+            case 0x80:                           /* une ligne brute */
+                while (repete-- > 0) {
+                    if (w.i + (size_t)rowbytes > w.n) { w.faute = 1; break; }
+                    woba_ligne_entiere(&w, w.src + w.i, 0);
+                    w.i += (size_t)rowbytes;
+                }
+                break;
+            case 0x81:                           /* une ligne blanche */
+                while (repete-- > 0) woba_ligne_entiere(&w, NULL, 0x00);
+                break;
+            case 0x82:                           /* une ligne noire */
+                while (repete-- > 0) woba_ligne_entiere(&w, NULL, 0xFF);
+                break;
+            case 0x83: {                         /* un octet répété, et retenu */
+                if (w.i >= w.n) { w.faute = 1; break; }
+                unsigned char b = w.src[w.i++];
+                while (repete-- > 0) {
+                    w.patron[w.y & 7] = b;       /* l'indice est la LIGNE, modulo 8 */
+                    woba_ligne_entiere(&w, NULL, b);
+                }
+                break;
+            }
+            case 0x84:                           /* l'octet retenu pour cette ligne */
+                while (repete-- > 0) woba_ligne_entiere(&w, NULL, w.patron[w.y & 7]);
+                break;
+            case 0x85:                           /* copier la ligne précédente */
+                while (repete-- > 0) {
+                    if (w.y < 1) { w.faute = 1; break; }
+                    woba_ligne_entiere(&w, w.dst + (size_t)(w.y - 1) * rowbytes, 0);
+                }
+                break;
+            case 0x86:                           /* copier l'avant-dernière */
+                while (repete-- > 0) {
+                    if (w.y < 2) { w.faute = 1; break; }
+                    woba_ligne_entiere(&w, w.dst + (size_t)(w.y - 2) * rowbytes, 0);
+                }
+                break;
+            case 0x88: w.dh = 16; w.dv = 0; break;
+            case 0x89: w.dh = 0;  w.dv = 0; break;
+            case 0x8A: w.dh = 0;  w.dv = 1; break;
+            case 0x8B: w.dh = 0;  w.dv = 2; break;
+            case 0x8C: w.dh = 1;  w.dv = 0; break;
+            case 0x8D: w.dh = 1;  w.dv = 1; break;
+            case 0x8E: w.dh = 2;  w.dv = 2; break;
+            case 0x8F: w.dh = 8;  w.dv = 0; break;
+            default:                             /* 0x87 et 0x90..0x9F */
+                w.faute = 1;
+                break;
+        }
+        if (w.faute) break;
+        repete = 1;
+    }
+    free(w.tampon);
+
+    if (w.faute) {
+        if (pourquoi && npourquoi)
+            snprintf(pourquoi, npourquoi, "code opération refusé ou données tronquées "
+                     "(octet %lu, ligne %d)", (unsigned long)w.i, w.y);
+        return -1;
+    }
+    if (w.y != w.hauteur) {
+        if (pourquoi && npourquoi)
+            snprintf(pourquoi, npourquoi, "%d lignes remplies sur %d", w.y, w.hauteur);
+        return -1;
+    }
+    /* Plus de trois octets de reste, ce n'est plus du calage. */
+    if (w.n - w.i >= 4) {
+        if (pourquoi && npourquoi)
+            snprintf(pourquoi, npourquoi, "%lu octets de reste, le calage n'en fait que 3",
+                     (unsigned long)(w.n - w.i));
+        return -1;
+    }
+    *reste = (int)(w.n - w.i);
+    return 0;
+}
+
+/* Poser un plan décompressé dans le plan de la CARTE, au bon endroit. Le
+ * décalage horizontal est en OCTETS : les rectangles arrondis à 32 bits le
+ * garantissent tant que le rectangle de la carte commence lui aussi sur un
+ * multiple de huit, ce que l'appelant vérifie. */
+static void dessin_pose(unsigned char *carte, int rb_carte, int h_carte,
+                        const unsigned char *plan, int rb, int h,
+                        int dx_octets, int dy)
+{
+    for (int y = 0; y < h; y++) {
+        int yc = y + dy;
+        if (yc < 0 || yc >= h_carte) continue;
+        for (int x = 0; x < rb; x++) {
+            int xc = x + dx_octets;
+            if (xc < 0 || xc >= rb_carte) continue;
+            carte[(size_t)yc * rb_carte + xc] = plan[(size_t)y * rb + x];
+        }
+    }
+}
+
+/* UN RECTANGLE SANS DONNÉES EST UN RECTANGLE PLEIN, et c'est la règle du format,
+ * pas une invention : « if the content data is not present but the bounding
+ * rectangle is not zero, the pixels in the bounding rectangle are 1 ». Le fond de
+ * « Découvrir HyperCard » en dépend — son masque n'a aucune donnée et couvre la
+ * carte entière, ce qui veut dire « toute la carte est opaque ». Sans cette
+ * règle, sa peinture arriverait transparente et l'on ne verrait rien. */
+static void dessin_remplit(unsigned char *carte, int rb_carte, int h_carte,
+                           int t, int l, int b, int r, int ct, int cl)
+{
+    for (int y = t; y < b; y++) {
+        int yc = y - ct;
+        if (yc < 0 || yc >= h_carte) continue;
+        for (int x = l; x < r; x++) {
+            int xc = x - cl;
+            if (xc < 0 || xc >= rb_carte * 8) continue;
+            carte[(size_t)yc * rb_carte + (xc >> 3)] |= (unsigned char)(0x80u >> (xc & 7));
+        }
+    }
+}
+
+/* Le dessin d'une couche : son bloc BMAP, ses deux plans, et leur place.
+ *
+ * Une faute est LOCALE : une couche sans son dessin reste une couche, avec son
+ * nom, ses parts et son script. On la compte en anomalie et l'on continue —
+ * refuser la pile entière pour un dessin abîmé serait hors de proportion. */
+static void lit_le_dessin(Vue *v, HcOrigPile *pile, HcOrigCouche *k)
+{
+    if (k->bloc_image == 0) return;
+
+    size_t bloc = 0, fin = 0;
+    int trouve = 0;
+    for (int i = 0; i < pile->nblocs; i++) {
+        if (pile->blocs[i].id != k->bloc_image) continue;
+        if (memcmp(v->o + pile->blocs[i].offset + 4, "BMAP", 4) != 0) continue;
+        bloc = (size_t)pile->blocs[i].offset;
+        fin  = bloc + (size_t)pile->blocs[i].taille;
+        trouve = 1;
+        break;
+    }
+    if (!trouve) { pile->anomalies++; return; }     /* la couche annonce un dessin absent */
+
+    /* DEUX CONSTANTES À VÉRIFIER PLUTÔT QU'À SAUTER : les deux mots de 0x10 et
+     * 0x14 valent 0 et 0x10000 dans tous les blocs que la spécification décrit.
+     * C'est un recoupement gratuit sur un bloc dont on va croire les six
+     * rectangles suivants. */
+    if (u32(v, bloc + 0x10) != 0 || u32(v, bloc + 0x14) != 0x10000UL) pile->anomalies++;
+
+    int ct = s16(v, bloc + 0x18), cl = s16(v, bloc + 0x1A);
+    int cb = s16(v, bloc + 0x1C), cr = s16(v, bloc + 0x1E);
+    int mt = s16(v, bloc + 0x20), ml = s16(v, bloc + 0x22);
+    int mb = s16(v, bloc + 0x24), mr = s16(v, bloc + 0x26);
+    int it = s16(v, bloc + 0x28), il = s16(v, bloc + 0x2A);
+    int ib = s16(v, bloc + 0x2C), ir = s16(v, bloc + 0x2E);
+    unsigned long tm = u32(v, bloc + 0x38), ti = u32(v, bloc + 0x3C);
+    if (v->debord) { pile->anomalies++; return; }
+
+    int w = cr - cl, h = cb - ct;
+    /* Les bornes sont celles d'une carte plausible : HyperCard n'allait pas
+     * au-delà de 1280x1024, on laisse large sans laisser n'importe quoi. */
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) { pile->anomalies++; return; }
+    if (cl % 8) { pile->anomalies++; return; }       /* on ne sait pas décaler d'un bit */
+
+    /* Les données des deux plans doivent tenir DANS le bloc. */
+    if (bloc + 0x40 + tm + ti > fin) { pile->anomalies++; return; }
+
+    /* LES TAILLES ANNONCÉES SE NOTENT AVANT DE DÉCOMPRESSER, et `reste` reste à
+     * -1 tant que le plan n'est pas lu : sinon un plan refusé s'affichait
+     * « 0 octet », ce qui se lit « il n'y en avait pas » au lieu de « il y en
+     * avait et je n'ai pas su ». */
+    k->dessin.taille_masque = tm;
+    k->dessin.taille_image  = ti;
+    k->dessin.reste_masque  = -1;
+    k->dessin.reste_image   = -1;
+
+    int rb = (w + 31) / 32 * 4;
+    unsigned char *image  = calloc((size_t)rb * (size_t)h, 1);
+    unsigned char *masque = calloc((size_t)rb * (size_t)h, 1);
+    if (!image || !masque) { free(image); free(masque); pile->anomalies++; return; }
+
+    int pose = 0;
+    for (int plan = 0; plan < 2; plan++) {          /* 0 le masque, 1 l'image */
+        unsigned long taille = plan ? ti : tm;
+        int t = plan ? it : mt, l = plan ? il : ml;
+        int b = plan ? ib : mb, r = plan ? ir : mr;
+        unsigned char *ou = plan ? image : masque;
+
+        if (taille == 0) {
+            if (plan) k->dessin.reste_image = 0; else k->dessin.reste_masque = 0;
+            if (r > l && b > t) { dessin_remplit(ou, rb, h, t, l, b, r, ct, cl); pose = 1; }
+            continue;
+        }
+        /* LES RECTANGLES S'ARRONDISSENT AVANT DE DÉCOMPRESSER, et c'est écrit
+         * dans la spécification : le bord gauche descend au multiple de 32 bits,
+         * le bord droit monte. Les pixels ainsi ajoutés sont blancs. Sans cet
+         * arrondi, le nombre d'octets par ligne est faux et le compte de lignes
+         * tombe à côté — ce qui se voit, au moins. */
+        int L = l & ~31, R = (r + 31) & ~31;
+        int rbp = (R - L) / 8, hp = b - t;
+        if (rbp <= 0 || hp <= 0 || (L - cl) % 8) { pile->anomalies++; continue; }
+
+        unsigned char *tampon = calloc((size_t)rbp * (size_t)hp, 1);
+        if (!tampon) { pile->anomalies++; continue; }
+        int reste = 0;
+        char pq[120];
+        if (woba_decompresse(v->o + bloc + 0x40 + (plan ? tm : 0), taille,
+                             rbp, hp, tampon, &reste, pq, sizeof pq) != 0) {
+            pile->anomalies++;
+            free(tampon);
+            continue;
+        }
+        if (plan) k->dessin.reste_image = reste; else k->dessin.reste_masque = reste;
+        dessin_pose(ou, rb, h, tampon, rbp, hp, (L - cl) / 8, t - ct);
+        pose = 1;
+        free(tampon);
+    }
+
+    if (!pose) { free(image); free(masque); return; }
+    k->dessin.present          = 1;
+    k->dessin.largeur          = w;
+    k->dessin.hauteur          = h;
+    k->dessin.octets_par_ligne = rb;
+    k->dessin.image            = image;
+    k->dessin.masque           = masque;
+}
+
+/* ------------------------------------------------------------------ */
 /* Les parts                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -882,6 +1266,10 @@ static int lit_interne(const unsigned char *octets, size_t n,
         }
         if (r != 0) { free(ordre); free(drapeaux); free(occupe); return -1; }
 
+        /* LE DESSIN APRÈS LA COUCHE, et non avant : lit_la_couche peut refuser,
+         * et l'on n'aura pas alloué deux plans pour rien. */
+        lit_le_dessin(v, pile, k);
+
         /* DEUX SOURCES POUR LE MÊME FAIT, donc un recoupement gratuit : la
          * référence de la liste dit si la carte porte un nom (bit 7), et le
          * bloc CARD porte le nom lui-même. Elles doivent s'accorder. Si elles
@@ -961,6 +1349,8 @@ void hc_origine_libere(HcOrigPile *pile)
             free(tab[i].parts);
             for (int j = 0; j < tab[i].ncontenus; j++) free(tab[i].contenus[j].texte);
             free(tab[i].contenus);
+            free(tab[i].dessin.image);
+            free(tab[i].dessin.masque);
         }
         free(tab);
     }

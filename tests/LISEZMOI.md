@@ -192,7 +192,8 @@ contrepoids, aucun venant de moi — la somme de contrôle exigée par le format
 la table MacRoman produite par le codec de Python, et **un lecteur tiers** qui
 relit les mêmes octets :
 
-    cc -std=gnu99 -O1 -I HC -o /tmp/orig tests/harnais/origine.c HC/hc_origine.c
+    cc -std=gnu99 -O1 -I HC -o /tmp/orig tests/harnais/origine.c \
+       HC/hc_origine.c HC/hc_importe.c HC/hc_core.c HC/hc_file.c … -lm -lz
     /tmp/orig /tmp/synthetique.stack        # écrit le fichier
     python3 stakread.py -o - /tmp/synthetique.stack
 
@@ -203,4 +204,21 @@ le rôle que Basilisk joue pour le langage.
 
 Ce qui est mesuré, ce qui ne l'est pas, et ce qu'il faudrait — une vraie pile de
 1993, qu'aucun réseau atteignable d'ici ne fournit — est dans
-`docs/mesures/pile_origine.txt`.
+`docs/mesures/pile_origine.txt`. Les identifiants de part et leur espace de noms
+sont dans `docs/mesures/identifiants_de_part.txt`.
+
+### Le dessin
+
+La pile du harnais porte deux blocs `BMAP` écrits à la main, qui exercent tous
+les codes du compactage WOBA — **y compris les deux que les vraies piles
+n'emploient jamais**, la ligne noire et `dh=16`. Le harnais affiche les deux
+plans en entier, les trois états distincts (`#` l'encre, `.` le blanc opaque,
+l'espace le transparent) et les octets en hexadécimal à droite : un pixel qui
+bouge se lit dans le diff de la référence.
+
+Quatre lignes y sont transformées par `dh` et `dv`, et leur résultat attendu est
+écrit EN DUR — calculé à part, depuis la phrase de la spécification, et non en
+faisant tourner le décodeur. C'est le seul endroit du harnais où une valeur
+attendue est écrite à la main, et la raison en est que l'oracle du format ne voit
+pas ces deux transformations. Tout est dans `docs/mesures/dessins.txt`, y compris
+le mot « Bienvenue » qu'Apple a peint en 1993 et qui sert de second juge.

@@ -1,0 +1,197 @@
+LES DESSINS : LE BLOC BMAP ET LE COMPACTAGE WOBA
+================================================
+
+CE QUE C'EST
+------------
+
+« WOBA », pour « Wrath of Bill Atkinson » — le nom vient de Rebecca Bettencourt,
+qui a retrouvé ce format par rétro-ingénierie et l'a baptisé ainsi pour sa
+complexité tortueuse. Rien n'en a été copié : ce sont les OFFSETS du bloc et la
+table des CODES OPÉRATION qui sont documentés, et c'est d'eux qu'on part. La même
+règle que pour le reste du chantier, et pour la même raison — aucun des deux
+projets tiers ne porte de licence.
+
+Un bloc BMAP porte DEUX plans d'un bit par pixel : une image et un masque. La
+couleur d'un pixel se lit en trois états :
+
+    image à 1                       -> noir
+    sinon masque à 1                -> blanc OPAQUE
+    sinon                           -> TRANSPARENT
+
+Les trois états comptent : confondre les deux derniers ferait disparaître le
+dessin d'un fond derrière celui de sa carte.
+
+L'ORACLE EST DANS LE FORMAT, ET IL EST FORT
+-------------------------------------------
+
+Un flot d'instructions doit remplir EXACTEMENT le nombre de lignes que son
+rectangle annonce, et s'arrêter à la fin de ses données. Une seule instruction
+mal dimensionnée décale tout ce qui suit, et le compte de lignes tombe faux. Ce
+n'est pas une vérification qu'on s'accorde : c'est une contrainte qu'on subit.
+
+    « Découvrir HyperCard »     10 blocs, 10 plans, 0 refusé
+    « 3D Parametric Equations » 13 blocs, 12 plans, 0 refusé
+    TEST3                        0 bloc  (notre format, déjà converti)
+
+Les 22 plans tombent juste. Le treizième bloc de la pile 3D n'a ni données ni
+rectangle : une couche transparente, ce qui est un état légitime.
+
+DEUX CHOSES QUE CET ORACLE NE VOIT PAS
+--------------------------------------
+
+1. LE CALAGE SUR QUATRE. La taille annoncée est arrondie au multiple de 4 ; le
+   flot, lui, s'arrête quand l'image est pleine. Six des dix plans de
+   « Découvrir HyperCard » laissent donc 1, 2 ou 3 octets derrière eux. Premier
+   réflexe : exiger qu'ils soient nuls. Mesuré : deux valent 0xFF. Ce sont des
+   octets de calage, pas des données, et on ne peut rien exiger de leur contenu
+   — seulement de leur NOMBRE, qui doit rester entre 0 et 3.
+
+2. `dh` ET `dv`, les deux transformations de ligne. Elles s'appliquent à une
+   ligne DÉJÀ remplie : elles ne changent pas un octet du décompte, donc
+   l'oracle du format leur est aveugle. Deux juges les remplacent :
+
+   — L'ŒIL. Le fond de « Découvrir HyperCard » porte les libellés de ses
+     quatorze boutons PEINTS dans l'image, et le premier se lit en clair :
+
+         .......................#####..............................
+         .......................#....#...#.........................
+         .......................#....#...#.........................
+         .......................#####....#....###...#.##..#.....#..
+         .......................#....#...#...#...#..##..#..#...#...
+         .......................#.....#..#..#.....#.#...#..#...#...
+         .......................#.....#..#..#######.#...#...#.#....
+         .......................#.....#..#..#.......#...#...#.#....
+         .......................#....#...#...#...#..#...#....#.....
+         .......................#####....#....###...#...#....#.....
+
+     « Bienvenue ». Une transformation fausse étale le texte en diagonale ; ça
+     ne demande aucune expertise pour se voir.
+
+   — UN CALCUL FAIT AILLEURS. tests/harnais/origine.c porte un flot WOBA écrit à
+     la main dont quatre lignes sont transformées, et leurs seize octets attendus
+     sont écrits en dur. Ils n'ont PAS été obtenus en faisant tourner le
+     décodeur : ils viennent de la phrase de la spécification, appliquée à part —
+     « la ligne devient le XOR d'elle-même et de toutes ses copies décalées de
+     dh, 2dh, 3dh... bits », puis, pour dv, « XOR avec la ligne dv lignes plus
+     haut ». Deux expressions indépendantes de la même règle.
+
+CE QUE LES VRAIES PILES N'EXERCENT PAS
+--------------------------------------
+
+Compté sur les 22 plans, code par code :
+
+    0x00-0x7F  dz              13502
+    0x80       ligne brute        67
+    0x81       ligne blanche       5
+    0x82       ligne noire         0      <- JAMAIS
+    0x83       motif retenu        8
+    0x84       motif de la ligne   3
+    0x85       copie la ligne -1 152
+    0x86       copie la ligne -2  27
+    0x88       dh=16 dv=0          0      <- JAMAIS
+    0x89 0x8A 0x8B 0x8C 0x8D 0x8E 0x8F   tous vus
+    0xA0-0xBF  répétition         78
+    0xC0-0xDF  d*8 données      2326
+    0xE0-0xFF  z*16 zéros       1403
+
+0x82 et 0x88 ne sont exercés par AUCUNE des deux piles. Le harnais leur fabrique
+donc un flot à la main : une branche que rien n'exerce n'est pas du code, c'est
+un espoir.
+
+UNE AMBIGUÏTÉ QUE LES VRAIES PILES NE TRANCHENT PAS
+---------------------------------------------------
+
+« Répéter l'instruction suivante n fois » se lit de deux façons dès que
+l'instruction porte des OPÉRANDES : relire des octets neufs à chaque tour, ou
+reposer les mêmes.
+
+Mesuré : les 78 répétitions des deux piles portent TOUTES sur une instruction
+sans données — 0x81, 0x84, 0x85, 0x86. La question reste donc ouverte.
+
+Nous relisons des octets neufs, et le témoin du harnais fixe ce choix pour qu'il
+soit visible si une pile le contredit un jour. Se tromper ne se fera pas en
+silence : le compte de lignes tombe faux et le plan est refusé.
+
+COMMENT LE DESSIN ARRIVE DANS NOTRE FORMAT
+------------------------------------------
+
+Notre bloc « paint » porte du base64 dont le contenu est celui qu'écrit
+hcp_encode côté Cocoa : « HCP1 », la largeur, la hauteur, puis du RVBA compressé
+par zlib.
+
+POURQUOI RÉUTILISER CE FORMAT plutôt qu'en inventer un lisible par le noyau,
+comme on l'a fait pour les icônes : parce que l'autre bout est du Cocoa, la seule
+couche qui n'a aucun test ici. Y ajouter un décodeur reviendrait à écrire à
+l'aveugle du code qu'aucun harnais ne peut exercer, et ce dépôt a déjà payé trois
+allers-retours pour ça. En écrivant le format qui existe, l'application n'a pas
+une ligne à changer.
+
+LE PRIX est une dépendance à zlib pour le noyau — l'application l'avait déjà,
+HCpaint.m l'emploie — et le fait que le noyau écrit là quelque chose qu'il ne
+sait pas relire. Le harnais, lui, le relit : il a le droit de se lier à zlib, et
+c'est ce qui garde le tour complet mesurable de bout en bout.
+
+LA TAILLE, mesurée et non supposée : du RVBA de deux couleurs se compresse entre
+100 et 200 fois.
+
+    « Découvrir HyperCard »     10 dessins,  39 Ko de base64 (fichier 15 -> 55 Ko)
+    « 3D Parametric Equations » 13 dessins, 111 Ko de base64 (fichier 56 -> 173 Ko)
+
+Un format 1 bit aurait été quatre fois plus petit AVANT compression et à peine
+plus petit après : zlib travaille sur les répétitions, et du noir et blanc en
+RVBA n'est que répétition.
+
+LE RVBA EST PRÉMULTIPLIÉ, parce que c'est ce qu'attend hcp_decode — il
+reconstruit sa NSBitmapImageRep sans NSBitmapFormatAlphaNonpremultiplied. Nos
+trois couleurs le respectent : (0,0,0,0) transparent, (0,0,0,255) noir,
+(255,255,255,255) blanc. Un blanc TRANSPARENT aurait été faux.
+
+LE TOUR COMPLET, DE BOUT EN BOUT
+--------------------------------
+
+Lire le bloc BMAP, décompresser, bâtir le RVBA, compresser, encoder en base64,
+écrire notre .stack, le relire, décoder le base64, décompresser, et comparer
+chaque pixel à la règle des trois états réécrite indépendamment :
+
+    la pile du harnais         3 072 pixels, 0 faux
+    « Découvrir HyperCard »  1 420 800 pixels, 0 faux
+    « 3D Parametric »        2 276 352 pixels, 0 faux
+
+UNE FAUTE DE DESSIN EST LOCALE
+------------------------------
+
+Une couche sans son dessin reste une couche : son nom, ses parts, son texte et
+son script sont là. Un dessin abîmé compte donc une anomalie et la lecture
+continue — refuser la pile entière serait hors de proportion. Trois témoins le
+tiennent dans le harnais : un code opération refusé, une taille qui dépasse son
+bloc, et une des deux constantes du bloc abîmée (celle-là compte l'anomalie ET
+laisse le dessin se lire, parce que se méfier n'est pas perdre).
+
+LE FUZZING
+----------
+
+11 000 fichiers abîmés dans l'EN-TÊTE des blocs BMAP — rectangles et tailles —
+puis 12 000 autres abîmés dans les DONNÉES compressées, sous ASan, UBSan et
+LeakSanitizer : aucun débordement, aucune fuite, aucun plantage. Les lectures
+réussissent en comptant des anomalies, ou refusent.
+
+Et UBSan a trouvé un défaut, DANS L'INSTRUMENT : le décodeur base64 du harnais
+accumulait sans jeter ce qu'il avait sorti, et sur un calque de 55 Ko son
+accumulateur dépassait la capacité d'un int. Un instrument à comportement
+indéfini ne mesure rien.
+
+CE QUI RESTE
+------------
+
+LES MOTIFS (« patterns ») ne sont pas lus. Une pile en portait quarante, et le
+seau de remplissage s'en servait ; nos dessins importés arrivent donc avec leurs
+trames telles qu'elles étaient DESSINÉES, ce qui est le cas courant, mais un
+script qui dit « set the pattern » n'a rien à quoi se référer.
+
+LES STYLES PAR PLAGE (bloc STBL) restent comptés et non lus.
+
+LES ICÔNES vivent dans le resource fork, qui ne survit pas à une copie ordinaire
+hors du Mac. C'est une limite du transport, pas de notre lecture.
+
+HYPERCARD 1.x : son bloc BMAP est décalé de quatre octets comme les autres, et le
+refus global reste en place.

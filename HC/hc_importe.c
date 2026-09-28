@@ -24,6 +24,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>         /* le calque de peinture est du RVBA compressé */
 
 /* L'ALIGNEMENT NE SE RECOPIE PAS, IL SE TRADUIT.
  *
@@ -174,6 +175,117 @@ static Object *pose_part(Object *proprio, const HcOrigPart *q)
  * La position, elle, correspond : les parts sont créées dans l'ordre de
  * `k->parts[]`, donc la j-ième part de la couche bâtie est la j-ième du
  * fichier. */
+/* ═══ LE CALQUE DE PEINTURE ══════════════════════════════════════════════
+ *
+ * Notre format porte le dessin d'une carte dans un bloc « paint » : du base64,
+ * opaque au noyau, et dont le contenu est celui qu'écrit hcp_encode côté Cocoa —
+ * « HCP1 », la largeur, la hauteur, puis du RVBA compressé par zlib.
+ *
+ * POURQUOI RÉUTILISER CE FORMAT-LÀ plutôt qu'en inventer un lisible par le
+ * noyau, comme on l'a fait pour les icônes. Parce que l'autre bout est du
+ * Cocoa, la seule couche qui n'a aucun test ici : y ajouter un décodeur
+ * reviendrait à écrire à l'aveugle du code qu'aucun harnais ne peut exercer, et
+ * ce dépôt a déjà payé trois allers-retours pour ça. En écrivant le format qui
+ * existe, l'application n'a pas une ligne à changer.
+ *
+ * LE PRIX est une dépendance à zlib pour le noyau — l'application l'avait déjà,
+ * HCpaint.m l'emploie — et le fait que le noyau écrit là quelque chose qu'il ne
+ * sait pas relire. Le harnais, lui, le relit : il a le droit de se lier à zlib,
+ * et c'est ce qui garde le tour complet mesurable de bout en bout.
+ *
+ * LA TAILLE EST MESURÉE, pas supposée : du RVBA de deux couleurs se compresse
+ * entre 100 et 200 fois. Les dix dessins de « Découvrir HyperCard » font 39 Ko
+ * de base64 en tout, les treize de « 3D Parametric Equations » 111 Ko. Un
+ * format 1 bit aurait été quatre fois plus petit AVANT compression et à peine
+ * plus petit après : zlib travaille sur les répétitions, et du noir et blanc en
+ * RVBA n'est que répétition.
+ *
+ * LE RVBA EST PRÉMULTIPLIÉ, parce que c'est ce qu'attend hcp_decode : il
+ * reconstruit sa NSBitmapImageRep sans NSBitmapFormatAlphaNonpremultiplied, donc
+ * en prémultiplié. Nos trois seules couleurs le respectent — (0,0,0,0) pour le
+ * transparent, (0,0,0,255) pour le noir, (255,255,255,255) pour le blanc. Un
+ * blanc transparent, lui, aurait été faux. */
+
+static const char B64[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static char *en_base64(const unsigned char *o, size_t n)
+{
+    size_t lignes = (n + 2) / 3;
+    char *d = malloc(lignes * 4 + 1);
+    if (!d) return NULL;
+    char *w = d;
+    size_t i = 0;
+    while (i + 3 <= n) {
+        unsigned long v = ((unsigned long)o[i] << 16) | ((unsigned long)o[i+1] << 8) | o[i+2];
+        *w++ = B64[(v >> 18) & 63]; *w++ = B64[(v >> 12) & 63];
+        *w++ = B64[(v >>  6) & 63]; *w++ = B64[v & 63];
+        i += 3;
+    }
+    if (n - i == 1) {
+        unsigned long v = (unsigned long)o[i] << 16;
+        *w++ = B64[(v >> 18) & 63]; *w++ = B64[(v >> 12) & 63];
+        *w++ = '='; *w++ = '=';
+    } else if (n - i == 2) {
+        unsigned long v = ((unsigned long)o[i] << 16) | ((unsigned long)o[i+1] << 8);
+        *w++ = B64[(v >> 18) & 63]; *w++ = B64[(v >> 12) & 63];
+        *w++ = B64[(v >>  6) & 63]; *w++ = '=';
+    }
+    *w = '\0';
+    return d;
+}
+
+/* Le dessin d'une couche, posé sur l'objet. Silencieux si la couche n'en a pas.
+ *
+ * LA RÈGLE DES TROIS ÉTATS EST CELLE DU FORMAT, et elle est écrite ici parce
+ * que c'est ici qu'elle devient une couleur : « if the pixel has a value of 1 in
+ * the image, it is black ; elsewhere, if it has a value of 1 in the mask, it is
+ * blank ; elsewhere, it is transparent ». hc_origine ne fait que décompresser
+ * les deux plans — il n'a pas d'opinion sur ce qu'ils veulent dire. */
+static void pose_le_dessin(Object *o, const HcOrigDessin *d)
+{
+    if (!o || !d->present || !d->image || !d->masque) return;
+    if (d->largeur <= 0 || d->hauteur <= 0) return;
+
+    size_t npix = (size_t)d->largeur * (size_t)d->hauteur;
+    unsigned char *rgba = malloc(npix * 4);
+    if (!rgba) return;
+
+    for (int y = 0; y < d->hauteur; y++) {
+        const unsigned char *li = d->image  + (size_t)y * d->octets_par_ligne;
+        const unsigned char *lm = d->masque + (size_t)y * d->octets_par_ligne;
+        unsigned char *q = rgba + (size_t)y * d->largeur * 4;
+        for (int x = 0; x < d->largeur; x++, q += 4) {
+            int noir  = (li[x >> 3] >> (7 - (x & 7))) & 1;
+            int opaque = noir || ((lm[x >> 3] >> (7 - (x & 7))) & 1);
+            unsigned char c = (unsigned char)(noir ? 0 : 255);
+            q[0] = q[1] = q[2] = (unsigned char)(opaque ? c : 0);
+            q[3] = (unsigned char)(opaque ? 255 : 0);
+        }
+    }
+
+    uLongf place = compressBound((uLong)(npix * 4));
+    unsigned char *hcp = malloc((size_t)place + 12);
+    if (!hcp) { free(rgba); return; }
+    memcpy(hcp, "HCP1", 4);
+    unsigned long w = (unsigned long)d->largeur, h = (unsigned long)d->hauteur;
+    hcp[4]  = (unsigned char)((w >> 24) & 0xFF); hcp[5]  = (unsigned char)((w >> 16) & 0xFF);
+    hcp[6]  = (unsigned char)((w >>  8) & 0xFF); hcp[7]  = (unsigned char)( w        & 0xFF);
+    hcp[8]  = (unsigned char)((h >> 24) & 0xFF); hcp[9]  = (unsigned char)((h >> 16) & 0xFF);
+    hcp[10] = (unsigned char)((h >>  8) & 0xFF); hcp[11] = (unsigned char)( h        & 0xFF);
+
+    if (compress2(hcp + 12, &place, rgba, (uLong)(npix * 4), 9) != Z_OK) {
+        free(hcp); free(rgba); return;
+    }
+    free(rgba);
+
+    char *b64 = en_base64(hcp, (size_t)place + 12);
+    free(hcp);
+    if (!b64) return;
+    hc_set_paint(o, b64);
+    free(b64);
+}
+
 static Object *part_visee(Object *couche, const HcOrigCouche *k, int id_origine)
 {
     if (!couche || !k) return NULL;
@@ -230,6 +342,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
          * les 32 couches gardent le leur, les identifiants de couche étant
          * uniques dans la pile chez HyperCard comme chez nous. */
         id_adopte(bg, k->id);
+        pose_le_dessin(bg, &k->dessin);
         bg->dont_search = k->dont_search;
         bg->cant_delete = k->cant_delete;
         if (k->script && *k->script) hc_set_script(bg, k->script);
@@ -258,6 +371,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         Object *cd = hc_new_card(st, bg, k->nom ? k->nom : "");
         if (!cd) { free(fonds); free(ids); hc_free(st); return NULL; }
         id_adopte(cd, k->id);            /* même raison que pour les fonds */
+        pose_le_dessin(cd, &k->dessin);
         cd->marked      = k->marque;
         cd->dont_search = k->dont_search;
         cd->cant_delete = k->cant_delete;
