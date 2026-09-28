@@ -323,11 +323,9 @@ static int lit_la_couche(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
 #define ENTETE     0x10      /* taille(4) type(4) id(4) calage(4) */
 #define BLOCS_MAX  200000    /* une pile de 200 000 blocs n'existe pas */
 
-int hc_origine_lit(const unsigned char *octets, size_t n,
-                   HcOrigPile *pile, char *pourquoi, size_t npourquoi)
+static int lit_interne(const unsigned char *octets, size_t n,
+                      HcOrigPile *pile, char *pourquoi, size_t npourquoi)
 {
-    if (pourquoi && npourquoi) pourquoi[0] = '\0';
-    if (!pile) return -1;
     memset(pile, 0, sizeof *pile);
     if (!octets || n < ENTETE) { motif(pourquoi, npourquoi, "fichier trop court pour un en-tete", 0); return -1; }
 
@@ -487,6 +485,43 @@ int hc_origine_lit(const unsigned char *octets, size_t n,
 
     if (v->debord) { motif(pourquoi, npourquoi, "lecture hors du fichier", 0); return -1; }
     return 0;
+}
+
+/* UN REFUS NE LAISSE RIEN DERRIÈRE LUI, et ce n'est pas une politesse.
+ *
+ * La lecture alloue au fur et à mesure — le recensement des blocs, puis les
+ * couches, puis les noms et les scripts — et elle peut refuser à n'importe
+ * quel moment. Il faut donc que QUELQU'UN libère ce qui a déjà été pris.
+ *
+ * Ce quelqu'un était le CALLEUR, et c'était une mauvaise idée : le contrat
+ * n'était écrit nulle part, et le premier consommateur écrit hors du harnais
+ * l'a oublié. Un fuzzing de 2321 fichiers abîmés a signalé une fuite à CHACUN
+ * des 431 refus.
+ *
+ * ET LA PROVENANCE EXACTE, parce qu'elle n'est pas celle que j'ai d'abord
+ * annoncée : l'essentiel de ces fuites était le tampon du FICHIER, que ce
+ * pilote-là ne libérait pas — un défaut d'appelant, pas du module. Ce qui
+ * revenait bien au module était plus modeste : sous l'ancien contrat, rien ne
+ * libérait le recensement des blocs sur un chemin de refus. Les deux étaient
+ * dans le même appelant bâclé, et c'est l'argument : une API dont le bon usage
+ * n'est pas évident finira toujours par être mal appelée.
+ *
+ * Donc c'est le module qui nettoie. Un refus rend une pile VIDE, et le
+ * calleur n'a plus rien à savoir. On perd le recensement partiel d'un fichier
+ * refusé — aucun appelant ne s'en servait, et une API qui ne peut pas fuir vaut
+ * mieux qu'une API avec une mise en garde. */
+int hc_origine_lit(const unsigned char *octets, size_t n,
+                   HcOrigPile *pile, char *pourquoi, size_t npourquoi)
+{
+    if (pourquoi && npourquoi) pourquoi[0] = '\0';
+    if (!pile) return -1;
+    int r = lit_interne(octets, n, pile, pourquoi, npourquoi);
+    if (r != 0) {
+        /* `pourquoi` est déjà rempli, et hc_origine_libere remet la pile à
+         * zéro : le motif du refus survit, la mémoire non. */
+        hc_origine_libere(pile);
+    }
+    return r;
 }
 
 void hc_origine_libere(HcOrigPile *pile)

@@ -96,20 +96,119 @@ CE QUI EST MESURÉ
    vraisemblables. Un témoin négatif abîme cette taille d'UN octet, et le
    lecteur refuse.
 
-CE QUI N'EST PAS MESURÉ, ET IL FAUT LE LIRE
--------------------------------------------
+UNE VRAIE PILE DE 1990 — LE MANQUE PRINCIPAL EST COMBLÉ
+-------------------------------------------------------
 
-AUCUNE VRAIE PILE DE 1993 N'EST PASSÉE ICI. C'est le manque principal, et il
-n'est pas comblable de ce côté : archive.org et kreativekorp sont refusés par
-la politique de sortie du conteneur, et le dépôt n'en porte aucune. Tout ce qui
-est écrit ci-dessus est vrai d'une pile que NOUS avons montée, arbitrée par un
-lecteur tiers. C'est beaucoup, et ce n'est pas la même chose.
+Ce document demandait « une petite pile d'origine ». Elle est arrivée le soir
+même : « 3D Parametric Equations », d'Alexander Thomas, 139264 octets,
+HyperCard 2.x, data fork intact.
 
-    CE QU'IL FAUT : une petite pile d'origine, la plus simple possible,
-    déposée dans le dépôt. Vérifier que sa taille n'est pas nulle après la
-    copie hors du Mac — si elle l'est, tout était dans le resource fork et il
-    faudra passer par un .hqx.
+    ELLE N'EST PAS VERSIONNÉE, ET C'EST SON PROPRE SCRIPT QUI L'INTERDIT :
+    « If you want to use parts of this stack in your own productions, please
+    contact the author first at dr.lex@cryogen.com ». Elle a servi à mesurer ;
+    la mesure s'écrit ici, le fichier reste dehors. Il faudra une pile
+    librement licenciée pour en faire un témoin permanent — la pile synthétique
+    du harnais tient ce rôle en attendant.
 
+CE QUE LE LECTEUR EN A TIRÉ, du premier coup et sans une correction :
+
+    format 10, 3 fonds, 11 cartes, 512x342
+    45 blocs : STAK, MAST, LIST, PAGE, BMAP x13, CARD x11, FREE x9,
+               BKGD x3, STBL, FTBL, PRNT, PRST, TAIL
+    chaine des blocs : atteint la fin du fichier exactement
+    somme de controle du bloc STAK : JUSTE
+    3 fonds et 11 cartes lus, 0 anomalie
+    66 scripts, 804 lignes, 40 boutons, 65 champs
+
+DEUX CONFIRMATIONS FORTES LÀ-DEDANS, et elles méritent d'être nommées à part.
+
+La SOMME DE CONTRÔLE est juste sur une pile écrite par HyperCard lui-même. Tout
+ce qui va de l'octet 0 à l'octet 0x600 est donc correct : l'en-tête de bloc, les
+offsets du bloc STAK, l'ordre des octets. Une règle du format, vérifiée sur des
+octets que personne chez nous n'a produits. C'est la mesure la plus forte de tout
+ce document.
+
+Et « 0x14 : taille totale du data fork » vaut 139264, exactement la taille du
+fichier. Deuxième chemin indépendant vers la même vérité.
+
+LE GENRE D'UNE PART EST MAINTENANT MESURÉ. C'était le seul champ que nos deux
+sources ne corroboraient pas — bit 8 de l'entier de 0x4, 0 pour un champ et 1
+pour un bouton, décrit par l'une et jamais lu par l'autre. La vraie pile
+tranche : 40 boutons et 65 champs, et pas un seul classement absurde. Les boutons
+sont tous des verbes — AddComment, Draw graph, DelCard, Export, Connect u — et
+les champs tous des porteurs de données — MaxX, MaxY, EndT, Increm, ColorVar.
+Aucun bouton nommé « MaxX », aucun champ nommé « Draw graph ».
+
+L'ORACLE SUR LA MÊME VRAIE PILE
+-------------------------------
+
+829 lignes de script de chaque côté, et un seul écart : un gestionnaire
+closeField de trois lignes au rang 185 chez l'oracle, au rang 824 chez nous. Pas
+un octet de désaccord sur le CONTENU.
+
+Et la cause de cet écart est identifiée, ce n'est pas un mystère toléré : une
+seule carte de cette pile porte une part scriptée, tous les autres scripts étant
+dans les trois fonds (53, 4 et 47 parts). L'oracle affiche les cartes avant les
+fonds, nous l'inverse. D'où ce seul bloc qui se déplace, et rien d'autre.
+
+UN TROISIÈME CHEMIN, et celui-là ne vient d'aucun programme : l'autrice avait
+déjà collé ces scripts dans HC à la main, depuis le presse-papiers de Basilisk.
+Le même texte, par une route qui ne ressemble à aucune des deux autres.
+
+    Et ça change le statut du relevé qui suit : c'est une CONFIRMATION, pas une
+    découverte. CLAUDE.md dit de s'en méfier davantage que d'un démenti.
+
+LE CORPUS — COMBIEN DU HYPERTALK RÉEL NOTRE ANALYSEUR COMPREND-IL
+-----------------------------------------------------------------
+
+    66 scripts, 804 lignes de HyperTalk de 1990
+    acceptés par hct_verifie : 66, soit 100 %
+    avertissements : 13, tous de la même famille
+
+LE TÉMOIN POSITIF D'ABORD, sans quoi ce chiffre ne mesurerait rien — un
+analyseur qui accepte tout rendrait le même. Sept scripts cassés exprès sont
+refusés, chacun avec son motif : parenthèse non fermée, « end » manquant, « end »
+qui ne reprend pas le nom, repeat sans fin, if sans then, charabia pur, chaîne
+non fermée. L'instrument sait dire non.
+
+ET IL FAUT ÊTRE EXACT SUR CE QUE « 100 % » VEUT DIRE : hct_verifie vérifie la
+SYNTAXE, pas la sémantique. « 804 lignes de vrai HyperTalk s'analysent sans une
+faute » n'est pas « ces scripts tourneraient juste dans HC ». La seconde question
+reste ouverte, et c'est une autre mesure.
+
+Les 13 avertissements sont tous des noms de gestionnaires de l'auteur —
+createMenu, goHelp, exportIt, chooseColr — ce que hct_verif.h décrit lui-même
+comme n'étant pas une faute : un gestionnaire peut porter le nom qu'on veut.
+Zéro trouvaille réelle.
+
+LE FUZZING — UN LECTEUR DE FICHIER ÉTRANGER DOIT LE SUBIR
+---------------------------------------------------------
+
+Ce module analyse un binaire qu'il n'a pas écrit : c'est exactement là que vivent
+les défauts mémoire. 2321 versions abîmées de la vraie pile, sous ASan, UBSan et
+LeakSanitizer :
+
+    toutes les troncatures, par pas de 331 octets
+    1500 fichiers avec un octet changé au hasard
+    400 fichiers avec quatre octets d'affilée changés (les tailles en font 4)
+
+    1890 lus, 431 refusés, ZÉRO signalement des sanitizers.
+
+UNE FUITE TROUVÉE, ET SA PROVENANCE EXACTE — parce que je l'ai d'abord mal
+attribuée, à voix haute. Le premier passage signalait une fuite à chacun des 431
+refus. L'essentiel était le tampon du FICHIER, que mon pilote de fortune ne
+libérait pas : un défaut d'appelant. La part qui revenait au module était plus
+modeste : sous l'ancien contrat, rien ne libérait le recensement des blocs sur un
+chemin de refus.
+
+La correction porte sur l'API et pas sur le symptôme : un refus rend maintenant
+une pile VIDE, le module nettoie lui-même, et le calleur n'a plus rien à savoir.
+Le contrat inverse n'était écrit nulle part, et le premier appelant écrit hors du
+harnais l'a oublié — moi, dix minutes après avoir écrit le module. Une API dont
+le bon usage n'est pas évident finira toujours par être mal appelée.
+
+CE QUI RESTE NON MESURÉ
+-----------------------
 L'ORDRE DES CARTES N'EST PAS LU. Il ne vient pas de l'ordre des blocs CARD dans
 le fichier mais des blocs LIST et PAGE, recensés et non interprétés. Pour des
 scripts ça suffit — chacun arrive avec l'id de sa carte. Pour un importateur,
@@ -119,10 +218,6 @@ non.
     démonstration avec « ERROR: no LIST block ». Sans lui je l'aurais écrite
     sans m'en apercevoir, et j'aurais cru l'ordre du fichier. D'où un drapeau
     affiché à chaque lecture : un manque visible vaut mieux qu'un manque oublié.
-
-LE GENRE D'UNE PART — bouton ou champ, bit 8 de l'entier de 0x4 — est le SEUL
-champ que nos deux sources ne corroborent pas : l'une le décrit, l'autre ne le
-lit jamais. Écrit comme non mesuré dans hc_origine.c. Une vraie pile tranchera.
 
 HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
 n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs
@@ -140,13 +235,14 @@ extracteur de scripts n'en a pas besoin.
 CE QUE ÇA RAPPORTE TOUT DE SUITE
 --------------------------------
 
-Le jour où une vraie pile arrive, cet extracteur donne un CORPUS : quelques
-centaines de scripts de 1993, écrits par des gens qui ne cherchaient pas à nous
-faire plaisir. À passer dans hct_verif, pour obtenir une mesure que nous n'avons
-pas aujourd'hui — quelle part du HyperTalk RÉEL notre v3 comprend-il ?
+Cet extracteur donne un CORPUS : du HyperTalk écrit par des gens qui ne
+cherchaient pas à nous faire plaisir. La première pile en a rendu 804 lignes, et
+la mesure qui va avec — 100 % analysées sans une faute, avec ses témoins positifs
+et sa réserve sur la différence entre syntaxe et sémantique.
 
-Aucune pile de torture ne peut donner ça : j'invente les tournures que je
-connais déjà, ce qui est le défaut natif de l'exercice.
+Aucune pile de torture ne peut donner ça : j'invente les tournures que je connais
+déjà, ce qui est le défaut natif de l'exercice. Une pile de plus, et le chiffre
+recommence à valoir quelque chose — 66 scripts ne font pas une population.
 
 DEUX DÉFAUTS TROUVÉS EN CHEMIN
 ------------------------------

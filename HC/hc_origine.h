@@ -119,8 +119,16 @@ typedef struct {
     int           anomalies;
 } HcOrigPile;
 
-/* Rend 0 en cas de succès, et remplit `pourquoi` sinon. REFUSE plutôt que de
- * deviner : une taille de bloc nulle, une chaîne qui sort du fichier, une
+/* Rend 0 en cas de succès, et remplit `pourquoi` sinon.
+ *
+ * UN REFUS NE LAISSE RIEN À LIBÉRER : la pile rendue est vide, et seul
+ * `pourquoi` porte quelque chose. Après un succès, hc_origine_libere est
+ * obligatoire. (Le contrat inverse — au calleur de nettoyer un refus — a tenu
+ * une heure : il n'était écrit nulle part, et le premier appelant l'a oublié.
+ * Voir hc_origine.c pour ce que le fuzzing a vraiment mesuré, et pour la part
+ * qui revenait au module plutôt qu'à l'appelant.)
+ *
+ * REFUSE plutôt que de deviner : une taille de bloc nulle, une chaîne qui sort du fichier, une
  * liste de parts qui ne tombe pas où sa taille annoncée le dit, une chaîne de
  * caractères sans son zéro — tout cela arrête la lecture avec un motif écrit
  * en clair. Un lecteur qui rend des scripts vraisemblables à partir d'octets
