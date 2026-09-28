@@ -138,6 +138,12 @@ static unsigned u16(Vue *v, size_t p)
     return (unsigned)(v->o[p] << 8) | v->o[p+1];
 }
 
+static int s16(Vue *v, size_t p)
+{
+    unsigned u = u16(v, p);
+    return (u & 0x8000u) ? (int)u - 0x10000 : (int)u;
+}
+
 /* La longueur d'une chaîne terminée par zéro, à partir de `p`, SANS sortir de
  * la vue. Rend -1 si le zéro n'y est pas : une chaîne sans sa fin est une
  * faute structurelle, parce que tout ce qui la suit dans le bloc — le script,
@@ -178,12 +184,53 @@ static unsigned long rotd3(unsigned long x)
 /* Le genre d'une part : bit 8 de l'entier 16 bits à 0x4, 0 pour un champ et 1
  * pour un bouton.
  *
- * C'EST LE SEUL CHAMP DE CE FICHIER QUE NOS DEUX SOURCES NE CORROBORENT PAS.
- * L'une le décrit ainsi ; l'autre ne lit jamais le genre d'une part, donc elle
- * ne confirme ni ne contredit. Écrit ici comme non mesuré : une vraie pile
- * d'origine tranchera, et le harnais porte le cas des deux valeurs pour que le
- * jour où ça change, on voie quoi. */
+ * MESURÉ SUR UNE VRAIE PILE, et c'était le seul champ que nos deux sources ne
+ * corroboraient pas — l'une le décrit, l'autre ne lit jamais le genre. « 3D
+ * Parametric Equations » tranche : 40 boutons, 65 champs, et pas un classement
+ * absurde. Les boutons sont des verbes — AddComment, Draw graph, Export — et
+ * les champs des porteurs de données — MaxX, EndT, Increm. */
 static int genre_de(unsigned drapeaux) { return (drapeaux & 0x0100u) ? HC_ORIG_BOUTON : HC_ORIG_CHAMP; }
+
+/* Les douze styles de part, dans l'ordre du format. Les noms sont ceux de notre
+ * propre format (hc_file.c les écrit tels quels), si bien qu'un importateur n'a
+ * rien à traduire. */
+static const char *STYLES[] = {
+    "transparent", "opaque", "rectangle", "roundrect", "shadow", "checkbox",
+    "radio", "scrolling", "standard", "default", "oval", "popup"
+};
+#define NSTYLES ((int)(sizeof STYLES / sizeof STYLES[0]))
+
+/* CERTAINS STYLES N'APPARTIENNENT QU'À UN GENRE, et ça donne un recoupement
+ * gratuit sur l'octet de style — le seul qu'on ait, faute d'oracle qui lise les
+ * propriétés. Un « scrolling » sur un bouton, ou un « checkbox » sur un champ,
+ * voudrait dire qu'on lit le mauvais octet. Compté en anomalie, jamais fatal :
+ * une pile étrange ne doit pas faire perdre ses scripts. */
+static int style_va_au_genre(int istyle, int genre)
+{
+    switch (istyle) {
+        case 5: case 6: case 8: case 9: case 11:   /* checkbox radio standard default popup */
+        case 3: case 4: case 10:                   /* roundrect shadow oval */
+            return genre == HC_ORIG_BOUTON;
+        case 7:                                    /* scrolling */
+            return genre == HC_ORIG_CHAMP;
+        default:                                   /* transparent, opaque, rectangle */
+            return 1;
+    }
+}
+
+/* Le nom d'une police, par son identifiant, dans la table de la pile.
+ *
+ * Les identifiants de police n'étaient PAS les mêmes d'un Macintosh à l'autre :
+ * HyperCard rangeait donc les noms dans le fichier. Et la spec avertit que
+ * l'identifiant écrit dans une part peut être NÉGATIF, auquel cas le vrai
+ * identifiant est -valeur-1. */
+static const char *police_de(const HcOrigPile *pile, int id)
+{
+    if (id < 0) id = -id - 1;
+    for (int i = 0; i < pile->npolices; i++)
+        if (pile->polices[i].id == id) return pile->polices[i].nom;
+    return NULL;
+}
 
 /* Lit la liste des parts, puis SAUTE la liste des contenus, et rend l'offset
  * du nom de la couche. Rend 0 en cas de faute structurelle.
@@ -212,12 +259,93 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
             return 0;
         }
         HcOrigPart *pt = &k->parts[i];
+
+        /* LE COMPTEUR MONTE AVANT LES ALLOCATIONS, ET C'EST UNE CORRECTION.
+         *
+         * Il montait à la FIN de la lecture d'une part, alors que son nom et le
+         * nom de sa police sont alloués AVANT — si bien qu'un échec entre les
+         * deux laissait deux chaînes que hc_origine_libere ne voyait pas : il
+         * s'arrête à `nparts`. Trouvé par le fuzzing, deux fois sur 3866
+         * fichiers abîmés, et invisible autrement.
+         *
+         * C'est la deuxième fois que ce chantier paie la même faute : une
+         * allocation faite avant le compteur qui gouverne sa libération. Le
+         * compteur dit désormais « emplacements ENTAMÉS » et non « parts
+         * entièrement lues » — sur un succès c'est le même nombre, et sur un
+         * échec la pile est vidée de toute façon, donc aucun appelant ne voit la
+         * différence. */
+        k->nparts = (int)(i + 1);
+
+        unsigned dr  = u16(v, p + 0x04);
+        unsigned dr2 = (p + 0x0E < v->n) ? v->o[p + 0x0E] : 0;
+        unsigned ist = (p + 0x0F < v->n) ? v->o[p + 0x0F] : 0;
+
         pt->id     = (int)u16(v, p + 0x02);
-        pt->genre  = genre_de(u16(v, p + 0x04));
+        pt->genre  = genre_de(dr);
         pt->haut   = (int)u16(v, p + 0x06);
         pt->gauche = (int)u16(v, p + 0x08);
         pt->bas    = (int)u16(v, p + 0x0A);
         pt->droite = (int)u16(v, p + 0x0C);
+
+        /* LES QUATRE DRAPEAUX INVERSÉS. Le bit allumé signifie FAUX, et la spec
+         * les écrit entre parenthèses. Convertis ici une fois pour toutes, si
+         * bien que plus rien en aval n'a à s'en souvenir. */
+        pt->visible     = (dr & 0x0080u) ? 0 : 1;
+        pt->fixed_lh    = (dr & 0x0004u) ? 0 : 1;
+        pt->dont_wrap   = (dr & 0x0020u) ? 1 : 0;
+        pt->dont_search = (dr & 0x0010u) ? 1 : 0;
+        pt->shared_text = (dr & 0x0008u) ? 1 : 0;
+        pt->auto_tab    = (dr & 0x0002u) ? 1 : 0;
+        pt->family      = (int)(dr2 & 0x0Fu);
+
+        /* LE BIT 0 N'A PAS LE MÊME SENS SELON LE GENRE, et il n'est inversé que
+         * d'un côté : un bouton y lit « PAS actif », un champ y lit « texte
+         * verrouillé », qui est déjà positif. */
+        if (pt->genre == HC_ORIG_BOUTON) {
+            pt->enabled  = (dr & 0x0001u) ? 0 : 1;
+            pt->locktext = 0;
+        } else {
+            pt->enabled  = 1;
+            pt->locktext = (dr & 0x0001u) ? 1 : 0;
+        }
+
+        /* LES MÊMES QUATRE BITS DE 0xE, DEUX FAMILLES DE SENS. Seuls ceux du bon
+         * genre sont remplis : les mélanger donnerait des propriétés plausibles
+         * et fausses, ce qui est le pire résultat possible. Et le bit 4 n'est
+         * inversé que du côté du bouton. */
+        if (pt->genre == HC_ORIG_BOUTON) {
+            pt->showname      = (dr2 & 0x80u) ? 1 : 0;
+            pt->hilite        = (dr2 & 0x40u) ? 1 : 0;
+            pt->autohilite    = (dr2 & 0x20u) ? 1 : 0;
+            pt->shared_hilite = (dr2 & 0x10u) ? 0 : 1;
+            pt->titlewidth    = (int)u16(v, p + 0x10);
+            pt->icon          = s16(v, p + 0x12);
+        } else {
+            pt->auto_select    = (dr2 & 0x80u) ? 1 : 0;
+            pt->show_lines     = (dr2 & 0x40u) ? 1 : 0;
+            pt->wide_margins   = (dr2 & 0x20u) ? 1 : 0;
+            pt->multiple_lines = (dr2 & 0x10u) ? 1 : 0;
+            pt->derniere_ligne = (int)u16(v, p + 0x10);
+            pt->premiere_ligne = s16(v, p + 0x12);
+        }
+
+        pt->style = (ist < (unsigned)NSTYLES) ? STYLES[ist] : "transparent";
+        if (ist >= (unsigned)NSTYLES || !style_va_au_genre((int)ist, pt->genre))
+            pile->anomalies++;       /* un style qui ne va pas au genre : on lit mal */
+
+        pt->text_align = s16(v, p + 0x14);
+        pt->textsize   = (int)u16(v, p + 0x18);
+        pt->textstyle  = (int)((p + 0x1A < v->n) ? v->o[p + 0x1A] : 0);
+        pt->textheight = (int)u16(v, p + 0x1C);
+        {
+            const char *nom = police_de(pile, s16(v, p + 0x16));
+            if (nom) {
+                size_t ln = strlen(nom) + 1;
+                pt->police = malloc(ln);
+                if (!pt->police) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)p); return 0; }
+                memcpy(pt->police, nom, ln);
+            }
+        }
 
         long ln = longueur_chaine(v, p + 0x1E);
         if (ln < 0 || p + 0x1E + (size_t)ln + 1 > p + taille) {
@@ -251,7 +379,6 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
                 }
             }
         }
-        k->nparts = (int)(i + 1);
         p += taille;
     }
 
@@ -264,15 +391,59 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
         return 0;
     }
 
-    /* Les contenus : un id (2), une taille (2) qui ne se compte pas elle-même,
+    /* LES CONTENUS : un id (2), une taille (2) qui ne se compte pas elle-même,
      * puis la donnée ; et un octet de calage pour retomber sur un multiple de
-     * deux. */
+     * deux.
+     *
+     * L'IDENTIFIANT PORTE DEUX INFORMATIONS. Négatif, c'est une part de CETTE
+     * couche, d'id -valeur. Positif, dans un bloc CARD, c'est un champ du FOND
+     * dont cette carte-là porte son propre texte — ce que notre modèle appelle
+     * un BgText. Confondre les deux ferait afficher le même texte sur toutes les
+     * cartes d'un fond.
+     *
+     * ET SUR LE TEXTE DÉCORÉ, NOS DEUX SOURCES SE CONTREDISENT. La spec dit que
+     * l'entier de 0x4 est une TAILLE en octets, la liste des plages comprise et
+     * lui-même compris ; l'autre lecteur le traite comme un NOMBRE de plages de
+     * deux octets. Les deux calculs ne peuvent pas être justes ensemble. On suit
+     * la spec, qui est explicite et cohérente avec elle-même, ET on vérifie que
+     * la longueur obtenue tient dans le contenu : sinon, anomalie comptée et
+     * texte laissé vide plutôt que pris n'importe où. */
+    if (ncontenus > 0) {
+        k->contenus = calloc(ncontenus, sizeof *k->contenus);
+        if (!k->contenus) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)p); return 0; }
+    }
     for (unsigned i = 0; i < ncontenus; i++) {
+        int      ident  = s16(v, p + 0);
         unsigned taille = u16(v, p + 2);
         if (p + 4 + taille > bloc_fin) {
             motif(pourquoi, npourquoi, "contenu de part hors du bloc", (unsigned long)p);
             return 0;
         }
+
+        HcOrigContenu *ct = &k->contenus[i];
+        k->ncontenus = (int)(i + 1);        /* avant l'allocation, comme au-dessus */
+        ct->du_fond = (ident > 0);
+        ct->id_part = ct->du_fond ? ident : -ident;
+
+        size_t debut = 0;
+        long   len   = -1;
+        if (taille >= 1 && v->o[p + 4] == 0) {
+            debut = p + 5;                       /* texte nu */
+            len   = (long)taille - 1;
+        } else if (taille >= 2) {
+            unsigned octets_plages = u16(v, p + 4) & 0x7FFFu;
+            ct->decore = 1;
+            pile->contenus_decores++;
+            if (octets_plages >= 2 && octets_plages <= taille) {
+                debut = p + 4 + octets_plages;
+                len   = (long)taille - (long)octets_plages;
+            }
+        }
+        if (len < 0 || debut + (size_t)len > bloc_fin) { pile->anomalies++; len = 0; debut = p + 4; }
+
+        ct->texte = dit(v, debut, len);
+        if (!ct->texte) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)debut); return 0; }
+
         p += 4 + taille;
         /* LE CALAGE SE COMPTE DEPUIS LE DÉBUT DU BLOC, pas depuis celui du
          * fichier. Rien ne garantit qu'un bloc commence à une adresse paire —
@@ -542,7 +713,45 @@ static int lit_interne(const unsigned char *octets, size_t n,
         return -1;
     }
 
-    /* --- 3. les fonds et les cartes --- */
+    /* --- 3. la table des polices --- */
+
+    /* LES IDENTIFIANTS DE POLICE N'ÉTAIENT PAS LES MÊMES D'UN MACINTOSH À
+     * L'AUTRE : HyperCard rangeait donc les NOMS dans le fichier, dans un bloc
+     * FTBL. Sans lui, « police 3 » ne veut rien dire — et une part rendrait une
+     * police qui n'est pas la sienne sur une autre machine, ce qui est
+     * précisément le défaut que ce bloc existe pour éviter.
+     *
+     * Le bloc est FACULTATIF : les piles d'HyperCard 1.x n'en ont pas, et une
+     * pile qui n'a jamais changé de police non plus. Son absence n'est donc pas
+     * une faute ; les parts rendront simplement une police nulle. */
+    for (int i = 0; i < pile->nblocs; i++) {
+        if (memcmp(octets + pile->blocs[i].offset + 4, "FTBL", 4) != 0) continue;
+        size_t bloc = (size_t)pile->blocs[i].offset;
+        size_t fin  = bloc + (size_t)pile->blocs[i].taille;
+        unsigned long combien = u32(v, bloc + 0x10);
+        if (v->debord || combien == 0) break;
+        /* Une entrée fait au moins trois octets — un identifiant et un nom
+         * vide — donc le bloc borne leur nombre sans qu'on ait à le croire. */
+        if (combien > (unsigned long)(pile->blocs[i].taille) / 3) { pile->anomalies++; break; }
+
+        pile->polices = calloc(combien, sizeof *pile->polices);
+        if (!pile->polices) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)bloc); return -1; }
+
+        size_t q = bloc + 0x18;
+        for (unsigned long j = 0; j < combien; j++) {
+            long ln = longueur_chaine(v, q + 2);
+            if (ln < 0 || q + 2 + (size_t)ln + 1 > fin) { pile->anomalies++; break; }
+            pile->polices[j].id  = s16(v, q);
+            pile->polices[j].nom = dit(v, q + 2, ln);
+            if (!pile->polices[j].nom) { motif(pourquoi, npourquoi, "memoire epuisee", (unsigned long)q); return -1; }
+            pile->npolices = (int)(j + 1);
+            q += 2 + (size_t)ln + 1;
+            if ((q - bloc) % 2) q++;          /* calage sur 16 bits */
+        }
+        break;
+    }
+
+    /* --- 4. les fonds et les cartes --- */
 
     /* IL NE PEUT PAS Y AVOIR PLUS DE CARTES QUE DE BLOCS : chaque carte a le
      * sien. Le nombre annoncé par STAK est donc borné par le recensement, qui
@@ -567,11 +776,13 @@ static int lit_interne(const unsigned char *octets, size_t n,
      * une carte, et l'ordre du fichier n'est pas celui de la pile. */
     int           *ordre    = NULL;
     unsigned char *drapeaux = NULL;
+    unsigned char *occupe   = NULL;
     if (pile->ncartes) {
         ordre    = calloc(pile->ncartes, sizeof *ordre);
         drapeaux = calloc(pile->ncartes, sizeof *drapeaux);
-        if (!ordre || !drapeaux) {
-            free(ordre); free(drapeaux);
+        occupe   = calloc(pile->ncartes, sizeof *occupe);
+        if (!ordre || !drapeaux || !occupe) {
+            free(ordre); free(drapeaux); free(occupe);
             motif(pourquoi, npourquoi, "memoire epuisee", 0x34); return -1;
         }
         pile->ordre_lu = lit_l_ordre(v, pile, octets, ordre, drapeaux);
@@ -600,11 +811,28 @@ static int lit_interne(const unsigned char *octets, size_t n,
                 if (place < 0) pile->anomalies++;
             }
             if (place < 0) {
-                /* la première case encore vide, pour ne jamais en écraser une */
                 for (unsigned long q = 0; q < pile->ncartes; q++)
-                    if (!pile->cartes[q].id) { place = (long)q; break; }
+                    if (!occupe[q]) { place = (long)q; break; }
                 if (place < 0) continue;
             }
+
+            /* L'OCCUPATION SE SUIT À PART, ET C'EST UNE CORRECTION.
+             *
+             * Un emplacement était réputé libre quand son identifiant valait
+             * zéro. Mais un bloc CARD peut PORTER l'identifiant zéro — une
+             * mutation d'un seul octet suffit — et son emplacement restait alors
+             * marqué libre après avoir été rempli : la carte suivante venait
+             * écraser son nom et son script sans les libérer. De même, deux
+             * blocs CARD de même identifiant visaient la même place.
+             *
+             * Le fuizzing l'a trouvé deux fois sur 6162 fichiers abîmés, et ma
+             * première hypothèse — le compteur de parts monté trop tard — était
+             * fausse : c'est la trace de LeakSanitizer qui a nommé le vrai
+             * coupable, le NOM d'une couche. Deviner deux fois de suite sur un
+             * défaut mémoire coûte plus cher que lire la trace une fois. */
+            if (occupe[place]) continue;    /* déjà remplie : on n'écrase rien */
+            occupe[place] = 1;
+
             k = &pile->cartes[place];
             if (pile->ordre_lu) {
                 /* LA NUMÉROTATION DES BITS EST MESURÉE, pas supposée. Sur une
@@ -630,7 +858,7 @@ static int lit_interne(const unsigned char *octets, size_t n,
         } else {
             r = lit_la_couche(v, k, pile, bloc, fin, 0x24, 0x28, 0x2C, 0x32, pourquoi, npourquoi);
         }
-        if (r != 0) { free(ordre); free(drapeaux); return -1; }
+        if (r != 0) { free(ordre); free(drapeaux); free(occupe); return -1; }
 
         /* DEUX SOURCES POUR LE MÊME FAIT, donc un recoupement gratuit : la
          * référence de la liste dit si la carte porte un nom (bit 7), et le
@@ -646,7 +874,7 @@ static int lit_interne(const unsigned char *octets, size_t n,
 
         if (est_carte) pile->ncartes_lues++; else pile->nfonds_lus++;
     }
-    free(ordre); free(drapeaux);
+    free(ordre); free(drapeaux); free(occupe);
 
     if (v->debord) { motif(pourquoi, npourquoi, "lecture hors du fichier", 0); return -1; }
     return 0;
@@ -694,6 +922,8 @@ void hc_origine_libere(HcOrigPile *pile)
     if (!pile) return;
     free(pile->blocs);
     free(pile->script);
+    for (int i = 0; i < pile->npolices; i++) free(pile->polices[i].nom);
+    free(pile->polices);
     for (int quoi = 0; quoi < 2; quoi++) {
         HcOrigCouche *tab = quoi ? pile->cartes : pile->fonds;
         int combien = quoi ? (int)pile->ncartes : (int)pile->nfonds;
@@ -704,8 +934,11 @@ void hc_origine_libere(HcOrigPile *pile)
             for (int j = 0; j < tab[i].nparts; j++) {
                 free(tab[i].parts[j].nom);
                 free(tab[i].parts[j].script);
+                free(tab[i].parts[j].police);
             }
             free(tab[i].parts);
+            for (int j = 0; j < tab[i].ncontenus; j++) free(tab[i].contenus[j].texte);
+            free(tab[i].contenus);
         }
         free(tab);
     }

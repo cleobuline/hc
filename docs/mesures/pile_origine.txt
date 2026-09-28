@@ -398,6 +398,116 @@ bouge pas : hct_verifie vérifie la SYNTAXE. « 804 lignes s'analysent » n'est 
     seule vraiment étrangère au projet. Le chiffre ne vaudra quelque chose
     qu'avec une dizaine.
 
+LES PROPRIÉTÉS DES PARTS ET LE TEXTE DES CHAMPS
+-----------------------------------------------
+
+Vingt propriétés par part, la table des polices, et le texte des champs. Notre
+modèle les portait déjà toutes : Object a visible, locktext, dont_search,
+shared_text, auto_select, wide_margins, show_lines, multiple_lines, family,
+titlewidth, icon, text_align, textsize, textstyle, textheight — un à un.
+
+UNE SURPRISE EN CHEMIN, et elle dit quelque chose sur la lignée de ce projet :
+les bits de textstyle du format d'Apple — gras, italique, souligné, contour,
+ombré, condensé, étendu, groupe — sont dans EXACTEMENT le même ordre que nos
+HC_BOLD, HC_ITALIC, HC_UNDERLINE, HC_OUTLINE, HC_SHADOW, HC_CONDENSE, HC_EXTEND,
+HC_GROUP. Une copie directe, pas une coïncidence.
+
+TROIS PIÈGES, ET ILS SE RESSEMBLENT ASSEZ POUR ÊTRE CONFONDUS
+------------------------------------------------------------
+
+1. QUATRE DRAPEAUX SONT INVERSÉS : le bit allumé signifie FAUX. La spec les
+   écrit entre parenthèses — « (not visible) », « (not enabled) », « (not fixed
+   line height) », « (not shared highlight) ». Convertis une fois à la lecture,
+   si bien que rien en aval n'a à s'en souvenir.
+
+2. QUATRE BITS CHANGENT DE SENS SELON LE GENRE. L'octet de 0xE dit, pour un
+   bouton, « montre le nom / allumé / allumage automatique / allumage partagé »
+   et, pour un champ, « montre les lignes / marges larges / plusieurs lignes /
+   sélection automatique ». Les mélanger donnerait des propriétés PLAUSIBLES ET
+   FAUSSES, ce qui est le pire résultat possible.
+
+3. ET LE BIT 0 N'EST INVERSÉ QUE D'UN CÔTÉ : un bouton y lit « PAS actif », un
+   champ y lit « texte verrouillé », qui est déjà positif.
+
+LE SEUL RECOUPEMENT DISPONIBLE, ET IL TIENT
+-------------------------------------------
+
+Aucun lecteur tiers ne lit les propriétés : l'oracle ne sert plus ici. Mais
+certains styles n'appartiennent qu'à un genre, et ça donne un contrôle gratuit
+sur l'octet de style. Vérifié sur les trois piles, environ 180 parts :
+
+    checkbox (7), radio (5), standard (1), shadow (14)   boutons SEULEMENT
+    scrolling (8)                                        champs SEULEMENT
+    transparent, opaque, rectangle                       les deux, ce qui est juste
+
+Pas une violation, et zéro anomalie sur les trois piles.
+
+TEST3 TRANCHE, PARCE QUE J'EN CONNAIS LA RÉPONSE
+------------------------------------------------
+
+torture2.c écrit, depuis des semaines :
+
+    pose_champ(c1, "R", 20, 88, 470, 200, "scrolling");
+    if (r) r->dont_search = 1;
+
+Et le lecteur rend « R … scrolling … dontSearch », seule part de la pile à porter
+l'un ou l'autre. Les champs sortent en Geneva aligné à gauche, les boutons en
+Chicago centré avec showName : les défauts exacts d'HyperCard pour une part
+neuve, que personne chez nous n'a écrits.
+
+LE TEXTE NE VIT PAS TOUJOURS AVEC SA PART, et TEST3 le montre du premier coup :
+
+    contenu propre 1 : « alpha beta gamma delta »   le champ A de la carte
+    contenu fond 1   : « auFond »                   le champ T du FOND, sur cette carte
+    contenu propre 4 : « omega »                    le champ B
+
+Dans un bloc CARD, un identifiant NÉGATIF désigne une part de la carte ; un
+identifiant POSITIF désigne un champ du fond dont cette carte-là porte son propre
+texte — ce que notre modèle appelle un BgText. Les confondre ferait afficher le
+même texte sur toutes les cartes d'un fond. Et « auFond » est mot pour mot la
+chaîne de la mesure couche_implicite.
+
+NOS DEUX SOURCES SE CONTREDISAIENT, ET LA MESURE A TRANCHÉ
+----------------------------------------------------------
+
+Pour un texte DÉCORÉ, la spec dit que l'entier de 0x4 est une TAILLE en octets,
+liste des plages et lui-même compris ; l'autre lecteur le traite comme un NOMBRE
+de plages de deux octets. Les deux calculs ne peuvent pas être justes ensemble.
+
+Suivi la spec, puis regardé le résultat : les dix contenus décorés d'Apple
+rendent de la prose française propre — « Introduction / L'application Hype… » —
+qui commence au bon octet, sans caractère perdu ni garbage en tête. LA SPEC AVAIT
+RAISON. Les styles par plage eux-mêmes ne sont pas lus : il faudrait le bloc
+STBL, et le compteur `contenus_decores` rend le manque visible.
+
+LA TABLE DES POLICES N'EST PAS UN LUXE. Les identifiants de police n'étaient pas
+les mêmes d'un Macintosh à l'autre, d'où un bloc FTBL qui porte les NOMS. Les
+vraies piles le prouvent : Chicago y vaut 16383 dans l'une, Charcoal 2002 dans
+l'autre. Sans ce bloc, une part rendrait sur une autre machine une police qui
+n'est pas la sienne — le défaut exact que ce bloc existe pour éviter.
+
+LE FUZZING, ENCORE, ET IL A EU RAISON DE MOI DEUX FOIS
+------------------------------------------------------
+
+6162 fichiers abîmés dérivés des TROIS vraies piles, sous ASan, UBSan et
+LeakSanitizer : 4768 lus, 1394 refusés, ZÉRO signalement.
+
+Il a fallu deux corrections pour y arriver, et la première était fondée sur une
+hypothèse fausse. J'avais accusé le compteur de parts, monté après les
+allocations qu'il gouverne — c'était vrai en soi, et corrigé, mais ce n'était pas
+le défaut. La trace de LeakSanitizer a nommé le vrai coupable : le NOM d'une
+couche, treize octets.
+
+La cause : un emplacement de carte était réputé libre quand son identifiant
+valait zéro. Or un bloc CARD peut PORTER l'identifiant zéro — une mutation d'un
+octet suffit — et son emplacement restait donc marqué libre après avoir été
+rempli : la carte suivante venait écraser son nom sans le libérer. Deux blocs de
+même identifiant faisaient de même. L'occupation se suit désormais à part.
+
+    LA LEÇON EST SUR LA MÉTHODE, pas sur le défaut : deviner deux fois de suite
+    sur un défaut mémoire coûte plus cher que lire la trace une fois. Elle
+    nommait la ligne exacte.
+
 CE QUI RESTE NON MESURÉ
 -----------------------
 HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc

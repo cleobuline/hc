@@ -75,23 +75,60 @@ static void ecris32(Tampon *t, size_t ou, unsigned long v)
 }
 
 /* Une part : en-tête de 0x1E octets, le nom, puis (s'il y a un script) un zéro
- * et le script. La taille se réécrit à la fin, quand on la connaît. */
+ * et le script. La taille se réécrit à la fin, quand on la connaît.
+ *
+ * LES DRAPEAUX SONT POSÉS AVEC DES VALEURS DISTINCTES D'UNE PART À L'AUTRE, et
+ * ce n'est pas de la décoration : quatre bits du format sont INVERSÉS — le bit
+ * allumé signifie faux — et quatre autres CHANGENT DE SENS selon le genre de la
+ * part. Un jeu de drapeaux tous à zéro, ou tous les mêmes, ne distinguerait ni
+ * une inversion oubliée ni deux familles mélangées. La référence de la suite
+ * porte donc un bouton et un champ dont AUCUN drapeau ne coïncide. */
 static void pose_part(Tampon *t, int id, int bouton, int h, int g, int b, int d,
-                      const char *nom, const char *script)
+                      unsigned drapeaux, unsigned drapeaux2, unsigned style,
+                      int police, int corps, const char *nom, const char *script)
 {
     size_t deb = t->n;
     pose16(t, 0);                               /* taille, réécrite plus bas */
     pose16(t, (unsigned)id);
-    pose16(t, bouton ? 0x0100u : 0x0000u);      /* bit 8 : bouton */
+    pose16(t, (bouton ? 0x0100u : 0x0000u) | drapeaux);
     pose16(t, (unsigned)h); pose16(t, (unsigned)g);
     pose16(t, (unsigned)b); pose16(t, (unsigned)d);
-    pose_zeros(t, 0x1E - 0x0E);                 /* styles, polices, hauteur de ligne */
+    pose8(t, drapeaux2);                        /* 0x0E */
+    pose8(t, style);                            /* 0x0F */
+    pose16(t, bouton ? 42u : 3u);               /* 0x10 largeur du titre / derniere ligne */
+    pose16(t, bouton ? 7u : 1u);                /* 0x12 icone / premiere ligne */
+    pose16(t, bouton ? 1u : 0xFFFFu);           /* 0x14 alignement : centre / droite */
+    pose16(t, (unsigned)police);                /* 0x16 identifiant de police */
+    pose16(t, (unsigned)corps);                 /* 0x18 corps */
+    pose8(t, 0x03);                             /* 0x1A gras + italique */
+    pose8(t, 0);                                /* 0x1B calage */
+    pose16(t, 18);                              /* 0x1C hauteur de ligne */
     pose_texte(t, nom);
     if (script) { pose8(t, 0); pose_texte(t, script); }
     if ((t->n - deb) % 2) pose8(t, 0);          /* calage sur 16 bits */
     size_t taille = t->n - deb;
     t->o[deb] = (unsigned char)((taille >> 8) & 0xFF);
     t->o[deb+1] = (unsigned char)(taille & 0xFF);
+}
+
+/* La table des polices. Deux entrées, dont une à identifiant ÉLEVÉ : les vraies
+ * piles en portent (16383 pour Chicago dans l'une, 2002 pour Charcoal), et c'est
+ * précisément pourquoi HyperCard rangeait les NOMS. */
+static void pose_ftbl(Tampon *t)
+{
+    size_t deb = t->n;
+    pose32(t, 0);
+    for (const char *s = "FTBL"; *s; s++) pose8(t, (unsigned char)*s);
+    pose32(t, 6000);
+    pose32(t, 0);
+    pose32(t, 2);                               /* 0x10 deux polices */
+    pose32(t, 0);                               /* 0x14 */
+    pose16(t, 3);   pose_texte(t, "Geneva");    /* 0x18 */
+    if ((t->n - deb) % 2) pose8(t, 0);
+    pose16(t, 16383); pose_texte(t, "Chicago");
+    if ((t->n - deb) % 2) pose8(t, 0);
+    while ((t->n - deb) % 32) pose8(t, 0);
+    ecris32(t, deb, (unsigned long)(t->n - deb));
 }
 
 /* Un contenu de part : id, taille, marqueur de texte nu, la donnée. */
@@ -190,14 +227,36 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
 
     int carte = (strcmp(type, "CARD") == 0);
     unsigned nparts = (unsigned)(avec_bouton + avec_champ);
-    unsigned ncont  = (unsigned)avec_contenu;
+    unsigned ncont  = (unsigned)(avec_contenu ? 2 : 0);
 
     /* Les parts et les contenus se montent à part, pour connaître leur taille
      * totale avant d'écrire les en-têtes qui l'annoncent. */
     Tampon parts = {0,0,0}, conts = {0,0,0};
-    if (avec_champ)  pose_part(&parts, 1, 0, 54, 20, 80, 250, "A", NULL);
-    if (avec_bouton) pose_part(&parts, 2, 1, 302, 20, 324, 110, "TORTURE", SCRIPT_BOUTON);
-    if (avec_contenu) pose_contenu(&conts, -1, "du texte");
+    /* AUCUN DRAPEAU NE COÏNCIDE ENTRE LES DEUX, pour que la référence distingue
+     * une inversion oubliée d'un mélange de familles.
+     *
+     * Le champ : 0x0020 dontWrap, 0x0010 dontSearch, 0x0001 lockText — et
+     * 0x0004 ABSENT, donc fixedLineHeight VRAI, puisque ce bit-là est inversé.
+     * Son octet de 0xE vaut 0x50 : showLines et multipleLines, ni autoSelect ni
+     * wideMargins. Style 7 : scrolling, qui n'existe que pour un champ.
+     *
+     * Le bouton : 0x0080 donc INVISIBLE, 0x0004 donc fixedLineHeight FAUX,
+     * 0x0001 donc DÉSACTIVÉ, 0x0002 autoTab. Son octet de 0xE vaut 0xA5 :
+     * showName et autoHilite allumés, hilite éteint, le bit 4 éteint donc
+     * sharedHilite VRAI, et la famille 5. Style 5 : checkbox, qui n'existe que
+     * pour un bouton. */
+    if (avec_champ)  pose_part(&parts, 1, 0, 54, 20, 80, 250,
+                               0x0031u, 0x50u, 7, 3, 12, "A", NULL);
+    if (avec_bouton) pose_part(&parts, 2, 1, 302, 20, 324, 110,
+                               0x0087u, 0xA5u, 5, 16383, 9, "TORTURE", SCRIPT_BOUTON);
+    /* DEUX CONTENUS, ET LE SIGNE DE L'IDENTIFIANT EST TOUT L'OBJET : -1 désigne
+     * la part 1 DE CETTE COUCHE, tandis que +1 désigne le champ 1 DU FOND dont
+     * cette carte-là porte son propre texte. Les confondre ferait afficher le
+     * même texte sur toutes les cartes du fond. */
+    if (avec_contenu) {
+        pose_contenu(&conts, -1, "du texte a la carte");
+        pose_contenu(&conts,  1, "du texte au fond");
+    }
 
     if (carte) {
         pose16(t, 0); pose16(t, 0);             /* 0x14 drapeaux, 0x16 calage */
@@ -328,6 +387,7 @@ static Tampon monte_la_pile(unsigned long format, unsigned protection)
 {
     Tampon t = {0,0,0};
     pose_stak(&t, format, 1, 2, protection);
+    pose_ftbl(&t);
     pose_couche(&t, "BKGD", 2000, 0, 0, 1, 0, "Fond", SCRIPT_FOND);
     pose_couche(&t, "CARD", 3000, 2000, 1, 1, 1, "Atelier", SCRIPT_CARTE);
     pose_couche(&t, "CARD", 3001, 2000, 0, 0, 0, "", NULL);
@@ -366,11 +426,41 @@ static void dis_couche(const char *quoi, const HcOrigCouche *k)
     dis_script("script", k->script);
     for (int i = 0; i < k->nparts; i++) {
         const HcOrigPart *p = &k->parts[i];
-        printf("  %s id %d « %s » (%d,%d,%d,%d)\n",
+        printf("  %s id %d « %s » (%d,%d,%d,%d) %s\n",
                p->genre == HC_ORIG_BOUTON ? "bouton" : "champ ",
-               p->id, p->nom ? p->nom : "(nul)", p->haut, p->gauche, p->bas, p->droite);
+               p->id, p->nom ? p->nom : "(nul)", p->haut, p->gauche, p->bas, p->droite,
+               p->style);
+        /* TOUS LES DRAPEAUX SONT ÉCRITS, y compris les faux : c'est ce qui fait
+         * qu'une inversion oubliée se voit dans le diff de la référence. Un
+         * affichage qui ne montrerait que les vrais laisserait passer un bit
+         * inversé dans le mauvais sens sur une part qui ne le porte pas. */
+        printf("    %s  police %s corps %d style %d hauteur %d alignement %d famille %d\n",
+               p->visible ? "visible" : "INVISIBLE",
+               p->police ? p->police : "(aucune)",
+               p->textsize, p->textstyle, p->textheight, p->text_align, p->family);
+        printf("    dontWrap %d dontSearch %d sharedText %d fixedLineHeight %d autoTab %d\n",
+               p->dont_wrap, p->dont_search, p->shared_text, p->fixed_lh, p->auto_tab);
+        if (p->genre == HC_ORIG_BOUTON)
+            printf("    bouton : enabled %d showName %d hilite %d autoHilite %d "
+                   "sharedHilite %d largeurTitre %d icone %d\n",
+                   p->enabled, p->showname, p->hilite, p->autohilite,
+                   p->shared_hilite, p->titlewidth, p->icon);
+        else
+            printf("    champ : lockText %d showLines %d wideMargins %d "
+                   "multipleLines %d autoSelect %d lignes %d..%d\n",
+                   p->locktext, p->show_lines, p->wide_margins,
+                   p->multiple_lines, p->auto_select,
+                   p->premiere_ligne, p->derniere_ligne);
         dis_script("  script", p->script);
     }
+    /* LE SIGNE DE L'IDENTIFIANT EST LA CHOSE À VOIR : « propre » contre
+     * « du fond », c'est-à-dire le texte de la part de cette couche contre le
+     * texte qu'une CARTE porte pour un champ du FOND. */
+    for (int i = 0; i < k->ncontenus; i++)
+        printf("  contenu %s part %d : « %s »%s\n",
+               k->contenus[i].du_fond ? "DU FOND," : "propre,  ",
+               k->contenus[i].id_part, k->contenus[i].texte,
+               k->contenus[i].decore ? "   [décoré : styles non lus]" : "");
 }
 
 static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int tout)
@@ -387,14 +477,15 @@ static void lis_et_dis(const char *titre, const unsigned char *o, size_t n, int 
                          : "NON LU — les cartes restent dans l'ordre du FICHIER",
            pile.npages);
     printf("format %lu, %lu fond(s), %lu carte(s), %dx%d, somme %s, %d bloc%s, "
-           "chaine %s la fin, TAIL %s, LIST %s, %d anomalie(s)\n",
+           "chaine %s la fin, TAIL %s, LIST %s, %d anomalie(s), "
+           "%d police(s), %d contenu(s) décoré(s)\n",
            pile.format, pile.nfonds, pile.ncartes, pile.largeur, pile.hauteur,
            pile.somme_juste ? "juste" : "FAUSSE",
            pile.nblocs, pile.nblocs == 1 ? "" : "s",
            pile.chaine_atteint_la_fin ? "atteint" : "N'ATTEINT PAS",
            pile.tail_vu ? "vu" : "absent",
            pile.liste_vue ? "vu" : "ABSENT (l'ordre des cartes n'est donc pas connu)",
-           pile.anomalies);
+           pile.anomalies, pile.npolices, pile.contenus_decores);
 
     if (tout) {
         for (int i = 0; i < pile.nblocs; i++)
@@ -575,6 +666,27 @@ int main(int argc, char **argv)
             i += taille;
         }
         lis_et_dis("les deux nombres de cartes de la liste se contredisent", c, t.n, 1);
+        free(c);
+    }
+
+    /* UN STYLE QUI NE VA PAS AU GENRE, et c'est le seul recoupement qu'on ait
+     * sur l'octet de style — aucun lecteur tiers ne lit les propriétés. Un
+     * « scrolling » n'existe que pour un champ, un « checkbox » que pour un
+     * bouton : en trouver un du mauvais côté voudrait dire qu'on lit le mauvais
+     * octet. Compté, jamais fatal.
+     *
+     * Vérifié sur les trois vraies piles avant d'y croire : sur environ 180
+     * parts, checkbox, radio, standard et shadow n'apparaissent QUE sur des
+     * boutons, et scrolling QUE sur des champs. Pas une violation. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        /* le champ « A » porte le style 7 (scrolling) : on le passe à 5
+         * (checkbox), qui n'a pas de sens pour un champ */
+        for (size_t i = 0; i + 8 < t.n; i++)
+            if (memcmp(c + i, "A", 1) == 0 && c[i+1] == 0 && i > 0x1E && c[i - 0x1E + 0x0F] == 7) {
+                c[i - 0x1E + 0x0F] = 5; break;
+            }
+        lis_et_dis("un « checkbox » sur un CHAMP (le style ne va pas au genre)", c, t.n, 1);
         free(c);
     }
 

@@ -43,7 +43,67 @@ typedef struct {
     int   haut, gauche, bas, droite;
     char *nom;                  /* UTF-8, jamais NULL (« » si sans nom) */
     char *script;               /* UTF-8, NULL s'il n'y en a pas */
+
+    /* --- les propriétés communes ---
+     *
+     * QUATRE DRAPEAUX DU FORMAT SONT INVERSÉS, et c'est le piège de cette
+     * structure : le bit allumé signifie FAUX. La spec les écrit entre
+     * parenthèses — « (not visible) », « (not enabled) », « (not fixed line
+     * height) », « (not shared highlight) ». Les champs ci-dessous portent tous
+     * le sens POSITIF, celui de notre modèle, la conversion étant faite une
+     * fois pour toutes à la lecture. */
+    int   visible;
+    int   enabled;              /* bouton : actif ; champ : voir locktext */
+    int   locktext;             /* champ : le même bit que enabled */
+    int   dont_wrap;
+    int   dont_search;
+    int   shared_text;
+    int   fixed_lh;
+    int   auto_tab;
+    int   family;               /* 0-15 */
+
+    /* --- LES MÊMES BITS, DEUX SENS ---
+     *
+     * L'octet de 0xE porte quatre bits dont la signification DÉPEND DU GENRE
+     * de la part. Un bouton y lit « montre le nom », « allumé », « allumage
+     * automatique », « allumage partagé » ; un champ y lit « montre les
+     * lignes », « marges larges », « plusieurs lignes », « sélection
+     * automatique ». Les huit champs sont donc séparés ici, et seuls ceux du
+     * bon genre sont remplis — mélanger les deux familles donnerait des
+     * propriétés plausibles et fausses, ce qui est le pire résultat. */
+    int   showname, hilite, autohilite, shared_hilite;        /* bouton */
+    int   show_lines, wide_margins, multiple_lines, auto_select; /* champ */
+
+    const char *style;          /* « transparent », « scrolling »… jamais NULL */
+    int   titlewidth;           /* bouton seulement */
+    int   icon;                 /* bouton seulement ; 0 = aucune */
+    int   premiere_ligne;       /* champ seulement */
+    int   derniere_ligne;       /* champ seulement */
+
+    int   text_align;           /* -1 droite, 0 gauche, 1 centre */
+    char *police;               /* nom résolu par FTBL, ou NULL si inconnu */
+    int   textsize;
+    int   textstyle;            /* MÊMES BITS que HC_BOLD..HC_GROUP */
+    int   textheight;
 } HcOrigPart;
+
+/* Le texte d'une part.
+ *
+ * IL NE VIT PAS TOUJOURS AVEC SA PART, et c'est la subtilité de ce format. Dans
+ * un bloc CARD, un identifiant NÉGATIF désigne une part de la carte ; un
+ * identifiant POSITIF désigne un champ du FOND dont cette carte-là porte son
+ * propre texte. C'est exactement ce que notre modèle appelle un BgText, et le
+ * confondre avec le texte par défaut du fond ferait que toutes les cartes
+ * afficheraient la même chose.
+ *
+ * Les contenus appartiennent à la COUCHE et non à la part : une seule
+ * propriété de chaque pointeur, donc aucune double libération possible. */
+typedef struct {
+    int   id_part;
+    int   du_fond;              /* 1 : part du fond, texte propre à cette carte */
+    char *texte;                /* UTF-8, jamais NULL */
+    int   decore;               /* portait des styles par plage, NON LUS */
+} HcOrigContenu;
 
 /* Une carte ou un fond : les deux blocs ont la même queue (parts, contenus,
  * nom, script) et ne diffèrent que par leur en-tête. */
@@ -56,6 +116,8 @@ typedef struct {
     char *script;               /* UTF-8, NULL s'il n'y en a pas */
     HcOrigPart *parts;
     int   nparts;
+    HcOrigContenu *contenus;
+    int   ncontenus;
 } HcOrigCouche;
 
 /* Le recensement des blocs, avant toute interprétation. C'est la seule partie
@@ -133,6 +195,18 @@ typedef struct {
      * malhonnête que de deviner : dans les deux cas on perdrait ce qu'on
      * savait lire. */
     int           anomalies;
+
+    /* LA TABLE DES POLICES, et elle n'est pas un luxe : les identifiants de
+     * police n'étaient PAS les mêmes d'un Macintosh à l'autre, si bien
+     * qu'HyperCard rangeait les NOMS dans la pile. Sans ce bloc, « police 3 »
+     * ne veut rien dire. */
+    struct { int id; char *nom; } *polices;
+    int           npolices;
+
+    /* Combien de contenus portaient des styles par plage. Ils ne sont pas lus —
+     * il faudrait le bloc STBL — et leur TEXTE l'est. Compté pour que le manque
+     * soit visible plutôt qu'oublié. */
+    int           contenus_decores;
 } HcOrigPile;
 
 /* Rend 0 en cas de succès, et remplit `pourquoi` sinon.
