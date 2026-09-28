@@ -321,14 +321,82 @@ donc jamais refusé.
     gestionnaire. Les quatre le trouvent et l'exécutent. LES PILES D'APPLE
     TOURNERONT.
 
-Le défaut est donc dans hct_verifie seul, et il est précis : son propre en-tête
-définit ERREUR comme « le script ne peut pas s'exécuter tel quel — HyperCard
-refuserait aussi ». Ici ni HyperCard ni notre exécuteur ne refusent. Du texte
-hors gestionnaire relève au plus de l'AVERTISSEMENT.
+Le défaut était donc dans hct_verifie seul, et il est précis : son propre
+en-tête définit ERREUR comme « le script ne peut pas s'exécuter tel quel —
+HyperCard refuserait aussi ». Ni HyperCard ni notre exécuteur ne refusaient. Du
+texte hors gestionnaire relève au plus de l'AVERTISSEMENT.
 
 Troisième fois en deux jours qu'un instrument à moi mesure autre chose que ce
-qu'il annonce. Le chiffre honnête n'est pas encore écrit : il faudra reprendre
-la mesure avec un instrument qui exerce l'exécuteur, pas le vérificateur.
+qu'il annonce.
+
+LA RÈGLE EST STRUCTURELLE, ET MA PREMIÈRE VERSION ÉTAIT FAUSSE
+--------------------------------------------------------------
+
+Je l'avais écrite POSITIONNELLE : la faute tombe-t-elle dans l'étendue d'un
+gestionnaire ? Mon propre témoin positif l'a démolie en une seconde — « on
+mouseUp / beep », sans « end », se mettait à PASSER. Sa faute est signalée
+après le dernier jeton du gestionnaire, donc hors de son étendue, donc dégradée.
+Or un « end » manquant est une faute DU gestionnaire.
+
+Les deux arbres, affichés côte à côte, donnent la règle juste :
+
+    end manquant       bloc > gestionnaire on > ERREUR      <- DESCENDANT
+    bandeau d'Apple    bloc > ERREUR, ERREUR, gestionnaire  <- FRÈRE
+
+Une faute DESCENDANTE d'un gestionnaire est une ERREUR, une faute SŒUR des
+gestionnaires est un avertissement. Rien à voir avec les positions dans le
+texte. Sans ce témoin positif, la correction d'un défaut en aurait introduit un
+autre, plus grave que lui.
+
+ET UNE SECONDE GARDE ÉTAIT FAUSSE AUSSI. J'avais écrit « si aucun gestionnaire
+n'est reconnu, on garde ERREUR », pour qu'un script entièrement illisible ne
+passe pas pour une remarque. Mais le script de pile d'Apple n'a QUE son bandeau
+et des commentaires — l'un d'eux dit « THE SCRIPTS FOR THIS STACK ARE IN THE
+BACKGROUND SCRIPT » — et la garde le refusait en entier. Un script sans
+gestionnaire n'a rien qui puisse échouer.
+
+Et ça ne cache rien : le bouton « Vérifier » de l'éditeur (HCview.m,
+checkScript) affiche TOUS les signalements avec leur niveau et ne bloque aucun
+enregistrement. Seul le titre change — « 3 fautes de syntaxe » devient « Script
+correct, avec des remarques », ce qui est la vérité pour la pile d'Apple.
+
+LE PREMIER VRAI TROU DE v3, ET C'EST UN DIÈSE DE MUSICIEN
+---------------------------------------------------------
+
+Après ces deux corrections il restait UN refus, et celui-là était réel :
+
+    play harpsichord tempo 300 a#2q c3w
+
+La ligne exacte d'un bouton « Hilite » de la pile d'Apple. « play » prend des
+notes, et une note altérée porte un dièse : a#2q, c#4q, g#3q. Le lexer
+s'arrêtait dessus — « caractère inattendu », colonne 31 — AVANT que v3_cmd_play,
+qui existe et prend un argument libre, puisse voir quoi que ce soit.
+
+MESURÉ À L'EXÉCUTION, pas seulement au vérificateur : le son ne jouait pas, et
+l'utilisateur voyait un dialogue d'erreur. C'est le premier défaut de v3 trouvé
+par du HyperTalk RÉEL, et aucune pile de torture écrite par nous ne l'aurait
+donné — je n'ai jamais écrit une note de musique dans un banc.
+
+Le dièse est désormais accepté À L'INTÉRIEUR d'un mot, jamais en tête, si bien
+qu'un « # » nu reste une faute. Il n'a aucun autre rôle en HyperTalk — ce n'est
+pas un opérateur, et dans une chaîne il passait déjà — donc aucune expression ne
+change de sens.
+
+LE CHIFFRE HONNÊTE
+------------------
+
+    Découvrir HyperCard (Apple)   28 scripts sur 28    100 %
+    3D Parametric Equations       66 sur 66            100 %
+    TEST3 (notre torture)          4 sur 4             100 %
+
+Avec ses témoins positifs : onze cas dans tests/harnais/pilereelle.c, et neuf
+scripts cassés exprès qui doivent être refusés. Et avec sa réserve, qui ne
+bouge pas : hct_verifie vérifie la SYNTAXE. « 804 lignes s'analysent » n'est pas
+« elles tournent juste ». Cette seconde question reste ouverte.
+
+    ET 98 SCRIPTS NE FONT PAS UNE POPULATION. Deux piles étrangères, dont une
+    seule vraiment étrangère au projet. Le chiffre ne vaudra quelque chose
+    qu'avec une dizaine.
 
 CE QUI RESTE NON MESURÉ
 -----------------------

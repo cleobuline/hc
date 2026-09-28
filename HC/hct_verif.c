@@ -199,15 +199,14 @@ static void texte_du(const HctNoeud *n, char *out, int outlen)
     out[l > 0 ? l : 0] = '\0';
 }
 
-/* Récolte les nœuds HCTN_ERREUR — les fautes de syntaxe proprement dites. */
-static void recolte_erreurs(const HctNoeud *n, HctRapport *r)
-{
-    if (!n) return;
-    if (n->genre == HCTN_ERREUR)
-        ajoute(r, HCT_V_ERREUR, n->jeton.ligne, n->jeton.col,
-               n->msg ? n->msg : "forme invalide", n->jeton.deb, n->jeton.len);
-    for (int i = 0; i < n->nfils; i++) recolte_erreurs(n->fils[i], r);
-}
+/* Récolte les nœuds HCTN_ERREUR — les fautes de syntaxe proprement dites.
+ *
+ * Le niveau dépend de la POSITION : voir niveau_selon_place. Il faut que la même
+ * règle s'applique ici et au parcours des jetons, sans quoi la déduplication
+ * d'`ajoute` garderait celui des deux qui arrive d'abord, et le niveau d'une
+ * faute dépendrait de l'ordre des passes. */
+/* Sa définition est plus bas, après Etendues : elle en a besoin, et son seul
+ * appelant — hct_verifie — vient après les deux. */
 
 /* Les avertissements : noms de gestionnaires suspects, « end » discordants. */
 static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
@@ -242,6 +241,99 @@ static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
     for (int i = 0; i < n->nfils; i++) recolte_avertissements(n->fils[i], r);
 }
 
+/* ---------------------------------------------- dedans ou dehors ? */
+
+/* CE QU'HYPERCARD NE COMPILE JAMAIS NE PEUT PAS EMPÊCHER L'EXÉCUTION.
+ *
+ * En HyperCard, un gestionnaire est compilé À SON APPEL, et seul son bloc l'est.
+ * Le texte qui traîne hors de tout « on … end » n'est donc jamais analysé, et
+ * ne refuse rien. Les piles d'Apple s'en servent : le script de « Découvrir
+ * HyperCard » commence par un bandeau de copyright SANS « -- » — un trait de
+ * « ∞ », le titre, la version, « ©Copyright 1993-1995 by Apple Computer,Inc. »,
+ * « Tous droits réservés. », un second trait — et ce n'est qu'APRÈS que les
+ * commentaires commencent.
+ *
+ * Notre exécuteur fait comme HyperCard : mesuré sur quatre cas — bandeau non
+ * commenté, bandeau commenté, rien devant, et du charabia APRÈS le
+ * gestionnaire. Les quatre trouvent le gestionnaire et l'exécutent.
+ *
+ * Ce vérificateur, lui, analysait le texte ENTIER et rendait ERREUR. Or
+ * hct_verif.h définit ERREUR comme « le script ne peut pas s'exécuter tel quel
+ * — HyperCard refuserait aussi », ce qui était faux ici : quatre scripts de la
+ * pile d'Apple étaient déclarés fautifs alors qu'ils tournent. Une faute hors de
+ * tout gestionnaire est donc un AVERTISSEMENT.
+ *
+ * ET LE CARACTÈRE, LUI, N'EST PAS EN CAUSE — mesuré aussi : « ∞ », « © », « # »
+ * et les accents passent sans un mot dans un commentaire et dans une chaîne, et
+ * sont refusés nus À L'INTÉRIEUR d'un gestionnaire, ce qui est juste puisque ce
+ * n'est pas du HyperTalk. Seule la POSITION comptait. */
+typedef struct { const char *deb; int len; } Etendue;
+typedef struct { Etendue t[64]; int n; } Etendues;
+
+static void collecte_gestionnaires(const HctNoeud *n, Etendues *e)
+{
+    if (!n) return;
+    if (n->genre == HCTN_GESTIONNAIRE && e->n < (int)(sizeof e->t / sizeof e->t[0])) {
+        const char *deb; int len;
+        if (hct_noeud_etendue(n, &deb, &len) && len > 0) {
+            e->t[e->n].deb = deb;
+            e->t[e->n].len = len;
+            e->n++;
+        }
+    }
+    for (int i = 0; i < n->nfils; i++) collecte_gestionnaires(n->fils[i], e);
+}
+
+/* Le niveau d'un JETON fautif du lexer selon sa POSITION dans le source.
+ *
+ * Réservé aux fautes du lexer, qui n'ont pas de place dans l'arbre : les nœuds
+ * d'erreur, eux, se jugent par la STRUCTURE — voir recolte_erreurs, et la
+ * mesure qui a fait abandonner la position pour eux.
+ *
+ */
+static HctNiveau niveau_selon_place(const Etendues *e, const char *ou)
+{
+    /* Sans position exploitable on ne sait pas juger : on garde ERREUR, parce
+     * que dégrader sur une ignorance serait la mauvaise moitié du doute. Un
+     * script SANS gestionnaire, en revanche, n'a rien qui puisse échouer — voir
+     * hct_verifie et la pile d'Apple qui l'a montré. */
+    if (!ou) return HCT_V_ERREUR;
+    if (e->n == 0) return HCT_V_AVERTISSEMENT;
+    for (int i = 0; i < e->n; i++)
+        if (ou >= e->t[i].deb && ou < e->t[i].deb + e->t[i].len)
+            return HCT_V_ERREUR;
+    return HCT_V_AVERTISSEMENT;
+}
+
+/* LA RÈGLE EST STRUCTURELLE, ET UNE MESURE A CORRIGÉ SA PREMIÈRE VERSION.
+ *
+ * Je l'avais écrite POSITIONNELLE — la faute tombe-t-elle dans l'étendue d'un
+ * gestionnaire ? — et mon propre témoin positif l'a démolie aussitôt : « on
+ * mouseUp / beep », sans « end », se mettait à PASSER. Sa faute est signalée
+ * au-delà du dernier jeton du gestionnaire, donc hors de son étendue, donc
+ * dégradée en avertissement. Or un « end » manquant est une faute DU
+ * gestionnaire : HyperCard le refuserait à son appel.
+ *
+ * Les deux arbres le disent clairement, et c'est en les affichant qu'on le
+ * voit :
+ *
+ *     end manquant       bloc > gestionnaire on > ERREUR      <- DESCENDANT
+ *     bandeau d'Apple    bloc > ERREUR, ERREUR, gestionnaire  <- FRÈRE
+ *
+ * Donc : une faute DESCENDANTE d'un gestionnaire est une ERREUR, une faute
+ * SŒUR des gestionnaires est un avertissement. Rien à voir avec les positions
+ * dans le texte. */
+static void recolte_erreurs(const HctNoeud *n, HctRapport *r, int dans_gestionnaire)
+{
+    if (!n) return;
+    if (n->genre == HCTN_ERREUR)
+        ajoute(r, dans_gestionnaire ? HCT_V_ERREUR : HCT_V_AVERTISSEMENT,
+               n->jeton.ligne, n->jeton.col,
+               n->msg ? n->msg : "forme invalide", n->jeton.deb, n->jeton.len);
+    if (n->genre == HCTN_GESTIONNAIRE) dans_gestionnaire = 1;
+    for (int i = 0; i < n->nfils; i++) recolte_erreurs(n->fils[i], r, dans_gestionnaire);
+}
+
 /* ------------------------------------------------------------- l'entrée */
 
 int hct_verifie(const char *src, HctRapport *rap, int avec_avertissements)
@@ -255,20 +347,44 @@ int hct_verifie(const char *src, HctRapport *rap, int avec_avertissements)
 
     hct_lex(src, &lot);
 
-    /* Les fautes du lexer d'abord : guillemet non fermé, caractère
-     * inattendu. Elles portent déjà leur position. */
-    for (int i = 0; i < lot.n; i++) {
-        const HctJeton *j = &lot.jetons[i];
-        if (j->genre == HCT_ERREUR)
-            ajoute(rap, HCT_V_ERREUR, j->ligne, j->col,
-                   j->msg ? j->msg : "jeton invalide", j->deb, j->len);
-    }
-
+    /* L'ANALYSE PASSE AVANT LE RAPPORT, et l'ordre compte : c'est elle qui dit
+     * où sont les gestionnaires, et le niveau d'une faute en dépend. */
     HctAnalyseur a;
     hct_analyseur_init(&a, &lot, &reserve);
     HctNoeud *arbre = hct_bloc_script(&a);
 
-    recolte_erreurs(arbre, rap);
+    Etendues dedans;
+    dedans.n = 0;
+    collecte_gestionnaires(arbre, &dedans);
+
+    /* Les fautes du lexer : guillemet non fermé, caractère inattendu. Elles
+     * portent déjà leur position. */
+    for (int i = 0; i < lot.n; i++) {
+        const HctJeton *j = &lot.jetons[i];
+        if (j->genre == HCT_ERREUR)
+            ajoute(rap, niveau_selon_place(&dedans, j->deb), j->ligne, j->col,
+                   j->msg ? j->msg : "jeton invalide", j->deb, j->len);
+    }
+
+    /* La racine n'est pas un gestionnaire : on part donc « dehors », et seuls
+     * les sous-arbres des gestionnaires basculent en ERREUR.
+     *
+     * UN SCRIPT SANS AUCUN GESTIONNAIRE NE FAIT PAS EXCEPTION, et j'avais
+     * d'abord écrit le contraire. Le script de pile de « Découvrir HyperCard »
+     * n'a QUE son bandeau et des commentaires — l'un d'eux dit « THE SCRIPTS FOR
+     * THIS STACK ARE IN THE BACKGROUND SCRIPT » — et la garde le faisait
+     * refuser en entier.
+     *
+     * Or un script sans gestionnaire n'a rien qui puisse échouer : HyperCard n'y
+     * compile jamais rien. Le contrat d'ERREUR — « ne peut pas s'exécuter tel
+     * quel » — ne s'y applique donc pas.
+     *
+     * Et ça ne cache rien à personne : le bouton « Vérifier » de l'éditeur
+     * (HCview.m, checkScript) affiche TOUS les signalements avec leur niveau, et
+     * ne bloque aucun enregistrement. Seul le titre de l'alerte change — « 3
+     * fautes de syntaxe » devient « Script correct, avec des remarques », ce qui
+     * est la vérité pour la pile d'Apple. */
+    recolte_erreurs(arbre, rap, 0);
     if (avec_avertissements) recolte_avertissements(arbre, rap);
 
     hct_reserve_libere(&reserve);

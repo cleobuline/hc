@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. le niveau d'une faute depend de sa PLACE dans l'arbre ===
+(ERREUR = « ne peut pas s'executer, HyperCard refuserait aussi »,
+ c'est le contrat ecrit dans hct_verif.h)
+ok   le bandeau d'Apple devant un gestionnaire            -> remarque  (caractère inattendu)
+ok   le bandeau SEUL, aucun gestionnaire du tout          -> remarque  (caractère inattendu)
+ok   du charabia APRES le dernier gestionnaire            -> remarque  (caractère inattendu)
+ok   « end » manquant (faute DU gestionnaire)           -> erreur    (« end » manquant)
+ok   « end » qui ne reprend pas le nom                  -> erreur    (« end » ne reprend pas le nom)
+ok   du charabia DANS un gestionnaire                     -> erreur    (caractère inattendu)
+ok   parenthese non fermee dans un gestionnaire           -> erreur    (parenthèse fermante attendue)
+ok   temoin : un gestionnaire sain                        -> rien    
+--- le caractere lui-meme : dans un commentaire, dans une chaine ---
+ok   ∞ © # et accents dans un commentaire              -> rien    
+ok   ∞ © # dans une chaine                             -> rien    
+ok   # nu dans un gestionnaire : toujours une faute       -> erreur    (caractère inattendu)
+
+=== 2. le diese d'une note : « play harpsichord tempo 300 a#2q » ===
+(la ligne exacte d'un bouton « Hilite » de la pile d'Apple. Le lexer
+ s'arretait dessus AVANT que v3_cmd_play voie quoi que ce soit : le son
+ ne jouait pas, et l'utilisateur voyait un dialogue d'erreur.)
+-- la vraie ligne d'Apple, avec deux dieses
+     le gestionnaire est alle au bout
+-- la meme sans diese (temoin : elle passait deja)
+     le gestionnaire est alle au bout
+-- un diese seul reste une faute
+     [ERREUR]    !! script, ligne 2 colonne 7 : caractère inattendu
+     [ERREUR]         put #
+     [ERREUR]    !! caractère inattendu (v3, ligne 2 de button "B".t)
+-- temoin : rien de particulier
+     le gestionnaire est alle au bout

@@ -284,14 +284,33 @@ int hct_lex(const char *src, HctLot *lot)
         }
 
         /* --- mot -----------------------------------------------------
-         * Lettres, chiffres et souligné. HyperTalk autorise le chiffre à
+         * Lettres, chiffres, souligné et DIÈSE. HyperTalk autorise le chiffre à
          * l'intérieur d'un nom, mais pas en tête — ce cas est déjà pris par
-         * la branche des nombres. */
+         * la branche des nombres.
+         *
+         * LE DIÈSE EST UN BÉMOL DE MUSICIEN, ET IL VIENT D'UNE VRAIE PILE.
+         *
+         * « play » prend des notes, et une note altérée s'écrit avec un dièse :
+         *
+         *     play harpsichord tempo 300 a#2q c3w
+         *
+         * C'est la ligne exacte d'un bouton de « Découvrir HyperCard », la pile
+         * d'initiation d'Apple. Le lexer s'arrêtait dessus — « caractère
+         * inattendu », colonne 31 — AVANT que v3_cmd_play puisse voir quoi que
+         * ce soit : mesuré, le son ne jouait pas et l'utilisateur voyait un
+         * dialogue d'erreur. Le premier vrai trou de v3 trouvé par du HyperTalk
+         * réel, et non par une pile de torture écrite par nous.
+         *
+         * IL EST ACCEPTÉ À L'INTÉRIEUR D'UN MOT SEULEMENT, jamais en tête : un
+         * « # » nu reste donc une faute, ce qu'un témoin vérifie. Le dièse n'a
+         * aucun autre rôle en HyperTalk — ce n'est pas un opérateur, et dans une
+         * chaîne il passait déjà — si bien qu'aucune expression ne change de
+         * sens. */
         if (isalpha((unsigned char)*p) || *p == '_' || lettre_accentuee(p)) {
             const char *q = p;
             int col = COL(p);
             for (;;) {
-                if (isalnum((unsigned char)*q) || *q == '_') { q++; continue; }
+                if (isalnum((unsigned char)*q) || *q == '_' || *q == '#') { q++; continue; }
                 if (lettre_accentuee(q)) { q += 2; continue; }
                 break;
             }
