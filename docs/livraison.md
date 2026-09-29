@@ -50,13 +50,20 @@ le noyau annonçait interroger l'hôte et qu'aucun `.m` ne répondait.
 
     grep -n "HC_VERSION\|MARKETING_VERSION" HC/hc_core.h HC.xcodeproj/project.pbxproj
 
-Changer `HC_VERSION` fait bouger **cinq références** de la suite, qui
-inventorient `the version` en affichant sa valeur : `bilan2`, `bilan3`,
-`bilan4`, `bilan5`, `mondenoms`. C'est voulu — un inventaire qui masque la
-valeur ne vérifie plus rien — mais il faut les réenregistrer :
+Changer `HC_VERSION` fait bouger **un seul témoin** de la suite, et ce n'est
+plus celui qu'annonçait ce paragraphe. Il nommait `bilan2`, `bilan3`, `bilan4`,
+`bilan5` et `mondenoms`, qui inventorient `the version` : depuis 0.6.9.4, `the
+version` rend celle d'HyperCard — `2.4.1`, une constante — et ces cinq-là ne
+bougent plus. Le seul qui affiche NOTRE numéro est `pilereelle`, section 3, qui
+lit `the hcVersion` sous son propre nom et vérifie que les deux ne sont pas la
+même chose :
 
-    ./tests/lance.sh --enregistre bilan2   # puis bilan3, bilan4, bilan5, mondenoms
+    ./tests/lance.sh --enregistre pilereelle
     ./tests/lance.sh                       # et vérifier que RIEN d'autre n'a bougé
+
+Le diff attendu fait exactement deux lignes — `the hcVersion` seul, puis
+`the version & " / " & the hcVersion`. Toute autre ligne qui bouge n'est pas la
+version.
 
 Ce « rien d'autre » est la vraie vérification : si un autre harnais change en
 même temps, ce n'est pas la version qui l'a fait.
