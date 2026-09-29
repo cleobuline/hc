@@ -37,13 +37,11 @@
    step, qui n'est pas d'HyperTalk
       [ERR]    !! script, ligne 3 colonne 27 : texte inattendu en fin de ligne
       [ERR]         repeat with i = 1 to 10 step 3
-      10
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 3 de button "B".essaie)
    un mot quelconque
       [ERR]    !! script, ligne 2 colonne 12 : texte inattendu en fin de ligne
       [ERR]         repeat 2 blabla
-      tour
-      tour
-      fini
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 2 de button "B".essaie)
 
 == 5. une seule faute, un seul message ==
    up to : « to » attendu, et rien de plus

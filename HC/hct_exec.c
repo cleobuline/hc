@@ -1362,6 +1362,93 @@ static void execute_repete(HctExec *x, const HctNoeud *n)
     }
 }
 
+/* ------------------------------------------------ les lignes fautives */
+
+/* UNE LIGNE QUI PORTE UNE FAUTE NE S'EXÉCUTE PAS, PAS MÊME EN PARTIE.
+ *
+ * C'est ce que promet v3_cadre_fautif, dans hc_core.c : « une faute dans son
+ * CORPS ne condamne qu'une INSTRUCTION. L'exécuteur la signale quand il
+ * l'atteint, et le gestionnaire s'arrête là. » Ce n'est pas ce qui se passait.
+ * L'analyseur pose l'instruction qu'il a su lire, PUIS la faute à côté ; on
+ * exécutait donc le début de la ligne, et l'on se plaignait ensuite du reste.
+ * Mesuré sous le fuzzing, puis à la main :
+ *
+ *     put 1 into g zz              g vaut 1, PUIS « texte inattendu »
+ *     delete card "D               la carte courante est SUPPRIMÉE, puis
+ *                                  « texte inattendu »
+ *     go next card "zz             on change de carte, et AUCUNE erreur
+ *                                  (la faute est dans l'argument, que l'hôte
+ *                                  relit en texte sans jamais la voir)
+ *     repeat with i = 1 to 2 zz    la boucle tourne, et AUCUNE erreur (la
+ *                                  faute est un enfant du repeat, que
+ *                                  execute_repete ne visite pas)
+ *
+ * Signaler une erreur ET avoir agi est la pire des deux issues : l'auteur lit
+ * que sa ligne n'est pas comprise, et la pile a déjà changé — une carte en
+ * moins, sans annulation.
+ *
+ * Deux lectures, parce que l'analyseur range la faute à deux endroits :
+ *
+ *   DEDANS — une faute dans l'arbre même de l'instruction (argument mal
+ *   formé, en-tête de repeat). On ne descend PAS dans les blocs : un corps de
+ *   boucle ou une branche de si s'exécutent ligne à ligne, et leurs fautes se
+ *   lèvent quand on les atteint. Pour un si ou un repeat, seules comptent les
+ *   fautes de la ligne d'EN-TÊTE — un « end » qui ne correspond pas est sur la
+ *   dernière ligne, on ne l'atteint qu'après le corps, comme avant.
+ *
+ *   À CÔTÉ — la faute « texte inattendu en fin de ligne », posée comme sœur
+ *   de l'instruction qu'elle termine. Voir faute_soeur.
+ *
+ * Ce que fait HyperCard d'une ligne fautive — la refuse-t-il à la
+ * compilation du gestionnaire entier, ou en l'atteignant ? — n'est PAS mesuré
+ * ici. Les deux réponses excluent d'exécuter la moitié de la ligne, et c'est
+ * tout ce que cette correction pose. */
+static int instruction_a_blocs(const HctNoeud *n)
+{
+    return n->genre == HCTN_SI || n->genre == HCTN_REPETE ||
+           n->genre == HCTN_BLOC || n->genre == HCTN_GESTIONNAIRE;
+}
+
+static const HctNoeud *faute_dedans(const HctNoeud *n, int ligne)
+{
+    if (!n || n->genre == HCTN_BLOC) return NULL;
+    if (n->genre == HCTN_ERREUR)
+        return (ligne <= 0 || n->jeton.ligne == ligne) ? n : NULL;
+    for (int i = 0; i < n->nfils; i++) {
+        const HctNoeud *f = faute_dedans(n->fils[i], ligne);
+        if (f) return f;
+    }
+    return NULL;
+}
+
+/* La faute de fin de ligne, sœur de l'instruction `i` dans son bloc.
+ *
+ * Une instruction simple tient sur une ligne logique — le « ¬ » peut l'étendre
+ * sur plusieurs lignes du texte, d'où l'absence de test de ligne pour elle.
+ * Un si ou un repeat, lui, se termine sur son « end » : la faute qui le suit
+ * est sur cette ligne-là, et n'appartient à l'en-tête que si elle partage sa
+ * ligne — le si d'une seule ligne. */
+static const HctNoeud *faute_soeur(const HctNoeud *bloc, int i)
+{
+    if (i + 1 >= bloc->nfils) return NULL;
+    const HctNoeud *ins = bloc->fils[i], *f = bloc->fils[i + 1];
+    if (f->genre != HCTN_ERREUR || ins->genre == HCTN_ERREUR) return NULL;
+    if (ins->genre == HCTN_GESTIONNAIRE) return NULL;
+    if (instruction_a_blocs(ins) && f->jeton.ligne != ins->jeton.ligne)
+        return NULL;
+    return f;
+}
+
+static const HctNoeud *faute_de_ligne(const HctNoeud *bloc, int i)
+{
+    const HctNoeud *ins = bloc->fils[i];
+    if (ins->genre == HCTN_ERREUR || ins->genre == HCTN_GESTIONNAIRE)
+        return NULL;                /* la première se lève d'elle-même */
+    const HctNoeud *f = faute_dedans(ins,
+                            instruction_a_blocs(ins) ? ins->jeton.ligne : 0);
+    return f ? f : faute_soeur(bloc, i);
+}
+
 /* ------------------------------------------------------------ l'entrée */
 
 void hct_exec(HctExec *x, const HctNoeud *n)
@@ -1372,6 +1459,12 @@ void hct_exec(HctExec *x, const HctNoeud *n)
         case HCTN_BLOC:
             if (!x->script) x->script = n;   /* le bloc racine */
             for (int i = 0; i < n->nfils; i++) {
+                const HctNoeud *faute = faute_de_ligne(n, i);
+                if (faute) {
+                    hct_ctx_faute(&x->ctx, faute,
+                                  faute->msg ? faute->msg : "instruction invalide");
+                    return;
+                }
                 hct_exec(x, n->fils[i]);
                 if (x->ctx.erreur || x->signal) return;
                 /* UNE PÉNURIE NE SE DÉGUISE PAS EN CHAÎNE VIDE.

@@ -25,9 +25,15 @@
  *      -> « personne ne repond a "step 3" », DIX fois, et dix tours
  *
  *    Dix messages qui parlent d'un envoi imaginaire, la ou un seul devait
- *    dire que l'en-tete n'est pas correct. La boucle tourne toujours — sur
- *    l'en-tete tel qu'il a pu etre lu —, ce qui change est le nombre de
- *    plaintes : une, a l'analyse, au lieu d'une par tour.
+ *    dire que l'en-tete n'est pas correct.
+ *
+ *    LA BOUCLE NE TOURNE PLUS DU TOUT, et c'est un changement de decision.
+ *    Elle tournait « sur l'en-tete tel qu'il a pu etre lu » — dix tours de
+ *    pas 1 pour un auteur qui en demandait quatre de pas 3, avec pour seul
+ *    avertissement une ligne a l'analyse. C'est executer la moitie d'une
+ *    ligne fautive, ce que hct_exec.c refuse desormais partout : l'en-tete
+ *    porte la faute, l'executeur la leve en l'atteignant, et le
+ *    gestionnaire s'arrete la. Le nombre de plaintes, lui, reste un.
  *
  * ET PAS DEUX PLAINTES POUR UNE SEULE FAUTE. Quand l'en-tete a deja echoue,
  * ce qui reste sur la ligne est le RESTE de cette faute-la :
@@ -118,10 +124,13 @@ int main(void)
             "  put empty into r\n  repeat for each item I in \"a,b,c\"\n"
             "    put I after r\n  end repeat\n  put r");
 
-    /* La boucle TOURNE quand meme, sur l'en-tete tel qu'il a pu etre lu : ce
-     * qui change est le nombre de plaintes. Avant, le mot en trop etait
-     * execute a chaque tour et se plaignait a chaque tour — dix messages pour
-     * « step 3 », deux pour « blabla ». Maintenant, un seul, a l'analyse. */
+    /* Un message, pas un par tour : avant, le mot en trop etait execute a
+     * chaque tour et se plaignait a chaque tour — dix messages pour
+     * « step 3 », deux pour « blabla ».
+     *
+     * Et la boucle ne tourne PLUS, ni ce qui la suit : l'en-tete porte la
+     * faute, et le gestionnaire s'arrete sur elle (voir l'en-tete de ce
+     * fichier). Elle tournait jusqu'ici, et « put n » rendait 10. */
     puts("\n== 4. du texte en trop sur l'en-tete : UN message, pas un par tour ==");
     execute("step, qui n'est pas d'HyperTalk",
             "  put 0 into n\n  repeat with i = 1 to 10 step 3\n"
