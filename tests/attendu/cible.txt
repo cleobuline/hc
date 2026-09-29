@@ -21,3 +21,20 @@
       me          : contenu du champ
       the name of me : card field "Champ"
       the target  : card field "Champ"
+
+== 6. « target » SURVIT A UN APPEL IMBRIQUE ==
+(message au CHAMP, les trois gestionnaires sont sur la CARTE)
+        niveau 1 : target = card field "Champ"   me = card "Une"
+        niveau 2 : target = card field "Champ"   me = card "Une"
+        niveau 3 : target = card field "Champ"   me = card "Une"
+        et il reste un CONTENEUR : contenu du champ
+
+== 7. et a travers un appel de FONCTION ==
+        avant l'appel : card field "Champ"
+        dans la fonction : card field "Champ"
+        apres l'appel : card field "Champ"
+
+== 8. MAIS « send … to <objet> » REPOSE la cible ==
+        avant le send : card field "Champ"
+        dans le send : card button "B"
+        apres le send : card field "Champ"

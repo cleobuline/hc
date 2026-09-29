@@ -446,3 +446,91 @@ premier banc envoyait le message au BOUTON, où « target » est un bouton et no
 champ : « ne sait pas faire » y subsistait après la correction, et j'ai failli
 croire à un second défaut. Le remède est toujours le même : monter le banc comme
 le vrai chemin le monte — ici, envoyer mouseDown AU CHAMP, comme le clic le fait.
+
+
+« the target » SE REMETTAIT À « me » AU PREMIER APPEL IMBRIQUÉ
+==============================================================
+
+Le 29 septembre 2026, même pile — « Readymade Buttons » — et même symptôme après
+la correction du morceau imbriqué : « ne sait pas faire », 254 fois.
+
+LA CHAÎNE RÉELLE, que le banc ne montait pas :
+
+    champ « Card List »   on mouseDown / goCard / end mouseDown
+    carte                 on goCard / … currentLine … / end goCard
+    carte                 on currentLine
+                            put ((the mouseV - top of target) - 4)
+                                div (textHeight of target) + 1 into theLine
+                            select … of line theLine to … of target
+
+goCard est ENVOYÉ AU CHAMP et TRAITÉ PAR LA CARTE — la trace le dit en deux
+lignes — donc `me` y vaut la carte. L'appel de currentLine repartait alors vers
+la CARTE, et « the target » devenait la carte.
+
+LE CONTRASTE QUI NOMME LA CAUSE, mesuré sur la vraie pile en instrumentant SON
+currentLine :
+
+    currentLine envoyé au CHAMP    theLine 2   top 111   txtH 18   nchars 20
+                                   -> « Create pop-up fields »
+    currentLine envoyé à la CARTE  theLine 9   top 0     txtH 16   nchars 0
+                                   -> « ne sait pas faire »
+
+Un seul des deux relevés aurait accusé le select.
+
+CE QUE « the target » EST POUR, ET POURQUOI C'ÉTAIT UN DÉFAUT. `me` dit quel
+script tourne ; `the target` dit quel objet a reçu le clic. Si le second se
+remettait à `me` au premier appel interne, il ne dirait plus que ce que le premier
+dit déjà — et justement dans le cas pour lequel il existe : un gestionnaire de
+CARTE ou de FOND qui veut savoir quel objet a été cliqué.
+
+DEUX PILES D'APPLE, TROIS SITES, ET LE SECOND EST LE PLUS NET. « Stack
+Templates », fond Invoice :
+
+    on tabKey … if lineIsANumber(lineNum) then …
+    function lineIsANumber lineNum
+      put line lineNum of target into theLine
+      select char (endChar - length(theLine)) to endChar of target
+
+C'est une FONCTION. L'idée d'un « nouveau destinataire » n'y a aucun sens, et
+pourtant notre moteur reposait la cible là aussi.
+
+CE QUI REPOSE LA CIBLE, APRÈS CORRECTION, ET C'EST LE PARTAGE :
+
+    un message qui ENTRE depuis l'extérieur — clic, événement système     OUI
+    « send "x" to <objet> », dont c'est justement l'objet                 OUI
+    un message nu appelé depuis un gestionnaire                           non
+    un appel de fonction                                                  non
+
+Le drapeau est dans la SIGNATURE et non dans un global posé juste avant l'appel :
+un appelant qui l'oublierait ne compilerait pas, là où un global oublié se lirait
+comme la valeur d'un autre envoi.
+
+CE QUE LA SUITE NE COUVRAIT PAS, ET C'EST LE POINT DE MÉTHODE. Les 249 témoins
+sont passés du premier coup après ce changement de sémantique — ce qui aurait dû
+rassurer et qui doit inquiéter : cible.c couvrait la REMONTÉE (message au champ,
+gestionnaire sur la carte) et PAS l'appel imbriqué. Une suite qui passe sur un
+changement qu'elle n'exerce pas ne dit rien. Les sections 6, 7 et 8 de cible.c
+l'exercent désormais, et la huitième est le garde : sans elle, la correction
+serait une porte ouverte.
+
+Le témoin enregistré ne compte que des AJOUTS — dix-sept lignes, zéro
+suppression : aucune ligne déjà mesurée n'a changé de valeur.
+
+CE QUI N'EST PAS MESURÉ, et qui s'écrit comme non mesuré : HyperCard lui-même.
+La preuve tient à deux piles d'Apple et trois sites, dont une fonction, tous
+inexploitables si la cible se reposait. C'est fort, et ce n'est pas un banc. Le
+banc, s'il se joue un jour DANS HYPERCARD (Basilisk II) :
+
+    -- script d'un CHAMP
+    on mouseUp
+      deux
+    end mouseUp
+
+    -- script de la CARTE
+    on deux
+      answer "target = " & the target & "   me = " & the name of me
+    end deux
+
+Un clic dans le champ doit répondre « target = card field "…" ». S'il répondait
+« target = card … », c'est notre ancienne sémantique qui aurait raison — et les
+trois sites d'Apple seraient cassés chez Apple.

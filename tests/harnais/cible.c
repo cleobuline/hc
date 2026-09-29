@@ -112,6 +112,81 @@ int main(void)
         "end essai4\n");
     hc_send(f, "essai4");
 
+    puts("\n== 6. « target » SURVIT A UN APPEL IMBRIQUE ==");
+    /* CE QUE LES CINQ SECTIONS AU-DESSUS NE COUVRAIENT PAS, et c'est le cas qui
+     * fait vivre target : un gestionnaire qui en appelle un AUTRE.
+     *
+     * RELEVE A L'USAGE dans « Readymade Buttons », sur le menu de sa premiere
+     * carte, repete 254 fois — la ligne est dans une boucle de souris :
+     *
+     *   champ « Card List »   on mouseDown / goCard / end mouseDown
+     *   carte                 on goCard / … currentLine … / end goCard
+     *   carte                 on currentLine
+     *                           … top of target … textHeight of target …
+     *
+     * goCard est ENVOYE AU CHAMP et TRAITE PAR LA CARTE : « me » y vaut donc la
+     * carte, et l'appel de currentLine repartait vers la CARTE. « the target »
+     * devenait la carte — top 0, textHeight 16 — et le select ne trouvait plus
+     * de champ.
+     *
+     * `me` dit quel script tourne ; `the target` dit quel objet a recu le clic.
+     * Si le second se remettait a `me` au premier appel interne, il ne dirait
+     * plus que ce que le premier dit deja — et justement dans le cas pour
+     * lequel il existe. */
+    hc_set_field_text(f, "contenu du champ");
+    hc_set_script(c,
+        "on niveau1\n"
+        "  put \"  niveau 1 : target = \" & the target & \"   me = \" & the name of me\n"
+        "  niveau2\n"
+        "end niveau1\n"
+        "on niveau2\n"
+        "  put \"  niveau 2 : target = \" & the target & \"   me = \" & the name of me\n"
+        "  niveau3\n"
+        "end niveau2\n"
+        "on niveau3\n"
+        "  put \"  niveau 3 : target = \" & the target & \"   me = \" & the name of me\n"
+        "  put \"  et il reste un CONTENEUR : \" & the text of the target\n"
+        "end niveau3\n");
+    puts("(message au CHAMP, les trois gestionnaires sont sur la CARTE)");
+    hc_send(f, "niveau1");
+
+    puts("\n== 7. et a travers un appel de FONCTION ==");
+    /* LE SECOND SITE D'APPLE, et le plus net des deux : « Stack Templates »,
+     * fond Invoice, appelle une FONCTION depuis tabKey —
+     *
+     *   on tabKey … if lineIsANumber(lineNum) then …
+     *   function lineIsANumber lineNum
+     *     put line lineNum of target into theLine
+     *
+     * — et l'idee d'un « nouveau destinataire » n'a aucun sens pour un appel de
+     * fonction. Deux piles independantes, trois sites, tous du meme cote. */
+    hc_set_script(c,
+        "on essai7\n"
+        "  put \"  avant l'appel : \" & the target\n"
+        "  put \"  dans la fonction : \" & quiEstLaCible()\n"
+        "  put \"  apres l'appel : \" & the target\n"
+        "end essai7\n"
+        "function quiEstLaCible\n"
+        "  return the target\n"
+        "end quiEstLaCible\n");
+    hc_send(f, "essai7");
+
+    puts("\n== 8. MAIS « send … to <objet> » REPOSE la cible ==");
+    /* LE PARTAGE, et sans ce temoin la correction serait une porte ouverte : un
+     * envoi EXPLICITE a un objet nomme est un nouveau destinataire, c'est ce que
+     * la commande veut dire. Les deux cote a cote, sinon on ne saurait pas si
+     * l'on a ferme trop grand. */
+    hc_set_script(c,
+        "on essai8\n"
+        "  put \"  avant le send : \" & the target\n"
+        "  send \"raconte\" to card button \"B\"\n"
+        "  put \"  apres le send : \" & the target\n"
+        "end essai8\n"
+        "on raconte\n"
+        "  put \"  dans le send : \" & the target\n"
+        "end raconte\n");
+    hc_send(f, "essai8");
+
     hc_free(st);
     return 0;
 }

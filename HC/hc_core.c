@@ -4079,7 +4079,8 @@ static void eval_expr(const char *s, char *out, int outlen);
 static const char *find_kw(const char *s, const char *w);   /* défini plus bas */
 static const char *chunk_base_ref(const char *ref);        /* défini plus bas */
 static int hc_send_args(Object *target, const char *message,
-                        char argv[][HC_VAL], int argc);   /* défini plus bas */
+                        char argv[][HC_VAL], int argc,
+                        int cible_neuve);                 /* défini plus bas */
 static int hc_call_user_function(Object *target, const char *name,
                                  char argv[][HC_VAL], int argc);  /* idem */
 
@@ -11884,7 +11885,9 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     }
 
     set_result("");     /* un `return` dans le gestionnaire le remplira */
-    hc_send_args(target, msg, argv, argc);
+    /* « send "x" to <objet> » EST un nouveau destinataire : c'est ce que la
+     * commande veut dire, et « the target » doit le suivre. */
+    hc_send_args(target, msg, argv, argc, 1);
     ARENA_FREE;
     return 1;
 }
@@ -14653,7 +14656,9 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     }
 
     set_result("");
-    hc_send_args(start, nom, argv, argc);
+    /* UN MESSAGE NU DEPUIS UN GESTIONNAIRE NE REPOSE PAS LA CIBLE : c'est le
+     * cas de « goCard » puis « currentLine » dans « Readymade Buttons ». */
+    hc_send_args(start, nom, argv, argc, 0);
     return 1;
 }
 
@@ -16456,7 +16461,8 @@ static Object *marked_card_ref(const char *r, int *concerne)
 /* Envoie un message accompagné d'une liste d'arguments déjà évalués.
    argv[0..argc-1] sont les valeurs des arguments (sans le nom du message). */
 static int hc_send_args_k_body(Object *target, const char *message,
-                          char argv[][HC_VAL], int argc, int isfunc)
+                          char argv[][HC_VAL], int argc, int isfunc,
+                          int cible_neuve)
 {
     if (g_depth >= HC_MAX_DEPTH) {
         emit(HC_ERR, "!! trop de récursion : message \"%s\" abandonné", message);
@@ -16498,13 +16504,55 @@ static int hc_send_args_k_body(Object *target, const char *message,
     for (int i = 0; i < saved_nparams; i++)
         memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
 
-    /* `the target` vaut le destinataire initial pendant toute la remontée ;
-       on empile l'ancien pour les envois imbriqués. */
+    /* ═══ « the target » NE CHANGE PAS QUAND UN GESTIONNAIRE EN APPELLE UN
+     *     AUTRE, ET C'EST TOUT L'INTÉRÊT DE CETTE FONCTION ════════════════
+     *
+     * `me` est l'objet dont le script tourne ; `the target` est l'objet qu'on a
+     * CLIQUÉ. Si le second se remettait à `me` au premier appel interne, il ne
+     * servirait plus à rien — il ne dirait que ce que `me` dit déjà, et
+     * précisément dans le cas pour lequel il existe : un gestionnaire de CARTE
+     * ou de FOND qui veut savoir quel objet a reçu le clic.
+     *
+     * LE DÉFAUT, relevé à l'usage sur le menu de « Readymade Buttons », répété
+     * 254 fois — la ligne est dans une boucle de souris :
+     *
+     *     champ « Card List »   on mouseDown / goCard / end mouseDown
+     *     carte                 on goCard / … / currentLine / … / end goCard
+     *     carte                 on currentLine
+     *                             … top of target … textHeight of target …
+     *                             select … of line theLine to … of target
+     *
+     * goCard est ENVOYÉ AU CHAMP et TRAITÉ PAR LA CARTE, donc `me` y vaut la
+     * carte. L'appel de currentLine repartait alors vers la CARTE, et `the
+     * target` devenait la carte : top 0, textHeight 16, ligne 9 vide, et le
+     * select ne trouvait pas de champ — « ne sait pas faire ». Mesuré des deux
+     * côtés, et c'est le contraste qui nomme la cause :
+     *
+     *     currentLine envoyé au CHAMP  ->  « Create pop-up fields »
+     *     currentLine envoyé à la CARTE ->  « ne sait pas faire »
+     *
+     * DEUX PILES D'APPLE, TROIS SITES, et le second est le plus net parce qu'il
+     * s'agit d'une FONCTION, où l'idée d'un « nouveau destinataire » n'a aucun
+     * sens. « Stack Templates », fond Invoice :
+     *
+     *     on tabKey … if lineIsANumber(lineNum) then …
+     *     function lineIsANumber lineNum
+     *       put line lineNum of target into theLine
+     *       select char (endChar - length(theLine)) to endChar of target
+     *
+     * CE QUI REPOSE LA CIBLE, ET C'EST LE PARTAGE : un message qui ENTRE dans la
+     * hiérarchie depuis l'extérieur — un clic, un événement système — et le
+     * « send … to <objet> » explicite, dont c'est justement l'objet. Un appel de
+     * gestionnaire ou de fonction depuis un gestionnaire, non.
+     *
+     * Le drapeau est dans la SIGNATURE plutôt que dans un global posé juste
+     * avant l'appel : un appelant qui l'oublierait ne compilerait pas, alors
+     * qu'un global oublié se lirait comme une valeur d'un autre envoi. */
     int saved_clipped = g_script_clipped;
     g_script_clipped = 0;
     Object *saved_target = g_target;
     Object *saved_me     = g_me;
-    g_target = target;
+    if (cible_neuve || !g_target) g_target = target;
 
     /* g_params[0] = nom du message, puis les arguments */
     snprintf(g_params[0], sizeof g_params[0], "%s", message);
@@ -16648,10 +16696,11 @@ static int hc_send_args_k_body(Object *target, const char *message,
  * une pile qui envoie des milliers de messages verrait l'arène croître sans
  * fin, puisque seul parse_factor libère en dessous. */
 static int hc_send_args_k(Object *target, const char *message,
-                          char argv[][HC_VAL], int argc, int isfunc)
+                          char argv[][HC_VAL], int argc, int isfunc,
+                          int cible_neuve)
 {
     ARENA_MARK;
-    int r = hc_send_args_k_body(target, message, argv, argc, isfunc);
+    int r = hc_send_args_k_body(target, message, argv, argc, isfunc, cible_neuve);
     ARENA_FREE;
 
     /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
@@ -16693,9 +16742,9 @@ static int hc_send_args_k(Object *target, const char *message,
 }
 
 static int hc_send_args(Object *target, const char *message,
-                        char argv[][HC_VAL], int argc)
+                        char argv[][HC_VAL], int argc, int cible_neuve)
 {
-    return hc_send_args_k(target, message, argv, argc, 0);
+    return hc_send_args_k(target, message, argv, argc, 0, cible_neuve);
 }
 
 /* Appel d'une fonction utilisateur : même remontée de la chaîne, mais on
@@ -16708,7 +16757,9 @@ static int hc_call_user_function(Object *target, const char *name,
 {
     if (!target) return 0;
     set_result("");
-    return hc_send_args_k(target, name, argv, argc, 1);
+    /* UNE FONCTION N'EST PAS UN NOUVEAU DESTINATAIRE : « lineIsANumber(n) »
+     * appelée depuis tabKey doit voir le champ que tabKey voyait. */
+    return hc_send_args_k(target, name, argv, argc, 1, 0);
 }
 
 /* ═══ doMenu ════════════════════════════════════════════════════════════
@@ -16817,7 +16868,7 @@ int hc_send_arg(Object *target, const char *message, const char *arg)
         if (!argv) { ARENA_FREE; return 0; }
         snprintf(argv[0], HC_VAL, "%s", arg);
     }
-    int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
+    int pris = hc_send_args(target, message, argv, arg ? 1 : 0, 1);
     ARENA_FREE;
     return pris;
 }
@@ -16925,7 +16976,9 @@ void hc_do_menu(const char *item)
 int hc_send(Object *target, const char *message)
 {
     ARENA_MARK;
-    int r = hc_send_args(target, message, NULL, 0);
+    /* LA PORTE DE L'HÔTE : un clic, un événement système. C'est par ici que la
+     * cible se pose, et c'est le seul endroit où elle doit se poser d'office. */
+    int r = hc_send_args(target, message, NULL, 0, 1);
     ARENA_FREE;
     return r;
 }
