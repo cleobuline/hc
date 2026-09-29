@@ -1,0 +1,18 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== un réglage ==
+── set the dragSpeed to 1e31850
+   [ERR]    !! dragSpeed va de 0 à 32767, reçu 1e31850
+── set the dragSpeed to -1e31850
+   [ERR]    !! dragSpeed va de 0 à 32767, reçu -INF
+── set the dragSpeed to 12
+── put the dragSpeed
+   12
+
+== le rang d'une carte marquée ==
+── mark card 2
+── go to marked card 1e30
+── put the short name of this card
+   U
+── go to marked card 1
+── put the short name of this card
+   V

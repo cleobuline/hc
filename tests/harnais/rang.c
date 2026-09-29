@@ -1,3 +1,15 @@
+/* LA LIGNE 5 A ÉCHOUÉ DEPUIS L'ÉCRITURE DE CE HARNAIS, ET PERSONNE NE L'A VU.
+ *
+ * Elle s'écrivait « \"Une\" » : un échappement du C, recopié tel quel dans le
+ * script. HyperTalk n'a pas d'échappement — la chaîne s'arrêtait donc sur
+ * « card \ », et « Une\" … » restait sur la ligne. Le témoin enregistrait
+ * « card \ » puis « texte inattendu », et les CINQ lignes suivantes — next
+ * card, me, le champ, le comptage, le bilan — ne s'exécutaient jamais : ce
+ * harnais mesurait deux lignes sur sept.
+ *
+ * Trouvé en corrigeant l'exécution partielle d'une ligne fautive (hct_exec.c) :
+ * le début de la ligne n'était plus affiché, et le trou est devenu visible.
+ * Les guillemets passent maintenant par « quote », comme dans une vraie pile. */
 #include "hc_core.h"
 #include <stdio.h>
 int main(void)
@@ -16,7 +28,7 @@ int main(void)
       "  debug raz\n"
       "  put \"this card      = \" & the number of this card\n"
       "  put \"card 3         = \" & the number of card 3\n"
-      "  put \"card \\\"Une\\\"   = \" & the number of card \"Une\"\n"
+      "  put \"card \" & quote & \"Une\" & quote & \"   = \" & the number of card \"Une\"\n"
       "  put \"next card      = \" & the number of next card\n"
       "  put \"me             = \" & the number of me\n"
       "  put \"cd field F2    = \" & the number of card field \"F2\"\n"

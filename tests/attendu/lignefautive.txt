@@ -1,0 +1,56 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la ligne fautive ne fait RIEN ==
+── texte en trop après un put
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+── guillemet non fermé après delete card : la carte reste
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+── la même, dans un si d'une ligne
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+── guillemet non fermé dans l'argument de go : on ne bouge pas
+      [ERR]    !! guillemet fermant manquant (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+── texte en trop sur l'en-tête d'un repeat : aucun tour
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+── un « ¬ » ne cache pas la fin de la ligne
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+
+== 2. ce qui suit la ligne fautive ne tourne pas non plus ==
+── le gestionnaire s'arrête sur la faute
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".essai)
+      g = avant
+      cartes 3 -> 3, carte U -> U
+
+== 3. ce qui la PRÉCÈDE tourne (choix actuel, non mesuré chez HyperCard) ==
+── la ligne d'avant a posé g
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 5 de button "B".essai)
+      g = d'abord
+      cartes 3 -> 3, carte U -> U
+
+== 4. une faute sur la ligne du « end » n'arrête qu'APRÈS le bloc ==
+── end repeat suivi d'un mot : les tours ont lieu
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 7 de button "B".essai)
+      g = 2
+      cartes 3 -> 3, carte U -> U
+── end repeat au lieu de end if : la branche a eu lieu
+      [ERR]    !! texte inattendu en fin de ligne (v3, ligne 6 de button "B".essai)
+      g = dans
+      cartes 3 -> 3, carte U -> U
+
+== 5. le témoin : une ligne saine s'exécute ==
+── put ordinaire
+      g = posé
+      cartes 3 -> 3, carte U -> U
+── delete card ordinaire
+      g = avant
+      cartes 3 -> 2, carte U -> U

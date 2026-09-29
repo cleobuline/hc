@@ -6,6 +6,7 @@
 #include "hc_pixels.h"   /* le calcul des transformations du menu Paint */
 #import "HCpalettes.h"    // brush_bit
 #import "HCpaint.h"
+#import "HCview.h"     /* hcv_texte */
      // flushPaintToKernel : l'interface complete, la
                           // declaration anticipee de HCglobals.h ne suffit pas
 
@@ -840,7 +841,7 @@ NSBitmapImageRep *paint_bitmap(Object *o, int w, int h) {
 
     const char *b64 = hc_paint_of(o);
     if (b64 && *b64) {
-        NSBitmapImageRep *loaded = hcp_decode([NSString stringWithUTF8String:b64]);
+        NSBitmapImageRep *loaded = hcp_decode(hcv_texte(b64));
         if (loaded) {
             /* Le PNG peut porter n'importe quel profil (fichier ancien, image
              * collee depuis une autre application, absence de profil...). On le

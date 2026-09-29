@@ -94,11 +94,11 @@ int main(void)
     printf("    pour que la frontière soit écrite quelque part, et pour voir\n");
     printf("    si elle bouge un jour sans qu'on l'ait voulu)\n");
     printf("\n");
-    printf("    LA LIGNE « msg(21) = ... » SURPREND et elle est juste : depuis\n");
-    printf("    que la boîte de messages se LIT, « msg » s'évalue et rend son\n");
-    printf("    contenu — ici ce que le tour précédent y a laissé. C'est le\n");
+    printf("    « msg(21) » ÉCHOUE, ET RIEN NE S'AFFICHE : depuis que la boîte\n");
+    printf("    de messages se LIT, « msg » s'évalue comme elle, et c'est le\n");
     printf("    « (21) » qui reste sur la ligne et la fait échouer. Le nom est\n");
-    printf("    toujours masqué, et on voit maintenant PAR QUOI.\n");
+    printf("    toujours masqué. La ligne affichait autrefois son début avant\n");
+    printf("    de se plaindre : une ligne fautive ne s'exécute plus du tout.\n");
     int masques = 0;
     for (int i = 0; SYNONYMES[i]; i++) {
         char script[512];

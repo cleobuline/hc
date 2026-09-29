@@ -1,0 +1,7 @@
+── put value("the name of" & return & "me") into x
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+   (revenu)
+── put value("the name of" & numToChar(11) & "me") into x
+   (revenu)
+── put value("the name of" & numToChar(12) & "me") into x
+   (revenu)

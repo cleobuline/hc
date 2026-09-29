@@ -18,12 +18,11 @@
     aurait rendu la chaîne « a×3 » sans rien dire)
    [ERR]    !! script, ligne 3 colonne 8 : texte inattendu en fin de ligne
    [ERR]         put a×3
-   2
    [ERR]    !! texte inattendu en fin de ligne (v3, ligne 3 de stack "Accents".essai)
 === 6. les symboles à trois octets restent refusés franchement ===
    (« ∞ » n'est pas un nom : on veut l'erreur, pas le silence)
    [ERR]    !! script, ligne 2 colonne 14 : caractère inattendu
    [ERR]         put 1 into ∞
-   [ERR]    !! ne sait pas faire : put 1 into ∞
+   [ERR]    !! caractère inattendu (v3, ligne 2 de stack "Accents".essai)
 === 7. le témoin : un nom sans accent n'a pas bougé ===
    12

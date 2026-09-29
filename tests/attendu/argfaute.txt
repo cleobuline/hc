@@ -16,6 +16,5 @@
    → message "t" à button "B"
    [ERR]    !! script, ligne 2 colonne 8 : texte inattendu en fin de ligne
    [ERR]         put 1, field "pasLa"
-   [msg] 1
    [ERR]    !! texte inattendu en fin de ligne (v3, ligne 2 de button "B".t)
 

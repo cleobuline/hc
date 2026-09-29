@@ -1,9 +1,18 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
 → message "mouseUp" à button "B"
    · traité par button "B"
-      !! script, ligne 5 colonne 15 : texte inattendu en fin de ligne
-           put "card \"Une\"   = " & the number of card "Une"
       [message box] this card      = 2
       [message box] card 3         = 3
-      [message box] card \
-      !! texte inattendu en fin de ligne (v3, ligne 5 de button "B".mouseUp)
+      [message box] card "Une"   = 1
+      [message box] next card      = 3
+      [message box] me             = 1
+      [message box] cd field F2    = 2
+      [message box] -- comptage : cards = 3
+   — retours de la v3 vers l'ancien interpréteur —
+      (aucun)
+   — ce que l'ancien interprète exécute encore —
+      (rien)

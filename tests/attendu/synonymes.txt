@@ -43,11 +43,11 @@
     pour que la frontière soit écrite quelque part, et pour voir
     si elle bouge un jour sans qu'on l'ait voulu)
 
-    LA LIGNE « msg(21) = ... » SURPREND et elle est juste : depuis
-    que la boîte de messages se LIT, « msg » s'évalue et rend son
-    contenu — ici ce que le tour précédent y a laissé. C'est le
+    « msg(21) » ÉCHOUE, ET RIEN NE S'AFFICHE : depuis que la boîte
+    de messages se LIT, « msg » s'évalue comme elle, et c'est le
     « (21) » qui reste sur la ligne et la fait échouer. Le nom est
-    toujours masqué, et on voit maintenant PAR QUOI.
+    toujours masqué. La ligne affichait autrefois son début avant
+    de se plaindre : une ligne fautive ne s'exécute plus du tout.
    abbr(21) = 42
    abbrev(21) = 42
    bg(21) = background "Fond"
@@ -85,7 +85,6 @@
    mid(21) = 42
    [ERR]    !! script, ligne 5 colonne 25 : texte inattendu en fin de ligne
    [ERR]         put "msg(21) = " & msg(21)
-   msg(21) = mid(21) = 42
    [ERR]    !! texte inattendu en fin de ligne (v3, ligne 5 de stack "Synonymes".essai)
    masqué : msg
    poly(21) = 42
