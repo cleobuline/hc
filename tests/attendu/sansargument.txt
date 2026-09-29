@@ -1,0 +1,18 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== ce qui plantait ==
+── put "[" & charToNum() & "]"
+   [0]
+── put "[" & offset() & "]"
+   [0]
+── put "[" & offset("a") & "]"
+   [0]
+
+== les témoins ==
+── put "[" & length() & "]"
+   [0]
+── put "[" & numToChar() & "]"
+   []
+── put "[" & charToNum("A") & "]"
+   [65]
+── put "[" & offset("b", "abc") & "]"
+   [2]

@@ -4081,6 +4081,17 @@ static void collect_ref(const char **p, char *buf, int buflen)
             if (*q == '"') q++;
         } else {
             while (*q && !isspace((unsigned char)*q) && !strchr("&+-*/^<>=(),\"", *q)) q++;
+            /* UN MOT VIDE ARRÊTE LA RÉFÉRENCE : SANS CELA, LA BOUCLE NE
+             * FINISSAIT JAMAIS.
+             *
+             * skip_spaces ne saute que l'espace et la tabulation ; la boucle
+             * du dessus s'arrête sur tout ce qu'isspace reconnaît — le saut de
+             * ligne, le retour chariot, \v, \f. Posé sur l'un d'eux, le mot
+             * faisait zéro octet, `s` ne bougeait plus, et l'application
+             * gelait pour de bon. Trouvé par le fuzzing : « put tcon of »
+             * suivi du saut de ligne du script, confié à cet interprète par le
+             * recours. */
+            if (q == st) { s = w; break; }
             if (is_stop_word(st, (int)(q - st))) { s = w; break; }
         }
 
@@ -6078,8 +6089,21 @@ static int call_function_body(const char *t, char *out, int outlen)
         nargs = 1;
     }
 
-    char (*vals)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
-    if (nargs && !vals) { out[0] = '\0'; return 1; }
+    /* DEUX LIGNES AU MOINS, VIDES, MÊME SANS ARGUMENT.
+     *
+     * Les fonctions à une entrée lisent vals[0] et « offset » lit vals[1] sans
+     * regarder nargs. Avec « charToNum() » ou « offset() », nargs valait zéro,
+     * vals valait NULL, et strlen(NULL) faisait tomber l'application entière
+     * — un script d'une ligne suffisait. Trouvé par l'analyseur de clang, et
+     * vérifié en l'exécutant. « offset("a") », lui, lisait une ligne au-delà
+     * de ce qu'on avait réservé.
+     *
+     * Un argument absent vaut donc le vide, comme une variable jamais posée :
+     * c'est ce que font déjà « length() » et « numToChar() », servies par la
+     * v3. */
+    int nlignes = nargs < 2 ? 2 : nargs;
+    char (*vals)[HC_VAL] = arena_rows(nlignes);
+    if (!vals) { out[0] = '\0'; return 1; }
 
     for (int i = 0; i < nargs; i++) eval_expr(raw[i], vals[i], sizeof vals[i]);
 
@@ -7372,13 +7396,21 @@ static int reglage_pose(const char *prop, const char *val)
                  G_REGLAGES[i].affiche, val);
             return 1;
         }
-        v = (int)d;
-        if (v < G_REGLAGES[i].mini || v > G_REGLAGES[i].maxi) {
-            emit(HC_ERR, "   !! %s va de %d à %d, reçu %d",
+        /* LA BORNE SE VÉRIFIE SUR LE DOUBLE, PAS SUR L'ENTIER.
+         *
+         * « set the dragSpeed to 1e31850 » convertissait l'infini en int
+         * avant de le comparer aux bornes : comportement indéfini, relevé par
+         * UBSan sous le fuzzing. La comparaison était juste, mais elle
+         * arrivait après la faute. Le NaN échoue aux deux tests, et se refuse
+         * donc aussi. Le message cite la valeur reçue telle qu'écrite : son
+         * image en int n'avait pas de sens. */
+        if (!(d >= G_REGLAGES[i].mini && d <= G_REGLAGES[i].maxi)) {
+            emit(HC_ERR, "   !! %s va de %d à %d, reçu %s",
                  G_REGLAGES[i].affiche, G_REGLAGES[i].mini,
-                 G_REGLAGES[i].maxi, v);
+                 G_REGLAGES[i].maxi, val);
             return 1;
         }
+        v = (int)d;
     }
     G_REGLAGES[i].valeur = v;
     emit(HC_INFO, "   → %s ← %d", G_REGLAGES[i].affiche, v);
@@ -16489,7 +16521,12 @@ static Object *marked_card_ref(const char *r, int *concerne)
     else if (quoi == REL_NONE && *a) {
         char v[128]; double d = 0;
         eval_expr(a, v, sizeof v); as_num(v, &d);
-        rang = (int)d;
+        /* Borné AVANT la conversion : « go marked card 1e30 » convertissait
+         * hors de la plage d'un int — comportement indéfini, relevé par UBSan
+         * sous le fuzzing. Hors bornes, ou NaN, le rang vaut 0 et la ligne
+         * du dessous rend « pas de telle carte », ce qu'elle faisait déjà
+         * pour un rang trop grand. */
+        rang = (d >= 1 && d <= (double)m) ? (int)d : 0;
     }
     if (rang < 1 || rang > m) return NULL;
 

@@ -1058,6 +1058,8 @@ Object *hc_load(const char *path)
     int format_fichier = 1;
     int format_trop_recent = 0;
     int icon_abimee = 0;
+    /* Une seconde ligne « stack » : voir l'en-tête de pile, plus bas. */
+    int pile_double = 0;
     /* La signature de fin a-t-elle été vue ? Voir le verdict, tout en bas. */
     int fin_vue = 0;
 
@@ -1327,6 +1329,16 @@ Object *hc_load(const char *path)
 
         /* --- en-têtes d'objets --- */
         if (strncmp(s, "stack ", 6) == 0) {
+            /* UNE SECONDE PILE DANS LE MÊME FICHIER EST UN FICHIER ABÎMÉ.
+             *
+             * hc_save n'en écrit jamais qu'une. Une seconde ligne « stack »
+             * écrasait le pointeur : la première pile, ses fonds et ses
+             * cartes partaient dans la nature — trouvé par le fuzzing, fuite
+             * à chaque fois — et les « button » qui suivaient s'attachaient
+             * encore à une carte de l'ANCIENNE pile, que rien ne rendrait.
+             * Deviner laquelle des deux l'utilisateur voulait ouvrir n'est
+             * pas notre affaire : on refuse, avec un motif. */
+            if (stack) { pile_double = 1; break; }
             get_quoted(s, 0, nm, sizeof nm);
             stack = hc_new_stack(nm);
             target = stack;
@@ -1583,6 +1595,11 @@ Object *hc_load(const char *path)
         snprintf(g_load_erreur, sizeof g_load_erreur,
                  "Cette pile est au format %d ; cette version de HC ne connaît "
                  "que le format %d.", format_trop_recent, HC_FORMAT_MAX);
+    /* Avant les autres : la lecture s'est arrêtée NET sur la seconde pile, et
+     * l'objet resté ouvert qu'on y trouve n'est pas une troncature. */
+    else if (pile_double)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Ce fichier contient deux piles : il est abîmé.");
     else if (acc.manque)
         snprintf(g_load_erreur, sizeof g_load_erreur,
                  "Mémoire insuffisante pour lire cette pile en entier.");
@@ -1597,7 +1614,8 @@ Object *hc_load(const char *path)
                  "Une icône de cette pile est incomplète ou abîmée.");
 
     if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert ||
-        objet_ouvert || signature_manque || format_trop_recent || icon_abimee) {
+        objet_ouvert || signature_manque || format_trop_recent || icon_abimee ||
+        pile_double) {
         if (stack) hc_free(stack);
         return NULL;
     }

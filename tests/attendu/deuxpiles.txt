@@ -1,0 +1,7 @@
+== le témoin : « stack » en début de ligne dans un script et un champ ==
+   ouverte
+   script intact : oui
+   champ intact  : oui
+
+== deux en-têtes « stack » ==
+   Ce fichier contient deux piles : il est abîmé.
