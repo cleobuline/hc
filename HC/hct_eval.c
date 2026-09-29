@@ -733,7 +733,20 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         }
     }
 
-    HctValeur r;
+    /* r EST INITIALISÉE, ET CE N'EST PAS POUR FAIRE TAIRE LE COMPILATEUR.
+     *
+     * Tous les chemins qui posent `fait` posent `r` sur la même ligne — sauf
+     * UN : l'hôte, qui l'écrit PAR POINTEUR (« fait = ctx->hote.fonction(…,
+     * &r) »). Le contrat « qui rend 1 écrit *out » tient aujourd'hui, vérifié
+     * sur les onze retours de v3_fonction et les deux de v3_fonction_globale,
+     * mais RIEN NE L'IMPOSE : un hôte qui rendrait 1 sans écrire ferait rendre
+     * ici une HctValeur non initialisée, donc un pointeur de texte quelconque
+     * que l'appelant lirait ou libérerait.
+     *
+     * clang le signalait — « variable 'r' may be uninitialized when used here »
+     * — et c'est un faux positif sur le code d'aujourd'hui qui garde un vrai
+     * piège pour demain. Une valeur vide coûte deux champs à zéro. */
+    HctValeur r = hct_val_vide();
     int fait = 0;
 
     /* Fonctions purement calculatoires : l'exécuteur les fait lui-même, sans

@@ -10,6 +10,31 @@ CFLAGS  ?= -std=gnu99 -O2 -I HC
 AVERTIR  = -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings \
            -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition
 
+# TROIS AVERTISSEMENTS QUE XCODE POSE ET QUE NOUS NE POSIONS PAS.
+#
+# Relevé à l'usage, et c'est le pire endroit pour l'apprendre : l'utilisatrice a
+# ouvert Xcode et y a lu SEIZE avertissements sur du code que cette cible venait
+# de déclarer propre. Quinze « possible misuse of comma operator » dans
+# hc_origine.c, et un « variable may be uninitialized » dans hct_eval.c.
+#
+# La cause n'était PAS qu'il manquait un compilateur : clang, avec les drapeaux
+# ci-dessus, trouve exactement zéro. Ces trois-là ne sont dans -Wall ni dans
+# -Wextra — c'est Xcode qui les ajoute par défaut. Une porte qui ne pose pas les
+# mêmes questions que la machine de l'utilisatrice n'est pas une porte : c'est
+# une surprise, et elle arrive toujours du mauvais côté.
+#
+# -Wcomma                    « a++, b++ » : juste, et illisible
+# -Wconditional-uninitialized une variable posée sur certains chemins seulement.
+#                            Le nôtre était un faux positif qui gardait un vrai
+#                            piège : l'hôte écrit la valeur par pointeur, et rien
+#                            n'impose qu'il l'écrive.
+# -Wnewline-eof              un fichier sans saut de ligne final
+#
+# Ils ne sont pas dans AVERTIR mais dans une variable à part, parce qu'ils sont
+# propres à clang : gcc les refuserait. La cible essaie donc les deux
+# compilateurs, chacun avec ce qu.il sait faire.
+AVERTIR_CLANG = -Wcomma -Wconditional-uninitialized -Wnewline-eof
+
 # LES AVERTISSEMENTS SE COMPTENT À PLUSIEURS NIVEAUX D'OPTIMISATION.
 #
 # Certains ne se voient qu'à un seul, parce qu'ils dépendent de ce que le
@@ -64,6 +89,7 @@ verifie:
 # nombre sans le message n'aide personne à corriger.
 avertissements:
 	@echec=0; \
+	 clang=$$(command -v clang 2>/dev/null); \
 	 for f in $(SOURCES); do \
 	   printf '%-20s ' $$(basename $$f); \
 	   detail=''; \
@@ -76,13 +102,27 @@ avertissements:
 	       detail="$$detail\n--- $$f $$o ---\n$$msg"; \
 	     fi; \
 	   done; \
+	   if [ -n "$$clang" ]; then \
+	     msg=$$($$clang $(BASE) -O1 $(AVERTIR) $(AVERTIR_CLANG) -c -o /dev/null $$f 2>&1); \
+	     n=$$(printf '%s\n' "$$msg" | grep -c 'warning:'); \
+	     printf 'clang:%s ' "$$n"; \
+	     if [ "$$n" -ne 0 ]; then \
+	       echec=1; \
+	       detail="$$detail\n--- $$f clang ---\n$$msg"; \
+	     fi; \
+	   fi; \
 	   echo ""; \
 	   if [ -n "$$detail" ]; then printf '%b\n' "$$detail"; fi; \
 	 done; \
 	 if [ $$echec -ne 0 ]; then \
 	   echo "des avertissements : la cible echoue"; exit 1; \
 	 fi; \
-	 echo "aucun avertissement, aux trois niveaux"
+	 if [ -z "$$clang" ]; then \
+	   echo "aucun avertissement aux trois niveaux — MAIS CLANG EST ABSENT,"; \
+	   echo "donc les familles que Xcode pose n'ont pas ete verifiees"; \
+	 else \
+	   echo "aucun avertissement, aux trois niveaux et sous clang"; \
+	 fi
 
 propre:
 	@rm -rf tests/.travail

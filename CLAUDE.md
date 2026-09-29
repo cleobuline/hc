@@ -33,7 +33,7 @@ minute de distance.
 ## LE NOYAU, LUI, SE VÉRIFIE ICI
 
     make verifie            le noyau compile
-    make avertissements     huit familles d'avertissements, ZÉRO toléré
+    make avertissements     onze familles, gcc ET clang, ZÉRO toléré
     ./tests/lance.sh        la suite de non-régression
     ./tests/lance.sh --asan la même sous ASan, UBSan et LeakSanitizer
     ./tests/lance.sh --enregistre   réenregistre les témoins
@@ -42,7 +42,18 @@ minute de distance.
 `--asan` PASSE AVANT DE POUSSER, et l'on attend son résultat. Les témoins se
 réenregistrent après avoir LU le diff, jamais avant.
 
-`make avertissements` compile aux TROIS niveaux `-O0 -O1 -O2`, et ce n'est pas
+`make avertissements` compile AVEC LES DEUX COMPILATEURS, et ce n'est pas du
+zèle non plus : l'utilisatrice a ouvert Xcode et y a lu SEIZE avertissements sur
+du code que cette cible venait de déclarer propre — quinze « possible misuse of
+comma operator » et un « may be uninitialized ». La cause n'était pas qu'il
+manquait un compilateur : clang, avec nos drapeaux, trouvait zéro. Ces
+familles-là — `-Wcomma`, `-Wconditional-uninitialized`, `-Wnewline-eof` — ne sont
+ni dans `-Wall` ni dans `-Wextra` ; c'est Xcode qui les ajoute.
+
+Une porte qui ne pose pas les mêmes questions que la machine de l'utilisatrice
+n'est pas une porte, c'est une surprise, et elle arrive toujours du mauvais côté.
+
+`make avertissements` compile aussi aux TROIS niveaux `-O0 -O1 -O2`, et ce n'est pas
 du zèle : `-Wformat-truncation` a besoin de bornes que l'analyse de flot
 propage différemment selon `-O`. « delete menu » sur un nom de plus de 63
 caractères échouait en annonçant la réussite ; gcc le disait, à `-O0`
