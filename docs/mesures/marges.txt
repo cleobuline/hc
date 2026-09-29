@@ -1,0 +1,135 @@
+LA MARGE D'UN CHAMP, DEMANDÉE AUX CHAMPS D'APPLE
+================================================
+
+29 septembre 2026.
+
+LE RELEVÉ À L'USAGE, étiqueté des deux côtés par l'utilisatrice : à gauche HC,
+à droite HyperCard sous Basilisk II, la même pile « Stack Templates », la même
+carte « Year Calendar ». Chez HyperCard, chaque mois porte sa ligne d'en-tête
+« M  T  W  T  F  S  S ». Chez HC, aucune. Et la grille des jours est décalée.
+
+CE QUE LA SONDE A DIT, ET QUI A DÉPLACÉ LA RECHERCHE D'UN BOUT À L'AUTRE DU
+PROGRAMME
+
+On a fait tourner le VRAI lecteur et le VRAI importateur sur le fichier, puis
+comparé ce que le fichier porte à ce que le modèle montre :
+
+    fichier : 44 contenus pour le fond « Year Calendar »
+    modèle  : 44 contenus, dont les DOUZE « M  T  W  T  F  S  S »
+
+Les jours sont chargés. Le texte est en mémoire, nommé, complet. Le défaut
+n'est donc PAS dans la lecture ni dans l'import — il est dans le DESSIN. Sans
+cette mesure, la correction serait partie fouiller hc_origine.c, qui n'a rien
+fait de mal.
+
+(Et l'instrument a menti une fois de plus en chemin, la neuvième cette semaine :
+la sonde testait « if (!hc_origine_lit(...)) », alors que cette fonction rend
+ZÉRO en cas de succès. Le premier relevé annonçait un refus sur une lecture
+parfaitement réussie. Lire le contrat AVANT de croire le relevé.)
+
+LA CAUSE, QUI EST DE L'ARITHMÉTIQUE
+
+    HCtext.m   CGFloat m = o->wide_margins ? 8 : 4;
+               return NSInsetRect(r, m, m);
+
+NSInsetRect retire m en HAUT et en BAS autant qu'à gauche et à droite : huit
+pixels de hauteur. Or le fichier dit ceci des champs d'en-tête :
+
+    champ id 223  rect 20,61  104x12  Courier 9  interligne=12  fixe=0
+                                                 nom = « Weekdays 1 »
+
+Douze pixels de haut pour une ligne de douze. Après la marge il en restait
+QUATRE, et la ligne était écartée entière. Même cause, plus discrète, pour les
+douze champs de mois : 72 px de haut, six semaines de 12, et la marge en
+mangeait une — la sixième semaine tombait dehors.
+
+UNE SEULE CONSTANTE explique les trois symptômes : l'en-tête absent, la
+semaine perdue, et la grille décalée.
+
+COMBIEN, ALORS ? LA QUESTION POSÉE AUX 349 CHAMPS DU CORPUS
+
+On ne l'a pas repris d'une documentation. Apple dimensionnait ses champs en
+lignes ENTIÈRES — « Calendar 1 » fait 72 pour 6 lignes de 12, « notes » fait
+224 pour 14 lignes de 16. La bonne marge est donc celle pour laquelle
+(hauteur - marge) tombe juste sur l'interligne le plus souvent :
+
+    marge verticale TOTALE    marges normales (261)   wideMargins (88)
+         0 px                      9,2 %                  0,0 %
+         2 px                     28,4 %   <- sommet      47,7 %   <- sommet
+         4 px                      9,2 %                   1,1 %
+         6 px                      5,0 %                   4,5 %
+         8 px  (ce qu'on faisait)  0,4 %                   4,5 %
+        10 px                      0,4 %                  17,0 %
+        12 px                      3,4 %                  42,0 %
+        14 px                      6,1 %                   1,1 %
+        16 px                      1,1 %                   1,1 %
+
+DEUX PIXELS AU TOTAL, soit UN par côté. Et ce n'est pas « la meilleure des
+valeurs approximatives » : 8 px, ce que HC faisait, est le PLANCHER de la
+colonne des marges normales. On était sur la pire valeur de la table.
+
+ET « wideMargins » N'AJOUTE RIEN EN VERTICAL. Les deux populations culminent au
+même endroit, 2 px. C'est une marge horizontale, et c'est précisément cette
+mesure qui autorise à séparer les deux axes — la séparer sans elle aurait été
+un réglage à l'œil.
+
+LE PIC À 12 px DE LA COLONNE « wideMargins » N'EST PAS UN CONCURRENT : pour un
+champ dont l'interligne vaut 12, (h - 12) tombe juste exactement quand h y
+tombe. Cette colonne recompte donc la colonne 0 chaque fois que l'interligne
+vaut 12, ce qui est le cas le plus fréquent du corpus. La colonne 2, elle, ne
+recopie aucune autre.
+
+CE QUI N'EST PAS MESURÉ, ET S'ÉCRIT COMME TEL
+
+LA MARGE HORIZONTALE RESTE À 4 (8 EN MARGES LARGES), ET CE N'EST PLUS UN
+TROU : ON A REGARDÉ, ET CE N'EST PAS ELLE.
+
+Après la correction verticale, l'utilisatrice a relevé que les mois du
+calendrier perdaient encore leurs dernières semaines. La géométrie d'Apple
+donne la réponse :
+
+    champ        largeur  caracteres  px par caractere disponibles
+    4 Month        108        21              5,14   <- le plus serré
+    Weekdays       104        19              5,47
+    Calendar 1     115        20              5,75
+
+Le Courier 9 de macOS avance de 0,6 em, soit 5,40 px. Vingt et un caractères
+demandent 113,4 px dans un champ qui en fait 108 : ça ne tient À AUCUNE MARGE,
+pas même nulle. Raboter la marge horizontale aurait fait rentrer les champs
+« Calendar » (115 px) et laissé les « Month » (108 px) cassés — la moitié du
+symptôme, et la cause masquée dessous. C'est le genre de réglage qui se paie
+deux fois.
+
+LA CAUSE EST L'AVANCE DE LA FONTE, et elle est corrigée dans HCtext.m
+(chasse_ancienne) : le Courier du Macintosh était une fonte BITMAP, et une
+fonte bitmap avance d'un nombre ENTIER de pixels — 5 à 9 points. Apple a
+dimensionné ses champs au pixel près pour cette avance ; nous dessinons avec
+une vectorielle qui avance de 5,40. Huit pour cent, que vingt et un caractères
+multiplient en 5,4 pixels de trop.
+
+ET UNE VÉRIFICATION QUI N'A PAS TRANCHÉ, écrite parce qu'elle n'a pas tranché :
+j'ai voulu confirmer la règle « avance entière » sur les 44 champs à chasse
+fixe du corpus. Résultat : 34 tiennent avec l'avance de macOS, 35 avec
+l'avance entière, et les pires écarts valent -1200 px. L'instrument comptait
+des champs de PROSE, qui ont parfaitement le droit de passer à la ligne. Il
+mesurait autre chose que ce qu'il annonçait, et ce relevé ne prouve rien.
+Ce qui porte la conclusion est le seul cas dont la mise en page ne PEUT pas
+s'enrouler : la grille en colonnes du calendrier.
+
+RESTE NON MESURÉ : les fontes PROPORTIONNELLES d'époque — Geneva, Chicago,
+New York, Palatino. Le même écart doit exister, mais il y faudrait une table
+d'avances par caractère, et personne ne l'a relevée ici. Elles ne sont pas
+touchées.
+
+CE QUE VAUT LE CHIFFRE DE 28,4 %. Ce n'est pas un taux de réussite : beaucoup
+de champs ne sont pas dimensionnés en lignes entières, et ceux-là ne tombent
+juste pour AUCUNE marge. Ce qui porte la conclusion n'est pas la hauteur du
+sommet, c'est sa POSITION — la même pour deux populations indépendantes — et
+l'écart de vingt-quatre fois avec la valeur qu'on employait.
+
+PAS DE TÉMOIN PERMANENT, ET IL FAUT LE DIRE. Cette mesure a besoin des quatre
+piles d'Apple, qui ne sont pas dans le dépôt, et la correction vit dans du
+Cocoa, que la suite ne peut pas exercer. Elle est donc écrite ici avec ses
+chiffres plutôt que posée dans un harnais, et la vérification est visuelle :
+la carte « Year Calendar » de « Stack Templates », dont les douze en-têtes
+doivent apparaître.

@@ -1,5 +1,10 @@
 #import "HCtext.h"
 #include <stdlib.h>   /* getenv, pour la trace HC_RUNS_DEBUG */
+#include <math.h>     /* floor, pour l'avance des fontes a chasse fixe.
+                       * Declare plutot que compte sur un include transitif de
+                       * Cocoa : le seul compilateur qui trancherait ne tourne
+                       * pas ici, et ce depot a deja paye trois allers-retours
+                       * pour des references que seul Xcode voyait. */
 
 /* ═══ Police, style et geometrie du texte ════════════════════════════════════
  *
@@ -213,6 +218,52 @@ static NSFont *run_base_font(const char *name, int size, NSFont *fallback)
  * bouton par son nom entier. Les avoir en double, c'était garantir qu'un
  * effet ajouté d'un côté manquerait de l'autre — ce qui était le cas du
  * creux et de l'ombré, absents des boutons. */
+/* L'AVANCE D'UNE FONTE BITMAP ÉTAIT ENTIÈRE, ET LA NÔTRE NE L'EST PLUS.
+ *
+ * RELEVÉ À L'USAGE sur le calendrier annuel de « Stack Templates » : les mois
+ * perdaient leurs dernières semaines, chaque ligne de sept jours passant à la
+ * ligne. Ce n'était pas la marge — mesuré :
+ *
+ *     champ        largeur  caracteres  px par caractere disponibles
+ *     4 Month        108        21              5,14
+ *     Calendar 1     115        20              5,75
+ *
+ * Le Courier 9 de macOS avance de 0,6 em, soit 5,40 px. Vingt et un
+ * caractères demandent donc 113,4 px dans un champ qui en fait 108 : ça ne
+ * tient À AUCUNE MARGE, pas même nulle. Raboter la marge horizontale aurait
+ * soigné les champs « Calendar » et laissé les « Month » cassés — la moitié
+ * du symptôme, et la cause masquée.
+ *
+ * LA CAUSE EST LA FONTE. Le Courier du Macintosh était une fonte BITMAP, et
+ * une fonte bitmap avance d'un nombre ENTIER de pixels : 5 à 9 points. Apple
+ * a dimensionné ses champs au pixel près pour cette avance-là ; nous
+ * dessinons avec une fonte vectorielle qui avance de 5,40. Huit pour cent, que
+ * vingt et un caractères multiplient en 5,4 pixels de trop.
+ *
+ * ON RAMÈNE DONC L'AVANCE À L'ENTIER, par le crénage, et SEULEMENT pour les
+ * fontes à chasse fixe d'époque — Courier et Monaco —, les seules où l'écart
+ * s'accumule en colonnes et où la correction est un seul nombre.
+ *
+ * CE QUI N'EST PAS MESURÉ EST ÉCRIT COMME NON MESURÉ. Un seul cas est mesuré :
+ * Courier 9, par la géométrie des champs d'Apple. L'extension aux autres
+ * corps et à Monaco repose sur le principe « une fonte bitmap avance d'un
+ * entier », pas sur un relevé. Les fontes PROPORTIONNELLES — Geneva, Chicago,
+ * New York, Palatino — ne sont pas touchées : il y faudrait une table
+ * d'avances par caractère, que personne n'a mesurée ici. */
+static CGFloat chasse_ancienne(NSFont *f)
+{
+    if (!f || ![f isFixedPitch]) return 0.0;
+    NSString *fam = [f familyName];
+    if (!fam) return 0.0;
+    if (!([fam isEqualToString:@"Courier"] || [fam isEqualToString:@"Monaco"]))
+        return 0.0;
+    CGFloat a = [f maximumAdvancement].width;
+    if (a <= 1.0) return 0.0;             /* avance invraisemblable : on s'abstient */
+    CGFloat vise = floor(a + 0.5);
+    if (vise < 1.0) return 0.0;
+    return vise - a;
+}
+
 static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
 {
     NSMutableDictionary *at = [NSMutableDictionary dictionary];
@@ -254,8 +305,13 @@ static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
 
     /* Condense et extend se rendent par l'approche : c'est ce que faisait le
      * Macintosh, qui rapprochait ou écartait les glyphes sans changer de fonte. */
-    if (style & HC_CONDENSE) at[NSKernAttributeName] = @(-1.0);
-    if (style & HC_EXTEND)   at[NSKernAttributeName] = @(1.5);
+    /* Le crénage se CUMULE désormais : la correction d'avance d'une fonte
+     * d'époque et « condense » sont deux choses, et l'écriture qui écrasait
+     * l'attribut aurait fait disparaître l'une des deux en silence. */
+    CGFloat kern = chasse_ancienne(f);
+    if (style & HC_CONDENSE) kern += -1.0;
+    if (style & HC_EXTEND)   kern +=  1.5;
+    if (kern != 0.0) at[NSKernAttributeName] = @(kern);
 
     /* HC_GROUP ne se voit pas, mais il doit survivre a un aller-retour par
      * l'editeur : on le porte comme attribut personnalise. */
@@ -839,8 +895,51 @@ NSRect field_text_rect(Object *o) {
         r.size.width  -= 3;                    /* l'ombre portée */
         r.size.height -= 3;
     }
-    CGFloat m = o->wide_margins ? 8 : 4;
-    return NSInsetRect(r, m, m);
+    /* LA MARGE VERTICALE N'EST PAS LA MARGE HORIZONTALE, et les confondre
+     * effaçait des lignes entières.
+     *
+     * NSInsetRect(r, m, m) retirait m EN HAUT ET EN BAS autant qu'à gauche et
+     * à droite — soit 8 pixels de hauteur. Relevé à l'usage sur le calendrier
+     * annuel de « Stack Templates » : ses douze champs « Weekdays » font
+     * 104x12, exactement une ligne de 12. Après la marge il leur restait 4
+     * pixels, et la ligne « M  T  W  T  F  S  S » était écartée ENTIÈRE. Le
+     * texte était chargé — mesuré dans le modèle, les douze contenus y sont —
+     * et ne se dessinait nulle part. Même cause pour la sixième semaine de
+     * chaque mois : 72 px de haut, six lignes de 12, et la marge en mangeait
+     * une.
+     *
+     * COMBIEN, ALORS ? On ne l'a pas repris d'une doc : on l'a demandé aux
+     * champs d'Apple. Apple dimensionnait ses champs en lignes ENTIÈRES, donc
+     * la bonne marge est celle pour laquelle (hauteur - marge) tombe juste sur
+     * l'interligne le plus souvent. Sur les 349 champs des quatre piles du
+     * corpus :
+     *
+     *     marge verticale totale    marges normales     wideMargins
+     *         0 px                     9,2 %               0,0 %
+     *         2 px                    28,4 %  <- sommet   47,7 %  <- sommet
+     *         4 px                     9,2 %               1,1 %
+     *         8 px (ce qu'on faisait)  0,4 %               4,5 %
+     *
+     * 2 px au total, soit UN pixel par côté, et c'est le sommet des DEUX
+     * populations. 8 px était le plancher de la table — la pire valeur
+     * possible, pas une valeur approximative.
+     *
+     * ET « wideMargins » N'AJOUTE RIEN EN VERTICAL : les deux colonnes
+     * culminent au même endroit. C'est une marge horizontale, et la séparation
+     * des deux axes est exactement ce que cette mesure autorise.
+     *
+     * LA MARGE HORIZONTALE N'EST PAS MESURÉE et ne bouge donc pas : le fichier
+     * ne porte pas l'avance des caractères, sans quoi le même raisonnement
+     * s'appliquerait à la largeur. Écrit comme non mesuré. */
+    CGFloat mh = o->wide_margins ? 8 : 4;   /* horizontale : inchangée */
+    CGFloat mv = 1;                          /* verticale : mesurée */
+    r.origin.x += mh;  r.size.width  -= 2 * mh;
+    r.origin.y += mv;  r.size.height -= 2 * mv;
+    /* Un champ plus étroit que ses marges rendait un rectangle de taille
+     * NÉGATIVE, que NSInsetRect produisait déjà sans le dire. */
+    if (r.size.width  < 0) r.size.width  = 0;
+    if (r.size.height < 0) r.size.height = 0;
+    return r;
 }
 
 /* Défilement maximal : ce qui dépasse de la partie visible, jamais négatif. */
