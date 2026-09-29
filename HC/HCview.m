@@ -2498,38 +2498,112 @@ static void sync_editor_scroll(Object *o) {
     gSyncingEditorScroll = NO;
 }
 
-static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
-    if (!f || f->type != OBJ_FIELD) return 0;
+/* ═══ LE CARACTÈRE SOUS LE POINT DU CLIC ════════════════════════════════
+ *
+ * UNE SEULE FONCTION POUR LES DEUX, ET C'EST TOUT L'OBJET. click_word_range et
+ * click_line_number faisaient les MÊMES opérations DANS UN ORDRE DIFFÉRENT, et
+ * l'une des deux ne marchait qu'à moitié.
+ *
+ * LE DÉFAUT, relevé à l'usage sur le calendrier annuel d'Apple. L'ordre était :
+ *
+ *   click_word_range   usedRectForTextContainer:  PUIS  glyphIndexForPoint:
+ *   click_line_number  glyphIndexForPoint:        PUIS  usedRectForTextContainer:
+ *
+ * Or NSLayoutManager compose PARESSEUSEMENT — c'est ce que field_layout existe
+ * pour exploiter, et son commentaire le dit. Sur une mise en page qui vient
+ * d'être construite, rien n'est encore composé : usedRectForTextContainer: rend
+ * un rectangle qui ne couvre pas le texte, le test « le point est-il sous la fin
+ * du texte ? » répond OUI à tort, et la fonction renonce. glyphIndexForPoint:,
+ * lui, DOIT composer pour répondre — c'est pourquoi la jumelle, qui l'appelle en
+ * premier, ne s'en apercevait pas.
+ *
+ * CE SONT DEUX RELEVÉS DE L'UTILISATRICE, CÔTE À CÔTE, QUI L'ONT DIT, et ni l'un
+ * ni l'autre seul ne l'aurait dit :
+ *
+ *   answer the clickChunk                        -> « chunk <> », toujours vide
+ *   answer the clickLine & the clickChunk        -> « ligne <line 2 …>
+ *                                                    chunk <char 31 to 32 …> »
+ *
+ * La seconde sonde lit la LIGNE d'abord : elle compose la mise en page, la range
+ * dans la mémoire de field_layout, et le chunk trouve alors un rectangle juste.
+ * Le gestionnaire d'Apple, lui, lit le chunk EN PREMIER — d'où un dialogue vide
+ * et « un rang numérique est attendu ici » à chaque clic.
+ *
+ * Réordonner click_word_range aurait suffi et aurait laissé les deux fonctions
+ * libres de rediverger. Une seule les tient : le troisième appelant ne pourra
+ * pas se tromper d'ordre, puisqu'il n'y a plus d'ordre à choisir.
+ *
+ * Rend -1 si le point ne tombe sur aucun caractère. `sortie` reçoit la chaîne
+ * mise en page, dont l'indice rendu est un indice d'UTF-16 : les deux vont
+ * ensemble, et rendre l'un sans l'autre obligerait l'appelant à refabriquer la
+ * chaîne — donc à risquer d'en fabriquer une autre. */
+static NSInteger click_char_index(Object *f, NSPoint p, NSString **sortie)
+{
+    if (sortie) *sortie = nil;
+    if (!f || f->type != OBJ_FIELD) return -1;
     const char *tx = hc_field_text(f);
-    if (!tx || !*tx) return 0;
+    if (!tx || !*tx) return -1;
     NSString *s = [NSString stringWithUTF8String:tx];
-    if (!s) return 0;
+    if (!s) return -1;
 
     NSRect tr  = field_text_rect(f);
     NSRect off = field_text_draw_rect(f);
 
-    /* Même mise en page que le tracé — voir click_line_number. */
+    /* La MÊME mise en page que le tracé, et non une seconde montée pour
+     * l'occasion : le tracé et le clic doivent s'accorder au pixel près, et deux
+     * mises en page montées séparément finissent toujours par diverger. */
     NSTextContainer *tc = nil;
     NSLayoutManager *lm = field_layout(f, s,
                                        obj_attrs(f, 12, [NSColor blackColor]),
                                        tr.size.width, &tc);
 
     NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
-    if (q.y < 0) return 0;
-    NSRect used = [lm usedRectForTextContainer:tc];
-    if (q.y > NSMaxY(used)) return 0;
+    if (q.y < 0) return -1;
 
+    /* L'INDICE D'ABORD, LE RECTANGLE ENSUITE, et l'ordre est la correction :
+     * glyphIndexForPoint: compose ce qu'il faut pour répondre, si bien que le
+     * rectangle lu après lui couvre le texte. Lu avant, il ne couvre rien. */
     CGFloat frac = 0;
     NSUInteger gi = [lm glyphIndexForPoint:q inTextContainer:tc
                     fractionOfDistanceThroughGlyph:&frac];
     NSUInteger ci = [lm characterIndexForGlyphAtIndex:gi];
+
+    NSRect used = [lm usedRectForTextContainer:tc];
+    if (q.y > NSMaxY(used)) return -1;
+
+    /* L'INDICE EST BORNÉ À LA LONGUEUR, ET NON À LA LONGUEUR MOINS UN, parce
+     * que les deux appelants n'en veulent pas la même chose et que les écraser
+     * sur une seule borne aurait changé un comportement sans le mesurer :
+     *
+     *   le compte de LIGNES tolère l'indice de fin — un texte qui finit par un
+     *     saut de ligne a une dernière ligne VIDE, et un clic dedans est bien
+     *     sur cette ligne-là ;
+     *   la recherche du MOT, elle, doit indexer un caractère qui existe, et
+     *     resserre donc elle-même.
+     *
+     * C'est la seule chose que ces deux fonctions ne partagent pas, et elle est
+     * écrite ici pour qu'on ne la confonde pas avec un oubli. */
     NSUInteger n = [s length];
-    if (ci >= n) ci = n ? n - 1 : 0;
+    if (n == 0) return -1;
+    if (ci > n) ci = n;
 
+    if (sortie) *sortie = s;
+    return (NSInteger)ci;
+}
+
+static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
+    NSString *s = nil;
+    NSInteger ci = click_char_index(f, p, &s);
+    if (ci < 0 || !s) return 0;
+
+    NSUInteger n = [s length];
+    /* Le mot doit indexer un caractère qui existe : voir click_char_index. */
+    NSUInteger k = (NSUInteger)ci;
+    if (k >= n) k = n - 1;
     NSCharacterSet *blancs = [NSCharacterSet whitespaceAndNewlineCharacterSet];
-    if ([blancs characterIsMember:[s characterAtIndex:ci]]) return 0;
+    if ([blancs characterIsMember:[s characterAtIndex:k]]) return 0;
 
-    NSUInteger a = ci, b = ci;
+    NSUInteger a = k, b = k;
     while (a > 0 && ![blancs characterIsMember:[s characterAtIndex:a - 1]]) a--;
     while (b + 1 < n && ![blancs characterIsMember:[s characterAtIndex:b + 1]]) b++;
 
@@ -2539,47 +2613,20 @@ static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
 }
 
 static int click_line_number(Object *f, NSPoint p) {
-    if (!f || f->type != OBJ_FIELD) return 0;
+    /* MÊME CHEMIN QUE click_word_range, au caractère près. Cette fonction avait
+     * le bon ordre par chance et l'autre le mauvais ; les deux passent désormais
+     * par click_char_index, qui n'en laisse plus qu'un. */
+    NSString *s = nil;
+    NSInteger ci = click_char_index(f, p, &s);
+    if (ci < 0 || !s) return 0;
 
-    const char *tx = hc_field_text(f);
-    if (!tx || !*tx) return 0;
-    NSString *s = [NSString stringWithUTF8String:tx];
-    if (!s) return 0;
-
-    NSRect tr  = field_text_rect(f);
-    NSRect off = field_text_draw_rect(f);
-
-    /* La MÊME mise en page que le tracé, et non une seconde montée pour
-     * l'occasion.
-     *
-     * Deux raisons, et la seconde est celle qui se voit. La première : cette
-     * fonction est appelée dans « repeat while the mouse is down », donc à
-     * chaque tour de boucle, et remonter la mise en page d'un champ de
-     * quarante-huit kilo-octets à chaque fois coûtait des centaines de
-     * millisecondes par tour. La seconde : le tracé et le clic DOIVENT
-     * s'accorder au pixel près, et deux mises en page montées séparément
-     * finissent toujours par diverger — l'oubli de setUsesFontLeading:NO dans
-     * field_layout a suffi à décaler la ligne surlignée. Une seule mise en
-     * page, et la question ne se pose plus. */
-    NSTextContainer *tc = nil;
-    NSLayoutManager *lm = field_layout(f, s,
-                                       obj_attrs(f, 12, [NSColor blackColor]),
-                                       tr.size.width, &tc);
-
-    NSPoint q = NSMakePoint(p.x - NSMinX(off), p.y - NSMinY(off));
-    if (q.y < 0) return 0;
-
-    CGFloat frac = 0;
-    NSUInteger gi = [lm glyphIndexForPoint:q inTextContainer:tc
-                    fractionOfDistanceThroughGlyph:&frac];
-    NSUInteger ci = [lm characterIndexForGlyphAtIndex:gi];
-    if (ci > [s length]) ci = [s length];
-
-    NSRect used = [lm usedRectForTextContainer:tc];
-    if (q.y > NSMaxY(used)) return 0;
-
+    /* La LIGNE se compte sur les sauts de ligne qui précèdent le caractère
+     * trouvé — et non sur la hauteur, qui dépendrait de l'interligne. */
+    NSUInteger n = [s length];
+    NSUInteger k = (NSUInteger)ci;
+    if (k > n) k = n;
     int line = 1;
-    for (NSUInteger i = 0; i < ci; i++)
+    for (NSUInteger i = 0; i < k; i++)
         if ([s characterAtIndex:i] == '\n') line++;
     return line;
 }

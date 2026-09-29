@@ -292,3 +292,72 @@ DEUX CONSÉQUENCES, et la première est pour les bancs :
   aucune pile ne dépend pour FONCTIONNER — elles en souffrent plutôt. Le
   rendre fidèlement reviendrait à recopier une limite. À décider à froid, et
   noté ici pour que le choix soit un choix et non un oubli.
+
+
+« the clickChunk » RENDAIT VIDE QUAND ON LE LISAIT EN PREMIER
+=============================================================
+
+Le 29 septembre 2026. Relevé à l'usage, sur le calendrier annuel de « Stack
+Templates » d'Apple : cliquer un jour ouvrait un dialogue VIDE, puis « un rang
+numérique est attendu ici (v3, ligne 53 de background "Year Calendar".
+returnTheDay) ».
+
+CE SONT DEUX SONDES DE L'UTILISATRICE, CÔTE À CÔTE, QUI ONT DIT LA CAUSE, et ni
+l'une ni l'autre seule ne l'aurait dite :
+
+    answer the clickChunk
+        -> « chunk <> »                                    toujours VIDE
+
+    answer the clickLoc & the rect of me & the clickLine & the clickChunk
+        -> « loc <75,102> rect <16,70,131,142>
+             ligne <line 2 of bg field "Calendar 1">
+             chunk <char 31 to 32 of bg field "Calendar 1">
+             police <Courier/9> »                          ÇA MARCHE
+
+La seule différence entre les deux : la seconde lit « the clickLine » AVANT
+« the clickChunk ».
+
+LA CAUSE. click_word_range et click_line_number faisaient les MÊMES opérations
+DANS UN ORDRE DIFFÉRENT :
+
+    click_word_range   usedRectForTextContainer:  PUIS  glyphIndexForPoint:
+    click_line_number  glyphIndexForPoint:        PUIS  usedRectForTextContainer:
+
+NSLayoutManager compose PARESSEUSEMENT — c'est ce que field_layout existe pour
+exploiter, et son propre commentaire le dit. Sur une mise en page qui vient
+d'être construite, rien n'est encore composé : usedRectForTextContainer: rend un
+rectangle qui ne couvre pas le texte, le test « le point est-il sous la fin du
+texte ? » répond OUI à tort, et la fonction renonce.
+
+glyphIndexForPoint:, lui, DOIT composer pour répondre. C'est pourquoi la jumelle,
+qui l'appelle en premier, ne s'en apercevait pas — et pourquoi lire la LIGNE
+d'abord réparait le CHUNK : la première lecture composait la mise en page et la
+rangeait dans la mémoire de field_layout, la seconde y trouvait un rectangle
+juste.
+
+Le gestionnaire d'Apple lit le chunk EN PREMIER. D'où le dialogue vide à chaque
+clic, sur n'importe quel chiffre.
+
+LA CORRECTION N'EST PAS UN RÉORDONNANCEMENT. Réordonner click_word_range aurait
+suffi et aurait laissé les deux fonctions libres de rediverger — c'est
+exactement ce qui vient de se passer. Une seule fonction, click_char_index, les
+tient toutes les deux : le troisième appelant ne pourra pas se tromper d'ordre,
+puisqu'il n'y a plus d'ordre à choisir.
+
+CE QUE LES DEUX NE PARTAGENT PAS, et qui est écrit pour ne pas passer pour un
+oubli : la borne de l'indice. Le compte de LIGNES tolère l'indice de fin — un
+texte qui finit par un saut de ligne a une dernière ligne vide, et un clic dedans
+est bien sur cette ligne-là — tandis que la recherche du MOT doit indexer un
+caractère qui existe. Les écraser sur une seule borne aurait changé un
+comportement sans le mesurer.
+
+CE QUI N'EST PAS MESURÉ : la correction ne peut pas s'exercer dans ce conteneur,
+qui n'a pas d'AppKit. Ce qui EST mesuré, c'est que l'ORDRE de la jumelle marche
+sur une mise en page neuve — la seconde sonde le prouve, puisque « the clickLine »
+y répond juste au premier clic. La correction ne fait que donner cet ordre-là aux
+deux. La confirmation viendra du clic.
+
+ET LE DIALOGUE VIDE A SA PROPRE CAUSE, distincte et non corrigée : une faute DANS
+une fonction n'arrête pas l'appelant. returnTheDay butait, s'arrêtait, rendait
+vide, et le « answer » de la ligne du dessus affichait ce vide. Voir la section 7c
+de tests/harnais/pilereelle.c, qui enregistre cet état.
