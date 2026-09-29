@@ -839,8 +839,51 @@ NSRect field_text_rect(Object *o) {
         r.size.width  -= 3;                    /* l'ombre portée */
         r.size.height -= 3;
     }
-    CGFloat m = o->wide_margins ? 8 : 4;
-    return NSInsetRect(r, m, m);
+    /* LA MARGE VERTICALE N'EST PAS LA MARGE HORIZONTALE, et les confondre
+     * effaçait des lignes entières.
+     *
+     * NSInsetRect(r, m, m) retirait m EN HAUT ET EN BAS autant qu'à gauche et
+     * à droite — soit 8 pixels de hauteur. Relevé à l'usage sur le calendrier
+     * annuel de « Stack Templates » : ses douze champs « Weekdays » font
+     * 104x12, exactement une ligne de 12. Après la marge il leur restait 4
+     * pixels, et la ligne « M  T  W  T  F  S  S » était écartée ENTIÈRE. Le
+     * texte était chargé — mesuré dans le modèle, les douze contenus y sont —
+     * et ne se dessinait nulle part. Même cause pour la sixième semaine de
+     * chaque mois : 72 px de haut, six lignes de 12, et la marge en mangeait
+     * une.
+     *
+     * COMBIEN, ALORS ? On ne l'a pas repris d'une doc : on l'a demandé aux
+     * champs d'Apple. Apple dimensionnait ses champs en lignes ENTIÈRES, donc
+     * la bonne marge est celle pour laquelle (hauteur - marge) tombe juste sur
+     * l'interligne le plus souvent. Sur les 349 champs des quatre piles du
+     * corpus :
+     *
+     *     marge verticale totale    marges normales     wideMargins
+     *         0 px                     9,2 %               0,0 %
+     *         2 px                    28,4 %  <- sommet   47,7 %  <- sommet
+     *         4 px                     9,2 %               1,1 %
+     *         8 px (ce qu'on faisait)  0,4 %               4,5 %
+     *
+     * 2 px au total, soit UN pixel par côté, et c'est le sommet des DEUX
+     * populations. 8 px était le plancher de la table — la pire valeur
+     * possible, pas une valeur approximative.
+     *
+     * ET « wideMargins » N'AJOUTE RIEN EN VERTICAL : les deux colonnes
+     * culminent au même endroit. C'est une marge horizontale, et la séparation
+     * des deux axes est exactement ce que cette mesure autorise.
+     *
+     * LA MARGE HORIZONTALE N'EST PAS MESURÉE et ne bouge donc pas : le fichier
+     * ne porte pas l'avance des caractères, sans quoi le même raisonnement
+     * s'appliquerait à la largeur. Écrit comme non mesuré. */
+    CGFloat mh = o->wide_margins ? 8 : 4;   /* horizontale : inchangée */
+    CGFloat mv = 1;                          /* verticale : mesurée */
+    r.origin.x += mh;  r.size.width  -= 2 * mh;
+    r.origin.y += mv;  r.size.height -= 2 * mv;
+    /* Un champ plus étroit que ses marges rendait un rectangle de taille
+     * NÉGATIVE, que NSInsetRect produisait déjà sans le dire. */
+    if (r.size.width  < 0) r.size.width  = 0;
+    if (r.size.height < 0) r.size.height = 0;
+    return r;
 }
 
 /* Défilement maximal : ce qui dépasse de la partie visible, jamais négatif. */
