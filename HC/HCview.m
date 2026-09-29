@@ -823,7 +823,7 @@ static CGFloat popup_title_width(Object *o)
     if (!o->showname || !o->name || !*o->name) return 0;
 
     NSDictionary *attrs = obj_attrs(o, 12, nil);
-    NSString *nom = [NSString stringWithUTF8String:o->name];
+    NSString *nom = hcv_texte(o->name);
     CGFloat w = ceil([nom sizeWithAttributes:attrs].width) + 10;
 
     /* Il doit RESTER de quoi voir l'article choisi et la flèche : un nom plus
@@ -837,7 +837,7 @@ static CGFloat popup_title_width(Object *o)
 
 static void open_popup_menu(Object *o, HCView *view) {
     if (!o->contents || !*o->contents) return;
-    NSArray<NSString *> *raw = [[NSString stringWithUTF8String:o->contents]
+    NSArray<NSString *> *raw = [hcv_texte(o->contents)
                                 componentsSeparatedByString:@"\n"];
     NSMutableArray<NSString *> *items = [NSMutableArray array];
     NSMutableArray<NSNumber *> *lines = [NSMutableArray array];
@@ -952,7 +952,33 @@ static void flash_popup_selection(HCView *view, NSInteger row) {
  * ON SE RABAT SUR LATIN-1, qui ne peut PAS échouer : chacun de ses 256 octets
  * a un caractère. Ce n'est pas deviner l'encodage — c'est montrer ce qu'il y a
  * plutôt que de s'arrêter. Un nom qui s'affiche de travers se répare ; une
- * application qui plante, non. */
+ * application qui plante, non.
+ *
+ * LE PREMIER PASSAGE N'AVAIT CORRIGÉ QUE -setStringValue:. Un audit en a
+ * trouvé une quarantaine d'autres, et parmi eux des plantages du même ordre :
+ *
+ *   HCtext.m        @{ @"police" : nil } — un littéral de dictionnaire qui
+ *                   reçoit nil lève une exception. Un champ dont la police
+ *                   n'était pas de l'UTF-8 arrêtait l'application AU DESSIN.
+ *   HCview.m        -initWithString:nil dans field_attr_string : un champ dont
+ *                   le TEXTE portait un seul octet invalide, pareil.
+ *   HCview.m        -setTitle:nil sur la fenêtre (nom de pile), -setString:nil
+ *                   dans l'éditeur de script, -initWithTitle:nil pour un
+ *                   article de menu, -addButtonWithTitle:nil pour « answer ».
+ *   HCview.m        la boîte de message, rafraîchie en DEUX endroits dont un
+ *                   seul passait par ici : le site jumeau classique.
+ *
+ * Il suffit d'un .stack retouché dans un éditeur réglé en Latin-1
+ * (« Occidental ») : le lecteur n'impose pas l'UTF-8, et chaque accent devient
+ * alors un octet invalide.
+ *
+ * Pour le texte d'un champ, le repli est cohérent avec utf16_from_byte, qui se
+ * rabat déjà sur « un octet, une unité » quand l'UTF-8 ne se décode pas : les
+ * plages et la sélection tombent donc là où Latin-1 les met, et restent
+ * bornées à la longueur de la chaîne.
+ *
+ * Restent en +stringWithUTF8String: les tables de constantes du programme, et
+ * les deux sites qui testent déjà nil et savent y renoncer. */
 NSString *hcv_texte(const char *s)
 {
     if (!s) return @"";
@@ -975,7 +1001,7 @@ static void draw_part(Object *o) {
         BOOL isPopup  = (strcmp(st, "popup") == 0);
 
         const char *nm = o->name ? o->name : "";
-        NSString *s = [NSString stringWithUTF8String:nm];
+        NSString *s = hcv_texte(nm);
         /* Pour un bouton de fond non partagé, l'allumage vit dans la carte :
          * lire o->hilite donnerait le même état sur toutes les cartes du fond. */
         BOOL on = hc_hilite_of(o, hc_current_card());
@@ -1160,7 +1186,7 @@ static void draw_part(Object *o) {
              * déjà : la boîte reste vide en attendant un menu. */
             NSString *label = (tw > 0) ? @"" : s;
             if (o->contents && *o->contents) {
-                NSArray *lines = [[NSString stringWithUTF8String:o->contents]
+                NSArray *lines = [hcv_texte(o->contents)
                                   componentsSeparatedByString:@"\n"];
                 int sel = o->selectedline > 0 ? o->selectedline : 1;
                 if (sel <= (int)[lines count] && [lines[sel-1] length] > 0)
@@ -1322,7 +1348,7 @@ static void draw_part(Object *o) {
         }
 
         const char *tx = hc_field_text(o);
-        NSString *s = [NSString stringWithUTF8String:tx];
+        NSString *s = hcv_texte(tx);
 
         NSAttributedString *as = field_attr_string(o, s, at);
 
@@ -1539,7 +1565,7 @@ static const char *cocoa_answer_file(const char *prompt) {
     [p setCanChooseDirectories:NO];
     [p setAllowsMultipleSelection:NO];
     if (prompt && *prompt)
-        [p setMessage:[NSString stringWithUTF8String:prompt]];
+        [p setMessage:hcv_texte(prompt)];
     if ([p runModal] != NSModalResponseOK) return NULL;
     NSString *chemin = [[p URL] path];
     if (!chemin) return NULL;
@@ -1550,9 +1576,9 @@ static const char *cocoa_answer_file(const char *prompt) {
 static const char *cocoa_ask_file(const char *prompt, const char *deflt) {
     NSSavePanel *p = [NSSavePanel savePanel];
     if (prompt && *prompt)
-        [p setMessage:[NSString stringWithUTF8String:prompt]];
+        [p setMessage:hcv_texte(prompt)];
     if (deflt && *deflt)
-        [p setNameFieldStringValue:[NSString stringWithUTF8String:deflt]];
+        [p setNameFieldStringValue:hcv_texte(deflt)];
     if ([p runModal] != NSModalResponseOK) return NULL;
     NSString *chemin = [[p URL] path];
     if (!chemin) return NULL;
@@ -1562,7 +1588,7 @@ static const char *cocoa_ask_file(const char *prompt, const char *deflt) {
 
 static const char *cocoa_ask(const char *prompt, const char *deflt) {
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:[NSString stringWithUTF8String:prompt ? prompt : ""]];
+    [a setMessageText:hcv_texte(prompt ? prompt : "")];
     [a addButtonWithTitle:@"OK"];
     [a addButtonWithTitle:@"Annuler"];
 
@@ -1579,10 +1605,10 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:[NSString stringWithUTF8String:prompt ? prompt : ""]];
+    [a setMessageText:hcv_texte(prompt ? prompt : "")];
     const char *order[3] = { b3, b2, b1 };
     for (int i = 0; i < 3; i++)
-        if (order[i]) [a addButtonWithTitle:[NSString stringWithUTF8String:order[i]]];
+        if (order[i]) [a addButtonWithTitle:hcv_texte(order[i])];
 
     NSModalResponse rep = [a runModal];
     int idx = (int)(rep - NSAlertFirstButtonReturn);
@@ -1652,7 +1678,7 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
      * commencent par le fait — « objet introuvable » — et poursuivent par le
      * contexte : l'extrait du script, la ligne, l'objet. C'est exactement la
      * division que demande une alerte. */
-    NSString *tout = [NSString stringWithUTF8String:texte];
+    NSString *tout = hcv_texte(texte);
     NSRange saut = [tout rangeOfString:@"\n"];
     NSString *titre = (saut.location == NSNotFound)
                       ? tout : [tout substringToIndex:saut.location];
@@ -2155,7 +2181,7 @@ static void cocoa_menu_hypercard(const char *item)
         { NULL, NULL }
     };
 
-    NSString *voulu = menu_normalise([NSString stringWithUTF8String:item]);
+    NSString *voulu = menu_normalise(hcv_texte(item));
     for (int i = 0; TABLE[i].article; i++) {
         NSString *nom = [NSString stringWithUTF8String:TABLE[i].article];
         if (![menu_normalise(nom) isEqualToString:voulu]) continue;
@@ -2208,7 +2234,7 @@ static void cocoa_menus_changed(void)
         NSMenuItem *tete = [[NSMenuItem alloc] init];
         [tete setTag:HCV_MENU_SCRIPT];
         NSMenu *m = [[NSMenu alloc] initWithTitle:
-                        [NSString stringWithUTF8String:nom]];
+                        hcv_texte(nom)];
 
         /* Sans cela AppKit décide seul de ce qui est actif, en cherchant un
          * répondeur pour chaque action — et « disable menuItem 4 » n'aurait
@@ -2224,7 +2250,7 @@ static void cocoa_menus_changed(void)
                 continue;
             }
             NSMenuItem *mi = [[NSMenuItem alloc]
-                initWithTitle:[NSString stringWithUTF8String:art]
+                initWithTitle:hcv_texte(art)
                        action:@selector(hcMenuScriptItem:)
                 keyEquivalent:@""];
             [mi setTarget:gView];
@@ -2386,7 +2412,7 @@ static void cocoa_field_changed(Object *field)
 
     if (field && field == gEditingField && gFieldEditor) {
         const char *tx  = hc_field_text(field);
-        NSString *noyau = [NSString stringWithUTF8String:tx ? tx : ""];
+        NSString *noyau = hcv_texte(tx ? tx : "");
 
         if (![noyau isEqualToString:[gFieldEditor string]]) {
             NSRange sel = [gFieldEditor selectedRange];
@@ -3193,7 +3219,7 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textFont") == 0) {
-        NSString *nom = [NSString stringWithUTF8String:value];
+        NSString *nom = hcv_texte(value);
         NSFont *f = [NSFont fontWithName:nom size:gTextSize];
         if (f) gTextFont = f;
         return;
@@ -3213,11 +3239,11 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
     if (strcasecmp(name, "textStyle") == 0) {
-        gTextStyleName = [NSString stringWithUTF8String:value];
+        gTextStyleName = hcv_texte(value);
         return;
     }
     if (strcasecmp(name, "textAlign") == 0) {
-        gTextAlign = [NSString stringWithUTF8String:value];
+        gTextAlign = hcv_texte(value);
         return;
     }
     if (strcasecmp(name, "cursor") == 0) {
@@ -3337,7 +3363,7 @@ static NSMutableArray *gPlaying = nil;
 static HCSoundKeeper *gSoundKeeper = nil;
 
 static void cocoa_play(const char *name) {
-    NSString *n = [NSString stringWithUTF8String:name ? name : ""];
+    NSString *n = hcv_texte(name ? name : "");
 
     NSSound *s = [NSSound soundNamed:n];
     if (!s) {
@@ -3615,7 +3641,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
     if (!stack) return;
     const char *nm = stack->name ? stack->name : "Sans titre";
-    [[self window] setTitle:[NSString stringWithUTF8String:nm]];
+    [[self window] setTitle:hcv_texte(nm)];
 }
 
 - (void)newBackground:(id)sender {
@@ -3671,7 +3697,7 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
 
 - (void)showPopupMenuFor:(Object *)o atPoint:(NSPoint)p {
     if (!o->contents || !*o->contents) return;
-    NSArray *lines = [[NSString stringWithUTF8String:o->contents]
+    NSArray *lines = [hcv_texte(o->contents)
                       componentsSeparatedByString:@"\n"];
 
     NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
@@ -6824,6 +6850,9 @@ static void cocoa_object_gone(Object *mort)
     if (gSurvole      == mort) gSurvole      = NULL;
     if (gSurvoleCarte == mort) gSurvoleCarte = NULL;
 
+    /* Les panneaux d'info retiennent leur cible, et ils ne sont pas modaux. */
+    hcdlg_objet_disparu(mort);
+
     /* Le document sans fenêtre, puis chacun de ceux qui en ont une : un objet
      * peut mourir dans une pile qui n'est pas celle du dessus. */
     hcv_oublie_dans(&gDoc0, mort);
@@ -7192,7 +7221,7 @@ static NSTextField  *gSprayDensityLabel = nil;
          * remet d'accord avec le noyau avant de la montrer. */
         if (p == gMsgPanel && gMsgBox)
             [gMsgBox setStringValue:
-                [NSString stringWithUTF8String:hc_message_lu()]];
+                hcv_texte(hc_message_lu())];
         [p makeKeyAndOrderFront:nil];
     }
 }
@@ -7264,7 +7293,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     [tv setFont:[NSFont fontWithName:@"Monaco" size:12]];
     [tv setAutoresizingMask:NSViewWidthSizable];
     const char *cur = hc_script_of(obj);
-    [tv setString:cur ? [NSString stringWithUTF8String:cur] : @""];
+    [tv setString:cur ? hcv_texte(cur) : @""];
     [scroll setDocumentView:tv];
     [[panel contentView] addSubview:scroll];
     gEditView = tv;
@@ -7429,7 +7458,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     /* 4. Chargement du texte et synchronisation de l'interligne statique */
     const char *tx = hc_field_text(field);
-    NSString *str = [NSString stringWithUTF8String:tx ? tx : ""];
+    NSString *str = hcv_texte(tx ? tx : "");
     NSDictionary *base = obj_attrs(field, 12, [NSColor blackColor]);
 
     [gFieldEditor setEditable:!field->locktext];

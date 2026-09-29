@@ -1,4 +1,5 @@
 #import "HCtext.h"
+#import "HCview.h"   /* hcv_texte : une chaîne pour AppKit, jamais nil */
 #include <stdlib.h>   /* getenv, pour la trace HC_RUNS_DEBUG */
 #include <math.h>     /* floor, pour l'avance des fontes a chasse fixe.
                        * Declare plutot que compte sur un include transitif de
@@ -38,7 +39,7 @@ NSFont *obj_base_font(Object *o, CGFloat defSize) {
     CGFloat sz = o->textsize > 0 ? o->textsize : defSize;
     NSFont *f = nil;
     if (o->textfont && *o->textfont)
-        f = font_by_loose_name([NSString stringWithUTF8String:o->textfont], sz);
+        f = font_by_loose_name(hcv_texte(o->textfont), sz);
     if (!f) f = [NSFont systemFontOfSize:sz];
     return f;
 }
@@ -202,7 +203,7 @@ static NSFont *run_base_font(const char *name, int size, NSFont *fallback)
     CGFloat sz = size > 0 ? (CGFloat)size
                           : (fallback ? [fallback pointSize] : 12);
     if (name && *name) {
-        NSFont *f = font_by_loose_name([NSString stringWithUTF8String:name], sz);
+        NSFont *f = font_by_loose_name(hcv_texte(name), sz);
         if (f) return f;
         if (getenv("HC_RUNS_DEBUG"))
             NSLog(@"[runs]   police introuvable : \"%s\" -> repli sur le champ",
@@ -436,8 +437,7 @@ static NSDictionary *champ_signature(Object *o, NSString *s)
 
     return @{ @"objet"   : [NSValue valueWithPointer:o],
               @"texte"   : s ?: @"",
-              @"police"  : [NSString stringWithUTF8String:
-                              (o->textfont && *o->textfont) ? o->textfont : ""],
+              @"police"  : hcv_texte((o->textfont && *o->textfont) ? o->textfont : ""),
               @"corps"   : @(o->textsize),
               @"style"   : @(o->textstyle),
               @"interl"  : @(o->fixed_lh),
@@ -841,7 +841,7 @@ CGFloat field_text_height(Object *o, NSRect tr) {
     /* hc_field_text et non o->contents : un champ de fond non partagé a un
      * texte par carte, et c'est celui-là qu'on affiche. */
     const char *tx = hc_field_text(o);
-    NSString *s = [NSString stringWithUTF8String:tx ? tx : ""];
+    NSString *s = hcv_texte(tx ? tx : "");
     if ([s length] == 0) return 0;
 
     static NSMutableArray<NSDictionary *> *memo = nil;

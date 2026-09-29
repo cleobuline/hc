@@ -285,7 +285,7 @@ static void show_style_panel(id owner, Object *o)
      * porte le nom canonique (« Monaco »), et selectItemWithTitle: compare à
      * la lettre près. Même piège que select_style plus haut. */
     if (o->textfont && *o->textfont) {
-        NSString *want = [NSString stringWithUTF8String:o->textfont];
+        NSString *want = hcv_texte(o->textfont);
         for (NSMenuItem *it in [gStyleFont itemArray])
             if ([[it title] caseInsensitiveCompare:want] == NSOrderedSame) {
                 [gStyleFont selectItem:it];
@@ -454,7 +454,7 @@ static Object     *gContentsTarget = NULL;
  * strdup(NULL) plantait alors dans infoOK: / fldOK:. */
 static void select_style(NSPopUpButton *pop, const char *style)
 {
-    NSString *want = [NSString stringWithUTF8String:style && *style ? style : "rectangle"];
+    NSString *want = hcv_texte(style && *style ? style : "rectangle");
     for (NSMenuItem *it in [pop itemArray]) {
         if ([[it title] caseInsensitiveCompare:want] == NSOrderedSame) {
             [pop selectItem:it];
@@ -661,7 +661,7 @@ static NSTextField  *gFldTextSize = nil;
     CGFloat sz = gStyleTarget->textsize > 0 ? gStyleTarget->textsize : 12;
     NSFont *f = nil;
     if (gStyleTarget->textfont && *gStyleTarget->textfont) {
-        NSString *nm = [NSString stringWithUTF8String:gStyleTarget->textfont];
+        NSString *nm = hcv_texte(gStyleTarget->textfont);
         /* Pas les noms de police système, qui commencent par un point :
          * CoreText refuse de les servir par leur nom et rend du Times en
          * l'annonçant dans la console. Les piles enregistrées avant que l'on
@@ -1237,7 +1237,7 @@ void hc_sync_size_field(Object *o)
     [scroll setBorderType:NSBezelBorder];
     NSTextView *tv = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
     [tv setFont:[NSFont systemFontOfSize:12]];
-    [tv setString:[NSString stringWithUTF8String:o->contents ? o->contents : ""]];
+    [tv setString:hcv_texte(o->contents ? o->contents : "")];
     [scroll setDocumentView:tv];
     [c addSubview:scroll];
     gContentsView = tv;
@@ -1259,6 +1259,39 @@ void hc_sync_size_field(Object *o)
 
     panneau_donne_le_coller(gContentsPanel, self, NO);
     [gContentsPanel makeKeyAndOrderFront:nil];
+}
+
+/* UN PANNEAU D'INFO NE SURVIT PAS À L'OBJET QU'IL MONTRE.
+ *
+ * Les sept panneaux d'info s'ouvrent par makeKeyAndOrderFront: — ils ne sont
+ * PAS modaux. Pendant qu'ils sont ouverts, on peut fermer la fenêtre de la
+ * pile, supprimer l'objet depuis la carte, ou laisser un script le faire. Leur
+ * cible était alors un pointeur sur de la mémoire rendue, et « OK » écrivait
+ * dedans : free(gCardTarget->name) sur une carte déjà libérée, set_cstr dans
+ * un champ qui n'existe plus.
+ *
+ * C'est le site jumeau de deux corrections déjà faites. cocoa_object_gone
+ * efface gFontTarget, la cible du panneau des POLICES, pour exactement cette
+ * raison ; et hcicon_panel_stack_closing, juste en dessous, referme le
+ * panneau des ICÔNES quand sa pile s'en va. Les panneaux d'info, eux, étaient
+ * restés hors des deux listes. Trouvé par un audit, en relisant qui retient
+ * un Object* : non mesuré sur la machine, faute de pouvoir lancer AppKit ici.
+ *
+ * On REFERME plutôt que de vider la cible et laisser le panneau ouvert : des
+ * champs qui décrivent un objet mort ne mèneraient nulle part, et le seul
+ * geste possible — OK — n'aurait plus rien à faire. Chaque gestionnaire OK
+ * teste déjà sa cible avant d'écrire ; la remettre à NULL suffit donc à les
+ * désarmer, même si AppKit délivrait un clic déjà en file. */
+void hcdlg_objet_disparu(Object *mort)
+{
+    if (!mort) return;
+    if (gInfoTarget     == mort) { [gInfoPanel close];     gInfoTarget     = NULL; }
+    if (gFldTarget      == mort) { [gFldPanel close];      gFldTarget      = NULL; }
+    if (gStyleTarget    == mort) { [gStylePanel close];    gStyleTarget    = NULL; }
+    if (gCardTarget     == mort) { [gCardPanel close];     gCardTarget     = NULL; }
+    if (gBgTarget       == mort) { [gBgPanel close];       gBgTarget       = NULL; }
+    if (gStackTarget    == mort) { [gStackPanel close];    gStackTarget    = NULL; }
+    if (gContentsTarget == mort) { [gContentsPanel close]; gContentsTarget = NULL; }
 }
 
 /* Une pile se ferme : le panneau Icônes retient des Object* qui ne doivent pas

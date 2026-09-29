@@ -123,7 +123,7 @@ static NSMenu *gRecentMenu = nil;
         char buf[256];
         hc_describe(c, buf, sizeof buf);
         NSMenuItem *mi = [[NSMenuItem alloc]
-                             initWithTitle:[NSString stringWithUTF8String:buf]
+                             initWithTitle:hcv_texte(buf)
                                     action:@selector(goRecentItem:)
                              keyEquivalent:@""];
         [mi setTarget:self];
@@ -961,8 +961,17 @@ static NSMenu *gRecentMenu = nil;
      * la dernière chargée, pas celle qu'on regarde. « Enregistrer » proposait
      * donc le nom de la mauvaise pile — et l'aurait enregistrée à sa place. */
     HCDocument *doc = [HCDocument current];
-    Object *pile = doc.stack ? doc.stack : gStack;
-    const char *nm = pile && pile->name ? pile->name : "MaPile";
+    /* PAS DE REPLI SUR gStack : IL PEUT DÉSIGNER UNE PILE LIBÉRÉE.
+     *
+     * gStack n'est jamais remis à NULL quand sa fenêtre se ferme, et
+     * l'application ne quitte pas avec sa dernière fenêtre. Fermer la pile
+     * puis taper Cmd-S relisait donc pile->name dans de la mémoire rendue, et
+     * confiait la pile morte à hc_save. Trouvé par un audit, en lisant ; non
+     * mesuré sur la machine. Sans document, il n'y a rien à enregistrer : on
+     * le dit par un bip, comme le Finder. */
+    Object *pile = doc.stack;
+    if (!pile) { NSBeep(); return; }
+    const char *nm = pile->name ? pile->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];
     [panel setNameFieldStringValue:
         [NSString stringWithFormat:@"%s.stack", nm]];
@@ -981,7 +990,7 @@ static NSMenu *gRecentMenu = nil;
      * Enregistrer là où la pile habite déjà doit être le geste par défaut. */
     const char *ici = hc_stack_path(pile);
     if (ici && *ici) {
-        NSString *chemin = [NSString stringWithUTF8String:ici];
+        NSString *chemin = hcv_texte(ici);
         [panel setDirectoryURL:
             [NSURL fileURLWithPath:[chemin stringByDeletingLastPathComponent]
                        isDirectory:YES]];
@@ -1198,7 +1207,7 @@ Object *cocoa_load_stack(const char *nom) {
      * le noyau ne voit qu'un NULL et dit « No such stack » dans les deux cas.
      * Fichier absent et fichier illisible n'appellent pourtant pas le même
      * remède. */
-    NSString *chemin = trouver_pile([NSString stringWithUTF8String:nom]);
+    NSString *chemin = trouver_pile(hcv_texte(nom));
     if (!chemin) {
         NSLog(@"[using] fichier introuvable : « %s »", nom);
         return NULL;
@@ -1231,7 +1240,7 @@ Object *cocoa_load_stack(const char *nom) {
 
 Object *cocoa_open_stack(const char *nom) {
     if (!nom || !*nom) return NULL;
-    NSString *n = [NSString stringWithUTF8String:nom];
+    NSString *n = hcv_texte(nom);
 
     /* Déjà ouverte : on ne la recharge pas, on ramène sa fenêtre devant.
      * Rouvrir un second exemplaire de la même pile donnerait deux vues d'un

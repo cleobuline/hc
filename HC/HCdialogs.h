@@ -7,6 +7,10 @@
  * s'il montrait celle-là. NULL ferme dans tous les cas. */
 void hcicon_panel_stack_closing(Object *stack);
 
+/* Un objet va être libéré : les panneaux d'info qui le visaient se referment.
+ * Appelé par le rappel object_gone du noyau — voir cocoa_object_gone. */
+void hcdlg_objet_disparu(Object *mort);
+
 @interface HCView (Dialogs)
 
 - (void)showButtonInfo:(Object *)obj;
