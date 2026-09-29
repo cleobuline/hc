@@ -8,6 +8,7 @@
 #import "HCicons.h"
 #import "Hciconedit.h"
 #import "graphics.h"
+#import <objc/runtime.h>
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie
  * HCView (Dialogs), plus bas dans ce fichier. Mais show_style_panel, qui les
@@ -24,11 +25,115 @@
  * habituelle d'annoncer des méthodes privées. Un nom distinct de (Dialogs)
  * évite tout risque de doublon avec ce que HCview.h déclare déjà. */
 @interface HCView (DialogsPrivate)
+/* iconColler: et paste: servent à HCPanelColler, juste en dessous, qui est
+ * déclarée AVANT l'@implementation de la catégorie : sans ces deux lignes le
+ * compilateur n'en connaît pas encore les sélecteurs. paste: est bien celle de
+ * HCview.m — NSResponder ne la déclare pas, elle n'est visible qu'annoncée. */
+- (void)iconColler:(id)sender;
+- (void)paste:(id)sender;
 - (void)styleOK:(id)sender;
 - (void)styleFont:(id)sender;
 - (void)styleAlign:(id)sender;
 - (void)autoSelectToggled:(id)sender;
 @end
+
+/* État de l'édition d'icône, pour la validation de « Coller ». Défini avec le
+ * panneau Icônes, plus bas, où vivent ses variables ; déclaré ici parce que
+ * HCPanelColler s'en sert et que le panneau Text Style, qui lui est antérieur
+ * dans ce fichier, réclame déjà la classe. */
+static BOOL icone_prete_a_coller(void);
+
+/* ═══ « Coller » PENDANT QU'UN PANNEAU EST OUVERT ═══════════════════
+ *
+ * RELEVÉ À L'USAGE : « le coller ne fonctionne plus dans l'éditeur d'icône, ça
+ * colle dans la carte ». Le panneau était bien la fenêtre CLÉ, et Cmd-V
+ * atterrissait quand même dans la peinture de la carte, derrière lui.
+ *
+ * LA CAUSE EST LA RECHERCHE DE CIBLE D'APPKIT, et non le collage d'icône, qui
+ * marchait — par le bouton « Coller » du panneau. L'article Coller du menu
+ * Édition a une cible NULLE ; NSApplication la cherche alors dans cet ordre :
+ * la chaîne des répondants de la fenêtre CLÉ, le DÉLÉGUÉ de cette fenêtre,
+ * puis, si la fenêtre PRINCIPALE en est une autre, la chaîne de celle-là, son
+ * délégué, l'application, son délégué. Or un NSPanel ne devient JAMAIS fenêtre
+ * principale : la fenêtre du document le reste tant qu'elle est ouverte. Aucune
+ * vue du panneau ne répondant à paste:, la recherche traversait donc le panneau
+ * entier et trouvait HCView — qui a fait exactement son travail.
+ *
+ * CORRIGER HCVIEW N'Y SUFFIRAIT PAS : tant que le panneau n'offre personne, la
+ * recherche continue au-delà, et refuser dans HCView casserait le collage
+ * légitime de la carte. C'est au panneau de répondre. Sa place dans l'ordre
+ * ci-dessus est deux fois juste : APRÈS la chaîne des répondants du panneau,
+ * donc un champ de texte en cours d'édition garde son coller de TEXTE, qui est
+ * le bon ; AVANT la fenêtre du document, donc la carte ne reçoit plus rien
+ * pendant que le panneau est là.
+ *
+ * LES SEPT AUTRES PANNEAUX DE CE FICHIER ONT LE MÊME DÉFAUT — c'est le site
+ * jumeau, et il se corrige ici même plutôt que d'être annoncé en commentaire.
+ * Info bouton, Info champ, Text Style, Info carte, Info fond, Info pile,
+ * Contenu : aucun n'a de collage à lui, et tous laissaient passer Cmd-V dans
+ * la peinture de la carte cachée derrière eux. Ils reçoivent donc le même
+ * délégué, en refus : l'article se grise, ce qui le DIT, au lieu de coller
+ * ailleurs sans rien dire. Les panneaux d'HyperCard étaient modaux et leurs
+ * articles Édition inertes ; griser est donc aussi le comportement fidèle.
+ *
+ * LES PALETTES DE HCVIEW.M SONT HORS DE CETTE RÈGLE, ET IL FAUT LES Y LAISSER.
+ * Outils, motifs, pinceaux, épaisseurs, boîte de message : celles-là sont
+ * posées NSWindowStyleMaskNonactivatingPanel avec setBecomesKeyOnlyIfNeeded:YES,
+ * donc elles ne PRENNENT PAS la fenêtre clé — la fenêtre du document la garde,
+ * et Cmd-V y colle dans la carte, ce qui est justement ce qu'on veut d'une
+ * palette flottante. Leur donner ce délégué casserait le collage de peinture.
+ * Les dialogues de ce fichier, eux, ont des champs à remplir : il leur faut le
+ * clavier, donc la fenêtre clé, et c'est de là que vient le défaut.
+ */
+@interface HCPanelColler : NSObject <NSWindowDelegate>
+@property (weak)   HCView *vue;
+@property (assign) BOOL    versIcone;   /* NO : le panneau refuse le collage */
+@end
+
+@implementation HCPanelColler
+
+- (void)paste:(id)sender
+{
+    /* « doMenu "Paste Card" » ARRIVE ICI AUSSI, et ne doit pas y rester.
+     *
+     * cocoa_menu_hypercard envoie l'action avec to:nil, donc par la même
+     * recherche de cible : un script qui colle une carte pendant qu'un de ces
+     * panneaux est ouvert tomberait sur nous. Le sender les sépare — l'article
+     * de menu envoie son NSMenuItem, cocoa_menu_hypercard envoie la vue — et ce
+     * qui ne vient pas d'un menu retourne à HCView, dont c'est le travail. */
+    if (![sender isKindOfClass:[NSMenuItem class]]) {
+        [self.vue paste:sender];
+        return;
+    }
+    if (self.versIcone) [self.vue iconColler:sender];
+}
+
+/* Le délégué étant la cible, c'est à lui que la validation est demandée : sans
+ * cette méthode l'article resterait actif faute d'icône choisie ou d'image, et
+ * Cmd-V ne ferait rien sans le dire. Le griser le dit. */
+- (BOOL)validateMenuItem:(NSMenuItem *)item
+{
+    if ([item action] != @selector(paste:)) return YES;
+    if (!self.versIcone) return NO;
+    return icone_prete_a_coller();
+}
+
+@end
+
+/* Le délégué d'une NSWindow est FAIBLE : sans propriétaire, ARC le libère
+ * aussitôt posé et le panneau se retrouve avec un délégué nul — le défaut
+ * serait exactement le même, sans que rien ne le montre. Le panneau le retient
+ * donc par association, ce qui lui donne précisément sa durée de vie : un
+ * panneau recréé à chaque ouverture emporte l'ancien avec lui. */
+static void panneau_donne_le_coller(NSPanel *panneau, HCView *vue, BOOL versIcone)
+{
+    static char cle;
+    HCPanelColler *d = [[HCPanelColler alloc] init];
+    d.vue       = vue;
+    d.versIcone = versIcone;
+    objc_setAssociatedObject(panneau, &cle, d, OBJC_ASSOCIATION_RETAIN);
+    [panneau setDelegate:d];
+}
 
 /* --- etat des dialogues, prive a ce fichier --- */
 static NSPanel      *gInfoPanel = nil;
@@ -290,6 +395,7 @@ static void show_style_panel(id owner, Object *o)
     [ok setKeyEquivalent:@"\r"];
     [c addSubview:ok];
 
+    panneau_donne_le_coller(gStylePanel, owner, NO);
     [gStylePanel makeKeyAndOrderFront:nil];
 }
 
@@ -323,6 +429,15 @@ static NSTextField *gIconName = nil;
 static int          gIconNameId = 0;
 static NSTextField *gIconInfo = nil;
 static Object      *gIconStack = NULL;
+
+/* Y a-t-il de quoi coller ? Une icône choisie, et une image au presse-papiers.
+ * Déclarée en tête du fichier, pour HCPanelColler. */
+static BOOL icone_prete_a_coller(void)
+{
+    if (!gIconGrid || gIconGrid.selected == 0) return NO;
+    return [[NSPasteboard generalPasteboard]
+              canReadObjectForClasses:@[[NSImage class]] options:nil];
+}
 
 static Object      *gStackTarget = NULL;
 static NSTextField *gStackName = nil;
@@ -405,7 +520,7 @@ static NSTextField  *gFldTextSize = nil;
     [c addSubview:lb];
 
     gFldName = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 280, 262, 22)];
-    [gFldName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [gFldName setStringValue:hcv_texte(obj->name)];
     [c addSubview:gFldName];
 
     // --- identifiants ---
@@ -496,6 +611,7 @@ static NSTextField  *gFldTextSize = nil;
     NSButton *ok = mkFI(@"OK", @selector(fldOK:), 264, 8);
     [ok setKeyEquivalent:@"\r"];
 
+    panneau_donne_le_coller(gFldPanel, self, NO);
     [gFldPanel makeKeyAndOrderFront:nil];
 }
 - (void)fldTextStyle:(id)sender {
@@ -634,7 +750,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gInfoName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 260, 232, 22)];
-    [gInfoName setStringValue:[NSString stringWithUTF8String:obj->name ? obj->name : ""]];
+    [gInfoName setStringValue:hcv_texte(obj->name)];
     [c addSubview:gInfoName];
 
     // --- identifiants (lecture seule) ---
@@ -783,6 +899,7 @@ void hc_sync_size_field(Object *o)
     NSButton *ok = mk(@"OK", @selector(infoOK:), 232, 16);
     [ok setKeyEquivalent:@"\r"];
 
+    panneau_donne_le_coller(gInfoPanel, self, NO);
     [gInfoPanel makeKeyAndOrderFront:nil];
 }
 - (void)contentsCancel:(id)sender {
@@ -818,7 +935,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gCardName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 178, 214, 22)];
-    [gCardName setStringValue:[NSString stringWithUTF8String:card->name ? card->name : ""]];
+    [gCardName setStringValue:hcv_texte(card->name)];
     [c addSubview:gCardName];
 
     // rang de la carte dans la pile et total
@@ -891,6 +1008,7 @@ void hc_sync_size_field(Object *o)
     NSButton *ok = mkCD(@"OK", @selector(cardOK:), 240);
     [ok setKeyEquivalent:@"\r"];
 
+    panneau_donne_le_coller(gCardPanel, self, NO);
     [gCardPanel makeKeyAndOrderFront:nil];
 }
 - (void)cardOK:(id)sender {
@@ -930,7 +1048,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gBgName = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 198, 184, 22)];
-    [gBgName setStringValue:[NSString stringWithUTF8String:bg->name ? bg->name : ""]];
+    [gBgName setStringValue:hcv_texte(bg->name)];
     [c addSubview:gBgName];
 
     // combien de cartes partagent ce fond ?
@@ -978,6 +1096,7 @@ void hc_sync_size_field(Object *o)
     NSButton *ok = mkBG(@"OK", @selector(bgOK:), 240);
     [ok setKeyEquivalent:@"\r"];
 
+    panneau_donne_le_coller(gBgPanel, self, NO);
     [gBgPanel makeKeyAndOrderFront:nil];
 }
 
@@ -1030,7 +1149,7 @@ void hc_sync_size_field(Object *o)
     [c addSubview:lb];
 
     gStackName = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 158, 214, 22)];
-    [gStackName setStringValue:[NSString stringWithUTF8String:stack->name ? stack->name : ""]];
+    [gStackName setStringValue:hcv_texte(stack->name)];
     [c addSubview:gStackName];
 
     int nCards = 0, nBgs = 0;
@@ -1058,6 +1177,7 @@ void hc_sync_size_field(Object *o)
     NSButton *ok = mkST(@"OK", @selector(stackOK:), 240);
     [ok setKeyEquivalent:@"\r"];
 
+    panneau_donne_le_coller(gStackPanel, self, NO);
     [gStackPanel makeKeyAndOrderFront:nil];
 }
 
@@ -1137,6 +1257,7 @@ void hc_sync_size_field(Object *o)
     [ok setAction:@selector(contentsOK:)];
     [c addSubview:ok];
 
+    panneau_donne_le_coller(gContentsPanel, self, NO);
     [gContentsPanel makeKeyAndOrderFront:nil];
 }
 
@@ -1321,6 +1442,7 @@ void hcicon_panel_stack_closing(Object *stack)
     [ok setKeyEquivalent:@"\r"];
 
     [self iconRefresh];
+    panneau_donne_le_coller(gIconPanel, self, YES);
     [gIconPanel makeKeyAndOrderFront:nil];
 }
 
@@ -1354,8 +1476,7 @@ void hcicon_panel_stack_closing(Object *stack)
     gIconBits.iconId = id;
     gIconBits.stack  = gIconStack;
 
-    [gIconName setStringValue:
-        (ic && ic->name) ? [NSString stringWithUTF8String:ic->name] : @""];
+    [gIconName setStringValue:hcv_texte(ic ? ic->name : NULL)];
     /* Une icone d'origine ne se renomme pas : elle est const. Elle le devient
      * des qu'on la dessine, hcicon_edit_editable la recopiant dans la pile. */
     [gIconName setEditable:(own != NULL)];
@@ -1459,7 +1580,15 @@ void hcicon_panel_stack_closing(Object *stack)
     (void)sender;
     [self iconCommitName];
     int id = gIconGrid ? gIconGrid.selected : 0;
-    if (id == 0) return;
+    if (id == 0) {
+        /* Ne rien faire SANS RIEN DIRE était le second défaut du même relevé :
+         * le panneau s'ouvre sans sélection dès qu'on vient du menu Édition
+         * plutôt que de l'info d'un bouton, et le bouton « Coller » semblait
+         * alors cassé — le même symptôme que le collage qui partait ailleurs,
+         * et c'est pourquoi les deux se corrigent ensemble. */
+        [gIconInfo setStringValue:@"Choisissez une icône, ou « Nouvelle »."];
+        return;
+    }
 
     int n = hcicon_edit_colle(gIconStack, id);
     [self iconRefresh];

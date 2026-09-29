@@ -4,11 +4,6 @@
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    v1 refusée recours v3                   1
 [v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    recours objet: card field "menu"         1
-[v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    1
-[v3]    v1 fonction recours expr                 1
-[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    (aucun)
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
@@ -34,10 +29,7 @@
       v1 refusée recours v3                   1
 
 ── champ absent de cette carte
-   [beta]
-      recours objet: card field "menu"         1
-      v1 terme recours expr                    1
-      v1 fonction recours expr                 1
+   [ERR]    !! objet introuvable (v3, ligne 5 de button "B".t)
 
 ── lecture directe
    beta

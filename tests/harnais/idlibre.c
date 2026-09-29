@@ -17,7 +17,15 @@
  *
  * La VITESSE ne se versionne pas — elle depend de la machine. Ce harnais tient
  * donc la JUSTESSE, qui est ce que la correction risquait de perdre : le
- * numero rendu doit etre le plus petit libre, et il doit etre libre. */
+ * numero rendu doit etre le plus petit libre, et il doit etre libre.
+ *
+ * LE PLUS PETIT LIBRE OU ? Dans l'ESPACE DE NOMS de l'objet, qui pour une part
+ * est sa COUCHE et non la pile. Les six creations rendaient 4,5,6,9,10,11 quand
+ * la recherche portait sur la pile entiere : 1, 2 et 3 y etaient pris par la
+ * pile, son fond et sa carte, qui ne sont pourtant pas des parts. Elles rendent
+ * maintenant 1..6, et `occupe` ci-dessous dit lesquels sont pris chez les
+ * SOEURS. La regle vient d'HyperCard, ou « card button id 1 » se resout dans la
+ * carte, et elle a ete mesuree sur trois piles d'origine. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -25,14 +33,12 @@
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d; if (k == HC_ERR) printf("   [ERR] %s\n", t ? t : ""); }
 
-static int occupe(Object *pile, int id)
+/* Pris PARMI LES PARTS DE CETTE COUCHE : c'est l'espace de noms qui compte pour
+ * une part, et c'est celui dans lequel id_libre_dans cherche son trou. */
+static int occupe(Object *couche, int id)
 {
-    if (pile->id == id) return 1;
-    for (int i = 0; i < pile->nparts; i++) {
-        if (pile->parts[i]->id == id) return 1;
-        for (int j = 0; j < pile->parts[i]->nparts; j++)
-            if (pile->parts[i]->parts[j]->id == id) return 1;
-    }
+    for (int i = 0; i < couche->nparts; i++)
+        if (couche->parts[i]->id == id) return 1;
     return 0;
 }
 
@@ -53,7 +59,7 @@ int main(void)
     hc_set_id(b[4], 8);
 
     printf("== les numeros en place ==\n   ");
-    for (int id = 1; id <= 12; id++) printf("%d%s ", id, occupe(st, id) ? "*" : "");
+    for (int id = 1; id <= 12; id++) printf("%d%s ", id, occupe(c, id) ? "*" : "");
     printf("\n   (* = pris)\n");
 
     /* On epuise le compteur : la creation suivante devra chercher. */

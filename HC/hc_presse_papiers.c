@@ -82,6 +82,7 @@ static Object *clone_part(Object *o)
     c->auto_tab     = o->auto_tab;
     c->dont_search  = o->dont_search;
     c->cant_delete  = o->cant_delete;
+    c->show_pict    = o->show_pict;
     c->shared_text  = o->shared_text;
     c->textstyle    = o->textstyle;
     c->scroll       = o->scroll;
@@ -176,10 +177,13 @@ Object *hc_paste_part(Object *owner)
     Object *c = clone_part(g_clipboard);
     if (!c) return NULL;
 
-    /* Identifiant NEUF. Deux objets de même id rendraient « field id 42 »
-     * ambigu, et hc_save écrirait deux fois la même clé. */
+    /* Identifiant NEUF, dans LA COUCHE d'accueil. Deux parts de même id dans une
+     * même couche rendraient « field id 42 » ambigu, et hc_save écrirait deux
+     * fois la même clé dans le même bloc ; deux couches différentes, en
+     * revanche, ont le droit de porter le même numéro — c'est ce que fait
+     * HyperCard, et l'espace de noms d'une part est sa couche. */
     c->owner = owner;
-    c->id = id_neuf(owning_stack(owner));
+    c->id = id_neuf(owner);
 
     /* Le propriétaire décide de la nature : coller sur une carte un bouton
      * pris sur un fond en fait un bouton de carte. C'est le comportement
@@ -520,6 +524,7 @@ static Object *clone_layer(Object *o, ObjType type)
      * le duplicata, lui, ne l'était pas. */
     c->dont_search = o->dont_search;
     c->cant_delete = o->cant_delete;
+    c->show_pict   = o->show_pict;
 
     for (int i = 0; i < o->nparts; i++) {
         Object *p = clone_part(o->parts[i]);
@@ -596,16 +601,21 @@ static Object *place_layer_clone(Object *stack, Object *modele, ObjType type,
 
     /* ON NUMÉROTE APRÈS AVOIR ATTACHÉ, ET PAS AVANT.
      *
-     * Le repli d'id_neuf cherche un trou DANS LA PILE. Tant que la couche
-     * n'y est pas, deux parts de suite reçoivent le même trou — on aurait
-     * échangé un identifiant illisible contre un doublon, ce qui est pire.
-     * L'ordre n'est donc pas cosmétique : c'est lui qui rend le repli juste.
+     * Le repli d'id_neuf cherche un trou DANS L'ESPACE qu'on lui donne — la
+     * pile pour la couche, LA COUCHE pour ses parts. Tant que la couche n'est
+     * pas dans la pile, deux couches de suite recevraient le même trou : on
+     * aurait échangé un identifiant illisible contre un doublon, ce qui est
+     * pire. L'ordre n'est donc pas cosmétique : c'est lui qui rend le repli
+     * juste.
      *
      * Les identifiants que clone_layer a recopiés du modèle sont encore en
      * place à cet instant ; id_libre_dans les compte comme pris et les
-     * évite, ce qui est exactement ce qu'on veut. */
+     * évite, ce qui est exactement ce qu'on veut.
+     *
+     * Et les parts se numérotent dans `c`, non dans `stack` : c'est leur espace
+     * de noms, et il les contient déjà — clone_layer les a attachées. */
     c->id = id_neuf(stack);
-    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = id_neuf(stack);
+    for (int i = 0; i < c->nparts; i++) c->parts[i]->id = id_neuf(c);
 
     /* Insertion juste après `apres`, comme HyperCard qui colle derrière la
      * carte courante. parts[] mêle fonds et cartes : on décale bêtement, la
@@ -947,9 +957,9 @@ Object *hc_paste_card(Object *stack)
          * numéro déjà pris laisse simplement celui que place_layer_clone
          * vient de donner. C'est un mieux opportuniste, jamais une
          * obligation. */
-        id_adopte(stack, bg, g_clip_bg_copy->id);
+        id_adopte(bg, g_clip_bg_copy->id);
         for (int i = 0; i < bg->nparts && i < g_clip_bg_copy->nparts; i++)
-            id_adopte(stack, bg->parts[i], g_clip_bg_copy->parts[i]->id);
+            id_adopte(bg->parts[i], g_clip_bg_copy->parts[i]->id);
 
         bg_note_porte(cle, g_clip_bg_stack, stack, bg);
     }

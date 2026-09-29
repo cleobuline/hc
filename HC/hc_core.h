@@ -389,6 +389,24 @@ struct Object {
      * qui supprime une pile dans le noyau. Mieux vaut ne pas offrir un
      * verrou qui ne ferme rien. */
     int      cant_delete;
+
+    /* LA PEINTURE DE LA COUCHE EST-ELLE MONTRÉE ? « set the showPict of this
+     * card to false » cache le dessin sans l'effacer, et c'est l'idiome du
+     * bouton « Hide Card Picture » — « Readymade Buttons » en fait son sujet.
+     *
+     * DEUX DIFFÉRENCES AVEC cant_delete, SON JUMEAU DE DRAPEAU, et toutes deux
+     * se paient si on les oublie :
+     *
+     *   la valeur par DÉFAUT est VRAIE — une couche montre sa peinture — donc
+     *     tout objet neuf doit la poser à 1, et non compter sur le calloc ;
+     *   le bit du FICHIER D'ORIGINE est INVERSÉ : la spec le nomme « not show
+     *     pict », bit 13 du mot à 0x14. Le lire sans l'inverser cacherait la
+     *     peinture de toutes les piles qui la montrent.
+     *
+     * Dans NOTRE format, c'est pour la même raison le mot « hidepict » qui
+     * s'écrit, et seulement quand la peinture est cachée : une pile enregistrée
+     * avant que cette propriété existe se relit en montrant son dessin. */
+    int      show_pict;
     int      shared_text;    /* texte partagé entre cartes du même fond */
     /* Allumage partagé entre cartes du même fond ? (1 = oui par défaut)
      *
@@ -487,6 +505,35 @@ void hc_v3_bilan(void);
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
 #define HC_VERSION "0.6.9.4"
+
+/* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
+ *
+ * Mesuré, et pas supposé : la pile d'initiation d'Apple, « Découvrir
+ * HyperCard », porte ceci dans le script de son fond —
+ *
+ *     on checkHCVersion
+ *       if the version < 2.2 then
+ *         answer … "requiert la version 2.2 d'HyperCard" … the version …
+ *
+ * — et importée dans HC elle s'ouvre, exécute ce gestionnaire, et refuse
+ * poliment de tourner : « Vous utilisez la version 0.6.9.4 ». Le script fait
+ * exactement son travail.
+ *
+ * ET CE N'EST PAS UN CAS ISOLÉ : la porte de version était une pratique
+ * standard en 1993, jusque chez Apple. Toute pile d'archive qui en porte une
+ * resterait fermée, définitivement, sans recours pour l'utilisatrice — et sans
+ * qu'aucune pile de 1993 puisse apprendre l'existence de HC.
+ *
+ * Donc « the version » rend la dernière version d'HyperCard. La question que
+ * pose un script n'est pas « quelle est ta version ? » mais « quelle version
+ * d'HyperCard ai-je sous les pieds ? », et y répondre par notre numérotation
+ * est le vrai contresens : aucun stack n'attend cette réponse. C'est ce que
+ * fait toute couche de compatibilité.
+ *
+ * LA NÔTRE RESTE LISIBLE, sous « the hcVersion » : un script peut donc
+ * s'adapter à HC en connaissance de cause, ce qui n'était pas possible en
+ * confondant les deux. Décision de l'autrice, prise en voyant le refus. */
+#define HC_VERSION_HYPERCARD "2.4.1"
 
 void hc_v3_bilan_remise_a_zero(void);
 
@@ -739,8 +786,22 @@ typedef struct {
      * Une carte par page : HyperCard en disposait plusieurs sur une feuille,
      * mais ses piles faisaient toutes 512×342. Avec des tailles libres, une
      * grille demanderait de décider quoi faire d'une carte plus large que la
-     * page — pour un gain qui ne vaut pas cette complication. */
-    void (*print_cards)(Object **cartes, int n);
+     * page — pour un gain qui ne vaut pas cette complication.
+     *
+     * LE DÉCOUPAGE EST UN ARGUMENT, ET NON UN SECOND CROCHET.
+     *
+     * « print card from 0,0 to 512,304 » n'imprime qu'une PARTIE de la carte :
+     * trois fonds de « Stack Templates » l'écrivent, avec le commentaire de leur
+     * auteur — « prints only the invoice part of the card, does not print the
+     * buttons along the bottom ». `decoupe` vaut NULL pour une carte entière, ou
+     * pointe quatre entiers en coordonnées carte : gauche, haut, droite, bas.
+     *
+     * Passé dans la signature plutôt que dans un second crochet facultatif, et
+     * c'est délibéré : un hôte qui l'oublierait ne compilerait pas, là où un
+     * crochet séparé aurait laissé l'ancien chemin imprimer la carte ENTIÈRE
+     * sans un mot. Le site jumeau qu'on ne peut pas rater est celui que le
+     * compilateur réclame. */
+    void (*print_cards)(Object **cartes, int n, const int *decoupe);
     void    (*stack_changed)(Object *stack);
 
     /* Propriétés globales : tout ce que le noyau ne peut pas connaître seul

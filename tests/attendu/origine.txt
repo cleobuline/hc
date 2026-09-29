@@ -1,0 +1,1751 @@
+=== MacRoman -> UTF-8, les 256 octets ===
+(comparés un par un au codec « mac_roman » de Python : voir
+ docs/mesures/pile_origine.txt. Cette référence les fige.)
+   00=--  01=01  02=02  03=03  04=04  05=05  06=06  07=07
+   08=08  09=09  0A=0A  0B=0B  0C=0C  0D=0A  0E=0E  0F=0F
+   10=10  11=11  12=12  13=13  14=14  15=15  16=16  17=17
+   18=18  19=19  1A=1A  1B=1B  1C=1C  1D=1D  1E=1E  1F=1F
+   20=20  21=21  22=22  23=23  24=24  25=25  26=26  27=27
+   28=28  29=29  2A=2A  2B=2B  2C=2C  2D=2D  2E=2E  2F=2F
+   30=30  31=31  32=32  33=33  34=34  35=35  36=36  37=37
+   38=38  39=39  3A=3A  3B=3B  3C=3C  3D=3D  3E=3E  3F=3F
+   40=40  41=41  42=42  43=43  44=44  45=45  46=46  47=47
+   48=48  49=49  4A=4A  4B=4B  4C=4C  4D=4D  4E=4E  4F=4F
+   50=50  51=51  52=52  53=53  54=54  55=55  56=56  57=57
+   58=58  59=59  5A=5A  5B=5B  5C=5C  5D=5D  5E=5E  5F=5F
+   60=60  61=61  62=62  63=63  64=64  65=65  66=66  67=67
+   68=68  69=69  6A=6A  6B=6B  6C=6C  6D=6D  6E=6E  6F=6F
+   70=70  71=71  72=72  73=73  74=74  75=75  76=76  77=77
+   78=78  79=79  7A=7A  7B=7B  7C=7C  7D=7D  7E=7E  7F=7F
+   80=C384  81=C385  82=C387  83=C389  84=C391  85=C396  86=C39C  87=C3A1
+   88=C3A0  89=C3A2  8A=C3A4  8B=C3A3  8C=C3A5  8D=C3A7  8E=C3A9  8F=C3A8
+   90=C3AA  91=C3AB  92=C3AD  93=C3AC  94=C3AE  95=C3AF  96=C3B1  97=C3B3
+   98=C3B2  99=C3B4  9A=C3B6  9B=C3B5  9C=C3BA  9D=C3B9  9E=C3BB  9F=C3BC
+   A0=E280A0  A1=C2B0  A2=C2A2  A3=C2A3  A4=C2A7  A5=E280A2  A6=C2B6  A7=C39F
+   A8=C2AE  A9=C2A9  AA=E284A2  AB=C2B4  AC=C2A8  AD=E289A0  AE=C386  AF=C398
+   B0=E2889E  B1=C2B1  B2=E289A4  B3=E289A5  B4=C2A5  B5=C2B5  B6=E28882  B7=E28891
+   B8=E2888F  B9=CF80  BA=E288AB  BB=C2AA  BC=C2BA  BD=CEA9  BE=C3A6  BF=C3B8
+   C0=C2BF  C1=C2A1  C2=C2AC  C3=E2889A  C4=C692  C5=E28988  C6=E28886  C7=C2AB
+   C8=C2BB  C9=E280A6  CA=C2A0  CB=C380  CC=C383  CD=C395  CE=C592  CF=C593
+   D0=E28093  D1=E28094  D2=E2809C  D3=E2809D  D4=E28098  D5=E28099  D6=C3B7  D7=E2978A
+   D8=C3BF  D9=C5B8  DA=E28184  DB=E282AC  DC=E280B9  DD=E280BA  DE=EFAC81  DF=EFAC82
+   E0=E280A1  E1=C2B7  E2=E2809A  E3=E2809E  E4=E280B0  E5=C382  E6=C38A  E7=C381
+   E8=C38B  E9=C388  EA=C38D  EB=C38E  EC=C38F  ED=C38C  EE=C393  EF=C394
+   F0=EFA3BF  F1=C392  F2=C39A  F3=C39B  F4=C399  F5=C4B1  F6=CB86  F7=CB9C
+   F8=C2AF  F9=CB98  FA=CB99  FB=CB9A  FC=C2B8  FD=CB9D  FE=CB9B  FF=CB87
+ « a\rb » -> « a
+b » (3 octets)
+ « a\r\nb » -> « a
+b » (3 octets)
+
+=== la pile montée au format d'origine ===
+3072 octets
+--- pile HyperCard 2.x : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+
+--- les transformations dh et dv, contre un calcul fait à part ---
+  ligne 14 (dh=1        ) 1E3C227866445AF0  conforme
+  ligne 15 (dv=1        ) B487EEA588BB5BF2  conforme
+  ligne 16 (dh=16       ) 0102020607000008  conforme
+  ligne 17 (dh=2 et dv=2) 7505ADA04C3C1DF8  conforme
+
+=== le tour complet : lire, convertir, sauver, relire, comparer ===
+(le seul oracle qui ne demande ni HyperCard ni personne : toute
+ propriété qui se perd en chemin se dénonce ici)
+hc_save : écrit
+  orphelin  carte 1 texte propre,  part 99 : aucune part de ce rang
+  plages    carte 1 texte propre,  part 3 : 5 au fichier, 3 parlantes, 3 gardées
+      [ 0.. 6[ style 0x01 corps 12 police Geneva   « gras   »
+      [ 6..13[ style 0x80 GROUPE corps 10 police Chicago  « groupe  »
+      [19..27[ style 0x29 corps 10 police Geneva   « partiel  »
+  plages    carte 1 texte du fond, part 3 : 4 au fichier, 3 parlantes, 3 gardées
+      [ 0.. 2[ style 0x01 corps 12 police Geneva   « é »
+      [ 2.. 8[ style 0x05 corps 18 police Chicago  « lèvè »
+      [ 8..10[ style 0x80 GROUPE corps 10 police Chicago  «  i »
+148 valeurs comparées, 0 perdues, 1 contenu orphelin
+3072 pixels de dessin comparés, 0 faux
+plages de style : 9 au fichier, 6 parlantes, 6 gardées par le modèle
+
+=== reconnaître une pile d'origine, pour choisir le lecteur ===
+  notre format a nous        -> non
+  un fichier vide            -> non
+  quinze octets              -> non
+  seize octets, bloc STAK    -> PILE D'ORIGINE
+  un bloc, mais pas STAK     -> non
+  du texte quelconque        -> non
+  la pile de ce harnais      -> PILE D'ORIGINE
+
+=== les témoins négatifs : ce qui doit être REFUSÉ ===
+--- taille du premier bloc nulle : REFUSE — taille de bloc impossible (offset 0x0)
+--- octet haut de la taille abime (REPARE, 1 anomalie) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme FAUSSE, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- taille de bloc au-dela du fichier (le masque n'y peut rien) : REFUSE — taille de bloc impossible (offset 0x0)
+--- taille reparee plausible mais FAUSSE (le bloc suivant ne parse plus) : REFUSE — taille de bloc impossible (offset 0x644)
+--- quatre octets de trop a la fin, SANS reparation (tolere) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine N'ATTEINT PAS la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- les memes quatre octets, AVEC une taille reparee : REFUSE — taille de bloc impossible, et la reparation ne retombe pas juste (offset 0x0)
+--- premier bloc pas STAK : REFUSE — le premier bloc n'est pas STAK (offset 0x0)
+--- pile a acces prive : REFUSE — pile a acces prive : les blocs sont chiffres (offset 0x4C)
+--- pile HyperCard 1.x : REFUSE — pile HyperCard 1.x : blocs decales, lecture non ecrite (offset 0x10)
+--- plus de cartes que de blocs : REFUSE — plus de cartes ou de fonds que de blocs (offset 0x24)
+--- taille de la liste des parts fausse d'un octet : REFUSE — la liste des parts ne finit pas ou sa taille l'annonce (offset 0x8EE)
+--- somme de la LISTE fausse d'un bit : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+--- somme d'une PAGE fausse d'un bit : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+--- la PAGE que la liste nomme est introuvable : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc ZORG id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+--- les deux nombres de cartes de la liste se contredisent : lu
+ordre : NON LU — les cartes restent dans l'ordre du FICHIER, 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+--- un « shadow » sur un CHAMP (ce n'est PAS une anomalie) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) shadow
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- un « checkbox » sur un CHAMP (le style ne va pas au genre) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) checkBox
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- anomalie SANS perte : une taille de bloc reparee : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme FAUSSE, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- anomalie SANS perte : un style qui ne va pas au genre : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- anomalie AVEC perte : un dessin abandonne : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- anomalie AVEC perte : un script abandonne : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+--- « not show pict » posé sur la PREMIÈRE carte : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 0
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- « not show pict » posé sur le FOND : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 0
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- marqueur de script d'une part abime (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- un code opération refusé dans le dessin (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (REFUSE)
+     0 ................................................................  0000000000000000
+     1 ................................................................  0000000000000000
+     2 ................................................................  0000000000000000
+     3 ................................................................  0000000000000000
+     4 ................................................................  0000000000000000
+     5 ................................................................  0000000000000000
+     6 ................................................................  0000000000000000
+     7 ................................................................  0000000000000000
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 ................................................................  0000000000000000
+    11 ................................................................  0000000000000000
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ................................................................  0000000000000000
+    15 ................................................................  0000000000000000
+    16 ................................................................  0000000000000000
+    17 ................................................................  0000000000000000
+    18 ................................................................  0000000000000000
+    19 ................................................................  0000000000000000
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- la taille du dessin dépasse son bloc (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin : AUCUN
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- une constante du bloc BMAP abimée (anomalie, pas un refus) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000

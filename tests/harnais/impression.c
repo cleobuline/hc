@@ -14,11 +14,17 @@
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
-static void mon_print(Object **cartes, int n){
+static void mon_print(Object **cartes, int n, const int *decoupe){
   printf("   [hôte] %d carte(s)", n);
   if (n > 0) printf(", de « %s » à « %s »",
                     cartes[0]->name ? cartes[0]->name : "?",
                     cartes[n-1]->name ? cartes[n-1]->name : "?");
+  /* LE DÉCOUPAGE S'AFFICHE, et c'est tout l'intérêt de le montrer ici : sans
+   * ça, « print card from 0,0 to 512,304 » et « print card » donneraient la
+   * même ligne de témoin, et l'on ne saurait pas si le rectangle est arrivé
+   * jusqu'à l'hôte ou s'est perdu en route. */
+  if (decoupe) printf(", découpe %d,%d,%d,%d",
+                      decoupe[0], decoupe[1], decoupe[2], decoupe[3]);
   printf("\n");
 }
 static void ma_ligne(HcLineKind k,int d,const char *t){(void)d;
@@ -90,5 +96,43 @@ int main(void){
    * est nommée ici pour ne pas croire le chantier fini. */
   essai("print 2 to 7");
   essai("print \"doc.txt\" with \"TeachText\"");
+
+  /* ─── « print card from x,y to x,y » : UNE PARTIE DE LA CARTE ─────────
+   *
+   * Trois fonds de « Stack Templates » d'Apple l'écrivent, avec le commentaire
+   * de leur auteur : « prints only the invoice part of the card, does not print
+   * the buttons along the bottom ».
+   *
+   * LE PIÈGE EST LE MOT « to », QUI SERT AUX DEUX FORMES. Le « to » d'un
+   * rectangle et celui d'une plage de cartes sont le même mot : sans le « from »
+   * pour trancher, la commande d'Apple aurait imprimé les cartes 0 à 512 au lieu
+   * d'une portion de la carte courante. Une mauvaise réponse SILENCIEUSE, et
+   * c'est pire que le refus qu'on venait de lever.
+   *
+   * Les deux relevés ne valent donc que CÔTE À CÔTE, et le témoin de la plage
+   * est juste au-dessus : « print card 1 to 600 ». L'un dit « découpe », l'autre
+   * « 600 cartes » ; l'un des deux seul ne dirait pas que le mot est partagé.
+   *
+   * Et le découpage s'affiche : sinon « print card from 0,0 to 512,304 » et
+   * « print card » donneraient la même ligne, et l'on ne saurait pas si le
+   * rectangle arrive jusqu'à l'hôte ou se perd en route. */
+  printf("\n=== « print card from x,y to x,y » : une PARTIE de la carte ===\n");
+  essai("go to card 1\n  print card from 0,0 to 512,304");
+  essai("print card from 3,19 to 504,337");
+  essai("print card from 4,63 to 293,338");
+  /* LES DEUX TÉMOINS, et l'absence du mot « découpe » sur leur ligne est leur
+   * réponse : l'hôte ne l'affiche que s'il en reçoit une. « print card 1 to 3 »
+   * doit rester TROIS CARTES, et « print card » une carte entière. */
+  essai("print card 1 to 3");
+  essai("print card");
+  /* Les bornes sont des EXPRESSIONS, pas seulement des littéraux. */
+  essai("put 10 into x\n  put 20 into y\n  print card from x,y to 300,300");
+  /* ET LES DEUX REFUS, qui sont la moitié de la mesure : un rectangle vide et
+   * un « from » mal formé se disent tout haut au lieu de retomber sur la plage
+   * de cartes. Le repli silencieux est ce qu'on a voulu éviter. */
+  essai("print card from 0,0 to 0,0");
+  essai("print card from 100,100 to 50,50");
+  essai("print card from 0 to 512");
+  essai("print card from 0,0 to 512");
 
   hc_unregister_stack(st);hc_free(st);return 0;}

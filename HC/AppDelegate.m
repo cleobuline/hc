@@ -12,6 +12,8 @@
 #import "HCdialogs.h"
 #import "hc_core.h"
 #import "hc_file.h"
+#import "hc_origine.h"   /* lire une pile au format d'HyperCard */
+#import "hc_importe.h"   /* et en bâtir une des nôtres */
 #import "Hcdocument.h"
 @interface AppDelegate () <NSMenuDelegate>
 @property (strong) IBOutlet NSWindow *window;
@@ -1268,7 +1270,169 @@ void cocoa_stack_changed(Object *stack) {
     }
 }
 
+/* ═══ OUVRIR UNE PILE HYPERCARD ═════════════════════════════════════════
+ *
+ * Le noyau sait lire le format d'Apple et en bâtir une pile des nôtres. Il ne
+ * manquait que la porte : ce qui suit est cette porte, et elle est PARTAGÉE —
+ * le panneau d'ouverture, le double-clic dans le Finder et le lâcher sur le
+ * Dock passent tous par loadStackAtPath:, qui reconnaît le format lui-même.
+ * Une pile HyperCard n'a le plus souvent aucune extension ; demander à
+ * l'utilisatrice de choisir « ouvrir » ou « importer » serait lui demander de
+ * savoir ce qu'elle a sous la main.
+ *
+ * LE CHEMIN N'EST PAS REPRIS, ET C'EST LA PRÉCAUTION QUI COMPTE. La pile
+ * importée est installée SANS fichier — comme une pile neuve. Enregistrer
+ * demandera donc un nom, et notre format texte ne pourra jamais écraser le
+ * binaire d'origine, qui est peut-être la seule copie qui reste d'une pile de
+ * 1993. Un « Enregistrer » distrait ne doit pas pouvoir détruire ça.
+ *
+ * CE QUI N'EST PAS TRADUIT est dit à l'écran quand il y en a : les icônes
+ * vivent dans le resource fork, qui ne survit pas à une copie ordinaire hors
+ * du Mac ; les motifs et les styles par plage ne sont pas lus. Le reste —
+ * cartes, fonds, parts, propriétés, textes, scripts, dessins, identifiants —
+ * est mesuré dans docs/mesures/pile_origine.txt, identifiants_de_part.txt et
+ * dessins.txt. */
+- (BOOL)importeAuFormatHyperCard:(NSString *)path {
+    NSData *donnees = [NSData dataWithContentsOfFile:path];
+    if (!donnees) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Lecture impossible"];
+        [a setInformativeText:[path lastPathComponent]];
+        [a runModal];
+        return NO;
+    }
+
+    HcOrigPile orig;
+    char pourquoi[200];
+    if (hc_origine_lit([donnees bytes], [donnees length],
+                       &orig, pourquoi, sizeof pourquoi) != 0) {
+        /* LE MOTIF EST ÉCRIT POUR ÊTRE LU : le noyau distingue une pile
+         * HyperCard 1.x, une pile à accès privé et un fichier abîmé, et ces
+         * trois-là n'appellent pas le même geste. */
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Cette pile HyperCard ne peut pas être lue"];
+        [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%s",
+                               [path lastPathComponent], pourquoi]];
+        [a runModal];
+        return NO;
+    }
+
+    NSString *nom = [[path lastPathComponent] stringByDeletingPathExtension];
+    Object *st = hc_importe_pile(&orig, [nom UTF8String]);
+
+    /* On retient de quoi parler AVANT de libérer : la structure de lecture ne
+     * survit pas à cette ligne. */
+    int anomalies = orig.anomalies;
+    int perdus    = orig.perdus;
+    int ordre_lu  = orig.ordre_lu;
+    int nfonds    = orig.nfonds_lus;
+    int ncartes   = orig.ncartes_lues;
+    int decores   = orig.contenus_decores;
+    int dessins   = 0;
+    for (int i = 0; i < orig.nfonds_lus;   i++) if (orig.fonds[i].dessin.present)  dessins++;
+    for (int i = 0; i < orig.ncartes_lues; i++) if (orig.cartes[i].dessin.present) dessins++;
+    hc_origine_libere(&orig);
+
+    if (!st) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"Conversion impossible"];
+        [a setInformativeText:[path lastPathComponent]];
+        [a runModal];
+        return NO;
+    }
+
+    [self installStack:st];
+    gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
+
+    /* ON NE PARLE QUE QUAND IL Y A QUELQUE CHOSE À DIRE. Une boîte à chaque
+     * import deviendrait un clic de plus qu'on apprend à écarter sans lire, et
+     * c'est justement le jour où elle dirait quelque chose qu'on ne le verrait
+     * pas. Deux faits la justifient, et eux seuls : une anomalie comptée, ou un
+     * ordre des cartes non vérifié — celui-là change ce à quoi on peut se fier.
+     *
+     * L'ordre des cartes ne vient PAS de l'ordre des blocs dans le fichier : il
+     * vient des blocs LIST et PAGE, et de leurs sommes de contrôle. Si elles ne
+     * tombent pas juste, les cartes restent dans l'ordre du fichier, qui n'est
+     * pas celui de la pile — il faut le dire, pas le taire. */
+    if (anomalies > 0 || !ordre_lu) {
+        NSMutableString *m = [NSMutableString string];
+        [m appendFormat:@"%d fond%s, %d carte%s, %d dessin%s.\n\n",
+            nfonds,  nfonds  == 1 ? "" : "s",
+            ncartes, ncartes == 1 ? "" : "s",
+            dessins, dessins == 1 ? "" : "s"];
+        if (!ordre_lu)
+            [m appendString:@"L'ORDRE DES CARTES N'A PAS PU ÊTRE VÉRIFIÉ : les "
+                            @"sommes de contrôle de la liste ne tombent pas "
+                            @"juste. Les cartes sont dans l'ordre du FICHIER, "
+                            @"qui n'est pas forcément celui de la pile.\n\n"];
+        /* DEUX PHRASES, PARCE QU'IL Y A DEUX FAITS, ET L'UNE DES DEUX ÉTAIT
+         * FAUSSE. Ce message disait « quelque chose n'a pas pu être lu et a été
+         * laissé de côté » dès qu'une anomalie était comptée. Sur « Stack
+         * Templates » l'anomalie unique est une TAILLE DE BLOC RÉPARÉE : rien
+         * n'a été laissé de côté, et la chaîne des 65 blocs retombe exactement
+         * sur la fin du fichier, ce qui est la preuve qu'elle a été bien lue.
+         *
+         * Le message annonçait donc une PERTE là où il n'y en avait pas, sur une
+         * pile entièrement lue. Un diagnostic faux coûte plus cher qu'un
+         * diagnostic vague : ici il faisait douter de toute la pile.
+         *
+         * `perdus` dit ce qui MANQUE, `anomalies` dit ce qui DEMANDE À ÊTRE
+         * VÉRIFIÉ. Zéro perdu avec des anomalies est un état parfaitement
+         * légitime, et c'est celui-là qu'il fallait savoir dire. */
+        if (perdus > 0)
+            [m appendFormat:@"%d chose%s n'%s pas pu être lue%s et %s été laissée%s "
+                            @"de côté. Le reste de la pile est là.\n\n",
+                perdus, perdus == 1 ? "" : "s",
+                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s",
+                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s"];
+        if (anomalies > perdus) {
+            int douteux = anomalies - perdus;
+            [m appendFormat:@"%d recoupement%s du fichier ne tombe%s pas juste : "
+                            @"tout a été lu, mais quelque chose mérite un œil — "
+                            @"une taille de bloc réparée, un style inattendu, une "
+                            @"carte que la liste ne nomme pas.\n\n",
+                douteux, douteux == 1 ? "" : "s", douteux == 1 ? "" : "nt"];
+        }
+        /* CETTE PHRASE DISAIT « le texte est là, les styles non », ET C'EST
+         * DEVENU FAUX : le bloc STBL est lu, et les plages de style arrivent
+         * jusqu'au modèle — mesuré d'un bout à l'autre, import, hc_save et
+         * hc_load compris, dans tests/harnais/origine.c.
+         *
+         * Elle disparaît plutôt que de se reformuler, et c'est la règle de cette
+         * boîte : on ne parle que quand il y a quelque chose à dire. « 40 textes
+         * portent des styles par plage » est un fait sur la pile, pas un manque —
+         * une ligne de plus qu'on apprendrait à écarter sans lire, et c'est le
+         * jour où elle dirait quelque chose qu'on ne le verrait pas.
+         *
+         * Ce qui RESTE non lu se dirait ici si ça arrivait : une plage dont le
+         * décalage tombe dans un caractère, ou qui renvoie à une décoration
+         * absente. Sur les quatre piles du corpus, zéro des deux. Pas de phrase
+         * pour un cas qu'on n'a jamais vu — juste le compteur d'anomalies, qui
+         * est là pour ça. */
+        (void)decores;
+        [m appendString:@"Cette pile n'a pas encore de fichier : « Enregistrer » "
+                        @"demandera un nom, et l'original ne sera pas touché."];
+
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:[NSString stringWithFormat:@"« %@ » est ouverte", nom]];
+        [a setInformativeText:m];
+        [a runModal];
+    }
+    return YES;
+}
+
 - (BOOL)loadStackAtPath:(NSString *)path {
+    /* LE FORMAT SE RECONNAÎT, IL NE SE DEMANDE PAS. hc_origine_reconnait ne
+     * regarde que les quatre lettres du premier bloc — c'est un aiguillage, pas
+     * une validation, et se tromper ne coûte qu'un refus écrit en clair. */
+    {
+        NSData *tete = nil;
+        NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:path];
+        if (fh) { tete = [fh readDataOfLength:16]; [fh closeFile]; }
+        if (tete && hc_origine_reconnait([tete bytes], [tete length]))
+            return [self importeAuFormatHyperCard:path];
+    }
+
     Object *loaded = hc_load([path UTF8String]);
     if (!loaded) {
         /* DIRE POURQUOI. « Pile illisible » suivi du seul nom de fichier

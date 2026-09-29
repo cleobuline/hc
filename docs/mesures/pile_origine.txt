@@ -1,0 +1,1290 @@
+MESURE — LIRE UNE PILE HYPERCARD AU FORMAT D'ORIGINE
+====================================================
+
+Le 28 septembre 2026. Premier pas d'un chantier neuf : extraire les SCRIPTS
+d'une pile binaire écrite par HyperCard lui-même, entre 1987 et 1998.
+
+D'OÙ VIENT CE CHANTIER, ET CE QU'IL N'EST PAS
+---------------------------------------------
+
+Le constat de départ, vérifié et non supposé : hc_file.c (1606 lignes) ne lit
+qu'UN format, le nôtre, un texte qui commence par « -- pile HyperCard (format
+maison) ». Il n'existe aucun analyseur du format binaire d'Apple dans le dépôt.
+Le premier grep semblait en trouver dans quarante fichiers ; c'étaient des
+« #import » d'Objective-C.
+
+Ce module est un EXTRACTEUR, pas un importateur, et la distinction porte tout :
+
+    un importateur doit rendre une pile qui MARCHE  -> couplé à tout le noyau
+    un extracteur n'a qu'à dire la vérité           -> couplé à rien
+
+L'importateur reste pour la fin de la mise au point, et c'est sa place : « une
+pile de 1993 s'ouvre et tourne » est le meilleur test d'acceptation que ce
+projet puisse avoir, et il ne se prononce qu'à la fin. L'extracteur, lui, ne
+pouvait pas attendre pour une raison asymétrique : si la lecture d'une vraie
+pile révèle un manque STRUCTUREL dans notre modèle de données, l'apprendre à la
+toute fin est le moment le plus cher du projet.
+
+LES SOURCES, ET LA QUESTION DE LICENCE
+--------------------------------------
+
+Deux descriptions publiques et INDÉPENDANTES du format ont servi :
+
+    StackFormat.md, de HyperCardPreview (P. Lorenzi) — 752 lignes, la plus
+      complète ; rétro-ingénierie sur des piles et sur l'assembleur
+    stakread.py, de mystextract (A. Plotkin) — 443 lignes, un lecteur qui
+      TOURNE, en Python
+
+Elles CONCORDENT sur tout ce qui est utilisé ici : en-tête de bloc
+(taille 4, type 4, id 4, calage 4), CARD (nombre de parts 0x28, taille de la
+liste 0x2C, contenus 0x30, parts 0x36), BKGD (0x24, 0x28, 0x2C, 0x32), part
+(taille 0x0, id 0x2, drapeaux 0x4, rectangle 0x6, nom 0x1E), script de la pile
+à 0x600 fixe, taille de la pile à 0x1B8 en ordre Quickdraw (hauteur d'abord).
+
+AUCUNE LIGNE DE CODE N'A ÉTÉ REPRISE. Ni l'un ni l'autre dépôt ne porte de
+fichier LICENSE — vérifié, 404 sur les deux — donc aucune licence n'est
+accordée, donc on n'emprunte rien. Les offsets sont des faits sur un format ;
+le code est le nôtre. Ça compte si HC va un jour sur l'App Store.
+
+Une troisième source, « Definitive Guide to the HyperCard Stack File Format »
+(R. Bettencourt), n'a pas pu être lue : kreativekorp.com est refusé par la
+politique de sortie du conteneur. À lire si une question reste ouverte.
+
+CE QUI EST MESURÉ
+-----------------
+
+1. LA TABLE MACROMAN, exhaustivement. Les 128 caractères hauts ont été produits
+   par le codec « mac_roman » de Python, octet par octet — pas écrits de
+   mémoire — et les 256 conversions sont dans tests/attendu/origine.txt. Un
+   doigt qui glisse dans la table casse un test, au lieu de casser un accent
+   qu'on découvrirait dans dix ans.
+
+   ET C'ÉTAIT UN VRAI TROU DU NOYAU : dup_script (hc_script.c) ne convertit que
+   les quatre caractères dont la SYNTAXE a besoin — ¬ ≠ ≤ ≥. Il n'existait
+   aucune table complète. Un « é » d'une pile d'origine, 0x8E, arrivait tel quel
+   dans un monde UTF-8 : octet invalide. Les piles d'archive françaises en sont
+   pleines.
+
+   UNE SEULE ENTRÉE EST UN CHOIX ET NON UN FAIT : 0xDB. Le MacRoman d'origine y
+   portait le signe monétaire « ¤ » (U+00A4) ; Mac OS 8.5 l'a remplacé par
+   l'euro (U+20AC), et c'est ce que rend le codec. Une pile de 1993 voulait dire
+   « ¤ » — l'euro n'existait pas. On suit le codec pour rester comparable à
+   l'arbitre, et c'est une décision écrite, pas un oubli.
+
+2. L'ACCORD D'UN LECTEUR TIERS SUR NOS OCTETS. Le harnais monte une pile au
+   format d'origine ; stakread.py la relit et rend LES MÊMES scripts, les mêmes
+   noms, les mêmes ids, les mêmes noms de parts. « prêt », « élève à Noël »,
+   « ça marche » traversent deux chaînes de transcodage écrites par deux
+   personnes différentes, dans deux langages, et arrivent identiques.
+
+   C'EST LE SEUL CONTREPOIDS QUI VAILLE. Sans lui, mon écrivain et mon lecteur
+   seraient d'accord parce qu'ils partagent la même croyance, et se
+   tromperaient ensemble en silence pendant que le test passerait au vert.
+   C'est le rôle que Basilisk joue pour le langage : un oracle.
+
+3. LA SOMME DE CONTRÔLE DU BLOC STAK. Le format exige que les 384 entiers de
+   32 bits allant de 0 à 0x600 totalisent zéro. L'écrivain du harnais doit la
+   satisfaire : une règle du dehors, qu'on ne peut pas assouplir pour se faire
+   plaisir.
+
+4. LE RECOUPEMENT DE LA LISTE DES PARTS, que les deux lecteurs publics ne font
+   PAS. Le bloc CARD porte deux informations indépendantes sur la même
+   frontière : le nombre de parts, et la taille totale de leur liste. Parcourir
+   les parts une à une doit tomber PILE sur la fin annoncée. La spec avertit que
+   la taille d'un bloc « est parfois corrompue » ; ce recoupement est ce qui
+   transforme la lecture d'un fichier abîmé en refus plutôt qu'en scripts
+   vraisemblables. Un témoin négatif abîme cette taille d'UN octet, et le
+   lecteur refuse.
+
+UNE VRAIE PILE DE 1990 — LE MANQUE PRINCIPAL EST COMBLÉ
+-------------------------------------------------------
+
+Ce document demandait « une petite pile d'origine ». Elle est arrivée le soir
+même : « 3D Parametric Equations », d'Alexander Thomas, 139264 octets,
+HyperCard 2.x, data fork intact.
+
+    ELLE N'EST PAS VERSIONNÉE, ET C'EST SON PROPRE SCRIPT QUI L'INTERDIT :
+    « If you want to use parts of this stack in your own productions, please
+    contact the author first at dr.lex@cryogen.com ». Elle a servi à mesurer ;
+    la mesure s'écrit ici, le fichier reste dehors. Il faudra une pile
+    librement licenciée pour en faire un témoin permanent — la pile synthétique
+    du harnais tient ce rôle en attendant.
+
+CE QUE LE LECTEUR EN A TIRÉ, du premier coup et sans une correction :
+
+    format 10, 3 fonds, 11 cartes, 512x342
+    45 blocs : STAK, MAST, LIST, PAGE, BMAP x13, CARD x11, FREE x9,
+               BKGD x3, STBL, FTBL, PRNT, PRST, TAIL
+    chaine des blocs : atteint la fin du fichier exactement
+    somme de controle du bloc STAK : JUSTE
+    3 fonds et 11 cartes lus, 0 anomalie
+    66 scripts, 804 lignes, 40 boutons, 65 champs
+
+DEUX CONFIRMATIONS FORTES LÀ-DEDANS, et elles méritent d'être nommées à part.
+
+La SOMME DE CONTRÔLE est juste sur une pile écrite par HyperCard lui-même. Tout
+ce qui va de l'octet 0 à l'octet 0x600 est donc correct : l'en-tête de bloc, les
+offsets du bloc STAK, l'ordre des octets. Une règle du format, vérifiée sur des
+octets que personne chez nous n'a produits. C'est la mesure la plus forte de tout
+ce document.
+
+Et « 0x14 : taille totale du data fork » vaut 139264, exactement la taille du
+fichier. Deuxième chemin indépendant vers la même vérité.
+
+LE GENRE D'UNE PART EST MAINTENANT MESURÉ. C'était le seul champ que nos deux
+sources ne corroboraient pas — bit 8 de l'entier de 0x4, 0 pour un champ et 1
+pour un bouton, décrit par l'une et jamais lu par l'autre. La vraie pile
+tranche : 40 boutons et 65 champs, et pas un seul classement absurde. Les boutons
+sont tous des verbes — AddComment, Draw graph, DelCard, Export, Connect u — et
+les champs tous des porteurs de données — MaxX, MaxY, EndT, Increm, ColorVar.
+Aucun bouton nommé « MaxX », aucun champ nommé « Draw graph ».
+
+L'ORACLE SUR LA MÊME VRAIE PILE
+-------------------------------
+
+829 lignes de script de chaque côté, et un seul écart : un gestionnaire
+closeField de trois lignes au rang 185 chez l'oracle, au rang 824 chez nous. Pas
+un octet de désaccord sur le CONTENU.
+
+Et la cause de cet écart est identifiée, ce n'est pas un mystère toléré : une
+seule carte de cette pile porte une part scriptée, tous les autres scripts étant
+dans les trois fonds (53, 4 et 47 parts). L'oracle affiche les cartes avant les
+fonds, nous l'inverse. D'où ce seul bloc qui se déplace, et rien d'autre.
+
+UN TROISIÈME CHEMIN, et celui-là ne vient d'aucun programme : l'autrice avait
+déjà collé ces scripts dans HC à la main, depuis le presse-papiers de Basilisk.
+Le même texte, par une route qui ne ressemble à aucune des deux autres.
+
+    Et ça change le statut du relevé qui suit : c'est une CONFIRMATION, pas une
+    découverte. CLAUDE.md dit de s'en méfier davantage que d'un démenti.
+
+LE CORPUS — COMBIEN DU HYPERTALK RÉEL NOTRE ANALYSEUR COMPREND-IL
+-----------------------------------------------------------------
+
+    66 scripts, 804 lignes de HyperTalk de 1990
+    acceptés par hct_verifie : 66, soit 100 %
+    avertissements : 13, tous de la même famille
+
+LE TÉMOIN POSITIF D'ABORD, sans quoi ce chiffre ne mesurerait rien — un
+analyseur qui accepte tout rendrait le même. Sept scripts cassés exprès sont
+refusés, chacun avec son motif : parenthèse non fermée, « end » manquant, « end »
+qui ne reprend pas le nom, repeat sans fin, if sans then, charabia pur, chaîne
+non fermée. L'instrument sait dire non.
+
+ET IL FAUT ÊTRE EXACT SUR CE QUE « 100 % » VEUT DIRE : hct_verifie vérifie la
+SYNTAXE, pas la sémantique. « 804 lignes de vrai HyperTalk s'analysent sans une
+faute » n'est pas « ces scripts tourneraient juste dans HC ». La seconde question
+reste ouverte, et c'est une autre mesure.
+
+Les 13 avertissements sont tous des noms de gestionnaires de l'auteur —
+createMenu, goHelp, exportIt, chooseColr — ce que hct_verif.h décrit lui-même
+comme n'étant pas une faute : un gestionnaire peut porter le nom qu'on veut.
+Zéro trouvaille réelle.
+
+LE FUZZING — UN LECTEUR DE FICHIER ÉTRANGER DOIT LE SUBIR
+---------------------------------------------------------
+
+Ce module analyse un binaire qu'il n'a pas écrit : c'est exactement là que vivent
+les défauts mémoire. 2321 versions abîmées de la vraie pile, sous ASan, UBSan et
+LeakSanitizer :
+
+    toutes les troncatures, par pas de 331 octets
+    1500 fichiers avec un octet changé au hasard
+    400 fichiers avec quatre octets d'affilée changés (les tailles en font 4)
+
+    1890 lus, 431 refusés, ZÉRO signalement des sanitizers.
+
+UNE FUITE TROUVÉE, ET SA PROVENANCE EXACTE — parce que je l'ai d'abord mal
+attribuée, à voix haute. Le premier passage signalait une fuite à chacun des 431
+refus. L'essentiel était le tampon du FICHIER, que mon pilote de fortune ne
+libérait pas : un défaut d'appelant. La part qui revenait au module était plus
+modeste : sous l'ancien contrat, rien ne libérait le recensement des blocs sur un
+chemin de refus.
+
+La correction porte sur l'API et pas sur le symptôme : un refus rend maintenant
+une pile VIDE, le module nettoie lui-même, et le calleur n'a plus rien à savoir.
+Le contrat inverse n'était écrit nulle part, et le premier appelant écrit hors du
+harnais l'a oublié — moi, dix minutes après avoir écrit le module. Une API dont
+le bon usage n'est pas évident finira toujours par être mal appelée.
+
+L'ORDRE DES CARTES — LU, ET VÉRIFIÉ PAR HYPERCARD LUI-MÊME
+----------------------------------------------------------
+
+Il ne vient pas de l'ordre des blocs CARD dans le fichier mais des blocs LIST et
+PAGE. C'est L'ORACLE QUI AVAIT TROUVÉ LE MANQUE : stakread.py refusait notre pile
+de démonstration avec « ERROR: no LIST block », et sans lui j'aurais cru l'ordre
+du fichier.
+
+Et le format offre bien mieux qu'une lecture : DEUX SOMMES DE CONTRÔLE, une sur
+la liste et une par page, chacune avec une rotation de trois bits vers la droite
+entre ses termes. Elles viennent de l'assembleur d'HyperCard. Si elles tombent
+juste, les identifiants rendus sont ceux qu'HyperCard a écrits, dans son ordre —
+pas une suite d'entiers vraisemblables. Plus trois recoupements gratuits : le
+nombre total de cartes est écrit DEUX FOIS dans la liste (0x18 et 0x28), il doit
+valoir celui de STAK, et la taille d'une référence doit s'accorder avec le nombre
+d'entiers de hachage qu'elle porte.
+
+QUATRE CONFIRMATIONS INDÉPENDANTES SUR « 3D Parametric Equations » :
+
+1. la somme de la liste tombe juste ;
+2. la somme de sa page tombe juste ;
+3. L'ORDRE OBTENU A UN SENS, et celui du fichier n'en avait pas. Les cartes
+   sortent groupées par fond — 5286, 2983, 3666, 5828 pour Curves ; 7953, 7580,
+   2360, 10136, 11086, 7160 pour Surfaces ; 9649 « Help! » en dernier. Dans
+   l'ordre du FICHIER, la carte 2360 du fond Surfaces arrivait en deuxième
+   position, coincée entre deux cartes du fond Curves ;
+4. LE DRAPEAU « DÉBUT D'UN FOND » TOMBE SUR LES FRONTIÈRES. Il est allumé pour
+   exactement trois cartes — 5286, 7953, 9649 — aux positions 0, 4 et 10 de
+   l'ordre calculé. Si l'ordre était faux, ces drapeaux ne tomberaient pas sur
+   les bords des groupes. C'est une vérification de l'ORDRE lui-même, pas
+   seulement des identifiants.
+
+LA NUMÉROTATION DES BITS EST MESURÉE, pas supposée, et le témoin est unique :
+le bit 7 (« porte un nom ») est allumé pour la SEULE carte nommée de la pile,
+9649 « Help! ». Avec le bit 6 ci-dessus, ça fixe la numérotation, et le bit 4
+(« marked ») en découle. Aucune carte marquée n'est encore passée ici : ça reste
+à voir, et il suffirait d'en marquer une dans Basilisk.
+
+UN RECOUPEMENT DE PLUS, GRATUIT ET POSÉ DANS LE CODE : le drapeau « porte un
+nom » de la liste et le nom lu dans le bloc CARD sont deux sources du même fait.
+Elles doivent s'accorder — sinon on a apparié la mauvaise référence avec le
+mauvais bloc, exactement la faute qu'un ordre mal lu produirait et qui autrement
+ne se verrait pas. Zéro désaccord sur les onze cartes.
+
+L'ORDRE SE REFUSE SANS QUE LE FICHIER SE REFUSE. Perdre les 66 scripts d'une
+pile parce que la somme d'une page est fausse serait un mauvais échange : l'ordre
+n'est pas nécessaire pour lire un script en sûreté. Mais se rabattre en SILENCE
+sur l'ordre du fichier serait malhonnête. Donc `ordre_lu` à zéro, une anomalie
+comptée, et le harnais montre LES DEUX ordres dans sa référence — c'est ce qui
+rend ces témoins lisibles, et ce qui ferait tomber le test si le
+réordonnancement cassait.
+
+    La liste du harnais dit l'ordre INVERSE du fichier, et c'est tout l'objet du
+    test : une liste qui répéterait l'ordre du fichier ne distinguerait rien.
+
+TROIS AUTRES VRAIES PILES
+-------------------------
+
+    TEST3          188416 o, 5 cartes, 1 fond   — notre pile de torture,
+                   reconstruite À LA MAIN dans HyperCard par l'autrice
+    Découvrir      40960 o, 11 cartes, 480x296  — la pile d'initiation d'APPLE,
+      HyperCard    localisée en français
+    Graph Maker    121045 o                      — REFUSÉE, et à juste titre :
+                   c'est notre format maison, déjà converti
+
+TEST3 EST L'ORACLE DANS L'AUTRE SENS, et c'est le plus fort de tous : pour la
+première fois je connais la réponse à l'avance, parce que je l'ai écrite dans
+tests/harnais/torture2.c. Le lecteur rend « Atelier, Deux, Trois, Quatre »
+exactement dans l'ordre de ces quatre appels à hc_new_card, avec le champ T au
+fond et les champs A, B, R sur la carte. Cinquième confirmation de l'ordre, et
+celle-ci ne vient pas du fichier du tout.
+
+Les accents survivent un tour de QUATRE étapes : source C en UTF-8 -> presse-
+papiers de Basilisk -> MacRoman dans HyperCard -> sauvegarde binaire -> notre
+lecteur. « élève », « Noël », « à », les guillemets français, tout revient.
+
+CE QUI NE SURVIT PAS : un caractère hors de MacRoman. Mes bandeaux de
+commentaires en « ═ » (U+2550) sont revenus en « ¢§ » répété — trois octets
+UTF-8 devenus deux octets MacRoman, 0xA2 0xA4. Notre lecteur est irréprochable :
+0xA2 0xA4 EST « ¢§ » en MacRoman, il a décodé ce qu'HyperCard contenait, et
+l'autrice le voit à l'identique dans l'éditeur de script d'HyperCard. La perte
+s'est donc faite dans le presse-papiers, avant le stockage. Le mécanisme exact
+est hors d'atteinte d'ici : non mesuré. La conséquence, elle, est dure — le
+format d'origine ne peut pas porter ce que MacRoman ne code pas.
+
+« Découvrir HyperCard » confirme l'ORDRE QUICKDRAW sur des octets réels :
+480x296, une taille de carte non standard. Avec 512x342 le défaut serait
+invisible ; ici, hauteur et largeur inversées rendraient 296x480, absurde pour un
+écran Mac.
+
+    NI L'UNE NI L'AUTRE N'EST VERSIONNABLE. « Découvrir HyperCard » porte
+    « ©Copyright 1993-1995 by Apple Computer,Inc. / Tous droits réservés. ».
+    C'est la pile d'initiation d'Apple. Elle mesure, elle ne se commite pas.
+
+LE CORPUS, ET MON INSTRUMENT QUI MENTAIT ENCORE
+-----------------------------------------------
+
+« Découvrir HyperCard » a d'abord donné 24 scripts acceptés sur 28, 85,7 %. Le
+premier vrai trou du chantier, croyais-je. C'était mon instrument.
+
+Le script de la pile d'Apple commence par un bandeau de copyright QUI N'EST PAS
+COMMENTÉ — pas de « -- » : un trait de « ∞ », le titre, la version, le
+copyright, les auteurs, un second trait, et c'est seulement APRÈS que les
+« -- » commencent.
+
+Ça s'accorde avec ce qu'on avait mesuré le 27 : en HyperCard un gestionnaire est
+COMPILÉ À SON APPEL. Du texte hors de tout « on … end » n'est jamais compilé,
+donc jamais refusé.
+
+    ET NOTRE EXÉCUTEUR FAIT PAREIL — mesuré, quatre cas : bandeau non commenté
+    d'Apple, bandeau commenté, rien devant, et du charabia APRÈS le
+    gestionnaire. Les quatre le trouvent et l'exécutent. LES PILES D'APPLE
+    TOURNERONT.
+
+Le défaut était donc dans hct_verifie seul, et il est précis : son propre
+en-tête définit ERREUR comme « le script ne peut pas s'exécuter tel quel —
+HyperCard refuserait aussi ». Ni HyperCard ni notre exécuteur ne refusaient. Du
+texte hors gestionnaire relève au plus de l'AVERTISSEMENT.
+
+Troisième fois en deux jours qu'un instrument à moi mesure autre chose que ce
+qu'il annonce.
+
+LA RÈGLE EST STRUCTURELLE, ET MA PREMIÈRE VERSION ÉTAIT FAUSSE
+--------------------------------------------------------------
+
+Je l'avais écrite POSITIONNELLE : la faute tombe-t-elle dans l'étendue d'un
+gestionnaire ? Mon propre témoin positif l'a démolie en une seconde — « on
+mouseUp / beep », sans « end », se mettait à PASSER. Sa faute est signalée
+après le dernier jeton du gestionnaire, donc hors de son étendue, donc dégradée.
+Or un « end » manquant est une faute DU gestionnaire.
+
+Les deux arbres, affichés côte à côte, donnent la règle juste :
+
+    end manquant       bloc > gestionnaire on > ERREUR      <- DESCENDANT
+    bandeau d'Apple    bloc > ERREUR, ERREUR, gestionnaire  <- FRÈRE
+
+Une faute DESCENDANTE d'un gestionnaire est une ERREUR, une faute SŒUR des
+gestionnaires est un avertissement. Rien à voir avec les positions dans le
+texte. Sans ce témoin positif, la correction d'un défaut en aurait introduit un
+autre, plus grave que lui.
+
+ET UNE SECONDE GARDE ÉTAIT FAUSSE AUSSI. J'avais écrit « si aucun gestionnaire
+n'est reconnu, on garde ERREUR », pour qu'un script entièrement illisible ne
+passe pas pour une remarque. Mais le script de pile d'Apple n'a QUE son bandeau
+et des commentaires — l'un d'eux dit « THE SCRIPTS FOR THIS STACK ARE IN THE
+BACKGROUND SCRIPT » — et la garde le refusait en entier. Un script sans
+gestionnaire n'a rien qui puisse échouer.
+
+Et ça ne cache rien : le bouton « Vérifier » de l'éditeur (HCview.m,
+checkScript) affiche TOUS les signalements avec leur niveau et ne bloque aucun
+enregistrement. Seul le titre change — « 3 fautes de syntaxe » devient « Script
+correct, avec des remarques », ce qui est la vérité pour la pile d'Apple.
+
+LE PREMIER VRAI TROU DE v3, ET C'EST UN DIÈSE DE MUSICIEN
+---------------------------------------------------------
+
+Après ces deux corrections il restait UN refus, et celui-là était réel :
+
+    play harpsichord tempo 300 a#2q c3w
+
+La ligne exacte d'un bouton « Hilite » de la pile d'Apple. « play » prend des
+notes, et une note altérée porte un dièse : a#2q, c#4q, g#3q. Le lexer
+s'arrêtait dessus — « caractère inattendu », colonne 31 — AVANT que v3_cmd_play,
+qui existe et prend un argument libre, puisse voir quoi que ce soit.
+
+MESURÉ À L'EXÉCUTION, pas seulement au vérificateur : le son ne jouait pas, et
+l'utilisateur voyait un dialogue d'erreur. C'est le premier défaut de v3 trouvé
+par du HyperTalk RÉEL, et aucune pile de torture écrite par nous ne l'aurait
+donné — je n'ai jamais écrit une note de musique dans un banc.
+
+Le dièse est désormais accepté À L'INTÉRIEUR d'un mot, jamais en tête, si bien
+qu'un « # » nu reste une faute. Il n'a aucun autre rôle en HyperTalk — ce n'est
+pas un opérateur, et dans une chaîne il passait déjà — donc aucune expression ne
+change de sens.
+
+LE CHIFFRE HONNÊTE
+------------------
+
+    Découvrir HyperCard (Apple)   28 scripts sur 28    100 %
+    3D Parametric Equations       66 sur 66            100 %
+    TEST3 (notre torture)          4 sur 4             100 %
+
+Avec ses témoins positifs : onze cas dans tests/harnais/pilereelle.c, et neuf
+scripts cassés exprès qui doivent être refusés. Et avec sa réserve, qui ne
+bouge pas : hct_verifie vérifie la SYNTAXE. « 804 lignes s'analysent » n'est pas
+« elles tournent juste ». Cette seconde question reste ouverte.
+
+    ET 98 SCRIPTS NE FONT PAS UNE POPULATION. Deux piles étrangères, dont une
+    seule vraiment étrangère au projet. Le chiffre ne vaudra quelque chose
+    qu'avec une dizaine.
+
+LES PROPRIÉTÉS DES PARTS ET LE TEXTE DES CHAMPS
+-----------------------------------------------
+
+Vingt propriétés par part, la table des polices, et le texte des champs. Notre
+modèle les portait déjà toutes : Object a visible, locktext, dont_search,
+shared_text, auto_select, wide_margins, show_lines, multiple_lines, family,
+titlewidth, icon, text_align, textsize, textstyle, textheight — un à un.
+
+UNE SURPRISE EN CHEMIN, et elle dit quelque chose sur la lignée de ce projet :
+les bits de textstyle du format d'Apple — gras, italique, souligné, contour,
+ombré, condensé, étendu, groupe — sont dans EXACTEMENT le même ordre que nos
+HC_BOLD, HC_ITALIC, HC_UNDERLINE, HC_OUTLINE, HC_SHADOW, HC_CONDENSE, HC_EXTEND,
+HC_GROUP. Une copie directe, pas une coïncidence.
+
+TROIS PIÈGES, ET ILS SE RESSEMBLENT ASSEZ POUR ÊTRE CONFONDUS
+------------------------------------------------------------
+
+1. QUATRE DRAPEAUX SONT INVERSÉS : le bit allumé signifie FAUX. La spec les
+   écrit entre parenthèses — « (not visible) », « (not enabled) », « (not fixed
+   line height) », « (not shared highlight) ». Convertis une fois à la lecture,
+   si bien que rien en aval n'a à s'en souvenir.
+
+2. QUATRE BITS CHANGENT DE SENS SELON LE GENRE. L'octet de 0xE dit, pour un
+   bouton, « montre le nom / allumé / allumage automatique / allumage partagé »
+   et, pour un champ, « montre les lignes / marges larges / plusieurs lignes /
+   sélection automatique ». Les mélanger donnerait des propriétés PLAUSIBLES ET
+   FAUSSES, ce qui est le pire résultat possible.
+
+3. ET LE BIT 0 N'EST INVERSÉ QUE D'UN CÔTÉ : un bouton y lit « PAS actif », un
+   champ y lit « texte verrouillé », qui est déjà positif.
+
+LE SEUL RECOUPEMENT DISPONIBLE, ET IL TIENT
+-------------------------------------------
+
+Aucun lecteur tiers ne lit les propriétés : l'oracle ne sert plus ici. Mais
+certains styles n'appartiennent qu'à un genre, et ça donne un contrôle gratuit
+sur l'octet de style. Vérifié sur les trois piles, environ 180 parts :
+
+    checkbox (7), radio (5), standard (1), shadow (14)   boutons SEULEMENT
+    scrolling (8)                                        champs SEULEMENT
+    transparent, opaque, rectangle                       les deux, ce qui est juste
+
+Pas une violation, et zéro anomalie sur les trois piles.
+
+TEST3 TRANCHE, PARCE QUE J'EN CONNAIS LA RÉPONSE
+------------------------------------------------
+
+torture2.c écrit, depuis des semaines :
+
+    pose_champ(c1, "R", 20, 88, 470, 200, "scrolling");
+    if (r) r->dont_search = 1;
+
+Et le lecteur rend « R … scrolling … dontSearch », seule part de la pile à porter
+l'un ou l'autre. Les champs sortent en Geneva aligné à gauche, les boutons en
+Chicago centré avec showName : les défauts exacts d'HyperCard pour une part
+neuve, que personne chez nous n'a écrits.
+
+LE TEXTE NE VIT PAS TOUJOURS AVEC SA PART, et TEST3 le montre du premier coup :
+
+    contenu propre 1 : « alpha beta gamma delta »   le champ A de la carte
+    contenu fond 1   : « auFond »                   le champ T du FOND, sur cette carte
+    contenu propre 4 : « omega »                    le champ B
+
+Dans un bloc CARD, un identifiant NÉGATIF désigne une part de la carte ; un
+identifiant POSITIF désigne un champ du fond dont cette carte-là porte son propre
+texte — ce que notre modèle appelle un BgText. Les confondre ferait afficher le
+même texte sur toutes les cartes d'un fond. Et « auFond » est mot pour mot la
+chaîne de la mesure couche_implicite.
+
+NOS DEUX SOURCES SE CONTREDISAIENT, ET LA MESURE A TRANCHÉ
+----------------------------------------------------------
+
+Pour un texte DÉCORÉ, la spec dit que l'entier de 0x4 est une TAILLE en octets,
+liste des plages et lui-même compris ; l'autre lecteur le traite comme un NOMBRE
+de plages de deux octets. Les deux calculs ne peuvent pas être justes ensemble.
+
+Suivi la spec, puis regardé le résultat : les dix contenus décorés d'Apple
+rendent de la prose française propre — « Introduction / L'application Hype… » —
+qui commence au bon octet, sans caractère perdu ni garbage en tête. LA SPEC AVAIT
+RAISON. Les styles par plage eux-mêmes ne sont pas lus : il faudrait le bloc
+STBL, et le compteur `contenus_decores` rend le manque visible.
+
+LA TABLE DES POLICES N'EST PAS UN LUXE. Les identifiants de police n'étaient pas
+les mêmes d'un Macintosh à l'autre, d'où un bloc FTBL qui porte les NOMS. Les
+vraies piles le prouvent : Chicago y vaut 16383 dans l'une, Charcoal 2002 dans
+l'autre. Sans ce bloc, une part rendrait sur une autre machine une police qui
+n'est pas la sienne — le défaut exact que ce bloc existe pour éviter.
+
+LE FUZZING, ENCORE, ET IL A EU RAISON DE MOI DEUX FOIS
+------------------------------------------------------
+
+6162 fichiers abîmés dérivés des TROIS vraies piles, sous ASan, UBSan et
+LeakSanitizer : 4768 lus, 1394 refusés, ZÉRO signalement.
+
+Il a fallu deux corrections pour y arriver, et la première était fondée sur une
+hypothèse fausse. J'avais accusé le compteur de parts, monté après les
+allocations qu'il gouverne — c'était vrai en soi, et corrigé, mais ce n'était pas
+le défaut. La trace de LeakSanitizer a nommé le vrai coupable : le NOM d'une
+couche, treize octets.
+
+La cause : un emplacement de carte était réputé libre quand son identifiant
+valait zéro. Or un bloc CARD peut PORTER l'identifiant zéro — une mutation d'un
+octet suffit — et son emplacement restait donc marqué libre après avoir été
+rempli : la carte suivante venait écraser son nom sans le libérer. Deux blocs de
+même identifiant faisaient de même. L'occupation se suit désormais à part.
+
+    LA LEÇON EST SUR LA MÉTHODE, pas sur le défaut : deviner deux fois de suite
+    sur un défaut mémoire coûte plus cher que lire la trace une fois. Elle
+    nommait la ligne exacte.
+
+LA CONVERSION, ET LE TOUR COMPLET QUI S'ARBITRE LUI-MÊME
+--------------------------------------------------------
+
+HC/hc_importe.c bâtit une pile HC à partir d'une pile d'origine lue. La
+séparation avec hc_origine.c est voulue, et c'est la même raison qui fait qu'un
+extracteur précède un importateur : l'un est un ANALYSEUR qui ne dépend pas de
+hc_core.h, l'autre un BÂTISSEUR qui ne touche pas un octet du format d'Apple. Le
+jour où une pile arrive de travers, on sait lequel des deux interroger.
+
+L'INSTRUMENT : lire, convertir, sauver dans NOTRE format, relire, et comparer à
+ce que le lecteur d'origine avait annoncé. C'est le seul oracle qui ne demande ni
+HyperCard ni personne, et il tourne à chaque passage de la suite.
+
+    la pile synthétique du harnais      89 valeurs,  0 perdue
+    TEST3 (notre torture)              196 valeurs,  0 perdue
+    3D Parametric Equations           2736 valeurs,  0 perdue
+    Découvrir HyperCard (Apple)        779 valeurs,  0 perdue
+
+IL A TROUVÉ UN DÉFAUT À SON PREMIER PASSAGE, et c'était le mien. L'alignement du
+texte : Apple écrit 0 gauche, 1 centre, -1 DROITE ; nous écrivons 0, 1, 2. Ma
+conversion recopiait la valeur brute. hc_file.c refuse -1 à bon droit — notre
+intervalle valide est 0..2 — et retombait donc sur zéro : TOUS les champs alignés
+à droite de TOUTES les piles importées se seraient retrouvés alignés à gauche,
+sans une erreur, sans un message. Deux conventions qui se ressemblent assez pour
+qu'on ne regarde pas.
+
+TROIS GESTES DONT L'ORDRE COMPTE, et chacun donnerait un résultat plausible et
+faux s'il était inversé :
+
+  - les FONDS avant les CARTES, puisqu'une carte désigne son fond ;
+  - `shared_text` AVANT d'écrire le texte d'un champ de fond, parce que
+    hc_set_field_text route vers les bgtexts de la CARTE quand le champ est un
+    champ de fond non partagé, et vers le champ lui-même sinon ;
+  - la carte COURANTE avant ce même texte, et retirée avant de poser le texte
+    par DÉFAUT du fond — sans quoi ce dernier irait dans les bgtexts de la
+    dernière carte.
+
+ET UNE ERREUR DE LECTURE DU FORMAT, RATTRAPÉE AVANT DE NUIRE : `du_fond` dit
+« cette part est une part de FOND », dans l'absolu, et non « elle appartient à une
+autre couche ». Dans un bloc BKGD, les parts du fond sont SES PROPRES parts, donc
+marquées ainsi. Je l'avais écrit comme « propre contre autre », et le texte par
+défaut des champs de fond aurait été purement ignoré — sans erreur, sans message,
+des champs vides dans une pile qui en a. « Découvrir HyperCard » le dit : elle
+porte des contenus marqués fond SOUS son fond.
+
+LES ÉCARTS DE SCRIPT N'EN ÉTAIENT PAS
+-------------------------------------
+
+Dix scripts des vraies piles semblaient perdus. Mesuré octet par octet :
+
+    origine  C2 AC 0A   « ¬ » + fin de ligne   ->  relu  20        une espace
+    origine  E2 89 A4   « ≤ »                  ->  relu  3C 3D     « <= »
+
+C'est la normalisation DÉLIBÉRÉE de hc_set_script, documentée dans hc_script.c.
+Mon instrument comparait le texte brut au texte normalisé.
+
+PLUTÔT QU'UN CONTOURNEMENT, ÇA DEVIENT UN TEST : la pile du harnais porte
+désormais un « ≤ » et un « ¬ », et la règle est RÉÉCRITE dans le harnais au lieu
+d'être appelée. Partager la fonction ferait comparer une transformation à
+elle-même, ce qui ne teste rien. Cette transformation n'avait aucun témoin.
+
+    ET LA RÉÉCRITURE ÉTAIT FAUSSE, ce qui est le meilleur argument pour la
+    méthode : j'avalais aussi l'indentation de la ligne SUIVANTE. Le tour complet
+    l'a dit aussitôt — « put "une ligne"  & … » contre « put "une ligne"       &
+    … ». dup_script n'avale que les blancs AVANT la fin de ligne. C'est la règle
+    du noyau qui a corrigé la mienne.
+
+    DEUX FAUTES DANS MON PROPRE TÉMOIN, AVANT ÇA. Le « ¬ » de MacRoman est 0xC2
+    et non 0xAC — 0xAC est le tréma « ¨ » — si bien que la continuation n'était
+    pas exercée DU TOUT : le harnais et la normalisation étaient d'accord pour ne
+    rien faire, et le test passait en ne testant rien. hc_script.c le disait noir
+    sur blanc depuis toujours.
+
+    Les deux branches sont désormais vérifiées PAR MUTATION : les casser une à
+    une fait passer le compte de 0 à 1 perdue. Un test dont on n'a pas vu
+    l'échec ne prouve rien — c'est la leçon de la garde terrainBon.
+
+TROIS DÉFAUTS TROUVÉS DANS L'APPLICATION, PAS PAR MES TESTS
+-----------------------------------------------------------
+
+L'autrice a ouvert « Découvrir HyperCard » convertie dans HC et a vu trois
+choses. Deux étaient de vrais défauts, le troisième n'en était pas.
+
+1. LE BOUTON RADIO SE DESSINAIT EN RECTANGLE. Ma table de styles avait des noms
+   INVENTÉS : « radio » n'existe nulle part dans ce dépôt — le noyau attend
+   « radioButton » (hc_core.c:2560) et le rendu aussi (HCview.m:6126). Les noms
+   sont désormais ceux du sélecteur de style de l'application, mot pour mot
+   (HCdialogs.m). Deux autres passaient par chance, la comparaison acceptant les
+   minuscules : « checkbox » et « roundrect ».
+
+2. AUCUN CHAMP N'AVAIT SON TEXTE, et c'est le plus grave. hc_importe.c appariait
+   un contenu à sa part en comparant l'identifiant d'origine à `p->id` — or
+   `p->id` est le NÔTRE, attribué par hc_new_field. Aucune part n'était donc
+   trouvée, et le fichier converti ne portait PAS UNE SEULE ligne « contents » :
+   tous les champs de toutes les piles importées arrivaient vides.
+
+   ET JE L'AVAIS ÉCRIT NOIR SUR BLANC DANS CE DOCUMENT — « les identifiants de
+   part ne survivent pas » — sans voir que MON PROPRE CODE en dépendait. Savoir
+   nommer un défaut ne suffit pas à ne pas le commettre. L'appariement se fait
+   maintenant par POSITION, les parts étant créées dans l'ordre du fichier.
+
+3. LES BOUTONS DU MENU N'AFFICHENT PAS LEUR NOM — et c'est JUSTE. Mesuré sur les
+   octets : les quatorze boutons du fond portent 0xE = 0x21, soit le bit 5
+   (autoHilite) et la famille 1 ; « Welcome » porte 0x61, plus le bit 6 (hilite)
+   parce que c'est la carte courante. Le bit 7, showName, est éteint sur les
+   quatorze. Une famille de quatorze boutons « transparent », un seul allumé :
+   c'est l'idiome du menu HyperCard, et LES LIBELLÉS SONT PEINTS dans l'image du
+   fond. Il manque le dessin, pas la propriété.
+
+   La numérotation des bits est confirmée au passage, sur la même mesure :
+   « Welcome » porte 0x0100 à l'offset 0x4. En numérotation LSB c'est un bouton ;
+   en MSB ce serait un champ. Or il s'appelle Welcome et il a un hilite.
+
+LE TROU ÉTAIT DANS L'INSTRUMENT
+-------------------------------
+
+Le tour complet comparait les propriétés et les scripts — 3711 valeurs sur trois
+vraies piles, zéro perdue — ET JAMAIS LE TEXTE. Un instrument qui compare
+beaucoup de choses n'est pas un instrument qui compare les bonnes. Il vérifie
+désormais ce qu'un utilisateur REGARDE.
+
+Et en le comblant, mon instrument a menti une quatrième fois : il annonçait 78
+pertes sur la pile 3D. Mes deux outils de mesure prenaient LE PREMIER fond de la
+pile relue, ce qui marche par accident tant qu'il n'y en a qu'un — la pile du
+harnais — et se trompe sur une pile à trois fonds. Le convertisseur, lui,
+appariait par identifiant et avait raison.
+
+UN CONTENU ORPHELIN N'EST PAS UNE PERTE, et il restait cinq cas. Mesuré : la
+part 25 est réclamée par des cartes du fond 2815, où elle n'existe pas — elle est
+dans le fond 7925. Un texte laissé derrière par une part supprimée, ou par une
+carte qui a changé de fond. HyperCard en laisse, et lui aussi les ignore : il n'y
+a aucune part pour les afficher. Ils sont COMPTÉS séparément — il n'y a rien à
+perdre — et non tus, parce qu'un jour la cause pourrait être un vrai défaut
+d'appariement. La pile du harnais en porte un exprès.
+
+    LE BILAN, TEXTE COMPRIS :
+
+        la pile du harnais       91 valeurs,  0 perdue,  1 orphelin (voulu)
+        TEST3                   202 valeurs,  0 perdue,  0
+        3D Parametric          2963 valeurs,  0 perdue,  5 orphelins mesurés
+        Découvrir HyperCard     796 valeurs,  0 perdue,  0
+
+CE QUI RESTE NON MESURÉ
+-----------------------
+LES IDENTIFIANTS DE PART SURVIVENT DEPUIS, et ce paragraphe disait le contraire.
+Il annonçait « hc_new_field et hc_new_button attribuent les NÔTRES ; celui
+d'origine est perdu », et c'était le prochain point du chantier. Il est fait :
+140 parts et 32 couches de nos trois piles gardent leur numéro, à l'import comme
+à travers notre format. Il a fallu pour cela que l'espace de noms d'une part
+devienne SA COUCHE, comme chez HyperCard — 45 % des parts d'une de ces piles
+partagent leur numéro avec une part d'une autre couche. Tout est dans
+docs/mesures/identifiants_de_part.txt, la mesure qui l'a décidé comme le défaut
+de portee qu'elle a fait sortir.
+
+Et le tour complet compare toujours les parts par RANG, mais ce n'est plus un
+aveu : l'identifiant étant devenu une propriété mesurée, il ne peut pas servir de
+clé à l'instrument qui le mesure.
+
+HYPERCARD 1.x SE REFUSE, par un refus écrit et testé. Ses en-têtes de bloc
+n'ont pas les quatre octets de calage, si bien que TOUT le contenu des blocs
+CARD et BKGD est décalé de quatre octets. Le décalage est documenté et
+tiendrait en vingt lignes ; il n'est pas écrit parce qu'il n'est pas mesuré. Le
+recensement des blocs, lui, marche des deux côtés.
+
+UNE PILE À ACCÈS PRIVÉ se refuse aussi : ses blocs sont chiffrés. La spec décrit
+la procédure ; elle n'est pas écrite.
+
+CE QUI N'ÉTAIT PAS EXTRAIT quand ce document a été écrit : les dessins, le texte
+des champs, les polices, les styles, les motifs, les icônes. Un extracteur de
+scripts n'en avait pas besoin. Depuis, le texte, les polices et LES DESSINS sont
+lus — voir docs/mesures/dessins.txt pour le compactage WOBA, ses deux juges et ce
+qu'il laisse encore de côté. Restent dehors : les motifs, les styles par plage et
+les icônes, celles-là pour une raison de transport et non de lecture.
+
+CE QUE ÇA RAPPORTE TOUT DE SUITE
+--------------------------------
+
+Cet extracteur donne un CORPUS : du HyperTalk écrit par des gens qui ne
+cherchaient pas à nous faire plaisir. La première pile en a rendu 804 lignes, et
+la mesure qui va avec — 100 % analysées sans une faute, avec ses témoins positifs
+et sa réserve sur la différence entre syntaxe et sémantique.
+
+Aucune pile de torture ne peut donner ça : j'invente les tournures que je connais
+déjà, ce qui est le défaut natif de l'exercice. Une pile de plus, et le chiffre
+recommence à valoir quelque chose — 66 scripts ne font pas une population.
+
+DEUX DÉFAUTS TROUVÉS EN CHEMIN
+------------------------------
+
+Le calage sur 16 bits des contenus de part se compte DEPUIS LE DÉBUT DU BLOC et
+non du fichier. Rien ne garantit qu'un bloc commence à une adresse paire ;
+compter depuis le fichier décalait d'un octet tout ce qui suit les contenus — le
+nom de la carte, donc son script.
+
+« memcpy(dst, NULL, 0) » est un comportement indéfini, même pour zéro octet.
+Une carte sans parts ni contenus laisse les deux tampons du harnais vides, donc
+leur pointeur nul. Rien ne se voit à l'exécution ; UBSan l'a dit, et c'est la
+seule raison pour laquelle on le sait.
+
+SEIZE ANOMALIES SUR DIX-SEPT ÉTAIENT DE MOI
+-------------------------------------------
+
+Le 28 septembre 2026, au retour d'une quatrième pile — « Stack Templates »,
+133 952 octets, 17 fonds, 17 cartes, 65 blocs.
+
+Elle a d'abord été REFUSÉE : « taille de bloc impossible (offset 0x2C00) ». Puis,
+réparation faite, elle s'est lue en annonçant DIX-SEPT ANOMALIES. Un nombre qu'on
+rapporte est un nombre qu'on doit pouvoir expliquer, donc on les a attribuées, en
+instrumentant une copie :
+
+    1  x  la taille du bloc MAST, réparée
+    16 x  « un style qui ne va pas au genre »
+
+Les seize sont SEIZE CHAMPS de style `shadow`, tous nommés « About This
+Template », tous au même rectangle (62,52,280,461), un par carte. Un encadré
+dessiné exprès, seize fois. Pas un octet mal lu : une règle fausse de mon côté.
+
+CE QUE J'AVAIS ÉCRIT, ET POURQUOI C'ÉTAIT FAUX
+
+    « vérifié sur les trois vraies piles avant d'y croire — checkbox, radio,
+      standard et shadow n'apparaissent QUE sur des boutons »
+
+Le relevé était juste. La conclusion ne l'était pas : trois piles ne sont pas une
+population, et j'ai lu une ABSENCE comme une INTERDICTION. C'est exactement le
+piège que ce dossier décrit ailleurs — un relevé qui confirme ce que fait déjà le
+code fait conclure au lieu de faire travailler.
+
+ET LA CONTRADICTION ÉTAIT DANS CE DÉPÔT, À DEUX FICHIERS DE DISTANCE
+
+HCdialogs.m offre depuis toujours à un champ exactement cinq styles :
+
+    HCdialogs.m:551   transparent, opaque, rectangle, SHADOW, scrolling
+    HCdialogs.m:785   transparent, opaque, rectangle, shadow, roundRect,
+                      checkBox, radioButton, standard, default, oval, popup
+
+Notre propre sélecteur de propriétés savait donc ce que mon extracteur ignorait.
+Une règle tirée de l'observation doit être confrontée à ce que le reste du code
+affirme déjà, AVANT de compter des anomalies avec.
+
+LE CROISEMENT, MAINTENANT MESURÉ — 574 PARTS, QUATRE PILES
+
+    style          champs  boutons
+    transparent       257      124
+    rectangle          75       18
+    shadow             16       22     <- des DEUX côtés
+    opaque              4       20
+    scrolling          11        0
+    checkBox            0       11
+    radioButton         0       11
+    roundRect           0        4
+    standard            0        1
+    TOTAL             363      211
+
+Ce qui reste réservé au bouton l'est donc sur 574 parts et non sur 180. Et ce qui
+n'est PAS mesuré s'écrit comme non mesuré : `default`, `oval` et `popup`
+n'apparaissent NULLE PART dans ce corpus. Leur réserve au bouton est reprise de
+gInfoStyle, pas relevée. Si une pile en montre un jour un sur un champ, c'est
+cette ligne-là qu'il faudra corriger.
+
+LE CORPUS ENTIER, APRÈS CORRECTION
+
+    3D Parametric Equations   45 blocs,  3 fonds, 11 cartes   0 anomalie
+    Découvrir HyperCard       32 blocs,  1 fond,  11 cartes   0 anomalie
+    TEST3                     16 blocs,  1 fond,   5 cartes   0 anomalie
+    Stack Templates           65 blocs, 17 fonds, 17 cartes   1 anomalie
+
+Une seule anomalie sur quatre piles, et c'est la seule qu'on sache expliquer :
+l'octet de poids fort de la taille du bloc MAST.
+
+LA TAILLE DE BLOC RÉPARÉE, ET SES CINQ TÉMOINS
+----------------------------------------------
+
+Le bloc MAST de « Stack Templates » annonce 0x40000400 là où il fait 1024. La
+spec prévient : « Don't rely too much on it, it is sometimes corrupted. » On
+masque donc l'octet haut — mais un masque est une permission tant qu'il n'est pas
+tenu par une preuve. La preuve est que la chaîne des 65 blocs retombe EXACTEMENT
+sur la fin du fichier ; une réparation qui décale quoi que ce soit n'a aucune
+raison d'y retomber.
+
+Mesuré avant d'y croire : sur les quatre piles et 158 blocs, trois n'ont pas un
+seul octet haut non nul, et la quatrième en a EXACTEMENT UN. Le masque ne change
+rien à ce qui marchait déjà.
+
+Cinq témoins tiennent la réparation par ses deux bouts, dans tests/harnais/origine.c :
+
+    octet HAUT abîmé                        -> LU, 1 anomalie, somme FAUSSE
+    un autre octet abîmé                    -> REFUSÉ (le masque n'y peut rien)
+    octet haut + taille vraie changée       -> REFUSÉ (le bloc suivant ne parse plus)
+    quatre octets de trop, SANS réparation  -> LU, « chaine N'ATTEINT PAS la fin »
+    les mêmes quatre, AVEC réparation       -> REFUSÉ, « la reparation ne retombe pas juste »
+
+LES DEUX DERNIERS NE VALENT QUE CÔTE À CÔTE, et c'est tout leur intérêt : pris
+seul, le quatrième dit qu'on tolère des octets en trop, le cinquième qu'on refuse
+un fichier. C'est leur DIFFÉRENCE qui montre le garde-fou — une seule mesure ne
+l'aurait pas atteint, et le garde-fou n'avait aucun témoin avant celui-là.
+
+Le premier témoin s'appelait « taille de bloc au-dela du fichier » et attendait un
+REFUS : il posait 0x7F dans l'octet haut, c'est-à-dire précisément le parasite que
+la réparation enlève. Renommé plutôt que retiré. Rien ne passe en silence pour
+autant : l'anomalie est comptée, et la somme de contrôle reste FAUSSE puisque
+l'octet abîmé est dans le bloc STAK lui-même.
+
+LE CORPUS, QUATRIÈME PILE : DE 94,4 % À 99,5 %
+----------------------------------------------
+
+« Stack Templates » est la première pile de PRODUCTION d'Apple du corpus, et
+c'est la première qui ne soit pas à 100 % :
+
+    pile                        scripts  lignes  acceptes par v3
+    3D Parametric Equations          66     804  100 %
+    Découvrir HyperCard              28     164  100 %
+    TEST3                             4     941  100 %
+    Stack Templates                 198    2164   94,4 %  ->  99,5 %
+    ------------------------------------------------------------------
+    TOTAL                           296    4073   96,3 %  ->  99,7 %
+
+Onze gestionnaires refusés, QUATRE défauts. Le chiffre de onze n'était pas une
+mesure de quatre défauts : trois formes tombaient sur la même cause, et il a
+fallu les isoler hors de la pile, une par une, pour le savoir.
+
+ET CHACUN SE MESURE À CÔTÉ DE LA FORME VOISINE QUI PASSAIT DÉJÀ. C'est ce qui a
+nommé l'étage de la cause à chaque fois ; le relevé seul aurait envoyé chercher
+au mauvais endroit.
+
+1. LE ¬ DE CONTINUATION SUIVI D'UN COMMENTAIRE
+
+       answer "…unable to find any cards containing" && ¬ -- ∆
+       "“" & it & "”."
+
+   Le lexer avalait le ¬, ne trouvait pas de fin de ligne derrière, et NE
+   CONTINUAIT PAS la ligne. Le pire des deux mondes : ni continuation, ni
+   plainte sur le ¬ — la faute tombait trois lignes plus loin, sur « expression
+   attendue », à un endroit qui ne nomme pas la cause.
+
+   MESURÉ DANS HYPERCARD (Basilisk II) avant d'y toucher, et il fallait le
+   mesurer : « Apple l'a livré » ne prouve rien, puisque HyperCard ne compile un
+   gestionnaire qu'à son appel et que ce bouton n'a peut-être jamais été cliqué.
+   Le banc joué là-bas affiche « un deux », sans un mot.
+
+2. « else » N'APPARTIENT À AUCUNE EXPRESSION
+
+       if bg field "Log Name" then logIn else logOut
+
+   Le si sur une ligne était écrit et testé depuis longtemps. Ce qui manquait
+   était un étage plus bas :
+
+       if x then put 1 into y else beep     ACCEPTÉ  (« into y » sature le motif)
+       if x then beep else beep             REFUSÉ   (« beep » a un argument [e])
+
+   « logIn » est un envoi de message, donc une commande à argument FACULTATIF, et
+   le motif décidait d'attacher cet argument sur la seule question « reste-t-il
+   quelque chose sur la ligne ? ». Il restait « else » : l'argument se collait,
+   « else » devenait une variable, et c'est le mot d'après qui portait la faute.
+
+   Réparé dans fini(), au plus bas : toute commande à argument facultatif avait
+   le même défaut. Corriger « beep » aurait laissé cinquante portes jumelles.
+
+   Et la forme où le « then » ouvre la ligne suivante — trois fonds l'écrivent —
+   était le MÊME défaut, pas un second. C'est l'isolement hors de la pile qui l'a
+   dit ; comptée depuis la pile, elle faisait une cause de plus.
+
+3. « print card from 0,0 to 512,304 » — UNE PARTIE DE LA CARTE
+
+   Trois fonds l'écrivent, avec le commentaire de l'auteur à côté : « prints only
+   the invoice part of the card, does not print the buttons along the bottom ».
+
+   Le défaut n'était pas dans le motif de « print » mais dans le calcul du
+   BUTOIR : il s'arrêtait au premier emplacement d'expression du motif, si bien
+   que « * [to e] [with e] » donnait le butoir « to » et non « to|with ». Le trou
+   ne se voyait pas — aucun script du corpus n'écrit « print x with y » — et il
+   s'est vu en ajoutant le groupe « [from * to *] », qui aurait réduit le butoir
+   à « from » et cassé « print card 1 to 600 », que le harnais impression.c tient
+   depuis longtemps. Un emplacement d'expression se SAUTE maintenant au lieu de
+   fermer la collecte, et le butoir est complet.
+
+4. UN ORDINAL DEVANT « menuItem » DÉSIGNE DÉJÀ
+
+       disable last menuItem of menu "Templates"
+       set name of last menuItem of menu "Templates" to "Show Palette"
+
+   Sept sites. Le garde de menu exige qu'un désignateur SUIVE le mot de type,
+   pour que « put menu into x » ne devienne pas un menu nommé « into ». Ici le
+   désignateur est DEVANT, et ce qui suit est « of », qui est structurel.
+
+       menuItem "A" of menu "T"     ACCEPTÉ  (nom cité : le garde est satisfait)
+       last menuItem of menu "T"    REFUSÉ   (l'ordinal ne compte pas)
+
+   DEUX SITES JUMEAUX, et le premier seul ne changeait RIEN : la lecture, dans
+   reference(), et le guichet reference_ici() qui décide si l'on y entre. C'est
+   le défaut signature de ce projet, et il s'est reproduit ici même.
+
+CE QUI RESTE REFUSÉ, ET CE N'EST PAS UN OUBLI
+
+       get visible of window "StackTemplatePal"
+
+   Une fenêtre NOMMÉE. Ce n'est pas un trou de syntaxe : c'est un type d'objet
+   que l'arbre de v3 n'a pas, et hc_core.c le dit déjà en toutes lettres pour
+   « card window », dont il ne sert que les quatre propriétés de géométrie.
+
+   Notre application n'a ni palette externe, ni fenêtre Outils, ni fenêtre
+   Motifs. Répondre quoi que ce soit à « the visible of window "X" » serait
+   décider seul de ce qu'HyperCard aurait répondu — exactement ce que le
+   commentaire de « card window » refuse de faire. Refus assumé, et écrit dans
+   tests/harnais/pilereelle.c pour qu'il ne passe pas pour un oubli.
+
+   Le coût est réel et il faut le nommer : script_arbre() refuse le script
+   ENTIER, donc les 300 lignes du script de pile de « Stack Templates » sont
+   perdues pour une seule référence. Si les fenêtres nommées se font un chantier,
+   c'est cette ligne-là qui le justifie, pas la syntaxe.
+
+ET DEUX DES QUATRE CORRECTIONS NE S'EXÉCUTAIENT PAS
+---------------------------------------------------
+
+Le même jour, après avoir poussé les quatre corrections ci-dessus et lu les trois
+jobs de l'intégration continue : les témoins de la section 4 de pilereelle.c
+n'interrogeaient que hct_verifie, et hct_verifie disait « accepté » sur DEUX
+formes qui échouaient encore à l'exécution.
+
+UN VÉRIFICATEUR PLUS PERMISSIF QUE L'EXÉCUTEUR EST LE PIRE DES DEUX ÉTATS : il
+promet ce que la pile ne tiendra pas, et le refus franc qu'on venait de lever
+était moins coûteux. Le seul relevé qui le dise est de JOUER la forme.
+
+1. LE ¬ SUIVI D'UN COMMENTAIRE — LE SITE JUMEAU, ENCORE
+
+   hc_script.c joint les lignes continuées dans dup_script, AVANT que le moindre
+   lexer les voie, et avec exactement le même trou. Corriger hct_lex.c seul ne
+   changeait donc RIEN à l'exécution :
+
+       vérificateur  : accepté
+       exécution     : « expression attendue », ligne 2
+
+   Et ici le commentaire doit être JETÉ, pas seulement sauté : on fabrique une
+   ligne PHYSIQUE unique, et un « -- » laissé dedans mettrait en commentaire
+   toute la suite de la ligne jointe — un appel silencieusement amputé, la pire
+   des trois issues. Les deux étages sont nécessaires : hct_verifie est aussi
+   appelé sans passer par dup_script.
+
+2. L'ORDINAL SUR UN MENU ET SUR UN ARTICLE — DEUX SITES JUMEAUX DE PLUS
+
+   v3_menu_index et v3_article_index exigeaient un fils pour le désignateur. Un
+   ordinal n'en a pas : il est dans le NŒUD. Les deux rendaient donc « objet
+   introuvable » sur une syntaxe que l'analyseur venait d'accepter.
+
+   Mesuré sur un menu de trois articles réellement posé :
+
+       last menuItem of menu "Tpl"       ->  C
+       first menuItem of menu "Tpl"      ->  A
+       middle menuItem of menu "Tpl"     ->  B
+       last menu                         ->  Tpl
+       tenth menuItem of menu "Tpl"      ->  « article de menu introuvable »
+
+   Le dernier compte autant que les autres : l'échec reste PRÉCIS, il ne retombe
+   pas sur « objet introuvable ».
+
+3. « print card from x,y to x,y » — LE PIÈGE QUE J'ALLAIS POSER MOI-MÊME
+
+   Le « to » d'un rectangle est le MÊME MOT que celui d'une plage de cartes.
+   v3_cmd_print prenait le premier « to » venu : la ligne d'Apple aurait imprimé
+   LES CARTES 0 À 512 au lieu d'une portion de la carte courante. Une mauvaise
+   réponse silencieuse, pire que le refus qu'on venait de lever.
+
+   Le « from » tranche. Et un « from » présent mais illisible se REFUSE au lieu
+   de retomber sur la plage :
+
+       print card from 0,0 to 512,304   ->  1 carte, découpe 0,0,512,304
+       print card 1 to 3                ->  3 cartes, carte entière   (témoin)
+       print card from 0,0 to 0,0       ->  « le rectangle de découpe est vide »
+       print card from 100,100 to 50,50 ->  idem (rectangle retourné)
+       print card from 0 to 512         ->  « demande deux points, quatre nombres »
+
+   LE DÉCOUPAGE TRAVERSE JUSQU'À L'HÔTE, et il est passé DANS LA SIGNATURE de
+   host.print_cards plutôt que par un second crochet facultatif. C'est délibéré :
+   un hôte qui l'oublierait ne compilerait pas, là où un crochet séparé aurait
+   laissé l'ancien chemin imprimer la carte ENTIÈRE sans un mot. Le site jumeau
+   qu'on ne peut pas rater est celui que le compilateur réclame — et six appelants
+   ont dû être touchés, ce qui est le prix et la preuve.
+
+   CE QUI N'EST PAS MESURÉ : la GÉOMÉTRIE DE LA PAGE sous un découpage. On garde
+   la bande de la carte entière et l'on n'y dessine que la portion demandée ; le
+   reste de la page reste blanc. HyperCard recadrait peut-être la page sur le
+   rectangle — aucun banc ne le dit, et inventer un recadrage serait décider seul.
+   Ce qui EST mesuré est l'intention de l'auteur, écrite dans son propre
+   commentaire : « does not print the buttons along the bottom ».
+
+LA LEÇON, ET ELLE EST DE MÉTHODE
+
+Toute forme ouverte dans l'analyseur se rejoue maintenant à L'EXÉCUTION, section 5
+de tests/harnais/pilereelle.c, avec son résultat imprimé. Ouvrir une syntaxe sans
+vérifier qu'elle s'exécute n'est pas une demi-correction : c'est un défaut neuf,
+qui remplace un refus visible par une promesse fausse.
+
+« 1 ANOMALIE » NE VOULAIT PAS DIRE « QUELQUE CHOSE A ÉTÉ PERDU »
+----------------------------------------------------------------
+
+Relevé à l'usage, en ouvrant « Stack Templates » dans l'application. La boîte
+disait :
+
+    1 anomalie relevée en chemin : quelque chose n'a pas pu être lu et a été
+    laissé de côté. Le reste de la pile est là.
+
+C'ÉTAIT FAUX. Cette anomalie unique est la TAILLE DE BLOC RÉPARÉE du bloc MAST.
+Rien n'a été laissé de côté : le bloc a été lu, et la chaîne des 65 blocs retombe
+exactement sur la fin du fichier — ce qui est précisément la preuve qu'elle a été
+bien lue. Le message annonçait une perte inexistante sur une pile entièrement
+lue, et faisait douter de tout.
+
+C'est la quatrième fois dans ce projet qu'un diagnostic faux coûte plus cher qu'un
+diagnostic vague. Le vague fait chercher partout ; le faux fait chercher au
+mauvais endroit, et donne confiance en le faisant.
+
+DEUX COMPTEURS, PARCE QU'IL Y A DEUX FAITS
+
+    anomalies   ce qui demande à être VÉRIFIÉ : un recoupement qui ne tombe pas
+                juste, une taille réparée, un style qui ne va pas au genre, une
+                carte que la liste ne nomme pas
+    perdus      ce qui MANQUE dans le résultat : un dessin abandonné, un script
+                abandonné, un nom de police abandonné
+
+`perdus` est toujours inférieur ou égal à `anomalies`. Treize des vingt-quatre
+sites d'anomalie sont des pertes ; les onze autres sont des méfiances.
+
+LE CORPUS, MESURÉ
+
+    3D Parametric Equations    0 anomalie,  0 perdue
+    Découvrir HyperCard        0 anomalie,  0 perdue
+    TEST3                      0 anomalie,  0 perdue
+    Stack Templates            1 anomalie,  0 PERDUE
+
+Zéro perdu avec une anomalie est un état parfaitement légitime, et c'est celui-là
+qu'il fallait savoir dire. La boîte dit maintenant deux phrases distinctes, et
+n'en dit que celle qui s'applique.
+
+QUATRE TÉMOINS CÔTE À CÔTE, dans tests/harnais/origine.c. Chacun seul ne dirait
+rien ; c'est leur contraste qui montre où passe la ligne :
+
+    une taille de bloc réparée          1 anomalie, 0 perdue
+    un style qui ne va pas au genre     1 anomalie, 0 perdue
+    un dessin abandonné                 1 anomalie, 1 perdue
+    un script abandonné                 1 anomalie, 1 perdue
+
+Et les dix autres témoins négatifs du harnais portent désormais leur compte de
+pertes dans la ligne de résumé, ce qui a permis de vérifier les quatorze
+classements d'un coup d'œil au lieu de les croire.
+
+LES STYLES PAR PLAGE SONT LUS : LE BLOC STBL
+--------------------------------------------
+
+La boîte d'import disait « 40 textes portaient des styles par plage : le texte
+est là, les styles non ». C'était vrai, et ce ne l'est plus.
+
+CE QU'IL FALLAIT, ET CE QU'IL NE FALLAIT PAS. Notre modèle avait DÉJÀ les plages
+— struct TextRun, struct RunList, hc_run_add_full — depuis l'éditeur de texte. Le
+manque n'était donc pas dans le moteur mais dans la lecture, et la greffe tient en
+trois pièces : la table du bloc STBL, les plages gardées au lieu d'être sautées, et
+la conversion vers nos plages.
+
+LES DEUX MODÈLES SE CORRESPONDENT TERME À TERME, et ce n'est pas un hasard : les
+huit bits de style sont l'octet Style de QuickDraw des deux côtés, dans le même
+ordre — gras, italique, souligné, contour, ombré, condensé, étendu, groupé. Dans
+le fichier ils occupent les bits 8 à 15 d'un mot ; les redescendre de huit est
+TOUTE la traduction.
+
+    HyperCard                       nous
+    police -1                       font NULL
+    style  -1                       HC_STYLE_INHERIT
+    corps  -1                       size 0
+
+MON SONDEUR A MENTI DEUX FOIS, ET LE CODE ZÉRO
+
+Premier mensonge : il affichait `deco->style & 0xFF`, ce qui montre -1 comme 0xFF.
+J'ai donc lu « tous les styles posés » là où le fichier dit « hérite ». Les octets
+bruts du bloc — 24 par décoration, dumpés à la main — ont tranché en une minute
+ce que dix minutes de raisonnement n'avaient pas tranché.
+
+Second mensonge, et c'est le piège que j'avais documenté LE MATIN MÊME : pour
+trouver le genre d'une part visée, il cherchait l'identifiant dans TOUS les fonds
+et prenait le premier. Or les identifiants de part sont uniques PAR COUCHE. Il
+annonçait trois contenus visant un BOUTON ; il n'y en a aucun.
+
+Sixième fois que mon instrument mesure autre chose que ce qu'il annonce. Le
+remède qui a marché les deux fois : instrumenter le CODE RÉEL — une copie de
+hc_importe.c avec des compteurs — au lieu de réécrire son raisonnement à côté.
+
+0x80 EST « GROUPÉ », ET C'EST L'USAGE QUI LE DIT
+
+Le seul bit dont le sens ne se déduisait pas de son nom. Relevé : il est posé sur
+CHAQUE nom de gabarit de la carte de sommaire de « Stack Templates » — « Names &
+Addresses », « To Do List », « Time Log »… — et sur AUCUN des sauts de ligne entre
+eux. C'est exactement à quoi sert le style Groupe d'HyperCard : il fait répondre
+une phrase entière à « the clickText ». Une interprétation qui tombe juste sur
+l'usage vaut mieux qu'une table recopiée.
+
+LE COMPTE SE FERME, SUR LES QUATRE PILES
+
+    pile                      contenus  plages  vides  muettes  tentées  gardées
+    3D Parametric Equations         12      51      0        3       48       48
+    Découvrir HyperCard             10      22      0       11       11       11
+    TEST3                            0       0      0        0        0        0
+    Stack Templates                 40     100      2       46       52       40
+
+    « vides »    une plage de longueur nulle — deux plages au même décalage, ou
+                 une plage au tout dernier octet du texte
+    « muettes »  les trois attributs hérités : la plage ne dit RIEN, et se jette
+    « gardées »  ce que le modèle retient après normalisation
+
+Les douze plages que le noyau jette sur « Stack Templates » REDISAIENT le style du
+champ : hc_run_add ramène aux sentinelles ce qui coïncide avec le champ, sans quoi
+un simple gras figerait au passage la police du champ dans chaque plage. Le rendu
+est identique ; ce n'est pas une perte, et c'est pourquoi le témoin COMPTE au lieu
+d'exiger l'égalité.
+
+ZÉRO renvoi mort, ZÉRO décalage non reportable, ZÉRO contenu visant une part
+absente, sur les quatre piles.
+
+LE REPORT DES DÉCALAGES EN UTF-8, ET POURQUOI IL EST FAIT UNE FOIS
+
+Le fichier donne des décalages en octets MACROMAN. Notre texte est en UTF-8, où
+« é » prend deux octets : les décalages ne s'y transposent pas tels quels. Le
+report se fait dans hc_origine, une fois, plutôt que chez chaque appelant qui le
+referait autrement — et il REFUSE quand le décalage tombe dans un caractère, ou
+dans un « \r\n » que la conversion réduit à un seul octet. -1 alors, et la plage
+se jette : un style posé un caractère à côté se voit à l'écran des mois plus tard
+et ne se cherche nulle part.
+
+Témoin dans la pile de torture, sur « élèvè ici » — cinq octets MacRoman pour
+cinq caractères, huit en UTF-8 :
+
+    plage à 0  ->  utf8 0
+    plage à 1  ->  utf8 2
+    plage à 5  ->  utf8 8
+    plage à 7  ->  utf8 10
+
+Et le même jeu de plages sur un texte ASCII pur, où les deux coïncident : c'est
+leur DIFFÉRENCE qui montre le report, et un témoin seul ne l'aurait pas montrée.
+
+LE TOUR COMPLET LE VÉRIFIE
+
+Les plages traversent la conversion, hc_save et hc_load : neuf plages au fichier,
+six parlantes, six gardées après relecture. Notre propre format les préserve donc,
+ce qui n'allait pas de soi et n'avait jamais été mesuré.
+
+CE QUI RESTE DEHORS : les motifs, les icônes du fork de ressources, HyperCard 1.x,
+les piles à accès privé. Et les six champs d'une décoration dont la spec dit
+« should be …, but never used » — hauteur de ligne, ascendante, et les trois
+composantes de couleur — qui ne sont pas lus parce qu'ils ne portent rien.
+
+UN NOM CITÉ AVALAIT L'OPÉRATEUR QUI LE SUIVAIT
+----------------------------------------------
+
+Relevé à l'usage, dans HC :
+
+    updateCalendar bg field "Year" + 1,"scroll left"
+
+    -> « un nombre est attendu ici »
+
+CAUSE. Le désignateur cité se lisait avec rang_somme, le niveau 5, qui laisse
+passer l'arithmétique. Le champ devenait donc « celui dont le NOM est "Year" + 1 »,
+et la faute était annoncée sur une ligne où rien n'a l'air d'un nombre.
+
+L'arbre le disait en trois lignes, et c'est ce qui a tranché en une minute :
+
+    objet bg.field par-nom
+      binaire +
+        chaine [Year]
+        nombre [1]
+
+LE RANG GARDE SON DROIT À L'ARITHMÉTIQUE, et la différence n'est pas un caprice :
+un RANG est un nombre, donc calculer dessus a un sens — « card i + 1 » désigne la
+carte suivante, et c'était écrit et voulu. Un nom CITÉ est un littéral, et
+« "Year" + 1 » n'en est pas un. Rien ne peut le prolonger.
+
+MESURÉ SUR LE CORPUS AVANT D'Y TOUCHER — 4369 lignes de HyperTalk d'Apple, quatre
+piles. Un désignateur cité suivi d'un opérateur arithmétique y paraît TROIS fois :
+
+    updateCalendar bg field "Year" + 1,"scroll left"
+    updateCalendar bg field "Year" - 1,"scroll right"
+    put round(height of bg field "Monday" / textHeight of bg field "Monday")
+
+Les trois veulent « la valeur de la chose, puis l'opération ». ZÉRO contre-exemple :
+pas une ligne du corpus ne nomme un objet par une expression arithmétique.
+
+Et la troisième est celle que je n'aurais pas cherchée — une DIVISION entre deux
+propriétés — dont la faute était encore plus trompeuse : « propriété ou fonction
+inconnue : textHeight », parce que le nom avait avalé tout le reste de la ligne.
+Chercher le SITE JUMEAU dans le corpus a donc rapporté un troisième cas que le
+relevé de l'utilisatrice ne montrait pas.
+
+Ces trois lignes sont dans le gabarit « Month Calendar », sur les boutons d'année
+suivante et précédente. Elles tournent à chaque clic.
+
+TÉMOINS, section 6 de tests/harnais/pilereelle.c, et par PAIRES :
+
+    bg field "Year" + 1        1994    le nom ne prend plus l'opérateur
+    bg field 1 + 0             1993    le rang calcule encore
+    card i + 1                 card "Deux"
+    card i + 0                 card "Une"
+    card id n + 0              card "Une"
+
+La seconde colonne est la moitié de la correction : sans elle on ne saurait pas si
+la porte a été fermée trop grand. Et « card i + 1 » a demandé une SECONDE CARTE
+dans le harnais — sans elle il échouait sur « objet introuvable », ce qui est juste
+et parfaitement ambigu : un témoin qui peut échouer pour deux raisons n'en mesure
+aucune.
+
+LA LIGNE DU CALENDRIER ANNUEL MARCHE ; C'EST LE MESSAGE QUI MENTAIT
+-------------------------------------------------------------------
+
+Relevé à l'usage : « les bugs sont dans la carte du calendrier annuel, quand on
+clique sur un calendrier », avec la ligne d'Apple :
+
+    select word (number of words in char 1 to
+                 (word 2 of the clickChunk) of bg field theField)
+           of bg field theField
+
+LE BANC A ÉTÉ MONTÉ SUR SA VRAIE PILE, IMPORTÉE. C'est ce que l'import rapporte
+maintenant et ça n'avait jamais servi : au lieu de reconstituer un montage
+approchant, on lit « Stack Templates », on l'importe, on se place sur la carte du
+calendrier annuel et l'on envoie mouseUp à un vrai champ, avec un « clickChunk »
+simulé à la position voulue. Mon premier banc synthétique ne montrait RIEN parce
+que son champ ne ressemblait pas aux vrais.
+
+QUATRE CLICS, QUATRE RÉPONSES, et c'est leur comparaison qui a nommé la cause :
+
+    sur le premier chiffre      « Sunday, January 1, 1995 »     0 erreur
+    sur un chiffre plus loin    « Monday, January 2, 1995 »     0 erreur
+    avant le premier chiffre    « ne sait pas faire : select … » + FAUSSE DATE
+    clickChunk vide             « un rang numérique est attendu ici »
+
+LA LIGNE MARCHE. Les champs du calendrier commencent par des espaces de calage —
+« Calendar 1 » commence par vingt espaces avant son premier « 1 » — donc un clic
+avant le premier chiffre donne « number of words in char 1 to 3 » = ZÉRO, donc
+« select word 0 ». Un seul relevé aurait accusé la ligne ; quatre l'ont innocentée.
+
+DEUX DÉFAUTS RÉELS, TROUVÉS EN CHEMIN
+
+1. LE MESSAGE NOMMAIT LA MAUVAISE CAUSE. select_cible rendait 0 sur un morceau
+   introuvable, ce qui renvoyait la ligne à l'ANCIEN exécuteur — qui n'a pas de
+   « select » du tout, son propre commentaire le dit. Il répondait donc « ne sait
+   pas faire : select word (…) of bg field theField », et ce message envoie
+   chercher du côté de la SYNTAXE, le seul endroit où il n'y a rien.
+
+   Cinquième fois dans ce projet qu'un diagnostic faux coûte plus cher qu'un
+   diagnostic vague. Le champ EST trouvé, le rang EST un nombre : « il n'y a pas
+   de word de rang 0 dans ce champ » coûte une ligne et nomme la cause.
+
+2. LE CONTRAT DE select_cible ÉTAIT ROMPU, et c'est le défaut qui rendait la
+   FAUSSE DATE. Ses chemins de faute rendaient 1 — « c'est traité » — sans rien
+   poser. L'appelant écrit :
+
+       if (!select_cible(ctx, c, &f, &st, &en)) {
+           if (ctx->erreur) return 1;          <- ce garde-là
+           ...
+       }
+       hc_set_selection(f, st, en - st);
+
+   Un 1 sautait donc le bloc ENTIER, garde compris, et la ligne suivante appelait
+   hc_set_selection avec un champ NUL : la sélection était effacée, set_result("")
+   annonçait la réussite, et le gestionnaire continuait. D'où « Saturday, December
+   31, 1994 » — le jour ZÉRO de janvier — présenté comme une réponse. Une mauvaise
+   réponse silencieuse est le pire des trois états.
+
+   Toute faute rend 0 maintenant : 0 avec ctx->erreur veut dire « c'était à moi et
+   ça a échoué », 0 sans erreur veut dire « ce n'était pas à moi ».
+
+CE QUI N'EST PAS CORRIGÉ, ET QUI S'ÉCRIT COMME TEL
+
+UNE FAUTE DANS UNE FONCTION N'ARRÊTE PAS L'APPELANT. Mesuré, avec son témoin :
+
+    la faute dans une fonction appelée   -> la fonction s'arrête, L'APPELANT CONTINUE
+    la MÊME faute sans fonction          -> le gestionnaire s'arrête
+
+C'est ce qui a fait paraître la fausse date d'Apple comme une réponse plutôt que
+comme une erreur : returnTheDay s'arrêtait, rendait vide, et le « answer » de
+l'appelant affichait le résultat du reste du calcul.
+
+Non corrigé ici parce que le remède touche la machinerie des messages et
+changerait le comportement d'erreur de TOUT le moteur : une pile qui « marchait »
+en ignorant une faute dans une fonction s'arrêterait désormais. Ce n'est pas à
+décider seul. Le témoin de la section 7c de tests/harnais/pilereelle.c enregistre
+l'état présent, pour que le changement se voie le jour où il sera fait.

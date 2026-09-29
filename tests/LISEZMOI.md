@@ -178,3 +178,47 @@ champs de carte **dans cet ordre** — `A`, `B`, `R` —, `R` défilant et
 Le banc vérifie tout cela lui-même au démarrage et le nomme dans un dialogue
 s'il manque quelque chose. Il ne l'a pas toujours fait : une carte nommée
 « troix » a produit trois échecs qui accusaient `find` et les cartes marquées.
+
+## Lire une pile au format d'origine
+
+`harnais/origine.c` exerce `HC/hc_origine.c`, qui extrait les SCRIPTS et les
+noms d'une pile binaire écrite par HyperCard lui-même — pas notre format texte,
+celui d'Apple, blocs `STAK` `BKGD` `CARD` `TAIL` en gros-boutiste.
+
+Ce harnais MONTE une pile au format d'origine avant de la relire, et ça pose un
+problème qu'il faut voir : mon écrivain et mon lecteur seraient d'accord parce
+qu'ils partagent la même croyance, et se tromperaient ensemble en silence. Trois
+contrepoids, aucun venant de moi — la somme de contrôle exigée par le format,
+la table MacRoman produite par le codec de Python, et **un lecteur tiers** qui
+relit les mêmes octets :
+
+    cc -std=gnu99 -O1 -I HC -o /tmp/orig tests/harnais/origine.c \
+       HC/hc_origine.c HC/hc_importe.c HC/hc_core.c HC/hc_file.c … -lm -lz
+    /tmp/orig /tmp/synthetique.stack        # écrit le fichier
+    python3 stakread.py -o - /tmp/synthetique.stack
+
+`stakread.py` se prend dans le dépôt `erkyrath/mystextract`. Il doit rendre les
+mêmes scripts, les mêmes noms et les mêmes ids. Il n'est pas versionné ici :
+aucune licence ne l'accompagne, et on ne lui emprunte rien — c'est un ARBITRE,
+le rôle que Basilisk joue pour le langage.
+
+Ce qui est mesuré, ce qui ne l'est pas, et ce qu'il faudrait — une vraie pile de
+1993, qu'aucun réseau atteignable d'ici ne fournit — est dans
+`docs/mesures/pile_origine.txt`. Les identifiants de part et leur espace de noms
+sont dans `docs/mesures/identifiants_de_part.txt`.
+
+### Le dessin
+
+La pile du harnais porte deux blocs `BMAP` écrits à la main, qui exercent tous
+les codes du compactage WOBA — **y compris les deux que les vraies piles
+n'emploient jamais**, la ligne noire et `dh=16`. Le harnais affiche les deux
+plans en entier, les trois états distincts (`#` l'encre, `.` le blanc opaque,
+l'espace le transparent) et les octets en hexadécimal à droite : un pixel qui
+bouge se lit dans le diff de la référence.
+
+Quatre lignes y sont transformées par `dh` et `dv`, et leur résultat attendu est
+écrit EN DUR — calculé à part, depuis la phrase de la spécification, et non en
+faisant tourner le décodeur. C'est le seul endroit du harnais où une valeur
+attendue est écrite à la main, et la raison en est que l'oracle du format ne voit
+pas ces deux transformations. Tout est dans `docs/mesures/dessins.txt`, y compris
+le mot « Bienvenue » qu'Apple a peint en 1993 et qui sert de second juge.

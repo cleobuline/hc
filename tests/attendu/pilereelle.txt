@@ -1,0 +1,348 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. le niveau d'une faute depend de sa PLACE dans l'arbre ===
+(ERREUR = « ne peut pas s'executer, HyperCard refuserait aussi »,
+ c'est le contrat ecrit dans hct_verif.h)
+ok   le bandeau d'Apple devant un gestionnaire            -> remarque  (caractère inattendu)
+ok   le bandeau SEUL, aucun gestionnaire du tout          -> remarque  (caractère inattendu)
+ok   du charabia APRES le dernier gestionnaire            -> remarque  (caractère inattendu)
+ok   « end » manquant (faute DU gestionnaire)           -> erreur    (« end » manquant)
+ok   « end » qui ne reprend pas le nom                  -> erreur    (« end » ne reprend pas le nom)
+ok   du charabia DANS un gestionnaire                     -> erreur    (caractère inattendu)
+ok   parenthese non fermee dans un gestionnaire           -> erreur    (parenthèse fermante attendue)
+ok   temoin : un gestionnaire sain                        -> rien    
+--- le caractere lui-meme : dans un commentaire, dans une chaine ---
+ok   ∞ © # et accents dans un commentaire              -> rien    
+ok   ∞ © # dans une chaine                             -> rien    
+ok   # nu dans un gestionnaire : toujours une faute       -> erreur    (caractère inattendu)
+
+=== 2. le diese d'une note : « play harpsichord tempo 300 a#2q » ===
+(la ligne exacte d'un bouton « Hilite » de la pile d'Apple. Le lexer
+ s'arretait dessus AVANT que v3_cmd_play voie quoi que ce soit : le son
+ ne jouait pas, et l'utilisateur voyait un dialogue d'erreur.)
+-- la vraie ligne d'Apple, avec deux dieses
+     le gestionnaire est alle au bout
+-- la meme sans diese (temoin : elle passait deja)
+     le gestionnaire est alle au bout
+-- un diese seul reste une faute
+     [ERREUR]    !! script, ligne 2 colonne 7 : caractère inattendu
+     [ERREUR]         put #
+     [ERREUR]    !! caractère inattendu (v3, ligne 2 de button "B".t)
+-- temoin : rien de particulier
+     le gestionnaire est alle au bout
+
+=== 3. « the version » rend celle d'HYPERCARD, pas la notre ===
+(le script de fond de la pile d'Apple porte « if the version < 2.2 »
+ et refusait de tourner : « Vous utilisez la version 0.6.9.4 ». La
+ porte de version etait une pratique standard en 1993, jusque chez
+ Apple : toute pile qui en porte une restait fermee, sans recours.)
+-- the version
+     2.4.1
+     le gestionnaire est alle au bout
+-- la porte d'Apple, mot pour mot
+     la pile accepte de tourner
+     le gestionnaire est alle au bout
+-- the hcVersion, sous son propre nom
+     0.6.9.4
+     le gestionnaire est alle au bout
+-- les deux ne sont pas la meme chose
+     2.4.1 / 0.6.9.4
+     le gestionnaire est alle au bout
+
+=== 4. « Stack Templates » : de 94,4 % a 99,5 % de ses 198 scripts ===
+(la premiere pile de PRODUCTION d'Apple du corpus. Onze gestionnaires
+ refuses, en quatre defauts — et chacun se mesure a cote de la forme
+ VOISINE qui passait deja, sans quoi on chercherait la cause au
+ mauvais etage.)
+
+--- 4a. le ¬ de continuation suivi d'un COMMENTAIRE ---
+(bouton « Find... » d'Apple. Le ¬ etait avale, la ligne N'ETAIT PAS
+ continuee, et rien ne le disait : la faute tombait trois lignes plus
+ loin. MESURE DANS HYPERCARD (Basilisk II) avant d'y toucher : le
+ dialogue affiche « un deux », sans un mot.)
+ok   ¬ puis un commentaire, puis la suite de la ligne    -> rien    
+ok   temoin : ¬ sans commentaire (passait deja)          -> rien    
+ok   la ligne d'Apple, mot pour mot                       -> rien    
+
+--- 4b. « else » n'appartient a aucune expression ---
+(bouton « Log In » d'Apple : « if bg field "Log Name" then logIn else
+ logOut ». Le si sur une ligne etait ecrit et teste depuis longtemps ;
+ ce qui manquait est un etage plus bas. Les deux mesures COTE A COTE
+ nomment la cause — l'argument facultatif d'une commande.)
+ok   if C then <commande a argument facultatif> else <cmd> -> rien    
+ok   temoin : « into y » sature le motif, donc passait deja -> rien    
+ok   la ligne d'Apple, mot pour mot                       -> rien    
+ok   « return » a aussi un argument facultatif          -> rien    
+ok   « then ... else ... » en tete de la ligne suivante -> rien    
+
+--- 4c. « print card from x,y to x,y » : une PARTIE de la carte ---
+(trois fonds l'ecrivent, avec le commentaire de l'auteur : « prints
+ only the invoice part of the card ». Et « print card 1 to 600 », que
+ tout un harnais tient, doit continuer de passer : c'est le butoir du
+ motif qui decide, et c'est lui qu'il a fallu corriger.)
+ok   print card from 0,0 to 512,304                       -> rien    
+ok   temoin : print card 1 to 600 (le « to » sans « from ») -> rien    
+ok   temoin : print all cards                             -> rien    
+ok   temoin : print marked cards                          -> rien    
+ok   temoin : print this card                             -> rien    
+
+--- 4d. un ORDINAL devant « menuItem » designe deja ---
+(sept sites dans la pile. Le garde de menu exige qu'un designateur
+ SUIVE le mot de type, pour que « put menu into x » ne devienne pas un
+ menu nomme « into ». « last menuItem of menu "T" » met le sien
+ DEVANT, et ce qui suit est « of ». Deux sites jumeaux a corriger : la
+ lecture, et le guichet qui decide si l'on y entre.)
+ok   disable last menuItem of menu                        -> rien    
+ok   enable last menuItem of menu                         -> rien    
+ok   set name of last menuItem of menu ... to ...         -> rien    
+ok   the name of first menu                               -> rien    
+ok   temoin : menuItem CITE passait deja                  -> rien    
+ok   garde : « put menu into x » n'est pas un menu nomme « into » -> rien    
+ok   garde : « the family of button » n'est pas une famille nommee « of » -> rien    
+
+--- 4e. CE QUI RESTE REFUSE, ET POURQUOI ---
+(« get visible of window "StackTemplatePal" » : une fenetre NOMMEE.
+ Ce n'est pas un trou de syntaxe, c'est un type d'objet que l'arbre
+ n'a pas — hc_core.c le dit en toutes lettres pour « card window », et
+ ne sert que ses quatre proprietes de geometrie. Notre application n'a
+ ni palette, ni fenetre Outils, ni fenetre Motifs : repondre quoi que
+ ce soit a « the visible of window "X" » serait DECIDER SEUL de ce
+ qu'HyperCard aurait repondu. Refus assume, ecrit ici pour qu'il ne
+ passe pas pour un oubli.)
+ok   window NOMMEE : refus assume, pas un oubli           -> erreur    (texte inattendu en fin de ligne)
+ok   temoin : « card window », que hc_core.c sert deja  -> rien    
+
+=== 5. les memes formes, A L'EXECUTION et non au vérificateur ===
+(ET C'EST CETTE SECTION QUI COMPTE. La section 4 n'interroge que
+ hct_verifie : elle disait « accepte » sur DEUX formes qui echouaient
+ encore a l'execution, et je l'ai cru. Un verificateur plus permissif
+ que l'executeur est le pire des deux etats — il promet ce que la pile
+ ne tiendra pas. Toute forme ouverte dans l'analyseur se rejoue donc
+ ici, et le resultat lui-meme est imprime.)
+
+--- 5a. le ¬ suivi d'un commentaire fait-il VRAIMENT une ligne ? ---
+(hc_script.c joignait deja les lignes continuees, AVANT tout lexer, et
+ avec le meme trou : corriger hct_lex.c seul ne changeait RIEN ici. Le
+ site jumeau, encore. Attendu : « un deux », comme HyperCard.)
+-- la ligne d'Apple, jouee
+     un deux
+     le gestionnaire est alle au bout
+-- temoin : sans commentaire derriere le ¬
+     un deux
+     le gestionnaire est alle au bout
+-- temoin : sans ¬ du tout, deux instructions
+     un
+     deux
+     le gestionnaire est alle au bout
+
+--- 5b. un ordinal sur un menu et sur un article se RESOUT-il ? ---
+(v3_menu_index et v3_article_index exigeaient un fils pour le
+ designateur. Un ordinal n'en a pas : il est dans le NOEUD. Les deux
+ rendaient donc « objet introuvable » sur une syntaxe que l'analyseur
+ venait d'accepter. Deux sites jumeaux, corriges du meme coup.)
+-- poser un menu de trois articles
+     A
+     le gestionnaire est alle au bout
+-- last menuItem : attendu C
+     C
+     le gestionnaire est alle au bout
+-- first menuItem : attendu A
+     A
+     le gestionnaire est alle au bout
+-- middle menuItem : attendu B
+     B
+     le gestionnaire est alle au bout
+-- disable last menuItem, puis relire son « enabled »
+     false
+     le gestionnaire est alle au bout
+-- la ligne d'Apple : set name of last menuItem
+     Show Palette
+     le gestionnaire est alle au bout
+-- last menu : l'ordinal sur le MENU aussi
+     Tpl
+     le gestionnaire est alle au bout
+-- temoin : le nom cite, qui marchait deja
+     B
+     le gestionnaire est alle au bout
+-- un ordinal au-dela du menu reste introuvable
+     [ERREUR]    !! article de menu introuvable (v3, ligne 2 de button "B".t)
+
+--- 5c. « print card from x,y to x,y » : voir impression.c ---
+(le « to » d'un rectangle est le meme mot que celui d'une plage de
+ cartes : sans le « from » pour trancher, la ligne d'Apple aurait
+ imprime les cartes 0 a 512. Les deux releves sont cote a cote dans
+ tests/harnais/impression.c, qui a l'hote imprimeur qu'il faut.)
+
+=== 6. « bg field "Year" + 1 » : le nom avalait le « + 1 » ===
+(relevé a l'usage sur le gabarit « Month Calendar » d'Apple, boutons
+ d'annee suivante et precedente. Le designateur cite se lisait avec
+ rang_somme, qui laisse passer l'arithmetique : le champ devenait
+ « celui dont le NOM est "Year" + 1 », et la faute annoncee etait
+ « un nombre est attendu ici » — sur une ligne ou rien n'a l'air d'un
+ nombre.)
+
+MESURE SUR LE CORPUS avant d'y toucher : 4369 lignes de HyperTalk
+d'Apple, quatre piles. Un designateur cite suivi d'un operateur
+arithmetique y parait TROIS fois, et les trois veulent « la valeur de la
+chose, puis l'operation ». ZERO contre-exemple.
+
+--- 6a. les trois lignes d'Apple, jouees ---
+-- bg field "Year" + 1  (attendu 1994)
+     1994
+     le gestionnaire est alle au bout
+-- bg field "Year" - 1  (attendu 1992)
+     1992
+     le gestionnaire est alle au bout
+-- la DIVISION : height / textHeight
+     6.25
+     le gestionnaire est alle au bout
+-- la ligne ENTIERE (« personne ne repond » est la BONNE reponse)
+     [ERREUR]    !! personne ne répond à « updateCalendar bg field "Year" + 1,"scroll left" »
+     le gestionnaire est alle au bout
+
+--- 6b. LE RANG GARDE SON DROIT A L'ARITHMETIQUE ---
+(et c'est la moitie de la correction : un RANG est un nombre, donc
+ calculer dessus a un sens — « card i + 1 » designe la suivante. Un nom
+ CITE est un litteral, et « "Year" + 1 » n'en est pas un. Les deux
+ temoins cote a cote, sans quoi on ne saurait pas si la correction a
+ ferme la porte trop grand.)
+-- bg field 1 + 0 : le rang calcule encore
+     1993
+     le gestionnaire est alle au bout
+-- card i + 1 : la carte suivante (attendu card "Deux")
+     card "Deux"
+     le gestionnaire est alle au bout
+-- card i + 0 : et la carte elle-meme
+     card "Une"
+     le gestionnaire est alle au bout
+-- card id n + 0 : l'identifiant calcule aussi
+     card "Une"
+     le gestionnaire est alle au bout
+
+--- 6c. ET LE NOM CITE RESTE UN NOM ---
+-- bg field "Year" tout court
+     1993
+     le gestionnaire est alle au bout
+-- un nom cite suivi d'un « of »
+     1993
+     le gestionnaire est alle au bout
+-- un nom CALCULE se parenthese
+     1993
+     le gestionnaire est alle au bout
+
+=== 7. la ligne du calendrier annuel, et ce qui la faisait echouer ===
+(relevé a l'usage. La ligne d'Apple est
+
+   select word (number of words in char 1 to
+                (word 2 of the clickChunk) of bg field theField)
+          of bg field theField
+
+ et elle MARCHE : mesuree sur la vraie pile importee, un clic sur un
+ chiffre rend « Sunday, January 1, 1995 ». Mais les champs du
+ calendrier commencent par des espaces de calage : un clic AVANT le
+ premier chiffre donne « number of words » = ZERO, donc « word 0 ».)
+
+--- 7a. le message nommait la mauvaise cause ---
+(select_cible rendait 0 sur un morceau introuvable, ce qui renvoyait la
+ ligne a l'ANCIEN executeur — qui n'a pas de « select » du tout. Il
+ repondait donc « ne sait pas faire : select word (...) », et ce message
+ envoie chercher du cote de la SYNTAXE, le seul endroit ou il n'y a
+ rien. Cinquieme fois dans ce projet qu'un diagnostic faux coute plus
+ cher qu'un diagnostic vague.)
+-- select word 0 : la cause est nommee
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de button "B".t)
+-- select word 99 : de meme
+     [ERREUR]    !! il n'y a pas de word de rang 99 dans ce champ (v3, ligne 2 de button "B".t)
+-- select last word d'un champ VIDE
+     [ERREUR]    !! il n'y a pas de last word dans ce champ (v3, ligne 3 de button "B".t)
+-- temoin : un rang qui existe
+     deux
+     le gestionnaire est alle au bout
+
+--- 7b. ET LA SELECTION N'EST PLUS EFFACEE EN SILENCE ---
+(le vrai defaut etait dans le CONTRAT : les chemins de faute de
+ select_cible rendaient 1 — « c'est traite » — sans rien poser. Le
+ « if (!select_cible(...)) { if (ctx->erreur) return 1; ... } » de
+ l'appelant sautait donc le bloc ENTIER, garde compris, et la ligne
+ suivante appelait hc_set_selection avec un champ NUL : la selection
+ etait effacee, puis set_result("") annoncait la reussite.
+
+ Sur la pile d'Apple, ca donnait « Saturday, December 31, 1994 » — le
+ jour ZERO de janvier — au lieu de s'arreter. Une mauvaise reponse
+ presentee comme une reponse, ce qui est le pire des trois etats.)
+-- une selection POSEE survit a un select fautif
+     avant : <trois>
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 5 de button "B".t)
+
+--- 7c. CE QUI N'EST PAS CORRIGE, et qui s'ecrit comme tel ---
+(UNE FAUTE DANS UNE FONCTION N'ARRETE PAS L'APPELANT. La fonction
+ s'arrete, rend vide, et la suite du gestionnaire appelant continue.
+ C'est ce qui a fait paraitre la fausse date d'Apple comme une reponse
+ plutot que comme une erreur. Le temoin SANS fonction, lui, s'arrete
+ bien : ce sont les deux cote a cote qui montrent le defaut.
+
+ Non corrige ici parce que le remede touche la machinerie des messages
+ et changerait le comportement d'erreur de TOUT le moteur — une pile
+ qui « marchait » en ignorant une faute dans une fonction s'arreterait
+ desormais. Ce n'est pas a moi d'en decider seul, et ce temoin
+ enregistre l'etat present pour que le changement se voie le jour ou il
+ sera fait.)
+-- la faute est DANS une fonction : l'appelant CONTINUE
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de background "F".casse)
+     
+     L'APPELANT CONTINUE — c'est le defaut
+     le gestionnaire est alle au bout
+-- temoin : la MEME faute sans fonction, le gestionnaire s'arrete
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de button "B".t)
+
+=== 8. « select char 1 to N of line A to B of <champ> » ===
+(relevé a l'usage dans « Readymade Buttons », sur le menu de sa
+ premiere carte, et repete 222 fois — la ligne est dans une boucle
+ « repeat until the mouse is up » :
+
+   select char 1 to ((number of chars in (line theLine of target)) + 1)
+          of line theLine to (theLine + 1) of target
+
+ select_cible exigeait un OBJET pour cible d'un morceau. Toute la forme
+ imbriquee repartait donc a l'ancien executeur, qui n'a pas de
+ « select » : « ne sait pas faire ».)
+
+--- 8a. LA PAIRE QUI A LOCALISE LE DEFAUT ---
+(la MEME expression, lue puis selectionnee. La lecture marchait deja ;
+ c'est ce qui dit que le trou etait dans select_cible et non dans
+ l'analyseur ni dans le decoupage. Un seul des deux releves aurait
+ envoye chercher au mauvais etage.)
+-- LECTURE du morceau imbrique (marchait deja)
+     Deuxieme
+     le gestionnaire est alle au bout
+-- SELECTION du meme morceau
+     <Deuxieme>
+     le gestionnaire est alle au bout
+
+--- 8b. LES FORMES DE LA PILE ---
+-- avec une PLAGE de lignes
+     <Deuxieme>
+     le gestionnaire est alle au bout
+-- la ligne de la pile, mot pour mot
+     <Deuxieme
+>
+     le gestionnaire est alle au bout
+
+--- 8c. TROIS NIVEAUX, QUE LA RECURSION DONNE SANS RIEN ECRIRE ---
+(la cible d'un morceau se resout par la MEME fonction, qui sait deja
+ rendre un champ ET un intervalle. Ce temoin verifie que ce n'est pas
+ une supposition.)
+-- char of word of line
+     <Tro>
+     le gestionnaire est alle au bout
+
+--- 8d. ET LES BORDS NOMMENT LEUR CAUSE ---
+(dans la pile, le calcul de la ligne vient de la position de la souris :
+ au-dessus du champ il rend un rang NEGATIF, en dessous un rang au-dela
+ du texte. Les deux disaient « ne sait pas faire ».)
+-- une ligne au-dela du texte
+     [ERREUR]    !! il n'y a pas de line de rang 10 à 11 dans ce champ (v3, ligne 2 de button "B".t)
+-- un rang NEGATIF
+     [ERREUR]    !! il n'y a pas de line de rang -3 à -2 dans ce champ (v3, ligne 2 de button "B".t)
+-- temoin : la cible n'est pas un champ
+     [ERREUR]    !! ne sait pas faire : select char 1 to 3 of line 1 of card button "B"
+     le gestionnaire est alle au bout

@@ -1537,7 +1537,10 @@ int hc_entier_tete(const char *s, int mini, int maxi, int defaut)
 int hc_id(const char *s)   { return hc_entier(s, 1, HC_ID_MAX - 1, 0); }
 int hc_rang(const char *s) { return hc_entier(s, 1, HC_ID_MAX, 0); }
 
-static int id_pris_par_un_autre(Object *pile, int id, Object *moi);
+/* L'espace de noms d'un identifiant — la couche d'une part, la pile d'une
+ * couche. Défini plus bas, avec la mesure qui l'a imposé. */
+static Object *espace_du_numero(Object *o);
+static int id_pris_par_un_autre(Object *espace, int id, Object *moi);
 
 void hc_set_id(Object *o, int id)
 {
@@ -1583,12 +1586,14 @@ void hc_set_id(Object *o, int id)
      * silence aurait fait mentir un « card id N » écrit dans un script. On
      * nomme donc l'objet et les deux numéros, pour que la pile soit
      * réparable. */
-    Object *pile = owning_stack(o);
-    if (pile && id_pris_par_un_autre(pile, id, o)) {
+    Object *espace = espace_du_numero(o);
+    if (espace && id_pris_par_un_autre(espace, id, o)) {
         char d[HC_NOM_MAX];
         hc_describe(o, d, sizeof d);
-        emit(HC_ERR, "   !! identifiant %d déjà pris dans cette pile : "
-                     "%s garde %d", id, d, o->id);
+        emit(HC_ERR, "   !! identifiant %d déjà pris dans %s : "
+                     "%s garde %d", id,
+             espace->type == OBJ_STACK ? "cette pile" : "cette couche",
+             d, o->id);
         return;
     }
 
@@ -1727,45 +1732,81 @@ void hc_memoire_epuisee(const char *quoi)
 
 static void runs_free(struct RunList *rl);
 
-/* Un identifiant libre DANS CETTE PILE, quand le compteur est à bout.
+/* Un identifiant libre DANS CET ESPACE, quand le compteur est à bout.
  *
- * L'unicité ne vaut que dans une pile — « card id 7 » se résout à l'intérieur
- * d'une pile, jamais entre elles —, donc la recherche s'y limite. Elle ne
- * tourne jamais en usage normal : il faut avoir chargé un fichier portant un
- * identifiant proche du plafond pour y arriver.
+ * L'espace est celui d'espace_du_numero : les parts d'une couche, ou les
+ * couches d'une pile. La recherche s'y limite parce que l'unicité s'y limite —
+ * « card id 7 » se résout dans une pile et jamais entre elles, « card field
+ * id 7 » dans une couche et jamais entre elles. Elle ne tourne jamais en usage
+ * normal : il faut avoir chargé un fichier portant un identifiant proche du
+ * plafond pour y arriver.
  *
- * Rend 0 si la pile est introuvable ou saturée. L'appelant garde alors le
+ * Rend 0 si l'espace est introuvable ou saturé. L'appelant garde alors le
  * plafond : deux objets homonymes valent mieux qu'un identifiant que notre
  * propre lecteur refuserait. */
 
-static int id_pris_dans(Object *pile, int id)
+/* ═══ DEUX ESPACES DE NOMS, ET NON UN ══════════════════════════
+ *
+ * Les identifiants de COUCHE — cartes et fonds — sont uniques dans la pile :
+ * « go to card id 2619 » se résout sur la pile entière. Ceux des PARTS sont
+ * uniques dans LEUR COUCHE seulement : « card field id 5 » se résout dans la
+ * carte, « bg field id 5 » dans le fond, et find_part_by_id ne cherche jamais
+ * ailleurs que chez le propriétaire qu'on lui donne.
+ *
+ * CE FICHIER N'EN VOYAIT QU'UN, LA PILE, et c'était faux. Mesuré sur les trois
+ * piles HyperCard d'origine que nous avons, en simulant l'adoption dans l'ordre
+ * où l'importateur bâtit :
+ *
+ *     3D Parametric Equations   105 parts,  47 en conflit (45 %)
+ *     Découvrir HyperCard        28 parts,   5 en conflit
+ *     TEST3                       7 parts,   1 en conflit
+ *     les 32 couches des trois piles :  AUCUN conflit
+ *
+ * Les conflits sont tous des parts contre des parts d'une AUTRE couche — la
+ * part 4 d'une carte contre la part 4 de son fond, par exemple, ce que
+ * « Découvrir HyperCard » porte vraiment. Jamais une part contre une couche, et
+ * jamais deux fois le même numéro dans une couche : la règle d'HyperCard se lit
+ * dans ses octets.
+ *
+ * Avec un seul espace, 45 % des parts d'une pile importée recevaient donc un
+ * numéro neuf, et tout « card button id N » de ses scripts désignait le vide —
+ * en silence, et sur les piles les plus riches d'abord.
+ *
+ * D'où `espace_du_numero` : la part se compte parmi ses SŒURS, la couche parmi
+ * les couches de sa pile. C'est le seul endroit qui décide, et les trois
+ * prédicats plus bas ne regardent plus qu'UN niveau — les parts d'une couche,
+ * ou les couches d'une pile — au lieu de deux. */
+static Object *espace_du_numero(Object *o)
 {
-    if (!pile) return 0;
-    if (pile->id == id) return 1;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        if (couche->id == id) return 1;
-        for (int j = 0; j < couche->nparts; j++)
-            if (couche->parts[j]->id == id) return 1;
-    }
+    if (!o) return NULL;
+    if (o->type == OBJ_BUTTON || o->type == OBJ_FIELD) return o->owner;
+    return owning_stack(o);
+}
+
+/* La pile compte SON PROPRE identifiant parmi ceux de ses couches ; une couche
+ * ne compte pas le sien parmi ceux de ses parts, puisqu'il n'est pas du même
+ * espace. Une part peut donc porter le numéro de sa carte, comme dans
+ * HyperCard. */
+static int id_pris_dans(Object *espace, int id)
+{
+    if (!espace) return 0;
+    if (espace->type == OBJ_STACK && espace->id == id) return 1;
+    for (int i = 0; i < espace->nparts; i++)
+        if (espace->parts[i]->id == id) return 1;
     return 0;
 }
 
 /* Comme id_pris_dans, mais SANS COMPTER `moi`.
  *
- * hc_set_id pose un identifiant sur un objet DÉJÀ attaché à sa pile : sans
- * cette exclusion, reposer sur un objet l'identifiant qu'il porte déjà le
- * ferait se déclarer en conflit avec lui-même. */
-static int id_pris_par_un_autre(Object *pile, int id, Object *moi)
+ * hc_set_id pose un identifiant sur un objet DÉJÀ attaché : sans cette
+ * exclusion, reposer sur un objet l'identifiant qu'il porte déjà le ferait se
+ * déclarer en conflit avec lui-même. */
+static int id_pris_par_un_autre(Object *espace, int id, Object *moi)
 {
-    if (!pile) return 0;
-    if (pile != moi && pile->id == id) return 1;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        if (couche != moi && couche->id == id) return 1;
-        for (int j = 0; j < couche->nparts; j++)
-            if (couche->parts[j] != moi && couche->parts[j]->id == id) return 1;
-    }
+    if (!espace) return 0;
+    if (espace->type == OBJ_STACK && espace != moi && espace->id == id) return 1;
+    for (int i = 0; i < espace->nparts; i++)
+        if (espace->parts[i] != moi && espace->parts[i]->id == id) return 1;
     return 0;
 }
 
@@ -1795,29 +1836,23 @@ static int cmp_id(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
-static int id_libre_dans(Object *pile)
+static int id_libre_dans(Object *espace)
 {
-    if (!pile) return 0;
+    if (!espace) return 0;
 
-    int n = 1;                                   /* la pile elle-même */
-    for (int i = 0; i < pile->nparts; i++)
-        n += 1 + pile->parts[i]->nparts;
+    int n = 1 + espace->nparts;                  /* l'espace, puis ses enfants */
 
     int *pris = malloc((size_t)n * sizeof *pris);
     if (!pris) {
         for (int id = 1; id < HC_ID_MAX; id++)
-            if (!id_pris_dans(pile, id)) return id;
+            if (!id_pris_dans(espace, id)) return id;
         return 0;
     }
 
     int k = 0;
-    pris[k++] = pile->id;
-    for (int i = 0; i < pile->nparts; i++) {
-        Object *couche = pile->parts[i];
-        pris[k++] = couche->id;
-        for (int j = 0; j < couche->nparts; j++)
-            pris[k++] = couche->parts[j]->id;
-    }
+    if (espace->type == OBJ_STACK) pris[k++] = espace->id;
+    for (int i = 0; i < espace->nparts; i++)
+        pris[k++] = espace->parts[i]->id;
     qsort(pris, (size_t)k, sizeof *pris, cmp_id);
 
     int attendu = 1;
@@ -1844,13 +1879,18 @@ static int id_libre_dans(Object *pile)
  * parts. Encore un chemin corrigé et son jumeau oublié. D'où cette
  * fonction : il n'y a plus qu'un seul endroit à garder.
  *
- * `pile` sert au repli. Il faut qu'elle contienne DÉJÀ l'objet en cours de
- * numérotation et ses frères, sinon deux appels de suite rendent le même
- * trou — d'où l'ordre « attacher puis numéroter » chez les appelants. */
-int id_neuf(Object *pile)
+ * `espace` sert au repli, et c'est celui d'espace_du_numero : LA COUCHE pour
+ * une part, la pile pour une couche. Passer la pile pour une part ferait
+ * chercher le trou dans le mauvais ensemble — sans doublon à la clé, puisque
+ * l'ensemble est plus large, mais en refusant des numéros libres.
+ *
+ * Il faut qu'il contienne DÉJÀ l'objet en cours de numérotation et ses frères,
+ * sinon deux appels de suite rendent le même trou — d'où l'ordre « attacher
+ * puis numéroter » chez les appelants. */
+int id_neuf(Object *espace)
 {
     if (g_next_id < HC_ID_MAX) return g_next_id++;
-    int libre = id_libre_dans(pile);
+    int libre = id_libre_dans(espace);
     return libre ? libre : HC_ID_MAX - 1;
 }
 
@@ -1877,12 +1917,19 @@ int id_neuf(Object *pile)
  * Silencieuse, contrairement à hc_set_id : celui-ci lit un FICHIER, où un
  * doublon signale une pile abîmée qu'il faut pouvoir réparer. Ici le
  * conflit est la situation normale de deux piles étrangères, et il a une
- * réponse — garder le numéro neuf — qui ne demande rien à personne. */
-int id_adopte(Object *pile, Object *o, int souhaite)
+ * réponse — garder le numéro neuf — qui ne demande rien à personne.
+ *
+ * L'ESPACE VIENT DE L'OBJET, et non de l'appelant : c'est espace_du_numero qui
+ * sait si l'on compare à des parts sœurs ou à des couches. L'appelant passait
+ * la pile, et l'aurait passée pour une part aussi — la faute aurait été
+ * invisible, l'adoption échouant seulement plus souvent. L'objet doit donc
+ * être DÉJÀ attaché à son propriétaire quand on l'appelle. */
+int id_adopte(Object *o, int souhaite)
 {
-    if (!pile || !o) return 0;
+    Object *espace = espace_du_numero(o);
+    if (!espace) return 0;
     if (souhaite <= 0 || souhaite >= HC_ID_MAX) return 0;
-    if (id_pris_par_un_autre(pile, souhaite, o)) return 0;
+    if (id_pris_par_un_autre(espace, souhaite, o)) return 0;
 
     o->id = souhaite;
     if (souhaite >= g_next_id) g_next_id = souhaite + 1;
@@ -1894,7 +1941,12 @@ static Object *new_object(ObjType type, Object *owner, const char *name)
     Object *o = calloc(1, sizeof(Object));
     if (!o) hc_memoire_epuisee("création d'objet");
     o->type    = type;
-    o->id      = id_neuf(owning_stack(owner));
+    /* L'espace de noms dépend du type — voir espace_du_numero — et on ne peut pas
+     * l'appeler ici : ni o->owner ni l'attache à owner->parts ne sont encore
+     * posés. D'où le choix explicite : une part se numérote parmi les parts de sa
+     * couche, une couche parmi les couches de sa pile. */
+    o->id      = id_neuf((type == OBJ_BUTTON || type == OBJ_FIELD)
+                         ? owner : owning_stack(owner));
     o->name    = dupstr(name);
     o->owner   = owner;
     o->visible = 1;
@@ -1923,9 +1975,14 @@ Object *hc_new_stack(const char *name)
     return o;
 }
 
+/* LA PEINTURE SE MONTRE PAR DÉFAUT, et c'est posé ICI plutôt que dans
+ * new_object : seules une carte et un fond en ont une. Un bouton dont le
+ * showPict vaudrait 1 serait un champ qui ne veut rien dire, et le jour où
+ * quelqu'un le lirait il y croirait. */
 Object *hc_new_background(Object *stack, const char *name)
 {
     Object *o = new_object(OBJ_BACKGROUND, stack, name);
+    o->show_pict = 1;
     add_part(stack, o);
     return o;
 }
@@ -1934,6 +1991,7 @@ Object *hc_new_card(Object *stack, Object *bg, const char *name)
 {
     Object *o = new_object(OBJ_CARD, stack, name);
     o->bg = bg;
+    o->show_pict = 1;
     add_part(stack, o);
     return o;
 }
@@ -2343,12 +2401,36 @@ int hc_delete_card(Object *card)
     return 1;
 }
 
+/* L'INTERLIGNE PAR DÉFAUT : QUATRE TIERS DU CORPS, TRONQUÉS.
+ *
+ * Cette ligne disait « arrondi comme HyperCard » et arrondissait au plus proche,
+ * ce qui n'est pas la même chose. Les deux formules ne diffèrent que pour un
+ * corps sur trois — celui dont le quadruple n'est pas divisible par trois — et
+ * c'est ce qui a permis à la faute de vivre longtemps.
+ *
+ * MESURÉ SUR LES PARTS DES TROIS PILES D'APPLE, corps par corps :
+ *
+ *     corps 9  -> 12 (×2), 13 (×6), 16 (×58)
+ *     corps 10 -> 13 (×6), 16 (×2)
+ *     corps 12 -> 16 (×54)
+ *     corps 14 -> 18 (×12)
+ *
+ * Le corps 14 est le seul cas où les deux formules se séparent : la troncature
+ * rend 18, l'arrondi 19. Douze parts disent 18, aucune ne dit 19. Les trois
+ * autres corps sont d'accord avec les deux formules et ne tranchent rien, mais
+ * ils confirment au passage le rapport de quatre tiers — 12 → 16 sur
+ * cinquante-quatre parts.
+ *
+ * Les valeurs qui s'écartent du rapport — 9 → 16, cinquante-huit fois — sont des
+ * choix d'auteur, pas des défauts : un interligne généreux sur un petit corps.
+ * On ne les compte donc pas contre la règle ; c'est le corps 14 qui la décide,
+ * et il est unanime. */
 int hc_text_height(Object *o)
 {
     if (!o) return 16;
     if (o->textheight > 0) return o->textheight;
     int sz = o->textsize > 0 ? o->textsize : 12;
-    return (sz * 4 + 1) / 3;      /* quatre tiers, arrondi comme HyperCard */
+    return sz * 4 / 3;
 }
 
 /* ---- allumage d'un bouton ----
@@ -3269,6 +3351,33 @@ static Object *resolve(const char *ref)
     return r;
 }
 
+/* ═══ « background », « bg », « bkgnd » — UN SEUL ENDROIT QUI LES CONNAÎT ═══
+ *
+ * HyperCard écrit le fond de trois façons, et ce fichier les testait à QUATRE
+ * endroits, à la main. Deux d'entre eux ne connaissaient que deux mots sur
+ * trois, et c'est ce qui se voyait :
+ *
+ *     set the dontSearch of this bkgnd to true   « objet introuvable »
+ *     set the dontSearch of this bg    to true   passe
+ *     set the dontSearch of bkgnd "F"  to true   passe
+ *     put the name of this bkgnd                 passe — la LECTURE savait
+ *
+ * Relevé à l'usage dans « Readymade Buttons ». La lecture et l'écriture ne
+ * s'accordaient pas sur le vocabulaire, ce qui est le pire des désaccords : la
+ * moitié d'une ligne marche.
+ *
+ * La fonction rend le pointeur JUSTE APRÈS le mot, ou NULL. C'est elle aussi
+ * qui supprime les longueurs codées en dur — « ap + 10 », « ap + 5 », « ap + 2 »
+ * — qu'il fallait tenir d'accord avec les mots à la main, et qui sont une
+ * seconde occasion de se tromper au même endroit. */
+static const char *apres_mot_fond(const char *s)
+{
+    if (ci_word(s, "background")) return s + 10;
+    if (ci_word(s, "bkgnd"))      return s + 5;
+    if (ci_word(s, "bg"))         return s + 2;
+    return NULL;
+}
+
 static Object *resolve_local(const char *ref)
 {
     ref = skip_spaces(ref);
@@ -3284,8 +3393,35 @@ static Object *resolve_local(const char *ref)
     if (ci_word(ref, "me")) return g_me;
     if (ci_word(ref, "target")) return g_target;
 
-    int want_bg = 0;
-    if (ci_word(ref, "bg") || ci_word(ref, "background") || ci_word(ref, "bkgnd")) {
+    /* DEUX DRAPEAUX, PAS UN, et l'absence du second était un défaut.
+     *
+     * Ce résolveur ne notait que « on a dit fond ». Le préfixe « card » était
+     * simplement CONSOMMÉ quelques lignes plus bas — « ref = after » — sans
+     * laisser de trace, si bien que « card field X » et « field X » devenaient la
+     * même phrase, celle qui se replie sur le fond quand la carte n'a rien.
+     * D'où, mesuré :
+     *
+     *     put card field id 1            ->  le texte du champ DU FOND
+     *     the name of card field id 1    ->  bkgnd field « du fond »
+     *
+     * On a écrit « card » et l'on reçoit le fond. HyperCard ne se replie que
+     * sur une désignation SANS préfixe ; « card » est une portion, pas un
+     * ornement.
+     *
+     * L'exécuteur v3 répondait juste — il ne trouvait rien — et c'est le repli
+     * du pont vers ce résolveur-ci qui changeait « introuvable » en « le
+     * mauvais ». Une bonne réponse ne rattrape pas une mauvaise : il suffit
+     * d'une des deux portes pour mentir.
+     *
+     * Le défaut est ANCIEN et il était presque inatteignable : tant que les
+     * identifiants étaient uniques dans la pile entière, une carte et son fond
+     * ne pouvaient pas se disputer un numéro, et le repli tombait sur du vide.
+     * Depuis que l'espace de noms d'une part est SA COUCHE — comme chez
+     * HyperCard, et comme le mesurent les piles d'origine où 45 % des parts
+     * partagent leur numéro avec une autre couche — le cas devient ordinaire
+     * dans toute pile importée. */
+    int want_bg = 0, want_card = 0;
+    if (apres_mot_fond(ref)) {
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (!*ref) return bg;   /* « background » seul = le fond de la carte courante */
@@ -3397,6 +3533,7 @@ static Object *resolve_local(const char *ref)
             Object *c = card_par_nom_de(stack, g_portee_fond, nm);
             if (c) return c;
         }
+        want_card = 1;          /* « card button » / « card field » : pas de repli */
         ref = after;
     }
 
@@ -3405,7 +3542,7 @@ static Object *resolve_local(const char *ref)
         const char *w = skip_spaces(ref + 4);
         if (!*w || ci_word(w, "card") || ci_word(w, "cd")) return card;
         if (ci_word(w, "stack")) return stack;
-        if (ci_word(w, "background") || ci_word(w, "bg")) return bg;
+        if (apres_mot_fond(w)) return bg;
     }
     /* « next/previous background » : HyperCard ne se tient jamais sur un fond,
      * on rend donc une CARTE — la première de ce fond. On balaie l'ordre des
@@ -3451,9 +3588,8 @@ static Object *resolve_local(const char *ref)
             int fond = want_bg, vu_fond = 0;
             if      (ci_word(ap, "card"))       { ap = skip_spaces(ap + 4);  fond = 0; }
             else if (ci_word(ap, "cd"))         { ap = skip_spaces(ap + 2);  fond = 0; }
-            else if (ci_word(ap, "background")) { ap = skip_spaces(ap + 10); fond = 1; vu_fond = 1; }
-            else if (ci_word(ap, "bkgnd"))      { ap = skip_spaces(ap + 5);  fond = 1; vu_fond = 1; }
-            else if (ci_word(ap, "bg"))         { ap = skip_spaces(ap + 2);  fond = 1; vu_fond = 1; }
+            else { const char *q = apres_mot_fond(ap);
+                   if (q) { ap = skip_spaces(q); fond = 1; vu_fond = 1; } }
 
             int tp = -1;
             if      (ci_word(ap, "button") || ci_word(ap, "btn")) tp = OBJ_BUTTON;
@@ -3499,7 +3635,7 @@ static Object *resolve_local(const char *ref)
         else if (ci_word(ref, "first"))    { rel = skip_spaces(ref + 5); absolu = +1; }
         else if (ci_word(ref, "last"))     { rel = skip_spaces(ref + 4); absolu = -1; }
 
-        if (rel && (ci_word(rel, "background") || ci_word(rel, "bg"))) {
+        if (rel && apres_mot_fond(rel)) {
 
             /* first/last : le fond visé est absolu, pas relatif à la carte
              * courante. On prend le premier ou le dernier OBJ_BACKGROUND de
@@ -3578,8 +3714,14 @@ static Object *resolve_local(const char *ref)
             eval_id_token(a, v, sizeof v);
             wanted = hc_id(v);
         }
-        Object *o = find_part_by_id(card, t, wanted);
-        if (!o) o = find_part_by_id(bg, t, wanted);
+        /* ET CETTE BRANCHE IGNORAIT LES DEUX PORTÉES, pas seulement celle de la
+         * carte : ses voisines d'en dessous — le rang, le nom — écrivaient déjà
+         * « want_bg ? bg : card », celle-ci cherchait sur la carte TOUJOURS puis se
+         * repliait sur le fond TOUJOURS. Donc « bg field id 5 » rendait le champ
+         * de la CARTE quand le fond n'en a pas de 5 — l'inverse du défaut décrit
+         * plus haut, dans la même ligne de code. */
+        Object *o = find_part_by_id(want_bg ? bg : card, t, wanted);
+        if (!o && !want_bg && !want_card) o = find_part_by_id(bg, t, wanted);
         return o;
     }
 
@@ -3587,7 +3729,7 @@ static Object *resolve_local(const char *ref)
     if (isdigit((unsigned char)*ref)) {
         int n = hc_rang(ref);
         Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-        if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
+        if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
         return o;
     }
 
@@ -3623,7 +3765,7 @@ static Object *resolve_local(const char *ref)
         if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
             int n = hc_rang(nm);
             Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-            if (!o && !want_bg) o = find_part_by_rank(bg, t, n);
+            if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
             return o;
         }
     }
@@ -3635,7 +3777,8 @@ static Object *resolve_local(const char *ref)
         o = find_part(bg, t, nm);
     } else {
         o = find_part(card, t, nm);
-        if (!o) o = find_part(bg, t, nm);   /* repli sur le fond */
+        /* Repli sur le fond SEULEMENT si l'on n'a pas dit « card ». */
+        if (!o && !want_card) o = find_part(bg, t, nm);
     }
     return o;
 }
@@ -3968,7 +4111,8 @@ static void eval_expr(const char *s, char *out, int outlen);
 static const char *find_kw(const char *s, const char *w);   /* défini plus bas */
 static const char *chunk_base_ref(const char *ref);        /* défini plus bas */
 static int hc_send_args(Object *target, const char *message,
-                        char argv[][HC_VAL], int argc);   /* défini plus bas */
+                        char argv[][HC_VAL], int argc,
+                        int cible_neuve);                 /* défini plus bas */
 static int hc_call_user_function(Object *target, const char *name,
                                  char argv[][HC_VAL], int argc);  /* idem */
 
@@ -6263,7 +6407,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "sharedtext",
+        "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6491,6 +6635,12 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
     if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
+    /* showPict n'a de sens que sur une couche : le demander à un bouton doit
+     * rendre « propriété inconnue » et non « false », qui serait une réponse. */
+    if (ci_equal(prop, "showpict") &&
+        (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND)) {
+        snprintf(out, outlen, "%s", o->show_pict ? "true" : "false"); return 1;
+    }
     if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return 1; }
     /* textAlign se lit en toutes lettres, comme HyperCard :
      * « left », « center », « right ». Un script compare la
@@ -8438,7 +8588,7 @@ static int v3_prop_exige_un_objet(const char *prop)
         "style", "family", "titlewidth", "icon",
         "hilite", "highlight", "autohilite",
         "locktext", "widemargins", "fixedlineheight", "showlines",
-        "autotab", "dontsearch", "cantdelete", "sharedtext", "sharedhilite",
+        "autotab", "dontsearch", "cantdelete", "showpict", "sharedtext", "sharedhilite",
         "autoselect", "multiplelines", "dontwrap",
         "script", NULL
     };
@@ -9276,10 +9426,24 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         return 1;
     }
 
-    /* La version de HC. L'hôte fait foi — c'est lui qui porte
-     * MARKETING_VERSION —, le noyau répond pour tout ce qui tourne sans lui. */
+    /* LA VERSION D'HYPERCARD, ET NON LA NÔTRE. Le pourquoi est dans hc_core.h,
+     * avec la pile d'Apple qui l'a montré : un script qui demande « the
+     * version » veut savoir quelle version d'HyperCard il a sous les pieds, et
+     * répondre « 0.6.9.4 » fermait toute pile portant une porte de version.
+     *
+     * L'hôte n'est PAS interrogé ici : la réponse ne dépend pas de notre
+     * numéro, donc la faire dépendre de lui serait un chemin de plus pour rien,
+     * et un chemin qui pourrait un jour répondre autre chose. */
     if (ci_equal(nom, "version")) {
-        const char *v = host_global("version");
+        *out = hct_val_texte(HC_VERSION_HYPERCARD);
+        return 1;
+    }
+
+    /* LA VERSION DE HC, sous son propre nom. L'hôte fait foi — c'est lui qui
+     * porte MARKETING_VERSION —, le noyau répond pour tout ce qui tourne sans
+     * lui, les harnais notamment. */
+    if (ci_equal(nom, "hcversion")) {
+        const char *v = host_global("hcversion");
         *out = hct_val_texte((v && *v) ? v : HC_VERSION);
         return 1;
     }
@@ -10449,6 +10613,29 @@ static Object *v3_resout_calcule(HctContexte *ctx, const HctNoeud *n)
  * le nœud écrit dans le script, une fois sur le nœud obtenu en réanalysant un
  * désignateur CALCULÉ — « select the foundChunk ». Rend 1 s'il a visé
  * quelque chose, 0 si la forme ne lui dit rien. */
+/* LE CONTRAT, ET IL ÉTAIT ROMPU : rend 1 SEULEMENT si *pf est posé.
+ *
+ * Les chemins de faute rendaient 1 — « c'est traité » — sans rien poser. Or
+ * l'appelant écrit :
+ *
+ *     if (!select_cible(ctx, c, &f, &st, &en)) {
+ *         if (ctx->erreur) return 1;          <- ce garde-là
+ *         ...
+ *     }
+ *     hc_set_selection(f, st, en - st);
+ *
+ * Un 1 sautait donc le bloc ENTIER, garde compris, et la ligne suivante
+ * appelait hc_set_selection avec f à NULL : la sélection était EFFACÉE, puis
+ * set_result("") et un retour 1 annonçaient la réussite. Le gestionnaire
+ * continuait avec une sélection vide et rendait une réponse FAUSSE.
+ *
+ * MESURÉ sur la pile d'Apple, carte du calendrier annuel : un clic à côté d'un
+ * chiffre rendait « Saturday, December 31, 1994 » — le jour ZÉRO de janvier —
+ * au lieu de s'arrêter. Une mauvaise réponse présentée comme une réponse.
+ *
+ * Toute faute rend donc 0 maintenant, et le garde de l'appelant fait son
+ * travail : 0 avec ctx->erreur veut dire « c'était à moi et ça a échoué », 0
+ * sans erreur veut dire « ce n'était pas à moi ». */
 static int select_cible(HctContexte *ctx, const HctNoeud *c,
                         Object **pf, int *pst, int *pen)
 {
@@ -10470,9 +10657,68 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
         st = 0; en = (int)strlen(hc_field_text(f));
     } else if (c->genre == HCTN_CHUNK && c->nfils >= 1) {
         const HctNoeud *cible = c->fils[c->nfils - 1];
-        if (!cible || cible->genre != HCTN_OBJET) return 0;
-        f = hct_resout(ctx, cible);
-        if (!f || f->type != OBJ_FIELD) return 0;
+        if (!cible) return 0;
+
+        /* UN MORCEAU PEUT PORTER UN AUTRE MORCEAU POUR CIBLE, et cette branche
+         * exigeait un OBJET. Toute la forme imbriquée repartait donc à l'ancien
+         * exécuteur, qui n'a pas de « select » : « ne sait pas faire ».
+         *
+         * RELEVÉ À L'USAGE, dans « Readymade Buttons », sur le menu de sa
+         * première carte — et répété 222 fois, la ligne étant dans une boucle
+         * « repeat until the mouse is up » :
+         *
+         *     select char 1 to ((number of chars in (line theLine of target)) + 1)
+         *            of line theLine to (theLine + 1) of target
+         *
+         * ET LE MÊME MORCEAU SE LISAIT DÉJÀ TRÈS BIEN : « put char 1 to 8 of
+         * line 2 of card field "Menu" » rend « Deuxieme ». C'est ce témoin-là
+         * qui dit que le trou est ICI et non dans l'analyseur ni dans le
+         * découpage — une lecture et une sélection de la même expression, côte
+         * à côte, et une seule des deux marchait.
+         *
+         * La récursion est la réponse naturelle : la cible d'un morceau se
+         * résout par la même fonction, qui sait déjà rendre un champ ET un
+         * intervalle. Un morceau sur trois niveaux marche donc aussi, sans
+         * qu'on ait rien écrit pour lui. */
+        int base_deb = 0, base_fin = 0;
+        if (cible->genre == HCTN_CHUNK) {
+            if (!select_cible(ctx, cible, &f, &base_deb, &base_fin)) return 0;
+            if (!f || f->type != OBJ_FIELD) return 0;
+        } else if (cible->genre == HCTN_OBJET) {
+            f = hct_resout(ctx, cible);
+            if (!f || f->type != OBJ_FIELD) return 0;
+            base_deb = 0;
+            base_fin = (int)strlen(hc_field_text(f));
+        } else {
+            return 0;
+        }
+
+        /* LE TEXTE SUR LEQUEL CE MORCEAU-CI COMPTE, et c'est le point délicat :
+         * « char 1 to 8 of line 2 » compte ses caractères DANS LA LIGNE 2, pas
+         * dans le champ. hct_chunk_bornes travaille sur une chaîne terminée par
+         * un zéro ; on lui donne donc une COPIE de l'intervalle, et l'on remet
+         * le décalage de base sur le résultat.
+         *
+         * Le cas courant — la cible est le champ entier — ne copie rien : c'est
+         * celui de toutes les piles sauf une poignée, et la copie d'un champ de
+         * quarante-huit kilo-octets à chaque tour d'une boucle de souris se
+         * paierait. */
+        const char *tout = hc_field_text(f);
+        int total_octets = (int)strlen(tout);
+        if (base_deb < 0) base_deb = 0;
+        if (base_fin > total_octets) base_fin = total_octets;
+        if (base_fin < base_deb) base_fin = base_deb;
+
+        ARENA_MARK;
+        const char *base = tout;
+        if (base_deb != 0 || base_fin != total_octets) {
+            char *sous = arena_buf();
+            int n = base_fin - base_deb;
+            if (n >= HC_VAL) n = HC_VAL - 1;
+            memcpy(sous, tout + base_deb, (size_t)n);
+            sous[n] = '\0';
+            base = sous;
+        }
 
         int n1 = 0, n2 = 0;
         if (c->ordinal) {
@@ -10488,47 +10734,92 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
              * déjà : en écrire une seconde copie ici aurait donné deux tables
              * d'ordinaux à tenir d'accord, et « middle » a déjà été faux une
              * fois — total/2+1 et non (total+1)/2. */
-            int total = hct_chunk_compte(hc_field_text(f), c->sorte,
-                                         item_delim());
+            int total = hct_chunk_compte(base, c->sorte, item_delim());
             n1 = hct_rang_ordinal(c->ordinal, total);
-            if (n1 <= 0) return 0;
+            /* LE CHAMP EST TROUVÉ, L'ORDINAL NE DÉSIGNE RIEN : c'est un fait à
+             * dire, pas une forme qu'on ne comprend pas. « select last word of
+             * un champ vide » en est le cas net. Voir le bloc au-dessous, qui
+             * porte la mesure. */
+            if (n1 <= 0) {
+                hct_ctx_faute_txt(ctx, c, "il n'y a pas de %s %s dans ce champ",
+                                  hct_ordinal_nom(c->ordinal),
+                                  hct_sorte_chunk_nom(c->sorte));
+                { ARENA_FREE; return 0; }
+            }
         } else if (c->nfils >= 2) {
             char b1[64], b2[64];
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
-            if (ctx->erreur) return 1;
+            if (ctx->erreur) { ARENA_FREE; return 0; }
             int hors;
             /* Même exigence que partout ailleurs : un rang doit être un
              * nombre, pas seulement quelque chose que strtod avale. */
             if (!hct_est_nombre(b1)) {
                 hct_ctx_faute(ctx, c->fils[0],
                               "un rang numérique est attendu ici");
-                return 1;
+                { ARENA_FREE; return 0; }
             }
             n1 = hct_vers_rang(b1, &hors);
             if (hors) { hct_ctx_faute(ctx, c->fils[0],
                                       "rang de morceau hors limites");
-                        return 1; }
+                        { ARENA_FREE; return 0; } }
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
-                if (ctx->erreur) return 1;
+                if (ctx->erreur) { ARENA_FREE; return 0; }
                 if (!hct_est_nombre(b2)) {
                     hct_ctx_faute(ctx, c->fils[1],
                                   "un rang numérique est attendu ici");
-                    return 1;
+                    { ARENA_FREE; return 0; }
                 }
                 n2 = hct_vers_rang(b2, &hors);
                 if (hors) { hct_ctx_faute(ctx, c->fils[1],
                                           "rang de morceau hors limites");
-                            return 1; }
+                            { ARENA_FREE; return 0; } }
             }
         } else {
-            return 0;               /* ni ordinal ni borne : rien à viser */
+            { ARENA_FREE; return 0; }               /* ni ordinal ni borne : rien à viser */
         }
 
-        HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
-                                        n1, n2, item_delim());
-        if (!bo.trouve) return 0;
-        st = bo.deb; en = bo.fin;
+        HctBornes bo = hct_chunk_bornes(base, c->sorte, n1, n2, item_delim());
+        /* LE CHAMP EST TROUVÉ, LE MORCEAU N'EXISTE PAS — ET C'EST UNE FAUTE, PAS
+         * UN « JE NE SAIS PAS FAIRE ».
+         *
+         * Ce « return 0 » renvoyait la ligne à l'ANCIEN EXÉCUTEUR, qui n'a pas
+         * de « select » du tout : il répondait donc « ne sait pas faire :
+         * select word (…) of bg field theField », et ce message envoie chercher
+         * du côté de la SYNTAXE — le seul endroit où il n'y a rien.
+         *
+         * MESURÉ SUR LA PILE D'APPLE, carte du calendrier annuel, avec son vrai
+         * gestionnaire et ses vrais champs. La ligne est
+         *
+         *     select word (number of words in char 1 to
+         *                  (word 2 of the clickChunk) of bg field theField)
+         *            of bg field theField
+         *
+         * et elle marche TRÈS BIEN quand le clic tombe sur un chiffre — « Sunday,
+         * January 1, 1995 », « Monday, January 2, 1995 ». Mais les champs du
+         * calendrier commencent par des espaces de calage : un clic avant le
+         * premier chiffre donne « number of words » = ZÉRO, donc « word 0 », donc
+         * ce chemin. Quatre clics simulés, quatre réponses différentes, et c'est
+         * leur comparaison qui a nommé la cause — un seul relevé aurait accusé la
+         * ligne.
+         *
+         * Dire « il n'y a pas de mot de rang 0 » coûte une ligne et nomme la
+         * cause. Un diagnostic faux coûte plus cher qu'un diagnostic vague : le
+         * vague fait chercher partout, le faux fait chercher au mauvais endroit
+         * et donne confiance en le faisant. C'est la cinquième fois ici. */
+        if (!bo.trouve) {
+            if (n2 && n2 != n1)
+                hct_ctx_faute_txt(ctx, c,
+                                  "il n'y a pas de %s de rang %d à %d dans ce champ",
+                                  hct_sorte_chunk_nom(c->sorte), n1, n2);
+            else
+                hct_ctx_faute_txt(ctx, c,
+                                  "il n'y a pas de %s de rang %d dans ce champ",
+                                  hct_sorte_chunk_nom(c->sorte), n1);
+            { ARENA_FREE; return 0; }
+        }
+        ARENA_FREE;
+        st = base_deb + bo.deb; en = base_deb + bo.fin;
     } else {
         return 0;
     }
@@ -11632,7 +11923,9 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     }
 
     set_result("");     /* un `return` dans le gestionnaire le remplira */
-    hc_send_args(target, msg, argv, argc);
+    /* « send "x" to <objet> » EST un nouveau destinataire : c'est ce que la
+     * commande veut dire, et « the target » doit le suivre. */
+    hc_send_args(target, msg, argv, argc, 1);
     ARENA_FREE;
     return 1;
 }
@@ -12255,6 +12548,14 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         /* notify_field ne vaut que pour un CHAMP : c'est un rafraîchissement
          * d'affichage, et une carte ou un fond n'en a que faire ici. */
         if (o->type == OBJ_FIELD) notify_field(o);
+    } else if (ci_equal(prop, "showpict") &&
+               (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND)) {
+        o->show_pict = truthy(val);
+        /* L'HÔTE DOIT REDESSINER : cacher la peinture ne change rien au modèle
+         * qu'on affiche, seulement à ce qu'on en montre. Sans ce signal, le
+         * bouton « Hide Card Picture » marcherait et ne se verrait qu'au
+         * changement de carte suivant. */
+        if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
     } else if (ci_equal(prop, "cantdelete")) {
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
@@ -12607,8 +12908,74 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         if (quoi->marque) marques = 1;
     }
 
-    const HctNoeud *nto = NULL;
+    /* LE DÉCOUPAGE, ET LE PIÈGE QU'IL POSE.
+     *
+     * « print card from 0,0 to 512,304 » n'imprime qu'une partie de la carte.
+     * Trois fonds de « Stack Templates » l'écrivent, et le motif de la commande
+     * vient de l'accepter — mais le « to » du RECTANGLE est le même mot que le
+     * « to » d'une PLAGE DE CARTES, « print card 1 to 600 ».
+     *
+     * Sans ce qui suit, v3_indice_motcle prenait le premier « to » venu : la
+     * commande d'Apple aurait imprimé les cartes 0 à 512 au lieu d'une portion de
+     * la carte courante. Une MAUVAISE RÉPONSE SILENCIEUSE, et c'est pire que le
+     * refus qu'on vient de lever — le refus se voit.
+     *
+     * Le « from » tranche : quand il est là, le « to » est celui du rectangle et
+     * jamais celui d'une plage. Mesuré à côté de son témoin, « print card 1 to
+     * 600 », que le harnais impression.c tient depuis longtemps.
+     *
+     * CE QUI N'EST PAS MESURÉ, et qui s'écrit comme non mesuré : la GÉOMÉTRIE DE
+     * LA PAGE sous un découpage. On garde la bande de la carte entière et l'on
+     * n'y dessine que la portion demandée — le reste de la page reste blanc.
+     * HyperCard recadrait peut-être la page sur le rectangle ; on n'a pas de banc
+     * pour le dire, et inventer un recadrage serait décider seul. Ce qui EST
+     * mesuré est l'intention de l'auteur, écrite dans son propre commentaire :
+     * « does not print the buttons along the bottom ». */
+    int decoupe[4];
+    const int *pdecoupe = NULL;
     {
+        int ifrom = v3_indice_motcle(n, "from", i0);
+        int ito   = v3_indice_motcle(n, "to", i0);
+        if (ifrom >= 0) {
+            /* UN « from » PRÉSENT MAIS ILLISIBLE SE REFUSE, IL NE RETOMBE PAS
+             * SUR LA PLAGE DE CARTES. Sans ce refus, « print card from 0 to
+             * 512 » — deux points au lieu de quatre nombres — repartait en
+             * « print card … to 512 » et imprimait cinq cents cartes. On
+             * préfère l'échec bruyant : c'est la règle de ce module, et c'est
+             * exactement le genre de repli qui donne confiance en se trompant. */
+            int forme = (ito > ifrom && ito + 2 < n->nfils && ito - ifrom == 3);
+            char v[4][HC_VAL];
+            int bon = forme;
+            if (forme) {
+                const HctNoeud *e[4] = { n->fils[ifrom + 1], n->fils[ifrom + 2],
+                                         n->fils[ito + 1],   n->fils[ito + 2] };
+                for (int k = 0; k < 4 && bon; k++) {
+                    v3_val_texte(ctx, e[k], v[k], sizeof v[k]);
+                    if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+                    if (!hct_est_nombre(v[k])) bon = 0;
+                    else decoupe[k] = (int)hct_vers_nombre(v[k]);
+                }
+            }
+            if (!bon) {
+                set_result("Bad rectangle");
+                emit(HC_ERR, "   !! print : « from … to … » demande deux points, "
+                             "soit quatre nombres");
+                free(liste); g_atop = sauve; return 1;
+            }
+            /* Un rectangle vide ou retourné n'imprimerait rien : on le dit,
+             * plutôt que de rendre une page blanche qui ressemble à une panne
+             * d'imprimante. */
+            if (decoupe[2] <= decoupe[0] || decoupe[3] <= decoupe[1]) {
+                set_result("Bad rectangle");
+                emit(HC_ERR, "   !! print : le rectangle de découpe est vide");
+                free(liste); g_atop = sauve; return 1;
+            }
+            pdecoupe = decoupe;
+        }
+    }
+
+    const HctNoeud *nto = NULL;
+    if (!pdecoupe) {
         int ito = v3_indice_motcle(n, "to", i0);
         if (ito >= 0 && ito + 1 < n->nfils) nto = n->fils[ito + 1];
     }
@@ -12672,7 +13039,7 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         free(liste); g_atop = sauve; return 1;
     }
     if (g_host && g_host->print_cards) {
-        g_host->print_cards(liste, np);
+        g_host->print_cards(liste, np, pdecoupe);
         set_result("");
     } else {
         set_result("Can't print");
@@ -14335,7 +14702,9 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     }
 
     set_result("");
-    hc_send_args(start, nom, argv, argc);
+    /* UN MESSAGE NU DEPUIS UN GESTIONNAIRE NE REPOSE PAS LA CIBLE : c'est le
+     * cas de « goCard » puis « currentLine » dans « Readymade Buttons ». */
+    hc_send_args(start, nom, argv, argc, 0);
     return 1;
 }
 
@@ -14422,6 +14791,22 @@ typedef int (*V3Verbe)(HctContexte *ctx, const HctNoeud *n);
 static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENU) return -1;
+
+    /* UN ORDINAL N'A PAS D'ENFANT, ET LE TEST DE nfils L'ÉCARTAIT.
+     *
+     * « first menu », « last menu » : le désignateur est dans le NŒUD, pas dans
+     * un fils, donc nfils vaut zéro et la porte se fermait avant tout le reste.
+     *
+     * Ce chemin vient d'être ouvert dans l'analyseur — un ordinal devant
+     * « menu » ou « menuItem » désigne déjà, ce que le garde de menu ignorait —
+     * et l'ouvrir SANS ouvrir ici aurait donné le pire résultat : une syntaxe
+     * acceptée, puis « objet introuvable » à l'exécution. Mesuré avant de le
+     * croire, avec un menu de trois articles réellement posé. */
+    if (n->designateur == HCT_DES_ORDINAL) {
+        int r = v3_rang_ordinal(n->ordinal, g_nmenus);
+        return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
+    }
+
     if (n->nfils < 1) return -1;
 
     /* Le contexte peut manquer : v3_recours n'en reçoit pas, et c'est lui
@@ -14540,11 +14925,32 @@ static int v3_famille_bouton_choisi(HctContexte *ctx, const HctNoeud *n,
 static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
 {
     if (!n || n->genre != HCTN_OBJET || n->typeobj != HCT_OBJ_MENUITEM) return -1;
-    if (n->nfils < 2) return -1;
+
+    /* UN ORDINAL N'A PAS D'ENFANT : « last menuItem of menu "T" » n'en porte
+     * qu'un, la cible du « of », là où « menuItem "A" of menu "T" » en porte
+     * deux. Le seuil de deux fils écartait donc toute la forme ordinale.
+     *
+     * Relevé sept fois dans « Stack Templates » d'Apple :
+     *
+     *     disable last menuItem of menu "Templates"
+     *     set name of last menuItem of menu "Templates" to "Show Palette"
+     *
+     * SITE JUMEAU de v3_menu_index, corrigé du même coup : le désignateur y est
+     * aussi dans le nœud. Corriger l'un sans l'autre laissait « last menu »
+     * accepté et introuvable. */
+    int ordinal_seul = (n->designateur == HCT_DES_ORDINAL);
+    if (n->nfils < (ordinal_seul ? 1 : 2)) return -1;
 
     int im = v3_menu_index(ctx, n->fils[n->nfils - 1]);
     if (im < 0) { g_menu_echec = V3_MENU_MENU_ABSENT; return -1; }
     *imenu = im;
+
+    if (ordinal_seul) {
+        int r = v3_rang_ordinal(n->ordinal, g_menus[im].n);
+        if (r >= 1 && r <= g_menus[im].n) return r - 1;
+        g_menu_echec = V3_MENU_ARTICLE_ABSENT;
+        return -1;
+    }
 
     char b[HC_MENU_NOM_MAX + 2];   /* même plafond : voir v3_menu_index */
     if (ctx) {
@@ -16101,7 +16507,8 @@ static Object *marked_card_ref(const char *r, int *concerne)
 /* Envoie un message accompagné d'une liste d'arguments déjà évalués.
    argv[0..argc-1] sont les valeurs des arguments (sans le nom du message). */
 static int hc_send_args_k_body(Object *target, const char *message,
-                          char argv[][HC_VAL], int argc, int isfunc)
+                          char argv[][HC_VAL], int argc, int isfunc,
+                          int cible_neuve)
 {
     if (g_depth >= HC_MAX_DEPTH) {
         emit(HC_ERR, "!! trop de récursion : message \"%s\" abandonné", message);
@@ -16143,13 +16550,55 @@ static int hc_send_args_k_body(Object *target, const char *message,
     for (int i = 0; i < saved_nparams; i++)
         memcpy(saved_params[i], g_params[i], sizeof saved_params[i]);
 
-    /* `the target` vaut le destinataire initial pendant toute la remontée ;
-       on empile l'ancien pour les envois imbriqués. */
+    /* ═══ « the target » NE CHANGE PAS QUAND UN GESTIONNAIRE EN APPELLE UN
+     *     AUTRE, ET C'EST TOUT L'INTÉRÊT DE CETTE FONCTION ════════════════
+     *
+     * `me` est l'objet dont le script tourne ; `the target` est l'objet qu'on a
+     * CLIQUÉ. Si le second se remettait à `me` au premier appel interne, il ne
+     * servirait plus à rien — il ne dirait que ce que `me` dit déjà, et
+     * précisément dans le cas pour lequel il existe : un gestionnaire de CARTE
+     * ou de FOND qui veut savoir quel objet a reçu le clic.
+     *
+     * LE DÉFAUT, relevé à l'usage sur le menu de « Readymade Buttons », répété
+     * 254 fois — la ligne est dans une boucle de souris :
+     *
+     *     champ « Card List »   on mouseDown / goCard / end mouseDown
+     *     carte                 on goCard / … / currentLine / … / end goCard
+     *     carte                 on currentLine
+     *                             … top of target … textHeight of target …
+     *                             select … of line theLine to … of target
+     *
+     * goCard est ENVOYÉ AU CHAMP et TRAITÉ PAR LA CARTE, donc `me` y vaut la
+     * carte. L'appel de currentLine repartait alors vers la CARTE, et `the
+     * target` devenait la carte : top 0, textHeight 16, ligne 9 vide, et le
+     * select ne trouvait pas de champ — « ne sait pas faire ». Mesuré des deux
+     * côtés, et c'est le contraste qui nomme la cause :
+     *
+     *     currentLine envoyé au CHAMP  ->  « Create pop-up fields »
+     *     currentLine envoyé à la CARTE ->  « ne sait pas faire »
+     *
+     * DEUX PILES D'APPLE, TROIS SITES, et le second est le plus net parce qu'il
+     * s'agit d'une FONCTION, où l'idée d'un « nouveau destinataire » n'a aucun
+     * sens. « Stack Templates », fond Invoice :
+     *
+     *     on tabKey … if lineIsANumber(lineNum) then …
+     *     function lineIsANumber lineNum
+     *       put line lineNum of target into theLine
+     *       select char (endChar - length(theLine)) to endChar of target
+     *
+     * CE QUI REPOSE LA CIBLE, ET C'EST LE PARTAGE : un message qui ENTRE dans la
+     * hiérarchie depuis l'extérieur — un clic, un événement système — et le
+     * « send … to <objet> » explicite, dont c'est justement l'objet. Un appel de
+     * gestionnaire ou de fonction depuis un gestionnaire, non.
+     *
+     * Le drapeau est dans la SIGNATURE plutôt que dans un global posé juste
+     * avant l'appel : un appelant qui l'oublierait ne compilerait pas, alors
+     * qu'un global oublié se lirait comme une valeur d'un autre envoi. */
     int saved_clipped = g_script_clipped;
     g_script_clipped = 0;
     Object *saved_target = g_target;
     Object *saved_me     = g_me;
-    g_target = target;
+    if (cible_neuve || !g_target) g_target = target;
 
     /* g_params[0] = nom du message, puis les arguments */
     snprintf(g_params[0], sizeof g_params[0], "%s", message);
@@ -16293,10 +16742,11 @@ static int hc_send_args_k_body(Object *target, const char *message,
  * une pile qui envoie des milliers de messages verrait l'arène croître sans
  * fin, puisque seul parse_factor libère en dessous. */
 static int hc_send_args_k(Object *target, const char *message,
-                          char argv[][HC_VAL], int argc, int isfunc)
+                          char argv[][HC_VAL], int argc, int isfunc,
+                          int cible_neuve)
 {
     ARENA_MARK;
-    int r = hc_send_args_k_body(target, message, argv, argc, isfunc);
+    int r = hc_send_args_k_body(target, message, argv, argc, isfunc, cible_neuve);
     ARENA_FREE;
 
     /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
@@ -16338,9 +16788,9 @@ static int hc_send_args_k(Object *target, const char *message,
 }
 
 static int hc_send_args(Object *target, const char *message,
-                        char argv[][HC_VAL], int argc)
+                        char argv[][HC_VAL], int argc, int cible_neuve)
 {
-    return hc_send_args_k(target, message, argv, argc, 0);
+    return hc_send_args_k(target, message, argv, argc, 0, cible_neuve);
 }
 
 /* Appel d'une fonction utilisateur : même remontée de la chaîne, mais on
@@ -16353,7 +16803,9 @@ static int hc_call_user_function(Object *target, const char *name,
 {
     if (!target) return 0;
     set_result("");
-    return hc_send_args_k(target, name, argv, argc, 1);
+    /* UNE FONCTION N'EST PAS UN NOUVEAU DESTINATAIRE : « lineIsANumber(n) »
+     * appelée depuis tabKey doit voir le champ que tabKey voyait. */
+    return hc_send_args_k(target, name, argv, argc, 1, 0);
 }
 
 /* ═══ doMenu ════════════════════════════════════════════════════════════
@@ -16462,7 +16914,7 @@ int hc_send_arg(Object *target, const char *message, const char *arg)
         if (!argv) { ARENA_FREE; return 0; }
         snprintf(argv[0], HC_VAL, "%s", arg);
     }
-    int pris = hc_send_args(target, message, argv, arg ? 1 : 0);
+    int pris = hc_send_args(target, message, argv, arg ? 1 : 0, 1);
     ARENA_FREE;
     return pris;
 }
@@ -16570,7 +17022,9 @@ void hc_do_menu(const char *item)
 int hc_send(Object *target, const char *message)
 {
     ARENA_MARK;
-    int r = hc_send_args(target, message, NULL, 0);
+    /* LA PORTE DE L'HÔTE : un clic, un événement système. C'est par ici que la
+     * cible se pose, et c'est le seul endroit où elle doit se poser d'office. */
+    int r = hc_send_args(target, message, NULL, 0, 1);
     ARENA_FREE;
     return r;
 }

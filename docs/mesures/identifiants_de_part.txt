@@ -1,0 +1,146 @@
+LES IDENTIFIANTS DE PART, ET LEUR ESPACE DE NOMS
+================================================
+
+CE QUI ÉTAIT ÉCRIT DANS docs/mesures/pile_origine.txt
+-----------------------------------------------------
+
+    « Les identifiants de part ne survivent pas. hc_new_field et hc_new_button
+      attribuent les nôtres ; un script qui dit card field id 5 ne retrouvera
+      pas son champ, et the id of rendra autre chose. »
+
+C'était vrai, et c'était le prochain point. Il est fait.
+
+LA MESURE QUI A DÉCIDÉ DE LA FORME DE LA CORRECTION
+---------------------------------------------------
+
+La question n'était pas « faut-il reprendre l'identifiant d'origine » — la
+réponse est évidemment oui — mais « dans quel ensemble faut-il qu'il soit
+libre ». hc_core.c n'en connaissait qu'un, LA PILE : deux objets de même
+identifiant y étaient un doublon, même dans deux couches différentes.
+
+Mesuré en simulant l'adoption dans l'ordre où l'importateur bâtit — les fonds et
+leurs parts, puis les cartes et les leurs :
+
+    3D Parametric Equations   105 parts,  47 en conflit  (45 %)
+    Découvrir HyperCard        28 parts,   5 en conflit
+    TEST3                       7 parts,   1 en conflit
+    les 32 couches des trois piles :  AUCUN conflit
+
+Trois choses se lisent dans ces chiffres, et aucune n'est une supposition :
+
+  1. Les identifiants de COUCHE — cartes et fonds — sont uniques dans la pile.
+     32 sur 32, sans exception.
+  2. Les identifiants de PART ne le sont pas, et de loin : 53 conflits sur 140
+     parts. Tous sont des parts contre des parts d'une AUTRE couche — la part 4
+     d'une carte contre la part 4 de son fond, ce que « Découvrir HyperCard »
+     porte vraiment.
+  3. Aucun conflit n'est une part contre une couche, et aucune couche ne porte
+     deux fois le même numéro de part.
+
+C'est la règle d'HyperCard, et elle se lit dans ses octets : l'espace de noms
+d'une part est SA COUCHE. « card field id 5 » se résout dans la carte, « bg
+field id 5 » dans le fond, et find_part_by_id n'a jamais cherché ailleurs que
+chez le propriétaire qu'on lui donne — notre lecture était donc déjà juste, seule
+la NUMÉROTATION croyait le contraire.
+
+CE QUE COÛTAIT L'ERREUR : avec un seul espace, 45 % des parts d'une pile
+importée recevaient un numéro neuf, et tout « card button id N » de ses scripts
+désignait le vide. En silence, à l'exécution seulement, et sur les piles les plus
+riches d'abord — celles qui ont le plus de parts sont celles qui en perdent le
+plus.
+
+CE QUI A ÉTÉ CHANGÉ
+-------------------
+
+espace_du_numero(o) décide, et c'est le seul endroit : la couche pour une part,
+la pile pour une couche. Les trois prédicats qui en dépendent — id_pris_dans,
+id_pris_par_un_autre, id_libre_dans — ne regardent plus qu'UN niveau au lieu de
+deux. id_adopte déduit l'espace de l'objet au lieu de le recevoir de l'appelant,
+qui pouvait se tromper sans que rien ne le montre.
+
+La FABRIQUE d'identifiants, elle, n'a pas changé de règle : le compteur global
+rend des numéros uniques dans la pile entière, ce qui est un cas particulier
+d'unique dans la couche. Seuls les CONTRÔLES avaient besoin de l'espace ; c'est
+pourquoi la correction est petite.
+
+hc_importe.c appelle ensuite id_adopte sur chaque fond, chaque carte et chaque
+part. Un conflit — deux parts de même numéro dans une même couche, qu'aucune pile
+saine ne porte — laisse simplement le numéro neuf : perdre la part coûterait plus
+cher que la mal numéroter.
+
+LE RÉSULTAT, MESURÉ DE BOUT EN BOUT
+-----------------------------------
+
+Import, puis hc_save, puis hc_load, puis comparaison de l'identifiant d'origine
+à celui de notre part de même RANG :
+
+    3d.stack           105 parts, 0 perdue | couches 14 gardées, 0 perdue
+    decouvrir.stack     28 parts, 0 perdue | couches 12 gardées, 0 perdue
+    test3.stack          7 parts, 0 perdue | couches  6 gardées, 0 perdue
+
+140 parts, 32 couches, rien de perdu — et pas seulement à l'import : à travers
+NOTRE format, qui écrit et relit ces numéros.
+
+L'APPARIEMENT PAR RANG N'EST PLUS UN AVEU
+-----------------------------------------
+
+Il était écrit, dans pile_origine.txt, que le tour complet compare les parts par
+position, « ce qui est un aveu et non une méthode ». C'était vrai tant que
+l'identifiant ne se conservait pas. C'est devenu faux : la clé d'un instrument ne
+doit pas être ce qu'il mesure. Apparier par identifiant rendrait « part absente »
+là où la vérité est « part présente, mal numérotée » — le même compte de pertes,
+une cause illisible. Le rang reste donc la clé, et l'identifiant est devenu une
+PROPRIÉTÉ comparée, la vingt-et-unième.
+
+UN DÉFAUT TROUVÉ EN CHEMIN, ET IL EST DU MÊME SUJET
+---------------------------------------------------
+
+Le harnais idcouche a montré ceci, sur une carte sans champ 1 dont le fond a un
+champ 1 :
+
+    put card field id 1           ->  le texte du champ DU FOND
+    the name of card field id 1   ->  bkgnd field « du fond »
+
+On écrit « card » et l'on reçoit le fond. Cause : le résolveur de l'ancien moteur
+ne notait qu'un drapeau, « on a dit fond ». Le préfixe « card » était CONSOMMÉ
+sans laisser de trace, si bien que « card field X » et « field X » devenaient la
+même phrase — celle qui se replie sur le fond. Ses trois branches (identifiant,
+rang, nom) tenaient la portée du FOND et ignoraient celle de la CARTE.
+
+L'exécuteur v3 répondait juste : il ne trouvait rien. C'est le repli du pont vers
+l'ancien résolveur qui changeait « introuvable » en « le mauvais ». Une bonne
+réponse ne rattrape pas une mauvaise — il suffit d'une des deux portes pour
+mentir. C'est le motif de ce dépôt, et il a mordu encore.
+
+Le défaut est ANCIEN, et il était presque inatteignable : tant que les
+identifiants étaient uniques dans la pile, une carte et son fond ne pouvaient pas
+se disputer un numéro, et le repli tombait sur du vide. Il devient ordinaire dès
+que l'espace de noms est la couche, donc dans toute pile importée — et c'est
+pourquoi il se corrige ici et pas plus tard.
+
+CE QUI N'EST PAS MESURÉ
+-----------------------
+
+La réponse d'HYPERCARD sur une portée explicite qui ne trouve rien. Les deux
+moteurs disent maintenant la même chose, ce qui est un progrès dans tous les cas ;
+mais lequel des deux comportements est le sien n'a pas d'oracle ici.
+
+À JOUER DANS HYPERCARD (Basilisk II). Une pile avec un champ de FOND nommé
+« menu » qui contient alpha / beta / gamma, et une carte qui n'a AUCUN champ :
+
+    put card field "menu"                 -- vide, ou alpha beta gamma ?
+    put line 2 of card field "menu"       -- vide, ou beta ?
+    put the name of card field "menu"     -- vide, ou bkgnd field "menu" ?
+    put card field id <l'id du champ de fond>
+    put bg field "menu"                   -- le témoin qui doit marcher
+
+Si HyperCard se replie, c'est les DEUX moteurs qu'il faudra changer, et non
+revenir à l'incohérence. Le témoin dofield2 porte la trace de l'ancienne réponse
+et de ce choix.
+
+CE QUI RESTE APRÈS ÇA
+---------------------
+
+Les dessins — blocs BMAP. Les styles par plage — bloc STBL, lus comme présents
+et non comme styles. Les icônes, qui vivent dans le resource fork et ne
+survivent pas à une copie hors du Mac.

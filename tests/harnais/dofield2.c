@@ -1,4 +1,18 @@
-/* « do "get line N of field \"menu\"" » depuis un script de FOND. */
+/* « do "get line N of field \"menu\"" » depuis un script de FOND.
+ *
+ * LE DEUXIEME CAS A CHANGE DE REPONSE, et c'est voulu. « card field "menu" »,
+ * alors que « menu » est un champ DE FOND, rendait [beta] : le resolveur v1
+ * cherchait sur la carte puis se repliait sur le fond QUOI QU'ON AIT ECRIT, le
+ * prefixe « card » etant consomme sans laisser de trace. Il rend maintenant
+ * « objet introuvable », comme l'executeur v3 le faisait deja de son cote : une
+ * portee explicite ne se replie pas. Le titre du cas le dit lui-meme — « champ
+ * absent de cette carte ».
+ *
+ * CE QUI N'EST PAS MESURE : la reponse d'HyperCard. Les deux moteurs disent
+ * maintenant la meme chose, ce qui est un progres dans tous les cas ; si un banc
+ * dans Basilisk montre qu'HyperCard se replie, c'est les DEUX qu'il faudra
+ * changer, et non revenir a l'incoherence. Le banc est demande dans
+ * docs/mesures/identifiants_de_part.txt. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>

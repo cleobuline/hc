@@ -91,7 +91,13 @@ for a in "$@"; do
   esac
 done
 
-UNITES="hc_core hc_script hc_presse_papiers hc_file hc_icons hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
+# CETTE LISTE EST ÉCRITE À LA MAIN, ET LE Makefile PREND LES SIENNES AU
+# WILDCARD. C'est donc un site jumeau : un fichier neuf dans HC/ est couvert par
+# « make verifie » et « make avertissements » sans qu'on fasse rien, et ne se
+# LIE dans aucun harnais tant qu'il n'est pas nommé ici. L'oubli ne se voit pas
+# comme un oubli — il se voit comme un harnais qui « NE COMPILE PAS », ce qui
+# envoie chercher le défaut dans le harnais.
+UNITES="hc_core hc_script hc_presse_papiers hc_file hc_icons hc_origine hc_importe hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
 
 mkdir -p "$TRAVAIL/obj" "$TRAVAIL/bin" "$TRAVAIL/sortie" "$ICI/attendu"
 
@@ -110,7 +116,7 @@ for src in harnais/*.c; do
   n=$(basename "$src" .c)
   [ -n "$MOTIF" ] && case "$n" in *"$MOTIF"*) ;; *) continue ;; esac
 
-  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm 2>/dev/null; then
+  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm -lz 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
 
@@ -134,7 +140,23 @@ for src in harnais/*.c; do
   # Ces deux harnais annoncent d'ailleurs « stdin vide -> defaut » dans leur
   # propre titre. Cette ligne rend cette phrase VRAIE, au lieu de l'espérer
   # de l'environnement.
-  timeout 120 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
+  # LE DÉLAI EST À 300 SECONDES, ET IL ÉTAIT À 120, CE QUI ÉTAIT TROP JUSTE.
+  #
+  # Mesuré sur `groschamp` — un champ de 200 000 octets et 20 000 lignes qu'on
+  # trie — dans le conteneur d'intégration, sous ASan, UBSan et
+  # LeakSanitizer : 124 secondes, machine au repos. Quatre de plus que le
+  # budget. Le même test était passé le matin même, et avait été mis sur le
+  # compte de la charge ; il a retimé out machine vide, ce qui a tranché.
+  #
+  # Sa sortie est IDENTIQUE au témoin quand on le laisse finir : il
+  # n'échouait pas, il se faisait tuer. Une porte qui dépend de l'humeur de la
+  # machine est pire qu'une porte lente — elle apprend à ne plus lire les
+  # échecs, et c'est exactement ce qu'on ne veut pas d'un garde-fou.
+  #
+  # 300 laisse de la marge sans rien cacher : une vraie boucle infinie se fait
+  # toujours prendre, et les 248 autres harnais tournent en moins d'une
+  # seconde chacun — le délai ne coûte donc rien tant que rien ne se bloque.
+  timeout 300 "$TRAVAIL/bin/$n" $ARGS > "$TRAVAIL/sortie/$n" 2>&1 < /dev/null
   code=$?
   # UN PLANTAGE N'EST PAS UN DÉPASSEMENT DE DÉLAI.
   #

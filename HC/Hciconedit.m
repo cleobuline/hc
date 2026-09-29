@@ -91,10 +91,54 @@ int hcicon_edit_new(Object *stack)
 int hcicon_edit_duplicate(Object *stack, int id)
 {
     if (!stack) return 0;
+
+    /* LA SYNCHRO D'ABORD, ET C'EST UNE CORRECTION.
+     *
+     * Elle etait ICI, entre le hcicon_find et l'emploi de ce qu'il rend. Or
+     * hcicon_edit_sync REFAIT le catalogue de travail : il libere chaque nom et
+     * le tableau lui-meme, puis les reconstruit ailleurs. Le pointeur `src`
+     * devenait donc pendant, et les trois lignes suivantes lisaient de la
+     * memoire liberee — le nom, les 128 bits, la couleur.
+     *
+     * RELEVE A L'USAGE, EN TROIS TEMPS, et c'est le troisieme qui nomme le
+     * mecanisme :
+     *
+     *   1. « quand je veux dupliquer ca marche pas », avec la trace d'AppKit :
+     *      « Invalid parameter not satisfying: aString != nil » dans
+     *      iconRefresh, sur -setStringValue:.
+     *   2. « ya rien, "butterfly" c'est tout, mais ca eu marche un moment,
+     *      mais ca marche plus ». Un nom en ASCII pur, et un defaut qui
+     *      APPARAIT avec le temps : la signature meme du pointeur pendant.
+     *      Tant que l'allocateur n'a pas reutilise le bloc, les anciens octets
+     *      sont encore la et tout va bien.
+     *   3. « c'est sur les icones COULEUR ; sur les n/b ca marche ». Voila qui
+     *      discrimine. Le catalogue de travail alloue DEUX blocs par icone en
+     *      couleur — le nom, et une structure HcIconCouleur d'un millier
+     *      d'octets — contre un seul en noir et blanc. En liberant puis
+     *      reconstruisant, l'allocateur rend presque a coup sur le gros bloc
+     *      qu'il vient de reprendre : la couleur lue est donc detruite tout de
+     *      suite, alors qu'un nom de dix octets survit souvent intact. Un
+     *      defaut qui depend de la couleur alors que le code ne la regarde
+     *      pas, c'est un defaut de MEMOIRE, pas de dessin.
+     *
+     * Les octets du nom n'etant plus de l'UTF-8 valide, +stringWithUTF8String:
+     * rendait nil, et AppKit s'arretait. Le nom de l'icone n'y etait pour
+     * rien : ce n'etaient plus ses octets. Et hc_icon_copie_dessin lisait, lui,
+     * un POINTEUR de couleur pris dans la memoire liberee, puis recopiait mille
+     * octets depuis l'adresse qu'il y trouvait.
+     *
+     * Le catalogue a bien besoin d'etre a jour AVANT hcicon_edit_free_id —
+     * c'est ce que dit hcicon_edit_new, qui synchronise en tete pour la meme
+     * raison — mais alors il faut chercher l'icone APRES, pas avant.
+     *
+     * hcicon_edit_editable, juste au-dessus, fait deja les choses dans le bon
+     * ordre : sa synchro est APRES le dernier emploi de `src`. Le site jumeau
+     * etait donc sain, et c'est pourquoi lui n'a jamais plante. */
+    hcicon_edit_sync(stack);
+
     const HCIcon *src = hcicon_find(id);
     if (!src) return 0;
 
-    hcicon_edit_sync(stack);
     int nid = hcicon_edit_free_id();
     if (!nid) return 0;
     struct StackIcon *e = hc_icon_add(stack, nid, src->name);

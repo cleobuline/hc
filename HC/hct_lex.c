@@ -169,19 +169,34 @@ int hct_lex(const char *src, HctLot *lot)
         if (*p == ' ' || *p == '\t') { p++; continue; }
 
         /* --- continuation de ligne -----------------------------------
-         * Le caractère « soft return » du Mac classique, ¬ (0xAC en MacRoman,
-         * "\xC2\xAC" en UTF-8). La ligne logique se poursuit : on avale le
-         * saut de ligne qui suit et on n'émet aucun EOL. */
-        if ((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xAC) {
-            p += 2;
+         * Le caractère « soft return » du Mac classique, ¬ — l'octet 0xC2 en
+         * MacRoman, qui vaut U+00AC, donc "\xC2\xAC" une fois converti en UTF-8.
+         * (L'octet 0xAC de MacRoman est le tréma « ¨ », pas celui-là ; c'est le
+         * commentaire d'avant qui se trompait, pas le code.) La ligne logique se
+         * poursuit : on avale le saut de ligne qui suit et on n'émet aucun EOL.
+         *
+         * ET UN COMMENTAIRE PEUT S'INTERCALER ENTRE LE ¬ ET LE SAUT DE LIGNE.
+         * Relevé dans « Stack Templates », bouton « Find… » d'Apple :
+         *
+         *     answer "Sorry, but I was unable to find any cards containing" && ¬ -- ∆
+         *     "“" & it & "”."
+         *
+         * MESURÉ DANS HYPERCARD (Basilisk II) avant d'y toucher, parce que
+         * « Apple l'a livré » ne prouve rien — HyperCard ne compile un
+         * gestionnaire qu'à l'exécution, et ce bouton n'a peut-être jamais été
+         * cliqué. Le banc joué là-bas affiche « un deux » sans un mot : le
+         * commentaire est toléré et la ligne continue.
+         *
+         * Le défaut qu'on corrige était le pire des deux mondes : le ¬ était
+         * avalé, la ligne N'ÉTAIT PAS continuée, et rien ne le disait. Le
+         * gestionnaire se refusait trois lignes plus loin, sur « expression
+         * attendue », à un endroit qui ne nomme pas la cause. */
+        if (((unsigned char)p[0] == 0xC2 && (unsigned char)p[1] == 0xAC)
+            || (unsigned char)p[0] == 0xAC) {       /* 0xAC seul : Latin-1 non converti */
+            p += ((unsigned char)p[0] == 0xC2) ? 2 : 1;
             while (*p == ' ' || *p == '\t') p++;
-            if (*p == '\r') p++;
-            if (*p == '\n') { p++; ligne++; deb_ligne = p; }
-            continue;
-        }
-        if ((unsigned char)p[0] == 0xAC) {          /* MacRoman non converti */
-            p++;
-            while (*p == ' ' || *p == '\t') p++;
+            if (p[0] == '-' && p[1] == '-')
+                while (*p && *p != '\n' && *p != '\r') p++;
             if (*p == '\r') p++;
             if (*p == '\n') { p++; ligne++; deb_ligne = p; }
             continue;
@@ -284,14 +299,33 @@ int hct_lex(const char *src, HctLot *lot)
         }
 
         /* --- mot -----------------------------------------------------
-         * Lettres, chiffres et souligné. HyperTalk autorise le chiffre à
+         * Lettres, chiffres, souligné et DIÈSE. HyperTalk autorise le chiffre à
          * l'intérieur d'un nom, mais pas en tête — ce cas est déjà pris par
-         * la branche des nombres. */
+         * la branche des nombres.
+         *
+         * LE DIÈSE EST UN BÉMOL DE MUSICIEN, ET IL VIENT D'UNE VRAIE PILE.
+         *
+         * « play » prend des notes, et une note altérée s'écrit avec un dièse :
+         *
+         *     play harpsichord tempo 300 a#2q c3w
+         *
+         * C'est la ligne exacte d'un bouton de « Découvrir HyperCard », la pile
+         * d'initiation d'Apple. Le lexer s'arrêtait dessus — « caractère
+         * inattendu », colonne 31 — AVANT que v3_cmd_play puisse voir quoi que
+         * ce soit : mesuré, le son ne jouait pas et l'utilisateur voyait un
+         * dialogue d'erreur. Le premier vrai trou de v3 trouvé par du HyperTalk
+         * réel, et non par une pile de torture écrite par nous.
+         *
+         * IL EST ACCEPTÉ À L'INTÉRIEUR D'UN MOT SEULEMENT, jamais en tête : un
+         * « # » nu reste donc une faute, ce qu'un témoin vérifie. Le dièse n'a
+         * aucun autre rôle en HyperTalk — ce n'est pas un opérateur, et dans une
+         * chaîne il passait déjà — si bien qu'aucune expression ne change de
+         * sens. */
         if (isalpha((unsigned char)*p) || *p == '_' || lettre_accentuee(p)) {
             const char *q = p;
             int col = COL(p);
             for (;;) {
-                if (isalnum((unsigned char)*q) || *q == '_') { q++; continue; }
+                if (isalnum((unsigned char)*q) || *q == '_' || *q == '#') { q++; continue; }
                 if (lettre_accentuee(q)) { q += 2; continue; }
                 break;
             }

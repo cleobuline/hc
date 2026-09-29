@@ -564,6 +564,7 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
         fprintf(f, "id %d\n", bg->id);
         if (bg->dont_search) fprintf(f, "dontsearch\n");
         if (bg->cant_delete) fprintf(f, "cantdelete\n");
+        if (!bg->show_pict)  fprintf(f, "hidepict\n");
         put_block(f, "script", bg->script);
         put_paint(f, bg->paint);
         for (int j = 0; j < bg->nparts; j++) put_part(f, bg->parts[j]);
@@ -595,6 +596,7 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
          * relit sans rien perdre. */
         if (c->dont_search) fprintf(f, "dontsearch\n");
         if (c->cant_delete) fprintf(f, "cantdelete\n");
+        if (!c->show_pict)  fprintf(f, "hidepict\n");
         put_block(f, "script", c->script);
         put_paint(f, c->paint);
         /* L'allumage des boutons de fond NON PARTAGÉS appartient à la carte.
@@ -1434,6 +1436,17 @@ Object *hc_load(const char *path)
          * cours, quelle qu'elle soit. */
         if (strcmp(s, "dontsearch") == 0 && target)   { target->dont_search = 1; continue; }
         if (strcmp(s, "cantdelete") == 0 && target)   { target->cant_delete = 1; continue; }
+        /* « hidepict » N'EST PAS UN MOT DE HYPERTALK, et il ne faut pas le lire
+         * comme tel : c'est un marqueur de NOTRE format de fichier, comme
+         * « cantdelete » et « dontsearch » juste au-dessus. Aucun script n'écrit
+         * jamais ce mot ; côté script il n'y a que la propriété « showPict ».
+         *
+         * Et c'est « hidepict » qui s'écrit plutôt que « showpict », parce que la
+         * peinture se montre PAR DÉFAUT : c'est donc son absence qui est l'état
+         * normal, et le marqueur ne coûte une ligne que dans le cas rare. C'est
+         * aussi ce qui fait qu'une pile enregistrée avant l'existence de cette
+         * propriété se relit en montrant son dessin. */
+        if (strcmp(s, "hidepict") == 0 && target)    { target->show_pict = 0; continue; }
         if (strcmp(s, "sharedtext") == 0 && part)     { part->shared_text = 1; continue; }
         if (strncmp(s, "textfont ", 9) == 0 && part) {
             free(part->textfont);

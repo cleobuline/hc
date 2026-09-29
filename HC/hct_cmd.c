@@ -128,7 +128,18 @@ static const HctCommande TABLE[] = {
     { "picture",    "*" },
     { "play",       "*" },
     { "pop",        "card [into c]" },
-    { "print",      "[all|marked] * [to e] [with e]" },
+    /* « print card from 0,0 to 512,304 » imprime une PARTIE de la carte, et
+     * c'est le groupe « [from * to *] » qui la porte. Relevé trois fois dans
+     * « Stack Templates » d'Apple, avec le commentaire de l'auteur à côté :
+     * « prints only the invoice part of the card, does not print the buttons
+     * along the bottom ». Les deux points s'écrivent « x,y », donc deux
+     * expressions séparées par une virgule : « * » les prend, et s'arrête au
+     * « to » que le motif attend ensuite.
+     *
+     * Le groupe passe AVANT « [to e] », et l'ordre compte : « print card 1 to
+     * 600 » n'a pas de « from », son groupe se saute, et « [to e] » le reçoit
+     * comme avant. */
+    { "print",      "[all|marked] * [from * to *] [to e] [with e]" },
     { "push",       "*" },
     /* Le groupe « with menuMsg » ne sert qu'à « put <articles> into menu
      * <nom> with menuMsg <messages> » : chaque article y reçoit SON message,
@@ -272,8 +283,24 @@ static int applique(HctAnalyseur *a, const char *motif, HctNoeud *cmd)
                 while ((e2 = element_suivant(&q, &l2)) != NULL) {
                     if (l2 == 1 && *e2 == '[') { prof++; continue; }
                     if (l2 == 1 && *e2 == ']') { prof--; continue; }
+                    /* UN EMPLACEMENT D'EXPRESSION NE FERME PAS LA COLLECTE,
+                     * IL SE SAUTE. Ce « break » perdait tout littéral situé
+                     * derrière le premier « e » du motif, et le butoir se
+                     * réduisait au premier mot rencontré.
+                     *
+                     * Mesuré sur « print » : le motif « * [to e] [with e] »
+                     * donnait le butoir « to » et non « to|with ». Le trou ne
+                     * se voyait pas parce qu'aucun script du corpus n'écrit
+                     * « print x with y » ; il s'est vu en ajoutant le groupe
+                     * « [from * to *] », qui aurait alors réduit le butoir à
+                     * « from » et cassé « print card 1 to 600 » — que tout un
+                     * harnais, impression.c, tient depuis longtemps.
+                     *
+                     * Sauter plutôt que rompre rend le butoir COMPLET : tous
+                     * les mots qui peuvent légalement suivre les expressions,
+                     * et non le premier seulement. */
                     if (l2 == 1 && (*e2=='e'||*e2=='c'||*e2=='r'||*e2=='b'
-                                    ||*e2=='*'||*e2=='W')) break;
+                                    ||*e2=='*'||*e2=='W')) continue;
                     if (lbut && lbut < (int)sizeof but - 1) but[lbut++] = '|';
                     for (int k = 0; k < l2 && lbut < (int)sizeof but - 1; k++)
                         but[lbut++] = e2[k];

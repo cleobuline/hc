@@ -1,0 +1,96 @@
+COLLER PENDANT QU'UN PANNEAU EST OUVERT
+=======================================
+
+CE QUI A ÉTÉ RELEVÉ
+-------------------
+
+À l'usage, dans l'application : « le coller ne fonctionne plus dans l'éditeur
+d'icône, ça colle dans la carte ».
+
+Ce relevé vient de HC, et il dit deux choses à la fois :
+
+  1. Cmd-V pendant que le panneau Icônes est ouvert atteint bien QUELQU'UN —
+     donc l'article Coller du menu Édition n'était pas grisé ;
+  2. celui qu'il atteint est HCView, la vue de la CARTE, puisque l'image y
+     apparaît.
+
+C'est la mesure : elle nomme la cible, et la cible est la mauvaise.
+
+CE QUI L'EXPLIQUE
+-----------------
+
+L'article Coller a une cible NULLE. NSApplication la cherche alors dans cet
+ordre, qui est documenté et que nous n'avons pas inventé :
+
+    la chaîne des répondants de la fenêtre CLÉ
+    le délégué de la fenêtre clé
+    la chaîne des répondants de la fenêtre PRINCIPALE, si elle diffère
+    le délégué de la fenêtre principale
+    l'application, puis son délégué
+
+Un NSPanel ne devient jamais fenêtre PRINCIPALE. La fenêtre du document le
+reste donc pendant que le panneau est au premier plan, et comme aucune vue du
+panneau Icônes ne répondait à paste:, la recherche traversait le panneau tout
+entier pour tomber sur HCView — qui a collé dans la carte, ce qui est son
+travail.
+
+Le bouton « Coller » du panneau, lui, marchait : il nomme sa cible et son
+action, sans passer par cette recherche. C'est ce qui rendait le défaut
+trompeur — le collage d'icône n'était pas cassé, c'est le chemin du menu qui
+menait ailleurs.
+
+CE QUI A ÉTÉ CORRIGÉ
+--------------------
+
+Le panneau reçoit un délégué, HCPanelColler, qui répond à paste:. Sa place dans
+l'ordre ci-dessus est deux fois juste : APRÈS la chaîne des répondants du
+panneau — un champ de texte en cours d'édition garde donc son coller de texte,
+qui est le bon — et AVANT la fenêtre du document, qui ne reçoit plus rien.
+
+Les SEPT autres panneaux de HCdialogs.m — Info bouton, Info champ, Text Style,
+Info carte, Info fond, Info pile, Contenu — avaient exactement le même défaut,
+et c'est le site jumeau. Aucun n'a de collage à lui : ils reçoivent le même
+délégué en REFUS, ce qui grise l'article au lieu de laisser le collage filer
+dans la carte cachée derrière. Les panneaux d'HyperCard étaient modaux et leurs
+articles Édition inertes ; griser est donc aussi le comportement fidèle.
+
+LES PALETTES SONT HORS DE CETTE RÈGLE
+------------------------------------
+
+Les palettes de HCview.m — outils, motifs, pinceaux, épaisseurs, boîte de
+message — n'ont pas ce défaut, et il ne faut pas leur appliquer la correction.
+Elles sont posées NSWindowStyleMaskNonactivatingPanel avec
+setBecomesKeyOnlyIfNeeded:YES : elles ne prennent donc pas la fenêtre CLÉ, la
+fenêtre du document la garde, et Cmd-V colle dans la carte — ce qui est
+exactement ce qu'on attend d'une palette flottante pendant qu'on peint.
+
+C'est ce qui sépare les deux familles : un dialogue a des champs à remplir, donc
+il lui faut le clavier, donc la fenêtre clé. Une palette n'a que des boutons.
+
+Second défaut du même relevé, corrigé avec lui : « Coller » sans icône
+sélectionnée ne faisait RIEN, et sans rien dire. Le panneau s'ouvre sans
+sélection dès qu'on vient du menu Édition plutôt que de l'info d'un bouton, et
+le bouton semblait alors cassé — le même symptôme, pour une autre raison. Il
+écrit maintenant « Choisissez une icône, ou "Nouvelle" » dans sa ligne d'info.
+
+CE QUI N'EST PAS MESURÉ
+-----------------------
+
+Rien de tout cela ne se joue dans le conteneur : il n'y a pas de Cocoa ici, et
+le harnais ne peut pas ouvrir un panneau ni presser Cmd-V. La compilation, elle,
+est vérifiée — par le job « interface Cocoa » de l'intégration continue.
+
+L'ordre de recherche d'AppKit est donc la seule pièce du raisonnement qui reste
+à confirmer par l'usage. À JOUER DANS HC (l'application), quatre gestes :
+
+  1. copier un bout de dessin dans une carte (outil Sélection, Cmd-C), ouvrir
+     Édition › Icône…, choisir une icône, Cmd-V :
+     l'image doit arriver DANS L'ICÔNE, et la carte ne doit pas changer ;
+  2. même chose sans choisir d'icône : l'article Coller doit être GRISÉ ;
+  3. cliquer dans le champ Nom du panneau et faire Cmd-V avec du TEXTE au
+     presse-papiers : le texte doit arriver dans le champ ;
+  4. ouvrir l'Info d'un bouton et faire Cmd-V avec une image au presse-papiers :
+     l'article doit être grisé, et la carte derrière ne doit rien recevoir.
+
+Si le geste 1 colle encore dans la carte, c'est que le délégué n'est pas
+consulté là où on le croit, et c'est cette ligne-là qu'il faudra corriger.

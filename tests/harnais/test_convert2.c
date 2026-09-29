@@ -1,7 +1,8 @@
 #include "hc_core.h"
 #include <stdio.h>
 
-static void mon_print(Object **cartes, int n) {
+static void mon_print(Object **cartes, int n, const int *decoupe) {
+  (void)decoupe;
     (void)cartes;
     printf("   [hote] print_cards appele avec %d carte(s)\n", n);
 }

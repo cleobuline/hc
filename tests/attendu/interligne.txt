@@ -1,0 +1,19 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== l'interligne automatique, contre ce qu'Apple a stocke ==
+  corps   le notre   tronque   arrondi   mesure   ce qu'Apple ecrit
+      9         12        12        12       12   3D Parametric (2 parts)   (les deux formules sont d'accord)
+     10         13        13        13       13   Decouvrir HyperCard (6 parts)   (les deux formules sont d'accord)
+     12         16        16        16       16   les trois piles (54 parts)   (les deux formules sont d'accord)
+     14         18        18        19       18   Decouvrir HyperCard (12 parts)
+  fautes : 0
+
+== un interligne pose l'emporte sur le calcul ==
+  corps 14, interligne 0  -> 18  (automatique)
+  corps 14, interligne 30 -> 30  (pose)
+  remis a 0               -> 18  (de nouveau automatique)
+
+== « the textHeight of » rend la meme chose ==
+      18
+      25
+      18
+      14
