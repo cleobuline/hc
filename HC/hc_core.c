@@ -1975,9 +1975,14 @@ Object *hc_new_stack(const char *name)
     return o;
 }
 
+/* LA PEINTURE SE MONTRE PAR DÉFAUT, et c'est posé ICI plutôt que dans
+ * new_object : seules une carte et un fond en ont une. Un bouton dont le
+ * showPict vaudrait 1 serait un champ qui ne veut rien dire, et le jour où
+ * quelqu'un le lirait il y croirait. */
 Object *hc_new_background(Object *stack, const char *name)
 {
     Object *o = new_object(OBJ_BACKGROUND, stack, name);
+    o->show_pict = 1;
     add_part(stack, o);
     return o;
 }
@@ -1986,6 +1991,7 @@ Object *hc_new_card(Object *stack, Object *bg, const char *name)
 {
     Object *o = new_object(OBJ_CARD, stack, name);
     o->bg = bg;
+    o->show_pict = 1;
     add_part(stack, o);
     return o;
 }
@@ -3345,6 +3351,33 @@ static Object *resolve(const char *ref)
     return r;
 }
 
+/* ═══ « background », « bg », « bkgnd » — UN SEUL ENDROIT QUI LES CONNAÎT ═══
+ *
+ * HyperCard écrit le fond de trois façons, et ce fichier les testait à QUATRE
+ * endroits, à la main. Deux d'entre eux ne connaissaient que deux mots sur
+ * trois, et c'est ce qui se voyait :
+ *
+ *     set the dontSearch of this bkgnd to true   « objet introuvable »
+ *     set the dontSearch of this bg    to true   passe
+ *     set the dontSearch of bkgnd "F"  to true   passe
+ *     put the name of this bkgnd                 passe — la LECTURE savait
+ *
+ * Relevé à l'usage dans « Readymade Buttons ». La lecture et l'écriture ne
+ * s'accordaient pas sur le vocabulaire, ce qui est le pire des désaccords : la
+ * moitié d'une ligne marche.
+ *
+ * La fonction rend le pointeur JUSTE APRÈS le mot, ou NULL. C'est elle aussi
+ * qui supprime les longueurs codées en dur — « ap + 10 », « ap + 5 », « ap + 2 »
+ * — qu'il fallait tenir d'accord avec les mots à la main, et qui sont une
+ * seconde occasion de se tromper au même endroit. */
+static const char *apres_mot_fond(const char *s)
+{
+    if (ci_word(s, "background")) return s + 10;
+    if (ci_word(s, "bkgnd"))      return s + 5;
+    if (ci_word(s, "bg"))         return s + 2;
+    return NULL;
+}
+
 static Object *resolve_local(const char *ref)
 {
     ref = skip_spaces(ref);
@@ -3388,7 +3421,7 @@ static Object *resolve_local(const char *ref)
      * partagent leur numéro avec une autre couche — le cas devient ordinaire
      * dans toute pile importée. */
     int want_bg = 0, want_card = 0;
-    if (ci_word(ref, "bg") || ci_word(ref, "background") || ci_word(ref, "bkgnd")) {
+    if (apres_mot_fond(ref)) {
         want_bg = 1;
         ref = skip_spaces(strchr(ref, ' ') ? strchr(ref, ' ') : ref + strlen(ref));
         if (!*ref) return bg;   /* « background » seul = le fond de la carte courante */
@@ -3509,7 +3542,7 @@ static Object *resolve_local(const char *ref)
         const char *w = skip_spaces(ref + 4);
         if (!*w || ci_word(w, "card") || ci_word(w, "cd")) return card;
         if (ci_word(w, "stack")) return stack;
-        if (ci_word(w, "background") || ci_word(w, "bg")) return bg;
+        if (apres_mot_fond(w)) return bg;
     }
     /* « next/previous background » : HyperCard ne se tient jamais sur un fond,
      * on rend donc une CARTE — la première de ce fond. On balaie l'ordre des
@@ -3555,9 +3588,8 @@ static Object *resolve_local(const char *ref)
             int fond = want_bg, vu_fond = 0;
             if      (ci_word(ap, "card"))       { ap = skip_spaces(ap + 4);  fond = 0; }
             else if (ci_word(ap, "cd"))         { ap = skip_spaces(ap + 2);  fond = 0; }
-            else if (ci_word(ap, "background")) { ap = skip_spaces(ap + 10); fond = 1; vu_fond = 1; }
-            else if (ci_word(ap, "bkgnd"))      { ap = skip_spaces(ap + 5);  fond = 1; vu_fond = 1; }
-            else if (ci_word(ap, "bg"))         { ap = skip_spaces(ap + 2);  fond = 1; vu_fond = 1; }
+            else { const char *q = apres_mot_fond(ap);
+                   if (q) { ap = skip_spaces(q); fond = 1; vu_fond = 1; } }
 
             int tp = -1;
             if      (ci_word(ap, "button") || ci_word(ap, "btn")) tp = OBJ_BUTTON;
@@ -3603,7 +3635,7 @@ static Object *resolve_local(const char *ref)
         else if (ci_word(ref, "first"))    { rel = skip_spaces(ref + 5); absolu = +1; }
         else if (ci_word(ref, "last"))     { rel = skip_spaces(ref + 4); absolu = -1; }
 
-        if (rel && (ci_word(rel, "background") || ci_word(rel, "bg"))) {
+        if (rel && apres_mot_fond(rel)) {
 
             /* first/last : le fond visé est absolu, pas relatif à la carte
              * courante. On prend le premier ou le dernier OBJ_BACKGROUND de
@@ -6375,7 +6407,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "sharedtext",
+        "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6603,6 +6635,12 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
     if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
+    /* showPict n'a de sens que sur une couche : le demander à un bouton doit
+     * rendre « propriété inconnue » et non « false », qui serait une réponse. */
+    if (ci_equal(prop, "showpict") &&
+        (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND)) {
+        snprintf(out, outlen, "%s", o->show_pict ? "true" : "false"); return 1;
+    }
     if (ci_equal(prop, "sharedtext")) { snprintf(out, outlen, "%s", o->shared_text ? "true" : "false"); return 1; }
     /* textAlign se lit en toutes lettres, comme HyperCard :
      * « left », « center », « right ». Un script compare la
@@ -8550,7 +8588,7 @@ static int v3_prop_exige_un_objet(const char *prop)
         "style", "family", "titlewidth", "icon",
         "hilite", "highlight", "autohilite",
         "locktext", "widemargins", "fixedlineheight", "showlines",
-        "autotab", "dontsearch", "cantdelete", "sharedtext", "sharedhilite",
+        "autotab", "dontsearch", "cantdelete", "showpict", "sharedtext", "sharedhilite",
         "autoselect", "multiplelines", "dontwrap",
         "script", NULL
     };
@@ -12510,6 +12548,14 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         /* notify_field ne vaut que pour un CHAMP : c'est un rafraîchissement
          * d'affichage, et une carte ou un fond n'en a que faire ici. */
         if (o->type == OBJ_FIELD) notify_field(o);
+    } else if (ci_equal(prop, "showpict") &&
+               (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND)) {
+        o->show_pict = truthy(val);
+        /* L'HÔTE DOIT REDESSINER : cacher la peinture ne change rien au modèle
+         * qu'on affiche, seulement à ce qu'on en montre. Sans ce signal, le
+         * bouton « Hide Card Picture » marcherait et ne se verrait qu'au
+         * changement de carte suivant. */
+        if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
     } else if (ci_equal(prop, "cantdelete")) {
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "textalign")) {

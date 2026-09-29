@@ -82,6 +82,7 @@ static Object *clone_part(Object *o)
     c->auto_tab     = o->auto_tab;
     c->dont_search  = o->dont_search;
     c->cant_delete  = o->cant_delete;
+    c->show_pict    = o->show_pict;
     c->shared_text  = o->shared_text;
     c->textstyle    = o->textstyle;
     c->scroll       = o->scroll;
@@ -523,6 +524,7 @@ static Object *clone_layer(Object *o, ObjType type)
      * le duplicata, lui, ne l'était pas. */
     c->dont_search = o->dont_search;
     c->cant_delete = o->cant_delete;
+    c->show_pict   = o->show_pict;
 
     for (int i = 0; i < o->nparts; i++) {
         Object *p = clone_part(o->parts[i]);

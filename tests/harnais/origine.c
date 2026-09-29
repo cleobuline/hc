@@ -747,12 +747,19 @@ static void verifie_les_transformations(const HcOrigDessin *d)
 static void dis_couche(const char *quoi, const HcOrigCouche *k,
                        const HcOrigPile *pile_en_cours)
 {
+    /* « showPict » VIENT DU MÊME MOT DE DRAPEAUX que dontSearch et cantDelete,
+     * mais son bit est INVERSÉ — la spec le nomme « not show pict ». Il est
+     * affiché ICI, à côté des deux autres, parce que c'est côte à côte qu'une
+     * inversion oubliée se voit : trois drapeaux du même mot, dont un qui ne
+     * suit pas les autres. */
     printf("%s id %d", quoi, k->id);
     if (k->fond) printf(", fond %d", k->fond);
     if (k->debut_de_fond) printf(", DEBUT DE FOND");
     if (k->marque) printf(", MARQUEE");
     printf(", nom « %s », %d part%s\n", k->nom ? k->nom : "(nul)",
            k->nparts, k->nparts == 1 ? "" : "s");
+    printf("  drapeaux : dontSearch %d  cantDelete %d  montreLeDessin %d\n",
+           k->dont_search, k->cant_delete, k->montre_le_dessin);
     dis_script("script", k->script);
     for (int i = 0; i < k->nparts; i++) {
         const HcOrigPart *p = &k->parts[i];
@@ -1719,6 +1726,38 @@ int main(int argc, char **argv)
         for (size_t i = 0; i + 8 < t.n; i++)
             if (memcmp(c + i, "TORTURE", 7) == 0 && c[i+7] == 0 && c[i+8] == 0) { c[i+8] = 'X'; break; }
         lis_et_dis("anomalie AVEC perte : un script abandonne", c, t.n, 0);
+        free(c);
+    }
+
+    /* ═══ LE BIT « not show pict » EST INVERSÉ, ET C'EST TOUT L'OBJET ══════
+     *
+     * Bit 13 du mot à 0x14, dans le même mot que dontSearch (11) et cantDelete
+     * (14) — mais la spec le nomme « NOT show pict ». Le recopier tel quel
+     * cacherait la peinture de presque toutes les piles, et rien ne le dirait :
+     * pas de refus, pas d'anomalie, juste un écran vide.
+     *
+     * Une faute SILENCIEUSE ne se voit qu'en paire. Le relevé principal montre
+     * les trois couches à montreLeDessin 1 ; celui-ci pose le bit sur le premier
+     * bloc CARD et doit montrer 0 pour lui SEUL. Un témoin unique ne dirait pas
+     * si l'on lit le bon bit ni dans le bon sens. */
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x16 < t.n; i++)
+            if (memcmp(c + i + 4, "CARD", 4) == 0) {
+                c[i + 0x14] = (unsigned char)(c[i + 0x14] | 0x20);  /* bit 13 */
+                break;
+            }
+        lis_et_dis("« not show pict » posé sur la PREMIÈRE carte", c, t.n, 1);
+        free(c);
+    }
+    {
+        unsigned char *c = malloc(t.n); memcpy(c, t.o, t.n);
+        for (size_t i = 0; i + 0x16 < t.n; i++)
+            if (memcmp(c + i + 4, "BKGD", 4) == 0) {
+                c[i + 0x14] = (unsigned char)(c[i + 0x14] | 0x20);
+                break;
+            }
+        lis_et_dis("« not show pict » posé sur le FOND", c, t.n, 1);
         free(c);
     }
 

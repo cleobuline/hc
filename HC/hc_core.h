@@ -389,6 +389,24 @@ struct Object {
      * qui supprime une pile dans le noyau. Mieux vaut ne pas offrir un
      * verrou qui ne ferme rien. */
     int      cant_delete;
+
+    /* LA PEINTURE DE LA COUCHE EST-ELLE MONTRÉE ? « set the showPict of this
+     * card to false » cache le dessin sans l'effacer, et c'est l'idiome du
+     * bouton « Hide Card Picture » — « Readymade Buttons » en fait son sujet.
+     *
+     * DEUX DIFFÉRENCES AVEC cant_delete, SON JUMEAU DE DRAPEAU, et toutes deux
+     * se paient si on les oublie :
+     *
+     *   la valeur par DÉFAUT est VRAIE — une couche montre sa peinture — donc
+     *     tout objet neuf doit la poser à 1, et non compter sur le calloc ;
+     *   le bit du FICHIER D'ORIGINE est INVERSÉ : la spec le nomme « not show
+     *     pict », bit 13 du mot à 0x14. Le lire sans l'inverser cacherait la
+     *     peinture de toutes les piles qui la montrent.
+     *
+     * Dans NOTRE format, c'est pour la même raison le mot « hidepict » qui
+     * s'écrit, et seulement quand la peinture est cachée : une pile enregistrée
+     * avant que cette propriété existe se relit en montrant son dessin. */
+    int      show_pict;
     int      shared_text;    /* texte partagé entre cartes du même fond */
     /* Allumage partagé entre cartes du même fond ? (1 = oui par défaut)
      *

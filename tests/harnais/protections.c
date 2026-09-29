@@ -99,6 +99,36 @@ int main(void){
            colle ? colle->dont_search : -1, colle ? colle->cant_delete : -1);
   }
 
+  printf("\n=== « bkgnd » : LA LECTURE ET L'ECRITURE DISAIENT DEUX CHOSES ===\n");
+  /* HyperCard ecrit le fond de TROIS façons — background, bg, bkgnd — et
+   * hc_core.c les testait a QUATRE endroits, a la main. Deux d'entre eux ne
+   * connaissaient que deux mots sur trois :
+   *
+   *     put the name of this bkgnd                 passait   (la LECTURE savait)
+   *     set the dontSearch of this bkgnd to true   « objet introuvable »
+   *
+   * Releve a l'usage dans « Readymade Buttons ». La moitie d'une ligne marchait,
+   * ce qui est le pire des desaccords : rien ne dit que le vocabulaire differe
+   * d'un cote a l'autre.
+   *
+   * LES TROIS MOTS SONT ICI COTE A COTE, en lecture ET en ecriture : c'est la
+   * seule disposition ou un mot manquant se voit. Une seule des lignes, prise
+   * seule, serait passee sans rien dire. */
+  essai("put the name of this background");
+  essai("put the name of this bkgnd");
+  essai("put the name of this bg");
+  essai("set the dontSearch of this background to true\n"
+        "  put the dontSearch of this background");
+  essai("set the dontSearch of this bkgnd to false\n"
+        "  put the dontSearch of this bkgnd");
+  essai("set the dontSearch of this bg to true\n"
+        "  put the dontSearch of this bg");
+  essai("set the dontSearch of this bkgnd to false");
+  /* Le quatrieme site, « next/last <fond> », ignorait le mot lui aussi. */
+  essai("put the name of last background");
+  essai("put the name of last bkgnd");
+  essai("put the name of last bg");
+
   printf("=== enregistrement puis relecture ===\n");
   printf("   hc_save = %d (0 = réussi)\n", hc_save(st,"/tmp/hc_verrous.stack"));
   Object *relu = hc_load("/tmp/hc_verrous.stack");

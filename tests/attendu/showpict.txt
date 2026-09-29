@@ -1,0 +1,67 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. LA VALEUR PAR DEFAUT EST VRAIE ===
+(une couche neuve MONTRE sa peinture. Si ce temoin disait false, toute
+ pile ouverte apparaitrait sans son dessin, et rien ne le signalerait.)
+-- showPict d'une carte neuve
+   → message "t" à button "B"
+   · traité par button "B"
+   true
+-- showPict d'un fond neuf
+   → message "t" à button "B"
+   · traité par button "B"
+   true
+
+=== 2. ELLE SE POSE ET SE RELIT ===
+-- poser a false, puis relire
+   → message "t" à button "B"
+   · traité par button "B"
+      → showPict de card "Une" ← "false"
+   false
+-- et la remettre a true
+   → message "t" à button "B"
+   · traité par button "B"
+      → showPict de card "Une" ← "true"
+   true
+-- le fond a sa propre valeur
+   → message "t" à button "B"
+   · traité par button "B"
+      → showPict de background "Fond" ← "false"
+   carte true   fond false
+
+=== 3. LA LIGNE DE LA PILE, MOT POUR MOT ===
+-- premier clic (le bouton dit « Hide »)
+   → message "mouseUp" à button "Hide Card Picture"
+   · traité par button "Hide Card Picture"
+      → name de button "Hide Card Picture" ← "Show Card Picture"
+      → showPict de card "Une" ← "false"
+   Show Card Picture   showPict false
+-- second clic (il dit maintenant « Show »)
+   → message "mouseUp" à button "Show Card Picture"
+   · traité par button "Show Card Picture"
+      → name de button "Show Card Picture" ← "Hide Card Picture"
+      → showPict de card "Une" ← "true"
+   Hide Card Picture   showPict true
+
+=== 4. LA PEINTURE N'EST PAS EFFACEE, SEULEMENT CACHEE ===
+(c'est toute la difference avec « choose select tool / delete » : le
+ calque doit survivre au masquage, sans quoi le bouton « Show » de la
+ pile ne ramenerait rien.)
+-- cacher, puis regarder le calque
+   → message "t" à button "B2"
+   · traité par button "B2"
+      → showPict de card "Une" ← "false"
+   showPict false
+   le calque contient : « PEINTURE-DE-LA-CARTE »
+
+=== 5. ELLE TRAVERSE hc_save ET hc_load ===
+(c'est « hidepict » qui s'ecrit dans NOTRE format — pas un mot de
+ HyperTalk, un marqueur de fichier comme « cantdelete » — et seulement
+ quand la peinture est cachee : une pile enregistree AVANT que cette
+ propriete existe se relit donc en montrant son dessin.)
+   hc_save : ecrit
+   « hidepict » ecrit 2 fois (2 attendues : « Deux » et « Cachee »)
+   apres relecture :
+     fond        « Fond    » showPict true
+     fond        « Deux    » showPict false
+     carte       « Une     » showPict true
+     carte       « Cachee  » showPict false

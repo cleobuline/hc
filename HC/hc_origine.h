@@ -190,6 +190,10 @@ typedef struct {
      * dans l'en-tête du bloc, à 0x14. */
     int   dont_search;
     int   cant_delete;
+    /* La peinture de la couche est-elle montrée ? Le fichier porte l'INVERSE —
+     * la spec nomme ce bit « not show pict » — et c'est ici qu'on le remet à
+     * l'endroit, une fois, plutôt que chez chaque appelant. */
+    int   montre_le_dessin;
     int   bloc_image;           /* l'id du bloc BMAP, ou 0 si la couche est
                                  * transparente. */
     HcOrigDessin dessin;        /* le dessin lu, quand il y en a un */

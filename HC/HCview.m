@@ -4961,9 +4961,23 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     NSRect b = [self bounds];
 
+    /* « set the showPict of this background to false » CACHE LA PEINTURE SANS
+     * L'EFFACER, et c'est le seul endroit qui doive le savoir : la propriete
+     * est dans le modele, le dessin la lit. Les OBJETS de la couche restent
+     * visibles — showPict ne parle que de la peinture, et un bouton cache avec
+     * elle serait un bouton qu'on ne peut plus cliquer.
+     *
+     * CE QUI N'EST PAS MESURE, et qui s'ecrit comme non mesure : ce que fait
+     * HyperCard quand on prend un OUTIL DE PEINTURE sur une couche dont la
+     * peinture est cachee. Montrer le dessin pendant l'edition eviterait de
+     * peindre a l'aveugle ; le cacher obeit a la lettre de la propriete. On
+     * obeit a la lettre, parce qu'inventer une exception serait decider seul.
+     * Le banc, s'il se joue un jour : cacher la peinture, prendre le crayon,
+     * tracer, et regarder si le trait apparait. */
     if (card->bg) {
-        draw_layer_dirty(paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height),
-                         dirtyRect);
+        if (card->bg->show_pict)
+            draw_layer_dirty(paint_bitmap(card->bg, (int)b.size.width, (int)b.size.height),
+                             dirtyRect);
         for (int i = 0; i < card->bg->nparts; i++)
             if (part_touche(card->bg->parts[i], dirtyRect))
                 draw_part(card->bg->parts[i]);
@@ -4971,7 +4985,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     /* La PEINTURE de la carte disparaît en édition de fond, toujours : c'est
      * ce qu'on demande à ⌘B, voir le fond seul et pouvoir y dessiner. */
-    if (!gEditBackground)
+    if (!gEditBackground && card->show_pict)
         draw_layer_dirty(paint_bitmap(card, (int)b.size.width, (int)b.size.height),
                          dirtyRect);
 

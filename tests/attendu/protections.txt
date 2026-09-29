@@ -50,6 +50,30 @@
    2/
 === la copie emporte les verrous ===
    collée : dontSearch=1 cantDelete=1
+
+=== « bkgnd » : LA LECTURE ET L'ECRITURE DISAIENT DEUX CHOSES ===
+── put the name of this background
+   bkgnd "F"
+── put the name of this bkgnd
+   bkgnd "F"
+── put the name of this bg
+   bkgnd "F"
+── set the dontSearch of this background to true
+  put the dontSearch of this background
+   true
+── set the dontSearch of this bkgnd to false
+  put the dontSearch of this bkgnd
+   false
+── set the dontSearch of this bg to true
+  put the dontSearch of this bg
+   true
+── set the dontSearch of this bkgnd to false
+── put the name of last background
+   bkgnd "G"
+── put the name of last bkgnd
+   bkgnd "G"
+── put the name of last bg
+   bkgnd "G"
 === enregistrement puis relecture ===
    hc_save = 0 (0 = réussi)
    fond  F        dontSearch=0 cantDelete=1

@@ -1502,14 +1502,22 @@ static int lit_interne(const unsigned char *octets, size_t n,
         k->id = b->id;
 
         /* Les drapeaux de la COUCHE, à 0x14, les mêmes pour CARD et BKGD :
-         * bit 11 dontSearch, bit 14 cantDelete. Et l'identifiant du bloc BMAP à
-         * 0x10 — le dessin n'est pas lu, mais savoir qu'il existe évite de
-         * prendre une couche illustrée pour une couche vide. */
+         * bit 11 dontSearch, bit 13 « NOT show pict », bit 14 cantDelete. Et
+         * l'identifiant du bloc BMAP à 0x10 — savoir qu'un dessin existe évite
+         * de prendre une couche illustrée pour une couche vide.
+         *
+         * LE BIT 13 EST INVERSÉ, et la spec le nomme ainsi : « not show pict ».
+         * Le recopier tel quel cacherait la peinture de toutes les piles qui la
+         * montrent — c'est-à-dire de presque toutes. On le remet à l'endroit ICI,
+         * une fois, plutôt que chez chaque appelant : un champ qui s'appelle
+         * « montre_le_dessin » et qui vaut l'inverse serait un piège posé pour
+         * plus tard. */
         {
             unsigned f = u16(v, bloc + 0x14);
-            k->dont_search  = (f & 0x0800u) ? 1 : 0;
-            k->cant_delete  = (f & 0x4000u) ? 1 : 0;
-            k->bloc_image   = (int)s32(v, bloc + 0x10);
+            k->dont_search       = (f & 0x0800u) ? 1 : 0;
+            k->cant_delete       = (f & 0x4000u) ? 1 : 0;
+            k->montre_le_dessin  = (f & 0x2000u) ? 0 : 1;
+            k->bloc_image        = (int)s32(v, bloc + 0x10);
         }
 
         int r;

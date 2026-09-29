@@ -59,6 +59,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -99,9 +100,11 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -234,6 +237,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -274,6 +278,7 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -339,6 +344,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     22                                                                   0000000000000000
     23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 --- somme d'une PAGE fausse d'un bit : lu
@@ -360,6 +366,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -400,6 +407,7 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -465,6 +473,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     22                                                                   0000000000000000
     23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 --- la PAGE que la liste nomme est introuvable : lu
@@ -486,6 +495,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -526,6 +536,7 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -591,6 +602,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     22                                                                   0000000000000000
     23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 --- les deux nombres de cartes de la liste se contredisent : lu
@@ -612,6 +624,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -652,6 +665,7 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -717,6 +731,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     22                                                                   0000000000000000
     23                                                                   0000000000000000
 carte id 3001, fond 2000, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 --- un « shadow » sur un CHAMP (ce n'est PAS une anomalie) : lu
@@ -738,6 +753,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -778,9 +794,11 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -864,6 +882,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -904,9 +923,11 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -983,9 +1004,9 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
 --- anomalie AVEC perte : un script abandonne : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
 format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
---- marqueur de script d'une part abime (faute LOCALE) : lu
+--- « not show pict » posé sur la PREMIÈRE carte : lu
 ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
-format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
   bloc STAK id     -1 taille  1600 offset 0x0000
   bloc FTBL id   6000 taille    64 offset 0x0640
   bloc STBL id   7000 taille   160 offset 0x0680
@@ -1002,6 +1023,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -1042,9 +1064,269 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 0
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- « not show pict » posé sur le FOND : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 0 anomalie(s) dont 0 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 0
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on mouseUp
+    |   put "élève à Noël" into card field 1
+    |   ça marche
+    | end mouseUp
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+    INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
+    bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
+    script :
+    | on mouseUp
+    |   if the number of cards ≤ 3 then beep
+    |   put "une ligne" ¬
+    |      & " coupee en deux"
+    | end mouseUp
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  contenu propre,   part 1 : « du texte a la carte »
+  contenu DU FOND, part 1 : « du texte au fond »
+  contenu propre,   part 99 : « un texte sans part »
+  contenu propre,   part 3 : « gras  groupe rien  partiel mort »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  6 (utf8    6) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a 13 (utf8   13) deco  7 : style hérité, corps hérité, police héritée
+      plage a 19 (utf8   19) deco  8 : style 0x29 gras cont cond, corps hérité, police 3 « Geneva »
+      plage a 27 (utf8   27) deco 42 : INTROUVABLE (renvoi mort)
+  contenu DU FOND, part 3 : « élèvè ici »   [décoré]
+      plage a  0 (utf8    0) deco  4 : style 0x01 gras, corps 12, police 3 « Geneva »
+      plage a  1 (utf8    2) deco  5 : style 0x05 gras soul, corps 18, police 16383 « Chicago »
+      plage a  5 (utf8    8) deco  6 : style 0x80 GROUPE, corps hérité, police héritée
+      plage a  7 (utf8   10) deco 42 : INTROUVABLE (renvoi mort)
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 40 octets (juste)
+     0                                                                   0000000000000000
+     1                                                                   0000000000000000
+     2                                                                   0000000000000000
+     3                                                                   0000000000000000
+     4                                 ####                              00000000F0000000
+     5                                         ####                      0000000000F00000
+     6                                                 ####              000000000000F000
+     7                                                         ####      00000000000000F0
+     8                                     ####                          000000000F000000
+     9                                             ####                  00000000000F0000
+    10                                                     ####          0000000000000F00
+    11                                                             ####  000000000000000F
+    12                                                                   0000000000000000
+    13                                                                   0000000000000000
+    14                                                                   0000000000000000
+    15                                                                   0000000000000000
+    16                                                                   0000000000000000
+    17                                                                   0000000000000000
+    18                                                                   0000000000000000
+    19                                                                   0000000000000000
+    20                                                                   0000000000000000
+    21                                                                   0000000000000000
+    22                                                                   0000000000000000
+    23                                                                   0000000000000000
+--- marqueur de script d'une part abime (faute LOCALE) : lu
+ordre : LU ET VERIFIE (sommes de la liste et des pages), 1 page(s)
+format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint la fin, TAIL vu, LIST vu, 1 anomalie(s) dont 1 perdue(s), 2 police(s), 2 contenu(s) décoré(s)
+  bloc STAK id     -1 taille  1600 offset 0x0000
+  bloc FTBL id   6000 taille    64 offset 0x0640
+  bloc STBL id   7000 taille   160 offset 0x0680
+  bloc BKGD id   2000 taille   192 offset 0x0720
+  bloc CARD id   3000 taille   512 offset 0x07E0
+  bloc CARD id   3001 taille    64 offset 0x09E0
+  bloc BMAP id   5000 taille   192 offset 0x0A20
+  bloc BMAP id   5001 taille   128 offset 0x0AE0
+  bloc LIST id   4803 taille    64 offset 0x0B60
+  bloc PAGE id   4804 taille    64 offset 0x0BA0
+  bloc TAIL id     -1 taille    32 offset 0x0BE0
+  script de la pile :
+    | on openStack
+    |   put "prêt" into card field 1
+    | end openStack
+fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script :
+    | on openCard
+    |   pass openCard
+    | end openCard
+  champ  id 1 « A » (54,20,80,250) scrolling
+    visible  police Geneva corps 12 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
+    script : aucun
+  champ  id 3 « DECORE » (120,20,170,250) opaque
+    visible  police Chicago corps 10 style 3 hauteur 18 alignement -1 famille 0
+    dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 1 autoTab 0
+    champ : lockText 0 showLines 0 wideMargins 0 multipleLines 0 autoSelect 0 lignes 1..3
+    script : aucun
+  dessin 64x24, 8 octets par ligne ; masque 0 octets (juste), image 102 octets (calage)
+     0 ................................................................  0000000000000000
+     1 ################################################################  FFFFFFFFFFFFFFFF
+     2 ...#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####....  123456789ABCDEF0
+     3 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     4 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     5 ####....####....####....####....####....####....####....####....  F0F0F0F0F0F0F0F0
+     6 #.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.  AAAAAAAAAAAAAAAA
+     7 ................................................#.#....##.#...#.  000000000000A1A2
+     8 ................................................................  0000000000000000
+     9 ................................................................  0000000000000000
+    10 .......#..#...##.#...#.#.##..####...#..##.#.#.####..##.####.####  0123456789ABCDEF
+    11 #######.##.###..#.###.#.#..##....###.##..#.#.#....##..#....#....  FEDCBA9876543210
+    12 ................................................................  0000000000000000
+    13 ................................................................  0000000000000000
+    14 ...####...####....#...#..####....##..##..#...#...#.##.#.####....  1E3C227866445AF0
+    15 #.##.#..#....######.###.#.#..#.##...#...#.###.##.#.##.######..#.  B487EEA588BB5BF2
+    16 .......#......#.......#......##......###....................#...  0102020607000008
+    17 .###.#.#.....#.##.#.##.##.#......#..##....####.....###.######...  7505ADA04C3C1DF8
+    18 ....####...####...#.##.#..####...#..#.##.#.##.#..##.#..#.####...  0F1E2D3C4B5A6978
+    19 #....####..#.##.#.#..#.##.##.#..##....####.#..#.###....#####....  8796A5B4C3D2E1F0
+    20 ................................................................  0000000000000000
+    21 ................................................................  0000000000000000
+    22 ................................................................  0000000000000000
+    23 ................................................................  0000000000000000
+carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
+  script : aucun
+  dessin : AUCUN
+carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -1123,6 +1405,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -1163,9 +1446,11 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -1249,6 +1534,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -1265,9 +1551,11 @@ fond  id 2000, nom « Fond », 2 parts
     script : aucun
   dessin : AUCUN
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1
@@ -1351,6 +1639,7 @@ format 10, 1 fond(s), 2 carte(s), 512x342, somme juste, 11 blocs, chaine atteint
     |   put "prêt" into card field 1
     | end openStack
 fond  id 2000, nom « Fond », 2 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on openCard
     |   pass openCard
@@ -1391,9 +1680,11 @@ fond  id 2000, nom « Fond », 2 parts
     22 ................................................................  0000000000000000
     23 ................................................................  0000000000000000
 carte id 3001, fond 2000, DEBUT DE FOND, nom «  », 0 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script : aucun
   dessin : AUCUN
 carte id 3000, fond 2000, nom « Atelier », 3 parts
+  drapeaux : dontSearch 0  cantDelete 0  montreLeDessin 1
   script :
     | on mouseUp
     |   put "élève à Noël" into card field 1

@@ -398,6 +398,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         pose_le_dessin(bg, &k->dessin);
         bg->dont_search = k->dont_search;
         bg->cant_delete = k->cant_delete;
+        bg->show_pict   = k->montre_le_dessin;
         if (k->script && *k->script) hc_set_script(bg, k->script);
         for (int j = 0; j < k->nparts; j++)
             if (!pose_part(bg, &k->parts[j])) { free(fonds); free(ids); hc_free(st); return NULL; }
@@ -428,6 +429,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         cd->marked      = k->marque;
         cd->dont_search = k->dont_search;
         cd->cant_delete = k->cant_delete;
+        cd->show_pict   = k->montre_le_dessin;
         if (k->script && *k->script) hc_set_script(cd, k->script);
         for (int j = 0; j < k->nparts; j++)
             if (!pose_part(cd, &k->parts[j])) { free(fonds); free(ids); hc_free(st); return NULL; }
