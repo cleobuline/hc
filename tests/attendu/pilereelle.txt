@@ -228,3 +228,68 @@ chose, puis l'operation ». ZERO contre-exemple.
 -- un nom CALCULE se parenthese
      1993
      le gestionnaire est alle au bout
+
+=== 7. la ligne du calendrier annuel, et ce qui la faisait echouer ===
+(relevé a l'usage. La ligne d'Apple est
+
+   select word (number of words in char 1 to
+                (word 2 of the clickChunk) of bg field theField)
+          of bg field theField
+
+ et elle MARCHE : mesuree sur la vraie pile importee, un clic sur un
+ chiffre rend « Sunday, January 1, 1995 ». Mais les champs du
+ calendrier commencent par des espaces de calage : un clic AVANT le
+ premier chiffre donne « number of words » = ZERO, donc « word 0 ».)
+
+--- 7a. le message nommait la mauvaise cause ---
+(select_cible rendait 0 sur un morceau introuvable, ce qui renvoyait la
+ ligne a l'ANCIEN executeur — qui n'a pas de « select » du tout. Il
+ repondait donc « ne sait pas faire : select word (...) », et ce message
+ envoie chercher du cote de la SYNTAXE, le seul endroit ou il n'y a
+ rien. Cinquieme fois dans ce projet qu'un diagnostic faux coute plus
+ cher qu'un diagnostic vague.)
+-- select word 0 : la cause est nommee
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de button "B".t)
+-- select word 99 : de meme
+     [ERREUR]    !! il n'y a pas de word de rang 99 dans ce champ (v3, ligne 2 de button "B".t)
+-- select last word d'un champ VIDE
+     [ERREUR]    !! il n'y a pas de last word dans ce champ (v3, ligne 3 de button "B".t)
+-- temoin : un rang qui existe
+     deux
+     le gestionnaire est alle au bout
+
+--- 7b. ET LA SELECTION N'EST PLUS EFFACEE EN SILENCE ---
+(le vrai defaut etait dans le CONTRAT : les chemins de faute de
+ select_cible rendaient 1 — « c'est traite » — sans rien poser. Le
+ « if (!select_cible(...)) { if (ctx->erreur) return 1; ... } » de
+ l'appelant sautait donc le bloc ENTIER, garde compris, et la ligne
+ suivante appelait hc_set_selection avec un champ NUL : la selection
+ etait effacee, puis set_result("") annoncait la reussite.
+
+ Sur la pile d'Apple, ca donnait « Saturday, December 31, 1994 » — le
+ jour ZERO de janvier — au lieu de s'arreter. Une mauvaise reponse
+ presentee comme une reponse, ce qui est le pire des trois etats.)
+-- une selection POSEE survit a un select fautif
+     avant : <trois>
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 5 de button "B".t)
+
+--- 7c. CE QUI N'EST PAS CORRIGE, et qui s'ecrit comme tel ---
+(UNE FAUTE DANS UNE FONCTION N'ARRETE PAS L'APPELANT. La fonction
+ s'arrete, rend vide, et la suite du gestionnaire appelant continue.
+ C'est ce qui a fait paraitre la fausse date d'Apple comme une reponse
+ plutot que comme une erreur. Le temoin SANS fonction, lui, s'arrete
+ bien : ce sont les deux cote a cote qui montrent le defaut.
+
+ Non corrige ici parce que le remede touche la machinerie des messages
+ et changerait le comportement d'erreur de TOUT le moteur — une pile
+ qui « marchait » en ignorant une faute dans une fonction s'arreterait
+ desormais. Ce n'est pas a moi d'en decider seul, et ce temoin
+ enregistre l'etat present pour que le changement se voie le jour ou il
+ sera fait.)
+-- la faute est DANS une fonction : l'appelant CONTINUE
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de background "F".casse)
+     
+     L'APPELANT CONTINUE — c'est le defaut
+     le gestionnaire est alle au bout
+-- temoin : la MEME faute sans fonction, le gestionnaire s'arrete
+     [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de button "B".t)

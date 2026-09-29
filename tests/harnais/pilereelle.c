@@ -415,6 +415,86 @@ int main(void)
     joue("un nom cite suivi d'un « of »",  "put bg field \"Year\" of this card");
     joue("un nom CALCULE se parenthese",   "put \"Ye\" & \"ar\" into nm\n  put bg field nm");
 
+    /* ------------------------------------------------------------------ */
+    /* 7. « select word 0 » : « ne sait pas faire » etait un MENSONGE        */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 7. la ligne du calendrier annuel, et ce qui la faisait echouer ===");
+    puts("(relevé a l'usage. La ligne d'Apple est");
+    puts("");
+    puts("   select word (number of words in char 1 to");
+    puts("                (word 2 of the clickChunk) of bg field theField)");
+    puts("          of bg field theField");
+    puts("");
+    puts(" et elle MARCHE : mesuree sur la vraie pile importee, un clic sur un");
+    puts(" chiffre rend « Sunday, January 1, 1995 ». Mais les champs du");
+    puts(" calendrier commencent par des espaces de calage : un clic AVANT le");
+    puts(" premier chiffre donne « number of words » = ZERO, donc « word 0 ».)");
+
+    puts("");
+    puts("--- 7a. le message nommait la mauvaise cause ---");
+    puts("(select_cible rendait 0 sur un morceau introuvable, ce qui renvoyait la");
+    puts(" ligne a l'ANCIEN executeur — qui n'a pas de « select » du tout. Il");
+    puts(" repondait donc « ne sait pas faire : select word (...) », et ce message");
+    puts(" envoie chercher du cote de la SYNTAXE, le seul endroit ou il n'y a");
+    puts(" rien. Cinquieme fois dans ce projet qu'un diagnostic faux coute plus");
+    puts(" cher qu'un diagnostic vague.)");
+    joue("select word 0 : la cause est nommee",
+         "select word 0 of bg field \"Year\"");
+    joue("select word 99 : de meme",
+         "select word 99 of bg field \"Year\"");
+    joue("select last word d'un champ VIDE",
+         "put empty into bg field \"Monday\"\n"
+         "  select last word of bg field \"Monday\"");
+    joue("temoin : un rang qui existe",
+         "put \"un deux trois\" into bg field \"Monday\"\n"
+         "  select word 2 of bg field \"Monday\"\n  put the selection");
+
+    puts("");
+    puts("--- 7b. ET LA SELECTION N'EST PLUS EFFACEE EN SILENCE ---");
+    puts("(le vrai defaut etait dans le CONTRAT : les chemins de faute de");
+    puts(" select_cible rendaient 1 — « c'est traite » — sans rien poser. Le");
+    puts(" « if (!select_cible(...)) { if (ctx->erreur) return 1; ... } » de");
+    puts(" l'appelant sautait donc le bloc ENTIER, garde compris, et la ligne");
+    puts(" suivante appelait hc_set_selection avec un champ NUL : la selection");
+    puts(" etait effacee, puis set_result(\"\") annoncait la reussite.");
+    puts("");
+    puts(" Sur la pile d'Apple, ca donnait « Saturday, December 31, 1994 » — le");
+    puts(" jour ZERO de janvier — au lieu de s'arreter. Une mauvaise reponse");
+    puts(" presentee comme une reponse, ce qui est le pire des trois etats.)");
+    joue("une selection POSEE survit a un select fautif",
+         "put \"un deux trois\" into bg field \"Monday\"\n"
+         "  select word 3 of bg field \"Monday\"\n"
+         "  put \"avant : <\" & the selection & \">\"\n"
+         "  select word 0 of bg field \"Monday\"\n"
+         "  put \"apres : <\" & the selection & \">\"");
+
+    puts("");
+    puts("--- 7c. CE QUI N'EST PAS CORRIGE, et qui s'ecrit comme tel ---");
+    puts("(UNE FAUTE DANS UNE FONCTION N'ARRETE PAS L'APPELANT. La fonction");
+    puts(" s'arrete, rend vide, et la suite du gestionnaire appelant continue.");
+    puts(" C'est ce qui a fait paraitre la fausse date d'Apple comme une reponse");
+    puts(" plutot que comme une erreur. Le temoin SANS fonction, lui, s'arrete");
+    puts(" bien : ce sont les deux cote a cote qui montrent le defaut.");
+    puts("");
+    puts(" Non corrige ici parce que le remede touche la machinerie des messages");
+    puts(" et changerait le comportement d'erreur de TOUT le moteur — une pile");
+    puts(" qui « marchait » en ignorant une faute dans une fonction s'arreterait");
+    puts(" desormais. Ce n'est pas a moi d'en decider seul, et ce temoin");
+    puts(" enregistre l'etat present pour que le changement se voie le jour ou il");
+    puts(" sera fait.)");
+    hc_set_script(bg,
+      "function casse\n"
+      "  select word 0 of bg field \"Monday\"\n"
+      "  return \"la fonction est allee au bout\"\n"
+      "end casse\n");
+    joue("la faute est DANS une fonction : l'appelant CONTINUE",
+         "put casse()\n  put \"L'APPELANT CONTINUE — c'est le defaut\"");
+    joue("temoin : la MEME faute sans fonction, le gestionnaire s'arrete",
+         "select word 0 of bg field \"Monday\"\n"
+         "  put \"CETTE LIGNE NE DOIT PAS PARAITRE\"");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

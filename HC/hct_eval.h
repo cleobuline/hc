@@ -231,6 +231,11 @@ void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg);
  * inconnue : zorglub ». Le texte est composé dans ctx->message. */
 void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
                        const char *quoi, const char *nom);
+/* Même chose, avec un format : « il n'y a pas de word de rang 0 dans ce champ ».
+ * Composée dans ctx->message, comme la précédente, et pour la même raison —
+ * hct_ctx_faute garde le pointeur du message, pas sa copie. */
+void hct_ctx_faute_txt(HctContexte *ctx, const HctNoeud *n,
+                       const char *fmt, ...);
 
 /* Évalue un arbre d'expression. En cas d'erreur, rend une valeur vide et
  * renseigne ctx->erreur — l'appelant doit le tester. */

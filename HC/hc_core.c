@@ -10574,6 +10574,29 @@ static Object *v3_resout_calcule(HctContexte *ctx, const HctNoeud *n)
  * le nœud écrit dans le script, une fois sur le nœud obtenu en réanalysant un
  * désignateur CALCULÉ — « select the foundChunk ». Rend 1 s'il a visé
  * quelque chose, 0 si la forme ne lui dit rien. */
+/* LE CONTRAT, ET IL ÉTAIT ROMPU : rend 1 SEULEMENT si *pf est posé.
+ *
+ * Les chemins de faute rendaient 1 — « c'est traité » — sans rien poser. Or
+ * l'appelant écrit :
+ *
+ *     if (!select_cible(ctx, c, &f, &st, &en)) {
+ *         if (ctx->erreur) return 1;          <- ce garde-là
+ *         ...
+ *     }
+ *     hc_set_selection(f, st, en - st);
+ *
+ * Un 1 sautait donc le bloc ENTIER, garde compris, et la ligne suivante
+ * appelait hc_set_selection avec f à NULL : la sélection était EFFACÉE, puis
+ * set_result("") et un retour 1 annonçaient la réussite. Le gestionnaire
+ * continuait avec une sélection vide et rendait une réponse FAUSSE.
+ *
+ * MESURÉ sur la pile d'Apple, carte du calendrier annuel : un clic à côté d'un
+ * chiffre rendait « Saturday, December 31, 1994 » — le jour ZÉRO de janvier —
+ * au lieu de s'arrêter. Une mauvaise réponse présentée comme une réponse.
+ *
+ * Toute faute rend donc 0 maintenant, et le garde de l'appelant fait son
+ * travail : 0 avec ctx->erreur veut dire « c'était à moi et ça a échoué », 0
+ * sans erreur veut dire « ce n'était pas à moi ». */
 static int select_cible(HctContexte *ctx, const HctNoeud *c,
                         Object **pf, int *pst, int *pen)
 {
@@ -10616,35 +10639,44 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
             int total = hct_chunk_compte(hc_field_text(f), c->sorte,
                                          item_delim());
             n1 = hct_rang_ordinal(c->ordinal, total);
-            if (n1 <= 0) return 0;
+            /* LE CHAMP EST TROUVÉ, L'ORDINAL NE DÉSIGNE RIEN : c'est un fait à
+             * dire, pas une forme qu'on ne comprend pas. « select last word of
+             * un champ vide » en est le cas net. Voir le bloc au-dessous, qui
+             * porte la mesure. */
+            if (n1 <= 0) {
+                hct_ctx_faute_txt(ctx, c, "il n'y a pas de %s %s dans ce champ",
+                                  hct_ordinal_nom(c->ordinal),
+                                  hct_sorte_chunk_nom(c->sorte));
+                return 0;
+            }
         } else if (c->nfils >= 2) {
             char b1[64], b2[64];
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
-            if (ctx->erreur) return 1;
+            if (ctx->erreur) return 0;
             int hors;
             /* Même exigence que partout ailleurs : un rang doit être un
              * nombre, pas seulement quelque chose que strtod avale. */
             if (!hct_est_nombre(b1)) {
                 hct_ctx_faute(ctx, c->fils[0],
                               "un rang numérique est attendu ici");
-                return 1;
+                return 0;
             }
             n1 = hct_vers_rang(b1, &hors);
             if (hors) { hct_ctx_faute(ctx, c->fils[0],
                                       "rang de morceau hors limites");
-                        return 1; }
+                        return 0; }
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
-                if (ctx->erreur) return 1;
+                if (ctx->erreur) return 0;
                 if (!hct_est_nombre(b2)) {
                     hct_ctx_faute(ctx, c->fils[1],
                                   "un rang numérique est attendu ici");
-                    return 1;
+                    return 0;
                 }
                 n2 = hct_vers_rang(b2, &hors);
                 if (hors) { hct_ctx_faute(ctx, c->fils[1],
                                           "rang de morceau hors limites");
-                            return 1; }
+                            return 0; }
             }
         } else {
             return 0;               /* ni ordinal ni borne : rien à viser */
@@ -10652,7 +10684,44 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
 
         HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
                                         n1, n2, item_delim());
-        if (!bo.trouve) return 0;
+        /* LE CHAMP EST TROUVÉ, LE MORCEAU N'EXISTE PAS — ET C'EST UNE FAUTE, PAS
+         * UN « JE NE SAIS PAS FAIRE ».
+         *
+         * Ce « return 0 » renvoyait la ligne à l'ANCIEN EXÉCUTEUR, qui n'a pas
+         * de « select » du tout : il répondait donc « ne sait pas faire :
+         * select word (…) of bg field theField », et ce message envoie chercher
+         * du côté de la SYNTAXE — le seul endroit où il n'y a rien.
+         *
+         * MESURÉ SUR LA PILE D'APPLE, carte du calendrier annuel, avec son vrai
+         * gestionnaire et ses vrais champs. La ligne est
+         *
+         *     select word (number of words in char 1 to
+         *                  (word 2 of the clickChunk) of bg field theField)
+         *            of bg field theField
+         *
+         * et elle marche TRÈS BIEN quand le clic tombe sur un chiffre — « Sunday,
+         * January 1, 1995 », « Monday, January 2, 1995 ». Mais les champs du
+         * calendrier commencent par des espaces de calage : un clic avant le
+         * premier chiffre donne « number of words » = ZÉRO, donc « word 0 », donc
+         * ce chemin. Quatre clics simulés, quatre réponses différentes, et c'est
+         * leur comparaison qui a nommé la cause — un seul relevé aurait accusé la
+         * ligne.
+         *
+         * Dire « il n'y a pas de mot de rang 0 » coûte une ligne et nomme la
+         * cause. Un diagnostic faux coûte plus cher qu'un diagnostic vague : le
+         * vague fait chercher partout, le faux fait chercher au mauvais endroit
+         * et donne confiance en le faisant. C'est la cinquième fois ici. */
+        if (!bo.trouve) {
+            if (n2 && n2 != n1)
+                hct_ctx_faute_txt(ctx, c,
+                                  "il n'y a pas de %s de rang %d à %d dans ce champ",
+                                  hct_sorte_chunk_nom(c->sorte), n1, n2);
+            else
+                hct_ctx_faute_txt(ctx, c,
+                                  "il n'y a pas de %s de rang %d dans ce champ",
+                                  hct_sorte_chunk_nom(c->sorte), n1);
+            return 0;
+        }
         st = bo.deb; en = bo.fin;
     } else {
         return 0;

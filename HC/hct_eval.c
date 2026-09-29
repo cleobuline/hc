@@ -7,6 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 void hct_ctx_init(HctContexte *ctx, HctHote hote)
@@ -43,6 +44,24 @@ void hct_ctx_faute_nom(HctContexte *ctx, const HctNoeud *n,
 {
     if (ctx->erreur) return;
     snprintf(ctx->message, sizeof ctx->message, "%s : %s", quoi, nom ? nom : "?");
+    ctx->erreur = ctx->message;
+    ctx->fautif = n;
+}
+
+/* LA MÊME, AVEC UN FORMAT, et elle est ici plutôt que chez l'appelant parce que
+ * hct_ctx_faute garde le POINTEUR du message et non sa copie : composer dans un
+ * tampon local rendrait une erreur qui pointe sur de la pile libérée, et
+ * composer dans ctx->message SANS passer par ici écraserait le message d'une
+ * faute déjà posée — les deux autres commencent par « si une faute est déjà
+ * là, on garde la première », et une troisième voie qui l'oublierait perdrait
+ * la cause première au profit de la conséquence. */
+void hct_ctx_faute_txt(HctContexte *ctx, const HctNoeud *n, const char *fmt, ...)
+{
+    if (ctx->erreur) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(ctx->message, sizeof ctx->message, fmt, ap);
+    va_end(ap);
     ctx->erreur = ctx->message;
     ctx->fautif = n;
 }

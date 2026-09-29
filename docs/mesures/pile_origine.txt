@@ -1211,3 +1211,80 @@ la porte a été fermée trop grand. Et « card i + 1 » a demandé une SECONDE 
 dans le harnais — sans elle il échouait sur « objet introuvable », ce qui est juste
 et parfaitement ambigu : un témoin qui peut échouer pour deux raisons n'en mesure
 aucune.
+
+LA LIGNE DU CALENDRIER ANNUEL MARCHE ; C'EST LE MESSAGE QUI MENTAIT
+-------------------------------------------------------------------
+
+Relevé à l'usage : « les bugs sont dans la carte du calendrier annuel, quand on
+clique sur un calendrier », avec la ligne d'Apple :
+
+    select word (number of words in char 1 to
+                 (word 2 of the clickChunk) of bg field theField)
+           of bg field theField
+
+LE BANC A ÉTÉ MONTÉ SUR SA VRAIE PILE, IMPORTÉE. C'est ce que l'import rapporte
+maintenant et ça n'avait jamais servi : au lieu de reconstituer un montage
+approchant, on lit « Stack Templates », on l'importe, on se place sur la carte du
+calendrier annuel et l'on envoie mouseUp à un vrai champ, avec un « clickChunk »
+simulé à la position voulue. Mon premier banc synthétique ne montrait RIEN parce
+que son champ ne ressemblait pas aux vrais.
+
+QUATRE CLICS, QUATRE RÉPONSES, et c'est leur comparaison qui a nommé la cause :
+
+    sur le premier chiffre      « Sunday, January 1, 1995 »     0 erreur
+    sur un chiffre plus loin    « Monday, January 2, 1995 »     0 erreur
+    avant le premier chiffre    « ne sait pas faire : select … » + FAUSSE DATE
+    clickChunk vide             « un rang numérique est attendu ici »
+
+LA LIGNE MARCHE. Les champs du calendrier commencent par des espaces de calage —
+« Calendar 1 » commence par vingt espaces avant son premier « 1 » — donc un clic
+avant le premier chiffre donne « number of words in char 1 to 3 » = ZÉRO, donc
+« select word 0 ». Un seul relevé aurait accusé la ligne ; quatre l'ont innocentée.
+
+DEUX DÉFAUTS RÉELS, TROUVÉS EN CHEMIN
+
+1. LE MESSAGE NOMMAIT LA MAUVAISE CAUSE. select_cible rendait 0 sur un morceau
+   introuvable, ce qui renvoyait la ligne à l'ANCIEN exécuteur — qui n'a pas de
+   « select » du tout, son propre commentaire le dit. Il répondait donc « ne sait
+   pas faire : select word (…) of bg field theField », et ce message envoie
+   chercher du côté de la SYNTAXE, le seul endroit où il n'y a rien.
+
+   Cinquième fois dans ce projet qu'un diagnostic faux coûte plus cher qu'un
+   diagnostic vague. Le champ EST trouvé, le rang EST un nombre : « il n'y a pas
+   de word de rang 0 dans ce champ » coûte une ligne et nomme la cause.
+
+2. LE CONTRAT DE select_cible ÉTAIT ROMPU, et c'est le défaut qui rendait la
+   FAUSSE DATE. Ses chemins de faute rendaient 1 — « c'est traité » — sans rien
+   poser. L'appelant écrit :
+
+       if (!select_cible(ctx, c, &f, &st, &en)) {
+           if (ctx->erreur) return 1;          <- ce garde-là
+           ...
+       }
+       hc_set_selection(f, st, en - st);
+
+   Un 1 sautait donc le bloc ENTIER, garde compris, et la ligne suivante appelait
+   hc_set_selection avec un champ NUL : la sélection était effacée, set_result("")
+   annonçait la réussite, et le gestionnaire continuait. D'où « Saturday, December
+   31, 1994 » — le jour ZÉRO de janvier — présenté comme une réponse. Une mauvaise
+   réponse silencieuse est le pire des trois états.
+
+   Toute faute rend 0 maintenant : 0 avec ctx->erreur veut dire « c'était à moi et
+   ça a échoué », 0 sans erreur veut dire « ce n'était pas à moi ».
+
+CE QUI N'EST PAS CORRIGÉ, ET QUI S'ÉCRIT COMME TEL
+
+UNE FAUTE DANS UNE FONCTION N'ARRÊTE PAS L'APPELANT. Mesuré, avec son témoin :
+
+    la faute dans une fonction appelée   -> la fonction s'arrête, L'APPELANT CONTINUE
+    la MÊME faute sans fonction          -> le gestionnaire s'arrête
+
+C'est ce qui a fait paraître la fausse date d'Apple comme une réponse plutôt que
+comme une erreur : returnTheDay s'arrêtait, rendait vide, et le « answer » de
+l'appelant affichait le résultat du reste du calcul.
+
+Non corrigé ici parce que le remède touche la machinerie des messages et
+changerait le comportement d'erreur de TOUT le moteur : une pile qui « marchait »
+en ignorant une faute dans une fonction s'arrêterait désormais. Ce n'est pas à
+décider seul. Le témoin de la section 7c de tests/harnais/pilereelle.c enregistre
+l'état présent, pour que le changement se voie le jour où il sera fait.
