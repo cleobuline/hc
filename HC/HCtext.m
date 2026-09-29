@@ -1,5 +1,10 @@
 #import "HCtext.h"
 #include <stdlib.h>   /* getenv, pour la trace HC_RUNS_DEBUG */
+#include <math.h>     /* floor, pour l'avance des fontes a chasse fixe.
+                       * Declare plutot que compte sur un include transitif de
+                       * Cocoa : le seul compilateur qui trancherait ne tourne
+                       * pas ici, et ce depot a deja paye trois allers-retours
+                       * pour des references que seul Xcode voyait. */
 
 /* ═══ Police, style et geometrie du texte ════════════════════════════════════
  *
@@ -213,6 +218,52 @@ static NSFont *run_base_font(const char *name, int size, NSFont *fallback)
  * bouton par son nom entier. Les avoir en double, c'était garantir qu'un
  * effet ajouté d'un côté manquerait de l'autre — ce qui était le cas du
  * creux et de l'ombré, absents des boutons. */
+/* L'AVANCE D'UNE FONTE BITMAP ÉTAIT ENTIÈRE, ET LA NÔTRE NE L'EST PLUS.
+ *
+ * RELEVÉ À L'USAGE sur le calendrier annuel de « Stack Templates » : les mois
+ * perdaient leurs dernières semaines, chaque ligne de sept jours passant à la
+ * ligne. Ce n'était pas la marge — mesuré :
+ *
+ *     champ        largeur  caracteres  px par caractere disponibles
+ *     4 Month        108        21              5,14
+ *     Calendar 1     115        20              5,75
+ *
+ * Le Courier 9 de macOS avance de 0,6 em, soit 5,40 px. Vingt et un
+ * caractères demandent donc 113,4 px dans un champ qui en fait 108 : ça ne
+ * tient À AUCUNE MARGE, pas même nulle. Raboter la marge horizontale aurait
+ * soigné les champs « Calendar » et laissé les « Month » cassés — la moitié
+ * du symptôme, et la cause masquée.
+ *
+ * LA CAUSE EST LA FONTE. Le Courier du Macintosh était une fonte BITMAP, et
+ * une fonte bitmap avance d'un nombre ENTIER de pixels : 5 à 9 points. Apple
+ * a dimensionné ses champs au pixel près pour cette avance-là ; nous
+ * dessinons avec une fonte vectorielle qui avance de 5,40. Huit pour cent, que
+ * vingt et un caractères multiplient en 5,4 pixels de trop.
+ *
+ * ON RAMÈNE DONC L'AVANCE À L'ENTIER, par le crénage, et SEULEMENT pour les
+ * fontes à chasse fixe d'époque — Courier et Monaco —, les seules où l'écart
+ * s'accumule en colonnes et où la correction est un seul nombre.
+ *
+ * CE QUI N'EST PAS MESURÉ EST ÉCRIT COMME NON MESURÉ. Un seul cas est mesuré :
+ * Courier 9, par la géométrie des champs d'Apple. L'extension aux autres
+ * corps et à Monaco repose sur le principe « une fonte bitmap avance d'un
+ * entier », pas sur un relevé. Les fontes PROPORTIONNELLES — Geneva, Chicago,
+ * New York, Palatino — ne sont pas touchées : il y faudrait une table
+ * d'avances par caractère, que personne n'a mesurée ici. */
+static CGFloat chasse_ancienne(NSFont *f)
+{
+    if (!f || ![f isFixedPitch]) return 0.0;
+    NSString *fam = [f familyName];
+    if (!fam) return 0.0;
+    if (!([fam isEqualToString:@"Courier"] || [fam isEqualToString:@"Monaco"]))
+        return 0.0;
+    CGFloat a = [f maximumAdvancement].width;
+    if (a <= 1.0) return 0.0;             /* avance invraisemblable : on s'abstient */
+    CGFloat vise = floor(a + 0.5);
+    if (vise < 1.0) return 0.0;
+    return vise - a;
+}
+
 static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
 {
     NSMutableDictionary *at = [NSMutableDictionary dictionary];
@@ -254,8 +305,13 @@ static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
 
     /* Condense et extend se rendent par l'approche : c'est ce que faisait le
      * Macintosh, qui rapprochait ou écartait les glyphes sans changer de fonte. */
-    if (style & HC_CONDENSE) at[NSKernAttributeName] = @(-1.0);
-    if (style & HC_EXTEND)   at[NSKernAttributeName] = @(1.5);
+    /* Le crénage se CUMULE désormais : la correction d'avance d'une fonte
+     * d'époque et « condense » sont deux choses, et l'écriture qui écrasait
+     * l'attribut aurait fait disparaître l'une des deux en silence. */
+    CGFloat kern = chasse_ancienne(f);
+    if (style & HC_CONDENSE) kern += -1.0;
+    if (style & HC_EXTEND)   kern +=  1.5;
+    if (kern != 0.0) at[NSKernAttributeName] = @(kern);
 
     /* HC_GROUP ne se voit pas, mais il doit survivre a un aller-retour par
      * l'editeur : on le porte comme attribut personnalise. */

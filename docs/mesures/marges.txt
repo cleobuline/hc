@@ -81,13 +81,45 @@ recopie aucune autre.
 
 CE QUI N'EST PAS MESURÉ, ET S'ÉCRIT COMME TEL
 
-LA MARGE HORIZONTALE. Le même raisonnement s'appliquerait à la largeur — la
-grille des jours fait 21 caractères pour 115 pixels — mais il demanderait
-l'AVANCE des caractères, que le fichier ne porte pas : elle appartient à la
-police, et la police d'HyperCard était une fonte bitmap qui n'existe plus.
-La marge horizontale reste donc à 4 (8 en marges larges), inchangée et non
-mesurée. Si les colonnes restent décalées après cette correction, c'est là
-qu'il faudra regarder, et il faudra une mesure du côté Cocoa, pas un réglage.
+LA MARGE HORIZONTALE RESTE À 4 (8 EN MARGES LARGES), ET CE N'EST PLUS UN
+TROU : ON A REGARDÉ, ET CE N'EST PAS ELLE.
+
+Après la correction verticale, l'utilisatrice a relevé que les mois du
+calendrier perdaient encore leurs dernières semaines. La géométrie d'Apple
+donne la réponse :
+
+    champ        largeur  caracteres  px par caractere disponibles
+    4 Month        108        21              5,14   <- le plus serré
+    Weekdays       104        19              5,47
+    Calendar 1     115        20              5,75
+
+Le Courier 9 de macOS avance de 0,6 em, soit 5,40 px. Vingt et un caractères
+demandent 113,4 px dans un champ qui en fait 108 : ça ne tient À AUCUNE MARGE,
+pas même nulle. Raboter la marge horizontale aurait fait rentrer les champs
+« Calendar » (115 px) et laissé les « Month » (108 px) cassés — la moitié du
+symptôme, et la cause masquée dessous. C'est le genre de réglage qui se paie
+deux fois.
+
+LA CAUSE EST L'AVANCE DE LA FONTE, et elle est corrigée dans HCtext.m
+(chasse_ancienne) : le Courier du Macintosh était une fonte BITMAP, et une
+fonte bitmap avance d'un nombre ENTIER de pixels — 5 à 9 points. Apple a
+dimensionné ses champs au pixel près pour cette avance ; nous dessinons avec
+une vectorielle qui avance de 5,40. Huit pour cent, que vingt et un caractères
+multiplient en 5,4 pixels de trop.
+
+ET UNE VÉRIFICATION QUI N'A PAS TRANCHÉ, écrite parce qu'elle n'a pas tranché :
+j'ai voulu confirmer la règle « avance entière » sur les 44 champs à chasse
+fixe du corpus. Résultat : 34 tiennent avec l'avance de macOS, 35 avec
+l'avance entière, et les pires écarts valent -1200 px. L'instrument comptait
+des champs de PROSE, qui ont parfaitement le droit de passer à la ligne. Il
+mesurait autre chose que ce qu'il annonçait, et ce relevé ne prouve rien.
+Ce qui porte la conclusion est le seul cas dont la mise en page ne PEUT pas
+s'enrouler : la grille en colonnes du calendrier.
+
+RESTE NON MESURÉ : les fontes PROPORTIONNELLES d'époque — Geneva, Chicago,
+New York, Palatino. Le même écart doit exister, mais il y faudrait une table
+d'avances par caractère, et personne ne l'a relevée ici. Elles ne sont pas
+touchées.
 
 CE QUE VAUT LE CHIFFRE DE 28,4 %. Ce n'est pas un taux de réussite : beaucoup
 de champs ne sont pas dimensionnés en lignes entières, et ceux-là ne tombent
