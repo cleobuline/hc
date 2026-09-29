@@ -199,6 +199,12 @@ boucles écrites par le script —
 millions de tours arrête, plus lentement que les trois secondes du pilote
 sous ASan.
 
+LE SECOND TOUR, après les corrections : 120 000 scripts, ZÉRO plantage, 25
+qui ne rendent pas la main en trois secondes. Classés par la pile d'appels au
+moment de l'arrêt : 20 dans execute_repete, les autres dans ce qu'une boucle
+appelle (évaluation, lecture de variable, respiration du plafond). Aucun dans
+collect_ref. Lus à l'œil, les premiers sont « repeat while 1 is 1 » vides.
+
 
 CE QUI N'A PAS ÉTÉ CHERCHÉ
 --------------------------
