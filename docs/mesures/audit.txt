@@ -1,0 +1,211 @@
+AUDIT DU 29 SEPTEMBRE 2026 — CE QUI A ÉTÉ CHERCHÉ, TROUVÉ, ET PAS CHERCHÉ
+=========================================================================
+
+Demandé après la 0.7.1 : « une révision, un audit complet du projet, chercher
+les bugs éventuels ». Soixante mille lignes ne se relisent pas en entier dans
+une séance ; on a donc choisi des INSTRUMENTS, chacun pour une famille de
+défauts, et l'on dit ci-dessous lesquels, sur quoi, et avec quel résultat.
+
+Le point de départ : la suite à 250 conformes, 0 en échec, sous ASan aussi.
+
+
+LES INSTRUMENTS
+---------------
+
+1. L'analyseur statique de clang (--analyze, avec les vérificateurs de bornes
+   « alpha »), sur les dix-sept fichiers du noyau. 25 alertes.
+
+2. Un fuzzer maison, à fork, compilé sous ASan, UBSan (float-cast-overflow
+   compris) et LeakSanitizer — libFuzzer n'est pas installé dans ce conteneur.
+   Trois portes d'entrée, parce que ce sont les trois par où arrive ce que HC
+   n'a pas écrit :
+
+     les SCRIPTS         2 040 graines : les chaînes de script des harnais, les
+                         données de tests/donnees, et 253 gestionnaires de deux
+                         vraies piles (Graph Maker, Readymade Buttons). Mutations
+                         par octet ET par mot d'un dictionnaire HyperTalk.
+                         120 000 scripts avant correction, 120 000 après.
+
+     les fichiers HC     64 graines produites par les harnais qui enregistrent,
+                         plus les deux vraies piles. Lecture, puis
+                         sauvegarde et relecture de ce qui s'est lu.
+                         20 000 fichiers abîmés.
+
+     les piles Apple     six vraies piles au format d'origine. Lecture, import,
+                         sauvegarde, relecture. 8 000 fichiers abîmés.
+
+   Un garde-fou dans le pilote : tout fopen hors d'un bac à sable y est
+   redirigé. Un script aléatoire qui dit « open file "/bin/…" » n'écrit donc
+   que dans le bac.
+
+3. Une relecture du côté Cocoa, PAR FAMILLES et non ligne à ligne : les
+   chaînes C converties pour AppKit, les Object* retenus par l'interface, les
+   tableaux indexés par une valeur de la pile, et les objets réutilisés après un
+   hc_send. Le côté Cocoa ne compile pas ici : rien de ce qui y a été corrigé
+   n'a été EXÉCUTÉ, seulement compilé par le job macOS de l'intégration.
+
+
+CE QUI A ÉTÉ TROUVÉ — LE NOYAU (mesuré, et tenu par un harnais)
+---------------------------------------------------------------
+
+A. UNE LIGNE FAUTIVE S'EXÉCUTAIT EN PARTIE.                  lignefautive
+
+   Le plus grave, et il était caché derrière un faux positif du pilote (voir
+   plus bas). L'analyseur pose l'instruction qu'il a su lire, PUIS la faute à
+   côté ; l'exécuteur faisait le début de la ligne, et se plaignait ensuite.
+
+       delete card "D             la carte courante SUPPRIMÉE, puis l'erreur
+       put 1 into g zz            g posé, puis l'erreur
+       go next card "zz           on change de carte, et AUCUNE erreur
+       repeat with i=1 to 10 step 3   dix tours de pas 1, AUCUNE erreur
+
+   Contredisait ce que v3_cadre_fautif promet en toutes lettres : « une faute
+   dans son CORPS ne condamne qu'une INSTRUCTION ; le gestionnaire s'arrête
+   là ». Corrigé à l'exécution (hct_exec.c), pas dans l'arbre : ni le
+   vérificateur de l'éditeur, ni les témoins qui impriment l'arbre ne bougent.
+
+   CINQ TÉMOINS ONT BOUGÉ, chacun lu : accents, argfaute, rang, repetepour,
+   synonymes. Tous dans le même sens — la ligne fautive ne produit plus rien,
+   l'erreur reste. Deux changent une décision écrite :
+
+     repetepour   disait « la boucle tourne quand même, sur l'en-tête tel
+                  qu'il a pu être lu ». Elle ne tourne plus. Écrit dans le
+                  harnais comme un changement de décision, avec sa raison.
+     rang         CE HARNAIS NE MESURAIT QUE DEUX LIGNES SUR SEPT depuis son
+                  écriture : il écrivait « \"Une\" » dans du HyperTalk, qui n'a
+                  pas d'échappement. La ligne 5 échouait, les cinq suivantes ne
+                  tournaient jamais, et le témoin avait enregistré l'échec. Le
+                  trou n'est devenu visible que parce que le début de la ligne
+                  fautive a cessé de s'afficher. Réparé avec « quote » ; les
+                  sept valeurs vérifiées à la main.
+
+   NON MESURÉ : ce que fait HyperCard d'une ligne fautive. La refuse-t-il en
+   compilant le gestionnaire entier (et alors les lignes d'AVANT ne tournent
+   pas non plus), ou en l'atteignant ? Les deux réponses excluent d'exécuter la
+   moitié de la ligne, et c'est tout ce que la correction pose. Notre choix
+   actuel — les lignes d'avant tournent — est fixé dans la section 3 du
+   harnais, pour qu'il ne bouge pas sans qu'on le voie. Banc à jouer DANS
+   HYPERCARD (Basilisk II) :
+
+       on mouseUp
+         put "avant" into msg
+         go next card "zz
+       end mouseUp
+
+   Deux questions en une : « avant » apparaît-il ? la carte change-t-elle ?
+
+B. « value » D'UN TEXTE À SAUT DE LIGNE GELAIT L'APPLICATION.     valeurgel
+
+       put value("the name of" & return & "me")
+
+   collect_ref sautait les blancs avec skip_spaces (espace, tabulation) et
+   coupait les mots sur isspace (qui reconnaît aussi \n, \r, \v, \f) : mot de
+   zéro octet, aucun progrès, boucle éternelle. Le fuzzing l'atteignait par la
+   ligne fautive de A ; ce chemin-là est fermé, mais « value » y menait encore.
+   Corrigé par un garde : un mot vide arrête la référence.
+
+C. « charToNum() » ET « offset() » SANS ARGUMENT FAISAIENT TOMBER
+   L'APPLICATION.                                              sansargument
+
+   strlen(NULL) dans l'ancien moteur, appelé en recours. Trouvé par
+   l'analyseur statique, la seule de ses 25 alertes qui fût vraie. Un argument
+   absent vaut maintenant le vide, comme length() et numToChar() que la v3
+   servait déjà ainsi. NON MESURÉ : ce que rend HyperCard pour ces appels.
+
+D. UN FICHIER À DEUX EN-TÊTES « stack » PERDAIT LA PREMIÈRE PILE.  deuxpiles
+
+   Fuite de toute la première pile, et des boutons rattachés à une carte de
+   l'ancienne. Les dix premiers fichiers signalés par le fuzzing du lecteur
+   étaient tous celui-là. Le fichier est désormais refusé, avec son motif.
+   Témoin : un script et un champ dont une ligne commence par « stack »
+   s'ouvrent toujours.
+
+E. DEUX CONVERSIONS DOUBLE -> INT AVANT LEUR BORNE.            horsplage
+
+       set the dragSpeed to 1e31850
+       go to marked card 1e30
+
+   Comportement indéfini, relevé par UBSan. Rien de visible sur cette machine :
+   c'est « lance.sh --asan » qui tient ce harnais, pas sa sortie ordinaire.
+
+
+CE QUI A ÉTÉ TROUVÉ — LE CÔTÉ COCOA (lu, compilé, NON EXÉCUTÉ)
+--------------------------------------------------------------
+
+F. UN OCTET INVALIDE EN UTF-8 FAISAIT PLANTER L'APPLICATION.
+
+   +stringWithUTF8String: rend nil, et nil passé en ARGUMENT lève une
+   exception. hcv_texte existait pour ça, posé après un plantage de l'éditeur
+   d'icônes, mais ne couvrait que -setStringValue:. Une quarantaine de sites
+   restaient, dont :
+
+     HCtext.m    @{ @"police" : nil } — un champ dont la police n'est pas de
+                 l'UTF-8 arrêtait l'application AU DESSIN ;
+     HCview.m    -initWithString:nil — idem pour le TEXTE d'un champ ;
+                 -setTitle:nil sur la fenêtre, -setString:nil dans l'éditeur
+                 de script, -initWithTitle:nil pour un menu, -addButtonWith-
+                 Title:nil dans « answer » ; et la boîte de message, rafraîchie
+                 en deux endroits dont un seul passait par hcv_texte.
+
+   Le lecteur n'impose pas l'UTF-8 : un .stack retouché dans un éditeur réglé
+   en Latin-1 suffit. Pour le texte d'un champ, le repli Latin-1 est cohérent
+   avec utf16_from_byte, qui retombe déjà sur « un octet, une unité ».
+
+G. LES PANNEAUX D'INFO SURVIVAIENT À LEUR OBJET.
+
+   Sept panneaux non modaux retiennent un Object*. Fermer la pile, ou supprimer
+   l'objet, pendant que l'un d'eux est ouvert, puis cliquer OK : écriture dans
+   de la mémoire rendue. Site jumeau de gFontTarget, que cocoa_object_gone
+   effaçait déjà, et du panneau des icônes, que la fermeture de pile refermait
+   déjà. hcdlg_objet_disparu les referme, appelé par object_gone.
+
+H. Cmd-S SANS FENÊTRE ENREGISTRAIT UNE PILE LIBÉRÉE.
+
+   saveStack: retombait sur gStack, jamais remis à NULL, et l'application ne
+   quitte pas avec sa dernière fenêtre. Le repli est retiré : sans document,
+   un bip.
+
+   F, G et H sont à vérifier DANS HC (l'application) :
+
+     F   ouvrir un .stack où un nom de police ou un texte de champ est en
+         Latin-1 (réenregistrer le fichier en « Occidental (Mac OS Roman) »
+         depuis un éditeur, après y avoir tapé un accent) ;
+     G   ouvrir Infos du champ, fermer la fenêtre de la pile, cliquer OK ;
+     H   fermer toutes les fenêtres de pile, taper Cmd-S.
+
+   Avant : plantage attendu dans les trois cas. Après : pas de plantage.
+   Rien de cela n'a été vu planter — c'est déduit de la lecture.
+
+
+CE QUI N'EST PAS UN DÉFAUT
+--------------------------
+
+LES 24 AUTRES ALERTES DE L'ANALYSEUR sont des faux positifs. La plupart
+viennent de hc_memoire_epuisee, qui fait exit(1) mais n'est pas déclarée
+noreturn : l'analyseur continue après et imagine un pointeur nul. Les
+autres sont des bornes que les vérificateurs « alpha » ne savent pas suivre.
+
+LES « UTILISATIONS APRÈS LIBÉRATION » DU PREMIER TOUR venaient du PILOTE : il
+envoyait un second message au bouton après que le script eut fait
+« delete me ». Écartées — mais l'une d'elles portait « delete card "D » et a
+mené à A. Un faux positif relu jusqu'au bout vaut mieux qu'un faux positif
+jeté.
+
+LES 120 SCRIPTS « QUI NE RENDENT PAS LA MAIN » : 82 ne gèlent plus une fois A
+et B corrigés. 67 d'entre eux tournaient dans collect_ref, la boucle de B ;
+les 15 autres n'ont pas été examinés un par un. Les 38 qui restent sont des
+boucles écrites par le script —
+« repeat while 1 is 1 » vide, un compteur cassé — que le plafond de dix
+millions de tours arrête, plus lentement que les trois secondes du pilote
+sous ASan.
+
+
+CE QUI N'A PAS ÉTÉ CHERCHÉ
+--------------------------
+
+- Le côté Cocoa ligne à ligne. Quatre familles seulement.
+- L'impression, les effets visuels, le son : aucun instrument ici.
+- La sémantique d'HyperTalk au-delà de ce que les harnais tiennent déjà : le
+  fuzzing cherche des plantages et des gels, pas des résultats faux.
+- La performance.
+- Le presse-papiers (hc_presse_papiers.c) n'a eu que l'analyseur statique.
