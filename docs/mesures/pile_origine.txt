@@ -1288,3 +1288,47 @@ changerait le comportement d'erreur de TOUT le moteur : une pile qui « marchait
 en ignorant une faute dans une fonction s'arrêterait désormais. Ce n'est pas à
 décider seul. Le témoin de la section 7c de tests/harnais/pilereelle.c enregistre
 l'état présent, pour que le changement se voie le jour où il sera fait.
+
+
+L'ÉCRITURE DU FORMAT D'ORIGINE : DÉCISION DE NE PAS LA FAIRE
+============================================================
+
+29 septembre 2026, décision de l'autrice, et ses mots :
+
+    « je renonce a ce que HC sauve les piles sur le format originel ça
+      poserait trop de problèmes avec les couleurs et les icône et de toute
+      façon Hypercard n'existe plus »
+
+Trois raisons, et les trois tiennent.
+
+LA COULEUR N'A PAS DE PLACE DANS CE FORMAT. Le compactage WOBA code un bitmap
+à UN BIT, noir ou blanc. Notre peinture est du HCP1 : du RGBA prémultiplié,
+compressé. Écrire une carte de HC dans le format d'Apple demanderait donc, pour
+chaque dessin, soit de le ramener à deux valeurs en perdant tout le reste, soit
+d'inventer un bloc qu'Apple n'a jamais défini. La première façon perd en
+silence ; la seconde fabrique un fichier que rien au monde ne sait relire, et
+qui porte pourtant les quatre lettres d'un format connu. Les deux sont pires
+que ne pas écrire.
+
+LES ICÔNES EN COULEUR ONT LE MÊME PROBLÈME, en plus net : elles n'existent même
+pas comme idée dans le format de 1987. Le fork de ressources d'HyperCard porte
+des ICON et des CICN d'époque, que nous ne lisons pas encore ; nos icônes à
+nous ne sont ni les unes ni les autres.
+
+ET IL N'Y A PLUS DE LECTEUR EN FACE. Un format d'échange s'écrit pour que
+quelqu'un le lise. HyperCard n'existe plus ; le seul lecteur de ce format, à
+part HC, est un HyperCard qui tourne sous un émulateur — c'est-à-dire notre
+propre banc de mesure, pas un destinataire.
+
+CE QUE ÇA CHANGE DANS LE CODE : RIEN, ET C'EST LE POINT. L'import est à SENS
+UNIQUE, et il l'était déjà. La pile importée est installée SANS CHEMIN, si bien
+que « Enregistrer » demande un nom et n'a aucun moyen d'atteindre le binaire
+d'origine. Ce garde-fou n'était pas une précaution en attendant un écrivain :
+c'est la forme définitive. Le dialogue d'import le dit déjà à l'utilisatrice —
+« Cette pile n'a pas encore de fichier : "Enregistrer" demandera un nom, et
+l'original ne sera pas touché. »
+
+CE QUI RESTE VRAI QUAND MÊME, et qu'il ne faut pas confondre avec ce qui
+précède : les icônes du fork de ressources et les motifs restent des chantiers
+de LECTURE ouverts. Renoncer à écrire le format ne renonce à rien de ce qu'il
+contient.

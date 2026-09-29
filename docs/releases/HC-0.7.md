@@ -76,6 +76,23 @@ than a refusal.
 `.stack` binary is never the target of a save, and cannot become one by
 accident.
 
+And one decision, so that it is not mistaken for a gap: **the import is
+one-way, by design.** HC will not write Apple's format back. WOBA compresses a
+**one-bit** bitmap and the format has no idea of a colour icon; our paint is
+compressed RGBA. Writing a HC stack
+into the 1987 format would mean either flattening every drawing to two values
+in silence, or inventing blocks Apple never defined — a file nothing on earth
+can read, carrying the four letters of a format that is known. Both are worse
+than not writing. And a format is written so that someone can read it:
+HyperCard no longer exists, and the only reader of these bytes besides HC is a
+HyperCard under an emulator, which is our measuring bench rather than a
+recipient. This changes no code — the no-path guard above was never a
+precaution awaiting a writer; it is the finished shape.
+
+Reading is a different question, and stays open: resource-fork icons and
+patterns are still to be read. Giving up on writing the format gives up
+nothing it contains.
+
 ### 2. The corpus
 
 | stack | blocks | bkgnds | cards | anomalies | scripts | lines | accepted |
@@ -257,6 +274,8 @@ arrives from the wrong side.
 - **Named windows** (`window "X"`) — see section 6.
 - **Patterns**, **resource-fork icons**, **HyperCard 1.x**, and
   **private-access stacks** are not read.
+- **Writing** Apple's format is not a gap — see section 1. It is decided
+  against, and the reasons are written down rather than left to be rediscovered.
 - A fault inside a **user function** stops the function but not its caller.
 - Four benches still to play **in HyperCard**: transparent-button hilite,
   `set the fixedLineHeight of … to true`, the page geometry of
