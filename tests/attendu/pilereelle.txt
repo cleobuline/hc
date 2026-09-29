@@ -293,3 +293,56 @@ chose, puis l'operation ». ZERO contre-exemple.
      le gestionnaire est alle au bout
 -- temoin : la MEME faute sans fonction, le gestionnaire s'arrete
      [ERREUR]    !! il n'y a pas de word de rang 0 dans ce champ (v3, ligne 2 de button "B".t)
+
+=== 8. « select char 1 to N of line A to B of <champ> » ===
+(relevé a l'usage dans « Readymade Buttons », sur le menu de sa
+ premiere carte, et repete 222 fois — la ligne est dans une boucle
+ « repeat until the mouse is up » :
+
+   select char 1 to ((number of chars in (line theLine of target)) + 1)
+          of line theLine to (theLine + 1) of target
+
+ select_cible exigeait un OBJET pour cible d'un morceau. Toute la forme
+ imbriquee repartait donc a l'ancien executeur, qui n'a pas de
+ « select » : « ne sait pas faire ».)
+
+--- 8a. LA PAIRE QUI A LOCALISE LE DEFAUT ---
+(la MEME expression, lue puis selectionnee. La lecture marchait deja ;
+ c'est ce qui dit que le trou etait dans select_cible et non dans
+ l'analyseur ni dans le decoupage. Un seul des deux releves aurait
+ envoye chercher au mauvais etage.)
+-- LECTURE du morceau imbrique (marchait deja)
+     Deuxieme
+     le gestionnaire est alle au bout
+-- SELECTION du meme morceau
+     <Deuxieme>
+     le gestionnaire est alle au bout
+
+--- 8b. LES FORMES DE LA PILE ---
+-- avec une PLAGE de lignes
+     <Deuxieme>
+     le gestionnaire est alle au bout
+-- la ligne de la pile, mot pour mot
+     <Deuxieme
+>
+     le gestionnaire est alle au bout
+
+--- 8c. TROIS NIVEAUX, QUE LA RECURSION DONNE SANS RIEN ECRIRE ---
+(la cible d'un morceau se resout par la MEME fonction, qui sait deja
+ rendre un champ ET un intervalle. Ce temoin verifie que ce n'est pas
+ une supposition.)
+-- char of word of line
+     <Tro>
+     le gestionnaire est alle au bout
+
+--- 8d. ET LES BORDS NOMMENT LEUR CAUSE ---
+(dans la pile, le calcul de la ligne vient de la position de la souris :
+ au-dessus du champ il rend un rang NEGATIF, en dessous un rang au-dela
+ du texte. Les deux disaient « ne sait pas faire ».)
+-- une ligne au-dela du texte
+     [ERREUR]    !! il n'y a pas de line de rang 10 à 11 dans ce champ (v3, ligne 2 de button "B".t)
+-- un rang NEGATIF
+     [ERREUR]    !! il n'y a pas de line de rang -3 à -2 dans ce champ (v3, ligne 2 de button "B".t)
+-- temoin : la cible n'est pas un champ
+     [ERREUR]    !! ne sait pas faire : select char 1 to 3 of line 1 of card button "B"
+     le gestionnaire est alle au bout

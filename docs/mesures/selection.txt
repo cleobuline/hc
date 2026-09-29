@@ -361,3 +361,88 @@ ET LE DIALOGUE VIDE A SA PROPRE CAUSE, distincte et non corrigée : une faute DA
 une fonction n'arrête pas l'appelant. returnTheDay butait, s'arrêtait, rendait
 vide, et le « answer » de la ligne du dessus affichait ce vide. Voir la section 7c
 de tests/harnais/pilereelle.c, qui enregistre cet état.
+
+
+UN MORCEAU DANS UN MORCEAU NE SE SÉLECTIONNAIT PAS
+==================================================
+
+Le 29 septembre 2026. Relevé à l'usage dans « Readymade Buttons », sur le menu de
+sa première carte — et répété 222 fois, la ligne étant dans une boucle « repeat
+until the mouse is up » :
+
+    on currentLine
+      put ((the mouseV - top of target) - 4) div (textHeight of target) + 1 into theLine
+      select char 1 to ((number of chars in (line theLine of target)) + 1)
+             of line theLine to (theLine + 1) of target
+    end currentLine
+
+    -> « ne sait pas faire : select char 1 to … »
+
+LA PAIRE QUI A LOCALISÉ LE DÉFAUT, et un seul des deux relevés aurait envoyé
+chercher au mauvais étage :
+
+    put    char 1 to 8 of line 2 of card field "Menu"   ->  « Deuxieme »
+    select char 1 to 8 of line 2 of card field "Menu"   ->  « ne sait pas faire »
+
+La MÊME expression, lue puis sélectionnée. La lecture marchait déjà : ni
+l'analyseur ni le découpage n'étaient en cause, et le trou était forcément dans
+select_cible.
+
+LA CAUSE. select_cible exigeait un OBJET pour cible d'un morceau :
+
+    const HctNoeud *cible = c->fils[c->nfils - 1];
+    if (!cible || cible->genre != HCTN_OBJET) return 0;
+
+Or la cible d'un morceau peut être un autre MORCEAU. Toute la forme imbriquée
+repartait donc à l'ancien exécuteur, qui n'a pas de « select » du tout.
+
+ET CE TROU ÉTAIT DÉJÀ ÉCRIT DANS LE DÉPÔT. tests/harnais/designateurs.c le
+portait, noté en écrivant ce harnais-là : « une forme que select NE SAIT PAS
+FAIRE… inscrit tel quel, sans l'élargir : ce n'est pas le sujet de ce fichier ».
+C'était la bonne décision, et c'est ce témoin qui a dit, en échouant, que le trou
+venait d'être fermé. Un témoin qui a vu un défaut naître est le mieux placé pour
+voir qu'il est mort.
+
+LA CORRECTION EST UNE RÉCURSION. La cible d'un morceau se résout par la MÊME
+fonction, qui sait déjà rendre un champ ET un intervalle. Deux conséquences :
+
+  le morceau intérieur donne un intervalle [base_deb, base_fin) ;
+  le morceau extérieur compte DANS cet intervalle, pas dans le champ — « char 1
+    to 8 of line 2 » compte ses caractères dans la ligne 2 — d'où une COPIE de
+    l'intervalle, hct_chunk_bornes travaillant sur une chaîne terminée par zéro,
+    et le décalage de base remis sur le résultat.
+
+Le cas courant — la cible est le champ entier — ne copie rien : c'est celui de
+toutes les piles sauf une poignée, et copier un champ de quarante-huit kilooctets
+à chaque tour d'une boucle de souris se paierait.
+
+TROIS NIVEAUX MARCHENT SANS QU'ON AIT RIEN ÉCRIT POUR EUX, et c'est vérifié
+plutôt qu'affirmé : « select char 1 to 3 of word 1 of line 3 » rend « Tro ».
+
+MESURÉ SUR LA VRAIE PILE, chargée telle quelle, en déplaçant la souris :
+
+    mouseV 116   « Create card pictures »
+    mouseV 140   « Create pop-up fields »
+    mouseV 158   « Display traveling text »
+    mouseV 176   « Do various things »
+    mouseV 280   « il n'y a pas de line de rang 10 à 11 dans ce champ »
+    mouseV  40   « il n'y a pas de line de rang -3 à -2 dans ce champ »
+
+Les deux derniers comptent autant que les quatre premiers : le calcul de la ligne
+vient de la position de la souris, donc un clic au-dessus du champ rend un rang
+NÉGATIF et un clic en dessous un rang au-delà du texte. Les deux disaient « ne
+sait pas faire » ; ils nomment maintenant leur cause.
+
+ET LE SAUT DE LIGNE FAIT PARTIE DE LA SÉLECTION, ce qui est voulu : « char 1 to
+longueur + 1 » prend la ligne ET son saut, ce qui surligne la rangée entière. Les
+témoins l'affichent entre chevrons pour qu'on le voie.
+
+LE DÉCALAGE EST ABSOLU DANS LE CHAMP, et c'est le témoin de designateurs.c qui le
+prouve : après « select word 1 of line 2 », « the selectedChunk » rend « char 18
+to 24 of card field 1 » — et non un rang relatif à la ligne 2.
+
+SEPTIÈME FOIS QUE MON INSTRUMENT MESURE AUTRE CHOSE QUE CE QU'IL ANNONCE. Mon
+premier banc envoyait le message au BOUTON, où « target » est un bouton et non un
+champ : « ne sait pas faire » y subsistait après la correction, et j'ai failli
+croire à un second défaut. Le remède est toujours le même : monter le banc comme
+le vrai chemin le monte — ici, envoyer mouseDown AU CHAMP, comme le clic le fait.

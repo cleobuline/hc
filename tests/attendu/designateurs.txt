@@ -15,8 +15,9 @@
 == 4. LA SECONDE LIGNE : le numéro de ligne suit la sélection
    line  : line 2 of card field 1
    chunk : char 18 to 30 of card field 1
-      (et un morceau DE morceau, que select ne sait pas faire :)
-   [ERR]    !! ne sait pas faire : select word 1 of line 2 of card field "A"
+      (et un morceau DE morceau, ferme le 29/09 :)
+   chunk : char 18 to 24 of card field 1
+   mot   : <seconde>
 == 5. LA FAMILLE « found… », qui s'écrit pareil
    chunk : char 7 to 10 of card field 1
    field : card field 1

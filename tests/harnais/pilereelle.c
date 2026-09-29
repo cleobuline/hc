@@ -495,6 +495,77 @@ int main(void)
          "select word 0 of bg field \"Monday\"\n"
          "  put \"CETTE LIGNE NE DOIT PAS PARAITRE\"");
 
+    /* ------------------------------------------------------------------ */
+    /* 8. UN MORCEAU DANS UN MORCEAU                                       */
+    /* ------------------------------------------------------------------ */
+
+    puts("");
+    puts("=== 8. « select char 1 to N of line A to B of <champ> » ===");
+    puts("(relevé a l'usage dans « Readymade Buttons », sur le menu de sa");
+    puts(" premiere carte, et repete 222 fois — la ligne est dans une boucle");
+    puts(" « repeat until the mouse is up » :");
+    puts("");
+    puts("   select char 1 to ((number of chars in (line theLine of target)) + 1)");
+    puts("          of line theLine to (theLine + 1) of target");
+    puts("");
+    puts(" select_cible exigeait un OBJET pour cible d'un morceau. Toute la forme");
+    puts(" imbriquee repartait donc a l'ancien executeur, qui n'a pas de");
+    puts(" « select » : « ne sait pas faire ».)");
+
+    /* Un champ de menu, comme celui de la pile : des lignes cliquables. */
+    {
+        Object *menu = hc_new_field(bg, "Menu");
+        hc_set_shared_text(menu, 1);
+        hc_set_field_text(menu, "Premier\nDeuxieme\nTroisieme\nQuatrieme");
+    }
+
+    puts("");
+    puts("--- 8a. LA PAIRE QUI A LOCALISE LE DEFAUT ---");
+    puts("(la MEME expression, lue puis selectionnee. La lecture marchait deja ;");
+    puts(" c'est ce qui dit que le trou etait dans select_cible et non dans");
+    puts(" l'analyseur ni dans le decoupage. Un seul des deux releves aurait");
+    puts(" envoye chercher au mauvais etage.)");
+    joue("LECTURE du morceau imbrique (marchait deja)",
+         "put char 1 to 8 of line 2 of bg field \"Menu\"");
+    joue("SELECTION du meme morceau",
+         "select char 1 to 8 of line 2 of bg field \"Menu\"\n"
+         "  put \"<\" & the selection & \">\"");
+
+    puts("");
+    puts("--- 8b. LES FORMES DE LA PILE ---");
+    joue("avec une PLAGE de lignes",
+         "select char 1 to 8 of line 2 to 3 of bg field \"Menu\"\n"
+         "  put \"<\" & the selection & \">\"");
+    joue("la ligne de la pile, mot pour mot",
+         "put 2 into theLine\n"
+         "  select char 1 to ((number of chars in (line theLine of bg field \"Menu\")) + 1)"
+         " of line theLine to (theLine + 1) of bg field \"Menu\"\n"
+         "  put \"<\" & the selection & \">\"");
+    /* Le saut de ligne fait PARTIE de la selection, et c'est voulu : « char 1 to
+     * longueur + 1 » prend la ligne ET son saut, ce qui surligne la rangee
+     * entiere. Le témoin l'affiche entre chevrons pour qu'on le voie. */
+
+    puts("");
+    puts("--- 8c. TROIS NIVEAUX, QUE LA RECURSION DONNE SANS RIEN ECRIRE ---");
+    puts("(la cible d'un morceau se resout par la MEME fonction, qui sait deja");
+    puts(" rendre un champ ET un intervalle. Ce temoin verifie que ce n'est pas");
+    puts(" une supposition.)");
+    joue("char of word of line",
+         "select char 1 to 3 of word 1 of line 3 of bg field \"Menu\"\n"
+         "  put \"<\" & the selection & \">\"");
+
+    puts("");
+    puts("--- 8d. ET LES BORDS NOMMENT LEUR CAUSE ---");
+    puts("(dans la pile, le calcul de la ligne vient de la position de la souris :");
+    puts(" au-dessus du champ il rend un rang NEGATIF, en dessous un rang au-dela");
+    puts(" du texte. Les deux disaient « ne sait pas faire ».)");
+    joue("une ligne au-dela du texte",
+         "select char 1 to 3 of line 10 to 11 of bg field \"Menu\"");
+    joue("un rang NEGATIF",
+         "select char 1 to 3 of line -3 to -2 of bg field \"Menu\"");
+    joue("temoin : la cible n'est pas un champ",
+         "select char 1 to 3 of line 1 of card button \"B\"");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

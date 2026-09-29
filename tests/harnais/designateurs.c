@@ -100,19 +100,29 @@ int main(void)
      "  select word 1 of card field \"B\"\n"
      "  put \"field : \" & the selectedField & \"   (le DEUXIÈME champ de carte)\"");
 
-    /* §4 — ET UNE FORME QUE « select » NE SAIT PAS FAIRE, trouvée en écrivant
-     * ce harnais : « select word 1 of line 2 of card field "A" » — un morceau
-     * DE morceau — rend « ne sait pas faire ». La lecture les gère depuis ce
-     * matin, l'écriture depuis des jours ; c'est « select » qui ne les prend
-     * pas. Inscrit tel quel, sans l'élargir : ce n'est pas le sujet de ce
-     * fichier, et une correction glissée là dedans se mélangerait au format
-     * des désignateurs. */
+    /* §4 — ET LE MORCEAU DE MORCEAU, QUI EST DEPUIS FERMÉ.
+     *
+     * Ce paragraphe portait une note : « une forme que select NE SAIT PAS FAIRE,
+     * trouvée en écrivant ce harnais — la lecture les gère, l'écriture aussi,
+     * c'est select qui ne les prend pas. Inscrit tel quel, sans l'élargir : ce
+     * n'est pas le sujet de ce fichier. »
+     *
+     * C'était la bonne décision — une correction glissée là se serait mélangée
+     * au format des désignateurs — et le trou a été fermé le 29 septembre, quand
+     * « Readymade Buttons » l'a fait remonter sur le menu de sa première carte,
+     * 222 fois de suite. Voir la section 8 de pilereelle.c, qui porte la mesure.
+     *
+     * La ligne RESTE ici, et elle rend maintenant son mot au lieu d'un refus :
+     * un témoin qui a vu un défaut naître est le mieux placé pour voir qu'il
+     * est mort. */
     essai("4. LA SECONDE LIGNE : le numéro de ligne suit la sélection",
      "  select line 2 of card field \"A\"\n"
      "  put \"line  : \" & the selectedLine\n"
      "  put \"chunk : \" & the selectedChunk\n"
-     "  put \"   (et un morceau DE morceau, que select ne sait pas faire :)\"\n"
-     "  select word 1 of line 2 of card field \"A\"");
+     "  put \"   (et un morceau DE morceau, ferme le 29/09 :)\"\n"
+     "  select word 1 of line 2 of card field \"A\"\n"
+     "  put \"chunk : \" & the selectedChunk\n"
+     "  put \"mot   : <\" & the selection & \">\"");
 
     essai("5. LA FAMILLE « found… », qui s'écrit pareil",
      "  go to card 1\n"

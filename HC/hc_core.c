@@ -10618,9 +10618,68 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
         st = 0; en = (int)strlen(hc_field_text(f));
     } else if (c->genre == HCTN_CHUNK && c->nfils >= 1) {
         const HctNoeud *cible = c->fils[c->nfils - 1];
-        if (!cible || cible->genre != HCTN_OBJET) return 0;
-        f = hct_resout(ctx, cible);
-        if (!f || f->type != OBJ_FIELD) return 0;
+        if (!cible) return 0;
+
+        /* UN MORCEAU PEUT PORTER UN AUTRE MORCEAU POUR CIBLE, et cette branche
+         * exigeait un OBJET. Toute la forme imbriquée repartait donc à l'ancien
+         * exécuteur, qui n'a pas de « select » : « ne sait pas faire ».
+         *
+         * RELEVÉ À L'USAGE, dans « Readymade Buttons », sur le menu de sa
+         * première carte — et répété 222 fois, la ligne étant dans une boucle
+         * « repeat until the mouse is up » :
+         *
+         *     select char 1 to ((number of chars in (line theLine of target)) + 1)
+         *            of line theLine to (theLine + 1) of target
+         *
+         * ET LE MÊME MORCEAU SE LISAIT DÉJÀ TRÈS BIEN : « put char 1 to 8 of
+         * line 2 of card field "Menu" » rend « Deuxieme ». C'est ce témoin-là
+         * qui dit que le trou est ICI et non dans l'analyseur ni dans le
+         * découpage — une lecture et une sélection de la même expression, côte
+         * à côte, et une seule des deux marchait.
+         *
+         * La récursion est la réponse naturelle : la cible d'un morceau se
+         * résout par la même fonction, qui sait déjà rendre un champ ET un
+         * intervalle. Un morceau sur trois niveaux marche donc aussi, sans
+         * qu'on ait rien écrit pour lui. */
+        int base_deb = 0, base_fin = 0;
+        if (cible->genre == HCTN_CHUNK) {
+            if (!select_cible(ctx, cible, &f, &base_deb, &base_fin)) return 0;
+            if (!f || f->type != OBJ_FIELD) return 0;
+        } else if (cible->genre == HCTN_OBJET) {
+            f = hct_resout(ctx, cible);
+            if (!f || f->type != OBJ_FIELD) return 0;
+            base_deb = 0;
+            base_fin = (int)strlen(hc_field_text(f));
+        } else {
+            return 0;
+        }
+
+        /* LE TEXTE SUR LEQUEL CE MORCEAU-CI COMPTE, et c'est le point délicat :
+         * « char 1 to 8 of line 2 » compte ses caractères DANS LA LIGNE 2, pas
+         * dans le champ. hct_chunk_bornes travaille sur une chaîne terminée par
+         * un zéro ; on lui donne donc une COPIE de l'intervalle, et l'on remet
+         * le décalage de base sur le résultat.
+         *
+         * Le cas courant — la cible est le champ entier — ne copie rien : c'est
+         * celui de toutes les piles sauf une poignée, et la copie d'un champ de
+         * quarante-huit kilo-octets à chaque tour d'une boucle de souris se
+         * paierait. */
+        const char *tout = hc_field_text(f);
+        int total_octets = (int)strlen(tout);
+        if (base_deb < 0) base_deb = 0;
+        if (base_fin > total_octets) base_fin = total_octets;
+        if (base_fin < base_deb) base_fin = base_deb;
+
+        ARENA_MARK;
+        const char *base = tout;
+        if (base_deb != 0 || base_fin != total_octets) {
+            char *sous = arena_buf();
+            int n = base_fin - base_deb;
+            if (n >= HC_VAL) n = HC_VAL - 1;
+            memcpy(sous, tout + base_deb, (size_t)n);
+            sous[n] = '\0';
+            base = sous;
+        }
 
         int n1 = 0, n2 = 0;
         if (c->ordinal) {
@@ -10636,8 +10695,7 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
              * déjà : en écrire une seconde copie ici aurait donné deux tables
              * d'ordinaux à tenir d'accord, et « middle » a déjà été faux une
              * fois — total/2+1 et non (total+1)/2. */
-            int total = hct_chunk_compte(hc_field_text(f), c->sorte,
-                                         item_delim());
+            int total = hct_chunk_compte(base, c->sorte, item_delim());
             n1 = hct_rang_ordinal(c->ordinal, total);
             /* LE CHAMP EST TROUVÉ, L'ORDINAL NE DÉSIGNE RIEN : c'est un fait à
              * dire, pas une forme qu'on ne comprend pas. « select last word of
@@ -10647,43 +10705,42 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
                 hct_ctx_faute_txt(ctx, c, "il n'y a pas de %s %s dans ce champ",
                                   hct_ordinal_nom(c->ordinal),
                                   hct_sorte_chunk_nom(c->sorte));
-                return 0;
+                { ARENA_FREE; return 0; }
             }
         } else if (c->nfils >= 2) {
             char b1[64], b2[64];
             v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
-            if (ctx->erreur) return 0;
+            if (ctx->erreur) { ARENA_FREE; return 0; }
             int hors;
             /* Même exigence que partout ailleurs : un rang doit être un
              * nombre, pas seulement quelque chose que strtod avale. */
             if (!hct_est_nombre(b1)) {
                 hct_ctx_faute(ctx, c->fils[0],
                               "un rang numérique est attendu ici");
-                return 0;
+                { ARENA_FREE; return 0; }
             }
             n1 = hct_vers_rang(b1, &hors);
             if (hors) { hct_ctx_faute(ctx, c->fils[0],
                                       "rang de morceau hors limites");
-                        return 0; }
+                        { ARENA_FREE; return 0; } }
             if (c->nfils >= 3) {
                 v3_val_texte(ctx, c->fils[1], b2, sizeof b2);
-                if (ctx->erreur) return 0;
+                if (ctx->erreur) { ARENA_FREE; return 0; }
                 if (!hct_est_nombre(b2)) {
                     hct_ctx_faute(ctx, c->fils[1],
                                   "un rang numérique est attendu ici");
-                    return 0;
+                    { ARENA_FREE; return 0; }
                 }
                 n2 = hct_vers_rang(b2, &hors);
                 if (hors) { hct_ctx_faute(ctx, c->fils[1],
                                           "rang de morceau hors limites");
-                            return 0; }
+                            { ARENA_FREE; return 0; } }
             }
         } else {
-            return 0;               /* ni ordinal ni borne : rien à viser */
+            { ARENA_FREE; return 0; }               /* ni ordinal ni borne : rien à viser */
         }
 
-        HctBornes bo = hct_chunk_bornes(hc_field_text(f), c->sorte,
-                                        n1, n2, item_delim());
+        HctBornes bo = hct_chunk_bornes(base, c->sorte, n1, n2, item_delim());
         /* LE CHAMP EST TROUVÉ, LE MORCEAU N'EXISTE PAS — ET C'EST UNE FAUTE, PAS
          * UN « JE NE SAIS PAS FAIRE ».
          *
@@ -10720,9 +10777,10 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
                 hct_ctx_faute_txt(ctx, c,
                                   "il n'y a pas de %s de rang %d dans ce champ",
                                   hct_sorte_chunk_nom(c->sorte), n1);
-            return 0;
+            { ARENA_FREE; return 0; }
         }
-        st = bo.deb; en = bo.fin;
+        ARENA_FREE;
+        st = base_deb + bo.deb; en = base_deb + bo.fin;
     } else {
         return 0;
     }
