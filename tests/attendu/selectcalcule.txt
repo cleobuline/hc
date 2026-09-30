@@ -1,6 +1,6 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 -- 1. l'idiome du manuel --
-foundChunk    [char 7 to 10 of card field 1]
+foundChunk    []
 selectedChunk [char 7 to 10 of card field 1]
 selectedText  [beta]
 -- 2. par une variable --

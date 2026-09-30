@@ -641,11 +641,22 @@ on sectionChemins
   -- (mesure Basilisk du 30/09) — la ligne l'attendait egal au selectedChunk
   -- et echouait la-bas seulement. Ce qui le vide, et quoi d'autre avec lui,
   -- est dans docs/mesures/find.txt.
+  --
+  -- ET TOUT SE RELEVE AVANT D'ECRIRE : la premiere ligne du rapport ecrit
+  -- dans le champ R. « et le texte suit » passait dans HyperCard alors que
+  -- foundText y est vide apres le select : la selection y etait donc vide
+  -- aussi, perdue probablement par cette ecriture — DEDUIT, non mesure. La
+  -- ligne comparait deux vides sans rien verifier.
   find "bet"
   put the foundChunk into fc
+  put the foundText into ft
   select the foundChunk
-  egal "select the foundChunk", the selectedChunk, fc
-  egal "et le texte suit", the selectedText, the foundText
+  put the selectedChunk into sc
+  put the selectedText into sx
+  put the foundChunk into fapres
+  egal "select the foundChunk", sc, fc
+  egal "et le texte suit", sx, ft
+  egal "select efface la trouvaille", fapres, ""
 
   -- LE TEXTE D'UN MORCEAU, par le morceau et par la propriete.
   egal "selectedText et value(selectedChunk)", the selectedText, value(the selectedChunk)
