@@ -1,0 +1,19 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+carte courante : aucune
+── go first background
+         !! objet introuvable (v3, ligne 1)
+── go last bkgnd
+         !! objet introuvable (v3, ligne 1)
+── go next background
+         !! objet introuvable (v3, ligne 1)
+── go prev bkgnd
+         !! objet introuvable (v3, ligne 1)
+── put the name of first background
+         !! objet introuvable (colonne 2) dans «  first background »
+         !! objet introuvable (colonne 2) dans «  first background »
+         !! objet introuvable (v3, ligne 1)
+── put the number of cards
+      0
+── go first card
+         !! objet introuvable (v3, ligne 1)
+fini sans planter

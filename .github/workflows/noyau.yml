@@ -38,6 +38,18 @@ jobs:
       - name: suite sous ASan + UBSan
         run: make test-asan
 
+  analyse:
+    # L'analyseur statique de clang : il suit les chemins d'un pointeur nul à
+    # travers les tests, ce qu'aucun avertissement ne fait. Deux minutes et
+    # demie sur un cœur ; d'où un travail à lui, comme les sanitizers.
+    name: analyse statique
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: clang --analyze, zéro alerte
+        run: make analyse
+
   cocoa:
     # LES QUINZE FICHIERS .m N'ÉTAIENT COMPILÉS NULLE PART.
     #
