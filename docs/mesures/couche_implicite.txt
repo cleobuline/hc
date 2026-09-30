@@ -56,6 +56,72 @@ LE BANC POUR LES TROIS, à jouer DANS HYPERCARD :
     end mouseUp
 
 
+LE BANC COMPLET — 30 SEPTEMBRE
+------------------------------
+
+Le banc ci-dessus ne mesurait ni les COMPTES ni les boutons. Joué DANS HC
+(le noyau, même dispositif), il a montré que « the number of fields » et
+« the number of buttons » ADDITIONNENT les deux couches — probablement une
+seconde divergence de la même famille, et non mesurée chez HyperCard.
+
+LE DISPOSITIF, à construire tel quel, DANS CET ORDRE (le rang compte) :
+
+    champs de CARTE : "A", "R", "Commun", "SeulCarte"      (A est le n° 1)
+    champs de FOND  : "T", "Commun", "SeulFond"            (T est le n° 1)
+    boutons de CARTE : "BC", puis "Banc"                   (BC est le n° 1)
+    bouton de FOND   : "BF"
+
+Script du bouton « Banc », à jouer DANS HYPERCARD (Basilisk II). Les lignes
+qui risquent « No such field » sont À LA FIN : si un dialogue d'erreur
+apparaît, noter son texte et la dernière ligne écrite dans R.
+
+    on mouseUp
+      put "surCarte" into card field "A"
+      put "auFond" into bg field "T"
+      put "communCarte" into card field "Commun"
+      put "communFond" into bg field "Commun"
+      put "seulFond" into bg field "SeulFond"
+      put "seulCarte" into card field "SeulCarte"
+      put empty into card field "R"
+      put "A1 " & field 1 & return after card field "R"
+      put "A5 " & the name of field 1 & return after card field "R"
+      put "A6 " & the number of fields & return after card field "R"
+      put "A7 " & the number of card fields & return after card field "R"
+      put "A8 " & the number of bkgnd fields & return after card field "R"
+      put "B1 " & the name of button 1 & return after card field "R"
+      put "B2 " & the number of buttons & return after card field "R"
+      put "B3 " & the number of bkgnd buttons & return after card field "R"
+      put "A3b " & field "Commun" & return after card field "R"
+      put "A2 " & field "T" & return after card field "R"
+      put "zzz" into field 1
+      put "A4 carte [" & card field "A" & "] fond [" & bg field "T" & "]" & return after card field "R"
+      hide field 1
+      put "C2 carte " & the visible of card field "A" & " fond " & the visible of bg field "T" & return after card field "R"
+      show card field "A"
+      show bg field "T"
+      put "A3 " & field "SeulCarte" & return after card field "R"
+      put "FIN" & return after card field "R"
+    end mouseUp
+
+    ligne    HC (noyau, 30 sept.)          HyperCard
+    A1       surCarte                      auFond (27 sept., torture)
+    A5       card field "A"                ?
+    A6       7  (4 + 3, additionnés)       ?
+    A7       4                             ?
+    A8       3                             ?
+    B1       card button "BC"              ?
+    B2       3  (2 + 1, additionnés)       ?
+    B3       1                             ?
+    A3b      communCarte                   ?
+    A2       auFond  (repli sur le fond)   ?
+    A4       carte [zzz] fond [auFond]     ?
+    C2       carte false fond true         ?
+    A3       seulCarte (repli)             ?  (ou « No such field » ?)
+
+Tant que la colonne de droite porte des « ? », rien ne se corrige : A6 et B2
+en particulier ne sont que soupçonnés.
+
+
 POURQUOI RIEN N'EST CORRIGÉ
 ---------------------------
 
