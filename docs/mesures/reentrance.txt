@@ -128,6 +128,18 @@ HyperCard aurait écrit « card id … ».
     sortait jamais. Le drapeau se lève maintenant là où le clic est vu,
     dans la file. Le clic, lui, reste servi après le script.
 
+Passage 2 REJOUÉ DANS HC (l'application) après la correction, 30 septembre.
+Même étiquette déduite, même raison (« Sans titre », « carte 1 ») :
+
+    départ, contexte : Sans titre/carte 1
+    fin de Long à t=481
+    clic A à t=481, Long en cours : false
+    touche x à t=481, Long en cours : false
+
+  · 12 CORRIGÉ : le clic, donné le premier, est servi le premier.
+  · « the mouseClick » n'est pas exercé par ce banc : sa correction reste
+    NON VÉRIFIÉE à l'usage.
+
 RESTE À MESURER
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et
