@@ -34,6 +34,7 @@ minute de distance.
 
     make verifie            le noyau compile
     make avertissements     onze familles, gcc ET clang, ZÉRO toléré
+    make analyse            clang --analyze, ZÉRO toléré (1 min 20, aussi en CI)
     ./tests/lance.sh        la suite de non-régression
     ./tests/lance.sh --asan la même sous ASan, UBSan et LeakSanitizer
     ./tests/lance.sh --enregistre   réenregistre les témoins

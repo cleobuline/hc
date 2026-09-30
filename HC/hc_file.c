@@ -808,6 +808,18 @@ static int get_quoted(const char *line, int which, char *out, int outlen)
  * réenregistrerait par-dessus l'original sans savoir ce qu'il a perdu. */
 typedef struct { char *buf; size_t len, cap; int manque; int nseg; } Acc;
 
+/* ACC_INVARIANT : buf vaut NULL SI ET SEULEMENT SI cap vaut 0 — c'est l'état
+ * de départ ({0}) et celui que rend acc_take. Dans cet état, le test de
+ * capacité est toujours vrai, et l'on passe par realloc avant tout memcpy ;
+ * un realloc raté rend la main avant. Le test « !a->buf » des trois
+ * fonctions qui suivent ne peut donc pas se déclencher. Il est là pour que
+ * l'analyseur de clang, qui ne relie pas buf et cap, le voie écrit.
+ *
+ * Un audit extérieur recommandait « if (a->manque || !a->buf) return; » EN
+ * TÊTE : buf valant NULL au départ, plus rien ne s'accumulait jamais.
+ * Mesuré : deux harnais tombent — ceux qui relisent l'ancien format et la
+ * peinture. */
+
 static void acc_line(Acc *a, const char *s)
 {
     size_t n = strlen(s);
@@ -818,6 +830,7 @@ static void acc_line(Acc *a, const char *s)
         if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
+    if (!a->buf) { a->manque = 1; return; }   /* voir ACC_INVARIANT */
     memcpy(a->buf + a->len, s, n);
     a->len += n;
     a->buf[a->len++] = '\n';
@@ -836,6 +849,7 @@ static void acc_join(Acc *a, const char *s)
         if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
+    if (!a->buf) { a->manque = 1; return; }   /* voir ACC_INVARIANT */
     memcpy(a->buf + a->len, s, n);
     a->len += n;
     a->buf[a->len] = '\0';
@@ -865,6 +879,7 @@ static void acc_seg(Acc *a, const char *s)
         if (!p) { a->manque = 1; return; }
         a->buf = p; a->cap = cap;
     }
+    if (!a->buf) { a->manque = 1; return; }   /* voir ACC_INVARIANT */
     if (a->nseg++ > 0) a->buf[a->len++] = '\n';
     memcpy(a->buf + a->len, s, n);
     a->len += n;

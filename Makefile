@@ -54,7 +54,7 @@ BASE     = -std=gnu99 -I HC
 
 SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
 
-.PHONY: test test-asan test-enregistre verifie avertissements propre aide
+.PHONY: test test-asan test-enregistre verifie avertissements analyse propre aide
 
 aide:
 	@echo "make test              la suite de non-régression"
@@ -62,6 +62,7 @@ aide:
 	@echo "make test-enregistre   remet à jour les sorties de référence"
 	@echo "make verifie           compile le noyau, sans rien produire"
 	@echo "make avertissements    compile sous huit familles d'avertissements"
+	@echo "make analyse           l'analyseur statique de clang, zéro alerte tolérée"
 	@echo "make propre            efface les objets de test"
 
 test:
@@ -123,6 +124,32 @@ avertissements:
 	 else \
 	   echo "aucun avertissement, aux trois niveaux et sous clang"; \
 	 fi
+
+# L'ANALYSEUR STATIQUE DE CLANG, ZÉRO ALERTE TOLÉRÉE.
+#
+# Recommandé par un audit extérieur, qui avait trouvé avec lui un vrai
+# plantage — « go first background » sans carte courante, reproduit sous
+# ASan. Il suit des chemins qu'aucun avertissement ne suit : un pointeur nul
+# d'un côté d'un test, déréférencé de l'autre.
+#
+# PAS DANS « avertissements » : il met deux minutes et demie sur un cœur, et
+# cette porte-là se passe avant chaque poussée. Il tourne donc à part, en
+# parallèle, et dans son propre travail de CI.
+#
+# Sans clang, la cible ÉCHOUE au lieu de réussir en silence : une porte qui
+# ne pose pas sa question n'est pas une porte.
+analyse:
+	@clang=$$(command -v clang 2>/dev/null); \
+	 if [ -z "$$clang" ]; then echo "clang est absent : l'analyse n'a pas eu lieu"; exit 1; fi; \
+	 cpus=$$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2); \
+	 sortie=$$(printf '%s\n' $(SOURCES) | \
+	   xargs -P "$$cpus" -I{} $$clang --analyze $(BASE) -o /dev/null {} 2>&1); \
+	 n=$$(printf '%s\n' "$$sortie" | grep -c 'warning:'); \
+	 if [ "$$n" -ne 0 ]; then \
+	   printf '%s\n' "$$sortie"; \
+	   echo "$$n alerte(s) de l'analyseur : la cible echoue"; exit 1; \
+	 fi; \
+	 echo "aucune alerte de l'analyseur statique"
 
 propre:
 	@rm -rf tests/.travail

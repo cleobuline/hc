@@ -3775,6 +3775,16 @@ static Object *resolve_local(const char *ref)
              * courante. On prend le premier ou le dernier OBJ_BACKGROUND de
              * la pile, puis sa première carte. */
             if (absolu) {
+                /* SANS CARTE COURANTE, IL N'Y A PAS DE PILE.
+                 *
+                 * stack vaut card->owner, donc NULL tant qu'aucune carte
+                 * n'est posée — une boîte de messages tapée avant qu'une
+                 * pile soit ouverte. « go first background » y plantait,
+                 * ici, par stack->nparts. Les autres sites de ce résolveur
+                 * testaient « stack && » dans leur boucle ; celui-ci était le
+                 * seul à ne pas le faire. Signalé par un audit extérieur
+                 * (clang --analyze), reproduit sous ASan. */
+                if (!stack) return NULL;
                 Object *cible = NULL;
                 for (int i = 0; i < stack->nparts; i++) {
                     Object *o = stack->parts[i];
@@ -10594,7 +10604,7 @@ static void v3_touches(const HctNoeud *n, int deb, char *out, int outlen)
         if (!*m) continue;
         pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
                         pos ? ", " : "", m);
-        if (pos >= outlen) { pos = outlen - 1; break; }
+        if (pos >= outlen) break;
     }
 }
 
@@ -10616,7 +10626,7 @@ static void v3_point(HctContexte *ctx, const HctNoeud *n, int deb, int fin,
         if (ctx->erreur) return;
         pos += snprintf(out + pos, (size_t)(outlen - pos), "%s%s",
                         pos ? "," : "", v);
-        if (pos >= outlen) { pos = outlen - 1; break; }
+        if (pos >= outlen) break;
     }
 }
 
@@ -14112,7 +14122,7 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
         if (!*m) continue;
         pos += snprintf(nom + pos, sizeof nom - (size_t)pos, "%s%s",
                         pos ? " " : "", m);
-        if (pos >= (int)sizeof nom) { pos = (int)sizeof nom - 1; break; }
+        if (pos >= (int)sizeof nom) break;
     }
 
     /* Le suffixe « tool » peut aussi être venu de la chaîne elle-même. */
@@ -15014,7 +15024,7 @@ static void v3_mots(HctContexte *ctx, const HctNoeud *n, int deb,
         if (!*m) continue;
         pos += snprintf(mots + pos, taille - (size_t)pos, "%s%s",
                         pos ? " " : "", m);
-        if (pos >= (int)taille) { pos = (int)taille - 1; break; }
+        if (pos >= (int)taille) break;
     }
 }
 
@@ -15662,8 +15672,13 @@ static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx);
  * déclencher d'autres (« send », « do »), qui posent la leur. */
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
 {
+    /* L'exécuteur passe toujours le nœud qu'il exécute, jamais NULL ; mais ce
+     * rappel testait « n && » à la ligne suivante, puis le confiait à
+     * v3_commande_corps qui le déréférence sans test. Le contrat se dit ici,
+     * une fois. */
+    if (!n) return 0;
     int avant = g_ligne_cmd;
-    if (n && n->jeton.ligne > 0) g_ligne_cmd = n->jeton.ligne;
+    if (n->jeton.ligne > 0) g_ligne_cmd = n->jeton.ligne;
     int r = v3_commande_corps(d, n, ctx);
     g_ligne_cmd = avant;
     return r;

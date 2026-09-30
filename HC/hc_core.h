@@ -896,6 +896,12 @@ void        hc_set_host(const HcHost *h);
 
 /* Épuisement mémoire : prévient l'hôte (dernière chance de sauver, cf. panic)
  * puis s'arrête. Ne revient jamais. */
+/* Ne revient JAMAIS : elle finit par exit(1). Le dire au compilateur ôte à
+ * l'analyseur statique de fausses alertes — « déréférence de NULL » juste
+ * après un malloc raté qu'elle a déjà traité. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noreturn))
+#endif
 void        hc_memoire_epuisee(const char *quoi);
 
 Object *hc_current_card(void);
