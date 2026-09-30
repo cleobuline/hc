@@ -34,3 +34,8 @@ make test                                                                  # le 
 
 Le noyau et l'interpréteur sont en C99 et se testent aussi sous Linux :
 plus de 260 harnais, comparés à HyperCard sous Basilisk II.
+
+## Licence
+
+[MIT](LICENSE) : libre d'utiliser, de modifier et de redistribuer, à condition
+de citer les auteurs, **Patricia Benedetto** et **Claude** (Anthropic).

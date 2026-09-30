@@ -32,3 +32,8 @@ make test                                                                  # the
 
 The kernel and interpreter are C99 and are also tested on Linux: more than
 260 harnesses, checked against HyperCard running under Basilisk II.
+
+## License
+
+[MIT](LICENSE): free to use, modify and redistribute, provided the authors
+are credited — **Patricia Benedetto** and **Claude** (Anthropic).
