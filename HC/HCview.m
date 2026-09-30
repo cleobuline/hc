@@ -3483,6 +3483,26 @@ static void cocoa_play(const char *name) {
  * après le script, comme avant. Regarder seulement la première ne suffisait
  * pas — une flèche tapée avant Cmd-. l'aurait cachée pour toujours.
  *
+ * LES CLICS SORTENT AVEC LES FRAPPES, sans quoi l'ordre se perd. On ne
+ * retirait que les frappes : remises en tête, elles passaient DEVANT un clic
+ * resté dans la file. Mesuré DANS HC (l'application) le 30 septembre, banc de
+ * docs/mesures/reentrance.txt — cliquer « Clic A » pendant un script, PUIS
+ * taper x ; le journal disait :
+ *
+ *     touche x à t=481, Long en cours : false
+ *     clic A à t=481, Long en cours : false
+ *
+ * Signalé d'abord par un audit extérieur (point 12). Un seul masque pour les
+ * deux familles : nextEventMatchingMask les rend dans l'ordre d'arrivée, et
+ * les remettre toutes en tête, à l'envers, rétablit cet ordre-là. Les
+ * glissements viennent avec, pour qu'un geste enfoncé-glissé-relâché ne soit
+ * pas coupé en deux ; le reste — survol, molette — ne porte pas d'ordre qui
+ * compte, et reste où il est.
+ *
+ * Le même relevé montre que le clic ATTEND la fin du script : il n'est pas
+ * servi au passage (« Long en cours : false »). Ce que fait HyperCard d'un
+ * clic ou d'une touche donnés pendant un script n'est pas mesuré.
+ *
  * Le point se reconnaît au CARACTÈRE, pas à la touche : sur un clavier
  * AZERTY il se tape avec Maj, sur une touche que QWERTY appelle « ; ».
  * charactersIgnoringModifiers garde l'effet de Maj, et donne bien « . ». */
@@ -3498,11 +3518,20 @@ static void hcv_guette_cmd_point(void)
     NSMutableArray<NSEvent *> *gardees = nil;
     BOOL vu = NO;
     NSEvent *e;
-    while ((e = [NSApp nextEventMatchingMask:NSEventMaskKeyDown
+    const NSEventMask ordonnes =
+        NSEventMaskKeyDown | NSEventMaskKeyUp |
+        NSEventMaskLeftMouseDown  | NSEventMaskLeftMouseUp  | NSEventMaskLeftMouseDragged |
+        NSEventMaskRightMouseDown | NSEventMaskRightMouseUp | NSEventMaskRightMouseDragged |
+        NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp | NSEventMaskOtherMouseDragged;
+    while ((e = [NSApp nextEventMatchingMask:ordonnes
                                    untilDate:[NSDate distantPast]
                                       inMode:NSDefaultRunLoopMode
                                      dequeue:YES]) != nil) {
-        if (hcv_est_cmd_point(e)) { vu = YES; continue; }
+        if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
+        /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
+         * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
+         * (voir plus haut). Le clic reste dans la file. */
+        if ([e type] == NSEventTypeLeftMouseDown) gMouseClicked = YES;
         if (!gardees) gardees = [NSMutableArray array];
         [gardees addObject:e];
     }
@@ -3537,9 +3566,13 @@ static void cocoa_idle(void) {
      * calque n'atteint l'écran qu'à la validation de la transaction, que seule
      * la boucle d'événements déclenche.
      *
-     * C'est aussi ce qui rend la fenêtre réactive pendant un long script :
-     * les clics et les touches sont traités au passage. beforeDate:[NSDate
-     * date] veut dire « ne dors pas si la file est vide ». */
+     * Les clics et les touches, eux, NE SONT PAS servis ici : ce tour-là
+     * fait passer les minuteurs et les blocs en attente, pas les événements,
+     * que seul NSApp distribue. Ce commentaire affirmait le contraire ; le
+     * banc de docs/mesures/reentrance.txt, joué DANS HC, a montré qu'un clic
+     * attend la fin du script. hcv_guette_cmd_point, juste après, va
+     * chercher dans la file ce qui doit être vu tout de suite. beforeDate:
+     * [NSDate date] veut dire « ne dors pas si la file est vide ». */
     [[gView window] displayIfNeeded];
     [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
                              beforeDate:[NSDate date]];
@@ -6217,10 +6250,16 @@ static BOOL      gSansMessageChamp = NO;
      *
      * HyperCard a déjà CONSOMMÉ ce clic en l'envoyant comme message ; le
      * calendrier d'Apple ne se dessinerait jamais autrement. Un clic compte
-     * donc seulement s'il arrive PENDANT qu'un script tourne. Qu'AppKit le
-     * distribue alors, pendant cocoa_idle, n'est PAS mesuré — personne n'y
-     * sort les événements de la file, voir hcv_guette_cmd_point. Sinon, il
-     * EFFACE le drapeau : un clic ancien, donné hors script, ne doit pas
+     * donc seulement s'il arrive PENDANT qu'un script tourne.
+     *
+     * Et AppKit ne le distribue PAS pendant le script : mesuré DANS HC le 30
+     * septembre (docs/mesures/reentrance.txt), le clic attend la fin. Le
+     * drapeau se lève donc dans hcv_guette_cmd_point, qui voit passer le
+     * clic dans la file ; ici, on n'arrive qu'après. Ce que fait HyperCard du
+     * clic lui-même — servi après le script, ou mangé par « the mouseClick »
+     * — n'est pas mesuré.
+     *
+     * Hors script, le clic EFFACE le drapeau : un clic ancien ne doit pas
      * répondre à la place d'un clic neuf. */
     gMouseClicked = hc_is_running() ? YES : NO;
 

@@ -26,6 +26,8 @@ static analyser to the CI.
 | `go first background` with no card open | **crash** | refused cleanly |
 | static analysis (`clang --analyze`) | not run | **zero warnings**, enforced in CI |
 | out of memory while writing a field, a menu, a sort | stack could be damaged | **left intact**, error shown |
+| `lock screen` when macOS forces a redraw | showed the card being painted | **stays frozen** |
+| `the mouseClick` after a click during a script | always `false` | **`true`** |
 | torture stack, HC vs HyperCard | 2 lines disagreed, 2 still open | **all 108 agree, none open** |
 | `the hcVersion`, "About HC" | `0.7.3` | `0.7.4` |
 
@@ -148,7 +150,32 @@ every command. It is rare on a Mac with gigabytes free. When it does happen,
 though, a stack that stays intact is worth more than a stack that loses a
 field without a word.
 
-### 5. What is not measured is written down as not measured
+### 5. The screen, the mouse and the keyboard during a script
+
+The same second audit read the Cocoa side too.
+
+- **`lock screen` now really freezes the screen.** The frozen picture was
+  taken, but never drawn: HC only held back the redraws it asked for
+  itself. A redraw forced by macOS — a dialog closing over the card, a
+  window uncovered — showed the card as the script was painting it. The
+  frozen picture is now what gets drawn until `unlock screen`.
+- **Each window keeps its own lock and its own visual effect.** They were
+  shared by every open stack, so another window could play an effect that
+  was meant for the first one.
+- **A click and a keystroke given during a script stay in order.** Measured
+  in HC: click a button while a script runs, then type a key, and the key
+  was served first. They now come out in the order they were given.
+- **`the mouseClick` answers `true` for a click given during the script.**
+  The same measurement showed that a click waits for the end of the script
+  before it reaches the card. `the mouseClick` was only told about clicks
+  that reached the card, so a real click never made it answer `true`, and
+  `if the mouseClick then exit repeat` never left the loop.
+
+Not measured: what HyperCard does with that click. HC still delivers it
+once the script has finished; HyperCard may drop it instead. That is the
+next bench, to play in HyperCard.
+
+### 6. What is not measured is written down as not measured
 
 - Applied for consistency, **not measured**: a field designated by **id**
   (`field id 1`) or by an **ordinal** (`first field`) follows the same layer
@@ -180,8 +207,6 @@ field without a word.
 - A fault inside a user function stops the function but not its caller.
 - `visual effect` followed by `go`, **without** `lock screen`, still plays
   after the script rather than inside `go`.
-- Keystrokes typed during a script are put back at the head of the queue, so
-  they now come before a click that preceded them.
 - Still standing from 0.7: named windows, patterns, resource-fork icons,
   HyperCard 1.x, private-access stacks, the proportional period fonts.
   `CFBundleVersion` is still hard-coded to `1`. Not notarised; see
@@ -200,7 +225,8 @@ field without a word.
   text; the torture stack's last questions settled (`1e42c32`, `23ed3b3`)
 - [#91](https://github.com/cleobuline/hc/pull/91) — the torture stack agrees
   with HyperCard, 108 / 0 / 0 (`8638959`)
-- this release — out-of-memory writes leave the stack intact; version
-  0.7.4 in all three places, and this note
+- this release — out-of-memory writes leave the stack intact; `lock screen`
+  really frozen, per window; clicks and keys in order, `the mouseClick`
+  during a script; version 0.7.4 in all three places, and this note
 
 **Full changelog:** [HC-0.7.3...HC-0.7.4](https://github.com/cleobuline/hc/compare/HC-0.7.3...HC-0.7.4)

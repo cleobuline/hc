@@ -1,5 +1,5 @@
-À MESURER — CE QUE LA SOURIS ET LE CLAVIER FONT PENDANT UN SCRIPT
-===============================================================
+MESURE — CE QUE LA SOURIS ET LE CLAVIER FONT PENDANT UN SCRIPT
+==============================================================
 
 Un audit extérieur (le troisième, points 3, 11 et 12) pose trois questions sur
 ce qui arrive quand l'utilisatrice clique ou tape PENDANT qu'un gestionnaire
@@ -11,7 +11,7 @@ tourne :
       en cours (imbriqué), ou APRÈS lui ?
   12. une touche frappée APRÈS un clic passe-t-elle DEVANT lui ?
 
-RIEN DE CECI N'EST MESURÉ. Ce que dit le code, et qui n'est qu'une lecture :
+Avant le premier relevé, ce que disait le code — une lecture, pas une mesure :
 
   · Pendant un script, cocoa_idle fait tourner la boucle d'exécution
     (NSRunLoop runMode:beforeDate:), qui déclenche les MINUTEURS et les blocs
@@ -103,4 +103,34 @@ CE QUE LE JOURNAL TRANCHE
   une ligne « t=… contexte : B/… »      la pile active a basculé en plein
                                         script (3 est réel)
 
-Relevés : aucun à ce jour.
+RELEVÉS
+-------
+
+Passage 2, DANS HC (l'application), 30 septembre. Le relevé est arrivé sans
+étiquette ; il est de HC sans ambiguïté : « Sans titre » et « carte 1 » sont
+les noms que HC donne à une pile et à une carte neuves (AppDelegate.m), là où
+HyperCard aurait écrit « card id … ».
+
+    départ, contexte : Sans titre/carte 1
+    fin de Long à t=481
+    touche x à t=481, Long en cours : false
+    clic A à t=481, Long en cours : false
+
+  · 11 NE SE PRODUIT PAS : le clic attend la fin du script. C'est le
+    commentaire de cocoa_idle qui avait tort ; il est corrigé.
+  · 12 EST RÉEL : cliqué PUIS tapé, servi touche d'abord. Corrigé :
+    hcv_guette_cmd_point sort clics et frappes ensemble, dans l'ordre
+    d'arrivée, et les remet tels quels.
+  · UN TROISIÈME DÉFAUT, que personne n'avait signalé : « the mouseClick »
+    lisait un drapeau que seul mouseDown: levait pendant un script — et
+    mouseDown: n'y est jamais appelé. Un vrai clic ne pouvait donc pas
+    faire répondre « true » ; « if the mouseClick then exit repeat » ne
+    sortait jamais. Le drapeau se lève maintenant là où le clic est vu,
+    dans la file. Le clic, lui, reste servi après le script.
+
+RESTE À MESURER
+  · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
+    la touche après le script, les jette-t-il, et dans quel ordre ? Et
+    « the mouseClick » MANGE-t-il le clic, ou le clic est-il servi quand
+    même ensuite ? HC le sert.
+  · Passage 3, DANS HC, deux piles : la question 3.
