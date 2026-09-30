@@ -265,6 +265,9 @@ contradicted the reading of the code.
   handles), the handler **carries on** and the dialog comes at the end.
   HyperCard probably stops on the spot — to play in HyperCard.
 - A fault inside a user function stops the function but not its caller.
+- A click or a mouse release **during** a running script is still handled on
+  the spot, inside the script, instead of after it the way HyperCard queues
+  it. The repeat timer no longer does this; the click itself still does.
 - Still standing from 0.7: named windows, patterns, resource-fork icons,
   HyperCard 1.x, private-access stacks, the proportional period fonts.
   `CFBundleVersion` is still hard-coded to `1`. Not notarised; see
