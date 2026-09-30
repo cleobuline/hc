@@ -2,19 +2,19 @@
 == 1. LE CAS SIGNALE : l'ECRITURE ==
    au depart                              carte="Une"  champ="alpha"  champ="beta"  champ="gamma"
      set the name of first field to "toto"
-   apres                                  carte="Une"  champ="toto"  champ="beta"  champ="gamma"
+   apres                                  carte="Une"  champ="alpha"  champ="beta"  champ="gamma"
 
 == 2. et la LECTURE, qui passe par l'autre moteur ==
      put the name of first field
-      card field "toto"
+      bkgnd field "toto"
      put the name of second field
       card field "beta"
      put the name of third field
       card field "gamma"
      put the name of last field
-      card field "gamma"
+      bkgnd field "toto"
      put the name of middle field
-      card field "beta"
+      bkgnd field "toto"
 
 == 3. LES CARTES N'ONT RIEN PERDU ==
      put the name of first card
@@ -30,9 +30,9 @@
      put the name of last card field
       card field "gamma"
      put the name of last bg field
-      bkgnd field "pied"
+      bkgnd field "toto"
      put the name of first bg field
-      bkgnd field "pied"
+      bkgnd field "toto"
      put the name of last bg button
       bkgnd button "suivant"
 
@@ -51,10 +51,10 @@
       [ERR]    !! objet introuvable (v3, ligne 2 de button "pilote".essaie)
      set the name of tenth field to "raté"
       [ERR]    !! objet introuvable : tenth field
-   rien n'a bouge                         carte="Une"  champ="toto"  champ="beta"  champ="gamma"
+   rien n'a bouge                         carte="Une"  champ="alpha"  champ="beta"  champ="gamma"
 
 == 7. L'ECRITURE SUR LE FOND ==
      set the name of last bg field to "bas de page"
      put the name of last bg field
       bkgnd field "bas de page"
-   la carte est intacte                   carte="Une"  champ="toto"  champ="beta"  champ="gamma"
+   la carte est intacte                   carte="Une"  champ="alpha"  champ="beta"  champ="gamma"

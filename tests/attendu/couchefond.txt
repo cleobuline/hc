@@ -1,0 +1,18 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+  A1 auFond
+  A5 bkgnd field "T"
+  A6 3
+  A7 4
+  A8 3
+  B1 card button "BC"
+  B2 2
+  B3 1
+  A3b communFond
+  A2 auFond
+  A4 carte [surCarte] fond [zzz]
+  C2 carte true fond false
+  A3 seulCarte
+== une couche écrite ne se replie pas ==
+  bg SeulCarte : false
+  card SeulFond : false
+  sans couche, SeulFond : seulFond

@@ -103,30 +103,58 @@ apparaît, noter son texte et la dernière ligne écrite dans R.
       put "FIN" & return after card field "R"
     end mouseUp
 
-    ligne    HC (noyau, 30 sept.)          HyperCard
-    A1       surCarte                      auFond (27 sept., torture)
-    A5       card field "A"                ?
-    A6       7  (4 + 3, additionnés)       ?
-    A7       4                             ?
-    A8       3                             ?
-    B1       card button "BC"              ?
-    B2       3  (2 + 1, additionnés)       ?
-    B3       1                             ?
-    A3b      communCarte                   ?
-    A2       auFond  (repli sur le fond)   ?
-    A4       carte [zzz] fond [auFond]     ?
-    C2       carte false fond true         ?
-    A3       seulCarte (repli)             ERREUR, pas de repli (30 sept.) :
-                                           « there is not bg field
-                                           "seulcarte" » — rapporté, texte
-                                           exact du dialogue non recopié
+    ligne    HyperCard (30 sept.)      HC avant          HC après
+    A1       auFond                    surCarte          auFond
+    A5       bkgnd field "T"           card field "A"    bkgnd field "T"
+    A6       3  (le fond seul)         7 (additionnés)   3
+    A7       4                         4                 4
+    A8       3                         3                 3
+    B1       card button (le n° 1)     card button       card button
+    B2       2  (la carte seule)       3 (additionnés)   2
+    B3       1                         1                 1
+    A3b      communFond                communCarte       communFond
+    A2       auFond                    auFond (repli)    auFond
+    A4       carte [surCarte]          carte [zzz]       carte [surCarte]
+             fond [zzz]                fond [auFond]     fond [zzz]
+    C2       carte true fond false     carte false       carte true
+                                       fond true         fond false
+    A3       ERREUR : « there is not   seulCarte         seulCarte
+             bg field "seulcarte" »    (repli)           (repli, VOULU)
+             (tournure rapportée)
 
-Tant que la colonne de droite porte des « ? », rien ne se corrige : A6 et B2
-en particulier ne sont que soupçonnés.
+Deux relevés HyperCard, identiques sauf B2 : 1 puis 2 — le bouton « BC »
+manquait au premier. B1 rend « Banc » dans la pile mesurée parce qu'il y a
+été créé avant « BC ».
 
 
-POURQUOI RIEN N'EST CORRIGÉ
----------------------------
+CORRIGÉ LE 30 SEPTEMBRE
+-----------------------
+
+La règle d'HyperCard : UN CHAMP SANS COUCHE EST UN CHAMP DE FOND, UN BOUTON
+SANS COUCHE UN BOUTON DE CARTE, et les comptes suivent la même couche.
+couche_implicite (hc_core.c) la dit une fois ; elle sert aux deux résolveurs
+(le texte et l'arbre) et aux deux compteurs.
+
+UNE AMÉLIORATION, DÉCIDÉE : là où HyperCard lève une erreur — un nom absent
+du fond —, HC se replie sur la carte. Même réponse qu'HyperCard partout où il
+réussit ; les piles écrites dans HC continuent de marcher. « On n'est pas
+obligé d'être strict, on peut améliorer. » Une couche écrite ne se replie
+jamais.
+
+Harnais couchefond (le banc ci-dessus). Cinq témoins ont bougé, chacun lu :
+idcouche, nb2, ordinaux, refobjets, torture2 — la ligne « ? » de la pile de
+torture est devenue une égalité (105 réussites, 2 à mesurer).
+
+NON MESURÉ, appliqué par cohérence : la forme par IDENTIFIANT (« field id
+1 ») et les ORDINAUX (« first field ») ; le repli des BOUTONS sur le fond,
+gardé tel quel ; « the number of parts », qui additionne toujours.
+
+RESTE OUVERT, même famille : l'ordre de visite de « find » (docs/mesures/
+find.txt) — HyperCard parcourt le fond d'abord. Code distinct, non touché.
+
+
+POURQUOI RIEN N'ÉTAIT CORRIGÉ (27 septembre, avant le banc complet)
+--------------------------------------------------------------------
 
 Le changement touche la résolution de TOUS les champs, donc tous les harnais du
 corpus qui écrivent « field N » — il y en a. Il lui faut sa propre mesure

@@ -2,7 +2,7 @@
 ── put card field 1                            [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
    texte du premier
 ── put card field 2                               texte du second
-── put field 1                                    texte du premier
+── put field 1                                    
 ── put the text of card field 1                   texte du premier
 ── put card field "un"                            texte du premier
 ── put the name of card field 2                   card field "deux"
