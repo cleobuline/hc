@@ -1914,16 +1914,37 @@ static NSRect gSaleRect;
 static void hcv_invalide(NSRect r)   { [gView setNeedsDisplayInRect:r]; }
 static void hcv_invalide_tout(void)  { [gView setNeedsDisplay:YES]; }
 
+/* L'ÉCRAN GELÉ EST PHOTOGRAPHIÉ, ET C'EST LE DÉPART DE L'EFFET.
+ *
+ * « unlock screen with visual effect scroll left » a besoin de DEUX images :
+ * l'écran tel qu'il était au verrouillage, et ce que le script a peint
+ * dessous. Ce verrou-ci ne retenait que les invalidations ; il n'avait
+ * aucune image du départ, et snapshot_view, qui recompose la carte depuis le
+ * modèle, ne peut rendre à ce moment que l'ARRIVÉE. La photographie était
+ * pourtant écrite, dans HCvisual.m — hcv_lock_screen et hcv_unlock_screen —,
+ * mais personne ne les appelait : c'est ce verrou-ci qui tourne. Signalé à
+ * l'usage sur le calendrier de Stack Templates : « il n'y a aucun effet de
+ * scroll ».
+ *
+ * Coût : une photographie de la vue à chaque « lock screen », qu'un effet
+ * suive ou non — on ne peut pas savoir à l'avance. Non mesuré. */
 static void hcv_verrou_ecran(BOOL ferme)
 {
     if (ferme == gLockScreen) return;
     gLockScreen = ferme;
-    if (ferme) return;                    /* on ferme : rien à faire */
+    if (ferme) { hcv_lock_screen(); return; }
 
-    if (gSaleTout)       [gView setNeedsDisplay:YES];
-    else if (gSaleUnPeu) [gView setNeedsDisplayInRect:gSaleRect];
+    BOOL tout = gSaleTout, unPeu = gSaleUnPeu;
+    NSRect zone = gSaleRect;
     gSaleTout = NO;
     gSaleUnPeu = NO;
+
+    /* L'effet que le noyau vient d'armer se joue ici, DANS la commande — le
+     * script attend sa fin, comme dans HyperCard. S'il n'y en a pas, on
+     * relâche les invalidations retenues. */
+    if (hcv_unlock_screen()) return;
+    if (tout)       [gView setNeedsDisplay:YES];
+    else if (unPeu) [gView setNeedsDisplayInRect:zone];
 }
 
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
@@ -8023,6 +8044,31 @@ static NSTextField  *gSprayDensityLabel = nil;
         [self stopStillDownTimer];
         return;
     }
+    /* PAS DE mouseStillDown AU MILIEU D'UN SCRIPT.
+     *
+     * Le minuteur est inscrit dans les « common modes », et cocoa_idle fait
+     * tourner la boucle d'événements pendant qu'un script travaille : il se
+     * déclenchait donc AU MILIEU du gestionnaire, et envoyait un message
+     * imbriqué dans celui qui tournait. Signalé à l'usage sur le calendrier de
+     * Stack Templates, dont les flèches font
+     *
+     *     on mouseDown
+     *       updateCalendar bg field "Year" + 1, "scroll left"
+     *     end mouseDown
+     *     on mouseStillDown
+     *       mouseDown
+     *     end mouseStillDown
+     *
+     * Bouton tenu : chaque tic lançait un updateCalendar DANS le précédent,
+     * qui incrémentait l'année à son tour. Rejoué dans le noyau avec trois tics
+     * pendant le script : un seul appui, 1995 devient 1999. À soixante tics
+     * par seconde, et avec l'effet visuel qui dure, l'année s'emballait.
+     *
+     * HyperCard ne livre jamais un message pendant qu'un gestionnaire tourne :
+     * mouseStillDown part ENTRE deux exécutions. Le minuteur reste armé ; le
+     * tic qui suit la fin du script enverra le suivant, si le bouton est encore
+     * enfoncé. */
+    if (hc_is_running()) return;
     hc_send(presse, "mouseStillDown");
 }
 @end

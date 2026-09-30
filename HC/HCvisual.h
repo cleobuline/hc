@@ -25,11 +25,17 @@ BOOL visual_pending(void);
  * peignant dessous. Meme machinerie de photographie que les transitions, d'ou
  * leur cohabitation dans ce fichier. */
 void hcv_lock_screen(void);
-void hcv_unlock_screen(void);
+/* Rend YES si une transition a été jouée — l'écran est alors à jour. */
+BOOL hcv_unlock_screen(void);
 BOOL hcv_screen_locked(void);
 
-/* Appelee en tete de drawRect:. Rend YES si l'image gelee a ete dessinee, et
- * le dessin normal de la carte est alors a sauter. */
+/* Prevue pour la tete de drawRect: — rend YES si l'image gelee a ete
+ * dessinee, et le dessin normal de la carte est alors a sauter.
+ *
+ * PERSONNE NE L'APPELLE. Le verrou reel est hcv_verrou_ecran (HCview.m), qui
+ * retient les invalidations ; l'image gelee n'y sert que de DEPART a
+ * « unlock screen with visual ». Un redessin force pendant le verrou (fenetre
+ * decouverte, dialogue) montre donc la carte telle que le script la peint. */
 BOOL hcv_draw_locked(NSView *v);
 
 /* Les deux methodes qui jouent l'animation vivent avec leur etat.

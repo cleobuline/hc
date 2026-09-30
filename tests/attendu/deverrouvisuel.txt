@@ -1,0 +1,42 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. l'effet part à l'hôte, AVANT le déverrouillage ==
+── un mot
+      lockScreen true
+      effet « dissolve » vitesse «  » vers «  »
+      lockScreen false
+── « effect », deux mots, une vitesse
+      lockScreen true
+      effet « barn door open » vitesse « fast » vers «  »
+      lockScreen false
+── vitesse en deux mots, vers le noir
+      lockScreen true
+      effet « iris close » vitesse « very slow » vers « black »
+      lockScreen false
+── une chaîne
+      lockScreen true
+      effet « scroll right » vitesse «  » vers «  »
+      lockScreen false
+
+== 2. le calendrier : l'effet dans une variable ==
+── le paramètre p vaut « scroll left »
+      lockScreen true
+      effet « scroll left » vitesse «  » vers «  »
+      lockScreen false
+── une locale
+      lockScreen true
+      effet « wipe up » vitesse « slow » vers «  »
+      lockScreen false
+── « visual effect e » hors déverrouillage, puis go
+      effet « zoom open » vitesse «  » vers «  »
+
+== 3. sans « with », rien ne part ==
+── unlock screen tout court
+      lockScreen true
+      lockScreen false
+
+== 4. un « visual » armé pour go n'est pas consommé ==
+── visual iris open ; lock ; unlock with wipe left ; go
+      lockScreen true
+      effet « wipe left » vitesse «  » vers «  »
+      lockScreen false
+      effet « iris open » vitesse «  » vers «  »

@@ -504,7 +504,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.7.1"
+#define HC_VERSION "0.7.2"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -846,7 +846,13 @@ typedef struct {
      * « very fast », « very slow » ou la chaîne vide. `image` vaut « black »,
      * « white », « gray », « inverse », « card », ou la chaîne vide — c'est
      * VERS quoi on fond, un fondu au noir se faisant en deux temps :
-     * « visual dissolve to black » puis « visual dissolve to card ». */
+     * « visual dissolve to black » puis « visual dissolve to card ».
+     *
+     * Appelé AUSSI juste avant « lockScreen false », quand le script écrit
+     * « unlock screen with visual <effet> » : l'image de départ est alors
+     * l'écran gelé, l'arrivée ce que le script a dessiné pendant le verrou.
+     * L'hôte doit donc garder une image de l'écran au verrouillage. Ce
+     * second appel ne touche pas à un « visual » armé pour le prochain go. */
     void (*visual_effect)(const char *effect, const char *speed, const char *image);
 
     /* Sélection de texte posée par « select … of field X ». L'hôte met la
