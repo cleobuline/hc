@@ -566,8 +566,9 @@ static int     gPalIconeEnCours = 0;
     /* Plus l'icone qui a ouvert le selecteur : on se detache, et le curseur
      * ne touche plus a rien jusqu'au prochain double-clic sur une couleur. */
     if (self.stack != gPalPileEnCours || self.iconId != gPalIconeEnCours) {
-        if ([(NSColorPanel *)sender target] == self)
-            [(NSColorPanel *)sender setTarget:nil];
+        /* Pas de test sur la cible : NSColorPanel n'a pas de getter, et
+         * recevoir cette action prouve déjà qu'on EST la cible. */
+        [(NSColorPanel *)sender setTarget:nil];
         gPalIndexEnCours = 0;
         return;
     }
