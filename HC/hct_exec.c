@@ -331,6 +331,12 @@ static int lit_message_pont(void *d, HctValeur *out)
          ? x->hote.lit_message(x->hote.donnees, out) : 0;
 }
 
+static int interrompu_pont(void *d)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.interrompu ? x->hote.interrompu(x->hote.donnees) : 0;
+}
+
 static int globale_pont(void *d, const char *nom)
 {
     HctExec *x = (HctExec *)d;
@@ -419,8 +425,12 @@ static void plafond_atteint(HctExec *x, const HctNoeud *n, long plafond)
 
 static int respire(HctExec *x)
 {
-    if (!x->hote.respire) return 1;
-    return x->hote.respire(x->hote.donnees);
+    int r = x->hote.respire ? x->hote.respire(x->hote.donnees) : 1;
+    /* C'est pendant la respiration que l'hôte voit passer Cmd-. ; on
+     * regarde donc tout de suite après. Le test d'avant chaque instruction ne
+     * suffit pas : « repeat forever » sans corps n'en exécute aucune. */
+    if (hct_ctx_interrompu(&x->ctx)) return 0;
+    return r;
 }
 
 /* LE DÉLIMITEUR EST UNE CHAÎNE, ET IL SE RECOPIE.
@@ -1476,6 +1486,10 @@ void hct_exec(HctExec *x, const HctNoeud *n)
         case HCTN_BLOC:
             if (!x->script) x->script = n;   /* le bloc racine */
             for (int i = 0; i < n->nfils; i++) {
+                /* Cmd-. : on s'arrête AVANT l'instruction suivante. Chaque
+                 * gestionnaire de la chaîne passe ici à son tour, et
+                 * s'arrête aussi. */
+                if (hct_ctx_interrompu(&x->ctx)) return;
                 const HctNoeud *faute = faute_de_ligne(n, i);
                 if (faute) {
                     hct_ctx_faute(&x->ctx, faute,
@@ -1715,6 +1729,7 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.ecrit_objet   = hote.ecrit_objet   ? ecrit_objet_pont   : NULL;
     pont.ecrit_message = hote.ecrit_message ? ecrit_message_pont : NULL;
     pont.lit_message   = hote.lit_message   ? lit_message_pont   : NULL;
+    pont.interrompu    = hote.interrompu    ? interrompu_pont    : NULL;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);

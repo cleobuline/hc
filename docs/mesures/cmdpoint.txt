@@ -1,0 +1,79 @@
+CMD-. — ARRÊTER UN SCRIPT
+=========================
+
+Demandé le 30 septembre : « il nous faut un Cmd-., c'est essentiel ». Il n'y
+en avait pas : un « repeat forever » tournait jusqu'au plafond de dix millions
+de tours, ou jusqu'à ce qu'on quitte — en perdant ce qui n'était pas
+enregistré.
+
+
+LE NOYAU : MESURÉ (harnais cmdpoint, quatorze cas)
+--------------------------------------------------
+
+hc_interrompre() pose une demande d'arrêt. Chaque gestionnaire de la chaîne
+la lit avant sa prochaine instruction et s'arrête ; la demande tombe quand le
+plus extérieur est sorti. Mesuré :
+
+  - repeat forever, avec ou sans corps ; repeat with ; repeat while : arrêtés,
+    et la ligne d'APRÈS la boucle ne tourne pas ;
+  - un message qui boucle : la ligne d'après l'APPEL ne tourne pas non plus ;
+  - une fonction qui boucle, dans « put total() into field "S" » : le champ
+    reste INTACT — la ligne qui appelle n'écrit pas le vide de la fonction
+    arrêtée ;
+  - wait 10 seconds rend la main en moins d'une seconde ; wait until false
+    aussi ;
+  - PAS DE DIALOGUE pour l'arrêt ; une faute survenue AVANT (« hide button
+    "Absent" ») est toujours dite ;
+  - lock screen est levé, comme à toute fin de script ;
+  - le script suivant tourne normalement ; un Cmd-. frappé AU REPOS ne
+    laisse rien en l'air qui arrêterait le suivant ;
+  - une boucle tapée dans la boîte de messages s'arrête aussi.
+
+Délai : le noyau rend la main à l'hôte au plus soixante fois par seconde
+dans une boucle, 240 fois dans un « wait ». Un script qui ne boucle ni
+n'attend ne s'arrête pas — il finit de lui-même.
+
+
+COCOA : COMPILÉ, NON EXÉCUTÉ
+----------------------------
+
+Pendant un script, cocoa_idle fait tourner la boucle d'événements, mais rien
+ne SORT les frappes de la file : elles attendent la fin du script. Cmd-. y
+attendait avec elles. hcv_guette_cmd_point les retire toutes à chaque
+respiration, garde Cmd-., et remet les autres en tête de file dans leur
+ordre. Le point se reconnaît au caractère — il se tape avec Maj sur un
+clavier AZERTY.
+
+performKeyEquivalent: arrête aussi, au cas où AppKit distribuerait Cmd-.
+en plein script — non mesuré, et ce serait sinon un commandKeyDown imbriqué.
+
+Banc à jouer DANS HC (l'application) :
+
+  1. un bouton, « on mouseUp / repeat forever / add 1 to x / end repeat /
+     put "fini" / end mouseUp ». Cliquer, puis Cmd-. : l'application répond
+     tout de suite, pas de dialogue, « fini » n'apparaît PAS.
+  2. même bouton, taper quelques lettres PUIS Cmd-. : le script s'arrête
+     quand même.
+  3. « wait 20 seconds » dans un bouton, puis Cmd-. : la main revient aussitôt.
+  4. dans la boîte de messages : « repeat forever » puis Retour, puis Cmd-.
+  5. au repos, Cmd-. ne fait rien de visible, et le clic suivant sur le
+     bouton du 1 lance bien la boucle.
+
+
+CE QUI N'EST PAS MESURÉ, ET CE QUI MANQUE
+-----------------------------------------
+
+- CE QUE FAIT HYPERCARD, à jouer DANS HYPERCARD (Basilisk II) :
+      on mouseUp
+        put "avant" into msg
+        repeat forever
+        end repeat
+        put "après" into msg
+      end mouseUp
+  puis Cmd-. — un dialogue ? un bip ? rien ? La boîte de messages dit-elle
+  « avant » ? Et si la boucle est dans un gestionnaire APPELÉ, l'appelant
+  continue-t-il ? L'hypothèse de HC : tout s'arrête, sans un mot.
+- La propriété cantAbort d'une pile, qui interdit Cmd-. dans HyperCard,
+  n'existe pas dans HC.
+- Les frappes qui ne sont pas Cmd-. sont remises en tête de file : elles
+  passent donc devant un clic qui les aurait précédées pendant le script.
