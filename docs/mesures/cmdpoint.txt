@@ -74,6 +74,9 @@ CE QUI N'EST PAS MESURÉ, ET CE QUI MANQUE
   « avant » ? Et si la boucle est dans un gestionnaire APPELÉ, l'appelant
   continue-t-il ? L'hypothèse de HC : tout s'arrête, sans un mot.
 - La propriété cantAbort d'une pile, qui interdit Cmd-. dans HyperCard,
-  n'existe pas dans HC.
+  n'existe pas dans HC, ET N'Y EXISTERA PAS : décidé le 30 septembre, « pas
+  souhaitable ». Cmd-. est la seule sortie d'un script emballé qui ne coûte
+  pas le travail non enregistré ; une pile ne doit pas pouvoir la retirer.
+  Ce n'est pas un trou, c'est un choix.
 - Les frappes qui ne sont pas Cmd-. sont remises en tête de file : elles
   passent donc devant un clic qui les aurait précédées pendant le script.
