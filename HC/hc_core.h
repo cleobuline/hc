@@ -591,7 +591,8 @@ int     hc_stack_vierge(Object *stack);
 /* Bascule « Shared Text » d'un champ de fond, en déménageant texte et plages
  * de style entre la carte et l'objet. Ne jamais écrire field->shared_text en
  * direct : le contenu deviendrait inaccessible. */
-void    hc_set_shared_text(Object *field, int shared);
+/* Rend 0 si la mémoire manque : rien n'a basculé, texte, styles et drapeau. */
+int     hc_set_shared_text(Object *field, int shared);
 
 int     hc_hilite_of(Object *btn, Object *card);
 
@@ -1059,7 +1060,8 @@ const char *hc_message_lu(void);
 void        hc_message_ecrit(const char *s);
 
 /* Pose le contenu textuel d'un champ (pour l'édition interactive). */
-void        hc_set_field_text(Object *field, const char *text);
+/* Rend 0 si la mémoire manque : le champ est alors INTACT, texte et styles. */
+int         hc_set_field_text(Object *field, const char *text);
 /* Texte effectif d'un champ : propre à la carte courante s'il s'agit d'un
  * champ de fond non partagé. Ne renvoie jamais NULL. */
 const char *hc_field_text(Object *field);

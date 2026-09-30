@@ -4637,6 +4637,31 @@ static void runs_free(struct RunList *rl)
     rl->v = NULL; rl->n = rl->cap = 0;
 }
 
+/* Une copie COMPLÈTE de src dans dst, polices comprises — ou rien.
+ *
+ * dst doit être vide. Rend 0 si une allocation manque, et dst reste vide :
+ * c'est ce qui permet de préparer les plages d'un basculement AVANT de
+ * toucher à l'objet (voir hc_set_shared_text). Une police NULL à la source
+ * reste NULL ; seule une copie qui échoue compte comme un échec. */
+static int runs_clone(struct RunList *dst, const struct RunList *src)
+{
+    dst->v = NULL; dst->n = dst->cap = 0;
+    if (!src || src->n <= 0) return 1;
+    struct TextRun *v = calloc((size_t)src->n, sizeof *v);
+    if (!v) return 0;
+    for (int k = 0; k < src->n; k++) {
+        v[k] = src->v[k];
+        v[k].font = NULL;
+        if (src->v[k].font && !(v[k].font = dupstr(src->v[k].font))) {
+            for (int j = 0; j < k; j++) free(v[j].font);
+            free(v);
+            return 0;
+        }
+    }
+    dst->v = v; dst->n = dst->cap = src->n;
+    return 1;
+}
+
 int runs_room(struct RunList *rl, int need)
 {
     if (rl->n + need <= rl->cap) return 1;
@@ -5713,14 +5738,18 @@ static int container_set_body(const char *ref, const char *val, int mode)
          * Les modes qui CONCATÈNENT gardent le tampon : la concaténation
          * illimitée demanderait une allocation dynamique à chaque « put
          * after », et ce n'est pas le chemin qui détruisait des données. */
+        int pose;
         if (mode == 0) {
-            hc_set_field_text(o, val ? val : "");
+            pose = hc_set_field_text(o, val ? val : "");
         } else {
             if      (mode == 1) snprintf(merged, HC_VAL, "%s%s", old, val);
             else if (mode == 2) snprintf(merged, HC_VAL, "%s%s", val, old);
             else                merged[0] = '\0';        /* mode 3 : effacer */
-            hc_set_field_text(o, merged);
+            pose = hc_set_field_text(o, merged);
         }
+        /* Le champ est resté INTACT : on le dit, plutôt qu'une réussite
+         * silencieuse. Voir hc_set_field_text. */
+        if (!pose) emit(HC_ERR, "   !! mémoire insuffisante : le champ n'a pas changé");
         notify_field(o);
         return 1;
     }
@@ -8086,6 +8115,23 @@ static void v3_val_texte(HctContexte *ctx, const HctNoeud *n,
     HctValeur v = hct_evalue(ctx, n);
     snprintf(out, (size_t)outlen, "%s", v.txt ? v.txt : "");
     hct_val_libere(&v);
+
+    /* UNE PÉNURIE SE DIT ICI, AVANT QUE LA COMMANDE N'ÉCRIVE.
+     *
+     * Une allocation manquée rend une chaîne vide et lève un drapeau collant,
+     * que l'exécuteur lit à la FIN de l'instruction (hct_exec.c). Pour une
+     * commande qui écrit ce qu'elle vient d'évaluer, c'était trop tard :
+     * « set the name of menuItem 1 of menu "M" to "nouveau" » écrivait le
+     * vide dans le menu, PUIS l'on annonçait « mémoire insuffisante ».
+     * Mesuré par penurie_atomique. On en fait une faute du contexte ici même
+     * — les commandes testent ctx->erreur après chaque évaluation —, et l'on
+     * éteint le drapeau pour qu'il ne resurgisse pas sur l'instruction
+     * suivante. */
+    if (hct_val_manque()) {
+        hct_val_manque_efface();
+        out[0] = '\0';
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+    }
 }
 
 /* Le n-ième fond de la pile, 1-based. NULL si le rang dépasse. */
@@ -10254,17 +10300,20 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
     if (!o || o->type != OBJ_FIELD) return 0;
     if (!val) val = "";
 
+    int pose;
     if (mode == 0) {
-        hc_set_field_text(o, val);
+        pose = hc_set_field_text(o, val);
     } else {
         ARENA_MARK;
         char *fusion = arena_buf();
         const char *ancien = hc_field_text(o);
         if (mode == 1) snprintf(fusion, HC_VAL, "%s%s", val, ancien);  /* before */
         else           snprintf(fusion, HC_VAL, "%s%s", ancien, val);  /* after  */
-        hc_set_field_text(o, fusion);
+        pose = hc_set_field_text(o, fusion);
         ARENA_FREE;
     }
+    /* Le champ est resté INTACT : on le dit. Voir hc_set_field_text. */
+    if (!pose) emit(HC_ERR, "   !! mémoire insuffisante : le champ n'a pas changé");
     notify_field(o);
     set_result("");
     return 1;
@@ -11338,9 +11387,18 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
                 (!marquees || stack->parts[i]->marked)) n2++;
         if (n2 < 2) { g_atop = sauve; return 1; }
 
+        /* UNE PÉNURIE SE DIT, ET L'ORDRE NE BOUGE PAS. Les deux calloc
+         * rendaient « fait » sans avoir trié ; une clé manquée allait à
+         * qsort en pointeur NUL, et sort_cmp plantait dessus. Le tri d'un
+         * conteneur, plus bas, avait déjà son garde : pas celui-ci. Signalé
+         * par un audit extérieur, mesuré par penurie_atomique. */
         SortItem *tab = calloc((size_t)n2, sizeof *tab);
         char **cles = calloc((size_t)n2, sizeof *cles);
-        if (!tab || !cles) { free(tab); free(cles); g_atop = sauve; return 1; }
+        if (!tab || !cles) {
+            free(tab); free(cles); g_atop = sauve;
+            hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            return 1;
+        }
 
         Object *avant = g_current_card;
         int k = 0;
@@ -11357,12 +11415,22 @@ static int v3_cmd_sort(HctContexte *ctx, const HctNoeud *n)
             tmp[0] = '\0';
             if (ncle)     v3_val_texte(ctx, ncle, tmp, HC_VAL);
             else if (cle) eval_checked(cle, tmp, HC_VAL);
+            /* Une clé en faute ne se trie pas : trier sur un vide réécrivait
+             * l'ordre des cartes, et la faute était dite APRÈS. */
+            if (ctx->erreur) { ARENA_FREE; break; }
             cles[k] = dupstr(tmp);
             ARENA_FREE;
+            if (!cles[k]) break;
             tab[k].cle = cles[k]; tab[k].rang = k; tab[k].card = c;
             k++;
         }
         g_current_card = avant;
+        if (k < n2) {
+            for (int i = 0; i < k; i++) free(cles[i]);
+            free(cles); free(tab); g_atop = sauve;
+            hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            return 1;
+        }
 
         g_sort_desc = desc; g_sort_style = style;
         qsort(tab, (size_t)n2, sizeof *tab, sort_cmp);
@@ -12858,8 +12926,15 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     char d[64]; hc_describe(o, d, sizeof d);   /* avant modification */
 
     if (ci_equal(prop, "name")) {
+        /* La copie d'abord : si elle manque, l'ancien nom reste. */
+        char *nv = dupstr(val);
+        if (!nv) {
+            emit(HC_ERR, "   !! mémoire insuffisante : le nom n'a pas changé");
+            set_result("mémoire insuffisante");
+            g_atop = sauve; return 1;
+        }
         free(o->name);
-        o->name = dupstr(val);
+        o->name = nv;
     } else if (ci_equal(prop, "visible")) {
         o->visible = truthy(val);
     } else if (ci_equal(prop, "enabled")) {
@@ -12991,14 +13066,21 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
         hc_set_script(o, val);
     } else if (ci_equal(prop, "style")) {
+        char *nv = dupstr(val);
+        if (!nv) {
+            emit(HC_ERR, "   !! mémoire insuffisante : le style n'a pas changé");
+            set_result("mémoire insuffisante");
+            g_atop = sauve; return 1;
+        }
         free(o->style);
-        o->style = dupstr(val);
+        o->style = nv;
     } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
         if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
             emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");
             g_atop = sauve; return 1;
         }
-        hc_set_field_text(o, val);
+        if (!hc_set_field_text(o, val))
+            emit(HC_ERR, "   !! mémoire insuffisante : le champ n'a pas changé");
         notify_field(o);
     } else if (ci_equal(prop, "partnumber")) {
         /* LE RANG SE POSE, il ne se constate pas seulement.
@@ -15485,16 +15567,19 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
         if (ci_equal(prop, "enabled")) {
             m->actif[j] = (char)vrai; menus_prevenir(); return 1;
         }
+        /* Un malloc manqué rendait 1 — « pris en charge » — sans rien changer
+         * ni rien dire. Signalé par un audit extérieur, mesuré par
+         * penurie_atomique. Même garde pour menuMessage, juste dessous. */
         if (ci_equal(prop, "name")) {
             char *t = malloc(strlen(val) + 1);
-            if (!t) return 1;
+            if (!t) { hct_ctx_faute(ctx, obj, "mémoire insuffisante"); return 1; }
             strcpy(t, val);
             free(m->article[j]); m->article[j] = t;
             menus_prevenir(); return 1;
         }
         if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
             char *t = malloc(strlen(val) + 1);
-            if (!t) return 1;
+            if (!t) { hct_ctx_faute(ctx, obj, "mémoire insuffisante"); return 1; }
             strcpy(t, val);
             free(m->message[j]); m->message[j] = t;
             menus_prevenir(); return 1;
@@ -16870,12 +16955,26 @@ static int file_open(const char *nom)
         if (reel && *reel) {
             f = fopen(reel, "r+b");
             if (!f) f = fopen(reel, "w+b");
-            if (f) g_files[libre].chemin = dupstr(reel);
+            if (f) {
+                g_files[libre].chemin = dupstr(reel);
+                if (!g_files[libre].chemin) { fclose(f); f = NULL; }
+            }
         }
     }
     if (!f) return 0;
 
+    /* OUVERT AVEC SON NOM, OU PAS OUVERT DU TOUT. Un nom manqué laissait
+     * une entrée sans nom mais avec son FILE* : invisible pour file_find et
+     * file_close, qui sautent les entrées sans nom — fichier jamais refermé,
+     * et « open file » disait pourtant avoir réussi. Signalé par un audit
+     * extérieur, mesuré par penurie_atomique. */
     g_files[libre].nom = dupstr(nom);
+    if (!g_files[libre].nom) {
+        fclose(f);
+        free(g_files[libre].chemin);
+        g_files[libre].chemin = NULL;
+        return 0;
+    }
     g_files[libre].f   = f;
     return 1;
 }
@@ -17575,13 +17674,42 @@ const char *hc_field_text(Object *field)
     return field->contents ? field->contents : "";
 }
 
-void hc_set_field_text(Object *field, const char *text)
+int hc_set_field_text(Object *field, const char *text)
 {
+    /* LE NOUVEAU TEXTE D'ABORD, LA DESTRUCTION ENSUITE.
+     *
+     * L'ancien contenu était libéré, et les plages de style avec lui, AVANT
+     * la copie du nouveau : qu'elle échoue, et le champ perdait son texte ET
+     * sa mise en forme, contents à NULL, sans que rien ne le dise. Signalé
+     * par un audit extérieur, mesuré par penurie_atomique. On copie
+     * maintenant en premier, on réserve la place d'une entrée neuve dans la
+     * carte ; faute de mémoire, rien n'a bougé et l'on rend 0. */
+    if (!field || (field->type != OBJ_FIELD && field->type != OBJ_BUTTON)) {
+        g_edit_fld = NULL; g_edit_at = -1;
+        return 0;
+    }
+    char *neuf = dupstr(text ? text : "");
+    if (!neuf) { g_edit_fld = NULL; g_edit_at = -1; return 0; }
+
+    Object *cd = (field_is_percard(field) && g_current_card) ? g_current_card : NULL;
+    int entree = -1;
+    if (cd) {
+        for (int i = 0; i < cd->nbgtexts; i++)
+            if (cd->bgtexts[i].field_id == field->id) { entree = i; break; }
+        if (entree < 0 && cd->nbgtexts == cd->capbgtexts) {
+            int cap = cd->capbgtexts ? cd->capbgtexts * 2 : 4;
+            struct BgText *p = realloc(cd->bgtexts, (size_t)cap * sizeof *p);
+            if (!p) { free(neuf); g_edit_fld = NULL; g_edit_at = -1; return 0; }
+            cd->bgtexts = p;
+            cd->capbgtexts = cap;
+        }
+    }
+
     /* Recalage des plages de style. Si container_set a noté un intervalle pour
      * CE champ, l'écriture portait sur un morceau et les plages se recalent ;
      * sinon elle porte sur le champ entier et elles sont détruites — c'est la
      * règle du remplacement complet, observée dans HyperCard 2.4. */
-    if (field && field->type == OBJ_FIELD) {
+    if (field->type == OBJ_FIELD) {
         struct RunList *rl = runs_of(field);
         if (rl) {
             if (g_edit_fld == field && g_edit_at >= 0)
@@ -17592,36 +17720,26 @@ void hc_set_field_text(Object *field, const char *text)
     }
     g_edit_fld = NULL; g_edit_at = -1;
 
-    if (!field || (field->type != OBJ_FIELD && field->type != OBJ_BUTTON)) return;
-
-    if (field_is_percard(field) && g_current_card) {
-        Object *cd = g_current_card;
-        for (int i = 0; i < cd->nbgtexts; i++)
-            if (cd->bgtexts[i].field_id == field->id) {
-                free(cd->bgtexts[i].text);
-                cd->bgtexts[i].text = dupstr(text ? text : "");
-                return;
-            }
-        if (cd->nbgtexts == cd->capbgtexts) {
-            int cap = cd->capbgtexts ? cd->capbgtexts * 2 : 4;
-            struct BgText *p = realloc(cd->bgtexts, (size_t)cap * sizeof *p);
-            if (!p) return;
-            cd->bgtexts = p;
-            cd->capbgtexts = cap;
+    if (cd) {
+        if (entree >= 0) {
+            free(cd->bgtexts[entree].text);
+            cd->bgtexts[entree].text = neuf;
+            return 1;
         }
         cd->bgtexts[cd->nbgtexts].field_id = field->id;
-        cd->bgtexts[cd->nbgtexts].text = dupstr(text ? text : "");
+        cd->bgtexts[cd->nbgtexts].text = neuf;
         /* realloc ne nettoie rien : sans ce memset la liste de plages
          * démarrerait sur un pointeur bidon, et le premier hc_run_add
          * (ou hc_free) partirait dessus. */
         memset(&cd->bgtexts[cd->nbgtexts].runs, 0,
                sizeof cd->bgtexts[cd->nbgtexts].runs);
         cd->nbgtexts++;
-        return;
+        return 1;
     }
 
     free(field->contents);
-    field->contents = dupstr(text ? text : "");
+    field->contents = neuf;
+    return 1;
 }
 
 /* Bascule « Shared Text », en emportant le contenu.
@@ -17640,14 +17758,14 @@ void hc_set_field_text(Object *field, const char *text)
  * réserve, invisible tant que le champ reste partagé, et le retrouvent si l'on
  * décoche. C'est ce que faisait HyperCard, et c'est moins destructeur que de
  * choisir à la place de l'utilisateur laquelle des cartes fait foi. */
-void hc_set_shared_text(Object *field, int shared)
+int hc_set_shared_text(Object *field, int shared)
 {
-    if (!field || field->type != OBJ_FIELD) return;
+    if (!field || field->type != OBJ_FIELD) return 0;
     if (!field->owner || field->owner->type != OBJ_BACKGROUND) {
         field->shared_text = shared ? 1 : 0;
-        return;
+        return 1;
     }
-    if (!!field->shared_text == !!shared) return;      /* rien ne change */
+    if (!!field->shared_text == !!shared) return 1;    /* rien ne change */
 
     Object *cd = g_current_card;
 
@@ -17685,18 +17803,21 @@ void hc_set_shared_text(Object *field, int shared)
             for (int i = 0; i < cd->nbgtexts; i++) {
                 if (cd->bgtexts[i].field_id != field->id) continue;
 
-                free(field->contents);
-                field->contents = dupstr(cd->bgtexts[i].text ? cd->bgtexts[i].text : "");
-
-                runs_free(&field->runs);
-                struct RunList *sr = &cd->bgtexts[i].runs;
-                if (sr->n > 0 && runs_room(&field->runs, sr->n)) {
-                    for (int k = 0; k < sr->n; k++) {
-                        field->runs.v[k]      = sr->v[k];
-                        field->runs.v[k].font = dupstr(sr->v[k].font);
-                    }
-                    field->runs.n = sr->n;
+                /* TOUT SE PRÉPARE, PUIS TOUT BASCULE. Le texte et les
+                 * plages étaient détruits avant la copie, et les polices
+                 * copiées sans test : une pénurie laissait un champ à moitié
+                 * migré — et le drapeau changé quand même. Signalé par un
+                 * audit extérieur, mesuré par penurie_atomique. */
+                char *texte = dupstr(cd->bgtexts[i].text ? cd->bgtexts[i].text : "");
+                struct RunList copie;
+                if (!texte || !runs_clone(&copie, &cd->bgtexts[i].runs)) {
+                    free(texte);
+                    return 0;
                 }
+                free(field->contents);
+                field->contents = texte;
+                runs_free(&field->runs);
+                field->runs = copie;
                 break;
             }
         }
@@ -17704,27 +17825,29 @@ void hc_set_shared_text(Object *field, int shared)
     } else {
         /* Le contenu partagé descend dans la carte courante, pour qu'elle
          * garde à l'écran ce qu'elle affichait à l'instant. */
+        /* Même règle dans l'autre sens : les plages d'abord, puis le texte
+         * de la carte ; qu'une étape manque, et le champ reste partagé. */
+        struct RunList copie = { NULL, 0, 0 };
+        if (cd && !runs_clone(&copie, &field->runs)) return 0;
         field->shared_text = 0;
         if (cd) {
-            hc_set_field_text(field, field->contents ? field->contents : "");
-
+            if (!hc_set_field_text(field, field->contents ? field->contents : "")) {
+                field->shared_text = 1;
+                runs_free(&copie);
+                return 0;
+            }
             for (int i = 0; i < cd->nbgtexts; i++) {
                 if (cd->bgtexts[i].field_id != field->id) continue;
-
                 runs_free(&cd->bgtexts[i].runs);
-                struct RunList *sr = &field->runs;
-                if (sr->n > 0 && runs_room(&cd->bgtexts[i].runs, sr->n)) {
-                    for (int k = 0; k < sr->n; k++) {
-                        cd->bgtexts[i].runs.v[k]      = sr->v[k];
-                        cd->bgtexts[i].runs.v[k].font = dupstr(sr->v[k].font);
-                    }
-                    cd->bgtexts[i].runs.n = sr->n;
-                }
+                cd->bgtexts[i].runs = copie;
+                copie.v = NULL; copie.n = copie.cap = 0;
                 break;
             }
+            runs_free(&copie);
         }
     }
     notify_field(field);
+    return 1;
 }
 
 /* ---- Plages de style : lecture par l'hote ---- */
