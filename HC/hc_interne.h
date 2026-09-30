@@ -87,6 +87,9 @@ int     runs_room(struct RunList *rl, int need);
  * d'erreur ne se verrait qu'au moment où ce message sort. */
 void    hc_emet_erreur(const char *fmt, ...)
         __attribute__((format(printf, 1, 2)));
+/* Un diagnostic d'analyse : au journal, jamais au dialogue. Voir hc_core.c. */
+void    hc_emet_diagnostic(const char *fmt, ...)
+        __attribute__((format(printf, 1, 2)));
 
 /* ---- ce que hc_script.c prête à hc_core.c ------------------------------ */
 

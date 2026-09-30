@@ -3,22 +3,26 @@
    (le compte ne s'affiche qu'à partir de deux)
    --- ce que le dialogue reçoit ---
    |    !! drag : l'hôte ne gère pas la souris
+   | ligne 2 :  drag from 1,2 to 3,4
 === 2. la même faute sept fois : une ligne et son compte ===
    (le cas signalé : une commande fautive dans une boucle de tracé,
     cent quarante-deux fois sur une lemniscate)
    --- ce que le dialogue reçoit ---
    |    !! drag : l'hôte ne gère pas la souris (× 7)
+   | ligne 3 :  drag from 1,2 to 3,4
 === 3. deux fautes DIFFÉRENTES restent toutes les deux ===
    (ne garder que la première ferait d'un rapport une devinette)
    --- ce que le dialogue reçoit ---
    |    !! drag : l'hôte ne gère pas la souris
    |    !! choose : l'hôte ne gère pas les outils
    |    !! click : l'hôte ne gère pas la souris
+   | ligne 2 :  drag from 1,2 to 3,4
 === 4. et elles gardent chacune son compte ===
    (deux boucles à la suite, deux fautes distinctes)
    --- ce que le dialogue reçoit ---
    |    !! drag : l'hôte ne gère pas la souris (× 3)
    |    !! choose : l'hôte ne gère pas les outils (× 5)
+   | ligne 3 :  drag from 1,2 to 3,4
 === 5. seules les lignes CONSÉCUTIVES fusionnent ===
    (deux fautes qui alternent restent lisibles : on veut voir
     qu'elles alternent, c'est une information sur la boucle)
@@ -27,5 +31,6 @@
    |    !! choose : l'hôte ne gère pas les outils
    |    !! drag : l'hôte ne gère pas la souris
    |    !! choose : l'hôte ne gère pas les outils
+   | ligne 3 :  drag from 1,2 to 3,4
 === 6. le témoin : un script sans faute n'ouvre rien ===
    (aucun dialogue ci-dessus : c'est le résultat attendu)

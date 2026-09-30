@@ -4,25 +4,26 @@
       appels au dialogue : 1
       objet fautif       : button "Bouton"
       ligne fautive      : 2
-      lignes du message  : 1
+      lignes du message  : 2
             !! objet introuvable (v3, ligne 2 de button "Bouton".mouseUp)
+         ligne 2 :  put the short name of card field "AbsentTotal"
 
    une erreur de syntaxe
       appels au dialogue : 1
       objet fautif       : button "Bouton"
       ligne fautive      : 2
-      lignes du message  : 3
-            !! script, ligne 2 colonne 21 : « to » attendu
-                 repeat with i = 1 up to 5
+      lignes du message  : 2
             !! « to » attendu (v3, ligne 2 de button "Bouton".mouseUp)
+         ligne 2 :  repeat with i = 1 up to 5
 
 == 2. des gestionnaires IMBRIQUES : toujours un seul ==
    deux niveaux d'imbrication
       appels au dialogue : 1
       objet fautif       : button "Bouton"
       ligne fautive      : 2
-      lignes du message  : 1
+      lignes du message  : 2
             !! objet introuvable (v3, ligne 2 de button "Bouton".un)
+         ligne 2 :  put the short name of card field "AbsentTotal"
 
    deux OBJETS imbriques
       appels au dialogue : 1

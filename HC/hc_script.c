@@ -232,9 +232,9 @@ static void v3_dis_les_fautes_r(Object *o, const HctNoeud *n, int *reste)
             ligne[k] = '\0';
         }
 
-        hc_emet_erreur( "   !! script, ligne %d colonne %d : %s",
+        hc_emet_diagnostic( "   !! script, ligne %d colonne %d : %s",
              n->jeton.ligne, n->jeton.col, n->msg ? n->msg : "forme non comprise");
-        if (*ligne) hc_emet_erreur( "      %s", ligne);
+        if (*ligne) hc_emet_diagnostic( "      %s", ligne);
         (*reste)--;
     }
 
@@ -360,7 +360,7 @@ const HctNoeud *script_arbre(Object *o)
     for (int i = 0; i < lot->n; i++)
         if (lot->jetons[i].genre == HCT_ERREUR) {
             if (!o->arbre_faute_ligne) o->arbre_faute_ligne = lot->jetons[i].ligne;
-            hc_emet_erreur( "   !! script, ligne %d colonne %d : %s",
+            hc_emet_diagnostic( "   !! script, ligne %d colonne %d : %s",
                  lot->jetons[i].ligne, lot->jetons[i].col,
                  lot->jetons[i].msg ? lot->jetons[i].msg : "jeton mal formé");
         }
