@@ -11,7 +11,8 @@ now gives the same report on both sides:
 
 It took three fixes to get there, and all three come down to **which layer
 HyperCard looks at first**. This release also fixes a crash that an outside
-audit found, and adds clang's static analyser to the CI.
+audit found, keeps a stack intact when memory runs out, and adds clang's
+static analyser to the CI.
 
 ### At a glance
 
@@ -24,6 +25,7 @@ audit found, and adds clang's static analyser to the CI.
 | `select the foundChunk`, then `the foundChunk` | still filled | **empty**, as in HyperCard |
 | `go first background` with no card open | **crash** | refused cleanly |
 | static analysis (`clang --analyze`) | not run | **zero warnings**, enforced in CI |
+| out of memory while writing a field, a menu, a sort | stack could be damaged | **left intact**, error shown |
 | torture stack, HC vs HyperCard | 2 lines disagreed, 2 still open | **all 108 agree, none open** |
 | `the hcVersion`, "About HC" | `0.7.3` | `0.7.4` |
 
@@ -108,9 +110,9 @@ The two last open questions of the torture stack were settled on the way.
 After a `find` that fails, the next one starts again from the current card,
 and `the foundChunk` names the background field. HC already did both.
 
-### 4. What an outside audit found
+### 4. What two outside audits found
 
-An outside audit, made with clang's static analyser, reported four points.
+A first outside audit, made with clang's static analyser, reported four points.
 Each was checked before anything was changed:
 
 - **a real crash**: `go first background` typed with no card open — before
@@ -127,6 +129,24 @@ Each was checked before anything was changed:
 The analyser now reports **zero warnings** on the kernel. `make analyse`
 requires that, and it runs as its own CI job. It was checked that it does
 fail on the old code.
+
+A second audit then pointed at the moments when **memory runs out**. Several
+writes threw the old value away before holding the new one. A test harness
+now makes the n-th allocation fail, one after the other, and counts the runs
+that leave the stack damaged. On 0.7.3 it found damage in six places:
+
+- the text of a card field, and of a background field on one card;
+- turning a field's text into shared text, which lost its styles;
+- `sort cards`, which could change the order without a word;
+- `open file`, which lost the file and still said it had succeeded;
+- the name of a menu item, which was written **empty**, with no error.
+
+All six now leave the stack **as it was** and say
+"mémoire insuffisante". The last one came from deeper down: an expression
+that ran out of memory evaluated to empty. That is fixed at the source, for
+every command. It is rare on a Mac with gigabytes free. When it does happen,
+though, a stack that stays intact is worth more than a stack that loses a
+field without a word.
 
 ### 5. What is not measured is written down as not measured
 
@@ -180,6 +200,7 @@ fail on the old code.
   text; the torture stack's last questions settled (`1e42c32`, `23ed3b3`)
 - [#91](https://github.com/cleobuline/hc/pull/91) — the torture stack agrees
   with HyperCard, 108 / 0 / 0 (`8638959`)
-- this release — version 0.7.4 in all three places, and this note
+- this release — out-of-memory writes leave the stack intact; version
+  0.7.4 in all three places, and this note
 
 **Full changelog:** [HC-0.7.3...HC-0.7.4](https://github.com/cleobuline/hc/compare/HC-0.7.3...HC-0.7.4)
