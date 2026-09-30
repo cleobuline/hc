@@ -13701,9 +13701,12 @@ static int v3_cmd_debug(HctContexte *ctx, const HctNoeud *n)
 
 /* lock/unlock screen et lock/unlock messages. « lock recent » repart à
  * l'ancien chemin. */
+static void v3_mots(HctContexte *ctx, const HctNoeud *n, int deb,
+                    char *mots, size_t taille);
+static void v3_visuel_lit(const char *mots);
+
 static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
 {
-    (void)ctx;
     char mot[32];
     if (n->nfils < 1) return 0;
     v3_brut(n->fils[0], mot, sizeof mot);
@@ -13715,6 +13718,44 @@ static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
     }
 
     if (!ci_equal(mot, "screen")) return 0;
+
+    /* « UNLOCK SCREEN WITH VISUAL [EFFECT] <effet> [vitesse] [TO <image>] ».
+     *
+     * La queue de la commande était JETÉE : on déverrouillait, et l'effet ne
+     * se jouait jamais. Signalé à l'usage sur le calendrier de Stack
+     * Templates — « il n'y a aucun effet de scroll » —, dont updateCalendar
+     * finit par « unlock screen with visual effect theEffect ». Et c'est ce
+     * qui faisait aussi « la mitraillette avec les années » : sans l'effet,
+     * le script rendait la main en quelques millisecondes, et le minuteur de
+     * mouseStillDown tirait plusieurs fois pendant un simple clic.
+     *
+     * L'effet part à l'hôte AVANT le déverrouillage, comme « go » le lui
+     * envoie avant de changer de carte : l'hôte a besoin de l'image de
+     * départ, qui est l'écran gelé. Il ne vaut que pour ce déverrouillage — on
+     * ne touche pas à un « visual » armé pour le prochain « go ». */
+    if (!ci_equal(n->op, "lock") && n->nfils > 1) {
+        char mots[192];
+        v3_mots(ctx, n, 1, mots, sizeof mots);
+        if (ctx->erreur) return 1;
+        const char *q = skip_spaces(mots);
+        if (ci_word(q, "with")) {
+            q = skip_spaces(q + 4);
+            if (ci_word(q, "visual")) q = skip_spaces(q + 6);
+            if (ci_word(q, "effect")) q = skip_spaces(q + 6);
+            char eff[sizeof g_visual_effect], vit[sizeof g_visual_speed],
+                 img[sizeof g_visual_image];
+            memcpy(eff, g_visual_effect, sizeof eff);
+            memcpy(vit, g_visual_speed,  sizeof vit);
+            memcpy(img, g_visual_image,  sizeof img);
+            v3_visuel_lit(q);
+            if (g_host && g_host->visual_effect)
+                g_host->visual_effect(g_visual_effect, g_visual_speed,
+                                      g_visual_image);
+            memcpy(g_visual_effect, eff, sizeof eff);
+            memcpy(g_visual_speed,  vit, sizeof vit);
+            memcpy(g_visual_image,  img, sizeof img);
+        }
+    }
 
     g_ecran_verrouille = ci_equal(n->op, "lock");
     host_global_set("lockScreen", g_ecran_verrouille ? "true" : "false");
@@ -14906,23 +14947,37 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
  * en QUEUE, puis « to » en tête de ce qui restait. Même ambiguïté qu'avant,
  * juste plus aucun texte à reconstruire depuis les jetons de la ligne
  * entière. */
-static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
+/* Les mots des enfants [deb, nfils[ d'un nœud, joints par un espace. */
+static void v3_mots(HctContexte *ctx, const HctNoeud *n, int deb,
+                    char *mots, size_t taille)
 {
-    (void)ctx;
-    int deb = (n->nfils >= 1 && n->fils[0]->genre == HCTN_MOTCLE) ? 1 : 0;
-
-    char mots[192];
     int pos = 0;
     mots[0] = '\0';
     for (int i = deb; i < n->nfils; i++) {
+        const HctNoeud *f = n->fils[i];
         char m[64];
-        v3_brut(n->fils[i], m, sizeof m);
+        /* Un nom LIÉ se lit, comme pour « choose tl tool » : le calendrier de
+         * Stack Templates reçoit son effet en PARAMÈTRE et le rejoue par
+         * « unlock screen with visual effect theEffect ». Une chaîne se lit
+         * sans ses guillemets. Le reste — « iris open », « to black » — est
+         * pris au mot. */
+        if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, m, sizeof m);
+        else if (f->genre == HCTN_CHAINE) {
+            v3_val_texte(ctx, f, m, sizeof m);
+            if (ctx->erreur) return;
+        }
+        else v3_brut(f, m, sizeof m);
         if (!*m) continue;
-        pos += snprintf(mots + pos, sizeof(mots) - (size_t)pos, "%s%s",
+        pos += snprintf(mots + pos, taille - (size_t)pos, "%s%s",
                         pos ? " " : "", m);
-        if (pos >= (int)sizeof mots) { pos = (int)sizeof mots - 1; break; }
+        if (pos >= (int)taille) { pos = (int)taille - 1; break; }
     }
+}
 
+/* « <effet> [vitesse] [to <image>] » -> g_visual_effect, _speed, _image.
+ * Partagé par « visual effect … » et « unlock screen with visual … ». */
+static void v3_visuel_lit(const char *mots)
+{
     g_visual_effect[0] = g_visual_speed[0] = g_visual_image[0] = '\0';
 
     const char *to = find_kw(mots, "to");
@@ -14962,6 +15017,15 @@ static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
     snprintf(g_visual_effect, sizeof g_visual_effect, "%.63s", reste);
     if (!g_visual_effect[0])
         snprintf(g_visual_effect, sizeof g_visual_effect, "%s", "dissolve");
+}
+
+static int v3_cmd_visuel(HctContexte *ctx, const HctNoeud *n)
+{
+    int deb = (n->nfils >= 1 && n->fils[0]->genre == HCTN_MOTCLE) ? 1 : 0;
+    char mots[192];
+    v3_mots(ctx, n, deb, mots, sizeof mots);
+    if (ctx->erreur) return 1;
+    v3_visuel_lit(mots);
     set_result("");
     return 1;
 }

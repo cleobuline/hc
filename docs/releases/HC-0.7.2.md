@@ -30,7 +30,8 @@ twelve months.
 | the dialog | `propriété inconnue (v3, ligne 3 de button "B".mouseUp)` | the fault as the title; the object, the line **and the line of code** below |
 | Stack Templates, "Show The Year…" | only the title changed | the twelve months redraw |
 | its `Next` / `Previous` arrows | several years per click | **one** per click; held down, one per repeat |
-| `unlock screen with visual effect` | played **after** the script | played **inside** the command, as in HyperCard |
+| `unlock screen with visual effect` | **never played** | played **inside** the command, as in HyperCard |
+| `visual effect e`, with the effect's name in `e` | the effect "e", unknown | the effect named in `e` |
 | `put value("the name of" & return & "me")` | **froze the app** | returns |
 | `charToNum()`, `offset()` with no argument | **crashed** | empty |
 | `global g` then `put g + 1` | could print `-5.31401e+303` | `1` |
@@ -168,13 +169,22 @@ Friday, February on a Monday.
 `Previous` buttons act on `mouseDown`, and repeat through `mouseStillDown`
 while the button stays down. Two things made one click worth several years:
 
-- **The visual effect played *after* the script, not inside it.** `unlock
-  screen with visual effect scroll left` only *armed* the effect; it ran at the
-  next redraw, once the script had finished. So the script returned in a few
-  milliseconds, the repeat timer started, and during the hundred milliseconds
-  of an ordinary click it fired `mouseStillDown` several times. HyperCard plays
-  the effect *inside* `unlock screen` — the script waits for it — so a click is
-  released long before the first repeat. HC now does the same.
+- **The visual effect never played at all** — *"there's no scroll effect"*.
+  `updateCalendar` ends with `unlock screen with visual effect`, on the effect
+  it received as a parameter. HC unlocked the screen and **threw away the rest
+  of the line**: the app never heard of an effect. And had it heard, it had
+  nothing to animate *from*: the screen lock only held back redraws, it kept
+  no picture of the frozen screen. The code that did keep one was there, and
+  nothing called it. Now the kernel hands the effect over just before
+  unlocking — reading `theEffect` as a variable, as Apple's script needs — and
+  the lock photographs the screen, so the effect goes from the frozen screen
+  to what the script painted underneath. It plays *inside* `unlock screen`,
+  and the script waits for it, as in HyperCard.
+
+  That was also half the machine gun: with no effect, the script returned in
+  a few milliseconds, the repeat timer started, and during the hundred
+  milliseconds of an ordinary click it fired `mouseStillDown` several times.
+  With the effect lasting longer than the click, a click is one year.
 - **The repeat timer also fired *during* a running script**, starting a new
   `updateCalendar` inside the one in progress. Replayed in the kernel with
   three ticks during the script: one press, 1995 became **1999**. HyperCard
@@ -244,7 +254,13 @@ contradicted the reading of the code.
   on macOS, **not run**. Benches in `docs/mesures/ligne_fautive.txt`.
 - The calendar fixes in the app layer — the launching click, the repeat timer
   and the visual effect played inside `unlock screen` — are compiled, not run;
-  the kernel side is replayed on Apple's real stack.
+  the kernel side is replayed on Apple's real stack, and a test checks that
+  the effect reaches the app, with its speed and target, *before* the unlock.
+- `lock screen` now takes a picture of the card every time, whether an
+  effect follows or not — there is no knowing in advance. Its cost is not
+  measured.
+- That HyperCard reads a **variable** in `visual effect theEffect` is deduced
+  from Apple's calendar, which would not work otherwise; not measured.
 - That a bare integer is a date in HyperCard is **deduced** from Apple's
   calendar script. To play **in HyperCard**: `put "2026" is a date`.
 - The three Cocoa crashes of section 4 were found by **reading**, not seen.
@@ -256,10 +272,10 @@ contradicted the reading of the code.
 
 ### Test status
 
-- C kernel: **259 checks, all green**, including under AddressSanitizer,
-  UndefinedBehaviorSanitizer and LeakSanitizer. Nine new ones: `lignefautive`,
+- C kernel: **260 checks, all green**, including under AddressSanitizer,
+  UndefinedBehaviorSanitizer and LeakSanitizer. Ten new ones: `lignefautive`,
   `valeurgel`, `sansargument`, `deuxpiles`, `horsplage`, `globalevierge`,
-  `penurie_atomique`, `iconeindex`, `ouerreur`.
+  `penurie_atomique`, `iconeindex`, `ouerreur`, `deverrouvisuel`.
 - **Zero warnings**, gcc at three optimisation levels *and* clang with Xcode's
   families.
 - The Cocoa layer still has **no** automated tests — CI only proves it
@@ -293,6 +309,7 @@ contradicted the reading of the code.
   right object and line for every error, the framed line and line numbers in
   the editor, and the Stack Templates calendar (`0edf2ab`, `098d41d`,
   `9c89e9f`, `cbf5592`, `fb0e7c6`, `61d5ac2`, `d11c4ca`, `455ace8`)
-- this release — version 0.7.2 in all three places, and this note
+- this release — version 0.7.2 in all three places, this note, the calendar
+  arrows' repeat timer, and `unlock screen with visual effect`
 
 **Full changelog:** [HC-0.7.1...HC-0.7.2](https://github.com/cleobuline/hc/compare/HC-0.7.1...HC-0.7.2)

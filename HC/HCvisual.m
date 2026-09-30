@@ -114,8 +114,8 @@ void hcv_lock_screen(void) {
     gVisualCapturing = NO;
 }
 
-void hcv_unlock_screen(void) {
-    if (!gLockImage) return;
+BOOL hcv_unlock_screen(void) {
+    if (!gLockImage) return NO;
     /* Un « visual effect » armé pendant le verrou trouve ici son image de
      * départ : c'est l'écran tel qu'il était AVANT que le script ne peigne. */
     if (gVisualSteps > 0 && !gVisualBefore) gVisualBefore = gLockImage;
@@ -145,9 +145,9 @@ void hcv_unlock_screen(void) {
      * lieu quand l'hôte est prévenu. */
     if (gView && gVisualBefore && gVisualSteps > 0 && !gVisualRunning) {
         [gView runVisualTransition];
-        return;
+        return YES;
     }
-    [gView setNeedsDisplay:YES];
+    return NO;
 }
 
 /* Appelée en tête de drawRect:. Rend YES si l'image gelée a pris la place du
