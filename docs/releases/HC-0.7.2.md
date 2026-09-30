@@ -29,6 +29,7 @@ twelve months.
 | a handler without its `end` | did **nothing**, silently | an error, pointing at the handler's first line |
 | the dialog | `propriété inconnue (v3, ligne 3 de button "B".mouseUp)` | the fault as the title; the object, the line **and the line of code** below |
 | Stack Templates, "Show The Year…" | only the title changed | the twelve months redraw |
+| its `Next` / `Previous` arrows, held down | runaway years, nested runs | one year per repeat |
 | `put value("the name of" & return & "me")` | **froze the app** | returns |
 | `charToNum()`, `offset()` with no argument | **crashed** | empty |
 | `global g` then `put g + 1` | could print `-5.31401e+303` | `1` |
@@ -162,6 +163,15 @@ click only counts for `the mouseClick` if it arrives *while* a script is
 running. Reproduced on Apple's real stack, then fixed: January 2027 starts on a
 Friday, February on a Monday.
 
+**And the arrows ran away when held.** The calendar's `Next` and `Previous`
+buttons act on `mouseDown`, and repeat through `mouseStillDown` while the
+button stays down. HC's repeat timer kept firing *while a script was running*
+— the event loop turns during long scripts to keep the window responsive — so
+each tick started a new `updateCalendar` **inside** the one in progress, which
+added another year. Replayed in the kernel with three ticks during the script:
+one press, 1995 became **1999**. HyperCard never delivers a message in the
+middle of a handler; HC now sends `mouseStillDown` only between runs.
+
 ### 4. What the audits found
 
 **Our own audit** — clang's static analyser, and a fuzzer run under
@@ -224,6 +234,9 @@ contradicted the reading of the code.
 
 - The script-editor frame, the line numbers and the dialog are **compiled**
   on macOS, **not run**. Benches in `docs/mesures/ligne_fautive.txt`.
+- The two calendar fixes in the app layer — the launching click and the
+  repeat timer — are compiled, not run; the kernel side is replayed on
+  Apple's real stack.
 - That a bare integer is a date in HyperCard is **deduced** from Apple's
   calendar script. To play **in HyperCard**: `put "2026" is a date`.
 - The three Cocoa crashes of section 4 were found by **reading**, not seen.

@@ -8023,6 +8023,31 @@ static NSTextField  *gSprayDensityLabel = nil;
         [self stopStillDownTimer];
         return;
     }
+    /* PAS DE mouseStillDown AU MILIEU D'UN SCRIPT.
+     *
+     * Le minuteur est inscrit dans les « common modes », et cocoa_idle fait
+     * tourner la boucle d'événements pendant qu'un script travaille : il se
+     * déclenchait donc AU MILIEU du gestionnaire, et envoyait un message
+     * imbriqué dans celui qui tournait. Signalé à l'usage sur le calendrier de
+     * Stack Templates, dont les flèches font
+     *
+     *     on mouseDown
+     *       updateCalendar bg field "Year" + 1, "scroll left"
+     *     end mouseDown
+     *     on mouseStillDown
+     *       mouseDown
+     *     end mouseStillDown
+     *
+     * Bouton tenu : chaque tic lançait un updateCalendar DANS le précédent,
+     * qui incrémentait l'année à son tour. Rejoué dans le noyau avec trois tics
+     * pendant le script : un seul appui, 1995 devient 1999. À soixante tics
+     * par seconde, et avec l'effet visuel qui dure, l'année s'emballait.
+     *
+     * HyperCard ne livre jamais un message pendant qu'un gestionnaire tourne :
+     * mouseStillDown part ENTRE deux exécutions. Le minuteur reste armé ; le
+     * tic qui suit la fin du script enverra le suivant, si le bouton est encore
+     * enfoncé. */
+    if (hc_is_running()) return;
     hc_send(presse, "mouseStillDown");
 }
 @end
