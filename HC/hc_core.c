@@ -3892,7 +3892,12 @@ static void frame_declare_global(Frame *f, const char *name)
         if (!p) hc_memoire_epuisee("déclarations « global » d'un gestionnaire");
         f->gl = p; f->capgl = cap;
     }
-    f->gl[f->ngl++] = dupstr(name);
+    /* La copie d'abord, le compte ensuite : un nom NULL rangé dans gl ferait
+     * tomber frame_has_global, qui le compare sans vérifier. Même politique
+     * que var_set_num : une pénurie se dit, elle ne laisse pas un trou. */
+    char *nom = dupstr(name);
+    if (!nom) hc_memoire_epuisee("déclaration « global » d'un gestionnaire");
+    f->gl[f->ngl++] = nom;
 
     /* Une globale DÉCLARÉE existe, et vaut la chaîne vide tant qu'on ne l'a
      * pas affectée. Sans cela elle tombait sous la règle « identificateur
@@ -3911,8 +3916,30 @@ static void frame_declare_global(Frame *f, const char *name)
         if (!p) hc_memoire_epuisee("table des variables globales");
         g_globals.v = p; g_globals.cap = cap;
     }
-    g_globals.v[g_globals.n].name = dupstr(name);
-    g_globals.v[g_globals.n].val  = dupstr("");
+    /* LES QUATRE CHAMPS, PAS DEUX.
+     *
+     * Le nombre non arrondi (brut) et son drapeau (a_brut) n'étaient pas
+     * posés : la case sort d'un realloc, et contenait ce que le tas y avait
+     * laissé. v3_lit_var lit a_brut, et s'il n'était pas nul, prenait brut
+     * pour la valeur de la variable. Signalé par un audit extérieur, et
+     * mesuré en remplissant chaque allocation d'un motif (MALLOC_PERTURB_) :
+     *
+     *     global g1, …, g12
+     *     put g12 + 1            -> -5.31401e+303, au lieu de 1
+     *
+     * Aucun sanitizer de la suite ne le voit : la lecture tombe dans un bloc
+     * valide, c'est le terrain de MemorySanitizer, que gcc n'a pas. Le
+     * harnais globalevierge le tient en remplissant le tas lui-même.
+     *
+     * Et le nom et la valeur passent par la même porte que var_set_num : une
+     * pénurie se dit, au lieu de laisser un nom NULL que la recherche
+     * comparerait sans vérifier. */
+    Var *v = &g_globals.v[g_globals.n];
+    v->name   = dupstr(name);
+    v->val    = dupstr("");
+    v->brut   = 0;
+    v->a_brut = 0;
+    if (!v->name || !v->val) hc_memoire_epuisee("nom ou valeur d'une globale");
     g_globals.n++;
 }
 
@@ -5428,10 +5455,21 @@ static int container_set_body(const char *ref, const char *val, int mode)
             else if (mode == 3) piece[0] = '\0';
             else                snprintf(piece, HC_VAL, "%s", val);
 
-            if (mode == 3 && sepstr[0]) {       /* supprimer emporte un séparateur */
-                int bl = (int)strlen(base);
-                if      (en < bl && base[en] == sepstr[0]) en++;
-                else if (st > 0  && base[st-1] == sepstr[0]) st--;
+            /* Supprimer emporte un séparateur — le séparateur ENTIER.
+             *
+             * On comparait et retirait UN octet : avec « set the itemDelimiter
+             * to "é" », deux octets en UTF-8, la suppression laissait la moitié
+             * du é derrière elle, de l'UTF-8 invalide. Signalé par un audit
+             * extérieur, qui a lui-même vérifié que la v3 sert ce cas par
+             * hct_chunk_supprime, correct : ce chemin-ci n'est plus atteint que
+             * par le recours. On le corrige quand même — deux règles pour une
+             * même commande finissent toujours par se contredire. */
+            if (mode == 3 && lsep) {
+                size_t bl = strlen(base);
+                if ((size_t)en + lsep <= bl &&
+                    strncmp(base + en, sepstr, lsep) == 0)            en += (int)lsep;
+                else if ((size_t)st >= lsep &&
+                         strncmp(base + st - lsep, sepstr, lsep) == 0) st -= (int)lsep;
             }
             snprintf(neuf, HC_VAL, "%.*s%s%s", st, base, piece, base + en);
         }
@@ -17360,12 +17398,26 @@ const char *hc_paint_of(Object *o)
     return o ? o->paint : NULL;
 }
 
-void hc_set_paint(Object *o, const char *base64)
+int hc_set_paint(Object *o, const char *base64)
 {
-    if (!o) return;
-    if (o->type != OBJ_CARD && o->type != OBJ_BACKGROUND) return;
+    if (!o) return 0;
+    if (o->type != OBJ_CARD && o->type != OBJ_BACKGROUND) return 0;
+    /* LA COPIE D'ABORD, LA LIBÉRATION ENSUITE — la règle de var_set_num.
+     *
+     * L'ancien dessin était libéré avant de savoir si le nouveau tenait en
+     * mémoire : une copie manquée laissait l'objet SANS dessin, ni l'ancien
+     * ni le nouveau, et rien ne le disait. Trouvé en suivant le dessin
+     * importé qui se perdait en silence (hc_importe.c, signalé par un audit
+     * extérieur) : c'est le même trou, un étage plus bas, et c'est aussi
+     * celui de l'outil de peinture. */
+    char *neuf = NULL;
+    if (base64 && *base64) {
+        neuf = dupstr(base64);
+        if (!neuf) return 0;
+    }
     free(o->paint);
-    o->paint = (base64 && *base64) ? dupstr(base64) : NULL;
+    o->paint = neuf;
+    return 1;
 }
 
 /* ═══ Une ligne isolée, exécutée par la v3 ══════════════════════════════

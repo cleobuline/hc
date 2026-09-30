@@ -1115,9 +1115,11 @@ void        hc_set_selection(Object *field, int start, int len);
 int         hc_get_selection(Object **field, int *start, int *len);
 
 /* Calque de peinture (bitmap base64) d'une carte ou d'un fond.
-   Le noyau ne l'interprète pas : il le stocke et le restitue tel quel. */
+   Le noyau ne l'interprète pas : il le stocke et le restitue tel quel.
+   hc_set_paint rend 0 si la copie n'a pas tenu en mémoire : l'objet garde
+   alors son ANCIEN dessin, intact. */
 const char *hc_paint_of(Object *o);
-void        hc_set_paint(Object *o, const char *base64);
+int         hc_set_paint(Object *o, const char *base64);
 
 /* Libère les variables globales (à appeler avant de quitter). */
 void        hc_shutdown(void);

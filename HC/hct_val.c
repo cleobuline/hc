@@ -3,6 +3,7 @@
 #include "hct_val.h"
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
@@ -78,7 +79,18 @@ HctValeur hct_val_texte_n(const char *s, int len)
 
 HctValeur hct_val_texte(const char *s)
 {
-    return hct_val_texte_n(s, s ? (int)strlen(s) : 0);
+    /* LA PORTE DE TOUTES LES VALEURS, DONC LA BORNE ICI.
+     *
+     * « (int)strlen(s) » rendait un nombre négatif au-delà d'INT_MAX, que
+     * hct_val_texte_n prend pour zéro : un texte de plus de deux gigaoctets
+     * devenait la chaîne VIDE, sans un mot. Même contrat que concat et
+     * hct_chunk_ecrit : ce qu'un int ne décrit pas est un échec, qui se voit.
+     * Relevé en suivant la frontière int/size_t signalée par un audit
+     * extérieur ; non mesuré, faute d'un tel texte. */
+    if (!s) return hct_val_vide();
+    size_t n = strlen(s);
+    if (n > (size_t)INT_MAX) return hct_val_echec();
+    return hct_val_texte_n(s, (int)n);
 }
 
 HctValeur hct_val_nombre(double x)

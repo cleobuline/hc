@@ -1115,9 +1115,25 @@ Object *hc_load(const char *path)
                         if (hi < 0 || lo < 0 || cicon_pos >= HC_ICON_PIXELS) {
                             icon_abimee = 1; break;
                         }
+                        /* UN INDEX HORS DE LA PALETTE REFUSE L'ICÔNE.
+                         *
+                         * put_cicon écrit la palette AVANT les pixels, et son
+                         * commentaire en donnait la raison : « le relecteur
+                         * peut ainsi vérifier qu'un index désigne une couleur
+                         * connue ». Le relecteur ne le vérifiait pas. Un pixel
+                         * « FF » dans une palette de quatre passait : la
+                         * silhouette le comptait comme encre, l'éditeur comme
+                         * transparent, et les deux vérités divergeaient. La
+                         * même faute que hc_icon_pixel_pose, signalée par un
+                         * audit extérieur ; celle-ci est son site jumeau. */
+                        int idx = hi * 16 + lo;
+                        if (cur_icon && cur_icon->couleur &&
+                            idx >= cur_icon->couleur->ncouleurs) {
+                            icon_abimee = 1; break;
+                        }
                         if (cur_icon && cur_icon->couleur)
                             cur_icon->couleur->pixels[cicon_pos] =
-                                (unsigned char)(hi * 16 + lo);
+                                (unsigned char)idx;
                         cicon_pos++;
                     }
                     continue;

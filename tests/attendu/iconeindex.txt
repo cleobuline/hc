@@ -1,0 +1,12 @@
+== la primitive : palette de 4 couleurs ==
+   poser l'index   3 : pixel = 3, encres = 1
+   poser l'index   4 : pixel = 3, encres = 1
+   poser l'index 200 : pixel = 3, encres = 1
+   poser l'index   0 : pixel = 0, encres = 0
+
+== le lecteur ==
+   poser l'index   2 : pixel = 2, encres = 1
+   la pile enregistrée : ouverte
+   un pixel à l'index 3 (dans la palette) : ouverte
+   un pixel à l'index 4 (hors palette)    : Une icône de cette pile est incomplète ou abîmée.
+   un pixel à l'index 255                 : Une icône de cette pile est incomplète ou abîmée.
