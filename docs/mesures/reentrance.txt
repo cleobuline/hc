@@ -1,0 +1,106 @@
+À MESURER — CE QUE LA SOURIS ET LE CLAVIER FONT PENDANT UN SCRIPT
+===============================================================
+
+Un audit extérieur (le troisième, points 3, 11 et 12) pose trois questions sur
+ce qui arrive quand l'utilisatrice clique ou tape PENDANT qu'un gestionnaire
+tourne :
+
+  3.  cliquer sur la fenêtre d'une AUTRE pile la rend-il active au milieu du
+      script — et « this card », « this stack » basculent-ils alors sur elle ?
+  11. un clic sur un bouton lance-t-il son mouseUp AU MILIEU du gestionnaire
+      en cours (imbriqué), ou APRÈS lui ?
+  12. une touche frappée APRÈS un clic passe-t-elle DEVANT lui ?
+
+RIEN DE CECI N'EST MESURÉ. Ce que dit le code, et qui n'est qu'une lecture :
+
+  · Pendant un script, cocoa_idle fait tourner la boucle d'exécution
+    (NSRunLoop runMode:beforeDate:), qui déclenche les MINUTEURS et les blocs
+    dispatch_async, mais ne distribue pas les ÉVÉNEMENTS : c'est NSApp qui le
+    fait, dans sa propre boucle. Le clavier l'a démontré — Cmd-. restait dans
+    la file jusqu'à ce qu'on aille l'y chercher (cmdpoint.txt).
+  · Si la souris suit le même chemin, un clic pendant un script attend la fin
+    du script, et ni 3 ni 11 ne peuvent se produire. Le commentaire de
+    cocoa_idle affirme le contraire (« les clics et les touches sont traités
+    au passage ») ; celui de mouseDown: dit « n'est PAS mesuré ». Les deux ne
+    peuvent pas avoir raison.
+  · 12 est certain par construction : hcv_guette_cmd_point retire toutes les
+    frappes et les REMET EN TÊTE de file, devant un clic resté dedans. La note
+    0.7.3 l'inscrit déjà comme connu. Ce qui n'est pas mesuré, c'est ce qu'en
+    fait HyperCard.
+
+
+LE BANC
+-------
+
+Une pile « A », une carte. Trois boutons et un champ de carte « Journal ».
+
+  bouton « Long » :
+
+    on mouseUp
+      global gJ, gT0, gLong
+      put empty into gJ
+      put the ticks into gT0
+      put true into gLong
+      put the short name of this stack & "/" & the short name of this card into vu
+      put "départ, contexte : " & vu & return after gJ
+      repeat until the ticks - gT0 > 480
+        put the short name of this stack & "/" & the short name of this card into ici
+        if ici is not vu then
+          put "t=" & (the ticks - gT0) & " contexte : " & ici & return after gJ
+          put ici into vu
+        end if
+      end repeat
+      put false into gLong
+      put "fin de Long à t=" & (the ticks - gT0) & return after gJ
+    end mouseUp
+
+  bouton « Clic A » :
+
+    on mouseUp
+      global gJ, gT0, gLong
+      put "clic A à t=" & (the ticks - gT0) & ", Long en cours : " & gLong & return after gJ
+    end mouseUp
+
+  bouton « Journal » :
+
+    on mouseUp
+      global gJ
+      put gJ into card field "Journal"
+    end mouseUp
+
+  script de la CARTE :
+
+    on keyDown k
+      global gJ, gT0, gLong
+      put "touche " & k & " à t=" & (the ticks - gT0) & ", Long en cours : " & gLong & return after gJ
+    end keyDown
+
+
+LE GESTE, dans cet ordre, pendant les huit secondes de « Long » :
+
+  1. cliquer « Long » ;
+  2. une seconde plus tard, cliquer « Clic A » ;
+  3. puis taper la lettre x ;
+  4. attendre la fin, puis cliquer « Journal ».
+
+  à jouer DANS HYPERCARD (Basilisk II)      — questions 11 et 12
+  à jouer DANS HC (l'application)           — questions 11 et 12
+
+Et DANS HC seulement, pour la question 3 — HyperCard n'ouvre qu'une pile à
+la fois — une seconde pile « B » ouverte à côté, avec un bouton « Clic B »
+dont le script est celui de « Clic A » en remplaçant A par B. Refaire le
+geste en cliquant, à l'étape 2, sur la FENÊTRE de B puis sur « Clic B ».
+
+
+CE QUE LE JOURNAL TRANCHE
+-------------------------
+
+  « clic A … Long en cours : true »     le clic est servi PENDANT le script
+                                        (11 est réel)
+  « clic A … Long en cours : false »    le clic attend la fin (11 ne se
+                                        produit pas)
+  « touche x » AVANT « clic A »         l'ordre est inversé (12)
+  une ligne « t=… contexte : B/… »      la pile active a basculé en plein
+                                        script (3 est réel)
+
+Relevés : aucun à ce jour.
