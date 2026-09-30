@@ -5832,8 +5832,28 @@ static int parse_datetime_ex(const char *s, struct tm *tm, int *strict)
     memset(tm, 0, sizeof *tm);
     tm->tm_isdst = -1;
 
-    /* --- secondes du Macintosh : un seul nombre, et il est énorme --- */
-    if (!sawslash && !sawcolon && !sawname && nn == 1 && nums[0] > 100000) {
+    /* --- secondes du Macintosh : un seul nombre, QUEL QU'IL SOIT ---
+     *
+     * Le seuil « nums[0] > 100000 » faisait d'un petit nombre une NON-date,
+     * pour `convert` comme pour `is a date`. C'était une heuristique, jamais
+     * une mesure, et elle cassait une pile d'Apple. Le calendrier de « Stack
+     * Templates » demande une année, puis se garde :
+     *
+     *     ask "Show what year?" with item 1 of todaysDate
+     *     if ((it is empty) or (it is not a date)) then exit mouseUp
+     *     else updateCalendar it, "barn door open"
+     *
+     * et updateCalendar range « it » dans l'item 1 d'une dateItems : la
+     * réponse attendue est une ANNÉE SEULE, « 2026 ». Pour que ce bouton ait
+     * jamais marché, il faut qu'HyperCard tienne « 2026 » pour une date — un
+     * entier y est un nombre de secondes depuis 1904, sans plancher. Chez
+     * nous le bouton sortait par « exit mouseUp », sans erreur et sans rien
+     * faire : signalé à l'usage, « convert todaysDate to dateItems est
+     * exécuté mais ne donne aucun résultat ».
+     *
+     * DÉDUIT du script d'Apple, NON MESURÉ dans HyperCard : le banc est dans
+     * le harnais estdate. */
+    if (!sawslash && !sawcolon && !sawname && nn == 1) {
         time_t t = (time_t)(nums[0] - HC_MAC_EPOCH);
         struct tm *lt = localtime(&t);
         if (!lt) return 0;
