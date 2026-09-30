@@ -1,0 +1,114 @@
+LA LIGNE FAUTIVE — CE QUE « SCRIPT » MONTRE, ET OÙ
+===================================================
+
+Demandé le 30 septembre : « le plus important, c'est que l'user voie exactement
+l'endroit du script qui fâche ; l'éditeur n'est pas très convivial, il faut que
+la ligne fautive soit correctement encadrée, comme dans HyperCard ; des scripts
+complexes peuvent devenir cryptiques, tout doit être mis en œuvre pour
+déboguer facilement ».
+
+Deux moitiés, et elles ne se vérifient pas au même endroit : le NOYAU doit
+désigner le bon objet et la bonne ligne — mesurable ici ; l'ÉDITEUR doit les
+montrer — compilé ici, jugé sur la machine.
+
+
+LE NOYAU : MESURÉ SUR VINGT CAS (harnais ouerreur)
+--------------------------------------------------
+
+Le dialogue reçoit un objet et une ligne par le rappel « erreur ». Ils
+venaient de DEUX chemins : l'objet, de la première ligne d'erreur accumulée
+quelle qu'elle soit ; la ligne, de la première erreur d'exécution. Sur seize
+cas mesurés d'abord, cinq désignaient un mauvais endroit :
+
+  7   le bouton échoue ligne 3 ; le script de la CARTE, lu en chemin, porte une
+      faute dans un AUTRE gestionnaire, jamais exécuté
+        avant : la CARTE, ligne 3, sous le titre de la faute de la carte
+        après : le bouton, ligne 3
+  10  une ligne tapée dans la boîte de message
+        avant : le script de la carte, ligne 1
+        après : aucun objet — pas de bouton « Script », il n'y a rien à ouvrir
+  14  « zorglub 3 », message que personne ne sert
+        avant : ligne 0 — l'éditeur s'ouvrait en haut
+        après : ligne 3
+  15  « on mouseUp » sans son « end »
+        avant : ligne 0 ; et le gestionnaire ne faisait RIEN, écarté en silence
+        après : une erreur, « le gestionnaire « mouseUp » est mal formé :
+                « end » manquant », qui désigne l'EN-TÊTE (ligne 1) — la fin
+                du texte, où la faute se constate, n'apprendrait rien
+  17-19 les fautes dites par une COMMANDE — hide, set, delete
+        avant : ligne 0
+        après : la ligne de la commande
+
+LA CAUSE, UNE SEULE : les diagnostics de l'ANALYSE (« script, ligne 4 colonne
+16 : … ») entraient dans le dialogue. Ils sont dits quand un script est LU, la
+première fois qu'un message l'atteint, et peuvent parler d'un gestionnaire que
+personne n'exécute. Ils vont maintenant au journal seulement ; objet et ligne
+sont posés ENSEMBLE, par l'erreur qui a réellement arrêté le script. On ne
+perd rien : exécuter une ligne fautive lève sa propre erreur à sa ligne, et un
+gestionnaire écarté le dit désormais.
+
+LE TEXTE DU DIALOGUE se termine par la ligne SOURCE, telle qu'écrite :
+« ligne 3 :  put the zorglub of me ». « Ligne 42 » oblige à compter ; la
+ligne se reconnaît.
+
+
+L'ÉDITEUR : COMPILÉ, NON EXÉCUTÉ
+--------------------------------
+
+  LE CADRE. La ligne fautive était SÉLECTIONNÉE : une sélection disparaît au
+  premier clic, et la première touche frappée REMPLACE la ligne entière. Elle
+  est maintenant encadrée d'un rectangle rouge, dessiné sous le texte, qui
+  reste pendant qu'on lit le reste du script ; le curseur se pose au début de
+  la ligne sans rien sélectionner. Le cadre disparaît à la première
+  modification : les numéros de ligne ne désignent plus la même chose.
+  « Vérifier » encadre aussi la première faute qu'il trouve.
+
+  LES NUMÉROS DE LIGNE, dans la marge. Celui de la ligne fautive est en rouge.
+
+  LE DIALOGUE. Titre : la faute, sans « (v3, ligne 3 de … ) », mot de
+  l'atelier. Détail : l'objet et la ligne, puis la ligne source, puis les
+  autres fautes éventuelles.
+
+  LES LIGNES SE COMPTENT SUR « \n » SEULEMENT, comme le noyau.
+  lineRangeForRange: coupe aussi sur « \r », U+2028, U+2029 et U+0085 : un
+  script qui en porterait un ferait encadrer la ligne d'à côté.
+
+Banc à jouer DANS HC (l'application) :
+
+  1. un bouton, script :
+         on mouseUp
+           put 1 into x
+           put the zorglub of me
+         end mouseUp
+     cliquer, puis « Script » dans le dialogue. Attendu : titre « propriété
+     inconnue » ; détail « button "…", ligne 3 : put the zorglub of me » ;
+     l'éditeur ouvert, la ligne 3 encadrée de rouge, le 3 de la marge en
+     rouge, le curseur au début de la ligne, rien de sélectionné.
+  2. cliquer ailleurs dans le script : le cadre reste.
+  3. taper une lettre : le cadre disparaît.
+  4. dans un script long (plus haut que la fenêtre), une faute en bas : la
+     ligne doit être visible sans défiler à la main.
+  5. une ligne très longue, repliée sur deux lignes d'écran : le cadre
+     englobe les deux.
+  6. « Vérifier » sur un script qui porte une faute : la ligne est encadrée.
+
+
+CE QUI RESTE OUVERT
+-------------------
+
+- Après une faute dite par une COMMANDE (hide, set, delete, un message que
+  personne ne sert), le gestionnaire CONTINUE : « après » s'affiche, et le
+  dialogue n'arrive qu'à la fin. HyperCard s'arrête-t-il sur « Can't
+  understand » ? Probablement, et ce serait plus clair encore pour déboguer :
+  on verrait l'état au moment de la faute. Non mesuré ; à jouer DANS
+  HYPERCARD (Basilisk II) :
+      on mouseUp
+        put "avant" into msg
+        hide button "Absent"
+        put "après" into msg
+      end mouseUp
+  La boîte de message dit-elle « avant » ou « après » ?
+- La COLONNE de la faute est connue du noyau pour les fautes de syntaxe ; elle
+  n'est pas transmise, et c'est la ligne entière qui est encadrée, comme dans
+  HyperCard.
+- Pas de débogueur pas à pas.
