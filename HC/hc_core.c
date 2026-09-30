@@ -11770,7 +11770,8 @@ static const char *find_phrase(const char *tx, const char *pat, int mode,
 static int find_rang_champ(Object *cd, Object *fl)
 {
     int r = 0;
-    Object *couches[2] = { cd, cd ? cd->bg : NULL };
+    /* Le même ordre que la visite : le fond, puis la carte. */
+    Object *couches[2] = { cd ? cd->bg : NULL, cd };
     for (int L = 0; L < 2; L++) {
         Object *lay = couches[L];
         if (!lay) continue;
@@ -11985,7 +11986,16 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         if (cd->bg && cd->bg->dont_search) continue;
         if (marquees_seules && !cd->marked) continue;
 
-        Object *layers[2] = { cd, cd->bg };
+        /* LE FOND D'ABORD, PUIS LA CARTE. Mesuré DANS HYPERCARD (Basilisk
+         * II) le 30 septembre, sur une carte où « cible » est à la fois
+         * dans le champ de carte n° 1 et dans le champ de fond n° 1 : trois
+         * « find "cible" » de suite donnent bkgnd field 1, card field 1,
+         * bkgnd field 1. HC visitait la carte d'abord, et rendait l'inverse.
+         * C'est la même priorité que celle des désignateurs sans couche —
+         * voir couche_implicite. find_rang_champ suit le MÊME ordre : la
+         * reprise après le curseur compare des rangs, et deux ordres
+         * différents feraient sauter une moitié de la carte. */
+        Object *layers[2] = { cd->bg, cd };
         Object *trouve_fl = NULL;
         const char *trouve_tx = NULL, *trouve_hit = NULL;
         size_t trouve_len = 0;

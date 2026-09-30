@@ -369,10 +369,32 @@ La pile FRAÎCHEMENT OUVERTE — HyperCard quitté puis relancé : le curseur de
 « find » survit à la navigation et au changement de motif (mesuré plus haut),
 et un curseur laissé par une recherche précédente fausserait F1.
 
-    ligne   HC (noyau, 30 sept.)   HyperCard
-    F1      card field 1           ?
-    F2      bkgnd field 1          ?
-    F3      card field 1           ?
+    ligne   HC avant               HyperCard (30 sept.)   HC après
+    F1      card field 1           bkgnd field 1          bkgnd field 1
+    F2      bkgnd field 1          card field 1           card field 1
+    F3      card field 1           bkgnd field 1          bkgnd field 1
+
+(Relevé non étiqueté, mais sans ambiguïté : HC ne pouvait pas rendre
+« bkgnd field 1 » en F1.)
+
+TRANCHÉ ET CORRIGÉ : HyperCard visite le FOND d'abord. L'hypothèse du 27
+septembre était la bonne, et elle explique les deux seules lignes de la pile
+de torture qui divergeaient — « find "alpha" » depuis l'Atelier, où le
+curseur sort du champ de CARTE B : le fond de l'Atelier est déjà vu, on passe
+à Deux. Ces deux lignes attendaient les réponses de HC ; elles portent
+maintenant celles d'HyperCard, et la pile passe sans échec.
+
+La correction tient en deux lignes qui doivent rester d'accord : l'ordre de
+visite (layers, dans la recherche) et le rang de reprise (find_rang_champ).
+Deux ordres différents feraient sauter une moitié de la carte à la reprise.
+Harnais findcouches : le banc, et la reprise de la pile de torture.
+
+C'est la même priorité que celle des désignateurs sans couche
+(couche_implicite.txt) : les deux divergences avaient une seule racine.
+
+Conséquence non mesurée : la ligne « ? » « foundChunk après un échec » de la
+pile de torture nomme maintenant « bkgnd field 1 » au lieu de « card field
+1 ». Ce qu'HyperCard répond là n'a jamais été relevé.
 
     bkgnd field 1 en F1  -> HyperCard visite le fond d'abord : HC doit changer
     card field 1 en F1   -> même ordre que HC : l'hypothèse tombe, et la

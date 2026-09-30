@@ -117,7 +117,7 @@
   ok     les mots d'une ligne
   ok     le style d'un mot d'une ligne
   ?      apres un echec, la recherche repart de : [Atelier]
-  ?      foundChunk apres un echec : [char 1 to 5 of card field 1]
+  ?      foundChunk apres un echec : [char 1 to 5 of bkgnd field 1]
   ok     hide <variable> cache le champ
   ok     find in <variable> trouve
   ok     set la propriete de <variable>
