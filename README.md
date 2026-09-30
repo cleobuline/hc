@@ -25,15 +25,29 @@ une seule fois :
 xattr -dr com.apple.quarantine /Applications/HC.app
 ```
 
-## Construire et tester
+## Construire
+
+Sur Mac, avec Xcode :
 
 ```sh
-xcodebuild -project HC.xcodeproj -target HC -configuration Release build   # l'application, sur Mac
-make test                                                                  # le noyau, partout
+xcodebuild -project HC.xcodeproj -target HC -configuration Release build
 ```
 
-Le noyau et l'interpréteur sont en C99 et se testent aussi sous Linux :
-plus de 260 harnais, comparés à HyperCard sous Basilisk II.
+## Tester sous Linux
+
+Le noyau et l'interpréteur sont en C99 : plus de 260 harnais, comparés à
+HyperCard sous Basilisk II, tournent sans Mac. Sur Ubuntu ou Debian :
+
+```sh
+sudo apt install build-essential zlib1g-dev git
+git clone https://github.com/cleobuline/hc.git
+cd hc
+make test          # la suite de non-régression
+make test-asan     # la même sous AddressSanitizer, UBSan et LeakSanitizer
+```
+
+`zlib1g-dev` est nécessaire : `build-essential` n'apporte pas `zlib.h`.
+Détails dans [`tests/LISEZMOI.md`](tests/LISEZMOI.md).
 
 ## Licence
 
