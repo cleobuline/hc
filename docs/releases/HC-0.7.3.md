@@ -124,10 +124,15 @@ authors are credited — **Patricia Benedetto** and **Claude** (Anthropic).
 - The Cocoa layer still has **no** automated tests — CI only proves it
   compiles.
 
+### Decided against: `cantAbort`
+
+HyperCard has a stack property, `cantAbort`, that disables Cmd-. HC will not
+have it. Cmd-. is the only way out of a runaway script without quitting and
+losing unsaved work; a stack must not be able to take that away. This is a
+decision, not a gap.
+
 ### Known, and not fixed here
 
-- The stack property **`cantAbort`**, which forbids Cmd-. in HyperCard, does
-  not exist.
 - Keystrokes typed during a script are put back at the head of the queue, so
   they now come before a click that preceded them.
 - After a fault raised **by a command** (`hide`, `set`, a message nobody
