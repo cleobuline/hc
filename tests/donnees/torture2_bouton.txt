@@ -254,11 +254,19 @@ on sectionFind
   -- complet que fait la recherche d'HyperCard, et le banc de « find »
   -- n'a pas pose la question a Basilisk. C'est la seule ligne de cette
   -- section qui ne vienne pas d'une mesure directe.
+  --
+  -- L'ORDRE DES COUCHES DANS UNE CARTE : le FOND d'abord, puis la carte.
+  -- Ces deux lignes attendaient Atelier puis Deux, les reponses de HC ;
+  -- HyperCard rend Deux puis Atelier (mesure le 27 septembre, deux fois).
+  -- Le curseur sort de « zorglub », trouve dans le champ de CARTE B de
+  -- l'Atelier : fond d'abord, il ne reste plus rien a fouiller ici, et
+  -- l'on passe a Deux. Tranche le 30 septembre par un banc de trois lignes
+  -- (docs/mesures/find.txt), et corrige.
   go to card "Atelier"
   find "alpha"
-  egal "la premiere trouvaille", the short name of this card, "Atelier"
+  egal "la premiere trouvaille", the short name of this card, "Deux"
   find "alpha"
-  egal "la meme recherche avance", the short name of this card, "Deux"
+  egal "la meme recherche avance", the short name of this card, "Atelier"
 
   -- Le curseur est maintenant dans la carte Deux. On revient a la main,
   -- et l'on cherche « delta », qui est APRES « alpha » dans le champ de

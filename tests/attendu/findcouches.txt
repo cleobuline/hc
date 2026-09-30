@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le banc mesuré : fond, carte, fond ==
+  F1 bkgnd field 1
+  F2 card field 1
+  F3 bkgnd field 1
+
+== 2. la reprise : après la carte, le fond de la même carte est déjà vu ==
+  zorglub dans card field 1 de Une
+  alpha 1 : Deux
+  alpha 2 : Une
