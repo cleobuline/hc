@@ -1,5 +1,5 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-105 reussites, aucun echec, 2 a mesurer.
+108 reussites, aucun echec, 0 a mesurer.
 [ERR]    !! objet introuvable (v3, ligne 87 de button "TORTURE".sectionFaute)
 
 ───── champ « R » ─────
@@ -106,6 +106,7 @@
   ok     show le remet a true
   ok     select the foundChunk
   ok     et le texte suit
+  ok     select efface la trouvaille
   ok     selectedText et value(selectedChunk)
   ok     le style pose se relit
   ok     et le voisin n'a pas bouge
@@ -116,8 +117,8 @@
 == 6. a mesurer dans HyperCard
   ok     les mots d'une ligne
   ok     le style d'un mot d'une ligne
-  ?      apres un echec, la recherche repart de : [Atelier]
-  ?      foundChunk apres un echec : [char 1 to 5 of bkgnd field 1]
+  ok     apres un echec, la recherche repart de
+  ok     foundChunk apres un echec
   ok     hide <variable> cache le champ
   ok     find in <variable> trouve
   ok     set la propriete de <variable>
@@ -125,7 +126,7 @@
   ok     lire une propriete sur <variable>
 
 ==============================
-105 reussites, aucun echec, 2 a mesurer.
+108 reussites, aucun echec, 0 a mesurer.
 
 == 8. la faute voulue, en dernier
   Ce qui suit doit LEVER : le style d'un mot dans un champ qui

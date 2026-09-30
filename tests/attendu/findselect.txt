@@ -1,0 +1,10 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+S1 avant   : char 7 to 10 of bkgnd field 1
+S2 chunk   : []
+S3 text    : []
+S4 field   : []
+S5 line    : []
+S6 autre select : []
+S7 select empty : [char 18 to 22 of bkgnd field 1]
+S8 sans select  : [char 1 to 5 of bkgnd field 1]
+

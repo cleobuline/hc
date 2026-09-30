@@ -72,14 +72,17 @@ int main(void)
         "\n"
         "  put \"-- 1. l'idiome du manuel --\"\n"
         "  find \"bet\"\n"
+        "  put the foundChunk into fc\n"
         "  if the result is empty then select the foundChunk\n"
+        /* VIDE après le select : mesuré dans HyperCard le 30/09 (voir
+         * g_found_lisible). Le morceau se relève AVANT, dans fc. */
         "  put \"foundChunk    [\" & the foundChunk & \"]\"\n"
         "  put \"selectedChunk [\" & the selectedChunk & \"]\"\n"
         "  put \"selectedText  [\" & the selectedText & \"]\"\n"
         "\n"
         "  put \"-- 2. par une variable --\"\n"
         "  select empty\n"
-        "  put the foundChunk into ou\n"
+        "  put fc into ou\n"
         "  select ou\n"
         "  put \"selectedChunk [\" & the selectedChunk & \"]\"\n"
         "\n"

@@ -1463,6 +1463,32 @@ static void champ_designe(Object *fl, char *out, int outlen)
  * aurait donc effacé la réponse en même temps que le dessin. */
 static int     g_found_montre = 0;
 
+/* LA TROUVAILLE SE LIT-ELLE ENCORE ? — et c'est une TROISIÈME notion.
+ *
+ * Le commentaire ci-dessus affirmait que « the foundChunk » reste valide
+ * jusqu'à la recherche suivante. Ce n'était pas mesuré, et c'est faux dès
+ * qu'un script sélectionne du texte. Mesuré DANS HYPERCARD (Basilisk II) le
+ * 30 septembre (docs/mesures/find.txt) :
+ *
+ *     find "bet" ; select the foundChunk
+ *         the foundChunk, foundText, foundField, foundLine    tous VIDES
+ *     find "gam" ; select word 2 of card field "A"            VIDE aussi
+ *     find "del" ; select empty                               REMPLI
+ *     find "alp"                  (sans select, le témoin)    REMPLI
+ *
+ * Un « select » qui pose une sélection dans un champ efface donc ce que
+ * rendent les quatre fonctions ; « select empty » non. Le CURSEUR de find,
+ * lui, n'est pas touché : les données restent en place et la recherche
+ * suivante repart d'où elle en était — ce qu'un select y change n'est pas
+ * mesuré. D'où un drapeau, et non un effacement.
+ *
+ * Non mesuré : un CLIC de l'utilisatrice (il passe par hc_set_selection, pas
+ * par la commande) ; « select before/after » — traité comme les autres
+ * select de champ ; et si foundText, foundField et foundLine se vident par le
+ * select lui-même ou par l'écriture qui l'a suivi dans le banc — seuls
+ * foundChunk (S2, S6) y a été lu juste après le select. */
+static int     g_found_lisible = 0;
+
 /* ---- sélection de texte ----
  * « select char 3 to 9 of field "toc" » pose une plage ; « the selection » la
  * relit. Le noyau ne fait que la RETENIR : c'est l'hôte qui la montre à
@@ -6128,7 +6154,7 @@ static int call_function_body(const char *t, char *out, int outlen)
     if (!*skip_spaces(after)) {
         if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
         if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
-        if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_text); return 1; }
+        if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_lisible ? g_found_text : ""); return 1; }
         /* the stacksInUse : les bibliothèques déclarées, une par ligne, dans
          * l'ordre de déclaration. C'est ce que rend HyperCard, et ce qui
          * permet à un script de vérifier qu'une pile est bien en usage avant
@@ -6233,7 +6259,7 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "foundchunk")) {
-            if (!g_found_field || g_found_len <= 0) {
+            if (!g_found_lisible || !g_found_field || g_found_len <= 0) {
                 snprintf(out, outlen, "%s", ""); return 1;
             }
             /* LE SITE JUMEAU. Les trois propriétés se lisent par DEUX
@@ -6251,11 +6277,11 @@ static int call_function_body(const char *t, char *out, int outlen)
             return 1;
         }
         if (ci_equal(name, "foundfield")) {
-            champ_designe(g_found_field, out, outlen);
+            champ_designe(g_found_lisible ? g_found_field : NULL, out, outlen);
             return 1;
         }
         if (ci_equal(name, "foundline")) {
-            if (g_found_field && g_found_line > 0) {
+            if (g_found_lisible && g_found_field && g_found_line > 0) {
                 char d[96]; champ_designe(g_found_field, d, sizeof d);
                 snprintf(out, outlen, "line %d of %s", g_found_line, d);
             } else snprintf(out, outlen, "%s", "");
@@ -9568,7 +9594,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         *out = hct_val_texte(petit); return 1;
     }
     if (ci_equal(nom, "result")) { *out = hct_val_texte(g_result); return 1; }
-    if (ci_equal(nom, "foundtext")) { *out = hct_val_texte(g_found_text); return 1; }
+    if (ci_equal(nom, "foundtext")) { *out = hct_val_texte(g_found_lisible ? g_found_text : ""); return 1; }
     if (ci_equal(nom, "stacksinuse")) {
         buf[0] = '\0';
         size_t used = 0;
@@ -9623,7 +9649,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         return 1;
     }
     if (ci_equal(nom, "foundchunk")) {
-        if (!g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
+        if (!g_found_lisible || !g_found_field || g_found_len <= 0) { *out = hct_val_texte(""); return 1; }
         char d[96];
         champ_designe(g_found_field, d, sizeof d);
         char petit[160];
@@ -9638,12 +9664,12 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     if (ci_equal(nom, "foundfield")) {
         char petit[96];
-        champ_designe(g_found_field, petit, sizeof petit);
+        champ_designe(g_found_lisible ? g_found_field : NULL, petit, sizeof petit);
         *out = hct_val_texte(petit);
         return 1;
     }
     if (ci_equal(nom, "foundline")) {
-        if (g_found_field && g_found_line > 0) {
+        if (g_found_lisible && g_found_field && g_found_line > 0) {
             char d[96]; champ_designe(g_found_field, d, sizeof d);
             char petit[128];
             snprintf(petit, sizeof petit, "line %d of %s", g_found_line, d);
@@ -11229,6 +11255,10 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         if (!pris) return ctx->erreur ? 1 : 0;
     }
 
+    /* Une sélection dans un champ efface la trouvaille — voir
+     * g_found_lisible. L'encadré part avec elle. */
+    g_found_lisible = 0;
+    g_found_montre  = 0;
     if      (avant) hc_set_selection(f, st, 0);
     else if (apres) hc_set_selection(f, en, 0);
     else            hc_set_selection(f, st, en - st);
@@ -12125,6 +12155,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         g_found_len    = len;
         g_found_card   = cd;
         g_found_montre = 1;
+        g_found_lisible = 1;
 
         if (cd != g_current_card) {              /* naviguer si besoin */
             Object *old = g_current_card;
@@ -12145,6 +12176,7 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
     g_found_start = g_found_len = 0; g_found_card = NULL;
     g_found_montre = 0;
+    g_found_lisible = 0;
     set_result("Not found");
     g_atop = sauve;
     return 1;

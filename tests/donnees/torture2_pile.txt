@@ -318,16 +318,16 @@ on sectionOuvert
   egal "les mots d'une ligne", the number of words of line 2 of card field "A", 2
   egal "le style d'un mot d'une ligne", the textStyle of word 1 of line 2 of card field "A", "plain"
 
-  -- Une recherche qui ECHOUE remet-elle le curseur a zero ? HC le fait,
-  -- parce que son curseur n'est rien d'autre que la derniere trouvaille.
-  -- Ce qu'HyperCard en fait, personne ne l'a regarde.
+  -- UNE RECHERCHE QUI ECHOUE remet le curseur a zero — mesure Basilisk du
+  -- 30/09 : HyperCard repart de l'Atelier et nomme « char 1 to 5 of bkgnd
+  -- field 1 », exactement comme HC. Ces deux lignes etaient des questions.
   go to card "Atelier"
   put "alpha beta gamma delta" into bg field "T"
   find "alpha"
   find "zorglub"
   find "alpha"
-  note "apres un echec, la recherche repart de", the short name of this card
-  note "foundChunk apres un echec", the foundChunk
+  egal "apres un echec, la recherche repart de", the short name of this card, "Atelier"
+  egal "foundChunk apres un echec", the foundChunk, "char 1 to 5 of bkgnd field 1"
 
   -- LES CINQ SITES DU DESIGNATEUR CALCULE — MESURES, ET CORRIGES.
   --
