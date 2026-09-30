@@ -16,26 +16,28 @@
 void cocoa_visual_effect(const char *effect, const char *speed,
                          const char *image);
 
-/* Une transition attend-elle d'etre jouee ? Consulte par drawRect:. */
-BOOL visual_pending(void);
+/* Une transition attend-elle d'etre jouee PAR CETTE VUE ? Consulte par
+ * drawRect:. L'effet appartient a la vue active au moment ou il a ete arme :
+ * les autres fenetres ne le voient pas. */
+BOOL visual_pending(NSView *v);
 
 /* ═══ Ecran gele (« lock screen ») ═══════════════════════════════════════════
  *
  * Le verrou ne suspend pas le dessin : il fige l'image montree, le script
  * peignant dessous. Meme machinerie de photographie que les transitions, d'ou
  * leur cohabitation dans ce fichier. */
-void hcv_lock_screen(void);
+void hcv_lock_screen(HCView *v);
 /* Rend YES si une transition a été jouée — l'écran est alors à jour. */
 BOOL hcv_unlock_screen(void);
 BOOL hcv_screen_locked(void);
 
-/* Prevue pour la tete de drawRect: — rend YES si l'image gelee a ete
- * dessinee, et le dessin normal de la carte est alors a sauter.
+/* En tete de drawRect: — rend YES si l'image gelee a ete dessinee, et le
+ * dessin normal de la carte est alors a sauter. Seulement pour la vue gelee.
  *
- * PERSONNE NE L'APPELLE. Le verrou reel est hcv_verrou_ecran (HCview.m), qui
- * retient les invalidations ; l'image gelee n'y sert que de DEPART a
- * « unlock screen with visual ». Un redessin force pendant le verrou (fenetre
- * decouverte, dialogue) montre donc la carte telle que le script la peint. */
+ * Deux gardes, et il faut les deux. hcv_verrou_ecran (HCview.m) retient les
+ * invalidations que NOUS demandons ; celle-ci couvre le redessin qu'AppKit
+ * impose de lui-meme — fenetre decouverte, dialogue, redimensionnement —, qui
+ * montrait jusqu'ici la carte telle que le script la peignait en cachette. */
 BOOL hcv_draw_locked(NSView *v);
 
 /* Les deux methodes qui jouent l'animation vivent avec leur etat.

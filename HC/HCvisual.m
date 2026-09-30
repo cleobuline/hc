@@ -29,6 +29,20 @@ static CGFloat  gVisualStep  = 0;
 static BOOL     gVisualRunning = NO;   /* une animation est en cours */
 static BOOL     gVisualCapturing = NO; /* on photographie : ne rien animer */
 
+/* À QUI APPARTIENT LA TRANSITION.
+ *
+ * L'état ci-dessus est unique pour toute l'application, alors que chaque
+ * fenêtre a sa HCView, et que chacune consultait visual_pending() en se
+ * dessinant : si A armait un effet et que B se redessinait la première, B
+ * jouait la transition de A — avec les images de A. Signalé par un audit
+ * extérieur (point 14), non observé à l'usage.
+ *
+ * L'état reste unique — un script ne joue qu'un effet à la fois — mais il
+ * appartient désormais à UNE vue, celle qui était active quand il a été armé,
+ * et les autres ne le voient plus. Faible : une fenêtre fermée entre-temps
+ * emporte sa vue, et l'effet orphelin ne se joue nulle part. */
+static __weak HCView *gVisualVue = nil;
+
 /* ---------- effets de transition ----------
  * Le noyau nous prévient juste AVANT de changer de carte. On photographie
  * l'écran de départ, on laisse la carte changer, puis on anime le passage.
@@ -48,12 +62,12 @@ static BOOL     gVisualCapturing = NO; /* on photographie : ne rien animer */
  * l'image la tête en bas. NSBitmapImageRep sait respecter l'orientation de sa
  * destination, à condition de le lui demander par respectFlipped: — c'est
  * exactement ce que fait déjà le dessin de la peinture des cartes. */
-static NSBitmapImageRep *snapshot_view(void) {
-    if (!gView) return nil;
-    NSRect b = [gView bounds];
-    NSBitmapImageRep *rep = [gView bitmapImageRepForCachingDisplayInRect:b];
+static NSBitmapImageRep *snapshot_view(NSView *v) {
+    if (!v) return nil;
+    NSRect b = [v bounds];
+    NSBitmapImageRep *rep = [v bitmapImageRepForCachingDisplayInRect:b];
     if (!rep) return nil;
-    [gView cacheDisplayInRect:b toBitmapImageRep:rep];
+    [v cacheDisplayInRect:b toBitmapImageRep:rep];
     return rep;
 }
 
@@ -102,23 +116,33 @@ static NSColor *visual_image_color(const char *image) {
  * sale en direct, à une soixantaine d'endroits. Geler à l'entrée de drawRect:
  * les couvre tous d'un coup, là où filtrer chaque marquage serait sans fin. */
 static NSBitmapImageRep *gLockImage = nil;
+/* La vue gelée : celle qui était active au « lock screen ». Même raison que
+ * gVisualVue — une autre fenêtre qui se redessine n'a pas à montrer l'image
+ * gelée de celle-ci. */
+static __weak HCView *gLockVue = nil;
 
 BOOL hcv_screen_locked(void) { return gLockImage != nil; }
 
-void hcv_lock_screen(void) {
-    if (gLockImage || gVisualRunning) return;   /* déjà gelé, ou en transition */
+void hcv_lock_screen(HCView *v) {
+    if (gLockImage || gVisualRunning || !v) return;   /* déjà gelé, ou en transition */
     /* Même précaution que pour une transition : pendant la photographie, le
      * dessin doit montrer la carte et non ce qu'on est en train de figer. */
     gVisualCapturing = YES;
-    gLockImage = snapshot_view();
+    gLockImage = snapshot_view(v);
     gVisualCapturing = NO;
+    gLockVue = gLockImage ? v : nil;
 }
 
 BOOL hcv_unlock_screen(void) {
     if (!gLockImage) return NO;
+    HCView *v = gLockVue;
+    gLockVue = nil;
     /* Un « visual effect » armé pendant le verrou trouve ici son image de
      * départ : c'est l'écran tel qu'il était AVANT que le script ne peigne. */
-    if (gVisualSteps > 0 && !gVisualBefore) gVisualBefore = gLockImage;
+    if (gVisualSteps > 0 && !gVisualBefore) {
+        gVisualBefore = gLockImage;
+        gVisualVue = v;
+    }
     gLockImage = nil;
 
     /* L'EFFET SE JOUE ICI, PENDANT LE SCRIPT — PAS APRÈS.
@@ -143,17 +167,18 @@ BOOL hcv_unlock_screen(void) {
      * Non touché : « visual effect » suivi de « go » SANS verrou reste joué
      * après le script, au redessin — le changement de carte n'a pas encore eu
      * lieu quand l'hôte est prévenu. */
-    if (gView && gVisualBefore && gVisualSteps > 0 && !gVisualRunning) {
-        [gView runVisualTransition];
+    HCView *jeu = gVisualVue;
+    if (jeu && gVisualBefore && gVisualSteps > 0 && !gVisualRunning) {
+        [jeu runVisualTransition];
         return YES;
     }
     return NO;
 }
 
 /* Appelée en tête de drawRect:. Rend YES si l'image gelée a pris la place du
- * dessin normal. */
+ * dessin normal — et seulement pour la vue gelée. */
 BOOL hcv_draw_locked(NSView *v) {
-    if (!gLockImage || gVisualCapturing) return NO;
+    if (!gLockImage || gVisualCapturing || !v || v != gLockVue) return NO;
     draw_snapshot(gLockImage, [v bounds], NSCompositingOperationCopy, 1.0);
     return YES;
 }
@@ -164,16 +189,21 @@ void cocoa_visual_effect(const char *effect, const char *speed,
 
     /* Sous verrou, l'écran visible EST l'image gelée : la photographier de
      * nouveau capturerait ce que le script vient de peindre en cachette, et la
-     * transition partirait de l'arrivée. */
+     * transition partirait de l'arrivée. L'effet appartient alors à la vue
+     * gelée, même si une autre fenêtre est passée devant entre-temps. */
     NSBitmapImageRep *avant;
-    if (gLockImage) {
+    HCView *vue;
+    if (gLockImage && gLockVue) {
         avant = gLockImage;
+        vue = gLockVue;
     } else {
+        vue = gView;
         gVisualCapturing = YES;
-        avant = snapshot_view();
+        avant = snapshot_view(vue);
         gVisualCapturing = NO;
     }
     if (!avant) return;
+    gVisualVue = vue;
 
     /* Le noyau change de carte juste après notre retour ; on doit donc
      * animer depuis un état qui n'existe pas encore. La solution : rendre la
@@ -238,8 +268,9 @@ static BOOL visual_reveal_rect(const char *nom, CGFloat t, NSRect b, NSRect *out
 }
 /* Une transition attend-elle d'etre jouee ? drawRect: lisait les quatre
  * drapeaux directement ; maintenant qu'ils sont prives, il pose la question. */
-BOOL visual_pending(void) {
-    return gVisualBefore && gVisualSteps > 0 && !gVisualRunning && !gVisualCapturing;
+BOOL visual_pending(NSView *v) {
+    return v && v == gVisualVue &&
+           gVisualBefore && gVisualSteps > 0 && !gVisualRunning && !gVisualCapturing;
 }
 
 @implementation HCView (Visual)
@@ -247,6 +278,7 @@ BOOL visual_pending(void) {
 /* Joue l'animation. Appelée au premier redessin après un « visual », donc à un
  * moment où la carte d'arrivée est déjà en place. */
 - (void)runVisualTransition {
+    if (self != gVisualVue) return;
     if (!gVisualBefore || gVisualSteps <= 0 || gVisualRunning) return;
     gVisualRunning = YES;
 
@@ -259,7 +291,7 @@ BOOL visual_pending(void) {
      * la main et l'on photographierait l'animation au lieu de la carte. */
     gVisualCapturing = YES;
     gVisualStep = 0;
-    gVisualAfter = snapshot_view();
+    gVisualAfter = snapshot_view(self);
     gVisualCapturing = NO;
 
     /* L'animation passe par drawRect:, et non par lockFocus.
@@ -292,6 +324,7 @@ BOOL visual_pending(void) {
     gVisualSteps   = 0;
     gVisualStep    = 0;
     gVisualRunning = NO;
+    gVisualVue     = nil;
     [self setNeedsDisplay:YES];
 }
 
@@ -299,7 +332,7 @@ BOOL visual_pending(void) {
  * animation est en cours ; renvoie NO s'il n'y en a pas, et le dessin normal
  * de la carte reprend alors ses droits. */
 - (BOOL)drawVisualStep {
-    if (gVisualCapturing) return NO;
+    if (gVisualCapturing || self != gVisualVue) return NO;
     if (!gVisualBefore || gVisualSteps <= 0) return NO;
 
     /* Transition armée mais pas encore lancée : afficher l'image de DÉPART.

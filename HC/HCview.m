@@ -1905,6 +1905,12 @@ static BOOL mods_has(const char *mods, const char *k) {
  * setNeedsDisplayInRect: de la vue elle-même, redéfinies plus bas. Le verrou
  * y accumule, et ne relâche qu'une fois. */
 static BOOL   gLockScreen = NO;
+/* La vue que le verrou retient : la vue ACTIVE au « lock screen », et elle
+ * seule jusqu'à « unlock ». Le garde était « self == gView » — mais gView
+ * suit la fenêtre active, et si elle change pendant le verrou, la vue gelée
+ * se remettait à se redessiner tandis qu'une autre, qui n'avait rien
+ * demandé, gardait ses invalidations pour elle. */
+static __weak HCView *gVueVerrou = nil;
 static BOOL   gSaleTout   = NO;   /* une invalidation totale est en attente */
 static BOOL   gSaleUnPeu  = NO;   /* gSaleRect porte une zone en attente    */
 static NSRect gSaleRect;
@@ -1932,8 +1938,16 @@ static void hcv_verrou_ecran(BOOL ferme)
 {
     if (ferme == gLockScreen) return;
     gLockScreen = ferme;
-    if (ferme) { hcv_lock_screen(); return; }
+    if (ferme) {
+        gVueVerrou = gView;
+        gSaleTout = NO;
+        gSaleUnPeu = NO;
+        hcv_lock_screen(gView);
+        return;
+    }
 
+    HCView *vue = gVueVerrou;
+    gVueVerrou = nil;
     BOOL tout = gSaleTout, unPeu = gSaleUnPeu;
     NSRect zone = gSaleRect;
     gSaleTout = NO;
@@ -1943,8 +1957,8 @@ static void hcv_verrou_ecran(BOOL ferme)
      * script attend sa fin, comme dans HyperCard. S'il n'y en a pas, on
      * relâche les invalidations retenues. */
     if (hcv_unlock_screen()) return;
-    if (tout)       [gView setNeedsDisplay:YES];
-    else if (unPeu) [gView setNeedsDisplayInRect:zone];
+    if (tout)       [vue setNeedsDisplay:YES];
+    else if (unPeu) [vue setNeedsDisplayInRect:zone];
 }
 
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
@@ -3868,21 +3882,22 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
  * rappel de l'hôte, une méthode de la vue, un minuteur, ou AppKit lui-même.
  * C'est donc ici, et nulle part ailleurs, que « lock screen » retient.
  *
- * Le garde `self == gView` limite l'effet à la vue active : les autres
- * documents ouverts continuent de se rafraîchir normalement.
+ * Le garde `self == gVueVerrou` limite l'effet à la vue qui était active au
+ * verrouillage : les autres documents ouverts continuent de se rafraîchir
+ * normalement, même si l'un d'eux passe devant pendant le verrou.
  *
  * Au déverrouillage, hcv_verrou_ecran remet gLockScreen à NO AVANT de
  * réinvalider — ces deux méthodes laissent alors passer, et la carte se
  * recompose une seule fois. */
 - (void)setNeedsDisplay:(BOOL)flag
 {
-    if (flag && gLockScreen && self == gView) { gSaleTout = YES; return; }
+    if (flag && gLockScreen && self == gVueVerrou) { gSaleTout = YES; return; }
     [super setNeedsDisplay:flag];
 }
 
 - (void)setNeedsDisplayInRect:(NSRect)r
 {
-    if (gLockScreen && self == gView) {
+    if (gLockScreen && self == gVueVerrou) {
         gSaleRect  = gSaleUnPeu ? NSUnionRect(gSaleRect, r) : r;
         gSaleUnPeu = YES;
         return;
@@ -5265,7 +5280,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         if (dc && dc->owner) hcicon_edit_bind(dc->owner);
     }
 
-    if (visual_pending()) {
+    if (visual_pending(self)) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self runVisualTransition];
         });
@@ -5595,6 +5610,10 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
 - (void)drawRect:(NSRect)dirtyRect
 {
+    /* L'ÉCRAN GELÉ D'ABORD, avant FatBits : l'image gelée est ce qui était
+     * À L'ÉCRAN, grossissement compris, et la redessiner sous la
+     * transformation la grossirait deux fois. Voir hcv_draw_locked. */
+    if (hcv_draw_locked(self)) return;
     if (!hcv_fat()) { [self drawCardContent:dirtyRect]; return; }
 
     /* Le rectangle sale d'AppKit ne veut plus rien dire sous la
