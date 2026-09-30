@@ -308,6 +308,184 @@ static int cas_put_after(int n)
     return strcmp(g_msg, "[abcxyz]") == 0 ? REUSSI : ABIME;
 }
 
+/* ---------------------------------- les données de l'utilisatrice
+ *
+ * Le second audit extérieur (30 septembre) : l'écriture d'un texte de champ,
+ * le passage en texte partagé, le tri des cartes, l'ouverture d'un fichier et
+ * le nom d'un article de menu détruisaient l'ancien état AVANT de savoir si
+ * le nouveau tiendrait — ou annonçaient une réussite qui n'avait pas eu lieu.
+ * Chaque cas dit : le nouvel état complet (REUSSI), l'ancien intact ou un
+ * échec DIT (INTACT) ; tout le reste est ABIME. */
+
+static Object *carte_de(Object *st)
+{
+    for (int i = 0; i < st->nparts; i++)
+        if (st->parts[i]->type == OBJ_CARD) return st->parts[i];
+    return NULL;
+}
+
+/* Un champ qui porte « ancien texte », son premier mot en gras. */
+static Object *champ_style(Object *couche, Object *c, Object *b)
+{
+    Object *f = hc_new_field(couche, "F");
+    hc_set_current_card(c);
+    hc_set_script(b,
+        "on s\n  put \"ancien texte\" into field \"F\"\n"
+        "  set the textStyle of word 1 of field \"F\" to bold\nend s\n");
+    hc_send(b, "s");
+    return f;
+}
+
+static struct RunList *plages_de(Object *f, Object *c)
+{
+    if (f->owner && f->owner->type == OBJ_BACKGROUND && !f->shared_text)
+        for (int i = 0; i < c->nbgtexts; i++)
+            if (c->bgtexts[i].field_id == f->id) return &c->bgtexts[i].runs;
+    return &f->runs;
+}
+
+static int verdict_texte(Object *f, Object *c)
+{
+    const char *t = hc_field_text(f);
+    if (!t) return ABIME;
+    if (strcmp(t, "nouveau") == 0) return REUSSI;
+    if (strcmp(t, "ancien texte") == 0)
+        return plages_de(f, c)->n > 0 ? INTACT : ABIME;   /* style perdu */
+    return ABIME;
+}
+
+static int cas_texte_carte(int n)
+{
+    Object *st = pile_neuve(); Object *c = carte_de(st);
+    Object *b = hc_new_button(c, "B");
+    Object *f = champ_style(c, c, b);
+    if (strcmp(hc_field_text(f), "ancien texte") != 0 || f->runs.n == 0) return ABIME;
+    arme(n);
+    hc_set_field_text(f, "nouveau");
+    desarme();
+    if (!provoque) return FINI;
+    return verdict_texte(f, c);
+}
+
+static int cas_texte_fond(int n)
+{
+    Object *st = pile_neuve(); Object *c = carte_de(st);
+    Object *b = hc_new_button(c, "B");
+    Object *f = champ_style(c->bg, c, b);
+    if (strcmp(hc_field_text(f), "ancien texte") != 0) return ABIME;
+    arme(n);
+    hc_set_field_text(f, "nouveau");
+    desarme();
+    if (!provoque) return FINI;
+    return verdict_texte(f, c);
+}
+
+/* Passer en texte partagé : le texte ET le style de la carte deviennent
+ * ceux du champ, ou rien ne change. */
+static int cas_partage(int n)
+{
+    Object *st = pile_neuve(); Object *c = carte_de(st);
+    Object *b = hc_new_button(c, "B");
+    Object *f = champ_style(c->bg, c, b);
+    arme(n);
+    hc_set_shared_text(f, 1);
+    desarme();
+    if (!provoque) return FINI;
+    const char *t = hc_field_text(f);
+    struct RunList *r = plages_de(f, c);
+    if (!t || strcmp(t, "ancien texte") != 0 || r->n == 0) return ABIME;
+    return f->shared_text ? REUSSI : INTACT;
+}
+
+/* « sort cards » : l'ordre neuf, ou l'ancien et une erreur DITE. */
+static int cas_tri(int n)
+{
+    Object *st = hc_new_stack("P");
+    Object *bg = hc_new_background(st, "F");
+    Object *c = hc_new_card(st, bg, "c");
+    hc_new_card(st, bg, "a");
+    hc_new_card(st, bg, "b");
+    hc_set_current_card(c);
+    Object *btn = hc_new_button(c, "B");
+    hc_set_script(btn, "on t\n  sort cards by the short name of this card\nend t\n");
+    hc_send(btn, "t");                     /* à blanc : l'arbre se construit */
+    hc_set_script(btn, "on t\n  sort cards descending by the short name of this card\nend t\n"
+                       "on u\n  sort cards by the short name of this card\nend u\n");
+    hc_send(btn, "t");                     /* c, b, a */
+    hc_send(btn, "u");                     /* a, b, c : l'arbre de u existe */
+    hc_send(btn, "t");                     /* c, b, a : on part de là */
+    g_erreur = 0;
+    arme(n);
+    hc_send(btn, "u");
+    desarme();
+    if (!provoque) return FINI;
+    char ordre[16] = ""; int k = 0;
+    for (int i = 0; i < st->nparts && k < 8; i++)
+        if (st->parts[i]->type == OBJ_CARD) ordre[k++] = st->parts[i]->name[0];
+    ordre[k] = 0;
+    if (strcmp(ordre, "abc") == 0) return REUSSI;
+    if (strcmp(ordre, "cba") == 0 && g_erreur) return INTACT;
+    return ABIME;
+}
+
+/* « open file » : ouvert pour de bon, ou refusé en le disant. */
+#define FICHIER_ESSAI "/tmp/hc_penurie_fichier.txt"
+static int cas_fichier(int n)
+{
+    remove(FICHIER_ESSAI);
+    Object *st = pile_neuve(); Object *c = carte_de(st);
+    Object *b = hc_new_button(c, "B");
+    hc_set_current_card(c);
+    hc_set_script(b,
+        "on o\n  open file \"" FICHIER_ESSAI "\"\n  put the result into r\n"
+        "  global g\n  put r into g\nend o\n"
+        "on w\n  write \"ok\" to file \"" FICHIER_ESSAI "\"\n"
+        "  close file \"" FICHIER_ESSAI "\"\nend w\n"
+        "on g\n  global g\n  put \"[\" & g & \"]\"\nend g\n");
+    hc_send(b, "g");  hc_send(b, "w");     /* à blanc */
+    remove(FICHIER_ESSAI);
+    g_erreur = 0;
+    arme(n);
+    hc_send(b, "o");
+    desarme();
+    int dit = g_erreur;
+    hc_send(b, "g");
+    int refuse = dit || strcmp(g_msg, "[]") != 0;
+    hc_send(b, "w");
+    if (!provoque) return FINI;
+    FILE *fp = fopen(FICHIER_ESSAI, "r");
+    char lu[8] = "";
+    if (fp) { if (!fgets(lu, sizeof lu, fp)) lu[0] = 0; fclose(fp); }
+    remove(FICHIER_ESSAI);
+    if (strncmp(lu, "ok", 2) == 0) return REUSSI;
+    return refuse ? INTACT : ABIME;
+}
+
+/* Le nom d'un article de menu : changé, ou l'échec dit. */
+static int cas_menu(int n)
+{
+    Object *st = pile_neuve(); Object *c = carte_de(st);
+    Object *b = hc_new_button(c, "B");
+    hc_set_current_card(c);
+    hc_set_script(b,
+        "on m\n  if there is not a menu \"Essai\" then create menu \"Essai\"\n"
+        "  put \"premier,second\" into menu \"Essai\"\nend m\n"
+        "on s\n  set the name of menuItem 1 of menu \"Essai\" to \"nouveau\"\nend s\n"
+        "on l\n  put the name of menuItem 1 of menu \"Essai\"\nend l\n");
+    hc_send(b, "m");  hc_send(b, "l");  hc_send(b, "s");   /* à blanc */
+    hc_send(b, "m");
+    g_erreur = 0;
+    arme(n);
+    hc_send(b, "s");
+    desarme();
+    int dit = g_erreur;
+    hc_send(b, "l");
+    if (!provoque) return FINI;
+    if (strcmp(g_msg, "nouveau") == 0) return REUSSI;
+    if (strcmp(g_msg, "premier") == 0 && dit) return INTACT;
+    return ABIME;
+}
+
 /* --------------------------------------------------------- le balayage */
 
 static void balaie(const char *titre, int (*cas)(int))
@@ -354,5 +532,11 @@ int main(void)
     balaie("copier une icône en couleur sur une autre", cas_copie);
     balaie("importer une pile qui porte des dessins", cas_import);
     balaie("put … after une variable", cas_put_after);
+    balaie("le texte d'un champ de carte", cas_texte_carte);
+    balaie("le texte d'un champ de fond, par carte", cas_texte_fond);
+    balaie("passer un champ en texte partagé", cas_partage);
+    balaie("sort cards", cas_tri);
+    balaie("open file", cas_fichier);
+    balaie("le nom d'un article de menu", cas_menu);
     return 0;
 }

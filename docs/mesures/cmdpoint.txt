@@ -78,5 +78,7 @@ CE QUI N'EST PAS MESURÉ, ET CE QUI MANQUE
   souhaitable ». Cmd-. est la seule sortie d'un script emballé qui ne coûte
   pas le travail non enregistré ; une pile ne doit pas pouvoir la retirer.
   Ce n'est pas un trou, c'est un choix.
-- Les frappes qui ne sont pas Cmd-. sont remises en tête de file : elles
-  passent donc devant un clic qui les aurait précédées pendant le script.
+- Les frappes qui ne sont pas Cmd-. étaient remises en tête de file : elles
+  passaient donc devant un clic qui les avait précédées pendant le script.
+  Mesuré le 30 septembre (reentrance.txt) et corrigé : clics et frappes
+  sortent ensemble, et reviennent dans leur ordre.
