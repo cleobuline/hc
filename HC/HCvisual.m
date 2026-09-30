@@ -120,6 +120,33 @@ void hcv_unlock_screen(void) {
      * départ : c'est l'écran tel qu'il était AVANT que le script ne peigne. */
     if (gVisualSteps > 0 && !gVisualBefore) gVisualBefore = gLockImage;
     gLockImage = nil;
+
+    /* L'EFFET SE JOUE ICI, PENDANT LE SCRIPT — PAS APRÈS.
+     *
+     * Il s'armait seulement, et drawRect: le lançait par dispatch_async, une
+     * fois le script fini. HyperCard, lui, joue « unlock screen with visual
+     * effect » DANS la commande : le script attend que l'effet se termine.
+     *
+     * La différence se voyait au calendrier de Stack Templates. Ses flèches
+     * font « updateCalendar … , "scroll left" » au mouseDown et se répètent
+     * par mouseStillDown. Sans l'effet, le script rendait la main en quelques
+     * millisecondes ; le minuteur de mouseStillDown démarrait, et pendant les
+     * cent millisecondes d'un clic ordinaire il tirait plusieurs fois :
+     * signalé à l'usage, « ça fait la mitraillette avec les années ». Dans
+     * HyperCard, l'effet dure plus longtemps que le clic, et un clic avance
+     * d'UNE année.
+     *
+     * Rien ne manque pour jouer tout de suite : l'image de départ est l'écran
+     * gelé, celle d'arrivée est ce que le script vient de peindre dessous.
+     * runVisualTransition pousse ses images elle-même, comme cocoa_idle.
+     *
+     * Non touché : « visual effect » suivi de « go » SANS verrou reste joué
+     * après le script, au redessin — le changement de carte n'a pas encore eu
+     * lieu quand l'hôte est prévenu. */
+    if (gView && gVisualBefore && gVisualSteps > 0 && !gVisualRunning) {
+        [gView runVisualTransition];
+        return;
+    }
     [gView setNeedsDisplay:YES];
 }
 

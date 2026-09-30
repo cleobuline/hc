@@ -29,7 +29,8 @@ twelve months.
 | a handler without its `end` | did **nothing**, silently | an error, pointing at the handler's first line |
 | the dialog | `propriété inconnue (v3, ligne 3 de button "B".mouseUp)` | the fault as the title; the object, the line **and the line of code** below |
 | Stack Templates, "Show The Year…" | only the title changed | the twelve months redraw |
-| its `Next` / `Previous` arrows, held down | runaway years, nested runs | one year per repeat |
+| its `Next` / `Previous` arrows | several years per click | **one** per click; held down, one per repeat |
+| `unlock screen with visual effect` | played **after** the script | played **inside** the command, as in HyperCard |
 | `put value("the name of" & return & "me")` | **froze the app** | returns |
 | `charToNum()`, `offset()` with no argument | **crashed** | empty |
 | `global g` then `put g + 1` | could print `-5.31401e+303` | `1` |
@@ -163,14 +164,21 @@ click only counts for `the mouseClick` if it arrives *while* a script is
 running. Reproduced on Apple's real stack, then fixed: January 2027 starts on a
 Friday, February on a Monday.
 
-**And the arrows ran away when held.** The calendar's `Next` and `Previous`
-buttons act on `mouseDown`, and repeat through `mouseStillDown` while the
-button stays down. HC's repeat timer kept firing *while a script was running*
-— the event loop turns during long scripts to keep the window responsive — so
-each tick started a new `updateCalendar` **inside** the one in progress, which
-added another year. Replayed in the kernel with three ticks during the script:
-one press, 1995 became **1999**. HyperCard never delivers a message in the
-middle of a handler; HC now sends `mouseStillDown` only between runs.
+**And the arrows fired years like a machine gun.** The calendar's `Next` and
+`Previous` buttons act on `mouseDown`, and repeat through `mouseStillDown`
+while the button stays down. Two things made one click worth several years:
+
+- **The visual effect played *after* the script, not inside it.** `unlock
+  screen with visual effect scroll left` only *armed* the effect; it ran at the
+  next redraw, once the script had finished. So the script returned in a few
+  milliseconds, the repeat timer started, and during the hundred milliseconds
+  of an ordinary click it fired `mouseStillDown` several times. HyperCard plays
+  the effect *inside* `unlock screen` — the script waits for it — so a click is
+  released long before the first repeat. HC now does the same.
+- **The repeat timer also fired *during* a running script**, starting a new
+  `updateCalendar` inside the one in progress. Replayed in the kernel with
+  three ticks during the script: one press, 1995 became **1999**. HyperCard
+  never delivers a message in the middle of a handler; neither does HC now.
 
 ### 4. What the audits found
 
@@ -234,9 +242,9 @@ contradicted the reading of the code.
 
 - The script-editor frame, the line numbers and the dialog are **compiled**
   on macOS, **not run**. Benches in `docs/mesures/ligne_fautive.txt`.
-- The two calendar fixes in the app layer — the launching click and the
-  repeat timer — are compiled, not run; the kernel side is replayed on
-  Apple's real stack.
+- The calendar fixes in the app layer — the launching click, the repeat timer
+  and the visual effect played inside `unlock screen` — are compiled, not run;
+  the kernel side is replayed on Apple's real stack.
 - That a bare integer is a date in HyperCard is **deduced** from Apple's
   calendar script. To play **in HyperCard**: `put "2026" is a date`.
 - The three Cocoa crashes of section 4 were found by **reading**, not seen.
@@ -265,6 +273,8 @@ contradicted the reading of the code.
   handles), the handler **carries on** and the dialog comes at the end.
   HyperCard probably stops on the spot — to play in HyperCard.
 - A fault inside a user function stops the function but not its caller.
+- `visual effect` followed by `go`, **without** `lock screen`, still plays
+  after the script rather than inside `go`.
 - A click or a mouse release **during** a running script is still handled on
   the spot, inside the script, instead of after it the way HyperCard queues
   it. The repeat timer no longer does this; the click itself still does.
