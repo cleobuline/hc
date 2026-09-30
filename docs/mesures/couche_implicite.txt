@@ -116,7 +116,10 @@ apparaît, noter son texte et la dernière ligne écrite dans R.
     A2       auFond  (repli sur le fond)   ?
     A4       carte [zzz] fond [auFond]     ?
     C2       carte false fond true         ?
-    A3       seulCarte (repli)             ?  (ou « No such field » ?)
+    A3       seulCarte (repli)             ERREUR, pas de repli (30 sept.) :
+                                           « there is not bg field
+                                           "seulcarte" » — rapporté, texte
+                                           exact du dialogue non recopié
 
 Tant que la colonne de droite porte des « ? », rien ne se corrige : A6 et B2
 en particulier ne sont que soupçonnés.
