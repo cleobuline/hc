@@ -6106,7 +6106,28 @@ static BOOL      gSansMessageChamp = NO;
 
     gClickPoint = p;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
-    gMouseClicked = YES;
+    /* « THE MOUSECLICK » NE COMPTE PAS LE CLIC QUI LANCE LE SCRIPT.
+     *
+     * Le drapeau se posait à CHAQUE clic, y compris celui qui allait devenir
+     * mouseDown puis mouseUp — et rien ne l'effaçait avant que le script
+     * tourne. Signalé à l'usage sur le calendrier de Stack Templates : « le
+     * titre change mais l'organisation des mois ne change pas ». Son
+     * updateCalendar pose le titre, puis boucle sur les douze mois en
+     * commençant par
+     *
+     *     if the mouseClick then exit repeat
+     *
+     * — une porte de sortie pour qui clique pendant le calcul. Le clic qui
+     * avait lancé le bouton répondait « oui » dès le premier tour, et la
+     * boucle sortait avant d'avoir touché un mois.
+     *
+     * HyperCard a déjà CONSOMMÉ ce clic en l'envoyant comme message ; le
+     * calendrier d'Apple ne se dessinerait jamais autrement. Un clic compte
+     * donc seulement s'il arrive PENDANT qu'un script tourne — il passe alors
+     * par la boucle d'événements de cocoa_idle et atterrit ici. Sinon, il
+     * EFFACE le drapeau : un clic ancien, donné hors script, ne doit pas
+     * répondre à la place d'un clic neuf. */
+    gMouseClicked = hc_is_running() ? YES : NO;
 
     /* 2. Fermeture prioritaire du mode édition de texte si l'outil n'est plus Browse */
     if (gTool != TOOL_BROWSE && gEditingField) {
