@@ -529,8 +529,26 @@ int hcicon_edit_est_couleur(Object *stack, int id)
  * fois le fichier enregistre. */
 static int gPalIndexEnCours = 0;
 
+/* L'ICONE QUI A OUVERT LE SELECTEUR, et pas celle qu'on regarde maintenant.
+ *
+ * Le NSColorPanel reste ouvert tant qu'on ne le ferme pas, et la bande de
+ * palette change d'icone quand on en choisit une autre dans la grille.
+ * couleurChoisie: relisait l'icone COURANTE : ouvrir la couleur 8 de A,
+ * choisir B, bouger le curseur, et c'etait la couleur 8 de B qui changeait —
+ * enregistree avec la pile, sur une ressource qu'on n'avait pas voulu
+ * toucher. Le commentaire promettait que « l'action verifie ce qu'elle touche
+ * avant d'ecrire » ; elle verifiait qu'il y avait une icone, pas laquelle.
+ * Signale par un audit exterieur, confirme en lisant ; non execute ici.
+ *
+ * La pile n'est comparee que par son adresse, jamais relue : on ne
+ * dereference rien de ce qui a pu mourir entre-temps. */
+static Object *gPalPileEnCours  = NULL;
+static int     gPalIconeEnCours = 0;
+
 - (void)ouvreSelecteurPour:(int)index {
     gPalIndexEnCours = index;
+    gPalPileEnCours  = self.stack;
+    gPalIconeEnCours = self.iconId;
     NSColorPanel *cp = [NSColorPanel sharedColorPanel];
     const struct HcIconCouleur *c = [self couleurs];
     if (c && index >= 1 && index < c->ncouleurs)
@@ -545,9 +563,20 @@ static int gPalIndexEnCours = 0;
 }
 
 - (void)couleurChoisie:(id)sender {
+    /* Plus l'icone qui a ouvert le selecteur : on se detache, et le curseur
+     * ne touche plus a rien jusqu'au prochain double-clic sur une couleur. */
+    if (self.stack != gPalPileEnCours || self.iconId != gPalIconeEnCours) {
+        if ([(NSColorPanel *)sender target] == self)
+            [(NSColorPanel *)sender setTarget:nil];
+        gPalIndexEnCours = 0;
+        return;
+    }
     struct StackIcon *e = [self icone];
     if (!e || !hc_icon_couleur(e)) return;            /* plus rien a peindre */
     if (gPalIndexEnCours < 1) return;                 /* jamais l'index 0 */
+    /* L'index doit encore exister : une palette a pu se raccourcir (un
+     * collage la refait entiere) pendant que le selecteur restait ouvert. */
+    if (gPalIndexEnCours >= hc_icon_couleur(e)->ncouleurs) return;
 
     NSColor *co = [[(NSColorPanel *)sender color]
                      colorUsingColorSpaceName:NSCalibratedRGBColorSpace];
