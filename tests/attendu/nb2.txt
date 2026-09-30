@@ -3,10 +3,10 @@
    · traité par button "B1"
       [message box] cartes=2
       [message box] fonds=2
-      [message box] boutons=3
+      [message box] boutons=2
       [message box] cd boutons=2
       [message box] bg boutons=1
-      [message box] champs=3
+      [message box] champs=2
       [message box] cd champs=1
       [message box] bg champs=2
       [message box] parts=6

@@ -56,8 +56,105 @@ LE BANC POUR LES TROIS, à jouer DANS HYPERCARD :
     end mouseUp
 
 
-POURQUOI RIEN N'EST CORRIGÉ
----------------------------
+LE BANC COMPLET — 30 SEPTEMBRE
+------------------------------
+
+Le banc ci-dessus ne mesurait ni les COMPTES ni les boutons. Joué DANS HC
+(le noyau, même dispositif), il a montré que « the number of fields » et
+« the number of buttons » ADDITIONNENT les deux couches — probablement une
+seconde divergence de la même famille, et non mesurée chez HyperCard.
+
+LE DISPOSITIF, à construire tel quel, DANS CET ORDRE (le rang compte) :
+
+    champs de CARTE : "A", "R", "Commun", "SeulCarte"      (A est le n° 1)
+    champs de FOND  : "T", "Commun", "SeulFond"            (T est le n° 1)
+    boutons de CARTE : "BC", puis "Banc"                   (BC est le n° 1)
+    bouton de FOND   : "BF"
+
+Script du bouton « Banc », à jouer DANS HYPERCARD (Basilisk II). Les lignes
+qui risquent « No such field » sont À LA FIN : si un dialogue d'erreur
+apparaît, noter son texte et la dernière ligne écrite dans R.
+
+    on mouseUp
+      put "surCarte" into card field "A"
+      put "auFond" into bg field "T"
+      put "communCarte" into card field "Commun"
+      put "communFond" into bg field "Commun"
+      put "seulFond" into bg field "SeulFond"
+      put "seulCarte" into card field "SeulCarte"
+      put empty into card field "R"
+      put "A1 " & field 1 & return after card field "R"
+      put "A5 " & the name of field 1 & return after card field "R"
+      put "A6 " & the number of fields & return after card field "R"
+      put "A7 " & the number of card fields & return after card field "R"
+      put "A8 " & the number of bkgnd fields & return after card field "R"
+      put "B1 " & the name of button 1 & return after card field "R"
+      put "B2 " & the number of buttons & return after card field "R"
+      put "B3 " & the number of bkgnd buttons & return after card field "R"
+      put "A3b " & field "Commun" & return after card field "R"
+      put "A2 " & field "T" & return after card field "R"
+      put "zzz" into field 1
+      put "A4 carte [" & card field "A" & "] fond [" & bg field "T" & "]" & return after card field "R"
+      hide field 1
+      put "C2 carte " & the visible of card field "A" & " fond " & the visible of bg field "T" & return after card field "R"
+      show card field "A"
+      show bg field "T"
+      put "A3 " & field "SeulCarte" & return after card field "R"
+      put "FIN" & return after card field "R"
+    end mouseUp
+
+    ligne    HyperCard (30 sept.)      HC avant          HC après
+    A1       auFond                    surCarte          auFond
+    A5       bkgnd field "T"           card field "A"    bkgnd field "T"
+    A6       3  (le fond seul)         7 (additionnés)   3
+    A7       4                         4                 4
+    A8       3                         3                 3
+    B1       card button (le n° 1)     card button       card button
+    B2       2  (la carte seule)       3 (additionnés)   2
+    B3       1                         1                 1
+    A3b      communFond                communCarte       communFond
+    A2       auFond                    auFond (repli)    auFond
+    A4       carte [surCarte]          carte [zzz]       carte [surCarte]
+             fond [zzz]                fond [auFond]     fond [zzz]
+    C2       carte true fond false     carte false       carte true
+                                       fond true         fond false
+    A3       ERREUR : « there is not   seulCarte         seulCarte
+             bg field "seulcarte" »    (repli)           (repli, VOULU)
+             (tournure rapportée)
+
+Deux relevés HyperCard, identiques sauf B2 : 1 puis 2 — le bouton « BC »
+manquait au premier. B1 rend « Banc » dans la pile mesurée parce qu'il y a
+été créé avant « BC ».
+
+
+CORRIGÉ LE 30 SEPTEMBRE
+-----------------------
+
+La règle d'HyperCard : UN CHAMP SANS COUCHE EST UN CHAMP DE FOND, UN BOUTON
+SANS COUCHE UN BOUTON DE CARTE, et les comptes suivent la même couche.
+couche_implicite (hc_core.c) la dit une fois ; elle sert aux deux résolveurs
+(le texte et l'arbre) et aux deux compteurs.
+
+UNE AMÉLIORATION, DÉCIDÉE : là où HyperCard lève une erreur — un nom absent
+du fond —, HC se replie sur la carte. Même réponse qu'HyperCard partout où il
+réussit ; les piles écrites dans HC continuent de marcher. « On n'est pas
+obligé d'être strict, on peut améliorer. » Une couche écrite ne se replie
+jamais.
+
+Harnais couchefond (le banc ci-dessus). Cinq témoins ont bougé, chacun lu :
+idcouche, nb2, ordinaux, refobjets, torture2 — la ligne « ? » de la pile de
+torture est devenue une égalité (105 réussites, 2 à mesurer).
+
+NON MESURÉ, appliqué par cohérence : la forme par IDENTIFIANT (« field id
+1 ») et les ORDINAUX (« first field ») ; le repli des BOUTONS sur le fond,
+gardé tel quel ; « the number of parts », qui additionne toujours.
+
+RESTE OUVERT, même famille : l'ordre de visite de « find » (docs/mesures/
+find.txt) — HyperCard parcourt le fond d'abord. Code distinct, non touché.
+
+
+POURQUOI RIEN N'ÉTAIT CORRIGÉ (27 septembre, avant le banc complet)
+--------------------------------------------------------------------
 
 Le changement touche la résolution de TOUS les champs, donc tous les harnais du
 corpus qui écrivent « field N » — il y en a. Il lui faut sa propre mesure

@@ -85,7 +85,13 @@ int main(void)
     noms("au depart");
     execute("  set the name of first field to \"toto\"");
     noms("apres");
-    /* La carte ne doit PAS avoir bouge : c'est la moitie qui compte. */
+    /* La carte ne doit PAS avoir bouge : c'est la moitie qui compte.
+     *
+     * Et depuis le 30 septembre, c'est le champ du FOND que « first field »
+     * renomme : un champ sans couche est un champ de fond, mesure dans
+     * HyperCard (voir couche_implicite, hc_core.c). « second » et « third »
+     * n'existent pas au fond, qui n'a qu'un champ : ils se replient sur la
+     * carte. Les sections 4 et 7 en heritent — le fond s'appelle « toto ». */
 
     puts("\n== 2. et la LECTURE, qui passe par l'autre moteur ==");
     execute("  put the name of first field");

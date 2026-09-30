@@ -110,10 +110,13 @@ int main(void)
     joue("  put the name of bg field id 1\n");
     joue("  put card field id 1\n");   /* il n'y en a pas : un champ, pas un bouton */
 
-    /* ── sans prefixe : la carte d'abord, le fond ensuite ── */
-    puts("\n== sans prefixe, la carte passe avant le fond ==");
+    /* ── sans prefixe : un CHAMP se cherche au FOND d'abord, puis sur la
+     * carte (voir couche_implicite, hc_core.c). Mesure dans HyperCard par
+     * le rang et par le nom ; par l'IDENTIFIANT, non mesure — la meme regle
+     * est appliquee par coherence. ── */
+    puts("\n== sans prefixe, le fond passe avant la carte ==");
     hc_set_current_card(c1);
-    joue("  put field id 1\n");        /* celui de la carte une */
+    joue("  put field id 1\n");        /* celui du FOND : les deux couches ont un 1 */
     hc_set_current_card(c2);
     /* La carte deux n'a pas de CHAMP 1 — elle a un bouton 1 — donc le repli
      * mene au champ du fond, et le type est bien filtre en chemin. */

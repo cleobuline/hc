@@ -425,19 +425,14 @@ on sectionCouches
   egal "un champ de fond", the number of bkgnd fields, 1
   egal "card field 1 est A", card field 1, "surCarte"
   egal "bkgnd field 1 est T", bkgnd field 1, "auFond"
-  -- « FIELD » SANS COUCHE : LA DIVERGENCE LA PLUS LOURDE DE LA SOIREE.
+  -- « FIELD » SANS COUCHE EST LE CHAMP DE FOND.
   --
-  -- Mesure dans HyperCard : « field 1 » rend « auFond », c'est-a-dire le
-  -- champ de FOND. HC rend « surCarte », le champ de carte. Or « field
-  -- "nom" » sans couche est la tournure la plus courante des piles de
-  -- 1987 : une pile qui porte un champ de carte ET un champ de fond du
-  -- meme numero vise donc l'autre couche chez nous.
-  --
-  -- RIEN N'EST CORRIGE : le changement touche toute la resolution des
-  -- champs, et il lui faut sa propre mesure et son propre harnais. La
-  -- ligne reste donc une QUESTION, avec la reponse d'HyperCard ecrite a
-  -- cote — c'est le seul « ? » de ce banc qui ait deja sa reponse.
-  note "« field » sans couche rend (HyperCard dit auFond)", field 1
+  -- Mesure dans HyperCard : « field 1 » rend « auFond ». HC rendait
+  -- « surCarte », le champ de carte — la tournure la plus courante des
+  -- piles de 1987 visait l'autre couche. Corrige le 30 septembre, apres le
+  -- banc complet (docs/mesures/couche_implicite.txt). C'etait le seul « ? »
+  -- de ce banc qui portait deja sa reponse ; il est devenu une egalite.
+  egal "« field » sans couche est le FOND", field 1, "auFond"
   egal "le nom et le numero designent le meme", card field "A", card field 1
 
   -- Le champ de fond n'est pas partage : chaque carte a son texte.

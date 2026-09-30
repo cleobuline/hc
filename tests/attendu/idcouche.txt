@@ -15,8 +15,8 @@
       bkgnd field "du fond"
          !! objet introuvable (v3, ligne 2 de button "pilote".t)
 
-== sans prefixe, la carte passe avant le fond ==
-      texte de la une
+== sans prefixe, le fond passe avant la carte ==
+      texte du fond, sur la une
       bkgnd field "du fond"
       texte du fond, sur la deux
 

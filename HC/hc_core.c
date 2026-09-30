@@ -3512,6 +3512,45 @@ static const char *apres_mot_fond(const char *s)
     return NULL;
 }
 
+/* ═══ LA COUCHE D'UN CHAMP OU D'UN BOUTON QU'ON N'A PAS DITE ═══════════════
+ *
+ * Dans HyperCard, UN CHAMP SANS COUCHE EST UN CHAMP DE FOND, et UN BOUTON
+ * SANS COUCHE EST UN BOUTON DE CARTE. HC cherchait les deux sur la carte
+ * d'abord. Mesuré DANS HYPERCARD (Basilisk II) le 30 septembre — voir
+ * docs/mesures/couche_implicite.txt — sur une carte dont le champ de carte n°1
+ * porte « surCarte » et le champ de fond n°1 « auFond » :
+ *
+ *     field 1                    HyperCard : auFond          HC : surCarte
+ *     the name of field 1        bkgnd field "T"             card field "A"
+ *     field "Commun" (2 couches) le fond                     la carte
+ *     put "zzz" into field 1     écrit au FOND               écrivait sur la carte
+ *     hide field 1               cache le FOND               cachait la carte
+ *     button 1                   la carte                    la carte (déjà)
+ *
+ * « field "nom" » est la tournure la plus courante des piles de 1987 ; une pile
+ * qui portait un champ de même rang ou de même nom sur les deux couches lisait
+ * et écrivait le mauvais texte, sans une erreur.
+ *
+ * LE REPLI EST UNE AMÉLIORATION, DÉCIDÉE. HyperCard ne se replie pas :
+ * « field "SeulCarte" », qui n'existe que sur la carte, lui fait lever une
+ * erreur. HC se rabat alors sur la carte — même réponse qu'HyperCard partout
+ * où HyperCard réussit, et les piles écrites dans HC, où « field "X" » désigne
+ * souvent un champ de carte, continuent de marcher. Décidé par l'utilisatrice :
+ * « on n'est pas obligé d'être strict, on peut améliorer ».
+ *
+ * Une couche ÉCRITE — « card field », « bg button » — ne se replie jamais.
+ * Le repli des boutons sur le fond n'est pas mesuré chez HyperCard ; il est
+ * gardé tel qu'il était. */
+static void couche_implicite(int type, int fond, int carte,
+                             Object *card, Object *bg,
+                             Object **premier, Object **repli)
+{
+    if (fond)                 { *premier = bg;   *repli = NULL; }
+    else if (carte)           { *premier = card; *repli = NULL; }
+    else if (type == OBJ_FIELD) { *premier = bg; *repli = card; }
+    else                      { *premier = card; *repli = bg;   }
+}
+
 static Object *resolve_local(const char *ref)
 {
     ref = skip_spaces(ref);
@@ -3719,9 +3758,9 @@ static Object *resolve_local(const char *ref)
         HctOrdinal o = HCT_ORD_AUCUN;
         const char *ap = NULL;
         if (ordinal_mot(ref, &o, &ap)) {
-            int fond = want_bg, vu_fond = 0;
-            if      (ci_word(ap, "card"))       { ap = skip_spaces(ap + 4);  fond = 0; }
-            else if (ci_word(ap, "cd"))         { ap = skip_spaces(ap + 2);  fond = 0; }
+            int fond = want_bg, vu_fond = 0, carte = want_card;
+            if      (ci_word(ap, "card"))       { ap = skip_spaces(ap + 4);  fond = 0; carte = 1; }
+            else if (ci_word(ap, "cd"))         { ap = skip_spaces(ap + 2);  fond = 0; carte = 1; }
             else { const char *q = apres_mot_fond(ap);
                    if (q) { ap = skip_spaces(q); fond = 1; vu_fond = 1; } }
 
@@ -3735,12 +3774,13 @@ static Object *resolve_local(const char *ref)
                  * on cherche sur la carte puis on se rabat sur le fond, comme
                  * partout ailleurs — en RECOMPTANT, sans quoi le repli
                  * chercherait un rang calculé pour l'autre couche. */
-                Object *couche = fond ? bg : card;
+                Object *couche, *autre;
+                couche_implicite(tp, fond, carte, card, bg, &couche, &autre);
                 int r = v3_rang_ordinal(o, compte_parts(couche, tp));
                 Object *p = r > 0 ? find_part_by_rank(couche, tp, r) : NULL;
-                if (!p && !fond) {
-                    int r2 = v3_rang_ordinal(o, compte_parts(bg, tp));
-                    if (r2 > 0) p = find_part_by_rank(bg, tp, r2);
+                if (!p && autre) {
+                    int r2 = v3_rang_ordinal(o, compte_parts(autre, tp));
+                    if (r2 > 0) p = find_part_by_rank(autre, tp, r2);
                 }
                 return p;
             }
@@ -3846,6 +3886,11 @@ static Object *resolve_local(const char *ref)
     while (*ref && !isspace((unsigned char)*ref) && *ref != '"') ref++;
     ref = skip_spaces(ref);
 
+    /* Où chercher d'abord, et où se replier : une fois pour toutes les formes
+     * qui suivent — l'identifiant, le rang, le rang calculé, le nom. */
+    Object *premier, *repli;
+    couche_implicite(t, want_bg, want_card, card, bg, &premier, &repli);
+
     /* --- button id N / field id N --- */
     if (ci_word(ref, "id")) {
         const char *a = skip_spaces(ref + 2);
@@ -3864,16 +3909,16 @@ static Object *resolve_local(const char *ref)
          * repliait sur le fond TOUJOURS. Donc « bg field id 5 » rendait le champ
          * de la CARTE quand le fond n'en a pas de 5 — l'inverse du défaut décrit
          * plus haut, dans la même ligne de code. */
-        Object *o = find_part_by_id(want_bg ? bg : card, t, wanted);
-        if (!o && !want_bg && !want_card) o = find_part_by_id(bg, t, wanted);
+        Object *o = find_part_by_id(premier, t, wanted);
+        if (!o && repli) o = find_part_by_id(repli, t, wanted);
         return o;
     }
 
     /* --- button N (par rang, 1-based) --- */
     if (isdigit((unsigned char)*ref)) {
         int n = hc_rang(ref);
-        Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-        if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
+        Object *o = find_part_by_rank(premier, t, n);
+        if (!o && repli) o = find_part_by_rank(repli, t, n);
         return o;
     }
 
@@ -3908,22 +3953,17 @@ static Object *resolve_local(const char *ref)
         int nlen = (int)strlen(nm);
         if (nlen > 0 && (int)strspn(nm, "0123456789") == nlen) {
             int n = hc_rang(nm);
-            Object *o = find_part_by_rank(want_bg ? bg : card, t, n);
-            if (!o && !want_bg && !want_card) o = find_part_by_rank(bg, t, n);
+            Object *o = find_part_by_rank(premier, t, n);
+            if (!o && repli) o = find_part_by_rank(repli, t, n);
             return o;
         }
     }
 
     if (!nm[0]) return NULL;
 
-    Object *o = NULL;
-    if (want_bg) {
-        o = find_part(bg, t, nm);
-    } else {
-        o = find_part(card, t, nm);
-        /* Repli sur le fond SEULEMENT si l'on n'a pas dit « card ». */
-        if (!o && !want_card) o = find_part(bg, t, nm);
-    }
+    /* Repli SEULEMENT si aucune couche n'a été écrite. */
+    Object *o = find_part(premier, t, nm);
+    if (!o && repli) o = find_part(repli, t, nm);
     return o;
 }
 
@@ -7048,6 +7088,14 @@ static void term_value_body(const char *t, char *out, int outlen)
                 if (ci_word(k2, "buttons") || ci_word(k2, "btns") ||
                     ci_word(k2, "fields")  || ci_word(k2, "flds")) {
                     ObjType want = (k2[0]=='b' || k2[0]=='B') ? OBJ_BUTTON : OBJ_FIELD;
+                    /* SANS COUCHE, LE COMPTE SUIT LA COUCHE PAR DÉFAUT : les
+                     * champs du FOND, les boutons de la CARTE. Il additionnait
+                     * les deux « par compatibilité ». Mesuré DANS HYPERCARD :
+                     * 4 champs de carte et 3 de fond donnent « the number of
+                     * fields » = 3 ; 2 boutons de carte et 1 de fond donnent
+                     * « the number of buttons » = 2. HC disait 7 et 3. Voir
+                     * couche_implicite. */
+                    if (scope == 0) scope = (want == OBJ_FIELD) ? 2 : 1;
                     const char *r = k2;
                     while (*r && !isspace((unsigned char)*r)) r++;
                     r = skip_spaces(r);
@@ -8369,11 +8417,20 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
             int t = (n->typeobj == HCT_OBJ_PART)   ? HC_PART_QUELCONQUE
                   : (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
 
-            /* La portée décide où chercher. Sans portée explicite, HyperCard
-             * cherche d'abord sur la carte, puis se rabat sur le fond — c'est
-             * ce que fait resolve, et beaucoup de piles en dépendent. */
-            Object *premier  = (n->portee == HCT_PORTEE_FOND) ? bg : card;
-            Object *repli    = (n->portee == HCT_PORTEE_AUCUNE) ? bg : NULL;
+            /* La portée décide où chercher. Sans portée écrite, un CHAMP se
+             * cherche au fond puis sur la carte, un BOUTON sur la carte puis
+             * au fond — la règle d'HyperCard, avec le repli de HC : voir
+             * couche_implicite. Ce commentaire disait « HyperCard cherche
+             * d'abord sur la carte » ; c'était faux pour les champs, mesuré.
+             * « part » prend les deux couches, carte d'abord, comme avant. */
+            Object *premier, *repli;
+            if (n->typeobj == HCT_OBJ_PART) {
+                premier = (n->portee == HCT_PORTEE_FOND) ? bg : card;
+                repli   = (n->portee == HCT_PORTEE_AUCUNE) ? bg : NULL;
+            } else
+                couche_implicite(t, n->portee == HCT_PORTEE_FOND,
+                                 n->portee == HCT_PORTEE_CARTE,
+                                 card, bg, &premier, &repli);
 
             switch (n->designateur) {
                 case HCT_DES_ID: {
@@ -8504,6 +8561,11 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
     Object *coins[2] = { NULL, NULL };
     if      (obj->portee == HCT_PORTEE_CARTE) coins[0] = card;
     else if (obj->portee == HCT_PORTEE_FOND)  coins[0] = card ? card->bg : NULL;
+    /* Sans couche : les champs du FOND, les boutons de la CARTE — mesuré dans
+     * HyperCard, voir couche_implicite. « part » compte les deux, comme
+     * avant ; non mesuré. */
+    else if (obj->typeobj == HCT_OBJ_FIELD)  coins[0] = card ? card->bg : NULL;
+    else if (obj->typeobj == HCT_OBJ_BUTTON) coins[0] = card;
     else { coins[0] = card; coins[1] = card ? card->bg : NULL; }
 
     int n = 0;
