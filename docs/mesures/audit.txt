@@ -215,3 +215,123 @@ CE QUI N'A PAS ÉTÉ CHERCHÉ
   fuzzing cherche des plantages et des gels, pas des résultats faux.
 - La performance.
 - Le presse-papiers (hc_presse_papiers.c) n'a eu que l'analyseur statique.
+
+
+SECOND PASSAGE — UN AUDIT EXTÉRIEUR, LE 30 SEPTEMBRE
+====================================================
+
+Quinze points, apportés avec leurs citations de code. Chacun a été relu dans
+le code AVANT d'y toucher ; ceux qui pouvaient l'être ont été MESURÉS, et le
+harnais qui les tient a été vérifié EN RETIRANT la correction.
+
+ 1. UNE GLOBALE DÉCLARÉE LISAIT DU TAS NON INITIALISÉ.     globalevierge
+    Confirmé et mesuré. frame_declare_global ne posait ni brut ni a_brut ;
+    v3_lit_var s'y fiait. Avec MALLOC_PERTURB_=1 :
+
+        global g1, …, g12
+        put g12 + 1              -> -5.31401e+303 au lieu de 1
+
+    Aucun sanitizer de la suite ne le voit (MemorySanitizer le verrait ; gcc
+    ne l'a pas). Le harnais salit le tas lui-même (mallopt(M_PERTURB)) ; sous
+    ASan, c'est le remplissage 0xbe d'ASan qui joue ce rôle. Sans la
+    correction : -5.3e+303 en normal, 0.999998 sous ASan.
+
+ 2. concat : SOMME EN int AVANT LE CAST.                    non mesurable
+ 3. put before/after : la même famille, deux sites.          (idem)
+14. la frontière int/size_t.
+    Confirmés à la lecture. Corrigés au contrat de hct_chunk_ecrit : longueurs
+    en size_t, refus au-delà d'INT_MAX. NON MESURÉS : il faut deux chaînes d'un
+    gigaoctet. En suivant la frontière, un quatrième site : hct_val_texte, la
+    porte de toutes les valeurs, rendait la chaîne VIDE pour un texte de plus
+    de deux gigaoctets (longueur négative prise pour zéro). Même contrat.
+    Et, dans put … after une variable, un malloc manqué ne faisait RIEN, sans
+    un mot, quand le chemin du morceau refusait déjà : mesuré, voir 6.
+
+ 4. LE SÉLECTEUR DE COULEUR PEIGNAIT L'ICÔNE COURANTE.      Cocoa, non exécuté
+    Confirmé à la lecture. couleurChoisie: relisait l'icône affichée, pas
+    celle qui avait ouvert le sélecteur. Elle mémorise maintenant pile et
+    numéro à l'ouverture, et se détache si l'on a changé d'icône.
+    Banc à jouer DANS HC (l'application) : double-clic sur une couleur de
+    l'icône A, choisir l'icône B, bouger le curseur du sélecteur. Avant : la
+    couleur de B change. Après : rien ne change.
+
+ 5. UN PIXEL POUVAIT DÉSIGNER UNE COULEUR ABSENTE.           iconeindex
+    Confirmé et mesuré. hc_icon_pixel_pose bornait au tableau (256), pas à la
+    palette. Et ce n'était pas théorique : l'éditeur garde la couleur choisie
+    d'une icône à l'autre, si bien que peindre l'index 7 sur une icône à trois
+    couleurs arrivait par l'interface.
+    SITE JUMEAU dans le lecteur : put_cicon écrit la palette avant les pixels
+    « pour que le relecteur puisse vérifier qu'un index désigne une couleur
+    connue » — le relecteur ne le vérifiait pas. Une porte annoncée dans un
+    commentaire et jamais percée. Elle l'est : le fichier est refusé.
+
+ 6. COPIE D'ICÔNE NON ATOMIQUE.                             penurie_atomique
+ 7. COLLAGE D'IMAGE NON ATOMIQUE.
+ 9. L'IMPORT PERDAIT UN DESSIN EN SILENCE.
+    Confirmés et mesurés, en faisant échouer la n-ième allocation (la
+    technique de penurie.c, étendue à malloc et calloc). Sans les corrections :
+
+        coller sur une icône noir et blanc      2 essais abîmés
+        coller sur une icône en couleur         1
+        copier une icône en couleur             1
+        importer une pile à dessins            18 piles rendues SANS dessin
+
+    Le point 7 était pire qu'annoncé : hc_icon_couleur_cree vide la
+    silhouette, donc un échec du malloc suivant rendait 0 sur une icône dont
+    le DESSIN venait d'être effacé. Et le point 9 avait un jumeau un étage
+    plus bas : hc_set_paint libérait l'ancien dessin avant de copier le
+    nouveau — c'est aussi le chemin de l'outil de peinture.
+    Contrat d'hc_importe_pile tenu : une pénurie rend NULL, dessin compris.
+
+    LE HARNAIS A TROUVÉ UN DÉFAUT DE PLUS, une fois les autres corrigés :
+    dans feuille (hct_eval.c), la copie manquée d'un NOM de variable rendait
+    le vide, si bien que « put v into r » rangeait "" dans r sans un mot. Trois
+    sites jumeaux, tous passés à hct_val_echec.
+
+    ET L'INSTRUMENT S'EST TROMPÉ DEUX FOIS avant de mesurer juste :
+      - le code « abîmé » valait 1, celui d'exit(1) dans hc_memoire_epuisee :
+        un arrêt ANNONCÉ passait pour un objet abîmé en silence, et accusait
+        l'import corrigé ;
+      - le balayage s'arrêtait au premier essai réussi, or un essai réussit
+        aussi quand l'allocation manquée ne comptait pas : sur l'import, il
+        finissait au premier essai, sans avoir touché au dessin, et
+        « innocentait » l'ancien code.
+    Les deux se sont vus parce que le résultat contredisait la lecture — un
+    import corrigé encore abîmé, puis un ancien import intact.
+
+ 8. frame_declare_global SANS POLITIQUE DE PÉNURIE.         lu, corrigé
+    Confirmé. Les deux dupstr passent maintenant par hc_memoire_epuisee,
+    comme var_set_num juste au-dessus.
+
+10. delete item ET UN DÉLIMITEUR MULTI-OCTETS, dans l'ancien moteur.
+    Confirmé à la lecture, et l'audit avait lui-même vérifié que la v3 sert
+    ce cas correctement. Corrigé quand même : le séparateur entier.
+
+CE QUI N'EST PAS FAIT DANS CE PASSAGE, et reste ouvert :
+
+11. le doublon entre l'ancien moteur et la v3, et le recours ;
+12. une faute dans une fonction utilisateur ne remonte pas à l'appelant —
+    déjà nommé dans les notes 0.7 ;
+13. L'INTERRUPTION D'UN SCRIPT N'EXISTE PAS. Vérifié en lisant, et c'est plus
+    net que l'audit ne le supposait : v3_respire rend TOUJOURS 1. Un « repeat
+    forever » sans sortie ne s'arrête qu'au plafond de dix millions de tours —
+    des minutes, avec un corps coûteux — ou en tuant l'application. Il n'y a
+    donc pas de banc à jouer : il n'y a rien à tester. Le brancher demande deux
+    choses : un signal qui arrête TOUTE la chaîne de gestionnaires (si respire
+    rend 0 aujourd'hui, la boucle fait « break » et le gestionnaire CONTINUE
+    après elle), et le geste Cmd-point côté Cocoa, lu pendant host_idle. Ce
+    que fait HyperCard exactement — message ou silence, gestionnaires
+    appelants compris — n'est pas mesuré ; banc à jouer DANS HYPERCARD
+    (Basilisk II), le jour où l'on s'y met :
+        on mouseUp
+          put "avant" into msg
+          boucle
+          put "après" into msg
+        end mouseUp
+        on boucle
+          repeat forever
+            get the long name of this card
+          end repeat
+        end boucle
+    puis Cmd-point : que montre la boîte de message, et y a-t-il un dialogue ?
+15. des tests Cocoa exécutés, et non seulement compilés.
