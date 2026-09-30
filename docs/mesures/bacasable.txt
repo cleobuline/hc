@@ -1,0 +1,96 @@
+LE BAC À SABLE — CE QU'IL CASSERAIT, SI HC ALLAIT SUR L'APP STORE
+=================================================================
+
+Demandé le 30 septembre, en attendant le Developer ID : « l'App Store a du
+public ». L'App Store exige l'App Sandbox ; la distribution par DMG notarié
+ne l'exige pas, et HC n'y tourne pas — voir HC/HC.entitlements, qui dit
+pourquoi.
+
+CE QUI SUIT EST UNE LECTURE DU CODE, PAS UNE MESURE. Rien n'a été lancé sous
+bac à sable. Chaque ligne est à vérifier le jour où l'on s'y met.
+
+Décidé : on n'y touche pas avant d'avoir le Developer ID et un DMG notarié.
+
+
+LA RÈGLE QUI DÉCIDE DE TOUT
+---------------------------
+
+Sous bac à sable, un fichier n'est accessible que si l'utilisatrice l'a
+DÉSIGNÉ — par un dialogue d'ouverture ou d'enregistrement, ou en le déposant
+sur l'application. Le dialogue autorise CE FICHIER, pas son dossier. Et
+NSHomeDirectory() rend le dossier du conteneur, pas le vrai dossier de
+l'utilisatrice : « ~/Documents » y désigne un autre endroit.
+
+
+CE QUI MARCHERAIT TEL QUEL
+--------------------------
+
+- File ▸ Open… : la pile choisie est autorisée.
+- answer file / ask file : le dialogue autorise le fichier désigné.
+- open file "notes", sans chemin : le noyau demande « Où est le fichier
+  « notes » ? » (file_open, hc_core.c) ; le dialogue vaut autorisation.
+  Le commentaire de file_open le prévoyait déjà.
+- Les sons du paquet de HC et ceux de /System/Library/Sounds.
+
+
+CE QUI CASSERAIT
+----------------
+
+1. ENREGISTRER — BLOQUANT. ecrit_pile (hc_file.c) écrit d'abord dans un
+   temporaire créé par mkstemp À CÔTÉ de la pile, puis le renomme : c'est ce
+   qui garantit qu'une sauvegarde interrompue laisse l'original intact. Sous
+   bac à sable, le dossier n'est pas autorisé, et la création du voisin serait
+   refusée — pour ⌘S comme pour « save stack … as … ».
+   Piste : écrire le temporaire dans le dossier de remplacement que donne
+   NSFileManager (URLForDirectory:NSItemReplacementDirectory
+   appropriateForURL:…), puis replaceItemAtURL:. Qu'il soit accessible sous
+   bac à sable pour un fichier désigné n'est PAS vérifié.
+
+2. start using stack "X", go to stack "X" — GROS. trouver_pile
+   (AppDelegate.m) cherche le nom dans le dossier de la pile courante, celui
+   de l'application, puis ~/Documents. Aucun des trois n'est autorisé, et le
+   troisième change de sens.
+   Pistes, dans l'ordre :
+   a) des « dossiers de piles » réglables, déclarés UNE FOIS par un dialogue
+      de dossier et retenus par signets de sécurité — l'équivalent de la
+      carte « Search Paths » de la pile Home d'HyperCard ;
+   b) en dernier recours, « Où est la pile « X » ? », retenu lui aussi par
+      signet. HyperCard le demandait, de mémoire — À JOUER DANS HYPERCARD
+      (Basilisk II) : start using stack "Absente".
+   Utile même hors bac à sable : aujourd'hui une pile introuvable n'est dite
+   qu'au journal (NSLog « [using] fichier introuvable »).
+
+3. open file "/chemin/complet" écrit dans un script, sans dialogue : refusé.
+   Moyen. Même piste que 2 : un chemin sous un dossier déclaré passerait.
+
+4. Open Recent : le menu existe dans MainMenu.xib, mais aucun code ne
+   l'alimente (pas de noteNewRecentDocumentURL, et Hcdocument n'hérite pas de
+   NSDocument). Sous bac à sable, il faudrait en plus des signets pour rouvrir
+   après relance. À regarder de près ; non vérifié.
+
+5. Les sons de ~/Library/Sounds : ce dossier devient celui du conteneur.
+   Mineur. /Library/Sounds : lisible sous bac à sable, non vérifié.
+
+
+CE QUI N'EST PAS DU BAC À SABLE MAIS EN DÉCIDE AUSSI
+----------------------------------------------------
+
+- La revue de l'App Store encadre les applications qui exécutent du code
+  qu'elles n'embarquent pas. HC exécute les scripts des piles qu'on lui
+  donne ; des environnements d'apprentissage et de création y sont acceptés,
+  mais l'issue n'est pas garantie. HC se présenterait pour ce qu'il est : un
+  environnement où l'on écrit et ouvre ses propres piles.
+- Un autre certificat (distribution App Store), et un envoi depuis Xcode
+  (Product ▸ Archive) — pas de DMG.
+- Les deux voies peuvent coexister : le DMG notarié sur GitHub, complet, et
+  une version App Store sous bac à sable.
+
+
+L'ORDRE PROPOSÉ
+---------------
+
+1. Le Developer ID, puis le DMG notarié (docs/livraison.md).
+2. L'enregistrement sans temporaire voisin.
+3. Les dossiers de piles, et « Où est la pile… ? » en dernier recours.
+4. Les signets des fichiers récents.
+5. Seulement alors, activer app-sandbox et MESURER ce qui reste.
