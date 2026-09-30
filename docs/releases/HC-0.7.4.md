@@ -162,6 +162,9 @@ The same second audit read the Cocoa side too.
 - **Each window keeps its own lock and its own visual effect.** They were
   shared by every open stack, so another window could play an effect that
   was meant for the first one.
+
+  These two were found by reading the code, and are checked by compiling
+  only: they have **not yet been tried in the app**.
 - **A click and a keystroke given during a script stay in order.** Measured
   in HC: click a button while a script runs, then type a key, and the key
   was served first. They now come out in the order they were given.
@@ -169,7 +172,8 @@ The same second audit read the Cocoa side too.
   The same measurement showed that a click waits for the end of the script
   before it reaches the card. `the mouseClick` was only told about clicks
   that reached the card, so a real click never made it answer `true`, and
-  `if the mouseClick then exit repeat` never left the loop.
+  `if the mouseClick then exit repeat` never left the loop. Tried in HC: it
+  now leaves on a click.
 
 Not measured: what HyperCard does with that click. HC still delivers it
 once the script has finished; HyperCard may drop it instead. That is the
