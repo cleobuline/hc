@@ -137,8 +137,15 @@ Même étiquette déduite, même raison (« Sans titre », « carte 1 ») :
     touche x à t=481, Long en cours : false
 
   · 12 CORRIGÉ : le clic, donné le premier, est servi le premier.
-  · « the mouseClick » n'est pas exercé par ce banc : sa correction reste
-    NON VÉRIFIÉE à l'usage.
+  · « the mouseClick » n'est pas exercé par ce banc.
+
+« the mouseClick », DANS HC (l'application), 30 septembre. Un bouton qui
+tourne « repeat 300 times / if the mouseClick then put "sorti par un clic"
+into msg / exit mouseUp », et un clic sur la carte pendant la boucle.
+Rapporté : « ça fonctionne » — la boucle sort sur le clic. Étiquette déduite,
+pas écrite : c'est le seul des bancs en cours qui se juge ainsi, et il n'a
+été donné que pour HC. Ce que fait HyperCard du clic APRÈS l'avoir vu —
+le mange-t-il, ou le sert-il ensuite comme HC — reste à mesurer.
 
 RESTE À MESURER
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
