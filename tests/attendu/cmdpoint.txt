@@ -1,0 +1,52 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la boucle s'arrête, et la suite du gestionnaire ne tourne pas ==
+── repeat forever, avec un corps
+      [Cmd-. au passage 3]
+      champ « avant », en cours 0, arrêt tenu 0
+── repeat forever, SANS corps
+      [Cmd-. au passage 3]
+      champ « avant », en cours 0, arrêt tenu 0
+── repeat with, et repeat while
+      [Cmd-. au passage 2]
+      champ « avant », en cours 0, arrêt tenu 0
+
+== 2. les APPELANTS s'arrêtent aussi ==
+── un message : la ligne d'après l'appel ne tourne pas
+      [Cmd-. au passage 3]
+      champ « avant », en cours 0, arrêt tenu 0
+── une FONCTION : la ligne qui l'appelle n'écrit pas son vide
+      [Cmd-. au passage 3]
+      champ « intact », en cours 0, arrêt tenu 0
+
+== 3. les attentes ==
+── wait 10 seconds
+      [Cmd-. au passage 5]
+      champ « intact », en cours 0, arrêt tenu 0
+      rendu en moins d'une seconde : oui
+── wait until false
+      [Cmd-. au passage 5]
+      champ « intact », en cours 0, arrêt tenu 0
+
+== 4. pas de dialogue pour l'arrêt ; une faute d'AVANT reste dite ==
+── faute d'une commande, puis boucle arrêtée
+      [Cmd-. au passage 3]
+      DIALOGUE :    !! objet introuvable : hide button "Absent" (ligne 2)
+      champ « intact », en cours 0, arrêt tenu 0
+
+== 5. au repos, tout est remis ==
+── lock screen, puis arrêt : l'écran se déverrouille
+      lockScreen true
+      [Cmd-. au passage 3]
+      lockScreen false
+      champ « intact », en cours 0, arrêt tenu 0
+── le script suivant tourne normalement
+      champ « suivant », en cours 0, arrêt tenu 0
+── Cmd-. hors script, puis un script
+      arrêt tenu 0
+──   …qui tourne jusqu'au bout
+      champ « fini », en cours 0, arrêt tenu 0
+
+== 6. la boîte de messages ==
+── repeat forever tapé dans la boîte
+      [Cmd-. au passage 3]
+      rendu, arrêt tenu 0

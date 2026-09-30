@@ -904,6 +904,15 @@ Object *hc_current_card(void);
  * envoyer « idle » au milieu d'un script. */
 int     hc_is_running(void);
 
+/* Cmd-. : arrête TOUT ce qui tourne — le gestionnaire en cours et tous ceux
+ * qui l'ont appelé —, sans dialogue d'erreur. L'hôte l'appelle quand il voit
+ * passer la touche, ce qui ne peut arriver que pendant son rappel `idle` :
+ * le noyau lui rend la main à chaque tour de boucle (au plus soixante fois
+ * par seconde) et pendant un « wait ». Hors script, sans effet.
+ * hc_interrompu() dit si un arrêt est en cours. */
+void    hc_interrompre(void);
+int     hc_interrompu(void);
+
 /* ---- Registre des piles ouvertes ----
  * Le noyau ne possède aucune pile : hc_load en rend une, hc_free la libère.
  * Mais pour que « stack "X" » et « go to stack "X" » désignent autre chose

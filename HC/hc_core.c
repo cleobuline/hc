@@ -507,6 +507,37 @@ Object *hc_current_card(void) { return g_current_card; }
  * boucle. */
 int hc_is_running(void) { return g_depth > 0; }
 
+/* ═══ Cmd-. : L'ARRÊT DEMANDÉ ═══════════════════════════════════════════
+ *
+ * Il n'y en avait pas : un « repeat forever » ne s'arrêtait qu'au plafond de
+ * dix millions de tours, ou en quittant l'application — et avec elle la pile
+ * non enregistrée. Demandé à l'usage : « il nous faut un Cmd-., c'est
+ * essentiel ».
+ *
+ * L'hôte appelle hc_interrompre() quand il voit passer la touche — pendant
+ * host_idle, puisque c'est le seul moment où il a la main. Le drapeau tient
+ * jusqu'à ce que le gestionnaire le PLUS EXTÉRIEUR soit sorti : chacun de la
+ * chaîne le lit à son tour, avant sa prochaine instruction, et s'arrête
+ * aussi. L'exécuteur déroule par le chemin des erreurs, avec la fausse faute
+ * HCT_INTERROMPU, qu'on reconnaît à son adresse pour ne pas l'afficher.
+ *
+ * Hors script, la touche ne fait rien : il n'y a rien à arrêter, et une
+ * demande restée en l'air arrêterait le PROCHAIN script au premier pas. */
+static volatile int g_interrompu = 0;
+
+void hc_interrompre(void)
+{
+    if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
+}
+
+int hc_interrompu(void) { return g_interrompu; }
+
+/* Au repos : plus rien ne tourne, la demande est servie. */
+static void interruption_servie(void)
+{
+    if (g_depth == 0 && g_msg_box == 0) g_interrompu = 0;
+}
+
 const char *hc_typename(ObjType t)
 {
     switch (t) {
@@ -957,7 +988,12 @@ static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
      *
      * hc_do pose donc g_msg_box le temps de sa ligne, et vide comme le fait
      * le gestionnaire le plus extérieur. */
-    if (kind == HC_ERR && (g_depth > 0 || g_msg_box) && !g_diagnostic) {
+    /* Arrêté par Cmd-. : ce qui échoue ENSUITE en est la conséquence — une
+     * fonction arrêtée rend du vide, une attente coupée n'a pas eu lieu — et
+     * pas une faute du script. Au journal seulement, pas au dialogue. Ce qui
+     * a été retenu AVANT l'arrêt reste, et sera dit. */
+    if (kind == HC_ERR && (g_depth > 0 || g_msg_box) && !g_diagnostic &&
+        !g_interrompu) {
         /* Hors gestionnaire — la boîte de message —, il n'y a PAS de script à
          * ouvrir : le repli était g_me, la carte courante, et « Script »
          * ouvrait le script de la carte, à la ligne 1, pour une ligne tapée
@@ -1309,6 +1345,7 @@ static void attends(double secondes)
 
     for (;;) {
         host_idle();
+        if (g_interrompu) return;       /* Cmd-. pendant un « wait » */
         clock_gettime(CLOCK_MONOTONIC, &t);
         double ecoule = (double)(t.tv_sec - t0.tv_sec)
                       + (double)(t.tv_nsec - t0.tv_nsec) / 1e9;
@@ -10197,6 +10234,12 @@ static int v3_respire(void *d)
     return 1;      /* le plafond de tours est tenu par l'exécuteur */
 }
 
+static int v3_interrompu(void *d)
+{
+    (void)d;
+    return g_interrompu;
+}
+
 /* --- l'hôte assemblé ------------------------------------------------- */
 
 /* Une ligne isolée passée à la v3 — voir sa définition, tout en bas. Déclarée
@@ -14296,6 +14339,7 @@ static int v3_cmd_wait(HctContexte *ctx, const HctNoeud *n)
             /* Sans le sommeil de l'hôte, cette boucle tournerait à plein
              * régime en attendant un clic. */
             attends(1.0 / 60.0);
+            if (hct_ctx_interrompu(ctx)) return 1;
         }
         return 1;
     }
@@ -16016,7 +16060,7 @@ static int v3_execute(Object *o, const char *message, int isfunc)
      * (v3, ligne 5) » laissait chercher dans quel gestionnaire de quel objet
      * — et sur une pile qui en compte trente, cela veut dire tout ouvrir.
      * « ligne 5 de card "Menu".openCard » désigne le fichier et l'endroit. */
-    if (x.ctx.erreur) {
+    if (x.ctx.erreur && x.ctx.erreur != HCT_INTERROMPU) {
         char qui[64];
         hc_describe(o, qui, sizeof qui);
         int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
@@ -16312,6 +16356,7 @@ static HctHote v3_hote(void)
     h.lit_prop_morceau = v3_lit_prop_morceau;
     h.commande  = v3_commande;
     h.respire   = v3_respire;
+    h.interrompu = v3_interrompu;
     h.ecrit_objet = v3_ecrit_objet;
     h.ecrit_message = v3_ecrit_message;
     h.lit_message   = v3_lit_message;
@@ -17078,6 +17123,7 @@ static int hc_send_args_k(Object *target, const char *message,
     ARENA_MARK;
     int r = hc_send_args_k_body(target, message, argv, argc, isfunc, cible_neuve);
     ARENA_FREE;
+    interruption_servie();
 
     /* DÉVERROUILLAGE AUTOMATIQUE en retombant au repos.
      *
@@ -17725,7 +17771,7 @@ static int v3_do_ligne(const char *line)
     hct_exec(&x, bloc);
 
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
-    if (x.ctx.erreur) {
+    if (x.ctx.erreur && x.ctx.erreur != HCT_INTERROMPU) {
         int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
         /* Tapée dans la boîte de message, la ligne n'appartient à AUCUN
          * script : rien à ouvrir. Dans un « do », c'est le gestionnaire qui
@@ -17769,4 +17815,5 @@ void hc_do(const char *line)
     /* Ce qui reste ici est à NOUS : un gestionnaire appelé depuis cette
      * ligne a déjà vidé le sien en redescendant à g_depth == 0. */
     if (--g_msg_box == 0) erreurs_vide();
+    interruption_servie();
 }

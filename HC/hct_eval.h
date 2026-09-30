@@ -142,6 +142,15 @@ typedef struct {
      * souris se relever si l'hôte n'a jamais la main. NULL = ne rien faire. */
     int (*respire)(void *d);
 
+    /* L'utilisateur a demandé l'ARRÊT — Cmd-. dans HC. Rend 1 tant que la
+     * demande tient ; c'est l'hôte qui l'éteint, quand plus rien ne tourne.
+     *
+     * Consulté avant chaque instruction et au retour de chaque appel de
+     * fonction : le gestionnaire s'arrête là, et avec lui tous ceux qui
+     * l'ont appelé, puisque chacun le consulte à son tour. Voir
+     * hct_ctx_interrompu. NULL = on ne s'arrête jamais. */
+    int (*interrompu)(void *d);
+
     /* Écrire dans un objet résolu — le texte d'un champ. `mode` vaut 0 pour
      * remplacer, 1 pour insérer AVANT, 2 pour ajouter APRÈS, comme `put`.
      *
@@ -226,6 +235,16 @@ struct HctContexte {
     char        message[128];
 };
 void hct_ctx_init(HctContexte *ctx, HctHote hote);
+
+/* La « faute » que pose un arrêt demandé. Ce n'en est pas une : elle sert à
+ * dérouler l'exécution par le chemin des erreurs — qui interrompt déjà tout,
+ * expressions comprises —, et l'hôte la reconnaît à son ADRESSE pour ne pas
+ * l'afficher. */
+extern const char HCT_INTERROMPU[];
+
+/* Rend 1, et pose HCT_INTERROMPU si aucune faute n'est déjà posée, quand
+ * l'hôte dit que l'arrêt est demandé. */
+int  hct_ctx_interrompu(HctContexte *ctx);
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg);
 /* Même chose, mais le message nomme le coupable : « propriété ou fonction
  * inconnue : zorglub ». Le texte est composé dans ctx->message. */

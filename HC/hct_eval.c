@@ -33,6 +33,16 @@ void hct_ctx_init(HctContexte *ctx, HctHote hote)
  *
  * Pour un message composé, voir hct_ctx_faute_nom juste en dessous, qui copie
  * dans ctx->message, ou faire de même. */
+const char HCT_INTERROMPU[] = "arrêt demandé";
+
+int hct_ctx_interrompu(HctContexte *ctx)
+{
+    if (!ctx->hote.interrompu || !ctx->hote.interrompu(ctx->hote.donnees))
+        return 0;
+    if (!ctx->erreur) { ctx->erreur = HCT_INTERROMPU; ctx->fautif = NULL; }
+    return 1;
+}
+
 void hct_ctx_faute(HctContexte *ctx, const HctNoeud *n, const char *msg)
 {
     if (ctx->erreur) return;        /* on garde la PREMIÈRE faute */
@@ -989,7 +999,16 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
     if (!fait && ctx->hote.recours)
         fait = ctx->hote.recours(ctx->hote.donnees, n, &r, ctx);
 
-    if (!fait) {
+    /* ARRÊTÉE PENDANT L'APPEL : sa valeur n'en est pas une.
+     *
+     * Une fonction écrite en HyperTalk rend la main VIDE quand on l'arrête
+     * en chemin. Sans ce test, « put total() into field "Somme" » finissait
+     * sa ligne avec ce vide, et l'arrêt EFFAÇAIT le champ. */
+    if (fait && hct_ctx_interrompu(ctx)) {
+        hct_val_libere(&r);
+        r = hct_val_vide();
+    }
+    else if (!fait) {
         /* LE NOM, PAS SEULEMENT LA CATÉGORIE.
          *
          * « fonction inconnue (v3, ligne 4 de …) » dit où chercher, mais pas

@@ -3456,6 +3456,48 @@ static void cocoa_play(const char *name) {
     [s play];
 }
 
+/* ═══ Cmd-. ═════════════════════════════════════════════════════════════
+ *
+ * Pendant un script, la boucle d'événements tourne (cocoa_idle ci-dessous),
+ * mais personne ne SORT les événements clavier de la file : NSApp ne les
+ * distribue que dans sa propre boucle, qui attend la fin du script. Une
+ * touche frappée pendant un « repeat forever » y restait donc — et Cmd-. avec
+ * elle. On va la chercher.
+ *
+ * Toutes les frappes en attente sont retirées, Cmd-. est gardé pour nous, les
+ * autres sont REMISES en tête de file, dans leur ordre : elles seront servies
+ * après le script, comme avant. Regarder seulement la première ne suffisait
+ * pas — une flèche tapée avant Cmd-. l'aurait cachée pour toujours.
+ *
+ * Le point se reconnaît au CARACTÈRE, pas à la touche : sur un clavier
+ * AZERTY il se tape avec Maj, sur une touche que QWERTY appelle « ; ».
+ * charactersIgnoringModifiers garde l'effet de Maj, et donne bien « . ». */
+static BOOL hcv_est_cmd_point(NSEvent *e)
+{
+    if (!([e modifierFlags] & NSEventModifierFlagCommand)) return NO;
+    return [[e charactersIgnoringModifiers] isEqualToString:@"."] ||
+           [[e characters] isEqualToString:@"."];
+}
+
+static void hcv_guette_cmd_point(void)
+{
+    NSMutableArray<NSEvent *> *gardees = nil;
+    BOOL vu = NO;
+    NSEvent *e;
+    while ((e = [NSApp nextEventMatchingMask:NSEventMaskKeyDown
+                                   untilDate:[NSDate distantPast]
+                                      inMode:NSDefaultRunLoopMode
+                                     dequeue:YES]) != nil) {
+        if (hcv_est_cmd_point(e)) { vu = YES; continue; }
+        if (!gardees) gardees = [NSMutableArray array];
+        [gardees addObject:e];
+    }
+    /* À l'envers, chacune EN TÊTE : l'ordre d'origine est rétabli. */
+    for (NSEvent *g in [gardees reverseObjectEnumerator])
+        [NSApp postEvent:g atStart:YES];
+    if (vu) hc_interrompre();
+}
+
 static void cocoa_idle(void) {
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
@@ -3487,6 +3529,7 @@ static void cocoa_idle(void) {
     [[gView window] displayIfNeeded];
     [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
                              beforeDate:[NSDate date]];
+    hcv_guette_cmd_point();
 }
 
 static NSFont *text_font(void) {
@@ -5665,6 +5708,17 @@ static BOOL      gSansMessageChamp = NO;
                       NSEventModifierFlagDeviceIndependentFlagsMask;
     if (!(mods & NSEventModifierFlagCommand)) return NO;
 
+    /* Cmd-. PENDANT UN SCRIPT arrête, il ne s'envoie pas. D'ordinaire
+     * hcv_guette_cmd_point le prend dans la file avant qu'il n'arrive ici ;
+     * mais si AppKit le distribue quand même en plein script — ce qui n'est
+     * pas mesuré —, ce serait un commandKeyDown IMBRIQUÉ dans le gestionnaire
+     * qu'on veut arrêter. Au repos, hc_interrompre ne fait rien et la touche
+     * suit son chemin, comme avant. */
+    if (hcv_est_cmd_point(event)) {
+        hc_interrompre();
+        if (hc_interrompu()) return YES;
+    }
+
     Object *carte = hc_current_card();
     if (!carte) return NO;
 
@@ -6144,8 +6198,9 @@ static BOOL      gSansMessageChamp = NO;
      *
      * HyperCard a déjà CONSOMMÉ ce clic en l'envoyant comme message ; le
      * calendrier d'Apple ne se dessinerait jamais autrement. Un clic compte
-     * donc seulement s'il arrive PENDANT qu'un script tourne — il passe alors
-     * par la boucle d'événements de cocoa_idle et atterrit ici. Sinon, il
+     * donc seulement s'il arrive PENDANT qu'un script tourne. Qu'AppKit le
+     * distribue alors, pendant cocoa_idle, n'est PAS mesuré — personne n'y
+     * sort les événements de la file, voir hcv_guette_cmd_point. Sinon, il
      * EFFACE le drapeau : un clic ancien, donné hors script, ne doit pas
      * répondre à la place d'un clic neuf. */
     gMouseClicked = hc_is_running() ? YES : NO;
