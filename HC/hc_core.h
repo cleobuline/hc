@@ -504,7 +504,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.7.1"
+#define HC_VERSION "0.7.2"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
