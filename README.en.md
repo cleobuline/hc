@@ -23,15 +23,29 @@ and copy `HC.app` to `/Applications`. The app is not notarised; once:
 xattr -dr com.apple.quarantine /Applications/HC.app
 ```
 
-## Building and testing
+## Building
+
+On a Mac, with Xcode:
 
 ```sh
-xcodebuild -project HC.xcodeproj -target HC -configuration Release build   # the app, on a Mac
-make test                                                                  # the kernel, anywhere
+xcodebuild -project HC.xcodeproj -target HC -configuration Release build
 ```
 
-The kernel and interpreter are C99 and are also tested on Linux: more than
-260 harnesses, checked against HyperCard running under Basilisk II.
+## Testing on Linux
+
+The kernel and interpreter are C99: more than 260 harnesses, checked against
+HyperCard running under Basilisk II, run without a Mac. On Ubuntu or Debian:
+
+```sh
+sudo apt install build-essential zlib1g-dev git
+git clone https://github.com/cleobuline/hc.git
+cd hc
+make test          # the regression suite
+make test-asan     # the same under AddressSanitizer, UBSan and LeakSanitizer
+```
+
+`zlib1g-dev` is required: `build-essential` does not provide `zlib.h`.
+Details in [`tests/LISEZMOI.md`](tests/LISEZMOI.md) (in French).
 
 ## License
 

@@ -15,7 +15,7 @@ La suite ne dépend de rien d'autre que du dépôt et d'un compilateur C. Elle a
 été vérifiée sur un clone nu, sans réglage préalable.
 
 ```sh
-sudo apt install build-essential git      # Ubuntu / Debian
+sudo apt install build-essential zlib1g-dev git   # Ubuntu / Debian
 git clone https://github.com/cleobuline/hc.git
 cd hc/tests && ./lance.sh
 ```
@@ -27,6 +27,13 @@ historique :
 curl -L https://github.com/cleobuline/hc/archive/refs/heads/main.tar.gz | tar xz
 cd hc-main/tests && ./lance.sh
 ```
+
+**`zlib1g-dev` n'est pas facultatif** : `hc_importe.c` inclut `zlib.h`, que
+`build-essential` n'apporte pas — `apt-cache depends build-essential` ne le
+tire à aucun niveau, et `dpkg -S /usr/include/zlib.h` nomme `zlib1g-dev`. La
+phrase « vérifiée sur un clone nu » ci-dessus disait vrai pour le CLONE, pas
+pour la machine : celle de la vérification avait déjà zlib. Sur Mac, rien à
+faire, zlib vient avec le système.
 
 **Le dossier `tests/` ne se télécharge pas seul** : les harnais compilent le
 noyau depuis `../HC`. C'est voulu — une suite qui testerait une copie figée du
