@@ -399,3 +399,52 @@ pile de torture nomme maintenant « bkgnd field 1 » au lieu de « card field
     bkgnd field 1 en F1  -> HyperCard visite le fond d'abord : HC doit changer
     card field 1 en F1   -> même ordre que HC : l'hypothèse tombe, et la
                             divergence de la pile de torture a une autre cause
+
+
+CE QUI VIDE « the foundChunk » — 30 SEPTEMBRE
+---------------------------------------------
+
+La pile de torture, jouée DANS HYPERCARD le 30/09, a tranché ses deux
+dernières questions — après un échec, la recherche repart de l'Atelier et
+nomme « char 1 to 5 of bkgnd field 1 », comme HC — et en a levé une neuve :
+
+    find "bet"
+    select the foundChunk
+    the foundChunk      HyperCard : VIDE          HC : char 7 to 10 of bkgnd field 1
+    the foundText       HyperCard : = selectedText (« et le texte suit » passe)
+
+Le code de HC dit le contraire, sans mesure : « the foundChunk reste valide
+jusqu'à la recherche suivante » (g_found_montre, hc_core.c). Une ligne ne dit
+pas CE QUI le vide, ni ce qui part avec lui. Le banc, sur la pile du banc des
+couches, bouton « Select » :
+
+    on mouseUp
+      put "alpha beta gamma delta" into bg field "T"
+      put "un deux trois" into card field "A"
+      put empty into card field "R"
+      find "bet"
+      put "S1 avant   : " & the foundChunk & return after card field "R"
+      select the foundChunk
+      put "S2 chunk   : [" & the foundChunk & "]" & return after card field "R"
+      put "S3 text    : [" & the foundText & "]" & return after card field "R"
+      put "S4 field   : [" & the foundField & "]" & return after card field "R"
+      put "S5 line    : [" & the foundLine & "]" & return after card field "R"
+      find "gam"
+      select word 2 of card field "A"
+      put "S6 autre select : [" & the foundChunk & "]" & return after card field "R"
+      find "del"
+      select empty
+      put "S7 select empty : [" & the foundChunk & "]" & return after card field "R"
+      find "alp"
+      put "S8 sans select  : [" & the foundChunk & "]" & return after card field "R"
+    end mouseUp
+
+    ligne  HC (noyau, 30 sept.)                 HyperCard
+    S1     char 7 to 10 of bkgnd field 1        ?
+    S2     [char 7 to 10 of bkgnd field 1]      [] (mesuré par la torture)
+    S3     [beta]                               ?
+    S4     [bkgnd field 1]                      ?
+    S5     [line 1 of bkgnd field 1]            ?
+    S6     [char 12 to 16 of bkgnd field 1]     ?   un AUTRE select vide-t-il aussi ?
+    S7     [char 18 to 22 of bkgnd field 1]     ?   et « select empty » ?
+    S8     [char 1 to 5 of bkgnd field 1]       ?   le témoin : sans select, rempli

@@ -635,9 +635,16 @@ on sectionChemins
   -- met a viser a cote, en silence.
   go to card "Atelier"
   put "alpha beta gamma delta" into bg field "T"
+  --
+  -- On compare au morceau RELEVE AVANT la selection : dans HyperCard,
+  -- « the foundChunk » est VIDE juste apres « select the foundChunk »
+  -- (mesure Basilisk du 30/09) — la ligne l'attendait egal au selectedChunk
+  -- et echouait la-bas seulement. Ce qui le vide, et quoi d'autre avec lui,
+  -- est dans docs/mesures/find.txt.
   find "bet"
+  put the foundChunk into fc
   select the foundChunk
-  egal "select the foundChunk", the selectedChunk, the foundChunk
+  egal "select the foundChunk", the selectedChunk, fc
   egal "et le texte suit", the selectedText, the foundText
 
   -- LE TEXTE D'UN MORCEAU, par le morceau et par la propriete.
