@@ -230,3 +230,33 @@ regardé.
 Il faut PLUSIEURS CARTES pour le voir, ce que ce banc n'a pas : d'où son
 absence ici. Les deux lignes « ? » qui restent dans la pile de torture sont
 celles-là.
+
+TRANCHÉ LE 30 SEPTEMBRE : la pile de torture, jouée DANS HYPERCARD (Basilisk
+II), repart de l'Atelier après un échec et nomme « char 1 to 5 of bkgnd field
+1 » — comme HC. Les deux lignes « ? » sont devenues des égalités.
+
+
+LA PILE DE TORTURE CONCORDE ENTIÈREMENT — 30 SEPTEMBRE
+======================================================
+
+Même script des deux côtés (main, ac1925d) :
+
+    DANS HYPERCARD (Basilisk II)   108 réussites, aucun échec, 0 à mesurer
+    DANS HC (l'application)        108 réussites, aucun échec, 0 à mesurer
+
+Toutes les lignes d'égalité portent une réponse mesurée dans HyperCard, et HC
+la rend. Il n'y reste plus de question. Ce qu'il a fallu pour y arriver, le
+même jour : la couche implicite des champs (#88), l'ordre de visite de find
+(#89), et le select qui efface la trouvaille (#90).
+
+UNE LEÇON DE MONTAGE, payée trois allers-retours : la pile se recopie depuis
+tests/donnees/ par tests/denude.sh, et bouton_nu.txt, pile_nu.txt ne sont PAS
+dans le dépôt (.gitignore). Une copie fabriquée avant un « git pull » reste
+l'ancienne, et donne des « ECHEC » qui ne sont pas des défauts : l'ancien
+script attend les anciennes réponses. Le plus sûr, régénérer depuis GitHub :
+
+    curl -sL https://raw.githubusercontent.com/cleobuline/hc/main/tests/donnees/torture2_bouton.txt \
+      | sed -e '/^[[:space:]]*--/d' -e '/^[[:space:]]*$/d' > bouton_nu.txt
+
+et vérifier une ligne récente avant de coller (grep -c "select efface la
+trouvaille" bouton_nu.txt doit rendre 1).
