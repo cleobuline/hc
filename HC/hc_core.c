@@ -817,10 +817,66 @@ static int g_dans_errordialog = 0;
  * script, à une ligne qui appartient à un autre. Les deux doivent venir du
  * même niveau, et c'est le plus intérieur qui a levé l'erreur. */
 static int g_err_ligne = 0;
-static void err_ligne_pose(int ligne)
+
+/* L'OBJET ET LA LIGNE SE POSENT ENSEMBLE, PAR L'ERREUR QUI A ARRÊTÉ LE SCRIPT.
+ *
+ * Ils venaient de deux endroits. L'objet était pris à la PREMIÈRE ligne
+ * d'erreur accumulée, quelle qu'elle soit ; la ligne, à la première erreur
+ * d'EXÉCUTION. Mesuré sur seize cas (harnais ouerreur), cinq désignaient un
+ * mauvais endroit, dont le pire :
+ *
+ *     le bouton échoue ligne 3 ; le script de la CARTE, lu en chemin, porte
+ *     une faute dans un AUTRE gestionnaire, jamais exécuté
+ *     -> « Script » ouvrait la carte, à la ligne 3, sous le titre de la
+ *        faute de la carte : un script innocent, accusé
+ *
+ * Le diagnostic de l'analyse était entré le premier et avait fixé l'objet ;
+ * l'erreur du bouton avait fixé la ligne. err_situe les pose d'un seul geste,
+ * et seul ce qui a VRAIMENT arrêté l'exécution l'appelle. La première gagne :
+ * une erreur remonte à travers chaque niveau appelant, et c'est le plus
+ * intérieur qui l'a levée.
+ *
+ * `g_err_source` garde la ligne telle qu'écrite dans le script, pour que le
+ * dialogue la MONTRE : « ligne 42 » oblige à compter, la ligne se reconnaît. */
+static int  g_err_situe = 0;
+static char g_err_source[256];
+
+static void err_situe(Object *o, int ligne)
 {
-    if (ligne > 0 && g_err_ligne == 0) g_err_ligne = ligne;
+    if (g_err_situe) return;
+    g_err_situe = 1;
+    g_err_objet = o;
+    g_err_ligne = ligne > 0 ? ligne : 0;
+    g_err_source[0] = '\0';
+    if (!o || ligne <= 0 || !o->script) return;
+    const char *p = o->script;
+    for (int l = 1; l < ligne && *p; p++)
+        if (*p == '\n') l++;
+    while (*p == ' ' || *p == '\t') p++;
+    int k = 0;
+    while (*p && *p != '\n' && *p != '\r' && k < (int)sizeof g_err_source - 1)
+        g_err_source[k++] = *p++;
+    while (k > 0 && (g_err_source[k-1] == ' ' || g_err_source[k-1] == '\t')) k--;
+    g_err_source[k] = '\0';
 }
+
+/* LA LIGNE DE LA COMMANDE EN COURS, pour les erreurs levées PAR elle.
+ *
+ * « zorglub 3 », « hide button "Absent" », « set the zorglub of me to 3 » :
+ * ces fautes sont dites par le rappel de commande, qui ne savait pas à quelle
+ * ligne il travaillait. Elles arrivaient au dialogue avec la ligne 0, et
+ * « Script » ouvrait l'éditeur en haut du script. v3_commande pose ici la
+ * ligne de son nœud, et la rend en sortant ; v3_execute la remet à zéro pour
+ * le gestionnaire qu'il ouvre, qui n'a pas à hériter de celle de son appelant. */
+static int g_ligne_cmd = 0;
+
+/* Un DIAGNOSTIC d'analyse — « script, ligne 4 colonne 16 : … » — part au
+ * journal, pas au dialogue. Voir hc_emet_diagnostic. */
+static int g_diagnostic = 0;
+
+/* L'objet retenu faute de mieux, quand aucune erreur n'a été située : le
+ * comportement d'avant, pour ce qui n'est pas encore couvert. */
+static Object *g_err_repli = NULL;
 
 /* La dernière ligne accumulée, pour compter ses répétitions plutôt que de les
  * empiler. Voir la note dans emit_v. */
@@ -833,9 +889,12 @@ static void erreurs_vide(void)
     if (g_err_n <= 0) return;
     char copie[sizeof g_err_texte];
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
-    Object *coupable = g_err_objet;
-    int ligne_fautive = g_err_ligne;
+    Object *coupable = g_err_situe ? g_err_objet : g_err_repli;
+    int ligne_fautive = g_err_situe ? g_err_ligne : 0;
+    char source[sizeof g_err_source];
+    memcpy(source, g_err_source, sizeof source);
     g_err_n = 0; g_err_texte[0] = '\0'; g_err_objet = NULL; g_err_ligne = 0;
+    g_err_situe = 0; g_err_source[0] = '\0'; g_err_repli = NULL;
     g_err_dernier_deb = -1; g_err_repete = 0; g_err_derniere[0] = '\0';
 
     Object *carte = hc_current_card();
@@ -849,8 +908,17 @@ static void erreurs_vide(void)
         return;
     }
 
-    if (g_host && g_host->erreur)
+    /* La LIGNE SOURCE à la fin du texte, pour le dialogue seulement : le
+     * gestionnaire errorDialog, plus haut, reçoit le message d'erreur tel
+     * quel, comme HyperCard le lui donne. */
+    if (g_host && g_host->erreur) {
+        if (ligne_fautive > 0 && source[0]) {
+            size_t n = strlen(copie);
+            snprintf(copie + n, sizeof copie - n, "\nligne %d :  %s",
+                     ligne_fautive, source);
+        }
         g_host->erreur(copie, coupable, ligne_fautive);
+    }
 }
 
 static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
@@ -889,8 +957,14 @@ static void emit_v(HcLineKind kind, const char *fmt, va_list ap)
      *
      * hc_do pose donc g_msg_box le temps de sa ligne, et vide comme le fait
      * le gestionnaire le plus extérieur. */
-    if (kind == HC_ERR && (g_depth > 0 || g_msg_box)) {
-        if (!g_err_n) g_err_objet = g_me;   /* le coupable, pour « Script » */
+    if (kind == HC_ERR && (g_depth > 0 || g_msg_box) && !g_diagnostic) {
+        /* Hors gestionnaire — la boîte de message —, il n'y a PAS de script à
+         * ouvrir : le repli était g_me, la carte courante, et « Script »
+         * ouvrait le script de la carte, à la ligne 1, pour une ligne tapée
+         * dans la boîte. */
+        if (!g_err_n) g_err_repli = g_depth > 0 ? g_me : NULL;
+        /* Une faute dite par une COMMANDE : sa ligne est connue. */
+        if (g_depth > 0 && g_ligne_cmd > 0) err_situe(g_me, g_ligne_cmd);
 
         /* UNE MÊME LIGNE RÉPÉTÉE SE COMPTE, ELLE NE S'EMPILE PAS.
          *
@@ -949,6 +1023,29 @@ void hc_emet_erreur(const char *fmt, ...)
     va_list ap;
     va_start(ap, fmt);
     emit_v(HC_ERR, fmt, ap);
+    va_end(ap);
+}
+
+/* UN DIAGNOSTIC D'ANALYSE VA AU JOURNAL, PAS AU DIALOGUE.
+ *
+ * « script, ligne 4 colonne 16 : texte inattendu » est dit quand un script est
+ * LU — la première fois qu'un message l'atteint —, pas quand il échoue. Il
+ * peut donc parler d'un gestionnaire que personne n'exécute. Entré dans le
+ * dialogue, il en prenait la tête et désignait un script innocent (voir
+ * err_situe).
+ *
+ * On ne perd rien en l'écartant : exécuter une ligne fautive lève sa PROPRE
+ * erreur, située à sa ligne (hct_exec.c, « une ligne fautive ne s'exécute
+ * pas ») ; et un gestionnaire écarté pour un cadre fautif le dit aussi, en
+ * v3_execute. Le diagnostic reste au journal — la console, les harnais — où
+ * il a toujours servi, et le bouton « Vérifier » de l'éditeur le montre. */
+void hc_emet_diagnostic(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    g_diagnostic++;
+    emit_v(HC_ERR, fmt, ap);
+    g_diagnostic--;
     va_end(ap);
 }
 
@@ -3892,7 +3989,12 @@ static void frame_declare_global(Frame *f, const char *name)
         if (!p) hc_memoire_epuisee("déclarations « global » d'un gestionnaire");
         f->gl = p; f->capgl = cap;
     }
-    f->gl[f->ngl++] = dupstr(name);
+    /* La copie d'abord, le compte ensuite : un nom NULL rangé dans gl ferait
+     * tomber frame_has_global, qui le compare sans vérifier. Même politique
+     * que var_set_num : une pénurie se dit, elle ne laisse pas un trou. */
+    char *nom = dupstr(name);
+    if (!nom) hc_memoire_epuisee("déclaration « global » d'un gestionnaire");
+    f->gl[f->ngl++] = nom;
 
     /* Une globale DÉCLARÉE existe, et vaut la chaîne vide tant qu'on ne l'a
      * pas affectée. Sans cela elle tombait sous la règle « identificateur
@@ -3911,8 +4013,30 @@ static void frame_declare_global(Frame *f, const char *name)
         if (!p) hc_memoire_epuisee("table des variables globales");
         g_globals.v = p; g_globals.cap = cap;
     }
-    g_globals.v[g_globals.n].name = dupstr(name);
-    g_globals.v[g_globals.n].val  = dupstr("");
+    /* LES QUATRE CHAMPS, PAS DEUX.
+     *
+     * Le nombre non arrondi (brut) et son drapeau (a_brut) n'étaient pas
+     * posés : la case sort d'un realloc, et contenait ce que le tas y avait
+     * laissé. v3_lit_var lit a_brut, et s'il n'était pas nul, prenait brut
+     * pour la valeur de la variable. Signalé par un audit extérieur, et
+     * mesuré en remplissant chaque allocation d'un motif (MALLOC_PERTURB_) :
+     *
+     *     global g1, …, g12
+     *     put g12 + 1            -> -5.31401e+303, au lieu de 1
+     *
+     * Aucun sanitizer de la suite ne le voit : la lecture tombe dans un bloc
+     * valide, c'est le terrain de MemorySanitizer, que gcc n'a pas. Le
+     * harnais globalevierge le tient en remplissant le tas lui-même.
+     *
+     * Et le nom et la valeur passent par la même porte que var_set_num : une
+     * pénurie se dit, au lieu de laisser un nom NULL que la recherche
+     * comparerait sans vérifier. */
+    Var *v = &g_globals.v[g_globals.n];
+    v->name   = dupstr(name);
+    v->val    = dupstr("");
+    v->brut   = 0;
+    v->a_brut = 0;
+    if (!v->name || !v->val) hc_memoire_epuisee("nom ou valeur d'une globale");
     g_globals.n++;
 }
 
@@ -5428,10 +5552,21 @@ static int container_set_body(const char *ref, const char *val, int mode)
             else if (mode == 3) piece[0] = '\0';
             else                snprintf(piece, HC_VAL, "%s", val);
 
-            if (mode == 3 && sepstr[0]) {       /* supprimer emporte un séparateur */
-                int bl = (int)strlen(base);
-                if      (en < bl && base[en] == sepstr[0]) en++;
-                else if (st > 0  && base[st-1] == sepstr[0]) st--;
+            /* Supprimer emporte un séparateur — le séparateur ENTIER.
+             *
+             * On comparait et retirait UN octet : avec « set the itemDelimiter
+             * to "é" », deux octets en UTF-8, la suppression laissait la moitié
+             * du é derrière elle, de l'UTF-8 invalide. Signalé par un audit
+             * extérieur, qui a lui-même vérifié que la v3 sert ce cas par
+             * hct_chunk_supprime, correct : ce chemin-ci n'est plus atteint que
+             * par le recours. On le corrige quand même — deux règles pour une
+             * même commande finissent toujours par se contredire. */
+            if (mode == 3 && lsep) {
+                size_t bl = strlen(base);
+                if ((size_t)en + lsep <= bl &&
+                    strncmp(base + en, sepstr, lsep) == 0)            en += (int)lsep;
+                else if ((size_t)st >= lsep &&
+                         strncmp(base + st - lsep, sepstr, lsep) == 0) st -= (int)lsep;
             }
             snprintf(neuf, HC_VAL, "%.*s%s%s", st, base, piece, base + en);
         }
@@ -5697,8 +5832,28 @@ static int parse_datetime_ex(const char *s, struct tm *tm, int *strict)
     memset(tm, 0, sizeof *tm);
     tm->tm_isdst = -1;
 
-    /* --- secondes du Macintosh : un seul nombre, et il est énorme --- */
-    if (!sawslash && !sawcolon && !sawname && nn == 1 && nums[0] > 100000) {
+    /* --- secondes du Macintosh : un seul nombre, QUEL QU'IL SOIT ---
+     *
+     * Le seuil « nums[0] > 100000 » faisait d'un petit nombre une NON-date,
+     * pour `convert` comme pour `is a date`. C'était une heuristique, jamais
+     * une mesure, et elle cassait une pile d'Apple. Le calendrier de « Stack
+     * Templates » demande une année, puis se garde :
+     *
+     *     ask "Show what year?" with item 1 of todaysDate
+     *     if ((it is empty) or (it is not a date)) then exit mouseUp
+     *     else updateCalendar it, "barn door open"
+     *
+     * et updateCalendar range « it » dans l'item 1 d'une dateItems : la
+     * réponse attendue est une ANNÉE SEULE, « 2026 ». Pour que ce bouton ait
+     * jamais marché, il faut qu'HyperCard tienne « 2026 » pour une date — un
+     * entier y est un nombre de secondes depuis 1904, sans plancher. Chez
+     * nous le bouton sortait par « exit mouseUp », sans erreur et sans rien
+     * faire : signalé à l'usage, « convert todaysDate to dateItems est
+     * exécuté mais ne donne aucun résultat ».
+     *
+     * DÉDUIT du script d'Apple, NON MESURÉ dans HyperCard : le banc est dans
+     * le harnais estdate. */
+    if (!sawslash && !sawcolon && !sawname && nn == 1) {
         time_t t = (time_t)(nums[0] - HC_MAC_EPOCH);
         struct tm *lt = localtime(&t);
         if (!lt) return 0;
@@ -15392,7 +15547,21 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "write",  v3_cmd_write   },
     { NULL, NULL }
 };
+static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx);
+
+/* La ligne de la commande en cours, pour les erreurs qu'elle dira — voir
+ * g_ligne_cmd. Posée à l'entrée, rendue à la sortie : une commande peut en
+ * déclencher d'autres (« send », « do »), qui posent la leur. */
 static int v3_commande(void *d, const HctNoeud *n, HctContexte *ctx)
+{
+    int avant = g_ligne_cmd;
+    if (n && n->jeton.ligne > 0) g_ligne_cmd = n->jeton.ligne;
+    int r = v3_commande_corps(d, n, ctx);
+    g_ligne_cmd = avant;
+    return r;
+}
+
+static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx)
 {
     (void)d;
     /* LA REMISE À ZÉRO EST APRÈS LE VERDICT, PAS AVANT.
@@ -15607,6 +15776,36 @@ static int v3_cadre_fautif(const HctNoeud *n)
     return 0;
 }
 
+/* La première faute d'un sous-arbre, dans l'ordre du texte. */
+static const HctNoeud *premiere_faute(const HctNoeud *n)
+{
+    if (!n) return NULL;
+    if (n->genre == HCTN_ERREUR) return n;
+    for (int i = 0; i < n->nfils; i++) {
+        const HctNoeud *f = premiere_faute(n->fils[i]);
+        if (f) return f;
+    }
+    return NULL;
+}
+
+/* Le gestionnaire de ce nom que trouve_gestionnaire a ÉCARTÉ pour un cadre
+ * fautif, s'il y en a un. */
+static const HctNoeud *gestionnaire_ecarte(const HctNoeud *racine,
+                                           const char *nom, int isfunc)
+{
+    if (!racine) return NULL;
+    const char *kw = isfunc ? "function" : "on";
+    for (int i = 0; i < racine->nfils; i++) {
+        const HctNoeud *f = racine->fils[i];
+        if (f->genre != HCTN_GESTIONNAIRE || f->nfils < 1) continue;
+        if (!f->op || strcasecmp(f->op, kw) != 0) continue;
+        const HctJeton *j = &f->fils[0]->jeton;
+        if ((int)strlen(nom) != j->len || !ci_nequal(j->deb, nom, j->len)) continue;
+        if (f->nfils < 3 || v3_cadre_fautif(f)) return f;
+    }
+    return NULL;
+}
+
 static const HctNoeud *trouve_gestionnaire(const HctNoeud *racine,
                                            const char *nom, int isfunc)
 {
@@ -15667,6 +15866,33 @@ static int v3_execute(Object *o, const char *message, int isfunc)
 
     const HctNoeud *g = trouve_gestionnaire(racine, message, isfunc);
     if (!g) {
+        /* UN GESTIONNAIRE ÉCARTÉ SE DIT.
+         *
+         * trouve_gestionnaire passe ceux dont le CADRE est fautif — un « end »
+         * manquant, un en-tête illisible. Le message filait alors plus loin
+         * dans la hiérarchie, et un « on mouseUp » sans son « end » ne faisait
+         * RIEN, sans erreur : le seul signe était le diagnostic de l'analyse,
+         * au journal. On le dit maintenant, à la ligne de la faute, et le
+         * message s'arrête ici — HyperCard refusait lui aussi de compiler le
+         * gestionnaire, il ne passait pas au suivant. */
+        const HctNoeud *ecarte = gestionnaire_ecarte(racine, message, isfunc);
+        if (ecarte) {
+            const HctNoeud *f = premiere_faute(ecarte);
+            int ligne = f ? f->jeton.ligne : ecarte->jeton.ligne;
+            /* Un « end » MANQUANT se constate à la fin du texte, ou sur le
+             * « on » du gestionnaire suivant : encadrer l'une ou l'autre
+             * n'apprendrait rien. C'est l'EN-TÊTE du gestionnaire sans fin
+             * qu'on désigne. */
+            if (f && f->msg && strstr(f->msg, "manquant"))
+                ligne = ecarte->jeton.ligne;
+            char qui[64];
+            hc_describe(o, qui, sizeof qui);
+            err_situe(o, ligne);
+            emit(HC_ERR, "   !! le gestionnaire « %s » est mal formé : %s "
+                         "(ligne %d de %s)", message,
+                 (f && f->msg) ? f->msg : "forme non comprise", ligne, qui);
+            return 1;
+        }
 #if HC_TRACE_V3
         if (!strcasecmp(message, "idle")) return 0;
         fprintf(stderr, "[v3] « %s »%s absent de l'arbre (%d gestionnaire(s) vus)\n",
@@ -15703,7 +15929,10 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     /* Marquer l'arbre comme en cours : un script qui se réécrit lui-même
      * appellerait sinon hc_arbre_oublie et libérerait le sol sous nos pieds. */
     o->arbre_usage++;
+    int ligne_cmd_appelant = g_ligne_cmd;
+    g_ligne_cmd = 0;
     hct_exec(&x, g->fils[2]);          /* fils 2 = le corps */
+    g_ligne_cmd = ligne_cmd_appelant;
     o->arbre_usage--;
 
     /* Les signaux redeviennent les drapeaux de hc_core : « pass » doit faire
@@ -15727,7 +15956,7 @@ static int v3_execute(Object *o, const char *message, int isfunc)
         char qui[64];
         hc_describe(o, qui, sizeof qui);
         int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
-        err_ligne_pose(ligne);
+        err_situe(o, ligne);
         emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
              ligne, qui, message);
     }
@@ -17360,12 +17589,26 @@ const char *hc_paint_of(Object *o)
     return o ? o->paint : NULL;
 }
 
-void hc_set_paint(Object *o, const char *base64)
+int hc_set_paint(Object *o, const char *base64)
 {
-    if (!o) return;
-    if (o->type != OBJ_CARD && o->type != OBJ_BACKGROUND) return;
+    if (!o) return 0;
+    if (o->type != OBJ_CARD && o->type != OBJ_BACKGROUND) return 0;
+    /* LA COPIE D'ABORD, LA LIBÉRATION ENSUITE — la règle de var_set_num.
+     *
+     * L'ancien dessin était libéré avant de savoir si le nouveau tenait en
+     * mémoire : une copie manquée laissait l'objet SANS dessin, ni l'ancien
+     * ni le nouveau, et rien ne le disait. Trouvé en suivant le dessin
+     * importé qui se perdait en silence (hc_importe.c, signalé par un audit
+     * extérieur) : c'est le même trou, un étage plus bas, et c'est aussi
+     * celui de l'outil de peinture. */
+    char *neuf = NULL;
+    if (base64 && *base64) {
+        neuf = dupstr(base64);
+        if (!neuf) return 0;
+    }
     free(o->paint);
-    o->paint = (base64 && *base64) ? dupstr(base64) : NULL;
+    o->paint = neuf;
+    return 1;
 }
 
 /* ═══ Une ligne isolée, exécutée par la v3 ══════════════════════════════
@@ -17420,7 +17663,11 @@ static int v3_do_ligne(const char *line)
     if (x.a_rendu && x.retour.txt) set_result(x.retour.txt);
     if (x.ctx.erreur) {
         int ligne = x.ctx.fautif ? x.ctx.fautif->jeton.ligne : 0;
-        err_ligne_pose(ligne);
+        /* Tapée dans la boîte de message, la ligne n'appartient à AUCUN
+         * script : rien à ouvrir. Dans un « do », c'est le gestionnaire qui
+         * l'a lancé qui répond de l'erreur, à SA ligne — la commande « do »
+         * l'a déjà posée par g_ligne_cmd. */
+        if (g_depth == 0) err_situe(NULL, 0);
         emit(HC_ERR, "   !! %s (v3, ligne %d)", x.ctx.erreur, ligne);
     }
 

@@ -3,6 +3,6 @@
    [ERR]    !! script, ligne 12 colonne 1 : « end » manquant
    premier : ok
 ── debordant (fautif, ancien interprete)
-   [ERR]    !! gestionnaire illisible : button "B".debordant (son en-tête ou son « end »)
+   [ERR]    !! le gestionnaire « debordant » est mal formé : « end » manquant (ligne 6 de button "B")
 ── troisieme (avale, ancien interprete)
    [ERR]    !! gestionnaire illisible : button "B".troisieme (son en-tête ou son « end »)

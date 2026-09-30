@@ -8,6 +8,9 @@
    2026,8,7                     ->    true
    2026,8,7,14,30,0,6           ->    true
    3868905600                   ->    true
+   2026                         ->    true
+   42                           ->    true
+   0                            ->    true
 
 === ce qui n'en est PAS ===
    99/99/99                     ->    false
@@ -19,7 +22,7 @@
    patate                       ->    false
                                 ->    false
    3:30 PM                      ->    false
-   42                           ->    false
+   3.5                          ->    false
 
 === 2/29 : une annee bissextile sur deux siecles ===
    2/29/2000                    ->    true
@@ -31,6 +34,11 @@
 === convert reste SOUPLE : un 31 fevrier se normalise ===
    false
    3/2/96
+
+=== la garde du calendrier d'Apple ===
+   true
+   updateCalendar 2027
+   2027,2,1,0,0,0,2
 
 === is not a date ===
    true

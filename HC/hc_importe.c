@@ -235,21 +235,37 @@ static char *en_base64(const unsigned char *o, size_t n)
     return d;
 }
 
-/* Le dessin d'une couche, posé sur l'objet. Silencieux si la couche n'en a pas.
+/* Le dessin d'une couche, posé sur l'objet. Rend 1 s'il est posé ou s'il n'y
+ * en avait pas, 0 s'il n'a pas pu l'être.
+ *
+ * UN DESSIN LU ET PERDU EN ROUTE NE SE TAIT PLUS. Chacun des quatre échecs
+ * possibles — deux allocations, la compression, le base64 — faisait « return »
+ * dans une fonction qui ne rendait rien : la pile s'importait, sans son
+ * dessin, et la boîte d'import annonçait « rien de perdu ». hc_origine.c avait
+ * pourtant lu ce dessin, et compté ce qu'il n'avait pas su lire ; la
+ * philosophie s'arrêtait à la frontière entre les deux modules. Signalé par un
+ * audit extérieur.
+ *
+ * Les quatre échecs sont des pénuries — compress2 ne manque que faute de
+ * place —, et le contrat de hc_importe_pile pour une pénurie est écrit dans
+ * son en-tête : NULL. C'est donc ce qu'il rend maintenant, comme pour un fond
+ * ou une part qui n'a pas pu être créé.
+ *
+ * Silencieux si la couche n'en a pas.
  *
  * LA RÈGLE DES TROIS ÉTATS EST CELLE DU FORMAT, et elle est écrite ici parce
  * que c'est ici qu'elle devient une couleur : « if the pixel has a value of 1 in
  * the image, it is black ; elsewhere, if it has a value of 1 in the mask, it is
  * blank ; elsewhere, it is transparent ». hc_origine ne fait que décompresser
  * les deux plans — il n'a pas d'opinion sur ce qu'ils veulent dire. */
-static void pose_le_dessin(Object *o, const HcOrigDessin *d)
+static int pose_le_dessin(Object *o, const HcOrigDessin *d)
 {
-    if (!o || !d->present || !d->image || !d->masque) return;
-    if (d->largeur <= 0 || d->hauteur <= 0) return;
+    if (!o || !d->present || !d->image || !d->masque) return 1;
+    if (d->largeur <= 0 || d->hauteur <= 0) return 1;
 
     size_t npix = (size_t)d->largeur * (size_t)d->hauteur;
     unsigned char *rgba = malloc(npix * 4);
-    if (!rgba) return;
+    if (!rgba) return 0;
 
     for (int y = 0; y < d->hauteur; y++) {
         const unsigned char *li = d->image  + (size_t)y * d->octets_par_ligne;
@@ -266,7 +282,7 @@ static void pose_le_dessin(Object *o, const HcOrigDessin *d)
 
     uLongf place = compressBound((uLong)(npix * 4));
     unsigned char *hcp = malloc((size_t)place + 12);
-    if (!hcp) { free(rgba); return; }
+    if (!hcp) { free(rgba); return 0; }
     memcpy(hcp, "HCP1", 4);
     unsigned long w = (unsigned long)d->largeur, h = (unsigned long)d->hauteur;
     hcp[4]  = (unsigned char)((w >> 24) & 0xFF); hcp[5]  = (unsigned char)((w >> 16) & 0xFF);
@@ -275,15 +291,16 @@ static void pose_le_dessin(Object *o, const HcOrigDessin *d)
     hcp[10] = (unsigned char)((h >>  8) & 0xFF); hcp[11] = (unsigned char)( h        & 0xFF);
 
     if (compress2(hcp + 12, &place, rgba, (uLong)(npix * 4), 9) != Z_OK) {
-        free(hcp); free(rgba); return;
+        free(hcp); free(rgba); return 0;
     }
     free(rgba);
 
     char *b64 = en_base64(hcp, (size_t)place + 12);
     free(hcp);
-    if (!b64) return;
-    hc_set_paint(o, b64);
+    if (!b64) return 0;
+    int ok = hc_set_paint(o, b64);
     free(b64);
+    return ok;
 }
 
 static Object *part_visee(Object *couche, const HcOrigCouche *k, int id_origine)
@@ -395,7 +412,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
          * les 32 couches gardent le leur, les identifiants de couche étant
          * uniques dans la pile chez HyperCard comme chez nous. */
         id_adopte(bg, k->id);
-        pose_le_dessin(bg, &k->dessin);
+        if (!pose_le_dessin(bg, &k->dessin)) { free(fonds); free(ids); hc_free(st); return NULL; }
         bg->dont_search = k->dont_search;
         bg->cant_delete = k->cant_delete;
         bg->show_pict   = k->montre_le_dessin;
@@ -425,7 +442,7 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
         Object *cd = hc_new_card(st, bg, k->nom ? k->nom : "");
         if (!cd) { free(fonds); free(ids); hc_free(st); return NULL; }
         id_adopte(cd, k->id);            /* même raison que pour les fonds */
-        pose_le_dessin(cd, &k->dessin);
+        if (!pose_le_dessin(cd, &k->dessin)) { free(fonds); free(ids); hc_free(st); return NULL; }
         cd->marked      = k->marque;
         cd->dont_search = k->dont_search;
         cd->cant_delete = k->cant_delete;

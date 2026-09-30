@@ -1,0 +1,63 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1 exécution, ligne 3 du bouton
+      -> objet button "B", ligne 3 |   !! propriété inconnue (v3, ligne 3 de button "B".mouseUp)
+         ligne 3 :  put the zorglub of me
+== 2 syntaxe, ligne 4 du bouton
+      -> objet button "B", ligne 4 |   !! texte inattendu en fin de ligne (v3, ligne 4 de button "B".mouseUp)
+         ligne 4 :  put 3 into z zz
+== 3 gestionnaire de la carte fautif, ligne 4 de la carte
+      -> objet card "Un", ligne 4 |   !! propriété inconnue (v3, ligne 4 de card "Un".foo)
+         ligne 4 :  put the zorglub of me
+== 4 fonction de la pile fautive, ligne 3 de la pile
+      [msg] apres
+      -> objet stack "P", ligne 3 |   !! propriété inconnue (v3, ligne 3 de stack "P".f)
+         ligne 3 :  return the zorglub of me
+== 5 do, ligne 3 du bouton
+      -> objet button "B", ligne 3 |   !! propriété inconnue (v3, ligne 3 de button "B".mouseUp)
+         ligne 3 :  do "put the zorglub of me"
+== 6 send à la carte, fautif ligne 3 de la carte
+      -> objet card "Un", ligne 3 |   !! propriété inconnue (v3, ligne 3 de card "Un".foo)
+         ligne 3 :  put the zorglub of me
+== 7 autre gestionnaire fautif dans la carte, erreur ligne 3 du bouton
+      -> objet button "B", ligne 3 |   !! propriété inconnue (v3, ligne 3 de button "B".mouseUp)
+         ligne 3 :  put the zorglub of me
+== 8 gestionnaire de carte à syntaxe fautive appelé, ligne 3 de la carte
+      -> objet card "Un", ligne 3 |   !! texte inattendu en fin de ligne (v3, ligne 3 de card "Un".foo)
+         ligne 3 :  put 2 into y zz
+== 9 continuation ¬, ligne 2 (début) ou 3
+      -> objet button "B", ligne 2 |   !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+         ligne 2 :  put "a" &      the zorglub of me into x
+== 10 boîte de message
+      -> objet (aucun), ligne 0 |   !! propriété inconnue (v3, ligne 1)
+== 11 imbriqué, ligne 5
+      -> objet button "B", ligne 5 |   !! propriété inconnue (v3, ligne 5 de button "B".mouseUp)
+         ligne 5 :  put the zorglub of me
+== 12 value(), ligne 2
+      -> objet button "B", ligne 2 |   !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+         ligne 2 :  put value("the zorglub of me") into x
+== 13 objet introuvable, ligne 2
+      -> objet button "B", ligne 2 |   !! objet introuvable (v3, ligne 2 de button "B".mouseUp)
+         ligne 2 :  put field "Absent" into x
+== 14 message inconnu, ligne 3
+      -> objet button "B", ligne 3 |   !! personne ne répond à « zorglub 3 »
+         ligne 3 :  zorglub 3
+== 15 end manquant (cadre fautif)
+      -> objet button "B", ligne 1 |   !! le gestionnaire « mouseUp » est mal formé : « end » manquant (ligne 1 de button "B")
+         ligne 1 :  on mouseUp
+== 16 script de carte avec faute de LEXIQUE hors gestionnaire, erreur ligne 2 du bouton
+      -> objet button "B", ligne 2 |   !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+         ligne 2 :  put the zorglub of me
+== 17 une commande fautive : hide, ligne 3
+      [msg] après
+      -> objet button "B", ligne 3 |   !! objet introuvable : hide button "Absent"
+         ligne 3 :  hide button "Absent"
+== 18 une commande fautive : set, ligne 3
+      [msg] après
+      -> objet button "B", ligne 3 |   !! propriété inconnue : zorglub
+         ligne 3 :  set the zorglub of me to 3
+== 19 une commande fautive : delete, ligne 2
+      -> objet button "B", ligne 2 |   !! rien à supprimer : field "Absent"
+         ligne 2 :  delete field "Absent"
+== 20 end manquant, suivi d'un autre gestionnaire : l'en-tête, ligne 1
+      -> objet button "B", ligne 1 |   !! le gestionnaire « mouseUp » est mal formé : « end » manquant (ligne 1 de button "B")
+         ligne 1 :  on mouseUp

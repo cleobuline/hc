@@ -7,6 +7,7 @@
 === 2. SANS la serrure : l'hôte ouvre son dialogue ===
    [ERR]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
    [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 5 de stack "Verrou".essai)
+ligne 5 :  put the zorglub of this card
 === 3. AVEC la serrure : le gestionnaire prend l'erreur ===
    (et l'hôte doit se taire — s'il parle, rien n'a été détourné)
    [ERR]    !! propriété inconnue (v3, ligne 6 de stack "Verrou".essai)
@@ -23,6 +24,7 @@
    errorDialog a reçu :    !! propriété inconnue (v3, ligne 7 de stack "Verrou".essai)
    [ERR]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
    [DIALOGUE HÔTE]    !! propriété inconnue (v3, ligne 3 de stack "Verrou".errorDialog)
+ligne 3 :  put the patatras of this card
 === 6. serrure posée, AUCUN gestionnaire : on ne remet pas le
        dialogue, mais on ne se tait pas non plus ===
    (la pile a demandé le silence ; le lui rendre contre son gré
@@ -84,6 +86,8 @@
    [boîte à un bouton]    !! drag : l'hôte ne gère pas la souris
    [ERR]    !! choose : l'hôte ne gère pas les outils
    [DIALOGUE HÔTE]    !! choose : l'hôte ne gère pas les outils
+ligne 3 :  choose browse tool
 === 8. le témoin : une coquille voisine reste refusée ===
    [ERR]    !! propriété inconnue : lockErrorDialog
    [DIALOGUE HÔTE]    !! propriété inconnue : lockErrorDialog
+ligne 2 :  set the lockErrorDialog to true

@@ -1,7 +1,7 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 ── PORTE 1 : gestionnaire au cadre cassé
       !! script, ligne 3 colonne 1 : « end » manquant
-      !! gestionnaire illisible : button "B".casse (son en-tête ou son « end »)
+      !! le gestionnaire « casse » est mal formé : « end » manquant (ligne 1 de button "B")
 
 ── PORTE 2 : message sans gestionnaire
       !! personne ne répond à « dessineLeChat 3 »

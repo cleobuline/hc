@@ -57,6 +57,14 @@ int main(void)
     essaie("2026,8,7");                  /* dateItems */
     essaie("2026,8,7,14,30,0,6");
     essaie("3868905600");                /* les secondes du Macintosh, que convert rend */
+    /* UN ENTIER SEUL EST DES SECONDES, QUELLE QUE SOIT SA TAILLE. Un seuil à
+     * 100 000 en faisait une non-date, et le calendrier de « Stack
+     * Templates » ne marchait plus : il demande une ANNÉE et se garde par
+     * « if (it is empty) or (it is not a date) then exit mouseUp ». Voir la
+     * section du bas. Déduit du script d'Apple ; non mesuré dans HyperCard. */
+    essaie("2026");
+    essaie("42");
+    essaie("0");
 
     puts("\n=== ce qui n'en est PAS ===");
     essaie("99/99/99");                  /* pas de 99e mois */
@@ -68,7 +76,7 @@ int main(void)
     essaie("patate");
     essaie("");
     essaie("3:30 PM");                   /* une heure seule n'est pas une date */
-    essaie("42");
+    essaie("3.5");                       /* deux nombres, sans rien qui les lie */
 
     puts("\n=== 2/29 : une annee bissextile sur deux siecles ===");
     essaie("2/29/2000");                 /* divisible par 400 : bissextile */
@@ -84,6 +92,27 @@ int main(void)
     hc_do("put (e is a date)");
     hc_do("convert e to short date");
     hc_do("put e");
+
+    /* LE CAS QUI L'A RÉVÉLÉ, signalé à l'usage : « convert todaysDate to
+     * dateItems est exécuté mais ne donne aucun résultat ». Le convert
+     * marchait ; c'est la garde deux lignes plus bas qui renvoyait « exit
+     * mouseUp » en silence. Le bouton « Show The Year… » de Stack Templates,
+     * ramené à ses lignes décisives — la pile elle-même n'est pas versionnable
+     * (© Apple). La réponse à « ask » est une année seule.
+     *
+     * À JOUER DANS HYPERCARD (Basilisk II) pour trancher ce qui n'est que
+     * déduit : put "2026" is a date ; convert 2026 to long date. */
+    puts("\n=== la garde du calendrier d'Apple ===");
+    hc_do("put the long date into todaysDate");
+    hc_do("convert todaysDate to dateItems");
+    hc_do("put (item 1 of todaysDate is a date)");
+    hc_do("put \"2027\" into it2");
+    hc_do("if (it2 is empty) or (it2 is not a date) then put \"exit mouseUp : rien ne se passe\" else put \"updateCalendar 2027\"");
+    hc_do("put \"0,0,1,0,0,0,0\" into theDate");
+    hc_do("put 2027 into item 1 of theDate");
+    hc_do("put 2 into item 2 of theDate");      /* le mois, avant de convertir */
+    hc_do("convert theDate to dateItems");
+    hc_do("put theDate");
 
     puts("\n=== is not a date ===");
     hc_do("put (\"99/99/99\" is not a date)");

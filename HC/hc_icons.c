@@ -203,7 +203,14 @@ void hc_icon_pixel_pose(struct StackIcon *ic, int x, int y, int index)
 {
     if (!ic || !ic->couleur) return;
     if (x < 0 || y < 0 || x >= HC_ICON_COTE || y >= HC_ICON_COTE) return;
-    if (index < 0 || index >= HC_ICON_COULEURS_MAX) return;
+    /* UN INDEX HORS DE LA PALETTE EST REFUSÉ, pas seulement un index hors
+     * du tableau. Accepter « 4 » quand la palette en compte quatre créait un
+     * pixel que la silhouette compte comme encre (il n'est pas nul) et que
+     * l'éditeur dessine transparent (il n'a pas de couleur) : un objet
+     * incohérent, fabriqué par la primitive même qui garde l'invariant.
+     * Signalé par un audit extérieur. Pour peindre d'une couleur neuve, on la
+     * pose d'abord par hc_icon_palette_pose, qui étend la palette. */
+    if (index < 0 || index >= ic->couleur->ncouleurs) return;
 
     unsigned char *p = &ic->couleur->pixels[y * HC_ICON_COTE + x];
     if (*p == (unsigned char)index) return;
@@ -301,12 +308,28 @@ void hc_icon_tourne(struct StackIcon *ic)
 int hc_icon_copie_dessin(struct StackIcon *dst, const struct StackIcon *src)
 {
     if (!dst || !src) return 0;
-    memcpy(dst->bits, src->bits, HC_ICON_BYTES);
+    if (dst == src) return 1;
 
+    /* L'ALLOCATION D'ABORD, L'ÉCRITURE ENSUITE.
+     *
+     * Les bits de la destination étaient recopiés AVANT de savoir si la
+     * couleur tiendrait en mémoire : un échec rendait 0 — « copie échouée » —
+     * sur une icône qui avait déjà changé de silhouette. Signalé par un audit
+     * extérieur. Désormais la seule chose qui puisse échouer passe en premier,
+     * et un échec laisse la destination exactement telle qu'elle était. On
+     * n'appelle pas hc_icon_couleur_cree, qui VIDE la silhouette en créant
+     * la couleur : on réserve le bloc à part. */
+    struct HcIconCouleur *d = NULL;
+    if (src->couleur && !dst->couleur) {
+        d = malloc(sizeof *d);
+        if (!d) return 0;
+    }
+
+    memcpy(dst->bits, src->bits, HC_ICON_BYTES);
     if (!src->couleur) { hc_icon_couleur_ote(dst); return 1; }
 
-    struct HcIconCouleur *d = hc_icon_couleur_cree(dst);
-    if (!d) return 0;
+    if (d) dst->couleur = d;
+    d = dst->couleur;
     memcpy(d, src->couleur, sizeof *d);
     /* La silhouette est déjà celle de la source, recopiée deux lignes plus
      * haut ; on la redérive quand même, pour que l'invariant ne dépende pas
@@ -415,15 +438,32 @@ int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
 {
     if (!ic || !rvba) return 0;
 
-    struct HcIconCouleur *c = hc_icon_couleur_cree(ic);
-    if (!c) return 0;
+    /* TOUT S'ALLOUE D'ABORD, ET L'ICÔNE NE CHANGE QU'À LA FIN, D'UN COUP.
+     *
+     * On créait la couleur sur l'icône elle-même — ce qui VIDE sa silhouette,
+     * hc_icon_couleur_cree redérivant bits depuis des pixels tout
+     * transparents —, puis on allouait le tableau de travail. Qu'il manque,
+     * et la fonction rendait 0 sur une icône noir et blanc dont le dessin
+     * venait d'être effacé. Plus loin, la palette était réécrite en place
+     * avant l'allocation des boîtes de la découpe : un second échec laissait
+     * des pixels désignant des couleurs qui n'étaient plus les leurs.
+     * Signalé par un audit extérieur ; le premier cas est pire qu'il ne le
+     * disait.
+     *
+     * Le résultat se construit donc dans un bloc à part, et ne remplace
+     * l'ancien qu'une fois complet. S'il y avait déjà une couleur, on la
+     * RECOPIE plutôt que de changer de pointeur : l'éditeur peut tenir
+     * l'adresse de ic->couleur d'un geste à l'autre. */
+    struct HcIconCouleur *c = calloc(1, sizeof *c);
+    RVB *t = malloc(sizeof *t * HC_ICON_PIXELS);
+    Boite *bo = malloc(sizeof *bo * (size_t)(HC_ICON_COULEURS_MAX - 1));
+    if (!c || !t || !bo) { free(c); free(t); free(bo); return 0; }
+    c->ncouleurs = 1;
 
     /* Les couleurs opaques, une entrée par pixel. On garde les doublons :
      * la découpe médiane a besoin de la DENSITÉ pour placer ses coupes, et
      * dédoublonner d'abord donnerait le même poids à un pixel isolé qu'à un
      * aplat de cinq cents. */
-    RVB *t = malloc(sizeof *t * HC_ICON_PIXELS);
-    if (!t) return 0;
     int n = 0;
     for (int i = 0; i < HC_ICON_PIXELS; i++) {
         if (rvba[i * 4 + 3] < 128) continue;          /* transparent */
@@ -433,14 +473,10 @@ int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
         n++;
     }
 
-    /* Tout transparent : l'icône se vide, et c'est la bonne réponse. */
-    if (n == 0) {
-        memset(c->pixels, 0, HC_ICON_PIXELS);
-        c->ncouleurs = 1;
-        hc_icon_silhouette(ic);
-        free(t);
-        return 1;
-    }
+    /* Tout transparent : l'icône se vide, et c'est la bonne réponse. Le bloc
+     * neuf est déjà tout transparent, avec sa seule entrée 0 : il suffit de
+     * sauter jusqu'à la pose. */
+    if (n == 0) goto pose;
 
     /* Combien de couleurs DISTINCTES ? Si elles tiennent, on les prend telles
      * quelles et le collage est sans perte. */
@@ -463,8 +499,6 @@ int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
         /* DÉCOUPE MÉDIANE. Une seule boîte au départ, et l'on coupe toujours
          * la plus étendue jusqu'à en avoir 255. */
         int vise = HC_ICON_COULEURS_MAX - 1;          /* l'index 0 est pris */
-        Boite *bo = malloc(sizeof *bo * (size_t)vise);
-        if (!bo) { free(t); return 0; }
         bo[0].deb = 0; bo[0].fin = n;
         int nb = 1;
 
@@ -504,7 +538,6 @@ int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
             c->palette[c->ncouleurs][2] = (unsigned char)(sb / m);
             c->ncouleurs++;
         }
-        free(bo);
     }
 
     /* CHAQUE PIXEL VA À LA COULEUR LA PLUS PROCHE, distance au carré dans le
@@ -529,7 +562,12 @@ int hc_icon_colle_rvba(struct StackIcon *ic, const unsigned char *rvba)
         c->pixels[i] = (unsigned char)choix;
     }
 
-    hc_icon_silhouette(ic);
+pose:
+    /* Le seul moment où l'icône change. */
     free(t);
-    return c->ncouleurs;
+    free(bo);
+    if (ic->couleur) { memcpy(ic->couleur, c, sizeof *c); free(c); }
+    else             ic->couleur = c;
+    hc_icon_silhouette(ic);
+    return ic->couleur->ncouleurs;
 }

@@ -1,0 +1,5 @@
+coller une image sur une icône noir et blanc des pénuries provoquées, 0 abîmé(s)
+coller une image sur une icône en couleur   des pénuries provoquées, 0 abîmé(s)
+copier une icône en couleur sur une autre   des pénuries provoquées, 0 abîmé(s)
+importer une pile qui porte des dessins      des pénuries provoquées, 0 abîmé(s)
+put … after une variable                   des pénuries provoquées, 0 abîmé(s)

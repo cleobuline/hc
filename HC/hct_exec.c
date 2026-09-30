@@ -7,6 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <limits.h>     /* INT_MAX : la borne des longueurs d'une valeur */
 
 /* ------------------------------------------------------------- portées */
 
@@ -490,17 +491,30 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
         } else {
             HctValeur ancien;
             if (!var_lit(x, nom, &ancien)) ancien = hct_val_vide();
-            int la = ancien.len, lv = (int)strlen(val);
-            char *neuf = malloc((size_t)la + lv + 1);
-            if (neuf) {
-                if (mode == 1) { memcpy(neuf, val, (size_t)lv);
-                                 memcpy(neuf + lv, ancien.txt, (size_t)la); }
-                else           { memcpy(neuf, ancien.txt, (size_t)la);
-                                 memcpy(neuf + la, val, (size_t)lv); }
-                neuf[la + lv] = '\0';
-                var_ecrit(x, nom, neuf);
-                free(neuf);
+            /* En size_t, bornée, et UNE PÉNURIE SE DIT.
+             *
+             * L'allocation était juste — (size_t)la entraînait le reste —,
+             * mais « neuf[la + lv] » repassait en int. Et un malloc manqué ne
+             * faisait RIEN, sans un mot : « put X after v » laissait v tel
+             * quel et le script continuait. Le chemin du morceau, plus bas,
+             * refusait déjà ; celui-ci était son jumeau oublié. */
+            size_t la = (size_t)ancien.len, lv = strlen(val);
+            const char *faute = (la + lv > (size_t)INT_MAX) ? "texte trop long" : NULL;
+            char *neuf = faute ? NULL : malloc(la + lv + 1);
+            if (!faute && !neuf) faute = "mémoire insuffisante";
+            if (faute) {
+                hct_val_libere(&ancien);
+                free(nom);
+                hct_ctx_faute(&x->ctx, cible, faute);
+                return 1;
             }
+            if (mode == 1) { memcpy(neuf, val, lv);
+                             memcpy(neuf + lv, ancien.txt, la); }
+            else           { memcpy(neuf, ancien.txt, la);
+                             memcpy(neuf + la, val, lv); }
+            neuf[la + lv] = '\0';
+            var_ecrit(x, nom, neuf);
+            free(neuf);
             hct_val_libere(&ancien);
         }
         free(nom);
@@ -568,8 +582,10 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
         HctValeur compose = { NULL, 0, 0, 0 };
         if (mode != 0) {
             HctValeur ancien = hct_chunk_lit(base.txt, cible->sorte, n1, n2, d);
-            int la = ancien.len, lv = (int)strlen(val);
-            compose.txt = malloc((size_t)la + lv + 1);
+            /* Même contrat que la variable, plus haut : size_t, bornée. */
+            size_t la = (size_t)ancien.len, lv = strlen(val);
+            int trop = (la + lv > (size_t)INT_MAX);
+            compose.txt = trop ? NULL : malloc(la + lv + 1);
             if (!compose.txt) {
                 /* SANS LE MORCEAU ANCIEN, LE RÉSULTAT SERAIT FAUX.
                  *
@@ -578,17 +594,18 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
                  * l'item — une destruction silencieuse, sous pénurie. On
                  * refuse plutôt que d'écrire n'importe quoi. */
                 hct_val_libere(&ancien);
-                hct_ctx_faute(&x->ctx, cible, "mémoire insuffisante");
+                hct_ctx_faute(&x->ctx, cible,
+                              trop ? "texte trop long" : "mémoire insuffisante");
                 free(dd);
                 hct_val_libere(&base);
                 return 1;
             }
-            if (mode == 1) { memcpy(compose.txt, val, (size_t)lv);
-                             memcpy(compose.txt + lv, ancien.txt, (size_t)la); }
-            else           { memcpy(compose.txt, ancien.txt, (size_t)la);
-                             memcpy(compose.txt + la, val, (size_t)lv); }
+            if (mode == 1) { memcpy(compose.txt, val, lv);
+                             memcpy(compose.txt + lv, ancien.txt, la); }
+            else           { memcpy(compose.txt, ancien.txt, la);
+                             memcpy(compose.txt + la, val, lv); }
             compose.txt[la + lv] = '\0';
-            compose.len = la + lv;
+            compose.len = (int)(la + lv);   /* borné juste au-dessus */
             aecrire = compose.txt;
             hct_val_libere(&ancien);
         }

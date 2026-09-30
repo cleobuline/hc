@@ -46,6 +46,16 @@
  * deviendrait celle de l'EXTERIEUR : l'editeur s'ouvrirait sur le bon script,
  * a une ligne qui appartient a un autre. C'est exactement le genre d'ecart qui
  * ne se voit pas, puisque les deux valeurs restent plausibles.
+ *
+ * CET ECART EXISTAIT, par un autre chemin que celui qu'on gardait : un
+ * diagnostic d'ANALYSE (« script, ligne 2 colonne 16 ») sur le script d'un
+ * autre objet, lu en chemin, entrait le premier et fixait l'objet. Mesure :
+ * le bouton echouait ligne 3, « Script » ouvrait la CARTE a la ligne 3. Les
+ * deux renseignements sont desormais poses ENSEMBLE par err_situe, et
+ * seulement par l'erreur qui a arrete le script ; le diagnostic d'analyse va
+ * au journal, plus au dialogue — d'ou « lignes du message » qui passe de 3 a 2
+ * dans le cas de syntaxe ci-dessous. Les cinq cas mal situes sont tenus par
+ * le harnais ouerreur.
  */
 #include "hc_core.h"
 #include <stdio.h>

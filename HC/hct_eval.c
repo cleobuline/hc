@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
+#include <limits.h>     /* INT_MAX : la borne des longueurs d'une valeur */
 #include <stdio.h>
 
 void hct_ctx_init(HctContexte *ctx, HctHote hote)
@@ -116,8 +117,18 @@ static char *texte_du(const HctNoeud *n)
 
 static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
 {
-    int le = entre ? (int)strlen(entre) : 0;
-    int n = a.len + le + b.len;
+    /* LA SOMME EN size_t, ET BORNÉE AVANT D'ÊTRE UN int.
+     *
+     * « a.len + le + b.len » se calculait en int : au-delà d'INT_MAX, un
+     * débordement signé — comportement indéfini —, puis un malloc d'une
+     * taille absurde et des memcpy qui, eux, gardaient les vraies longueurs.
+     * Le cast en size_t arrivait après l'addition, trop tard. Signalé par un
+     * audit extérieur ; NON MESURÉ, il faut deux chaînes d'un gigaoctet. Même
+     * contrat que hct_chunk_ecrit : au-delà de ce qu'un int décrit, échec. */
+    size_t le = entre ? strlen(entre) : 0;
+    size_t besoin = (size_t)a.len + le + (size_t)b.len;
+    if (besoin > (size_t)INT_MAX) return hct_val_echec();
+    int n = (int)besoin;
     HctValeur r;
     /* LA CONCATÉNATION REND DU TEXTE, jamais un nombre brut — et c'est
      * mesuré : sous le gabarit « 0.0 », « put sqrt(2) & "" » rend 1.4 chez
@@ -127,7 +138,7 @@ static HctValeur concat(HctValeur a, HctValeur b, const char *entre)
     r.txt = malloc((size_t)n + 1);
     if (!r.txt) return hct_val_echec();
     memcpy(r.txt, a.txt, (size_t)a.len);
-    if (le) memcpy(r.txt + a.len, entre, (size_t)le);
+    if (le) memcpy(r.txt + a.len, entre, le);
     memcpy(r.txt + a.len + le, b.txt, (size_t)b.len);
     r.txt[n] = '\0';
     r.len = n;
@@ -606,9 +617,17 @@ static HctValeur feuille(HctContexte *ctx, const HctNoeud *n)
     if (n->genre == HCTN_CHAINE)
         return hct_val_texte_n(n->jeton.deb, n->jeton.len);
 
-    /* HCTN_IDENT : constante, variable, ou son propre nom. */
+    /* HCTN_IDENT : constante, variable, ou son propre nom.
+     *
+     * UNE COPIE MANQUÉE N'EST PAS UNE VARIABLE VIDE. On rendait
+     * hct_val_vide() : « put v into r » rangeait alors la chaîne vide dans r,
+     * sans un mot, alors que v valait « abcxyz ». hct_val_echec lève le
+     * drapeau collant que hct_exec lit après chaque instruction, et la
+     * pénurie se dit. Trouvé par le harnais penurie_atomique, en balayant les
+     * pénuries d'un « put … after » ; les deux sites jumeaux plus bas avaient
+     * la même ligne. */
     char *nom = texte_du(n);
-    if (!nom) return hct_val_vide();
+    if (!nom) return hct_val_echec();
 
     const char *c = constante(nom);
     if (c) { HctValeur v = hct_val_texte(c); free(nom); return v; }
@@ -715,7 +734,7 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
     if (n->nfils < 1) return hct_val_vide();
 
     char *nom = texte_du(n->fils[0]);
-    if (!nom) return hct_val_vide();
+    if (!nom) return hct_val_echec();     /* voir feuille : une pénurie se dit */
 
     int nargs = n->nfils - 1;
     HctValeur *args = nargs ? calloc((size_t)nargs, sizeof *args) : NULL;
@@ -1267,7 +1286,7 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
 
     if (quoi->genre == HCTN_IDENT) {
         char *nom = texte_du(quoi);
-        if (!nom) return hct_val_vide();
+        if (!nom) return hct_val_echec(); /* voir feuille : une pénurie se dit */
 
         /* « the number of <morceaux> of X » : le fils est un CHUNK sans
          * bornes, dont le dernier enfant porte la cible. */

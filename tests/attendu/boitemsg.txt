@@ -105,3 +105,4 @@
     On l'inscrit pour ne pas croire le chantier terminé)
    [ERR]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)
    [DIALOGUE]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)
+ligne 2 :  put the visible of msg

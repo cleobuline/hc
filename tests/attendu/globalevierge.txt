@@ -1,0 +1,11 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+── global g1,g2,g3,g4,g5,g6,g7,g8,g9,g10,g11,g12
+  put g12 + 1 & " / [" & g12 & "]"
+   1 / []
+── global g13
+  put g13 * 2 & " / " & (g13 is empty)
+   0 / true
+── global g14
+  add 5 to g14
+  put g14
+   5

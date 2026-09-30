@@ -1648,8 +1648,9 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * rend le modal supportable — brancher NSAlert sur `line` en aurait ouvert
  * trois pour une seule erreur de syntaxe.
  *
- * « Script » ouvre l'éditeur sur l'objet fautif ET SUR SA LIGNE, comme le
- * bouton du même nom dans HyperCard. Le noyau nous donne les deux ; l'objet
+ * « Script » ouvre l'éditeur sur l'objet fautif ET SUR SA LIGNE, qu'il
+ * ENCADRE — le rectangle d'HyperCard, voir HCScriptView —, comme le bouton du
+ * même nom dans HyperCard. Le noyau nous donne les deux ; l'objet
  * peut être NULL, et le bouton n'apparaît alors pas plutôt que de ne rien
  * faire. La ligne peut valoir 0 — l'éditeur s'ouvre alors en haut, comme
  * avant.
@@ -1657,11 +1658,13 @@ static void cocoa_line(HcLineKind kind, int depth, const char *text) {
  * PAS DE TROISIÈME BOUTON « Debug », ET C'EST UNE DÉCISION, PAS UN TROU.
  *
  * HyperCard en a un : il ouvre le même éditeur en ENCADRANT la ligne fautive
- * d'un rectangle, l'indicateur de ligne courante de son débogueur. Une fois
- * « Script » posé sur la bonne ligne, il ne reste entre les deux que la
- * différence entre une sélection et un cadre — pour le même geste, au même
- * endroit. Écarté à l'usage, le 27/09/2026 : « oublie le bouton debug ça
- * ferait double emploi ».
+ * d'un rectangle, l'indicateur de ligne courante de son débogueur. Écarté à
+ * l'usage, le 27/09/2026 : « oublie le bouton debug ça ferait double emploi ».
+ * Il ne restait entre les deux boutons que la différence entre une sélection
+ * et un cadre ; le 30/09, « la ligne fautive doit être correctement encadrée »
+ * a tranché dans l'autre sens pour le CADRE, pas pour le bouton : c'est
+ * « Script » qui encadre désormais, et le troisième bouton n'a toujours rien
+ * de plus à offrir.
  *
  * C'est écrit ici parce qu'un manque et un choix se ressemblent dans le code,
  * et que ce dépôt a déjà payé l'inverse — des portes annoncées dans un
@@ -1678,17 +1681,48 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
      * commencent par le fait — « objet introuvable » — et poursuivent par le
      * contexte : l'extrait du script, la ligne, l'objet. C'est exactement la
      * division que demande une alerte. */
+    /* LE TITRE DIT LA FAUTE, LE DÉTAIL DIT OÙ — ET MONTRE LA LIGNE.
+     *
+     * Le titre était la première ligne du journal telle quelle : « propriété
+     * inconnue (v3, ligne 3 de button "B".mouseUp) ». « v3 » est un mot de
+     * l'atelier, pas de l'utilisateur, et l'endroit se lisait mal au milieu
+     * d'une parenthèse. Le noyau met maintenant la ligne SOURCE à la fin du
+     * texte (« ligne 3 :  put the zorglub of me ») : on la sort pour la
+     * montrer à part, sous le nom de l'objet, et le reste — une seconde
+     * faute, un compte de répétitions — suit après une ligne blanche. */
     NSString *tout = hcv_texte(texte);
-    NSRange saut = [tout rangeOfString:@"\n"];
-    NSString *titre = (saut.location == NSNotFound)
-                      ? tout : [tout substringToIndex:saut.location];
-    NSString *detail = (saut.location == NSNotFound)
-                       ? @"" : [tout substringFromIndex:saut.location + 1];
+    NSMutableArray<NSString *> *lignes = [NSMutableArray array];
+    for (NSString *l in [tout componentsSeparatedByString:@"\n"]) {
+        NSString *t = [l stringByTrimmingCharactersInSet:
+                       [NSCharacterSet whitespaceCharacterSet]];
+        /* Les « !! » du noyau sont une marque de journal, pas de dialogue. */
+        if ([t hasPrefix:@"!! "]) t = [t substringFromIndex:3];
+        if ([t length]) [lignes addObject:t];
+    }
+    NSString *source = nil;
+    NSString *derniere = [lignes lastObject];
+    NSRange deux = derniere ? [derniere rangeOfString:@" :  "] : NSMakeRange(NSNotFound, 0);
+    if (ligne > 0 && [lignes count] > 1 && [derniere hasPrefix:@"ligne "] &&
+        deux.location != NSNotFound) {
+        source = [derniere substringFromIndex:NSMaxRange(deux)];
+        [lignes removeLastObject];
+    }
+    NSString *titre = [lignes count] ? lignes[0] : tout;
+    NSRange v3 = [titre rangeOfString:@" (v3, "];
+    if (v3.location != NSNotFound) titre = [titre substringToIndex:v3.location];
+    if ([lignes count]) [lignes removeObjectAtIndex:0];
 
-    /* Les « !! » du noyau sont une marque de journal, pas de dialogue. */
-    titre = [titre stringByTrimmingCharactersInSet:
-             [NSCharacterSet whitespaceCharacterSet]];
-    if ([titre hasPrefix:@"!! "]) titre = [titre substringFromIndex:3];
+    NSMutableString *detail = [NSMutableString string];
+    if (objet && ligne > 0) {
+        char qui[128];
+        hc_describe(objet, qui, sizeof qui);
+        [detail appendFormat:@"%@, ligne %d", hcv_texte(qui), ligne];
+        if (source) [detail appendFormat:@" :\n\n    %@", source];
+    }
+    if ([lignes count]) {
+        if ([detail length]) [detail appendString:@"\n\n"];
+        [detail appendString:[lignes componentsJoinedByString:@"\n"]];
+    }
 
     [a setMessageText:titre];
     if ([detail length]) [a setInformativeText:detail];
@@ -3536,6 +3570,202 @@ typedef struct { const char *glyph; int kind; int value; } ToolCell;
     [[NSColor grayColor] setStroke];
     NSFrameRect([self bounds]);
 }
+@end
+
+/* ═══ L'ÉDITEUR DE SCRIPT : LA LIGNE FAUTIVE ENCADRÉE ════════════════════
+ *
+ * Demandé à l'usage : « le plus important, c'est que l'user voie exactement
+ * l'endroit du script qui fâche ; l'éditeur n'est pas très convivial, il faut
+ * que la ligne fautive soit correctement encadrée, comme dans HyperCard ; des
+ * scripts complexes peuvent devenir cryptiques ».
+ *
+ * L'éditeur SÉLECTIONNAIT la ligne. Une sélection n'est pas un repère : elle
+ * disparaît au premier clic, et la première touche frappée REMPLACE la ligne
+ * entière — on corrigeait une faute en effaçant la ligne qui la portait.
+ * HyperCard, lui, l'encadre d'un rectangle, qui reste pendant qu'on lit le
+ * reste du script, et ne touche pas au texte.
+ *
+ * Trois pièces :
+ *   HCScriptView   la vue de texte, qui dessine le cadre SOUS le texte et le
+ *                  retire à la première modification — les numéros de ligne
+ *                  ne veulent alors plus dire la même chose ;
+ *   HCLignesRegle  les numéros de ligne dans la marge, celui de la ligne
+ *                  fautive en rouge : le dialogue dit « ligne 42 », la marge
+ *                  le montre, personne ne compte ;
+ *   hcv_plage_de_ligne  qui compte les lignes EXACTEMENT comme le noyau —
+ *                  sur « \n » seulement. lineRangeForRange: coupe aussi sur
+ *                  « \r », U+2028, U+2029 et U+0085 : un script qui en
+ *                  porterait un ferait encadrer la ligne d'à côté.
+ *
+ * Écrit sans pouvoir lancer AppKit ici : compilé par le job macOS de
+ * l'intégration, pas exécuté. Voir le banc dans docs/mesures/audit.txt. */
+
+/* La ligne `ligne` (1 pour la première) : sa plage de caractères, sans son
+ * saut de ligne. {NSNotFound, 0} si le texte n'a pas autant de lignes. */
+static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
+{
+    NSUInteger len = [s length], i = 0;
+    NSInteger l = 1;
+    if (ligne < 1) return NSMakeRange(NSNotFound, 0);
+    while (i < len && l < ligne) {
+        if ([s characterAtIndex:i] == '\n') l++;
+        i++;
+    }
+    if (l < ligne) return NSMakeRange(NSNotFound, 0);
+    NSUInteger fin = i;
+    while (fin < len && [s characterAtIndex:fin] != '\n') fin++;
+    if (fin > i && [s characterAtIndex:fin - 1] == '\r') fin--;
+    return NSMakeRange(i, fin - i);
+}
+
+@interface HCScriptView : NSTextView
+@property (nonatomic) NSInteger ligneEncadree;   /* 0 : aucune */
+@end
+
+@implementation HCScriptView
+
+- (void)setLigneEncadree:(NSInteger)l {
+    _ligneEncadree = l;
+    [self setNeedsDisplay:YES];
+    [[[self enclosingScrollView] verticalRulerView] setNeedsDisplay:YES];
+}
+
+/* Le rectangle de la ligne, dans les coordonnées de la vue : TOUTE la largeur
+ * de ses fragments, pour qu'une ligne longue et repliée soit encadrée entière. */
+- (NSRect)rectDeLigne:(NSInteger)ligne {
+    NSLayoutManager *lm = [self layoutManager];
+    NSTextContainer *tc = [self textContainer];
+    NSString *s = [self string];
+    if (!lm || !tc) return NSZeroRect;
+    NSRange r = hcv_plage_de_ligne(s, ligne);
+    if (r.location == NSNotFound) return NSZeroRect;
+
+    NSRect box = NSZeroRect;
+    if (r.length > 0) {
+        NSRange g = [lm glyphRangeForCharacterRange:r actualCharacterRange:NULL];
+        __block NSRect u = NSZeroRect;
+        [lm enumerateLineFragmentsForGlyphRange:g
+                                     usingBlock:^(NSRect rect, NSRect utilise,
+                                                  NSTextContainer *c, NSRange gr,
+                                                  BOOL *stop) {
+            (void)utilise; (void)c; (void)gr; (void)stop;
+            u = NSIsEmptyRect(u) ? rect : NSUnionRect(u, rect);
+        }];
+        box = u;
+    } else if (r.location < [s length]) {
+        NSUInteger gi = [lm glyphIndexForCharacterAtIndex:r.location];
+        box = [lm lineFragmentRectForGlyphAtIndex:gi effectiveRange:NULL];
+    } else {
+        box = [lm extraLineFragmentRect];     /* la ligne vide, tout au bout */
+    }
+    if (NSIsEmptyRect(box)) return NSZeroRect;
+    NSPoint o = [self textContainerOrigin];
+    return NSOffsetRect(box, o.x, o.y);
+}
+
+/* Le cadre SOUS le texte : il ne masque pas un caractère. */
+- (void)drawViewBackgroundInRect:(NSRect)rect {
+    [super drawViewBackgroundInRect:rect];
+    if (self.ligneEncadree <= 0) return;
+    NSRect box = [self rectDeLigne:self.ligneEncadree];
+    if (NSIsEmptyRect(box)) return;
+    box = NSInsetRect(box, 1, 0);
+    [[[NSColor systemRedColor] colorWithAlphaComponent:0.10] setFill];
+    NSRectFillUsingOperation(box, NSCompositingOperationSourceOver);
+    NSBezierPath *cadre = [NSBezierPath bezierPathWithRect:NSInsetRect(box, 1, 1)];
+    [cadre setLineWidth:2];
+    [[NSColor systemRedColor] setStroke];
+    [cadre stroke];
+}
+
+/* Le texte change : le cadre désignait une ligne d'un texte qui n'est plus
+ * celui-ci. On le retire plutôt que de le laisser mentir. */
+- (void)didChangeText {
+    [super didChangeText];
+    if (self.ligneEncadree) self.ligneEncadree = 0;
+    [[[self enclosingScrollView] verticalRulerView] setNeedsDisplay:YES];
+}
+
+@end
+
+@interface HCLignesRegle : NSRulerView
+- (instancetype)initAvecVue:(NSTextView *)tv;
+@end
+
+@implementation HCLignesRegle
+
+- (instancetype)initAvecVue:(NSTextView *)tv {
+    self = [super initWithScrollView:[tv enclosingScrollView]
+                         orientation:NSVerticalRuler];
+    if (self) {
+        [self setClientView:tv];
+        [self setRuleThickness:38];
+    }
+    return self;
+}
+
+- (void)drawHashMarksAndLabelsInRect:(NSRect)rect {
+    NSTextView *tv = (NSTextView *)[self clientView];
+    if (![tv isKindOfClass:[NSTextView class]]) return;
+    NSLayoutManager *lm = [tv layoutManager];
+    NSTextContainer *tc = [tv textContainer];
+    if (!lm || !tc) return;
+    NSString *s = [tv string];
+    NSUInteger len = [s length];
+
+    [[NSColor windowBackgroundColor] setFill];
+    NSRectFill(rect);
+
+    NSInteger fautive = [tv isKindOfClass:[HCScriptView class]]
+                      ? ((HCScriptView *)tv).ligneEncadree : 0;
+    NSDictionary *ordinaire = @{
+        NSFontAttributeName : [NSFont monospacedDigitSystemFontOfSize:10
+                                                               weight:NSFontWeightRegular],
+        NSForegroundColorAttributeName : [NSColor secondaryLabelColor] };
+    NSDictionary *rouge = @{
+        NSFontAttributeName : [NSFont monospacedDigitSystemFontOfSize:10
+                                                               weight:NSFontWeightBold],
+        NSForegroundColorAttributeName : [NSColor systemRedColor] };
+
+    /* Les lignes VISIBLES seulement : la première, puis ligne à ligne. */
+    NSRect visible = [[[self scrollView] contentView] bounds];
+    NSRange gv = [lm glyphRangeForBoundingRect:visible inTextContainer:tc];
+    NSUInteger i = [lm characterRangeForGlyphRange:gv actualGlyphRange:NULL].location;
+    if (i > len) i = len;
+    while (i > 0 && [s characterAtIndex:i - 1] != '\n') i--;
+    NSInteger ligne = 1;
+    for (NSUInteger k = 0; k < i; k++)
+        if ([s characterAtIndex:k] == '\n') ligne++;
+
+    CGFloat oy = [tv textContainerOrigin].y;
+    for (int garde = 0; garde < 10000; garde++) {
+        NSRect frag;
+        if (i < len) {
+            NSUInteger gi = [lm glyphIndexForCharacterAtIndex:i];
+            frag = [lm lineFragmentRectForGlyphAtIndex:gi effectiveRange:NULL];
+        } else {
+            frag = [lm extraLineFragmentRect];
+            if (NSIsEmptyRect(frag)) break;
+        }
+        if (NSMinY(frag) > NSMaxY(visible)) break;
+
+        NSString *n = [NSString stringWithFormat:@"%ld", (long)ligne];
+        NSDictionary *at = (ligne == fautive) ? rouge : ordinaire;
+        NSSize t = [n sizeWithAttributes:at];
+        NSPoint haut = [self convertPoint:NSMakePoint(0, NSMinY(frag) + oy) fromView:tv];
+        NSPoint bas  = [self convertPoint:NSMakePoint(0, NSMaxY(frag) + oy) fromView:tv];
+        CGFloat y = MIN(haut.y, bas.y) + (fabs(bas.y - haut.y) - t.height) / 2;
+        [n drawAtPoint:NSMakePoint([self ruleThickness] - 5 - t.width, y)
+        withAttributes:at];
+
+        if (i >= len) break;                        /* la ligne vide du bout */
+        while (i < len && [s characterAtIndex:i] != '\n') i++;
+        if (i >= len) break;                        /* dernière ligne, sans saut */
+        i++;
+        ligne++;
+    }
+}
+
 @end
 
 @implementation HCView {
@@ -5876,7 +6106,28 @@ static BOOL      gSansMessageChamp = NO;
 
     gClickPoint = p;
     gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
-    gMouseClicked = YES;
+    /* « THE MOUSECLICK » NE COMPTE PAS LE CLIC QUI LANCE LE SCRIPT.
+     *
+     * Le drapeau se posait à CHAQUE clic, y compris celui qui allait devenir
+     * mouseDown puis mouseUp — et rien ne l'effaçait avant que le script
+     * tourne. Signalé à l'usage sur le calendrier de Stack Templates : « le
+     * titre change mais l'organisation des mois ne change pas ». Son
+     * updateCalendar pose le titre, puis boucle sur les douze mois en
+     * commençant par
+     *
+     *     if the mouseClick then exit repeat
+     *
+     * — une porte de sortie pour qui clique pendant le calcul. Le clic qui
+     * avait lancé le bouton répondait « oui » dès le premier tour, et la
+     * boucle sortait avant d'avoir touché un mois.
+     *
+     * HyperCard a déjà CONSOMMÉ ce clic en l'envoyant comme message ; le
+     * calendrier d'Apple ne se dessinerait jamais autrement. Un clic compte
+     * donc seulement s'il arrive PENDANT qu'un script tourne — il passe alors
+     * par la boucle d'événements de cocoa_idle et atterrit ici. Sinon, il
+     * EFFACE le drapeau : un clic ancien, donné hors script, ne doit pas
+     * répondre à la place d'un clic neuf. */
+    gMouseClicked = hc_is_running() ? YES : NO;
 
     /* 2. Fermeture prioritaire du mode édition de texte si l'outil n'est plus Browse */
     if (gTool != TOOL_BROWSE && gEditingField) {
@@ -7289,12 +7540,20 @@ static NSTextField  *gSprayDensityLabel = nil;
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 286)];
     [scroll setHasVerticalScroller:YES];
     [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    NSTextView *tv = [[NSTextView alloc] initWithFrame:[[scroll contentView] bounds]];
+    HCScriptView *tv = [[HCScriptView alloc] initWithFrame:[[scroll contentView] bounds]];
     [tv setFont:[NSFont fontWithName:@"Monaco" size:12]];
     [tv setAutoresizingMask:NSViewWidthSizable];
+    /* La règle HORIZONTALE est celle des paragraphes, que NSTextView montre et
+     * cache à sa guise quand usesRuler est vrai ; il toucherait alors aussi à
+     * la visibilité de NOTRE règle, la verticale. */
+    [tv setUsesRuler:NO];
     const char *cur = hc_script_of(obj);
     [tv setString:cur ? hcv_texte(cur) : @""];
     [scroll setDocumentView:tv];
+    HCLignesRegle *regle = [[HCLignesRegle alloc] initAvecVue:tv];
+    [scroll setVerticalRulerView:regle];
+    [scroll setHasVerticalRuler:YES];
+    [scroll setRulersVisible:YES];
     [[panel contentView] addSubview:scroll];
     gEditView = tv;
 
@@ -7316,7 +7575,23 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     gEditPanel = panel;
     [panel makeKeyAndOrderFront:nil];
-    if (ligne > 0) [self selectLine:ligne inTextView:tv];
+    if (ligne > 0) [self encadreLigne:ligne dansVue:tv];
+}
+
+/* ENCADRER, PAS SÉLECTIONNER — voir HCScriptView.
+ *
+ * Le curseur se pose au DÉBUT de la ligne, sans rien sélectionner : on peut
+ * lire, cliquer ailleurs, revenir, le cadre reste ; et la première touche
+ * frappée insère au lieu d'effacer la ligne. */
+- (void)encadreLigne:(int)ligne dansVue:(NSTextView *)tv {
+    if (!tv) return;
+    if ([tv isKindOfClass:[HCScriptView class]])
+        ((HCScriptView *)tv).ligneEncadree = ligne;
+    NSRange r = hcv_plage_de_ligne([tv string], ligne);
+    if (r.location == NSNotFound) return;
+    [tv setSelectedRange:NSMakeRange(r.location, 0)];
+    [tv scrollRangeToVisible:r];
+    [[tv window] makeFirstResponder:tv];
 }
 
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {
@@ -7354,6 +7629,8 @@ static NSTextField  *gSprayDensityLabel = nil;
     hct_verifie(src ? src : "", &rap, YES);
 
     if (rap.n == 0) {
+        if ([gEditView isKindOfClass:[HCScriptView class]])
+            ((HCScriptView *)gEditView).ligneEncadree = 0;
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"Script correct"];
         [a setInformativeText:@"Aucune faute détectée."];
@@ -7373,7 +7650,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     const HctSignalement *p = hct_premier(&rap);
-    if (p) [self selectLine:p->ligne inTextView:gEditView];
+    if (p) [self encadreLigne:p->ligne dansVue:gEditView];
 
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:rap.nerreurs

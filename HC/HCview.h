@@ -133,8 +133,8 @@ void    hcv_selectionne(Object *o);
 - (void)installToolPalette;
 - (void)toolChosen:(id)sender;
 - (void)editScriptOf:(Object *)obj;
-/* La même, ouverte SUR UNE LIGNE : l'éditeur défile jusqu'à elle et la
- * sélectionne. `ligne` vaut 1 pour la première, 0 pour « n'importe où ».
+/* La même, ouverte SUR UNE LIGNE : l'éditeur défile jusqu'à elle et
+ * l'ENCADRE. `ligne` vaut 1 pour la première, 0 pour « n'importe où ».
  * C'est ce que fait le bouton « Script » du dialogue d'erreur. */
 - (void)editScriptOf:(Object *)obj atLine:(int)ligne;
 /* DÉCLARÉE ICI PARCE QU'ELLE EST APPELÉE PLUS HAUT QU'ELLE N'EST DÉFINIE.
@@ -148,6 +148,10 @@ void    hcv_selectionne(Object *o);
  * hc_icon_copie_dessin_hcicon avant elle. La déclarer est plus sûr que de
  * compter sur l'ordre des définitions, qui change au premier déplacement. */
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv;
+/* Encadre la ligne fautive dans l'éditeur de script, curseur au début de la
+ * ligne, sans rien sélectionner. Déclarée ici pour la même raison que la
+ * précédente : elle est appelée plus haut qu'elle n'est définie. */
+- (void)encadreLigne:(int)ligne dansVue:(NSTextView *)tv;
 - (void)saveScript:(id)sender;
 - (void)beginFieldEdit:(Object *)field;
 - (void)endFieldEdit;
