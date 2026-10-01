@@ -525,6 +525,32 @@ int hc_is_running(void) { return g_depth > 0; }
  * demande restée en l'air arrêterait le PROCHAIN script au premier pas. */
 static volatile int g_interrompu = 0;
 
+/* SOUS « set the skipErrors to false », UNE ERREUR ARRÊTE TOUT LE SCRIPT, et
+ * non le seul gestionnaire où elle tombe.
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3 : une
+ * erreur levée dans un « do », dans un gestionnaire appelé par la boucle d'un
+ * mouseUp, a emporté la boucle aussi — plus un essai, pas de bilan. HC
+ * n'arrêtait que le gestionnaire fautif : l'appelant continuait, et une
+ * fonction fautive lui rendait une valeur VIDE, avec laquelle il calculait
+ * ensuite comme si de rien n'était. « put total() into field "Somme" »
+ * vidait le champ sans un mot. Des cascades, et des résultats aberrants
+ * écrits dans la pile.
+ *
+ * Le drapeau se lève quand un gestionnaire s'arrête sur une faute, et prend
+ * le chemin de Cmd-. : chacun des appelants le lit avant sa prochaine
+ * instruction et s'arrête sans rien afficher de plus — la faute a été dite
+ * une fois, par celui qui l'a commise. Il retombe avec le script, au repos.
+ *
+ * IL NE SE LÈVE QUE SOUS « set the skipErrors to false » — une propriété de
+ * HC, pas d'HyperCard, vraie par défaut. Par défaut, donc, HC garde son
+ * comportement : seul le gestionnaire fautif s'arrête. Une pile qui veut
+ * celui d'HyperCard le demande, jusqu'à la fin du script. Voir G_REGLAGES.
+ *
+ * Seul le cas du « do » est mesuré dans HyperCard ; la commande et la
+ * fonction ne le sont pas encore (docs/mesures/erreur_abandon.txt). */
+static int g_abandon = 0;
+
 void hc_interrompre(void)
 {
     if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
@@ -535,7 +561,7 @@ int hc_interrompu(void) { return g_interrompu; }
 /* Au repos : plus rien ne tourne, la demande est servie. */
 static void interruption_servie(void)
 {
-    if (g_depth == 0 && g_msg_box == 0) g_interrompu = 0;
+    if (g_depth == 0 && g_msg_box == 0) { g_interrompu = 0; g_abandon = 0; }
 }
 
 const char *hc_typename(ObjType t)
@@ -917,6 +943,10 @@ static int  g_err_repete = 0;
 
 static void erreurs_vide(void)
 {
+    /* Le script fautif est fini — on n'est appelé qu'au repos. « errorDialog »
+     * est un script NEUF : le drapeau d'abandon, encore levé à cet instant,
+     * l'arrêtait à sa première instruction, et l'erreur se perdait. */
+    if (g_depth == 0) g_abandon = 0;
     if (g_err_n <= 0) return;
     char copie[sizeof g_err_texte];
     memcpy(copie, g_err_texte, (size_t)g_err_n + 1);
@@ -7671,6 +7701,19 @@ static struct {
      * une pile qui la pose et sort par un « exit » resterait sinon muette
      * pour toujours. */
     { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
+    /* « the skipErrors » : PROPRE À HC — HyperCard ne la connaît pas, et
+     * une pile qui la pose y lèverait une erreur.
+     *
+     *   true   (le défaut) une erreur n'arrête que le gestionnaire où elle
+     *          tombe, et l'appelant continue : le comportement de HC ;
+     *   false  une erreur arrête TOUT le script, appelants compris : le
+     *          comportement d'HyperCard.
+     *
+     * Vrai par défaut, choisi par l'utilisatrice : rien ne change pour une
+     * pile qui ne la pose pas. Remise à true au repos, comme lockErrorDialogs
+     * à false — un « exit » ou une erreur ne doit pas laisser toute la
+     * session dans l'autre mode. Voir g_abandon. */
+    { "skiperrors", "skipErrors", REG_BOOL, 1, 0, 1 },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
 
@@ -10575,7 +10618,7 @@ static int v3_respire(void *d)
 static int v3_interrompu(void *d)
 {
     (void)d;
-    return g_interrompu;
+    return g_interrompu || g_abandon;
 }
 
 /* --- l'hôte assemblé ------------------------------------------------- */
@@ -16462,6 +16505,9 @@ static int v3_execute(Object *o, const char *message, int isfunc)
         err_situe(o, ligne);
         emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s)", x.ctx.erreur,
              ligne, qui, message);
+        /* Et tout le script s'arrête avec lui, sauf skipErrors. Voir
+         * g_abandon. */
+        if (!reglage_valeur("skiperrors")) g_abandon = 1;
     }
 
     hct_exec_libere(&x);
@@ -17563,6 +17609,10 @@ static int hc_send_args_k(Object *target, const char *message,
      * ne la retire jamais : sans cette ligne, tout le reste de la session
      * partirait en errorDialog. */
     if (g_depth == 0) reglage_eteint("lockerrordialogs");
+    if (g_depth == 0) {
+        int i = reglage_index("skiperrors");
+        if (i >= 0) G_REGLAGES[i].valeur = 1;
+    }
 
     /* Une commande « delete this card » peut avoir détaché l'objet dont le
      * gestionnaire vient juste de finir. C'est seulement ici que plus aucun

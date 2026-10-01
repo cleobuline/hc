@@ -107,6 +107,31 @@ HC, joué dans le noyau, répond aujourd'hui :
     Fonction   1 avant / 2 dans f / 3 après f, it=[]
     Do         1 avant / 3 après faitDo
 
+CE QUI EST FAIT, 1er octobre : « the skipErrors »
+-----------------------------------------------
+
+Décidé par l'utilisatrice : une propriété PROPRE À HC, plutôt que de changer
+le comportement par défaut.
+
+    true   (le défaut)  une erreur n'arrête que le gestionnaire où elle tombe,
+                        l'appelant continue — ce que HC a toujours fait ;
+    false               une erreur arrête TOUT le script, appelants compris —
+                        ce que fait HyperCard.
+
+Remise à true quand le script est fini, comme lockErrorDialogs à false. Sous
+« false », la commande et la fonction s'arrêtent comme le « do », ce qui n'est
+mesuré que pour le « do » : le banc ci-dessus dira si HyperCard les traite de
+même. Harnais : skiperrors.
+
+Une pile qui pose skipErrors ne tournera pas dans HyperCard, qui ne connaît
+pas cette propriété.
+
+L'utilisatrice rapporte aussi qu'avec « set the lockErrorDialogs to true »,
+HyperCard CONTINUE. Ce n'est pas encore un relevé : la première Torture3
+posait déjà lockErrorDialogs, et HyperCard s'est arrêté. Le banc, joué deux
+fois — sans, puis avec lockErrorDialogs —, tranchera.
+
+
 RELEVÉS
 -------
 

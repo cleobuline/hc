@@ -1,0 +1,55 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. par défaut (true) : l'appelant continue, comme toujours dans HC ==
+     commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
+      journal : 1 avant / 2 dans plante / 3 après plante
+     fonction
+      [ERR]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
+      journal : 1 avant / 2 dans f / 3 après f, it=[]
+     parDo
+      [ERR]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
+      journal : 1 avant / 3 après faitDo
+
+== 2. sous « false » : tout s'arrête, comme HyperCard ==
+     set the skipErrors to false
+  commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
+      journal : 1 avant / 2 dans plante
+     set the skipErrors to false
+  fonction
+      [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
+      journal : 1 avant / 2 dans f
+     set the skipErrors to false
+  parDo
+      [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
+      journal : 1 avant
+
+== 3. une chaîne de trois niveaux ==
+     trois
+      [ERR]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
+      journal : a / b / c / b après c / a après b
+     set the skipErrors to false
+  trois
+      [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
+      journal : a / b / c
+
+== 4. la propriété se relit, et revient à true après le script ==
+     set the skipErrors to false
+  put "pendant : " & the skipErrors
+      pendant : false
+      journal : a / b / c
+     put "après : " & the skipErrors
+      après : true
+      journal : a / b / c
+     set the skipErrors to "peut-être"
+  put "autre que true : " & the skipErrors
+      autre que true : false
+      journal : a / b / c
+
+== 5. sous « false », errorDialog reçoit encore l'erreur ==
+     set the lockErrorDialogs to true
+  set the skipErrors to false
+  commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
+      errorDialog a reçu :    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
+      journal : 1 avant / 2 dans plante
