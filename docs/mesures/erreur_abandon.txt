@@ -116,8 +116,12 @@ que de changer le comportement par défaut.
     non posée   le gestionnaire fautif s'arrête, l'appelant continue — ce que
                 HC a toujours fait ; rien ne change pour une pile qui ne la
                 pose pas ;
-    true        la LIGNE fautive est sautée : l'erreur est dite (« …, sautée »)
-                et le gestionnaire continue à la ligne suivante ;
+    true        la LIGNE fautive est sautée, et le gestionnaire continue à la
+                ligne suivante. L'erreur va au journal seulement (« …,
+                sautée ») : AUCUN dialogue, ni errorDialog. Essayé dans HC
+                (l'application) le 1er octobre : la ligne était bien sautée,
+                mais le dialogue qui la récapitulait à la fin faisait croire
+                le contraire — retiré à la demande de l'utilisatrice ;
     false       tout le script s'arrête, appelants compris — HyperCard.
 
 Elle redevient non posée quand le script est fini, comme lockErrorDialogs.

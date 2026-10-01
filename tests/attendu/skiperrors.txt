@@ -2,12 +2,18 @@
 == 1. non posée : rien ne change ==
      commande
       [ERR]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
+ligne 13 :  get "abc" + 1
       journal : 1 avant / 2 dans plante / 3 après plante
      fonction
       [ERR]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
+ligne 25 :  get "abc" + 1
       journal : 1 avant / 2 dans f / 3 après f, it=[]
      parDo
       [ERR]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
+ligne 37 :  do "get " & quote & "abc" & quote & " + 1"
       journal : 1 avant / 3 après faitDo
 
 == 2. true : la ligne fautive est sautée ==
@@ -35,19 +41,27 @@
      set the skipErrors to false
   commande
       [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
+ligne 14 :  get "abc" + 1
       journal : 1 avant / 2 dans plante
      set the skipErrors to false
   fonction
       [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
+ligne 26 :  get "abc" + 1
       journal : 1 avant / 2 dans f
      set the skipErrors to false
   parDo
       [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
+ligne 38 :  do "get " & quote & "abc" & quote & " + 1"
       journal : 1 avant
 
 == 4. une chaîne de trois niveaux ==
      trois
       [ERR]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
+ligne 55 :  get "abc" + 1
       journal : a / b / c / b après c / a après b
      set the skipErrors to true
   trois
@@ -56,6 +70,8 @@
      set the skipErrors to false
   trois
       [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
+      [DIALOGUE]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
+ligne 56 :  get "abc" + 1
       journal : a / b / c
 
 == 5. la propriété se relit, et redevient non posée après le script ==
@@ -74,6 +90,8 @@
   put "refusé, reste : [" & the skipErrors & "]"
       [ERR]    !! skipErrors attend true ou false, reçu « peut-être »
       refusé, reste : [false]
+      [DIALOGUE]    !! skipErrors attend true ou false, reçu « peut-être »
+ligne 3 :  set the skipErrors to "peut-être"
       journal : a / b / c
 
 == 6. sous false, errorDialog reçoit encore l'erreur ==

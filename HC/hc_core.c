@@ -10636,9 +10636,14 @@ static int v3_interrompu(void *d)
 }
 
 /* « set the skipErrors to true » : la ligne fautive est SAUTÉE. Voir
- * g_skip_errors. L'erreur est dite ICI, comme v3_execute la dit quand elle
- * termine un gestionnaire — même texte, même situation pour le dialogue —,
- * puis l'exécuteur reprend à la ligne suivante.
+ * g_skip_errors. L'exécuteur reprend à la ligne suivante.
+ *
+ * L'ERREUR VA AU JOURNAL, PAS AU DIALOGUE — et pas non plus à « errorDialog ».
+ * Choisi à l'usage : la ligne était bien sautée et le script allait au bout,
+ * mais le dialogue qui récapitulait l'erreur à la fin faisait croire que rien
+ * n'avait été sauté. « Skip » veut dire qu'on ne dérange personne. Elle part
+ * comme un diagnostic d'analyse (hc_emet_diagnostic) : au journal — la
+ * console, les harnais —, avec le texte habituel suivi de « sautée ».
  *
  * Hors gestionnaire — une ligne tapée dans la boîte de message —, il n'y a
  * pas de suite à reprendre : on ne saute rien. */
@@ -10650,9 +10655,8 @@ static int v3_saute_erreur(void *d, HctContexte *ctx)
     char qui[64];
     hc_describe(g_exec_objet, qui, sizeof qui);
     int ligne = ctx->fautif ? ctx->fautif->jeton.ligne : 0;
-    err_situe(g_exec_objet, ligne);
-    emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s, sautée)", ctx->erreur,
-         ligne, qui, g_exec_message ? g_exec_message : "?");
+    hc_emet_diagnostic("   !! %s (v3, ligne %d de %s.%s, sautée)", ctx->erreur,
+                       ligne, qui, g_exec_message ? g_exec_message : "?");
     return 1;
 }
 
