@@ -1227,6 +1227,26 @@ static void v1_compte(const char *quoi, const char *porte);
 static const char *v1_porte(const char *nom);
 static const char *g_v1_porte = "?";
 
+/* L'ANCIEN MOTEUR D'EXPRESSIONS, COUPÉ À LA DEMANDE : HC_SANS_V1=1.
+ *
+ * La v3 le rappelle encore à trois endroits — le recours d'expression et les
+ * deux sondes de fonctions de v3_fonction. Pour le retirer sans rien perdre,
+ * il faut savoir ce qu'il sert ENCORE, et la seule façon de le savoir est de
+ * le couper et de regarder ce qui change. Le faire à la main, par un essai
+ * qu'on retire ensuite, ne laisse rien derrière : ni le harnais qui garde un
+ * portage, ni le moyen de rejouer la suite entière dans ces conditions.
+ *
+ * Lue une fois. Le réglage disparaîtra avec l'ancien moteur. */
+static int v1_coupe(void)
+{
+    static int coupe = -1;
+    if (coupe < 0) {
+        const char *e = getenv("HC_SANS_V1");
+        coupe = (e && *e && strcmp(e, "0") != 0);
+    }
+    return coupe;
+}
+
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
  * pour que « send » continue de partir. */
@@ -8581,35 +8601,88 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
  * « number of card », que term_value rendait tel quel, en clair, au lieu
  * d'un nombre.
  *
- * On ne traite que le PLURIEL nu, sans désignateur ni cible : « the number
- * of card 3 » désigne le RANG de cette carte, et « the number of cards of
- * bg 2 » porte une cible — les deux restent à l'ancien code.
+ * On ne traite que le PLURIEL, sans désignateur : « the number of card 3 »
+ * désigne le RANG de cette carte, et reste au chemin des propriétés.
  *
- * La portée absente compte la carte ET le fond, comme term_value : les rangs
- * se comptent séparément dans chacun, mais le total est resté la valeur par
- * défaut par compatibilité. */
-static int v3_nombre_objets(const HctNoeud *obj, int *out)
+ * LE PLURIEL PEUT PORTER UNE CIBLE — « the number of cards of bg 2 », « the
+ * number of buttons of card 3 », « the number of bgs of this stack ». Elle
+ * était renvoyée à l'ancien moteur, et c'est en coupant celui-ci pour voir ce
+ * qu'il tenait encore qu'on l'a mesuré : sans lui, « cards of bg 1 » rendait 1
+ * au lieu de 2, « cards of this stack » 1 au lieu de 4 — SANS ERREUR, le
+ * comptage tombant sur la propriété « number » de la cible —, et toutes les
+ * autres formes « objet introuvable ». La suite n'en exerçait qu'une.
+ *
+ * La cible se résout comme n'importe quelle référence, et ce qu'on y compte
+ * suit les règles du comptage sans cible : les champs dans le fond, les
+ * boutons dans la carte quand la couche n'est pas écrite. Une cible qui
+ * n'existe pas, ou qui ne contient pas ce type-là — « the number of cards of
+ * bg 9 » sur une pile de deux fonds, « the number of cards of card 1 » —,
+ * est un objet introuvable. L'ancien moteur y rendait le total de la pile,
+ * sans un mot : une réponse à une autre question. Ce que fait HyperCard dans
+ * ces deux cas n'est PAS mesuré.
+ *
+ * Rend 1 et le compte, 0 si ce n'est pas un comptage, -1 si c'en est un dont
+ * la cible manque.
+ *
+ * La portée absente compte la carte ET le fond pour « part », comme
+ * term_value : les rangs se comptent séparément dans chacun, mais le total
+ * est resté la valeur par défaut par compatibilité. */
+static int v3_nombre_objets(HctContexte *ctx, const HctNoeud *obj, int *out)
 {
     if (!obj || obj->genre != HCTN_OBJET) return 0;
     if (obj->designateur != HCT_DES_AUCUN) return 0;
-    if (obj->nfils != 0) return 0;
+    if (obj->nfils > 1) return 0;
 
     Object *card  = g_current_card;
+    Object *bg    = card ? card->bg : NULL;
     Object *stack = owning_stack(card);
+    Object *fond  = NULL;        /* les cartes d'UN fond seulement */
+
+    if (obj->nfils == 1) {
+        Object *c = hct_resout(ctx, obj->fils[0]);
+        if (!c) return -1;
+        switch (c->type) {
+            case OBJ_STACK:
+                if (obj->typeobj != HCT_OBJ_CARD &&
+                    obj->typeobj != HCT_OBJ_BACKGROUND) return -1;
+                stack = c;
+                break;
+            case OBJ_BACKGROUND:
+                if (obj->typeobj == HCT_OBJ_BACKGROUND) return -1;
+                if (obj->typeobj == HCT_OBJ_CARD) {
+                    fond = c;
+                    stack = owning_stack(c);
+                    break;
+                }
+                /* « card buttons of bg 1 » ne désigne rien. */
+                if (obj->portee == HCT_PORTEE_CARTE) return -1;
+                card = NULL;
+                bg = c;
+                break;
+            case OBJ_CARD:
+                if (obj->typeobj == HCT_OBJ_CARD ||
+                    obj->typeobj == HCT_OBJ_BACKGROUND) return -1;
+                card = c;
+                bg = c->bg;
+                break;
+            default:
+                return -1;
+        }
+    }
 
     if (obj->typeobj == HCT_OBJ_CARD) {
         /* « the number of marked cards » : le même comptage, tamisé. Seules
          * les cartes se marquent — « marked buttons » n'existe pas —, donc le
          * drapeau est refusé plus bas pour tout autre type. */
-        if (obj->marque) {
-            int m = 0;
-            for (int i = 0; stack && i < stack->nparts; i++)
-                if (stack->parts[i]->type == OBJ_CARD && stack->parts[i]->marked)
-                    m++;
-            *out = m;
-            return 1;
+        int m = 0;
+        for (int i = 0; stack && i < stack->nparts; i++) {
+            Object *p = stack->parts[i];
+            if (p->type != OBJ_CARD) continue;
+            if (fond && p->bg != fond) continue;
+            if (obj->marque && !p->marked) continue;
+            m++;
         }
-        *out = card_count(stack);
+        *out = m;
         return 1;
     }
 
@@ -8630,15 +8703,18 @@ static int v3_nombre_objets(const HctNoeud *obj, int *out)
         obj->typeobj != HCT_OBJ_PART)
         return 0;
 
+    /* Une cible qui est un FOND ne laisse que lui : « the buttons of bg 1 »
+     * sont ceux du fond, quelle que soit la couche par défaut du type. */
     Object *coins[2] = { NULL, NULL };
-    if      (obj->portee == HCT_PORTEE_CARTE) coins[0] = card;
-    else if (obj->portee == HCT_PORTEE_FOND)  coins[0] = card ? card->bg : NULL;
+    if      (!card)                           coins[0] = bg;
+    else if (obj->portee == HCT_PORTEE_CARTE) coins[0] = card;
+    else if (obj->portee == HCT_PORTEE_FOND)  coins[0] = bg;
     /* Sans couche : les champs du FOND, les boutons de la CARTE — mesuré dans
      * HyperCard, voir couche_implicite. « part » compte les deux, comme
      * avant ; non mesuré. */
-    else if (obj->typeobj == HCT_OBJ_FIELD)  coins[0] = card ? card->bg : NULL;
+    else if (obj->typeobj == HCT_OBJ_FIELD)  coins[0] = bg;
     else if (obj->typeobj == HCT_OBJ_BUTTON) coins[0] = card;
-    else { coins[0] = card; coins[1] = card ? card->bg : NULL; }
+    else { coins[0] = card; coins[1] = bg; }
 
     int n = 0;
     for (int k = 0; k < 2; k++) {
@@ -9014,8 +9090,28 @@ static int v3_cible_calculable(const HctNoeud *t)
     }
 }
 
+static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
+                            HctContexte *ctx);
+static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs);
+
+/* L'ÉTIQUETTE DU RELEVÉ SE REND À TOUTES LES SORTIES, et c'est pourquoi elle
+ * se rend ici. Le corps la posait en entrant et la rendait à la main, sortie
+ * par sortie — sauf six : la géométrie de la fenêtre, les propriétés de
+ * menu, les deux comptages de menus, celui des objets, une source vide.
+ * Après elles, l'étiquette « recours expr » restait posée, et le premier
+ * emprunt suivant à l'ancien moteur était mis à son compte. Seul le relevé
+ * en souffrait, mais c'est lui qui dit ce qu'il reste à porter. */
 static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
                       HctContexte *ctx)
+{
+    const char *avant = g_v1_porte;
+    int r = v3_recours_corps(d, n, out, ctx);
+    g_v1_porte = avant;
+    return r;
+}
+
+static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
+                            HctContexte *ctx)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
      * entière. C'est par ici que term_value et call_function, le vieux
@@ -9160,12 +9256,24 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
             }
         }
 
-        int compte;
-        if (ci_equal(quoi, "number") && v3_nombre_objets(n->fils[1], &compte)) {
+        int compte = 0, r = ci_equal(quoi, "number")
+                         ? v3_nombre_objets(ctx, n->fils[1], &compte) : 0;
+        if (r > 0) {
             char b[24];
             snprintf(b, sizeof b, "%d", compte);
             *out = hct_val_texte(b);
             return 1;
+        }
+        /* La cible du comptage manque, ou ne contient pas ce qu'on y
+         * compte. La faute se pose ICI : rendre 0 seulement laissait
+         * hct_eval essayer le chemin des propriétés, qui résolvait « cards
+         * of card 1 » en la carte 1 et lisait son « number » — 1, sans
+         * erreur. Et pas de détour par l'ancien moteur, qui rendait le total
+         * de la pile. */
+        if (r < 0) {
+            if (ctx) hct_ctx_faute(ctx, n, "objet introuvable");
+            g_v1_porte = sauve_porte;
+            return 0;
         }
     }
 
@@ -9325,7 +9433,11 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
 
     g_v3_recours_prof++;
     val[0] = '\0';
-    term_value(txt, val, HC_VAL);
+    /* v1 COUPÉ : on fait comme s'il avait rendu l'écho de la demande, ce
+     * qui est sa façon de dire qu'il ne sait pas. Tout ce qui suit — les
+     * refus, les fonctions de la pile — se juge alors sur la v3 seule. */
+    if (v1_coupe()) snprintf(val, HC_VAL, "%s", txt);
+    else            term_value(txt, val, HC_VAL);
 
     /* L'analyseur consomme « the » sans le ranger dans aucun nœud : la
      * reconstitution rend « target » au lieu de « the target », et
@@ -9339,10 +9451,12 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
      * rendait « result » en clair. Le calendrier voyait alors
      * « if the result <> empty » toujours vrai et refusait toutes les dates. */
     int echo = 0;
+    if (v1_coupe()) echo = 1;
     /* Un nœud d'OBJET ne gagne rien à être redemandé avec « the » devant :
      * « the field "menu" » n'est pas une tournure d'HyperTalk. On s'épargne
      * ce second appel, qui doublait le coût de chaque référence absente. */
-    if (n->genre == HCTN_OBJET && strcmp(val, txt) == 0) echo = 1;
+    if (echo) ;
+    else if (n->genre == HCTN_OBJET && strcmp(val, txt) == 0) echo = 1;
     else if (strcmp(val, txt) == 0) {
         char *avec_the = arena_buf();
         snprintf(avec_the, HC_VAL, "the %s", txt);
@@ -9401,6 +9515,81 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
      * complets de la chaîne des messages — term_value, la reprise avec
      * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
      * ici en supprime la moitié. */
+    /* « the maFonction of "ok" » : UNE FONCTION DE LA PILE, SOUS LA FORME
+     * « the ».
+     *
+     * L'ancien moteur la servait, après avoir essayé les propriétés ; c'est
+     * en le coupant qu'on l'a vu, « objet introuvable » prenant la place du
+     * résultat. On la sert donc ici, au même rang : la v3 a déjà essayé les
+     * propriétés avant d'appeler le recours, et l'ancien moteur, quand il est
+     * là, vient de répondre qu'il ne savait rien.
+     *
+     * Pas quand la cible est une RÉFÉRENCE D'OBJET : « the zorglub of me »
+     * est une propriété mal écrite, qui doit le rester — l'appeler comme une
+     * fonction diffuserait « zorglub » dans toute la hiérarchie, viderait
+     * « the result », et changerait le message d'erreur. Ni sur les refus
+     * que les règles d'à côté posent déjà (v3_prop_sur_objet,
+     * v3_prop_sur_morceau). Ni quand le nom a plusieurs mots : « short
+     * name » n'est pas un nom de fonction.
+     *
+     * Ce que fait HyperCard de cette tournure pour une fonction de la pile
+     * n'est PAS mesuré : seules ses fonctions intégrées s'écrivent ainsi
+     * dans la documentation. On garde ce que faisait HC. */
+    if (echo && ctx && n->genre == HCTN_OF && n->nfils == 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre != HCTN_OBJET &&
+        !sonde_manquee && !v3_prop_sur_objet(n) && !v3_prop_sur_morceau(n)) {
+        char nomf[64];
+        hct_texte(&n->fils[0]->jeton, nomf, sizeof nomf);
+        if (nomf[0] && !strchr(nomf, ' ')) {
+            HctValeur arg = hct_evalue(ctx, n->fils[1]);
+            if (ctx->erreur) {
+                hct_val_libere(&arg);
+                ARENA_FREE;
+                g_v3_recours_prof--;
+                g_v1_porte = sauve_porte;
+                return 0;
+            }
+            char *sauve_res = dupstr(g_result);
+            int fait = v3_fonction_pile(nomf, &arg, 1);
+            hct_val_libere(&arg);
+            if (fait) {
+                free(sauve_res);
+                *out = hct_val_texte(g_result);
+                ARENA_FREE;
+                g_v3_recours_prof--;
+                g_v1_porte = sauve_porte;
+                return 1;
+            }
+            /* Personne n'a répondu : « the result » reprend ce qu'il
+             * valait, l'essai ne doit rien laisser derrière lui. */
+            if (sauve_res) { set_result(sauve_res); free(sauve_res); }
+
+            /* ET L'ÉCHEC SE DIT, QUAND LA CIBLE EST UNE CONSTANTE. « the
+             * zorglub of 3 » rendait « zorglub of 3 » en clair, avec ou sans
+             * l'ancien moteur : la règle « nom inconnu = son propre texte »,
+             * fermée pour les objets, les propriétés et les appels, vivait
+             * encore ici. Une chaîne ou un nombre n'a pas de propriété, et
+             * aucune fonction n'a répondu : on nomme le coupable.
+             *
+             * Pas plus loin. Une variable, un morceau, un calcul peuvent
+             * désigner un objet, et les règles d'à côté ont été restreintes
+             * exprès à ce qu'on avait mesuré — voir v3_prop_sur_morceau :
+             * élargir sans mesure ferait s'arrêter des scripts là où
+             * HyperCard les laisse passer. Ceux-là gardent leur sort
+             * d'avant. */
+            if (n->fils[1]->genre == HCTN_CHAINE ||
+                n->fils[1]->genre == HCTN_NOMBRE) {
+                hct_ctx_faute_nom(ctx, n, "propriété ou fonction inconnue",
+                                  nomf);
+                ARENA_FREE;
+                g_v3_recours_prof--;
+                g_v1_porte = sauve_porte;
+                return 0;
+            }
+        }
+    }
+
     if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
                  v3_prop_sur_objet(n) || v3_prop_sur_morceau(n) ||
                  sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
@@ -9418,7 +9607,7 @@ static int v3_recours(void *d, const HctNoeud *n, HctValeur *out,
      *
      * Sans cela, « if there is a cd btn "Drawgraph" » rendait la chaîne
      * elle-même, jamais true ni false. */
-    if (strcmp(val, txt) == 0) {
+    if (!v1_coupe() && strcmp(val, txt) == 0) {
         const char *q = txt;
         char *essai = arena_buf();
         essai[0] = '\0';
@@ -10123,16 +10312,18 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
          * « v1 fonction the destination » le dit. Un compteur qui ne nomme
          * pas son sujet oblige à retrouver à la main ce qu'il vient de
          * mesurer, et c'est justement ce qu'on voulait éviter. */
-        const char *sauve_nom = v1_porte(nom);
-        term_value(appel, buf, HC_VAL);
-        g_v1_porte = sauve_nom;
-        if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
-            v3_note("fonction", nom);      /* term_value a fourni la réponse */
-            *out = hct_val_texte(buf);
-            ARENA_FREE;
-            { g_v1_porte = sauve_porte; } return 1;
+        if (!v1_coupe()) {
+            const char *sauve_nom = v1_porte(nom);
+            term_value(appel, buf, HC_VAL);
+            g_v1_porte = sauve_nom;
+            if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
+                v3_note("fonction", nom);  /* term_value a fourni la réponse */
+                *out = hct_val_texte(buf);
+                ARENA_FREE;
+                { g_v1_porte = sauve_porte; } return 1;
+            }
+            v1_note_muet(nom);   /* l'écho : inutile de redemander */
         }
-        v1_note_muet(nom);       /* l'écho : inutile de redemander */
         if (v3_fonction_pile(nom, args, 0)) {
             *out = hct_val_texte(g_result);
             ARENA_FREE;
@@ -10145,8 +10336,8 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * On s'en tient au numérique : reconstruire un argument textuel serait
      * fragile dès qu'il contient un guillemet. Le reste passe par le
      * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_est_muet(nom) &&
-        dans_liste(nom, V3_V1_FONCTIONS_1)) {
+    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_coupe() &&
+        !v1_est_muet(nom) && dans_liste(nom, V3_V1_FONCTIONS_1)) {
         char appel[160];
         snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
         buf[0] = '\0';

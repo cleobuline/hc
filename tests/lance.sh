@@ -9,6 +9,11 @@
 #   ./lance.sh --enregistre remplit attendu/ depuis l'état courant
 #   ./lance.sh --asan       recompile sous les sanitizers et signale
 #   ./lance.sh <motif>      ne traite que les harnais dont le nom contient <motif>
+#   ./lance.sh --complet    montre les écarts EN ENTIER, pas leurs huit premières lignes
+#
+#   HC_SANS_V1=1 ./lance.sh rejoue la suite sans l'ancien moteur d'expressions :
+#                           ce qui change est ce qu'il sert encore (voir
+#                           docs/mesures/sansv1.txt)
 #
 # L'HORLOGE EST GELÉE (HC_HORLOGE) et le fuseau fixé (TZ=UTC) : sans cela un
 # test qui affiche une date passerait aujourd'hui et échouerait demain, ce qui
@@ -66,10 +71,17 @@ CFLAGS="-std=gnu99 -O1 -I$HC"
 CFLAGS="$CFLAGS -Werror=int-conversion -Werror=incompatible-pointer-types"
 CFLAGS="$CFLAGS -Werror=implicit-function-declaration"
 ENREGISTRE=0
+COMPLET=0
 MOTIF=""
 for a in "$@"; do
   case "$a" in
     --enregistre) ENREGISTRE=1 ;;
+    # --complet : LES HUIT LIGNES SONT UN RÉSUMÉ, PAS UNE MESURE. En coupant
+    # l'ancien moteur pour voir ce qu'il servait encore, je n'ai lu que les
+    # deux premiers écarts de « sansargument », et annoncé trois pertes : le
+    # harnais en montrait cinq, dont les deux témoins qu'il croyait servis
+    # par la v3.
+    --complet)    COMPLET=1 ;;
     # float-cast-overflow EST A PART, et ce n'est pas un detail.
     #
     # « -fsanitize=undefined » ne l'active PAS avec ce gcc — verifie sur un
@@ -229,7 +241,11 @@ for src in harnais/*.c; do
     ok=$((ok+1))
   else
     echo "  DIFFÉRENT      $n"
-    diff "$ref" "$TRAVAIL/sortie/$n" | head -8 | sed 's/^/                 /'
+    if [ "$COMPLET" = 1 ]; then
+      diff "$ref" "$TRAVAIL/sortie/$n" | sed 's/^/                 /'
+    else
+      diff "$ref" "$TRAVAIL/sortie/$n" | head -8 | sed 's/^/                 /'
+    fi
     rate=$((rate+1))
   fi
 done

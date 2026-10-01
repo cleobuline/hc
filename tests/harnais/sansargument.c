@@ -8,8 +8,14 @@
  *
  * Trouvé par l'analyseur statique de clang, confirmé en l'exécutant sous ASan.
  * Un argument absent vaut maintenant le vide, comme « length() » et
- * « numToChar() », que la v3 servait déjà ainsi — d'où leur présence ici : le
- * comportement qu'on imite doit rester celui qu'il était.
+ * « numToChar() » — d'où leur présence ici : le comportement qu'on imite doit
+ * rester celui qu'il était.
+ *
+ * Ce commentaire disait que la v3 servait DÉJÀ ces deux-là ainsi. C'était
+ * faux, et on l'a vu en coupant l'ancien moteur (HC_SANS_V1) : c'était lui
+ * qui les servait, la v3 répondant seule « fonction inconnue : length ». Elle
+ * applique désormais la règle elle-même, à toutes les fonctions du noyau —
+ * voir appel_valeurs dans hct_eval.c, et le harnais sansv1.
  *
  * Ce que rend HyperCard pour ces appels n'est PAS mesuré. */
 #include "hc_core.h"
