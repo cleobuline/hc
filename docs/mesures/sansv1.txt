@@ -26,6 +26,19 @@ les refus comme les fonctions de la pile, se juge sur la v3 seule.
 
 Le réglage disparaîtra avec l'ancien moteur.
 
+LE NOM A DÉJÀ SERVI, et c'est un piège à connaître. HC_SANS_V1 est né le 11
+septembre pour couper l'ancien EXÉCUTEUR DE LIGNES ; celui-ci a été supprimé
+le 13, et le code qui lisait la variable avec lui. Le schéma Xcode partagé
+(HC.xcscheme, 19 septembre) la pose pourtant à 1 : du 13 septembre au 1er
+octobre, elle ne coupait RIEN. Seize jours d'usage « avec HC_SANS_V1=1 » sans
+incident disent donc que la suppression de l'exécuteur n'a rien cassé — ils
+ne disent rien de l'ancien moteur d'expressions, qui répondait pendant tout
+ce temps.
+
+Depuis ce commit, le même schéma coupe le moteur d'expressions à chaque
+lancement depuis Xcode (⌘R). L'application ouverte depuis le Finder, et donc
+celle du DMG, garde l'ancien moteur.
+
 
 PREMIER PASSAGE, 1er octobre, avant tout portage
 ------------------------------------------------
