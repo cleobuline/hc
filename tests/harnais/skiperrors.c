@@ -25,7 +25,9 @@
  *
  *   1. non posée, rien n'a changé : les trois bancs de erreur_abandon.txt ;
  *   2. true : la ligne est sautée — le cas rapporté, puis les trois bancs ;
- *      l'erreur est dite quand même, une fois ;
+ *      l'erreur va au JOURNAL, une fois, et AUCUN dialogue ne s'ouvre :
+ *      celui qui la récapitulait à la fin faisait croire, à l'usage, que rien
+ *      n'avait été sauté. Les autres états, eux, ouvrent toujours le leur ;
  *   3. false : les trois bancs s'arrêtent net, l'appelant compris ;
  *   4. une chaîne de trois niveaux, dans les trois états ;
  *   5. la propriété se relit — vide quand elle n'est pas posée —, redevient
@@ -42,6 +44,11 @@ static void ligne(HcLineKind k, int d, const char *t)
 { (void)d;
   if      (k == HC_MSG) printf("      %s\n", t ? t : "");
   else if (k == HC_ERR) printf("      [ERR] %s\n", t ? t : ""); }
+
+/* L'hôte ouvrirait ici le dialogue d'erreur. Sous « true », il ne doit RIEN
+ * recevoir : la ligne sautée va au journal seulement. */
+static void dialogue(const char *t, Object *o, int l)
+{ (void)o; (void)l; printf("      [DIALOGUE] %s\n", t); }
 
 static Object *b;
 
@@ -122,6 +129,7 @@ static void clic(const char *quoi, const char *avant)
 int main(void)
 {
     static HcHost h; memset(&h, 0, sizeof h); h.line = ligne;
+    h.erreur = dialogue;
     hc_set_host(&h);
     Object *st = hc_new_stack("Pile");
     Object *bg = hc_new_background(st, "Fond");
