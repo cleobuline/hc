@@ -81,7 +81,7 @@
    put the sqrt of 4 + 1
       3
    put the offset of "a"
-      0
+      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
 
 == 3. une fonction de la pile sous la forme « the » ==
    put the maF of "ok"
@@ -102,31 +102,31 @@
 
 == 4. un argument de moins ==
    put "[" & length() & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : length (v3, ligne 5 de button "B1".t)
    put "[" & numToChar() & "]"
-      []
+      [ERR]    !! mauvais nombre d'arguments : numToChar (v3, ligne 5 de button "B1".t)
    put "[" & charToNum() & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : charToNum (v3, ligne 5 de button "B1".t)
    put "[" & offset() & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
    put "[" & offset("a") & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 5 de button "B1".t)
    put "[" & random() & "]"
-      [1]
+      [ERR]    !! mauvais nombre d'arguments : random (v3, ligne 5 de button "B1".t)
    put "[" & sqrt() & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : sqrt (v3, ligne 5 de button "B1".t)
    put "[" & value() & "]"
-      []
+      [ERR]    !! mauvais nombre d'arguments : value (v3, ligne 5 de button "B1".t)
    put "[" & annuity(1) & "]"
-      [0]
+      [ERR]    !! mauvais nombre d'arguments : annuity (v3, ligne 5 de button "B1".t)
 
 == 5. un argument de trop ==
    put "[" & length(1,2) & "]"
-      [1]
+      [ERR]    !! mauvais nombre d'arguments : length (v3, ligne 5 de button "B1".t)
    put "[" & charToNum("a","b") & "]"
-      [97]
+      [ERR]    !! mauvais nombre d'arguments : charToNum (v3, ligne 5 de button "B1".t)
    put "[" & sqrt(4,9) & "]"
-      [2]
+      [ERR]    !! mauvais nombre d'arguments : sqrt (v3, ligne 5 de button "B1".t)
 
 == 6. un argument vide, ou qui n'est pas un nombre ==
    put "[" & sqrt("") & "]"

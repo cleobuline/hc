@@ -93,10 +93,12 @@ CE QUI A ÉTÉ PORTÉ
     dedans ; une cible absente ou qui ne contient pas ce type est un objet
     introuvable ;
   · appel_valeurs (hct_eval.c) : « f(x) » et « the f of x » passent par le
-    même code. Les fonctions du noyau à arguments fixes complètent un
-    argument absent par le vide et ignorent un argument de trop ; celles de
-    calcul suivent la règle de l'arithmétique — le vide vaut zéro, un texte
-    est une faute ;
+    même code. Les fonctions du noyau à arguments fixes complétaient
+    d'abord un argument absent par le vide et ignoraient un argument de
+    trop, comme l'ancien moteur ; mesuré ensuite dans HyperCard, c'est une
+    erreur (voir plus bas), et c'en est une désormais. Celles de calcul
+    suivent la règle de l'arithmétique — le vide vaut zéro, un texte est une
+    faute ;
   · une fonction de la pile sous la forme « the », servie au rang où
     l'ancien moteur la servait : après les propriétés. Si personne ne répond
     et que la cible est une CONSTANTE — « the zorglub of 3 » —, « propriété
@@ -109,11 +111,16 @@ dans deux processus, et signale toute réponse qui diffère. Une section témoin
 y montre les écarts VOULUS — là où l'ancien moteur se trompe —, ce qui
 prouve au passage que le réglage coupe bien.
 
-NON MESURÉ, dans HyperCard : un argument manquant ou en trop, un argument non
-numérique d'une fonction de calcul, une fonction de la pile sous la forme
-« the », un comptage dont la cible manque. Les choix ci-dessus reprennent ce
-que faisait HC, sauf pour les arguments non numériques, alignés sur
-l'arithmétique.
+MESURÉ ENSUITE DANS HYPERCARD (Basilisk II), le 1er octobre, par la pile
+Torture3 — voir docs/mesures/torture3.txt :
+
+    length()                        erreur   (HC rendait 0 ; corrigé)
+    sqrt(4, 9)                      erreur   (HC rendait 2 ; corrigé)
+    sqrt("abc")                     erreur   (comme HC)
+    sqrt(empty)                     0        (comme HC)
+    the maF of "ok"                 erreur   (HC rend « ok! » — à décider)
+    the number of cards of bg 9     erreur   (comme HC)
+    the number of cards of card 1   erreur   (comme HC)
 
 
 DEUXIÈME PASSAGE, 1er octobre, après portage

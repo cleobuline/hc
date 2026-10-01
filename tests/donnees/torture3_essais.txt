@@ -39,11 +39,11 @@ the length of char 10 of "abc" ==> 0
 char 1 of word 2 of "ab cd" ==> c
 line 2 of ("x" & return & "y") ==> y
 the number of lines of ("a" & return & "b" & return) ==> 2
-the number of items of "a,b," ==> ?
+the number of items of "a,b," ==> 2
 word 2 to 3 of "a b c d" ==> b c
 the last word of "il etait une fois" ==> fois
 the second item of "x,y,z" ==> y
-middle item of "a,b,c" ==> ?
+middle item of "a,b,c" ==> b
 any item of "q,q,q" ==> q
 the number of chars of empty ==> 0
 char 2 of word 3 of "un deux trois" ==> r
@@ -58,10 +58,10 @@ the abs of -3 ==> 3
 abs(-3) + the abs of -4 ==> 7
 the sqrt of 4 + 5 ==> 7
 trunc(-2.7) ==> -2
-round(2.5) ==> ?
-round(-2.5) ==> ?
+round(2.5) ==> 2
+round(-2.5) ==> -2
 max(3, 9, 2) ==> 9
-the max of "3,9,2" ==> 9
+the max of "3,9,2" ==> ?
 average(1, 2, 3) ==> 2
 min(4) ==> 4
 sum(1, 2, 3, 4) ==> 10
@@ -74,11 +74,11 @@ the value of "1 + 1" ==> 2
 random(1) ==> 1
 the random of 1 ==> 1
 length(empty) ==> 0
-offset("", "abc") ==> ?
-sqrt(empty) ==> ?
-sqrt("abc") ==> ?
-length() ==> ?
-sqrt(4, 9) ==> ?
+offset("", "abc") ==> 0
+sqrt(empty) ==> 0
+sqrt("abc") ==> ERREUR
+length() ==> ERREUR
+sqrt(4, 9) ==> ERREUR
 -- Les fonctions de la pile (maF et deux, dans le script de la pile)
 maF("a") ==> a!
 maF(maF("a")) ==> a!!
@@ -117,8 +117,8 @@ card field "A" ==> alpha beta gamma
 word 2 of card field "A" ==> beta
 the number of words of card field 1 ==> 3
 the short name of card field 1 ==> A
-the number of cards of bg 9 ==> ?
-the number of cards of card 1 ==> ?
+the number of cards of bg 9 ==> ERREUR
+the number of cards of card 1 ==> ERREUR
 card "Zut" ==> ERREUR
 the zorglub of 3 ==> ERREUR
 the zorglub of me ==> ERREUR

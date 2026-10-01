@@ -43,11 +43,11 @@
   ok     char 1 of word 2 of "ab cd"  ==>  c
   ok     line 2 of ("x" & return & "y")  ==>  y
   ok     the number of lines of ("a" & return & "b" & return)  ==>  2
-  ?      the number of items of "a,b,"  ->  [3]
+  ok     the number of items of "a,b,"  ==>  2
   ok     word 2 to 3 of "a b c d"  ==>  b c
   ok     the last word of "il etait une fois"  ==>  fois
   ok     the second item of "x,y,z"  ==>  y
-  ?      middle item of "a,b,c"  ->  [b]
+  ok     middle item of "a,b,c"  ==>  b
   ok     any item of "q,q,q"  ==>  q
   ok     the number of chars of empty  ==>  0
   ok     char 2 of word 3 of "un deux trois"  ==>  r
@@ -63,10 +63,10 @@
   ok     abs(-3) + the abs of -4  ==>  7
   ok     the sqrt of 4 + 5  ==>  7
   ok     trunc(-2.7)  ==>  -2
-  ?      round(2.5)  ->  [3]
-  ?      round(-2.5)  ->  [-3]
+  ok     round(2.5)  ==>  2
+  ok     round(-2.5)  ==>  -2
   ok     max(3, 9, 2)  ==>  9
-  ok     the max of "3,9,2"  ==>  9
+  ?      the max of "3,9,2"  ->  [9]
   ok     average(1, 2, 3)  ==>  2
   ok     min(4)  ==>  4
   ok     sum(1, 2, 3, 4)  ==>  10
@@ -79,11 +79,11 @@
   ok     random(1)  ==>  1
   ok     the random of 1  ==>  1
   ok     length(empty)  ==>  0
-  ?      offset("", "abc")  ->  [0]
-  ?      sqrt(empty)  ->  [0]
-  ?      sqrt("abc")  ->  [ERREUR]
-  ?      length()  ->  [0]
-  ?      sqrt(4, 9)  ->  [2]
+  ok     offset("", "abc")  ==>  0
+  ok     sqrt(empty)  ==>  0
+  ok     sqrt("abc")  ==>  ERREUR
+  ok     length()  ==>  ERREUR
+  ok     sqrt(4, 9)  ==>  ERREUR
 
 ==  Les fonctions de la pile (maF et deux, dans le script de la pile)
   ok     maF("a")  ==>  a!
@@ -124,8 +124,8 @@
   ok     word 2 of card field "A"  ==>  beta
   ok     the number of words of card field 1  ==>  3
   ok     the short name of card field 1  ==>  A
-  ?      the number of cards of bg 9  ->  [ERREUR]
-  ?      the number of cards of card 1  ->  [ERREUR]
+  ok     the number of cards of bg 9  ==>  ERREUR
+  ok     the number of cards of card 1  ==>  ERREUR
   ok     card "Zut"  ==>  ERREUR
   ok     the zorglub of 3  ==>  ERREUR
   ok     the zorglub of me  ==>  ERREUR
@@ -141,10 +141,12 @@
   ok     (1 + 2) & (3 + 4)  ==>  37
 
 ==============================
-115 reussites, aucun echec, 12 a mesurer.
+125 reussites, aucun echec, 2 a mesurer.
 
 == les erreurs levees en chemin (celles des lignes ERREUR sont VOULUES) ==
      !! un nombre est attendu ici (v3, ligne 165 de stack "Torture3".evalue) (× 2)
+     !! mauvais nombre d'arguments : length (v3, ligne 165 de stack "Torture3".evalue)
+     !! mauvais nombre d'arguments : sqrt (v3, ligne 165 de stack "Torture3".evalue)
      !! fonction inconnue : pasLa (v3, ligne 165 de stack "Torture3".evalue)
      !! objet introuvable (v3, ligne 165 de stack "Torture3".evalue) (× 3)
      !! propriété ou fonction inconnue : zorglub (v3, ligne 165 de stack "Torture3".evalue)

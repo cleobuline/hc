@@ -6454,8 +6454,8 @@ static int call_function_body(const char *t, char *out, int outlen)
      * -2.5 vers zéro, soit -2, quand round() rend -3 —, donc on garde la
      * formule d'origine et on remplace seulement la conversion. */
     if (ci_equal(name, "trunc"))  { put_num(trunc(a), out, outlen); return 1; }
-    if (ci_equal(name, "round"))  { put_num(a < 0 ? -trunc(-a + 0.5)
-                                                  :  trunc( a + 0.5), out, outlen); return 1; }
+    /* Au pair, comme la v3 et comme HyperCard — voir math_un_arg. */
+    if (ci_equal(name, "round"))  { put_num(nearbyint(a), out, outlen); return 1; }
     if (ci_equal(name, "sqrt"))   { put_num(a >= 0 ? sqrt(a) : 0, out, outlen); return 1; }
     if (ci_equal(name, "exp"))    { put_num(exp(a), out, outlen); return 1; }
     if (ci_equal(name, "ln"))     { put_num(a > 0 ? log(a) : 0, out, outlen); return 1; }

@@ -722,7 +722,12 @@ static int math_un_arg(const char *nom, double x, double *y)
     else if (!strcasecmp(nom, "sqrt"))
         *y = (x < 0) ? hct_nan_signe(1, 1) : sqrt(x);
     else if (!strcasecmp(nom, "trunc")) *y = trunc(x);
-    else if (!strcasecmp(nom, "round")) *y = round(x);
+    /* AU PAIR, comme SANE : « round(2.5) » vaut 2 et « round(-2.5) »
+     * vaut -2. Mesuré DANS HYPERCARD (Basilisk II) le 1er octobre, pile
+     * Torture3. round() du C arrondit en s'éloignant de zéro — 3 et -3 — ;
+     * nearbyint suit le mode d'arrondi courant, qui est au pair tant que
+     * personne n'y touche, et rien n'y touche dans HC. */
+    else if (!strcasecmp(nom, "round")) *y = nearbyint(x);
     else if (!strcasecmp(nom, "sin"))   *y = sin(x);
     else if (!strcasecmp(nom, "cos"))   *y = cos(x);
     else if (!strcasecmp(nom, "tan"))   *y = tan(x);
@@ -805,31 +810,29 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
                                char *nom, HctValeur *args, int nargs)
 {
-    /* UN ARGUMENT ABSENT VAUT LE VIDE ; UN ARGUMENT DE TROP EST IGNORÉ.
+    /* UN MAUVAIS NOMBRE D'ARGUMENTS EST UNE ERREUR.
      *
-     * C'était la règle de l'ancien moteur, et la v3 la tenait de lui sans le
-     * savoir : « length() », « sqrt() », « offset("a") » n'étaient servis que
-     * parce qu'elle le rappelait. On l'a vu en le coupant (HC_SANS_V1) : sans
-     * lui, ces appels répondaient « fonction inconnue : length » — un message
-     * faux, la fonction existant bel et bien.
+     * Mesuré DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3 :
      *
-     * La règle est reprise telle quelle. Ce que fait HyperCard d'un argument
-     * manquant ou en trop n'est PAS mesuré. */
+     *     length()       Can't understand arguments of "length".
+     *     sqrt(4, 9)     Can't understand arguments of "sqrt".
+     *
+     * HC suivait jusqu'ici la règle de l'ancien moteur — un argument absent
+     * valait le vide, un argument de trop était ignoré —, reprise telle
+     * quelle en le coupant et inscrite « non mesurée ». Elle rendait 0 pour
+     * « length() » et 2 pour « sqrt(4, 9) » : des valeurs plausibles qui
+     * cachent une faute de script, exactement le genre de résultat qui
+     * part ensuite dans un champ sans que personne s'en aperçoive.
+     *
+     * Deux fonctions mesurées ; la règle vaut pour toutes celles du noyau
+     * à arguments fixes, qu'HyperCard vérifie à l'analyse et non une à
+     * une. */
     int arite = arite_integree(nom);
     if (arite && nargs != arite) {
-        HctValeur *a = calloc((size_t)arite, sizeof *a);
-        if (!a) {
-            hct_ctx_faute(ctx, n, "mémoire insuffisante");
-            for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
-            free(args); free(nom);
-            return hct_val_vide();
-        }
-        for (int i = 0; i < arite; i++)
-            a[i] = (i < nargs) ? args[i] : hct_val_vide();
-        for (int i = arite; i < nargs; i++) hct_val_libere(&args[i]);
-        free(args);
-        args = a;
-        nargs = arite;
+        hct_ctx_faute_nom(ctx, n, "mauvais nombre d'arguments", nom);
+        for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
+        free(args); free(nom);
+        return hct_val_vide();
     }
 
     /* LES ARGUMENTS NUMÉRIQUES SUIVENT LA RÈGLE DE L'ARITHMÉTIQUE : le vide
@@ -1520,8 +1523,9 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
              * « the random of 6 » partaient à l'hôte, qui les confiait à
              * l'ancien moteur ; sans lui, « objet introuvable ». length et
              * value ont leur branche plus haut. Celles à deux arguments —
-             * « the offset of "a" » — reçoivent le second vide, comme
-             * « offset("a") » : c'est ce que rendait l'ancien moteur.
+             * « the offset of "a" » — lèvent, comme « offset("a") » : un
+             * mauvais nombre d'arguments est une erreur (voir
+             * appel_valeurs).
              *
              * LE JUMEAU de l'appel à parenthèses : « the sqrt of 2 » et
              * « sqrt(2) » passent par appel_valeurs, et ne peuvent donc plus

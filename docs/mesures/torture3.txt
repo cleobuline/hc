@@ -1,0 +1,79 @@
+MESURE — LA PILE TORTURE3, LES EXPRESSIONS TORDUES
+==================================================
+
+La pile est montée par tests/harnais/torture3.c, à partir de trois fichiers de
+tests/donnees/ : torture3_bouton.txt, torture3_pile.txt et torture3_essais.txt.
+Ce dernier est le contenu du champ « Essais » : une expression par ligne,
+« expression ==> attendu », « ? » pour ce qui n'est pas mesuré, « ERREUR »
+pour ce qui doit lever.
+
+
+PASSAGE 1, DANS HYPERCARD (Basilisk II), 1er octobre — la première version
+-------------------------------------------------------------------------
+
+La boucle des essais vivait dans le « on mouseUp » du bouton. À la première
+ligne qui lève, « "abc" + 1 », HyperCard écrit « Expected number here. » et
+TOUT s'arrête : plus d'essai, pas de bilan. Voir erreur_abandon.txt. D'où la
+deuxième version : les essais se jouent dans « on idle », un script neuf à
+chaque cycle.
+
+Les quatre valeurs relevées avant l'arrêt :
+
+    -7 div 2      -3          comme HC
+    -7 mod 3      -1          comme HC
+    2 ^ 3 ^ 2     512         comme HC
+    -2 ^ 2        4           comme HC
+
+
+PASSAGE 2, DANS HYPERCARD (Basilisk II), 1er octobre — la version « idle »
+-------------------------------------------------------------------------
+
+Allée jusqu'au bout. MAIS PAS SUR LE TERRAIN PRÉVU : les scripts ont été
+recopiés dans la pile Torture2 de l'utilisatrice — « the short name of me »
+rend « torture2 » —, qui a deux cartes, un fond et pas de champ « A ». La
+section « objets et comptages » mesure donc ce terrain-là, et elle est
+ÉCARTÉE, à deux lignes près, qui ne dépendent pas du terrain. Le champ Essais
+était aussi celui de la première version.
+
+Ce qui vaut :
+
+    the number of items of "a,b,"   2         HC rendait 3 — CORRIGÉ
+    middle item of "a,b,c"          b         comme HC
+    round(2.5)                      2         HC rendait 3 — CORRIGÉ (au pair)
+    round(-2.5)                     -2        HC rendait -3 — CORRIGÉ
+    offset("", "abc")               0         comme HC
+    sqrt(empty)                     0         comme HC
+    sqrt("abc")                     erreur    comme HC (branche)
+                                    « Expected number here. »
+    length()                        erreur    HC rendait 0 — CORRIGÉ
+                                    « Can't understand arguments of "length". »
+    sqrt(4, 9)                      erreur    HC rendait 2 — CORRIGÉ
+                                    « Can't understand arguments of "sqrt". »
+    the max of "3,9,2"              erreur    HC rend 9 — À DÉCIDER
+                                    « Can't understand arguments of "put". »
+    the maF of "ok"                 erreur    HC rend « ok! » — À DÉCIDER
+                                    « Can't understand arguments of "put". »
+    the number of cards of bg 9     erreur    comme HC (branche)
+                                    « No such bkgnd. »
+    the number of cards of card 1   erreur    comme HC (branche)
+                                    « Can't understand arguments to this
+                                    function. »
+
+Le message de chaque erreur est retrouvé par l'ORDRE : HyperCard les a livrées
+une à une, dans l'ordre des lignes « ERREUR », vingt pour vingt.
+
+Les deux « À DÉCIDER » sont des formes que HyperCard REFUSE et que HC accepte
+en rendant une réponse juste. Les aligner n'apporte rien aux piles d'époque —
+elles ne pouvaient pas s'en servir — mais une pile écrite dans HC qui les
+emploie ne tournerait pas dans HyperCard. Ce n'est pas le même cas que
+« length() » ou « sqrt(4, 9) », où HC rendait une valeur plausible qui cachait
+une faute de script.
+
+« the number of items of "a,b," » : le commentaire de hct_chunk.c affirmait
+TROIS, « une dissymétrie de HyperCard, pas une inattention ». Il n'avait
+jamais été mesuré.
+
+RESTE À MESURER, dans HyperCard et sur le bon terrain — la pile écrite par
+torture3, ou une pile refaite à l'identique : quatre cartes Atelier, Deux,
+Trois, Quatre, sur deux fonds Un, Deux, Un, Deux ; sur l'Atelier, les champs
+de carte A (« alpha beta gamma »), Essais et R, dans cet ordre.

@@ -14,6 +14,11 @@
  *   · toute fonction du noyau appelée avec un argument de moins ou de trop —
  *     « length() », « sqrt() », « offset("a") », « sqrt(4,9) » —, que la v3
  *     refusait d'un « fonction inconnue : length », faux puisqu'elle existe.
+ *     L'ancien moteur, lui, complétait par le vide et ignorait le surplus ;
+ *     c'est ce qu'on avait d'abord repris. MESURÉ ENSUITE DANS HYPERCARD
+ *     (Basilisk II), le 1er octobre : « length() » et « sqrt(4, 9) » y sont
+ *     des erreurs. Les sections 4 et 5 lèvent donc « mauvais nombre
+ *     d'arguments », avec et sans l'ancien moteur.
  *
  * Mesurées aussi, et ce sont des défauts de l'ancien moteur lui-même :
  *
