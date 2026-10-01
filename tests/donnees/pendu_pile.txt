@@ -1,0 +1,152 @@
+-- ════════════════════════════════════════════════════════════════════
+--  LE PENDU — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Tout le jeu est ici ; les vingt-six boutons de lettres n'appellent que
+--  « joue », et le bouton « Nouvelle partie » que « nouvellePartie ».
+--
+--  On joue en cliquant les lettres, ou en les tapant au clavier. Sept
+--  erreurs, et le bonhomme est pendu.
+--
+--  Pour ajouter des mots : la fonction « lesMots », tout en bas, en
+--  MAJUSCULES et sans accents, separes par des virgules.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  global gMot
+  if gMot is empty then nouvellePartie
+  pass openCard
+end openCard
+
+-- Une partie neuve. « leMot » sert aux essais : vide, on tire au sort.
+on nouvellePartie leMot
+  global gMot, gEssais, gRates, gFini
+  if leMot is empty then put any item of lesMots() into leMot
+  put leMot into gMot
+  put empty into gEssais
+  put 0 into gRates
+  put false into gFini
+  repeat with i = 1 to 26
+    show button numToChar(64 + i)
+  end repeat
+  put empty into card field "Lettres"
+  put "Trouve le mot ! Clique sur les lettres, ou tape-les au clavier." ¬
+      into card field "Message"
+  affiche
+end nouvellePartie
+
+-- Une lettre proposee, cliquee ou tapee.
+on joue lettre
+  global gMot, gEssais, gRates, gFini
+  if gFini is not false then exit joue
+  put majuscule(lettre) into lettre
+  if length(lettre) is not 1 then exit joue
+  if lettre is not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" then exit joue
+  if lettre is in gEssais then
+    put "Tu as deja essaye le " & lettre & " !" into card field "Message"
+    exit joue
+  end if
+  put lettre after gEssais
+  hide button lettre
+  put lettre & space after card field "Lettres"
+  if lettre is in gMot then
+    put "Bien vu, il y a un " & lettre & " !" into card field "Message"
+  else
+    add 1 to gRates
+    put "Rate, pas de " & lettre & "." into card field "Message"
+    play "boing"
+  end if
+  affiche
+  if "_" is not in motVisible() then gagne
+  else if gRates >= 7 then perd
+end joue
+
+on gagne
+  global gMot, gFini
+  put true into gFini
+  put "Bravo ! Tu as trouve " & gMot & " !" into card field "Message"
+  play "cocorico"
+end gagne
+
+on perd
+  global gMot, gEssais, gFini
+  put true into gFini
+  -- On devoile le mot entier.
+  put gMot into gEssais
+  affiche
+  put "Pendu ! Le mot etait " & gMot & "." into card field "Message"
+  play "canard"
+end perd
+
+-- Le mot, ses lettres trouvees en clair et les autres en « _ ».
+function motVisible
+  global gMot, gEssais
+  put empty into r
+  repeat with i = 1 to length(gMot)
+    put char i of gMot into c
+    if c is in gEssais then put c after r
+    else put "_" after r
+    if i < length(gMot) then put space after r
+  end repeat
+  return r
+end motVisible
+
+on affiche
+  global gRates
+  put motVisible() into card field "Mot"
+  put potence(gRates) into card field "Potence"
+  put "Erreurs : " & gRates & " sur 7" into card field "Compte"
+end affiche
+
+-- La potence, dessinee en caracteres : une piece de plus par erreur. A
+-- la septieme, le visage devient une croix.
+function potence n
+  put "  +---+" & return into p
+  put "  |   |" & return after p
+  if n >= 7 then put "  X   |" & return after p
+  else if n >= 1 then put "  O   |" & return after p
+  else put "      |" & return after p
+  put " " after p
+  if n >= 3 then put "/" after p
+  else put " " after p
+  if n >= 2 then put "|" after p
+  else put " " after p
+  if n >= 4 then put "\" after p
+  else put " " after p
+  put "  |" & return after p
+  put " " after p
+  if n >= 5 then put "/" after p
+  else put " " after p
+  put " " after p
+  if n >= 6 then put "\" after p
+  else put " " after p
+  put "  |" & return after p
+  put "      |" & return after p
+  put " =====+=" after p
+  return p
+end potence
+
+-- HyperTalk n'a pas de majuscules toutes faites : on decale le code.
+function majuscule c
+  if length(c) is not 1 then return c
+  put charToNum(c) into n
+  if n >= 97 and n <= 122 then return numToChar(n - 32)
+  return c
+end majuscule
+
+-- Les lettres tapees au clavier jouent aussi. Le reste passe.
+on keyDown k
+  global gFini
+  if gFini is false and length(k) is 1 and majuscule(k) is in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" then
+    joue k
+  else
+    pass keyDown
+  end if
+end keyDown
+
+function lesMots
+  return "ORDINATEUR,HYPERCARD,MACINTOSH,CLAVIER,SOURIS,FROMAGE," & ¬
+    "BAGUETTE,CHATEAU,GIRAFE,PAPILLON,CROISSANT,BICYCLETTE," & ¬
+    "MONTAGNE,ELEPHANT,CHOCOLAT,TOMATE,VAMPIRE,DRAGON,PIRATE," & ¬
+    "TRESOR,MOLIERE,BALZAC,MAUPASSANT,ANDROIDE,MOUTON,ESCARGOT," & ¬
+    "PARAPLUIE,TOURNESOL,CORNICHON,HIBOU,LICORNE,FUSEE,PLANETE"
+end lesMots

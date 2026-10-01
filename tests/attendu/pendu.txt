@@ -1,0 +1,104 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, une partie se tire au sort ==
+   un mot est tiré : oui
+
+== 2. une partie gagnée : HIBOU, avec une erreur (Z) ==
+  +---+
+  |   |
+      |
+      |
+      |
+      |
+ =====+=
+   mot     : _ _ _ _ _
+   Erreurs : 0 sur 7
+   essayées: 
+   message : Trouve le mot ! Clique sur les lettres, ou tape-les au clavier.
+   boutons cachés :
+
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+ =====+=
+   mot     : H I B _ _
+   Erreurs : 1 sur 7
+   essayées: H Z I B 
+   message : Bien vu, il y a un B !
+   boutons cachés : B H I Z
+
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+ =====+=
+   mot     : H I B O U
+   Erreurs : 1 sur 7
+   essayées: H Z I B O U 
+   message : Bravo ! Tu as trouve HIBOU !
+   boutons cachés : B H I O U Z
+
+   -- une fois gagnée, plus rien ne joue :
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+ =====+=
+   mot     : H I B O U
+   Erreurs : 1 sur 7
+   essayées: H Z I B O U 
+   message : Bravo ! Tu as trouve HIBOU !
+   boutons cachés : B H I O U Z
+
+== 3. une lettre déjà essayée ne compte pas deux fois ==
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+ =====+=
+   mot     : _ _ _ _ _
+   Erreurs : 1 sur 7
+   essayées: A 
+   message : Tu as deja essaye le A !
+   boutons cachés : A
+
+== 4. au clavier, en minuscule ==
+  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+ =====+=
+   mot     : _ _ _ E E
+   Erreurs : 1 sur 7
+   essayées: A E 
+   message : Bien vu, il y a un E !
+   boutons cachés : A E
+
+== 5. une partie perdue : FUSEE, sept erreurs, le mot dévoilé ==
+  +---+
+  |   |
+  X   |
+ /|\  |
+ / \  |
+      |
+ =====+=
+   mot     : F U S E E
+   Erreurs : 7 sur 7
+   essayées: A E B C D G H I 
+   message : Pendu ! Le mot etait FUSEE.
+   boutons cachés : A B C D E G H I
+
+== 6. « Nouvelle partie » remet tout à zéro ==
+   erreurs remises à zéro : oui
+   lettres effacées       : oui
+   boutons tous revenus   : oui

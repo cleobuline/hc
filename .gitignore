@@ -53,6 +53,13 @@ tests/.travail/
 #     Torture3.stack
 Torture3.stack
 
+# Et la pile d'exemple du pendu, livrée dans le DMG, écrite par le harnais
+# pendu (docs/livraison.md, étape 6) :
+#
+#   tests/.travail/bin/pendu tests/donnees/pendu_pile.txt Pendu.stack
+Pendu.stack
+dmg/
+
 # Et les scripts DÉNUDÉS, produits par tests/denude.sh pour être recopiés dans
 # Basilisk :
 #
