@@ -20,6 +20,7 @@ arguments() {
     tortureh)           echo "donnees/torture_bouton.txt donnees/torture_pile.txt" ;;
     torture2|torturecasse) echo "donnees/torture2_bouton.txt donnees/torture2_pile.txt" ;;
     torture3)           echo "donnees/torture3_bouton.txt donnees/torture3_pile.txt donnees/torture3_essais.txt" ;;
+    pendu)              echo "donnees/pendu_pile.txt" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;
     # Trois harnais cherchaient leur donnée dans le répertoire courant : elle

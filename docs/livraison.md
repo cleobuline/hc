@@ -129,8 +129,20 @@ première ouverture, et un utilisateur sans réseau est bloqué.
 
 ### 6. Le DMG
 
-    hdiutil create -volname "HC <version>" -srcfolder HC.app \
+Le DMG contient l'application ET la pile d'exemple du pendu. On les met
+dans un dossier, et c'est ce dossier qu'on emballe :
+
+    make verifie && ./tests/lance.sh pendu          # le jeu passe son test
+    tests/.travail/bin/pendu tests/donnees/pendu_pile.txt Pendu.stack
+    mkdir -p dmg && cp -R HC.app Pendu.stack dmg/
+    hdiutil create -volname "HC <version>" -srcfolder dmg \
       -ov -format UDZO HC-<version>.dmg
+
+La pile est ENGENDRÉE à chaque livraison, depuis ses sources
+(tests/donnees/pendu_pile.txt et tests/harnais/pendu.c), et jamais
+versionnée : un fichier engendré posé à côté de ses sources dérive dès la
+première modification, sans que rien ne le signale. Le harnais « pendu » joue
+quelques parties avant qu'on l'écrive.
 
 Puis le signer et l'agrafer lui aussi — sinon c'est le DMG qui déclenche
 l'alerte, même si l'app à l'intérieur est irréprochable :
