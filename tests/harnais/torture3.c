@@ -6,8 +6,11 @@
  *     expression ==> attendu          (attendu « ? » : non mesuré ;
  *                                      « ERREUR » : doit lever)
  *
- * — et un bouton TORTURE qui les passe toutes par « do », chacune dans son
- * gestionnaire, et écrit ok / ECHEC / ? dans le champ « R ». Les essais vivent
+ * — et un bouton TORTURE qui donne le départ : la pile les passe toutes
+ * par « do », dans « on idle », et écrit ok / ECHEC / ? dans le champ « R ».
+ * Dans « idle » parce que dans HyperCard une erreur arrête TOUT le script,
+ * boucle comprise — mesuré le 1er octobre ; chaque « idle » est un script
+ * neuf. Les essais vivent
  * dans le CHAMP et non dans un script pour que l'utilisatrice puisse en
  * ajouter à la main, sans toucher à rien d'autre.
  *
@@ -70,7 +73,7 @@ static Object *pose_bouton(Object *ou, const char *nom,
 }
 
 static char *src_bouton, *src_pile, *src_essais;
-static Object *g_bouton, *g_rapport;
+static Object *g_bouton, *g_rapport, *g_carte;
 
 /* La pile, montée à l'identique pour le test et pour le fichier livré. */
 static Object *monte(void)
@@ -104,6 +107,7 @@ static Object *monte(void)
 
     hc_set_script(st, src_pile);
     hc_set_current_card(c1);
+    g_carte = c1;
     return st;
 }
 
@@ -123,6 +127,15 @@ static void joue(int fd, int sans_v1)
     if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(2);
     Object *st = monte();
     hc_send(g_bouton, "mouseUp");
+    /* LES ESSAIS SE JOUENT DANS « on idle » (script de la pile) : le bouton
+     * ne fait que donner le départ. On envoie donc « idle » comme le fait
+     * l'application, jusqu'au bilan — et pas indéfiniment : une pile qui ne
+     * conclurait jamais doit se voir, pas bloquer la suite. */
+    for (int i = 0; i < 1000; i++) {
+        const char *r = g_rapport && g_rapport->contents ? g_rapport->contents : "";
+        if (strstr(r, "==============================")) break;
+        hc_send(g_carte, "idle");
+    }
     const char *r = (g_rapport && g_rapport->contents) ? g_rapport->contents : "";
     size_t n = strlen(r);
     if (write(fd, r, n) != (ssize_t)n) _exit(3);

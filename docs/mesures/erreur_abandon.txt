@@ -1,0 +1,113 @@
+MESURE — UNE ERREUR ARRÊTE-T-ELLE TOUT LE SCRIPT ?
+=================================================
+
+C'est le point 12 de l'audit (« une faute dans une fonction utilisateur ne
+remonte pas à l'appelant ») et les points 9 et 10 du troisième audit.
+
+PREMIER RELEVÉ, DANS HYPERCARD (Basilisk II), 1er octobre, étiqueté par
+l'utilisatrice. La pile Torture3, première version : une boucle dans le
+« on mouseUp » du bouton, qui appelait pour chaque ligne un gestionnaire
+« calcule » faisant « do "put " & e & " into gR" ». À la première ligne qui
+devait lever — « "abc" + 1 » —, HyperCard a écrit :
+
+    Expected number here.
+
+et le rapport s'est ARRÊTÉ là : plus une ligne d'essai, pas de bilan. L'erreur
+a donc emporté « calcule » ET la boucle du mouseUp qui l'avait appelé.
+
+Les quatre valeurs relevées avant l'arrêt sont identiques à celles de HC :
+« -7 div 2 » -3, « -7 mod 3 » -1, « 2 ^ 3 ^ 2 » 512, « -2 ^ 2 » 4.
+
+CE QUE FAIT HC, mesuré dans le noyau le même jour :
+
+    erreur dans un « do »          arrête le gestionnaire qui fait le do,
+                                   PAS ceux qui l'ont appelé
+    erreur dans une commande       « plante » s'arrête, l'appelant CONTINUE
+    erreur dans une fonction       « f » s'arrête, l'appelant continue avec
+                                   une valeur VIDE
+
+Le relevé de HyperCard ne tranche que le premier cas, et l'erreur y était
+dans un « do ». Les deux autres ne sont PAS mesurés.
+
+
+LE BANC — à jouer DANS HYPERCARD (Basilisk II)
+----------------------------------------------
+
+Une pile neuve, une carte, quatre boutons. Ne PAS poser lockErrorDialogs :
+on veut le comportement ordinaire. Au dialogue d'erreur, cliquer « Cancel ».
+
+  bouton « Commande » :
+
+    on mouseUp
+      global gJ
+      put "1 avant" into gJ
+      plante
+      put " / 3 après plante" after gJ
+    end mouseUp
+
+    on plante
+      global gJ
+      put " / 2 dans plante" after gJ
+      get "abc" + 1
+      put " / 2b après l'erreur" after gJ
+    end plante
+
+  bouton « Fonction » :
+
+    on mouseUp
+      global gJ
+      put "1 avant" into gJ
+      get f()
+      put " / 3 après f, it=[" & it & "]" after gJ
+    end mouseUp
+
+    function f
+      global gJ
+      put " / 2 dans f" after gJ
+      get "abc" + 1
+      put " / 2b après l'erreur" after gJ
+      return "rendu"
+    end f
+
+  bouton « Do » :
+
+    on mouseUp
+      global gJ
+      put "1 avant" into gJ
+      faitDo
+      put " / 3 après faitDo" after gJ
+    end mouseUp
+
+    on faitDo
+      global gJ
+      do "get " & quote & "abc" & quote & " + 1"
+      put " / 2b après le do" after gJ
+    end faitDo
+
+  bouton « Journal » :
+
+    on mouseUp
+      global gJ
+      put gJ
+    end mouseUp
+
+LE GESTE : cliquer « Commande », Cancel au dialogue, cliquer « Journal »,
+noter ce que montre la boîte de message. Puis de même avec « Fonction », puis
+« Do ».
+
+CE QUE LE JOURNAL TRANCHE :
+
+    « 1 avant / 2 dans plante »                   tout s'arrête (HyperCard)
+    « 1 avant / 2 dans plante / 3 après plante »  l'appelant continue (HC
+                                                  aujourd'hui)
+
+HC, joué dans le noyau, répond aujourd'hui :
+
+    Commande   1 avant / 2 dans plante / 3 après plante
+    Fonction   1 avant / 2 dans f / 3 après f, it=[]
+    Do         1 avant / 3 après faitDo
+
+RELEVÉS
+-------
+
+  (à venir)

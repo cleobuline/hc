@@ -7,10 +7,10 @@
   ok     10 - - 2  ==>  12
   ok     7 div 2  ==>  3
   ok     7 mod 3  ==>  1
-  ?      -7 div 2  ->  [-3]
-  ?      -7 mod 3  ->  [-1]
-  ?      2 ^ 3 ^ 2  ->  [512]
-  ?      -2 ^ 2  ->  [4]
+  ok     -7 div 2  ==>  -3
+  ok     -7 mod 3  ==>  -1
+  ok     2 ^ 3 ^ 2  ==>  512
+  ok     -2 ^ 2  ==>  4
   ok     1 / 4  ==>  0.25
   ok     "3" + "4"  ==>  7
   ok     empty + 1  ==>  1
@@ -116,7 +116,7 @@
   ok     the number of this card  ==>  1
   ok     the short name of this card  ==>  Atelier
   ok     the short name of (the name of card 2)  ==>  Deux
-  ok     the short name of me  ==>  TORTURE
+  ok     the short name of me  ==>  Torture3
   ok     there is a card "Trois"  ==>  true
   ok     there is no card "Zut"  ==>  true
   ok     there is a card field "A"  ==>  true
@@ -141,14 +141,14 @@
   ok     (1 + 2) & (3 + 4)  ==>  37
 
 ==============================
-111 reussites, aucun echec, 16 a mesurer.
+115 reussites, aucun echec, 12 a mesurer.
 
 == les erreurs levees en chemin (celles des lignes ERREUR sont VOULUES) ==
-     !! un nombre est attendu ici (v3, ligne 63 de button "TORTURE".calcule) (× 2)
-     !! fonction inconnue : pasLa (v3, ligne 63 de button "TORTURE".calcule)
-     !! objet introuvable (v3, ligne 63 de button "TORTURE".calcule) (× 3)
-     !! propriété ou fonction inconnue : zorglub (v3, ligne 63 de button "TORTURE".calcule)
-     !! propriété inconnue (v3, ligne 63 de button "TORTURE".calcule)
+     !! un nombre est attendu ici (v3, ligne 165 de stack "Torture3".evalue) (× 2)
+     !! fonction inconnue : pasLa (v3, ligne 165 de stack "Torture3".evalue)
+     !! objet introuvable (v3, ligne 165 de stack "Torture3".evalue) (× 3)
+     !! propriété ou fonction inconnue : zorglub (v3, ligne 165 de stack "Torture3".evalue)
+     !! propriété inconnue (v3, ligne 165 de stack "Torture3".evalue)
 
 ───── ce qui change sans lui ─────
   rien : la v3 seule rend le même rapport, ligne pour ligne

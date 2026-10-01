@@ -20,46 +20,20 @@
 --  LA COMPARAISON SE FAIT AVEC « is », donc sans tenir compte des
 --  majuscules et en comparant les nombres comme des nombres : 14 et
 --  14.0 sont egaux, « B » et « b » aussi.
+--
+--  CE BOUTON NE FAIT QUE DONNER LE DEPART : les essais se jouent dans
+--  « on idle », dans le script de la pile. C'est ce qui permet a la pile
+--  de survivre dans HyperCard, ou une erreur arrete TOUT le script — la
+--  boucle qui l'a appelee comprise. Mesure le 1er octobre : la premiere
+--  version, une boucle dans ce mouseUp, s'arretait net a la premiere
+--  ligne « ERREUR ».
 -- ════════════════════════════════════════════════════════════════════
 
 on mouseUp
+  global gTorture, gLigne, gEnCours
   razCompteurs
-  set the lockErrorDialogs to true
-  put card field "Essais" of card "Atelier" into lesEssais
-  repeat with i = 1 to the number of lines of lesEssais
-    put line i of lesEssais into l
-    if l is empty then next repeat
-    if char 1 to 2 of l is "--" then
-      titre char 3 to length(l) of l
-      next repeat
-    end if
-    put offset(" ==> ", l) into p
-    if p is 0 then
-      journal "  ???    ligne " & i & " sans « ==> » : " & l
-      next repeat
-    end if
-    essai char 1 to p - 1 of l, char p + 5 to length(l) of l
-  end repeat
-  bilan
+  put 1 into gLigne
+  put empty into gEnCours
+  put "marche" into gTorture
+  put "torture en cours..."
 end mouseUp
-
--- Un essai, et son verdict.
-on essai e, attendu
-  global gR, gFini
-  put false into gFini
-  put empty into gR
-  calcule e
-  if gFini is true then put gR into obtenu
-  else put "ERREUR" into obtenu
-  if attendu is "?" then note e, obtenu
-  else egal e & "  ==>  " & attendu, obtenu, attendu
-end essai
-
--- LE CALCUL VIT DANS SON PROPRE GESTIONNAIRE : une erreur arrete
--- celui-ci, pas la boucle. « gFini » ne passe a true que si la ligne
--- d'avant est allee au bout.
-on calcule e
-  global gR, gFini
-  do "put " & e & " into gR"
-  put true into gFini
-end calcule

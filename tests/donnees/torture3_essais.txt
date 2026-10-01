@@ -4,10 +4,10 @@
 10 - - 2 ==> 12
 7 div 2 ==> 3
 7 mod 3 ==> 1
--7 div 2 ==> ?
--7 mod 3 ==> ?
-2 ^ 3 ^ 2 ==> ?
--2 ^ 2 ==> ?
+-7 div 2 ==> -3
+-7 mod 3 ==> -1
+2 ^ 3 ^ 2 ==> 512
+-2 ^ 2 ==> 4
 1 / 4 ==> 0.25
 "3" + "4" ==> 7
 empty + 1 ==> 1
@@ -109,7 +109,7 @@ the short name of card (1 + 2) ==> Trois
 the number of this card ==> 1
 the short name of this card ==> Atelier
 the short name of (the name of card 2) ==> Deux
-the short name of me ==> TORTURE
+the short name of me ==> Torture3
 there is a card "Trois" ==> true
 there is no card "Zut" ==> true
 there is a card field "A" ==> true
