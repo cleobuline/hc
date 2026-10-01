@@ -46,6 +46,13 @@ tests/.travail/
 #   tests/.travail/bin/torture2 tests/donnees/torture2_bouton.txt \
 #                              tests/donnees/torture2_pile.txt  torture.stack
 
+# Même règle pour la torture des expressions, écrite par le harnais torture3 :
+#
+#   tests/.travail/bin/torture3 tests/donnees/torture3_bouton.txt \
+#     tests/donnees/torture3_pile.txt tests/donnees/torture3_essais.txt \
+#     Torture3.stack
+Torture3.stack
+
 # Et les scripts DÉNUDÉS, produits par tests/denude.sh pour être recopiés dans
 # Basilisk :
 #

@@ -1,0 +1,85 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE 3 — LES EXPRESSIONS TORDUES — LE SCRIPT DE LA PILE
+--
+--  L'echafaudage du rapport (journal, titre, egal, note, bilan) et deux
+--  fonctions de la pile dont les essais se servent : maF et deux.
+-- ════════════════════════════════════════════════════════════════════
+
+-- Une ligne de plus dans le rapport, ecrite TOUT DE SUITE : si un essai
+-- arrete tout, ce qui precede est deja dans le champ.
+on journal texte
+  put texte & return after card field "R" of card "Atelier"
+end journal
+
+on titre t
+  if card field "R" of card "Atelier" is not empty then journal empty
+  journal "== " & t
+end titre
+
+-- Un essai qui a une reponse attendue : en cas d'echec, les DEUX valeurs.
+on egal quoi, obtenu, attendu
+  global gOK, gKO
+  if obtenu is attendu then
+    journal "  ok     " & quoi
+    add 1 to gOK
+  else
+    journal "  ECHEC  " & quoi
+    journal "         attendu [" & attendu & "]"
+    journal "         obtenu  [" & obtenu & "]"
+    add 1 to gKO
+  end if
+end egal
+
+-- CE QUI N'EST PAS MESURE NE SE COMPTE PAS : la valeur s'affiche sans
+-- verdict, a comparer dans HyperCard (Basilisk II).
+on note quoi, valeur
+  global gNotes
+  journal "  ?      " & quoi & "  ->  [" & valeur & "]"
+  add 1 to gNotes
+end note
+
+on bilan
+  global gOK, gKO, gNotes
+  journal empty
+  journal "=============================="
+  if gKO is 0 then
+    journal gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+    put gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+  else
+    journal gOK & " reussites, " & gKO & " ECHECS, " & gNotes & " a mesurer."
+    put gOK & " reussites, " & gKO & " ECHECS — voir le champ R."
+  end if
+end bilan
+
+on razCompteurs
+  global gOK, gKO, gNotes
+  put 0 into gOK
+  put 0 into gKO
+  put 0 into gNotes
+  put empty into card field "R" of card "Atelier"
+end razCompteurs
+
+-- Les erreurs VOULUES (les lignes « ==> ERREUR ») n'ouvrent pas de
+-- dialogue : « lockErrorDialogs » les detourne ici, et elles s'ecrivent
+-- a la fin du rapport, apres le bilan — elles sont videes a la sortie du
+-- gestionnaire le plus exterieur.
+on errorDialog quoi
+  journal empty
+  journal "== les erreurs levees en chemin (celles des lignes ERREUR sont VOULUES) =="
+  repeat with i = 1 to the number of lines of quoi
+    journal "  " & line i of quoi
+  end repeat
+  set the lockErrorDialogs to false
+end errorDialog
+
+
+-- ---- les fonctions de la pile que les essais appellent ------------
+
+function maF x
+  return x & "!"
+end maF
+
+-- Rend le nombre de parametres, puis le deuxieme : « deux(a,b,c) » -> 3:b
+function deux
+  return the paramCount & ":" & param(2)
+end deux

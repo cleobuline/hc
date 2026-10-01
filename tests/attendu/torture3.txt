@@ -1,0 +1,154 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+───── champ « R », avec l'ancien moteur ─────
+==  Les operateurs et leur priorite
+  ok     2 + 3 * 4  ==>  14
+  ok     (2 + 3) * 4  ==>  20
+  ok     10 - - 2  ==>  12
+  ok     7 div 2  ==>  3
+  ok     7 mod 3  ==>  1
+  ?      -7 div 2  ->  [-3]
+  ?      -7 mod 3  ->  [-1]
+  ?      2 ^ 3 ^ 2  ->  [512]
+  ?      -2 ^ 2  ->  [4]
+  ok     1 / 4  ==>  0.25
+  ok     "3" + "4"  ==>  7
+  ok     empty + 1  ==>  1
+  ok     "abc" + 1  ==>  ERREUR
+  ok     not true  ==>  false
+  ok     true and false or true  ==>  true
+  ok     not (1 = 2) and 3 > 2  ==>  true
+  ok     "a" & "b" && "c"  ==>  ab c
+  ok     1 < 2  ==>  true
+  ok     "10" < "9"  ==>  false
+  ok     "abc" < "abd"  ==>  true
+  ok     "a" is in "chat"  ==>  true
+  ok     "chat" contains "h"  ==>  true
+  ok     "x" is not in "chat"  ==>  true
+  ok     3 is a number  ==>  true
+  ok     "x" is a number  ==>  false
+  ok     "5,5" is within "0,0,10,10"  ==>  true
+  ok     1 = 1.0  ==>  true
+  ok     "1" is "1.0"  ==>  true
+  ok     2 <> 3  ==>  true
+  ok     5 >= 5  ==>  true
+
+==  Les morceaux
+  ok     char 2 to 4 of "abcdef"  ==>  bcd
+  ok     word 2 of "un  deux trois"  ==>  deux
+  ok     the number of words of "  a b  "  ==>  2
+  ok     last item of "a,b,c"  ==>  c
+  ok     the length of item 2 of "a,,c"  ==>  0
+  ok     the length of char 10 of "abc"  ==>  0
+  ok     char 1 of word 2 of "ab cd"  ==>  c
+  ok     line 2 of ("x" & return & "y")  ==>  y
+  ok     the number of lines of ("a" & return & "b" & return)  ==>  2
+  ?      the number of items of "a,b,"  ->  [3]
+  ok     word 2 to 3 of "a b c d"  ==>  b c
+  ok     the last word of "il etait une fois"  ==>  fois
+  ok     the second item of "x,y,z"  ==>  y
+  ?      middle item of "a,b,c"  ->  [b]
+  ok     any item of "q,q,q"  ==>  q
+  ok     the number of chars of empty  ==>  0
+  ok     char 2 of word 3 of "un deux trois"  ==>  r
+  ok     item 2 of line 2 of ("a,b" & return & "c,d")  ==>  d
+  ok     offset("c", "abc")  ==>  3
+  ok     offset("z", "abc")  ==>  0
+  ok     the length of ("ab" & "cd")  ==>  4
+
+==  Les fonctions, sous les deux formes
+  ok     sqrt(16)  ==>  4
+  ok     the sqrt of 16  ==>  4
+  ok     the abs of -3  ==>  3
+  ok     abs(-3) + the abs of -4  ==>  7
+  ok     the sqrt of 4 + 5  ==>  7
+  ok     trunc(-2.7)  ==>  -2
+  ?      round(2.5)  ->  [3]
+  ?      round(-2.5)  ->  [-3]
+  ok     max(3, 9, 2)  ==>  9
+  ok     the max of "3,9,2"  ==>  9
+  ok     average(1, 2, 3)  ==>  2
+  ok     min(4)  ==>  4
+  ok     sum(1, 2, 3, 4)  ==>  10
+  ok     charToNum("A")  ==>  65
+  ok     the charToNum of "A"  ==>  65
+  ok     the numToChar of 66  ==>  B
+  ok     numToChar(charToNum("z"))  ==>  z
+  ok     value("2 * 3")  ==>  6
+  ok     the value of "1 + 1"  ==>  2
+  ok     random(1)  ==>  1
+  ok     the random of 1  ==>  1
+  ok     length(empty)  ==>  0
+  ?      offset("", "abc")  ->  [0]
+  ?      sqrt(empty)  ->  [0]
+  ?      sqrt("abc")  ->  [ERREUR]
+  ?      length()  ->  [0]
+  ?      sqrt(4, 9)  ->  [2]
+
+==  Les fonctions de la pile (maF et deux, dans le script de la pile)
+  ok     maF("a")  ==>  a!
+  ok     maF(maF("a"))  ==>  a!!
+  ok     the length of maF("ab")  ==>  3
+  ok     maF(2 + 3)  ==>  5!
+  ok     maF("x") & maF("y")  ==>  x!y!
+  ok     maF(char 2 of "abc")  ==>  b!
+  ok     deux("a", "b", "c")  ==>  3:b
+  ok     deux()  ==>  0:
+  ok     deux(maF(1), maF(2))  ==>  2:2!
+  ok     value("maF(" & quote & "q" & quote & ")")  ==>  q!
+  ?      the maF of "ok"  ->  [ok!]
+  ok     pasLa(1)  ==>  ERREUR
+
+==  Les objets et les comptages
+  ok     the number of cards  ==>  4
+  ok     the number of cards of bg "Un"  ==>  2
+  ok     the number of cards of this bg  ==>  2
+  ok     the number of bgs  ==>  2
+  ok     the number of bgs of this stack  ==>  2
+  ok     the number of card fields  ==>  3
+  ok     the number of card buttons  ==>  2
+  ok     the number of buttons of card "Deux"  ==>  0
+  ok     the short name of card 2  ==>  Deux
+  ok     the short name of card 1 of bg "Deux"  ==>  Deux
+  ok     the short name of card 2 of bg "Deux"  ==>  Quatre
+  ok     the short name of last card of bg "Un"  ==>  Trois
+  ok     the short name of card (1 + 2)  ==>  Trois
+  ok     the number of this card  ==>  1
+  ok     the short name of this card  ==>  Atelier
+  ok     the short name of (the name of card 2)  ==>  Deux
+  ok     the short name of me  ==>  TORTURE
+  ok     there is a card "Trois"  ==>  true
+  ok     there is no card "Zut"  ==>  true
+  ok     there is a card field "A"  ==>  true
+  ok     card field "A"  ==>  alpha beta gamma
+  ok     word 2 of card field "A"  ==>  beta
+  ok     the number of words of card field 1  ==>  3
+  ok     the short name of card field 1  ==>  A
+  ?      the number of cards of bg 9  ->  [ERREUR]
+  ?      the number of cards of card 1  ->  [ERREUR]
+  ok     card "Zut"  ==>  ERREUR
+  ok     the zorglub of 3  ==>  ERREUR
+  ok     the zorglub of me  ==>  ERREUR
+
+==  Les pieges du texte
+  ok     quote & "a" & quote  ==>  "a"
+  ok     the number of chars of (quote & quote)  ==>  2
+  ok     "ab" & empty & "cd"  ==>  abcd
+  ok     the length of (space & "x")  ==>  2
+  ok     "5" & 5 + 1  ==>  56
+  ok     1 + 2 & 3  ==>  33
+  ok     "x" & 2 * 3  ==>  x6
+  ok     (1 + 2) & (3 + 4)  ==>  37
+
+==============================
+111 reussites, aucun echec, 16 a mesurer.
+
+== les erreurs levees en chemin (celles des lignes ERREUR sont VOULUES) ==
+     !! un nombre est attendu ici (v3, ligne 63 de button "TORTURE".calcule) (× 2)
+     !! fonction inconnue : pasLa (v3, ligne 63 de button "TORTURE".calcule)
+     !! objet introuvable (v3, ligne 63 de button "TORTURE".calcule) (× 3)
+     !! propriété ou fonction inconnue : zorglub (v3, ligne 63 de button "TORTURE".calcule)
+     !! propriété inconnue (v3, ligne 63 de button "TORTURE".calcule)
+
+───── ce qui change sans lui ─────
+  rien : la v3 seule rend le même rapport, ligne pour ligne
