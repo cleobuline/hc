@@ -1,5 +1,28 @@
 # HC — notes de travail
 
+## ON SE PARLE EN FRANÇAIS, TOUJOURS
+
+Toutes les réponses à l'utilisatrice sont en FRANÇAIS — les explications, les
+questions, les comptes rendus, les tableaux. Pas une phrase en anglais, même
+après un long passage d'outils, même après un résumé de contexte : c'est
+précisément là que les rechutes sont arrivées, plusieurs fois le 1er octobre,
+et elles l'ont mise en colère à juste titre. Elle est plus Molière que
+Shakespeare.
+
+Les messages de commit sont en français aussi (voir plus bas). Seules les
+notes de version, dans docs/releases/, s'écrivent en anglais.
+
+## « the skipErrors » EST UN SECRET
+
+Propriété propre à HC, ajoutée le 1er octobre à la demande de l'utilisatrice
+(voir g_skip_errors dans hc_core.c et docs/mesures/erreur_abandon.txt) :
+non posée, rien ne change ; « true » saute en silence les lignes fautives ;
+« false » arrête tout le script comme HyperCard.
+
+ELLE NE S'ANNONCE NULLE PART : ni dans les notes de version, ni dans une aide,
+ni dans un README. C'est « notre petit secret », voulu ainsi. Le code, les
+harnais et docs/mesures/ en parlent, et c'est tout.
+
 ## LE CÔTÉ COCOA SE VÉRIFIE, ET IL NE FAUT PAS S'EN PRIVER
 
 Les quinze fichiers `.m` ne se compilent pas dans le conteneur : c'est une
