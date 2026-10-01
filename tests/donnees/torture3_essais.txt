@@ -1,0 +1,133 @@
+-- Les operateurs et leur priorite
+2 + 3 * 4 ==> 14
+(2 + 3) * 4 ==> 20
+10 - - 2 ==> 12
+7 div 2 ==> 3
+7 mod 3 ==> 1
+-7 div 2 ==> -3
+-7 mod 3 ==> -1
+2 ^ 3 ^ 2 ==> 512
+-2 ^ 2 ==> 4
+1 / 4 ==> 0.25
+"3" + "4" ==> 7
+empty + 1 ==> 1
+"abc" + 1 ==> ERREUR
+not true ==> false
+true and false or true ==> true
+not (1 = 2) and 3 > 2 ==> true
+"a" & "b" && "c" ==> ab c
+1 < 2 ==> true
+"10" < "9" ==> false
+"abc" < "abd" ==> true
+"a" is in "chat" ==> true
+"chat" contains "h" ==> true
+"x" is not in "chat" ==> true
+3 is a number ==> true
+"x" is a number ==> false
+"5,5" is within "0,0,10,10" ==> true
+1 = 1.0 ==> true
+"1" is "1.0" ==> true
+2 <> 3 ==> true
+5 >= 5 ==> true
+-- Les morceaux
+char 2 to 4 of "abcdef" ==> bcd
+word 2 of "un  deux trois" ==> deux
+the number of words of "  a b  " ==> 2
+last item of "a,b,c" ==> c
+the length of item 2 of "a,,c" ==> 0
+the length of char 10 of "abc" ==> 0
+char 1 of word 2 of "ab cd" ==> c
+line 2 of ("x" & return & "y") ==> y
+the number of lines of ("a" & return & "b" & return) ==> 2
+the number of items of "a,b," ==> 2
+word 2 to 3 of "a b c d" ==> b c
+the last word of "il etait une fois" ==> fois
+the second item of "x,y,z" ==> y
+middle item of "a,b,c" ==> b
+any item of "q,q,q" ==> q
+the number of chars of empty ==> 0
+char 2 of word 3 of "un deux trois" ==> r
+item 2 of line 2 of ("a,b" & return & "c,d") ==> d
+offset("c", "abc") ==> 3
+offset("z", "abc") ==> 0
+the length of ("ab" & "cd") ==> 4
+-- Les fonctions, sous les deux formes
+sqrt(16) ==> 4
+the sqrt of 16 ==> 4
+the abs of -3 ==> 3
+abs(-3) + the abs of -4 ==> 7
+the sqrt of 4 + 5 ==> 7
+trunc(-2.7) ==> -2
+round(2.5) ==> 2
+round(-2.5) ==> -2
+max(3, 9, 2) ==> 9
+the max of "3,9,2" ==> ?
+average(1, 2, 3) ==> 2
+min(4) ==> 4
+sum(1, 2, 3, 4) ==> 10
+charToNum("A") ==> 65
+the charToNum of "A" ==> 65
+the numToChar of 66 ==> B
+numToChar(charToNum("z")) ==> z
+value("2 * 3") ==> 6
+the value of "1 + 1" ==> 2
+random(1) ==> 1
+the random of 1 ==> 1
+length(empty) ==> 0
+offset("", "abc") ==> 0
+sqrt(empty) ==> 0
+sqrt("abc") ==> ERREUR
+length() ==> ERREUR
+sqrt(4, 9) ==> ERREUR
+-- Les fonctions de la pile (maF et deux, dans le script de la pile)
+maF("a") ==> a!
+maF(maF("a")) ==> a!!
+the length of maF("ab") ==> 3
+maF(2 + 3) ==> 5!
+maF("x") & maF("y") ==> x!y!
+maF(char 2 of "abc") ==> b!
+deux("a", "b", "c") ==> 3:b
+deux() ==> 0:
+deux(maF(1), maF(2)) ==> 2:2!
+value("maF(" & quote & "q" & quote & ")") ==> q!
+the maF of "ok" ==> ?
+pasLa(1) ==> ERREUR
+-- Les objets et les comptages
+the number of cards ==> 4
+the number of cards of bg "Un" ==> 2
+the number of cards of this bg ==> 2
+the number of bgs ==> 2
+the number of bgs of this stack ==> 2
+the number of card fields ==> 3
+the number of card buttons ==> 2
+the number of buttons of card "Deux" ==> 0
+the short name of card 2 ==> Deux
+the short name of card 1 of bg "Deux" ==> Deux
+the short name of card 2 of bg "Deux" ==> Quatre
+the short name of last card of bg "Un" ==> Trois
+the short name of card (1 + 2) ==> Trois
+the number of this card ==> 1
+the short name of this card ==> Atelier
+the short name of (the name of card 2) ==> Deux
+the short name of me ==> Torture3
+there is a card "Trois" ==> true
+there is no card "Zut" ==> true
+there is a card field "A" ==> true
+card field "A" ==> alpha beta gamma
+word 2 of card field "A" ==> beta
+the number of words of card field 1 ==> 3
+the short name of card field 1 ==> A
+the number of cards of bg 9 ==> ERREUR
+the number of cards of card 1 ==> ERREUR
+card "Zut" ==> ERREUR
+the zorglub of 3 ==> ERREUR
+the zorglub of me ==> ERREUR
+-- Les pieges du texte
+quote & "a" & quote ==> "a"
+the number of chars of (quote & quote) ==> 2
+"ab" & empty & "cd" ==> abcd
+the length of (space & "x") ==> 2
+"5" & 5 + 1 ==> 56
+1 + 2 & 3 ==> 33
+"x" & 2 * 3 ==> x6
+(1 + 2) & (3 + 4) ==> 37

@@ -1,0 +1,39 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE 3 — LES EXPRESSIONS TORDUES — LE SCRIPT DU BOUTON « TORTURE »
+--
+--  Les essais ne sont PAS dans ce script : ils sont dans le champ
+--  « Essais », une expression par ligne, sous la forme
+--
+--      expression ==> attendu
+--
+--  et l'on peut en AJOUTER a la main, sans toucher a rien d'autre.
+--
+--    attendu ordinaire   la ligne dit « ok » ou « ECHEC » (les deux
+--                        valeurs suivent)
+--    ?                   personne n'a mesure ce qu'HyperCard rend : la
+--                        valeur s'affiche SANS verdict
+--    ERREUR              l'expression DOIT lever une erreur
+--
+--  Une ligne qui commence par « -- » est un titre de section ; une ligne
+--  vide est sautee.
+--
+--  LA COMPARAISON SE FAIT AVEC « is », donc sans tenir compte des
+--  majuscules et en comparant les nombres comme des nombres : 14 et
+--  14.0 sont egaux, « B » et « b » aussi.
+--
+--  CE BOUTON NE FAIT QUE DONNER LE DEPART : les essais se jouent dans
+--  « on idle », dans le script de la pile. C'est ce qui permet a la pile
+--  de survivre dans HyperCard, ou une erreur arrete TOUT le script — la
+--  boucle qui l'a appelee comprise. Mesure le 1er octobre : la premiere
+--  version, une boucle dans ce mouseUp, s'arretait net a la premiere
+--  ligne « ERREUR ».
+-- ════════════════════════════════════════════════════════════════════
+
+on mouseUp
+  global gTorture, gLigne, gEnCours
+  razCompteurs
+  put 1 into gLigne
+  put empty into gEnCours
+  put "marche" into gTorture
+  put "torture en cours..."
+end mouseUp

@@ -337,6 +337,12 @@ static int interrompu_pont(void *d)
     return x->hote.interrompu ? x->hote.interrompu(x->hote.donnees) : 0;
 }
 
+static int saute_erreur_pont(void *d, HctContexte *ctx)
+{
+    HctExec *x = (HctExec *)d;
+    return x->hote.saute_erreur ? x->hote.saute_erreur(x->hote.donnees, ctx) : 0;
+}
+
 static int globale_pont(void *d, const char *nom)
 {
     HctExec *x = (HctExec *)d;
@@ -1476,6 +1482,20 @@ static const HctNoeud *faute_de_ligne(const HctNoeud *bloc, int i)
     return f ? f : faute_soeur(bloc, i);
 }
 
+/* L'instruction qui vient d'échouer est-elle à SAUTER ? Voir saute_erreur
+ * dans hct_eval.h. Jamais pour l'arrêt demandé, qui n'est pas une faute du
+ * script mais une demande d'arrêt de tout. Quand l'hôte dit oui, la faute est
+ * effacée — il l'a déjà dite — et le bloc reprend à l'instruction suivante. */
+static int saute_la_faute(HctExec *x)
+{
+    if (!x->ctx.erreur || x->ctx.erreur == HCT_INTERROMPU) return 0;
+    if (!x->ctx.hote.saute_erreur) return 0;
+    if (!x->ctx.hote.saute_erreur(x->ctx.hote.donnees, &x->ctx)) return 0;
+    x->ctx.erreur = NULL;
+    x->ctx.fautif = NULL;
+    return 1;
+}
+
 /* ------------------------------------------------------------ l'entrée */
 
 void hct_exec(HctExec *x, const HctNoeud *n)
@@ -1494,9 +1514,11 @@ void hct_exec(HctExec *x, const HctNoeud *n)
                 if (faute) {
                     hct_ctx_faute(&x->ctx, faute,
                                   faute->msg ? faute->msg : "instruction invalide");
+                    if (saute_la_faute(x)) continue;
                     return;
                 }
                 hct_exec(x, n->fils[i]);
+                if (x->ctx.erreur && saute_la_faute(x)) continue;
                 if (x->ctx.erreur || x->signal) return;
                 /* UNE PÉNURIE NE SE DÉGUISE PAS EN CHAÎNE VIDE.
                  *
@@ -1730,6 +1752,10 @@ void hct_exec_init(HctExec *x, HctHote hote)
     pont.ecrit_message = hote.ecrit_message ? ecrit_message_pont : NULL;
     pont.lit_message   = hote.lit_message   ? lit_message_pont   : NULL;
     pont.interrompu    = hote.interrompu    ? interrompu_pont    : NULL;
+    /* Et celui-ci, ajouté pour skipErrors, manquait la première fois pour la
+     * raison même que dit le commentaire du dessus : posé dans v3_hote, il
+     * n'arrivait jamais à l'exécuteur, et rien ne sautait. */
+    pont.saute_erreur  = hote.saute_erreur  ? saute_erreur_pont  : NULL;
 
     hct_ctx_init(&x->ctx, pont);
     x->globales = portee_neuve(NULL);

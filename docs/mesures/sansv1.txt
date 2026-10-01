@@ -1,0 +1,146 @@
+MESURE — CE QUE L'ANCIEN MOTEUR D'EXPRESSIONS SERT ENCORE
+=========================================================
+
+La v3 ne rend plus aucune LIGNE à l'ancien interpréteur : une commande
+qu'elle ne connaît pas est refusée avec un message. Mais elle rappelle encore
+son ancien moteur d'EXPRESSIONS — term_value, call_function, parse_expr — à
+trois endroits :
+
+  · v3_recours, le recours d'expression : quand l'évaluateur ne sait pas
+    faire, il reconstitue le texte et le donne à term_value, puis à
+    parse_expr ;
+  · v3_fonction, deux sondes : les fonctions du monde sans argument
+    (V3_V1_FONCTIONS_0) et celles à un argument numérique
+    (V3_V1_FONCTIONS_1).
+
+Pour retirer ce moteur sans rien perdre, il faut savoir ce qu'il sert encore.
+Le relevé (tests/releve.sh) dit COMBIEN de fois on l'appelle ; il ne dit pas
+ce qui CHANGERAIT sans lui. Pour le savoir, on le coupe :
+
+    HC_SANS_V1=1 ./tests/lance.sh --complet
+
+Le réglage est lu une fois par processus (v1_coupe, hc_core.c). Coupé,
+l'ancien moteur est traité comme s'il avait répondu qu'il ne savait pas — sa
+façon de le dire est de rendre le texte de la demande —, et tout ce qui suit,
+les refus comme les fonctions de la pile, se juge sur la v3 seule.
+
+Le réglage disparaîtra avec l'ancien moteur.
+
+LE NOM A DÉJÀ SERVI, et c'est un piège à connaître. HC_SANS_V1 est né le 11
+septembre pour couper l'ancien EXÉCUTEUR DE LIGNES ; celui-ci a été supprimé
+le 13, et le code qui lisait la variable avec lui. Le schéma Xcode partagé
+(HC.xcscheme, 19 septembre) la pose pourtant à 1 : du 13 septembre au 1er
+octobre, elle ne coupait RIEN. Seize jours d'usage « avec HC_SANS_V1=1 » sans
+incident disent donc que la suppression de l'exécuteur n'a rien cassé — ils
+ne disent rien de l'ancien moteur d'expressions, qui répondait pendant tout
+ce temps.
+
+Depuis ce commit, le même schéma coupe le moteur d'expressions à chaque
+lancement depuis Xcode (⌘R). L'application ouverte depuis le Finder, et donc
+celle du DMG, garde l'ancien moteur.
+
+
+PREMIER PASSAGE, 1er octobre, avant tout portage
+------------------------------------------------
+
+265 harnais, 19 changent. Le premier compte rendu, fait sur les diffs que
+lance.sh tronque à huit lignes, annonçait quatre pertes. Relu en entier, ce
+même passage en montrait davantage, et des bancs écrits ensuite pour les
+formes voisines en ont trouvé d'autres, que la suite n'exerçait pas.
+
+PERTES — la v3 seule rend autre chose, ou une erreur, là où l'ancien moteur
+rendait une réponse juste ou défendable :
+
+  · « the number of cards of bg 1 » : 1 au lieu de 2, SANS ERREUR (le
+    comptage tombait sur la propriété « number » de la cible). Le banc des
+    formes voisines : TOUT comptage qui porte une cible tombait — « cards of
+    this stack » 1 au lieu de 4, « buttons of card 2 », « fields of bg 2 »
+    objet introuvable, « bgs of this stack » propriété inconnue. La suite
+    n'en exerçait qu'une.
+  · la forme « the » de charToNum, numToChar, random — objet introuvable.
+    « bilan » les exerce, mais n'écrit que « OK », sans la valeur.
+  · « the maFonction of "ok" », une fonction de la pile sous la forme « the ».
+  · toute fonction du noyau appelée avec un argument de moins ou de trop :
+    « length() », « numToChar() », « sqrt() », « offset("a") », « sqrt(4,9) »
+    — « fonction inconnue : length », faux puisqu'elle existe. Dans
+    « sansargument », cinq lignes et non trois : les deux « témoins » que le
+    harnais croyait servis par la v3 l'étaient par l'ancien moteur.
+  · un argument VIDE d'une fonction de calcul : « sqrt("") », « abs(empty) ».
+
+DÉFAUTS DE L'ANCIEN MOTEUR lui-même, vus en passant :
+
+  · « the number of cards of bg 9 » (deux fonds) et « the number of cards of
+    card 1 » rendaient le total de la pile ;
+  · « sqrt("abc") » valait 0, « exp2("x") » valait 1, alors que « "abc" + 1 »
+    est une faute ;
+  · « the zorglub of 3 » rendait « zorglub of 3 » en clair — avec ou sans
+    lui, la règle « nom inconnu = son propre texte » vivant encore là ;
+  · « the charToNum of ("a") » levait une erreur d'analyse, PUIS rendait 0 ;
+    même chose pour une fonction de la pile, « the maF of ("o" & "k") »
+    rendant « ! » : le texte qu'on lui reconstitue perd sa parenthèse
+    fermante. La v3 seule rend « ok! ». Celui-là reste tant que l'ancien
+    moteur est là, la v3 ne passant qu'après lui ;
+  · dans « appel2 » et « test_recours », il ENVOYAIT un message parasite —
+    « width », « hilite » — en cherchant une fonction de ce nom ;
+  · ses erreurs doublaient celles de la v3 : « objet introuvable » deux fois
+    de plus, sur sept harnais.
+
+
+CE QUI A ÉTÉ PORTÉ
+------------------
+
+  · le comptage avec cible : v3_nombre_objets résout la cible et compte
+    dedans ; une cible absente ou qui ne contient pas ce type est un objet
+    introuvable ;
+  · appel_valeurs (hct_eval.c) : « f(x) » et « the f of x » passent par le
+    même code. Les fonctions du noyau à arguments fixes complétaient
+    d'abord un argument absent par le vide et ignoraient un argument de
+    trop, comme l'ancien moteur ; mesuré ensuite dans HyperCard, c'est une
+    erreur (voir plus bas), et c'en est une désormais. Celles de calcul
+    suivent la règle de l'arithmétique — le vide vaut zéro, un texte est une
+    faute ;
+  · une fonction de la pile sous la forme « the », servie au rang où
+    l'ancien moteur la servait : après les propriétés. Si personne ne répond
+    et que la cible est une CONSTANTE — « the zorglub of 3 » —, « propriété
+    ou fonction inconnue : zorglub ». Une variable, un morceau, un calcul
+    gardent leur sort d'avant : ils peuvent désigner un objet, et les règles
+    voisines n'ont été élargies qu'aux cas mesurés.
+
+Le harnais « sansv1 » joue chacun de ces cas avec et sans l'ancien moteur,
+dans deux processus, et signale toute réponse qui diffère. Une section témoin
+y montre les écarts VOULUS — là où l'ancien moteur se trompe —, ce qui
+prouve au passage que le réglage coupe bien.
+
+MESURÉ ENSUITE DANS HYPERCARD (Basilisk II), le 1er octobre, par la pile
+Torture3 — voir docs/mesures/torture3.txt :
+
+    length()                        erreur   (HC rendait 0 ; corrigé)
+    sqrt(4, 9)                      erreur   (HC rendait 2 ; corrigé)
+    sqrt("abc")                     erreur   (comme HC)
+    sqrt(empty)                     0        (comme HC)
+    the maF of "ok"                 erreur   (HC rend « ok! » — à décider)
+    the number of cards of bg 9     erreur   (comme HC)
+    the number of cards of card 1   erreur   (comme HC)
+
+
+DEUXIÈME PASSAGE, 1er octobre, après portage
+--------------------------------------------
+
+    HC_SANS_V1=1 ./tests/lance.sh --complet
+
+265 harnais, 16 changent, et aucun ne perd une réponse :
+
+  · fonctions1, navharn3, quelgest, test_exercice, test_exercice2, test_v3e,
+    bilanraz : les compteurs du relevé seulement ;
+  · cibleabsente, designateurcalcule, idcouche, ordinaux, refobjets,
+    sanscarte : l'erreur de l'ancien moteur, qui doublait celle de la v3,
+    disparaît ;
+  · appel2, test_recours : le message parasite disparaît aussi ;
+  · synonymes : « bg(21) » et « bkgnd(21) » rendaient le fond COURANT — il n'y
+    a pas de fond 21 — et deviennent « objet introuvable », comme « bgs(21) »
+    l'était déjà. Gardé ainsi.
+
+Sans l'ancien moteur, la suite entière ne perd donc plus rien. Elle ne couvre
+pas pour autant toutes les piles de 1987 : une tournure qu'aucun harnais
+n'emploie se perdrait en silence le jour où on le retire. C'est l'objet de
+l'étape suivante — rejouer de vraies piles, l'ancien moteur coupé.

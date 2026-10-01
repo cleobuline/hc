@@ -1,0 +1,192 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TORTURE 3 — LES EXPRESSIONS TORDUES — LE SCRIPT DE LA PILE
+--
+--  L'echafaudage du rapport (journal, titre, egal, note, bilan) et deux
+--  fonctions de la pile dont les essais se servent : maF et deux.
+-- ════════════════════════════════════════════════════════════════════
+
+-- Une ligne de plus dans le rapport, ecrite TOUT DE SUITE : si un essai
+-- arrete tout, ce qui precede est deja dans le champ.
+on journal texte
+  put texte & return after card field "R" of card "Atelier"
+end journal
+
+on titre t
+  if card field "R" of card "Atelier" is not empty then journal empty
+  journal "== " & t
+end titre
+
+-- Un essai qui a une reponse attendue : en cas d'echec, les DEUX valeurs.
+on egal quoi, obtenu, attendu
+  global gOK, gKO
+  if obtenu is attendu then
+    journal "  ok     " & quoi
+    add 1 to gOK
+  else
+    journal "  ECHEC  " & quoi
+    journal "         attendu [" & attendu & "]"
+    journal "         obtenu  [" & obtenu & "]"
+    add 1 to gKO
+  end if
+end egal
+
+-- CE QUI N'EST PAS MESURE NE SE COMPTE PAS : la valeur s'affiche sans
+-- verdict, a comparer dans HyperCard (Basilisk II).
+on note quoi, valeur
+  global gNotes
+  journal "  ?      " & quoi & "  ->  [" & valeur & "]"
+  add 1 to gNotes
+end note
+
+on bilan
+  global gOK, gKO, gNotes, gErreurs
+  journal empty
+  journal "=============================="
+  if gKO is 0 then
+    journal gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+    put gOK & " reussites, aucun echec, " & gNotes & " a mesurer."
+  else
+    journal gOK & " reussites, " & gKO & " ECHECS, " & gNotes & " a mesurer."
+    put gOK & " reussites, " & gKO & " ECHECS — voir le champ R."
+  end if
+  ecritErreurs
+end bilan
+
+on ecritErreurs
+  global gErreurs
+  if gErreurs is empty then exit ecritErreurs
+  journal empty
+  journal "== les erreurs levees en chemin (celles des lignes ERREUR sont VOULUES) =="
+  put gErreurs into lesErreurs
+  put empty into gErreurs
+  repeat with i = 1 to the number of lines of lesErreurs
+    journal line i of lesErreurs
+  end repeat
+end ecritErreurs
+
+on razCompteurs
+  global gOK, gKO, gNotes, gErreurs, gTorture
+  put "arret" into gTorture
+  put 0 into gOK
+  put 0 into gKO
+  put 0 into gNotes
+  put empty into gErreurs
+  put empty into card field "R" of card "Atelier"
+end razCompteurs
+
+-- Les erreurs VOULUES (les lignes « ==> ERREUR ») n'ouvrent pas de
+-- dialogue : « lockErrorDialogs » les detourne ici. Pendant la course on
+-- les GARDE, et le bilan les ecrit a la fin : les ecrire tout de suite
+-- couperait le rapport en morceaux.
+--
+-- Mais le moment ou ce message arrive n'est pas le meme partout : HyperCard
+-- l'envoie a l'erreur, HC a la sortie du gestionnaire le plus exterieur —
+-- donc APRES le bilan, quand toute la course tient dans un seul « idle ».
+-- Course finie, on ecrit donc directement.
+on errorDialog quoi
+  global gErreurs, gTorture
+  repeat with i = 1 to the number of lines of quoi
+    put "  " & line i of quoi & return after gErreurs
+  end repeat
+  if gTorture is not "marche" then ecritErreurs
+end errorDialog
+
+
+-- ---- le moteur de la torture ---------------------------------------
+--
+-- LES ESSAIS SE JOUENT DANS « on idle », ET NON DANS UNE BOUCLE DU BOUTON.
+--
+-- Dans HyperCard, une erreur arrete TOUT le script : le gestionnaire ou
+-- elle tombe, et tous ceux qui l'ont appele. Mesure le 1er octobre : la
+-- premiere version, une boucle dans le mouseUp du bouton, s'est arretee a
+-- la premiere ligne « ERREUR », sans bilan. Chaque « idle », lui, est un
+-- script NEUF : l'erreur emporte le cycle en cours, pas le suivant.
+--
+-- gEnCours porte la ligne qu'on essaie. Si l'essai va au bout, il est
+-- vide en sortant ; si une erreur emporte le cycle, il reste plein, et le
+-- cycle suivant sait que cette ligne a leve. gFini fait de meme pour un
+-- moteur ou l'erreur n'arrete QUE le gestionnaire ou elle tombe — c'est ce
+-- que faisait HC jusqu'ici. La pile tourne donc juste des deux cotes.
+
+on idle
+  global gTorture, gLigne, gEnCours
+  if gTorture is not "marche" then pass idle
+  set the lockErrorDialogs to true
+  if gEnCours is not empty then
+    -- le cycle d'avant a ete emporte par une erreur
+    put gEnCours into l
+    put empty into gEnCours
+    add 1 to gLigne
+    conclut l, "ERREUR"
+  end if
+  put card field "Essais" of card "Atelier" into lesEssais
+  repeat while gLigne <= the number of lines of lesEssais
+    put line gLigne of lesEssais into l
+    if l is empty then
+      add 1 to gLigne
+      next repeat
+    end if
+    if char 1 to 2 of l is "--" then
+      titre char 3 to length(l) of l
+      add 1 to gLigne
+      next repeat
+    end if
+    put l into gEnCours
+    put calcule(l) into obtenu
+    put empty into gEnCours
+    add 1 to gLigne
+    conclut l, obtenu
+  end repeat
+  put "arret" into gTorture
+  bilan
+  -- Pas de « set the lockErrorDialogs to false » ici : les erreurs de ce
+  -- cycle ne sont livrees qu'a sa sortie, et la serrure doit encore
+  -- valoir pour elles. HC la remet a false lui-meme, apres les avoir
+  -- livrees.
+  pass idle
+end idle
+
+-- Le calcul d'une ligne, ou « ERREUR » s'il n'est pas alle au bout.
+function calcule l
+  global gR, gFini
+  put offset(" ==> ", l) into p
+  if p is 0 then return "(ligne sans ==>)"
+  put false into gFini
+  put empty into gR
+  evalue char 1 to p - 1 of l
+  if gFini is true then return gR
+  return "ERREUR"
+end calcule
+
+-- LE CALCUL VIT DANS SON PROPRE GESTIONNAIRE : la ou une erreur n'arrete
+-- que lui, « gFini » reste false et calcule le voit.
+on evalue e
+  global gR, gFini
+  do "put " & e & " into gR"
+  put true into gFini
+end evalue
+
+-- Le verdict d'une ligne.
+on conclut l, obtenu
+  put offset(" ==> ", l) into p
+  if p is 0 then
+    journal "  ???    ligne sans « ==> » : " & l
+    exit conclut
+  end if
+  put char 1 to p - 1 of l into e
+  put char p + 5 to length(l) of l into attendu
+  if attendu is "?" then note e, obtenu
+  else egal e & "  ==>  " & attendu, obtenu, attendu
+end conclut
+
+
+-- ---- les fonctions de la pile que les essais appellent ------------
+
+function maF x
+  return x & "!"
+end maF
+
+-- Rend le nombre de parametres, puis le deuxieme : « deux(a,b,c) » -> 3:b
+function deux
+  return the paramCount & ":" & param(2)
+end deux

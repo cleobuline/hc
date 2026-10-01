@@ -151,6 +151,16 @@ typedef struct {
      * hct_ctx_interrompu. NULL = on ne s'arrête jamais. */
     int (*interrompu)(void *d);
 
+    /* UNE INSTRUCTION VIENT D'ÉCHOUER : faut-il la SAUTER ?
+     *
+     * Appelé par l'exécuteur après chaque instruction d'un bloc qui pose une
+     * faute — jamais pour l'arrêt demandé. Rend 1 si l'hôte a dit l'erreur
+     * lui-même et veut qu'on passe à l'instruction suivante : l'exécuteur
+     * efface alors la faute et continue. Rend 0 pour le comportement
+     * ordinaire, où la faute termine le gestionnaire. C'est « set the
+     * skipErrors to true » dans HC. NULL = on ne saute jamais. */
+    int (*saute_erreur)(void *d, HctContexte *ctx);
+
     /* Écrire dans un objet résolu — le texte d'un champ. `mode` vaut 0 pour
      * remplacer, 1 pour insérer AVANT, 2 pour ajouter APRÈS, comme `put`.
      *

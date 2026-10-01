@@ -1,0 +1,42 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le compte (mesuré : 2) ==
+     put the number of items of "a,b,"
+      2
+
+== 2. ce qui en découle à la lecture ==
+     put "[" & last item of "a,b," & "]"
+      [b]
+     put "[" & item 3 of "a,b," & "]"
+      []
+     put the number of items of "a,b,,"
+      3
+     put the number of items of ","
+      1
+     set the itemDelimiter to ";"
+  put the number of items of "a;b;"
+  set the itemDelimiter to comma
+      2
+     put the number of lines of ("a" & return & "b" & return)
+      2
+
+== 3. écrire au-delà de la fin : UN séparateur, pas deux ==
+     put "a,b," into v
+  put "x" into item 3 of v
+  put v
+      a,b,x
+     put "a,b," into v
+  put "x" into item 4 of v
+  put v & " -> " & the number of items of v & " items"
+      a,b,,x -> 4 items
+     put "a,b" into v
+  put "x" into item 4 of v
+  put v & " -> " & the number of items of v & " items"
+      a,b,,x -> 4 items
+     put "a" & return & "b" & return into v
+  put "X" into line 4 of v
+  put the number of lines of v & " lignes, la 4e : " & line 4 of v
+      4 lignes, la 4e : X
+     put "a" & return & "b" & return into v
+  put "X" into line 3 of v
+  put the number of lines of v & " lignes, la 3e : " & line 3 of v
+      3 lignes, la 3e : X

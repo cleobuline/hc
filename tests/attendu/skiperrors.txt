@@ -1,0 +1,85 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. non posée : rien ne change ==
+     commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 13 de button "B".plante)
+      journal : 1 avant / 2 dans plante / 3 après plante
+     fonction
+      [ERR]    !! un nombre est attendu ici (v3, ligne 25 de button "B".f)
+      journal : 1 avant / 2 dans f / 3 après f, it=[]
+     parDo
+      [ERR]    !! un nombre est attendu ici (v3, ligne 37 de button "B".faitDo)
+      journal : 1 avant / 3 après faitDo
+
+== 2. true : la ligne fautive est sautée ==
+     set skiperrors to true
+  global gJ
+  put "1" into gJ
+  put the zorglup of 3
+  put " / 2 après la ligne sautée" after gJ
+      [ERR]    !! propriété ou fonction inconnue : zorglup (v3, ligne 5 de button "B".clic, sautée)
+      journal : 1 / 2 après la ligne sautée
+     set the skipErrors to true
+  commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante, sautée)
+      journal : 1 avant / 2 dans plante / 2b après l'erreur / 3 après plante
+     set the skipErrors to true
+  fonction
+      [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f, sautée)
+      journal : 1 avant / 2 dans f / 2b après l'erreur / 3 après f, it=[rendu]
+     set the skipErrors to true
+  parDo
+      [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo, sautée)
+      journal : 1 avant / 2b après le do / 3 après faitDo
+
+== 3. false : tout s'arrête, comme HyperCard ==
+     set the skipErrors to false
+  commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 14 de button "B".plante)
+      journal : 1 avant / 2 dans plante
+     set the skipErrors to false
+  fonction
+      [ERR]    !! un nombre est attendu ici (v3, ligne 26 de button "B".f)
+      journal : 1 avant / 2 dans f
+     set the skipErrors to false
+  parDo
+      [ERR]    !! un nombre est attendu ici (v3, ligne 38 de button "B".faitDo)
+      journal : 1 avant
+
+== 4. une chaîne de trois niveaux ==
+     trois
+      [ERR]    !! un nombre est attendu ici (v3, ligne 55 de button "B".niveauC)
+      journal : a / b / c / b après c / a après b
+     set the skipErrors to true
+  trois
+      [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC, sautée)
+      journal : a / b / c / c après l'erreur / b après c / a après b
+     set the skipErrors to false
+  trois
+      [ERR]    !! un nombre est attendu ici (v3, ligne 56 de button "B".niveauC)
+      journal : a / b / c
+
+== 5. la propriété se relit, et redevient non posée après le script ==
+     put "au départ : [" & the skipErrors & "]"
+      au départ : []
+      journal : a / b / c
+     set the skipErrors to true
+  put "pendant : [" & the skipErrors & "]"
+      pendant : [true]
+      journal : a / b / c
+     put "après : [" & the skipErrors & "]"
+      après : []
+      journal : a / b / c
+     set the skipErrors to false
+  set the skipErrors to "peut-être"
+  put "refusé, reste : [" & the skipErrors & "]"
+      [ERR]    !! skipErrors attend true ou false, reçu « peut-être »
+      refusé, reste : [false]
+      journal : a / b / c
+
+== 6. sous false, errorDialog reçoit encore l'erreur ==
+     set the lockErrorDialogs to true
+  set the skipErrors to false
+  commande
+      [ERR]    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
+      errorDialog a reçu :    !! un nombre est attendu ici (v3, ligne 15 de button "B".plante)
+      journal : 1 avant / 2 dans plante

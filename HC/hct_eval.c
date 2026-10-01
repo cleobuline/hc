@@ -722,7 +722,12 @@ static int math_un_arg(const char *nom, double x, double *y)
     else if (!strcasecmp(nom, "sqrt"))
         *y = (x < 0) ? hct_nan_signe(1, 1) : sqrt(x);
     else if (!strcasecmp(nom, "trunc")) *y = trunc(x);
-    else if (!strcasecmp(nom, "round")) *y = round(x);
+    /* AU PAIR, comme SANE : « round(2.5) » vaut 2 et « round(-2.5) »
+     * vaut -2. Mesuré DANS HYPERCARD (Basilisk II) le 1er octobre, pile
+     * Torture3. round() du C arrondit en s'éloignant de zéro — 3 et -3 — ;
+     * nearbyint suit le mode d'arrondi courant, qui est au pair tant que
+     * personne n'y touche, et rien n'y touche dans HC. */
+    else if (!strcasecmp(nom, "round")) *y = nearbyint(x);
     else if (!strcasecmp(nom, "sin"))   *y = sin(x);
     else if (!strcasecmp(nom, "cos"))   *y = cos(x);
     else if (!strcasecmp(nom, "tan"))   *y = tan(x);
@@ -738,6 +743,39 @@ static int math_un_arg(const char *nom, double x, double *y)
     else return 0;
     return 1;
 }
+
+/* LE NOMBRE D'ARGUMENTS D'UNE FONCTION DU NOYAU, et 0 pour les autres.
+ *
+ * min, max, sum et average n'y sont pas : ils prennent une liste de longueur
+ * quelconque. Les fonctions de la pile non plus — c'est leur gestionnaire qui
+ * décide de ce qu'il lit. */
+static int arite_integree(const char *nom)
+{
+    double y;
+    if (math_un_arg(nom, 0.0, &y)) return 1;
+    if (!strcasecmp(nom, "numtochar") || !strcasecmp(nom, "chartonum") ||
+        !strcasecmp(nom, "length")    || !strcasecmp(nom, "random")    ||
+        !strcasecmp(nom, "value"))
+        return 1;
+    if (!strcasecmp(nom, "offset") || !strcasecmp(nom, "annuity") ||
+        !strcasecmp(nom, "compound"))
+        return 2;
+    return 0;
+}
+
+/* Celles dont les arguments sont des NOMBRES, et suivent donc la règle de
+ * l'arithmétique — voir arith : le vide vaut zéro, un texte est une faute.
+ * random n'y est pas : il a sa propre règle, plus bas, et elle ne s'est
+ * jamais appuyée sur l'ancien moteur. */
+static int arguments_nombres(const char *nom)
+{
+    double y;
+    return math_un_arg(nom, 0.0, &y) || !strcasecmp(nom, "numtochar") ||
+           !strcasecmp(nom, "annuity") || !strcasecmp(nom, "compound");
+}
+
+static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
+                               char *nom, HctValeur *args, int nargs);
 
 static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
 {
@@ -757,6 +795,66 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         args[i] = hct_evalue(ctx, n->fils[i + 1]);
         if (ctx->erreur) {
             for (int k = 0; k <= i; k++) hct_val_libere(&args[k]);
+            free(args); free(nom);
+            return hct_val_vide();
+        }
+    }
+    return appel_valeurs(ctx, n, nom, args, nargs);
+}
+
+/* Le calcul d'un appel dont les arguments sont DÉJÀ évalués. Prend possession
+ * de `nom` et de `args`, qu'il libère.
+ *
+ * Séparé d'appel() pour que « the sqrt of x » et « sqrt(x) » passent par le
+ * MÊME code : deux écritures de la même chose, une seule réponse. */
+static HctValeur appel_valeurs(HctContexte *ctx, const HctNoeud *n,
+                               char *nom, HctValeur *args, int nargs)
+{
+    /* UN MAUVAIS NOMBRE D'ARGUMENTS EST UNE ERREUR.
+     *
+     * Mesuré DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3 :
+     *
+     *     length()       Can't understand arguments of "length".
+     *     sqrt(4, 9)     Can't understand arguments of "sqrt".
+     *
+     * HC suivait jusqu'ici la règle de l'ancien moteur — un argument absent
+     * valait le vide, un argument de trop était ignoré —, reprise telle
+     * quelle en le coupant et inscrite « non mesurée ». Elle rendait 0 pour
+     * « length() » et 2 pour « sqrt(4, 9) » : des valeurs plausibles qui
+     * cachent une faute de script, exactement le genre de résultat qui
+     * part ensuite dans un champ sans que personne s'en aperçoive.
+     *
+     * Deux fonctions mesurées ; la règle vaut pour toutes celles du noyau
+     * à arguments fixes, qu'HyperCard vérifie à l'analyse et non une à
+     * une. */
+    int arite = arite_integree(nom);
+    if (arite && nargs != arite) {
+        hct_ctx_faute_nom(ctx, n, "mauvais nombre d'arguments", nom);
+        for (int i = 0; i < nargs; i++) hct_val_libere(&args[i]);
+        free(args); free(nom);
+        return hct_val_vide();
+    }
+
+    /* LES ARGUMENTS NUMÉRIQUES SUIVENT LA RÈGLE DE L'ARITHMÉTIQUE : le vide
+     * vaut zéro, comme dans « empty + 1 », et un texte qui n'est pas un
+     * nombre est une faute.
+     *
+     * Le premier cas était servi par l'ancien moteur, et pour cause : un
+     * argument vide n'est pas un nombre, et le calcul plus bas l'écartait. Le
+     * second rendait ZÉRO chez lui — « sqrt("abc") » valait 0, « exp2("x") »
+     * valait 1 —, et « fonction inconnue » sans lui. Ni l'un ni l'autre
+     * n'était juste : « "abc" + 1 » est déjà refusé ici, et une fonction de
+     * calcul ne peut pas être plus indulgente que l'addition. */
+    if (arguments_nombres(nom)) {
+        for (int i = 0; i < nargs; i++) {
+            if (hct_est_nombre(args[i].txt)) continue;
+            if (est_vide(args[i].txt)) {
+                hct_val_libere(&args[i]);
+                args[i] = hct_val_nombre(0);
+                continue;
+            }
+            hct_ctx_faute(ctx, n, "un nombre est attendu ici");
+            for (int k = 0; k < nargs; k++) hct_val_libere(&args[k]);
             free(args); free(nom);
             return hct_val_vide();
         }
@@ -1333,11 +1431,12 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * propriété « number ». D'où le total de la pile au lieu du compte
          * par fond.
          *
-         * On confie donc le nœud entier au recours, qui reconstitue le texte
-         * et le donne à term_value — laquelle sait compter par conteneur.
+         * On confie donc le nœud entier à l'hôte, qui seul connaît les objets
+         * et compte dans la cible — v3_nombre_objets dans hc_core.c. Il le
+         * confiait jusqu'ici à l'ancien moteur, par le texte.
          *
-         * Seulement le PLURIEL NU, cependant : « cards », « card buttons »,
-         * qui n'ont pas de désignateur. Dès qu'il y en a un — « the number of
+         * Seulement le PLURIEL, cependant : « cards », « card buttons »,
+         * « cards of bg 2 », qui n'ont pas de désignateur. Dès qu'il y en a un — « the number of
          * this card », « the number of card field "x" » —, ce n'est plus un
          * comptage mais le RANG de cet objet-là, et le chemin des propriétés
          * est exactement le bon : il résout l'objet, puis lit sa propriété
@@ -1353,6 +1452,11 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
                 free(nom);
                 return vr;
             }
+            /* L'hôte a REFUSÉ le comptage, faute posée : sa cible manque. Le
+             * chemin des propriétés, plus bas, résoudrait « cards of card 1 »
+             * en la carte 1 et rendrait son rang — une réponse, fausse, par
+             * dessus une erreur. */
+            if (ctx->erreur) { free(nom); return hct_val_vide(); }
         }
         /* « the length of X » s'écrit aussi bien que « length(X) ». */
         if (!strcasecmp(nom, "length")) {
@@ -1412,24 +1516,34 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
              * « card (i + 1) » comme une valeur avant de savoir qu'on avait
              * affaire à une propriété, et la référence d'objet, qui n'est pas
              * une expression, se cassait en chemin. Une garde qui coûte une
-             * comparaison de nom évite d'évaluer ce qu'on n'a pas à évaluer. */
-            double y;
-            if (math_un_arg(nom, 0.0, &y)) {
-                HctValeur a = hct_evalue(ctx, sur);
+             * comparaison de nom évite d'évaluer ce qu'on n'a pas à évaluer.
+             *
+             * TOUTE FONCTION DU NOYAU À ARGUMENTS FIXES, et plus seulement
+             * celles de calcul. « the charToNum of "a" », « the numToChar of 65 »,
+             * « the random of 6 » partaient à l'hôte, qui les confiait à
+             * l'ancien moteur ; sans lui, « objet introuvable ». length et
+             * value ont leur branche plus haut. Celles à deux arguments —
+             * « the offset of "a" » — lèvent, comme « offset("a") » : un
+             * mauvais nombre d'arguments est une erreur (voir
+             * appel_valeurs).
+             *
+             * LE JUMEAU de l'appel à parenthèses : « the sqrt of 2 » et
+             * « sqrt(2) » passent par appel_valeurs, et ne peuvent donc plus
+             * diverger — ni sur le résultat, ni sur un argument qui n'est pas
+             * un nombre, que la forme « the » laissait jusqu'ici à l'ancien
+             * moteur, et qu'il comptait pour zéro. */
+            if (arite_integree(nom) >= 1) {
+                HctValeur *a = malloc(sizeof *a);
+                if (!a) {
+                    hct_ctx_faute(ctx, n, "mémoire insuffisante");
+                    free(nom); return hct_val_vide();
+                }
+                a[0] = hct_evalue(ctx, sur);
                 if (ctx->erreur) {
-                    hct_val_libere(&a); free(nom); return hct_val_vide();
+                    hct_val_libere(&a[0]); free(a); free(nom);
+                    return hct_val_vide();
                 }
-                if (hct_est_nombre(a.txt) &&
-                    math_un_arg(nom, nombre_de(a), &y)) {
-                    hct_val_libere(&a);
-                    free(nom);
-                    /* LE JUMEAU de l'appel à parenthèses : « the sqrt of 2 »
-                     * et « sqrt(2) » doivent rendre la même chose. Corriger
-                     * l'un sans l'autre laisserait deux arithmétiques dans le
-                     * même noyau selon la tournure employée. */
-                    return hct_val_fonction(y);
-                }
-                hct_val_libere(&a);
+                return appel_valeurs(ctx, n, nom, a, 1);
             }
         }
 

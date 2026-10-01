@@ -134,9 +134,16 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim)
         }
 
         case HCT_CH_ITEM: {
-            /* Un séparateur final CRÉE un item vide : « a,b, » en compte
-             * trois. C'est l'inverse des lignes, où « a\nb\n » en vaut deux —
-             * une dissymétrie de HyperCard, pas une inattention. */
+            /* UN SÉPARATEUR FINAL NE CRÉE PAS D'ITEM VIDE : « a,b, » en
+             * compte DEUX, comme « a\nb\n » compte deux lignes.
+             *
+             * Ce commentaire affirmait l'inverse — trois, « une dissymétrie
+             * de HyperCard, pas une inattention » — et ce n'était mesuré
+             * nulle part. Mesuré DANS HYPERCARD (Basilisk II) le 1er
+             * octobre, pile Torture3 : « the number of items of "a,b," »
+             * rend 2. Un seul séparateur final est retiré, comme pour les
+             * lignes ; « a,b,, » garde son item vide du milieu (non
+             * mesuré). */
             if (len == 0) return 0;
             const char *sep = sep_ou_virgule(delim);
             int lsep = (int)strlen(sep);
@@ -144,6 +151,8 @@ int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim)
             for (int i = 0; i < len; )
                 if (sep_ici(s, i, len, sep, lsep)) { n++; i += lsep; }
                 else i++;
+            if (lsep > 0 && len >= lsep && sep_ici(s, len - lsep, len, sep, lsep))
+                n--;
             return n;
         }
 
@@ -409,6 +418,20 @@ HctValeur hct_chunk_ecrit(const char *s, HctSorteChunk sorte,
     const char *sep = (sorte == HCT_CH_ITEM) ? sep_ou_virgule(delim)
                     : (sorte == HCT_CH_LINE) ? "\n" : "";
     int lsep = (int)strlen(sep);
+
+    /* UN SÉPARATEUR FINAL OUVRE DÉJÀ UN EMPLACEMENT. Le COMPTE l'ignore —
+     * « a,b, » vaut deux items, « a\nb\n » deux lignes, mesuré dans
+     * HyperCard —, mais il est bien là : écrire l'item 4 de « a,b, » ne doit
+     * ajouter qu'UN séparateur, pas deux. Le remplissage se fait donc sur
+     * les emplacements, séparateur final compris.
+     *
+     * Le défaut était ANCIEN pour les lignes : « put "X" into line 4 » de
+     * « a » & return & « b » & return donnait cinq lignes, la quatrième
+     * vide. Il est apparu pour les items le jour où leur compte a appris à
+     * ignorer le séparateur final, et c'est là qu'on l'a vu. */
+    if ((sorte == HCT_CH_ITEM || sorte == HCT_CH_LINE) && lsep > 0 &&
+        len >= lsep && sep_ici(s, len - lsep, len, sep, lsep))
+        existants++;
 
     int manquants = 0;
     if (sorte == HCT_CH_ITEM || sorte == HCT_CH_LINE) {

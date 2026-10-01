@@ -7,11 +7,22 @@
  * « offset("a") » lisait une ligne au-delà de ce qu'il avait réservé.
  *
  * Trouvé par l'analyseur statique de clang, confirmé en l'exécutant sous ASan.
- * Un argument absent vaut maintenant le vide, comme « length() » et
- * « numToChar() », que la v3 servait déjà ainsi — d'où leur présence ici : le
- * comportement qu'on imite doit rester celui qu'il était.
+ * Un argument absent a d'abord valu le vide, comme « length() » et
+ * « numToChar() » — d'où leur présence ici.
  *
- * Ce que rend HyperCard pour ces appels n'est PAS mesuré. */
+ * C'EST MAINTENANT UNE ERREUR, « mauvais nombre d'arguments » : mesuré DANS
+ * HYPERCARD (Basilisk II) le 1er octobre, « length() » y lève « Can't
+ * understand arguments of "length" ». Ce harnais garde ce qu'il gardait
+ * d'abord — que rien ne tombe — et dit désormais l'erreur au lieu du vide.
+ *
+ * Ce commentaire disait que la v3 servait DÉJÀ ces deux-là ainsi. C'était
+ * faux, et on l'a vu en coupant l'ancien moteur (HC_SANS_V1) : c'était lui
+ * qui les servait, la v3 répondant seule « fonction inconnue : length ». Elle
+ * applique désormais la règle elle-même, à toutes les fonctions du noyau —
+ * voir appel_valeurs dans hct_eval.c, et le harnais sansv1.
+ *
+ * Mesurés dans HyperCard : length() seulement, et sqrt(4, 9) pour l'argument
+ * de trop. Les autres suivent la même règle sans avoir été mesurés un à un. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>

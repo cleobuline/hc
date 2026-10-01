@@ -39,6 +39,8 @@ minute de distance.
     ./tests/lance.sh --asan la même sous ASan, UBSan et LeakSanitizer
     ./tests/lance.sh --enregistre   réenregistre les témoins
     ./tests/releve.sh       ce qui appelle encore l'ancien moteur
+    HC_SANS_V1=1 ./tests/lance.sh --complet
+                            ce qui CHANGERAIT sans lui (docs/mesures/sansv1.txt)
 
 `--asan` PASSE AVANT DE POUSSER, et l'on attend son résultat. Les témoins se
 réenregistrent après avoir LU le diff, jamais avant.

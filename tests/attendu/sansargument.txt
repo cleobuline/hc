@@ -1,17 +1,17 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 == ce qui plantait ==
 ── put "[" & charToNum() & "]"
-   [0]
+   [ERR]    !! mauvais nombre d'arguments : charToNum (v3, ligne 2 de button "B".t)
 ── put "[" & offset() & "]"
-   [0]
+   [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 2 de button "B".t)
 ── put "[" & offset("a") & "]"
-   [0]
+   [ERR]    !! mauvais nombre d'arguments : offset (v3, ligne 2 de button "B".t)
 
 == les témoins ==
 ── put "[" & length() & "]"
-   [0]
+   [ERR]    !! mauvais nombre d'arguments : length (v3, ligne 2 de button "B".t)
 ── put "[" & numToChar() & "]"
-   []
+   [ERR]    !! mauvais nombre d'arguments : numToChar (v3, ligne 2 de button "B".t)
 ── put "[" & charToNum("A") & "]"
    [65]
 ── put "[" & offset("b", "abc") & "]"
