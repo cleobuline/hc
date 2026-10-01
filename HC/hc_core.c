@@ -525,30 +525,40 @@ int hc_is_running(void) { return g_depth > 0; }
  * demande restée en l'air arrêterait le PROCHAIN script au premier pas. */
 static volatile int g_interrompu = 0;
 
-/* SOUS « set the skipErrors to false », UNE ERREUR ARRÊTE TOUT LE SCRIPT, et
- * non le seul gestionnaire où elle tombe.
+/* « the skipErrors » : CE QUE FAIT UNE ERREUR. Une propriété PROPRE À HC —
+ * HyperCard ne la connaît pas, et une pile qui la pose y lèverait une erreur.
+ * Trois états, choisis par l'utilisatrice :
  *
- * MESURÉ DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3 : une
- * erreur levée dans un « do », dans un gestionnaire appelé par la boucle d'un
- * mouseUp, a emporté la boucle aussi — plus un essai, pas de bilan. HC
- * n'arrêtait que le gestionnaire fautif : l'appelant continuait, et une
- * fonction fautive lui rendait une valeur VIDE, avec laquelle il calculait
- * ensuite comme si de rien n'était. « put total() into field "Somme" »
- * vidait le champ sans un mot. Des cascades, et des résultats aberrants
- * écrits dans la pile.
+ *   non posée  (-1)  rien ne change : le gestionnaire fautif s'arrête,
+ *                    l'appelant continue — ce que HC a toujours fait ;
+ *   true       (1)   la LIGNE fautive est sautée : l'erreur est dite, et le
+ *                    gestionnaire continue à la ligne suivante ;
+ *   false      (0)   tout le script s'arrête, appelants compris — ce que
+ *                    fait HyperCard.
  *
- * Le drapeau se lève quand un gestionnaire s'arrête sur une faute, et prend
- * le chemin de Cmd-. : chacun des appelants le lit avant sa prochaine
- * instruction et s'arrête sans rien afficher de plus — la faute a été dite
- * une fois, par celui qui l'a commise. Il retombe avec le script, au repos.
+ * Elle redevient « non posée » quand le script est fini, comme
+ * lockErrorDialogs retombe à false : un oubli ne doit pas laisser toute la
+ * session dans un autre mode.
  *
- * IL NE SE LÈVE QUE SOUS « set the skipErrors to false » — une propriété de
- * HC, pas d'HyperCard, vraie par défaut. Par défaut, donc, HC garde son
- * comportement : seul le gestionnaire fautif s'arrête. Une pile qui veut
- * celui d'HyperCard le demande, jusqu'à la fin du script. Voir G_REGLAGES.
+ * POURQUOI false. MESURÉ DANS HYPERCARD (Basilisk II) le 1er octobre, pile
+ * Torture3 : une erreur levée dans un « do », dans un gestionnaire appelé par
+ * la boucle d'un mouseUp, a emporté la boucle aussi. Le cas de la commande et
+ * de la fonction n'y est PAS mesuré (docs/mesures/erreur_abandon.txt).
  *
- * Seul le cas du « do » est mesuré dans HyperCard ; la commande et la
- * fonction ne le sont pas encore (docs/mesures/erreur_abandon.txt). */
+ * POURQUOI true. Voulu à l'usage : « set skipErrors to true » puis une ligne
+ * fautive devait laisser le reste du mouseUp s'exécuter. Ma première version
+ * ne sautait rien — elle arrêtait le gestionnaire fautif, ce que HC faisait
+ * déjà sans elle. */
+static int g_skip_errors = -1;
+
+/* Le gestionnaire en cours d'exécution, pour nommer une ligne sautée. */
+static Object     *g_exec_objet  = NULL;
+static const char *g_exec_message = NULL;
+
+/* Sous « false », le drapeau se lève quand un gestionnaire s'arrête sur une
+ * faute, et prend le chemin de Cmd-. : chacun des appelants le lit avant sa
+ * prochaine instruction et s'arrête sans rien afficher de plus — la faute a
+ * été dite une fois, par celui qui l'a commise. Il retombe avec le script. */
 static int g_abandon = 0;
 
 void hc_interrompre(void)
@@ -7701,19 +7711,6 @@ static struct {
      * une pile qui la pose et sort par un « exit » resterait sinon muette
      * pour toujours. */
     { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
-    /* « the skipErrors » : PROPRE À HC — HyperCard ne la connaît pas, et
-     * une pile qui la pose y lèverait une erreur.
-     *
-     *   true   (le défaut) une erreur n'arrête que le gestionnaire où elle
-     *          tombe, et l'appelant continue : le comportement de HC ;
-     *   false  une erreur arrête TOUT le script, appelants compris : le
-     *          comportement d'HyperCard.
-     *
-     * Vrai par défaut, choisi par l'utilisatrice : rien ne change pour une
-     * pile qui ne la pose pas. Remise à true au repos, comme lockErrorDialogs
-     * à false — un « exit » ou une erreur ne doit pas laisser toute la
-     * session dans l'autre mode. Voir g_abandon. */
-    { "skiperrors", "skipErrors", REG_BOOL, 1, 0, 1 },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
 
@@ -7751,6 +7748,17 @@ static void reglage_eteint(const char *nom)
  * la passer ensuite à l'hôte l'induirait en erreur. */
 static int reglage_pose(const char *prop, const char *val)
 {
+    /* skipErrors a TROIS états, pas deux : voir g_skip_errors. Et une valeur
+     * qui n'est ni true ni false se REFUSE, à la différence des autres
+     * booléens, où elle vaut false : chaque valeur choisit ici un mode, et
+     * une faute de frappe ne doit pas en choisir un en silence. */
+    if (ci_equal(prop, "skiperrors")) {
+        if      (ci_equal(val, "true"))  g_skip_errors = 1;
+        else if (ci_equal(val, "false")) g_skip_errors = 0;
+        else emit(HC_ERR, "   !! skipErrors attend true ou false, reçu « %s »",
+                  val);
+        return 1;
+    }
     int i = reglage_index(prop);
     if (i < 0) return 0;
 
@@ -7789,6 +7797,12 @@ static int reglage_pose(const char *prop, const char *val)
  * un booléen, le nombre sinon — les deux formes qu'HyperTalk sait comparer. */
 static int reglage_lit(const char *nom, char *out, int outlen)
 {
+    /* Non posée, elle se lit VIDE : ni true ni false ne seraient vrais. */
+    if (ci_equal(nom, "skiperrors")) {
+        snprintf(out, (size_t)outlen, "%s", g_skip_errors < 0 ? ""
+                 : g_skip_errors ? "true" : "false");
+        return 1;
+    }
     int i = reglage_index(nom);
     if (i < 0) return 0;
     if (G_REGLAGES[i].type == REG_BOOL)
@@ -10619,6 +10633,27 @@ static int v3_interrompu(void *d)
 {
     (void)d;
     return g_interrompu || g_abandon;
+}
+
+/* « set the skipErrors to true » : la ligne fautive est SAUTÉE. Voir
+ * g_skip_errors. L'erreur est dite ICI, comme v3_execute la dit quand elle
+ * termine un gestionnaire — même texte, même situation pour le dialogue —,
+ * puis l'exécuteur reprend à la ligne suivante.
+ *
+ * Hors gestionnaire — une ligne tapée dans la boîte de message —, il n'y a
+ * pas de suite à reprendre : on ne saute rien. */
+static int v3_saute_erreur(void *d, HctContexte *ctx)
+{
+    (void)d;
+    if (g_skip_errors != 1 || !ctx || !ctx->erreur || !g_exec_objet)
+        return 0;
+    char qui[64];
+    hc_describe(g_exec_objet, qui, sizeof qui);
+    int ligne = ctx->fautif ? ctx->fautif->jeton.ligne : 0;
+    err_situe(g_exec_objet, ligne);
+    emit(HC_ERR, "   !! %s (v3, ligne %d de %s.%s, sautée)", ctx->erreur,
+         ligne, qui, g_exec_message ? g_exec_message : "?");
+    return 1;
 }
 
 /* --- l'hôte assemblé ------------------------------------------------- */
@@ -16477,7 +16512,15 @@ static int v3_execute(Object *o, const char *message, int isfunc)
     o->arbre_usage++;
     int ligne_cmd_appelant = g_ligne_cmd;
     g_ligne_cmd = 0;
+    /* Qui s'exécute, pour qu'une ligne SAUTÉE soit nommée comme une ligne
+     * qui arrête le gestionnaire — voir v3_saute_erreur. */
+    Object *exec_o_avant = g_exec_objet;
+    const char *exec_msg_avant = g_exec_message;
+    g_exec_objet = o;
+    g_exec_message = message;
     hct_exec(&x, g->fils[2]);          /* fils 2 = le corps */
+    g_exec_objet = exec_o_avant;
+    g_exec_message = exec_msg_avant;
     g_ligne_cmd = ligne_cmd_appelant;
     o->arbre_usage--;
 
@@ -16507,7 +16550,7 @@ static int v3_execute(Object *o, const char *message, int isfunc)
              ligne, qui, message);
         /* Et tout le script s'arrête avec lui, sauf skipErrors. Voir
          * g_abandon. */
-        if (!reglage_valeur("skiperrors")) g_abandon = 1;
+        if (g_skip_errors == 0) g_abandon = 1;
     }
 
     hct_exec_libere(&x);
@@ -16798,6 +16841,7 @@ static HctHote v3_hote(void)
     h.commande  = v3_commande;
     h.respire   = v3_respire;
     h.interrompu = v3_interrompu;
+    h.saute_erreur = v3_saute_erreur;
     h.ecrit_objet = v3_ecrit_objet;
     h.ecrit_message = v3_ecrit_message;
     h.lit_message   = v3_lit_message;
@@ -17609,10 +17653,7 @@ static int hc_send_args_k(Object *target, const char *message,
      * ne la retire jamais : sans cette ligne, tout le reste de la session
      * partirait en errorDialog. */
     if (g_depth == 0) reglage_eteint("lockerrordialogs");
-    if (g_depth == 0) {
-        int i = reglage_index("skiperrors");
-        if (i >= 0) G_REGLAGES[i].valeur = 1;
-    }
+    if (g_depth == 0) g_skip_errors = -1;
 
     /* Une commande « delete this card » peut avoir détaché l'objet dont le
      * gestionnaire vient juste de finir. C'est seulement ici que plus aucun

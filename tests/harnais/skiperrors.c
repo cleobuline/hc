@@ -1,27 +1,36 @@
-/* « the skipErrors » : CONTINUER APRÈS UNE ERREUR, OU TOUT ARRÊTER.
+/* « the skipErrors » : CE QUE FAIT UNE ERREUR. Propriété PROPRE À HC, à trois
+ * états, voulue par l'utilisatrice — voir g_skip_errors dans hc_core.c :
  *
- * Une propriété de HC, pas d'HyperCard, voulue par l'utilisatrice :
+ *   non posée   le gestionnaire fautif s'arrête, l'appelant continue — ce que
+ *               HC a toujours fait ;
+ *   true        la LIGNE fautive est sautée, et le gestionnaire continue ;
+ *   false       tout le script s'arrête, appelants compris — HyperCard.
  *
- *   true   (le défaut) une erreur n'arrête que le gestionnaire où elle tombe,
- *          l'appelant continue — ce que HC a toujours fait ;
- *   false  une erreur arrête TOUT le script, appelants compris — ce que fait
- *          HyperCard.
+ * LE CAS QUI A TOUT DÉCIDÉ, rapporté à l'usage avec la première version :
  *
- * MESURÉ DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3 : une
- * erreur levée dans un « do », dans un gestionnaire appelé par la boucle d'un
- * mouseUp, a emporté la boucle aussi. Le cas de la commande et de la fonction
- * n'y est PAS mesuré (docs/mesures/erreur_abandon.txt) : « false » les traite
- * comme le « do ».
+ *     on mouseUp
+ *       set skiperrors to true
+ *       put the zorglup of 3
+ *       put "torture en cours..."
+ *     end mouseUp
+ *
+ * « ça skippe rien du tout » : cette version-là arrêtait le gestionnaire
+ * fautif, ce que HC faisait déjà sans elle. Section 2.
+ *
+ * MESURÉ DANS HYPERCARD (Basilisk II) le 1er octobre, pile Torture3, pour
+ * « false » : une erreur levée dans un « do » emporte aussi la boucle qui
+ * l'appelait. Commande et fonction : NON mesurées.
  *
  * Ce que tient ce harnais :
  *
- *   1. par défaut, rien n'a changé : les trois bancs de erreur_abandon.txt
- *      rendent ce qu'ils rendaient ;
- *   2. sous « false », les trois s'arrêtent net, l'appelant compris, et
- *      l'erreur n'est dite qu'UNE fois — pas de cascade de messages ;
- *   3. une chaîne de trois niveaux s'arrête entière ;
- *   4. la propriété se relit, et revient à true quand le script est fini ;
- *   5. sous « false », « errorDialog » reçoit encore l'erreur. Ce n'était pas
+ *   1. non posée, rien n'a changé : les trois bancs de erreur_abandon.txt ;
+ *   2. true : la ligne est sautée — le cas rapporté, puis les trois bancs ;
+ *      l'erreur est dite quand même, une fois ;
+ *   3. false : les trois bancs s'arrêtent net, l'appelant compris ;
+ *   4. une chaîne de trois niveaux, dans les trois états ;
+ *   5. la propriété se relit — vide quand elle n'est pas posée —, redevient
+ *      non posée après le script, et refuse ce qui n'est ni true ni false ;
+ *   6. sous false, « errorDialog » reçoit encore l'erreur. Ce n'était pas
  *      gratuit : le drapeau d'arrêt, encore levé quand HC livre ce message,
  *      arrêtait son gestionnaire à la première ligne, et l'erreur se perdait
  *      — trouvé par torture2, torture3 et lockerreur. */
@@ -120,30 +129,40 @@ int main(void)
     hc_set_current_card(c);
     b = hc_new_button(c, "B");
 
-    puts("== 1. par défaut (true) : l'appelant continue, comme toujours dans HC ==");
+    puts("== 1. non posée : rien ne change ==");
     clic("  commande", NULL);
     clic("  fonction", NULL);
     clic("  parDo", NULL);
 
-    puts("\n== 2. sous « false » : tout s'arrête, comme HyperCard ==");
+    puts("\n== 2. true : la ligne fautive est sautée ==");
+    clic("  global gJ\n  put \"1\" into gJ\n  put the zorglup of 3\n"
+         "  put \" / 2 après la ligne sautée\" after gJ",
+         "  set skiperrors to true\n");
+    clic("  commande", "  set the skipErrors to true\n");
+    clic("  fonction", "  set the skipErrors to true\n");
+    clic("  parDo", "  set the skipErrors to true\n");
+
+    puts("\n== 3. false : tout s'arrête, comme HyperCard ==");
     clic("  commande", "  set the skipErrors to false\n");
     clic("  fonction", "  set the skipErrors to false\n");
     clic("  parDo", "  set the skipErrors to false\n");
 
-    puts("\n== 3. une chaîne de trois niveaux ==");
+    puts("\n== 4. une chaîne de trois niveaux ==");
     clic("  trois", NULL);
+    clic("  trois", "  set the skipErrors to true\n");
     clic("  trois", "  set the skipErrors to false\n");
 
-    puts("\n== 4. la propriété se relit, et revient à true après le script ==");
-    clic("  put \"pendant : \" & the skipErrors", "  set the skipErrors to false\n");
-    clic("  put \"après : \" & the skipErrors", NULL);
-    /* PAS UN REFUS : pour tous les réglages booléens de HC, ce qui n'est
-     * pas « true » vaut false — lockErrorDialogs suit la même règle. Ce que
-     * fait HyperCard d'une telle valeur n'est pas mesuré. */
-    clic("  set the skipErrors to \"peut-être\"\n  put \"autre que true : \" & the skipErrors",
-         NULL);
+    puts("\n== 5. la propriété se relit, et redevient non posée après le script ==");
+    clic("  put \"au départ : [\" & the skipErrors & \"]\"", NULL);
+    clic("  put \"pendant : [\" & the skipErrors & \"]\"", "  set the skipErrors to true\n");
+    clic("  put \"après : [\" & the skipErrors & \"]\"", NULL);
+    /* Une valeur qui n'est ni true ni false SE REFUSE, à la différence des
+     * autres réglages booléens : chaque valeur choisit un mode, et une faute
+     * de frappe ne doit pas en choisir un en silence. */
+    clic("  set the skipErrors to \"peut-être\"\n  put \"refusé, reste : [\" & the skipErrors & \"]\"",
+         "  set the skipErrors to false\n");
 
-    puts("\n== 5. sous « false », errorDialog reçoit encore l'erreur ==");
+    puts("\n== 6. sous false, errorDialog reçoit encore l'erreur ==");
     hc_set_script(st,
         "on errorDialog quoi\n"
         "  put \"errorDialog a reçu : \" & quoi\n"
