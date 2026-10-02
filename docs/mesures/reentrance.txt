@@ -147,7 +147,36 @@ pas écrite : c'est le seul des bancs en cours qui se juge ainsi, et il n'a
 été donné que pour HC. Ce que fait HyperCard du clic APRÈS l'avoir vu —
 le mange-t-il, ou le sert-il ensuite comme HC — reste à mesurer.
 
+« the mouseClick » COMPTAIT LE MÊME CLIC À CHAQUE TOUR. Rapporté DANS HC
+(l'application) le 1er octobre, étiquette donnée par l'utilisatrice (« j'ai
+fait tourner ce script… », dans HC) :
+
+    on mouseUp
+      put 0 into n
+      put the ticks into t
+      repeat until the ticks - t > 300
+        if the mouseClick then add 1 to n
+      end repeat
+      answer n
+    end mouseUp
+
+    un clic pendant la boucle  →  235
+
+Cause, lue dans le code : hcv_guette_cmd_point remet le clic EN TÊTE de la
+file pour qu'il soit servi après le script ; au tour suivant elle le revoit,
+et relevait le drapeau. Chaque tour de guette répondait donc « true ». Le
+banc du 30 septembre sortait au premier « true » : il ne pouvait pas le voir.
+Corrigé : un clic n'est compté qu'une fois, reconnu à son horodatage, qu'un
+événement remis en file garde. Attendu après la correction : 1 pour un clic,
+3 pour trois — PAS ENCORE REJOUÉ.
+
 RESTE À MESURER
+  · Le banc ci-dessus, DANS HYPERCARD (Basilisk II), avec un clic puis avec
+    trois : HyperCard répond-il 1 et 3 ? La référence dit que « the
+    mouseClick » rend true si la souris a été cliquée « pendant le
+    gestionnaire en cours », et qu'il ATTEND le relâchement si le bouton est
+    enfoncé (hypercard.center, fiche mouseClick) — HC n'attend pas. Ni l'un
+    ni l'autre n'est mesuré.
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et
     « the mouseClick » MANGE-t-il le clic, ou le clic est-il servi quand

@@ -1736,6 +1736,9 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
 }
 
 static BOOL gMouseClicked = NO;
+/* L'horodatage du dernier clic que « the mouseClick » a compté : voir
+ * hcv_guette_cmd_point, qui revoit le même clic à chaque tour. */
+static NSTimeInterval gClicCompte = -1;
 
 /* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
  * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
@@ -3530,8 +3533,20 @@ static void hcv_guette_cmd_point(void)
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
          * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
-         * (voir plus haut). Le clic reste dans la file. */
-        if ([e type] == NSEventTypeLeftMouseDown) gMouseClicked = YES;
+         * (voir plus haut). Le clic reste dans la file.
+         *
+         * ET IL N'EST COMPTÉ QU'UNE FOIS. Remis en tête de file, le même clic
+         * repasse ici à chaque tour de guette, et relevait le drapeau à
+         * chaque fois : un seul clic pendant « repeat until the ticks - t >
+         * 300 / if the mouseClick then add 1 to n » donnait n = 235, rapporté
+         * DANS HC (l'application) le 1er octobre. Le banc du 30 septembre
+         * sortait de sa boucle au premier « true » et ne pouvait pas le voir.
+         * Un événement remis en file garde son horodatage : c'est lui qui le
+         * reconnaît. */
+        if ([e type] == NSEventTypeLeftMouseDown && [e timestamp] > gClicCompte) {
+            gMouseClicked = YES;
+            gClicCompte = [e timestamp];
+        }
         if (!gardees) gardees = [NSMutableArray array];
         [gardees addObject:e];
     }
