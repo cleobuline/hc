@@ -1,0 +1,60 @@
+== 1. reconnu et découpé ==
+   MacBinary II                       MacBinary 2, « Ma pile », STAK/WILD, 41 + 875 octets
+   MacBinary I                        MacBinary 1, « Ma pile », STAK/WILD, 41 + 875 octets
+   les données commencent par « STAK », la ressource fait 875 octets
+
+== 2. ce qui n'en est pas un ==
+   somme de contrôle fausse          refusé
+   tronqué dans la ressource         refusé
+   notre format texte                 refusé
+   une pile binaire nue               refusé
+
+== 3. les ICON de la ressource ==
+   lecture : ok ; 2 icônes, 2 autres ressources, 1 anomalie(s)
+   ICON 2001 « Carré »
+      ································
+      ································
+      ····█▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█······················█····
+      ····█▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄█····
+      ································
+      ································
+   ICON -16000 «  »
+      ································
+      ··▀▄························▄▀··
+      ····▀▄····················▄▀····
+      ······▀▄················▄▀······
+      ········▀▄············▄▀········
+      ··········▀▄········▄▀··········
+      ············▀▄····▄▀············
+      ··············▀▄▄▀··············
+      ··············▄▀▀▄··············
+      ············▄▀····▀▄············
+      ··········▄▀········▀▄··········
+      ········▄▀············▀▄········
+      ······▄▀················▀▄······
+      ····▄▀····················▀▄····
+      ··▄▀························▀▄··
+      ································
+
+== 4. une carte qui sort du fichier ==
+   refusée : la carte des ressources sort du fichier
+
+== 5. dans une pile, et après enregistrement ==
+   icônes posées : 2
+   icon   2001 : posée, intacte à la relecture, nom « Carré »
+   icon -16000 : posée, intacte à la relecture, nom «  »
+   icon   2002 : absente, -, nom «  »
+
+== 6. troncatures et octets retournés ==
+   troncatures du fichier : 22 lues, 0 refusées, aucune faute
+   bits retournés dans la ressource : 6795 lus, 205 refusés, aucune faute

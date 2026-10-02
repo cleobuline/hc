@@ -474,3 +474,30 @@ Object *hc_importe_pile(const HcOrigPile *orig, const char *nom)
     free(ids);
     return st;
 }
+
+/* ═══ LES ICÔNES DE LA RESSOURCE ════════════════════════════════════════
+ *
+ * Une ICON d'époque et une icône de HC ont la même forme — 32 × 32 points,
+ * un bit chacun, 128 octets, rangée par lignes de quatre octets, le bit de
+ * poids fort à gauche —, si bien que la traduction est une recopie. Mesuré le
+ * 2 octobre sur les six ICON de « Stack Templates » : dessinées depuis ces
+ * octets, ce sont bien les deux triangles, la carte marquée, l'agenda, la
+ * carte non marquée et l'imprimante.
+ *
+ * Le numéro est gardé tel quel : c'est par lui que les boutons de la pile
+ * désignent leur icône. Une icône de la pile passe devant celle de même
+ * numéro compilée dans l'application, comme dans HyperCard la ressource de la
+ * pile passait devant celles de HyperCard lui-même. */
+int hc_importe_icones(const HcOrigRessources *r, Object *pile)
+{
+    if (!r || !pile) return 0;
+    int posees = 0;
+    for (int i = 0; i < r->nicones; i++) {
+        const HcOrigIcone *src = &r->icones[i];
+        struct StackIcon *ic = hc_icon_add(pile, src->id, src->nom ? src->nom : "");
+        if (!ic) return -1;
+        memcpy(ic->bits, src->bits, sizeof ic->bits);
+        posees++;
+    }
+    return posees;
+}

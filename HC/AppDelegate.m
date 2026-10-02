@@ -1295,9 +1295,15 @@ void cocoa_stack_changed(Object *stack) {
  * binaire d'origine, qui est peut-être la seule copie qui reste d'une pile de
  * 1993. Un « Enregistrer » distrait ne doit pas pouvoir détruire ça.
  *
- * CE QUI N'EST PAS TRADUIT est dit à l'écran quand il y en a : les icônes
- * vivent dans le resource fork, qui ne survit pas à une copie ordinaire hors
- * du Mac ; les motifs et les styles par plage ne sont pas lus. Le reste —
+ * LES ICÔNES vivent dans le resource fork, qui ne survit pas à une copie
+ * ordinaire hors du Mac. Une archive MacBinary (.bin), faite dans l'émulateur,
+ * porte les deux parties : la même porte la reconnaît, en tire la pile et lit
+ * les ICON de la ressource (hc_macbinaire, hc_origine_ressources,
+ * hc_importe_icones). Rien à choisir pour l'utilisatrice : une pile de HC,
+ * une pile HyperCard nue ou un .bin s'ouvrent par le même « Ouvrir ».
+ *
+ * CE QUI N'EST PAS TRADUIT est dit à l'écran quand il y en a : les motifs ne
+ * sont pas lus. Le reste —
  * cartes, fonds, parts, propriétés, textes, scripts, dessins, identifiants —
  * est mesuré dans docs/mesures/pile_origine.txt, identifiants_de_part.txt et
  * dessins.txt. */
@@ -1311,9 +1317,26 @@ void cocoa_stack_changed(Object *stack) {
         return NO;
     }
 
+    /* UN MACBINARY porte la pile ET sa ressource : on lit la première comme
+     * une pile nue, la seconde pour ses icônes. Le nom de la pile est celui
+     * que porte l'en-tête — « Stack Templates.stack » —, pas celui du .bin. */
+    const unsigned char *octets = [donnees bytes];
+    size_t noctets = [donnees length];
+    const unsigned char *ressource = NULL;
+    size_t nressource = 0;
+    NSString *nom = [[path lastPathComponent] stringByDeletingPathExtension];
+    HcMacBinaire mb;
+    if (hc_macbinaire(octets, noctets, &mb)) {
+        octets = mb.donnees;       noctets = mb.ndonnees;
+        ressource = mb.ressources; nressource = mb.nressources;
+        char *u = hc_origine_utf8((const unsigned char *)mb.nom, strlen(mb.nom));
+        if (u && *u) nom = [[NSString stringWithUTF8String:u] stringByDeletingPathExtension];
+        free(u);
+    }
+
     HcOrigPile orig;
     char pourquoi[200];
-    if (hc_origine_lit([donnees bytes], [donnees length],
+    if (hc_origine_lit(octets, noctets,
                        &orig, pourquoi, sizeof pourquoi) != 0) {
         /* LE MOTIF EST ÉCRIT POUR ÊTRE LU : le noyau distingue une pile
          * HyperCard 1.x, une pile à accès privé et un fichier abîmé, et ces
@@ -1326,7 +1349,6 @@ void cocoa_stack_changed(Object *stack) {
         return NO;
     }
 
-    NSString *nom = [[path lastPathComponent] stringByDeletingPathExtension];
     Object *st = hc_importe_pile(&orig, [nom UTF8String]);
 
     /* On retient de quoi parler AVANT de libérer : la structure de lecture ne
@@ -1350,6 +1372,26 @@ void cocoa_stack_changed(Object *stack) {
         return NO;
     }
 
+    /* LES ICÔNES DE LA RESSOURCE, quand il y en a une. Une ressource qui ne
+     * se lit pas ne coûte pas la pile — les cartes et les scripts sont là —,
+     * mais elle se DIT : les boutons montreront des cases vides, et il faut
+     * savoir pourquoi. */
+    char pourquoi_r[200] = "";
+    BOOL ressource_illisible = NO;
+    if (ressource) {
+        HcOrigRessources res;
+        if (hc_origine_ressources(ressource, nressource, &res,
+                                  pourquoi_r, sizeof pourquoi_r) == 0) {
+            if (hc_importe_icones(&res, st) < 0) {
+                ressource_illisible = YES;
+                snprintf(pourquoi_r, sizeof pourquoi_r, "mémoire épuisée");
+            }
+        } else {
+            ressource_illisible = YES;
+        }
+        hc_origine_ressources_libere(&res);
+    }
+
     [self installStack:st];
     gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
 
@@ -1363,7 +1405,7 @@ void cocoa_stack_changed(Object *stack) {
      * vient des blocs LIST et PAGE, et de leurs sommes de contrôle. Si elles ne
      * tombent pas juste, les cartes restent dans l'ordre du fichier, qui n'est
      * pas celui de la pile — il faut le dire, pas le taire. */
-    if (anomalies > 0 || !ordre_lu) {
+    if (anomalies > 0 || !ordre_lu || ressource_illisible) {
         NSMutableString *m = [NSMutableString string];
         [m appendFormat:@"%d fond%s, %d carte%s, %d dessin%s.\n\n",
             nfonds,  nfonds  == 1 ? "" : "s",
@@ -1419,6 +1461,11 @@ void cocoa_stack_changed(Object *stack) {
          * pour un cas qu'on n'a jamais vu — juste le compteur d'anomalies, qui
          * est là pour ça. */
         (void)decores;
+        if (ressource_illisible)
+            [m appendFormat:@"LES ICÔNES N'ONT PAS PU ÊTRE LUES : la ressource "
+                            @"du fichier MacBinary est abîmée (%s). La pile "
+                            @"est là ; ses boutons à icône montreront une case "
+                            @"vide.\n\n", pourquoi_r];
         [m appendString:@"Cette pile n'a pas encore de fichier : « Enregistrer » "
                         @"demandera un nom, et l'original ne sera pas touché."];
 
@@ -1437,9 +1484,31 @@ void cocoa_stack_changed(Object *stack) {
     {
         NSData *tete = nil;
         NSFileHandle *fh = [NSFileHandle fileHandleForReadingAtPath:path];
-        if (fh) { tete = [fh readDataOfLength:16]; [fh closeFile]; }
+        if (fh) { tete = [fh readDataOfLength:128]; [fh closeFile]; }
         if (tete && hc_origine_reconnait([tete bytes], [tete length]))
             return [self importeAuFormatHyperCard:path];
+
+        /* UN MACBINARY commence par un zéro, puis la longueur de son nom. Pour
+         * en être sûr il faut tout le fichier — les longueurs annoncées
+         * doivent y tenir —, d'où cette seconde lecture, faite seulement
+         * quand l'en-tête en a l'air. Ce qu'il contient doit encore être une
+         * PILE : un .bin d'autre chose se refuse en le disant. */
+        const unsigned char *t = tete ? [tete bytes] : NULL;
+        if (t && [tete length] == 128 && t[0] == 0 && t[1] >= 1 && t[1] <= 63) {
+            NSData *tout = [NSData dataWithContentsOfFile:path];
+            HcMacBinaire mb;
+            if (tout && hc_macbinaire([tout bytes], [tout length], &mb)) {
+                if (hc_origine_reconnait(mb.donnees, mb.ndonnees))
+                    return [self importeAuFormatHyperCard:path];
+                NSAlert *a = [[NSAlert alloc] init];
+                [a setMessageText:@"Ce fichier MacBinary ne contient pas une pile"];
+                [a setInformativeText:[NSString stringWithFormat:
+                    @"%@\n\nSon type est « %s », et une pile HyperCard est "
+                    @"de type « STAK ».", [path lastPathComponent], mb.type]];
+                [a runModal];
+                return NO;
+            }
+        }
     }
 
     Object *loaded = hc_load([path UTF8String]);

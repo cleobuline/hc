@@ -1361,4 +1361,48 @@ transfert hors d'un Mac classique la perd. Trois façons de la garder :
   · une archive MacBinary (.bin) ou StuffIt, faite DANS l'émulateur, qui
     porte les deux parties en un seul fichier.
 
-Retenue pour les icônes : lire le MacBinary à l'import. Rien n'est écrit.
+Retenue pour les icônes : lire le MacBinary à l'import.
+
+
+LES ICÔNES, PAR UN MACBINARY — 2 octobre
+-----------------------------------------
+
+MESURÉ sur « Stack Templates.stack.bin », encodé par l'utilisatrice DANS
+Basilisk II :
+
+    en-tête      MacBinary II (129/129), somme de contrôle juste, type STAK,
+                 créateur WILD
+    données      155 648 octets, commencent par STAK — la pile, lue comme
+                 d'habitude : 17 fonds, 17 cartes, 1 anomalie, 0 perdu
+    ressource    6 720 octets : 6 ICON de 128 octets, 1 PICT, 2 « vers »,
+                 1 XCMD (la palette StackTemplatePal, ignorée)
+
+Les six ICON, dessinées point par point depuis ces octets : deux triangles,
+la carte marquée, l'agenda, la carte non marquée, l'imprimante. Leur
+disposition — quatre octets par ligne, bit de poids fort à gauche — est
+celle de nos icônes : la traduction est une recopie.
+
+53 boutons de la pile portent une icône. 6 la trouvent dans la pile ; les
+47 autres demandent des icônes de HyperCard LUI-MÊME (21 numéros distincts),
+toutes présentes dans le catalogue compilé de HC. Avec le .bin, les 53
+trouvent donc leur dessin. Import entier sous ASan et UBSan : aucune faute.
+
+CE QUI EST ÉCRIT :
+
+  · hc_origine.c : hc_macbinaire reconnaît et découpe (MacBinary I, II,
+    III), hc_origine_ressources lit les ICON de la ressource selon Inside
+    Macintosh, chaque décalage borné ;
+  · hc_importe.c : hc_importe_icones les pose dans la pile, numéro et nom
+    d'origine ;
+  · AppDelegate.m : la porte d'ouverture reconnaît le .bin comme elle
+    reconnaissait la pile nue — « Ouvrir » ouvre les trois formes sans rien
+    demander. Un .bin qui ne porte pas une pile se refuse en le disant ;
+    une ressource abîmée ne coûte pas la pile, elle se dit dans la boîte
+    d'import.
+
+Le harnais macbinaire monte sa propre ressource et son propre MacBinary,
+avec ses propres dessins : le fichier d'Apple n'entre pas dans le dépôt.
+
+NON LU : les icônes en couleur (cicn), les PICT, les sons (« snd »). Un .bin
+déposé sur l'icône du Dock ou ouvert depuis le Finder n'est pas déclaré
+dans Info.plist : seul « Ouvrir » est sûr de le prendre — non essayé.
