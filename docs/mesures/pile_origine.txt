@@ -1404,7 +1404,9 @@ trois rangs, 4 + 4 + 3 boutons, ceux du bas plus larges :
     ⇥               doMenu "Last"
     loupe           doMenu "Find..."
     boîte           doMenu "Message"
-    deux fenêtres   doMenu "Next window"
+    deux fenêtres   doMenu "Next window"  (passe d'une pile ouverte à
+                                           l'autre — précisé par
+                                           l'utilisatrice)
 
 CE QUE HC EN FAIT AUJOURD'HUI, mesuré dans le noyau le même jour : Back,
 First, Prev, Next et Last sont servis par le noyau (MENUS_NOYAU). Les six
