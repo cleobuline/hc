@@ -1,5 +1,4 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 
 == 1. un comptage qui porte une cible ==
    put the number of cards of bg 1
@@ -147,19 +146,10 @@
    put "[" & ("abc" + 1) & "]"
       [ERR]    !! un nombre est attendu ici (v3, ligne 5 de button "B1".t)
 
-== 7. LES ECARTS VOULUS : la ou l'ancien moteur se trompe ==
-   -- Si cette section ne montrait aucun ecart, c'est que le reglage ne
-   -- coupe rien, et les six autres ne prouveraient rien non plus.
-   -- il repete l'erreur de la v3 :
+== 7. la ou l'ancien moteur se trompait ==
+   -- il repetait l'erreur de la v3 :
    put the name of card 1 of stack "PileAbsente"
-      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B1"
-      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B1"
       [ERR]    !! objet introuvable (v3, ligne 5 de button "B1".t)
-  SANS V1 :      [ERR]    !! objet introuvable (v3, ligne 5 de button "B1".t)
-   -- le texte qu'on lui reconstitue perd sa parenthese fermante :
+   -- le texte qu'on lui reconstituait perdait sa parenthese fermante :
    put the maF of ("o" & "k")
-      [ERR]    !! parenthèse fermante attendue (colonne 12) dans «  ("o" & "k" » — objet : button "B1"
-      !
-  SANS V1 :      ok!
-
-2 cas où la v3 seule ne répond pas comme la v3 secourue par l'ancien moteur
+      ok!

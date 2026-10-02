@@ -1,5 +1,10 @@
 #!/bin/sh
-# Le relevé du CORPUS ENTIER : qu'est-ce qui appelle encore l'ancien moteur ?
+# Le relevé du CORPUS ENTIER : qu'est-ce qui passe encore par du TEXTE ?
+#
+# L'ancien moteur d'expressions a été retiré le 2 octobre — voir
+# docs/mesures/sansv1.txt. Il ne reste à compter que ce qui RELIT du texte
+# (« v3 relit », eval_expr appelée sur une chaîne) et les lignes REFUSÉES
+# (« v1 refusée », là où l'on passait autrefois la main à l'ancien code).
 #
 #   ./releve.sh            agrège les 192 harnais et imprime les tableaux
 #   ./releve.sh --brut     laisse le fichier tabulé, pour trier autrement
@@ -15,10 +20,10 @@
 # FICHIER à sa sortie. Rien sur la sortie standard, aucune référence touchée,
 # un enregistrement par harnais.
 #
-# LIRE LES DEUX TABLEAUX. « recours » compte les fois où la v3 a RENONCÉ ;
-# « exec » compte ce que l'ancien moteur a RÉELLEMENT exécuté, d'où qu'on
-# vienne. Les confondre fait croire le chantier plus avancé qu'il n'est :
-# « (aucun) recours » ne veut pas dire que l'ancien code ne tourne plus.
+# LIRE LES DEUX TABLEAUX. « recours » compte les fois où l'évaluateur a
+# RENONCÉ et passé la main au recours ; « exec » compte ce qui a réellement
+# relu du texte ou été refusé, d'où qu'on vienne. Les confondre a fait croire,
+# du temps de l'ancien moteur, le chantier plus avancé qu'il n'était.
 set -u
 ICI=$(cd "$(dirname "$0")" && pwd)
 TRAVAIL="${HC_TESTS_TRAVAIL:-$ICI/.travail}"
@@ -57,7 +62,7 @@ if [ "${1:-}" = "--brut" ]; then
     exit 0
 fi
 
-echo "— ce que l'ancien moteur exécute encore ($n harnais) —"
+echo "— ce qui relit encore du texte, et ce qui est refusé ($n harnais) —"
 awk -F'\t' '$2=="exec"{a[$3]+=$4} END{for(k in a) printf "%7d  %s\n", a[k], k}' "$R" \
     | sort -rn | head -40
 echo
@@ -65,14 +70,7 @@ echo "— les recours, par catégorie —"
 awk -F'\t' '$2=="recours"{a[$3]+=$4} END{for(k in a) printf "%7d  %s\n", a[k], k}' "$R" \
     | sort -rn | head -25
 echo
-echo "— la part des SONDES DE NOM, qui ne coûtent qu'une fois par nom —"
-awk -F'\t' '
-  $2=="exec" && $3 ~ /^v1 (terme|fonction)/ { tout += $4; if ($3 !~ /recours/) sonde += $4 }
-  END { printf "   entrées dans term_value / call_function : %d\n", tout;
-        printf "   dont sondes de nom                      : %d (%.0f%%)\n",
-               sonde, tout ? 100.0 * sonde / tout : 0 }' "$R"
-echo
-echo "— combien de harnais touchent encore l'ancien moteur —"
-printf "   au total         : %s\n" "$(awk -F'\t' '$2=="exec"{print $1}' "$R" | sort -u | wc -l)"
-printf "   par le recours   : %s\n" "$(awk -F'\t' '$2=="exec" && $3 ~ /recours expr/{print $1}' "$R" | sort -u | wc -l)"
+echo "— combien de harnais relisent du texte ou essuient un refus —"
+printf "   relisent du texte : %s\n" "$(awk -F'\t' '$2=="exec" && $3 ~ /^v3 relit/{print $1}' "$R" | sort -u | wc -l)"
+printf "   essuient un refus : %s\n" "$(awk -F'\t' '$2=="exec" && $3 ~ /^v1 refusée/{print $1}' "$R" | sort -u | wc -l)"
 printf "   sur %s au total\n" "$n"

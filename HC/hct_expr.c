@@ -815,8 +815,8 @@ static HctNoeud *reference(HctAnalyseur *a)
             /* Le jeton couvre « this background », pas le seul « this » :
              * la reconstitution du texte source doit rendre la référence
              * entière. Sans cela le pont envoyait « cards of this » à
-             * term_value, qui ne reconnaissait rien et retombait sur le
-             * total de la pile. */
+             * l'ancien term_value, qui ne reconnaissait rien et retombait
+             * sur le total de la pile. */
             const HctJeton *jtype = ici(a);
             avance(a);
             HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);

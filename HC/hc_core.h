@@ -472,16 +472,18 @@ struct Object {
 };
 
 /* ---- Construction ---- */
-/* Relevé des retours de la v3 vers l'ancien interpréteur : ce que l'exécuteur
- * v3 ne sait pas faire lui-même et rend à call_function / term_value.
+/* Relevé des retours de la v3 vers le reste du noyau : ce que l'exécuteur v3
+ * ne sait pas faire sur l'arbre et sert autrement — par le recours, ou en
+ * relisant du texte.
  *
  * Sert à décider ce qu'on peut retirer de hc_core.c : promener toutes les
  * piles, puis appeler hc_v3_bilan(). Ce qui n'y figure jamais est un candidat
  * à la coupe ; le reste porte encore.
  *
- * Il a déjà servi une fois pour de bon : zéro passage par l'exécuteur de
- * LIGNES sur 172 harnais, et ses 2 327 lignes ont pu partir. Les fonctions et
- * les termes, eux, comptaient 744 passages — ils restent. */
+ * Il a servi deux fois pour de bon : zéro passage par l'exécuteur de LIGNES
+ * sur 172 harnais, et ses 2 327 lignes ont pu partir ; puis, avec
+ * HC_SANS_V1, le moteur d'EXPRESSIONS — term_value, call_function,
+ * parse_expr —, retiré le 2 octobre (docs/mesures/sansv1.txt). */
 void hc_v3_bilan(void);
 /* La version de HC, telle que le noyau la connaît.
  *

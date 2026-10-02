@@ -11,10 +11,6 @@
 #   ./lance.sh <motif>      ne traite que les harnais dont le nom contient <motif>
 #   ./lance.sh --complet    montre les écarts EN ENTIER, pas leurs huit premières lignes
 #
-#   HC_SANS_V1=1 ./lance.sh rejoue la suite sans l'ancien moteur d'expressions :
-#                           ce qui change est ce qu'il sert encore (voir
-#                           docs/mesures/sansv1.txt)
-#
 # L'HORLOGE EST GELÉE (HC_HORLOGE) et le fuseau fixé (TZ=UTC) : sans cela un
 # test qui affiche une date passerait aujourd'hui et échouerait demain, ce qui
 # revient à ne pas pouvoir le versionner.

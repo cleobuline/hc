@@ -24,8 +24,6 @@
    famille legale, personne d'allume
       []
    hors bornes, par variable
-      [ERR]    !! objet introuvable (colonne 2) dans «  family n » — objet : button "B"
-      [ERR]    !! objet introuvable (colonne 2) dans «  family n » — objet : button "B"
       [ERR]    !! objet introuvable (v3, ligne 3 de button "B".essaie)
 
 == 4. LES DEUX PIEGES QUE LA LISTE DOIT ARRETER ==

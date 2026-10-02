@@ -29,33 +29,25 @@
  *   · « the zorglub of 3 » rendait « zorglub of 3 » en clair ;
  *   · « the charToNum of ("a") » levait une erreur d'analyse, PUIS rendait 0.
  *
- * LE HARNAIS JOUE CHAQUE CAS DEUX FOIS, dans deux processus : l'un avec
- * l'ancien moteur, l'autre sans — le réglage se lit une fois par processus.
- * Il imprime la réponse du premier, et signale toute ligne où le second
- * diffère. Une ligne « SANS V1 : » dans les six premières sections est donc
- * une réponse que la v3 ne sait pas encore donner seule. Dans la dernière,
- * l'écart est VOULU — c'est l'ancien moteur qui se trompe —, et il prouve au
- * passage que le réglage coupe bien quelque chose.
+ * L'ANCIEN MOTEUR A ÉTÉ RETIRÉ LE 2 OCTOBRE. Jusque-là, ce harnais jouait
+ * chaque cas deux fois, dans deux processus — avec et sans lui —, et
+ * signalait toute réponse que la v3 ne savait pas donner seule. Il n'y en
+ * avait plus aucune ; la dernière section, où l'écart était VOULU, prouvait
+ * que le réglage coupait bien. Le moteur parti, il n'y a plus rien à
+ * comparer : le harnais joue chaque cas une fois, et sa référence garde ce
+ * que la v3 répond. Une réponse qui change ici est une perte à expliquer.
  *
- * Ce que fait HyperCard d'un argument manquant ou en trop, d'une fonction de
- * la pile sous la forme « the », et d'un comptage dont la cible manque, n'est
- * PAS mesuré. */
+ * Ce que fait HyperCard d'une fonction de la pile sous la forme « the »
+ * — « the maF of "ok" » — est mesuré : c'est une erreur, et HC répond encore.
+ * À décider. */
 #include "hc_core.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d;
   if      (k == HC_MSG) printf("      %s\n", t ? t : "");
   else if (k == HC_ERR) printf("      [ERR] %s\n", t ? t : ""); }
-
-/* Écrit après chaque cas : le parent compare les cas UN À UN, et non les
- * lignes, pour qu'un cas qui en écrit une de moins ne décale pas tous les
- * suivants. */
-#define FIN_DE_CAS '\x01'
 
 static const char *CAS[] = {
     "== 1. un comptage qui porte une cible ==",
@@ -139,24 +131,16 @@ static const char *CAS[] = {
     "put \"[\" & (empty + 1) & \"]\"",
     "put \"[\" & (\"abc\" + 1) & \"]\"",
 
-    "== 7. LES ECARTS VOULUS : la ou l'ancien moteur se trompe ==",
-    "-- Si cette section ne montrait aucun ecart, c'est que le reglage ne",
-    "-- coupe rien, et les six autres ne prouveraient rien non plus.",
-    "-- il repete l'erreur de la v3 :",
+    "== 7. la ou l'ancien moteur se trompait ==",
+    "-- il repetait l'erreur de la v3 :",
     "put the name of card 1 of stack \"PileAbsente\"",
-    "-- le texte qu'on lui reconstitue perd sa parenthese fermante :",
+    "-- le texte qu'on lui reconstituait perdait sa parenthese fermante :",
     "put the maF of (\"o\" & \"k\")",
     NULL
 };
 
-/* Joue tous les cas, dans ce processus, et écrit leurs sorties sur `fd`. */
-static void joue(int fd, int sans_v1)
+int main(void)
 {
-    if (sans_v1) setenv("HC_SANS_V1", "1", 1);
-    else         unsetenv("HC_SANS_V1");
-    if (dup2(fd, STDOUT_FILENO) < 0) _exit(2);
-    setvbuf(stdout, NULL, _IOLBF, 0);
-
     static HcHost h; memset(&h, 0, sizeof h); h.line = ligne;
     hc_set_host(&h);
 
@@ -184,8 +168,7 @@ static void joue(int fd, int sans_v1)
 
     for (int i = 0; CAS[i]; i++) {
         if (CAS[i][0] == '=' || CAS[i][0] == '-') {
-            printf("%s%s\n%c\n", CAS[i][0] == '=' ? "\n" : "   ", CAS[i],
-                   FIN_DE_CAS);
+            printf("%s%s\n", CAS[i][0] == '=' ? "\n" : "   ", CAS[i]);
             continue;
         }
         char s[1024];
@@ -195,78 +178,7 @@ static void joue(int fd, int sans_v1)
                  "on t\n  %s\nend t\n", CAS[i]);
         hc_set_script(b, s);
         hc_send(b, "t");
-        printf("%c\n", FIN_DE_CAS);
     }
-    fflush(stdout);
     hc_free(st);
-}
-
-/* Lance joue() dans un processus fils et rend tout ce qu'il a écrit. */
-static char *capture(int sans_v1)
-{
-    int p[2];
-    if (pipe(p) < 0) return NULL;
-    fflush(stdout);
-    pid_t f = fork();
-    if (f < 0) return NULL;
-    if (f == 0) { close(p[0]); joue(p[1], sans_v1); _exit(0); }
-    close(p[1]);
-    size_t n = 0, cap = 1 << 16;
-    char *t = malloc(cap);
-    if (!t) return NULL;
-    for (;;) {
-        if (n + 4096 > cap) {
-            char *u = realloc(t, cap *= 2);
-            if (!u) { free(t); return NULL; }
-            t = u;
-        }
-        ssize_t r = read(p[0], t + n, cap - n - 1);
-        if (r <= 0) break;
-        n += (size_t)r;
-    }
-    t[n] = '\0';
-    close(p[0]);
-    int etat;
-    waitpid(f, &etat, 0);
-    return t;
-}
-
-int main(void)
-{
-    char *avec = capture(0);
-    char *sans = capture(1);
-    if (!avec || !sans) { puts("capture impossible"); return 1; }
-
-    /* Cas par cas. Les deux processus jouent les mêmes cas dans le même
-     * ordre ; on imprime la réponse avec l'ancien moteur, et, si elle diffère,
-     * celle sans lui, tout entière, juste en dessous. */
-    int ecarts = 0;
-    char *sa = avec, *ss = sans;
-    while (*sa || *ss) {
-        char *fa = strchr(sa, FIN_DE_CAS), *fs = strchr(ss, FIN_DE_CAS);
-        size_t la = fa ? (size_t)(fa - sa) : strlen(sa);
-        size_t ls = fs ? (size_t)(fs - ss) : strlen(ss);
-        fwrite(sa, 1, la, stdout);
-        if (la != ls || memcmp(sa, ss, la) != 0) {
-            /* La première ligne est l'énoncé du cas, identique des deux
-             * côtés : on ne répète que les réponses. */
-            const char *r = memchr(ss, '\n', ls);
-            r = r ? r + 1 : ss + ls;
-            const char *bout = ss + ls;
-            while (r < bout) {
-                const char *e = memchr(r, '\n', (size_t)(bout - r));
-                if (!e) e = bout;
-                printf("  SANS V1 :%.*s\n", (int)(e - r), r);
-                r = e + 1;
-            }
-            ecarts++;
-        }
-        sa += la + (fa ? 2 : 0);          /* le marqueur et son retour */
-        ss += ls + (fs ? 2 : 0);
-    }
-    printf("\n%d cas où la v3 seule ne répond pas comme la v3 secourue par "
-           "l'ancien moteur\n", ecarts);
-    free(avec);
-    free(sans);
     return 0;
 }

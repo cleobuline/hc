@@ -22,6 +22,11 @@
  *
  * Le point 3 est le garde-fou du point 2 : une table qui repond a tout ne
  * vaut pas mieux qu'un echo.
+ *
+ * L'ANCIEN MOTEUR A ETE RETIRE LE 2 OCTOBRE, et la liste V3_V1_FONCTIONS_0
+ * avec lui. Les noms qu'elle portait sont ceux que ce harnais demande ; le
+ * point 1 dit maintenant qu'ils repondent tous sans lui, et le bilan reste
+ * (aucun) / (rien) parce qu'il n'y a plus rien derriere.
  */
 #include "hc_core.h"
 #include <stdio.h>

@@ -5,8 +5,6 @@
      put there is a field "X" of card "Absente"
       false
      put the name of card 1 of stack "PileAbsente"
-      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B"
-      [ERR]    !! objet introuvable (colonne 2) dans «  card 1 of stack "PileAbsente" » — objet : button "B"
       [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)
      put bg field "Partage" of card "Absente"
       [ERR]    !! objet introuvable (v3, ligne 2 de button "B".essaie)

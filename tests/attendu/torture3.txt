@@ -1,6 +1,17 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-───── champ « R », avec l'ancien moteur ─────
+torture en cours...
+[ERR]    !! un nombre est attendu ici (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! un nombre est attendu ici (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! mauvais nombre d'arguments : length (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! mauvais nombre d'arguments : sqrt (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! fonction inconnue : pasLa (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! objet introuvable (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! objet introuvable (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! objet introuvable (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! propriété ou fonction inconnue : zorglub (v3, ligne 165 de stack "Torture3".evalue)
+[ERR]    !! propriété inconnue (v3, ligne 165 de stack "Torture3".evalue)
+125 reussites, aucun echec, 2 a mesurer.
+───── champ « R » ─────
 ==  Les operateurs et leur priorite
   ok     2 + 3 * 4  ==>  14
   ok     (2 + 3) * 4  ==>  20
@@ -152,5 +163,3 @@
      !! propriété ou fonction inconnue : zorglub (v3, ligne 165 de stack "Torture3".evalue)
      !! propriété inconnue (v3, ligne 165 de stack "Torture3".evalue)
 
-───── ce qui change sans lui ─────
-  rien : la v3 seule rend le même rapport, ligne pour ligne

@@ -144,3 +144,61 @@ Sans l'ancien moteur, la suite entière ne perd donc plus rien. Elle ne couvre
 pas pour autant toutes les piles de 1987 : une tournure qu'aucun harnais
 n'emploie se perdrait en silence le jour où on le retire. C'est l'objet de
 l'étape suivante — rejouer de vraies piles, l'ancien moteur coupé.
+
+
+TROISIÈME PASSAGE, 2 octobre : LA SUPPRESSION
+----------------------------------------------
+
+Avant de couper, la suite rejouée une dernière fois sans l'ancien moteur :
+
+    HC_SANS_V1=1 ./tests/lance.sh --complet
+
+270 harnais, les mêmes 16 qu'au deuxième passage changent, de la même façon.
+Rien de neuf depuis la veille.
+
+Un indice, pas une mesure : l'utilisatrice a joué Torture3, le Pendu et le
+banc des clics dans l'application lancée depuis Xcode, dont le schéma
+partagé posait HC_SANS_V1=1 depuis le premier passage, et rien de ce qu'elle
+a rapporté ne ressemblait à une perte. On ne sait pas quelle construction
+tournait à chaque fois — c'est pourquoi ce n'est qu'un indice.
+
+CE QUI EST PARTI. Les deux portes, d'abord : le recours ne demande plus rien
+à term_value ni à parse_expr, il rend l'écho que rendait HC_SANS_V1=1 ; et
+v3_fonction ne sonde plus — ses deux listes V3_V1_FONCTIONS_0 et _1, et le
+cache des noms muets, avec elles. Puis tout ce qui n'était plus atteignable.
+
+Le compilateur ne pouvait pas le dire seul : l'ancien moteur est une BOUCLE
+FERMÉE — term_value appelle parse_expr, qui descend jusqu'à parse_factor,
+qui rappelle term_value. Chacun y est « utilisé » par son voisin, et
+-Wunused-function ne voit rien. Le graphe d'appels de clang
+(-analyzer-checker=debug.DumpCallGraph), parcouru depuis les fonctions
+publiques et celles dont on prend l'adresse, a donné la liste : 27 fonctions
+— term_value, term_value_body, call_function, call_function_body, la chaîne
+parse_expr … parse_factor, compare_vals, et leurs aides (collect_ref,
+chunk_read, split_args, is_of_type, looks_like_date…). Puis quoted(), que
+clang a signalée une fois les autres parties.
+
+Et 8 fonctions qui étaient DÉJÀ mortes avant ce passage, le même graphe
+appliqué au code d'avant le prouve : skip_block, match_end, chain_end,
+opens_if, opens_repeat, else_closes, is_inline_if, opens_inline_chain — les
+restes de l'ancien exécuteur de LIGNES, supprimé le 13 septembre, qui
+s'appelaient entre eux dans une autre boucle fermée. Avec trois commentaires
+qui n'annonçaient plus rien.
+
+hc_core.c passe de 18 347 à 16 540 lignes.
+
+CE QUI A CHANGÉ À L'ÉCRAN : exactement les 16 écarts du deuxième passage,
+vérifiés identiques octet pour octet, plus deux harnais réécrits pour un
+seul passage — sansv1, dont seule la section 7 change (la réponse « SANS
+V1 » devient la seule), et torture3, dont le rapport ne change pas et qui
+montre désormais la boîte de message, qu'un tampon jamais vidé perdait.
+
+HC_SANS_V1 n'existe plus, et le schéma Xcode ne le pose plus. Le relevé
+(tests/releve.sh) compte désormais ce qui relit du TEXTE : 7 passages sur
+toute la suite — set 4, go 2, sort 1.
+
+Ce que la suite ne couvre pas reste ce qu'il était : une tournure qu'aucun
+harnais et aucune pile jouée n'emploie. Si l'une d'elles marchait grâce à
+l'ancien moteur, elle se dira désormais par une erreur nommée — « objet
+introuvable », « fonction inconnue », « propriété ou fonction inconnue » —
+ou par son propre texte rendu en écho, et non plus par une réponse.

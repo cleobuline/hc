@@ -24,6 +24,10 @@
  * Le point 3 garde le point 1 : une liste qui laisse tout passer sans rien
  * servir donnerait aussi « zero sonde ».
  *
+ * L'ANCIEN MOTEUR A ETE RETIRE LE 2 OCTOBRE, la liste V3_V1_FONCTIONS_1 et
+ * les sondes avec lui. Les trois points tiennent toujours, et le point 2
+ * prouve que la v3 sert seule ce qu'il servait.
+ *
  * CE QUE LE POINT 3 REVELAIT — ET QUI EST CORRIGE DEPUIS. « nExistePas(3) »
  * ne produisait aucune erreur : il rendait son propre texte, « nExistePas
  * (3) ». Verifie avant ET apres la liste a l'epoque, le comportement etait
@@ -108,9 +112,9 @@ int main(void)
     demande("spectre(\"x\")");
 
     puts("\n== 2. ce que l'ancien moteur sert vraiment, toujours servi ==");
-    /* Ces noms sont dans V3_V1_FONCTIONS_1. Qu'ils passent par la v3 ou par
-     * l'ancien moteur importe peu ici : ce qui compte est qu'ils REPONDENT,
-     * et juste. La liste ne doit pas avoir ferme une porte utile. */
+    /* Ces noms etaient dans V3_V1_FONCTIONS_1, du temps de l'ancien moteur.
+     * Ce qui compte est qu'ils REPONDENT, et juste — par la v3 seule
+     * desormais. */
     demande("abs(-3)");
     demande("sqrt(16)");
     demande("trunc(7.9)");

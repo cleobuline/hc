@@ -19,24 +19,27 @@
  *   torture3 bouton.txt pile.txt essais.txt              le test
  *   torture3 bouton.txt pile.txt essais.txt sortie.stack écrit la pile
  *
- * LE TEST JOUE LE BOUTON DEUX FOIS, dans deux processus : avec l'ancien
- * moteur d'expressions, puis sans (HC_SANS_V1=1, lu une fois par processus).
- * Il imprime le rapport du premier, puis les lignes du second qui n'y
- * figurent pas. Une ligne « SANS V1 » est une réponse que la v3 ne donne pas
- * seule — voir docs/mesures/sansv1.txt. */
+ * Le test jouait le bouton deux fois, dans deux processus — avec l'ancien
+ * moteur d'expressions, puis sans —, et signalait les lignes du rapport qui
+ * changeaient. Il n'en changeait plus aucune, et l'ancien moteur a été
+ * retiré le 2 octobre (docs/mesures/sansv1.txt) : le test le joue une fois,
+ * et imprime le rapport. */
 #include "hc_core.h"
 #include "hc_file.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
 
+/* La boîte de message part sur la sortie d'ERREUR, le RAPPORT sur la sortie
+ * standard : la référence les montre tous deux, la boîte d'abord. Du temps
+ * des deux processus, la boîte se perdait — le fils l'écrivait dans un
+ * tampon que _exit ne vidait pas ; elle dit pourtant QUELLE erreur lève
+ * chaque essai « ERREUR », et c'est à garder. */
 static void ma_ligne(HcLineKind k, int d, const char *t)
 {
     (void)d;
-    if (k == HC_MSG)      printf("%s\n", t);
-    else if (k == HC_ERR) printf("[ERR] %s\n", t);
+    if (k == HC_MSG)      fprintf(stderr, "%s\n", t);
+    else if (k == HC_ERR) fprintf(stderr, "[ERR] %s\n", t);
 }
 
 static char *lire(const char *chemin)
@@ -111,20 +114,14 @@ static Object *monte(void)
     return st;
 }
 
-/* Joue le bouton dans ce processus et écrit le champ « R » sur `fd`. */
-static void joue(int fd, int sans_v1)
+/* Joue le bouton et imprime le champ « R ». */
+static void joue(void)
 {
-    if (sans_v1) setenv("HC_SANS_V1", "1", 1);
-    else         unsetenv("HC_SANS_V1");
-
     static HcHost h;
     memset(&h, 0, sizeof h);
     h.line = ma_ligne;
     hc_set_host(&h);
 
-    /* La boîte de message part sur la sortie d'erreur : seul le RAPPORT se
-     * compare, et le bilan qu'on y « put » est déjà dans le champ. */
-    if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) _exit(2);
     Object *st = monte();
     hc_send(g_bouton, "mouseUp");
     /* LES ESSAIS SE JOUENT DANS « on idle » (script de la pile) : le bouton
@@ -137,59 +134,8 @@ static void joue(int fd, int sans_v1)
         hc_send(g_carte, "idle");
     }
     const char *r = (g_rapport && g_rapport->contents) ? g_rapport->contents : "";
-    size_t n = strlen(r);
-    if (write(fd, r, n) != (ssize_t)n) _exit(3);
+    printf("───── champ « R » ─────\n%s\n", r);
     hc_free(st);
-}
-
-static char *capture(int sans_v1)
-{
-    int p[2];
-    if (pipe(p) < 0) return NULL;
-    fflush(stdout);
-    pid_t f = fork();
-    if (f < 0) return NULL;
-    if (f == 0) { close(p[0]); joue(p[1], sans_v1); _exit(0); }
-    close(p[1]);
-    size_t n = 0, cap = 1 << 16;
-    char *t = malloc(cap);
-    if (!t) return NULL;
-    for (;;) {
-        if (n + 4096 > cap) {
-            char *u = realloc(t, cap *= 2);
-            if (!u) { free(t); return NULL; }
-            t = u;
-        }
-        ssize_t r = read(p[0], t + n, cap - n - 1);
-        if (r <= 0) break;
-        n += (size_t)r;
-    }
-    t[n] = '\0';
-    close(p[0]);
-    int etat;
-    waitpid(f, &etat, 0);
-    return t;
-}
-
-/* Les lignes de `b` absentes de `a`, chacune précédée de `marque`. */
-static int absentes(const char *a, const char *b, const char *marque)
-{
-    int n = 0;
-    const char *l = b;
-    while (*l) {
-        const char *fin = strchr(l, '\n');
-        size_t len = fin ? (size_t)(fin - l) : strlen(l);
-        int vue = 0;
-        for (const char *m = a; *m && !vue; ) {
-            const char *fm = strchr(m, '\n');
-            size_t lm = fm ? (size_t)(fm - m) : strlen(m);
-            if (lm == len && memcmp(m, l, len) == 0) vue = 1;
-            m += lm + (fm ? 1 : 0);
-        }
-        if (!vue && len) { printf("%s%.*s\n", marque, (int)len, l); n++; }
-        l += len + (fin ? 1 : 0);
-    }
-    return n;
 }
 
 int main(int argc, char **argv)
@@ -220,17 +166,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    char *avec = capture(0);
-    char *sans = capture(1);
-    if (!avec || !sans) { puts("capture impossible"); return 1; }
+    joue();
 
-    printf("───── champ « R », avec l'ancien moteur ─────\n%s\n", avec);
-    printf("───── ce qui change sans lui ─────\n");
-    int n = absentes(avec, sans, "  SANS V1 + ");
-    n += absentes(sans, avec, "  SANS V1 - ");
-    if (!n) printf("  rien : la v3 seule rend le même rapport, ligne pour ligne\n");
-
-    free(avec); free(sans);
     free(src_bouton); free(src_pile); free(src_essais);
     return 0;
 }
