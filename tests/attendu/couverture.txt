@@ -16,7 +16,7 @@
   MANQUE dial "555"                                      !! ne sait pas faire : dial "555"
   MANQUE edit script of me                               !! ne sait pas faire : edit script of me
   MANQUE help                                            !! ne sait pas faire : help
-  MANQUE palette "z"                                     !! ne sait pas faire : palette "z"
+  MANQUE palette "z"                                     !! palette introuvable : z
   MANQUE picture "z"                                     !! ne sait pas faire : picture "z"
   MANQUE export paint to file "z"                        !! ne sait pas faire : export paint to file "z"
   MANQUE import paint from file "z"                      !! ne sait pas faire : import paint from file "z"

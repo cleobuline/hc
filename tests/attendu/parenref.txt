@@ -1,0 +1,27 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== le « of » de l'expression n'est pas la portée ==
+   set the hilite of button (item k of noms) to true
+   put the hilite of button "b"
+      true
+   set the textSize of card button (item 1 of noms) to 18
+   put the textSize of button "a"
+      18
+   set the name of button (item 1 of noms) to "z"
+   put the short name of button 1
+      z
+
+== ni le « to » ==
+   set the name of button (char 1 to 1 of "zut") to "w"
+   put the short name of button 1
+      w
+
+== témoins : ce qui marchait déjà ==
+   set the hilite of button ("w" & "") to false
+   put the hilite of button "w"
+      false
+   set the hilite of button "b" of this card to false
+   put the hilite of button "b"
+      false
+   set the hilite of button 1 of card 1 to true
+   put the hilite of button 1
+      true

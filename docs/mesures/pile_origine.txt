@@ -918,6 +918,27 @@ CE QUI RESTE REFUSÉ, ET CE N'EST PAS UN OUBLI
    perdues pour une seule référence. Si les fenêtres nommées se font un chantier,
    c'est cette ligne-là qui le justifie, pas la syntaxe.
 
+   LEVÉ LE 2 OCTOBRE, avec la palette Navigator : l'arbre a désormais le type
+   HCT_OBJ_WINDOW, et le vérificateur accepte la ligne. Mesuré sur la pile
+   elle-même (la .bin envoyée par l'utilisatrice, hors dépôt), 198 scripts :
+
+       avant    1 refusé : stack, ligne 85, « texte inattendu en fin de ligne »
+       après    0 refusé
+
+   Et en jouant openBackground sur la carte 2 (« Names & Addresses »), le
+   wrongStack() du banc forcé à false faute d'hôte qui serve « the stacks » :
+
+       avant    !! script, ligne 85 colonne 23 : texte inattendu en fin de ligne
+                !! personne ne répond à « StackTemplatePal … »
+       après    !! personne ne répond à « StackTemplatePal … »
+                !! fenêtre introuvable : StackTemplatePal
+
+   La correction de la phrase d'au-dessus : le script n'était plus perdu en
+   entier — makePalette tournait déjà. Seule la ligne 85 tombait, et elle
+   tombe encore, mais pour la bonne raison : la fenêtre n'existe pas, parce
+   que l'XCMD qui la crée, du code 68000 de la ressource, ne tourne pas ici.
+   L'hôte ne tient que « Navigator ».
+
 ET DEUX DES QUATRE CORRECTIONS NE S'EXÉCUTAIENT PAS
 ---------------------------------------------------
 
@@ -1362,6 +1383,106 @@ transfert hors d'un Mac classique la perd. Trois façons de la garder :
     porte les deux parties en un seul fichier.
 
 Retenue pour les icônes : lire le MacBinary à l'import.
+
+UNE PISTE POUR LA VERSION 1.0 — décidé par l'utilisatrice le 2 octobre : UNE PALETTE EST
+DÉJÀ UNE PETITE CARTE. Une image, des boutons invisibles avec chacun son
+rectangle et son bout de HyperTalk — c'est une carte HC avec un dessin et des
+boutons transparents scriptés. Le « Palette Maker » des Power Tools était
+d'ailleurs lui-même une carte, et la PLTE n'en était que l'export.
+
+Si un jour on y vient : « palette "X" » ouvrirait la CARTE « X » dans une
+fenêtre flottante, « hilitedButton » y désignerait le bouton allumé, et
+l'import d'un .bin changerait PLTE et PICT en une carte de ce genre.
+L'édition se ferait avec les outils qui existent déjà — peinture, bouton,
+éditeur de scripts —, et l'objection de la décision ci-dessus tombe : ce
+n'est plus une moitié de fonction. Le coût : la fenêtre flottante qui
+affiche une carte et lui envoie les clics, le décodage des PICT (celles du
+Palette Maker sont en noir et blanc), la lecture de la PLTE, et les
+messages openPalette / closePalette.
+
+LA PALETTE « NAVIGATOR » serait le premier cas, et le plus rentable. Signalée
+par l'utilisatrice comme fréquente dans les piles d'époque ; la référence
+(hypercard.center) la cite partout — « palette navigator », « show window
+"Navigator" », le raccourci « nav » de la pile Home. Elle n'appartient à
+AUCUNE pile : elle vient avec HyperCard, comme ses icônes. HC pourrait donc
+la livrer toute faite, sans rien décoder, comme il livre déjà les icônes
+d'HyperCard. NON MESURÉ : son dessin exact, et le message de chacun de ses
+boutons — à relever DANS HYPERCARD (Basilisk II), « palette navigator »,
+une capture, et pour chaque bouton ce qu'il fait.
+
+MESURÉ DANS HYPERCARD (Basilisk II) le 2 octobre, par l'utilisatrice :
+« palette navigator », une capture, puis « answer the commands of window
+"Navigator" ». Une fenêtre « windoid » sans titre, avec case de fermeture ;
+trois rangs, 4 + 4 + 3 boutons, ceux du bas plus larges :
+
+    ↩ retour        doMenu "Back"
+    maison          doMenu "Home"
+    ◇ ?             doMenu "Help"
+    grille          doMenu "Recent"     (ouvre la boîte « Recent Cards »)
+    ⇤               doMenu "First"
+    ←               doMenu "Prev"
+    →               doMenu "Next"
+    ⇥               doMenu "Last"
+    loupe           doMenu "Find..."
+    boîte           doMenu "Message"
+    deux fenêtres   doMenu "Next window"  (passe d'une pile ouverte à
+                                           l'autre — précisé par
+                                           l'utilisatrice)
+
+CE QUE HC EN FAIT AUJOURD'HUI, mesuré dans le noyau le même jour : Back,
+First, Prev, Next et Last sont servis par le noyau (MENUS_NOYAU). Les six
+autres partent à l'hôte, et l'application ne connaît ni « Home », ni
+« Help », ni « Recent », ni « Message », ni « Next window » : « article
+inconnu », en silence. C'est un trou de doMenu À LUI SEUL, palette ou pas —
+des piles d'époque écrivent « doMenu "Message" » dans leurs scripts.
+
+Aucune des piles reçues à ce jour ne l'appelle ; « Stack Templates » a sa
+propre palette, montée par un XCMD (StackTemplatePal) — un troisième cas, à
+ne pas confondre.
+
+SERVIE LE 2 OCTOBRE, en deux pièces :
+
+  · le NOYAU : le type fenêtre dans l'arbre (HCT_OBJ_WINDOW), la commande
+    « palette nom [, point] », « show / hide / close window », « there is a
+    window », « the <prop> of window » et son « set ». Il ne tient aucun
+    état : il demande tout à l'hôte, par le rappel `fenetre` (hc_core.h), et
+    envoie openPalette / closePalette à la carte courante, avec le nom et
+    l'identifiant (Jeanne DeVoto). Harnais : tests/harnais/fenetres.c, avec
+    un hôte factice qui tient la Navigator.
+
+  · l'APPLICATION (HCview.m) : la fenêtre, dessinée depuis la capture de
+    l'utilisatrice, à l'échelle 1 et en deux tons seulement — 98 × 78 points,
+    recopiés dans HC/hc_navigator.h sans rien redessiner. Les onze rectangles
+    des boutons sont relevés sur le même dessin, traits exclus. Un clic
+    exécute la ligne de « the commands » comme la boîte de messages ; la
+    barre de titre déplace la palette, la case la ferme et envoie
+    closePalette. Propriétés servies : name, id, commands (lue et posée),
+    buttonCount, hilitedButton (lue et posée), visible, loc, topLeft, rect.
+
+NON MESURÉ, et à relever DANS HYPERCARD (Basilisk II) :
+
+    palette navigator
+    answer the hilitedButton of window "Navigator"
+    answer the loc of window "Navigator"
+    answer the rect of window "Navigator"
+
+  · HC rend 0 pour hilitedButton, et pour loc le coin haut-gauche du
+    CONTENU — sous la barre de titre —, comme les fenêtres du Toolbox ; le
+    point de « palette nom, point » est compté de la même façon ;
+  · l'inversion d'un bouton sous le doigt est le geste des boutons du Mac,
+    pas un relevé de la palette ;
+  · l'identifiant est le numéro de fenêtre de macOS.
+
+Les palettes d'une PILE — PLTE, ou un XCMD comme StackTemplatePal — restent
+introuvables : « palette introuvable », « fenêtre introuvable ».
+
+LE BOUTON RECENT, essayé DANS HC (l'application) par l'utilisatrice : il
+déroule le sous-menu Recent du menu Go, qui NOMME les cartes. HyperCard ouvre
+une boîte de miniatures — « miniature pictures for the last 42 cards
+visited » (hypercard.center, fiche lockRecent). DÉCISION DE L'UTILISATRICE,
+le 2 octobre : on garde le menu. Les miniatures coûtent cher pour un service
+« assez anecdotique », et le menu mène aux mêmes cartes. lockRecent est
+retenu par le noyau mais reste sans effet.
 
 
 LES ICÔNES, PAR UN MACBINARY — 2 octobre

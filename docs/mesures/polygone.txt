@@ -1,0 +1,125 @@
+L'EXTENSION DE HC : LES COULEURS ET LE POLYGONE D'UN BOUTON — 2 octobre
+=======================================================================
+
+Décidée par l'utilisatrice pour programmer un flipper, et inscrite dans
+CLAUDE.md : la seule extension annoncée de HC. Le vocabulaire est celui de
+LiveCode et SuperCard, rien n'est inventé.
+
+    set the style of button "aile" to polygon
+    set the points of button "aile" to "100,200" & return & "160,190" & return & "150,215"
+    set the backColor of button "aile" to "red"        -- l'intérieur
+    set the foreColor of button "aile" to "blue"       -- le contour, le titre
+    set the hiliteColor of button "aile" to "yellow"   -- l'intérieur allumé
+    put within(button "aile", the mouseLoc)
+    put intersect(button "bille", button "aile")
+
+Les couleurs valent pour TOUS les boutons, à la demande de l'utilisatrice, à
+condition que l'import des piles d'origine n'en soit pas changé. Elles
+parlent la langue de textColor : un nom (anglais ou français), « #RRGGBB »
+ou « r,v,b » ; la lecture rend « r,v,b », ou vide si rien n'est posé.
+
+
+LA GARANTIE DE COMPATIBILITÉ, MESURÉE
+-------------------------------------
+
+Le principe : zéro veut dire « rien de posé » pour chaque nouveau champ, et
+rien n'est écrit dans un fichier pour un bouton qui n'en porte pas. Les trois
+mesures qui le vérifient :
+
+  1. IMPORT. Neuf piles d'HyperCard (hors dépôt, envoyées par l'utilisatrice) :
+     Stack Templates (et sa .bin), Découvrir HyperCard, 3D Parametric
+     Equations, Graph Maker, MAC CAM Workshop, MAC CAM FORTH, Minkowski 1.03,
+     TEST3 — 591 boutons importés, 0 portent une couleur ou des sommets.
+
+  2. ENREGISTREMENT. Trois piles au format HC (demo, Readymade Buttons, Graph
+     Maker), relues puis réenregistrées par le noyau d'avant et par celui-ci :
+     les fichiers sont identiques OCTET POUR OCTET.
+
+  3. LA PEINTURE. « set the backColor to "green" » — sans « of » — va toujours
+     à l'hôte, comme couleur de peinture ; « the backColor of button » est
+     celle du bouton. Les deux ne se marchent pas dessus (harnais polygone,
+     section 3b ; forecolor et couleur, inchangés).
+
+
+CE QUI A ÉTÉ TROUVÉ EN CHEMIN
+-----------------------------
+
+  · Une couleur ILLISIBLE dans un fichier — « backcolor zz » — se relisait en
+    noir posé : hc_entier rendait son défaut, 0, pris pour une couleur.
+    Corrigé avant d'être poussé ; la ligne est ignorée. Vingt mille lignes de
+    sommets tirées au hasard se relisent sans faute sous ASan et UBSan.
+
+  · Le dialogue Infos bouton relit le style par son TITRE, et retombe sur
+    « transparent » pour un style qu'il ne connaît pas : ouvrir l'Info d'un
+    polygone puis OK l'aurait changé en bouton transparent. « polygon » est
+    dans la liste.
+
+  · Le README annonçait déjà « backColor / foreColor / textColor » sur les
+    objets ; mesuré le 2 octobre, « set the backColor of me » répondait
+    « propriété inconnue ». La promesse est tenue depuis, pour les boutons.
+    Les CHAMPS n'ont toujours ni backColor ni foreColor.
+
+  · « the long id of button 2 » rend « 5 » dans HC, là où HyperCard rend
+    « card button id 5 of card id … of stack … ». Un écart de compatibilité
+    à part, relevé en chemin, non corrigé ici.
+
+
+LES CHOIX, ET CE QUI N'EST PAS MESURÉ
+-------------------------------------
+
+  · Les sommets sont RELATIFS au coin du bouton : déplacer le bouton déplace
+    la forme, l'élargir l'étire. Poser les points cale le rectangle sur eux.
+    C'est la conduite de LiveCode d'après sa documentation ; non comparé à
+    LiveCode lui-même.
+
+  · Le CLIC ne change que pour un polygone, et seulement avec l'outil
+    Browse : il ne compte que dans la forme. Un ovale d'HyperCard se clique
+    toujours dans son rectangle.
+
+  · within() et intersect() voient la vraie forme : un ovale y est une
+    ellipse à 32 côtés, ce dont un flipper a besoin pour ses champignons. Le
+    bord compte comme dedans.
+
+  · Un bouton passé à ces deux fonctions y arrive par son identifiant
+    (« card button id 5 »), et non par son nom. Une pile qui définirait sa
+    PROPRE fonction intersect ou within recevrait donc ce descripteur. Aucune
+    pile d'HyperCard n'en connaît : ces noms n'existaient pas.
+
+  · Les cases à cocher, les boutons radio et les popups ne prennent pas les
+    couleurs : non demandé, non fait.
+
+
+« the keysDown » ET LE FLIPPER — 2 octobre, le soir
+---------------------------------------------------
+
+La seconde extension, accordée par l'utilisatrice pour les batteurs (W et
+N) : les touches tenues, le mot de LiveCode. Le flipper de démonstration —
+deux batteurs, deux guides, deux bumpers, trois champignons — a été joué
+sans écran par un joueur automatique qui répond à keysDown, puis DANS HC
+(l'application) par l'utilisatrice.
+
+CE QUE LE FLIPPER A TROUVÉ DANS HC, ET QUI EST CORRIGÉ :
+
+  · « set the hilite of button (item k of noms) » : le « of » entre
+    parenthèses passait pour la portée (harnais parenref).
+
+  · L'ARÈNE, un défaut antérieur, présent dans 0.7.6 : chaque appel d'une
+    fonction de la pile y laissait une ligne par argument jusqu'à la fin du
+    gestionnaire. Saturation mesurée entre 16 000 et 20 000 appels de
+    « get f(1) » ; la boucle d'un jeu y arrivait en deux minutes (harnais
+    arenefonction).
+
+  · LA LENTEUR ET LA MÉMOIRE, côté application, introduites avec keysDown :
+    les frappes restaient en file et le guetteur les recopiait à chaque image,
+    et la réserve autorelease ne se vidait pas pendant le script. Rapporté
+    DANS HC par l'utilisatrice : « après quelques coups de flipper ça devient
+    super lent, et je vois la mémoire grimper dans Xcode ». Le noyau était
+    hors de cause, mesuré : 3,4 Mo au plus pour 300, 3 000 ou 9 000 images.
+    Après la correction (commit 50aaaf5), MESURÉ DANS HC (l'application) par
+    l'utilisatrice : « c'est bien, c'est fluide ».
+
+LA PHYSIQUE DU FLIPPER, dans le script de la pile (hors noyau) : trois
+sous-pas par image et des batteurs calculés exactement, dans leur propre
+repère. Mesuré avec le joueur automatique, mêmes tirages : 12 traversées de
+batteur sur 6 parties avant, 0 sur 9 parties après ; 0,8 ms de calcul par
+image, pour un budget de 33.

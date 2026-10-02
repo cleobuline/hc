@@ -23,6 +23,26 @@ ELLE NE S'ANNONCE NULLE PART : ni dans les notes de version, ni dans une aide,
 ni dans un README. C'est « notre petit secret », voulu ainsi. Le code, les
 harnais et docs/mesures/ en parlent, et c'est tout.
 
+## LES EXTENSIONS ANNONCÉES : LES BOUTONS POLYGONES, ET « the keysDown »
+
+Décidé par l'utilisatrice le 2 octobre : HC reste un clone d'HyperCard, et
+n'a qu'une extension annoncée, pour les jeux, à commencer par son flipper —
+les boutons polygones et leurs couleurs. Le même soir, elle a accordé une
+SECONDE pièce : « the keysDown », les touches tenues, sans quoi les batteurs
+ne peuvent pas répondre pendant que la bille roule. Toutes deux s'annoncent
+dans les notes de version.
+
+HC portait déjà, avant elles, ses couleurs (textColor, la peinture, les
+icônes en couleur), annoncées en 0.7.3.
+
+Le vocabulaire est celui de LiveCode et SuperCard (style « polygon », « the
+points », « the keysDown »), pour ne rien inventer. Les mots nouveaux n'existent que là où
+HyperCard n'avait rien : aucun mot existant ne change de sens, et aucune pile
+d'HyperCard ne change de comportement.
+
+Toute autre extension se propose à l'utilisatrice, et ne se fait pas sans
+elle. (skipErrors n'est pas concerné : il reste le petit secret ci-dessus.)
+
 ## LE CÔTÉ COCOA SE VÉRIFIE, ET IL NE FAUT PAS S'EN PRIVER
 
 Les quinze fichiers `.m` ne se compilent pas dans le conteneur : c'est une

@@ -658,6 +658,32 @@ static NSColor *btn_label_color(Object *o, NSColor *normale) {
     return normale;
 }
 
+/* LES COULEURS D'UN BOUTON — l'extension (hc_core.h, champs backcolor…).
+ * Rien de posé, rien de changé : les couleurs par défaut sont le blanc et le
+ * noir qu'HyperCard employait, et que ce fichier écrivait en dur. */
+static NSColor *hcv_couleur_posee(int c, NSColor *defaut)
+{
+    if (!c) return defaut;
+    int rvb = HC_COUL_RVB(c);
+    return [NSColor colorWithDeviceRed:((rvb >> 16) & 255) / 255.0
+                                 green:((rvb >> 8) & 255) / 255.0
+                                  blue:(rvb & 255) / 255.0
+                                 alpha:1.0];
+}
+
+/* L'intérieur : backColor, ou hiliteColor quand le bouton est allumé. */
+static NSColor *btn_fond(Object *o, BOOL on)
+{
+    return on ? hcv_couleur_posee(o->hilitecolor, [NSColor blackColor])
+              : hcv_couleur_posee(o->backcolor,   [NSColor whiteColor]);
+}
+
+/* Le contour et le titre : foreColor. */
+static NSColor *btn_trait(Object *o)
+{
+    return hcv_couleur_posee(o->forecolor, [NSColor blackColor]);
+}
+
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
@@ -665,8 +691,9 @@ static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat de
     [ps setAlignment:NSTextAlignmentCenter];
 
     NSMutableDictionary *attrs =
-        [obj_attrs(o, defSize, btn_label_color(o, on ? [NSColor whiteColor]
-                                                     : [NSColor blackColor])) mutableCopy];
+        [obj_attrs(o, defSize, btn_label_color(o, (on && !o->hilitecolor)
+                                                     ? [NSColor whiteColor]
+                                                     : btn_trait(o))) mutableCopy];
     attrs[NSParagraphStyleAttributeName] = ps;
 
     NSRect tr = NSInsetRect(r, 4, 0);
@@ -686,6 +713,28 @@ static void draw_edit_outline(NSRect r) {
 
 static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     const char *st = o->style ? o->style : "rectangle";
+
+    /* LE POLYGONE — l'extension. Sa forme vient du noyau (hc_bouton_sommets),
+     * la même que voient within() et intersect() : ce qu'on voit est ce qui
+     * touche. Les coordonnées de carte sont celles de la vue. */
+    if (hc_est_polygone(o)) {
+        static int xy[2 * HC_SOMMETS_MAX];
+        int n = hc_bouton_sommets(o, xy, HC_SOMMETS_MAX);
+        if (n < 2) return;
+        NSBezierPath *p = [NSBezierPath bezierPath];
+        [p moveToPoint:NSMakePoint(xy[0] + 0.5, xy[1] + 0.5)];
+        for (int i = 1; i < n; i++)
+            [p lineToPoint:NSMakePoint(xy[2 * i] + 0.5, xy[2 * i + 1] + 0.5)];
+        if (n >= 3) {
+            [p closePath];
+            [btn_fond(o, on) setFill];
+            [p fill];
+        }
+        [btn_trait(o) setStroke];
+        [p setLineWidth:1];
+        [p stroke];
+        return;
+    }
 
     if (strcmp(st, "transparent") == 0) {
         /* INVERSER, ET NON NOIRCIR — et le commentaire qui était ici disait déjà
@@ -707,7 +756,11 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
          * l'encre de l'icône passe au blanc, ce dont draw_part se charge, et
          * c'est une décision prise à l'usage — « ni carré noir, ni icône qui
          * disparaît sur fond blanc ». On n'y touche pas. */
-        if (on && o->icon == 0) {
+        if (on && o->icon == 0 && o->hilitecolor) {
+            /* L'extension : une hiliteColor posée remplace l'inversion. */
+            [btn_fond(o, on) setFill];
+            NSRectFill(r);
+        } else if (on && o->icon == 0) {
             [[NSColor whiteColor] setFill];
             NSRectFillUsingOperation(r, NSCompositingOperationDifference);
         }
@@ -718,11 +771,11 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
                                  r.size.width - 3, r.size.height - 3);
         NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
                                  r.size.width - 3, r.size.height - 3);
-        [[NSColor blackColor] setFill];
+        [btn_trait(o) setFill];
         NSRectFill(sh);
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         NSRectFill(body);
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
         [bp setLineWidth:1];
         [bp stroke];
@@ -731,18 +784,18 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "roundRect") == 0 || strcmp(st, "roundrect") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
                                                           xRadius:8 yRadius:8];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         return;
     }
     if (strcmp(st, "oval") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(r, 0.5, 0.5)];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         return;
@@ -750,9 +803,9 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "standard") == 0 || strcmp(st, "default") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 2.5, 2.5)
                                                           xRadius:6 yRadius:6];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         if (strcmp(st, "default") == 0) {
@@ -764,13 +817,13 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
         return;
     }
     if (strcmp(st, "opaque") == 0) {
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         NSRectFill(r);
         return;
     }
-    [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+    [btn_fond(o, on) setFill];
     NSRectFill(r);
-    [[NSColor blackColor] setFill];
+    [btn_trait(o) setFill];
     NSFrameRect(r);
 }
 
@@ -1485,8 +1538,16 @@ static Object *part_at_layer(Object *layer, NSPoint p) {
         Object *o = layer->parts[i];
         if (o->visible && !part_inerte(o) &&
             p.x >= o->x && p.x <= o->x + o->w &&
-            p.y >= o->y && p.y <= o->y + o->h)
+            p.y >= o->y && p.y <= o->y + o->h) {
+            /* Un POLYGONE ne se clique que dans sa forme — l'extension. Avec
+             * l'outil Bouton, son rectangle suffit : une forme mince doit
+             * pouvoir s'attraper pour être déplacée. Les autres styles ne
+             * changent pas. */
+            if (gTool == TOOL_BROWSE && hc_est_polygone(o) &&
+                !hc_dans_forme(o, (int)floor(p.x), (int)floor(p.y)))
+                continue;
             return o;
+        }
     }
     return NULL;
 }
@@ -2230,8 +2291,74 @@ static NSString *menu_normalise(NSString *s)
     return [[s stringByTrimmingCharactersInSet:fin] lowercaseString];
 }
 
+/* ═══ TROIS ARTICLES DU MENU GO, POUR « doMenu » ═══════════════════════
+ *
+ * La palette Navigator d'HyperCard, mesurée le 2 octobre — « the commands of
+ * window "Navigator" » —, n'envoie que des doMenu : Back, Home, Help, Recent,
+ * First, Prev, Next, Last, Find…, Message, Next window. Le noyau sert les
+ * flèches, Back et Home (MENUS_NOYAU) ; Find… était déjà dans la table
+ * ci-dessous. Ces trois-là n'étaient servis nulle part, et des piles
+ * d'époque les écrivent aussi dans leurs scripts, palette ou pas.
+ *
+ * Help reste sans réponse : HC n'a pas de pile d'aide, et ouvrir autre chose
+ * à la place serait décider seul de ce qu'HyperCard aurait montré. */
+
+/* « Message » : montrer ou cacher la boîte de message, comme Cmd-M — la
+ * même action, par le même chemin. */
+static BOOL cocoa_menu_message(void)
+{
+    NSMenuItem *m = [[NSMenuItem alloc] initWithTitle:@"Message" action:nil
+                                        keyEquivalent:@""];
+    [m setTag:5];
+    [gView togglePalette:m];
+    return YES;
+}
+
+/* « Recent » : les cartes récentes. HyperCard ouvrait une boîte de vignettes ;
+ * HC tient la même liste dans le sous-menu Recent du menu Go, et c'est lui
+ * qu'on déroule, là où est la souris. Son délégué le reconstruit à
+ * l'ouverture. */
+static BOOL cocoa_menu_recent(void)
+{
+    for (NSMenuItem *haut in [[NSApp mainMenu] itemArray]) {
+        for (NSMenuItem *it in [[haut submenu] itemArray]) {
+            if (![[it title] isEqualToString:@"Recent"] || ![it submenu]) continue;
+            [[it submenu] popUpMenuPositioningItem:nil
+                                        atLocation:[NSEvent mouseLocation]
+                                            inView:nil];
+            return YES;
+        }
+    }
+    return NO;
+}
+
+/* « Next window » : la pile ouverte suivante — précisé par l'utilisatrice,
+ * qui l'a essayé dans HyperCard. La fenêtre de devant passe derrière toutes
+ * les autres, et la suivante vient devant : trois piles ouvertes défilent
+ * donc toutes, au lieu de s'échanger deux à deux. Les palettes (NSPanel) ne
+ * comptent pas : ce sont des outils, pas des piles. */
+static BOOL cocoa_menu_fenetre_suivante(void)
+{
+    NSMutableArray<NSWindow *> *piles = [NSMutableArray array];
+    for (NSWindow *w in [NSApp orderedWindows])
+        if ([w isVisible] && ![w isKindOfClass:[NSPanel class]] &&
+            [w canBecomeMainWindow])
+            [piles addObject:w];
+    if ([piles count] < 2) return YES;      /* une seule pile : rien à faire */
+    [piles[0] orderBack:nil];
+    [piles[1] makeKeyAndOrderFront:nil];
+    return YES;
+}
+
 static void cocoa_menu_hypercard(const char *item)
 {
+    {
+        NSString *v = menu_normalise(hcv_texte(item));
+        if ([v isEqualToString:@"message"]     && cocoa_menu_message())          return;
+        if ([v isEqualToString:@"recent"]      && cocoa_menu_recent())           return;
+        if ([v isEqualToString:@"next window"] && cocoa_menu_fenetre_suivante()) return;
+    }
+
     static const struct { const char *article; const char *selecteur; } TABLE[] = {
         { "New Card",       "newCard:"           },
         { "Copy Card",      "copyCard:"          },
@@ -2752,6 +2879,132 @@ static int hcv_quelle_couleur(const char *nom)
     return 0;
 }
 
+/* ═══ « the keysDown » : LES TOUCHES TENUES ════════════════════════════════
+ *
+ * La seconde extension de HC (CLAUDE.md), accordée le 2 octobre pour les
+ * batteurs du flipper. Le mot et ses valeurs sont ceux de LiveCode : une
+ * touche par item, un caractère par son code — « w » vaut 119, comme
+ * charToNum("w") —, les flèches et quelques touches par leur code X11
+ * (65361 à 65364 pour gauche, haut, droite, bas).
+ *
+ * POURQUOI UN SUIVI, ET PAS UNE QUESTION AU CLAVIER : interroger le matériel
+ * (CGEventSourceKeyState) peut demander l'autorisation « Surveillance de
+ * l'entrée » sur les macOS récents. Les événements de l'application, eux,
+ * nous appartiennent. On tient donc la liste à jour à chaque appui et à
+ * chaque relâché, par deux chemins :
+ *
+ *   - hors script, un moniteur local voit passer toutes les frappes, quel
+ *     que soit le premier répondant ;
+ *   - pendant un script, AppKit ne distribue rien — mesuré, voir
+ *     hcv_guette_cmd_point — mais le guetteur de Cmd-. parcourt la file à
+ *     chaque image : il nous les montre au passage.
+ *
+ * Une même frappe peut donc être vue plusieurs fois — le guetteur la remet
+ * en file, et elle repasse. C'est sans danger : appuyer deux fois, c'est
+ * appuyer ; c'est le DERNIER événement de chaque touche qui fait son état,
+ * et la file garde l'ordre.
+ *
+ * La liste est vidée quand l'application passe derrière : un relâché qui
+ * arrive à une autre application ne nous parvient jamais, et la touche
+ * resterait tenue pour toujours.
+ *
+ * Indexée par le code MATÉRIEL de la touche : le relâché porte le même que
+ * l'appui, ce que le caractère ne garantit pas — Maj relâchée entre les deux
+ * changerait « W » en « w ». */
+static NSMutableDictionary<NSNumber *, NSNumber *> *gTouchesTenues = nil;
+
+/* QUAND UN SCRIPT INTERROGE keysDown, SES FRAPPES NE SE GARDENT PAS EN FILE.
+ *
+ * Écrit d'abord pour les seules répétitions, ci-dessous ; étendu le même soir
+ * à toutes les frappes, mesure de l'utilisatrice à l'appui — voir le
+ * guetteur, hcv_guette_cmd_point.
+ *
+ * Une touche tenue fait répéter macOS — une trentaine de frappes par seconde.
+ * Pendant un script, chacune reste en file, et le guetteur les relit TOUTES à
+ * chaque image : dix secondes de batteur levé, trois cents frappes à
+ * parcourir à chaque passage, et toutes livrées d'un coup à la fin de la
+ * partie. Un script qui demande keysDown suit la touche lui-même ; ses
+ * répétitions ne servent à personne. On les jette donc, ELLES SEULES, et
+ * seulement tant qu'un script interroge keysDown — la dernière demande a
+ * moins d'une demi-seconde. Un vrai appui reste en file, comme avant, et un
+ * script qui n'emploie pas keysDown ne voit aucune différence. */
+static CFTimeInterval gTouchesInterrogees = 0;
+
+static int hcv_code_touche(NSEvent *e)
+{
+    switch ([e keyCode]) {
+        case 123: return 65361;     /* gauche */
+        case 126: return 65362;     /* haut   */
+        case 124: return 65363;     /* droite */
+        case 125: return 65364;     /* bas    */
+        case 36:  return 65293;     /* retour */
+        case 76:  return 65421;     /* entrée */
+        case 48:  return 65289;     /* tabulation */
+        case 53:  return 65307;     /* échappement */
+        case 51:  return 65288;     /* effacement arrière */
+        case 117: return 65535;     /* suppression */
+        default:  break;
+    }
+    NSString *c = [[e charactersIgnoringModifiers] lowercaseString];
+    if ([c length] != 1) return 0;
+    unichar u = [c characterAtIndex:0];
+    if (u < 32 || u >= 0xF700) return 0;   /* touches de fonction d'AppKit */
+    return (int)u;
+}
+
+static void hcv_touche_suit(NSEvent *e)
+{
+    if (!gTouchesTenues) gTouchesTenues = [NSMutableDictionary dictionary];
+    NSNumber *cle = @([e keyCode]);
+    if ([e type] == NSEventTypeKeyDown) {
+        int code = hcv_code_touche(e);
+        if (code > 0) gTouchesTenues[cle] = @(code);
+    } else if ([e type] == NSEventTypeKeyUp) {
+        [gTouchesTenues removeObjectForKey:cle];
+    }
+}
+
+/* Une fois, à l'installation de l'hôte. */
+static void hcv_touches_installe(void)
+{
+    static BOOL fait = NO;
+    if (fait) return;
+    fait = YES;
+    [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskKeyDown | NSEventMaskKeyUp)
+                                          handler:^NSEvent *(NSEvent *e) {
+        hcv_touche_suit(e);
+        return e;
+    }];
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidResignActiveNotification
+                    object:nil queue:nil usingBlock:^(NSNotification *n) {
+        (void)n;
+        [gTouchesTenues removeAllObjects];
+    }];
+}
+
+/* La réponse : les codes, sans doublon, du plus petit au plus grand. */
+static const char *hcv_touches_tenues(void)
+{
+    static char buf[512];
+    buf[0] = '\0';
+    if (hc_is_running()) gTouchesInterrogees = CACurrentMediaTime();
+    /* Deux appels par image dans un flipper : leurs listes temporaires
+     * meurent ici, et non à la fin de la partie (voir cocoa_idle). */
+    @autoreleasepool {
+        NSArray *codes = [[[NSSet setWithArray:[gTouchesTenues allValues]] allObjects]
+                             sortedArrayUsingSelector:@selector(compare:)];
+        size_t pos = 0;
+        for (NSNumber *c in codes) {
+            int k = snprintf(buf + pos, sizeof buf - pos, "%s%d", pos ? "," : "",
+                             [c intValue]);
+            if (k < 0 || (size_t)k >= sizeof buf - pos) break;
+            pos += (size_t)k;
+        }
+    }
+    return buf;
+}
+
 static const char *cocoa_global_get(const char *name) {
     /* « the version » : UNE SEULE SOURCE DE VÉRITÉ, le bundle.
      *
@@ -2804,6 +3057,8 @@ static const char *cocoa_global_get(const char *name) {
         return ([NSEvent modifierFlags] & NSEventModifierFlagCommand) ? "down" : "up";
     if (strcasecmp(name, "shiftKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagShift) ? "down" : "up";
+    if (strcasecmp(name, "keysDown") == 0)
+        return hcv_touches_tenues();
 
     if (strcasecmp(name, "mouseH") == 0 || strcasecmp(name, "mouseV") == 0) {
         NSPoint s = [NSEvent mouseLocation];
@@ -3553,7 +3808,22 @@ static void hcv_guette_cmd_point(void)
                                    untilDate:[NSDate distantPast]
                                       inMode:NSDefaultRunLoopMode
                                      dequeue:YES]) != nil) {
+        /* « the keysDown » : la frappe est vue ici, pendant le script, et
+         * nulle part ailleurs. Elle reste dans la file, comme le clic. */
+        hcv_touche_suit(e);
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
+        /* UN SCRIPT QUI LIT keysDown GARDE SES FRAPPES — toutes, et non plus
+         * les seules répétitions. Chaque coup de batteur laissait son appui et
+         * son relâché en file, que ce guetteur sortait puis remettait À CHAQUE
+         * IMAGE : cent événements recopiés soixante fois par seconde après
+         * cinquante coups, et de plus en plus. Rapporté par l'utilisatrice
+         * DANS HC (l'application) le 2 octobre : « après quelques coups de
+         * flipper ça devient super lent ». Le jeu lit le clavier lui-même ;
+         * une frappe gardée ne servirait qu'à être livrée en vrac à la fin.
+         * L'état des touches est déjà à jour (hcv_touche_suit, au-dessus). */
+        if (([e type] == NSEventTypeKeyDown || [e type] == NSEventTypeKeyUp) &&
+            CACurrentMediaTime() - gTouchesInterrogees < 0.5)
+            continue;                       /* voir gTouchesInterrogees */
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
          * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
          * (voir plus haut). Le clic reste dans la file.
@@ -3579,7 +3849,24 @@ static void hcv_guette_cmd_point(void)
     if (vu) hc_interrompre();
 }
 
+/* UNE RÉSERVE D'OBJETS TEMPORAIRES PAR IMAGE.
+ *
+ * AppKit vide sa réserve « autorelease » ENTRE deux événements. Or un script
+ * entier — une partie de flipper — tourne à l'intérieur d'UN seul événement,
+ * le clic qui l'a lancé : tout objet temporaire de chaque image (événements
+ * recopiés par le guetteur, listes de keysDown, chemins de dessin)
+ * s'accumulait jusqu'à la fin du script. Rapporté par l'utilisatrice le 2
+ * octobre DANS HC (l'application) : « la mémoire grimpe dans Xcode ». La
+ * réserve est rendue ici à chaque tour ; rien de ce que cocoa_idle crée ne
+ * lui survit autrement que par une référence forte. */
+static void cocoa_idle_corps(void);
 static void cocoa_idle(void) {
+    @autoreleasepool {
+        cocoa_idle_corps();
+    }
+}
+
+static void cocoa_idle_corps(void) {
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
      * montrer. */
@@ -3916,6 +4203,294 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
 }
 
 @end
+
+/* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════
+ *
+ * « palette navigator » : la palette d'HyperCard 2, son dessin au point
+ * près (hc_navigator.h, relevé sur une capture d'HyperCard) et ses onze
+ * boutons. Le noyau ne tient aucun état de fenêtre : il pose ses questions
+ * par le rappel `fenetre` (hc_core.h), servi ici par cocoa_fenetre.
+ *
+ * UN BOUTON EXÉCUTE SA LIGNE DE « the commands » comme si on la tapait dans
+ * la boîte de messages — hc_do, le même chemin que messageBoxEntered. La
+ * ligne est un doMenu : le noyau sert les flèches, Back et Home, et passe
+ * les autres à cocoa_do_menu.
+ *
+ * LA FENÊTRE EST DESSINÉE ENTIÈRE, barre de titre comprise : une fenêtre
+ * sans bord d'AppKit, qu'on déplace en la saisissant par sa barre et qu'on
+ * ferme par sa case, comme la petite fenêtre d'HyperCard. Une barre de titre
+ * de macOS l'aurait doublée.
+ *
+ * NON MESURÉ, et écrit comme tel :
+ *   - l'inversion du bouton sous le doigt : c'est le geste des boutons du
+ *     Mac, pas un relevé de la palette ;
+ *   - « the loc of window "Navigator" » et le point de « palette nom, point »
+ *     désignent ici le coin haut-gauche du CONTENU, sous la barre de titre,
+ *     comme les fenêtres du Toolbox ; HyperCard n'a pas été mesuré ;
+ *   - « the hilitedButton » se dessine inversé, comme un bouton enfoncé ;
+ *   - l'identifiant de la fenêtre est le numéro de fenêtre de macOS. */
+#include "hc_navigator.h"
+
+/* Le coin du contenu dans le dessin : sous la barre de titre, après le bord. */
+#define NAV_CONTENU_G 1
+#define NAV_CONTENU_H (NAV_TITRE_BAS + 1)
+
+static NSPanel  *gNavPanel     = nil;   /* créée à la première ouverture */
+static BOOL      gNavOuverte   = NO;    /* fermée : la fenêtre n'existe plus */
+static BOOL      gNavMontree   = NO;    /* hide window la garde, cachée */
+static int       gNavHilite    = 0;     /* the hilitedButton ; 0 : aucun */
+static int       gNavId        = 0;
+static NSString *gNavCommandes = nil;   /* nil : celles d'HyperCard */
+
+static BOOL nav_dans(NavRect r, int x, int y)
+{
+    return x >= r.g && x <= r.d && y >= r.h && y <= r.b;
+}
+
+/* Ce qui est sous ce point de la palette : 1 à 11 un bouton, -1 la case de
+ * fermeture, 0 rien. */
+static int nav_cible(int x, int y)
+{
+    if (nav_dans(NAV_FERMETURE, x, y)) return -1;
+    for (int i = 0; i < NAV_NBOUTONS; i++)
+        if (nav_dans(NAV_BOUTONS[i], x, y)) return i + 1;
+    return 0;
+}
+
+static NSString *nav_commandes(void)
+{
+    return gNavCommandes ? gNavCommandes : hcv_texte(NAV_COMMANDES);
+}
+
+/* La hauteur de l'écran qui porte la barre de menus : HyperCard compte ses
+ * y depuis son HAUT, AppKit depuis son bas. */
+static CGFloat nav_h0(void)
+{
+    NSArray<NSScreen *> *ecrans = [NSScreen screens];
+    return [ecrans count] ? NSMaxY([ecrans[0] frame]) : 0;
+}
+
+/* Le coin du contenu, en coordonnées d'écran d'HyperCard. */
+static void nav_loc(int *g, int *h)
+{
+    NSRect f = [gNavPanel frame];
+    *g = (int)lround(NSMinX(f)) + NAV_CONTENU_G;
+    *h = (int)lround(nav_h0() - NSMaxY(f)) + NAV_CONTENU_H;
+}
+
+static void nav_place(int g, int h)
+{
+    [gNavPanel setFrameTopLeftPoint:
+        NSMakePoint((CGFloat)(g - NAV_CONTENU_G),
+                    nav_h0() - (CGFloat)(h - NAV_CONTENU_H))];
+}
+
+static void nav_ferme(BOOL parLaCase);
+
+@interface HCNavigatorVue : NSView
+@end
+
+@implementation HCNavigatorVue {
+    int _presse;    /* sous le doigt : comme nav_cible, 0 si rien */
+}
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)e { (void)e; return YES; }
+
+- (void)drawRect:(NSRect)sale {
+    (void)sale;
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:NAV_LARGEUR pixelsHigh:NAV_HAUTEUR
+                   bitsPerSample:8 samplesPerPixel:1 hasAlpha:NO isPlanar:NO
+                  colorSpaceName:NSDeviceWhiteColorSpace
+                     bytesPerRow:0 bitsPerPixel:8];
+    unsigned char *px = [rep bitmapData];
+    if (!px) return;
+    NSInteger ligne = [rep bytesPerRow];
+    for (int y = 0; y < NAV_HAUTEUR; y++) {
+        for (int x = 0; x < NAV_LARGEUR; x++) {
+            BOOL noir = NAV_DESSIN[y][x] == '#';
+            int c = nav_cible(x, y);
+            if (c != 0 && (c == _presse || c == gNavHilite)) noir = !noir;
+            px[y * ligne + x] = noir ? 0 : 255;
+        }
+    }
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+    [rep drawInRect:[self bounds] fromRect:NSZeroRect
+          operation:NSCompositingOperationCopy fraction:1.0
+     respectFlipped:YES hints:nil];
+}
+
+/* Un bouton du Mac : inversé tant que le doigt est dessus, et il n'agit
+ * qu'au relâcher DEDANS. Ailleurs, la barre de titre déplace la palette. */
+- (void)mouseDown:(NSEvent *)e {
+    NSPoint p = [self convertPoint:[e locationInWindow] fromView:nil];
+    int cible = nav_cible((int)floor(p.x), (int)floor(p.y));
+    if (cible == 0) {
+        if (p.y <= NAV_TITRE_BAS) [[self window] performWindowDragWithEvent:e];
+        return;
+    }
+    BOOL dedans = YES;
+    _presse = cible;
+    [self display];
+    for (;;) {
+        NSEvent *s = [[self window] nextEventMatchingMask:
+                          NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp];
+        NSPoint q = [self convertPoint:[s locationInWindow] fromView:nil];
+        dedans = nav_cible((int)floor(q.x), (int)floor(q.y)) == cible;
+        if ([s type] == NSEventTypeLeftMouseUp) break;
+        int voulu = dedans ? cible : 0;
+        if (voulu != _presse) { _presse = voulu; [self display]; }
+    }
+    _presse = 0;
+    [self display];
+    if (!dedans) return;
+    if (cible < 0) { nav_ferme(YES); return; }
+
+    NSArray<NSString *> *lignes =
+        [nav_commandes() componentsSeparatedByString:@"\n"];
+    if ((NSUInteger)cible > [lignes count]) return;
+    NSString *cmd = lignes[(NSUInteger)cible - 1];
+    if ([cmd length] == 0) return;
+    hc_do([cmd UTF8String]);
+    [gView applyStackSize];
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
+}
+
+@end
+
+static void nav_ouvre(const char *point)
+{
+    if (!gNavPanel) {
+        gNavPanel = [[NSPanel alloc]
+            initWithContentRect:NSMakeRect(0, 0, NAV_LARGEUR, NAV_HAUTEUR)
+                      styleMask:(NSWindowStyleMaskBorderless |
+                                 NSWindowStyleMaskNonactivatingPanel)
+                        backing:NSBackingStoreBuffered defer:NO];
+        [gNavPanel setFloatingPanel:YES];
+        [gNavPanel setBecomesKeyOnlyIfNeeded:YES];
+        [gNavPanel setHidesOnDeactivate:YES];
+        [gNavPanel setReleasedWhenClosed:NO];
+        [gNavPanel setHasShadow:NO];     /* le dessin porte la sienne */
+        [gNavPanel setExcludedFromWindowsMenu:YES];
+        [gNavPanel setContentView:[[HCNavigatorVue alloc]
+            initWithFrame:NSMakeRect(0, 0, NAV_LARGEUR, NAV_HAUTEUR)]];
+        gNavId = (int)[gNavPanel windowNumber];
+        if (gNavId <= 0) gNavId = 1;
+    }
+    /* Le point est compté depuis le coin de la CARTE ; sans lui, 10,20,
+     * selon Jeanne DeVoto. Une palette déjà ouverte ne bouge que si l'on
+     * donne un point. */
+    int px = 10, py = 20;
+    BOOL donne = point && sscanf(point, "%d,%d", &px, &py) == 2;
+    if (donne || !gNavOuverte) {
+        int cg = 0, ch = 0;
+        const char *coin = cocoa_global_get("card window topLeft");
+        if (!coin || sscanf(coin, "%d,%d", &cg, &ch) != 2) { cg = 0; ch = 0; }
+        nav_place(cg + px, ch + py);
+    }
+    /* « the windows » liste les fenêtres qui ont un titre : la palette n'en
+     * porte un que tant qu'elle existe. */
+    [gNavPanel setTitle:@"Navigator"];
+    gNavOuverte = YES;
+    gNavMontree = YES;
+    [gNavPanel orderFront:nil];
+    [[gNavPanel contentView] setNeedsDisplay:YES];
+}
+
+static void nav_ferme(BOOL parLaCase)
+{
+    if (!gNavPanel || !gNavOuverte) return;
+    [gNavPanel orderOut:nil];
+    [gNavPanel setTitle:@""];
+    gNavOuverte = NO;
+    gNavMontree = NO;
+    if (parLaCase) {
+        hc_palette_fermee("Navigator", gNavId);
+        [gView updateWindowTitle];
+        [gView setNeedsDisplay:YES];
+    }
+}
+
+static int nav_lit(const char *prop, char *out, int outlen)
+{
+    if (!out || outlen <= 0) return -1;
+    int g, h;
+    nav_loc(&g, &h);
+    if (!strcasecmp(prop, "name"))          snprintf(out, (size_t)outlen, "Navigator");
+    else if (!strcasecmp(prop, "id"))       snprintf(out, (size_t)outlen, "%d", gNavId);
+    else if (!strcasecmp(prop, "buttonCount"))
+                                            snprintf(out, (size_t)outlen, "%d", NAV_NBOUTONS);
+    else if (!strcasecmp(prop, "hilitedButton"))
+                                            snprintf(out, (size_t)outlen, "%d", gNavHilite);
+    else if (!strcasecmp(prop, "commands")) snprintf(out, (size_t)outlen, "%s",
+                                                     [nav_commandes() UTF8String]);
+    else if (!strcasecmp(prop, "visible"))  snprintf(out, (size_t)outlen, "%s",
+                                                     gNavMontree ? "true" : "false");
+    else if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+             !strcasecmp(prop, "topLeft"))
+                                            snprintf(out, (size_t)outlen, "%d,%d", g, h);
+    else if (!strcasecmp(prop, "rect") || !strcasecmp(prop, "rectangle"))
+        snprintf(out, (size_t)outlen, "%d,%d,%d,%d", g, h,
+                 g + NAV_LARGEUR - NAV_CONTENU_G, h + NAV_HAUTEUR - NAV_CONTENU_H);
+    else return -1;
+    return 1;
+}
+
+static int nav_pose(const char *prop, const char *val)
+{
+    if (!val) val = "";
+    if (!strcasecmp(prop, "hilitedButton")) {
+        gNavHilite = atoi(val);
+        [[gNavPanel contentView] setNeedsDisplay:YES];
+        return 1;
+    }
+    if (!strcasecmp(prop, "commands")) {
+        gNavCommandes = hcv_texte(val);
+        return 1;
+    }
+    if (!strcasecmp(prop, "visible")) {
+        gNavMontree = !strcasecmp(val, "true");
+        if (gNavMontree) [gNavPanel orderFront:nil];
+        else             [gNavPanel orderOut:nil];
+        return 1;
+    }
+    if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+        !strcasecmp(prop, "topLeft")) {
+        int g, h;
+        if (sscanf(val, "%d,%d", &g, &h) != 2) return -1;
+        nav_place(g, h);
+        return 1;
+    }
+    return -1;
+}
+
+/* Le rappel `fenetre` du noyau. Une seule fenêtre nommée pour l'instant : la
+ * Navigator. Toute autre est introuvable, et le noyau le dit. */
+static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
+                         const char *valeur, char *out, int outlen)
+{
+    if (!nom || !quoi || strcasecmp(nom, "Navigator") != 0) return 0;
+    if (!strcmp(quoi, "palette")) {
+        nav_ouvre(valeur);
+        if (out && outlen > 0) snprintf(out, (size_t)outlen, "%d", gNavId);
+        return 1;
+    }
+    if (!gNavOuverte) return 0;
+    if (!strcmp(quoi, "existe")) return 1;
+    if (!strcmp(quoi, "montre")) { return nav_pose("visible", "true"); }
+    if (!strcmp(quoi, "cache"))  { return nav_pose("visible", "false"); }
+    if (!strcmp(quoi, "ferme")) {
+        nav_ferme(NO);
+        if (out && outlen > 0) snprintf(out, (size_t)outlen, "palette %d", gNavId);
+        return 1;
+    }
+    if (!strcmp(quoi, "lit"))  return prop ? nav_lit(prop, out, outlen) : -1;
+    if (!strcmp(quoi, "pose")) return prop ? nav_pose(prop, valeur) : -1;
+    return -1;
+}
 
 @implementation HCView {
     HCDoc _doc;
@@ -7498,6 +8073,8 @@ static void hcv_survol(HCView *v, Object *carte)
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
+    host.fenetre       = cocoa_fenetre;
+    hcv_touches_installe();
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;

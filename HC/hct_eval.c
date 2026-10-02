@@ -569,6 +569,7 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
              * Le recours, lui, sait interroger la barre de menus. */
             n->fils[0]->typeobj != HCT_OBJ_MENU &&
             n->fils[0]->typeobj != HCT_OBJ_MENUITEM &&
+            n->fils[0]->typeobj != HCT_OBJ_WINDOW &&
             ctx->hote.resout) {
             int existe = ctx->hote.resout(ctx->hote.donnees, n->fils[0], ctx) != NULL;
             if (!strcmp(op, "there is no")) existe = !existe;
@@ -791,7 +792,19 @@ static HctValeur appel(HctContexte *ctx, const HctNoeud *n)
         free(nom);
         return hct_val_vide();
     }
+    /* intersect() et within() — l'extension de HC — veulent l'OBJET, pas sa
+     * valeur : « button "bille" » évalué rendrait son nom, et deux boutons
+     * peuvent porter le même. L'hôte rend alors un descripteur par
+     * identifiant, sous une propriété qu'aucun script ne peut nommer. */
+    int veut_objets = !strcasecmp(nom, "intersect") || !strcasecmp(nom, "within");
     for (int i = 0; i < nargs; i++) {
+        const HctNoeud *a = n->fils[i + 1];
+        if (veut_objets && a && a->genre == HCTN_OBJET &&
+            ctx->hote.resout && ctx->hote.lit_prop) {
+            void *o = ctx->hote.resout(ctx->hote.donnees, a, ctx);
+            if (o && ctx->hote.lit_prop(ctx->hote.donnees, o, "hc forme", &args[i]))
+                continue;
+        }
         args[i] = hct_evalue(ctx, n->fils[i + 1]);
         if (ctx->erreur) {
             for (int k = 0; k <= i; k++) hct_val_libere(&args[k]);

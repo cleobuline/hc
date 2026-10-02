@@ -6,3 +6,32 @@
    [msg] card "Une"
    [HÔTE] Find...
    [HÔTE] Clear Picture
+== la palette Navigator ==
+ doMenu "Back"
+   [msg]   -> Deux
+ doMenu "Home"
+   [ERR]    !! go : pile introuvable : Home
+   [msg]   -> Deux
+ doMenu "Help"
+   [HÔTE] Help
+   [msg]   -> Deux
+ doMenu "Recent"
+   [HÔTE] Recent
+   [msg]   -> Deux
+ doMenu "First"
+   [msg]   -> Une
+ doMenu "Prev"
+   [msg]   -> Une
+ doMenu "Next"
+   [msg]   -> Trois
+ doMenu "Last"
+   [msg]   -> Trois
+ doMenu "Find..."
+   [HÔTE] Find...
+   [msg]   -> Deux
+ doMenu "Message"
+   [HÔTE] Message
+   [msg]   -> Deux
+ doMenu "Next window"
+   [HÔTE] Next window
+   [msg]   -> Deux

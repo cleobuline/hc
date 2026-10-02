@@ -212,9 +212,12 @@ const char *hct_genre_noeud_nom(HctGenreNoeud g)
 
 const char *hct_type_objet_nom(HctTypeObjet t)
 {
+    /* Dans l'ordre de HctTypeObjet, JUSQU'AU BOUT : la table s'arrêtait à
+     * « message », et les menus, articles, familles imprimaient « ? ». */
     static const char *n[] = { "stack", "background", "card", "button",
-                               "field", "part", "me", "target", "message" };
-    return (t >= 0 && t <= HCT_OBJ_MESSAGE) ? n[t] : "?";
+                               "field", "part", "me", "target", "message",
+                               "menu", "menuItem", "family", "window" };
+    return (t >= 0 && t <= HCT_OBJ_WINDOW) ? n[t] : "?";
 }
 
 const char *hct_portee_nom(HctPortee p)

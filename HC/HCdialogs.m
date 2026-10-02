@@ -785,7 +785,11 @@ void hc_sync_size_field(Object *o)
     [gInfoStyle addItemsWithTitles:@[@"transparent", @"opaque", @"rectangle",
                                          @"shadow", @"roundRect", @"checkBox",
                                          @"radioButton", @"standard", @"default",
-                                         @"oval", @"popup"]];
+                                         @"oval", @"popup", @"polygon"]];
+    /* « polygon » : l'extension de HC. Il FAUT qu'il soit dans la liste —
+     * select_style retombe sur le premier article, « transparent », pour un
+     * style qu'elle ignore, et la validation l'écrirait : ouvrir l'Info d'un
+     * polygone puis OK l'aurait changé en bouton transparent. */
     
     select_style(gInfoStyle, obj->style);
     [c addSubview:gInfoStyle];

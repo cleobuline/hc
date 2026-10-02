@@ -42,6 +42,12 @@ end mouseUp
    titlewidth       48     transmis
    textsize         14     transmis
    textheight       19     transmis
+   backcolor        33488896 transmis
+   forecolor        16777471 transmis
+   hilitecolor      33554176 transmis
+   npoints          3      transmis
+   pointsw          77     transmis
+   pointsh          28     transmis
    name             [bouton] transmis
    script           [on mouseUp
   beep

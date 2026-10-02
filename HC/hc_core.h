@@ -363,6 +363,31 @@ struct Object {
      * écrivent ; son emploi au dessin appartient à l'interface. */
     int      titlewidth;
 
+    /* L'EXTENSION DE HC : LES COULEURS ET LE POLYGONE D'UN BOUTON.
+     *
+     * La seule extension annoncée (voir CLAUDE.md), décidée le 2 octobre pour
+     * les jeux. HyperCard n'avait rien de tel ; le vocabulaire est celui de
+     * LiveCode et SuperCard — backColor, foreColor, hiliteColor, style
+     * « polygon », points.
+     *
+     * ZÉRO VEUT DIRE « RIEN DE POSÉ », pour tous ces champs : un objet né d'un
+     * calloc — neuf, importé d'HyperCard, relu d'une pile plus ancienne — se
+     * dessine exactement comme avant. C'est la garantie de compatibilité, et
+     * c'est pourquoi une couleur posée porte le bit HC_COUL_POSEE : le noir,
+     * 0x000000, est une couleur, pas son absence.
+     *
+     * LES SOMMETS SONT RELATIFS au coin haut-gauche du bouton, et `pointsw`,
+     * `pointsh` gardent la taille qu'avait le rectangle quand on les a posés.
+     * Déplacer le bouton déplace donc sa forme, et l'agrandir l'étire, sans
+     * qu'aucun sommet soit réécrit. hc_bouton_sommets rend les coordonnées de
+     * carte. */
+    int      backcolor;      /* l'intérieur                                  */
+    int      forecolor;      /* le contour et le titre                       */
+    int      hilitecolor;    /* l'intérieur quand le bouton est allumé       */
+    int     *points;         /* x0,y0, x1,y1… relatifs ; NULL si aucun       */
+    int      npoints;        /* nombre de SOMMETS                            */
+    int      pointsw, pointsh;
+
     /* propriétés de champ */
     int      locktext;       /* le champ est-il non modifiable ? */
     int      wide_margins;   /* marges larges */
@@ -506,7 +531,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.7.6"
+#define HC_VERSION "0.7.7"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -625,6 +650,32 @@ void    hc_set_hilite(Object *btn, Object *card, int on);
 int     hc_set_family(Object *btn, int famille);
 /* Pose l'entrée par identifiant, pour le chargement, qui n'a pas l'objet. */
 void    hc_set_hilite_raw(Object *card, int button_id, int on);
+
+/* ---- L'extension : couleurs et polygone d'un bouton ----
+ * Voir les champs backcolor… points dans Object. */
+
+/* Une couleur posée : HC_COUL_POSEE | 0xRRGGBB. Zéro : aucune. */
+#define HC_COUL_POSEE   0x1000000
+#define HC_COUL_RVB(c)  ((c) & 0xFFFFFF)
+/* Au plus tant de sommets : un polygone de mille côtés est déjà un cercle. */
+#define HC_SOMMETS_MAX  1000
+
+/* Le bouton est-il un polygone ? Son style dit « polygon ». */
+int     hc_est_polygone(const Object *o);
+/* Les sommets en coordonnées de CARTE, x0,y0,x1,y1… dans `xy` (2 × max
+ * entiers), et leur nombre. Un polygone sans sommets rend les quatre coins de
+ * son rectangle ; un bouton ovale, 32 points de son ellipse ; tout autre
+ * bouton, son rectangle. C'est la forme que voient `within` et `intersect`. */
+int     hc_bouton_sommets(const Object *o, int *xy, int max);
+/* Le point (x, y) de la carte est-il dans la forme du bouton ? Le bord
+ * compte comme dedans. */
+int     hc_dans_forme(const Object *o, int x, int y);
+/* Les formes de deux boutons se touchent-elles ? */
+int     hc_formes_se_touchent(const Object *a, const Object *b);
+/* Pose les sommets depuis du texte — « x,y » par ligne, coordonnées de
+ * carte — et cale le rectangle sur eux. Vide efface. Rend 0 et ne touche à
+ * rien si le texte n'est pas une liste de points, ou n'en a qu'un. */
+int     hc_pose_sommets(Object *o, const char *texte);
 
 /* ---- Icônes de pile ----
  * `stack` doit être une pile ; tout rend NULL ou 0 sinon.
@@ -907,9 +958,33 @@ typedef struct {
      * Rend le rang de l'article choisi, 1 pour le premier, séparateurs
      * comptés ; 0 si l'on n'a rien choisi. Synchrone : le script attend. */
     int (*popup_menu)(const char *articles, int coche, int haut, int gauche);
+
+    /* LES FENÊTRES NOMMÉES : « window "Navigator" ». Elles appartiennent à
+     * l'hôte, pas à la pile ; le noyau lui pose toutes ses questions par ce
+     * seul rappel. `quoi` dit laquelle :
+     *
+     *     "existe"    la fenêtre existe-t-elle ?
+     *     "montre"    show window — "cache" : hide window
+     *     "ferme"     close window ; `out` reçoit « palette <id> » si
+     *                 c'était une palette, pour que le noyau envoie
+     *                 closePalette
+     *     "lit"       the <prop> of window — la valeur dans `out`
+     *     "pose"      set the <prop> of window to <valeur>
+     *     "palette"   palette <nom> [, <valeur> = le point] — ouvrir une
+     *                 palette ; `out` reçoit l'identifiant de sa fenêtre
+     *
+     * Rend 1 si c'est fait, 0 si la fenêtre (ou la palette) n'existe pas,
+     * -1 si la propriété est inconnue ou ne se pose pas. */
+    int (*fenetre)(const char *nom, const char *quoi, const char *prop,
+                   const char *valeur, char *out, int outlen);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)
+
+/* Une palette vient d'être fermée PAR L'UTILISATRICE — la case de fermeture
+ * de sa fenêtre. Le noyau envoie closePalette <nom>, <id> à la carte
+ * courante, comme HyperCard ; « close window » l'envoie de lui-même. */
+void hc_palette_fermee(const char *nom, int id);
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);

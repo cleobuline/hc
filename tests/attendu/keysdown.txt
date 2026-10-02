@@ -1,0 +1,35 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. un hôte qui ne sert pas keysDown ==
+   put "[" & the keysDown & "]"
+      [ERR]    !! propriété ou fonction inconnue : keysDown (v3, ligne 2 de button "s".t)
+
+== 2. W et N tenues ==
+   put the keysDown
+      110,119
+   put charToNum("w")
+      119
+   put tenue(119)
+      true
+   put tenue(charToNum("w"))
+      true
+   put tenue(charToNum("q"))
+      false
+   put tenue(11)
+      false
+   put keysDown()
+      110,119
+
+== 3. aucune touche ==
+   put "[" & the keysDown & "]"
+      []
+   put tenue(119)
+      false
+
+== 4. elle se lit, elle ne se pose pas ==
+   set the keysDown to 119
+      [ERR]    !! propriété en lecture seule : keysDown
+
+== 5. le batteur du flipper ==
+   if tenue(charToNum("w")) then put "batteur gauche levé"
+if tenue(charToNum("n")) then put "batteur droit levé"
+      batteur gauche levé

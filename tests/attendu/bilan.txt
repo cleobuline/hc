@@ -49,7 +49,7 @@
    MANQ  export paint to file "z"                           !! ne sait pas faire : export paint to file "z"
    MANQ  import paint from file "z"                         !! ne sait pas faire : import paint from file "z"
    MANQ  edit script of me                                  !! ne sait pas faire : edit script of me
-   MANQ  palette "z"                                        !! ne sait pas faire : palette "z"
+   OK    palette "z"                                   
    MANQ  picture "z"                                        !! ne sait pas faire : picture "z"
    MANQ  request "z" from program "z"                       !! ne sait pas faire : request "z" from program "z"
    MANQ  reply "z"                                          !! ne sait pas faire : reply "z"

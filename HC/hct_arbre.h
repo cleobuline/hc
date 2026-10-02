@@ -79,7 +79,14 @@ typedef enum {
      * La PORTÉE compte autant que le numéro : une famille de la carte et une
      * famille du fond portant le même numéro sont deux groupes distincts.
      * C'est HctPortee qui la porte, comme pour « card field » / « bg field ». */
-    HCT_OBJ_FAMILY
+    HCT_OBJ_FAMILY,
+    /* UNE FENÊTRE NOMMÉE : « window "Navigator" », la palette d'HyperCard.
+     * Pas un objet de la pile non plus — c'est l'hôte qui tient ses fenêtres
+     * —, mais la grammaire la désigne comme les autres : « close window
+     * "Navigator" », « the hilitedButton of window "Navigator" », « there is
+     * a window "ClickPoints" ». Sans cette entrée, la ligne s'arrêtait sur le
+     * mot « window » : « texte inattendu en fin de ligne ». */
+    HCT_OBJ_WINDOW
 } HctTypeObjet;
 
 /* « card field 1 » et « bg field 1 » sont DEUX objets différents : la
