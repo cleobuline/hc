@@ -2913,7 +2913,11 @@ static int hcv_quelle_couleur(const char *nom)
  * changerait « W » en « w ». */
 static NSMutableDictionary<NSNumber *, NSNumber *> *gTouchesTenues = nil;
 
-/* QUAND UN SCRIPT INTERROGE keysDown, LES RÉPÉTITIONS NE SE GARDENT PAS.
+/* QUAND UN SCRIPT INTERROGE keysDown, SES FRAPPES NE SE GARDENT PAS EN FILE.
+ *
+ * Écrit d'abord pour les seules répétitions, ci-dessous ; étendu le même soir
+ * à toutes les frappes, mesure de l'utilisatrice à l'appui — voir le
+ * guetteur, hcv_guette_cmd_point.
  *
  * Une touche tenue fait répéter macOS — une trentaine de frappes par seconde.
  * Pendant un script, chacune reste en file, et le guetteur les relit TOUTES à
@@ -2985,14 +2989,18 @@ static const char *hcv_touches_tenues(void)
     static char buf[512];
     buf[0] = '\0';
     if (hc_is_running()) gTouchesInterrogees = CACurrentMediaTime();
-    NSArray *codes = [[[NSSet setWithArray:[gTouchesTenues allValues]] allObjects]
-                         sortedArrayUsingSelector:@selector(compare:)];
-    size_t pos = 0;
-    for (NSNumber *c in codes) {
-        int k = snprintf(buf + pos, sizeof buf - pos, "%s%d", pos ? "," : "",
-                         [c intValue]);
-        if (k < 0 || (size_t)k >= sizeof buf - pos) break;
-        pos += (size_t)k;
+    /* Deux appels par image dans un flipper : leurs listes temporaires
+     * meurent ici, et non à la fin de la partie (voir cocoa_idle). */
+    @autoreleasepool {
+        NSArray *codes = [[[NSSet setWithArray:[gTouchesTenues allValues]] allObjects]
+                             sortedArrayUsingSelector:@selector(compare:)];
+        size_t pos = 0;
+        for (NSNumber *c in codes) {
+            int k = snprintf(buf + pos, sizeof buf - pos, "%s%d", pos ? "," : "",
+                             [c intValue]);
+            if (k < 0 || (size_t)k >= sizeof buf - pos) break;
+            pos += (size_t)k;
+        }
     }
     return buf;
 }
@@ -3804,7 +3812,16 @@ static void hcv_guette_cmd_point(void)
          * nulle part ailleurs. Elle reste dans la file, comme le clic. */
         hcv_touche_suit(e);
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
-        if ([e type] == NSEventTypeKeyDown && [e isARepeat] &&
+        /* UN SCRIPT QUI LIT keysDown GARDE SES FRAPPES — toutes, et non plus
+         * les seules répétitions. Chaque coup de batteur laissait son appui et
+         * son relâché en file, que ce guetteur sortait puis remettait À CHAQUE
+         * IMAGE : cent événements recopiés soixante fois par seconde après
+         * cinquante coups, et de plus en plus. Rapporté par l'utilisatrice
+         * DANS HC (l'application) le 2 octobre : « après quelques coups de
+         * flipper ça devient super lent ». Le jeu lit le clavier lui-même ;
+         * une frappe gardée ne servirait qu'à être livrée en vrac à la fin.
+         * L'état des touches est déjà à jour (hcv_touche_suit, au-dessus). */
+        if (([e type] == NSEventTypeKeyDown || [e type] == NSEventTypeKeyUp) &&
             CACurrentMediaTime() - gTouchesInterrogees < 0.5)
             continue;                       /* voir gTouchesInterrogees */
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
@@ -3832,7 +3849,24 @@ static void hcv_guette_cmd_point(void)
     if (vu) hc_interrompre();
 }
 
+/* UNE RÉSERVE D'OBJETS TEMPORAIRES PAR IMAGE.
+ *
+ * AppKit vide sa réserve « autorelease » ENTRE deux événements. Or un script
+ * entier — une partie de flipper — tourne à l'intérieur d'UN seul événement,
+ * le clic qui l'a lancé : tout objet temporaire de chaque image (événements
+ * recopiés par le guetteur, listes de keysDown, chemins de dessin)
+ * s'accumulait jusqu'à la fin du script. Rapporté par l'utilisatrice le 2
+ * octobre DANS HC (l'application) : « la mémoire grimpe dans Xcode ». La
+ * réserve est rendue ici à chaque tour ; rien de ce que cocoa_idle crée ne
+ * lui survit autrement que par une référence forte. */
+static void cocoa_idle_corps(void);
 static void cocoa_idle(void) {
+    @autoreleasepool {
+        cocoa_idle_corps();
+    }
+}
+
+static void cocoa_idle_corps(void) {
     /* Le drapeau du noyau s'efface à la lecture : on le reporte tout de suite
      * sur la vue, sinon l'étranglement plus bas le consommerait sans rien
      * montrer. */
