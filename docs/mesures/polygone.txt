@@ -123,3 +123,33 @@ sous-pas par image et des batteurs calculés exactement, dans leur propre
 repère. Mesuré avec le joueur automatique, mêmes tirages : 12 traversées de
 batteur sur 6 parties avant, 0 sur 9 parties après ; 0,8 ms de calcul par
 image, pour un budget de 33.
+
+
+LE CHANTIER SUIVANT : L'ÉDITEUR DE POLYGONE — demandé le 2 octobre au soir
+-------------------------------------------------------------------------
+
+Le scénario, tel que l'utilisatrice l'a décrit :
+
+  1. créer un bouton polygone donne un TRIANGLE, avec trois points d'ancrage
+     qu'on déplace à la souris ;
+  2. un clic sur un côté y crée un nouveau point d'ancrage, qu'on déplace à
+     son tour ;
+  3. Delete supprime un point d'ancrage, SAUF les trois derniers : un
+     polygone ne descend jamais sous le triangle ;
+  4. et dans la foulée, les couleurs de bouton en RVB + ALPHA, « r,v,b,a »,
+     pour des boutons semi-transparents. color_from_name_a sait déjà lire le
+     quatrième nombre (la peinture s'en sert) ; il faut le ranger dans le
+     bouton, l'écrire dans le fichier, et le dessiner.
+
+Questions posées, réponses à venir :
+
+  · comment naît le polygone — un outil à part dans la palette, ou « New
+    Button » puis le style « polygon » dans l'Info ?
+  · les poignées avec l'outil Bouton : tirer une poignée la déplace, cliquer
+    sur un côté en ajoute une, tirer l'intérieur déplace le bouton ?
+  · Delete : sur une poignée sélectionnée seulement ; sans poignée
+    sélectionnée, le bouton entier comme aujourd'hui ?
+  · l'alpha pour les trois couleurs, ou pour l'intérieur seul ?
+
+La règle des extensions tient toujours (CLAUDE.md) : rien de posé, rien de
+changé ; une pile d'HyperCard ne porte jamais d'alpha.
