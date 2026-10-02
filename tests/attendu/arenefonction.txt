@@ -1,0 +1,16 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 25 000 appels dans un seul gestionnaire ==
+       get f(1)
+      25000
+       put f(n) into v
+      25000
+       get intersect(button "p", button "q")
+      25000
+       get within(button "p", "1,1")
+      25000
+
+== témoins, qui ne fuyaient pas ==
+       get abs(-1)
+      25000
+       get the points of button "p"
+      25000

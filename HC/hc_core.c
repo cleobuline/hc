@@ -8623,11 +8623,22 @@ static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
      * Celui qui se trouvait à cet endroit était juste, mais il était SEUL —
      * le message et « send » tronquaient en silence pendant qu'il refusait
      * proprement. */
+    /* L'ARÈNE SE REND EN SORTANT. Les lignes des arguments étaient prises
+     * sans que le sommet soit noté, donc jamais rendues avant la fin du
+     * gestionnaire tout entier : chaque appel de fonction de la pile y
+     * laissait une ligne de HC_VAL par argument. Mesuré le 2 octobre, une
+     * boucle de « get f(1) » saturait le gigaoctet de l'arène entre 16 000
+     * et 20 000 tours — la boucle d'un jeu y arrive en deux minutes. Trouvé
+     * par le joueur automatique du flipper. Le résultat voyage dans
+     * g_result, hors de l'arène : rien ne se perd à la rendre. */
+    ARENA_MARK;
     char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
-    if (nargs && !uargv) return 0;
+    if (nargs && !uargv) { ARENA_FREE; return 0; }
     for (int i = 0; i < nargs; i++)
         snprintf(uargv[i], HC_VAL, "%s", args[i].txt ? args[i].txt : "");
-    return hc_call_user_function(from, nom, uargv, nargs);
+    int r = hc_call_user_function(from, nom, uargv, nargs);
+    ARENA_FREE;
+    return r;
 }
 /* Fonctions du monde sans argument que l'hôte sert d'une seule lecture.
  *
@@ -9222,6 +9233,9 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * id 5 » (appel(), hct_eval.c) ; on accepte aussi ce descripteur écrit
      * en toutes lettres, ou tenu dans une variable. */
     if (nargs == 2 && (ci_equal(nom, "within") || ci_equal(nom, "intersect"))) {
+        /* resolve puise dans l'arène : sans ce couple, chaque appel en
+         * laissait derrière lui, comme v3_fonction_pile — mesuré. */
+        ARENA_MARK;
         Object *a = resolve(args[0].txt);
         int faute = 0;
         if (!a || (a->type != OBJ_BUTTON && a->type != OBJ_FIELD)) {
@@ -9248,6 +9262,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
             }
         }
         if (faute) *out = hct_val_texte("");
+        ARENA_FREE;
         g_v1_porte = sauve_porte;
         return 1;
     }
