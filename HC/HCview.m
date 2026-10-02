@@ -2929,6 +2929,29 @@ static const char *cocoa_global_get(const char *name) {
         return gGlobBuf;
     }
 
+    /* Le coin haut-gauche de la CARTE sur l'écran, pour « the top of card
+     * window » et ses voisines (v3_fenetre_prop, hc_core.c). HyperCard les
+     * mesure depuis le coin haut-gauche de l'écran qui porte la barre de
+     * menus : c'est le premier de [NSScreen screens], et non mainScreen, qui
+     * est celui de la fenêtre active. AppKit compte ses y vers le HAUT
+     * depuis le bas de cet écran ; on retourne l'axe.
+     *
+     * La carte occupe l'origine de la vue — mouseLoc fait la même
+     * hypothèse. Le nom porte des espaces : aucun script ne peut poser la
+     * question lui-même. */
+    if (strcasecmp(name, "card window topLeft") == 0) {
+        NSWindow *fen = [gView window];
+        NSArray<NSScreen *> *ecrans = [NSScreen screens];
+        if (!gView || !fen || [ecrans count] == 0) return NULL;
+        NSRect dansFen  = [gView convertRect:NSMakeRect(0, 0, 1, 1) toView:nil];
+        NSRect surEcran = [fen convertRectToScreen:dansFen];
+        NSRect principal = [ecrans[0] frame];
+        int gauche = (int)lround(NSMinX(surEcran) - NSMinX(principal));
+        int haut   = (int)lround(NSMaxY(principal) - NSMaxY(surEcran));
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d", gauche, haut);
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "mouseClick") == 0) {
         BOOL eu = gMouseClicked;
         gMouseClicked = NO;

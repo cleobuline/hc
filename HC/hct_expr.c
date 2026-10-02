@@ -942,6 +942,25 @@ static HctNoeud *reference(HctAnalyseur *a)
          * terme en entier, sans le moindre message d'erreur. */
         hct_ajoute_fils(a->reserve, n, rang_somme(a));
         a->sans_of--;
+    } else if (type == HCT_OBJ_CARD && mot_ici(a, "window")) {
+        /* « CARD WINDOW » S'ARRÊTE AU MOT « window ».
+         *
+         * La fenêtre de la pile n'a pas de type à elle : elle se lit comme
+         * la carte de rang <window>, et v3_est_fenetre (hc_core.c) reconnaît
+         * cette forme. Mais le rang se lit par rang_somme, qui prend
+         * l'arithmétique — « card i + 1 » est la carte suivante —, si bien
+         * que
+         *
+         *     put (bottom of target + top of card window + 1) into tp
+         *
+         * cherchait la carte de rang « window + 1 », et levait « un nombre
+         * est attendu ici ». Rapporté le 2 octobre sur une vraie pile ; déjà
+         * vrai de l'ancien moteur. Un mot, et rien d'autre : le « + 1 » est
+         * à l'expression qui entoure. */
+        n->designateur = HCT_DES_RANG;
+        a->sans_of++;
+        hct_ajoute_fils(a->reserve, n, facteur(a));
+        a->sans_of--;
     } else if (ici(a)->genre == HCT_IDENT && !mot_structurel(a)) {
         /* Désignateur pris dans une variable : « card whichCard »,
          * « bg field "x" of card theCard ». Le nom ou le rang n'est connu

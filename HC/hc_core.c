@@ -7421,9 +7421,29 @@ static int v3_nombre_objets(HctContexte *ctx, const HctNoeud *obj, int *out)
  * finissait juste, l'ancien interpréteur la servant par term_value — mais au
  * prix d'un aller-retour par le texte et de cinq messages inutiles.
  *
- * On s'en tient aux quatre propriétés que servait l'ancien term_value : ce sont
- * celles qu'emploient les scripts d'époque, et inventer les autres reviendrait
- * à décider seul de ce que HyperCard aurait répondu. */
+ * LA FENÊTRE SE PLACE PAR RAPPORT À L'ÉCRAN, pas par rapport à la carte : la
+ * référence (hypercard.center, fiches top, rectangle) dit que HyperCard
+ * mesure la card window « relative to the top-left corner of the screen with
+ * the menu bar ». Les scripts d'époque s'en servent pour passer d'un point
+ * de la carte à un point de l'écran — rapporté le 2 octobre :
+ *
+ *     put (bottom of target + top of card window + 1) into tp
+ *
+ * qui levait « un nombre est attendu ici » : « top » n'était pas servi. Il
+ * ne l'était pas davantage avant la suppression de l'ancien moteur, vérifié
+ * sur le noyau d'avant.
+ *
+ * L'hôte donne le coin haut-gauche de la carte sur l'écran, par une question
+ * dont le nom contient des espaces — aucun script ne peut la poser lui-même,
+ * comme « is a date ». Sans hôte qui réponde, les harnais par exemple, la
+ * fenêtre est au coin de l'écran, et rect vaut 0,0,largeur,hauteur comme
+ * avant.
+ *
+ * NON MESURÉ DANS HYPERCARD : ni la valeur de ces propriétés, ni « the loc of
+ * card window », que la référence dit être le COIN HAUT-GAUCHE de la fenêtre
+ * sur l'écran et que HC rend encore comme le CENTRE de la carte, comme avant.
+ * Les autres propriétés d'une fenêtre ne sont pas servies : inventer leur
+ * réponse reviendrait à décider seul de ce que HyperCard aurait dit. */
 static int v3_est_fenetre(const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET)          return 0;
@@ -7449,14 +7469,27 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
     Object *st = owning_stack(g_current_card);
     int w = st && st->w ? st->w : 512;
     int h = st && st->h ? st->h : 342;
-    char b[48];
 
+    /* Le coin haut-gauche de la carte sur l'écran, si l'hôte le sait. */
+    int x0 = 0, y0 = 0, coin[2];
+    const char *o = host_global("card window topLeft");
+    if (o && parse_ints(o, coin, 2) == 2) { x0 = coin[0]; y0 = coin[1]; }
+
+    char b[64];
     if      (ci_equal(prop, "width"))  snprintf(b, sizeof b, "%d", w);
     else if (ci_equal(prop, "height")) snprintf(b, sizeof b, "%d", h);
     else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle"))
-        snprintf(b, sizeof b, "0,0,%d,%d", w, h);
+        snprintf(b, sizeof b, "%d,%d,%d,%d", x0, y0, x0 + w, y0 + h);
+    else if (ci_equal(prop, "left"))   snprintf(b, sizeof b, "%d", x0);
+    else if (ci_equal(prop, "top"))    snprintf(b, sizeof b, "%d", y0);
+    else if (ci_equal(prop, "right"))  snprintf(b, sizeof b, "%d", x0 + w);
+    else if (ci_equal(prop, "bottom")) snprintf(b, sizeof b, "%d", y0 + h);
+    else if (ci_equal(prop, "topLeft"))
+        snprintf(b, sizeof b, "%d,%d", x0, y0);
+    else if (ci_equal(prop, "bottomRight") || ci_equal(prop, "botRight"))
+        snprintf(b, sizeof b, "%d,%d", x0 + w, y0 + h);
     else if (ci_equal(prop, "loc") || ci_equal(prop, "location"))
-        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);
+        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);   /* non mesuré, voir plus haut */
     else return 0;
 
     *out = hct_val_texte(b);
