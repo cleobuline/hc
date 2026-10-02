@@ -2913,6 +2913,19 @@ static int hcv_quelle_couleur(const char *nom)
  * changerait « W » en « w ». */
 static NSMutableDictionary<NSNumber *, NSNumber *> *gTouchesTenues = nil;
 
+/* QUAND UN SCRIPT INTERROGE keysDown, LES RÉPÉTITIONS NE SE GARDENT PAS.
+ *
+ * Une touche tenue fait répéter macOS — une trentaine de frappes par seconde.
+ * Pendant un script, chacune reste en file, et le guetteur les relit TOUTES à
+ * chaque image : dix secondes de batteur levé, trois cents frappes à
+ * parcourir à chaque passage, et toutes livrées d'un coup à la fin de la
+ * partie. Un script qui demande keysDown suit la touche lui-même ; ses
+ * répétitions ne servent à personne. On les jette donc, ELLES SEULES, et
+ * seulement tant qu'un script interroge keysDown — la dernière demande a
+ * moins d'une demi-seconde. Un vrai appui reste en file, comme avant, et un
+ * script qui n'emploie pas keysDown ne voit aucune différence. */
+static CFTimeInterval gTouchesInterrogees = 0;
+
 static int hcv_code_touche(NSEvent *e)
 {
     switch ([e keyCode]) {
@@ -2971,6 +2984,7 @@ static const char *hcv_touches_tenues(void)
 {
     static char buf[512];
     buf[0] = '\0';
+    if (hc_is_running()) gTouchesInterrogees = CACurrentMediaTime();
     NSArray *codes = [[[NSSet setWithArray:[gTouchesTenues allValues]] allObjects]
                          sortedArrayUsingSelector:@selector(compare:)];
     size_t pos = 0;
@@ -3790,6 +3804,9 @@ static void hcv_guette_cmd_point(void)
          * nulle part ailleurs. Elle reste dans la file, comme le clic. */
         hcv_touche_suit(e);
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
+        if ([e type] == NSEventTypeKeyDown && [e isARepeat] &&
+            CACurrentMediaTime() - gTouchesInterrogees < 0.5)
+            continue;                       /* voir gTouchesInterrogees */
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
          * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
          * (voir plus haut). Le clic reste dans la file.
