@@ -1,0 +1,122 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. un bouton qui ne porte rien : tout est vide ==
+   put "[" & the points of button "aile" & "]"
+      []
+   put "[" & the backColor of button "aile" & "]"
+      []
+   put "[" & the foreColor of button "aile" & "]"
+      []
+   put "[" & the hiliteColor of button "aile" & "]"
+      []
+   champs du noyau : backcolor 0 forecolor 0 hilitecolor 0 npoints 0
+
+== 2. le polygone : un triangle ==
+   set the style of button "aile" to polygon
+   set the points of button "aile" to "100,200" & return & "160,190" & return & "150,215"
+   put the points of button "aile"
+      100,200
+160,190
+150,215
+   put the rect of button "aile"
+      100,190,160,215
+   set the loc of button "aile" to 230,302
+   put the points of button "aile"
+      200,300
+260,290
+250,315
+   set the width of button "aile" to 120
+   put the points of button "aile"
+      200,300
+320,290
+300,315
+   set the points of button "aile" to "10,20abc"
+      [ERR]    !! des sommets s'écrivent « x,y », un par ligne, deux au moins
+   set the points of button "aile" to "10,20"
+      [ERR]    !! des sommets s'écrivent « x,y », un par ligne, deux au moins
+   put the points of button "aile"
+      200,300
+320,290
+300,315
+   set the points of button "aile" to "100,200,160,190,150,215"
+   put the points of button "aile"
+      100,200
+160,190
+150,215
+
+== 3. les couleurs ==
+   set the backColor of button "aile" to "red"
+   set the foreColor of button "aile" to "#0000FF"
+   set the hiliteColor of button "aile" to "255,255,0"
+   put the backColor of button "aile" && the foreColor of button "aile" && the hiliteColor of button "aile"
+      255,0,0 0,0,255 255,255,0
+   set the backColor of button "aile" to "zorglub"
+      [ERR]    !! couleur inconnue : zorglub
+   put the backColor of button "aile"
+      255,0,0
+   set the backColor of button "aile" to "noir"
+   put the backColor of button "aile"
+      0,0,0
+   set the hiliteColor of button "aile" to empty
+   put "[" & the hiliteColor of button "aile" & "]"
+      []
+
+== 3b. « the backColor » sans « of » reste la peinture ==
+   set the backColor to "green"
+      [HÔTE] couleur de peinture <- green
+   put the backColor
+      green
+   put the backColor of button "aile"
+      0,0,0
+
+== 4. within : dedans, dehors, sur le bord ==
+   put within(button "aile", "130,200")
+      true
+   put within(button "aile", "105,205")
+      false
+   put within(button "aile", "100,200")
+      true
+   put within(button "aile", "155,210")
+      false
+   put within(button "aile", "99,200")
+      false
+   put within(button "aile", "zut")
+      [ERR]    !! within : le second argument n'est pas un point « x,y » : zut
+      
+
+== 5. intersect : la bille contre l'aile ==
+   set the style of button "bille" to oval
+   set the rect of button "bille" to 120,170,136,186
+   put intersect(button "bille", button "aile")
+      false
+   set the rect of button "bille" to 125,190,141,206
+   put intersect(button "bille", button "aile")
+      true
+   set the rect of button "bille" to 300,300,316,316
+   put intersect(button "bille", button "aile")
+      false
+   put intersect("card button id " & the id of button "bille", button "aile")
+      false
+   put intersect(button "bille", "rien")
+      [ERR]    !! intersect : le second argument n'est pas un bouton : rien
+      
+   -- un rectangle tout entier dans l'autre
+ set the rect of button "bille" to 0,0,500,500
+ put intersect(button "bille", button "aile")
+      true
+
+== 6. le copier-coller emporte tout ==
+   copie : backcolor 000000 forecolor 0000FF npoints 3, sommets distincts
+
+== 7. sauvé, puis relu ==
+   relu : style polygon, backcolor 000000 (posée), forecolor 0000FF, hilitecolor 0, 3 sommets
+   relu, sommets : 100,200 160,190 150,215
+   le bouton qui ne portait rien : backcolor 0, npoints 0, points nul
+
+== 8. un fichier abîmé : la ligne fautive est ignorée ==
+   backcolor zz                 -> ignorée, rien de posé
+   backcolor -5                 -> ignorée, rien de posé
+   hilitecolor                  -> ignorée, rien de posé
+   points 50,40 0,0 1           -> ignorée, rien de posé
+   points 1,1                   -> ignorée, rien de posé
+   points 50,40 0,0 1,1 x       -> ignorée, rien de posé
+   points -5,40 0,0 1,1         -> ignorée, rien de posé

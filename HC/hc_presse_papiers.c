@@ -114,6 +114,20 @@ static Object *clone_part(Object *o)
     c->textheight    = o->textheight;
     c->family        = o->family;
     c->titlewidth    = o->titlewidth;
+    /* L'extension : les couleurs, et les sommets — un tableau, donc DUPPÉ :
+     * partagé, le second hc_free le libérerait une seconde fois. */
+    c->backcolor     = o->backcolor;
+    c->forecolor     = o->forecolor;
+    c->hilitecolor   = o->hilitecolor;
+    c->pointsw       = o->pointsw;
+    c->pointsh       = o->pointsh;
+    if (o->points && o->npoints > 0) {
+        c->points = malloc(sizeof(int) * 2 * (size_t)o->npoints);
+        if (c->points) {
+            memcpy(c->points, o->points, sizeof(int) * 2 * (size_t)o->npoints);
+            c->npoints = o->npoints;
+        }
+    }
 
     /* Les plages de style : chaque nom de police est duppé à son tour, sinon
      * deux objets partageraient le même pointeur et le second hc_free()

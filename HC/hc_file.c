@@ -369,6 +369,38 @@ static void put_runs(FILE *f, const char *tag, const struct RunList *rl)
     }
 }
 
+/* « points w,h x,y x,y … », tel que put_part l'écrit : la taille de
+ * référence, puis deux sommets au moins, relatifs. Une ligne abîmée — un mot,
+ * un nombre de trop ou de moins, une coordonnée hors bornes — laisse le
+ * bouton sans sommets plutôt que de dessiner n'importe quoi. */
+static void lit_sommets(Object *part, const char *s)
+{
+    static long v[2 * (HC_SOMMETS_MAX + 1)];
+    int k = 0;
+    const char *p = s;
+    for (;;) {
+        while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+        if (!*p) break;
+        char *fin = NULL;
+        long n = strtol(p, &fin, 10);
+        if (fin == p || k >= 2 * (HC_SOMMETS_MAX + 1)) return;
+        if (n < -HC_COORD_MAX || n > HC_COORD_MAX) return;
+        if (*fin && !strchr(" ,\t\r\n", *fin)) return;
+        v[k++] = n;
+        p = fin;
+    }
+    if (k < 6 || k % 2 || v[0] < 0 || v[1] < 0) return;
+    int n = k / 2 - 1;
+    int *pts = malloc(sizeof(int) * 2 * (size_t)n);
+    if (!pts) return;
+    for (int i = 0; i < 2 * n; i++) pts[i] = (int)v[i + 2];
+    free(part->points);
+    part->points  = pts;
+    part->npoints = n;
+    part->pointsw = (int)v[0];
+    part->pointsh = (int)v[1];
+}
+
 static void put_part(FILE *f, Object *o)
 {
     const char *kind = (o->type == OBJ_BUTTON) ? "button" : "field";
@@ -406,6 +438,20 @@ static void put_part(FILE *f, Object *o)
      * d'un .stack existant un fichier « modifié » aux yeux d'un diff. */
     if (o->family)     fprintf(f, "family %d\n", o->family);
     if (o->titlewidth) fprintf(f, "titlewidth %d\n", o->titlewidth);
+    /* L'extension : couleurs et sommets, sous la même règle — rien d'écrit
+     * pour un bouton qui n'en porte pas, donc rien de changé pour toutes les
+     * piles d'avant. La couleur s'écrit sans son bit « posée » : c'est la
+     * présence de la ligne qui le dit. Les sommets sont RELATIFS, précédés
+     * de la taille de référence. */
+    if (o->backcolor)   fprintf(f, "backcolor %d\n",   HC_COUL_RVB(o->backcolor));
+    if (o->forecolor)   fprintf(f, "forecolor %d\n",   HC_COUL_RVB(o->forecolor));
+    if (o->hilitecolor) fprintf(f, "hilitecolor %d\n", HC_COUL_RVB(o->hilitecolor));
+    if (o->points && o->npoints > 0) {
+        fprintf(f, "points %d,%d", o->pointsw, o->pointsh);
+        for (int i = 0; i < o->npoints; i++)
+            fprintf(f, " %d,%d", o->points[2 * i], o->points[2 * i + 1]);
+        fputc('\n', f);
+    }
     if (o->selectedline) fprintf(f, "selectedline %d\n", o->selectedline);
     if (o->locktext) fprintf(f, "locktext\n");
     if (o->wide_margins) fprintf(f, "widemargins\n");
@@ -1454,6 +1500,32 @@ Object *hc_load(const char *path)
              * portant « family 99 » donnerait un groupe fantôme qu'aucune
              * commande ne peut créer. Hors bornes, on garde le défaut. */
             part->family = hc_entier(s + 7, 0, 15, part->family);
+            continue;
+        }
+        /* L'extension : voir put_part. Une couleur illisible ou négative est
+         * IGNORÉE : la lire comme 0 la posait en noir — mesuré, « backcolor
+         * zz » rendait un bouton noir. Une ligne de sommets abîmée est ignorée
+         * en entier. Sur un champ, rien : seuls les boutons en portent. */
+        if (strncmp(s, "backcolor ", 10) == 0 && part) {
+            int v = hc_entier(s + 10, -1, 0xFFFFFF, -1);
+            if (part->type == OBJ_BUTTON && v >= 0)
+                part->backcolor = HC_COUL_POSEE | v;
+            continue;
+        }
+        if (strncmp(s, "forecolor ", 10) == 0 && part) {
+            int v = hc_entier(s + 10, -1, 0xFFFFFF, -1);
+            if (part->type == OBJ_BUTTON && v >= 0)
+                part->forecolor = HC_COUL_POSEE | v;
+            continue;
+        }
+        if (strncmp(s, "hilitecolor ", 12) == 0 && part) {
+            int v = hc_entier(s + 12, -1, 0xFFFFFF, -1);
+            if (part->type == OBJ_BUTTON && v >= 0)
+                part->hilitecolor = HC_COUL_POSEE | v;
+            continue;
+        }
+        if (strncmp(s, "points ", 7) == 0 && part) {
+            if (part->type == OBJ_BUTTON) lit_sommets(part, s + 7);
             continue;
         }
         if (strncmp(s, "titlewidth ", 11) == 0 && part) {

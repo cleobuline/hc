@@ -658,6 +658,32 @@ static NSColor *btn_label_color(Object *o, NSColor *normale) {
     return normale;
 }
 
+/* LES COULEURS D'UN BOUTON — l'extension (hc_core.h, champs backcolor…).
+ * Rien de posé, rien de changé : les couleurs par défaut sont le blanc et le
+ * noir qu'HyperCard employait, et que ce fichier écrivait en dur. */
+static NSColor *hcv_couleur_posee(int c, NSColor *defaut)
+{
+    if (!c) return defaut;
+    int rvb = HC_COUL_RVB(c);
+    return [NSColor colorWithDeviceRed:((rvb >> 16) & 255) / 255.0
+                                 green:((rvb >> 8) & 255) / 255.0
+                                  blue:(rvb & 255) / 255.0
+                                 alpha:1.0];
+}
+
+/* L'intérieur : backColor, ou hiliteColor quand le bouton est allumé. */
+static NSColor *btn_fond(Object *o, BOOL on)
+{
+    return on ? hcv_couleur_posee(o->hilitecolor, [NSColor blackColor])
+              : hcv_couleur_posee(o->backcolor,   [NSColor whiteColor]);
+}
+
+/* Le contour et le titre : foreColor. */
+static NSColor *btn_trait(Object *o)
+{
+    return hcv_couleur_posee(o->forecolor, [NSColor blackColor]);
+}
+
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
@@ -665,8 +691,9 @@ static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat de
     [ps setAlignment:NSTextAlignmentCenter];
 
     NSMutableDictionary *attrs =
-        [obj_attrs(o, defSize, btn_label_color(o, on ? [NSColor whiteColor]
-                                                     : [NSColor blackColor])) mutableCopy];
+        [obj_attrs(o, defSize, btn_label_color(o, (on && !o->hilitecolor)
+                                                     ? [NSColor whiteColor]
+                                                     : btn_trait(o))) mutableCopy];
     attrs[NSParagraphStyleAttributeName] = ps;
 
     NSRect tr = NSInsetRect(r, 4, 0);
@@ -686,6 +713,28 @@ static void draw_edit_outline(NSRect r) {
 
 static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     const char *st = o->style ? o->style : "rectangle";
+
+    /* LE POLYGONE — l'extension. Sa forme vient du noyau (hc_bouton_sommets),
+     * la même que voient within() et intersect() : ce qu'on voit est ce qui
+     * touche. Les coordonnées de carte sont celles de la vue. */
+    if (hc_est_polygone(o)) {
+        static int xy[2 * HC_SOMMETS_MAX];
+        int n = hc_bouton_sommets(o, xy, HC_SOMMETS_MAX);
+        if (n < 2) return;
+        NSBezierPath *p = [NSBezierPath bezierPath];
+        [p moveToPoint:NSMakePoint(xy[0] + 0.5, xy[1] + 0.5)];
+        for (int i = 1; i < n; i++)
+            [p lineToPoint:NSMakePoint(xy[2 * i] + 0.5, xy[2 * i + 1] + 0.5)];
+        if (n >= 3) {
+            [p closePath];
+            [btn_fond(o, on) setFill];
+            [p fill];
+        }
+        [btn_trait(o) setStroke];
+        [p setLineWidth:1];
+        [p stroke];
+        return;
+    }
 
     if (strcmp(st, "transparent") == 0) {
         /* INVERSER, ET NON NOIRCIR — et le commentaire qui était ici disait déjà
@@ -707,7 +756,11 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
          * l'encre de l'icône passe au blanc, ce dont draw_part se charge, et
          * c'est une décision prise à l'usage — « ni carré noir, ni icône qui
          * disparaît sur fond blanc ». On n'y touche pas. */
-        if (on && o->icon == 0) {
+        if (on && o->icon == 0 && o->hilitecolor) {
+            /* L'extension : une hiliteColor posée remplace l'inversion. */
+            [btn_fond(o, on) setFill];
+            NSRectFill(r);
+        } else if (on && o->icon == 0) {
             [[NSColor whiteColor] setFill];
             NSRectFillUsingOperation(r, NSCompositingOperationDifference);
         }
@@ -718,11 +771,11 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
                                  r.size.width - 3, r.size.height - 3);
         NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
                                  r.size.width - 3, r.size.height - 3);
-        [[NSColor blackColor] setFill];
+        [btn_trait(o) setFill];
         NSRectFill(sh);
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         NSRectFill(body);
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
         [bp setLineWidth:1];
         [bp stroke];
@@ -731,18 +784,18 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "roundRect") == 0 || strcmp(st, "roundrect") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
                                                           xRadius:8 yRadius:8];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         return;
     }
     if (strcmp(st, "oval") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(r, 0.5, 0.5)];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         return;
@@ -750,9 +803,9 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "standard") == 0 || strcmp(st, "default") == 0) {
         NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 2.5, 2.5)
                                                           xRadius:6 yRadius:6];
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         [p fill];
-        [[NSColor blackColor] setStroke];
+        [btn_trait(o) setStroke];
         [p setLineWidth:1];
         [p stroke];
         if (strcmp(st, "default") == 0) {
@@ -764,13 +817,13 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
         return;
     }
     if (strcmp(st, "opaque") == 0) {
-        [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+        [btn_fond(o, on) setFill];
         NSRectFill(r);
         return;
     }
-    [(on ? [NSColor blackColor] : [NSColor whiteColor]) setFill];
+    [btn_fond(o, on) setFill];
     NSRectFill(r);
-    [[NSColor blackColor] setFill];
+    [btn_trait(o) setFill];
     NSFrameRect(r);
 }
 
@@ -1485,8 +1538,16 @@ static Object *part_at_layer(Object *layer, NSPoint p) {
         Object *o = layer->parts[i];
         if (o->visible && !part_inerte(o) &&
             p.x >= o->x && p.x <= o->x + o->w &&
-            p.y >= o->y && p.y <= o->y + o->h)
+            p.y >= o->y && p.y <= o->y + o->h) {
+            /* Un POLYGONE ne se clique que dans sa forme — l'extension. Avec
+             * l'outil Bouton, son rectangle suffit : une forme mince doit
+             * pouvoir s'attraper pour être déplacée. Les autres styles ne
+             * changent pas. */
+            if (gTool == TOOL_BROWSE && hc_est_polygone(o) &&
+                !hc_dans_forme(o, (int)floor(p.x), (int)floor(p.y)))
+                continue;
             return o;
+        }
     }
     return NULL;
 }

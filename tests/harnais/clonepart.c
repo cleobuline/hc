@@ -26,6 +26,7 @@
  *   2. l'ecriture          dans hc_file.c  — sinon perdu a l'enregistrement
  *   3. la lecture          dans hc_file.c  — sinon perdu au rechargement
  *   4. ce harnais          — ajoutez la ligne COMPARE, sinon plus de garde
+ *   5. hc_free             dans hc_core.c  — si le champ est un tableau
  *
  * Les points 2 et 3 sont tenus par le harnais « famille », qui enregistre et
  * relit. Le 4 ne peut etre tenu par personne : c'est une discipline, pas un
@@ -132,6 +133,11 @@ int main(void)
     b->titlewidth = 48; b->showname = 0; b->shared_hilite = 0;
     hc_set_family(b, 5);
     hc_set_script(b, "on mouseUp\n  beep\nend mouseUp\n");
+    /* L'extension : les trois couleurs et les sommets. */
+    b->backcolor = HC_COUL_POSEE | 0xFF0000;
+    b->forecolor = HC_COUL_POSEE | 0x0000FF;
+    b->hilitecolor = HC_COUL_POSEE | 0xFFFF00;
+    hc_pose_sommets(b, "5,6\n82,6\n40,34");
 
     hc_copy_part(b);
     Object *cb = hc_paste_part(c);
@@ -151,6 +157,16 @@ int main(void)
     COMPARE(icon); COMPARE(selectedline);
     COMPARE(family); COMPARE(titlewidth);
     COMPARE(textsize); COMPARE(textheight);
+    COMPARE(backcolor); COMPARE(forecolor); COMPARE(hilitecolor);
+    COMPARE(npoints); COMPARE(pointsw); COMPARE(pointsh);
+    if (src->npoints != cp->npoints || !cp->points ||
+        memcmp(src->points, cp->points, sizeof(int) * 2 * (size_t)src->npoints)) {
+        puts("      *** SOMMETS PERDUS ***");
+        perdus++;
+    } else if (cp->points == src->points) {
+        puts("      *** SOMMETS PARTAGES : double liberation ***");
+        perdus++;
+    }
     COMPARE_TXT(name); COMPARE_TXT(script); COMPARE_TXT(style);
 
     /* L'identifiant, lui, DOIT changer : deux objets de meme id rendraient

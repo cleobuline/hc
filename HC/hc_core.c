@@ -2336,6 +2336,7 @@ void hc_free(Object *o)
     free(o->contents);
     free(o->style);
     free(o->textfont);
+    free(o->points);
     free(o->bghilites);
     for (int i = 0; i < o->nbgtexts; i++) {
         free(o->bgtexts[i].text);
@@ -2802,6 +2803,200 @@ int hc_set_family(Object *btn, int famille)
     }
 
     if (hc_hilite_of(btn, NULL)) eteint_la_famille(btn, NULL);
+    return 1;
+}
+
+/* ═══ L'EXTENSION : LA FORME D'UN BOUTON ══════════════════════════════════
+ *
+ * Le polygone (style « polygon », propriété « points »), et les deux
+ * fonctions qui en ont besoin, within() et intersect() — l'extension annoncée
+ * de HC, décidée le 2 octobre pour les jeux (CLAUDE.md). Le vocabulaire est
+ * celui de LiveCode.
+ *
+ * within() et intersect() sont NOUVELLES : aucune pile d'HyperCard ne les
+ * appelle, et elles peuvent donc voir la vraie forme de chaque bouton sans
+ * rien changer pour personne — un ovale y est une ellipse, ce dont un
+ * flipper a besoin pour ses champignons. Le CLIC, lui, ne change que pour un
+ * polygone : un bouton ovale d'HyperCard se clique dans son rectangle depuis
+ * toujours, et le restera.
+ *
+ * Les calculs se font en entiers longs : une coordonnée va jusqu'à
+ * HC_COORD_MAX (un million), et un produit de deux différences dépasserait
+ * un int. */
+
+int hc_est_polygone(const Object *o)
+{
+    return o && o->type == OBJ_BUTTON && o->style && ci_equal(o->style, "polygon");
+}
+
+/* Les sommets POSÉS, en coordonnées de carte, quel que soit le style : c'est
+ * ce que rend « the points ». */
+static int sommets_poses(const Object *o, int *xy, int max)
+{
+    if (!o || !o->points || o->npoints < 1) return 0;
+    int n = o->npoints < max ? o->npoints : max;
+    for (int i = 0; i < n; i++) {
+        double px = o->points[2 * i], py = o->points[2 * i + 1];
+        if (o->pointsw > 0) px = px * o->w / o->pointsw;
+        if (o->pointsh > 0) py = py * o->h / o->pointsh;
+        xy[2 * i]     = o->x + (int)lround(px);
+        xy[2 * i + 1] = o->y + (int)lround(py);
+    }
+    return n;
+}
+
+int hc_bouton_sommets(const Object *o, int *xy, int max)
+{
+    if (!o || !xy || max < 4) return 0;
+    if (hc_est_polygone(o) && o->npoints >= 2)
+        return sommets_poses(o, xy, max);
+    if (o->style && ci_equal(o->style, "oval") && max >= 32) {
+        double cx = o->x + o->w / 2.0, cy = o->y + o->h / 2.0;
+        for (int i = 0; i < 32; i++) {
+            double a = 2.0 * 3.14159265358979323846 * i / 32.0;
+            xy[2 * i]     = (int)lround(cx + o->w / 2.0 * cos(a));
+            xy[2 * i + 1] = (int)lround(cy + o->h / 2.0 * sin(a));
+        }
+        return 32;
+    }
+    xy[0] = o->x;        xy[1] = o->y;
+    xy[2] = o->x + o->w; xy[3] = o->y;
+    xy[4] = o->x + o->w; xy[5] = o->y + o->h;
+    xy[6] = o->x;        xy[7] = o->y + o->h;
+    return 4;
+}
+
+/* Le signe du produit vectoriel (b - a) × (c - a) : -1, 0 ou 1. */
+static int sens(long long ax, long long ay, long long bx, long long by,
+                long long cx, long long cy)
+{
+    long long v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    return (v > 0) - (v < 0);
+}
+
+/* c, aligné avec [a b], est-il entre a et b ? */
+static int entre(long long ax, long long ay, long long bx, long long by,
+                 long long cx, long long cy)
+{
+    return cx >= (ax < bx ? ax : bx) && cx <= (ax > bx ? ax : bx) &&
+           cy >= (ay < by ? ay : by) && cy <= (ay > by ? ay : by);
+}
+
+static int segments_se_touchent(const int *a, const int *b,
+                                const int *c, const int *d)
+{
+    int s1 = sens(a[0], a[1], b[0], b[1], c[0], c[1]);
+    int s2 = sens(a[0], a[1], b[0], b[1], d[0], d[1]);
+    int s3 = sens(c[0], c[1], d[0], d[1], a[0], a[1]);
+    int s4 = sens(c[0], c[1], d[0], d[1], b[0], b[1]);
+    if (s1 != s2 && s3 != s4) return 1;
+    if (s1 == 0 && entre(a[0], a[1], b[0], b[1], c[0], c[1])) return 1;
+    if (s2 == 0 && entre(a[0], a[1], b[0], b[1], d[0], d[1])) return 1;
+    if (s3 == 0 && entre(c[0], c[1], d[0], d[1], a[0], a[1])) return 1;
+    if (s4 == 0 && entre(c[0], c[1], d[0], d[1], b[0], b[1])) return 1;
+    return 0;
+}
+
+/* Pair-impair, le bord comptant comme dedans. Deux sommets : un segment. */
+static int dans_sommets(const int *xy, int n, int x, int y)
+{
+    if (n < 1) return 0;
+    if (n == 1) return xy[0] == x && xy[1] == y;
+    int dedans = 0;
+    for (int i = 0; i < n; i++) {
+        int j = (i + n - 1) % n;
+        long long xi = xy[2 * i], yi = xy[2 * i + 1];
+        long long xj = xy[2 * j], yj = xy[2 * j + 1];
+        if (sens(xi, yi, xj, yj, x, y) == 0 && entre(xi, yi, xj, yj, x, y))
+            return 1;
+        if ((yi > y) != (yj > y)) {
+            double xc = (double)xi + (double)(y - yi) * (double)(xj - xi)
+                                   / (double)(yj - yi);
+            if ((double)x < xc) dedans = !dedans;
+        }
+    }
+    return dedans;
+}
+
+int hc_dans_forme(const Object *o, int x, int y)
+{
+    int xy[2 * HC_SOMMETS_MAX];
+    int n = hc_bouton_sommets(o, xy, HC_SOMMETS_MAX);
+    return dans_sommets(xy, n, x, y);
+}
+
+int hc_formes_se_touchent(const Object *a, const Object *b)
+{
+    static int pa[2 * HC_SOMMETS_MAX], pb[2 * HC_SOMMETS_MAX];
+    int na = hc_bouton_sommets(a, pa, HC_SOMMETS_MAX);
+    int nb = hc_bouton_sommets(b, pb, HC_SOMMETS_MAX);
+    if (na < 1 || nb < 1) return 0;
+    /* Un côté de l'une coupe un côté de l'autre… */
+    for (int i = 0; i < na; i++) {
+        const int *a1 = &pa[2 * i], *a2 = &pa[2 * ((i + 1) % na)];
+        for (int j = 0; j < nb; j++) {
+            const int *b1 = &pb[2 * j], *b2 = &pb[2 * ((j + 1) % nb)];
+            if (segments_se_touchent(a1, a2, b1, b2)) return 1;
+        }
+    }
+    /* … ou l'une est tout entière dans l'autre. */
+    return dans_sommets(pb, nb, pa[0], pa[1]) || dans_sommets(pa, na, pb[0], pb[1]);
+}
+
+int hc_pose_sommets(Object *o, const char *texte)
+{
+    if (!o || o->type != OBJ_BUTTON) return 0;
+    if (!texte) texte = "";
+    int *v = malloc(sizeof(int) * 2 * HC_SOMMETS_MAX);
+    if (!v) return 0;
+    int k = 0;
+    const char *p = texte;
+    for (;;) {
+        while (*p == ' ' || *p == '\t' || *p == ',' || *p == '\r' || *p == '\n') p++;
+        if (!*p) break;
+        char *fin = NULL;
+        double d = strtod(p, &fin);
+        /* Un nombre, suivi d'un séparateur ou de la fin : « 10,20abc » n'est
+         * pas un point, et l'accepter à moitié dessinerait n'importe quoi. */
+        if (fin == p || d != d || k >= 2 * HC_SOMMETS_MAX ||
+            (*fin && !strchr(" \t,\r\n", *fin))) {
+            free(v);
+            return 0;
+        }
+        if (d >  HC_COORD_MAX) d =  HC_COORD_MAX;
+        if (d < -HC_COORD_MAX) d = -HC_COORD_MAX;
+        v[k++] = (int)lround(d);
+        p = fin;
+    }
+    if (k == 0) {                         /* vide : plus de sommets */
+        free(v);
+        free(o->points);
+        o->points = NULL;
+        o->npoints = o->pointsw = o->pointsh = 0;
+        return 1;
+    }
+    if (k % 2 || k < 4) { free(v); return 0; }
+
+    int x0 = v[0], y0 = v[1], x1 = v[0], y1 = v[1];
+    for (int i = 1; i < k / 2; i++) {
+        if (v[2 * i] < x0) x0 = v[2 * i];
+        if (v[2 * i] > x1) x1 = v[2 * i];
+        if (v[2 * i + 1] < y0) y0 = v[2 * i + 1];
+        if (v[2 * i + 1] > y1) y1 = v[2 * i + 1];
+    }
+    for (int i = 0; i < k / 2; i++) { v[2 * i] -= x0; v[2 * i + 1] -= y0; }
+    free(o->points);
+    o->points  = v;
+    o->npoints = k / 2;
+    /* Le rectangle se cale sur les sommets. Une forme plate — tous les
+     * sommets sur une même ligne — garde un point d'épaisseur, et sa taille
+     * de référence nulle dit de ne pas l'étirer dans ce sens-là. */
+    o->x = x0;
+    o->y = y0;
+    o->pointsw = x1 - x0;
+    o->pointsh = y1 - y0;
+    o->w = o->pointsw > 0 ? o->pointsw : 1;
+    o->h = o->pointsh > 0 ? o->pointsh : 1;
     return 1;
 }
 
@@ -6184,6 +6379,8 @@ static int is_prop_name(const char *w, int len)
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
+        "points", "backcolor", "backgroundcolor", "forecolor",
+        "foregroundcolor", "hilitecolor", "highlightcolor",
         "selectedtext", "selectedchunk",
         "textfont", "scroll", "textstyle", "hilite", "highlight", "autohilite",
         "textsize", "textheight", "script", "text", "contents", "style",
@@ -6208,6 +6405,35 @@ static int is_prop_name(const char *w, int len)
  * `forme` est HC_NOM_COURT / ABREGE / LONG : seul `name` s'en sert. Il valait
  * un simple booléen « court ou non », si bien que « long » était lu, reconnu,
  * puis JETÉ — « the long name of me » rendait exactement « the name of me ». */
+/* LES TROIS COULEURS D'UN BOUTON — l'extension, voir hc_core.h. Les noms
+ * longs sont ceux de LiveCode, les courts ceux qu'on écrit ; « the
+ * backColor » sans « of » reste la couleur de PEINTURE, tenue par l'hôte. */
+static int *champ_couleur(Object *o, const char *prop)
+{
+    if (ci_equal(prop, "backcolor")   || ci_equal(prop, "backgroundcolor"))
+        return &o->backcolor;
+    if (ci_equal(prop, "forecolor")   || ci_equal(prop, "foregroundcolor"))
+        return &o->forecolor;
+    if (ci_equal(prop, "hilitecolor") || ci_equal(prop, "highlightcolor"))
+        return &o->hilitecolor;
+    return NULL;
+}
+
+/* « the points » : un sommet par ligne, en coordonnées de carte. */
+static void ecrit_sommets(const Object *o, char *out, int outlen)
+{
+    int xy[2 * HC_SOMMETS_MAX];
+    int n = sommets_poses(o, xy, HC_SOMMETS_MAX);
+    int pos = 0;
+    if (outlen > 0) out[0] = '\0';
+    for (int i = 0; i < n && pos < outlen; i++) {
+        int k = snprintf(out + pos, (size_t)(outlen - pos), "%s%d,%d",
+                         i ? "\n" : "", xy[2 * i], xy[2 * i + 1]);
+        if (k < 0) break;
+        pos += k;
+    }
+}
+
 static int obj_prop_read(Object *o, const char *prop, int forme,
                          char *out, int outlen)
 {
@@ -6323,6 +6549,21 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "icon")) { snprintf(out, outlen, "%d", o->icon); return 1; }
     if (ci_equal(prop, "family")) { snprintf(out, outlen, "%d", o->family); return 1; }
     if (ci_equal(prop, "titlewidth")) { snprintf(out, outlen, "%d", o->titlewidth); return 1; }
+    /* L'extension : vide tant que rien n'est posé — une pile d'HyperCard ne
+     * porte ni couleur ni sommet. */
+    if (ci_equal(prop, "points") && o->type == OBJ_BUTTON) {
+        ecrit_sommets(o, out, outlen);
+        return 1;
+    }
+    {
+        int *c = (o->type == OBJ_BUTTON) ? champ_couleur(o, prop) : NULL;
+        if (c) {
+            if (*c) snprintf(out, outlen, "%d,%d,%d", (HC_COUL_RVB(*c) >> 16) & 255,
+                             (HC_COUL_RVB(*c) >> 8) & 255, HC_COUL_RVB(*c) & 255);
+            else if (outlen > 0) out[0] = '\0';
+            return 1;
+        }
+    }
     /* selectedLine : deux choses selon l'objet.
      *
      * Sur un BOUTON popup, c'est l'article choisi dans le menu
@@ -7801,7 +8042,8 @@ static int v3_prop_exige_un_objet(const char *prop)
         "left", "top", "right", "bottom", "width", "height",
         "loc", "location",
         "visible", "showname", "shownname", "enabled", "marked",
-        "style", "family", "titlewidth", "icon",
+        "style", "family", "titlewidth", "icon", "points", "hilitecolor",
+        "highlightcolor",
         "hilite", "highlight", "autohilite",
         "locktext", "widemargins", "fixedlineheight", "showlines",
         "autotab", "dontsearch", "cantdelete", "showpict", "sharedtext", "sharedhilite",
@@ -8952,6 +9194,44 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
     }
     /* Personne dans la pile : l'XFCN imité, au rang de la ressource. */
     if (ci_equal(nom, "popUpMenu") && v3_popupmenu(args, nargs, out)) {
+        g_v1_porte = sauve_porte;
+        return 1;
+    }
+    /* L'EXTENSION : within(bouton, point) et intersect(bouton, bouton),
+     * les fonctions de LiveCode, sur la vraie forme de chaque bouton —
+     * polygone, ellipse ou rectangle (hc_bouton_sommets). Une fonction de
+     * la pile du même nom garde la priorité, juste au-dessus.
+     *
+     * Un bouton écrit en argument arrive ici sous la forme « card button
+     * id 5 » (appel(), hct_eval.c) ; on accepte aussi ce descripteur écrit
+     * en toutes lettres, ou tenu dans une variable. */
+    if (nargs == 2 && (ci_equal(nom, "within") || ci_equal(nom, "intersect"))) {
+        Object *a = resolve(args[0].txt);
+        int faute = 0;
+        if (!a || (a->type != OBJ_BUTTON && a->type != OBJ_FIELD)) {
+            emit(HC_ERR, "   !! %s : le premier argument n'est pas un bouton : %s",
+                 nom, args[0].txt);
+            faute = 1;
+        } else if (ci_equal(nom, "within")) {
+            int x = 0, y = 0;
+            if (sscanf(args[1].txt, " %d , %d", &x, &y) != 2) {
+                emit(HC_ERR, "   !! within : le second argument n'est pas un "
+                             "point « x,y » : %s", args[1].txt);
+                faute = 1;
+            } else {
+                *out = hct_val_bool(hc_dans_forme(a, x, y));
+            }
+        } else {
+            Object *b = resolve(args[1].txt);
+            if (!b || (b->type != OBJ_BUTTON && b->type != OBJ_FIELD)) {
+                emit(HC_ERR, "   !! intersect : le second argument n'est pas un "
+                             "bouton : %s", args[1].txt);
+                faute = 1;
+            } else {
+                *out = hct_val_bool(hc_formes_se_touchent(a, b));
+            }
+        }
+        if (faute) *out = hct_val_texte("");
         g_v1_porte = sauve_porte;
         return 1;
     }
@@ -11884,6 +12164,33 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         notify_field(o);
     } else if (ci_equal(prop, "titlewidth")) {
         o->titlewidth = hc_entier(val, 0, HC_TEXTE_MAX, o->titlewidth);
+        notify_field(o);
+    } else if (ci_equal(prop, "points") && o->type == OBJ_BUTTON) {
+        /* L'extension : le rectangle se cale sur les sommets. Un texte qui
+         * n'est pas une liste de points ne touche à rien, et le dit. */
+        if (!hc_pose_sommets(o, val)) {
+            emit(HC_ERR, "   !! des sommets s'écrivent « x,y », un par ligne, "
+                         "deux au moins");
+            set_result("points invalides");
+            g_atop = sauve; return 1;
+        }
+        notify_field(o);
+    } else if (o->type == OBJ_BUTTON && champ_couleur(o, prop)) {
+        /* Vide efface : le bouton reprend le dessin d'HyperCard. */
+        int *c = champ_couleur(o, prop);
+        const char *v = val;
+        while (*v == ' ' || *v == '\t') v++;
+        if (!*v) {
+            *c = 0;
+        } else {
+            int rvb = color_from_name(v);
+            if (rvb == HC_COLOR_INHERIT) {
+                emit(HC_ERR, "   !! couleur inconnue : %s", val);
+                set_result("couleur inconnue");
+                g_atop = sauve; return 1;
+            }
+            *c = HC_COUL_POSEE | rvb;
+        }
         notify_field(o);
     } else if (ci_equal(prop, "autohilite")) {
         o->autohilite = truthy(val);
@@ -15221,6 +15528,20 @@ static int v3_lit_prop(void *d, void *objet, const char *prop, HctValeur *out)
     (void)d;
     Object *o = objet;
     if (!o || !prop) return 0;
+
+    /* « hc forme » : le descripteur qu'intersect() et within() reçoivent à
+     * la place d'un bouton (voir appel() dans hct_eval.c). Il désigne la part
+     * par son identifiant, sans ambiguïté — deux boutons peuvent porter le
+     * même nom. Le nom contient une espace : aucun script ne peut le
+     * demander, comme « card window topLeft ». */
+    if (strcmp(prop, "hc forme") == 0) {
+        if (o->type != OBJ_BUTTON && o->type != OBJ_FIELD) return 0;
+        char buf[64];
+        snprintf(buf, sizeof buf, "%s %s id %d", hc_owner_is_bg(o) ? "bg" : "card",
+                 o->type == OBJ_BUTTON ? "button" : "field", o->id);
+        *out = hct_val_texte(buf);
+        return 1;
+    }
 
     static const char *ADJECTIFS[] = {
         "short", "long", "abbreviated", "abbrev", "abbr",
