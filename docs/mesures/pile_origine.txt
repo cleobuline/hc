@@ -1363,6 +1363,36 @@ transfert hors d'un Mac classique la perd. Trois façons de la garder :
 
 Retenue pour les icônes : lire le MacBinary à l'import.
 
+UNE PISTE POUR PLUS TARD, notée le 2 octobre, pas urgente : UNE PALETTE EST
+DÉJÀ UNE PETITE CARTE. Une image, des boutons invisibles avec chacun son
+rectangle et son bout de HyperTalk — c'est une carte HC avec un dessin et des
+boutons transparents scriptés. Le « Palette Maker » des Power Tools était
+d'ailleurs lui-même une carte, et la PLTE n'en était que l'export.
+
+Si un jour on y vient : « palette "X" » ouvrirait la CARTE « X » dans une
+fenêtre flottante, « hilitedButton » y désignerait le bouton allumé, et
+l'import d'un .bin changerait PLTE et PICT en une carte de ce genre.
+L'édition se ferait avec les outils qui existent déjà — peinture, bouton,
+éditeur de scripts —, et l'objection de la décision ci-dessus tombe : ce
+n'est plus une moitié de fonction. Le coût : la fenêtre flottante qui
+affiche une carte et lui envoie les clics, le décodage des PICT (celles du
+Palette Maker sont en noir et blanc), la lecture de la PLTE, et les
+messages openPalette / closePalette.
+
+LA PALETTE « NAVIGATOR » serait le premier cas, et le plus rentable. Signalée
+par l'utilisatrice comme fréquente dans les piles d'époque ; la référence
+(hypercard.center) la cite partout — « palette navigator », « show window
+"Navigator" », le raccourci « nav » de la pile Home. Elle n'appartient à
+AUCUNE pile : elle vient avec HyperCard, comme ses icônes. HC pourrait donc
+la livrer toute faite, sans rien décoder, comme il livre déjà les icônes
+d'HyperCard. NON MESURÉ : son dessin exact, et le message de chacun de ses
+boutons — à relever DANS HYPERCARD (Basilisk II), « palette navigator »,
+une capture, et pour chaque bouton ce qu'il fait.
+
+Aucune des piles reçues à ce jour ne l'appelle ; « Stack Templates » a sa
+propre palette, montée par un XCMD (StackTemplatePal) — un troisième cas, à
+ne pas confondre.
+
 
 LES ICÔNES, PAR UN MACBINARY — 2 octobre
 -----------------------------------------
