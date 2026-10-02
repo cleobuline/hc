@@ -23,6 +23,20 @@ ELLE NE S'ANNONCE NULLE PART : ni dans les notes de version, ni dans une aide,
 ni dans un README. C'est « notre petit secret », voulu ainsi. Le code, les
 harnais et docs/mesures/ en parlent, et c'est tout.
 
+## UNE SEULE EXTENSION ANNONCÉE : LES BOUTONS POLYGONES
+
+Décidé par l'utilisatrice le 2 octobre : HC reste un clone d'HyperCard, et
+n'aura qu'UNE extension annoncée, les boutons polygones — pour les jeux, à
+commencer par son flipper. Elle s'annonce dans les notes de version.
+
+Le vocabulaire est celui de LiveCode et SuperCard (style « polygon », « the
+points »), pour ne rien inventer. Les mots nouveaux n'existent que là où
+HyperCard n'avait rien : aucun mot existant ne change de sens, et aucune pile
+d'HyperCard ne change de comportement.
+
+Toute autre extension se propose à l'utilisatrice, et ne se fait pas sans
+elle. (skipErrors n'est pas concerné : il reste le petit secret ci-dessus.)
+
 ## LE CÔTÉ COCOA SE VÉRIFIE, ET IL NE FAUT PAS S'EN PRIVER
 
 Les quinze fichiers `.m` ne se compilent pas dans le conteneur : c'est une
