@@ -141,18 +141,23 @@ Le scénario, tel que l'utilisatrice l'a décrit :
      quatrième nombre (la peinture s'en sert) ; il faut le ranger dans le
      bouton, l'écrire dans le fichier, et le dessiner.
 
-Questions posées, réponses à venir :
+Questions posées, et leurs réponses :
 
   · comment naît le polygone — RÉPONDU : « au plus simple ». Pas d'outil
     de plus dans la palette : « New Button » comme dans HyperCard, puis le
     style « polygon » dans l'Info (il y est déjà). Un bouton qui devient
     polygone sans sommets reçoit un triangle inscrit dans son rectangle —
     par l'Info comme par « set the style … to polygon ».
-  · les poignées avec l'outil Bouton : tirer une poignée la déplace, cliquer
-    sur un côté en ajoute une, tirer l'intérieur déplace le bouton ?
-  · Delete : sur une poignée sélectionnée seulement ; sans poignée
-    sélectionnée, le bouton entier comme aujourd'hui ?
-  · l'alpha pour les trois couleurs, ou pour l'intérieur seul ?
+  · les poignées — RÉPONDU, accepté tel que proposé : avec l'outil Bouton,
+    tirer une poignée la déplace, cliquer sur un côté en ajoute une, tirer
+    l'intérieur déplace le bouton ;
+  · Delete — RÉPONDU, accepté tel que proposé : sur une poignée
+    sélectionnée, elle seule (jamais sous trois) ; sans poignée
+    sélectionnée, le bouton entier comme aujourd'hui ;
+  · l'alpha — RÉPONDU : « comme pour le dessin », c'est-à-dire le
+    quatrième nombre de « r,v,b,a », de 0 à 255, lu par la même
+    color_from_name_a. Le but, dit par l'utilisatrice : des boutons
+    semi-transparents par-dessus un fond tramé.
 
 La règle des extensions tient toujours (CLAUDE.md) : rien de posé, rien de
 changé ; une pile d'HyperCard ne porte jamais d'alpha.
