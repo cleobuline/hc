@@ -99,16 +99,14 @@ ok   temoin : menuItem CITE passait deja                  -> rien
 ok   garde : « put menu into x » n'est pas un menu nomme « into » -> rien    
 ok   garde : « the family of button » n'est pas une famille nommee « of » -> rien    
 
---- 4e. CE QUI RESTE REFUSE, ET POURQUOI ---
-(« get visible of window "StackTemplatePal" » : une fenetre NOMMEE.
- Ce n'est pas un trou de syntaxe, c'est un type d'objet que l'arbre
- n'a pas — hc_core.c le dit en toutes lettres pour « card window », et
- ne sert que ses quatre proprietes de geometrie. Notre application n'a
- ni palette, ni fenetre Outils, ni fenetre Motifs : repondre quoi que
- ce soit a « the visible of window "X" » serait DECIDER SEUL de ce
- qu'HyperCard aurait repondu. Refus assume, ecrit ici pour qu'il ne
- passe pas pour un oubli.)
-ok   window NOMMEE : refus assume, pas un oubli           -> erreur    (texte inattendu en fin de ligne)
+--- 4e. LES FENETRES NOMMEES, REFUSEES JUSQU'AU 2 OCTOBRE ---
+(« get visible of window "StackTemplatePal" » etait refuse : l'arbre
+ n'avait pas de type fenetre, et la ligne levait « texte inattendu en
+ fin de ligne » a chaque openBackground de « Stack Templates ». L'arbre
+ a ce type depuis la palette Navigator ; le verificateur accepte la
+ ligne, et c'est a l'EXECUTION que l'hote dit qu'il ne tient pas cette
+ fenetre — voir le harnais fenetres.)
+ok   window NOMMEE : acceptee, l'hote repond a l'execution -> rien    
 ok   temoin : « card window », que hc_core.c sert deja  -> rien    
 
 === 5. les memes formes, A L'EXECUTION et non au vérificateur ===

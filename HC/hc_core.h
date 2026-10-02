@@ -907,9 +907,33 @@ typedef struct {
      * Rend le rang de l'article choisi, 1 pour le premier, séparateurs
      * comptés ; 0 si l'on n'a rien choisi. Synchrone : le script attend. */
     int (*popup_menu)(const char *articles, int coche, int haut, int gauche);
+
+    /* LES FENÊTRES NOMMÉES : « window "Navigator" ». Elles appartiennent à
+     * l'hôte, pas à la pile ; le noyau lui pose toutes ses questions par ce
+     * seul rappel. `quoi` dit laquelle :
+     *
+     *     "existe"    la fenêtre existe-t-elle ?
+     *     "montre"    show window — "cache" : hide window
+     *     "ferme"     close window ; `out` reçoit « palette <id> » si
+     *                 c'était une palette, pour que le noyau envoie
+     *                 closePalette
+     *     "lit"       the <prop> of window — la valeur dans `out`
+     *     "pose"      set the <prop> of window to <valeur>
+     *     "palette"   palette <nom> [, <valeur> = le point] — ouvrir une
+     *                 palette ; `out` reçoit l'identifiant de sa fenêtre
+     *
+     * Rend 1 si c'est fait, 0 si la fenêtre (ou la palette) n'existe pas,
+     * -1 si la propriété est inconnue ou ne se pose pas. */
+    int (*fenetre)(const char *nom, const char *quoi, const char *prop,
+                   const char *valeur, char *out, int outlen);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)
+
+/* Une palette vient d'être fermée PAR L'UTILISATRICE — la case de fermeture
+ * de sa fenêtre. Le noyau envoie closePalette <nom>, <id> à la carte
+ * courante, comme HyperCard ; « close window » l'envoie de lui-même. */
+void hc_palette_fermee(const char *nom, int id);
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);

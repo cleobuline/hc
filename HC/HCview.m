@@ -3983,6 +3983,294 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
 
 @end
 
+/* ═══ LA PALETTE NAVIGATOR ════════════════════════════════════════════════
+ *
+ * « palette navigator » : la palette d'HyperCard 2, son dessin au point
+ * près (hc_navigator.h, relevé sur une capture d'HyperCard) et ses onze
+ * boutons. Le noyau ne tient aucun état de fenêtre : il pose ses questions
+ * par le rappel `fenetre` (hc_core.h), servi ici par cocoa_fenetre.
+ *
+ * UN BOUTON EXÉCUTE SA LIGNE DE « the commands » comme si on la tapait dans
+ * la boîte de messages — hc_do, le même chemin que messageBoxEntered. La
+ * ligne est un doMenu : le noyau sert les flèches, Back et Home, et passe
+ * les autres à cocoa_do_menu.
+ *
+ * LA FENÊTRE EST DESSINÉE ENTIÈRE, barre de titre comprise : une fenêtre
+ * sans bord d'AppKit, qu'on déplace en la saisissant par sa barre et qu'on
+ * ferme par sa case, comme la petite fenêtre d'HyperCard. Une barre de titre
+ * de macOS l'aurait doublée.
+ *
+ * NON MESURÉ, et écrit comme tel :
+ *   - l'inversion du bouton sous le doigt : c'est le geste des boutons du
+ *     Mac, pas un relevé de la palette ;
+ *   - « the loc of window "Navigator" » et le point de « palette nom, point »
+ *     désignent ici le coin haut-gauche du CONTENU, sous la barre de titre,
+ *     comme les fenêtres du Toolbox ; HyperCard n'a pas été mesuré ;
+ *   - « the hilitedButton » se dessine inversé, comme un bouton enfoncé ;
+ *   - l'identifiant de la fenêtre est le numéro de fenêtre de macOS. */
+#include "hc_navigator.h"
+
+/* Le coin du contenu dans le dessin : sous la barre de titre, après le bord. */
+#define NAV_CONTENU_G 1
+#define NAV_CONTENU_H (NAV_TITRE_BAS + 1)
+
+static NSPanel  *gNavPanel     = nil;   /* créée à la première ouverture */
+static BOOL      gNavOuverte   = NO;    /* fermée : la fenêtre n'existe plus */
+static BOOL      gNavMontree   = NO;    /* hide window la garde, cachée */
+static int       gNavHilite    = 0;     /* the hilitedButton ; 0 : aucun */
+static int       gNavId        = 0;
+static NSString *gNavCommandes = nil;   /* nil : celles d'HyperCard */
+
+static BOOL nav_dans(NavRect r, int x, int y)
+{
+    return x >= r.g && x <= r.d && y >= r.h && y <= r.b;
+}
+
+/* Ce qui est sous ce point de la palette : 1 à 11 un bouton, -1 la case de
+ * fermeture, 0 rien. */
+static int nav_cible(int x, int y)
+{
+    if (nav_dans(NAV_FERMETURE, x, y)) return -1;
+    for (int i = 0; i < NAV_NBOUTONS; i++)
+        if (nav_dans(NAV_BOUTONS[i], x, y)) return i + 1;
+    return 0;
+}
+
+static NSString *nav_commandes(void)
+{
+    return gNavCommandes ? gNavCommandes : hcv_texte(NAV_COMMANDES);
+}
+
+/* La hauteur de l'écran qui porte la barre de menus : HyperCard compte ses
+ * y depuis son HAUT, AppKit depuis son bas. */
+static CGFloat nav_h0(void)
+{
+    NSArray<NSScreen *> *ecrans = [NSScreen screens];
+    return [ecrans count] ? NSMaxY([ecrans[0] frame]) : 0;
+}
+
+/* Le coin du contenu, en coordonnées d'écran d'HyperCard. */
+static void nav_loc(int *g, int *h)
+{
+    NSRect f = [gNavPanel frame];
+    *g = (int)lround(NSMinX(f)) + NAV_CONTENU_G;
+    *h = (int)lround(nav_h0() - NSMaxY(f)) + NAV_CONTENU_H;
+}
+
+static void nav_place(int g, int h)
+{
+    [gNavPanel setFrameTopLeftPoint:
+        NSMakePoint((CGFloat)(g - NAV_CONTENU_G),
+                    nav_h0() - (CGFloat)(h - NAV_CONTENU_H))];
+}
+
+static void nav_ferme(BOOL parLaCase);
+
+@interface HCNavigatorVue : NSView
+@end
+
+@implementation HCNavigatorVue {
+    int _presse;    /* sous le doigt : comme nav_cible, 0 si rien */
+}
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)e { (void)e; return YES; }
+
+- (void)drawRect:(NSRect)sale {
+    (void)sale;
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:NAV_LARGEUR pixelsHigh:NAV_HAUTEUR
+                   bitsPerSample:8 samplesPerPixel:1 hasAlpha:NO isPlanar:NO
+                  colorSpaceName:NSDeviceWhiteColorSpace
+                     bytesPerRow:0 bitsPerPixel:8];
+    unsigned char *px = [rep bitmapData];
+    if (!px) return;
+    NSInteger ligne = [rep bytesPerRow];
+    for (int y = 0; y < NAV_HAUTEUR; y++) {
+        for (int x = 0; x < NAV_LARGEUR; x++) {
+            BOOL noir = NAV_DESSIN[y][x] == '#';
+            int c = nav_cible(x, y);
+            if (c != 0 && (c == _presse || c == gNavHilite)) noir = !noir;
+            px[y * ligne + x] = noir ? 0 : 255;
+        }
+    }
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+    [rep drawInRect:[self bounds] fromRect:NSZeroRect
+          operation:NSCompositingOperationCopy fraction:1.0
+     respectFlipped:YES hints:nil];
+}
+
+/* Un bouton du Mac : inversé tant que le doigt est dessus, et il n'agit
+ * qu'au relâcher DEDANS. Ailleurs, la barre de titre déplace la palette. */
+- (void)mouseDown:(NSEvent *)e {
+    NSPoint p = [self convertPoint:[e locationInWindow] fromView:nil];
+    int cible = nav_cible((int)floor(p.x), (int)floor(p.y));
+    if (cible == 0) {
+        if (p.y <= NAV_TITRE_BAS) [[self window] performWindowDragWithEvent:e];
+        return;
+    }
+    BOOL dedans = YES;
+    _presse = cible;
+    [self display];
+    for (;;) {
+        NSEvent *s = [[self window] nextEventMatchingMask:
+                          NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp];
+        NSPoint q = [self convertPoint:[s locationInWindow] fromView:nil];
+        dedans = nav_cible((int)floor(q.x), (int)floor(q.y)) == cible;
+        if ([s type] == NSEventTypeLeftMouseUp) break;
+        int voulu = dedans ? cible : 0;
+        if (voulu != _presse) { _presse = voulu; [self display]; }
+    }
+    _presse = 0;
+    [self display];
+    if (!dedans) return;
+    if (cible < 0) { nav_ferme(YES); return; }
+
+    NSArray<NSString *> *lignes =
+        [nav_commandes() componentsSeparatedByString:@"\n"];
+    if ((NSUInteger)cible > [lignes count]) return;
+    NSString *cmd = lignes[(NSUInteger)cible - 1];
+    if ([cmd length] == 0) return;
+    hc_do([cmd UTF8String]);
+    [gView applyStackSize];
+    [gView updateWindowTitle];
+    [gView setNeedsDisplay:YES];
+}
+
+@end
+
+static void nav_ouvre(const char *point)
+{
+    if (!gNavPanel) {
+        gNavPanel = [[NSPanel alloc]
+            initWithContentRect:NSMakeRect(0, 0, NAV_LARGEUR, NAV_HAUTEUR)
+                      styleMask:(NSWindowStyleMaskBorderless |
+                                 NSWindowStyleMaskNonactivatingPanel)
+                        backing:NSBackingStoreBuffered defer:NO];
+        [gNavPanel setFloatingPanel:YES];
+        [gNavPanel setBecomesKeyOnlyIfNeeded:YES];
+        [gNavPanel setHidesOnDeactivate:YES];
+        [gNavPanel setReleasedWhenClosed:NO];
+        [gNavPanel setHasShadow:NO];     /* le dessin porte la sienne */
+        [gNavPanel setExcludedFromWindowsMenu:YES];
+        [gNavPanel setContentView:[[HCNavigatorVue alloc]
+            initWithFrame:NSMakeRect(0, 0, NAV_LARGEUR, NAV_HAUTEUR)]];
+        gNavId = (int)[gNavPanel windowNumber];
+        if (gNavId <= 0) gNavId = 1;
+    }
+    /* Le point est compté depuis le coin de la CARTE ; sans lui, 10,20,
+     * selon Jeanne DeVoto. Une palette déjà ouverte ne bouge que si l'on
+     * donne un point. */
+    int px = 10, py = 20;
+    BOOL donne = point && sscanf(point, "%d,%d", &px, &py) == 2;
+    if (donne || !gNavOuverte) {
+        int cg = 0, ch = 0;
+        const char *coin = cocoa_global_get("card window topLeft");
+        if (!coin || sscanf(coin, "%d,%d", &cg, &ch) != 2) { cg = 0; ch = 0; }
+        nav_place(cg + px, ch + py);
+    }
+    /* « the windows » liste les fenêtres qui ont un titre : la palette n'en
+     * porte un que tant qu'elle existe. */
+    [gNavPanel setTitle:@"Navigator"];
+    gNavOuverte = YES;
+    gNavMontree = YES;
+    [gNavPanel orderFront:nil];
+    [[gNavPanel contentView] setNeedsDisplay:YES];
+}
+
+static void nav_ferme(BOOL parLaCase)
+{
+    if (!gNavPanel || !gNavOuverte) return;
+    [gNavPanel orderOut:nil];
+    [gNavPanel setTitle:@""];
+    gNavOuverte = NO;
+    gNavMontree = NO;
+    if (parLaCase) {
+        hc_palette_fermee("Navigator", gNavId);
+        [gView updateWindowTitle];
+        [gView setNeedsDisplay:YES];
+    }
+}
+
+static int nav_lit(const char *prop, char *out, int outlen)
+{
+    if (!out || outlen <= 0) return -1;
+    int g, h;
+    nav_loc(&g, &h);
+    if (!strcasecmp(prop, "name"))          snprintf(out, (size_t)outlen, "Navigator");
+    else if (!strcasecmp(prop, "id"))       snprintf(out, (size_t)outlen, "%d", gNavId);
+    else if (!strcasecmp(prop, "buttonCount"))
+                                            snprintf(out, (size_t)outlen, "%d", NAV_NBOUTONS);
+    else if (!strcasecmp(prop, "hilitedButton"))
+                                            snprintf(out, (size_t)outlen, "%d", gNavHilite);
+    else if (!strcasecmp(prop, "commands")) snprintf(out, (size_t)outlen, "%s",
+                                                     [nav_commandes() UTF8String]);
+    else if (!strcasecmp(prop, "visible"))  snprintf(out, (size_t)outlen, "%s",
+                                                     gNavMontree ? "true" : "false");
+    else if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+             !strcasecmp(prop, "topLeft"))
+                                            snprintf(out, (size_t)outlen, "%d,%d", g, h);
+    else if (!strcasecmp(prop, "rect") || !strcasecmp(prop, "rectangle"))
+        snprintf(out, (size_t)outlen, "%d,%d,%d,%d", g, h,
+                 g + NAV_LARGEUR - NAV_CONTENU_G, h + NAV_HAUTEUR - NAV_CONTENU_H);
+    else return -1;
+    return 1;
+}
+
+static int nav_pose(const char *prop, const char *val)
+{
+    if (!val) val = "";
+    if (!strcasecmp(prop, "hilitedButton")) {
+        gNavHilite = atoi(val);
+        [[gNavPanel contentView] setNeedsDisplay:YES];
+        return 1;
+    }
+    if (!strcasecmp(prop, "commands")) {
+        gNavCommandes = hcv_texte(val);
+        return 1;
+    }
+    if (!strcasecmp(prop, "visible")) {
+        gNavMontree = !strcasecmp(val, "true");
+        if (gNavMontree) [gNavPanel orderFront:nil];
+        else             [gNavPanel orderOut:nil];
+        return 1;
+    }
+    if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+        !strcasecmp(prop, "topLeft")) {
+        int g, h;
+        if (sscanf(val, "%d,%d", &g, &h) != 2) return -1;
+        nav_place(g, h);
+        return 1;
+    }
+    return -1;
+}
+
+/* Le rappel `fenetre` du noyau. Une seule fenêtre nommée pour l'instant : la
+ * Navigator. Toute autre est introuvable, et le noyau le dit. */
+static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
+                         const char *valeur, char *out, int outlen)
+{
+    if (!nom || !quoi || strcasecmp(nom, "Navigator") != 0) return 0;
+    if (!strcmp(quoi, "palette")) {
+        nav_ouvre(valeur);
+        if (out && outlen > 0) snprintf(out, (size_t)outlen, "%d", gNavId);
+        return 1;
+    }
+    if (!gNavOuverte) return 0;
+    if (!strcmp(quoi, "existe")) return 1;
+    if (!strcmp(quoi, "montre")) { return nav_pose("visible", "true"); }
+    if (!strcmp(quoi, "cache"))  { return nav_pose("visible", "false"); }
+    if (!strcmp(quoi, "ferme")) {
+        nav_ferme(NO);
+        if (out && outlen > 0) snprintf(out, (size_t)outlen, "palette %d", gNavId);
+        return 1;
+    }
+    if (!strcmp(quoi, "lit"))  return prop ? nav_lit(prop, out, outlen) : -1;
+    if (!strcmp(quoi, "pose")) return prop ? nav_pose(prop, valeur) : -1;
+    return -1;
+}
+
 @implementation HCView {
     HCDoc _doc;
 }
@@ -7564,6 +7852,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
+    host.fenetre       = cocoa_fenetre;
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;

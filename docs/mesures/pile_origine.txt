@@ -918,6 +918,27 @@ CE QUI RESTE REFUSÉ, ET CE N'EST PAS UN OUBLI
    perdues pour une seule référence. Si les fenêtres nommées se font un chantier,
    c'est cette ligne-là qui le justifie, pas la syntaxe.
 
+   LEVÉ LE 2 OCTOBRE, avec la palette Navigator : l'arbre a désormais le type
+   HCT_OBJ_WINDOW, et le vérificateur accepte la ligne. Mesuré sur la pile
+   elle-même (la .bin envoyée par l'utilisatrice, hors dépôt), 198 scripts :
+
+       avant    1 refusé : stack, ligne 85, « texte inattendu en fin de ligne »
+       après    0 refusé
+
+   Et en jouant openBackground sur la carte 2 (« Names & Addresses »), le
+   wrongStack() du banc forcé à false faute d'hôte qui serve « the stacks » :
+
+       avant    !! script, ligne 85 colonne 23 : texte inattendu en fin de ligne
+                !! personne ne répond à « StackTemplatePal … »
+       après    !! personne ne répond à « StackTemplatePal … »
+                !! fenêtre introuvable : StackTemplatePal
+
+   La correction de la phrase d'au-dessus : le script n'était plus perdu en
+   entier — makePalette tournait déjà. Seule la ligne 85 tombait, et elle
+   tombe encore, mais pour la bonne raison : la fenêtre n'existe pas, parce
+   que l'XCMD qui la crée, du code 68000 de la ressource, ne tourne pas ici.
+   L'hôte ne tient que « Navigator ».
+
 ET DEUX DES QUATRE CORRECTIONS NE S'EXÉCUTAIENT PAS
 ---------------------------------------------------
 
@@ -1418,6 +1439,42 @@ des piles d'époque écrivent « doMenu "Message" » dans leurs scripts.
 Aucune des piles reçues à ce jour ne l'appelle ; « Stack Templates » a sa
 propre palette, montée par un XCMD (StackTemplatePal) — un troisième cas, à
 ne pas confondre.
+
+SERVIE LE 2 OCTOBRE, en deux pièces :
+
+  · le NOYAU : le type fenêtre dans l'arbre (HCT_OBJ_WINDOW), la commande
+    « palette nom [, point] », « show / hide / close window », « there is a
+    window », « the <prop> of window » et son « set ». Il ne tient aucun
+    état : il demande tout à l'hôte, par le rappel `fenetre` (hc_core.h), et
+    envoie openPalette / closePalette à la carte courante, avec le nom et
+    l'identifiant (Jeanne DeVoto). Harnais : tests/harnais/fenetres.c, avec
+    un hôte factice qui tient la Navigator.
+
+  · l'APPLICATION (HCview.m) : la fenêtre, dessinée depuis la capture de
+    l'utilisatrice, à l'échelle 1 et en deux tons seulement — 98 × 78 points,
+    recopiés dans HC/hc_navigator.h sans rien redessiner. Les onze rectangles
+    des boutons sont relevés sur le même dessin, traits exclus. Un clic
+    exécute la ligne de « the commands » comme la boîte de messages ; la
+    barre de titre déplace la palette, la case la ferme et envoie
+    closePalette. Propriétés servies : name, id, commands (lue et posée),
+    buttonCount, hilitedButton (lue et posée), visible, loc, topLeft, rect.
+
+NON MESURÉ, et à relever DANS HYPERCARD (Basilisk II) :
+
+    palette navigator
+    answer the hilitedButton of window "Navigator"
+    answer the loc of window "Navigator"
+    answer the rect of window "Navigator"
+
+  · HC rend 0 pour hilitedButton, et pour loc le coin haut-gauche du
+    CONTENU — sous la barre de titre —, comme les fenêtres du Toolbox ; le
+    point de « palette nom, point » est compté de la même façon ;
+  · l'inversion d'un bouton sous le doigt est le geste des boutons du Mac,
+    pas un relevé de la palette ;
+  · l'identifiant est le numéro de fenêtre de macOS.
+
+Les palettes d'une PILE — PLTE, ou un XCMD comme StackTemplatePal — restent
+introuvables : « palette introuvable », « fenêtre introuvable ».
 
 
 LES ICÔNES, PAR UN MACBINARY — 2 octobre

@@ -1,0 +1,77 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. sans hôte qui réponde : aucune fenêtre ==
+   palette navigator
+      [ERR]    !! palette introuvable : navigator
+   put there is a window "Navigator"
+      false
+   close window "Navigator"
+      [ERR]    !! fenêtre introuvable : Navigator
+   hide window "Navigator"
+      [ERR]    !! fenêtre introuvable : Navigator
+   put the commands of window "Navigator"
+      [ERR]    !! fenêtre introuvable : Navigator (v3, ligne 2 de button "B".mouseUp)
+
+== 2. un hôte qui tient la palette Navigator ==
+   palette navigator
+      openPalette navigator, 7
+   put there is a window "Navigator"
+      true
+   put there is no window "Zut"
+      true
+   put the commands of window "Navigator"
+      doMenu "Back"
+doMenu "Home"
+doMenu "Help"
+doMenu "Recent"
+doMenu "First"
+doMenu "Prev"
+doMenu "Next"
+doMenu "Last"
+doMenu "Find..."
+doMenu "Message"
+doMenu "Next window"
+   put the buttonCount of window "Navigator"
+      11
+   put the hilitedButton of window "Navigator"
+      0
+   set the hilitedButton of window "Navigator" to 2
+   put the hilitedButton of window "Navigator"
+      2
+   put "Navigator" into w
+  put the loc of window w
+      10,20
+   set the loc of window "Navigator" to "50,60"
+   put the loc of window "Navigator"
+      50,60
+   hide window "Navigator"
+   put the visible of window "Navigator"
+      false
+   show window "Navigator"
+   put the visible of window "Navigator"
+      true
+   set the zorglub of window "Navigator" to 3
+      [ERR]    !! propriété de fenêtre inconnue : zorglub
+   put the zorglub of window "Navigator"
+      [ERR]    !! propriété de fenêtre inconnue : zorglub (v3, ligne 2 de button "B".mouseUp)
+   close window "Navigator"
+      closePalette Navigator, 7
+   put there is a window "Navigator"
+      false
+   close window "Navigator"
+      [ERR]    !! fenêtre introuvable : Navigator
+   put the commands of window "Navigator"
+      [ERR]    !! fenêtre introuvable : Navigator (v3, ligne 2 de button "B".mouseUp)
+   palette "Zut"
+      [ERR]    !! palette introuvable : Zut
+   palette "Navigator", "100,100"
+      openPalette Navigator, 7
+   put the loc of window "Navigator"
+      100,100
+   -- la case de fermeture : hc_palette_fermee
+      closePalette Navigator, 7
+
+== 3. « card window » n'a pas bougé ==
+   put the top of card window + 1
+      1
+   put the width of card window
+      512

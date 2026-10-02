@@ -569,6 +569,7 @@ static HctValeur unaire(HctContexte *ctx, const HctNoeud *n)
              * Le recours, lui, sait interroger la barre de menus. */
             n->fils[0]->typeobj != HCT_OBJ_MENU &&
             n->fils[0]->typeobj != HCT_OBJ_MENUITEM &&
+            n->fils[0]->typeobj != HCT_OBJ_WINDOW &&
             ctx->hote.resout) {
             int existe = ctx->hote.resout(ctx->hote.donnees, n->fils[0], ctx) != NULL;
             if (!strcmp(op, "there is no")) existe = !existe;

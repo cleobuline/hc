@@ -618,6 +618,11 @@ static const struct { const char *mot; HctTypeObjet type; } TYPES_OBJ[] = {
      * aucun sens — une famille est toujours DÉSIGNÉE par son numéro. Le
      * garde de menu_designe_ici s'applique donc à elle aussi. */
     { "family",     HCT_OBJ_FAMILY     },
+    /* Pas de pluriel : « the windows » est une FONCTION d'HyperCard. Et le
+     * garde de menu s'applique : « window » n'est un objet que si un
+     * désignateur le suit. « card window » et « message window » sont lus
+     * avant d'arriver ici. */
+    { "window",     HCT_OBJ_WINDOW     },
     { NULL, 0 }
 };
 
@@ -721,7 +726,8 @@ static int type_obj_ici_d(HctAnalyseur *a, HctTypeObjet *t, int deja_designe)
         if (mot_ici(a, TYPES_OBJ[k].mot)) {
             if ((TYPES_OBJ[k].type == HCT_OBJ_MENU ||
                  TYPES_OBJ[k].type == HCT_OBJ_MENUITEM ||
-                 TYPES_OBJ[k].type == HCT_OBJ_FAMILY) &&
+                 TYPES_OBJ[k].type == HCT_OBJ_FAMILY ||
+                 TYPES_OBJ[k].type == HCT_OBJ_WINDOW) &&
                 !deja_designe && !designateur_suit(a))
                 return 0;                 /* un simple mot, pas un objet */
             *t = TYPES_OBJ[k].type;

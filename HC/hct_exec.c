@@ -679,7 +679,8 @@ static int cible_connue(HctExec *x, const HctNoeud *c)
          * l'écriture échouerait APRÈS avoir évalué la valeur. On délègue la
          * ligne entière, non évaluée — ce qui évite au passage d'appeler deux
          * fois la fonction qui fabrique la liste des articles. */
-        if (c->typeobj == HCT_OBJ_MENU || c->typeobj == HCT_OBJ_MENUITEM)
+        if (c->typeobj == HCT_OBJ_MENU || c->typeobj == HCT_OBJ_MENUITEM ||
+            c->typeobj == HCT_OBJ_WINDOW)
             return 0;
         return x->ctx.hote.resout != NULL && x->ctx.hote.ecrit_objet != NULL;
     }

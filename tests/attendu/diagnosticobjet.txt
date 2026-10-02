@@ -10,8 +10,8 @@
       [ERR]    !! ne sait pas faire : open printing
         the result = Can't understand
    palette
-      [ERR]    !! ne sait pas faire : palette "x"
-        the result = Can't understand
+      [ERR]    !! palette introuvable : x
+        the result = No such palette
 
 == 2. LA MEME, apres une question dont la reponse est false ==
    there is, puis help

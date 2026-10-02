@@ -7409,10 +7409,12 @@ static int v3_nombre_objets(HctContexte *ctx, const HctNoeud *obj, int *out)
 /* ═══ « card window » : la fenêtre de la pile ════════════════════════════
  *
  * HyperCard traite la fenêtre de la pile comme un objet à part entière, avec
- * ses propriétés de géométrie. L'arbre de la v3 n'a pas de type FENÊTRE, et
- * n'en a pas besoin : l'analyseur lit « card window » comme « la carte de rang
- * <window> » — un HCTN_OBJET de type carte, désigné par un rang qui se trouve
- * être l'identifiant « window ». Il suffit de reconnaître cette forme.
+ * ses propriétés de géométrie. L'arbre de la v3 a un type FENÊTRE depuis le 2
+ * octobre, mais pour les fenêtres NOMMÉES — « window "Navigator" », servies
+ * plus bas par l'hôte. « card window » n'y passe pas : l'analyseur la lit
+ * comme « la carte de rang <window> » — un HCTN_OBJET de type carte, désigné
+ * par un rang qui se trouve être l'identifiant « window ». Il suffit de
+ * reconnaître cette forme.
  *
  * Sans cela, hct_resout évaluait « window » comme un rang, n'y trouvait pas de
  * variable, et le DIFFUSAIT comme un message dans toute la hiérarchie avant
@@ -7442,8 +7444,8 @@ static int v3_nombre_objets(HctContexte *ctx, const HctNoeud *obj, int *out)
  * NON MESURÉ DANS HYPERCARD : ni la valeur de ces propriétés, ni « the loc of
  * card window », que la référence dit être le COIN HAUT-GAUCHE de la fenêtre
  * sur l'écran et que HC rend encore comme le CENTRE de la carte, comme avant.
- * Les autres propriétés d'une fenêtre ne sont pas servies : inventer leur
- * réponse reviendrait à décider seul de ce que HyperCard aurait dit. */
+ * Les autres propriétés de la card window ne sont pas servies : inventer
+ * leur réponse reviendrait à décider seul de ce que HyperCard aurait dit. */
 static int v3_est_fenetre(const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET)          return 0;
@@ -7494,6 +7496,60 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
 
     *out = hct_val_texte(b);
     return 1;
+}
+
+/* ═══ LES FENÊTRES NOMMÉES ══════════════════════════════════════════════
+ *
+ * « window "Navigator" » : une fenêtre de l'HÔTE, pas un objet de la pile —
+ * la palette Navigator d'HyperCard d'abord, mesurée le 2 octobre (voir
+ * docs/mesures/pile_origine.txt). Les piles la pilotent par
+ *
+ *     palette navigator
+ *     set the hilitedButton of window "Navigator" to 2
+ *     close window "Navigator"
+ *     if there is a window "ClickPoints" then …
+ *
+ * Le noyau ne tient aucun état de fenêtre : il lit le nom, et pose sa
+ * question à l'hôte par le rappel `fenetre` (hc_core.h). Sans hôte qui
+ * réponde — les harnais —, aucune fenêtre n'existe.
+ *
+ * Le nom s'ÉVALUE : « window "Navigator" » comme « window nomPalette ».
+ * « window id 7 » n'est pas servi : refusé comme une fenêtre introuvable. */
+static int v3_fenetre_nom(HctContexte *ctx, const HctNoeud *o,
+                          char *nom, int len)
+{
+    if (len > 0) nom[0] = '\0';
+    if (!o || o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_WINDOW) return 0;
+    if (o->nfils < 1 || !o->fils[0] || o->designateur == HCT_DES_ID) return 0;
+    v3_val_texte(ctx, o->fils[0], nom, len);
+    return ctx && ctx->erreur ? 0 : 1;
+}
+
+static int v3_fenetre_hote(const char *nom, const char *quoi, const char *prop,
+                           const char *val, char *out, int outlen)
+{
+    if (out && outlen > 0) out[0] = '\0';
+    if (!g_host || !g_host->fenetre || !nom || !*nom) return 0;
+    return g_host->fenetre(nom, quoi, prop, val, out, outlen);
+}
+
+/* openPalette et closePalette portent DEUX paramètres, le nom de la palette
+ * et l'identifiant de sa fenêtre — selon Jeanne DeVoto, « Innermost Secrets
+ * of HyperCard Palettes ». Ils vont à la carte courante. */
+static void v3_message_palette(const char *message, const char *nom, int id)
+{
+    if (!g_current_card) return;
+    ARENA_MARK;
+    char (*argv)[HC_VAL] = arena_rows(2);
+    snprintf(argv[0], HC_VAL, "%s", nom ? nom : "");
+    snprintf(argv[1], HC_VAL, "%d", id);
+    hc_send_args(g_current_card, message, argv, 2, 1);
+    ARENA_FREE;
+}
+
+void hc_palette_fermee(const char *nom, int id)
+{
+    v3_message_palette("closePalette", nom, id);
 }
 
 /* Définis plus bas, avec les autres commandes de menu ; v3_recours en a
@@ -7875,6 +7931,54 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         if (ci_equal(n->op, "there is no")) existe = !existe;
         *out = hct_val_texte(existe ? "true" : "false");
         { g_v1_porte = sauve_porte; } return 1;
+    }
+
+    /* « there is a window "X" » / « there is no window "X" » : comme pour
+     * les menus, l'hôte seul le sait. Sans hôte, aucune fenêtre n'existe. */
+    if (n->genre == HCTN_UNAIRE && n->op && n->nfils >= 1 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_OBJET &&
+        n->fils[0]->typeobj == HCT_OBJ_WINDOW &&
+        (ci_equal(n->op, "there is a") || ci_equal(n->op, "there is an") ||
+         ci_equal(n->op, "there is no"))) {
+        char nom[256];
+        int existe = v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom) &&
+                     v3_fenetre_hote(nom, "existe", NULL, NULL, NULL, 0) == 1;
+        if (ctx && ctx->erreur) { g_v1_porte = sauve_porte; return 0; }
+        if (ci_equal(n->op, "there is no")) existe = !existe;
+        *out = hct_val_texte(existe ? "true" : "false");
+        { g_v1_porte = sauve_porte; } return 1;
+    }
+
+    /* « the hilitedButton of window "Navigator" » : une propriété de
+     * fenêtre, lue par l'hôte. Trois issues, et chacune se dit : la valeur,
+     * la fenêtre introuvable, la propriété inconnue. */
+    if (n->genre == HCTN_OF && n->nfils >= 2 &&
+        n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
+        n->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        char prop[64], nom[256];
+        hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
+        if (!v3_fenetre_nom(ctx, n->fils[1], nom, sizeof nom)) {
+            if (ctx && !ctx->erreur) hct_ctx_faute(ctx, n, "fenêtre introuvable");
+            g_v1_porte = sauve_porte;
+            return 0;
+        }
+        ARENA_MARK;
+        char *val = arena_buf();
+        int r = v3_fenetre_hote(nom, "lit", prop, NULL, val, HC_VAL);
+        if (r == 1) {
+            *out = hct_val_texte(val);
+            ARENA_FREE;
+            g_v1_porte = sauve_porte;
+            return 1;
+        }
+        ARENA_FREE;
+        if (ctx) {
+            if (r == 0) hct_ctx_faute_nom(ctx, n, "fenêtre introuvable", nom);
+            else        hct_ctx_faute_nom(ctx, n, "propriété de fenêtre inconnue", prop);
+        }
+        g_v1_porte = sauve_porte;
+        return 0;
     }
 
     /* Les propriétés d'un menu et de ses articles : « the checkMark of
@@ -11301,6 +11405,36 @@ static Object *resolve_calcule(const char *ref)
 
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
+    /* « set the hilitedButton of window "Navigator" to 2 » : une propriété
+     * de fenêtre, posée par l'hôte. */
+    if (n->nfils >= 3 && n->fils[0] && n->fils[0]->genre == HCTN_OF &&
+        n->fils[0]->nfils >= 2 && n->fils[0]->fils[0] &&
+        n->fils[0]->fils[0]->genre == HCTN_IDENT && n->fils[0]->fils[1] &&
+        n->fils[0]->fils[1]->genre == HCTN_OBJET &&
+        n->fils[0]->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        char prop[64], nom[256];
+        hct_texte(&n->fils[0]->fils[0]->jeton, prop, sizeof prop);
+        if (!v3_fenetre_nom(ctx, n->fils[0]->fils[1], nom, sizeof nom)) {
+            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            return 1;
+        }
+        ARENA_MARK;
+        char *val = arena_buf();
+        v3_val_texte(ctx, n->fils[n->nfils - 1], val, HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+        int r = v3_fenetre_hote(nom, "pose", prop, val, NULL, 0);
+        ARENA_FREE;
+        if (r == 1) { set_result(""); return 1; }
+        if (r == 0) {
+            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            set_result("No such window");
+        } else {
+            emit(HC_ERR, "   !! propriété de fenêtre inconnue : %s", prop);
+            set_result("propriété inconnue");
+        }
+        return 1;
+    }
+
     /* Les propriétés de menu d'abord : leur cible n'est pas un objet de la
      * pile, et le chemin ordinaire — reconstitution du texte puis résolution
      * — n'en ferait rien. */
@@ -12716,7 +12850,27 @@ static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
 static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
 {
     int montrer = ci_equal(n->op, "show");
-    if (n->nfils < 1) return 0;
+    if (n->nfils < 1 || !n->fils[0]) return 0;
+
+    /* « show window "Navigator" », « hide window "Navigator" » : une fenêtre
+     * de l'hôte. « show … at » n'est pas servi pour elle : non mesuré, et
+     * « set the loc of window » fait la même chose. */
+    if (n->fils[0]->genre == HCTN_OBJET &&
+        n->fils[0]->typeobj == HCT_OBJ_WINDOW) {
+        char nom[256];
+        if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
+            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            return 1;
+        }
+        if (v3_fenetre_hote(nom, montrer ? "montre" : "cache",
+                            NULL, NULL, NULL, 0) != 1) {
+            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            set_result("No such window");
+            return 1;
+        }
+        set_result("");
+        return 1;
+    }
 
     /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
      * NULL et l'ancien chemin s'en charge, avec son message d'erreur.
@@ -13637,13 +13791,60 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
     return v3_va_a(dst);
 }
 
+/* « palette <nom> [, <point>] » : ouvrir une palette — un XCMD intégré à
+ * HyperCard 2.0. Le point est relatif au coin de la carte ; sans lui,
+ * HyperCard l'ouvre en 10,20 (Jeanne DeVoto). openPalette part ensuite vers
+ * la carte courante. Le nom peut s'écrire sans guillemets : « palette
+ * navigator » — un mot nu vaut son propre nom. */
+static int v3_cmd_palette(HctContexte *ctx, const HctNoeud *n)
+{
+    if (n->nfils < 1 || !n->fils[0]) return 0;
+    char nom[256], point[64] = "", id[64];
+    v3_val_texte(ctx, n->fils[0], nom, sizeof nom);
+    if (ctx->erreur) return 1;
+    if (n->nfils >= 2 && n->fils[1]) {
+        v3_val_texte(ctx, n->fils[1], point, sizeof point);
+        if (ctx->erreur) return 1;
+    }
+    if (v3_fenetre_hote(nom, "palette", NULL, point[0] ? point : NULL,
+                        id, sizeof id) != 1) {
+        emit(HC_ERR, "   !! palette introuvable : %s", nom);
+        set_result("No such palette");
+        return 1;
+    }
+    set_result("");
+    v3_message_palette("openPalette", nom, atoi(id));
+    return 1;
+}
+
 /* ------------------------------------------------- open / close file
  *
- * Les autres emplois d'open et de close — une application, une fenêtre — ne
- * sont pas traités par l'ancien exécuteur non plus : sans le mot « file »,
- * on rend 0 et la ligne suit son cours. */
+ * « close window "X" » est servi en tête de la fonction. Les autres emplois
+ * d'open et de close — une application — ne le sont pas : sans le mot
+ * « file », on rend 0 et la ligne suit son cours. */
 static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
 {
+    /* « close window "Navigator" ». Si c'était une palette, l'hôte le dit,
+     * et closePalette part vers la carte courante — comme par la case de
+     * fermeture (hc_palette_fermee). */
+    if (ci_equal(n->op, "close") && n->nfils >= 1 && n->fils[0] &&
+        n->fils[0]->genre == HCTN_OBJET && n->fils[0]->typeobj == HCT_OBJ_WINDOW) {
+        char nom[256], quoi[64];
+        if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
+            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            return 1;
+        }
+        if (v3_fenetre_hote(nom, "ferme", NULL, NULL, quoi, sizeof quoi) != 1) {
+            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            set_result("No such window");
+            return 1;
+        }
+        set_result("");
+        if (!strncmp(quoi, "palette ", 8))
+            v3_message_palette("closePalette", nom, atoi(quoi + 8));
+        return 1;
+    }
+
     if (!v3_est_motcle(n, 0, "file")) return 0;
     if (n->nfils != 2) return 0;
 
@@ -14540,6 +14741,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "lock",   v3_cmd_verrou  },
     { "mark",   v3_cmd_marque  },
     { "open",   v3_cmd_fichier },
+    { "palette", v3_cmd_palette },
     { "play",   v3_cmd_play    },
     { "pop",    v3_cmd_pop     },
     { "print",  v3_cmd_print   },

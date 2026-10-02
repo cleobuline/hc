@@ -266,17 +266,15 @@ int main(void)
           "on t\n  put the family of button \"X\" into x\nend t\n", "rien");
 
     puts("");
-    puts("--- 4e. CE QUI RESTE REFUSE, ET POURQUOI ---");
-    puts("(« get visible of window \"StackTemplatePal\" » : une fenetre NOMMEE.");
-    puts(" Ce n'est pas un trou de syntaxe, c'est un type d'objet que l'arbre");
-    puts(" n'a pas — hc_core.c le dit en toutes lettres pour « card window », et");
-    puts(" ne sert que ses quatre proprietes de geometrie. Notre application n'a");
-    puts(" ni palette, ni fenetre Outils, ni fenetre Motifs : repondre quoi que");
-    puts(" ce soit a « the visible of window \"X\" » serait DECIDER SEUL de ce");
-    puts(" qu'HyperCard aurait repondu. Refus assume, ecrit ici pour qu'il ne");
-    puts(" passe pas pour un oubli.)");
-    verif("window NOMMEE : refus assume, pas un oubli",
-          "on t\n  get visible of window \"StackTemplatePal\"\nend t\n", "erreur");
+    puts("--- 4e. LES FENETRES NOMMEES, REFUSEES JUSQU'AU 2 OCTOBRE ---");
+    puts("(« get visible of window \"StackTemplatePal\" » etait refuse : l'arbre");
+    puts(" n'avait pas de type fenetre, et la ligne levait « texte inattendu en");
+    puts(" fin de ligne » a chaque openBackground de « Stack Templates ». L'arbre");
+    puts(" a ce type depuis la palette Navigator ; le verificateur accepte la");
+    puts(" ligne, et c'est a l'EXECUTION que l'hote dit qu'il ne tient pas cette");
+    puts(" fenetre — voir le harnais fenetres.)");
+    verif("window NOMMEE : acceptee, l'hote repond a l'execution",
+          "on t\n  get visible of window \"StackTemplatePal\"\nend t\n", "rien");
     verif("temoin : « card window », que hc_core.c sert deja",
           "on t\n  put the width of card window into x\nend t\n", "rien");
 
