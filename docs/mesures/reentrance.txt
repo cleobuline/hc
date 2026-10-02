@@ -181,13 +181,17 @@ DANS HC ET DANS HYPERCARD, étiqueté par l'utilisatrice (« les deux ») :
 n = 1 des deux côtés, « et rien d'autre ». Un clic tenu ne compte qu'une
 fois.
 
+Et la boîte « answer » s'ouvre LE BOUTON ENCORE ENFONCÉ, des deux côtés
+(précisé par l'utilisatrice le 2 octobre). La boucle finit au temps, pas
+au clic ; mais la référence (hypercard.center, fiche mouseClick) dit que
+« the mouseClick », bouton enfoncé, ATTEND le relâchement avant de rendre
+true. Si c'était le cas, l'appel fait pendant que le bouton est tenu
+bloquerait la boucle, et la boîte ne viendrait qu'après le relâchement.
+Elle vient avant : dans HyperCard comme dans HC, « the mouseClick »
+N'ATTEND PAS ici. La référence et la machine divergent ; la machine fait
+foi.
+
 RESTE À MESURER
-  · L'attente du relâchement : selon la référence (hypercard.center, fiche
-    mouseClick), si le bouton est encore enfoncé, « the mouseClick »
-    ATTEND qu'on le relâche avant de rendre true. HC n'attend pas. Ce que
-    tranche le relevé ci-dessus, c'est le COMPTE ; le MOMENT où « answer »
-    s'ouvre — bouton encore tenu, ou après le relâchement — n'a pas été
-    noté, et c'est lui qui dirait si HyperCard attend. Non mesuré.
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et
     « the mouseClick » MANGE-t-il le clic, ou le clic est-il servi quand
