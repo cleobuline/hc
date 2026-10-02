@@ -168,7 +168,9 @@ et relevait le drapeau. Chaque tour de guette répondait donc « true ». Le
 banc du 30 septembre sortait au premier « true » : il ne pouvait pas le voir.
 Corrigé : un clic n'est compté qu'une fois, reconnu à son horodatage, qu'un
 événement remis en file garde. Attendu après la correction : 1 pour un clic,
-3 pour trois — PAS ENCORE REJOUÉ.
+3 pour trois. REJOUÉ DANS HC (l'application) le 2 octobre, étiqueté par
+l'utilisatrice : « ça marche avec 1, 2, 3, 4 clicks » — n vaut le nombre
+de clics.
 
 RESTE À MESURER
   · Le banc ci-dessus, DANS HYPERCARD (Basilisk II), avec un clic puis avec
