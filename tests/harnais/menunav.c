@@ -17,4 +17,26 @@ int main(void){
   "doMenu \"Find...\"\n"
   "doMenu \"Clear Picture\"\n"
   "end mouseUp\n");
- hc_send(b,"mouseUp");hc_free(st);return 0;}
+ hc_send(b,"mouseUp");
+
+ /* LA PALETTE NAVIGATOR, mesurée dans HyperCard le 2 octobre : « the
+  * commands of window "Navigator" » rend ces onze doMenu, dans cet ordre.
+  * Le noyau sert Back, Home et les quatre flèches ; les cinq autres vont à
+  * l'hôte, qui sert Find..., Message, Recent et Next window — Help reste
+  * sans réponse, HC n'ayant pas de pile d'aide. Home mène à la pile
+  * « Home » : il n'y en a pas ici, et la faute le dit au lieu du silence
+  * d'avant. Chaque article joue dans son propre clic, depuis la carte Deux,
+  * pour qu'une faute n'emporte pas les suivants. */
+ puts("== la palette Navigator ==");
+ static const char *NAV[]={"Back","Home","Help","Recent","First","Prev","Next",
+                           "Last","Find...","Message","Next window",NULL};
+ Object *deux=NULL;
+ for(int i=0;i<st->nparts;i++) if(st->parts[i]->type==OBJ_CARD&&st->parts[i]->name&&!strcmp(st->parts[i]->name,"Deux")) deux=st->parts[i];
+ for(int i=0;NAV[i];i++){
+  char s[256];
+  if(deux) hc_set_current_card(deux);
+  printf(" doMenu \"%s\"\n",NAV[i]);
+  snprintf(s,sizeof s,"on mouseUp\n doMenu \"%s\"\n put \"  -> \" & the short name of this card\nend mouseUp\n",NAV[i]);
+  hc_set_script(b,s);hc_send(b,"mouseUp");
+ }
+ hc_free(st);return 0;}

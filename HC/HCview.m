@@ -2230,8 +2230,74 @@ static NSString *menu_normalise(NSString *s)
     return [[s stringByTrimmingCharactersInSet:fin] lowercaseString];
 }
 
+/* ═══ TROIS ARTICLES DU MENU GO, POUR « doMenu » ═══════════════════════
+ *
+ * La palette Navigator d'HyperCard, mesurée le 2 octobre — « the commands of
+ * window "Navigator" » —, n'envoie que des doMenu : Back, Home, Help, Recent,
+ * First, Prev, Next, Last, Find…, Message, Next window. Le noyau sert les
+ * flèches, Back et Home (MENUS_NOYAU) ; Find… était déjà dans la table
+ * ci-dessous. Ces trois-là n'étaient servis nulle part, et des piles
+ * d'époque les écrivent aussi dans leurs scripts, palette ou pas.
+ *
+ * Help reste sans réponse : HC n'a pas de pile d'aide, et ouvrir autre chose
+ * à la place serait décider seul de ce qu'HyperCard aurait montré. */
+
+/* « Message » : montrer ou cacher la boîte de message, comme Cmd-M — la
+ * même action, par le même chemin. */
+static BOOL cocoa_menu_message(void)
+{
+    NSMenuItem *m = [[NSMenuItem alloc] initWithTitle:@"Message" action:nil
+                                        keyEquivalent:@""];
+    [m setTag:5];
+    [gView togglePalette:m];
+    return YES;
+}
+
+/* « Recent » : les cartes récentes. HyperCard ouvrait une boîte de vignettes ;
+ * HC tient la même liste dans le sous-menu Recent du menu Go, et c'est lui
+ * qu'on déroule, là où est la souris. Son délégué le reconstruit à
+ * l'ouverture. */
+static BOOL cocoa_menu_recent(void)
+{
+    for (NSMenuItem *haut in [[NSApp mainMenu] itemArray]) {
+        for (NSMenuItem *it in [[haut submenu] itemArray]) {
+            if (![[it title] isEqualToString:@"Recent"] || ![it submenu]) continue;
+            [[it submenu] popUpMenuPositioningItem:nil
+                                        atLocation:[NSEvent mouseLocation]
+                                            inView:nil];
+            return YES;
+        }
+    }
+    return NO;
+}
+
+/* « Next window » : la pile ouverte suivante — précisé par l'utilisatrice,
+ * qui l'a essayé dans HyperCard. La fenêtre de devant passe derrière toutes
+ * les autres, et la suivante vient devant : trois piles ouvertes défilent
+ * donc toutes, au lieu de s'échanger deux à deux. Les palettes (NSPanel) ne
+ * comptent pas : ce sont des outils, pas des piles. */
+static BOOL cocoa_menu_fenetre_suivante(void)
+{
+    NSMutableArray<NSWindow *> *piles = [NSMutableArray array];
+    for (NSWindow *w in [NSApp orderedWindows])
+        if ([w isVisible] && ![w isKindOfClass:[NSPanel class]] &&
+            [w canBecomeMainWindow])
+            [piles addObject:w];
+    if ([piles count] < 2) return YES;      /* une seule pile : rien à faire */
+    [piles[0] orderBack:nil];
+    [piles[1] makeKeyAndOrderFront:nil];
+    return YES;
+}
+
 static void cocoa_menu_hypercard(const char *item)
 {
+    {
+        NSString *v = menu_normalise(hcv_texte(item));
+        if ([v isEqualToString:@"message"]     && cocoa_menu_message())          return;
+        if ([v isEqualToString:@"recent"]      && cocoa_menu_recent())           return;
+        if ([v isEqualToString:@"next window"] && cocoa_menu_fenetre_suivante()) return;
+    }
+
     static const struct { const char *article; const char *selecteur; } TABLE[] = {
         { "New Card",       "newCard:"           },
         { "Copy Card",      "copyCard:"          },

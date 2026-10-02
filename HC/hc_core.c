@@ -16028,9 +16028,11 @@ static int hc_call_user_function(Object *target, const char *name,
  * openCard est écrite en toutes lettres à vingt-quatre endroits de ce fichier,
  * et en ajouter un vingt-cinquième exemplaire serait absurde.
  *
- * « Back » et « Home » n'y sont pas parce que « go back » et « go home »
- * n'existent pas : les inscrire ne ferait que déplacer le silence d'un cran.
- * Il y faudrait d'abord un historique de navigation. */
+ * « Back » et « Home » ont attendu que « go back » et « go home » existent :
+ * les inscrire avant n'aurait fait que déplacer le silence d'un cran. Ils
+ * existent tous deux maintenant, et ils sont ici — « Home » depuis le
+ * 2 octobre, où la palette Navigator, mesurée dans HyperCard, l'a demandé
+ * (voir docs/mesures/pile_origine.txt). */
 /* La forme longue — « go next CARD » et non « go next ».
  *
  * Les deux marchent, mais elles ne se lisent pas pareil : « go next » laisse
@@ -16050,6 +16052,10 @@ static const struct { const char *article; const char *ligne; } MENUS_NOYAU[] = 
      * la pile peut le détourner — c'est tout l'intérêt de passer par ici
      * plutôt que d'appeler hc_go_back depuis l'interface. */
     { "Back",     "go back"       },
+    /* « go home » mène à la pile nommée « Home », comme dans HyperCard. Sans
+     * pile Home sous la main, la faute le dit — au lieu du silence de
+     * l'article que personne ne servait. */
+    { "Home",     "go home"       },
     { NULL, NULL }
 };
 
