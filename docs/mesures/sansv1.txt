@@ -202,3 +202,8 @@ harnais et aucune pile jouée n'emploie. Si l'une d'elles marchait grâce à
 l'ancien moteur, elle se dira désormais par une erreur nommée — « objet
 introuvable », « fonction inconnue », « propriété ou fonction inconnue » —
 ou par son propre texte rendu en écho, et non plus par une réponse.
+
+APRÈS LA SUPPRESSION, DANS HC (l'application), 2 octobre. Le banc demandé
+« à jouer DANS HC » : demo.stack, Torture3, le Pendu, et ses vieilles piles.
+Rapporté par l'utilisatrice : « j'ai testé plusieurs stacks, rien à
+signaler ». La liste des piles et la construction exacte ne sont pas notées.
