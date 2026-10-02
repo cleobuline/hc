@@ -1363,7 +1363,7 @@ transfert hors d'un Mac classique la perd. Trois façons de la garder :
 
 Retenue pour les icônes : lire le MacBinary à l'import.
 
-UNE PISTE POUR PLUS TARD, notée le 2 octobre, pas urgente : UNE PALETTE EST
+UNE PISTE POUR LA VERSION 1.0 — décidé par l'utilisatrice le 2 octobre : UNE PALETTE EST
 DÉJÀ UNE PETITE CARTE. Une image, des boutons invisibles avec chacun son
 rectangle et son bout de HyperTalk — c'est une carte HC avec un dessin et des
 boutons transparents scriptés. Le « Palette Maker » des Power Tools était
