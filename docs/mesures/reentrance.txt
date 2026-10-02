@@ -172,13 +172,15 @@ Corrigé : un clic n'est compté qu'une fois, reconnu à son horodatage, qu'un
 l'utilisatrice : « ça marche avec 1, 2, 3, 4 clicks » — n vaut le nombre
 de clics.
 
+JOUÉ DANS HYPERCARD (Basilisk II) le 2 octobre, même banc, étiqueté par
+l'utilisatrice : « idem hc et hypercard ». HyperCard aussi rend le nombre
+de clics : chaque clic compte une fois. HC et HyperCard s'accordent.
+
 RESTE À MESURER
-  · Le banc ci-dessus, DANS HYPERCARD (Basilisk II), avec un clic puis avec
-    trois : HyperCard répond-il 1 et 3 ? La référence dit que « the
-    mouseClick » rend true si la souris a été cliquée « pendant le
-    gestionnaire en cours », et qu'il ATTEND le relâchement si le bouton est
-    enfoncé (hypercard.center, fiche mouseClick) — HC n'attend pas. Ni l'un
-    ni l'autre n'est mesuré.
+  · L'attente du relâchement : selon la référence (hypercard.center, fiche
+    mouseClick), si le bouton est encore enfoncé, « the mouseClick »
+    ATTEND qu'on le relâche avant de rendre true. HC n'attend pas. Non
+    mesuré.
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et
     « the mouseClick » MANGE-t-il le clic, ou le clic est-il servi quand
