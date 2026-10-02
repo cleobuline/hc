@@ -176,11 +176,18 @@ JOUÉ DANS HYPERCARD (Basilisk II) le 2 octobre, même banc, étiqueté par
 l'utilisatrice : « idem hc et hypercard ». HyperCard aussi rend le nombre
 de clics : chaque clic compte une fois. HC et HyperCard s'accordent.
 
+LE BOUTON TENU ENFONCÉ pendant la boucle, puis relâché, 2 octobre, joué
+DANS HC ET DANS HYPERCARD, étiqueté par l'utilisatrice (« les deux ») :
+n = 1 des deux côtés, « et rien d'autre ». Un clic tenu ne compte qu'une
+fois.
+
 RESTE À MESURER
   · L'attente du relâchement : selon la référence (hypercard.center, fiche
     mouseClick), si le bouton est encore enfoncé, « the mouseClick »
-    ATTEND qu'on le relâche avant de rendre true. HC n'attend pas. Non
-    mesuré.
+    ATTEND qu'on le relâche avant de rendre true. HC n'attend pas. Ce que
+    tranche le relevé ci-dessus, c'est le COMPTE ; le MOMENT où « answer »
+    s'ouvre — bouton encore tenu, ou après le relâchement — n'a pas été
+    noté, et c'est lui qui dirait si HyperCard attend. Non mesuré.
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et
     « the mouseClick » MANGE-t-il le clic, ou le clic est-il servi quand
