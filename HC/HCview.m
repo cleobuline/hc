@@ -2879,6 +2879,110 @@ static int hcv_quelle_couleur(const char *nom)
     return 0;
 }
 
+/* ═══ « the keysDown » : LES TOUCHES TENUES ════════════════════════════════
+ *
+ * La seconde extension de HC (CLAUDE.md), accordée le 2 octobre pour les
+ * batteurs du flipper. Le mot et ses valeurs sont ceux de LiveCode : une
+ * touche par item, un caractère par son code — « w » vaut 119, comme
+ * charToNum("w") —, les flèches et quelques touches par leur code X11
+ * (65361 à 65364 pour gauche, haut, droite, bas).
+ *
+ * POURQUOI UN SUIVI, ET PAS UNE QUESTION AU CLAVIER : interroger le matériel
+ * (CGEventSourceKeyState) peut demander l'autorisation « Surveillance de
+ * l'entrée » sur les macOS récents. Les événements de l'application, eux,
+ * nous appartiennent. On tient donc la liste à jour à chaque appui et à
+ * chaque relâché, par deux chemins :
+ *
+ *   - hors script, un moniteur local voit passer toutes les frappes, quel
+ *     que soit le premier répondant ;
+ *   - pendant un script, AppKit ne distribue rien — mesuré, voir
+ *     hcv_guette_cmd_point — mais le guetteur de Cmd-. parcourt la file à
+ *     chaque image : il nous les montre au passage.
+ *
+ * Une même frappe peut donc être vue plusieurs fois — le guetteur la remet
+ * en file, et elle repasse. C'est sans danger : appuyer deux fois, c'est
+ * appuyer ; c'est le DERNIER événement de chaque touche qui fait son état,
+ * et la file garde l'ordre.
+ *
+ * La liste est vidée quand l'application passe derrière : un relâché qui
+ * arrive à une autre application ne nous parvient jamais, et la touche
+ * resterait tenue pour toujours.
+ *
+ * Indexée par le code MATÉRIEL de la touche : le relâché porte le même que
+ * l'appui, ce que le caractère ne garantit pas — Maj relâchée entre les deux
+ * changerait « W » en « w ». */
+static NSMutableDictionary<NSNumber *, NSNumber *> *gTouchesTenues = nil;
+
+static int hcv_code_touche(NSEvent *e)
+{
+    switch ([e keyCode]) {
+        case 123: return 65361;     /* gauche */
+        case 126: return 65362;     /* haut   */
+        case 124: return 65363;     /* droite */
+        case 125: return 65364;     /* bas    */
+        case 36:  return 65293;     /* retour */
+        case 76:  return 65421;     /* entrée */
+        case 48:  return 65289;     /* tabulation */
+        case 53:  return 65307;     /* échappement */
+        case 51:  return 65288;     /* effacement arrière */
+        case 117: return 65535;     /* suppression */
+        default:  break;
+    }
+    NSString *c = [[e charactersIgnoringModifiers] lowercaseString];
+    if ([c length] != 1) return 0;
+    unichar u = [c characterAtIndex:0];
+    if (u < 32 || u >= 0xF700) return 0;   /* touches de fonction d'AppKit */
+    return (int)u;
+}
+
+static void hcv_touche_suit(NSEvent *e)
+{
+    if (!gTouchesTenues) gTouchesTenues = [NSMutableDictionary dictionary];
+    NSNumber *cle = @([e keyCode]);
+    if ([e type] == NSEventTypeKeyDown) {
+        int code = hcv_code_touche(e);
+        if (code > 0) gTouchesTenues[cle] = @(code);
+    } else if ([e type] == NSEventTypeKeyUp) {
+        [gTouchesTenues removeObjectForKey:cle];
+    }
+}
+
+/* Une fois, à l'installation de l'hôte. */
+static void hcv_touches_installe(void)
+{
+    static BOOL fait = NO;
+    if (fait) return;
+    fait = YES;
+    [NSEvent addLocalMonitorForEventsMatchingMask:(NSEventMaskKeyDown | NSEventMaskKeyUp)
+                                          handler:^NSEvent *(NSEvent *e) {
+        hcv_touche_suit(e);
+        return e;
+    }];
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidResignActiveNotification
+                    object:nil queue:nil usingBlock:^(NSNotification *n) {
+        (void)n;
+        [gTouchesTenues removeAllObjects];
+    }];
+}
+
+/* La réponse : les codes, sans doublon, du plus petit au plus grand. */
+static const char *hcv_touches_tenues(void)
+{
+    static char buf[512];
+    buf[0] = '\0';
+    NSArray *codes = [[[NSSet setWithArray:[gTouchesTenues allValues]] allObjects]
+                         sortedArrayUsingSelector:@selector(compare:)];
+    size_t pos = 0;
+    for (NSNumber *c in codes) {
+        int k = snprintf(buf + pos, sizeof buf - pos, "%s%d", pos ? "," : "",
+                         [c intValue]);
+        if (k < 0 || (size_t)k >= sizeof buf - pos) break;
+        pos += (size_t)k;
+    }
+    return buf;
+}
+
 static const char *cocoa_global_get(const char *name) {
     /* « the version » : UNE SEULE SOURCE DE VÉRITÉ, le bundle.
      *
@@ -2931,6 +3035,8 @@ static const char *cocoa_global_get(const char *name) {
         return ([NSEvent modifierFlags] & NSEventModifierFlagCommand) ? "down" : "up";
     if (strcasecmp(name, "shiftKey") == 0)
         return ([NSEvent modifierFlags] & NSEventModifierFlagShift) ? "down" : "up";
+    if (strcasecmp(name, "keysDown") == 0)
+        return hcv_touches_tenues();
 
     if (strcasecmp(name, "mouseH") == 0 || strcasecmp(name, "mouseV") == 0) {
         NSPoint s = [NSEvent mouseLocation];
@@ -3680,6 +3786,9 @@ static void hcv_guette_cmd_point(void)
                                    untilDate:[NSDate distantPast]
                                       inMode:NSDefaultRunLoopMode
                                      dequeue:YES]) != nil) {
+        /* « the keysDown » : la frappe est vue ici, pendant le script, et
+         * nulle part ailleurs. Elle reste dans la file, comme le clic. */
+        hcv_touche_suit(e);
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
          * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
@@ -7914,6 +8023,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
     host.fenetre       = cocoa_fenetre;
+    hcv_touches_installe();
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;

@@ -784,6 +784,7 @@ static const char *console_global(const char *name)
     if (ci_equal(name, "optionKey"))  return "up";
     if (ci_equal(name, "commandKey")) return "up";
     if (ci_equal(name, "shiftKey"))   return "up";
+    if (ci_equal(name, "keysDown"))   return "";
     return NULL;
 }
 
@@ -8654,6 +8655,11 @@ static const char *V3_GLOBALES_HOTE[] = {
     "clickChunk", "clickLine", "clickText",
     "mouseClick", "mouseLine",
     "shiftKey", "optionKey", "commandKey", "cmdKey",
+    /* LA SECONDE EXTENSION DE HC (CLAUDE.md), accordée le 2 octobre pour les
+     * batteurs du flipper : les touches tenues à cet instant, le mot de
+     * LiveCode. Un script qui boucle ne reçoit pas keyDown avant la fin ;
+     * il peut maintenant demander. Lecture seule. */
+    "keysDown",
     "tool", "screenRect",
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
