@@ -1476,6 +1476,14 @@ NON MESURÉ, et à relever DANS HYPERCARD (Basilisk II) :
 Les palettes d'une PILE — PLTE, ou un XCMD comme StackTemplatePal — restent
 introuvables : « palette introuvable », « fenêtre introuvable ».
 
+LE BOUTON RECENT, essayé DANS HC (l'application) par l'utilisatrice : il
+déroule le sous-menu Recent du menu Go, qui NOMME les cartes. HyperCard ouvre
+une boîte de miniatures — « miniature pictures for the last 42 cards
+visited » (hypercard.center, fiche lockRecent). DÉCISION DE L'UTILISATRICE,
+le 2 octobre : on garde le menu. Les miniatures coûtent cher pour un service
+« assez anecdotique », et le menu mène aux mêmes cartes. lockRecent est
+retenu par le noyau mais reste sans effet.
+
 
 LES ICÔNES, PAR UN MACBINARY — 2 octobre
 -----------------------------------------
