@@ -94,3 +94,35 @@ L'ORDRE PROPOSÉ
 3. Les dossiers de piles, et « Où est la pile… ? » en dernier recours.
 4. Les signets des fichiers récents.
 5. Seulement alors, activer app-sandbox et MESURER ce qui reste.
+
+
+LES PILES TÉLÉCHARGÉES — une piste, notée le 2 octobre
+-------------------------------------------------------
+
+Demandé par l'utilisatrice en pensant à l'App Store : se méfier de piles
+truquées, écrites exprès pour nuire.
+
+CE QU'UNE PILE NE PEUT PAS FAIRE DANS HC, vérifié dans le code ce jour :
+
+  · lancer un programme ou un shell : aucune commande ne le fait — ni
+    system, ni popen, ni NSTask, ni NSWorkspace ;
+  · parler au réseau : aucun accès ;
+  · exécuter un XCMD ou un XFCN : leur code 68000 ne tourne pas ici. Ceux
+    qu'on imite (PopUpMenu) sont du code écrit et relu dans le dépôt ;
+  · effacer un fichier : il n'y a pas de « delete file ».
+
+CE QU'ELLE PEUT FAIRE : « open file », « write … to file », « read from
+file » — écrire et lire des fichiers de l'utilisatrice, avec ses droits. Le
+bac à sable le borne de lui-même : hors du conteneur, seuls les fichiers
+DÉSIGNÉS par l'utilisatrice (voir plus haut).
+
+LA PISTE : macOS pose un attribut de QUARANTAINE (com.apple.quarantine) sur
+tout fichier venu d'Internet — c'est lui qui fait dire « endommagée » à
+l'application téléchargée. HC peut le lire. À la PREMIÈRE ouverture d'une
+pile qui le porte : « Cette pile vient d'Internet. Ses scripts peuvent lire
+et écrire des fichiers. Voir ses scripts avant de l'ouvrir ? ». Les piles
+que l'utilisatrice crée elle-même ne le portent pas, et ne seraient jamais
+concernées. Une pile importée depuis un .bin téléchargé hérite du drapeau
+du .bin — à vérifier le jour venu.
+
+NON ÉCRIT, NON MESURÉ. Pour la version App Store, avec le bac à sable.
