@@ -1389,6 +1389,30 @@ d'HyperCard. NON MESURÉ : son dessin exact, et le message de chacun de ses
 boutons — à relever DANS HYPERCARD (Basilisk II), « palette navigator »,
 une capture, et pour chaque bouton ce qu'il fait.
 
+MESURÉ DANS HYPERCARD (Basilisk II) le 2 octobre, par l'utilisatrice :
+« palette navigator », une capture, puis « answer the commands of window
+"Navigator" ». Une fenêtre « windoid » sans titre, avec case de fermeture ;
+trois rangs, 4 + 4 + 3 boutons, ceux du bas plus larges :
+
+    ↩ retour        doMenu "Back"
+    maison          doMenu "Home"
+    ◇ ?             doMenu "Help"
+    grille          doMenu "Recent"     (ouvre la boîte « Recent Cards »)
+    ⇤               doMenu "First"
+    ←               doMenu "Prev"
+    →               doMenu "Next"
+    ⇥               doMenu "Last"
+    loupe           doMenu "Find..."
+    boîte           doMenu "Message"
+    deux fenêtres   doMenu "Next window"
+
+CE QUE HC EN FAIT AUJOURD'HUI, mesuré dans le noyau le même jour : Back,
+First, Prev, Next et Last sont servis par le noyau (MENUS_NOYAU). Les six
+autres partent à l'hôte, et l'application ne connaît ni « Home », ni
+« Help », ni « Recent », ni « Message », ni « Next window » : « article
+inconnu », en silence. C'est un trou de doMenu À LUI SEUL, palette ou pas —
+des piles d'époque écrivent « doMenu "Message" » dans leurs scripts.
+
 Aucune des piles reçues à ce jour ne l'appelle ; « Stack Templates » a sa
 propre palette, montée par un XCMD (StackTemplatePal) — un troisième cas, à
 ne pas confondre.
