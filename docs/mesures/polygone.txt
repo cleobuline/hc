@@ -165,3 +165,17 @@ Questions posées, et leurs réponses :
 
 La règle des extensions tient toujours (CLAUDE.md) : rien de posé, rien de
 changé ; une pile d'HyperCard ne porte jamais d'alpha.
+
+LA CONTRAINTE DU CHANTIER, rappelée par l'utilisatrice : « la lecture des
+piles est compatible avec les anciennes, faut pas casser ça ».
+
+  · L'alpha s'écrit sur SA PROPRE LIGNE — « backalpha 128 », etc. —, et
+    seulement quand il n'est pas opaque. L'écrire dans la ligne de couleur
+    (« backcolor 16711680,128 ») ferait perdre la couleur à une 0.7.7 qui
+    ouvrirait une pile de la 0.7.8 ; sur sa propre ligne, elle l'ignore et
+    garde la couleur, opaque.
+  · Un bouton opaque n'écrit rien de plus : le fichier reste identique.
+  · À REFAIRE à la fin du chantier, comme pour l'extension : les piles
+    d'HyperCard importées n'acquièrent rien ; des piles HC réenregistrées
+    par l'ancien et le nouveau noyau sont identiques octet pour octet ; une
+    pile écrite par le nouveau noyau se relit dans l'ancien sans faute.
