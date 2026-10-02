@@ -1403,6 +1403,10 @@ CE QUI EST ÉCRIT :
 Le harnais macbinaire monte sa propre ressource et son propre MacBinary,
 avec ses propres dessins : le fichier d'Apple n'entre pas dans le dépôt.
 
+JOUÉ DANS HC (l'application) le 2 octobre, étiqueté par l'utilisatrice :
+« Ouvrir… » sur Stack Templates.stack.bin — « les icônes sont en bonne
+place ».
+
 NON LU : les icônes en couleur (cicn), les PICT, les sons (« snd »). Un .bin
 déposé sur l'icône du Dock ou ouvert depuis le Finder n'est pas déclaré
 dans Info.plist : seul « Ouvrir » est sûr de le prendre — non essayé.
