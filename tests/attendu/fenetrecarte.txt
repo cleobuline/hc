@@ -1,0 +1,80 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. sans hote qui reponde : la fenetre au coin de l'ecran ==
+   put the width of card window
+      512
+   put the height of card window
+      342
+   put the rect of card window
+      0,0,512,342
+   put the left of card window
+      0
+   put the top of card window
+      0
+   put the right of card window
+      512
+   put the bottom of card window
+      342
+   put the topLeft of card window
+      0,0
+   put the bottomRight of card window
+      512,342
+   put the loc of card window
+      256,171
+   put top of card window
+      0
+   put the top of the card window
+      0
+   put the top of cd window
+      0
+   -- « card window » s'arrete au mot window : le reste est au calcul
+   put the top of card window + 1
+      1
+   put (bottom of target + top of card window + 1) into tp
+  put tp
+      51
+   -- le rang d'une carte garde son droit a l'arithmetique
+   put the short name of card 1 + 1
+      Deux
+   -- une propriete qui n'est pas servie reste un refus
+   put the zorglub of card window
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".mouseUp)
+
+== 2. un hote qui place la carte en 100,60 ==
+   put the width of card window
+      512
+   put the height of card window
+      342
+   put the rect of card window
+      100,60,612,402
+   put the left of card window
+      100
+   put the top of card window
+      60
+   put the right of card window
+      612
+   put the bottom of card window
+      402
+   put the topLeft of card window
+      100,60
+   put the bottomRight of card window
+      612,402
+   put the loc of card window
+      256,171
+   put top of card window
+      60
+   put the top of the card window
+      60
+   put the top of cd window
+      60
+   -- « card window » s'arrete au mot window : le reste est au calcul
+   put the top of card window + 1
+      61
+   put (bottom of target + top of card window + 1) into tp
+  put tp
+      111
+   -- le rang d'une carte garde son droit a l'arithmetique
+   put the short name of card 1 + 1
+      Deux
+   -- une propriete qui n'est pas servie reste un refus
+   put the zorglub of card window
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "B".mouseUp)

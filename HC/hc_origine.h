@@ -384,4 +384,58 @@ int  hc_origine_reconnait(const unsigned char *octets, size_t n);
  * Rend une chaîne à libérer, ou NULL si la mémoire manque. */
 char *hc_origine_utf8(const unsigned char *octets, size_t n);
 
+/* ═══ MACBINARY, ET LES ICÔNES DE LA RESSOURCE ════════════════════════════
+ *
+ * Un fichier du Mac classique a DEUX parties : les données — la pile, que
+ * hc_origine_lit sait lire — et la RESSOURCE, où vivent les icônes (ICON), les
+ * images, les XCMD. Presque tout transfert hors d'un Mac ne garde que la
+ * première : c'est pourquoi les icônes manquaient à l'import. Une archive
+ * MacBinary (.bin), faite DANS l'émulateur, porte les deux en un seul fichier.
+ *
+ * Le format, publié en 1985 (I), 1987 (II) et 1996 (III) : un en-tête de 128
+ * octets — nom, type, créateur, longueur des deux parties —, puis les données,
+ * puis la ressource, chacune complétée à un multiple de 128.
+ *
+ * hc_macbinaire RECONNAÎT et DÉCOUPE, sans rien copier : `mb` pointe dans
+ * `octets`. Rend 1 si le fichier est un MacBinary cohérent, 0 sinon. Pour un
+ * MacBinary II ou III, la somme de contrôle de l'en-tête doit tomber juste ;
+ * pour un MacBinary I, qui n'en a pas, les octets qu'il laisse à zéro doivent
+ * l'être. Un aiguillage prudent : se tromper dans le sens du refus ne coûte
+ * qu'un « pile illisible », dans l'autre sens ce serait lire n'importe quoi. */
+typedef struct {
+    const unsigned char *donnees;     size_t ndonnees;
+    const unsigned char *ressources;  size_t nressources;
+    char nom[64];                     /* MacRoman, terminé par zéro */
+    char type[5], createur[5];        /* « STAK », « WILD » pour une pile */
+    int  version;                     /* 1, 2 ou 3 */
+} HcMacBinaire;
+
+int hc_macbinaire(const unsigned char *octets, size_t n, HcMacBinaire *mb);
+
+/* Les ICON d'une ressource : 32 × 32 points, un bit chacun, 128 octets — la
+ * forme exacte d'une icône de HC. Le nom est converti en UTF-8.
+ *
+ * Rend 0 et remplit `r`, à libérer par hc_origine_ressources_libere même en
+ * cas de refus ; ou -1 avec un motif écrit en clair si la carte des
+ * ressources sort du fichier. Une ICON de mauvaise taille est COMPTÉE dans
+ * `anomalies` et laissée de côté ; les ressources d'autres types sont
+ * comptées dans `autres`, pour qu'on sache ce qui n'a pas été lu. */
+typedef struct {
+    int            id;
+    char          *nom;               /* UTF-8, possédé ; "" si sans nom */
+    unsigned char  bits[128];
+} HcOrigIcone;
+
+typedef struct {
+    HcOrigIcone *icones;
+    int          nicones;
+    int          autres;              /* ressources d'autres types */
+    int          anomalies;           /* ICON de taille fausse, laissées */
+} HcOrigRessources;
+
+int  hc_origine_ressources(const unsigned char *octets, size_t n,
+                           HcOrigRessources *r,
+                           char *pourquoi, size_t npourquoi);
+void hc_origine_ressources_libere(HcOrigRessources *r);
+
 #endif

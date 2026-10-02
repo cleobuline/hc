@@ -1,0 +1,41 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+
+== 1. un appel de fonction ==
+   put f(1,,3)
+      3:1||3
+   put f(,2)
+      2:|2|
+   put f(1,)
+      2:1||
+   put f(,)
+      2:||
+   put f()
+      0:||
+   put f(1, "" ,3)
+      3:1||3
+
+== 2. un message ==
+   g 1,,3
+      3:1||3
+   g ,2
+      2:|2|
+   g 1,
+      2:1||
+   g
+      0:||
+
+== 3. send, qui le faisait deja ==
+   send "g 1,,3" to me
+      3:1||3
+   send "g ,2" to me
+      2:|2|
+
+== 4. ce qui reste une faute ==
+   put f(1,,3
+      [ERR]    !! script, ligne 8 colonne 13 : parenthèse fermante attendue
+      [ERR]         put f(1,,3
+      [ERR]    !! parenthèse fermante attendue (v3, ligne 8 de button "B".mouseUp)
+   put f(1 + ,3)
+      [ERR]    !! script, ligne 8 colonne 13 : expression attendue
+      [ERR]         put f(1 + ,3)
+      [ERR]    !! expression attendue (v3, ligne 8 de button "B".mouseUp)

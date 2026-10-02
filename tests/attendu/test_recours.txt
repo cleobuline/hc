@@ -38,16 +38,4 @@
 >>> bg btn ordinaire
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
-      !! objet introuvable (colonne 2) dans «  bg btn "GoBtn2" » — objet : button "GoBtn"
-   → message "hilite" à button "GoBtn"
-        (pas de gestionnaire dans button "GoBtn")
-        (pas de gestionnaire dans card "Une")
-        (pas de gestionnaire dans background "Fond")
-        (pas de gestionnaire dans stack "Test")
-      !! objet introuvable (colonne 2) dans «  bg btn "GoBtn2" » — objet : button "GoBtn"
-   → message "hilite" à button "GoBtn"
-        (pas de gestionnaire dans button "GoBtn")
-        (pas de gestionnaire dans card "Une")
-        (pas de gestionnaire dans background "Fond")
-        (pas de gestionnaire dans stack "Test")
       !! objet introuvable (v3, ligne 3 de button "GoBtn".mouseUp)

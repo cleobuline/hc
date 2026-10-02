@@ -147,6 +147,50 @@ pas écrite : c'est le seul des bancs en cours qui se juge ainsi, et il n'a
 été donné que pour HC. Ce que fait HyperCard du clic APRÈS l'avoir vu —
 le mange-t-il, ou le sert-il ensuite comme HC — reste à mesurer.
 
+« the mouseClick » COMPTAIT LE MÊME CLIC À CHAQUE TOUR. Rapporté DANS HC
+(l'application) le 1er octobre, étiquette donnée par l'utilisatrice (« j'ai
+fait tourner ce script… », dans HC) :
+
+    on mouseUp
+      put 0 into n
+      put the ticks into t
+      repeat until the ticks - t > 300
+        if the mouseClick then add 1 to n
+      end repeat
+      answer n
+    end mouseUp
+
+    un clic pendant la boucle  →  235
+
+Cause, lue dans le code : hcv_guette_cmd_point remet le clic EN TÊTE de la
+file pour qu'il soit servi après le script ; au tour suivant elle le revoit,
+et relevait le drapeau. Chaque tour de guette répondait donc « true ». Le
+banc du 30 septembre sortait au premier « true » : il ne pouvait pas le voir.
+Corrigé : un clic n'est compté qu'une fois, reconnu à son horodatage, qu'un
+événement remis en file garde. Attendu après la correction : 1 pour un clic,
+3 pour trois. REJOUÉ DANS HC (l'application) le 2 octobre, étiqueté par
+l'utilisatrice : « ça marche avec 1, 2, 3, 4 clicks » — n vaut le nombre
+de clics.
+
+JOUÉ DANS HYPERCARD (Basilisk II) le 2 octobre, même banc, étiqueté par
+l'utilisatrice : « idem hc et hypercard ». HyperCard aussi rend le nombre
+de clics : chaque clic compte une fois. HC et HyperCard s'accordent.
+
+LE BOUTON TENU ENFONCÉ pendant la boucle, puis relâché, 2 octobre, joué
+DANS HC ET DANS HYPERCARD, étiqueté par l'utilisatrice (« les deux ») :
+n = 1 des deux côtés, « et rien d'autre ». Un clic tenu ne compte qu'une
+fois.
+
+Et la boîte « answer » s'ouvre LE BOUTON ENCORE ENFONCÉ, des deux côtés
+(précisé par l'utilisatrice le 2 octobre). La boucle finit au temps, pas
+au clic ; mais la référence (hypercard.center, fiche mouseClick) dit que
+« the mouseClick », bouton enfoncé, ATTEND le relâchement avant de rendre
+true. Si c'était le cas, l'appel fait pendant que le bouton est tenu
+bloquerait la boucle, et la boîte ne viendrait qu'après le relâchement.
+Elle vient avant : dans HyperCard comme dans HC, « the mouseClick »
+N'ATTEND PAS ici. La référence et la machine divergent ; la machine fait
+foi.
+
 RESTE À MESURER
   · Passage 1, DANS HYPERCARD (Basilisk II) : HyperCard sert-il le clic et
     la touche après le script, les jette-t-il, et dans quel ordre ? Et

@@ -40,14 +40,10 @@
      put the name of first button
       card button "pilote"
      put the name of second button
-      [ERR]    !! objet introuvable (colonne 2) dans «  second button » — objet : button "pilote"
-      [ERR]    !! objet introuvable (colonne 2) dans «  second button » — objet : button "pilote"
       [ERR]    !! objet introuvable (v3, ligne 2 de button "pilote".essaie)
 
 == 6. CE QUI N'EXISTE PAS SE DIT ==
      put the name of tenth field
-      [ERR]    !! objet introuvable (colonne 2) dans «  tenth field » — objet : button "pilote"
-      [ERR]    !! objet introuvable (colonne 2) dans «  tenth field » — objet : button "pilote"
       [ERR]    !! objet introuvable (v3, ligne 2 de button "pilote".essaie)
      set the name of tenth field to "raté"
       [ERR]    !! objet introuvable : tenth field

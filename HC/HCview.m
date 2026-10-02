@@ -1736,6 +1736,9 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
 }
 
 static BOOL gMouseClicked = NO;
+/* L'horodatage du dernier clic que « the mouseClick » a compté : voir
+ * hcv_guette_cmd_point, qui revoit le même clic à chaque tour. */
+static NSTimeInterval gClicCompte = -1;
 
 /* Le dernier curseur posé, pour que « the cursor » se relise. Une propriété
  * qu'on peut poser et pas relire est une propriété à moitié — le même défaut
@@ -2926,6 +2929,29 @@ static const char *cocoa_global_get(const char *name) {
         return gGlobBuf;
     }
 
+    /* Le coin haut-gauche de la CARTE sur l'écran, pour « the top of card
+     * window » et ses voisines (v3_fenetre_prop, hc_core.c). HyperCard les
+     * mesure depuis le coin haut-gauche de l'écran qui porte la barre de
+     * menus : c'est le premier de [NSScreen screens], et non mainScreen, qui
+     * est celui de la fenêtre active. AppKit compte ses y vers le HAUT
+     * depuis le bas de cet écran ; on retourne l'axe.
+     *
+     * La carte occupe l'origine de la vue — mouseLoc fait la même
+     * hypothèse. Le nom porte des espaces : aucun script ne peut poser la
+     * question lui-même. */
+    if (strcasecmp(name, "card window topLeft") == 0) {
+        NSWindow *fen = [gView window];
+        NSArray<NSScreen *> *ecrans = [NSScreen screens];
+        if (!gView || !fen || [ecrans count] == 0) return NULL;
+        NSRect dansFen  = [gView convertRect:NSMakeRect(0, 0, 1, 1) toView:nil];
+        NSRect surEcran = [fen convertRectToScreen:dansFen];
+        NSRect principal = [ecrans[0] frame];
+        int gauche = (int)lround(NSMinX(surEcran) - NSMinX(principal));
+        int haut   = (int)lround(NSMaxY(principal) - NSMaxY(surEcran));
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d", gauche, haut);
+        return gGlobBuf;
+    }
+
     if (strcasecmp(name, "mouseClick") == 0) {
         BOOL eu = gMouseClicked;
         gMouseClicked = NO;
@@ -3530,8 +3556,20 @@ static void hcv_guette_cmd_point(void)
         if ([e type] == NSEventTypeKeyDown && hcv_est_cmd_point(e)) { vu = YES; continue; }
         /* « the mouseClick » : c'est ICI qu'un clic donné pendant le script
          * est vu, et nulle part ailleurs — mouseDown: ne le recevra qu'après
-         * (voir plus haut). Le clic reste dans la file. */
-        if ([e type] == NSEventTypeLeftMouseDown) gMouseClicked = YES;
+         * (voir plus haut). Le clic reste dans la file.
+         *
+         * ET IL N'EST COMPTÉ QU'UNE FOIS. Remis en tête de file, le même clic
+         * repasse ici à chaque tour de guette, et relevait le drapeau à
+         * chaque fois : un seul clic pendant « repeat until the ticks - t >
+         * 300 / if the mouseClick then add 1 to n » donnait n = 235, rapporté
+         * DANS HC (l'application) le 1er octobre. Le banc du 30 septembre
+         * sortait de sa boucle au premier « true » et ne pouvait pas le voir.
+         * Un événement remis en file garde son horodatage : c'est lui qui le
+         * reconnaît. */
+        if ([e type] == NSEventTypeLeftMouseDown && [e timestamp] > gClicCompte) {
+            gMouseClicked = YES;
+            gClicCompte = [e timestamp];
+        }
         if (!gardees) gardees = [NSMutableArray array];
         [gardees addObject:e];
     }
@@ -4074,6 +4112,66 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
     }
     gPopupTarget = NULL;
     [self setNeedsDisplay:YES];
+}
+
+/* ═══ LE MENU LOCAL DE L'XFCN « PopUpMenu » ═════════════════════════════
+ *
+ * Le noyau imite l'XFCN (v3_popupmenu, hc_core.c) et nous demande le menu :
+ * un article par ligne, « - » pour un trait, « ( » en tête pour un article
+ * grisé. On le montre, et l'on rend le rang choisi — 0 si rien.
+ *
+ * popUpMenuPositioningItem est SYNCHRONE : il ne rend la main qu'une fois le
+ * menu refermé, après avoir envoyé l'action de l'article choisi. Le script
+ * qui attend la valeur attend donc, comme sous HyperCard.
+ *
+ * Le point vient en coordonnées d'ÉCRAN façon HyperCard — depuis le coin
+ * haut-gauche de l'écran qui porte la barre de menus, le premier de
+ * [NSScreen screens] ; AppKit compte ses y depuis le bas de cet écran. */
+static int gPopupChoix = 0;
+
+- (void)popupFonctionChoisie:(id)sender {
+    gPopupChoix = (int)[sender tag];
+}
+
+static int cocoa_popup_menu(const char *articles, int coche, int haut, int gauche)
+{
+    if (!gView || !articles) return 0;
+    NSArray<NSString *> *lignes =
+        [hcv_texte(articles) componentsSeparatedByString:@"\n"];
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+    [menu setAutoenablesItems:NO];
+    NSMenuItem *place = nil;
+    NSInteger rang = 0;
+    for (NSString *l in lignes) {
+        rang++;
+        NSMenuItem *it;
+        if ([l isEqualToString:@"-"]) {
+            it = [NSMenuItem separatorItem];
+        } else {
+            BOOL grise = [l hasPrefix:@"("];
+            NSString *titre = grise ? [l substringFromIndex:1] : l;
+            it = [[NSMenuItem alloc] initWithTitle:titre
+                                            action:@selector(popupFonctionChoisie:)
+                                     keyEquivalent:@""];
+            [it setTarget:gView];
+            [it setEnabled:!grise];
+        }
+        [it setTag:rang];
+        if (rang == coche) { [it setState:NSControlStateValueOn]; place = it; }
+        [menu addItem:it];
+    }
+
+    NSPoint ou;
+    if (haut == HC_PAS_DE_POINT || gauche == HC_PAS_DE_POINT) {
+        ou = [NSEvent mouseLocation];
+    } else {
+        NSArray<NSScreen *> *ecrans = [NSScreen screens];
+        CGFloat h0 = [ecrans count] ? NSMaxY([ecrans[0] frame]) : 0;
+        ou = NSMakePoint((CGFloat)gauche, h0 - (CGFloat)haut);
+    }
+    gPopupChoix = 0;
+    [menu popUpMenuPositioningItem:place atLocation:ou inView:nil];
+    return gPopupChoix;
 }
 
 static BOOL object_selection_active(void)
@@ -7399,6 +7497,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.stack_changed = cocoa_stack_changed;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
+    host.popup_menu    = cocoa_popup_menu;
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;

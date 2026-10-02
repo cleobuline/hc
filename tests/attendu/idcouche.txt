@@ -22,12 +22,8 @@
 
 == une portee explicite ne se replie pas ==
          !! objet introuvable (v3, ligne 2 de button "pilote".t)
-         !! objet introuvable (colonne 2) dans «  card field id 1 » — objet : button "pilote"
-         !! objet introuvable (colonne 2) dans «  card field id 1 » — objet : button "pilote"
          !! objet introuvable (v3, ligne 2 de button "pilote".t)
       aucun
-         !! objet introuvable (colonne 2) dans «  bg button id 1 » — objet : button "pilote"
-         !! objet introuvable (colonne 2) dans «  bg button id 1 » — objet : button "pilote"
          !! objet introuvable (v3, ligne 2 de button "pilote".t)
       aucun
 

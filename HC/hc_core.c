@@ -80,20 +80,6 @@ static const char *next_word(const char *s, char *out, int outlen)
     return s;
 }
 
-/* extrait un littéral entre guillemets ; renvoie la position après le guillemet fermant */
-static const char *quoted(const char *s, char *out, int outlen)
-{
-    s = skip_spaces(s);
-    out[0] = '\0';
-    if (*s != '"') return s;
-    s++;
-    int i = 0;
-    while (*s && *s != '"' && i < outlen - 1)
-        out[i++] = *s++;
-    out[i] = '\0';
-    if (*s == '"') s++;
-    return s;
-}
 
 /* ═══ CITER ET RELIRE UN NOM DANS UN DESCRIPTEUR ══════════════════════
  *
@@ -144,12 +130,10 @@ static int descripteur_cite(const char *nom, char *out, int outlen)
     return besoin + 2;
 }
 
-/* La lecture, symétrique. Même rôle que quoted(), mais pour un DESCRIPTEUR.
- *
- * quoted() reste inchangée : elle sert aussi à lire les littéraux de script, et
- * HyperTalk n'y connaît aucun échappement — « put "a\b" » vaut a\b, et doit
- * continuer. Les deux métiers se ressemblaient assez pour partager une
- * fonction, pas assez pour partager une règle. */
+/* La lecture, symétrique. Elle est propre aux DESCRIPTEURS : un littéral de
+ * script ne connaît aucun échappement — « put "a\b" » vaut a\b, et doit
+ * continuer —, un descripteur si. L'ancien quoted(), qui lisait les
+ * littéraux pour l'ancien moteur d'expressions, est parti avec lui. */
 static const char *descripteur_lit(const char *s, char *out, int outlen)
 {
     s = skip_spaces(s);
@@ -1144,10 +1128,8 @@ void hc_emet_diagnostic(const char *fmt, ...)
  * invaliderait les tampons déjà distribués. Les blocs restent alloués après
  * libération, et resservent — on ne paie l'allocation système qu'une fois.
  *
- * Les fonctions à sorties multiples (term_value, call_function : 40 et 36
- * return) ne sont volontairement pas instrumentées. Leur appelant direct,
- * parse_factor, l'est, et cela suffit :
- * toute valeur est recopiée dans le `out` de l'appelant avant chaque retour.
+ * Chaque emprunteur encadre le sien par ARENA_MARK / ARENA_FREE : toute
+ * valeur est recopiée dans le `out` de l'appelant avant qu'il rende la main.
  */
 /* Blocs de 16 Mo, plafond à 1 Go.
  *
@@ -1267,25 +1249,6 @@ static void v1_compte(const char *quoi, const char *porte);
 static const char *v1_porte(const char *nom);
 static const char *g_v1_porte = "?";
 
-/* L'ANCIEN MOTEUR D'EXPRESSIONS, COUPÉ À LA DEMANDE : HC_SANS_V1=1.
- *
- * La v3 le rappelle encore à trois endroits — le recours d'expression et les
- * deux sondes de fonctions de v3_fonction. Pour le retirer sans rien perdre,
- * il faut savoir ce qu'il sert ENCORE, et la seule façon de le savoir est de
- * le couper et de regarder ce qui change. Le faire à la main, par un essai
- * qu'on retire ensuite, ne laisse rien derrière : ni le harnais qui garde un
- * portage, ni le moyen de rejouer la suite entière dans ces conditions.
- *
- * Lue une fois. Le réglage disparaîtra avec l'ancien moteur. */
-static int v1_coupe(void)
-{
-    static int coupe = -1;
-    if (coupe < 0) {
-        const char *e = getenv("HC_SANS_V1");
-        coupe = (e && *e && strcmp(e, "0") != 0);
-    }
-    return coupe;
-}
 
 /* Un message SYSTÈME, retenu quand les messages sont verrouillés. Tous les
  * envois automatiques de changement de carte passent par ici — et eux seuls,
@@ -3377,9 +3340,9 @@ static void eval_expr(const char *s, char *out, int outlen);
  *   le reste    rendu tel quel          — « field toto », nom nu
  *
  * On n'appelle l'analyseur QUE sur la forme parenthésée. Un identificateur nu
- * passe par var_get directement : eval_expr repasserait par term_value, qui
- * commence justement par appeler resolve(), et l'on tournerait en rond sur
- * une tournure inattendue. La parenthèse, elle, est un signal explicite du
+ * passe par var_get directement : eval_expr le résoudrait par l'évaluateur,
+ * qui peut lui-même revenir à resolve(), et l'on tournerait en rond sur une
+ * tournure inattendue. La parenthèse, elle, est un signal explicite du
  * script, et son contenu ne peut pas se replier sur le jeton d'origine.
  *
  * Sortie vide si le jeton est composé de plusieurs mots : c'est alors une
@@ -4286,18 +4249,6 @@ static int ajoute_borne(char *out, int outlen, int pos,
 }
 
 
-/* « a contient b », sans tenir compte de la casse */
-static int ci_strstr(const char *hay, const char *needle)
-{
-    size_t nl = strlen(needle);
-    if (nl == 0) return 1;
-    size_t hl = strlen(hay);
-    if (nl > hl) return 0;
-    for (size_t i = 0; i + nl <= hl; i++)
-        if (ci_nequal(hay + i, needle, (int)nl)) return 1;
-    return 0;
-}
-
 /* une valeur est-elle un nombre ? */
 /* ---- les valeurs : déléguées à hct_val ----
  *
@@ -4323,84 +4274,6 @@ static int as_num(const char *s, double *d)
     return 1;
 }
 
-static void put_num(double d, char *out, int outlen)
-{
-    hct_ecrit_nombre(d, out, outlen);
-}
-
-/* mots qui terminent une référence : ce sont des opérateurs ou des
-   prépositions de commande, jamais des morceaux de nom d'objet */
-static int is_stop_word(const char *s, int len)
-{
-    static const char *kw[] = { "is", "contains", "mod", "div", "and", "or",
-                                "not", "then", "into", "after", "before", NULL };
-    for (int i = 0; kw[i]; i++)
-        if ((int)strlen(kw[i]) == len && ci_nequal(s, kw[i], len)) return 1;
-    return 0;
-}
-
-/* Ramasse le texte d'une référence (« the name of me », « field "x" », « compteur »)
-   en s'arrêtant au premier opérateur. */
-static void collect_ref(const char **p, char *buf, int buflen)
-{
-    const char *s = *p;
-    int n = 0;
-    buf[0] = '\0';
-
-    for (;;) {
-        const char *w = skip_spaces(s);
-
-        /* « word (i+1) of x » : le groupe parenthésé fait partie de la référence */
-        if (*w == '(' && n > 0) {
-            const char *q = w + 1;
-            int depth = 1, inq2 = 0;
-            while (*q && depth) {
-                if (*q == '"') inq2 = !inq2;
-                else if (!inq2 && *q == '(') depth++;
-                else if (!inq2 && *q == ')') depth--;
-                q++;
-            }
-            int len = (int)(q - w);
-            if (n && n < buflen - 1) buf[n++] = ' ';
-            if (n + len > buflen - 1) len = buflen - 1 - n;
-            if (len > 0) { memcpy(buf + n, w, (size_t)len); n += len; }
-            buf[n] = '\0';
-            s = q;
-            continue;
-        }
-
-        if (!*w || strchr("&+-*/^<>=(),", *w)) { s = w; break; }
-
-        const char *st = w, *q = w;
-        if (*w == '"') {
-            q = w + 1;
-            while (*q && *q != '"') q++;
-            if (*q == '"') q++;
-        } else {
-            while (*q && !isspace((unsigned char)*q) && !strchr("&+-*/^<>=(),\"", *q)) q++;
-            /* UN MOT VIDE ARRÊTE LA RÉFÉRENCE : SANS CELA, LA BOUCLE NE
-             * FINISSAIT JAMAIS.
-             *
-             * skip_spaces ne saute que l'espace et la tabulation ; la boucle
-             * du dessus s'arrête sur tout ce qu'isspace reconnaît — le saut de
-             * ligne, le retour chariot, \v, \f. Posé sur l'un d'eux, le mot
-             * faisait zéro octet, `s` ne bougeait plus, et l'application
-             * gelait pour de bon. Trouvé par le fuzzing : « put tcon of »
-             * suivi du saut de ligne du script, confié à cet interprète par le
-             * recours. */
-            if (q == st) { s = w; break; }
-            if (is_stop_word(st, (int)(q - st))) { s = w; break; }
-        }
-
-        int len = (int)(q - st);
-        if (n && n < buflen - 1) buf[n++] = ' ';
-        if (n + len > buflen - 1) len = buflen - 1 - n;
-        if (len > 0) { memcpy(buf + n, st, (size_t)len); n += len; }
-        buf[n] = '\0';
-        s = q;
-    }
-    *p = s;
-}
 
 /* ==================== expressions de morceau (chunks) ==================== */
 
@@ -4639,27 +4512,6 @@ static void chunk_indices(const char *src, ChunkType ct, int ordinal,
             eval_expr(ib, v, sizeof v); *b = hct_vers_rang(v, NULL);
         }
     }
-}
-
-/* Lit un morceau. Renvoie 0 si `t` n'est pas une expression de morceau. */
-static int chunk_read(const char *t, char *out, int outlen)
-{
-    ChunkType ct; char ia[128], ib[128]; const char *rest; int ordinal;
-    if (!parse_chunk(t, &ct, ia, sizeof ia, ib, sizeof ib, &rest, &ordinal)) return 0;
-
-    char *src = arena_buf();
-    eval_expr(rest, src, HC_VAL);      /* récursif : les morceaux s'emboîtent */
-
-    int a, b, st, en;
-    chunk_indices(src, ct, ordinal, ia, ib, &a, &b);
-    out[0] = '\0';
-    if (chunk_span(src, ct, a, b, &st, &en)) {
-        int len = en - st;
-        if (len > outlen - 1) len = outlen - 1;
-        if (len > 0) memcpy(out, src + st, (size_t)len);
-        out[len > 0 ? len : 0] = '\0';
-    }
-    return 1;
 }
 
 
@@ -5843,33 +5695,6 @@ static int container_set_body(const char *ref, const char *val, int mode)
  *     <fonction>(<args>)          min(3,1,2), offset("b","abc")
  */
 
-/* Découpe les arguments d'un appel : virgules de premier niveau seulement,
-   les parenthèses et les guillemets protègent. */
-static int split_args(const char *s, char args[][HC_VAL], int maxargs)
-{
-    int n = 0, depth = 0, inq = 0, len = 0;
-    args[0][0] = '\0';
-    for (const char *p = s; *p; p++) {
-        if (*p == '"') inq = !inq;
-        else if (!inq && *p == '(') depth++;
-        else if (!inq && *p == ')') depth--;
-
-        if (!inq && depth == 0 && *p == ',') {
-            args[n][len] = '\0';
-            if (++n >= maxargs) return n;
-            len = 0; args[n][0] = '\0';
-            continue;
-        }
-        /* HC_VAL - 1, et non 511 : args[][] fait HC_VAL. Le 511 était un
-         * vestige d'un « char one[512] » remplacé par l'arène sans qu'on
-         * enlève l'ancien plafond, et il coupait une expression un peu longue
-         * au milieu. */
-        if (len < HC_VAL - 1) args[n][len++] = *p;
-    }
-    args[n][len] = '\0';
-    if (*skip_spaces(args[n])) n++;
-    return n;
-}
 
 static time_t hc_maintenant(void);   /* l'horloge, gelable — définie plus bas */
 
@@ -6214,439 +6039,6 @@ static void emit_datetime(struct tm *tm, int fmt, char *out, int outlen)
     }
 }
 
-/* Renvoie 1 si `t` était bien un appel de fonction. */
-static int call_function_body(const char *t, char *out, int outlen)
-{
-    v1_compte("v1 fonction", g_v1_porte);
-    const char *s = skip_spaces(t);
-    if (ci_word(s, "the")) s = skip_spaces(s + 3);
-
-    /* formes composées : long date, short time, abbreviated date… */
-    int datemode = -1;
-    if (ci_word(s, "long")) {
-        const char *w = skip_spaces(s + 4);
-        if (ci_word(w, "date")) datemode = 2; else if (ci_word(w, "time")) datemode = 4;
-    } else if (ci_word(s, "short")) {
-        const char *w = skip_spaces(s + 5);
-        if (ci_word(w, "date")) datemode = 0; else if (ci_word(w, "time")) datemode = 3;
-    } else if (ci_word(s, "abbreviated") || ci_word(s, "abbrev") || ci_word(s, "abbr")) {
-        const char *w = strchr(s, ' ');
-        if (w && ci_word(skip_spaces(w), "date")) datemode = 1;
-    }
-    if (datemode >= 0) { format_date(out, outlen, datemode); return 1; }
-
-    char name[64];
-    const char *after = next_word(s, name, sizeof name);
-    if (!name[0]) return 0;
-
-    /* --- sans argument --- */
-    if (!*skip_spaces(after)) {
-        if (ci_equal(name, "date")) { format_date(out, outlen, 0); return 1; }
-        if (ci_equal(name, "result")) { snprintf(out, outlen, "%s", g_result); return 1; }
-        if (ci_equal(name, "foundtext")) { snprintf(out, outlen, "%s", g_found_lisible ? g_found_text : ""); return 1; }
-        /* the stacksInUse : les bibliothèques déclarées, une par ligne, dans
-         * l'ordre de déclaration. C'est ce que rend HyperCard, et ce qui
-         * permet à un script de vérifier qu'une pile est bien en usage avant
-         * d'appeler ses gestionnaires. */
-        if (ci_equal(name, "stacksinuse")) {
-            out[0] = '\0';
-            size_t used = 0;
-            for (int i = 0; i < g_nusing; i++) {
-                const char *nm = g_using[i]->name ? g_using[i]->name : "";
-                size_t l = strlen(nm);
-                if (used + l + 2 >= (size_t)outlen) break;
-                if (i) out[used++] = '\n';
-                memcpy(out + used, nm, l); used += l;
-                out[used] = '\0';
-            }
-            return 1;
-        }
-        if (ci_equal(name, "itemdelimiter")) {
-            snprintf(out, outlen, "%s", item_delim()); return 1;
-        }
-        /* Le gabarit vide se rend tel quel : c'est ce que HyperCard rendait
-         * avant qu'on y touche, et « if the numberFormat is empty » doit
-         * pouvoir le constater. */
-        if (ci_equal(name, "numberformat")) {
-            snprintf(out, outlen, "%s", hct_format_nombre_lu()); return 1;
-        }
-        /* Les deux verrous se POSAIENT déjà — « lock screen », « set the
-         * lockScreen to true » — mais ne se relisaient pas : « put the
-         * lockScreen » rendait le mot « lockScreen », et personne ne s'en
-         * apercevait puisque rien ne se plaignait. Depuis que « the » ne ment
-         * plus, la même ligne lève une erreur ; la vraie réponse était de
-         * toute façon due. Une propriété qu'on peut poser et pas relire est
-         * une propriété à moitié. */
-        if (ci_equal(name, "lockscreen")) {
-            snprintf(out, outlen, "%s", g_ecran_verrouille ? "true" : "false");
-            return 1;
-        }
-        if (ci_equal(name, "lockmessages")) {
-            snprintf(out, outlen, "%s", g_messages_verrouilles ? "true" : "false");
-            return 1;
-        }
-        if (reglage_lit(name, out, outlen)) return 1;
-        /* the tool : l'outil courant, sous la forme « brush tool ». C'est
-         * l'hôte qui le sait ; s'il ne répond pas, on annonce l'outil main,
-         * celui d'HyperCard au repos. */
-        if (ci_equal(name, "tool")) {
-            const char *outil = host_global("tool");
-            snprintf(out, outlen, "%s", (outil && *outil) ? outil : "browse tool");
-            return 1;
-        }
-        if (ci_equal(name, "selection") || ci_equal(name, "selectedtext")) {
-            selection_text(out, outlen); return 1;
-        }
-        if (ci_equal(name, "selectedfield")) {
-            if (g_sel_field) champ_designe(g_sel_field, out, outlen);
-            else snprintf(out, outlen, "%s", "");
-            return 1;
-        }
-        /* LA LIGNE SÉLECTIONNÉE EST UN MORCEAU, PAS UN NUMÉRO.
-         *
-         *     the selectedLine -> line 1 of card field 1     (HyperCard)
-         *                      -> 1                          (HC avant)
-         *
-         * Mesuré dans Basilisk le 27/09. C'est la même forme que foundLine, et
-         * c'est ce qui la rend utile : un sommaire relit le morceau pour y
-         * aller, là où un numéro nu oblige à savoir de quel champ il parle.
-         *
-         * Le niveau OBJET — « the selectedLine of card field "A" » — rendait
-         * déjà cette forme-là : le code connaissait la réponse à un endroit et
-         * pas à l'autre. */
-        if (ci_equal(name, "selectedline")) {
-            if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
-            const char *texte = hc_field_text(g_sel_field);
-            int line = 1;
-            for (int i = 0; i < g_sel_start && texte[i]; i++)
-                if (texte[i] == '\n') line++;
-            char d[96];
-            champ_designe(g_sel_field, d, sizeof d);
-            snprintf(out, outlen, "line %d of %s", line, d);
-            return 1;
-        }
-        /* ---- désignations de morceau ----
-         * « char 5 to 12 of card field "notes" » : la forme qu'HyperCard rend
-         * pour dire OÙ se trouve quelque chose. C'est une chaîne évaluable —
-         * « put the value of the selectedChunk » relit le texte désigné — et
-         * c'est ce qui permet à un script de retenir une position pour y
-         * revenir plus tard.
-         *
-         * Les bornes sont en caractères, 1-based et inclusives : le contraire
-         * des nôtres, qui sont 0-based et demi-ouvertes. D'où le +1 sur le
-         * début et rien sur la fin. */
-        if (ci_equal(name, "selectedchunk")) {
-            if (!g_sel_field) { snprintf(out, outlen, "%s", ""); return 1; }
-            char d[96];
-            champ_designe(g_sel_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s",
-                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
-                                         g_sel_start) + 1,
-                     hct_utf8_compte_prefixe(hc_field_text(g_sel_field),
-                                         g_sel_start + g_sel_len),
-                     d);
-            return 1;
-        }
-        if (ci_equal(name, "foundchunk")) {
-            if (!g_found_lisible || !g_found_field || g_found_len <= 0) {
-                snprintf(out, outlen, "%s", ""); return 1;
-            }
-            /* LE SITE JUMEAU. Les trois propriétés se lisent par DEUX
-             * chemins — celui-ci par le nom, l'autre par l'arbre v3 — et
-             * corriger l'un sans l'autre aurait donné deux réponses
-             * différentes à la même question selon la façon de la poser. */
-            char d[96];
-            champ_designe(g_found_field, d, sizeof d);
-            snprintf(out, outlen, "char %d to %d of %s",
-                     hct_utf8_compte_prefixe(hc_field_text(g_found_field),
-                                         g_found_start) + 1,
-                 hct_utf8_compte_prefixe(hc_field_text(g_found_field),
-                                         g_found_start + g_found_len),
-                     d);
-            return 1;
-        }
-        if (ci_equal(name, "foundfield")) {
-            champ_designe(g_found_lisible ? g_found_field : NULL, out, outlen);
-            return 1;
-        }
-        if (ci_equal(name, "foundline")) {
-            if (g_found_lisible && g_found_field && g_found_line > 0) {
-                char d[96]; champ_designe(g_found_field, d, sizeof d);
-                snprintf(out, outlen, "line %d of %s", g_found_line, d);
-            } else snprintf(out, outlen, "%s", "");
-            return 1;
-        }
-        if (ci_equal(name, "paramcount")) { snprintf(out, outlen, "%d", g_nparams - 1); return 1; }
-        if (ci_equal(name, "params")) {
-            /* tous les paramètres, nom du message inclus, séparés par des virgules */
-            out[0] = '\0';
-            int pos = 0;
-            for (int i = 0; i < g_nparams; i++)
-                pos = ajoute_borne(out, outlen, pos, i ? "," : "", g_params[i]);
-            return 1;
-        }
-        if (ci_equal(name, "time")) { format_date(out, outlen, 3); return 1; }
-        if (ci_equal(name, "seconds") || ci_equal(name, "secs")) {
-            /* comme sur Macintosh : secondes depuis le 1er janvier 1904 */
-            snprintf(out, outlen, "%lld", (long long)hc_maintenant() + 2082844800LL);
-            return 1;
-        }
-        if (ci_equal(name, "ticks")) {
-            /* Soixantièmes de seconde. D'abord l'hôte, s'il sait : lui seul a
-             * une horloge fine et fiable.
-             *
-             * clock() mesurait le temps PROCESSEUR, pas le temps écoulé. Dans
-             * une application graphique qui passe son temps à attendre
-             * l'utilisateur, il n'avance presque pas — « the ticks » rendait 0
-             * en boucle, et tout script comparant deux instants pour détecter
-             * un double-clic voyait un écart nul, donc un double-clic à chaque
-             * fois.
-             *
-             * Le repli compte depuis le PREMIER appel plutôt que depuis 1970 :
-             * HyperCard comptait depuis le démarrage de la machine, et un
-             * nombre qui reste petit évite d'éprouver l'arithmétique des
-             * scripts sur des milliards. */
-            const char *hv = host_global(name);
-            if (hv && *hv) { snprintf(out, outlen, "%s", hv); return 1; }
-
-            static time_t t0;
-            static int t0_pris = 0;
-            time_t now = hc_maintenant();
-            if (!t0_pris) { t0 = now; t0_pris = 1; }
-            snprintf(out, outlen, "%lld", (long long)(now - t0) * 60);
-            return 1;
-        }
-    }
-
-    /* --- arguments : « of <expr> » ou « (a, b, c) » --- */
-    int nargs = 0;
-    const char *q = skip_spaces(after);
-    if (*q != '(' && !ci_word(q, "of")) return 0;
-
-    char (*raw)[HC_VAL] = arena_rows(8);
-    if (!raw) { out[0] = '\0'; return 1; }
-
-    if (*q == '(') {
-        const char *end = q + 1;
-        int depth = 1, inq = 0;
-        while (*end && depth) {
-            if (*end == '"') inq = !inq;
-            else if (!inq && *end == '(') depth++;
-            else if (!inq && *end == ')') depth--;
-            if (depth) end++;
-        }
-        char *inner = arena_buf();
-        int len = (int)(end - (q + 1));
-        if (len > (int)HC_VAL - 1) len = (int)HC_VAL - 1;
-        if (len < 0) len = 0;
-        memcpy(inner, q + 1, (size_t)len); inner[len] = '\0';
-        nargs = split_args(inner, raw, 8);
-    } else {
-        snprintf(raw[0], sizeof raw[0], "%s", q + 2);
-        nargs = 1;
-    }
-
-    /* DEUX LIGNES AU MOINS, VIDES, MÊME SANS ARGUMENT.
-     *
-     * Les fonctions à une entrée lisent vals[0] et « offset » lit vals[1] sans
-     * regarder nargs. Avec « charToNum() » ou « offset() », nargs valait zéro,
-     * vals valait NULL, et strlen(NULL) faisait tomber l'application entière
-     * — un script d'une ligne suffisait. Trouvé par l'analyseur de clang, et
-     * vérifié en l'exécutant. « offset("a") », lui, lisait une ligne au-delà
-     * de ce qu'on avait réservé.
-     *
-     * Un argument absent vaut donc le vide, comme une variable jamais posée :
-     * c'est ce que font déjà « length() » et « numToChar() », servies par la
-     * v3. */
-    int nlignes = nargs < 2 ? 2 : nargs;
-    char (*vals)[HC_VAL] = arena_rows(nlignes);
-    if (!vals) { out[0] = '\0'; return 1; }
-
-    for (int i = 0; i < nargs; i++) eval_expr(raw[i], vals[i], sizeof vals[i]);
-
-    double a = 0, b = 0;
-    if (nargs > 0) as_num(vals[0], &a);
-    if (nargs > 1) as_num(vals[1], &b);
-    (void)b;
-
-    /* --- une entrée --- */
-    /* Des CARACTÈRES, pas des octets. Ce vieux pont n'est plus atteint que
-     * par le recours, la v3 servant elle-même ces quatre fonctions — mais
-     * deux implémentations qui divergent finissent toujours par se venger,
-     * et il y a trois lignes à changer. */
-    if (ci_equal(name, "length")) { snprintf(out, outlen, "%d", hct_utf8_compte(vals[0])); return 1; }
-    if (ci_equal(name, "abs"))    { put_num(a < 0 ? -a : a, out, outlen); return 1; }
-    /* trunc ET round PASSENT PAR LA BIBLIOTHEQUE, PAS PAR UN CAST.
-     *
-     * « (double)(long long)a » est un comportement INDEFINI dès que `a` sort
-     * de la plage d'un long long — et as_num accepte « 1e300 » sans broncher.
-     * Le chemin v3 a été corrigé en son temps ; ces trois-ci, dans l'ancien
-     * moteur, étaient restés. Signalé par un audit extérieur.
-     *
-     * Je n'ai PAS su les atteindre : la v3 sert trunc, round, div, mod et
-     * « is an integer » avant que l'ancien moteur n'en voie la couleur, et
-     * quatre sondes n'ont pas trouvé d'entrée. On corrige quand même — une
-     * conversion sûre ne coûte rien, et « je n'ai pas su l'atteindre » n'est
-     * pas « c'est inatteignable ».
-     *
-     * trunc(3) tronque vers zéro, ce que faisait le cast ; le round
-     * d'HyperTalk s'écarte de round(3) pour les négatifs à demi — il arrondit
-     * -2.5 vers zéro, soit -2, quand round() rend -3 —, donc on garde la
-     * formule d'origine et on remplace seulement la conversion. */
-    if (ci_equal(name, "trunc"))  { put_num(trunc(a), out, outlen); return 1; }
-    /* Au pair, comme la v3 et comme HyperCard — voir math_un_arg. */
-    if (ci_equal(name, "round"))  { put_num(nearbyint(a), out, outlen); return 1; }
-    if (ci_equal(name, "sqrt"))   { put_num(a >= 0 ? sqrt(a) : 0, out, outlen); return 1; }
-    if (ci_equal(name, "exp"))    { put_num(exp(a), out, outlen); return 1; }
-    if (ci_equal(name, "ln"))     { put_num(a > 0 ? log(a) : 0, out, outlen); return 1; }
-    if (ci_equal(name, "log2"))   { put_num(a > 0 ? log(a) / log(2.0) : 0, out, outlen); return 1; }
-    if (ci_equal(name, "sin"))    { put_num(sin(a), out, outlen); return 1; }
-    if (ci_equal(name, "cos"))    { put_num(cos(a), out, outlen); return 1; }
-    if (ci_equal(name, "tan"))    { put_num(tan(a), out, outlen); return 1; }
-    if (ci_equal(name, "atan"))   { put_num(atan(a), out, outlen); return 1; }
-    /* Variantes de précision d'HyperCard : exp1(x) = e^x − 1 et
-     * ln1(x) = ln(1+x). Elles existent parce qu'aux alentours de zéro, calculer
-     * exp(x)-1 fait perdre les chiffres significatifs — la soustraction annule
-     * la partie utile du résultat. Les bibliothèques modernes fournissent
-     * expm1 et log1p, qui font exactement cela. */
-    if (ci_equal(name, "exp1"))   { put_num(expm1(a), out, outlen); return 1; }
-    if (ci_equal(name, "exp2"))   { put_num(pow(2.0, a), out, outlen); return 1; }
-    if (ci_equal(name, "ln1"))    { put_num(a > -1 ? log1p(a) : 0, out, outlen); return 1; }
-    /* Ces trois-là convertissent un double en entier. Bornées comme leurs
-     * jumelles de la v3 : sans le test, « random(10^300) » et
-     * « numToChar(10^300) » convertissaient hors plage — comportement
-     * indéfini. Ce chemin n'est plus l'ordinaire, mais il reste atteignable
-     * par le recours, et un comportement indéfini ne se garde pas « au cas
-     * où ». */
-    if (ci_equal(name, "random")) {
-        static int seeded = 0;
-        if (!seeded) { srand((unsigned)hc_maintenant()); seeded = 1; }
-        int n = (a >= 1 && a <= (double)HCT_RANG_MAX) ? (int)a : 0;
-        snprintf(out, outlen, "%d", n > 0 ? (rand() % n) + 1 : 0); return 1;
-    }
-    if (ci_equal(name, "charToNum")) {
-        const char *car = vals[0];      /* pas `t` : c'est un paramètre ici */
-        int l = (int)strlen(car);
-        long cp = 0;
-        if (l > 0) {
-            int nb = hct_utf8_octets(car, 0, l);
-            unsigned char c0 = (unsigned char)car[0];
-            cp = (nb == 1) ? c0 : (nb == 2) ? (c0 & 0x1F)
-               : (nb == 3) ? (c0 & 0x0F) : (c0 & 0x07);
-            for (int i = 1; i < nb; i++)
-                cp = (cp << 6) | ((unsigned char)car[i] & 0x3F);
-        }
-        snprintf(out, outlen, "%ld", cp); return 1;
-    }
-    if (ci_equal(name, "numToChar")) {
-        long code = (a >= 0 && a <= 0x10FFFF) ? (long)a : 0;
-        if (code >= 0xD800 && code <= 0xDFFF) code = 0;
-        char c[5]; int k = 0;
-        if (code < 0x80) c[k++] = (char)code;
-        else if (code < 0x800) {
-            c[k++] = (char)(0xC0 | (code >> 6));
-            c[k++] = (char)(0x80 | (code & 0x3F));
-        } else if (code < 0x10000) {
-            c[k++] = (char)(0xE0 | (code >> 12));
-            c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
-            c[k++] = (char)(0x80 | (code & 0x3F));
-        } else {
-            c[k++] = (char)(0xF0 | (code >> 18));
-            c[k++] = (char)(0x80 | ((code >> 12) & 0x3F));
-            c[k++] = (char)(0x80 | ((code >> 6) & 0x3F));
-            c[k++] = (char)(0x80 | (code & 0x3F));
-        }
-        c[k] = 0;
-        snprintf(out, outlen, "%s", c); return 1;
-    }
-
-    /* value() : évalue une chaîne comme une expression. Le petit vertige
-       d'HyperTalk — du texte qui redevient du calcul. */
-    if (ci_equal(name, "value")) { eval_expr(vals[0], out, outlen); return 1; }
-
-    /* param(n) : le n-ième paramètre. param(0) est le nom du message. */
-    if (ci_equal(name, "param")) {
-        int i = (int)a;
-        snprintf(out, outlen, "%s", (i >= 0 && i < g_nparams) ? g_params[i] : "");
-        return 1;
-    }
-
-    /* --- deux entrées --- */
-    /* Fonctions financières d'HyperCard. Elles paraissent exotiques, mais les
-     * piles de gestion des années 90 en sont truffées — calculs de prêts, de
-     * placements. Deux formules, rien de plus :
-     *   annuity(taux, périodes)  = (1 − (1+taux)^−n) / taux
-     *   compound(taux, périodes) = (1+taux)^n
-     * Le taux nul est un cas limite légitime : l'annuité vaut alors le nombre
-     * de périodes, et la division ferait une erreur. */
-    if (ci_equal(name, "annuity") && nargs >= 2) {
-        double taux = 0, n = 0;
-        as_num(vals[0], &taux); as_num(vals[1], &n);
-        put_num(taux == 0 ? n : (1.0 - pow(1.0 + taux, -n)) / taux, out, outlen);
-        return 1;
-    }
-    if (ci_equal(name, "compound") && nargs >= 2) {
-        double taux = 0, n = 0;
-        as_num(vals[0], &taux); as_num(vals[1], &n);
-        put_num(pow(1.0 + taux, n), out, outlen);
-        return 1;
-    }
-
-    if (ci_equal(name, "offset")) {
-        int pos = 0, nl = (int)strlen(vals[0]), hl = (int)strlen(vals[1]);
-        /* En caractères, comme la version v3 : les deux doivent s'accorder. */
-        for (int i = 0, k = 0; nl && i + nl <= hl;
-             i += hct_utf8_octets(vals[1], i, hl), k++)
-            if (ci_nequal(vals[1] + i, vals[0], nl)) { pos = k + 1; break; }
-        snprintf(out, outlen, "%d", pos);
-        return 1;
-    }
-
-    /* --- nombre variable d'entrées --- */
-    if (ci_equal(name, "min") || ci_equal(name, "max") ||
-        ci_equal(name, "sum") || ci_equal(name, "average") || ci_equal(name, "avg")) {
-        if (nargs == 0) { snprintf(out, outlen, "0"); return 1; }
-        int wantmin = ci_equal(name, "min");
-        double acc = 0, best = 0;
-        for (int i = 0; i < nargs; i++) {
-            double v = 0;
-            as_num(vals[i], &v);
-            acc += v;
-            if (i == 0 || (wantmin ? v < best : v > best)) best = v;
-        }
-        if      (ci_equal(name, "sum")) put_num(acc, out, outlen);
-        else if (ci_equal(name, "min") || ci_equal(name, "max")) put_num(best, out, outlen);
-        else                            put_num(acc / nargs, out, outlen);
-        return 1;
-    }
-
-    /* --- fonction définie par l'utilisateur ---
-     * Dernier recours, après tous les noms intégrés : une pile qui définit
-     * « function length » ne doit pas masquer celle du noyau, comme dans
-     * HyperCard. La recherche part de l'objet dont le script tourne et
-     * remonte la chaîne carte → fond → pile. */
-    {
-        Object *from = g_me ? g_me : g_current_card;
-        char (*uargv)[HC_VAL] = nargs ? arena_rows(nargs) : NULL;
-        if (nargs && !uargv) { out[0] = '\0'; return 1; }
-        for (int i = 0; i < nargs; i++)
-            snprintf(uargv[i], sizeof uargv[i], "%s", vals[i]);
-        if (hc_call_user_function(from, name, uargv, nargs)) {
-            snprintf(out, outlen, "%s", g_result);
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-static int call_function(const char *t, char *out, int outlen)
-{
-    ARENA_MARK;
-    int r = call_function_body(t, out, outlen);
-    ARENA_FREE;
-    return r;
-}
 
 /* ==================== propriétés géométriques ==================== */
 
@@ -6802,22 +6194,12 @@ static int is_prop_name(const char *w, int len)
     return 0;
 }
 
-/* « <propriété> of … » sans « the » devant ? */
-static int prop_word_before_of(const char *t)
-{
-    const char *w = skip_spaces(t);
-    const char *q = w;
-    while (*q && !isspace((unsigned char)*q)) q++;
-    if (q == w) return 0;
-    if (!is_prop_name(w, (int)(q - w))) return 0;
-    return ci_word(skip_spaces(q), "of");
-}
 
 /* Lecture d'une propriété sur un objet DÉJÀ RÉSOLU.
  *
- * Extrait tel quel de term_value, sans une ligne de changement : c'était le
- * seul lecteur de propriétés du programme, et il n'était atteignable qu'en
- * lui donnant du TEXTE à réanalyser. La v3 tient l'objet, pas son nom — il
+ * Extrait tel quel de l'ancien term_value, sans une ligne de changement :
+ * c'était le seul lecteur de propriétés du programme, et il n'était
+ * atteignable qu'en lui donnant du TEXTE à réanalyser. La v3 tient l'objet, pas son nom — il
  * lui fallait donc la même chaîne de tests, mais prise par l'autre bout.
  *
  * Rend 1 si `prop` a été reconnue et `out` renseigné, 0 sinon — auquel cas
@@ -6835,10 +6217,9 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
      * de l'objet parmi ses semblables, à ne pas confondre avec le comptage
      * qu'est « the number of cards ».
      *
-     * term_value le traite bien avant d'arriver ici, mais l'évaluateur v3,
-     * lui, passe par lit_prop : sans cette entrée, « the number of this
-     * card » repartait à chaque fois vers l'ancien interpréteur par
-     * reconstitution du texte source. */
+     * L'évaluateur passe par lit_prop : sans cette entrée, « the number of
+     * this card » repartait à chaque fois vers l'ancien interpréteur par
+     * reconstitution du texte source, du temps où il existait. */
     if (ci_equal(prop, "number")) {
         if (o->type == OBJ_CARD) {
             int n = card_index(o->owner, o);
@@ -7088,559 +6469,9 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     return 0;
 }
 
-static void term_value_body(const char *t, char *out, int outlen)
-{
-    v1_compte("v1 terme", g_v1_porte);
-    t = skip_spaces(t);
-    out[0] = '\0';
-    if (!*t) return;
-
-    if (*t == '"') { quoted(t, out, outlen); return; }
-
-    /* --- constantes --- */
-    if (ci_equal(t, "return") || ci_equal(t, "linefeed")) { snprintf(out, outlen, "\n"); return; }
-    if (ci_equal(t, "space"))  { snprintf(out, outlen, " ");  return; }
-    if (ci_equal(t, "tab"))    { snprintf(out, outlen, "\t"); return; }
-    if (ci_equal(t, "quote"))  { snprintf(out, outlen, "\""); return; }
-    if (ci_equal(t, "comma"))  { snprintf(out, outlen, ",");  return; }
-    if (ci_equal(t, "empty"))  { out[0] = '\0'; return; }
-
-    /* --- expressions de morceau : word 2 of …, the last line of … --- */
-    if (chunk_read(t, out, outlen)) return;
-
-    /* --- the number of <morceaux> in|of <expr> --- */
-    if (ci_word(t, "the") || ci_word(t, "number")) {
-        const char *w = ci_word(t, "the") ? skip_spaces(t + 3) : t;
-        if (ci_word(w, "number")) {
-            const char *k = skip_spaces(w + 6);
-            if (ci_word(k, "of")) k = skip_spaces(k + 2);
-
-            /* the number of cards [of <fond|pile>] : sans complément, les
-             * cartes de la pile courante ; avec un fond, les seules cartes
-             * qui s'y appuient. Le complément était ignoré, si bien que
-             * « the number of cards of bg 3 » rendait le total de la pile. */
-            if (ci_word(k, "cards") || ci_word(k, "cds")) {
-                const char *r = k;
-                while (*r && !isspace((unsigned char)*r)) r++;
-                r = skip_spaces(r);
-                if (ci_word(r, "of") || ci_word(r, "in")) r = skip_spaces(r + 2);
-
-                Object *p = g_current_card ? g_current_card->owner : NULL;
-                while (p && p->type != OBJ_STACK) p = p->owner;
-
-                if (*r) {
-                    Object *o = resolve(r);
-                    if (o && o->type == OBJ_BACKGROUND) {
-                        int n = 0;
-                        for (int i = 0; p && i < p->nparts; i++)
-                            if (p->parts[i]->type == OBJ_CARD && p->parts[i]->bg == o) n++;
-                        snprintf(out, outlen, "%d", n);
-                        return;
-                    }
-                    if (o && o->type == OBJ_STACK) p = o;
-                }
-                snprintf(out, outlen, "%d", card_count(p));
-                return;
-            }
-            /* the number of backgrounds : les fonds de la pile courante.
-             * Placé avant la branche « bg buttons/fields » de plus bas, qui
-             * reconnaît « background » comme une portée et non comme le type
-             * à compter — sans cette priorité, « backgrounds » y tomberait. */
-            if (ci_word(k, "backgrounds") || ci_word(k, "bkgnds") ||
-                ci_word(k, "bgs")) {
-                Object *p = g_current_card ? g_current_card->owner : NULL;
-                while (p && p->type != OBJ_STACK) p = p->owner;
-                int n = 0;
-                if (p) for (int i = 0; i < p->nparts; i++)
-                    if (p->parts[i]->type == OBJ_BACKGROUND) n++;
-                snprintf(out, outlen, "%d", n);
-                return;
-            }
-            /* the number of [card|bg] buttons|fields [of <carte>]
-             *
-             * La portée manquait : « the number of fields » additionnait la
-             * carte ET le fond, alors que les rangs, eux, se comptent
-             * séparément dans chacun. Sur une carte de 3 champs posée sur un
-             * fond qui en porte 3, le compteur annonçait 6 et « field 4 » ne
-             * désignait rien — toute boucle « repeat with f = 1 to the number
-             * of fields » partait droit dans le mur. Le total reste la valeur
-             * par défaut, par compatibilité, mais on peut désormais demander
-             * l'un ou l'autre. */
-            {
-                const char *k2 = k;
-                int scope = 0;              /* 0 = total, 1 = carte, 2 = fond */
-                if (ci_word(k2, "card") || ci_word(k2, "cd")) {
-                    const char *a = k2;
-                    while (*a && !isspace((unsigned char)*a)) a++;
-                    a = skip_spaces(a);
-                    if (ci_word(a, "buttons") || ci_word(a, "btns") ||
-                        ci_word(a, "fields")  || ci_word(a, "flds")) { scope = 1; k2 = a; }
-                } else if (ci_word(k2, "bg") || ci_word(k2, "background")) {
-                    const char *a = k2;
-                    while (*a && !isspace((unsigned char)*a)) a++;
-                    a = skip_spaces(a);
-                    if (ci_word(a, "buttons") || ci_word(a, "btns") ||
-                        ci_word(a, "fields")  || ci_word(a, "flds")) { scope = 2; k2 = a; }
-                }
-
-                /* the number of marked cards : combien de cartes sont
-                 * désignées. Ici et non parmi les propriétés — « the number
-                 * of » a son propre chemin d'analyse, et une propriété nommée
-                 * « markedcards » n'y serait jamais consultée. */
-                if (ci_word(k2, "marked")) {
-                    const char *r2 = skip_spaces(k2 + 6);
-                    if (ci_word(r2, "cards") || ci_word(r2, "cds")) {
-                        Object *p = g_current_card ? g_current_card->owner : NULL;
-                        while (p && p->type != OBJ_STACK) p = p->owner;
-                        int m = 0;
-                        if (p) for (int i = 0; i < p->nparts; i++)
-                            if (p->parts[i]->type == OBJ_CARD && p->parts[i]->marked) m++;
-                        snprintf(out, outlen, "%d", m);
-                        return;
-                    }
-                }
-
-                if (ci_word(k2, "buttons") || ci_word(k2, "btns") ||
-                    ci_word(k2, "fields")  || ci_word(k2, "flds")) {
-                    ObjType want = (k2[0]=='b' || k2[0]=='B') ? OBJ_BUTTON : OBJ_FIELD;
-                    /* SANS COUCHE, LE COMPTE SUIT LA COUCHE PAR DÉFAUT : les
-                     * champs du FOND, les boutons de la CARTE. Il additionnait
-                     * les deux « par compatibilité ». Mesuré DANS HYPERCARD :
-                     * 4 champs de carte et 3 de fond donnent « the number of
-                     * fields » = 3 ; 2 boutons de carte et 1 de fond donnent
-                     * « the number of buttons » = 2. HC disait 7 et 3. Voir
-                     * couche_implicite. */
-                    if (scope == 0) scope = (want == OBJ_FIELD) ? 2 : 1;
-                    const char *r = k2;
-                    while (*r && !isspace((unsigned char)*r)) r++;
-                    r = skip_spaces(r);
-                    if (ci_word(r, "of")) r = skip_spaces(r + 2);
-                    Object *card = *r ? resolve(r) : g_current_card;
-                    if (card && card->type != OBJ_CARD && card->type != OBJ_BACKGROUND)
-                        card = g_current_card;
-                    int n = 0;
-                    if (card) {
-                        /* Un fond désigné explicitement ne compte que le sien. */
-                        int own = (scope != 2) || card->type == OBJ_BACKGROUND;
-                        if (own)
-                            for (int i = 0; i < card->nparts; i++)
-                                if (card->parts[i]->type == want) n++;
-                        if (scope != 1 && card->type == OBJ_CARD && card->bg)
-                            for (int i = 0; i < card->bg->nparts; i++)
-                                if (card->bg->parts[i]->type == want) n++;
-                    }
-                    snprintf(out, outlen, "%d", n);
-                    return;
-                }
-            }
-            int used = 0;
-            ChunkType ct = chunk_kind(k, &used);
-            if (ct != CH_NONE) {
-                const char *r = skip_spaces(k + used);
-                if (ci_word(r, "in") || ci_word(r, "of")) r = skip_spaces(r + 2);
-                char *src = arena_buf();
-                eval_expr(r, src, HC_VAL);
-                snprintf(out, outlen, "%d", chunk_count(src, ct));
-                return;
-            }
-
-            /* the number of <objet> : son RANG parmi ses semblables.
-             *
-             * « the number of field "test" » répond 2 si c'est le deuxième
-             * champ de son propriétaire. C'est le pendant exact de la
-             * désignation par rang, et donc de quoi savoir quel chiffre écrire
-             * dans « field N » — ou constater qu'un champ vit sur le fond et
-             * non sur la carte. En dernier recours : les morceaux et les
-             * pluriels ont déjà eu leur tour, il ne reste qu'un objet. */
-            {
-                Object *ob = resolve(k);
-                if (ob && (ob->type == OBJ_BUTTON || ob->type == OBJ_FIELD)) {
-                    int n = hc_object_number(ob);
-                    if (n > 0) { snprintf(out, outlen, "%d", n); return; }
-                }
-                if (ob && ob->type == OBJ_CARD) {
-                    int n = card_index(ob->owner, ob);
-                    if (n >= 0) { snprintf(out, outlen, "%d", n + 1); return; }
-                }
-            }
-        }
-    }
-
-    /* --- fonctions intégrées --- */
-    if (call_function(t, out, outlen)) return;
-
-    /* --- [the] [short|long] <propriété> of <objet> ---
-     * HyperCard tolère l'omission de « the » : « bottom of this cd »,
-     * « loc of me ». On ne l'accepte que si le premier mot est bien un nom
-     * de propriété connu, sinon « item 1 of x » ou une variable suivie de
-     * « of » se feraient happer. */
-    if (ci_word(t, "the") || prop_word_before_of(t)) {
-        const char *w = ci_word(t, "the") ? skip_spaces(t + 3) : t;
-
-        int forme = HC_NOM_ABREGE;
-        if (ci_word(w, "short")) { forme = HC_NOM_COURT; w = skip_spaces(w + 5); }
-        else if (ci_word(w, "long")) { forme = HC_NOM_LONG; w = skip_spaces(w + 4); }
-        else if (ci_word(w, "abbreviated")) { w = skip_spaces(w + 11); }
-        else if (ci_word(w, "abbrev")) { w = skip_spaces(w + 6); }
-        else if (ci_word(w, "abbr")) { w = skip_spaces(w + 4); }
-
-        const char *of = find_kw(w, "of");
-        if (of) {
-            char prop[32];
-            int pl = (int)(of - w);
-            while (pl > 0 && (w[pl-1] == ' ' || w[pl-1] == '\t')) pl--;
-            if (pl > 0 && pl < (int)sizeof prop) {
-                memcpy(prop, w, (size_t)pl); prop[pl] = '\0';
-
-                /* Lecture sur une plage de texte :
-                 *     if the textStyle of the clickChunk is bold
-                 * La cible peut donc etre calculee : « of + 2 » est evalue
-                 * comme expression si ce n'est pas deja un morceau litteral. */
-                if (ci_equal(prop, "textstyle") || ci_equal(prop, "textfont") ||
-                    ci_equal(prop, "textsize")  || ci_equal(prop, "textcolor")) {
-                    int cst, cen;
-                    Object *cf = chunk_target(of + 2, &cst, &cen);
-                    if (!cf) {
-                        /* LE MORCEAU N'EXISTE PAS : DEUX CAS, ET DEUX
-                         * RÉPONSES DIFFÉRENTES. Mesuré dans HyperCard le
-                         * 27/09/2026, sur un champ contenant « Sun Mon Tue » :
-                         *
-                         *   the textStyle of word 99 of card field "T"
-                         *       -> plain            le champ EXISTE
-                         *   the textStyle of word 2 of card field "Absent"
-                         *       -> erreur, et le script S'ARRÊTE
-                         *
-                         * HC rendait dans les deux cas SA PROPRE PHRASE —
-                         * « textStyle of word 99 of card field "T" ». Un
-                         * « if the textStyle of word 99 of f is "bold" »
-                         * comparait donc à une phrase, et la comparaison
-                         * était fausse sans jamais se plaindre.
-                         *
-                         * Ici on traite le premier cas : le champ est là, le
-                         * morceau non, et la propriété vaut son défaut. On
-                         * lit une plage VIDE placée à la FIN du texte — pas
-                         * au début : un champ dont le premier mot est en gras
-                         * rendrait « bold » pour un mot qui n'existe pas. Le
-                         * second cas est refusé par v3_prop_sur_morceau, qui
-                         * rend la main à hct_eval pour qu'il lève l'erreur. */
-                        const char *base = chunk_base_ref(of + 2);
-                        Object *ob = (base && *base) ? resolve(base) : NULL;
-                        if (ob && ob->type == OBJ_FIELD) {
-                            cf = ob;
-                            cst = cen = (int)strlen(hc_field_text(ob));
-                        }
-                    }
-                    if (cf) {
-                        struct RunList *rl = runs_of(cf);
-                        if (ci_equal(prop, "textcolor")) {
-                            /* Rendue en « r,v,b » : c'est la forme qu'un
-                             * script peut décomposer avec « item 1 of », et
-                             * celle que « set the textColor » réaccepte. */
-                            int col = runs_get_color(rl, cst, cen - cst);
-                            if (col == HC_COLOR_INHERIT) snprintf(out, outlen, "0,0,0");
-                            else if (col < 0)            snprintf(out, outlen, "mixed");
-                            else snprintf(out, outlen, "%d,%d,%d",
-                                          (col >> 16) & 255, (col >> 8) & 255, col & 255);
-                        } else if (ci_equal(prop, "textstyle")) {
-                            style_to_names(runs_get_style(rl, cst, cen - cst,
-                                                          cf->textstyle),
-                                           out, outlen);
-                        } else if (ci_equal(prop, "textfont")) {
-                            runs_get_font(rl, cst, cen - cst, cf->textfont,
-                                          out, outlen);
-                        } else {
-                            int sz = runs_get_size(rl, cst, cen - cst, cf->textsize);
-                            if (sz < 0) snprintf(out, outlen, "mixed");
-                            else        snprintf(out, outlen, "%d", sz);
-                        }
-                        return;
-                    }
-                }
-
-                Object *o = resolve(of + 2);
-                if (o && obj_prop_read(o, prop, forme, out, outlen))
-                    return;
-            }
-        }
-    }
-
-    /* --- un objet ? champ → contenu, autre → sa désignation --- */
-    Object *o = resolve(t);
-    if (o) {
-        if (o->type == OBJ_FIELD) snprintf(out, outlen, "%s", hc_field_text(o));
-        else                      hc_describe(o, out, outlen);
-        return;
-    }
-
-    /* --- une variable ? --- */
-    if (!strchr(t, ' ')) {
-        const char *v = var_get(t);
-        if (v) { snprintf(out, outlen, "%s", v); return; }
-    }
-
-    /* --- une propriété globale ? (« the mouse », « the mouseLoc »…) ---
-     * Après les variables : un script qui nomme sa variable « mouse » garde
-     * la priorité, comme dans HyperCard. */
-    {
-        const char *g = t;
-        if (ci_word(g, "the")) g = skip_spaces(g + 3);
-        if (*g && !strchr(g, ' ')) {
-            const char *v = host_global(g);
-            if (v) { snprintf(out, outlen, "%s", v); return; }
-        }
-    }
-    /* --- « the width of card window », « the height of card window » ---
-     *
-     * La fenêtre de la pile. HyperCard la traite comme un objet à part
-     * entière, avec ses propriétés de géométrie ; on n'implémente ici que
-     * les quatre qui servent réellement dans les scripts d'époque, à partir
-     * de la taille de la pile courante.
-     *
-     * Graph Maker s'en sert pour contraindre le déplacement de ses boutons
-     * aux bords de la carte :
-     *
-     *     doDragBtn name of me,0,62,width of card window,height of card window
-     */
-    {
-        const char *g = t;
-        if (ci_word(g, "the")) g = skip_spaces(g + 3);
-
-        char prop[32];
-        const char *ap = next_word(g, prop, sizeof prop);
-        ap = skip_spaces(ap);
-        if (ci_word(ap, "of")) ap = skip_spaces(ap + 2);
-        if (ci_word(ap, "card") || ci_word(ap, "cd"))
-            ap = skip_spaces(ap + (ci_word(ap, "cd") ? 2 : 4));
-
-        if (ci_word(ap, "window")) {
-            Object *st = owning_stack(g_current_card);
-            int w = st && st->w ? st->w : 512;
-            int h = st && st->h ? st->h : 342;
-
-            if      (ci_equal(prop, "width"))  { snprintf(out, outlen, "%d", w); return; }
-            else if (ci_equal(prop, "height")) { snprintf(out, outlen, "%d", h); return; }
-            else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle")) {
-                snprintf(out, outlen, "0,0,%d,%d", w, h); return;
-            }
-            else if (ci_equal(prop, "loc") || ci_equal(prop, "location")) {
-                snprintf(out, outlen, "%d,%d", w / 2, h / 2); return;
-            }
-        }
-    }
-    /* --- sinon littéral non quoté, comme le faisait HyperCard --- */
-    snprintf(out, outlen, "%s", t);
-}
-
-static void term_value(const char *t, char *out, int outlen)
-{
-    ARENA_MARK;
-    term_value_body(t, out, outlen);
-    ARENA_FREE;
-}
-
-static void parse_expr(const char **p, char *out, int outlen);
 
 static int truthy(const char *s);
 
-static void parse_factor(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    const char *s = skip_spaces(*p);
-    out[0] = '\0';
-
-    if (*s == '(') {
-        *p = s + 1;
-        parse_expr(p, out, outlen);
-        s = skip_spaces(*p);
-        if (*s == ')') s++;
-        *p = s;
-        { ARENA_FREE; return; }
-    }
-    if (*s == '-') {
-        char *v = arena_buf();
-        double d = 0;
-        *p = s + 1;
-        parse_factor(p, v, HC_VAL);
-        as_num(v, &d);
-        put_num(-d, out, outlen);
-        { ARENA_FREE; return; }
-    }
-    /* `not` est au niveau 2 chez Apple, aussi serré que le moins unaire :
-       « not 5 > 2 » se lit « (not 5) > 2 ». */
-    if (ci_word(s, "not")) {
-        char *v = arena_buf();
-        *p = s + 3;
-        parse_factor(p, v, HC_VAL);
-        snprintf(out, outlen, "%s", truthy(v) ? "false" : "true");
-        { ARENA_FREE; return; }
-    }
-    /* « there is a <objet> » / « there is no <objet> » / « there is not a … »
-     * Tout ce qui suit désigne l'objet : l'expression s'arrête là, ce qui
-     * suffit puisque la forme n'apparaît jamais qu'en position de condition. */
-    if (ci_word(s, "there")) {
-        const char *q = skip_spaces(s + 5);
-        if (ci_word(q, "is")) {
-            q = skip_spaces(q + 2);
-            int negate = 0;
-            if (ci_word(q, "not"))     { negate = 1; q = skip_spaces(q + 3); }
-            else if (ci_word(q, "no")) { negate = 1; q = skip_spaces(q + 2); }
-            if (ci_word(q, "an"))      q = skip_spaces(q + 2);
-            else if (ci_word(q, "a"))  q = skip_spaces(q + 1);
-
-            char *ref = arena_buf();
-            snprintf(ref, HC_VAL, "%s", q);
-            int k = (int)strlen(ref);
-            while (k > 0 && isspace((unsigned char)ref[k-1])) ref[--k] = '\0';
-
-            int found = resolve(ref) != NULL;
-            snprintf(out, outlen, "%s", (found != negate) ? "true" : "false");
-            *p = q + strlen(q);
-            { ARENA_FREE; return; }
-        }
-    }
-
-    if (isdigit((unsigned char)*s) || (*s == '.' && isdigit((unsigned char)s[1]))) {
-        char *e;
-        double d = strtod(s, &e);
-        *p = e;
-        put_num(d, out, outlen);
-        { ARENA_FREE; return; }
-    }
-    if (*s == '"') {                 /* littéral : on ne prend que lui */
-        *p = quoted(s, out, outlen);
-        { ARENA_FREE; return; }
-    }
-
-    char *ref = arena_buf();
-    const char *before = s;
-    collect_ref(&s, ref, HC_VAL);
-    if (s == before && *s) s++;      /* jamais de sur-place : pas de boucle infinie */
-    *p = s;
-    term_value(ref, out, outlen);
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-/* niveau 3 : exponentiation, associative à droite */
-static void parse_power(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_factor(p, out, outlen);
-    const char *s = skip_spaces(*p);
-    if (*s != '^') return;
-    *p = s + 1;
-
-    char *rhs = arena_buf();
-    double a = 0, b = 0;
-    parse_power(p, rhs, HC_VAL);      /* récursif : 2^3^2 = 2^(3^2) */
-    as_num(out, &a); as_num(rhs, &b);
-    put_num(pow(a, b), out, outlen);
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-static void parse_product(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_power(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        int op;
-        if      (*s == '*')          { op = '*'; s += 1; }
-        else if (*s == '/')          { op = '/'; s += 1; }
-        else if (ci_word(s, "mod"))  { op = 'm'; s += 3; }
-        else if (ci_word(s, "div"))  { op = 'd'; s += 3; }
-        else break;
-        *p = s;
-
-        char *rhs = arena_buf();
-        double a = 0, b = 0, r = 0;
-        parse_power(p, rhs, HC_VAL);
-        as_num(out, &a); as_num(rhs, &b);
-        if      (op == '*') r = a * b;
-        else if (op == '/') r = (b != 0) ? a / b : 0;
-        /* Même raison que pour trunc plus haut : le cast est indéfini hors
-         * plage. « div » tronque vers zéro et « mod » en découle. */
-        else if (op == 'd') r = (b != 0) ? trunc(a / b) : 0;
-        else                r = (b != 0) ? a - b * trunc(a / b) : 0;
-        put_num(r, out, outlen);
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-static void parse_sum(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_product(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        if (*s != '+' && *s != '-') break;
-        int op = *s++;
-        *p = s;
-
-        char *rhs = arena_buf();
-    double a = 0, b = 0;
-        parse_product(p, rhs, HC_VAL);
-        as_num(out, &a); as_num(rhs, &b);
-        put_num(op == '+' ? a + b : a - b, out, outlen);
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-static void parse_concat(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_sum(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        int space;
-        if      (s[0] == '&' && s[1] == '&') { space = 1; s += 2; }
-        else if (s[0] == '&')                { space = 0; s += 1; }
-        else break;
-        *p = s;
-
-        char *rhs = arena_buf();
-        parse_sum(p, rhs, HC_VAL);
-        int n = (int)strlen(out);
-        if (space && n < outlen - 1) { out[n++] = ' '; out[n] = '\0'; }
-        snprintf(out + n, (size_t)(outlen - n), "%s", rhs);
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-/* Compare deux valeurs. Numérique si les deux en sont, sinon texte
-   sans tenir compte de la casse — comme HyperTalk. */
-static int compare_vals(int op, const char *x, const char *y)
-{
-    double a, b;
-    if (op == 'c') return ci_strstr(x, y);      /* contains */
-    if (op == 'i') return ci_strstr(y, x);      /* is in : l'inverse */
-    if (as_num(x, &a) && as_num(y, &b)) {
-        switch (op) {
-            case '=': return a == b;
-            case '!': return a != b;
-            case '<': return a <  b;
-            case '>': return a >  b;
-            case 'l': return a <= b;
-            default:  return a >= b;
-        }
-    }
-    /* Texte : hct_compare applique la même règle — numérique si les DEUX
-     * opérandes le sont, sinon comparaison insensible à la casse. On n'arrive
-     * ici que dans le second cas, les nombres ayant été traités au-dessus. */
-    int c = hct_compare(x, y, NULL);
-    switch (op) {
-        case '=': return c == 0;
-        case '!': return c != 0;
-        case '<': return c <  0;
-        case '>': return c >  0;
-        case 'l': return c <= 0;
-        default:  return c >= 0;
-    }
-}
 
 static int truthy(const char *s)
 {
@@ -7852,231 +6683,27 @@ static int prop_globale_noyau(const char *prop, const char *val)
 /* ---- tests de type pour « is a[n] <type> » ----
    Le guide (chapitre 7) donne : number, integer, point, rect, date, logical. */
 
-static void trim_copy(const char *s, char *out, int outlen)
-{
-    s = skip_spaces(s);
-    snprintf(out, outlen, "%s", s);
-    int n = (int)strlen(out);
-    while (n > 0 && (out[n-1] == ' ' || out[n-1] == '\t')) out[--n] = '\0';
-}
-
-static int is_int_str(const char *s)
-{
-    double d;
-    if (!as_num(s, &d)) return 0;
-    /* « d == (double)(long long)d » était indéfini dès que d sortait de la
-     * plage d'un long long, et as_num accepte « 1e300 ». trunc() répond à la
-     * même question — « ce nombre a-t-il une partie fractionnaire ? » — sans
-     * jamais quitter le domaine des flottants. Un infini n'est pas un entier,
-     * et un NaN n'est égal à rien, y compris à lui-même : les deux sont donc
-     * traités au passage. */
-    if (!(d == d) || d > 1e308 || d < -1e308) return 0;
-    return d == trunc(d);
-}
-
-/* nombre d'items entiers séparés par des virgules ; -1 si l'un ne l'est pas */
-static int int_items(const char *s)
-{
-    int n = 0;
-    char buf[64];
-    const char *p = s;
-    for (;;) {
-        const char *c = strchr(p, ',');
-        int len = c ? (int)(c - p) : (int)strlen(p);
-        if (len > (int)sizeof buf - 1) return -1;
-        memcpy(buf, p, (size_t)len); buf[len] = '\0';
-        if (!is_int_str(buf)) return -1;
-        n++;
-        if (!c) break;
-        p = c + 1;
-    }
-    return n;
-}
 
 /* Forme numérique seulement (12/25/96, 1996-12-25). Sans horloge dans le
    noyau, on ne reconnaît pas encore « December 25, 1996 ». */
-/* « is a date » et « convert » doivent s'accorder : ce que l'un accepte,
- * l'autre doit le reconnaître. Sans quoi un script qui valide une saisie
- * par « if it is a date then convert it » tourne en boucle sur une date
- * pourtant convertible — les dateItems, par exemple. */
-static int looks_like_date(const char *s)
-{
-    struct tm tm;
-    return parse_datetime(s, &tm);
-}
 
-static int is_of_type(const char *v, const char *ty)
-{
-    ARENA_MARK;
-    char *t = arena_buf();
-    double d;
-    trim_copy(v, t, HC_VAL);
-
-    if (ci_equal(ty, "number"))    return as_num(t, &d);
-    if (ci_equal(ty, "integer"))   return is_int_str(t);
-    if (ci_equal(ty, "logical") || ci_equal(ty, "boolean"))
-        { ARENA_FREE; return ci_equal(t, "true") || ci_equal(t, "false"); }
-    if (ci_equal(ty, "point"))     return int_items(t) == 2;
-    if (ci_equal(ty, "rect") || ci_equal(ty, "rectangle")) return int_items(t) == 4;
-    if (ci_equal(ty, "date"))      return looks_like_date(t);
-    { ARENA_FREE; return 0; }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-/* niveau 7 : comparaisons relationnelles, contains, is in.
-   Attention : un « is » nu appartient au niveau 8, on le laisse passer. */
-static void parse_relational(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_concat(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        int op = 0, neg = 0;
-
-        if      (s[0] == '<' && s[1] == '=') { op = 'l'; s += 2; }
-        else if (s[0] == '>' && s[1] == '=') { op = 'g'; s += 2; }
-        else if (s[0] == '<' && s[1] == '>') break;      /* <> : niveau 8 */
-        else if (s[0] == '<')                { op = '<'; s += 1; }
-        else if (s[0] == '>')                { op = '>'; s += 1; }
-        else if (ci_word(s, "contains"))     { op = 'c'; s += 8; }
-        else if (ci_word(s, "is")) {
-            const char *w = skip_spaces(s + 2);
-            int notted = 0;
-            if (ci_word(w, "not")) { notted = 1; w = skip_spaces(w + 3); }
-
-            if (ci_word(w, "a") || ci_word(w, "an")) {      /* test de type */
-                /* Lire le nom de type lettre à lettre, sans next_word : celui-ci
-                 * s'arrête aux blancs et emporterait la parenthèse fermante de
-                 * « (it is a date) », ce qui faisait échouer tous les tests de
-                 * type placés entre parenthèses. */
-                char ty[32]; int tk = 0;
-                const char *q = skip_spaces(w + (ci_word(w, "an") ? 2 : 1));
-                while (isalpha((unsigned char)*q) && tk < (int)sizeof ty - 1)
-                    ty[tk++] = *q++;
-                ty[tk] = '\0';
-                *p = q;
-                int r = is_of_type(out, ty);
-                if (notted) r = !r;
-                snprintf(out, outlen, "%s", r ? "true" : "false");
-                continue;
-            }
-            if (ci_word(w, "within")) {                     /* point is within rect */
-                *p = w + 6;
-                char *rhs = arena_buf();
-                parse_concat(p, rhs, HC_VAL);
-                int pt[2], rc[4];
-                int r = 0;
-                if (parse_ints(out, pt, 2) == 2 && parse_ints(rhs, rc, 4) == 4)
-                    r = (pt[0] >= rc[0] && pt[0] <= rc[2] &&
-                         pt[1] >= rc[1] && pt[1] <= rc[3]);
-                if (notted) r = !r;
-                snprintf(out, outlen, "%s", r ? "true" : "false");
-                continue;
-            }
-            if (ci_word(w, "in")) { op = 'i'; neg = notted; s = w + 2; }
-            else break;                                     /* « is » / « is not » : niveau 8 */
-        }
-        else break;
-        *p = s;
-
-        char *rhs = arena_buf();
-        parse_concat(p, rhs, HC_VAL);
-        int r = compare_vals(op, out, rhs);
-        if (neg) r = !r;
-        snprintf(out, outlen, "%s", r ? "true" : "false");
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-/* niveau 8 : égalités */
-static void parse_equality(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_relational(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        int op = 0, neg = 0;
-
-        if      (s[0] == '<' && s[1] == '>') { op = '!'; s += 2; }
-        else if (s[0] == '=')                { op = '='; s += 1; }
-        else if (ci_word(s, "is")) {
-            const char *w = skip_spaces(s + 2);
-            if (ci_word(w, "not")) { neg = 1; s = w + 3; }
-            else s += 2;
-            op = '=';
-        }
-        else break;
-        *p = s;
-
-        char *rhs = arena_buf();
-        parse_relational(p, rhs, HC_VAL);
-        int r = compare_vals(op, out, rhs);
-        if (neg) r = !r;
-        snprintf(out, outlen, "%s", r ? "true" : "false");
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-static void parse_and(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_equality(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        if (!ci_word(s, "and")) break;
-        *p = s + 3;
-        char *rhs = arena_buf();
-        parse_equality(p, rhs, HC_VAL);
-        snprintf(out, outlen, "%s", (truthy(out) && truthy(rhs)) ? "true" : "false");
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
-
-static void parse_expr(const char **p, char *out, int outlen)
-{
-    ARENA_MARK;
-    parse_and(p, out, outlen);
-    for (;;) {
-        const char *s = skip_spaces(*p);
-        if (!ci_word(s, "or")) break;
-        *p = s + 2;
-        char *rhs = arena_buf();
-        parse_and(p, rhs, HC_VAL);
-        snprintf(out, outlen, "%s", (truthy(out) || truthy(rhs)) ? "true" : "false");
-    }
-    ARENA_FREE;
-    ARENA_FREE;
-}
 
 /* ==================================================================
- * PONT VERS L'INTERPRÉTEUR v3
+ * LES RAPPELS DE L'INTERPRÉTEUR v3
  *
- * RÉPARTITION DU TRAVAIL PENDANT LA TRANSITION
- *
- * La v3 prend : littéraux, constantes, variables, les dix rangs
+ * La v3 (hct_*.c) prend : littéraux, constantes, variables, les dix rangs
  * d'opérateurs, les morceaux, l'arithmétique, et les fonctions purement
  * calculatoires (abs, sqrt, min, max, offset, round, length…).
  *
- * hc_core.c garde : les références d'objets, les propriétés, les
- * gestionnaires écrits en HyperTalk, et les fonctions du monde. La v3 les
- * lui renvoie par le rappel « recours », qui reconstitue le texte source
- * du sous-arbre et le confie à term_value — laquelle sait déjà tout faire.
+ * hc_core.c lui répond, par les rappels de HctHote : les références
+ * d'objets, les propriétés, les gestionnaires écrits en HyperTalk, et les
+ * fonctions du monde.
  *
- * ------------------------------------------------------------------
- * LA FRAGILITÉ DE CE PONT, ET POURQUOI ELLE EST ACCEPTABLE
- *
- * La reconstitution du texte ne peut restituer que ce qui figure dans
- * l'arbre. Tout ce que l'analyseur consomme SANS le ranger dans un nœud
- * disparaît : les parenthèses d'un appel, le « the » facultatif. Chaque
- * cas se rattrape ici, au coup par coup — voir v3_recours.
- *
- * C'est le prix d'une greffe progressive. Le pont disparaîtra quand la v3
- * saura résoudre les objets et appeler les gestionnaires elle-même, sans
- * repasser par le texte.
+ * Il y a eu, derrière le rappel « recours », un ANCIEN MOTEUR
+ * D'EXPRESSIONS : le texte source du sous-arbre était reconstitué et confié
+ * à term_value. Retiré le 2 octobre — voir docs/mesures/sansv1.txt. Le
+ * recours ne reconstitue plus le texte que pour le rendre en écho, et pour
+ * nommer ce qu'il note dans le relevé.
  * ================================================================== */
 
 /* Reconstitue le texte source d'un sous-arbre.
@@ -8102,9 +6729,7 @@ static void v3_source(const HctNoeud *n, char *out, int outlen)
             /* Une chaîne littérale est rangée SANS ses guillemets : deb
              * pointe après le premier, len s'arrête avant le second. Les
              * bornes du texte source les incluent, sinon la reconstitution
-             * rend « bg field "Data » — chaîne non fermée que term_value ne
-             * peut pas lire, et tout ce qui suit part en vrille sans le
-             * moindre message. */
+             * rend « bg field "Data » — chaîne non fermée. */
             if (c->jeton.genre == HCT_CHAINE) { d--; f++; }
 
             if (!deb || d < deb) deb = d;
@@ -8151,13 +6776,6 @@ static int v3_ecrit_var_nombre(void *d, const char *nom, const char *val,
 
 /* --- recours : objets, propriétés, tout ce que la v3 ne fait pas ----- */
 
-/* Profondeur du recours.
- *
- * Le recours appelle term_value, qui peut à son tour appeler eval_expr —
- * laquelle repasse par le recours. L'imbrication est légitime (une fonction
- * HyperTalk qui en appelle une autre), mais rien ne garantit qu'une tournure
- * inattendue ne bouclera pas sur elle-même. Le plafond transforme une boucle
- * infinie, qui gèlerait l'application, en une erreur visible. */
 /* ==================================================================
  * RÉSOLUTION D'OBJETS DEPUIS L'ARBRE
  *
@@ -8803,9 +7421,29 @@ static int v3_nombre_objets(HctContexte *ctx, const HctNoeud *obj, int *out)
  * finissait juste, l'ancien interpréteur la servant par term_value — mais au
  * prix d'un aller-retour par le texte et de cinq messages inutiles.
  *
- * On s'en tient aux quatre propriétés que term_value sert déjà : ce sont
- * celles qu'emploient les scripts d'époque, et inventer les autres reviendrait
- * à décider seul de ce que HyperCard aurait répondu. */
+ * LA FENÊTRE SE PLACE PAR RAPPORT À L'ÉCRAN, pas par rapport à la carte : la
+ * référence (hypercard.center, fiches top, rectangle) dit que HyperCard
+ * mesure la card window « relative to the top-left corner of the screen with
+ * the menu bar ». Les scripts d'époque s'en servent pour passer d'un point
+ * de la carte à un point de l'écran — rapporté le 2 octobre :
+ *
+ *     put (bottom of target + top of card window + 1) into tp
+ *
+ * qui levait « un nombre est attendu ici » : « top » n'était pas servi. Il
+ * ne l'était pas davantage avant la suppression de l'ancien moteur, vérifié
+ * sur le noyau d'avant.
+ *
+ * L'hôte donne le coin haut-gauche de la carte sur l'écran, par une question
+ * dont le nom contient des espaces — aucun script ne peut la poser lui-même,
+ * comme « is a date ». Sans hôte qui réponde, les harnais par exemple, la
+ * fenêtre est au coin de l'écran, et rect vaut 0,0,largeur,hauteur comme
+ * avant.
+ *
+ * NON MESURÉ DANS HYPERCARD : ni la valeur de ces propriétés, ni « the loc of
+ * card window », que la référence dit être le COIN HAUT-GAUCHE de la fenêtre
+ * sur l'écran et que HC rend encore comme le CENTRE de la carte, comme avant.
+ * Les autres propriétés d'une fenêtre ne sont pas servies : inventer leur
+ * réponse reviendrait à décider seul de ce que HyperCard aurait dit. */
 static int v3_est_fenetre(const HctNoeud *n)
 {
     if (!n || n->genre != HCTN_OBJET)          return 0;
@@ -8831,14 +7469,27 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
     Object *st = owning_stack(g_current_card);
     int w = st && st->w ? st->w : 512;
     int h = st && st->h ? st->h : 342;
-    char b[48];
 
+    /* Le coin haut-gauche de la carte sur l'écran, si l'hôte le sait. */
+    int x0 = 0, y0 = 0, coin[2];
+    const char *o = host_global("card window topLeft");
+    if (o && parse_ints(o, coin, 2) == 2) { x0 = coin[0]; y0 = coin[1]; }
+
+    char b[64];
     if      (ci_equal(prop, "width"))  snprintf(b, sizeof b, "%d", w);
     else if (ci_equal(prop, "height")) snprintf(b, sizeof b, "%d", h);
     else if (ci_equal(prop, "rect") || ci_equal(prop, "rectangle"))
-        snprintf(b, sizeof b, "0,0,%d,%d", w, h);
+        snprintf(b, sizeof b, "%d,%d,%d,%d", x0, y0, x0 + w, y0 + h);
+    else if (ci_equal(prop, "left"))   snprintf(b, sizeof b, "%d", x0);
+    else if (ci_equal(prop, "top"))    snprintf(b, sizeof b, "%d", y0);
+    else if (ci_equal(prop, "right"))  snprintf(b, sizeof b, "%d", x0 + w);
+    else if (ci_equal(prop, "bottom")) snprintf(b, sizeof b, "%d", y0 + h);
+    else if (ci_equal(prop, "topLeft"))
+        snprintf(b, sizeof b, "%d,%d", x0, y0);
+    else if (ci_equal(prop, "bottomRight") || ci_equal(prop, "botRight"))
+        snprintf(b, sizeof b, "%d,%d", x0 + w, y0 + h);
     else if (ci_equal(prop, "loc") || ci_equal(prop, "location"))
-        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);
+        snprintf(b, sizeof b, "%d,%d", w / 2, h / 2);   /* non mesuré, voir plus haut */
     else return 0;
 
     *out = hct_val_texte(b);
@@ -8898,6 +7549,14 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu);
 static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
                             const char *prop, HctValeur *out);
 
+/* Profondeur du recours.
+ *
+ * Le recours évalue — la sonde d'une cible calculée, l'argument d'une
+ * fonction de la pile —, et l'évaluation peut repasser par le recours.
+ * L'imbrication est légitime (une fonction HyperTalk qui en appelle une
+ * autre), mais rien ne garantit qu'une tournure inattendue ne bouclera pas
+ * sur elle-même. Le plafond transforme une boucle infinie, qui gèlerait
+ * l'application, en une erreur visible. */
 static int g_v3_recours_prof = 0;
 
 static void v3_note(const char *quoi, const char *nom);
@@ -9002,7 +7661,7 @@ static int v3_prop_sur_objet(const HctNoeud *n)
  * passer, ce qui est la faute symétrique et pas meilleure.
  *
  * Le cas où le CHAMP existe et où seul le morceau manque n'arrive pas ici : la
- * lecture rend « plain » — la valeur par défaut, voir term_value_body —, donc
+ * lecture rend « plain » — la valeur par défaut —, donc
  * il n'y a pas d'écho et rien à refuser. Les deux moitiés se composent sans se
  * connaître. */
 static int v3_prop_sur_morceau(const HctNoeud *n)
@@ -9171,9 +7830,9 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
                             HctContexte *ctx)
 {
     /* Le recours d'EXPRESSION — distinct de v3_commande, qui rend une ligne
-     * entière. C'est par ici que term_value et call_function, le vieux
-     * moteur d'expressions, sont encore atteints. Sans cette porte ils
-     * comptaient sous « ? », et c'était justement le plus gros total. */
+     * entière : ce que l'évaluateur n'a pas su servir avec ses autres
+     * rappels. C'était la porte de l'ancien moteur d'expressions, retiré le
+     * 2 octobre ; ce qu'elle sert encore se sert ici, sur l'arbre. */
     const char *sauve_porte = v1_porte("recours expr");
     int sonde_manquee = 0;
     (void)d;
@@ -9451,82 +8110,20 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * la pile, et eval_expr la rembobine à chaque expression. */
     ARENA_MARK;
     char *txt = arena_buf();
-    char *val = arena_buf();
 
     v3_source(n, txt, HC_VAL);
- 
+
     if (!txt[0]) { ARENA_FREE; return 0; }
 
-    /* Un appel de fonction demande DEUX rattrapages.
-     *
-     * 1. Les parenthèses ne sont dans aucun nœud : l'arbre ne retient que le
-     *    nom et les arguments. La reconstitution rendait « dayNameData » au
-     *    lieu de « dayNameData() », et « FindHandler("a","b",c » sans sa
-     *    parenthèse fermante.
-     *
-     * 2. Et il faut un ESPACE avant la parenthèse ouvrante. next_word() de
-     *    hc_core.c ne découpe que sur les blancs : avec « dayNameData() »
-     *    elle croit que la fonction s'appelle « dayNameData() », parenthèses
-     *    comprises, et ne trouve rien. Avec « dayNameData () » elle lit le
-     *    nom, puis reconnaît la liste d'arguments.
-     *
-     * Sans ces deux corrections, le calendrier affichait « dayNameData() »
-     * en toutes lettres à la place de ses jours de la semaine. */
-    if (n->genre == HCTN_APPEL) {
-        size_t l = strlen(txt);
-        char *par = strchr(txt, '(');
-
-        if (par && l + 2 < (size_t)HC_VAL) {
-            size_t pos = (size_t)(par - txt);
-            memmove(txt + pos + 1, txt + pos, l - pos + 1);  /* zéro compris */
-            txt[pos] = ' ';
-            l++;
-            txt[l] = ')';
-            txt[l + 1] = '\0';
-        } else if (!par && l + 3 < (size_t)HC_VAL) {
-            txt[l] = ' '; txt[l + 1] = '('; txt[l + 2] = ')'; txt[l + 3] = '\0';
-        }
-    }
-
+    /* PLUS D'ANCIEN MOTEUR DERRIÈRE. Jusqu'au 2 octobre, term_value puis
+     * parse_expr avaient ici leur chance, et ne pas les trouver voulait dire
+     * « je ne sais pas » : ils rendaient alors le texte de la demande, un
+     * ÉCHO. Ils ne sont plus là ; l'écho — txt — est la seule réponse qui
+     * reste, et tout ce qui suit — les refus, les fonctions de la pile — se
+     * juge sur la v3 seule. C'est ce que faisait HC_SANS_V1=1, mesuré sur la suite
+     * entière et dans l'application avant la suppression : voir
+     * docs/mesures/sansv1.txt. */
     g_v3_recours_prof++;
-    val[0] = '\0';
-    /* v1 COUPÉ : on fait comme s'il avait rendu l'écho de la demande, ce
-     * qui est sa façon de dire qu'il ne sait pas. Tout ce qui suit — les
-     * refus, les fonctions de la pile — se juge alors sur la v3 seule. */
-    if (v1_coupe()) snprintf(val, HC_VAL, "%s", txt);
-    else            term_value(txt, val, HC_VAL);
-
-    /* L'analyseur consomme « the » sans le ranger dans aucun nœud : la
-     * reconstitution rend « target » au lieu de « the target », et
-     * « value of x » au lieu de « the value of x ». term_value ne reconnaît
-     * pas ces formes tronquées et retombe sur son littéral non quoté — elle
-     * rend LE TEXTE DE LA DEMANDE.
-     *
-     * On réessaie donc quand le résultat est identique à la demande, mais
-     * SURTOUT PAS quand il est vide : « the result » vaut légitimement vide
-     * lorsque tout s'est bien passé, et traiter ce vide comme un échec
-     * rendait « result » en clair. Le calendrier voyait alors
-     * « if the result <> empty » toujours vrai et refusait toutes les dates. */
-    int echo = 0;
-    if (v1_coupe()) echo = 1;
-    /* Un nœud d'OBJET ne gagne rien à être redemandé avec « the » devant :
-     * « the field "menu" » n'est pas une tournure d'HyperTalk. On s'épargne
-     * ce second appel, qui doublait le coût de chaque référence absente. */
-    if (echo) ;
-    else if (n->genre == HCTN_OBJET && strcmp(val, txt) == 0) echo = 1;
-    else if (strcmp(val, txt) == 0) {
-        char *avec_the = arena_buf();
-        snprintf(avec_the, HC_VAL, "the %s", txt);
-        term_value(avec_the, val, HC_VAL);
-
-        /* Si même avec « the » rien de neuf ne sort, on rend le texte
-         * d'origine plutôt que « the value of x » : c'est ce que faisait
-         * l'ancien évaluateur, et un script peut s'appuyer dessus. */
-        if (strcmp(val, avec_the) == 0) {
-            snprintf(val, HC_VAL, "%s", txt);
-            echo = 1;
-        }
-    }
 
     /* UNE RÉFÉRENCE D'OBJET NE SE REND PAS ELLE-MÊME EN CLAIR.
      *
@@ -9538,9 +8135,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * champ, et s'il n'y en a pas il faut le dire.
      *
      * On rend 0 : hct_eval lève alors « objet introuvable » en nommant la
-     * ligne. L'ancien moteur a déjà eu sa chance juste au-dessus — il peut
-     * résoudre des formes que hct_resout ignore, et celles-là passent. Seul
-     * l'ÉCHEC des deux change de comportement.
+     * ligne.
      *
      * Trouvé par le relevé d'un test de navigation : huit « recours objet:
      * field "menu" » qui ne se voyaient nulle part ailleurs, le script
@@ -9564,22 +8159,15 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * dire — hct_eval lève « fonction inconnue : maFonction » en nommant la
      * ligne.
      *
-     * Le cas où la fonction EXISTE ne passe pas par ici : term_value la
-     * trouve, rend autre chose que la demande, et il n'y a pas d'écho. Seul
-     * l'échec des deux moteurs change de comportement.
-     *
-     * Effet de bord mesuré, et bienvenu : l'échec coûtait QUATRE parcours
-     * complets de la chaîne des messages — term_value, la reprise avec
-     * « the », puis parse_expr — pour un nom que personne ne connaît. Sortir
-     * ici en supprime la moitié. */
+     * Le cas où la fonction EXISTE ne passe pas par ici : v3_fonction la
+     * sert avant que le recours soit appelé. */
     /* « the maFonction of "ok" » : UNE FONCTION DE LA PILE, SOUS LA FORME
      * « the ».
      *
      * L'ancien moteur la servait, après avoir essayé les propriétés ; c'est
      * en le coupant qu'on l'a vu, « objet introuvable » prenant la place du
      * résultat. On la sert donc ici, au même rang : la v3 a déjà essayé les
-     * propriétés avant d'appeler le recours, et l'ancien moteur, quand il est
-     * là, vient de répondre qu'il ne savait rien.
+     * propriétés avant d'appeler le recours.
      *
      * Pas quand la cible est une RÉFÉRENCE D'OBJET : « the zorglub of me »
      * est une propriété mal écrite, qui doit le rester — l'appeler comme une
@@ -9592,7 +8180,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * Ce que fait HyperCard de cette tournure pour une fonction de la pile
      * n'est PAS mesuré : seules ses fonctions intégrées s'écrivent ainsi
      * dans la documentation. On garde ce que faisait HC. */
-    if (echo && ctx && n->genre == HCTN_OF && n->nfils == 2 &&
+    if (ctx && n->genre == HCTN_OF && n->nfils == 2 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
         n->fils[1] && n->fils[1]->genre != HCTN_OBJET &&
         !sonde_manquee && !v3_prop_sur_objet(n) && !v3_prop_sur_morceau(n)) {
@@ -9647,35 +8235,17 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         }
     }
 
-    if (echo && (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
-                 v3_prop_sur_objet(n) || v3_prop_sur_morceau(n) ||
-                 sonde_manquee || v3_prop_inconnue_sur_objet(n))) {
+    if (n->genre == HCTN_OBJET || n->genre == HCTN_APPEL ||
+        v3_prop_sur_objet(n) || v3_prop_sur_morceau(n) ||
+        sonde_manquee || v3_prop_inconnue_sur_objet(n)) {
         ARENA_FREE;
         g_v3_recours_prof--;
         { g_v1_porte = sauve_porte; } return 0;
     }
 
-    /* Dernier recours : l'ANCIEN analyseur.
-     *
-     * Certaines tournures ne vivent que dans parse_factor et n'ont jamais été
-     * portées dans term_value — « there is a <objet> » en est une. term_value
-     * rend alors le texte inchangé, ce qui est justement le signe qu'elle n'a
-     * rien reconnu ; on passe la main à parse_expr, qui les connaît.
-     *
-     * Sans cela, « if there is a cd btn "Drawgraph" » rendait la chaîne
-     * elle-même, jamais true ni false. */
-    if (!v1_coupe() && strcmp(val, txt) == 0) {
-        const char *q = txt;
-        char *essai = arena_buf();
-        essai[0] = '\0';
-        parse_expr(&q, essai, HC_VAL);
-        if (essai[0] && strcmp(essai, txt) != 0)
-            snprintf(val, HC_VAL, "%s", essai);
-    }
-
     g_v3_recours_prof--;
 
-    *out = hct_val_texte(val);
+    *out = hct_val_texte(txt);
     ARENA_FREE;
     g_v1_porte = sauve_porte;
     return 1;
@@ -9684,11 +8254,10 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
  *
  * Les arguments sont DÉJÀ évalués quand ils nous arrivent : on les passe tels
  * quels à la chaîne de messages, au lieu de fabriquer « calData(3) » pour le
- * faire relexer par call_function, qui rappelait la v3 aussitôt. C'est cette
- * boucle-là qui se referme.
+ * faire relexer par l'ancien call_function, qui rappelait la v3 aussitôt.
  *
- * Le tampon vient de l'arène, comme dans call_function_body : huit lignes de
- * HC_VAL ne tiendraient pas sur la pile. */
+ * Le tampon vient de l'arène : huit lignes de HC_VAL ne tiendraient pas sur
+ * la pile. */
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
@@ -9711,14 +8280,14 @@ static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
  * « repeat while the mouse is down ».
  *
  * Une liste explicite plutôt qu'un appel à host_global pour tout nom inconnu :
- * term_value traite bien des choses AVANT d'en arriver là — les constantes,
- * les dates, « the result » —, et court-circuiter aveuglément déplacerait
- * l'ordre de priorité sans qu'on s'en aperçoive. Ajouter un nom ici est une
- * ligne, et c'est le bon prix pour ne pas casser une règle par accident.
+ * bien des choses passent AVANT — les constantes, les dates, « the result » —,
+ * et court-circuiter aveuglément déplacerait l'ordre de priorité sans qu'on
+ * s'en aperçoive. Ajouter un nom ici est une ligne, et c'est le bon prix pour
+ * ne pas casser une règle par accident.
  *
- * Ordre vérifié pour chacun de ces noms : dans term_value_body, seules les
- * constantes, la liste sans argument de call_function_body et les variables
- * passent avant host_global. resolve() n'attrape rien ici — un mot nu sans
+ * L'ordre est celui de l'ancien moteur, vérifié nom par nom de son vivant :
+ * seules les constantes, sa liste sans argument et les variables passaient
+ * avant host_global. resolve() n'attrape rien ici — un mot nu sans
  * mot-clé de type ne désigne aucun objet (vérifié : un champ nommé
  * « pattern » ne répond pas à « put pattern », ni en v1 ni en v3). Un nom
  * que l'hôte ignore rend NULL et reprend le chemin normal, si bien qu'en
@@ -9792,8 +8361,8 @@ static int dans_liste(const char *nom, const char **liste)
  * « stacksInUse » et « the params » peuvent approcher cette taille, mais
  * les deux se servent du même tampon plutôt que d'ajouter une variante.
  *
- * Rend 0 si nom n'est reconnu par rien ici : l'appelant retombe alors sur
- * term_value, exactement comme avant. */
+ * Rend 0 si nom n'est reconnu par rien ici : l'appelant le cherche alors
+ * parmi les fonctions de la pile. */
 static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
 {
     /* formes composées : long date, short time, abbreviated date… */
@@ -9989,7 +8558,7 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
         return 1;
     }
     if (ci_equal(nom, "ticks")) {
-        /* comme dans call_function_body : l'hôte d'abord, lui seul a une
+        /* comme le faisait l'ancien moteur : l'hôte d'abord, lui seul a une
          * horloge fine ; le repli compte depuis le premier appel. */
         const char *hv = host_global(nom);
         if (hv && *hv) { *out = hct_val_texte(hv); return 1; }
@@ -10123,136 +8692,83 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     return 0;
 }
 
-/* ═══ Les noms dont l'ancien moteur n'a jamais rien su faire ═══════════
+/* ═══ « PopUpMenu » : UN XFCN D'ÉPOQUE, IMITÉ ══════════════════════════
  *
- * « setFont geneva,10,center,bold » passe quatre mots nus en arguments.
- * Chacun est évalué, donc cherché comme fonction, donc confié à term_value —
- * qui ne le connaît pas et rend le mot lui-même. L'appel n'apprend rien, et
- * il recommence à chaque tour de boucle : dix-huit fois « geneva », seize
- * fois « plain », huit fois « left » sur une seule séance de Graph Maker.
+ *     put PopUpMenu(list,,tp,lp) into it
+ *     get item it of list
  *
- * La réponse ne peut pas changer. Ce que term_value sait servir est fixé à
- * la compilation — des fonctions intégrées et des propriétés —, jamais des
- * noms que la pile inventerait en route : ceux-là sont servis APRÈS, par
- * v3_fonction_pile, et n'arrivent donc jamais ici. Un nom qui a échoué une
- * fois échouera toujours ; on le note et on ne redemande plus.
+ * PopUpMenu XFCN, d'Andrew Gilmartin (Brown University) : un menu local
+ * fait d'une liste d'items, l'article coché placé au point (top, left) de
+ * l'ÉCRAN, et le rang de l'article choisi en retour. Rapporté le 2 octobre
+ * dans « Minkowski Stack 1 » (1992), dont la notice le décrit ainsi :
  *
- * On ne note QUE l'écho — le cas où term_value rend le mot qu'on lui a
- * donné. Une réponse vide légitime, « the selection » quand rien n'est
- * sélectionné, ne ressemble pas à un écho et n'est pas mise en cache.
+ *     PopUpMenu( MenuItems, CheckedItem, Top, Left );
  *
- * Table courte et bornée : les mots nus d'un script se comptent en dizaines,
- * et déborder ne coûte que de refaire l'emprunt comme avant. */
-#define V3_MUETS_MAX 64
-static char g_muets[V3_MUETS_MAX][40];
-static int  g_nmuets = 0;
-
-static int v1_est_muet(const char *nom)
+ * Son code 68000 vivait dans la ressource de la pile, et ne peut pas tourner
+ * ici. On l'imite, AU RANG OÙ HYPERCARD L'AURAIT TROUVÉ : après la chaîne des
+ * messages — une pile qui définit sa propre fonction PopUpMenu garde donc la
+ * main — et seulement si l'hôte sait afficher un menu.
+ *
+ * Les articles se séparent par la VIRGULE, quel que soit itemDelimiter : un
+ * XFCN de 1990 ne le connaissait pas. Des métacaractères du Menu Manager, on
+ * ne garde que ceux que la pile emploie : « - » est un trait, « ( » grise
+ * l'article — d'où le « (- » de la pile, trait grisé. Le rang rendu compte
+ * les traits, comme le Menu Manager ; c'est ce que suppose « item it of
+ * list ».
+ *
+ * NON MESURÉ, faute de l'XFCN sous la main : ce qu'il rend quand on ne
+ * choisit rien — 0 ici, que « item 0 of list » change en vide —, et le sort
+ * des autres métacaractères (« ! », « < », « / », « ^ », « ; »), rendus tels
+ * quels. */
+static int v3_popupmenu(HctValeur *args, int nargs, HctValeur *out)
 {
-    for (int i = 0; i < g_nmuets; i++)
-        if (ci_equal(g_muets[i], nom)) return 1;
-    return 0;
+    if (!g_host || !g_host->popup_menu) return 0;
+    if (nargs < 1 || nargs > 4) return 0;
+
+    const char *liste = args[0].txt ? args[0].txt : "";
+    char *lignes = malloc(strlen(liste) + 2);
+    if (!lignes) return 0;
+    size_t k = 0;
+    for (const char *p = liste; ; ) {
+        const char *fin = strchr(p, ',');
+        size_t n = fin ? (size_t)(fin - p) : strlen(p);
+        if ((n == 2 && p[0] == '(' && p[1] == '-') || (n == 1 && p[0] == '-')) {
+            lignes[k++] = '-';
+        } else {
+            for (size_t i = 0; i < n; i++)
+                lignes[k++] = (p[i] == '\n' || p[i] == '\r') ? ' ' : p[i];
+        }
+        if (!fin) break;
+        lignes[k++] = '\n';
+        p = fin + 1;
+    }
+    lignes[k] = '\0';
+
+    int coche = 0, haut = HC_PAS_DE_POINT, gauche = HC_PAS_DE_POINT, hors;
+    if (nargs >= 2 && hct_est_nombre(args[1].txt)) {
+        int v = hct_vers_rang(args[1].txt, &hors);
+        if (!hors && v > 0) coche = v;
+    }
+    if (nargs >= 4 && hct_est_nombre(args[2].txt) && hct_est_nombre(args[3].txt)) {
+        int h1, h2;
+        int v = hct_vers_rang(args[2].txt, &h1);
+        int g = hct_vers_rang(args[3].txt, &h2);
+        if (!h1 && !h2) { haut = v; gauche = g; }
+    }
+
+    int r = g_host->popup_menu(lignes, coche, haut, gauche);
+    free(lignes);
+    char b[24];
+    snprintf(b, sizeof b, "%d", r > 0 ? r : 0);
+    *out = hct_val_texte(b);
+    return 1;
 }
-
-static void v1_note_muet(const char *nom)
-{
-    if (!nom || !*nom) return;
-    if ((int)strlen(nom) >= (int)sizeof g_muets[0]) return;   /* trop long */
-    if (g_nmuets >= V3_MUETS_MAX) return;
-    if (v1_est_muet(nom)) return;
-    snprintf(g_muets[g_nmuets], sizeof g_muets[0], "%s", nom);
-    g_nmuets++;
-}
-
-/* ═══ CE QUE L'ANCIEN MOTEUR SAIT SERVIR SANS ARGUMENT ════════════════
- *
- * La liste est EXTRAITE de call_function_body et de G_REGLAGES, pas devinée :
- * ce sont tous les noms que « the <nom> » peut y trouver. Elle est fermée, et
- * c'est le but — un nom qui n'y figure pas n'a rien à aller demander là-bas.
- *
- * POURQUOI ELLE EXISTE. v3_fonction sondait l'ancien moteur pour TOUT nom
- * qu'elle ne servait pas elle-même : « est-ce que tu connais ça ? ». Mesuré
- * sur les 192 harnais, cela faisait 348 sondes, 63 % de toutes les entrées
- * dans term_value / call_function. Mesuré nom par nom sur 118 candidats,
- * l'ancien moteur en servait UN : « the tool » — et seulement parce qu'il
- * avait un défaut que la v3 n'avait pas. Ce défaut est maintenant des deux
- * côtés, juste au-dessus.
- *
- * Autrement dit : on posait 348 questions pour une réponse, et la réponse
- * tenait en une ligne. Le reste rendait le mot qu'on avait donné — un écho,
- * que v1_note_muet mettait ensuite en cache. Tout ce mécanisme de mise en
- * cache d'une non-réponse ne servait qu'à amortir une question qu'il ne
- * fallait pas poser.
- *
- * ELLE NE DISPARAÎT PAS POUR AUTANT. La v3 sert aujourd'hui chacun de ces
- * noms avant d'arriver ici, donc la sonde ne part plus jamais. Mais si
- * quelqu'un ajoute demain un nom à call_function_body sans l'ajouter à la v3,
- * cette liste le rattrape au lieu de le perdre en silence. Elle coûte une
- * comparaison de chaînes sur un chemin déjà froid.
- *
- * tests/harnais/mondenoms.c tient l'invariant : chacun de ces noms doit être
- * servi par la v3 SANS sonde. */
-static const char *V3_V1_FONCTIONS_0[] = {
-    /* call_function_body */
-    "date", "time", "result", "seconds", "secs", "ticks",
-    "foundchunk", "foundfield", "foundline", "foundtext",
-    "selectedchunk", "selectedfield", "selectedline", "selectedtext",
-    "selection", "stacksinuse", "params", "paramcount",
-    "itemdelimiter", "numberformat", "lockscreen", "lockmessages", "tool",
-    /* G_REGLAGES */
-    "userlevel", "dragspeed", "blindtyping", "powerkeys",
-    "lockrecent", "textarrows",
-    NULL
-};
-
-/* ═══ CE QUE L'ANCIEN MOTEUR SAIT SERVIR AVEC UN ARGUMENT ════════════
- *
- * Le pendant de la liste au-dessus, pour l'autre porte. Le chemin à un
- * argument numérique n'en avait aucune : il sondait call_function pour TOUT
- * nom, et les noms qui arrivent là sont précisément ceux que la v3 ne sert
- * pas — c'est-à-dire les FONCTIONS DE L'UTILISATEUR. On demandait donc à
- * l'ancien moteur s'il connaissait « double », « spectre », « getPattern »,
- * pour s'entendre répondre non à chaque nouveau nom.
- *
- * Mesuré sur les 197 harnais : 8 sondes, soit 3 % des 252 entrées restantes.
- * Ce n'est plus le gros du trafic — la liste à zéro argument a déjà pris
- * 348 sondes sur 420 — mais c'est la totalité de ce qui reste sur cette
- * porte-là, et ça se ferme de la même façon.
- *
- * LA LISTE EST EXTRAITE, PAS ÉCRITE DE MÉMOIRE. C'est exactement l'erreur
- * commise pour la table des désignateurs : j'avais lu deux des trois sources
- * et « prev » a cessé de marcher. Ici la source est unique — call_function
- * n'appelle que call_function_body — et la liste est le résultat de :
- *
- *   awk 'NR>=5642 && NR<=6021' HC/hc_core.c \
- *     | grep -o 'ci_equal(name, *"[A-Za-z0-9]*"' | sed 's/.*"\(.*\)"/\1/' \
- *     | sort -u
- *
- * Elle contient donc AUSSI les noms sans argument. C'est volontaire : la
- * définition « tout ce que call_function_body connaît » se revérifie d'une
- * commande, alors qu'un tri à la main entre les deux familles serait à
- * refaire — et à rater — à chaque relecture. Un nom en trop coûte une sonde
- * qui serait partie de toute façon ; un nom en moins casse une fonction.
- *
- * tests/harnais/fonctions1.c tient l'invariant : une fonction utilisateur à
- * un argument numérique ne doit produire AUCUNE sonde. */
-static const char *V3_V1_FONCTIONS_1[] = {
-    "abs", "annuity", "atan", "average", "avg", "charToNum", "compound",
-    "cos", "date", "exp", "exp1", "exp2", "foundchunk", "foundfield",
-    "foundline", "foundtext", "itemdelimiter", "length", "ln", "ln1",
-    "lockmessages", "lockscreen", "log2", "max", "min", "numToChar",
-    "numberformat", "offset", "param", "paramcount", "params", "random",
-    "result", "round", "seconds", "secs", "selectedchunk", "selectedfield",
-    "selectedline", "selectedtext", "selection", "sin", "sqrt",
-    "stacksinuse", "sum", "tan", "ticks", "time", "tool", "trunc", "value",
-    NULL
-};
 
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
-    /* L'autre porte sur l'ancien moteur d'expressions : les FONCTIONS que la
-     * v3 ne calcule pas elle-même. C'est ce qui restait sous « ? ». */
+    /* Les FONCTIONS que l'évaluateur ne calcule pas lui-même : celles qui
+     * lisent l'état du noyau ou de l'hôte, et celles de la pile. */
     const char *sauve_porte = v1_porte("fonction v3");
     (void)d;
     /* itemDelimiter : demandé avant chaque découpage en items. On le sert
@@ -10280,7 +8796,7 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      *
      * L'évaluateur a déjà essayé lit_var avant de nous appeler : une pile qui
      * nomme sa variable « mouse » garde donc la priorité, exactement comme
-     * dans term_value. */
+     * dans l'ancien moteur. */
     if (nargs == 0) {
         for (int i = 0; V3_GLOBALES_HOTE[i]; i++) {
             if (!ci_equal(nom, V3_GLOBALES_HOTE[i])) continue;
@@ -10298,7 +8814,12 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         char *gbuf = arena_buf();
         int servi = v3_fonction_globale(nom, gbuf, out);
         ARENA_FREE;
-        if (servi) return 1;
+        /* L'étiquette du relevé se rend ICI AUSSI : c'était la seule sortie
+         * qui l'oubliait, le jumeau de celles que v3_recours rend par son
+         * enveloppe. Après « the date », l'étiquette « fonction v3 » restait
+         * posée, et le prochain « v3 relit » lui aurait été compté — lu
+         * dans le code ; le relevé de la suite n'en montre aucun. */
+        if (servi) { g_v1_porte = sauve_porte; return 1; }
     }
 
     /* param(n) : le n-ième paramètre du gestionnaire courant, param(0)
@@ -10315,108 +8836,21 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         { g_v1_porte = sauve_porte; } return 1;
     }
 
-    /* Le tampon vient de l'ARÈNE, plus de la pile.
-     *
-     * HC_VAL vaut un mégaoctet : « char buf[HC_VAL] » posait tout cela sur la
-     * pile à chaque appel. Un mégaoctet passe encore sur le fil principal, qui
-     * en a huit — mais v3_fonction est rappelée par term_value, elle-même
-     * rappelée par l'évaluateur, et trois ou quatre niveaux d'imbrication
-     * suffisaient à toucher la page de garde. D'où un plantage qui ne
-     * survenait que sur certains scripts, à la première écriture dans le
-     * cadre.
-     *
-     * ARENA_MARK / ARENA_FREE encadrent l'emprunt : l'arène est une pile, on
-     * la rembobine en sortant. */
-    ARENA_MARK;
-    char *buf = arena_buf();
-    if (nargs == 0) {
-        /* Une seule porte : term_value, qui appelle elle-même call_function.
-         *
-         * On distingue « reconnu » de « non reconnu » en comparant au texte
-         * de la demande — term_value rendant le littéral quand elle ne sait
-         * rien faire. Surtout PAS en testant si le résultat est vide : « the
-         * result » vaut légitimement vide quand tout s'est bien passé, et le
-         * rejeter comme un échec faisait rendre « result » en clair. Le
-         * calendrier voyait alors « if the result <> empty » toujours vrai et
-         * refusait toutes les dates. */
-        char appel[160];
-        snprintf(appel, sizeof appel, "the %s", nom);
-        buf[0] = '\0';
-        /* Hors de la liste, l'ancien moteur n'a rien à en dire : on ne le
-         * dérange pas. Voir V3_V1_FONCTIONS_0 — 348 sondes pour une réponse. */
-        if (!dans_liste(nom, V3_V1_FONCTIONS_0)) {
-            if (v3_fonction_pile(nom, args, 0)) {
-                *out = hct_val_texte(g_result);
-                ARENA_FREE;
-                { g_v1_porte = sauve_porte; } return 1;
-            }
-            ARENA_FREE;
-            { g_v1_porte = sauve_porte; } return 0;
-        }
-        if (v1_est_muet(nom)) {
-            /* Déjà demandé, déjà sans réponse : on passe directement à la
-             * suite, qui est le vrai chemin pour ce nom-là. */
-            if (v3_fonction_pile(nom, args, 0)) {
-                *out = hct_val_texte(g_result);
-                ARENA_FREE;
-                { g_v1_porte = sauve_porte; } return 1;
-            }
-            ARENA_FREE;
-            { g_v1_porte = sauve_porte; } return 0;
-        }
-        /* La porte prend le NOM de la fonction demandée, le temps de
-         * l'emprunt. « v1 fonction 2 » ne disait pas laquelle porter ;
-         * « v1 fonction the destination » le dit. Un compteur qui ne nomme
-         * pas son sujet oblige à retrouver à la main ce qu'il vient de
-         * mesurer, et c'est justement ce qu'on voulait éviter. */
-        if (!v1_coupe()) {
-            const char *sauve_nom = v1_porte(nom);
-            term_value(appel, buf, HC_VAL);
-            g_v1_porte = sauve_nom;
-            if (strcmp(buf, appel) != 0 && strcmp(buf, nom) != 0) {
-                v3_note("fonction", nom);  /* term_value a fourni la réponse */
-                *out = hct_val_texte(buf);
-                ARENA_FREE;
-                { g_v1_porte = sauve_porte; } return 1;
-            }
-            v1_note_muet(nom);   /* l'écho : inutile de redemander */
-        }
-        if (v3_fonction_pile(nom, args, 0)) {
-            *out = hct_val_texte(g_result);
-            ARENA_FREE;
-            { g_v1_porte = sauve_porte; } return 1;
-        }
-        ARENA_FREE;
-        { g_v1_porte = sauve_porte; } return 0;
-    }
-    /* Fonctions du monde à un argument NUMÉRIQUE — param(n) et consorts.
-     * On s'en tient au numérique : reconstruire un argument textuel serait
-     * fragile dès qu'il contient un guillemet. Le reste passe par le
-     * recours, qui dispose du texte source exact. */
-    if (nargs == 1 && hct_est_nombre(args[0].txt) && !v1_coupe() &&
-        !v1_est_muet(nom) && dans_liste(nom, V3_V1_FONCTIONS_1)) {
-        char appel[160];
-        snprintf(appel, sizeof appel, "%s(%s)", nom, args[0].txt);
-        buf[0] = '\0';
-        /* Même raison qu'au-dessus : la porte nomme la fonction demandée,
-         * pour que le relevé désigne ce qu'il y a à porter. */
-        const char *sauve_n2 = v1_porte(nom);
-        int fait_v1 = call_function(appel, buf, HC_VAL);
-        g_v1_porte = sauve_n2;
-        if (fait_v1) {
-            v3_note("fonction", nom);      /* call_function a fourni la réponse */
-            *out = hct_val_texte(buf);
-            ARENA_FREE;
-            { g_v1_porte = sauve_porte; } return 1;
-        }
-        v1_note_muet(nom);
-    }
+    /* Le reste — y compris tout nom inconnu du noyau — est une fonction de
+     * la pile, ou personne. Jusqu'au 2 octobre, deux sondes demandaient
+     * d'abord à l'ancien moteur d'expressions s'il connaissait le nom
+     * (V3_V1_FONCTIONS_0 et _1) ; la v3 servait déjà chacun de ces noms
+     * avant d'arriver ici, et l'ancien moteur a été retiré. */
     if (v3_fonction_pile(nom, args, nargs)) {
         *out = hct_val_texte(g_result);
-        ARENA_FREE;
-        { g_v1_porte = sauve_porte; } return 1;
+        g_v1_porte = sauve_porte;
+        return 1;
     }
-    ARENA_FREE;
+    /* Personne dans la pile : l'XFCN imité, au rang de la ressource. */
+    if (ci_equal(nom, "popUpMenu") && v3_popupmenu(args, nargs, out)) {
+        g_v1_porte = sauve_porte;
+        return 1;
+    }
     g_v1_porte = sauve_porte;
     return 0;
 }
@@ -10693,9 +9127,10 @@ static int v3_do_ligne(const char *line);
  * hc_v3_bilan() vide le relevé sur la console. Coût : une comparaison de
  * chaînes par retour, négligeable.
  *
- * Ce relevé a fait son office pour les LIGNES : zéro passage sur 172 harnais,
- * et les 2 327 lignes de l'ancien exécuteur ont pu partir. Il reste braqué
- * sur les deux morceaux qui servent encore, les fonctions et les termes. */
+ * Ce relevé a fait son office pour les LIGNES — zéro passage sur 172
+ * harnais, et les 2 327 lignes de l'ancien exécuteur ont pu partir —, puis
+ * pour les EXPRESSIONS, retirées le 2 octobre. Il reste braqué sur ce qui
+ * relit encore du TEXTE : « v3 relit », eval_expr appelée sur une chaîne. */
 #define V3_RELEVE_MAX 256
 /* 64 et non 48 : un intitulé accentué suivi d'un nom de porte débordait, et
  * snprintf coupait au milieu d'un caractère UTF-8 — la ligne de bilan sortait
@@ -12580,8 +11015,8 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
             if (*a == '"') inq = !inq;
             else if (!inq && *a == '(') depth++;
             else if (!inq && *a == ')') depth--;
-            /* Même vestige qu'à split_args : « one » vient de l'arène et fait
-             * HC_VAL. « send "traite " & uneTresLongueExpression to me »
+            /* « one » vient de l'arène et fait HC_VAL : la borne d'un
+             * ancien tampon fixe ne vaut plus. « send "traite " & uneTresLongueExpression to me »
              * voyait son argument coupé à 511 caractères. */
             if (len < HC_VAL - 1) one[len++] = *a;
             a++;
@@ -16875,8 +15310,8 @@ static void eval_expr(const char *s, char *out, int outlen)
      *
      * L'arène est une pile : ARENA_MARK retient le sommet, ARENA_FREE l'y
      * ramène. L'ancienne eval_checked le faisait, la v3 l'avait perdu — et
-     * comme le recours appelle term_value, qui alloue par arena_buf, le
-     * sommet montait sans jamais redescendre.
+     * comme le recours appelait alors term_value, qui allouait par
+     * arena_buf, le sommet montait sans jamais redescendre.
      *
      * À saturation, arena_buf rend g_apanic : un tampon STATIQUE PARTAGÉ.
      * Toutes les expressions suivantes écrivent alors au même endroit et
@@ -16949,15 +15384,12 @@ static void eval_checked(const char *s, char *out, int outlen)
 }
 
 
-
 /* ==================== structures de contrôle ==================== */
 
 /* Drapeaux de sortie, tous remis à zéro par hc_send. */
 static int g_exit_handler = 0;   /* exit <gestionnaire> */
 static int g_exit_repeat  = 0;   /* exit repeat */
 static int g_next_repeat  = 0;   /* next repeat */
-
- 
 
 
 /* Cherche le mot `w` dans `s`, hors guillemets. Renvoie NULL sinon. */
@@ -16976,130 +15408,6 @@ static const char *find_kw(const char *s, const char *w)
     }
     return NULL;
 }
-
-
-/* Une ligne ouvre-t-elle un bloc ? (« if … then » sans suite, « repeat … ») */
-static int opens_if(const char *s)
-{
-    if (!ci_word(s, "if")) return 0;
-    const char *th = find_kw(s, "then");
-    return th && !*skip_spaces(th + 4);
-}
-
-static int opens_repeat(const char *s)
-{
-    return ci_word(s, "repeat");
-}
-
-/* « else <instruction> » referme un if à lui seul : pas de « end if ».
-   En revanche « else » seul, ou « else if … then » en bloc, ouvre une suite. */
-static int else_closes(const char *s)
-{
-    if (!ci_word(s, "else")) return 0;
-    const char *rest = skip_spaces(s + 4);
-    if (!*rest) return 0;           /* « else » seul : le bloc continue */
-    if (opens_if(rest)) return 0;   /* « else if … then » en bloc */
-    return 1;
-}
-
-static int match_end(char **L, int from, int to, const char *what);
-
-/* Formes hybrides « if … then <instruction> » + « else » à la ligne :
- * définies plus bas, mais les trois explorateurs ci-dessous doivent déjà
- * savoir les enjamber, sans quoi le « else » de l'if interne passe pour la
- * fin de l'if externe. */
-static int is_inline_if(const char *s);
-static int chain_end(char **L, int i, int to);
-
-/* Vrai si L[i] ouvre une construction hybride qu'il faut enjamber d'un bloc. */
-static int opens_inline_chain(char **L, int i, int to)
-{
-    const char *th;
-    if (!is_inline_if(L[i])) return 0;
-
-    /* Une ligne qui porte déjà son propre « else » est complète en elle-même :
-     *     if the result <> empty then get error() else exit repeat
-     *     else get error()          <- appartient à un if ENGLOBANT
-     * Sans ce garde-fou on s'empare du « else » du dessous, et la branche
-     * exécutée n'est pas celle que le script demande. */
-    th = find_kw(L[i], "then");
-    if (th && find_kw(th + 4, "else")) return 0;
-
-    return i + 1 < to && ci_word(L[i+1], "else");
-}
-
-/* Index de la dernière ligne de la construction ouverte par L[open]. */
-static int skip_block(char **L, int open, int to)
-{
-    if (opens_inline_chain(L, open, to)) return chain_end(L, open, to);
-    if (opens_if(L[open]))     return match_end(L, open + 1, to, "if");
-    if (opens_repeat(L[open])) return match_end(L, open + 1, to, "repeat");
-    return open;
-}
-
-/* Index de la ligne fermante correspondante. Pour un « if », ce peut être
-   « end if » ou l'« else <instruction> » qui le referme. Les constructions
-   imbriquées sont sautées par récursion : plus de compteur de profondeur,
-   qui ne survit pas à un bloc ayant deux fermetures possibles. */
-static int match_end(char **L, int from, int to, const char *what)
-{
-    int isif = (strcmp(what, "if") == 0);
-    for (int i = from; i < to; i++) {
-        const char *s = L[i];
-        if (opens_inline_chain(L, i, to) ||
-            opens_if(s) || opens_repeat(s)) { i = skip_block(L, i, to); continue; }
-        if (isif && else_closes(s)) return i;
-        if (ci_word(s, "end")) {
-            const char *w = skip_spaces(s + 3);
-            if (isif  && ci_word(w, "if"))     return i;
-            if (!isif && ci_word(w, "repeat")) return i;
-        }
-    }
-    return to;
-}
-
-
-
-
-
-/* Un `if` dont le « then » porte déjà une instruction, mais dont le « else »
- * ouvre la ligne suivante. HyperCard admet cette forme hybride, et la chaîne :
- *
- *     if (it is in "1,3,5,7,8,10") or (it = 12) then return 31
- *     else if (it is in "4,6,9,11") then return 30
- *     else
- *       ...
- *     end if
- *
- * Ni opens_if (qui exige un « then » en fin de ligne) ni un exécuteur qui ne
- * regarde qu'une ligne ne savent la lire. On la traite en deux temps :
- * d'abord mesurer l'étendue de la construction, ensuite l'exécuter. */
-
-/* Vrai si la ligne est « if <cond> then <instruction> », then non terminal. */
-static int is_inline_if(const char *s)
-{
-    if (!ci_word(s, "if")) return 0;
-    const char *th = find_kw(s, "then");
-    return th && *skip_spaces(th + 4);
-}
-
-/* Indice de la dernière ligne de la construction ouverte en `i`. */
-static int chain_end(char **L, int i, int to)
-{
-    int j = i;
-    while (j + 1 < to && ci_word(L[j+1], "else")) {
-        const char *rest = skip_spaces(L[j+1] + 4);
-        if (!*rest)                                  /* « else » seul : bloc */
-            return match_end(L, j + 2, to, "if");
-        j++;
-        if (!is_inline_if(rest)) break;              /* « else <instruction> » */
-    }
-    return j;
-}
-
-
-
-/* Découpe le corps d'un gestionnaire en lignes utiles, puis l'exécute. */
 
 
 /* ---- tri ------------------------------------------------------------------
@@ -17618,7 +15926,7 @@ static int hc_send_args_k_body(Object *target, const char *message,
 
 /* Frontière de message : chaque envoi rend ses tampons en sortant. Sans cela
  * une pile qui envoie des milliers de messages verrait l'arène croître sans
- * fin, puisque seul parse_factor libère en dessous. */
+ * fin, puisque rien d'autre ne libère au-dessus des évaluations. */
 static int hc_send_args_k(Object *target, const char *message,
                           char argv[][HC_VAL], int argc, int isfunc,
                           int cible_neuve)

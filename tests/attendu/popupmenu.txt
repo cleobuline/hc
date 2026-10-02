@@ -1,0 +1,76 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la ligne de Minkowski Stack 1 ==
+   put (bottom of target + top of card window + 1) into tp
+  put (left of target + left of card window) into lp
+  put "Axes,Velocity,(-,Click Points,Grid,Bisector,Line,(-,Clear Points,Clear Polygons" into list
+  put PopUpMenu(list,,tp,lp) into it
+  get item it of list
+  put "rendu : [" & it & "]"
+      [menu] coché 0, au point 310,17 de l'écran
+      [menu]   1. Axes
+      [menu]   2. Velocity
+      [menu]   3. -
+      [menu]   4. Click Points
+      [menu]   5. Grid
+      [menu]   6. Bisector
+      [menu]   7. Line
+      [menu]   8. -
+      [menu]   9. Clear Points
+      [menu]   10. Clear Polygons
+      [menu] choisi : 4
+      rendu : [Click Points]
+   put (bottom of target + top of card window + 1) into tp
+  put (left of target + left of card window) into lp
+  put "Axes,Velocity,(-,Click Points,Grid,Bisector,Line,(-,Clear Points,Clear Polygons" into list
+  put PopUpMenu(list,,tp,lp) into it
+  get item it of list
+  put "rendu : [" & it & "]"
+      [menu] coché 0, au point 310,17 de l'écran
+      [menu]   1. Axes
+      [menu]   2. Velocity
+      [menu]   3. -
+      [menu]   4. Click Points
+      [menu]   5. Grid
+      [menu]   6. Bisector
+      [menu]   7. Line
+      [menu]   8. -
+      [menu]   9. Clear Points
+      [menu]   10. Clear Polygons
+      [menu] choisi : 10
+      rendu : [Clear Polygons]
+
+== 2. un article coché, et pas de point ==
+   put PopUpMenu("Un,Deux,Trois",2)
+      [menu] coché 2, à la souris
+      [menu]   1. Un
+      [menu]   2. Deux
+      [menu]   3. Trois
+      [menu] choisi : 3
+      3
+   put PopUpMenu("Un,(Deux,Trois")
+      [menu] coché 0, à la souris
+      [menu]   1. Un
+      [menu]   2. (Deux
+      [menu]   3. Trois
+      [menu] choisi : 1
+      1
+
+== 3. rien de choisi ==
+   put "Un,Deux" into l
+  put PopUpMenu(l) into r
+  put r & " [" & item r of l & "]"
+      [menu] coché 0, à la souris
+      [menu]   1. Un
+      [menu]   2. Deux
+      [menu] choisi : 0
+      0 []
+
+== 4. la fonction de la pile garde la main ==
+   put PopUpMenu("Un,Deux")
+      celle de la pile
+
+== 5. ce qui reste inconnu ==
+   put PopUpMenu("Un",0,10,10,99)
+      [ERR]    !! fonction inconnue : PopUpMenu (v3, ligne 2 de button "Data".mouseUp)
+   put PopUpMenu("Un,Deux")
+      [ERR]    !! fonction inconnue : PopUpMenu (v3, ligne 2 de button "Data".mouseUp)

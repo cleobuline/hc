@@ -1646,3 +1646,167 @@ void hc_origine_libere(HcOrigPile *pile)
     }
     memset(pile, 0, sizeof *pile);
 }
+
+/* ═══ MACBINARY ═════════════════════════════════════════════════════════
+ *
+ * Voir hc_origine.h. Les décalages viennent de la spécification MacBinary II
+ * (1987) et III (1996) ; mesurés sur un vrai fichier le 2 octobre — « Stack
+ * Templates », encodé dans Basilisk II : version 129/129, somme de contrôle
+ * juste, 155 648 octets de données qui commencent par STAK, 6 720 de
+ * ressource, et la fin du fichier tombe exactement après la ressource
+ * complétée à 128. */
+
+static unsigned long mb_be32(const unsigned char *o)
+{
+    return ((unsigned long)o[0] << 24) | ((unsigned long)o[1] << 16) |
+           ((unsigned long)o[2] << 8)  |  (unsigned long)o[3];
+}
+
+static unsigned mb_be16(const unsigned char *o)
+{
+    return ((unsigned)o[0] << 8) | (unsigned)o[1];
+}
+
+/* CRC-16 de l'en-tête MacBinary II : polynôme 0x1021, départ à zéro (la
+ * variante dite XMODEM), sur les 124 premiers octets. */
+static unsigned mb_crc(const unsigned char *o, size_t n)
+{
+    unsigned c = 0;
+    for (size_t i = 0; i < n; i++) {
+        c ^= (unsigned)o[i] << 8;
+        for (int b = 0; b < 8; b++)
+            c = (c & 0x8000) ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff;
+    }
+    return c;
+}
+
+static size_t mb_arrondi(size_t x) { return (x + 127) / 128 * 128; }
+
+int hc_macbinaire(const unsigned char *o, size_t n, HcMacBinaire *mb)
+{
+    if (!o || !mb || n < 128) return 0;
+    memset(mb, 0, sizeof *mb);
+
+    /* Les trois octets que toutes les versions laissent à zéro. */
+    if (o[0] != 0 || o[74] != 0 || o[82] != 0) return 0;
+    unsigned lnom = o[1];
+    if (lnom < 1 || lnom > 63) return 0;
+
+    int version;
+    if (mb_crc(o, 124) == mb_be16(o + 124)) {
+        version = memcmp(o + 102, "mBIN", 4) == 0 ? 3 : 2;
+    } else {
+        /* MacBinary I : pas de somme, et tout ce que la II a ajouté — de 99
+         * à 125 — vaut zéro. Sans cette exigence, n'importe quel fichier qui
+         * commence par trois zéros bien placés passerait. */
+        for (int i = 99; i < 126; i++) if (o[i] != 0) return 0;
+        version = 1;
+    }
+
+    unsigned long ld = mb_be32(o + 83), lr = mb_be32(o + 87);
+    /* Un fichier du Mac classique ne dépassait pas 2^24 octets par partie
+     * sur les disques de l'époque ; plus grand, c'est qu'on lit autre chose. */
+    if (ld > 0x7fffffUL || lr > 0x7fffffUL) return 0;
+    size_t debut_r = 128 + mb_arrondi((size_t)ld);
+    if (128 + (size_t)ld > n) return 0;
+    if (lr && debut_r + (size_t)lr > n) return 0;
+
+    mb->donnees     = o + 128;
+    mb->ndonnees    = (size_t)ld;
+    mb->ressources  = lr ? o + debut_r : NULL;
+    mb->nressources = (size_t)lr;
+    memcpy(mb->nom, o + 2, lnom);
+    mb->nom[lnom] = '\0';
+    memcpy(mb->type, o + 65, 4);     mb->type[4] = '\0';
+    memcpy(mb->createur, o + 69, 4); mb->createur[4] = '\0';
+    mb->version = version;
+    return 1;
+}
+
+/* ═══ LES ICON D'UNE RESSOURCE ══════════════════════════════════════════
+ *
+ * Le format est celui d'Inside Macintosh (« The Resource Manager ») :
+ *
+ *     en-tête   début des données, début de la carte, et leurs longueurs
+ *     carte     … puis, à +24, la liste des types et celle des noms
+ *     types     nombre - 1, puis par type : 4 lettres, nombre - 1, et le
+ *               décalage de ses références depuis le début de la liste
+ *     référence 12 octets : numéro, décalage du nom (0xFFFF : aucun),
+ *               attributs, décalage des données sur 3 octets, réservé
+ *     données   longueur sur 4 octets, puis les octets
+ *
+ * Mesuré sur « Stack Templates » le 2 octobre : six ICON de 128 octets, une
+ * PICT, deux « vers », un XCMD. Chaque décalage est BORNÉ avant d'être lu :
+ * c'est une entrée non fiable, au même titre que la pile. */
+int hc_origine_ressources(const unsigned char *o, size_t n,
+                          HcOrigRessources *r, char *pourquoi, size_t np)
+{
+    if (!r) return -1;
+    memset(r, 0, sizeof *r);
+#define REFUSE(msg) do { if (pourquoi && np) snprintf(pourquoi, np, "%s", msg); \
+                         return -1; } while (0)
+    if (!o || n < 16) REFUSE("ressource trop courte pour son en-tête");
+
+    unsigned long dd = mb_be32(o), dm = mb_be32(o + 4);
+    unsigned long ld = mb_be32(o + 8), lm = mb_be32(o + 12);
+    if (dd > n || ld > n - dd) REFUSE("les données des ressources sortent du fichier");
+    if (dm > n || lm > n - dm) REFUSE("la carte des ressources sort du fichier");
+    if (lm < 30) REFUSE("carte des ressources trop courte");
+
+    const unsigned char *m = o + dm;
+    unsigned lt = mb_be16(m + 24), ln = mb_be16(m + 26);
+    if ((size_t)lt + 2 > lm) REFUSE("la liste des types sort de la carte");
+    const unsigned char *types = m + lt;
+    unsigned ntypes = mb_be16(types) + 1;
+    if (mb_be16(types) == 0xffff) ntypes = 0;          /* aucune ressource */
+    if ((size_t)lt + 2 + (size_t)ntypes * 8 > lm)
+        REFUSE("la liste des types sort de la carte");
+
+    for (unsigned ti = 0; ti < ntypes; ti++) {
+        const unsigned char *te = types + 2 + ti * 8;
+        unsigned nref = mb_be16(te + 4) + 1;
+        unsigned dref = mb_be16(te + 6);
+        if ((size_t)lt + dref + (size_t)nref * 12 > lm)
+            REFUSE("une liste de références sort de la carte");
+        if (memcmp(te, "ICON", 4) != 0) { r->autres += (int)nref; continue; }
+
+        for (unsigned k = 0; k < nref; k++) {
+            const unsigned char *re = types + dref + k * 12;
+            int id = (int)(short)mb_be16(re);
+            unsigned dnom = mb_be16(re + 2);
+            unsigned long dval = ((unsigned long)re[5] << 16) |
+                                 ((unsigned long)re[6] << 8) | re[7];
+            if (dval > ld || ld - dval < 4) { r->anomalies++; continue; }
+            unsigned long lval = mb_be32(o + dd + dval);
+            if (lval != 128 || ld - dval - 4 < 128) { r->anomalies++; continue; }
+
+            char *nom = NULL;
+            if (dnom != 0xffff && (size_t)ln + dnom < lm) {
+                unsigned l = m[ln + dnom];
+                if ((size_t)ln + dnom + 1 + l <= lm)
+                    nom = hc_origine_utf8(m + ln + dnom + 1, l);
+            }
+            if (!nom) nom = hc_origine_utf8((const unsigned char *)"", 0);
+            if (!nom) REFUSE("mémoire épuisée");
+
+            HcOrigIcone *t = realloc(r->icones,
+                                     (size_t)(r->nicones + 1) * sizeof *t);
+            if (!t) { free(nom); REFUSE("mémoire épuisée"); }
+            r->icones = t;
+            t[r->nicones].id  = id;
+            t[r->nicones].nom = nom;
+            memcpy(t[r->nicones].bits, o + dd + dval + 4, 128);
+            r->nicones++;
+        }
+    }
+#undef REFUSE
+    return 0;
+}
+
+void hc_origine_ressources_libere(HcOrigRessources *r)
+{
+    if (!r) return;
+    for (int i = 0; i < r->nicones; i++) free(r->icones[i].nom);
+    free(r->icones);
+    memset(r, 0, sizeof *r);
+}

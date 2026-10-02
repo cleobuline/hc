@@ -539,8 +539,7 @@
          → message "ap[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours objet: card "carteQuiNexistePas" 1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    1
-[v3]    v1 fonction recours expr                 1
+[v3]    (rien)
 lat" à button "Exercice"
             · traité par button "Exercice"
       → message "verif" à button "Exercice"
@@ -588,8 +587,7 @@ lat" à button "Exercice"
    — retours de la v3 vers l'ancien interpréteur —
       recours objet: card "carteQuiNexistePas" 1
    — ce que l'ancien interprète exécute encore —
-      v1 terme recours expr                    1
-      v1 fonction recours expr                 1
+      (rien)
 
 ===== CONTENU DU CHAMP "data 2" =====
 130 essais, 0 ratés

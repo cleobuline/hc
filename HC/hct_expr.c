@@ -53,6 +53,22 @@ static int fini(HctAnalyseur *a)
     return j->genre == HCT_FIN || j->genre == HCT_EOL || mot_est(j, "else");
 }
 
+/* UN ARGUMENT ABSENT EST UNE CHAÎNE VIDE.
+ *
+ *     put PopUpMenu(list,,tp,lp) into it      -- Minkowski Stack 1, 1992
+ *     monGestionnaire 1,,3
+ *
+ * HyperTalk admet la place vide entre deux virgules : le paramètre existe, et
+ * il est vide. L'analyseur exigeait une expression à chaque place et levait
+ * « expression attendue » — rapporté le 2 octobre. Seul « send », qui découpe
+ * son TEXTE à part, s'en tirait déjà : « send "g 1,,3" » rendait trois
+ * paramètres, le deuxième vide. Les deux autres chemins s'alignent sur lui.
+ *
+ * Le jeton est celui où l'on se trouve, réduit à zéro octet : la colonne d'une
+ * faute éventuelle reste juste, et la reconstitution du texte source ne
+ * s'étend pas. */
+static HctNoeud *arg_vide(HctAnalyseur *a);
+
 static void avance(HctAnalyseur *a)
 {
     if (a->lot->jetons[a->i].genre != HCT_FIN) a->i++;
@@ -815,8 +831,8 @@ static HctNoeud *reference(HctAnalyseur *a)
             /* Le jeton couvre « this background », pas le seul « this » :
              * la reconstitution du texte source doit rendre la référence
              * entière. Sans cela le pont envoyait « cards of this » à
-             * term_value, qui ne reconnaissait rien et retombait sur le
-             * total de la pile. */
+             * l'ancien term_value, qui ne reconnaissait rien et retombait
+             * sur le total de la pile. */
             const HctJeton *jtype = ici(a);
             avance(a);
             HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);
@@ -941,6 +957,25 @@ static HctNoeud *reference(HctAnalyseur *a)
          * « the name of card 1 && the name of card 2 » perdait le second
          * terme en entier, sans le moindre message d'erreur. */
         hct_ajoute_fils(a->reserve, n, rang_somme(a));
+        a->sans_of--;
+    } else if (type == HCT_OBJ_CARD && mot_ici(a, "window")) {
+        /* « CARD WINDOW » S'ARRÊTE AU MOT « window ».
+         *
+         * La fenêtre de la pile n'a pas de type à elle : elle se lit comme
+         * la carte de rang <window>, et v3_est_fenetre (hc_core.c) reconnaît
+         * cette forme. Mais le rang se lit par rang_somme, qui prend
+         * l'arithmétique — « card i + 1 » est la carte suivante —, si bien
+         * que
+         *
+         *     put (bottom of target + top of card window + 1) into tp
+         *
+         * cherchait la carte de rang « window + 1 », et levait « un nombre
+         * est attendu ici ». Rapporté le 2 octobre sur une vraie pile ; déjà
+         * vrai de l'ancien moteur. Un mot, et rien d'autre : le « + 1 » est
+         * à l'expression qui entoure. */
+        n->designateur = HCT_DES_RANG;
+        a->sans_of++;
+        hct_ajoute_fils(a->reserve, n, facteur(a));
         a->sans_of--;
     } else if (ici(a)->genre == HCT_IDENT && !mot_structurel(a)) {
         /* Désignateur pris dans une variable : « card whichCard »,
@@ -1177,7 +1212,10 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
         int garde = a->sans_of; a->sans_of = 0;
         if (!op_ici(a, ")")) {
             for (;;) {
-                hct_ajoute_fils(a->reserve, appel, rang_ou(a));
+                if (op_ici(a, ",") || op_ici(a, ")"))
+                    hct_ajoute_fils(a->reserve, appel, arg_vide(a));
+                else
+                    hct_ajoute_fils(a->reserve, appel, rang_ou(a));
                 if (op_ici(a, ",")) { avance(a); continue; }
                 break;
             }
@@ -1388,9 +1426,25 @@ HctNoeud *hct_instruction(HctAnalyseur *a)
     if (!m) return NULL;
     m->op = "message";
     while (!fini(a)) {
-        hct_ajoute_fils(a->reserve, m, rang_ou(a));
-        if (op_ici(a, ",")) { avance(a); continue; }
+        if (op_ici(a, ","))
+            hct_ajoute_fils(a->reserve, m, arg_vide(a));
+        else
+            hct_ajoute_fils(a->reserve, m, rang_ou(a));
+        if (op_ici(a, ",")) {
+            avance(a);
+            /* « g 1, » : la virgule finale annonce une place, vide. */
+            if (fini(a)) hct_ajoute_fils(a->reserve, m, arg_vide(a));
+            continue;
+        }
         break;
     }
     return m;
+}
+
+static HctNoeud *arg_vide(HctAnalyseur *a)
+{
+    HctJeton j = *ici(a);
+    j.genre = HCT_CHAINE;
+    j.len = 0;
+    return hct_noeud(a->reserve, HCTN_CHAINE, j);
 }

@@ -9,8 +9,6 @@ carte courante : aucune
 ── go prev bkgnd
          !! objet introuvable (v3, ligne 1)
 ── put the name of first background
-         !! objet introuvable (colonne 2) dans «  first background »
-         !! objet introuvable (colonne 2) dans «  first background »
          !! objet introuvable (v3, ligne 1)
 ── put the number of cards
       0

@@ -2,8 +2,7 @@
 [v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours of short name                    1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    2
-[v3]    v1 fonction recours expr                 2
+[v3]    (rien)
 >>> designateur arithmetique: card i+1
 → message "mouseUp" à button "GoBtn"
    · traité par button "GoBtn"
@@ -32,5 +31,4 @@
 — retours de la v3 vers l'ancien interpréteur —
    recours of short name                    1
 — ce que l'ancien interprète exécute encore —
-   v1 terme recours expr                    2
-   v1 fonction recours expr                 2
+   (rien)

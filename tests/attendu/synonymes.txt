@@ -50,8 +50,10 @@
     de se plaindre : une ligne fautive ne s'exécute plus du tout.
    abbr(21) = 42
    abbrev(21) = 42
-   bg(21) = background "Fond"
-   bkgnd(21) = background "Fond"
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : bg
+   [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
+   masqué : bkgnd
    [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
    masqué : bgs
    [ERR]    !! objet introuvable (v3, ligne 5 de stack "Synonymes".essai)
@@ -94,7 +96,7 @@
    sec(21) = 42
    secs(21) = 42
    tick(21) = 42
-   -> 11 nom(s) masqué(s) à l'appel sur 29
+   -> 13 nom(s) masqué(s) à l'appel sur 29
 === 2. « on » aussi, pas seulement « function » ===
    gestionnaire msg reçoit : bonjour
 === 3. les trois fonctions de HypoGraph, dont « sec » ===

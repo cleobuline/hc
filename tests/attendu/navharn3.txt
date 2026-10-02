@@ -3,8 +3,6 @@
 [v3]    recours objet: card field "data2" of card id s 14
 [v3]    commande put: put empty into card field " 1
 [v3] — ce que l'ancien interprète exécute encore —
-[v3]    v1 terme recours expr                    14
-[v3]    v1 fonction recours expr                 14
 [v3]    v1 refusée recours v3                   1
 [ERR]    !! objet introuvable : put empty into card field "data2" of card id sortieCarte
 [ERR]    !! objet introuvable (v3, ligne 70 de button "nav".trace)

@@ -1332,3 +1332,81 @@ CE QUI RESTE VRAI QUAND MÊME, et qu'il ne faut pas confondre avec ce qui
 précède : les icônes du fork de ressources et les motifs restent des chantiers
 de LECTURE ouverts. Renoncer à écrire le format ne renonce à rien de ce qu'il
 contient.
+
+
+LES PALETTES (PLTE) : IGNORÉES, PAR DÉCISION — 2 octobre
+---------------------------------------------------------
+
+« Minkowski Stack 1 » (1992) ouvre une palette, « palette "ClickPoints" ».
+La commande est un XCMD intégré à HyperCard 2.0 ; la palette vit dans deux
+ressources du même nom — une PLTE (style de fenêtre, surbrillance, et pour
+chaque bouton invisible un rectangle et jusqu'à 255 caractères de
+HyperTalk) et la PICT qui sert d'image. Voir la page de Jeanne DeVoto,
+« Innermost Secrets of HyperCard Palettes » (jaedworks.com).
+
+Décidé par l'utilisatrice : HC ne les lira pas. Il faudrait décoder les
+PICT, et HC n'aurait aucun moyen d'éditer une palette ni son image pour
+d'autres piles — une moitié de fonction. « palette » reste une commande
+inconnue, qui le dit.
+
+LE FORK DE RESSOURCES N'ARRIVE PAS JUSQU'ICI, et c'est à savoir avant tout
+chantier de LECTURE des ressources (les icônes d'abord). Le fichier
+« Minkowski Stack 1.03 » transmis le même jour ne portait que la partie
+DONNÉES : les blocs STAK et suivants, aucune PLTE, aucune PICT. Tout
+transfert hors d'un Mac classique la perd. Trois façons de la garder :
+
+  · le dossier partagé de Basilisk II, quand l'hôte n'est pas un Mac, range
+    la ressource dans un dossier caché « .rsrc », sous le même nom ;
+  · sur un Mac, « fichier/..namedfork/rsrc » ;
+  · une archive MacBinary (.bin) ou StuffIt, faite DANS l'émulateur, qui
+    porte les deux parties en un seul fichier.
+
+Retenue pour les icônes : lire le MacBinary à l'import.
+
+
+LES ICÔNES, PAR UN MACBINARY — 2 octobre
+-----------------------------------------
+
+MESURÉ sur « Stack Templates.stack.bin », encodé par l'utilisatrice DANS
+Basilisk II :
+
+    en-tête      MacBinary II (129/129), somme de contrôle juste, type STAK,
+                 créateur WILD
+    données      155 648 octets, commencent par STAK — la pile, lue comme
+                 d'habitude : 17 fonds, 17 cartes, 1 anomalie, 0 perdu
+    ressource    6 720 octets : 6 ICON de 128 octets, 1 PICT, 2 « vers »,
+                 1 XCMD (la palette StackTemplatePal, ignorée)
+
+Les six ICON, dessinées point par point depuis ces octets : deux triangles,
+la carte marquée, l'agenda, la carte non marquée, l'imprimante. Leur
+disposition — quatre octets par ligne, bit de poids fort à gauche — est
+celle de nos icônes : la traduction est une recopie.
+
+53 boutons de la pile portent une icône. 6 la trouvent dans la pile ; les
+47 autres demandent des icônes de HyperCard LUI-MÊME (21 numéros distincts),
+toutes présentes dans le catalogue compilé de HC. Avec le .bin, les 53
+trouvent donc leur dessin. Import entier sous ASan et UBSan : aucune faute.
+
+CE QUI EST ÉCRIT :
+
+  · hc_origine.c : hc_macbinaire reconnaît et découpe (MacBinary I, II,
+    III), hc_origine_ressources lit les ICON de la ressource selon Inside
+    Macintosh, chaque décalage borné ;
+  · hc_importe.c : hc_importe_icones les pose dans la pile, numéro et nom
+    d'origine ;
+  · AppDelegate.m : la porte d'ouverture reconnaît le .bin comme elle
+    reconnaissait la pile nue — « Ouvrir » ouvre les trois formes sans rien
+    demander. Un .bin qui ne porte pas une pile se refuse en le disant ;
+    une ressource abîmée ne coûte pas la pile, elle se dit dans la boîte
+    d'import.
+
+Le harnais macbinaire monte sa propre ressource et son propre MacBinary,
+avec ses propres dessins : le fichier d'Apple n'entre pas dans le dépôt.
+
+JOUÉ DANS HC (l'application) le 2 octobre, étiqueté par l'utilisatrice :
+« Ouvrir… » sur Stack Templates.stack.bin — « les icônes sont en bonne
+place ».
+
+NON LU : les icônes en couleur (cicn), les PICT, les sons (« snd »). Un .bin
+déposé sur l'icône du Dock ou ouvert depuis le Finder n'est pas déclaré
+dans Info.plist : seul « Ouvrir » est sûr de le prendre — non essayé.
