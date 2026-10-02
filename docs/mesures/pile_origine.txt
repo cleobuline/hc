@@ -1332,3 +1332,33 @@ CE QUI RESTE VRAI QUAND MÊME, et qu'il ne faut pas confondre avec ce qui
 précède : les icônes du fork de ressources et les motifs restent des chantiers
 de LECTURE ouverts. Renoncer à écrire le format ne renonce à rien de ce qu'il
 contient.
+
+
+LES PALETTES (PLTE) : IGNORÉES, PAR DÉCISION — 2 octobre
+---------------------------------------------------------
+
+« Minkowski Stack 1 » (1992) ouvre une palette, « palette "ClickPoints" ».
+La commande est un XCMD intégré à HyperCard 2.0 ; la palette vit dans deux
+ressources du même nom — une PLTE (style de fenêtre, surbrillance, et pour
+chaque bouton invisible un rectangle et jusqu'à 255 caractères de
+HyperTalk) et la PICT qui sert d'image. Voir la page de Jeanne DeVoto,
+« Innermost Secrets of HyperCard Palettes » (jaedworks.com).
+
+Décidé par l'utilisatrice : HC ne les lira pas. Il faudrait décoder les
+PICT, et HC n'aurait aucun moyen d'éditer une palette ni son image pour
+d'autres piles — une moitié de fonction. « palette » reste une commande
+inconnue, qui le dit.
+
+LE FORK DE RESSOURCES N'ARRIVE PAS JUSQU'ICI, et c'est à savoir avant tout
+chantier de LECTURE des ressources (les icônes d'abord). Le fichier
+« Minkowski Stack 1.03 » transmis le même jour ne portait que la partie
+DONNÉES : les blocs STAK et suivants, aucune PLTE, aucune PICT. Tout
+transfert hors d'un Mac classique la perd. Trois façons de la garder :
+
+  · le dossier partagé de Basilisk II, quand l'hôte n'est pas un Mac, range
+    la ressource dans un dossier caché « .rsrc », sous le même nom ;
+  · sur un Mac, « fichier/..namedfork/rsrc » ;
+  · une archive MacBinary (.bin) ou StuffIt, faite DANS l'émulateur, qui
+    porte les deux parties en un seul fichier.
+
+Retenue pour les icônes : lire le MacBinary à l'import. Rien n'est écrit.
