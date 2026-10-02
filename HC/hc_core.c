@@ -3604,9 +3604,19 @@ static const char *derniere_portee(const char *s)
 {
     const char *trouve = NULL;
     int dans_guillemets = 0;
+    /* ENTRE PARENTHÈSES, « of » N'EST PAS LA PORTÉE. « set the hilite of
+     * button (item k of noms) to true » cherchait un objet « noms) » : le
+     * « of » de l'expression passait pour celui de la référence. La lecture
+     * marchait — elle résout par l'arbre —, l'écriture non. Mesuré le 2
+     * octobre, en écrivant le flipper. Les guillemets étaient déjà sautés ;
+     * les parenthèses manquaient. */
+    int profondeur = 0;
     for (const char *p = s; *p; p++) {
         if (*p == '"') { dans_guillemets = !dans_guillemets; continue; }
         if (dans_guillemets) continue;
+        if (*p == '(') { profondeur++; continue; }
+        if (*p == ')') { if (profondeur > 0) profondeur--; continue; }
+        if (profondeur > 0) continue;
         if ((p == s || p[-1] == ' ' || p[-1] == '\t') &&
             (p[0] == 'o' || p[0] == 'O') && (p[1] == 'f' || p[1] == 'F') &&
             (p[2] == ' ' || p[2] == '\t'))
@@ -15919,10 +15929,17 @@ static int g_next_repeat  = 0;   /* next repeat */
 static const char *find_kw(const char *s, const char *w)
 {
     int inq = 0;
+    /* Le jumeau de derniere_portee : un mot-clé ENTRE PARENTHÈSES appartient
+     * à l'expression, pas à la phrase — « (char 1 to 3 of x) » ne contient
+     * ni le « to » ni le « of » de celle qui l'entoure. */
+    int profondeur = 0;
     size_t wl = strlen(w);
     for (const char *q = s; *q; q++) {
         if (*q == '"') { inq = !inq; continue; }
         if (inq) continue;
+        if (*q == '(') { profondeur++; continue; }
+        if (*q == ')') { if (profondeur > 0) profondeur--; continue; }
+        if (profondeur > 0) continue;
         if (q != s && !isspace((unsigned char)q[-1])) continue;
         if (ci_nequal(q, w, (int)wl)) {
             char c = q[wl];
