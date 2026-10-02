@@ -143,8 +143,11 @@ Le scénario, tel que l'utilisatrice l'a décrit :
 
 Questions posées, réponses à venir :
 
-  · comment naît le polygone — un outil à part dans la palette, ou « New
-    Button » puis le style « polygon » dans l'Info ?
+  · comment naît le polygone — RÉPONDU : « au plus simple ». Pas d'outil
+    de plus dans la palette : « New Button » comme dans HyperCard, puis le
+    style « polygon » dans l'Info (il y est déjà). Un bouton qui devient
+    polygone sans sommets reçoit un triangle inscrit dans son rectangle —
+    par l'Info comme par « set the style … to polygon ».
   · les poignées avec l'outil Bouton : tirer une poignée la déplace, cliquer
     sur un côté en ajoute une, tirer l'intérieur déplace le bouton ?
   · Delete : sur une poignée sélectionnée seulement ; sans poignée
