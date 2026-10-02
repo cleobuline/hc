@@ -8692,6 +8692,78 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     return 0;
 }
 
+/* ═══ « PopUpMenu » : UN XFCN D'ÉPOQUE, IMITÉ ══════════════════════════
+ *
+ *     put PopUpMenu(list,,tp,lp) into it
+ *     get item it of list
+ *
+ * PopUpMenu XFCN, d'Andrew Gilmartin (Brown University) : un menu local
+ * fait d'une liste d'items, l'article coché placé au point (top, left) de
+ * l'ÉCRAN, et le rang de l'article choisi en retour. Rapporté le 2 octobre
+ * dans « Minkowski Stack 1 » (1992), dont la notice le décrit ainsi :
+ *
+ *     PopUpMenu( MenuItems, CheckedItem, Top, Left );
+ *
+ * Son code 68000 vivait dans la ressource de la pile, et ne peut pas tourner
+ * ici. On l'imite, AU RANG OÙ HYPERCARD L'AURAIT TROUVÉ : après la chaîne des
+ * messages — une pile qui définit sa propre fonction PopUpMenu garde donc la
+ * main — et seulement si l'hôte sait afficher un menu.
+ *
+ * Les articles se séparent par la VIRGULE, quel que soit itemDelimiter : un
+ * XFCN de 1990 ne le connaissait pas. Des métacaractères du Menu Manager, on
+ * ne garde que ceux que la pile emploie : « - » est un trait, « ( » grise
+ * l'article — d'où le « (- » de la pile, trait grisé. Le rang rendu compte
+ * les traits, comme le Menu Manager ; c'est ce que suppose « item it of
+ * list ».
+ *
+ * NON MESURÉ, faute de l'XFCN sous la main : ce qu'il rend quand on ne
+ * choisit rien — 0 ici, que « item 0 of list » change en vide —, et le sort
+ * des autres métacaractères (« ! », « < », « / », « ^ », « ; »), rendus tels
+ * quels. */
+static int v3_popupmenu(HctValeur *args, int nargs, HctValeur *out)
+{
+    if (!g_host || !g_host->popup_menu) return 0;
+    if (nargs < 1 || nargs > 4) return 0;
+
+    const char *liste = args[0].txt ? args[0].txt : "";
+    char *lignes = malloc(strlen(liste) + 2);
+    if (!lignes) return 0;
+    size_t k = 0;
+    for (const char *p = liste; ; ) {
+        const char *fin = strchr(p, ',');
+        size_t n = fin ? (size_t)(fin - p) : strlen(p);
+        if ((n == 2 && p[0] == '(' && p[1] == '-') || (n == 1 && p[0] == '-')) {
+            lignes[k++] = '-';
+        } else {
+            for (size_t i = 0; i < n; i++)
+                lignes[k++] = (p[i] == '\n' || p[i] == '\r') ? ' ' : p[i];
+        }
+        if (!fin) break;
+        lignes[k++] = '\n';
+        p = fin + 1;
+    }
+    lignes[k] = '\0';
+
+    int coche = 0, haut = HC_PAS_DE_POINT, gauche = HC_PAS_DE_POINT, hors;
+    if (nargs >= 2 && hct_est_nombre(args[1].txt)) {
+        int v = hct_vers_rang(args[1].txt, &hors);
+        if (!hors && v > 0) coche = v;
+    }
+    if (nargs >= 4 && hct_est_nombre(args[2].txt) && hct_est_nombre(args[3].txt)) {
+        int h1, h2;
+        int v = hct_vers_rang(args[2].txt, &h1);
+        int g = hct_vers_rang(args[3].txt, &h2);
+        if (!h1 && !h2) { haut = v; gauche = g; }
+    }
+
+    int r = g_host->popup_menu(lignes, coche, haut, gauche);
+    free(lignes);
+    char b[24];
+    snprintf(b, sizeof b, "%d", r > 0 ? r : 0);
+    *out = hct_val_texte(b);
+    return 1;
+}
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -8771,6 +8843,11 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
      * avant d'arriver ici, et l'ancien moteur a été retiré. */
     if (v3_fonction_pile(nom, args, nargs)) {
         *out = hct_val_texte(g_result);
+        g_v1_porte = sauve_porte;
+        return 1;
+    }
+    /* Personne dans la pile : l'XFCN imité, au rang de la ressource. */
+    if (ci_equal(nom, "popUpMenu") && v3_popupmenu(args, nargs, out)) {
         g_v1_porte = sauve_porte;
         return 1;
     }

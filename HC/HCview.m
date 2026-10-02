@@ -4114,6 +4114,66 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
     [self setNeedsDisplay:YES];
 }
 
+/* ═══ LE MENU LOCAL DE L'XFCN « PopUpMenu » ═════════════════════════════
+ *
+ * Le noyau imite l'XFCN (v3_popupmenu, hc_core.c) et nous demande le menu :
+ * un article par ligne, « - » pour un trait, « ( » en tête pour un article
+ * grisé. On le montre, et l'on rend le rang choisi — 0 si rien.
+ *
+ * popUpMenuPositioningItem est SYNCHRONE : il ne rend la main qu'une fois le
+ * menu refermé, après avoir envoyé l'action de l'article choisi. Le script
+ * qui attend la valeur attend donc, comme sous HyperCard.
+ *
+ * Le point vient en coordonnées d'ÉCRAN façon HyperCard — depuis le coin
+ * haut-gauche de l'écran qui porte la barre de menus, le premier de
+ * [NSScreen screens] ; AppKit compte ses y depuis le bas de cet écran. */
+static int gPopupChoix = 0;
+
+- (void)popupFonctionChoisie:(id)sender {
+    gPopupChoix = (int)[sender tag];
+}
+
+static int cocoa_popup_menu(const char *articles, int coche, int haut, int gauche)
+{
+    if (!gView || !articles) return 0;
+    NSArray<NSString *> *lignes =
+        [hcv_texte(articles) componentsSeparatedByString:@"\n"];
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@""];
+    [menu setAutoenablesItems:NO];
+    NSMenuItem *place = nil;
+    NSInteger rang = 0;
+    for (NSString *l in lignes) {
+        rang++;
+        NSMenuItem *it;
+        if ([l isEqualToString:@"-"]) {
+            it = [NSMenuItem separatorItem];
+        } else {
+            BOOL grise = [l hasPrefix:@"("];
+            NSString *titre = grise ? [l substringFromIndex:1] : l;
+            it = [[NSMenuItem alloc] initWithTitle:titre
+                                            action:@selector(popupFonctionChoisie:)
+                                     keyEquivalent:@""];
+            [it setTarget:gView];
+            [it setEnabled:!grise];
+        }
+        [it setTag:rang];
+        if (rang == coche) { [it setState:NSControlStateValueOn]; place = it; }
+        [menu addItem:it];
+    }
+
+    NSPoint ou;
+    if (haut == HC_PAS_DE_POINT || gauche == HC_PAS_DE_POINT) {
+        ou = [NSEvent mouseLocation];
+    } else {
+        NSArray<NSScreen *> *ecrans = [NSScreen screens];
+        CGFloat h0 = [ecrans count] ? NSMaxY([ecrans[0] frame]) : 0;
+        ou = NSMakePoint((CGFloat)gauche, h0 - (CGFloat)haut);
+    }
+    gPopupChoix = 0;
+    [menu popUpMenuPositioningItem:place atLocation:ou inView:nil];
+    return gPopupChoix;
+}
+
 static BOOL object_selection_active(void)
 {
     return (gSelected != NULL && gTool != TOOL_BROWSE) ? YES : NO;
@@ -7437,6 +7497,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.stack_changed = cocoa_stack_changed;
     host.answer        = cocoa_answer;
     host.global_get    = cocoa_global_get;
+    host.popup_menu    = cocoa_popup_menu;
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;

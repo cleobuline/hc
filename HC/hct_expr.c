@@ -53,6 +53,22 @@ static int fini(HctAnalyseur *a)
     return j->genre == HCT_FIN || j->genre == HCT_EOL || mot_est(j, "else");
 }
 
+/* UN ARGUMENT ABSENT EST UNE CHAÎNE VIDE.
+ *
+ *     put PopUpMenu(list,,tp,lp) into it      -- Minkowski Stack 1, 1992
+ *     monGestionnaire 1,,3
+ *
+ * HyperTalk admet la place vide entre deux virgules : le paramètre existe, et
+ * il est vide. L'analyseur exigeait une expression à chaque place et levait
+ * « expression attendue » — rapporté le 2 octobre. Seul « send », qui découpe
+ * son TEXTE à part, s'en tirait déjà : « send "g 1,,3" » rendait trois
+ * paramètres, le deuxième vide. Les deux autres chemins s'alignent sur lui.
+ *
+ * Le jeton est celui où l'on se trouve, réduit à zéro octet : la colonne d'une
+ * faute éventuelle reste juste, et la reconstitution du texte source ne
+ * s'étend pas. */
+static HctNoeud *arg_vide(HctAnalyseur *a);
+
 static void avance(HctAnalyseur *a)
 {
     if (a->lot->jetons[a->i].genre != HCT_FIN) a->i++;
@@ -1196,7 +1212,10 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
         int garde = a->sans_of; a->sans_of = 0;
         if (!op_ici(a, ")")) {
             for (;;) {
-                hct_ajoute_fils(a->reserve, appel, rang_ou(a));
+                if (op_ici(a, ",") || op_ici(a, ")"))
+                    hct_ajoute_fils(a->reserve, appel, arg_vide(a));
+                else
+                    hct_ajoute_fils(a->reserve, appel, rang_ou(a));
                 if (op_ici(a, ",")) { avance(a); continue; }
                 break;
             }
@@ -1407,9 +1426,25 @@ HctNoeud *hct_instruction(HctAnalyseur *a)
     if (!m) return NULL;
     m->op = "message";
     while (!fini(a)) {
-        hct_ajoute_fils(a->reserve, m, rang_ou(a));
-        if (op_ici(a, ",")) { avance(a); continue; }
+        if (op_ici(a, ","))
+            hct_ajoute_fils(a->reserve, m, arg_vide(a));
+        else
+            hct_ajoute_fils(a->reserve, m, rang_ou(a));
+        if (op_ici(a, ",")) {
+            avance(a);
+            /* « g 1, » : la virgule finale annonce une place, vide. */
+            if (fini(a)) hct_ajoute_fils(a->reserve, m, arg_vide(a));
+            continue;
+        }
         break;
     }
     return m;
+}
+
+static HctNoeud *arg_vide(HctAnalyseur *a)
+{
+    HctJeton j = *ici(a);
+    j.genre = HCT_CHAINE;
+    j.len = 0;
+    return hct_noeud(a->reserve, HCTN_CHAINE, j);
 }

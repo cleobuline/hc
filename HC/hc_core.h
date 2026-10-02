@@ -892,7 +892,24 @@ typedef struct {
      * laissait l'interface avec un pointeur pendant, et le premier mouvement
      * de souris ensuite envoyait « mouseLeave » à un script libéré. */
     void (*object_gone)(Object *o);
+
+    /* UN MENU LOCAL, POUR L'XFCN « PopUpMenu » (Andrew Gilmartin, Brown
+     * University), que des piles d'époque appellent et dont le code 68000
+     * ne peut pas tourner ici — voir v3_popupmenu dans hc_core.c.
+     *
+     * `articles` : un article par ligne. « - » est un trait de séparation ;
+     * un article qui commence par « ( » est grisé, le « ( » ôté. `coche` :
+     * le rang de l'article coché, 0 pour aucun. `haut`, `gauche` : le point
+     * de l'ÉCRAN — compté depuis le coin haut-gauche de l'écran qui porte la
+     * barre de menus — où placer l'article coché, ou le menu ; HC_PAS_DE_POINT
+     * pour « là où est la souris ».
+     *
+     * Rend le rang de l'article choisi, 1 pour le premier, séparateurs
+     * comptés ; 0 si l'on n'a rien choisi. Synchrone : le script attend. */
+    int (*popup_menu)(const char *articles, int coche, int haut, int gauche);
 } HcHost;
+
+#define HC_PAS_DE_POINT (-32768)
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);
