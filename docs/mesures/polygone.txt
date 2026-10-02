@@ -87,3 +87,39 @@ LES CHOIX, ET CE QUI N'EST PAS MESURÉ
 
   · Les cases à cocher, les boutons radio et les popups ne prennent pas les
     couleurs : non demandé, non fait.
+
+
+« the keysDown » ET LE FLIPPER — 2 octobre, le soir
+---------------------------------------------------
+
+La seconde extension, accordée par l'utilisatrice pour les batteurs (W et
+N) : les touches tenues, le mot de LiveCode. Le flipper de démonstration —
+deux batteurs, deux guides, deux bumpers, trois champignons — a été joué
+sans écran par un joueur automatique qui répond à keysDown, puis DANS HC
+(l'application) par l'utilisatrice.
+
+CE QUE LE FLIPPER A TROUVÉ DANS HC, ET QUI EST CORRIGÉ :
+
+  · « set the hilite of button (item k of noms) » : le « of » entre
+    parenthèses passait pour la portée (harnais parenref).
+
+  · L'ARÈNE, un défaut antérieur, présent dans 0.7.6 : chaque appel d'une
+    fonction de la pile y laissait une ligne par argument jusqu'à la fin du
+    gestionnaire. Saturation mesurée entre 16 000 et 20 000 appels de
+    « get f(1) » ; la boucle d'un jeu y arrivait en deux minutes (harnais
+    arenefonction).
+
+  · LA LENTEUR ET LA MÉMOIRE, côté application, introduites avec keysDown :
+    les frappes restaient en file et le guetteur les recopiait à chaque image,
+    et la réserve autorelease ne se vidait pas pendant le script. Rapporté
+    DANS HC par l'utilisatrice : « après quelques coups de flipper ça devient
+    super lent, et je vois la mémoire grimper dans Xcode ». Le noyau était
+    hors de cause, mesuré : 3,4 Mo au plus pour 300, 3 000 ou 9 000 images.
+    Après la correction (commit 50aaaf5), MESURÉ DANS HC (l'application) par
+    l'utilisatrice : « c'est bien, c'est fluide ».
+
+LA PHYSIQUE DU FLIPPER, dans le script de la pile (hors noyau) : trois
+sous-pas par image et des batteurs calculés exactement, dans leur propre
+repère. Mesuré avec le joueur automatique, mêmes tirages : 12 traversées de
+batteur sur 6 parties avant, 0 sur 9 parties après ; 0,8 ms de calcul par
+image, pour un budget de 33.
