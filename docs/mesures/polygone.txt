@@ -170,6 +170,30 @@ un champignon de plus, c'est un copier-coller.
     impression, que les chiffres du noyau n'expliquent pas : le calcul par
     image est un peu plus lourd, non plus léger. Non mesuré dans
     l'application.
+  · UNE PILE NEUVE DANS UNE TRÈS VIEILLE VERSION, rapporté par
+    l'utilisatrice le 3 octobre : le flipper ouvert par HC 0.7.4, sur le
+    MacBook d'un ami en macOS 10.13. La pile s'ouvre et tourne, lentement ;
+    les polygones s'y dessinent en RECTANGLES — la 0.7.4 ne connaît pas le
+    style « polygon », ni the keysDown. Rien d'un défaut de 10.13 : le dessin
+    du polygone n'appelle rien qui dépende de la version du système (lu dans
+    HCview.m). Puis la 0.7.8 installée sur ce même Mac — un Core 2 Duo —,
+    MESURÉ DANS HC (l'application) par l'utilisatrice : « tout est parfait,
+    le dessin, les couleurs, l'éclair ». Lent, mais juste : la première
+    mesure de la 0.7.8 sous macOS 10.13.
+  · LA VISÉE, rapportée DANS HC par l'utilisatrice : « la bille ne suit pas
+    la position sur le batteur, et repart vers l'arrière ». Mesuré dans le
+    noyau, bille posée sur le batteur gauche du pivot à la pointe : 91°,
+    103°, 110°, 114°, 117°, puis 96° et 65° (90° : droit vers le haut) —
+    presque tout vers l'arrière, et la même force partout. Cause : la bille
+    plafonne à 13 points par image, la pointe du batteur va plus vite ; il
+    la rattrapait à chaque pas et l'emportait en fin de course. Corrigé
+    dans la pile : la frappe vise selon la position (le pivot l'emporte plus
+    longtemps, la pointe la lâche aussitôt), la force croît vers la pointe,
+    et pendant la course le batteur pousse la bille sans changer sa visée.
+    Mesuré : 115°, 105°, 97°, 88°, 80°, 72°, 67° du pivot à la pointe, le
+    batteur droit en miroir ; sur 24 parties, 0 traversée, 0 bille coincée,
+    0 faute, 0,86 ms par image. Le contact compte 3 points au-delà de la
+    pointe : une traversée par la pointe montante, trouvée en chemin.
 
 
 LE CHANTIER SUIVANT : L'ÉDITEUR DE POLYGONE — demandé le 2 octobre au soir
