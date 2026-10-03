@@ -167,6 +167,24 @@ static NSTextField  *gInfoTextSize = nil;
 static NSButton     *gInfoCoulCase[3];
 static NSColorWell  *gInfoCoulPuits[3];
 
+/* Le puits qui montre l'opacité. Poser showsAlpha une fois, à l'ouverture
+ * de l'Info, ne suffit pas : rapporté DANS HC par l'utilisatrice, sur
+ * Catalina, le sélecteur ouvert par un puits n'avait pas de curseur
+ * d'opacité. Un NSColorWell, en s'activant, règle lui-même le sélecteur
+ * partagé — d'après ce qu'on en lit couramment, sur la foi de
+ * « NSColor ignoresAlpha », qui vaut OUI par défaut ; non vérifié dans les
+ * sources d'AppKit. Le puits repose donc showsAlpha APRÈS sa propre
+ * activation, à chaque fois, sans toucher au réglage global de NSColor
+ * dont la peinture et l'éditeur d'icônes dépendent aussi. */
+@interface HCPuitsAlpha : NSColorWell
+@end
+@implementation HCPuitsAlpha
+- (void)activate:(BOOL)exclusive {
+    [super activate:exclusive];
+    [[NSColorPanel sharedColorPanel] setShowsAlpha:YES];
+}
+@end
+
 /* Une couleur et son opacité, telles que le noyau les range, en NSColor. */
 static NSColor *info_couleur_de(int c, int alpha, NSColor *defaut)
 {
@@ -812,7 +830,7 @@ static void info_couleurs_ferme(void)
             [gInfoCoulCase[i] setState:coul[i] ? NSControlStateValueOn
                                                : NSControlStateValueOff];
             [c addSubview:gInfoCoulCase[i]];
-            gInfoCoulPuits[i] = [[NSColorWell alloc] initWithFrame:NSMakeRect(x + 62, 298, 40, 24)];
+            gInfoCoulPuits[i] = [[HCPuitsAlpha alloc] initWithFrame:NSMakeRect(x + 62, 298, 40, 24)];
             [gInfoCoulPuits[i] setColor:info_couleur_de(coul[i], alpha[i], defaut[i])];
             [gInfoCoulPuits[i] setTag:i];
             [gInfoCoulPuits[i] setTarget:self];
