@@ -203,3 +203,13 @@ MESURÉ DANS HC (l'application) par l'utilisatrice, le 3 octobre :
 
 Le premier essai avait trouvé un défaut : le clic sur un côté ne créait
 rien, l'étape 4 de mouseDown le prenant pour un déplacement du bouton.
+
+LE SÉLECTEUR DE COULEURS DE L'INFO — 3 octobre (commit 5e79a68)
+
+Demandé par l'utilisatrice : choisir les couleurs d'un bouton à la souris.
+Une rangée Back / Fore / Hilite en haut du dialogue Infos, une case et un
+puits par couleur, l'opacité dans le sélecteur ; case décochée, rien de
+posé. Ce n'est pas une extension de plus : l'interface de celle qui existe.
+
+MESURÉ DANS HC (l'application) par l'utilisatrice : « ça marche très bien du
+premier coup ».
