@@ -33,17 +33,32 @@ Et deux refus, chacun arrêtant le script :
   · « the long id of this stack » : HyperCard ne comprend pas. Le texte du
     message : non relevé.
 
-Second banc, même jour, x valant « the id of this card » :
+Second banc, même jour, deux cartes, x valant « the id of this card » pris
+sur la carte 1 ; le champ, recopié par l'utilisatrice :
 
-  · « go card id x » : HyperCard REFUSE, et arrête le script — « expect a
-    number here », tel que rapporté par l'utilisatrice (le texte exact de la
-    boîte : non relevé). « card id » attend un NOMBRE ; le descripteur
-    entier n'y passe pas.
+    card abbr id: card id 2865
+    card 2 id: card id 3805
+    go x -> card 1
+    go card id x -> card 2
 
-  Conséquence pour HC : plusieurs de nos harnais écrivent exactement cela —
-  navtest (« card field "data2" of card id sortieCarte », « go to card id
-  ident »), pilereelle (« card id n + 0 ») —, ce qu'aucune pile d'HyperCard
-  ne peut faire marcher. Ils ne témoignent que de l'écart.
+  · l'id ABRÉGÉ d'une carte est sa forme par défaut, « card id N » ;
+  · une carte qui n'est pas la carte courante se décrit de même ;
+  · « go x » ramène sur la carte 1 : le descripteur entier se relit ;
+  · « go card id x » ne bouge PAS (on reste sur la carte 2), et la ligne
+    suivante s'écrit : le script a continué. L'utilisatrice a vu « expect a
+    number here » ; de QUELLE ligne il vient, et s'il est une boîte ou the
+    result : non relevé. « card id » n'accepte pas le descripteur entier.
+
+  Conséquence pour HC : plusieurs de nos harnais écrivent « card id » suivi
+  de l'id d'une carte — navtest (« card field "data2" of card id
+  sortieCarte », « go to card id ident »), pilereelle (« card id n + 0 ») —,
+  ce qu'aucune pile d'HyperCard ne peut faire marcher. Ils ne témoignent que
+  de l'écart.
+
+  · « send "teste" to y », y valant le long id du bouton : y vaut 3, et le
+    gestionnaire « teste » n'écrit rien. HC, même script : « destinataire
+    introuvable », PUIS le script continue. Ce que fait HyperCard après
+    l'échec — boîte et arrêt, ou silence : non relevé.
 
 Ce qui en ressort :
   · un BOUTON, un CHAMP et un FOND rendent le nombre nu, quel que soit
@@ -71,19 +86,20 @@ Conforme pour le bouton, le champ et le fond. ÉCARTS :
     et « card id N of stack "…" » ;
   · la pile : HC rend « 1 », HyperCard refuse.
 
-Ce que l'écart de la carte coûte, à lire (non joué) : une pile qui écrit
-« put the id of this card into retour » puis « go retour » reçoit dans HC
-le nombre seul, et « go 3 » ne désigne pas la carte d'id 3.
+Ce que l'écart de la carte coûte, JOUÉ DANS HC (le noyau), le banc même
+d'HyperCard — trois cartes, x pris sur la carte 1, puis « go card 2 » et
+« go x » :
+
+    x = 3, carte 1
+    !! ne sait pas faire : go x
+    go x -> card 2
+
+HyperCard revient sur la carte 1 ; HC refuse et reste sur la carte 2. (Lu
+d'abord dans le code comme « go 3 mène à la troisième carte » : faux, la
+mesure le dément.)
 
 
 NON MESURÉ, à jouer DANS HYPERCARD avant de corriger
 ----------------------------------------------------
 
-  · « the abbreviated id of this card » ;
-  · l'id d'une carte qui n'est pas la carte courante (« the id of card 2 ») ;
-  · « go x » et « put … of card id x », quand x vaut « the id of this
-    card » ;
-  · « send … to x » quand x vaut le long id d'un bouton. Joué une fois, en
-    dernière ligne : la ligne que le gestionnaire appelé devait écrire n'est
-    PAS dans le champ. Refus ou silence : non relevé ;
   · le texte du refus de « the long id of this stack ».
