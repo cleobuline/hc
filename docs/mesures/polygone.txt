@@ -180,3 +180,20 @@ piles est compatible avec les anciennes, faut pas casser ça ».
     d'HyperCard importées n'acquièrent rien ; des piles HC réenregistrées
     par l'ancien et le nouveau noyau sont identiques octet pour octet ; une
     pile écrite par le nouveau noyau se relit dans l'ancien sans faute.
+
+LE CHANTIER FAIT — 3 octobre (commit 5bd1b55), et ses trois mesures
+
+  1. IMPORT : les neuf piles d'HyperCard reçues, 591 boutons, aucun ne porte
+     couleur, opacité ni sommet.
+  2. RÉENREGISTREMENT : demo, Readymade Buttons, Graph Maker et le flipper,
+     relus puis réécrits par le noyau de la 0.7.7 et par le neuf :
+     identiques octet pour octet.
+  3. UNE PILE NEUVE RELUE PAR LA 0.7.7 : un polygone retouché (un sommet
+     inséré, tiré, un autre ôté), une couleur de fond à 100 d'opacité, un
+     allumage à 50. La 0.7.7 l'ouvre sans une faute, garde le style, les
+     trois couleurs — opaques — et les sommets ; elle ignore les lignes
+     backalpha et hilitealpha, comme prévu.
+
+NON MESURÉ ICI, à jouer DANS HC (l'application) : le geste à la souris —
+saisir un sommet, en créer un sur un côté, Delete — et le dessin des
+boutons semi-transparents sur une trame.
