@@ -167,15 +167,18 @@ static NSTextField  *gInfoTextSize = nil;
 static NSButton     *gInfoCoulCase[3];
 static NSColorWell  *gInfoCoulPuits[3];
 
-/* Le puits qui montre l'opacité. Poser showsAlpha une fois, à l'ouverture
- * de l'Info, ne suffit pas : rapporté DANS HC par l'utilisatrice, sur
- * Catalina, le sélecteur ouvert par un puits n'avait pas de curseur
- * d'opacité. Un NSColorWell, en s'activant, règle lui-même le sélecteur
- * partagé — d'après ce qu'on en lit couramment, sur la foi de
+/* Le puits qui montre l'opacité. showsAlpha n'était posé qu'une fois, à
+ * l'ouverture de l'Info ; or un NSColorWell, en s'activant, règle lui-même
+ * le sélecteur partagé — d'après ce qu'on en lit couramment, sur la foi de
  * « NSColor ignoresAlpha », qui vaut OUI par défaut ; non vérifié dans les
  * sources d'AppKit. Le puits repose donc showsAlpha APRÈS sa propre
  * activation, à chaque fois, sans toucher au réglage global de NSColor
- * dont la peinture et l'éditeur d'icônes dépendent aussi. */
+ * dont la peinture et l'éditeur d'icônes dépendent aussi.
+ *
+ * MESURÉ DANS HC (l'application) par l'utilisatrice, sur Catalina, avec ce
+ * puits : le curseur d'opacité est dans le sélecteur. Qu'il en manquait
+ * SANS lui n'est pas mesuré : le premier rapport visait le dialogue Info
+ * lui-même, où le sélecteur n'était pas ouvert. */
 @interface HCPuitsAlpha : NSColorWell
 @end
 @implementation HCPuitsAlpha
