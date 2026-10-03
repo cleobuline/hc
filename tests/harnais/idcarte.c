@@ -19,10 +19,10 @@
  * sait pas faire ». Le bouton, le champ et le fond étaient déjà conformes :
  * ils sont ici pour qu'ils le RESTENT.
  *
- * ÉCART CONNU, NON CORRIGÉ : « the long id of this stack ». HyperCard le
- * refuse ; HC rend 1. Le texte du refus n'est pas relevé, et HC ne doit pas
- * l'inventer. Le témoin montre donc la valeur actuelle, pour qu'un
- * changement se voie. */
+ * LA PILE N'A PAS D'ID : « the long id of this stack », HyperCard le refuse
+ * et arrête le script. HC rendait 1 ; il refuse maintenant, « propriété
+ * inconnue », et s'arrête aussi. Les autres formes de l'id d'une pile ne sont
+ * pas mesurées dans HyperCard : refusées avec la longue. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,10 +99,16 @@ int main(void)
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 
-    puts("\n== 5. ECART CONNU : la pile n'a pas d'id dans HyperCard ==");
+    puts("\n== 5. la pile n'a pas d'id : refus, et le script s'arrete ==");
     hc_set_script(b,
         "on mouseUp\n"
         "  put \"stack long id: \" & the long id of this stack\n"
+        "  put \"apres : ne doit pas s'ecrire\"\n"
+        "end mouseUp\n");
+    hc_send(b, "mouseUp");
+    hc_set_script(b,
+        "on mouseUp\n"
+        "  put \"stack id: \" & the id of this stack\n"
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 

@@ -6602,6 +6602,15 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
                 snprintf(out, outlen, "card id %d", o->id);
             return 1;
         }
+        /* UNE PILE N'A PAS D'ID. « the long id of this stack » est REFUSÉ
+         * DANS HYPERCARD, et le script s'arrête ; l'utilisatrice a rapporté
+         * deux textes, « can't understand argument of id » puis « can't get
+         * this property » — lequel vient de quelle tournure : non relevé
+         * (docs/mesures/long_id.txt). Ici, rendre 0 donne « propriété
+         * inconnue » et le même arrêt. Les formes courte, abrégée et nue
+         * n'ont pas été jouées dans HyperCard ; elles sont refusées avec la
+         * longue. */
+        if (o->type == OBJ_STACK) return 0;
         snprintf(out, outlen, "%d", o->id);
         return 1;
     }

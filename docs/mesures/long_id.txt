@@ -118,10 +118,19 @@ Ce qui reste DIFFÉRENT, et voulu ou non mesuré :
   · le CHEMIN de la pile est celui de macOS (« /Volumes/Saved HD/… »),
     comme dans « the long name » depuis qu'il porte un chemin ; HyperCard
     écrivait le chemin à deux-points du vieux Mac OS ;
-  · « the long id of this stack » rend encore 1 (ci-dessous).
+  · « the long id of this stack » : voir « LA PILE », plus bas.
 
 
-NON MESURÉ, à jouer DANS HYPERCARD avant de corriger
-----------------------------------------------------
+LA PILE — 3 octobre
+-------------------
 
-  · le texte du refus de « the long id of this stack ».
+Le texte du refus, rapporté par l'utilisatrice DANS HYPERCARD, en deux
+messages successifs : « can't understand argument of id », puis « can't get
+this property ». Lequel vient de quelle tournure — the long id seul, ou un
+autre essai — : non relevé. Les deux disent la même chose : refus, et arrêt.
+
+HC rendait 1. Il refuse maintenant toute forme de l'id d'une pile —
+« propriété inconnue », dans la langue de ses autres messages — et le
+script s'arrête (harnais idcarte, section 5). Les formes courte, abrégée et
+nue n'ont pas été jouées dans HyperCard : refusées avec la longue, non
+mesurées.

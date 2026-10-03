@@ -25,5 +25,6 @@
    card long id: card id 3 of stack "/Volumes/Saved HD/More Stacks/test5"
    long name   : card "Une" of stack "/Volumes/Saved HD/More Stacks/test5"
 
-== 5. ECART CONNU : la pile n'a pas d'id dans HyperCard ==
-   stack long id: 1
+== 5. la pile n'a pas d'id : refus, et le script s'arrete ==
+   [ERR]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+   [ERR]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
