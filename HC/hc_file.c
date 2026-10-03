@@ -446,6 +446,12 @@ static void put_part(FILE *f, Object *o)
     if (o->backcolor)   fprintf(f, "backcolor %d\n",   HC_COUL_RVB(o->backcolor));
     if (o->forecolor)   fprintf(f, "forecolor %d\n",   HC_COUL_RVB(o->forecolor));
     if (o->hilitecolor) fprintf(f, "hilitecolor %d\n", HC_COUL_RVB(o->hilitecolor));
+    /* L'OPACITÉ, SUR SA PROPRE LIGNE, et seulement quand elle est posée :
+     * une version antérieure ignore la ligne et garde la couleur, opaque.
+     * L'écrire dans la ligne de couleur lui ferait perdre la couleur. */
+    if (o->backalpha)   fprintf(f, "backalpha %d\n",   HC_ALPHA(o->backalpha));
+    if (o->forealpha)   fprintf(f, "forealpha %d\n",   HC_ALPHA(o->forealpha));
+    if (o->hilitealpha) fprintf(f, "hilitealpha %d\n", HC_ALPHA(o->hilitealpha));
     if (o->points && o->npoints > 0) {
         fprintf(f, "points %d,%d", o->pointsw, o->pointsh);
         for (int i = 0; i < o->npoints; i++)
@@ -1522,6 +1528,25 @@ Object *hc_load(const char *path)
             int v = hc_entier(s + 12, -1, 0xFFFFFF, -1);
             if (part->type == OBJ_BUTTON && v >= 0)
                 part->hilitecolor = HC_COUL_POSEE | v;
+            continue;
+        }
+        /* L'opacité : 0 à 254 se pose ; 255, illisible ou hors bornes, rien. */
+        if (strncmp(s, "backalpha ", 10) == 0 && part) {
+            int v = hc_entier(s + 10, -1, 255, -1);
+            if (part->type == OBJ_BUTTON && v >= 0 && v < 255)
+                part->backalpha = HC_ALPHA_POSE | v;
+            continue;
+        }
+        if (strncmp(s, "forealpha ", 10) == 0 && part) {
+            int v = hc_entier(s + 10, -1, 255, -1);
+            if (part->type == OBJ_BUTTON && v >= 0 && v < 255)
+                part->forealpha = HC_ALPHA_POSE | v;
+            continue;
+        }
+        if (strncmp(s, "hilitealpha ", 12) == 0 && part) {
+            int v = hc_entier(s + 12, -1, 255, -1);
+            if (part->type == OBJ_BUTTON && v >= 0 && v < 255)
+                part->hilitealpha = HC_ALPHA_POSE | v;
             continue;
         }
         if (strncmp(s, "points ", 7) == 0 && part) {

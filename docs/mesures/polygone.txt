@@ -123,3 +123,93 @@ sous-pas par image et des batteurs calculés exactement, dans leur propre
 repère. Mesuré avec le joueur automatique, mêmes tirages : 12 traversées de
 batteur sur 6 parties avant, 0 sur 9 parties après ; 0,8 ms de calcul par
 image, pour un budget de 33.
+
+
+LE CHANTIER SUIVANT : L'ÉDITEUR DE POLYGONE — demandé le 2 octobre au soir
+-------------------------------------------------------------------------
+
+Le scénario, tel que l'utilisatrice l'a décrit :
+
+  1. créer un bouton polygone donne un TRIANGLE, avec trois points d'ancrage
+     qu'on déplace à la souris ;
+  2. un clic sur un côté y crée un nouveau point d'ancrage, qu'on déplace à
+     son tour ;
+  3. Delete supprime un point d'ancrage, SAUF les trois derniers : un
+     polygone ne descend jamais sous le triangle ;
+  4. et dans la foulée, les couleurs de bouton en RVB + ALPHA, « r,v,b,a »,
+     pour des boutons semi-transparents. color_from_name_a sait déjà lire le
+     quatrième nombre (la peinture s'en sert) ; il faut le ranger dans le
+     bouton, l'écrire dans le fichier, et le dessiner.
+
+Questions posées, et leurs réponses :
+
+  · comment naît le polygone — RÉPONDU : « au plus simple ». Pas d'outil
+    de plus dans la palette : « New Button » comme dans HyperCard, puis le
+    style « polygon » dans l'Info (il y est déjà). Un bouton qui devient
+    polygone sans sommets reçoit un triangle inscrit dans son rectangle —
+    par l'Info comme par « set the style … to polygon ».
+  · les poignées — RÉPONDU, accepté tel que proposé : avec l'outil Bouton,
+    tirer une poignée la déplace, cliquer sur un côté en ajoute une, tirer
+    l'intérieur déplace le bouton ;
+  · Delete — RÉPONDU, et CORRIGÉ par l'utilisatrice : « faudra pas faire
+    disparaître tout le bouton avec la touche Delete ! » Quand les poignées
+    d'un polygone sont affichées, Delete ne supprime JAMAIS le bouton :
+      - une poignée sélectionnée, plus de trois points : elle disparaît ;
+      - trois points, ou aucune poignée sélectionnée : un bip, rien d'autre ;
+      - le bouton entier s'enlève par COUPER (⌘X), un geste délibéré que
+        Coller rattrape. Vérifié le 3 octobre : il n'existe pas de menu
+        « Clear Button » ; Delete et Couper étaient les deux seuls chemins.
+  · l'alpha — RÉPONDU : « comme pour le dessin », c'est-à-dire le
+    quatrième nombre de « r,v,b,a », de 0 à 255, lu par la même
+    color_from_name_a. Le but, dit par l'utilisatrice : des boutons
+    semi-transparents par-dessus un fond tramé.
+
+La règle des extensions tient toujours (CLAUDE.md) : rien de posé, rien de
+changé ; une pile d'HyperCard ne porte jamais d'alpha.
+
+LA CONTRAINTE DU CHANTIER, rappelée par l'utilisatrice : « la lecture des
+piles est compatible avec les anciennes, faut pas casser ça ».
+
+  · L'alpha s'écrit sur SA PROPRE LIGNE — « backalpha 128 », etc. —, et
+    seulement quand il n'est pas opaque. L'écrire dans la ligne de couleur
+    (« backcolor 16711680,128 ») ferait perdre la couleur à une 0.7.7 qui
+    ouvrirait une pile de la 0.7.8 ; sur sa propre ligne, elle l'ignore et
+    garde la couleur, opaque.
+  · Un bouton opaque n'écrit rien de plus : le fichier reste identique.
+  · À REFAIRE à la fin du chantier, comme pour l'extension : les piles
+    d'HyperCard importées n'acquièrent rien ; des piles HC réenregistrées
+    par l'ancien et le nouveau noyau sont identiques octet pour octet ; une
+    pile écrite par le nouveau noyau se relit dans l'ancien sans faute.
+
+LE CHANTIER FAIT — 3 octobre (commit 5bd1b55), et ses trois mesures
+
+  1. IMPORT : les neuf piles d'HyperCard reçues, 591 boutons, aucun ne porte
+     couleur, opacité ni sommet.
+  2. RÉENREGISTREMENT : demo, Readymade Buttons, Graph Maker et le flipper,
+     relus puis réécrits par le noyau de la 0.7.7 et par le neuf :
+     identiques octet pour octet.
+  3. UNE PILE NEUVE RELUE PAR LA 0.7.7 : un polygone retouché (un sommet
+     inséré, tiré, un autre ôté), une couleur de fond à 100 d'opacité, un
+     allumage à 50. La 0.7.7 l'ouvre sans une faute, garde le style, les
+     trois couleurs — opaques — et les sommets ; elle ignore les lignes
+     backalpha et hilitealpha, comme prévu.
+
+MESURÉ DANS HC (l'application) par l'utilisatrice, le 3 octobre :
+  · un triangle rouge à 128 d'opacité sur une trame de briques : la trame
+    se voit au travers ;
+  · après la correction du clic sur un côté (commit 9361ec0) : un polygone
+    libre à huit sommets façonné à la souris, le sommet choisi plein —
+    « génial !!! ».
+
+Le premier essai avait trouvé un défaut : le clic sur un côté ne créait
+rien, l'étape 4 de mouseDown le prenant pour un déplacement du bouton.
+
+LE SÉLECTEUR DE COULEURS DE L'INFO — 3 octobre (commit 5e79a68)
+
+Demandé par l'utilisatrice : choisir les couleurs d'un bouton à la souris.
+Une rangée Back / Fore / Hilite en haut du dialogue Infos, une case et un
+puits par couleur, l'opacité dans le sélecteur ; case décochée, rien de
+posé. Ce n'est pas une extension de plus : l'interface de celle qui existe.
+
+MESURÉ DANS HC (l'application) par l'utilisatrice : « ça marche très bien du
+premier coup ».

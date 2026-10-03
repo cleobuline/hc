@@ -45,6 +45,9 @@ end mouseUp
    backcolor        33488896 transmis
    forecolor        16777471 transmis
    hilitecolor      33554176 transmis
+   backalpha        384    transmis
+   forealpha        320    transmis
+   hilitealpha      456    transmis
    npoints          3      transmis
    pointsw          77     transmis
    pointsh          28     transmis

@@ -2944,6 +2944,34 @@ int hc_formes_se_touchent(const Object *a, const Object *b)
     return dans_sommets(pb, nb, pa[0], pa[1]) || dans_sommets(pa, na, pb[0], pb[1]);
 }
 
+/* Range `n` sommets donnés en coordonnées de CARTE — `v`, un tableau
+ * alloué, dont le bouton devient propriétaire — et cale le rectangle sur
+ * eux. Le seul endroit qui le fait : « set the points » et l'éditeur à la
+ * souris y passent tous les deux. */
+static void pose_sommets_xy(Object *o, int *v, int n)
+{
+    int x0 = v[0], y0 = v[1], x1 = v[0], y1 = v[1];
+    for (int i = 1; i < n; i++) {
+        if (v[2 * i] < x0) x0 = v[2 * i];
+        if (v[2 * i] > x1) x1 = v[2 * i];
+        if (v[2 * i + 1] < y0) y0 = v[2 * i + 1];
+        if (v[2 * i + 1] > y1) y1 = v[2 * i + 1];
+    }
+    for (int i = 0; i < n; i++) { v[2 * i] -= x0; v[2 * i + 1] -= y0; }
+    free(o->points);
+    o->points  = v;
+    o->npoints = n;
+    /* Le rectangle se cale sur les sommets. Une forme plate — tous les
+     * sommets sur une même ligne — garde un point d'épaisseur, et sa taille
+     * de référence nulle dit de ne pas l'étirer dans ce sens-là. */
+    o->x = x0;
+    o->y = y0;
+    o->pointsw = x1 - x0;
+    o->pointsh = y1 - y0;
+    o->w = o->pointsw > 0 ? o->pointsw : 1;
+    o->h = o->pointsh > 0 ? o->pointsh : 1;
+}
+
 int hc_pose_sommets(Object *o, const char *texte)
 {
     if (!o || o->type != OBJ_BUTTON) return 0;
@@ -2977,28 +3005,118 @@ int hc_pose_sommets(Object *o, const char *texte)
         return 1;
     }
     if (k % 2 || k < 4) { free(v); return 0; }
-
-    int x0 = v[0], y0 = v[1], x1 = v[0], y1 = v[1];
-    for (int i = 1; i < k / 2; i++) {
-        if (v[2 * i] < x0) x0 = v[2 * i];
-        if (v[2 * i] > x1) x1 = v[2 * i];
-        if (v[2 * i + 1] < y0) y0 = v[2 * i + 1];
-        if (v[2 * i + 1] > y1) y1 = v[2 * i + 1];
-    }
-    for (int i = 0; i < k / 2; i++) { v[2 * i] -= x0; v[2 * i + 1] -= y0; }
-    free(o->points);
-    o->points  = v;
-    o->npoints = k / 2;
-    /* Le rectangle se cale sur les sommets. Une forme plate — tous les
-     * sommets sur une même ligne — garde un point d'épaisseur, et sa taille
-     * de référence nulle dit de ne pas l'étirer dans ce sens-là. */
-    o->x = x0;
-    o->y = y0;
-    o->pointsw = x1 - x0;
-    o->pointsh = y1 - y0;
-    o->w = o->pointsw > 0 ? o->pointsw : 1;
-    o->h = o->pointsh > 0 ? o->pointsh : 1;
+    pose_sommets_xy(o, v, k / 2);
     return 1;
+}
+
+/* ═══ L'ÉDITEUR DE POLYGONE ════════════════════════════════════════════════
+ *
+ * Demandé par l'utilisatrice le 2 octobre (docs/mesures/polygone.txt) : un
+ * polygone naît TRIANGLE, ses sommets se tirent à la souris, un clic sur un
+ * côté en ajoute un, Delete en ôte un — jamais sous trois.
+ *
+ * Le noyau tient la géométrie, l'application la souris. Chaque opération
+ * relit les sommets en coordonnées de CARTE (sommets_poses), les modifie, et
+ * les repose par pose_sommets_xy — le chemin même de « set the points ».
+ * Le rectangle se recale donc tout seul, et l'étirement en cours est
+ * « cuit » dans les nouveaux sommets : la forme ne saute pas. */
+
+int hc_polygone_par_defaut(Object *o)
+{
+    if (!hc_est_polygone(o) || o->npoints >= 2) return 0;
+    int *v = malloc(sizeof(int) * 6);
+    if (!v) return 0;
+    /* La pointe en haut, au milieu ; la base en bas, d'un coin à l'autre. */
+    v[0] = o->x + o->w / 2; v[1] = o->y;
+    v[2] = o->x + o->w;     v[3] = o->y + o->h;
+    v[4] = o->x;            v[5] = o->y + o->h;
+    pose_sommets_xy(o, v, 3);
+    return 1;
+}
+
+/* Les sommets actuels, en coordonnées de carte, dans un tableau neuf de
+ * `place` sommets au moins. NULL si le bouton n'en porte pas. */
+static int *sommets_copie(const Object *o, int place, int *n)
+{
+    *n = 0;
+    if (!o || !o->points || o->npoints < 1) return NULL;
+    if (place < o->npoints) place = o->npoints;
+    int *v = malloc(sizeof(int) * 2 * (size_t)place);
+    if (!v) return NULL;
+    *n = sommets_poses(o, v, o->npoints);
+    return v;
+}
+
+int hc_sommet_deplace(Object *o, int i, int x, int y)
+{
+    int n;
+    int *v = sommets_copie(o, 0, &n);
+    if (!v) return 0;
+    if (i < 0 || i >= n) { free(v); return 0; }
+    v[2 * i] = x; v[2 * i + 1] = y;
+    pose_sommets_xy(o, v, n);
+    return 1;
+}
+
+int hc_sommet_insere(Object *o, int apres, int x, int y)
+{
+    int n;
+    if (!o || o->npoints >= HC_SOMMETS_MAX) return -1;
+    int *v = sommets_copie(o, o->npoints + 1, &n);
+    if (!v) return -1;
+    if (apres < 0 || apres >= n) { free(v); return -1; }
+    memmove(&v[2 * (apres + 2)], &v[2 * (apres + 1)],
+            sizeof(int) * 2 * (size_t)(n - apres - 1));
+    v[2 * (apres + 1)] = x; v[2 * (apres + 1) + 1] = y;
+    pose_sommets_xy(o, v, n + 1);
+    return apres + 1;
+}
+
+int hc_sommet_ote(Object *o, int i)
+{
+    int n;
+    if (!o || o->npoints <= HC_SOMMETS_MIN) return 0;
+    int *v = sommets_copie(o, 0, &n);
+    if (!v) return 0;
+    if (i < 0 || i >= n) { free(v); return 0; }
+    memmove(&v[2 * i], &v[2 * (i + 1)], sizeof(int) * 2 * (size_t)(n - i - 1));
+    pose_sommets_xy(o, v, n - 1);
+    return 1;
+}
+
+int hc_sommet_proche(const Object *o, int x, int y, int tol)
+{
+    static int v[2 * HC_SOMMETS_MAX];
+    int n = sommets_poses(o, v, HC_SOMMETS_MAX);
+    long long meilleur = (long long)tol * tol;
+    int trouve = -1;
+    for (int i = 0; i < n; i++) {
+        long long dx = v[2 * i] - x, dy = v[2 * i + 1] - y;
+        if (dx * dx + dy * dy <= meilleur) { meilleur = dx * dx + dy * dy; trouve = i; }
+    }
+    return trouve;
+}
+
+int hc_cote_proche(const Object *o, int x, int y, int tol)
+{
+    static int v[2 * HC_SOMMETS_MAX];
+    int n = sommets_poses(o, v, HC_SOMMETS_MAX);
+    if (n < 2) return -1;
+    double meilleur = (double)tol * tol;
+    int trouve = -1;
+    int cotes = n >= 3 ? n : 1;          /* deux sommets : un seul segment */
+    for (int i = 0; i < cotes; i++) {
+        double ax = v[2 * i], ay = v[2 * i + 1];
+        double bx = v[2 * ((i + 1) % n)], by = v[2 * ((i + 1) % n) + 1];
+        double dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+        double t = l2 > 0 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        double px = ax + t * dx - x, py = ay + t * dy - y;
+        double d2 = px * px + py * py;
+        if (d2 <= meilleur) { meilleur = d2; trouve = i; }
+    }
+    return trouve;
 }
 
 void hc_set_hilite(Object *btn, Object *card, int on)
@@ -6430,6 +6548,16 @@ static int *champ_couleur(Object *o, const char *prop)
     return NULL;
 }
 
+/* L'opacité qui va avec cette couleur — le champ jumeau de champ_couleur. */
+static int *champ_alpha(Object *o, const char *prop)
+{
+    int *c = champ_couleur(o, prop);
+    if (c == &o->backcolor)   return &o->backalpha;
+    if (c == &o->forecolor)   return &o->forealpha;
+    if (c == &o->hilitecolor) return &o->hilitealpha;
+    return NULL;
+}
+
 /* « the points » : un sommet par ligne, en coordonnées de carte. */
 static void ecrit_sommets(const Object *o, char *out, int outlen)
 {
@@ -6569,7 +6697,14 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     {
         int *c = (o->type == OBJ_BUTTON) ? champ_couleur(o, prop) : NULL;
         if (c) {
-            if (*c) snprintf(out, outlen, "%d,%d,%d", (HC_COUL_RVB(*c) >> 16) & 255,
+            /* Quatre nombres seulement quand l'opacité est posée : une
+             * couleur opaque se lit comme avant, en trois. */
+            int *a = champ_alpha(o, prop);
+            if (*c && a && *a)
+                snprintf(out, outlen, "%d,%d,%d,%d", (HC_COUL_RVB(*c) >> 16) & 255,
+                         (HC_COUL_RVB(*c) >> 8) & 255, HC_COUL_RVB(*c) & 255,
+                         HC_ALPHA(*a));
+            else if (*c) snprintf(out, outlen, "%d,%d,%d", (HC_COUL_RVB(*c) >> 16) & 255,
                              (HC_COUL_RVB(*c) >> 8) & 255, HC_COUL_RVB(*c) & 255);
             else if (outlen > 0) out[0] = '\0';
             return 1;
@@ -12209,18 +12344,24 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
     } else if (o->type == OBJ_BUTTON && champ_couleur(o, prop)) {
         /* Vide efface : le bouton reprend le dessin d'HyperCard. */
         int *c = champ_couleur(o, prop);
+        int *a = champ_alpha(o, prop);
         const char *v = val;
         while (*v == ' ' || *v == '\t') v++;
         if (!*v) {
             *c = 0;
+            if (a) *a = 0;
         } else {
-            int rvb = color_from_name(v);
+            /* « r,v,b,a » : le quatrième nombre est l'opacité, de 0 à 255,
+             * lu par la même fonction que la peinture. Sans lui, opaque. */
+            int alpha = 255;
+            int rvb = color_from_name_a(v, &alpha);
             if (rvb == HC_COLOR_INHERIT) {
                 emit(HC_ERR, "   !! couleur inconnue : %s", val);
                 set_result("couleur inconnue");
                 g_atop = sauve; return 1;
             }
             *c = HC_COUL_POSEE | rvb;
+            if (a) *a = (alpha >= 255) ? 0 : (HC_ALPHA_POSE | (alpha & 0xFF));
         }
         notify_field(o);
     } else if (ci_equal(prop, "autohilite")) {
@@ -12254,6 +12395,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
         free(o->style);
         o->style = nv;
+        /* Un bouton qui devient polygone sans sommets naît triangle —
+         * comme par le dialogue Infos (HCdialogs.m), qui appelle la même. */
+        hc_polygone_par_defaut(o);
+        notify_field(o);
     } else if (ci_equal(prop, "text") || ci_equal(prop, "contents")) {
         if (o->type != OBJ_FIELD && o->type != OBJ_BUTTON) {
             emit(HC_ERR, "   !! seul un champ ou un bouton a un contenu");

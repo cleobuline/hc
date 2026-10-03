@@ -137,6 +137,9 @@ int main(void)
     b->backcolor = HC_COUL_POSEE | 0xFF0000;
     b->forecolor = HC_COUL_POSEE | 0x0000FF;
     b->hilitecolor = HC_COUL_POSEE | 0xFFFF00;
+    b->backalpha = HC_ALPHA_POSE | 128;
+    b->forealpha = HC_ALPHA_POSE | 64;
+    b->hilitealpha = HC_ALPHA_POSE | 200;
     hc_pose_sommets(b, "5,6\n82,6\n40,34");
 
     hc_copy_part(b);
@@ -158,6 +161,7 @@ int main(void)
     COMPARE(family); COMPARE(titlewidth);
     COMPARE(textsize); COMPARE(textheight);
     COMPARE(backcolor); COMPARE(forecolor); COMPARE(hilitecolor);
+    COMPARE(backalpha); COMPARE(forealpha); COMPARE(hilitealpha);
     COMPARE(npoints); COMPARE(pointsw); COMPARE(pointsh);
     if (src->npoints != cp->npoints || !cp->points ||
         memcmp(src->points, cp->points, sizeof(int) * 2 * (size_t)src->npoints)) {

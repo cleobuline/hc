@@ -43,6 +43,12 @@ d'HyperCard ne change de comportement.
 Toute autre extension se propose à l'utilisatrice, et ne se fait pas sans
 elle. (skipErrors n'est pas concerné : il reste le petit secret ci-dessus.)
 
+ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
+après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
+noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit
+être une version de LONGUE DURÉE, proche du définitif : la suite est de la
+fidélité à HyperCard et de la solidité, pas des nouveautés.
+
 ## LE CÔTÉ COCOA SE VÉRIFIE, ET IL NE FAUT PAS S'EN PRIVER
 
 Les quinze fichiers `.m` ne se compilent pas dans le conteneur : c'est une
