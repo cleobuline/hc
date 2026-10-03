@@ -1,0 +1,77 @@
+« THE ID », COURT, ABRÉGÉ ET LONG — 3 octobre
+==============================================
+
+L'ÉCART ANNONCÉ ÉTAIT FAUX. Le relevé du polygone (2 octobre) et les notes de
+la 0.7.7 et de la 0.7.8 disaient : « the long id of button 2 » rend « 5 »
+dans HC, là où HyperCard rend « card button id 5 of card id … of stack … ».
+La seconde moitié n'avait JAMAIS été mesurée : c'était un souvenir, écrit
+comme un fait. Mesuré le 3 octobre, HyperCard rend le nombre, comme HC.
+
+
+MESURÉ DANS HYPERCARD (Basilisk II), par l'utilisatrice
+-------------------------------------------------------
+
+Un bouton (id 3) et un champ de carte (id 1) sur une carte de la pile
+« test5 », écrit par le script du bouton dans le champ :
+
+    id: 3
+    short id: 3
+    abbr id: 3
+    long id: 3
+    card id: card id 2865
+    card short id: 2865
+    card long id: card id 2865 of stack "Saved HD:More Stacks:Alternate Home Stacks:Home (Small):test5"
+    bg id: 2703
+    bg long id: 2703
+    fld long id: 1
+
+Et deux refus, chacun arrêtant le script :
+
+  · « put the long id of me into x » puis « the name of x » : HyperCard ne
+    comprend pas. Une variable qui contient un descripteur ne devient pas un
+    objet dans « the … of ».
+  · « the long id of this stack » : HyperCard ne comprend pas. Le texte du
+    message : non relevé.
+
+Ce qui en ressort :
+  · un BOUTON, un CHAMP et un FOND rendent le nombre nu, quel que soit
+    l'adjectif ;
+  · seule la CARTE se décrit : « card id N » par défaut, le nombre en court,
+    et « … of stack "chemin complet" » en long ;
+  · une pile n'a pas d'id.
+
+
+CE QUE REND HC (le noyau), même jour
+------------------------------------
+
+Pile « Pile », fond, carte « Carte », bouton « B » (id 4) :
+
+    the id / short id / abbreviated id / long id of me   -> 4
+    the long id of card field 1                          -> 5
+    the long id of bkgnd button 1, bkgnd field 1         -> 6, 7
+    the long id of this card                             -> 3
+    the abbreviated id of this card                      -> 3
+    the long id of this bkgnd                            -> 2
+    the long id of this stack                            -> 1
+
+Conforme pour le bouton, le champ et le fond. ÉCARTS :
+  · la carte : HC rend « 3 » pour l'id et le long id, HyperCard « card id N »
+    et « card id N of stack "…" » ;
+  · la pile : HC rend « 1 », HyperCard refuse.
+
+Ce que l'écart de la carte coûte, à lire (non joué) : une pile qui écrit
+« put the id of this card into retour » puis « go retour » reçoit dans HC
+le nombre seul, et « go 3 » ne désigne pas la carte d'id 3.
+
+
+NON MESURÉ, à jouer DANS HYPERCARD avant de corriger
+----------------------------------------------------
+
+  · « the abbreviated id of this card » ;
+  · l'id d'une carte qui n'est pas la carte courante (« the id of card 2 ») ;
+  · « go x », « go card id x », « put … of card id x », quand x vaut
+    « the id of this card » ;
+  · « send … to x » quand x vaut le long id d'un bouton. Joué une fois, en
+    dernière ligne : la ligne que le gestionnaire appelé devait écrire n'est
+    PAS dans le champ. Refus ou silence : non relevé ;
+  · le texte du refus de « the long id of this stack ».

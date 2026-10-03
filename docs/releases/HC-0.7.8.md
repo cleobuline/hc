@@ -144,8 +144,10 @@ was measured again at the end of this work:
 
 ### Known, and not fixed here
 
-- `the long id of button 1` gives only the number; HyperCard gives the full
-  descriptor.
+- `the id of this card` gives only the number; HyperCard gives `card id 2865`,
+  and `the long id` adds `of stack "…"` with the stack's full path. Buttons,
+  fields and backgrounds were measured in HyperCard too: there, every form
+  of their id is the bare number, as in HC.
 - Fields take no `backColor` or `foreColor`; check boxes, radio buttons and
   popups ignore the button colours.
 - A stack's own palettes (a `PLTE` resource, or an XCMD) are not supported.

@@ -59,9 +59,10 @@ CE QUI A ÉTÉ TROUVÉ EN CHEMIN
     « propriété inconnue ». La promesse est tenue depuis, pour les boutons.
     Les CHAMPS n'ont toujours ni backColor ni foreColor.
 
-  · « the long id of button 2 » rend « 5 » dans HC, là où HyperCard rend
-    « card button id 5 of card id … of stack … ». Un écart de compatibilité
-    à part, relevé en chemin, non corrigé ici.
+  · « the long id of button 2 » rend « 5 » dans HC. Il était écrit ici que
+    HyperCard rendait « card button id 5 of card id … of stack … » : FAUX,
+    c'était un souvenir. Mesuré DANS HYPERCARD le 3 octobre, il rend le
+    nombre, comme HC ; seule la carte se décrit. Voir long_id.txt.
 
 
 LES CHOIX, ET CE QUI N'EST PAS MESURÉ
