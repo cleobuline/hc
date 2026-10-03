@@ -159,7 +159,7 @@ was measured again at the end of this work:
 
 ### Changes in this release
 
-- [#PR](https://github.com/cleobuline/hc/pull/PR): the polygon editor, button
+- [#101](https://github.com/cleobuline/hc/pull/101): the polygon editor, button
   colour opacity, colours in Button Info, even-odd filling; version 0.7.8 in
   all three places, and this note
 
