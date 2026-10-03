@@ -170,6 +170,13 @@ un champignon de plus, c'est un copier-coller.
     impression, que les chiffres du noyau n'expliquent pas : le calcul par
     image est un peu plus lourd, non plus léger. Non mesuré dans
     l'application.
+  · UNE PILE NEUVE DANS UNE TRÈS VIEILLE VERSION, rapporté par
+    l'utilisatrice le 3 octobre : le flipper ouvert par HC 0.7.4, sur le
+    MacBook d'un ami en macOS 10.13. La pile s'ouvre et tourne, lentement ;
+    les polygones s'y dessinent en RECTANGLES — la 0.7.4 ne connaît pas le
+    style « polygon », ni the keysDown. Rien d'un défaut de 10.13 : le dessin
+    du polygone n'appelle rien qui dépende de la version du système (lu dans
+    HCview.m). Non mesuré : la 0.7.8 sur ce Mac.
   · LA VISÉE, rapportée DANS HC par l'utilisatrice : « la bille ne suit pas
     la position sur le batteur, et repart vers l'arrière ». Mesuré dans le
     noyau, bille posée sur le batteur gauche du pivot à la pointe : 91°,
