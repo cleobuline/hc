@@ -194,6 +194,12 @@ LE CHANTIER FAIT — 3 octobre (commit 5bd1b55), et ses trois mesures
      trois couleurs — opaques — et les sommets ; elle ignore les lignes
      backalpha et hilitealpha, comme prévu.
 
-NON MESURÉ ICI, à jouer DANS HC (l'application) : le geste à la souris —
-saisir un sommet, en créer un sur un côté, Delete — et le dessin des
-boutons semi-transparents sur une trame.
+MESURÉ DANS HC (l'application) par l'utilisatrice, le 3 octobre :
+  · un triangle rouge à 128 d'opacité sur une trame de briques : la trame
+    se voit au travers ;
+  · après la correction du clic sur un côté (commit 9361ec0) : un polygone
+    libre à huit sommets façonné à la souris, le sommet choisi plein —
+    « génial !!! ».
+
+Le premier essai avait trouvé un défaut : le clic sur un côté ne créait
+rien, l'étape 4 de mouseDown le prenant pour un déplacement du bouton.

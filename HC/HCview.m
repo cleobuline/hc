@@ -744,6 +744,13 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
             [p lineToPoint:NSMakePoint(xy[2 * i] + 0.5, xy[2 * i + 1] + 0.5)];
         if (n >= 3) {
             [p closePath];
+            /* PAIR-IMPAIR, comme le clic, within() et intersect() — voir
+             * dans_sommets, hc_core.c. AppKit remplit par défaut selon la
+             * règle « non nulle » : pour une forme dont les côtés se
+             * croisent, une zone aurait été peinte sans être cliquable. Ce
+             * qu'on voit doit être ce qui touche. Rien ne change pour une
+             * forme simple. */
+            [p setWindingRule:NSWindingRuleEvenOdd];
             [btn_fond(o, on) setFill];
             [p fill];
         }
