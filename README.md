@@ -53,3 +53,7 @@ Détails dans [`tests/LISEZMOI.md`](tests/LISEZMOI.md).
 
 [MIT](LICENSE) : libre d'utiliser, de modifier et de redistribuer, à condition
 de citer les auteurs, **Patricia Benedetto** et **Claude** (Anthropic).
+
+
+https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
+
