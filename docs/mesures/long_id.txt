@@ -1,0 +1,136 @@
+« THE ID », COURT, ABRÉGÉ ET LONG — 3 octobre
+==============================================
+
+L'ÉCART ANNONCÉ ÉTAIT FAUX. Le relevé du polygone (2 octobre) et les notes de
+la 0.7.7 et de la 0.7.8 disaient : « the long id of button 2 » rend « 5 »
+dans HC, là où HyperCard rend « card button id 5 of card id … of stack … ».
+La seconde moitié n'avait JAMAIS été mesurée : c'était un souvenir, écrit
+comme un fait. Mesuré le 3 octobre, HyperCard rend le nombre, comme HC.
+
+
+MESURÉ DANS HYPERCARD (Basilisk II), par l'utilisatrice
+-------------------------------------------------------
+
+Un bouton (id 3) et un champ de carte (id 1) sur une carte de la pile
+« test5 », écrit par le script du bouton dans le champ :
+
+    id: 3
+    short id: 3
+    abbr id: 3
+    long id: 3
+    card id: card id 2865
+    card short id: 2865
+    card long id: card id 2865 of stack "Saved HD:More Stacks:Alternate Home Stacks:Home (Small):test5"
+    bg id: 2703
+    bg long id: 2703
+    fld long id: 1
+
+Et deux refus, chacun arrêtant le script :
+
+  · « put the long id of me into x » puis « the name of x » : HyperCard ne
+    comprend pas. Une variable qui contient un descripteur ne devient pas un
+    objet dans « the … of ».
+  · « the long id of this stack » : HyperCard ne comprend pas. Le texte du
+    message : non relevé.
+
+Second banc, même jour, deux cartes, x valant « the id of this card » pris
+sur la carte 1 ; le champ, recopié par l'utilisatrice :
+
+    card abbr id: card id 2865
+    card 2 id: card id 3805
+    go x -> card 1
+    go card id x -> card 2
+
+  · l'id ABRÉGÉ d'une carte est sa forme par défaut, « card id N » ;
+  · une carte qui n'est pas la carte courante se décrit de même ;
+  · « go x » ramène sur la carte 1 : le descripteur entier se relit ;
+  · « go card id x » ne bouge PAS (on reste sur la carte 2), et la ligne
+    suivante s'écrit : le script a continué. L'utilisatrice a vu « expect a
+    number here » ; de QUELLE ligne il vient, et s'il est une boîte ou the
+    result : non relevé. « card id » n'accepte pas le descripteur entier.
+
+  Conséquence pour HC : plusieurs de nos harnais écrivent « card id » suivi
+  de l'id d'une carte — navtest (« card field "data2" of card id
+  sortieCarte », « go to card id ident »), pilereelle (« card id n + 0 ») —,
+  ce qu'aucune pile d'HyperCard ne peut faire marcher. Ils ne témoignent que
+  de l'écart.
+
+  · « send "teste" to y », y valant le long id du bouton : y vaut 3, et le
+    gestionnaire « teste » n'écrit rien. HC, même script : « destinataire
+    introuvable », PUIS le script continue. Ce que fait HyperCard après
+    l'échec — boîte et arrêt, ou silence : non relevé.
+
+Ce qui en ressort :
+  · un BOUTON, un CHAMP et un FOND rendent le nombre nu, quel que soit
+    l'adjectif ;
+  · seule la CARTE se décrit : « card id N » par défaut, le nombre en court,
+    et « … of stack "chemin complet" » en long ;
+  · une pile n'a pas d'id.
+
+
+CE QUE REND HC (le noyau), même jour
+------------------------------------
+
+Pile « Pile », fond, carte « Carte », bouton « B » (id 4) :
+
+    the id / short id / abbreviated id / long id of me   -> 4
+    the long id of card field 1                          -> 5
+    the long id of bkgnd button 1, bkgnd field 1         -> 6, 7
+    the long id of this card                             -> 3
+    the abbreviated id of this card                      -> 3
+    the long id of this bkgnd                            -> 2
+    the long id of this stack                            -> 1
+
+Conforme pour le bouton, le champ et le fond. ÉCARTS :
+  · la carte : HC rend « 3 » pour l'id et le long id, HyperCard « card id N »
+    et « card id N of stack "…" » ;
+  · la pile : HC rend « 1 », HyperCard refuse.
+
+Ce que l'écart de la carte coûte, JOUÉ DANS HC (le noyau), le banc même
+d'HyperCard — trois cartes, x pris sur la carte 1, puis « go card 2 » et
+« go x » :
+
+    x = 3, carte 1
+    !! ne sait pas faire : go x
+    go x -> card 2
+
+HyperCard revient sur la carte 1 ; HC refuse et reste sur la carte 2. (Lu
+d'abord dans le code comme « go 3 mène à la troisième carte » : faux, la
+mesure le dément.)
+
+
+LA CORRECTION — 3 octobre, sur l'accord de l'utilisatrice
+--------------------------------------------------------
+
+obj_prop_read (hc_core.c) : l'id d'une CARTE rend « card id N » par défaut
+et en abrégé, le nombre en court, « card id N of stack "…" » en long — la
+pile écrite comme la met déjà « the long name ». Le reste ne bouge pas.
+
+Le harnais idcarte rejoue les deux bancs ; « go x » y ramène sur la carte 1,
+le long id aussi, et « card id (the short id of …) » marche.
+
+Trois harnais écrivaient « card id » suivi de « the id of this card » —
+navtest (via navharn, navharn2, navharn3) et pilereelle — : ils passent à
+« the short id », comme l'écrirait l'auteur d'une pile d'HyperCard. Trois
+témoins changent de la seule forme mesurée (fn, longname, valeur).
+
+Ce qui reste DIFFÉRENT, et voulu ou non mesuré :
+  · le CHEMIN de la pile est celui de macOS (« /Volumes/Saved HD/… »),
+    comme dans « the long name » depuis qu'il porte un chemin ; HyperCard
+    écrivait le chemin à deux-points du vieux Mac OS ;
+  · « the long id of this stack » : voir « LA PILE », plus bas.
+
+
+LA PILE — 3 octobre
+-------------------
+
+Le texte du refus, rapporté par l'utilisatrice DANS HYPERCARD, en deux
+messages successifs : « can't understand argument of id », puis « can't get
+this property ». Lequel vient de quelle tournure — the long id seul, ou un
+autre essai — : non relevé. Les deux disent la même chose : refus, et arrêt.
+
+HC rendait 1. Il refuse maintenant toute forme de l'id d'une pile —
+« propriété inconnue », dans la langue de ses autres messages — et le
+script s'arrête (harnais idcarte, section 5). Les formes courte, abrégée et
+nue n'ont pas été jouées dans HyperCard : refusées avec la longue, non
+mesurées.

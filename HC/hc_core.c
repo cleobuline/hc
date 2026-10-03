@@ -6577,7 +6577,43 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
                          char *out, int outlen)
 {
     if (geom_read(o, prop, out, outlen)) return 1;
-    if (ci_equal(prop, "id"))      { snprintf(out, outlen, "%d", o->id); return 1; }
+    /* L'ID D'UNE CARTE SE DÉCRIT ; celui des autres est un nombre nu.
+     * MESURÉ DANS HYPERCARD le 3 octobre (docs/mesures/long_id.txt) :
+     *
+     *     the id / abbreviated id of this card   card id 2865
+     *     the short id of this card              2865
+     *     the long id of this card               card id 2865 of stack "…"
+     *     the id of card 2                       card id 3805
+     *     bouton, champ, fond, sous toute forme  le nombre
+     *
+     * Le descripteur se relit — « go x » ramène sur la carte —, alors que
+     * « card id x » n'accepte que le nombre : c'est the short id qu'on y met.
+     * HC rendait le nombre nu pour la carte aussi, et « go x » y répondait
+     * « ne sait pas faire ». La pile du long id est celle du long name, avec
+     * le chemin du fichier quand on le connaît. */
+    if (ci_equal(prop, "id")) {
+        if (o->type == OBJ_CARD && forme != HC_NOM_COURT) {
+            Object *pile = owning_stack(o);
+            if (forme == HC_NOM_LONG && pile) {
+                char pl[HC_NOM_MAX + 64];
+                hc_nom_de(pile, HC_NOM_LONG, pl, sizeof pl);
+                snprintf(out, outlen, "card id %d of %s", o->id, pl);
+            } else
+                snprintf(out, outlen, "card id %d", o->id);
+            return 1;
+        }
+        /* UNE PILE N'A PAS D'ID. « the long id of this stack » est REFUSÉ
+         * DANS HYPERCARD, et le script s'arrête ; l'utilisatrice a rapporté
+         * deux textes, « can't understand argument of id » puis « can't get
+         * this property » — lequel vient de quelle tournure : non relevé
+         * (docs/mesures/long_id.txt). Ici, rendre 0 donne « propriété
+         * inconnue » et le même arrêt. Les formes courte, abrégée et nue
+         * n'ont pas été jouées dans HyperCard ; elles sont refusées avec la
+         * longue. */
+        if (o->type == OBJ_STACK) return 0;
+        snprintf(out, outlen, "%d", o->id);
+        return 1;
+    }
     /* « the number of this card », « the number of card field "x" » : le RANG
      * de l'objet parmi ses semblables, à ne pas confondre avec le comptage
      * qu'est « the number of cards ».

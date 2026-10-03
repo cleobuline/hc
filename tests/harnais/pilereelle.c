@@ -404,8 +404,11 @@ int main(void)
          "put 1 into i\n  put the name of card i + 1");
     joue("card i + 0 : et la carte elle-meme",
          "put 1 into i\n  put the name of card i + 0");
+    /* « the short id » : depuis le 3 octobre, « the id » d'une carte rend
+     * « card id N », comme HyperCard, et « card id » n'attend qu'un nombre
+     * (docs/mesures/long_id.txt). */
     joue("card id n + 0 : l'identifiant calcule aussi",
-         "put the id of this card into n\n  put the name of card id n + 0");
+         "put the short id of this card into n\n  put the name of card id n + 0");
 
     puts("");
     puts("--- 6c. ET LE NOM CITE RESTE UN NOM ---");

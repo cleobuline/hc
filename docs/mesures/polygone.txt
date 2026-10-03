@@ -59,9 +59,10 @@ CE QUI A ÉTÉ TROUVÉ EN CHEMIN
     « propriété inconnue ». La promesse est tenue depuis, pour les boutons.
     Les CHAMPS n'ont toujours ni backColor ni foreColor.
 
-  · « the long id of button 2 » rend « 5 » dans HC, là où HyperCard rend
-    « card button id 5 of card id … of stack … ». Un écart de compatibilité
-    à part, relevé en chemin, non corrigé ici.
+  · « the long id of button 2 » rend « 5 » dans HC. Il était écrit ici que
+    HyperCard rendait « card button id 5 of card id … of stack … » : FAUX,
+    c'était un souvenir. Mesuré DANS HYPERCARD le 3 octobre, il rend le
+    nombre, comme HC ; seule la carte se décrit. Voir long_id.txt.
 
 
 LES CHOIX, ET CE QUI N'EST PAS MESURÉ
@@ -85,8 +86,17 @@ LES CHOIX, ET CE QUI N'EST PAS MESURÉ
     PROPRE fonction intersect ou within recevrait donc ce descripteur. Aucune
     pile d'HyperCard n'en connaît : ces noms n'existaient pas.
 
-  · Les cases à cocher, les boutons radio et les popups ne prennent pas les
-    couleurs : non demandé, non fait.
+  · Les cases à cocher, les boutons radio et les popups ne prenaient pas les
+    couleurs. Relevé par l'utilisatrice le 3 octobre, fait le même jour :
+      - case et radio : backColor l'intérieur, foreColor le cadre et le
+        titre, hiliteColor la MARQUE (croix, point) — ce qui s'allume sur
+        eux ; non posée, la marque suit foreColor ;
+      - popup : backColor l'intérieur de la boîte, foreColor l'ombre, le
+        cadre, la flèche et le texte ; un popup ne s'allume pas, hiliteColor
+        n'y teint rien. Le menu qui s'ouvre au clic garde le blanc et le noir.
+    Rien de posé : le dessin d'avant, mêmes couleurs, mêmes appels sauf le
+    remplissage, qui MÉLANGE au lieu de recopier — identique pour du
+    blanc opaque. Le dessin n'est pas mesuré ici : à voir DANS HC.
 
 
 « the keysDown » ET LE FLIPPER — 2 octobre, le soir
@@ -117,6 +127,19 @@ CE QUE LE FLIPPER A TROUVÉ DANS HC, ET QUI EST CORRIGÉ :
     hors de cause, mesuré : 3,4 Mo au plus pour 300, 3 000 ou 9 000 images.
     Après la correction (commit 50aaaf5), MESURÉ DANS HC (l'application) par
     l'utilisatrice : « c'est bien, c'est fluide ».
+
+  · UNE EXCEPTION SUR CHAQUE GLISSÉ, trouvée le 3 octobre, après la 0.7.8 :
+    le guetteur passait à hcv_touche_suit tout ce qu'il sortait de la file,
+    et -keyCode sur un événement de SOURIS lève une exception d'AppKit. Elle
+    cassait la boucle « repeat while the mouse is down » : le menu de la
+    carte 1 de la pile demo ne suivait plus la souris. Rapporté DANS HC
+    (l'application) par l'utilisatrice, la console d'Xcode montrant
+    « Invalid message sent to event … type=LMouseDragged » sous
+    hcv_touche_suit. Présent depuis keysDown (0.7.7). Corrigé : le type se
+    vérifie avant toute lecture. Le site jumeau — keyDown:, qui lisait le
+    premier caractère d'une chaîne possiblement vide — est protégé aussi,
+    lu dans le code, non mesuré. Après la correction (commit 87bd0ad),
+    MESURÉ DANS HC (l'application) par l'utilisatrice : « c'est guéri ».
 
 LA PHYSIQUE DU FLIPPER, dans le script de la pile (hors noyau) : trois
 sous-pas par image et des batteurs calculés exactement, dans leur propre

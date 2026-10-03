@@ -701,6 +701,15 @@ static NSColor *btn_trait(Object *o)
     return hcv_couleur_posee(o->forecolor, o->forealpha, [NSColor blackColor]);
 }
 
+/* LA MARQUE D'UNE CASE OU D'UN RADIO — la croix, le point. C'est ce qui
+ * « s'allume » sur eux : leur intérieur ne noircit pas, comme celui d'un
+ * bouton ordinaire. hiliteColor la teinte donc si elle est posée ; sinon
+ * elle suit foreColor, comme le cadre — noire quand rien n'est posé. */
+static NSColor *btn_marque(Object *o)
+{
+    return o->hilitecolor ? btn_fond(o, YES) : btn_trait(o);
+}
+
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
@@ -1153,8 +1162,12 @@ static void draw_part(Object *o) {
             CGFloat cy = o->y + o->h/2.0 - box/2.0;
             NSRect mark = NSMakeRect(o->x + 2, cy, box, box);
 
-            [[NSColor whiteColor] setFill];
-            [[NSColor blackColor] setStroke];
+            /* LES COULEURS DE L'EXTENSION, comme sur les autres boutons :
+             * backColor l'intérieur de la case, foreColor le cadre et le
+             * titre, hiliteColor la marque (btn_marque). Rien de posé : le
+             * blanc et le noir d'avant, au pixel près. */
+            [btn_fond(o, NO) setFill];
+            [btn_trait(o) setStroke];
 
             if (isRadio) {
                 NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:mark];
@@ -1162,13 +1175,13 @@ static void draw_part(Object *o) {
                 [circle stroke];
                 if (on) {
                     NSRect dot = NSInsetRect(mark, 4, 4);
-                    [[NSColor blackColor] setFill];
+                    [btn_marque(o) setFill];
                     [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
                 }
             } else {
-                [[NSColor whiteColor] setFill];
-                NSRectFill(mark);
-                [[NSColor blackColor] setStroke];
+                [btn_fond(o, NO) setFill];
+                hcv_remplit(mark);
+                [btn_trait(o) setStroke];
                 NSBezierPath *bp = [NSBezierPath bezierPathWithRect:mark];
                 [bp setLineWidth:1];
                 [bp stroke];
@@ -1179,6 +1192,7 @@ static void draw_part(Object *o) {
                     [x moveToPoint:NSMakePoint(mark.origin.x+box-2, mark.origin.y+2)];
                     [x lineToPoint:NSMakePoint(mark.origin.x+2, mark.origin.y+box-2)];
                     [x setLineWidth:1.5];
+                    [btn_marque(o) setStroke];
                     [x stroke];
                 }
             }
@@ -1186,7 +1200,7 @@ static void draw_part(Object *o) {
             if (o->showname) {
                 CGFloat fs = o->textsize > 0 ? o->textsize : 13;
                 [s drawAtPoint:NSMakePoint(o->x + box + 8, o->y + o->h/2 - fs*0.6)
-                withAttributes:obj_attrs(o, 13, btn_label_color(o, nil))];
+                withAttributes:obj_attrs(o, 13, btn_label_color(o, btn_trait(o)))];
             }
         }
         else if (isTransp) {
@@ -1238,18 +1252,22 @@ static void draw_part(Object *o) {
                                      boite.size.width - 3, boite.size.height - 3);
             NSRect sh   = NSMakeRect(boite.origin.x + 3, boite.origin.y + 3,
                                      boite.size.width - 3, boite.size.height - 3);
-            [[NSColor blackColor] setFill];
-            NSRectFill(sh);
-            [[NSColor whiteColor] setFill];
-            NSRectFill(body);
-            [[NSColor blackColor] setStroke];
+            /* Les couleurs de l'extension : backColor l'intérieur de la
+             * boîte, foreColor l'ombre, le cadre, la flèche et le texte —
+             * comme le style « shadow ». Un popup ne s'allume pas :
+             * hiliteColor n'y a rien à teindre. */
+            [btn_trait(o) setFill];
+            hcv_remplit(sh);
+            [btn_fond(o, NO) setFill];
+            hcv_remplit(body);
+            [btn_trait(o) setStroke];
             NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
             [bp setLineWidth:1];
             [bp stroke];
 
             CGFloat cx = body.origin.x + body.size.width - 12;
             CGFloat cy = body.origin.y + body.size.height/2.0;
-            [[NSColor blackColor] setFill];
+            [btn_trait(o) setFill];
             NSBezierPath *ar = [NSBezierPath bezierPath];
             [ar moveToPoint:NSMakePoint(cx - 4, cy - 2)];
             [ar lineToPoint:NSMakePoint(cx + 4, cy - 2)];
@@ -1270,7 +1288,7 @@ static void draw_part(Object *o) {
                     label = lines[sel-1];
             }
             CGFloat fs = o->textsize > 0 ? o->textsize : 12;
-            NSDictionary *pat = obj_attrs(o, 12, btn_label_color(o, nil));
+            NSDictionary *pat = obj_attrs(o, 12, btn_label_color(o, btn_trait(o)));
             CGFloat ligne = body.origin.y + (body.size.height - fs*1.3)/2;
 
             if (tw > 0) {
@@ -2976,8 +2994,19 @@ static int hcv_code_touche(NSEvent *e)
     return (int)u;
 }
 
+/* UNE FRAPPE, ET RIEN D'AUTRE. Le guetteur (hcv_guette_cmd_point) passe ici
+ * TOUT ce qu'il sort de la file pendant un script, clics et glissés compris ;
+ * or -keyCode n'est permis que sur une frappe, et AppKit lève une exception
+ * sur un événement de souris. Elle remontait à travers le tour d'idle et
+ * cassait la boucle du script. Rapporté DANS HC (l'application) par
+ * l'utilisatrice le 3 octobre, console d'Xcode à l'appui : « Invalid message
+ * sent to event NSEvent: type=LMouseDragged », sous hcv_touche_suit, pendant
+ * le « repeat while the mouse is down » du menu de la pile demo — la
+ * sélection ne suivait plus la souris. Présent depuis « the keysDown »
+ * (0.7.7). Le type se vérifie donc AVANT de lire quoi que ce soit. */
 static void hcv_touche_suit(NSEvent *e)
 {
+    if ([e type] != NSEventTypeKeyDown && [e type] != NSEventTypeKeyUp) return;
     if (!gTouchesTenues) gTouchesTenues = [NSMutableDictionary dictionary];
     NSNumber *cle = @([e keyCode]);
     if ([e type] == NSEventTypeKeyDown) {
@@ -5399,7 +5428,13 @@ static int gColorTarget = 0;
 }
 
 - (void)keyDown:(NSEvent *)event {
-    unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
+    /* Le site jumeau de hcv_touche_suit : une lecture d'événement qui lève
+     * une exception. -characterAtIndex:0 sur une chaîne VIDE en lève une, et
+     * une touche morte peut en donner une — performKeyEquivalent: le teste
+     * déjà, « touche morte, accent en cours ». Lu dans le code, non mesuré.
+     * Zéro ne correspond à aucune touche servie plus bas. */
+    NSString *nues0 = [event charactersIgnoringModifiers];
+    unichar key = [nues0 length] ? [nues0 characterAtIndex:0] : 0;
     NSUInteger mods = [event modifierFlags];
     BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
 
