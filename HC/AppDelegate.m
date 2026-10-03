@@ -1680,4 +1680,66 @@ static NSURL *app_folder(void)
     [sender replyToOpenOrPrint:ok ? NSApplicationDelegateReplySuccess
                                   : NSApplicationDelegateReplyFailure];
 }
+
+/* « ABOUT HC » — LE PANNEAU DE macOS, ENRICHI, QUI INVITE SUR LABYNET.
+ *
+ * Demandé par l'utilisatrice le 3 octobre : un « À propos » joli, qui donne
+ * envie de venir sur https://labynet.net. Le panneau standard, et non une
+ * fenêtre à nous — c'est son choix —, en anglais ET en français.
+ *
+ * Le panneau garde ce qu'il sait faire seul : l'icône, le nom, la version
+ * lue dans CFBundleShortVersionString. On ne lui ajoute que les crédits, en
+ * texte riche, avec un lien qui s'ouvre dans le navigateur. Les couleurs
+ * sont celles du système (labelColor…) : le texte reste lisible en mode
+ * sombre.
+ *
+ * Le menu appelle hcAPropos: par le premier répondeur ; NSApplication ne la
+ * connaît pas et la passe à son délégué, ici.
+ *
+ * « Version » à vide : CFBundleVersion vaut encore 1 en dur, et le panneau
+ * l'affichait entre parenthèses, « 0.7.8 (1) ». La chaîne vide est censée
+ * l'ôter ; non vu à l'écran, à vérifier DANS HC. */
+- (IBAction)hcAPropos:(id)sender
+{
+    (void)sender;
+    NSMutableParagraphStyle *centre = [[NSMutableParagraphStyle alloc] init];
+    [centre setAlignment:NSTextAlignmentCenter];
+    [centre setParagraphSpacing:4];
+
+    NSFont *petite  = [NSFont systemFontOfSize:11];
+    NSFont *grasse  = [NSFont boldSystemFontOfSize:11];
+    NSFont *italien = [[NSFontManager sharedFontManager]
+                          convertFont:petite toHaveTrait:NSItalicFontMask];
+    NSDictionary *texte = @{ NSFontAttributeName: petite,
+                             NSForegroundColorAttributeName: [NSColor labelColor],
+                             NSParagraphStyleAttributeName: centre };
+    NSDictionary *doux  = @{ NSFontAttributeName: italien,
+                             NSForegroundColorAttributeName: [NSColor secondaryLabelColor],
+                             NSParagraphStyleAttributeName: centre };
+    NSDictionary *lien  = @{ NSFontAttributeName: grasse,
+                             NSLinkAttributeName: [NSURL URLWithString:@"https://labynet.net"],
+                             NSParagraphStyleAttributeName: centre };
+
+    NSMutableAttributedString *c = [[NSMutableAttributedString alloc] init];
+    void (^ajoute)(NSString *, NSDictionary *) = ^(NSString *t, NSDictionary *a) {
+        [c appendAttributedString:[[NSAttributedString alloc] initWithString:t
+                                                                  attributes:a]];
+    };
+
+    ajoute(@"A HyperCard clone for today's Mac\n", texte);
+    ajoute(@"Un clone d'HyperCard pour le Mac d'aujourd'hui\n\n", doux);
+
+    ajoute(@"Stacks, news, and a pinball to play \u2014 come and visit\n", texte);
+    ajoute(@"Des piles, des nouvelles et un flipper \u2014 venez nous voir\n", doux);
+    ajoute(@"labynet.net", lien);
+    ajoute(@"\n\n", texte);
+
+    ajoute(@"\u00A9 2026 Patricia Benedetto \u00B7 co-author: Claude (Anthropic)\n", texte);
+    ajoute(@"Free software, MIT licence \u00B7 Logiciel libre, licence MIT", doux);
+
+    [NSApp orderFrontStandardAboutPanelWithOptions:@{
+        NSAboutPanelOptionCredits: c,
+        NSAboutPanelOptionVersion: @""
+    }];
+}
 @end

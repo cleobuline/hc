@@ -148,6 +148,30 @@ batteur sur 6 parties avant, 0 sur 9 parties après ; 0,8 ms de calcul par
 image, pour un budget de 33.
 
 
+LE FLIPPER-OBJET — 3 octobre, la méthode de l'utilisatrice en 1990
+-------------------------------------------------------------------
+
+Proposé par l'utilisatrice : la bille CLIQUE le long de sa trajectoire, et
+chaque obstacle, touché par ce clic, change la différentielle de la bille
+dans son propre mouseUp. Le moteur ne connaît aucun obstacle : un bumper ou
+un champignon de plus, c'est un copier-coller.
+
+  · « click at » de HC sert mouseDown et mouseUp à l'objet sous le point,
+    comme un clic de souris : un polygone dans sa forme seulement, et un
+    bouton DÉSACTIVÉ ne le reçoit pas — la bille l'est, et ne se touche
+    jamais elle-même (lu dans cocoa_click_at et part_at_layer).
+  · Mesuré dans le noyau, avec un hôte qui imite ce clic, deux joueurs
+    automatiques, neuf parties chacun : 0 traversée de batteur, 0 bille
+    coincée, 0 faute ; 1,1 ms de calcul par image, pour un budget de 33
+    (0,8 avec le moteur d'avant). Un champignon et un bumper ajoutés par
+    copie sont touchés et comptent, le moteur inchangé.
+  · MESURÉ DANS HC (l'application) par l'utilisatrice : « on peut rajouter
+    des champignons et des bumpers », et « on a gagné en réactivité » — une
+    impression, que les chiffres du noyau n'expliquent pas : le calcul par
+    image est un peu plus lourd, non plus léger. Non mesuré dans
+    l'application.
+
+
 LE CHANTIER SUIVANT : L'ÉDITEUR DE POLYGONE — demandé le 2 octobre au soir
 -------------------------------------------------------------------------
 
