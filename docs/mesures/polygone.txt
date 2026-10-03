@@ -128,6 +128,18 @@ CE QUE LE FLIPPER A TROUVÉ DANS HC, ET QUI EST CORRIGÉ :
     Après la correction (commit 50aaaf5), MESURÉ DANS HC (l'application) par
     l'utilisatrice : « c'est bien, c'est fluide ».
 
+  · UNE EXCEPTION SUR CHAQUE GLISSÉ, trouvée le 3 octobre, après la 0.7.8 :
+    le guetteur passait à hcv_touche_suit tout ce qu'il sortait de la file,
+    et -keyCode sur un événement de SOURIS lève une exception d'AppKit. Elle
+    cassait la boucle « repeat while the mouse is down » : le menu de la
+    carte 1 de la pile demo ne suivait plus la souris. Rapporté DANS HC
+    (l'application) par l'utilisatrice, la console d'Xcode montrant
+    « Invalid message sent to event … type=LMouseDragged » sous
+    hcv_touche_suit. Présent depuis keysDown (0.7.7). Corrigé : le type se
+    vérifie avant toute lecture. Le site jumeau — keyDown:, qui lisait le
+    premier caractère d'une chaîne possiblement vide — est protégé aussi,
+    lu dans le code, non mesuré.
+
 LA PHYSIQUE DU FLIPPER, dans le script de la pile (hors noyau) : trois
 sous-pas par image et des batteurs calculés exactement, dans leur propre
 repère. Mesuré avec le joueur automatique, mêmes tirages : 12 traversées de

@@ -2994,8 +2994,19 @@ static int hcv_code_touche(NSEvent *e)
     return (int)u;
 }
 
+/* UNE FRAPPE, ET RIEN D'AUTRE. Le guetteur (hcv_guette_cmd_point) passe ici
+ * TOUT ce qu'il sort de la file pendant un script, clics et glissés compris ;
+ * or -keyCode n'est permis que sur une frappe, et AppKit lève une exception
+ * sur un événement de souris. Elle remontait à travers le tour d'idle et
+ * cassait la boucle du script. Rapporté DANS HC (l'application) par
+ * l'utilisatrice le 3 octobre, console d'Xcode à l'appui : « Invalid message
+ * sent to event NSEvent: type=LMouseDragged », sous hcv_touche_suit, pendant
+ * le « repeat while the mouse is down » du menu de la pile demo — la
+ * sélection ne suivait plus la souris. Présent depuis « the keysDown »
+ * (0.7.7). Le type se vérifie donc AVANT de lire quoi que ce soit. */
 static void hcv_touche_suit(NSEvent *e)
 {
+    if ([e type] != NSEventTypeKeyDown && [e type] != NSEventTypeKeyUp) return;
     if (!gTouchesTenues) gTouchesTenues = [NSMutableDictionary dictionary];
     NSNumber *cle = @([e keyCode]);
     if ([e type] == NSEventTypeKeyDown) {
@@ -5417,7 +5428,13 @@ static int gColorTarget = 0;
 }
 
 - (void)keyDown:(NSEvent *)event {
-    unichar key = [[event charactersIgnoringModifiers] characterAtIndex:0];
+    /* Le site jumeau de hcv_touche_suit : une lecture d'événement qui lève
+     * une exception. -characterAtIndex:0 sur une chaîne VIDE en lève une, et
+     * une touche morte peut en donner une — performKeyEquivalent: le teste
+     * déjà, « touche morte, accent en cours ». Lu dans le code, non mesuré.
+     * Zéro ne correspond à aucune touche servie plus bas. */
+    NSString *nues0 = [event charactersIgnoringModifiers];
+    unichar key = [nues0 length] ? [nues0 characterAtIndex:0] : 0;
     NSUInteger mods = [event modifierFlags];
     BOOL cmd = (mods & NSEventModifierFlagCommand) != 0;
 
