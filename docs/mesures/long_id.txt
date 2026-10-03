@@ -33,6 +33,18 @@ Et deux refus, chacun arrêtant le script :
   · « the long id of this stack » : HyperCard ne comprend pas. Le texte du
     message : non relevé.
 
+Second banc, même jour, x valant « the id of this card » :
+
+  · « go card id x » : HyperCard REFUSE, et arrête le script — « expect a
+    number here », tel que rapporté par l'utilisatrice (le texte exact de la
+    boîte : non relevé). « card id » attend un NOMBRE ; le descripteur
+    entier n'y passe pas.
+
+  Conséquence pour HC : plusieurs de nos harnais écrivent exactement cela —
+  navtest (« card field "data2" of card id sortieCarte », « go to card id
+  ident »), pilereelle (« card id n + 0 ») —, ce qu'aucune pile d'HyperCard
+  ne peut faire marcher. Ils ne témoignent que de l'écart.
+
 Ce qui en ressort :
   · un BOUTON, un CHAMP et un FOND rendent le nombre nu, quel que soit
     l'adjectif ;
@@ -69,8 +81,8 @@ NON MESURÉ, à jouer DANS HYPERCARD avant de corriger
 
   · « the abbreviated id of this card » ;
   · l'id d'une carte qui n'est pas la carte courante (« the id of card 2 ») ;
-  · « go x », « go card id x », « put … of card id x », quand x vaut
-    « the id of this card » ;
+  · « go x » et « put … of card id x », quand x vaut « the id of this
+    card » ;
   · « send … to x » quand x vaut le long id d'un bouton. Joué une fois, en
     dernière ligne : la ligne que le gestionnaire appelé devait écrire n'est
     PAS dans le champ. Refus ou silence : non relevé ;
