@@ -14,6 +14,12 @@
 
 Native macOS app, universal binary, macOS 10.13 and later.
 
+https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
+
+*The demo pinball, written in plain HyperTalk with polygon buttons and
+`the keysDown`. It ships in the DMG. From 0.7.9 on, every obstacle carries
+its own script, so you add one by copying it.*
+
 ## Installing
 
 Download the DMG from the latest [release](https://github.com/cleobuline/hc/releases)

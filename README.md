@@ -15,6 +15,12 @@
 
 Application macOS native, binaire universel, macOS 10.13 et plus.
 
+https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
+
+*Le flipper de démonstration, écrit en HyperTalk pur avec des boutons
+polygones et `the keysDown`. Il est dans le DMG. À partir de la 0.7.9, chaque
+obstacle porte son propre script : on en ajoute un en le copiant.*
+
 ## Installer
 
 Télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/releases)
@@ -53,7 +59,3 @@ Détails dans [`tests/LISEZMOI.md`](tests/LISEZMOI.md).
 
 [MIT](LICENSE) : libre d'utiliser, de modifier et de redistribuer, à condition
 de citer les auteurs, **Patricia Benedetto** et **Claude** (Anthropic).
-
-
-https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
-
