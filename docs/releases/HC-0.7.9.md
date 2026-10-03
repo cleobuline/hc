@@ -187,7 +187,7 @@ per frame. Played in HC by its author, who scored **42,490**. Can you beat it?
   of cards and stacks, colours on check boxes, radio buttons and popups
 - [#103](https://github.com/cleobuline/hc/pull/103): the pinball video in the
   READMEs, and the new "About HC"
-- [#PR](https://github.com/cleobuline/hc/pull/PR): version 0.7.9 in all three
+- [#104](https://github.com/cleobuline/hc/pull/104): version 0.7.9 in all three
   places, and this note
 
 **Full changelog:** [HC-0.7.8...HC-0.7.9](https://github.com/cleobuline/hc/compare/HC-0.7.8...HC-0.7.9)
