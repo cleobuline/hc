@@ -86,8 +86,17 @@ LES CHOIX, ET CE QUI N'EST PAS MESURÉ
     PROPRE fonction intersect ou within recevrait donc ce descripteur. Aucune
     pile d'HyperCard n'en connaît : ces noms n'existaient pas.
 
-  · Les cases à cocher, les boutons radio et les popups ne prennent pas les
-    couleurs : non demandé, non fait.
+  · Les cases à cocher, les boutons radio et les popups ne prenaient pas les
+    couleurs. Relevé par l'utilisatrice le 3 octobre, fait le même jour :
+      - case et radio : backColor l'intérieur, foreColor le cadre et le
+        titre, hiliteColor la MARQUE (croix, point) — ce qui s'allume sur
+        eux ; non posée, la marque suit foreColor ;
+      - popup : backColor l'intérieur de la boîte, foreColor l'ombre, le
+        cadre, la flèche et le texte ; un popup ne s'allume pas, hiliteColor
+        n'y teint rien. Le menu qui s'ouvre au clic garde le blanc et le noir.
+    Rien de posé : le dessin d'avant, mêmes couleurs, mêmes appels sauf le
+    remplissage, qui MÉLANGE au lieu de recopier — identique pour du
+    blanc opaque. Le dessin n'est pas mesuré ici : à voir DANS HC.
 
 
 « the keysDown » ET LE FLIPPER — 2 octobre, le soir
