@@ -13,16 +13,16 @@
    stack "Pile"
    card button "decl" of card "Une" of stack "Pile"
    == et ca se RE-RESOUT, depuis une autre carte ==
-   on est sur : 102
+   on est sur : card id 102
    Bouton / 2915
    DuFond / 7
    Champ / 9
-   Une / 101
+   Une / card id 101
    120
    == un nom qui contient « of » n'est pas une portee ==
    Table of contents
    card "Table of contents" of stack "Pile"
-   Table of contents / 103
+   Table of contents / card id 103
    17
    == bkgnd est un synonyme de background ==
    Fond

@@ -2,7 +2,7 @@ on mouseUp
   global sortieLigne, sortieCarte
   debug raz
 
-  put the id of this card into sortieCarte
+  put the short id of this card into sortieCarte
   put 0 into sortieLigne
   put empty into card field "data2" of card id sortieCarte
 
@@ -33,7 +33,7 @@ on mouseUp
 
   go to card 2
   put the short name of this card into nom
-  put the id of this card into ident
+  put the short id of this card into ident
   go to first card
   go to card nom
   verif "par nom", 2

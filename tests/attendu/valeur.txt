@@ -6,11 +6,11 @@
 
 ───── field data2 ─────
 arith  : 14
-objet  : 3
+objet  : card id 3
 texte  : bonjour
 litt   : 42
 varia  : 6
 boucle : 1234
 vide   : []
 casse  : true
-indir  : 3
+indir  : card id 3

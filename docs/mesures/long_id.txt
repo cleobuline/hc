@@ -99,6 +99,28 @@ d'abord dans le code comme « go 3 mène à la troisième carte » : faux, la
 mesure le dément.)
 
 
+LA CORRECTION — 3 octobre, sur l'accord de l'utilisatrice
+--------------------------------------------------------
+
+obj_prop_read (hc_core.c) : l'id d'une CARTE rend « card id N » par défaut
+et en abrégé, le nombre en court, « card id N of stack "…" » en long — la
+pile écrite comme la met déjà « the long name ». Le reste ne bouge pas.
+
+Le harnais idcarte rejoue les deux bancs ; « go x » y ramène sur la carte 1,
+le long id aussi, et « card id (the short id of …) » marche.
+
+Trois harnais écrivaient « card id » suivi de « the id of this card » —
+navtest (via navharn, navharn2, navharn3) et pilereelle — : ils passent à
+« the short id », comme l'écrirait l'auteur d'une pile d'HyperCard. Trois
+témoins changent de la seule forme mesurée (fn, longname, valeur).
+
+Ce qui reste DIFFÉRENT, et voulu ou non mesuré :
+  · le CHEMIN de la pile est celui de macOS (« /Volumes/Saved HD/… »),
+    comme dans « the long name » depuis qu'il porte un chemin ; HyperCard
+    écrivait le chemin à deux-points du vieux Mac OS ;
+  · « the long id of this stack » rend encore 1 (ci-dessous).
+
+
 NON MESURÉ, à jouer DANS HYPERCARD avant de corriger
 ----------------------------------------------------
 

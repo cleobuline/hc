@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le premier banc, tel que joué dans HyperCard ==
+   id: 6
+   short id: 6
+   abbr id: 6
+   long id: 6
+   card id: card id 3
+   card short id: 3
+   card long id: card id 3 of stack "test5"
+   bg id: 2
+   bg long id: 2
+   fld long id: 7
+
+== 2. le second banc : l'abrégé, une autre carte, et go ==
+   card abbr id: card id 3
+   card 2 id: card id 4
+   go x -> card 1
+
+== 3. le long id se relit ; card id attend le court ==
+   go long id -> card 1
+   go card id short -> card 1
+   there is a card id short : true
+
+== 4. le chemin du fichier, comme dans HyperCard ==
+   card long id: card id 3 of stack "/Volumes/Saved HD/More Stacks/test5"
+   long name   : card "Une" of stack "/Volumes/Saved HD/More Stacks/test5"
+
+== 5. ECART CONNU : la pile n'a pas d'id dans HyperCard ==
+   stack long id: 1
