@@ -7019,6 +7019,37 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
+    /* 3 bis. L'ÉDITEUR DE POLYGONE, avec l'outil Bouton. Un sommet d'abord —
+     * il passe avant les poignées de coin, qu'il recouvre souvent : un
+     * triangle a deux sommets aux coins de son rectangle. Puis un côté : un
+     * sommet y naît, et se tire aussitôt. Sinon, le reste comme avant :
+     * étirer par un coin, déplacer par l'intérieur.
+     *
+     * AVANT L'ÉTAPE 4, ET C'ÉTAIT TOUT LE DÉFAUT. Placé d'abord après elle,
+     * il ne voyait que les clics tombés HORS du rectangle du bouton : l'étape
+     * 4 prend tout clic dans le rectangle pour sélectionner et déplacer, et
+     * rend la main. Les sommets semblaient marcher — ils sont sur le bord, la
+     * moitié extérieure de leur rond était cliquable —, un côté jamais.
+     * Rapporté DANS HC (l'application) par l'utilisatrice le 3 octobre :
+     * « il manque le clic sur un côté qui crée une ancre ». */
+    if (gSelected && gTool == TOOL_BUTTON && hc_est_polygone(gSelected)) {
+        int px = (int)floor(p.x), py = (int)floor(p.y);
+        int i = hc_sommet_proche(gSelected, px, py, 5);
+        if (i < 0) {
+            int c = hc_cote_proche(gSelected, px, py, 4);
+            if (c >= 0) i = hc_sommet_insere(gSelected, c, px, py);
+        }
+        if (i >= 0) {
+            gPolyEdite = gSelected;
+            gPolySommetTire = i;
+            gPolySommetChoisi = i;
+            gMoving = NO;
+            gDragging = NO;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
+
     /* 4. Priorité aux outils FIELD et BUTTON (sélection et déplacement direct) */
     if (gTool == TOOL_FIELD || gTool == TOOL_BUTTON) {
         if (hit && ((gTool == TOOL_FIELD  && hit->type == OBJ_FIELD) ||
@@ -7398,29 +7429,6 @@ static BOOL      gSansMessageChamp = NO;
             [self startStillDownTimer];
         }
         return;
-    }
-
-    /* 8 bis. L'ÉDITEUR DE POLYGONE, avec l'outil Bouton. Un sommet d'abord —
-     * il passe avant les poignées de coin, qu'il recouvre souvent : un
-     * triangle a deux sommets aux coins de son rectangle. Puis un côté : un
-     * sommet y naît, et se tire aussitôt. Sinon, le reste comme avant :
-     * étirer par un coin, déplacer par l'intérieur. */
-    if (gSelected && gTool == TOOL_BUTTON && hc_est_polygone(gSelected)) {
-        int px = (int)floor(p.x), py = (int)floor(p.y);
-        int i = hc_sommet_proche(gSelected, px, py, 5);
-        if (i < 0) {
-            int c = hc_cote_proche(gSelected, px, py, 4);
-            if (c >= 0) i = hc_sommet_insere(gSelected, c, px, py);
-        }
-        if (i >= 0) {
-            gPolyEdite = gSelected;
-            gPolySommetTire = i;
-            gPolySommetChoisi = i;
-            gMoving = NO;
-            gDragging = NO;
-            [self setNeedsDisplay:YES];
-            return;
-        }
     }
 
     /* 9. Redimensionnement via poignées */
