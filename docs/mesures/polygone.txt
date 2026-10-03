@@ -156,8 +156,9 @@ Questions posées, et leurs réponses :
     d'un polygone sont affichées, Delete ne supprime JAMAIS le bouton :
       - une poignée sélectionnée, plus de trois points : elle disparaît ;
       - trois points, ou aucune poignée sélectionnée : un bip, rien d'autre ;
-      - le bouton entier s'enlève par le menu (Edit → Clear Button), un
-        geste délibéré. (Proposé ; le chemin du menu reste à vérifier.)
+      - le bouton entier s'enlève par COUPER (⌘X), un geste délibéré que
+        Coller rattrape. Vérifié le 3 octobre : il n'existe pas de menu
+        « Clear Button » ; Delete et Couper étaient les deux seuls chemins.
   · l'alpha — RÉPONDU : « comme pour le dessin », c'est-à-dire le
     quatrième nombre de « r,v,b,a », de 0 à 255, lu par la même
     color_from_name_a. Le but, dit par l'utilisatrice : des boutons

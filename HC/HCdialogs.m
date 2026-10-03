@@ -1724,6 +1724,9 @@ void hcicon_panel_stack_closing(Object *stack)
             set_cstr(&o->name,  [gInfoName stringValue]);
             // style
             set_cstr(&o->style, [gInfoStyle titleOfSelectedItem]);
+            /* Un bouton qui devient polygone sans sommets naît triangle :
+             * la même fonction que « set the style … to polygon ». */
+            hc_polygone_par_defaut(o);
             o->textsize = [[gInfoTextSize stringValue] intValue];
             o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
             o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);

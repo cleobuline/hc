@@ -384,6 +384,11 @@ struct Object {
     int      backcolor;      /* l'intérieur                                  */
     int      forecolor;      /* le contour et le titre                       */
     int      hilitecolor;    /* l'intérieur quand le bouton est allumé       */
+    /* L'OPACITÉ de chacune — demandée le 2 octobre pour des boutons
+     * semi-transparents sur un fond tramé. Même règle : ZÉRO VEUT DIRE
+     * OPAQUE, rien de posé ; posée, HC_ALPHA_POSE | 0..254. Un bouton
+     * opaque, ancien ou importé, n'y a donc jamais rien. */
+    int      backalpha, forealpha, hilitealpha;
     int     *points;         /* x0,y0, x1,y1… relatifs ; NULL si aucun       */
     int      npoints;        /* nombre de SOMMETS                            */
     int      pointsw, pointsh;
@@ -657,6 +662,9 @@ void    hc_set_hilite_raw(Object *card, int button_id, int on);
 /* Une couleur posée : HC_COUL_POSEE | 0xRRGGBB. Zéro : aucune. */
 #define HC_COUL_POSEE   0x1000000
 #define HC_COUL_RVB(c)  ((c) & 0xFFFFFF)
+/* Une opacité posée : HC_ALPHA_POSE | 0..254. Zéro : opaque (255). */
+#define HC_ALPHA_POSE   0x100
+#define HC_ALPHA(a)     (((a) & HC_ALPHA_POSE) ? ((a) & 0xFF) : 255)
 /* Au plus tant de sommets : un polygone de mille côtés est déjà un cercle. */
 #define HC_SOMMETS_MAX  1000
 
@@ -676,6 +684,27 @@ int     hc_formes_se_touchent(const Object *a, const Object *b);
  * carte — et cale le rectangle sur eux. Vide efface. Rend 0 et ne touche à
  * rien si le texte n'est pas une liste de points, ou n'en a qu'un. */
 int     hc_pose_sommets(Object *o, const char *texte);
+
+/* L'ÉDITEUR DE POLYGONE (docs/mesures/polygone.txt). Coordonnées de CARTE.
+ *
+ * hc_polygone_par_defaut : un polygone sans sommets reçoit un triangle
+ *     inscrit dans son rectangle. Rend 1 s'il l'a posé. À appeler partout où
+ *     un bouton DEVIENT polygone : « set the style », le dialogue Infos.
+ * hc_sommet_deplace : pose le sommet i en (x, y).
+ * hc_sommet_insere  : un sommet neuf en (x, y), entre le sommet `apres` et
+ *     le suivant ; rend son indice, -1 si refusé.
+ * hc_sommet_ote     : ôte le sommet i — REFUSÉ (0) s'il n'en reste que
+ *     HC_SOMMETS_MIN : un polygone ne descend jamais sous le triangle.
+ * hc_sommet_proche  : l'indice du sommet à moins de `tol` points, -1 sinon.
+ * hc_cote_proche    : l'indice du sommet de DÉPART du côté à moins de `tol`
+ *     points, -1 sinon. */
+#define HC_SOMMETS_MIN  3
+int     hc_polygone_par_defaut(Object *o);
+int     hc_sommet_deplace(Object *o, int i, int x, int y);
+int     hc_sommet_insere(Object *o, int apres, int x, int y);
+int     hc_sommet_ote(Object *o, int i);
+int     hc_sommet_proche(const Object *o, int x, int y, int tol);
+int     hc_cote_proche(const Object *o, int x, int y, int tol);
 
 /* ---- Icônes de pile ----
  * `stack` doit être une pile ; tout rend NULL ou 0 sinon.

@@ -119,6 +119,9 @@ static Object *clone_part(Object *o)
     c->backcolor     = o->backcolor;
     c->forecolor     = o->forecolor;
     c->hilitecolor   = o->hilitecolor;
+    c->backalpha     = o->backalpha;
+    c->forealpha     = o->forealpha;
+    c->hilitealpha   = o->hilitealpha;
     c->pointsw       = o->pointsw;
     c->pointsh       = o->pointsh;
     if (o->points && o->npoints > 0) {

@@ -169,6 +169,46 @@ int main(void)
     }
     remove(chemin);
 
+    puts("\n== 7b. l'opacité : « r,v,b,a », comme pour la peinture ==");
+    joue("set the backColor of button \"bille\" to \"255,0,0,128\"");
+    joue("put the backColor of button \"bille\"");
+    joue("set the hiliteColor of button \"bille\" to \"0,255,0,0\"");
+    joue("put the hiliteColor of button \"bille\"");
+    joue("set the backColor of button \"bille\" to \"255,0,0,255\"");
+    joue("put the backColor of button \"bille\" & \"  (255 : opaque, trois nombres)\"");
+    joue("set the backColor of button \"bille\" to \"bleu\"");
+    joue("put the backColor of button \"bille\" & \"  (un nom : opaque)\"");
+    joue("set the foreColor of button \"bille\" to \"10,20,30,40\"");
+    joue("set the foreColor of button \"bille\" to empty");
+    joue("put \"[\" & the foreColor of button \"bille\" & \"]\"");
+    printf("   champs : forealpha %d (effacé avec sa couleur)\n", bille->forealpha);
+    joue("set the backColor of button \"bille\" to \"255,0,0,128\"");
+    {
+        /* sauvé, relu : l'opacité sur sa propre ligne */
+        hc_save(st, chemin);
+        FILE *f = fopen(chemin, "rb");
+        char l[256];
+        while (f && fgets(l, sizeof l, f))
+            if (!strncmp(l, "backalpha", 9) || !strncmp(l, "hilitealpha", 11) ||
+                !strncmp(l, "forealpha", 9))
+                printf("   dans le fichier : %s", l);
+        if (f) fclose(f);
+        Object *re = hc_load(chemin);
+        Object *rb = NULL;
+        for (int i = 0; re && i < re->nparts; i++)
+            if (re->parts[i]->type == OBJ_CARD) {
+                for (int k = 0; k < re->parts[i]->nparts; k++)
+                    if (re->parts[i]->parts[k]->name &&
+                        !strcmp(re->parts[i]->parts[k]->name, "bille"))
+                        rb = re->parts[i]->parts[k];
+                break;
+            }
+        if (rb) printf("   relu : backalpha %d, hilitealpha %d\n",
+                       HC_ALPHA(rb->backalpha), HC_ALPHA(rb->hilitealpha));
+        hc_free(re);
+        remove(chemin);
+    }
+
     puts("\n== 8. un fichier abîmé : la ligne fautive est ignorée ==");
     /* « backcolor zz » se relisait en NOIR posé : hc_entier rendait son
      * défaut, 0, pris pour une couleur. Mesuré le 2 octobre. */
@@ -176,7 +216,8 @@ int main(void)
         static const char *LIGNES[] = {
             "backcolor zz", "backcolor -5", "hilitecolor ",
             "points 50,40 0,0 1", "points 1,1", "points 50,40 0,0 1,1 x",
-            "points -5,40 0,0 1,1", NULL
+            "points -5,40 0,0 1,1", "backalpha 255", "backalpha zz",
+            "backalpha -3", "hilitealpha 999", NULL
         };
         for (int i = 0; LIGNES[i]; i++) {
             Object *s2 = hc_new_stack("A");
@@ -207,6 +248,7 @@ int main(void)
             printf("   %-28s -> %s\n", LIGNES[i],
                    !rb ? "pile illisible" :
                    (rb->backcolor || rb->forecolor || rb->hilitecolor ||
+                    rb->backalpha || rb->forealpha || rb->hilitealpha ||
                     rb->points || rb->npoints) ? "*** QUELQUE CHOSE A ÉTÉ POSÉ ***"
                                                : "ignorée, rien de posé");
             hc_free(r);

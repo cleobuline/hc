@@ -1,0 +1,40 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. un polygone naît triangle, inscrit dans son rectangle ==
+   rectangle ordinaire                0 sommets :   rect 100,100,160,140
+   set the style of button "p" to polygon
+   devenu polygone                    3 sommets : 130,100 160,140 100,140   rect 100,100,160,140
+   put the points of button "p"
+      130,100
+160,140
+100,140
+   set the style of button "p" to polygon
+   polygone redemandé : inchangé    3 sommets : 130,100 160,140 100,140   rect 100,100,160,140
+   hc_polygone_par_defaut sur un polygone qui a ses sommets : 0
+
+== 2. tirer un sommet ==
+   sommet proche de 131,101 (tol 4) : 0
+   sommet proche de 140,120 (tol 4) : -1
+   sommet 0 tiré en 130,80           3 sommets : 130,80 160,140 100,140   rect 100,80,160,140
+   sommet 7 (n'existe pas) : 0
+
+== 3. un clic sur un côté ajoute un sommet ==
+   côté proche de 130,141 (tol 4) : 1   (la base : du sommet 1 au sommet 2)
+   côté proche de 130,120 (tol 4) : -1   (au milieu : aucun)
+   inséré à l'indice 2
+   après insertion                   4 sommets : 130,80 160,140 130,140 100,140   rect 100,80,160,140
+   le nouveau tiré en 130,170        4 sommets : 130,80 160,140 130,170 100,140   rect 100,80,160,170
+
+== 4. Delete ôte un sommet, jamais sous trois ==
+   ôter le sommet 3 : 1
+   après                             3 sommets : 130,80 160,140 130,170   rect 130,80,160,170
+   ôter encore (il en reste trois) : 0   (refusé)
+   inchangé                          3 sommets : 130,80 160,140 130,170   rect 130,80,160,170
+   ôter un sommet qui n'existe pas : 0
+
+== 5. un polygone étiré, puis retouché : la forme ne saute pas ==
+   set the width of button "p" to 120
+   élargi de 30 à 120 points        3 sommets : 130,80 250,140 130,170   rect 130,80,250,170
+   sommet 1 tiré 10 plus bas         3 sommets : 130,80 250,180 130,170   rect 130,80,250,180
+
+== 6. un bouton qui n'est pas un polygone ==
+   par défaut : 0   déplacer : 0   insérer : -1   ôter : 0

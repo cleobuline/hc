@@ -112,6 +112,29 @@
    relu, sommets : 100,200 160,190 150,215
    le bouton qui ne portait rien : backcolor 0, npoints 0, points nul
 
+== 7b. l'opacité : « r,v,b,a », comme pour la peinture ==
+   set the backColor of button "bille" to "255,0,0,128"
+   put the backColor of button "bille"
+      255,0,0,128
+   set the hiliteColor of button "bille" to "0,255,0,0"
+   put the hiliteColor of button "bille"
+      0,255,0,0
+   set the backColor of button "bille" to "255,0,0,255"
+   put the backColor of button "bille" & "  (255 : opaque, trois nombres)"
+      255,0,0  (255 : opaque, trois nombres)
+   set the backColor of button "bille" to "bleu"
+   put the backColor of button "bille" & "  (un nom : opaque)"
+      0,0,255  (un nom : opaque)
+   set the foreColor of button "bille" to "10,20,30,40"
+   set the foreColor of button "bille" to empty
+   put "[" & the foreColor of button "bille" & "]"
+      []
+   champs : forealpha 0 (effacé avec sa couleur)
+   set the backColor of button "bille" to "255,0,0,128"
+   dans le fichier : backalpha 128
+   dans le fichier : hilitealpha 0
+   relu : backalpha 128, hilitealpha 0
+
 == 8. un fichier abîmé : la ligne fautive est ignorée ==
    backcolor zz                 -> ignorée, rien de posé
    backcolor -5                 -> ignorée, rien de posé
@@ -120,3 +143,7 @@
    points 1,1                   -> ignorée, rien de posé
    points 50,40 0,0 1,1 x       -> ignorée, rien de posé
    points -5,40 0,0 1,1         -> ignorée, rien de posé
+   backalpha 255                -> ignorée, rien de posé
+   backalpha zz                 -> ignorée, rien de posé
+   backalpha -3                 -> ignorée, rien de posé
+   hilitealpha 999              -> ignorée, rien de posé

@@ -186,6 +186,13 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 static NSTextField *gMsgBox = nil;
 static NSPanel *gMsgPanel = nil;
 
+/* L'ÉDITEUR DE POLYGONE (docs/mesures/polygone.txt) : le sommet qu'on tire,
+ * et celui qu'on a choisi — celui que Delete ôterait. Ils ne valent que pour
+ * gPolyEdite : sélectionner un autre objet les rend sans effet. -1 : aucun. */
+static Object *gPolyEdite = NULL;
+static int     gPolySommetTire = -1;
+static int     gPolySommetChoisi = -1;
+
 static NSPoint gDragStart;
 static NSRect  gDragRect;
 static BOOL    gDragging = NO;
@@ -661,27 +668,37 @@ static NSColor *btn_label_color(Object *o, NSColor *normale) {
 /* LES COULEURS D'UN BOUTON — l'extension (hc_core.h, champs backcolor…).
  * Rien de posé, rien de changé : les couleurs par défaut sont le blanc et le
  * noir qu'HyperCard employait, et que ce fichier écrivait en dur. */
-static NSColor *hcv_couleur_posee(int c, NSColor *defaut)
+static NSColor *hcv_couleur_posee(int c, int alpha, NSColor *defaut)
 {
     if (!c) return defaut;
     int rvb = HC_COUL_RVB(c);
     return [NSColor colorWithDeviceRed:((rvb >> 16) & 255) / 255.0
                                  green:((rvb >> 8) & 255) / 255.0
                                   blue:(rvb & 255) / 255.0
-                                 alpha:1.0];
+                                 alpha:HC_ALPHA(alpha) / 255.0];
+}
+
+/* REMPLIR EN MÉLANGEANT. NSRectFill RECOPIE la couleur, alpha compris : un
+ * bouton à moitié transparent aurait EFFACÉ la trame derrière lui au lieu de
+ * la laisser voir — l'inverse de ce que l'utilisatrice demandait. Pour une
+ * couleur opaque, recopier et mélanger donnent le même pixel : rien ne
+ * change pour les boutons d'avant. */
+static void hcv_remplit(NSRect r)
+{
+    NSRectFillUsingOperation(r, NSCompositingOperationSourceOver);
 }
 
 /* L'intérieur : backColor, ou hiliteColor quand le bouton est allumé. */
 static NSColor *btn_fond(Object *o, BOOL on)
 {
-    return on ? hcv_couleur_posee(o->hilitecolor, [NSColor blackColor])
-              : hcv_couleur_posee(o->backcolor,   [NSColor whiteColor]);
+    return on ? hcv_couleur_posee(o->hilitecolor, o->hilitealpha, [NSColor blackColor])
+              : hcv_couleur_posee(o->backcolor,   o->backalpha,   [NSColor whiteColor]);
 }
 
 /* Le contour et le titre : foreColor. */
 static NSColor *btn_trait(Object *o)
 {
-    return hcv_couleur_posee(o->forecolor, [NSColor blackColor]);
+    return hcv_couleur_posee(o->forecolor, o->forealpha, [NSColor blackColor]);
 }
 
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
@@ -759,7 +776,7 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
         if (on && o->icon == 0 && o->hilitecolor) {
             /* L'extension : une hiliteColor posée remplace l'inversion. */
             [btn_fond(o, on) setFill];
-            NSRectFill(r);
+            hcv_remplit(r);
         } else if (on && o->icon == 0) {
             [[NSColor whiteColor] setFill];
             NSRectFillUsingOperation(r, NSCompositingOperationDifference);
@@ -772,9 +789,9 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
         NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
                                  r.size.width - 3, r.size.height - 3);
         [btn_trait(o) setFill];
-        NSRectFill(sh);
+        hcv_remplit(sh);
         [btn_fond(o, on) setFill];
-        NSRectFill(body);
+        hcv_remplit(body);
         [btn_trait(o) setStroke];
         NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
         [bp setLineWidth:1];
@@ -818,13 +835,13 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     }
     if (strcmp(st, "opaque") == 0) {
         [btn_fond(o, on) setFill];
-        NSRectFill(r);
+        hcv_remplit(r);
         return;
     }
     [btn_fond(o, on) setFill];
-    NSRectFill(r);
+    hcv_remplit(r);
     [btn_trait(o) setFill];
-    NSFrameRect(r);
+    NSFrameRectWithWidthUsingOperation(r, 1.0, NSCompositingOperationSourceOver);
 }
 
 static void close_popup_menu(void) {
@@ -5477,6 +5494,24 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* UN POLYGONE NE DISPARAÎT JAMAIS PAR DELETE. Demandé par l'utilisatrice
+     * — « faudra pas faire disparaître tout le bouton avec la touche
+     * Delete ! » : on veut ôter un sommet, et le bouton entier partait. Delete
+     * ôte le sommet choisi s'il en reste plus de trois ; sinon, un bip. Le
+     * bouton entier s'enlève par Couper (⌘X), un geste délibéré que Coller
+     * rattrape. */
+    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
+        gSelected && gTool != TOOL_BROWSE && hc_est_polygone(gSelected)) {
+        if (gSelected == gPolyEdite && gPolySommetChoisi >= 0 &&
+            hc_sommet_ote(gSelected, gPolySommetChoisi)) {
+            gPolySommetChoisi = -1;
+            [self setNeedsDisplay:YES];
+        } else {
+            NSBeep();
+        }
+        return;
+    }
+
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
         gSelected && gTool != TOOL_BROWSE) {
         hc_delete_part(gSelected);
@@ -6066,6 +6101,25 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
         };
         for (int i = 0; i < 4; i++)
             NSRectFill(NSMakeRect(corners[i].x - s/2, corners[i].y - s/2, s, s));
+
+        /* Les SOMMETS d'un polygone, avec l'outil Bouton : des ronds, pour
+         * ne pas les confondre avec les poignées carrées des coins. Le sommet
+         * choisi — celui que Delete ôterait — est plein ; les autres sont
+         * creux. */
+        if (gTool == TOOL_BUTTON && hc_est_polygone(gSelected)) {
+            static int xy[2 * HC_SOMMETS_MAX];
+            int n = hc_bouton_sommets(gSelected, xy, HC_SOMMETS_MAX);
+            for (int i = 0; i < n; i++) {
+                NSRect rond = NSMakeRect(xy[2 * i] - 4, xy[2 * i + 1] - 4, 8, 8);
+                NSBezierPath *bp = [NSBezierPath bezierPathWithOvalInRect:rond];
+                BOOL choisi = (gSelected == gPolyEdite && i == gPolySommetChoisi);
+                [(choisi ? teinte : [NSColor whiteColor]) setFill];
+                [bp fill];
+                [teinte setStroke];
+                [bp setLineWidth:1.5];
+                [bp stroke];
+            }
+        }
     }
 
     if (gDragging) {
@@ -7346,6 +7400,29 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
+    /* 8 bis. L'ÉDITEUR DE POLYGONE, avec l'outil Bouton. Un sommet d'abord —
+     * il passe avant les poignées de coin, qu'il recouvre souvent : un
+     * triangle a deux sommets aux coins de son rectangle. Puis un côté : un
+     * sommet y naît, et se tire aussitôt. Sinon, le reste comme avant :
+     * étirer par un coin, déplacer par l'intérieur. */
+    if (gSelected && gTool == TOOL_BUTTON && hc_est_polygone(gSelected)) {
+        int px = (int)floor(p.x), py = (int)floor(p.y);
+        int i = hc_sommet_proche(gSelected, px, py, 5);
+        if (i < 0) {
+            int c = hc_cote_proche(gSelected, px, py, 4);
+            if (c >= 0) i = hc_sommet_insere(gSelected, c, px, py);
+        }
+        if (i >= 0) {
+            gPolyEdite = gSelected;
+            gPolySommetTire = i;
+            gPolySommetChoisi = i;
+            gMoving = NO;
+            gDragging = NO;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
+
     /* 9. Redimensionnement via poignées */
     if (gSelected) {
         int h = handle_at(gSelected, p);
@@ -7516,6 +7593,14 @@ static BOOL      gSansMessageChamp = NO;
         return;
     }
 
+    if (gPolySommetTire >= 0 && gSelected && gSelected == gPolyEdite) {
+        /* Le sommet suit la souris, calé sur la grille comme tout objet. */
+        hc_sommet_deplace(gSelected, gPolySommetTire,
+                          hcv_cale((int)floor(p.x)), hcv_cale((int)floor(p.y)));
+        [self setNeedsDisplay:YES];
+        return;
+    }
+
     if (gResizeHandle && gSelected) {
         NSPoint currentP = shiftDown ? constrain_to_axis(gMoveStart, p) : p;
         int dx = (int)(currentP.x - gMoveStart.x);
@@ -7595,6 +7680,11 @@ static BOOL      gSansMessageChamp = NO;
     if (gScrollField) { gScrollField = NULL; return; }
     if (gFloating) {
         gFloatDragging = NO;
+        return;
+    }
+    if (gPolySommetTire >= 0) {
+        gPolySommetTire = -1;          /* il reste CHOISI, pour Delete */
+        [self setNeedsDisplay:YES];
         return;
     }
     if (gResizeHandle) {
@@ -7894,6 +7984,12 @@ static void hcv_oublie_dans(HCDoc *d, Object *mort)
 static void cocoa_object_gone(Object *mort)
 {
     if (!mort) return;
+
+    /* L'éditeur de polygone tient l'adresse du bouton qu'il édite. */
+    if (mort == gPolyEdite) {
+        gPolyEdite = NULL;
+        gPolySommetTire = gPolySommetChoisi = -1;
+    }
 
     /* gSelected N'EST PLUS ICI, ET C'ÉTAIT LE PIÈGE DU DÉMÉNAGEMENT.
      *
