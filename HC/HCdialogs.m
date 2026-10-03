@@ -9,6 +9,7 @@
 #import "Hciconedit.h"
 #import "graphics.h"
 #import <objc/runtime.h>
+#include <math.h>       /* lround, pour les couleurs du bouton */
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie
  * HCView (Dialogs), plus bas dans ce fichier. Mais show_style_panel, qui les
@@ -151,6 +152,45 @@ static NSTextField  *gInfoIconField = nil;
  * Il n'est donc plus un confort : c'est la seule porte de l'interface. */
 static NSPopUpButton *gInfoFamily = nil;
 static NSTextField  *gInfoTextSize = nil;
+
+/* LES TROIS COULEURS DU BOUTON — Back, Fore, Hilite —, dans l'Info.
+ *
+ * Les couleurs de bouton ne se posaient que par script ; l'utilisatrice a
+ * demandé, le 3 octobre, de pouvoir les choisir à la souris. Ce n'est pas
+ * une extension de plus : c'est l'interface de celle qui existe.
+ *
+ * Une case et un puits par couleur. Case décochée : RIEN DE POSÉ, le bouton
+ * garde le dessin d'HyperCard — c'est ce que vaut un bouton d'une pile
+ * ancienne, et ouvrir puis valider l'Info ne doit rien lui ajouter. Choisir
+ * une couleur dans le puits coche la case. Le sélecteur montre l'opacité,
+ * qui va dans backalpha, forealpha, hilitealpha. */
+static NSButton     *gInfoCoulCase[3];
+static NSColorWell  *gInfoCoulPuits[3];
+
+/* Une couleur et son opacité, telles que le noyau les range, en NSColor. */
+static NSColor *info_couleur_de(int c, int alpha, NSColor *defaut)
+{
+    if (!c) return defaut;
+    int rvb = HC_COUL_RVB(c);
+    return [NSColor colorWithDeviceRed:((rvb >> 16) & 255) / 255.0
+                                 green:((rvb >> 8) & 255) / 255.0
+                                  blue:(rvb & 255) / 255.0
+                                 alpha:HC_ALPHA(alpha) / 255.0];
+}
+
+/* Et dans l'autre sens : un NSColor du sélecteur, en couleur et opacité du
+ * noyau. Opaque : l'opacité reste à zéro, rien de posé. */
+static void info_couleur_vers(NSColor *nc, int *c, int *alpha)
+{
+    NSColor *d = [nc colorUsingColorSpace:[NSColorSpace deviceRGBColorSpace]];
+    if (!d) { *c = 0; *alpha = 0; return; }
+    CGFloat r = 0, g = 0, b = 0, a = 1;
+    [d getRed:&r green:&g blue:&b alpha:&a];
+    int R = (int)lround(r * 255), G = (int)lround(g * 255), B = (int)lround(b * 255);
+    int A = (int)lround(a * 255);
+    *c = HC_COUL_POSEE | (R << 16) | (G << 8) | B;
+    *alpha = (A >= 255) ? 0 : (HC_ALPHA_POSE | (A & 0xFF));
+}
 
 /* ---------- panneau « Text Style » ----------
  * Partagé par le dialogue de bouton et celui de champ : les deux visent le
@@ -730,18 +770,56 @@ void hc_sync_size_field(Object *o)
     [self fldOK:sender];
     if (o) [self editScriptOf:o];
 }
+/* Les puits rendus inactifs, et le sélecteur fermé : un puits encore actif
+ * après la fermeture du panneau recevrait la couleur suivante choisie
+ * ailleurs — dans la palette de peinture par exemple. */
+static void info_couleurs_ferme(void)
+{
+    for (int i = 0; i < 3; i++)
+        if (gInfoCoulPuits[i]) [gInfoCoulPuits[i] deactivate];
+    if ([NSColorPanel sharedColorPanelExists])
+        [[NSColorPanel sharedColorPanel] orderOut:nil];
+}
+
 - (void)showButtonInfo:(Object *)obj {
     if (!obj) return;
     gInfoTarget = obj;
 
     if (gInfoPanel) [gInfoPanel close];
     gInfoPanel = [[NSPanel alloc]
-        initWithContentRect:NSMakeRect(300, 260, 360, 300)
+        initWithContentRect:NSMakeRect(300, 260, 360, 336)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
     [gInfoPanel setTitle:@"Button Info"];
     [gInfoPanel setReleasedWhenClosed:NO];
     NSView *c = [gInfoPanel contentView];
+
+    /* --- les couleurs : la rangée du haut, dans les 36 points ajoutés ---
+     * Le contenu se compte depuis le BAS : agrandir le panneau par le haut
+     * laisse tout le reste à sa place, relevée au point près. */
+    {
+        static NSString *const TITRES[3] = { @"Back", @"Fore", @"Hilite" };
+        int    coul[3]  = { obj->backcolor, obj->forecolor, obj->hilitecolor };
+        int    alpha[3] = { obj->backalpha, obj->forealpha, obj->hilitealpha };
+        NSColor *defaut[3] = { [NSColor whiteColor], [NSColor blackColor],
+                               [NSColor blackColor] };
+        [[NSColorPanel sharedColorPanel] setShowsAlpha:YES];
+        for (int i = 0; i < 3; i++) {
+            CGFloat x = 16 + i * 114;
+            gInfoCoulCase[i] = [[NSButton alloc] initWithFrame:NSMakeRect(x, 300, 60, 20)];
+            [gInfoCoulCase[i] setButtonType:NSButtonTypeSwitch];
+            [gInfoCoulCase[i] setTitle:TITRES[i]];
+            [gInfoCoulCase[i] setState:coul[i] ? NSControlStateValueOn
+                                               : NSControlStateValueOff];
+            [c addSubview:gInfoCoulCase[i]];
+            gInfoCoulPuits[i] = [[NSColorWell alloc] initWithFrame:NSMakeRect(x + 62, 298, 40, 24)];
+            [gInfoCoulPuits[i] setColor:info_couleur_de(coul[i], alpha[i], defaut[i])];
+            [gInfoCoulPuits[i] setTag:i];
+            [gInfoCoulPuits[i] setTarget:self];
+            [gInfoCoulPuits[i] setAction:@selector(infoCouleurChoisie:)];
+            [c addSubview:gInfoCoulPuits[i]];
+        }
+    }
 
     // --- nom ---
     NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 262, 90, 18)];
@@ -1743,7 +1821,18 @@ void hcicon_panel_stack_closing(Object *stack)
              * à la fermeture du panneau. */
             if (gInfoFamily)
                 hc_set_family(o, (int)[gInfoFamily indexOfSelectedItem]);
+            /* Les couleurs : case décochée, rien de posé. */
+            int *coul[3]  = { &o->backcolor, &o->forecolor, &o->hilitecolor };
+            int *alpha[3] = { &o->backalpha, &o->forealpha, &o->hilitealpha };
+            for (int i = 0; i < 3; i++) {
+                if (!gInfoCoulCase[i] || !gInfoCoulPuits[i]) continue;
+                if ([gInfoCoulCase[i] state] == NSControlStateValueOn)
+                    info_couleur_vers([gInfoCoulPuits[i] color], coul[i], alpha[i]);
+                else
+                    *coul[i] = *alpha[i] = 0;
+            }
         }
+    info_couleurs_ferme();
     [gInfoPanel close];
     close_style_panel();
     gInfoTarget = NULL;
@@ -1753,7 +1842,16 @@ void hcicon_panel_stack_closing(Object *stack)
     [self setNeedsDisplay:YES];
 }
 
+/* Choisir une couleur dans un puits, c'est vouloir s'en servir : la case
+ * se coche. */
+- (void)infoCouleurChoisie:(id)sender {
+    NSInteger i = [sender tag];
+    if (i >= 0 && i < 3 && gInfoCoulCase[i])
+        [gInfoCoulCase[i] setState:NSControlStateValueOn];
+}
+
 - (void)infoCancel:(id)sender {
+    info_couleurs_ferme();
     [gInfoPanel close];
     close_style_panel();
     gInfoTarget = NULL;
