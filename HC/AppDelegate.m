@@ -1684,7 +1684,7 @@ static NSURL *app_folder(void)
 /* « ABOUT HC » — LE PANNEAU DE macOS, ENRICHI, QUI INVITE SUR LABYNET.
  *
  * Demandé par l'utilisatrice le 3 octobre : un « À propos » joli, qui donne
- * envie de venir sur https://labynet.net. Le panneau standard, et non une
+ * envie de venir sur https://labynet.fr. Le panneau standard, et non une
  * fenêtre à nous — c'est son choix —, en anglais ET en français.
  *
  * Le panneau garde ce qu'il sait faire seul : l'icône, le nom, la version
@@ -1717,7 +1717,7 @@ static NSURL *app_folder(void)
                              NSForegroundColorAttributeName: [NSColor secondaryLabelColor],
                              NSParagraphStyleAttributeName: centre };
     NSDictionary *lien  = @{ NSFontAttributeName: grasse,
-                             NSLinkAttributeName: [NSURL URLWithString:@"https://labynet.net"],
+                             NSLinkAttributeName: [NSURL URLWithString:@"https://labynet.fr"],
                              NSParagraphStyleAttributeName: centre };
 
     NSMutableAttributedString *c = [[NSMutableAttributedString alloc] init];
@@ -1731,7 +1731,7 @@ static NSURL *app_folder(void)
 
     ajoute(@"Stacks, news, and a pinball to play \u2014 come and visit\n", texte);
     ajoute(@"Des piles, des nouvelles et un flipper \u2014 venez nous voir\n", doux);
-    ajoute(@"labynet.net", lien);
+    ajoute(@"labynet.fr", lien);
     ajoute(@"\n\n", texte);
 
     ajoute(@"\u00A9 2026 Patricia Benedetto \u00B7 co-author: Claude (Anthropic)\n", texte);

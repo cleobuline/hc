@@ -15,7 +15,7 @@ a new pinball that you can rebuild with copy and paste.
 | `put the id of this card into x` … `go x` | "can't do that" | **goes back to that card** |
 | `the long id of this stack` | `1` | **refused**, as in HyperCard (a stack has no id) |
 | button colours on check boxes, radio buttons, popups | ignored | **applied** |
-| "About HC" | the bare system panel | **what HC is, and a link to labynet.net** |
+| "About HC" | the bare system panel | **what HC is, and a link to labynet.fr** |
 | `Flipper.stack` in the DMG | one script runs the whole table | **every piece carries its own script** |
 | `the hcVersion`, "About HC" | `0.7.8` | `0.7.9` |
 
@@ -120,7 +120,7 @@ With no colour set, they look exactly as before.
 ### 4. "About HC"
 
 The About panel now says what HC is, in English and French, and links to
-[labynet.net](https://labynet.net).
+[labynet.fr](https://labynet.fr).
 
 ### 5. A pinball you build yourself
 
