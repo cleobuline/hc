@@ -54,7 +54,7 @@ BASE     = -std=gnu99 -I HC
 
 SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
 
-.PHONY: test test-asan test-enregistre verifie avertissements analyse propre aide
+.PHONY: test test-asan test-enregistre verifie avertissements analyse fuzz propre aide
 
 aide:
 	@echo "make test              la suite de non-régression"
@@ -63,6 +63,7 @@ aide:
 	@echo "make verifie           compile le noyau, sans rien produire"
 	@echo "make avertissements    compile sous huit familles d'avertissements"
 	@echo "make analyse           l'analyseur statique de clang, zéro alerte tolérée"
+	@echo "make fuzz              des piles abîmées par milliers, sous les sanitizers"
 	@echo "make propre            efface les objets de test"
 
 test:
@@ -150,6 +151,12 @@ analyse:
 	   echo "$$n alerte(s) de l'analyseur : la cible echoue"; exit 1; \
 	 fi; \
 	 echo "aucune alerte de l'analyseur statique"
+
+# LE FUZZING DES PILES, avant une version. Pas dans « test » : il prend
+# plusieurs minutes et cherche des plantages, pas des régressions. Voir
+# docs/mesures/fuzzing.txt, et pourquoi son témoin passe avant tout verdict.
+fuzz:
+	@tests/fuzz/lance.sh
 
 propre:
 	@rm -rf tests/.travail

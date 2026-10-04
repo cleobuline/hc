@@ -1,0 +1,137 @@
+LE FUZZING DES PILES — 4 octobre, avant l'App Store
+===================================================
+
+Demandé par l'utilisatrice avant de proposer HC sur l'App Store : « faut que
+tout soit parfait ». Une pile arrive d'Internet ; c'est la seule chose que HC
+lit sans l'avoir écrite. Le lecteur doit donc encaisser un fichier abîmé, ou
+fait exprès, sans planter, sans fuir et sans geler.
+
+UNE ERREUR D'ABORD, LA MIENNE. J'ai annoncé ce jour-là qu'« aucun test de
+fuzzing n'existe ». C'était faux : l'audit du 29 septembre (audit.txt) en a
+mené trois campagnes, pile_origine.txt et dessins.txt en racontent d'autres.
+Ce qui manquait, c'était un fuzzer RANGÉ dans le dépôt : chacun vivait dans un
+brouillon et mourait avec lui. Et depuis le 29 septembre, le format a gagné
+les couleurs des boutons, l'opacité, les sommets des polygones, les icônes en
+couleur, les ressources MacBinary — rien de tout cela n'avait été fuzzé.
+
+
+L'INSTRUMENT — tests/fuzz/
+--------------------------
+
+    fuzz.c       le pilote : mutations, un FILS par essai, sanitizers
+    garde.c      récolte les piles que la suite enregistre puis efface
+    graine_mb.c  des graines MacBinary, avec les monteurs du harnais macbinaire
+    lance.sh     les quatre temps : compiler, récolter, TÉMOIN, campagne
+
+Chaque essai, dans un fils compilé sous ASan, UBSan (float-cast-overflow
+compris) et LeakSanitizer : lire, convertir s'il le faut, poser les icônes de
+la ressource — le chemin même d'importeAuFormatHyperCard: dans AppDelegate.m —
+puis enregistrer et relire. Une alarme de dix secondes coupe les gels.
+
+Les mutations : sur notre format, des bits et des octets, des nombres remplacés
+par des valeurs limites (-1, 0, 2147483648, 1e308, nan…), des lignes du format
+justes ou fausses insérées (« points 1,1 », « backalpha 300 », « size
+100000,100000 »…), des lignes retirées, doublées, prises à une autre graine,
+des troncatures, une ligne de 70 000 caractères. Sur celui d'Apple : des
+entiers gros-boutistes de 16 et 32 bits aux valeurs limites, des rafales, des
+morceaux d'une autre graine, des blocs dupliqués, des troncatures.
+
+Les graines : 58 piles récoltées pendant que la suite tourne, le pendu, et une
+pile enrichie des lignes que la suite n'écrit jamais (scroll, selectedline,
+widemargins, autoselect, marked, unsharedhilite, bghilite, les trois
+opacités). Pour le format d'Apple : la pile synthétique du harnais origine,
+nue, en MacBinary I et en MacBinary II.
+
+
+L'INSTRUMENT ÉTAIT SOURD, ET IL A FALLU LE PROUVER POUR LE VOIR
+--------------------------------------------------------------
+
+La première campagne a rendu ZÉRO signalement sur 400 000 fichiers. Un relevé
+qui confirme ce que fait déjà le code fait conclure ; celui-là a donc été mis
+à l'épreuve AVANT d'être cru, par trois graines piégées — un débordement, une
+fuite, une boucle sans fin.
+
+    débordement      attrapé
+    boucle sans fin  attrapée (l'alarme)
+    fuite            PAS ATTRAPÉE — zéro sur treize
+
+DEUX DÉFAUTS DU PILOTE, l'un derrière l'autre :
+
+  1. Le fils sortait par _exit(), qui saute les routines de fin de programme.
+     C'est là que LeakSanitizer fait son contrôle : il n'a jamais parlé.
+  2. Corrigé le premier, la fuite était signalée… et le cas perdu : le fils
+     effaçait son fichier avant de sortir, donc avant le rapport. Le père
+     n'avait plus rien à garder.
+
+Après correction : treize fuites sur treize, onze débordements sur onze, et la
+graine saine jamais signalée.
+
+LES 400 000 PREMIERS ESSAIS NE DISENT DONC RIEN DES FUITES. Ils restent
+valables pour ce que leurs sanitizers entendaient : débordements, lectures
+hors bornes, comportements indéfinis, gels.
+
+D'OÙ LE TÉMOIN, dans lance.sh : les trois pièges passent AVANT chaque
+campagne, et s'il en manque un, le script s'arrête sans rendre de verdict.
+Le pilote compilé pour la campagne ne contient pas les pièges (-DCANARI).
+
+
+LES CAMPAGNES
+-------------
+
+    1re (sans les fuites)   notre format 300 000, Apple 100 000   0 signalement
+    2e  (avec les fuites)   notre format 299 000, Apple  57 000   0 signalement
+    lance.sh 2000           notre format   6 000, Apple   2 000   0 signalement
+    make fuzz (20 000)      notre format  60 000, Apple  20 000   0 signalement
+
+La deuxième a été arrêtée par la limite de temps de la session avant la fin.
+Les deux premières avaient en plus pour graines les deux piles de démonstration
+de hc.labynet.fr (flipper.stack, Pendu.stack), qui ne sont pas dans le dépôt.
+
+
+CE QUE « ZÉRO » COUVRE — la couverture, mesurée
+-----------------------------------------------
+
+Un zéro ne vaut que si le fuzzer ATTEINT le code. Mesuré avec gcc --coverage,
+15 000 essais sur chaque format :
+
+    hc_file.c      97,6 % des 791 lignes
+    hc_origine.c   96,9 % des 828 lignes
+    hc_importe.c   99,5 % des 208 lignes
+
+Les lignes non atteintes de hc_file.c, relevées une à une : des chemins de
+pénurie mémoire, l'échec d'écriture sur disque, et trois fonctions que la
+lecture n'appelle pas (hc_load_erreur, hc_save_copie, hc_taille_fichier). Le
+code nouveau — sommets, opacités, ciconres, ressources MacBinary — est atteint.
+
+hc_icons.c n'est atteint qu'à 21 % : ce qui ne l'est pas est le dessin et
+l'édition des icônes (pivoter, coller, palette), que la lecture n'appelle pas.
+La création d'une icône en couleur depuis le fichier, elle, l'est entièrement.
+
+
+CE QUI N'EST PAS MESURÉ
+-----------------------
+
+  · LE CÔTÉ COCOA. Une pile abîmée mais ACCEPTÉE peut porter des valeurs
+    étranges — un polygone à deux sommets, une carte de cent mille points,
+    une opacité nulle — qui vont jusqu'au dessin, dans HCview.m. Ce code ne
+    tourne pas ici. À faire : relever ce que le lecteur laisse passer, puis
+    lire le dessin avec cette liste en main.
+  · LES SCRIPTS des piles abîmées ne sont pas exécutés. L'interpréteur a été
+    fuzzé à part le 29 septembre (audit.txt), et ce terrain n'a pas été
+    rejoué.
+  · DE VRAIES PILES D'APPLE comme graines : elles ne peuvent pas entrer dans
+    le dépôt (licence). Les campagnes du format d'Apple partent de la pile
+    synthétique ; celles de pile_origine.txt partaient de vraies piles, en
+    dehors du dépôt.
+
+
+POUR LE REFAIRE
+---------------
+
+    tests/fuzz/lance.sh              20 000 essais par processus
+    tests/fuzz/lance.sh 100000
+
+Sous Linux, avec gcc et ses sanitizers (ASan doit être installé). Le script
+échoue s'il reste un cas ; les fichiers et les rapports sont dans
+tests/.travail/fuzz/campagne/, et « fuzz un hc|orig <fichier> » en rejoue un
+seul, sans fork.
