@@ -5560,6 +5560,7 @@ typedef struct {
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
     char  coche[HC_ARTICLES_MAX];     /* la marque à gauche du nom    */
+    char  touche[HC_ARTICLES_MAX];    /* cmdChar : le raccourci, 0 si aucun */
     int   n;
     int   actif_menu;
 } HcMenuBarre;
@@ -5752,6 +5753,8 @@ static int menu_insere(int i, int pos, int remplace,
                 q * sizeof *m->actif);
         memmove(&m->coche[pos + na],   &m->coche[pos + remplace],
                 q * sizeof *m->coche);
+        memmove(&m->touche[pos + na],  &m->touche[pos + remplace],
+                q * sizeof *m->touche);
     }
 
     for (int k = 0; k < na; k++) {
@@ -5759,6 +5762,7 @@ static int menu_insere(int i, int pos, int remplace,
         m->message[pos + k] = (k < nm) ? msg[k] : NULL;
         m->actif[pos + k]   = 1;
         m->coche[pos + k]   = 0;
+        m->touche[pos + k]  = 0;
     }
     for (int k = na; k < nm; k++) free(msg[k]);   /* liste plus longue */
 
@@ -5800,6 +5804,9 @@ int         hc_menu_article_actif(int i, int j)
 int         hc_menu_article_coche(int i, int j)
 { return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
          ? g_menus[i].coche[j] : 0; }
+int         hc_menu_article_touche(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? (unsigned char)g_menus[i].touche[j] : 0; }
 
 /* Le champ appartient-il à une pile verrouillée (cantModify) ? Voir
  * Object.cant_modify : l'écriture est alors refusée EN SILENCE, comme dans
@@ -13419,6 +13426,27 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
         return 1;
     }
 
+    /* « SHOW MENUBAR », « HIDE MENUBAR », « SHOW GROUPS », « HIDE GROUPS ».
+     *
+     * Ni des objets ni des fenêtres : des réglages de l'affichage, que seul
+     * l'hôte sait rendre. La pile d'aide d'Apple fait les deux — addHelpMenu
+     * commence par « show menuBar », et toggleActiveText montre ou cache le
+     * soulignement gris du texte de style « group », le texte actif de
+     * l'aide. HC répondait « ne sait pas faire », et addHelpMenu s'arrêtait
+     * avant d'avoir créé son menu : d'où les « menu introuvable » qui
+     * suivaient. Ce que l'hôte en fait est écrit chez lui (HCview.m). */
+    if (n->fils[0]->genre == HCTN_IDENT) {
+        char mot[16];
+        v3_brut(n->fils[0], mot, sizeof mot);
+        if (ci_equal(mot, "menubar") || ci_equal(mot, "groups")) {
+            host_global_set(ci_equal(mot, "menubar") ? "menuBar" : "showGroups",
+                            montrer ? "true" : "false");
+            g_visual_dirty = 1;
+            set_result("");
+            return 1;
+        }
+    }
+
     /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
      * NULL et l'ancien chemin s'en charge, avec son message d'erreur.
      *
@@ -14826,9 +14854,20 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
         hct_texte(&n->fils[0]->jeton, b, sizeof b);
     }
 
+    /* UNE EXPRESSION DÉSIGNE PAR NUMÉRO OU PAR NOM, SELON CE QU'ELLE VAUT.
+     *
+     * L'analyseur range « menu gHMnu » comme un RANG — une expression, pas une
+     * chaîne. Mais la pile d'aide d'Apple y met un NOM : « put "Reference"
+     * into gHMnu », puis « create menu gHMnu », « put … into menu gHMnu »,
+     * « there is a menu gHMnu ». La création passait (elle évalue le nom) ;
+     * toute référence ensuite cherchait un rang dans « Reference », ne le
+     * trouvait pas, et répondait « menu introuvable » — trois fois à
+     * l'ouverture de l'aide convertie. Une valeur qui n'est pas un nombre se
+     * cherche donc par son nom ; un nombre reste un rang. Même règle pour
+     * menuItem, plus bas : le site jumeau. */
     if (n->designateur == HCT_DES_RANG) {
         int r = hc_rang(b);
-        return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
+        if (r != 0 || !b[0]) return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
     }
     return menu_index(b);
 }
@@ -14954,11 +14993,15 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
         hct_texte(&n->fils[0]->jeton, b, sizeof b);
     }
 
+    /* Voir v3_menu_index : une expression qui ne vaut pas un nombre désigne
+     * l'article par son NOM. */
     if (n->designateur == HCT_DES_RANG) {
         int r = hc_rang(b);
-        if (r >= 1 && r <= g_menus[im].n) return r - 1;
-        g_menu_echec = V3_MENU_ARTICLE_ABSENT;
-        return -1;
+        if (r != 0 || !b[0]) {
+            if (r >= 1 && r <= g_menus[im].n) return r - 1;
+            g_menu_echec = V3_MENU_ARTICLE_ABSENT;
+            return -1;
+        }
     }
     for (int j = 0; j < g_menus[im].n; j++)
         if (ci_equal(g_menus[im].article[j], b)) return j;
@@ -15014,6 +15057,13 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
         }
         if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
             *out = hct_val_texte(m->message[j] ? m->message[j] : ""); return 1;
+        }
+        /* cmdChar, ou commandChar : la touche qui, avec Commande, choisit
+         * l'article. La pile d'aide d'Apple pose « ? » sur « HyperCard
+         * Help ». Un seul caractère ; vide s'il n'y en a pas. */
+        if (ci_equal(prop, "cmdchar") || ci_equal(prop, "commandchar")) {
+            char t[2] = { m->touche[j], 0 };
+            *out = hct_val_texte(t); return 1;
         }
         if (ci_equal(prop, "number")) {
             snprintf(b, sizeof b, "%d", j + 1);
@@ -15083,6 +15133,15 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             if (!t) { hct_ctx_faute(ctx, obj, "mémoire insuffisante"); return 1; }
             strcpy(t, val);
             free(m->message[j]); m->message[j] = t;
+            menus_prevenir(); return 1;
+        }
+        /* Le premier caractère, s'il est ASCII : la touche d'un raccourci
+         * est une lettre ou un signe du clavier, et garder le premier octet
+         * d'un caractère accentué en UTF-8 en ferait la moitié d'un
+         * caractère. Vide, ou autre chose : pas de raccourci. */
+        if (ci_equal(prop, "cmdchar") || ci_equal(prop, "commandchar")) {
+            unsigned char c = (unsigned char)val[0];
+            m->touche[j] = (char)((c > ' ' && c < 0x7F) ? c : 0);
             menus_prevenir(); return 1;
         }
         g_menu_echec = V3_MENU_PROP_INCONNUE;

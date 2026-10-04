@@ -2509,6 +2509,17 @@ static void cocoa_menus_changed(void)
              * sens d'AppKit, pas un caractère à ajouter au titre. */
             [mi setState:hc_menu_article_coche(i, j) ? NSControlStateValueOn
                                                      : NSControlStateValueOff];
+            /* « set the cmdChar of menuItem … to "?" » : le raccourci, avec
+             * Commande. AppKit veut la touche en minuscule pour une lettre ;
+             * une majuscule ajouterait Majuscule au raccourci. */
+            {
+                int t = hc_menu_article_touche(i, j);
+                if (t > ' ' && t < 0x7F) {
+                    char k[2] = { (char)((t >= 'A' && t <= 'Z') ? t + 32 : t), 0 };
+                    [mi setKeyEquivalent:[NSString stringWithUTF8String:k]];
+                    [mi setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+                }
+            }
             [m addItem:mi];
         }
 
@@ -3472,6 +3483,32 @@ static void cocoa_global_set(const char *name, const char *value) {
      * retenait rien du dessin — voir hcv_verrou_ecran. */
     if (strcasecmp(name, "lockScreen") == 0) {
         hcv_verrou_ecran(vrai ? YES : NO);
+        return;
+    }
+
+    /* « show menuBar » / « hide menuBar ». Cacher la barre des menus de
+     * macOS n'est permis qu'avec le Dock : AppKit refuse — par une exception
+     * — la barre cachée seule. On prend la forme DOUCE, qui cache les deux et
+     * les rend au passage de la souris en haut de l'écran : une pile qui
+     * cache la barre ne doit pas pouvoir enfermer l'utilisateur. HyperCard
+     * la cachait pour de bon ; cette différence est voulue, et le rendu n'est
+     * pas mesuré. */
+    if (strcasecmp(name, "menuBar") == 0) {
+        @try {
+            [NSApp setPresentationOptions:vrai
+                ? NSApplicationPresentationDefault
+                : (NSApplicationPresentationAutoHideMenuBar |
+                   NSApplicationPresentationAutoHideDock)];
+        } @catch (NSException *e) {
+            NSLog(@"hide menuBar : refusé par AppKit — %@", [e reason]);
+        }
+        return;
+    }
+
+    /* « show groups » / « hide groups » : voir gGroupsShown, HCtext.m. */
+    if (strcasecmp(name, "showGroups") == 0) {
+        gGroupsShown = vrai ? YES : NO;
+        [gView setNeedsDisplay:YES];
         return;
     }
 

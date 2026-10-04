@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. addHelpMenu : show menuBar, puis le menu et son raccourci ==
+   -> hôte : menuBar = true
+   menuMsg 3 : goHCHelp
+   cmdChar 3 : ?
+   cmdChar 4 : []
+   there is : true
+   article par variable : goTalk
+   rang par variable : HyperCard Help
+   -> hôte : menuBar = false
+   l'hôte lit : article 3 « HyperCard Help », touche « ? »
+
+== 2. toggleActiveText : show groups, hide groups ==
+   -> hôte : showGroups = true
+   -> hôte : showGroups = false
+
+== 3. whereICameFrom : d'où l'on vient, sans y aller ==
+   vient de : card id 4 of stack "Aide"
+   est sur  : carte 3
+
+== 4. checkCantModify ==
+   cantModify : false

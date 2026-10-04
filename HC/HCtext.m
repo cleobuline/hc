@@ -36,6 +36,11 @@ static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
  * dit lequel des deux on sert. */
 BOOL gForEditor = NO;
 
+/* « show groups » / « hide groups » : le texte de style « group » — le texte
+ * ACTIF des piles d'aide d'Apple — se souligne d'un trait gris épais, ou ne se
+ * voit pas. Posé par cocoa_global_set (HCview.m), sur « showGroups ». */
+BOOL gGroupsShown = NO;
+
 NSFont *obj_base_font(Object *o, CGFloat defSize) {
     CGFloat sz = o->textsize > 0 ? o->textsize : defSize;
     NSFont *f = nil;
@@ -339,6 +344,16 @@ static NSMutableDictionary *style_attrs(int style, NSFont *base, NSColor *color)
     /* HC_GROUP ne se voit pas, mais il doit survivre a un aller-retour par
      * l'editeur : on le porte comme attribut personnalise. */
     if (style & HC_GROUP) at[kHCGroupAttribute] = @(1);
+
+    /* LE SOULIGNÉ GRIS DE « SHOW GROUPS ». Jamais pour l'ÉDITEUR : la
+     * relecture des plages (plus bas) prend tout soulignement pour le style
+     * « underline », et le texte groupé ressortirait souligné pour de bon. Et
+     * jamais par-dessus un vrai soulignement, qui l'emporte. Le trait d'HyperCard
+     * — épais, gris — est décrit, pas mesuré. */
+    if ((style & HC_GROUP) && gGroupsShown && !gForEditor && !(style & HC_UNDERLINE)) {
+        at[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleThick);
+        at[NSUnderlineColorAttributeName] = [NSColor grayColor];
+    }
 
     return at;
 }

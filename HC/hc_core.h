@@ -1134,6 +1134,7 @@ int         hc_menu_nb_articles(int i);
 const char *hc_menu_article(int i, int j);
 int         hc_menu_article_actif(int i, int j);
 int         hc_menu_article_coche(int i, int j);
+int         hc_menu_article_touche(int i, int j);   /* cmdChar, 0 si aucun */
 
 /* L'utilisateur a choisi l'article j du menu i. Envoie le message de
  * l'article s'il en a un, sinon « doMenu <article> ». Un séparateur ne

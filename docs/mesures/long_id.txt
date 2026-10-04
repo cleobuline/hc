@@ -201,3 +201,32 @@ supprimé, la peinture, et la frappe de l'utilisateur dans un champ d'une
 pile verrouillée ; le cadenas qu'HyperCard montre dans la barre des menus ;
 et le bit du format d'Apple qui porte le verrou — une pile d'origine
 verrouillée s'importe libre.
+
+
+LA PILE D'AIDE D'APPLE, LE RESTE — 4 octobre
+--------------------------------------------
+
+Les autres lignes où « HyperCard Help » convertie s'arrêtait, DANS HC :
+
+  · show menuBar / hide menuBar, show groups / hide groups : « ne sait pas
+    faire ». Ce sont des réglages d'affichage : le noyau les accepte et les
+    transmet à l'hôte (« menuBar », « showGroups »). HCview.m cache la barre
+    des menus SOUS SA FORME DOUCE — elle revient au passage de la souris,
+    avec le Dock, AppKit refusant la barre cachée seule ; HyperCard la
+    cachait pour de bon : différence voulue. HCtext.m souligne de gris épais
+    le texte de style « group » tant que show groups vaut. Rendu NON MESURÉ,
+    ni dans HyperCard ni dans HC.
+  · « set cmdChar of menuItem … » : propriété de menu inconnue. Le raccourci
+    se pose, se lit, et devient la touche ⌘ de l'article.
+  · LES TROIS « MENU INTROUVABLE » N'ÉTAIENT PAS DUS À « show menuBar », comme
+    je l'avais lu d'abord : le harnais aidemenus les a gardés une fois show
+    menuBar accepté. La cause : « menu gHMnu », une VARIABLE qui contient un
+    NOM. L'analyseur range une expression comme un rang, et la recherche par
+    rang ne trouvait pas « Reference ». create menu passait (il évalue le
+    nom), toute référence ensuite échouait. Une valeur qui n'est pas un
+    nombre se cherche maintenant par son nom — pour menu, et pour menuItem,
+    le site jumeau.
+
+Harnais aidemenus : la forme des gestionnaires de l'aide (addHelpMenu,
+toggleActiveText, whereICameFrom, checkCantModify), sans leur texte — la
+pile d'Apple n'entre pas dans le dépôt.
