@@ -95,6 +95,12 @@ NSBitmapImageRep *hcp_decode(NSString *b64)
                                                   hasAlpha:YES isPlanar:NO
                                             colorSpaceName:NSDeviceRGBColorSpace
                                                bytesPerRow:w * 4 bitsPerPixel:32];
+    /* L'en-tête vient du FICHIER : il peut annoncer 20 000 × 20 000, soit
+     * 1,6 Go. Si AppKit n'a pas pu les donner, [rep bitmapData] vaut NULL, et
+     * uncompress écrivait alors dans l'adresse zéro. Lu dans le code le 4
+     * octobre, en suivant jusqu'au dessin les valeurs qu'une pile abîmée fait
+     * passer ; non reproduit — cette allocation ne tourne pas ici. */
+    if (!rep || ![rep bitmapData]) return nil;
 
     uLongf attendu = (uLongf)(w * h * 4), obtenu = attendu;
     if (uncompress([rep bitmapData], &obtenu, p + 12,

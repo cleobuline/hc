@@ -6,6 +6,7 @@
                        * Cocoa : le seul compilateur qui trancherait ne tourne
                        * pas ici, et ce depot a deja paye trois allers-retours
                        * pour des references que seul Xcode voyait. */
+#include <string.h>   /* strlen, pour borner utf16_from_byte — même raison */
 
 /* ═══ Police, style et geometrie du texte ════════════════════════════════════
  *
@@ -92,8 +93,29 @@ static NSString * const kHCFauxBoldAttribute = @"HCFauxBold";
 /* Les plages du noyau sont des décalages en OCTETS dans le texte UTF-8, alors
  * que NSString compte en unités UTF-16. C'est identique tant que le texte est
  * en ASCII — le calendrier l'est — et faux dès le premier accent. */
+/*
+ * LE DÉCALAGE EST BORNÉ À LA LONGUEUR DU TEXTE, ICI ET PAS CHEZ LES APPELANTS.
+ *
+ * -initWithBytes:length: LIT les octets qu'on lui annonce. Une plage de style
+ * qui commence au-delà du texte — « run 5000,10,1 » sur un champ de trois
+ * octets, qu'une pile abîmée porte et que le lecteur accepte (il borne les
+ * décalages à un million, pas au texte, qu'il n'a pas encore lu) — faisait
+ * lire 5000 octets d'un tampon qui en a quatre. Reproduit sous ASan par
+ * émulation, le 4 octobre : heap-buffer-overflow, READ of size 5000
+ * (docs/mesures/fuzzing.txt). Sur le Mac, une lecture dans le vide : des
+ * octets au hasard le plus souvent, un plantage si la page d'après n'existe
+ * pas.
+ *
+ * Les quatre appelants bornaient déjà — mais le RÉSULTAT, après la lecture :
+ * trop tard. Borner ici couvre les quatre d'un coup, sélection, plages,
+ * « the foundChunk » et l'éditeur de champ. Au-delà du texte, on rend sa
+ * longueur entière : la fin du texte, que chaque appelant sait déjà traiter.
+ */
 NSUInteger utf16_from_byte(const char *utf8, int byteoff)
 {
+    if (!utf8 || byteoff <= 0) return 0;
+    size_t n = strlen(utf8);
+    if ((size_t)byteoff > n) byteoff = (int)n;
     if (byteoff <= 0) return 0;
     NSString *pre = [[NSString alloc] initWithBytes:utf8
                                              length:(NSUInteger)byteoff
