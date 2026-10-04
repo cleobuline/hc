@@ -229,3 +229,25 @@ faisant tourner le décodeur. C'est le seul endroit du harnais où une valeur
 attendue est écrite à la main, et la raison en est que l'oracle du format ne voit
 pas ces deux transformations. Tout est dans `docs/mesures/dessins.txt`, y compris
 le mot « Bienvenue » qu'Apple a peint en 1993 et qui sert de second juge.
+
+## Le fuzzing des piles, avant une version
+
+```sh
+make fuzz                  # ou tests/fuzz/lance.sh, 20 000 essais par processus
+tests/fuzz/lance.sh 100000 # davantage
+```
+
+Des piles abîmées par milliers — dans notre format et dans celui d'Apple, nues
+ou en MacBinary — lues, converties, enregistrées et relues sous ASan, UBSan et
+LeakSanitizer, avec une alarme contre les gels. Les graines sont les piles que
+la suite elle-même enregistre : le script la fait tourner pour les récolter.
+
+**Le témoin passe d'abord.** Trois graines piégées — un débordement, une fuite,
+une boucle sans fin — doivent être signalées, et une graine saine ne doit pas
+l'être ; sinon le script s'arrête sans verdict. Ce n'est pas une précaution de
+principe : la première campagne a rendu zéro signalement sur 400 000 fichiers
+avec un pilote qui ne pouvait PAS entendre les fuites. Tout est dans
+`docs/mesures/fuzzing.txt`.
+
+Il n'est pas dans `lance.sh` ni dans l'intégration continue : il prend
+plusieurs minutes, et il cherche des plantages, pas des régressions.

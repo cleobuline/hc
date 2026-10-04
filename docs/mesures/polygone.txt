@@ -194,6 +194,17 @@ un champignon de plus, c'est un copier-coller.
     batteur droit en miroir ; sur 24 parties, 0 traversée, 0 bille coincée,
     0 faute, 0,86 ms par image. Le contact compte 3 points au-delà de la
     pointe : une traversée par la pointe montante, trouvée en chemin.
+  · LA PREMIÈRE MESURE SUR APPLE SILICON, le 4 octobre, rapportée sur IRC
+    (#linux) par un utilisateur, yourfear, et transmise par l'utilisatrice :
+    un Mac M5, sous macOS 27.2 bêta. « it works », avec une capture que je
+    n'ai pas pu voir. La version de HC n'est pas dite ; c'est vraisemblablement
+    la 0.7.9 de la release, sans confirmation. La vitesse du flipper n'est
+    PAS mesurée : la boucle se cale sur the ticks, et c'est la question
+    ouverte — une puce bien plus rapide joue-t-elle à la même vitesse ?
+    Le premier essai avait échoué, et pas à cause du Mac : il double-cliquait
+    HC DANS le DMG, où la quarantaine reste posée et où rien ne s'enregistre.
+    Copié dans Applications et la quarantaine levée, il a marché. Le DMG ne
+    dit pas assez qu'il faut d'abord glisser HC dehors.
 
 
 LE CHANTIER SUIVANT : L'ÉDITEUR DE POLYGONE — demandé le 2 octobre au soir

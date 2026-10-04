@@ -88,6 +88,8 @@ minute de distance.
     ./tests/lance.sh --asan la même sous ASan, UBSan et LeakSanitizer
     ./tests/lance.sh --enregistre   réenregistre les témoins
     ./tests/releve.sh       ce qui relit encore du TEXTE (« v3 relit »)
+    make fuzz               des piles abîmées par milliers, AVANT une version
+                            (son témoin d'abord : docs/mesures/fuzzing.txt)
 
 `--asan` PASSE AVANT DE POUSSER, et l'on attend son résultat. Les témoins se
 réenregistrent après avoir LU le diff, jamais avant.
