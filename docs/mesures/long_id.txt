@@ -169,8 +169,8 @@ dans HyperCard. Ce que fait « push recent card » sans carte précédente : NON
 MESURÉ ; HC n'empile rien et rend « No such card ».
 
 
-CANTMODIFY — 4 octobre, MESURÉ, PAS ENCORE CORRIGÉ
---------------------------------------------------
+CANTMODIFY — 4 octobre, MESURÉ, PUIS CORRIGÉ LE MÊME SOIR
+--------------------------------------------------------
 
 La même pile d'aide lit et pose « the cantModify of this stack ». HC :
 « propriété inconnue ».
@@ -187,6 +187,17 @@ MESURÉ DANS HYPERCARD, pile test6 :
     SILENCE : pas de message, et le script continue — « ça s'exécute mais il
     n'y a rien dans le champ ».
 
-Pas corrigé ici : une propriété qui se lit sans rien verrouiller serait
-exactement « le verrou qui ne ferme rien » que hc_core.h refuse pour
-cantDelete sur la pile. Le verrou se fera avec elle.
+La propriété n'est pas venue seule : une propriété qui se lit sans rien
+verrouiller serait « le verrou qui ne ferme rien » que hc_core.h refuse pour
+cantDelete sur la pile. Elle est donc arrivée AVEC le verrou mesuré, posé aux
+deux endroits par où un script écrit dans un champ — v3_ecrit_objet (« put …
+into card field 1 ») et la branche « champ » de container_set, où finissent
+toutes les écritures par morceau. Refus silencieux, comme dans HyperCard.
+Enregistrée dans notre format (« cantmodify », seulement si posée). Harnais
+verrou : le banc rejoué, les morceaux, l'aller-retour par le fichier.
+
+NON MESURÉ, DONC NON VERROUILLÉ : une propriété posée, un bouton créé ou
+supprimé, la peinture, et la frappe de l'utilisateur dans un champ d'une
+pile verrouillée ; le cadenas qu'HyperCard montre dans la barre des menus ;
+et le bit du format d'Apple qui porte le verrou — une pile d'origine
+verrouillée s'importe libre.

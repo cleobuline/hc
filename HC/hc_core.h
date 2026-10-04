@@ -420,6 +420,16 @@ struct Object {
      * verrou qui ne ferme rien. */
     int      cant_delete;
 
+    /* LA PILE VERROUILLÉE — « set the cantModify of this stack to true ».
+     * Ne vaut que pour une pile. MESURÉ DANS HYPERCARD le 4 octobre : la
+     * propriété se pose et se lit, et une pile verrouillée REFUSE EN SILENCE
+     * qu'un script écrive dans un champ — pas de message, le script continue
+     * (docs/mesures/long_id.txt). C'est ce verrou-là qui est posé, et lui
+     * seul : ce que la pile verrouillée fait des autres changements — une
+     * propriété posée, un bouton créé, la frappe de l'utilisateur — n'est
+     * pas mesuré. */
+    int      cant_modify;
+
     /* LA PEINTURE DE LA COUCHE EST-ELLE MONTRÉE ? « set the showPict of this
      * card to false » cache le dessin sans l'effacer, et c'est l'idiome du
      * bouton « Hide Card Picture » — « Readymade Buttons » en fait son sujet.

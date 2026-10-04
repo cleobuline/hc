@@ -5801,6 +5801,15 @@ int         hc_menu_article_coche(int i, int j)
 { return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
          ? g_menus[i].coche[j] : 0; }
 
+/* Le champ appartient-il à une pile verrouillée (cantModify) ? Voir
+ * Object.cant_modify : l'écriture est alors refusée EN SILENCE, comme dans
+ * HyperCard — mesuré, pas de message, le script continue. */
+static int champ_verrouille(Object *o)
+{
+    Object *st = owning_stack(o);
+    return st && st->cant_modify;
+}
+
 static int container_set_body(const char *ref, const char *val, int mode);
 
 /* container_set est recursif : « char 2 of word 2 of me » se traite en trois
@@ -5967,6 +5976,10 @@ static int container_set_body(const char *ref, const char *val, int mode)
     char *merged = arena_buf();
     Object *o = resolve(ref);
     if (o && o->type == OBJ_FIELD) {
+        /* La pile verrouillée : rien n'est écrit, et rien n'est dit. Toutes
+         * les écritures par morceau — « put x into word 2 of field 1 »,
+         * « delete line 3 of … », « sort » — finissent ici. */
+        if (champ_verrouille(o)) return 1;
         /* passer par hc_field_text / hc_set_field_text : un champ de fond non
          * partagé a un texte propre à chaque carte */
         const char *old = hc_field_text(o);
@@ -6513,7 +6526,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "showpict", "sharedtext",
+        "cantmodify", "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6829,6 +6842,9 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
     if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
+        snprintf(out, outlen, "%s", o->cant_modify ? "true" : "false"); return 1;
+    }
     /* showPict n'a de sens que sur une couche : le demander à un bouton doit
      * rendre « propriété inconnue » et non « false », qui serait une réponse. */
     if (ci_equal(prop, "showpict") &&
@@ -9575,6 +9591,7 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
     (void)d;
     Object *o = objet;
     if (!o || o->type != OBJ_FIELD) return 0;
+    if (champ_verrouille(o)) { set_result(""); return 1; }
     if (!val) val = "";
 
     int pose;
@@ -12310,6 +12327,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
     } else if (ci_equal(prop, "cantdelete")) {
         o->cant_delete = truthy(val);
+    } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
+        o->cant_modify = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
         /* Accepte aussi « centre » et « centered », qu'on rencontre dans
          * les scripts, et retombe à gauche sur un mot inconnu plutôt que
