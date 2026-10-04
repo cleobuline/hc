@@ -165,11 +165,32 @@ d'un calque de peinture à la taille que dit l'en-tête du fichier, jusqu'à
 si l'allocation avait réussi. NULL → écriture à l'adresse zéro. Lu, non
 reproduit.
 
-RESTE NON MESURÉ, ET À JOUER DANS HC (l'application) : une pile de
-« size 100000,100000 ». Hcdocument.m ouvre la fenêtre à cette taille, et le
-calque de peinture (paint_bitmap) prend celle de la vue. Ce qu'AppKit fait
-d'une fenêtre d'un million de points — la borner, refuser, ou tenter
-l'allocation — ne se lit pas dans notre code.
+JOUÉ DANS HC (l'application), par l'utilisatrice, le même soir — un banc de
+piles étranges, avec la 0.7.9 publiée, donc SANS la correction ci-dessus :
+
+    plage hors du texte       rien de visible. Attendu : la lecture hors
+                              tampon est silencieuse tant que la mémoire
+                              d'après existe — c'est ce qui la rendait
+                              sournoise. Ne prouve ni le défaut ni sa
+                              correction.
+    size 100000,100000        « elle est géante » : la fenêtre s'ouvre à cette
+                              taille, sans planter. La mémoire prise n'est pas
+                              relevée.
+    rect à l'envers, opacité  rien de spécial
+    nulle, corps 10 000
+    polygone à deux sommets   un trait en diagonale, sans remplissage — ce que
+                              dit draw_btn_frame (rempli à partir de trois) —
+                              et l'éditeur de polygone le reprend sans peine.
+
+UNE ERREUR DU BANC, la mienne : la première version écrivait « style
+polygon » sans guillemets. Le format veut « style "polygon" », le lecteur a
+ignoré la ligne, et le bouton est sorti en rectangle rouge — juste, pour un
+bouton ordinaire, et le test ne testait rien. Vu en relisant la pile avec le
+noyau (style=-), refait, rejoué.
+
+RESTE NON MESURÉ : la mémoire que prend une pile de 100 000 points, dont le
+calque de peinture (paint_bitmap) prend la taille de la vue ; et une pile
+d'un million de points, la borne du lecteur.
 
 
 POUR LE REFAIRE
