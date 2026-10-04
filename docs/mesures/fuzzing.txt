@@ -174,8 +174,8 @@ piles étranges, avec la 0.7.9 publiée, donc SANS la correction ci-dessus :
                               sournoise. Ne prouve ni le défaut ni sa
                               correction.
     size 100000,100000        « elle est géante » : la fenêtre s'ouvre à cette
-                              taille, sans planter. La mémoire prise n'est pas
-                              relevée.
+                              taille, sans planter, et se ferme normalement.
+                              La mémoire prise n'est pas relevée.
     rect à l'envers, opacité  rien de spécial
     nulle, corps 10 000
     polygone à deux sommets   un trait en diagonale, sans remplissage — ce que
