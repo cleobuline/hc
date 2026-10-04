@@ -134,3 +134,59 @@ HC rendait 1. Il refuse maintenant toute forme de l'id d'une pile —
 script s'arrête (harnais idcarte, section 5). Les formes courte, abrégée et
 nue n'ont pas été jouées dans HyperCard : refusées avec la longue, non
 mesurées.
+
+
+PUSH RECENT CARD, POP CARD INTO — 4 octobre
+-------------------------------------------
+
+Venu de la pile d'aide d'Apple, « HyperCard Help », convertie par
+l'utilisatrice : whereICameFrom y fait
+
+    push recent card
+    pop card into theCard
+    return theCard
+
+et cardToStackName en tire le nom de la pile d'où l'on vient. HC répondait
+« ne sait pas faire » aux deux lignes.
+
+MESURÉ DANS HYPERCARD (Basilisk II), par l'utilisatrice, pile test6, depuis
+un bouton de la carte 3 — go card 1, go card 3, push recent card, pop card
+into x :
+
+    pop into : card id 2850 of stack "Saved HD:More Stacks:Alternate Home Stacks:Home (Small):test6"
+    carte : 3
+    carte 1 : 2850          (the short id of card 1, relevé ensuite)
+
+  · « recent card » est la carte d'où l'on vient ;
+  · « pop card into » dépile SANS se déplacer — on reste sur la carte 3 ;
+  · le conteneur reçoit le LONG ID, la forme mesurée le 3 octobre.
+
+LA CORRECTION : push reconnaît « recent card » (l'avant-dernière carte de
+l'historique, sans y toucher) ; pop accepte into, before et after, et écrit
+le long id par container_set, le chemin de « put ». Harnais idcarte,
+section 6. « before » et « after » suivent la grammaire de put : NON MESURÉS
+dans HyperCard. Ce que fait « push recent card » sans carte précédente : NON
+MESURÉ ; HC n'empile rien et rend « No such card ».
+
+
+CANTMODIFY — 4 octobre, MESURÉ, PAS ENCORE CORRIGÉ
+--------------------------------------------------
+
+La même pile d'aide lit et pose « the cantModify of this stack ». HC :
+« propriété inconnue ».
+
+MESURÉ DANS HYPERCARD, pile test6 :
+
+    set the cantModify of this stack to true
+    put the cantModify of this stack into v       -- v = true
+    put "essai" into card field 1                  -- RIEN : le champ ne change pas
+    set the cantModify of this stack to false
+
+  · la propriété se pose et se lit ;
+  · une pile verrouillée REFUSE qu'un script écrive dans un champ, EN
+    SILENCE : pas de message, et le script continue — « ça s'exécute mais il
+    n'y a rien dans le champ ».
+
+Pas corrigé ici : une propriété qui se lit sans rien verrouiller serait
+exactement « le verrou qui ne ferme rien » que hc_core.h refuse pour
+cantDelete sur la pile. Le verrou se fera avec elle.

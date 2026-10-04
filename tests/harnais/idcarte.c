@@ -14,6 +14,8 @@
  *     the id of card 2                          card id 3805
  *     go x  (x = the id of this card)           revient sur la carte 1
  *     go card id x                              ne bouge pas
+ *     push recent card, pop card into x         x = le long id de la carte
+ *                                               d'où l'on vient ; on reste
  *
  * HC rendait le nombre nu pour la CARTE aussi, et « go x » y répondait « ne
  * sait pas faire ». Le bouton, le champ et le fond étaient déjà conformes :
@@ -109,6 +111,30 @@ int main(void)
     hc_set_script(b,
         "on mouseUp\n"
         "  put \"stack id: \" & the id of this stack\n"
+        "end mouseUp\n");
+    hc_send(b, "mouseUp");
+
+    puts("\n== 6. push recent card, pop card into : le banc de test6 ==");
+    /* JOUÉ DANS HYPERCARD le 4 octobre, depuis un bouton de la carte 3 de
+     * test6 : go card 1, go card 3, push recent card, pop card into x.
+     * HyperCard : x = « card id 2850 of stack "Saved HD:…:test6" », 2850
+     * étant l'id de la carte 1 — et l'on reste sur la carte 3. HC répondait
+     * « ne sait pas faire » aux deux lignes. La pile d'aide d'Apple en vit
+     * (whereICameFrom). */
+    hc_set_stack_path(st, NULL);
+    hc_set_script(b,
+        "on mouseUp\n"
+        "  go card 1\n"
+        "  go card 3\n"
+        "  push recent card\n"
+        "  pop card into x\n"
+        "  put \"pop into : \" & x\n"
+        "  put \"carte : \" & the number of this card\n"
+        "  put \"carte 1 : \" & the short id of card 1\n"
+        "  push card\n"
+        "  go card 2\n"
+        "  pop card before y\n"
+        "  put \"before : \" & y & \" / carte \" & the number of this card\n"
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 

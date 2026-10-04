@@ -127,7 +127,9 @@ static const HctCommande TABLE[] = {
     { "pass",       "e" },
     { "picture",    "*" },
     { "play",       "*" },
-    { "pop",        "card [into c]" },
+    /* « into », « before », « after » : la grammaire d'HyperCard, celle de
+     * « put ». Seul « into » est mesuré (docs/mesures/long_id.txt). */
+    { "pop",        "card [into|before|after c]" },
     /* « print card from 0,0 to 512,304 » imprime une PARTIE de la carte, et
      * c'est le groupe « [from * to *] » qui la porte. Relevé trois fois dans
      * « Stack Templates » d'Apple, avec le commentaire de l'auteur à côté :

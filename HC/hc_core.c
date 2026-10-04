@@ -2254,6 +2254,15 @@ static Object *histo_recule(void)
     return g_histo[g_nhisto - 1];
 }
 
+/* LA CARTE D'OÙ L'ON VIENT, SANS Y ALLER — « push recent card ». La même que
+ * celle où « go back » ramènerait, mais l'historique n'est pas touché.
+ * MESURÉ DANS HYPERCARD le 4 octobre : go card 1, go card 3, push recent
+ * card, pop card into x — x désigne la carte 1 (docs/mesures/long_id.txt). */
+static Object *histo_precedente(void)
+{
+    return g_nhisto >= 2 ? g_histo[g_nhisto - 2] : NULL;
+}
+
 int hc_recent_count(void) { return g_nhisto; }
 
 /* Rang 0 = la plus récente. L'ordre rendu est celui d'HyperCard : le menu
@@ -13566,10 +13575,28 @@ static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Le premier mot d'un fils tel qu'écrit est-il `mot` ? « recent card » n'est
+ * pas une référence d'objet que hct_resout sache résoudre : on le reconnaît
+ * à son texte. */
+static int v3_commence_par(const HctNoeud *f, const char *mot)
+{
+    const char *deb; int len;
+    if (!f || !hct_noeud_etendue(f, &deb, &len) || len <= 0) return 0;
+    size_t l = strlen(mot);
+    return (size_t)len >= l && strncasecmp(deb, mot, l) == 0 &&
+           ((size_t)len == l || deb[l] == ' ' || deb[l] == '\t');
+}
+
 static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
 {
     Object *dst = g_current_card;
-    if (n->nfils >= 1) {
+    /* « push recent card » : la carte d'où l'on vient, SANS y aller. Sans
+     * carte précédente, rien n'est empilé — ce que fait HyperCard dans ce
+     * cas : NON MESURÉ. */
+    if (n->nfils >= 1 && v3_commence_par(n->fils[0], "recent")) {
+        dst = histo_precedente();
+        if (!dst) { set_result("No such card"); return 1; }
+    } else if (n->nfils >= 1) {
         Object *o = hct_resout(ctx, n->fils[0]);
         if (!o) return 0;
         dst = o;
@@ -13587,16 +13614,43 @@ static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* pop [card] [into conteneur].
+/* pop [card] [into|before|after conteneur].
  *
- * La forme « into » garde l'ancien chemin : écrire dans un conteneur
- * quelconque — variable, champ, morceau — est le travail de `put`, et le
- * refaire ici en dupliquerait la mécanique. Elle reviendra quand `put` sera
- * un service partagé plutôt qu'une ligne fabriquée pour l'ancien exécuteur. */
+ * AVEC UN CONTENEUR, ON NE BOUGE PAS. MESURÉ DANS HYPERCARD le 4 octobre :
+ * « pop card into x » depuis la carte 3 laisse sur la carte 3, et x reçoit
+ * le LONG ID de la carte dépilée — « card id 2850 of stack "Saved HD:…" »,
+ * la forme de « the long id of this card » (docs/mesures/long_id.txt). La
+ * pile d'aide d'Apple en vit : whereICameFrom fait push recent card puis pop
+ * card into theCard, et en tire le nom de la pile d'où l'on vient.
+ *
+ * HC répondait « ne sait pas faire ». L'écriture passe par container_set,
+ * le chemin de « put » : variable, champ ou morceau. « before » et « after »
+ * suivent la même grammaire ; seule « into » est mesurée. */
 static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
-    if (v3_indice_motcle(n, "into", 0) >= 0) return 0;
+    int ik = v3_indice_motcle(n, "into", 0), mode = 0;
+    if (ik < 0 && (ik = v3_indice_motcle(n, "after", 0))  >= 0) mode = 1;
+    if (ik < 0 && (ik = v3_indice_motcle(n, "before", 0)) >= 0) mode = 2;
+    if (ik >= 0) {
+        if (ik + 1 >= n->nfils) return 0;
+        const char *deb; int len;
+        if (!hct_noeud_etendue(n->fils[ik + 1], &deb, &len) || len <= 0) return 0;
+        if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
+        Object *dst = g_navstack[--g_navtop];
+        char ref[512], id[HC_NOM_MAX + 128];
+        if (len > (int)sizeof ref - 1) len = (int)sizeof ref - 1;
+        memcpy(ref, deb, (size_t)len);
+        ref[len] = '\0';
+        if (!obj_prop_read(dst, "id", HC_NOM_LONG, id, (int)sizeof id)) id[0] = '\0';
+        if (!container_set(ref, id, mode)) {
+            set_result("destination invalide");
+            emit(HC_ERR, "   !! destination invalide : %s", ref);
+            return 1;
+        }
+        set_result("");
+        return 1;
+    }
     if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
 
     Object *dst = g_navstack[--g_navtop];
