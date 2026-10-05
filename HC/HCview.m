@@ -5962,23 +5962,16 @@ static int gColorTarget = 0;
         return;
     }
 
-    /* DELETE SUR UN POLYGONE : LE SOMMET CHOISI D'ABORD, LE BOUTON SINON.
-     *
-     * Première règle, demandée par l'utilisatrice — « faudra pas faire
-     * disparaître tout le bouton avec la touche Delete ! » — : Delete n'ôtait
-     * qu'un sommet, et le bouton entier ne partait que par Couper. À l'usage,
-     * le 5 octobre, elle a choisi autrement : « Suppr ôte le sommet choisi
-     * s'il y en a un, et sinon supprime le bouton entier, comme pour un
-     * bouton ordinaire. »
-     *
-     * Un sommet choisi qu'on ne peut pas ôter — il n'en reste que trois —
-     * donne un bip, et NE SUPPRIME PAS le bouton : on visait un sommet, pas
-     * le polygone. Sans sommet choisi, on tombe sur le cas ordinaire juste
-     * en dessous. */
+    /* UN POLYGONE NE DISPARAÎT JAMAIS PAR DELETE. Demandé par l'utilisatrice
+     * — « faudra pas faire disparaître tout le bouton avec la touche
+     * Delete ! » : on veut ôter un sommet, et le bouton entier partait. Delete
+     * ôte le sommet choisi s'il en reste plus de trois ; sinon, un bip. Le
+     * bouton entier s'enlève par Couper (⌘X), un geste délibéré que Coller
+     * rattrape. */
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
-        gSelected && gTool != TOOL_BROWSE && hc_est_polygone(gSelected) &&
-        gSelected == gPolyEdite && gPolySommetChoisi >= 0) {
-        if (hc_sommet_ote(gSelected, gPolySommetChoisi)) {
+        gSelected && gTool != TOOL_BROWSE && hc_est_polygone(gSelected)) {
+        if (gSelected == gPolyEdite && gPolySommetChoisi >= 0 &&
+            hc_sommet_ote(gSelected, gPolySommetChoisi)) {
             gPolySommetChoisi = -1;
             [self setNeedsDisplay:YES];
         } else {
