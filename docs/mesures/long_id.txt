@@ -353,3 +353,28 @@ NON MESURÉ DANS HYPERCARD : « go card "Zut" » vers une carte absente. HC
 arrête le script sur « objet introuvable » ; HyperCard, de mémoire, pose
 « No such card » dans the result et continue. À vérifier par un banc avant
 d'y toucher.
+
+
+GO CARD theSection & theTopic — 5 octobre
+-----------------------------------------
+
+Dans « Help Extras » (Apple), chaque clic sur un sujet fait
+
+    go card theSection & theTopic
+
+et HC répondait « objet introuvable ». L'analyseur lit
+« (card theSection) & theTopic » : le rang d'une carte s'arrête avant « & »,
+volontairement — « the name of card 1 && the name of card 2 » doit garder son
+second terme. Derrière GO, seule la lecture d'Apple a un sens : go ne
+concatène rien. v3_cmd_go prend donc toute la concaténation comme NOM de la
+carte (& colle, && met une espace) ; un « of stack "X" » en fin de ligne est
+repris comme pile, ouverte par l'hôte s'il le faut. Un nom tout en chiffres
+est un rang. Carte absente : « carte introuvable », the result « No such
+card », et le script continue.
+
+Harnais aidemenus, section 9.
+
+NON MESURÉ DANS HYPERCARD : « put the name of card theSection & theTopic »,
+hors de go. HC y garde la lecture de l'analyseur (objet introuvable si aucune
+carte ne s'appelle theSection). Et la différence avec « go card "Zut" », qui
+arrête encore le script : c'est la question du banc déjà demandé.

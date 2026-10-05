@@ -14458,6 +14458,50 @@ int hc_go_recent(int i)
     return v3_va_a(vues[i]);
 }
 
+/* La pile désignée par un nœud, ouverte par l'hôte si elle ne l'est pas
+ * encore. NULL, et l'erreur dite, si elle n'existe nulle part. */
+static Object *v3_go_ouvre_pile(HctContexte *ctx, const HctNoeud *pile)
+{
+    char nom[256];
+    v3_nom_pile(ctx, pile, nom, sizeof nom);
+    if (ctx->erreur) return NULL;
+    Object *s = nom[0] ? find_open_stack(nom) : NULL;
+    if (!s && nom[0] && g_host && g_host->open_stack) s = g_host->open_stack(nom);
+    if (!s && !nom[0]) s = hct_resout(ctx, pile);          /* « this stack » */
+    if (!s) {
+        set_result("No such stack");
+        emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
+    }
+    return s;
+}
+
+/* Le texte de « card a & b && c [of stack "X"] » pris comme UN nom : le
+ * désignateur de la carte, puis chaque opérande avec son séparateur. La
+ * dernière opérande peut porter « of <pile> » : sa valeur seule entre dans
+ * le nom, la pile est rendue dans *pile. */
+static void v3_go_concat(HctContexte *ctx, const HctNoeud *n, const HctNoeud *carte,
+                         int dernier, char *out, int outlen, const HctNoeud **pile)
+{
+    if (n == carte) { v3_val_texte(ctx, v3_designateur(carte), out, outlen); return; }
+    v3_go_concat(ctx, n->fils[0], carte, 0, out, outlen, pile);
+    if (ctx->erreur) return;
+    const HctNoeud *d = n->fils[1];
+    if (dernier && d->genre == HCTN_OF && d->nfils == 2 &&
+        d->fils[1]->genre == HCTN_OBJET && d->fils[1]->typeobj == HCT_OBJ_STACK) {
+        *pile = d->fils[1];
+        d = d->fils[0];
+    }
+    ARENA_MARK;
+    char *v = arena_buf();
+    v3_val_texte(ctx, d, v, HC_VAL);
+    if (!ctx->erreur) {
+        size_t l = strlen(out);
+        snprintf(out + l, (size_t)outlen - l, "%s%s",
+                 strcmp(n->op, "&&") ? "" : " ", v);
+    }
+    ARENA_FREE;
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
@@ -14563,6 +14607,52 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         return v3_va_pile(nom);
     }
 
+    /* « GO CARD theSection & theTopic » : le NOM de la carte est toute la
+     * concaténation.
+     *
+     * La pile « Help Extras » d'Apple l'écrit sans parenthèses, à chaque clic
+     * sur un sujet. L'analyseur, lui, lit « (card theSection) & theTopic » :
+     * le rang d'une carte s'arrête avant « & » — et il le faut, sans quoi
+     * « the name of card 1 && the name of card 2 » perdrait son second terme.
+     * Derrière go, la lecture d'Apple est la seule qui ait un sens : go ne
+     * concatène rien, il se rend quelque part. On la fait donc ICI, et
+     * seulement ici. Une cible « of stack "X" » finit la dernière opérande ;
+     * elle est reprise comme cible de la carte. */
+    {
+        const HctNoeud *gauche = ref;
+        while (gauche->genre == HCTN_BINAIRE && gauche->nfils == 2 && gauche->op &&
+               (!strcmp(gauche->op, "&") || !strcmp(gauche->op, "&&")))
+            gauche = gauche->fils[0];
+        if (gauche != ref && gauche->genre == HCTN_OBJET &&
+            gauche->typeobj == HCT_OBJ_CARD && v3_designateur(gauche) &&
+            !v3_noeud_cible(gauche) && gauche->designateur != HCT_DES_ID) {
+            ARENA_MARK;
+            char *nom = arena_buf();
+            const HctNoeud *pile = NULL;
+            v3_go_concat(ctx, ref, gauche, 1, nom, HC_VAL, &pile);
+            if (ctx->erreur) { ARENA_FREE; return 1; }
+            Object *stk = owning_stack(g_current_card);
+            if (pile) {
+                stk = v3_go_ouvre_pile(ctx, pile);
+                if (!stk) { ARENA_FREE; return 1; }
+            }
+            Object *c = NULL;
+            char *fin = NULL;
+            long r = strtol(nom, &fin, 10);
+            if (nom[0] && fin && !*fin) c = r >= 1 ? nth_card(stk, (int)r - 1) : NULL;
+            else                        c = card_par_nom_de(stk, NULL, nom);
+            if (!c) {
+                emit(HC_ERR, "   !! go : carte introuvable : %s", nom);
+                set_result("No such card");
+                ARENA_FREE;
+                return 1;
+            }
+            ARENA_FREE;
+            set_result("");
+            return v3_va_a(c);
+        }
+    }
+
     /* « GO CARD X OF STACK "Y" » SUR UNE PILE QUI N'EST PAS ENCORE OUVERTE.
      *
      * « go stack "Y" » demandait déjà à l'hôte de l'ouvrir (v3_va_pile) ;
@@ -14581,15 +14671,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
          o = v3_noeud_cible(o)) {
         const HctNoeud *c = v3_noeud_cible(o);
         if (!c || c->typeobj != HCT_OBJ_STACK) continue;
-        char nom[256];
-        v3_nom_pile(ctx, c, nom, sizeof nom);
-        if (ctx->erreur) return 1;
-        if (nom[0] && !find_open_stack(nom) &&
-            !(g_host && g_host->open_stack && g_host->open_stack(nom))) {
-            set_result("No such stack");
-            emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
-            return 1;
-        }
+        if (!v3_go_ouvre_pile(ctx, c)) return 1;
         break;
     }
 

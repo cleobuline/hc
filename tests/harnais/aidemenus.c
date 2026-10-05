@@ -274,6 +274,30 @@ int main(void)
             "end mouseUp\n");
         hc_send(b, "mouseUp");
         hc_set_current_card(c1);
+
+        puts("\n== 9. go card theSection & theTopic : le nom est TOUTE la concaténation ==");
+        /* Le clic sur un sujet, dans « Help Extras ». L'analyseur lit
+         * « (card theSection) & theTopic » ; derrière go, Apple veut dire la
+         * carte nommée par l'ensemble. */
+        hc_new_card(g_extras, xbg, "Commandsfind");
+        hc_new_card(g_extras, xbg, "Commands find");
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  put \"Commands\" into theSection\n"
+            "  put \"find\" into theTopic\n"
+            "  go card theSection & theTopic of stack \"Help Extras\"\n"
+            "  put \"& : \" & the short name of this card\n"
+            "  go card theSection && theTopic\n"
+            "  put \"&& : \" & the short name of this card\n"
+            "  go to card \"Som\" & \"maire\" of this stack\n"
+            "  put \"littéraux : \" & the short name of this card\n"
+            "  go card 1 & 0\n"
+            "  put \"rang 10 : \" & the result & \" / \" & the short name of this card\n"
+            "  go card theSection & \"zut\"\n"
+            "  put \"absente : \" & the result & \" / \" & the short name of this card\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
+        hc_set_current_card(c1);
         hc_unregister_stack(g_extras); hc_free(g_extras);
     }
 

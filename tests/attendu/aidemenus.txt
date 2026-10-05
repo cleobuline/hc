@@ -49,3 +49,12 @@
    [ERR]    !! go : pile introuvable : Absente
    the result : No such stack
    toujours sur : Une
+
+== 9. go card theSection & theTopic : le nom est TOUTE la concaténation ==
+   & : Commandsfind
+   && : Commands find
+   littéraux : Sommaire
+   [ERR]    !! go : carte introuvable : 10
+   rang 10 : No such card / Sommaire
+   [ERR]    !! go : carte introuvable : Commandszut
+   absente : No such card / Sommaire
