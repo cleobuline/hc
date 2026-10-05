@@ -972,14 +972,11 @@ void copy_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {
     gClipboard = clip;
         gClipW = w; gClipH = h;
         gClipPtsCount = 0;        // selection rectangulaire : pas de contour libre
-    // aussi vers le presse-papier système
-        NSData *tiff = [clip TIFFRepresentation];
-        if (tiff) {
-            NSImage *img = [[NSImage alloc] initWithData:tiff];
-            NSPasteboard *pb = [NSPasteboard generalPasteboard];
-            [pb clearContents];
-            [pb writeObjects:@[img]];
-        }
+    /* PAS DE PRESSE-PAPIERS DU SYSTÈME ICI. Cette fonction sert aussi à
+     * SOULEVER le morceau qu'on déplace (mouseDown) : l'écrire là faisait de
+     * chaque déplacement une copie, qui écrasait un bouton copié juste avant.
+     * C'est Copier et Couper, et eux seuls, qui l'écrivent (HCview.m,
+     * hcv_presse_image_retient). Même chose dans copy_freeform. */
 }
 // copie l'interieur d'un polygone dans le presse-papier (hors polygone = transparent)
 
@@ -1033,15 +1030,7 @@ void copy_freeform(NSBitmapImageRep *rep, NSPoint *pts, int n) {
 
     gClipboard = clip;
     gClipW = w; gClipH = h;
-
-    // presse-papier systeme
-    NSData *tiff = [clip TIFFRepresentation];
-    if (tiff) {
-        NSImage *img = [[NSImage alloc] initWithData:tiff];
-        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-        [pb clearContents];
-        [pb writeObjects:@[img]];
-    }
+    /* Pas de presse-papiers du système : voir copy_rect. */
 }
 
 void erase_rect(NSBitmapImageRep *rep, NSPoint a, NSPoint b) {

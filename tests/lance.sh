@@ -124,7 +124,12 @@ for src in harnais/*.c; do
   n=$(basename "$src" .c)
   [ -n "$MOTIF" ] && case "$n" in *"$MOTIF"*) ;; *) continue ;; esac
 
-  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm -lz 2>/dev/null; then
+  # DES OPTIONS DE LIEN PROPRES À UN HARNAIS, écrites dans son source sur une
+  # ligne « lance-lien : … ». Né pour oomcopie, qui intercepte malloc, calloc
+  # et realloc par --wrap afin de refuser une allocation choisie : le noyau
+  # n'en sait rien, aucune ligne de production ne porte la sonde.
+  LIEN=$(sed -n 's|^/\* lance-lien : \(.*\) \*/$|\1|p' "$src" | head -n 1)
+  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm -lz $LIEN 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
 

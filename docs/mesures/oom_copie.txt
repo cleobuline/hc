@@ -1,0 +1,109 @@
+COPIER, COLLER, DUPLIQUER QUAND LA MÉMOIRE MANQUE — 5 octobre
+=============================================================
+
+Chantier proposé par l'utilisatrice : « rendre les opérations de copie
+profondes réellement transactionnelles sous OOM ». Le presse-papiers s'était
+donné la règle — « une copie qui échoue est un désagrément ; un arrêt en perd
+la pile » (clone_part) —, sans la tenir.
+
+
+L'INSTRUMENT — tests/harnais/oomcopie.c
+---------------------------------------
+
+malloc, calloc et realloc sont interceptés à l'édition de liens (--wrap ; la
+ligne « lance-lien » du harnais, lue par lance.sh). Aucune ligne du noyau ne
+porte la sonde. Chaque opération est rejouée autant de fois qu'elle alloue :
+refus de la 1re allocation, puis de la 2e, et ainsi de suite, chaque essai
+dans un FILS. Deux issues seulement sont nettes :
+
+    ÉCHEC NET        l'opération le dit, et les deux piles comme le
+                     presse-papiers sont EXACTEMENT ce qu'ils étaient
+    RÉUSSITE NETTE   l'opération le dit, et le résultat est EXACTEMENT celui
+                     d'une exécution sans pénurie
+
+« Exactement » : les piles écrites par hc_save, et le presse-papiers collé
+dans une pile témoin écrite à son tour, comparés au caractère près.
+
+LES TÉMOINS, AVANT TOUT VERDICT. Une opération neutre doit sortir nette ; trois
+pièges doivent être attrapés — un échec qui laisse une trace, une réussite à
+moitié, et (sous --asan) une fuite. S'il en manque un, le harnais refuse de
+conclure : « L'INSTRUMENT EST SOURD ».
+
+Ils ont servi. Trois défauts DE L'INSTRUMENT, trouvés par eux et pas devinés :
+
+  1. La pile témoin reçoit ses identifiants d'un compteur global, qui avance
+     d'une photo à l'autre : le premier relevé annonçait « PARTIEL » au
+     premier refus de chaque opération. Comparé ligne à ligne ; corrigé en
+     renumérotant ses identifiants dans l'ordre d'apparition.
+  2. gcc supprimait l'un des deux malloc du piège à fuite à l'optimisation
+     (un seul appel au désassemblage) : il ne fuyait rien. Appel par un
+     pointeur volatile.
+  3. Sous ASan, LeakSanitizer sort avec le code d'ASan, 1 — celui de
+     hc_memoire_epuisee. Une fuite passait pour un arrêt. Le harnais fixe son
+     propre exitcode, 23.
+
+
+AVANT — le noyau du 5 octobre au matin, instrument validé
+---------------------------------------------------------
+
+    opération                                  allocations   issues nettes
+    copier un bouton (polygone, icône)                   8          1
+    copier un champ (plages de style)                    6          1
+    copier un champ de fond non partagé                  4          2
+    coller un bouton                                     6          1
+    copier une carte                                    32          2
+    coller la carte dans sa pile                        20          1
+    coller la carte ailleurs (fond recréé)              32          3
+    coller ailleurs une 2e fois (fond porté)            21          1
+    dupliquer une carte                                 20          1
+                                                       ---        ---
+                                                       189         13
+
+Les cent soixante-seize autres :
+
+  · DÉGRADÉ, la grande majorité — dupstr rend NULL en silence, et la copie
+    « réussie » avait perdu un nom, un script, ses sommets (un polygone
+    devenu rectangle), ses plages de style, son icône ou la couleur de
+    celle-ci (le retour de hc_icon_copie_dessin était ignoré), une part
+    entière (clone_layer la sautait), son allumage par carte ;
+  · ARRÊT, quatorze fois — add_part et clone_bgtexts appelaient
+    hc_memoire_epuisee : une copie de carte manquée perdait la pile ouverte ;
+  · PARTIEL — le presse-papiers vidé avant d'avoir de quoi être rempli, et un
+    fond recréé laissé seul dans la pile quand la carte ne pouvait plus s'y
+    poser.
+
+
+APRÈS
+-----
+
+    toutes les opérations : 194 refus sur 194 donnent un échec net
+    (le collage alloue un peu plus : la réservation et la liste des icônes
+    posées, d'où 194 et non 189)
+
+aussi sous ASan, UBSan et LeakSanitizer : ni fuite ni faute mémoire.
+
+LA CORRECTION, dans hc_presse_papiers.c :
+
+  · les clones (clone_part, clone_layer, clone_bgtexts) vérifient chaque
+    allocation, comptent ce qu'ils ont copié au fur et à mesure, et se
+    défont au premier refus ;
+  · les copies construisent tout À PART — clone, copie du fond, table
+    d'icônes (TableIcones) — et ne remplacent le presse-papiers qu'une fois
+    tout acquis ;
+  · les collages RÉSERVENT la place d'abord (reserve_parts, hc_core.c, dont
+    add_part est désormais l'enveloppe qui s'arrête), posent les icônes en
+    notant celles qu'ils ajoutent, et défont ce qu'ils ont posé — icônes,
+    carte, fond recréé — si une étape échoue ; la table des fonds portés ne
+    s'écrit qu'à la fin.
+
+
+CE QUI N'EST PAS COUVERT
+------------------------
+
+  · Couper (copier puis supprimer) : la copie est désormais nette, et la
+    suppression n'a pas été soumise au harnais.
+  · Le côté Cocoa — le presse-papiers de PEINTURE, le NSPasteboard —, qui
+    ne tourne pas ici.
+  · hc_set_field_text lui-même n'est pas transactionnel : le piège « réussite
+    à moitié » le montre en passant (refus n° 2, le texte n'est pas posé et
+    rien ne le dit). Hors du chantier ; noté pour plus tard.

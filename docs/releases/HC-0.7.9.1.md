@@ -208,6 +208,8 @@ labynet.net.
 - A fault inside a user function stops the function but not its caller.
 - A script error inside a handler reached by `send` does not stop the script
   that sent it.
+- A stack's own palettes (a `PLTE` resource, or an XCMD such as the one in
+  Stack Templates) are not supported.
 - Still standing from earlier versions:
   - colour icons, pictures and sounds from a resource fork;
   - patterns, HyperCard 1.x stacks, private-access stacks;

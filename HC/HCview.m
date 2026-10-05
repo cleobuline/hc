@@ -5199,16 +5199,76 @@ static int parts_du_calque(Object *o)
 - (void)bringCloser:(id)sender { (void)sender; [self deplaceSelectionDe:1]; }
 - (void)sendFarther:(id)sender { (void)sender; [self deplaceSelectionDe:-1]; }
 
+/* ═══ CE QUI A ÉTÉ COPIÉ, ET DANS QUEL ORDRE ═══════════════════════════
+ *
+ * gClipboard n'est PAS le presse-papiers : c'est le morceau de dessin qui
+ * FLOTTE. Déplacer une sélection l'y range (copy_rect, au mouseDown), sans
+ * que personne ait rien copié. Or « Coller », faute de mieux, posait
+ * gClipboard : le morceau qu'on venait seulement de déplacer revenait.
+ * Rapporté le 5 octobre DANS HC (l'application) : déplacer un bout de
+ * dessin, copier un bouton polygone, coller — avec un outil qui n'est pas
+ * Bouton — et c'est le dessin qui arrive.
+ *
+ * D'où un presse-papiers d'IMAGE à part, rempli par Copier et Couper
+ * seulement, sur une COPIE du morceau : les transformations du menu Paint
+ * travaillent en place sur le morceau flottant, et ne doivent pas changer ce
+ * qu'on a copié.
+ *
+ * Et la mémoire de l'ORDRE : « Coller » pose ce qui a été copié EN DERNIER,
+ * objet, carte ou image. Le presse-papiers du système compte : une image
+ * copiée dans une autre application après notre dernière copie est plus
+ * récente, et c'est elle qui se colle — son compteur de changements le
+ * dit. */
+static NSBitmapImageRep *gPresseImage = nil;
+static int     gPresseW = 0, gPresseH = 0;
+static NSPoint gPressePts[4096];
+static int     gPressePtsCount = 0;
+typedef enum { PRESSE_AUCUNE, PRESSE_IMAGE, PRESSE_OBJET } HCPresse;
+static HCPresse  gPresseDerniere = PRESSE_AUCUNE;
+static NSInteger gPresseVuPb     = -1;   /* changeCount du système à notre dernière copie */
+
+static void hcv_presse_image_retient(void)
+{
+    if (!gClipboard) return;
+    /* Le presse-papiers du Mac reçoit l'image ICI, à la copie explicite, et
+     * nulle part ailleurs : copy_rect et copy_freeform l'écrivaient, et ils
+     * servent aussi à soulever le morceau qu'on déplace. Chaque déplacement
+     * devenait une copie plus récente que le bouton copié — rapporté DANS HC
+     * (l'application) après la première correction. */
+    NSImage *img = [[NSImage alloc] initWithCGImage:[gClipboard CGImage]
+                                               size:NSMakeSize(gClipW, gClipH)];
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    if (img) [pb writeObjects:@[img]];
+
+    gPresseImage = [gClipboard copy];
+    gPresseW = gClipW; gPresseH = gClipH;
+    gPressePtsCount = gClipPtsCount;
+    memcpy(gPressePts, gClipPts, sizeof gPressePts[0] * (size_t)gClipPtsCount);
+    gPresseDerniere = PRESSE_IMAGE;
+    gPresseVuPb = [[NSPasteboard generalPasteboard] changeCount];
+}
+
+static void hcv_presse_objet_retient(void)
+{
+    gPresseDerniere = PRESSE_OBJET;
+    gPresseVuPb = [[NSPasteboard generalPasteboard] changeCount];
+}
+
+/* Le système a-t-il reçu quelque chose depuis notre dernière copie ? */
+static BOOL hcv_presse_systeme_plus_recent(void)
+{
+    return gPresseVuPb < 0 ||
+           [[NSPasteboard generalPasteboard] changeCount] != gPresseVuPb;
+}
+
 - (void)copy:(id)sender {
     if (object_selection_active()) {
-        if (hc_copy_part(gSelected)) return;
+        if (hc_copy_part(gSelected)) { hcv_presse_objet_retient(); return; }
     }
 
     if (gFloating && gClipboard) {
-        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-        [pb clearContents];
-        NSImage *img = [[NSImage alloc] initWithCGImage:[gClipboard CGImage] size:NSMakeSize(gClipW, gClipH)];
-        [pb writeObjects:@[img]];
+        hcv_presse_image_retient();          /* écrit aussi le presse-papiers du Mac */
         return;
     }
 
@@ -5218,16 +5278,20 @@ static int parts_du_calque(Object *o)
     if (!layer) layer = card;
     NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
                                                 (int)[self bounds].size.height);
-    if (gTool == TOOL_SELRECT && gSelRectActive)
+    if (gTool == TOOL_SELRECT && gSelRectActive) {
         copy_rect(rep, gSelStart, gSelEnd);
-    else if (gTool == TOOL_LASSO && gLassoActive)
+        hcv_presse_image_retient();
+    } else if (gTool == TOOL_LASSO && gLassoActive) {
         copy_freeform(rep, gLassoPts, gLassoCount);
+        hcv_presse_image_retient();
+    }
 }
 
 - (void)cut:(id)sender {
     if (object_selection_active()) {
         if (gSelected == gEditingField) [self endFieldEdit];
         if (hc_cut_part(gSelected)) {
+            hcv_presse_objet_retient();
             gSelected = NULL;
             [gView setNeedsDisplay:YES];
             return;
@@ -5250,10 +5314,12 @@ static int parts_du_calque(Object *o)
                                                 (int)[self bounds].size.height);
     if (gTool == TOOL_SELRECT && gSelRectActive) {
         copy_rect(rep, gSelStart, gSelEnd);
+        hcv_presse_image_retient();
         erase_rect(rep, gSelStart, gSelEnd);
         gSelRectActive = NO;
     } else if (gTool == TOOL_LASSO && gLassoActive) {
         copy_freeform(rep, gLassoPts, gLassoCount);
+        hcv_presse_image_retient();
         erase_freeform(rep, gLassoPts, gLassoCount);
         gLassoActive = NO;
         gLassoCount = 0;
@@ -5280,7 +5346,7 @@ static int parts_du_calque(Object *o)
     /* Même raison : on copie ce qui est à l'écran, pas ce qui dormait dans le
      * noyau depuis le dernier enregistrement. */
     [self flushPaintToKernel];
-    hc_copy_card(card);
+    if (hc_copy_card(card)) hcv_presse_objet_retient();
 }
 
 - (void)cutCard:(id)sender {
@@ -5310,6 +5376,7 @@ static int parts_du_calque(Object *o)
         NSBeep();
         return;
     }
+    hcv_presse_objet_retient();
     [gView setNeedsDisplay:YES];
 }
 
@@ -5337,7 +5404,8 @@ static int parts_du_calque(Object *o)
     /* Une carte d'abord : c'est la nature du presse-papiers qui décide, pas
      * l'outil courant. Déduire du contexte se tromperait dès qu'une carte a
      * été copiée puis l'outil Bouton choisi. */
-    if (hc_clipboard_has_card()) {
+    /* Une image copiée APRÈS la carte l'emporte : c'est la dernière copie. */
+    if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE) {
         Object *card = hc_current_card();
         Object *stack = card ? card->owner : NULL;
         Object *nouvelle = stack ? hc_paste_card(stack) : NULL;
@@ -5364,7 +5432,19 @@ static int parts_du_calque(Object *o)
         return;
     }
 
-    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part()) {
+    /* UN BOUTON OU UN CHAMP COPIÉ EN DERNIER SE COLLE QUEL QUE SOIT L'OUTIL,
+     * et l'outil Bouton est choisi. MESURÉ DANS HYPERCARD (Basilisk II) par
+     * l'utilisatrice le 5 octobre : copier un bouton, prendre un autre
+     * outil, Paste — le bouton est collé, et l'outil Bouton sélectionné. Pour
+     * un champ, l'outil Champ, par symétrie : NON MESURÉ. */
+    BOOL objet_dernier = gPresseDerniere == PRESSE_OBJET &&
+                         !hcv_presse_systeme_plus_recent();
+    if (hc_clipboard_has_part() &&
+        (gTool == TOOL_BUTTON || gTool == TOOL_FIELD || objet_dernier)) {
+        if (gTool != TOOL_BUTTON && gTool != TOOL_FIELD) {
+            Object *cp = hc_clipboard_part();
+            cocoa_choose_tool(cp && cp->type == OBJ_FIELD ? "field" : "button");
+        }
         Object *card = hc_current_card();
         if (card) {
             Object *owner = (gEditBackground && card->bg) ? card->bg : card;
@@ -5396,23 +5476,43 @@ static int parts_du_calque(Object *o)
         }
     }
 
+    /* Un objet copié en dernier qui n'a pas pu se coller ci-dessus : on ne
+     * colle RIEN, plutôt qu'une image plus ancienne. */
+    if (objet_dernier) {
+        NSBeep();
+        return;
+    }
+
     if (gFloating) {
         [self dropFloating];
     }
 
-    NSPasteboard *pb = [NSPasteboard generalPasteboard];
-    NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
-    if (imgs.count > 0) {
-        NSData *tiff = [imgs[0] TIFFRepresentation];
-        NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
-        if (ext) {
-            gClipboard = ext;
-            gClipW = (int)[ext pixelsWide];
-            gClipH = (int)[ext pixelsHigh];
-            gClipPtsCount = 0;
+    /* L'image à coller : celle du système si elle est plus récente que notre
+     * dernière copie, sinon la nôtre. JAMAIS le morceau qui flottait : il a
+     * été déplacé, pas copié. */
+    NSBitmapImageRep *acoller = nil;
+    if (hcv_presse_systeme_plus_recent()) {
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
+        if (imgs.count > 0) {
+            NSData *tiff = [imgs[0] TIFFRepresentation];
+            NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
+            if (ext) {
+                acoller = ext;
+                gClipW = (int)[ext pixelsWide];
+                gClipH = (int)[ext pixelsHigh];
+                gClipPtsCount = 0;
+            }
         }
     }
-    if (gClipboard) {
+    if (!acoller && gPresseImage && gPresseDerniere == PRESSE_IMAGE) {
+        acoller = [gPresseImage copy];       /* le collage peut se transformer */
+        gClipW = gPresseW; gClipH = gPresseH;
+        gClipPtsCount = gPressePtsCount;
+        memcpy(gClipPts, gPressePts, sizeof gClipPts[0] * (size_t)gPressePtsCount);
+    }
+    if (acoller) {
+        gClipboard = acoller;
         gFloating = YES;
         NSRect b = [self bounds];
         gFloatPos = NSMakePoint((b.size.width - gClipW)/2, (b.size.height - gClipH)/2);
@@ -5546,12 +5646,18 @@ static int parts_du_calque(Object *o)
          * presse-papiers qui commande, comme dans paste: lui-même. Sans cette
          * branche, l'article restait grisé après « Copier la carte » — la
          * validation n'autorisait que les outils Bouton et Champ. */
-        if (hc_clipboard_has_card())
+        if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE)
             return YES;
-        if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part())
+        BOOL objet_dernier = gPresseDerniere == PRESSE_OBJET &&
+                             !hcv_presse_systeme_plus_recent();
+        if (hc_clipboard_has_part() &&
+            (gTool == TOOL_BUTTON || gTool == TOOL_FIELD || objet_dernier))
             return YES;
-        return gClipboard != nil ||
-               [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil];
+        /* Même règle que paste: — le morceau qui flotte ne compte pas. */
+        if (objet_dernier) return NO;
+        return (gPresseImage != nil && gPresseDerniere == PRESSE_IMAGE) ||
+               (hcv_presse_systeme_plus_recent() &&
+                [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil]);
     }
     return YES;
 }

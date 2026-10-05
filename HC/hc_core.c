@@ -2143,15 +2143,29 @@ static Object *new_object(ObjType type, Object *owner, const char *name)
     return o;
 }
 
+/* De la place pour `combien` parts de plus, sans rien ajouter. Rend 0 si la
+ * mémoire manque, et la liste est alors intacte.
+ *
+ * Le presse-papiers s'en sert pour être TRANSACTIONNEL : il réserve avant de
+ * poser quoi que ce soit, et add_part ne peut plus échouer ensuite. Sans
+ * elle, la pénurie arrivait au milieu d'un collage — après le fond recréé,
+ * avant la carte — et add_part arrêtait le programme. */
+int reserve_parts(Object *parent, int combien)
+{
+    if (parent->nparts + combien <= parent->capparts) return 1;
+    int cap = parent->capparts ? parent->capparts * 2 : 4;
+    while (cap < parent->nparts + combien) cap *= 2;
+    Object **p = realloc(parent->parts, (size_t)cap * sizeof(Object *));
+    if (!p) return 0;
+    parent->parts = p;
+    parent->capparts = cap;
+    return 1;
+}
+
 void add_part(Object *parent, Object *child)
 {
-    if (parent->nparts == parent->capparts) {
-        int cap = parent->capparts ? parent->capparts * 2 : 4;
-        Object **p = realloc(parent->parts, (size_t)cap * sizeof(Object *));
-        if (!p) hc_memoire_epuisee("liste des parties d'une couche");
-        parent->parts = p;
-        parent->capparts = cap;
-    }
+    if (!reserve_parts(parent, 1))
+        hc_memoire_epuisee("liste des parties d'une couche");
     parent->parts[parent->nparts++] = child;
 }
 
