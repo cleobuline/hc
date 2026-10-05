@@ -33,3 +33,11 @@
    wrongStack : false
    stacksInUse : /Piles/HyperCard Help.stack
    showSection : Commands
+
+== 7. un champ de fond lu et écrit SUR UNE AUTRE CARTE ==
+   ici : Find Topic
+   card id 15 : find
+   card 3 : mark
+   mots : 1
+   après écriture, card 3 : MARQUE
+   après écriture, ici : Find Topic

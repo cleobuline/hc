@@ -198,6 +198,40 @@ int main(void)
         hc_free(lib);
     }
 
+    puts("\n== 7. un champ de fond lu et écrit SUR UNE AUTRE CARTE ==");
+    /* convertIDsToTitles (l'aide d'Apple) : « bkgnd field "Title" of card id
+     * N », lu depuis la carte « Find Topic ». HC lisait le texte de la carte
+     * COURANTE : la recherche trouvait ses sujets et n'affichait que des
+     * lignes vides. L'écriture est le site jumeau. */
+    {
+        Object *p2 = hc_new_stack("Titres");
+        Object *fbg = hc_new_background(p2, "Content");
+        Object *k1 = hc_new_card(p2, fbg, "Find Topic");
+        Object *k2 = hc_new_card(p2, fbg, "find");
+        Object *k3 = hc_new_card(p2, fbg, "mark");
+        Object *titre = hc_new_field(fbg, "Title");       /* non partagé : un texte par carte */
+        hc_register_stack(p2);
+        hc_set_current_card(k2); hc_set_field_text(titre, "find");
+        hc_set_current_card(k3); hc_set_field_text(titre, "mark");
+        hc_set_current_card(k1); hc_set_field_text(titre, "Find Topic");
+        Object *bt = hc_new_button(k1, "B");
+        char sc[1024];
+        snprintf(sc, sizeof sc,
+            "on mouseUp\n"
+            "  put \"ici : \" & bkgnd field \"Title\"\n"
+            "  put \"card id %d : \" & (bkgnd field \"Title\" of card id %d)\n"
+            "  put \"card 3 : \" & bkgnd field \"Title\" of card 3\n"
+            "  put \"mots : \" & the number of words of bkgnd field \"Title\" of card 3\n"
+            "  put \"MARQUE\" into bkgnd field \"Title\" of card 3\n"
+            "  put \"après écriture, card 3 : \" & bkgnd field \"Title\" of card 3\n"
+            "  put \"après écriture, ici : \" & bkgnd field \"Title\"\n"
+            "end mouseUp\n", k2->id, k2->id);
+        hc_set_script(bt, sc);
+        hc_send(bt, "mouseUp");
+        hc_set_current_card(c1);
+        hc_free(p2);
+    }
+
     hc_free(st);
     return 0;
 }

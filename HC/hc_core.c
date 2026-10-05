@@ -7463,6 +7463,21 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
 /* L'enveloppe, pour n'avoir qu'UN endroit à instrumenter. Le corps a une
  * dizaine de sorties ; les marquer une à une, c'est en oublier une. */
+/* LA CARTE DONT UN CHAMP A ÉTÉ LU — « bkgnd field "Title" of card id N ».
+ *
+ * hct_resout rend le CHAMP, et un champ de fond non partagé a un texte par
+ * carte : le lire ensuite sur la carte COURANTE rendait le texte d'une autre
+ * carte — ou rien. Mesuré sur « HyperCard Help », convertIDsToTitles :
+ *
+ *     put (bkgnd field "Title" of card id N) into line wordNum of theResult
+ *
+ * rendait vide depuis la carte « Find Topic », « find » sur la carte N elle-
+ * même : la recherche de « HyperTalk Reference » trouvait ses sujets et
+ * n'affichait que des lignes vides. On note donc la carte de référence quand
+ * une part est résolue ; v3_resout l'efface avant chaque résolution, et la
+ * lecture comme l'écriture s'en servent. */
+static Object *g_resout_carte = NULL;
+
 static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
 {
     Object *o = hct_resout_corps(ctx, n);
@@ -7635,6 +7650,7 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
         case HCT_OBJ_BUTTON:
         case HCT_OBJ_FIELD:
         case HCT_OBJ_PART: {
+            g_resout_carte = card;   /* voir g_resout_carte */
             /* « part » prend les deux, et c'est tout le propos du mot. */
             int t = (n->typeobj == HCT_OBJ_PART)   ? HC_PART_QUELCONQUE
                   : (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
@@ -9525,6 +9541,7 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
      * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
     if (v3_est_fenetre(ref)) return NULL;
 
+    g_resout_carte = NULL;
     Object *o = hct_resout(ctx, ref);
     if (o) return o;
 
@@ -9595,13 +9612,30 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 
 /* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
  * comme dans HyperCard. */
+/* La carte sur laquelle lire ou écrire un champ de fond résolu, si ce n'est
+ * pas la carte courante — voir g_resout_carte. NULL : la carte courante. */
+static Object *carte_du_champ(Object *o)
+{
+    Object *cd = g_resout_carte;
+    if (!o || o->type != OBJ_FIELD || !cd || cd == g_current_card) return NULL;
+    if (cd->type != OBJ_CARD || cd->bg != o->owner || !field_is_percard(o)) return NULL;
+    return cd;
+}
+
 static int v3_lit_objet(void *d, void *objet, HctValeur *out)
 {
     (void)d;
     Object *o = objet;
     if (!o) return 0;
-    if (o->type == OBJ_FIELD) *out = hct_val_texte(hc_field_text(o));
-    else                      *out = hct_val_texte(o->name ? o->name : "");
+    if (o->type == OBJ_FIELD) {
+        /* Le texte de CETTE carte-là : on s'y place le temps de le copier,
+         * comme le noyau le fait déjà pour lire un champ de fond. */
+        Object *cd = carte_du_champ(o), *sauve = g_current_card;
+        if (cd) g_current_card = cd;
+        *out = hct_val_texte(hc_field_text(o));
+        g_current_card = sauve;
+    }
+    else *out = hct_val_texte(o->name ? o->name : "");
     return 1;
 }
 
@@ -9626,6 +9660,11 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
     if (champ_verrouille(o)) { set_result(""); return 1; }
     if (!val) val = "";
 
+    /* Le site jumeau de la lecture : « put x into bkgnd field "T" of card 3 »
+     * écrit dans le texte de la carte 3. */
+    Object *cd = carte_du_champ(o), *sauve = g_current_card;
+    if (cd) g_current_card = cd;
+
     int pose;
     if (mode == 0) {
         pose = hc_set_field_text(o, val);
@@ -9638,6 +9677,7 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
         pose = hc_set_field_text(o, fusion);
         ARENA_FREE;
     }
+    g_current_card = sauve;
     /* Le champ est resté INTACT : on le dit. Voir hc_set_field_text. */
     if (!pose) emit(HC_ERR, "   !! mémoire insuffisante : le champ n'a pas changé");
     notify_field(o);
