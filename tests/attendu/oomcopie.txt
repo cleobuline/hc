@@ -1,0 +1,20 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+TÉMOIN : opération propre                réussit,  1 allocation(s) : 1/1 nettes (1 échecs, 0 réussites)
+PIÈGE : échec qui laisse une trace       réussit,  3 allocation(s) : 1/3 nettes (0 échecs, 1 réussites)
+      refus n° 2 : PARTIEL
+      refus n° 3 : DÉGRADÉ
+PIÈGE : réussite à moitié              réussit,  2 allocation(s) : 0/2 nettes (0 échecs, 0 réussites)
+      refus n° 1 : DÉGRADÉ
+      refus n° 2 : DÉGRADÉ
+copier un bouton (polygone, icône)        réussit,  8 allocation(s) : 8/8 nettes (8 échecs, 0 réussites)
+copier un champ (plages de style)          réussit,  6 allocation(s) : 6/6 nettes (6 échecs, 0 réussites)
+copier un champ de fond non partagé       réussit,  4 allocation(s) : 4/4 nettes (4 échecs, 0 réussites)
+coller un bouton                           réussit,  7 allocation(s) : 7/7 nettes (7 échecs, 0 réussites)
+copier une carte                           réussit, 32 allocation(s) : 32/32 nettes (32 échecs, 0 réussites)
+coller la carte dans sa pile               réussit, 21 allocation(s) : 21/21 nettes (21 échecs, 0 réussites)
+coller la carte ailleurs (fond recréé)   réussit, 33 allocation(s) : 33/33 nettes (33 échecs, 0 réussites)
+coller ailleurs une 2e fois (fond porté)  réussit, 22 allocation(s) : 22/22 nettes (22 échecs, 0 réussites)
+dupliquer une carte                        réussit, 20 allocation(s) : 20/20 nettes (20 échecs, 0 réussites)
+
+instrument : témoin net, pièges attrapés
+toutes les opérations sont transactionnelles

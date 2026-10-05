@@ -39,6 +39,39 @@
  * ce qu'il aurait gardé sur disque. */
 static Object *g_clipboard = NULL;
 
+/* ═══ TOUT OU RIEN ══════════════════════════════════════════════════════
+ *
+ * La règle était écrite plus bas, dans clone_part : « une copie qui échoue
+ * est un désagrément ; un arrêt en perd la pile ». Elle n'était tenue qu'à
+ * moitié. Mesuré par tests/harnais/oomcopie.c, qui refuse tour à tour chaque
+ * allocation de chaque opération : sur cent quatre-vingt-neuf refus, TREIZE
+ * donnaient une issue nette (docs/mesures/oom_copie.txt). Les autres
+ *
+ *   - RÉUSSISSAIENT À MOITIÉ : dupstr rend NULL en silence, et la copie
+ *     « réussie » avait perdu son nom, son script, ses sommets, ses plages
+ *     de style, son icône ou sa couleur ;
+ *   - ARRÊTAIENT le programme : add_part et les textes de fond d'une carte
+ *     appelaient hc_memoire_epuisee ;
+ *   - ÉCHOUAIENT EN LAISSANT UNE TRACE : un fond recréé restait dans la pile
+ *     quand la carte qui devait s'y poser n'avait pas pu l'être, et le
+ *     presse-papiers était vidé avant d'avoir de quoi être rempli.
+ *
+ * Désormais chaque opération a deux issues seulement : elle réussit
+ * entièrement, ou elle échoue en le disant et en laissant la pile et le
+ * presse-papiers EXACTEMENT comme ils étaient. Les clones vérifient chaque
+ * allocation et se défont au premier refus ; les copies construisent tout à
+ * part avant de remplacer le presse-papiers d'un coup ; les collages
+ * réservent la place d'abord et défont ce qu'ils ont posé si une étape
+ * échoue ensuite. */
+
+/* dupstr, et la trace d'un refus : NULL pour NULL n'est pas une pénurie. */
+static char *dup_ou(const char *s, int *ko)
+{
+    char *d = dupstr(s);
+    if (s && !d) *ko = 1;
+    return d;
+}
+
 
 /* Clone profond d'un bouton ou d'un champ. Le clone n'a PAS de propriétaire
  * et garde l'identifiant de l'original : c'est hc_paste_part qui en attribue
@@ -58,11 +91,12 @@ static Object *clone_part(Object *o)
     c->id   = o->id;              /* remplacé à la pose */
     c->owner = NULL;              /* détaché : c'est tout l'intérêt */
 
-    c->name     = dupstr(o->name);
-    c->script   = dupstr(o->script);
-    c->contents = dupstr(o->contents);
-    c->style    = dupstr(o->style);
-    c->textfont = dupstr(o->textfont);
+    int ko = 0;
+    c->name     = dup_ou(o->name, &ko);
+    c->script   = dup_ou(o->script, &ko);
+    c->contents = dup_ou(o->contents, &ko);
+    c->style    = dup_ou(o->style, &ko);
+    c->textfont = dup_ou(o->textfont, &ko);
 
     c->x = o->x; c->y = o->y; c->w = o->w; c->h = o->h;
 
@@ -129,29 +163,39 @@ static Object *clone_part(Object *o)
         if (c->points) {
             memcpy(c->points, o->points, sizeof(int) * 2 * (size_t)o->npoints);
             c->npoints = o->npoints;
-        }
+        } else ko = 1;               /* un polygone sans sommets : un rectangle */
     }
 
     /* Les plages de style : chaque nom de police est duppé à son tour, sinon
      * deux objets partageraient le même pointeur et le second hc_free()
-     * libérerait une seconde fois. */
-    if (o->runs.n > 0 && runs_room(&c->runs, o->runs.n)) {
-        for (int i = 0; i < o->runs.n; i++) {
+     * libérerait une seconde fois. Le compte avance avec la copie : si une
+     * police manque, hc_free libère exactement ce qui a été copié. */
+    if (o->runs.n > 0) {
+        if (!runs_room(&c->runs, o->runs.n)) ko = 1;
+        else for (int i = 0; i < o->runs.n && !ko; i++) {
             c->runs.v[i] = o->runs.v[i];
-            c->runs.v[i].font = dupstr(o->runs.v[i].font);
+            c->runs.v[i].font = dup_ou(o->runs.v[i].font, &ko);
             /* .color part avec la copie de structure ci-dessus. */
+            c->runs.n = i + 1;
         }
-        c->runs.n = o->runs.n;
     }
 
+    if (ko) { hc_free(c); return NULL; }
     return c;
 }
 
 /* Définies avec le reste du presse-papiers, plus bas : un bouton emporte son
  * icône comme une carte emporte les siennes. */
 static void clip_bg_clear(void);
-static void clip_collect_icon_de(Object *stack, Object *p);
-static void transplant_icons_objet(Object *stack, Object *part);
+
+/* Les icônes ramassées par une copie, AVANT d'être confiées au presse-papiers :
+ * une copie qui échoue en cours de ramassage ne doit pas l'avoir déjà vidé. */
+typedef struct { struct StackIcon *v; int n; } TableIcones;
+static void table_icones_libere(TableIcones *t);
+static int  ramasse_icone(TableIcones *t, Object *stack, Object *p);
+static int  ramasse_icones(TableIcones *t, Object *stack, Object *layer);
+static void table_icones_installe(TableIcones *t);
+static int  transplante(Object *stack, Object *card, Object *bg, Object *part);
 
 int hc_copy_part(Object *o)
 {
@@ -165,17 +209,30 @@ int hc_copy_part(Object *o)
     if (o->type == OBJ_FIELD && !o->shared_text &&
         o->owner && o->owner->type == OBJ_BACKGROUND) {
         const char *seen = hc_field_text(o);
-        if (seen && *seen) { free(c->contents); c->contents = dupstr(seen); }
+        if (seen && *seen) {
+            char *t = dupstr(seen);
+            if (!t) { hc_free(c); return 0; }
+            free(c->contents);
+            c->contents = t;
+        }
     }
 
-    if (g_clipboard) hc_free(g_clipboard);
-    /* LE BOUTON EMPORTE SON ICÔNE, comme une carte emporte les siennes.
-     *
-     * clip_bg_clear remet aussi la table d'icônes à zéro : sans cet appel, un
-     * bouton copié après une carte hériterait des icônes de celle-ci. */
-    clip_bg_clear();
-    clip_collect_icon_de(owning_stack(o), o);
+    /* LE BOUTON EMPORTE SON ICÔNE, comme une carte emporte les siennes —
+     * ramassée À PART : tant qu'elle n'est pas là, le presse-papiers garde
+     * ce qu'il avait. */
+    TableIcones t = { NULL, 0 };
+    if (!ramasse_icone(&t, owning_stack(o), o)) {
+        table_icones_libere(&t);
+        hc_free(c);
+        return 0;
+    }
 
+    /* Plus rien ne peut échouer : on remplace d'un coup. clip_bg_clear remet
+     * aussi la table d'icônes à zéro : sans cet appel, un bouton copié après
+     * une carte hériterait des icônes de celle-ci. */
+    if (g_clipboard) hc_free(g_clipboard);
+    clip_bg_clear();
+    table_icones_installe(&t);
     g_clipboard = c;
     return 1;
 }
@@ -191,6 +248,9 @@ Object *hc_paste_part(Object *owner)
     if (!g_clipboard || !owner) return NULL;
     if (owner->type != OBJ_CARD && owner->type != OBJ_BACKGROUND) return NULL;
 
+    /* La place d'abord : une fois réservée, add_part ne peut plus échouer, et
+     * il n'y aura rien à défaire dans la couche. */
+    if (!reserve_parts(owner, 1)) return NULL;
     Object *c = clone_part(g_clipboard);
     if (!c) return NULL;
 
@@ -218,11 +278,13 @@ Object *hc_paste_part(Object *owner)
         }
     }
 
-    add_part(owner, c);
+    /* Son icône arrive avec lui, AVANT qu'il soit posé : si elle ne peut pas
+     * l'être, transplante a déjà retiré ce qu'elle avait mis, et l'objet
+     * n'est encore à personne. Sans le transport, le numéro désignait, dans
+     * la pile d'arrivée, un autre dessin ou aucun. */
+    if (!transplante(owning_stack(owner), NULL, NULL, c)) { hc_free(c); return NULL; }
 
-    /* Et son icône arrive avec lui. Voir transplant_icons_objet : sans cela le
-     * numéro désignait, dans la pile d'arrivée, un autre dessin ou aucun. */
-    transplant_icons_objet(owning_stack(owner), c);
+    add_part(owner, c);              /* réservé plus haut : ne peut échouer */
     return c;
 }
 
@@ -483,33 +545,44 @@ static int               g_clip_nicons = 0;
 /* Défini plus bas, avec les autres crochets d'icônes, mais la transplantation
  * en a besoin ici. */
 
-/* Copie profonde des bgtexts d'une carte vers une autre. */
-static void clone_bgtexts(Object *dst, Object *src)
+/* Copie profonde des bgtexts d'une carte vers une autre. Rend 0 si la
+ * mémoire manque ; ce qui a été copié reste alors dans `dst`, compté, et
+ * hc_free le libère avec elle.
+ *
+ * Elle arrêtait le programme faute de place — hc_memoire_epuisee —, seule de
+ * tout le presse-papiers à le faire : une copie de carte manquée perdait la
+ * pile entière. */
+static int clone_bgtexts(Object *dst, Object *src)
 {
-    if (src->nbgtexts <= 0) return;
+    if (src->nbgtexts <= 0) return 1;
 
     dst->bgtexts = calloc((size_t)src->nbgtexts, sizeof *dst->bgtexts);
-    if (!dst->bgtexts) hc_memoire_epuisee("textes de fond d'une carte copiée");
+    if (!dst->bgtexts) return 0;
     dst->capbgtexts = src->nbgtexts;
+    /* Compté tout de suite : calloc a mis chaque entrée à zéro — ni texte ni
+     * plage —, et hc_free sait libérer une entrée vide. */
+    dst->nbgtexts = src->nbgtexts;
 
-    for (int i = 0; i < src->nbgtexts; i++) {
+    int ko = 0;
+    for (int i = 0; i < src->nbgtexts && !ko; i++) {
         dst->bgtexts[i].field_id = src->bgtexts[i].field_id;
-        dst->bgtexts[i].text     = dupstr(src->bgtexts[i].text);
-        memset(&dst->bgtexts[i].runs, 0, sizeof dst->bgtexts[i].runs);
+        dst->bgtexts[i].text     = dup_ou(src->bgtexts[i].text, &ko);
 
         /* Chaque nom de police est duppé à son tour : partager le pointeur
          * ferait libérer deux fois au second hc_free. Même raison que dans
-         * clone_part. */
+         * clone_part, et le même compte qui avance avec la copie. */
         struct RunList *sr = &src->bgtexts[i].runs;
-        if (sr->n > 0 && runs_room(&dst->bgtexts[i].runs, sr->n)) {
-            for (int k = 0; k < sr->n; k++) {
-                dst->bgtexts[i].runs.v[k]      = sr->v[k];
-                dst->bgtexts[i].runs.v[k].font = dupstr(sr->v[k].font);
+        struct RunList *dr = &dst->bgtexts[i].runs;
+        if (sr->n > 0) {
+            if (!runs_room(dr, sr->n)) ko = 1;
+            else for (int k = 0; k < sr->n && !ko; k++) {
+                dr->v[k]      = sr->v[k];
+                dr->v[k].font = dup_ou(sr->v[k].font, &ko);
+                dr->n = k + 1;
             }
-            dst->bgtexts[i].runs.n = sr->n;
         }
     }
-    dst->nbgtexts = src->nbgtexts;
+    return !ko;
 }
 
 /* Clone d'une couche — carte ou fond — avec ses boutons et ses champs.
@@ -527,13 +600,14 @@ static Object *clone_layer(Object *o, ObjType type)
     c->owner  = NULL;              /* détachée */
     c->bg     = NULL;              /* résolu à la pose */
 
-    c->name   = dupstr(o->name);
-    c->script = dupstr(o->script);
+    int ko = 0;
+    c->name   = dup_ou(o->name, &ko);
+    c->script = dup_ou(o->script, &ko);
     /* Pas de recopie de l'arbre : ses jetons pointeraient dans le script de
      * l'ORIGINAL. Le clone réanalysera le sien à la première demande. */
     c->arbre = c->reserve = c->lot = NULL;
     c->arbre_sain = 0;
-    c->paint  = dupstr(o->paint);
+    c->paint  = dup_ou(o->paint, &ko);
     c->marked = o->marked;
     /* Les deux verrous suivent la copie. « cantDelete » surtout : une carte
      * protégée dont la copie ne l'est plus offre un contournement en deux
@@ -543,26 +617,35 @@ static Object *clone_layer(Object *o, ObjType type)
     c->cant_delete = o->cant_delete;
     c->show_pict   = o->show_pict;
 
-    for (int i = 0; i < o->nparts; i++) {
-        Object *p = clone_part(o->parts[i]);
-        if (!p) continue;          /* clone_part ne prend que boutons et champs */
+    /* Une part qui ne se clone pas est une pénurie, et non un objet qu'on
+     * peut laisser derrière : on la sautait en silence, et la carte collée
+     * arrivait avec un bouton de moins. Seuls les boutons et les champs se
+     * clonent — ce sont les seules parts d'une couche. */
+    if (!ko && o->nparts > 0 && !reserve_parts(c, o->nparts)) ko = 1;
+    for (int i = 0; i < o->nparts && !ko; i++) {
+        Object *src = o->parts[i];
+        if (src->type != OBJ_BUTTON && src->type != OBJ_FIELD) continue;
+        Object *p = clone_part(src);
+        if (!p) { ko = 1; break; }
         p->owner = c;
-        add_part(c, p);
+        add_part(c, p);            /* réservé : ne peut échouer */
     }
 
-    if (type == OBJ_CARD) {
-        clone_bgtexts(c, o);
+    if (!ko && type == OBJ_CARD) {
+        if (!clone_bgtexts(c, o)) ko = 1;
         /* L'allumage par carte suit la carte, comme son texte non partagé.
          * Copie plate : ni chaînes ni plages de style à dupliquer. */
-        if (o->nbghilites > 0) {
+        if (!ko && o->nbghilites > 0) {
             c->bghilites = calloc((size_t)o->nbghilites, sizeof *c->bghilites);
             if (c->bghilites) {
                 memcpy(c->bghilites, o->bghilites,
                        (size_t)o->nbghilites * sizeof *c->bghilites);
                 c->nbghilites = c->capbghilites = o->nbghilites;
-            }
+            } else ko = 1;
         }
     }
+
+    if (ko) { hc_free(c); return NULL; }
     return c;
 }
 
@@ -608,6 +691,9 @@ static void remap_bgtexts(Object *card, Object *bgsrc, Object *bgdst)
 static Object *place_layer_clone(Object *stack, Object *modele, ObjType type,
                                  Object *bg, Object *apres)
 {
+    /* La place dans la pile d'abord : sans elle, add_part arrêterait le
+     * programme au lieu de rendre NULL. */
+    if (!reserve_parts(stack, 1)) return NULL;
     Object *c = clone_layer(modele, type);
     if (!c) return NULL;
 
@@ -671,56 +757,84 @@ static void clip_bg_clear(void)
  * copie et à chaque collage. Mettre à 1 pour la rallumer. */
 #define HC_TRACE_ICONS 0
 
-/* Ramasse l'icône de pile qu'emploie CE bouton-ci. */
-static void clip_collect_icon_de(Object *stack, Object *p)
+static void table_icones_libere(TableIcones *t)
 {
-    if (!stack || !p) return;
-    if (p->type != OBJ_BUTTON || p->icon == 0) return;
+    for (int i = 0; i < t->n; i++) {
+        free(t->v[i].name);
+        free(t->v[i].couleur);           /* posée par hc_icon_copie_dessin */
+    }
+    free(t->v);
+    t->v = NULL;
+    t->n = 0;
+}
+
+/* La table devient celle du presse-papiers, qui doit avoir été vidé. */
+static void table_icones_installe(TableIcones *t)
+{
+    g_clip_icons  = t->v;
+    g_clip_nicons = t->n;
+    t->v = NULL;
+    t->n = 0;
+}
+
+/* Ramasse l'icône de pile qu'emploie CE bouton-ci. Rend 0 si la mémoire
+ * manque — la table est alors telle qu'avant cet appel. Une icône qui n'est
+ * pas de la pile n'est pas une pénurie : les icônes d'origine sont partout. */
+static int ramasse_icone(TableIcones *t, Object *stack, Object *p)
+{
+    if (!stack || !p) return 1;
+    if (p->type != OBJ_BUTTON || p->icon == 0) return 1;
 
     struct StackIcon *src = hc_icon_get(stack, p->icon);
-    if (!src) return;                           /* icône d'origine : partout */
+    if (!src) return 1;                         /* icône d'origine : partout */
 
-    for (int k = 0; k < g_clip_nicons; k++)
-        if (g_clip_icons[k].id == p->icon) return;
+    for (int k = 0; k < t->n; k++)
+        if (t->v[k].id == p->icon) return 1;
 
-    struct StackIcon *t = realloc(g_clip_icons,
-                                  (size_t)(g_clip_nicons + 1) * sizeof *t);
-    if (!t) return;
-    g_clip_icons = t;
+    struct StackIcon *v = realloc(t->v, (size_t)(t->n + 1) * sizeof *v);
+    if (!v) return 0;
+    t->v = v;
 
-    memset(&g_clip_icons[g_clip_nicons], 0, sizeof *g_clip_icons);
-    g_clip_icons[g_clip_nicons].id   = src->id;
-    g_clip_icons[g_clip_nicons].name = dupstr(src->name);
+    struct StackIcon *e = &t->v[t->n];
+    memset(e, 0, sizeof *e);
+    e->id = src->id;
+    int ko = 0;
+    e->name = dup_ou(src->name, &ko);
     /* LE DESSIN ENTIER, couleur comprise. Un memcpy des 128 bits suffisait
      * tant que les icônes étaient en noir et blanc ; depuis qu'elles peuvent
      * être en couleur, il faisait arriver l'icône DÉCOLORÉE dans la pile de
      * destination — et le défaut était discret, la silhouette passant très
-     * bien. On aurait cherché du côté de l'affichage. */
-    hc_icon_copie_dessin(&g_clip_icons[g_clip_nicons], src);
-    g_clip_nicons++;
+     * bien. On aurait cherché du côté de l'affichage.
+     *
+     * Son échec était IGNORÉ : faute de place pour la couleur, l'icône
+     * voyageait en noir et blanc, et la copie se disait réussie. */
+    if (ko || !hc_icon_copie_dessin(e, src)) {
+        free(e->name);
+        free(e->couleur);
+        return 0;
+    }
+    t->n++;
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] ramassee %d \"%s\"\n",
             src->id, src->name ? src->name : "");
 #endif
+    return 1;
 }
 
 /* Ramasse dans `layer` les icônes de pile qu'utilisent ses boutons. */
-static void clip_collect_icons(Object *stack, Object *layer)
+static int ramasse_icones(TableIcones *t, Object *stack, Object *layer)
 {
-    if (!stack || !layer) return;
+    if (!stack || !layer) return 1;
 
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] examen de %s \"%s\" : %d part(s)\n",
             layer->type == OBJ_CARD ? "la carte" : "le fond",
             layer->name ? layer->name : "", layer->nparts);
-    for (int i = 0; i < layer->nparts; i++)
-        fprintf(stderr, "[icone]   part %d type=%d icon=%d \"%s\"\n",
-                i, layer->parts[i]->type, layer->parts[i]->icon,
-                layer->parts[i]->name ? layer->parts[i]->name : "");
 #endif
 
     for (int i = 0; i < layer->nparts; i++)
-        clip_collect_icon_de(stack, layer->parts[i]);
+        if (!ramasse_icone(t, stack, layer->parts[i])) return 0;
+    return 1;
 }
 
 /* Un numéro libre dans cette pile, hors du catalogue d'origine, ET hors des
@@ -753,30 +867,17 @@ static void remap_button_icons(Object *layer, int oldid, int newid)
             layer->parts[i]->icon = newid;
 }
 
-/* Installe dans la pile d'arrivée les icônes du presse-papiers.
- *
- * Trois cas par icône :
- *   — le numéro est libre : on la pose telle quelle ;
- *   — le numéro est pris par une icône IDENTIQUE : on réutilise, rien à faire.
- *     C'est le cas ordinaire quand on colle là où l'on a copié, et aussi quand
- *     on colle deux fois de suite dans la même pile ;
- *   — le numéro est pris par une AUTRE icône : on en prend un libre et l'on
- *     réétiquette les boutons. Deux piles chargées de fichiers différents
- *     peuvent parfaitement numéroter deux dessins distincts de la même façon ;
- *     réutiliser aveuglément mettrait la mauvaise image sur le bouton. */
-/* `bg` ne doit être passé que si le fond vient d'être RECRÉÉ.
- *
- * Un fond réutilisé est partagé par toutes les cartes de la pile : réétiqueter
- * ses boutons changerait les icônes de chacune d'elles. Le cas ne se présente
- * pas tant que réutilisation rime avec icônes identiques — mais il suffit
- * d'avoir retouché une icône entre le copier et le coller pour que les bits
- * diffèrent, et l'on abîmerait la pile entière pour une carte collée. */
 /* Poser l'entrée `i` du presse-papiers dans `stack`, et dire sous quel numéro.
- * Rend 0 s'il n'y a rien à faire ou si la pose échoue. */
-static int pose_une_icone(Object *stack, int i, int *newid_out)
+ *
+ * Rend 1 si l'icône est là (posée, ou déjà présente à l'identique), 0 s'il
+ * n'y a rien à faire — plus aucun numéro libre : on laisse le numéro mort —,
+ * et -1 si la mémoire manque. `*posee` dit si une entrée a été AJOUTÉE à la
+ * pile, même en cas d'échec : c'est elle que l'appelant retire pour défaire. */
+static int pose_une_icone(Object *stack, int i, int *newid_out, int *posee)
 {
     int oldid = g_clip_icons[i].id;
     int newid = oldid;
+    *posee = 0;
 
     struct StackIcon *ex = hc_icon_get(stack, oldid);
     /* LA COMPARAISON PORTE SUR LE DESSIN ENTIER. Ne regarder que les bits
@@ -794,14 +895,18 @@ static int pose_une_icone(Object *stack, int i, int *newid_out)
 #endif
             if (!newid) return 0;               /* on laisse le numéro mort */
         }
+        /* Toujours une entrée NEUVE : le numéro était libre, ou on vient d'en
+         * prendre un libre. La retirer défait donc exactement cet ajout. */
         struct StackIcon *e = hc_icon_add(stack, newid, g_clip_icons[i].name);
+        if (!e) return -1;
+        *posee = 1;
+        /* hc_icon_add ne dit pas si le NOM a tenu en mémoire ; on le voit. */
+        if (g_clip_icons[i].name && !e->name) return -1;
+        if (!hc_icon_copie_dessin(e, &g_clip_icons[i])) return -1;
 #if HC_TRACE_ICONS
-        fprintf(stderr, "[icone] pose %d \"%s\" -> %s\n",
-                newid, g_clip_icons[i].name ? g_clip_icons[i].name : "",
-                e ? "ok" : "ECHEC");
+        fprintf(stderr, "[icone] pose %d \"%s\"\n",
+                newid, g_clip_icons[i].name ? g_clip_icons[i].name : "");
 #endif
-        if (!e) return 0;
-        hc_icon_copie_dessin(e, &g_clip_icons[i]);
     }
 #if HC_TRACE_ICONS
     else fprintf(stderr, "[icone] %d deja presente a l'identique\n", oldid);
@@ -811,38 +916,74 @@ static int pose_une_icone(Object *stack, int i, int *newid_out)
     return 1;
 }
 
-static void transplant_icons(Object *stack, Object *card, Object *bg)
+/* Installe dans la pile d'arrivée les icônes du presse-papiers, et réétiquette
+ * les boutons de `card`, de `bg` et de `part` — chacun peut être NULL.
+ *
+ * Trois cas par icône :
+ *   — le numéro est libre : on la pose telle quelle ;
+ *   — le numéro est pris par une icône IDENTIQUE : on réutilise, rien à faire.
+ *     C'est le cas ordinaire quand on colle là où l'on a copié, et aussi quand
+ *     on colle deux fois de suite dans la même pile ;
+ *   — le numéro est pris par une AUTRE icône : on en prend un libre et l'on
+ *     réétiquette les boutons. Deux piles chargées de fichiers différents
+ *     peuvent parfaitement numéroter deux dessins distincts de la même façon ;
+ *     réutiliser aveuglément mettrait la mauvaise image sur le bouton.
+ *
+ * TOUT OU RIEN : si la mémoire manque en route, les icônes déjà posées par cet
+ * appel sont RETIRÉES, et l'on rend 0. Les réétiquetages faits entre-temps
+ * l'ont été sur des objets neufs, que l'appelant défait à son tour.
+ *
+ * `bg` ne doit être passé que si le fond vient d'être RECRÉÉ. Un fond
+ * réutilisé est partagé par toutes les cartes de la pile : réétiqueter ses
+ * boutons changerait les icônes de chacune d'elles. Le cas ne se présente
+ * pas tant que réutilisation rime avec icônes identiques — mais il suffit
+ * d'avoir retouché une icône entre le copier et le coller pour que les bits
+ * diffèrent, et l'on abîmerait la pile entière pour une carte collée.
+ *
+ * COPIER UN BOUTON — et non une carte — n'emportait autrefois aucune icône :
+ * le bouton collé gardait son numéro, qui désignait à l'arrivée un autre
+ * dessin, ou aucun. D'où `part`, et une seule fonction pour les deux cas. */
+static int transplante(Object *stack, Object *card, Object *bg, Object *part)
 {
+    if (!stack || g_clip_nicons == 0) return 1;
 #if HC_TRACE_ICONS
     fprintf(stderr, "[icone] transplantation de %d icone(s)\n", g_clip_nicons);
 #endif
+    int *posees = malloc(sizeof *posees * (size_t)g_clip_nicons);
+    if (!posees) return 0;
+    int nposees = 0;
+
     for (int i = 0; i < g_clip_nicons; i++) {
-        int oldid = g_clip_icons[i].id, newid;
-        if (!pose_une_icone(stack, i, &newid)) continue;
+        int oldid = g_clip_icons[i].id, newid = oldid, posee = 0;
+        int r = pose_une_icone(stack, i, &newid, &posee);
+        if (posee) posees[nposees++] = newid;
+        if (r < 0) {
+            for (int k = 0; k < nposees; k++) hc_icon_remove(stack, posees[k]);
+            free(posees);
+            return 0;
+        }
+        if (r == 0) continue;
         remap_button_icons(card, oldid, newid);
         remap_button_icons(bg,   oldid, newid);
+        if (part && part->type == OBJ_BUTTON && part->icon == oldid) part->icon = newid;
     }
+    free(posees);
+    return 1;
 }
 
-/* LA MÊME TRANSPLANTATION, POUR UN OBJET SEUL.
- *
- * Copier un BOUTON — et non une carte — n'emportait aucune icône : ni
- * hc_copy_part ni hc_paste_part ne les regardaient. Le bouton collé gardait
- * son numéro, et à l'arrivée ce numéro appartenait à un autre dessin, ou à
- * aucun. Mesuré : le bouton affichait l'icône de la pile de destination, et
- * la sienne était perdue.
- *
- * C'est le même défaut que pour les cartes, corrigé pour elles seules. Un
- * chemin sur deux, c'est le genre de moitié qui ne se voit pas — jusqu'à ce
- * qu'on copie un bouton. */
-static void transplant_icons_objet(Object *stack, Object *part)
+/* Retire de la pile une couche qu'on vient d'y poser, et la libère : le
+ * collage qui l'avait posée a échoué plus loin. */
+static void retire_couche(Object *stack, Object *c)
 {
-    if (!stack || !part) return;
-    for (int i = 0; i < g_clip_nicons; i++) {
-        int oldid = g_clip_icons[i].id, newid;
-        if (!pose_une_icone(stack, i, &newid)) continue;
-        if (part->type == OBJ_BUTTON && part->icon == oldid) part->icon = newid;
-    }
+    if (!stack || !c) return;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i] == c) {
+            memmove(&stack->parts[i], &stack->parts[i + 1],
+                    sizeof *stack->parts * (size_t)(stack->nparts - i - 1));
+            stack->nparts--;
+            break;
+        }
+    hc_free(c);
 }
 
 int hc_copy_card(Object *card)
@@ -854,15 +995,23 @@ int hc_copy_card(Object *card)
 
     /* Le fond part AUSSI au presse-papiers, en copie. C'est ce qui rend le
      * collage dans une autre pile possible : la carte s'appuie sur un fond
-     * qui, là-bas, n'existe pas. */
+     * qui, là-bas, n'existe pas. Le manquer n'est pas un détail : la carte
+     * copiée ne se collerait plus ailleurs, sans qu'on sache pourquoi. */
     Object *bgc = card->bg ? clone_layer(card->bg, OBJ_BACKGROUND) : NULL;
+    TableIcones t = { NULL, 0 };
+    if ((card->bg && !bgc) ||
+        !ramasse_icones(&t, card->owner, card) ||
+        !ramasse_icones(&t, card->owner, card->bg)) {
+        table_icones_libere(&t);
+        if (bgc) hc_free(bgc);
+        hc_free(c);
+        return 0;
+    }
 
+    /* Plus rien ne peut échouer : on remplace d'un coup. */
     if (g_clipboard) hc_free(g_clipboard);
     clip_bg_clear();
-
-    /* Après clip_bg_clear, qui remet la table à zéro. */
-    clip_collect_icons(card->owner, card);
-    clip_collect_icons(card->owner, card->bg);
+    table_icones_installe(&t);
 
     g_clipboard     = c;
     g_clip_bg_copy  = bgc;
@@ -948,9 +1097,13 @@ Object *hc_paste_card(Object *stack)
      * trouve, pour que les collages suivants passent par l'identité plutôt
      * que par la ressemblance — retoucher le fond après le premier collage ne
      * doit pas défaire la correspondance au milieu d'une session. */
+    /* La correspondance ne s'écrit qu'à la FIN, collage réussi : un collage
+     * qui échoue ne doit rien laisser derrière lui, pas même une ligne de
+     * cette table. */
+    int a_noter = 0;
     if (!bg && g_clip_bg_copy) {
         bg = fond_reconnu_dans(g_clip_bg_copy, stack);
-        if (bg) bg_note_porte(cle, g_clip_bg_stack, stack, bg);
+        if (bg) a_noter = 1;
     }
 
     /* Absent : on le recrée depuis la copie, et ON NOTE la correspondance —
@@ -978,7 +1131,7 @@ Object *hc_paste_card(Object *stack)
         for (int i = 0; i < bg->nparts && i < g_clip_bg_copy->nparts; i++)
             id_adopte(bg->parts[i], g_clip_bg_copy->parts[i]->id);
 
-        bg_note_porte(cle, g_clip_bg_stack, stack, bg);
+        a_noter = 1;
     }
     if (!bg) return NULL;
 
@@ -991,8 +1144,13 @@ Object *hc_paste_card(Object *stack)
     Object *cur = hc_current_card();
     if (cur && cur->owner != stack) cur = NULL;
 
+    /* Un fond recréé pour une carte qui ne peut pas être posée resterait
+     * seul dans la pile : on le retire. */
     Object *c = place_layer_clone(stack, g_clipboard, OBJ_CARD, bg, cur);
-    if (!c) return NULL;
+    if (!c) {
+        if (bg_recree) retire_couche(stack, bg);
+        return NULL;
+    }
 
     /* Les bgtexts du clone désignent les champs de la COPIE du fond ; il faut
      * les faire pointer sur ceux du fond réellement utilisé. Sans effet quand
@@ -1003,7 +1161,13 @@ Object *hc_paste_card(Object *stack)
      * peuvent changer. Le fond n'est réétiqueté QUE s'il vient d'être recréé :
      * réutilisé, il appartient aussi aux autres cartes de la pile, et le
      * toucher changerait leurs icônes à toutes. */
-    transplant_icons(stack, c, bg_recree ? bg : NULL);
+    if (!transplante(stack, c, bg_recree ? bg : NULL, NULL)) {
+        retire_couche(stack, c);
+        if (bg_recree) retire_couche(stack, bg);
+        return NULL;
+    }
+
+    if (a_noter) bg_note_porte(cle, g_clip_bg_stack, stack, bg);
     return c;
 }
 

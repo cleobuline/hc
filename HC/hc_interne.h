@@ -38,6 +38,7 @@ char   *dupstr(const char *s);
 
 /* Attache un objet à la fin des parts[] de son propriétaire. */
 void    add_part(Object *owner, Object *o);
+int     reserve_parts(Object *parent, int combien);   /* 0 : pénurie, liste intacte */
 
 /* La pile qui contient cet objet — l'objet lui-même si c'en est une. */
 Object *owning_stack(Object *o);
