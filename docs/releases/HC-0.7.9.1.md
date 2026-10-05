@@ -195,7 +195,7 @@ labynet.net.
   labynet.fr
 - [#106](https://github.com/cleobuline/hc/pull/106): the stack fuzzer, in
   the repository
-- [#PR](https://github.com/cleobuline/hc/pull/PR): Apple's help stacks, the
+- [#107](https://github.com/cleobuline/hc/pull/107): Apple's help stacks, the
   fidelity fixes above, the two macOS-side fixes, version 0.7.9.1 and this
   note
 
