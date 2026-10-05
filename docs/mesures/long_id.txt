@@ -320,3 +320,36 @@ UN ÉCART NOTÉ, PAS CORRIGÉ : par « drag », une forme pleine est remplie SAN
 contour ; à la souris, remplie ET entourée. Les deux chemins disent la même
 chose de « filled » et ne la font pas pareil. Ce que fait HyperCard n'est pas
 mesuré ici : à proposer avec un banc.
+
+
+GO CARD … OF STACK « HELP EXTRAS » : LA PILE PAS ENCORE OUVERTE — 5 octobre
+--------------------------------------------------------------------------
+
+La pile d'aide d'Apple écrit
+
+    go card theIndexName of stack "Help Extras" in a new window -- ∆
+
+et DANS HC (l'application), « HC comprend pas ». Mesuré dans le noyau : la
+même ligne marche si « Help Extras » est DÉJÀ ouverte, avec ou sans « in a
+new window ». Sinon, « objet introuvable » et le script s'arrêtait.
+
+LA CAUSE : « go stack "X" » demandait à l'hôte d'ouvrir la pile
+(v3_va_pile) ; nommer une carte DANS cette pile passait par hct_resout, qui
+ne cherche que parmi les piles ouvertes. La correction ouvre la pile d'abord,
+par le même hôte, puis résout la carte. Cocoa donne une fenêtre à toute pile
+qu'il ouvre : « in a new window » est donc déjà ce qui se passe. Une pile
+introuvable donne maintenant « pile introuvable » et « No such stack », et le
+script continue — comme « go stack ».
+
+L'hôte cherche le FICHIER à côté de la pile courante, à côté de l'application
+et dans Documents, sous « Help Extras » ou « Help Extras.stack » : la pile
+doit avoir été convertie et rangée là.
+
+Harnais aidemenus, section 8. Les sections 6 et 7 libéraient des piles sans
+les retirer du registre, ce que l'hôte fait toujours (Hcdocument.m) : la
+section 8 tombait sur l'adresse morte. Le harnais respecte le contrat.
+
+NON MESURÉ DANS HYPERCARD : « go card "Zut" » vers une carte absente. HC
+arrête le script sur « objet introuvable » ; HyperCard, de mémoire, pose
+« No such card » dans the result et continue. À vérifier par un banc avant
+d'y toucher.

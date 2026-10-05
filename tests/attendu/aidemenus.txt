@@ -41,3 +41,11 @@
    mots : 1
    après écriture, card 3 : MARQUE
    après écriture, ici : Find Topic
+
+== 8. go card … of stack « Help Extras » : une pile pas encore ouverte ==
+   -> hôte : ouvrir la pile « Help Extras »
+   arrivée : Index de Help Extras
+   -> hôte : ouvrir la pile « Absente »
+   [ERR]    !! go : pile introuvable : Absente
+   the result : No such stack
+   toujours sur : Une

@@ -14563,6 +14563,36 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         return v3_va_pile(nom);
     }
 
+    /* « GO CARD X OF STACK "Y" » SUR UNE PILE QUI N'EST PAS ENCORE OUVERTE.
+     *
+     * « go stack "Y" » demandait déjà à l'hôte de l'ouvrir (v3_va_pile) ;
+     * nommer une carte DANS cette pile passait par hct_resout, qui ne cherche
+     * que parmi les piles ouvertes. La pile d'aide d'Apple y bute :
+     *
+     *     go card theIndexName of stack "Help Extras" in a new window
+     *
+     * DANS HC (l'application), « HC comprend pas » — rapporté le 5 octobre.
+     * Dans le noyau, la ligne échouait sans un mot et le script continuait.
+     * On ouvre donc la pile d'abord, par le même hôte, puis la carte se
+     * résout comme dans une pile ouverte. Cocoa la met dans une fenêtre à
+     * elle : c'est déjà « in a new window ». */
+    for (const HctNoeud *o = ref; o && o->genre == HCTN_OBJET &&
+         (o->typeobj == HCT_OBJ_CARD || o->typeobj == HCT_OBJ_BACKGROUND);
+         o = v3_noeud_cible(o)) {
+        const HctNoeud *c = v3_noeud_cible(o);
+        if (!c || c->typeobj != HCT_OBJ_STACK) continue;
+        char nom[256];
+        v3_nom_pile(ctx, c, nom, sizeof nom);
+        if (ctx->erreur) return 1;
+        if (nom[0] && !find_open_stack(nom) &&
+            !(g_host && g_host->open_stack && g_host->open_stack(nom))) {
+            set_result("No such stack");
+            emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
+            return 1;
+        }
+        break;
+    }
+
     Object *dst = NULL;
 
     /* « go card » nu mène à la PREMIÈRE carte. hct_resout, lui, rendrait la

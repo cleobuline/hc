@@ -21,6 +21,7 @@
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d;
@@ -33,6 +34,16 @@ static void reglage(const char *nom, const char *val)
 {
     if (!strcmp(nom, "menuBar") || !strcmp(nom, "showGroups"))
         printf("   -> hôte : %s = %s\n", nom, val);
+}
+
+/* L'hôte qui sait trouver « Help Extras » sur le disque. */
+static Object *g_extras;
+static Object *ouvre_pile(const char *nom)
+{
+    printf("   -> hôte : ouvrir la pile « %s »\n", nom);
+    if (strcasecmp(nom, "Help Extras") != 0) return NULL;
+    hc_register_stack(g_extras);
+    return g_extras;
 }
 
 int main(void)
@@ -195,7 +206,7 @@ int main(void)
             "  stop using stack \"HyperCard Help\"\n"
             "end mouseUp\n");
         hc_send(b, "mouseUp");
-        hc_free(lib);
+        hc_unregister_stack(lib); hc_free(lib);
     }
 
     puts("\n== 7. un champ de fond lu et écrit SUR UNE AUTRE CARTE ==");
@@ -229,7 +240,41 @@ int main(void)
         hc_set_script(bt, sc);
         hc_send(bt, "mouseUp");
         hc_set_current_card(c1);
-        hc_free(p2);
+        hc_unregister_stack(p2); hc_free(p2);
+    }
+
+    puts("\n== 8. go card … of stack « Help Extras » : une pile pas encore ouverte ==");
+    /* « go card theIndexName of stack "Help Extras" in a new window » :
+     * DANS HC (l'application), « HC comprend pas ». « go stack "X" »
+     * demandait à l'hôte d'ouvrir la pile ; nommer une carte DANS la pile
+     * ne le faisait pas, et la ligne s'arrêtait sur « objet introuvable ».
+     * Le faux hôte tient la pile hors du registre jusqu'à ce qu'on la lui
+     * demande. */
+    {
+        g_extras = hc_new_stack("Help Extras");
+        Object *xbg = hc_new_background(g_extras, "F");
+        hc_new_card(g_extras, xbg, "Sommaire");
+        hc_new_card(g_extras, xbg, "Index");
+        h.open_stack = ouvre_pile;
+        hc_set_host(&h);
+        hc_set_current_card(c1);
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  put \"Index\" into theIndexName\n"
+            "  go card theIndexName of stack \"Help Extras\" in a new window -- ∆\n"
+            "  put \"arrivée : \" & the short name of this card & \" de \" & the short name of this stack\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
+        hc_set_current_card(c1);
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  go card 2 of stack \"Absente\" in a new window\n"
+            "  put \"the result : \" & the result\n"
+            "  put \"toujours sur : \" & the short name of this card\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
+        hc_set_current_card(c1);
+        hc_unregister_stack(g_extras); hc_free(g_extras);
     }
 
     hc_free(st);
