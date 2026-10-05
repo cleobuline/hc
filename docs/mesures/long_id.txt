@@ -230,3 +230,35 @@ Les autres lignes où « HyperCard Help » convertie s'arrêtait, DANS HC :
 Harnais aidemenus : la forme des gestionnaires de l'aide (addHelpMenu,
 toggleActiveText, whereICameFrom, checkCantModify), sans leur texte — la
 pile d'Apple n'entre pas dans le dépôt.
+
+
+THE STACKS ET THE STACKSINUSE : DES CHEMINS — 5 octobre, DÉDUIT, NON MESURÉ
+--------------------------------------------------------------------------
+
+La cause de départ, dans « HyperTalk Reference » convertie : « personne ne
+répond à showSection », puis à goTopic. Les deux sont définis dans « HyperCard
+Help », que la pile met en usage à son openStack — sauf si wrongStack() rend
+vrai :
+
+    get the value of word 2 of the long name of me
+    return (it is not line 1 of the stacks)
+
+HC rendait des NOMS dans the stacks et the stacksInUse, le long name un
+CHEMIN : wrongStack rendait vrai sur la pile active elle-même, et openStack
+s'arrêtait avant « start using stack "HyperCard Help" ». Mesuré dans le
+noyau sur la pile de l'utilisatrice : line 1 of the stacks = « HyperTalk
+Reference », wrong = true.
+
+LE CORRECTIF EST DÉDUIT DU CODE D'APPLE, qui exige des chemins à deux
+endroits indépendants — wrongStack, et « ":HyperCard Help"&return is not in
+the StacksInUse&return ». Le banc qui le mesurerait DANS HYPERCARD a été
+demandé, pas encore joué : la forme exacte des lignes et l'ordre au-delà de
+la première ne sont PAS MESURÉS.
+
+the stacks : le chemin de chaque pile ouverte (celui du long name, donc de
+macOS), ou son nom si elle n'a jamais été enregistrée ; la pile active en
+première ligne. the stacksInUse : le même chemin. Rejoué sur les deux piles
+converties : l'aide se met en usage à l'ouverture, et le clic dans
+« Sections » trouve showSection. Cinq témoins changent d'une ligne : the
+stacks rendait VIDE quand la pile courante n'était pas au registre, elle la
+rend maintenant — une pile dont on regarde une carte est ouverte.

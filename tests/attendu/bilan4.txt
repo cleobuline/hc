@@ -36,7 +36,7 @@
    hote   the lineSize               -> <hote>
    hote   the textFont               -> <hote>
    hote   the textSize               -> <hote>
-   servi  the stacks                 -> (vide)
+   servi  the stacks                 -> T
    servi  the windows                -> (vide)
    servi  the programs               -> (vide)
    servi  the sound                  -> done

@@ -153,6 +153,36 @@ int main(void)
         hc_send(b, "mouseUp");
     }
 
+    puts("\n== 6. wrongStack et useHyperCardHelp : des chemins ==");
+    /* Le code d'Apple compare le CHEMIN du long name à la ligne 1 de the
+     * stacks, et cherche « :HyperCard Help » dans the stacksInUse. HC rendait
+     * des NOMS : wrongStack rendait vrai sur la pile active, openStack
+     * s'arrêtait avant « start using », et showSection, goTopic — définis
+     * dans l'aide — restaient introuvables. Forme déduite du code d'Apple,
+     * non mesurée dans HyperCard. */
+    {
+        Object *lib = hc_new_stack("HyperCard Help");
+        Object *lbg = hc_new_background(lib, "F");
+        hc_new_card(lib, lbg, "Une");
+        hc_set_script(lib, "on showSection s, l\n  put \"showSection : \" & s\nend showSection\n");
+        hc_set_stack_path(lib, "/Piles/HyperCard Help.stack");
+        hc_register_stack(lib);
+        hc_set_stack_path(st, "/Piles/Aide.stack");
+        hc_set_current_card(c1);
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  get the value of word 2 of the long name of this stack\n"
+            "  put \"line 1 of the stacks : \" & line 1 of the stacks\n"
+            "  put \"wrongStack : \" & (it is not line 1 of the stacks)\n"
+            "  start using stack \"HyperCard Help\"\n"
+            "  put \"stacksInUse : \" & the stacksInUse\n"
+            "  showSection \"Commands\", 2\n"
+            "  stop using stack \"HyperCard Help\"\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
+        hc_free(lib);
+    }
+
     hc_free(st);
     return 0;
 }

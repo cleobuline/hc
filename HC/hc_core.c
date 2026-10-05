@@ -8961,13 +8961,35 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     /* « the stacks » : les piles ouvertes, une par ligne. Le noyau tient déjà
      * ce registre — c'est celui qui permet à « go to stack "X" » de trouver
-     * une pile déjà ouverte. */
+     * une pile déjà ouverte.
+     *
+     * UN CHEMIN PAR LIGNE, ET LA PILE ACTIVE EN TÊTE. HC rendait le NOM.
+     * C'est le code d'Apple qui dit le contraire, à deux endroits
+     * indépendants de « HyperTalk Reference » :
+     *
+     *     get the value of word 2 of the long name of me
+     *     return (it is not line 1 of the stacks)          -- wrongStack
+     *     if ":HyperCard Help"&return is not in the StacksInUse&return
+     *
+     * Le premier compare le CHEMIN de la pile — celui du long name — à la
+     * ligne 1 de the stacks ; le second cherche un chemin à deux-points dans
+     * the stacksInUse. Avec des noms, wrongStack rendait vrai sur la pile
+     * active elle-même, openStack s'arrêtait avant « start using stack
+     * "HyperCard Help" », et showSection restait introuvable.
+     *
+     * DÉDUIT DU CODE D'APPLE, PAS MESURÉ DANS HYPERCARD : la forme exacte des
+     * lignes, et l'ordre au-delà de la première. Le chemin est celui de
+     * « the long name » — celui de macOS — ou le nom, pour une pile jamais
+     * enregistrée, qui n'en a pas. */
     if (ci_equal(nom, "stacks")) {
         buf[0] = '\0';
         size_t pris = 0;
-        for (int i = 0; i < hc_stack_count(); i++) {
-            Object *st = hc_stack_at(i);
-            const char *nm = st && st->name ? st->name : "";
+        Object *active = g_current_card ? owning_stack(g_current_card) : NULL;
+        for (int k = -1; k < hc_stack_count(); k++) {
+            Object *st = k < 0 ? active : hc_stack_at(k);
+            if (!st || (k >= 0 && st == active)) continue;
+            const char *nm = st->path && st->path[0] ? st->path
+                           : st->name ? st->name : "";
             size_t l = strlen(nm);
             if (pris + l + 2 >= (size_t)HC_VAL) break;
             if (pris) buf[pris++] = '\n';
@@ -9035,8 +9057,11 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     if (ci_equal(nom, "stacksinuse")) {
         buf[0] = '\0';
         size_t used = 0;
+        /* Le chemin, comme « the stacks » : voir plus haut. */
         for (int i = 0; i < g_nusing; i++) {
-            const char *nm = g_using[i]->name ? g_using[i]->name : "";
+            const char *nm = g_using[i]->path && g_using[i]->path[0]
+                           ? g_using[i]->path
+                           : g_using[i]->name ? g_using[i]->name : "";
             size_t l = strlen(nm);
             if (used + l + 2 >= (size_t)HC_VAL) break;
             if (i) buf[used++] = '\n';

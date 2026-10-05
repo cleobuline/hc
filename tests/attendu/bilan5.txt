@@ -14,7 +14,7 @@
    servi  the textArrows           false
    servi  the cursor               (par l'interface)
    servi  the editBkgnd            (par l'interface)
-   servi  the stacks               
+   servi  the stacks               T
    servi  the sound                done
    servi  the menus                
    servi  the version              2.4.1
