@@ -20,3 +20,9 @@
 
 == 4. checkCantModify ==
    cantModify : false
+
+== 5. select line 0 / line empty : éteindre une liste ==
+   allumée : line 2 of card field 1
+   line empty : []
+   line 0 : []
+   [ERR]    !! il n'y a pas de line de rang 9 dans ce champ (v3, ligne 10 de button "B".mouseUp)

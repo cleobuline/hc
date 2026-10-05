@@ -130,6 +130,29 @@ int main(void)
         "end mouseUp\n");
     hc_send(b, "mouseUp");
 
+    puts("\n== 5. select line 0 / line empty : éteindre une liste ==");
+    /* L'idiome d'Apple : exitDemo (« HyperTalk Reference ») finit par
+     * « select line 0 of me » ; « HyperCard Help » écrit six fois l'une ou
+     * l'autre forme. HC exigeait un rang. */
+    {
+        Object *liste = hc_new_field(c1, "Index");
+        hc_set_field_text(liste, "un\ndeux\ntrois");
+        liste->locktext = 1; liste->auto_select = 1;
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  put \"Index\" into fieldName\n"
+            "  select line 2 of card field fieldName\n"
+            "  put \"allumée : \" & the selectedLine of card field fieldName\n"
+            "  select line empty of card field fieldName\n"
+            "  put \"line empty : [\" & the selectedLine of card field fieldName & \"]\"\n"
+            "  select line 3 of card field \"Index\"\n"
+            "  select line 0 of card field \"Index\"\n"
+            "  put \"line 0 : [\" & the selectedLine of card field \"Index\" & \"]\"\n"
+            "  select line 9 of card field \"Index\"\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
+    }
+
     hc_free(st);
     return 0;
 }

@@ -10573,6 +10573,41 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
     }
 
+    /* « SELECT LINE 0 OF <champ> », « SELECT LINE EMPTY OF <champ> » : PLUS
+     * RIEN DE SÉLECTIONNÉ dans la liste.
+     *
+     * L'idiome est d'Apple, et deux fois écrit en dur. La démo exitDemo de
+     * « HyperTalk Reference » allume les lignes une à une, puis finit par
+     * « select line 0 of me » ; « HyperCard Help » s'en sert six fois, sous les
+     * deux formes, pour éteindre une liste (« select line empty of card field
+     * fieldName »). HC exigeait un rang : « un rang numérique est attendu
+     * ici », « il n'y a pas de line de rang 0 dans ce champ ».
+     *
+     * Seulement la LIGNE, une seule borne, et un champ qui existe : c'est la
+     * forme des deux piles, et rien d'autre n'est attesté. Que HyperCard
+     * fasse la même chose pour « char 0 » ou « word 0 » : NON MESURÉ. Que
+     * « line 0 » éteigne la liste et ne fasse rien d'autre — pas de message,
+     * pas d'erreur — se lit dans le code d'Apple, et n'est pas mesuré non
+     * plus dans HyperCard. */
+    if (c->genre == HCTN_CHUNK && c->sorte == HCT_CH_LINE && !c->ordinal &&
+        c->nfils == 2 && !avant && !apres) {
+        char b1[64];
+        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
+        if (ctx->erreur) return 1;
+        const char *q = skip_spaces(b1);
+        int zero = !*q || (hct_est_nombre(q) && atof(q) == 0.0);
+        if (zero) {
+            Object *champ = hct_resout(ctx, c->fils[1]);
+            if (champ && champ->type == OBJ_FIELD) {
+                g_found_lisible = 0;
+                g_found_montre  = 0;
+                hc_set_selection(NULL, 0, 0);
+                set_result("");
+                return 1;
+            }
+        }
+    }
+
     Object *f = NULL;
     int st = 0, en = 0;
 
