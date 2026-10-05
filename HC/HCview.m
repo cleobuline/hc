@@ -2943,6 +2943,28 @@ static NSInteger click_char_index(Object *f, NSPoint p, NSString **sortie)
     return (NSInteger)ci;
 }
 
+/* Le style effectif de l'octet `b` du texte d'un champ porte-t-il HC_GROUP ?
+ * Ce qu'aucune plage ne couvre prend le style du champ (hc_core.h). */
+static BOOL click_octet_groupe(Object *f, int b)
+{
+    int n = hc_run_count(f);
+    for (int i = 0; i < n; i++) {
+        int st = 0, ln = 0, style = 0;
+        if (!hc_run_at(f, i, &st, &ln, &style)) continue;
+        if (b >= st && b < st + ln) return (style & HC_GROUP) != 0;
+    }
+    return (f->textstyle & HC_GROUP) != 0;
+}
+
+/* LE MOT CLIQUÉ, OU LA PLAGE « GROUP » QUI L'ENTOURE — en octets du texte.
+ *
+ * La référence d'HyperTalk d'Apple le dit pour les deux fonctions : « the
+ * word the user clicked or the longest range of characters with the text
+ * style Group around the character that the user clicked ». C'est ce qui fait
+ * répondre une phrase entière — un nom de gabarit de « Stack Templates », un
+ * sujet de « HyperTalk Reference » — à un clic sur l'un de ses mots. HC ne
+ * rendait que le mot. Un espace À L'INTÉRIEUR d'un groupe y appartient : le
+ * clic dessus rend le groupe, là où un espace ordinaire ne rend rien. */
 static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
     NSString *s = nil;
     NSInteger ci = click_char_index(f, p, &s);
@@ -2952,6 +2974,19 @@ static int click_word_range(Object *f, NSPoint p, int *start, int *end) {
     /* Le mot doit indexer un caractère qui existe : voir click_char_index. */
     NSUInteger k = (NSUInteger)ci;
     if (k >= n) k = n - 1;
+
+    const char *tx = hc_field_text(f);
+    int lt = (int)strlen(tx);
+    int kb = byte_from_utf16(s, k);
+    if (kb >= 0 && kb < lt && click_octet_groupe(f, kb)) {
+        int a = kb, b = kb + 1;
+        while (a > 0 && click_octet_groupe(f, a - 1)) a--;
+        while (b < lt && click_octet_groupe(f, b)) b++;
+        *start = a;
+        *end   = b;
+        return 1;
+    }
+
     NSCharacterSet *blancs = [NSCharacterSet whitespaceAndNewlineCharacterSet];
     if ([blancs characterIsMember:[s characterAtIndex:k]]) return 0;
 
@@ -3535,21 +3570,23 @@ static const char *cocoa_global_get(const char *name) {
         return buf;
     }
 
+    /* LE TEXTE DU CLICKCHUNK, ET NON LA LIGNE.
+     *
+     * HC rendait la ligne entière. La référence d'Apple dit « the word the
+     * user clicked or the longest contiguous string of characters with the
+     * text style Group » — la même plage que the clickChunk, à qui l'on
+     * emprunte donc son calcul. Le sommaire de « Stack Templates », un nom
+     * groupé par ligne, répondait juste par hasard ; il répond juste
+     * maintenant par le groupe. */
     if (strcasecmp(name, "clickText") == 0) {
-        static char buf[512];
+        static char buf[1024];
         buf[0] = '\0';
-        int line = click_line_number(gClickField, gClickPoint);
-        if (gClickField && line > 0) {
+        int s = 0, e = 0;
+        if (gClickField && click_word_range(gClickField, gClickPoint, &s, &e) && e > s) {
             const char *t = hc_field_text(gClickField);
-            int n = 1;
-            const char *deb = t;
-            while (n < line && (deb = strchr(deb, '\n'))) { deb++; n++; }
-            if (deb) {
-                const char *fin = strchr(deb, '\n');
-                int len = fin ? (int)(fin - deb) : (int)strlen(deb);
-                if (len > (int)sizeof buf - 1) len = (int)sizeof buf - 1;
-                snprintf(buf, sizeof buf, "%.*s", len, deb);
-            }
+            int len = e - s;
+            if (len > (int)sizeof buf - 1) len = (int)sizeof buf - 1;
+            snprintf(buf, sizeof buf, "%.*s", len, t + s);
         }
         return buf;
     }
@@ -4023,6 +4060,24 @@ static void hcv_guette_cmd_point(void)
         if ([e type] == NSEventTypeLeftMouseDown && [e timestamp] > gClicCompte) {
             gMouseClicked = YES;
             gClicCompte = [e timestamp];
+            /* ET OÙ IL A EU LIEU. mouseDown: ne verra ce clic qu'après le
+             * script ; c'est donc ici que clickLoc, clickLine, clickChunk et
+             * clickText doivent l'apprendre. Sans cela, le
+             *
+             *     wait until the mouseClick
+             *     get the clickChunk
+             *
+             * de « HyperTalk Reference » lisait le clic PRÉCÉDENT — celui sur
+             * le bouton « Run the Script », qui n'est pas un champ : vide.
+             * Rapporté le 5 octobre DANS HC (l'application). Le même calcul
+             * que mouseDown: : la vue, puis le calque. */
+            if (gView && [e window] == [gView window]) {
+                NSPoint p = hcv_vue_vers_calque(
+                    [gView convertPoint:[e locationInWindow] fromView:nil]);
+                Object *hit = part_at(hc_current_card(), p);
+                gClickPoint = p;
+                gClickField = (hit && hit->type == OBJ_FIELD) ? hit : NULL;
+            }
         }
         if (!gardees) gardees = [NSMutableArray array];
         [gardees addObject:e];
