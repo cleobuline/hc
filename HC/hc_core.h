@@ -420,6 +420,23 @@ struct Object {
      * verrou qui ne ferme rien. */
     int      cant_delete;
 
+    /* LA PILE VERROUILLÉE — « set the cantModify of this stack to true ».
+     * Ne vaut que pour une pile. MESURÉ DANS HYPERCARD le 4 octobre : la
+     * propriété se pose et se lit, et une pile verrouillée REFUSE EN SILENCE
+     * qu'un script écrive dans un champ — pas de message, le script continue
+     * (docs/mesures/long_id.txt). C'est ce verrou-là qui est posé, et lui
+     * seul : ce que la pile verrouillée fait des autres changements — une
+     * propriété posée, un bouton créé, la frappe de l'utilisateur — n'est
+     * pas mesuré. */
+    int      cant_modify;
+
+    /* « set the cantAbort of this stack to true » : ⌘-point n'interrompt plus
+     * les scripts de cette pile. Ne vaut que pour une pile. La démo « Run the
+     * Script » de « HyperTalk Reference » la pose le temps de jouer son
+     * exemple, et la retire après. Le comportement vient de la référence
+     * d'Apple ; il n'est PAS mesuré dans HyperCard. */
+    int      cant_abort;
+
     /* LA PEINTURE DE LA COUCHE EST-ELLE MONTRÉE ? « set the showPict of this
      * card to false » cache le dessin sans l'effacer, et c'est l'idiome du
      * bouton « Hide Card Picture » — « Readymade Buttons » en fait son sujet.
@@ -536,7 +553,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.7.9"
+#define HC_VERSION "0.7.9.1"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -1124,6 +1141,7 @@ int         hc_menu_nb_articles(int i);
 const char *hc_menu_article(int i, int j);
 int         hc_menu_article_actif(int i, int j);
 int         hc_menu_article_coche(int i, int j);
+int         hc_menu_article_touche(int i, int j);   /* cmdChar, 0 si aucun */
 
 /* L'utilisateur a choisi l'article j du menu i. Envoie le message de
  * l'article s'il en a un, sinon « doMenu <article> ». Un séparateur ne

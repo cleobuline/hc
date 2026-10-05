@@ -234,6 +234,8 @@ static HCAxisLock gLockedAxis = AXIS_NONE;
 static NSPoint gShapeStart;
 static NSPoint gShapeEnd;
 static BOOL    gShapeDrawing = NO;
+/* Où la traînée de Draw Multiple a gravé sa dernière copie. */
+static NSPoint gMultiDernier;
 static int       gTextHeight = 0;
 static NSString *gTextStyleName = nil;
 static NSString *gTextAlign = nil;
@@ -650,6 +652,50 @@ static NSRect compute_shape_rect(NSPoint start, NSPoint end, BOOL centered) {
         return NSMakeRect(MIN(start.x, end.x), MIN(start.y, end.y),
                           fabs(end.x - start.x), fabs(end.y - start.y));
     }
+}
+
+/* GRAVER UNE FORME TIRÉE de start à end — le relâchement de la souris, et
+ * chaque copie de la traînée de Draw Multiple. Une seule fonction pour les
+ * deux : la traînée qui graverait autrement que le relâchement laisserait des
+ * copies qui ne ressemblent pas à la dernière. */
+static void hcv_grave_forme(NSBitmapImageRep *rep, NSPoint start, NSPoint end,
+                            BOOL centre)
+{
+    NSRect box = compute_shape_rect(start, end, centre);
+    NSPoint finalStart = box.origin;
+    NSPoint finalEnd = NSMakePoint(box.origin.x + box.size.width, box.origin.y + box.size.height);
+
+    if (gTool == TOOL_LINE) {
+        if (centre) {
+            NSPoint opposite = NSMakePoint(2 * start.x - end.x,
+                                           2 * start.y - end.y);
+            paint_shape(rep, TOOL_LINE, opposite, end, [NSColor blackColor], gLineWidth);
+        } else {
+            paint_shape(rep, TOOL_LINE, start, end, [NSColor blackColor], gLineWidth);
+        }
+    } else if (gTool == TOOL_REGPOLY) {
+        /* CENTRE → RAYON, sans passer par la boîte : finalStart et
+         * finalEnd sont les coins du rectangle englobant, et s'en servir
+         * ici aurait placé le polygone dans un coin, plus petit, et sans
+         * l'angle du geste. L'aperçu, lui, montrait la bonne forme — on
+         * aurait donc eu un outil qui grave autre chose que ce qu'il
+         * annonce, ce qui est la pire des deux erreurs. */
+        if (gShapeFilled)
+            fill_shape(rep, gTool, start, end);
+        paint_shape(rep, gTool, start, end, [NSColor blackColor], gLineWidth);
+    } else {
+        if (gShapeFilled)
+            fill_shape(rep, gTool, finalStart, finalEnd);
+        paint_shape(rep, gTool, finalStart, finalEnd, [NSColor blackColor], gLineWidth);
+    }
+}
+
+/* L'ÉCART DE DRAW MULTIPLE : le plus grand des deux déplacements, en pixels.
+ * Le bord d'une forme qui suit la souris avance d'autant — c'est l'espace
+ * entre deux copies que « the multiSpace » borne par en dessous. */
+static CGFloat hcv_multi_ecart(NSPoint a, NSPoint b)
+{
+    return MAX(fabs(b.x - a.x), fabs(b.y - a.y));
 }
 
 
@@ -2067,6 +2113,15 @@ static void hcv_verrou_ecran(BOOL ferme)
     else if (unPeu) [vue setNeedsDisplayInRect:zone];
 }
 
+/* Une forme tirée par « drag », de a à z. */
+static void hcv_drag_forme(NSBitmapImageRep *rep, NSPoint a, NSPoint z)
+{
+    if (gTool == TOOL_LINE)
+        paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth);
+    else if (gShapeFilled) fill_shape(rep, gTool, a, z);
+    else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
+}
+
 static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
     Object *card = hc_current_card();
     if (!card || !gView) return;
@@ -2105,16 +2160,28 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
         case TOOL_ERASER: unink_stroke(rep, a, z, HC_GOMME_LARGEUR); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;
-        case TOOL_LINE:   paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth); break;
         /* Le polygone régulier se lit CENTRE → RAYON : a est son centre, z
          * donne le rayon et l'angle. Il n'a donc pas de boîte à normaliser,
          * et c'est justement pour cela qu'il est dans le même cas que les
          * autres ici — « drag from a to b » lui passe déjà les deux points
-         * tels quels. */
+         * tels quels.
+         *
+         * DRAW MULTIPLE PAR SCRIPT : la souris du script glisse de a à z, et
+         * les copies tombent sur le chemin tous les « the multiSpace »
+         * pixels, comme sous la main. La dernière est z. */
+        case TOOL_LINE:
         case TOOL_RECT: case TOOL_OVAL: case TOOL_FREEFORM:
         case TOOL_ROUNDRECT: case TOOL_REGPOLY:
-            if (gShapeFilled) fill_shape(rep, gTool, a, z);
-            else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
+            if (gDrawMultiple && hcv_outil_forme(gTool)) {
+                CGFloat ecart = hcv_multi_ecart(a, z);
+                int copies = (int)ceil(ecart / gMultiSpace) - 1;
+                for (int k = 1; k <= copies; k++) {
+                    CGFloat d = (CGFloat)k * gMultiSpace;
+                    hcv_drag_forme(rep, a, NSMakePoint(a.x + (z.x - a.x) * d / ecart,
+                                                       a.y + (z.y - a.y) * d / ecart));
+                }
+            }
+            hcv_drag_forme(rep, a, z);
             break;
 
         case TOOL_SELRECT:
@@ -2161,6 +2228,12 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
 
     NSRect sale = NSMakeRect(MIN(a.x, z.x), MIN(a.y, z.y),
                              fabs(z.x - a.x), fabs(z.y - a.y));
+    /* Le polygone régulier rayonne AUTOUR de a : sa boîte n'est pas celle
+     * des deux points, et la moitié du dessin restait à rafraîchir. */
+    if (gTool == TOOL_REGPOLY) {
+        CGFloat r = hypot(z.x - a.x, z.y - a.y);
+        sale = NSMakeRect(a.x - r, a.y - r, 2 * r, 2 * r);
+    }
 
     /* De quoi couvrir l'épaisseur du trait, la largeur du pinceau et la
      * dispersion de l'aérographe. Large plutôt que juste : une marge de trop
@@ -2509,6 +2582,17 @@ static void cocoa_menus_changed(void)
              * sens d'AppKit, pas un caractère à ajouter au titre. */
             [mi setState:hc_menu_article_coche(i, j) ? NSControlStateValueOn
                                                      : NSControlStateValueOff];
+            /* « set the cmdChar of menuItem … to "?" » : le raccourci, avec
+             * Commande. AppKit veut la touche en minuscule pour une lettre ;
+             * une majuscule ajouterait Majuscule au raccourci. */
+            {
+                int t = hc_menu_article_touche(i, j);
+                if (t > ' ' && t < 0x7F) {
+                    char k[2] = { (char)((t >= 'A' && t <= 'Z') ? t + 32 : t), 0 };
+                    [mi setKeyEquivalent:[NSString stringWithUTF8String:k]];
+                    [mi setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+                }
+            }
             [m addItem:mi];
         }
 
@@ -2563,6 +2647,7 @@ static void cocoa_do_menu(const char *item) {
              * l'ancien code l'acceptait déjà. La règle est écrite au même
              * endroit pour « Send Farther » ; elle vaut ici. */
             { "Draw Centered",   HCV_PAINT_CENTERED    },
+            { "Draw Multiple",   HCV_PAINT_MULTIPLE    },
             { "FatBits",         HCV_PAINT_FATBITS     },
             { "Polygon Sides",   HCV_PAINT_POLYSIDES   },
             { "Polygon Sides…",  HCV_PAINT_POLYSIDES   },
@@ -3360,6 +3445,12 @@ static const char *cocoa_global_get(const char *name) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gPolySides);
         return gGlobBuf;
     }
+    if (strcasecmp(name, "multiple") == 0)
+        return gDrawMultiple ? "true" : "false";
+    if (strcasecmp(name, "multiSpace") == 0) {
+        snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gMultiSpace);
+        return gGlobBuf;
+    }
     if (strcasecmp(name, "lineSize") == 0) {
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d", gLineWidth);
         return gGlobBuf;
@@ -3475,6 +3566,32 @@ static void cocoa_global_set(const char *name, const char *value) {
         return;
     }
 
+    /* « show menuBar » / « hide menuBar ». Cacher la barre des menus de
+     * macOS n'est permis qu'avec le Dock : AppKit refuse — par une exception
+     * — la barre cachée seule. On prend la forme DOUCE, qui cache les deux et
+     * les rend au passage de la souris en haut de l'écran : une pile qui
+     * cache la barre ne doit pas pouvoir enfermer l'utilisateur. HyperCard
+     * la cachait pour de bon ; cette différence est voulue, et le rendu n'est
+     * pas mesuré. */
+    if (strcasecmp(name, "menuBar") == 0) {
+        @try {
+            [NSApp setPresentationOptions:vrai
+                ? NSApplicationPresentationDefault
+                : (NSApplicationPresentationAutoHideMenuBar |
+                   NSApplicationPresentationAutoHideDock)];
+        } @catch (NSException *e) {
+            NSLog(@"hide menuBar : refusé par AppKit — %@", [e reason]);
+        }
+        return;
+    }
+
+    /* « show groups » / « hide groups » : voir gGroupsShown, HCtext.m. */
+    if (strcasecmp(name, "showGroups") == 0) {
+        gGroupsShown = vrai ? YES : NO;
+        [gView setNeedsDisplay:YES];
+        return;
+    }
+
     /* ═══ La couleur de peinture, depuis un script ═══════════════════════
      *
      * « set the paintColor to "vert" », « set the paintColor to "64,255,30" ».
@@ -3586,6 +3703,20 @@ static void cocoa_global_set(const char *name, const char *value) {
         if (v > 50) v = 50;
         gPolySides = v;
         [gView setNeedsDisplay:YES];
+        return;
+    }
+    /* DRAW MULTIPLE, l'article du menu Options, et son écart : de 1 à 100
+     * pixels, 1 par défaut, comme le dit la référence d'HyperTalk. Hors de
+     * ces bornes, ramené dedans, comme polySides. */
+    if (strcasecmp(name, "multiple") == 0) {
+        gDrawMultiple = vrai ? YES : NO;
+        return;
+    }
+    if (strcasecmp(name, "multiSpace") == 0) {
+        int v = hc_coord(value, gMultiSpace);
+        if (v < 1)   v = 1;
+        if (v > 100) v = 100;
+        gMultiSpace = v;
         return;
     }
     if (strcasecmp(name, "lineSize") == 0) {
@@ -4520,11 +4651,131 @@ static int nav_pose(const char *prop, const char *val)
     return -1;
 }
 
-/* Le rappel `fenetre` du noyau. Une seule fenêtre nommée pour l'instant : la
- * Navigator. Toute autre est introuvable, et le noyau le dit. */
+/* LES FENÊTRES D'HYPERCARD LUI-MÊME : « tool window », « pattern window »,
+ * « message window » — dont les noms, chez HyperCard comme ici, sont
+ * « Tools », « Patterns » et « Message ». Le noyau traduit les mots-clés.
+ *
+ * Venues de la démonstration « Run the Script » de « HyperTalk Reference »,
+ * qui lit leur visible et leur loc, les cache pour jouer son exemple, puis
+ * les remet. Elles existent toujours : la palette des motifs, créée à la
+ * demande, se crée si on la montre ou la déplace.
+ *
+ * LA LOC EST LE COIN HAUT-GAUCHE DU CONTENU, en coordonnées de l'écran de la
+ * barre de menus, y vers le bas — comme la Navigator. La valeur exacte
+ * qu'HyperCard rend pour ces palettes n'est PAS MESURÉE ; ce qui compte pour
+ * la démonstration est qu'une loc relue se repose au même endroit. */
+static NSPanel *hcv_palette_hc(const char *nom, BOOL creer)
+{
+    if (!strcasecmp(nom, "Tools")) {
+        if (!gToolPanel && creer) {
+            [gView installToolPalette];       /* elle se montre en naissant */
+            [gToolPanel orderOut:nil];
+        }
+        return gToolPanel;
+    }
+    if (!strcasecmp(nom, "Patterns")) {
+        if (!gPatternPanel && creer) {
+            [gView installPatternPalette];
+            [gPatternPanel setReleasedWhenClosed:NO];
+        }
+        return gPatternPanel;
+    }
+    /* La boîte de messages naît avec l'application : installMessageBox pose
+     * aussi l'hôte, et ne se rappelle pas. */
+    if (!strcasecmp(nom, "Message")) return gMsgPanel;
+    return nil;
+}
+
+static BOOL hcv_palette_hc_nom(const char *nom)
+{
+    return !strcasecmp(nom, "Tools") || !strcasecmp(nom, "Patterns") ||
+           !strcasecmp(nom, "Message");
+}
+
+static void hcv_palette_montre(NSPanel *p, BOOL montrer)
+{
+    if (!montrer) { [p orderOut:nil]; return; }
+    /* Comme le menu : la boîte a pu changer pendant qu'elle était cachée. */
+    if (p == gMsgPanel && gMsgBox)
+        [gMsgBox setStringValue:hcv_texte(hc_message_lu())];
+    [p orderFront:nil];                    /* sans prendre le clavier */
+}
+
+static int hcv_palette_fenetre(const char *nom, const char *quoi,
+                               const char *prop, const char *valeur,
+                               char *out, int outlen)
+{
+    if (!strcmp(quoi, "existe")) return 1;
+    if (!strcmp(quoi, "palette")) return 0;     /* pas « palette Tools » */
+
+    BOOL lire = !strcmp(quoi, "lit");
+    NSPanel *p = hcv_palette_hc(nom, !lire);
+    if (lire && !p) {                          /* jamais ouverte */
+        if (prop && !strcasecmp(prop, "visible")) {
+            if (out && outlen > 0) snprintf(out, (size_t)outlen, "false");
+            return 1;
+        }
+        p = hcv_palette_hc(nom, YES);
+    }
+    if (!p) return 0;
+
+    if (!strcmp(quoi, "montre")) { hcv_palette_montre(p, YES); return 1; }
+    if (!strcmp(quoi, "cache") || !strcmp(quoi, "ferme")) {
+        hcv_palette_montre(p, NO);
+        return 1;
+    }
+    if (!prop) return -1;
+
+    NSRect c = [p contentRectForFrameRect:[p frame]];
+    int g = (int)lround(NSMinX(c)), h = (int)lround(nav_h0() - NSMaxY(c));
+    int lg = (int)lround(NSWidth(c)), ht = (int)lround(NSHeight(c));
+
+    if (lire) {
+        if (!out || outlen <= 0) return -1;
+        if (!strcasecmp(prop, "visible"))
+            snprintf(out, (size_t)outlen, "%s", [p isVisible] ? "true" : "false");
+        else if (!strcasecmp(prop, "name"))
+            snprintf(out, (size_t)outlen, "%s", nom);
+        else if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+                 !strcasecmp(prop, "topLeft"))
+            snprintf(out, (size_t)outlen, "%d,%d", g, h);
+        else if (!strcasecmp(prop, "rect") || !strcasecmp(prop, "rectangle"))
+            snprintf(out, (size_t)outlen, "%d,%d,%d,%d", g, h, g + lg, h + ht);
+        else if (!strcasecmp(prop, "width"))
+            snprintf(out, (size_t)outlen, "%d", lg);
+        else if (!strcasecmp(prop, "height"))
+            snprintf(out, (size_t)outlen, "%d", ht);
+        else return -1;
+        return 1;
+    }
+
+    if (!strcmp(quoi, "pose")) {
+        const char *v = valeur ? valeur : "";
+        if (!strcasecmp(prop, "visible")) {
+            hcv_palette_montre(p, strcasecmp(v, "true") == 0);
+            return 1;
+        }
+        if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+            !strcasecmp(prop, "topLeft")) {
+            int ng, nh;
+            if (sscanf(v, "%d , %d", &ng, &nh) != 2) return -1;
+            NSRect nc = NSMakeRect(ng, nav_h0() - nh - NSHeight(c),
+                                   NSWidth(c), NSHeight(c));
+            [p setFrame:[p frameRectForContentRect:nc] display:YES];
+            return 1;
+        }
+        return -1;
+    }
+    return -1;
+}
+
+/* Le rappel `fenetre` du noyau : la Navigator, et les trois fenêtres
+ * d'HyperCard ci-dessus. Toute autre est introuvable, et le noyau le dit. */
 static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
                          const char *valeur, char *out, int outlen)
 {
+    if (nom && quoi && hcv_palette_hc_nom(nom))
+        return hcv_palette_fenetre(nom, quoi, prop, valeur, out, outlen);
     if (!nom || !quoi || strcasecmp(nom, "Navigator") != 0) return 0;
     if (!strcmp(quoi, "palette")) {
         nav_ouvre(valeur);
@@ -5191,6 +5442,11 @@ static int parts_du_calque(Object *o)
                                      : NSControlStateValueOff];
             return YES;
         }
+        if (t == HCV_PAINT_MULTIPLE) {
+            [item setState:gDrawMultiple ? NSControlStateValueOn
+                                         : NSControlStateValueOff];
+            return YES;
+        }
 
         /* FatBits porte sa coche comme la grille, mais se GRISE sous un outil
          * qui ne peint pas : là il n'a aucun effet, et un article cochable
@@ -5834,6 +6090,10 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
     if (quoi == HCV_PAINT_CENTERED) {
         gCentered = !gCentered;
         [gView setNeedsDisplay:YES];
+        return;
+    }
+    if (quoi == HCV_PAINT_MULTIPLE) {
+        gDrawMultiple = !gDrawMultiple;
         return;
     }
 
@@ -7286,6 +7546,7 @@ static BOOL      gSansMessageChamp = NO;
     if (hcv_outil_forme(gTool)) {
         gShapeStart = hcv_cale_pt(p);
         gShapeEnd = gShapeStart;
+        gMultiDernier = gShapeStart;
         gShapeDrawing = YES;
         [self setNeedsDisplay:YES];
         return;
@@ -7639,6 +7900,21 @@ static BOOL      gSansMessageChamp = NO;
          * — un axe conservé, et les deux bouts sur la grille. */
         gShapeEnd = hcv_cale_pt(shiftDown ? constrain_to_axis(gShapeStart, p)
                                           : p);
+        /* DRAW MULTIPLE : une copie gravée chaque fois que la forme a
+         * avancé de « the multiSpace » pixels depuis la précédente. */
+        if (gDrawMultiple &&
+            hcv_multi_ecart(gMultiDernier, gShapeEnd) >= gMultiSpace) {
+            Object *card = hc_current_card();
+            Object *layer = card && gEditBackground ? card->bg : card;
+            if (!layer) layer = card;
+            if (layer) {
+                NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
+                                                     (int)[self bounds].size.height);
+                hcv_grave_forme(rep, gShapeStart, gShapeEnd,
+                                hcv_centre_actif([event modifierFlags]));
+                gMultiDernier = gShapeEnd;
+            }
+        }
         [self setNeedsDisplay:YES];
         return;
     }
@@ -7768,40 +8044,15 @@ static BOOL      gSansMessageChamp = NO;
     if (gShapeDrawing) {
         gShapeDrawing = NO;
         BOOL centre = hcv_centre_actif([event modifierFlags]);
-        NSRect box = compute_shape_rect(gShapeStart, gShapeEnd, centre);
-
-        NSPoint finalStart = box.origin;
-        NSPoint finalEnd = NSMakePoint(box.origin.x + box.size.width, box.origin.y + box.size.height);
 
         Object *card = hc_current_card();
         Object *layer = gEditBackground ? card->bg : card;
         if (!layer) layer = card;
         NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width, (int)[self bounds].size.height);
 
-        if (gTool == TOOL_LINE) {
-            if (centre) {
-                NSPoint opposite = NSMakePoint(2 * gShapeStart.x - gShapeEnd.x,
-                                               2 * gShapeStart.y - gShapeEnd.y);
-                paint_shape(rep, TOOL_LINE, opposite, gShapeEnd, [NSColor blackColor], gLineWidth);
-            } else {
-                paint_shape(rep, TOOL_LINE, gShapeStart, gShapeEnd, [NSColor blackColor], gLineWidth);
-            }
-        } else if (gTool == TOOL_REGPOLY) {
-            /* CENTRE → RAYON, sans passer par la boîte : finalStart et
-             * finalEnd sont les coins du rectangle englobant, et s'en servir
-             * ici aurait placé le polygone dans un coin, plus petit, et sans
-             * l'angle du geste. L'aperçu, lui, montrait la bonne forme — on
-             * aurait donc eu un outil qui grave autre chose que ce qu'il
-             * annonce, ce qui est la pire des deux erreurs. */
-            if (gShapeFilled)
-                fill_shape(rep, gTool, gShapeStart, gShapeEnd);
-            paint_shape(rep, gTool, gShapeStart, gShapeEnd,
-                        [NSColor blackColor], gLineWidth);
-        } else {
-            if (gShapeFilled)
-                fill_shape(rep, gTool, finalStart, finalEnd);
-            paint_shape(rep, gTool, finalStart, finalEnd, [NSColor blackColor], gLineWidth);
-        }
+        /* Avec Draw Multiple, la dernière copie de la traînée est peut-être
+         * déjà celle-ci : la regraver par-dessus ne change aucun pixel. */
+        hcv_grave_forme(rep, gShapeStart, gShapeEnd, centre);
 
         [self setNeedsDisplay:YES];
         return;

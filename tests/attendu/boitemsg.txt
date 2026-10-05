@@ -99,10 +99,12 @@
     réécrirait la boîte avant qu'on puisse s'en servir)
    [boîte] un deux trois
    [boîte] word 2 = deux
-=== 12. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===
-   (« the visible of msg » reste « objet introuvable ». La
+=== 12. les propriétés de la boîte sont celles de sa FENÊTRE ===
+   (« the visible of msg » répondait « objet introuvable ». La
     fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.
-    On l'inscrit pour ne pas croire le chantier terminé)
-   [ERR]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)
-   [DIALOGUE]    !! objet introuvable (v3, ligne 2 de stack "Boite".essai)
+    Depuis le 5 octobre, la question va à l'hôte, la fenêtre
+    « Message » — runscript.c. Ce harnais n'a pas d'hôte qui
+    réponde : la fenêtre est introuvable, et le noyau le dit)
+   [ERR]    !! fenêtre introuvable : Message (v3, ligne 2 de stack "Boite".essai)
+   [DIALOGUE]    !! fenêtre introuvable : Message (v3, ligne 2 de stack "Boite".essai)
 ligne 2 :  put the visible of msg

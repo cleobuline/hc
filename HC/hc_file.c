@@ -586,6 +586,10 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
 
     fprintf(f, "stack "); put_quoted(f, stack->name); fputc('\n', f);
     fprintf(f, "size %d,%d\n", stack->w, stack->h);
+    /* Écrit seulement s'il est posé : une version antérieure saute la ligne,
+     * et une pile qui n'est pas verrouillée ne change pas d'un octet. */
+    if (stack->cant_modify) fprintf(f, "cantmodify\n");
+    if (stack->cant_abort)  fprintf(f, "cantabort\n");
     put_block(f, "script", stack->script);
     /* Les icônes tiennent dans le bloc de la pile : elles lui appartiennent,
      * et se relisent donc avant la première carte susceptible de s'y référer. */
@@ -1576,6 +1580,12 @@ Object *hc_load(const char *path)
          * cours, quelle qu'elle soit. */
         if (strcmp(s, "dontsearch") == 0 && target)   { target->dont_search = 1; continue; }
         if (strcmp(s, "cantdelete") == 0 && target)   { target->cant_delete = 1; continue; }
+        if (strcmp(s, "cantmodify") == 0 && target && target->type == OBJ_STACK) {
+            target->cant_modify = 1; continue;
+        }
+        if (strcmp(s, "cantabort") == 0 && target && target->type == OBJ_STACK) {
+            target->cant_abort = 1; continue;
+        }
         /* « hidepict » N'EST PAS UN MOT DE HYPERTALK, et il ne faut pas le lire
          * comme tel : c'est un marqueur de NOTRE format de fichier, comme
          * « cantdelete » et « dontsearch » juste au-dessus. Aucun script n'écrit

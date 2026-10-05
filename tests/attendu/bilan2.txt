@@ -26,7 +26,7 @@
    marche   family                       -> 2 
 
 ── FONCTIONS : rendent-elles quelque chose ?
-   marche   the stacks                   ->  
+   marche   the stacks                   -> T 
    INERTE   the windows                  -> [ERR]    !! propriété ou fonction inconnue : windows (v3, ligne 2 de button "B".t) 
    INERTE   the programs                 -> [ERR]    !! propriété ou fonction inconnue : programs (v3, ligne 2 de button "B".t) 
    marche   the sound                    -> done 

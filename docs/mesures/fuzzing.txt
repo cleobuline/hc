@@ -111,11 +111,8 @@ La création d'une icône en couleur depuis le fichier, elle, l'est entièrement
 CE QUI N'EST PAS MESURÉ
 -----------------------
 
-  · LE CÔTÉ COCOA. Une pile abîmée mais ACCEPTÉE peut porter des valeurs
-    étranges — un polygone à deux sommets, une carte de cent mille points,
-    une opacité nulle — qui vont jusqu'au dessin, dans HCview.m. Ce code ne
-    tourne pas ici. À faire : relever ce que le lecteur laisse passer, puis
-    lire le dessin avec cette liste en main.
+  · LE CÔTÉ COCOA ne tourne pas ici. Il a été LU, valeur par valeur, le même
+    soir : voir « LE CÔTÉ COCOA, LU », plus bas.
   · LES SCRIPTS des piles abîmées ne sont pas exécutés. L'interpréteur a été
     fuzzé à part le 29 septembre (audit.txt), et ce terrain n'a pas été
     rejoué.
@@ -123,6 +120,77 @@ CE QUI N'EST PAS MESURÉ
     le dépôt (licence). Les campagnes du format d'Apple partent de la pile
     synthétique ; celles de pile_origine.txt partaient de vraies piles, en
     dehors du dépôt.
+
+
+LE CÔTÉ COCOA, LU LE MÊME SOIR — ce que le lecteur laisse passer
+----------------------------------------------------------------
+
+Le fuzzing dit que le NOYAU encaisse. Il ne dit rien de ce que l'interface
+fait des valeurs qu'il ACCEPTE. Relevé dans hc_file.c, puis suivi jusqu'au
+dessin, valeur par valeur :
+
+    taille de la pile     ±1 000 000     fenêtre et calque de peinture :
+                                         NON MESURÉ (voir plus bas)
+    rect d'une part       ±1 000 000,    largeur négative possible ; le
+                          bornés AVANT   dessin la reçoit telle quelle. Ce
+                          la soustraction qu'AppKit en fait : NON MESURÉ
+    sommets               2 à 1000,      la mise à l'échelle ne divise que
+                          ±1 000 000     par une largeur > 0 (hc_core.c)
+    opacité, couleurs     0..254,        jamais hors bornes
+                          0..0xFFFFFF
+    corps, interligne     0..10 000      une police de 10 000 points : NON
+                                         MESURÉ dans l'application
+    selectedline          0..1 000 000   comparé, jamais indexé
+    scroll                0..1 000 000   en flottant, et ramené dans ses
+                                         bornes avant usage (HCtext.m)
+    pixels d'icône        0..255         la palette en a 256 : jamais hors
+                                         du tableau
+    PLAGES DE STYLE       début et       PAS bornés au texte — voir ci-dessous
+                          longueur
+                          0..1 000 000
+
+UN VRAI DÉFAUT : LA PLAGE AU-DELÀ DU TEXTE. « run 5000,10,1 » sur un champ
+qui contient « abc » : le noyau accepte et rend la plage telle quelle (mesuré,
+pile chargée, plage 0 = début 5000). utf16_from_byte (HCtext.m) passait alors
+5000 à -[NSString initWithBytes:length:], qui LIT 5000 octets d'un tampon qui
+en a quatre. Reproduit par émulation sous ASan — la même lecture, en C — :
+heap-buffer-overflow, READ of size 5000. Les quatre appelants bornaient le
+RÉSULTAT, après la lecture. Corrigé dans la fonction elle-même, qui borne
+d'abord à strlen : l'émulation corrigée ne signale plus rien. Côté Mac, la
+correction est compilée par l'intégration, PAS EXÉCUTÉE.
+
+UNE GARDE AJOUTÉE, SANS REPRODUCTION : hcp_decode (HCpaint.m) crée l'image
+d'un calque de peinture à la taille que dit l'en-tête du fichier, jusqu'à
+20 000 × 20 000 (1,6 Go), et passait [rep bitmapData] à uncompress sans voir
+si l'allocation avait réussi. NULL → écriture à l'adresse zéro. Lu, non
+reproduit.
+
+JOUÉ DANS HC (l'application), par l'utilisatrice, le même soir — un banc de
+piles étranges, avec la 0.7.9 publiée, donc SANS la correction ci-dessus :
+
+    plage hors du texte       rien de visible. Attendu : la lecture hors
+                              tampon est silencieuse tant que la mémoire
+                              d'après existe — c'est ce qui la rendait
+                              sournoise. Ne prouve ni le défaut ni sa
+                              correction.
+    size 100000,100000        « elle est géante » : la fenêtre s'ouvre à cette
+                              taille, sans planter, et se ferme normalement.
+                              La mémoire prise n'est pas relevée.
+    rect à l'envers, opacité  rien de spécial
+    nulle, corps 10 000
+    polygone à deux sommets   un trait en diagonale, sans remplissage — ce que
+                              dit draw_btn_frame (rempli à partir de trois) —
+                              et l'éditeur de polygone le reprend sans peine.
+
+UNE ERREUR DU BANC, la mienne : la première version écrivait « style
+polygon » sans guillemets. Le format veut « style "polygon" », le lecteur a
+ignoré la ligne, et le bouton est sorti en rectangle rouge — juste, pour un
+bouton ordinaire, et le test ne testait rien. Vu en relisant la pile avec le
+noyau (style=-), refait, rejoué.
+
+RESTE NON MESURÉ : la mémoire que prend une pile de 100 000 points, dont le
+calque de peinture (paint_bitmap) prend la taille de la vue ; et une pile
+d'un million de points, la borne du lecteur.
 
 
 POUR LE REFAIRE

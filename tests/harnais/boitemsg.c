@@ -169,10 +169,12 @@ int main(void)
          "  put word 2 of msg into lu\n"
          "  put \"word 2 = \" & lu");
 
-    printf("=== 12. CE QUI RESTE À FAIRE : la boîte n'a pas de propriétés ===\n");
-    printf("   (« the visible of msg » reste « objet introuvable ». La\n");
+    printf("=== 12. les propriétés de la boîte sont celles de sa FENÊTRE ===\n");
+    printf("   (« the visible of msg » répondait « objet introuvable ». La\n");
     printf("    fenêtre appartient à l'hôte ; seul son CONTENU est au noyau.\n");
-    printf("    On l'inscrit pour ne pas croire le chantier terminé)\n");
+    printf("    Depuis le 5 octobre, la question va à l'hôte, la fenêtre\n");
+    printf("    « Message » — runscript.c. Ce harnais n'a pas d'hôte qui\n");
+    printf("    réponde : la fenêtre est introuvable, et le noyau le dit)\n");
     fais("put the visible of msg");
     return 0;
 }

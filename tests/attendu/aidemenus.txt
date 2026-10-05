@@ -1,0 +1,60 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. addHelpMenu : show menuBar, puis le menu et son raccourci ==
+   -> hôte : menuBar = true
+   menuMsg 3 : goHCHelp
+   cmdChar 3 : ?
+   cmdChar 4 : []
+   there is : true
+   article par variable : goTalk
+   rang par variable : HyperCard Help
+   -> hôte : menuBar = false
+   l'hôte lit : article 3 « HyperCard Help », touche « ? »
+
+== 2. toggleActiveText : show groups, hide groups ==
+   -> hôte : showGroups = true
+   -> hôte : showGroups = false
+
+== 3. whereICameFrom : d'où l'on vient, sans y aller ==
+   vient de : card id 4 of stack "Aide"
+   est sur  : carte 3
+
+== 4. checkCantModify ==
+   cantModify : false
+
+== 5. select line 0 / line empty : éteindre une liste ==
+   allumée : line 2 of card field 1
+   line empty : []
+   line 0 : []
+   [ERR]    !! il n'y a pas de line de rang 9 dans ce champ (v3, ligne 10 de button "B".mouseUp)
+   l'autre liste garde : Commands
+
+== 6. wrongStack et useHyperCardHelp : des chemins ==
+   line 1 of the stacks : /Piles/Aide.stack
+   wrongStack : false
+   stacksInUse : /Piles/HyperCard Help.stack
+   showSection : Commands
+
+== 7. un champ de fond lu et écrit SUR UNE AUTRE CARTE ==
+   ici : Find Topic
+   card id 15 : find
+   card 3 : mark
+   mots : 1
+   après écriture, card 3 : MARQUE
+   après écriture, ici : Find Topic
+
+== 8. go card … of stack « Help Extras » : une pile pas encore ouverte ==
+   -> hôte : ouvrir la pile « Help Extras »
+   arrivée : Index de Help Extras
+   -> hôte : ouvrir la pile « Absente »
+   [ERR]    !! go : pile introuvable : Absente
+   the result : No such stack
+   toujours sur : Une
+
+== 9. go card theSection & theTopic : le nom est TOUTE la concaténation ==
+   & : Commandsfind
+   && : Commands find
+   littéraux : Sommaire
+   [ERR]    !! go : carte introuvable : 10
+   rang 10 : No such card / Sommaire
+   [ERR]    !! go : carte introuvable : Commandszut
+   absente : No such card / Sommaire

@@ -547,6 +547,9 @@ static int g_abandon = 0;
 
 void hc_interrompre(void)
 {
+    /* La pile courante a posé cantAbort : la touche ne fait rien. */
+    Object *st = g_current_card ? owning_stack(g_current_card) : NULL;
+    if (st && st->cant_abort) return;
     if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
 }
 
@@ -2252,6 +2255,15 @@ static Object *histo_recule(void)
     if (g_nhisto < 2) return NULL;
     g_nhisto--;
     return g_histo[g_nhisto - 1];
+}
+
+/* LA CARTE D'OÙ L'ON VIENT, SANS Y ALLER — « push recent card ». La même que
+ * celle où « go back » ramènerait, mais l'historique n'est pas touché.
+ * MESURÉ DANS HYPERCARD le 4 octobre : go card 1, go card 3, push recent
+ * card, pop card into x — x désigne la carte 1 (docs/mesures/long_id.txt). */
+static Object *histo_precedente(void)
+{
+    return g_nhisto >= 2 ? g_histo[g_nhisto - 2] : NULL;
 }
 
 int hc_recent_count(void) { return g_nhisto; }
@@ -5551,6 +5563,7 @@ typedef struct {
     char *message[HC_ARTICLES_MAX];   /* ce qu'on envoie, ou NULL     */
     char  actif[HC_ARTICLES_MAX];
     char  coche[HC_ARTICLES_MAX];     /* la marque à gauche du nom    */
+    char  touche[HC_ARTICLES_MAX];    /* cmdChar : le raccourci, 0 si aucun */
     int   n;
     int   actif_menu;
 } HcMenuBarre;
@@ -5743,6 +5756,8 @@ static int menu_insere(int i, int pos, int remplace,
                 q * sizeof *m->actif);
         memmove(&m->coche[pos + na],   &m->coche[pos + remplace],
                 q * sizeof *m->coche);
+        memmove(&m->touche[pos + na],  &m->touche[pos + remplace],
+                q * sizeof *m->touche);
     }
 
     for (int k = 0; k < na; k++) {
@@ -5750,6 +5765,7 @@ static int menu_insere(int i, int pos, int remplace,
         m->message[pos + k] = (k < nm) ? msg[k] : NULL;
         m->actif[pos + k]   = 1;
         m->coche[pos + k]   = 0;
+        m->touche[pos + k]  = 0;
     }
     for (int k = na; k < nm; k++) free(msg[k]);   /* liste plus longue */
 
@@ -5791,6 +5807,18 @@ int         hc_menu_article_actif(int i, int j)
 int         hc_menu_article_coche(int i, int j)
 { return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
          ? g_menus[i].coche[j] : 0; }
+int         hc_menu_article_touche(int i, int j)
+{ return (i >= 0 && i < g_nmenus && j >= 0 && j < g_menus[i].n)
+         ? (unsigned char)g_menus[i].touche[j] : 0; }
+
+/* Le champ appartient-il à une pile verrouillée (cantModify) ? Voir
+ * Object.cant_modify : l'écriture est alors refusée EN SILENCE, comme dans
+ * HyperCard — mesuré, pas de message, le script continue. */
+static int champ_verrouille(Object *o)
+{
+    Object *st = owning_stack(o);
+    return st && st->cant_modify;
+}
 
 static int container_set_body(const char *ref, const char *val, int mode);
 
@@ -5958,6 +5986,10 @@ static int container_set_body(const char *ref, const char *val, int mode)
     char *merged = arena_buf();
     Object *o = resolve(ref);
     if (o && o->type == OBJ_FIELD) {
+        /* La pile verrouillée : rien n'est écrit, et rien n'est dit. Toutes
+         * les écritures par morceau — « put x into word 2 of field 1 »,
+         * « delete line 3 of … », « sort » — finissent ici. */
+        if (champ_verrouille(o)) return 1;
         /* passer par hc_field_text / hc_set_field_text : un champ de fond non
          * partagé a un texte propre à chaque carte */
         const char *old = hc_field_text(o);
@@ -6504,7 +6536,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "showpict", "sharedtext",
+        "cantmodify", "cantabort", "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6820,6 +6852,12 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "autotab")) { snprintf(out, outlen, "%s", o->auto_tab ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontsearch")) { snprintf(out, outlen, "%s", o->dont_search ? "true" : "false"); return 1; }
     if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
+    if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
+        snprintf(out, outlen, "%s", o->cant_modify ? "true" : "false"); return 1;
+    }
+    if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
+        snprintf(out, outlen, "%s", o->cant_abort ? "true" : "false"); return 1;
+    }
     /* showPict n'a de sens que sur une couche : le demander à un bouton doit
      * rendre « propriété inconnue » et non « false », qui serait une réponse. */
     if (ci_equal(prop, "showpict") &&
@@ -7431,6 +7469,21 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
 /* L'enveloppe, pour n'avoir qu'UN endroit à instrumenter. Le corps a une
  * dizaine de sorties ; les marquer une à une, c'est en oublier une. */
+/* LA CARTE DONT UN CHAMP A ÉTÉ LU — « bkgnd field "Title" of card id N ».
+ *
+ * hct_resout rend le CHAMP, et un champ de fond non partagé a un texte par
+ * carte : le lire ensuite sur la carte COURANTE rendait le texte d'une autre
+ * carte — ou rien. Mesuré sur « HyperCard Help », convertIDsToTitles :
+ *
+ *     put (bkgnd field "Title" of card id N) into line wordNum of theResult
+ *
+ * rendait vide depuis la carte « Find Topic », « find » sur la carte N elle-
+ * même : la recherche de « HyperTalk Reference » trouvait ses sujets et
+ * n'affichait que des lignes vides. On note donc la carte de référence quand
+ * une part est résolue ; v3_resout l'efface avant chaque résolution, et la
+ * lecture comme l'écriture s'en servent. */
+static Object *g_resout_carte = NULL;
+
 static Object *hct_resout(HctContexte *ctx, const HctNoeud *n)
 {
     Object *o = hct_resout_corps(ctx, n);
@@ -7603,6 +7656,7 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
         case HCT_OBJ_BUTTON:
         case HCT_OBJ_FIELD:
         case HCT_OBJ_PART: {
+            g_resout_carte = card;   /* voir g_resout_carte */
             /* « part » prend les deux, et c'est tout le propos du mot. */
             int t = (n->typeobj == HCT_OBJ_PART)   ? HC_PART_QUELCONQUE
                   : (n->typeobj == HCT_OBJ_BUTTON) ? OBJ_BUTTON : OBJ_FIELD;
@@ -7938,11 +7992,86 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
  *
  * Le nom s'ÉVALUE : « window "Navigator" » comme « window nomPalette ».
  * « window id 7 » n'est pas servi : refusé comme une fenêtre introuvable. */
+/* LES FENÊTRES D'HYPERCARD, NOMMÉES PAR UN MOT-CLÉ — « tool window »,
+ * « pattern window », « message window » —, et leur nom chez l'hôte.
+ *
+ * Venues de la démonstration « Run the Script » de « HyperTalk Reference »
+ * (Apple), qui range l'état des trois avant de jouer son exemple :
+ *
+ *     put "tool window,pattern window,message window" into theWindows
+ *     get item i of theWindows
+ *     put the visible of it into …        et plus tard : set the loc of it
+ *
+ * La fenêtre y arrive donc aussi par une VARIABLE, dont le texte est le
+ * mot-clé. HC répondait « objet introuvable : it », six fois. Les noms
+ * rendus sont ceux de leurs fenêtres chez HyperCard : « window "Tools" »
+ * désigne la même. La boîte de messages a les siens, « msg », « message
+ * box » : ce sont les mêmes mots que le conteneur, et seule une propriété
+ * — visible, loc — ou show et hide en font une fenêtre. */
+static const char *v3_fenetre_motcle(const char *t)
+{
+    static const struct { const char *mot, *nom; } F[] = {
+        { "tool window",    "Tools"    },
+        { "pattern window", "Patterns" },
+        { "message window", "Message"  },
+        { "message box",    "Message"  },
+        { "msg window",     "Message"  },
+        { "msg box",        "Message"  },
+        { "msg",            "Message"  },
+        { NULL, NULL }
+    };
+    char b[64];
+    while (*t == ' ' || *t == '\t') t++;
+    if (ci_prefix(t, "the ")) t += 4;
+    int n = 0;
+    for (; *t && n < (int)sizeof b - 1; t++) {
+        if (*t == ' ' || *t == '\t') {            /* espaces réduits à un */
+            if (n && b[n - 1] != ' ') b[n++] = ' ';
+        } else b[n++] = *t;
+    }
+    while (n && b[n - 1] == ' ') n--;
+    b[n] = '\0';
+    for (int i = 0; F[i].mot; i++)
+        if (ci_equal(b, F[i].mot)) return F[i].nom;
+    return NULL;
+}
+
+/* Le nœud désigne-t-il une fenêtre de l'hôte ? « window "X" », « tool
+ * window », la boîte de messages, ou une variable qui en contient le
+ * mot-clé. Sans contexte, la variable ne se lit pas. */
+static int v3_fenetre_ici(const HctNoeud *o)
+{
+    if (!o) return 0;
+    if (o->genre == HCTN_OBJET)
+        return o->typeobj == HCT_OBJ_WINDOW || o->typeobj == HCT_OBJ_MESSAGE;
+    if (o->genre == HCTN_IDENT) {
+        char v[64];
+        hct_texte(&o->jeton, v, sizeof v);
+        const char *val = var_get(v);
+        return val && v3_fenetre_motcle(val) != NULL;
+    }
+    return 0;
+}
+
 static int v3_fenetre_nom(HctContexte *ctx, const HctNoeud *o,
                           char *nom, int len)
 {
     if (len > 0) nom[0] = '\0';
-    if (!o || o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_WINDOW) return 0;
+    if (!o) return 0;
+    const char *motcle = NULL;
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MESSAGE)
+        motcle = "Message";
+    else if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_WINDOW &&
+             o->designateur == HCT_DES_AUCUN && o->op)
+        motcle = o->op;                             /* tool window */
+    else if (o->genre == HCTN_IDENT) {
+        char v[64];
+        hct_texte(&o->jeton, v, sizeof v);
+        const char *val = var_get(v);
+        motcle = val ? v3_fenetre_motcle(val) : NULL;
+    }
+    if (motcle) { snprintf(nom, (size_t)len, "%s", motcle); return 1; }
+    if (o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_WINDOW) return 0;
     if (o->nfils < 1 || !o->fils[0] || o->designateur == HCT_DES_ID) return 0;
     v3_val_texte(ctx, o->fils[0], nom, len);
     return ctx && ctx->erreur ? 0 : 1;
@@ -8378,8 +8507,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * la fenêtre introuvable, la propriété inconnue. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
-        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
-        n->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        v3_fenetre_ici(n->fils[1])) {
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[1], nom, sizeof nom)) {
@@ -8846,7 +8974,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent", "centered",
+    "transparent", "centered", "multiple", "multiSpace",
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -8880,7 +9008,7 @@ static const char *V3_GLOBALES_HOTE[] = {
 static const char *V3_GLOBALES_ECRIVABLES[] = {
     "lockScreen", "editBkgnd", "cursor",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent", "centered",
+    "transparent", "centered", "multiple", "multiSpace",
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -8929,13 +9057,35 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     }
     /* « the stacks » : les piles ouvertes, une par ligne. Le noyau tient déjà
      * ce registre — c'est celui qui permet à « go to stack "X" » de trouver
-     * une pile déjà ouverte. */
+     * une pile déjà ouverte.
+     *
+     * UN CHEMIN PAR LIGNE, ET LA PILE ACTIVE EN TÊTE. HC rendait le NOM.
+     * C'est le code d'Apple qui dit le contraire, à deux endroits
+     * indépendants de « HyperTalk Reference » :
+     *
+     *     get the value of word 2 of the long name of me
+     *     return (it is not line 1 of the stacks)          -- wrongStack
+     *     if ":HyperCard Help"&return is not in the StacksInUse&return
+     *
+     * Le premier compare le CHEMIN de la pile — celui du long name — à la
+     * ligne 1 de the stacks ; le second cherche un chemin à deux-points dans
+     * the stacksInUse. Avec des noms, wrongStack rendait vrai sur la pile
+     * active elle-même, openStack s'arrêtait avant « start using stack
+     * "HyperCard Help" », et showSection restait introuvable.
+     *
+     * DÉDUIT DU CODE D'APPLE, PAS MESURÉ DANS HYPERCARD : la forme exacte des
+     * lignes, et l'ordre au-delà de la première. Le chemin est celui de
+     * « the long name » — celui de macOS — ou le nom, pour une pile jamais
+     * enregistrée, qui n'en a pas. */
     if (ci_equal(nom, "stacks")) {
         buf[0] = '\0';
         size_t pris = 0;
-        for (int i = 0; i < hc_stack_count(); i++) {
-            Object *st = hc_stack_at(i);
-            const char *nm = st && st->name ? st->name : "";
+        Object *active = g_current_card ? owning_stack(g_current_card) : NULL;
+        for (int k = -1; k < hc_stack_count(); k++) {
+            Object *st = k < 0 ? active : hc_stack_at(k);
+            if (!st || (k >= 0 && st == active)) continue;
+            const char *nm = st->path && st->path[0] ? st->path
+                           : st->name ? st->name : "";
             size_t l = strlen(nm);
             if (pris + l + 2 >= (size_t)HC_VAL) break;
             if (pris) buf[pris++] = '\n';
@@ -9003,8 +9153,11 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
     if (ci_equal(nom, "stacksinuse")) {
         buf[0] = '\0';
         size_t used = 0;
+        /* Le chemin, comme « the stacks » : voir plus haut. */
         for (int i = 0; i < g_nusing; i++) {
-            const char *nm = g_using[i]->name ? g_using[i]->name : "";
+            const char *nm = g_using[i]->path && g_using[i]->path[0]
+                           ? g_using[i]->path
+                           : g_using[i]->name ? g_using[i]->name : "";
             size_t l = strlen(nm);
             if (used + l + 2 >= (size_t)HC_VAL) break;
             if (i) buf[used++] = '\n';
@@ -9468,6 +9621,7 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
      * nous surplombe est ensuite servi par v3_fenetre_prop, dans v3_recours. */
     if (v3_est_fenetre(ref)) return NULL;
 
+    g_resout_carte = NULL;
     Object *o = hct_resout(ctx, ref);
     if (o) return o;
 
@@ -9538,13 +9692,30 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
 
 /* Le contenu d'un objet résolu : le texte d'un champ, le nom des autres,
  * comme dans HyperCard. */
+/* La carte sur laquelle lire ou écrire un champ de fond résolu, si ce n'est
+ * pas la carte courante — voir g_resout_carte. NULL : la carte courante. */
+static Object *carte_du_champ(Object *o)
+{
+    Object *cd = g_resout_carte;
+    if (!o || o->type != OBJ_FIELD || !cd || cd == g_current_card) return NULL;
+    if (cd->type != OBJ_CARD || cd->bg != o->owner || !field_is_percard(o)) return NULL;
+    return cd;
+}
+
 static int v3_lit_objet(void *d, void *objet, HctValeur *out)
 {
     (void)d;
     Object *o = objet;
     if (!o) return 0;
-    if (o->type == OBJ_FIELD) *out = hct_val_texte(hc_field_text(o));
-    else                      *out = hct_val_texte(o->name ? o->name : "");
+    if (o->type == OBJ_FIELD) {
+        /* Le texte de CETTE carte-là : on s'y place le temps de le copier,
+         * comme le noyau le fait déjà pour lire un champ de fond. */
+        Object *cd = carte_du_champ(o), *sauve = g_current_card;
+        if (cd) g_current_card = cd;
+        *out = hct_val_texte(hc_field_text(o));
+        g_current_card = sauve;
+    }
+    else *out = hct_val_texte(o->name ? o->name : "");
     return 1;
 }
 
@@ -9566,7 +9737,13 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
     (void)d;
     Object *o = objet;
     if (!o || o->type != OBJ_FIELD) return 0;
+    if (champ_verrouille(o)) { set_result(""); return 1; }
     if (!val) val = "";
+
+    /* Le site jumeau de la lecture : « put x into bkgnd field "T" of card 3 »
+     * écrit dans le texte de la carte 3. */
+    Object *cd = carte_du_champ(o), *sauve = g_current_card;
+    if (cd) g_current_card = cd;
 
     int pose;
     if (mode == 0) {
@@ -9580,6 +9757,7 @@ static int v3_ecrit_objet(void *d, void *objet, const char *val, int mode)
         pose = hc_set_field_text(o, fusion);
         ARENA_FREE;
     }
+    g_current_card = sauve;
     /* Le champ est resté INTACT : on le dit. Voir hc_set_field_text. */
     if (!pose) emit(HC_ERR, "   !! mémoire insuffisante : le champ n'a pas changé");
     notify_field(o);
@@ -10538,6 +10716,56 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         char m[16];
         v3_brut(c, m, sizeof m);
         if (ci_equal(m, "empty")) { hc_set_selection(NULL, 0, 0); return 1; }
+    }
+
+    /* « SELECT LINE 0 OF <champ> », « SELECT LINE EMPTY OF <champ> » : PLUS
+     * RIEN DE SÉLECTIONNÉ dans la liste.
+     *
+     * L'idiome est d'Apple, et deux fois écrit en dur. La démo exitDemo de
+     * « HyperTalk Reference » allume les lignes une à une, puis finit par
+     * « select line 0 of me » ; « HyperCard Help » s'en sert six fois, sous les
+     * deux formes, pour éteindre une liste (« select line empty of card field
+     * fieldName »). HC exigeait un rang : « un rang numérique est attendu
+     * ici », « il n'y a pas de line de rang 0 dans ce champ ».
+     *
+     * Seulement la LIGNE, une seule borne, et un champ qui existe : c'est la
+     * forme des deux piles, et rien d'autre n'est attesté. Que HyperCard
+     * fasse la même chose pour « char 0 » ou « word 0 » : NON MESURÉ. Que
+     * « line 0 » éteigne la liste et ne fasse rien d'autre — pas de message,
+     * pas d'erreur — se lit dans le code d'Apple, et n'est pas mesuré non
+     * plus dans HyperCard. */
+    if (c->genre == HCTN_CHUNK && c->sorte == HCT_CH_LINE && !c->ordinal &&
+        c->nfils == 2 && !avant && !apres) {
+        char b1[64];
+        v3_val_texte(ctx, c->fils[0], b1, sizeof b1);
+        if (ctx->erreur) return 1;
+        const char *q = skip_spaces(b1);
+        int zero = !*q || (hct_est_nombre(q) && atof(q) == 0.0);
+        if (zero) {
+            Object *champ = hct_resout(ctx, c->fils[1]);
+            if (champ && champ->type == OBJ_FIELD) {
+                /* SEULEMENT SI LA SÉLECTION EST DANS CE CHAMP-LÀ.
+                 *
+                 * Éteindre une liste ne touche pas aux autres. La première
+                 * version vidait toute sélection, et goTopic (« HyperCard
+                 * Help ») l'a payé le jour même : resetMainTopicsCard éteint
+                 * la liste de GAUCHE par « select line 0 of card field
+                 * "Sections" », puis goTopic lit le sujet choisi dans celle
+                 * de DROITE — « the selectedText of the target » —, vide, et
+                 * « go card » ne bougeait plus. Rapporté DANS HC par
+                 * l'utilisatrice : « goTopic renvoie toujours à la même
+                 * image ». */
+                Object *sel = NULL; int s0 = 0, l0 = 0;
+                hc_get_selection(&sel, &s0, &l0);
+                if (sel == champ) {
+                    g_found_lisible = 0;
+                    g_found_montre  = 0;
+                    hc_set_selection(NULL, 0, 0);
+                }
+                set_result("");
+                return 1;
+            }
+        }
     }
 
     Object *f = NULL;
@@ -11891,9 +12119,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
      * de fenêtre, posée par l'hôte. */
     if (n->nfils >= 3 && n->fils[0] && n->fils[0]->genre == HCTN_OF &&
         n->fils[0]->nfils >= 2 && n->fils[0]->fils[0] &&
-        n->fils[0]->fils[0]->genre == HCTN_IDENT && n->fils[0]->fils[1] &&
-        n->fils[0]->fils[1]->genre == HCTN_OBJET &&
-        n->fils[0]->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        n->fils[0]->fils[0]->genre == HCTN_IDENT &&
+        v3_fenetre_ici(n->fils[0]->fils[1])) {
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[0]->fils[1], nom, sizeof nom)) {
@@ -11902,7 +12129,12 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
         ARENA_MARK;
         char *val = arena_buf();
-        v3_val_texte(ctx, n->fils[n->nfils - 1], val, HC_VAL);
+        /* « to 10,20 » donne un enfant par élément, comme pour un objet :
+         * on lisait le DERNIER seul, et « set the loc of window "Navigator"
+         * to 10,20 » posait « 20 » — refusé par l'hôte comme un point mal
+         * formé. Vu le 5 octobre en mesurant « set the loc of tool window ». */
+        if (n->nfils > 3) v3_val_liste(ctx, n, 2, val, HC_VAL);
+        else              v3_val_texte(ctx, n->fils[n->nfils - 1], val, HC_VAL);
         if (ctx->erreur) { ARENA_FREE; return 1; }
         int r = v3_fenetre_hote(nom, "pose", prop, val, NULL, 0);
         ARENA_FREE;
@@ -12301,6 +12533,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
     } else if (ci_equal(prop, "cantdelete")) {
         o->cant_delete = truthy(val);
+    } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
+        o->cant_modify = truthy(val);
+    } else if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
+        o->cant_abort = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
         /* Accepte aussi « centre » et « centered », qu'on rencontre dans
          * les scripts, et retombe à gauche sur un mot inconnu plutôt que
@@ -13374,8 +13610,7 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     /* « show window "Navigator" », « hide window "Navigator" » : une fenêtre
      * de l'hôte. « show … at » n'est pas servi pour elle : non mesuré, et
      * « set the loc of window » fait la même chose. */
-    if (n->fils[0]->genre == HCTN_OBJET &&
-        n->fils[0]->typeobj == HCT_OBJ_WINDOW) {
+    if (v3_fenetre_ici(n->fils[0])) {
         char nom[256];
         if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
             if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
@@ -13389,6 +13624,27 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
         }
         set_result("");
         return 1;
+    }
+
+    /* « SHOW MENUBAR », « HIDE MENUBAR », « SHOW GROUPS », « HIDE GROUPS ».
+     *
+     * Ni des objets ni des fenêtres : des réglages de l'affichage, que seul
+     * l'hôte sait rendre. La pile d'aide d'Apple fait les deux — addHelpMenu
+     * commence par « show menuBar », et toggleActiveText montre ou cache le
+     * soulignement gris du texte de style « group », le texte actif de
+     * l'aide. HC répondait « ne sait pas faire », et addHelpMenu s'arrêtait
+     * avant d'avoir créé son menu : d'où les « menu introuvable » qui
+     * suivaient. Ce que l'hôte en fait est écrit chez lui (HCview.m). */
+    if (n->fils[0]->genre == HCTN_IDENT) {
+        char mot[16];
+        v3_brut(n->fils[0], mot, sizeof mot);
+        if (ci_equal(mot, "menubar") || ci_equal(mot, "groups")) {
+            host_global_set(ci_equal(mot, "menubar") ? "menuBar" : "showGroups",
+                            montrer ? "true" : "false");
+            g_visual_dirty = 1;
+            set_result("");
+            return 1;
+        }
     }
 
     /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
@@ -13566,10 +13822,28 @@ static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Le premier mot d'un fils tel qu'écrit est-il `mot` ? « recent card » n'est
+ * pas une référence d'objet que hct_resout sache résoudre : on le reconnaît
+ * à son texte. */
+static int v3_commence_par(const HctNoeud *f, const char *mot)
+{
+    const char *deb; int len;
+    if (!f || !hct_noeud_etendue(f, &deb, &len) || len <= 0) return 0;
+    size_t l = strlen(mot);
+    return (size_t)len >= l && strncasecmp(deb, mot, l) == 0 &&
+           ((size_t)len == l || deb[l] == ' ' || deb[l] == '\t');
+}
+
 static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
 {
     Object *dst = g_current_card;
-    if (n->nfils >= 1) {
+    /* « push recent card » : la carte d'où l'on vient, SANS y aller. Sans
+     * carte précédente, rien n'est empilé — ce que fait HyperCard dans ce
+     * cas : NON MESURÉ. */
+    if (n->nfils >= 1 && v3_commence_par(n->fils[0], "recent")) {
+        dst = histo_precedente();
+        if (!dst) { set_result("No such card"); return 1; }
+    } else if (n->nfils >= 1) {
         Object *o = hct_resout(ctx, n->fils[0]);
         if (!o) return 0;
         dst = o;
@@ -13587,16 +13861,43 @@ static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
-/* pop [card] [into conteneur].
+/* pop [card] [into|before|after conteneur].
  *
- * La forme « into » garde l'ancien chemin : écrire dans un conteneur
- * quelconque — variable, champ, morceau — est le travail de `put`, et le
- * refaire ici en dupliquerait la mécanique. Elle reviendra quand `put` sera
- * un service partagé plutôt qu'une ligne fabriquée pour l'ancien exécuteur. */
+ * AVEC UN CONTENEUR, ON NE BOUGE PAS. MESURÉ DANS HYPERCARD le 4 octobre :
+ * « pop card into x » depuis la carte 3 laisse sur la carte 3, et x reçoit
+ * le LONG ID de la carte dépilée — « card id 2850 of stack "Saved HD:…" »,
+ * la forme de « the long id of this card » (docs/mesures/long_id.txt). La
+ * pile d'aide d'Apple en vit : whereICameFrom fait push recent card puis pop
+ * card into theCard, et en tire le nom de la pile d'où l'on vient.
+ *
+ * HC répondait « ne sait pas faire ». L'écriture passe par container_set,
+ * le chemin de « put » : variable, champ ou morceau. « before » et « after »
+ * suivent la même grammaire ; seule « into » est mesurée. */
 static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
 {
     (void)ctx;
-    if (v3_indice_motcle(n, "into", 0) >= 0) return 0;
+    int ik = v3_indice_motcle(n, "into", 0), mode = 0;
+    if (ik < 0 && (ik = v3_indice_motcle(n, "after", 0))  >= 0) mode = 1;
+    if (ik < 0 && (ik = v3_indice_motcle(n, "before", 0)) >= 0) mode = 2;
+    if (ik >= 0) {
+        if (ik + 1 >= n->nfils) return 0;
+        const char *deb; int len;
+        if (!hct_noeud_etendue(n->fils[ik + 1], &deb, &len) || len <= 0) return 0;
+        if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
+        Object *dst = g_navstack[--g_navtop];
+        char ref[512], id[HC_NOM_MAX + 128];
+        if (len > (int)sizeof ref - 1) len = (int)sizeof ref - 1;
+        memcpy(ref, deb, (size_t)len);
+        ref[len] = '\0';
+        if (!obj_prop_read(dst, "id", HC_NOM_LONG, id, (int)sizeof id)) id[0] = '\0';
+        if (!container_set(ref, id, mode)) {
+            set_result("destination invalide");
+            emit(HC_ERR, "   !! destination invalide : %s", ref);
+            return 1;
+        }
+        set_result("");
+        return 1;
+    }
     if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
 
     Object *dst = g_navstack[--g_navtop];
@@ -13698,6 +13999,31 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
         k -= 4;
         while (k > 0 && isspace((unsigned char)nom[k-1])) k--;
         nom[k] = '\0';
+    }
+
+    /* « choose tool 3 » : le rang de l'outil dans la palette d'HyperCard,
+     * de gauche à droite et de haut en bas — trois colonnes, six rangées.
+     * L'hôte ne reçoit que des noms : c'est ici qu'on traduit, une fois pour
+     * tous les hôtes. */
+    {
+        static const char *RANG[] = {
+            "browse", "button", "field",
+            "select", "lasso", "pencil",
+            "brush", "eraser", "line",
+            "spray", "rectangle", "round rect",
+            "bucket", "oval", "curve",
+            "text", "regular polygon", "polygon"
+        };
+        char *fin = NULL;
+        long r = strtol(nom, &fin, 10);
+        if (nom[0] && fin && !*fin) {
+            if (r < 1 || r > 18) {
+                emit(HC_ERR, "   !! choose : pas d'outil de rang %s", nom);
+                set_result("No such tool");
+                return 1;
+            }
+            snprintf(nom, sizeof nom, "%s", RANG[r - 1]);
+        }
     }
 
     g_visual_dirty = 1;
@@ -14132,6 +14458,50 @@ int hc_go_recent(int i)
     return v3_va_a(vues[i]);
 }
 
+/* La pile désignée par un nœud, ouverte par l'hôte si elle ne l'est pas
+ * encore. NULL, et l'erreur dite, si elle n'existe nulle part. */
+static Object *v3_go_ouvre_pile(HctContexte *ctx, const HctNoeud *pile)
+{
+    char nom[256];
+    v3_nom_pile(ctx, pile, nom, sizeof nom);
+    if (ctx->erreur) return NULL;
+    Object *s = nom[0] ? find_open_stack(nom) : NULL;
+    if (!s && nom[0] && g_host && g_host->open_stack) s = g_host->open_stack(nom);
+    if (!s && !nom[0]) s = hct_resout(ctx, pile);          /* « this stack » */
+    if (!s) {
+        set_result("No such stack");
+        emit(HC_ERR, "   !! go : pile introuvable : %s", nom);
+    }
+    return s;
+}
+
+/* Le texte de « card a & b && c [of stack "X"] » pris comme UN nom : le
+ * désignateur de la carte, puis chaque opérande avec son séparateur. La
+ * dernière opérande peut porter « of <pile> » : sa valeur seule entre dans
+ * le nom, la pile est rendue dans *pile. */
+static void v3_go_concat(HctContexte *ctx, const HctNoeud *n, const HctNoeud *carte,
+                         int dernier, char *out, int outlen, const HctNoeud **pile)
+{
+    if (n == carte) { v3_val_texte(ctx, v3_designateur(carte), out, outlen); return; }
+    v3_go_concat(ctx, n->fils[0], carte, 0, out, outlen, pile);
+    if (ctx->erreur) return;
+    const HctNoeud *d = n->fils[1];
+    if (dernier && d->genre == HCTN_OF && d->nfils == 2 &&
+        d->fils[1]->genre == HCTN_OBJET && d->fils[1]->typeobj == HCT_OBJ_STACK) {
+        *pile = d->fils[1];
+        d = d->fils[0];
+    }
+    ARENA_MARK;
+    char *v = arena_buf();
+    v3_val_texte(ctx, d, v, HC_VAL);
+    if (!ctx->erreur) {
+        size_t l = strlen(out);
+        snprintf(out + l, (size_t)outlen - l, "%s%s",
+                 strcmp(n->op, "&&") ? "" : " ", v);
+    }
+    ARENA_FREE;
+}
+
 static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
 {
     int i = v3_est_motcle(n, 0, "to") ? 1 : 0;
@@ -14235,6 +14605,74 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         if (ctx->erreur) return 1;
 
         return v3_va_pile(nom);
+    }
+
+    /* « GO CARD theSection & theTopic » : le NOM de la carte est toute la
+     * concaténation.
+     *
+     * La pile « Help Extras » d'Apple l'écrit sans parenthèses, à chaque clic
+     * sur un sujet. L'analyseur, lui, lit « (card theSection) & theTopic » :
+     * le rang d'une carte s'arrête avant « & » — et il le faut, sans quoi
+     * « the name of card 1 && the name of card 2 » perdrait son second terme.
+     * Derrière go, la lecture d'Apple est la seule qui ait un sens : go ne
+     * concatène rien, il se rend quelque part. On la fait donc ICI, et
+     * seulement ici. Une cible « of stack "X" » finit la dernière opérande ;
+     * elle est reprise comme cible de la carte. */
+    {
+        const HctNoeud *gauche = ref;
+        while (gauche->genre == HCTN_BINAIRE && gauche->nfils == 2 && gauche->op &&
+               (!strcmp(gauche->op, "&") || !strcmp(gauche->op, "&&")))
+            gauche = gauche->fils[0];
+        if (gauche != ref && gauche->genre == HCTN_OBJET &&
+            gauche->typeobj == HCT_OBJ_CARD && v3_designateur(gauche) &&
+            !v3_noeud_cible(gauche) && gauche->designateur != HCT_DES_ID) {
+            ARENA_MARK;
+            char *nom = arena_buf();
+            const HctNoeud *pile = NULL;
+            v3_go_concat(ctx, ref, gauche, 1, nom, HC_VAL, &pile);
+            if (ctx->erreur) { ARENA_FREE; return 1; }
+            Object *stk = owning_stack(g_current_card);
+            if (pile) {
+                stk = v3_go_ouvre_pile(ctx, pile);
+                if (!stk) { ARENA_FREE; return 1; }
+            }
+            Object *c = NULL;
+            char *fin = NULL;
+            long r = strtol(nom, &fin, 10);
+            if (nom[0] && fin && !*fin) c = r >= 1 ? nth_card(stk, (int)r - 1) : NULL;
+            else                        c = card_par_nom_de(stk, NULL, nom);
+            if (!c) {
+                emit(HC_ERR, "   !! go : carte introuvable : %s", nom);
+                set_result("No such card");
+                ARENA_FREE;
+                return 1;
+            }
+            ARENA_FREE;
+            set_result("");
+            return v3_va_a(c);
+        }
+    }
+
+    /* « GO CARD X OF STACK "Y" » SUR UNE PILE QUI N'EST PAS ENCORE OUVERTE.
+     *
+     * « go stack "Y" » demandait déjà à l'hôte de l'ouvrir (v3_va_pile) ;
+     * nommer une carte DANS cette pile passait par hct_resout, qui ne cherche
+     * que parmi les piles ouvertes. La pile d'aide d'Apple y bute :
+     *
+     *     go card theIndexName of stack "Help Extras" in a new window
+     *
+     * DANS HC (l'application), « HC comprend pas » — rapporté le 5 octobre.
+     * Dans le noyau, la ligne échouait sans un mot et le script continuait.
+     * On ouvre donc la pile d'abord, par le même hôte, puis la carte se
+     * résout comme dans une pile ouverte. Cocoa la met dans une fenêtre à
+     * elle : c'est déjà « in a new window ». */
+    for (const HctNoeud *o = ref; o && o->genre == HCTN_OBJET &&
+         (o->typeobj == HCT_OBJ_CARD || o->typeobj == HCT_OBJ_BACKGROUND);
+         o = v3_noeud_cible(o)) {
+        const HctNoeud *c = v3_noeud_cible(o);
+        if (!c || c->typeobj != HCT_OBJ_STACK) continue;
+        if (!v3_go_ouvre_pile(ctx, c)) return 1;
+        break;
     }
 
     Object *dst = NULL;
@@ -14753,9 +15191,20 @@ static int v3_menu_index(HctContexte *ctx, const HctNoeud *n)
         hct_texte(&n->fils[0]->jeton, b, sizeof b);
     }
 
+    /* UNE EXPRESSION DÉSIGNE PAR NUMÉRO OU PAR NOM, SELON CE QU'ELLE VAUT.
+     *
+     * L'analyseur range « menu gHMnu » comme un RANG — une expression, pas une
+     * chaîne. Mais la pile d'aide d'Apple y met un NOM : « put "Reference"
+     * into gHMnu », puis « create menu gHMnu », « put … into menu gHMnu »,
+     * « there is a menu gHMnu ». La création passait (elle évalue le nom) ;
+     * toute référence ensuite cherchait un rang dans « Reference », ne le
+     * trouvait pas, et répondait « menu introuvable » — trois fois à
+     * l'ouverture de l'aide convertie. Une valeur qui n'est pas un nombre se
+     * cherche donc par son nom ; un nombre reste un rang. Même règle pour
+     * menuItem, plus bas : le site jumeau. */
     if (n->designateur == HCT_DES_RANG) {
         int r = hc_rang(b);
-        return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
+        if (r != 0 || !b[0]) return (r >= 1 && r <= g_nmenus) ? r - 1 : -1;
     }
     return menu_index(b);
 }
@@ -14881,11 +15330,15 @@ static int v3_article_index(HctContexte *ctx, const HctNoeud *n, int *imenu)
         hct_texte(&n->fils[0]->jeton, b, sizeof b);
     }
 
+    /* Voir v3_menu_index : une expression qui ne vaut pas un nombre désigne
+     * l'article par son NOM. */
     if (n->designateur == HCT_DES_RANG) {
         int r = hc_rang(b);
-        if (r >= 1 && r <= g_menus[im].n) return r - 1;
-        g_menu_echec = V3_MENU_ARTICLE_ABSENT;
-        return -1;
+        if (r != 0 || !b[0]) {
+            if (r >= 1 && r <= g_menus[im].n) return r - 1;
+            g_menu_echec = V3_MENU_ARTICLE_ABSENT;
+            return -1;
+        }
     }
     for (int j = 0; j < g_menus[im].n; j++)
         if (ci_equal(g_menus[im].article[j], b)) return j;
@@ -14941,6 +15394,13 @@ static int v3_menu_prop_lit(HctContexte *ctx, const HctNoeud *obj,
         }
         if (ci_equal(prop, "menumessage") || ci_equal(prop, "menumsg")) {
             *out = hct_val_texte(m->message[j] ? m->message[j] : ""); return 1;
+        }
+        /* cmdChar, ou commandChar : la touche qui, avec Commande, choisit
+         * l'article. La pile d'aide d'Apple pose « ? » sur « HyperCard
+         * Help ». Un seul caractère ; vide s'il n'y en a pas. */
+        if (ci_equal(prop, "cmdchar") || ci_equal(prop, "commandchar")) {
+            char t[2] = { m->touche[j], 0 };
+            *out = hct_val_texte(t); return 1;
         }
         if (ci_equal(prop, "number")) {
             snprintf(b, sizeof b, "%d", j + 1);
@@ -15010,6 +15470,15 @@ static int v3_menu_prop_ecrit(HctContexte *ctx, const HctNoeud *obj,
             if (!t) { hct_ctx_faute(ctx, obj, "mémoire insuffisante"); return 1; }
             strcpy(t, val);
             free(m->message[j]); m->message[j] = t;
+            menus_prevenir(); return 1;
+        }
+        /* Le premier caractère, s'il est ASCII : la touche d'un raccourci
+         * est une lettre ou un signe du clavier, et garder le premier octet
+         * d'un caractère accentué en UTF-8 en ferait la moitié d'un
+         * caractère. Vide, ou autre chose : pas de raccourci. */
+        if (ci_equal(prop, "cmdchar") || ci_equal(prop, "commandchar")) {
+            unsigned char c = (unsigned char)val[0];
+            m->touche[j] = (char)((c > ' ' && c < 0x7F) ? c : 0);
             menus_prevenir(); return 1;
         }
         g_menu_echec = V3_MENU_PROP_INCONNUE;

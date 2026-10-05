@@ -28,7 +28,7 @@
    servi    the target             -> → message "t" à button "B"· traité par button "B"card b
    servi    the paramCount         -> → message "t" à button "B"· traité par button "B"0
    servi    the params             -> → message "t" à button "B"· traité par button "B"t
-   servi    the stacks             -> → message "t" à button "B"· traité par button "B"
+   servi    the stacks             -> → message "t" à button "B"· traité par button "B"T
    servi    the windows            -> → message "t" à button "B"· traité par button "B"→ me
    servi    the programs           -> → message "t" à button "B"· traité par button "B"→ me
    servi    the sound              -> → message "t" à button "B"· traité par button "B"done

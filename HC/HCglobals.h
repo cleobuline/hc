@@ -90,6 +90,13 @@ extern BOOL     gCentered;
  * enferme une surface, et au-delà d'une cinquantaine un polygone ne se
  * distingue plus d'un cercle à l'œil. */
 extern int      gPolySides;
+/* DRAW MULTIPLE (« the multiple », « the multiSpace ») : les outils de forme
+ * — ligne, rectangle, rectangle arrondi, ovale, polygone régulier — laissent
+ * leurs copies en traînée pendant le tracé, chaque copie à gMultiSpace pixels
+ * au moins de la précédente (1 à 100, 1 par défaut). Le menu Options et les
+ * scripts le posent ; « drag » le respecte comme la souris. */
+extern BOOL     gDrawMultiple;
+extern int      gMultiSpace;
 /* Couleur d'encre et couleur de fond du dessin.
  *
  * gInk reste ce qu'il etait : un MODE — peindre, peindre en fond, effacer.

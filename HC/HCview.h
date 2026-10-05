@@ -52,7 +52,11 @@ enum {
      * unique : l'article de menu, « doMenu "Draw Centered" » et « the
      * centered » posent le MÊME état. Il ne se grise pas faute de sélection
      * — c'est un réglage qu'on allume AVANT de dessiner. */
-    HCV_PAINT_CENTERED
+    HCV_PAINT_CENTERED,
+    /* « Draw Multiple ». Une coche encore, et le même chemin unique que
+     * « Draw Centered » : l'article, « doMenu "Draw Multiple" » et « the
+     * multiple ». */
+    HCV_PAINT_MULTIPLE
 };
 
 BOOL hcv_menu_trappe(const char *article);

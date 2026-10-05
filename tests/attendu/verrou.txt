@@ -1,0 +1,20 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le banc d'HyperCard ==
+   au départ : false
+   champ verrouillé : avant
+   champ libre : avant
+cantModify : true
+
+== 2. les écritures par morceau, verrouillé ==
+   champ : un deux trois
+   variable : xy
+
+== 3. l'aller-retour par le fichier ==
+   relu verrouillé : oui
+   relu libre      : oui
+   ligne « cantmodify » dans le fichier libre : aucune
+
+== 4. cantAbort : ⌘-point ne coupe plus ==
+   au départ : false
+   tours faits : 5
+   (le second « tours faits » manque : interrompu au deuxième tour)

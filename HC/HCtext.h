@@ -16,6 +16,9 @@
  * les lignes pareil, et field_attr_string a besoin de savoir lequel il sert. */
 extern BOOL gForEditor;
 
+/* « show groups » : le texte de style « group » souligné de gris. Voir HCtext.m. */
+extern BOOL gGroupsShown;
+
 /* ---- Police d'un objet ---- */
 NSFont       *obj_base_font(Object *o, CGFloat defSize);
 NSFont       *obj_font(Object *o, CGFloat defSize);

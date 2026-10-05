@@ -28,3 +28,9 @@
 == 5. la pile n'a pas d'id : refus, et le script s'arrete ==
    [ERR]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
    [ERR]    !! propriété inconnue (v3, ligne 2 de button "B".mouseUp)
+
+== 6. push recent card, pop card into : le banc de test6 ==
+   pop into : card id 3 of stack "test5"
+   carte : 3
+   carte 1 : 3
+   before : card id 5 of stack "test5" / carte 2
