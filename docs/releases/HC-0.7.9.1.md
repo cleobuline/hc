@@ -28,6 +28,8 @@ with File > Open.
 | `the visible of tool window`, `the loc of …` | "object not found" | **work** for the tool, pattern and message windows |
 | `show msg`, `hide message box` | "object not found" | **work** |
 | `choose tool 3` | a syntax error | **works** |
+| `the clickChunk` after `wait until the mouseClick` | empty | **the click you just made** |
+| `the clickText` | the whole line | **the word, or the whole grouped phrase** |
 | `go card x of stack "y"`, stack not open yet | "object not found" | **opens the stack and goes** |
 | `go card theSection & theTopic` | "object not found" | **goes to the card named by the whole text** |
 | `the hcVersion`, "About HC" | `0.7.9` | `0.7.9.1` |
@@ -107,7 +109,31 @@ macOS beta.
   whether it is in use. With names, it never put itself in use, and
   `showSection` and `goTopic` were "not found".
 
-### 5. Paint: Draw Multiple
+### 5. Clicks in text
+
+Apple's reference demonstrates `the clickChunk` and `the clickText` like
+this:
+
+```
+wait until the mouseClick
+get the clickChunk
+select it
+```
+
+- **A click made while a script runs** now records where it happened.
+  `the clickLoc`, `the clickLine`, `the clickChunk` and `the clickText`
+  report that click. Before, they still reported the previous one, here the
+  click on the button that started the script.
+- **`the clickChunk`** is the word you clicked, or the **whole run of text in
+  the `group` style** around it, as Apple's reference says. A click on one
+  word of a grouped phrase gives the whole phrase.
+- **`the clickText`** is the text of that same chunk. HC used to give the
+  whole line, which is not what HyperCard does.
+- **`the clickChunk` counts characters, not bytes.** Each accented or special
+  character before the click (such as the `¬` of Apple's scripts) used to
+  shift the chunk one character to the right.
+
+### 6. Paint: Draw Multiple
 
 `the multiple`, `the multiSpace` (1 to 100, default 1) and a **Draw
 Multiple** item in the Options menu. With it on, the line, rectangle,
@@ -118,7 +144,7 @@ script.
 Also: `choose tool 3` selects a tool by its number, counted across the tool
 palette from left to right and top to bottom, as in HyperCard (1 to 18).
 
-### 6. HyperCard's own windows
+### 7. HyperCard's own windows
 
 `tool window`, `pattern window` and `message window` can be named in a
 script, directly or through a variable. You can read and set their
@@ -130,7 +156,7 @@ work again. The message box is still a container for `put`.
 `set the loc of window "Navigator" to 10,20` used to set only the `20`. It
 now sets the whole point.
 
-### 7. Sturdier against damaged stacks
+### 8. Sturdier against damaged stacks
 
 Before submitting HC anywhere, its stack reader was fuzzed: hundreds of
 thousands of damaged files, in HC's format and in Apple's, under
@@ -146,7 +172,7 @@ A review of the macOS side then found two problems:
 - a picture layer whose header announces a huge size is now refused if the
   memory cannot be allocated. Before, it would have written to address zero.
 
-### 8. "About HC"
+### 9. "About HC"
 
 The link now goes to [labynet.fr](https://labynet.fr). In 0.7.9 it went to
 labynet.net.
@@ -198,5 +224,7 @@ labynet.net.
 - [#107](https://github.com/cleobuline/hc/pull/107): Apple's help stacks, the
   fidelity fixes above, the two macOS-side fixes, version 0.7.9.1 and this
   note
+- [#108](https://github.com/cleobuline/hc/pull/108): clicks in text:
+  `the clickChunk` and `the clickText`
 
 **Full changelog:** [HC-0.7.9...HC-0.7.9.1](https://github.com/cleobuline/hc/compare/HC-0.7.9...HC-0.7.9.1)
