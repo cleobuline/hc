@@ -1,0 +1,156 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. sans hôte qui réponde : les fenêtres le disent ==
+   show tool window
+      [ERR]    !! fenêtre introuvable : Tools
+   put the visible of pattern window
+      [ERR]    !! fenêtre introuvable : Patterns (v3, ligne 2 de button "Run the Script".mouseUp)
+   hide msg
+      [ERR]    !! fenêtre introuvable : Message
+
+== 2. les mots-clés, écrits en clair ==
+   put the visible of tool window
+      -> hôte : lit Tools visible
+      true
+   put the loc of pattern window
+      -> hôte : lit Patterns loc
+      600,300
+   put the visible of message window
+      -> hôte : lit Message visible
+      true
+   put the visible of the message box
+      -> hôte : lit Message visible
+      true
+   set the loc of tool window to 610,50
+      -> hôte : pose Tools loc = 610,50
+   put the loc of tool window
+      -> hôte : lit Tools loc
+      610,50
+   hide pattern window
+      -> hôte : cache Patterns
+   show pattern window
+      -> hôte : montre Patterns
+   close pattern window
+      -> hôte : ferme Patterns
+   put there is a tool window
+      -> hôte : existe Tools
+      true
+   put the visible of window "Tools"
+      -> hôte : lit Tools visible
+      true
+
+== 3. la boîte de messages : show, hide, et toujours un conteneur ==
+   hide msg
+      -> hôte : cache Message
+   show message box
+      -> hôte : montre Message
+   hide message window
+      -> hôte : cache Message
+   put "abc" into msg
+  put the number of chars of msg into n
+  put n
+      abc
+      3
+
+== 4. la forme de « Run the Script » : le mot-clé dans une variable ==
+   put "tool window,pattern window,message window" into theWindows
+  repeat with i = 1 to the number of items of theWindows
+    get item i of theWindows
+    put the visible of it & "," & the loc of it into line i of saved
+  end repeat
+  put saved
+  repeat with i = 1 to the number of items of theWindows
+    get item i of theWindows
+    set the visible of it to false
+    set the loc of it to 5,i * 10
+  end repeat
+  repeat with i = 1 to the number of items of theWindows
+    get item i of theWindows
+    set the visible of it to item 1 of line i of saved
+    set the loc of it to item 2 to 3 of line i of saved
+  end repeat
+      -> hôte : lit Tools visible
+      -> hôte : lit Tools loc
+      -> hôte : lit Patterns visible
+      -> hôte : lit Patterns loc
+      -> hôte : lit Message visible
+      -> hôte : lit Message loc
+      true,610,50
+false,600,300
+false,40,500
+      -> hôte : pose Tools visible = false
+      -> hôte : pose Tools loc = 5,10
+      -> hôte : pose Patterns visible = false
+      -> hôte : pose Patterns loc = 5,20
+      -> hôte : pose Message visible = false
+      -> hôte : pose Message loc = 5,30
+      -> hôte : pose Tools visible = true
+      -> hôte : pose Tools loc = 610,50
+      -> hôte : pose Patterns visible = false
+      -> hôte : pose Patterns loc = 600,300
+      -> hôte : pose Message visible = false
+      -> hôte : pose Message loc = 40,500
+      état final : Tools 1 610,50, Patterns 0 600,300, Message 0 40,500
+
+== 5. une variable qui n'est pas une fenêtre reste ce qu'elle était ==
+   put "card field 1" into w
+  put the visible of w
+      true
+   put "tool" into tool
+  put tool
+      tool
+   put "pattern" into w
+  put the visible of w
+      [ERR]    !! objet introuvable (v3, ligne 3 de button "Run the Script".mouseUp)
+
+== 6. le point sans guillemets, pour la Navigator aussi ==
+   set the loc of window "Navigator" to 30,40
+      -> hôte : pose Navigator loc = 30,40
+   put the loc of window "Navigator"
+      -> hôte : lit Navigator loc
+      30,40
+   put 70 into x
+  set the loc of window "Navigator" to x,x + 1
+      -> hôte : pose Navigator loc = 70,71
+   put the loc of window "Navigator"
+      -> hôte : lit Navigator loc
+      70,71
+
+== 7. Draw Multiple : the multiple, the multiSpace ==
+   put the multiple && the multiSpace
+      false 1
+   set the multiple to true
+  set the multiSpace to 4
+      -> hôte : multiple = true
+      -> hôte : multiSpace = 4
+   put the multiple && the multiSpace
+      true 4
+   put the multiple into m
+  set the multiple to false
+  set the multiple to m
+  put the multiple
+      -> hôte : multiple = false
+      -> hôte : multiple = true
+      true
+   put "filled,multiple,multiSpace" into theProperties
+  repeat with itemNum = 1 to 3
+    put the value of ("the" && item itemNum of theProperties) into item itemNum of saved
+  end repeat
+  put saved
+      false,true,4
+
+== 8. choose tool <numéro> ==
+   choose tool 3
+      -> hôte : outil « field »
+   choose tool 1 + 8
+      -> hôte : outil « line »
+   put 17 into t
+  choose tool t
+      -> hôte : outil « regular polygon »
+   choose tool 19
+      [ERR]    !! choose : pas d'outil de rang 19
+   choose line tool
+      -> hôte : outil « line »
+   choose spray can tool
+      -> hôte : outil « spray can »
+   choose "Select Tool"
+      -> hôte : outil « Select »

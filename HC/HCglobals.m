@@ -17,6 +17,8 @@ BOOL    gGrid         = NO;
 BOOL    gFatBits      = NO;
 BOOL    gCentered     = NO;
 int     gPolySides    = 4;
+BOOL    gDrawMultiple = NO;
+int     gMultiSpace   = 1;
 NSColor *gInkColor  = nil;   /* noir  — voir hc_colors_init() */
 NSColor *gBackColor = nil;   /* blanc — idem */
 

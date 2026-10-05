@@ -262,3 +262,61 @@ converties : l'aide se met en usage à l'ouverture, et le clic dans
 « Sections » trouve showSection. Cinq témoins changent d'une ligne : the
 stacks rendait VIDE quand la pile courante n'était pas au registre, elle la
 rend maintenant — une pile dont on regarde une carte est ouverte.
+
+
+« RUN THE SCRIPT » : DRAW MULTIPLE ET LES TROIS FENÊTRES — 5 octobre
+--------------------------------------------------------------------
+
+Le bouton « Run the Script » de « HyperTalk Reference » range, avant de
+jouer un exemple, l'état de la peinture et des fenêtres d'HyperCard, puis le
+remet. DANS HC (l'application), relevé par l'utilisatrice :
+
+    propriété inconnue : multiple
+    propriété inconnue : multiSpace
+    objet introuvable : it (× 6)
+
+DRAW MULTIPLE est fait pour de bon, pas seulement nommé : « the multiple »
+et « the multiSpace » (1 à 100, 1 par défaut, ramené dans ses bornes comme
+polySides) se lisent et se posent, l'article « Draw Multiple » entre dans le
+menu Options avec sa coche et « doMenu ». Ligne, rectangle, rectangle
+arrondi, ovale et polygone régulier laissent alors une copie gravée chaque
+fois que la forme a avancé de multiSpace pixels — à la souris, et par
+« drag », qui pose ses copies sur le chemin. L'écart compté est le plus grand
+des deux déplacements du point tiré. Tout cela est dans HCview.m : compilé
+par l'intégration, NON EXÉCUTÉ ici, et l'espacement exact des copies chez
+HyperCard N'EST PAS MESURÉ.
+
+LES SIX « it » : la démonstration met dans une variable le MOT-CLÉ de chaque
+fenêtre — « tool window », « pattern window », « message window » — et lit,
+puis repose, « the visible of it » et « the loc of it ». Le noyau reconnaît
+maintenant ces mots-clés, écrits en clair comme dans une variable, et pose la
+question à l'hôte sous les noms qu'ils ont chez HyperCard : « Tools »,
+« Patterns », « Message ». « window "Tools" » désigne donc la même. L'hôte
+sert visible, loc (le coin haut-gauche du contenu, en coordonnées d'écran,
+comme la Navigator), rect, name, show, hide et close. La loc qu'HyperCard
+rend pour ces palettes N'EST PAS MESURÉE ; ce qui compte pour la
+démonstration est qu'une loc relue se repose au même endroit.
+
+TROIS DÉFAUTS PLUS ANCIENS, trouvés en mesurant :
+
+  · « show msg », « hide message box » : « objet introuvable ». Les piles
+    d'époque l'écrivent dans presque chaque openStack. La boîte de messages
+    est maintenant aussi une fenêtre, pour show, hide et ses propriétés ; elle
+    reste un conteneur pour put et les morceaux. boitemsg.c inscrivait
+    « the visible of msg » comme chantier restant : son témoin change.
+  · « set the loc of window "Navigator" to 10,20 » posait « 20 » : seul le
+    dernier élément de la valeur était lu. fenetres.c l'écrivait entre
+    guillemets et ne pouvait pas le voir.
+  · « choose tool 3 », la forme par le numéro que donne la référence, était
+    une faute de syntaxe. Le numéro suit la palette d'HyperCard, de gauche à
+    droite et de haut en bas (browse, button, field / select, lasso,
+    pencil / … / text, regular polygon, polygon) ; hors de 1 à 18, « No such
+    tool ».
+
+Harnais runscript : la forme des gestionnaires de la démonstration, dont la
+boucle sur « tool window,pattern window,message window ».
+
+UN ÉCART NOTÉ, PAS CORRIGÉ : par « drag », une forme pleine est remplie SANS
+contour ; à la souris, remplie ET entourée. Les deux chemins disent la même
+chose de « filled » et ne la font pas pareil. Ce que fait HyperCard n'est pas
+mesuré ici : à proposer avec un banc.

@@ -7992,11 +7992,86 @@ static int v3_fenetre_prop(const HctNoeud *n, HctValeur *out)
  *
  * Le nom s'ÉVALUE : « window "Navigator" » comme « window nomPalette ».
  * « window id 7 » n'est pas servi : refusé comme une fenêtre introuvable. */
+/* LES FENÊTRES D'HYPERCARD, NOMMÉES PAR UN MOT-CLÉ — « tool window »,
+ * « pattern window », « message window » —, et leur nom chez l'hôte.
+ *
+ * Venues de la démonstration « Run the Script » de « HyperTalk Reference »
+ * (Apple), qui range l'état des trois avant de jouer son exemple :
+ *
+ *     put "tool window,pattern window,message window" into theWindows
+ *     get item i of theWindows
+ *     put the visible of it into …        et plus tard : set the loc of it
+ *
+ * La fenêtre y arrive donc aussi par une VARIABLE, dont le texte est le
+ * mot-clé. HC répondait « objet introuvable : it », six fois. Les noms
+ * rendus sont ceux de leurs fenêtres chez HyperCard : « window "Tools" »
+ * désigne la même. La boîte de messages a les siens, « msg », « message
+ * box » : ce sont les mêmes mots que le conteneur, et seule une propriété
+ * — visible, loc — ou show et hide en font une fenêtre. */
+static const char *v3_fenetre_motcle(const char *t)
+{
+    static const struct { const char *mot, *nom; } F[] = {
+        { "tool window",    "Tools"    },
+        { "pattern window", "Patterns" },
+        { "message window", "Message"  },
+        { "message box",    "Message"  },
+        { "msg window",     "Message"  },
+        { "msg box",        "Message"  },
+        { "msg",            "Message"  },
+        { NULL, NULL }
+    };
+    char b[64];
+    while (*t == ' ' || *t == '\t') t++;
+    if (ci_prefix(t, "the ")) t += 4;
+    int n = 0;
+    for (; *t && n < (int)sizeof b - 1; t++) {
+        if (*t == ' ' || *t == '\t') {            /* espaces réduits à un */
+            if (n && b[n - 1] != ' ') b[n++] = ' ';
+        } else b[n++] = *t;
+    }
+    while (n && b[n - 1] == ' ') n--;
+    b[n] = '\0';
+    for (int i = 0; F[i].mot; i++)
+        if (ci_equal(b, F[i].mot)) return F[i].nom;
+    return NULL;
+}
+
+/* Le nœud désigne-t-il une fenêtre de l'hôte ? « window "X" », « tool
+ * window », la boîte de messages, ou une variable qui en contient le
+ * mot-clé. Sans contexte, la variable ne se lit pas. */
+static int v3_fenetre_ici(const HctNoeud *o)
+{
+    if (!o) return 0;
+    if (o->genre == HCTN_OBJET)
+        return o->typeobj == HCT_OBJ_WINDOW || o->typeobj == HCT_OBJ_MESSAGE;
+    if (o->genre == HCTN_IDENT) {
+        char v[64];
+        hct_texte(&o->jeton, v, sizeof v);
+        const char *val = var_get(v);
+        return val && v3_fenetre_motcle(val) != NULL;
+    }
+    return 0;
+}
+
 static int v3_fenetre_nom(HctContexte *ctx, const HctNoeud *o,
                           char *nom, int len)
 {
     if (len > 0) nom[0] = '\0';
-    if (!o || o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_WINDOW) return 0;
+    if (!o) return 0;
+    const char *motcle = NULL;
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MESSAGE)
+        motcle = "Message";
+    else if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_WINDOW &&
+             o->designateur == HCT_DES_AUCUN && o->op)
+        motcle = o->op;                             /* tool window */
+    else if (o->genre == HCTN_IDENT) {
+        char v[64];
+        hct_texte(&o->jeton, v, sizeof v);
+        const char *val = var_get(v);
+        motcle = val ? v3_fenetre_motcle(val) : NULL;
+    }
+    if (motcle) { snprintf(nom, (size_t)len, "%s", motcle); return 1; }
+    if (o->genre != HCTN_OBJET || o->typeobj != HCT_OBJ_WINDOW) return 0;
     if (o->nfils < 1 || !o->fils[0] || o->designateur == HCT_DES_ID) return 0;
     v3_val_texte(ctx, o->fils[0], nom, len);
     return ctx && ctx->erreur ? 0 : 1;
@@ -8432,8 +8507,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * la fenêtre introuvable, la propriété inconnue. */
     if (n->genre == HCTN_OF && n->nfils >= 2 &&
         n->fils[0] && n->fils[0]->genre == HCTN_IDENT &&
-        n->fils[1] && n->fils[1]->genre == HCTN_OBJET &&
-        n->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        v3_fenetre_ici(n->fils[1])) {
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[1], nom, sizeof nom)) {
@@ -8900,7 +8974,7 @@ static const char *V3_GLOBALES_HOTE[] = {
     /* réglages de peinture et de texte, tenus par l'hôte */
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent", "centered",
+    "transparent", "centered", "multiple", "multiSpace",
     "cursor", "editBkgnd",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -8934,7 +9008,7 @@ static const char *V3_GLOBALES_HOTE[] = {
 static const char *V3_GLOBALES_ECRIVABLES[] = {
     "lockScreen", "editBkgnd", "cursor",
     "filled", "lineSize", "pattern", "brush", "grid", "polySides",
-    "transparent", "centered",
+    "transparent", "centered", "multiple", "multiSpace",
     "textHeight", "textSize", "textFont", "textStyle", "textAlign",
     "foreColor", "backColor", "foregroundColor", "backgroundColor",
     "paintColor", "paintBackColor", "inkColor",
@@ -12045,9 +12119,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
      * de fenêtre, posée par l'hôte. */
     if (n->nfils >= 3 && n->fils[0] && n->fils[0]->genre == HCTN_OF &&
         n->fils[0]->nfils >= 2 && n->fils[0]->fils[0] &&
-        n->fils[0]->fils[0]->genre == HCTN_IDENT && n->fils[0]->fils[1] &&
-        n->fils[0]->fils[1]->genre == HCTN_OBJET &&
-        n->fils[0]->fils[1]->typeobj == HCT_OBJ_WINDOW) {
+        n->fils[0]->fils[0]->genre == HCTN_IDENT &&
+        v3_fenetre_ici(n->fils[0]->fils[1])) {
         char prop[64], nom[256];
         hct_texte(&n->fils[0]->fils[0]->jeton, prop, sizeof prop);
         if (!v3_fenetre_nom(ctx, n->fils[0]->fils[1], nom, sizeof nom)) {
@@ -12056,7 +12129,12 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         }
         ARENA_MARK;
         char *val = arena_buf();
-        v3_val_texte(ctx, n->fils[n->nfils - 1], val, HC_VAL);
+        /* « to 10,20 » donne un enfant par élément, comme pour un objet :
+         * on lisait le DERNIER seul, et « set the loc of window "Navigator"
+         * to 10,20 » posait « 20 » — refusé par l'hôte comme un point mal
+         * formé. Vu le 5 octobre en mesurant « set the loc of tool window ». */
+        if (n->nfils > 3) v3_val_liste(ctx, n, 2, val, HC_VAL);
+        else              v3_val_texte(ctx, n->fils[n->nfils - 1], val, HC_VAL);
         if (ctx->erreur) { ARENA_FREE; return 1; }
         int r = v3_fenetre_hote(nom, "pose", prop, val, NULL, 0);
         ARENA_FREE;
@@ -13532,8 +13610,7 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
     /* « show window "Navigator" », « hide window "Navigator" » : une fenêtre
      * de l'hôte. « show … at » n'est pas servi pour elle : non mesuré, et
      * « set the loc of window » fait la même chose. */
-    if (n->fils[0]->genre == HCTN_OBJET &&
-        n->fils[0]->typeobj == HCT_OBJ_WINDOW) {
+    if (v3_fenetre_ici(n->fils[0])) {
         char nom[256];
         if (!v3_fenetre_nom(ctx, n->fils[0], nom, sizeof nom)) {
             if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
@@ -13922,6 +13999,31 @@ static int v3_cmd_choose(HctContexte *ctx, const HctNoeud *n)
         k -= 4;
         while (k > 0 && isspace((unsigned char)nom[k-1])) k--;
         nom[k] = '\0';
+    }
+
+    /* « choose tool 3 » : le rang de l'outil dans la palette d'HyperCard,
+     * de gauche à droite et de haut en bas — trois colonnes, six rangées.
+     * L'hôte ne reçoit que des noms : c'est ici qu'on traduit, une fois pour
+     * tous les hôtes. */
+    {
+        static const char *RANG[] = {
+            "browse", "button", "field",
+            "select", "lasso", "pencil",
+            "brush", "eraser", "line",
+            "spray", "rectangle", "round rect",
+            "bucket", "oval", "curve",
+            "text", "regular polygon", "polygon"
+        };
+        char *fin = NULL;
+        long r = strtol(nom, &fin, 10);
+        if (nom[0] && fin && !*fin) {
+            if (r < 1 || r > 18) {
+                emit(HC_ERR, "   !! choose : pas d'outil de rang %s", nom);
+                set_result("No such tool");
+                return 1;
+            }
+            snprintf(nom, sizeof nom, "%s", RANG[r - 1]);
+        }
     }
 
     g_visual_dirty = 1;

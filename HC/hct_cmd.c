@@ -345,6 +345,20 @@ static int applique(HctAnalyseur *a, const char *motif, HctNoeud *cmd)
              * deux mots. */
             const char *q = p; int l2; const char *e2 = element_suivant(&q, &l2);
             int pris = 0;
+            /* « choose tool 3 » : le NUMÉRO de l'outil, la forme que la
+             * référence d'HyperTalk donne à côté du nom. « tool » vient alors
+             * EN TÊTE, et la boucle s'y arrêtait — il colle au « [tool] » du
+             * motif —, laissant « 3 » en fin de ligne. Pour choose seulement :
+             * c'est le seul motif qui commence par W. */
+            const HctJeton *j0 = hct_expr_jeton(a);
+            const HctJeton *j1 = hct_expr_jeton_apres(a, 1);
+            if (j0 && mot_egal(j0, "tool", 4) && j1 &&
+                (j1->genre == HCT_NOMBRE || j1->genre == HCT_IDENT ||
+                 (j1->genre == HCT_OP && j1->len == 1 && *j1->deb == '('))) {
+                hct_ajoute_fils(a->reserve, cmd, hct_expr_avale_motcle(a, "tool", 4, 0));
+                hct_ajoute_fils(a->reserve, cmd, hct_expression(a));
+                continue;
+            }
             while (!hct_expr_fini(a)) {
                 const HctJeton *jj = hct_expr_jeton(a);
                 if (jj->genre != HCT_IDENT) {

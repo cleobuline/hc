@@ -803,11 +803,42 @@ static int boite_message_ici(HctAnalyseur *a)
     return mot_apres(a, 1, "box") || mot_apres(a, 1, "window");
 }
 
+/* « tool window », « pattern window » : les palettes d'HyperCard, que la
+ * démonstration « Run the Script » de « HyperTalk Reference » montre, cache
+ * et déplace. Elles ont un nom chez HyperCard — « Tools », « Patterns » —, et
+ * c'est ce nom que l'hôte reçoit, comme pour « window "Navigator" ».
+ *
+ * Deux mots, et le second est obligatoire : « tool » seul reste un mot
+ * ordinaire, « choose tool 3 » ou une variable de ce nom. */
+static const char *palette_fenetre_ici(HctAnalyseur *a)
+{
+    if (!mot_apres(a, 1, "window")) return NULL;
+    if (mot_ici(a, "tool"))    return "Tools";
+    if (mot_ici(a, "pattern")) return "Patterns";
+    return NULL;
+}
+
 /* Analyse une référence d'objet à partir du jeton courant, en supposant que
  * l'appelant a déjà reconnu qu'il s'agit d'une. */
 static HctNoeud *reference(HctAnalyseur *a)
 {
     HctJeton j = *ici(a);
+
+    /* tool window, pattern window : une fenêtre de l'hôte, sans désignateur ;
+     * son nom est porté par `op`. */
+    const char *palette = palette_fenetre_ici(a);
+    if (palette) {
+        avance(a);
+        const HctJeton *jw = ici(a);
+        avance(a);
+        HctNoeud *n = hct_noeud(a->reserve, HCTN_OBJET, j);
+        if (!n) return NULL;
+        n->jeton.len = (int)((jw->deb + jw->len) - j.deb);
+        n->typeobj = HCT_OBJ_WINDOW;
+        n->designateur = HCT_DES_AUCUN;
+        n->op = palette;
+        return n;
+    }
 
     /* me, the target, the message box */
     if (mot_ici(a, "me") || mot_ici(a, "target") || boite_message_ici(a)) {
@@ -1008,6 +1039,7 @@ static int reference_ici(HctAnalyseur *a)
     /* Sans cette ligne, la branche « boîte de messages » de reference() était
      * inatteignable : c'est ici que l'on décide d'y aller. */
     if (boite_message_ici(a)) return 1;
+    if (palette_fenetre_ici(a)) return 1;
     HctTypeObjet t;
     if (type_obj_ici(a, &t)) return 1;
     if (mot_ici(a, "this") || mot_ici(a, "next") || mot_ici(a, "previous")) {

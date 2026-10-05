@@ -579,7 +579,7 @@ static NSMenu *gRecentMenu = nil;
 
     /* --- menu Options ---
      *
-     * HyperCard en met treize ici. HC n'en pose que QUATRE, et c'est
+     * HyperCard en met treize ici. HC n'en pose que CINQ, et c'est
      * délibéré : des neuf autres, trois existent déjà ailleurs dans HC et
      * n'auraient ajouté qu'un second chemin vers la même chose —
      *
@@ -587,8 +587,12 @@ static NSMenu *gRecentMenu = nil;
      *     Line Size…     menu Tools, ⌘3
      *     Brush Shape…   menu Tools, ⌘4
      *
-     * — et les six derniers (Draw Multiple, Edit Pattern… et les quatre
-     * transformations libres) n'ont rien derrière eux.
+     * — et les cinq derniers (Edit Pattern… et les quatre transformations
+     * libres) n'ont rien derrière eux.
+     *
+     * « DRAW MULTIPLE » en est sorti le 5 octobre : « HyperTalk Reference »
+     * le pose dans sa démonstration « Run the Script », et les outils de
+     * forme laissent maintenant leur traînée de copies.
      *
      * « Polygon Sides… » a longtemps été dans cette seconde liste, faute
      * d'outil polygone. Il en sort avec lui.
@@ -601,7 +605,7 @@ static NSMenu *gRecentMenu = nil;
      * cette propriété ; et une touche enfoncée ne se lit pas depuis
      * HyperTalk. Une commodité au clavier n'a jamais remplacé un réglage.
      *
-     * Un menu de quatre articles a l'air pauvre. Un menu de treize dont neuf
+     * Un menu de cinq articles a l'air pauvre. Un menu de treize dont huit
      * mentent l'est davantage, et on ne s'en aperçoit qu'après avoir cliqué.
      *
      * LES QUATRE QU'ON POSE n'existaient nulle part ailleurs. La grille sert
@@ -616,6 +620,7 @@ static NSMenu *gRecentMenu = nil;
         { @"Grid",    HCV_PAINT_GRID    },
         { @"FatBits", HCV_PAINT_FATBITS },
         { @"Draw Centered", HCV_PAINT_CENTERED },
+        { @"Draw Multiple", HCV_PAINT_MULTIPLE },
         /* Les trois points disent qu'une boîte s'ouvre — la convention Mac,
          * et le titre exact d'HyperCard. */
         { @"Polygon Sides…", HCV_PAINT_POLYSIDES },
