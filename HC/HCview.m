@@ -5425,7 +5425,19 @@ static BOOL hcv_presse_systeme_plus_recent(void)
         return;
     }
 
-    if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part()) {
+    /* UN BOUTON OU UN CHAMP COPIÉ EN DERNIER SE COLLE QUEL QUE SOIT L'OUTIL,
+     * et l'outil Bouton est choisi. MESURÉ DANS HYPERCARD (Basilisk II) par
+     * l'utilisatrice le 5 octobre : copier un bouton, prendre un autre
+     * outil, Paste — le bouton est collé, et l'outil Bouton sélectionné. Pour
+     * un champ, l'outil Champ, par symétrie : NON MESURÉ. */
+    BOOL objet_dernier = gPresseDerniere == PRESSE_OBJET &&
+                         !hcv_presse_systeme_plus_recent();
+    if (hc_clipboard_has_part() &&
+        (gTool == TOOL_BUTTON || gTool == TOOL_FIELD || objet_dernier)) {
+        if (gTool != TOOL_BUTTON && gTool != TOOL_FIELD) {
+            Object *cp = hc_clipboard_part();
+            cocoa_choose_tool(cp && cp->type == OBJ_FIELD ? "field" : "button");
+        }
         Object *card = hc_current_card();
         if (card) {
             Object *owner = (gEditBackground && card->bg) ? card->bg : card;
@@ -5457,11 +5469,9 @@ static BOOL hcv_presse_systeme_plus_recent(void)
         }
     }
 
-    /* Un objet copié en dernier, et un outil qui ne le colle pas : on ne
-     * colle RIEN, plutôt qu'une image plus ancienne. Avec l'outil Bouton ou
-     * Champ, il se colle ci-dessus. Ce que fait HyperCard dans ce cas — coller
-     * l'objet en changeant d'outil ? — n'est pas mesuré. */
-    if (gPresseDerniere == PRESSE_OBJET && !hcv_presse_systeme_plus_recent()) {
+    /* Un objet copié en dernier qui n'a pas pu se coller ci-dessus : on ne
+     * colle RIEN, plutôt qu'une image plus ancienne. */
+    if (objet_dernier) {
         NSBeep();
         return;
     }
@@ -5631,11 +5641,13 @@ static BOOL hcv_presse_systeme_plus_recent(void)
          * validation n'autorisait que les outils Bouton et Champ. */
         if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE)
             return YES;
-        if ((gTool == TOOL_BUTTON || gTool == TOOL_FIELD) && hc_clipboard_has_part())
+        BOOL objet_dernier = gPresseDerniere == PRESSE_OBJET &&
+                             !hcv_presse_systeme_plus_recent();
+        if (hc_clipboard_has_part() &&
+            (gTool == TOOL_BUTTON || gTool == TOOL_FIELD || objet_dernier))
             return YES;
         /* Même règle que paste: — le morceau qui flotte ne compte pas. */
-        if (gPresseDerniere == PRESSE_OBJET && !hcv_presse_systeme_plus_recent())
-            return NO;
+        if (objet_dernier) return NO;
         return (gPresseImage != nil && gPresseDerniere == PRESSE_IMAGE) ||
                (hcv_presse_systeme_plus_recent() &&
                 [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]] options:nil]);
