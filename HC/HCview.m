@@ -193,9 +193,6 @@ static NSPanel *gMsgPanel = nil;
 static Object *gPolyEdite = NULL;
 static int     gPolySommetTire = -1;
 static int     gPolySommetChoisi = -1;
-/* Un sommet vient d'être ôté par Suppr : le bouton entier ne partira plus par
- * Suppr avant le prochain clic. Voir keyDown:. */
-static BOOL    gPolyGardeSuppr = NO;
 
 static NSPoint gDragStart;
 static NSRect  gDragRect;
@@ -5983,24 +5980,10 @@ static int gColorTarget = 0;
         gSelected == gPolyEdite && gPolySommetChoisi >= 0) {
         if (hc_sommet_ote(gSelected, gPolySommetChoisi)) {
             gPolySommetChoisi = -1;
-            gPolyGardeSuppr = YES;
             [self setNeedsDisplay:YES];
         } else {
             NSBeep();
         }
-        return;
-    }
-
-    /* LES REBONDS DE LA TOUCHE. Le souci de l'utilisatrice, aussitôt la règle
-     * posée : un Suppr ôte le sommet, le sommet n'est plus choisi, et un
-     * rebond — ou la touche tenue — supprimerait le bouton entier. Deux
-     * gardes : une répétition automatique ne supprime jamais un objet ; et
-     * après un sommet ôté, il faut recliquer avant que Suppr ne prenne le
-     * polygone entier. Un bip dit que la touche a été vue. */
-    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
-        gSelected && gTool != TOOL_BROWSE &&
-        ([event isARepeat] || (gPolyGardeSuppr && hc_est_polygone(gSelected)))) {
-        NSBeep();
         return;
     }
 
@@ -7406,7 +7389,6 @@ static BOOL      gSansMessageChamp = NO;
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    gPolyGardeSuppr = NO;      /* un clic lève la garde de Suppr (keyDown:) */
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     /* LA FRONTIÈRE DE FATBITS. Tout ce qui suit travaille en coordonnées de
      * CALQUE ; hors FatBits la conversion est l'identité, donc rien ne
