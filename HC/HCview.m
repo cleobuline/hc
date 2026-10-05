@@ -19,6 +19,7 @@
 #import "HCdialogs.h"
 #import "HCpaint.h"
 #import "hct_verif.h"
+#import "hct_chunk.h"   /* hct_utf8_compte_prefixe : octets -> caractères */
 #import "Hcdocument.h"   /* allDocuments : oublier un objet mort partout */
 
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
@@ -3394,8 +3395,16 @@ static const char *cocoa_global_get(const char *name) {
             if (click_word_range(gClickField, gClickPoint, &s, &e) && e > s) {
                 char d[96];
                 hc_describe(gClickField, d, sizeof d);
+                /* EN CARACTÈRES, comme tout « char » du noyau : click_word_range
+                 * rend des OCTETS. Chaque caractère de plus d'un octet placé
+                 * avant le clic — le « ¬ » des scripts d'Apple — décalait la
+                 * sélection d'un cran vers la droite. Vu le 5 octobre DANS HC
+                 * (l'application), sur la démonstration de clickText.
+                 * selectedChunk et foundChunk convertissaient déjà ainsi. */
+                const char *tx = hc_field_text(gClickField);
                 snprintf(buf, sizeof buf, "char %d to %d of %s%s",
-                         s + 1, e,
+                         hct_utf8_compte_prefixe(tx, s) + 1,
+                         hct_utf8_compte_prefixe(tx, e),
                          hc_owner_is_bg(gClickField) ? "bg " : "card ", d);
             }
         }
