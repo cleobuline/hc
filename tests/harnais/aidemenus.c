@@ -151,6 +151,21 @@ int main(void)
             "  select line 9 of card field \"Index\"\n"
             "end mouseUp\n");
         hc_send(b, "mouseUp");
+
+        /* ÉTEINDRE UNE LISTE NE TOUCHE PAS AUX AUTRES — le goTopic de
+         * l'aide : resetMainTopicsCard éteint « Sections », puis goTopic lit
+         * le sujet choisi dans « Topics List ». La première version vidait
+         * toute sélection : « goTopic renvoie toujours à la même image ». */
+        Object *topics = hc_new_field(c1, "Topics List");
+        hc_set_field_text(topics, "Keywords\nCommands");
+        topics->locktext = 1; topics->auto_select = 1;
+        hc_set_script(b,
+            "on mouseUp\n"
+            "  select line 2 of card field \"Topics List\"\n"
+            "  select line 0 of card field \"Index\"\n"
+            "  put \"l'autre liste garde : \" & the selectedText of card field \"Topics List\"\n"
+            "end mouseUp\n");
+        hc_send(b, "mouseUp");
     }
 
     puts("\n== 6. wrongStack et useHyperCardHelp : des chemins ==");

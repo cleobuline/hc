@@ -10624,9 +10624,24 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         if (zero) {
             Object *champ = hct_resout(ctx, c->fils[1]);
             if (champ && champ->type == OBJ_FIELD) {
-                g_found_lisible = 0;
-                g_found_montre  = 0;
-                hc_set_selection(NULL, 0, 0);
+                /* SEULEMENT SI LA SÉLECTION EST DANS CE CHAMP-LÀ.
+                 *
+                 * Éteindre une liste ne touche pas aux autres. La première
+                 * version vidait toute sélection, et goTopic (« HyperCard
+                 * Help ») l'a payé le jour même : resetMainTopicsCard éteint
+                 * la liste de GAUCHE par « select line 0 of card field
+                 * "Sections" », puis goTopic lit le sujet choisi dans celle
+                 * de DROITE — « the selectedText of the target » —, vide, et
+                 * « go card » ne bougeait plus. Rapporté DANS HC par
+                 * l'utilisatrice : « goTopic renvoie toujours à la même
+                 * image ». */
+                Object *sel = NULL; int s0 = 0, l0 = 0;
+                hc_get_selection(&sel, &s0, &l0);
+                if (sel == champ) {
+                    g_found_lisible = 0;
+                    g_found_montre  = 0;
+                    hc_set_selection(NULL, 0, 0);
+                }
                 set_result("");
                 return 1;
             }
