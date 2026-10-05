@@ -5230,6 +5230,17 @@ static NSInteger gPresseVuPb     = -1;   /* changeCount du système à notre der
 static void hcv_presse_image_retient(void)
 {
     if (!gClipboard) return;
+    /* Le presse-papiers du Mac reçoit l'image ICI, à la copie explicite, et
+     * nulle part ailleurs : copy_rect et copy_freeform l'écrivaient, et ils
+     * servent aussi à soulever le morceau qu'on déplace. Chaque déplacement
+     * devenait une copie plus récente que le bouton copié — rapporté DANS HC
+     * (l'application) après la première correction. */
+    NSImage *img = [[NSImage alloc] initWithCGImage:[gClipboard CGImage]
+                                               size:NSMakeSize(gClipW, gClipH)];
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    if (img) [pb writeObjects:@[img]];
+
     gPresseImage = [gClipboard copy];
     gPresseW = gClipW; gPresseH = gClipH;
     gPressePtsCount = gClipPtsCount;
@@ -5257,11 +5268,7 @@ static BOOL hcv_presse_systeme_plus_recent(void)
     }
 
     if (gFloating && gClipboard) {
-        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-        [pb clearContents];
-        NSImage *img = [[NSImage alloc] initWithCGImage:[gClipboard CGImage] size:NSMakeSize(gClipW, gClipH)];
-        [pb writeObjects:@[img]];
-        hcv_presse_image_retient();          /* après l'écriture : son compteur */
+        hcv_presse_image_retient();          /* écrit aussi le presse-papiers du Mac */
         return;
     }
 
