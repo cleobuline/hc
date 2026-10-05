@@ -430,6 +430,13 @@ struct Object {
      * pas mesuré. */
     int      cant_modify;
 
+    /* « set the cantAbort of this stack to true » : ⌘-point n'interrompt plus
+     * les scripts de cette pile. Ne vaut que pour une pile. La démo « Run the
+     * Script » de « HyperTalk Reference » la pose le temps de jouer son
+     * exemple, et la retire après. Le comportement vient de la référence
+     * d'Apple ; il n'est PAS mesuré dans HyperCard. */
+    int      cant_abort;
+
     /* LA PEINTURE DE LA COUCHE EST-ELLE MONTRÉE ? « set the showPict of this
      * card to false » cache le dessin sans l'effacer, et c'est l'idiome du
      * bouton « Hide Card Picture » — « Readymade Buttons » en fait son sujet.

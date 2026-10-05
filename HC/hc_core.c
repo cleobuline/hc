@@ -547,6 +547,9 @@ static int g_abandon = 0;
 
 void hc_interrompre(void)
 {
+    /* La pile courante a posé cantAbort : la touche ne fait rien. */
+    Object *st = g_current_card ? owning_stack(g_current_card) : NULL;
+    if (st && st->cant_abort) return;
     if (g_depth > 0 || g_msg_box > 0) g_interrompu = 1;
 }
 
@@ -6533,7 +6536,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "cantmodify", "showpict", "sharedtext",
+        "cantmodify", "cantabort", "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6851,6 +6854,9 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "cantdelete")) { snprintf(out, outlen, "%s", o->cant_delete ? "true" : "false"); return 1; }
     if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         snprintf(out, outlen, "%s", o->cant_modify ? "true" : "false"); return 1;
+    }
+    if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
+        snprintf(out, outlen, "%s", o->cant_abort ? "true" : "false"); return 1;
     }
     /* showPict n'a de sens que sur une couche : le demander à un bouton doit
      * rendre « propriété inconnue » et non « false », qui serait une réponse. */
@@ -12451,6 +12457,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         o->cant_modify = truthy(val);
+    } else if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
+        o->cant_abort = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
         /* Accepte aussi « centre » et « centered », qu'on rencontre dans
          * les scripts, et retombe à gauche sur un mot inconnu plutôt que

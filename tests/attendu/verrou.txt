@@ -13,3 +13,8 @@ cantModify : true
    relu verrouillé : oui
    relu libre      : oui
    ligne « cantmodify » dans le fichier libre : aucune
+
+== 4. cantAbort : ⌘-point ne coupe plus ==
+   au départ : false
+   tours faits : 5
+   (le second « tours faits » manque : interrompu au deuxième tour)

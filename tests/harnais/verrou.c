@@ -27,8 +27,12 @@
 
 #define FIC "/tmp/hc_verrou_cantmodify.stack"
 
+/* « ⌘-point » : ce que fait l'hôte quand il voit passer la touche. Le
+ * script le demande par un « put » convenu, que ce rappel reçoit PENDANT
+ * l'exécution — exactement là où l'hôte l'appellerait. */
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d;
+  if (k == HC_MSG && t && strcmp(t, "<cmd-point>") == 0) { hc_interrompre(); return; }
   if      (k == HC_MSG) printf("   %s\n", t ? t : "");
   else if (k == HC_ERR) printf("   [ERR] %s\n", t ? t : ""); }
 
@@ -89,6 +93,31 @@ int main(void)
     printf("   ligne « cantmodify » dans le fichier libre : %s\n", ligne_vue ? "OUI" : "aucune");
     if (re) hc_free(re);
     unlink(FIC);
+
+    puts("\n== 4. cantAbort : ⌘-point ne coupe plus ==");
+    /* La démo « Run the Script » de « HyperTalk Reference » : set the
+     * cantAbort of this stack to true, l'exemple, puis false. HC répondait
+     * « propriété inconnue : cantAbort ». L'interruption est simulée par
+     * hc_interrompre, que l'hôte appelle sur ⌘-point. */
+    hc_set_script(st,
+        "on interromps\n"
+        "  put 0 into n\n"
+        "  repeat 5 times\n"
+        "    add 1 to n\n"
+        "    if n = 2 then put \"<cmd-point>\"\n"
+        "  end repeat\n"
+        "  put \"tours faits : \" & n\n"
+        "end interromps\n");
+    hc_set_script(b,
+        "on mouseUp\n"
+        "  put \"au départ : \" & the cantAbort of this stack\n"
+        "  set the cantAbort of this stack to true\n"
+        "  interromps\n"
+        "  set the cantAbort of this stack to false\n"
+        "  interromps\n"
+        "end mouseUp\n");
+    hc_send(b, "mouseUp");
+    puts("   (le second « tours faits » manque : interrompu au deuxième tour)");
 
     hc_free(st);
     return 0;
