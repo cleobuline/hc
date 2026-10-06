@@ -1,0 +1,366 @@
+-- ════════════════════════════════════════════════════════════════════
+--  TETRIS — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  La piece qui tombe est UN SEUL bouton polygone, « Piece » : sa forme
+--  vient de « the points », sa couleur de « backColor ». Les pieces posees
+--  sont les deux cents petits boutons carres « C1 » a « C200 », montres et
+--  colories case par case.
+--
+--  Le plateau vit dans la variable gGrille : vingt lignes de dix caracteres,
+--  « . » pour une case vide, la lettre de la piece sinon.
+--
+--  Clavier : Q et D (ou fleches gauche et droite) pour bouger, Z (ou
+--  haut) pour tourner, X (ou bas) pour descendre, espace pour lacher,
+--  Echap pour arreter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  global gGrille
+  if gGrille is empty then preparePartie
+  pass openCard
+end openCard
+
+-- Les fleches sont lues par « the keysDown » dans la boucle : on avale
+-- leur message, sinon HyperCard changerait de carte a chaque appui.
+on arrowKey
+end arrowKey
+
+-- La taille d'une case, et le coin du plateau sur la carte.
+function taille
+  return 15
+end taille
+function gauche0
+  return 40
+end gauche0
+function haut0
+  return 20
+end haut0
+
+-- Une partie neuve. « lesPieces » sert aux essais : une liste de pieces
+-- imposees, et pas de boucle de jeu. Vide, on joue pour de vrai.
+on nouvellePartie lesPieces
+  preparePartie lesPieces
+  if lesPieces is empty then boucle
+end nouvellePartie
+
+on preparePartie lesPieces
+  global gGrille, gScore, gLignes, gFini, gSuite, gPosees
+  put empty into gGrille
+  repeat 20 times
+    put ".........." & return after gGrille
+  end repeat
+  delete last char of gGrille
+  put 0 into gScore
+  put 0 into gLignes
+  put 0 into gPosees
+  put false into gFini
+  put lesPieces into gSuite
+  put empty into card field "Etat"
+  dessinePlateau
+  nouvellePiece
+  montreScore
+end preparePartie
+
+-- ─── la boucle de jeu ───────────────────────────────────────────────
+
+on boucle
+  global gFini, gTombe, gTouches
+  put the ticks into gTombe
+  put "0,0,0,0,0" into gTouches
+  repeat until gFini
+    put the ticks into t
+    if tenue(27) then
+      put true into gFini
+      put "Partie arretee." into card field "Etat"
+      exit repeat
+    end if
+    clavier t
+    if gFini then exit repeat
+    if t >= gTombe then
+      descend
+      put t + vitesse() into gTombe
+    end if
+    wait 1 tick
+  end repeat
+end boucle
+
+-- Plus on fait de lignes, plus ca tombe vite.
+function vitesse
+  global gLignes
+  return max(4, 30 - 3 * (gLignes div 10))
+end vitesse
+
+function tenue lesCodes
+  -- Sans toucher a l'itemDelimiter : dans HyperCard il ne revient a la
+  -- virgule qu'a l'idle, et l'appelant lirait ses items de travers.
+  put "," & the keysDown & "," into tenues
+  repeat while lesCodes is not empty
+    put offset("/", lesCodes) into o
+    if o = 0 then put lesCodes into c
+    else put char 1 to o - 1 of lesCodes into c
+    if ("," & c & ",") is in tenues then return true
+    if o = 0 then exit repeat
+    delete char 1 to o of lesCodes
+  end repeat
+  return false
+end tenue
+
+-- Une touche agit des qu'on l'enfonce, puis se repete si on la tient —
+-- sauf tourner et lacher, qui n'agissent qu'une fois par appui.
+on clavier t
+  global gTouches
+  -- Gauche, droite, descendre, tourner, lacher : chaque geste a plusieurs
+  -- touches, separees par « / » — la fleche, la lettre, sa majuscule.
+  put "65361/113/81,65363/100/68,65364/120/88,65362/122/90,32" into codes
+  repeat with k = 1 to 5
+    if tenue(item k of codes) then
+      put item k of gTouches into prochain
+      if prochain = 0 or (k <= 3 and t >= prochain) then
+        if prochain = 0 then put 12 into d
+        else put 3 into d
+        if k = 1 then gauche
+        if k = 2 then droite
+        if k = 3 then descend
+        if k = 4 then tourne
+        if k = 5 then chute
+        if k >= 4 then put 999999999 into d
+        put t + d into item k of gTouches
+      end if
+    else
+      put 0 into item k of gTouches
+    end if
+  end repeat
+end clavier
+
+-- ─── les gestes ─────────────────────────────────────────────────────
+
+on gauche
+  global gRot, gX, gY
+  if libre(gRot, gX - 1, gY) then
+    subtract 1 from gX
+    montrePiece
+  end if
+end gauche
+
+on droite
+  global gRot, gX, gY
+  if libre(gRot, gX + 1, gY) then
+    add 1 to gX
+    montrePiece
+  end if
+end droite
+
+-- Tourner d'un quart ; contre un mur, on essaie un cran a cote.
+on tourne
+  global gRot, gX, gY
+  put (gRot + 1) mod 4 into r
+  repeat with k = 1 to 3
+    put item k of "0,-1,1" into dx
+    if libre(r, gX + dx, gY) then
+      put r into gRot
+      add dx to gX
+      montrePiece
+      exit tourne
+    end if
+  end repeat
+end tourne
+
+on descend
+  global gRot, gX, gY
+  if libre(gRot, gX, gY + 1) then
+    add 1 to gY
+    montrePiece
+  else
+    pose
+  end if
+end descend
+
+on chute
+  global gRot, gX, gY, gScore
+  repeat while libre(gRot, gX, gY + 1)
+    add 1 to gY
+    add 2 to gScore
+  end repeat
+  montrePiece
+  pose
+end chute
+
+-- ─── les pieces ─────────────────────────────────────────────────────
+
+on nouvellePiece
+  global gType, gRot, gX, gY, gSuite, gFini, gScore
+  if gSuite is empty then
+    put any item of "I,O,T,S,Z,J,L" into gType
+  else
+    put item 1 of gSuite into gType
+    delete item 1 of gSuite
+  end if
+  put 0 into gRot
+  put 4 into gX
+  put 1 into gY
+  set the backColor of button "Piece" to couleur(gType)
+  if not libre(gRot, gX, gY) then
+    put true into gFini
+    put "Perdu ! Score : " & gScore into card field "Etat"
+  end if
+  montrePiece
+end nouvellePiece
+
+-- La piece a sa place. Les sommets d'un bouton polygone sont en
+-- coordonnees de CARTE (comme dans LiveCode) et son rectangle se cale
+-- dessus : on decale donc le contour de la forme jusqu'a la piece.
+on montrePiece
+  global gType, gRot, gX, gY
+  put forme(gType, gRot) into f
+  put taille() into s
+  set the itemDelimiter to "|"
+  put item 1 of f into tete
+  put item 3 of f into contour
+  set the itemDelimiter to ","
+  put gauche0() + (gX - 1 + word 2 of tete) * s into px
+  put haut0() + (gY - 1 + word 3 of tete) * s into py
+  put empty into pts
+  repeat with i = 1 to the number of items of contour div 2
+    put (item (2 * i - 1) of contour + px) & "," & (item (2 * i) of contour + py) & return after pts
+  end repeat
+  set the points of button "Piece" to pts
+end montrePiece
+
+-- Les quatre cases de la piece tiennent-elles, tournee de r, en x, y ?
+function libre r, x, y
+  global gType, gGrille
+  set the itemDelimiter to "|"
+  put item 2 of forme(gType, r) into cel
+  set the itemDelimiter to ","
+  repeat with k = 1 to 4
+    put word k of cel into p
+    put x + item 1 of p into c
+    put y + item 2 of p into l
+    if c < 1 or c > 10 or l < 1 or l > 20 then return false
+    if char c of line l of gGrille is not "." then return false
+  end repeat
+  return true
+end libre
+
+-- La piece se pose : ses cases entrent dans la grille, les lignes pleines
+-- partent, et la suivante arrive.
+on pose
+  global gType, gRot, gX, gY, gGrille, gScore, gLignes, gPosees
+  set the itemDelimiter to "|"
+  put item 2 of forme(gType, gRot) into cel
+  set the itemDelimiter to ","
+  repeat with k = 1 to 4
+    put word k of cel into p
+    put gX + item 1 of p into c
+    put gY + item 2 of p into l
+    put gType into char c of line l of gGrille
+    allume c, l, gType
+  end repeat
+  add 1 to gPosees
+  put 0 into n
+  repeat with l = 1 to 20
+    if "." is not in line l of gGrille then
+      delete line l of gGrille
+      put ".........." & return before gGrille
+      add 1 to n
+    end if
+  end repeat
+  if n > 0 then
+    add n to gLignes
+    add item n of "100,300,500,800" to gScore
+    dessinePlateau
+  end if
+  montreScore
+  nouvellePiece
+end pose
+
+-- ─── l'affichage ────────────────────────────────────────────────────
+
+on allume c, l, t
+  put "C" & ((l - 1) * 10 + c) into nom
+  set the backColor of button nom to couleur(t)
+  show button nom
+end allume
+
+on dessinePlateau
+  global gGrille
+  lock screen
+  repeat with l = 1 to 20
+    put line l of gGrille into rangee
+    repeat with c = 1 to 10
+      put char c of rangee into t
+      if t is "." then hide button ("C" & ((l - 1) * 10 + c))
+      else allume c, l, t
+    end repeat
+  end repeat
+  unlock screen
+end dessinePlateau
+
+on montreScore
+  global gScore, gLignes
+  put gScore into card field "Score"
+  put gLignes into card field "Lignes"
+end montreScore
+
+function couleur t
+  put offset(t, "IOTSZJL") into i
+  return line i of lesCouleurs()
+end couleur
+
+function lesCouleurs
+  return "0,200,220" & return & "240,210,0" & return & "160,60,200" & return & ¬
+    "60,190,60" & return & "220,50,50" & return & "50,90,220" & return & "240,140,20"
+end lesCouleurs
+
+-- Les sept pieces, chacune en quatre rotations. Une ligne par rotation :
+--   cle  decalage-x decalage-y largeur hauteur | les 4 cases | le contour
+-- Les cases sont dans la boite de la piece ; le contour, en points, est
+-- celui du bouton polygone. Calcule une fois pour toutes.
+function forme t, r
+  global gFormes
+  if gFormes is empty then put lesFormes() into gFormes
+  repeat with i = 1 to the number of lines of gFormes
+    if word 1 of line i of gFormes is (t & r) then return line i of gFormes
+  end repeat
+  return empty
+end forme
+
+function lesFormes
+  put empty into f
+  put "I0 0 1 4 1|0,1 1,1 2,1 3,1|0,0,60,0,60,15,0,15" & return after f
+  put "I1 2 0 1 4|2,0 2,1 2,2 2,3|0,0,15,0,15,60,0,60" & return after f
+  put "I2 0 2 4 1|0,2 1,2 2,2 3,2|0,0,60,0,60,15,0,15" & return after f
+  put "I3 1 0 1 4|1,0 1,1 1,2 1,3|0,0,15,0,15,60,0,60" & return after f
+  put "O0 0 0 2 2|0,0 1,0 0,1 1,1|0,0,30,0,30,30,0,30" & return after f
+  put "O1 0 0 2 2|0,0 1,0 0,1 1,1|0,0,30,0,30,30,0,30" & return after f
+  put "O2 0 0 2 2|0,0 1,0 0,1 1,1|0,0,30,0,30,30,0,30" & return after f
+  put "O3 0 0 2 2|0,0 1,0 0,1 1,1|0,0,30,0,30,30,0,30" & return after f
+  put "T0 0 0 3 2|1,0 0,1 1,1 2,1|0,15,15,15,15,0,30,0,30,15,45,15,45,30,0,30" & return after f
+  put "T1 1 0 2 3|1,0 1,1 2,1 1,2|0,0,15,0,15,15,30,15,30,30,15,30,15,45,0,45" & return after f
+  put "T2 0 1 3 2|0,1 1,1 2,1 1,2|0,0,45,0,45,15,30,15,30,30,15,30,15,15,0,15" & return after f
+  put "T3 0 0 2 3|1,0 0,1 1,1 1,2|0,15,15,15,15,0,30,0,30,45,15,45,15,30,0,30" & return after f
+  put "S0 0 0 3 2|1,0 2,0 0,1 1,1|0,15,15,15,15,0,45,0,45,15,30,15,30,30,0,30" & return after f
+  put "S1 1 0 2 3|1,0 1,1 2,1 2,2|0,0,15,0,15,15,30,15,30,45,15,45,15,30,0,30" & return after f
+  put "S2 0 1 3 2|1,1 2,1 0,2 1,2|0,15,15,15,15,0,45,0,45,15,30,15,30,30,0,30" & return after f
+  put "S3 0 0 2 3|0,0 0,1 1,1 1,2|0,0,15,0,15,15,30,15,30,45,15,45,15,30,0,30" & return after f
+  put "Z0 0 0 3 2|0,0 1,0 1,1 2,1|0,0,30,0,30,15,45,15,45,30,15,30,15,15,0,15" & return after f
+  put "Z1 1 0 2 3|2,0 1,1 2,1 1,2|0,15,15,15,15,0,30,0,30,30,15,30,15,45,0,45" & return after f
+  put "Z2 0 1 3 2|0,1 1,1 1,2 2,2|0,0,30,0,30,15,45,15,45,30,15,30,15,15,0,15" & return after f
+  put "Z3 0 0 2 3|1,0 0,1 1,1 0,2|0,15,15,15,15,0,30,0,30,30,15,30,15,45,0,45" & return after f
+  put "J0 0 0 3 2|0,0 0,1 1,1 2,1|0,0,15,0,15,15,45,15,45,30,0,30" & return after f
+  put "J1 1 0 2 3|1,0 2,0 1,1 1,2|0,0,30,0,30,15,15,15,15,45,0,45" & return after f
+  put "J2 0 1 3 2|0,1 1,1 2,1 2,2|0,0,45,0,45,30,30,30,30,15,0,15" & return after f
+  put "J3 0 0 2 3|1,0 1,1 0,2 1,2|0,30,15,30,15,0,30,0,30,45,0,45" & return after f
+  put "L0 0 0 3 2|2,0 0,1 1,1 2,1|0,15,30,15,30,0,45,0,45,30,0,30" & return after f
+  put "L1 1 0 2 3|1,0 1,1 1,2 2,2|0,0,15,0,15,30,30,30,30,45,0,45" & return after f
+  put "L2 0 1 3 2|0,1 1,1 2,1 0,2|0,0,45,0,45,15,15,15,15,30,0,30" & return after f
+  put "L3 0 0 2 3|0,0 1,0 1,1 1,2|0,0,30,0,30,45,15,45,15,15,0,15" & return after f
+  return f
+end lesFormes
+
+-- Pour les essais : l'etat de la partie.
+on rapport
+  global gGrille, gScore, gLignes, gPosees, gFini, gType, gRot, gX, gY
+  put "score " & gScore & " · lignes " & gLignes & " · posees " & gPosees & ¬
+    " · fini " & gFini & " · piece " & gType & gRot & " en " & gX & "," & gY
+end rapport
