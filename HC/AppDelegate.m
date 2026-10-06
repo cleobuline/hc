@@ -1724,6 +1724,15 @@ static NSURL *app_folder(void)
     NSDictionary *lien  = @{ NSFontAttributeName: grasse,
                              NSLinkAttributeName: [NSURL URLWithString:@"https://labynet.fr"],
                              NSParagraphStyleAttributeName: centre };
+    /* SOUTENIR HC — demandé par l'utilisatrice le 6 octobre. Le bouton de don
+     * PayPal qu'elle a créé, par son lien direct : un bouton en JavaScript ne
+     * s'affiche que dans une page web. Lien vérifié : il ouvre la page de don
+     * au nom de HC. À RETIRER d'une éventuelle version App Store, où Apple
+     * encadre les liens de paiement. */
+    NSDictionary *don   = @{ NSFontAttributeName: grasse,
+                             NSLinkAttributeName: [NSURL URLWithString:
+                                 @"https://www.paypal.com/ncp/payment/V7F3MJJ2NRZ6L"],
+                             NSParagraphStyleAttributeName: centre };
 
     NSMutableAttributedString *c = [[NSMutableAttributedString alloc] init];
     void (^ajoute)(NSString *, NSDictionary *) = ^(NSString *t, NSDictionary *a) {
@@ -1737,6 +1746,11 @@ static NSURL *app_folder(void)
     ajoute(@"Stacks, news, and a pinball to play \u2014 come and visit\n", texte);
     ajoute(@"Des piles, des nouvelles et un flipper \u2014 venez nous voir\n", doux);
     ajoute(@"labynet.fr", lien);
+    ajoute(@"\n\n", texte);
+
+    ajoute(@"HC is free. If you like it, you can help it grow\n", texte);
+    ajoute(@"HC est gratuit. S'il vous plaît, vous pouvez l'aider \u00E0 grandir\n", doux);
+    ajoute(@"Support HC \u00B7 Soutenir HC", don);
     ajoute(@"\n\n", texte);
 
     ajoute(@"\u00A9 2026 Patricia Benedetto \u00B7 co-author: Claude (Anthropic)\n", texte);
