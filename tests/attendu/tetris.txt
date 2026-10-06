@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, une partie se prépare ==
+   score 0 · lignes 0 · posees 0 · fini false · piece O0 en 4,1
+
+== 2. cinq carrés côte à côte : deux lignes d'un coup ==
+   score 480 · lignes 2 · posees 5 · fini false · piece T0 en 4,1
+
+== 3. tourner quatre fois revient au départ ; les murs tiennent ==
+   score 0 · lignes 0 · posees 0 · fini false · piece T0 en 4,1
+   score 0 · lignes 0 · posees 0 · fini false · piece T0 en 1,1
+   score 0 · lignes 0 · posees 0 · fini false · piece T0 en 8,1
+   -- le I debout contre le mur droit, puis tourné : il se décale
+   score 36 · lignes 0 · posees 1 · fini false · piece I2 en 7,1
+
+== 4. la forme du bouton polygone suit la pièce ==
+   rotation 0 : rect 85,20 45x30, 6 sommets
+   rotation 1 : rect 100,20 30x45, 6 sommets
+   rotation 2 : rect 85,35 45x30, 6 sommets
+   rotation 3 : rect 85,20 30x45, 6 sommets
+
+== 5. un robot pose des pièces, et rien ne se perd ==
+   5 parties, 110 pièces posées, 0 lignes faites, aucun défaut
