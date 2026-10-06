@@ -20,15 +20,3 @@
 
 == 5. un robot pose des pièces, et rien ne se perd ==
    5 parties, 110 pièces posées, 0 lignes faites, aucun défaut
-
-== 6. le clavier : Q D Z X, ou les flèches ==
-   rien de tenu :
-   score 0 · lignes 0 · posees 0 · fini false · piece T0 en 4,1
-   d : à droite :
-   score 0 · lignes 0 · posees 0 · fini false · piece T0 en 5,1
-   Z majuscule : tourne :
-   score 0 · lignes 0 · posees 0 · fini false · piece T1 en 5,1
-   q et x ensemble : à gauche et descend :
-   score 0 · lignes 0 · posees 0 · fini false · piece T1 en 4,2
-   flèche droite :
-   score 0 · lignes 0 · posees 0 · fini false · piece T1 en 5,2

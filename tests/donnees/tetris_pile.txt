@@ -9,9 +9,8 @@
 --  Le plateau vit dans la variable gGrille : vingt lignes de dix caracteres,
 --  « . » pour une case vide, la lettre de la piece sinon.
 --
---  Clavier : Q et D (ou fleches gauche et droite) pour bouger, Z (ou
---  haut) pour tourner, X (ou bas) pour descendre, espace pour lacher,
---  Echap pour arreter.
+--  Clavier : fleches gauche et droite pour bouger, haut pour tourner, bas
+--  pour descendre, espace pour lacher, Echap ou Q pour arreter.
 -- ════════════════════════════════════════════════════════════════════
 
 on openCard
@@ -69,7 +68,7 @@ on boucle
   put "0,0,0,0,0" into gTouches
   repeat until gFini
     put the ticks into t
-    if tenue(27) then
+    if tenue(27) or tenue(113) then
       put true into gFini
       put "Partie arretee." into card field "Etat"
       exit repeat
@@ -90,28 +89,15 @@ function vitesse
   return max(4, 30 - 3 * (gLignes div 10))
 end vitesse
 
-function tenue lesCodes
-  -- Sans toucher a l'itemDelimiter : dans HyperCard il ne revient a la
-  -- virgule qu'a l'idle, et l'appelant lirait ses items de travers.
-  put "," & the keysDown & "," into tenues
-  repeat while lesCodes is not empty
-    put offset("/", lesCodes) into o
-    if o = 0 then put lesCodes into c
-    else put char 1 to o - 1 of lesCodes into c
-    if ("," & c & ",") is in tenues then return true
-    if o = 0 then exit repeat
-    delete char 1 to o of lesCodes
-  end repeat
-  return false
+function tenue c
+  return ("," & the keysDown & ",") contains ("," & c & ",")
 end tenue
 
 -- Une touche agit des qu'on l'enfonce, puis se repete si on la tient —
 -- sauf tourner et lacher, qui n'agissent qu'une fois par appui.
 on clavier t
   global gTouches
-  -- Gauche, droite, descendre, tourner, lacher : chaque geste a plusieurs
-  -- touches, separees par « / » — la fleche, la lettre, sa majuscule.
-  put "65361/113/81,65363/100/68,65364/120/88,65362/122/90,32" into codes
+  put "65361,65363,65364,65362,32" into codes
   repeat with k = 1 to 5
     if tenue(item k of codes) then
       put item k of gTouches into prochain

@@ -32,13 +32,6 @@ static void ma_ligne(HcLineKind k, int d, const char *t)
     else if (k == HC_ERR) printf("   [ERR] %s\n", t);
 }
 
-/* Les touches tenues que l'hôte prétend voir, pour la section 6. */
-static const char *g_tenues = "";
-static const char *glob_lit(const char *nom)
-{
-    return strcmp(nom, "keysDown") == 0 ? g_tenues : NULL;
-}
-
 static char *lire(const char *chemin)
 {
     FILE *f = fopen(chemin, "rb");
@@ -102,8 +95,8 @@ static Object *monte(const char *script)
     pose_champ("Lignes", 320, 104, 120, 20, 12, HC_BOLD);
     pose_champ("Etat", 230, 134, 250, 40, 12, HC_ITALIC);
     hc_set_field_text(pose_champ("Aide", 230, 180, 250, 80, 10, 0),
-        "Q et D : bouger\nZ : tourner\nX : descendre\n"
-        "Espace : lacher\nEchap : arreter\n(les fleches marchent aussi)");
+        "Fleches gauche et droite : bouger\nFleche haut : tourner\n"
+        "Fleche bas : descendre\nEspace : lacher\nEchap ou Q : arreter");
     Object *n = pose_bouton("Nouvelle partie", "roundRect", 230, 280, 150, 26);
     hc_set_script(n, "on mouseUp\n  nouvellePartie\nend mouseUp\n");
 
@@ -256,28 +249,6 @@ int main(int argc, char **argv)
     }
     printf("   %d parties, %d pièces posées, %d lignes faites, %s\n",
            parties, pieces, lignes_tot, defaut ? "DES DÉFAUTS" : "aucun défaut");
-
-    /* La boucle de jeu ne tourne pas ici : on lui joue un tour de clavier,
-     * avec les touches tenues que l'hôte annonce. Les lettres comptent comme
-     * les flèches, en minuscule comme en majuscule. */
-    puts("\n== 6. le clavier : Q D Z X, ou les flèches ==");
-    h.global_get = glob_lit; hc_set_host(&h);
-    static const struct { const char *tenues, *quoi; } tours[] = {
-        { "",            "rien de tenu" },
-        { "100",         "d : à droite" },
-        { "90",          "Z majuscule : tourne" },
-        { "113,120",     "q et x ensemble : à gauche et descend" },
-        { "65363",       "flèche droite" },
-    };
-    hc_send_arg(g_carte, "nouvellePartie", "T");
-    for (size_t i = 0; i < sizeof tours / sizeof *tours; i++) {
-        g_tenues = tours[i].tenues;
-        hc_send_arg(g_carte, "clavier", "0");
-        g_tenues = "";
-        hc_send_arg(g_carte, "clavier", "0");  /* relâchée : la suivante agit */
-        printf("   %s :\n", tours[i].quoi);
-        rapport();
-    }
 
     hc_free(st); free(script);
     return 0;
