@@ -1760,7 +1760,9 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
 
 int test ()
 {
- return (1 + 1 );
+    int a = 1 ;
+    int b = 1 ;
+ return (a + b  );
 }
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
