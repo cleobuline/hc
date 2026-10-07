@@ -1,5 +1,30 @@
 ## HC-0.7.9.1 — Apple's own help stacks run, unmodified
 
+### Installing: macOS will say the app is damaged. It is not.
+
+**This release is not notarised.** macOS quarantines anything downloaded from
+the internet. Gatekeeper refuses an app it cannot trace to a notarised
+Developer ID, and its message says the wrong thing:
+
+> *"HC is damaged and can't be opened. You should move it to the Trash."*
+
+The app is not damaged. It is not notarised, which is a different problem.
+Copy `HC.app` to `/Applications`, then clear the quarantine flag once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/HC.app
+```
+
+It opens normally after that. Do not double-click the app inside the DMG:
+copy it out first. An app you build yourself from this repository is never
+quarantined.
+
+The binary is universal (`x86_64 arm64`), and the deployment target is
+macOS 10.13. HC 0.7.9 has been reported working on an Apple M5 running a
+macOS beta.
+
+---
+
 **Update from 0.7.9.** This is a fidelity release. HC now runs Apple's three
 HyperCard help stacks, **HyperCard Help**, **HyperTalk Reference** and
 **Help Extras**, without changing a single line of their scripts.
@@ -33,31 +58,6 @@ with File > Open.
 | `go card x of stack "y"`, stack not open yet | "object not found" | **opens the stack and goes** |
 | `go card theSection & theTopic` | "object not found" | **goes to the card named by the whole text** |
 | `the hcVersion`, "About HC" | `0.7.9` | `0.7.9.1` |
-
----
-
-### Installing: macOS will say the app is damaged. It is not.
-
-**This release is not notarised.** macOS quarantines anything downloaded from
-the internet. Gatekeeper refuses an app it cannot trace to a notarised
-Developer ID, and its message says the wrong thing:
-
-> *"HC is damaged and can't be opened. You should move it to the Trash."*
-
-The app is not damaged. It is not notarised, which is a different problem.
-Copy `HC.app` to `/Applications`, then clear the quarantine flag once:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/HC.app
-```
-
-It opens normally after that. Do not double-click the app inside the DMG:
-copy it out first. An app you build yourself from this repository is never
-quarantined.
-
-The binary is universal (`x86_64 arm64`), and the deployment target is
-macOS 10.13. HC 0.7.9 has been reported working on an Apple M5 running a
-macOS beta.
 
 ---
 
