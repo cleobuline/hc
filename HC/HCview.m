@@ -1758,15 +1758,7 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
 
 
 
-int test ()
-{
-    int a = 1 ;
-    int b = 1 ;
-    int c = 1 ;
-    int d = 1 ;
-    int e = 1 ;
- return (a + b +c +d +e  );
-}
+
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
     NSAlert *a = [[NSAlert alloc] init];
