@@ -23,15 +23,17 @@
 		4D482C51303B585A0071BC2B /* hct_chunk.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C47303B58590071BC2B /* hct_chunk.c */; };
 		4D482C5B303BA13C0071BC2B /* hct_verif.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C59303BA13B0071BC2B /* hct_verif.c */; };
 		4D482C5F303C81270071BC2B /* hc_core.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D482C5E303C81270071BC2B /* hc_core.c */; };
+		4D8634423076B0CA0059FF23 /* cling.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4D8634413076B0C90059FF23 /* cling.wav */; };
+		4D8634453076B40C0059FF23 /* tik.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4D8634443076B40C0059FF23 /* tik.wav */; };
 		4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9E256C3031EB1800C2D5EE /* Hcdocument.m */; };
 		4DA09F863043C745003F1A35 /* hc_icons.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F853043C745003F1A35 /* hc_icons.c */; };
-		4DB1000030500002003F1A35 /* hc_presse_papiers.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500001003F1A35 /* hc_presse_papiers.c */; };
-		4DB1000030500013003F1A35 /* hc_importe.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500012003F1A35 /* hc_importe.c */; };
-		4DB1000030500011003F1A35 /* hc_origine.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500010003F1A35 /* hc_origine.c */; };
-		4DB1000030500005003F1A35 /* hc_script.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500004003F1A35 /* hc_script.c */; };
 		4DA09F8D3043CC60003F1A35 /* Hciconedit.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DA09F8C3043CC60003F1A35 /* Hciconedit.m */; };
 		4DA09F933045EB1E003F1A35 /* cocorico.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DA09F923045EB1E003F1A35 /* cocorico.wav */; };
 		4DA09F97304719A4003F1A35 /* submarine.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DA09F96304719A4003F1A35 /* submarine.wav */; };
+		4DB1000030500002003F1A35 /* hc_presse_papiers.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500001003F1A35 /* hc_presse_papiers.c */; };
+		4DB1000030500005003F1A35 /* hc_script.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500004003F1A35 /* hc_script.c */; };
+		4DB1000030500011003F1A35 /* hc_origine.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500010003F1A35 /* hc_origine.c */; };
+		4DB1000030500013003F1A35 /* hc_importe.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DB1000030500012003F1A35 /* hc_importe.c */; };
 		4DF28F7D3023666200D7740C /* boing.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7C3023666200D7740C /* boing.wav */; };
 		4DF28F80302369FF00D7740C /* boing3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F7F302369FE00D7740C /* boing3.wav */; };
 		4DF28F833023709D00D7740C /* coq.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DF28F823023709D00D7740C /* coq.wav */; };
@@ -81,18 +83,20 @@
 		4D482C59303BA13B0071BC2B /* hct_verif.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hct_verif.c; sourceTree = "<group>"; };
 		4D482C5A303BA13B0071BC2B /* hct_verif.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hct_verif.h; sourceTree = "<group>"; };
 		4D482C5E303C81270071BC2B /* hc_core.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hc_core.c; sourceTree = "<group>"; };
+		4D8634413076B0C90059FF23 /* cling.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = cling.wav; sourceTree = "<group>"; };
+		4D8634443076B40C0059FF23 /* tik.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = tik.wav; sourceTree = "<group>"; };
 		4D9E256C3031EB1800C2D5EE /* Hcdocument.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hcdocument.m; sourceTree = "<group>"; };
 		4D9E256F3031F6D000C2D5EE /* Hcdocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Hcdocument.h; sourceTree = "<group>"; };
 		4DA09F853043C745003F1A35 /* hc_icons.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_icons.c; sourceTree = "<group>"; };
-		4DB1000030500001003F1A35 /* hc_presse_papiers.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_presse_papiers.c; sourceTree = "<group>"; };
-		4DB1000030500012003F1A35 /* hc_importe.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_importe.c; sourceTree = "<group>"; };
-		4DB1000030500010003F1A35 /* hc_origine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_origine.c; sourceTree = "<group>"; };
-		4DB1000030500004003F1A35 /* hc_script.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_script.c; sourceTree = "<group>"; };
-		4DB1000030500003003F1A35 /* hc_interne.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = hc_interne.h; sourceTree = "<group>"; };
 		4DA09F8C3043CC60003F1A35 /* Hciconedit.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Hciconedit.m; sourceTree = "<group>"; };
 		4DA09F8F3043CCA2003F1A35 /* Hciconedit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Hciconedit.h; sourceTree = "<group>"; };
 		4DA09F923045EB1E003F1A35 /* cocorico.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = cocorico.wav; sourceTree = "<group>"; };
 		4DA09F96304719A4003F1A35 /* submarine.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = submarine.wav; sourceTree = "<group>"; };
+		4DB1000030500001003F1A35 /* hc_presse_papiers.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_presse_papiers.c; sourceTree = "<group>"; };
+		4DB1000030500003003F1A35 /* hc_interne.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = hc_interne.h; sourceTree = "<group>"; };
+		4DB1000030500004003F1A35 /* hc_script.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_script.c; sourceTree = "<group>"; };
+		4DB1000030500010003F1A35 /* hc_origine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_origine.c; sourceTree = "<group>"; };
+		4DB1000030500012003F1A35 /* hc_importe.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_importe.c; sourceTree = "<group>"; };
 		4DF28F7C3023666200D7740C /* boing.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing.wav; sourceTree = "<group>"; };
 		4DF28F7F302369FE00D7740C /* boing3.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = boing3.wav; sourceTree = "<group>"; };
 		4DF28F823023709D00D7740C /* coq.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = coq.wav; sourceTree = "<group>"; };
@@ -152,7 +156,9 @@
 			isa = PBXGroup;
 			children = (
 				4DA09F96304719A4003F1A35 /* submarine.wav */,
+				4D8634443076B40C0059FF23 /* tik.wav */,
 				4DA09F923045EB1E003F1A35 /* cocorico.wav */,
+				4D8634413076B0C90059FF23 /* cling.wav */,
 				4DF28F893023F77000D7740C /* canard.wav */,
 				4DF28F823023709D00D7740C /* coq.wav */,
 				4DF28F7F302369FE00D7740C /* boing3.wav */,
@@ -310,12 +316,14 @@
 				4DF28F80302369FF00D7740C /* boing3.wav in Resources */,
 				4DF28F8A3023F77000D7740C /* canard.wav in Resources */,
 				4DF5FB513014BE7D006AE901 /* Assets.xcassets in Resources */,
+				4D8634453076B40C0059FF23 /* tik.wav in Resources */,
 				4D482C29303899720071BC2B /* stack.icns in Resources */,
 				4DA09F933045EB1E003F1A35 /* cocorico.wav in Resources */,
 				4D482C28303899720071BC2B /* AppIcon.icns in Resources */,
 				4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */,
 				4DA09F97304719A4003F1A35 /* submarine.wav in Resources */,
 				4DF28F833023709D00D7740C /* coq.wav in Resources */,
+				4D8634423076B0CA0059FF23 /* cling.wav in Resources */,
 				4DF28F7D3023666200D7740C /* boing.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -493,9 +501,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HC/HC.entitlements;
-				ENABLE_HARDENED_RUNTIME = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = HC/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -514,9 +522,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HC/HC.entitlements;
-				ENABLE_HARDENED_RUNTIME = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = HC/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
