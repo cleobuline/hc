@@ -1762,7 +1762,8 @@ int test ()
 {
     int a = 1 ;
     int b = 1 ;
- return (a + b  );
+    int c = 1 ;
+ return (a + b +c  );
 }
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
