@@ -1764,7 +1764,8 @@ int test ()
     int b = 1 ;
     int c = 1 ;
     int d = 1 ;
- return (a + b +c +d  );
+    int e = 1 ;
+ return (a + b +c +d +e  );
 }
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
