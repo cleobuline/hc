@@ -1752,6 +1752,16 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
     return gDlgBuf;
 }
 
+
+
+
+
+
+
+int test ()
+{
+ return ;
+}
 static const char *cocoa_answer(const char *prompt, const char *b1,
                                 const char *b2, const char *b3) {
     NSAlert *a = [[NSAlert alloc] init];
