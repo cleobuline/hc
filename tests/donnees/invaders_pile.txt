@@ -1,0 +1,534 @@
+-- ════════════════════════════════════════════════════════════════════
+--  SPACE INVADERS — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Quarante envahisseurs, « E1 » a « E40 » : des boutons polygones, cinq
+--  rangees de huit. La formation avance d'un bloc : chacun change de
+--  « loc », et ses sommets suivent. Le canon et la soucoupe sont des
+--  polygones aussi ; le tir et les bombes, de petits boutons rectangles ;
+--  les quatre abris, vingt-quatre briques « M1 » a « M24 ».
+--
+--  L'etat vit dans des variables globales : gEtat, quarante caracteres,
+--  « 1 » pour un envahisseur vivant ; gMurs, vingt-quatre pour les briques.
+--
+--  Clavier : Q et D (ou fleches gauche et droite) pour bouger ; Z, espace
+--  ou fleche haut pour tirer ; Echap pour arreter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  global gEtat
+  if gEtat is empty then preparePartie
+  pass openCard
+end openCard
+
+-- Les fleches sont lues par « the keysDown » dans la boucle : on avale
+-- leur message, sinon HyperCard changerait de carte a chaque appui.
+on arrowKey
+end arrowKey
+
+-- Le terrain va de 10 a 370 en largeur ; le canon vit a la ligne 300.
+function bordG
+  return 14
+end bordG
+function bordD
+  return 366
+end bordD
+function hautCanon
+  return 300
+end hautCanon
+function hautAbris
+  return 262
+end hautAbris
+
+-- Une partie neuve. « essai » coupe le hasard — ni bombes ni soucoupe
+-- d'elles-memes — et la boucle : les essais jouent les tours un a un.
+on nouvellePartie essai
+  preparePartie essai
+  if essai is empty then boucle
+end nouvellePartie
+
+on preparePartie essai
+  global gScore, gVies, gVague, gFini, gEssai, gMurs
+  put (essai is not empty) into gEssai
+  put 0 into gScore
+  put 3 into gVies
+  put 1 into gVague
+  put false into gFini
+  put empty into card field "Etat"
+  put "111111111111111111111111" into gMurs
+  lock screen
+  dessineFormes
+  repeat with k = 1 to 24
+    show button ("M" & k)
+  end repeat
+  nouvelleVague
+  unlock screen
+  montreScore
+end preparePartie
+
+-- Les formes et les couleurs, posees une fois par partie. Les sommets d'un
+-- bouton polygone sont en coordonnees de CARTE : on pose chaque forme a
+-- l'origine, et « set the loc » la mene ensuite ou il faut.
+on dessineFormes
+  repeat with i = 1 to 40
+    put (i - 1) div 8 + 1 into r
+    put "E" & i into nom
+    poseForme nom, forme(item r of "1,2,2,3,3")
+    put line r of lesCouleurs() into c
+    set the backColor of button nom to c
+    set the foreColor of button nom to c
+  end repeat
+  poseForme "Canon", forme(4)
+  set the backColor of button "Canon" to "60,255,60"
+  set the foreColor of button "Canon" to "60,255,60"
+  poseForme "Ovni", forme(5)
+  set the backColor of button "Ovni" to "255,60,60"
+  set the foreColor of button "Ovni" to "255,60,60"
+  set the backColor of button "Cadre" to "0,0,0"
+  set the backColor of button "Tir" to "255,255,255"
+  set the foreColor of button "Tir" to "255,255,255"
+  repeat with k = 1 to 3
+    set the backColor of button ("Bombe" & k) to "255,230,80"
+    set the foreColor of button ("Bombe" & k) to "255,230,80"
+  end repeat
+  repeat with k = 1 to 24
+    set the backColor of button ("M" & k) to "60,200,60"
+    set the foreColor of button ("M" & k) to "60,200,60"
+  end repeat
+end dessineFormes
+
+on poseForme nom, contour
+  put empty into pts
+  repeat with i = 1 to the number of items of contour div 2
+    put item (2 * i - 1) of contour & "," & item (2 * i) of contour & return after pts
+  end repeat
+  set the points of button nom to pts
+end poseForme
+
+-- Une vague : les quarante en place, un peu plus bas a chaque vague.
+on nouvelleVague
+  global gEtat, gVivants, gFx, gFy, gDir, gTir, gBombes, gOvni, gVague
+  global gCanonX, gProchainPas
+  put "1111111111111111111111111111111111111111" into gEtat
+  put 40 into gVivants
+  put 20 into gFx
+  put 40 + 8 * min(5, gVague - 1) into gFy
+  put 1 into gDir
+  put false into gTir
+  put empty into gBombes
+  put empty into gOvni
+  put 190 into gCanonX
+  put 0 into gProchainPas
+  lock screen
+  hide button "Tir"
+  repeat with k = 1 to 3
+    hide button ("Bombe" & k)
+  end repeat
+  hide button "Ovni"
+  set the loc of button "Canon" to gCanonX, hautCanon() + 7
+  show button "Canon"
+  repeat with i = 1 to 40
+    show button ("E" & i)
+  end repeat
+  placeFormation
+  unlock screen
+end nouvelleVague
+
+-- Chaque envahisseur vivant a sa case : 34 points de colonne en colonne,
+-- 24 de rangee en rangee, depuis le coin gFx, gFy.
+on placeFormation
+  global gEtat, gFx, gFy
+  repeat with i = 1 to 40
+    if char i of gEtat is "1" then
+      set the loc of button ("E" & i) to ¬
+        gFx + ((i - 1) mod 8) * 34 + 12, gFy + ((i - 1) div 8) * 24 + 8
+    end if
+  end repeat
+end placeFormation
+
+-- ─── la boucle de jeu ───────────────────────────────────────────────
+
+on boucle
+  global gFini
+  repeat until gFini
+    put the ticks into t
+    if tenue(27) then
+      put true into gFini
+      put "Partie arretee." into card field "Etat"
+      exit repeat
+    end if
+    tour t
+    wait 1 tick
+  end repeat
+end boucle
+
+-- Un tour de jeu, un soixantieme de seconde : le clavier, le tir, les
+-- bombes, la soucoupe, et la formation quand son heure est venue.
+on tour t
+  global gFini, gProchainPas, gEssai
+  clavier
+  bougeTir
+  if gFini then exit tour
+  bougeBombes
+  if gFini then exit tour
+  bougeOvni
+  if t >= gProchainPas then
+    pasFormation
+    put t + vitesse() into gProchainPas
+  end if
+  if not gEssai then hasard
+end tour
+
+-- Moins ils sont, plus ils vont vite — comme dans l'original.
+function vitesse
+  global gVivants, gVague
+  return max(2, (gVivants * 3) div 4 + 4 - min(4, gVague - 1))
+end vitesse
+
+function tenue lesCodes
+  -- Sans toucher a l'itemDelimiter : dans HyperCard il ne revient a la
+  -- virgule qu'a l'idle, et l'appelant lirait ses items de travers.
+  put "," & the keysDown & "," into tenues
+  repeat while lesCodes is not empty
+    put offset("/", lesCodes) into o
+    if o = 0 then put lesCodes into c
+    else put char 1 to o - 1 of lesCodes into c
+    if ("," & c & ",") is in tenues then return true
+    if o = 0 then exit repeat
+    delete char 1 to o of lesCodes
+  end repeat
+  return false
+end tenue
+
+-- Gauche, droite, tirer : chaque geste a plusieurs touches, separees par
+-- « / » — la fleche, la lettre, sa majuscule.
+on clavier
+  global gTir
+  if tenue("65361/113/81") then bougeCanon -3
+  if tenue("65363/100/68") then bougeCanon 3
+  if not gTir and tenue("32/122/90/65362") then tire
+end clavier
+
+-- ─── le canon et son tir ────────────────────────────────────────────
+
+on bougeCanon d
+  global gCanonX
+  canonEn gCanonX + d
+end bougeCanon
+
+on canonEn x
+  global gCanonX
+  put max(bordG() + 13, min(bordD() - 13, x)) into x
+  if x is not gCanonX then
+    put x into gCanonX
+    set the loc of button "Canon" to gCanonX, hautCanon() + 7
+  end if
+end canonEn
+
+on tire
+  global gTir, gTirX, gTirY, gCanonX
+  put true into gTir
+  put gCanonX into gTirX
+  put hautCanon() - 4 into gTirY
+  set the loc of button "Tir" to gTirX, gTirY
+  show button "Tir"
+  play "tik"
+end tire
+
+-- Huit points par tour : un envahisseur en fait seize de haut, une brique
+-- huit — le tir ne peut sauter ni l'un ni l'autre.
+on bougeTir
+  global gTir, gTirX, gTirY
+  if not gTir then exit bougeTir
+  subtract 8 from gTirY
+  if gTirY < 14 then
+    finTir
+    exit bougeTir
+  end if
+  if toucheOvni(gTirX, gTirY) then exit bougeTir
+  put envahisseurEn(gTirX, gTirY) into i
+  if i > 0 then
+    finTir
+    tueEnvahisseur i
+    exit bougeTir
+  end if
+  if casseBrique(gTirX, gTirY) then
+    finTir
+    exit bougeTir
+  end if
+  set the loc of button "Tir" to gTirX, gTirY
+end bougeTir
+
+on finTir
+  global gTir
+  put false into gTir
+  hide button "Tir"
+end finTir
+
+-- Le numero de l'envahisseur vivant sous ce point, ou 0. Le calmar de la
+-- rangee du haut est plus etroit que sa case : on ne le touche qu'en lui.
+function envahisseurEn x, y
+  global gEtat, gFx, gFy
+  put x - gFx into dx
+  put y - gFy into dy
+  if dx < 0 or dy < 0 then return 0
+  put dx div 34 + 1 into c
+  put dy div 24 + 1 into r
+  if c > 8 or r > 5 then return 0
+  put dx mod 34 into ox
+  if ox >= 24 or dy mod 24 >= 16 then return 0
+  if r = 1 and (ox < 6 or ox > 18) then return 0
+  put (r - 1) * 8 + c into i
+  if char i of gEtat is "1" then return i
+  return 0
+end envahisseurEn
+
+on tueEnvahisseur i
+  global gEtat, gScore, gVivants, gVague
+  put "0" into char i of gEtat
+  hide button ("E" & i)
+  subtract 1 from gVivants
+  add item ((i - 1) div 8 + 1) of "30,20,20,10,10" to gScore
+  play "cling"
+  montreScore
+  if gVivants = 0 then
+    add 1 to gVague
+    put "Vague " & gVague & " !" into card field "Etat"
+    nouvelleVague
+    montreScore
+  end if
+end tueEnvahisseur
+
+-- ─── les abris ──────────────────────────────────────────────────────
+
+-- Quatre abris de trois briques sur deux, centres en 55, 145, 235 et
+-- 325 ; une brique fait 10 sur 8. Rend true si une brique vient de casser.
+function casseBrique x, y
+  global gMurs
+  if y < hautAbris() or y >= hautAbris() + 16 then return false
+  repeat with b = 1 to 4
+    put 45 * (2 * b - 1) - 5 into g
+    if x >= g and x < g + 30 then
+      put (b - 1) * 6 + ((y - hautAbris()) div 8) * 3 + (x - g) div 10 + 1 into k
+      if char k of gMurs is "1" then
+        put "0" into char k of gMurs
+        hide button ("M" & k)
+        return true
+      end if
+      return false
+    end if
+  end repeat
+  return false
+end casseBrique
+
+-- La formation descend sur les abris : ce qu'elle atteint disparait.
+on ecraseAbris bas
+  global gMurs
+  repeat with k = 1 to 24
+    put ((k - 1) mod 6) div 3 into r
+    if hautAbris() + r * 8 < bas and char k of gMurs is "1" then
+      put "0" into char k of gMurs
+      hide button ("M" & k)
+    end if
+  end repeat
+end ecraseAbris
+
+-- ─── la formation ───────────────────────────────────────────────────
+
+-- Un pas de cote ; au bord, un cran vers le bas et demi-tour. Les bords se
+-- mesurent sur les colonnes encore vivantes.
+on pasFormation
+  global gEtat, gFx, gFy, gDir, gFini, gScore
+  put 9 into cmin
+  put 0 into cmax
+  put 0 into rmax
+  repeat with i = 1 to 40
+    if char i of gEtat is "1" then
+      put (i - 1) mod 8 + 1 into c
+      put min(cmin, c) into cmin
+      put max(cmax, c) into cmax
+      put max(rmax, (i - 1) div 8 + 1) into rmax
+    end if
+  end repeat
+  if cmax = 0 then exit pasFormation
+  put gFx + (cmin - 1) * 34 into g
+  put gFx + (cmax - 1) * 34 + 24 into d
+  if (gDir > 0 and d + 6 > bordD()) or (gDir < 0 and g - 6 < bordG()) then
+    add 12 to gFy
+    put -gDir into gDir
+  else
+    add 6 * gDir to gFx
+  end if
+  lock screen
+  placeFormation
+  unlock screen
+  put gFy + (rmax - 1) * 24 + 16 into bas
+  if bas > hautAbris() then ecraseAbris bas
+  if bas >= hautCanon() then
+    put true into gFini
+    put "Envahis ! Score : " & gScore into card field "Etat"
+  end if
+end pasFormation
+
+-- ─── les bombes ─────────────────────────────────────────────────────
+
+-- Trois bombes au plus a la fois, une par ligne de gBombes : « x,y ».
+on lacheBombe x, y
+  global gBombes
+  repeat with k = 1 to 3
+    if line k of gBombes is empty then
+      put x & "," & y into line k of gBombes
+      set the loc of button ("Bombe" & k) to x, y
+      show button ("Bombe" & k)
+      exit lacheBombe
+    end if
+  end repeat
+end lacheBombe
+
+-- Le plus bas des vivants d'une colonne au hasard lache sa bombe.
+on bombeAuHasard
+  global gEtat, gFx, gFy
+  put random(8) into c
+  repeat with r = 5 down to 1
+    if char ((r - 1) * 8 + c) of gEtat is "1" then
+      lacheBombe gFx + (c - 1) * 34 + 12, gFy + (r - 1) * 24 + 18
+      exit bombeAuHasard
+    end if
+  end repeat
+end bombeAuHasard
+
+on bougeBombes
+  global gBombes, gCanonX
+  repeat with k = 1 to 3
+    put line k of gBombes into b
+    if b is empty then next repeat
+    put item 1 of b into x
+    put item 2 of b + 2 into y
+    if y > 328 then
+      finBombe k
+    else if casseBrique(x, y) then
+      finBombe k
+    else if y >= hautCanon() and y < hautCanon() + 14 and abs(x - gCanonX) <= 13 then
+      finBombe k
+      perdVie
+      exit bougeBombes
+    else
+      put x & "," & y into line k of gBombes
+      set the loc of button ("Bombe" & k) to x, y
+    end if
+  end repeat
+end bougeBombes
+
+on finBombe k
+  global gBombes
+  put empty into line k of gBombes
+  hide button ("Bombe" & k)
+end finBombe
+
+on perdVie
+  global gVies, gFini, gScore, gBombes, gEssai
+  subtract 1 from gVies
+  play "Basso"
+  montreScore
+  repeat with k = 1 to 3
+    finBombe k
+  end repeat
+  put empty into gBombes
+  if not gEssai then
+    repeat 3 times
+      hide button "Canon"
+      wait 4 ticks
+      show button "Canon"
+      wait 4 ticks
+    end repeat
+  end if
+  if gVies <= 0 then
+    put true into gFini
+    put "Perdu ! Score : " & gScore into card field "Etat"
+  end if
+end perdVie
+
+-- ─── la soucoupe ────────────────────────────────────────────────────
+
+on lanceOvni sens
+  global gOvni, gOvniDir
+  put sens into gOvniDir
+  if sens > 0 then put bordG() + 16 into gOvni
+  else put bordD() - 16 into gOvni
+  set the loc of button "Ovni" to gOvni, 24
+  show button "Ovni"
+end lanceOvni
+
+on bougeOvni
+  global gOvni, gOvniDir
+  if gOvni is empty then exit bougeOvni
+  add 2 * gOvniDir to gOvni
+  if gOvni < bordG() + 16 or gOvni > bordD() - 16 then
+    put empty into gOvni
+    hide button "Ovni"
+  else
+    set the loc of button "Ovni" to gOvni, 24
+  end if
+end bougeOvni
+
+function toucheOvni x, y
+  global gOvni, gScore, gEssai
+  if gOvni is empty then return false
+  if abs(x - gOvni) > 16 or y < 18 or y > 30 then return false
+  put empty into gOvni
+  hide button "Ovni"
+  finTir
+  if gEssai then put 100 into bonus
+  else put any item of "50,100,150,300" into bonus
+  add bonus to gScore
+  put "Soucoupe : " & bonus & " points !" into card field "Etat"
+  play "cling"
+  montreScore
+  return true
+end toucheOvni
+
+-- ─── le hasard, hors des essais ─────────────────────────────────────
+
+on hasard
+  global gOvni, gVague
+  if random(1000) <= 15 + 3 * min(5, gVague) then bombeAuHasard
+  if gOvni is empty and random(1500) = 1 then lanceOvni any item of "1,-1"
+end hasard
+
+-- ─── l'affichage ────────────────────────────────────────────────────
+
+on montreScore
+  global gScore, gVies, gVague
+  put gScore into card field "Score"
+  put gVies into card field "Vies"
+  put gVague into card field "Vague"
+end montreScore
+
+function lesCouleurs
+  return "255,90,255" & return & "90,220,255" & return & "90,220,255" & ¬
+    return & "120,255,120" & return & "120,255,120"
+end lesCouleurs
+
+-- Les cinq contours, en points, dans leur boite : le calmar, le crabe et
+-- la pieuvre (24 sur 16), le canon (26 sur 14), la soucoupe (32 sur 12).
+function forme k
+  return line k of lesFormes()
+end forme
+
+function lesFormes
+  put empty into f
+  put "12,0,16,4,18,8,16,8,18,12,15,16,13,12,11,12,9,16,6,12,8,8,6,8,8,4" & return after f
+  put "4,0,7,3,17,3,20,0,22,2,20,5,24,8,24,12,21,12,21,9,19,13,15,13,15,16,9,16,9,13,5,13,3,9,3,12,0,12,0,8,4,5,2,2" & return after f
+  put "7,0,17,0,22,3,24,7,24,10,19,10,22,16,18,16,14,11,10,11,6,16,2,16,5,10,0,10,0,7,2,3" & return after f
+  put "11,0,15,0,15,4,24,6,26,8,26,14,0,14,0,8,2,6,11,4" & return after f
+  put "10,0,22,0,26,4,32,8,26,12,6,12,0,8,6,4" & return after f
+  return f
+end lesFormes
+
+-- Pour les essais : l'etat de la partie.
+on rapport
+  global gScore, gVies, gVague, gFini, gVivants, gFx, gFy, gDir, gCanonX, gTir
+  put "score " & gScore & " · vies " & gVies & " · vague " & gVague & ¬
+    " · vivants " & gVivants & " · formation " & gFx & "," & gFy & ¬
+    " sens " & gDir & " · canon " & gCanonX & " · tir " & gTir & ¬
+    " · fini " & gFini
+end rapport

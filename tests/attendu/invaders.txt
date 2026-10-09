@@ -1,0 +1,66 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, une partie se prépare ==
+   score 0 · vies 3 · vague 1 · vivants 40 · formation 20,40 sens 1 · canon 190 · tir false · fini false
+   E1     rect 26,40 12x16, 13 sommets, visible
+   E8     rect 264,40 12x16, 13 sommets, visible
+   E9     rect 20,64 24x16, 22 sommets, visible
+   E33    rect 20,136 24x16, 16 sommets, visible
+   E40    rect 258,136 24x16, 16 sommets, visible
+   Canon  rect 177,300 26x14, 10 sommets, visible
+   Ovni   rect 0,0 32x12, 8 sommets, caché
+   contrôle : 0
+
+== 2. la formation marche, touche le bord, descend et repart ==
+   pas 15 : demi-tour,    score 0 · vies 3 · vague 1 · vivants 40 · formation 104,52 sens -1 · canon 190 · tir false · fini false
+   pas 31 : demi-tour,    score 0 · vies 3 · vague 1 · vivants 40 · formation 14,64 sens 1 · canon 190 · tir false · fini false
+
+== 3. le tir abat le plus bas de la colonne, puis celui d'au-dessus ==
+   19 tours de tir
+   score 10 · vies 3 · vague 1 · vivants 39 · formation 20,40 sens 1 · canon 32 · tir false · fini false
+   E33 abattu, E25 visible
+   score 20 · vies 3 · vague 1 · vivants 38 · formation 20,40 sens 1 · canon 32 · tir false · fini false
+   E25 abattu · contrôle 0
+   -- à droite de la formation et entre deux abris : le tir sort du terrain
+   36 tours de tir
+   score 20 · vies 3 · vague 1 · vivants 38 · formation 20,40 sens 1 · canon 295 · tir false · fini false
+   murs 111111111111111111111111
+
+== 4. les abris arrêtent le tir et les bombes ==
+   murs 111111111101111111111111
+   murs 111111101101111111111111  (la brique du dessus, à son tour)
+   murs 111111101101111111111111  (la colonne est percée : le tir passe)
+   murs 101111101101111111111111  (une bombe sur l'abri 1)
+   contrôle 0
+
+== 5. une bombe sur le canon coûte une vie ; trois, la partie ==
+   score 0 · vies 2 · vague 1 · vivants 40 · formation 20,40 sens 1 · canon 190 · tir false · fini false
+   score 0 · vies 1 · vague 1 · vivants 40 · formation 20,40 sens 1 · canon 190 · tir false · fini false
+   score 0 · vies 0 · vague 1 · vivants 40 · formation 20,40 sens 1 · canon 190 · tir false · fini true
+   champ Etat : Perdu ! Score : 0
+
+== 6. la soucoupe ==
+   soucoupe en 290
+   score 100 · vies 3 · vague 1 · vivants 40 · formation 20,40 sens 1 · canon 290 · tir false · fini false
+   champ Etat : Soucoupe : 100 points !
+
+== 7. la vague abattue, la suivante arrive plus bas ==
+   score 720 · vies 3 · vague 2 · vivants 40 · formation 20,48 sens 1 · canon 190 · tir false · fini false
+   contrôle 0
+
+== 8. personne ne tire : la formation descend jusqu'au canon ==
+   207 pas
+   score 0 · vies 3 · vague 1 · vivants 40 · formation 104,196 sens -1 · canon 190 · tir false · fini true
+   murs 000000000000000000000000
+   champ Etat : Envahis ! Score : 0
+
+== 9. le clavier : Q D Z, espace, ou les flèches ==
+   rien de tenu : canon 190, tir false
+   q : à gauche : canon 187, tir false
+   D majuscule : à droite : canon 190, tir false
+   flèche gauche : canon 187, tir false
+   espace : tire : canon 187, tir true
+   z, le tir déjà en l'air : rien de plus : canon 187, tir true
+
+== 10. un robot joue, et l'écran suit l'état ==
+   3 parties, 14883 tours, 2 vague(s) abattue(s), aucun défaut
+   (score cumulé 3090)
