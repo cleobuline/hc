@@ -118,3 +118,14 @@
   put "[" & the selectedText & "]"
       char 1 to 0 of card field 1
       []
+
+== 5. select sur une valeur vide ==
+   get empty
+  select it
+  put "suite"
+      [ERR]    !! select : rien à sélectionner, it est vide
+      suite
+   put "char 1 to 2 of card field 1" into x
+  select x
+  put the selectedChunk && "[" & the selectedText & "]"
+      char 1 to 2 of card field 1 [Le]

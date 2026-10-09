@@ -75,14 +75,36 @@ morceau, comme les mots) ; écrire, effacer, sélectionner dans « char 1 to
 pour « to -1 », l'effacement n'ôte rien, select pose un point d'insertion.
 
 
-« set the checkMark of menuItem 4 of menu gHMnu » — EN COURS
-------------------------------------------------------------
+LA CARTE clickChunk — RÉSOLU : UN CLIC DANS LE VIDE
+---------------------------------------------------
 
-Signalé DANS HC (l'application) sur la carte clickChunk. Dans le noyau, la
-chaîne entière passe : HyperCard Help mise en usage, son openStack crée le
-menu « Reference », setCheckMark coche l'article 4, la démonstration joue
-toggleActiveText. Le texte exact du dialogue et le moment où il paraît sont
-demandés.
+Signalé DANS HC (l'application) : la démonstration « coinçait ». La chaîne
+des piles d'aide passe entière dans le noyau. La ligne fautive était
+
+    get the clickChunk
+    select it
+
+après un clic hors du texte : clickChunk vide, et HC répondait « ne sait
+pas faire : select it », qui accuse la syntaxe. L'utilisatrice l'a cherchée
+avant de voir qu'elle avait cliqué à côté ; en cliquant sur un mot, tout
+remarche. Le message dit maintenant « select : rien à sélectionner, it est
+vide », et le script continue comme avant. Ce que fait HyperCard d'un
+« select » sur une valeur vide : NON MESURÉ. Harnais refdemos, section 5.
+
+
+L'EFFET DE BORD DE « char 1 to 0 » SUR LES PILES D'AIDE
+-------------------------------------------------------
+
+notHelpSuite répondait toujours faux ; elle répond juste depuis la
+correction. Or HyperCard Help lui passe lastItem(":", destination()) et
+lastItem(":", <nom long d'une carte>) : avec des chemins en « / », aucune
+pile n'est reconnue comme pile d'aide. Mesuré dans le noyau : en quittant
+une pile d'aide, closeDownHelpStack retire le menu « Reference » et cesse
+d'utiliser HyperCard Help (le menu revient au resumeStack) ; et le bouton
+« Go … » de la carte 1 peut paraître. Conséquence de la décision sur les
+chemins, ci-dessous ; la correction proposée porte sur la copie convertie de
+la pile d'Apple, pas sur HC. Et « the destination » rend chez nous
+« stack "/chemin" » : ce que rend HyperCard est demandé.
 
 
 RELEVÉ, PAS ENCORE CORRIGÉ

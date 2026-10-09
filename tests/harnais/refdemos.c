@@ -147,6 +147,15 @@ int main(void)
     joue("select char 1 to 0 of card field \"Titre\"\n"
          "  put the selectedChunk\n  put \"[\" & the selectedText & \"]\"");
 
+    /* « get the clickChunk » puis « select it », après un clic dans le vide
+     * du champ : le clickChunk est vide, et HC répondait « ne sait pas
+     * faire : select it » — une faute de syntaxe qui n'existait pas. Le
+     * message nomme la valeur vide ; le script continue comme avant. */
+    puts("\n== 5. select sur une valeur vide ==");
+    joue("get empty\n  select it\n  put \"suite\"");
+    joue("put \"char 1 to 2 of card field 1\" into x\n  select x\n"
+         "  put the selectedChunk && \"[\" & the selectedText & \"]\"");
+
     hc_free(st);
     return 0;
 }

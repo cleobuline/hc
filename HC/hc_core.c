@@ -10893,6 +10893,30 @@ static int v3_cmd_select(HctContexte *ctx, const HctNoeud *n)
         v3_val_texte(ctx, c, txt, HC_VAL);
         if (ctx->erreur) { ARENA_FREE; return 1; }
 
+        /* UNE VALEUR VIDE NE DÉSIGNE RIEN, ET IL FAUT LE DIRE AINSI.
+         *
+         * La démonstration clickChunk de « HyperTalk Reference » fait
+         *
+         *     get the clickChunk
+         *     select it
+         *
+         * et un clic dans le vide du champ rend un clickChunk vide. HC
+         * répondait « ne sait pas faire : select it », qui envoie chercher
+         * une faute de syntaxe là où il n'y en a pas — l'utilisatrice l'a
+         * cherchée le 9 octobre DANS HC (l'application), avant de comprendre
+         * qu'elle avait cliqué à côté du texte. Le message nomme maintenant
+         * la cause. Le reste ne change pas : la ligne est refusée, et le
+         * script continue comme avant. Ce que fait HyperCard d'un « select »
+         * sur une valeur vide n'est pas mesuré. */
+        if (!*skip_spaces(txt)) {
+            char *src = arena_buf();
+            v3_source(c, src, HC_VAL);
+            emit(HC_ERR, "   !! select : rien à sélectionner, %s est vide", src);
+            set_result("");
+            ARENA_FREE;
+            return 1;
+        }
+
         HctLot lot;
         HctReserve res;
         memset(&res, 0, sizeof res);
