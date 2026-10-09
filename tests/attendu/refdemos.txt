@@ -75,3 +75,46 @@
   put "Titre : " & the visible of card field "Titre"
       Titre : false
    show card field "Titre"
+
+== 4. char 1 to 0 est vide ==
+   put "[" & char 1 to 0 of "abc" & "]"
+  put "[" & char 1 to -1 of "abc" & "]"
+  put "[" & word 1 to 0 of "a b c" & "]"
+  put the number of lines of return
+  put the number of lines of char 1 to 0 of (return & "abc" & return)
+      []
+      []
+      [a]
+      1
+      0
+   put "[" & char 3 to 1 of "abc" & "]"
+  put "[" & char 2 to 3 of "abc" & "]"
+  put 0 into z
+  put "[" & char 1 to z of "abc" & "]"
+      []
+      [bc]
+      []
+   put "HyperCard Help" & return & "HyperTalk Reference" into suite
+  put textToLineNum("HyperTalk Reference", suite)
+  put textToLineNum("HyperCard Help", suite)
+  put textToLineNum("Mon Calendrier", suite)
+      2
+      1
+      0
+   put "abc" into v
+  put "X" into char 1 to 0 of v
+  put v
+      abc
+   put "abc" into v
+  delete char 1 to 0 of v
+  put v
+      abc
+   put "abc" into v
+  delete char 1 to -1 of v
+  put v
+      abc
+   select char 1 to 0 of card field "Titre"
+  put the selectedChunk
+  put "[" & the selectedText & "]"
+      char 1 to 0 of card field 1
+      []

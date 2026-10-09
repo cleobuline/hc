@@ -43,6 +43,48 @@ CORRIGÉ LE 9 OCTOBRE
                                 refdemos, section 3.
 
 
+« CHAR 1 TO 0 » — MESURÉ, PUIS CORRIGÉ LE MÊME JOUR
+---------------------------------------------------
+
+Trouvé en suivant la démonstration clickChunk dans la pile « HyperCard
+Help » : sa fonction textToLineNum (attribuée à Ken Laws) écrit
+
+    return the number of lines of char 1 to offset(return & theText & return,
+                                                    theContainer) of theContainer
+
+et son commentaire promet 0 quand le texte manque. HC rendait 1 : n2 = 0
+voulait dire « pas de fin », et « char 1 to 0 » rendait le premier
+caractère. notHelpSuite se trompait donc toujours.
+
+MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice — les valeurs
+contredisent ce que rendait HC, le côté ne fait pas de doute :
+
+    char 1 to 0 of "abc"                                          []
+    char 1 to -1 of "abc"                                         []
+    word 1 to 0 of "a b c"                                        a
+    the number of lines of return                                 1
+    the number of lines of char 1 to 0 of (return & "abc" & return)   0
+
+Les caractères et les mots ne suivent pas la même règle. Seuls les
+caractères changent (hct_chunk_fin, appelée aux quatre sites qui lisent un
+« to » : lecture, put, delete, select). Harnais refdemos, section 4.
+
+NON MESURÉ : les items et les lignes « to 0 » (inchangés : le premier
+morceau, comme les mots) ; écrire, effacer, sélectionner dans « char 1 to
+0 » — l'écriture laisse la chaîne telle quelle, comme elle le faisait déjà
+pour « to -1 », l'effacement n'ôte rien, select pose un point d'insertion.
+
+
+« set the checkMark of menuItem 4 of menu gHMnu » — EN COURS
+------------------------------------------------------------
+
+Signalé DANS HC (l'application) sur la carte clickChunk. Dans le noyau, la
+chaîne entière passe : HyperCard Help mise en usage, son openStack crée le
+menu « Reference », setCheckMark coche l'article 4, la démonstration joue
+toggleActiveText. Le texte exact du dialogue et le moment où il paraît sont
+demandés.
+
+
 RELEVÉ, PAS ENCORE CORRIGÉ
 --------------------------
 

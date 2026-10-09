@@ -231,10 +231,20 @@ static HctBornes borne_simple(const char *s, HctSorteChunk sorte, int n,
     return b;
 }
 
+int hct_chunk_fin(HctSorteChunk sorte, int n2)
+{
+    return (sorte == HCT_CH_CHAR && n2 < 1) ? HCT_FIN_VIDE : n2;
+}
+
 HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
                            int n, int n2, const char *delim)
 {
     HctBornes a = borne_simple(s, sorte, n, delim);
+    /* « char 1 to 0 » : rien, posé au début du caractère 1 — voir
+     * hct_chunk_fin. La lecture rend le vide, la suppression n'ôte rien,
+     * l'écriture (qui refuse déjà une fin inférieure à 1) laisse la chaîne
+     * telle quelle, et select y pose un point d'insertion. */
+    if (n2 == HCT_FIN_VIDE) { a.fin = a.deb; return a; }
     if (n2 <= 0 || n2 == n) return a;
 
     HctBornes z = borne_simple(s, sorte, n2, delim);

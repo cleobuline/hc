@@ -1244,6 +1244,7 @@ static HctValeur chunk(HctContexte *ctx, const HctNoeud *n)
         if (n->nfils >= 3) {
             n2 = rang_de(ctx, n->fils[1], &ok);
             if (!ok) { free(dd); hct_val_libere(&cible); return hct_val_vide(); }
+            n2 = hct_chunk_fin(n->sorte, n2);     /* « char 1 to 0 » est vide */
         }
     }
 

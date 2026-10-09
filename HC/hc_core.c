@@ -10713,7 +10713,12 @@ static int select_cible(HctContexte *ctx, const HctNoeud *c,
             { ARENA_FREE; return 0; }               /* ni ordinal ni borne : rien à viser */
         }
 
-        HctBornes bo = hct_chunk_bornes(base, c->sorte, n1, n2, item_delim());
+        /* « select char 1 to 0 of field 1 » : un point d'insertion au début,
+         * et non le premier caractère — voir hct_chunk_fin. n2 garde la fin
+         * écrite, pour le message plus bas. */
+        HctBornes bo = hct_chunk_bornes(base, c->sorte, n1,
+                                        c->nfils >= 3 ? hct_chunk_fin(c->sorte, n2) : n2,
+                                        item_delim());
         /* LE CHAMP EST TROUVÉ, LE MORCEAU N'EXISTE PAS — ET C'EST UNE FAUTE, PAS
          * UN « JE NE SAIS PAS FAIRE ».
          *

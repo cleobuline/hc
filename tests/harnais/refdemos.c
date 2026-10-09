@@ -106,6 +106,47 @@ int main(void)
     joue("hide card field \"Titre\"\n  put \"Titre : \" & the visible of card field \"Titre\"");
     joue("show card field \"Titre\"");
 
+    /* « char 1 to 0 » rendait le premier caractère : n2 = 0 voulait dire
+     * « pas de fin ». MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II), 9 octobre :
+     *
+     *     char 1 to 0 of "abc"                                    []
+     *     char 1 to -1 of "abc"                                   []
+     *     word 1 to 0 of "a b c"                                  a
+     *     the number of lines of return                           1
+     *     the number of lines of char 1 to 0 of (return & "abc" & return)  0
+     *
+     * Les mots gardent leur lecture. La fonction textToLineNum de la pile
+     * « HyperCard Help » (Ken Laws, selon son commentaire), recopiée dans sa
+     * forme, doit rendre 0 quand le texte manque : elle rendait 1. */
+    puts("\n== 4. char 1 to 0 est vide ==");
+    joue("put \"[\" & char 1 to 0 of \"abc\" & \"]\"\n"
+         "  put \"[\" & char 1 to -1 of \"abc\" & \"]\"\n"
+         "  put \"[\" & word 1 to 0 of \"a b c\" & \"]\"\n"
+         "  put the number of lines of return\n"
+         "  put the number of lines of char 1 to 0 of (return & \"abc\" & return)");
+    joue("put \"[\" & char 3 to 1 of \"abc\" & \"]\"\n"
+         "  put \"[\" & char 2 to 3 of \"abc\" & \"]\"\n"
+         "  put 0 into z\n  put \"[\" & char 1 to z of \"abc\" & \"]\"");
+    hc_set_script(st,
+        "function textToLineNum theText,theContainer\n"
+        "  put return & theContainer & return into theContainer\n"
+        "  return the number of lines of char 1 to  offset(return & theText & return,theContainer) of theContainer\n"
+        "end textToLineNum\n");
+    joue("put \"HyperCard Help\" & return & \"HyperTalk Reference\" into suite\n"
+         "  put textToLineNum(\"HyperTalk Reference\", suite)\n"
+         "  put textToLineNum(\"HyperCard Help\", suite)\n"
+         "  put textToLineNum(\"Mon Calendrier\", suite)");
+    hc_set_script(st, "");
+    /* NON MESURÉ DANS HYPERCARD : écrire, effacer et sélectionner dans une
+     * telle plage. L'écriture refusait déjà toute fin inférieure à 1 (« char
+     * 1 to -1 ») ; « to 0 » suit maintenant. Effacer n'ôte rien ; select pose
+     * un point d'insertion au début. */
+    joue("put \"abc\" into v\n  put \"X\" into char 1 to 0 of v\n  put v");
+    joue("put \"abc\" into v\n  delete char 1 to 0 of v\n  put v");
+    joue("put \"abc\" into v\n  delete char 1 to -1 of v\n  put v");
+    joue("select char 1 to 0 of card field \"Titre\"\n"
+         "  put the selectedChunk\n  put \"[\" & the selectedText & \"]\"");
+
     hc_free(st);
     return 0;
 }

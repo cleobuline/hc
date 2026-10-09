@@ -25,6 +25,7 @@
 
 #include "hct_arbre.h"
 #include "hct_val.h"
+#include <limits.h>
 
 /* ------------------------------------------------------------------ UTF-8
  *
@@ -69,10 +70,38 @@ typedef struct {
 } HctBornes;
 
 /* Localise le morceau de rang `n` (1-based). `n2` permet une plage
- * « item 1 to 3 » ; passer n2 <= 0 pour un morceau simple.
+ * « item 1 to 3 » ; passer n2 <= 0 pour un morceau simple, HCT_FIN_VIDE
+ * pour une plage vide au début du morceau n (voir hct_chunk_fin).
  * `delim` est le séparateur d'items, ',' par défaut. */
 HctBornes hct_chunk_bornes(const char *s, HctSorteChunk sorte,
                            int n, int n2, const char *delim);
+
+/* LA FIN D'UNE PLAGE « X to Y », TELLE QUE LE SCRIPT L'A ÉCRITE, traduite
+ * pour les fonctions de ce fichier. Tout site qui lit un « to » l'appelle
+ * avant de passer n2 : lecture (hct_eval.c), put et delete (hct_exec.c),
+ * select (hc_core.c).
+ *
+ * Elle existe parce que n2 <= 0 veut dire ici « morceau simple » — et que
+ * « char 1 to 0 » n'en est pas un. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II)
+ * par l'utilisatrice, le 9 octobre :
+ *
+ *     char 1 to 0 of "abc"      []
+ *     char 1 to -1 of "abc"     []
+ *     word 1 to 0 of "a b c"    a
+ *
+ * HC rendait « a » aux trois. Les caractères et les mots ne suivent donc pas
+ * la même règle, et seuls les caractères changent : une fin inférieure à 1
+ * rend HCT_FIN_VIDE, une plage vide posée au début du morceau. Les mots
+ * gardent la lecture mesurée ; les items et les lignes aussi, sans mesure.
+ *
+ * La fonction textToLineNum d'Apple (pile « HyperCard Help ») en dépend —
+ * « the number of lines of char 1 to offset(...) of x » doit valoir 0 quand
+ * offset rend 0 ; elle rendait 1.
+ *
+ * Un site qui oublierait de l'appeler garde l'ancienne réponse : il n'en
+ * invente pas une. */
+#define HCT_FIN_VIDE INT_MIN
+int hct_chunk_fin(HctSorteChunk sorte, int n2);
 
 /* Combien de morceaux de cette sorte dans la chaîne ? */
 int hct_chunk_compte(const char *s, HctSorteChunk sorte, const char *delim);
