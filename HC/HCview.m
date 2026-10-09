@@ -6,6 +6,7 @@
 #include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
 #include <mach/mach.h>     // host_statistics64, pour « the heapSpace »
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
+#import <AVFoundation/AVFoundation.h>  // AVAudioPlayer, pour « play » (cocoa_play)
 #import "icons.h"
 #import "HCglobals.h"
 #import "HCtext.h"
@@ -4080,55 +4081,111 @@ void hc_restore_cursor(void) {
     if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
 }
 
-static NSMutableArray *gPlaying = nil;
+/* ═══ play : DES LECTEURS PRÊTS D'AVANCE ════════════════════════════════════
+ *
+ * Rapporté le 9 octobre par l'utilisatrice, DANS HC (l'application) : la
+ * balle du casse-briques « s'arrête un instant » sur la raquette et sur
+ * chaque brique. Les deux « play » mis en commentaire, l'arrêt disparaît —
+ * mesuré par elle, côte à côte. Le rebond sur la raquette ne fait presque
+ * rien d'autre que « play "cling" » : c'était bien le son.
+ *
+ * Chaque « play » copiait un NSSound et le jouait : un lecteur NEUF à chaque
+ * coup, monté sur le fil principal — celui qui fait tourner le script. Sur
+ * un vieux MacBook, une image ou deux de perdues à chaque brique. HyperCard,
+ * lui, rend la main tout de suite.
+ *
+ * Désormais chaque son garde ses lecteurs, préparés (prepareToPlay charge
+ * les tampons et prend la sortie audio une fois pour toutes) et réutilisés :
+ * un coup ordinaire ne fait plus que remettre au début et lancer. Seul le
+ * premier « play » d'un nom, ou un chevauchement de plus, en prépare un.
+ *
+ * NON MESURÉ : laquelle des deux opérations coûtait, la copie ou le
+ * lancement ; on supprime les deux du chemin chaud. Et ce que fait HyperCard
+ * d'un « play » donné pendant que le même son joue encore : HC les
+ * superpose, comme avant, jusqu'à HCV_LECTEURS_PAR_SON ; au-delà, le plus
+ * ancien repart du début, plutôt que d'empiler sans fin les lecteurs d'un
+ * « repeat 1000 times play "boing" ». */
+#define HCV_LECTEURS_PAR_SON 4
 
-@interface HCSoundKeeper : NSObject <NSSoundDelegate>
-@end
-@implementation HCSoundKeeper
-- (void)sound:(NSSound *)s didFinishPlaying:(BOOL)ok {
-    (void)ok;
-    [gPlaying removeObject:s];
-}
-@end
-static HCSoundKeeper *gSoundKeeper = nil;
+static NSMutableDictionary<NSString *, NSMutableArray<AVAudioPlayer *> *> *gLecteurs = nil;
+static NSMutableDictionary<NSString *, NSString *> *gCheminsSons = nil;
 
-static void cocoa_play(const char *name) {
-    NSString *n = hcv_texte(name ? name : "");
+/* Le fichier d'un son, cherché comme avant : le bundle, puis les dossiers
+ * de sons de l'utilisateur et du système, sans égard à la casse — « Basso »
+ * est /System/Library/Sounds/Basso.aiff. Retenu une fois trouvé : la
+ * recherche lit des dossiers entiers. */
+static NSString *hcv_chemin_son(NSString *n)
+{
+    NSString *cle = [n lowercaseString];
+    NSString *connu = gCheminsSons[cle];
+    if (connu) return connu;
 
-    NSSound *s = [NSSound soundNamed:n];
-    if (!s) {
-        for (NSString *e in @[@"aiff", @"aif", @"wav"]) {
-            NSString *p = [[NSBundle mainBundle] pathForResource:n ofType:e];
-            if (p) { s = [[NSSound alloc] initWithContentsOfFile:p byReference:YES]; break; }
-        }
+    NSString *trouve = nil;
+    for (NSString *e in @[@"aiff", @"aif", @"wav"]) {
+        trouve = [[NSBundle mainBundle] pathForResource:n ofType:e];
+        if (trouve) break;
     }
-    if (!s) {
+    if (!trouve) {
         NSFileManager *fm = [NSFileManager defaultManager];
-        NSArray *dirs = @[[[NSBundle mainBundle] resourcePath],
+        NSString *ressources = [[NSBundle mainBundle] resourcePath];
+        NSArray *dirs = @[ressources ? ressources : @"",
                           [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Sounds"],
                           @"/Library/Sounds",
                           @"/System/Library/Sounds"];
         for (NSString *d in dirs) {
-            if (!d) continue;
+            if (![d length]) continue;
             for (NSString *f in [fm contentsOfDirectoryAtPath:d error:NULL]) {
                 if ([[f stringByDeletingPathExtension] caseInsensitiveCompare:n] != NSOrderedSame)
                     continue;
-                s = [[NSSound alloc] initWithContentsOfFile:
-                        [d stringByAppendingPathComponent:f] byReference:YES];
-                if (s) break;
+                trouve = [d stringByAppendingPathComponent:f];
+                break;
             }
-            if (s) break;
+            if (trouve) break;
         }
     }
-    if (!s) { NSBeep(); return; }
+    if (!trouve) return nil;
+    if (!gCheminsSons) gCheminsSons = [NSMutableDictionary dictionary];
+    gCheminsSons[cle] = trouve;
+    return trouve;
+}
 
-    if (!gPlaying)     gPlaying = [[NSMutableArray alloc] init];
-    if (!gSoundKeeper) gSoundKeeper = [[HCSoundKeeper alloc] init];
+static void cocoa_play(const char *name) {
+    NSString *n = hcv_texte(name ? name : "");
+    NSString *cle = [n lowercaseString];
+    if (!gLecteurs) gLecteurs = [NSMutableDictionary dictionary];
+    NSMutableArray<AVAudioPlayer *> *lecteurs = gLecteurs[cle];
 
-    s = [s copy];
-    [s setDelegate:gSoundKeeper];
-    [gPlaying addObject:s];
-    [s play];
+    /* Le chemin chaud : un lecteur de ce son qui ne joue plus. */
+    for (AVAudioPlayer *p in lecteurs) {
+        if ([p isPlaying]) continue;
+        [p setCurrentTime:0];
+        [p play];
+        return;
+    }
+    /* Tous jouent, et ils sont assez : le plus ancien repart du début, et
+     * passe en dernier. */
+    if ([lecteurs count] >= HCV_LECTEURS_PAR_SON) {
+        AVAudioPlayer *p = lecteurs[0];
+        [lecteurs removeObjectAtIndex:0];
+        [lecteurs addObject:p];
+        [p stop];
+        [p setCurrentTime:0];
+        [p play];
+        return;
+    }
+
+    NSString *chemin = hcv_chemin_son(n);
+    AVAudioPlayer *p = chemin
+        ? [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:chemin] error:NULL]
+        : nil;
+    if (!p) { NSBeep(); return; }
+    [p prepareToPlay];
+    if (!lecteurs) {
+        lecteurs = [NSMutableArray array];
+        gLecteurs[cle] = lecteurs;
+    }
+    [lecteurs addObject:p];
+    [p play];
 }
 
 /* ═══ Cmd-. ═════════════════════════════════════════════════════════════
