@@ -4488,6 +4488,77 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
 
 @end
 
+/* ENCADRER UNE LIGNE DE L'ÉDITEUR ET Y POSER LE CURSEUR — le corps de
+ * encadreLigne:dansVue:, sorti en fonction pour servir aussi aux menus
+ * « Handlers » et « Functions » ci-dessous, définis avant HCView : une
+ * méthode de HCView qu'aucun en-tête ne déclare n'y serait pas visible. */
+static void hcv_encadre_ligne(NSTextView *tv, int ligne)
+{
+    if (!tv) return;
+    if ([tv isKindOfClass:[HCScriptView class]])
+        ((HCScriptView *)tv).ligneEncadree = ligne;
+    NSRange r = hcv_plage_de_ligne([tv string], ligne);
+    if (r.location == NSNotFound) return;
+    [tv setSelectedRange:NSMakeRange(r.location, 0)];
+    [tv scrollRangeToVisible:r];
+    [[tv window] makeFirstResponder:tv];
+}
+
+/* LES MENUS « HANDLERS » ET « FUNCTIONS » DE LA FENÊTRE DE SCRIPT.
+ *
+ * HyperCard 2.4 en a deux, en haut de sa fenêtre de script, qui listent les
+ * gestionnaires « on » et « function » du script — l'utilisatrice les a
+ * montrés le 9 octobre, dans Basilisk II. Choisir un nom mène à sa ligne.
+ *
+ * La liste se refait À CHAQUE OUVERTURE du menu (menuNeedsUpdate:), sur le
+ * texte en cours d'édition : un gestionnaire qu'on vient d'écrire y est déjà,
+ * sans enregistrer. Le noyau la dresse (hct_gestionnaires, harnais
+ * listegest) : « on X » ne compte que si « end X » le suit.
+ *
+ * NON MESURÉ DANS HYPERCARD : l'ordre de la liste (on garde celui du texte)
+ * et ce que le choix sélectionne exactement (on encadre la ligne et l'on y
+ * pose le curseur, comme le bouton « Script » d'un dialogue d'erreur). */
+@interface HCMenuGestionnaires : NSObject <NSMenuDelegate>
+@property (nonatomic, weak) NSTextView *vue;
+@property (nonatomic) BOOL fonctions;
+@end
+
+@implementation HCMenuGestionnaires
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    /* Le premier article d'un menu déroulant est son titre : il reste. */
+    while ([menu numberOfItems] > 1) [menu removeItemAtIndex:1];
+    NSTextView *tv = self.vue;
+    const char *src = tv ? [[tv string] UTF8String] : NULL;
+    if (!src) return;
+    enum { HCV_GESTIONNAIRES_MAX = 512 };
+    HctGestionnaire *g = calloc(HCV_GESTIONNAIRES_MAX, sizeof *g);
+    if (!g) return;
+    int n = hct_gestionnaires(src, g, HCV_GESTIONNAIRES_MAX);
+    for (int i = 0; i < n; i++) {
+        if ((g[i].fonction != 0) != (self.fonctions != NO)) continue;
+        NSString *t = [NSString stringWithUTF8String:g[i].nom];
+        if (!t) continue;
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:t
+                                                    action:@selector(va:)
+                                             keyEquivalent:@""];
+        [it setTarget:self];
+        [it setTag:g[i].ligne];
+        [menu addItem:it];
+    }
+    free(g);
+}
+
+- (void)va:(NSMenuItem *)it {
+    hcv_encadre_ligne(self.vue, (int)[it tag]);
+}
+
+@end
+
+/* Le délégué d'un menu n'est qu'une référence faible : il vit attaché à son
+ * bouton, et meurt avec la fenêtre. */
+static char kHcvMenuGestionnaires;
+
 @interface HCLignesRegle : NSRulerView
 - (instancetype)initAvecVue:(NSTextView *)tv;
 @end
@@ -9054,7 +9125,9 @@ static NSTextField  *gSprayDensityLabel = nil;
                       defer:NO];
     char d[64]; hc_describe(obj, d, sizeof d);
     [panel setTitle:[NSString stringWithFormat:@"Script de %s", d]];
-    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 286)];
+    /* 258 de haut et non plus 286 : les menus « Handlers » et « Functions »
+     * prennent la bande du haut, comme dans HyperCard 2.4. */
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 258)];
     [scroll setHasVerticalScroller:YES];
     [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     HCScriptView *tv = [[HCScriptView alloc] initWithFrame:[[scroll contentView] bounds]];
@@ -9073,6 +9146,31 @@ static NSTextField  *gSprayDensityLabel = nil;
     [scroll setRulersVisible:YES];
     [[panel contentView] addSubview:scroll];
     gEditView = tv;
+
+    /* « Handlers: » et « Functions: », en haut — voir HCMenuGestionnaires.
+     * Les mots sont ceux d'HyperCard. */
+    {
+        NSArray<NSString *> *titres = @[ @"Handlers:", @"Functions:" ];
+        for (int k = 0; k < 2; k++) {
+            CGFloat x = 10 + k * 235;
+            NSTextField *l = [NSTextField labelWithString:titres[k]];
+            [l setFrame:NSMakeRect(x, 312, 72, 18)];
+            [l setAutoresizingMask:NSViewMinYMargin];
+            [[panel contentView] addSubview:l];
+
+            NSPopUpButton *pb = [[NSPopUpButton alloc]
+                initWithFrame:NSMakeRect(x + 72, 308, 150, 26) pullsDown:YES];
+            [pb addItemWithTitle:@""];
+            HCMenuGestionnaires *deleg = [[HCMenuGestionnaires alloc] init];
+            deleg.vue = tv;
+            deleg.fonctions = (k == 1);
+            [[pb menu] setDelegate:deleg];
+            objc_setAssociatedObject(pb, &kHcvMenuGestionnaires, deleg,
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [pb setAutoresizingMask:NSViewMinYMargin];
+            [[panel contentView] addSubview:pb];
+        }
+    }
 
     NSButton *verif = [[NSButton alloc] initWithFrame:NSMakeRect(290, 8, 90, 30)];
     [verif setTitle:@"Vérifier"];
@@ -9101,14 +9199,7 @@ static NSTextField  *gSprayDensityLabel = nil;
  * lire, cliquer ailleurs, revenir, le cadre reste ; et la première touche
  * frappée insère au lieu d'effacer la ligne. */
 - (void)encadreLigne:(int)ligne dansVue:(NSTextView *)tv {
-    if (!tv) return;
-    if ([tv isKindOfClass:[HCScriptView class]])
-        ((HCScriptView *)tv).ligneEncadree = ligne;
-    NSRange r = hcv_plage_de_ligne([tv string], ligne);
-    if (r.location == NSNotFound) return;
-    [tv setSelectedRange:NSMakeRange(r.location, 0)];
-    [tv scrollRangeToVisible:r];
-    [[tv window] makeFirstResponder:tv];
+    hcv_encadre_ligne(tv, ligne);
 }
 
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {

@@ -393,6 +393,84 @@ int hct_verifie(const char *src, HctRapport *rap, int avec_avertissements)
     return rap->nerreurs > 0;
 }
 
+/* Le mot de rang `rang` (0 ou 1) d'une ligne [p, fin), dans `out`. Un mot
+ * s'arrête aux blancs, à la virgule et au début d'un commentaire. */
+static void mot_de_ligne(const char *p, const char *fin, int rang,
+                         char *out, int outlen)
+{
+    out[0] = '\0';
+    for (int r = 0; r <= rang; r++) {
+        while (p < fin && (*p == ' ' || *p == '\t')) p++;
+        const char *d = p;
+        while (p < fin && *p != ' ' && *p != '\t' && *p != ',' &&
+               !(p[0] == '-' && p + 1 < fin && p[1] == '-'))
+            p++;
+        if (r == rang) {
+            int l = (int)(p - d);
+            if (l >= outlen) l = outlen - 1;
+            memcpy(out, d, (size_t)l);
+            out[l] = '\0';
+        }
+        if (p == d) return;              /* plus de mot sur la ligne */
+    }
+}
+
+/* La fin de la ligne qui commence en p : \n, \r\n ou \r — les piles
+ * d'époque écrivent \r. Rend le début de la suivante dans *suite. */
+static const char *fin_de_ligne(const char *p, const char **suite)
+{
+    while (*p && *p != '\n' && *p != '\r') p++;
+    const char *f = p;
+    if (*p == '\r') { p++; if (*p == '\n') p++; }
+    else if (*p == '\n') p++;
+    *suite = p;
+    return f;
+}
+
+int hct_gestionnaires(const char *src, HctGestionnaire *out, int max)
+{
+    if (!src || !out || max <= 0) return 0;
+
+    int k = 0, ligne = 1;
+    const char *p = src;
+    while (*p && k < max) {
+        const char *suite, *fin = fin_de_ligne(p, &suite);
+        char m0[16], nom[64];
+        mot_de_ligne(p, fin, 0, m0, sizeof m0);
+        int fonction = !strcasecmp(m0, "function");
+        if (fonction || !strcasecmp(m0, "on")) {
+            mot_de_ligne(p, fin, 1, nom, sizeof nom);
+            /* LE « end » DU MÊME NOM, plus loin : sans lui ce n'est pas un
+             * gestionnaire, et la ligne reste du texte. */
+            int l = ligne;
+            const char *q = suite, *trouve = NULL;
+            while (nom[0] && *q) {
+                const char *s2, *f2 = fin_de_ligne(q, &s2);
+                char e0[8], e1[64];
+                l++;
+                mot_de_ligne(q, f2, 0, e0, sizeof e0);
+                if (!strcasecmp(e0, "end")) {
+                    mot_de_ligne(q, f2, 1, e1, sizeof e1);
+                    if (!strcasecmp(e1, nom)) { trouve = s2; break; }
+                }
+                q = s2;
+            }
+            if (trouve) {
+                out[k].fonction = fonction;
+                out[k].ligne    = ligne;
+                snprintf(out[k].nom, sizeof out[k].nom, "%s", nom);
+                k++;
+                p = trouve;              /* on reprend après le « end » */
+                ligne = l + 1;
+                continue;
+            }
+        }
+        p = suite;
+        ligne++;
+    }
+    return k;
+}
+
 int hct_rapport_texte(const HctRapport *r, char *out, int outlen)
 {
     int p = 0;

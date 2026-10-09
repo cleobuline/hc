@@ -1,0 +1,14 @@
+== vide : 0 ==
+== sans gestionnaire : 0 ==
+== le script de pile d'Apple, dans sa forme : 4 ==
+   ligne   6  on        openStack
+   ligne  12  on        resumeStack
+   ligne  17  function  wrongStack
+   ligne  23  on        setCheckMark
+== une faute dans un corps : 2 ==
+   ligne   1  on        mouseUp
+   ligne   5  function  double
+== fins de ligne Mac d'époque (CR) : 2 ==
+   ligne   1  on        mouseUp
+   ligne   5  function  f
+== plafond à 2 : 2 (a, b) ==
