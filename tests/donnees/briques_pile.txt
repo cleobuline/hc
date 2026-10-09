@@ -1,0 +1,306 @@
+-- ════════════════════════════════════════════════════════════════════
+--  CASSE-BRIQUES — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Soixante briques, « B1 » a « B60 » : six rangees de dix, aux couleurs
+--  de l'arc-en-ciel. La raquette et la balle sont des boutons polygones ;
+--  la balle a sa position et sa vitesse en nombres a virgule, et ne
+--  s'arrondit qu'a l'affichage.
+--
+--  L'angle du rebond depend de l'endroit ou la balle touche la raquette :
+--  au centre elle repart droit, au bord elle part de biais. La balle
+--  accelere un peu a chaque brique.
+--
+--  Clavier : Q et D (ou fleches gauche et droite) pour bouger ; Z, espace
+--  ou fleche haut pour lancer la balle ; Echap pour arreter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  global gBriques
+  if gBriques is empty then preparePartie
+  pass openCard
+end openCard
+
+-- Les fleches sont lues par « the keysDown » dans la boucle : on avale
+-- leur message, sinon HyperCard changerait de carte a chaque appui.
+on arrowKey
+end arrowKey
+
+-- Le terrain va de 10 a 370 ; la raquette vit entre les lignes 306 et 314.
+-- Les briques font 34 sur 12, tous les 36 points en largeur et 14 en
+-- hauteur, depuis le coin 11, 40.
+function hautRaquette
+  return 306
+end hautRaquette
+
+on nouvellePartie essai
+  preparePartie essai
+  if essai is empty then boucle
+end nouvellePartie
+
+on preparePartie essai
+  global gScore, gVies, gNiveau, gFini, gEssai, gSens, gColle
+  put (essai is not empty) into gEssai
+  put false into gColle
+  put 0 into gScore
+  put 3 into gVies
+  put 1 into gNiveau
+  put 1 into gSens
+  put false into gFini
+  put empty into card field "Etat"
+  lock screen
+  dessineFormes
+  nouveauMur
+  unlock screen
+  montreScore
+end preparePartie
+
+on dessineFormes
+  repeat with k = 1 to 60
+    put line ((k - 1) div 10 + 1) of lesCouleurs() into c
+    set the backColor of button ("B" & k) to c
+    set the foreColor of button ("B" & k) to c
+  end repeat
+  set the backColor of button "Cadre" to "0,0,0"
+  set the points of button "Raquette" to ¬
+    "0,3" & return & "3,0" & return & "47,0" & return & "50,3" & return & ¬
+    "50,8" & return & "0,8"
+  set the backColor of button "Raquette" to "200,200,220"
+  set the foreColor of button "Raquette" to "200,200,220"
+  set the points of button "Balle" to ¬
+    "2,0" & return & "6,0" & return & "8,2" & return & "8,6" & return & ¬
+    "6,8" & return & "2,8" & return & "0,6" & return & "0,2"
+  set the backColor of button "Balle" to "255,255,255"
+  set the foreColor of button "Balle" to "255,255,255"
+end dessineFormes
+
+-- Un mur neuf : les soixante briques, la balle posee sur la raquette, et
+-- une vitesse un peu plus haute a chaque niveau.
+on nouveauMur
+  global gBriques, gReste, gVit, gNiveau
+  put empty into gBriques
+  repeat 60 times
+    put "1" after gBriques
+  end repeat
+  put 60 into gReste
+  put 3 + (gNiveau - 1) / 2 into gVit
+  lock screen
+  repeat with k = 1 to 60
+    show button ("B" & k)
+  end repeat
+  raquetteEn 190
+  posee
+  unlock screen
+end nouveauMur
+
+-- ─── la boucle de jeu ───────────────────────────────────────────────
+
+on boucle
+  global gFini
+  repeat until gFini
+    if tenue(27) then
+      put true into gFini
+      put "Partie arretee." into card field "Etat"
+      exit repeat
+    end if
+    tour
+    wait 1 tick
+  end repeat
+end boucle
+
+on tour
+  clavier
+  avanceBalle
+end tour
+
+function tenue lesCodes
+  -- Sans toucher a l'itemDelimiter : dans HyperCard il ne revient a la
+  -- virgule qu'a l'idle, et l'appelant lirait ses items de travers.
+  put "," & the keysDown & "," into tenues
+  repeat while lesCodes is not empty
+    put offset("/", lesCodes) into o
+    if o = 0 then put lesCodes into c
+    else put char 1 to o - 1 of lesCodes into c
+    if ("," & c & ",") is in tenues then return true
+    if o = 0 then exit repeat
+    delete char 1 to o of lesCodes
+  end repeat
+  return false
+end tenue
+
+on clavier
+  global gPx, gColle
+  if tenue("65361/113/81") then raquetteEn gPx - 5
+  if tenue("65363/100/68") then raquetteEn gPx + 5
+  if gColle and tenue("32/122/90/65362") then lance
+end clavier
+
+-- ─── la raquette ────────────────────────────────────────────────────
+
+on raquetteEn x
+  global gPx, gColle
+  put max(39, min(341, x)) into x
+  if x is not gPx then
+    put x into gPx
+    set the loc of button "Raquette" to gPx, hautRaquette() + 4
+    if gColle is true then posee
+  end if
+end raquetteEn
+
+-- La balle attend sur la raquette, et la suit.
+on posee
+  global gBx, gBy, gPx, gColle
+  put true into gColle
+  put gPx into gBx
+  put hautRaquette() - 5 into gBy
+  set the loc of button "Balle" to gBx, gBy
+  show button "Balle"
+end posee
+
+-- Elle part de biais, une fois a droite, une fois a gauche.
+on lance
+  global gColle, gVx, gVy, gVit, gSens
+  put false into gColle
+  put gSens * pi / 9 into a
+  put -gSens into gSens
+  put gVit * sin(a) into gVx
+  put -gVit * cos(a) into gVy
+end lance
+
+-- Au centre de la raquette la balle repart droit ; au bord, jusqu'a
+-- soixante degres. La vitesse ne change pas, seule la direction.
+on rebond
+  global gBx, gPx, gVx, gVy, gVit
+  put max(-1, min(1, (gBx - gPx) / 28)) into o
+  put o * pi / 3 into a
+  put gVit * sin(a) into gVx
+  put -gVit * cos(a) into gVy
+  play "cling"
+end rebond
+
+-- ─── la balle ───────────────────────────────────────────────────────
+
+-- Un pas, coupe en deux quand la balle va vite : une brique fait douze
+-- points de haut, la raquette huit — aucun pas ne doit les sauter.
+on avanceBalle
+  global gBx, gBy, gVx, gVy, gVit, gColle, gPx
+  if gColle then exit avanceBalle
+  put 1 into n
+  if gVit > 3 then put 2 into n
+  repeat n times
+    put gBx into ax
+    add gVx / n to gBx
+    add gVy / n to gBy
+    if gBx < 14 then
+      put 28 - gBx into gBx
+      put abs(gVx) into gVx
+    end if
+    if gBx > 366 then
+      put 732 - gBx into gBx
+      put -abs(gVx) into gVx
+    end if
+    if gBy < 14 then
+      put 28 - gBy into gBy
+      put abs(gVy) into gVy
+    end if
+    -- La brique devant la balle, au bout de sa course ; par ou elle est
+    -- entree decide de quel cote elle rebondit.
+    if gVx < 0 then put -3 into sx
+    else put 3 into sx
+    if gVy < 0 then put -3 into sy
+    else put 3 into sy
+    put briqueEn(gBx + sx, gBy + sy) into k
+    if k > 0 then
+      if briqueEn(ax + sx, gBy + sy) = k then put -gVy into gVy
+      else put -gVx into gVx
+      casse k
+      exit repeat
+    end if
+    if gVy > 0 and gBy + 4 >= hautRaquette() and gBy - 4 <= hautRaquette() + 8 ¬
+        and abs(gBx - gPx) <= 28 then
+      rebond
+      exit repeat
+    end if
+    if gBy > 330 then
+      perdBalle
+      exit avanceBalle
+    end if
+  end repeat
+  set the loc of button "Balle" to round(gBx), round(gBy)
+end avanceBalle
+
+-- Le numero de la brique vivante sous ce point, ou 0.
+function briqueEn x, y
+  global gBriques
+  if x < 11 or y < 40 then return 0
+  put trunc(x - 11) into dx
+  put trunc(y - 40) into dy
+  if dx >= 360 or dy >= 84 then return 0
+  if dx mod 36 >= 34 or dy mod 14 >= 12 then return 0
+  put (dy div 14) * 10 + dx div 36 + 1 into k
+  if char k of gBriques is "1" then return k
+  return 0
+end briqueEn
+
+on casse k
+  global gBriques, gReste, gScore, gVit, gNiveau
+  put "0" into char k of gBriques
+  hide button ("B" & k)
+  subtract 1 from gReste
+  add 10 * (7 - ((k - 1) div 10 + 1)) to gScore
+  put min(7, gVit + 0.03) into gVit
+  play "tik"
+  montreScore
+  if gReste = 0 then
+    add 1 to gNiveau
+    put "Niveau " & gNiveau & " !" into card field "Etat"
+    nouveauMur
+    montreScore
+  end if
+end casse
+
+on perdBalle
+  global gVies, gFini, gScore
+  subtract 1 from gVies
+  play "Basso"
+  montreScore
+  if gVies <= 0 then
+    put true into gFini
+    hide button "Balle"
+    put "Perdu ! Score : " & gScore into card field "Etat"
+  else
+    posee
+  end if
+end perdBalle
+
+-- ─── l'affichage ────────────────────────────────────────────────────
+
+on montreScore
+  global gScore, gVies, gNiveau
+  put gScore into card field "Score"
+  put gVies into card field "Vies"
+  put gNiveau into card field "Niveau"
+end montreScore
+
+function lesCouleurs
+  return "255,60,60" & return & "255,150,40" & return & "255,230,60" & ¬
+    return & "80,220,80" & return & "60,200,255" & return & "130,110,255"
+end lesCouleurs
+
+-- Pour les essais : l'etat de la partie, et une balle posee a la main.
+on balleEn x, y, vx, vy
+  global gBx, gBy, gVx, gVy, gColle
+  put false into gColle
+  put x into gBx
+  put y into gBy
+  put vx into gVx
+  put vy into gVy
+  set the loc of button "Balle" to round(gBx), round(gBy)
+end balleEn
+
+on rapport
+  global gScore, gVies, gNiveau, gFini, gReste, gBx, gBy, gVx, gVy, gPx, gColle
+  put "score " & gScore & " · vies " & gVies & " · niveau " & gNiveau & ¬
+    " · briques " & gReste & " · balle " & round(gBx) & "," & round(gBy) & ¬
+    " vitesse " & round(gVx * 10) / 10 & "," & round(gVy * 10) / 10 & ¬
+    " · raquette " & gPx & " · posee " & gColle & " · fini " & gFini
+end rapport
