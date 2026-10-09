@@ -748,13 +748,19 @@ static NSMenu *gRecentMenu = nil;
         [dc setTarget:view];
         [editMenu addItem:dc];
 
-        /* « Icône… » d'HyperCard : ouvre le panneau des icônes sur le bouton
-         * sélectionné. validateMenuItem: le grise quand la sélection n'est pas
-         * un bouton. Pas de raccourci clavier — HyperCard n'en avait pas, et
-         * les lettres qui restent libres servent ailleurs. */
+        /* « Icon… » d'HyperCard : ouvre le panneau des icônes, sur le bouton
+         * sélectionné s'il y en a un, sinon pour gérer les icônes de la pile
+         * (editIcon:, HCdialogs.m).
+         *
+         * ⌘I. Ce commentaire affirmait « pas de raccourci, HyperCard n'en
+         * avait pas » : un souvenir écrit comme un fait. La démonstration
+         * commandKeyDown de « HyperTalk Reference » (Apple) dit le contraire —
+         * « commandKeyDown "I" -- Shortcut for Icon command in Edit menu » —,
+         * et l'utilisatrice l'a vu dans le menu Edit d'HyperCard 2.4.1
+         * (Basilisk II) le 9 octobre. */
         NSMenuItem *ic = [[NSMenuItem alloc] initWithTitle:@"Icon…"
                                                     action:@selector(editIcon:)
-                                             keyEquivalent:@""];
+                                             keyEquivalent:@"i"];
         [ic setTarget:view];
         [editMenu addItem:ic];
     }
