@@ -4101,7 +4101,9 @@ void hc_restore_cursor(void) {
  *   2. les mêmes, sur une file à part — « la balle ne s'arrête plus, le son
  *      est un peu désynchronisé » : le coût avait changé de fil, et le son
  *      partait en retard d'autant ;
- *   3. ceci, demandé par elle : la sortie n'est plus rendue entre deux sons.
+ *   3. ceci, demandé par elle : la sortie n'est plus rendue entre deux sons
+ *      — « la balle rebondit sans s'arrêter et le son est bien
+ *      synchronisé ».
  *
  * Un AVAudioEngine tourne, et des voix — des AVAudioPlayerNode — y restent
  * branchées et lancées, à jouer du silence. Chaque son est lu UNE fois dans
