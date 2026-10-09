@@ -51,3 +51,6 @@
 
 == 10. un robot joue, et l'écran suit l'état ==
    3 parties, 22389 images, 202 briques cassées, 2 mur(s) abattu(s), 7 balle(s) perdue(s), aucun défaut
+
+== 11. Échap arrête la partie, dans la vraie boucle ==
+   arrêtée par Échap · Etat « Partie arretee. » · fini true

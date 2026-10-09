@@ -64,3 +64,6 @@
 == 10. un robot joue, et l'écran suit l'état ==
    3 parties, 14883 tours, 2 vague(s) abattue(s), aucun défaut
    (score cumulé 3090)
+
+== 11. Échap arrête la partie, dans la vraie boucle ==
+   arrêtée par Échap · Etat « Partie arretee. » · fini true

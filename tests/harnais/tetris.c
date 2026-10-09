@@ -39,6 +39,19 @@ static const char *glob_lit(const char *nom)
     return strcmp(nom, "keysDown") == 0 ? g_tenues : NULL;
 }
 
+/* Le clavier de la vraie boucle : rien, puis Échap tenu, avec le code que
+ * HC lui donne — 65307, celui de LiveCode (hcv_code_touche, HCview.m). À la
+ * lecture FILET, le filet fait ce que ferait Cmd-. : si Échap n'arrête pas
+ * la partie, le défaut se lit au lieu de bloquer la suite. */
+#define FILET 400
+static int g_lectures = 0;
+static const char *glob_echap(const char *nom)
+{
+    if (strcmp(nom, "keysDown")) return NULL;
+    if (++g_lectures == FILET) hc_interrompre();
+    return g_lectures >= 20 ? "65307" : "";
+}
+
 static char *lire(const char *chemin)
 {
     FILE *f = fopen(chemin, "rb");
@@ -277,6 +290,29 @@ int main(int argc, char **argv)
         hc_send_arg(g_carte, "clavier", "0");  /* relâchée : la suivante agit */
         printf("   %s :\n", tours[i].quoi);
         rapport();
+    }
+
+    /* ÉCHAP ARRÊTE LA PARTIE, DANS LA VRAIE BOUCLE. La pile attendait 27,
+     * charToNum du caractère ; HC donne 65307, le code de la touche. Échap
+     * n'arrêtait donc rien, et seul Cmd-. sortait d'une partie. Trouvé le 9
+     * octobre en cherchant pourquoi le Space Invaders et le casse-briques ne
+     * répondaient plus aux touches DANS HC (l'application) ; le même défaut
+     * était dans les trois jeux. Les sections précédentes jouent les tours à
+     * la main et ne passaient jamais par la boucle : ici elle tourne pour de
+     * bon, avec ses « wait 1 tick ». */
+    puts("\n== 7. Échap arrête la partie, dans la vraie boucle ==");
+    h.global_get = glob_echap; hc_set_host(&h);
+    g_lectures = 0;
+    hc_send(g_carte, "nouvellePartie");
+    {
+        char etat[sizeof g_dernier];
+        g_dernier[0] = 0;
+        hc_do("put card field \"Etat\"");
+        snprintf(etat, sizeof etat, "%s", g_dernier);
+        printf("   %s · Etat « %s » · fini %s\n",
+               g_lectures < FILET ? "arrêtée par Échap"
+                                  : "Échap SANS EFFET, arrêtée par le filet",
+               etat, global_txt("gFini"));
     }
 
     hc_free(st); free(script);
