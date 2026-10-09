@@ -11,8 +11,25 @@
       [message box] next card      = 3
       [message box] me             = 1
       [message box] cd field F2    = 2
-      [message box] -- comptage : cards = 3
+      [message box] -- comptage : cards = 4
    — retours de la v3 vers l'ancien interpréteur —
       (aucun)
    — ce que l'ancien interprète exécute encore —
       (rien)
+-- le rang d'un fond
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] this bkgnd       = 1
+      [message box] this background  = 1
+      [message box] bkgnd 2          = 2
+      [message box] bkgnd Autre      = 2
+      [message box] bkgnd 1          = 1
+      [message box] -- comptage : bkgnds = 2
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] this bkgnd       = 2
+      [message box] this background  = 2
+      [message box] bkgnd 2          = 2
+      [message box] bkgnd Autre      = 2
+      [message box] bkgnd 1          = 1
+      [message box] -- comptage : bkgnds = 2

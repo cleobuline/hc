@@ -24,6 +24,19 @@ int main(void)
         "lock messages\n  go to card 2");
     run(btn, "  -> le gestionnaire suivant doit crier",
         "go to card 1\n  go to card 2\n  go to card 1");
+
+    /* LA PROPRIÉTÉ, SYNONYME DE LA COMMANDE. « set lockMessages to true »
+     * répondait « propriété inconnue » : seule la commande posait le verrou.
+     * La forme est celle de la démonstration lockMessages de « HyperTalk
+     * Reference » (Apple), en minuscules comme elle l'écrit. */
+    run(btn, "SET LOCKMESSAGES TO TRUE (silence attendu)",
+        "set lockmessages to true\n  go to card 2\n  go to card 1\n"
+        "  put \"lu : \" & the lockMessages\n  set lockmessages to false\n"
+        "  put \"lu : \" & the lockMessages");
+    run(btn, "set the lockMessages, avec « the »",
+        "set the lockMessages to true\n  go to card 2\n  go to card 1");
+    run(btn, "  -> sans « false », il retombe en sortie : le suivant doit crier",
+        "put \"lu : \" & the lockMessages\n  go to card 2\n  go to card 1");
     hc_free(stack);
     return 0;
 }

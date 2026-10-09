@@ -6680,6 +6680,30 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
             snprintf(out, outlen, "%d", n);
             return 1;
         }
+        /* LE FOND MANQUAIT : « the number of this bkgnd » répondait
+         * « propriété inconnue ». Relevé dans « HyperTalk Reference »
+         * (Apple), démonstration de la carte « number (property) », dont le
+         * texte dit : « The number of a background is the order in which the
+         * background was created. »
+         *
+         * Le rang se compte parmi les fonds de la pile, dans l'ordre même où
+         * « bkgnd 2 » les trouve (v3_nth_bg) : « the number of bkgnd 2 » doit
+         * rendre 2, sans quoi les deux lectures se contrediraient. Que cet
+         * ordre soit celui de la CRÉATION dans une pile convertie d'HyperCard
+         * n'est pas mesuré : c'est l'ordre du fichier. */
+        if (o->type == OBJ_BACKGROUND) {
+            Object *stk = o->owner;
+            int n = 0;
+            for (int i = 0; stk && i < stk->nparts; i++) {
+                if (stk->parts[i]->type != OBJ_BACKGROUND) continue;
+                n++;
+                if (stk->parts[i] == o) {
+                    snprintf(out, outlen, "%d", n);
+                    return 1;
+                }
+            }
+            return 0;
+        }
         return 0;
     }
     if (ci_equal(prop, "name")) {
@@ -7149,6 +7173,23 @@ static int prop_globale_noyau(const char *prop, const char *val)
         g_ecran_verrouille = truthy(val);
         if (!g_ecran_verrouille) verrou_reveille();
         return 0;
+    }
+
+    /* « set lockMessages to true » : l'exact synonyme de « lock messages ».
+     *
+     * Seule la commande posait le verrou ; la propriété se LISAIT mais ne se
+     * posait pas, et répondait « propriété inconnue ». Relevé dans la pile
+     * « HyperTalk Reference » d'Apple, dont la carte lockMessages écrit
+     * « set [the] lockMessages to trueOrFalse » et dont cinq démonstrations
+     * s'en servent — go, pop, push, visual, lockMessages. Le verrou retombe
+     * à la fin du gestionnaire le plus extérieur, comme pour la commande :
+     * « HyperCard sets lockMessages to false on idle », dit la même carte.
+     *
+     * Rend 1 : l'hôte n'a rien à en faire, le verrou ne retient que les
+     * messages que le noyau envoie. */
+    if (ci_equal(prop, "lockmessages")) {
+        g_messages_verrouilles = truthy(val);
+        return 1;
     }
 
     return 0;
@@ -9639,6 +9680,36 @@ static void *v3_resout(void *d, const HctNoeud *ref, HctContexte *ctx)
     Object *o = hct_resout(ctx, ref);
     if (o) return o;
 
+    /* « THE SELECTEDFIELD » ET « THE FOUNDFIELD » DÉSIGNENT UN CHAMP.
+     *
+     * Les deux fonctions rendent un descripteur — « card field 1 » —, et
+     * HyperCard les accepte là où il attend un objet. Relevé dans « HyperTalk
+     * Reference » (Apple), dont deux démonstrations écrivent
+     *
+     *     the name of the selectedField
+     *     the name of the foundField
+     *
+     * HC répondait « objet introuvable » : l'arbre en fait un mot nu précédé
+     * de « the », pas un nœud d'objet, et seule une VARIABLE passait par le
+     * chemin du descripteur, plus bas. Pire, « the textFont of the
+     * selectedField » rendait en silence la chaîne « textFont of the
+     * selectedField ».
+     *
+     * On rend directement le champ que les deux fonctions décrivent, sans
+     * repasser par leur texte. Deux noms, ceux que les démonstrations
+     * emploient ; les autres fonctions qui rendent un morceau de texte —
+     * selectedLine, foundChunk — ne désignent pas un objet. Sans sélection
+     * ou sans « find » réussi, rien n'est désigné et l'appelant dit « objet
+     * introuvable » ; ce que répond alors HyperCard n'est pas mesuré. */
+    if (ref && ((ref->genre == HCTN_IDENT && ref->article) ||
+                (ref->genre == HCTN_APPEL && ref->nfils <= 1))) {
+        char nom[32];
+        hct_texte(&ref->jeton, nom, sizeof nom);
+        if (ci_equal(nom, "selectedField") && g_sel_field) return g_sel_field;
+        if (ci_equal(nom, "foundField") && g_found_lisible && g_found_field)
+            return g_found_field;
+    }
+
     /* UNE VARIABLE QUI CONTIENT UN DESCRIPTEUR D'OBJET EN DÉSIGNE UN.
      *
      * C'est l'idiome de toute fonction utilisateur qui prend un objet :
@@ -12127,6 +12198,19 @@ static Object *resolve_calcule(const char *ref)
     return resolve(val);
 }
 
+/* MONTRER OU CACHER LA PEINTURE D'UNE CARTE OU D'UN FOND : « set the showPict »
+ * et « show card picture » font le même geste, et passent tous deux par ici.
+ *
+ * L'HÔTE DOIT REDESSINER : cacher la peinture ne change rien au modèle
+ * qu'on affiche, seulement à ce qu'on en montre. Sans ce signal, le
+ * bouton « Hide Card Picture » marcherait et ne se verrait qu'au
+ * changement de carte suivant. */
+static void montre_dessin(Object *o, int montrer)
+{
+    o->show_pict = montrer;
+    if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
+}
+
 static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
 {
     /* « set the hilitedButton of window "Navigator" to 2 » : une propriété
@@ -12539,12 +12623,7 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (o->type == OBJ_FIELD) notify_field(o);
     } else if (ci_equal(prop, "showpict") &&
                (o->type == OBJ_CARD || o->type == OBJ_BACKGROUND)) {
-        o->show_pict = truthy(val);
-        /* L'HÔTE DOIT REDESSINER : cacher la peinture ne change rien au modèle
-         * qu'on affiche, seulement à ce qu'on en montre. Sans ce signal, le
-         * bouton « Hide Card Picture » marcherait et ne se verrait qu'au
-         * changement de carte suivant. */
-        if (g_host && g_host->stack_changed) g_host->stack_changed(owning_stack(o));
+        montre_dessin(o, truthy(val));
     } else if (ci_equal(prop, "cantdelete")) {
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
@@ -13661,6 +13740,57 @@ static int v3_cmd_montre(HctContexte *ctx, const HctNoeud *n)
         }
     }
 
+    /* « SHOW CARD PICTURE », « HIDE PICTURE OF BKGND 1 » : la peinture d'une
+     * couche, et non la couche elle-même.
+     *
+     * La carte « show » de « HyperTalk Reference » (Apple) en donne quatre
+     * formes — card picture, background picture, picture of card, picture
+     * of bkgnd —, « pict » valant « picture » (« show pict of first cd »).
+     * HC répondait « objet introuvable » : l'arbre lit « card picture »
+     * comme la carte de RANG « picture », et « picture of card 3 » comme une
+     * propriété. Relevé dans cinq démonstrations : drag, show, filled,
+     * polySides, dragSpeed, qui cachent la peinture pour dessiner, puis la
+     * remontrent.
+     *
+     * C'est « set the showPict » sous un autre nom : même champ, même
+     * rafraîchissement (montre_dessin). */
+    {
+        const HctNoeud *r = n->fils[0];
+        const HctNoeud *mot = NULL, *couche_n = NULL;
+        if (r->genre == HCTN_OBJET && r->nfils == 1 && !v3_noeud_cible(r) &&
+            r->designateur == HCT_DES_RANG &&
+            (r->typeobj == HCT_OBJ_CARD || r->typeobj == HCT_OBJ_BACKGROUND)) {
+            mot = r->fils[0];                    /* card picture */
+        } else if (r->genre == HCTN_OF && r->nfils == 2 &&
+                   r->fils[1]->genre == HCTN_OBJET &&
+                   (r->fils[1]->typeobj == HCT_OBJ_CARD ||
+                    r->fils[1]->typeobj == HCT_OBJ_BACKGROUND)) {
+            mot = r->fils[0];                    /* picture of card 3 */
+            couche_n = r->fils[1];
+        }
+        char m[16] = "";
+        if (mot && mot->genre == HCTN_IDENT) v3_brut(mot, m, sizeof m);
+        if (ci_equal(m, "picture") || ci_equal(m, "pict")) {
+            Object *couche;
+            if (couche_n) {
+                couche = v3_resout_calcule(ctx, couche_n);
+                if (ctx->erreur) return 1;
+                if (!couche) {
+                    hct_ctx_faute(ctx, couche_n, "objet introuvable");
+                    return 1;
+                }
+            } else {
+                couche = r->typeobj == HCT_OBJ_CARD ? g_current_card
+                       : g_current_card ? g_current_card->bg : NULL;
+                if (!couche) return 0;
+            }
+            g_visual_dirty = 1;
+            montre_dessin(couche, montrer);
+            set_result("");
+            return 1;
+        }
+    }
+
     /* « show all cards », « hide menuBar » : pas des objets. hct_resout rend
      * NULL et l'ancien chemin s'en charge, avec son message d'erreur.
      *
@@ -13965,10 +14095,46 @@ static int v3_cmd_reset(HctContexte *ctx, const HctNoeud *n)
 }
 
 /* doMenu : HyperCard scriptait par les menus tout ce qui n'avait pas de
- * commande propre. On route vers l'hôte, seul à connaître ses menus. */
+ * commande propre. On route vers l'hôte, seul à connaître ses menus.
+ *
+ * LES DEUX FORMES LONGUES ÉTAIENT REFUSÉES — « ne sait pas faire », et le
+ * script s'arrêtait :
+ *
+ *     doMenu "Background", "Edit"          l'article, puis son menu
+ *     doMenu "New Card" without dialog
+ *
+ * La première est celle de la démonstration doMenu de « HyperTalk
+ * Reference » (Apple), relevée le 9 octobre. Le refus venait d'un renvoi vers
+ * l'ancien interpréteur, qui a disparu depuis : « nfils != 1 » ne menait plus
+ * nulle part.
+ *
+ * LE NOM DU MENU NE CHOISIT RIEN ICI. Les articles se trouvent par leur nom
+ * seul, dans le noyau comme dans l'hôte, et aucun nom n'y figure deux fois ;
+ * il est donc lu — une faute dans son expression arrête la ligne comme
+ * ailleurs — puis laissé. Le message doMenu part avec l'article seul, comme
+ * pour un choix à la souris : HyperCard lui joignait le nom du menu en second
+ * paramètre, et ce manque est commun aux deux chemins.
+ *
+ * « without dialog » retire, dans HyperCard, la confirmation de quelques
+ * articles. Aucun article que HC sert par doMenu n'en demande : il n'y a rien
+ * à retirer, et les deux mots sont acceptés. */
 static int v3_cmd_domenu(HctContexte *ctx, const HctNoeud *n)
 {
-    if (n->nfils != 1) return 0;      /* « doMenu X without dialog » : ancien */
+    int nf = n->nfils;
+    if (nf >= 3 && n->fils[nf - 2]->genre == HCTN_IDENT &&
+        n->fils[nf - 1]->genre == HCTN_IDENT) {
+        char a[16], b[16];
+        v3_brut(n->fils[nf - 2], a, sizeof a);
+        v3_brut(n->fils[nf - 1], b, sizeof b);
+        if (ci_equal(a, "without") && ci_equal(b, "dialog")) nf -= 2;
+    }
+    if (nf != 1 && nf != 2) return 0;
+
+    if (nf == 2) {
+        char menu[256];
+        v3_val_texte(ctx, n->fils[1], menu, sizeof menu);
+        if (ctx->erreur) return 1;
+    }
 
     char item[256];
     v3_val_texte(ctx, n->fils[0], item, sizeof item);

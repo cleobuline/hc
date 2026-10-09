@@ -88,3 +88,39 @@
         (pas de gestionnaire dans background "Fond")
         (pas de gestionnaire dans stack "Test")
         ✗ message "openCard" non traité
+>>> SET LOCKMESSAGES TO TRUE (silence attendu)
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      ⇒ va à la carte "Deux"
+      ⇒ va à la carte "Une"
+      [message box] lu : true
+      [message box] lu : false
+>>> set the lockMessages, avec « the »
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      ⇒ va à la carte "Deux"
+      ⇒ va à la carte "Une"
+>>>   -> sans « false », il retombe en sortie : le suivant doit crier
+→ message "mouseUp" à button "B"
+   · traité par button "B"
+      [message box] lu : false
+   → message "closeCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Deux"
+   → message "openCard" à card "Deux"
+      · traité par card "Deux"
+         [message box] !! openCard de la carte Deux
+   → message "closeCard" à card "Deux"
+        (pas de gestionnaire dans card "Deux")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "closeCard" non traité
+      ⇒ va à la carte "Une"
+   → message "openCard" à card "Une"
+        (pas de gestionnaire dans card "Une")
+        (pas de gestionnaire dans background "Fond")
+        (pas de gestionnaire dans stack "Test")
+        ✗ message "openCard" non traité
