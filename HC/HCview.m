@@ -1697,6 +1697,122 @@ static Object *part_at(Object *card, NSPoint p) {
     }
     return part_at_layer(card->bg, p);
 }
+
+/* LE REGARD DE ⌘⌥ : CE QU'ON MONTRE, ET CE QU'ON ATTRAPE.
+ *
+ * MESURÉ DANS HYPERCARD par l'utilisatrice, le 9 octobre :
+ *
+ *     ⌘⌥ tenues          les boutons s'entourent ; ⌘⌥-clic ouvre le script
+ *                        du bouton
+ *     ⇧⌘⌥ tenues         les champs s'entourent ; ⇧⌘⌥-clic ouvre le script
+ *                        du champ
+ *
+ * HC n'avait ni l'un ni l'autre : il fallait choisir l'outil et
+ * double-cliquer. Réclamé sur Reddit par jon23, qui écrit ses scripts dans
+ * Mini vMac : « Cmd-Option-Click to get to button and field scripts
+ * directly ».
+ *
+ * UNE SEULE RÈGLE POUR LE TRACÉ ET LE CLIC, comme partout ici : on n'attrape
+ * que ce qui est entouré. Sous ⌘⌥ on regarde donc À TRAVERS les champs — un
+ * champ posé sur un bouton ne le cache pas —, sous ⇧⌘⌥ à travers les
+ * boutons. Un bouton désactivé, transparent au clic en Browse
+ * (part_inerte), a toujours un script et s'entoure aussi. La carte avant le
+ * fond, seulement si la carte est montrée, comme part_at ; les pièces cachées
+ * ne comptent pas ; un polygone ne se clique que dans sa forme.
+ *
+ * NON MESURÉ : si ⇧⌘⌥ entoure AUSSI les boutons ; le dessin exact du contour
+ * d'HyperCard (on reprend le pointillé gris de l'outil Bouton) ; ce que fait
+ * HyperCard d'une pièce cachée. */
+typedef enum { HCV_REGARD_RIEN = 0, HCV_REGARD_BOUTONS, HCV_REGARD_CHAMPS } HcvRegard;
+
+static HcvRegard hcv_regard_de(NSEventModifierFlags m) {
+    if (!(m & NSEventModifierFlagCommand) || !(m & NSEventModifierFlagOption))
+        return HCV_REGARD_RIEN;
+    return (m & NSEventModifierFlagShift) ? HCV_REGARD_CHAMPS : HCV_REGARD_BOUTONS;
+}
+
+static BOOL hcv_regard_voit(Object *o, HcvRegard r) {
+    if (!o->visible) return NO;
+    return (r == HCV_REGARD_BOUTONS && o->type == OBJ_BUTTON) ||
+           (r == HCV_REGARD_CHAMPS  && o->type == OBJ_FIELD);
+}
+
+static Object *part_pour_script_calque(Object *layer, NSPoint p, HcvRegard r) {
+    if (!layer) return NULL;
+    for (int i = layer->nparts - 1; i >= 0; i--) {
+        Object *o = layer->parts[i];
+        if (!hcv_regard_voit(o, r)) continue;
+        if (p.x < o->x || p.x > o->x + o->w || p.y < o->y || p.y > o->y + o->h)
+            continue;
+        if (hc_est_polygone(o) &&
+            !hc_dans_forme(o, (int)floor(p.x), (int)floor(p.y)))
+            continue;
+        return o;
+    }
+    return NULL;
+}
+
+static Object *part_pour_script(Object *card, NSPoint p, HcvRegard r) {
+    if (!card || r == HCV_REGARD_RIEN) return NULL;
+    if (couche_carte_visible()) {
+        Object *o = part_pour_script_calque(card, p, r);
+        if (o) return o;
+    }
+    return part_pour_script_calque(card->bg, p, r);
+}
+
+/* Le contour, par-dessus la carte déjà dessinée. Le fond d'abord, la carte
+ * ensuite : c'est l'ordre du dessin, et un contour de carte reste au-dessus
+ * d'un contour de fond qu'il chevauche. */
+static void hcv_regard_calque(Object *layer, HcvRegard r) {
+    if (!layer) return;
+    for (int i = 0; i < layer->nparts; i++) {
+        Object *o = layer->parts[i];
+        if (!hcv_regard_voit(o, r)) continue;
+        [[NSColor colorWithWhite:0.4 alpha:1.0] setStroke];
+        NSBezierPath *c = [NSBezierPath bezierPathWithRect:
+                              NSMakeRect(o->x + 0.5, o->y + 0.5, o->w - 1, o->h - 1)];
+        [c setLineWidth:1];
+        CGFloat tirets[] = {3, 2};
+        [c setLineDash:tirets count:2 phase:0];
+        [c stroke];
+    }
+}
+
+static void hcv_dessine_regard(void) {
+    HcvRegard r = hcv_regard_de([NSEvent modifierFlags]);
+    Object *card = hc_current_card();
+    if (r == HCV_REGARD_RIEN || !card) return;
+    hcv_regard_calque(card->bg, r);
+    if (couche_carte_visible()) hcv_regard_calque(card, r);
+}
+
+/* Redessiner quand le regard CHANGE — et seulement alors : une touche Maj
+ * frappée seule ne doit pas repeindre la carte. Une fois, à l'installation
+ * de l'hôte. Quitter l'application touches tenues redessine aussi :
+ * drawRect: relit l'état réel des touches, qui sont alors relâchées pour
+ * nous. */
+static void hcv_regard_installe(void) {
+    static BOOL fait = NO;
+    if (fait) return;
+    fait = YES;
+    static HcvRegard dernier = HCV_REGARD_RIEN;
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                          handler:^NSEvent *(NSEvent *e) {
+        HcvRegard r = hcv_regard_de([e modifierFlags]);
+        if (r != dernier) { dernier = r; [gView setNeedsDisplay:YES]; }
+        return e;
+    }];
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidResignActiveNotification
+                    object:nil queue:nil usingBlock:^(NSNotification *n) {
+        (void)n;
+        if (dernier != HCV_REGARD_RIEN) {
+            dernier = HCV_REGARD_RIEN;
+            [gView setNeedsDisplay:YES];
+        }
+    }];
+}
 static char gDlgBuf[512];
 static char gFileBuf[2048];
 
@@ -6846,7 +6962,11 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
      * À L'ÉCRAN, grossissement compris, et la redessiner sous la
      * transformation la grossirait deux fois. Voir hcv_draw_locked. */
     if (hcv_draw_locked(self)) return;
-    if (!hcv_fat()) { [self drawCardContent:dirtyRect]; return; }
+    if (!hcv_fat()) {
+        [self drawCardContent:dirtyRect];
+        hcv_dessine_regard();            /* ⌘⌥ tenues : les contours */
+        return;
+    }
 
     /* Le rectangle sale d'AppKit ne veut plus rien dire sous la
      * transformation : on redessine la fenêtre grossie en entier, et on donne
@@ -7461,6 +7581,25 @@ static BOOL      gSansMessageChamp = NO;
      * Hors script, le clic EFFACE le drapeau : un clic ancien ne doit pas
      * répondre à la place d'un clic neuf. */
     gMouseClicked = hc_is_running() ? YES : NO;
+
+    /* ⌘⌥-CLIC OUVRE LE SCRIPT D'UN BOUTON, ⇧⌘⌥-CLIC CELUI D'UN CHAMP — voir
+     * hcv_regard_de, qui dit aussi ce qu'on entoure.
+     *
+     * Avec n'importe quel outil, et avant tout geste d'outil : le clic est
+     * pris, aucun mouseDown ne part vers la pièce. Après gMouseClicked
+     * seulement, qu'un clic doit toujours effacer hors script (plus haut).
+     * Sur une zone sans bouton ni champ, rien n'est pris et le clic suit son
+     * cours ordinaire ; ce que fait HyperCard dans ce cas : NON MESURÉ. Sous
+     * FatBits, ⌘ reste à la fenêtre grossie (plus haut). */
+    {
+        Object *aOuvrir = part_pour_script(hc_current_card(), p,
+                                           hcv_regard_de([event modifierFlags]));
+        if (aOuvrir) {
+            if (gEditingField) [self endFieldEdit];
+            [self editScriptOf:aOuvrir];
+            return;
+        }
+    }
 
     /* 2. Fermeture prioritaire du mode édition de texte si l'outil n'est plus Browse */
     if (gTool != TOOL_BROWSE && gEditingField) {
@@ -8642,6 +8781,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.popup_menu    = cocoa_popup_menu;
     host.fenetre       = cocoa_fenetre;
     hcv_touches_installe();
+    hcv_regard_installe();
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;
