@@ -6,7 +6,7 @@
 #include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
 #include <mach/mach.h>     // host_statistics64, pour « the heapSpace »
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
-#import <AVFoundation/AVFoundation.h>  // AVAudioPlayer, pour « play » (cocoa_play)
+#import <AVFoundation/AVFoundation.h>  // AVAudioEngine, pour « play » (cocoa_play)
 #import "icons.h"
 #import "HCglobals.h"
 #import "HCtext.h"
@@ -4081,7 +4081,7 @@ void hc_restore_cursor(void) {
     if (gCursorHidden) { [NSCursor unhide]; gCursorHidden = NO; }
 }
 
-/* ═══ play : DES LECTEURS PRÊTS D'AVANCE ════════════════════════════════════
+/* ═══ play : UNE SORTIE AUDIO TENUE OUVERTE ═════════════════════════════════
  *
  * Rapporté le 9 octobre par l'utilisatrice, DANS HC (l'application) : la
  * balle du casse-briques « s'arrête un instant » sur la raquette et sur
@@ -4090,40 +4090,59 @@ void hc_restore_cursor(void) {
  * rien d'autre que « play "cling" » : c'était bien le son.
  *
  * Chaque « play » copiait un NSSound et le jouait : un lecteur NEUF à chaque
- * coup, monté sur le fil principal — celui qui fait tourner le script. Sur
- * un vieux MacBook, une image ou deux de perdues à chaque brique. HyperCard,
- * lui, rend la main tout de suite.
+ * coup, monté sur le fil principal — celui qui fait tourner le script.
+ * HyperCard, lui, rend la main tout de suite. Trois essais, le même jour,
+ * chacun rejoué DANS HC par l'utilisatrice :
  *
- * PREMIER ESSAI, INSUFFISANT : garder les lecteurs de chaque son, préparés
- * (prepareToPlay) et réutilisés, sur le fil principal. Rejoué DANS HC par
- * l'utilisatrice le même jour : « ça se fixe encore ». Remettre au début et
- * relancer un lecteur qui a fini coûte donc encore — sans doute parce qu'un
- * lecteur arrivé au bout rend la sortie audio, comme le fait stop, et que
- * play la reprend. NON MESURÉ : on n'a pas de quoi le chronométrer ici.
+ *   1. des lecteurs AVAudioPlayer gardés et réutilisés, sur le fil
+ *      principal — « ça se fixe encore » : relancer un lecteur qui a fini
+ *      coûte encore, sans doute parce qu'il a rendu la sortie audio en
+ *      arrivant au bout (non mesuré) ;
+ *   2. les mêmes, sur une file à part — « la balle ne s'arrête plus, le son
+ *      est un peu désynchronisé » : le coût avait changé de fil, et le son
+ *      partait en retard d'autant ;
+ *   3. ceci, demandé par elle : la sortie n'est plus rendue entre deux sons.
  *
- * D'où la règle : LE FIL DU SCRIPT N'ATTEND RIEN DE L'AUDIO. Tout ce qui
- * touche aux lecteurs — chercher le fichier, préparer, relancer, arrêter —
- * passe sur une file série à part ; « play » n'y dépose qu'une demande et
- * rend la main. La file garde l'ordre des « play ». Les lecteurs, eux,
- * restent gardés et réutilisés : le travail de la file en est plus court.
+ * Un AVAudioEngine tourne, et des voix — des AVAudioPlayerNode — y restent
+ * branchées et lancées, à jouer du silence. Chaque son est lu UNE fois dans
+ * un tampon en mémoire ; un « play » ne fait plus que poser ce tampon sur
+ * une voix, qui le joue aussitôt. Rien n'est plus préparé ni repris au
+ * moment du coup.
  *
- * RÉSULTAT, rejoué DANS HC par l'utilisatrice le même jour : « la balle ne
- * s'arrête plus, le son est un peu désynchronisé ». Le coût n'a pas
- * disparu, il a changé de fil : le son part en retard d'autant. Jugé
- * acceptable par elle (« c'est pas grave »). Le supprimer demanderait une
- * sortie audio tenue ouverte en permanence (AVAudioEngine, des tampons
- * chargés d'avance) : proposé, pas fait.
+ * LA FILE À PART RESTE : le fil du script n'attend toujours rien de l'audio.
+ * Tout ce qui touche au moteur, aux voix et aux tampons passe par gFileSons,
+ * et par elle seule ; « play » n'y dépose qu'une demande. La file garde
+ * l'ordre des sons.
  *
- * NON MESURÉ non plus : ce que fait HyperCard d'un « play » donné pendant
- * que le même son joue encore. HC les superpose, comme avant, jusqu'à
- * HCV_LECTEURS_PAR_SON ; au-delà, le plus ancien repart du début, plutôt que
- * d'empiler sans fin les lecteurs d'un « repeat 1000 times play "boing" ». */
-#define HCV_LECTEURS_PAR_SON 4
+ * LES VOIX : HCV_VOIX par format de fichier (fréquence et nombre de canaux —
+ * une voix ne joue que le format avec lequel elle est branchée), prises à
+ * tour de rôle. Les sons se superposent donc, comme avant ; quand toutes les
+ * voix d'un format jouent, la plus ancienne est coupée par le nouveau son.
+ * NON MESURÉ : ce que fait HyperCard d'un « play » donné pendant qu'un son
+ * joue encore.
+ *
+ * UN SON LONG — plus de HCV_TAMPON_MAX secondes — n'est pas chargé en
+ * mémoire : il est lu depuis son fichier, ouvert à chaque « play ».
+ *
+ * « EN PERMANENCE », SAUF AU REPOS. Une sortie audio ouverte peut empêcher
+ * le Mac de se mettre en veille (non mesuré : c'est ce que fait une sortie
+ * qui joue). Le moteur se met donc en pause après HCV_SILENCE secondes sans
+ * aucun son ; le « play » suivant le relance, sur la file — le script n'en
+ * voit rien, seul ce son-là part un peu plus tard. Une partie qui fait
+ * du bruit toutes les quelques secondes ne le rencontre jamais. */
+#define HCV_VOIX         8
+#define HCV_SILENCE     20.0
+#define HCV_TAMPON_MAX  30.0
 
-/* Ces deux tables ne se touchent QUE depuis gFileSons. */
-static NSMutableDictionary<NSString *, NSMutableArray<AVAudioPlayer *> *> *gLecteurs = nil;
-static NSMutableDictionary<NSString *, NSString *> *gCheminsSons = nil;
+/* Tout ceci ne se touche QUE depuis gFileSons. */
 static dispatch_queue_t gFileSons = nil;
+static AVAudioEngine *gMoteur = nil;
+static NSMutableDictionary<NSString *, NSString *> *gCheminsSons = nil;
+static NSMutableDictionary<NSString *, id> *gSons = nil;   /* tampon, ou URL d'un son long */
+static NSMutableDictionary<NSString *, NSMutableArray<AVAudioPlayerNode *> *> *gVoix = nil;
+static NSMutableDictionary<NSString *, NSNumber *> *gVoixSuivante = nil;
+static CFTimeInterval gSilenceDes = 0;      /* quand le dernier son lancé finit */
+static BOOL gVeillePrevue = NO;
 
 /* Le fichier d'un son, cherché comme avant : le bundle, puis les dossiers
  * de sons de l'utilisateur et du système, sans égard à la casse — « Basso »
@@ -4164,50 +4183,133 @@ static NSString *hcv_chemin_son(NSString *n)
     return trouve;
 }
 
+/* Le moteur, démarré — ou redémarré : il s'arrête de lui-même quand la
+ * sortie change (un casque branché), et se met en pause au repos. Une voix
+ * ne se lance que sur un moteur qui tourne : AVFoundation lève une exception
+ * sinon. Les voix sont donc relancées ici, à chaque redémarrage.
+ *
+ * NON ESSAYÉ : le changement de sortie. Lu dans la documentation d'Apple —
+ * le moteur s'arrête, garde ses branchements, et repart au son suivant. */
+static BOOL hcv_moteur_pret(void)
+{
+    if (!gMoteur) {
+        gMoteur = [[AVAudioEngine alloc] init];
+        (void)[gMoteur mainMixerNode];       /* branche le mélangeur à la sortie */
+    }
+    if ([gMoteur isRunning]) return YES;
+    if (![gMoteur startAndReturnError:NULL]) return NO;
+    for (NSArray<AVAudioPlayerNode *> *l in [gVoix allValues])
+        for (AVAudioPlayerNode *v in l) {
+            [v stop];
+            [v play];
+        }
+    return YES;
+}
+
+/* Une voix pour ce format, à tour de rôle. Les HCV_VOIX d'un format sont
+ * branchées et lancées toutes ensemble, au premier son de ce format. */
+static AVAudioPlayerNode *hcv_voix_pour(AVAudioFormat *f)
+{
+    NSString *cle = [NSString stringWithFormat:@"%.0f/%u",
+                        [f sampleRate], (unsigned)[f channelCount]];
+    if (!gVoix) {
+        gVoix = [NSMutableDictionary dictionary];
+        gVoixSuivante = [NSMutableDictionary dictionary];
+    }
+    NSMutableArray<AVAudioPlayerNode *> *l = gVoix[cle];
+    if (!l) {
+        l = [NSMutableArray array];
+        for (int i = 0; i < HCV_VOIX; i++) {
+            AVAudioPlayerNode *v = [[AVAudioPlayerNode alloc] init];
+            [gMoteur attachNode:v];
+            [gMoteur connect:v to:[gMoteur mainMixerNode] format:f];
+            [v play];
+            [l addObject:v];
+        }
+        gVoix[cle] = l;
+    }
+    NSUInteger k = [gVoixSuivante[cle] unsignedIntegerValue] % [l count];
+    gVoixSuivante[cle] = @((k + 1) % [l count]);
+    return l[k];
+}
+
+/* Le son d'un nom : son tampon, lu une fois, ou l'URL d'un son long. */
+static id hcv_son(NSString *n, NSString *cle)
+{
+    id connu = gSons[cle];
+    if (connu) return connu;
+    NSString *chemin = hcv_chemin_son(n);
+    if (!chemin) return nil;
+    NSURL *url = [NSURL fileURLWithPath:chemin];
+    AVAudioFile *f = [[AVAudioFile alloc] initForReading:url error:NULL];
+    if (!f) return nil;
+    AVAudioFramePosition trames = [f length];
+    double frequence = [[f processingFormat] sampleRate];
+    if (trames <= 0 || frequence <= 0) return nil;
+
+    id son = url;
+    if ((double)trames / frequence <= HCV_TAMPON_MAX) {
+        AVAudioPCMBuffer *b = [[AVAudioPCMBuffer alloc]
+            initWithPCMFormat:[f processingFormat] frameCapacity:(AVAudioFrameCount)trames];
+        if (!b || ![f readIntoBuffer:b error:NULL]) return nil;
+        son = b;
+    }
+    if (!gSons) gSons = [NSMutableDictionary dictionary];
+    gSons[cle] = son;
+    return son;
+}
+
+/* La pause au repos : vérifiée quand le silence devrait être assez long,
+ * et remise à plus tard si un son est venu entre-temps. Une seule à la
+ * fois en attente. */
+static void hcv_veille_dans(double secondes)
+{
+    if (gVeillePrevue) return;
+    gVeillePrevue = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secondes * NSEC_PER_SEC)),
+                   gFileSons, ^{
+        gVeillePrevue = NO;
+        double reste = gSilenceDes + HCV_SILENCE - CACurrentMediaTime();
+        if (reste > 0.05) { hcv_veille_dans(reste); return; }
+        if ([gMoteur isRunning]) [gMoteur pause];
+    });
+}
+
 /* Sur gFileSons seulement : le vrai travail d'un « play ». */
 static void hcv_joue_son(NSString *n)
 {
     NSString *cle = [n lowercaseString];
-    if (!gLecteurs) gLecteurs = [NSMutableDictionary dictionary];
-    NSMutableArray<AVAudioPlayer *> *lecteurs = gLecteurs[cle];
-
-    /* Le chemin chaud : un lecteur de ce son qui ne joue plus. */
-    for (AVAudioPlayer *p in lecteurs) {
-        if ([p isPlaying]) continue;
-        [p setCurrentTime:0];
-        [p play];
-        return;
-    }
-    /* Tous jouent, et ils sont assez : le plus ancien repart du début, et
-     * passe en dernier. */
-    if ([lecteurs count] >= HCV_LECTEURS_PAR_SON) {
-        AVAudioPlayer *p = lecteurs[0];
-        [lecteurs removeObjectAtIndex:0];
-        [lecteurs addObject:p];
-        [p stop];
-        [p setCurrentTime:0];
-        [p play];
-        return;
-    }
-
-    NSString *chemin = hcv_chemin_son(n);
-    AVAudioPlayer *p = chemin
-        ? [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:chemin] error:NULL]
-        : nil;
-    if (!p) {
+    id son = hcv_son(n, cle);
+    if (!son) {
         /* Le bip est d'AppKit : il retourne au fil principal, qui le sert
          * au prochain tour de boucle — pendant un script aussi, cocoa_idle
          * en fait un à chaque image. */
         dispatch_async(dispatch_get_main_queue(), ^{ NSBeep(); });
         return;
     }
-    [p prepareToPlay];
-    if (!lecteurs) {
-        lecteurs = [NSMutableArray array];
-        gLecteurs[cle] = lecteurs;
+    if (!hcv_moteur_pret()) return;      /* pas de sortie audio : rien à jouer */
+
+    double duree = 0;
+    if ([son isKindOfClass:[AVAudioPCMBuffer class]]) {
+        AVAudioPCMBuffer *b = son;
+        AVAudioPlayerNode *v = hcv_voix_pour([b format]);
+        [v scheduleBuffer:b atTime:nil options:AVAudioPlayerNodeBufferInterrupts
+            completionHandler:nil];
+        if (![v isPlaying]) [v play];
+        duree = (double)[b frameLength] / [[b format] sampleRate];
+    } else {
+        AVAudioFile *f = [[AVAudioFile alloc] initForReading:son error:NULL];
+        if (!f) return;
+        AVAudioPlayerNode *v = hcv_voix_pour([f processingFormat]);
+        [v stop];
+        [v scheduleFile:f atTime:nil completionHandler:nil];
+        [v play];
+        duree = (double)[f length] / [[f processingFormat] sampleRate];
     }
-    [lecteurs addObject:p];
-    [p play];
+
+    double fin = CACurrentMediaTime() + duree;
+    if (fin > gSilenceDes) gSilenceDes = fin;
+    hcv_veille_dans(gSilenceDes + HCV_SILENCE - CACurrentMediaTime());
 }
 
 /* Le crochet de l'hôte : la demande part sur la file, et le script repart. */
