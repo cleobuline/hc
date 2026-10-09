@@ -180,7 +180,7 @@ the **Verify** button no longer flags ordinary handlers.
 - [#114](https://github.com/cleobuline/hc/pull/114): the `cling` and `tik`
   sounds
 - [#115](https://github.com/cleobuline/hc/pull/115): repository clean-up
-- [#PR_NUM](https://github.com/cleobuline/hc/pull/PR_NUM): the HyperTalk
+- [#116](https://github.com/cleobuline/hc/pull/116): the HyperTalk
   Reference fixes, the script editor, version 0.7.9.2 and this note
 
 **Full changelog:** [HC-0.7.9.1...HC-0.7.9.2](https://github.com/cleobuline/hc/compare/HC-0.7.9.1...HC-0.7.9.2)
