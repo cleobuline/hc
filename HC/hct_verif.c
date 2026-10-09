@@ -208,8 +208,56 @@ static void texte_du(const HctNoeud *n, char *out, int outlen)
 /* Sa définition est plus bas, après Etendues : elle en a besoin, et son seul
  * appelant — hct_verifie — vient après les deux. */
 
-/* Les avertissements : noms de gestionnaires suspects, « end » discordants. */
-static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
+/* LE SCRIPT APPELLE-T-IL LUI-MÊME `nom` ? Par un message nu — « closeCards
+ * 3 » —, ou par la chaîne d'un send dont c'est le premier mot — « send
+ * "closeCards 2" to me ». Ce que d'autres scripts appellent, on ne le voit
+ * pas d'ici. */
+static int appele_dans(const HctNoeud *n, const char *nom)
+{
+    if (!n) return 0;
+    char t[64];
+    if (n->genre == HCTN_MESSAGE) {
+        texte_du(n, t, sizeof t);
+        if (!strcasecmp(t, nom)) return 1;
+    }
+    if (n->genre == HCTN_COMMANDE && n->op && !strcasecmp(n->op, "send") &&
+        n->nfils >= 1 && n->fils[0] && n->fils[0]->genre == HCTN_CHAINE) {
+        texte_du(n->fils[0], t, sizeof t);
+        char *p = t;
+        while (*p == ' ') p++;
+        char *q = p;
+        while (*q && *q != ' ' && *q != ',') q++;
+        *q = '\0';
+        if (!strcasecmp(p, nom)) return 1;
+    }
+    for (int i = 0; i < n->nfils; i++)
+        if (appele_dans(n->fils[i], nom)) return 1;
+    return 0;
+}
+
+/* LA REMARQUE SUR LES NOMS DE GESTIONNAIRES : SEULEMENT QUAND ELLE APPREND
+ * QUELQUE CHOSE.
+ *
+ * Elle tombait sur TOUT « on » qui n'était pas un message système : « on
+ * markToday », « on calculeTout », le moindre sous-programme. Or c'est
+ * l'ordinaire d'un script — un gestionnaire porte le nom qu'on veut, et
+ * HyperCard n'en disait rien. L'éditeur, lui, encadrait la ligne : un
+ * utilisateur de Reddit, jon23, a pris la remarque pour un refus — « The
+ * script didn't even verify, stopping on my "on subroutine param"
+ * statement » —, en français de surcroît.
+ *
+ * Elle ne vaut que pour la COQUILLE, le cas qui l'a fait naître : « on
+ * commandKey » à côté de « on commandKeyDown », « on mouseDwon ». Elle ne
+ * paraît donc plus que si proche() a un message à proposer. Et pas même alors
+ * si le script APPELLE ce nom lui-même (appele_dans) : « on closeCards »,
+ * appelé plus haut par « closeCards », est un sous-programme voulu, pas un
+ * « closeCard » mal tapé. Idée de l'utilisatrice, le 9 octobre : on sait
+ * déjà lister les gestionnaires d'un script, autant s'en servir.
+ *
+ * Seuls les « on » sont regardés : un « function » porte par nature un nom
+ * inventé par l'auteur. */
+static void recolte_avertissements(const HctNoeud *n, const HctNoeud *racine,
+                                   HctRapport *r)
 {
     if (!n) return;
 
@@ -217,28 +265,22 @@ static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
         char nom[64];
         texte_du(n->fils[0], nom, sizeof nom);
 
-        /* Seuls les « on » sont vérifiés : un « function » porte par nature
-         * un nom inventé par l'auteur, alors qu'un « on » qui ne correspond à
-         * aucun message système ne se déclenchera que s'il est appelé
-         * explicitement — ce qui arrive, d'où le simple avertissement. */
         if (n->op && !strcasecmp(n->op, "on") &&
             !connu(MESSAGES_SYSTEME, nom)) {
-            char msg[220];
             const char *voisin = proche(nom);
-            if (voisin)
+            if (voisin && !appele_dans(racine, nom)) {
+                char msg[220];
                 snprintf(msg, sizeof msg,
                          "« %.40s » n'est pas un message système connu — "
                          "vouliez-vous dire « %.40s » ?", nom, voisin);
-            else
-                snprintf(msg, sizeof msg,
-                         "« %.40s » n'est pas un message système connu",
-                         nom);
-            ajoute(r, HCT_V_AVERTISSEMENT, n->fils[0]->jeton.ligne,
-                   n->fils[0]->jeton.col, msg, nom, (int)strlen(nom));
+                ajoute(r, HCT_V_AVERTISSEMENT, n->fils[0]->jeton.ligne,
+                       n->fils[0]->jeton.col, msg, nom, (int)strlen(nom));
+            }
         }
     }
 
-    for (int i = 0; i < n->nfils; i++) recolte_avertissements(n->fils[i], r);
+    for (int i = 0; i < n->nfils; i++)
+        recolte_avertissements(n->fils[i], racine, r);
 }
 
 /* ---------------------------------------------- dedans ou dehors ? */
@@ -385,12 +427,90 @@ int hct_verifie(const char *src, HctRapport *rap, int avec_avertissements)
      * fautes de syntaxe » devient « Script correct, avec des remarques », ce qui
      * est la vérité pour la pile d'Apple. */
     recolte_erreurs(arbre, rap, 0);
-    if (avec_avertissements) recolte_avertissements(arbre, rap);
+    if (avec_avertissements) recolte_avertissements(arbre, arbre, rap);
 
     hct_reserve_libere(&reserve);
     hct_lot_libere(&lot);
 
     return rap->nerreurs > 0;
+}
+
+/* Le mot de rang `rang` (0 ou 1) d'une ligne [p, fin), dans `out`. Un mot
+ * s'arrête aux blancs, à la virgule et au début d'un commentaire. */
+static void mot_de_ligne(const char *p, const char *fin, int rang,
+                         char *out, int outlen)
+{
+    out[0] = '\0';
+    for (int r = 0; r <= rang; r++) {
+        while (p < fin && (*p == ' ' || *p == '\t')) p++;
+        const char *d = p;
+        while (p < fin && *p != ' ' && *p != '\t' && *p != ',' &&
+               !(p[0] == '-' && p + 1 < fin && p[1] == '-'))
+            p++;
+        if (r == rang) {
+            int l = (int)(p - d);
+            if (l >= outlen) l = outlen - 1;
+            memcpy(out, d, (size_t)l);
+            out[l] = '\0';
+        }
+        if (p == d) return;              /* plus de mot sur la ligne */
+    }
+}
+
+/* La fin de la ligne qui commence en p : \n, \r\n ou \r — les piles
+ * d'époque écrivent \r. Rend le début de la suivante dans *suite. */
+static const char *fin_de_ligne(const char *p, const char **suite)
+{
+    while (*p && *p != '\n' && *p != '\r') p++;
+    const char *f = p;
+    if (*p == '\r') { p++; if (*p == '\n') p++; }
+    else if (*p == '\n') p++;
+    *suite = p;
+    return f;
+}
+
+int hct_gestionnaires(const char *src, HctGestionnaire *out, int max)
+{
+    if (!src || !out || max <= 0) return 0;
+
+    int k = 0, ligne = 1;
+    const char *p = src;
+    while (*p && k < max) {
+        const char *suite, *fin = fin_de_ligne(p, &suite);
+        char m0[16], nom[64];
+        mot_de_ligne(p, fin, 0, m0, sizeof m0);
+        int fonction = !strcasecmp(m0, "function");
+        if (fonction || !strcasecmp(m0, "on")) {
+            mot_de_ligne(p, fin, 1, nom, sizeof nom);
+            /* LE « end » DU MÊME NOM, plus loin : sans lui ce n'est pas un
+             * gestionnaire, et la ligne reste du texte. */
+            int l = ligne;
+            const char *q = suite, *trouve = NULL;
+            while (nom[0] && *q) {
+                const char *s2, *f2 = fin_de_ligne(q, &s2);
+                char e0[8], e1[64];
+                l++;
+                mot_de_ligne(q, f2, 0, e0, sizeof e0);
+                if (!strcasecmp(e0, "end")) {
+                    mot_de_ligne(q, f2, 1, e1, sizeof e1);
+                    if (!strcasecmp(e1, nom)) { trouve = s2; break; }
+                }
+                q = s2;
+            }
+            if (trouve) {
+                out[k].fonction = fonction;
+                out[k].ligne    = ligne;
+                snprintf(out[k].nom, sizeof out[k].nom, "%s", nom);
+                k++;
+                p = trouve;              /* on reprend après le « end » */
+                ligne = l + 1;
+                continue;
+            }
+        }
+        p = suite;
+        ligne++;
+    }
+    return k;
 }
 
 int hct_rapport_texte(const HctRapport *r, char *out, int outlen)

@@ -1697,6 +1697,122 @@ static Object *part_at(Object *card, NSPoint p) {
     }
     return part_at_layer(card->bg, p);
 }
+
+/* LE REGARD DE ⌘⌥ : CE QU'ON MONTRE, ET CE QU'ON ATTRAPE.
+ *
+ * MESURÉ DANS HYPERCARD par l'utilisatrice, le 9 octobre :
+ *
+ *     ⌘⌥ tenues          les boutons s'entourent ; ⌘⌥-clic ouvre le script
+ *                        du bouton
+ *     ⇧⌘⌥ tenues         les champs s'entourent ; ⇧⌘⌥-clic ouvre le script
+ *                        du champ
+ *
+ * HC n'avait ni l'un ni l'autre : il fallait choisir l'outil et
+ * double-cliquer. Réclamé sur Reddit par jon23, qui écrit ses scripts dans
+ * Mini vMac : « Cmd-Option-Click to get to button and field scripts
+ * directly ».
+ *
+ * UNE SEULE RÈGLE POUR LE TRACÉ ET LE CLIC, comme partout ici : on n'attrape
+ * que ce qui est entouré. Sous ⌘⌥ on regarde donc À TRAVERS les champs — un
+ * champ posé sur un bouton ne le cache pas —, sous ⇧⌘⌥ à travers les
+ * boutons. Un bouton désactivé, transparent au clic en Browse
+ * (part_inerte), a toujours un script et s'entoure aussi. La carte avant le
+ * fond, seulement si la carte est montrée, comme part_at ; les pièces cachées
+ * ne comptent pas ; un polygone ne se clique que dans sa forme.
+ *
+ * NON MESURÉ : si ⇧⌘⌥ entoure AUSSI les boutons ; le dessin exact du contour
+ * d'HyperCard (on reprend le pointillé gris de l'outil Bouton) ; ce que fait
+ * HyperCard d'une pièce cachée. */
+typedef enum { HCV_REGARD_RIEN = 0, HCV_REGARD_BOUTONS, HCV_REGARD_CHAMPS } HcvRegard;
+
+static HcvRegard hcv_regard_de(NSEventModifierFlags m) {
+    if (!(m & NSEventModifierFlagCommand) || !(m & NSEventModifierFlagOption))
+        return HCV_REGARD_RIEN;
+    return (m & NSEventModifierFlagShift) ? HCV_REGARD_CHAMPS : HCV_REGARD_BOUTONS;
+}
+
+static BOOL hcv_regard_voit(Object *o, HcvRegard r) {
+    if (!o->visible) return NO;
+    return (r == HCV_REGARD_BOUTONS && o->type == OBJ_BUTTON) ||
+           (r == HCV_REGARD_CHAMPS  && o->type == OBJ_FIELD);
+}
+
+static Object *part_pour_script_calque(Object *layer, NSPoint p, HcvRegard r) {
+    if (!layer) return NULL;
+    for (int i = layer->nparts - 1; i >= 0; i--) {
+        Object *o = layer->parts[i];
+        if (!hcv_regard_voit(o, r)) continue;
+        if (p.x < o->x || p.x > o->x + o->w || p.y < o->y || p.y > o->y + o->h)
+            continue;
+        if (hc_est_polygone(o) &&
+            !hc_dans_forme(o, (int)floor(p.x), (int)floor(p.y)))
+            continue;
+        return o;
+    }
+    return NULL;
+}
+
+static Object *part_pour_script(Object *card, NSPoint p, HcvRegard r) {
+    if (!card || r == HCV_REGARD_RIEN) return NULL;
+    if (couche_carte_visible()) {
+        Object *o = part_pour_script_calque(card, p, r);
+        if (o) return o;
+    }
+    return part_pour_script_calque(card->bg, p, r);
+}
+
+/* Le contour, par-dessus la carte déjà dessinée. Le fond d'abord, la carte
+ * ensuite : c'est l'ordre du dessin, et un contour de carte reste au-dessus
+ * d'un contour de fond qu'il chevauche. */
+static void hcv_regard_calque(Object *layer, HcvRegard r) {
+    if (!layer) return;
+    for (int i = 0; i < layer->nparts; i++) {
+        Object *o = layer->parts[i];
+        if (!hcv_regard_voit(o, r)) continue;
+        [[NSColor colorWithWhite:0.4 alpha:1.0] setStroke];
+        NSBezierPath *c = [NSBezierPath bezierPathWithRect:
+                              NSMakeRect(o->x + 0.5, o->y + 0.5, o->w - 1, o->h - 1)];
+        [c setLineWidth:1];
+        CGFloat tirets[] = {3, 2};
+        [c setLineDash:tirets count:2 phase:0];
+        [c stroke];
+    }
+}
+
+static void hcv_dessine_regard(void) {
+    HcvRegard r = hcv_regard_de([NSEvent modifierFlags]);
+    Object *card = hc_current_card();
+    if (r == HCV_REGARD_RIEN || !card) return;
+    hcv_regard_calque(card->bg, r);
+    if (couche_carte_visible()) hcv_regard_calque(card, r);
+}
+
+/* Redessiner quand le regard CHANGE — et seulement alors : une touche Maj
+ * frappée seule ne doit pas repeindre la carte. Une fois, à l'installation
+ * de l'hôte. Quitter l'application touches tenues redessine aussi :
+ * drawRect: relit l'état réel des touches, qui sont alors relâchées pour
+ * nous. */
+static void hcv_regard_installe(void) {
+    static BOOL fait = NO;
+    if (fait) return;
+    fait = YES;
+    static HcvRegard dernier = HCV_REGARD_RIEN;
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                          handler:^NSEvent *(NSEvent *e) {
+        HcvRegard r = hcv_regard_de([e modifierFlags]);
+        if (r != dernier) { dernier = r; [gView setNeedsDisplay:YES]; }
+        return e;
+    }];
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidResignActiveNotification
+                    object:nil queue:nil usingBlock:^(NSNotification *n) {
+        (void)n;
+        if (dernier != HCV_REGARD_RIEN) {
+            dernier = HCV_REGARD_RIEN;
+            [gView setNeedsDisplay:YES];
+        }
+    }];
+}
 static char gDlgBuf[512];
 static char gFileBuf[2048];
 
@@ -2601,6 +2717,40 @@ static void cocoa_menus_changed(void)
         [tete setEnabled:hc_menu_est_actif(i) ? YES : NO];
         [barre addItem:tete];
     }
+}
+
+/* « commandKeyDown "V" » ÉCRIT DANS UN SCRIPT, QUAND PERSONNE NE LE PREND :
+ * le raccourci ⌘V de la barre de menus, comme si on l'avait tapé — voir
+ * v3_cmd_commandkeydown dans le noyau, et la carte commandKeyDown de
+ * « HyperTalk Reference ».
+ *
+ * DIRECTEMENT À LA BARRE DE MENUS, et non à la fenêtre : la fenêtre le
+ * proposerait d'abord à la vue (performKeyEquivalent:), qui renverrait un
+ * second commandKeyDown à la pile — le message est déjà parti, et l'on
+ * vient justement de voir que personne n'en voulait.
+ *
+ * Une lettre se joue en MINUSCULE : nos raccourcis sont posés en minuscules,
+ * et une majuscule voudrait dire ⇧ en plus. « commandKeyDown "B" » est ⌘B,
+ * l'édition du fond, comme l'écrit Apple. Qu'HyperCard distingue la casse :
+ * NON MESURÉ. Un raccourci que le menu ne connaît pas ne fait rien. */
+static void cocoa_raccourci_menu(const char *touche) {
+    if (!touche || !*touche) return;
+    NSString *t = hcv_texte(touche);
+    if ([t length] == 0) return;
+    NSString *k = [[t substringWithRange:
+                       [t rangeOfComposedCharacterSequenceAtIndex:0]]
+                      lowercaseString];
+    NSEvent *ev = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                   location:NSZeroPoint
+                              modifierFlags:NSEventModifierFlagCommand
+                                  timestamp:[[NSProcessInfo processInfo] systemUptime]
+                               windowNumber:[[gView window] windowNumber]
+                                    context:nil
+                                 characters:k
+                charactersIgnoringModifiers:k
+                                  isARepeat:NO
+                                    keyCode:0];
+    if (ev) [[NSApp mainMenu] performKeyEquivalent:ev];
 }
 
 static void cocoa_do_menu(const char *item) {
@@ -4371,6 +4521,77 @@ static NSRange hcv_plage_de_ligne(NSString *s, NSInteger ligne)
 }
 
 @end
+
+/* ENCADRER UNE LIGNE DE L'ÉDITEUR ET Y POSER LE CURSEUR — le corps de
+ * encadreLigne:dansVue:, sorti en fonction pour servir aussi aux menus
+ * « Handlers » et « Functions » ci-dessous, définis avant HCView : une
+ * méthode de HCView qu'aucun en-tête ne déclare n'y serait pas visible. */
+static void hcv_encadre_ligne(NSTextView *tv, int ligne)
+{
+    if (!tv) return;
+    if ([tv isKindOfClass:[HCScriptView class]])
+        ((HCScriptView *)tv).ligneEncadree = ligne;
+    NSRange r = hcv_plage_de_ligne([tv string], ligne);
+    if (r.location == NSNotFound) return;
+    [tv setSelectedRange:NSMakeRange(r.location, 0)];
+    [tv scrollRangeToVisible:r];
+    [[tv window] makeFirstResponder:tv];
+}
+
+/* LES MENUS « HANDLERS » ET « FUNCTIONS » DE LA FENÊTRE DE SCRIPT.
+ *
+ * HyperCard 2.4 en a deux, en haut de sa fenêtre de script, qui listent les
+ * gestionnaires « on » et « function » du script — l'utilisatrice les a
+ * montrés le 9 octobre, dans Basilisk II. Choisir un nom mène à sa ligne.
+ *
+ * La liste se refait À CHAQUE OUVERTURE du menu (menuNeedsUpdate:), sur le
+ * texte en cours d'édition : un gestionnaire qu'on vient d'écrire y est déjà,
+ * sans enregistrer. Le noyau la dresse (hct_gestionnaires, harnais
+ * listegest) : « on X » ne compte que si « end X » le suit.
+ *
+ * NON MESURÉ DANS HYPERCARD : l'ordre de la liste (on garde celui du texte)
+ * et ce que le choix sélectionne exactement (on encadre la ligne et l'on y
+ * pose le curseur, comme le bouton « Script » d'un dialogue d'erreur). */
+@interface HCMenuGestionnaires : NSObject <NSMenuDelegate>
+@property (nonatomic, weak) NSTextView *vue;
+@property (nonatomic) BOOL fonctions;
+@end
+
+@implementation HCMenuGestionnaires
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    /* Le premier article d'un menu déroulant est son titre : il reste. */
+    while ([menu numberOfItems] > 1) [menu removeItemAtIndex:1];
+    NSTextView *tv = self.vue;
+    const char *src = tv ? [[tv string] UTF8String] : NULL;
+    if (!src) return;
+    enum { HCV_GESTIONNAIRES_MAX = 512 };
+    HctGestionnaire *g = calloc(HCV_GESTIONNAIRES_MAX, sizeof *g);
+    if (!g) return;
+    int n = hct_gestionnaires(src, g, HCV_GESTIONNAIRES_MAX);
+    for (int i = 0; i < n; i++) {
+        if ((g[i].fonction != 0) != (self.fonctions != NO)) continue;
+        NSString *t = [NSString stringWithUTF8String:g[i].nom];
+        if (!t) continue;
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:t
+                                                    action:@selector(va:)
+                                             keyEquivalent:@""];
+        [it setTarget:self];
+        [it setTag:g[i].ligne];
+        [menu addItem:it];
+    }
+    free(g);
+}
+
+- (void)va:(NSMenuItem *)it {
+    hcv_encadre_ligne(self.vue, (int)[it tag]);
+}
+
+@end
+
+/* Le délégué d'un menu n'est qu'une référence faible : il vit attaché à son
+ * bouton, et meurt avec la fenêtre. */
+static char kHcvMenuGestionnaires;
 
 @interface HCLignesRegle : NSRulerView
 - (instancetype)initAvecVue:(NSTextView *)tv;
@@ -6846,7 +7067,11 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
      * À L'ÉCRAN, grossissement compris, et la redessiner sous la
      * transformation la grossirait deux fois. Voir hcv_draw_locked. */
     if (hcv_draw_locked(self)) return;
-    if (!hcv_fat()) { [self drawCardContent:dirtyRect]; return; }
+    if (!hcv_fat()) {
+        [self drawCardContent:dirtyRect];
+        hcv_dessine_regard();            /* ⌘⌥ tenues : les contours */
+        return;
+    }
 
     /* Le rectangle sale d'AppKit ne veut plus rien dire sous la
      * transformation : on redessine la fenêtre grossie en entier, et on donne
@@ -7461,6 +7686,25 @@ static BOOL      gSansMessageChamp = NO;
      * Hors script, le clic EFFACE le drapeau : un clic ancien ne doit pas
      * répondre à la place d'un clic neuf. */
     gMouseClicked = hc_is_running() ? YES : NO;
+
+    /* ⌘⌥-CLIC OUVRE LE SCRIPT D'UN BOUTON, ⇧⌘⌥-CLIC CELUI D'UN CHAMP — voir
+     * hcv_regard_de, qui dit aussi ce qu'on entoure.
+     *
+     * Avec n'importe quel outil, et avant tout geste d'outil : le clic est
+     * pris, aucun mouseDown ne part vers la pièce. Après gMouseClicked
+     * seulement, qu'un clic doit toujours effacer hors script (plus haut).
+     * Sur une zone sans bouton ni champ, rien n'est pris et le clic suit son
+     * cours ordinaire ; ce que fait HyperCard dans ce cas : NON MESURÉ. Sous
+     * FatBits, ⌘ reste à la fenêtre grossie (plus haut). */
+    {
+        Object *aOuvrir = part_pour_script(hc_current_card(), p,
+                                           hcv_regard_de([event modifierFlags]));
+        if (aOuvrir) {
+            if (gEditingField) [self endFieldEdit];
+            [self editScriptOf:aOuvrir];
+            return;
+        }
+    }
 
     /* 2. Fermeture prioritaire du mode édition de texte si l'outil n'est plus Browse */
     if (gTool != TOOL_BROWSE && gEditingField) {
@@ -8641,7 +8885,9 @@ static void hcv_survol(HCView *v, Object *carte)
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
     host.fenetre       = cocoa_fenetre;
+    host.raccourci_menu = cocoa_raccourci_menu;
     hcv_touches_installe();
+    hcv_regard_installe();
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.choose_tool   = cocoa_choose_tool;
@@ -8914,7 +9160,9 @@ static NSTextField  *gSprayDensityLabel = nil;
                       defer:NO];
     char d[64]; hc_describe(obj, d, sizeof d);
     [panel setTitle:[NSString stringWithFormat:@"Script de %s", d]];
-    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 286)];
+    /* 258 de haut et non plus 286 : les menus « Handlers » et « Functions »
+     * prennent la bande du haut, comme dans HyperCard 2.4. */
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 258)];
     [scroll setHasVerticalScroller:YES];
     [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     HCScriptView *tv = [[HCScriptView alloc] initWithFrame:[[scroll contentView] bounds]];
@@ -8933,6 +9181,31 @@ static NSTextField  *gSprayDensityLabel = nil;
     [scroll setRulersVisible:YES];
     [[panel contentView] addSubview:scroll];
     gEditView = tv;
+
+    /* « Handlers: » et « Functions: », en haut — voir HCMenuGestionnaires.
+     * Les mots sont ceux d'HyperCard. */
+    {
+        NSArray<NSString *> *titres = @[ @"Handlers:", @"Functions:" ];
+        for (int k = 0; k < 2; k++) {
+            CGFloat x = 10 + k * 235;
+            NSTextField *l = [NSTextField labelWithString:titres[k]];
+            [l setFrame:NSMakeRect(x, 312, 72, 18)];
+            [l setAutoresizingMask:NSViewMinYMargin];
+            [[panel contentView] addSubview:l];
+
+            NSPopUpButton *pb = [[NSPopUpButton alloc]
+                initWithFrame:NSMakeRect(x + 72, 308, 150, 26) pullsDown:YES];
+            [pb addItemWithTitle:@""];
+            HCMenuGestionnaires *deleg = [[HCMenuGestionnaires alloc] init];
+            deleg.vue = tv;
+            deleg.fonctions = (k == 1);
+            [[pb menu] setDelegate:deleg];
+            objc_setAssociatedObject(pb, &kHcvMenuGestionnaires, deleg,
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            [pb setAutoresizingMask:NSViewMinYMargin];
+            [[panel contentView] addSubview:pb];
+        }
+    }
 
     NSButton *verif = [[NSButton alloc] initWithFrame:NSMakeRect(290, 8, 90, 30)];
     [verif setTitle:@"Vérifier"];
@@ -8961,14 +9234,7 @@ static NSTextField  *gSprayDensityLabel = nil;
  * lire, cliquer ailleurs, revenir, le cadre reste ; et la première touche
  * frappée insère au lieu d'effacer la ligne. */
 - (void)encadreLigne:(int)ligne dansVue:(NSTextView *)tv {
-    if (!tv) return;
-    if ([tv isKindOfClass:[HCScriptView class]])
-        ((HCScriptView *)tv).ligneEncadree = ligne;
-    NSRange r = hcv_plage_de_ligne([tv string], ligne);
-    if (r.location == NSNotFound) return;
-    [tv setSelectedRange:NSMakeRange(r.location, 0)];
-    [tv scrollRangeToVisible:r];
-    [[tv window] makeFirstResponder:tv];
+    hcv_encadre_ligne(tv, ligne);
 }
 
 - (void)selectLine:(int)ligne inTextView:(NSTextView *)tv {

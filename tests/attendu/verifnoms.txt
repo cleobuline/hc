@@ -1,9 +1,9 @@
 == 1. LES NOMS CONNUS ne disent rien ==
-   on mouseUp          (connu)
-   on opencard         (connu)
-   on COMMANDKEYDOWN   (connu)
-   on idle             (connu)
-   on doMenu           (connu)
+   on mouseUp          (rien)
+   on opencard         (rien)
+   on COMMANDKEYDOWN   (rien)
+   on idle             (rien)
+   on doMenu           (rien)
 
 == 2. LE PRÉFIXE D'UN SEUL message : on nomme le message ==
    on commandKey       « commandKey » n'est pas un message système connu — vouliez-vous dire « commandKeyDown » ?
@@ -16,16 +16,23 @@
    on newcrad          « newcrad » n'est pas un message système connu — vouliez-vous dire « newCard » ?
    on errorDialogue    « errorDialogue » n'est pas un message système connu — vouliez-vous dire « errorDialog » ?
 
-== 4. UN PRÉFIXE AMBIGU NE CONSEILLE RIEN ==
-   on mouse            « mouse » n'est pas un message système connu
-   on close            « close » n'est pas un message système connu
-   on new              « new » n'est pas un message système connu
+== 4. UN PRÉFIXE AMBIGU NE CONSEILLE RIEN, et ne dit rien ==
+   on mouse            (rien)
+   on close            (rien)
+   on new              (rien)
 
-== 5. ET CE QUI N'EST PAS UNE COQUILLE non plus ==
-   on zorglub          « zorglub » n'est pas un message système connu
-   on calculeTout      « calculeTout » n'est pas un message système connu
-   on markToday        « markToday » n'est pas un message système connu
+== 5. CE QUI N'EST PAS UNE COQUILLE ne dit rien non plus ==
+   on zorglub          (rien)
+   on calculeTout      (rien)
+   on markToday        (rien)
+   on subroutine       (rien)
 
-== 6. LES FAUTES DE SYNTAXE PASSENT AVANT ==
+== 6. UN NOM PROCHE, MAIS APPELÉ PAR LE SCRIPT : un sous-programme ==
+   appelé par un message nu      (rien)
+   appelé par send               (rien)
+   jamais appelé                 ligne 4 : « closeCards » n'est pas un message système connu — vouliez-vous dire « closeCard » ?
+   jon23 : on subroutine param    (rien)
+
+== 7. LES FAUTES DE SYNTAXE PASSENT AVANT ==
    repeat sans « to »    erreurs=1
       ligne 2 : « to » attendu

@@ -585,6 +585,7 @@ static int ecrit_dans(HctExec *x, const HctNoeud *cible, HctValeur vv,
                 n2 = hct_vers_rang(b.txt, &hors);
                 if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                         "rang de morceau hors limites");
+                n2 = hct_chunk_fin(cible->sorte, n2);   /* voir hct_chunk.h */
                 hct_val_libere(&b);
             }
         }
@@ -743,6 +744,7 @@ static int supprime_dans(HctExec *x, const HctNoeud *cible)
             n2 = hct_vers_rang(b.txt, &hors);
             if (hors) hct_ctx_faute(&x->ctx, cible->fils[1],
                                     "rang de morceau hors limites");
+            n2 = hct_chunk_fin(cible->sorte, n2);   /* voir hct_chunk.h */
             hct_val_libere(&b);
         }
     }

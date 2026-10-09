@@ -46,6 +46,29 @@ void hct_rapport_libere(HctRapport *rap);
  * Sert à l'éditeur, qui place le curseur sur la première faute. */
 const HctSignalement *hct_premier(const HctRapport *rap);
 
+/* LES GESTIONNAIRES D'UN SCRIPT, dans l'ordre du texte : ce que listent les
+ * menus « Handlers » et « Functions » de la fenêtre de script d'HyperCard
+ * 2.4, que l'éditeur de HC reprend (HCview.m).
+ *
+ * `fonction` vaut 1 pour « function », 0 pour « on ». `ligne` est la ligne
+ * du mot « on » ou « function », en base 1, comptée comme celle des
+ * signalements : l'éditeur y place le curseur. Le nom est tronqué à 63
+ * octets. Rend le nombre de gestionnaires écrits, au plus `max`.
+ *
+ * Comme l'exécuteur trouve un gestionnaire, et non par l'arbre : « on X »
+ * ne compte que si une ligne « end X » le suit. L'arbre prenait une ligne de
+ * bandeau commençant par « on » — les bandeaux d'Apple n'ont pas de « -- »
+ * — pour un gestionnaire sans fin, qui avalait tout le reste du script. Un
+ * gestionnaire dont le corps porte une faute reste listé : c'est là qu'on
+ * veut aller. */
+typedef struct {
+    int  fonction;
+    int  ligne;
+    char nom[64];
+} HctGestionnaire;
+
+int hct_gestionnaires(const char *src, HctGestionnaire *out, int max);
+
 /* Rédige le rapport en texte, une ligne par signalement. Rend le nombre
  * d'octets écrits. */
 int hct_rapport_texte(const HctRapport *rap, char *out, int outlen);

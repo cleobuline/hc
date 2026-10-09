@@ -19,6 +19,8 @@ int main(void)
     Object *c1    = hc_new_card(stack, bg, "Une");
     Object *c2    = hc_new_card(stack, bg, "Deux");
     Object *c3    = hc_new_card(stack, bg, "Trois");
+    Object *bg2   = hc_new_background(stack, "Autre");
+    Object *c4    = hc_new_card(stack, bg2, "Quatre");
     Object *btn   = hc_new_button(c2, "B");
     hc_new_field(c2, "F1");
     hc_new_field(c2, "F2");
@@ -35,6 +37,24 @@ int main(void)
       "  put \"-- comptage : cards = \" & the number of cards\n"
       "  debug bilan\n"
       "end mouseUp\n");
+    hc_send(btn, "mouseUp");
+
+    /* LE RANG D'UN FOND. « the number of this bkgnd » répondait « propriété
+     * inconnue » — relevé dans la démonstration « number (property) » de
+     * « HyperTalk Reference » (Apple). Le rang suit l'ordre où « bkgnd 2 »
+     * trouve les fonds : les deux lectures doivent se répondre. */
+    puts("-- le rang d'un fond");
+    hc_set_script(btn,
+      "on mouseUp\n"
+      "  put \"this bkgnd       = \" & the number of this bkgnd\n"
+      "  put \"this background  = \" & the number of this background\n"
+      "  put \"bkgnd 2          = \" & the number of bkgnd 2\n"
+      "  put \"bkgnd Autre      = \" & the number of bkgnd \"Autre\"\n"
+      "  put \"bkgnd 1          = \" & the number of bkgnd 1\n"
+      "  put \"-- comptage : bkgnds = \" & the number of bkgnds\n"
+      "end mouseUp\n");
+    hc_send(btn, "mouseUp");
+    hc_set_current_card(c4);
     hc_send(btn, "mouseUp");
     hc_free(stack);
     return 0;

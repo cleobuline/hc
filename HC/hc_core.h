@@ -553,7 +553,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.7.9.1"
+#define HC_VERSION "0.7.9.2"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -1023,6 +1023,14 @@ typedef struct {
      * -1 si la propriété est inconnue ou ne se pose pas. */
     int (*fenetre)(const char *nom, const char *quoi, const char *prop,
                    const char *valeur, char *out, int outlen);
+
+    /* JOUER LE RACCOURCI ⌘+touche DE LA BARRE DE MENUS, comme si on l'avait
+     * tapé. C'est l'action par défaut de « commandKeyDown "V" » écrit dans un
+     * script, quand aucun gestionnaire ne prend le message — voir
+     * v3_cmd_commandkeydown. `touche` est le texte passé au message, tel que
+     * le script l'a écrit. Facultatif : sans lui, le noyau dit qu'il ne sait
+     * pas jouer le raccourci. */
+    void (*raccourci_menu)(const char *touche);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)

@@ -28,7 +28,7 @@
   MANQUE enterKey                                        !! ne sait pas faire : enterKey
   MANQUE functionKey 1                                   !! ne sait pas faire : functionKey 1
   MANQUE controlKey 1                                    !! ne sait pas faire : controlKey 1
-  MANQUE commandKeyDown "b"                              !! ne sait pas faire : commandKeyDown "b"
+  MANQUE commandKeyDown "b"                              !! commandKeyDown : l'hôte ne joue pas les raccourcis de menu (⌘b)
   MANQUE keyDown "x"                                     !! ne sait pas faire : keyDown "x"
   MANQUE enterInField                                    !! ne sait pas faire : enterInField
   MANQUE returnInField                                   !! ne sait pas faire : returnInField

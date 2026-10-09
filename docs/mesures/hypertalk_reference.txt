@@ -1,0 +1,148 @@
+« HYPERTALK REFERENCE » : LES DÉMONSTRATIONS « RUN THE SCRIPT » — 9 octobre
+==========================================================================
+
+La pile d'Apple (version 2.4, convertie par l'utilisatrice) montre chaque mot
+du langage par un script que joue le bouton « Run the Script ». Elle n'entre
+pas dans le dépôt ; ses gestionnaires sont recopiés dans leur FORME par les
+harnais refdemos et runscript.
+
+
+LE RELEVÉ, DANS LE NOYAU ET NON DANS HC (l'application)
+-------------------------------------------------------
+
+Les 136 cartes qui portent une démonstration ont été jouées une par une,
+chacune dans un processus à part, par un faux hôte : la souris jamais
+enfoncée, « ask » qui répond 5, « answer » qui prend le premier bouton, les
+réglages de peinture et les fenêtres tenus comme le fait HCview.m. Ce qui
+suit vient de ce relevé, et ne vaut que pour le noyau.
+
+Six démonstrations ont tourné sans fin — if, repeat, repeat while, set,
+mouse, scroll : elles attendent un clic, ou un nombre deviné, que le faux
+hôte ne donne jamais. Ce n'est pas un défaut.
+
+Ce que le faux hôte ne sait pas faire, et que l'application fait, n'a PAS
+été jugé : click, type, drag, doMenu vers l'interface, systemVersion,
+clickChunk, clickLine, clickText, clickLoc, screenRect, diskSpace, windows.
+
+
+CORRIGÉ LE 9 OCTOBRE
+--------------------
+
+  set lockMessages to true      « propriété inconnue » : seule la commande
+                                « lock messages » posait le verrou.
+                                Harnais lockmsg.
+  the number of this bkgnd      « propriété inconnue ». Harnais rang.
+  the name of the selectedField « objet introuvable », et « the textFont of
+  the name of the foundField    the selectedField » rendait la chaîne
+                                « textFont of the selectedField ».
+                                Harnais refdemos, section 1.
+  doMenu "Background","Edit"    « ne sait pas faire », comme « … without
+                                dialog ». Harnais refdemos, section 2.
+  show card picture             « objet introuvable », et les trois autres
+  hide picture of bkgnd 1       formes de la carte « show ». Harnais
+                                refdemos, section 3.
+
+
+« CHAR 1 TO 0 » — MESURÉ, PUIS CORRIGÉ LE MÊME JOUR
+---------------------------------------------------
+
+Trouvé en suivant la démonstration clickChunk dans la pile « HyperCard
+Help » : sa fonction textToLineNum (attribuée à Ken Laws) écrit
+
+    return the number of lines of char 1 to offset(return & theText & return,
+                                                    theContainer) of theContainer
+
+et son commentaire promet 0 quand le texte manque. HC rendait 1 : n2 = 0
+voulait dire « pas de fin », et « char 1 to 0 » rendait le premier
+caractère. notHelpSuite se trompait donc toujours.
+
+MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice — les valeurs
+contredisent ce que rendait HC, le côté ne fait pas de doute :
+
+    char 1 to 0 of "abc"                                          []
+    char 1 to -1 of "abc"                                         []
+    word 1 to 0 of "a b c"                                        a
+    the number of lines of return                                 1
+    the number of lines of char 1 to 0 of (return & "abc" & return)   0
+
+Les caractères et les mots ne suivent pas la même règle. Seuls les
+caractères changent (hct_chunk_fin, appelée aux quatre sites qui lisent un
+« to » : lecture, put, delete, select). Harnais refdemos, section 4.
+
+NON MESURÉ : les items et les lignes « to 0 » (inchangés : le premier
+morceau, comme les mots) ; écrire, effacer, sélectionner dans « char 1 to
+0 » — l'écriture laisse la chaîne telle quelle, comme elle le faisait déjà
+pour « to -1 », l'effacement n'ôte rien, select pose un point d'insertion.
+
+
+LA CARTE clickChunk — RÉSOLU : UN CLIC DANS LE VIDE
+---------------------------------------------------
+
+Signalé DANS HC (l'application) : la démonstration « coinçait ». La chaîne
+des piles d'aide passe entière dans le noyau. La ligne fautive était
+
+    get the clickChunk
+    select it
+
+après un clic hors du texte : clickChunk vide, et HC répondait « ne sait
+pas faire : select it », qui accuse la syntaxe. L'utilisatrice l'a cherchée
+avant de voir qu'elle avait cliqué à côté ; en cliquant sur un mot, tout
+remarche. Le message dit maintenant « select : rien à sélectionner, it est
+vide », et le script continue comme avant. Ce que fait HyperCard d'un
+« select » sur une valeur vide : NON MESURÉ. Harnais refdemos, section 5.
+
+
+L'EFFET DE BORD DE « char 1 to 0 » SUR LES PILES D'AIDE
+-------------------------------------------------------
+
+notHelpSuite répondait toujours faux ; elle répond juste depuis la
+correction. Or HyperCard Help lui passe lastItem(":", destination()) et
+lastItem(":", <nom long d'une carte>) : avec des chemins en « / », aucune
+pile n'est reconnue comme pile d'aide. Mesuré dans le noyau : en quittant
+une pile d'aide, closeDownHelpStack retire le menu « Reference » et cesse
+d'utiliser HyperCard Help (le menu revient au resumeStack) ; et le bouton
+« Go … » de la carte 1 peut paraître. Conséquence de la décision sur les
+chemins, ci-dessous ; la correction proposée porte sur la copie convertie de
+la pile d'Apple, pas sur HC. Et « the destination » rend chez nous
+« stack "/chemin" » : ce que rend HyperCard est demandé.
+
+
+RELEVÉ, PAS ENCORE CORRIGÉ
+--------------------------
+
+  flash 2                       commande inconnue.
+  the long version              inconnue ; « the version » rend 2.4.1.
+  the selectedLoc               fonction inconnue.
+  select bkgnd button "X"       refusé : sélectionner un OBJET, comme à
+                                l'outil Bouton.
+  edit script of …              refusé : il faut l'hôte pour ouvrir
+                                l'éditeur.
+  set nextLine of message       FAUTE DE SYNTAXE sur une ligne valide ; HC
+    watcher to …                n'a pas de Message Watcher.
+  commandKeyDown "I", tabKey    l'action par défaut d'un message de clavier
+                                appelé comme commande manque toujours
+                                (docs/mesures/clavier.txt).
+
+
+À MESURER DANS HYPERCARD (Basilisk II), AVANT D'Y TOUCHER
+---------------------------------------------------------
+
+  · « go to card » vers une carte absente. HC arrête le script sur « objet
+    introuvable » ; déjà noté non mesuré dans la note de la 0.7.9.1. La
+    démonstration « result » de la pile est le banc : elle affiche the
+    result après un find raté, puis après un go raté.
+  · « the params ». HC rend « showParams,1,a,this is fun,360 » à la
+    démonstration « params » ; HyperCard mettrait, de mémoire, une espace
+    après le nom et des guillemets autour des paramètres. Non mesuré.
+  · « the long version » : son format.
+
+
+DÉCIDÉ PAR L'UTILISATRICE : PAS DE CHEMINS « Disque:Dossier:Pile »
+-------------------------------------------------------------------
+
+Les démonstrations « return » et « offset » coupent « the long name of this
+stack » au premier « : » pour trouver le nom du disque, comme sur un Mac
+d'époque. HC donne des chemins en « / », et elles affichent « disk named H ».
+
+« Non, on n'imite pas Disque:Dossier:Pile » — l'utilisatrice, le 9 octobre.
+Ces deux démonstrations restent donc fausses chez nous, sciemment.

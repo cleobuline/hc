@@ -58,6 +58,8 @@ static const char *GESTIONNAIRES =
     "on enterInField\n  put \"entrée dans le champ\"\nend enterInField\n"
     "on returnInField\n  put \"retour dans le champ\"\nend returnInField\n";
 
+static void raccourci(const char *t) { printf("   -> hôte : raccourci ⌘%s joué\n", t); }
+
 static Object *b;
 static void depuis_script(const char *ligne)
 {
@@ -167,6 +169,25 @@ int main(void)
         puts("   (Cmd+Q doit rester a 0 : une pile ordinaire ne doit pas");
         puts("    empecher de quitter sans l'avoir voulu)");
     }
+
+    /* ── 6. « commandKeyDown "V" » ÉCRIT DANS UN SCRIPT JOUE LE RACCOURCI ──
+     *
+     * La carte commandKeyDown de « HyperTalk Reference » (Apple) l'écrit :
+     * « acts exactly as if you had pressed ⌘ at the same time as the
+     * specified character ». Sa démonstration — « commandKeyDown "I" » —
+     * répondait « ne sait pas faire » faute de gestionnaire. Le même accord
+     * qu'en §5, vu du script : pris, rien de plus ; passé ou sans preneur, le
+     * raccourci du menu, par l'hôte. Le gestionnaire de la §5 est toujours
+     * là : il prend « n » et « z », passe le reste. */
+    puts("\n== 6. commandKeyDown DEPUIS UN SCRIPT : le message, puis le raccourci ==");
+    h.raccourci_menu = raccourci;
+    hc_set_host(&h);
+    depuis_script("commandKeyDown \"n\"");      /* pris : pas de raccourci */
+    depuis_script("commandKeyDown \"z\"");      /* pris aussi */
+    depuis_script("commandKeyDown \"V\"");      /* passé : ⌘V se joue */
+    hc_set_script(st, "");
+    depuis_script("commandKeyDown \"I\"");      /* personne : ⌘I se joue */
+    depuis_script("put \"B\" into k\n  commandKeyDown k");
 
     hc_free(st);
     return 0;

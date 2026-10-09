@@ -1,0 +1,131 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. the selectedField et the foundField désignent un champ ==
+   put the name of the selectedField
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "Run the Script".mouseUp)
+   select line 1 of card field 1
+  put the selectedField
+  put the name of the selectedField
+  put the short name of the selectedField
+  put the number of the selectedField
+  put the name of selectedField()
+      card field 1
+      card field "Titre"
+      Titre
+      1
+      card field "Titre"
+   select line 2 of card field "Demo Script"
+  put "The field containing the selection is:" && the name of the selectedField
+      The field containing the selection is: card field "Demo Script"
+   find "foundFieldDemo"
+  put "The foundField is" && the foundField & "."
+  put "The name of the foundField is" && the name of the foundField & "."
+      The foundField is card field 2.
+      The name of the foundField is card field "Demo Script".
+   find "absent de partout"
+  put the name of the foundField
+      [ERR]    !! objet introuvable (v3, ligne 3 de button "Run the Script".mouseUp)
+
+== 2. doMenu article, menu — et without dialog ==
+   doMenu "Background","Edit" -- view the background layer
+  doMenu "Background","Edit" -- return to the card layer
+      -> hôte : doMenu « Background »
+      -> hôte : doMenu « Background »
+   doMenu "Card Info" without dialog
+      -> hôte : doMenu « Card Info »
+   doMenu "Bkgnd Info", "Objects" without dialog
+      -> hôte : doMenu « Bkgnd Info »
+   put "Edit" into m
+  doMenu "Background", m
+      -> hôte : doMenu « Background »
+   doMenu "Background", zorglub()
+  put "pas ici"
+      [ERR]    !! fonction inconnue : zorglub (v3, ligne 2 de button "Run the Script".mouseUp)
+   doMenu "Background","Edit"
+      pile : Background
+
+== 3. show / hide card picture, picture of bkgnd ==
+   hide card picture
+  put "carte : " & the showPict of this card
+      carte : false
+   show card picture
+  put "carte : " & the showPict of this card
+      carte : true
+   hide bkgnd pict
+  put "fond : " & the showPict of this bkgnd
+      fond : false
+   show background picture
+  put "fond : " & the showPict of this bkgnd
+      fond : true
+   hide picture of card 2
+  put "carte 2 : " & the showPict of card 2 && "/ carte 1 : " & the showPict of card 1
+      carte 2 : false / carte 1 : true
+   show pict of last cd
+  put "carte 2 : " & the showPict of card 2
+      carte 2 : true
+   hide picture of bkgnd 1
+  put "fond 1 : " & the showPict of bkgnd 1
+      fond 1 : false
+   show picture of bkgnd 1
+  put "fond 1 : " & the showPict of bkgnd 1
+      fond 1 : true
+   hide picture of card "Absente"
+  put "pas ici"
+      [ERR]    !! objet introuvable (v3, ligne 2 de button "Run the Script".mouseUp)
+   hide card field "Titre"
+  put "Titre : " & the visible of card field "Titre"
+      Titre : false
+   show card field "Titre"
+
+== 4. char 1 to 0 est vide ==
+   put "[" & char 1 to 0 of "abc" & "]"
+  put "[" & char 1 to -1 of "abc" & "]"
+  put "[" & word 1 to 0 of "a b c" & "]"
+  put the number of lines of return
+  put the number of lines of char 1 to 0 of (return & "abc" & return)
+      []
+      []
+      [a]
+      1
+      0
+   put "[" & char 3 to 1 of "abc" & "]"
+  put "[" & char 2 to 3 of "abc" & "]"
+  put 0 into z
+  put "[" & char 1 to z of "abc" & "]"
+      []
+      [bc]
+      []
+   put "HyperCard Help" & return & "HyperTalk Reference" into suite
+  put textToLineNum("HyperTalk Reference", suite)
+  put textToLineNum("HyperCard Help", suite)
+  put textToLineNum("Mon Calendrier", suite)
+      2
+      1
+      0
+   put "abc" into v
+  put "X" into char 1 to 0 of v
+  put v
+      abc
+   put "abc" into v
+  delete char 1 to 0 of v
+  put v
+      abc
+   put "abc" into v
+  delete char 1 to -1 of v
+  put v
+      abc
+   select char 1 to 0 of card field "Titre"
+  put the selectedChunk
+  put "[" & the selectedText & "]"
+      char 1 to 0 of card field 1
+      []
+
+== 5. select sur une valeur vide ==
+   get empty
+  select it
+  put "suite"
+      [ERR]    !! select : rien à sélectionner, it est vide
+      suite
+   put "char 1 to 2 of card field 1" into x
+  select x
+  put the selectedChunk && "[" & the selectedText & "]"
+      char 1 to 2 of card field 1 [Le]
