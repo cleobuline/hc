@@ -7059,8 +7059,8 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
             NSPoint z = (gTool == TOOL_REGPOLY)
                         ? gShapeEnd
                         : NSMakePoint(NSMaxX(box), NSMaxY(box));
-            NSPoint som[HC_SOMMETS_MAX];
-            int nsom = shape_sommets(gTool, a, z, som, HC_SOMMETS_MAX);
+            NSPoint som[HC_FORME_SOMMETS_MAX];
+            int nsom = shape_sommets(gTool, a, z, som, HC_FORME_SOMMETS_MAX);
             if (nsom >= 3) {
                 preview = [NSBezierPath bezierPath];
                 [preview moveToPoint:som[0]];
