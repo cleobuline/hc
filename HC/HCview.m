@@ -4107,6 +4107,13 @@ void hc_restore_cursor(void) {
  * rend la main. La file garde l'ordre des « play ». Les lecteurs, eux,
  * restent gardés et réutilisés : le travail de la file en est plus court.
  *
+ * RÉSULTAT, rejoué DANS HC par l'utilisatrice le même jour : « la balle ne
+ * s'arrête plus, le son est un peu désynchronisé ». Le coût n'a pas
+ * disparu, il a changé de fil : le son part en retard d'autant. Jugé
+ * acceptable par elle (« c'est pas grave »). Le supprimer demanderait une
+ * sortie audio tenue ouverte en permanence (AVAudioEngine, des tampons
+ * chargés d'avance) : proposé, pas fait.
+ *
  * NON MESURÉ non plus : ce que fait HyperCard d'un « play » donné pendant
  * que le même son joue encore. HC les superpose, comme avant, jusqu'à
  * HCV_LECTEURS_PAR_SON ; au-delà, le plus ancien repart du début, plutôt que
