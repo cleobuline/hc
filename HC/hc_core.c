@@ -15896,6 +15896,54 @@ static int v3_cmd_touche(HctContexte *ctx, const HctNoeud *n)
     return fait;
 }
 
+/* commandKeyDown <touche> : LE MESSAGE, PUIS LE RACCOURCI DU MENU.
+ *
+ * Le seul des dix dont l'action par défaut est ÉCRITE par Apple, et non à
+ * mesurer : la carte commandKeyDown de « HyperTalk Reference » dit que la
+ * commande « acts exactly as if you had pressed ⌘ at the same time as the
+ * specified character », et donne « commandKeyDown "V" -- paste »,
+ * « commandKeyDown "B" -- edit background ». Sa démonstration écrit
+ * « commandKeyDown "I" » ; HC répondait « ne sait pas faire » faute de
+ * gestionnaire — relevé par l'utilisatrice le 9 octobre.
+ *
+ * « Exactement comme ⌘ » : c'est le chemin que suit déjà la touche frappée
+ * (HCview.m, performKeyEquivalent:). Le message part d'abord ; si un
+ * gestionnaire le PREND, rien d'autre ; s'il n'y a personne, ou si l'on fait
+ * « pass », le raccourci du menu se joue — par l'hôte, seul à connaître ses
+ * menus. hc_send_args fait la différence entre prendre et passer ; c'est
+ * pourquoi on ne passe pas par v3_message_pile, qui ne la rend pas.
+ *
+ * Le message part de « me », comme tout message écrit dans un script. */
+static int v3_cmd_commandkeydown(HctContexte *ctx, const HctNoeud *n)
+{
+    ARENA_MARK;
+    char (*argv)[HC_VAL] = arena_rows(1);
+    if (!argv) {
+        ARENA_FREE;
+        set_result("mémoire insuffisante");
+        return 1;
+    }
+    argv[0][0] = '\0';
+    for (int i = 0; i < n->nfils; i++) {
+        const HctNoeud *f = n->fils[i];
+        if (!f || f->genre == HCTN_MOTCLE) continue;
+        v3_val_texte(ctx, f, argv[0], HC_VAL);
+        if (ctx->erreur) { ARENA_FREE; return 1; }
+        break;
+    }
+
+    set_result("");
+    Object *start = g_me ? g_me : g_current_card;
+    int pris = start ? hc_send_args(start, "commandKeyDown", argv, 1, 0) : 0;
+    if (!pris) {
+        if (g_host && g_host->raccourci_menu) g_host->raccourci_menu(argv[0]);
+        else emit(HC_ERR, "   !! commandKeyDown : l'hôte ne joue pas les "
+                          "raccourcis de menu (⌘%s)", argv[0]);
+    }
+    ARENA_FREE;
+    return 1;
+}
+
 /* ==================== la table des verbes portés ==================== *
  *
  * Elle fut le tableau d'avancement de la migration : ce qui n'y figure pas
@@ -15922,9 +15970,10 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
     { "find",   v3_cmd_find    },
-    /* Les dix du clavier, tous vers le même : voir v3_cmd_touche. */
+    /* Les dix du clavier, tous vers le même — voir v3_cmd_touche —, sauf
+     * commandKeyDown, dont l'action par défaut est écrite : le raccourci. */
     { "arrowkey",       v3_cmd_touche },
-    { "commandkeydown", v3_cmd_touche },
+    { "commandkeydown", v3_cmd_commandkeydown },
     { "controlkey",     v3_cmd_touche },
     { "enterinfield",   v3_cmd_touche },
     { "enterkey",       v3_cmd_touche },

@@ -2719,6 +2719,40 @@ static void cocoa_menus_changed(void)
     }
 }
 
+/* « commandKeyDown "V" » ÉCRIT DANS UN SCRIPT, QUAND PERSONNE NE LE PREND :
+ * le raccourci ⌘V de la barre de menus, comme si on l'avait tapé — voir
+ * v3_cmd_commandkeydown dans le noyau, et la carte commandKeyDown de
+ * « HyperTalk Reference ».
+ *
+ * DIRECTEMENT À LA BARRE DE MENUS, et non à la fenêtre : la fenêtre le
+ * proposerait d'abord à la vue (performKeyEquivalent:), qui renverrait un
+ * second commandKeyDown à la pile — le message est déjà parti, et l'on
+ * vient justement de voir que personne n'en voulait.
+ *
+ * Une lettre se joue en MINUSCULE : nos raccourcis sont posés en minuscules,
+ * et une majuscule voudrait dire ⇧ en plus. « commandKeyDown "B" » est ⌘B,
+ * l'édition du fond, comme l'écrit Apple. Qu'HyperCard distingue la casse :
+ * NON MESURÉ. Un raccourci que le menu ne connaît pas ne fait rien. */
+static void cocoa_raccourci_menu(const char *touche) {
+    if (!touche || !*touche) return;
+    NSString *t = hcv_texte(touche);
+    if ([t length] == 0) return;
+    NSString *k = [[t substringWithRange:
+                       [t rangeOfComposedCharacterSequenceAtIndex:0]]
+                      lowercaseString];
+    NSEvent *ev = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                   location:NSZeroPoint
+                              modifierFlags:NSEventModifierFlagCommand
+                                  timestamp:[[NSProcessInfo processInfo] systemUptime]
+                               windowNumber:[[gView window] windowNumber]
+                                    context:nil
+                                 characters:k
+                charactersIgnoringModifiers:k
+                                  isARepeat:NO
+                                    keyCode:0];
+    if (ev) [[NSApp mainMenu] performKeyEquivalent:ev];
+}
+
 static void cocoa_do_menu(const char *item) {
     if (!item || !gView) return;
  
@@ -8851,6 +8885,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
     host.fenetre       = cocoa_fenetre;
+    host.raccourci_menu = cocoa_raccourci_menu;
     hcv_touches_installe();
     hcv_regard_installe();
     host.global_set    = cocoa_global_set;

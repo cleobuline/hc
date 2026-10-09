@@ -52,3 +52,16 @@ Cmd+z  pris=1  -> le menu NE FAIT RIEN
 Cmd+q  pris=0  -> le menu agit
    (Cmd+Q doit rester a 0 : une pile ordinaire ne doit pas
     empecher de quitter sans l'avoir voulu)
+
+== 6. commandKeyDown DEPUIS UN SCRIPT : le message, puis le raccourci ==
+   commandKeyDown "n"       
+   [msg] Cmd+N : supprime par la pile
+   commandKeyDown "z"       
+   [msg] Cmd+Z : traite par la pile
+   commandKeyDown "V"       
+   -> hôte : raccourci ⌘V joué
+   commandKeyDown "I"       
+   -> hôte : raccourci ⌘I joué
+   put "B" into k
+  commandKeyDown k 
+   -> hôte : raccourci ⌘B joué
