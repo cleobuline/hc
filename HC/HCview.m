@@ -4094,21 +4094,29 @@ void hc_restore_cursor(void) {
  * un vieux MacBook, une image ou deux de perdues à chaque brique. HyperCard,
  * lui, rend la main tout de suite.
  *
- * Désormais chaque son garde ses lecteurs, préparés (prepareToPlay charge
- * les tampons et prend la sortie audio une fois pour toutes) et réutilisés :
- * un coup ordinaire ne fait plus que remettre au début et lancer. Seul le
- * premier « play » d'un nom, ou un chevauchement de plus, en prépare un.
+ * PREMIER ESSAI, INSUFFISANT : garder les lecteurs de chaque son, préparés
+ * (prepareToPlay) et réutilisés, sur le fil principal. Rejoué DANS HC par
+ * l'utilisatrice le même jour : « ça se fixe encore ». Remettre au début et
+ * relancer un lecteur qui a fini coûte donc encore — sans doute parce qu'un
+ * lecteur arrivé au bout rend la sortie audio, comme le fait stop, et que
+ * play la reprend. NON MESURÉ : on n'a pas de quoi le chronométrer ici.
  *
- * NON MESURÉ : laquelle des deux opérations coûtait, la copie ou le
- * lancement ; on supprime les deux du chemin chaud. Et ce que fait HyperCard
- * d'un « play » donné pendant que le même son joue encore : HC les
- * superpose, comme avant, jusqu'à HCV_LECTEURS_PAR_SON ; au-delà, le plus
- * ancien repart du début, plutôt que d'empiler sans fin les lecteurs d'un
- * « repeat 1000 times play "boing" ». */
+ * D'où la règle : LE FIL DU SCRIPT N'ATTEND RIEN DE L'AUDIO. Tout ce qui
+ * touche aux lecteurs — chercher le fichier, préparer, relancer, arrêter —
+ * passe sur une file série à part ; « play » n'y dépose qu'une demande et
+ * rend la main. La file garde l'ordre des « play ». Les lecteurs, eux,
+ * restent gardés et réutilisés : le travail de la file en est plus court.
+ *
+ * NON MESURÉ non plus : ce que fait HyperCard d'un « play » donné pendant
+ * que le même son joue encore. HC les superpose, comme avant, jusqu'à
+ * HCV_LECTEURS_PAR_SON ; au-delà, le plus ancien repart du début, plutôt que
+ * d'empiler sans fin les lecteurs d'un « repeat 1000 times play "boing" ». */
 #define HCV_LECTEURS_PAR_SON 4
 
+/* Ces deux tables ne se touchent QUE depuis gFileSons. */
 static NSMutableDictionary<NSString *, NSMutableArray<AVAudioPlayer *> *> *gLecteurs = nil;
 static NSMutableDictionary<NSString *, NSString *> *gCheminsSons = nil;
+static dispatch_queue_t gFileSons = nil;
 
 /* Le fichier d'un son, cherché comme avant : le bundle, puis les dossiers
  * de sons de l'utilisateur et du système, sans égard à la casse — « Basso »
@@ -4149,8 +4157,9 @@ static NSString *hcv_chemin_son(NSString *n)
     return trouve;
 }
 
-static void cocoa_play(const char *name) {
-    NSString *n = hcv_texte(name ? name : "");
+/* Sur gFileSons seulement : le vrai travail d'un « play ». */
+static void hcv_joue_son(NSString *n)
+{
     NSString *cle = [n lowercaseString];
     if (!gLecteurs) gLecteurs = [NSMutableDictionary dictionary];
     NSMutableArray<AVAudioPlayer *> *lecteurs = gLecteurs[cle];
@@ -4178,7 +4187,13 @@ static void cocoa_play(const char *name) {
     AVAudioPlayer *p = chemin
         ? [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:chemin] error:NULL]
         : nil;
-    if (!p) { NSBeep(); return; }
+    if (!p) {
+        /* Le bip est d'AppKit : il retourne au fil principal, qui le sert
+         * au prochain tour de boucle — pendant un script aussi, cocoa_idle
+         * en fait un à chaque image. */
+        dispatch_async(dispatch_get_main_queue(), ^{ NSBeep(); });
+        return;
+    }
     [p prepareToPlay];
     if (!lecteurs) {
         lecteurs = [NSMutableArray array];
@@ -4186,6 +4201,16 @@ static void cocoa_play(const char *name) {
     }
     [lecteurs addObject:p];
     [p play];
+}
+
+/* Le crochet de l'hôte : la demande part sur la file, et le script repart. */
+static void cocoa_play(const char *name) {
+    NSString *n = hcv_texte(name ? name : "");
+    if (!gFileSons)
+        gFileSons = dispatch_queue_create("fr.labynet.hc.sons", DISPATCH_QUEUE_SERIAL);
+    dispatch_async(gFileSons, ^{
+        @autoreleasepool { hcv_joue_son(n); }
+    });
 }
 
 /* ═══ Cmd-. ═════════════════════════════════════════════════════════════
