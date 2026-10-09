@@ -148,7 +148,7 @@ cut short.
 
 ### Changes in this release
 
-- [#PR_NUM](https://github.com/cleobuline/hc/pull/PR_NUM): Space Invaders and
+- [#117](https://github.com/cleobuline/hc/pull/117): Space Invaders and
   the brick breaker, Esc in the games, `play` that keeps up, polygon buttons
   drawn whole, version 0.7.9.3 and this note
 
