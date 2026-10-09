@@ -208,8 +208,56 @@ static void texte_du(const HctNoeud *n, char *out, int outlen)
 /* Sa définition est plus bas, après Etendues : elle en a besoin, et son seul
  * appelant — hct_verifie — vient après les deux. */
 
-/* Les avertissements : noms de gestionnaires suspects, « end » discordants. */
-static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
+/* LE SCRIPT APPELLE-T-IL LUI-MÊME `nom` ? Par un message nu — « closeCards
+ * 3 » —, ou par la chaîne d'un send dont c'est le premier mot — « send
+ * "closeCards 2" to me ». Ce que d'autres scripts appellent, on ne le voit
+ * pas d'ici. */
+static int appele_dans(const HctNoeud *n, const char *nom)
+{
+    if (!n) return 0;
+    char t[64];
+    if (n->genre == HCTN_MESSAGE) {
+        texte_du(n, t, sizeof t);
+        if (!strcasecmp(t, nom)) return 1;
+    }
+    if (n->genre == HCTN_COMMANDE && n->op && !strcasecmp(n->op, "send") &&
+        n->nfils >= 1 && n->fils[0] && n->fils[0]->genre == HCTN_CHAINE) {
+        texte_du(n->fils[0], t, sizeof t);
+        char *p = t;
+        while (*p == ' ') p++;
+        char *q = p;
+        while (*q && *q != ' ' && *q != ',') q++;
+        *q = '\0';
+        if (!strcasecmp(p, nom)) return 1;
+    }
+    for (int i = 0; i < n->nfils; i++)
+        if (appele_dans(n->fils[i], nom)) return 1;
+    return 0;
+}
+
+/* LA REMARQUE SUR LES NOMS DE GESTIONNAIRES : SEULEMENT QUAND ELLE APPREND
+ * QUELQUE CHOSE.
+ *
+ * Elle tombait sur TOUT « on » qui n'était pas un message système : « on
+ * markToday », « on calculeTout », le moindre sous-programme. Or c'est
+ * l'ordinaire d'un script — un gestionnaire porte le nom qu'on veut, et
+ * HyperCard n'en disait rien. L'éditeur, lui, encadrait la ligne : un
+ * utilisateur de Reddit, jon23, a pris la remarque pour un refus — « The
+ * script didn't even verify, stopping on my "on subroutine param"
+ * statement » —, en français de surcroît.
+ *
+ * Elle ne vaut que pour la COQUILLE, le cas qui l'a fait naître : « on
+ * commandKey » à côté de « on commandKeyDown », « on mouseDwon ». Elle ne
+ * paraît donc plus que si proche() a un message à proposer. Et pas même alors
+ * si le script APPELLE ce nom lui-même (appele_dans) : « on closeCards »,
+ * appelé plus haut par « closeCards », est un sous-programme voulu, pas un
+ * « closeCard » mal tapé. Idée de l'utilisatrice, le 9 octobre : on sait
+ * déjà lister les gestionnaires d'un script, autant s'en servir.
+ *
+ * Seuls les « on » sont regardés : un « function » porte par nature un nom
+ * inventé par l'auteur. */
+static void recolte_avertissements(const HctNoeud *n, const HctNoeud *racine,
+                                   HctRapport *r)
 {
     if (!n) return;
 
@@ -217,28 +265,22 @@ static void recolte_avertissements(const HctNoeud *n, HctRapport *r)
         char nom[64];
         texte_du(n->fils[0], nom, sizeof nom);
 
-        /* Seuls les « on » sont vérifiés : un « function » porte par nature
-         * un nom inventé par l'auteur, alors qu'un « on » qui ne correspond à
-         * aucun message système ne se déclenchera que s'il est appelé
-         * explicitement — ce qui arrive, d'où le simple avertissement. */
         if (n->op && !strcasecmp(n->op, "on") &&
             !connu(MESSAGES_SYSTEME, nom)) {
-            char msg[220];
             const char *voisin = proche(nom);
-            if (voisin)
+            if (voisin && !appele_dans(racine, nom)) {
+                char msg[220];
                 snprintf(msg, sizeof msg,
                          "« %.40s » n'est pas un message système connu — "
                          "vouliez-vous dire « %.40s » ?", nom, voisin);
-            else
-                snprintf(msg, sizeof msg,
-                         "« %.40s » n'est pas un message système connu",
-                         nom);
-            ajoute(r, HCT_V_AVERTISSEMENT, n->fils[0]->jeton.ligne,
-                   n->fils[0]->jeton.col, msg, nom, (int)strlen(nom));
+                ajoute(r, HCT_V_AVERTISSEMENT, n->fils[0]->jeton.ligne,
+                       n->fils[0]->jeton.col, msg, nom, (int)strlen(nom));
+            }
         }
     }
 
-    for (int i = 0; i < n->nfils; i++) recolte_avertissements(n->fils[i], r);
+    for (int i = 0; i < n->nfils; i++)
+        recolte_avertissements(n->fils[i], racine, r);
 }
 
 /* ---------------------------------------------- dedans ou dehors ? */
@@ -385,7 +427,7 @@ int hct_verifie(const char *src, HctRapport *rap, int avec_avertissements)
      * fautes de syntaxe » devient « Script correct, avec des remarques », ce qui
      * est la vérité pour la pile d'Apple. */
     recolte_erreurs(arbre, rap, 0);
-    if (avec_avertissements) recolte_avertissements(arbre, rap);
+    if (avec_avertissements) recolte_avertissements(arbre, arbre, rap);
 
     hct_reserve_libere(&reserve);
     hct_lot_libere(&lot);

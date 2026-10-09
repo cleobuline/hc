@@ -48,7 +48,7 @@ static void nom(const char *n)
     HctRapport r;
     hct_verifie(src, &r, 1);
     printf("   on %-16s ", n);
-    if (r.n == 0)                 printf("(connu)\n");
+    if (r.n == 0)                 printf("(rien)\n");
     else if (r.nerreurs)          printf("[ERREUR] %s\n", r.liste[0].message);
     else                          printf("%s\n", r.liste[r.n - 1].message);
     hct_rapport_libere(&r);
@@ -74,20 +74,54 @@ int main(void)
     nom("newcrad");
     nom("errorDialogue");
 
-    puts("\n== 4. UN PRÉFIXE AMBIGU NE CONSEILLE RIEN ==");
+    puts("\n== 4. UN PRÉFIXE AMBIGU NE CONSEILLE RIEN, et ne dit rien ==");
     nom("mouse");             /* mouseUp, mouseDown, mouseEnter, mouseLeave… */
     nom("close");             /* closeStack, closeCard, closeField… */
     nom("new");
 
-    puts("\n== 5. ET CE QUI N'EST PAS UNE COQUILLE non plus ==");
+    puts("\n== 5. CE QUI N'EST PAS UNE COQUILLE ne dit rien non plus ==");
     /* Un gestionnaire peut porter n'importe quel nom : il se déclenche quand
-     * on l'appelle. La remarque reste — c'est un AVERTISSEMENT, pas une
-     * faute — mais sans conseil, puisqu'il n'y a rien à conseiller. */
+     * on l'appelle. La remarque « n'est pas un message système connu »
+     * restait sans conseil sur chacun d'eux, et l'éditeur encadrait la
+     * ligne : jon23, sur Reddit, l'a prise pour un refus de son « on
+     * subroutine param ». Depuis le 9 octobre, rien. */
     nom("zorglub");
     nom("calculeTout");
     nom("markToday");
+    nom("subroutine");        /* le cas de jon23 */
 
-    puts("\n== 6. LES FAUTES DE SYNTAXE PASSENT AVANT ==");
+    puts("\n== 6. UN NOM PROCHE, MAIS APPELÉ PAR LE SCRIPT : un sous-programme ==");
+    /* Idée de l'utilisatrice : on sait lister les gestionnaires d'un script,
+     * autant voir qui les appelle. « closeCards » ressemble à « closeCard »,
+     * mais le script l'appelle : c'est voulu. Sans appel, la remarque reste. */
+    {
+        static const char *SCRIPTS[][2] = {
+            { "appelé par un message nu",
+              "on mouseUp\n  closeCards 3\nend mouseUp\n"
+              "on closeCards n\n  beep n\nend closeCards\n" },
+            { "appelé par send",
+              "on mouseUp\n  send \"closeCards 2\" to me\nend mouseUp\n"
+              "on closeCards n\n  beep n\nend closeCards\n" },
+            { "jamais appelé",
+              "on mouseUp\n  beep\nend mouseUp\n"
+              "on closeCards n\n  beep n\nend closeCards\n" },
+            { "jon23 : on subroutine param",
+              "on mouseUp\n  subroutine 5\nend mouseUp\n"
+              "on subroutine param\n  put param * 2 into x\nend subroutine\n" },
+        };
+        for (int i = 0; i < 4; i++) {
+            HctRapport r;
+            hct_verifie(SCRIPTS[i][1], &r, 1);
+            printf("   %-30s ", SCRIPTS[i][0]);
+            if (r.n == 0) printf("(rien)\n");
+            for (int k = 0; k < r.n; k++)
+                printf("%sligne %d : %s\n", k ? "      " : "", r.liste[k].ligne,
+                       r.liste[k].message);
+            hct_rapport_libere(&r);
+        }
+    }
+
+    puts("\n== 7. LES FAUTES DE SYNTAXE PASSENT AVANT ==");
     /* Le vérificateur sert d'abord à ça, et le harnais doit le montrer :
      * une remarque sur un nom ne doit pas masquer une vraie faute. */
     {
