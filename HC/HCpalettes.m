@@ -541,8 +541,8 @@ static NSRect poly_case(int i)
          * retournée, donc « vers le haut » s'écrit en y décroissant. */
         NSPoint centre = NSMakePoint(NSMidX(box), NSMidY(box));
         NSPoint vers   = NSMakePoint(centre.x, centre.y - (POLY_CELL/2 - 7));
-        NSPoint som[HC_SOMMETS_MAX];
-        int n = poly_sommets(POLYCHOIX[i], centre, vers, som, HC_SOMMETS_MAX);
+        NSPoint som[HC_FORME_SOMMETS_MAX];
+        int n = poly_sommets(POLYCHOIX[i], centre, vers, som, HC_FORME_SOMMETS_MAX);
         if (n >= 3) {
             NSBezierPath *pth = [NSBezierPath bezierPath];
             [pth moveToPoint:som[0]];

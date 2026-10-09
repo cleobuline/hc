@@ -195,8 +195,8 @@ void fill_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b) {
      * sommets qui ont servi au CONTOUR. Une seule définition de la forme, donc
      * pas de liseré entre le trait et l'intérieur. */
     {
-        NSPoint som[HC_SOMMETS_MAX];
-        int nsom = shape_sommets(tool, a, b, som, HC_SOMMETS_MAX);
+        NSPoint som[HC_FORME_SOMMETS_MAX];
+        int nsom = shape_sommets(tool, a, b, som, HC_FORME_SOMMETS_MAX);
         if (nsom >= 3) { fill_freeform(rep, som, nsom); return; }
     }
 
@@ -395,8 +395,8 @@ void paint_shape(NSBitmapImageRep *rep, HCTool tool, NSPoint a, NSPoint b, NSCol
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSRect box = NSMakeRect(MIN(a.x,b.x), MIN(a.y,b.y), fabs(b.x-a.x), fabs(b.y-a.y));
-    NSPoint som[HC_SOMMETS_MAX];
-    int nsom = shape_sommets(tool, a, b, som, HC_SOMMETS_MAX);
+    NSPoint som[HC_FORME_SOMMETS_MAX];
+    int nsom = shape_sommets(tool, a, b, som, HC_FORME_SOMMETS_MAX);
     if (nsom >= 3) {
         [path moveToPoint:som[0]];
         for (int i = 1; i < nsom; i++) [path lineToPoint:som[i]];

@@ -75,8 +75,17 @@ void spray_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to,
  * la même forme, qui se seraient écartées d'un pixel dans les coins — un
  * liseré de fond entre le trait et l'intérieur, visible et inexplicable.
  *
- * Rend le nombre de points posés, 0 si la forme n'est pas de celles-là. */
-#define HC_SOMMETS_MAX 256
+ * Rend le nombre de points posés, 0 si la forme n'est pas de celles-là.
+ *
+ * SA LIMITE A SON PROPRE NOM. Elle s'appelait HC_SOMMETS_MAX, comme celle des
+ * BOUTONS polygones (hc_core.h, 1000) : dans un fichier qui lit les deux en-
+ * têtes, la seconde définition écrasait la première. HCview.m lit hc_core.h,
+ * puis celui-ci — et dessinait donc un bouton polygone avec 256 sommets au
+ * plus, quand le noyau le clique, within() et intersect() compris, avec ses
+ * mille : au-delà de 256, ce qu'on voyait n'était plus ce qui touche. Lu
+ * dans le code, sur l'avertissement « macro redefined » qu'Xcode donnait à
+ * chaque compilation ; non mesuré sur un vrai bouton de plus de 256 sommets. */
+#define HC_FORME_SOMMETS_MAX 256
 int  shape_sommets(HCTool tool, NSPoint a, NSPoint b, NSPoint *out, int max);
 
 /* LES SOMMETS D'UN POLYGONE RÉGULIER, côtés donnés plutôt que lus.

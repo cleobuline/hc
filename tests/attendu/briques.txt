@@ -1,0 +1,56 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, une partie se prépare ==
+   score 0 · vies 3 · niveau 1 · briques 60 · balle 190,301 vitesse 0,0 · raquette 190 · posee true · fini false
+   B1       rect 11,40 34x12, 0 sommets
+   B10      rect 335,40 34x12, 0 sommets
+   B60      rect 335,110 34x12, 0 sommets
+   Raquette rect 165,306 50x8, 6 sommets
+   Balle    rect 186,297 8x8, 8 sommets
+   contrôle : 0
+
+== 2. la raquette s'arrête aux murs, et la balle posée la suit ==
+   score 0 · vies 3 · niveau 1 · briques 60 · balle 39,301 vitesse 0,0 · raquette 39 · posee true · fini false
+   score 0 · vies 3 · niveau 1 · briques 60 · balle 341,301 vitesse 0,0 · raquette 341 · posee true · fini false
+
+== 3. lancée, la balle monte et casse une brique ==
+   63 images jusqu'à la première brique
+   score 10 · vies 3 · niveau 1 · briques 59 · balle 255,123 vitesse 1,2.8 · raquette 190 · posee false · fini false
+   briques 111111111111111111111111111111111111111111111111111111110111
+
+== 4. les murs et le plafond renvoient la balle ==
+   score 10 · vies 3 · niveau 1 · briques 59 · balle 23,195 vitesse 3,-1 · raquette 190 · posee false · fini false
+   score 10 · vies 3 · niveau 1 · briques 59 · balle 205,23 vitesse 1,3 · raquette 190 · posee false · fini false
+   score 10 · vies 3 · niveau 1 · briques 59 · balle 357,205 vitesse -3,1 · raquette 190 · posee false · fini false
+
+== 5. l'angle du rebond dépend de l'endroit de la raquette ==
+   au centre : droit                     score 0 · vies 3 · niveau 1 · briques 60 · balle 190,302 vitesse 0,-3 · raquette 190 · posee false · fini false
+   à mi-chemin à droite                score 0 · vies 3 · niveau 1 · briques 60 · balle 204,302 vitesse 1.5,-2.6 · raquette 190 · posee false · fini false
+   au bord droit : soixante degrés      score 0 · vies 3 · niveau 1 · briques 60 · balle 218,302 vitesse 2.6,-1.5 · raquette 190 · posee false · fini false
+   à gauche                             score 0 · vies 3 · niveau 1 · briques 60 · balle 170,302 vitesse -2,-2.2 · raquette 190 · posee false · fini false
+
+== 6. le côté d'une brique renvoie la balle de côté ==
+   score 20 · vies 3 · niveau 1 · briques 58 · balle 48,117 vitesse 3,0.2 · raquette 190 · posee false · fini false
+   briques 111111111111111111111111111111111111111111111111110011111111
+
+== 7. trois balles perdues, et c'est fini ==
+   score 0 · vies 2 · niveau 1 · briques 60 · balle 190,301 vitesse 0,3 · raquette 190 · posee true · fini false
+   score 0 · vies 1 · niveau 1 · briques 60 · balle 190,301 vitesse 0,3 · raquette 190 · posee true · fini false
+   score 0 · vies 0 · niveau 1 · briques 60 · balle 300,331 vitesse 0,3 · raquette 190 · posee false · fini true
+   champ Etat : Perdu ! Score : 0
+
+== 8. le mur abattu, le niveau suivant, un peu plus vite ==
+   score 2100 · vies 3 · niveau 2 · briques 60 · balle 190,301 vitesse 0,3 · raquette 190 · posee true · fini false
+   vitesse 3.5 · contrôle 0
+
+== 9. le clavier : Q D Z, espace, ou les flèches ==
+   rien de tenu : raquette 190, posée true
+   q : à gauche : raquette 185, posée true
+   D majuscule : à droite : raquette 190, posée true
+   flèche gauche : raquette 185, posée true
+   espace : lance : raquette 185, posée false
+
+== 10. un robot joue, et l'écran suit l'état ==
+   3 parties, 22389 images, 202 briques cassées, 2 mur(s) abattu(s), 7 balle(s) perdue(s), aucun défaut
+
+== 11. Échap arrête la partie, dans la vraie boucle ==
+   arrêtée par Échap · Etat « Partie arretee. » · fini true

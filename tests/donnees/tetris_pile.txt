@@ -69,7 +69,9 @@ on boucle
   put "0,0,0,0,0" into gTouches
   repeat until gFini
     put the ticks into t
-    if tenue(27) then
+    -- Echap vaut 65307 dans « the keysDown », comme dans LiveCode : c'est le
+    -- code de la TOUCHE, et non charToNum de son caractere, qui vaut 27.
+    if tenue(65307) then
       put true into gFini
       put "Partie arretee." into card field "Etat"
       exit repeat
