@@ -96,7 +96,7 @@ cut short.
 
 ### Test status
 
-- C kernel: **291 checks, all green**, including under AddressSanitizer,
+- C kernel: **290 checks, all green**, including under AddressSanitizer,
   UndefinedBehaviorSanitizer and LeakSanitizer. New: `invaders` and
   `briques`, each with a robot that plays thousands of frames and checks at
   every frame that the screen, the state and the score agree; and in the
