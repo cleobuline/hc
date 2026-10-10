@@ -13978,13 +13978,22 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
 
 /* play : HyperCard accepte une suite de notes derrière le nom du son
  * (« play "boing" tempo 200 c4 e4 »). Comme l'ancien exécuteur, on ne retient
- * que le nom : le reste demande un synthétiseur, pas un lecteur. */
+ * que le nom : le reste demande un synthétiseur, pas un lecteur.
+ *
+ * UN MOT NU EST UNE VARIABLE S'IL EN EST UNE. Le mot était lu tel quel :
+ * « put "cling" into son » puis « play son » cherchait un son nommé « son »,
+ * et l'application bipait. Paramètre, globale ou mot entre parenthèses, même
+ * défaut. Trouvé le 10 octobre dans le flipper, en donnant à « bord » un son
+ * en paramètre. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice,
+ * le même jour : « put "boing" into s / play s » fait boing. On lit donc le
+ * mot comme « choose tl tool » lit le sien (v3_mot_ou_var) : la variable liée
+ * d'abord, le mot lui-même sinon — « play tik » reste « tik ». */
 static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return 0;
     char nom[256];
     const HctNoeud *f = n->fils[0];
-    if (f->genre == HCTN_IDENT) v3_brut(f, nom, sizeof nom);
+    if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, nom, sizeof nom);
     else {
         v3_val_texte(ctx, f, nom, sizeof nom);
         if (ctx->erreur) return 1;

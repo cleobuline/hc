@@ -1,0 +1,15 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. un mot que rien ne lie reste lui-même ==
+   play tik                                     -> « tik »
+   play "cling"                                 -> « cling »
+
+== 2. un mot qui est une variable donne sa valeur ==
+   put "cling" into son / play son              -> « cling »
+   on parametre son / play son ("cling")        -> « cling »
+   play (son) ("cling")                         -> « cling »
+   global gSon / play gSon                      -> « canard »
+   play x & "3" (x = "boing")                   -> « boing3 »
+   play instrument tempo 200 "c4 e4 g4"         -> « harpsichord »
+
+== 3. la variable l'emporte sur le mot, comme en HyperTalk ==
+   put "coq" into tik / play tik                -> « coq »
