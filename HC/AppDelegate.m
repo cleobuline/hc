@@ -1287,6 +1287,34 @@ void cocoa_stack_changed(Object *stack) {
         [d.window makeKeyAndOrderFront:nil];
         [d.view applyStackSize];
         [d.view setNeedsDisplay:YES];
+        return;
+    }
+
+    /* UNE PILE EN USAGE N'A PAS DE FENÊTRE, ET L'ON VA SUR ELLE.
+     *
+     * « start using » la charge sans la montrer (cocoa_load_stack). Mais
+     * HyperCard Help, en usage pour HyperTalk Reference, est aussi une pile
+     * qu'on lit : l'article « HyperCard Help » de son menu fait
+     *
+     *     go this card of stack "HyperCard Help" in a new window
+     *
+     * Le noyau s'y rendait, et rien ne venait devant : aucune fenêtre ne la
+     * portait. Signalé le 10 octobre DANS HC (l'application).
+     *
+     * Elle reçoit donc sa fenêtre ici, et la fenêtre la prend en charge : elle
+     * sort de gPilesEnUsage, sans quoi la fermeture de la fenêtre puis la
+     * sortie de l'application la libéreraient deux fois. Fermer cette fenêtre
+     * la ferme comme toute autre pile, ce qui la retire aussi des piles en
+     * usage (hc_unregister_stack) ; HyperTalk Reference la redéclare à son
+     * resumeStack suivant. Ce que fait HyperCard de la pile en usage dont on
+     * ferme la fenêtre : NON MESURÉ. */
+    for (NSUInteger i = 0; i < [gPilesEnUsage count]; i++) {
+        if ([gPilesEnUsage[i] pointerValue] != stack) continue;
+        [gPilesEnUsage removeObjectAtIndex:i];
+        [HCDocument documentWithStack:stack
+                                 path:(stack->path && stack->path[0])
+                                      ? hcv_texte(stack->path) : nil];
+        return;
     }
 }
 

@@ -174,10 +174,24 @@ ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même soir, après
 recompilation : « ça tourne bien ». C'est le constat d'ensemble, pas une
 mesure de l'ordre des avis de fenêtre.
 
-CAS LIMITE, NON TRAITÉ : un « go » vers une pile chargée par « start using »,
-qui n'a pas de fenêtre chez HC. cocoa_stack_changed n'y trouve aucun
-document : la pile ne venait déjà pas devant, et elle ne reçoit plus non
-plus closeStack / openStack du noyau.
+LE MENU « Reference » — le même soir. « Quand je sélectionne un item dans le
+menu Reference, ça ne met pas la pile choisie en avant. » Ses articles font
+
+    go this card of stack "Help Extras" in a new window
+
+Deux défauts, l'un sur l'autre :
+
+  · « this card of stack "X" » désignait la carte courante de la pile
+    COURANTE : le go restait sur place. C'est maintenant la carte que montre
+    X — la dernière visitée, que l'historique garde, ou la première
+    (carte_de_la_pile). Harnais cettecarte. Déduit du code d'Apple.
+  · HyperCard Help, mise en usage par HyperTalk Reference, est chargée SANS
+    fenêtre (cocoa_load_stack). Un go vers elle n'avait rien à mettre
+    devant. cocoa_stack_changed lui donne maintenant sa fenêtre, qui la
+    prend en charge. Fermer cette fenêtre la ferme comme une autre, ce qui
+    la retire aussi des piles en usage ; HyperTalk Reference la redéclare à
+    son resumeStack suivant. Ce que fait HyperCard d'une pile en usage dont
+    on ferme la fenêtre : NON MESURÉ.
 
 CE QUI RESTE. Quitter HyperTalk Reference pour une autre pile (suspendStack)
 retire le menu SANS cesser d'utiliser HyperCard Help : removeHelpFunctions

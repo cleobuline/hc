@@ -7548,6 +7548,31 @@ static int v3_noeud_contient(const HctNoeud *racine, const HctNoeud *cherche)
 
 static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
+/* LA CARTE QUE MONTRE UNE PILE — « this card of stack "Help Extras" ».
+ *
+ * HyperCard Help, derrière les articles de son menu « Reference » :
+ *
+ *     go this card of stack "Help Extras" in a new window
+ *
+ * « this card » y désigne la carte de CETTE pile-là, celle que sa fenêtre
+ * montre. HC prenait la carte courante de la pile COURANTE : le go restait
+ * sur place, et la pile choisie ne venait jamais devant. Signalé le 10
+ * octobre DANS HC (l'application).
+ *
+ * Le noyau ne tient qu'une carte courante ; celle d'une autre pile est la
+ * dernière qu'on y a visitée, que l'historique garde. Une pile jamais visitée
+ * montre sa première carte, comme à l'ouverture. */
+static Object *carte_de_la_pile(Object *pile)
+{
+    if (!pile) return NULL;
+    if (g_current_card && owning_stack(g_current_card) == pile) return g_current_card;
+    for (int i = 0; i < g_nhisto; i++) {
+        Object *c = hc_recent_at(i);
+        if (c && owning_stack(c) == pile) return c;
+    }
+    return nth_card(pile, 0);
+}
+
 /* L'enveloppe, pour n'avoir qu'UN endroit à instrumenter. Le corps a une
  * dizaine de sorties ; les marquer une à une, c'est en oublier une. */
 /* LA CARTE DONT UN CHAMP A ÉTÉ LU — « bkgnd field "Title" of card id N ».
@@ -7621,6 +7646,12 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
              * ramenait aussitôt à la pile COURANTE : « card 3 of stack "y" »
              * cherchait la carte 3 de la pile ouverte. */
             stack = cible;
+            /* Et la carte suit la pile : « this card of stack "y" » est la
+             * carte que montre y. Voir carte_de_la_pile. */
+            if (card && owning_stack(card) != stack) {
+                card = carte_de_la_pile(stack);
+                bg   = card ? card->bg : NULL;
+            }
         }
     }
 

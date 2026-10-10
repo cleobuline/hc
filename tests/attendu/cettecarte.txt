@@ -1,0 +1,26 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. une pile jamais visitée montre sa première carte ==
+   put the short name of this card of stack "Talk"
+      = B1
+   put the short name of this card of stack "Aide"
+      = A1
+
+== 2. puis la dernière qu'on y a visitée ==
+   go card "B2" of stack "Talk"
+   go card "A2" of stack "Aide"
+   put the short name of this card of stack "Talk"
+      = B2
+   put the short name of this card
+      = A2
+
+== 3. le go du menu Reference amène la pile choisie ==
+   go this card of stack "Talk" in a new window
+      -> card "B2" de « Talk »
+   go this card of stack "Aide"
+      -> card "A2" de « Aide »
+
+== 4. non mesuré : les relatifs suivent la même carte ==
+   put the short name of next card of stack "Talk"
+      = B3
+   put the number of cards of stack "Talk"
+      = 3
