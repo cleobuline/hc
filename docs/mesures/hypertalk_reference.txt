@@ -151,6 +151,30 @@ demandé le 10 octobre, à jouer DANS HYPERCARD 2.4.1 (Basilisk II) :
 « [c] » au premier dialogue : le pass atteint la pile mise en usage pendant
 le gestionnaire, comme HC le fait maintenant. Résultat : EN ATTENTE.
 
+LE MÊME DIALOGUE, PAR LE GLOSSAIRE — le même jour. Une fois Help Extras
+lisible (« the textStyle of theChunk », docs/mesures/designateur_calcule.txt),
+l'utilisatrice a cliqué un mot du glossaire DANS HC (l'application) : « ça
+ouvre, mais toujours le même bug ». Cause, trouvée dans le code et rejouée
+dans le noyau par un faux hôte à fenêtres (harnais fenetrepile) : un « go »
+vers une autre pile envoyait closeStack à la pile quittée, et l'hôte, dont la
+fenêtre passait derrière, suspendStack. Deux départs ; HyperCard Help retire
+son menu au premier, et le setCheckMark du second ne le trouve plus. La
+référence d'Apple, carte « closeStack » : « If you have more than one stack
+open at a time, HyperCard sends suspendStack, not closeStack, when the stack
+becomes inactive. » Chez un hôte qui donne une fenêtre à chaque pile, le
+noyau laisse maintenant les messages de pile à l'hôte (v3_va_a).
+
+Le faux hôte a montré un second défaut : en passant devant, la fenêtre
+reprenait la carte qu'elle montrait, APRÈS que le go eut posé la sienne. Un
+second mot du glossaire ouvrait donc la carte du premier. L'hôte passe
+maintenant avant. NON VÉRIFIÉ ICI : que les avis de fenêtre arrivent pendant
+makeKeyAndOrderFront, comme le faux hôte le suppose. Il faut macOS.
+
+CAS LIMITE, NON TRAITÉ : un « go » vers une pile chargée par « start using »,
+qui n'a pas de fenêtre chez HC. cocoa_stack_changed n'y trouve aucun
+document : la pile ne venait déjà pas devant, et elle ne reçoit plus non
+plus closeStack / openStack du noyau.
+
 CE QUI RESTE. Quitter HyperTalk Reference pour une autre pile (suspendStack)
 retire le menu SANS cesser d'utiliser HyperCard Help : removeHelpFunctions
 cherche « ":HyperCard Help" & return » dans the stacksInUse, et nos chemins

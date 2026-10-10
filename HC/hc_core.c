@@ -14698,14 +14698,40 @@ static int v3_va_a(Object *dst)
     Object *vpile  = old ? owning_stack(old) : NULL;
     int change_pile = (pile != vpile);
 
+    /* UNE FENÊTRE PAR PILE : LES MESSAGES DE PILE SONT CEUX DE L'HÔTE.
+     *
+     * closeStack et openStack disent qu'une pile en REMPLACE une autre dans
+     * la même fenêtre. La référence d'Apple, carte « closeStack » : « If you
+     * have more than one stack open at a time, HyperCard sends suspendStack,
+     * not closeStack, when the stack becomes inactive. » Or un hôte qui a
+     * stack_changed donne sa fenêtre à chaque pile, et l'ancienne reste
+     * ouverte derrière : c'est l'hôte qui envoie suspendStack quand sa fenêtre
+     * passe derrière, resumeStack — ou openStack à la première ouverture —
+     * quand l'autre passe devant (Hcdocument.m, envoiePile).
+     *
+     * Le noyau les doublait. Un clic sur un mot du glossaire de HyperTalk
+     * Reference, Help Extras déjà ouverte, donnait closeStack PUIS
+     * suspendStack : HyperCard Help retirait son menu au premier, et le
+     * setCheckMark du second tombait sur un menu disparu — « menu
+     * introuvable ». Signalé le 10 octobre DANS HC (l'application).
+     *
+     * L'hôte passe aussi AVANT qu'on pose la carte d'arrivée : en passant
+     * devant, la fenêtre reprend la carte qu'elle montrait (setCurrent), et
+     * c'est le go qui doit avoir le dernier mot.
+     *
+     * Sans stack_changed — les harnais, un hôte sans fenêtres —, la pile est
+     * remplacée « dans la fenêtre courante », et closeStack / openStack
+     * restent ce qu'ils étaient. */
+    int fenetres = change_pile && g_host && g_host->stack_changed;
+
     if (old) hc_send_systeme(old, "closeCard");
     if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-    if (change_pile && vpile) hc_send_systeme(vpile, "closeStack");
+    if (change_pile && vpile && !fenetres) hc_send_systeme(vpile, "closeStack");
 
+    if (fenetres) g_host->stack_changed(pile);
     g_current_card = dst;
-    if (change_pile && g_host && g_host->stack_changed) g_host->stack_changed(pile);
 
-    if (change_pile && pile) hc_send_systeme(pile, "openStack");
+    if (change_pile && pile && !fenetres) hc_send_systeme(pile, "openStack");
     if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
     emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
     hc_send_systeme(dst, "openCard");

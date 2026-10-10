@@ -1,0 +1,18 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. hôte à fenêtres : Extras déjà ouverte, derrière ==
+   Ref       closeCard
+   Ref       closeBackground
+   Ref       suspendStack
+   Extras    resumeStack
+   Extras    openBackground
+   Extras    openCard Glossary:stack
+   carte d'arrivée : card "Glossary:stack"
+   menus : []
+
+== 2. sans fenêtres : la pile est remplacée, closeStack et openStack ==
+   Ref       closeCard
+   Ref       closeBackground
+   Ref       closeStack
+   Extras    openStack
+   Extras    openCard Glossary:stack
+   carte d'arrivée : card "Glossary:stack"
