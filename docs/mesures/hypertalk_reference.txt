@@ -170,6 +170,10 @@ second mot du glossaire ouvrait donc la carte du premier. L'hôte passe
 maintenant avant. NON VÉRIFIÉ ICI : que les avis de fenêtre arrivent pendant
 makeKeyAndOrderFront, comme le faux hôte le suppose. Il faut macOS.
 
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même soir, après
+recompilation : « ça tourne bien ». C'est le constat d'ensemble, pas une
+mesure de l'ordre des avis de fenêtre.
+
 CAS LIMITE, NON TRAITÉ : un « go » vers une pile chargée par « start using »,
 qui n'a pas de fenêtre chez HC. cocoa_stack_changed n'y trouve aucun
 document : la pile ne venait déjà pas devant, et elle ne reçoit plus non
