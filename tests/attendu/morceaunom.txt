@@ -1,0 +1,29 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. Help Extras : un mot souligné mène au glossaire ==
+-> clic sur « char 13 to 17 of bg field "Texte" »
+   carte : card "Glossary:stack"
+-> clic sur « char 1 to 4 of bg field "Texte" »
+   carte : card "Sujet"
+-> clic sur « char 13 to 17 of bg field "Texte" »
+   carte : card "Placeholder:stack"
+
+== 2. lire par un nom : variable, it, the clickChunk ==
+   style    group
+   police   Monaco
+   taille   true
+   couleur  0,0,0
+   clic     group
+   it       group
+
+== 3. écrire par un nom ==
+   selectedChunk  bold
+   clickChunk     italic
+   le reste       plain
+
+== 4. témoins : ce qui n'est pas un morceau de champ ne change pas ==
+   un objet       plain
+   morceau de nom textStyle of pasUnChamp
+   nom nu         textStyle of jamaisPose
+
+== 5. un champ absent arrête le gestionnaire, comme en direct ==
+   [ERR]    !! objet introuvable (v3, ligne 3 de button "B".mouseUp)

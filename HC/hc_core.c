@@ -10520,6 +10520,52 @@ static void v3_relu_libere(V3Relu *r)
     r->ouvert = 0;
 }
 
+/* UN MORCEAU RANGÉ DANS UN NOM.
+ *
+ *     put the clickChunk into theChunk
+ *     get the textStyle of theChunk
+ *
+ * Le nom vaut « char 13 to 17 of bg field 2 », et c'est ce MORCEAU dont on
+ * demande le style. HC répondait par la question, « textStyle of theChunk » :
+ * le test « contains "group" » de Help Extras échouait, et un clic sur un mot
+ * souligné n'allait nulle part, sans un mot. Signalé le 10 octobre DANS HC
+ * (l'application). HyperCard Help (checkActiveText) fait de même avec
+ * theChunkOfText, et la référence d'Apple écrit les deux sens :
+ *
+ *     put the textStyle of the clickChunk into theStyle
+ *     put the selectedChunk into theChunk
+ *     set the textStyle of theChunk to bold
+ *
+ * C'est la règle mesurée pour les objets (docs/mesures/designateur_calcule.txt :
+ * HyperCard ÉVALUE une référence avant de la résoudre, « set the textStyle
+ * of ch to bold » pose le style), portée aux morceaux.
+ *
+ * Un NOM NU seulement — variable, it, ou « the clickChunk », que l'analyseur
+ * range aussi en nom : l'évaluer ne fait que lire, et peut se refaire sans
+ * effet si l'on repart par l'ancien chemin. La valeur doit s'analyser EN
+ * ENTIER comme un morceau, et le morceau porter sur un OBJET : un nom qui
+ * vaut « word 2 of x » n'est pas une référence de texte de champ.
+ *
+ * Rend le nœud relu, ou NULL. `txt` reçoit la valeur, que les jetons du nœud
+ * désignent : l'appelant le garde vivant tant qu'il se sert du nœud, puis
+ * appelle v3_relu_libere dans tous les cas. */
+static const HctNoeud *v3_morceau_calcule(HctContexte *ctx, const HctNoeud *n,
+                                          char *txt, V3Relu *r)
+{
+    memset(r, 0, sizeof *r);
+    if (!n || n->genre != HCTN_IDENT) return NULL;
+    v3_val_texte(ctx, n, txt, HC_VAL);
+    if (ctx->erreur) return NULL;
+
+    const HctNoeud *relu = v3_relit(txt, r);
+    const HctNoeud *base = relu;
+    while (base && base->genre == HCTN_CHUNK && base->nfils > 0)
+        base = base->fils[base->nfils - 1];
+    if (!relu || relu->genre != HCTN_CHUNK || !base || base->genre != HCTN_OBJET)
+        return NULL;
+    return relu;
+}
+
 /* hct_resout, plus le désignateur calculé. Rend NULL comme hct_resout, et
  * SANS laisser d'erreur derrière elle : un « hide menuBar » ou un « show all
  * cards » doit continuer de repartir intact à l'ancien chemin, qui porte son
@@ -12546,6 +12592,19 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2)
             cf = v3_chunk_cible(ctx, n->fils[0]->fils[1], &cst, &cen);
         if (ctx->erreur) { g_atop = sauve; return 1; }
+        /* « set the textStyle of theChunk to bold » : le morceau est dans un
+         * nom. Voir v3_morceau_calcule. */
+        if (!cf && n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2) {
+            const HctNoeud *nom = n->fils[0]->fils[1];
+            V3Relu r;
+            const HctNoeud *relu = v3_morceau_calcule(ctx, nom, arena_buf(), &r);
+            if (relu) {
+                cf = v3_chunk_cible(ctx, relu, &cst, &cen);
+                if (ctx->erreur) ctx->fautif = nom;   /* le relu va disparaître */
+            }
+            v3_relu_libere(&r);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        }
         if (!cf) cf = chunk_target(refbuf, &cst, &cen);
         if (cf) {
             /* Les trois attributs de texte se posent par plage, comme dans
@@ -16616,6 +16675,23 @@ static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
     int est_size  = ci_equal(prop, "textsize");
     int est_color = ci_equal(prop, "textcolor");
     if (!est_style && !est_font && !est_size && !est_color) return 0;
+
+    /* « the textStyle of theChunk » : le morceau est dans un nom. Voir
+     * v3_morceau_calcule. Rien de reconnu : 0, et l'appelant poursuit par
+     * le chemin des objets, comme avant. */
+    if (morceau->genre == HCTN_IDENT) {
+        ARENA_MARK;
+        V3Relu r;
+        const HctNoeud *relu = v3_morceau_calcule(ctx, morceau, arena_buf(), &r);
+        int fait = ctx->erreur != NULL;
+        if (relu) {
+            fait = v3_lit_prop_morceau(d, relu, prop, ctx, out);
+            if (ctx->erreur) ctx->fautif = morceau;   /* le relu va disparaître */
+        }
+        v3_relu_libere(&r);
+        ARENA_FREE;
+        return fait;
+    }
 
     int cst = 0, cen = 0;
     Object *cf = v3_chunk_cible(ctx, morceau, &cst, &cen);

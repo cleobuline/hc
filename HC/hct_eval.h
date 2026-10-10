@@ -70,7 +70,11 @@ typedef struct {
      * tout en rendant 1, quand le morceau désigne un objet qui n'existe pas.
      *
      * L'écriture du même genre de propriété lit déjà l'arbre depuis
-     * longtemps ; c'était son site jumeau qui manquait. */
+     * longtemps ; c'était son site jumeau qui manquait.
+     *
+     * Le nœud peut aussi être un NOM NU — « the textStyle of theChunk » —
+     * dont la VALEUR est un morceau : à l'hôte de l'évaluer et d'en juger,
+     * et de rendre 0 si ce n'en est pas un. */
     int   (*lit_prop_morceau)(void *d, const HctNoeud *morceau,
                               const char *prop, HctContexte *ctx,
                               HctValeur *out);
