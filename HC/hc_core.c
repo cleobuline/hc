@@ -8656,8 +8656,7 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
      * menu gHMnu ».
      *
      * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice, le même
-     * jour : « Quatre ». NON MESURÉ : « put menu "Essai" », le menu entier
-     * lu comme une valeur — HC répond toujours « objet introuvable ». */
+     * jour : « Quatre ». */
     if (n->genre == HCTN_OBJET && n->typeobj == HCT_OBJ_MENUITEM) {
         if (v3_menu_prop_lit(ctx, n, "name", out)) {
             g_v1_porte = sauve_porte;
@@ -8667,6 +8666,49 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
             hct_ctx_faute(ctx, n, v3_menu_raison());
         g_v1_porte = sauve_porte;
         return 0;
+    }
+
+    /* LE MENU ENTIER LU COMME UNE VALEUR : ses articles, CHACUN SUIVI d'un
+     * retour — le dernier aussi.
+     *
+     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice, le même
+     * soir, sur « put menu "Essai" » : « hypercard renvoie les items des menu
+     * suivis chacun d'un retour chariot ». HC répondait « objet
+     * introuvable ». Les séparateurs « - » sont des articles comme les
+     * autres, et viennent avec. */
+    if (n->genre == HCTN_OBJET && n->typeobj == HCT_OBJ_MENU) {
+        g_menu_echec = V3_MENU_RIEN;
+        int i = v3_menu_index(ctx, n);
+        if (ctx && ctx->erreur) { g_v1_porte = sauve_porte; return 0; }
+        if (i < 0) {
+            g_menu_echec = V3_MENU_MENU_ABSENT;
+            if (ctx) hct_ctx_faute(ctx, n, v3_menu_raison());
+            g_v1_porte = sauve_porte;
+            return 0;
+        }
+        const HcMenuBarre *m = &g_menus[i];
+        size_t total = 1;
+        for (int j = 0; j < m->n; j++)
+            total += (m->article[j] ? strlen(m->article[j]) : 0) + 1;
+        char *t = malloc(total);
+        if (!t) {
+            if (ctx) hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            g_v1_porte = sauve_porte;
+            return 0;
+        }
+        size_t pos = 0;
+        for (int j = 0; j < m->n; j++) {
+            const char *a = m->article[j] ? m->article[j] : "";
+            size_t l = strlen(a);
+            memcpy(t + pos, a, l);
+            pos += l;
+            t[pos++] = '\n';
+        }
+        t[pos] = '\0';
+        *out = hct_val_texte(t);
+        free(t);
+        g_v1_porte = sauve_porte;
+        return 1;
     }
 
     /* Les propriétés d'un menu et de ses articles : « the checkMark of

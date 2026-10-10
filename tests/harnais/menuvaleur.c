@@ -7,9 +7,12 @@
  * octobre, et MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le même jour :
  * « Quatre ».
  *
- * NON MESURÉ, et dit comme tel : le menu entier lu comme une valeur
- * (« put menu "Essai" », toujours refusé ici), et le texte exact des refus
- * d'HyperCard pour un article ou un menu absent. */
+ * Le menu entier, « put menu "Essai" », rend ses articles CHACUN SUIVI d'un
+ * retour, le dernier aussi : mesuré dans HyperCard le même soir. HC
+ * répondait « objet introuvable ».
+ *
+ * NON MESURÉ, et dit comme tel : le texte exact des refus d'HyperCard pour
+ * un article ou un menu absent. */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -54,8 +57,13 @@ int main(void)
     fais("put menuItem 9 of menu \"Essai\"");
     fais("put menuItem 1 of menu \"Absent\"");
 
-    puts("\n== 5. non mesuré : le menu entier, toujours refusé ==");
-    fais("put menu \"Essai\"");
+    puts("\n== 5. le menu entier : chaque article suivi d'un retour ==");
+    fais("put menu \"Essai\" into m");
+    fais("put the number of lines of m");
+    fais("put \"[\" & last char of m & \"]\" is \"[\" & return & \"]\"");
+    fais("put line 2 of m");
+    fais("put \"[\" & menu \"Essai\" & \"]\"");
+    fais("put menu \"Absent\"");
 
     hc_do("delete menu \"Essai\"");
     hc_unregister_stack(st);

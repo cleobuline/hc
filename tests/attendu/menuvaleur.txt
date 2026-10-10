@@ -30,6 +30,19 @@
    put menuItem 1 of menu "Absent"
       [ERR]    !! menu introuvable (v3, ligne 1)
 
-== 5. non mesuré : le menu entier, toujours refusé ==
-   put menu "Essai"
-      [ERR]    !! objet introuvable (v3, ligne 1)
+== 5. le menu entier : chaque article suivi d'un retour ==
+   put menu "Essai" into m
+   put the number of lines of m
+      = 4
+   put "[" & last char of m & "]" is "[" & return & "]"
+      = true
+   put line 2 of m
+      = -
+   put "[" & menu "Essai" & "]"
+      = [Un
+-
+Trois
+Quatre bis
+]
+   put menu "Absent"
+      [ERR]    !! menu introuvable (v3, ligne 1)
