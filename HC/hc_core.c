@@ -3332,11 +3332,46 @@ int hc_delete_part(Object *o)
 
 /* ==================== chaîne de messages ==================== */
 
+/* Les piles en usage qui viennent APRÈS `apres` dans la chaîne — toutes si
+ * `apres` est nul —, sans celles que `deja[0..ndeja-1]` contient : la
+ * partie fixe, et les maillons déjà parcourus. -1 si `apres` n'est plus en
+ * usage : il s'est retiré pendant son propre gestionnaire, et l'on ne sait
+ * plus où il était.
+ *
+ * Elles viennent dans l'ordre inverse de leur déclaration : la plus
+ * récemment déclarée est consultée en premier, comme dans HyperCard. Une
+ * pile locale l'emporte donc toujours sur une bibliothèque, ce qui permet
+ * de redéfinir localement un gestionnaire partagé. */
+static int piles_en_usage_apres(const Object *apres, Object *const deja[],
+                                int ndeja, Object *chain[], int max)
+{
+    int debut = g_nusing - 1;
+    if (apres) {
+        int p = -1;
+        for (int i = 0; i < g_nusing; i++)
+            if (g_using[i] == apres) { p = i; break; }
+        if (p < 0) return -1;
+        debut = p - 1;
+    }
+    int n = 0;
+    for (int i = debut; i >= 0 && n < max; i--) {
+        Object *u = g_using[i];
+        int vu = !u;
+        for (int k = 0; k < ndeja && !vu; k++) vu = (deja[k] == u);
+        if (!vu) chain[n++] = u;
+    }
+    return n;
+}
+
 /* Construit la chaîne de remontée depuis `target`.
  * Fidèle à HyperCard : un objet (de carte OU de fond) remonte d'abord
  * à la carte courante, puis à son fond, puis à la pile.
+ *
+ * `nfixe`, s'il n'est pas nul, reçoit le nombre de maillons qui précèdent
+ * les piles en usage : cette partie-là ne bouge pas pendant un envoi, la
+ * suite si — voir la boucle de hc_send_args_k_body.
  */
-static int build_chain(Object *target, Object *chain[], int max)
+static int build_chain(Object *target, Object *chain[], int max, int *nfixe)
 {
     int n = 0;
     if (!target || max < 1) return 0;
@@ -3377,24 +3412,15 @@ static int build_chain(Object *target, Object *chain[], int max)
         else if (target->owner) stack = target->owner;
     }
     if (stack && stack != target && n < max) chain[n++] = stack;
+    if (nfixe) *nfixe = n;
 
     /* Les piles EN USAGE, après la pile courante.
      *
      * « start using stack "Outils" » insère une pile dans la chaîne : ses
      * gestionnaires deviennent appelables depuis n'importe quelle pile, sans
      * qu'on ait à les y recopier. C'était le mécanisme des bibliothèques de
-     * l'époque — une pile de fonctions partagées, déclarée une fois.
-     *
-     * Elles viennent en DERNIER, et dans l'ordre inverse de leur déclaration :
-     * la plus récemment déclarée est consultée en premier, comme dans
-     * HyperCard. Une pile locale l'emporte donc toujours sur une bibliothèque,
-     * ce qui permet de redéfinir localement un gestionnaire partagé. */
-    for (int i = g_nusing - 1; i >= 0 && n < max; i--) {
-        Object *u = g_using[i];
-        if (!u || u == stack || u == target) continue;   /* déjà dans la chaîne */
-        chain[n++] = u;
-    }
-
+     * l'époque — une pile de fonctions partagées, déclarée une fois. */
+    n += piles_en_usage_apres(NULL, chain, n, chain + n, max - n);
     return n;
 }
 
@@ -15226,7 +15252,7 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
      * quatre premières déclarées ne répondaient plus, sans manquer de mémoire
      * et sans qu'aucun message ne dise pourquoi. */
     Object *chain[4 + HC_MAX_USING];
-    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain));
+    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain), NULL);
 
     int trouve = 0;
     for (int i = 0; i < nc && !trouve; i++) {
@@ -17201,7 +17227,9 @@ static int hc_send_args_k_body(Object *target, const char *message,
      * pour les piles en usage, qui viennent après. Une chaîne trop courte les
      * écarterait silencieusement. */
     Object *chain[4 + HC_MAX_USING];
-    int n = build_chain(target, chain, (int)(sizeof chain / sizeof *chain));
+    const int max = (int)(sizeof chain / sizeof *chain);
+    int nfixe = 0;
+    int n = build_chain(target, chain, max, &nfixe);
 
     /* Sauver les paramètres AVANT de modifier le moindre global. Auparavant
      * on réservait 16 Mo même quand l'appelant n'avait qu'un paramètre ; on
@@ -17369,7 +17397,53 @@ static int hc_send_args_k_body(Object *target, const char *message,
              * donc pas distinguer « la pile s'en est chargée » de « personne
              * n'en a voulu » — exactement ce dont doMenu a besoin pour savoir
              * s'il doit exécuter l'article de menu. */
-            if (g_pass) { g_pass = 0; continue; }
+            if (g_pass) {
+                g_pass = 0;
+                /* LA SUITE DE LA CHAÎNE SE RELIT AU MOMENT DU PASS.
+                 *
+                 * Elle était figée à l'envoi. Or « HyperTalk Reference »
+                 * d'Apple fait, dans son openStack :
+                 *
+                 *     start using stack "HyperCard Help"
+                 *     pass openStack
+                 *
+                 * et c'est l'openStack de HyperCard Help, atteint par ce
+                 * pass, qui crée le menu « Reference ». Figée, la chaîne ne
+                 * contenait pas la pile qu'on venait de mettre en usage : le
+                 * pass n'atteignait personne, le menu n'existait pas, et au
+                 * premier suspendStack ou closeStack « set the checkMark of
+                 * menuItem 4 of menu gHMnu » répondait « menu introuvable ».
+                 * Signalé le 10 octobre, DANS HC (l'application).
+                 *
+                 * La partie fixe — l'objet, la carte, le fond, la pile — ne
+                 * change pas : seules les piles en usage se relisent, à
+                 * partir de la place de celle qui passe. Une pile qui s'est
+                 * retirée pendant son propre gestionnaire n'a plus de place :
+                 * on garde alors, de l'ancienne suite, celles qui sont
+                 * encore en usage.
+                 *
+                 * Et jamais deux fois la même : chain[0..base-1] est ce qui a
+                 * déjà été parcouru, et la relecture l'écarte. Deux
+                 * bibliothèques qui se redéclarent chacune dans un
+                 * gestionnaire passé se renverraient sinon le message sans
+                 * fin, chacune remontant en tête à son tour.
+                 *
+                 * DÉDUIT DU CODE D'APPLE : sans cela, ouvrir « HyperTalk
+                 * Reference » seule n'aurait pas de menu dans HyperCard non
+                 * plus. NON MESURÉ ce que fait HyperCard d'une pile mise en
+                 * usage AVANT celle qui passe, ni d'une pile qui se retire. */
+                int base = i < nfixe ? nfixe : i + 1;
+                int q = piles_en_usage_apres(i < nfixe ? NULL : o, chain,
+                                             base, chain + base, max - base);
+                if (q < 0) {
+                    q = 0;
+                    for (int k = i + 1; k < n; k++)
+                        for (int u = 0; u < g_nusing; u++)
+                            if (g_using[u] == chain[k]) { chain[base + q++] = chain[k]; break; }
+                }
+                n = base + q;
+                continue;
+            }
             handled = 1;
             break;
         } else if (g_trace) {
