@@ -193,6 +193,9 @@ Deux défauts, l'un sur l'autre :
     son resumeStack suivant. Ce que fait HyperCard d'une pile en usage dont
     on ferme la fenêtre : NON MESURÉ.
 
+ESSAYÉ DANS HC (l'application) par l'utilisatrice après recompilation, les
+trois articles tour à tour : « ça marche impeccable ».
+
 CE QUI RESTE. Quitter HyperTalk Reference pour une autre pile (suspendStack)
 retire le menu SANS cesser d'utiliser HyperCard Help : removeHelpFunctions
 cherche « ":HyperCard Help" & return » dans the stacksInUse, et nos chemins
