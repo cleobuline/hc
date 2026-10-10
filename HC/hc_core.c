@@ -8614,6 +8614,30 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         return 0;
     }
 
+    /* UN ARTICLE DE MENU LU COMME UNE VALEUR : son texte.
+     *
+     *     put menuItem 4 of menu "Essai"      -> Quatre
+     *
+     * HC répondait « objet introuvable » : un article n'est pas un Object,
+     * resout n'en sait rien, et seules ses PROPRIÉTÉS passaient par ici.
+     * L'utilisatrice l'a essayé dans la boîte de message le 10 octobre, en
+     * cherchant pourquoi HyperTalk Reference coinçait sur « menuItem 4 of
+     * menu gHMnu ».
+     *
+     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice, le même
+     * jour : « Quatre ». NON MESURÉ : « put menu "Essai" », le menu entier
+     * lu comme une valeur — HC répond toujours « objet introuvable ». */
+    if (n->genre == HCTN_OBJET && n->typeobj == HCT_OBJ_MENUITEM) {
+        if (v3_menu_prop_lit(ctx, n, "name", out)) {
+            g_v1_porte = sauve_porte;
+            return 1;
+        }
+        if (ctx && g_menu_echec != V3_MENU_RIEN)
+            hct_ctx_faute(ctx, n, v3_menu_raison());
+        g_v1_porte = sauve_porte;
+        return 0;
+    }
+
     /* Les propriétés d'un menu et de ses articles : « the checkMark of
      * menuItem 2 of menu "X" », « the name of menu 1 ». Comme pour
      * « there is a menu », resout ne peut rien pour elles.
