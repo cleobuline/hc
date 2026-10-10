@@ -1,0 +1,48 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le banc mesuré ==
+   put menuItem 4 of menu "Essai"
+      = Quatre
+
+== 2. les autres désignations ==
+   put menuItem "Trois" of menu "Essai"
+      = Trois
+   put last menuItem of menu "Essai"
+      = Quatre
+   put menuItem 2 of menu "Essai"
+      = -
+   put "Essai" into gHMnu
+   put menuItem 4 of menu gHMnu
+      = Quatre
+   put "[" & menuItem 1 of menu "Essai" & "]"
+      = [Un]
+   put menuItem 4 of menu "Essai" into x
+   put x
+      = Quatre
+
+== 3. la valeur suit l'article ==
+   set the name of menuItem 4 of menu "Essai" to "Quatre bis"
+   put menuItem 4 of menu "Essai"
+      = Quatre bis
+
+== 4. ce qui manque se dit ==
+   put menuItem 9 of menu "Essai"
+      [ERR]    !! article de menu introuvable (v3, ligne 1)
+   put menuItem 1 of menu "Absent"
+      [ERR]    !! menu introuvable (v3, ligne 1)
+
+== 5. le menu entier : chaque article suivi d'un retour ==
+   put menu "Essai" into m
+   put the number of lines of m
+      = 4
+   put "[" & last char of m & "]" is "[" & return & "]"
+      = true
+   put line 2 of m
+      = -
+   put "[" & menu "Essai" & "]"
+      = [Un
+-
+Trois
+Quatre bis
+]
+   put menu "Absent"
+      [ERR]    !! menu introuvable (v3, ligne 1)

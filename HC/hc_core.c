@@ -3332,11 +3332,46 @@ int hc_delete_part(Object *o)
 
 /* ==================== chaîne de messages ==================== */
 
+/* Les piles en usage qui viennent APRÈS `apres` dans la chaîne — toutes si
+ * `apres` est nul —, sans celles que `deja[0..ndeja-1]` contient : la
+ * partie fixe, et les maillons déjà parcourus. -1 si `apres` n'est plus en
+ * usage : il s'est retiré pendant son propre gestionnaire, et l'on ne sait
+ * plus où il était.
+ *
+ * Elles viennent dans l'ordre inverse de leur déclaration : la plus
+ * récemment déclarée est consultée en premier, comme dans HyperCard. Une
+ * pile locale l'emporte donc toujours sur une bibliothèque, ce qui permet
+ * de redéfinir localement un gestionnaire partagé. */
+static int piles_en_usage_apres(const Object *apres, Object *const deja[],
+                                int ndeja, Object *chain[], int max)
+{
+    int debut = g_nusing - 1;
+    if (apres) {
+        int p = -1;
+        for (int i = 0; i < g_nusing; i++)
+            if (g_using[i] == apres) { p = i; break; }
+        if (p < 0) return -1;
+        debut = p - 1;
+    }
+    int n = 0;
+    for (int i = debut; i >= 0 && n < max; i--) {
+        Object *u = g_using[i];
+        int vu = !u;
+        for (int k = 0; k < ndeja && !vu; k++) vu = (deja[k] == u);
+        if (!vu) chain[n++] = u;
+    }
+    return n;
+}
+
 /* Construit la chaîne de remontée depuis `target`.
  * Fidèle à HyperCard : un objet (de carte OU de fond) remonte d'abord
  * à la carte courante, puis à son fond, puis à la pile.
+ *
+ * `nfixe`, s'il n'est pas nul, reçoit le nombre de maillons qui précèdent
+ * les piles en usage : cette partie-là ne bouge pas pendant un envoi, la
+ * suite si — voir la boucle de hc_send_args_k_body.
  */
-static int build_chain(Object *target, Object *chain[], int max)
+static int build_chain(Object *target, Object *chain[], int max, int *nfixe)
 {
     int n = 0;
     if (!target || max < 1) return 0;
@@ -3377,24 +3412,15 @@ static int build_chain(Object *target, Object *chain[], int max)
         else if (target->owner) stack = target->owner;
     }
     if (stack && stack != target && n < max) chain[n++] = stack;
+    if (nfixe) *nfixe = n;
 
     /* Les piles EN USAGE, après la pile courante.
      *
      * « start using stack "Outils" » insère une pile dans la chaîne : ses
      * gestionnaires deviennent appelables depuis n'importe quelle pile, sans
      * qu'on ait à les y recopier. C'était le mécanisme des bibliothèques de
-     * l'époque — une pile de fonctions partagées, déclarée une fois.
-     *
-     * Elles viennent en DERNIER, et dans l'ordre inverse de leur déclaration :
-     * la plus récemment déclarée est consultée en premier, comme dans
-     * HyperCard. Une pile locale l'emporte donc toujours sur une bibliothèque,
-     * ce qui permet de redéfinir localement un gestionnaire partagé. */
-    for (int i = g_nusing - 1; i >= 0 && n < max; i--) {
-        Object *u = g_using[i];
-        if (!u || u == stack || u == target) continue;   /* déjà dans la chaîne */
-        chain[n++] = u;
-    }
-
+     * l'époque — une pile de fonctions partagées, déclarée une fois. */
+    n += piles_en_usage_apres(NULL, chain, n, chain + n, max - n);
     return n;
 }
 
@@ -7522,6 +7548,31 @@ static int v3_noeud_contient(const HctNoeud *racine, const HctNoeud *cherche)
 
 static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n);
 
+/* LA CARTE QUE MONTRE UNE PILE — « this card of stack "Help Extras" ».
+ *
+ * HyperCard Help, derrière les articles de son menu « Reference » :
+ *
+ *     go this card of stack "Help Extras" in a new window
+ *
+ * « this card » y désigne la carte de CETTE pile-là, celle que sa fenêtre
+ * montre. HC prenait la carte courante de la pile COURANTE : le go restait
+ * sur place, et la pile choisie ne venait jamais devant. Signalé le 10
+ * octobre DANS HC (l'application).
+ *
+ * Le noyau ne tient qu'une carte courante ; celle d'une autre pile est la
+ * dernière qu'on y a visitée, que l'historique garde. Une pile jamais visitée
+ * montre sa première carte, comme à l'ouverture. */
+static Object *carte_de_la_pile(Object *pile)
+{
+    if (!pile) return NULL;
+    if (g_current_card && owning_stack(g_current_card) == pile) return g_current_card;
+    for (int i = 0; i < g_nhisto; i++) {
+        Object *c = hc_recent_at(i);
+        if (c && owning_stack(c) == pile) return c;
+    }
+    return nth_card(pile, 0);
+}
+
 /* L'enveloppe, pour n'avoir qu'UN endroit à instrumenter. Le corps a une
  * dizaine de sorties ; les marquer une à une, c'est en oublier une. */
 /* LA CARTE DONT UN CHAMP A ÉTÉ LU — « bkgnd field "Title" of card id N ».
@@ -7595,6 +7646,12 @@ static Object *hct_resout_corps(HctContexte *ctx, const HctNoeud *n)
              * ramenait aussitôt à la pile COURANTE : « card 3 of stack "y" »
              * cherchait la carte 3 de la pile ouverte. */
             stack = cible;
+            /* Et la carte suit la pile : « this card of stack "y" » est la
+             * carte que montre y. Voir carte_de_la_pile. */
+            if (card && owning_stack(card) != stack) {
+                card = carte_de_la_pile(stack);
+                bg   = card ? card->bg : NULL;
+            }
         }
     }
 
@@ -8586,6 +8643,72 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
         }
         g_v1_porte = sauve_porte;
         return 0;
+    }
+
+    /* UN ARTICLE DE MENU LU COMME UNE VALEUR : son texte.
+     *
+     *     put menuItem 4 of menu "Essai"      -> Quatre
+     *
+     * HC répondait « objet introuvable » : un article n'est pas un Object,
+     * resout n'en sait rien, et seules ses PROPRIÉTÉS passaient par ici.
+     * L'utilisatrice l'a essayé dans la boîte de message le 10 octobre, en
+     * cherchant pourquoi HyperTalk Reference coinçait sur « menuItem 4 of
+     * menu gHMnu ».
+     *
+     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice, le même
+     * jour : « Quatre ». */
+    if (n->genre == HCTN_OBJET && n->typeobj == HCT_OBJ_MENUITEM) {
+        if (v3_menu_prop_lit(ctx, n, "name", out)) {
+            g_v1_porte = sauve_porte;
+            return 1;
+        }
+        if (ctx && g_menu_echec != V3_MENU_RIEN)
+            hct_ctx_faute(ctx, n, v3_menu_raison());
+        g_v1_porte = sauve_porte;
+        return 0;
+    }
+
+    /* LE MENU ENTIER LU COMME UNE VALEUR : ses articles, CHACUN SUIVI d'un
+     * retour — le dernier aussi.
+     *
+     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice, le même
+     * soir, sur « put menu "Essai" » : « hypercard renvoie les items des menu
+     * suivis chacun d'un retour chariot ». HC répondait « objet
+     * introuvable ». Les séparateurs « - » sont des articles comme les
+     * autres, et viennent avec. */
+    if (n->genre == HCTN_OBJET && n->typeobj == HCT_OBJ_MENU) {
+        g_menu_echec = V3_MENU_RIEN;
+        int i = v3_menu_index(ctx, n);
+        if (ctx && ctx->erreur) { g_v1_porte = sauve_porte; return 0; }
+        if (i < 0) {
+            g_menu_echec = V3_MENU_MENU_ABSENT;
+            if (ctx) hct_ctx_faute(ctx, n, v3_menu_raison());
+            g_v1_porte = sauve_porte;
+            return 0;
+        }
+        const HcMenuBarre *m = &g_menus[i];
+        size_t total = 1;
+        for (int j = 0; j < m->n; j++)
+            total += (m->article[j] ? strlen(m->article[j]) : 0) + 1;
+        char *t = malloc(total);
+        if (!t) {
+            if (ctx) hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            g_v1_porte = sauve_porte;
+            return 0;
+        }
+        size_t pos = 0;
+        for (int j = 0; j < m->n; j++) {
+            const char *a = m->article[j] ? m->article[j] : "";
+            size_t l = strlen(a);
+            memcpy(t + pos, a, l);
+            pos += l;
+            t[pos++] = '\n';
+        }
+        t[pos] = '\0';
+        *out = hct_val_texte(t);
+        free(t);
+        g_v1_porte = sauve_porte;
+        return 1;
     }
 
     /* Les propriétés d'un menu et de ses articles : « the checkMark of
@@ -10492,6 +10615,52 @@ static void v3_relu_libere(V3Relu *r)
     hct_reserve_libere(&r->res);
     hct_lot_libere(&r->lot);
     r->ouvert = 0;
+}
+
+/* UN MORCEAU RANGÉ DANS UN NOM.
+ *
+ *     put the clickChunk into theChunk
+ *     get the textStyle of theChunk
+ *
+ * Le nom vaut « char 13 to 17 of bg field 2 », et c'est ce MORCEAU dont on
+ * demande le style. HC répondait par la question, « textStyle of theChunk » :
+ * le test « contains "group" » de Help Extras échouait, et un clic sur un mot
+ * souligné n'allait nulle part, sans un mot. Signalé le 10 octobre DANS HC
+ * (l'application). HyperCard Help (checkActiveText) fait de même avec
+ * theChunkOfText, et la référence d'Apple écrit les deux sens :
+ *
+ *     put the textStyle of the clickChunk into theStyle
+ *     put the selectedChunk into theChunk
+ *     set the textStyle of theChunk to bold
+ *
+ * C'est la règle mesurée pour les objets (docs/mesures/designateur_calcule.txt :
+ * HyperCard ÉVALUE une référence avant de la résoudre, « set the textStyle
+ * of ch to bold » pose le style), portée aux morceaux.
+ *
+ * Un NOM NU seulement — variable, it, ou « the clickChunk », que l'analyseur
+ * range aussi en nom : l'évaluer ne fait que lire, et peut se refaire sans
+ * effet si l'on repart par l'ancien chemin. La valeur doit s'analyser EN
+ * ENTIER comme un morceau, et le morceau porter sur un OBJET : un nom qui
+ * vaut « word 2 of x » n'est pas une référence de texte de champ.
+ *
+ * Rend le nœud relu, ou NULL. `txt` reçoit la valeur, que les jetons du nœud
+ * désignent : l'appelant le garde vivant tant qu'il se sert du nœud, puis
+ * appelle v3_relu_libere dans tous les cas. */
+static const HctNoeud *v3_morceau_calcule(HctContexte *ctx, const HctNoeud *n,
+                                          char *txt, V3Relu *r)
+{
+    memset(r, 0, sizeof *r);
+    if (!n || n->genre != HCTN_IDENT) return NULL;
+    v3_val_texte(ctx, n, txt, HC_VAL);
+    if (ctx->erreur) return NULL;
+
+    const HctNoeud *relu = v3_relit(txt, r);
+    const HctNoeud *base = relu;
+    while (base && base->genre == HCTN_CHUNK && base->nfils > 0)
+        base = base->fils[base->nfils - 1];
+    if (!relu || relu->genre != HCTN_CHUNK || !base || base->genre != HCTN_OBJET)
+        return NULL;
+    return relu;
 }
 
 /* hct_resout, plus le désignateur calculé. Rend NULL comme hct_resout, et
@@ -12520,6 +12689,19 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2)
             cf = v3_chunk_cible(ctx, n->fils[0]->fils[1], &cst, &cen);
         if (ctx->erreur) { g_atop = sauve; return 1; }
+        /* « set the textStyle of theChunk to bold » : le morceau est dans un
+         * nom. Voir v3_morceau_calcule. */
+        if (!cf && n->fils[0]->genre == HCTN_OF && n->fils[0]->nfils == 2) {
+            const HctNoeud *nom = n->fils[0]->fils[1];
+            V3Relu r;
+            const HctNoeud *relu = v3_morceau_calcule(ctx, nom, arena_buf(), &r);
+            if (relu) {
+                cf = v3_chunk_cible(ctx, relu, &cst, &cen);
+                if (ctx->erreur) ctx->fautif = nom;   /* le relu va disparaître */
+            }
+            v3_relu_libere(&r);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
+        }
         if (!cf) cf = chunk_target(refbuf, &cst, &cen);
         if (cf) {
             /* Les trois attributs de texte se posent par plage, comme dans
@@ -13978,13 +14160,22 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
 
 /* play : HyperCard accepte une suite de notes derrière le nom du son
  * (« play "boing" tempo 200 c4 e4 »). Comme l'ancien exécuteur, on ne retient
- * que le nom : le reste demande un synthétiseur, pas un lecteur. */
+ * que le nom : le reste demande un synthétiseur, pas un lecteur.
+ *
+ * UN MOT NU EST UNE VARIABLE S'IL EN EST UNE. Le mot était lu tel quel :
+ * « put "cling" into son » puis « play son » cherchait un son nommé « son »,
+ * et l'application bipait. Paramètre, globale ou mot entre parenthèses, même
+ * défaut. Trouvé le 10 octobre dans le flipper, en donnant à « bord » un son
+ * en paramètre. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice,
+ * le même jour : « put "boing" into s / play s » fait boing. On lit donc le
+ * mot comme « choose tl tool » lit le sien (v3_mot_ou_var) : la variable liée
+ * d'abord, le mot lui-même sinon — « play tik » reste « tik ». */
 static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return 0;
     char nom[256];
     const HctNoeud *f = n->fils[0];
-    if (f->genre == HCTN_IDENT) v3_brut(f, nom, sizeof nom);
+    if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, nom, sizeof nom);
     else {
         v3_val_texte(ctx, f, nom, sizeof nom);
         if (ctx->erreur) return 1;
@@ -14604,14 +14795,40 @@ static int v3_va_a(Object *dst)
     Object *vpile  = old ? owning_stack(old) : NULL;
     int change_pile = (pile != vpile);
 
+    /* UNE FENÊTRE PAR PILE : LES MESSAGES DE PILE SONT CEUX DE L'HÔTE.
+     *
+     * closeStack et openStack disent qu'une pile en REMPLACE une autre dans
+     * la même fenêtre. La référence d'Apple, carte « closeStack » : « If you
+     * have more than one stack open at a time, HyperCard sends suspendStack,
+     * not closeStack, when the stack becomes inactive. » Or un hôte qui a
+     * stack_changed donne sa fenêtre à chaque pile, et l'ancienne reste
+     * ouverte derrière : c'est l'hôte qui envoie suspendStack quand sa fenêtre
+     * passe derrière, resumeStack — ou openStack à la première ouverture —
+     * quand l'autre passe devant (Hcdocument.m, envoiePile).
+     *
+     * Le noyau les doublait. Un clic sur un mot du glossaire de HyperTalk
+     * Reference, Help Extras déjà ouverte, donnait closeStack PUIS
+     * suspendStack : HyperCard Help retirait son menu au premier, et le
+     * setCheckMark du second tombait sur un menu disparu — « menu
+     * introuvable ». Signalé le 10 octobre DANS HC (l'application).
+     *
+     * L'hôte passe aussi AVANT qu'on pose la carte d'arrivée : en passant
+     * devant, la fenêtre reprend la carte qu'elle montrait (setCurrent), et
+     * c'est le go qui doit avoir le dernier mot.
+     *
+     * Sans stack_changed — les harnais, un hôte sans fenêtres —, la pile est
+     * remplacée « dans la fenêtre courante », et closeStack / openStack
+     * restent ce qu'ils étaient. */
+    int fenetres = change_pile && g_host && g_host->stack_changed;
+
     if (old) hc_send_systeme(old, "closeCard");
     if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-    if (change_pile && vpile) hc_send_systeme(vpile, "closeStack");
+    if (change_pile && vpile && !fenetres) hc_send_systeme(vpile, "closeStack");
 
+    if (fenetres) g_host->stack_changed(pile);
     g_current_card = dst;
-    if (change_pile && g_host && g_host->stack_changed) g_host->stack_changed(pile);
 
-    if (change_pile && pile) hc_send_systeme(pile, "openStack");
+    if (change_pile && pile && !fenetres) hc_send_systeme(pile, "openStack");
     if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
     emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
     hc_send_systeme(dst, "openCard");
@@ -15217,7 +15434,7 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
      * quatre premières déclarées ne répondaient plus, sans manquer de mémoire
      * et sans qu'aucun message ne dise pourquoi. */
     Object *chain[4 + HC_MAX_USING];
-    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain));
+    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain), NULL);
 
     int trouve = 0;
     for (int i = 0; i < nc && !trouve; i++) {
@@ -16582,6 +16799,23 @@ static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
     int est_color = ci_equal(prop, "textcolor");
     if (!est_style && !est_font && !est_size && !est_color) return 0;
 
+    /* « the textStyle of theChunk » : le morceau est dans un nom. Voir
+     * v3_morceau_calcule. Rien de reconnu : 0, et l'appelant poursuit par
+     * le chemin des objets, comme avant. */
+    if (morceau->genre == HCTN_IDENT) {
+        ARENA_MARK;
+        V3Relu r;
+        const HctNoeud *relu = v3_morceau_calcule(ctx, morceau, arena_buf(), &r);
+        int fait = ctx->erreur != NULL;
+        if (relu) {
+            fait = v3_lit_prop_morceau(d, relu, prop, ctx, out);
+            if (ctx->erreur) ctx->fautif = morceau;   /* le relu va disparaître */
+        }
+        v3_relu_libere(&r);
+        ARENA_FREE;
+        return fait;
+    }
+
     int cst = 0, cen = 0;
     Object *cf = v3_chunk_cible(ctx, morceau, &cst, &cen);
     if (ctx->erreur) return 1;             /* la faute est déjà posée */
@@ -17192,7 +17426,9 @@ static int hc_send_args_k_body(Object *target, const char *message,
      * pour les piles en usage, qui viennent après. Une chaîne trop courte les
      * écarterait silencieusement. */
     Object *chain[4 + HC_MAX_USING];
-    int n = build_chain(target, chain, (int)(sizeof chain / sizeof *chain));
+    const int max = (int)(sizeof chain / sizeof *chain);
+    int nfixe = 0;
+    int n = build_chain(target, chain, max, &nfixe);
 
     /* Sauver les paramètres AVANT de modifier le moindre global. Auparavant
      * on réservait 16 Mo même quand l'appelant n'avait qu'un paramètre ; on
@@ -17360,7 +17596,53 @@ static int hc_send_args_k_body(Object *target, const char *message,
              * donc pas distinguer « la pile s'en est chargée » de « personne
              * n'en a voulu » — exactement ce dont doMenu a besoin pour savoir
              * s'il doit exécuter l'article de menu. */
-            if (g_pass) { g_pass = 0; continue; }
+            if (g_pass) {
+                g_pass = 0;
+                /* LA SUITE DE LA CHAÎNE SE RELIT AU MOMENT DU PASS.
+                 *
+                 * Elle était figée à l'envoi. Or « HyperTalk Reference »
+                 * d'Apple fait, dans son openStack :
+                 *
+                 *     start using stack "HyperCard Help"
+                 *     pass openStack
+                 *
+                 * et c'est l'openStack de HyperCard Help, atteint par ce
+                 * pass, qui crée le menu « Reference ». Figée, la chaîne ne
+                 * contenait pas la pile qu'on venait de mettre en usage : le
+                 * pass n'atteignait personne, le menu n'existait pas, et au
+                 * premier suspendStack ou closeStack « set the checkMark of
+                 * menuItem 4 of menu gHMnu » répondait « menu introuvable ».
+                 * Signalé le 10 octobre, DANS HC (l'application).
+                 *
+                 * La partie fixe — l'objet, la carte, le fond, la pile — ne
+                 * change pas : seules les piles en usage se relisent, à
+                 * partir de la place de celle qui passe. Une pile qui s'est
+                 * retirée pendant son propre gestionnaire n'a plus de place :
+                 * on garde alors, de l'ancienne suite, celles qui sont
+                 * encore en usage.
+                 *
+                 * Et jamais deux fois la même : chain[0..base-1] est ce qui a
+                 * déjà été parcouru, et la relecture l'écarte. Deux
+                 * bibliothèques qui se redéclarent chacune dans un
+                 * gestionnaire passé se renverraient sinon le message sans
+                 * fin, chacune remontant en tête à son tour.
+                 *
+                 * DÉDUIT DU CODE D'APPLE : sans cela, ouvrir « HyperTalk
+                 * Reference » seule n'aurait pas de menu dans HyperCard non
+                 * plus. NON MESURÉ ce que fait HyperCard d'une pile mise en
+                 * usage AVANT celle qui passe, ni d'une pile qui se retire. */
+                int base = i < nfixe ? nfixe : i + 1;
+                int q = piles_en_usage_apres(i < nfixe ? NULL : o, chain,
+                                             base, chain + base, max - base);
+                if (q < 0) {
+                    q = 0;
+                    for (int k = i + 1; k < n; k++)
+                        for (int u = 0; u < g_nusing; u++)
+                            if (g_using[u] == chain[k]) { chain[base + q++] = chain[k]; break; }
+                }
+                n = base + q;
+                continue;
+            }
             handled = 1;
             break;
         } else if (g_trace) {

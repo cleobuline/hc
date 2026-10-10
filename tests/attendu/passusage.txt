@@ -1,0 +1,33 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la forme d'Apple : start using, puis pass openStack ==
+-> openStack à « Ref »
+   coche true -> true
+   menus : Reference
+-> closeStack à « Ref »
+   coche false -> false
+
+== 2. une fonction aussi ==
+-> essai à « Appel »
+   dernier : [c]
+
+== 3. une pile mise en usage AVANT celle qui passe (non mesuré) ==
+-> qui à « Ici »
+   Ici
+   L2
+   L1
+   en usage : L1
+L2
+L3
+
+== 4. une pile qui se retire pendant son gestionnaire (non mesuré) ==
+-> qui à « Ici »
+   Ici
+   L2
+   L3
+   L1
+
+== 5. deux piles qui se redéclarent : chacune une fois (non mesuré) ==
+-> qui à « Ici »
+   Ici
+   L2
+   L1

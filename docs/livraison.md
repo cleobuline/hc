@@ -175,6 +175,19 @@ Puis la release sur GitHub, avec `docs/releases/HC-<version>.md` **collé** dans
 le corps. Attention : ce corps est une COPIE, pas un lien. Modifier le fichier
 du dépôt ensuite ne met pas la release à jour ; il faut l'éditer à la main.
 
+**Et le DMG DEUX FOIS** : `HC-<version>.dmg`, et la même copie sous le nom
+fixe `HC.dmg`.
+
+    cp HC-<version>.dmg HC.dmg      # puis joindre les deux à la release
+
+Le bouton « Télécharger » de hc.labynet.fr pointe sur
+`https://github.com/cleobuline/hc/releases/latest/download/HC.dmg`, que GitHub
+redirige vers le fichier `HC.dmg` de la DERNIÈRE release. Un seul clic, et
+plus de page de release à traverser : décidé le 10 octobre, quand 9 300 vues
+sur Reddit n'avaient donné qu'une poignée de téléchargements. Une release sans
+`HC.dmg` casse ce bouton — GitHub répond 404 —, alors que son DMG numéroté,
+lui, reste en place.
+
 ## Tant que la notarisation n'existe pas
 
 Une version non notarisée se heurte à un message qui dit faux — *« HC est

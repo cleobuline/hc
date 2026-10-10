@@ -107,10 +107,110 @@ la pile d'Apple, pas sur HC. Et « the destination » rend chez nous
 « stack "/chemin" » : ce que rend HyperCard est demandé.
 
 
+« set the checkMark of menuItem 4 of menu gHMnu » — 10 OCTOBRE
+---------------------------------------------------------------
+
+Signalé DANS HC (l'application) : « hc sait pas faire ça », sur cette ligne
+du script de pile de HyperTalk Reference :
+
+    set the checkMark of menuItem 4 of menu gHMnu to TRUEorFALSE
+
+La ligne elle-même marche. Le menu qu'elle vise n'existait pas.
+
+Reproduit dans le noyau, les deux piles chargées, avec la suite de messages
+qu'envoie Hcdocument.m (envoiePile) : openStack, puis suspendStack ou
+closeStack. HyperTalk Reference fait, dans son openStack,
+
+    start using stack "HyperCard Help"
+    pass openStack
+
+et c'est l'openStack de HyperCard Help, atteint par ce pass, qui crée le
+menu « Reference ». Le chemin d'un message était figé à l'envoi : le pass ne
+voyait pas la pile qu'on venait de mettre en usage, et n'atteignait
+personne. Au premier suspendStack ou closeStack, closeDownHelpStack renvoyait
+« setCheckMark FALSE » à la pile, et la ligne répondait « menu introuvable ».
+
+Corrigé : la suite de la chaîne, les piles en usage, se relit à chaque pass
+(hc_send_args_k_body). Harnais passusage, qui échoue sur le noyau d'avant.
+
+DÉDUIT DU CODE D'APPLE, PAS MESURÉ : sans ce comportement, HyperTalk
+Reference ouverte seule n'aurait pas de menu dans HyperCard non plus. Banc
+demandé le 10 octobre, à jouer DANS HYPERCARD 2.4.1 (Basilisk II) :
+
+    on mouseUp
+      stop using stack "HyperCard Help"
+      answer "[" & lastItem(":", "a:b:c") & "]"
+      answer "[" & the stacksInUse & "]"
+    end mouseUp
+
+    function lastItem
+      start using stack "HyperCard Help"
+      pass lastItem
+    end lastItem
+
+« [c] » au premier dialogue : le pass atteint la pile mise en usage pendant
+le gestionnaire, comme HC le fait maintenant. Résultat : EN ATTENTE.
+
+LE MÊME DIALOGUE, PAR LE GLOSSAIRE — le même jour. Une fois Help Extras
+lisible (« the textStyle of theChunk », docs/mesures/designateur_calcule.txt),
+l'utilisatrice a cliqué un mot du glossaire DANS HC (l'application) : « ça
+ouvre, mais toujours le même bug ». Cause, trouvée dans le code et rejouée
+dans le noyau par un faux hôte à fenêtres (harnais fenetrepile) : un « go »
+vers une autre pile envoyait closeStack à la pile quittée, et l'hôte, dont la
+fenêtre passait derrière, suspendStack. Deux départs ; HyperCard Help retire
+son menu au premier, et le setCheckMark du second ne le trouve plus. La
+référence d'Apple, carte « closeStack » : « If you have more than one stack
+open at a time, HyperCard sends suspendStack, not closeStack, when the stack
+becomes inactive. » Chez un hôte qui donne une fenêtre à chaque pile, le
+noyau laisse maintenant les messages de pile à l'hôte (v3_va_a).
+
+Le faux hôte a montré un second défaut : en passant devant, la fenêtre
+reprenait la carte qu'elle montrait, APRÈS que le go eut posé la sienne. Un
+second mot du glossaire ouvrait donc la carte du premier. L'hôte passe
+maintenant avant. NON VÉRIFIÉ ICI : que les avis de fenêtre arrivent pendant
+makeKeyAndOrderFront, comme le faux hôte le suppose. Il faut macOS.
+
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même soir, après
+recompilation : « ça tourne bien ». C'est le constat d'ensemble, pas une
+mesure de l'ordre des avis de fenêtre.
+
+LE MENU « Reference » — le même soir. « Quand je sélectionne un item dans le
+menu Reference, ça ne met pas la pile choisie en avant. » Ses articles font
+
+    go this card of stack "Help Extras" in a new window
+
+Deux défauts, l'un sur l'autre :
+
+  · « this card of stack "X" » désignait la carte courante de la pile
+    COURANTE : le go restait sur place. C'est maintenant la carte que montre
+    X — la dernière visitée, que l'historique garde, ou la première
+    (carte_de_la_pile). Harnais cettecarte. Déduit du code d'Apple.
+  · HyperCard Help, mise en usage par HyperTalk Reference, est chargée SANS
+    fenêtre (cocoa_load_stack). Un go vers elle n'avait rien à mettre
+    devant. cocoa_stack_changed lui donne maintenant sa fenêtre, qui la
+    prend en charge. Fermer cette fenêtre la ferme comme une autre, ce qui
+    la retire aussi des piles en usage ; HyperTalk Reference la redéclare à
+    son resumeStack suivant. Ce que fait HyperCard d'une pile en usage dont
+    on ferme la fenêtre : NON MESURÉ.
+
+ESSAYÉ DANS HC (l'application) par l'utilisatrice après recompilation, les
+trois articles tour à tour : « ça marche impeccable ».
+
+CE QUI RESTE. Quitter HyperTalk Reference pour une autre pile (suspendStack)
+retire le menu SANS cesser d'utiliser HyperCard Help : removeHelpFunctions
+cherche « ":HyperCard Help" & return » dans the stacksInUse, et nos chemins
+sont en « / ». Fermer ensuite HyperTalk Reference DE DERRIÈRE, ou quitter HC
+quand elle est derrière, renvoie setCheckMark à un menu disparu : « menu
+introuvable », encore. C'est la décision sur les chemins, plus bas. Le
+second dialogue du banc dit la forme exacte de the stacksInUse dans
+HyperCard, retour final compris : sans retour final, HyperCard Help, seule
+pile en usage, ne serait pas retirée non plus.
+
+
 RELEVÉ, PAS ENCORE CORRIGÉ
 --------------------------
 
-  flash 2                       commande inconnue.
+  flash 2                      commande inconnue.
   the long version              inconnue ; « the version » rend 2.4.1.
   the selectedLoc               fonction inconnue.
   select bkgnd button "X"       refusé : sélectionner un OBJET, comme à

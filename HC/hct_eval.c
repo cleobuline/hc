@@ -1586,7 +1586,11 @@ static HctValeur noeud_of(HctContexte *ctx, const HctNoeud *n)
          * AVANT lit_prop, comme lit_prop l'est avant le recours, et pour la
          * même raison : le plus précis d'abord. resout ne saurait de toute
          * façon rien faire de ce nœud-là. */
-        if (ctx->hote.lit_prop_morceau && sur->genre == HCTN_CHUNK) {
+        /* UN NOM aussi : « the textStyle of theChunk », où theChunk vaut
+         * « char 13 to 17 of bg field 2 ». L'hôte évalue le nom et décide si
+         * c'est un morceau ; sinon il rend 0, et l'on continue ici. */
+        if (ctx->hote.lit_prop_morceau &&
+            (sur->genre == HCTN_CHUNK || sur->genre == HCTN_IDENT)) {
             /* INITIALISÉE, et ce n'est pas de la prudence décorative : un
              * rappel qui rend 1 en posant une FAUTE n'a rien à écrire dans
              * `out`, et la valeur repartait alors avec un pointeur de pile.

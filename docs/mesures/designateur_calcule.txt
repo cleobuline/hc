@@ -182,3 +182,40 @@ exactement le raisonnement qui a fait écrire, plus haut dans ce fichier, que
 « do » existait parce que les commandes refusaient.
 
 Le banc s'étend d'une ligne par commande. Il suffit de le rejouer.
+
+
+═══════════════════════════════════════════════════════════════════════════
+LE 10 OCTOBRE : LA MÊME RÈGLE, POUR UN MORCEAU
+═══════════════════════════════════════════════════════════════════════════
+
+Signalé DANS HC (l'application), dans Help Extras : « cliquer sur un mot
+souligné ne va nulle part ». Le script du champ :
+
+    put the clickChunk into theChunk
+    get the textStyle of theChunk
+    if it contains "group" then …   go card (theSection & the value of theChunk)
+
+theChunk vaut « char 13 to 17 of bg field 2 ». La règle mesurée plus haut
+couvrait un nom qui vaut un OBJET ; un nom qui vaut un MORCEAU rendait la
+question — « textStyle of theChunk » —, le test échouait, et le gestionnaire
+finissait sans rien faire ni rien dire.
+
+DÉDUIT DES PILES D'APPLE, NON MESURÉ DANS HYPERCARD. Trois piles écrivent
+cette forme : Help Extras (ci-dessus), HyperCard Help (« the textStyle » et
+« the textFont of theChunkOfText », dans checkActiveText), et HyperTalk
+Reference, qui l'enseigne dans les deux sens :
+
+    put the textStyle of the clickChunk into theStyle
+    put the selectedChunk into theChunk
+    set the textStyle of theChunk to bold
+
+Corrigé en lecture et en écriture (v3_morceau_calcule) : un NOM NU dont la
+valeur s'analyse en entier comme un morceau d'objet. textStyle, textFont,
+textSize, textColor — les quatre propriétés de plage. Harnais morceaunom,
+qui échoue sur le noyau d'avant.
+
+LES TÉMOINS NE BOUGENT PAS : un nom qui vaut un objet lit l'objet, un nom qui
+vaut « word 2 of x » ou que rien ne lie rend la question comme avant. UN SEUL
+CHANGE, et c'est voulu : un nom qui vaut un morceau d'un champ ABSENT arrête
+maintenant le gestionnaire sur « objet introuvable », comme la lecture
+directe du même morceau, mesurée le 27 septembre (v3_prop_sur_morceau).
