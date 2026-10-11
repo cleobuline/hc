@@ -10,6 +10,7 @@
 #import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
 #import "HCdialogs.h"
+#import "HCtext.h"     /* style_titre_menu, pour le menu Style */
 #import "hc_core.h"
 #import "hc_file.h"
 #import "hc_origine.h"   /* lire une pile au format d'HyperCard */
@@ -657,6 +658,66 @@ static NSMenu *gRecentMenu = nil;
     }
     [toolsItem setSubmenu:toolsMenu];
     [mainMenu addItem:toolsItem];
+
+    /* --- menu Style ---
+     *
+     * Celui d'HyperCard 2.4.1, relevé dans Basilisk II par l'utilisatrice le
+     * 11 octobre : les neuf styles, les six corps, « Other… ». Chaque style
+     * s'écrit dans son propre style ; aucun article n'a de raccourci, et
+     * l'on n'en invente pas. Il agit sur le texte du champ qu'on édite, et
+     * se grise ailleurs (validateMenuItem:, HCview.m).
+     *
+     * C'est par lui qu'on pose « Group » sur des mots : le lien hypertexte
+     * d'HyperCard, qu'un script de champ suit par « the clickText ». */
+    NSMenuItem *styleItem = [[NSMenuItem alloc] init];
+    NSMenu *styleMenu = [[NSMenu alloc] initWithTitle:@"Style"];
+    [styleMenu setAutoenablesItems:YES];
+    struct { NSString *titre; NSInteger tag; } styles[] = {
+        { @"Plain",     HCV_STYLE_PLAIN },
+        { @"Bold",      HC_BOLD      },
+        { @"Italic",    HC_ITALIC    },
+        { @"Underline", HC_UNDERLINE },
+        { @"Outline",   HC_OUTLINE   },
+        { @"Shadow",    HC_SHADOW    },
+        { @"Condense",  HC_CONDENSE  },
+        { @"Extend",    HC_EXTEND    },
+        { @"Group",     HC_GROUP     },
+    };
+    for (int i = 0; i < (int)(sizeof styles / sizeof *styles); i++) {
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:styles[i].titre
+                                                    action:@selector(styleMenu:)
+                                             keyEquivalent:@""];
+        [mi setTag:styles[i].tag];
+        [mi setTarget:view];
+        /* Group s'écrit droit sur la capture : il ne se voit pas. Plain
+         * aussi, évidemment ; les autres montrent ce qu'ils font. */
+        if (styles[i].tag != HCV_STYLE_PLAIN && styles[i].tag != HC_GROUP)
+            [mi setAttributedTitle:style_titre_menu(styles[i].titre,
+                                                    (int)styles[i].tag)];
+        [styleMenu addItem:mi];
+    }
+    [styleMenu addItem:[NSMenuItem separatorItem]];
+    static const int corpsMenu[] = { 9, 10, 12, 14, 18, 24 };
+    for (int i = 0; i < (int)(sizeof corpsMenu / sizeof *corpsMenu); i++) {
+        NSMenuItem *mi = [[NSMenuItem alloc]
+            initWithTitle:[NSString stringWithFormat:@"%d", corpsMenu[i]]
+                   action:@selector(styleMenu:)
+            keyEquivalent:@""];
+        [mi setTag:HCV_STYLE_CORPS + corpsMenu[i]];
+        [mi setTarget:view];
+        [styleMenu addItem:mi];
+    }
+    [styleMenu addItem:[NSMenuItem separatorItem]];
+    {
+        NSMenuItem *mi = [[NSMenuItem alloc] initWithTitle:@"Other…"
+                                                    action:@selector(styleMenu:)
+                                             keyEquivalent:@""];
+        [mi setTag:HCV_STYLE_AUTRE];
+        [mi setTarget:view];
+        [styleMenu addItem:mi];
+    }
+    [styleItem setSubmenu:styleMenu];
+    [mainMenu addItem:styleItem];
 
     /* --- retirer les menus du gabarit qui ne servent à rien ici ---
      * View, Window et Help viennent du nib d'Xcode. Le premier ne pilote

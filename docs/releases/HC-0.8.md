@@ -30,7 +30,8 @@ extension. Apple's three help stacks — HyperCard Help, HyperTalk Reference
 and Help Extras — now work end to end when you open them in HC: the
 Reference menu, the glossary, the underlined words. Then HyperTalk
 Reference was read card by card against HC, and the commands it describes
-that stopped a script in HC are now supported.
+that stopped a script in HC are now supported. And HC now has HyperCard's
+**Style menu**, which is how you make links of your own.
 
 ### At a glance
 
@@ -41,6 +42,8 @@ that stopped a script in HC are now supported.
 | The Reference menu of Apple's help stacks | "menu not found" dialogs; the chosen stack stays behind | **works**, and brings the chosen stack to the front |
 | `put menuItem 4 of menu "X"`, `put menu "X"` | "object not found" | the item's text; the menu's items, each followed by a return (**measured** in HyperCard 2.4.1) |
 | `mark cards where …`, `open printing`, `go forth`, `lock recent`, `set the printMargins …` and others | stopped the script | **supported** |
+| Grouping words to make a link in a field | only by script | **the Style menu**, as in HyperCard 2.4.1 |
+| `show groups` on a card already drawn | the grey underline did not appear | **appears at once** |
 | `the hcVersion`, "About HC" | `0.7.9.3` | `0.8` |
 
 ---
@@ -112,13 +115,47 @@ that stopped a script in HC are now supported.
   how HC prints. `the environment` returns `development`, `the suspended`
   what the system says, and `the stackSpace` one megabyte.
 
+### 3. The Style menu
+
+- **HyperCard's Style menu**, as HyperCard 2.4.1 shows it: Plain, Bold,
+  Italic, Underline, Outline, Shadow, Condense, Extend, Group; 9, 10, 12,
+  14, 18, 24; Other…. Each style is written in its own style. It applies to
+  the text you select in a field you are editing, and is greyed out
+  elsewhere. A style is turned on for the whole selection, or off if all of
+  it already has it; Plain removes them all. The check marks show what the
+  whole selection has, and Cmd-Z undoes.
+- **Group is how you make a link.** Select some words, choose Group, and
+  give the field (locked) a script that follows the click, as Apple's help
+  stacks do:
+
+  ```
+  on mouseUp
+    if "group" is in the textStyle of the clickChunk then
+      go card (the clickText)
+    end if
+  end mouseUp
+  ```
+
+  Grouped text shows its grey underline only after `show groups`; Apple's
+  help stacks turn it on themselves when they open. Put `show groups` in
+  your stack's `openStack` handler to see it in yours.
+- **`show groups` redraws the fields already shown.** HC kept the drawing
+  of recently shown fields, and that memory did not take `show groups` into
+  account: the grey underline did not appear on the current card, and
+  "Hide Active Text" in the help stacks left it on cards already seen.
+- **Courier and Monaco fields no longer come out condensed after editing.**
+  HC corrects the spacing of these old fonts slightly, and that correction
+  was read back as Condense, or Extend for some sizes, when a field was
+  edited. Found by reading the code, not seen on screen.
+
 ---
 
 ### Test status
 
 - C kernel: **303 checks, all green**, including under AddressSanitizer,
   UndefinedBehaviorSanitizer and LeakSanitizer. Thirteen are new, for the
-  fixes above.
+  fixes in sections 1 and 2. The Style menu lives in the Cocoa interface,
+  which these checks do not reach: it was tried in the application.
 - **Zero warnings**: gcc at three optimisation levels, *and* clang with
   Xcode's warning families. **Zero** static-analyser warnings. The Cocoa
   application builds on macOS in continuous integration.
@@ -138,6 +175,10 @@ that stopped a script in HC are now supported.
   `print card from … to …` inside a print job (HC prints it at once, on its
   own).
 - Whether `go forth` also forgets its steps after a detour.
+- The Style menu outside a field being edited (an object selected with the
+  Button or Field tool, the paint Text tool): HC greys it out. A selection
+  with mixed styles: HC turns the style on. `doMenu "Bold"` from a script is
+  not served.
 - The default of `dialingVolume` (HC says 7), and the answer of
   `the stackSpace`.
 - Still from 0.7.9.3: `go card "Nonexistent"`; the exact format of
@@ -189,5 +230,7 @@ that stopped a script in HC are now supported.
   Reference describes and HC could not run
 - [#120](https://github.com/cleobuline/hc/pull/120): version 0.8 and this
   note
+- [#121](https://github.com/cleobuline/hc/pull/121): the Style menu,
+  `show groups` on fields already drawn, Courier and Monaco after editing
 
 **Full changelog:** [HC-0.7.9.3...HC-0.8](https://github.com/cleobuline/hc/compare/HC-0.7.9.3...HC-0.8)

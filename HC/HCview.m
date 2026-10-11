@@ -5937,6 +5937,29 @@ static BOOL hcv_presse_systeme_plus_recent(void)
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
     SEL a = [item action];
 
+    /* LE MENU STYLE : actif sur un champ en édition, grisé ailleurs. Ses
+     * coches disent ce que la sélection a d'un bout à l'autre — Plain quand
+     * elle n'a aucun style, un corps quand elle n'en a qu'un —, comme celles
+     * d'HyperCard, qui cochait Plain et 12 sur la capture du 11 octobre.
+     * Globales seulement, pas `self` : voir plus bas, Bring Closer. */
+    if (a == @selector(styleMenu:)) {
+        if (!gEditingField || !gFieldEditor) {
+            [item setState:NSControlStateValueOff];
+            return NO;
+        }
+        CGFloat corps = 0;
+        int commun = style_plage_commun([gFieldEditor textStorage],
+                                        [gFieldEditor selectedRange],
+                                        [gFieldEditor typingAttributes], &corps);
+        NSInteger t = [item tag];
+        BOOL coche = NO;
+        if (t == HCV_STYLE_PLAIN)                 coche = (commun == 0);
+        else if (t >= HC_BOLD && t <= HC_GROUP)  coche = (commun & (int)t) != 0;
+        else if (t > HCV_STYLE_CORPS)            coche = lround(corps) == t - HCV_STYLE_CORPS;
+        [item setState:coche ? NSControlStateValueOn : NSControlStateValueOff];
+        return YES;
+    }
+
     if (a == @selector(togglePalette:)) {
         [item setState:[self paletteVisibleForTag:[item tag]]
                         ? NSControlStateValueOn : NSControlStateValueOff];
@@ -9676,6 +9699,73 @@ static NSTextField  *gSprayDensityLabel = nil;
     gApplyingSelection = YES;
     hc_set_selection(gEditingField, b0, b1 - b0);
     gApplyingSelection = NO;
+}
+
+/* LE MENU STYLE, sur le texte du champ qu'on édite. Voir HCtext.m pour le
+ * menu relevé dans HyperCard 2.4.1.
+ *
+ * Un style BASCULE, comme dans tout éditeur Macintosh : si toute la
+ * sélection l'a déjà, il s'ôte, sinon il se pose partout. Plain ôte tout ;
+ * un corps se pose tel quel. Sans sélection, c'est la frappe qui suit qui
+ * reçoit le style.
+ *
+ * Rien ne passe par le noyau ici : la NSTextView garde le texte stylé
+ * pendant l'édition, et endFieldEdit en relit les plages à la fermeture,
+ * comme pour le gras du menu Format ou la couleur du panneau. Le geste
+ * s'annule par ⌘Z, puisqu'il est annoncé à la vue
+ * (shouldChangeTextInRange: … didChangeText).
+ *
+ * NON MESURÉ, et écrit comme tel : ce que fait HyperCard du menu Style hors
+ * d'un champ en édition — objet sélectionné à l'outil, outil texte de
+ * peinture. Ici, il se grise. */
+- (void)styleMenu:(id)sender {
+    if (!gEditingField || !gFieldEditor) return;
+    if (hcv_menu_trappe([[sender title] UTF8String])) return;   /* la pile détourne l'article */
+    if (!gEditingField || !gFieldEditor) return;   /* son doMenu a pu clore l'édition */
+    NSTextView *tv = gFieldEditor;
+    NSRange r = [tv selectedRange];
+    NSInteger t = [sender tag];
+
+    int pose = 0, retire = 0;
+    CGFloat corps = 0;
+    if (t == HCV_STYLE_PLAIN) {
+        retire = 0xFF;
+    } else if (t >= HC_BOLD && t <= HC_GROUP) {
+        int commun = style_plage_commun([tv textStorage], r,
+                                        [tv typingAttributes], NULL);
+        if (commun & (int)t) retire = (int)t;
+        else                 pose   = (int)t;
+    } else if (t == HCV_STYLE_AUTRE) {
+        CGFloat avant = 0;
+        style_plage_commun([tv textStorage], r, [tv typingAttributes], &avant);
+        char dft[16] = "";
+        if (avant > 0) snprintf(dft, sizeof dft, "%ld", lround(avant));
+        const char *rep = cocoa_ask("Corps du texte :", dft);
+        if (!rep) return;
+        long v = strtol(rep, NULL, 10);
+        /* La borne du noyau pour « set the textSize » et pour le lecteur de
+         * pile : au-delà, plus rien ne s'affiche. Hors de là, on refuse. */
+        if (v < 1 || v > HC_TEXTE_MAX) { NSBeep(); return; }
+        corps = (CGFloat)v;
+        /* Le dialogue est modal, et tout a pu bouger derrière lui : on
+         * reprend l'éditeur et sa sélection tels qu'ils sont MAINTENANT. */
+        if (!gEditingField || !gFieldEditor) return;
+        tv = gFieldEditor;
+        r = [tv selectedRange];
+    } else if (t > HCV_STYLE_CORPS) {
+        corps = (CGFloat)(t - HCV_STYLE_CORPS);
+    } else {
+        return;
+    }
+
+    if (r.length == 0) {
+        [tv setTypingAttributes:
+            style_attrs_modifies([tv typingAttributes], pose, retire, corps)];
+        return;
+    }
+    if (![tv shouldChangeTextInRange:r replacementString:nil]) return;
+    style_plage_modifie([tv textStorage], r, pose, retire, corps);
+    [tv didChangeText];
 }
 
 - (void)endFieldEdit {
