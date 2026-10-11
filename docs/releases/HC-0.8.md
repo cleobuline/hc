@@ -187,6 +187,7 @@ that stopped a script in HC are now supported.
   end to end, `play` with a variable, menus read as values
 - [#119](https://github.com/cleobuline/hc/pull/119): what HyperTalk
   Reference describes and HC could not run
-- VERSION PR: version 0.8 and this note
+- [#120](https://github.com/cleobuline/hc/pull/120): version 0.8 and this
+  note
 
 **Full changelog:** [HC-0.7.9.3...HC-0.8](https://github.com/cleobuline/hc/compare/HC-0.7.9.3...HC-0.8)
