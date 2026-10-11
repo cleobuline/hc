@@ -1094,7 +1094,8 @@ Object  *hc_recent_at(int i);
 /* Les mêmes SANS DOUBLON, la plus récente d'abord : remplit out (au plus max
  * entrées) et rend le nombre écrit. C'est ce que montrent le menu Recent et
  * « the recent cards » ; l'historique brut, lui, garde ses répétitions, dont
- * « go back » a besoin pour retracer les pas. */
+ * « go back » a besoin pour retracer les pas. Les cartes visitées sous
+ * « lock recent » n'y sont pas ; elles restent dans l'historique brut. */
 int      hc_recent_distinct(Object **out, int max);
 /* Revenir à la carte précédente. 0 s'il n'y a nulle part où revenir. */
 int      hc_go_back(void);

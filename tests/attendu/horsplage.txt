@@ -5,7 +5,7 @@
 ── set the dragSpeed to -1e31850
    [ERR]    !! dragSpeed va de 0 à 32767, reçu -INF
 ── set the dragSpeed to 12
-── put the dragSpeed
+  put the dragSpeed
    12
 
 == le rang d'une carte marquée ==
