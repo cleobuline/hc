@@ -236,5 +236,7 @@ that stopped a script in HC are now supported. And HC now has HyperCard's
   note
 - [#121](https://github.com/cleobuline/hc/pull/121): the Style menu,
   `show groups` on fields already drawn, Courier and Monaco after editing
+- [#122](https://github.com/cleobuline/hc/pull/122): Hypertexte, a
+  demonstration stack linked with grouped words
 
 **Full changelog:** [HC-0.7.9.3...HC-0.8](https://github.com/cleobuline/hc/compare/HC-0.7.9.3...HC-0.8)
