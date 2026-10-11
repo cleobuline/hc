@@ -88,5 +88,17 @@ NON MESURÉ, et à jouer DANS HYPERCARD 2.4.1 (Basilisk II) si l'on y tient
   · « doMenu "Bold" » dans un script, pendant une édition : HC ne le sert
     pas (la table de cocoa_menu_hypercard ne connaît pas le menu Style).
 
-Et pas encore essayé DANS HC (l'application) : la compilation est vérifiée
-par l'intégration continue, le geste ne l'est pas.
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même soir, après
+recompilation. Premier essai : « quand je mets group sur un mot, je ne vois
+pas le liséré gris ». Deux causes :
+
+  · le liséré ne se montre qu'après « show groups », comme dans HyperCard.
+    Les piles d'aide l'allument en s'ouvrant (setUpHelpStack) et l'éteignent
+    en partant (closeDownHelpStack) ; sa pile à elle ne l'allumait pas ;
+  · et un VRAI DÉFAUT, déduit du code : la mémoire des champs déjà dessinés
+    (champ_signature, HCtext.m) ne comptait pas gGroupsShown dans sa clé.
+    « show groups » ne redessinait pas un champ déjà vu. Corrigé.
+
+Second essai, après la correction : « ça marche ». C'est le constat
+d'ensemble — Group posé par le menu, liséré montré par « show groups » —,
+pas une mesure de chaque article du menu.
