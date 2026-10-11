@@ -31,7 +31,7 @@
    doMenu "18"
       (hôte : « 18 », laissé au noyau)
    put the textSize of word 3 of card field 1 && the textSize of word 1 of card field 1
-      = 18 0
+      = 18 12
 
 == 6. sans sélection, rien ne bouge, et pas d'erreur ==
    select empty
