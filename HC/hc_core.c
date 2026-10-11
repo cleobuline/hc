@@ -13935,6 +13935,27 @@ static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
         return 1;
     }
 
+    /* « lock recent » et « lock error dialogs » : les raccourcis de « set
+     * the lockRecent » et « set the lockErrorDialogs », comme « lock
+     * messages » l'est de lockMessages. La carte « unlock » de HyperTalk
+     * Reference les écrit ; HC tenait les deux propriétés et répondait
+     * « ne sait pas faire » aux deux commandes. Relevé le 11 octobre. */
+    if (ci_equal(mot, "recent") && n->nfils == 1) {
+        reglage_pose("lockrecent", ci_equal(n->op, "lock") ? "true" : "false");
+        set_result("");
+        return 1;
+    }
+    if (ci_equal(mot, "error") && n->nfils == 2) {
+        char mot2[32];
+        v3_brut(n->fils[1], mot2, sizeof mot2);
+        if (ci_equal(mot2, "dialogs")) {
+            reglage_pose("lockerrordialogs",
+                         ci_equal(n->op, "lock") ? "true" : "false");
+            set_result("");
+            return 1;
+        }
+    }
+
     if (!ci_equal(mot, "screen")) return 0;
 
     /* « UNLOCK SCREEN WITH VISUAL [EFFECT] <effet> [vitesse] [TO <image>] ».
