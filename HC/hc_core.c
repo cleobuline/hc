@@ -2699,15 +2699,25 @@ int hc_delete_card(Object *card)
  * « mixed » à côté de ses voisins, dessinés pareil.
  *
  * Le champ garde son 0 — « rien de posé » —, si bien qu'aucune pile ne
- * change à l'écriture ; seules les LECTURES rendent le corps effectif. Les
- * BOUTONS ne passent pas par ici : leur corps implicite dépend du style
- * (11, 12, 13 ou 16 selon HCview.m), et leur réponse dans HyperCard n'est
- * pas mesurée. */
+ * change à l'écriture ; seules les LECTURES rendent le corps effectif. */
 #define HC_CORPS_CHAMP 12
 static int corps_champ(const Object *o)
 {
     return (o && o->textsize > 0) ? o->textsize : HC_CORPS_CHAMP;
 }
+
+/* UN BOUTON NEUF, DANS HYPERCARD 2.4.1 : « 12 Chicago ». Mesuré DANS
+ * HYPERCARD (Basilisk II) par l'utilisatrice le 11 octobre ; HC répondait 0
+ * et rien. Ce sont donc les LECTURES de « the textSize » et « the textFont »
+ * d'un bouton sans rien de posé, pour les scripts qui calculent dessus.
+ *
+ * La police ne ment pas sur le dessin : HC n'a pas de fonte « Chicago », et
+ * un bouton dont on pose « Chicago » se dessine déjà en police système, sa
+ * descendante — exactement comme un bouton sans police. Le CORPS, lui, est
+ * dessiné selon le style (11, 12, 13 ou 16 dans HCview.m) : un choix de
+ * dessin de HC, que la lecture ne suit pas, et que ce relevé ne touche pas. */
+#define HC_CORPS_BOUTON  12
+#define HC_POLICE_BOUTON "Chicago"
 
 int hc_text_height(Object *o)
 {
@@ -7040,7 +7050,13 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return 1; }
     if (ci_equal(prop, "marked")) { snprintf(out, outlen, "%s", o->marked ? "true" : "false"); return 1; }
-    if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return 1; }
+    if (ci_equal(prop, "textfont")) {
+        const char *fn = o->textfont ? o->textfont : "";
+        /* Un bouton sans police posée : voir HC_POLICE_BOUTON. */
+        if (!*fn && o->type == OBJ_BUTTON) fn = HC_POLICE_BOUTON;
+        snprintf(out, outlen, "%s", fn);
+        return 1;
+    }
     if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return 1; }
     if (ci_equal(prop, "textstyle")) {
         /* Même formatage que la lecture sur un morceau : le
@@ -7055,7 +7071,10 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return 1; }
     if (ci_equal(prop, "textsize")) {
         /* Le corps EFFECTIF d'un champ : voir corps_champ. */
-        snprintf(out, outlen, "%d", o->type == OBJ_FIELD ? corps_champ(o) : o->textsize);
+        int sz = o->textsize;
+        if (o->type == OBJ_FIELD)                     sz = corps_champ(o);
+        else if (o->type == OBJ_BUTTON && sz <= 0)    sz = HC_CORPS_BOUTON;
+        snprintf(out, outlen, "%d", sz);
         return 1;
     }
     /* textHeight n'est PAS textSize : c'est l'interligne, et

@@ -12,10 +12,13 @@
  * Le champ garde son 0 — rien de posé —, et le fichier ne l'écrit toujours pas
  * (section 4) : seules les lectures rendent le corps effectif.
  *
+ * Un BOUTON neuf, mesuré DANS HYPERCARD le même jour : « 12 Chicago ». HC
+ * répondait 0 et rien ; il répond maintenant pareil (section 5). Chicago ne
+ * ment pas : HC n'a pas cette fonte, et la dessine déjà en police système.
+ *
  * NON CORRIGÉ ICI : « the textFont » d'un champ neuf, vide là où HyperCard
  * dit Geneva — HC le dessine en police système, et répondre Geneva serait
- * faux tant que le dessin ne suit pas. NON MESURÉ : le corps d'un bouton neuf
- * dans HyperCard ; HC répond toujours 0 (section 3). */
+ * faux tant que le dessin ne suit pas. */
 #include "hc_core.h"
 #include "hc_file.h"
 #include <stdio.h>
@@ -54,10 +57,9 @@ int main(void)
     fais("set the textSize of word 3 of card field 1 to 18");
     fais("put the textSize of word 2 to 3 of card field 1");
 
-    puts("\n== 3. posé, il se relit ; un bouton n'est pas touché ==");
+    puts("\n== 3. posé, il se relit ==");
     fais("set the textSize of card field 1 to 14");
     fais("put the textSize of card field 1 && the textSize of word 1 of card field 1");
-    fais("put the textSize of card button 1");
 
     puts("\n== 4. un champ sans corps posé ne l'écrit pas dans le fichier ==");
     Object *g = hc_new_field(c, "Autre");
@@ -80,6 +82,13 @@ int main(void)
     printf("      relue : %s ; corps rangé du champ « Autre » : %d\n",
            relue ? "oui" : "NON", g2 ? g2->textsize : -1);
     if (relue) hc_free(relue);
+
+    puts("\n== 5. un bouton neuf : « 12 Chicago », comme HyperCard ; posés, ils se relisent ==");
+    fais("put the textSize of card button 1 && the textFont of card button 1");
+    fais("set the textSize of card button 1 to 9");
+    fais("set the textFont of card button 1 to \"Geneva\"");
+    fais("put the textSize of card button 1 && the textFont of card button 1");
+    fais("put the textFont of card field 1");
 
     hc_unregister_stack(st);
     hc_free(st);
