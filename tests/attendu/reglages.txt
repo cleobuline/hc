@@ -25,6 +25,10 @@
 ── pas un nombre : refuse aussi
    [ERR]    !! dragSpeed attend un nombre, reçu « vite »
    reste a 120
+── au repos, dragSpeed et itemDelimiter retombent ; userLevel reste
+   pendant : 120 / 3
+── (le gestionnaire suivant)
+   apres : 0 , 3
 ── utilisables dans un test, ce qui est tout l'interet
       niveau bas : on n'edite pas
       niveau auteur

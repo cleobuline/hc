@@ -18259,6 +18259,22 @@ static int hc_send_args_k(Object *target, const char *message,
     if (g_depth == 0) reglage_eteint("lockerrordialogs");
     if (g_depth == 0) g_skip_errors = -1;
 
+    /* DEUX RÉGLAGES QUE HYPERCARD REMET AU REPOS, et que HC gardait d'une
+     * ligne à l'autre. La référence d'Apple, carte par carte : « On idle,
+     * HyperCard resets the dragSpeed to 0 » ; « HyperCard resets
+     * itemDelimiter to the default delimiter at idle ». Mesuré dans HC le
+     * 11 octobre : « set the itemDelimiter to "/" » tapé dans la boîte de
+     * message valait encore à la ligne suivante. Trouvés en cherchant les
+     * sites jumeaux de lockRecent, que l'audit des sources avait relevé.
+     *
+     * Écrits ici directement, sans reglage_pose : celui-ci annonce chaque
+     * pose, et le repos bavarderait à chaque message. */
+    if (g_depth == 0) {
+        item_delim_pose(NULL);
+        int i = reglage_index("dragspeed");
+        if (i >= 0) G_REGLAGES[i].valeur = 0;
+    }
+
     /* Une commande « delete this card » peut avoir détaché l'objet dont le
      * gestionnaire vient juste de finir. C'est seulement ici que plus aucun
      * code du message n'a besoin de lui. Une suppression C extérieure garde
