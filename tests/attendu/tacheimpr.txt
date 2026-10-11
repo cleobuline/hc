@@ -1,0 +1,66 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. témoin : sans travail, chaque print part tout de suite ==
+   print card
+      -> hôte : imprime 1 carte : C1
+
+== 1 bis. « print N cards » : N cartes depuis la carte courante ==
+   print 2 cards
+      -> hôte : imprime 2 cartes : C1 C2
+   go card 5
+   print 9 cards
+      -> hôte : imprime 2 cartes : C5 C6
+   print "deux" cards
+      [ERR]    !! print : un nombre de cartes est attendu : deux
+   go card 1
+
+== 2. un travail : rien ne part avant close printing ==
+   open printing
+   print this card
+   go next card
+   print this card
+   print card 5
+   put "[" & the result & "]"
+      = []
+   close printing
+      -> hôte : imprime 3 cartes : C1 C2 C5
+   put "[" & the result & "]"
+      = []
+
+== 3. l'exemple de la référence : printRange 2,4 ==
+   go card 1
+   printRange 2,4
+      -> hôte : imprime 3 cartes : C2 C3 C4
+   put the short name of this card
+      = C1
+
+== 4. with dialog, et un close sans open ==
+   open printing with dialog
+   print card 6
+   close printing
+      -> hôte : imprime 1 carte : C6
+   close printing
+   put "[" & the result & "]"
+      = []
+
+== 5. une carte supprimée sort du travail ==
+   open printing
+   print card 3
+   print card 4
+   go card 3
+   delete this card
+   close printing
+      -> hôte : imprime 1 carte : C4
+
+== 6. une carte découpée part seule, tout de suite ==
+   open printing
+   print card 1
+   print card from 0,0 to 100,50
+      -> hôte : imprime 1 carte : C4  (découpe 0,0,100,50)
+   close printing
+      -> hôte : imprime 1 carte : C1
+
+== 7. ce qui reste refusé ==
+   open report printing
+      [ERR]    !! ne sait pas faire : open report printing
+   open printing now
+      [ERR]    !! ne sait pas faire : open printing now

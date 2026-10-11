@@ -5484,9 +5484,30 @@ static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
  * La liste est celle des globales du noyau qui retiennent un Object* SANS EN
  * ÊTRE PROPRIÉTAIRES. Les propriétaires — g_stacks, g_clipboard, g_clip_bg_copy
  * — n'ont rien à faire ici : leur contenu ne meurt pas sous eux. */
+/* LE TRAVAIL D'IMPRESSION EN COURS : « open printing » … « close printing ».
+ *
+ * Entre les deux, chaque « print card » AJOUTE ses cartes ici au lieu de
+ * les imprimer aussitôt, et « close printing » les remet à l'hôte d'un seul
+ * coup : un dialogue d'impression, un seul document. La carte « open
+ * printing » de HyperTalk Reference : « You must use the close printing
+ * command to end a print job begun with open printing. » Rien ne le ferme
+ * donc tout seul. Les cartes sont des pointeurs empruntés : une carte
+ * supprimée entre-temps en sort, voir oublie_objet_interne. */
+static Object **g_tache_cartes = NULL;
+static int      g_tache_n = 0, g_tache_cap = 0;
+static int      g_tache_ouverte = 0;
+
 static void oublie_objet_interne(Object *mort)
 {
     if (!mort) return;
+
+    /* le travail d'impression en cours */
+    {
+        int k = 0;
+        for (int i = 0; i < g_tache_n; i++)
+            if (g_tache_cartes[i] != mort) g_tache_cartes[k++] = g_tache_cartes[i];
+        g_tache_n = k;
+    }
 
     /* la sélection de texte */
     if (g_sel_field == mort) { g_sel_field = NULL; g_sel_start = g_sel_len = 0; }
@@ -13322,6 +13343,38 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         /* « print » nu : la carte courante. */
         if (g_current_card) liste[np++] = g_current_card;
     }
+    else if (quoi->genre != HCTN_OBJET && i0 + 1 < n->nfils &&
+             n->fils[i0 + 1]->genre == HCTN_OBJET &&
+             n->fils[i0 + 1]->typeobj == HCT_OBJ_CARD &&
+             n->fils[i0 + 1]->nfils == 0) {
+        /* « print 5 cards », « print (total-start) + 1 cards » : N cartes à
+         * partir de la carte courante. La carte « print » de HyperTalk
+         * Reference écrit « print posInteger cards », et l'exemple de sa carte
+         * « open printing » s'en sert. HC répondait « rien à imprimer » : le
+         * nombre arrivait seul, et aucune branche ne le lisait. Relevé le 11
+         * octobre.
+         *
+         * NON MESURÉ : ce que fait HyperCard au-delà de la dernière carte.
+         * On s'y arrête, sans repartir de la première. */
+        char v[64];
+        v3_val_texte(ctx, quoi, v, sizeof v);
+        if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+        if (!hct_est_nombre(v)) {
+            set_result("Bad number of cards");
+            emit(HC_ERR, "   !! print : un nombre de cartes est attendu : %s", v);
+            free(liste); g_atop = sauve; return 1;
+        }
+        int hors = 0;
+        int k = hct_vers_rang(v, &hors);
+        int total = card_count(pile);
+        int ici = card_index(pile, g_current_card);
+        if (ici < 0) ici = 0;
+        if (hors || k > total) k = total;
+        for (int i = 0; i < k && ici + i < total && np < cap; i++) {
+            Object *c = nth_card(pile, ici + i);
+            if (c) liste[np++] = c;
+        }
+    }
     else if (quoi->genre == HCTN_OBJET && quoi->typeobj == HCT_OBJ_CARD) {
         if (nto) {
             /* UNE PLAGE. Les bornes se lisent comme des NOMBRES — voir
@@ -13365,6 +13418,31 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         emit(HC_ERR, "   !! print : rien à imprimer");
         free(liste); g_atop = sauve; return 1;
     }
+
+    /* UN TRAVAIL EST OUVERT : les cartes s'y ajoutent, et c'est « close
+     * printing » qui imprimera. Voir g_tache_cartes.
+     *
+     * Une carte DÉCOUPÉE — « print card from 0,0 to 512,304 » — part seule,
+     * tout de suite : l'hôte ne reçoit qu'un découpage par envoi, et le
+     * prêter à toutes les cartes du travail les rognerait toutes. NON
+     * MESURÉ : ce que fait HyperCard d'un découpage dans un travail. */
+    if (g_tache_ouverte && !pdecoupe) {
+        if (g_tache_n + np > g_tache_cap) {
+            int cap = g_tache_cap ? g_tache_cap : 16;
+            while (cap < g_tache_n + np) cap *= 2;
+            Object **t = realloc(g_tache_cartes, (size_t)cap * sizeof *t);
+            if (!t) {
+                free(liste); g_atop = sauve;
+                hct_ctx_faute(ctx, n, "mémoire insuffisante");
+                return 1;
+            }
+            g_tache_cartes = t; g_tache_cap = cap;
+        }
+        for (int i = 0; i < np; i++) g_tache_cartes[g_tache_n++] = liste[i];
+        set_result("");
+        free(liste); g_atop = sauve; return 1;
+    }
+
     if (g_host && g_host->print_cards) {
         g_host->print_cards(liste, np, pdecoupe);
         set_result("");
@@ -15404,6 +15482,52 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
         if (!strncmp(quoi, "palette ", 8))
             v3_message_palette("closePalette", nom, atoi(quoi + 8));
         return 1;
+    }
+
+    /* « open printing [with dialog] » … « close printing ». Voir
+     * g_tache_cartes. Relevé le 11 octobre sur HyperTalk Reference : les
+     * deux répondaient « ne sait pas faire », et un script qui encadre ses
+     * impressions s'arrêtait à la première ligne.
+     *
+     * « with dialog » : l'hôte de HC montre son dialogue d'impression à
+     * chaque envoi, donc une fois, à la fermeture du travail. NON MESURÉ :
+     * HyperCard le montrait à l'ouverture et posait « Cancel » dans the
+     * result si l'on annulait ; ici, the result reste vide. « open report
+     * printing » n'est pas couvert : un rapport n'est pas une image de
+     * carte, et l'imprimer comme tel serait une réponse fausse. */
+    if (n->nfils >= 1 && n->fils[0]->genre == HCTN_IDENT) {
+        char m0[16];
+        v3_brut(n->fils[0], m0, sizeof m0);
+        if (ci_equal(m0, "printing")) {
+            int avec_dialogue = 0;
+            if (n->nfils == 3 && n->fils[1]->genre == HCTN_IDENT &&
+                n->fils[2]->genre == HCTN_IDENT) {
+                char m1[16], m2[16];
+                v3_brut(n->fils[1], m1, sizeof m1);
+                v3_brut(n->fils[2], m2, sizeof m2);
+                avec_dialogue = ci_equal(m1, "with") && ci_equal(m2, "dialog");
+            }
+            if (n->nfils != 1 && !avec_dialogue) return 0;
+            if (ci_equal(n->op, "open")) {
+                g_tache_ouverte = 1;
+                g_tache_n = 0;
+            } else if (g_tache_ouverte) {
+                g_tache_ouverte = 0;
+                if (g_tache_n > 0) {
+                    if (g_host && g_host->print_cards)
+                        g_host->print_cards(g_tache_cartes, g_tache_n, NULL);
+                    else {
+                        set_result("Can't print");
+                        emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
+                        g_tache_n = 0;
+                        return 1;
+                    }
+                }
+                g_tache_n = 0;
+            }
+            set_result("");
+            return 1;
+        }
     }
 
     if (!v3_est_motcle(n, 0, "file")) return 0;

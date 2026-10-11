@@ -6,8 +6,8 @@
    dial
       [ERR]    !! ne sait pas faire : dial "555"
         the result = Can't understand
-   open printing
-      [ERR]    !! ne sait pas faire : open printing
+   open report printing
+      [ERR]    !! ne sait pas faire : open report printing
         the result = Can't understand
    palette
       [ERR]    !! palette introuvable : x
@@ -20,8 +20,8 @@
    there is, puis dial
       [ERR]    !! ne sait pas faire : dial "555"
         the result = Can't understand
-   there is, puis open printing
-      [ERR]    !! ne sait pas faire : open printing
+   there is, puis open report printing
+      [ERR]    !! ne sait pas faire : open report printing
         the result = Can't understand
 
 == 3. et « there is » repond toujours juste ==

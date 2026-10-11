@@ -47,9 +47,7 @@
 ── open printing
   print this card
   close printing
-   [ERR]    !! ne sait pas faire : open printing
    [ERR]    !! print : l'hôte ne sait pas imprimer
-   [ERR]    !! ne sait pas faire : close printing
 
 ════ hôte qui répond par l'annulation ou le vide ════
 ── answer "question"
@@ -98,6 +96,4 @@
 ── open printing
   print this card
   close printing
-   [ERR]    !! ne sait pas faire : open printing
    [ERR]    !! print : l'hôte ne sait pas imprimer
-   [ERR]    !! ne sait pas faire : close printing
