@@ -230,5 +230,7 @@ that stopped a script in HC are now supported. And HC now has HyperCard's
   Reference describes and HC could not run
 - [#120](https://github.com/cleobuline/hc/pull/120): version 0.8 and this
   note
+- [#121](https://github.com/cleobuline/hc/pull/121): the Style menu,
+  `show groups` on fields already drawn, Courier and Monaco after editing
 
 **Full changelog:** [HC-0.7.9.3...HC-0.8](https://github.com/cleobuline/hc/compare/HC-0.7.9.3...HC-0.8)
