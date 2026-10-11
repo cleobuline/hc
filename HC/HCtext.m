@@ -791,6 +791,147 @@ int style_bits_from_attrs(NSDictionary *a)
     return st;
 }
 
+/* ═══ LE MENU STYLE ═══════════════════════════════════════════════════════
+ *
+ * Celui d'HyperCard 2.4.1, relevé par l'utilisatrice le 11 octobre — une
+ * capture DANS HYPERCARD (Basilisk II) : Plain, Bold, Italic, Underline,
+ * Outline, Shadow, Condense, Extend, Group ; puis 9, 10, 12, 14, 18, 24 ;
+ * puis « Other… ». Chaque style s'écrit dans son propre style, et aucun
+ * article ne porte de raccourci.
+ *
+ * Il manquait pour une raison précise : poser « group » sur des mots, le
+ * geste des liens hypertextes des piles d'aide d'Apple. HC savait dessiner un
+ * groupe, le garder et le cliquer, mais seul un script pouvait le poser.
+ *
+ * Les trois fonctions qui suivent travaillent sur les attributs de l'éditeur
+ * de champ. Elles passent par style_bits_from_attrs pour lire et par
+ * style_attrs pour écrire — les deux seules traductions entre un masque
+ * HyperCard et des attributs Cocoa. Le menu et la fermeture de l'éditeur
+ * voient donc exactement le même masque. */
+
+/* Les attributs d'une plage après le menu : `pose` ajouté, `retire` ôté, et
+ * le corps changé s'il est positif. Le reste — couleur, paragraphe, tout
+ * attribut qu'on ne connaît pas — reste tel quel. */
+NSDictionary *style_attrs_modifies(NSDictionary *a, int pose, int retire,
+                                   CGFloat corps)
+{
+    int st = (style_bits_from_attrs(a) | pose) & ~retire;
+
+    NSFont *f = a[NSFontAttributeName];
+    if (!f) f = [NSFont systemFontOfSize:12];
+    CGFloat sz = corps > 0 ? corps : [f pointSize];
+
+    /* La fonte DROITE de la plage, au bon corps : style_attrs remet le gras
+     * et l'italique d'après le masque. Même dépouillement que la relecture
+     * de endFieldEdit, par le descripteur ; NSFontManager seulement en
+     * repli, il ignore la police système. Une fonte restée grasse se
+     * relirait grasse, et Plain ne l'ôterait jamais. */
+    NSFontDescriptorSymbolicTraits gi =
+        NSFontDescriptorTraitBold | NSFontDescriptorTraitItalic;
+    NSFontDescriptor *fd = [[f fontDescriptor] fontDescriptorWithSymbolicTraits:
+                               [[f fontDescriptor] symbolicTraits] & ~gi];
+    NSFont *droite = [NSFont fontWithDescriptor:fd size:sz];
+    if (!droite || ([[droite fontDescriptor] symbolicTraits] & gi)) {
+        NSFontManager *fm = [NSFontManager sharedFontManager];
+        NSFont *g = [fm convertFont:f toNotHaveTrait:NSBoldFontMask | NSItalicFontMask];
+        if (g) droite = [fm convertFont:g toSize:sz];
+    }
+    if (!droite) droite = f;
+
+    /* Jamais le souligné gris de « show groups » : on écrit pour l'éditeur,
+     * et la relecture le prendrait pour un vrai soulignement. */
+    NSColor *couleur = a[NSForegroundColorAttributeName];
+    BOOL avant = gForEditor;
+    gForEditor = YES;
+    NSMutableDictionary *at = style_attrs(st, droite, couleur);
+    gForEditor = avant;
+    /* style_attrs pose du noir à défaut de couleur. Une plage sans couleur
+     * doit le rester : endFieldEdit reconnaît le texte non coloré à
+     * l'ABSENCE de l'attribut, et enregistrerait sinon un noir qu'on n'a
+     * jamais choisi. */
+    if (!couleur) [at removeObjectForKey:NSForegroundColorAttributeName];
+
+    NSMutableDictionary *n = [a mutableCopy];
+    for (NSString *cle in @[ NSFontAttributeName,
+                             NSStrokeWidthAttributeName, NSStrokeColorAttributeName,
+                             NSUnderlineStyleAttributeName, NSUnderlineColorAttributeName,
+                             NSShadowAttributeName, NSKernAttributeName,
+                             kHCGroupAttribute, kHCFauxBoldAttribute ])
+        [n removeObjectForKey:cle];
+    [n addEntriesFromDictionary:at];
+    return n;
+}
+
+/* Le menu appliqué à une plage du texte, morceau de style par morceau de
+ * style : chacun garde sa fonte et sa couleur, et ne change que ce qu'on a
+ * demandé. Mettre en gras trois mots dont l'un est en italique les laisse
+ * en gras, et le troisième aussi en italique — ce que fait tout éditeur
+ * Macintosh depuis TextEdit. */
+void style_plage_modifie(NSTextStorage *ts, NSRange r, int pose, int retire,
+                         CGFloat corps)
+{
+    if (!ts || r.length == 0 || NSMaxRange(r) > [ts length]) return;
+    [ts beginEditing];
+    NSUInteger i = r.location, fin = NSMaxRange(r);
+    while (i < fin) {
+        NSRange eff;
+        NSDictionary *a = [ts attributesAtIndex:i
+                          longestEffectiveRange:&eff
+                                        inRange:NSMakeRange(i, fin - i)];
+        [ts setAttributes:style_attrs_modifies(a, pose, retire, corps) range:eff];
+        i = NSMaxRange(eff);
+    }
+    [ts endEditing];
+}
+
+/* Ce que la plage a EN COMMUN, pour les coches du menu : les styles présents
+ * d'un bout à l'autre, et dans `corps` le corps s'il est le même partout (0
+ * sinon). Une plage vide répond pour les attributs de frappe, `saisie` : ce
+ * que la prochaine lettre tapée recevra. */
+int style_plage_commun(NSTextStorage *ts, NSRange r, NSDictionary *saisie,
+                       CGFloat *corps)
+{
+    if (corps) *corps = 0;
+    if (!ts || r.length == 0 || NSMaxRange(r) > [ts length]) {
+        if (!saisie) return 0;
+        NSFont *f = saisie[NSFontAttributeName];
+        if (corps && f) *corps = [f pointSize];
+        return style_bits_from_attrs(saisie);
+    }
+    int commun = 0xFF;
+    long cz = -1;
+    NSUInteger i = r.location, fin = NSMaxRange(r);
+    while (i < fin) {
+        NSRange eff;
+        NSDictionary *a = [ts attributesAtIndex:i
+                          longestEffectiveRange:&eff
+                                        inRange:NSMakeRange(i, fin - i)];
+        commun &= style_bits_from_attrs(a);
+        NSFont *f = a[NSFontAttributeName];
+        long z = f ? lround([f pointSize]) : 0;
+        if (cz < 0) cz = z;
+        else if (cz != z) cz = 0;
+        i = NSMaxRange(eff);
+    }
+    if (corps) *corps = cz > 0 ? (CGFloat)cz : 0;
+    return commun;
+}
+
+/* Le titre d'un article du menu, écrit dans le style qu'il pose, comme dans
+ * HyperCard. Sans couleur : c'est le menu qui la choisit, grisée quand
+ * l'article est inactif et inversée sous la souris. Le contour suit la
+ * couleur du texte pour la même raison. */
+NSAttributedString *style_titre_menu(NSString *titre, int style)
+{
+    BOOL avant = gForEditor;
+    gForEditor = YES;
+    NSMutableDictionary *at = style_attrs(style, [NSFont menuFontOfSize:0], nil);
+    gForEditor = avant;
+    [at removeObjectForKey:NSForegroundColorAttributeName];
+    [at removeObjectForKey:NSStrokeColorAttributeName];
+    return [[NSAttributedString alloc] initWithString:titre attributes:at];
+}
+
 /* Décalage en OCTETS correspondant à un index UTF-16 : l'inverse de
  * utf16_from_byte. Le noyau raisonne en octets, NSString en unités UTF-16. */
 int byte_from_utf16(NSString *s, NSUInteger u16)

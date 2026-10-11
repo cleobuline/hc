@@ -1,0 +1,92 @@
+LE MENU STYLE — 11 octobre
+==========================
+
+« On n'a pas de moyen, par un menu ou un outil, de créer un hyperlien dans un
+texte. » HC savait DESSINER le style « group » (souligné gris sous « show
+groups »), le GARDER (attribut HCGroup dans l'éditeur, plages du noyau) et le
+CLIQUER (the clickText rend le groupe entier, click_octet_groupe). Seul un
+script pouvait le POSER : « set the textStyle of word 3 of field 1 to group ».
+
+Dans HyperCard, un lien dans un texte n'est pas un objet : on groupe des mots
+par le menu Style, et un script de champ suit le clic. C'est ce que font les
+piles d'aide d'Apple :
+
+    on mouseUp
+      if "group" is in the textStyle of the clickChunk then
+        go card (the clickText)
+      end if
+    end mouseUp
+
+
+CE QUI EST MESURÉ — capture DANS HYPERCARD 2.4.1 (Basilisk II), par
+l'utilisatrice, le 11 octobre, outil Champ en main, HyperTalk Reference
+devant :
+
+    barre      File  Edit  Go  Tools  Objects  Font  Style  Reference
+    Style      Plain   (coché)
+               Bold  Italic  Underline  Outline  Shadow  Condense  Extend
+               Group
+               ─────
+               9  10  12 (coché)  14  18  24
+               ─────
+               Other…
+
+  · chaque style écrit dans son propre style — sauf Plain et Group, droits ;
+  · AUCUN raccourci clavier affiché ;
+  · le menu vient juste après Font.
+
+
+CE QUE HC EN FAIT (AppDelegate.m, HCview.m, HCtext.m)
+-----------------------------------------------------
+
+Les dix-sept articles, dans cet ordre, écrits de même, sans raccourci. Le
+menu agit sur la sélection du champ qu'on ÉDITE, et se grise ailleurs.
+
+  · un style BASCULE : si toute la sélection l'a, il s'ôte, sinon il se pose
+    partout. Plain ôte tout. Un corps se pose tel quel ; Other… le demande
+    (borne : HC_TEXTE_MAX, celle de « set the textSize ») ;
+  · sans sélection, c'est la frappe suivante qui reçoit le style ;
+  · les coches disent ce que la sélection a d'un bout à l'autre : Plain sans
+    aucun style, un corps quand il est unique ;
+  · chaque plage garde sa fonte et sa couleur ; ⌘Z annule ;
+  · avant d'agir, l'article est proposé à la pile par doMenu, comme les
+    autres articles de l'application (hcv_menu_trappe).
+
+Rien ne passe par le noyau pendant l'édition : la NSTextView garde le texte
+stylé, et endFieldEdit en relit les plages à la fermeture — la même relecture
+que pour le gras du menu Format. Le menu écrit par style_attrs et relit par
+style_bits_from_attrs, les deux seules traductions entre un masque HyperCard
+et des attributs Cocoa.
+
+
+UN DÉFAUT VOISIN, TROUVÉ EN ÉCRIVANT — DÉDUIT DU CODE, NON OBSERVÉ
+-----------------------------------------------------------------
+
+Le crénage porte deux choses : la correction d'avance des fontes d'époque
+(chasse_ancienne, Courier et Monaco, depuis le 29 septembre) et condense ou
+extend. La relecture prenait TOUT crénage négatif pour « condense » et tout
+crénage positif pour « extend ». Un champ en Courier 9 (correction -0,4)
+sortait donc condensé de sa première édition, et le noyau gardait le style ;
+Courier 18 (+0,2) sortait étendu.
+
+La correction tient dans ]-0,5 ; +0,5], condense ajoute -1, extend +1,5 :
+trois intervalles disjoints, qu'un seuil sépare (-0,5 et +0,75) sans
+dépendre de la fonte. Corrigé dans style_bits_from_attrs, seul lecteur du
+crénage. NI LE DÉFAUT NI SA CORRECTION N'ONT ÉTÉ VUS SUR UN MAC.
+
+
+NON MESURÉ, et à jouer DANS HYPERCARD 2.4.1 (Basilisk II) si l'on y tient
+-----------------------------------------------------------------------
+
+  · le menu Style HORS d'un champ en édition : un bouton ou un champ
+    sélectionné à l'outil (change-t-il l'objet entier ?), l'outil Texte de
+    peinture. HC grise le menu dans ces cas ;
+  · une sélection MÊLÉE : HyperCard pose-t-il le style partout, ou
+    l'ôte-t-il partout ? HC le pose, comme TextEdit ;
+  · ce que coche HyperCard pour un corps absent de la liste (Other… ?) ;
+  · la forme du dialogue d'Other… ;
+  · « doMenu "Bold" » dans un script, pendant une édition : HC ne le sert
+    pas (la table de cocoa_menu_hypercard ne connaît pas le menu Style).
+
+Et pas encore essayé DANS HC (l'application) : la compilation est vérifiée
+par l'intégration continue, le geste ne l'est pas.

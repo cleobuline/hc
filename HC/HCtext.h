@@ -34,6 +34,15 @@ NSLayoutManager *field_layout(Object *o, NSString *s, NSDictionary *at,
                               CGFloat largeur, NSTextContainer **conteneur);
 int                 style_bits_from_attrs(NSDictionary *a);
 
+/* ---- Le menu Style, sur l'éditeur de champ. Voir HCtext.m ---- */
+NSDictionary       *style_attrs_modifies(NSDictionary *a, int pose, int retire,
+                                         CGFloat corps);
+void                style_plage_modifie(NSTextStorage *ts, NSRange r,
+                                        int pose, int retire, CGFloat corps);
+int                 style_plage_commun(NSTextStorage *ts, NSRange r,
+                                       NSDictionary *saisie, CGFloat *corps);
+NSAttributedString *style_titre_menu(NSString *titre, int style);
+
 /* ---- Conversion d'index : octets UTF-8 <-> unites UTF-16 ---- */
 int byte_from_utf16(NSString *s, NSUInteger u16);
 

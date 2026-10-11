@@ -59,6 +59,16 @@ enum {
     HCV_PAINT_MULTIPLE
 };
 
+/* Les étiquettes du menu Style. Un style y porte son BIT — HC_BOLD à
+ * HC_GROUP, 1 à 128 — et un corps la valeur de HCV_STYLE_CORPS plus son
+ * nombre de points : l'étiquette dit tout ce que l'action doit savoir, sans
+ * table parallèle à tenir d'accord avec le menu. */
+enum {
+    HCV_STYLE_PLAIN = 256,
+    HCV_STYLE_AUTRE = 257,           /* « Other… » : un corps à demander */
+    HCV_STYLE_CORPS = 1000
+};
+
 BOOL hcv_menu_trappe(const char *article);
 
 /* Redemander à la vue de carte quel curseur elle veut.
@@ -132,6 +142,8 @@ void    hcv_selectionne(Object *o);
  * paintOpTag: sert aux scripts, qui n'en ont pas. Voir HCview.m. */
 - (void)paintOp:(id)sender;
 - (void)paintOpTag:(NSInteger)quoi;
+/* Le menu Style, sur la sélection du champ en cours d'édition. */
+- (void)styleMenu:(id)sender;
 - (void)findInStack:(id)sender;
 - (void)messageBoxEntered:(id)sender;
 - (void)installToolPalette;
