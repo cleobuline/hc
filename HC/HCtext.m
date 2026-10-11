@@ -451,7 +451,17 @@ static NSMutableArray<NSDictionary *> *g_memo_champs = nil;
  *   bold » ne change ni le texte ni le style du champ entier. Sans elles
  *   dans la clé, le gras ne serait apparu qu'au prochain changement de
  *   texte. On les résume en une chaîne : elles sont peu nombreuses, et
- *   c'est le prix d'une comparaison sûre. */
+ *   c'est le prix d'une comparaison sûre.
+ *
+ * Une troisième manquait jusqu'au 11 octobre :
+ *
+ *   « SHOW GROUPS ». style_attrs souligne de gris le texte groupé selon
+ *   gGroupsShown, qui ne touche ni au texte ni aux plages. Un champ déjà
+ *   dessiné ressortait donc de la mémoire tel qu'avant : « show groups »
+ *   tapé sur une carte ne montrait rien, et « Hide Active Text » des piles
+ *   d'aide laissait le liséré sur les cartes déjà vues. Déduit du code,
+ *   en cherchant pourquoi un mot groupé par le menu Style restait sans
+ *   liséré. */
 static NSString *champ_plages(Object *o)
 {
     int n = hc_run_count(o);
@@ -479,6 +489,7 @@ static NSDictionary *champ_signature(Object *o, NSString *s)
               @"style"   : @(o->textstyle),
               @"interl"  : @(o->fixed_lh),
               @"editeur" : @(gForEditor),
+              @"groupes" : @(gGroupsShown),
               @"seldeb"  : @(sel == o ? start : -1),
               @"sellen"  : @(sel == o ? len   : 0),
               @"plages"  : champ_plages(o) };
@@ -491,6 +502,7 @@ static BOOL champ_signature_egale(NSDictionary *a, NSDictionary *b)
         && [a[@"style"]   isEqual:b[@"style"]]
         && [a[@"interl"]  isEqual:b[@"interl"]]
         && [a[@"editeur"] isEqual:b[@"editeur"]]
+        && [a[@"groupes"] isEqual:b[@"groupes"]]
         && [a[@"seldeb"]  isEqual:b[@"seldeb"]]
         && [a[@"sellen"]  isEqual:b[@"sellen"]]
         && [a[@"police"]  isEqualToString:b[@"police"]]
