@@ -314,3 +314,28 @@ HORS DE PORTÉE, SANS OBJET SUR UN MAC D'AUJOURD'HUI
 
 LES DÉMONSTRATIONS « Run the Script » : aucun refus nouveau depuis le
 9 octobre ; il ne reste que les manques déjà connus ci-dessus.
+
+CORRIGÉ LE MÊME JOUR, à la demande de l'utilisatrice — tout le groupe
+« QUI ARRÊTENT UN SCRIPT ORDINAIRE », sauf « ask password » :
+
+  mark/unmark cards where, mark/unmark cards by finding, unmark first
+  marked card                             harnais marquage
+  enable/disable d'un bouton              harnais boutonactif
+  delete menuItem … from menu …           harnais menusuppr — et, trouvé
+                                          en chemin, la coche et le
+                                          raccourci qui ne suivaient pas
+                                          leur article
+  open printing … close printing, et
+  print N cards                           harnais tacheimpr
+  lock/unlock recent, lock/unlock error
+  dialogs                                 harnais verroucmd
+  go forth, go recent card                harnais refaire
+  les réglages globaux, retenus et relus  harnais reglagesretenus
+
+Le relevé rejoué après coup ne refuse plus aucune de ces formes ; ce qui
+reste dans le bac à sable y manque d'objets ou de fenêtres, que seule
+l'application tient. Rien de ceci n'est mesuré dans HyperCard au-delà de
+ce que la référence d'Apple écrit ; chaque harnais dit ses choix.
+
+RESTE OUVERT : ask password (la forme chiffrée est à mesurer), et le
+groupe « DE MOINDRE PORTÉE ».
