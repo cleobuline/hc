@@ -388,7 +388,7 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-         → textSize de button "Exercice" ← "0"
+         → textSize de button "Exercice" ← "12"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
@@ -536,11 +536,11 @@
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"
-         → message "ap[v3] — retours de la v3 vers l'ancien interpréteur —
+         → message "a[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours objet: card "carteQuiNexistePas" 1
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    (rien)
-lat" à button "Exercice"
+plat" à button "Exercice"
             · traité par button "Exercice"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"

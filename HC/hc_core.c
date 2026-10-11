@@ -2688,12 +2688,42 @@ int hc_delete_card(Object *card)
  * choix d'auteur, pas des défauts : un interligne généreux sur un petit corps.
  * On ne les compte donc pas contre la règle ; c'est le corps 14 qui la décide,
  * et il est unanime. */
+/* LE CORPS D'UN CHAMP QUI N'EN A PAS DE POSÉ : 12, celui auquel l'hôte le
+ * dessine (obj_base_font(o, 12), HCtext.m) et sur lequel hc_text_height
+ * calcule l'interligne.
+ *
+ * « the textSize » répondait pourtant 0 : mesuré le 11 octobre DANS HC
+ * (l'application) sur un champ neuf, alors que HyperCard 2.4.1 répond 12
+ * (mesuré DANS HYPERCARD, Basilisk II, même jour) et que « the textHeight »
+ * répondait déjà 16. Et un morceau mis en 12 dans un tel champ se lisait
+ * « mixed » à côté de ses voisins, dessinés pareil.
+ *
+ * Le champ garde son 0 — « rien de posé » —, si bien qu'aucune pile ne
+ * change à l'écriture ; seules les LECTURES rendent le corps effectif. */
+#define HC_CORPS_CHAMP 12
+static int corps_champ(const Object *o)
+{
+    return (o && o->textsize > 0) ? o->textsize : HC_CORPS_CHAMP;
+}
+
+/* UN BOUTON NEUF, DANS HYPERCARD 2.4.1 : « 12 Chicago ». Mesuré DANS
+ * HYPERCARD (Basilisk II) par l'utilisatrice le 11 octobre ; HC répondait 0
+ * et rien. Ce sont donc les LECTURES de « the textSize » et « the textFont »
+ * d'un bouton sans rien de posé, pour les scripts qui calculent dessus.
+ *
+ * La police ne ment pas sur le dessin : HC n'a pas de fonte « Chicago », et
+ * un bouton dont on pose « Chicago » se dessine déjà en police système, sa
+ * descendante — exactement comme un bouton sans police. Le CORPS, lui, est
+ * dessiné selon le style (11, 12, 13 ou 16 dans HCview.m) : un choix de
+ * dessin de HC, que la lecture ne suit pas, et que ce relevé ne touche pas. */
+#define HC_CORPS_BOUTON  12
+#define HC_POLICE_BOUTON "Chicago"
+
 int hc_text_height(Object *o)
 {
     if (!o) return 16;
     if (o->textheight > 0) return o->textheight;
-    int sz = o->textsize > 0 ? o->textsize : 12;
-    return sz * 4 / 3;
+    return corps_champ(o) * 4 / 3;
 }
 
 /* ---- allumage d'un bouton ----
@@ -7020,7 +7050,13 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "multiplelines")) { snprintf(out, outlen, "%s", o->multiple_lines ? "true" : "false"); return 1; }
     if (ci_equal(prop, "dontwrap")) { snprintf(out, outlen, "%s", o->dont_wrap ? "true" : "false"); return 1; }
     if (ci_equal(prop, "marked")) { snprintf(out, outlen, "%s", o->marked ? "true" : "false"); return 1; }
-    if (ci_equal(prop, "textfont")) { snprintf(out, outlen, "%s", o->textfont ? o->textfont : ""); return 1; }
+    if (ci_equal(prop, "textfont")) {
+        const char *fn = o->textfont ? o->textfont : "";
+        /* Un bouton sans police posée : voir HC_POLICE_BOUTON. */
+        if (!*fn && o->type == OBJ_BUTTON) fn = HC_POLICE_BOUTON;
+        snprintf(out, outlen, "%s", fn);
+        return 1;
+    }
     if (ci_equal(prop, "scroll")) { snprintf(out, outlen, "%d", o->scroll); return 1; }
     if (ci_equal(prop, "textstyle")) {
         /* Même formatage que la lecture sur un morceau : le
@@ -7033,7 +7069,14 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "hilite") || ci_equal(prop, "highlight")) { snprintf(out, outlen, "%s", hc_hilite_of(o, NULL) ? "true" : "false"); return 1; }
     if (ci_equal(prop, "sharedhilite")) { snprintf(out, outlen, "%s", o->shared_hilite ? "true" : "false"); return 1; }
     if (ci_equal(prop, "autohilite")) { snprintf(out, outlen, "%s", o->autohilite ? "true" : "false"); return 1; }
-    if (ci_equal(prop, "textsize")) { snprintf(out, outlen, "%d", o->textsize); return 1; }
+    if (ci_equal(prop, "textsize")) {
+        /* Le corps EFFECTIF d'un champ : voir corps_champ. */
+        int sz = o->textsize;
+        if (o->type == OBJ_FIELD)                     sz = corps_champ(o);
+        else if (o->type == OBJ_BUTTON && sz <= 0)    sz = HC_CORPS_BOUTON;
+        snprintf(out, outlen, "%d", sz);
+        return 1;
+    }
     /* textHeight n'est PAS textSize : c'est l'interligne, et
      * les scripts d'époque divisent par lui pour trouver la
      * ligne cliquée. Les confondre faussait le calcul d'un
@@ -17393,7 +17436,7 @@ static int v3_lit_prop_morceau(void *d, const HctNoeud *morceau,
     } else if (est_font) {
         runs_get_font(rl, cst, len, cf->textfont, buf, HC_VAL);
     } else {
-        int sz = runs_get_size(rl, cst, len, cf->textsize);
+        int sz = runs_get_size(rl, cst, len, corps_champ(cf));
         if (sz < 0) snprintf(buf, HC_VAL, "mixed");
         else        snprintf(buf, HC_VAL, "%d", sz);
     }
