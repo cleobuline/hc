@@ -85,8 +85,37 @@ NON MESURÉ, et à jouer DANS HYPERCARD 2.4.1 (Basilisk II) si l'on y tient
     l'ôte-t-il partout ? HC le pose, comme TextEdit ;
   · ce que coche HyperCard pour un corps absent de la liste (Other… ?) ;
   · la forme du dialogue d'Other… ;
-  · « doMenu "Bold" » dans un script, pendant une édition : HC ne le sert
-    pas (la table de cocoa_menu_hypercard ne connaît pas le menu Style).
+  · « doMenu "Bold" » sur un mot qui l'a DÉJÀ : HC l'ôte (la bascule du
+    menu), et le banc ci-dessous ne posait Bold que sur un mot sans style ;
+  · « doMenu "Bold" » sans sélection : HC ne fait rien ; « doMenu
+    "Other…" » n'est pas servi.
+
+
+« doMenu » ET LE MENU STYLE — mesuré le 11 octobre
+-------------------------------------------------
+
+Constat 4 de l'audit des sources : doMenu ne connaissait pas le menu Style.
+Banc joué DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice :
+
+    on mouseUp
+      select word 2 of card field 1
+      doMenu "Bold"
+      doMenu "Group"
+    end mouseUp
+
+« Fonctionne comme attendu » : le mot 2 devient gras, et groupé.
+
+HC le fait maintenant par deux chemins (menu_style, hc_core.c) :
+
+  · un éditeur de champ ouvert — le cas après « select » dans un champ
+    déverrouillé — tient le texte : l'hôte passe par l'article même du menu
+    (cocoa_style_menu, HCview.m), comme un clic ;
+  · sinon le noyau applique l'article aux plages de sa sélection, avec la
+    même bascule.
+
+L'article est d'abord proposé à la pile, comme tout doMenu. Harnais
+domenustyle, qui tient le second chemin et simule le premier ; le premier
+n'est vérifié que par la compilation.
 
 ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même soir, après
 recompilation. Premier essai : « quand je mets group sur un mot, je ne vois
