@@ -764,11 +764,27 @@ int style_bits_from_attrs(NSDictionary *a)
 
     if (a[NSShadowAttributeName]) st |= HC_SHADOW;
 
+    /* LE CRÉNAGE PORTE DEUX CHOSES, et l'on ne relisait que l'une.
+     *
+     * style_attrs y cumule la correction d'avance des fontes d'époque
+     * (chasse_ancienne) et condense ou extend. Tout crénage négatif se
+     * relisait « condense » : un champ en Courier 9, corrigé de -0,4 point,
+     * ressortait CONDENSÉ de sa première édition, et pour de bon — le noyau
+     * gardait le style. Courier 18, corrigé de +0,2, ressortait étendu.
+     * Déduit du code le 11 octobre, en écrivant le menu Style qui relit par
+     * ici ; non observé à l'usage.
+     *
+     * La correction tient dans ]-0,5 ; +0,5] — on arrondit l'avance à
+     * l'entier le plus proche —, condense lui ajoute -1, extend +1,5. Les
+     * trois intervalles sont disjoints : un SEUIL les sépare, sans dépendre
+     * de la fonte. Retrancher la correction de la fonte courante aurait
+     * échoué dès qu'on change la police au panneau, le crénage restant celui
+     * de l'ancienne. */
     NSNumber *k = a[NSKernAttributeName];
     if (k) {
         double v = [k doubleValue];
-        if (v < 0)      st |= HC_CONDENSE;
-        else if (v > 0) st |= HC_EXTEND;
+        if (v <= -0.5)     st |= HC_CONDENSE;
+        else if (v > 0.75) st |= HC_EXTEND;
     }
 
     if (a[kHCGroupAttribute]) st |= HC_GROUP;
