@@ -14572,26 +14572,175 @@ static int v3_cmd_type(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* « mark cards by finding … » : la carte contient-elle ce que « find »
+ * trouverait ? Les mêmes primitives que v3_cmd_find, et les mêmes règles —
+ * le motif découpé en mots, TOUS présents dans la carte, chacun dans
+ * n'importe quel champ, ou la phrase entière pour « string » et « whole ».
+ *
+ * SITE JUMEAU de la boucle de v3_cmd_find, qui l'écrit en ligne parce
+ * qu'elle y mêle son curseur de reprise. Elle n'en a pas été extraite pour
+ * ne pas toucher à « find » : une règle qui change là doit changer ici. La
+ * carte courante doit être `cd` : les champs de fond ont un texte par
+ * carte. */
+static int find_carte_contient(Object *cd, const char *pat, int mode,
+                               int par_mots, int replier, Object *seul)
+{
+    Object *layers[2] = { cd->bg, cd };
+    if (!par_mots) {
+        for (int L = 0; L < 2; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts; i++) {
+                Object *fl = lay->parts[i];
+                if (find_champ_ok(fl, seul) &&
+                    find_phrase(hc_field_text(fl), pat, mode, replier, 0))
+                    return 1;
+            }
+        }
+        return 0;
+    }
+
+    int nmots = 0;
+    const char *q = skip_spaces(pat);
+    while (*q) {
+        char mot[64];
+        const char *d = q;
+        while (*q && !isspace((unsigned char)*q)) q++;
+        int l = (int)(q - d);
+        if (l > 63) l = 63;
+        memcpy(mot, d, (size_t)l);
+        mot[l] = 0;
+        q = skip_spaces(q);
+        if (++nmots > 16) break;           /* le plafond de v3_cmd_find */
+
+        int vu = 0;
+        for (int L = 0; L < 2 && !vu; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts && !vu; i++) {
+                Object *fl = lay->parts[i];
+                vu = find_champ_ok(fl, seul) &&
+                     find_dans_texte(hc_field_text(fl), mot, mode, replier, 0);
+            }
+        }
+        if (!vu) return 0;
+    }
+    return nmots > 0;
+}
+
+static Object *marked_card_ref(const char *r, int *concerne);   /* plus bas */
+
 /* mark / unmark.
  *
- * « mark cards where <condition> » garde l'ancien chemin : « where » n'est
- * pas un mot du motif, il arrive donc en identificateur ordinaire et la
- * condition qui le suit n'est pas isolée de façon sûre. C'est le genre de
- * forme qui mérite son propre motif dans hct_cmd.c plutôt qu'un découpage
- * ici. */
+ * LES TROIS FORMES QUI PORTENT SUR PLUSIEURS CARTES, et la référence d'Apple
+ * les donne toutes (carte « mark ») :
+ *
+ *     mark cards where field "title" contains "select"
+ *     mark cards by finding whole "Cupertino, CA" in field "Address"
+ *     unmark first marked card
+ *
+ * « where » ARRÊTAIT LE SCRIPT sur « objet introuvable ». Le commentaire
+ * d'ici disait qu'il « garde l'ancien chemin » : cet ancien chemin a été
+ * retiré, et la forme est tombée avec lui sans que rien ne le dise. Relevé
+ * le 11 octobre sur HyperTalk Reference. « by finding » était pire : sans
+ * motif, l'analyseur lisait « cards » comme une carte, et la commande
+ * marquait la carte COURANTE, en silence. Les deux ont maintenant leur
+ * syntaxe dans hct_cmd.c.
+ *
+ * La condition s'évalue SUR chaque carte, comme la clé de « sort … by » :
+ * « field "title" » doit être celui de la carte examinée. On ne fait
+ * qu'y placer le noyau, sans aller : aucun message de navigation.
+ *
+ * NON MESURÉ : que HyperCard laisse intactes les cartes où la condition est
+ * fausse (« mark cards where » ajoute, n'efface pas). C'est ce que la
+ * référence décrit, et ce que fait HC. */
 static int v3_cmd_marque(HctContexte *ctx, const HctNoeud *n)
 {
     int poser = ci_equal(n->op, "mark");
 
-    for (int i = 0; i < n->nfils; i++) {
-        char m[16];
-        v3_brut(n->fils[i], m, sizeof m);
-        if (ci_equal(m, "where")) return 0;
-    }
-
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
     if (!pile) { set_result("No stack"); return 1; }
+
+    int iw = v3_indice_motcle(n, "where", 0);
+    if (iw >= 0 && iw + 1 < n->nfils) {
+        const HctNoeud *cond = n->fils[iw + 1];
+        Object *avant = g_current_card;
+        for (int i = 0; i < pile->nparts; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            g_current_card = c;
+            char v[64];
+            v3_val_texte(ctx, cond, v, sizeof v);
+            if (ctx->erreur) break;
+            if (truthy(v)) c->marked = poser;
+        }
+        g_current_card = avant;
+        if (!ctx->erreur) set_result("");
+        return 1;
+    }
+
+    int ib = v3_indice_motcle(n, "finding", 0);
+    if (ib >= 0) {
+        /* Les modificateurs de « find », lus de la même façon. */
+        int mode = 0, par_mots = 1, international = 0, im = ib + 1;
+        for (; im < n->nfils; im++) {
+            if      (v3_est_motcle(n, im, "characters") ||
+                     v3_est_motcle(n, im, "character"))  mode = 1;
+            else if (v3_est_motcle(n, im, "words") ||
+                     v3_est_motcle(n, im, "word"))       mode = 2;
+            else if (v3_est_motcle(n, im, "string")) { mode = 3; par_mots = 0; }
+            else if (v3_est_motcle(n, im, "whole"))  { mode = 4; par_mots = 0; }
+            else if (v3_est_motcle(n, im, "international")) international = 1;
+            else break;
+        }
+        if (im >= n->nfils || n->fils[im]->genre == HCTN_MOTCLE) return 0;
+        char pat[256];
+        v3_val_texte(ctx, n->fils[im], pat, sizeof pat);
+        if (ctx->erreur) return 1;
+        int ki = v3_indice_motcle(n, "in", im + 1);
+        const HctNoeud *nchamp = (ki >= 0 && ki + 1 < n->nfils) ? n->fils[ki + 1] : NULL;
+
+        Object *avant = g_current_card;
+        for (int i = 0; i < pile->nparts && pat[0]; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            /* « Don't Search This Card » : find la saute, « by finding »
+             * aussi. */
+            if (c->dont_search || (c->bg && c->bg->dont_search)) continue;
+            g_current_card = c;
+            Object *seul = NULL;
+            if (nchamp) {
+                /* Par carte, comme find : « field "title" » est celui-ci. */
+                seul = v3_resout_calcule(ctx, nchamp);
+                if (ctx->erreur) break;
+                if (!seul) continue;
+            }
+            if (find_carte_contient(c, pat, mode, par_mots, !international, seul))
+                c->marked = poser;
+        }
+        g_current_card = avant;
+        if (!ctx->erreur) set_result("");
+        return 1;
+    }
+
+    /* « unmark first marked card » : l'analyseur rend l'ordinal et
+     * « marked card » en deux nœuds. marked_card_ref, celle de « go first
+     * marked card », sait les lire ensemble. */
+    if (n->nfils == 2 && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1]->genre == HCTN_OBJET && n->fils[1]->nfils == 0) {
+        char o[16], quoi[32], ref[64];
+        v3_brut(n->fils[0], o, sizeof o);
+        hct_texte(&n->fils[1]->jeton, quoi, sizeof quoi);
+        snprintf(ref, sizeof ref, "%s %s", o, quoi);
+        int concerne = 0;
+        Object *c = marked_card_ref(ref, &concerne);
+        if (concerne) {
+            if (c) c->marked = poser;
+            set_result("");
+            return 1;
+        }
+    }
 
     char m0[16];
     m0[0] = '\0';

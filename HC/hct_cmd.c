@@ -119,7 +119,15 @@ static const HctCommande TABLE[] = {
     { "import",     "paint from file e" },
     { "keydown",    "e" },
     { "lock",       "*" },
-    { "mark",       "*" },
+    /* « mark cards where <condition> » et « mark cards by finding … » : la
+     * syntaxe ENTIÈRE ici, comme pour « find ». Avec « * » seul, l'analyseur
+     * lisait « cards where » comme une carte nommée « where », et
+     * « mark cards by finding "x" » marquait la carte courante en silence.
+     * La forme « by finding » reprend celle de « find », mot pour mot. */
+    { "mark",       "[cards] [where e]"
+                    " [by finding [international]"
+                    " [characters|character|words|word|string|whole]"
+                    " [international] e [in r]] *" },
     { "multiply",   "c by e" },
     { "next",       "repeat" },
     { "open",       "[file] *" },
@@ -172,7 +180,10 @@ static const HctCommande TABLE[] = {
     { "tabkey",     "" },
     { "type",       "e [with *]" },
     { "unlock",     "*" },
-    { "unmark",     "*" },
+    { "unmark",     "[cards] [where e]"
+                    " [by finding [international]"
+                    " [characters|character|words|word|string|whole]"
+                    " [international] e [in r]] *" },
     { "visual",     "[effect] W" },
     { "wait",       "[while|until] [for] e [seconds|second|secs|sec|ticks|tick]" },
     { "write",      "e to file e [at e]" },

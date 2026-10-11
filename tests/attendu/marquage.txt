@@ -1,0 +1,59 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. mark cards where, les trois exemples de la référence ==
+   mark cards where field "title" contains "select"
+      marquées : C1 C3 C5
+   unmark all cards
+   mark cards where (word 2 of field "Pages" = 1)
+      marquées : C1 C3 C5
+   unmark all cards
+   mark cards where isaCommand()
+      marquées : C4
+   put the short name of this card
+      = C2
+
+== 2. unmark cards where : n'efface que là où c'est vrai ==
+   mark all cards
+   unmark cards where field "Pages" is "Page 1"
+      marquées : C2 C4
+   put the number of marked cards
+      = 2
+
+== 3. mark cards by finding ==
+   unmark all cards
+   mark cards by finding "Duffy" in bkgnd field "Author"
+      marquées : C2 C4
+   unmark all cards
+   mark cards by finding whole "Cupertino, CA" in field "Author"
+      marquées : C5
+   unmark all cards
+   mark cards by finding chars "uff"
+      marquées : C2 C4
+   unmark all cards
+   mark cards by finding "card select"
+      marquées : C1
+
+== 4. l'ordinal des cartes marquées ==
+   mark all cards
+   unmark first marked card
+      marquées : C2 C3 C4 C5
+   unmark last marked card
+      marquées : C2 C3 C4
+
+== 5. une condition en faute arrête, et la carte reste la même ==
+   unmark all cards
+   mark cards where field "Absent" is empty
+      [ERR]    !! objet introuvable (v3, ligne 1)
+      marquées : aucune
+   put the short name of this card
+      = C2
+
+== 6. témoins : les formes d'avant ==
+   unmark all cards
+   mark card 3
+   mark this card
+      marquées : C2 C3
+   go next marked card
+   put the short name of this card
+      = C3
+   unmark all cards
+      marquées : aucune
