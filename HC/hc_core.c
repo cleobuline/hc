@@ -6625,7 +6625,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "cantmodify", "cantabort", "showpict", "sharedtext",
+        "cantmodify", "cantabort", "usermodify", "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6968,6 +6968,11 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         snprintf(out, outlen, "%s", o->cant_modify ? "true" : "false"); return 1;
     }
+    /* « the userModify of this stack » : la carte « userModify » de HyperTalk
+     * Reference l'écrit ainsi, et HyperCard Help l'écrit sans pile. C'est le
+     * même réglage, global : voir G_REGLAGES. */
+    if (ci_equal(prop, "usermodify") && o->type == OBJ_STACK)
+        return reglage_lit("usermodify", out, outlen);
     if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
         snprintf(out, outlen, "%s", o->cant_abort ? "true" : "false"); return 1;
     }
@@ -7093,7 +7098,10 @@ static int truthy(const char *s)
  * Les bornes servent : « set the userLevel to 47 » se refuse au lieu de
  * ranger 47. Un réglage hors de son domaine ne veut rien dire, et le laisser
  * passer reporte la surprise à la lecture. */
-typedef enum { REG_BOOL, REG_ENTIER } HcTypeReglage;
+typedef enum { REG_BOOL, REG_ENTIER, REG_TEXTE } HcTypeReglage;
+
+/* La longueur d'un réglage en texte : un nom de police, d'éditeur, de style. */
+#define HC_REGLAGE_TEXTE 64
 
 static struct {
     const char   *nom;       /* en minuscules, pour la comparaison    */
@@ -7101,6 +7109,7 @@ static struct {
     HcTypeReglage type;
     int           valeur;
     int           mini, maxi;
+    char          texte[HC_REGLAGE_TEXTE];   /* REG_TEXTE seulement */
 } G_REGLAGES[] = {
     /* 5 par défaut : HC n'impose aucune restriction, et annoncer un niveau
      * plus bas que ce qu'on autorise serait le mensonge inverse. */
@@ -7116,6 +7125,36 @@ static struct {
      * une pile qui la pose et sort par un « exit » resterait sinon muette
      * pour toujours. */
     { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
+
+    /* LES RÉGLAGES QUI ARRÊTAIENT UN SCRIPT AU « set ».
+     *
+     * Relevé le 11 octobre sur HyperTalk Reference : chacun répondait
+     * « propriété inconnue », et un script qui prépare son impression —
+     * « set the printTextFont to "Times" » — ou que HyperCard Help prépare —
+     * « set the userModify to true » — s'arrêtait là. Ils sont RETENUS et
+     * RELUS, comme les six du haut, et ne sont PAS CONSULTÉS : HC n'imprime
+     * pas de rapport, n'a qu'un éditeur de script, pas de Message Watcher ni
+     * de Variable Watcher, et pas de modem.
+     *
+     * Les défauts sont ceux qu'écrit la référence d'Apple, carte par carte.
+     * NON MESURÉ : dialingVolume, dont la référence ne donne pas le défaut —
+     * 7, le plus fort, est un choix. */
+    { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1     },
+    { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1     },
+    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767 },
+    { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7     },
+    { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767 },
+    { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767 },
+    { "scripttextsize",   "scriptTextSize",   REG_ENTIER, 9, 1, 32767 },
+    { "printtextfont",    "printTextFont",    REG_TEXTE, 0, 0, 0, "Geneva" },
+    { "printtextalign",   "printTextAlign",   REG_TEXTE, 0, 0, 0, "left" },
+    { "printtextstyle",   "printTextStyle",   REG_TEXTE, 0, 0, 0, "plain" },
+    { "printmargins",     "printMargins",     REG_TEXTE, 0, 0, 0, "0,0,0,0" },
+    { "scripttextfont",   "scriptTextFont",   REG_TEXTE, 0, 0, 0, "Monaco" },
+    { "debugger",         "debugger",         REG_TEXTE, 0, 0, 0, "ScriptEditor" },
+    { "scripteditor",     "scriptEditor",     REG_TEXTE, 0, 0, 0, "ScriptEditor" },
+    { "messagewatcher",   "messageWatcher",   REG_TEXTE, 0, 0, 0, "MessageWatcher" },
+    { "variablewatcher",  "variableWatcher",  REG_TEXTE, 0, 0, 0, "VariableWatcher" },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
 
@@ -7167,6 +7206,47 @@ static int reglage_pose(const char *prop, const char *val)
     int i = reglage_index(prop);
     if (i < 0) return 0;
 
+    /* UN RÉGLAGE EN TEXTE. Trois ont une forme, et la forme se vérifie :
+     * une valeur hors de son domaine se refuse au lieu d'être rangée, comme
+     * pour les bornes des entiers. Les autres sont des noms — une police, un
+     * éditeur — que rien ici ne permet de juger. */
+    if (G_REGLAGES[i].type == REG_TEXTE) {
+        char t[HC_REGLAGE_TEXTE];
+        if (strlen(val) >= sizeof t) {
+            emit(HC_ERR, "   !! %s : valeur trop longue (%d caractères au plus)",
+                 G_REGLAGES[i].affiche, (int)sizeof t - 1);
+            return 1;
+        }
+        snprintf(t, sizeof t, "%s", val);
+        if (ci_equal(prop, "printtextalign")) {
+            if (!ci_equal(t, "left") && !ci_equal(t, "center") &&
+                !ci_equal(t, "right")) {
+                emit(HC_ERR, "   !! printTextAlign attend left, center ou right, "
+                             "reçu « %s »", val);
+                return 1;
+            }
+            for (char *c = t; *c; c++) *c = (char)tolower((unsigned char)*c);
+        } else if (ci_equal(prop, "printtextstyle")) {
+            if (!style_is_names(t)) {
+                emit(HC_ERR, "   !! printTextStyle attend des noms de style, "
+                             "reçu « %s »", val);
+                return 1;
+            }
+            style_to_names(style_from_names(t), t, (int)sizeof t);
+        } else if (ci_equal(prop, "printmargins")) {
+            int r[4];
+            if (parse_ints(t, r, 4) != 4) {
+                emit(HC_ERR, "   !! printMargins attend un rectangle, quatre "
+                             "nombres, reçu « %s »", val);
+                return 1;
+            }
+            snprintf(t, sizeof t, "%d,%d,%d,%d", r[0], r[1], r[2], r[3]);
+        }
+        memcpy(G_REGLAGES[i].texte, t, sizeof t);
+        emit(HC_INFO, "   → %s ← \"%s\"", G_REGLAGES[i].affiche, t);
+        return 1;
+    }
+
     int v;
     if (G_REGLAGES[i].type == REG_BOOL) {
         v = truthy(val) ? 1 : 0;
@@ -7212,6 +7292,8 @@ static int reglage_lit(const char *nom, char *out, int outlen)
     if (i < 0) return 0;
     if (G_REGLAGES[i].type == REG_BOOL)
         snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].valeur ? "true" : "false");
+    else if (G_REGLAGES[i].type == REG_TEXTE)
+        snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].texte);
     else
         snprintf(out, (size_t)outlen, "%d", G_REGLAGES[i].valeur);
     return 1;
@@ -9543,6 +9625,33 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
      * et un chemin qui pourrait un jour répondre autre chose. */
     if (ci_equal(nom, "version")) {
         *out = hct_val_texte(HC_VERSION_HYPERCARD);
+        return 1;
+    }
+
+    /* TROIS LECTURES QUI ARRÊTAIENT UN SCRIPT, relevées le 11 octobre sur
+     * HyperTalk Reference — « propriété ou fonction inconnue » :
+     *
+     *   the environment   « development » pour HyperCard complet, « player »
+     *                     pour HyperCard Player. HC est complet.
+     *   the suspended     l'application est-elle à l'arrière-plan ? L'hôte
+     *                     le sait s'il le dit ; sinon, false — un script qui
+     *                     tourne sans hôte n'a pas d'arrière-plan.
+     *   the stackSpace    la place libre dans la pile mémoire d'HyperCard.
+     *                     macOS n'en a pas de bornée, comme pour heapSpace ;
+     *                     on répond par un MÉGAOCTET, de quoi passer les
+     *                     tests de prudence des piles (« if roomEnough >
+     *                     8000 »). Un choix, et NON MESURÉ. */
+    if (ci_equal(nom, "environment")) {
+        *out = hct_val_texte("development");
+        return 1;
+    }
+    if (ci_equal(nom, "suspended")) {
+        const char *v = host_global("suspended");
+        *out = hct_val_texte((v && *v) ? v : "false");
+        return 1;
+    }
+    if (ci_equal(nom, "stackspace")) {
+        *out = hct_val_texte("1048576");
         return 1;
     }
 
@@ -12576,6 +12685,13 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (n->nfils == 3 && n->fils[0]->genre == HCTN_IDENT) {
             v3_val_texte(ctx, n->fils[2], val, HC_VAL);
             if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else if (n->nfils > 3 && ci_equal(prop, "printmargins")) {
+            /* « to 10,10,10,10 » : un enfant par élément, que v3_val_liste
+             * rejoint. Le texte relu s'arrêtait à la première virgule. Pour
+             * printMargins seul : les autres listes globales — « to
+             * bold,condense » — gardent le chemin qu'elles ont toujours eu. */
+            v3_val_liste(ctx, n, 2, val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
         } else {
             eval_checked(to + 2, val, HC_VAL);
         }
@@ -12888,6 +13004,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         o->cant_modify = truthy(val);
+    } else if (ci_equal(prop, "usermodify") && o->type == OBJ_STACK) {
+        reglage_pose("usermodify", val);       /* voir obj_prop_read */
     } else if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
         o->cant_abort = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
