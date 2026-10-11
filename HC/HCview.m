@@ -2,6 +2,7 @@
 #import "hc_core.h"
 #import <objc/runtime.h>   // pour associer un bitmap à un Object
 #include <stdlib.h>        // getenv, pour la trace HC_RUNS_DEBUG
+#include <errno.h>         // ERANGE, pour hcv_entier_strict
 #include <strings.h>       // strcasecmp, pour les noms de proprietes globales
 #include <float.h>         // FLT_MAX, pour la taille libre de l'editeur de champ
 #include <mach/mach.h>     // host_statistics64, pour « the heapSpace »
@@ -1120,6 +1121,29 @@ NSString *hcv_texte(const char *s)
     if (t) return t;
     t = [NSString stringWithCString:s encoding:NSISOLatin1StringEncoding];
     return t ? t : @"";
+}
+
+/* UN ENTIER TAPÉ À LA MAIN, ET RIEN D'AUTRE.
+ *
+ * strtol sans pointeur de fin, ou -[NSString intValue], lisent le début et
+ * jettent le reste : « 12abc », « 12.5 », « 18 toto » passaient pour 12, 12
+ * et 18. Relevé par un audit des sources le 11 octobre dans « Other… » du
+ * menu Style ; le dialogue de style de l'Info lisait son corps et son
+ * interligne de la même façon. Ici, des blancs autour, un entier entre eux,
+ * et c'est tout. Rend NO pour une chaîne vide, illisible ou hors des long. */
+BOOL hcv_entier_strict(const char *s, long *out)
+{
+    if (!s) return NO;
+    while (*s == ' ' || *s == '\t') s++;
+    if (!*s) return NO;
+    char *fin = NULL;
+    errno = 0;
+    long v = strtol(s, &fin, 10);
+    if (fin == s || errno == ERANGE) return NO;
+    while (*fin == ' ' || *fin == '\t') fin++;
+    if (*fin) return NO;
+    if (out) *out = v;
+    return YES;
 }
 
 static void draw_part(Object *o) {
@@ -9742,10 +9766,14 @@ static NSTextField  *gSprayDensityLabel = nil;
         if (avant > 0) snprintf(dft, sizeof dft, "%ld", lround(avant));
         const char *rep = cocoa_ask("Corps du texte :", dft);
         if (!rep) return;
-        long v = strtol(rep, NULL, 10);
-        /* La borne du noyau pour « set the textSize » et pour le lecteur de
-         * pile : au-delà, plus rien ne s'affiche. Hors de là, on refuse. */
-        if (v < 1 || v > HC_TEXTE_MAX) { NSBeep(); return; }
+        long v = 0;
+        /* Un entier, et dans la borne du noyau pour « set the textSize » et
+         * pour le lecteur de pile : au-delà, plus rien ne s'affiche. Sinon,
+         * on refuse — « 12abc » n'est pas 12. */
+        if (!hcv_entier_strict(rep, &v) || v < 1 || v > HC_TEXTE_MAX) {
+            NSBeep();
+            return;
+        }
         corps = (CGFloat)v;
         /* Le dialogue est modal, et tout a pu bouger derrière lui : on
          * reprend l'éditeur et sa sélection tels qu'ils sont MAINTENANT. */

@@ -260,8 +260,19 @@ static void commit_style_panel(void)
         o->textfont = strdup([fam UTF8String]);
     }
 
-    int sz = [gStyleSize intValue];
-    if (sz > 0) o->textsize = sz;
+    /* LE CORPS, LU STRICTEMENT ET BORNÉ. intValue prenait « 12abc » pour 12,
+     * et rien ne bornait la valeur : on écrivait dans l'objet ce que
+     * « set the textSize » aurait refusé au-delà de HC_TEXTE_MAX. Une saisie
+     * illisible ou hors bornes laisse le corps tel quel, et le dit d'un bip.
+     * Trouvé en cherchant le site jumeau de « Other… » du menu Style. */
+    {
+        long sz = 0;
+        if (hcv_entier_strict([[gStyleSize stringValue] UTF8String], &sz) &&
+            sz > 0 && sz <= HC_TEXTE_MAX)
+            o->textsize = (int)sz;
+        else
+            NSBeep();
+    }
 
     /* L'ALIGNEMENT. Le noyau le connaît depuis toujours — « the textAlign of
      * field X » se lit, s'écrit et se relit du fichier — mais ce panneau ne
@@ -279,9 +290,18 @@ static void commit_style_panel(void)
      * sans elle le réglage serait à sens unique. gStyleLH est nil pour un
      * bouton, et [nil stringValue] rend nil, d'où le test explicite. */
     if (gStyleLH) {
-        NSString *t = [gStyleLH stringValue];
-        int lh = [t intValue];
-        o->textheight = ([t length] && lh > 0) ? lh : 0;
+        /* Même lecture stricte, même borne. Vide, zéro ou négatif remettent
+         * toujours l'automatique ; illisible ou trop grand laisse
+         * l'interligne tel quel, avec un bip. */
+        NSString *t = [[gStyleLH stringValue]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        long lh = 0;
+        if (![t length])
+            o->textheight = 0;
+        else if (!hcv_entier_strict([t UTF8String], &lh) || lh > HC_TEXTE_MAX)
+            NSBeep();
+        else
+            o->textheight = lh > 0 ? (int)lh : 0;
     }
 
     /* Garder la case « taille » du dialogue parent en accord : sinon son OK

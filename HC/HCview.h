@@ -113,6 +113,9 @@ Object *hcv_selection(void);
  * valide, et -setStringValue: lève alors une assertion qui ARRÊTE
  * l'application. Voir HCview.m pour la mesure qui a fait percer ce trou. */
 NSString *hcv_texte(const char *s);
+/* Un entier tapé à la main, et rien d'autre autour que des blancs : « 12abc »
+ * se refuse. Rend NO si ce n'en est pas un. Voir HCview.m. */
+BOOL      hcv_entier_strict(const char *s, long *out);
 void    hcv_selectionne(Object *o);
 
 @interface HCView : NSView <NSTextViewDelegate>
