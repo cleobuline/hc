@@ -18481,6 +18481,90 @@ void hc_env_message(const char *message)
     hc_send(g_current_card, message);
 }
 
+/* LE MENU STYLE PAR « doMenu ».
+ *
+ * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice le 11
+ * octobre :
+ *
+ *     select word 2 of card field 1
+ *     doMenu "Bold"
+ *     doMenu "Group"
+ *
+ * met le mot 2 en gras et le groupe. HC répondait « article inconnu » : la
+ * table de doMenu ne connaissait pas le menu Style, ajouté le même jour pour
+ * la souris. Constat 4 de l'audit des sources.
+ *
+ * L'hôte passe d'abord (style_menu) : si un éditeur de champ est ouvert —
+ * c'est le cas après « select » dans un champ déverrouillé —, c'est lui qui
+ * tient le texte, et le menu de l'interface fait le travail. Sinon le noyau
+ * l'applique aux plages de la sélection qu'il connaît, avec la même règle
+ * que le menu : un style BASCULE — ôté si toute la sélection l'a, posé
+ * partout sinon —, Plain ôte tout, un corps se pose.
+ *
+ * NON MESURÉ : la bascule elle-même (le banc posait Bold sur un mot qui ne
+ * l'avait pas) ; ce que fait HyperCard sans sélection ; « Other… », qui
+ * demande un corps, n'est servi que par l'hôte. Rend 1 si l'article est du
+ * menu Style. */
+static int menu_style(const char *item)
+{
+    static const struct { const char *article; int bit; } STYLES[] = {
+        { "Plain", 0 },             { "Bold", HC_BOLD },
+        { "Italic", HC_ITALIC },    { "Underline", HC_UNDERLINE },
+        { "Outline", HC_OUTLINE },  { "Shadow", HC_SHADOW },
+        { "Condense", HC_CONDENSE },{ "Extend", HC_EXTEND },
+        { "Group", HC_GROUP },
+    };
+    static const int CORPS[] = { 9, 10, 12, 14, 18, 24 };
+
+    int bit = -1, corps = 0;
+    for (int i = 0; i < (int)(sizeof STYLES / sizeof *STYLES); i++)
+        if (menu_meme_article(STYLES[i].article, item)) bit = STYLES[i].bit;
+    if (bit < 0)
+        for (int i = 0; i < (int)(sizeof CORPS / sizeof *CORPS); i++) {
+            char t[8];
+            snprintf(t, sizeof t, "%d", CORPS[i]);
+            if (menu_meme_article(t, item)) corps = CORPS[i];
+        }
+    if (bit < 0 && !corps) return 0;
+
+    if (g_host && g_host->style_menu && g_host->style_menu(item)) return 1;
+
+    Object *f = g_sel_field;
+    if (!f || g_sel_len <= 0 || !hc_object_is_live(f)) return 1;   /* rien à styler */
+    struct RunList *rl = runs_of(f);
+    if (!rl) return 1;
+    int deb = g_sel_start, fin = g_sel_start + g_sel_len;
+    int lt = (int)strlen(hc_field_text(f));
+    if (deb < 0) deb = 0;
+    if (fin > lt) fin = lt;
+    if (fin <= deb) return 1;
+
+    if (corps) {
+        runs_set_attr(rl, deb, fin - deb, RA_SIZE, 0, corps, NULL, HC_COLOR_INHERIT);
+    } else if (bit == 0) {
+        runs_set_attr(rl, deb, fin - deb, RA_STYLE, 0, 0, NULL, HC_COLOR_INHERIT);
+    } else {
+        /* La bascule se décide sur TOUTE la sélection, puis s'applique
+         * morceau par morceau : chacun garde ses autres styles. Les morceaux
+         * sont relevés avant d'écrire, l'écriture redécoupant les plages. */
+        int partout = 1;
+        for (int c = deb; c < fin && partout; c++)
+            if (!(runs_get_style(rl, c, 1, f->textstyle) & bit)) partout = 0;
+        int c = deb;
+        while (c < fin) {
+            int st = runs_get_style(rl, c, 1, f->textstyle);
+            int d = c + 1;
+            while (d < fin && runs_get_style(rl, d, 1, f->textstyle) == st) d++;
+            int neuf = partout ? (st & ~bit) : (st | bit);
+            runs_set_attr(rl, c, d - c, RA_STYLE, neuf, 0, NULL, HC_COLOR_INHERIT);
+            c = d;
+        }
+    }
+    notify_field(f);
+    set_result("");
+    return 1;
+}
+
 void hc_do_menu(const char *item)
 {
     if (!item) return;
@@ -18516,6 +18600,8 @@ void hc_do_menu(const char *item)
             g_v1_porte = sauve;
             return;
         }
+
+    if (menu_style(item)) return;
 
     if (g_host && g_host->do_menu) g_host->do_menu(item);
     else emit(HC_ERR, "   !! doMenu : l'hôte ne gère pas les menus");

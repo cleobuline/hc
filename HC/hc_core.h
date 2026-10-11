@@ -969,6 +969,12 @@ typedef struct {
     void (*idle)(void);
     void (*do_menu)(const char *item);
 
+    /* Un article du menu Style — Plain, Bold… Group, un corps — demandé par
+     * « doMenu ». Quand l'hôte tient le texte dans un éditeur de champ
+     * ouvert, c'est à lui de l'appliquer : il rend 1. Sinon il rend 0, et le
+     * noyau l'applique aux plages de la sélection qu'il connaît. NULL vaut 0. */
+    int  (*style_menu)(const char *article);
+
     /* La barre de menus créée par script a changé : créée, supprimée,
      * remplie, activée. L'hôte relit tout par les accesseurs hc_menu_* et
      * reconstruit son reflet. Un seul rappel pour toutes les opérations : le

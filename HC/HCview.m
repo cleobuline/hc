@@ -2839,6 +2839,33 @@ static void cocoa_do_menu(const char *item) {
     cocoa_menu_hypercard(item);
 }
 
+/* « doMenu "Bold" » — et les autres articles du menu Style — QUAND UN ÉDITEUR
+ * DE CHAMP EST OUVERT. Le noyau le demande ici d'abord (style_menu) : c'est
+ * la NSTextView qui tient le texte stylé pendant l'édition, et des plages
+ * posées dans le noyau seraient écrasées par endFieldEdit à la fermeture.
+ * C'est le cas après « select word 2 of card field 1 » sur un champ
+ * déverrouillé, le banc mesuré dans HyperCard le 11 octobre : on passe alors
+ * par l'article même du menu, comme un clic — même bascule, même ⌘Z.
+ * gDansDoMenu empêche styleMenu: de reproposer l'article à la pile, qui l'a
+ * déjà eu. Sans éditeur, rend 0 : le noyau s'en charge sur sa sélection. */
+static int cocoa_style_menu(const char *article)
+{
+    if (!gEditingField || !gFieldEditor || !article || !gView) return 0;
+    NSString *voulu = menu_normalise(hcv_texte(article));
+    for (NSMenuItem *tete in [[NSApp mainMenu] itemArray]) {
+        for (NSMenuItem *it in [[tete submenu] itemArray]) {
+            if ([it action] != @selector(styleMenu:)) continue;
+            if (![menu_normalise([it title]) isEqualToString:voulu]) continue;
+            BOOL avant = gDansDoMenu;
+            gDansDoMenu = YES;
+            [gView styleMenu:it];
+            gDansDoMenu = avant;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void cocoa_type_text(const char *text, const char *mods) {
     (void)mods;
     if (!text || !gView) return;
@@ -9137,6 +9164,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.visual_effect = cocoa_visual_effect;
     host.idle          = cocoa_idle;
     host.do_menu       = cocoa_do_menu;
+    host.style_menu    = cocoa_style_menu;
     host.menus_changed = cocoa_menus_changed;
     host.object_gone   = cocoa_object_gone;
     hc_set_host(&host);
