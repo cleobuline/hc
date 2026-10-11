@@ -33,7 +33,20 @@ int main(void){
    "  set the userLevel to 47\n"
    "  put \"reste a \" & the userLevel");
   essai("pas un nombre : refuse aussi",
+   "  set the dragSpeed to 120\n"
    "  set the dragSpeed to \"vite\"\n  put \"reste a \" & the dragSpeed");
+  /* La référence d'Apple : « On idle, HyperCard resets the dragSpeed to 0 »,
+   * et « resets itemDelimiter to the default delimiter at idle ». Le repos,
+   * ici, c'est la fin du gestionnaire de plus haut niveau. Les autres
+   * réglages restent : la référence ne dit rien d'eux. */
+  essai("au repos, dragSpeed et itemDelimiter retombent ; userLevel reste",
+   "  set the dragSpeed to 120\n"
+   "  set the itemDelimiter to \"/\"\n"
+   "  set the userLevel to 3\n"
+   "  put \"pendant : \" & the dragSpeed && the itemDelimiter && the userLevel");
+  essai("(le gestionnaire suivant)",
+   "  put \"apres : \" & the dragSpeed && the itemDelimiter && the userLevel\n"
+   "  set the userLevel to 5");
   essai("utilisables dans un test, ce qui est tout l'interet",
    "  set the userLevel to 2\n"
    "  if the userLevel < 3 then put \"   niveau bas : on n'edite pas\"\n"

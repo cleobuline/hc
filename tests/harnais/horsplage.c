@@ -56,8 +56,9 @@ int main(void)
     puts("== un réglage ==");
     v("set the dragSpeed to 1e31850");
     v("set the dragSpeed to -1e31850");
-    v("set the dragSpeed to 12");
-    v("put the dragSpeed");
+    /* Posée et relue dans le MÊME gestionnaire : dragSpeed retombe à 0 au
+     * repos, comme dans HyperCard (harnais reglages). */
+    v("set the dragSpeed to 12\n  put the dragSpeed");
 
     puts("\n== le rang d'une carte marquée ==");
     v("mark card 2");

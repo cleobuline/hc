@@ -2237,6 +2237,24 @@ Object *hc_new_field(Object *owner, const char *name)
 #define HC_HISTO_MAX 64
 static Object *g_histo[HC_HISTO_MAX];
 static int     g_nhisto = 0;
+
+/* LE MENU RECENT NE VOIT PAS TOUT LE CHEMIN.
+ *
+ * « lock recent » posait lockRecent, qui se relisait « true », et personne
+ * ne le consultait : les cartes visitées sous la serrure entraient quand même
+ * au menu Recent. Relevé par un audit des sources le 11 octobre.
+ *
+ * La carte lockRecent de HyperTalk Reference dit ce qu'elle doit faire, et
+ * ce qu'elle ne doit PAS faire : elle retire les cartes de la boîte Recent,
+ * mais « does not affect the trail of cards you can go back to ». La piste
+ * reste donc entière dans g_histo ; chaque pas y porte en plus une marque,
+ * posée à l'arrivée, qui dit s'il compte pour le menu. Seul
+ * hc_recent_distinct la lit — le menu Recent, son clic et « the recent
+ * cards ». « go back », « go forth » et « this card of stack » suivent la
+ * piste entière. La marque voyage avec son pas : memmove et histo_oublie
+ * déplacent les deux tableaux ensemble. */
+static unsigned char g_histo_vu[HC_HISTO_MAX];
+static int reglage_valeur(const char *nom);       /* défini plus bas */
 static int     g_histo_gele = 0;   /* « go back » ne s'inscrit pas lui-même */
 
 /* LES PAS QU'ON PEUT REFAIRE : « go forth » après « go back ».
@@ -2256,8 +2274,10 @@ static void histo_arrive(Object *card)
     if (g_nhisto > 0 && g_histo[g_nhisto - 1] == card) return;
     if (g_nhisto == HC_HISTO_MAX) {
         memmove(g_histo, g_histo + 1, sizeof g_histo - sizeof g_histo[0]);
+        memmove(g_histo_vu, g_histo_vu + 1, sizeof g_histo_vu - sizeof g_histo_vu[0]);
         g_nhisto--;
     }
+    g_histo_vu[g_nhisto] = reglage_valeur("lockrecent") ? 0 : 1;
     g_histo[g_nhisto++] = card;
     g_histo_avant = 0;
 }
@@ -2273,6 +2293,7 @@ static void histo_oublie(Object *card)
     for (int i = 0; i < total; i++) {
         if (g_histo[i] == card) continue;
         if (i < g_nhisto) passe++;
+        g_histo_vu[j] = g_histo_vu[i];
         g_histo[j++] = g_histo[i];
     }
     g_nhisto = passe;
@@ -2337,6 +2358,9 @@ int hc_recent_distinct(Object **out, int max)
     for (int i = 0; i < g_nhisto && n < max; i++) {
         Object *c = hc_recent_at(i);
         if (!c) continue;
+        /* Un pas fait sous « lock recent » n'entre pas au menu : voir
+         * g_histo_vu. Rang i depuis le sommet, comme hc_recent_at. */
+        if (!g_histo_vu[g_nhisto - 1 - i]) continue;
         int vu = 0;
         for (int k = 0; k < n; k++) if (out[k] == c) { vu = 1; break; }
         if (!vu) out[n++] = c;
@@ -18234,6 +18258,22 @@ static int hc_send_args_k(Object *target, const char *message,
      * partirait en errorDialog. */
     if (g_depth == 0) reglage_eteint("lockerrordialogs");
     if (g_depth == 0) g_skip_errors = -1;
+
+    /* DEUX RÉGLAGES QUE HYPERCARD REMET AU REPOS, et que HC gardait d'une
+     * ligne à l'autre. La référence d'Apple, carte par carte : « On idle,
+     * HyperCard resets the dragSpeed to 0 » ; « HyperCard resets
+     * itemDelimiter to the default delimiter at idle ». Mesuré dans HC le
+     * 11 octobre : « set the itemDelimiter to "/" » tapé dans la boîte de
+     * message valait encore à la ligne suivante. Trouvés en cherchant les
+     * sites jumeaux de lockRecent, que l'audit des sources avait relevé.
+     *
+     * Écrits ici directement, sans reglage_pose : celui-ci annonce chaque
+     * pose, et le repos bavarderait à chaque message. */
+    if (g_depth == 0) {
+        item_delim_pose(NULL);
+        int i = reglage_index("dragspeed");
+        if (i >= 0) G_REGLAGES[i].valeur = 0;
+    }
 
     /* Une commande « delete this card » peut avoir détaché l'objet dont le
      * gestionnaire vient juste de finir. C'est seulement ici que plus aucun
