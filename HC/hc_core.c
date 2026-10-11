@@ -2239,6 +2239,17 @@ static Object *g_histo[HC_HISTO_MAX];
 static int     g_nhisto = 0;
 static int     g_histo_gele = 0;   /* « go back » ne s'inscrit pas lui-même */
 
+/* LES PAS QU'ON PEUT REFAIRE : « go forth » après « go back ».
+ *
+ * « go back » dépile sans effacer : la carte quittée reste dans g_histo,
+ * juste au-dessus du sommet. g_histo_avant compte ces cartes-là, de
+ * g_histo[g_nhisto] à g_histo[g_nhisto + g_histo_avant - 1]. Une
+ * navigation NOUVELLE les oublie, comme le bouton « précédent » d'un
+ * navigateur : on ne peut plus refaire un chemin qu'on a quitté pour un
+ * autre. La carte « go » de HyperTalk Reference écrit « go forth »
+ * à côté de « go back » ; relevé le 11 octobre. */
+static int     g_histo_avant = 0;
+
 static void histo_arrive(Object *card)
 {
     if (!card || g_histo_gele) return;
@@ -2248,6 +2259,7 @@ static void histo_arrive(Object *card)
         g_nhisto--;
     }
     g_histo[g_nhisto++] = card;
+    g_histo_avant = 0;
 }
 
 /* Une carte meurt : elle sort de l'historique. Sans cela « go back » y
@@ -2255,10 +2267,16 @@ static void histo_arrive(Object *card)
  * corriger dans l'interface, et le noyau n'y échappe pas plus qu'elle. */
 static void histo_oublie(Object *card)
 {
-    int j = 0;
-    for (int i = 0; i < g_nhisto; i++)
-        if (g_histo[i] != card) g_histo[j++] = g_histo[i];
-    g_nhisto = j;
+    /* Les pas à refaire aussi : ce sont des adresses comme les autres. */
+    int j = 0, passe = 0;
+    int total = g_nhisto + g_histo_avant;
+    for (int i = 0; i < total; i++) {
+        if (g_histo[i] == card) continue;
+        if (i < g_nhisto) passe++;
+        g_histo[j++] = g_histo[i];
+    }
+    g_nhisto = passe;
+    g_histo_avant = j - passe;
 }
 
 /* La carte d'où l'on vient. Le sommet est la carte courante : on la dépile,
@@ -2268,7 +2286,17 @@ static Object *histo_recule(void)
 {
     if (g_nhisto < 2) return NULL;
     g_nhisto--;
+    g_histo_avant++;           /* la carte quittée peut se refaire */
     return g_histo[g_nhisto - 1];
+}
+
+/* « go forth » : refaire le pas que « go back » a défait. NULL s'il n'y en a
+ * pas — on n'a pas reculé, ou l'on est allé ailleurs depuis. */
+static Object *histo_avance(void)
+{
+    if (g_histo_avant <= 0) return NULL;
+    g_histo_avant--;
+    return g_histo[g_nhisto++];
 }
 
 /* LA CARTE D'OÙ L'ON VIENT, SANS Y ALLER — « push recent card ». La même que
@@ -5484,9 +5512,30 @@ static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
  * La liste est celle des globales du noyau qui retiennent un Object* SANS EN
  * ÊTRE PROPRIÉTAIRES. Les propriétaires — g_stacks, g_clipboard, g_clip_bg_copy
  * — n'ont rien à faire ici : leur contenu ne meurt pas sous eux. */
+/* LE TRAVAIL D'IMPRESSION EN COURS : « open printing » … « close printing ».
+ *
+ * Entre les deux, chaque « print card » AJOUTE ses cartes ici au lieu de
+ * les imprimer aussitôt, et « close printing » les remet à l'hôte d'un seul
+ * coup : un dialogue d'impression, un seul document. La carte « open
+ * printing » de HyperTalk Reference : « You must use the close printing
+ * command to end a print job begun with open printing. » Rien ne le ferme
+ * donc tout seul. Les cartes sont des pointeurs empruntés : une carte
+ * supprimée entre-temps en sort, voir oublie_objet_interne. */
+static Object **g_tache_cartes = NULL;
+static int      g_tache_n = 0, g_tache_cap = 0;
+static int      g_tache_ouverte = 0;
+
 static void oublie_objet_interne(Object *mort)
 {
     if (!mort) return;
+
+    /* le travail d'impression en cours */
+    {
+        int k = 0;
+        for (int i = 0; i < g_tache_n; i++)
+            if (g_tache_cartes[i] != mort) g_tache_cartes[k++] = g_tache_cartes[i];
+        g_tache_n = k;
+    }
 
     /* la sélection de texte */
     if (g_sel_field == mort) { g_sel_field = NULL; g_sel_start = g_sel_len = 0; }
@@ -6576,7 +6625,7 @@ static int is_prop_name(const char *w, int len)
         "enabled", "owner", "size", "freesize", "family", "titlewidth",
         "icon", "selectedline", "selectedlines", "locktext", "widemargins",
         "fixedlineheight", "showlines", "autotab", "dontsearch", "cantdelete",
-        "cantmodify", "cantabort", "showpict", "sharedtext",
+        "cantmodify", "cantabort", "usermodify", "showpict", "sharedtext",
         "sharedhilite",
         "textalign", "autoselect", "multiplelines", "dontwrap", "textcolor",
         "marked",
@@ -6919,6 +6968,11 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
     if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         snprintf(out, outlen, "%s", o->cant_modify ? "true" : "false"); return 1;
     }
+    /* « the userModify of this stack » : la carte « userModify » de HyperTalk
+     * Reference l'écrit ainsi, et HyperCard Help l'écrit sans pile. C'est le
+     * même réglage, global : voir G_REGLAGES. */
+    if (ci_equal(prop, "usermodify") && o->type == OBJ_STACK)
+        return reglage_lit("usermodify", out, outlen);
     if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
         snprintf(out, outlen, "%s", o->cant_abort ? "true" : "false"); return 1;
     }
@@ -7044,7 +7098,10 @@ static int truthy(const char *s)
  * Les bornes servent : « set the userLevel to 47 » se refuse au lieu de
  * ranger 47. Un réglage hors de son domaine ne veut rien dire, et le laisser
  * passer reporte la surprise à la lecture. */
-typedef enum { REG_BOOL, REG_ENTIER } HcTypeReglage;
+typedef enum { REG_BOOL, REG_ENTIER, REG_TEXTE } HcTypeReglage;
+
+/* La longueur d'un réglage en texte : un nom de police, d'éditeur, de style. */
+#define HC_REGLAGE_TEXTE 64
 
 static struct {
     const char   *nom;       /* en minuscules, pour la comparaison    */
@@ -7052,21 +7109,52 @@ static struct {
     HcTypeReglage type;
     int           valeur;
     int           mini, maxi;
+    char          texte[HC_REGLAGE_TEXTE];   /* REG_TEXTE seulement */
 } G_REGLAGES[] = {
     /* 5 par défaut : HC n'impose aucune restriction, et annoncer un niveau
      * plus bas que ce qu'on autorise serait le mensonge inverse. */
-    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5     },
-    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767 },
-    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1     },
-    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1     },
-    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1     },
-    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1     },
+    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5, "" },
+    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767, "" },
+    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1, "" },
+    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1, "" },
+    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1, "" },
+    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1, "" },
     /* « set the lockErrorDialogs to true » : l'erreur ne va plus au dialogue,
      * elle part en message « errorDialog » à la carte courante. Voir
      * erreurs_vide. Remise à false en retombant au repos, comme lockScreen —
      * une pile qui la pose et sort par un « exit » resterait sinon muette
      * pour toujours. */
-    { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
+    { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1, "" },
+
+    /* LES RÉGLAGES QUI ARRÊTAIENT UN SCRIPT AU « set ».
+     *
+     * Relevé le 11 octobre sur HyperTalk Reference : chacun répondait
+     * « propriété inconnue », et un script qui prépare son impression —
+     * « set the printTextFont to "Times" » — ou que HyperCard Help prépare —
+     * « set the userModify to true » — s'arrêtait là. Ils sont RETENUS et
+     * RELUS, comme les six du haut, et ne sont PAS CONSULTÉS : HC n'imprime
+     * pas de rapport, n'a qu'un éditeur de script, pas de Message Watcher ni
+     * de Variable Watcher, et pas de modem.
+     *
+     * Les défauts sont ceux qu'écrit la référence d'Apple, carte par carte.
+     * NON MESURÉ : dialingVolume, dont la référence ne donne pas le défaut —
+     * 7, le plus fort, est un choix. */
+    { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1, "" },
+    { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1, "" },
+    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767, "" },
+    { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7, "" },
+    { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767, "" },
+    { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767, "" },
+    { "scripttextsize",   "scriptTextSize",   REG_ENTIER, 9, 1, 32767, "" },
+    { "printtextfont",    "printTextFont",    REG_TEXTE, 0, 0, 0, "Geneva" },
+    { "printtextalign",   "printTextAlign",   REG_TEXTE, 0, 0, 0, "left" },
+    { "printtextstyle",   "printTextStyle",   REG_TEXTE, 0, 0, 0, "plain" },
+    { "printmargins",     "printMargins",     REG_TEXTE, 0, 0, 0, "0,0,0,0" },
+    { "scripttextfont",   "scriptTextFont",   REG_TEXTE, 0, 0, 0, "Monaco" },
+    { "debugger",         "debugger",         REG_TEXTE, 0, 0, 0, "ScriptEditor" },
+    { "scripteditor",     "scriptEditor",     REG_TEXTE, 0, 0, 0, "ScriptEditor" },
+    { "messagewatcher",   "messageWatcher",   REG_TEXTE, 0, 0, 0, "MessageWatcher" },
+    { "variablewatcher",  "variableWatcher",  REG_TEXTE, 0, 0, 0, "VariableWatcher" },
 };
 #define HC_NREGLAGES ((int)(sizeof G_REGLAGES / sizeof *G_REGLAGES))
 
@@ -7118,6 +7206,47 @@ static int reglage_pose(const char *prop, const char *val)
     int i = reglage_index(prop);
     if (i < 0) return 0;
 
+    /* UN RÉGLAGE EN TEXTE. Trois ont une forme, et la forme se vérifie :
+     * une valeur hors de son domaine se refuse au lieu d'être rangée, comme
+     * pour les bornes des entiers. Les autres sont des noms — une police, un
+     * éditeur — que rien ici ne permet de juger. */
+    if (G_REGLAGES[i].type == REG_TEXTE) {
+        char t[HC_REGLAGE_TEXTE];
+        if (strlen(val) >= sizeof t) {
+            emit(HC_ERR, "   !! %s : valeur trop longue (%d caractères au plus)",
+                 G_REGLAGES[i].affiche, (int)sizeof t - 1);
+            return 1;
+        }
+        snprintf(t, sizeof t, "%s", val);
+        if (ci_equal(prop, "printtextalign")) {
+            if (!ci_equal(t, "left") && !ci_equal(t, "center") &&
+                !ci_equal(t, "right")) {
+                emit(HC_ERR, "   !! printTextAlign attend left, center ou right, "
+                             "reçu « %s »", val);
+                return 1;
+            }
+            for (char *c = t; *c; c++) *c = (char)tolower((unsigned char)*c);
+        } else if (ci_equal(prop, "printtextstyle")) {
+            if (!style_is_names(t)) {
+                emit(HC_ERR, "   !! printTextStyle attend des noms de style, "
+                             "reçu « %s »", val);
+                return 1;
+            }
+            style_to_names(style_from_names(t), t, (int)sizeof t);
+        } else if (ci_equal(prop, "printmargins")) {
+            int r[4];
+            if (parse_ints(t, r, 4) != 4) {
+                emit(HC_ERR, "   !! printMargins attend un rectangle, quatre "
+                             "nombres, reçu « %s »", val);
+                return 1;
+            }
+            snprintf(t, sizeof t, "%d,%d,%d,%d", r[0], r[1], r[2], r[3]);
+        }
+        memcpy(G_REGLAGES[i].texte, t, sizeof t);
+        emit(HC_INFO, "   → %s ← \"%s\"", G_REGLAGES[i].affiche, t);
+        return 1;
+    }
+
     int v;
     if (G_REGLAGES[i].type == REG_BOOL) {
         v = truthy(val) ? 1 : 0;
@@ -7163,6 +7292,8 @@ static int reglage_lit(const char *nom, char *out, int outlen)
     if (i < 0) return 0;
     if (G_REGLAGES[i].type == REG_BOOL)
         snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].valeur ? "true" : "false");
+    else if (G_REGLAGES[i].type == REG_TEXTE)
+        snprintf(out, (size_t)outlen, "%s", G_REGLAGES[i].texte);
     else
         snprintf(out, (size_t)outlen, "%d", G_REGLAGES[i].valeur);
     return 1;
@@ -9494,6 +9625,33 @@ static int v3_fonction_globale(const char *nom, char *buf, HctValeur *out)
      * et un chemin qui pourrait un jour répondre autre chose. */
     if (ci_equal(nom, "version")) {
         *out = hct_val_texte(HC_VERSION_HYPERCARD);
+        return 1;
+    }
+
+    /* TROIS LECTURES QUI ARRÊTAIENT UN SCRIPT, relevées le 11 octobre sur
+     * HyperTalk Reference — « propriété ou fonction inconnue » :
+     *
+     *   the environment   « development » pour HyperCard complet, « player »
+     *                     pour HyperCard Player. HC est complet.
+     *   the suspended     l'application est-elle à l'arrière-plan ? L'hôte
+     *                     le sait s'il le dit ; sinon, false — un script qui
+     *                     tourne sans hôte n'a pas d'arrière-plan.
+     *   the stackSpace    la place libre dans la pile mémoire d'HyperCard.
+     *                     macOS n'en a pas de bornée, comme pour heapSpace ;
+     *                     on répond par un MÉGAOCTET, de quoi passer les
+     *                     tests de prudence des piles (« if roomEnough >
+     *                     8000 »). Un choix, et NON MESURÉ. */
+    if (ci_equal(nom, "environment")) {
+        *out = hct_val_texte("development");
+        return 1;
+    }
+    if (ci_equal(nom, "suspended")) {
+        const char *v = host_global("suspended");
+        *out = hct_val_texte((v && *v) ? v : "false");
+        return 1;
+    }
+    if (ci_equal(nom, "stackspace")) {
+        *out = hct_val_texte("1048576");
         return 1;
     }
 
@@ -12527,6 +12685,13 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         if (n->nfils == 3 && n->fils[0]->genre == HCTN_IDENT) {
             v3_val_texte(ctx, n->fils[2], val, HC_VAL);
             if (ctx->erreur) { g_atop = sauve; return 1; }
+        } else if (n->nfils > 3 && ci_equal(prop, "printmargins")) {
+            /* « to 10,10,10,10 » : un enfant par élément, que v3_val_liste
+             * rejoint. Le texte relu s'arrêtait à la première virgule. Pour
+             * printMargins seul : les autres listes globales — « to
+             * bold,condense » — gardent le chemin qu'elles ont toujours eu. */
+            v3_val_liste(ctx, n, 2, val, HC_VAL);
+            if (ctx->erreur) { g_atop = sauve; return 1; }
         } else {
             eval_checked(to + 2, val, HC_VAL);
         }
@@ -12839,6 +13004,8 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
         o->cant_delete = truthy(val);
     } else if (ci_equal(prop, "cantmodify") && o->type == OBJ_STACK) {
         o->cant_modify = truthy(val);
+    } else if (ci_equal(prop, "usermodify") && o->type == OBJ_STACK) {
+        reglage_pose("usermodify", val);       /* voir obj_prop_read */
     } else if (ci_equal(prop, "cantabort") && o->type == OBJ_STACK) {
         o->cant_abort = truthy(val);
     } else if (ci_equal(prop, "textalign")) {
@@ -13322,6 +13489,38 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         /* « print » nu : la carte courante. */
         if (g_current_card) liste[np++] = g_current_card;
     }
+    else if (quoi->genre != HCTN_OBJET && i0 + 1 < n->nfils &&
+             n->fils[i0 + 1]->genre == HCTN_OBJET &&
+             n->fils[i0 + 1]->typeobj == HCT_OBJ_CARD &&
+             n->fils[i0 + 1]->nfils == 0) {
+        /* « print 5 cards », « print (total-start) + 1 cards » : N cartes à
+         * partir de la carte courante. La carte « print » de HyperTalk
+         * Reference écrit « print posInteger cards », et l'exemple de sa carte
+         * « open printing » s'en sert. HC répondait « rien à imprimer » : le
+         * nombre arrivait seul, et aucune branche ne le lisait. Relevé le 11
+         * octobre.
+         *
+         * NON MESURÉ : ce que fait HyperCard au-delà de la dernière carte.
+         * On s'y arrête, sans repartir de la première. */
+        char v[64];
+        v3_val_texte(ctx, quoi, v, sizeof v);
+        if (ctx->erreur) { free(liste); g_atop = sauve; return 1; }
+        if (!hct_est_nombre(v)) {
+            set_result("Bad number of cards");
+            emit(HC_ERR, "   !! print : un nombre de cartes est attendu : %s", v);
+            free(liste); g_atop = sauve; return 1;
+        }
+        int hors = 0;
+        int k = hct_vers_rang(v, &hors);
+        int total = card_count(pile);
+        int ici = card_index(pile, g_current_card);
+        if (ici < 0) ici = 0;
+        if (hors || k > total) k = total;
+        for (int i = 0; i < k && ici + i < total && np < cap; i++) {
+            Object *c = nth_card(pile, ici + i);
+            if (c) liste[np++] = c;
+        }
+    }
     else if (quoi->genre == HCTN_OBJET && quoi->typeobj == HCT_OBJ_CARD) {
         if (nto) {
             /* UNE PLAGE. Les bornes se lisent comme des NOMBRES — voir
@@ -13365,6 +13564,31 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
         emit(HC_ERR, "   !! print : rien à imprimer");
         free(liste); g_atop = sauve; return 1;
     }
+
+    /* UN TRAVAIL EST OUVERT : les cartes s'y ajoutent, et c'est « close
+     * printing » qui imprimera. Voir g_tache_cartes.
+     *
+     * Une carte DÉCOUPÉE — « print card from 0,0 to 512,304 » — part seule,
+     * tout de suite : l'hôte ne reçoit qu'un découpage par envoi, et le
+     * prêter à toutes les cartes du travail les rognerait toutes. NON
+     * MESURÉ : ce que fait HyperCard d'un découpage dans un travail. */
+    if (g_tache_ouverte && !pdecoupe) {
+        if (g_tache_n + np > g_tache_cap) {
+            int ncap = g_tache_cap ? g_tache_cap : 16;
+            while (ncap < g_tache_n + np) ncap *= 2;
+            Object **t = realloc(g_tache_cartes, (size_t)ncap * sizeof *t);
+            if (!t) {
+                free(liste); g_atop = sauve;
+                hct_ctx_faute(ctx, n, "mémoire insuffisante");
+                return 1;
+            }
+            g_tache_cartes = t; g_tache_cap = ncap;
+        }
+        for (int i = 0; i < np; i++) g_tache_cartes[g_tache_n++] = liste[i];
+        set_result("");
+        free(liste); g_atop = sauve; return 1;
+    }
+
     if (g_host && g_host->print_cards) {
         g_host->print_cards(liste, np, pdecoupe);
         set_result("");
@@ -13857,6 +14081,27 @@ static int v3_cmd_verrou(HctContexte *ctx, const HctNoeud *n)
         return 1;
     }
 
+    /* « lock recent » et « lock error dialogs » : les raccourcis de « set
+     * the lockRecent » et « set the lockErrorDialogs », comme « lock
+     * messages » l'est de lockMessages. La carte « unlock » de HyperTalk
+     * Reference les écrit ; HC tenait les deux propriétés et répondait
+     * « ne sait pas faire » aux deux commandes. Relevé le 11 octobre. */
+    if (ci_equal(mot, "recent") && n->nfils == 1) {
+        reglage_pose("lockrecent", ci_equal(n->op, "lock") ? "true" : "false");
+        set_result("");
+        return 1;
+    }
+    if (ci_equal(mot, "error") && n->nfils == 2) {
+        char mot2[32];
+        v3_brut(n->fils[1], mot2, sizeof mot2);
+        if (ci_equal(mot2, "dialogs")) {
+            reglage_pose("lockerrordialogs",
+                         ci_equal(n->op, "lock") ? "true" : "false");
+            set_result("");
+            return 1;
+        }
+    }
+
     if (!ci_equal(mot, "screen")) return 0;
 
     /* « UNLOCK SCREEN WITH VISUAL [EFFECT] <effet> [vitesse] [TO <image>] ».
@@ -14097,6 +14342,27 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             return 1;
         }
         if (o->typeobj == HCT_OBJ_MENUITEM) {
+            /* « delete menuItem "New" FROM menu "File" » : le menu arrive
+             * après le mot-clé, et non en fils de l'article comme avec
+             * « of ». On le raccroche à une COPIE de l'article — l'arbre est
+             * relu à chaque exécution et ne doit pas changer —, ce qui donne
+             * à v3_article_index exactement la forme « of » qu'il connaît.
+             * Relevé le 11 octobre sur HyperTalk Reference, carte
+             * « delete ». */
+            HctNoeud article, menu;
+            HctNoeud *fils[2];
+            int idep = v3_indice_motcle(n, "from", 1);
+            if (idep >= 0 && idep + 1 < n->nfils && o->nfils <= 1 &&
+                n->fils[idep + 1]->genre == HCTN_OBJET &&
+                n->fils[idep + 1]->typeobj == HCT_OBJ_MENU) {
+                article = *o;
+                menu = *n->fils[idep + 1];
+                for (int k = 0; k < o->nfils; k++) fils[k] = o->fils[k];
+                fils[o->nfils] = &menu;
+                article.fils = fils;
+                article.nfils = o->nfils + 1;
+                o = &article;
+            }
             int im = -1;
             int j = v3_article_index(ctx, o, &im);
             if (ctx->erreur) return 1;
@@ -14104,14 +14370,22 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             HcMenuBarre *m = &g_menus[im];
             free(m->article[j]);
             free(m->message[j]);
+            /* LES CINQ TABLEAUX, comme menu_insere. La coche et le raccourci
+             * ne suivaient pas : supprimer l'article 2 laissait la coche et
+             * le cmdChar de l'ancien 3 sur le nouveau 3, c'est-à-dire sur
+             * l'article qui était le 4. Vu en écrivant la forme « from ». */
             for (int k = j; k < m->n - 1; k++) {
                 m->article[k] = m->article[k + 1];
                 m->message[k] = m->message[k + 1];
                 m->actif[k]   = m->actif[k + 1];
+                m->coche[k]   = m->coche[k + 1];
+                m->touche[k]  = m->touche[k + 1];
             }
             m->n--;
             m->article[m->n] = NULL;
             m->message[m->n] = NULL;
+            m->coche[m->n]   = 0;
+            m->touche[m->n]  = 0;
             menus_prevenir();
             set_result("");
             return 1;
@@ -14572,26 +14846,175 @@ static int v3_cmd_type(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* « mark cards by finding … » : la carte contient-elle ce que « find »
+ * trouverait ? Les mêmes primitives que v3_cmd_find, et les mêmes règles —
+ * le motif découpé en mots, TOUS présents dans la carte, chacun dans
+ * n'importe quel champ, ou la phrase entière pour « string » et « whole ».
+ *
+ * SITE JUMEAU de la boucle de v3_cmd_find, qui l'écrit en ligne parce
+ * qu'elle y mêle son curseur de reprise. Elle n'en a pas été extraite pour
+ * ne pas toucher à « find » : une règle qui change là doit changer ici. La
+ * carte courante doit être `cd` : les champs de fond ont un texte par
+ * carte. */
+static int find_carte_contient(Object *cd, const char *pat, int mode,
+                               int par_mots, int replier, Object *seul)
+{
+    Object *layers[2] = { cd->bg, cd };
+    if (!par_mots) {
+        for (int L = 0; L < 2; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts; i++) {
+                Object *fl = lay->parts[i];
+                if (find_champ_ok(fl, seul) &&
+                    find_phrase(hc_field_text(fl), pat, mode, replier, 0))
+                    return 1;
+            }
+        }
+        return 0;
+    }
+
+    int nmots = 0;
+    const char *q = skip_spaces(pat);
+    while (*q) {
+        char mot[64];
+        const char *d = q;
+        while (*q && !isspace((unsigned char)*q)) q++;
+        int l = (int)(q - d);
+        if (l > 63) l = 63;
+        memcpy(mot, d, (size_t)l);
+        mot[l] = 0;
+        q = skip_spaces(q);
+        if (++nmots > 16) break;           /* le plafond de v3_cmd_find */
+
+        int vu = 0;
+        for (int L = 0; L < 2 && !vu; L++) {
+            Object *lay = layers[L];
+            if (!lay) continue;
+            for (int i = 0; i < lay->nparts && !vu; i++) {
+                Object *fl = lay->parts[i];
+                vu = find_champ_ok(fl, seul) &&
+                     find_dans_texte(hc_field_text(fl), mot, mode, replier, 0);
+            }
+        }
+        if (!vu) return 0;
+    }
+    return nmots > 0;
+}
+
+static Object *marked_card_ref(const char *r, int *concerne);   /* plus bas */
+
 /* mark / unmark.
  *
- * « mark cards where <condition> » garde l'ancien chemin : « where » n'est
- * pas un mot du motif, il arrive donc en identificateur ordinaire et la
- * condition qui le suit n'est pas isolée de façon sûre. C'est le genre de
- * forme qui mérite son propre motif dans hct_cmd.c plutôt qu'un découpage
- * ici. */
+ * LES TROIS FORMES QUI PORTENT SUR PLUSIEURS CARTES, et la référence d'Apple
+ * les donne toutes (carte « mark ») :
+ *
+ *     mark cards where field "title" contains "select"
+ *     mark cards by finding whole "Cupertino, CA" in field "Address"
+ *     unmark first marked card
+ *
+ * « where » ARRÊTAIT LE SCRIPT sur « objet introuvable ». Le commentaire
+ * d'ici disait qu'il « garde l'ancien chemin » : cet ancien chemin a été
+ * retiré, et la forme est tombée avec lui sans que rien ne le dise. Relevé
+ * le 11 octobre sur HyperTalk Reference. « by finding » était pire : sans
+ * motif, l'analyseur lisait « cards » comme une carte, et la commande
+ * marquait la carte COURANTE, en silence. Les deux ont maintenant leur
+ * syntaxe dans hct_cmd.c.
+ *
+ * La condition s'évalue SUR chaque carte, comme la clé de « sort … by » :
+ * « field "title" » doit être celui de la carte examinée. On ne fait
+ * qu'y placer le noyau, sans aller : aucun message de navigation.
+ *
+ * NON MESURÉ : que HyperCard laisse intactes les cartes où la condition est
+ * fausse (« mark cards where » ajoute, n'efface pas). C'est ce que la
+ * référence décrit, et ce que fait HC. */
 static int v3_cmd_marque(HctContexte *ctx, const HctNoeud *n)
 {
     int poser = ci_equal(n->op, "mark");
 
-    for (int i = 0; i < n->nfils; i++) {
-        char m[16];
-        v3_brut(n->fils[i], m, sizeof m);
-        if (ci_equal(m, "where")) return 0;
-    }
-
     Object *pile = g_current_card ? g_current_card->owner : NULL;
     while (pile && pile->type != OBJ_STACK) pile = pile->owner;
     if (!pile) { set_result("No stack"); return 1; }
+
+    int iw = v3_indice_motcle(n, "where", 0);
+    if (iw >= 0 && iw + 1 < n->nfils) {
+        const HctNoeud *cond = n->fils[iw + 1];
+        Object *avant = g_current_card;
+        for (int i = 0; i < pile->nparts; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            g_current_card = c;
+            char v[64];
+            v3_val_texte(ctx, cond, v, sizeof v);
+            if (ctx->erreur) break;
+            if (truthy(v)) c->marked = poser;
+        }
+        g_current_card = avant;
+        if (!ctx->erreur) set_result("");
+        return 1;
+    }
+
+    int ib = v3_indice_motcle(n, "finding", 0);
+    if (ib >= 0) {
+        /* Les modificateurs de « find », lus de la même façon. */
+        int mode = 0, par_mots = 1, international = 0, im = ib + 1;
+        for (; im < n->nfils; im++) {
+            if      (v3_est_motcle(n, im, "characters") ||
+                     v3_est_motcle(n, im, "character"))  mode = 1;
+            else if (v3_est_motcle(n, im, "words") ||
+                     v3_est_motcle(n, im, "word"))       mode = 2;
+            else if (v3_est_motcle(n, im, "string")) { mode = 3; par_mots = 0; }
+            else if (v3_est_motcle(n, im, "whole"))  { mode = 4; par_mots = 0; }
+            else if (v3_est_motcle(n, im, "international")) international = 1;
+            else break;
+        }
+        if (im >= n->nfils || n->fils[im]->genre == HCTN_MOTCLE) return 0;
+        char pat[256];
+        v3_val_texte(ctx, n->fils[im], pat, sizeof pat);
+        if (ctx->erreur) return 1;
+        int ki = v3_indice_motcle(n, "in", im + 1);
+        const HctNoeud *nchamp = (ki >= 0 && ki + 1 < n->nfils) ? n->fils[ki + 1] : NULL;
+
+        Object *avant = g_current_card;
+        for (int i = 0; i < pile->nparts && pat[0]; i++) {
+            Object *c = pile->parts[i];
+            if (c->type != OBJ_CARD) continue;
+            /* « Don't Search This Card » : find la saute, « by finding »
+             * aussi. */
+            if (c->dont_search || (c->bg && c->bg->dont_search)) continue;
+            g_current_card = c;
+            Object *seul = NULL;
+            if (nchamp) {
+                /* Par carte, comme find : « field "title" » est celui-ci. */
+                seul = v3_resout_calcule(ctx, nchamp);
+                if (ctx->erreur) break;
+                if (!seul) continue;
+            }
+            if (find_carte_contient(c, pat, mode, par_mots, !international, seul))
+                c->marked = poser;
+        }
+        g_current_card = avant;
+        if (!ctx->erreur) set_result("");
+        return 1;
+    }
+
+    /* « unmark first marked card » : l'analyseur rend l'ordinal et
+     * « marked card » en deux nœuds. marked_card_ref, celle de « go first
+     * marked card », sait les lire ensemble. */
+    if (n->nfils == 2 && n->fils[0]->genre == HCTN_IDENT &&
+        n->fils[1]->genre == HCTN_OBJET && n->fils[1]->nfils == 0) {
+        char o[16], quoi[32], ref[64];
+        v3_brut(n->fils[0], o, sizeof o);
+        hct_texte(&n->fils[1]->jeton, quoi, sizeof quoi);
+        snprintf(ref, sizeof ref, "%s %s", o, quoi);
+        int concerne = 0;
+        Object *c = marked_card_ref(ref, &concerne);
+        if (concerne) {
+            if (c) c->marked = poser;
+            set_result("");
+            return 1;
+        }
+    }
 
     char m0[16];
     m0[0] = '\0';
@@ -14835,6 +15258,24 @@ static int v3_va_a(Object *dst)
     return 1;
 }
 
+/* SE DÉPLACER DANS L'HISTORIQUE SANS S'Y INSCRIRE : « go back », « go
+ * recent [card] », « go forth ». L'arrivée ne s'inscrit pas — sans quoi deux
+ * « go back » de suite feraient la navette entre deux cartes au lieu de
+ * continuer à remonter. `vide` dit pourquoi l'on reste sur place. */
+static int v3_va_histo(Object *dst, const char *vide)
+{
+    if (!dst) {
+        set_result("No such card");
+        emit(HC_ERR, "   !! %s", vide);
+        return 1;
+    }
+    int gele = g_histo_gele;
+    g_histo_gele = 1;
+    int r = v3_va_a(dst);
+    g_histo_gele = gele;
+    return r;
+}
+
 /* Revenir à la carte précédente, depuis l'interface : c'est l'article Back du
  * menu Go. Le même geste que « go back », et par le même chemin. */
 int hc_go_back(void)
@@ -15006,19 +15447,29 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
          * répond déjà pour « go to stack ». */
         if (ci_equal(mot, "home")) return v3_va_pile("Home");
 
-        if (ci_equal(mot, "back") || ci_equal(mot, "recent")) {
-            Object *avant = histo_recule();
-            if (!avant) {
-                set_result("No such card");
-                emit(HC_ERR, "   !! rien où revenir : l'historique est vide");
-                return 1;
-            }
-            int gele = g_histo_gele;
-            g_histo_gele = 1;
-            int r = v3_va_a(avant);
-            g_histo_gele = gele;
-            return r;
-        }
+        if (ci_equal(mot, "back") || ci_equal(mot, "recent"))
+            return v3_va_histo(histo_recule(),
+                               "rien où revenir : l'historique est vide");
+
+        /* « go forth » : refaire le pas que « go back » a défait. Voir
+         * g_histo_avant. */
+        if (ci_equal(mot, "forth"))
+            return v3_va_histo(histo_avance(),
+                               "rien à refaire : aucun « go back » à reprendre");
+    }
+
+    /* « go recent card » : la forme longue de « go recent », celle de la
+     * carte « go » de HyperTalk Reference. L'analyseur la rend en deux
+     * nœuds, le mot et « card » sans désignateur ; elle répondait « ne sait
+     * pas faire ». Relevé le 11 octobre. */
+    if (n->nfils == i + 2 && ref->genre == HCTN_IDENT &&
+        n->fils[i + 1]->genre == HCTN_OBJET &&
+        n->fils[i + 1]->typeobj == HCT_OBJ_CARD && n->fils[i + 1]->nfils == 0) {
+        char mot[16];
+        v3_brut(ref, mot, sizeof mot);
+        if (ci_equal(mot, "recent"))
+            return v3_va_histo(histo_recule(),
+                               "rien où revenir : l'historique est vide");
     }
 
     /* ---- go to stack "X" ----
@@ -15226,6 +15677,52 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
         if (!strncmp(quoi, "palette ", 8))
             v3_message_palette("closePalette", nom, atoi(quoi + 8));
         return 1;
+    }
+
+    /* « open printing [with dialog] » … « close printing ». Voir
+     * g_tache_cartes. Relevé le 11 octobre sur HyperTalk Reference : les
+     * deux répondaient « ne sait pas faire », et un script qui encadre ses
+     * impressions s'arrêtait à la première ligne.
+     *
+     * « with dialog » : l'hôte de HC montre son dialogue d'impression à
+     * chaque envoi, donc une fois, à la fermeture du travail. NON MESURÉ :
+     * HyperCard le montrait à l'ouverture et posait « Cancel » dans the
+     * result si l'on annulait ; ici, the result reste vide. « open report
+     * printing » n'est pas couvert : un rapport n'est pas une image de
+     * carte, et l'imprimer comme tel serait une réponse fausse. */
+    if (n->nfils >= 1 && n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
+        char m0[16];
+        v3_brut(n->fils[0], m0, sizeof m0);
+        if (ci_equal(m0, "printing")) {
+            int avec_dialogue = 0;
+            if (n->nfils == 3 && n->fils[1]->genre == HCTN_IDENT &&
+                n->fils[2]->genre == HCTN_IDENT) {
+                char m1[16], m2[16];
+                v3_brut(n->fils[1], m1, sizeof m1);
+                v3_brut(n->fils[2], m2, sizeof m2);
+                avec_dialogue = ci_equal(m1, "with") && ci_equal(m2, "dialog");
+            }
+            if (n->nfils != 1 && !avec_dialogue) return 0;
+            if (ci_equal(n->op, "open")) {
+                g_tache_ouverte = 1;
+                g_tache_n = 0;
+            } else if (g_tache_ouverte) {
+                g_tache_ouverte = 0;
+                if (g_tache_n > 0) {
+                    if (g_host && g_host->print_cards)
+                        g_host->print_cards(g_tache_cartes, g_tache_n, NULL);
+                    else {
+                        set_result("Can't print");
+                        emit(HC_ERR, "   !! print : l'hôte ne sait pas imprimer");
+                        g_tache_n = 0;
+                        return 1;
+                    }
+                }
+                g_tache_n = 0;
+            }
+            set_result("");
+            return 1;
+        }
     }
 
     if (!v3_est_motcle(n, 0, "file")) return 0;
@@ -15964,11 +16461,13 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1 || !n->fils[0]) return 0;
     const HctNoeud *o = n->fils[0];
-    if (o->genre != HCTN_OBJET) return 0;
+    /* Un nom nu aussi : « disable b », où b vaut « bkgnd button 2 ». Voir
+     * le bouton, plus bas. */
+    if (o->genre != HCTN_OBJET && o->genre != HCTN_IDENT) return 0;
 
     int actif = ci_equal(n->op, "enable");
 
-    if (o->typeobj == HCT_OBJ_MENU) {
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MENU) {
         int i = v3_menu_index(ctx, o);
         if (ctx->erreur) return 1;
         if (i < 0) { set_result("menu introuvable"); return 1; }
@@ -15977,7 +16476,7 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
         set_result("");
         return 1;
     }
-    if (o->typeobj == HCT_OBJ_MENUITEM) {
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MENUITEM) {
         int im = -1;
         int j = v3_article_index(ctx, o, &im);
         if (ctx->erreur) return 1;
@@ -15987,7 +16486,25 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
         set_result("");
         return 1;
     }
-    return 0;                       /* enable d'autre chose : pas pour nous */
+
+    /* UN BOUTON : « disable button 1 », « enable last button ».
+     *
+     * La carte « disable » de HyperTalk Reference : « It's a shortcut for
+     * setting the enabled property of a menu item, menu, or button to
+     * false. » HC ne connaissait que les menus, et répondait « ne sait pas
+     * faire » au bouton. Relevé le 11 octobre. Le même geste que « set the
+     * enabled », et la même résolution que hide et show : un désignateur
+     * calculé passe (v3_resout_calcule).
+     *
+     * Un bouton seulement, comme le dit la référence. Autre chose, ou rien :
+     * on rend 0, et la ligne dit ce qu'elle disait. */
+    Object *b = v3_resout_calcule(ctx, o);
+    if (ctx->erreur) return 1;
+    if (!b || b->type != OBJ_BUTTON) return 0;
+    b->enabled = actif;
+    notify_field(b);
+    set_result("");
+    return 1;
 }
 
 /* put <articles> into|before|after  menu <nom> | menuItem <d> of menu <nom>

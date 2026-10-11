@@ -59,16 +59,16 @@
    servi  the lockScreen             -> false
    servi  the lockMessages           -> false
    servi  the editBkgnd              -> (vide)
-   servi  the scriptTextSize         -> (vide)
-   servi  the scriptTextFont         -> (vide)
-   servi  the suspended              -> (vide)
-   servi  the messageWatcher         -> (vide)
-   servi  the variableWatcher        -> (vide)
-   servi  the printMargins           -> (vide)
-   servi  the printTextFont          -> (vide)
+   servi  the scriptTextSize         -> 9
+   servi  the scriptTextFont         -> Monaco
+   servi  the suspended              -> false
+   servi  the messageWatcher         -> MessageWatcher
+   servi  the variableWatcher        -> VariableWatcher
+   servi  the printMargins           -> 0,0,0,0
+   servi  the printTextFont          -> Geneva
    servi  the idleRate               -> (vide)
-   servi  the environment            -> (vide)
+   servi  the environment            -> development
    servi  the address                -> (vide)
-   servi  the longWindowTitles       -> (vide)
-   servi  the userModify             -> (vide)
-   servi  the debugger               -> (vide)
+   servi  the longWindowTitles       -> false
+   servi  the userModify             -> false
+   servi  the debugger               -> ScriptEditor

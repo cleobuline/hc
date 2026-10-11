@@ -1,0 +1,40 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. la forme « from » ==
+   delete menuItem "Deux" from menu "M"
+      = [Un Trois Quatre Cinq Six ]
+   delete menuItem 1 from menu "M"
+      = [Trois Quatre Cinq Six ]
+   delete last menuItem from menu "M"
+      = [Trois Quatre Cinq ]
+
+== 2. la forme « of », témoin ==
+   delete menuItem 2 of menu "M"
+      = [Trois Cinq ]
+
+== 3. la coche et le raccourci suivent leur article ==
+   put "Un,Deux,Trois,Quatre" into menu "M"
+   set the checkMark of menuItem "Trois" of menu "M" to true
+   set the cmdChar of menuItem "Quatre" of menu "M" to "Q"
+   delete menuItem "Deux" of menu "M"
+      = [Un Trois Quatre ]
+   put the checkMark of menuItem "Trois" of menu "M"
+      = true
+   put the cmdChar of menuItem "Quatre" of menu "M"
+      = Q
+   put the checkMark of menuItem "Quatre" of menu "M"
+      = false
+   delete menuItem "Quatre" from menu "M"
+   put "Cinq" after menu "M"
+   put "[" & the cmdChar of menuItem "Cinq" of menu "M" & "]"
+      = []
+
+== 4. ce qui manque ==
+   delete menuItem "Absent" from menu "M"
+   put the result
+      = article introuvable
+
+== 5. témoin : un conteneur ==
+   put "a,b,c" into x
+   delete item 2 of x
+   put x
+      = a,c

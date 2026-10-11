@@ -1,0 +1,22 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. lock recent / unlock recent ==
+   lock recent
+      = true
+   unlock recent
+      = false
+
+== 2. lock error dialogs : l'erreur part en message ==
+   lock error dialogs, puis une faute
+      = true
+      [ERR]    !! fonction inconnue : zorglub (v3, ligne 4 de button "B".t)
+      = errorDialog a reçu le message
+   au repos, la serrure est retirée
+      = false
+   unlock error dialogs
+      = false
+
+== 3. témoins : lock messages, lock screen ==
+   lock messages
+      = true
+   lock screen
+      = true

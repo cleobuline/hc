@@ -80,7 +80,10 @@ int main(void)
     puts("== 1. une commande non portee, SEULE : le verbe est en cause ==");
     execute("help",          "  help");
     execute("dial",          "  dial \"555\"");
-    execute("open printing", "  open printing");
+    /* « open printing » servait ici, jusqu'à ce qu'il soit porté le 11
+     * octobre : « open report printing », toujours refusé et sans objet,
+     * pose la même question. */
+    execute("open report printing", "  open report printing");
     execute("palette",       "  palette \"x\"");
 
     puts("\n== 2. LA MEME, apres une question dont la reponse est false ==");
@@ -90,8 +93,8 @@ int main(void)
             "  put there is a field \"Absent\" into x\n  help");
     execute("there is, puis dial",
             "  put there is a field \"Absent\" into x\n  dial \"555\"");
-    execute("there is, puis open printing",
-            "  put there is a field \"Absent\" into x\n  open printing");
+    execute("there is, puis open report printing",
+            "  put there is a field \"Absent\" into x\n  open report printing");
 
     puts("\n== 3. et « there is » repond toujours juste ==");
     execute("sur un champ absent",  "  put there is a field \"Absent\"");

@@ -1,0 +1,83 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les défauts de la référence ==
+      = userModify false
+      = longWindowTitles false
+      = traceDelay 0
+      = dialingVolume 7
+      = printTextHeight 13
+      = printTextSize 10
+      = scriptTextSize 9
+      = printTextFont Geneva
+      = printTextAlign left
+      = printTextStyle plain
+      = printMargins 0,0,0,0
+      = scriptTextFont Monaco
+      = debugger ScriptEditor
+      = scriptEditor ScriptEditor
+      = messageWatcher MessageWatcher
+      = variableWatcher VariableWatcher
+
+== 2. les exemples de la référence, posés puis relus ==
+   set the userModify to true
+   put the userModify
+      = true
+   set the userModify of this stack to false
+   put the userModify of this stack
+      = false
+   set the printMargins to 10,10,10,10
+   put the printMargins
+      = 10,10,10,10
+   set the printTextFont to "Times"
+   set the printTextAlign to Center
+   set the printTextStyle to "bold,italic"
+   put the printTextFont && the printTextAlign && the printTextStyle
+      = Times center bold,italic
+   set the printTextHeight to 20
+   set the printTextSize to 18
+   put the printTextHeight && the printTextSize
+      = 20 18
+   set the scriptTextFont to "Geneva"
+   set the scriptTextSize to 10
+   put the scriptTextFont && the scriptTextSize
+      = Geneva 10
+   set the traceDelay to 10
+   set dialingVolume to 5
+   put the traceDelay && the dialingVolume
+      = 10 5
+   set the longWindowTitles to true
+   put the longWindowTitles
+      = true
+   set debugger to "Excellent Debugger Dude"
+   set the scriptEditor to "Mr. Ed"
+   set messageWatcher to "Cool Message Watcher"
+   set the variableWatcher to "The Inspector"
+   put the debugger & "|" & the scriptEditor & "|" & the messageWatcher & "|" & the variableWatcher
+      = Excellent Debugger Dude|Mr. Ed|Cool Message Watcher|The Inspector
+
+== 3. hors du domaine : refusé, la valeur reste ==
+   set the printTextAlign to diagonal
+      [ERR]    !! printTextAlign attend left, center ou right, reçu « diagonal »
+   set the printTextStyle to "gras"
+      [ERR]    !! printTextStyle attend des noms de style, reçu « gras »
+   set the printMargins to 1,2
+      [ERR]    !! printMargins attend un rectangle, quatre nombres, reçu « 1,2 »
+   set the dialingVolume to 9
+      [ERR]    !! dialingVolume va de 0 à 7, reçu 9
+   put the printTextAlign && the printTextStyle && the printMargins && the dialingVolume
+      = center bold,italic 10,10,10,10 5
+
+== 4. les trois lectures ==
+   put the environment
+      = development
+   put the suspended
+      = false
+   put the stackSpace
+      = 1048576
+   put stackSpace() > 8000
+      = true
+
+== 5. témoins : userLevel et lockRecent ==
+   set the userLevel to 3
+   put the userLevel
+      = 3
+   set the userLevel to 5

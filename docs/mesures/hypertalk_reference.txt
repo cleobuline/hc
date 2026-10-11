@@ -246,3 +246,96 @@ d'époque. HC donne des chemins en « / », et elles affichent « disk named H �
 
 « Non, on n'imite pas Disque:Dossier:Pile » — l'utilisatrice, le 9 octobre.
 Ces deux démonstrations restent donc fausses chez nous, sciemment.
+
+
+═══════════════════════════════════════════════════════════════════════════
+LE 11 OCTOBRE : CE QUI MANQUE ENCORE, RELEVÉ SUR TOUTE LA PILE
+═══════════════════════════════════════════════════════════════════════════
+
+À la demande de l'utilisatrice, sur sa copie convertie de la pile (356
+sujets). Trois passages, DANS LE NOYAU et non dans l'application :
+
+  · les champs « Examples » de chaque sujet, au vérificateur (hct_verifie),
+    puis exécutés dans une pile bac à sable, un processus par sujet ;
+  · les 136 démonstrations « Run the Script », comme le 9 octobre ;
+  · chaque refus rejoué seul, par une ligne isolée, pour écarter le bruit
+    du bac à sable (objets absents, souris, clavier et fenêtres qui sont
+    l'affaire de l'hôte).
+
+Ce qui suit est REFUSÉ par le noyau, et documenté par Apple dans la pile
+même. Aucune de ces lignes n'a été mesurée dans HyperCard : c'est la
+référence d'Apple qui les donne pour valides.
+
+QUI ARRÊTENT UN SCRIPT ORDINAIRE
+
+  mark cards where <condition>     « objet introuvable ». RÉGRESSION : le
+  unmark cards where <condition>   commentaire de v3_cmd_marque renvoie à
+                                   « l'ancien chemin », retiré depuis.
+  unmark first marked card         « ne sait pas faire ».
+  enable button 1                  « ne sait pas faire » : enable/disable ne
+  disable bkgnd button id 12       connaissent que les menus. Raccourci de
+                                   « set the enabled » (carte « disable »).
+  delete menuItem 2 from menu "M"  « ne sait pas lire » : seul « of » passe.
+  open printing [with dialog]      « ne sait pas faire » ; close printing,
+  close printing                   open report printing aussi. Encadrent
+                                   un travail d'impression.
+  lock error dialogs               « ne sait pas faire » ; la propriété
+  unlock error dialogs             lockErrorDialogs, elle, existe.
+  lock recent / unlock recent      « ne sait pas faire » ; lockRecent existe.
+  go recent card / go forth        « ne sait pas faire ».
+  ask password [clear] "…"         « ne sait pas lire ». Sans « clear »,
+                                   HyperCard rend le mot de passe CHIFFRÉ
+                                   en nombre : forme exacte à mesurer.
+
+  Propriétés globales refusées au « set », donc qui arrêtent le script :
+  userModify, printMargins, printTextAlign, printTextFont, printTextHeight,
+  printTextSize, printTextStyle, scriptTextFont, scriptTextSize, traceDelay,
+  debugger, scriptEditor, messageWatcher, variableWatcher, dialingVolume.
+  Et en lecture seule : environment, suspended, longWindowTitles,
+  stackSpace. La table G_REGLAGES (userLevel, dragSpeed…) est faite pour
+  elles ; elle ne connaît que l'entier et le booléen.
+
+DE MOINDRE PORTÉE
+
+  the abbreviated time             inconnue (« the abbreviated date » passe).
+  the param of 1                   inconnue (« param(1) » passe).
+  show all cards / show 5 cards    « ne sait pas faire » : le diaporama.
+  create stack "X"                 « ne sait pas faire ».
+  flash, the long version, selectedLoc, tabKey et les autres messages de
+  clavier sans action par défaut, select <objet>, edit script of …, le
+  Message Watcher : déjà connus (note de la 0.7.9.3).
+
+HORS DE PORTÉE, SANS OBJET SUR UN MAC D'AUJOURD'HUI
+
+  Les Apple Events d'époque (send … to program, request, reply, answer
+  program, the address, the programs), dial, open <application>,
+  export paint / import paint (format de fichier d'époque), diskSpace of
+  disk "X".
+
+LES DÉMONSTRATIONS « Run the Script » : aucun refus nouveau depuis le
+9 octobre ; il ne reste que les manques déjà connus ci-dessus.
+
+CORRIGÉ LE MÊME JOUR, à la demande de l'utilisatrice — tout le groupe
+« QUI ARRÊTENT UN SCRIPT ORDINAIRE », sauf « ask password » :
+
+  mark/unmark cards where, mark/unmark cards by finding, unmark first
+  marked card                             harnais marquage
+  enable/disable d'un bouton              harnais boutonactif
+  delete menuItem … from menu …           harnais menusuppr — et, trouvé
+                                          en chemin, la coche et le
+                                          raccourci qui ne suivaient pas
+                                          leur article
+  open printing … close printing, et
+  print N cards                           harnais tacheimpr
+  lock/unlock recent, lock/unlock error
+  dialogs                                 harnais verroucmd
+  go forth, go recent card                harnais refaire
+  les réglages globaux, retenus et relus  harnais reglagesretenus
+
+Le relevé rejoué après coup ne refuse plus aucune de ces formes ; ce qui
+reste dans le bac à sable y manque d'objets ou de fenêtres, que seule
+l'application tient. Rien de ceci n'est mesuré dans HyperCard au-delà de
+ce que la référence d'Apple écrit ; chaque harnais dit ses choix.
+
+RESTE OUVERT : ask password (la forme chiffrée est à mesurer), et le
+groupe « DE MOINDRE PORTÉE ».

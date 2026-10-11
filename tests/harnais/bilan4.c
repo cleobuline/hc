@@ -30,7 +30,11 @@ static void f(const char *nom){
   char s[512]; snprintf(s,sizeof s,"on t\n  put the %s\nend t\n",nom);
   hc_set_script(b,s); g_out[0]=0; hc_send(b,"t");
   const char *r=g_out;
-  const char *etat = (strcasecmp(r,nom)==0)      ? "TROU "
+  /* L'ÉCHO REND LE NOM TEL QU'IL EST ÉCRIT, d'où strcmp et non strcasecmp.
+   * Le défaut de messageWatcher, selon la référence d'Apple, est
+   * « MessageWatcher » : une vraie valeur, qui ne diffère de son nom que par
+   * la casse, et qu'une comparaison sans casse déclarait trou. */
+  const char *etat = (strcmp(r,nom)==0)          ? "TROU "
                    : (strcmp(r,"<hote>")==0)     ? "hote "
                    : "servi";
   printf("   %s  the %-22s -> %.40s\n", etat, nom, r[0]?r:"(vide)");

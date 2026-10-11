@@ -1,0 +1,49 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. reculer, puis refaire ==
+   go card 2
+   go card 3
+   go back
+      = ici : C2
+   go back
+      = ici : C1
+   go forth
+      = ici : C2
+   go forth
+      = ici : C3
+   go forth
+      [ERR]    !! rien à refaire : aucun « go back » à reprendre
+      = ici : C3
+
+== 2. une navigation nouvelle oublie ce qu'on pouvait refaire ==
+   go back
+      = ici : C2
+   go card 5
+      = ici : C5
+   go forth
+      [ERR]    !! rien à refaire : aucun « go back » à reprendre
+      = ici : C5
+   go back
+      = ici : C2
+
+== 3. go recent card, comme go back ==
+   go card 6
+   go recent card
+      = ici : C2
+   go to recent card
+      = ici : C1
+   go forth
+      = ici : C2
+
+== 4. une carte supprimée sort des pas à refaire ==
+   go card 1
+   go card 3
+   go card 4
+   go back
+   go back
+      = ici : C1
+   delete card "C3"
+   go forth
+      = ici : C4
+   go forth
+      [ERR]    !! rien à refaire : aucun « go back » à reprendre
+      = ici : C4
