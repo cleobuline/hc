@@ -2239,6 +2239,17 @@ static Object *g_histo[HC_HISTO_MAX];
 static int     g_nhisto = 0;
 static int     g_histo_gele = 0;   /* « go back » ne s'inscrit pas lui-même */
 
+/* LES PAS QU'ON PEUT REFAIRE : « go forth » après « go back ».
+ *
+ * « go back » dépile sans effacer : la carte quittée reste dans g_histo,
+ * juste au-dessus du sommet. g_histo_avant compte ces cartes-là, de
+ * g_histo[g_nhisto] à g_histo[g_nhisto + g_histo_avant - 1]. Une
+ * navigation NOUVELLE les oublie, comme le bouton « précédent » d'un
+ * navigateur : on ne peut plus refaire un chemin qu'on a quitté pour un
+ * autre. La carte « go » de HyperTalk Reference écrit « go forth »
+ * à côté de « go back » ; relevé le 11 octobre. */
+static int     g_histo_avant = 0;
+
 static void histo_arrive(Object *card)
 {
     if (!card || g_histo_gele) return;
@@ -2248,6 +2259,7 @@ static void histo_arrive(Object *card)
         g_nhisto--;
     }
     g_histo[g_nhisto++] = card;
+    g_histo_avant = 0;
 }
 
 /* Une carte meurt : elle sort de l'historique. Sans cela « go back » y
@@ -2255,10 +2267,16 @@ static void histo_arrive(Object *card)
  * corriger dans l'interface, et le noyau n'y échappe pas plus qu'elle. */
 static void histo_oublie(Object *card)
 {
-    int j = 0;
-    for (int i = 0; i < g_nhisto; i++)
-        if (g_histo[i] != card) g_histo[j++] = g_histo[i];
-    g_nhisto = j;
+    /* Les pas à refaire aussi : ce sont des adresses comme les autres. */
+    int j = 0, passe = 0;
+    int total = g_nhisto + g_histo_avant;
+    for (int i = 0; i < total; i++) {
+        if (g_histo[i] == card) continue;
+        if (i < g_nhisto) passe++;
+        g_histo[j++] = g_histo[i];
+    }
+    g_nhisto = passe;
+    g_histo_avant = j - passe;
 }
 
 /* La carte d'où l'on vient. Le sommet est la carte courante : on la dépile,
@@ -2268,7 +2286,17 @@ static Object *histo_recule(void)
 {
     if (g_nhisto < 2) return NULL;
     g_nhisto--;
+    g_histo_avant++;           /* la carte quittée peut se refaire */
     return g_histo[g_nhisto - 1];
+}
+
+/* « go forth » : refaire le pas que « go back » a défait. NULL s'il n'y en a
+ * pas — on n'a pas reculé, ou l'on est allé ailleurs depuis. */
+static Object *histo_avance(void)
+{
+    if (g_histo_avant <= 0) return NULL;
+    g_histo_avant--;
+    return g_histo[g_nhisto++];
 }
 
 /* LA CARTE D'OÙ L'ON VIENT, SANS Y ALLER — « push recent card ». La même que
@@ -15112,6 +15140,24 @@ static int v3_va_a(Object *dst)
     return 1;
 }
 
+/* SE DÉPLACER DANS L'HISTORIQUE SANS S'Y INSCRIRE : « go back », « go
+ * recent [card] », « go forth ». L'arrivée ne s'inscrit pas — sans quoi deux
+ * « go back » de suite feraient la navette entre deux cartes au lieu de
+ * continuer à remonter. `vide` dit pourquoi l'on reste sur place. */
+static int v3_va_histo(Object *dst, const char *vide)
+{
+    if (!dst) {
+        set_result("No such card");
+        emit(HC_ERR, "   !! %s", vide);
+        return 1;
+    }
+    int gele = g_histo_gele;
+    g_histo_gele = 1;
+    int r = v3_va_a(dst);
+    g_histo_gele = gele;
+    return r;
+}
+
 /* Revenir à la carte précédente, depuis l'interface : c'est l'article Back du
  * menu Go. Le même geste que « go back », et par le même chemin. */
 int hc_go_back(void)
@@ -15283,19 +15329,29 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
          * répond déjà pour « go to stack ». */
         if (ci_equal(mot, "home")) return v3_va_pile("Home");
 
-        if (ci_equal(mot, "back") || ci_equal(mot, "recent")) {
-            Object *avant = histo_recule();
-            if (!avant) {
-                set_result("No such card");
-                emit(HC_ERR, "   !! rien où revenir : l'historique est vide");
-                return 1;
-            }
-            int gele = g_histo_gele;
-            g_histo_gele = 1;
-            int r = v3_va_a(avant);
-            g_histo_gele = gele;
-            return r;
-        }
+        if (ci_equal(mot, "back") || ci_equal(mot, "recent"))
+            return v3_va_histo(histo_recule(),
+                               "rien où revenir : l'historique est vide");
+
+        /* « go forth » : refaire le pas que « go back » a défait. Voir
+         * g_histo_avant. */
+        if (ci_equal(mot, "forth"))
+            return v3_va_histo(histo_avance(),
+                               "rien à refaire : aucun « go back » à reprendre");
+    }
+
+    /* « go recent card » : la forme longue de « go recent », celle de la
+     * carte « go » de HyperTalk Reference. L'analyseur la rend en deux
+     * nœuds, le mot et « card » sans désignateur ; elle répondait « ne sait
+     * pas faire ». Relevé le 11 octobre. */
+    if (n->nfils == i + 2 && ref->genre == HCTN_IDENT &&
+        n->fils[i + 1]->genre == HCTN_OBJET &&
+        n->fils[i + 1]->typeobj == HCT_OBJ_CARD && n->fils[i + 1]->nfils == 0) {
+        char mot[16];
+        v3_brut(ref, mot, sizeof mot);
+        if (ci_equal(mot, "recent"))
+            return v3_va_histo(histo_recule(),
+                               "rien où revenir : l'historique est vide");
     }
 
     /* ---- go to stack "X" ----
