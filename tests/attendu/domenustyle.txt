@@ -1,0 +1,55 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le banc d'HyperCard : Bold, puis Group, sur le mot 2 ==
+   select word 2 of card field 1
+   doMenu "Bold"
+      (hôte : « Bold », laissé au noyau)
+      =       mots : plain | bold | plain
+   doMenu "Group"
+      (hôte : « Group », laissé au noyau)
+      =       mots : plain | bold,group | plain
+
+== 2. les deux autres mots n'ont pas bougé, et la sélection reste ==
+   put the selectedText
+      = deux
+
+== 3. Bold de nouveau : toute la sélection l'a, il s'ôte ==
+   doMenu "Bold"
+      (hôte : « Bold », laissé au noyau)
+      =       mots : plain | group | plain
+
+== 4. une sélection mêlée : Italic se pose partout, le groupe reste ==
+   select word 1 to 2 of card field 1
+   doMenu "Italic"
+      (hôte : « Italic », laissé au noyau)
+      =       mots : italic | italic,group | plain
+
+== 5. Plain ôte tout, un corps se pose ==
+   doMenu "Plain"
+      (hôte : « Plain », laissé au noyau)
+      =       mots : plain | plain | plain
+   select word 3 of card field 1
+   doMenu "18"
+      (hôte : « 18 », laissé au noyau)
+   put the textSize of word 3 of card field 1 && the textSize of word 1 of card field 1
+      = 18 0
+
+== 6. sans sélection, rien ne bouge, et pas d'erreur ==
+   select empty
+   doMenu "Bold"
+      (hôte : « Bold », laissé au noyau)
+      =       mots : plain | plain | plain
+
+== 7. un éditeur de champ ouvert : l'hôte prend l'article ==
+   select word 3 of card field 1
+   doMenu "Bold"
+      (hôte : « Bold », pris)
+      =       mots : plain | plain | plain
+
+== 8. la pile peut détourner l'article, comme tout doMenu ==
+   doMenu "Bold"
+      = détourné : Bold
+      =       mots : plain | plain | plain
+
+== 9. un article qui n'est pas du menu Style va toujours à l'hôte ==
+   doMenu "Card Info..."
+      (hôte, doMenu : « Card Info... »)
