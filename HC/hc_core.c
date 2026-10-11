@@ -14097,6 +14097,27 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             return 1;
         }
         if (o->typeobj == HCT_OBJ_MENUITEM) {
+            /* « delete menuItem "New" FROM menu "File" » : le menu arrive
+             * après le mot-clé, et non en fils de l'article comme avec
+             * « of ». On le raccroche à une COPIE de l'article — l'arbre est
+             * relu à chaque exécution et ne doit pas changer —, ce qui donne
+             * à v3_article_index exactement la forme « of » qu'il connaît.
+             * Relevé le 11 octobre sur HyperTalk Reference, carte
+             * « delete ». */
+            HctNoeud article, menu;
+            HctNoeud *fils[2];
+            int idep = v3_indice_motcle(n, "from", 1);
+            if (idep >= 0 && idep + 1 < n->nfils && o->nfils <= 1 &&
+                n->fils[idep + 1]->genre == HCTN_OBJET &&
+                n->fils[idep + 1]->typeobj == HCT_OBJ_MENU) {
+                article = *o;
+                menu = *n->fils[idep + 1];
+                for (int k = 0; k < o->nfils; k++) fils[k] = o->fils[k];
+                fils[o->nfils] = &menu;
+                article.fils = fils;
+                article.nfils = o->nfils + 1;
+                o = &article;
+            }
             int im = -1;
             int j = v3_article_index(ctx, o, &im);
             if (ctx->erreur) return 1;
@@ -14104,14 +14125,22 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
             HcMenuBarre *m = &g_menus[im];
             free(m->article[j]);
             free(m->message[j]);
+            /* LES CINQ TABLEAUX, comme menu_insere. La coche et le raccourci
+             * ne suivaient pas : supprimer l'article 2 laissait la coche et
+             * le cmdChar de l'ancien 3 sur le nouveau 3, c'est-à-dire sur
+             * l'article qui était le 4. Vu en écrivant la forme « from ». */
             for (int k = j; k < m->n - 1; k++) {
                 m->article[k] = m->article[k + 1];
                 m->message[k] = m->message[k + 1];
                 m->actif[k]   = m->actif[k + 1];
+                m->coche[k]   = m->coche[k + 1];
+                m->touche[k]  = m->touche[k + 1];
             }
             m->n--;
             m->article[m->n] = NULL;
             m->message[m->n] = NULL;
+            m->coche[m->n]   = 0;
+            m->touche[m->n]  = 0;
             menus_prevenir();
             set_result("");
             return 1;

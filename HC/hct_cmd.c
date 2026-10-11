@@ -51,7 +51,10 @@ static const HctCommande TABLE[] = {
     { "convert",    "c [from *] to *" },
     { "create",     "*" },
     { "debug",      "*" },
-    { "delete",     "e" },
+    /* « delete menuItem "New" from menu "File » : la forme de la carte
+     * « delete » de HyperTalk Reference, à côté de « … of menu "File" ».
+     * Sans le groupe, l'expression s'arrêtait devant « from ». */
+    { "delete",     "e [from e]" },
     { "dial",       "e [with *]" },
     { "disable",    "r" },
     { "divide",     "c by e" },
