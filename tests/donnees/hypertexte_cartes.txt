@@ -1,0 +1,179 @@
+# ════════════════════════════════════════════════════════════════════
+#  HYPERTEXTE — LE TEXTE DES CARTES (lu par tests/harnais/hypertexte.c)
+#
+#  Sept cartes en français, puis les mêmes sept en anglais, dans le même
+#  ordre : la carte n et la carte n + 7 sont jumelles.
+#
+#  « === Nom » ouvre une carte ; le nom est celui que visent les liens.
+#  Viennent ensuite « titre: … », « etoile » s'il faut l'étoile en couleur,
+#  une ligne vide, puis le texte du champ.
+#
+#  Dans le texte : [[mots]] est un lien, posé au style Group ; une ligne qui
+#  commence par « > » est du code, en Monaco. Un lien mène à la carte qui
+#  porte son texte — c'est tout le principe, et le harnais le vérifie en
+#  cliquant chacun.
+# ════════════════════════════════════════════════════════════════════
+
+=== Bienvenue
+titre: Bienvenue dans HC
+
+HC, c'est HyperCard pour le Mac d'aujourd'hui.
+
+Les mots soulignés de gris sont des liens : cliquez-en un pour aller à sa carte. En bas, les flèches tournent les pages, et le dernier bouton passe en anglais.
+
+Par où commencer ?
+
+   [[En 1987]]
+   [[Vos anciennes piles]]
+   [[HyperTalk]]
+   [[La couleur]]
+   [[Les jeux]]
+   [[Faire un lien]]
+
+=== En 1987
+titre: HyperCard, en 1987
+
+En 1987, Apple livre HyperCard avec chaque Macintosh. Bill Atkinson, son auteur, y a mis une idée simple : des cartes, rangées en piles, où l'on pose des boutons, des champs de texte et des dessins.
+
+Chaque objet peut avoir son script, écrit en [[HyperTalk]], un langage qui se lit presque comme de l'anglais. Des enseignants, des artistes, des enfants y ont écrit leurs propres programmes ; le jeu Myst est né dans HyperCard.
+
+HC reprend cette idée sur macOS, et sait relire [[vos anciennes piles]].
+
+=== Vos anciennes piles
+titre: Vos anciennes piles
+
+HC ouvre les piles d'origine, au format d'Apple, de 1987 à 1998, et fait tourner leurs scripts tels quels : rien à convertir, rien à réécrire. Pour en ouvrir une : File ▸ Open Stack…
+
+Les piles d'aide d'Apple, HyperCard Help et HyperTalk Reference, y marchent de bout en bout, menus et liens compris. Leurs liens sont faits comme ceux de cette pile : voyez [[Faire un lien]].
+
+=== HyperTalk
+titre: HyperTalk
+
+Le langage d'HyperCard se lit presque comme une phrase. Voici le script d'un bouton qui tourne la page :
+
+>on mouseUp
+>  go to next card
+>end mouseUp
+
+Essayez : ouvrez la boîte de message (⌘M), et tapez
+
+>go to card "Les jeux"
+
+Pour lire le script de cette pile : Objects ▸ Stack Info…, puis Script…. La suite : [[la couleur]].
+
+=== La couleur
+titre: La couleur
+etoile
+
+HyperCard était en noir et blanc. HC y ajoute la couleur : la peinture, les icônes, les boutons, avec backColor et foreColor, et le texte, avec textColor.
+
+Pour les jeux, HC a aussi des boutons polygones, de toutes les formes, comme cette étoile, et the keysDown, qui dit quelles touches sont tenues.
+
+Cliquez sur l'étoile : son script change sa couleur. Pour voir tout cela à l'œuvre : [[les jeux]].
+
+=== Les jeux
+titre: Les jeux
+
+Le DMG contient des jeux écrits en HyperTalk ordinaire : un flipper, Tetris, Space Invaders, un casse-briques et le pendu.
+
+Chaque jeu vit dans le script de sa pile. Ouvrez-le pour le lire, ou pour changer les règles : tout est là, rien n'est caché.
+
+Retour à l'accueil : [[Bienvenue]].
+
+=== Faire un lien
+titre: Faire un lien
+
+Un lien, dans HyperCard, ce sont des mots au style Group, et un script qui suit le clic.
+
+1. Avec la main (outil Browse), cliquez dans un champ non verrouillé, sélectionnez des mots, puis Style ▸ Group.
+2. Avec l'outil Field, double-cliquez sur le champ, cochez Lock Text, puis Script… :
+
+>on mouseUp
+>  if "group" is in the textStyle of the clickChunk then
+>    go card (the clickText)
+>  end if
+>end mouseUp
+
+Les mots groupés mènent à la carte qui porte leur nom. « show groups » les souligne de gris : cette pile le fait en s'ouvrant. Retour : [[Bienvenue]].
+
+=== Welcome
+titre: Welcome to HC
+
+HC is HyperCard for today's Mac.
+
+Words underlined in grey are links: click one to go to its card. At the bottom, the arrows turn the pages, and the last button switches to French.
+
+Where to start?
+
+   [[Back in 1987]]
+   [[Your old stacks]]
+   [[Scripting]]
+   [[Colour]]
+   [[Games]]
+   [[Making a link]]
+
+=== Back in 1987
+titre: HyperCard, back in 1987
+
+In 1987, Apple shipped HyperCard with every Macintosh. Bill Atkinson, its author, built it on a simple idea: cards, kept in stacks, on which you place buttons, text fields and pictures.
+
+Every object can carry a script, written in HyperTalk, a language that reads almost like English: see [[Scripting]]. Teachers, artists and children wrote their own programs with it; the game Myst was born in HyperCard.
+
+HC brings that idea to macOS, and still reads [[your old stacks]].
+
+=== Your old stacks
+titre: Your old stacks
+
+HC opens the original stacks, in Apple's format, from 1987 to 1998, and runs their scripts as they are: nothing to convert, nothing to rewrite. To open one: File ▸ Open Stack…
+
+Apple's help stacks, HyperCard Help and HyperTalk Reference, work end to end, menus and links included. Their links are made like the ones in this stack: see [[Making a link]].
+
+=== Scripting
+titre: HyperTalk
+
+HyperCard's language reads almost like a sentence. Here is the script of a button that turns the page:
+
+>on mouseUp
+>  go to next card
+>end mouseUp
+
+Try it: open the message box (⌘M), and type
+
+>go to card "Games"
+
+To read this stack's script: Objects ▸ Stack Info…, then Script…. Next: [[colour]].
+
+=== Colour
+titre: Colour
+etoile
+
+HyperCard was black and white. HC adds colour: paint, icons, buttons, with backColor and foreColor, and text, with textColor.
+
+For games, HC also has polygon buttons, of any shape, like this star, and the keysDown, which tells which keys are held down.
+
+Click the star: its script changes its colour. To see all this at work: [[games]].
+
+=== Games
+titre: Games
+
+The DMG holds games written in plain HyperTalk: a pinball, Tetris, Space Invaders, a brick breaker, and Pendu, a hangman game.
+
+Each game lives in its stack's script. Open it to read it, or to change the rules: it is all there, nothing is hidden.
+
+Back to the start: [[Welcome]].
+
+=== Making a link
+titre: Making a link
+
+In HyperCard, a link is some words in the Group style, and a script that follows the click.
+
+1. With the Browse tool (the hand), click in an unlocked field, select some words, then Style ▸ Group.
+2. With the Field tool, double-click the field, check Lock Text, then Script…:
+
+>on mouseUp
+>  if "group" is in the textStyle of the clickChunk then
+>    go card (the clickText)
+>  end if
+>end mouseUp
+
+Grouped words lead to the card that bears their name. "show groups" underlines them in grey: this stack does it when it opens. Back: [[Welcome]].

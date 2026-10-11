@@ -129,18 +129,27 @@ première ouverture, et un utilisateur sans réseau est bloqué.
 
 ### 6. Le DMG
 
-Le DMG contient l'application ET la pile d'exemple du pendu. On les met
-dans un dossier, et c'est ce dossier qu'on emballe :
+Le DMG contient l'application ET des piles d'exemple, dont le pendu et
+Hypertexte. On les met dans un dossier, et c'est ce dossier qu'on emballe :
 
     make verifie && ./tests/lance.sh pendu          # le jeu passe son test
     tests/.travail/bin/pendu tests/donnees/pendu_pile.txt Pendu.stack
-    mkdir -p dmg && cp -R HC.app Pendu.stack dmg/
+    ./tests/lance.sh hypertexte                     # chaque lien est cliqué
+    tests/.travail/bin/hypertexte tests/donnees/hypertexte_pile.txt \
+      tests/donnees/hypertexte_cartes.txt Hypertexte.stack
+    mkdir -p dmg && cp -R HC.app Pendu.stack Hypertexte.stack dmg/
     hdiutil create -volname "HC <version>" -srcfolder dmg \
       -ov -format UDZO HC-<version>.dmg
 
-La pile est ENGENDRÉE à chaque livraison, depuis ses sources
-(tests/donnees/pendu_pile.txt et tests/harnais/pendu.c), et jamais
-versionnée : un fichier engendré posé à côté de ses sources dérive dès la
+Hypertexte.stack, depuis 0.8, présente HC en quatorze cartes — sept en
+français, sept en anglais — et montre les liens d'HyperCard : des mots au
+style Group, et un script de champ qui suit le clic. Son harnais clique
+chacun des liens avant qu'on l'écrive.
+
+Ces piles sont ENGENDRÉES à chaque livraison, depuis leurs sources
+(tests/donnees/pendu_pile.txt et tests/harnais/pendu.c ;
+tests/donnees/hypertexte_*.txt et tests/harnais/hypertexte.c), et jamais
+versionnées : un fichier engendré posé à côté de ses sources dérive dès la
 première modification, sans que rien ne le signale. Le harnais « pendu » joue
 quelques parties avant qu'on l'écrive.
 

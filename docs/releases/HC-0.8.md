@@ -139,6 +139,10 @@ that stopped a script in HC are now supported. And HC now has HyperCard's
   Grouped text shows its grey underline only after `show groups`; Apple's
   help stacks turn it on themselves when they open. Put `show groups` in
   your stack's `openStack` handler to see it in yours.
+- **A new demonstration stack, Hypertexte**, in the DMG: fourteen cards,
+  seven in French and seven in English, that present HC and are linked
+  together with grouped words. Its link script is the one above, and the
+  last card shows how to make your own links.
 - **`show groups` redraws the fields already shown.** HC kept the drawing
   of recently shown fields, and that memory did not take `show groups` into
   account: the grey underline did not appear on the current card, and

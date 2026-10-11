@@ -1,0 +1,97 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les cartes, leurs liens, leurs lignes estimées ==
+    1 Bienvenue            6 lien(s), ~14 lignes
+    2 En 1987              2 lien(s), ~12 lignes
+    3 Vos anciennes piles  1 lien(s), ~8 lignes
+    4 HyperTalk            1 lien(s), ~13 lignes
+    5 La couleur           1 lien(s), ~13 lignes
+    6 Les jeux             1 lien(s), ~8 lignes
+    7 Faire un lien        1 lien(s), ~17 lignes, défile
+    8 Welcome              6 lien(s), ~14 lignes
+    9 Back in 1987         2 lien(s), ~10 lignes
+   10 Your old stacks      1 lien(s), ~7 lignes
+   11 Scripting            1 lien(s), ~13 lignes
+   12 Colour               1 lien(s), ~10 lignes
+   13 Games                1 lien(s), ~8 lignes
+   14 Making a link        1 lien(s), ~17 lignes, défile
+   [msg]    titre de l'accueil : 0,0,128
+   [msg]    titre de la couleur : 255,0,0 255,128,0
+
+== 2. chaque lien, cliqué, mène à la carte de son nom ==
+   Bienvenue            « En 1987 » -> En 1987
+   Bienvenue            « Vos anciennes piles » -> Vos anciennes piles
+   Bienvenue            « HyperTalk » -> HyperTalk
+   Bienvenue            « La couleur » -> La couleur
+   Bienvenue            « Les jeux » -> Les jeux
+   Bienvenue            « Faire un lien » -> Faire un lien
+   En 1987              « HyperTalk » -> HyperTalk
+   En 1987              « vos anciennes piles » -> Vos anciennes piles
+   Vos anciennes piles  « Faire un lien » -> Faire un lien
+   HyperTalk            « la couleur » -> La couleur
+   La couleur           « les jeux » -> Les jeux
+   Les jeux             « Bienvenue » -> Bienvenue
+   Faire un lien        « Bienvenue » -> Bienvenue
+   Welcome              « Back in 1987 » -> Back in 1987
+   Welcome              « Your old stacks » -> Your old stacks
+   Welcome              « Scripting » -> Scripting
+   Welcome              « Colour » -> Colour
+   Welcome              « Games » -> Games
+   Welcome              « Making a link » -> Making a link
+   Back in 1987         « Scripting » -> Scripting
+   Back in 1987         « your old stacks » -> Your old stacks
+   Your old stacks      « Making a link » -> Making a link
+   Scripting            « colour » -> Colour
+   Colour               « games » -> Games
+   Games                « Welcome » -> Welcome
+   Making a link        « Welcome » -> Welcome
+   liens ratés : 0
+
+== 3. toutes les cartes s'atteignent par les liens, depuis l'accueil ==
+   depuis « Bienvenue » : 7 carte(s) sur 7
+   depuis « Welcome » : 7 carte(s) sur 7
+
+== 4. un clic hors d'un lien ne mène nulle part ==
+   sur « HC » -> Bienvenue
+   dans le vide -> Bienvenue
+
+== 5. les flèches tournent les pages sans changer de langue ==
+   boutons trouvés : ▶ ◀ langue
+   Bienvenue > En 1987 > Vos anciennes piles > HyperTalk > La couleur > Les jeux > Faire un lien > Bienvenue
+   Bienvenue < Faire un lien < Les jeux
+   Welcome < Making a link > Welcome
+
+== 6. le bouton de langue mène à la jumelle ==
+   Bienvenue            -> Welcome
+   En 1987              -> Back in 1987
+   Vos anciennes piles  -> Your old stacks
+   HyperTalk            -> Scripting
+   La couleur           -> Colour
+   Les jeux             -> Games
+   Faire un lien        -> Making a link
+   Welcome              -> Bienvenue
+   Back in 1987         -> En 1987
+   Your old stacks      -> Vos anciennes piles
+   Scripting            -> HyperTalk
+   Colour               -> La couleur
+   Games                -> Les jeux
+   Making a link        -> Faire un lien
+
+== 7. les exemples de la carte HyperTalk, tapés tels quels ==
+   go to card "Les jeux" -> Les jeux
+   go to card "Games" -> Games
+
+== 8. l'étoile change de couleur ==
+   La couleur : 10 sommets, rectangle 382,108 98x94, couleur posée : oui
+   un clic sur l'étoile change sa couleur : oui
+   Colour : 10 sommets, rectangle 382,108 98x94, couleur posée : oui
+   un clic sur l'étoile change sa couleur : oui
+
+== 9. show groups à l'ouverture, hide groups au départ ==
+   openStack    -> showGroups 1
+   suspendStack -> showGroups 0
+   resumeStack  -> showGroups 1
+   closeStack   -> showGroups 0
+
+== 10. la pile écrite puis relue garde ses liens ==
+   écrite : oui, relue : oui
+   cartes : 14, liens au style Group : 26 sur 26, écarts : 0

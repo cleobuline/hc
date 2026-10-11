@@ -1,0 +1,66 @@
+-- ════════════════════════════════════════════════════════════════════
+--  HYPERTEXTE — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--  THE STACK SCRIPT
+--
+--  Sept cartes en francais, puis les memes sept en anglais, dans le meme
+--  ordre : la carte n et la carte n + 7 sont jumelles.
+--  Seven cards in French, then the same seven in English, in the same
+--  order: card n and card n + 7 are twins.
+--
+--  Les liens sont dans les champs "Texte" : lisez leur script.
+--  The links live in the "Texte" fields: read their script.
+-- ════════════════════════════════════════════════════════════════════
+
+-- Le souligne gris des mots groupes, tant qu'on est dans cette pile ;
+-- les piles d'aide d'Apple font de meme.
+-- The grey underline of grouped words, while we are in this stack;
+-- Apple's help stacks do the same.
+on openStack
+  show groups
+  pass openStack
+end openStack
+
+on resumeStack
+  show groups
+  pass resumeStack
+end resumeStack
+
+on suspendStack
+  hide groups
+  pass suspendStack
+end suspendStack
+
+on closeStack
+  hide groups
+  pass closeStack
+end closeStack
+
+-- Les fleches tournent les pages sans changer de langue.
+-- The arrows turn the pages without changing language.
+function pagesParLangue
+  return the number of cards div 2
+end pagesParLangue
+
+function premierePage
+  if the number of this card > pagesParLangue() then return pagesParLangue() + 1
+  return 1
+end premierePage
+
+on pageSuivante
+  put pagesParLangue() into n
+  put premierePage() into p
+  go card (p + (the number of this card - p + 1) mod n)
+end pageSuivante
+
+on pagePrecedente
+  put pagesParLangue() into n
+  put premierePage() into p
+  go card (p + (the number of this card - p + n - 1) mod n)
+end pagePrecedente
+
+-- La meme page, dans l'autre langue. / The same page, in the other language.
+on autreLangue
+  put pagesParLangue() into n
+  if the number of this card > n then go card (the number of this card - n)
+  else go card (the number of this card + n)
+end autreLangue
