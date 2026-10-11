@@ -16113,11 +16113,13 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1 || !n->fils[0]) return 0;
     const HctNoeud *o = n->fils[0];
-    if (o->genre != HCTN_OBJET) return 0;
+    /* Un nom nu aussi : « disable b », où b vaut « bkgnd button 2 ». Voir
+     * le bouton, plus bas. */
+    if (o->genre != HCTN_OBJET && o->genre != HCTN_IDENT) return 0;
 
     int actif = ci_equal(n->op, "enable");
 
-    if (o->typeobj == HCT_OBJ_MENU) {
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MENU) {
         int i = v3_menu_index(ctx, o);
         if (ctx->erreur) return 1;
         if (i < 0) { set_result("menu introuvable"); return 1; }
@@ -16126,7 +16128,7 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
         set_result("");
         return 1;
     }
-    if (o->typeobj == HCT_OBJ_MENUITEM) {
+    if (o->genre == HCTN_OBJET && o->typeobj == HCT_OBJ_MENUITEM) {
         int im = -1;
         int j = v3_article_index(ctx, o, &im);
         if (ctx->erreur) return 1;
@@ -16136,7 +16138,25 @@ static int v3_cmd_menu_actif(HctContexte *ctx, const HctNoeud *n)
         set_result("");
         return 1;
     }
-    return 0;                       /* enable d'autre chose : pas pour nous */
+
+    /* UN BOUTON : « disable button 1 », « enable last button ».
+     *
+     * La carte « disable » de HyperTalk Reference : « It's a shortcut for
+     * setting the enabled property of a menu item, menu, or button to
+     * false. » HC ne connaissait que les menus, et répondait « ne sait pas
+     * faire » au bouton. Relevé le 11 octobre. Le même geste que « set the
+     * enabled », et la même résolution que hide et show : un désignateur
+     * calculé passe (v3_resout_calcule).
+     *
+     * Un bouton seulement, comme le dit la référence. Autre chose, ou rien :
+     * on rend 0, et la ligne dit ce qu'elle disait. */
+    Object *b = v3_resout_calcule(ctx, o);
+    if (ctx->erreur) return 1;
+    if (!b || b->type != OBJ_BUTTON) return 0;
+    b->enabled = actif;
+    notify_field(b);
+    set_result("");
+    return 1;
 }
 
 /* put <articles> into|before|after  menu <nom> | menuItem <d> of menu <nom>

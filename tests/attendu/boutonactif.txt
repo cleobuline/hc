@@ -1,0 +1,49 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les exemples de la référence ==
+   disable button 1
+   put the enabled of button 1
+      = false
+   disable background button 1
+   put the enabled of bkgnd button "Prev"
+      = false
+   enable background button 3
+   put the enabled of bkgnd button "Index"
+      = true
+   enable last button
+   put the enabled of button "Annuler"
+      = true
+   enable button 1
+   put the enabled of button 1
+      = true
+
+== 2. par un nom, par un id, par une variable ==
+   disable button "Annuler"
+   put the enabled of button 2
+      = false
+   enable card button id 8
+   put the enabled of button 2
+      = true
+   put "bkgnd button 2" into b
+   disable b
+   put the enabled of bkgnd button "Next"
+      = false
+
+== 3. ce qui n'est pas un bouton ==
+   disable button "Absent"
+      [ERR]    !! objet introuvable : disable button "Absent"
+   disable field "Texte"
+      [ERR]    !! ne sait pas faire : disable field "Texte"
+
+== 4. témoins : les menus ==
+   create menu "Outils"
+   put "Un,Deux" into menu "Outils"
+   disable menuItem 2 of menu "Outils"
+   put the enabled of menuItem 2 of menu "Outils"
+      = false
+   disable menu "Outils"
+   put the enabled of menu "Outils"
+      = false
+   enable menu "Outils"
+   put the enabled of menu "Outils"
+      = true
+   delete menu "Outils"
