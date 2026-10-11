@@ -7113,18 +7113,18 @@ static struct {
 } G_REGLAGES[] = {
     /* 5 par défaut : HC n'impose aucune restriction, et annoncer un niveau
      * plus bas que ce qu'on autorise serait le mensonge inverse. */
-    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5     },
-    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767 },
-    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1     },
-    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1     },
-    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1     },
-    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1     },
+    { "userlevel",   "userLevel",   REG_ENTIER, 5, 1, 5, "" },
+    { "dragspeed",   "dragSpeed",   REG_ENTIER, 0, 0, 32767, "" },
+    { "blindtyping", "blindTyping", REG_BOOL,   0, 0, 1, "" },
+    { "powerkeys",   "powerKeys",   REG_BOOL,   0, 0, 1, "" },
+    { "lockrecent",  "lockRecent",  REG_BOOL,   0, 0, 1, "" },
+    { "textarrows",  "textArrows",  REG_BOOL,   0, 0, 1, "" },
     /* « set the lockErrorDialogs to true » : l'erreur ne va plus au dialogue,
      * elle part en message « errorDialog » à la carte courante. Voir
      * erreurs_vide. Remise à false en retombant au repos, comme lockScreen —
      * une pile qui la pose et sort par un « exit » resterait sinon muette
      * pour toujours. */
-    { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1 },
+    { "lockerrordialogs", "lockErrorDialogs", REG_BOOL, 0, 0, 1, "" },
 
     /* LES RÉGLAGES QUI ARRÊTAIENT UN SCRIPT AU « set ».
      *
@@ -7139,13 +7139,13 @@ static struct {
      * Les défauts sont ceux qu'écrit la référence d'Apple, carte par carte.
      * NON MESURÉ : dialingVolume, dont la référence ne donne pas le défaut —
      * 7, le plus fort, est un choix. */
-    { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1     },
-    { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1     },
-    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767 },
-    { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7     },
-    { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767 },
-    { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767 },
-    { "scripttextsize",   "scriptTextSize",   REG_ENTIER, 9, 1, 32767 },
+    { "usermodify",       "userModify",       REG_BOOL,   0, 0, 1, "" },
+    { "longwindowtitles", "longWindowTitles", REG_BOOL,   0, 0, 1, "" },
+    { "tracedelay",       "traceDelay",       REG_ENTIER, 0, 0, 32767, "" },
+    { "dialingvolume",    "dialingVolume",    REG_ENTIER, 7, 0, 7, "" },
+    { "printtextheight",  "printTextHeight",  REG_ENTIER, 13, 1, 32767, "" },
+    { "printtextsize",    "printTextSize",    REG_ENTIER, 10, 1, 32767, "" },
+    { "scripttextsize",   "scriptTextSize",   REG_ENTIER, 9, 1, 32767, "" },
     { "printtextfont",    "printTextFont",    REG_TEXTE, 0, 0, 0, "Geneva" },
     { "printtextalign",   "printTextAlign",   REG_TEXTE, 0, 0, 0, "left" },
     { "printtextstyle",   "printTextStyle",   REG_TEXTE, 0, 0, 0, "plain" },
@@ -13574,15 +13574,15 @@ static int v3_cmd_print(HctContexte *ctx, const HctNoeud *n)
      * MESURÉ : ce que fait HyperCard d'un découpage dans un travail. */
     if (g_tache_ouverte && !pdecoupe) {
         if (g_tache_n + np > g_tache_cap) {
-            int cap = g_tache_cap ? g_tache_cap : 16;
-            while (cap < g_tache_n + np) cap *= 2;
-            Object **t = realloc(g_tache_cartes, (size_t)cap * sizeof *t);
+            int ncap = g_tache_cap ? g_tache_cap : 16;
+            while (ncap < g_tache_n + np) ncap *= 2;
+            Object **t = realloc(g_tache_cartes, (size_t)ncap * sizeof *t);
             if (!t) {
                 free(liste); g_atop = sauve;
                 hct_ctx_faute(ctx, n, "mémoire insuffisante");
                 return 1;
             }
-            g_tache_cartes = t; g_tache_cap = cap;
+            g_tache_cartes = t; g_tache_cap = ncap;
         }
         for (int i = 0; i < np; i++) g_tache_cartes[g_tache_n++] = liste[i];
         set_result("");
@@ -15690,7 +15690,7 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
      * result si l'on annulait ; ici, the result reste vide. « open report
      * printing » n'est pas couvert : un rapport n'est pas une image de
      * carte, et l'imprimer comme tel serait une réponse fausse. */
-    if (n->nfils >= 1 && n->fils[0]->genre == HCTN_IDENT) {
+    if (n->nfils >= 1 && n->fils[0] && n->fils[0]->genre == HCTN_IDENT) {
         char m0[16];
         v3_brut(n->fils[0], m0, sizeof m0);
         if (ci_equal(m0, "printing")) {
