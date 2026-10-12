@@ -147,8 +147,9 @@ drawing, and are fixed the same way.
 - **Zero warnings**: gcc at three optimisation levels, *and* clang with
   Xcode's warning families. **Zero** static-analyser warnings. The Cocoa
   application builds on macOS in continuous integration.
-- Stack fuzzing: the canary check caught its three planted faults; the
-  campaign of 80,000 damaged stacks is still running as this note is written.
+- Stack fuzzing: **no reports on 80,000 damaged stacks** (60,000 in HC's
+  format, 20,000 in Apple's), after the canary check caught its three
+  planted faults.
 
 ### Not measured yet
 
