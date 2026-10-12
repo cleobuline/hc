@@ -119,6 +119,34 @@ rejet, le journal dit précisément quoi :
     xcrun notarytool log <submission-id> \
       --keychain-profile "HC-notarisation"
 
+#### Sans notarytool : Catalina et Xcode 12
+
+`notarytool` n'existe que depuis Xcode 13, qui demande macOS 11.3. L'ancien
+outil, `altool`, n'est plus accepté par Apple depuis le 1ᵉʳ novembre 2023 — le
+bouton « Distribute App → Developer ID » d'Xcode 12 passe par lui. Sur un Mac
+resté sous Catalina, on passe donc par l'API web d'Apple, celle qu'appelle
+notarytool, avec `outils/notarise.py` : Python, `openssl` et `curl`, rien à
+installer.
+
+Une fois : une **clé d'API**, dans App Store Connect → Utilisateurs et accès →
+Intégrations → API App Store Connect → Clés d'équipe → « + », accès
+« Développeur ». Télécharger le fichier `AuthKey_<ID>.p8` — **Apple ne le donne
+qu'une fois** —, le ranger hors du dépôt, et noter son identifiant (Key ID) et
+celui de l'émetteur (Issuer ID, en haut de la page).
+
+Vérifier la clé sans rien envoyer :
+
+    python3 outils/notarise.py HC.zip --cle ~/cles/AuthKey_<ID>.p8 \
+      --id-cle <Key ID> --emetteur <Issuer ID> --essai
+
+Puis la même ligne sans `--essai` : le script soumet, envoie, attend le verdict
+et affiche le journal d'Apple. Le même pour le DMG à l'étape 6, à la place de
+`notarytool submit`. L'agrafage (`xcrun stapler`) existe dans Xcode 12.
+
+**Le script n'a jamais parlé à Apple au moment où il est écrit** (12 octobre) :
+le jeton est vérifié avec une clé de test, la signature S3 est identique à
+celle de botocore, mais la première vraie soumission sera sa première mesure.
+
 ### 5. Agrafer
 
     xcrun stapler staple HC.app
