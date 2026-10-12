@@ -4404,6 +4404,22 @@ static void hcv_veille_dans(double secondes)
     });
 }
 
+/* Sur gFileSons : un tampon posé sur une voix, qui le joue aussitôt. Rend
+ * sa durée. */
+static double hcv_pose_tampon(AVAudioPCMBuffer *b)
+{
+    if (!hcv_moteur_pret()) return 0;    /* pas de sortie audio : rien à jouer */
+    AVAudioPlayerNode *v = hcv_voix_pour([b format]);
+    [v scheduleBuffer:b atTime:nil options:AVAudioPlayerNodeBufferInterrupts
+        completionHandler:nil];
+    if (![v isPlaying]) [v play];
+    double duree = (double)[b frameLength] / [[b format] sampleRate];
+    double fin = CACurrentMediaTime() + duree;
+    if (fin > gSilenceDes) gSilenceDes = fin;
+    hcv_veille_dans(gSilenceDes + HCV_SILENCE - CACurrentMediaTime());
+    return duree;
+}
+
 /* Sur gFileSons seulement : le vrai travail d'un « play ». Rend la durée du
  * son posé, 0 s'il n'a pas joué. */
 static double hcv_joue_son(NSString *n)
@@ -4417,25 +4433,18 @@ static double hcv_joue_son(NSString *n)
         dispatch_async(dispatch_get_main_queue(), ^{ NSBeep(); });
         return 0;
     }
+    if ([son isKindOfClass:[AVAudioPCMBuffer class]])
+        return hcv_pose_tampon(son);
     if (!hcv_moteur_pret()) return 0;    /* pas de sortie audio : rien à jouer */
 
-    double duree = 0;
-    if ([son isKindOfClass:[AVAudioPCMBuffer class]]) {
-        AVAudioPCMBuffer *b = son;
-        AVAudioPlayerNode *v = hcv_voix_pour([b format]);
-        [v scheduleBuffer:b atTime:nil options:AVAudioPlayerNodeBufferInterrupts
-            completionHandler:nil];
-        if (![v isPlaying]) [v play];
-        duree = (double)[b frameLength] / [[b format] sampleRate];
-    } else {
-        AVAudioFile *f = [[AVAudioFile alloc] initForReading:son error:NULL];
-        if (!f) return 0;
-        AVAudioPlayerNode *v = hcv_voix_pour([f processingFormat]);
-        [v stop];
-        [v scheduleFile:f atTime:nil completionHandler:nil];
-        [v play];
-        duree = (double)[f length] / [[f processingFormat] sampleRate];
-    }
+    /* Un son long : lu depuis son fichier. */
+    AVAudioFile *f = [[AVAudioFile alloc] initForReading:son error:NULL];
+    if (!f) return 0;
+    AVAudioPlayerNode *v = hcv_voix_pour([f processingFormat]);
+    [v stop];
+    [v scheduleFile:f atTime:nil completionHandler:nil];
+    [v play];
+    double duree = (double)[f length] / [[f processingFormat] sampleRate];
 
     double fin = CACurrentMediaTime() + duree;
     if (fin > gSilenceDes) gSilenceDes = fin;
@@ -4443,17 +4452,52 @@ static double hcv_joue_son(NSString *n)
     return duree;
 }
 
-/* Sur gFileSons : la demande numéro j. Coupée avant d'être servie, elle ne
- * joue pas ; servie, elle dit à « the sound » quand elle finit — sauf si
- * « play stop » est passé pendant qu'on la posait : la coupure, derrière elle
- * dans la file, va la faire taire. */
-static void hcv_sert_son(NSString *n, unsigned long j)
+/* LA MÉLODIE : « play "boing" tempo 120 "c4q e g" ». Le noyau a lu les notes
+ * (hc_notes.c) ; on relit ici l'échantillon du son à la hauteur de chacune,
+ * canal par canal, dans un tampon neuf, joué comme un son — « play stop » et
+ * « the sound » le prennent donc comme les autres. L'échantillon est tenu
+ * pour un do4 (hc_notes.h).
+ *
+ * Un son LONG, lu depuis son fichier (HCV_TAMPON_MAX), n'a pas de tampon à
+ * relire : il joue une fois, comme avant. Une mélodie de plus de
+ * HCV_MELODIE_MAX secondes est coupée là — une borne de mémoire. */
+#define HCV_MELODIE_MAX 120.0
+
+static double hcv_joue_notes(NSString *n, NSData *donnees)
+{
+    id son = hcv_son(n, [n lowercaseString]);
+    if (![son isKindOfClass:[AVAudioPCMBuffer class]])
+        return hcv_joue_son(n);              /* introuvable (bip) ou long */
+    AVAudioPCMBuffer *b = son;
+    const HcNote *notes = [donnees bytes];
+    int k = (int)([donnees length] / sizeof(HcNote));
+    double fe = [[b format] sampleRate];
+    double duree = hc_notes_duree(notes, k);
+    if (duree > HCV_MELODIE_MAX) duree = HCV_MELODIE_MAX;
+    AVAudioFrameCount trames = (AVAudioFrameCount)(duree * fe + 0.5);
+    if (trames == 0 || ![b floatChannelData]) return 0;
+    AVAudioPCMBuffer *m = [[AVAudioPCMBuffer alloc] initWithPCMFormat:[b format]
+                                                        frameCapacity:trames];
+    if (!m || ![m floatChannelData]) return 0;
+    for (AVAudioChannelCount c = 0; c < [[b format] channelCount]; c++)
+        hc_notes_rends([b floatChannelData][c], (long)[b frameLength], fe,
+                       notes, k, [m floatChannelData][c], (long)trames);
+    [m setFrameLength:trames];
+    return hcv_pose_tampon(m);
+}
+
+/* Sur gFileSons : la demande numéro j — un son, ou une mélodie si `notes`
+ * en porte. Coupée avant d'être servie, elle ne joue pas ; servie, elle dit à
+ * « the sound » quand elle finit — sauf si « play stop » est passé pendant
+ * qu'on la posait : la coupure, derrière elle dans la file, va la faire
+ * taire. */
+static void hcv_sert_son(NSString *n, NSData *notes, unsigned long j)
 {
     os_unfair_lock_lock(&gSonVerrou);
     BOOL coupee = (j <= gSonCoupeA);
     os_unfair_lock_unlock(&gSonVerrou);
 
-    double duree = coupee ? 0 : hcv_joue_son(n);
+    double duree = coupee ? 0 : notes ? hcv_joue_notes(n, notes) : hcv_joue_son(n);
     CFTimeInterval fin = CACurrentMediaTime() + duree;
 
     os_unfair_lock_lock(&gSonVerrou);
@@ -4462,8 +4506,8 @@ static void hcv_sert_son(NSString *n, unsigned long j)
     os_unfair_lock_unlock(&gSonVerrou);
 }
 
-/* Le crochet de l'hôte : la demande part sur la file, et le script repart. */
-static void cocoa_play(const char *name) {
+/* La demande part sur la file, et le script repart. */
+static void hcv_demande_son(const char *name, NSData *notes) {
     NSString *n = hcv_texte(name ? name : "");
     if (!gFileSons)
         gFileSons = dispatch_queue_create("fr.labynet.hc.sons", DISPATCH_QUEUE_SERIAL);
@@ -4472,8 +4516,17 @@ static void cocoa_play(const char *name) {
     snprintf(gSonNom, sizeof gSonNom, "%s", name ? name : "");
     os_unfair_lock_unlock(&gSonVerrou);
     dispatch_async(gFileSons, ^{
-        @autoreleasepool { hcv_sert_son(n, j); }
+        @autoreleasepool { hcv_sert_son(n, notes, j); }
     });
+}
+
+/* Les crochets de l'hôte. Les notes n'appartiennent qu'à l'appel : on les
+ * recopie avant de partir sur la file. */
+static void cocoa_play(const char *name) { hcv_demande_son(name, nil); }
+
+static void cocoa_play_notes(const char *name, const HcNote *notes, int n) {
+    if (!notes || n <= 0) { hcv_demande_son(name, nil); return; }
+    hcv_demande_son(name, [NSData dataWithBytes:notes length:sizeof *notes * (NSUInteger)n]);
 }
 
 /* « play stop » : tout ce qui a été demandé jusqu'ici se tait — ce qui joue,
@@ -9306,6 +9359,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
     host.stop_sound    = cocoa_stop_sound;
+    host.play_notes    = cocoa_play_notes;
     host.choose_tool   = cocoa_choose_tool;
     host.drag          = cocoa_drag;
     host.click_at      = cocoa_click_at;

@@ -15,6 +15,8 @@
 #ifndef HC_CORE_H
 #define HC_CORE_H
 
+#include "hc_notes.h"   /* HcNote, pour le crochet play_notes */
+
 typedef enum {
     OBJ_STACK,
     OBJ_BACKGROUND,
@@ -919,6 +921,10 @@ typedef struct {
 
     void (*play_sound)(const char *name);   /* play "boing" */
     void (*stop_sound)(void);               /* play stop — le mot nu seulement */
+    /* play "boing" tempo 120 "c4q e g" : le son, et ses notes déjà lues
+     * (hc_notes.h). Le tableau n'appartient qu'à l'appel : à recopier. Sans
+     * ce crochet, le noyau joue le son une fois, comme avant. */
+    void (*play_notes)(const char *name, const HcNote *notes, int n);
 
     /* ---- outils et gestes simulés ----
      * Le noyau ne connaît ni la palette ni la souris : il analyse la commande
