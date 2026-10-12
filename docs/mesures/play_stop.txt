@@ -65,5 +65,18 @@ e f" » joue l'échantillon une fois, et « the sound » ne dure que lui ;
 HyperCard le garde jusqu'à la dernière note.
 
 
-À VOIR DANS HC (l'application) : la même mélodie coupée par « play stop »,
-et « wait until the sound is "done" » qui attend la fin d'un son long.
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même jour, après
+recompilation. HC n'a pas de clavecin et ne joue pas les notes : le banc
+prend « submarine », son plus long son (2,3 s), qu'HyperCard n'a pas — le
+relevé ne peut venir que de HC :
+
+    play "submarine"
+    put the sound into s1
+    wait 10 ticks
+    play stop
+    put the sound into s2
+
+  → le son est coupé ; « pendant : submarine », « après stop : done ».
+
+À VOIR ENCORE : « wait until the sound is "done" » qui attend la fin d'un son
+(environ 135 ticks pour submarine ; presque 0 avant la correction).
