@@ -780,6 +780,25 @@ static void hcv_cadre(NSRect r)
     NSFrameRectWithWidthUsingOperation(r, 1.0, NSCompositingOperationSourceOver);
 }
 
+/* L'OMBRE PORTÉE du style « shadow » : trois points en bas et à droite de r,
+ * le rectangle entier, ombre comprise. On ne peint que les deux bandes qui
+ * dépassent du corps, et RIEN DESSOUS.
+ *
+ * Avant, on remplissait tout le rectangle décalé, puis le corps par-dessus :
+ * juste tant que le corps était opaque, il recouvrait l'ombre. Avec un fond à
+ * moitié transparent, l'ombre — foreColor, noire si rien n'est posé — se
+ * voyait à travers tout le corps : « la transparence fait tout le champ noir
+ * avec la couleur du foreColor », vu par l'utilisatrice le 12 octobre. Sous
+ * un corps opaque, les deux dessins donnent le même pixel. */
+static void hcv_ombre(NSRect r)
+{
+    CGFloat w = r.size.width, h = r.size.height;
+    if (w <= 3 || h <= 3) return;
+    hcv_remplit(NSMakeRect(r.origin.x + w - 3, r.origin.y + 3, 3, h - 3));
+    if (w > 6)
+        hcv_remplit(NSMakeRect(r.origin.x + 3, r.origin.y + h - 3, w - 6, 3));
+}
+
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
@@ -872,10 +891,8 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "shadow") == 0) {
         NSRect body = NSMakeRect(r.origin.x, r.origin.y,
                                  r.size.width - 3, r.size.height - 3);
-        NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
-                                 r.size.width - 3, r.size.height - 3);
         [btn_trait(o) setFill];
-        hcv_remplit(sh);
+        hcv_ombre(r);
         [btn_fond(o, on) setFill];
         hcv_remplit(body);
         [btn_trait(o) setStroke];
@@ -1343,14 +1360,12 @@ static void draw_part(Object *o) {
                                       r.size.width - tw, r.size.height);
             NSRect body = NSMakeRect(boite.origin.x, boite.origin.y,
                                      boite.size.width - 3, boite.size.height - 3);
-            NSRect sh   = NSMakeRect(boite.origin.x + 3, boite.origin.y + 3,
-                                     boite.size.width - 3, boite.size.height - 3);
             /* Les couleurs de l'extension : backColor l'intérieur de la
              * boîte, foreColor l'ombre, le cadre, la flèche et le texte —
              * comme le style « shadow ». Un popup ne s'allume pas :
              * hiliteColor n'y a rien à teindre. */
             [btn_trait(o) setFill];
-            hcv_remplit(sh);
+            hcv_ombre(boite);
             [btn_fond(o, NO) setFill];
             hcv_remplit(body);
             [btn_trait(o) setStroke];
@@ -1446,10 +1461,8 @@ static void draw_part(Object *o) {
         else if (isShadow) {
             body = NSMakeRect(r.origin.x, r.origin.y,
                               r.size.width - 3, r.size.height - 3);
-            NSRect sh = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
-                                   r.size.width - 3, r.size.height - 3);
             [champ_trait(o) setFill];
-            hcv_remplit(sh);
+            hcv_ombre(r);
             [champ_fond(o) setFill];
             hcv_remplit(body);
             [champ_trait(o) setStroke];
