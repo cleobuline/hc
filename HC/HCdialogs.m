@@ -577,6 +577,45 @@ static NSButton     *gFldNoWrap = nil;
 static NSButton     *gFldAutoSel = nil;
 static NSButton     *gFldMultiple = nil;
 static NSTextField  *gFldTextSize = nil;
+
+/* LES DEUX COULEURS DU CHAMP — Back, le fond ; Fore, le cadre —, dans l'Info.
+ * L'extension accordée par l'utilisatrice le 11 octobre au soir, faite comme
+ * celle des boutons (gInfoCoulCase, plus bas) : une case et un puits par
+ * couleur, case décochée = RIEN DE POSÉ, le champ garde le dessin
+ * d'HyperCard. Le sélecteur montre l'opacité, qui va dans backalpha et
+ * forealpha. */
+static NSButton     *gFldCoulCase[2];
+static NSColorWell  *gFldCoulPuits[2];
+
+/* Comme info_couleurs_ferme : un puits resté actif après la fermeture
+ * recevrait la couleur choisie ensuite ailleurs. */
+static void fld_couleurs_ferme(void)
+{
+    for (int i = 0; i < 2; i++)
+        if (gFldCoulPuits[i]) [gFldCoulPuits[i] deactivate];
+    if ([NSColorPanel sharedColorPanelExists])
+        [[NSColorPanel sharedColorPanel] orderOut:nil];
+}
+
+/* UN CORPS TAPÉ DANS LA CASE « Text size » d'une Info — champ ou bouton.
+ * intValue prenait « 12abc » pour 12, et rien ne bornait : 99999 entrait dans
+ * l'objet, là où « set the textSize » s'arrête à HC_TEXTE_MAX. Les sites
+ * jumeaux du corps lu strictement le 11 octobre (hcv_entier_strict), oubliés
+ * ce jour-là. Vide remet « rien de posé » ; illisible ou hors bornes laisse
+ * le corps tel quel, avec un bip. */
+static void info_pose_corps(NSTextField *tf, Object *o)
+{
+    if (!tf || !o) return;
+    NSString *t = [[tf stringValue]
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    long sz = 0;
+    if (![t length])
+        o->textsize = 0;
+    else if (hcv_entier_strict([t UTF8String], &sz) && sz >= 0 && sz <= HC_TEXTE_MAX)
+        o->textsize = (int)sz;
+    else
+        NSBeep();
+}
 //extern Object *gFontTarget;
 
 //Object *gFontTarget = NULL;    // objet vise par le panneau des polices
@@ -593,6 +632,32 @@ static NSTextField  *gFldTextSize = nil;
     [gFldPanel setTitle:@"Field Info"];
     [gFldPanel setReleasedWhenClosed:NO];
     NSView *c = [gFldPanel contentView];
+
+    /* --- les couleurs : la rangée du haut, au-dessus du nom ---
+     * Même rangée que dans l'Info d'un bouton, dans la marge que le panneau
+     * laissait libre au-dessus de « Field Name ». */
+    {
+        static NSString *const TITRES[2] = { @"Back", @"Fore" };
+        int    coul[2]  = { obj->backcolor, obj->forecolor };
+        int    alpha[2] = { obj->backalpha, obj->forealpha };
+        NSColor *defaut[2] = { [NSColor whiteColor], [NSColor blackColor] };
+        [[NSColorPanel sharedColorPanel] setShowsAlpha:YES];
+        for (int i = 0; i < 2; i++) {
+            CGFloat x = 16 + i * 114;
+            gFldCoulCase[i] = [[NSButton alloc] initWithFrame:NSMakeRect(x, 320, 60, 20)];
+            [gFldCoulCase[i] setButtonType:NSButtonTypeSwitch];
+            [gFldCoulCase[i] setTitle:TITRES[i]];
+            [gFldCoulCase[i] setState:coul[i] ? NSControlStateValueOn
+                                              : NSControlStateValueOff];
+            [c addSubview:gFldCoulCase[i]];
+            gFldCoulPuits[i] = [[HCPuitsAlpha alloc] initWithFrame:NSMakeRect(x + 62, 318, 40, 24)];
+            [gFldCoulPuits[i] setColor:info_couleur_de(coul[i], alpha[i], defaut[i])];
+            [gFldCoulPuits[i] setTag:i];
+            [gFldCoulPuits[i] setTarget:self];
+            [gFldCoulPuits[i] setAction:@selector(fldCouleurChoisie:)];
+            [c addSubview:gFldCoulPuits[i]];
+        }
+    }
 
     // --- nom ---
     NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 282, 80, 18)];
@@ -771,7 +836,7 @@ void hc_sync_size_field(Object *o)
     if (o) {
         set_cstr(&o->name,  [gFldName stringValue]);
         set_cstr(&o->style, [gFldStyle titleOfSelectedItem]);
-        o->textsize     = [[gFldTextSize stringValue] intValue];   /* voir hc_sync_field_dialog */
+        info_pose_corps(gFldTextSize, o);                       /* voir hc_sync_size_field */
         o->locktext     = ([gFldLock state]     == NSControlStateValueOn);
         o->wide_margins = ([gFldWide state]     == NSControlStateValueOn);
         o->fixed_lh     = ([gFldFixed state]    == NSControlStateValueOn);
@@ -788,7 +853,18 @@ void hc_sync_size_field(Object *o)
          * de choix, et sans cela le clic ouvrirait l'éditeur au lieu de
          * sélectionner la ligne. HyperCard fait de même. */
         if (o->auto_select) o->locktext = 1;
+        /* Les couleurs : case décochée, rien de posé. */
+        int *coul[2]  = { &o->backcolor, &o->forecolor };
+        int *alpha[2] = { &o->backalpha, &o->forealpha };
+        for (int i = 0; i < 2; i++) {
+            if (!gFldCoulCase[i] || !gFldCoulPuits[i]) continue;
+            if ([gFldCoulCase[i] state] == NSControlStateValueOn)
+                info_couleur_vers([gFldCoulPuits[i] color], coul[i], alpha[i]);
+            else
+                *coul[i] = *alpha[i] = 0;
+        }
     }
+    fld_couleurs_ferme();
     [gFldPanel close];
     close_style_panel();
     gFldTarget  = NULL;
@@ -799,7 +875,16 @@ void hc_sync_size_field(Object *o)
     [self setNeedsDisplay:YES];
 }
 
+/* Choisir une couleur dans un puits, c'est vouloir s'en servir : la case
+ * se coche. Le jumeau d'infoCouleurChoisie:. */
+- (void)fldCouleurChoisie:(id)sender {
+    NSInteger i = [sender tag];
+    if (i >= 0 && i < 2 && gFldCoulCase[i])
+        [gFldCoulCase[i] setState:NSControlStateValueOn];
+}
+
 - (void)fldCancel:(id)sender {
+    fld_couleurs_ferme();
     [gFldPanel close];
     close_style_panel();
     gFontTarget = NULL;
@@ -1846,7 +1931,7 @@ void hcicon_panel_stack_closing(Object *stack)
             /* Un bouton qui devient polygone sans sommets naît triangle :
              * la même fonction que « set the style … to polygon ». */
             hc_polygone_par_defaut(o);
-            o->textsize = [[gInfoTextSize stringValue] intValue];
+            info_pose_corps(gInfoTextSize, o);
             o->showname   = ([gInfoShowName state]   == NSControlStateValueOn);
             o->autohilite = ([gInfoAutoHilite state] == NSControlStateValueOn);
             o->enabled    = ([gInfoEnabled state]    == NSControlStateValueOn);
