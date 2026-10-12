@@ -8823,6 +8823,22 @@ static BOOL      gSansMessageChamp = NO;
     } else {
         snprintf(name, sizeof name, "Champ %d", ++gNewCount);
         o = hc_new_field(owner, name);
+        /* UN CHAMP NEUF NAÎT EN GENEVA 12, comme dans HyperCard 2.4.1 :
+         * « the textSize » et « the textFont » d'un champ neuf y répondent
+         * 12 et Geneva — mesuré DANS HYPERCARD (Basilisk II) par
+         * l'utilisatrice le 11 octobre, et accordé par elle. Il naissait en
+         * police système, et « the textFont » répondait vide. Geneva est
+         * livrée avec macOS : le champ est DESSINÉ en Geneva, et la réponse
+         * dit vrai.
+         *
+         * Ici seulement, à la souris : les champs d'une pile qu'on ouvre,
+         * ceux d'un collage ou d'un script, gardent ce qu'ils ont — rien ne
+         * change dans les piles existantes. */
+        if (o) {
+            free(o->textfont);
+            o->textfont = strdup("Geneva");
+            o->textsize = 12;
+        }
     }
     o->x = (int)gDragRect.origin.x;
     o->y = (int)gDragRect.origin.y;
