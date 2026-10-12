@@ -78,5 +78,13 @@ relevé ne peut venir que de HC :
 
   → le son est coupé ; « pendant : submarine », « après stop : done ».
 
-À VOIR ENCORE : « wait until the sound is "done" » qui attend la fin d'un son
-(environ 135 ticks pour submarine ; presque 0 avant la correction).
+    play "submarine"
+    put the ticks into t
+    wait until the sound is "done"
+
+  → 141 ticks. Le son dure 2,26 s, soit 136 ticks : l'attente suit le son, à
+    un dixième de seconde près — le passage par la file des sons, et le pas
+    de « wait until ». Avant la correction, « the sound » valait toujours
+    « done », et l'attente ne durait rien.
+
+Il ne reste rien à voir à l'écran.
