@@ -154,7 +154,8 @@ building the DMG, checking it as a user would. Two scripts come with it:
 
 ### Changes in this release
 
-- PR_083: `flash`, the signing and notarisation tools, version 0.8.3 and
+- [#131](https://github.com/cleobuline/hc/pull/131): `flash`, the signing and
+  notarisation tools, version 0.8.3 and
   this note
 
 **Full changelog:** [HC-0.8.2...HC-0.8.3](https://github.com/cleobuline/hc/compare/HC-0.8.2...HC-0.8.3)
