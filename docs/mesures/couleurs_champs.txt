@@ -44,11 +44,27 @@ opacités comprises.
 CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
 ---------------------------------------------------------------------
 
-  · le dessin lui-même, et la transparence par-dessus une peinture ;
+  · le dessin lui-même, et la transparence par-dessus une peinture (vu
+    pour tous les styles le 12 octobre ; « shadow » corrigé ensuite, à
+    revoir) ;
   · la transparence PENDANT L'ÉDITION : l'éditeur ne peint aucun fond
     (setDrawsBackground:NO), et le fond du champ reste dessiné dessous —
     c'est la théorie, pas une mesure ;
   · les deux puits de l'Info du champ.
+
+PREMIER ESSAI DANS HC (l'application), par l'utilisatrice, le 12 octobre :
+« ça marche pour tous les styles de champs sauf shadow, la transparence fait
+tout le champ noir avec la couleur du foreColor ».
+
+La cause : l'ombre se peignait en remplissant TOUT le rectangle décalé de
+trois points, puis le corps par-dessus. Un corps opaque recouvrait l'ombre ;
+un corps à moitié transparent la laissait voir sur toute sa surface. On ne
+peint plus que les deux bandes qui dépassent (hcv_ombre, HCview.m) : même
+pixel sous un corps opaque.
+
+Deux sites jumeaux, le même dessin, le même défaut — déduit du code, non
+observé : le bouton de style « shadow » et la boîte d'un popup, avec un
+backColor transparent. Corrigés par la même fonction.
 
 Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
 case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
