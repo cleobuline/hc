@@ -925,6 +925,9 @@ typedef struct {
      * (hc_notes.h). Le tableau n'appartient qu'à l'appel : à recopier. Sans
      * ce crochet, le noyau joue le son une fois, comme avant. */
     void (*play_notes)(const char *name, const HcNote *notes, int n);
+    /* flash : la carte inversée (1), puis remise (0). Le noyau tient chaque
+     * état quelques ticks ; sans ce crochet, rien ne clignote. */
+    void (*flash_screen)(int inverse);
 
     /* ---- outils et gestes simulés ----
      * Le noyau ne connaît ni la palette ni la souris : il analyse la commande

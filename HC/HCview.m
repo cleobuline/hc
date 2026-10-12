@@ -4560,6 +4560,18 @@ static const char *cocoa_son_en_cours(void)
     return rendu;
 }
 
+/* « flash » : la carte entière inversée, puis remise (v3_cmd_flash, qui
+ * tient chaque état quelques ticks). drawRect: peint l'inversion PAR-DESSUS
+ * tout le reste quand ce drapeau est levé ; la boucle d'attente du noyau
+ * (attends, puis cocoa_idle) fait le reste et montre l'image. */
+static BOOL gFlashInverse = NO;
+
+static void cocoa_flash_screen(int inverse)
+{
+    gFlashInverse = inverse ? YES : NO;
+    hcv_invalide_tout();
+}
+
 /* ═══ Cmd-. ═════════════════════════════════════════════════════════════
  *
  * Pendant un script, la boucle d'événements tourne (cocoa_idle ci-dessous),
@@ -7513,7 +7525,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     [q stroke];
 }
 
-- (void)drawRect:(NSRect)dirtyRect
+- (void)dessineSansFlash:(NSRect)dirtyRect
 {
     /* L'ÉCRAN GELÉ D'ABORD, avant FatBits : l'image gelée est ce qui était
      * À L'ÉCRAN, grossissement compris, et la redessiner sous la
@@ -7551,6 +7563,18 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 
     [NSGraphicsContext restoreGraphicsState];
     [self drawFatGrid];
+}
+
+/* Le dessin de la carte, puis, pendant un « flash », la carte entière
+ * inversée par-dessus — l'écran gelé et FatBits compris : les trois chemins
+ * de dessineSansFlash finissent par un return, d'où cette enveloppe. */
+- (void)drawRect:(NSRect)dirtyRect
+{
+    [self dessineSansFlash:dirtyRect];
+    if (gFlashInverse) {
+        [[NSColor whiteColor] setFill];
+        NSRectFillUsingOperation([self bounds], NSCompositingOperationDifference);
+    }
 }
 
 /* ═══ openField, closeField, exitField ══════════════════════════════════
@@ -9360,6 +9384,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.play_sound    = cocoa_play;
     host.stop_sound    = cocoa_stop_sound;
     host.play_notes    = cocoa_play_notes;
+    host.flash_screen  = cocoa_flash_screen;
     host.choose_tool   = cocoa_choose_tool;
     host.drag          = cocoa_drag;
     host.click_at      = cocoa_click_at;
