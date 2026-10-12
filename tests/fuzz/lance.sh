@@ -40,7 +40,7 @@ mkdir -p "$T"
 rm -rf -- "${T:?}/graines_hc" "${T:?}/graines_orig" "${T:?}/temoin" "${T:?}/campagne"
 mkdir -p "$T/graines_hc" "$T/graines_orig" "$T/temoin/graines" "$T/temoin/sortie" "$T/campagne"
 
-NOYAU="$HC/hc_core.c $HC/hc_file.c $HC/hc_icons.c $HC/hc_importe.c $HC/hc_origine.c
+NOYAU="$HC/hc_core.c $HC/hc_notes.c $HC/hc_file.c $HC/hc_icons.c $HC/hc_importe.c $HC/hc_origine.c
        $HC/hc_presse_papiers.c $HC/hc_script.c $(ls "$HC"/hct_*.c | tr '\n' ' ')"
 BASE="-std=gnu99 -O1 -I$HC -Wall -Wextra"
 SAN="-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer -g"

@@ -1,0 +1,82 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. les sept relevés d'HyperCard (ticks mesurés, démarrage compris) ==
+   mesuré : 124   124   121   183   92   42   480
+   c c c c                      tempo 0     -> 4 note(s),  120.0 ticks : 60/0.5 60/0.5 60/0.5 60/0.5
+   c c c c                      tempo 120   -> 4 note(s),  120.0 ticks : 60/0.5 60/0.5 60/0.5 60/0.5
+   cw                           tempo 120   -> 1 note(s),  120.0 ticks : 60/2
+   ch c c                       tempo 120   -> 3 note(s),  180.0 ticks : 60/1 60/1 60/1
+   cq r c                       tempo 120   -> 3 note(s),   90.0 ticks : 60/0.5 r/0.5 60/0.5
+   ce. ce3 cs                   tempo 120   -> 3 note(s),   40.0 ticks : 60/0.375 60/0.167 60/0.125
+   cw                           tempo 30    -> 1 note(s),  480.0 ticks : 60/8
+
+== 2. les hauteurs : do4 = 60 (octave par défaut et MIDI : NON MESURÉS) ==
+   c c4 c#4 db4 b3 a4           tempo 120   -> 6 note(s),  180.0 ticks : 60/0.5 60/0.5 61/0.5 61/0.5 59/0.5 69/0.5
+   c5 c                         tempo 120   -> 2 note(s),   60.0 ticks : 72/0.5 72/0.5
+   cb4 b#3 bb eb5 e             tempo 120   -> 5 note(s),  150.0 ticks : 59/0.5 60/0.5 58/0.5 75/0.5 76/0.5
+   60 64 67                     tempo 120   -> 3 note(s),   90.0 ticks : 60/0.5 64/0.5 67/0.5
+   60q 72h                      tempo 120   -> 2 note(s),   90.0 ticks : 60/0.5 72/1
+   CQ E G                       tempo 120   -> 3 note(s),   90.0 ticks : 60/0.5 64/0.5 67/0.5
+   rw                           tempo 120   -> 1 note(s),  120.0 ticks : r/2
+
+== 3. les durées qui se gardent, et les modificateurs seuls (NON MESURÉ) ==
+   ce. c c                      tempo 120   -> 3 note(s),   67.5 ticks : 60/0.375 60/0.375 60/0.375
+   ce c. c                      tempo 120   -> 3 note(s),   60.0 ticks : 60/0.25 60/0.375 60/0.375
+   cq3 c c                      tempo 120   -> 3 note(s),   60.0 ticks : 60/0.333 60/0.333 60/0.333
+   cw x c                       tempo 120   -> 2 note(s),  240.0 ticks : 60/2 60/2
+   ct cx                        tempo 120   -> 2 note(s),    5.6 ticks : 60/0.0625 60/0.0312
+
+== 4. les bornes ==
+   c                            tempo -5    -> 1 note(s),   30.0 ticks : 60/0.5
+   c                            tempo nan   -> 1 note(s),   30.0 ticks : 60/0.5
+   c                            tempo 0.25  -> 1 note(s), 3600.0 ticks : 60/60
+   c99 c-1 300                  tempo 120   -> 2 note(s),   60.0 ticks : 127/0.5 127/0.5
+   c5 flute c c4z c             tempo 120   -> 3 note(s),   90.0 ticks : 72/0.5 72/0.5 72/0.5
+   zut c tempo 9 d              tempo 120   -> 3 note(s),   90.0 ticks : 60/0.5 9/0.5 62/0.5
+                                tempo 120   -> 0 note(s),    0.0 ticks :
+   cw.............................. tempo 120   -> 1 note(s), 216000.0 ticks : 60/3.6e+03
+   max = 2 sur « c d e f » -> 2
+   hc_notes_compte(« c  d\te\n ») = 3, (NULL) = 0
+
+== 5. le rendu : un la de synthèse à 441 Hz, une seconde, 44 100 trames ==
+   l'échantillon seul : 881 passages par zéro
+   c4q             22050 trames,  440 passages par zéro, dernière trame non nulle 22049
+                  amplitude de la dernière trame : 0.0001
+   c5q             22050 trames,  881 passages par zéro, dernière trame non nulle 22049
+                  amplitude de la dernière trame : 0.0004
+   c3q             22050 trames,  220 passages par zéro, dernière trame non nulle 22049
+                  amplitude de la dernière trame : 0.0045
+   g4q             22050 trames,  660 passages par zéro, dernière trame non nulle 22049
+                  amplitude de la dernière trame : 0.0034
+   rq c4q          44100 trames,  440 passages par zéro, dernière trame non nulle 44099
+                  amplitude de la dernière trame : 0.0001
+   c4w             88200 trames,  882 passages par zéro, dernière trame non nulle 44098
+                  amplitude de la dernière trame : 0.0000
+   c6w             88200 trames,  882 passages par zéro, dernière trame non nulle 11024
+                  amplitude de la dernière trame : 0.0000
+   c4q             22050 trames,    0 passages par zéro, dernière trame non nulle -1
+                  amplitude de la dernière trame : 0.0000
+   (NULL partout : rien, et pas de plantage)
+
+== 6. le chemin complet : le noyau lit, l'hôte reçoit ==
+   play "boing" tempo 120 "c d e"
+      hôte : play_notes « boing », 3 note(s), 1.500 s : 60/0.5 62/0.5 64/0.5
+   play harpsichord tempo 300 a#2q c3w
+      hôte : play_notes « harpsichord », 2 note(s), 1.000 s : 46/0.2 48/0.8
+   play "boing" "c4q" & " e g"
+      hôte : play_notes « boing », 3 note(s), 1.500 s : 60/0.5 64/0.5 67/0.5
+   put "c d e f g a b c5 d5 e5 f5 g5 a5 b5 c6 d6 e6 f6 g6 a6 b6 c7 d7 e7 f7 g7 a7 b7 c8 d8 e8 f8 g8 a8 b8 c4 d4 e4 f4 g4 a4 b4 c5 d5 e5 f5 g5 a5 b5 c6 d6 e6 f6 g6 a6 b6" into melodie
+   put the length of melodie
+   play "boing" tempo 240 melodie
+      hôte : play_notes « boing », 56 note(s), 14.000 s : 60/0.25 62/0.25 64/0.25 65/0.25 67/0.25 69/0.25 71/0.25 72/0.25 …
+   play "boing"
+      hôte : play_sound « boing »
+   play "boing" tempo 200
+      hôte : play_sound « boing »
+   play "boing" "zut flute"
+      hôte : play_sound « boing »
+   play stop
+      hôte : stop_sound
+
+== 7. un hôte sans play_notes : le son une fois, comme avant ==
+   play "boing" tempo 120 "c d e"
+      hôte : play_sound « boing »
