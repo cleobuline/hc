@@ -46,9 +46,6 @@ CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
 
   · le bouton « shadow » et le popup au backColor transparent (corrigés
     avec le champ, non revus) ;
-  · la transparence PENDANT L'ÉDITION : l'éditeur ne peint aucun fond
-    (setDrawsBackground:NO), et le fond du champ reste dessiné dessous —
-    c'est la théorie, pas une mesure ;
   · les deux puits de l'Info du champ.
 
 PREMIER ESSAI DANS HC (l'application), par l'utilisatrice, le 12 octobre :
@@ -70,6 +67,13 @@ de sa « salle de torture », demo.stack : deux champs « scrolling », vert et
 jaune, et un champ « shadow » rose, tous à moitié transparents sur une
 peinture tramée. La trame se voit à travers les trois ; l'ombre du champ
 rose n'est plus que deux bandes, à droite et en bas. « Voilà, ça marche. »
+
+LA TRANSPARENCE PENDANT LA FRAPPE, vue DANS HC (l'application) par
+l'utilisatrice, le 12 octobre, après la sortie de la 0.8.1 : « pendant la
+frappe la couleur est parfaite ». La théorie tient : l'éditeur ne peint aucun
+fond (setDrawsBackground:NO), et celui du champ reste dessiné dessous. La
+note de version 0.8.1 la range encore dans « Not measured yet » : elle était
+publiée avant cet essai.
 
 Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
 case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
