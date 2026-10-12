@@ -1,0 +1,37 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. une fois, deux fois, trois fois (dit par l'utilisatrice) ==
+   flash
+      hôte : X.  (fin à l'endroit)
+   flash 2
+      hôte : X.X.  (fin à l'endroit)
+   flash 3
+      hôte : X.X.X.  (fin à l'endroit)
+
+== 2. une expression, une variable ==
+   flash 1 + 1
+      hôte : X.X.  (fin à l'endroit)
+   put 3 into n
+      hôte : rien  (fin à l'endroit)
+   flash n
+      hôte : X.X.X.  (fin à l'endroit)
+
+== 3. les bornes (NON MESURÉ) ==
+   flash 0
+      hôte : rien  (fin à l'endroit)
+   flash -2
+      hôte : rien  (fin à l'endroit)
+   flash 2.7
+      hôte : X.X.  (fin à l'endroit)
+   flash "zut"
+      [ERR]    !! flash : un nombre est attendu (v3, ligne 1)
+      hôte : rien  (fin à l'endroit)
+   put the result
+      = 
+      hôte : rien  (fin à l'endroit)
+
+== 4. sans hôte qui clignote : pas d'erreur ==
+   flash 2
+      hôte : rien  (fin à l'endroit)
+   put the result
+      = 
+      hôte : rien  (fin à l'endroit)
