@@ -1,0 +1,50 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. un champ neuf : rien de posé, il se dessine comme dans HyperCard ==
+      =       fond []  cadre []
+      rangés : fond 0, cadre 0, opacités 0 0
+
+== 2. un fond semi-transparent, un cadre bleu marine ==
+   set the backColor of card field 1 to "255,255,200,128"
+   set the foreColor of card field 1 to navy
+      =       fond [255,255,200,128]  cadre [0,0,128]
+
+== 3. les noms, et 255 en quatrième nombre : opaque, lu en trois ==
+   set the backColor of card field 1 to gold
+      =       fond [255,215,0]  cadre [0,0,128]
+   set the foreColor of card field 1 to "200,0,0,255"
+      =       fond [255,215,0]  cadre [200,0,0]
+   set the backgroundColor of card field 1 to "10,20,30,0"
+      =       fond [10,20,30,0]  cadre [200,0,0]
+
+== 4. une couleur inconnue se refuse, la précédente reste ==
+   set the backColor of card field 1 to "zinzolin"
+      [ERR]    !! couleur inconnue : zinzolin
+      =       fond [10,20,30,0]  cadre [200,0,0]
+
+== 5. vide efface : le champ reprend le dessin d'HyperCard ==
+   set the backColor of card field 1 to empty
+   set the foreColor of card field 1 to ""
+      =       fond []  cadre []
+      rangés : fond 0, cadre 0, opacités 0 0
+
+== 6. pas de hiliteColor pour un champ ; le texte garde textColor ==
+   set the hiliteColor of card field 1 to red
+      [ERR]    !! propriété inconnue : hiliteColor
+   put the hiliteColor of card field 1
+      [ERR]    !! propriété inconnue (v3, ligne 1)
+   set the textColor of word 1 of card field 1 to blue
+   put the textColor of word 1 of card field 1
+      = 0,0,255
+
+== 7. le bouton, témoin, n'a pas bougé ==
+   set the backColor of card button 1 to "0,128,0,200"
+   set the hiliteColor of card button 1 to red
+   put the backColor of card button 1 && the hiliteColor of card button 1
+      = 0,128,0,200 255,0,0
+
+== 8. le fichier : écrit, relu, les couleurs et l'opacité tiennent ==
+   set the backColor of card field 1 to "255,255,200,128"
+   set the foreColor of card field 1 to "0,0,128,64"
+      relue : oui
+      champ  : fond FFFFC8/128, cadre 000080/64
+      bouton : fond 008000/200

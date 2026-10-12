@@ -1,0 +1,76 @@
+LES COULEURS DES CHAMPS — 12 octobre
+====================================
+
+Proposé par l'utilisatrice elle-même le 11 octobre au soir, « pour être
+cohérent avec notre HC couleur », et accordé par elle comme exception à sa
+règle du 2 octobre (CLAUDE.md) : un champ porte maintenant un FOND
+(backColor) et un CADRE (foreColor), avec l'opacité en quatrième nombre,
+« r,v,b,alpha » — « on fait exactement comme les boutons ». Rien pour le
+texte : textColor, posé sur un morceau, le fait déjà. « Des champs texte
+semi-transparents, c'est la super classe. »
+
+
+CE QUI EST FAIT, ET OÙ
+----------------------
+
+  noyau (hc_core.c)   couleur_objet : deux couleurs pour un champ, trois
+                      pour un bouton ; lecture et pose par le même chemin.
+                      Pas de hiliteColor pour un champ (il ne s'allume pas).
+  fichier (hc_file.c) backcolor, forecolor, backalpha, forealpha relus sur
+                      un champ ; ils s'écrivaient déjà pour tout objet.
+  dessin (HCview.m)   le fond et le cadre de chaque style, l'ombre et la
+                      barre de défilement en foreColor ; remplissage et cadre
+                      MÉLANGÉS (hcv_remplit, hcv_cadre). Un champ
+                      « transparent » ne peint rien, comme un bouton
+                      transparent.
+  Info (HCdialogs.m)  deux puits, Back et Fore, case décochée = rien de
+                      posé, comme dans l'Info d'un bouton.
+
+Rien de posé, rien de changé : sans couleur, le blanc et le noir d'avant,
+et le même pixel — une couleur opaque mélangée ou recopiée donne le même.
+Aucune pile existante ne change.
+
+
+CE QUI EST VÉRIFIÉ ICI
+----------------------
+
+Harnais champcouleur : un champ neuf sans couleur ; un fond
+semi-transparent et un cadre nommé ; 255 en quatrième nombre lu en trois ;
+une couleur inconnue refusée ; vide qui efface ; hiliteColor refusé sur un
+champ ; le bouton témoin inchangé ; la pile écrite puis relue, couleurs et
+opacités comprises.
+
+
+CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
+---------------------------------------------------------------------
+
+  · le bouton « shadow » et le popup au backColor transparent (corrigés
+    avec le champ, non revus) ;
+  · la transparence PENDANT L'ÉDITION : l'éditeur ne peint aucun fond
+    (setDrawsBackground:NO), et le fond du champ reste dessiné dessous —
+    c'est la théorie, pas une mesure ;
+  · les deux puits de l'Info du champ.
+
+PREMIER ESSAI DANS HC (l'application), par l'utilisatrice, le 12 octobre :
+« ça marche pour tous les styles de champs sauf shadow, la transparence fait
+tout le champ noir avec la couleur du foreColor ».
+
+La cause : l'ombre se peignait en remplissant TOUT le rectangle décalé de
+trois points, puis le corps par-dessus. Un corps opaque recouvrait l'ombre ;
+un corps à moitié transparent la laissait voir sur toute sa surface. On ne
+peint plus que les deux bandes qui dépassent (hcv_ombre, HCview.m) : même
+pixel sous un corps opaque.
+
+Deux sites jumeaux, le même dessin, le même défaut — déduit du code, non
+observé : le bouton de style « shadow » et la boîte d'un popup, avec un
+backColor transparent. Corrigés par la même fonction.
+
+REVU DANS HC (l'application), le même jour, après la correction — capture
+de sa « salle de torture », demo.stack : deux champs « scrolling », vert et
+jaune, et un champ « shadow » rose, tous à moitié transparents sur une
+peinture tramée. La trame se voit à travers les trois ; l'ombre du champ
+rose n'est plus que deux bandes, à droite et en bas. « Voilà, ça marche. »
+
+Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
+case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
+par intValue, sans borne (info_pose_corps, HCdialogs.m).

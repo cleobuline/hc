@@ -759,6 +759,46 @@ static NSColor *btn_marque(Object *o)
     return o->hilitecolor ? btn_fond(o, YES) : btn_trait(o);
 }
 
+/* LES COULEURS D'UN CHAMP — son fond et son cadre, l'extension accordée le
+ * 11 octobre au soir (couleur_objet, hc_core.c). Mêmes défauts que le dessin
+ * d'avant, le blanc et le noir : un champ sans couleur posée se dessine
+ * exactement comme avant. */
+static NSColor *champ_fond(Object *o)
+{
+    return hcv_couleur_posee(o->backcolor, o->backalpha, [NSColor whiteColor]);
+}
+
+static NSColor *champ_trait(Object *o)
+{
+    return hcv_couleur_posee(o->forecolor, o->forealpha, [NSColor blackColor]);
+}
+
+/* Un CADRE qui mélange, comme hcv_remplit : NSFrameRect recopie la couleur, et
+ * un cadre à moitié transparent effacerait ce qu'il borde. */
+static void hcv_cadre(NSRect r)
+{
+    NSFrameRectWithWidthUsingOperation(r, 1.0, NSCompositingOperationSourceOver);
+}
+
+/* L'OMBRE PORTÉE du style « shadow » : trois points en bas et à droite de r,
+ * le rectangle entier, ombre comprise. On ne peint que les deux bandes qui
+ * dépassent du corps, et RIEN DESSOUS.
+ *
+ * Avant, on remplissait tout le rectangle décalé, puis le corps par-dessus :
+ * juste tant que le corps était opaque, il recouvrait l'ombre. Avec un fond à
+ * moitié transparent, l'ombre — foreColor, noire si rien n'est posé — se
+ * voyait à travers tout le corps : « la transparence fait tout le champ noir
+ * avec la couleur du foreColor », vu par l'utilisatrice le 12 octobre. Sous
+ * un corps opaque, les deux dessins donnent le même pixel. */
+static void hcv_ombre(NSRect r)
+{
+    CGFloat w = r.size.width, h = r.size.height;
+    if (w <= 3 || h <= 3) return;
+    hcv_remplit(NSMakeRect(r.origin.x + w - 3, r.origin.y + 3, 3, h - 3));
+    if (w > 6)
+        hcv_remplit(NSMakeRect(r.origin.x + 3, r.origin.y + h - 3, w - 6, 3));
+}
+
 static void draw_btn_label(Object *o, NSString *s, NSRect r, BOOL on, CGFloat defSize) {
     if (!o->showname) return;
     CGFloat fs = o->textsize > 0 ? o->textsize : defSize;
@@ -851,10 +891,8 @@ static void draw_btn_frame(Object *o, NSRect r, BOOL on) {
     if (strcmp(st, "shadow") == 0) {
         NSRect body = NSMakeRect(r.origin.x, r.origin.y,
                                  r.size.width - 3, r.size.height - 3);
-        NSRect sh   = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
-                                 r.size.width - 3, r.size.height - 3);
         [btn_trait(o) setFill];
-        hcv_remplit(sh);
+        hcv_ombre(r);
         [btn_fond(o, on) setFill];
         hcv_remplit(body);
         [btn_trait(o) setStroke];
@@ -1322,14 +1360,12 @@ static void draw_part(Object *o) {
                                       r.size.width - tw, r.size.height);
             NSRect body = NSMakeRect(boite.origin.x, boite.origin.y,
                                      boite.size.width - 3, boite.size.height - 3);
-            NSRect sh   = NSMakeRect(boite.origin.x + 3, boite.origin.y + 3,
-                                     boite.size.width - 3, boite.size.height - 3);
             /* Les couleurs de l'extension : backColor l'intérieur de la
              * boîte, foreColor l'ombre, le cadre, la flèche et le texte —
              * comme le style « shadow ». Un popup ne s'allume pas :
              * hiliteColor n'y a rien à teindre. */
             [btn_trait(o) setFill];
-            hcv_remplit(sh);
+            hcv_ombre(boite);
             [btn_fond(o, NO) setFill];
             hcv_remplit(body);
             [btn_trait(o) setStroke];
@@ -1405,22 +1441,31 @@ static void draw_part(Object *o) {
 
         NSRect body = r;
 
+        /* LES COULEURS : backColor le fond, foreColor le cadre — et l'ombre
+         * du style « shadow », la barre de défilement et ses flèches, comme
+         * pour un bouton popup. Le remplissage MÉLANGE (hcv_remplit,
+         * hcv_cadre) : un fond à moitié transparent laisse voir la carte.
+         * Sans couleur posée, blanc et noir : le dessin d'avant, au pixel
+         * près. Un champ « transparent » ne peint rien, comme un bouton
+         * transparent : sa couleur posée ne s'y voit pas.
+         *
+         * Pendant l'édition, ce fond reste dessiné ICI, sous l'éditeur, qui
+         * n'en peint aucun (setDrawsBackground:NO) : la transparence tient
+         * pendant qu'on tape. NON VÉRIFIÉ ICI : il faut l'écran. */
         if (isTransp) {
         }
         else if (isOpaque) {
-            [[NSColor whiteColor] setFill];
-            NSRectFill(r);
+            [champ_fond(o) setFill];
+            hcv_remplit(r);
         }
         else if (isShadow) {
             body = NSMakeRect(r.origin.x, r.origin.y,
                               r.size.width - 3, r.size.height - 3);
-            NSRect sh = NSMakeRect(r.origin.x + 3, r.origin.y + 3,
-                                   r.size.width - 3, r.size.height - 3);
-            [[NSColor blackColor] setFill];
-            NSRectFill(sh);
-            [[NSColor whiteColor] setFill];
-            NSRectFill(body);
-            [[NSColor blackColor] setStroke];
+            [champ_trait(o) setFill];
+            hcv_ombre(r);
+            [champ_fond(o) setFill];
+            hcv_remplit(body);
+            [champ_trait(o) setStroke];
             NSBezierPath *bp = [NSBezierPath bezierPathWithRect:NSInsetRect(body, 0.5, 0.5)];
             [bp setLineWidth:1];
             [bp stroke];
@@ -1428,20 +1473,20 @@ static void draw_part(Object *o) {
         else if (isScroll) {
             field_clamp_scroll(o);
 
-            [[NSColor whiteColor] setFill];
-            NSRectFill(r);
-            [[NSColor blackColor] setFill];
-            NSFrameRect(r);
+            [champ_fond(o) setFill];
+            hcv_remplit(r);
+            [champ_trait(o) setFill];
+            hcv_cadre(r);
 
             CGFloat bw = 16;
             NSRect bar = NSMakeRect(r.origin.x + r.size.width - bw, r.origin.y,
                                     bw, r.size.height);
             [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
             NSRectFill(bar);
-            [[NSColor blackColor] setFill];
-            NSFrameRect(bar);
+            [champ_trait(o) setFill];
+            hcv_cadre(bar);
 
-            [[NSColor blackColor] setFill];
+            [champ_trait(o) setFill];
             CGFloat cx = bar.origin.x + bw/2;
             NSBezierPath *up = [NSBezierPath bezierPath];
             [up moveToPoint:NSMakePoint(cx - 4, bar.origin.y + 11)];
@@ -1472,17 +1517,17 @@ static void draw_part(Object *o) {
                                          bw - 2, kh);
                 [[NSColor colorWithWhite:0.75 alpha:1.0] setFill];
                 NSRectFill(knob);
-                [[NSColor blackColor] setFill];
-                NSFrameRect(knob);
+                [champ_trait(o) setFill];
+                hcv_cadre(knob);
             }
 
             body = NSMakeRect(r.origin.x, r.origin.y, r.size.width - bw, r.size.height);
         }
         else {
-            [[NSColor whiteColor] setFill];
-            NSRectFill(r);
-            [[NSColor blackColor] setFill];
-            NSFrameRect(r);
+            [champ_fond(o) setFill];
+            hcv_remplit(r);
+            [champ_trait(o) setFill];
+            hcv_cadre(r);
         }
 
         NSDictionary *at = obj_attrs(o, 12, [NSColor blackColor]);

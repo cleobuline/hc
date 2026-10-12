@@ -1515,16 +1515,18 @@ Object *hc_load(const char *path)
         /* L'extension : voir put_part. Une couleur illisible ou négative est
          * IGNORÉE : la lire comme 0 la posait en noir — mesuré, « backcolor
          * zz » rendait un bouton noir. Une ligne de sommets abîmée est ignorée
-         * en entier. Sur un champ, rien : seuls les boutons en portent. */
+         * en entier. Un CHAMP porte depuis le 12 octobre son fond et son
+         * cadre, avec leur opacité ; ni hiliteColor ni sommets : voir
+         * couleur_objet (hc_core.c). */
         if (strncmp(s, "backcolor ", 10) == 0 && part) {
             int v = hc_entier(s + 10, -1, 0xFFFFFF, -1);
-            if (part->type == OBJ_BUTTON && v >= 0)
+            if ((part->type == OBJ_BUTTON || part->type == OBJ_FIELD) && v >= 0)
                 part->backcolor = HC_COUL_POSEE | v;
             continue;
         }
         if (strncmp(s, "forecolor ", 10) == 0 && part) {
             int v = hc_entier(s + 10, -1, 0xFFFFFF, -1);
-            if (part->type == OBJ_BUTTON && v >= 0)
+            if ((part->type == OBJ_BUTTON || part->type == OBJ_FIELD) && v >= 0)
                 part->forecolor = HC_COUL_POSEE | v;
             continue;
         }
@@ -1537,13 +1539,13 @@ Object *hc_load(const char *path)
         /* L'opacité : 0 à 254 se pose ; 255, illisible ou hors bornes, rien. */
         if (strncmp(s, "backalpha ", 10) == 0 && part) {
             int v = hc_entier(s + 10, -1, 255, -1);
-            if (part->type == OBJ_BUTTON && v >= 0 && v < 255)
+            if ((part->type == OBJ_BUTTON || part->type == OBJ_FIELD) && v >= 0 && v < 255)
                 part->backalpha = HC_ALPHA_POSE | v;
             continue;
         }
         if (strncmp(s, "forealpha ", 10) == 0 && part) {
             int v = hc_entier(s + 10, -1, 255, -1);
-            if (part->type == OBJ_BUTTON && v >= 0 && v < 255)
+            if ((part->type == OBJ_BUTTON || part->type == OBJ_FIELD) && v >= 0 && v < 255)
                 part->forealpha = HC_ALPHA_POSE | v;
             continue;
         }

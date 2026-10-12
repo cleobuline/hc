@@ -363,7 +363,9 @@ struct Object {
      * écrivent ; son emploi au dessin appartient à l'interface. */
     int      titlewidth;
 
-    /* L'EXTENSION DE HC : LES COULEURS ET LE POLYGONE D'UN BOUTON.
+    /* L'EXTENSION DE HC : LES COULEURS ET LE POLYGONE D'UN BOUTON — et,
+     * depuis le 12 octobre, le fond et le cadre d'un CHAMP (backcolor,
+     * forecolor et leurs opacités ; voir couleur_objet, hc_core.c).
      *
      * La seule extension annoncée (voir CLAUDE.md), décidée le 2 octobre pour
      * les jeux. HyperCard n'avait rien de tel ; le vocabulaire est celui de
@@ -553,7 +555,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.8"
+#define HC_VERSION "0.8.1"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *

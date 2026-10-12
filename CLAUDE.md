@@ -43,6 +43,14 @@ d'HyperCard ne change de comportement.
 Toute autre extension se propose à l'utilisatrice, et ne se fait pas sans
 elle. (skipErrors n'est pas concerné : il reste le petit secret ci-dessus.)
 
+LE 11 OCTOBRE AU SOIR, ELLE A LEVÉ SA PROPRE RÈGLE (ci-dessous) POUR UNE
+TROISIÈME PIÈCE, qu'elle a proposée elle-même : les couleurs des CHAMPS,
+« pour être cohérent avec notre HC couleur ». backColor pour le fond,
+foreColor pour le cadre, l'opacité en quatrième nombre (« r,v,b,alpha »),
+EXACTEMENT comme les boutons — même stockage, mêmes noms de couleur, même
+règle « rien de posé ». Rien pour le texte : textColor sur les morceaux le
+fait déjà. Elle s'annonce dans les notes de version comme les deux autres.
+
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
 noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit
