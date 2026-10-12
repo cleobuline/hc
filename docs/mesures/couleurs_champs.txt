@@ -41,11 +41,12 @@ champ ; le bouton témoin inchangé ; la pile écrite puis relue, couleurs et
 opacités comprises.
 
 
-CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
----------------------------------------------------------------------
+CE QUI NE L'ÉTAIT PAS — il fallait l'écran, joué DANS HC (l'application)
+-----------------------------------------------------------------------
 
-  · le bouton « shadow » et le popup au backColor transparent (corrigés
-    avec le champ, non revus).
+Tout a été vu le 12 octobre par l'utilisatrice, dans l'ordre ci-dessous :
+les styles, l'ombre corrigée, la frappe, les puits, puis le bouton
+« shadow » et le popup. Il ne reste rien de non vu.
 
 PREMIER ESSAI DANS HC (l'application), par l'utilisatrice, le 12 octobre :
 « ça marche pour tous les styles de champs sauf shadow, la transparence fait
@@ -77,6 +78,11 @@ publiée avant cet essai.
 LES PUITS BACK ET FORE DE L'INFO DU CHAMP, essayés DANS HC (l'application)
 par l'utilisatrice, le même jour : « parfaits ». Même remarque pour la note
 de version, publiée avant.
+
+LE BOUTON « SHADOW » ET LE POPUP au backColor transparent, les deux sites
+jumeaux de l'ombre, déduits du code et corrigés sans avoir été vus : essayés
+DANS HC (l'application) par l'utilisatrice, le même jour. « Tout est
+parfait. »
 
 Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
 case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
