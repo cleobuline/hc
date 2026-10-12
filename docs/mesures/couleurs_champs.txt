@@ -45,8 +45,7 @@ CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
 ---------------------------------------------------------------------
 
   · le bouton « shadow » et le popup au backColor transparent (corrigés
-    avec le champ, non revus) ;
-  · les deux puits de l'Info du champ.
+    avec le champ, non revus).
 
 PREMIER ESSAI DANS HC (l'application), par l'utilisatrice, le 12 octobre :
 « ça marche pour tous les styles de champs sauf shadow, la transparence fait
@@ -74,6 +73,10 @@ frappe la couleur est parfaite ». La théorie tient : l'éditeur ne peint aucun
 fond (setDrawsBackground:NO), et celui du champ reste dessiné dessous. La
 note de version 0.8.1 la range encore dans « Not measured yet » : elle était
 publiée avant cet essai.
+
+LES PUITS BACK ET FORE DE L'INFO DU CHAMP, essayés DANS HC (l'application)
+par l'utilisatrice, le même jour : « parfaits ». Même remarque pour la note
+de version, publiée avant.
 
 Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
 case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
