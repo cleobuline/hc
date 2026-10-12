@@ -33,6 +33,11 @@ UTILISATION :
       --cle ~/cles/AuthKey_ABC123DEFG.p8 --id-cle ABC123DEFG \\
       --emetteur 69a6de70-0000-0000-0000-000000000000
 
+  Une soumission déjà envoyée, dont on reprend l'attente — le script
+  abandonne au bout d'une heure, et les premières soumissions d'un compte
+  neuf peuvent rester plus longtemps « In Progress » :
+  python3 outils/notarise.py --suivre <numéro de soumission> --cle … --id-cle … --emetteur …
+
 La clé (.p8), son identifiant et l'identifiant de l'émetteur viennent d'App
 Store Connect → Utilisateurs et accès → Intégrations → API App Store Connect.
 """
@@ -208,17 +213,25 @@ def empreinte_de(fichier):
 
 def main():
     p = argparse.ArgumentParser(description="Notariser un fichier par l'API web d'Apple.")
-    p.add_argument("fichier", help="le DMG signé, ou un ZIP de l'app signée")
+    p.add_argument("fichier", nargs="?", help="le DMG signé, ou un ZIP de l'app signée")
     p.add_argument("--cle", required=True, help="la clé d'API App Store Connect (AuthKey_….p8)")
     p.add_argument("--id-cle", required=True, help="l'identifiant de la clé (Key ID)")
     p.add_argument("--emetteur", required=True, help="l'identifiant de l'émetteur (Issuer ID)")
     p.add_argument("--essai", action="store_true",
                    help="tout préparer et ne rien envoyer : vérifie la clé et le fichier")
+    p.add_argument("--suivre", metavar="NUMÉRO",
+                   help="reprendre l'attente d'une soumission déjà envoyée, sans rien renvoyer")
     a = p.parse_args()
+    cles = (os.path.expanduser(a.cle), a.id_cle, a.emetteur)
 
+    if a.suivre:
+        print("soumission %s : reprise de l'attente" % a.suivre)
+        return attend_verdict(a.suivre, cles, a.fichier or "<le fichier envoyé>")
+
+    if not a.fichier:
+        p.error("il faut un fichier à notariser, ou --suivre et un numéro de soumission")
     if not os.path.isfile(a.fichier):
         sys.exit("fichier introuvable : %s" % a.fichier)
-    cles = (os.path.expanduser(a.cle), a.id_cle, a.emetteur)
     nom = os.path.basename(a.fichier)
     empreinte = empreinte_de(a.fichier)
     print("fichier   %s (%d octets)\nSHA-256   %s" % (nom, os.path.getsize(a.fichier), empreinte))
@@ -240,13 +253,18 @@ def main():
     print("2. envoi du fichier")
     depose_s3(a.fichier, empreinte, r["data"]["attributes"])
     print("   envoyé")
+    return attend_verdict(ident, cles, a.fichier)
 
+
+def attend_verdict(ident, cles, fichier):
+    """Les étapes 3 et 4 : le verdict, puis le journal d'Apple."""
     print("3. attente du verdict (quelques minutes d'ordinaire)")
     debut = time.time()
     statut = "In Progress"
     while statut == "In Progress":
         if time.time() - debut > ATTENTE_MAX:
-            sys.exit("toujours en cours après une heure. Soumission : %s" % ident)
+            sys.exit("toujours en cours après une heure. Pour reprendre l'attente plus tard :\n"
+                     "   --suivre %s (avec les mêmes --cle, --id-cle, --emetteur)" % ident)
         time.sleep(20)
         statut = apple("GET", "/submissions/" + ident, cles)["data"]["attributes"]["status"]
         print("   %s (%d s)" % (statut, time.time() - debut))
@@ -261,7 +279,7 @@ def main():
             print(journal.decode(errors="replace"))
 
     if statut == "Accepted":
-        print("\nACCEPTÉ. Il reste à agrafer le ticket :\n   xcrun stapler staple %s" % a.fichier)
+        print("\nACCEPTÉ. Il reste à agrafer le ticket :\n   xcrun stapler staple %s" % fichier)
         return 0
     print("\nREFUSÉ (%s). Le journal ci-dessus dit pourquoi." % statut)
     return 1
