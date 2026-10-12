@@ -1,0 +1,21 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. le mot nu coupe, quelle que soit sa casse ==
+   play stop                                -> COUPE
+   play STOP                                -> COUPE
+   play stop                                -> COUPE
+
+== 2. la valeur « stop » ne coupe pas : elle se joue (mesuré) ==
+   play "stop"                              -> joue « stop »
+   put "stop" into s / play s               -> joue « stop »
+
+== 3. une variable nommée stop : le mot l'emporte (NON MESURÉ) ==
+   put "boing" into stop / play stop        -> COUPE
+
+== 4. sans hôte qui coupe : pas d'erreur, et the result vide ==
+   play stop                                -> (rien)
+   the result : []
+   the sound : done
+
+== 5. les autres sons ne bougent pas ==
+   play "boing"                             -> joue « boing »
+   play harpsichord tempo 100 "c d e"       -> joue « harpsichord »

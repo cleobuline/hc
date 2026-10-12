@@ -14552,9 +14552,24 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* Ajoute `mot` au bout de `*buf` (alloué, *len octets utiles), séparé par
+ * une espace. Rend 0 si la mémoire manque ; *buf reste alors valide. */
+static int v3_ajoute_mot(char **buf, size_t *len, const char *mot)
+{
+    size_t lmot = strlen(mot);
+    char *nb = realloc(*buf, *len + lmot + 2);
+    if (!nb) return 0;
+    if (*len) nb[(*len)++] = ' ';
+    memcpy(nb + *len, mot, lmot + 1);
+    *len += lmot;
+    *buf = nb;
+    return 1;
+}
+
 /* play : HyperCard accepte une suite de notes derrière le nom du son
- * (« play "boing" tempo 200 c4 e4 »). Comme l'ancien exécuteur, on ne retient
- * que le nom : le reste demande un synthétiseur, pas un lecteur.
+ * (« play "boing" tempo 200 c4 e4 »). HC n'en retenait que le nom et jouait
+ * le son une fois ; depuis le 12 octobre, il lit les notes (hc_notes.c) et
+ * l'hôte les joue en relisant l'échantillon à la hauteur de chacune.
  *
  * UN MOT NU EST UNE VARIABLE S'IL EN EST UNE. Le mot était lu tel quel :
  * « put "cling" into son » puis « play son » cherchait un son nommé « son »,
@@ -14563,20 +14578,103 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
  * en paramètre. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice,
  * le même jour : « put "boing" into s / play s » fait boing. On lit donc le
  * mot comme « choose tl tool » lit le sien (v3_mot_ou_var) : la variable liée
- * d'abord, le mot lui-même sinon — « play tik » reste « tik ». */
+ * d'abord, le mot lui-même sinon — « play tik » reste « tik ».
+ *
+ * « play stop » COUPE LE SON. HC cherchait un son nommé « stop », et bipait.
+ * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice le 12
+ * octobre : « play stop » arrête net une mélodie de clavecin ; « play "stop" »,
+ * entre guillemets, la laisse jouer jusqu'au bout, et « the sound » répond
+ * encore « harpsichord ». C'est donc le MOT NU qui compte, et non la valeur :
+ * on le reconnaît à son jeton, avant de chercher une variable. NON MESURÉ :
+ * une variable nommée « stop » — HC prend le mot, comme le fait un mot-clé. */
 static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return 0;
     char nom[256];
     const HctNoeud *f = n->fils[0];
+    if (f->genre == HCTN_IDENT && n->nfils == 1) {
+        v3_brut(f, nom, sizeof nom);
+        if (ci_equal(nom, "stop")) {
+            if (g_host && g_host->stop_sound) g_host->stop_sound();
+            set_result("");
+            emit(HC_INFO, "   ♪ play stop");
+            return 1;
+        }
+    }
     if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, nom, sizeof nom);
     else {
         v3_val_texte(ctx, f, nom, sizeof nom);
         if (ctx->erreur) return 1;
     }
+
+    /* LES NOTES, ET LE TEMPO : « play "harpsichord" tempo 120 "c4q e g" ».
+     * Le reste de la ligne vient en morceaux séparés : le mot « tempo » et son
+     * nombre, puis les notes — une chaîne, une variable, ou des mots nus
+     * comme dans « Découvrir HyperCard » (« play harpsichord tempo 300 a#2q
+     * c3w »). Un mot nu lié à une variable donne sa valeur, comme le nom du
+     * son. Les notes sont lues ici (hc_notes.c) et l'hôte les joue. */
+    double tempo = 0;
+    char *melodie = NULL;
+    size_t lm = 0;
+    for (int k = 1; k < n->nfils; k++) {
+        const HctNoeud *a = n->fils[k];
+        char mot[256];
+        if (a->genre == HCTN_IDENT) {
+            v3_brut(a, mot, sizeof mot);
+            if (ci_equal(mot, "tempo") && k + 1 < n->nfils) {
+                char t[64];
+                v3_val_texte(ctx, n->fils[++k], t, sizeof t);
+                if (ctx->erreur) { free(melodie); return 1; }
+                tempo = strtod(t, NULL);
+                continue;
+            }
+            /* Comme v3_mot_ou_var, mais sans tampon fixe : une variable
+             * peut tenir une longue mélodie. */
+            HctValeur v;
+            int ok;
+            if (ctx->hote.lit_var && ctx->hote.lit_var(ctx->hote.donnees, mot, &v)) {
+                ok = v3_ajoute_mot(&melodie, &lm, v.txt ? v.txt : "");
+                hct_val_libere(&v);
+            } else {
+                ok = v3_ajoute_mot(&melodie, &lm, mot);
+            }
+            if (!ok) goto penurie;
+        } else {
+            HctValeur v = hct_evalue(ctx, a);
+            int ok = !hct_val_manque() && v3_ajoute_mot(&melodie, &lm, v.txt ? v.txt : "");
+            hct_val_libere(&v);
+            if (ctx->erreur) { free(melodie); return 1; }
+            if (!ok) goto penurie;
+        }
+    }
+
+    if (melodie && hc_notes_compte(melodie) > 0) {
+        int max = hc_notes_compte(melodie);
+        if (max > HC_NOTES_MAX) max = HC_NOTES_MAX;
+        HcNote *notes = malloc(sizeof *notes * (size_t)max);
+        if (!notes) goto penurie;
+        int nn = hc_notes_lis(melodie, tempo, notes, max);
+        free(melodie);
+        if (nn > 0 && g_host && g_host->play_notes)
+            g_host->play_notes(nom, notes, nn);
+        else if (g_host && g_host->play_sound)
+            g_host->play_sound(nom);
+        free(notes);
+        set_result("");
+        emit(HC_INFO, "   ♪ play \"%s\", %d note(s)", nom, nn);
+        return 1;
+    }
+    free(melodie);
+
     if (g_host && g_host->play_sound) g_host->play_sound(nom);
     set_result("");
     emit(HC_INFO, "   ♪ play \"%s\"", nom);
+    return 1;
+
+penurie:
+    free(melodie);
+    hct_val_manque_efface();
+    hct_ctx_faute(ctx, n, "mémoire insuffisante");
     return 1;
 }
 

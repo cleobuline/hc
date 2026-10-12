@@ -1,0 +1,91 @@
+LES NOTES DE « PLAY » — 12 octobre
+==================================
+
+    play "harpsichord" tempo 120 "c4q e g c5h"
+
+HC ne jouait que le nom du son, une fois : le reste de la ligne était lu et
+jeté. Les piles d'Apple jouent pourtant des mélodies — « Découvrir
+HyperCard », la pile d'initiation : « play harpsichord tempo 300 a#2q c3w ».
+Demandé par l'utilisatrice le 12 octobre ; ce n'est pas une extension, c'est
+la commande d'HyperCard entière.
+
+Pas de clavecin livré : celui d'HyperCard est à Apple. L'utilisatrice
+ajoutera elle-même ses instruments dans HC/sounds/. Un son absent bipe,
+comme avant.
+
+
+CE QUI EST MESURÉ — DANS HYPERCARD 2.4.1 (Basilisk II), par l'utilisatrice
+-------------------------------------------------------------------------
+
+Une mélodie de clavecin chronométrée par « wait until the sound is "done" » :
+
+    "c c c c"                 124 ticks
+    tempo 120 "c c c c"       124
+    tempo 120 "cw"            121
+    tempo 120 "ch c c"        183
+    tempo 120 "cq r c"         92
+    tempo 120 "ce. ce3 cs"     42
+    tempo 30 "cw"             480
+
+HC calcule 120, 120, 120, 180, 90, 40, 480 : HyperCard ajoute 2 à 4 ticks,
+le temps de démarrer. D'où :
+
+  · sans « tempo », c'est 120 noires par minute ;
+  · la ronde vaut quatre noires ;
+  · LA DURÉE SE GARDE d'une note à l'autre (« ch c c » = trois blanches) ;
+  · le silence « r » prend la durée courante ;
+  · « . » multiplie par 1,5, « 3 » par 2/3 ;
+  · « the sound » dure toute la mélodie, même une ronde de 8 secondes.
+
+
+CE QUE HC EN FAIT
+-----------------
+
+  hc_notes.c (neuf)  la lecture des notes en hauteurs MIDI et en durées, et
+                     le rendu : l'échantillon du son relu plus vite ou plus
+                     lentement à la hauteur de chaque note (un do5, deux fois
+                     plus vite), bout à bout, une note coupant la précédente
+                     sur un fondu de 5 ms. C'est ce que faisait HyperCard avec
+                     ses sons. Tout en C, vérifié ici sous ASan.
+  noyau (hc_core.c)  v3_cmd_play lit le mot « tempo » et son nombre, puis les
+                     notes : une chaîne, une variable (de longueur libre), ou
+                     des mots nus. Il passe les notes à l'hôte par un crochet
+                     neuf, play_notes ; sans lui, le son joue une fois.
+  Cocoa (HCview.m)   cocoa_play_notes fabrique la mélodie dans un tampon neuf
+                     et la joue comme un son : « play stop » la coupe, « the
+                     sound » la nomme jusqu'à la dernière note.
+
+L'ÉCHANTILLON EST UN DO4 : joué à sa vitesse normale, il donne la note 60. Un
+instrument enregistré sur une autre note joue ses mélodies transposées
+d'autant. Un son de plus de 30 s, lu depuis son fichier, joue une fois sans
+ses notes ; une mélodie de plus de 120 s est coupée là (bornes de mémoire).
+
+Harnais notes : les sept relevés, les hauteurs, les durées qui se gardent,
+les bornes, le rendu sur un la de synthèse (passages par zéro : la hauteur
+double à l'octave), et le chemin complet jusqu'à l'hôte. Le côté Cocoa n'est
+vérifié que par la compilation.
+
+
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même jour, après
+recompilation, avec un son « piano » qu'elle a ajouté : « Au clair de la
+lune », 44 notes à tempo 140, l'octave écrite sur chaque note, sur sa carte
+de torture de demo.stack. « C'est géant. » La mélodie entière, donc — les
+hauteurs, les durées, le chemin jusqu'à Cocoa. Pas une mesure de chaque
+règle : celles-là sont dans les relevés d'HyperCard ci-dessus.
+
+
+NON MESURÉ, choisi ici — bancs demandés DANS HYPERCARD (Basilisk II)
+-------------------------------------------------------------------
+
+  · l'octave sans octave (HC : 4) et si elle se garde (HC : oui) ;
+  · les numéros MIDI, « 60 64 67 » (HC : acceptés) ;
+  · une ronde plus longue que l'échantillon : HyperCard la tient-il (boucle de
+    l'instrument) ou se tait-il ? HC se tait quand l'échantillon finit ;
+  · un mot qui n'est pas une note en entier (« flute », « c4z ») : HC le
+    saute, sans toucher à l'octave ni à la durée ;
+  · des modificateurs sans lettre (« c. ») : HC les applique à la lettre
+    d'avant ; la durée qui se garde est la dernière écrite, point compris ;
+  · un tempo nul ou négatif (HC : 120), une hauteur hors de 0 à 127 (HC : la
+    borne) ;
+  · deux « play » à notes l'un derrière l'autre : HyperCard les met-il en file
+    ? HC les superpose, comme ses autres sons.
