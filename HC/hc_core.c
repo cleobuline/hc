@@ -5573,11 +5573,46 @@ static int     g_edit_at = -1, g_edit_old = 0, g_edit_new = 0;
  * coup : un dialogue d'impression, un seul document. La carte « open
  * printing » de HyperTalk Reference : « You must use the close printing
  * command to end a print job begun with open printing. » Rien ne le ferme
- * donc tout seul. Les cartes sont des pointeurs empruntés : une carte
- * supprimée entre-temps en sort, voir oublie_objet_interne. */
+ * donc tout seul — sauf un script qui s'est mal terminé : voir
+ * tache_si_script_avorte. Les cartes sont des pointeurs empruntés : une carte
+ * supprimée entre-temps en sort, voir oublie_objet_interne. Ce sont les
+ * CARTES qui sont retenues, pas leur image : elles sont dessinées à la
+ * fermeture, telles qu'elles sont alors. */
 static Object **g_tache_cartes = NULL;
 static int      g_tache_n = 0, g_tache_cap = 0;
 static int      g_tache_ouverte = 0;
+
+/* UN TRAVAIL LAISSÉ OUVERT PAR UN SCRIPT QUI S'EST MAL TERMINÉ.
+ *
+ * Un script arrêté entre « open printing » et « close printing » — Cmd-.,
+ * une erreur — laissait le travail ouvert pour toujours : chaque « print »
+ * de chaque script suivant y partait et n'en sortait plus. Plus rien ne
+ * s'imprimait, sans un mot. Relevé en lisant le code le 11 octobre, à la
+ * suite du constat 6 de l'audit des sources ; non observé.
+ *
+ * Au repos, si le script s'est mal terminé, le travail est donc ABANDONNÉ,
+ * et le journal le dit. Pas imprimé : Cmd-. veut dire « arrête », et sur un
+ * Mac il annule une impression ; un script fautif, lui, n'a pas fini de dire
+ * ce qu'il voulait imprimer. Un script qui finit NORMALEMENT sans « close
+ * printing » garde son travail ouvert, comme avant : c'est ce qui permet de
+ * taper « open printing », « print … », « close printing » ligne à ligne
+ * dans la boîte de message.
+ *
+ * NON MESURÉ, ET IMPOSSIBLE À MESURER ICI : ce que faisait HyperCard — la
+ * référence n'en dit rien, et Basilisk II n'a pas de pilote d'imprimante. Un
+ * choix de solidité, pas une fidélité. Appelée juste avant erreurs_vide, aux
+ * deux endroits où un script retombe au repos, tant que les signes d'une fin
+ * anormale sont encore levés. */
+static void tache_si_script_avorte(void)
+{
+    if (!g_tache_ouverte) return;
+    if (g_err_n <= 0 && !g_interrompu && !g_abandon) return;
+    g_tache_ouverte = 0;
+    if (g_tache_n > 0)
+        emit(HC_INFO, "   → travail d'impression abandonné : le script s'est arrêté "
+                      "avant « close printing » (%d carte(s) non imprimée(s))", g_tache_n);
+    g_tache_n = 0;
+}
 
 static void oublie_objet_interne(Object *mort)
 {
@@ -15771,8 +15806,16 @@ static int v3_cmd_fichier(HctContexte *ctx, const HctNoeud *n)
             }
             if (n->nfils != 1 && !avec_dialogue) return 0;
             if (ci_equal(n->op, "open")) {
-                g_tache_ouverte = 1;
-                g_tache_n = 0;
+                /* UN SECOND « open printing » GARDE LE TRAVAIL. Il remettait
+                 * le compte à zéro, et les cartes déjà reçues disparaissaient
+                 * en silence — constat 6 de l'audit des sources. Ce que
+                 * faisait HyperCard n'est pas mesurable ici (pas
+                 * d'imprimante dans Basilisk II) : perdre sans le dire est
+                 * le seul choix qu'on écarte à coup sûr. */
+                if (!g_tache_ouverte) {
+                    g_tache_ouverte = 1;
+                    g_tache_n = 0;
+                }
             } else if (g_tache_ouverte) {
                 g_tache_ouverte = 0;
                 if (g_tache_n > 0) {
@@ -18249,7 +18292,7 @@ static int hc_send_args_k_body(Object *target, const char *message,
     g_script_clipped = saved_clipped;
 
     /* LE GESTIONNAIRE LE PLUS EXTÉRIEUR SE TERMINE : ON AVERTIT. */
-    if (g_depth == 0) erreurs_vide();
+    if (g_depth == 0) { tache_si_script_avorte(); erreurs_vide(); }
 
     /* dépiler les paramètres de l'appelant */
     for (int i = 0; i < saved_nparams; i++)
@@ -19093,6 +19136,6 @@ void hc_do(const char *line)
     g_v1_porte = sauve_porte;
     /* Ce qui reste ici est à NOUS : un gestionnaire appelé depuis cette
      * ligne a déjà vidé le sien en redescendant à g_depth == 0. */
-    if (--g_msg_box == 0) erreurs_vide();
+    if (--g_msg_box == 0) { tache_si_script_avorte(); erreurs_vide(); }
     interruption_servie();
 }
