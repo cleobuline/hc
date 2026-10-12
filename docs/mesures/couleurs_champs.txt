@@ -44,9 +44,8 @@ opacités comprises.
 CE QUI NE L'EST PAS — il faut l'écran, à jouer DANS HC (l'application)
 ---------------------------------------------------------------------
 
-  · le dessin lui-même, et la transparence par-dessus une peinture (vu
-    pour tous les styles le 12 octobre ; « shadow » corrigé ensuite, à
-    revoir) ;
+  · le bouton « shadow » et le popup au backColor transparent (corrigés
+    avec le champ, non revus) ;
   · la transparence PENDANT L'ÉDITION : l'éditeur ne peint aucun fond
     (setDrawsBackground:NO), et le fond du champ reste dessiné dessous —
     c'est la théorie, pas une mesure ;
@@ -65,6 +64,12 @@ pixel sous un corps opaque.
 Deux sites jumeaux, le même dessin, le même défaut — déduit du code, non
 observé : le bouton de style « shadow » et la boîte d'un popup, avec un
 backColor transparent. Corrigés par la même fonction.
+
+REVU DANS HC (l'application), le même jour, après la correction — capture
+de sa « salle de torture », demo.stack : deux champs « scrolling », vert et
+jaune, et un champ « shadow » rose, tous à moitié transparents sur une
+peinture tramée. La trame se voit à travers les trois ; l'ombre du champ
+rose n'est plus que deux bandes, à droite et en bas. « Voilà, ça marche. »
 
 Au passage, deux sites jumeaux du corps lu strictement le 11 octobre : la
 case « Text size » de l'Info d'un champ et celle d'un bouton lisaient encore
