@@ -14563,12 +14563,29 @@ static int v3_cmd_delete(HctContexte *ctx, const HctNoeud *n)
  * en paramètre. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice,
  * le même jour : « put "boing" into s / play s » fait boing. On lit donc le
  * mot comme « choose tl tool » lit le sien (v3_mot_ou_var) : la variable liée
- * d'abord, le mot lui-même sinon — « play tik » reste « tik ». */
+ * d'abord, le mot lui-même sinon — « play tik » reste « tik ».
+ *
+ * « play stop » COUPE LE SON. HC cherchait un son nommé « stop », et bipait.
+ * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice le 12
+ * octobre : « play stop » arrête net une mélodie de clavecin ; « play "stop" »,
+ * entre guillemets, la laisse jouer jusqu'au bout, et « the sound » répond
+ * encore « harpsichord ». C'est donc le MOT NU qui compte, et non la valeur :
+ * on le reconnaît à son jeton, avant de chercher une variable. NON MESURÉ :
+ * une variable nommée « stop » — HC prend le mot, comme le fait un mot-clé. */
 static int v3_cmd_play(HctContexte *ctx, const HctNoeud *n)
 {
     if (n->nfils < 1) return 0;
     char nom[256];
     const HctNoeud *f = n->fils[0];
+    if (f->genre == HCTN_IDENT && n->nfils == 1) {
+        v3_brut(f, nom, sizeof nom);
+        if (ci_equal(nom, "stop")) {
+            if (g_host && g_host->stop_sound) g_host->stop_sound();
+            set_result("");
+            emit(HC_INFO, "   ♪ play stop");
+            return 1;
+        }
+    }
     if (f->genre == HCTN_IDENT) v3_mot_ou_var(ctx, f, nom, sizeof nom);
     else {
         v3_val_texte(ctx, f, nom, sizeof nom);

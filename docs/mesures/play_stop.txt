@@ -1,0 +1,69 @@
+« PLAY STOP » ET « THE SOUND » — 12 octobre
+===========================================
+
+« play stop » ne coupait pas le son : HC cherchait un son nommé « stop », et
+l'application bipait. C'était dans le « connu, non corrigé » des notes de
+version depuis 0.7.9.3.
+
+En lisant le code, un site jumeau : « the sound ». Le noyau le demande à
+l'hôte (host_global("sound"), hc_core.c), et l'interface Cocoa ne répondait
+pas. « the sound » valait toujours « done », et « wait until the sound is
+"done" » n'attendait rien. Une porte annoncée dans un commentaire et jamais
+percée.
+
+
+CE QUI EST MESURÉ — DANS HYPERCARD 2.4.1 (Basilisk II), par l'utilisatrice
+-------------------------------------------------------------------------
+
+Deux boutons, une mélodie de clavecin :
+
+    play "harpsichord" tempo 100 "c d e f g a b c5 d5 e5 f5 g5"
+
+  A.  … wait 1 second / play stop
+      → la mélodie s'arrête net.
+
+  B.  … wait 1 second / play "stop"         (entre guillemets)
+      → la mélodie joue jusqu'au bout ; « the sound » répond
+        « harpsichord ».
+
+C'est donc le MOT NU qui coupe, pas la valeur « stop ». Et « the sound »
+nomme le son qui joue.
+
+
+CE QUE HC EN FAIT
+-----------------
+
+  noyau (hc_core.c)  v3_cmd_play reconnaît le mot nu « stop » à son jeton,
+                     avant de chercher une variable, et appelle un nouveau
+                     crochet de l'hôte, stop_sound. « play "stop" » et
+                     « play s » (s valant "stop") jouent un son nommé stop,
+                     comme avant.
+  Cocoa (HCview.m)   cocoa_stop_sound fait taire toutes les voix, et coupe
+                     aussi ce qui attend encore dans la file des sons.
+                     cocoa_son_en_cours répond à « the sound » : le nom du
+                     dernier son demandé tant qu'un son joue, rien sinon —
+                     et le noyau dit alors « done ».
+
+Harnais sonstop : le mot nu, sa casse, la boîte de message, la valeur
+« stop » qui se joue, la variable nommée stop, un hôte sans crochet. Le côté
+Cocoa n'est vérifié que par la compilation.
+
+
+NON MESURÉ
+----------
+
+  · les trois lignes du bouton A : ce que dit « the sound » pendant la
+    mélodie (« harpsichord », d'après B), juste après « play stop », et une
+    seconde plus tard. HC dit « done » dès « play stop » ;
+  · une variable nommée « stop » : HC prend le mot, comme un mot-clé ;
+  · ce que fait HyperCard d'un « play » donné pendant qu'un son joue encore
+    (HC superpose les sons, voir HCV_VOIX), et ce que « the sound » nomme
+    alors (HC : le dernier demandé).
+
+UNE DIFFÉRENCE CONNUE : HC ne joue pas les notes. « play "harpsichord" "c d
+e f" » joue l'échantillon une fois, et « the sound » ne dure que lui ;
+HyperCard le garde jusqu'à la dernière note.
+
+
+À VOIR DANS HC (l'application) : la même mélodie coupée par « play stop »,
+et « wait until the sound is "done" » qui attend la fin d'un son long.

@@ -918,6 +918,7 @@ typedef struct {
     void        (*global_set)(const char *name, const char *value);
 
     void (*play_sound)(const char *name);   /* play "boing" */
+    void (*stop_sound)(void);               /* play stop — le mot nu seulement */
 
     /* ---- outils et gestes simulés ----
      * Le noyau ne connaît ni la palette ni la souris : il analyse la commande
