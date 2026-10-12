@@ -180,7 +180,7 @@ def depose_s3(fichier, empreinte, attributs, region=REGION_S3, deja=False):
     entetes = signature_s3("PUT", hote, chemin, region,
                            attributs["awsAccessKeyId"], attributs["awsSecretAccessKey"],
                            attributs["awsSessionToken"], empreinte,
-                           datetime.datetime.utcnow())
+                           datetime.datetime.now(datetime.timezone.utc))
     args = ["-X", "PUT", "--upload-file", fichier, "https://" + hote + chemin]
     for n, v in entetes.items():
         if n != "host":
