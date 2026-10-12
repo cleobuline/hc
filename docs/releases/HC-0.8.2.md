@@ -180,6 +180,7 @@ tunes with it.
 
 - [#129](https://github.com/cleobuline/hc/pull/129): `play` plays its
   notes, `play stop`, `the sound`
-- version 0.8.2 and this note
+- [#130](https://github.com/cleobuline/hc/pull/130): version 0.8.2 and this
+  note
 
 **Full changelog:** [HC-0.8.1...HC-0.8.2](https://github.com/cleobuline/hc/compare/HC-0.8.1...HC-0.8.2)
