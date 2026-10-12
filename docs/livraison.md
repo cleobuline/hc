@@ -143,6 +143,17 @@ Puis la même ligne sans `--essai` : le script soumet, envoie, attend le verdict
 et affiche le journal d'Apple. Le même pour le DMG à l'étape 6, à la place de
 `notarytool submit`. L'agrafage (`xcrun stapler`) existe dans Xcode 12.
 
+**Tout d'un coup : `outils/livrer.sh`.** À partir d'un dossier qui contient
+HC.app et les piles (`~/Desktop/HC` par défaut), il fait les étapes 3 à 7 :
+signer et notariser l'app, l'agrafer, fabriquer le DMG à côté du dossier, le
+signer, le notariser, l'agrafer, puis vérifier avec `spctl`. Ses réglages
+— la clé, ses identifiants, le certificat — vivent dans `~/notarisation/reglages`,
+hors du dépôt ; son en-tête dit lesquels. `--essai` vérifie tout sans rien
+signer ni envoyer. Relancé après une interruption, il ne resigne pas une app
+déjà signée et n'envoie pas ce qui est déjà notarisé. Joué ici contre des
+imitations de codesign, stapler, hdiutil et spctl — la relance, un refus, un
+vieux DMG non signé —, pas encore sur un Mac.
+
 **Le script n'a jamais parlé à Apple au moment où il est écrit** (12 octobre) :
 le jeton est vérifié avec une clé de test, la signature S3 est identique à
 celle de botocore, mais la première vraie soumission sera sa première mesure.
