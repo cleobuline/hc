@@ -66,6 +66,14 @@ double à l'octave), et le chemin complet jusqu'à l'hôte. Le côté Cocoa n'es
 vérifié que par la compilation.
 
 
+ESSAYÉ DANS HC (l'application) par l'utilisatrice, le même jour, après
+recompilation, avec un son « piano » qu'elle a ajouté : « Au clair de la
+lune », 44 notes à tempo 140, l'octave écrite sur chaque note, sur sa carte
+de torture de demo.stack. « C'est géant. » La mélodie entière, donc — les
+hauteurs, les durées, le chemin jusqu'à Cocoa. Pas une mesure de chaque
+règle : celles-là sont dans les relevés d'HyperCard ci-dessus.
+
+
 NON MESURÉ, choisi ici — bancs demandés DANS HYPERCARD (Basilisk II)
 -------------------------------------------------------------------
 
