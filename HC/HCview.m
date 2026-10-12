@@ -8,6 +8,7 @@
 #include <mach/mach.h>     // host_statistics64, pour « the heapSpace »
 #import <QuartzCore/QuartzCore.h>  // CATransaction, pour pousser les pixels a l ecran
 #import <AVFoundation/AVFoundation.h>  // AVAudioEngine, pour « play » (cocoa_play)
+#include <os/lock.h>       // os_unfair_lock, pour « the sound » (gSonVerrou)
 #import "icons.h"
 #import "HCglobals.h"
 #import "HCtext.h"
@@ -3426,6 +3427,9 @@ static const char *hcv_touches_tenues(void)
     return buf;
 }
 
+/* Plus bas, avec le lecteur de sons. */
+static const char *cocoa_son_en_cours(void);
+
 static const char *cocoa_global_get(const char *name) {
     /* « the version » : UNE SEULE SOURCE DE VÉRITÉ, le bundle.
      *
@@ -3458,6 +3462,8 @@ static const char *cocoa_global_get(const char *name) {
         }
         return v;
     }
+    if (strcasecmp(name, "sound") == 0)
+        return cocoa_son_en_cours();
 
     if (strcasecmp(name, "mouse") == 0)
         return ([NSEvent pressedMouseButtons] & 1) ? "down" : "up";
@@ -4242,6 +4248,31 @@ static NSMutableDictionary<NSString *, NSNumber *> *gVoixSuivante = nil;
 static CFTimeInterval gSilenceDes = 0;      /* quand le dernier son lancé finit */
 static BOOL gVeillePrevue = NO;
 
+/* « the sound » : LE NOM DU SON QUI JOUE, « done » quand rien ne joue.
+ *
+ * Le noyau le demandait (host_global("sound"), hc_core.c), et personne ne
+ * répondait : « the sound » valait toujours « done », si bien que « wait
+ * until the sound is "done" » n'attendait rien. Une porte annoncée dans un
+ * commentaire et jamais percée. MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le
+ * 12 octobre : pendant une mélodie de clavecin, « the sound » répond
+ * « harpsichord ».
+ *
+ * Le script et la file des sons s'en partagent l'état, d'où le verrou. Chaque
+ * « play » prend un numéro ; « play stop » retient le dernier numéro donné, et
+ * tout son de numéro inférieur ou égal est coupé — joué ou encore en file.
+ * Un son joue tant que sa demande n'est pas servie, puis jusqu'à sa fin
+ * calculée. Un son INTROUVABLE ne joue pas : servi, il ne pose aucune fin.
+ *
+ * HC NE JOUE PAS LES NOTES (v3_cmd_play) : « play "harpsichord" "c d e f" »
+ * joue l'échantillon une fois, et « the sound » ne dure que lui — HyperCard,
+ * lui, le garde jusqu'à la dernière note. */
+static os_unfair_lock gSonVerrou = OS_UNFAIR_LOCK_INIT;
+static char gSonNom[256];
+static unsigned long gSonDemandes = 0;      /* le numéro du dernier « play » */
+static unsigned long gSonServis   = 0;      /* le dernier que la file a servi */
+static unsigned long gSonCoupeA   = 0;      /* « play stop » : tout ce qui précède */
+static CFTimeInterval gSonFin     = 0;      /* fin du dernier son posé */
+
 /* Le fichier d'un son, cherché comme avant : le bundle, puis les dossiers
  * de sons de l'utilisateur et du système, sans égard à la casse — « Basso »
  * est /System/Library/Sounds/Basso.aiff. Retenu une fois trouvé : la
@@ -4373,8 +4404,9 @@ static void hcv_veille_dans(double secondes)
     });
 }
 
-/* Sur gFileSons seulement : le vrai travail d'un « play ». */
-static void hcv_joue_son(NSString *n)
+/* Sur gFileSons seulement : le vrai travail d'un « play ». Rend la durée du
+ * son posé, 0 s'il n'a pas joué. */
+static double hcv_joue_son(NSString *n)
 {
     NSString *cle = [n lowercaseString];
     id son = hcv_son(n, cle);
@@ -4383,9 +4415,9 @@ static void hcv_joue_son(NSString *n)
          * au prochain tour de boucle — pendant un script aussi, cocoa_idle
          * en fait un à chaque image. */
         dispatch_async(dispatch_get_main_queue(), ^{ NSBeep(); });
-        return;
+        return 0;
     }
-    if (!hcv_moteur_pret()) return;      /* pas de sortie audio : rien à jouer */
+    if (!hcv_moteur_pret()) return 0;    /* pas de sortie audio : rien à jouer */
 
     double duree = 0;
     if ([son isKindOfClass:[AVAudioPCMBuffer class]]) {
@@ -4397,7 +4429,7 @@ static void hcv_joue_son(NSString *n)
         duree = (double)[b frameLength] / [[b format] sampleRate];
     } else {
         AVAudioFile *f = [[AVAudioFile alloc] initForReading:son error:NULL];
-        if (!f) return;
+        if (!f) return 0;
         AVAudioPlayerNode *v = hcv_voix_pour([f processingFormat]);
         [v stop];
         [v scheduleFile:f atTime:nil completionHandler:nil];
@@ -4408,6 +4440,26 @@ static void hcv_joue_son(NSString *n)
     double fin = CACurrentMediaTime() + duree;
     if (fin > gSilenceDes) gSilenceDes = fin;
     hcv_veille_dans(gSilenceDes + HCV_SILENCE - CACurrentMediaTime());
+    return duree;
+}
+
+/* Sur gFileSons : la demande numéro j. Coupée avant d'être servie, elle ne
+ * joue pas ; servie, elle dit à « the sound » quand elle finit — sauf si
+ * « play stop » est passé pendant qu'on la posait : la coupure, derrière elle
+ * dans la file, va la faire taire. */
+static void hcv_sert_son(NSString *n, unsigned long j)
+{
+    os_unfair_lock_lock(&gSonVerrou);
+    BOOL coupee = (j <= gSonCoupeA);
+    os_unfair_lock_unlock(&gSonVerrou);
+
+    double duree = coupee ? 0 : hcv_joue_son(n);
+    CFTimeInterval fin = CACurrentMediaTime() + duree;
+
+    os_unfair_lock_lock(&gSonVerrou);
+    gSonServis = j;
+    if (duree > 0 && j > gSonCoupeA && fin > gSonFin) gSonFin = fin;
+    os_unfair_lock_unlock(&gSonVerrou);
 }
 
 /* Le crochet de l'hôte : la demande part sur la file, et le script repart. */
@@ -4415,9 +4467,44 @@ static void cocoa_play(const char *name) {
     NSString *n = hcv_texte(name ? name : "");
     if (!gFileSons)
         gFileSons = dispatch_queue_create("fr.labynet.hc.sons", DISPATCH_QUEUE_SERIAL);
+    os_unfair_lock_lock(&gSonVerrou);
+    unsigned long j = ++gSonDemandes;
+    snprintf(gSonNom, sizeof gSonNom, "%s", name ? name : "");
+    os_unfair_lock_unlock(&gSonVerrou);
     dispatch_async(gFileSons, ^{
-        @autoreleasepool { hcv_joue_son(n); }
+        @autoreleasepool { hcv_sert_son(n, j); }
     });
+}
+
+/* « play stop » : tout ce qui a été demandé jusqu'ici se tait — ce qui joue,
+ * et ce qui attend encore dans la file. « the sound » dit « done » aussitôt,
+ * sans attendre que la file y soit arrivée. NON MESURÉ : ce que répond
+ * HyperCard juste après « play stop » ; « done » est ce que dit un son fini. */
+static void cocoa_stop_sound(void) {
+    os_unfair_lock_lock(&gSonVerrou);
+    gSonCoupeA = gSonDemandes;
+    gSonFin = 0;
+    os_unfair_lock_unlock(&gSonVerrou);
+    if (!gFileSons) return;               /* aucun son n'a jamais été demandé */
+    dispatch_async(gFileSons, ^{
+        for (NSArray<AVAudioPlayerNode *> *l in [gVoix allValues])
+            for (AVAudioPlayerNode *v in l) [v stop];
+        gSilenceDes = CACurrentMediaTime();
+    });
+}
+
+/* « the sound », pour cocoa_global_get : le nom du son qui joue, ou rien —
+ * le noyau dit alors « done ». Joue : une demande pas encore servie et pas
+ * coupée, ou un son posé qui n'a pas fini. */
+static const char *cocoa_son_en_cours(void)
+{
+    static char rendu[256];
+    os_unfair_lock_lock(&gSonVerrou);
+    BOOL attend = gSonDemandes > gSonServis && gSonDemandes > gSonCoupeA;
+    BOOL joue = attend || CACurrentMediaTime() < gSonFin;
+    snprintf(rendu, sizeof rendu, "%s", joue ? gSonNom : "");
+    os_unfair_lock_unlock(&gSonVerrou);
+    return rendu;
 }
 
 /* ═══ Cmd-. ═════════════════════════════════════════════════════════════
@@ -9218,6 +9305,7 @@ static void hcv_survol(HCView *v, Object *carte)
     hcv_regard_installe();
     host.global_set    = cocoa_global_set;
     host.play_sound    = cocoa_play;
+    host.stop_sound    = cocoa_stop_sound;
     host.choose_tool   = cocoa_choose_tool;
     host.drag          = cocoa_drag;
     host.click_at      = cocoa_click_at;
