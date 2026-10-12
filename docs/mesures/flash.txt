@@ -1,0 +1,61 @@
+« FLASH » — 12 octobre
+======================
+
+    flash 3
+
+L'écran clignote : la carte s'inverse, noir pour blanc, puis revient, autant
+de fois qu'on le demande. Le cousin visuel de « beep ». HC répondait
+« commande inconnue », et la pile s'arrêtait : flash était dans la liste
+« Not supported yet » des notes de version.
+
+
+CE QUI EST DIT — par l'utilisatrice, le 12 octobre, NON VU DANS HYPERCARD
+------------------------------------------------------------------------
+
+    « flash une fois, flash 2, flash 3, etc. »
+
+« flash » seul clignote une fois ; « flash n », n fois. Demandé sans réponse
+encore : est-ce vu dans Basilisk II, ou su par ailleurs ?
+
+
+CE QUE HC EN FAIT
+-----------------
+
+  noyau (hc_core.c)  v3_cmd_flash : n fois, la carte inversée pendant
+                     FLASH_TICKS ticks, puis remise, et de même entre deux
+                     clignotements. L'attente est celle de « wait » (attends),
+                     si bien que Cmd-. arrête un long « flash » ; la carte est
+                     toujours remise à l'endroit avant de rendre la main.
+  Cocoa (HCview.m)   cocoa_flash_screen lève un drapeau ; drawRect: peint
+                     l'inversion (Difference, blanc) PAR-DESSUS tout le reste,
+                     l'écran gelé et FatBits compris.
+
+Harnais flash : une, deux, trois fois, une expression, une variable, les
+bornes, un hôte sans crochet ; la carte finit toujours à l'endroit. Le côté
+Cocoa n'est vérifié que par la compilation.
+
+
+VU DANS HC (l'application) par l'utilisatrice, le même jour, après
+recompilation : « oui, ça clignote bien ». Le chemin entier, donc — le
+noyau, le drapeau, l'inversion peinte par drawRect:. Pas une mesure de la
+vitesse.
+
+
+NON MESURÉ — banc à jouer DANS HYPERCARD 2.4.1 (Basilisk II)
+-----------------------------------------------------------
+
+    on mouseUp
+      put the ticks into t
+      flash 3
+      put the ticks - t into d3
+      put the ticks into t
+      flash
+      answer "flash 3 : " & d3 & " ticks" & return & "flash : " & (the ticks - t) & " ticks"
+    end mouseUp
+
+  · la VITESSE : HC met 8 ticks par clignotement (4 inversé, 4 à
+    l'endroit), soit 4 ticks pour « flash » seul et 20 pour « flash 3 » ;
+  · un nombre nul ou négatif : HC ne clignote pas ;
+  · un nombre qui n'en est pas un : HC refuse, et le script s'arrête ;
+  · un nombre décimal : HC prend sa partie entière ;
+  · « flash » sous lockScreen : HC clignote quand même.

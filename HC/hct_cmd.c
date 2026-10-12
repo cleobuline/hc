@@ -112,6 +112,7 @@ static const HctCommande TABLE[] = {
     { "find",       "[international]"
                     " [characters|character|words|word|string|whole]"
                     " [international] e [in r] [of marked cards]" },
+    { "flash",      "[e]" },
     { "functionkey","e" },
     { "get",        "e" },
     { "global",     "*" },

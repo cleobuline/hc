@@ -557,7 +557,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.8.2"
+#define HC_VERSION "0.8.3"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -925,6 +925,9 @@ typedef struct {
      * (hc_notes.h). Le tableau n'appartient qu'à l'appel : à recopier. Sans
      * ce crochet, le noyau joue le son une fois, comme avant. */
     void (*play_notes)(const char *name, const HcNote *notes, int n);
+    /* flash : la carte inversée (1), puis remise (0). Le noyau tient chaque
+     * état quelques ticks ; sans ce crochet, rien ne clignote. */
+    void (*flash_screen)(int inverse);
 
     /* ---- outils et gestes simulés ----
      * Le noyau ne connaît ni la palette ni la souris : il analyse la commande

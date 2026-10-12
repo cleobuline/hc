@@ -14151,6 +14151,49 @@ static int v3_cmd_beep(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* flash [n] : L'ÉCRAN CLIGNOTE — la carte s'inverse, puis revient, n fois.
+ * C'est le signal visuel d'HyperTalk, le cousin de « beep ». HC répondait
+ * « commande inconnue », et la pile s'arrêtait.
+ *
+ * DIT PAR L'UTILISATRICE le 12 octobre, et NON VU DANS HYPERCARD : « flash »
+ * clignote une fois, « flash 2 » deux fois, « flash 3 » trois fois.
+ *
+ * NON MESURÉ : la VITESSE. HC tient chaque état FLASH_TICKS ticks — l'image
+ * inversée, puis l'image remise avant le clignotement suivant. Aussi : un
+ * nombre qui n'en est pas un (HC refuse, comme pour « print N cards »), un
+ * nombre nul ou négatif (HC ne clignote pas), et « flash » sous lockScreen
+ * (HC clignote quand même : l'inversion se peint par-dessus l'écran gelé).
+ *
+ * Cmd-. arrête un long « flash », et la carte est toujours remise à
+ * l'endroit avant de rendre la main. */
+#define FLASH_TICKS 4
+#define FLASH_MAX   1000
+static int v3_cmd_flash(HctContexte *ctx, const HctNoeud *n)
+{
+    long fois = 1;
+    if (n->nfils >= 1) {
+        char v[64];
+        v3_val_texte(ctx, n->fils[0], v, sizeof v);
+        if (ctx->erreur) return 1;
+        if (!hct_est_nombre(v)) {
+            hct_ctx_faute(ctx, n, "flash : un nombre est attendu");
+            return 1;
+        }
+        double d = hct_vers_nombre(v);
+        fois = (d <= 0) ? 0 : (d >= FLASH_MAX) ? FLASH_MAX : (long)d;
+    }
+    for (long i = 0; i < fois; i++) {
+        if (g_host && g_host->flash_screen) g_host->flash_screen(1);
+        attends(FLASH_TICKS / 60.0);
+        if (g_host && g_host->flash_screen) g_host->flash_screen(0);
+        if (hct_ctx_interrompu(ctx)) return 1;
+        if (i + 1 < fois) attends(FLASH_TICKS / 60.0);
+    }
+    set_result("");
+    emit(HC_INFO, "   ⚡ flash %ld", fois);
+    return 1;
+}
+
 /* « debug raz », « debug bilan », « debug bilan raz ».
  *
  * CETTE COMMANDE NE LISAIT QUE SON PREMIER MOT, et c'est un défaut qui a
@@ -16930,6 +16973,7 @@ static const struct { const char *verbe; V3Verbe fn; } V3_VERBES[] = {
     { "domenu", v3_cmd_domenu  },
     { "drag",   v3_cmd_drag    },
     { "find",   v3_cmd_find    },
+    { "flash",  v3_cmd_flash   },
     /* Les dix du clavier, tous vers le même — voir v3_cmd_touche —, sauf
      * commandKeyDown, dont l'action par défaut est écrite : le raccourci. */
     { "arrowkey",       v3_cmd_touche },
