@@ -64,3 +64,30 @@
       [ERR]    !! ne sait pas faire : open report printing
    open printing now
       [ERR]    !! ne sait pas faire : open printing now
+
+== 8. un second open printing garde le travail ==
+   open printing
+   print card 1
+   open printing
+   print card 2
+   close printing
+      -> hôte : imprime 2 cartes : C1 C2
+
+== 9. ligne à ligne dans la boîte de message, le travail tient ==
+   open printing
+   print card 3
+   print card 4
+   close printing
+      -> hôte : imprime 2 cartes : C4 C5
+
+== 10. un script arrêté par une erreur : le travail est abandonné ==
+      [ERR]    !! propriété inconnue (v3, ligne 4 de button "Imprimer".mouseUp)
+      [journal]    → travail d'impression abandonné : le script s'est arrêté avant « close printing » (1 carte(s) non imprimée(s))
+   -- ensuite, un print part de nouveau tout de suite :
+   print card 4
+      -> hôte : imprime 1 carte : C5
+
+== 11. un script arrêté par Cmd-. : abandonné aussi, sans dialogue ==
+      [journal]    → travail d'impression abandonné : le script s'est arrêté avant « close printing » (1 carte(s) non imprimée(s))
+   print card 1
+      -> hôte : imprime 1 carte : C1

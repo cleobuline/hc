@@ -13,7 +13,15 @@
  * (ici, à la fermeture), une carte découpée dans un travail (ici, elle
  * part seule, tout de suite), et « print N cards » au-delà de la dernière
  * carte (ici, on s'y arrête). « open report printing » reste refusé : un
- * rapport n'est pas une image de carte. */
+ * rapport n'est pas une image de carte.
+ *
+ * Sections 8 à 11, deux CHOIX DE SOLIDITÉ, pas des fidélités : ce que faisait
+ * HyperCard n'est pas mesurable (pas de pilote d'imprimante dans Basilisk II)
+ * et la référence n'en dit rien. Un second « open printing » garde le
+ * travail ; un travail laissé ouvert par un script qui s'est mal terminé
+ * (erreur, Cmd-.) est abandonné au repos, et les « print » suivants
+ * repartent. Un script qui finit normalement garde son travail ouvert : la
+ * boîte de message, ligne à ligne, s'en sert (section 9). */
 #include "hc_core.h"
 #include <stdio.h>
 #include <string.h>
@@ -21,7 +29,14 @@
 static void ligne(HcLineKind k, int d, const char *t)
 { (void)d;
   if      (k == HC_MSG) printf("      = %s\n", t ? t : "");
-  else if (k == HC_ERR) printf("      [ERR] %s\n", t ? t : ""); }
+  else if (k == HC_ERR) printf("      [ERR] %s\n", t ? t : "");
+  /* Le journal, pour la seule ligne qui dit qu'un travail est abandonné. */
+  else if (k == HC_INFO && t && strstr(t, "travail d'impression"))
+      printf("      [journal] %s\n", t); }
+
+/* Cmd-. simulé : l'hôte le « voit » au n-ième tour de respiration. */
+static int g_couper = 0;
+static void respire(void) { if (g_couper > 0 && --g_couper == 0) hc_interrompre(); }
 
 /* L'hôte dit ce qu'il reçoit : c'est tout ce qu'un harnais peut voir d'une
  * imprimante. */
@@ -39,7 +54,7 @@ static void fais(const char *l) { printf("   %s\n", l); hc_do(l); }
 int main(void)
 {
     static HcHost h; memset(&h, 0, sizeof h);
-    h.line = ligne; h.print_cards = imprime;
+    h.line = ligne; h.print_cards = imprime; h.idle = respire;
     hc_set_host(&h);
     Object *st = hc_new_stack("Fiches"); hc_register_stack(st);
     Object *bg = hc_new_background(st, "F");
@@ -108,6 +123,45 @@ int main(void)
     puts("\n== 7. ce qui reste refusé ==");
     fais("open report printing");
     fais("open printing now");
+
+    puts("\n== 8. un second open printing garde le travail ==");
+    fais("open printing");
+    fais("print card 1");
+    fais("open printing");
+    fais("print card 2");
+    fais("close printing");
+
+    puts("\n== 9. ligne à ligne dans la boîte de message, le travail tient ==");
+    fais("open printing");
+    fais("print card 3");
+    fais("print card 4");
+    fais("close printing");
+
+    /* La section 5 a supprimé C3 : il reste cinq cartes, C1 C2 C4 C5 C6. */
+    puts("\n== 10. un script arrêté par une erreur : le travail est abandonné ==");
+    Object *b = hc_new_button(c1, "Imprimer");
+    hc_set_script(b, "on mouseUp\n"
+                     "  open printing\n"
+                     "  print card 5\n"
+                     "  put the zorglub of me into x\n"
+                     "  close printing\n"
+                     "end mouseUp\n");
+    hc_send(b, "mouseUp");
+    puts("   -- ensuite, un print part de nouveau tout de suite :");
+    fais("print card 4");
+
+    puts("\n== 11. un script arrêté par Cmd-. : abandonné aussi, sans dialogue ==");
+    hc_set_script(b, "on mouseUp\n"
+                     "  open printing\n"
+                     "  print card 2\n"
+                     "  repeat forever\n"
+                     "  end repeat\n"
+                     "  close printing\n"
+                     "end mouseUp\n");
+    g_couper = 3;
+    hc_send(b, "mouseUp");
+    g_couper = 0;
+    fais("print card 1");
 
     hc_unregister_stack(st);
     hc_free(st);
