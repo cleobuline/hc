@@ -6758,6 +6758,23 @@ static int *champ_couleur(Object *o, const char *prop)
     return NULL;
 }
 
+/* LES COULEURS QU'UN OBJET PORTE. Un bouton en a trois. Un CHAMP en a deux,
+ * depuis le 12 octobre — son fond (backColor) et son cadre (foreColor) —,
+ * l'extension accordée par l'utilisatrice « pour être cohérent avec notre HC
+ * couleur », exactement comme les boutons : même stockage, même opacité en
+ * quatrième nombre. Pas de hiliteColor : un champ ne s'allume pas, et le
+ * texte a déjà textColor, morceau par morceau. Tout autre objet : aucune. */
+static int *couleur_objet(Object *o, const char *prop)
+{
+    if (!o) return NULL;
+    if (o->type == OBJ_BUTTON) return champ_couleur(o, prop);
+    if (o->type == OBJ_FIELD) {
+        int *c = champ_couleur(o, prop);
+        return (c == &o->hilitecolor) ? NULL : c;
+    }
+    return NULL;
+}
+
 /* L'opacité qui va avec cette couleur — le champ jumeau de champ_couleur. */
 static int *champ_alpha(Object *o, const char *prop)
 {
@@ -6965,7 +6982,7 @@ static int obj_prop_read(Object *o, const char *prop, int forme,
         return 1;
     }
     {
-        int *c = (o->type == OBJ_BUTTON) ? champ_couleur(o, prop) : NULL;
+        int *c = couleur_objet(o, prop);
         if (c) {
             /* Quatre nombres seulement quand l'opacité est posée : une
              * couleur opaque se lit comme avant, en trois. */
@@ -13186,9 +13203,10 @@ static int v3_cmd_set(HctContexte *ctx, const HctNoeud *n)
             g_atop = sauve; return 1;
         }
         notify_field(o);
-    } else if (o->type == OBJ_BUTTON && champ_couleur(o, prop)) {
-        /* Vide efface : le bouton reprend le dessin d'HyperCard. */
-        int *c = champ_couleur(o, prop);
+    } else if (couleur_objet(o, prop)) {
+        /* Vide efface : l'objet reprend le dessin d'HyperCard. Un bouton, ou
+         * un champ pour son fond et son cadre : voir couleur_objet. */
+        int *c = couleur_objet(o, prop);
         int *a = champ_alpha(o, prop);
         const char *v = val;
         while (*v == ' ' || *v == '\t') v++;
