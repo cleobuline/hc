@@ -154,6 +154,15 @@ déjà signée et n'envoie pas ce qui est déjà notarisé. Joué ici contre des
 imitations de codesign, stapler, hdiutil et spctl — la relance, un refus, un
 vieux DMG non signé —, puis sur le Mac de l'utilisatrice (ci-dessous).
 
+Un DMG déjà là n'est repris que s'il contient encore exactement le dossier :
+le script l'ouvre en lecture seule et compare. Il reprenait autrefois tout DMG
+signé, sur sa seule signature — une pile corrigée sans changer de version
+partait donc avec l'ancienne, annoncée « PRÊT ». S'il diffère, le script
+s'arrête et nomme les fichiers ; supprimer le DMG et relancer le refait. Et
+`--essai` sur une clé refusée sortait avec le code 0 ; il s'arrête désormais.
+Les deux trouvés le 13 octobre par un audit extérieur, corrigés le jour même,
+essayés contre les imitations seulement — PAS ENCORE SUR UN MAC.
+
 **MESURÉ, du 12 au 13 octobre, sur le Mac de l'utilisatrice** (Catalina 10.15,
 Xcode 12.4) : la répétition générale, HC 0.8.2 signée puis zippée. Apple a
 accepté le jeton, l'envoi sur S3 a réussi, et le verdict est « Accepted »,
