@@ -1,23 +1,22 @@
 ## HC-0.8.2 — `play` plays its notes
 
-### Installing: macOS will say the app is damaged. It is not.
+### Installing
 
-**This release is not notarised.** macOS quarantines anything downloaded from
-the internet. Gatekeeper refuses an app it cannot trace to a notarised
-Developer ID, and its message says the wrong thing:
+**Signed and notarised since 13 October 2026.** The DMG of this release was
+replaced that day by the same 0.8.2, signed with the Developer ID of the
+Association Labynet and notarised by Apple. Open the DMG, drag `HC.app` into
+Applications, and open it. The first time, macOS asks the question it asks of
+anything downloaded from the internet — "HC is an app downloaded from the
+Internet. Are you sure you want to open it?" — and offers **Open**. It asks
+once.
 
-> *"HC is damaged and can't be opened. You should move it to the Trash."*
-
-The app is not damaged. It is not notarised, which is a different problem.
-Copy `HC.app` to `/Applications`, then clear the quarantine flag once:
+**A copy downloaded before 13 October is not notarised**, and macOS says
+that it "is damaged and can't be opened". It is not damaged. Clear the
+quarantine flag once, and it opens normally:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/HC.app
 ```
-
-It opens normally after that. Do not double-click the app inside the DMG:
-copy it out first. An app you build yourself from this repository is never
-quarantined.
 
 The binary is universal (`x86_64 arm64`), and the deployment target is
 macOS 10.13. The latest DMG is always at
@@ -174,8 +173,7 @@ tunes with it.
   - a stack's own palettes (`PLTE`);
   - patterns, HyperCard 1.x stacks, private-access stacks;
   - the proportional period fonts;
-  - `CFBundleVersion` is still hard-coded to `1`;
-  - not notarised: see "Installing".
+  - `CFBundleVersion` is still hard-coded to `1`.
 
 ### Changes in this release
 
