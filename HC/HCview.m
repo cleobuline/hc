@@ -4562,14 +4562,26 @@ static const char *cocoa_son_en_cours(void)
 
 /* « flash » : la carte entière inversée, puis remise (v3_cmd_flash, qui
  * tient chaque état quelques ticks). drawRect: peint l'inversion PAR-DESSUS
- * tout le reste quand ce drapeau est levé ; la boucle d'attente du noyau
- * (attends, puis cocoa_idle) fait le reste et montre l'image. */
-static BOOL gFlashInverse = NO;
+ * tout le reste dans la vue retenue ci-dessous ; la boucle d'attente du
+ * noyau (attends, puis cocoa_idle) fait le reste et montre l'image.
+ *
+ * L'INVERSION APPARTIENT À UNE VUE, pas au programme. C'était un simple
+ * booléen, lu par le drawRect: de TOUTES les vues — il y en a une par pile
+ * ouverte : une autre fenêtre qui se redessinait pendant le flash
+ * s'inversait aussi. Et l'invalidation passait par gView, qui suit la
+ * fenêtre active : si elle changeait entre l'inversion et la remise, la
+ * remise repeignait la mauvaise vue, et la bonne restait inversée jusqu'au
+ * prochain redessin venu d'ailleurs. Trouvé par un audit extérieur, déduit
+ * du code, pas observé. On retient donc la vue, comme gVueVerrou pour
+ * l'écran gelé, et en __weak pour la même raison : une fenêtre fermée
+ * pendant le flash laisse nil, à qui l'on peut tout envoyer. */
+static __weak HCView *gFlashVue = nil;
 
 static void cocoa_flash_screen(int inverse)
 {
-    gFlashInverse = inverse ? YES : NO;
-    hcv_invalide_tout();
+    HCView *vue = inverse ? gView : gFlashVue;
+    gFlashVue = inverse ? gView : nil;
+    [vue setNeedsDisplay:YES];
 }
 
 /* ═══ Cmd-. ═════════════════════════════════════════════════════════════
@@ -7571,7 +7583,7 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 - (void)drawRect:(NSRect)dirtyRect
 {
     [self dessineSansFlash:dirtyRect];
-    if (gFlashInverse) {
+    if (self == gFlashVue) {
         [[NSColor whiteColor] setFill];
         NSRectFillUsingOperation([self bounds], NSCompositingOperationDifference);
     }

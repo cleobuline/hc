@@ -26,9 +26,9 @@ CE QUE HC EN FAIT
                      clignotements. L'attente est celle de « wait » (attends),
                      si bien que Cmd-. arrête un long « flash » ; la carte est
                      toujours remise à l'endroit avant de rendre la main.
-  Cocoa (HCview.m)   cocoa_flash_screen lève un drapeau ; drawRect: peint
-                     l'inversion (Difference, blanc) PAR-DESSUS tout le reste,
-                     l'écran gelé et FatBits compris.
+  Cocoa (HCview.m)   cocoa_flash_screen retient la vue inversée (gFlashVue) ;
+                     son drawRect: peint l'inversion (Difference, blanc)
+                     PAR-DESSUS tout le reste, l'écran gelé et FatBits compris.
 
 Harnais flash : une, deux, trois fois, une expression, une variable, les
 bornes, un hôte sans crochet ; la carte finit toujours à l'endroit. Le côté
@@ -58,4 +58,51 @@ NON MESURÉ — banc à jouer DANS HYPERCARD 2.4.1 (Basilisk II)
   · un nombre nul ou négatif : HC ne clignote pas ;
   · un nombre qui n'en est pas un : HC refuse, et le script s'arrête ;
   · un nombre décimal : HC prend sa partie entière ;
-  · « flash » sous lockScreen : HC clignote quand même.
+  · « flash » sous lockScreen : voir plus bas — HC, déduit du code, ne
+    clignote pas.
+
+
+UNE VUE, PAS LE PROGRAMME — 13 octobre, trouvé par un audit extérieur
+---------------------------------------------------------------------
+
+Le drapeau était un booléen global, lu par le drawRect: de TOUTES les vues —
+il y en a une par pile ouverte. Deux défauts, DÉDUITS DU CODE, PAS OBSERVÉS :
+
+  · une autre fenêtre qui se redessinait pendant le flash (passée devant,
+    redimensionnée) s'inversait aussi ;
+  · l'invalidation passait par gView, qui suit la fenêtre ACTIVE : si elle
+    changeait entre l'inversion et la remise — Cmd-Tab, un clic pendant
+    l'attente —, la remise repeignait la mauvaise vue, et la bonne restait
+    inversée jusqu'au prochain redessin venu d'ailleurs.
+
+Corrigé en retenant la vue à l'inversion, en __weak, comme gVueVerrou retient
+la vue de l'écran gelé : seule celle-là s'inverse, et c'est elle que la
+remise repeint, même si une autre est devenue active. Vérifié par la seule
+compilation (le job « interface Cocoa »).
+
+
+SOUS LOCKSCREEN — ce qui était écrit était une intention
+--------------------------------------------------------
+
+Le noyau et ce fichier disaient « HC clignote quand même : l'inversion se
+peint par-dessus l'écran gelé ». La seconde moitié est vraie — drawRect:
+peindrait l'inversion sur l'image gelée. La première ne l'est pas : rien ne
+déclenche ce dessin. cocoa_flash_screen demande un redessin par
+setNeedsDisplay:, et le verrou le RETIENT pour la vue gelée — c'est son
+métier. DÉDUIT DU CODE le 13 octobre, pas vu : sous lockScreen, HC ne
+clignote pas. Défaut antérieur à la correction ci-dessus, qui n'y change rien.
+
+Rien n'est touché tant que les deux côtés ne sont pas mesurés :
+
+  à jouer DANS HC (l'application)                — pour confirmer la déduction
+  à jouer DANS HYPERCARD 2.4.1 (Basilisk II)     — pour savoir ce qu'il faut
+
+    on mouseUp
+      lock screen
+      flash 3
+      unlock screen
+    end mouseUp
+
+Si HyperCard clignote sous verrou, la correction est petite : une
+invalidation propre au flash, qui passe le verrou sans toucher à ce qu'il
+retient.

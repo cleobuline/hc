@@ -22,11 +22,11 @@ CE QU'IL FAIT, comme notarytool :
 Il reste ensuite à AGRAFER le ticket : `xcrun stapler staple <fichier>`, qui
 existe, lui, dans Xcode 12.4.
 
-CE QUI EST VÉRIFIÉ, ET CE QUI NE L'EST PAS. La signature S3 a été comparée,
-octet pour octet, à celle de botocore, la bibliothèque officielle d'Amazon ; le
-jeton, vérifié avec une clé de test. Mais le script n'a JAMAIS PARLÉ À APPLE au
-moment où il est écrit : faute d'identifiants, personne ne l'a lancé pour de
-vrai. `--essai` fait tout sauf le réseau.
+CE QUI EST VÉRIFIÉ. La signature S3 a été comparée, octet pour octet, à
+celle de botocore, la bibliothèque officielle d'Amazon ; le jeton, vérifié avec
+une clé de test. Puis MESURÉ chez l'utilisatrice, du 12 au 13 octobre, sous
+Catalina : la soumission de HC 0.8.2, acceptée par Apple sans aucune remarque.
+`--essai` fait tout sauf le réseau.
 
 UTILISATION :
   python3 outils/notarise.py HC-0.8.3.dmg \\

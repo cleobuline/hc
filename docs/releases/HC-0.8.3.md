@@ -1,12 +1,14 @@
-## HC-0.8.3 — `flash`, and a notarised DMG
+## HC-0.8.3 — `flash`
 
 ### Installing
 
 **This release is signed and notarised.** HC is signed with the Developer ID
 of the Association Labynet, which distributes it, and Apple's notary service
-has checked it. Open the DMG, drag `HC.app` into Applications, and open it:
-macOS opens it like any other application. The `xattr` command that earlier
-releases asked for is no longer needed.
+has checked it. Open the DMG, drag `HC.app` into Applications, and open it.
+The first time, macOS asks the question it asks of anything downloaded from
+the internet — "HC is an app downloaded from the Internet. Are you sure you
+want to open it?" — and offers **Open**. It asks once. The "damaged" message
+and the `xattr` command that earlier releases needed are gone.
 
 The binary is universal (`x86_64 arm64`), and the deployment target is
 macOS 10.13. The latest DMG is always at
@@ -14,15 +16,15 @@ macOS 10.13. The latest DMG is always at
 
 ---
 
-**Update from 0.8.2.** One more HyperTalk command, `flash`, and the first
-HC that macOS opens without a warning.
+**Update from 0.8.2.** One more HyperTalk command, `flash`. HC has been
+signed and notarised since 13 October, when the DMG of 0.8.2 was replaced by
+a notarised one; 0.8.3 is the first release built for it from the start.
 
 ### At a glance
 
 | | 0.8.2 | 0.8.3 |
 | -- | -- | -- |
 | `flash 3` | "unknown command", and the script stopped | **the card flashes three times** |
-| Opening the downloaded HC.app | "HC is damaged", until `xattr` cleared the quarantine | **opens**: signed and notarised |
 | `the hcVersion`, "About HC" | `0.8.2` | `0.8.3` |
 
 ---
@@ -44,9 +46,10 @@ The card flashes: black turns to white and back, as many times as asked.
 
 ### 2. Signed and notarised
 
-Until now, macOS said that HC "is damaged and can't be opened": it was
+Until 13 October, macOS said that HC "is damaged and can't be opened": it was
 neither signed with a Developer ID nor notarised, and Gatekeeper refuses what
-it cannot trace. From this release on:
+it cannot trace. Since then — the DMG of 0.8.2 was replaced that day, and
+every release from now on:
 
 - **HC is signed** with the Developer ID of the Association Labynet, with
   the Hardened Runtime;

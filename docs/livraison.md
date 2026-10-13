@@ -152,11 +152,35 @@ hors du dépôt ; son en-tête dit lesquels. `--essai` vérifie tout sans rien
 signer ni envoyer. Relancé après une interruption, il ne resigne pas une app
 déjà signée et n'envoie pas ce qui est déjà notarisé. Joué ici contre des
 imitations de codesign, stapler, hdiutil et spctl — la relance, un refus, un
-vieux DMG non signé —, pas encore sur un Mac.
+vieux DMG non signé —, puis sur le Mac de l'utilisatrice (ci-dessous).
 
-**Le script n'a jamais parlé à Apple au moment où il est écrit** (12 octobre) :
-le jeton est vérifié avec une clé de test, la signature S3 est identique à
-celle de botocore, mais la première vraie soumission sera sa première mesure.
+Un DMG déjà là n'est repris que s'il contient encore exactement le dossier :
+le script l'ouvre en lecture seule et compare. Il reprenait autrefois tout DMG
+signé, sur sa seule signature — une pile corrigée sans changer de version
+partait donc avec l'ancienne, annoncée « PRÊT ». S'il diffère, le script
+s'arrête et nomme les fichiers ; supprimer le DMG et relancer le refait. Et
+`--essai` sur une clé refusée sortait avec le code 0 ; il s'arrête désormais.
+Les deux trouvés le 13 octobre par un audit extérieur, corrigés le jour même,
+essayés contre les imitations seulement — PAS ENCORE SUR UN MAC.
+
+**MESURÉ, du 12 au 13 octobre, sur le Mac de l'utilisatrice** (Catalina 10.15,
+Xcode 12.4) : la répétition générale, HC 0.8.2 signée puis zippée. Apple a
+accepté le jeton, l'envoi sur S3 a réussi, et le verdict est « Accepted »,
+« Ready for distribution », sans aucune remarque (`"issues": null`), les deux
+architectures dans le ticket. La première soumission du compte est restée plus
+d'une heure « In Progress » ; `--suivre` a repris l'attente. Le lendemain,
+`livrer.sh` a fait toute la livraison du premier coup, vingt-trois piles
+comprises : le DMG accepté en vingt secondes, et « Notarized Developer ID »
+pour le DMG comme pour l'app.
+
+Ce que voit alors l'utilisatrice, le DMG téléchargé ouvert et l'app lancée :
+la seule question que macOS pose de tout ce qui vient d'Internet — « cette
+application a été téléchargée depuis Internet, voulez-vous vraiment
+l'ouvrir ? » —, avec un bouton « Ouvrir », une fois. Plus de « endommagé ».
+
+**Le DMG se joint à la release sous le nom `HC.dmg`** : le lien
+`releases/latest/download/HC.dmg` en dépend. `livrer.sh` le fabrique sous
+`HC-<version>.dmg` ; le renommer ne touche ni à la signature ni au ticket.
 
 ### 5. Agrafer
 
@@ -237,3 +261,30 @@ notarisée. Le contournement, à donner aux utilisateurs :
 
 C'est ce que porte la section « Installing » de la note de 0.6.9.4. Le jour où
 la chaîne ci-dessus tourne, cette section disparaît des notes suivantes.
+
+## Le Mac App Store, un jour — décidé le 13 octobre
+
+HC se distribue hors App Store, signé et notarisé. Si un jour il y va, c'est
+**la CI de GitHub** qui construira et enverra — choix de l'utilisatrice, le
+13 octobre, plutôt qu'Xcode Cloud : Apple exige pour l'App Store un Xcode
+récent (de mémoire, Xcode 16 depuis 2025), que le Mac de l'utilisatrice, sous
+Catalina, ne peut pas faire tourner, et le Mac de la CI le fait déjà
+compiler HC à chaque poussée.
+
+Le chantier, dans l'ordre :
+
+  1. le **bac à sable**, obligatoire sur l'App Store (voir HC/HC.entitlements,
+     qui dit pourquoi il n'est pas posé) : piles ouvertes par leur chemin,
+     `open file`, sons à côté des piles, tout passerait par des
+     autorisations ;
+  2. les **piles intégrées à l'app**, copiées dans les Documents au premier
+     lancement : un paquet pour l'App Store n'installe que l'app ; et
+     aucune pile d'Apple ne peut y voyager ;
+  3. un **workflow** qui construit avec l'Xcode récent, signe avec les
+     certificats « Distribution d'applications Mac » et « Distribution de
+     l'installateur Mac », et envoie le `.pkg` à App Store Connect ;
+     certificats et clé d'API en secrets du dépôt.
+
+Puis la revue humaine d'Apple, qui regardera aussi le nom : HyperCard est une
+marque d'Apple.
+
