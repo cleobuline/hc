@@ -35,6 +35,12 @@ bornes, un hôte sans crochet ; la carte finit toujours à l'endroit. Le côté
 Cocoa n'est vérifié que par la compilation.
 
 
+VU DANS HC (l'application) par l'utilisatrice, le même jour, après
+recompilation : « oui, ça clignote bien ». Le chemin entier, donc — le
+noyau, le drapeau, l'inversion peinte par drawRect:. Pas une mesure de la
+vitesse.
+
+
 NON MESURÉ — banc à jouer DANS HYPERCARD 2.4.1 (Basilisk II)
 -----------------------------------------------------------
 
