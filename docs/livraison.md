@@ -252,3 +252,30 @@ notarisée. Le contournement, à donner aux utilisateurs :
 
 C'est ce que porte la section « Installing » de la note de 0.6.9.4. Le jour où
 la chaîne ci-dessus tourne, cette section disparaît des notes suivantes.
+
+## Le Mac App Store, un jour — décidé le 13 octobre
+
+HC se distribue hors App Store, signé et notarisé. Si un jour il y va, c'est
+**la CI de GitHub** qui construira et enverra — choix de l'utilisatrice, le
+13 octobre, plutôt qu'Xcode Cloud : Apple exige pour l'App Store un Xcode
+récent (de mémoire, Xcode 16 depuis 2025), que le Mac de l'utilisatrice, sous
+Catalina, ne peut pas faire tourner, et le Mac de la CI le fait déjà
+compiler HC à chaque poussée.
+
+Le chantier, dans l'ordre :
+
+  1. le **bac à sable**, obligatoire sur l'App Store (voir HC/HC.entitlements,
+     qui dit pourquoi il n'est pas posé) : piles ouvertes par leur chemin,
+     `open file`, sons à côté des piles, tout passerait par des
+     autorisations ;
+  2. les **piles intégrées à l'app**, copiées dans les Documents au premier
+     lancement : un paquet pour l'App Store n'installe que l'app ; et
+     aucune pile d'Apple ne peut y voyager ;
+  3. un **workflow** qui construit avec l'Xcode récent, signe avec les
+     certificats « Distribution d'applications Mac » et « Distribution de
+     l'installateur Mac », et envoie le `.pkg` à App Store Connect ;
+     certificats et clé d'API en secrets du dépôt.
+
+Puis la revue humaine d'Apple, qui regardera aussi le nom : HyperCard est une
+marque d'Apple.
+
