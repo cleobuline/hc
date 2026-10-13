@@ -4,9 +4,11 @@
 
 **This release is signed and notarised.** HC is signed with the Developer ID
 of the Association Labynet, which distributes it, and Apple's notary service
-has checked it. Open the DMG, drag `HC.app` into Applications, and open it:
-macOS opens it like any other application. The `xattr` command that earlier
-releases asked for is no longer needed.
+has checked it. Open the DMG, drag `HC.app` into Applications, and open it.
+The first time, macOS asks the question it asks of anything downloaded from
+the internet — "HC is an app downloaded from the Internet. Are you sure you
+want to open it?" — and offers **Open**. It asks once. The "damaged" message
+and the `xattr` command that earlier releases needed are gone.
 
 The binary is universal (`x86_64 arm64`), and the deployment target is
 macOS 10.13. The latest DMG is always at

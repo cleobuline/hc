@@ -164,6 +164,11 @@ d'une heure « In Progress » ; `--suivre` a repris l'attente. Le lendemain,
 comprises : le DMG accepté en vingt secondes, et « Notarized Developer ID »
 pour le DMG comme pour l'app.
 
+Ce que voit alors l'utilisatrice, le DMG téléchargé ouvert et l'app lancée :
+la seule question que macOS pose de tout ce qui vient d'Internet — « cette
+application a été téléchargée depuis Internet, voulez-vous vraiment
+l'ouvrir ? » —, avec un bouton « Ouvrir », une fois. Plus de « endommagé ».
+
 **Le DMG se joint à la release sous le nom `HC.dmg`** : le lien
 `releases/latest/download/HC.dmg` en dépend. `livrer.sh` le fabrique sous
 `HC-<version>.dmg` ; le renommer ne touche ni à la signature ni au ticket.
