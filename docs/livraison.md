@@ -152,15 +152,21 @@ hors du dépôt ; son en-tête dit lesquels. `--essai` vérifie tout sans rien
 signer ni envoyer. Relancé après une interruption, il ne resigne pas une app
 déjà signée et n'envoie pas ce qui est déjà notarisé. Joué ici contre des
 imitations de codesign, stapler, hdiutil et spctl — la relance, un refus, un
-vieux DMG non signé —, pas encore sur un Mac.
+vieux DMG non signé —, puis sur le Mac de l'utilisatrice (ci-dessous).
 
 **MESURÉ, du 12 au 13 octobre, sur le Mac de l'utilisatrice** (Catalina 10.15,
 Xcode 12.4) : la répétition générale, HC 0.8.2 signée puis zippée. Apple a
 accepté le jeton, l'envoi sur S3 a réussi, et le verdict est « Accepted »,
 « Ready for distribution », sans aucune remarque (`"issues": null`), les deux
 architectures dans le ticket. La première soumission du compte est restée plus
-d'une heure « In Progress » ; `--suivre` a repris l'attente. `livrer.sh`,
-lui, n'a pas encore tourné sur un Mac.
+d'une heure « In Progress » ; `--suivre` a repris l'attente. Le lendemain,
+`livrer.sh` a fait toute la livraison du premier coup, vingt-trois piles
+comprises : le DMG accepté en vingt secondes, et « Notarized Developer ID »
+pour le DMG comme pour l'app.
+
+**Le DMG se joint à la release sous le nom `HC.dmg`** : le lien
+`releases/latest/download/HC.dmg` en dépend. `livrer.sh` le fabrique sous
+`HC-<version>.dmg` ; le renommer ne touche ni à la signature ni au ticket.
 
 ### 5. Agrafer
 

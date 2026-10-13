@@ -26,9 +26,12 @@
 # agrafée sans être renvoyée. Même chose pour un DMG déjà signé. Pour refaire
 # un DMG — des piles ont changé —, supprimer l'ancien d'abord.
 #
-# NON ESSAYÉ SUR UN MAC au moment où il est écrit (12 octobre) : codesign,
-# hdiutil, stapler et spctl n'existent pas là où il a été écrit. Chaque étape
-# dit ce qu'elle fait, et le script s'arrête à la première erreur.
+# MESURÉ SUR LE MAC DE L'UTILISATRICE le 13 octobre (Catalina, Xcode 12.4),
+# du premier coup : HC 0.8.2 et vingt-trois piles. L'app resignée a retrouvé
+# l'empreinte déjà notarisée — le ticket a été agrafé sans renvoi —, le DMG a
+# été accepté en vingt secondes, et spctl dit « Notarized Developer ID » pour
+# les deux. Chaque étape dit ce qu'elle fait, et le script s'arrête à la
+# première erreur.
 
 set -eu
 
@@ -171,4 +174,6 @@ spctl -a -vvv "$APP" 2>&1 | grep -q "accepted" ||
     stop "Gatekeeper refuse HC.app"
 
 printf '\nPRÊT : %s\n' "$DMG"
-printf "Signé, notarisé, agrafé. Il ne reste qu'à le joindre à la release.\n"
+printf "Signé, notarisé, agrafé. Il ne reste qu'à le joindre à la release,\n"
+printf "SOUS LE NOM HC.dmg : le lien releases/latest/download/HC.dmg en dépend.\n"
+printf "Le renommer ne touche ni à la signature ni au ticket.\n"
