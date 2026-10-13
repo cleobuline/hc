@@ -23,12 +23,9 @@ its own script, so you add one by copying it.*
 ## Installing
 
 Download the DMG from the latest [release](https://github.com/cleobuline/hc/releases)
-and copy `HC.app` to `/Applications`. The app is not notarised; once:
+and copy `HC.app` to `/Applications`. The app is  notarised; 
 
-```sh
-xattr -dr com.apple.quarantine /Applications/HC.app
-```
-
+ 
 ## Building
 
 On a Mac, with Xcode:
