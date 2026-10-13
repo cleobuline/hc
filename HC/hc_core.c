@@ -14161,8 +14161,12 @@ static int v3_cmd_beep(HctContexte *ctx, const HctNoeud *n)
  * NON MESURÉ : la VITESSE. HC tient chaque état FLASH_TICKS ticks — l'image
  * inversée, puis l'image remise avant le clignotement suivant. Aussi : un
  * nombre qui n'en est pas un (HC refuse, comme pour « print N cards »), un
- * nombre nul ou négatif (HC ne clignote pas), et « flash » sous lockScreen
- * (HC clignote quand même : l'inversion se peint par-dessus l'écran gelé).
+ * nombre nul ou négatif (HC ne clignote pas), et « flash » sous lockScreen.
+ * Ce dernier cas était écrit ici « HC clignote quand même », et c'était une
+ * intention, pas un fait : DÉDUIT DU CODE le 13 octobre, pas vu, HC ne
+ * clignote PAS sous lockScreen — l'hôte demande un redessin, et le verrou le
+ * retient (setNeedsDisplay: de la vue gelée, dans HCview.m). Ce que fait
+ * HyperCard n'est pas mesuré non plus : docs/mesures/flash.txt.
  *
  * Cmd-. arrête un long « flash », et la carte est toujours remise à
  * l'endroit avant de rendre la main. */
