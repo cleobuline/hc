@@ -163,6 +163,15 @@ s'arrête et nomme les fichiers ; supprimer le DMG et relancer le refait. Et
 Les deux trouvés le 13 octobre par un audit extérieur, corrigés le jour même,
 essayés contre les imitations seulement — PAS ENCORE SUR UN MAC.
 
+**MESURÉ le soir du 13 octobre, sur le Mac de l'utilisatrice**, avec cette
+version : une livraison complète de 0.8.3, DMG neuf, du premier coup. La
+relance, elle, s'est arrêtée à l'étape 1 — « detritus not allowed » : entre
+les deux lancements, le paquet HC.app avait reçu `com.apple.FinderInfo` et
+`com.apple.metadata:_kMDItemUserTags`, sans doute du Finder, et le script ne
+les effaçait qu'avant de signer, pas sur le chemin de la reprise. Il les
+efface désormais dans les deux cas. La comparaison du DMG au dossier n'a donc
+toujours pas tourné sur un Mac.
+
 **MESURÉ, du 12 au 13 octobre, sur le Mac de l'utilisatrice** (Catalina 10.15,
 Xcode 12.4) : la répétition générale, HC 0.8.2 signée puis zippée. Apple a
 accepté le jeton, l'envoi sur S3 a réussi, et le verdict est « Accepted »,
