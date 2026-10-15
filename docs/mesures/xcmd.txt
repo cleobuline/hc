@@ -1,0 +1,90 @@
+XCMD ET XFCN — CE QUI EST MESURÉ, ET UNE PISTE NON DÉCIDÉE — 15 octobre
+=======================================================================
+
+Parti d'une pile d'époque : le Musicologue, un système expert de dictée
+musicale fait sur HyperCard il y a une trentaine d'années, auquel
+l'utilisatrice a contribué. Il porte « pas mal de XFCN », dont une écrite par
+elle, pour l'évaluation des partitions. La pile n'est pas encore entre nos
+mains ; la langue de son XFCN (Pascal ou C) n'est pas connue.
+
+
+CE QUI EST MESURÉ
+-----------------
+
+Un XCMD ou un XFCN est du code 68000, rangé dans la RESSOURCE de la pile (la
+seconde partie du fichier, celle que perd presque tout transfert hors d'un
+Mac). On l'y mettait avec ResEdit, ou ResCopy.
+
+  · Il n'arrive jusqu'à HC que dans un MacBinary fait DANS l'émulateur (voir
+    pile_origine.txt, « LES ICÔNES, PAR UN MACBINARY », 2 octobre).
+  · L'import lit la ressource, mais n'en garde que les ICON :
+    hc_origine_ressources (hc_origine.c) compte le reste dans « autres ». Sur
+    Stack Templates : 1 XCMD, la palette StackTemplatePal, ignorée.
+  · Le format HC n'a aucune place pour lui : enregistrée par HC, la pile
+    l'a perdu.
+  · Appelé, il n'a personne pour répondre : « personne ne répond à
+    « StackTemplatePal … » », et la ligne tombe (pile_origine.txt).
+  · Un seul est imité, réécrit en C dans le noyau : PopUpMenu, d'Andrew
+    Gilmartin (v3_popupmenu, hc_core.c).
+
+La voie qui ne demande rien à HC : réécrire l'XFCN en HyperTalk, comme une
+« function » du même nom dans le script de la pile. HC la trouve sur le
+chemin des messages.
+
+
+TROIS ROUTES PESÉES LE 15 OCTOBRE — en conversation, RIEN N'EST CODÉ
+--------------------------------------------------------------------
+
+1. ÉMULER LE 68000.
+   Le processeur est le moins difficile : bien documenté, et des jeux de
+   tests publics donnent l'état des registres avant et après chaque
+   instruction. Le travail est AUTOUR : un XFCN appelle le Mac (la mémoire,
+   QuickDraw, les fenêtres, le son) et HyperCard (évaluer une expression,
+   lire une globale, envoyer un message). Les appels à HyperCard sont une
+   trentaine et bornés ; la mémoire, une poignée ; QuickDraw et le reste, un
+   puits sans fond — Basilisk II à refaire. Le juste milieu serait un bac à
+   sable pour les XFCN DE CALCUL seulement.
+   Avant tout : MESURER quels appels font de vrais XCMD (leurs mots A-line),
+   sur les piles que nous avons. Pas fait.
+
+2. DU CODE NATIF MODERNE, dans un fichier à côté de la pile. ÉCARTÉ.
+   Il aurait tous les pouvoirs sur le Mac, et casserait la liste de
+   bacasable.txt (« CE QU'UNE PILE NE PEUT PAS FAIRE DANS HC ») : une pile
+   partagée avec son module deviendrait un cheval de Troie. Et HC tourne sous
+   Hardened Runtime (HC.entitlements) : la validation des bibliothèques
+   refuse un code signé par une autre équipe, sauf à la lever par
+   l'entitlement disable-library-validation — affaiblir HC pour tous.
+
+3. WEBASSEMBLY. Celle que l'utilisatrice préfère, dit-elle le jour même.
+   L'XFCN s'écrit en C (ou autre), se compile en un .wasm, et tourne dans un
+   interprète enfermé : il ne touche que ce que HC lui tend. Donc :
+     · une pile piégée n'y gagne rien de plus qu'un script HyperTalk ;
+     · le même fichier sert sur Intel, Apple Silicon, et la version X11 ;
+     · rien à demander à Apple.
+   L'interface imiterait celle de HyperCard (les paramètres, la valeur rendue,
+   passFlag, et les services rendus par rappel), pour qu'un ancien XFCN en C
+   se recompile presque tel quel.
+
+
+CE QUI N'EST PAS DÉCIDÉ
+-----------------------
+
+TOUT. L'utilisatrice, le 15 octobre, ne se sent pas encore prête à se lancer
+dans un chantier XCMD et XFCN sur HC.
+
+Et c'est une EXTENSION : HyperCard ne chargeait pas de code moderne. Ce
+serait une quatrième exception à la règle de CLAUDE.md, qu'elle seule peut
+accorder — comme les couleurs des champs le 11 octobre.
+
+Le jour venu, NON ÉVALUÉ encore :
+  · quel interprète WebAssembly (écrit en C, sa licence, son entretien, sa
+    taille dans le noyau) ;
+  · où vit le module : à côté de la pile, ou DANS la pile — et son nom
+    (pas « .bin », qui est déjà MacBinary) ;
+  · ce qu'il peut demander : la liste exacte des rappels, chacun borné ;
+  · s'il peut tourner sans fin, et comment Cmd-. l'arrête.
+
+Et une première marche, utile à la première route — et à la troisième si le
+module vit dans la pile : faire au format HC une place pour du code rangé
+dans la pile, et y GARDER à l'import les XCMD et XFCN tels quels. Elle ne
+casserait rien.
