@@ -114,6 +114,16 @@ Les sources THINK C sont perdues (README de cleobuline/maccam-6). Leur
 reconstruction moderne, maccam-6, a un cœur en C pur : cam_forth.c (le
 Forth) et cam_core.c (le moteur à tables, double tampon).
 
+Le même cœur vit dans cleobuline/camX11, la version X11 (« make selftest »
+le vérifie sans écran). Comparés le 15 octobre : cam_core.c, cam_core.h et
+cam_forth.h IDENTIQUES ; cam_forth.c diffère de 24 lignes. maccam-6
+(poussé le 18 juillet) découpe la source compilée par tokenize(), qui efface
+les commentaires « \ » ; camX11 (13 juillet) la découpe à la main, par
+strtok, sans les effacer — un « \ » y est lu comme du code — et la tronque à
+4 096 octets. LE FORTH À PRENDRE EST CELUI DE MACCAM-6. Les deux dépôts sont
+sous licence MIT, de la même autrice que HC : rien n'empêche de les
+reprendre.
+
 LE BANC. cam_forth.c et cam_core.c compilés pour wasm32 par clang 18, SANS
 CHANGER UNE LIGNE, plus une mini-bibliothèque C d'une soixantaine de lignes
 (mémoire, chaînes, snprintf réduit à %d et %s, fprintf muet). Le module :
