@@ -1,0 +1,488 @@
+XCMD ET XFCN — CE QUI EST MESURÉ, ET UNE PISTE NON DÉCIDÉE — 15 octobre
+=======================================================================
+
+Parti d'une pile d'époque : le Musicologue, un système expert de dictée
+musicale fait sur HyperCard il y a une trentaine d'années, auquel
+l'utilisatrice a contribué. Il porte « pas mal de XFCN », dont une écrite par
+elle, pour l'évaluation des partitions. La pile n'est pas encore entre nos
+mains ; la langue de son XFCN (Pascal ou C) n'est pas connue.
+
+
+CE QUI EST MESURÉ
+-----------------
+
+Un XCMD ou un XFCN est du code 68000, rangé dans la RESSOURCE de la pile (la
+seconde partie du fichier, celle que perd presque tout transfert hors d'un
+Mac). On l'y mettait avec ResEdit, ou ResCopy.
+
+  · Il n'arrive jusqu'à HC que dans un MacBinary fait DANS l'émulateur (voir
+    pile_origine.txt, « LES ICÔNES, PAR UN MACBINARY », 2 octobre).
+  · L'import lit la ressource, mais n'en garde que les ICON :
+    hc_origine_ressources (hc_origine.c) compte le reste dans « autres ». Sur
+    Stack Templates : 1 XCMD, la palette StackTemplatePal, ignorée.
+  · Le format HC n'a aucune place pour lui : enregistrée par HC, la pile
+    l'a perdu.
+  · Appelé, il n'a personne pour répondre : « personne ne répond à
+    « StackTemplatePal … » », et la ligne tombe (pile_origine.txt).
+  · Un seul est imité, réécrit en C dans le noyau : PopUpMenu, d'Andrew
+    Gilmartin (v3_popupmenu, hc_core.c).
+
+La voie qui ne demande rien à HC : réécrire l'XFCN en HyperTalk, comme une
+« function » du même nom dans le script de la pile. HC la trouve sur le
+chemin des messages.
+
+
+TROIS ROUTES PESÉES LE 15 OCTOBRE — en conversation, RIEN N'EST CODÉ
+--------------------------------------------------------------------
+
+1. ÉMULER LE 68000.
+   Le processeur est le moins difficile : bien documenté, et des jeux de
+   tests publics donnent l'état des registres avant et après chaque
+   instruction. Le travail est AUTOUR : un XFCN appelle le Mac (la mémoire,
+   QuickDraw, les fenêtres, le son) et HyperCard (évaluer une expression,
+   lire une globale, envoyer un message). Les appels à HyperCard sont une
+   trentaine et bornés ; la mémoire, une poignée ; QuickDraw et le reste, un
+   puits sans fond — Basilisk II à refaire. Le juste milieu serait un bac à
+   sable pour les XFCN DE CALCUL seulement.
+   Avant tout : MESURER quels appels font de vrais XCMD (leurs mots A-line),
+   sur les piles que nous avons. Pas fait.
+
+2. DU CODE NATIF MODERNE, dans un fichier à côté de la pile. ÉCARTÉ.
+   Il aurait tous les pouvoirs sur le Mac, et casserait la liste de
+   bacasable.txt (« CE QU'UNE PILE NE PEUT PAS FAIRE DANS HC ») : une pile
+   partagée avec son module deviendrait un cheval de Troie. Et HC tourne sous
+   Hardened Runtime (HC.entitlements) : la validation des bibliothèques
+   refuse un code signé par une autre équipe, sauf à la lever par
+   l'entitlement disable-library-validation — affaiblir HC pour tous.
+
+3. WEBASSEMBLY. Celle que l'utilisatrice préfère, dit-elle le jour même.
+   L'XFCN s'écrit en C (ou autre), se compile en un .wasm, et tourne dans un
+   interprète enfermé : il ne touche que ce que HC lui tend. Donc :
+     · une pile piégée n'y gagne rien de plus qu'un script HyperTalk ;
+     · le même fichier sert sur Intel, Apple Silicon, et la version X11 ;
+     · rien à demander à Apple.
+   L'interface imiterait celle de HyperCard (les paramètres, la valeur rendue,
+   passFlag, et les services rendus par rappel), pour qu'un ancien XFCN en C
+   se recompile presque tel quel.
+
+
+CE QUI N'EST PAS DÉCIDÉ
+-----------------------
+
+D'abord TOUT. L'utilisatrice, le 15 octobre, ne se sent pas encore prête à
+se lancer dans un chantier XCMD et XFCN sur HC. Le soir même, elle l'a
+décidé — voir « DÉCIDÉ LE 15 OCTOBRE AU SOIR », plus bas.
+
+Et c'est une EXTENSION : HyperCard ne chargeait pas de code moderne. Ce
+serait une quatrième exception à la règle de CLAUDE.md, qu'elle seule peut
+accorder — comme les couleurs des champs le 11 octobre.
+
+Le jour venu, NON ÉVALUÉ encore :
+  · quel interprète WebAssembly (écrit en C, sa licence, son entretien, sa
+    taille dans le noyau) ;
+  · où vit le module : à côté de la pile, ou DANS la pile — et son nom
+    (pas « .bin », qui est déjà MacBinary) ;
+  · ce qu'il peut demander : la liste exacte des rappels, chacun borné ;
+  · s'il peut tourner sans fin, et comment Cmd-. l'arrête.
+
+Et une première marche, utile à la première route — et à la troisième si le
+module vit dans la pile : faire au format HC une place pour du code rangé
+dans la pile, et y GARDER à l'import les XCMD et XFCN tels quels. Elle ne
+casserait rien.
+
+
+MESURÉ LE 15 OCTOBRE — LE CŒUR DE MACCAM-6 EN WEBASSEMBLY, dans le conteneur
+---------------------------------------------------------------------------
+
+LA PILE. « MAC•CAM Workshop », écrite par l'utilisatrice au début des années
+90 avec THINK C : un atelier d'automates cellulaires d'après la CAM-6 de
+Toffoli et Margolus (MIT Press, 1987). 88 cartes, une cinquantaine
+d'expériences, les règles écrites en Forth dans un champ. Reçue en données
+seules, SANS SA RESSOURCE : ses XFCN n'y sont pas. Pile au format d'Apple, jamais
+commise. Ses scripts appellent :
+
+  FORTH(texte)        compile, remplit les globales pln0…pln3 (les tables),
+                      et renvoie ses fautes en messages : COMPILE_ERR,
+                      STACK_ERR, NEST_ERR, INTERPRET_ERR, avec la position du
+                      mot fautif ;
+  maccam(rect, "CAM", …)  ouvre une FENÊTRE EXTERNE « CAM », avec ses
+                      propriétés (phaseA, scale, palette) et ses messages
+                      (send toscrap to window "CAM") ;
+  fulldrag, ballons   introuvables dans la pile ; rôle non lu.
+
+Les sources THINK C sont perdues (README de cleobuline/maccam-6). Leur
+reconstruction moderne, maccam-6, a un cœur en C pur : cam_forth.c (le
+Forth) et cam_core.c (le moteur à tables, double tampon).
+
+Le même cœur vit dans cleobuline/camX11, la version X11 (« make selftest »
+le vérifie sans écran). Comparés le 15 octobre : cam_core.c, cam_core.h et
+cam_forth.h IDENTIQUES ; cam_forth.c diffère de 24 lignes. maccam-6
+(poussé le 18 juillet) découpe la source compilée par tokenize(), qui efface
+les commentaires « \ » ; camX11 (13 juillet) la découpe à la main, par
+strtok, sans les effacer — un « \ » y est lu comme du code — et la tronque à
+4 096 octets. LE FORTH À PRENDRE EST CELUI DE MACCAM-6. Les deux dépôts sont
+sous licence MIT, de la même autrice que HC : rien n'empêche de les
+reprendre.
+
+LE BANC. cam_forth.c et cam_core.c compilés pour wasm32 par clang 18, SANS
+CHANGER UNE LIGNE, plus une mini-bibliothèque C d'une soixantaine de lignes
+(mémoire, chaînes, snprintf réduit à %d et %s, fprintf muet). Le module :
+26 Ko. Joué par Node 22 ; le même code compilé par gcc en natif, pour
+témoin. Un planeur et un R-pentomino sur 128×128, 100 pas :
+
+  règle de la carte « Conway », réécrite (voir plus bas)
+      natif   126 cellules   empreinte 5a7d050b
+      wasm    126 cellules   empreinte 5a7d050b    0 message du compilateur
+  1000 pas : wasm ≈ 4 300 pas par seconde, natif ≈ 5 400.
+
+IDENTIQUE AU BIT PRÈS. La vitesse est celle d'un compilateur À LA VOLÉE
+(celui de Node) : un petit interprète logé dans HC sera plus lent, et ce
+n'est PAS MESURÉ.
+
+DEUX ÉCARTS ENTRE LE FORTH DES ANNÉES 90 ET CELUI DE MACCAM-6, mesurés en
+bissectant la carte « Conway », qui telle quelle donne 0 cellule :
+  · « 0 CONSTANT DEATH » : MacCam-6 ne connaît pas CONSTANT (« mot inconnu »
+    par milliers). Écrit « : DEATH 0 ; », ça passe ;
+  · « MAKE-TABLE LIFE » puis « MAKE-TABLE ECHO » : dans MacCam-6, la seconde
+    table REMPLACE la première — 126 cellules sans la seconde ligne, 0 avec.
+    La pile des années 90 attend une table par plan : LIFE pour le plan 0, ECHO
+    pour le plan 1.
+Les mots de l'utilisatrice dans la table de sélection { DEATH DEATH
+UNCHANGED BORN … } marchent, eux.
+
+
+DÉCIDÉ LE 15 OCTOBRE AU SOIR
+----------------------------
+
+L'utilisatrice lance le chantier, au nouveau forfait du vendredi 16
+octobre : « ce serait une grande avancée, et MAC•CAM Workshop serait une
+super vitrine pour HC », une pile toujours dans les archives du web, qu'elle
+fait encore tourner dans Basilisk II. C'est la quatrième exception à la
+règle des extensions (CLAUDE.md).
+
+LE BUT, qui sert de juge : la pile MAC•CAM d'origine tourne dans HC SANS
+CHANGER UNE LIGNE DE SES SCRIPTS — ses XFCN refaits en WebAssembly, sous
+leurs noms.
+
+L'ORDRE PROPOSÉ, chaque marche mesurée avant la suivante :
+  1. Choisir l'interprète WebAssembly : licence, entretien, taille, et sa
+     VITESSE sur le banc ci-dessus (le natif fait 5 400 pas par seconde).
+  2. Le module DANS la pile : une place au format HC, pour qu'une pile
+     reste un seul fichier à partager. Comment on l'y met : à décider avec
+     elle, dans le vocabulaire de HyperCard ou de LiveCode.
+  3. L'appel : un XFCN est cherché sur le chemin des messages, comme dans
+     HyperCard ; ses paramètres, sa valeur rendue, passFlag ; Cmd-. l'arrête ;
+     sa mémoire est bornée ; les modules passent au fuzzing.
+  4. Les rappels, un à un, d'après HyperCard : poser et lire une globale,
+     évaluer une expression, envoyer un message.
+  5. Le XFCN FORTH, depuis cam_forth.c, rendu compatible avec le dialecte
+     des années 90 (les deux écarts ci-dessus), et ses fautes renvoyées comme le
+     faisait l'original.
+  6. La fenêtre externe « CAM » : le moteur calcule dans son double tampon,
+     HC n'offre qu'un service — « voici w×h octets et une palette, montre-
+     les » — et les propriétés et messages de fenêtre de HyperCard 2.
+
+LES ORACLES, à jouer DANS HYPERCARD 2.4.1 (Basilisk II) le moment venu :
+ce que rend FORTH(), les paramètres exacts des messages d'erreur, ce que
+lisent et posent phaseA, scale et palette. Et, s'il se trouve, un
+MacBinary de la pile, pour lire les XFCN d'origine.
+
+
+MESURÉ LE 16 OCTOBRE — LE MACBINARY D'ORIGINE
+---------------------------------------------
+
+Reçu de l'utilisatrice, fait dans Basilisk II : « MAC•CAM.Workshop »,
+MacBinary II, STAK/WILD. Données : 1 163 264 octets, les mêmes que la pile
+reçue la veille. RESSOURCE : 564 587 octets —
+
+  XFCN  FORTH      26 852 octets   le compilateur
+  XFCN  MACCAM     23 850          le moteur et sa fenêtre
+  XFCN  FullDrag    3 568          un glisser au contour gris
+  XFCN  FileName    1 176          un dialogue de nom — AUCUN script ne l'appelle
+  XCMD  Ballons     6 016          les bulles d'aide (deux appels au Help Manager)
+  PICT  ×37, clut ×17 (dont 128, la palette par défaut des scripts), ICON ×17
+
+Chaque code commence par l'en-tête de THINK C, et THINK C y a laissé les
+noms des fonctions (pour MacsBug) : c'est ce qui permet de le lire.
+
+COMMENT C'EST LU, ET SES LIMITES. Un désassembleur 68000 (celui de LLVM 18,
+incomplet), un comptage des mots A-line au nom connu, et les chaînes. Le
+comptage peut prendre une donnée pour un appel : c'est un relevé, pas une
+preuve. Les rappels à HyperCard se reconnaissent à leur motif — le numéro
+de requête posé à +76 du XCmdBlock, puis un saut à entryPoint (+72) —, mais
+chaque XFCN embarque TOUTE la bibliothèque de liaison de THINK C : chaque
+numéro y paraît une fois. On sait donc ce qui est LIÉ, pas ce qui est
+APPELÉ. Les noms des requêtes 1 à 28 et 39 sont ceux de HyperXCmd.h, de
+mémoire, à vérifier.
+
+FORTH : DU CALCUL. Appels système relevés : la mémoire (NewPtrClear,
+DisposPtr, BlockMove, les handles), SANE (Pack4), SysBeep, NumToString.
+Rien d'une fenêtre. Son vocabulaire, lu dans ses chaînes :
+  déclarations  N/MOORE N/VONN N/MARG, et leurs variantes -HV et -PH
+  voisins       CENTER CENTER' &CENTER &CENTER' NORTH SOUTH EAST WEST,
+                N.EAST N.WEST S.EAST S.WEST, NORTH' SOUTH' EAST' WEST',
+                CW CCW OPP CW' CCW' OPP', PHASE PHASE' HORZ VERT,
+                &PHASE &PHASE' &HORZ &VERT
+  langage       DUP DROP SWAP ROT OVER NOT AND XOR IF ELSE THEN DO LOOP
+                BEGIN WHILE REPEAT UNTIL CONSTANT VARIABLE BASE BEEP SP0
+  tables        MAKE-TABLE >PLN0 … >PLN3
+  fautes        INTERPRET_ERR « Can't understand », « End definition »,
+                « Compile Only » ; STACK_ERR « Stack problem during
+                execution » ; COMPILE_ERR « Unknow'd word », « COLON inside
+                definition » ; NEST_ERR « Unnested condition »
+ABSENTS DU FORTH DE MACCAM-6 : CONSTANT, VARIABLE, BEEP, ROT, DO LOOP,
+BEGIN WHILE REPEAT UNTIL, BASE, SP0, et N/MOORE-HV N/MOORE-PH N/VONN-HV
+N/VONN-PH. Ceux dont les 50 expériences de la pile se servent : CONSTANT
+(une fois), N/MOORE-HV (deux) ; N/MARG-PH (25 fois) existe des deux côtés.
+
+MACCAM : LA FENÊTRE EXTERNE DE HYPERCARD 2. Il lie NewXWindow,
+CloseXWindow, RegisterXWMenu, SetXWIdleTime, SendWindowMessage ; ses
+fonctions s'appellent DoOpen, DoDrag, DoGrow, DoZoom, DoContent, draw,
+copyToPlane, copyBorders, et une boucle par voisinage (optscanmoore,
+optscanmoorehv, optscanmooreph, optscanvonnph, optscanvonnhv,
+scanoptmarg…). Appels système relevés : la fenêtre (SizeWindow, Show et
+HideWindow, DragWindow, GrowWindow, BeginUpdate…), deux CopyBits et un
+GWorld — sans doute pour poser l'image calculée —, GetCTable (les clut),
+et Add, Write, ChangedResource : il écrit dans la ressource de la pile.
+SES PROPRIÉTÉS (« set the … of window "CAM" ») :
+  hilite name visible height width rect scale palette PictResource
+  major minor alternate phaseA phaseB  image0 … image7  pln0 … pln7
+SES MESSAGES (« send … to window "CAM" ») :
+  step stepfast stepmfast stepvfast toscrap erasea erase1 erase2 blacka
+  fill1 … fill8
+Les scripts s'en servent ainsi : FORTH() rend ses tables dans les globales
+pln0…pln3 ; un bouton les range dans des champs, puis « set the pln7 of
+window "CAM" to fld "pln0" » (plan 0 → pln7, plan 3 → pln4) ; « image7 »
+reçoit le rectangle d'un bouton où l'on a peint le contenu initial ; et le
+voisinage passe par « major », posé par HyperTalk d'après le texte Forth
+(N/MOORE-HV → 5).
+
+Et une erreur du moteur, gardée telle quelle : « You forget someting in
+evaluation of getParam ».
+
+
+MESURÉ LE 16 OCTOBRE — UN MODULE COMPILÉ SUR LE MAC DE L'UTILISATRICE
+--------------------------------------------------------------------
+
+Dans son Terminal, macOS 10.15.8, après l'installation d'emsdk (« install
+latest », « activate latest ») :
+
+  · emcc NE TOURNE PAS : le Python fourni par emsdk (3.13.3) est construit
+    pour macOS 11 et réclame _dyld_shared_cache_contains_path, absent de
+    Catalina. Échec à l'import de ctypes, avant toute compilation ;
+  · le clang d'emsdk, lui, tourne : « clang version 24.0.0git », cible
+    x86_64-apple-darwin19.6.0. emcc n'est qu'un script Python posé dessus ;
+  · « clang --target=wasm32 -O2 -nostdlib -Wl,--no-entry -Wl,--export=vie »
+    sur la règle de la Vie en trois lignes de C : vie.wasm, 340 octets, dont
+    une section « producers » de 110 ;
+  · wasm-dis (dans emsdk/upstream/bin, que emsdk_env.sh ne met PAS dans le
+    chemin) : exports « memory » et « vie », AUCUN IMPORT ;
+  · la section des capacités, posée d'office par ce clang 24 :
+    mutable-globals, nontrapping-float-to-int, bulk-memory, sign-ext,
+    reference-types, multivalue, bulk-memory-opt, call-indirect-overlong.
+
+La voie du kit est donc clang SEUL, sans emcc ni JavaScript. Et la dernière
+ligne est une question pour le choix de l'interprète : soit il accepte ces
+capacités, soit le kit compile pour le jeu de base (-mcpu=mvp), et l'on
+mesure ce que ça coûte. Le clang 18 du conteneur n'en pose pas autant
+d'office : un module doit être vérifié avec le compilateur des auteurs, pas
+seulement avec le nôtre.
+
+
+MARCHE 1, MESURÉE LE 16 OCTOBRE — TROIS INTERPRÈTES SUR LE BANC MAC•CAM
+----------------------------------------------------------------------
+
+Dans le conteneur (Linux, 4 cœurs, gcc et clang -O2). Trois candidats en C,
+pris à leur dernière version :
+
+  wasm3     MIT          dernier changement le 29 septembre 2026 ; son
+                         README annonce une « minimal maintenance phase »
+  WAMR      Apache 2.0   la Bytecode Alliance, 9 octobre 2026 ; interprète
+                         « fast », sans AOT ni JIT
+  toywasm   BSD          un seul auteur, 8 octobre 2026
+
+LE BANC. Un module qui porte en lui la règle « Conway » de la pile (avec
+DEATH, BORN et UNCHANGED, CONSTANT réécrit), la compile par le Forth de
+maccam-6, joue N pas sur 128×128, et rend l'empreinte de la grille. Deux
+compilations : « base » (clang 18 par défaut) et « récente » (bulk-memory,
+multivalue, reference-types, nontrapping-fptoint, sign-ext, mutable-globals
+— ce que le clang 24 de l'utilisatrice pose d'office). Témoin natif (gcc) :
+5a7d050b à 100 pas, ba1ec6fe à 3000 pas, environ 5 450 pas par seconde.
+
+                     exact     3000 pas, régime établi     coût fixe (0 pas)
+  natif (gcc -O2)      —       ≈ 5 450 pas/s   100 %
+  wasm3                oui     ≈   545 pas/s    10 %          150 ms
+  WAMR (fast)          oui     ≈   415 pas/s     8 %          220 ms
+  toywasm              oui     ≈    97 pas/s     2 %          810 ms
+  (Node, compilé à la volée, mesuré le 15 : ≈ 4 300 pas/s, 80 %)
+
+« Exact » : la même empreinte que le natif, au bit près, à 100 et à 3000
+pas, sur les DEUX compilations. Les trois acceptent donc les capacités
+récentes. Le coût fixe est surtout la compilation de la règle (MAKE-TABLE).
+
+ARRÊTER UNE BOUCLE SANS FIN, au bout de 200 ms (le Cmd-. de demain) :
+  wasm3     IMPOSSIBLE : aucune interface pour l'interrompre. Tué au bout de
+            3 secondes par le système.
+  WAMR      wasm_runtime_terminate, appelé d'un AUTRE fil : sans option, il
+            ne s'arrête PAS (tué au bout de 5 s). Construit avec
+            WAMR_BUILD_THREAD_MGR=1, il s'arrête en 200 ms et garde sa
+            vitesse (≈ 425 pas/s). Avec en plus le compteur d'instructions
+            (INSTRUCTION_METERING), il tombe à ≈ 265 pas/s. L'arrêt est
+            DÉFINITIF : le module ne reprend pas.
+  toywasm   s'arrête en 200 ms (« execution timed out »). Son interruption
+            est REPRENABLE : il rend la main à l'hôte, qui peut faire
+            tourner ses événements puis reprendre — exactement ce que fait
+            déjà le noyau de HC, qui rend la main 60 fois par seconde dans
+            une boucle (cmdpoint.txt).
+
+TAILLE : wasm3 ≈ 30 000 lignes de C, toywasm ≈ 22 000, WAMR ≈ 57 000
+(les seuls .c compilés). Code compilé, hôte de banc compris : 250 à 310 Ko
+pour chacun.
+
+CE QUI N'EST PAS MESURÉ ENCORE : la borne mémoire de chacun (les trois en
+ont une) ; la compilation universelle x86_64 + arm64 et la cible macOS
+10.13 (WAMR a des fichiers d'assembleur par processeur, avec un repli en C ;
+wasm3 et toywasm sont du C seul) ; les avertissements sous les drapeaux de
+HC ; le comportement sur des modules abîmés (le fuzzing).
+
+wasm3 EST ÉCARTÉ : il ne sait pas s'arrêter, et Cmd-. est « essentiel »
+(l'utilisatrice, le 30 septembre). Reste un choix entre la vitesse (WAMR,
+quatre fois plus rapide, arrêt définitif depuis un second fil) et la
+simplicité (toywasm, arrêt reprenable sur le fil de HC, quatre fois plus
+lent). À décider avec l'utilisatrice.
+
+DÉCIDÉ PAR L'UTILISATRICE, LE 16 OCTOBRE : WAMR. La vitrine doit bouger. Le
+même jour, sa question suivante : « il nous faut le header de l'API de
+HyperCard, non ? » — voir plus bas.
+
+
+L'INTERFACE D'UN MODULE — NOTÉ LE 16 OCTOBRE, RIEN N'EST ÉCRIT
+-------------------------------------------------------------
+
+HyperXCmd.h, l'en-tête d'Apple pour les XCMD, NE SERT PAS À EXÉCUTER : on
+ne fait pas tourner de code 68000. Il sert de MODÈLE, pour que les rappels
+gardent leurs noms et leur sens. Il est d'Apple : comme les piles, il ne
+se commet pas. HC écrira le sien, hc_xfcn.h.
+
+La disposition du bloc de paramètres. MESURÉS dans le code de MAC•CAM :
+entryPoint (+72), request (+76), inArgs (+80), outArgs (+112). Le bloc
+ENTIER est publié dans Dr. Dobb's Journal, septembre 1988 (Stan Krute,
+« XCMD and XFCN: HyperCard's Software Slots », Example 1) : short
+paramCount ; Handle params[16] ; Handle returnValue ; Boolean passFlag ;
+entryPoint ; short request ; short result ; long inArgs[8] ; long
+outArgs[4]. Avec un octet de remplissage après passFlag, ce sont
+exactement les décalages mesurés :
+
+  +0   paramCount    +2  params[16] (des Handle)   +66  returnValue
+  +70  passFlag      +72 entryPoint                +76  request
+  +78  result        +80 inArgs[8]                 +112 outArgs[4]
+
+Ce qui changerait dans un module : des chaînes C au lieu de Handle et de
+chaînes Pascal ; les rappels deviennent des fonctions importées par le
+module (SendCardMessage, SendHCMessage, EvalExpr, GetGlobal, SetGlobal,
+GetFieldByName…) au lieu d'un saut à entryPoint avec un numéro de requête ;
+les conversions (StrToNum, NumToStr, PasToZero…) n'ont plus lieu d'être.
+
+LU LE 16 OCTOBRE : L'EN-TÊTE DE HYPERCARD IIGS 1.1, envoyé par l'utilisatrice
+(github.com/commanderx16/lcc-816, include/iigs/toolbox/hypercard.h — « File:
+HyperXCMD.h », Apple 1990-91, Byte Works 1992 ; lu, NON COMMIS). C'est le
+cousin Apple IIGS de l'en-tête du Mac, pas l'en-tête du Mac :
+  · LES NUMÉROS 1 À 28 Y SONT CEUX QU'ON CROYAIT (SendCardMessage 1, EvalExpr
+    2, … GetGlobal 18, SetGlobal 19, GetFieldByName 20, … ScanToReturn 28),
+    et ce sont les 28 que lie MAC•CAM : deux sources, d'accord ;
+  · SAUF UN DOUTE : ScanToZero y vaut 29 ; la table « de mémoire » plus haut
+    lui donnait 39. MAC•CAM lie 29 ET 39. Non tranché pour le Mac ;
+  · au-delà de 28, le IIGS a ses propres services (chaînes GS, noms de
+    ressources) : sa numérotation ne vaut pas pour le Mac ;
+  · son bloc de paramètres n'a ni entryPoint ni request : le IIGS passe par
+    un vecteur fixe ($E10220). La disposition mesurée chez MAC•CAM reste
+    celle du Mac ;
+  · ses fenêtres externes : NewXWindow, CloseXWindow, SetXWIdleTime,
+    XWAllowReEntrancy, Get et SetXWindowValue, Hide et ShowHCPalettes ; ses
+    événements : xOpenEvt 1000, xCloseEvt 1001, xHidePalettesEvt 1004,
+    xShowPalettesEvt 1005, xCursorWithin 1300. RIEN pour « set the … of
+    window » ni « send … to window », dont MACCAM se sert (ses fonctions
+    getProp, setProp, doMessage) : c'est HyperCard 2 sur Mac qu'il faut.
+
+
+LA CHAÎNE « BONJOUR », DE BOUT EN BOUT — 16 octobre
+--------------------------------------------------
+
+Demandé par l'utilisatrice : « une XCMD "hello world" dans la message box,
+pour valider toute la chaîne de production d'abord ». Fait, et mesuré par le
+harnais xcmd (tests/harnais/xcmd.c, son témoin tests/attendu/xcmd.txt).
+
+LE KIT (xcmd/) : hc_xcmd.h, sur le modèle de HyperXCmd.h — le bloc de
+paramètres réduit à paramCount, params[16], returnValue, passFlag, aux
+places +0, +4, +68, +72 que hc_xcmd.h vérifie à la compilation ;
+SendCardMessage, premier rappel ; HC_XCMD et HC_XFCN, qui exportent sous
+« XCMD nom » et « XFCN nom ». bonjour.wasm : 2 421 octets, un seul import
+(hc.SendCardMessage).
+
+WAMR DANS HC (HC/tiers, son LISEZMOI) : 36 fichiers C, l'interprète fast et
+le gestionnaire de fils. Deux choses MESURÉES en l'y logeant :
+  · la version en C de l'appel natif (invokeNative_general.c) tronque les
+    pointeurs sur 64 bits : SendCardMessage recevait une chaîne VIDE. HC
+    n'enregistre donc que des rappels « bruts », en C pur ;
+  · sans la garde matérielle (un gestionnaire de signal, qu'on refuse dans
+    une application), le banc MAC•CAM passe de 425 à 399 pas par seconde.
+
+LE NOYAU (HC/hc_wasm.c) :
+  · un module se range DANS la pile, sous un nom, et s'y écrit en
+    hexadécimal (« module "bonjour" » … « end module ») ; relu, ses octets
+    sont identiques. Un octet abîmé refuse la pile, un bloc sans sa fin
+    aussi. Un HC d'avant saute le bloc, sans changer le format ;
+  · VÉRIFIÉ À L'AJOUT : refusés, avec leur raison, du texte, un module vide,
+    un module qui importe « hc.Zorglub », un module écrit sans le kit ;
+  · L'APPEL : après TOUS les scripts du chemin, puis les piles en usage. Le
+    nom ne distingue pas les capitales. Seize paramètres passent, un
+    dix-septième est refusé — pour une fonction, le plafond de quinze des
+    gestionnaires ne s'applique plus quand aucun script ne la définit ;
+  · le returnValue d'un XCMD devient « the result », comme HyperCard le
+    documente (et celui d'un XFCN, sa valeur) ;
+  · LES FAUTES : « unreachable », un pointeur hors de la mémoire du module
+    (arrêté par WAMR AVANT le rappel), une valeur rendue hors de sa mémoire,
+    un module qui s'appelle lui-même (refusé), une ligne illisible envoyée à
+    HC. Après une faute, l'instance est jetée ; la suivante repart de zéro ;
+  · LA SENTINELLE : un fil qui, toutes les 20 ms, arrête le module en cours
+    s'il a dépassé son délai (hc_module_delai) ou si l'arrêt est demandé
+    (hc_module_interromps). Le harnais arrête une boucle sans fin à 0,3 s.
+
+Portes, le 16 octobre : 311 conformes sur 311, sous ASan, UBSan et
+LeakSanitizer aussi ; zéro avertissement ; zéro alerte de l'analyseur ;
+make fuzz construit avec WAMR, aucun signalement sur 800 essais.
+
+CE QUI DIFFÈRE DE HYPERCARD, ET C'EST SU (NON MESURÉ dans HyperCard) :
+  · chez lui, l'XCMD d'une pile passait avant les scripts des piles en usage
+    ET avant les commandes de HyperCard — un XCMD « beep » remplaçait beep.
+    Ici, les commandes et fonctions du noyau, puis tous les scripts, passent
+    d'abord (« params » en a fait les frais dans le harnais : c'est une
+    fonction de HyperTalk, et elle répondait à la place de l'externe) ;
+  · passFlag : HC cherche dans la pile suivante, puis rend « personne ne
+    répond ».
+
+L'INTERFACE COCOA, le même jour — COMPILÉE PAR LA CI, NON EXÉCUTÉE :
+  · Objects ▸ Modules… (HCdialogs.m) : la liste des modules de la pile, ce
+    qu'apporte le module choisi (sa taille, ses XCMD et XFCN), « Add… » (un
+    ou plusieurs .wasm), « Remove » après confirmation. Libellés en anglais
+    comme Stack Info ; un refus le dit en français, avec la raison du noyau ;
+  · un .wasm DÉPOSÉ sur la fenêtre d'une pile s'ajoute à CETTE pile ;
+  · Cmd-. : un fil (hcv_guette_modules, HCview.m) lit le clavier vingt fois
+    par seconde PENDANT qu'un module calcule (hc_module_actif), et appelle
+    hc_module_interromps. NON MESURÉ : que macOS laisse lire le clavier ainsi
+    sans demander l'autorisation « Surveillance de l'entrée ».
+  · un module ajouté ne s'écrit sur le disque qu'au prochain enregistrement
+    de la pile, comme tout autre changement.
+
+À JOUER DANS HC (l'application), sur le Mac de l'utilisatrice :
+  1. Objects ▸ Modules… ▸ Add… : choisir xcmd/exemples/bonjour.wasm ;
+  2. dans la boîte de messages : bonjour "Patricia" ;
+  3. puis : put bonjour("Patricia") ;
+  4. Cmd-S, fermer la pile, la rouvrir, et rejouer 2 ;
+  5. le module d'épreuve tests/donnees/modules/epreuves.wasm, puis
+     « boucle » dans la boîte de messages, et Cmd-. : HC doit rendre la main.
+
+CE QUI RESTE AVANT MAC•CAM :
+  · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
+  · la licence de WAMR dans le DMG.
+

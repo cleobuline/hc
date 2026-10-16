@@ -63,7 +63,7 @@ export UBSAN_OPTIONS=print_stacktrace=1
 # avertissement qu'on ne relit plus.
 #
 # Les trois -Werror ne sont jamais du style : ce sont des bugs, toujours.
-CFLAGS="-std=gnu99 -O1 -I$HC"
+CFLAGS="-std=gnu99 -O1 -I$HC -isystem $HC/tiers/wamr/core/iwasm/include"
 CFLAGS="$CFLAGS -Werror=int-conversion -Werror=incompatible-pointer-types"
 CFLAGS="$CFLAGS -Werror=implicit-function-declaration"
 ENREGISTRE=0
@@ -105,7 +105,7 @@ done
 # LIE dans aucun harnais tant qu'il n'est pas nommé ici. L'oubli ne se voit pas
 # comme un oubli — il se voit comme un harnais qui « NE COMPILE PAS », ce qui
 # envoie chercher le défaut dans le harnais.
-UNITES="hc_core hc_notes hc_script hc_presse_papiers hc_file hc_icons hc_origine hc_importe hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
+UNITES="hc_core hc_notes hc_script hc_presse_papiers hc_file hc_icons hc_origine hc_importe hc_wasm hct_arbre hct_bloc hct_chunk hct_cmd hct_eval hct_exec hct_expr hct_lex hct_val hct_verif"
 
 mkdir -p "$TRAVAIL/obj" "$TRAVAIL/bin" "$TRAVAIL/sortie" "$ICI/attendu"
 
@@ -114,6 +114,14 @@ for u in $UNITES; do
   cc $CFLAGS -c "$HC/$u.c" -o "$TRAVAIL/obj/$u.o" || { echo " — ÉCHEC sur $u"; exit 1; }
   printf '.'
 done
+echo ' fait'
+
+# WAMR, L'INTERPRÈTE DES MODULES (hc_wasm.c), compilé à part : c'est du code
+# tiers, sans nos avertissements ni nos sanitizers — ils sont une porte pour
+# NOTRE code, et ses trente-six fichiers ne changent pas d'un lancement à
+# l'autre, si bien qu'ils ne se recompilent qu'une fois.
+printf 'compilation de WAMR'
+sh "$HC/tiers/wamr_compile.sh" "$TRAVAIL/obj_wamr" || { echo " — ÉCHEC"; exit 1; }
 echo ' fait'
 
 . "$ICI/arguments.sh"   # la table des arguments, partagée avec releve.sh
@@ -129,7 +137,7 @@ for src in harnais/*.c; do
   # et realloc par --wrap afin de refuser une allocation choisie : le noyau
   # n'en sait rien, aucune ligne de production ne porte la sonde.
   LIEN=$(sed -n 's|^/\* lance-lien : \(.*\) \*/$|\1|p' "$src" | head -n 1)
-  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o -lm -lz $LIEN 2>/dev/null; then
+  if ! cc $CFLAGS -o "$TRAVAIL/bin/$n" "$src" "$TRAVAIL"/obj/*.o "$TRAVAIL"/obj_wamr/*.o -lm -lz -lpthread $LIEN 2>/dev/null; then
     echo "  NE COMPILE PAS  $n"; rate=$((rate+1)); continue
   fi
 

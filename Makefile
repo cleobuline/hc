@@ -6,7 +6,14 @@
 # faire tourner en intégration continue, sur une machine sans AppKit.
 
 CC      ?= cc
-CFLAGS  ?= -std=gnu99 -O2 -I HC
+# L'en-tête de WAMR, l'interprète des modules (HC/tiers/wamr) : hc_wasm.c
+# l'inclut. WAMR lui-même ne passe pas par ces cibles — c'est du code tiers,
+# compilé par HC/tiers/wamr_compile.sh pour les tests et le fuzzing.
+#
+# EN-TÊTE SYSTÈME (-isystem), et c'est voulu : ses commentaires de
+# documentation donnent trois -Wdocumentation qui ne sont pas les nôtres.
+WAMR_INC = -isystem HC/tiers/wamr/core/iwasm/include
+CFLAGS  ?= -std=gnu99 -O2 -I HC $(WAMR_INC)
 AVERTIR  = -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings \
            -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition
 
@@ -33,7 +40,15 @@ AVERTIR  = -Wall -Wextra -Wshadow -Wpointer-arith -Wcast-qual -Wwrite-strings \
 # Ils ne sont pas dans AVERTIR mais dans une variable à part, parce qu'ils sont
 # propres à clang : gcc les refuserait. La cible essaie donc les deux
 # compilateurs, chacun avec ce qu.il sait faire.
-AVERTIR_CLANG = -Wcomma -Wconditional-uninitialized -Wnewline-eof
+#
+# DEUX DE PLUS LE 16 OCTOBRE, que le projet Xcode pose aussi
+# (CLANG_WARN_DOCUMENTATION_COMMENTS, GCC_WARN_64_TO_32_BIT_CONVERSION) :
+# -Wdocumentation            un « @param » qui ne nomme aucun paramètre
+# -Wshorten-64-to-32         un size_t rangé dans un int sans le dire
+# Trouvés en ajoutant WAMR : son en-tête en donnait trois du premier, que
+# Xcode aurait montrés à l'utilisatrice. Le noyau, lui, en avait zéro.
+AVERTIR_CLANG = -Wcomma -Wconditional-uninitialized -Wnewline-eof \
+                -Wdocumentation -Wshorten-64-to-32
 
 # LES AVERTISSEMENTS SE COMPTENT À PLUSIEURS NIVEAUX D'OPTIMISATION.
 #
@@ -50,7 +65,7 @@ AVERTIR_CLANG = -Wcomma -Wconditional-uninitialized -Wnewline-eof
 # Trois niveaux suffisent : -O3 n'a rien montré que -O2 ne montrait déjà, et
 # chaque niveau coûte une compilation complète du noyau.
 NIVEAUX  = -O0 -O1 -O2
-BASE     = -std=gnu99 -I HC
+BASE     = -std=gnu99 -I HC $(WAMR_INC)
 
 SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
 

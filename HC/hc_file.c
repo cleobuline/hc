@@ -69,6 +69,7 @@
  * prefixe connu et les lignes « | » hors bloc sont deja ignorees.
  */
 #include "hc_file.h"
+#include "hc_wasm.h"   /* les modules d'une pile */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -280,6 +281,30 @@ static void put_icon(FILE *f, const struct StackIcon *ic)
         fputc('\n', f);
     }
     fprintf(f, "end iconres\n");
+}
+
+/* UN MODULE (hc_wasm.h) : son nom, puis ses octets en hexadécimal,
+ * soixante-quatre par ligne — comme les icônes, et pour la même raison : le
+ * format est du texte, et le module doit s'y relire à l'octet près.
+ *
+ *     module "bonjour"
+ *     | 0061736D0100000001...
+ *     end module
+ *
+ * Un HC d'avant ne connaît pas ce bloc et le saute : la pile s'y ouvre, sans
+ * ses modules — comme « ciconres », sans changer le numéro de format. */
+static void put_module(FILE *f, const char *nom, const unsigned char *o,
+                       size_t n)
+{
+    fprintf(f, "module ");
+    put_quoted(f, nom);
+    fputc('\n', f);
+    for (size_t i = 0; i < n; i += 64) {
+        fputs("| ", f);
+        for (size_t k = i; k < n && k < i + 64; k++) fprintf(f, "%02X", o[k]);
+        fputc('\n', f);
+    }
+    fprintf(f, "end module\n");
 }
 
 /* UNE ICÔNE EN COULEUR : un bloc À PART, et c'est voulu.
@@ -596,6 +621,11 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
     for (int i = 0; i < stack->nicons; i++) {
         put_icon(f, &stack->icons[i]);
         put_cicon(f, &stack->icons[i]);   /* rien si l'icône est en noir et blanc */
+    }
+    for (int i = 0; i < hc_module_nombre(stack); i++) {
+        size_t n = 0;
+        const unsigned char *o = hc_module_octets(stack, i, &n);
+        put_module(f, hc_module_nom(stack, i), o, n);
     }
     fprintf(f, "end stack\n\n");
 
@@ -1120,6 +1150,12 @@ Object *hc_load(const char *path)
     int cicon_pos = 0;                   /* pixels déjà lus, 0..HC_ICON_PIXELS */
     struct StackIcon *cur_icon = NULL;   /* icône en cours de remplissage */
     int icon_pos = 0;                    /* octets déjà lus, 0..HC_ICON_BYTES */
+    /* un bloc « module » : son nom, ses octets à mesure qu'ils arrivent */
+    int in_module = 0;
+    char module_nom[256] = "";
+    unsigned char *module_o = NULL;
+    size_t module_n = 0, module_cap = 0;
+    int module_abime = 0;
     int bgtext_id = 0;
     int last_bgtext = -1;   /* index de la dernière entrée bgtext créée : les
                                lignes « bgrun » qui suivent s'y rattachent */
@@ -1149,9 +1185,32 @@ Object *hc_load(const char *path)
 
         /* --- lignes d'un bloc --- */
         if (in_script || in_contents || in_paint || in_bgtext || in_icon ||
-            in_cicon) {
+            in_cicon || in_module) {
             if (s[0] == '|') {
                 const char *piece = (s[1] == ' ') ? s + 2 : s + 1;
+                if (in_module) {
+                    /* Des paires hexadécimales, toutes : UN MODULE ABÎMÉ
+                     * REFUSE LE FICHIER, comme une icône — un code amputé
+                     * n'est pas un code plus court. */
+                    for (const char *p = piece; p[0]; p += 2) {
+                        int hi = p[1] ? hexval((unsigned char)p[0]) : -1;
+                        int lo = p[1] ? hexval((unsigned char)p[1]) : -1;
+                        if (hi < 0 || lo < 0
+                            || module_n >= HC_MODULE_OCTETS_MAX) {
+                            module_abime = 1;
+                            break;
+                        }
+                        if (module_n == module_cap) {
+                            size_t cap = module_cap ? module_cap * 2 : 4096;
+                            unsigned char *v = realloc(module_o, cap);
+                            if (!v) { acc.manque = 1; break; }
+                            module_o = v;
+                            module_cap = cap;
+                        }
+                        module_o[module_n++] = (unsigned char)(hi * 16 + lo);
+                    }
+                    continue;
+                }
                 if (in_cicon) {
                     /* Deux formes de ligne : une entrée de palette, ou une
                      * ligne de pixels.
@@ -1248,6 +1307,19 @@ Object *hc_load(const char *path)
              * veulent rien dire, et « end script » doit se reconnaître même
              * suivi d'une espace. */
             rtrim(s);
+            if (strcmp(s, "end module") == 0) {
+                /* Posé SANS vérification (hc_module_pose) : une pile garde
+                 * son module même si cette version de HC le refuserait. Il
+                 * le dira à son premier appel. */
+                if (!module_abime && module_n && stack
+                    && hc_module_pose(stack, module_nom, module_o,
+                                      module_n) < 0)
+                    acc.manque = 1;
+                if (!module_n) module_abime = 1;
+                in_module = 0;
+                module_n = 0;
+                continue;
+            }
             if (strcmp(s, "end ciconres") == 0) {
                 /* Les mille vingt-quatre pixels, tous. Et la silhouette se
                  * redérive ICI : le bloc « iconres » qui précède a posé des
@@ -1381,6 +1453,15 @@ Object *hc_load(const char *path)
             if (cur_icon && !hc_icon_couleur_cree(cur_icon)) acc.manque = 1;
             cicon_pos = 0;
             in_cicon  = 1;
+            continue;
+        }
+
+        if (strncmp(s, "module ", 7) == 0 && stack && !owner) {
+            if (!get_quoted(s, 0, module_nom, sizeof module_nom)
+                || !module_nom[0])
+                module_abime = 1;
+            module_n = 0;
+            in_module = 1;
             continue;
         }
 
@@ -1705,7 +1786,8 @@ Object *hc_load(const char *path)
      * l'y pose. La pile s'ouvrait donc, l'air complète, avec un script VIDE là
      * où il y en avait un. C'était le seul des trois cas qui restait. */
     int bloc_ouvert = in_script || in_contents || in_paint || in_bgtext ||
-                      in_icon || in_cicon;
+                      in_icon || in_cicon || in_module;
+    free(module_o);
 
     /* UN OBJET RESTÉ OUVERT EST UNE TRONCATURE, LUI AUSSI.
      *
@@ -1752,10 +1834,13 @@ Object *hc_load(const char *path)
     else if (icon_abimee)
         snprintf(g_load_erreur, sizeof g_load_erreur,
                  "Une icône de cette pile est incomplète ou abîmée.");
+    else if (module_abime)
+        snprintf(g_load_erreur, sizeof g_load_erreur,
+                 "Un module de cette pile est incomplet ou abîmé.");
 
     if (acc.manque || lecture == LIGNE_ECHEC || bloc_ouvert ||
         objet_ouvert || signature_manque || format_trop_recent || icon_abimee ||
-        pile_double) {
+        module_abime || pile_double) {
         if (stack) hc_free(stack);
         return NULL;
     }

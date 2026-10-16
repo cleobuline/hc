@@ -3,6 +3,10 @@
 //
 
 #import "HCview.h"
+/* Son propre en-tête : hcdlg_ajoute_modules, une fonction C, y est déclarée
+ * et appelée ici AVANT sa définition — sans lui, une référence en avant, que
+ * seul le compilateur de macOS voit (le job « interface Cocoa »). */
+#import "HCdialogs.h"
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
@@ -10,6 +14,7 @@
 #import "graphics.h"
 #import <objc/runtime.h>
 #include <math.h>       /* lround, pour les couleurs du bouton */
+#include "hc_wasm.h"    /* les modules : Objects ▸ Modules… */
 
 /* Les actions du panneau « Text Style » sont définies dans la catégorie
  * HCView (Dialogs), plus bas dans ce fichier. Mais show_style_panel, qui les
@@ -1990,4 +1995,192 @@ void hcicon_panel_stack_closing(Object *stack)
     if (o) [self editScriptOf:o];
 }
 
+/* ═══ Objects ▸ Modules… ════════════════════════════════════════════════
+ *
+ * Les modules de la pile : des XCMD et des XFCN en WebAssembly (hc_wasm.h,
+ * docs/mesures/xcmd.txt). Décidé par l'utilisatrice le 16 octobre : une
+ * fenêtre qui les liste, avec « Add… » et « Remove », et le dépôt d'un
+ * .wasm sur la pile pour aller plus vite (performDragOperation:, HCview.m).
+ *
+ * Les libellés sont en anglais, comme ceux de Stack Info et du reste des
+ * panneaux de HyperCard ; les raisons d'un refus viennent du noyau, en
+ * français.
+ *
+ * La pile visée est retenue par pointeur : avant chaque usage, on vérifie
+ * qu'elle est encore ouverte. Fermer la pile laisserait sinon le panneau
+ * travailler sur de la mémoire rendue. */
+
+static NSPanel       *gModPanel;
+static NSPopUpButton *gModListe;
+static NSTextField   *gModExternes;
+static NSButton      *gModRetirer;
+static Object        *gModPile;
+
+static BOOL pile_ouverte(Object *p)
+{
+    if (!p) return NO;
+    for (int i = 0; i < hc_stack_count(); i++)
+        if (hc_stack_at(i) == p) return YES;
+    return NO;
+}
+
+- (void)showModules {
+    if (hcv_menu_trappe("Modules…")) return;   /* la pile détourne l'article */
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    if (!stack) return;
+    gModPile = stack;
+
+    if (!gModPanel) {
+        gModPanel = [[NSPanel alloc]
+            initWithContentRect:NSMakeRect(300, 320, 380, 240)
+                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                        backing:NSBackingStoreBuffered defer:NO];
+        [gModPanel setReleasedWhenClosed:NO];
+        NSView *c = [gModPanel contentView];
+
+        NSTextField *lb = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 200, 70, 18)];
+        [lb setStringValue:@"Module:"];
+        [lb setBezeled:NO]; [lb setDrawsBackground:NO]; [lb setEditable:NO];
+        [c addSubview:lb];
+
+        gModListe = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(86, 194, 278, 26)
+                                               pullsDown:NO];
+        [gModListe setTarget:self];
+        [gModListe setAction:@selector(modulesChoisi:)];
+        [c addSubview:gModListe];
+
+        gModExternes = [[NSTextField alloc] initWithFrame:NSMakeRect(16, 60, 348, 124)];
+        [gModExternes setBezeled:YES]; [gModExternes setEditable:NO];
+        [gModExternes setSelectable:YES];
+        [[gModExternes cell] setWraps:YES];
+        [c addSubview:gModExternes];
+
+        NSButton *(^mk)(NSString *, SEL, CGFloat) = ^NSButton *(NSString *t, SEL a, CGFloat x) {
+            NSButton *b = [[NSButton alloc] initWithFrame:NSMakeRect(x, 16, 100, 28)];
+            [b setTitle:t]; [b setBezelStyle:NSBezelStyleRounded];
+            [b setTarget:self]; [b setAction:a];
+            [c addSubview:b];
+            return b;
+        };
+        mk(@"Add…", @selector(modulesAjoute:), 16);
+        gModRetirer = mk(@"Remove", @selector(modulesRetire:), 124);
+        NSButton *ok = mk(@"OK", @selector(modulesFerme:), 264);
+        [ok setKeyEquivalent:@"\r"];
+    }
+    [gModPanel setTitle:[NSString stringWithFormat:@"Modules of “%@”",
+                         hcv_texte(stack->name)]];
+    [self modulesRafraichis:nil];
+    [gModPanel makeKeyAndOrderFront:nil];
+}
+
+/* La liste, puis ce qu'apporte le module choisi. `garder` : le nom à
+ * resélectionner, s'il est encore là. */
+- (void)modulesRafraichis:(NSString *)garder {
+    [gModListe removeAllItems];
+    int n = pile_ouverte(gModPile) ? hc_module_nombre(gModPile) : 0;
+    for (int i = 0; i < n; i++)
+        [gModListe addItemWithTitle:hcv_texte(hc_module_nom(gModPile, i))];
+    if (n == 0) [gModListe addItemWithTitle:@"(no module)"];
+    if (garder && [gModListe itemWithTitle:garder])
+        [gModListe selectItemWithTitle:garder];
+    [gModListe setEnabled:n > 0];
+    [gModRetirer setEnabled:n > 0];
+    [self modulesChoisi:nil];
+}
+
+- (void)modulesChoisi:(id)sender {
+    (void)sender;
+    if (!pile_ouverte(gModPile) || hc_module_nombre(gModPile) == 0) {
+        [gModExternes setStringValue:
+            @"This stack has no module.\n\n"
+             "Add a .wasm file built with HC's kit (the xcmd folder), "
+             "or drop one on the stack's window."];
+        return;
+    }
+    int i = (int)[gModListe indexOfSelectedItem];
+    char liste[4000];
+    int k = hc_module_externes(gModPile, i, liste, sizeof liste);
+    size_t taille = 0;
+    hc_module_octets(gModPile, i, &taille);
+    if (k < 0) {
+        [gModExternes setStringValue:[NSString stringWithFormat:
+            @"%zu bytes — this module cannot be read by this version of HC.", taille]];
+        return;
+    }
+    [gModExternes setStringValue:[NSString stringWithFormat:@"%zu bytes, %d external%s:\n\n%@",
+        taille, k, k == 1 ? "" : "s", hcv_texte(liste)]];
+}
+
+- (void)modulesAjoute:(id)sender {
+    (void)sender;
+    if (!pile_ouverte(gModPile)) { [gModPanel close]; return; }
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    [p setCanChooseFiles:YES];
+    [p setCanChooseDirectories:NO];
+    [p setAllowsMultipleSelection:YES];
+    [p setAllowedFileTypes:@[@"wasm"]];
+    [p setMessage:@"Choose one or more modules (.wasm)"];
+    if ([p runModal] != NSModalResponseOK) return;
+    hcdlg_ajoute_modules(gModPile, [p URLs]);
+    NSString *dernier = [[[[p URLs] lastObject] lastPathComponent]
+                         stringByDeletingPathExtension];
+    [self modulesRafraichis:dernier];
+}
+
+- (void)modulesRetire:(id)sender {
+    (void)sender;
+    if (!pile_ouverte(gModPile) || hc_module_nombre(gModPile) == 0) return;
+    int i = (int)[gModListe indexOfSelectedItem];
+    const char *nom = hc_module_nom(gModPile, i);
+    if (!nom) return;
+    NSString *n = hcv_texte(nom);
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:[NSString stringWithFormat:@"Retirer le module « %@ » ?", n]];
+    [a setInformativeText:@"Les XCMD et XFCN qu'il apporte ne répondront plus. "
+                           "La pile ne change sur le disque qu'à son prochain "
+                           "enregistrement."];
+    [a addButtonWithTitle:@"Remove"];
+    [a addButtonWithTitle:@"Cancel"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    if (!hc_module_retire(gModPile, [n UTF8String])) NSBeep();
+    [self modulesRafraichis:nil];
+}
+
+- (void)modulesFerme:(id)sender {
+    (void)sender;
+    [gModPanel close];
+    gModPile = NULL;
+}
+
 @end
+
+int hcdlg_ajoute_modules(Object *pile, NSArray<NSURL *> *urls)
+{
+    int ajoutes = 0;
+    for (NSURL *u in urls) {
+        if ([[[u pathExtension] lowercaseString] isEqualToString:@"wasm"] == NO)
+            continue;
+        NSString *nom = [[u lastPathComponent] stringByDeletingPathExtension];
+        NSError *err = nil;
+        NSData *d = [NSData dataWithContentsOfURL:u options:0 error:&err];
+        char pourquoi[300] = "";
+        int r = -1;
+        if (!d)
+            snprintf(pourquoi, sizeof pourquoi, "le fichier ne se lit pas (%s)",
+                     err ? [[err localizedDescription] UTF8String] : "?");
+        else
+            r = hc_module_ajoute(pile, [nom UTF8String], [d bytes], [d length],
+                                 pourquoi, sizeof pourquoi);
+        if (r == 0) { ajoutes++; continue; }
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:[NSString stringWithFormat:
+            @"Le module « %@ » n'a pas été ajouté.", nom]];
+        [a setInformativeText:hcv_texte(pourquoi)];
+        [a addButtonWithTitle:@"OK"];
+        [a runModal];
+    }
+    return ajoutes;
+}
