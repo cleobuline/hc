@@ -6,12 +6,30 @@
 #include <stdio.h>
 #include "hc_xcmd.h"
 
-/* Une boucle sans fin : la sentinelle doit l'arrêter. */
+/* Une boucle sans fin : Cmd-., ou le délai, doivent l'arrêter. */
 HC_XCMD(boucle)
 {
     (void)paramPtr;
     volatile int x = 0;
     for (;;) x++;
+}
+
+/* Fait attendre HC, puis boucle : un Cmd-. pendant l'attente doit arrêter
+ * l'attente, puis le module. */
+HC_XCMD(patiente)
+{
+    (void)paramPtr;
+    SendCardMessage("wait 100 seconds");
+    volatile int x = 0;
+    for (;;) x++;
+}
+
+/* Envoie des lignes sans fin : HC doit respirer quand même, et entendre
+ * Cmd-. entre deux lignes. */
+HC_XCMD(bavarde)
+{
+    (void)paramPtr;
+    for (;;) SendCardMessage("get 1");
 }
 
 /* Une faute : l'instruction « unreachable » de WebAssembly. */

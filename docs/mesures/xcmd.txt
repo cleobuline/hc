@@ -447,6 +447,7 @@ LE NOYAU (HC/hc_wasm.c) :
   · LA SENTINELLE : un fil qui, toutes les 20 ms, arrête le module en cours
     s'il a dépassé son délai (hc_module_delai) ou si l'arrêt est demandé
     (hc_module_interromps). Le harnais arrête une boucle sans fin à 0,3 s.
+    REMPLACÉE le soir même : voir « CMD-. N'ARRÊTAIT RIEN », plus bas.
 
 Portes, le 16 octobre : 311 conformes sur 311, sous ASan, UBSan et
 LeakSanitizer aussi ; zéro avertissement ; zéro alerte de l'analyseur ;
@@ -470,7 +471,8 @@ L'INTERFACE COCOA, le même jour — COMPILÉE PAR LA CI, NON EXÉCUTÉE :
   · Cmd-. : un fil (hcv_guette_modules, HCview.m) lit le clavier vingt fois
     par seconde PENDANT qu'un module calcule (hc_module_actif), et appelle
     hc_module_interromps. NON MESURÉ : que macOS laisse lire le clavier ainsi
-    sans demander l'autorisation « Surveillance de l'entrée ».
+    sans demander l'autorisation « Surveillance de l'entrée ». MESURÉ LE SOIR
+    MÊME, et faux : voir plus bas. RETIRÉ.
   · un module ajouté ne s'écrit sur le disque qu'au prochain enregistrement
     de la pile, comme tout autre changement.
 
@@ -481,6 +483,56 @@ L'INTERFACE COCOA, le même jour — COMPILÉE PAR LA CI, NON EXÉCUTÉE :
   4. Cmd-S, fermer la pile, la rouvrir, et rejouer 2 ;
   5. le module d'épreuve tests/donnees/modules/epreuves.wasm, puis
      « boucle » dans la boîte de messages, et Cmd-. : HC doit rendre la main.
+
+CMD-. N'ARRÊTAIT RIEN — rapporté DANS HC (l'application), le 16 octobre au soir
+-------------------------------------------------------------------------------
+
+Le pas 5 ci-dessus, joué par l'utilisatrice sur son Mac (macOS 10.15.8) :
+« command . n'arrête rien ». Le module tournait sur le fil de HC, la boucle
+d'événements était donc arrêtée ; et le fil qui devait lire le clavier
+lui-même (CGEventSourceKeyState) n'a rien vu. POURQUOI, NON MESURÉ : la
+cause la plus probable est l'autorisation « Surveillance de l'entrée » de
+Catalina — que le commentaire de « the keysDown », dans HCview.m, craignait
+déjà pour cette même fonction, et qu'il évitait.
+
+LA CORRECTION, qui ne demande rien au système. Le module calcule dans un FIL
+À PART ; le fil de HC l'attend comme il attend dans un « wait » : il rend la
+main à l'hôte soixante fois par seconde (hc_respire_module, hc_core.c), qui
+redessine et lit sa file — et Cmd-. arrive par le chemin de TOUS les
+scripts (cmdpoint.txt), le seul mesuré dans l'application. Sur un Cmd-., le
+fil de HC arrête le module (wasm_runtime_terminate), et l'arrêt ne se dit
+pas, comme pour un script : il n'y a pas de faute. Une ligne de
+SendCardMessage est CONFIÉE au fil de HC, qui la joue ; l'interface n'est
+jamais touchée d'un autre fil. La sentinelle du noyau et celle de Cocoa
+sont retirées, et hc_module_interromps avec elles.
+
+LE HARNAIS (xcmd, section 6 bis) appuie sur Cmd-. comme l'hôte de Cocoa :
+pendant sa respiration, par hc_interrompre. Arrêtés en moins de deux
+secondes, sans un mot, et sans rien laisser en cours :
+  · « boucle » tapé dans la boîte de messages ;
+  · « boucle » dans un gestionnaire — la ligne suivante ne tourne pas ;
+  · « patiente », qui fait jouer « wait 100 seconds » à HC puis boucle :
+    l'attente s'arrête, puis le module ;
+  · « bavarde », qui ne fait qu'envoyer des lignes : HC respire entre elles ;
+  · sous « cantAbort », la touche ne fait rien, comme pour un script ; seul
+    le délai l'arrête.
+Vingt passages de suite sous ASan : identiques. ThreadSanitizer, joué une
+fois dans le conteneur (il n'est pas une porte) : aucune alerte.
+
+LE PRIX D'UN APPEL, MESURÉ dans le conteneur (Linux, 4 cœurs, -O1) : 2 000
+appels dans une boucle de HyperTalk, moins la même boucle sur length().
+                                     XFCN vide    XCMD + un SendCardMessage
+  sur le fil de HC (avant)              5 µs              3 µs
+  un fil neuf à chaque appel           70 µs               —
+  un fil gardé, qui dort entre deux    37 µs             25 µs
+  le même, qui guette 0,1 ms d'abord    7 µs              6,5 µs
+C'est le RÉVEIL d'un fil endormi qui coûte. HC garde donc un fil par
+profondeur d'appel (un module peut en appeler un autre), et chacun des deux
+fils regarde le drapeau qu'il attend un dixième de milliseconde avant de
+s'endormir. SUR UN MAC : NON MESURÉ.
+
+À JOUER DANS HC (l'application), de nouveau : le pas 5 plus haut ; et le
+même « boucle » depuis le mouseUp d'un bouton.
 
 CE QUI RESTE AVANT MAC•CAM :
   · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
