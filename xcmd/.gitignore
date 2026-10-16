@@ -1,0 +1,2 @@
+# Les modules se reconstruisent par « make » : on ne garde que les sources.
+exemples/*.wasm
