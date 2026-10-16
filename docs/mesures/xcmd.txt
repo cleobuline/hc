@@ -644,8 +644,12 @@ le module forth.wasm ajouté à une pile : « put FORTH(": R CENTER >PLN0 ;
 MAKE-TABLE R") into card field test » laisse le champ vide — FORTH ne rend
 que sa pile, vide ici —, et « put pln0 into card field test » y met la
 table (« ok ça roule »). Le texte de la table n'a pas été relu caractère
-par caractère. Le bouton de compilation d'une carte de l'atelier : pas
-encore joué.
+par caractère.
+
+Puis, toujours DANS HC, sur MAC•CAM Workshop importée depuis son
+MacBinary : « ça a l'air de compiler dans maccam ». Le bouton de
+compilation de l'atelier passe donc ; ce que montrent « Pile » et les
+champs Pln0 à PLN3, carte par carte, n'est pas relevé.
 
 NON MESURÉ, À JOUER DANS HYPERCARD 2.4.1 (Basilisk II), sur la pile
 MAC•CAM Workshop, HyperCard tout juste relancé :
