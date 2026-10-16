@@ -260,3 +260,31 @@ voisinage passe par « major », posé par HyperTalk d'après le texte Forth
 Et une erreur du moteur, gardée telle quelle : « You forget someting in
 evaluation of getParam ».
 
+
+MESURÉ LE 16 OCTOBRE — UN MODULE COMPILÉ SUR LE MAC DE L'UTILISATRICE
+--------------------------------------------------------------------
+
+Dans son Terminal, macOS 10.15.8, après l'installation d'emsdk (« install
+latest », « activate latest ») :
+
+  · emcc NE TOURNE PAS : le Python fourni par emsdk (3.13.3) est construit
+    pour macOS 11 et réclame _dyld_shared_cache_contains_path, absent de
+    Catalina. Échec à l'import de ctypes, avant toute compilation ;
+  · le clang d'emsdk, lui, tourne : « clang version 24.0.0git », cible
+    x86_64-apple-darwin19.6.0. emcc n'est qu'un script Python posé dessus ;
+  · « clang --target=wasm32 -O2 -nostdlib -Wl,--no-entry -Wl,--export=vie »
+    sur la règle de la Vie en trois lignes de C : vie.wasm, 340 octets, dont
+    une section « producers » de 110 ;
+  · wasm-dis (dans emsdk/upstream/bin, que emsdk_env.sh ne met PAS dans le
+    chemin) : exports « memory » et « vie », AUCUN IMPORT ;
+  · la section des capacités, posée d'office par ce clang 24 :
+    mutable-globals, nontrapping-float-to-int, bulk-memory, sign-ext,
+    reference-types, multivalue, bulk-memory-opt, call-indirect-overlong.
+
+La voie du kit est donc clang SEUL, sans emcc ni JavaScript. Et la dernière
+ligne est une question pour le choix de l'interprète : soit il accepte ces
+capacités, soit le kit compile pour le jeu de base (-mcpu=mvp), et l'on
+mesure ce que ça coûte. Le clang 18 du conteneur n'en pose pas autant
+d'office : un module doit être vérifié avec le compilateur des auteurs, pas
+seulement avec le nôtre.
+
