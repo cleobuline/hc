@@ -404,3 +404,69 @@ cousin Apple IIGS de l'en-tête du Mac, pas l'en-tête du Mac :
     window » ni « send … to window », dont MACCAM se sert (ses fonctions
     getProp, setProp, doMessage) : c'est HyperCard 2 sur Mac qu'il faut.
 
+
+LA CHAÎNE « BONJOUR », DE BOUT EN BOUT — 16 octobre
+--------------------------------------------------
+
+Demandé par l'utilisatrice : « une XCMD "hello world" dans la message box,
+pour valider toute la chaîne de production d'abord ». Fait, et mesuré par le
+harnais xcmd (tests/harnais/xcmd.c, son témoin tests/attendu/xcmd.txt).
+
+LE KIT (xcmd/) : hc_xcmd.h, sur le modèle de HyperXCmd.h — le bloc de
+paramètres réduit à paramCount, params[16], returnValue, passFlag, aux
+places +0, +4, +68, +72 que hc_xcmd.h vérifie à la compilation ;
+SendCardMessage, premier rappel ; HC_XCMD et HC_XFCN, qui exportent sous
+« XCMD nom » et « XFCN nom ». bonjour.wasm : 2 421 octets, un seul import
+(hc.SendCardMessage).
+
+WAMR DANS HC (HC/tiers, son LISEZMOI) : 36 fichiers C, l'interprète fast et
+le gestionnaire de fils. Deux choses MESURÉES en l'y logeant :
+  · la version en C de l'appel natif (invokeNative_general.c) tronque les
+    pointeurs sur 64 bits : SendCardMessage recevait une chaîne VIDE. HC
+    n'enregistre donc que des rappels « bruts », en C pur ;
+  · sans la garde matérielle (un gestionnaire de signal, qu'on refuse dans
+    une application), le banc MAC•CAM passe de 425 à 399 pas par seconde.
+
+LE NOYAU (HC/hc_wasm.c) :
+  · un module se range DANS la pile, sous un nom, et s'y écrit en
+    hexadécimal (« module "bonjour" » … « end module ») ; relu, ses octets
+    sont identiques. Un octet abîmé refuse la pile, un bloc sans sa fin
+    aussi. Un HC d'avant saute le bloc, sans changer le format ;
+  · VÉRIFIÉ À L'AJOUT : refusés, avec leur raison, du texte, un module vide,
+    un module qui importe « hc.Zorglub », un module écrit sans le kit ;
+  · L'APPEL : après TOUS les scripts du chemin, puis les piles en usage. Le
+    nom ne distingue pas les capitales. Seize paramètres passent, un
+    dix-septième est refusé — pour une fonction, le plafond de quinze des
+    gestionnaires ne s'applique plus quand aucun script ne la définit ;
+  · le returnValue d'un XCMD devient « the result », comme HyperCard le
+    documente (et celui d'un XFCN, sa valeur) ;
+  · LES FAUTES : « unreachable », un pointeur hors de la mémoire du module
+    (arrêté par WAMR AVANT le rappel), une valeur rendue hors de sa mémoire,
+    un module qui s'appelle lui-même (refusé), une ligne illisible envoyée à
+    HC. Après une faute, l'instance est jetée ; la suivante repart de zéro ;
+  · LA SENTINELLE : un fil qui, toutes les 20 ms, arrête le module en cours
+    s'il a dépassé son délai (hc_module_delai) ou si l'arrêt est demandé
+    (hc_module_interromps). Le harnais arrête une boucle sans fin à 0,3 s.
+
+Portes, le 16 octobre : 311 conformes sur 311, sous ASan, UBSan et
+LeakSanitizer aussi ; zéro avertissement ; zéro alerte de l'analyseur ;
+make fuzz construit avec WAMR, aucun signalement sur 800 essais.
+
+CE QUI DIFFÈRE DE HYPERCARD, ET C'EST SU (NON MESURÉ dans HyperCard) :
+  · chez lui, l'XCMD d'une pile passait avant les scripts des piles en usage
+    ET avant les commandes de HyperCard — un XCMD « beep » remplaçait beep.
+    Ici, les commandes et fonctions du noyau, puis tous les scripts, passent
+    d'abord (« params » en a fait les frais dans le harnais : c'est une
+    fonction de HyperTalk, et elle répondait à la place de l'externe) ;
+  · passFlag : HC cherche dans la pile suivante, puis rend « personne ne
+    répond ».
+
+CE QUI RESTE AVANT MAC•CAM :
+  · Cmd-. : hc_module_interromps existe ; l'interface Cocoa doit l'appeler,
+    depuis un fil qui guette la touche (la boucle d'événements est arrêtée
+    pendant qu'un module calcule) ;
+  · la fenêtre Objects ▸ Modules… et le glisser-déposer, décidés par
+    l'utilisatrice le 16 octobre ;
+  · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
+  · la licence de WAMR dans le DMG.
+

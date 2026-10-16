@@ -17,6 +17,7 @@
 #include "hct_bloc.h"
 #include "hct_chunk.h"   /* morceaux : étape 1 de la reprise v3 */
 #include "hc_file.h"     /* hc_taille_fichier : « the size » d'une pile */
+#include "hc_wasm.h"     /* les modules : XCMD et XFCN en WebAssembly */
 #include "hct_val.h"     /* valeurs  : étape 2 */
 #include "hct_exec.h"    /* exécuteur : étape 3 */
 #include "hct_eval.h"
@@ -2434,6 +2435,8 @@ void hc_free(Object *o)
      *
      * Elle ne concerne que les piles ; hc_icons_free l'ignore pour le reste. */
     hc_icons_free(o);
+    /* Les modules aussi : même règle, mêmes piles seulement. */
+    hc_modules_libere(o);
     free(o);
 }
 
@@ -9345,6 +9348,24 @@ static int v3_recours_corps(void *d, const HctNoeud *n, HctValeur *out,
 static int v3_fonction_pile(const char *nom, HctValeur *args, int nargs)
 {
     Object *from = g_me ? g_me : g_current_card;
+    /* PLUS DE QUINZE ARGUMENTS, ET PERSONNE POUR LES RECEVOIR : la place est
+     * aux modules. hc_send_args_k_body refuse un seizième argument avant même
+     * de chercher un gestionnaire — c'est juste pour un script, dont la table
+     * des paramètres en tient quinze ; mais un XFCN en reçoit seize, et ce
+     * refus-là le privait du dernier. Une fonction qu'un script DÉFINIT est
+     * toujours refusée, au même endroit, avec le même message. */
+    if (nargs > HC_ARGS_MAX) {
+        Object *chain[4 + HC_MAX_USING];
+        int nc = build_chain(from, chain, (int)(sizeof chain / sizeof *chain),
+                             NULL);
+        int definie = 0;
+        for (int i = 0; i < nc && !definie; i++) {
+            const char *fin = NULL, *tete = NULL;
+            if (chain[i] && find_handler_k(chain[i]->script, nom, 1, &fin, &tete))
+                definie = 1;
+        }
+        if (!definie) return 0;
+    }
     /* Pas de contrôle du nombre d'arguments ici : hc_send_args_k_body le fait
      * pour tout le monde, et il n'y a qu'une seule limite dans le noyau.
      * Celui qui se trouvait à cet endroit était juste, mais il était SEUL —
@@ -9916,6 +9937,66 @@ static int v3_popupmenu(HctValeur *args, int nargs, HctValeur *out)
     return 1;
 }
 
+/* LES PILES DU CHEMIN DES MESSAGES, dans l'ordre : celle de l'objet, puis
+ * les piles en usage. Ce sont elles dont les modules répondent (hc_wasm.h),
+ * comme chez HyperCard les XCMD de leur ressource. */
+static int v3_piles_chemin(Object *piles[], int max)
+{
+    Object *start = g_me ? g_me : g_current_card;
+    Object *chain[4 + HC_MAX_USING];
+    int nc = build_chain(start, chain, (int)(sizeof chain / sizeof *chain), NULL);
+    int n = 0;
+    for (int i = 0; i < nc && n < max; i++)
+        if (chain[i] && chain[i]->type == OBJ_STACK) piles[n++] = chain[i];
+    return n;
+}
+
+static int v3_piles_ont_module(Object *piles[], int np)
+{
+    for (int i = 0; i < np; i++)
+        if (hc_module_nombre(piles[i])) return 1;
+    return 0;
+}
+
+/* UN XFCN D'UN MODULE. Seulement pour un nom que ni le noyau ni aucun
+ * script n'a servi (voir l'appel, dans v3_fonction). Une faute du module se
+ * dit, et la fonction rend le vide — comme within() sur un mauvais argument :
+ * une fonction ne coupe pas le script. passFlag fait chercher plus loin. */
+static int v3_xfcn_module(const char *nom, HctValeur *args, int nargs,
+                          HctValeur *out)
+{
+    Object *piles[1 + HC_MAX_USING];
+    int np = v3_piles_chemin(piles, (int)(sizeof piles / sizeof *piles));
+    if (!v3_piles_ont_module(piles, np)) return 0;
+    /* Un de plus que le plafond : le dix-septième doit ARRIVER au module
+     * pour s'y faire refuser, et non disparaître en silence. */
+    const char *ptrs[HC_MODULE_PARAMS_MAX + 1];
+    int argc = nargs < HC_MODULE_PARAMS_MAX + 1 ? nargs : HC_MODULE_PARAMS_MAX + 1;
+    for (int i = 0; i < argc; i++) ptrs[i] = args[i].txt ? args[i].txt : "";
+    ARENA_MARK;
+    char *res = arena_buf();
+    if (!res) { ARENA_FREE; return 0; }
+    for (int i = 0; i < np; i++) {
+        int passe = 0;
+        char faute[300];
+        int r = hc_module_xfcn(piles[i], nom, ptrs, argc, &passe,
+                               res, HC_VAL, faute, sizeof faute);
+        if (r < 0) {
+            emit(HC_ERR, "   !! %s", faute);
+            *out = hct_val_texte("");
+            ARENA_FREE;
+            return 1;
+        }
+        if (r > 0 && !passe) {
+            *out = hct_val_texte(res);
+            ARENA_FREE;
+            return 1;
+        }
+    }
+    ARENA_FREE;
+    return 0;
+}
+
 static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
                        HctValeur *out)
 {
@@ -9998,7 +10079,13 @@ static int v3_fonction(void *d, const char *nom, HctValeur *args, int nargs,
         g_v1_porte = sauve_porte;
         return 1;
     }
-    /* Personne dans la pile : l'XFCN imité, au rang de la ressource. */
+    /* Personne dans la pile : un XFCN de ses modules, au rang de la
+     * ressource. */
+    if (v3_xfcn_module(nom, args, nargs, out)) {
+        g_v1_porte = sauve_porte;
+        return 1;
+    }
+    /* Ni script ni module : l'XFCN imité. */
     if (ci_equal(nom, "popUpMenu") && v3_popupmenu(args, nargs, out)) {
         g_v1_porte = sauve_porte;
         return 1;
@@ -16238,6 +16325,75 @@ static int v3_message_pile(HctContexte *ctx, const HctNoeud *n)
     return 1;
 }
 
+/* UN XCMD D'UN MODULE (hc_wasm.h), quand aucun gestionnaire de la chaîne
+ * n'a répondu. Ses arguments s'évaluent comme ceux d'un message, une fois.
+ * Une faute du module arrête le script, comme une commande qui échoue ;
+ * passFlag fait chercher dans la pile suivante.
+ *
+ * L'ORDRE N'EST PAS CELUI DE HYPERCARD, et c'est su : chez lui, l'XCMD
+ * d'une pile passait AVANT les scripts des piles en usage, et avant les
+ * commandes de HyperCard lui-même — un XCMD « beep » remplaçait beep. Ici,
+ * les commandes du noyau et tous les scripts passent d'abord. Écrit dans
+ * docs/mesures/xcmd.txt ; à reprendre si une pile en dépend. */
+static int v3_xcmd_module(HctContexte *ctx, const HctNoeud *n)
+{
+    char nom[64];
+    hct_texte(&n->jeton, nom, sizeof nom);
+    if (!nom[0]) return 0;
+    Object *piles[1 + HC_MAX_USING];
+    int np = v3_piles_chemin(piles, (int)(sizeof piles / sizeof *piles));
+    if (!v3_piles_ont_module(piles, np)) return 0;
+
+    /* Seize paramètres, et un DIX-SEPTIÈME s'il y en a : il doit arriver
+     * au module pour s'y faire refuser, et non disparaître en silence. La
+     * première version s'arrêtait à seize, et le dix-septième se perdait. */
+    char (*argv)[HC_VAL] = arena_rows(HC_MODULE_PARAMS_MAX + 1);
+    if (!argv) {
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+        return 1;
+    }
+    const char *ptrs[HC_MODULE_PARAMS_MAX + 1];
+    int argc = 0;
+    for (int i = 0; i < n->nfils && argc <= HC_MODULE_PARAMS_MAX; i++) {
+        const HctNoeud *f = n->fils[i];
+        if (f->genre == HCTN_MOTCLE) continue;
+        char *v = arena_buf();
+        if (!v) {
+            hct_ctx_faute(ctx, n, "mémoire insuffisante");
+            return 1;
+        }
+        v3_val_texte(ctx, f, v, HC_VAL);
+        if (ctx->erreur) return 1;
+        snprintf(argv[argc], HC_VAL, "%s", v);
+        ptrs[argc] = argv[argc];
+        argc++;
+    }
+    /* Le returnValue d'un XCMD devient « the result », comme chez
+     * HyperCard ; rien de rendu, et the result est vide. */
+    char *res = arena_buf();
+    if (!res) {
+        hct_ctx_faute(ctx, n, "mémoire insuffisante");
+        return 1;
+    }
+    for (int i = 0; i < np; i++) {
+        int passe = 0;
+        char faute[300];
+        set_result("");
+        int r = hc_module_xcmd(piles[i], nom, ptrs, argc, &passe,
+                               res, HC_VAL, faute, sizeof faute);
+        if (r < 0) {
+            hct_ctx_faute_txt(ctx, n, "%s", faute);
+            return 1;
+        }
+        if (r > 0 && !passe) {
+            set_result(res);
+            emit(HC_INFO, "   ⚙ XCMD %s", nom);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* visual [effect] <nom> [<vitesse>] [to <image>] : arme l'effet du PROCHAIN
  * « go » (voir v3_cmd_go, plus haut) — elle ne joue rien elle-même.
  *
@@ -17070,6 +17226,8 @@ static int v3_commande_corps(void *d, const HctNoeud *n, HctContexte *ctx)
     if (n->genre == HCTN_MESSAGE) {
         ARENA_MARK;
         int fait = v3_message_pile(ctx, n);
+        /* Personne dans la chaîne : un XCMD de ses modules. */
+        if (!fait) fait = v3_xcmd_module(ctx, n);
         ARENA_FREE;
         if (fait) return 1;
     }
@@ -19302,4 +19460,42 @@ void hc_do(const char *line)
      * ligne a déjà vidé le sien en redescendant à g_depth == 0. */
     if (--g_msg_box == 0) { tache_si_script_avorte(); erreurs_vide(); }
     interruption_servie();
+}
+
+/* LA LIGNE D'UN MODULE. Son SendCardMessage (hc_wasm.c) n'arrive que
+ * pendant un appel, donc au milieu d'un script, ou d'une ligne de la boîte
+ * de message qui a appelé le module.
+ *
+ * hc_do ne convient pas tel quel : il est fait pour une ligne TAPÉE, et
+ * remet tout à zéro — la profondeur, me, la cible, les sorties de boucle —,
+ * puis, en rendant la main au repos, vide la file des erreurs et sert
+ * l'interruption. Au milieu d'un script, la première chose casserait
+ * l'appelant, et la seconde avalerait un Cmd-. qui lui était destiné. On
+ * joue donc la ligne comme la boîte de message (me = la carte courante),
+ * et on rend à l'appelant son état intact. */
+void hc_ligne_de_module(const char *line)
+{
+    const char *sauve_porte = v1_porte("module");
+    Object *sauve_me = g_me, *sauve_target = g_target;
+    int sauve_pass = g_pass, sauve_depth = g_depth;
+    int sauve_eh = g_exit_handler, sauve_er = g_exit_repeat;
+    int sauve_nr = g_next_repeat;
+    ARENA_MARK;
+    g_msg_box++;
+    g_pass   = 0;
+    g_me     = g_current_card;
+    g_target = g_current_card;
+    g_exit_handler = g_exit_repeat = g_next_repeat = 0;
+    if (!v3_do_ligne(line))
+        emit(HC_ERR, "   !! ne sait pas lire la ligne du module : %s", line);
+    g_msg_box--;
+    ARENA_FREE;
+    g_me = sauve_me;
+    g_target = sauve_target;
+    g_pass = sauve_pass;
+    g_depth = sauve_depth;
+    g_exit_handler = sauve_eh;
+    g_exit_repeat = sauve_er;
+    g_next_repeat = sauve_nr;
+    g_v1_porte = sauve_porte;
 }

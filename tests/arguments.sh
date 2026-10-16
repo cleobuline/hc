@@ -24,6 +24,7 @@ arguments() {
     tetris)             echo "donnees/tetris_pile.txt" ;;
     invaders)           echo "donnees/invaders_pile.txt" ;;
     briques)            echo "donnees/briques_pile.txt" ;;
+    xcmd)               echo "donnees/modules" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;
     # Trois harnais cherchaient leur donnée dans le répertoire courant : elle

@@ -1,0 +1,85 @@
+/* hc_wasm.h — les modules d'une pile : des XCMD et des XFCN en WebAssembly.
+ *
+ * Décidé par l'utilisatrice le 15 octobre (CLAUDE.md, la quatrième pièce) ;
+ * le pourquoi et les mesures : docs/mesures/xcmd.txt ; le kit pour en
+ * écrire : xcmd/.
+ *
+ * Un MODULE est un fichier .wasm rangé DANS la pile, sous un nom. Il apporte
+ * des externes, qu'il exporte sous « XCMD <nom> » et « XFCN <nom> ». Il
+ * tourne enfermé dans WAMR : il ne voit que sa mémoire et les rappels que HC
+ * lui tend (hc_xcmd.h, côté module). Le noyau garde les OCTETS tels qu'on
+ * les lui a donnés, pour les réécrire à l'identique ; l'exécution, elle, se
+ * crée au premier appel et se jette après une faute.
+ *
+ * Les appels rendent :
+ *    1  le module avait cet externe, et il a fini ;
+ *    0  aucun module de la pile ne l'a : la recherche continue ;
+ *   -1  il l'avait, et il a échoué : `faute` dit pourquoi, en français. */
+
+#ifndef HC_WASM_H
+#define HC_WASM_H
+
+#include <stddef.h>
+#include "hc_core.h"
+
+/* Un module plus gros est refusé à l'ajout : 8 Mo, quand bonjour fait 2,4 Ko
+ * et le moteur de MAC•CAM, en 68000, 24 Ko. */
+#define HC_MODULE_OCTETS_MAX (8 * 1024 * 1024)
+/* Seize paramètres au plus : le bloc de HyperCard en a seize places. C'est
+ * UN de plus que les gestionnaires de HyperTalk (HC_ARGS_MAX, hc_core.c). */
+#define HC_MODULE_PARAMS_MAX 16
+/* La mémoire qu'un module peut prendre, en pages de 64 Ko : 64 Mo. */
+#define HC_MODULE_PAGES_MAX  1024
+
+/* ---- les modules d'une pile ---- */
+
+/* Ajoute (ou remplace, à nom égal) un module. Il est VÉRIFIÉ d'abord : un
+ * module que WAMR refuse, qui importe autre chose que les rappels de HC, ou
+ * qui n'apporte aucun externe, n'entre pas — `pourquoi` dit la raison, et la
+ * pile reste telle qu'elle était. Rend 0, ou -1. */
+int  hc_module_ajoute(Object *pile, const char *nom,
+                      const unsigned char *octets, size_t n,
+                      char *pourquoi, size_t npourquoi);
+
+/* Le même, SANS vérification et sans refus : pour la lecture d'un fichier,
+ * qui doit garder un module même si WAMR, demain, le refusait. Il échouera
+ * alors à son premier appel, en le disant. Rend 0, ou -1 (mémoire). */
+int  hc_module_pose(Object *pile, const char *nom,
+                    const unsigned char *octets, size_t n);
+
+int  hc_module_retire(Object *pile, const char *nom);   /* 1 s'il y était */
+int  hc_module_nombre(const Object *pile);
+const char *hc_module_nom(const Object *pile, int i);
+const unsigned char *hc_module_octets(const Object *pile, int i, size_t *n);
+
+/* Les externes du module i, un par ligne : « XCMD bonjour », « XFCN
+ * bonjour ». Rend leur nombre, ou -1 si le module ne se lit pas. */
+int  hc_module_externes(const Object *pile, int i, char *liste, size_t taille);
+
+/* Libère les modules d'une pile, avec la pile. */
+void hc_modules_libere(Object *pile);
+
+/* ---- l'appel ---- */
+
+/* Un XCMD de nom `nom` dans un module de `pile`, avec ses arguments déjà
+ * évalués. *passe vaut 1 si le module a posé passFlag. Son returnValue va
+ * dans `res` : chez HyperCard, celui d'un XCMD devient « the result ». */
+int  hc_module_xcmd(Object *pile, const char *nom,
+                    const char *const *argv, int argc, int *passe,
+                    char *res, size_t nres, char *faute, size_t nfaute);
+
+/* Un XFCN : sa valeur rendue va dans `res` (vide si le module n'en rend
+ * pas). */
+int  hc_module_xfcn(Object *pile, const char *nom,
+                    const char *const *argv, int argc, int *passe,
+                    char *res, size_t nres, char *faute, size_t nfaute);
+
+/* LE DÉLAI. Un module qui dépasse ce temps, en secondes, est arrêté ; 0 :
+ * jamais. Sert aux harnais, faute de Cmd-. dans un conteneur. */
+void hc_module_delai(double secondes);
+
+/* L'ARRÊT DEMANDÉ, depuis n'importe quel fil : le module en cours, s'il y en
+ * a un, s'arrête comme sur une faute. C'est le Cmd-. des modules. */
+void hc_module_interromps(void);
+
+#endif

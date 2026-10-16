@@ -1,0 +1,118 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. bonjour, le premier module : la chaîne entière ==
+   ajoute bonjour.wasm (2421 octets) : accepté
+   module « bonjour » : 2 externe(s)
+      XCMD bonjour
+      XFCN bonjour
+   bonjour "Patricia"
+      = Bonjour, Patricia !
+         ⚙ XCMD bonjour
+   bonjour
+      = Bonjour, le monde !
+         ⚙ XCMD bonjour
+   put bonjour("Patricia")
+      = Bonjour, Patricia !
+   put bonjour() into x
+   put x
+      = Bonjour, le monde !
+
+== 2. le nom ne distingue pas les capitales, comme HyperTalk ==
+   BONJOUR "en capitales"
+      = Bonjour, en capitales !
+         ⚙ XCMD BONJOUR
+   put BonJour("aussi")
+      = Bonjour, aussi !
+
+== 3. un script du même nom passe AVANT le module ==
+   bonjour "Patricia"
+      = le script répond à Patricia
+   put bonjour("la fonction")
+      = Bonjour, la fonction !
+   bonjour "de nouveau le module"
+      = Bonjour, de nouveau le module !
+         ⚙ XCMD bonjour
+
+== 4. refusés à l'ajout, et la pile n'en garde rien ==
+   ajoute du texte : REFUSÉ — ce n'est pas un module WebAssembly lisible (WASM module load failed: magic header not detected)
+   ajoute un module vide : REFUSÉ — le module est vide
+   ajoute inconnu.wasm (474 octets) : REFUSÉ — le module demande « hc.Zorglub », que HC ne fournit pas
+   ajoute sansboite.wasm (228 octets) : REFUSÉ — le module n'a pas de boîte aux paramètres (hc_boite) : est-il compilé avec le kit de HC ?
+   la pile garde 1 module(s)
+
+== 5. les épreuves : un module qui se conduit mal ==
+   ajoute epreuves.wasm (2778 octets) : accepté
+   module « bonjour » : 2 externe(s)
+      XCMD bonjour
+      XFCN bonjour
+   module « epreuves » : 9 externe(s)
+      XCMD boucle
+      XCMD faute
+      XCMD hors
+      XFCN hors
+      XCMD reentre
+      XCMD resultat
+      XCMD passe
+      XCMD mauvaise
+      XFCN compte
+   put compte("a", "b", "c")
+      = 3|a|b|c
+   put compte()
+      = 0
+   faute
+      [ERR]    !! le module « epreuves » s'est arrêté sur une faute : unreachable (v3, ligne 1)
+   put "le script suivant tourne"
+      = le script suivant tourne
+   put compte("repart")
+      = 1|repart
+   hors
+      [ERR]    !! le module « epreuves » s'est arrêté sur une faute : out of bounds memory access (v3, ligne 1)
+   put hors()
+      [ERR]    !! le module « epreuves » rend une valeur hors de sa mémoire
+      = 
+   put "[" & the result & "]"
+      = []
+   resultat
+         ⚙ XCMD resultat
+   put "[" & the result & "]"
+      = [fait]
+   reentre
+      [ERR]    !! le module « epreuves » est déjà en cours : il ne peut pas s'appeler lui-même (v3, ligne 1)
+         ⚙ XCMD reentre
+   mauvaise
+      [ERR]    !! ne sait pas lire la ligne du module : put 1 into
+         ⚙ XCMD mauvaise
+   passe
+      [ERR]    !! personne ne répond à « passe »
+   put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+      = 16|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16
+   put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)
+      [ERR]    !! XFCN compte : 17 paramètres, 16 au plus
+      = 
+   passe 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+      [ERR]    !! XCMD passe : 17 paramètres, 16 au plus (v3, ligne 1)
+
+== 6. la boucle sans fin : arrêtée par la sentinelle ==
+   boucle
+      [ERR]    !! le module « epreuves » a dépassé son délai, et il a été arrêté (v3, ligne 1)
+   rendue en moins de deux secondes
+   bonjour "après la boucle"
+      = Bonjour, après la boucle !
+         ⚙ XCMD bonjour
+
+== 7. enregistrer, relire : le module voyage dans la pile ==
+   hc_save : 0
+   le fichier : module "bonjour"
+                | 0061736D01000000011203…
+   hc_load : relue, 2 module(s)
+   les octets de bonjour : identiques
+   bonjour "depuis la pile relue"
+      = Bonjour, depuis la pile relue !
+         ⚙ XCMD bonjour
+   un octet abîmé : Un module de cette pile est incomplet ou abîmé.
+   un bloc sans sa fin : Fichier incomplet : il s'arrête au milieu de la pile.
+
+== 8. retirer un module ==
+   hc_module_retire(bonjour) : 1
+   bonjour "Patricia"
+      [ERR]    !! personne ne répond à « bonjour "Patricia" »
+   la pile garde 1 module(s)
