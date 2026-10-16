@@ -69,9 +69,9 @@ void cam_pose_pln(Cam *c, int n, const char *texte)
     }
 }
 
-/* L'original (getpln) relisait l'octet entier et non son bit, et pour une
- * autre table que celle qu'il écrivait : aucun script ne s'en sert. On rend
- * le bit du plan. */
+/* Le bit du plan, pour les harnais. L'original ne relisait pas les plans :
+ * « the pln7 of window » passait, et getpln servait image0 et image1, l'octet
+ * entier de chaque table (docs/mesures/xcmd.txt). Aucun script ne s'en sert. */
 void cam_lit_pln(const Cam *c, int n, char *texte)
 {
     const u8 *t = n >= 6 ? c->lutA : c->lutB;

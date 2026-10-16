@@ -214,3 +214,151 @@
       = [1 2 3 ] 0  0
    compile ": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB"
       = [INTERPRET_ERR "Can't understand ", 8 ] 4096 0101010101010101 0
+
+== 11. les fenêtres d'un module ==
+   ajoute fenetres.wasm (5248 octets) : accepté
+   put fenetre("Essai")
+      = 0
+   -- ouverte : xOpenEvt arrive quand l'appel est fini
+   put fenetre("Essai")
+      hôte : ouvre 2 « Essai » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 2
+      = 2
+   put there is a window "essai" && there is a window "Absente"
+      = true false
+   -- ses propriétés : le module d'abord, HC pour ce qu'il passe
+   set the compte of window "Essai" to 42
+   put the compte of window "Essai" && the ouvertures of window "Essai"
+      = 42 1
+   put the rect of window "Essai"
+      hôte : lit 2 rect
+      = 10,20,90,60
+   put the name of window "Essai"
+      = Essai
+   put the zorglub of window "Essai"
+      hôte : lit 2 zorglub
+      [ERR]    !! propriété de fenêtre inconnue : zorglub (v3, ligne 1)
+   hide window "Essai"
+      hôte : cache 2
+   -- ses messages : chacun éprouve un rappel
+   send "dessine" to window "Essai"
+      = xSendEvt « dessine »
+      hôte : image de 2, 3 × 2 à l'échelle 4 : 0 1 2 2 1 0 ; couleur 2 = 0,200,255
+   send copie to window "Essai"
+      = xSendEvt « copie »
+      hôte : copie 2
+      = CopyXWindow : 1
+   send "peinture" to window "Essai"
+      = xSendEvt « peinture »
+      hôte : la peinture de la carte, 2,1,6,3
+      = GetCardPicture : 1 — 1010 0101
+      = GetCardPicture d'un rectangle vide : 0
+   send "largeur" to window "Essai"
+      = xSendEvt « largeur »
+      hôte : pose 2 width = 200
+   send "reentre" to window "Essai"
+      = xSendEvt « reentre »
+      [ERR]    !! le module « fenetres » est déjà en cours : sa fenêtre « Essai » ne peut pas recevoir « dessine »
+   send "inconnu" to window "Essai"
+      = xSendEvt « inconnu »
+   send "dessine" to window "Absente"
+      [ERR]    !! fenêtre introuvable : Absente
+   send "guette" to window "Essai"
+      = xSendEvt « guette »
+      = Button a dit oui ; tours avant : 1
+   -- un autre module ne dessine pas dans sa fenêtre
+   ajoute autre.wasm (1061 octets) : accepté
+   dessineAutre 2
+         ⚙ XCMD dessineAutre
+   put there is a window "Essai"
+      = true
+   -- renommée : le nom suit
+   set the name of window "Essai" to "CAM"
+      hôte : pose 2 name = CAM
+   put there is a window "Essai" && there is a window "CAM"
+      = false true
+   send "dessine" to window "CAM"
+      = xSendEvt « dessine »
+      hôte : image de 2, 3 × 2 à l'échelle 4 : 0 1 2 2 1 0 ; couleur 2 = 0,200,255
+   -- Cmd-. : un module qui guette Button s'arrête de lui-même, et la garde
+   send "guette" to window "CAM"
+      = xSendEvt « guette »
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   une seconde de grâce consommée : non, rendue avant
+   put there is a window "CAM" && the compte of window "CAM"
+      = true 42
+   -- Cmd-. : un module qui ne guette pas est arrêté, et la perd
+   send "boucle" to window "CAM"
+      = xSendEvt « boucle »
+      hôte : ferme 2
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   put there is a window "CAM"
+      = false
+   -- Cmd-. : un module qui guette sans s'arrêter l'est après sa grâce
+   put fenetre("Sourd")
+      hôte : ouvre 3 « Sourd » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 3
+      = 3
+   send "sourd" to window "Sourd"
+      = xSendEvt « sourd »
+      hôte : ferme 3
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   une seconde de grâce consommée : oui
+   put there is a window "Sourd"
+      = false
+   -- une faute dans un événement la ferme aussi
+   put fenetre("Essai")
+      hôte : ouvre 4 « Essai » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 4
+      = 4
+   send "faute" to window "Essai"
+      = xSendEvt « faute »
+      hôte : ferme 4
+      [ERR]    !! le module « fenetres » s'est arrêté sur une faute : unreachable
+   put there is a window "Essai"
+      = false
+   -- fermée par le module, par close window, par sa case
+   put fenetre("Un") && fenetre("Deux") && fenetre("Trois")
+      hôte : ouvre 5 « Un » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 5
+      hôte : ouvre 6 « Deux » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 6
+      hôte : ouvre 7 « Trois » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 7
+      = 5 6 7
+   send "ferme" to window "Un"
+      = xSendEvt « ferme »
+      hôte : ferme 5
+   close window "Deux"
+      = xCloseEvt, fenêtre 6
+      hôte : ferme 6
+   la case de « Trois »
+      = xCloseEvt, fenêtre 7
+      hôte : ferme 7
+   get fenetre("Quatre")
+      hôte : ouvre 8 « Quatre » 10,20,90,60, visible 1, style 17, flottante 1
+      = xOpenEvt, fenêtre 8
+   put there is a window "Un" && there is a window "Deux" && there is a window "Trois" && there is a window "Quatre"
+      = false false false true
+   -- ouverte pendant un événement : xOpenEvt suit l'événement
+   send "fille" to window "Quatre"
+      = xSendEvt « fille »
+      hôte : ouvre 9 « Fille » 0,0,10,10, visible 1, style 0, flottante 0
+      = NewXWindow pendant un événement : 1
+      = xOpenEvt, fenêtre 9
+   -- ouverte, puis un AUTRE module appelé dans le même appel :
+      l'autre tourne, et xOpenEvt attend la fin de l'appel
+   put fenetre("Cinq", "dessineAutre 0")
+      hôte : ouvre 10 « Cinq » 10,20,90,60, visible 1, style 17, flottante 1
+         ⚙ XCMD dessineAutre
+      = xOpenEvt, fenêtre 10
+      = 10
+   put there is a window "Fille" && there is a window "Cinq"
+      = true true
+   -- le module remplacé : ses fenêtres partent avec son instance
+      hôte : ferme 8
+      hôte : ferme 9
+      hôte : ferme 10
+   ajoute fenetres.wasm (5248 octets) : accepté
+   put there is a window "Quatre"
+      = false

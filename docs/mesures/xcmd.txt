@@ -712,9 +712,18 @@ DANS MACCAM, la fonction « pln » (nom laissé par THINK C) :
     tel quel, un plus long déborde ;
   · setProp n'appelle « pln » que pour ces quatre-là : pln3 à pln0 ne font
     rien.
-« getpln », qui sert « the pln7 of window », relit en « 0 » et « 1 », mais
-teste l'OCTET entier et non son bit : pln7 et pln6, qui partagent l'octet,
-s'y relisent mêlés. Aucun script de la pile ne lit ces propriétés.
+LA LECTURE, CORRIGÉE le 16 octobre tard dans la nuit. Ce paragraphe disait
+que « getpln » sert « the pln7 of window » : c'était une SUPPOSITION sur
+l'ordre des noms, écrite comme un fait. Lu depuis : la liste des trente
+noms, dans les données de MACCAM (initList), et les deux tables de
+répartition de getProp et de setProp. getProp n'a RIEN pour pln7 à pln0 :
+il rend NULL, et l'événement est PASSÉ à HyperCard — ce qu'il en faisait
+n'est pas mesuré. getpln sert « the image0 of window » (la table de
+CAM-A) et « the image1 » (celle de CAM-B), en « 1 » là où l'OCTET entier
+n'est pas nul : les deux plans d'une table s'y relisent mêlés. image2 à
+image7, major, minor et alternate passent aussi ; « the phaseA » fait
+SysBeep avant de rendre la phase. Aucun script de la pile ne lit ni les
+plans ni les images.
 
 Ce que la nouvelle MACCAM en reprend : les mêmes bits, la même lecture —
 « 0 » éteint, le reste allume —, mais arrêtée à 4 096.
@@ -805,10 +814,91 @@ glisser vers l'est ; « OPP », en Margolus alterné, fait filer une particule
 en diagonale ; CAM-B recopie CAM-A par « &CENTER ». Rien de tout cela n'est
 COMPARÉ à HyperCard : ce sont des règles dont on connaît le résultat.
 
+LES FENÊTRES DES MODULES — 16 octobre, tard dans la nuit
+------------------------------------------------------------------------
+
+LU DANS MACCAM (xEventEntryPoint, désassemblé ; rien d'exécuté) : ce
+qu'une fenêtre externe reçoit de HyperCard 2. L'XFCN est rappelée avec
+paramCount à -1, params[0] pointant un XWEventInfo — l'EventRecord du Mac
+d'abord, puis la fenêtre : eventParams[0] est à +0x14, eventResult à
++0x38. Elle répartit sur event.what :
+  · xSendEvt (1200) → doMessage, xSetPropEvt (1201) → setProp,
+    xGetPropEvt (1202) → getProp, la valeur dans eventResult ; ce qu'elle
+    ne connaît pas, elle le PASSE (passFlag) ;
+  · xOpenEvt (1000) → DoOpen (la grille, à la taille de la fenêtre) ;
+  · xCloseEvt (1001) → rend sa mémoire, et passe : HyperCard ferme ;
+  · 1103 (Copier, au menu Édition) → l'image en PICT au presse-papiers ;
+  · updateEvt → draw ; activateEvt → HiliteWindow, SelectWindow, draw ;
+  · mouseDown → FindWindow : la barre déplace, la case ferme
+    (CloseXWindow), le zoom et l'agrandissement font ce qu'ils font sur
+    toute fenêtre ; un clic DANS l'image ne fait rien ;
+  · keyDown et 1400 → SysBeep ; 1300 (le curseur) → passe ; nullEvent →
+    InvertRect, jamais reçu : aucun SetXWIdleTime.
+Ses propriétés de FENÊTRE, dans setProp, sont des pièges du Toolbox :
+hilite (HiliteWindow), name (SetWTitle), visible (ShowWindow, HideWindow),
+width et height (SizeWindow) ; « rect » s'écrit dans le portRect de la
+fenêtre, puis Hide et Show — une bizarrerie qu'aucun script de la pile
+n'éveille. image7 à image4 demandent la peinture de la carte par
+GetMaskAndData (requête 0x1d), puis CopyBits depuis le rectangle donné.
+
+CE QUE HC EN FAIT, ÉCRIT le même soir (hc_wasm.c, xcmd/hc_xcmd.h) :
+  · le MÊME CONTRAT pour le module : paramCount à -1, un XWEventInfo
+    dans params[0] — réduit à what, la fenêtre, les paramètres et
+    eventResult, des chaînes C —, les mêmes numéros d'événement, passFlag ;
+  · NewXWindow ouvre une fenêtre de l'hôte, que le noyau numérote et
+    nomme de son titre ; elle appartient au module, et l'externe qui l'a
+    ouverte en reçoit les événements. CloseXWindow, DrawXWindow (une image
+    indexée et sa palette — HC la garde et la redessine : pas d'update à
+    servir), CopyXWindow (au presse-papiers), Button, et GetCardPicture
+    (la peinture de la carte, en 0 et 1 — le GetMaskAndData réduit) ;
+  · « send … to window », « set/get the … of window », « close window »,
+    « there is a window » passent par le chemin des fenêtres nommées
+    (v3_fenetre_hote), les fenêtres des modules d'abord. Ce que le module
+    passe, HC le sert lui-même : rect, loc, visible, name, width, height.
+    Il le sert aussi quand le module, en cours, pose par SendCardMessage
+    une propriété de sa fenêtre — c'est ainsi qu'un module refait le
+    SizeWindow de « scale » ;
+  · LES CLICS ET LES TOUCHES ne vont pas au module : l'hôte déplace et
+    ferme la fenêtre lui-même. La case de fermeture envoie xCloseEvt ;
+  · L'INSTANCE DU MODULE vit autant que ses fenêtres, qui se ferment avec
+    elle : une faute, le module retiré ou remplacé, la pile fermée ;
+  · CMD-. : Button répond oui dès la touche. Un module qui le guette —
+    les boucles « stepfast » de MAC•CAM — a une seconde pour rendre la
+    main de lui-même, et garde ses fenêtres ; passé ce délai, ou s'il ne
+    le guette pas, HC l'arrête et elles se ferment. Chez HyperCard, Cmd-.
+    n'arrêtait pas stepfast du tout : c'est le clic qui l'arrêtait.
+
+NON MESURÉ dans HyperCard, et choisi :
+  · un message que le module passe n'a pas de suite, sans erreur ;
+  · GetCardPicture lit la couche qu'on édite, la carte ou son fond sous
+    editBkgnd ; l'encre est ce qui est opaque et sombre ;
+  · le procID n'est pas dessiné : une fenêtre à titre et case de
+    fermeture, à petite barre si elle flotte ; ce que l'image ne couvre
+    pas est noir ; le rectangle est celui du contenu, en coordonnées de
+    l'écran, comme les palettes — MACCAM rend le même (GlobalToLocal, puis
+    OffsetRect) ;
+  · une fenêtre qui s'ouvrirait sous la barre de menus est ramenée dans
+    l'écran : la pile donne « 0,0,128,128 », et chez HyperCard la barre de
+    titre passait alors sous celle des menus.
+
+LE HARNAIS (xcmd, section 11), avec un hôte qui dit ce qu'on lui
+demande : l'ouverture et xOpenEvt, les propriétés servies par le module
+puis par HC, l'image, le presse-papiers, la peinture, la réentrance
+refusée, un AUTRE module qui ne peut ni dessiner dans la fenêtre ni la
+fermer, le renommage, les trois fermetures (par le module, par close
+window, par la case), le module remplacé, une faute ; et Cmd-. sur trois
+modules — qui guette Button (rendu avant la seconde, fenêtre gardée), qui
+l'appelle sans s'arrêter (arrêté après sa seconde), qui ne le guette pas
+(arrêté, fenêtre fermée).
+
+L'INTERFACE COCOA (HCview.m) : COMPILÉE PAR LA CI, NON EXÉCUTÉE. Elle sera
+jouée DANS HC (l'application) avec l'enveloppe de MACCAM, qui vient.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
-  · la fenêtre externe « CAM » (MACCAM) : ses propriétés et ses messages,
-    et le moteur qui applique les tables, dans cette même disposition ;
+  · l'enveloppe de MACCAM (xcmd/maccam/maccam.c) : ses trente propriétés
+    et ses dix-sept messages, sur la machine déjà écrite et la fenêtre
+    ci-dessus ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
