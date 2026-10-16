@@ -379,3 +379,24 @@ module (SendCardMessage, SendHCMessage, EvalExpr, GetGlobal, SetGlobal,
 GetFieldByName…) au lieu d'un saut à entryPoint avec un numéro de requête ;
 les conversions (StrToNum, NumToStr, PasToZero…) n'ont plus lieu d'être.
 
+LU LE 16 OCTOBRE : L'EN-TÊTE DE HYPERCARD IIGS 1.1, envoyé par l'utilisatrice
+(github.com/commanderx16/lcc-816, include/iigs/toolbox/hypercard.h — « File:
+HyperXCMD.h », Apple 1990-91, Byte Works 1992 ; lu, NON COMMIS). C'est le
+cousin Apple IIGS de l'en-tête du Mac, pas l'en-tête du Mac :
+  · LES NUMÉROS 1 À 28 Y SONT CEUX QU'ON CROYAIT (SendCardMessage 1, EvalExpr
+    2, … GetGlobal 18, SetGlobal 19, GetFieldByName 20, … ScanToReturn 28),
+    et ce sont les 28 que lie MAC•CAM : deux sources, d'accord ;
+  · SAUF UN DOUTE : ScanToZero y vaut 29 ; la table « de mémoire » plus haut
+    lui donnait 39. MAC•CAM lie 29 ET 39. Non tranché pour le Mac ;
+  · au-delà de 28, le IIGS a ses propres services (chaînes GS, noms de
+    ressources) : sa numérotation ne vaut pas pour le Mac ;
+  · son bloc de paramètres n'a ni entryPoint ni request : le IIGS passe par
+    un vecteur fixe ($E10220). La disposition mesurée chez MAC•CAM reste
+    celle du Mac ;
+  · ses fenêtres externes : NewXWindow, CloseXWindow, SetXWIdleTime,
+    XWAllowReEntrancy, Get et SetXWindowValue, Hide et ShowHCPalettes ; ses
+    événements : xOpenEvt 1000, xCloseEvt 1001, xHidePalettesEvt 1004,
+    xShowPalettesEvt 1005, xCursorWithin 1300. RIEN pour « set the … of
+    window » ni « send … to window », dont MACCAM se sert (ses fonctions
+    getProp, setProp, doMessage) : c'est HyperCard 2 sur Mac qu'il faut.
+
