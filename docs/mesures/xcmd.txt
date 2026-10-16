@@ -534,6 +534,10 @@ s'endormir. SUR UN MAC : NON MESURÉ.
 À JOUER DANS HC (l'application), de nouveau : le pas 5 plus haut ; et le
 même « boucle » depuis le mouseUp d'un bouton.
 
+MESURÉ DANS HC (l'application), le 16 octobre au soir, par l'utilisatrice,
+sur son Mac : « cette fois-ci, Cmd-. coupe la boucle ». Le cas du mouseUp
+n'est pas rapporté à part.
+
 CE QUI RESTE AVANT MAC•CAM :
   · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
   · la licence de WAMR dans le DMG.
