@@ -364,8 +364,10 @@ ne fait pas tourner de code 68000. Il sert de MODÈLE, pour que les rappels
 gardent leurs noms et leur sens. Il est d'Apple : comme les piles, il ne
 se commet pas. HC écrira le sien, hc_xfcn.h.
 
-La disposition du bloc de paramètres, telle que le code de MAC•CAM la
-montre (mesuré ci-dessus, et conforme au souvenir qu'on en a) :
+La disposition du bloc de paramètres. MESURÉS dans le code de MAC•CAM :
+entryPoint (+72), request (+76), inArgs (+80), outArgs (+112). Les autres
+champs viennent du SOUVENIR qu'on a de HyperXCmd.h, que ces quatre-là
+confirment sans le prouver :
 
   +0   paramCount    +2  params[16] (des Handle)   +66  returnValue
   +70  passFlag      +72 entryPoint                +76  request
