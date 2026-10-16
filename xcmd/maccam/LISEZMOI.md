@@ -8,7 +8,7 @@ HyperCard grâce à deux XFCN :
 | XFCN | rôle | ici |
 | --- | --- | --- |
 | `FORTH` | compile les règles écrites en Forth, en tables | **`forth.c`** |
-| `MACCAM` | la fenêtre de la machine, qui applique les tables | à venir |
+| `MACCAM` | la fenêtre de la machine, qui applique les tables | sa machine : **`maccam_coeur.c`** ; sa fenêtre : à venir |
 
 Le but : la pile d'origine tourne dans HC **sans changer une ligne de ses
 scripts**. La pile elle-même ne se commet pas ; ce qu'on y a mesuré est dans
@@ -45,6 +45,28 @@ Les fichiers :
 | --- | --- |
 | `forth_coeur.c` | le compilateur, en C ordinaire : il tourne dans le module comme dans le harnais `tests/harnais/forth.c` |
 | `forth.c` | son passage dans HC : l'XFCN, et `SetGlobal` |
+| `maccam_coeur.c` | la machine de la fenêtre CAM, en C ordinaire, éprouvée par `tests/harnais/maccam.c` |
+
+## La machine
+
+`maccam_coeur.c` est la machine de MACCAM, traduite de son code 68000 (lu et
+désassemblé ; rien n'en a été exécuté dans HyperCard pour comparaison) :
+
+- une grille de pixels de 8 bits — plan 0 sur le bit 7, plan 3 sur le bit 4 —,
+  dont la bordure d'un pixel est refaite après chaque pas par le côté opposé :
+  un tore ;
+- deux demi-machines : CAM-A calcule les plans 0 et 1 par sa table (`pln7`,
+  `pln6`), CAM-B les plans 2 et 3 (`pln5`, `pln4`) ; chacune lit le centre
+  de l'autre comme « & » ;
+- les huit balayages de `major`, dans l'ordre de bits des tables du FORTH ;
+  les phases basculent après chaque pas ;
+- `fill`, `erase`, `image`, et la palette du moteur MacCam moderne (plan 0
+  blanc, plan 1 cyan, CAM-B jaune, orange, vert) : les palettes clut de la
+  pile ne sont pas reprises — décidé par l'utilisatrice.
+
+Son harnais, `tests/harnais/maccam.c`, la fait tourner avec le FORTH : le
+planeur de Conway avance d'une case tous les quatre pas et revient à sa
+place après un tour du tore.
 
 ## Construire, et l'essayer
 

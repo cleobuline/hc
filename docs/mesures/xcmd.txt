@@ -794,6 +794,17 @@ photographie de la fenêtre au presse-papiers ; les palettes clut, « pas
 importantes : on a un moteur MacCam qui s'en passe » — l'import ne les
 gardera pas, la fenêtre aura sa palette à elle.
 
+LA MACHINE DE MACCAM, ÉCRITE le même soir : xcmd/maccam/maccam_coeur.c,
+chaque balayage traduit de sa fonction d'origine (optscanmoore, sfVonn,
+fmargph, et leurs variantes PH et HV, copyBorders, fi, copyToPlane…),
+bornes et bizarreries comprises — l'image posée dans le second tampon, que
+copyToPlane lit en entier. Son harnais (maccam) la fait tourner avec le
+FORTH : le planeur de Conway avance d'une case vers le sud-est en quatre pas
+et revient à sa place en quarante sur un tore de 10 × 10 ; « WEST » fait
+glisser vers l'est ; « OPP », en Margolus alterné, fait filer une particule
+en diagonale ; CAM-B recopie CAM-A par « &CENTER ». Rien de tout cela n'est
+COMPARÉ à HyperCard : ce sont des règles dont on connaît le résultat.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
   · la fenêtre externe « CAM » (MACCAM) : ses propriétés et ses messages,
