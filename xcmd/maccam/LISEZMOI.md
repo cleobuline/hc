@@ -27,17 +27,21 @@ rend ce qui reste sur sa pile, ou la faute qui l'a arrêtée.
 
 Une **table** est un texte de 4 096 caractères « 0 » ou « 1 » : la nouvelle
 valeur d'une cellule pour chacun des 4 096 états de son voisinage. L'ordre des
-bits de l'index dépend du voisinage déclaré. Il n'est documenté nulle part :
-il est **mesuré** sur les 175 tables que la pile garde, faites par le FORTH
-d'origine.
+bits de l'index dépend du voisinage déclaré. Il n'est documenté nulle part
+ailleurs que dans le code du FORTH d'origine, qui en porte les huit tables :
+**lu** là, **mesuré** pour trois d'entre eux sur les 175 tables que la pile
+garde, et retrouvé dans le moteur de MACCAM — trois sources d'accord.
 
-| voisinage | bits 0 → 11 |
-| --- | --- |
-| `N/MOORE` (et rien) | EAST S.EAST N.EAST CENTER SOUTH NORTH WEST S.WEST N.WEST CENTER' &CENTER' &CENTER |
-| `N/VONN` | EAST' EAST CENTER' CENTER SOUTH' SOUTH NORTH' NORTH WEST' WEST &CENTER' &CENTER |
-| `N/MARG-PH` | CCW' CCW OPP' OPP CW' CW CENTER' CENTER &CENTER' &CENTER PHASE PHASE' |
-| `N/MARG-HV` | les mêmes, puis HORZ VERT |
-| `N/MOORE-HV` | Moore, puis HORZ VERT |
+| voisinage | `major` | bits 0 → 11 |
+| --- | --- | --- |
+| `N/MOORE` (et rien) | 0 | EAST S.EAST N.EAST CENTER SOUTH NORTH WEST S.WEST N.WEST CENTER' &CENTER' &CENTER |
+| `N/VONN` | 1 | EAST' EAST CENTER' CENTER SOUTH' SOUTH NORTH' NORTH WEST' WEST &CENTER' &CENTER |
+| `N/MARG-PH` | 2 | CCW' CCW OPP' OPP CW' CW CENTER' CENTER &CENTER' &CENTER PHASE PHASE' |
+| `N/MARG-HV` | 3 | les mêmes, puis HORZ VERT |
+| `N/MOORE-PH` | 4 | Moore, puis PHASE PHASE' |
+| `N/MOORE-HV` | 5 | Moore, puis HORZ VERT |
+| `N/VONN-PH` | 6 | von Neumann, puis PHASE PHASE' |
+| `N/VONN-HV` | 7 | von Neumann, puis HORZ VERT |
 
 Les fichiers :
 
