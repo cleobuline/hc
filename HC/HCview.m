@@ -24,6 +24,9 @@
 #import "hct_verif.h"
 #import "hct_chunk.h"   /* hct_utf8_compte_prefixe : octets -> caractères */
 #import "Hcdocument.h"   /* allDocuments : oublier un objet mort partout */
+#include "hc_wasm.h"     /* les modules : le dépôt d'un .wasm, et Cmd-. */
+#include <ApplicationServices/ApplicationServices.h>  /* CGEventSourceKeyState */
+#include <unistd.h>       /* usleep, pour la sentinelle des modules */
 
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
@@ -2676,6 +2679,7 @@ static void cocoa_menu_hypercard(const char *item)
         { "Card Info",      "showCardInfo"       },
         { "Bkgnd Info",     "showBackgroundInfo" },
         { "Stack Info",     "showStackInfo"      },
+        { "Modules",        "showModules"        },
         { "Find",           "findInStack:"       },
         { "New Stack",      "newStack:"          },
         { "Open Stack",     "openStack:"         },
@@ -5534,6 +5538,40 @@ static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
     return -1;
 }
 
+/* ═══ LA SENTINELLE DE Cmd-. POUR LES MODULES ══════════════════════════
+ *
+ * Un script s'arrête par Cmd-. parce que le noyau rend la main à l'hôte
+ * soixante fois par seconde, et que l'hôte lit alors ses événements
+ * (cmdpoint.txt). Un MODULE, lui, calcule sans rendre la main : la boucle
+ * d'événements est arrêtée, et la touche resterait dans la file jusqu'à la
+ * fin du calcul — jamais, s'il boucle.
+ *
+ * Ce fil-ci regarde donc le clavier LUI-MÊME, vingt fois par seconde, et
+ * seulement pendant qu'un module calcule : Cmd tenu, et le point (la touche
+ * 0x2F, kVK_ANSI_Period). Il appelle hc_module_interromps, que la sentinelle
+ * du noyau change en arrêt du module.
+ *
+ * NON MESURÉ sur un Mac : que CGEventSourceKeyState lise le clavier sans
+ * réclamer l'autorisation « Surveillance de l'entrée » de macOS. Lu dans la
+ * documentation, pas vu. */
+void hcv_guette_modules(void)
+{
+    static BOOL lance = NO;
+    if (lance) return;
+    lance = YES;
+    [NSThread detachNewThreadWithBlock:^{
+        for (;;) {
+            usleep(50 * 1000);
+            if (!hc_module_actif()) continue;
+            CGEventFlags m = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
+            if ((m & kCGEventFlagMaskCommand)
+                && CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState,
+                                         (CGKeyCode)0x2F))
+                hc_module_interromps();
+        }
+    }];
+}
+
 @implementation HCView {
     HCDoc _doc;
 }
@@ -7580,6 +7618,41 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
 /* Le dessin de la carte, puis, pendant un « flash », la carte entière
  * inversée par-dessus — l'écran gelé et FatBits compris : les trois chemins
  * de dessineSansFlash finissent par un return, d'où cette enveloppe. */
+/* ═══ DÉPOSER UN .wasm SUR LA PILE ═════════════════════════════════════
+ *
+ * Le raccourci d'Objects ▸ Modules… (décidé le 16 octobre) : un fichier
+ * .wasm lâché sur la fenêtre devient un module de CETTE pile — celle de la
+ * vue, pas forcément la pile active. Le reste du dépôt n'est pas accepté. */
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if ([self window]) [self registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
+}
+
+static NSArray<NSURL *> *modules_deposes(id<NSDraggingInfo> info)
+{
+    NSArray *urls = [[info draggingPasteboard]
+        readObjectsForClasses:@[[NSURL class]]
+                      options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    NSMutableArray<NSURL *> *w = [NSMutableArray array];
+    for (NSURL *u in urls)
+        if ([[[u pathExtension] lowercaseString] isEqualToString:@"wasm"]) [w addObject:u];
+    return w;
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info {
+    return [modules_deposes(info) count] ? NSDragOperationCopy : NSDragOperationNone;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
+    NSArray<NSURL *> *w = modules_deposes(info);
+    if (![w count]) return NO;
+    Object *pile = NULL;
+    for (HCDocument *d in [HCDocument allDocuments])
+        if (d.view == self) { pile = d.stack; break; }
+    if (!pile) return NO;
+    return hcdlg_ajoute_modules(pile, w) > 0;
+}
+
 - (void)drawRect:(NSRect)dirtyRect
 {
     [self dessineSansFlash:dirtyRect];

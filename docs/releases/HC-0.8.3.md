@@ -42,7 +42,8 @@ The card flashes: black turns to white and back, as many times as asked.
 
 - Cmd-. stops a long `flash`, and the card is always turned back the right
   way before the script goes on.
-- `flash` works on top of everything, a locked screen included.
+- With several stacks open, only the window of the stack that runs `flash`
+  flashes.
 
 ### 2. Signed and notarised
 
@@ -72,7 +73,8 @@ building the DMG, checking it as a user would. Two scripts come with it:
 - `outils/livrer.sh` does the whole release from a folder that holds HC.app
   and the stacks: it signs and notarises the application, builds the DMG,
   signs and notarises it, and checks both with `spctl`. Run again after an
-  interruption, it does not sign or send again what is already done.
+  interruption, it does not sign or send again what is already done, and it
+  takes up an existing DMG only if it still holds exactly the folder.
 
 ---
 
@@ -94,8 +96,8 @@ building the DMG, checking it as a user would. Two scripts come with it:
 - `flash`, in HyperCard: its speed (HC holds each state for 4 ticks, so
   `flash 3` takes 20 ticks); what `flash 0`, a negative or decimal number,
   or `flash "x"` does (HC: nothing, nothing, the whole part, an error); and
-  `flash` under `lock screen` (HC flashes anyway). That `flash` alone flashes
-  once was given by the author, not yet seen in HyperCard.
+  `flash` under `lock screen` (see below). That `flash` alone flashes once
+  was given by the author, not yet seen in HyperCard.
 - Notes, in HyperCard: the octave of a note written without one (HC: 4),
   and whether it carries over to the next note (HC: yes); MIDI numbers (HC
   accepts them); a note longer than its sound (HC falls silent when the
@@ -122,6 +124,10 @@ building the DMG, checking it as a user would. Two scripts come with it:
 
 ### Known, and not fixed here
 
+- `flash` under `lock screen` should not flash in HC: the locked screen
+  holds back the redraw, as it does for everything else. This is read from
+  the code, not yet seen; and whether HyperCard flashes there is not
+  measured either. If it does, HC will follow.
 - A sound longer than 30 seconds is read from its file, and plays once
   without its notes. A tune longer than two minutes is cut there.
 - **"Print Topic"** in the Reference menu prints every page with the same

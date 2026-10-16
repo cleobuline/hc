@@ -41,16 +41,20 @@ rm -rf -- "${T:?}/graines_hc" "${T:?}/graines_orig" "${T:?}/temoin" "${T:?}/camp
 mkdir -p "$T/graines_hc" "$T/graines_orig" "$T/temoin/graines" "$T/temoin/sortie" "$T/campagne"
 
 NOYAU="$HC/hc_core.c $HC/hc_notes.c $HC/hc_file.c $HC/hc_icons.c $HC/hc_importe.c $HC/hc_origine.c
-       $HC/hc_presse_papiers.c $HC/hc_script.c $(ls "$HC"/hct_*.c | tr '\n' ' ')"
-BASE="-std=gnu99 -O1 -I$HC -Wall -Wextra"
+       $HC/hc_presse_papiers.c $HC/hc_script.c $HC/hc_wasm.c $(ls "$HC"/hct_*.c | tr '\n' ' ')"
+BASE="-std=gnu99 -O1 -I$HC -isystem $HC/tiers/wamr/core/iwasm/include -Wall -Wextra"
 SAN="-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer -g"
 
 # ── 1. compiler ─────────────────────────────────────────────────────────────
 printf 'compilation................... '
+# WAMR, l'interprète des modules, à part et sans sanitizers : voir
+# tests/lance.sh, qui fait de même.
+sh "$HC/tiers/wamr_compile.sh" "$T/wamr" || { echo "ÉCHEC (WAMR)"; exit 1; }
+WAMR="$T/wamr/*.o -lpthread"
 # shellcheck disable=SC2086
-cc $BASE $SAN -o "$T/fuzz"        "$ICI/fuzz.c" $NOYAU -lm -lz &&
-cc $BASE $SAN -DCANARI -o "$T/fuzz_temoin" "$ICI/fuzz.c" $NOYAU -lm -lz &&
-cc $BASE -o "$T/graine_mb" "$ICI/graine_mb.c" $NOYAU -lm -lz &&
+cc $BASE $SAN -o "$T/fuzz"        "$ICI/fuzz.c" $NOYAU $WAMR -lm -lz &&
+cc $BASE $SAN -DCANARI -o "$T/fuzz_temoin" "$ICI/fuzz.c" $NOYAU $WAMR -lm -lz &&
+cc $BASE -o "$T/graine_mb" "$ICI/graine_mb.c" $NOYAU $WAMR -lm -lz &&
 cc -Wall -Wextra -O1 -shared -fPIC -o "$T/garde.so" "$ICI/garde.c" -ldl ||
   { echo "ÉCHEC"; exit 1; }
 echo "fait"

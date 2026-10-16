@@ -54,6 +54,43 @@
 		4DF5FB8D301FEE6F006AE901 /* HCdialogs.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF5FB8C301FEE6F006AE901 /* HCdialogs.m */; };
 		4DF856DC30343751009E17FB /* HCtext.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF856DB30343751009E17FB /* HCtext.m */; };
 		4DF856E130343BE0009E17FB /* HCvisual.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DF856DF30343BE0009E17FB /* HCvisual.m */; };
+		4DC100000000000000000002 /* hc_wasm.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000001 /* hc_wasm.c */; };
+		4DC100000000000000000005 /* invokeNative_general.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000004 /* invokeNative_general.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000007 /* wasm_application.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000006 /* wasm_application.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000009 /* wasm_blocking_op.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000008 /* wasm_blocking_op.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000000B /* wasm_c_api.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000000A /* wasm_c_api.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000000D /* wasm_exec_env.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000000C /* wasm_exec_env.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000000F /* wasm_loader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000000E /* wasm_loader_common.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000011 /* wasm_memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000010 /* wasm_memory.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000013 /* wasm_native.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000012 /* wasm_native.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000015 /* wasm_runtime_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000014 /* wasm_runtime_common.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000017 /* wasm_interp_fast.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000016 /* wasm_interp_fast.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000019 /* wasm_loader.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000018 /* wasm_loader.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000001B /* wasm_runtime.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000001A /* wasm_runtime.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000001D /* thread_manager.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000001C /* thread_manager.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000001F /* ems_alloc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000001E /* ems_alloc.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000021 /* ems_gc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000020 /* ems_gc.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000023 /* ems_hmu.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000022 /* ems_hmu.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000025 /* ems_kfc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000024 /* ems_kfc.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000027 /* mem_alloc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000026 /* mem_alloc.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000029 /* mremap.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000028 /* mremap.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000002B /* posix_blocking_op.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000002A /* posix_blocking_op.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000002D /* posix_malloc.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000002C /* posix_malloc.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000002F /* posix_memmap.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000002E /* posix_memmap.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000031 /* posix_sleep.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000030 /* posix_sleep.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000033 /* posix_thread.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000032 /* posix_thread.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000035 /* posix_time.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000034 /* posix_time.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000037 /* platform_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000036 /* platform_init.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000039 /* bh_assert.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000038 /* bh_assert.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000003B /* bh_bitmap.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000003A /* bh_bitmap.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000003D /* bh_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000003C /* bh_common.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000003F /* bh_hashmap.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000003E /* bh_hashmap.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000041 /* bh_leb128.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000040 /* bh_leb128.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000043 /* bh_list.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000042 /* bh_list.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000045 /* bh_log.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000044 /* bh_log.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000047 /* bh_queue.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000046 /* bh_queue.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC100000000000000000049 /* bh_vector.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000048 /* bh_vector.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000004B /* runtime_timer.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000004A /* runtime_timer.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -134,6 +171,44 @@
 		4DF856DB30343751009E17FB /* HCtext.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCtext.m; sourceTree = "<group>"; };
 		4DF856DF30343BE0009E17FB /* HCvisual.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCvisual.m; sourceTree = "<group>"; };
 		4DF856E030343BE0009E17FB /* HCvisual.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCvisual.h; sourceTree = "<group>"; };
+		4DC100000000000000000001 /* hc_wasm.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = hc_wasm.c; sourceTree = "<group>"; };
+		4DC100000000000000000003 /* hc_wasm.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = hc_wasm.h; sourceTree = "<group>"; };
+		4DC100000000000000000004 /* invokeNative_general.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = invokeNative_general.c; path = tiers/wamr/core/iwasm/common/arch/invokeNative_general.c; sourceTree = "<group>"; };
+		4DC100000000000000000006 /* wasm_application.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_application.c; path = tiers/wamr/core/iwasm/common/wasm_application.c; sourceTree = "<group>"; };
+		4DC100000000000000000008 /* wasm_blocking_op.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_blocking_op.c; path = tiers/wamr/core/iwasm/common/wasm_blocking_op.c; sourceTree = "<group>"; };
+		4DC10000000000000000000A /* wasm_c_api.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_c_api.c; path = tiers/wamr/core/iwasm/common/wasm_c_api.c; sourceTree = "<group>"; };
+		4DC10000000000000000000C /* wasm_exec_env.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_exec_env.c; path = tiers/wamr/core/iwasm/common/wasm_exec_env.c; sourceTree = "<group>"; };
+		4DC10000000000000000000E /* wasm_loader_common.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_loader_common.c; path = tiers/wamr/core/iwasm/common/wasm_loader_common.c; sourceTree = "<group>"; };
+		4DC100000000000000000010 /* wasm_memory.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_memory.c; path = tiers/wamr/core/iwasm/common/wasm_memory.c; sourceTree = "<group>"; };
+		4DC100000000000000000012 /* wasm_native.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_native.c; path = tiers/wamr/core/iwasm/common/wasm_native.c; sourceTree = "<group>"; };
+		4DC100000000000000000014 /* wasm_runtime_common.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_runtime_common.c; path = tiers/wamr/core/iwasm/common/wasm_runtime_common.c; sourceTree = "<group>"; };
+		4DC100000000000000000016 /* wasm_interp_fast.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_interp_fast.c; path = tiers/wamr/core/iwasm/interpreter/wasm_interp_fast.c; sourceTree = "<group>"; };
+		4DC100000000000000000018 /* wasm_loader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_loader.c; path = tiers/wamr/core/iwasm/interpreter/wasm_loader.c; sourceTree = "<group>"; };
+		4DC10000000000000000001A /* wasm_runtime.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = wasm_runtime.c; path = tiers/wamr/core/iwasm/interpreter/wasm_runtime.c; sourceTree = "<group>"; };
+		4DC10000000000000000001C /* thread_manager.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = thread_manager.c; path = tiers/wamr/core/iwasm/libraries/thread-mgr/thread_manager.c; sourceTree = "<group>"; };
+		4DC10000000000000000001E /* ems_alloc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ems_alloc.c; path = tiers/wamr/core/shared/mem-alloc/ems/ems_alloc.c; sourceTree = "<group>"; };
+		4DC100000000000000000020 /* ems_gc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ems_gc.c; path = tiers/wamr/core/shared/mem-alloc/ems/ems_gc.c; sourceTree = "<group>"; };
+		4DC100000000000000000022 /* ems_hmu.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ems_hmu.c; path = tiers/wamr/core/shared/mem-alloc/ems/ems_hmu.c; sourceTree = "<group>"; };
+		4DC100000000000000000024 /* ems_kfc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ems_kfc.c; path = tiers/wamr/core/shared/mem-alloc/ems/ems_kfc.c; sourceTree = "<group>"; };
+		4DC100000000000000000026 /* mem_alloc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = mem_alloc.c; path = tiers/wamr/core/shared/mem-alloc/mem_alloc.c; sourceTree = "<group>"; };
+		4DC100000000000000000028 /* mremap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = mremap.c; path = tiers/wamr/core/shared/platform/common/memory/mremap.c; sourceTree = "<group>"; };
+		4DC10000000000000000002A /* posix_blocking_op.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_blocking_op.c; path = tiers/wamr/core/shared/platform/common/posix/posix_blocking_op.c; sourceTree = "<group>"; };
+		4DC10000000000000000002C /* posix_malloc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_malloc.c; path = tiers/wamr/core/shared/platform/common/posix/posix_malloc.c; sourceTree = "<group>"; };
+		4DC10000000000000000002E /* posix_memmap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_memmap.c; path = tiers/wamr/core/shared/platform/common/posix/posix_memmap.c; sourceTree = "<group>"; };
+		4DC100000000000000000030 /* posix_sleep.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_sleep.c; path = tiers/wamr/core/shared/platform/common/posix/posix_sleep.c; sourceTree = "<group>"; };
+		4DC100000000000000000032 /* posix_thread.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_thread.c; path = tiers/wamr/core/shared/platform/common/posix/posix_thread.c; sourceTree = "<group>"; };
+		4DC100000000000000000034 /* posix_time.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = posix_time.c; path = tiers/wamr/core/shared/platform/common/posix/posix_time.c; sourceTree = "<group>"; };
+		4DC100000000000000000036 /* platform_init.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = platform_init.c; path = tiers/wamr/core/shared/platform/linux/platform_init.c; sourceTree = "<group>"; };
+		4DC100000000000000000038 /* bh_assert.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_assert.c; path = tiers/wamr/core/shared/utils/bh_assert.c; sourceTree = "<group>"; };
+		4DC10000000000000000003A /* bh_bitmap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_bitmap.c; path = tiers/wamr/core/shared/utils/bh_bitmap.c; sourceTree = "<group>"; };
+		4DC10000000000000000003C /* bh_common.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_common.c; path = tiers/wamr/core/shared/utils/bh_common.c; sourceTree = "<group>"; };
+		4DC10000000000000000003E /* bh_hashmap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_hashmap.c; path = tiers/wamr/core/shared/utils/bh_hashmap.c; sourceTree = "<group>"; };
+		4DC100000000000000000040 /* bh_leb128.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_leb128.c; path = tiers/wamr/core/shared/utils/bh_leb128.c; sourceTree = "<group>"; };
+		4DC100000000000000000042 /* bh_list.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_list.c; path = tiers/wamr/core/shared/utils/bh_list.c; sourceTree = "<group>"; };
+		4DC100000000000000000044 /* bh_log.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_log.c; path = tiers/wamr/core/shared/utils/bh_log.c; sourceTree = "<group>"; };
+		4DC100000000000000000046 /* bh_queue.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_queue.c; path = tiers/wamr/core/shared/utils/bh_queue.c; sourceTree = "<group>"; };
+		4DC100000000000000000048 /* bh_vector.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_vector.c; path = tiers/wamr/core/shared/utils/bh_vector.c; sourceTree = "<group>"; };
+		4DC10000000000000000004A /* runtime_timer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = runtime_timer.c; path = tiers/wamr/core/shared/utils/runtime_timer.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +309,9 @@
 				4DF5FB81301E0D06006AE901 /* HCicons.h */,
 				4DF5FB82301E0DAF006AE901 /* HCicons.m */,
 				4DA09F853043C745003F1A35 /* hc_icons.c */,
+				4DC100000000000000000001 /* hc_wasm.c */,
+				4DC100000000000000000003 /* hc_wasm.h */,
+				4DC10000000000000000004C /* WAMR */,
 				4DB1000030500001003F1A35 /* hc_presse_papiers.c */,
 				4DB1000030500012003F1A35 /* hc_importe.c */,
 				4DB1000030500010003F1A35 /* hc_origine.c */,
@@ -261,6 +339,49 @@
 				4DF5FB7F301CD236006AE901 /* HCpalettes.h */,
 			);
 			path = HC;
+			sourceTree = "<group>";
+		};
+		4DC10000000000000000004C /* WAMR */ = {
+			isa = PBXGroup;
+			children = (
+				4DC100000000000000000004 /* invokeNative_general.c */,
+				4DC100000000000000000006 /* wasm_application.c */,
+				4DC100000000000000000008 /* wasm_blocking_op.c */,
+				4DC10000000000000000000A /* wasm_c_api.c */,
+				4DC10000000000000000000C /* wasm_exec_env.c */,
+				4DC10000000000000000000E /* wasm_loader_common.c */,
+				4DC100000000000000000010 /* wasm_memory.c */,
+				4DC100000000000000000012 /* wasm_native.c */,
+				4DC100000000000000000014 /* wasm_runtime_common.c */,
+				4DC100000000000000000016 /* wasm_interp_fast.c */,
+				4DC100000000000000000018 /* wasm_loader.c */,
+				4DC10000000000000000001A /* wasm_runtime.c */,
+				4DC10000000000000000001C /* thread_manager.c */,
+				4DC10000000000000000001E /* ems_alloc.c */,
+				4DC100000000000000000020 /* ems_gc.c */,
+				4DC100000000000000000022 /* ems_hmu.c */,
+				4DC100000000000000000024 /* ems_kfc.c */,
+				4DC100000000000000000026 /* mem_alloc.c */,
+				4DC100000000000000000028 /* mremap.c */,
+				4DC10000000000000000002A /* posix_blocking_op.c */,
+				4DC10000000000000000002C /* posix_malloc.c */,
+				4DC10000000000000000002E /* posix_memmap.c */,
+				4DC100000000000000000030 /* posix_sleep.c */,
+				4DC100000000000000000032 /* posix_thread.c */,
+				4DC100000000000000000034 /* posix_time.c */,
+				4DC100000000000000000036 /* platform_init.c */,
+				4DC100000000000000000038 /* bh_assert.c */,
+				4DC10000000000000000003A /* bh_bitmap.c */,
+				4DC10000000000000000003C /* bh_common.c */,
+				4DC10000000000000000003E /* bh_hashmap.c */,
+				4DC100000000000000000040 /* bh_leb128.c */,
+				4DC100000000000000000042 /* bh_list.c */,
+				4DC100000000000000000044 /* bh_log.c */,
+				4DC100000000000000000046 /* bh_queue.c */,
+				4DC100000000000000000048 /* bh_vector.c */,
+				4DC10000000000000000004A /* runtime_timer.c */,
+			);
+			name = WAMR;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -347,6 +468,43 @@
 				4DF856DC30343751009E17FB /* HCtext.m in Sources */,
 				4D3BF8F530384BAB0052F85B /* HCprint.m in Sources */,
 				4D482C5F303C81270071BC2B /* hc_core.c in Sources */,
+				4DC100000000000000000002 /* hc_wasm.c in Sources */,
+				4DC100000000000000000005 /* invokeNative_general.c in Sources */,
+				4DC100000000000000000007 /* wasm_application.c in Sources */,
+				4DC100000000000000000009 /* wasm_blocking_op.c in Sources */,
+				4DC10000000000000000000B /* wasm_c_api.c in Sources */,
+				4DC10000000000000000000D /* wasm_exec_env.c in Sources */,
+				4DC10000000000000000000F /* wasm_loader_common.c in Sources */,
+				4DC100000000000000000011 /* wasm_memory.c in Sources */,
+				4DC100000000000000000013 /* wasm_native.c in Sources */,
+				4DC100000000000000000015 /* wasm_runtime_common.c in Sources */,
+				4DC100000000000000000017 /* wasm_interp_fast.c in Sources */,
+				4DC100000000000000000019 /* wasm_loader.c in Sources */,
+				4DC10000000000000000001B /* wasm_runtime.c in Sources */,
+				4DC10000000000000000001D /* thread_manager.c in Sources */,
+				4DC10000000000000000001F /* ems_alloc.c in Sources */,
+				4DC100000000000000000021 /* ems_gc.c in Sources */,
+				4DC100000000000000000023 /* ems_hmu.c in Sources */,
+				4DC100000000000000000025 /* ems_kfc.c in Sources */,
+				4DC100000000000000000027 /* mem_alloc.c in Sources */,
+				4DC100000000000000000029 /* mremap.c in Sources */,
+				4DC10000000000000000002B /* posix_blocking_op.c in Sources */,
+				4DC10000000000000000002D /* posix_malloc.c in Sources */,
+				4DC10000000000000000002F /* posix_memmap.c in Sources */,
+				4DC100000000000000000031 /* posix_sleep.c in Sources */,
+				4DC100000000000000000033 /* posix_thread.c in Sources */,
+				4DC100000000000000000035 /* posix_time.c in Sources */,
+				4DC100000000000000000037 /* platform_init.c in Sources */,
+				4DC100000000000000000039 /* bh_assert.c in Sources */,
+				4DC10000000000000000003B /* bh_bitmap.c in Sources */,
+				4DC10000000000000000003D /* bh_common.c in Sources */,
+				4DC10000000000000000003F /* bh_hashmap.c in Sources */,
+				4DC100000000000000000041 /* bh_leb128.c in Sources */,
+				4DC100000000000000000043 /* bh_list.c in Sources */,
+				4DC100000000000000000045 /* bh_log.c in Sources */,
+				4DC100000000000000000047 /* bh_queue.c in Sources */,
+				4DC100000000000000000049 /* bh_vector.c in Sources */,
+				4DC10000000000000000004B /* runtime_timer.c in Sources */,
 				4DF28F903027EE3700D7740C /* HCglobals.m in Sources */,
 				4D9E256D3031EB1800C2D5EE /* Hcdocument.m in Sources */,
 				4DF5FB6F3019CF11006AE901 /* icons.m in Sources */,
@@ -519,6 +677,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MARKETING_VERSION = 0.8.3;
+				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -540,6 +699,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MARKETING_VERSION = 0.8.3;
+				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

@@ -125,13 +125,22 @@ if [ "$ESSAI" = 1 ]; then
 fi
 
 etape "1. signer HC.app"
+# Une app copiée par le Finder porte des attributs étendus, que codesign
+# refuse : « resource fork, Finder information, or similar detritus not
+# allowed ». Ils ne font pas partie de l'app — ni de sa signature, ni de son
+# ticket, rangé dans Contents/CodeResources — ; on les efface.
+#
+# AVANT LE TEST, pas seulement avant de signer. Ils n'étaient effacés que
+# sur le chemin qui signe ; sur celui de la reprise, l'app déjà signée allait
+# droit à la vérification stricte. MESURÉ SUR LE MAC DE L'UTILISATRICE le
+# 13 octobre : une livraison complète de 0.8.3, puis la relance, refusée là
+# — « detritus not allowed » ; HC.app portait, sur le paquet lui-même,
+# com.apple.FinderInfo et com.apple.metadata:_kMDItemUserTags, posés entre
+# les deux lancements. Par le Finder, selon toute vraisemblance : non mesuré.
+xattr -cr "$APP"
 if signe_par_nous "$APP"; then
     ok "déjà signée par $IDENTITE : on ne la resigne pas"
 else
-    # Une app copiée par le Finder porte des attributs étendus, que codesign
-    # refuse : « resource fork, Finder information, or similar detritus not
-    # allowed ». Ils ne font pas partie de l'app ; on les efface.
-    xattr -cr "$APP"
     codesign --force --deep --options runtime --timestamp \
         --entitlements "$ENTITLEMENTS" --sign "$IDENTITE" "$APP"
     ok "signée"

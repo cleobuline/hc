@@ -24,13 +24,9 @@ obstacle porte son propre script : on en ajoute un en le copiant.*
 ## Installer
 
 Télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/releases)
-et copier `HC.app` dans `/Applications`. L'application n'est pas notariée ;
-une seule fois :
-
-```sh
-xattr -dr com.apple.quarantine /Applications/HC.app
-```
-
+et copier `HC.app` dans `/Applications`. L'application est  notariée vous n'avez rien d'autre a faire qu'acceper  ;
+ 
+ 
 ## Construire
 
 Sur Mac, avec Xcode :

@@ -51,6 +51,15 @@ EXACTEMENT comme les boutons — même stockage, mêmes noms de couleur, même
 règle « rien de posé ». Rien pour le texte : textColor sur les morceaux le
 fait déjà. Elle s'annonce dans les notes de version comme les deux autres.
 
+LE 15 OCTOBRE AU SOIR, UNE QUATRIÈME PIÈCE, décidée par elle : les XCMD et
+XFCN, refaits en WEBASSEMBLY, enfermés — jamais de code natif chargé à côté
+d'une pile (un cheval de Troie, et le Hardened Runtime le refuse). Chantier
+lancé au forfait du vendredi 16 octobre. Le juge : sa pile MAC•CAM Workshop,
+écrite au début des années 90, tourne dans HC sans changer une ligne de ses
+scripts. Tout est dans docs/mesures/xcmd.txt : le mesuré, les routes
+écartées, l'ordre des marches. La pile elle-même, au format d'Apple, n'est
+jamais commise.
+
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
 noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit

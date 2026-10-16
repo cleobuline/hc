@@ -520,6 +520,13 @@ struct Object {
     /* pour une PILE : ses icônes. Nul partout ailleurs. */
     struct StackIcon *icons;
     int      nicons, capicons;
+
+    /* pour une PILE : ses modules, des XCMD et XFCN en WebAssembly
+     * (hc_wasm.h). Nul partout ailleurs. Des POINTEURS, et non un tableau
+     * de modules : un module en cours d'appel ne doit pas bouger quand un
+     * autre s'ajoute. */
+    struct HcModule **modules;
+    int      nmodules, capmodules;
 };
 
 /* ---- Construction ---- */
@@ -1180,6 +1187,12 @@ int     hc_menu_trappe(const char *item);
 /* Exécute une seule ligne de script dans le contexte de la carte courante
    (l'équivalent de la boîte de message d'HyperCard). */
 void    hc_do(const char *line);
+
+/* Une ligne envoyée par un MODULE (son SendCardMessage, hc_wasm.c) : jouée
+ * comme dans la boîte de message, mais au milieu d'un script en cours, dont
+ * elle garde l'état — la profondeur, me, la cible, les sorties de boucle —
+ * pour le lui rendre intact. */
+void    hc_ligne_de_module(const char *line);
 
 /* ---- Utilitaires ---- */
 const char *hc_typename(ObjType t);
