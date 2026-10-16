@@ -50,13 +50,40 @@ _Static_assert(__builtin_offsetof(XCmdBlock, passFlag) == 72, "passFlag à +72")
  *
  * Le module les importe du module « hc » ; HC refuse de charger un module
  * qui en demande un qu'il ne connaît pas, plutôt que de le laisser tomber au
- * premier appel. Les autres rappels de HyperCard (EvalExpr, GetGlobal,
- * SetGlobal, GetFieldByName…) viendront un à un, sous les mêmes noms. */
+ * premier appel. Ils portent les noms de HyperXCmd.h.
+ *
+ * Ils jouent comme la boîte de messages, sur la carte courante, mais avec
+ * les variables du gestionnaire qui a appelé le module.
+ *
+ * CE QU'ILS RENDENT. Chez HyperCard, un Handle que l'XCMD jette ensuite
+ * (DisposHandle) ; ici, une chaîne allouée par malloc, à rendre par free.
+ * NULL dit l'échec — le « xresFail » de HyperCard. */
 #define HC_RAPPEL(nom) __attribute__((import_module("hc"), import_name(#nom)))
 
 /* Une ligne de HyperTalk, jouée sur la carte courante comme si on la
  * tapait dans la boîte de messages : « put "x" », « go next », « beep ». */
 HC_RAPPEL(SendCardMessage) void SendCardMessage(const char *msg);
+
+/* La valeur d'une expression : EvalExpr("the date"), EvalExpr("x + 1").
+ * NULL si elle ne se lit pas, ou si son calcul échoue. */
+char *EvalExpr(const char *expr);
+
+/* Une variable globale de HyperTalk. Inconnue, elle se lit vide ;
+ * SetGlobal la crée au besoin. Un gestionnaire qui veut la lire la
+ * déclare, comme d'habitude : « global pln0 ». */
+char *GetGlobal(const char *nom);
+void  SetGlobal(const char *nom, const char *valeur);
+
+/* Le texte d'un champ de la carte courante (carte = 1) ou de son fond
+ * (carte = 0) — le « cardFieldFlag » de HyperCard —, désigné par son nom,
+ * son numéro parmi les champs de cette couche, ou son id. NULL s'il n'y en
+ * a pas. Les Set rendent 1, ou 0 s'il n'y a pas de tel champ. */
+char *GetFieldByName(int carte, const char *nom);
+char *GetFieldByNum(int carte, int numero);
+char *GetFieldByID(int carte, int id);
+int   SetFieldByName(int carte, const char *nom, const char *valeur);
+int   SetFieldByNum(int carte, int numero, const char *valeur);
+int   SetFieldByID(int carte, int id, const char *valeur);
 
 /* DÉCLARER UN XCMD OU UN XFCN.
  *

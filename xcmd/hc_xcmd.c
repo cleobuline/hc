@@ -6,8 +6,8 @@
  * les chaînes avant chaque appel.
  *
  * C'est une bibliothèque RÉDUITE, et elle le dit :
- *   · free ne rend rien : la mémoire allouée par un module ne fait que
- *     croître, jusqu'à la borne que HC lui fixe ;
+ *   · la mémoire va par tailles en puissances de deux : un bloc rendu par
+ *     free resert à un bloc de la même classe, jamais à un autre ;
  *   · snprintf ne connaît que %d %u %x %c %s et %% ;
  *   · rien pour les nombres à virgule, rien pour les fichiers. */
 
@@ -17,18 +17,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include "hc_xcmd.h"
 
 /* ---- la mémoire ---- */
 
-/* La mémoire libre commence où l'éditeur de liens la pose. */
+/* La mémoire libre commence où l'éditeur de liens la pose, et s'étend en
+ * demandant des pages à HC, jusqu'à la borne qu'il fixe. */
 extern unsigned char __heap_base;
 static unsigned char *g_tas = &__heap_base;
 
-void *malloc(size_t n)
+static void *tas_prend(size_t n)
 {
-    n = (n + 15) & ~(size_t)15;
     unsigned char *p = g_tas;
     size_t fin = (size_t)(p + n);
+    if (fin < (size_t)p) return NULL;
     size_t pages = __builtin_wasm_memory_size(0);
     if (fin > pages * 65536) {
         size_t manque = (fin - pages * 65536 + 65535) / 65536;
@@ -38,13 +40,59 @@ void *malloc(size_t n)
     return p;
 }
 
-void free(void *p) { (void)p; }
+/* LES CLASSES. Un bloc de la classe c fait 16 << c octets, en-tête compris ;
+ * l'en-tête (16 octets, pour garder l'alignement) retient la classe. Un bloc
+ * libéré va dans la liste de sa classe, et le prochain malloc de cette
+ * classe le reprend. Simple, et sans émiettement : un module qui demande
+ * puis rend les mêmes tailles — les chaînes des rappels — ne grossit plus. */
+enum { ENTETE = 16, CLASSES = 27 };
+static void *g_libres[CLASSES];
+
+static int classe_de(size_t n)
+{
+    int c = 0;
+    while (c < CLASSES && ((size_t)ENTETE << c) < n) c++;
+    return c;
+}
+
+void *malloc(size_t n)
+{
+    if (n > ((size_t)ENTETE << (CLASSES - 1)) - ENTETE) return NULL;
+    int c = classe_de(n + ENTETE);
+    unsigned char *b = g_libres[c];
+    if (b) g_libres[c] = *(void **)b;
+    else if (!(b = tas_prend((size_t)ENTETE << c))) return NULL;
+    *(int *)b = c;
+    return b + ENTETE;
+}
+
+void free(void *p)
+{
+    if (!p) return;
+    unsigned char *b = (unsigned char *)p - ENTETE;
+    int c = *(int *)b;
+    *(void **)b = g_libres[c];
+    g_libres[c] = b;
+}
 
 void *calloc(size_t a, size_t b)
 {
     if (b && a > (size_t)-1 / b) return NULL;
     void *p = malloc(a * b);
     return p ? memset(p, 0, a * b) : NULL;
+}
+
+void *realloc(void *p, size_t n)
+{
+    if (!p) return malloc(n);
+    int c = *(int *)((unsigned char *)p - ENTETE);
+    size_t place = ((size_t)ENTETE << c) - ENTETE;
+    if (n <= place) return p;
+    void *q = malloc(n);
+    if (!q) return NULL;
+    memcpy(q, p, place);
+    free(p);
+    return q;
 }
 
 /* LA BOÎTE AUX PARAMÈTRES. HC demande la place dont il a besoin, y écrit le
@@ -171,6 +219,40 @@ int isdigit(int c) { return c >= '0' && c <= '9'; }
 int isalpha(int c) { return (c | 32) >= 'a' && (c | 32) <= 'z'; }
 int isalnum(int c) { return isalpha(c) || isdigit(c); }
 
+/* ---- les nombres entiers ----
+ *
+ * Ce que StrToLong et StrToNum faisaient chez HyperCard : un paramètre de
+ * HyperTalk est du texte, « 12 » compris. */
+
+long strtol(const char *s, char **fin, int base)
+{
+    const char *p = s;
+    while (isspace((unsigned char)*p)) p++;
+    int moins = 0;
+    if (*p == '-' || *p == '+') moins = *p++ == '-';
+    if ((base == 0 || base == 16) && p[0] == '0' && (p[1] | 32) == 'x'
+        && isalnum((unsigned char)p[2])) {
+        p += 2;
+        base = 16;
+    } else if (base == 0) {
+        base = p[0] == '0' ? 8 : 10;
+    }
+    unsigned long v = 0;
+    const char *debut = p;
+    for (;; p++) {
+        int c = (unsigned char)*p, d;
+        if (isdigit(c)) d = c - '0';
+        else if (isalpha(c)) d = (c | 32) - 'a' + 10;
+        else break;
+        if (d >= base) break;
+        v = v * (unsigned long)base + (unsigned long)d;
+    }
+    if (fin) *fin = (char *)(p == debut ? s : p);
+    return moins ? -(long)v : (long)v;
+}
+
+int atoi(const char *s) { return (int)strtol(s, NULL, 10); }
+
 /* ---- snprintf, réduit ---- */
 
 typedef struct { char *s; size_t n, k; } Sortie;
@@ -229,4 +311,64 @@ int snprintf(char *s, size_t n, const char *f, ...)
     int k = vsnprintf(s, n, f, ap);
     va_end(ap);
     return k;
+}
+
+/* ---- les rappels qui rendent une chaîne ----
+ *
+ * HC garde la chaîne de son côté et n'en dit que la longueur, ou -1 ; le
+ * module fait la place, puis la fait copier (hc_rendu). HC n'écrit donc
+ * jamais dans un tas qu'il ne connaît pas. Les importés portent les noms
+ * de HyperXCmd.h ; les fonctions de même nom, plus bas, sont celles que
+ * le module appelle. */
+HC_RAPPEL(EvalExpr)       int  hc_EvalExpr(const char *expr);
+HC_RAPPEL(GetGlobal)      int  hc_GetGlobal(const char *nom);
+HC_RAPPEL(SetGlobal)      void hc_SetGlobal(const char *nom, const char *v);
+HC_RAPPEL(GetFieldByName) int  hc_GetFieldByName(int carte, const char *nom);
+HC_RAPPEL(GetFieldByNum)  int  hc_GetFieldByNum(int carte, int numero);
+HC_RAPPEL(GetFieldByID)   int  hc_GetFieldByID(int carte, int id);
+HC_RAPPEL(SetFieldByName) int  hc_SetFieldByName(int carte, const char *nom,
+                                                 const char *v);
+HC_RAPPEL(SetFieldByNum)  int  hc_SetFieldByNum(int carte, int numero,
+                                                const char *v);
+HC_RAPPEL(SetFieldByID)   int  hc_SetFieldByID(int carte, int id,
+                                               const char *v);
+HC_RAPPEL(hc_rendu)       void hc_rendu(char *tampon, int taille);
+
+static char *rendu(int n)
+{
+    if (n < 0) return NULL;
+    char *s = malloc((size_t)n + 1);
+    if (s) hc_rendu(s, n + 1);
+    return s;
+}
+
+char *EvalExpr(const char *expr)       { return rendu(hc_EvalExpr(expr)); }
+char *GetGlobal(const char *nom)       { return rendu(hc_GetGlobal(nom)); }
+void  SetGlobal(const char *nom, const char *valeur)
+{
+    hc_SetGlobal(nom, valeur ? valeur : "");
+}
+char *GetFieldByName(int carte, const char *nom)
+{
+    return rendu(hc_GetFieldByName(carte, nom));
+}
+char *GetFieldByNum(int carte, int numero)
+{
+    return rendu(hc_GetFieldByNum(carte, numero));
+}
+char *GetFieldByID(int carte, int id)
+{
+    return rendu(hc_GetFieldByID(carte, id));
+}
+int SetFieldByName(int carte, const char *nom, const char *valeur)
+{
+    return hc_SetFieldByName(carte, nom, valeur ? valeur : "");
+}
+int SetFieldByNum(int carte, int numero, const char *valeur)
+{
+    return hc_SetFieldByNum(carte, numero, valeur ? valeur : "");
+}
+int SetFieldByID(int carte, int id, const char *valeur)
+{
+    return hc_SetFieldByID(carte, id, valeur ? valeur : "");
 }
