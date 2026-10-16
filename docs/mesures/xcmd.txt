@@ -665,6 +665,39 @@ Ce que rend notre FORTH aujourd'hui : la pile, « 1 2 3 », et la faute en
 anglais, « Unknow'd word : ZORGLUB », sur le modèle des chaînes relevées
 dans le code d'origine — la FORME exacte n'est pas mesurée.
 
+COMMENT « load » REND LES TABLES À LA MACHINE — LU dans le code 68000 de
+MACCAM le 16 octobre au soir (désassemblé ; rien n'y est exécuté)
+------------------------------------------------------------------------
+
+Les scripts : « set the pln7 of window "CAM" to fld "pln0" » — le texte
+entier du champ, 4 096 caractères, devient la valeur de la propriété.
+pln7 reçoit le plan 0, pln6 le plan 1, pln5 le plan 2, pln4 le plan 3 ;
+image7 à image4 de même pour les images de départ (gestionnaires load et
+loadpict du fond WorkShop).
+
+DANS MACCAM, la fonction « pln » (nom laissé par THINK C) :
+  · la machine garde UNE TABLE PAR DEMI-MACHINE, un octet par entrée, et
+    chaque plan y est UN BIT : pln7 → 0x80 et pln6 → 0x40 dans la table de
+    CAM-A ; pln5 → 0x20 et pln4 → 0x10 dans celle de CAM-B. Le bit 7 est
+    donc le plan 0 — l'octet d'entrée a la forme d'un pixel 8 bits, plan 0
+    en tête ;
+  · le texte se lit caractère par caractère : « 0 » ÉTEINT le bit, TOUT
+    AUTRE caractère l'ALLUME ; la lecture s'arrête au zéro de fin, sans
+    compter jusqu'à 4 096 — un texte plus court laisse le reste de la table
+    tel quel, un plus long déborde ;
+  · setProp n'appelle « pln » que pour ces quatre-là : pln3 à pln0 ne font
+    rien.
+« getpln », qui sert « the pln7 of window », relit en « 0 » et « 1 », mais
+teste l'OCTET entier et non son bit : pln7 et pln6, qui partagent l'octet,
+s'y relisent mêlés. Aucun script de la pile ne lit ces propriétés.
+
+Ce que la nouvelle MACCAM en reprend : les mêmes bits, la même lecture —
+« 0 » éteint, le reste allume —, mais arrêtée à 4 096. Chaque demi-machine
+lit sa table avec ses propres plans comme centre (CENTER = plan 0 pour
+CAM-A, plan 2 pour CAM-B) et ceux de l'autre comme « & » : c'est la
+CAM-6 ; NON VÉRIFIÉ encore dans les fonctions de balayage (scanoptmoore,
+optscavonn, scanoptmarg…), qui restent à lire.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les cinq bancs ci-dessus diront ;
   · la fenêtre externe « CAM » (MACCAM) : ses propriétés et ses messages,
