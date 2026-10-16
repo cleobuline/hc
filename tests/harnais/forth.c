@@ -6,14 +6,17 @@
  * Forth ET les tables que le FORTH d'origine en a tirées. Elle ne se commet
  * pas (CLAUDE.md) ; ce qu'on y a mesuré l'est (docs/mesures/xcmd.txt), et ce
  * harnais le tient :
- *   · la disposition des bits de l'index, pour chaque voisinage ;
+ *   · la disposition des bits de l'index, pour chaque voisinage — LUE dans
+ *     le code du FORTH d'origine, qui en porte les huit tables ; Moore, von
+ *     Neumann et Margolus-PH aussi mesurées sur les tables de la pile ;
  *   · VRAI vaut -1 (la carte « Pair ») ;
  *   · { … } hors de ses bornes donne 0 (« Grow flow ») ;
  *   · une faute garde les tables déjà faites (« Fourmis »).
- * Le reste — les fautes, les boucles, CONSTANT et VARIABLE — est le
- * vocabulaire relevé dans l'XFCN d'origine, dont le COMPORTEMENT n'est pas
- * mesuré : ce harnais tient ce que fait notre FORTH, pas ce que faisait
- * l'autre. */
+ * Les fautes ont la FORME de l'original, lue dans son code ; le nombre
+ * qu'elles portent n'est pas mesuré. Le reste — les boucles, CONSTANT et
+ * VARIABLE — est le vocabulaire relevé dans l'XFCN d'origine, dont le
+ * COMPORTEMENT n'est pas mesuré : ce harnais tient ce que fait notre FORTH,
+ * pas ce que faisait l'autre. */
 #include "../../xcmd/maccam/forth_coeur.c"
 
 static ForthSortie s;
@@ -76,13 +79,16 @@ static void disposition(const char *decl)
 
 int main(void)
 {
-    puts("== 1. la disposition des bits, MESURÉE sur les tables de la pile ==");
+    puts("== 1. la disposition des bits, LUE dans le FORTH d'origine ==");
     disposition("");
     disposition("N/MOORE");
     disposition("N/VONN");
     disposition("N/MARG-PH");
     disposition("N/MARG-HV");
+    disposition("N/MOORE-PH");
     disposition("N/MOORE-HV");
+    disposition("N/VONN-PH");
+    disposition("N/VONN-HV");
 
     puts("\n== 2. vrai, faux, et { … } ==");
     compile("0 0 =");                                   /* VRAI = -1 */
@@ -117,7 +123,11 @@ int main(void)
     compile(": R CENTER IF NORTH IF 1 ELSE 0 THEN ELSE 0 THEN >PLN0 ; MAKE-TABLE R");
     compile("1 2 3");
 
-    puts("\n== 6. les fautes, et une faute garde les tables faites ==");
+    puts("\n== 6. compilé : un mot est cherché quand la définition se fait ==");
+    compile(": R FOO >PLN0 ; : FOO 1 ; MAKE-TABLE R");
+    compile(": A 1 ; : B A >PLN0 ; : A 0 ; MAKE-TABLE B");      /* B garde l'ancien A */
+
+    puts("\n== 7. les fautes, et une faute garde les tables faites ==");
     compile("ZORGLUB");
     compile(": R IF ; MAKE-TABLE R");
     compile(": R : S ;");

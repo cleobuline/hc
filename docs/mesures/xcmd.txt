@@ -651,19 +651,44 @@ MacBinary : « ça a l'air de compiler dans maccam ». Le bouton de
 compilation de l'atelier passe donc ; ce que montrent « Pile » et les
 champs Pln0 à PLN3, carte par carte, n'est pas relevé.
 
+LU DANS LE CODE DU FORTH D'ORIGINE, le même soir (désassemblé, rien
+d'exécuté) :
+  · SES HUIT TABLES DE BITS, une par voisinage, 16 octets par nom, dans
+    l'ordre des bits : Moore, von Neumann, Margolus-PH et -HV, Moore-PH et
+    -HV, von Neumann-PH et -HV. Les trois mesurées sur les tables de la
+    pile y sont à l'identique ; les deux que notre FORTH avait posées par
+    analogie (Margolus-HV, Moore-HV : HORZ 10, VERT 11) aussi ; trois
+    manquaient (N/MOORE-PH, N/VONN-PH, N/VONN-HV) : ajoutées. Ses
+    déclarations : ces huit-là, CONSTANT, VARIABLE, BEEP, >PLN0 à >PLN3,
+    MAKE-TABLE ;
+  · SES FAUTES, dans cette forme : INTERPRET_ERR "Can't understand ", %i —
+    INTERPRET_ERR "End definition (;) Compile Only  ", %i — STACK_ERR
+    "Stack problem during execution ", %i — COMPILE_ERR "Unknow'd word ",
+    %i — COMPILE_ERR "COLON inside definition  ", %i — NEST_ERR "Unnested
+    condition ", %i. Le nombre vient d'un compteur global, sans doute la
+    position du mot : NON MESURÉ. Notre FORTH les reprend, avec le rang du
+    mot du premier niveau ;
+  · « COMPILE_ERR "Unknow'd word" » dit qu'un mot inconnu se trouve QUAND LA
+    DÉFINITION SE COMPILE. Notre FORTH cherche désormais chaque mot d'une
+    définition à ce moment-là, et l'y fige : un mot défini plus tard est une
+    faute, une redéfinition plus tardive ne change pas une définition déjà
+    faite. Aucune des 71 cartes n'en est refusée (159 tables exactes,
+    toujours) ;
+  · la pile s'écrit « %d » et une espace par nombre.
+Et LU DANS LE MOTEUR (optscanmoorehv) : en Moore-HV, le bit 10 (HORZ) porte
+la parité de la LIGNE, le bit 11 (VERT) celle de la COLONNE — des bandes
+horizontales, puis verticales ; avec « alternate », la phase s'y ajoute.
+
 NON MESURÉ, À JOUER DANS HYPERCARD 2.4.1 (Basilisk II), sur la pile
 MAC•CAM Workshop, HyperCard tout juste relancé :
   1. la carte « Dentrite• », son bouton de compilation : que montre « Pile » ?
      (ECHO inconnu, ou connu ?)
-  2. dans la boîte de messages, put FORTH("1 2 3") ;
-  3. put FORTH("ZORGLUB") — la forme d'une faute ;
-  4. put FORTH(": R CENTER >PLN0 ; MAKE-TABLE R"), et la même précédée de
+  2. dans la boîte de messages, put FORTH("1 2 ZORGLUB") — que vaut le
+     nombre de la faute : 3, la position du mot ?
+  3. put FORTH(": R CENTER >PLN0 ; MAKE-TABLE R"), et la même précédée de
      N/MARG-PH — d'où vient le « -4 » des cartes Margolus ?
-  5. put FORTH(": ECHO CENTER >PLN1 ;"), puis put FORTH("MAKE-TABLE ECHO") —
+  4. put FORTH(": ECHO CENTER >PLN1 ;"), puis put FORTH("MAKE-TABLE ECHO") —
      le dictionnaire survit-il d'un appel à l'autre ?
-Ce que rend notre FORTH aujourd'hui : la pile, « 1 2 3 », et la faute en
-anglais, « Unknow'd word : ZORGLUB », sur le modèle des chaînes relevées
-dans le code d'origine — la FORME exacte n'est pas mesurée.
 
 COMMENT « load » REND LES TABLES À LA MACHINE — LU dans le code 68000 de
 MACCAM le 16 octobre au soir (désassemblé ; rien n'y est exécuté)
@@ -762,8 +787,15 @@ LE RESTE DE MACCAM — LU le même soir (désassemblé, rien d'exécuté) :
         le plan 0, fill5 le plan 3) ;
       toscrap — l'image, en PICT, au presse-papiers.
 
+DÉCIDÉ PAR L'UTILISATRICE, le 16 octobre au soir : le plan de la fenêtre
+CAM dans HC (« oui ») ; « PictResource » ne se refait pas tel quel — il
+créait une ressource PICT, propre au Mac d'alors — mais devient une
+photographie de la fenêtre au presse-papiers ; les palettes clut, « pas
+importantes : on a un moteur MacCam qui s'en passe » — l'import ne les
+gardera pas, la fenêtre aura sa palette à elle.
+
 CE QUI RESTE AVANT MAC•CAM :
-  · ce que les cinq bancs ci-dessus diront ;
+  · ce que les quatre bancs ci-dessus diront ;
   · la fenêtre externe « CAM » (MACCAM) : ses propriétés et ses messages,
     et le moteur qui applique les tables, dans cette même disposition ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas

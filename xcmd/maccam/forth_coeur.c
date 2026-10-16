@@ -24,7 +24,11 @@
 
 /* ---- la disposition des bits ---- */
 
-/* MESURÉE sur les tables de la pile : voir docs/mesures/xcmd.txt. */
+/* LES HUIT TABLES DU FORTH D'ORIGINE, recopiées de son code, dans l'ordre
+ * des bits (docs/mesures/xcmd.txt). Trois sont aussi MESURÉES sur les tables
+ * de la pile — Moore, von Neumann, Margolus-PH —, et le moteur de MACCAM
+ * fabrique ses index de la même façon : trois sources d'accord. Les numéros
+ * sont ceux de « major », dans les scripts comme dans MACCAM. */
 signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS] = {
     [FORTH_MOORE] = {
         V_EAST, V_SEAST, V_NEAST, V_CENTER, V_SOUTH, V_NORTH,
@@ -38,10 +42,18 @@ signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS] = {
     [FORTH_MARG_HV] = {
         V_CCWP, V_CCW, V_OPPP, V_OPP, V_CWP, V_CW,
         V_CENTERP, V_CENTER, V_ACENTERP, V_ACENTER, V_HORZ, V_VERT },
-    [4] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    [FORTH_MOORE_PH] = {
+        V_EAST, V_SEAST, V_NEAST, V_CENTER, V_SOUTH, V_NORTH,
+        V_WEST, V_SWEST, V_NWEST, V_CENTERP, V_PHASE, V_PHASEP },
     [FORTH_MOORE_HV] = {
         V_EAST, V_SEAST, V_NEAST, V_CENTER, V_SOUTH, V_NORTH,
         V_WEST, V_SWEST, V_NWEST, V_CENTERP, V_HORZ, V_VERT },
+    [FORTH_VONN_PH] = {
+        V_EASTP, V_EAST, V_CENTERP, V_CENTER, V_SOUTHP, V_SOUTH,
+        V_NORTHP, V_NORTH, V_WESTP, V_WEST, V_PHASE, V_PHASEP },
+    [FORTH_VONN_HV] = {
+        V_EASTP, V_EAST, V_CENTERP, V_CENTER, V_SOUTHP, V_SOUTH,
+        V_NORTHP, V_NORTH, V_WESTP, V_WEST, V_HORZ, V_VERT },
 };
 
 static const char *const NOMS_VOISINS[V_NOMBRE] = {
@@ -94,7 +106,8 @@ static const struct { const char *nom; int p; } PRIMITIVES[] = {
 static const struct { const char *nom; int voisinage; } DECLARATIONS[] = {
     { "N/MOORE", FORTH_MOORE }, { "N/VONN", FORTH_VONN },
     { "N/MARG-PH", FORTH_MARG_PH }, { "N/MARG-HV", FORTH_MARG_HV },
-    { "N/MOORE-HV", FORTH_MOORE_HV },
+    { "N/MOORE-HV", FORTH_MOORE_HV }, { "N/MOORE-PH", FORTH_MOORE_PH },
+    { "N/VONN-PH", FORTH_VONN_PH }, { "N/VONN-HV", FORTH_VONN_HV },
     { "ALTERNATE", -1 },
 };
 
@@ -111,7 +124,8 @@ typedef struct {
     char *t;            /* le mot, en capitales */
     int   lien;         /* l'autre bout d'une structure, ou -1 */
     int   genre, val;   /* ce qu'il désigne, résolu… */
-    int   version;      /* … pour cette version du dictionnaire */
+    int   version;      /* … pour cette version du dictionnaire, */
+    int   fige;         /* … ou une fois pour toutes, dans une définition */
 } Jeton;
 
 typedef struct { const char *nom; int debut, fin; } Definition;
@@ -141,7 +155,7 @@ typedef struct {
     int  envoye;                    /* bit k : >PLNk pendant cette entrée */
 
     const char *faute;
-    char        faute_mot[40];
+    int         position;           /* le rang du mot du premier niveau */
 } Vm;
 
 static char *copie_capitales(const char *s, size_t n)
@@ -263,7 +277,7 @@ static int nombre(const char *t, int *v)
  * puis les mots de base. */
 static void resous(Vm *m, Jeton *j)
 {
-    if (j->version == m->version) return;
+    if (j->fige || j->version == m->version) return;
     j->version = m->version;
     int k;
     if ((k = cherche_def(m, j->t)) >= 0)   { j->genre = K_DEF; j->val = k; return; }
@@ -296,26 +310,33 @@ static void resous(Vm *m, Jeton *j)
 
 /* ---- l'exécution ---- */
 
-static const char FAUTE_PILE[]     = "Stack problem during execution";
-static const char FAUTE_INCONNU[]  = "Unknow'd word";
-static const char FAUTE_IMBRIQUE[] = "Unnested condition";
+/* LES FAUTES, dans la forme de l'original : ses chaînes, lues dans son
+ * code, « INTERPRET_ERR "Can't understand ", %i ». Le nombre n'est PAS
+ * MESURÉ : l'original y met un compteur, sans doute la position du mot ;
+ * on y met le rang du mot du premier niveau qui a échoué, à partir de 1. */
+static const char ERR_COMPRIS[]  = "INTERPRET_ERR \"Can't understand \"";
+static const char ERR_SEULEMENT[] =
+    "INTERPRET_ERR \"End definition (;) Compile Only  \"";
+static const char ERR_PILE[]     = "STACK_ERR \"Stack problem during execution \"";
+static const char ERR_INCONNU[]  = "COMPILE_ERR \"Unknow'd word \"";
+static const char ERR_COLON[]    = "COMPILE_ERR \"COLON inside definition  \"";
+static const char ERR_IMBRIQUE[] = "NEST_ERR \"Unnested condition \"";
+static const char ERR_MEMOIRE[]  = "out of memory";
 
-static void faute(Vm *m, const char *quoi, const char *mot)
+static void faute(Vm *m, const char *quoi)
 {
-    if (m->faute) return;
-    m->faute = quoi;
-    snprintf(m->faute_mot, sizeof m->faute_mot, "%s", mot ? mot : "");
+    if (!m->faute) m->faute = quoi;
 }
 
 static int depile(Vm *m)
 {
-    if (m->sp <= 0) { faute(m, FAUTE_PILE, NULL); return 0; }
+    if (m->sp <= 0) { faute(m, ERR_PILE); return 0; }
     return m->pile[--m->sp];
 }
 
 static void empile(Vm *m, int v)
 {
-    if (m->sp >= PILE) { faute(m, FAUTE_PILE, NULL); return; }
+    if (m->sp >= PILE) { faute(m, ERR_PILE); return; }
     m->pile[m->sp++] = v;
 }
 
@@ -381,13 +402,13 @@ static int execute_un(Vm *m, int i)
     case K_VOISIN:   empile(m, m->voisin[j->val]); break;
     case K_PRIM:     primitive(m, j->val); break;
     case K_DEF:
-        if (m->profondeur >= PROFONDEUR) { faute(m, FAUTE_PILE, j->t); break; }
+        if (m->profondeur >= PROFONDEUR) { faute(m, ERR_PILE); break; }
         m->profondeur++;
         execute(m, m->defs[j->val].debut, m->defs[j->val].fin);
         m->profondeur--;
         break;
     default:
-        faute(m, FAUTE_INCONNU, j->t);
+        faute(m, ERR_COMPRIS);     /* au premier niveau : les définitions sont vérifiées */
         break;
     }
     return m->faute ? -1 : 0;
@@ -422,7 +443,7 @@ static int execute(Vm *m, int debut, int fin)
         }
         case K_DO: {
             int depart = depile(m), limite = depile(m);
-            if (m->rp >= RETOUR) { faute(m, FAUTE_PILE, j->t); break; }
+            if (m->rp >= RETOUR) { faute(m, ERR_PILE); break; }
             m->retour[m->rp][0] = depart;
             m->retour[m->rp][1] = limite;
             m->rp++;
@@ -430,7 +451,7 @@ static int execute(Vm *m, int debut, int fin)
             break;
         }
         case K_LOOP:
-            if (!m->rp) { faute(m, FAUTE_IMBRIQUE, j->t); break; }
+            if (!m->rp) { faute(m, ERR_IMBRIQUE); break; }
             if (++m->retour[m->rp - 1][0] < m->retour[m->rp - 1][1]) i = j->lien + 1;
             else { m->rp--; i++; }
             break;
@@ -448,7 +469,7 @@ static int execute(Vm *m, int debut, int fin)
             i = j->lien + 1;
             break;
         case K_FERMANTE:
-            faute(m, FAUTE_IMBRIQUE, j->t);
+            faute(m, ERR_IMBRIQUE);
             break;
         default:
             execute_un(m, i);
@@ -521,9 +542,9 @@ int forth_compile(const char *source, ForthSortie *s)
     memset(s, 0, sizeof *s);
     for (int k = 0; k < FORTH_PLANS; k++) memset(s->plans[k], '0', FORTH_TABLE);
     Vm *m = calloc(1, sizeof *m);
-    if (!m) { snprintf(s->rendu, sizeof s->rendu, "out of memory"); return -1; }
+    if (!m) { snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE); return -1; }
     if (decoupe(m, source ? source : "") < 0) {
-        snprintf(s->rendu, sizeof s->rendu, "out of memory");
+        snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE);
         libere(m);
         free(m);
         return -1;
@@ -532,6 +553,7 @@ int forth_compile(const char *source, ForthSortie *s)
     int i = 0;
     while (i < m->nj && !m->faute) {
         Jeton *j = &m->j[i];
+        m->position = i + 1;
         int d;
         for (d = 0; d < (int)(sizeof DECLARATIONS / sizeof *DECLARATIONS); d++)
             if (est(j, DECLARATIONS[d].nom)) break;
@@ -543,53 +565,62 @@ int forth_compile(const char *source, ForthSortie *s)
         if (est(j, ":")) {
             int f = i + 2;
             while (f < m->nj && !est(&m->j[f], ";")) {
-                if (est(&m->j[f], ":")) { faute(m, "COLON inside definition", NULL); break; }
+                if (est(&m->j[f], ":")) { faute(m, ERR_COLON); break; }
                 f++;
             }
             if (m->faute) break;
-            if (i + 1 >= m->nj || f >= m->nj) { faute(m, "End definition", NULL); break; }
-            if (relie(m, i + 2, f) < 0) { faute(m, FAUTE_IMBRIQUE, m->j[i + 1].t); break; }
-            if (ajoute_def(m, m->j[i + 1].t, i + 2, f) < 0) { faute(m, "out of memory", NULL); break; }
+            if (i + 1 >= m->nj || f >= m->nj) { faute(m, ERR_IMBRIQUE); break; }
+            if (relie(m, i + 2, f) < 0) { faute(m, ERR_IMBRIQUE); break; }
+            /* COMPILÉE, comme dans l'original : chaque mot est cherché MAINTENANT,
+             * dans le dictionnaire tel qu'il est, et le reste. Un mot défini
+             * plus tard est une faute ; une redéfinition plus tardive ne change
+             * pas ce qu'appelle une définition déjà faite. */
+            for (int k = i + 2; k < f; k++) {
+                resous(m, &m->j[k]);
+                if (m->j[k].genre == K_INCONNU) { faute(m, ERR_INCONNU); break; }
+                m->j[k].fige = 1;
+            }
+            if (m->faute) break;
+            if (ajoute_def(m, m->j[i + 1].t, i + 2, f) < 0) { faute(m, ERR_MEMOIRE); break; }
             i = f + 1;
             continue;
         }
         if (est(j, "MAKE-TABLE")) {
             int k = i + 1 < m->nj ? cherche_def(m, m->j[i + 1].t) : -1;
-            if (k < 0) {
-                faute(m, FAUTE_INCONNU, i + 1 < m->nj ? m->j[i + 1].t : "");
-                break;
-            }
+            if (k < 0) { faute(m, ERR_COMPRIS); break; }
             if (fait_table(m, k, voisinage, s) < 0) break;
             i += 2;
             continue;
         }
         if (est(j, "CONSTANT") || est(j, "VARIABLE")) {
-            if (i + 1 >= m->nj) { faute(m, "End definition", NULL); break; }
+            if (i + 1 >= m->nj) { faute(m, ERR_COMPRIS); break; }
             int variable = est(j, "VARIABLE"), v;
             if (!variable) v = depile(m);
-            else if (m->nvariables >= CELLULES) { faute(m, FAUTE_PILE, NULL); break; }
+            else if (m->nvariables >= CELLULES) { faute(m, ERR_PILE); break; }
             else v = m->nvariables++;
             if (m->faute) break;
             if (ajoute_const(m, m->j[i + 1].t, v, variable) < 0) {
-                faute(m, "out of memory", NULL);
+                faute(m, ERR_MEMOIRE);
                 break;
             }
             i += 2;
             continue;
         }
-        if (est(j, ";")) { faute(m, "Compile Only", j->t); break; }
-        /* Au premier niveau, un mot s'exécute tout de suite. Les structures
-         * de contrôle n'y ont pas de sens : « Compile Only ». */
+        /* Au premier niveau, un mot s'exécute tout de suite. « ; » et les
+         * structures de contrôle n'y ont pas de sens : « Compile Only ». */
+        if (est(j, ";")) { faute(m, ERR_SEULEMENT); break; }
         resous(m, j);
-        if (j->genre >= K_IF && j->genre <= K_REPEAT) { faute(m, "Compile Only", j->t); break; }
+        if (j->genre >= K_IF && j->genre <= K_REPEAT) { faute(m, ERR_SEULEMENT); break; }
         execute_un(m, i);
         i++;
     }
     s->voisinage = voisinage;
     int r = 0;
-    if (m->faute) {
-        snprintf(s->rendu, sizeof s->rendu, "%s%s%s", m->faute,
-                 m->faute_mot[0] ? " : " : "", m->faute_mot);
+    if (m->faute == ERR_MEMOIRE) {
+        snprintf(s->rendu, sizeof s->rendu, "%s", m->faute);
+        r = -1;
+    } else if (m->faute) {
+        snprintf(s->rendu, sizeof s->rendu, "%s, %d ", m->faute, m->position);
         r = -1;
     } else {
         size_t n = 0;

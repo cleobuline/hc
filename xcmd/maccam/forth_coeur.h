@@ -8,9 +8,10 @@
  * Une TABLE est le texte de 4 096 caractères « 0 » ou « 1 » que la pile range
  * dans ses champs Pln0 à PLN3 : la nouvelle valeur d'une cellule pour chacun
  * des 4 096 états de son voisinage. L'ORDRE DES BITS de l'index dépend du
- * voisinage déclaré (N/MOORE, N/VONN, N/MARG-PH…) ; il est MESURÉ sur les
- * tables que la pile garde, faites par le FORTH d'origine
- * (docs/mesures/xcmd.txt). */
+ * voisinage déclaré (N/MOORE, N/VONN, N/MARG-PH…). Il est LU dans le code du
+ * FORTH d'origine, qui en porte les huit tables ; trois sont aussi MESURÉES
+ * sur les tables que la pile garde, et le moteur de MACCAM fabrique ses
+ * index de la même façon (docs/mesures/xcmd.txt). */
 
 #ifndef FORTH_COEUR_H
 #define FORTH_COEUR_H
@@ -26,8 +27,11 @@ enum {
     FORTH_VONN     = 1,
     FORTH_MARG_PH  = 2,
     FORTH_MARG_HV  = 3,
+    FORTH_MOORE_PH = 4,
     FORTH_MOORE_HV = 5,
-    FORTH_VOISINAGES = 6
+    FORTH_VONN_PH  = 6,
+    FORTH_VONN_HV  = 7,
+    FORTH_VOISINAGES = 8
 };
 
 /* Les mots qui lisent le voisinage d'une cellule. */
