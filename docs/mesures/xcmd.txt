@@ -365,9 +365,13 @@ gardent leurs noms et leur sens. Il est d'Apple : comme les piles, il ne
 se commet pas. HC écrira le sien, hc_xfcn.h.
 
 La disposition du bloc de paramètres. MESURÉS dans le code de MAC•CAM :
-entryPoint (+72), request (+76), inArgs (+80), outArgs (+112). Les autres
-champs viennent du SOUVENIR qu'on a de HyperXCmd.h, que ces quatre-là
-confirment sans le prouver :
+entryPoint (+72), request (+76), inArgs (+80), outArgs (+112). Le bloc
+ENTIER est publié dans Dr. Dobb's Journal, septembre 1988 (Stan Krute,
+« XCMD and XFCN: HyperCard's Software Slots », Example 1) : short
+paramCount ; Handle params[16] ; Handle returnValue ; Boolean passFlag ;
+entryPoint ; short request ; short result ; long inArgs[8] ; long
+outArgs[4]. Avec un octet de remplissage après passFlag, ce sont
+exactement les décalages mesurés :
 
   +0   paramCount    +2  params[16] (des Handle)   +66  returnValue
   +70  passFlag      +72 entryPoint                +76  request
