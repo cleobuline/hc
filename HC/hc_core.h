@@ -1194,6 +1194,11 @@ void    hc_do(const char *line);
  * pour le lui rendre intact. */
 void    hc_ligne_de_module(const char *line);
 
+/* Pendant qu'un module calcule dans son fil, le fil de HC respire : l'hôte
+ * redessine et lit ses événements, comme pendant un « wait ». Rend 1 si
+ * l'arrêt est demandé (Cmd-.), et le module doit s'arrêter. */
+int     hc_respire_module(void);
+
 /* ---- Utilitaires ---- */
 const char *hc_typename(ObjType t);
 void        hc_describe(Object *o, char *buf, int buflen);

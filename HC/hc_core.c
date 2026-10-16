@@ -9982,7 +9982,9 @@ static int v3_xfcn_module(const char *nom, HctValeur *args, int nargs,
         int r = hc_module_xfcn(piles[i], nom, ptrs, argc, &passe,
                                res, HC_VAL, faute, sizeof faute);
         if (r < 0) {
-            emit(HC_ERR, "   !! %s", faute);
+            /* Arrêté par Cmd-. : rien à dire, l'exécuteur déroule à sa
+             * prochaine instruction, comme pour tout script. */
+            if (!g_interrompu && !g_abandon) emit(HC_ERR, "   !! %s", faute);
             *out = hct_val_texte("");
             ARENA_FREE;
             return 1;
@@ -16382,7 +16384,9 @@ static int v3_xcmd_module(HctContexte *ctx, const HctNoeud *n)
         int r = hc_module_xcmd(piles[i], nom, ptrs, argc, &passe,
                                res, HC_VAL, faute, sizeof faute);
         if (r < 0) {
-            hct_ctx_faute_txt(ctx, n, "%s", faute);
+            /* Arrêté par Cmd-. : on déroule sans rien dire, comme un script
+             * (HCT_INTERROMPU). */
+            if (!hct_ctx_interrompu(ctx)) hct_ctx_faute_txt(ctx, n, "%s", faute);
             return 1;
         }
         if (r > 0 && !passe) {
@@ -19498,4 +19502,20 @@ void hc_ligne_de_module(const char *line)
     g_exit_repeat = sauve_er;
     g_next_repeat = sauve_nr;
     g_v1_porte = sauve_porte;
+}
+
+/* LE MODULE CALCULE, HC RESPIRE. Un module tourne dans un fil à part
+ * (hc_wasm.c) ; celui de HC, pendant ce temps, fait ce qu'il fait dans un
+ * « wait » : il rend la main à l'hôte, qui redessine et lit sa file — et y
+ * trouve Cmd-. par le chemin de tous les scripts (cmdpoint.txt). La réponse
+ * est celle de l'exécuteur entre deux instructions (v3_interrompu) : un
+ * Cmd-., ou un abandon sous « skipErrors false », arrêtent aussi le module.
+ *
+ * La première version guettait le clavier depuis un fil de l'interface
+ * (CGEventSourceKeyState) ; DANS HC (l'application), le 16 octobre, Cmd-.
+ * n'arrêtait rien. */
+int hc_respire_module(void)
+{
+    host_idle();
+    return g_interrompu || g_abandon;
 }

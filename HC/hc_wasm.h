@@ -75,16 +75,15 @@ int  hc_module_xfcn(Object *pile, const char *nom,
                     char *res, size_t nres, char *faute, size_t nfaute);
 
 /* LE DÉLAI. Un module qui dépasse ce temps, en secondes, est arrêté ; 0 :
- * jamais. Sert aux harnais, faute de Cmd-. dans un conteneur. */
+ * jamais. Sert aux harnais.
+ *
+ * L'ARRÊT DEMANDÉ, lui, n'a pas d'entrée ici : un module calcule dans un
+ * fil à part, et le fil de HC, qui l'attend, respire comme dans un « wait »
+ * (hc_respire_module, hc_core.h). Cmd-. arrête donc un module par le chemin
+ * de tous les scripts. */
 void hc_module_delai(double secondes);
 
-/* L'ARRÊT DEMANDÉ, depuis n'importe quel fil : le module en cours, s'il y en
- * a un, s'arrête comme sur une faute. C'est le Cmd-. des modules. */
-void hc_module_interromps(void);
-
-/* 1 si un module est en train de calculer, depuis n'importe quel fil. Pour
- * l'hôte, qui ne guette Cmd-. que pendant ce temps : sa boucle d'événements
- * est alors arrêtée, et la touche n'arriverait pas autrement. */
+/* 1 si un module est en train de calculer. Du fil de HC seulement. */
 int  hc_module_actif(void);
 
 #endif
