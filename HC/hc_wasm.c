@@ -148,6 +148,14 @@ void hc_module_interromps(void)
     pthread_mutex_unlock(&g_garde_verrou);
 }
 
+int hc_module_actif(void)
+{
+    pthread_mutex_lock(&g_garde_verrou);
+    int actif = g_nactifs > 0;
+    pthread_mutex_unlock(&g_garde_verrou);
+    return actif;
+}
+
 /* Rend 0, ou -1 s'il n'y a plus de place pour un appel de plus. */
 static int garde_entre(wasm_module_inst_t inst)
 {

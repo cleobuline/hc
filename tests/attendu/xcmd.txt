@@ -95,6 +95,7 @@
    boucle
       [ERR]    !! le module « epreuves » a dépassé son délai, et il a été arrêté (v3, ligne 1)
    rendue en moins de deux secondes
+   un module en cours, après : 0
    bonjour "après la boucle"
       = Bonjour, après la boucle !
          ⚙ XCMD bonjour

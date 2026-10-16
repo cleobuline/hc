@@ -206,6 +206,8 @@ static NSMenu *gRecentMenu = nil;
      * "Close Box" » retomberait sur atoi, c'est-à-dire sur 0 — aucune icône,
      * et sans le moindre message. À poser avant qu'un script puisse tourner. */
     hc_set_icon_resolver(hcicon_id_for_text);
+    /* La sentinelle de Cmd-. pour les modules : voir hcv_guette_modules. */
+    hcv_guette_modules();
     /* Et de quoi lui dire si un numéro est déjà pris par une icône d'origine,
      * quand il transplante les icônes d'une carte collée. */
     hc_set_icon_builtin_check(hcicon_builtin_has);
@@ -290,6 +292,13 @@ static NSMenu *gRecentMenu = nil;
          * quoi travailler. Elle demande au noyau, ou à gView. */
         [siItem setTarget:view];
         [fileMenu addItem:siItem];
+        /* Les modules de la pile : ses XCMD et XFCN en WebAssembly (hc_wasm.h).
+         * Décidé par l'utilisatrice le 16 octobre, à côté de Stack Info. */
+        NSMenuItem *moItem = [[NSMenuItem alloc] initWithTitle:@"Modules…"
+                                                        action:@selector(showModules)
+                                                 keyEquivalent:@""];
+        [moItem setTarget:view];
+        [fileMenu addItem:moItem];
         [fileMenu addItemWithTitle:@"New Card"
                             action:@selector(newCard:)
                      keyEquivalent:@"n"];

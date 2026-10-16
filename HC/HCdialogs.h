@@ -11,6 +11,12 @@ void hcicon_panel_stack_closing(Object *stack);
  * Appelé par le rappel object_gone du noyau — voir cocoa_object_gone. */
 void hcdlg_objet_disparu(Object *mort);
 
+/* Ajoute à `pile` les fichiers .wasm de `urls` comme modules (hc_wasm.h) :
+ * pour Objects ▸ Modules… et pour un fichier déposé sur la fenêtre. Un module
+ * refusé le dit dans une alerte, avec sa raison ; les autres entrent. Rend
+ * le nombre de modules ajoutés. */
+int hcdlg_ajoute_modules(Object *pile, NSArray<NSURL *> *urls);
+
 @interface HCView (Dialogs)
 
 - (void)showButtonInfo:(Object *)obj;
@@ -36,6 +42,14 @@ void hcdlg_objet_disparu(Object *mort);
 - (void)stackOK:(id)sender;
 - (void)stackCancel:(id)sender;
 - (void)stackScript:(id)sender;
+
+/* Objects ▸ Modules… : les XCMD et XFCN de la pile (hc_wasm.h). */
+- (void)showModules;
+- (void)modulesRafraichis:(NSString *)garder;
+- (void)modulesChoisi:(id)sender;
+- (void)modulesAjoute:(id)sender;
+- (void)modulesRetire:(id)sender;
+- (void)modulesFerme:(id)sender;
 
 - (void)iconOK:(id)sender;
 - (void)iconNone:(id)sender;

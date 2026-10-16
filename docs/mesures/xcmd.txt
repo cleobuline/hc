@@ -461,12 +461,28 @@ CE QUI DIFFÈRE DE HYPERCARD, ET C'EST SU (NON MESURÉ dans HyperCard) :
   · passFlag : HC cherche dans la pile suivante, puis rend « personne ne
     répond ».
 
+L'INTERFACE COCOA, le même jour — COMPILÉE PAR LA CI, NON EXÉCUTÉE :
+  · Objects ▸ Modules… (HCdialogs.m) : la liste des modules de la pile, ce
+    qu'apporte le module choisi (sa taille, ses XCMD et XFCN), « Add… » (un
+    ou plusieurs .wasm), « Remove » après confirmation. Libellés en anglais
+    comme Stack Info ; un refus le dit en français, avec la raison du noyau ;
+  · un .wasm DÉPOSÉ sur la fenêtre d'une pile s'ajoute à CETTE pile ;
+  · Cmd-. : un fil (hcv_guette_modules, HCview.m) lit le clavier vingt fois
+    par seconde PENDANT qu'un module calcule (hc_module_actif), et appelle
+    hc_module_interromps. NON MESURÉ : que macOS laisse lire le clavier ainsi
+    sans demander l'autorisation « Surveillance de l'entrée ».
+  · un module ajouté ne s'écrit sur le disque qu'au prochain enregistrement
+    de la pile, comme tout autre changement.
+
+À JOUER DANS HC (l'application), sur le Mac de l'utilisatrice :
+  1. Objects ▸ Modules… ▸ Add… : choisir xcmd/exemples/bonjour.wasm ;
+  2. dans la boîte de messages : bonjour "Patricia" ;
+  3. puis : put bonjour("Patricia") ;
+  4. Cmd-S, fermer la pile, la rouvrir, et rejouer 2 ;
+  5. le module d'épreuve tests/donnees/modules/epreuves.wasm, puis
+     « boucle » dans la boîte de messages, et Cmd-. : HC doit rendre la main.
+
 CE QUI RESTE AVANT MAC•CAM :
-  · Cmd-. : hc_module_interromps existe ; l'interface Cocoa doit l'appeler,
-    depuis un fil qui guette la touche (la boucle d'événements est arrêtée
-    pendant qu'un module calcule) ;
-  · la fenêtre Objects ▸ Modules… et le glisser-déposer, décidés par
-    l'utilisatrice le 16 octobre ;
   · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
   · la licence de WAMR dans le DMG.
 

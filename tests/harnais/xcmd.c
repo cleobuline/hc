@@ -172,6 +172,7 @@ int main(int argc, char **argv)
         clock_gettime(CLOCK_MONOTONIC, &t1);
         double s = (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
         printf("   rendue en %s\n", s < 2.0 ? "moins de deux secondes" : "PLUS DE DEUX SECONDES");
+        printf("   un module en cours, après : %d\n", hc_module_actif());
     }
     hc_module_delai(0);
     fais("bonjour \"après la boucle\"");

@@ -82,4 +82,9 @@ void hc_module_delai(double secondes);
  * a un, s'arrête comme sur une faute. C'est le Cmd-. des modules. */
 void hc_module_interromps(void);
 
+/* 1 si un module est en train de calculer, depuis n'importe quel fil. Pour
+ * l'hôte, qui ne guette Cmd-. que pendant ce temps : sa boucle d'événements
+ * est alors arrêtée, et la touche n'arriverait pas autrement. */
+int  hc_module_actif(void);
+
 #endif
