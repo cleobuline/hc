@@ -17,6 +17,8 @@ cp "$KIT/exemples/bonjour.wasm" "$ICI/bonjour.wasm"
 # shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/epreuves.wasm" "$ICI/epreuves.c" "$KIT/hc_xcmd.c"
 # shellcheck disable=SC2086
+$CLANG $C $L -o "$ICI/rappels.wasm" "$ICI/rappels.c" "$KIT/hc_xcmd.c"
+# shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/inconnu.wasm" "$ICI/inconnu.c" "$KIT/hc_xcmd.c"
 $CLANG --target=wasm32 -O2 -nostdlib -Wall -Wextra $L -o "$ICI/sansboite.wasm" "$ICI/sansboite.c"
 ls -l "$ICI"/*.wasm

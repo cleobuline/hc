@@ -538,7 +538,54 @@ MESURÉ DANS HC (l'application), le 16 octobre au soir, par l'utilisatrice,
 sur son Mac : « cette fois-ci, Cmd-. coupe la boucle ». Le cas du mouseUp
 n'est pas rapporté à part.
 
+LES RAPPELS DE HYPERCARD — 16 octobre au soir
+--------------------------------------------
+
+Lancé par l'utilisatrice (« on attaque »), après Cmd-. Ce dont MAC•CAM a
+besoin d'abord, LU dans ses scripts : « put FORTH(bg fld "forth") into bg
+fld "pile" », puis les tables lues dans les globales pln0 à pln3, que le
+gestionnaire a déclarées et vidées avant l'appel. Le FORTH les pose donc
+par SetGlobal.
+
+AJOUTÉS, sous les noms de HyperXCmd.h : EvalExpr, GetGlobal, SetGlobal,
+GetFieldByName, GetFieldByNum, GetFieldByID, SetFieldByName, SetFieldByNum,
+SetFieldByID. Comme SendCardMessage, chacun CONFIE son travail au fil de
+HC (une demande dans l'échange entre les deux fils, hc_wasm.c), et le
+noyau le fait avec ses propres chemins : hct_evalue_texte pour EvalExpr
+(celui de « the value of »), la table des globales, v3_ecrit_objet pour
+écrire un champ (celui de « put … into field » : cantModify, plages de
+style, champ à redessiner).
+
+CE QU'ILS RENDENT. Chez HyperCard, un Handle que l'XCMD jetait ; ici, une
+chaîne allouée dans la mémoire du module, à rendre par free. HC n'écrit
+pas dans un tas qu'il ne connaît pas : le rappel rend la LONGUEUR, le kit
+fait la place, et la fait copier par un dernier rappel, hc_rendu. NULL dit
+l'échec.
+
+LE free DU KIT NE RENDAIT RIEN : la mémoire d'un module ne faisait que
+croître, et un module qui appelle EvalExpr en boucle aurait fini à la
+borne de 64 Mo. Il rend maintenant, par classes de tailles en puissances
+de deux. MESURÉ par le harnais : dix mille EvalExpr, chacun rendu, font
+gagner 0 page au module ; le même module lié avec un free muet, 9 pages.
+
+LE HARNAIS (xcmd, section 9) : chaque rappel, son échec (expression
+illisible, champ absent), une locale du gestionnaire appelant lue par
+EvalExpr, une globale posée par le module et lue par un gestionnaire qui
+la déclare, « compile » qui imite le FORTH (pln0 et pln3 remplies, la
+pile rendue), et la mémoire.
+
+NON MESURÉ dans HyperCard, et choisi :
+  · les rappels voient les VARIABLES DU GESTIONNAIRE qui a appelé l'XCMD
+    (EvalExpr("x") lit sa locale x), avec « me » la carte courante ;
+  · une globale inconnue se lit vide, et SetGlobal la crée ;
+  · un champ absent rend NULL, et SetFieldBy… rend 0.
+PAS FAITS : SendHCMessage (le noyau n'a pas de chemin qui saute les
+scripts), et les rappels de conversion (StrToNum, PasToZero…), que les
+chaînes C rendent inutiles ; le kit a gagné strtol et atoi.
+
 CE QUI RESTE AVANT MAC•CAM :
-  · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
+  · le FORTH, tiré de cam_forth.c (maccam-6), avec le dialecte des années
+    90 (CONSTANT, VARIABLE, DO LOOP, BEGIN…UNTIL, N/MOORE-HV…) ;
+  · la fenêtre externe « CAM » : ses propriétés et ses messages ;
   · la licence de WAMR dans le DMG.
 

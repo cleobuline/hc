@@ -74,9 +74,10 @@ enum {
  *
  * Le fil de HC, lui, attend le module comme il attend dans un « wait » :
  * il respire (hc_respire_module), et entend Cmd-. par le chemin de tous les
- * scripts. Il garde aussi pour lui tout ce qui touche à la pile : une ligne
- * de SendCardMessage lui est CONFIÉE, le fil du module attend qu'elle soit
- * jouée. L'interface n'est donc jamais touchée d'ailleurs que de son fil.
+ * scripts. Il garde aussi pour lui tout ce qui touche à la pile : un rappel
+ * (SendCardMessage, EvalExpr, SetGlobal…) lui CONFIE son travail, et le fil
+ * du module attend qu'il soit fait. L'interface n'est donc jamais touchée
+ * d'ailleurs que de son fil.
  *
  * LE FIL EST GARDÉ d'un appel à l'autre : un par profondeur, puisque les
  * appels s'emboîtent (un module qui en appelle un autre par SendCardMessage).
@@ -87,6 +88,26 @@ enum {
  * Tout ce qui est partagé est sous `verrou`. Le fil du module ne lit ce qui
  * décrit l'appel qu'entre `a_faire` et `fini`, et le fil de HC ne le relit
  * qu'après `fini`. */
+/* UNE DEMANDE d'un rappel au fil de HC. Les chaînes sont dans la mémoire du
+ * module : elles y restent en place le temps de la demande, puisque son fil
+ * attend, et qu'aucun autre ne touche à cette mémoire. */
+typedef enum {
+    D_LIGNE = 1,            /* SendCardMessage */
+    D_EVALUE,               /* EvalExpr */
+    D_GLOBALE,              /* GetGlobal */
+    D_POSE_GLOBALE,         /* SetGlobal */
+    D_CHAMP,                /* GetFieldByName, ByNum, ByID */
+    D_POSE_CHAMP            /* SetFieldByName, ByNum, ByID */
+} Quoi;
+
+typedef struct {
+    Quoi        quoi;
+    const char *texte;      /* la ligne, l'expression, le nom */
+    const char *valeur;     /* ce qu'on pose */
+    int         carte;      /* le champ est de la carte, sinon du fond */
+    int         n, par_id;  /* son numéro, ou son id */
+} Demande;
+
 typedef struct {
     pthread_mutex_t verrou;
     pthread_cond_t  signal;
@@ -99,7 +120,10 @@ typedef struct {
     int                  argc;
     uint32_t             taille;
 
-    const char     *ligne;      /* confiée au fil de HC, ou NULL */
+    int             demande;    /* `d` attend le fil de HC */
+    Demande         d;
+    char           *rendu;      /* la chaîne qu'elle rend, ou NULL */
+    int             reponse;    /* le nombre qu'elle rend */
     int             fini;       /* le fil du module a rendu */
     int             arrete;     /* 0, ARRET_DELAI ou ARRET_DEMANDE */
 
@@ -130,12 +154,12 @@ static int travail_arrive(const Appel *a)
 static int module_rend(const Appel *a)
 {
     return __atomic_load_n(&a->fini, __ATOMIC_ACQUIRE)
-        || __atomic_load_n(&a->ligne, __ATOMIC_ACQUIRE) != NULL;
+        || __atomic_load_n(&a->demande, __ATOMIC_ACQUIRE);
 }
 
-static int ligne_jouee(const Appel *a)
+static int demande_servie(const Appel *a)
 {
-    return __atomic_load_n(&a->ligne, __ATOMIC_ACQUIRE) == NULL;
+    return !__atomic_load_n(&a->demande, __ATOMIC_ACQUIRE);
 }
 
 static double maintenant(void);
@@ -152,23 +176,170 @@ static void guette(Appel *a, int (*arrive)(const Appel *))
 
 /* ---- les rappels ---- */
 
-/* Sur le fil du MODULE : la ligne est confiée au fil de HC, qui la joue. */
-static void rappel_send_card(wasm_exec_env_t env, uint64_t *args)
+/* Tous tournent sur le fil du MODULE, et confient leur travail au fil de
+ * HC, seul à toucher à la pile (servir, plus bas).
+ *
+ * Ce sont des rappels « bruts » : leurs arguments arrivent dans un tableau
+ * de cases de 64 bits, un entier dans les 32 premiers, et ce qu'ils rendent
+ * se pose dans la première. Une chaîne « $ » a déjà été vérifiée par WAMR,
+ * qui pose ici son adresse native ; un tampon « *~ » aussi, avec sa taille.
+ *
+ * UNE CHAÎNE RENDUE (EvalExpr, GetGlobal, GetFieldBy…) reste du côté de HC :
+ * le rappel n'en rend que la longueur, ou -1, et le module la fait copier
+ * dans la place qu'il a faite, par hc_rendu (le kit, hc_xcmd.c). HC
+ * n'écrit donc jamais dans un tas qu'il ne connaît pas. */
+
+static int32_t entier(const uint64_t *args, int k)
 {
-    Appel *a = wasm_runtime_get_user_data(env);
-    /* « $ » : WAMR a vérifié la chaîne et posé ici son adresse native. */
-    const char *ligne = (const char *)(uintptr_t)args[0];
-    if (!a) return;
-    pthread_mutex_lock(&a->verrou);
-    __atomic_store_n(&a->ligne, ligne, __ATOMIC_RELEASE);
-    pthread_cond_broadcast(&a->signal);
-    guette(a, ligne_jouee);
-    while (a->ligne) pthread_cond_wait(&a->signal, &a->verrou);
-    pthread_mutex_unlock(&a->verrou);
+    int32_t v;
+    memcpy(&v, &args[k], sizeof v);
+    return v;
 }
 
+static const char *chaine(const uint64_t *args, int k)
+{
+    return (const char *)(uintptr_t)args[k];
+}
+
+static void rend(uint64_t *args, int32_t v)
+{
+    memcpy(&args[0], &v, sizeof v);
+}
+
+/* Confie `d` au fil de HC, et attend qu'il l'ait servie. Une réponse
+ * précédente que le module n'a pas fait copier est jetée. */
+static Appel *confie(wasm_exec_env_t env, Demande d)
+{
+    Appel *a = wasm_runtime_get_user_data(env);
+    if (!a) return NULL;
+    pthread_mutex_lock(&a->verrou);
+    free(a->rendu);
+    a->rendu = NULL;
+    a->reponse = 0;
+    a->d = d;
+    __atomic_store_n(&a->demande, 1, __ATOMIC_RELEASE);
+    pthread_cond_broadcast(&a->signal);
+    guette(a, demande_servie);
+    while (a->demande) pthread_cond_wait(&a->signal, &a->verrou);
+    pthread_mutex_unlock(&a->verrou);
+    return a;
+}
+
+/* La longueur de la chaîne rendue, ou -1 s'il n'y en a pas. */
+static int32_t longueur(const Appel *a)
+{
+    if (!a || !a->rendu) return -1;
+    size_t n = strlen(a->rendu);
+    return n > INT32_MAX - 1 ? INT32_MAX - 1 : (int32_t)n;
+}
+
+static void rappel_send_card(wasm_exec_env_t env, uint64_t *args)
+{
+    confie(env, (Demande){ .quoi = D_LIGNE, .texte = chaine(args, 0) });
+}
+
+static void rappel_eval_expr(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_EVALUE,
+                                      .texte = chaine(args, 0) });
+    rend(args, longueur(a));
+}
+
+static void rappel_get_global(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_GLOBALE,
+                                      .texte = chaine(args, 0) });
+    rend(args, longueur(a));
+}
+
+static void rappel_set_global(wasm_exec_env_t env, uint64_t *args)
+{
+    confie(env, (Demande){ .quoi = D_POSE_GLOBALE, .texte = chaine(args, 0),
+                           .valeur = chaine(args, 1) });
+}
+
+static void rappel_get_field_name(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .texte = chaine(args, 1) });
+    rend(args, longueur(a));
+}
+
+static void rappel_get_field_num(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .n = entier(args, 1) });
+    rend(args, longueur(a));
+}
+
+static void rappel_get_field_id(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .n = entier(args, 1), .par_id = 1 });
+    rend(args, longueur(a));
+}
+
+static void rappel_set_field_name(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_POSE_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .texte = chaine(args, 1),
+                                      .valeur = chaine(args, 2) });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_set_field_num(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_POSE_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .n = entier(args, 1),
+                                      .valeur = chaine(args, 2) });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_set_field_id(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_POSE_CHAMP,
+                                      .carte = entier(args, 0) != 0,
+                                      .n = entier(args, 1), .par_id = 1,
+                                      .valeur = chaine(args, 2) });
+    rend(args, a ? a->reponse : 0);
+}
+
+/* hc_rendu(tampon, taille) : copie la dernière chaîne rendue, coupée à la
+ * taille du tampon, zéro final compris. Elle ne sert qu'une fois. Pas de
+ * passage au fil de HC : la réponse est déjà dans `a`, et le fil de HC
+ * attend. */
+static void rappel_rendu(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = wasm_runtime_get_user_data(env);
+    char *dst = (char *)(uintptr_t)args[0];
+    int32_t n = entier(args, 1);
+    if (!a || n <= 0) return;
+    size_t l = a->rendu ? strlen(a->rendu) : 0;
+    if (l > (size_t)n - 1) l = (size_t)n - 1;
+    if (l) memcpy(dst, a->rendu, l);
+    dst[l] = '\0';
+    free(a->rendu);
+    a->rendu = NULL;
+}
+
+/* Les noms sont ceux de HyperXCmd.h ; les signatures, celles du kit. */
 static NativeSymbol RAPPELS[] = {
-    { "SendCardMessage", (void *)rappel_send_card, "($)", NULL },
+    { "SendCardMessage", (void *)rappel_send_card,      "($)",    NULL },
+    { "EvalExpr",        (void *)rappel_eval_expr,      "($)i",   NULL },
+    { "GetGlobal",       (void *)rappel_get_global,     "($)i",   NULL },
+    { "SetGlobal",       (void *)rappel_set_global,     "($$)",   NULL },
+    { "GetFieldByName",  (void *)rappel_get_field_name, "(i$)i",  NULL },
+    { "GetFieldByNum",   (void *)rappel_get_field_num,  "(ii)i",  NULL },
+    { "GetFieldByID",    (void *)rappel_get_field_id,   "(ii)i",  NULL },
+    { "SetFieldByName",  (void *)rappel_set_field_name, "(i$$)i", NULL },
+    { "SetFieldByNum",   (void *)rappel_set_field_num,  "(ii$)i", NULL },
+    { "SetFieldByID",    (void *)rappel_set_field_id,   "(ii$)i", NULL },
+    { "hc_rendu",        (void *)rappel_rendu,          "(*~)",   NULL },
 };
 
 /* ---- WAMR, démarré une fois ---- */
@@ -675,32 +846,59 @@ static void attends_signal(Appel *a, double secondes)
     pthread_cond_timedwait(&a->signal, &a->verrou, &t);
 }
 
-/* LE FIL DE HC, pendant que le module calcule : il joue les lignes qu'on
- * lui confie, il respire soixante fois par seconde — comme l'hôte, qui n'en
+/* Sur le fil de HC : ce que le rappel a demandé. Le fil du module attend,
+ * sans toucher à `a`. */
+static void sers(Appel *a)
+{
+    const Demande *d = &a->d;
+    switch (d->quoi) {
+    case D_LIGNE:
+        hc_ligne_de_module(d->texte);
+        break;
+    case D_EVALUE:
+        a->rendu = hc_module_evalue(d->texte);
+        break;
+    case D_GLOBALE:
+        a->rendu = hc_module_globale(d->texte);
+        break;
+    case D_POSE_GLOBALE:
+        hc_module_pose_globale(d->texte, d->valeur);
+        break;
+    case D_CHAMP:
+        a->rendu = hc_module_champ(d->carte, d->texte, d->n, d->par_id);
+        break;
+    case D_POSE_CHAMP:
+        a->reponse = hc_module_pose_champ(d->carte, d->texte, d->n,
+                                          d->par_id, d->valeur);
+        break;
+    }
+}
+
+/* LE FIL DE HC, pendant que le module calcule : il sert les demandes de ses
+ * rappels, il respire soixante fois par seconde — comme l'hôte, qui n'en
  * fait pas plus (cocoa_idle) —, et il arrête le module sur Cmd-. ou au
- * délai. Même un module qui ne fait qu'envoyer des lignes le laisse
+ * délai. Même un module qui ne fait qu'appeler ses rappels le laisse
  * respirer : la respiration est réglée sur l'horloge, pas sur l'attente. */
 static void servir(Appel *a)
 {
     double respire = maintenant() + 1.0 / 60.0;
     pthread_mutex_lock(&a->verrou);
     while (!a->fini) {
-        if (a->ligne) {
-            /* Arrêté, le module n'a plus rien à faire jouer : sa ligne lui
-             * est rendue sans avoir été jouée, et il trouve l'arrêt en
-             * revenant du rappel. */
+        if (a->demande) {
+            /* Arrêté, le module n'a plus rien à demander : le rappel lui
+             * rend la main sans avoir été servi, et il trouve l'arrêt en
+             * revenant. */
             if (!a->arrete) {
-                const char *l = a->ligne;
                 pthread_mutex_unlock(&a->verrou);
-                hc_ligne_de_module(l);
+                sers(a);
                 pthread_mutex_lock(&a->verrou);
             }
-            __atomic_store_n(&a->ligne, NULL, __ATOMIC_RELEASE);
+            __atomic_store_n(&a->demande, 0, __ATOMIC_RELEASE);
             pthread_cond_broadcast(&a->signal);
         } else {
             guette(a, module_rend);
             double d = respire - maintenant();
-            if (!a->fini && !a->ligne && d > 0) attends_signal(a, d);
+            if (!a->fini && !a->demande && d > 0) attends_signal(a, d);
         }
         if (a->fini || maintenant() < respire) continue;
 
@@ -797,7 +995,7 @@ static int appelle(Object *pile, const char *genre, const char *nom,
         a->argv = argv;
         a->argc = argc;
         a->taille = (uint32_t)taille;
-        __atomic_store_n(&a->ligne, NULL, __ATOMIC_RELEASE);
+        __atomic_store_n(&a->demande, 0, __ATOMIC_RELEASE);
         __atomic_store_n(&a->fini, 0, __ATOMIC_RELEASE);
         a->arrete = a->ok = a->sans_boite = 0;
         a->bloc = 0;
@@ -809,6 +1007,8 @@ static int appelle(Object *pile, const char *genre, const char *nom,
         wasm_runtime_set_user_data(mo->env, NULL);
         mo->en_cours = 0;
         g_profondeur--;
+        free(a->rendu);         /* une réponse que le module n'a pas prise */
+        a->rendu = NULL;
 
         if (a->arrete == ARRET_DELAI)
             snprintf(faute, nf, "le module « %s » a dépassé son délai, "
