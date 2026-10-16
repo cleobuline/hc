@@ -15,6 +15,7 @@ Ce dossier est le kit pour en écrire.
 | `hc_xcmd.c` | ce que chaque module emporte : la mémoire, les chaînes, `snprintf` |
 | `inc/` | les en-têtes C réduits qui vont avec |
 | `exemples/bonjour.c` | le premier module : une commande et une fonction |
+| `maccam/` | les XFCN de MAC•CAM Workshop, refaites : `FORTH` d'abord |
 | `Makefile` | de `.c` à `.wasm` |
 
 ## Écrire un module

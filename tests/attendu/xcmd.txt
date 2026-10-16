@@ -203,3 +203,14 @@
    -- dix mille EvalExpr, rendus par free : pages gagnées
    put memoire()
       = 0
+
+== 10. le FORTH de MAC•CAM ==
+   ajoute forth.wasm (23144 octets) : accepté
+   compile ": R CENTER >PLN0 ; MAKE-TABLE R"
+      = [] 4096 0000000011111111 0
+   compile "N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R"
+      = [] 4096 0000111100001111 4096
+   compile "1 2 3"
+      = [1 2 3 ] 0  0
+   compile ": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB"
+      = [Unknow'd word : ZORGLUB] 4096 0101010101010101 0

@@ -12,13 +12,18 @@ CFLAGS   = --target=wasm32 -O2 -ffreestanding -nostdlib -isystem inc -I . \
            -Wall -Wextra
 LIENS    = -Wl,--no-entry -Wl,--strip-debug
 
-MODULES  = exemples/bonjour.wasm
+MODULES  = exemples/bonjour.wasm maccam/forth.wasm
 
 .PHONY: tout propre
 tout: $(MODULES)
 
 exemples/%.wasm: exemples/%.c hc_xcmd.c hc_xcmd.h
 	$(CLANG) $(CFLAGS) $(LIENS) -o $@ $< hc_xcmd.c
+
+# MAC•CAM Workshop : ses XFCN refaites (maccam/LISEZMOI.md).
+maccam/forth.wasm: maccam/forth.c maccam/forth_coeur.c maccam/forth_coeur.h \
+                   hc_xcmd.c hc_xcmd.h
+	$(CLANG) $(CFLAGS) $(LIENS) -o $@ maccam/forth.c maccam/forth_coeur.c hc_xcmd.c
 
 propre:
 	rm -f $(MODULES)
