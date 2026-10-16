@@ -724,9 +724,43 @@ LES BALAYAGES — LUS le même soir, désassemblés par capstone (68000) :
   · LES BORDS : l'image est un TORE. Les balayages ne calculent que
     l'intérieur ; copyBorders remplit ensuite la bordure d'une cellule par
     la ligne et la colonne opposées, coins compris.
-Pas encore lus : « draw » (la palette, l'échelle), « image » et
-copyToPlane (image0 à image7), les variantes stepfast, stepmfast,
-stepvfast, et l'ouverture (getParam : les six paramètres de maccam()).
+LE RESTE DE MACCAM — LU le même soir (désassemblé, rien d'exécuté) :
+  · L'OUVERTURE. « maccam(rect, "CAM", "True", 17, "True", "True") » :
+    les six paramètres de NewXWindow de HyperCard 2 — le rectangle, le
+    titre (« Sans Titre » par défaut), visible, le STYLE de fenêtre
+    (procID : 17 et 20, des fenêtres à coins arrondis), en couleur,
+    FLOTTANTE. Rend « true », ou « false » si la fenêtre n'a pu s'ouvrir.
+    La grille a la taille du contenu de la fenêtre à l'ouverture ; l'échelle
+    vaut 1 ; la palette est la ressource clut 128. Aucun idle : la machine
+    n'avance que sur ses messages (SetXWIdleTime n'est jamais appelé) ;
+  · LES PROPRIÉTÉS, trente : hilite, name, visible, height, width, rect
+    (la fenêtre) ; image0 à image7 ; scale ; pln7 à pln0 ; palette ;
+    PictResource ; major, minor, alternate, phaseA, phaseB. « minor » est
+    rangé mais ne sert à rien. « scale » refait la fenêtre carrée, de côté
+    la largeur de la grille fois l'échelle. « PictResource » écrit l'image
+    en PICT dans les ressources de la pile — aucun script ne s'en sert ;
+  · « image7 » (et ses sœurs) : la peinture de la CARTE, demandée à
+    HyperCard (GetMaskAndData), dans le rectangle donné, est copiée à
+    l'échelle 1 ; chaque point noir ALLUME le bit du plan — aucun n'est
+    éteint —, puis les bords du tore sont refaits ;
+  · LA PALETTE : « NNN » — la ressource clut NNN ; « NNNt » et « NNNo » —
+    chaque chiffre est une clut de 0 à 9, posées l'une sur l'autre sur une
+    palette blanche, en moyenne (t, transparent) ou en recouvrement (o,
+    opaque) ;
+  · LE DESSIN : CopyBits de la grille 8 bits dans la fenêtre, agrandie de
+    l'échelle, par la palette ;
+  · LES MESSAGES, dix-sept :
+      step — un pas : le balayage de « major », les phases basculent, le
+        dessin ;
+      stepfast, stepmfast, stepvfast — la même chose EN BOUCLE, jusqu'à ce
+        que le bouton de la souris soit enfoncé (le piège Button) :
+        stepfast suit « major », stepmfast force Margolus, stepvfast
+        force von Neumann. HyperCard est figé pendant ce temps ;
+      erasea — tous les pixels à zéro ; erase1, erase2 — les bits 0 et 1,
+        qu'aucun plan n'occupe : sans effet visible ;
+      blacka — RIEN ; fill1 à fill8 — allument le bit 0 à 7 partout (fill8
+        le plan 0, fill5 le plan 3) ;
+      toscrap — l'image, en PICT, au presse-papiers.
 
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les cinq bancs ci-dessus diront ;
