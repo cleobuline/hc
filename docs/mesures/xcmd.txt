@@ -288,3 +288,66 @@ mesure ce que ça coûte. Le clang 18 du conteneur n'en pose pas autant
 d'office : un module doit être vérifié avec le compilateur des auteurs, pas
 seulement avec le nôtre.
 
+
+MARCHE 1, MESURÉE LE 16 OCTOBRE — TROIS INTERPRÈTES SUR LE BANC MAC•CAM
+----------------------------------------------------------------------
+
+Dans le conteneur (Linux, 4 cœurs, gcc et clang -O2). Trois candidats en C,
+pris à leur dernière version :
+
+  wasm3     MIT          dernier changement le 29 septembre 2026 ; son
+                         README annonce une « minimal maintenance phase »
+  WAMR      Apache 2.0   la Bytecode Alliance, 9 octobre 2026 ; interprète
+                         « fast », sans AOT ni JIT
+  toywasm   BSD          un seul auteur, 8 octobre 2026
+
+LE BANC. Un module qui porte en lui la règle « Conway » de la pile (avec
+DEATH, BORN et UNCHANGED, CONSTANT réécrit), la compile par le Forth de
+maccam-6, joue N pas sur 128×128, et rend l'empreinte de la grille. Deux
+compilations : « base » (clang 18 par défaut) et « récente » (bulk-memory,
+multivalue, reference-types, nontrapping-fptoint, sign-ext, mutable-globals
+— ce que le clang 24 de l'utilisatrice pose d'office). Témoin natif (gcc) :
+5a7d050b à 100 pas, ba1ec6fe à 3000 pas, environ 5 450 pas par seconde.
+
+                     exact     3000 pas, régime établi     coût fixe (0 pas)
+  natif (gcc -O2)      —       ≈ 5 450 pas/s   100 %
+  wasm3                oui     ≈   545 pas/s    10 %          150 ms
+  WAMR (fast)          oui     ≈   415 pas/s     8 %          220 ms
+  toywasm              oui     ≈    97 pas/s     2 %          810 ms
+  (Node, compilé à la volée, mesuré le 15 : ≈ 4 300 pas/s, 80 %)
+
+« Exact » : la même empreinte que le natif, au bit près, à 100 et à 3000
+pas, sur les DEUX compilations. Les trois acceptent donc les capacités
+récentes. Le coût fixe est surtout la compilation de la règle (MAKE-TABLE).
+
+ARRÊTER UNE BOUCLE SANS FIN, au bout de 200 ms (le Cmd-. de demain) :
+  wasm3     IMPOSSIBLE : aucune interface pour l'interrompre. Tué au bout de
+            3 secondes par le système.
+  WAMR      wasm_runtime_terminate, appelé d'un AUTRE fil : sans option, il
+            ne s'arrête PAS (tué au bout de 5 s). Construit avec
+            WAMR_BUILD_THREAD_MGR=1, il s'arrête en 200 ms et garde sa
+            vitesse (≈ 425 pas/s). Avec en plus le compteur d'instructions
+            (INSTRUCTION_METERING), il tombe à ≈ 265 pas/s. L'arrêt est
+            DÉFINITIF : le module ne reprend pas.
+  toywasm   s'arrête en 200 ms (« execution timed out »). Son interruption
+            est REPRENABLE : il rend la main à l'hôte, qui peut faire
+            tourner ses événements puis reprendre — exactement ce que fait
+            déjà le noyau de HC, qui rend la main 60 fois par seconde dans
+            une boucle (cmdpoint.txt).
+
+TAILLE : wasm3 ≈ 30 000 lignes de C, toywasm ≈ 22 000, WAMR ≈ 57 000
+(les seuls .c compilés). Code compilé, hôte de banc compris : 250 à 310 Ko
+pour chacun.
+
+CE QUI N'EST PAS MESURÉ ENCORE : la borne mémoire de chacun (les trois en
+ont une) ; la compilation universelle x86_64 + arm64 et la cible macOS
+10.13 (WAMR a des fichiers d'assembleur par processeur, avec un repli en C ;
+wasm3 et toywasm sont du C seul) ; les avertissements sous les drapeaux de
+HC ; le comportement sur des modules abîmés (le fuzzing).
+
+wasm3 EST ÉCARTÉ : il ne sait pas s'arrêter, et Cmd-. est « essentiel »
+(l'utilisatrice, le 30 septembre). Reste un choix entre la vitesse (WAMR,
+quatre fois plus rapide, arrêt définitif depuis un second fil) et la
+simplicité (toywasm, arrêt reprenable sur le fil de HC, quatre fois plus
+lent). À décider avec l'utilisatrice.
+
