@@ -351,3 +351,29 @@ quatre fois plus rapide, arrêt définitif depuis un second fil) et la
 simplicité (toywasm, arrêt reprenable sur le fil de HC, quatre fois plus
 lent). À décider avec l'utilisatrice.
 
+DÉCIDÉ PAR L'UTILISATRICE, LE 16 OCTOBRE : WAMR. La vitrine doit bouger. Le
+même jour, sa question suivante : « il nous faut le header de l'API de
+HyperCard, non ? » — voir plus bas.
+
+
+L'INTERFACE D'UN MODULE — NOTÉ LE 16 OCTOBRE, RIEN N'EST ÉCRIT
+-------------------------------------------------------------
+
+HyperXCmd.h, l'en-tête d'Apple pour les XCMD, NE SERT PAS À EXÉCUTER : on
+ne fait pas tourner de code 68000. Il sert de MODÈLE, pour que les rappels
+gardent leurs noms et leur sens. Il est d'Apple : comme les piles, il ne
+se commet pas. HC écrira le sien, hc_xfcn.h.
+
+La disposition du bloc de paramètres, telle que le code de MAC•CAM la
+montre (mesuré ci-dessus, et conforme au souvenir qu'on en a) :
+
+  +0   paramCount    +2  params[16] (des Handle)   +66  returnValue
+  +70  passFlag      +72 entryPoint                +76  request
+  +78  result        +80 inArgs[8]                 +112 outArgs[4]
+
+Ce qui changerait dans un module : des chaînes C au lieu de Handle et de
+chaînes Pascal ; les rappels deviennent des fonctions importées par le
+module (SendCardMessage, SendHCMessage, EvalExpr, GetGlobal, SetGlobal,
+GetFieldByName…) au lieu d'un saut à entryPoint avec un numéro de requête ;
+les conversions (StrToNum, NumToStr, PasToZero…) n'ont plus lieu d'être.
+
