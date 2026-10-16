@@ -639,6 +639,14 @@ globales). Les seize autres :
 La plus lente des 71 compilations : 2 ms en natif, 73 ms dans HC (WAMR,
 le noyau sous ASan).
 
+MESURÉ DANS HC (l'application), le 16 octobre au soir, par l'utilisatrice,
+le module forth.wasm ajouté à une pile : « put FORTH(": R CENTER >PLN0 ;
+MAKE-TABLE R") into card field test » laisse le champ vide — FORTH ne rend
+que sa pile, vide ici —, et « put pln0 into card field test » y met la
+table (« ok ça roule »). Le texte de la table n'a pas été relu caractère
+par caractère. Le bouton de compilation d'une carte de l'atelier : pas
+encore joué.
+
 NON MESURÉ, À JOUER DANS HYPERCARD 2.4.1 (Basilisk II), sur la pile
 MAC•CAM Workshop, HyperCard tout juste relancé :
   1. la carte « Dentrite• », son bouton de compilation : que montre « Pile » ?
