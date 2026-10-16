@@ -692,11 +692,41 @@ teste l'OCTET entier et non son bit : pln7 et pln6, qui partagent l'octet,
 s'y relisent mêlés. Aucun script de la pile ne lit ces propriétés.
 
 Ce que la nouvelle MACCAM en reprend : les mêmes bits, la même lecture —
-« 0 » éteint, le reste allume —, mais arrêtée à 4 096. Chaque demi-machine
-lit sa table avec ses propres plans comme centre (CENTER = plan 0 pour
-CAM-A, plan 2 pour CAM-B) et ceux de l'autre comme « & » : c'est la
-CAM-6 ; NON VÉRIFIÉ encore dans les fonctions de balayage (scanoptmoore,
-optscavonn, scanoptmarg…), qui restent à lire.
+« 0 » éteint, le reste allume —, mais arrêtée à 4 096.
+
+LES BALAYAGES — LUS le même soir, désassemblés par capstone (68000) :
+  · LE PIXEL a 8 bits, plan 0 sur le bit 7, plan 3 sur le bit 4. Le
+    nouveau pixel vaut lutA[indexA] + lutB[indexB] : les bits 3 à 0
+    retombent à zéro au premier pas. Deux tampons, l'ancien recopié sur le
+    nouveau (BlockMove) à la fin de chaque pas ;
+  · L'INDEX DE CHAQUE DEMI-MACHINE EST CELUI QUE LE FORTH A MESURÉ, bit pour
+    bit, pour les trois voisinages lus :
+      Moore (optscanmoore), colonne par colonne, nord, sud, centre :
+        EAST 0, S.EAST 1, N.EAST 2, CENTER 3, SOUTH 4, NORTH 5, WEST 6,
+        S.WEST 7, N.WEST 8, CENTER' 9, &CENTER' 10, &CENTER 11 ;
+      von Neumann (sfVonn), ouest, nord, sud, centre, est, deux bits par
+        cellule : EAST' 0 … WEST 9, &CENTER' 10, &CENTER 11 ;
+      Margolus (fmargph), le bloc 2×2 lu comme un anneau horaire —
+        haut-gauche, haut-droite, bas-droite, bas-gauche — : CCW' 0 CCW 1
+        OPP' 2 OPP 3 CW' 4 CW 5 CENTER' 6 CENTER 7 &CENTER' 8 &CENTER 9 ;
+    deux sources indépendantes — les tables d'un côté, le moteur de
+    l'autre — disent la même chose ;
+  · CAM-A lit les plans 0 et 1 comme siens et les centres des plans 2 et 3
+    comme « & » ; CAM-B l'inverse : la CAM-6 ;
+  · LA PHASE (Margolus) : bit 10 de l'index de CAM-A, bit 11 de celui de
+    CAM-B ; les deux phases basculent entre 0 et 1 APRÈS CHAQUE PAS, sans
+    condition. « alternate » décide, lui, si le découpage en blocs se
+    décale d'une case à chaque pas (sinon, il reste fixe) ;
+  · « major » choisit le balayage, par une table de huit : 0 Moore,
+    1 von Neumann, 2 et 3 Margolus — LE MÊME balayage pour PH et HV —,
+    4 Moore avec phase, 5 Moore HV, 6 et 7 von Neumann avec phase et HV.
+    Les scripts de la pile ne posent que 0, 1, 2, 3 et 5 ;
+  · LES BORDS : l'image est un TORE. Les balayages ne calculent que
+    l'intérieur ; copyBorders remplit ensuite la bordure d'une cellule par
+    la ligne et la colonne opposées, coins compris.
+Pas encore lus : « draw » (la palette, l'échelle), « image » et
+copyToPlane (image0 à image7), les variantes stepfast, stepmfast,
+stepvfast, et l'ouverture (getParam : les six paramètres de maccam()).
 
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les cinq bancs ci-dessus diront ;
