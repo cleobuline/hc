@@ -3,6 +3,10 @@
 //
 
 #import "HCview.h"
+/* Son propre en-tête : hcdlg_ajoute_modules, une fonction C, y est déclarée
+ * et appelée ici AVANT sa définition — sans lui, une référence en avant, que
+ * seul le compilateur de macOS voit (le job « interface Cocoa »). */
+#import "HCdialogs.h"
 #import "HCglobals.h"
 #import "HCpalettes.h"
 #import "HCicons.h"
