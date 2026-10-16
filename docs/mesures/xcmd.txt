@@ -187,3 +187,76 @@ ce que rend FORTH(), les paramètres exacts des messages d'erreur, ce que
 lisent et posent phaseA, scale et palette. Et, s'il se trouve, un
 MacBinary de la pile, pour lire les XFCN d'origine.
 
+
+MESURÉ LE 16 OCTOBRE — LE MACBINARY D'ORIGINE
+---------------------------------------------
+
+Reçu de l'utilisatrice, fait dans Basilisk II : « MAC•CAM.Workshop »,
+MacBinary II, STAK/WILD. Données : 1 163 264 octets, les mêmes que la pile
+reçue la veille. RESSOURCE : 564 587 octets —
+
+  XFCN  FORTH      26 852 octets   le compilateur
+  XFCN  MACCAM     23 850          le moteur et sa fenêtre
+  XFCN  FullDrag    3 568          un glisser au contour gris
+  XFCN  FileName    1 176          un dialogue de nom — AUCUN script ne l'appelle
+  XCMD  Ballons     6 016          les bulles d'aide (deux appels au Help Manager)
+  PICT  ×37, clut ×17 (dont 128, la palette par défaut des scripts), ICON ×17
+
+Chaque code commence par l'en-tête de THINK C, et THINK C y a laissé les
+noms des fonctions (pour MacsBug) : c'est ce qui permet de le lire.
+
+COMMENT C'EST LU, ET SES LIMITES. Un désassembleur 68000 (celui de LLVM 18,
+incomplet), un comptage des mots A-line au nom connu, et les chaînes. Le
+comptage peut prendre une donnée pour un appel : c'est un relevé, pas une
+preuve. Les rappels à HyperCard se reconnaissent à leur motif — le numéro
+de requête posé à +76 du XCmdBlock, puis un saut à entryPoint (+72) —, mais
+chaque XFCN embarque TOUTE la bibliothèque de liaison de THINK C : chaque
+numéro y paraît une fois. On sait donc ce qui est LIÉ, pas ce qui est
+APPELÉ. Les noms des requêtes 1 à 28 et 39 sont ceux de HyperXCmd.h, de
+mémoire, à vérifier.
+
+FORTH : DU CALCUL. Appels système relevés : la mémoire (NewPtrClear,
+DisposPtr, BlockMove, les handles), SANE (Pack4), SysBeep, NumToString.
+Rien d'une fenêtre. Son vocabulaire, lu dans ses chaînes :
+  déclarations  N/MOORE N/VONN N/MARG, et leurs variantes -HV et -PH
+  voisins       CENTER CENTER' &CENTER &CENTER' NORTH SOUTH EAST WEST,
+                N.EAST N.WEST S.EAST S.WEST, NORTH' SOUTH' EAST' WEST',
+                CW CCW OPP CW' CCW' OPP', PHASE PHASE' HORZ VERT,
+                &PHASE &PHASE' &HORZ &VERT
+  langage       DUP DROP SWAP ROT OVER NOT AND XOR IF ELSE THEN DO LOOP
+                BEGIN WHILE REPEAT UNTIL CONSTANT VARIABLE BASE BEEP SP0
+  tables        MAKE-TABLE >PLN0 … >PLN3
+  fautes        INTERPRET_ERR « Can't understand », « End definition »,
+                « Compile Only » ; STACK_ERR « Stack problem during
+                execution » ; COMPILE_ERR « Unknow'd word », « COLON inside
+                definition » ; NEST_ERR « Unnested condition »
+ABSENTS DU FORTH DE MACCAM-6 : CONSTANT, VARIABLE, BEEP, ROT, DO LOOP,
+BEGIN WHILE REPEAT UNTIL, BASE, SP0, et N/MOORE-HV N/MOORE-PH N/VONN-HV
+N/VONN-PH. Ceux dont les 50 expériences de la pile se servent : CONSTANT
+(une fois), N/MOORE-HV (deux) ; N/MARG-PH (25 fois) existe des deux côtés.
+
+MACCAM : LA FENÊTRE EXTERNE DE HYPERCARD 2. Il lie NewXWindow,
+CloseXWindow, RegisterXWMenu, SetXWIdleTime, SendWindowMessage ; ses
+fonctions s'appellent DoOpen, DoDrag, DoGrow, DoZoom, DoContent, draw,
+copyToPlane, copyBorders, et une boucle par voisinage (optscanmoore,
+optscanmoorehv, optscanmooreph, optscanvonnph, optscanvonnhv,
+scanoptmarg…). Appels système relevés : la fenêtre (SizeWindow, Show et
+HideWindow, DragWindow, GrowWindow, BeginUpdate…), deux CopyBits et un
+GWorld — sans doute pour poser l'image calculée —, GetCTable (les clut),
+et Add, Write, ChangedResource : il écrit dans la ressource de la pile.
+SES PROPRIÉTÉS (« set the … of window "CAM" ») :
+  hilite name visible height width rect scale palette PictResource
+  major minor alternate phaseA phaseB  image0 … image7  pln0 … pln7
+SES MESSAGES (« send … to window "CAM" ») :
+  step stepfast stepmfast stepvfast toscrap erasea erase1 erase2 blacka
+  fill1 … fill8
+Les scripts s'en servent ainsi : FORTH() rend ses tables dans les globales
+pln0…pln3 ; un bouton les range dans des champs, puis « set the pln7 of
+window "CAM" to fld "pln0" » (plan 0 → pln7, plan 3 → pln4) ; « image7 »
+reçoit le rectangle d'un bouton où l'on a peint le contenu initial ; et le
+voisinage passe par « major », posé par HyperTalk d'après le texte Forth
+(N/MOORE-HV → 5).
+
+Et une erreur du moteur, gardée telle quelle : « You forget someting in
+evaluation of getParam ».
+
