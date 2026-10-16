@@ -19466,42 +19466,142 @@ void hc_do(const char *line)
     interruption_servie();
 }
 
-/* LA LIGNE D'UN MODULE. Son SendCardMessage (hc_wasm.c) n'arrive que
- * pendant un appel, donc au milieu d'un script, ou d'une ligne de la boîte
- * de message qui a appelé le module.
+/* LES RAPPELS D'UN MODULE. Ils n'arrivent que pendant un appel (hc_wasm.c),
+ * donc au milieu d'un script, ou d'une ligne de la boîte de message qui a
+ * appelé le module.
  *
  * hc_do ne convient pas tel quel : il est fait pour une ligne TAPÉE, et
  * remet tout à zéro — la profondeur, me, la cible, les sorties de boucle —,
  * puis, en rendant la main au repos, vide la file des erreurs et sert
  * l'interruption. Au milieu d'un script, la première chose casserait
  * l'appelant, et la seconde avalerait un Cmd-. qui lui était destiné. On
- * joue donc la ligne comme la boîte de message (me = la carte courante),
- * et on rend à l'appelant son état intact. */
-void hc_ligne_de_module(const char *line)
+ * joue donc comme la boîte de messages (me = la carte courante), et on rend
+ * à l'appelant son état intact.
+ *
+ * LES VARIABLES sont celles du gestionnaire qui a appelé le module : g_frame
+ * ne bouge pas. « SendCardMessage("put x") » et « EvalExpr("x") » voient ses
+ * locales. Ce que faisait HyperCard là-dessus n'est PAS mesuré. */
+typedef struct {
+    const char *porte;
+    Object     *me, *target;
+    int         pass, depth, eh, er, nr;
+} EtatDeModule;
+
+static void module_entre(EtatDeModule *e, const char *porte)
 {
-    const char *sauve_porte = v1_porte("module");
-    Object *sauve_me = g_me, *sauve_target = g_target;
-    int sauve_pass = g_pass, sauve_depth = g_depth;
-    int sauve_eh = g_exit_handler, sauve_er = g_exit_repeat;
-    int sauve_nr = g_next_repeat;
-    ARENA_MARK;
+    e->porte  = v1_porte(porte);
+    e->me     = g_me;
+    e->target = g_target;
+    e->pass   = g_pass;
+    e->depth  = g_depth;
+    e->eh     = g_exit_handler;
+    e->er     = g_exit_repeat;
+    e->nr     = g_next_repeat;
     g_msg_box++;
     g_pass   = 0;
     g_me     = g_current_card;
     g_target = g_current_card;
     g_exit_handler = g_exit_repeat = g_next_repeat = 0;
+}
+
+static void module_sort(const EtatDeModule *e)
+{
+    g_msg_box--;
+    g_me = e->me;
+    g_target = e->target;
+    g_pass = e->pass;
+    g_depth = e->depth;
+    g_exit_handler = e->eh;
+    g_exit_repeat = e->er;
+    g_next_repeat = e->nr;
+    g_v1_porte = e->porte;
+}
+
+void hc_ligne_de_module(const char *line)
+{
+    EtatDeModule e;
+    module_entre(&e, "module");
+    ARENA_MARK;
     if (!v3_do_ligne(line))
         emit(HC_ERR, "   !! ne sait pas lire la ligne du module : %s", line);
-    g_msg_box--;
     ARENA_FREE;
-    g_me = sauve_me;
-    g_target = sauve_target;
-    g_pass = sauve_pass;
-    g_depth = sauve_depth;
-    g_exit_handler = sauve_eh;
-    g_exit_repeat = sauve_er;
-    g_next_repeat = sauve_nr;
-    g_v1_porte = sauve_porte;
+    module_sort(&e);
+}
+
+/* EvalExpr. Une expression qui ne se lit pas, ou qui échoue, rend NULL, sans
+ * rien dire : chez HyperCard, l'XCMD l'apprend par son bloc, et décide. */
+char *hc_module_evalue(const char *expr)
+{
+    if (!expr || !v3_actif()) return NULL;
+    EtatDeModule e;
+    module_entre(&e, "module");
+    ARENA_MARK;
+    char *rendu = NULL;
+    HctExec x;
+    hct_exec_init(&x, v3_hote());
+    HctValeur v;
+    if (hct_evalue_texte(&x.ctx, expr, NULL, &v)) {
+        if (!x.ctx.erreur) rendu = dupstr(v.txt ? v.txt : "");
+        hct_val_libere(&v);
+    }
+    hct_exec_libere(&x);
+    ARENA_FREE;
+    module_sort(&e);
+    return rendu;
+}
+
+/* GetGlobal et SetGlobal : la table des globales elle-même, sans passer par
+ * les déclarations du gestionnaire en cours — g_frame à NULL, comme dans la
+ * boîte de messages. Une globale inconnue se lit vide, et SetGlobal la crée
+ * (NON MESURÉ dans HyperCard). Le gestionnaire qui veut la voir la déclare,
+ * comme ceux de MAC•CAM : « global pln0 », puis « put FORTH(…) ». */
+char *hc_module_globale(const char *nom)
+{
+    if (!nom) return NULL;
+    Frame *sauve = g_frame;
+    g_frame = NULL;
+    const char *v = var_get(nom);
+    g_frame = sauve;
+    return dupstr(v ? v : "");
+}
+
+void hc_module_pose_globale(const char *nom, const char *valeur)
+{
+    if (!nom || !*nom) return;
+    Frame *sauve = g_frame;
+    g_frame = NULL;
+    var_set(nom, valeur ? valeur : "");
+    g_frame = sauve;
+}
+
+/* Le champ des rappels GetFieldBy… et SetFieldBy… : de la carte courante, ou
+ * de son fond — le « cardFieldFlag » de HyperCard —, par son nom, son numéro
+ * parmi les champs de cette couche, ou son id. */
+static Object *champ_de_module(int carte, const char *nom, int n, int par_id)
+{
+    Object *cd = g_current_card;
+    Object *couche = !cd ? NULL : carte ? cd : cd->bg;
+    if (!couche) return NULL;
+    if (nom)    return find_part(couche, OBJ_FIELD, nom);
+    if (par_id) return find_part_by_id(couche, OBJ_FIELD, n);
+    return find_part_by_rank(couche, OBJ_FIELD, n);
+}
+
+char *hc_module_champ(int carte, const char *nom, int n, int par_id)
+{
+    Object *o = champ_de_module(carte, nom, n, par_id);
+    return o ? dupstr(hc_field_text(o)) : NULL;
+}
+
+int hc_module_pose_champ(int carte, const char *nom, int n, int par_id,
+                         const char *valeur)
+{
+    Object *o = champ_de_module(carte, nom, n, par_id);
+    if (!o) return 0;
+    /* Le chemin de « put … into field » : le verrou de la pile (cantModify),
+     * les plages de style, le champ à redessiner. */
+    v3_ecrit_objet(NULL, o, valeur ? valeur : "", 0);
+    return 1;
 }
 
 /* LE MODULE CALCULE, HC RESPIRE. Un module tourne dans un fil à part

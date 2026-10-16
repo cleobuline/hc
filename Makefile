@@ -67,7 +67,10 @@ AVERTIR_CLANG = -Wcomma -Wconditional-uninitialized -Wnewline-eof \
 NIVEAUX  = -O0 -O1 -O2
 BASE     = -std=gnu99 -I HC $(WAMR_INC)
 
-SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c)
+# Et le CŒUR des modules de MAC•CAM (xcmd/maccam) : du C qui tourne en
+# WebAssembly, mais qui se compile aussi ici, et passe donc les mêmes portes.
+# Leur enveloppe (forth.c…) ne se compile que pour wasm32 : elle n'y est pas.
+SOURCES  = $(wildcard HC/hc_*.c HC/hct_*.c xcmd/maccam/*_coeur.c)
 
 .PHONY: test test-asan test-enregistre verifie avertissements analyse fuzz propre aide
 

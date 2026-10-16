@@ -311,6 +311,73 @@ int main(int argc, char **argv)
     fais("bonjour \"Patricia\"");
     printf("   la pile garde %d module(s)\n", hc_module_nombre(st));
 
+    /* Les rappels jouent sur le fil de HC, comme la ligne de SendCardMessage,
+     * et rendent une chaîne que le module fait copier chez lui. */
+    puts("\n== 9. les rappels de HyperCard ==");
+    {
+        Object *nom = hc_new_field(c, "nom");
+        Object *fond = hc_new_field(bg, "fond");
+        hc_set_field_text(nom, "le texte du champ de carte");
+        hc_set_field_text(fond, "le texte du champ de fond");
+        ajoute(st, D, "rappels.wasm", "rappels");
+        puts("   -- EvalExpr");
+        fais("put evalue(\"1 + 2\")");
+        fais("put evalue(\"the number of cards\")");
+        fais("put evalue(\"1 +\")");
+        fais("put evalue(\"zorglub(\")");
+        fais("put evalue(\"evalue(1)\")");      /* le module est déjà en cours */
+        hc_set_script(st, "on essai\n  put 41 into x\n"
+                          "  put evalue(\"x + 1\")\nend essai\n"
+                          "on lit\n  global g1\n  put g1\nend lit\n"
+                          "on compile\n  global pln0, pln3\n  put \"\" into pln0\n"
+                          "  put tables(\"Conway\") into p\n"
+                          "  put p & \" ; \" & pln0 & \" ; \" & pln3\nend compile");
+        fais("essai");                            /* une locale du gestionnaire */
+        puts("   -- GetGlobal, SetGlobal");
+        fais("poseGlobale \"g1\", \"valeur un\"");
+        fais("put globale(\"g1\")");
+        fais("lit");
+        fais("put \"[\" & globale(\"inconnue\") & \"]\"");
+        fais("compile");                          /* comme le FORTH de MAC•CAM */
+        puts("   -- GetFieldBy…, SetFieldBy…");
+        fais("put champ(1, \"nom\")");
+        fais("put champ(0, \"fond\")");
+        fais("put champ(1, \"fond\")");         /* pas sur la carte */
+        fais("put champNum(1, 1)");
+        char l[200];
+        snprintf(l, sizeof l, "put champID(0, %d)", fond->id);
+        fais(l);
+        fais("put champNum(1, 2)");
+        fais("poseChamp 1, \"nom\", \"écrit par le module\"");
+        fais("put the result && fld \"nom\"");
+        fais("poseChamp 1, \"absent\", \"x\"");
+        fais("put the result");
+        fais("poseChampNum 0, 1, \"le fond, par son numéro\"");
+        fais("put bg fld \"fond\"");
+        snprintf(l, sizeof l, "poseChampID 1, %d, \"la carte, par son id\"", nom->id);
+        fais(l);
+        fais("put fld \"nom\"");
+        puts("   -- dix mille EvalExpr, rendus par free : pages gagnées");
+        fais("put memoire()");
+        hc_set_script(st, "");
+    }
+
+    /* Le premier module de MAC•CAM, appelé comme le fait la pile : les
+     * globales vidées, puis « put FORTH(…) » ; les tables arrivent dans
+     * pln0 à pln3. Le compilateur lui-même a son harnais (forth). */
+    puts("\n== 10. le FORTH de MAC•CAM ==");
+    ajoute(st, D, "forth.wasm", "FORTH");
+    hc_set_script(st, "on compile f\n  global pln0, pln1\n"
+                      "  put empty into pln0\n  put empty into pln1\n"
+                      "  put FORTH(f) into p\n"
+                      "  put \"[\" & p & \"] \" & length(pln0) && char 1 to 16 of pln0"
+                      " && length(pln1)\nend compile");
+    fais("compile \": R CENTER >PLN0 ; MAKE-TABLE R\"");
+    fais("compile \"N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R\"");
+    fais("compile \"1 2 3\"");
+    fais("compile \": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB\"");   /* faute après la table */
+    hc_set_script(st, "");
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

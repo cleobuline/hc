@@ -1194,6 +1194,26 @@ void    hc_do(const char *line);
  * pour le lui rendre intact. */
 void    hc_ligne_de_module(const char *line);
 
+/* Les autres rappels d'un module, dans le même état que la ligne. Les
+ * chaînes rendues sont allouées : à libérer par l'appelant.
+ *
+ *   hc_module_evalue      EvalExpr ; NULL si l'expression ne se lit pas,
+ *                         ou échoue ;
+ *   hc_module_globale     GetGlobal ; vide si la globale n'existe pas ;
+ *   hc_module_pose_globale SetGlobal, qui la crée au besoin ;
+ *   hc_module_champ       GetFieldByName, ByNum, ByID : un champ de la
+ *                         carte courante (carte != 0) ou de son fond,
+ *                         par son nom si `nom` n'est pas NULL, sinon par
+ *                         son numéro, ou son id si `par_id` ; NULL s'il
+ *                         n'y en a pas ;
+ *   hc_module_pose_champ  SetFieldBy… ; 0 s'il n'y a pas de tel champ. */
+char   *hc_module_evalue(const char *expr);
+char   *hc_module_globale(const char *nom);
+void    hc_module_pose_globale(const char *nom, const char *valeur);
+char   *hc_module_champ(int carte, const char *nom, int n, int par_id);
+int     hc_module_pose_champ(int carte, const char *nom, int n, int par_id,
+                             const char *valeur);
+
 /* Pendant qu'un module calcule dans son fil, le fil de HC respire : l'hôte
  * redessine et lit ses événements, comme pendant un « wait ». Rend 1 si
  * l'arrêt est demandé (Cmd-.), et le module doit s'arrêter. */

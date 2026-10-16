@@ -15,6 +15,7 @@ Ce dossier est le kit pour en écrire.
 | `hc_xcmd.c` | ce que chaque module emporte : la mémoire, les chaînes, `snprintf` |
 | `inc/` | les en-têtes C réduits qui vont avec |
 | `exemples/bonjour.c` | le premier module : une commande et une fonction |
+| `maccam/` | les XFCN de MAC•CAM Workshop, refaites : `FORTH` d'abord |
 | `Makefile` | de `.c` à `.wasm` |
 
 ## Écrire un module
@@ -41,13 +42,39 @@ HC_XFCN(bonjour)                       /* put bonjour("Patricia") */
 `params[]`, `returnValue`, `passFlag`. Ce sont des chaînes C : plus de
 `Handle` à verrouiller, plus de chaînes Pascal, plus de `PasToZero`.
 
-Les rappels portent les noms de HyperCard. Pour l'instant, un seul :
+Les rappels portent les noms de HyperCard :
 
-- `SendCardMessage(ligne)` : joue une ligne de HyperTalk sur la carte
-  courante, comme la boîte de messages.
+| rappel | ce qu'il fait |
+| --- | --- |
+| `SendCardMessage(ligne)` | joue une ligne de HyperTalk sur la carte courante |
+| `EvalExpr(expr)` | la valeur d'une expression, ou `NULL` |
+| `GetGlobal(nom)`, `SetGlobal(nom, valeur)` | une variable globale |
+| `GetFieldByName(carte, nom)`, `…ByNum`, `…ByID` | le texte d'un champ, ou `NULL` |
+| `SetFieldByName(carte, nom, valeur)`, `…ByNum`, `…ByID` | l'écrire ; 0 s'il n'existe pas |
 
-Les autres (`EvalExpr`, `GetGlobal`, `SetGlobal`, `GetFieldByName`…)
-viendront un à un, sous les mêmes noms.
+`carte` vaut 1 pour un champ de la carte courante, 0 pour un champ de son
+fond : c'est le `cardFieldFlag` de HyperCard.
+
+Ils jouent comme la boîte de messages, sur la carte courante, mais avec
+les variables du gestionnaire qui a appelé le module : `EvalExpr("x")` lit
+sa variable locale `x`.
+
+Ce qu'ils rendent est une chaîne allouée par `malloc` — chez HyperCard, un
+`Handle` qu'on jetait par `DisposHandle` : la rendre par `free`.
+
+```c
+HC_XFCN(aujourdhui)                    /* put aujourdhui() */
+{
+    static char s[100];
+    char *d = EvalExpr("the long date");
+    snprintf(s, sizeof s, "Nous sommes le %s.", d ? d : "?");
+    free(d);
+    paramPtr->returnValue = s;
+}
+```
+
+Une globale posée par `SetGlobal` se lit dans un gestionnaire qui la
+déclare, comme d'habitude : `global pln0`.
 
 ## Compiler
 
@@ -70,8 +97,12 @@ Le module sort à côté de son source : `exemples/bonjour.wasm`.
 
 ## Ce que le kit ne fait pas encore
 
-- `free` ne rend rien : la mémoire d'un module ne fait que croître.
-- `snprintf` ne connaît que `%d %u %x %c %s %%`.
-- Rien pour les nombres à virgule, rien pour les fichiers.
+- La mémoire va par tailles en puissances de deux : un bloc rendu par
+  `free` resert à un bloc de la même classe, jamais à un autre.
+- `snprintf` ne connaît que `%d %u %x %c %s %%` ; `strtol` et `atoi`
+  pour les entiers, rien pour les nombres à virgule.
+- Rien pour les fichiers.
+- `SendHCMessage`, et les rappels de conversion (`StrToNum`,
+  `PasToZero`…), que les chaînes C rendent inutiles, n'y sont pas.
 
 Le pourquoi de tout cela, et les mesures : `docs/mesures/xcmd.txt`.

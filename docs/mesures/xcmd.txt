@@ -534,7 +534,130 @@ s'endormir. SUR UN MAC : NON MESURÉ.
 À JOUER DANS HC (l'application), de nouveau : le pas 5 plus haut ; et le
 même « boucle » depuis le mouseUp d'un bouton.
 
+MESURÉ DANS HC (l'application), le 16 octobre au soir, par l'utilisatrice,
+sur son Mac : « cette fois-ci, Cmd-. coupe la boucle ». Le cas du mouseUp
+n'est pas rapporté à part.
+
+LES RAPPELS DE HYPERCARD — 16 octobre au soir
+--------------------------------------------
+
+Lancé par l'utilisatrice (« on attaque »), après Cmd-. Ce dont MAC•CAM a
+besoin d'abord, LU dans ses scripts : « put FORTH(bg fld "forth") into bg
+fld "pile" », puis les tables lues dans les globales pln0 à pln3, que le
+gestionnaire a déclarées et vidées avant l'appel. Le FORTH les pose donc
+par SetGlobal.
+
+AJOUTÉS, sous les noms de HyperXCmd.h : EvalExpr, GetGlobal, SetGlobal,
+GetFieldByName, GetFieldByNum, GetFieldByID, SetFieldByName, SetFieldByNum,
+SetFieldByID. Comme SendCardMessage, chacun CONFIE son travail au fil de
+HC (une demande dans l'échange entre les deux fils, hc_wasm.c), et le
+noyau le fait avec ses propres chemins : hct_evalue_texte pour EvalExpr
+(celui de « the value of »), la table des globales, v3_ecrit_objet pour
+écrire un champ (celui de « put … into field » : cantModify, plages de
+style, champ à redessiner).
+
+CE QU'ILS RENDENT. Chez HyperCard, un Handle que l'XCMD jetait ; ici, une
+chaîne allouée dans la mémoire du module, à rendre par free. HC n'écrit
+pas dans un tas qu'il ne connaît pas : le rappel rend la LONGUEUR, le kit
+fait la place, et la fait copier par un dernier rappel, hc_rendu. NULL dit
+l'échec.
+
+LE free DU KIT NE RENDAIT RIEN : la mémoire d'un module ne faisait que
+croître, et un module qui appelle EvalExpr en boucle aurait fini à la
+borne de 64 Mo. Il rend maintenant, par classes de tailles en puissances
+de deux. MESURÉ par le harnais : dix mille EvalExpr, chacun rendu, font
+gagner 0 page au module ; le même module lié avec un free muet, 9 pages.
+
+LE HARNAIS (xcmd, section 9) : chaque rappel, son échec (expression
+illisible, champ absent), une locale du gestionnaire appelant lue par
+EvalExpr, une globale posée par le module et lue par un gestionnaire qui
+la déclare, « compile » qui imite le FORTH (pln0 et pln3 remplies, la
+pile rendue), et la mémoire.
+
+NON MESURÉ dans HyperCard, et choisi :
+  · les rappels voient les VARIABLES DU GESTIONNAIRE qui a appelé l'XCMD
+    (EvalExpr("x") lit sa locale x), avec « me » la carte courante ;
+  · une globale inconnue se lit vide, et SetGlobal la crée ;
+  · un champ absent rend NULL, et SetFieldBy… rend 0.
+PAS FAITS : SendHCMessage (le noyau n'a pas de chemin qui saute les
+scripts), et les rappels de conversion (StrToNum, PasToZero…), que les
+chaînes C rendent inutiles ; le kit a gagné strtol et atoi.
+
+LE FORTH DE MAC•CAM — 16 octobre au soir
+---------------------------------------
+
+Lancé par l'utilisatrice : « on attaque le forth ». Le module est
+xcmd/maccam/forth.c, son compilateur forth_coeur.c, son harnais
+tests/harnais/forth.c ; le mode d'emploi, xcmd/maccam/LISEZMOI.md.
+
+L'ORACLE, TROUVÉ DANS LA PILE. 71 cartes gardent à la fois leur programme
+Forth (champ « FORTH ») et les tables que le FORTH d'origine en a tirées
+(champs Pln0, Pln1, pln2, PLN3) : 175 tables. Le format, lu : 4 096
+caractères « 0 » ou « 1 », sans séparateur — un index de 12 bits. Le champ
+« Pile » garde ce que FORTH() rendait : « -4 » sur seize cartes Margolus,
+« 1 » sur trois autres. On compile chaque programme, et l'on compare.
+
+LA MÉCANIQUE : celle de cam_forth.c (maccam-6) — pour chaque entrée, poser
+le voisinage que l'index désigne et exécuter la règle. Écrite à neuf pour le
+dialecte des années 90 : maccam-6 en a dérivé (table de 8 192, CAM-8,
+voisinages hexagonaux et libres), et ses ajouts n'ont rien à faire ici.
+
+MESURÉ, et tenu par le harnais forth :
+  · LA DISPOSITION DES BITS, par voisinage (le tableau du LISEZMOI). Von
+    Neumann est tombé à zéro écart par une recherche locale sur dix cartes :
+    les mots vont par paires, le « prime » sur le bit pair, dans l'ordre
+    E C S N W. Moore suit les colonnes de la fenêtre 3×3, d'est en ouest
+    (E SE NE, C S N, W SW NW) : une seule des 40 320 dispositions des huit
+    voisins rend « Black Forest », la seule carte qui les distingue, à zéro
+    écart. Margolus : CCW OPP CW CENTER par paires, puis &CENTER, PHASE ;
+  · VRAI VAUT -1, la convention de Forth-83 : « : PAIR = -1 * ; », de la
+    carte « Pair », ne donne sa table qu'ainsi ;
+  · { … } HORS DE SES BORNES DONNE 0 : « Grow flow » somme neuf cellules
+    pour une liste de neuf mots, et sa table vaut 0 quand la somme atteint 9 ;
+  · UNE FAUTE GARDE LES TABLES DÉJÀ FAITES : le texte de « Fourmis » finit
+    par une phrase hors parenthèses, que le FORTH ne comprend pas ; ses
+    tables étaient là quand même ;
+  · un mot de l'utilisatrice passe avant les mots de base : ses programmes
+    définissent eux-mêmes RAND, ECHO, CENTERS, >PLNA, >PLNB ou <>.
+
+LE RÉSULTAT : 159 tables sur 175 identiques au caractère près, par le cœur
+en natif comme par le module DANS HC (« put FORTH(…) », puis les
+globales). Les seize autres :
+  · DOUZE SONT PLUS VIEILLES que le FORTH d'origine dans son dernier état.
+    Elles suivent une disposition plus ancienne, le centre sur le bit 0 :
+    Grow(1), Grow(2) et Grow(4) s'y lisent à zéro écart (CENTER bit 0, les
+    huit voisins bits 2 à 9), TM-Gas aussi (CENTER 0, CW 2, CCW 3, OPP 4,
+    PHASE 8), et HPP-Gas ; Dentrite(2) en a la signature. Les tables 1 à 3
+    de Parity9, une autre encore. Le programme a été recompilé depuis, ou
+    ses tables jamais refaites ;
+  · QUATRE, CELLES DE « Dentrite• », s'arrêtent sur « MAKE-TABLE ECHO » : son
+    texte ne définit pas ECHO. Défini, n'importe comment, les quatre tables
+    sont exactes. NON MESURÉ : si le FORTH d'origine connaissait ECHO de
+    lui-même, ou s'il gardait le dictionnaire d'un appel à l'autre — ECHO
+    restant défini par une carte compilée avant.
+
+La plus lente des 71 compilations : 2 ms en natif, 73 ms dans HC (WAMR,
+le noyau sous ASan).
+
+NON MESURÉ, À JOUER DANS HYPERCARD 2.4.1 (Basilisk II), sur la pile
+MAC•CAM Workshop, HyperCard tout juste relancé :
+  1. la carte « Dentrite• », son bouton de compilation : que montre « Pile » ?
+     (ECHO inconnu, ou connu ?)
+  2. dans la boîte de messages, put FORTH("1 2 3") ;
+  3. put FORTH("ZORGLUB") — la forme d'une faute ;
+  4. put FORTH(": R CENTER >PLN0 ; MAKE-TABLE R"), et la même précédée de
+     N/MARG-PH — d'où vient le « -4 » des cartes Margolus ?
+  5. put FORTH(": ECHO CENTER >PLN1 ;"), puis put FORTH("MAKE-TABLE ECHO") —
+     le dictionnaire survit-il d'un appel à l'autre ?
+Ce que rend notre FORTH aujourd'hui : la pile, « 1 2 3 », et la faute en
+anglais, « Unknow'd word : ZORGLUB », sur le modèle des chaînes relevées
+dans le code d'origine — la FORME exacte n'est pas mesurée.
+
 CE QUI RESTE AVANT MAC•CAM :
-  · les rappels suivants (EvalExpr, GetGlobal, SetGlobal…) ;
+  · ce que les cinq bancs ci-dessus diront ;
+  · la fenêtre externe « CAM » (MACCAM) : ses propriétés et ses messages,
+    et le moteur qui applique les tables, dans cette même disposition ;
+  · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
+    « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
 

@@ -1,6 +1,6 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
 == 1. bonjour, le premier module : la chaîne entière ==
-   ajoute bonjour.wasm (2421 octets) : accepté
+   ajoute bonjour.wasm (2534 octets) : accepté
    module « bonjour » : 2 externe(s)
       XCMD bonjour
       XFCN bonjour
@@ -35,12 +35,12 @@
 == 4. refusés à l'ajout, et la pile n'en garde rien ==
    ajoute du texte : REFUSÉ — ce n'est pas un module WebAssembly lisible (WASM module load failed: magic header not detected)
    ajoute un module vide : REFUSÉ — le module est vide
-   ajoute inconnu.wasm (474 octets) : REFUSÉ — le module demande « hc.Zorglub », que HC ne fournit pas
+   ajoute inconnu.wasm (587 octets) : REFUSÉ — le module demande « hc.Zorglub », que HC ne fournit pas
    ajoute sansboite.wasm (228 octets) : REFUSÉ — le module n'a pas de boîte aux paramètres (hc_boite) : est-il compilé avec le kit de HC ?
    la pile garde 1 module(s)
 
 == 5. les épreuves : un module qui se conduit mal ==
-   ajoute epreuves.wasm (2962 octets) : accepté
+   ajoute epreuves.wasm (3075 octets) : accepté
    module « bonjour » : 2 externe(s)
       XCMD bonjour
       XFCN bonjour
@@ -143,3 +143,74 @@
    bonjour "Patricia"
       [ERR]    !! personne ne répond à « bonjour "Patricia" »
    la pile garde 1 module(s)
+
+== 9. les rappels de HyperCard ==
+   ajoute rappels.wasm (6440 octets) : accepté
+   -- EvalExpr
+   put evalue("1 + 2")
+      = 3
+   put evalue("the number of cards")
+      = 1
+   put evalue("1 +")
+      = NULL
+   put evalue("zorglub(")
+      = NULL
+   put evalue("evalue(1)")
+      [ERR]    !! le module « rappels » est déjà en cours : il ne peut pas s'appeler lui-même
+      = 
+   essai
+      = 42
+   -- GetGlobal, SetGlobal
+   poseGlobale "g1", "valeur un"
+         ⚙ XCMD poseGlobale
+   put globale("g1")
+      = valeur un
+   lit
+      = valeur un
+   put "[" & globale("inconnue") & "]"
+      = []
+   compile
+      = pile vide ; table 0 de Conway ; table 3 de Conway
+   -- GetFieldBy…, SetFieldBy…
+   put champ(1, "nom")
+      = le texte du champ de carte
+   put champ(0, "fond")
+      = le texte du champ de fond
+   put champ(1, "fond")
+      = NULL
+   put champNum(1, 1)
+      = le texte du champ de carte
+   put champID(0, 12)
+      = le texte du champ de fond
+   put champNum(1, 2)
+      = NULL
+   poseChamp 1, "nom", "écrit par le module"
+         ⚙ XCMD poseChamp
+   put the result && fld "nom"
+      = 1 écrit par le module
+   poseChamp 1, "absent", "x"
+         ⚙ XCMD poseChamp
+   put the result
+      = 0
+   poseChampNum 0, 1, "le fond, par son numéro"
+         ⚙ XCMD poseChampNum
+   put bg fld "fond"
+      = le fond, par son numéro
+   poseChampID 1, 11, "la carte, par son id"
+         ⚙ XCMD poseChampID
+   put fld "nom"
+      = la carte, par son id
+   -- dix mille EvalExpr, rendus par free : pages gagnées
+   put memoire()
+      = 0
+
+== 10. le FORTH de MAC•CAM ==
+   ajoute forth.wasm (23144 octets) : accepté
+   compile ": R CENTER >PLN0 ; MAKE-TABLE R"
+      = [] 4096 0000000011111111 0
+   compile "N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R"
+      = [] 4096 0000111100001111 4096
+   compile "1 2 3"
+      = [1 2 3 ] 0  0
+   compile ": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB"
+      = [Unknow'd word : ZORGLUB] 4096 0101010101010101 0
