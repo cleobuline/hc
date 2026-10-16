@@ -206,8 +206,6 @@ static NSMenu *gRecentMenu = nil;
      * "Close Box" » retomberait sur atoi, c'est-à-dire sur 0 — aucune icône,
      * et sans le moindre message. À poser avant qu'un script puisse tourner. */
     hc_set_icon_resolver(hcicon_id_for_text);
-    /* La sentinelle de Cmd-. pour les modules : voir hcv_guette_modules. */
-    hcv_guette_modules();
     /* Et de quoi lui dire si un numéro est déjà pris par une icône d'origine,
      * quand il transplante les icônes d'une carte collée. */
     hc_set_icon_builtin_check(hcicon_builtin_has);

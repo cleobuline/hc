@@ -40,12 +40,14 @@
    la pile garde 1 module(s)
 
 == 5. les épreuves : un module qui se conduit mal ==
-   ajoute epreuves.wasm (2778 octets) : accepté
+   ajoute epreuves.wasm (2962 octets) : accepté
    module « bonjour » : 2 externe(s)
       XCMD bonjour
       XFCN bonjour
-   module « epreuves » : 9 externe(s)
+   module « epreuves » : 11 externe(s)
       XCMD boucle
+      XCMD patiente
+      XCMD bavarde
       XCMD faute
       XCMD hors
       XFCN hors
@@ -91,13 +93,37 @@
    passe 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
       [ERR]    !! XCMD passe : 17 paramètres, 16 au plus (v3, ligne 1)
 
-== 6. la boucle sans fin : arrêtée par la sentinelle ==
+== 6. la boucle sans fin : arrêtée au délai ==
    boucle
       [ERR]    !! le module « epreuves » a dépassé son délai, et il a été arrêté (v3, ligne 1)
    rendue en moins de deux secondes
    un module en cours, après : 0
    bonjour "après la boucle"
       = Bonjour, après la boucle !
+         ⚙ XCMD bonjour
+
+== 6 bis. Cmd-. arrête un module ==
+   -- tapé dans la boîte de messages :
+   boucle
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   put "la boîte de messages répond"
+      = la boîte de messages répond
+   -- dans un gestionnaire : la suite ne tourne pas
+   essai
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   -- pendant un « wait » que le module a demandé :
+   patiente
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   -- un module qui ne fait qu'envoyer des lignes :
+   bavarde
+   rendue en moins de deux secondes, après ses respirations ; un module en cours : 0
+   -- cantAbort : la touche ne fait rien, le délai l'arrête
+   set the cantAbort of this stack to true
+   boucle
+      [ERR]    !! le module « epreuves » a dépassé son délai, et il a été arrêté (v3, ligne 1)
+   set the cantAbort of this stack to false
+   bonjour "après Cmd-."
+      = Bonjour, après Cmd-. !
          ⚙ XCMD bonjour
 
 == 7. enregistrer, relire : le module voyage dans la pile ==

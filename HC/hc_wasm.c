@@ -17,9 +17,11 @@
  *   · APRÈS UNE FAUTE, L'INSTANCE RESTE EN FAUTE : chaque appel suivant
  *     échouait sur la même exception. On jette donc l'instance, et la
  *     suivante repart de zéro ;
- *   · L'ARRÊT VIENT D'UN AUTRE FIL : wasm_runtime_terminate, appelé par une
- *     sentinelle, arrête en 200 ms un module qui boucle — à condition que
- *     WAMR soit construit avec son gestionnaire de fils (wamr_hc.h). */
+ *   · LE MODULE CALCULE DANS UN AUTRE FIL que celui de HC, qui respire
+ *     pendant ce temps et l'arrête sur Cmd-. (« un appel, entre deux
+ *     fils », plus bas) : wasm_runtime_terminate arrête en 200 ms un module
+ *     qui boucle — à condition que WAMR soit construit avec son
+ *     gestionnaire de fils (wamr_hc.h). */
 
 #include "hc_wasm.h"
 
@@ -55,17 +57,114 @@ enum {
     BLOC_RETOUR  = 68,
     BLOC_PASSE   = 72,
     PILE_MODULE  = 64 * 1024,
-    NIDS_MAX     = 8           /* modules en cours les uns dans les autres */
+    NIDS_MAX     = 8,          /* modules en cours les uns dans les autres */
+    /* La pile du FIL où calcule un module. Celle du module lui-même est à
+     * part (PILE_MODULE) : l'interprète « fast » n'empile ici que son
+     * propre cadre, et les rappels. */
+    PILE_FIL     = 1024 * 1024
 };
+
+/* ---- un appel, entre deux fils ---- */
+
+/* LE MODULE CALCULE DANS UN FIL À PART. Sur le fil de HC, il bloquait tout :
+ * la boucle d'événements de l'hôte ne tournait plus, et Cmd-. restait dans
+ * la file jusqu'à la fin du calcul — jamais, s'il bouclait. Un fil de
+ * l'interface qui guettait le clavier lui-même n'a rien arrêté DANS HC
+ * (l'application), le 16 octobre.
+ *
+ * Le fil de HC, lui, attend le module comme il attend dans un « wait » :
+ * il respire (hc_respire_module), et entend Cmd-. par le chemin de tous les
+ * scripts. Il garde aussi pour lui tout ce qui touche à la pile : une ligne
+ * de SendCardMessage lui est CONFIÉE, le fil du module attend qu'elle soit
+ * jouée. L'interface n'est donc jamais touchée d'ailleurs que de son fil.
+ *
+ * LE FIL EST GARDÉ d'un appel à l'autre : un par profondeur, puisque les
+ * appels s'emboîtent (un module qui en appelle un autre par SendCardMessage).
+ * En créer un à chaque appel coûtait 70 µs, contre 5 µs pour l'appel sur le
+ * fil de HC (mesuré dans le conteneur : docs/mesures/xcmd.txt) ; le
+ * reprendre, 7 µs, avec l'attente active plus bas.
+ *
+ * Tout ce qui est partagé est sous `verrou`. Le fil du module ne lit ce qui
+ * décrit l'appel qu'entre `a_faire` et `fini`, et le fil de HC ne le relit
+ * qu'après `fini`. */
+typedef struct {
+    pthread_mutex_t verrou;
+    pthread_cond_t  signal;
+    int             vivant;     /* le fil existe */
+    int             a_faire;    /* un appel l'attend */
+
+    struct HcModule     *mo;
+    wasm_function_inst_t boite, externe;
+    const char *const   *argv;
+    int                  argc;
+    uint32_t             taille;
+
+    const char     *ligne;      /* confiée au fil de HC, ou NULL */
+    int             fini;       /* le fil du module a rendu */
+    int             arrete;     /* 0, ARRET_DELAI ou ARRET_DEMANDE */
+
+    int      ok;                /* les deux appels ont réussi */
+    int      sans_boite;        /* hc_boite a rendu une adresse fausse */
+    uint32_t bloc;              /* l'adresse du bloc, dans le module */
+} Appel;
+
+enum { ARRET_DELAI = 1, ARRET_DEMANDE = 2 };
+
+/* L'ATTENTE ACTIVE, avant de s'endormir. Réveiller un fil endormi coûtait,
+ * MESURÉ dans le conteneur Linux, une quinzaine de µs à chaque passage de
+ * main : un XFCN vide passait de 5 µs, sur le fil de HC, à 37 µs, et un
+ * SendCardMessage de 3 à 25 µs. Chacun des deux fils regarde donc d'abord
+ * le drapeau qu'il attend, un dixième de milliseconde au plus, sans dormir
+ * — un appel court est rendu bien avant. Le prix : ce dixième de
+ * milliseconde de processeur, une fois par appel. Sur un Mac : NON MESURÉ.
+ *
+ * Ces trois drapeaux s'écrivent sous `verrou` ET atomiquement, puisqu'on
+ * les lit aussi sans lui. */
+#define GUET 100e-6
+
+static int travail_arrive(const Appel *a)
+{
+    return __atomic_load_n(&a->a_faire, __ATOMIC_ACQUIRE);
+}
+
+static int module_rend(const Appel *a)
+{
+    return __atomic_load_n(&a->fini, __ATOMIC_ACQUIRE)
+        || __atomic_load_n(&a->ligne, __ATOMIC_ACQUIRE) != NULL;
+}
+
+static int ligne_jouee(const Appel *a)
+{
+    return __atomic_load_n(&a->ligne, __ATOMIC_ACQUIRE) == NULL;
+}
+
+static double maintenant(void);
+
+/* Appelée verrou pris, et le rend pris. */
+static void guette(Appel *a, int (*arrive)(const Appel *))
+{
+    if (arrive(a)) return;
+    pthread_mutex_unlock(&a->verrou);
+    double fin = maintenant() + GUET;
+    while (!arrive(a) && maintenant() < fin) {}
+    pthread_mutex_lock(&a->verrou);
+}
 
 /* ---- les rappels ---- */
 
+/* Sur le fil du MODULE : la ligne est confiée au fil de HC, qui la joue. */
 static void rappel_send_card(wasm_exec_env_t env, uint64_t *args)
 {
-    (void)env;
+    Appel *a = wasm_runtime_get_user_data(env);
     /* « $ » : WAMR a vérifié la chaîne et posé ici son adresse native. */
     const char *ligne = (const char *)(uintptr_t)args[0];
-    hc_ligne_de_module(ligne);
+    if (!a) return;
+    pthread_mutex_lock(&a->verrou);
+    __atomic_store_n(&a->ligne, ligne, __ATOMIC_RELEASE);
+    pthread_cond_broadcast(&a->signal);
+    guette(a, ligne_jouee);
+    while (a->ligne) pthread_cond_wait(&a->signal, &a->verrou);
+    pthread_mutex_unlock(&a->verrou);
 }
 
 static NativeSymbol RAPPELS[] = {
@@ -96,16 +195,13 @@ static int wamr_pret(void)
     return 1;
 }
 
-/* ---- la sentinelle ---- */
+/* ---- le temps, le délai, la profondeur ---- */
 
-static pthread_mutex_t    g_garde_verrou = PTHREAD_MUTEX_INITIALIZER;
-static wasm_module_inst_t g_actifs[NIDS_MAX];
-static int                g_nactifs;
-static double             g_debut;          /* l'appel le plus extérieur */
-static double             g_delai;          /* 0 : aucun */
-static int                g_arret_demande;
-static int                g_arret_cause;    /* 1 : délai ; 2 : demandé */
-static int                g_garde_lancee;
+/* Tout ceci n'est lu et écrit que par le fil de HC : les fils de calcul n'y
+ * touchent pas. */
+static double g_debut;          /* l'appel le plus extérieur */
+static double g_delai;          /* 0 : aucun */
+static int    g_profondeur;     /* appels en cours, les uns dans les autres */
 
 static double maintenant(void)
 {
@@ -114,82 +210,14 @@ static double maintenant(void)
     return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
 }
 
-static void *garde(void *rien)
-{
-    (void)rien;
-    for (;;) {
-        struct timespec pause = { 0, 20 * 1000 * 1000 };
-        nanosleep(&pause, NULL);
-        pthread_mutex_lock(&g_garde_verrou);
-        if (g_nactifs && !g_arret_cause) {
-            if (g_arret_demande) g_arret_cause = 2;
-            else if (g_delai > 0 && maintenant() - g_debut > g_delai)
-                g_arret_cause = 1;
-            if (g_arret_cause)
-                for (int i = 0; i < g_nactifs; i++)
-                    wasm_runtime_terminate(g_actifs[i]);
-        }
-        pthread_mutex_unlock(&g_garde_verrou);
-    }
-    return NULL;
-}
-
 void hc_module_delai(double secondes)
 {
-    pthread_mutex_lock(&g_garde_verrou);
     g_delai = secondes > 0 ? secondes : 0;
-    pthread_mutex_unlock(&g_garde_verrou);
-}
-
-void hc_module_interromps(void)
-{
-    pthread_mutex_lock(&g_garde_verrou);
-    if (g_nactifs) g_arret_demande = 1;
-    pthread_mutex_unlock(&g_garde_verrou);
 }
 
 int hc_module_actif(void)
 {
-    pthread_mutex_lock(&g_garde_verrou);
-    int actif = g_nactifs > 0;
-    pthread_mutex_unlock(&g_garde_verrou);
-    return actif;
-}
-
-/* Rend 0, ou -1 s'il n'y a plus de place pour un appel de plus. */
-static int garde_entre(wasm_module_inst_t inst)
-{
-    pthread_mutex_lock(&g_garde_verrou);
-    if (g_nactifs >= NIDS_MAX) {
-        pthread_mutex_unlock(&g_garde_verrou);
-        return -1;
-    }
-    if (g_nactifs == 0) {
-        g_debut = maintenant();
-        g_arret_demande = 0;
-        g_arret_cause = 0;
-    }
-    g_actifs[g_nactifs++] = inst;
-    if (!g_garde_lancee) {
-        pthread_t t;
-        if (pthread_create(&t, NULL, garde, NULL) == 0) {
-            pthread_detach(t);
-            g_garde_lancee = 1;
-        }
-    }
-    pthread_mutex_unlock(&g_garde_verrou);
-    return 0;
-}
-
-/* Rend la cause d'un arrêt survenu pendant l'appel : 0, 1 ou 2. */
-static int garde_sort(void)
-{
-    pthread_mutex_lock(&g_garde_verrou);
-    int cause = g_arret_cause;
-    if (g_nactifs > 0) g_nactifs--;
-    if (g_nactifs == 0) { g_arret_demande = 0; g_arret_cause = 0; }
-    pthread_mutex_unlock(&g_garde_verrou);
-    return cause;
+    return g_profondeur > 0;
 }
 
 /* ---- charger et vérifier ---- */
@@ -553,6 +581,146 @@ static int export_de(struct HcModule *mo, const char *genre, const char *nom,
     return 0;
 }
 
+/* LE FIL DU MODULE : la boîte, les paramètres qu'on y range, l'externe.
+ * Il ne touche qu'à la mémoire du module, et à `a`. */
+static void calcule(Appel *a)
+{
+    struct HcModule *mo = a->mo;
+    {
+        uint32_t cases[1] = { a->taille };
+        a->ok = wasm_runtime_call_wasm(mo->env, a->boite, 1, cases);
+        uint32_t b = cases[0];
+        if (a->ok && (!b || !wasm_runtime_validate_app_addr(mo->inst, b,
+                                                            a->taille))) {
+            a->ok = 0;
+            a->sans_boite = 1;
+        } else if (a->ok) {
+            unsigned char *q = wasm_runtime_addr_app_to_native(mo->inst, b);
+            memset(q, 0, BLOC_TAILLE);
+            q[0] = (unsigned char)a->argc;       /* paramCount, un short */
+            uint32_t o = b + BLOC_TAILLE;
+            for (int k = 0; k < a->argc; k++) {
+                size_t l = strlen(a->argv[k]) + 1;
+                memcpy(q + (o - b), a->argv[k], l);
+                pose32(q + BLOC_PARAMS + 4 * k, o);
+                o += (uint32_t)l;
+            }
+            a->bloc = b;
+            cases[0] = b;
+            a->ok = wasm_runtime_call_wasm(mo->env, a->externe, 1, cases);
+        }
+    }
+    pthread_mutex_lock(&a->verrou);
+    __atomic_store_n(&a->fini, 1, __ATOMIC_RELEASE);
+    pthread_cond_broadcast(&a->signal);
+    pthread_mutex_unlock(&a->verrou);
+}
+
+/* Un fil gardé : il attend un appel, le calcule, et recommence. Il ne
+ * finit qu'avec HC. */
+static void *ouvrier(void *p)
+{
+    Appel *a = p;
+    wasm_runtime_init_thread_env();
+    pthread_mutex_lock(&a->verrou);
+    for (;;) {
+        guette(a, travail_arrive);
+        while (!a->a_faire) pthread_cond_wait(&a->signal, &a->verrou);
+        __atomic_store_n(&a->a_faire, 0, __ATOMIC_RELEASE);
+        pthread_mutex_unlock(&a->verrou);
+        calcule(a);
+        pthread_mutex_lock(&a->verrou);
+    }
+    return NULL;
+}
+
+static Appel g_appels[NIDS_MAX];
+
+/* Le fil de la profondeur `d`, créé au premier besoin. Rend NULL si le
+ * système en refuse un. */
+static Appel *ouvrier_de(int d)
+{
+    Appel *a = &g_appels[d];
+    if (a->vivant) return a;
+    if (pthread_mutex_init(&a->verrou, NULL) != 0) return NULL;
+    if (pthread_cond_init(&a->signal, NULL) != 0) {
+        pthread_mutex_destroy(&a->verrou);
+        return NULL;
+    }
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, PILE_FIL);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    pthread_t fil;
+    int parti = pthread_create(&fil, &attr, ouvrier, a) == 0;
+    pthread_attr_destroy(&attr);
+    if (!parti) {
+        pthread_cond_destroy(&a->signal);
+        pthread_mutex_destroy(&a->verrou);
+        return NULL;
+    }
+    a->vivant = 1;
+    return a;
+}
+
+/* Attendre un signal du fil du module, `secondes` au plus. L'horloge des
+ * conditions est l'heure murale : macOS n'en offre pas d'autre. */
+static void attends_signal(Appel *a, double secondes)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    long ns = t.tv_nsec + (long)(secondes * 1e9);
+    t.tv_sec += ns / 1000000000L;
+    t.tv_nsec = ns % 1000000000L;
+    pthread_cond_timedwait(&a->signal, &a->verrou, &t);
+}
+
+/* LE FIL DE HC, pendant que le module calcule : il joue les lignes qu'on
+ * lui confie, il respire soixante fois par seconde — comme l'hôte, qui n'en
+ * fait pas plus (cocoa_idle) —, et il arrête le module sur Cmd-. ou au
+ * délai. Même un module qui ne fait qu'envoyer des lignes le laisse
+ * respirer : la respiration est réglée sur l'horloge, pas sur l'attente. */
+static void servir(Appel *a)
+{
+    double respire = maintenant() + 1.0 / 60.0;
+    pthread_mutex_lock(&a->verrou);
+    while (!a->fini) {
+        if (a->ligne) {
+            /* Arrêté, le module n'a plus rien à faire jouer : sa ligne lui
+             * est rendue sans avoir été jouée, et il trouve l'arrêt en
+             * revenant du rappel. */
+            if (!a->arrete) {
+                const char *l = a->ligne;
+                pthread_mutex_unlock(&a->verrou);
+                hc_ligne_de_module(l);
+                pthread_mutex_lock(&a->verrou);
+            }
+            __atomic_store_n(&a->ligne, NULL, __ATOMIC_RELEASE);
+            pthread_cond_broadcast(&a->signal);
+        } else {
+            guette(a, module_rend);
+            double d = respire - maintenant();
+            if (!a->fini && !a->ligne && d > 0) attends_signal(a, d);
+        }
+        if (a->fini || maintenant() < respire) continue;
+
+        pthread_mutex_unlock(&a->verrou);
+        int demande = hc_respire_module();
+        pthread_mutex_lock(&a->verrou);
+        respire = maintenant() + 1.0 / 60.0;
+        if (a->fini || a->arrete) continue;
+        a->arrete = demande ? ARRET_DEMANDE
+                  : g_delai > 0 && maintenant() - g_debut > g_delai
+                  ? ARRET_DELAI : 0;
+        /* Le fil du module pose `fini` sous ce verrou : l'arrêt vise donc
+         * un calcul en cours, ou qui vient JUSTE de rendre. Dans ce second
+         * cas, WAMR a marqué une instance qui n'en avait plus besoin ; elle
+         * sera jetée comme les autres (appelle). */
+        if (a->arrete) wasm_runtime_terminate(a->mo->inst);
+    }
+    pthread_mutex_unlock(&a->verrou);
+}
+
 static int appelle(Object *pile, const char *genre, const char *nom,
                    const char *const *argv, int argc, int *passe,
                    char *res, size_t nres, char *faute, size_t nf)
@@ -605,56 +773,59 @@ static int appelle(Object *pile, const char *genre, const char *nom,
                      mo->nom, fb ? exact : "hc_boite");
             return -1;
         }
-        if (garde_entre(mo->inst) < 0) {
+        if (g_profondeur >= NIDS_MAX) {
             snprintf(faute, nf, "trop de modules appelés les uns dans les "
                      "autres (%d au plus)", NIDS_MAX);
             return -1;
         }
+
+        Appel *a = ouvrier_de(g_profondeur);
+        if (!a) {
+            snprintf(faute, nf, "le module « %s » n'a pas pu partir : le "
+                     "système refuse un fil de plus", mo->nom);
+            return -1;
+        }
+        if (g_profondeur++ == 0) g_debut = maintenant();
         mo->en_cours = 1;
         wasm_runtime_clear_exception(mo->inst);
+        wasm_runtime_set_user_data(mo->env, a);
 
-        uint32_t cases[1] = { (uint32_t)taille };
-        int ok = wasm_runtime_call_wasm(mo->env, fb, 1, cases);
-        uint32_t b = cases[0];
-        if (ok && (!b || !wasm_runtime_validate_app_addr(mo->inst, b,
-                                                         taille))) {
-            mo->en_cours = 0;
-            garde_sort();
+        pthread_mutex_lock(&a->verrou);
+        a->mo = mo;
+        a->boite = fb;
+        a->externe = fx;
+        a->argv = argv;
+        a->argc = argc;
+        a->taille = (uint32_t)taille;
+        __atomic_store_n(&a->ligne, NULL, __ATOMIC_RELEASE);
+        __atomic_store_n(&a->fini, 0, __ATOMIC_RELEASE);
+        a->arrete = a->ok = a->sans_boite = 0;
+        a->bloc = 0;
+        __atomic_store_n(&a->a_faire, 1, __ATOMIC_RELEASE);
+        pthread_cond_broadcast(&a->signal);
+        pthread_mutex_unlock(&a->verrou);
+        servir(a);
+
+        wasm_runtime_set_user_data(mo->env, NULL);
+        mo->en_cours = 0;
+        g_profondeur--;
+
+        if (a->arrete == ARRET_DELAI)
+            snprintf(faute, nf, "le module « %s » a dépassé son délai, "
+                     "et il a été arrêté", mo->nom);
+        else if (a->arrete == ARRET_DEMANDE)
+            snprintf(faute, nf, "le module « %s » a été arrêté", mo->nom);
+        else if (a->sans_boite)
             snprintf(faute, nf, "le module « %s » n'a pas fait de place "
                      "pour ses paramètres", mo->nom);
+        else if (!a->ok)
+            snprintf(faute, nf, "le module « %s » s'est arrêté sur une "
+                     "faute : %s", mo->nom, exception(mo->inst));
+        if (a->arrete || !a->ok) {
             desinstancie(mo);
             return -1;
         }
-        if (ok) {
-            unsigned char *p = wasm_runtime_addr_app_to_native(mo->inst, b);
-            memset(p, 0, BLOC_TAILLE);
-            p[0] = (unsigned char)argc;          /* paramCount, un short */
-            uint32_t o = b + BLOC_TAILLE;
-            for (int k = 0; k < argc; k++) {
-                size_t l = strlen(argv[k]) + 1;
-                memcpy(p + (o - b), argv[k], l);
-                pose32(p + BLOC_PARAMS + 4 * k, o);
-                o += (uint32_t)l;
-            }
-            cases[0] = b;
-            ok = wasm_runtime_call_wasm(mo->env, fx, 1, cases);
-        }
-        mo->en_cours = 0;
-        int cause = garde_sort();
-
-        if (!ok) {
-            if (cause == 1)
-                snprintf(faute, nf, "le module « %s » a dépassé son délai, "
-                         "et il a été arrêté", mo->nom);
-            else if (cause == 2)
-                snprintf(faute, nf, "le module « %s » a été arrêté",
-                         mo->nom);
-            else
-                snprintf(faute, nf, "le module « %s » s'est arrêté sur une "
-                         "faute : %s", mo->nom, exception(mo->inst));
-            desinstancie(mo);
-            return -1;
-        }
+        uint32_t b = a->bloc;
 
         /* Ce qu'il rend : returnValue, une chaîne de SA mémoire, à
          * vérifier comme tout ce qui vient de lui. */

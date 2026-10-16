@@ -24,9 +24,6 @@
 #import "hct_verif.h"
 #import "hct_chunk.h"   /* hct_utf8_compte_prefixe : octets -> caractères */
 #import "Hcdocument.h"   /* allDocuments : oublier un objet mort partout */
-#include "hc_wasm.h"     /* les modules : le dépôt d'un .wasm, et Cmd-. */
-#include <ApplicationServices/ApplicationServices.h>  /* CGEventSourceKeyState */
-#include <unistd.h>       /* usleep, pour la sentinelle des modules */
 
 extern void hc_sync_size_field(Object *o);  // definie dans HCdialogs.m
 extern Object *cocoa_open_stack(const char *nom);      // definies dans AppDelegate.m
@@ -5536,40 +5533,6 @@ static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
     if (!strcmp(quoi, "lit"))  return prop ? nav_lit(prop, out, outlen) : -1;
     if (!strcmp(quoi, "pose")) return prop ? nav_pose(prop, valeur) : -1;
     return -1;
-}
-
-/* ═══ LA SENTINELLE DE Cmd-. POUR LES MODULES ══════════════════════════
- *
- * Un script s'arrête par Cmd-. parce que le noyau rend la main à l'hôte
- * soixante fois par seconde, et que l'hôte lit alors ses événements
- * (cmdpoint.txt). Un MODULE, lui, calcule sans rendre la main : la boucle
- * d'événements est arrêtée, et la touche resterait dans la file jusqu'à la
- * fin du calcul — jamais, s'il boucle.
- *
- * Ce fil-ci regarde donc le clavier LUI-MÊME, vingt fois par seconde, et
- * seulement pendant qu'un module calcule : Cmd tenu, et le point (la touche
- * 0x2F, kVK_ANSI_Period). Il appelle hc_module_interromps, que la sentinelle
- * du noyau change en arrêt du module.
- *
- * NON MESURÉ sur un Mac : que CGEventSourceKeyState lise le clavier sans
- * réclamer l'autorisation « Surveillance de l'entrée » de macOS. Lu dans la
- * documentation, pas vu. */
-void hcv_guette_modules(void)
-{
-    static BOOL lance = NO;
-    if (lance) return;
-    lance = YES;
-    [NSThread detachNewThreadWithBlock:^{
-        for (;;) {
-            usleep(50 * 1000);
-            if (!hc_module_actif()) continue;
-            CGEventFlags m = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
-            if ((m & kCGEventFlagMaskCommand)
-                && CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState,
-                                         (CGKeyCode)0x2F))
-                hc_module_interromps();
-        }
-    }];
 }
 
 @implementation HCView {

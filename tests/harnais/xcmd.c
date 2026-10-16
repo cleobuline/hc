@@ -27,6 +27,45 @@ static void ligne(HcLineKind k, int d, const char *t)
     else if (k == HC_INFO && strstr(t, "XCMD")) printf("      %s\n", t);
 }
 
+static void fais(const char *l);
+
+/* CMD-. L'hôte de Cocoa appelle hc_interrompre quand il voit passer la
+ * touche, pendant sa respiration (hcv_guette_cmd_point) : c'est le seul
+ * moment où il a la main. Celui-ci appuie de lui-même, à la respiration
+ * numéro `g_touche` après qu'on l'a armé. */
+static int g_touche;
+static int g_respirations;
+
+static void respire(void)
+{
+    g_respirations++;
+    if (g_touche && --g_touche == 0) hc_interrompre();
+}
+
+static double chrono(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
+}
+
+/* Une ligne, avec Cmd-. au bout de `n` respirations ; un délai de cinq
+ * secondes en filet, s'il n'arrêtait rien. */
+static void cmd_point(const char *l, int n)
+{
+    hc_module_delai(5);
+    g_touche = n;
+    g_respirations = 0;
+    double t0 = chrono();
+    fais(l);
+    double s = chrono() - t0;
+    printf("   rendue en %s, après %s respirations ; un module en cours : %d\n",
+           s < 2.0 ? "moins de deux secondes" : "PLUS DE DEUX SECONDES",
+           g_respirations >= n ? "ses" : "MOINS DE", hc_module_actif());
+    g_touche = 0;
+    hc_module_delai(0);
+}
+
 static void fais(const char *l)
 {
     printf("   %s\n", l);
@@ -102,6 +141,7 @@ int main(int argc, char **argv)
     static HcHost h;
     memset(&h, 0, sizeof h);
     h.line = ligne;
+    h.idle = respire;
     hc_set_host(&h);
     Object *st = hc_new_stack("S");
     hc_register_stack(st);
@@ -163,19 +203,44 @@ int main(int argc, char **argv)
     fais("put compte(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)");
     fais("passe 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17");
 
-    puts("\n== 6. la boucle sans fin : arrêtée par la sentinelle ==");
+    puts("\n== 6. la boucle sans fin : arrêtée au délai ==");
     hc_module_delai(0.3);
     {
-        struct timespec t0, t1;
-        clock_gettime(CLOCK_MONOTONIC, &t0);
+        double t0 = chrono();
         fais("boucle");
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-        double s = (double)(t1.tv_sec - t0.tv_sec) + (double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
+        double s = chrono() - t0;
         printf("   rendue en %s\n", s < 2.0 ? "moins de deux secondes" : "PLUS DE DEUX SECONDES");
         printf("   un module en cours, après : %d\n", hc_module_actif());
     }
     hc_module_delai(0);
     fais("bonjour \"après la boucle\"");
+
+    /* Le module calcule dans un fil à part, et le fil de HC respire comme
+     * dans un « wait » : Cmd-. y arrive par le chemin de tous les scripts,
+     * et l'arrêt ne se dit pas — il n'y a pas de faute. */
+    puts("\n== 6 bis. Cmd-. arrête un module ==");
+    puts("   -- tapé dans la boîte de messages :");
+    cmd_point("boucle", 6);
+    fais("put \"la boîte de messages répond\"");
+    puts("   -- dans un gestionnaire : la suite ne tourne pas");
+    hc_set_script(st, "on essai\n  boucle\n  put \"JAMAIS\"\nend essai");
+    cmd_point("essai", 6);
+    puts("   -- pendant un « wait » que le module a demandé :");
+    cmd_point("patiente", 6);
+    puts("   -- un module qui ne fait qu'envoyer des lignes :");
+    cmd_point("bavarde", 6);
+    puts("   -- cantAbort : la touche ne fait rien, le délai l'arrête");
+    fais("set the cantAbort of this stack to true");
+    {
+        hc_module_delai(0.3);
+        g_touche = 3;
+        fais("boucle");
+        g_touche = 0;
+        hc_module_delai(0);
+    }
+    fais("set the cantAbort of this stack to false");
+    hc_set_script(st, "");
+    fais("bonjour \"après Cmd-.\"");
 
     puts("\n== 7. enregistrer, relire : le module voyage dans la pile ==");
     {
