@@ -153,6 +153,22 @@ static int peinture(Object *couche, const int r[4], unsigned char *noir)
     return 1;
 }
 
+/* Les bulles d'aide : « Show Balloons » coché ou non. */
+static int g_bulles;
+
+static int bulles(void)
+{
+    printf("      hôte : les bulles sont-elles allumées ? %s\n", g_bulles ? "oui" : "non");
+    return g_bulles;
+}
+
+static int bulle(const char *texte, const int r[4])
+{
+    printf("      hôte : bulle « %s », tant que la souris est dans %d,%d,%d,%d\n",
+           texte, r[0], r[1], r[2], r[3]);
+    return 1;
+}
+
 /* Le bouton de la souris : enfoncé à la lecture numéro `g_souris`. */
 static int g_souris;
 
@@ -600,6 +616,32 @@ int main(int argc, char **argv)
     fais("put there is a window \"CAM\"");
     hc_set_script(st, "");
     h.global_get = NULL;
+
+    /* BALLONS, la troisième externe de MAC•CAM : une bulle d'aide de System 7,
+     * appelée comme le fait la pile, depuis le mouseEnter d'un bouton. */
+    puts("\n== 13. Ballons : les bulles d'aide ==");
+    ajoute(st, D, "ballons.wasm", "ballons");
+    {
+        Object *b = hc_new_button(c, "outil");
+        hc_set_script(b, "on mouseEnter\n  ballons the rect of me , "
+                         "\"Ouvre la fenêtre de la machine CAM\"\nend mouseEnter");
+        puts("   -- sans hôte qui les tienne : éteintes, rien ne s'affiche");
+        fais("send mouseEnter to card button \"outil\"");
+        h.bulles = bulles;
+        h.bulle = bulle;
+        puts("   -- « Show Balloons » décoché : rien");
+        fais("send mouseEnter to card button \"outil\"");
+        puts("   -- coché : la bulle, sur le rectangle du bouton");
+        g_bulles = 1;
+        fais("set the rect of card button \"outil\" to 263,313,291,339");
+        fais("send mouseEnter to card button \"outil\"");
+        puts("   -- sans texte : « Sans titre » ; un rectangle illisible : vide");
+        fais("ballons \"10,20,30,40\"");
+        fais("ballons \"pas un rectangle\", \"le texte reste\"");
+        g_bulles = 0;
+        h.bulles = NULL;
+        h.bulle = NULL;
+    }
 
     hc_unregister_stack(st);
     hc_free(st);

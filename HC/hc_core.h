@@ -1095,6 +1095,19 @@ typedef struct {
      * un octet par point, une ligne après l'autre, 1 où l'encre est sombre,
      * 0 ailleurs et hors de la carte. Rend 1, ou 0. */
     int  (*peinture)(Object *couche, const int rect[4], unsigned char *noir);
+
+    /* LES BULLES D'AIDE de System 7, pour HMGetBalloons et HMShowBalloon
+     * d'un module — l'XCMD Ballons de MAC•CAM, et celles qui la suivront :
+     *
+     *   bulles  l'article « Show Balloons » est-il coché ? 1 ou 0 ;
+     *   bulle   montrer `texte` dans une bulle pointée sur la souris, tant
+     *           qu'elle reste dans `rect` (coordonnées carte : gauche,
+     *           haut, droite, bas). Rend 1, ou 0 si les bulles sont
+     *           éteintes.
+     *
+     * Sans ces rappels, les bulles sont éteintes. */
+    int  (*bulles)(void);
+    int  (*bulle)(const char *texte, const int rect[4]);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)
@@ -1270,9 +1283,13 @@ int     hc_respire_module(void);
  *   hc_module_peinture  GetCardPicture : la peinture de la carte courante,
  *                       ou de son fond quand on l'édite (le rappel
  *                       `peinture` de l'hôte) ; 0 sans carte ni hôte ;
+ *   hc_module_bulles    HMGetBalloons, hc_module_bulle HMShowBalloon : les
+ *                       rappels `bulles` et `bulle` de l'hôte ; 0 sans lui ;
  *   hc_xw_…             les rappels xw_ de l'hôte, ou rien sans lui. */
 int     hc_module_bouton(void);
 int     hc_module_peinture(const int rect[4], unsigned char *noir);
+int     hc_module_bulles(void);
+int     hc_module_bulle(const char *texte, const int rect[4]);
 int     hc_xw_ouvre(int id, const char *titre, const int rect[4],
                     int visible, int style, int flottante);
 void    hc_xw_ferme(int id);
