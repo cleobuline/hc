@@ -1069,7 +1069,6 @@ en modules WebAssembly.
 
 CE QUI RESTE :
   · ce que les quatre bancs ci-dessus diront ;
-  · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
-    « ballons » au survol des boutons ;
+  · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
   · la licence de WAMR dans le DMG.
 
