@@ -109,9 +109,10 @@ externals have been rewritten as modules, from what their 68000 code does:
 - **FORTH**, the XFCN that compiles a rule written in Forth into the
   machine's lookup tables. Checked against the stack itself: 71 of its
   cards keep both a Forth program and the tables the original compiled
-  from it — 175 tables. 163 are rebuilt identical, character for
-  character; the twelve others are older than the original FORTH in its
-  last state (they follow an earlier bit layout);
+  from it — 175 tables. 159 are rebuilt identical, character for
+  character. Of the other sixteen, twelve are older than the original
+  FORTH in its last state (they follow an earlier bit layout), and the
+  four of "Dentrite•" stop on a word their program does not define;
 - **MACCAM**, the XFCN that opens the CAM window and runs the machine:
   Conway's Life, Brian's Brain and the stack's other rules, step by step or
   continuously, with the 30 properties the stack sets and reads on its
@@ -124,30 +125,6 @@ externals have been rewritten as modules, from what their 68000 code does:
 Played in HC on the original stack: the rules compile, the CAM window runs,
 the balloons appear, drawings are dragged and copied, the eraser clears its
 square. Not one line of the stack's scripts was touched.
-
-**MAC•CAM FORTH**, the demonstration of the language written in 1990 by
-the same author, is in the DMG too: 29 cards, each with a program and its
-explanation, down to words written in 68000 machine code. The FORTH module
-was rebuilt on the original's own 68000 code, read instruction by
-instruction:
-
-- **recursion**: a word knows itself from its `:` on (indirect recursion,
-  as in the original, does not exist);
-- **16-bit** signed numbers; `NOT` complements bit by bit; `DO … LOOP`
-  advances its index before the body;
-- the return stack is laid out as the original's — a return address takes
-  four bytes — so that `R> R> DROP DROP` leaves a word, and the words the
-  stack writes in machine code with `,` (`EXIT`, `LEAVE`, `PICK`, the loop
-  index) run;
-- `ALTERNATE` is an internal variable at address -4: the "-4" left on the
-  stack of the Margolus cards;
-- an error is **sent** to the card, as `COMPILE_ERR "Unknow'd word ", 13`,
-  for the handlers both stacks carry: a dialog names the word, and it is
-  selected in the field; `FORTH()` returns the stack, top first.
-
-The results the original left in the demonstration stack, which HC could
-not reach before, now come out the same — Fermat's 225 numbers, character
-for character, 11^1024, which is -20479 in 16 bits, `LEAVE`, the loops.
 
 `ballons.wasm` and `fulldrag.wasm` are useful beyond MAC•CAM: any stack can
 add them. They are prebuilt in the repository, in `tests/donnees/modules/`,
@@ -185,10 +162,10 @@ Found while running MAC•CAM, whose scripts paint by replaying gestures:
 - C kernel: **313 checks, all green**, including under AddressSanitizer,
   UndefinedBehaviorSanitizer and LeakSanitizer. Three are new: the modules
   (every callback, windows, balloons, `DragGrayRgn`, Cmd-., the refusals),
-  the FORTH compiler against the 175 tables of MAC•CAM Workshop and the
-  results kept in MAC•CAM FORTH, and the CAM machine. The windows, balloons
-  and outlines themselves live in the Cocoa interface, which these checks
-  do not reach: they were tried in the application, on MAC•CAM Workshop.
+  the FORTH compiler against the 175 tables of MAC•CAM Workshop, and the
+  CAM machine. The windows, balloons and outlines themselves live in the
+  Cocoa interface, which these checks do not reach: they were tried in the
+  application, on MAC•CAM Workshop.
 - **Zero warnings**: gcc at three optimisation levels, *and* clang with
   Xcode's warning families. **Zero** static-analyser warnings. The Cocoa
   application builds on macOS in continuous integration.
@@ -199,9 +176,10 @@ Found while running MAC•CAM, whose scripts paint by replaying gestures:
 
 ### Not measured yet
 
-- The original FORTH was read, not run: what it does is taken from its
-  68000 code and checked against the results its stacks kept, not seen in
-  HyperCard.
+- Four questions about the original FORTH, to ask HyperCard itself: whether
+  it knew the word `ECHO`; the number it returns with an error; where the
+  `-4` of the Margolus cards comes from; whether words defined in one call
+  are still known in the next.
 - In HyperCard, an external of a stack came before the scripts of the
   stacks in use and before HyperCard's own commands — an XCMD named `beep`
   replaced `beep`. In HC, HyperTalk's commands and functions come first,
@@ -232,13 +210,6 @@ Found while running MAC•CAM, whose scripts paint by replaying gestures:
 - A module window receives neither clicks nor keystrokes: HC moves and
   closes it itself, and the module only sees its messages and properties.
   `GetNewXWindow`, `SetXWIdleTime` and `GetXWindowValue` are not there.
-- The FORTH, where HC parts from the original on purpose: two comments in a
-  row (the original read the second `(` as a word and stopped; HC skips
-  both, so that two cards of MAC•CAM Workshop still compile); a division by
-  zero (the original stopped the Mac; HC gives 0); an endless recursion
-  (stopped by `STACK_ERR`); machine code beyond the few instructions the
-  demonstration stack uses (refused with `Can't understand`). A `BEEP`
-  sounds at most ten times per call.
 - FullDrag's optional `<test>`, `<if true>` and `<if false>` parameters are
   not supported yet: they return an error rather than being ignored.
 - Externals written for the classic Mac — 68000 or PowerPC code in a
@@ -284,8 +255,7 @@ Found while running MAC•CAM, whose scripts paint by replaying gestures:
 - [#140](https://github.com/cleobuline/hc/pull/140): `type numToChar(8)`
   erases
 - [#141](https://github.com/cleobuline/hc/pull/141): the step-by-step manual
-- [#142](https://github.com/cleobuline/hc/pull/142): the English manual,
-  the WAMR licence inside HC.app, version 0.8.4 and this note
-- this release: the FORTH rebuilt on the original's code, for MAC•CAM FORTH
+- this release: the English manual, the WAMR licence inside HC.app, version
+  0.8.4 and this note
 
 **Full changelog:** [HC-0.8.3...HC-0.8.4](https://github.com/cleobuline/hc/compare/HC-0.8.3...HC-0.8.4)
