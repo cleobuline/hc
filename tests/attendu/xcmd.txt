@@ -205,7 +205,7 @@
       = 0
 
 == 10. le FORTH de MAC•CAM ==
-   ajoute forth.wasm (24384 octets) : accepté
+   ajoute forth.wasm (25526 octets) : accepté
    compile ": R CENTER >PLN0 ; MAKE-TABLE R"
       = [] 4096 0000000011111111 0
    compile "N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R"
