@@ -1108,6 +1108,18 @@ typedef struct {
      * Sans ces rappels, les bulles sont éteintes. */
     int  (*bulles)(void);
     int  (*bulle)(const char *texte, const int rect[4]);
+
+    /* LE GLISSER D'UN CONTOUR GRIS, pour DragGrayRgn d'un module — l'XFCN
+     * FullDrag. Tant que le bouton de la souris est enfoncé, le contour des
+     * `n` rectangles (quatre entiers chacun : gauche, haut, droite, bas)
+     * suit la souris depuis `depart` (h, v), la souris tenue dans `limite`,
+     * le contour effacé hors de `marge` ; `axe` : 0 libre, 1 horizontal, 2
+     * vertical. Tout en coordonnées carte. Le déplacement final dans *dh et
+     * *dv ; rend 1, ou 0 si l'on a lâché hors de `marge`. Le bouton déjà
+     * relâché : 1, et un déplacement nul. */
+    int  (*contour)(const int *rects, int n, const int depart[2],
+                    const int limite[4], const int marge[4], int axe,
+                    int *dh, int *dv);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)
@@ -1285,11 +1297,16 @@ int     hc_respire_module(void);
  *                       `peinture` de l'hôte) ; 0 sans carte ni hôte ;
  *   hc_module_bulles    HMGetBalloons, hc_module_bulle HMShowBalloon : les
  *                       rappels `bulles` et `bulle` de l'hôte ; 0 sans lui ;
+ *   hc_module_contour   DragGrayRgn : le rappel `contour` de l'hôte, rendu
+ *                       comme le Toolbox (le vertical en haut, l'horizontal
+ *                       en bas, 0x80008000 hors de la marge) ; 0 sans lui ;
  *   hc_xw_…             les rappels xw_ de l'hôte, ou rien sans lui. */
 int     hc_module_bouton(void);
 int     hc_module_peinture(const int rect[4], unsigned char *noir);
 int     hc_module_bulles(void);
 int     hc_module_bulle(const char *texte, const int rect[4]);
+int     hc_module_contour(const int *rects, int n, const int depart[2],
+                          const int limite[4], const int marge[4], int axe);
 int     hc_xw_ouvre(int id, const char *titre, const int rect[4],
                     int visible, int style, int flottante);
 void    hc_xw_ferme(int id);

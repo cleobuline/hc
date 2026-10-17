@@ -3431,6 +3431,8 @@ static const char *hcv_touches_tenues(void)
 /* Plus bas, avec le lecteur de sons. */
 static const char *cocoa_son_en_cours(void);
 
+static NSPoint hcv_souris_carte(void);    /* plus bas, avec le glisser */
+
 static const char *cocoa_global_get(const char *name) {
     /* « the version » : UNE SEULE SOURCE DE VÉRITÉ, le bundle.
      *
@@ -3666,10 +3668,7 @@ static const char *cocoa_global_get(const char *name) {
     }
 
     if (strcasecmp(name, "mouseLoc") == 0) {
-        NSPoint s = [NSEvent mouseLocation];
-        NSRect  w = [[gView window] convertRectFromScreen:
-                        NSMakeRect(s.x, s.y, 0, 0)];
-        NSPoint v = [gView convertPoint:w.origin fromView:nil];
+        NSPoint v = hcv_souris_carte();
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d", (int)v.x, (int)v.y);
         return gGlobBuf;
     }
@@ -5982,6 +5981,97 @@ static int cocoa_bulle(const char *texte, const int r[4])
                                      forMode:NSRunLoopCommonModes];
     }
     return 1;
+}
+
+/* ═══ LE GLISSER D'UN CONTOUR GRIS ════════════════════════════════════════
+ *
+ * DragGrayRgn d'un module — l'XFCN FullDrag de MAC•CAM, qui fait glisser
+ * un carré de dessin sur un autre, ou sur la fenêtre CAM. Tant que le bouton
+ * est enfoncé, le contour des rectangles suit la souris par-dessus la carte,
+ * la souris tenue dans la limite ; hors de la marge, il disparaît. Le
+ * relâcher est consommé, comme par le Toolbox : la carte ne reçoit pas de
+ * mouseUp.
+ *
+ * NON MESURÉ, et écrit comme tel : le contour est un pointillé gris d'un
+ * point ; celui du Mac était un motif gris en mode XOR. */
+
+@interface HCContourVue : NSView
+@property (nonatomic, strong) NSArray<NSValue *> *rects;
+@property (nonatomic) NSPoint decalage;
+@property (nonatomic) BOOL montre;
+@end
+
+@implementation HCContourVue
+
+- (BOOL)isFlipped { return YES; }
+- (NSView *)hitTest:(NSPoint)p { (void)p; return nil; }
+
+- (void)drawRect:(NSRect)sale {
+    (void)sale;
+    if (!self.montre) return;
+    NSBezierPath *p = [NSBezierPath bezierPath];
+    for (NSValue *v in self.rects) {
+        NSRect r = NSOffsetRect([v rectValue], self.decalage.x, self.decalage.y);
+        [p appendBezierPathWithRect:NSInsetRect(r, 0.5, 0.5)];
+    }
+    const CGFloat tirets[2] = { 2, 2 };
+    [p setLineDash:tirets count:2 phase:0];
+    [p setLineWidth:1];
+    [[NSColor grayColor] setStroke];
+    [p stroke];
+}
+
+@end
+
+/* La souris, en coordonnées carte : « the mouseLoc », et le glisser d'un
+ * contour, qui doivent dire le même point. */
+static NSPoint hcv_souris_carte(void)
+{
+    NSPoint s = [NSEvent mouseLocation];
+    NSRect  w = [[gView window] convertRectFromScreen:NSMakeRect(s.x, s.y, 0, 0)];
+    return [gView convertPoint:w.origin fromView:nil];
+}
+
+static int cocoa_contour(const int *r, int n, const int depart[2],
+                         const int lim[4], const int marge[4], int axe,
+                         int *dh, int *dv)
+{
+    *dh = *dv = 0;
+    if (!gView || ![gView window] || n <= 0) return 1;
+    if (!([NSEvent pressedMouseButtons] & 1)) return 1;
+
+    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+    for (int i = 0; i < n; i++)
+        [rects addObject:[NSValue valueWithRect:
+            NSMakeRect(r[4 * i], r[4 * i + 1], r[4 * i + 2] - r[4 * i],
+                       r[4 * i + 3] - r[4 * i + 1])]];
+    HCContourVue *v = [[HCContourVue alloc] initWithFrame:[gView bounds]];
+    v.rects = rects;
+    [gView addSubview:v];
+
+    BOOL dedans = YES;
+    for (;;) {
+        NSPoint p = hcv_souris_carte();
+        dedans = p.x >= marge[0] && p.x < marge[2] && p.y >= marge[1] && p.y < marge[3];
+        /* PinRect : la souris tenue dans la limite. */
+        CGFloat x = MAX(lim[0], MIN(p.x, lim[2] - 1));
+        CGFloat y = MAX(lim[1], MIN(p.y, lim[3] - 1));
+        *dh = axe == 2 ? 0 : (int)x - depart[0];     /* arrondi de the mouseLoc */
+        *dv = axe == 1 ? 0 : (int)y - depart[1];
+        v.decalage = NSMakePoint(*dh, *dv);
+        v.montre = dedans;
+        [v display];
+        if (!([NSEvent pressedMouseButtons] & 1)) break;
+        NSEvent *e = [NSApp nextEventMatchingMask:(NSEventMaskLeftMouseDragged |
+                                                   NSEventMaskLeftMouseUp)
+                                        untilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]
+                                           inMode:NSEventTrackingRunLoopMode
+                                          dequeue:YES];
+        if (e && [e type] == NSEventTypeLeftMouseUp) break;
+    }
+    [v removeFromSuperview];
+    [gView setNeedsDisplay:YES];
+    return dedans ? 1 : 0;
 }
 
 @implementation HCView {
@@ -9881,6 +9971,7 @@ static void hcv_survol(HCView *v, Object *carte)
     host.peinture      = cocoa_peinture;
     host.bulles        = cocoa_bulles;
     host.bulle         = cocoa_bulle;
+    host.contour       = cocoa_contour;
     host.raccourci_menu = cocoa_raccourci_menu;
     hcv_touches_installe();
     hcv_regard_installe();

@@ -169,13 +169,42 @@ static int bulle(const char *texte, const int r[4])
     return 1;
 }
 
-/* Le bouton de la souris : enfoncé à la lecture numéro `g_souris`. */
+/* Le bouton de la souris : enfoncé à la lecture numéro `g_souris`. La
+ * souris passe par les points de `g_locs`, un par lecture, et reste sur le
+ * dernier ; la touche Majuscule est tenue si `g_majuscule`. */
 static int g_souris;
+static const char *g_locs[4] = { "50,60" };
+static int g_iloc;
+static int g_majuscule;
 
 static const char *globale(const char *nom)
 {
+    if (!strcmp(nom, "mouseLoc")) {
+        const char *l = g_locs[g_iloc];
+        if (g_iloc < 3 && g_locs[g_iloc + 1]) g_iloc++;
+        return l;
+    }
+    if (!strcmp(nom, "shiftKey")) return g_majuscule ? "down" : "up";
     if (strcmp(nom, "mouse") != 0) return NULL;
     return g_souris && --g_souris == 0 ? "down" : "up";
+}
+
+/* Le glisser d'un contour : l'hôte dit ce qu'il reçoit, et rend le
+ * déplacement que le harnais a choisi, lâché dans la marge ou non. */
+static int g_dh, g_dv, g_dedans = 1;
+
+static int contour(const int *r, int n, const int depart[2], const int lim[4],
+                   const int marge[4], int axe, int *dh, int *dv)
+{
+    printf("      hôte : contour de %d rectangle(s) :", n);
+    for (int i = 0; i < n; i++)
+        printf(" %d,%d,%d,%d", r[4 * i], r[4 * i + 1], r[4 * i + 2], r[4 * i + 3]);
+    printf(" ; départ %d,%d ; limite %d,%d,%d,%d ; marge %d,%d,%d,%d ; axe %d\n",
+           depart[0], depart[1], lim[0], lim[1], lim[2], lim[3],
+           marge[0], marge[1], marge[2], marge[3], axe);
+    *dh = axe == 2 ? 0 : g_dh;
+    *dv = axe == 1 ? 0 : g_dv;
+    return g_dedans;
 }
 
 static unsigned char *lis(const char *dossier, const char *nom, size_t *n)
@@ -642,6 +671,51 @@ int main(int argc, char **argv)
         h.bulles = NULL;
         h.bulle = NULL;
     }
+
+    /* FULLDRAG, l'XFCN de Frédéric Rinaldi que MAC•CAM appelle depuis le
+     * mouseDown de ses carrés de dessin : le contour gris suit la souris,
+     * et elle rend le déplacement. */
+    puts("\n== 14. FullDrag : le glisser d'un contour gris ==");
+    ajoute(st, D, "fulldrag.wasm", "fulldrag");
+    h.global_get = globale;
+    puts("   -- sans hôte qui sache glisser : 0,0");
+    g_souris = 1;
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\")");
+    h.contour = contour;
+    puts("   -- le bouton déjà relâché : 0,0, sans glisser");
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\")");
+    puts("   -- enfoncé : deux rectangles, une ligne chacun, et le déplacement");
+    g_souris = 1;
+    g_dh = 40;
+    g_dv = -10;
+    fais("put fulldrag(\"10,20,30,40\" & return & \"50,50,60,60\", \"0,0,512,342\")");
+    puts("   -- lâché hors de la limite : 0,0");
+    g_souris = 1;
+    g_dedans = 0;
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\")");
+    g_dedans = 1;
+    puts("   -- sans limite : la carte");
+    g_souris = 1;
+    fais("put fulldrag(\"10,20,30,40\")");
+    puts("   -- Majuscule : un seul axe, selon le premier mouvement");
+    g_majuscule = 1;
+    g_souris = 1;
+    g_locs[0] = "50,60"; g_locs[1] = "90,62"; g_iloc = 0;
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\")");
+    g_souris = 1;
+    g_locs[1] = "52,95"; g_iloc = 0;
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\")");
+    g_majuscule = 0;
+    g_locs[1] = NULL; g_iloc = 0;
+    puts("   -- les fautes, avec les messages de l'original");
+    fais("put fulldrag()");
+    fais("put fulldrag(\"\")");
+    fais("put fulldrag(\"10,20,30\")");
+    fais("put fulldrag(\"10,20,30,40\" & return & \"zorglub\")");
+    fais("put fulldrag(\"10,20,30,40\", \"zorglub\")");
+    fais("put fulldrag(\"10,20,30,40\", \"0,0,512,342\", \"the mouse is down\", \"beep\")");
+    h.contour = NULL;
+    h.global_get = NULL;
 
     hc_unregister_stack(st);
     hc_free(st);

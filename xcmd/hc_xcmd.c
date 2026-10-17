@@ -212,6 +212,13 @@ char *strstr(const char *h, const char *n)
     return NULL;
 }
 
+size_t strcspn(const char *s, const char *rejet)
+{
+    size_t k = 0;
+    while (s[k] && !strchr(rejet, s[k])) k++;
+    return k;
+}
+
 int toupper(int c) { return c >= 'a' && c <= 'z' ? c - 32 : c; }
 int tolower(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
 int isspace(int c) { return c == ' ' || (c >= 9 && c <= 13); }
@@ -252,6 +259,7 @@ long strtol(const char *s, char **fin, int base)
 }
 
 int atoi(const char *s) { return (int)strtol(s, NULL, 10); }
+int abs(int x) { return x < 0 ? -x : x; }
 
 /* ---- snprintf, réduit ---- */
 
@@ -461,4 +469,36 @@ int HMShowBalloon(const char *texte, const Rect *zone)
     if (!zone) return 0;
     return hc_HMShowBalloon(texte ? texte : "", zone->left, zone->top,
                             zone->right, zone->bottom);
+}
+
+/* ---- le glisser d'un contour ---- */
+
+/* Les rectangles passent en quatre entiers chacun, gauche, haut, droite,
+ * bas ; le reste en entiers. */
+HC_RAPPEL(DragGrayRgn) int hc_DragGrayRgn(const int *rects, int nrects,
+                                           int h, int v,
+                                           int lg, int lh, int ld, int lb,
+                                           int mg, int mh, int md, int mb,
+                                           int axe);
+
+enum { CONTOURS_MAX = 64 };
+
+long DragGrayRgn(const Rect *rects, int n, Point depart, const Rect *limite,
+                 const Rect *marge, int axe)
+{
+    static int r[4 * CONTOURS_MAX];
+    if (!rects || !limite || !marge || n <= 0) return 0;
+    if (n > CONTOURS_MAX) n = CONTOURS_MAX;
+    for (int i = 0; i < n; i++) {
+        r[4 * i]     = rects[i].left;
+        r[4 * i + 1] = rects[i].top;
+        r[4 * i + 2] = rects[i].right;
+        r[4 * i + 3] = rects[i].bottom;
+    }
+    return (long)(unsigned)hc_DragGrayRgn(r, (int)(n * 4 * sizeof *r),
+                                          depart.h, depart.v,
+                                          limite->left, limite->top,
+                                          limite->right, limite->bottom,
+                                          marge->left, marge->top,
+                                          marge->right, marge->bottom, axe);
 }

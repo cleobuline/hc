@@ -111,7 +111,8 @@ typedef enum {
     D_BOUTON,               /* Button */
     D_PEINTURE,             /* GetCardPicture */
     D_BULLES,               /* HMGetBalloons */
-    D_BULLE                 /* HMShowBalloon */
+    D_BULLE,                /* HMShowBalloon */
+    D_CONTOUR               /* DragGrayRgn */
 } Quoi;
 
 typedef struct {
@@ -129,6 +130,11 @@ typedef struct {
     const unsigned char *pixels, *palette;
     unsigned char       *noir;
     int                  largeur, hauteur, echelle;
+
+    /* DragGrayRgn : n rectangles de quatre entiers, le point de départ, la
+     * marge (rect pour la limite). */
+    const int           *rects;
+    int                  depart[2], marge[4], axe;
 } Demande;
 
 /* UN ÉVÉNEMENT d'une fenêtre, pour l'externe qui l'a ouverte : son numéro
@@ -434,6 +440,25 @@ static void rappel_hm_show_balloon(wasm_exec_env_t env, uint64_t *args)
     rend(args, a ? a->reponse : 0);
 }
 
+/* ---- le glisser d'un contour ---- */
+
+/* Les entiers des rectangles sont dans la mémoire du module, petit-boutistes
+ * comme toute mémoire WebAssembly — et comme les Mac d'aujourd'hui, où HC
+ * les lit tels quels. */
+static void rappel_drag_gray_rgn(wasm_exec_env_t env, uint64_t *args)
+{
+    int32_t taille = entier(args, 1);
+    int n = taille / 16;
+    if (n <= 0 || n > 64) { rend(args, 0); return; }
+    Appel *a = confie(env, (Demande){ .quoi = D_CONTOUR,
+        .rects = (const int *)(uintptr_t)args[0], .n = n,
+        .depart = { entier(args, 2), entier(args, 3) },
+        .rect = { entier(args, 4), entier(args, 5), entier(args, 6), entier(args, 7) },
+        .marge = { entier(args, 8), entier(args, 9), entier(args, 10), entier(args, 11) },
+        .axe = entier(args, 12) });
+    rend(args, a ? a->reponse : 0);
+}
+
 /* hc_rendu(tampon, taille) : copie la dernière chaîne rendue, coupée à la
  * taille du tampon, zéro final compris. Elle ne sert qu'une fois. Pas de
  * passage au fil de HC : la réponse est déjà dans `a`, et le fil de HC
@@ -473,6 +498,7 @@ static NativeSymbol RAPPELS[] = {
     { "GetCardPicture",  (void *)rappel_get_card_picture, "(iiii*~)i", NULL },
     { "HMGetBalloons",   (void *)rappel_hm_get_balloons, "()i",   NULL },
     { "HMShowBalloon",   (void *)rappel_hm_show_balloon, "($iiii)i", NULL },
+    { "DragGrayRgn",     (void *)rappel_drag_gray_rgn, "(*~iiiiiiiiiii)i", NULL },
 };
 
 /* ---- WAMR, démarré une fois ---- */
@@ -1138,6 +1164,14 @@ static void sers(Appel *a)
     case D_BULLE:
         a->reponse = hc_module_bulle(d->texte, d->rect);
         break;
+    case D_CONTOUR: {
+        /* Recopiés : rien ne garantit qu'un module les aligne. */
+        int r[4 * 64];
+        memcpy(r, d->rects, (size_t)d->n * 4 * sizeof *r);
+        a->reponse = hc_module_contour(r, d->n, d->depart, d->rect,
+                                       d->marge, d->axe);
+        break;
+    }
     }
 }
 
