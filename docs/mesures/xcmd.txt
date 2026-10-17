@@ -987,9 +987,17 @@ EXÉCUTÉE.
 À JOUER DANS HC (l'application), sur MAC•CAM Workshop : ajouter
 ballons.wasm, Help ▸ Show Balloons, survoler les boutons de l'atelier.
 
+MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice, sur
+MAC•CAM Workshop avec ballons.wasm : Help ▸ Show Balloons, et la bulle du
+bouton de compilation s'affiche — « Permet de compiler le programme FORTH
+(Ci-dessus), et les règles de comportement des cellules » —, pendant que la
+fenêtre CAM fait tourner « Brian's brain ». Sa réponse : « merveilleux ».
+Le même journal porte encore un « personne ne répond à « ballons the rect
+of me , "Hello" » » : une AUTRE pile, à qui ballons.wasm n'a pas été
+ajouté — chaque pile porte ses modules. Que ce soit bien cela : NON VÉRIFIÉ.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
-  · les bulles, DANS HC ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
