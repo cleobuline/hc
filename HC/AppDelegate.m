@@ -151,6 +151,14 @@ static NSMenu *gRecentMenu = nil;
 /* La carte voyage dans representedObject : le TITRE ne suffirait pas à la
  * désigner — deux cartes peuvent porter le même nom — et un rang ne survit pas
  * à un historique qui change pendant que le menu est ouvert. */
+/* « Show Balloons » / « Hide Balloons », comme le menu des bulles de
+ * System 7 : l'article dit ce qu'il fera. */
+- (void)basculeBulles:(NSMenuItem *)mi
+{
+    hcv_bulles_bascule();
+    [mi setTitle:hcv_bulles_allumees() ? @"Hide Balloons" : @"Show Balloons"];
+}
+
 - (void)goRecentItem:(id)sender
 {
     NSValue *v = [sender representedObject];
@@ -852,6 +860,27 @@ static NSMenu *gRecentMenu = nil;
             if (mort) break;
         }
         if (mort) [mainMenu removeItemAtIndex:i];
+    }
+
+    /* --- menu Help : les bulles d'aide ---
+     * Le Help du gabarit est parti avec son livre d'aide, qui n'existe pas.
+     * Celui-ci ne porte que « Show Balloons », l'article du menu des bulles
+     * de System 7 : il allume les bulles que montrent les modules
+     * (HMShowBalloon) — l'XCMD Ballons de MAC•CAM, et celles des piles qui
+     * la reprendront. Voulu par l'utilisatrice le 17 octobre. */
+    {
+        NSMenuItem *haut = [[NSMenuItem alloc] initWithTitle:@"Help"
+                                                      action:nil
+                                               keyEquivalent:@""];
+        NSMenu *aide = [[NSMenu alloc] initWithTitle:@"Help"];
+        NSMenuItem *b = [[NSMenuItem alloc]
+            initWithTitle:hcv_bulles_allumees() ? @"Hide Balloons" : @"Show Balloons"
+                   action:@selector(basculeBulles:)
+            keyEquivalent:@""];
+        [b setTarget:self];
+        [aide addItem:b];
+        [haut setSubmenu:aide];
+        [mainMenu addItem:haut];
     }
 
     /* ═══ Les raccourcis d'HyperCard passent avant ceux du gabarit ═══════

@@ -425,3 +425,40 @@ int GetCardPicture(const Rect *r, unsigned char *noir)
     if (l <= 0 || h <= 0 || l > 0x7fffffff / h) return 0;
     return hc_GetCardPicture(r->left, r->top, r->right, r->bottom, noir, l * h);
 }
+
+int StrToRect(const char *s, Rect *r)
+{
+    int v[4];
+    if (!s || !r) return 0;
+    for (int k = 0; k < 4; k++) {
+        char *fin;
+        v[k] = (int)strtol(s, &fin, 10);
+        if (fin == s) return 0;
+        s = fin;
+        while (*s == ' ') s++;
+        if (k < 3) {
+            if (*s != ',') return 0;
+            s++;
+        }
+    }
+    r->left = (short)v[0];
+    r->top = (short)v[1];
+    r->right = (short)v[2];
+    r->bottom = (short)v[3];
+    return 1;
+}
+
+/* ---- les bulles d'aide ---- */
+
+HC_RAPPEL(HMGetBalloons)  int  hc_HMGetBalloons(void);
+HC_RAPPEL(HMShowBalloon)  int  hc_HMShowBalloon(const char *texte, int g, int h,
+                                                int d, int b);
+
+int HMGetBalloons(void) { return hc_HMGetBalloons(); }
+
+int HMShowBalloon(const char *texte, const Rect *zone)
+{
+    if (!zone) return 0;
+    return hc_HMShowBalloon(texte ? texte : "", zone->left, zone->top,
+                            zone->right, zone->bottom);
+}

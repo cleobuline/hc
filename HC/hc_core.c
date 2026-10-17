@@ -19678,6 +19678,19 @@ int hc_module_peinture(const int rect[4], unsigned char *noir)
     return g_host->peinture(couche, rect, noir) ? 1 : 0;
 }
 
+/* HMGetBalloons, HMShowBalloon : l'hôte tient « Show Balloons ». */
+int hc_module_bulles(void)
+{
+    return g_host && g_host->bulles && g_host->bulles() ? 1 : 0;
+}
+
+/* Éteintes, c'est l'hôte qui le dit, en rendant 0. */
+int hc_module_bulle(const char *texte, const int rect[4])
+{
+    if (!g_host || !g_host->bulle) return 0;
+    return g_host->bulle(texte ? texte : "", rect) ? 1 : 0;
+}
+
 int hc_xw_ouvre(int id, const char *titre, const int rect[4], int visible,
                 int style, int flottante)
 {

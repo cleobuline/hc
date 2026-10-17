@@ -364,7 +364,7 @@
       = false
 
 == 12. MACCAM : la fenêtre CAM de MAC•CAM ==
-   ajoute maccam.wasm (15320 octets) : accepté
+   ajoute maccam.wasm (15366 octets) : accepté
    get maccam("10,40,22,52", "CAM", "True", 17, "True", "True")
       hôte : ouvre 11 « CAM » 10,40,22,52, visible 1, style 17, flottante 1
       hôte : image de 11, 12 × 12 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
@@ -547,3 +547,28 @@
       hôte : ferme 11
    put there is a window "CAM"
       = false
+
+== 13. Ballons : les bulles d'aide ==
+   ajoute ballons.wasm (1258 octets) : accepté
+   -- sans hôte qui les tienne : éteintes, rien ne s'affiche
+   send mouseEnter to card button "outil"
+         ⚙ XCMD ballons
+   -- « Show Balloons » décoché : rien
+   send mouseEnter to card button "outil"
+      hôte : les bulles sont-elles allumées ? non
+         ⚙ XCMD ballons
+   -- coché : la bulle, sur le rectangle du bouton
+   set the rect of card button "outil" to 263,313,291,339
+   send mouseEnter to card button "outil"
+      hôte : les bulles sont-elles allumées ? oui
+      hôte : bulle « Ouvre la fenêtre de la machine CAM », tant que la souris est dans 263,313,291,339
+         ⚙ XCMD ballons
+   -- sans texte : « Sans titre » ; un rectangle illisible : vide
+   ballons "10,20,30,40"
+      hôte : les bulles sont-elles allumées ? oui
+      hôte : bulle « Sans titre », tant que la souris est dans 10,20,30,40
+         ⚙ XCMD ballons
+   ballons "pas un rectangle", "le texte reste"
+      hôte : les bulles sont-elles allumées ? oui
+      hôte : bulle « le texte reste », tant que la souris est dans 0,0,0,0
+         ⚙ XCMD ballons

@@ -114,6 +114,11 @@ Object *hcv_selection(void);
  * l'application. Voir HCview.m pour la mesure qui a fait percer ce trou. */
 NSString *hcv_texte(const char *s);
 
+/* Les bulles d'aide (HMShowBalloon d'un module) : « Show Balloons », au menu
+ * Help. L'état se garde dans les réglages de HC. */
+BOOL hcv_bulles_allumees(void);
+void hcv_bulles_bascule(void);
+
 /* Un entier tapé à la main, et rien d'autre autour que des blancs : « 12abc »
  * se refuse. Rend NO si ce n'en est pas un. Voir HCview.m. */
 BOOL      hcv_entier_strict(const char *s, long *out);

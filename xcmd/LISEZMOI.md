@@ -15,6 +15,7 @@ Ce dossier est le kit pour en écrire.
 | `hc_xcmd.c` | ce que chaque module emporte : la mémoire, les chaînes, `snprintf` |
 | `inc/` | les en-têtes C réduits qui vont avec |
 | `exemples/bonjour.c` | le premier module : une commande et une fonction |
+| `exemples/ballons.c` | l'XCMD Ballons : une bulle d'aide au survol d'un bouton |
 | `maccam/` | les XFCN de MAC•CAM Workshop, refaites : `FORTH` d'abord |
 | `Makefile` | de `.c` à `.wasm` |
 
@@ -132,6 +133,7 @@ sa fenêtre par `SendCardMessage`.
 | `CopyXWindow(w)` | son image, telle qu'on la voit, au presse-papiers |
 | `Button()` | le bouton de la souris est-il enfoncé — ou Cmd-. tapé ? |
 | `GetCardPicture(&rect, noir)` | la peinture de la carte : 1 où l'encre est sombre |
+| `StrToRect(texte, &rect)` | « gauche,haut,droite,bas », celui des scripts, en `Rect` |
 
 HC garde l'image et la redessine lui-même : il n'y a pas d'événement
 « update » à servir.
@@ -141,6 +143,27 @@ fenêtres vivent autant qu'elle. Une faute, le module retiré ou la pile
 fermée les ferment. Cmd-. aussi, sauf pour un module qui guette `Button` :
 celui-là a une seconde pour rendre la main de lui-même, et garde ses
 fenêtres.
+
+## Les bulles d'aide
+
+Celles de System 7, que l'utilisatrice allume par « Show Balloons », au
+menu Help de HC :
+
+| rappel | ce qu'il fait |
+| --- | --- |
+| `HMGetBalloons()` | les bulles sont-elles allumées ? |
+| `HMShowBalloon(texte, &zone)` | une bulle pointée sur la souris, tant qu'elle reste dans `zone` (coordonnées carte) ; 0 si elles sont éteintes |
+
+`exemples/ballons.c` est l'XCMD Ballons de MAC•CAM Workshop, refaite :
+
+```
+on mouseEnter
+  ballons the rect of me, "Ouvre la fenêtre de la machine CAM"
+end mouseEnter
+```
+
+Toute pile peut s'en servir : il suffit d'ajouter `ballons.wasm` à ses
+modules. Il est déjà construit, dans `tests/donnees/modules/`.
 
 ## Compiler
 
