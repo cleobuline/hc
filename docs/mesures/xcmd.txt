@@ -1204,6 +1204,17 @@ sur MAC•CAM FORTH avec le nouveau forth.wasm : « le sample récursivité
 fonctionne comme l'original ». La valeur affichée n'est pas relevée ; les
 autres cartes du banc ci-dessus ne sont pas encore rapportées.
 
+MESURÉ DANS HC (l'application), le même soir, par l'utilisatrice : « fermat
+fonctionne mais c'est très lent ». La durée n'est pas relevée, ni la
+machine. MESURÉ dans le conteneur (Linux, le noyau en -O2) : Fermat exécute
+5,77 millions d'opérations de notre FORTH, dont 1,27 million d'instructions
+68000 émulées (l'index, trois par i, j ou k) et 1,26 million d'appels ;
+60 ms en natif, 1,0 à 1,2 s par le module dans WAMR, dix-huit fois plus.
+DÉCIDÉ par l'utilisatrice : « c'est pas grave si le web assembly est pas
+très rapide », les machines Apple Silicon le cacheront. NON FAIT, et noté
+pour le jour où il le faudra : décoder le code machine une fois, à la
+compilation, plutôt qu'à chaque passage.
+
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
   · l'écart des commentaires, à trancher ;
