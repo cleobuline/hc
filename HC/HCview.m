@@ -1927,7 +1927,7 @@ static const char *cocoa_ask(const char *prompt, const char *deflt) {
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:hcv_texte(prompt ? prompt : "")];
     [a addButtonWithTitle:@"OK"];
-    [a addButtonWithTitle:@"Annuler"];
+    [a addButtonWithTitle:@"Cancel"];               /* comme le « ask » de HyperCard */
 
     NSTextField *tf = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
     [tf setStringValue:hcv_texte(deflt)];
@@ -2039,7 +2039,8 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     NSString *source = nil;
     NSString *derniere = [lignes lastObject];
     NSRange deux = derniere ? [derniere rangeOfString:@" :  "] : NSMakeRange(NSNotFound, 0);
-    if (ligne > 0 && [lignes count] > 1 && [derniere hasPrefix:@"ligne "] &&
+    if (ligne > 0 && [lignes count] > 1 &&
+        ([derniere hasPrefix:@"ligne "] || [derniere hasPrefix:@"line "]) &&
         deux.location != NSNotFound) {
         source = [derniere substringFromIndex:NSMaxRange(deux)];
         [lignes removeLastObject];
@@ -2053,7 +2054,7 @@ static void cocoa_erreur(const char *texte, Object *objet, int ligne) {
     if (objet && ligne > 0) {
         char qui[128];
         hc_describe(objet, qui, sizeof qui);
-        [detail appendFormat:@"%@, ligne %d", hcv_texte(qui), ligne];
+        [detail appendFormat:@"%@, line %d", hcv_texte(qui), ligne];
         if (source) [detail appendFormat:@" :\n\n    %@", source];
     }
     if ([lignes count]) {
@@ -6302,7 +6303,7 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     Object *stack = card->owner;
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
     if (!stack) return;
-    const char *nm = stack->name ? stack->name : "Sans titre";
+    const char *nm = stack->name ? stack->name : "Untitled";
     [[self window] setTitle:hcv_texte(nm)];
 }
 
@@ -6764,8 +6765,8 @@ static BOOL hcv_presse_systeme_plus_recent(void)
             /* Seul échec possible ici : le fond de la carte copiée n'existe
              * pas dans cette pile. On le dit, plutôt que de ne rien faire. */
             NSAlert *a = [[NSAlert alloc] init];
-            [a setMessageText:@"Impossible de coller cette carte"];
-            [a setInformativeText:@"Son fond n'existe pas dans cette pile."];
+            [a setMessageText:@"This card cannot be pasted"];
+            [a setInformativeText:@"Its background does not exist in this stack."];
             [a runModal];
         }
         return;
@@ -10159,10 +10160,10 @@ static NSTextField  *gSprayDensityLabel = nil;
 
 - (void)showSprayPalette {
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:@"Aérographe"];
-    [a setInformativeText:@"Taille du nuage et nombre de points par passe."];
+    [a setMessageText:@"Spray"];
+    [a setInformativeText:@"Size of the cloud, and number of dots per pass."];
     [a addButtonWithTitle:@"OK"];
-    [a addButtonWithTitle:@"Annuler"];
+    [a addButtonWithTitle:@"Cancel"];
 
     NSView *c = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 280, 142)];
 
@@ -10171,7 +10172,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     gSprayPreview = prev;
 
     NSTextField *rl = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 42, 62, 18)];
-    [rl setStringValue:@"Rayon"];
+    [rl setStringValue:@"Radius"];
     [rl setBezeled:NO]; [rl setDrawsBackground:NO]; [rl setEditable:NO];
     [c addSubview:rl];
 
@@ -10191,7 +10192,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     [c addSubview:gSprayRadiusLabel];
 
     NSTextField *dl = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 10, 62, 18)];
-    [dl setStringValue:@"Densité"];
+    [dl setStringValue:@"Density"];
     [dl setBezeled:NO]; [dl setDrawsBackground:NO]; [dl setEditable:NO];
     [c addSubview:dl];
 
@@ -10349,7 +10350,7 @@ static NSTextField  *gSprayDensityLabel = nil;
                     backing:NSBackingStoreBuffered
                       defer:NO];
     char d[64]; hc_describe(obj, d, sizeof d);
-    [panel setTitle:[NSString stringWithFormat:@"Script de %s", d]];
+    [panel setTitle:[NSString stringWithFormat:@"Script of %s", d]];
     /* 258 de haut et non plus 286 : les menus « Handlers » et « Functions »
      * prennent la bande du haut, comme dans HyperCard 2.4. */
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 258)];
@@ -10398,7 +10399,7 @@ static NSTextField  *gSprayDensityLabel = nil;
     }
 
     NSButton *verif = [[NSButton alloc] initWithFrame:NSMakeRect(290, 8, 90, 30)];
-    [verif setTitle:@"Vérifier"];
+    [verif setTitle:@"Check"];
     [verif setBezelStyle:NSBezelStyleRounded];
     [verif setTarget:self];
     [verif setAction:@selector(checkScript:)];
@@ -10466,7 +10467,7 @@ static NSTextField  *gSprayDensityLabel = nil;
             ((HCScriptView *)gEditView).ligneEncadree = 0;
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"Script correct"];
-        [a setInformativeText:@"Aucune faute détectée."];
+        [a setInformativeText:@"No error found."];
         [a runModal];
         hct_rapport_libere(&rap);
         return;
@@ -10475,8 +10476,8 @@ static NSTextField  *gSprayDensityLabel = nil;
     NSMutableString *txt = [NSMutableString string];
     for (int i = 0; i < rap.n; i++) {
         HctSignalement *s = &rap.liste[i];
-        [txt appendFormat:@"%@ ligne %d : %s",
-             s->niveau == HCT_V_ERREUR ? @"Erreur" : @"Attention",
+        [txt appendFormat:@"%@ line %d: %s",
+             s->niveau == HCT_V_ERREUR ? @"Error" : @"Warning",
              s->ligne, s->message];
         if (s->extrait[0]) [txt appendFormat:@"  [%s]", s->extrait];
         [txt appendString:@"\n"];
@@ -10487,9 +10488,9 @@ static NSTextField  *gSprayDensityLabel = nil;
 
     NSAlert *a = [[NSAlert alloc] init];
     [a setMessageText:rap.nerreurs
-        ? [NSString stringWithFormat:@"%d faute%@ de syntaxe", rap.nerreurs,
+        ? [NSString stringWithFormat:@"%d syntax error%@", rap.nerreurs,
                                      rap.nerreurs > 1 ? @"s" : @""]
-        : @"Script correct, avec des remarques"];
+        : @"Script correct, with remarks"];
     [a setInformativeText:txt];
     [a runModal];
 
@@ -10714,7 +10715,7 @@ static NSTextField  *gSprayDensityLabel = nil;
         style_plage_commun([tv textStorage], r, [tv typingAttributes], &avant);
         char dft[16] = "";
         if (avant > 0) snprintf(dft, sizeof dft, "%ld", lround(avant));
-        const char *rep = cocoa_ask("Corps du texte :", dft);
+        const char *rep = cocoa_ask("Text size:", dft);
         if (!rep) return;
         long v = 0;
         /* Un entier, et dans la borne du noyau pour « set the textSize » et
