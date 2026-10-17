@@ -12,6 +12,10 @@
 - **Un sur-ensemble d'HyperCard, en couleur.** Tout ce qu'HyperCard sait
   faire, et la couleur en plus : peinture, icônes, et objets (`backColor`,
   `foreColor`, `textColor`).
+- **Des XCMD et des XFCN, enfermés.** Comme sous HyperCard, une pile
+  s'étend par des commandes et des fonctions écrites en C ; HC les compile
+  en WebAssembly, et elles tournent sans pouvoir toucher au Mac. Du
+  compilateur à un premier « Hello world » : [`xcmd/MANUEL.md`](xcmd/MANUEL.md).
 
 Application macOS native, binaire universel, macOS 10.13 et plus.
 

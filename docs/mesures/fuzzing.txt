@@ -82,6 +82,9 @@ LES CAMPAGNES
     2e  (avec les fuites)   notre format 299 000, Apple  57 000   0 signalement
     lance.sh 2000           notre format   6 000, Apple   2 000   0 signalement
     make fuzz (20 000)      notre format  60 000, Apple  20 000   0 signalement
+    make fuzz, 0.8.4        notre format  60 000, Apple  20 000   0 signalement
+                            (17 octobre : 1 089 graines récoltées, et non plus
+                            58 ; le témoin a attrapé ses trois pièges)
 
 La deuxième a été arrêtée par la limite de temps de la session avant la fin.
 Les deux premières avaient en plus pour graines les deux piles de démonstration

@@ -216,6 +216,15 @@ versionnée : un fichier engendré posé à côté de ses sources dérive dès l
 première modification, sans que rien ne le signale. Le harnais « pendu » joue
 quelques parties avant qu'on l'écrive.
 
+Depuis la 0.8.4, le dossier porte aussi les deux manuels du premier XCMD,
+copiés du dépôt tels quels :
+
+    cp xcmd/MANUAL.md xcmd/MANUEL.md dmg/
+
+La licence de WAMR, l'interprète des modules, n'a pas à y être mise : elle
+voyage DANS l'app, en `HC.app/Contents/Resources/wamr/` (LICENSE et
+ATTRIBUTIONS.md), copiée par la phase « Licence de WAMR » du projet.
+
 Puis le signer et l'agrafer lui aussi — sinon c'est le DMG qui déclenche
 l'alerte, même si l'app à l'intérieur est irréprochable :
 
