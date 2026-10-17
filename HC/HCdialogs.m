@@ -1586,7 +1586,7 @@ void hcicon_panel_stack_closing(Object *stack)
         initWithContentRect:NSMakeRect(360, 200, W, H)
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                     backing:NSBackingStoreBuffered defer:NO];
-    [gIconPanel setTitle:@"Icônes"];
+    [gIconPanel setTitle:@"Icons"];
     [gIconPanel setReleasedWhenClosed:NO];
     NSView *c = [gIconPanel contentView];
 
@@ -1622,7 +1622,7 @@ void hcicon_panel_stack_closing(Object *stack)
     gIconCoul = [[NSButton alloc]
         initWithFrame:NSMakeRect(RX, TOP - bits - 22, bits, 20)];
     [gIconCoul setButtonType:NSButtonTypeSwitch];
-    [gIconCoul setTitle:@"Couleur"];
+    [gIconCoul setTitle:@"Color"];
     [gIconCoul setFont:[NSFont systemFontOfSize:11]];
     [gIconCoul setTarget:self];
     [gIconCoul setAction:@selector(iconCouleur:)];
@@ -1662,12 +1662,12 @@ void hcicon_panel_stack_closing(Object *stack)
         [c addSubview:b];
         return b;
     };
-    mkEB(@"Nouvelle", @selector(iconNew:),       RX,       0);
-    mkEB(@"Dupliquer",@selector(iconDuplicate:), RX + 64,  0);
-    mkEB(@"Effacer",  @selector(iconErase:),     RX + 128, 0);
-    mkEB(@"Supprimer",@selector(iconDelete:),    RX + 192, 0);
-    mkEB(@"Pivoter",  @selector(iconRotate:),    RX,       1);
-    mkEB(@"Coller",   @selector(iconColler:),    RX + 64,  1);
+    mkEB(@"New",      @selector(iconNew:),       RX,       0);
+    mkEB(@"Duplicate",@selector(iconDuplicate:), RX + 64,  0);
+    mkEB(@"Erase",    @selector(iconErase:),     RX + 128, 0);
+    mkEB(@"Delete",   @selector(iconDelete:),    RX + 192, 0);
+    mkEB(@"Rotate",   @selector(iconRotate:),    RX,       1);
+    mkEB(@"Paste",    @selector(iconColler:),    RX + 64,  1);
 
     /* ---- rangee du bas, commune ---- */
     NSButton *(^mkIB)(NSString*, SEL, CGFloat) = ^NSButton*(NSString *t, SEL a, CGFloat x) {
@@ -1682,7 +1682,7 @@ void hcicon_panel_stack_closing(Object *stack)
     /* Sans bouton pour cible, « Aucune » et « OK » n'ont rien à attribuer :
      * OK ne fait alors que refermer. Les icônes créées ou dessinées, elles,
      * restent dans la pile — ce sont des ressources. */
-    mkIB(@"Aucune", @selector(iconNone:),   LX);
+    mkIB(@"None", @selector(iconNone:),   LX);
     mkIB(@"Cancel", @selector(iconCancel:), W - 172);
     NSButton *ok = mkIB(@"OK", @selector(iconOK:), W - 88);
     [ok setKeyEquivalent:@"\r"];
@@ -1729,13 +1729,13 @@ void hcicon_panel_stack_closing(Object *stack)
     gIconNameId = id;
 
     if (id == 0)
-        [gIconInfo setStringValue:@"Aucune icône"];
+        [gIconInfo setStringValue:@"No icon"];
     else
-        [gIconInfo setStringValue:[NSString stringWithFormat:@"N° %d — %@",
-            id, own ? @"pile" : @"d'origine"]];
+        [gIconInfo setStringValue:[NSString stringWithFormat:@"No. %d — %@",
+            id, own ? @"stack" : @"built-in"]];
 
     [gIconLabel setStringValue:
-        [NSString stringWithFormat:@"%d icônes", hcicon_catalog_count()]];
+        [NSString stringWithFormat:@"%d icons", hcicon_catalog_count()]];
 
     /* ---- la couleur ----
      * La bande suit l'icône choisie, et la case à cocher dit son état. Les
@@ -1832,7 +1832,7 @@ void hcicon_panel_stack_closing(Object *stack)
          * plutôt que de l'info d'un bouton, et le bouton « Coller » semblait
          * alors cassé — le même symptôme que le collage qui partait ailleurs,
          * et c'est pourquoi les deux se corrigent ensemble. */
-        [gIconInfo setStringValue:@"Choisissez une icône, ou « Nouvelle »."];
+        [gIconInfo setStringValue:@"Choose an icon, or “New”."];
         return;
     }
 
@@ -1840,7 +1840,7 @@ void hcicon_panel_stack_closing(Object *stack)
     [self iconRefresh];
 
     if (n == 0) {
-        [gIconInfo setStringValue:@"Le presse-papiers ne contient pas d'image."];
+        [gIconInfo setStringValue:@"The clipboard holds no picture."];
         return;
     }
     /* Le compte de couleurs DIT s'il y a eu perte : 255 tout rond veut dire
@@ -1848,9 +1848,9 @@ void hcicon_panel_stack_closing(Object *stack)
      * tenaient et que le collage est exact. C'est une information qu'on ne
      * peut pas lire sur le dessin. */
     [gIconInfo setStringValue:
-        [NSString stringWithFormat:@"Collé — %d couleur%@%@", n - 1,
+        [NSString stringWithFormat:@"Pasted — %d color%@%@", n - 1,
             (n - 1) > 1 ? @"s" : @"",
-            (n >= HC_ICON_COULEURS_MAX) ? @" (image réduite)" : @" (exact)"]];
+            (n >= HC_ICON_COULEURS_MAX) ? @" (picture reduced)" : @" (exact)"]];
 }
 
 - (void)iconErase:(id)sender {
@@ -1873,11 +1873,11 @@ void hcicon_panel_stack_closing(Object *stack)
     if (users > 0) {
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:[NSString stringWithFormat:
-            @"%d bouton%@ utilise%@ encore cette icône.",
-            users, users > 1 ? @"s" : @"", users > 1 ? @"nt" : @""]];
-        [a setInformativeText:@"Ils garderont son numéro et n'afficheront plus rien."];
-        [a addButtonWithTitle:@"Supprimer"];
-        [a addButtonWithTitle:@"Annuler"];
+            @"%d button%@ still use%@ this icon.",
+            users, users > 1 ? @"s" : @"", users > 1 ? @"" : @"s"]];
+        [a setInformativeText:@"They will keep its number and show nothing."];
+        [a addButtonWithTitle:@"Delete"];
+        [a addButtonWithTitle:@"Cancel"];
         if ([a runModal] != NSAlertFirstButtonReturn) return;
     }
 
@@ -2138,10 +2138,10 @@ static BOOL pile_ouverte(Object *p)
     if (!nom) return;
     NSString *n = hcv_texte(nom);
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:[NSString stringWithFormat:@"Retirer le module « %@ » ?", n]];
-    [a setInformativeText:@"Les XCMD et XFCN qu'il apporte ne répondront plus. "
-                           "La pile ne change sur le disque qu'à son prochain "
-                           "enregistrement."];
+    [a setMessageText:[NSString stringWithFormat:@"Remove the module “%@”?", n]];
+    [a setInformativeText:@"The XCMDs and XFCNs it brings will no longer answer. "
+                           "The stack changes on disk only when it is next "
+                           "saved."];
     [a addButtonWithTitle:@"Remove"];
     [a addButtonWithTitle:@"Cancel"];
     if ([a runModal] != NSAlertFirstButtonReturn) return;
@@ -2169,7 +2169,7 @@ int hcdlg_ajoute_modules(Object *pile, NSArray<NSURL *> *urls)
         char pourquoi[300] = "";
         int r = -1;
         if (!d)
-            snprintf(pourquoi, sizeof pourquoi, "le fichier ne se lit pas (%s)",
+            snprintf(pourquoi, sizeof pourquoi, "the file cannot be read (%s)",
                      err ? [[err localizedDescription] UTF8String] : "?");
         else
             r = hc_module_ajoute(pile, [nom UTF8String], [d bytes], [d length],
@@ -2177,7 +2177,7 @@ int hcdlg_ajoute_modules(Object *pile, NSArray<NSURL *> *urls)
         if (r == 0) { ajoutes++; continue; }
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:[NSString stringWithFormat:
-            @"Le module « %@ » n'a pas été ajouté.", nom]];
+            @"The module “%@” was not added.", nom]];
         [a setInformativeText:hcv_texte(pourquoi)];
         [a addButtonWithTitle:@"OK"];
         [a runModal];

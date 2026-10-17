@@ -83,7 +83,7 @@ int hcicon_edit_new(Object *stack)
      * seconde ecraserait la premiere. */
     hcicon_edit_sync(stack);
     int id = hcicon_edit_free_id();
-    if (!id || !hc_icon_add(stack, id, "Sans titre")) return 0;
+    if (!id || !hc_icon_add(stack, id, "Untitled")) return 0;
     hcicon_edit_sync(stack);
     return id;
 }
@@ -466,7 +466,7 @@ int hcicon_edit_est_couleur(Object *stack, int id)
     if (!c) {
         NSDictionary *at = @{ NSFontAttributeName: [NSFont systemFontOfSize:10],
                               NSForegroundColorAttributeName: [NSColor disabledControlTextColor] };
-        [@"(icône en noir et blanc)" drawAtPoint:NSMakePoint(2, 4) withAttributes:at];
+        [@"(black and white icon)" drawAtPoint:NSMakePoint(2, 4) withAttributes:at];
         return;
     }
 

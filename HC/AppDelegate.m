@@ -105,7 +105,7 @@ static NSMenu *gRecentMenu = nil;
      * ajouter une seconde. */
     int brut = hc_recent_count();
     if (brut <= 0) {
-        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
+        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(none)"
                                                       action:NULL
                                                keyEquivalent:@""];
         [vide setEnabled:NO];
@@ -140,7 +140,7 @@ static NSMenu *gRecentMenu = nil;
     }
     free(vues);
     if ([menu numberOfItems] == 0) {
-        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(aucune)"
+        NSMenuItem *vide = [[NSMenuItem alloc] initWithTitle:@"(none)"
                                                       action:NULL
                                                keyEquivalent:@""];
         [vide setEnabled:NO];
@@ -223,11 +223,11 @@ static NSMenu *gRecentMenu = nil;
      * leurs scripts — a fait son temps : « Nouvelle pile » et « Ouvrir » sont
      * en place, et le programme n'a plus à se fabriquer un contenu factice
      * pour avoir quelque chose à montrer. */
-    gStack = hc_new_stack("Sans titre");
+    gStack = hc_new_stack("Untitled");
     /* L'enregistrement auprès du noyau se fait par HCDocument, plus bas :
      * un seul endroit qui décide, plutôt que deux qui pourraient diverger. */
-    Object *bg = hc_new_background(gStack, "commun");
-    Object *c1 = hc_new_card(gStack, bg, "carte 1");
+    Object *bg = hc_new_background(gStack, "");      /* sans nom, comme dans HyperCard */
+    Object *c1 = hc_new_card(gStack, bg, "");
     hc_set_current_card(c1);
 
     // --- vue et message box ---
@@ -353,6 +353,19 @@ static NSMenu *gRecentMenu = nil;
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
+    /* New Button et New Field, avant New Background : l'ordre du menu
+     * Objects d'HyperCard. Ils manquaient — signalé par l'utilisatrice le
+     * 17 octobre. Sans raccourci. */
+    NSMenuItem *nbtItem = [[NSMenuItem alloc] initWithTitle:@"New Button"
+                                                        action:@selector(newButton:)
+                                                 keyEquivalent:@""];
+        [nbtItem setTarget:view];
+        [fileMenu addItem:nbtItem];
+    NSMenuItem *nfdItem = [[NSMenuItem alloc] initWithTitle:@"New Field"
+                                                        action:@selector(newField:)
+                                                 keyEquivalent:@""];
+        [nfdItem setTarget:view];
+        [fileMenu addItem:nfdItem];
     NSMenuItem *nbItem = [[NSMenuItem alloc] initWithTitle:@"New Background"
                                                         action:@selector(newBackground:)
                                                  keyEquivalent:@""];
@@ -1016,10 +1029,10 @@ static NSMenu *gRecentMenu = nil;
 
     HCDocument *doc = [HCDocument current];
     doc.cardCount = doc.cardCount + 1;
-    char name[64];
-    snprintf(name, sizeof name, "carte %d", doc.cardCount);
 
-    Object *c = hc_new_card(pile, cur->bg, name);
+    /* UNE CARTE NEUVE N'A PAS DE NOM, comme dans HyperCard — dit par
+     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ». */
+    Object *c = hc_new_card(pile, cur->bg, "");
     hc_set_current_card(c);
     [doc.view setNeedsDisplay:YES];
 }
@@ -1035,18 +1048,18 @@ static NSMenu *gRecentMenu = nil;
 
     if (hc_card_count(pile) <= 1) {
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:@"Dernière carte"];
-        [a setInformativeText:@"Une pile compte au moins une carte."];
+        [a setMessageText:@"Last card"];
+        [a setInformativeText:@"A stack has at least one card."];
         [a runModal];
         return;
     }
 
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:@"Supprimer cette carte ?"];
-    [a setInformativeText:@"Son texte, ses boutons et sa peinture seront perdus. "
-                           @"Cette action ne peut pas être annulée."];
-    [a addButtonWithTitle:@"Supprimer"];
-    [a addButtonWithTitle:@"Annuler"];
+    [a setMessageText:@"Delete this card?"];
+    [a setInformativeText:@"Its text, its buttons and its picture will be lost. "
+                           @"This cannot be undone."];
+    [a addButtonWithTitle:@"Delete"];
+    [a addButtonWithTitle:@"Cancel"];
     if ([a runModal] != NSAlertFirstButtonReturn) return;
 
     /* Lâcher tout ce que la vue retient de cette carte AVANT de la libérer :
@@ -1159,11 +1172,11 @@ static NSMenu *gRecentMenu = nil;
          * changer, pas ce comportement. */
         if (hc_save(pile, [path UTF8String]) != 0) {
             NSAlert *a = [[NSAlert alloc] init];
-            [a setMessageText:@"L'enregistrement a échoué."];
+            [a setMessageText:@"The stack could not be saved."];
             [a setInformativeText:[NSString stringWithFormat:
-                @"La pile n'a pas pu être écrite dans %@.\n\n"
-                @"Le fichier d'origine est intact. Vérifiez l'espace disque "
-                @"et les droits d'écriture, puis réessayez.",
+                @"The stack could not be written to %@.\n\n"
+                @"The original file is intact. Check the disk space "
+                @"and the write permissions, then try again.",
                 [path lastPathComponent]]];
             [a addButtonWithTitle:@"OK"];
             [a runModal];
@@ -1196,8 +1209,8 @@ static NSMenu *gRecentMenu = nil;
     for (int i = 0; i < st->nparts; i++)
         if (st->parts[i]->type == OBJ_CARD) { first = st->parts[i]; break; }
     if (!first) {                       /* pile sans carte : on en fabrique une */
-        Object *bg = hc_new_background(st, "commun");
-        first = hc_new_card(st, bg, "carte 1");
+        Object *bg = hc_new_background(st, "");
+        first = hc_new_card(st, bg, "");
     }
 
     HCDocument *actif = [HCDocument current];
@@ -1447,7 +1460,7 @@ void cocoa_stack_changed(Object *stack) {
     NSData *donnees = [NSData dataWithContentsOfFile:path];
     if (!donnees) {
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:@"Lecture impossible"];
+        [a setMessageText:@"The file cannot be read"];
         [a setInformativeText:[path lastPathComponent]];
         [a runModal];
         return NO;
@@ -1478,7 +1491,7 @@ void cocoa_stack_changed(Object *stack) {
          * HyperCard 1.x, une pile à accès privé et un fichier abîmé, et ces
          * trois-là n'appellent pas le même geste. */
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:@"Cette pile HyperCard ne peut pas être lue"];
+        [a setMessageText:@"This HyperCard stack cannot be read"];
         [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%s",
                                [path lastPathComponent], pourquoi]];
         [a runModal];
@@ -1502,7 +1515,7 @@ void cocoa_stack_changed(Object *stack) {
 
     if (!st) {
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:@"Conversion impossible"];
+        [a setMessageText:@"The stack could not be converted"];
         [a setInformativeText:[path lastPathComponent]];
         [a runModal];
         return NO;
@@ -1520,7 +1533,7 @@ void cocoa_stack_changed(Object *stack) {
                                   pourquoi_r, sizeof pourquoi_r) == 0) {
             if (hc_importe_icones(&res, st) < 0) {
                 ressource_illisible = YES;
-                snprintf(pourquoi_r, sizeof pourquoi_r, "mémoire épuisée");
+                snprintf(pourquoi_r, sizeof pourquoi_r, "out of memory");
             }
         } else {
             ressource_illisible = YES;
@@ -1543,15 +1556,15 @@ void cocoa_stack_changed(Object *stack) {
      * pas celui de la pile — il faut le dire, pas le taire. */
     if (anomalies > 0 || !ordre_lu || ressource_illisible) {
         NSMutableString *m = [NSMutableString string];
-        [m appendFormat:@"%d fond%s, %d carte%s, %d dessin%s.\n\n",
+        [m appendFormat:@"%d background%s, %d card%s, %d picture%s.\n\n",
             nfonds,  nfonds  == 1 ? "" : "s",
             ncartes, ncartes == 1 ? "" : "s",
             dessins, dessins == 1 ? "" : "s"];
         if (!ordre_lu)
-            [m appendString:@"L'ORDRE DES CARTES N'A PAS PU ÊTRE VÉRIFIÉ : les "
-                            @"sommes de contrôle de la liste ne tombent pas "
-                            @"juste. Les cartes sont dans l'ordre du FICHIER, "
-                            @"qui n'est pas forcément celui de la pile.\n\n"];
+            [m appendString:@"THE ORDER OF THE CARDS COULD NOT BE CHECKED: the "
+                            @"checksums of the card list do not add up. The "
+                            @"cards are in the order of the FILE, which is not "
+                            @"necessarily that of the stack.\n\n"];
         /* DEUX PHRASES, PARCE QU'IL Y A DEUX FAITS, ET L'UNE DES DEUX ÉTAIT
          * FAUSSE. Ce message disait « quelque chose n'a pas pu être lu et a été
          * laissé de côté » dès qu'une anomalie était comptée. Sur « Stack
@@ -1567,18 +1580,16 @@ void cocoa_stack_changed(Object *stack) {
          * VÉRIFIÉ. Zéro perdu avec des anomalies est un état parfaitement
          * légitime, et c'est celui-là qu'il fallait savoir dire. */
         if (perdus > 0)
-            [m appendFormat:@"%d chose%s n'%s pas pu être lue%s et %s été laissée%s "
-                            @"de côté. Le reste de la pile est là.\n\n",
-                perdus, perdus == 1 ? "" : "s",
-                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s",
-                perdus == 1 ? "a" : "ont", perdus == 1 ? "" : "s"];
+            [m appendFormat:@"%d item%s could not be read and %s left out. "
+                            @"The rest of the stack is there.\n\n",
+                perdus, perdus == 1 ? "" : "s", perdus == 1 ? "was" : "were"];
         if (anomalies > perdus) {
             int douteux = anomalies - perdus;
-            [m appendFormat:@"%d recoupement%s du fichier ne tombe%s pas juste : "
-                            @"tout a été lu, mais quelque chose mérite un œil — "
-                            @"une taille de bloc réparée, un style inattendu, une "
-                            @"carte que la liste ne nomme pas.\n\n",
-                douteux, douteux == 1 ? "" : "s", douteux == 1 ? "" : "nt"];
+            [m appendFormat:@"%d cross-check%s of the file %s not add up: "
+                            @"everything was read, but something deserves a look — "
+                            @"a repaired block size, an unexpected style, a card "
+                            @"the list does not name.\n\n",
+                douteux, douteux == 1 ? "" : "s", douteux == 1 ? "does" : "do"];
         }
         /* CETTE PHRASE DISAIT « le texte est là, les styles non », ET C'EST
          * DEVENU FAUX : le bloc STBL est lu, et les plages de style arrivent
@@ -1598,15 +1609,15 @@ void cocoa_stack_changed(Object *stack) {
          * est là pour ça. */
         (void)decores;
         if (ressource_illisible)
-            [m appendFormat:@"LES ICÔNES N'ONT PAS PU ÊTRE LUES : la ressource "
-                            @"du fichier MacBinary est abîmée (%s). La pile "
-                            @"est là ; ses boutons à icône montreront une case "
-                            @"vide.\n\n", pourquoi_r];
-        [m appendString:@"Cette pile n'a pas encore de fichier : « Enregistrer » "
-                        @"demandera un nom, et l'original ne sera pas touché."];
+            [m appendFormat:@"THE ICONS COULD NOT BE READ: the resource of "
+                            @"the MacBinary file is damaged (%s). The stack is "
+                            @"there; its icon buttons will show an empty "
+                            @"square.\n\n", pourquoi_r];
+        [m appendString:@"This stack has no file yet: saving will ask for a "
+                        @"name, and the original will not be touched."];
 
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:[NSString stringWithFormat:@"« %@ » est ouverte", nom]];
+        [a setMessageText:[NSString stringWithFormat:@"“%@” is open", nom]];
         [a setInformativeText:m];
         [a runModal];
     }
@@ -1637,10 +1648,10 @@ void cocoa_stack_changed(Object *stack) {
                 if (hc_origine_reconnait(mb.donnees, mb.ndonnees))
                     return [self importeAuFormatHyperCard:path];
                 NSAlert *a = [[NSAlert alloc] init];
-                [a setMessageText:@"Ce fichier MacBinary ne contient pas une pile"];
+                [a setMessageText:@"This MacBinary file does not hold a stack"];
                 [a setInformativeText:[NSString stringWithFormat:
-                    @"%@\n\nSon type est « %s », et une pile HyperCard est "
-                    @"de type « STAK ».", [path lastPathComponent], mb.type]];
+                    @"%@\n\nIts type is “%s”, and a HyperCard stack is "
+                    @"of type “STAK”.", [path lastPathComponent], mb.type]];
                 [a runModal];
                 return NO;
             }
@@ -1657,7 +1668,7 @@ void cocoa_stack_changed(Object *stack) {
         NSLog(@"échec du chargement : %@ — %s", path,
               pourquoi ? pourquoi : "raison inconnue");
         NSAlert *a = [[NSAlert alloc] init];
-        [a setMessageText:@"Pile illisible"];
+        [a setMessageText:@"The stack cannot be read"];
         [a setInformativeText:
             pourquoi ? [NSString stringWithFormat:@"%@\n\n%s",
                                  [path lastPathComponent], pourquoi]
@@ -1739,15 +1750,15 @@ void cocoa_stack_changed(Object *stack) {
 - (void)newStack:(id)sender {
     if (hcv_menu_trappe("New Stack…")) return;   /* la pile détourne l'article */
     NSAlert *a = [[NSAlert alloc] init];
-    [a setMessageText:@"Nouvelle pile"];
-    [a setInformativeText:@"La pile ouverte sera fermée. "
-                           @"Ce qui n'a pas été enregistré sera perdu."];
-    [a addButtonWithTitle:@"Créer"];
-    [a addButtonWithTitle:@"Annuler"];
+    [a setMessageText:@"New Stack"];
+    [a setInformativeText:@"The open stack will be closed. "
+                           @"Anything not saved will be lost."];
+    [a addButtonWithTitle:@"Create"];
+    [a addButtonWithTitle:@"Cancel"];
 
     NSTextField *nameField =
         [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 240, 24)];
-    [nameField setStringValue:@"Sans titre"];
+    [nameField setStringValue:@"Untitled"];
     [a setAccessoryView:nameField];
     [[a window] setInitialFirstResponder:nameField];
 
@@ -1755,11 +1766,11 @@ void cocoa_stack_changed(Object *stack) {
 
     NSString *name = [[nameField stringValue]
         stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if ([name length] == 0) name = @"Sans titre";
+    if ([name length] == 0) name = @"Untitled";
 
     Object *st = hc_new_stack([name UTF8String]);
-    Object *bg = hc_new_background(st, "commun");
-    hc_new_card(st, bg, "carte 1");
+    Object *bg = hc_new_background(st, "");
+    hc_new_card(st, bg, "");
 
     [self installStack:st];
     gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */
