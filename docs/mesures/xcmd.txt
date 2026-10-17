@@ -894,11 +894,52 @@ l'appelle sans s'arrêter (arrêté après sa seconde), qui ne le guette pas
 L'INTERFACE COCOA (HCview.m) : COMPILÉE PAR LA CI, NON EXÉCUTÉE. Elle sera
 jouée DANS HC (l'application) avec l'enveloppe de MACCAM, qui vient.
 
+L'ENVELOPPE DE MACCAM, ÉCRITE le même soir : xcmd/maccam/maccam.c, sur
+la machine (maccam_coeur.c) et les fenêtres ci-dessus. Lu de plus dans le
+code de MACCAM pour l'écrire :
+  · L'APPEL, maccam(rect, titre, visible, style, couleur, flottante) : les
+    défauts de getParam — 50,50,100,100, « Sans Titre », visible, le
+    style 0x800 (que HC ne dessine pas), en couleur, flottante — ; rend
+    « true » ou « false ». La grille se fait à
+    xOpenEvt (DoOpen), à la taille du contenu ;
+  · LES TRENTE NOMS, dans l'ordre de leurs tables : hilite, name, visible,
+    height, width, rect, image0 à image7, scale, pln7 à pln0, palette,
+    PictResource, major, minor, alternate, phaseA, phaseB. setProp tient
+    tous les trente pour siens — pln3 à pln0 ne font rien ; getProp sert
+    hilite, name, visible, height, width, rect, image0, image1, phaseA et
+    phaseB, et passe le reste ;
+  · « the rect of window » : le portRect, décalé par GlobalToLocal du
+    point 0,0 — le contenu en coordonnées de l'écran, ce que HC sert
+    lui-même. Le gestionnaire movepict de la pile en retire « the rect of
+    card window » pour retomber sur la carte ;
+  · stepfast et ses sœurs : un pas, le dessin, les phases, PUIS Button ;
+    un pas au moins.
+Ce que l'enveloppe fait de ce que HC n'a pas : hilite est retenu sans se
+dessiner ; name, visible, height, width et rect passent à HC ; scale pose
+la largeur et la hauteur de sa fenêtre par SendCardMessage ; palette
+s'accepte sans effet ; PictResource et toscrap photographient la fenêtre.
+
+LE HARNAIS (xcmd, section 12) : ouverte comme dans la pile ; un rectangle
+illisible donne le défaut ; la règle de Conway, du FORTH à pln7 ; un
+planeur peint sur la carte, posé par image7 ; quatre pas, et il a avancé
+d'une case vers le sud-est ; image0 relit 4 096 caractères, image2 et
+pln7 passent ; scale refait la fenêtre carrée ; stepfast s'arrête au clic ;
+fill8, erasea, toscrap, PictResource ; fermée.
+
+MESURÉ dans le conteneur (Linux, WAMR « fast », le noyau en -O1) : un pas
+de la règle de Conway coûte 9,3 ms sur une grille de 256 × 256, image
+comprise — une centaine de pas par seconde —, et 32 ms sur 512 × 512.
+Sur un Mac : NON MESURÉ.
+
+À JOUER DANS HC (l'application), sur MAC•CAM Workshop : ajouter
+forth.wasm et maccam.wasm (Objects ▸ Modules…), ouvrir la fenêtre CAM par
+son bouton, compiler une règle, la charger, « step », puis « stepfast »
+arrêté d'un clic — et Cmd-., qui doit l'arrêter aussi en gardant la
+fenêtre.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
-  · l'enveloppe de MACCAM (xcmd/maccam/maccam.c) : ses trente propriétés
-    et ses dix-sept messages, sur la machine déjà écrite et la fenêtre
-    ci-dessus ;
+  · le banc ci-dessus, DANS HC ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.

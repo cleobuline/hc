@@ -102,6 +102,19 @@ static void xw_ferme(int id)
 static void xw_image(int id, const unsigned char *px, int l, int h,
                      const unsigned char *pal, int e)
 {
+    if (l * h > 6) {        /* la grille de MACCAM : le plan 0, ligne à ligne */
+        int autres = 0;
+        for (int i = 0; i < l * h; i++) autres += (px[i] & 0x70) != 0;
+        printf("      hôte : image de %d, %d × %d à l'échelle %d ; plans 1 à 3 : "
+               "%d point(s) ; couleur 0x80 = %d,%d,%d\n", id, l, h, e, autres,
+               pal[3 * 0x80], pal[3 * 0x80 + 1], pal[3 * 0x80 + 2]);
+        for (int y = 1; y < h - 1 && l <= 16 && h <= 16; y++) {
+            printf("         ");
+            for (int x = 1; x < l - 1; x++) putchar(px[y * l + x] & 0x80 ? '#' : '.');
+            putchar('\n');
+        }
+        return;
+    }
     printf("      hôte : image de %d, %d × %d à l'échelle %d :", id, l, h, e);
     for (int i = 0; i < l * h; i++) printf(" %d", px[i]);
     printf(" ; couleur 2 = %d,%d,%d\n", pal[6], pal[7], pal[8]);
@@ -121,7 +134,10 @@ static int xw_fenetre(int id, const char *quoi, const char *prop,
     return 1;
 }
 
-/* Un damier : la peinture d'une couche, comme la lirait l'hôte. */
+/* La peinture d'une couche, comme la lirait l'hôte : un damier, ou un
+ * dessin posé par le harnais — le planeur de MACCAM, par exemple. */
+static const char *const *g_dessin;
+
 static int peinture(Object *couche, const int r[4], unsigned char *noir)
 {
     printf("      hôte : la peinture de %s, %d,%d,%d,%d\n",
@@ -129,7 +145,11 @@ static int peinture(Object *couche, const int r[4], unsigned char *noir)
            r[0], r[1], r[2], r[3]);
     int k = 0;
     for (int y = r[1]; y < r[3]; y++)
-        for (int x = r[0]; x < r[2]; x++) noir[k++] = (unsigned char)((x + y) & 1);
+        for (int x = r[0]; x < r[2]; x++) {
+            if (!g_dessin) { noir[k++] = (unsigned char)((x + y) & 1); continue; }
+            const char *l = y >= 0 && y < 16 ? g_dessin[y] : NULL;
+            noir[k++] = l && x >= 0 && x < (int)strlen(l) && l[x] == '#';
+        }
     return 1;
 }
 
@@ -527,6 +547,58 @@ int main(int argc, char **argv)
     puts("   -- le module remplacé : ses fenêtres partent avec son instance");
     ajoute(st, D, "fenetres.wasm", "fenetres");
     fais("put there is a window \"Quatre\"");
+
+    /* MACCAM, la fenêtre de MAC•CAM, appelée comme le fait la pile : ouverte
+     * par l'XFCN, chargée par les tables du FORTH (section 10) et par la
+     * peinture de la carte, puis menée par ses messages. La machine a son
+     * propre harnais (maccam) ; ici, c'est le passage dans HC. */
+    puts("\n== 12. MACCAM : la fenêtre CAM de MAC•CAM ==");
+    ajoute(st, D, "maccam.wasm", "MACCAM");
+    fais("get maccam(\"10,40,22,52\", \"CAM\", \"True\", 17, \"True\", \"True\")");
+    fais("put it && the rect of window \"CAM\"");
+    fais("put maccam(\"pas un rectangle\")");         /* le défaut, et son titre */
+    fais("close window \"Sans Titre\"");
+    fais("set the palette of window \"cam\" to 128");  /* la nôtre reste */
+    puts("   -- la règle de Conway, du FORTH à pln7, comme « load »");
+    hc_set_script(st, "on charge f\n  global pln0\n  put FORTH(f) into p\n"
+                      "  set the pln7 of window \"CAM\" to pln0\n"
+                      "  set the major of window \"CAM\" to 0\nend charge");
+    fais("charge \"0 CONSTANT DEATH 1 CONSTANT BORN : UNCHANGED CENTER ; "
+         ": LIFE NORTH EAST SOUTH WEST N.WEST N.EAST S.WEST S.EAST "
+         "+ + + + + + + { DEATH DEATH UNCHANGED BORN DEATH DEATH DEATH "
+         "DEATH DEATH } >PLN0 ; MAKE-TABLE LIFE\"");
+    puts("   -- un planeur peint sur la carte, et image7 le pose sur le plan 0");
+    {
+        static const char *const PLANEUR[] = {
+            ".....", "..#..", "...#.", ".###.", ".....", NULL
+        };
+        g_dessin = PLANEUR;
+        fais("set the image7 of window \"CAM\" to \"0,0,5,5\"");
+        g_dessin = NULL;
+    }
+    puts("   -- quatre pas : une case vers le sud-est");
+    for (int i = 0; i < 3; i++) hc_do("send step to window \"CAM\"");
+    fais("send step to window \"CAM\"");
+    puts("   -- ce que l'original relisait, et ce qui passe");
+    fais("put the number of chars of the image0 of window \"CAM\"");
+    fais("put the image2 of window \"CAM\"");
+    fais("put the pln7 of window \"CAM\"");
+    fais("put the phaseA of window \"CAM\" && the phaseB of window \"CAM\"");
+    fais("put the hilite of window \"CAM\"");
+    puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
+    fais("set the scale of window \"CAM\" to 2");
+    puts("   -- stepfast, jusqu'au clic : trois pas");
+    g_souris = 3;
+    fais("send stepfast to window \"CAM\"");
+    puts("   -- fill8, erasea, toscrap, PictResource");
+    fais("send fill8 to window \"CAM\"");
+    fais("send erasea to window \"CAM\"");
+    fais("send toscrap to window \"CAM\"");
+    fais("set the PictResource of window \"CAM\" to \"x\"");
+    fais("send zorglub to window \"CAM\"");           /* passé : rien */
+    fais("close window \"CAM\"");
+    fais("put there is a window \"CAM\"");
+    hc_set_script(st, "");
     h.global_get = NULL;
 
     hc_unregister_stack(st);
