@@ -109,17 +109,30 @@ de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
 ressource PICT dans la pile, photographie la fenêtre. Comme l'original,
 `the image0` et `the image1` relisent les tables, et `the phaseA` fait bip.
 
-## Construire, et l'essayer
+## L'essayer
+
+Les deux modules sont déjà construits, dans le dépôt :
+
+- `tests/donnees/modules/forth.wasm`
+- `tests/donnees/modules/maccam.wasm`
+
+Dans HC, sur la pile MAC•CAM Workshop : Objects ▸ Modules… ▸ Add…, choisir
+les deux. Puis, sur une carte de l'atelier, le bouton qui compile (son
+ballon : « Permet de compiler le programme FORTH ») : le champ « Pile »
+montre ce que rend FORTH, et les champs Pln0 à PLN3 reçoivent les tables.
+Le bouton qui ouvre la fenêtre CAM (« Ouvre la fenêtre le la machine
+CAM ») l'ouvre ; les autres la chargent et la font tourner.
+
+## Les reconstruire
+
+Seulement après avoir changé leurs sources. Il faut un clang qui connaisse
+la cible WebAssembly — sur macOS, celui d'emsdk (voir `../LISEZMOI.md`) :
 
 ```
 cd xcmd
 make CLANG=~/emsdk/upstream/bin/clang
 ```
 
-donne `maccam/forth.wasm` et `maccam/maccam.wasm`. Dans HC, sur la pile
-MAC•CAM Workshop : Objects ▸ Modules… ▸ Add…, choisir les deux. Puis, sur
-une carte de l'atelier, le bouton qui compile (son ballon : « Permet de
-compiler le programme FORTH ») : le champ « Pile » montre ce que rend
-FORTH, et les champs Pln0 à PLN3 reçoivent les tables. Le bouton qui ouvre
-la fenêtre CAM (« Ouvre la fenêtre le la machine CAM ») l'ouvre ; les
-autres la chargent et la font tourner.
+donne `maccam/forth.wasm` et `maccam/maccam.wasm`, à côté de leurs sources ;
+`tests/donnees/modules/refais.sh` les recopie là où la suite de tests les
+lit.
