@@ -1046,6 +1046,20 @@ EXÉCUTÉE.
 fulldrag.wasm, puis glisser un carré de dessin sur un autre, et sur la
 fenêtre CAM.
 
+MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice : « j'ai
+bien la drag region quand je bouge le carré, mais ça copie pas le dessin
+dans le carré destination ». FullDrag fait donc sa part ; la copie est
+celle de movepict, qui rejoue le geste à la souris — choose select tool,
+un drag qui sélectionne le carré, « click at » son centre, puis « drag from
+the loc of the target to the loc of bg btn bt with optionkey ». LU dans
+cocoa_drag (HCview.m) : avec l'outil de sélection, un drag simulé faisait
+TOUJOURS une sélection neuve, même parti du milieu de la sélection ; le
+second drag remplaçait donc la sélection, et rien ne se copiait. À la
+souris, HC savait faire (mouseDown, section 5). CORRIGÉ le même jour : un
+drag simulé qui part dans la sélection la soulève, l'efface sauf Option
+tenue, et la fait flotter à l'arrivée ; choose browse tool la pose
+(dropFloating). COMPILÉ PAR LA CI, À REJOUER DANS HC.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas

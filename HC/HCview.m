@@ -2373,6 +2373,51 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
             break;
 
         case TOOL_SELRECT:
+            /* UN GLISSEMENT QUI PART DANS LA SÉLECTION LA DÉPLACE — et la
+             * COPIE, Option tenue —, comme à la souris (mouseDown, section 5).
+             * Ce cas manquait : le glissement refaisait une sélection neuve,
+             * et rien ne bougeait. Signalé DANS HC (l'application) le 17
+             * octobre, sur MAC•CAM Workshop, dont le gestionnaire movepict
+             * copie un carré de dessin sur un autre par
+             *
+             *     choose select tool
+             *     drag from the topleft of the target to the bottomright of the target
+             *     click at the loc of the target
+             *     drag from the loc of the target to the loc of bg btn bt with optionkey
+             *     choose browse tool
+             *
+             * La sélection soulevée flotte ; le changement d'outil la pose
+             * (dropFloating), comme à la souris. Un glissement qui part dans
+             * une sélection qui flotte déjà la déplace encore — ce que font
+             * les segments d'un « drag » ralenti par dragSpeed. Le lasso n'a
+             * pas ce cas : un script ne sait pas en tracer un. */
+            if (gFloating) {
+                NSRect fr = NSMakeRect(gFloatPos.x, gFloatPos.y, gClipW, gClipH);
+                if (NSPointInRect(a, fr)) {
+                    gFloatPos = NSMakePoint(gFloatPos.x + z.x - a.x,
+                                            gFloatPos.y + z.y - a.y);
+                    break;
+                }
+                [gView dropFloating];
+            }
+            if (gSelRectActive) {
+                NSRect sel = NSMakeRect(MIN(gSelStart.x, gSelEnd.x),
+                                        MIN(gSelStart.y, gSelEnd.y),
+                                        fabs(gSelEnd.x - gSelStart.x),
+                                        fabs(gSelEnd.y - gSelStart.y));
+                if (NSPointInRect(a, sel)) {
+                    [gView beginPaintUndo];
+                    copy_rect(rep, gSelStart, gSelEnd);
+                    if (!mods_has(mods, "option")) erase_rect(rep, gSelStart, gSelEnd);
+                    gFloating = YES;
+                    gFloatDragging = NO;
+                    gFloatPos = NSMakePoint(sel.origin.x + z.x - a.x,
+                                            sel.origin.y + z.y - a.y);
+                    gSelRectActive = NO;
+                    [gView startAntsTimer];
+                    break;
+                }
+            }
             /* Au lasso rectangulaire, un glissement ne dessine pas : il
              * SÉLECTIONNE. On pose directement l'état d'arrivée d'une
              * sélection faite à la souris, sans passer par gSelRectDrawing.
