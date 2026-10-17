@@ -1060,7 +1060,14 @@ drag simulé qui part dans la sélection la soulève, l'efface sauf Option
 tenue, et la fait flotter à l'arrivée ; choose browse tool la pose
 (dropFloating). COMPILÉ PAR LA CI, À REJOUER DANS HC.
 
-CE QUI RESTE AVANT MAC•CAM :
+MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice, après
+la correction du drag de script : « le drag'n drop fonctionne, je retrouve
+ma pile de 1990 en l'état, sans aucune modif ». LE JUGE DE CE CHANTIER EST
+ATTEINT : MAC•CAM Workshop tourne dans HC sans qu'une ligne de ses scripts
+ait changé — ses quatre externes (FORTH, MACCAM, Ballons, FullDrag) refaits
+en modules WebAssembly.
+
+CE QUI RESTE :
   · ce que les quatre bancs ci-dessus diront ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
