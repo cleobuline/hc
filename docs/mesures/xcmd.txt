@@ -1199,7 +1199,13 @@ remplacer forth.wasm par le nouveau (Objects ▸ Modules… ▸ Add…), puis le
 bouton « Executer » de chaque carte de démonstration ; une faute doit
 s'afficher dans un dialogue, et son mot être sélectionné dans le champ.
 
+MESURÉ DANS HC (l'application), le 17 octobre au soir, par l'utilisatrice,
+sur MAC•CAM FORTH avec le nouveau forth.wasm : « le sample récursivité
+fonctionne comme l'original ». La valeur affichée n'est pas relevée ; les
+autres cartes du banc ci-dessus ne sont pas encore rapportées.
+
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
-  · l'écart des commentaires, à trancher.
+  · l'écart des commentaires, à trancher ;
+  · le reste du banc de MAC•CAM FORTH, DANS HC.
 
