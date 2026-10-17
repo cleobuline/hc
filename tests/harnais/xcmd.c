@@ -511,6 +511,16 @@ int main(int argc, char **argv)
     fais("compile \"N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R\"");
     fais("compile \"1 2 3\"");
     fais("compile \": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB\"");   /* faute après la table */
+    /* LA FAUTE EST ENVOYÉE, comme le faisait l'original : les piles de
+     * l'utilisatrice la reçoivent par ces gestionnaires, et sélectionnent le
+     * mot fautif par « word b of fld "forth" ». Sans eux, HC dit que
+     * personne ne répond (ci-dessus). */
+    puts("   -- avec le gestionnaire que portent les piles de MAC•CAM");
+    hc_set_script(st, "on compile f\n  put FORTH(f) into p\n  put \"[\" & p & \"]\" after msg\n"
+                      "end compile\n"
+                      "on COMPILE_ERR a, b\n  put \"COMPILE_ERR \" & a & \"/\" & b & \" \" into msg\n"
+                      "end COMPILE_ERR");
+    fais("compile \"5 ( un commentaire ) : R CENTER ZORGLUB >PLN0 ;\"");
     hc_set_script(st, "");
 
     /* LES FENÊTRES : l'XFCN qui l'ouvre en reçoit les événements, comme
