@@ -14,4 +14,5 @@ char  *strncpy(char *d, const char *s, size_t n);
 char  *strcat(char *d, const char *s);
 char  *strchr(const char *s, int c);
 char  *strstr(const char *h, const char *n);
+size_t strcspn(const char *s, const char *rejet);
 #endif

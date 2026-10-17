@@ -12,7 +12,8 @@ CFLAGS   = --target=wasm32 -O2 -ffreestanding -nostdlib -isystem inc -I . \
            -Wall -Wextra
 LIENS    = -Wl,--no-entry -Wl,--strip-debug
 
-MODULES  = exemples/bonjour.wasm exemples/ballons.wasm maccam/forth.wasm \
+MODULES  = exemples/bonjour.wasm exemples/ballons.wasm exemples/fulldrag.wasm \
+           maccam/forth.wasm \
            maccam/maccam.wasm
 
 .PHONY: tout propre

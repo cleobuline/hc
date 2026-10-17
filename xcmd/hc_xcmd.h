@@ -211,6 +211,26 @@ int StrToRect(const char *s, Rect *r);
 int HMGetBalloons(void);
 int HMShowBalloon(const char *texte, const Rect *zone);
 
+/* L'ordre de QuickDraw : vertical, horizontal. */
+typedef struct Point { short v, h; } Point;
+
+/* LE GLISSER D'UN CONTOUR GRIS — le DragGrayRgn du Toolbox, qu'employait
+ * l'XFCN FullDrag. Tant que le bouton de la souris est enfoncé, le contour
+ * des `n` rectangles suit la souris, depuis le point `depart`, sans que la
+ * souris sorte de `limite` ; hors de `marge`, il disparaît. `axe` : 0 libre,
+ * 1 seulement à l'horizontale, 2 seulement à la verticale. Tout en
+ * coordonnées carte.
+ *
+ * Rend le déplacement comme le Toolbox : le vertical dans le mot haut,
+ * l'horizontal dans le mot bas (HiWord, LoWord) ; 0x80008000 si l'on a
+ * lâché hors de `marge` ; 0 si le bouton était déjà relâché. La région du
+ * Toolbox se réduit ici à des rectangles. */
+long DragGrayRgn(const Rect *rects, int n, Point depart, const Rect *limite,
+                 const Rect *marge, int axe);
+
+#define HiWord(x) ((short)((unsigned long)(x) >> 16))
+#define LoWord(x) ((short)((unsigned long)(x) & 0xffff))
+
 /* DÉCLARER UN XCMD OU UN XFCN.
  *
  * Chacun devient une fonction exportée sous le nom « XCMD bonjour » ou

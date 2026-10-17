@@ -572,3 +572,44 @@
       hôte : les bulles sont-elles allumées ? oui
       hôte : bulle « le texte reste », tant que la souris est dans 0,0,0,0
          ⚙ XCMD ballons
+
+== 14. FullDrag : le glisser d'un contour gris ==
+   ajoute fulldrag.wasm (5458 octets) : accepté
+   -- sans hôte qui sache glisser : 0,0
+   put fulldrag("10,20,30,40", "0,0,512,342")
+      = 0,0
+   -- le bouton déjà relâché : 0,0, sans glisser
+   put fulldrag("10,20,30,40", "0,0,512,342")
+      = 0,0
+   -- enfoncé : deux rectangles, une ligne chacun, et le déplacement
+   put fulldrag("10,20,30,40" & return & "50,50,60,60", "0,0,512,342")
+      hôte : contour de 2 rectangle(s) : 10,20,30,40 50,50,60,60 ; départ 50,60 ; limite 0,0,512,342 ; marge 0,0,512,342 ; axe 0
+      = 40,-10
+   -- lâché hors de la limite : 0,0
+   put fulldrag("10,20,30,40", "0,0,512,342")
+      hôte : contour de 1 rectangle(s) : 10,20,30,40 ; départ 50,60 ; limite 0,0,512,342 ; marge 0,0,512,342 ; axe 0
+      = 0,0
+   -- sans limite : la carte
+   put fulldrag("10,20,30,40")
+      hôte : contour de 1 rectangle(s) : 10,20,30,40 ; départ 50,60 ; limite 0,0,512,342 ; marge 0,0,512,342 ; axe 0
+      = 40,-10
+   -- Majuscule : un seul axe, selon le premier mouvement
+   put fulldrag("10,20,30,40", "0,0,512,342")
+      hôte : contour de 1 rectangle(s) : 10,20,30,40 ; départ 50,60 ; limite 0,0,512,342 ; marge 0,0,512,342 ; axe 1
+      = 40,0
+   put fulldrag("10,20,30,40", "0,0,512,342")
+      hôte : contour de 1 rectangle(s) : 10,20,30,40 ; départ 50,60 ; limite 0,0,512,342 ; marge 0,0,512,342 ; axe 2
+      = 0,-10
+   -- les fautes, avec les messages de l'original
+   put fulldrag()
+      = Error : Missing or empty rect parameter
+   put fulldrag("")
+      = Error : Missing or empty rect parameter
+   put fulldrag("10,20,30")
+      = Error : Incorrect rect in param #1
+   put fulldrag("10,20,30,40" & return & "zorglub")
+      = Error : Incorrect rect in param #1
+   put fulldrag("10,20,30,40", "zorglub")
+      = Error : Incorrect limit rect
+   put fulldrag("10,20,30,40", "0,0,512,342", "the mouse is down", "beep")
+      = Error : <test>, <if true> and <if false> are not supported by HC yet

@@ -8,4 +8,5 @@ void *realloc(void *p, size_t n);
 void  free(void *p);
 long  strtol(const char *s, char **fin, int base);
 int   atoi(const char *s);
+int   abs(int x);
 #endif

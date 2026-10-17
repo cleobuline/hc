@@ -10,8 +10,10 @@ HyperCard grâce à deux XFCN :
 | `FORTH` | compile les règles écrites en Forth, en tables | **`forth.c`** |
 | `MACCAM` | la fenêtre de la machine, qui applique les tables | **`maccam.c`**, sur sa machine **`maccam_coeur.c`** |
 
-Et une XCMD, `Ballons`, les bulles d'aide de ses boutons : refaite pour
-toutes les piles, dans `../exemples/ballons.c`.
+Et deux externes de plus, refaites pour toutes les piles : l'XCMD
+`Ballons`, les bulles d'aide de ses boutons (`../exemples/ballons.c`), et
+l'XFCN `FullDrag`, qui fait glisser un carré de dessin sur un autre ou sur
+la fenêtre CAM (`../exemples/fulldrag.c`).
 
 Le but : la pile d'origine tourne dans HC **sans changer une ligne de ses
 scripts**. La pile elle-même ne se commet pas ; ce qu'on y a mesuré est dans
@@ -114,14 +116,15 @@ ressource PICT dans la pile, photographie la fenêtre. Comme l'original,
 
 ## L'essayer
 
-Les trois modules sont déjà construits, dans le dépôt :
+Les quatre modules sont déjà construits, dans le dépôt :
 
 - `tests/donnees/modules/forth.wasm`
 - `tests/donnees/modules/maccam.wasm`
 - `tests/donnees/modules/ballons.wasm`
+- `tests/donnees/modules/fulldrag.wasm`
 
 Dans HC, sur la pile MAC•CAM Workshop : Objects ▸ Modules… ▸ Add…, choisir
-les trois. Les bulles des boutons s'allument par Help ▸ Show Balloons. Puis, sur une carte de l'atelier, le bouton qui compile (son
+les quatre. Les bulles des boutons s'allument par Help ▸ Show Balloons. Puis, sur une carte de l'atelier, le bouton qui compile (son
 ballon : « Permet de compiler le programme FORTH ») : le champ « Pile »
 montre ce que rend FORTH, et les champs Pln0 à PLN3 reçoivent les tables.
 Le bouton qui ouvre la fenêtre CAM (« Ouvre la fenêtre le la machine
