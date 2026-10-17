@@ -157,7 +157,7 @@ static HCDocument *gCurrentDoc = nil;
     [d registerDocument];
     [win setTitle:path ? [path lastPathComponent]
                        : (stack->name ? hcv_texte(stack->name)
-                                      : @"Sans titre")];
+                                      : @"Untitled")];
     [win makeKeyAndOrderFront:nil];
     /* La vue doit être premier répondant, pas seulement présente.
      *

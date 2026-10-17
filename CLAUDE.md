@@ -12,6 +12,19 @@ Shakespeare.
 Les messages de commit sont en français aussi (voir plus bas). Seules les
 notes de version, dans docs/releases/, s'écrivent en anglais.
 
+## HC PARLE ANGLAIS À SES UTILISATEURS, SES SOURCES RESTENT EN FRANÇAIS
+
+Décidé par l'utilisatrice le 17 octobre, après un commentaire public sur les
+dialogues en français : tout ce que HC affiche — dialogues, alertes,
+messages, menus — passe en anglais, lot par lot. Les commentaires des
+sources restent en français, « que ça plaise ou non ». Le panneau « À
+propos » reste bilingue, voulu ainsi. Les NSLog et les traces de mise au
+point ne sont pas des textes d'utilisateur : ils restent en français.
+
+Quand HC imite une erreur d'HyperCard, le bon texte anglais est celui
+d'HyperCard, au mot près : il se mesure DANS HYPERCARD (Basilisk II), et
+s'écrit « non mesuré » tant qu'il ne l'est pas.
+
 ## « the skipErrors » EST UN SECRET
 
 Propriété propre à HC, ajoutée le 1er octobre à la demande de l'utilisatrice
