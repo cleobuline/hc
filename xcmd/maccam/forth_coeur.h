@@ -54,13 +54,19 @@ extern signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS];
 const char *forth_nom_voisin(int v);
 
 typedef struct {
-    char plans[FORTH_PLANS][FORTH_TABLE + 1];  /* « 0 » et « 1 », zéro final */
-    int  ecrits;        /* bit k : une MAKE-TABLE a rempli le plan k */
+    /* « 0 » et « 1 » ; un zéro final, et un zéro là où rien n'a été écrit :
+     * le texte s'arrête à la première entrée qu'aucun >PLNk n'a remplie. */
+    char plans[FORTH_PLANS][FORTH_TABLE + 1];
+    int  ecrits;        /* bit k : un >PLNk a écrit dans le plan k */
     int  voisinage;     /* FORTH_MOORE… */
-    char rendu[512];    /* ce que FORTH() rend : la pile, ou la faute */
+    int  bips;          /* les BEEP : l'original appelait SysBeep */
+    char faute[160];    /* la ligne qu'il envoyait à la carte, ou "" */
+    char rendu[3000];   /* ce que FORTH() rend : la pile, sommet en tête */
 } ForthSortie;
 
-/* Compile `source` : rend 0, ou -1 sur une faute, que `rendu` dit. */
+/* Compile et exécute `source` : rend 0, ou -1 sur une faute, que `faute`
+ * dit dans la forme de l'original — une ligne de HyperTalk, faite pour être
+ * envoyée à la carte. `rendu` porte la pile dans les deux cas. */
 int forth_compile(const char *source, ForthSortie *s);
 
 #endif

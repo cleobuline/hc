@@ -1,21 +1,29 @@
 /* forth_coeur.c — le FORTH de MAC•CAM, sans HC autour (forth_coeur.h).
  *
- * Il ne compile pas au sens strict : pour chacune des 4 096 entrées d'une
- * table, il pose les valeurs du voisinage que l'index désigne, et EXÉCUTE la
- * règle, mot après mot. Ce qu'elle envoie par >PLN0 … >PLN3 devient le
- * caractère de cette entrée. C'est la mécanique du Forth de maccam-6
- * (cam_forth.c, du même auteur) ; le dialecte, lui, est celui des années 90,
- * et l'ordre des bits celui des tables que la pile garde.
+ * LE MODÈLE EST L'ORIGINAL, LU DANS SON CODE 68000 (l'XFCN FORTH de MAC•CAM
+ * Workshop, désassemblée ; docs/mesures/xcmd.txt), et dans la pile de
+ * démonstration où l'utilisatrice le décrivait en 1990 (MAC•CAM FORTH,
+ * jamais commise). L'original compilait du vrai code 68000 : A3 était la pile
+ * des paramètres, A7 celle du système, où vivaient les adresses de retour et
+ * les boucles. On en refait la mécanique, case pour case, parce que la pile de
+ * démonstration s'en sert : HOP retire une adresse de retour par
+ * « R> R> DROP DROP », et des mots y sont écrits en code machine par « , ».
  *
- * Un mot de l'utilisatrice passe AVANT les mots de base : ses programmes
- * définissent eux-mêmes RAND, ECHO, CENTERS, >PLNA ou <>, et c'est leur
- * définition qui doit répondre.
+ *   · les nombres font 16 BITS, signés ; vrai vaut -1 ;
+ *   · un mot entre au dictionnaire dès « : » — la récursion directe —, et
+ *     la recherche rend la PREMIÈRE entrée de ce nom : une redéfinition ne
+ *     cache pas l'ancienne ;
+ *   · les majuscules comptent : « mille » n'est pas « MILLE » ;
+ *   · au premier niveau, seuls « : », les mots du dictionnaire (ceux de
+ *     l'utilisatrice, MAKE-TABLE, CONSTANT…), les constantes, les variables
+ *     et les nombres agissent ; un mot de base y est sans effet ;
+ *   · une faute s'ENVOIE à la carte (SendCardMessage), et FORTH() rend la
+ *     pile quand même, sommet en tête.
  *
  * Écrit pour tourner dans un module de HC (le kit xcmd/, sans système) comme
- * dans un programme ordinaire, pour l'éprouver sur l'oracle : il n'emploie
+ * dans un programme ordinaire, pour l'éprouver sur les oracles : il n'emploie
  * que ce que le kit fournit. */
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,10 +33,12 @@
 /* ---- la disposition des bits ---- */
 
 /* LES HUIT TABLES DU FORTH D'ORIGINE, recopiées de son code, dans l'ordre
- * des bits (docs/mesures/xcmd.txt). Trois sont aussi MESURÉES sur les tables
- * de la pile — Moore, von Neumann, Margolus-PH —, et le moteur de MACCAM
- * fabrique ses index de la même façon : trois sources d'accord. Les numéros
- * sont ceux de « major », dans les scripts comme dans MACCAM. */
+ * des bits (docs/mesures/xcmd.txt). Chaque déclaration recopie ses douze noms
+ * dans les douze premières constantes : CENTER, NORTH… sont des constantes,
+ * que MAKE-TABLE remplit à chaque entrée. Trois sont aussi MESURÉES sur les
+ * tables de la pile — Moore, von Neumann, Margolus-PH —, et le moteur de
+ * MACCAM fabrique ses index de la même façon. Les numéros sont ceux de
+ * « major », dans les scripts comme dans MACCAM. */
 signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS] = {
     [FORTH_MOORE] = {
         V_EAST, V_SEAST, V_NEAST, V_CENTER, V_SOUTH, V_NORTH,
@@ -71,565 +81,944 @@ const char *forth_nom_voisin(int v)
     return v >= 0 && v < V_NOMBRE ? NOMS_VOISINS[v] : "-";
 }
 
-/* ---- les mots de base ---- */
+/* ---- les mots ---- */
+
+/* LES MOTS DE BASE, dans l'ordre de la table de l'original. Ils ne servent
+ * que dans une définition. « ≠ », « ≥ » et « ≤ » y sont, mais leur
+ * compilation tombait sur le piège _Debugger et n'émettait rien : ils sont
+ * sans effet. Les trois sont écrits ici en UTF-8, celui des champs de HC. */
+enum {
+    P_DUP, P_DROP, P_SWAP, P_ROT, P_OVER,
+    P_PLUS, P_MOINS, P_FOIS, P_DIVISE,
+    P_NOT, P_AND, P_XOR, P_OR,
+    P_INF, P_SUP, P_DIFF, P_EGAL, P_SUPEG, P_INFEG,
+    P_ACCOLADE, P_FERMANTE, P_IF, P_THEN, P_ELSE, P_DO, P_LOOP,
+    P_BEGIN, P_WHILE, P_REPEAT, P_UNTIL,
+    P_VIRGULE, P_LIT, P_ECRIT, P_VERS_R, P_DE_R,
+    P_NOMBRE
+};
+
+static const char *const PRIMITIVES[P_NOMBRE] = {
+    "DUP", "DROP", "SWAP", "ROT", "OVER",
+    "+", "-", "*", "/",
+    "NOT", "AND", "XOR", "OR",
+    "<", ">", "\xe2\x89\xa0", "=", "\xe2\x89\xa5", "\xe2\x89\xa4",
+    "{", "}", "IF", "THEN", "ELSE", "DO", "LOOP",
+    "BEGIN", "WHILE", "REPEAT", "UNTIL",
+    ",", "@", "!", ">R", "R>",
+};
+
+/* LE DICTIONNAIRE de départ, dans l'ordre où l'original l'enregistre. Les
+ * mots de l'utilisatrice s'y ajoutent ; on y cherche avant les mots de base. */
+enum {
+    M_MAKE_TABLE, M_PLN0, M_PLN1, M_PLN2, M_PLN3, M_BEEP,
+    M_VARIABLE, M_CONSTANT, M_DECLARATION,
+    M_INTERNES = M_DECLARATION + FORTH_VOISINAGES
+};
+
+static const char *const INTERNES[M_INTERNES] = {
+    "MAKE-TABLE", ">PLN0", ">PLN1", ">PLN2", ">PLN3", "BEEP",
+    "VARIABLE", "CONSTANT",
+    "N/MOORE", "N/VONN", "N/MARG-PH", "N/MARG-HV",
+    "N/MOORE-PH", "N/MOORE-HV", "N/VONN-PH", "N/VONN-HV",
+};
+
+/* ---- les tailles de l'original ---- */
 
 enum {
-    P_PLUS, P_MOINS, P_FOIS, P_DIVISE, P_MOD, P_NEGATE, P_ABS,
-    P_2FOIS, P_2DIVISE, P_1PLUS, P_1MOINS,
-    P_AND, P_OR, P_XOR, P_NOT,
-    P_EGAL, P_INF, P_SUP, P_ZEGAL, P_ZINF, P_ZSUP,
-    P_DUP, P_DROP, P_SWAP, P_OVER, P_ROT,
-    P_LIT, P_ECRIT,
-    P_PLN0, P_PLN1, P_PLN2, P_PLN3,
-    P_BEEP,
-    P_NOMBRE_
+    /* La pile des paramètres : 800 octets sous son fond, dans un tampon de
+     * $2008. Au-delà du fond, des zéros : l'original n'y voyait pas de faute,
+     * et un DROP de trop y lisait 0. */
+    PILE_FOND   = 400,
+    PILE_CASES  = 0x2008 / 2,
+    PILE_MARGE  = 10,           /* MAKE-TABLE s'arrête à 20 octets du bas */
+    /* La pile du système. L'original n'avait pas d'autre borne que la
+     * mémoire, et une récursion sans fin « vous emporte très vite vers le
+     * redémarrage obligatoire » ; ici, elle s'arrête en STACK_ERR. */
+    RETOUR_CASES = 8192,
+    /* La zone des constantes et des variables, $190 octets : les constantes
+     * à partir de son origine (0, 2, 4…), les variables en dessous (-2, -4…).
+     * @ et ! y lisent et y écrivent. */
+    ZONE_CASES   = 0x190 / 2,
+    ZONE_ORIGINE = 0xc6,
+    CONSTANTES   = 100,
+    VARIABLES    = 99,
+    DICTIONNAIRE = 200
 };
 
-static const struct { const char *nom; int p; } PRIMITIVES[] = {
-    { "+", P_PLUS }, { "-", P_MOINS }, { "*", P_FOIS }, { "/", P_DIVISE },
-    { "MOD", P_MOD }, { "NEGATE", P_NEGATE }, { "ABS", P_ABS },
-    { "2*", P_2FOIS }, { "2/", P_2DIVISE }, { "1+", P_1PLUS },
-    { "1-", P_1MOINS },
-    { "AND", P_AND }, { "OR", P_OR }, { "XOR", P_XOR }, { "NOT", P_NOT },
-    { "=", P_EGAL }, { "<", P_INF }, { ">", P_SUP }, { "0=", P_ZEGAL },
-    { "0<", P_ZINF }, { "0>", P_ZSUP },
-    { "DUP", P_DUP }, { "DROP", P_DROP }, { "SWAP", P_SWAP },
-    { "OVER", P_OVER }, { "ROT", P_ROT },
-    { "@", P_LIT }, { "!", P_ECRIT },
-    { ">PLN0", P_PLN0 }, { ">PLN1", P_PLN1 }, { ">PLN2", P_PLN2 },
-    { ">PLN3", P_PLN3 },
-    { "BEEP", P_BEEP },
-};
-
-/* Les déclarations : lues au premier niveau, sans effet sur la pile. Les
- * scripts de la pile lisent ALTERNATE eux-mêmes dans le texte. */
-static const struct { const char *nom; int voisinage; } DECLARATIONS[] = {
-    { "N/MOORE", FORTH_MOORE }, { "N/VONN", FORTH_VONN },
-    { "N/MARG-PH", FORTH_MARG_PH }, { "N/MARG-HV", FORTH_MARG_HV },
-    { "N/MOORE-HV", FORTH_MOORE_HV }, { "N/MOORE-PH", FORTH_MOORE_PH },
-    { "N/VONN-PH", FORTH_VONN_PH }, { "N/VONN-HV", FORTH_VONN_HV },
-    { "ALTERNATE", -1 },
-};
-
-/* ---- les jetons ---- */
+/* ---- le code compilé ---- */
 
 enum {
-    K_RIEN, K_NOMBRE, K_VOISIN, K_DEF, K_CONSTANTE, K_VARIABLE, K_PRIM,
-    K_IF, K_ELSE, K_THEN, K_ACCOLADE, K_FERMANTE,
-    K_DO, K_LOOP, K_I, K_BEGIN, K_UNTIL, K_WHILE, K_REPEAT,
-    K_INCONNU
+    OP_LIT,         /* pousse arg */
+    OP_CONST,       /* pousse la constante arg, lue à l'exécution */
+    OP_APPEL,       /* appelle le mot arg du dictionnaire */
+    OP_PRIM,        /* un mot de base, arg */
+    OP_SAUT,        /* va en arg */
+    OP_SAUTZ,       /* dépile ; va en arg si c'est 0 */
+    OP_DO,          /* limite et départ, vers la pile retour */
+    OP_TEST,        /* l'index avance ; si la limite est dépassée, va en arg */
+    OP_FINDO,       /* retire index et limite de la pile retour */
+    OP_ACCOLADE,    /* { … } : arg est son rang dans m->acc */
+    OP_BRUT,        /* un mot de code machine, déposé par « , » : arg */
+    OP_BRUT_FAUX,   /* « , » après autre chose qu'un nombre */
+    OP_RETOUR
 };
 
-typedef struct {
-    char *t;            /* le mot, en capitales */
-    int   lien;         /* l'autre bout d'une structure, ou -1 */
-    int   genre, val;   /* ce qu'il désigne, résolu… */
-    int   version;      /* … pour cette version du dictionnaire, */
-    int   fige;         /* … ou une fois pour toutes, dans une définition */
-} Jeton;
+typedef struct { int op, arg; } Instr;
+typedef struct { const char *nom; int debut; } Mot;   /* debut < 0 : -1 - interne */
 
-typedef struct { const char *nom; int debut, fin; } Definition;
-typedef struct { const char *nom; int val, variable; } Constante;
-
-enum { PILE = 64, RETOUR = 32, PROFONDEUR = 64, CELLULES = 64 };
+/* Les structures ouvertes pendant une définition. */
+enum { S_IF, S_ELSE, S_BEGIN, S_WHILE, S_DO, S_ACCOLADE };
+typedef struct { int genre, ou; } Ouvert;
 
 typedef struct {
-    Jeton      *j;
-    int         nj;
-    Definition *defs;
-    int         ndefs;
-    Constante  *consts;
-    int         nconsts;
-    int         variables[CELLULES];
+    char      **mots;        /* le texte, découpé */
+    int         nmots;
+    int         lu;          /* le prochain mot à lire */
+    int         position;    /* le rang du dernier mot lu, commentaires compris */
+
+    Mot        *dico;
+    int         ndico;
+    const char *constantes[CONSTANTES];
+    int         nconstantes;
+    const char *variables[VARIABLES];
     int         nvariables;
-    int         version;
+    short       zone[ZONE_CASES];
 
-    int  pile[PILE];
-    int  sp;
-    int  retour[RETOUR][2];         /* DO … LOOP : index, limite */
-    int  rp;
-    int  profondeur;
+    Instr      *code;
+    int         ncode, capcode;
+    int        *acc;         /* pour chaque { … } : nombre, fin, puis les débuts */
+    int         nacc, capacc;
 
-    unsigned char voisin[V_NOMBRE];
-    int  envoi[FORTH_PLANS];
-    int  envoye;                    /* bit k : >PLNk pendant cette entrée */
+    int         compile;     /* une définition est ouverte */
+    int         rang_nom;    /* le rang de son nom, pour NEST_ERR */
+    int         mal_imbrique;
+    Ouvert      ouverts[64];
+    int         nouverts;
+    int         elements;    /* dans une { … } : les débuts, en attente */
+    int         debuts[64];
 
-    const char *faute;
-    int         position;           /* le rang du mot du premier niveau */
+    short       pile[PILE_CASES];
+    int         a3;          /* le sommet ; vide : PILE_FOND */
+    short       retour[RETOUR_CASES];
+    int         a7;          /* le sommet ; vide : RETOUR_CASES */
+    int         d[8];        /* les registres de données du code machine */
+
+    int         voisinage;
+    int         entree;      /* l'entrée de MAKE-TABLE ; >PLNk y écrit */
+    int         pile_hors;   /* MAKE-TABLE a trouvé la pile hors de ses bornes */
+
+    ForthSortie *s;
+    const char  *faute;
+    int          rang_faute;
 } Vm;
 
-static char *copie_capitales(const char *s, size_t n)
+/* ---- les fautes ---- */
+
+/* LES FAUTES, dans la forme de l'original : ses chaînes, lues dans son code,
+ * « INTERPRET_ERR "Can't understand ", %i ». Il les ENVOYAIT à la carte : les
+ * piles de l'utilisatrice ont les gestionnaires qui les reçoivent, et qui
+ * sélectionnent le mot fautif par « select word b of fld "forth" ». Le
+ * nombre est donc le rang du mot dans le texte, commentaires compris — le
+ * compteur que l'original avance à chaque mot lu. */
+static const char ERR_COMPRIS[]   = "INTERPRET_ERR \"Can't understand \"";
+static const char ERR_SEULEMENT[] =
+    "INTERPRET_ERR \"End definition (;) Compile Only  \"";
+static const char ERR_PILE[]      = "STACK_ERR \"Stack problem during execution \"";
+static const char ERR_INCONNU[]   = "COMPILE_ERR \"Unknow'd word \"";
+static const char ERR_COLON[]     = "COMPILE_ERR \"COLON inside definition  \"";
+static const char ERR_IMBRIQUE[]  = "NEST_ERR \"Unnested condition \"";
+static const char ERR_MEMOIRE[]   = "out of memory";
+
+static void faute(Vm *m, const char *quoi, int rang)
 {
-    char *c = malloc(n + 1);
-    if (!c) return NULL;
-    for (size_t i = 0; i < n; i++) c[i] = (char)toupper((unsigned char)s[i]);
-    c[n] = '\0';
-    return c;
+    if (m->faute) return;
+    m->faute = quoi;
+    m->rang_faute = rang;
 }
 
-/* Découpe le source en mots. « ( … ) » est un commentaire, sur autant de
- * lignes qu'il veut. */
+/* ---- le texte ---- */
+
+/* LES MOTS sont séparés par des espaces et des retours — le retour de HC
+ * comme celui du Mac. Une tabulation, l'original la gardait dans le mot. */
+static int separateur(char c) { return c == ' ' || c == '\r' || c == '\n'; }
+
 static int decoupe(Vm *m, const char *s)
 {
     int cap = 64;
-    m->j = malloc((size_t)cap * sizeof *m->j);
-    if (!m->j) return -1;
-    m->nj = 0;
-    const char *p = s;
-    for (;;) {
-        while (*p && isspace((unsigned char)*p)) p++;
+    m->mots = malloc((size_t)cap * sizeof *m->mots);
+    if (!m->mots) return -1;
+    for (const char *p = s;;) {
+        while (*p && separateur(*p)) p++;
         if (!*p) break;
         const char *d = p;
-        while (*p && !isspace((unsigned char)*p)) p++;
-        if (*d == '(') {
-            const char *f = strchr(d, ')');
-            p = f ? f + 1 : d + strlen(d);
-            continue;
-        }
-        if (m->nj == cap) {
+        while (*p && !separateur(*p)) p++;
+        if (m->nmots == cap) {
             cap *= 2;
-            Jeton *n = realloc(m->j, (size_t)cap * sizeof *n);
+            char **n = realloc(m->mots, (size_t)cap * sizeof *n);
             if (!n) return -1;
-            m->j = n;
+            m->mots = n;
         }
-        Jeton *j = &m->j[m->nj++];
-        memset(j, 0, sizeof *j);
-        j->t = copie_capitales(d, (size_t)(p - d));
-        j->lien = -1;
-        j->version = -1;
-        if (!j->t) return -1;
+        char *t = malloc((size_t)(p - d) + 1);
+        if (!t) return -1;
+        memcpy(t, d, (size_t)(p - d));
+        t[p - d] = '\0';
+        m->mots[m->nmots++] = t;
     }
     return 0;
 }
 
-static int est(const Jeton *j, const char *mot) { return !strcmp(j->t, mot); }
-
-/* Relie IF, ELSE et THEN, { et }, DO et LOOP, BEGIN et UNTIL ou REPEAT,
- * entre `debut` et `fin`. Rend 0, ou -1 si une structure est mal fermée. */
-static int relie(Vm *m, int debut, int fin)
+/* Le mot suivant, ou NULL. Chaque mot lu avance le compteur. */
+static const char *lis(Vm *m)
 {
-    int ouvert[PILE], n = 0;
-    for (int i = debut; i < fin; i++) {
-        Jeton *j = &m->j[i];
-        if (est(j, "IF") || est(j, "{") || est(j, "DO") || est(j, "BEGIN")) {
-            if (n == PILE) return -1;
-            ouvert[n++] = i;
-        } else if (est(j, "ELSE")) {
-            if (!n || !est(&m->j[ouvert[n - 1]], "IF")) return -1;
-            m->j[ouvert[n - 1]].lien = i;
-            ouvert[n - 1] = i;
-        } else if (est(j, "THEN")) {
-            if (!n) return -1;
-            Jeton *o = &m->j[ouvert[n - 1]];
-            if (!est(o, "IF") && !est(o, "ELSE")) return -1;
-            o->lien = i;
-            n--;
-        } else if (est(j, "}")) {
-            if (!n || !est(&m->j[ouvert[n - 1]], "{")) return -1;
-            m->j[ouvert[--n]].lien = i;
-        } else if (est(j, "LOOP")) {
-            if (!n || !est(&m->j[ouvert[n - 1]], "DO")) return -1;
-            j->lien = ouvert[--n];
-        } else if (est(j, "UNTIL") || est(j, "REPEAT")) {
-            if (!n || !est(&m->j[ouvert[n - 1]], "BEGIN")) return -1;
-            j->lien = ouvert[--n];
-        } else if (est(j, "WHILE")) {
-            /* Relié à son REPEAT quand on le trouvera : on cherche devant. */
-            int k = i + 1, prof = 0;
-            for (; k < fin; k++) {
-                if (est(&m->j[k], "BEGIN")) prof++;
-                else if (est(&m->j[k], "UNTIL")) prof--;
-                else if (est(&m->j[k], "REPEAT") && prof-- == 0) break;
-            }
-            if (k == fin) return -1;
-            j->lien = k;
-        }
+    if (m->lu >= m->nmots) return NULL;
+    m->position = ++m->lu;
+    return m->mots[m->lu - 1];
+}
+
+/* « ( … ) » : un mot qui COMMENCE par « ( » ouvre le commentaire, le premier
+ * mot qui COMMENCE par « ) » le ferme, et le mot d'après est lu. Sans « ) »,
+ * l'original tournait sans fin ; ici, le texte s'arrête.
+ *
+ * UN ÉCART, VOULU : l'original ne sautait qu'UN commentaire par mot lu, et
+ * deux de suite lui faisaient lire « ( » comme un mot — « Can't
+ * understand ». Deux cartes de MAC•CAM Workshop, « Terminator 3• » et
+ * « B-Gas Dentrite VF• », ont ALTERNATE mis entre parenthèses juste avant un
+ * autre commentaire, retouche faite après leurs tables : le champ Pile de
+ * Terminator 3• garde le -4 qu'ALTERNATE y laissait. HC saute tous les
+ * commentaires qui se suivent, pour qu'elles se compilent encore. */
+static const char *saute_commentaire(Vm *m, const char *t)
+{
+    while (t && t[0] == '(') {
+        do t = lis(m); while (t && t[0] != ')');
+        if (t) t = lis(m);
     }
-    return n ? -1 : 0;
+    return t;
 }
 
 /* ---- le dictionnaire ---- */
 
-static int cherche_def(const Vm *m, const char *nom)
+static int cherche(const char *const *noms, int n, const char *t)
 {
-    for (int i = m->ndefs - 1; i >= 0; i--)
-        if (!strcmp(m->defs[i].nom, nom)) return i;
+    for (int i = 0; i < n; i++)
+        if (noms[i] && !strcmp(noms[i], t)) return i;
     return -1;
 }
 
-static int cherche_const(const Vm *m, const char *nom)
+static int cherche_mot(const Vm *m, const char *t)
 {
-    for (int i = m->nconsts - 1; i >= 0; i--)
-        if (!strcmp(m->consts[i].nom, nom)) return i;
+    for (int i = 0; i < m->ndico; i++)
+        if (!strcmp(m->dico[i].nom, t)) return i;
     return -1;
 }
 
-static int nombre(const char *t, int *v)
+/* Un nombre : un signe s'il en faut un, puis des chiffres, et rien d'autre.
+ * L'original le lit en entier long, puis n'en garde que les 16 bits bas. */
+static int nombre(const char *t, short *v)
 {
-    char *fin;
-    long n = strtol(t, &fin, 10);
-    if (fin == t || *fin) return 0;
-    *v = (int)n;
+    const char *p = t + (*t == '-' || *t == '+');
+    if (!*p) return 0;
+    for (const char *q = p; *q; q++)
+        if (*q < '0' || *q > '9') return 0;
+    *v = (short)(strtol(t, NULL, 10) & 0xffff);
     return 1;
 }
 
-/* Ce que désigne un mot, dans l'ordre : l'utilisatrice, puis les nombres,
- * puis les mots de base. */
-static void resous(Vm *m, Jeton *j)
+enum { C_DEUX_POINTS, C_POINT_VIRGULE, C_MOT, C_PRIMITIVE, C_CONSTANTE,
+       C_VARIABLE, C_NOMBRE, C_INCONNU };
+
+/* Ce que désigne un mot, dans l'ordre de l'original : « : », « ; », le
+ * dictionnaire, les mots de base, les constantes, les variables, les
+ * nombres. */
+static int classe(const Vm *m, const char *t, int *val)
 {
-    if (j->fige || j->version == m->version) return;
-    j->version = m->version;
-    int k;
-    if ((k = cherche_def(m, j->t)) >= 0)   { j->genre = K_DEF; j->val = k; return; }
-    if ((k = cherche_const(m, j->t)) >= 0) {
-        /* Une constante, ou une variable, qui rend son adresse. */
-        j->genre = m->consts[k].variable ? K_VARIABLE : K_CONSTANTE;
-        j->val = m->consts[k].val;
-        return;
+    short v;
+    if (!strcmp(t, ":")) return C_DEUX_POINTS;
+    if (!strcmp(t, ";")) return C_POINT_VIRGULE;
+    if ((*val = cherche_mot(m, t)) >= 0) return C_MOT;
+    if ((*val = cherche(PRIMITIVES, P_NOMBRE, t)) >= 0) return C_PRIMITIVE;
+    if ((*val = cherche(m->constantes, m->nconstantes, t)) >= 0) return C_CONSTANTE;
+    if ((*val = cherche(m->variables, m->nvariables, t)) >= 0) return C_VARIABLE;
+    if (nombre(t, &v)) { *val = v; return C_NOMBRE; }
+    return C_INCONNU;
+}
+
+/* La zone des constantes et des variables, par son adresse en octets. */
+static short *case_zone(Vm *m, int adresse)
+{
+    int o = adresse + ZONE_ORIGINE;
+    if (o < 0 || (o & 1) || o / 2 >= ZONE_CASES) return NULL;
+    return &m->zone[o / 2];
+}
+
+static int adresse_variable(int n) { return -2 * (n + 1); }
+
+/* N/MOORE… : les noms de ses douze bits deviennent les douze premières
+ * constantes. N/MOORE est posé au départ. */
+static void declare(Vm *m, int v)
+{
+    m->voisinage = v;
+    for (int b = 0; b < FORTH_BITS; b++)
+        m->constantes[b] = forth_nom_voisin(forth_disposition[v][b]);
+    if (m->nconstantes < FORTH_BITS) m->nconstantes = FORTH_BITS;
+}
+
+/* ---- les piles ---- */
+
+static void empile(Vm *m, int v)
+{
+    if (m->a3 <= 0) { faute(m, ERR_PILE, m->position); return; }
+    m->pile[--m->a3] = (short)v;
+}
+
+static short depile(Vm *m)
+{
+    if (m->a3 >= PILE_CASES) { faute(m, ERR_PILE, m->position); return 0; }
+    return m->pile[m->a3++];
+}
+
+/* La case k sous le sommet. */
+static short *case_pile(Vm *m, int k)
+{
+    if (m->a3 + k >= PILE_CASES) { faute(m, ERR_PILE, m->position); return NULL; }
+    return &m->pile[m->a3 + k];
+}
+
+static void rempile(Vm *m, int v)
+{
+    if (m->a7 <= 0) { faute(m, ERR_PILE, m->position); return; }
+    m->retour[--m->a7] = (short)v;
+}
+
+static short rdepile(Vm *m)
+{
+    if (m->a7 >= RETOUR_CASES) { faute(m, ERR_PILE, m->position); return 0; }
+    return m->retour[m->a7++];
+}
+
+/* UNE ADRESSE DE RETOUR fait quatre octets, deux cases, le mot fort au
+ * sommet — comme un JSR du 68000. « R> R> » la lit donc en deux nombres. */
+#define RETOUR_HOTE 0x7fffffff
+
+static void pousse_retour(Vm *m, int ip)
+{
+    rempile(m, ip & 0xffff);
+    rempile(m, ip >> 16);
+}
+
+static int tire_retour(Vm *m)
+{
+    int fort = rdepile(m) & 0xffff, faible = rdepile(m) & 0xffff;
+    return (fort << 16) | faible;
+}
+
+/* ---- le code ---- */
+
+static int emets(Vm *m, int op, int arg)
+{
+    if (!m->code || m->ncode == m->capcode) {
+        int cap = m->code ? 2 * m->capcode : 256;
+        Instr *n = realloc(m->code, (size_t)cap * sizeof *n);
+        if (!n) { faute(m, ERR_MEMOIRE, 0); return -1; }
+        m->code = n;
+        m->capcode = cap;
     }
-    if (nombre(j->t, &j->val)) { j->genre = K_NOMBRE; return; }
-    static const struct { const char *nom; int genre; } STRUCT[] = {
-        { "IF", K_IF }, { "ELSE", K_ELSE }, { "THEN", K_THEN },
-        { "{", K_ACCOLADE }, { "}", K_FERMANTE },
-        { "DO", K_DO }, { "LOOP", K_LOOP }, { "I", K_I },
-        { "BEGIN", K_BEGIN }, { "UNTIL", K_UNTIL }, { "WHILE", K_WHILE },
-        { "REPEAT", K_REPEAT },
-    };
-    for (size_t i = 0; i < sizeof STRUCT / sizeof *STRUCT; i++)
-        if (!strcmp(j->t, STRUCT[i].nom)) { j->genre = STRUCT[i].genre; return; }
-    for (int v = 0; v < V_NOMBRE; v++)
-        if (!strcmp(j->t, NOMS_VOISINS[v])) { j->genre = K_VOISIN; j->val = v; return; }
-    for (size_t i = 0; i < sizeof PRIMITIVES / sizeof *PRIMITIVES; i++)
-        if (!strcmp(j->t, PRIMITIVES[i].nom)) {
-            j->genre = K_PRIM;
-            j->val = PRIMITIVES[i].p;
-            return;
-        }
-    j->genre = K_INCONNU;
+    m->code[m->ncode] = (Instr){ op, arg };
+    return m->ncode++;
+}
+
+static int ajoute_acc(Vm *m, int v)
+{
+    if (!m->acc || m->nacc == m->capacc) {
+        int cap = m->acc ? 2 * m->capacc : 64;
+        int *n = realloc(m->acc, (size_t)cap * sizeof *n);
+        if (!n) { faute(m, ERR_MEMOIRE, 0); return -1; }
+        m->acc = n;
+        m->capacc = cap;
+    }
+    m->acc[m->nacc] = v;
+    return m->nacc++;
+}
+
+/* ---- le code machine ---- */
+
+/* « , » DÉPOSE UN MOT DE CODE 68000 dans la définition : la pile de
+ * démonstration écrit ainsi EXIT, LEAVE, PICK et l'index des boucles. On en
+ * exécute le petit jeu d'instructions qu'elle emploie — MOVE.W et MOVE.L
+ * entre registres de données et les deux piles, ADDQ et SUBQ sur A3 et A7,
+ * les décalages, NOP, RTS et le piège _Debugger —, sur les piles telles que
+ * l'original les disposait. Le reste est refusé, par la faute
+ * « Can't understand » du mot en cours. */
+
+/* Une adresse : A3 et A7 en octets dans leurs piles, A0 dans la zone. */
+typedef struct { int region, octet; } Adresse;
+enum { R_PILE, R_RETOUR, R_ZONE };
+
+static int registre_a(Vm *m, int r, Adresse *a)
+{
+    switch (r) {
+    case 3: *a = (Adresse){ R_PILE, 2 * m->a3 }; return 1;
+    case 7: *a = (Adresse){ R_RETOUR, 2 * m->a7 }; return 1;
+    case 0: *a = (Adresse){ R_ZONE, ZONE_ORIGINE }; return 1;
+    default: return 0;
+    }
+}
+
+static void pose_registre_a(Vm *m, int r, int octet)
+{
+    if (r == 3) m->a3 = octet / 2;
+    else if (r == 7) m->a7 = octet / 2;
+}
+
+static short *case_memoire(Vm *m, Adresse a)
+{
+    if (a.octet & 1) return NULL;
+    int k = a.octet / 2;
+    switch (a.region) {
+    case R_PILE:   return k >= 0 && k < PILE_CASES ? &m->pile[k] : NULL;
+    case R_RETOUR: return k >= 0 && k < RETOUR_CASES ? &m->retour[k] : NULL;
+    default:       return k >= 0 && k < ZONE_CASES ? &m->zone[k] : NULL;
+    }
+}
+
+static int lis_memoire(Vm *m, Adresse a, int longueur, int *v)
+{
+    short *c = case_memoire(m, a);
+    if (!c) return 0;
+    if (longueur == 2) { *v = *c; return 1; }
+    short *d = case_memoire(m, (Adresse){ a.region, a.octet + 2 });
+    if (!d) return 0;
+    *v = (int)(((unsigned)(unsigned short)*c << 16) | (unsigned short)*d);
+    return 1;
+}
+
+static int ecris_memoire(Vm *m, Adresse a, int longueur, int v)
+{
+    short *c = case_memoire(m, a);
+    if (!c) return 0;
+    if (longueur == 2) { *c = (short)v; return 1; }
+    short *d = case_memoire(m, (Adresse){ a.region, a.octet + 2 });
+    if (!d) return 0;
+    *c = (short)((unsigned)v >> 16);
+    *d = (short)v;
+    return 1;
+}
+
+static int mot_brut(Vm *m, int *ip, int *w)
+{
+    if (*ip >= m->ncode || m->code[*ip].op != OP_BRUT) return 0;
+    *w = m->code[(*ip)++].arg & 0xffff;
+    return 1;
+}
+
+/* Une opérande : un registre de données, ou une adresse. */
+typedef struct { int est_d, reg; Adresse a; } Operande;
+
+static int operande(Vm *m, int *ip, int mode, int reg, int longueur, Operande *o)
+{
+    int w;
+    o->est_d = 0;
+    o->reg = reg;
+    switch (mode) {
+    case 0: o->est_d = 1; return 1;
+    case 2: return registre_a(m, reg, &o->a);
+    case 3:
+        if (!registre_a(m, reg, &o->a)) return 0;
+        pose_registre_a(m, reg, o->a.octet + longueur);
+        return 1;
+    case 4:
+        if (!registre_a(m, reg, &o->a)) return 0;
+        o->a.octet -= longueur;
+        pose_registre_a(m, reg, o->a.octet);
+        return 1;
+    case 5:
+        if (!registre_a(m, reg, &o->a) || !mot_brut(m, ip, &w)) return 0;
+        o->a.octet += (short)w;
+        return 1;
+    case 6: {
+        if (!registre_a(m, reg, &o->a) || !mot_brut(m, ip, &w)) return 0;
+        if (w & 0x8000) return 0;                   /* un index en An : non */
+        int x = m->d[(w >> 12) & 7];
+        if (!(w & 0x800)) x = (short)x;             /* Xn.W */
+        o->a.octet += x + (signed char)(w & 0xff);
+        return 1;
+    }
+    default: return 0;
+    }
+}
+
+static int lis_operande(Vm *m, const Operande *o, int longueur, int *v)
+{
+    if (o->est_d) {
+        *v = longueur == 2 ? (short)m->d[o->reg] : m->d[o->reg];
+        return 1;
+    }
+    return lis_memoire(m, o->a, longueur, v);
+}
+
+static int ecris_operande(Vm *m, const Operande *o, int longueur, int v)
+{
+    if (o->est_d) {
+        if (longueur == 2)
+            m->d[o->reg] = (int)(((unsigned)m->d[o->reg] & 0xffff0000u) | (unsigned short)v);
+        else
+            m->d[o->reg] = v;
+        return 1;
+    }
+    return ecris_memoire(m, o->a, longueur, v);
+}
+
+/* Une instruction, à partir de `*ip`. Rend 1, 0 si elle n'est pas du jeu,
+ * ou 2 pour un RTS, que l'appelant fait comme un retour. */
+static int instruction(Vm *m, int *ip)
+{
+    int w;
+    if (!mot_brut(m, ip, &w)) return 0;
+    if (w == 0x4e71 || w == 0xa9ff) return 1;       /* NOP ; _Debugger, sans débogueur */
+    if (w == 0x4e75) return 2;                      /* RTS */
+    if ((w & 0xf038) == 0x5008 && (w & 0xc0) != 0xc0) {
+        /* ADDQ et SUBQ #q, An */
+        int q = (w >> 9) & 7, r = w & 7;
+        Adresse a;
+        if (!q) q = 8;
+        if (!registre_a(m, r, &a) || r == 0) return 0;
+        pose_registre_a(m, r, a.octet + (w & 0x100 ? -q : q));
+        return 1;
+    }
+    if ((w & 0xf000) == 0xe000 && (w & 0x20) == 0 && ((w >> 3) & 3) <= 1
+        && ((w >> 6) & 3) != 3) {
+        /* ASL, LSL, ASR, LSR #n, Dn — en mot ou en long */
+        int n = (w >> 9) & 7, r = w & 7, longueur = ((w >> 6) & 3) == 2 ? 4 : 2;
+        int gauche = w & 0x100, logique = (w >> 3) & 1;
+        if (!n) n = 8;
+        if (((w >> 6) & 3) == 0) return 0;          /* l'octet : non */
+        int v = longueur == 2 ? (short)m->d[r] : m->d[r];
+        if (gauche) v = (int)((unsigned)v << n);
+        else if (logique) v = (int)((longueur == 2 ? (unsigned)(unsigned short)v : (unsigned)v) >> n);
+        else v >>= n;
+        Operande o = { 1, r, { 0, 0 } };
+        return ecris_operande(m, &o, longueur, v);
+    }
+    if ((w & 0xc000) == 0 && ((w >> 12) == 3 || (w >> 12) == 2)) {
+        /* MOVE.W et MOVE.L : la source d'abord, puis la destination */
+        int longueur = (w >> 12) == 3 ? 2 : 4;
+        Operande src, dst;
+        int v;
+        if (!operande(m, ip, (w >> 3) & 7, w & 7, longueur, &src)) return 0;
+        if (!lis_operande(m, &src, longueur, &v)) return 0;
+        if (!operande(m, ip, (w >> 6) & 7, (w >> 9) & 7, longueur, &dst)) return 0;
+        return ecris_operande(m, &dst, longueur, v);
+    }
+    return 0;
 }
 
 /* ---- l'exécution ---- */
 
-/* LES FAUTES, dans la forme de l'original : ses chaînes, lues dans son
- * code, « INTERPRET_ERR "Can't understand ", %i ». Le nombre n'est PAS
- * MESURÉ : l'original y met un compteur, sans doute la position du mot ;
- * on y met le rang du mot du premier niveau qui a échoué, à partir de 1. */
-static const char ERR_COMPRIS[]  = "INTERPRET_ERR \"Can't understand \"";
-static const char ERR_SEULEMENT[] =
-    "INTERPRET_ERR \"End definition (;) Compile Only  \"";
-static const char ERR_PILE[]     = "STACK_ERR \"Stack problem during execution \"";
-static const char ERR_INCONNU[]  = "COMPILE_ERR \"Unknow'd word \"";
-static const char ERR_COLON[]    = "COMPILE_ERR \"COLON inside definition  \"";
-static const char ERR_IMBRIQUE[] = "NEST_ERR \"Unnested condition \"";
-static const char ERR_MEMOIRE[]  = "out of memory";
+static void interne(Vm *m, int n);
 
-static void faute(Vm *m, const char *quoi)
-{
-    if (!m->faute) m->faute = quoi;
-}
-
-static int depile(Vm *m)
-{
-    if (m->sp <= 0) { faute(m, ERR_PILE); return 0; }
-    return m->pile[--m->sp];
-}
-
-static void empile(Vm *m, int v)
-{
-    if (m->sp >= PILE) { faute(m, ERR_PILE); return; }
-    m->pile[m->sp++] = v;
-}
-
-/* VRAI vaut 1. NON MESURÉ contre -1 (la convention de Forth-83) : les deux
- * donnent les mêmes tables tant qu'on n'additionne pas des comparaisons. */
-#define VRAI (-1)
+static short vrai(int c) { return c ? -1 : 0; }
 
 static void primitive(Vm *m, int p)
 {
-    int a, b, c;
+    short a, b, c, *x;
     switch (p) {
-    case P_PLUS:    b = depile(m); a = depile(m); empile(m, a + b); break;
-    case P_MOINS:   b = depile(m); a = depile(m); empile(m, a - b); break;
-    case P_FOIS:    b = depile(m); a = depile(m); empile(m, a * b); break;
-    case P_DIVISE:  b = depile(m); a = depile(m); empile(m, b ? a / b : 0); break;
-    case P_MOD:     b = depile(m); a = depile(m); empile(m, b ? a % b : 0); break;
-    case P_NEGATE:  empile(m, -depile(m)); break;
-    case P_ABS:     a = depile(m); empile(m, a < 0 ? -a : a); break;
-    case P_2FOIS:   empile(m, depile(m) * 2); break;
-    case P_2DIVISE: empile(m, depile(m) / 2); break;
-    case P_1PLUS:   empile(m, depile(m) + 1); break;
-    case P_1MOINS:  empile(m, depile(m) - 1); break;
-    case P_AND:     b = depile(m); a = depile(m); empile(m, a & b); break;
-    case P_OR:      b = depile(m); a = depile(m); empile(m, a | b); break;
-    case P_XOR:     b = depile(m); a = depile(m); empile(m, a ^ b); break;
-    case P_NOT:     empile(m, depile(m) ? 0 : VRAI); break;
-    case P_EGAL:    b = depile(m); a = depile(m); empile(m, a == b ? VRAI : 0); break;
-    case P_INF:     b = depile(m); a = depile(m); empile(m, a < b ? VRAI : 0); break;
-    case P_SUP:     b = depile(m); a = depile(m); empile(m, a > b ? VRAI : 0); break;
-    case P_ZEGAL:   empile(m, depile(m) == 0 ? VRAI : 0); break;
-    case P_ZINF:    empile(m, depile(m) < 0 ? VRAI : 0); break;
-    case P_ZSUP:    empile(m, depile(m) > 0 ? VRAI : 0); break;
-    case P_DUP:     a = depile(m); empile(m, a); empile(m, a); break;
-    case P_DROP:    depile(m); break;
-    case P_SWAP:    b = depile(m); a = depile(m); empile(m, b); empile(m, a); break;
-    case P_OVER:    b = depile(m); a = depile(m); empile(m, a); empile(m, b);
-                    empile(m, a); break;
-    case P_ROT:     c = depile(m); b = depile(m); a = depile(m); empile(m, b);
-                    empile(m, c); empile(m, a); break;
-    case P_LIT:     a = depile(m);
-                    empile(m, a >= 0 && a < CELLULES ? m->variables[a] : 0);
-                    break;
-    case P_ECRIT:   a = depile(m); b = depile(m);
-                    if (a >= 0 && a < CELLULES) m->variables[a] = b;
-                    break;
-    case P_PLN0: case P_PLN1: case P_PLN2: case P_PLN3:
-                    m->envoi[p - P_PLN0] = depile(m);
-                    m->envoye |= 1 << (p - P_PLN0);
-                    break;
-    case P_BEEP:    break;
+    case P_DUP:    if ((x = case_pile(m, 0))) empile(m, *x); break;
+    case P_DROP:   depile(m); break;
+    case P_SWAP:   b = depile(m); a = depile(m); empile(m, b); empile(m, a); break;
+    case P_ROT:    c = depile(m); b = depile(m); a = depile(m);
+                   empile(m, b); empile(m, c); empile(m, a); break;
+    case P_OVER:   if ((x = case_pile(m, 1))) empile(m, *x); break;
+    case P_PLUS:   b = depile(m); a = depile(m); empile(m, a + b); break;
+    case P_MOINS:  b = depile(m); a = depile(m); empile(m, a - b); break;
+    case P_FOIS:   b = depile(m); a = depile(m); empile(m, a * b); break;
+    case P_DIVISE:
+        /* DIVS.W : par zéro, l'original s'arrêtait sur une erreur système ;
+         * ici 0. Un quotient trop grand laisse le dividende, comme le 68000. */
+        b = depile(m); a = depile(m);
+        if (!b) empile(m, 0);
+        else if (a / b > 32767 || a / b < -32768) empile(m, a);
+        else empile(m, a / b);
+        break;
+    case P_NOT:    empile(m, ~depile(m)); break;           /* NOT.W : bit à bit */
+    case P_AND:    b = depile(m); a = depile(m); empile(m, a & b); break;
+    case P_XOR:    b = depile(m); a = depile(m); empile(m, a ^ b); break;
+    case P_OR:     b = depile(m); a = depile(m); empile(m, a | b); break;
+    case P_INF:    b = depile(m); a = depile(m); empile(m, vrai(a < b)); break;
+    case P_SUP:    b = depile(m); a = depile(m); empile(m, vrai(a > b)); break;
+    case P_EGAL:   b = depile(m); a = depile(m); empile(m, vrai(a == b)); break;
+    case P_LIT:
+        if ((x = case_pile(m, 0))) {
+            short *z = case_zone(m, *x);
+            *x = z ? *z : 0;
+        }
+        break;
+    case P_ECRIT: {
+        a = depile(m); b = depile(m);
+        short *z = case_zone(m, a);
+        if (z) *z = b;
+        break;
+    }
+    case P_VERS_R: rempile(m, depile(m)); break;
+    case P_DE_R:   empile(m, rdepile(m)); break;
+    default: break;                                         /* ≠ ≥ ≤ */
     }
 }
 
-static int execute(Vm *m, int debut, int fin);
-
-static int execute_un(Vm *m, int i)
+/* Exécute le mot n du dictionnaire, jusqu'à son retour. */
+static void execute(Vm *m, int n)
 {
-    Jeton *j = &m->j[i];
-    resous(m, j);
-    switch (j->genre) {
-    case K_NOMBRE: case K_CONSTANTE: empile(m, j->val); break;
-    case K_VARIABLE: empile(m, j->val); break;
-    case K_VOISIN:   empile(m, m->voisin[j->val]); break;
-    case K_PRIM:     primitive(m, j->val); break;
-    case K_DEF:
-        if (m->profondeur >= PROFONDEUR) { faute(m, ERR_PILE); break; }
-        m->profondeur++;
-        execute(m, m->defs[j->val].debut, m->defs[j->val].fin);
-        m->profondeur--;
+    if (m->dico[n].debut < 0) { interne(m, -1 - m->dico[n].debut); return; }
+    int ip = m->dico[n].debut;
+    pousse_retour(m, RETOUR_HOTE);
+    while (!m->faute) {
+        if (ip < 0 || ip >= m->ncode) { faute(m, ERR_PILE, m->position); return; }
+        Instr in = m->code[ip++];
+        switch (in.op) {
+        case OP_LIT:   empile(m, in.arg); break;
+        case OP_CONST: { short *z = case_zone(m, 2 * in.arg); empile(m, z ? *z : 0); break; }
+        case OP_PRIM:  primitive(m, in.arg); break;
+        case OP_SAUT:  ip = in.arg; break;
+        case OP_SAUTZ: if (!depile(m)) ip = in.arg; break;
+        case OP_DO: {
+            short depart = depile(m), limite = depile(m);
+            rempile(m, limite);
+            rempile(m, depart);
+            break;
+        }
+        case OP_TEST:
+            /* L'index avance AVANT le corps, puis la limite est comparée :
+             * « 10 0 DO » fait dix tours, l'index y valant 1 à 10. MESURÉ
+             * sur Fermat, dont les 225 nombres ne sortent qu'ainsi. */
+            if (m->a7 + 1 >= RETOUR_CASES) { faute(m, ERR_PILE, m->position); break; }
+            m->retour[m->a7] = (short)(m->retour[m->a7] + 1);
+            if (m->retour[m->a7 + 1] < m->retour[m->a7]) ip = in.arg;
+            break;
+        case OP_FINDO: rdepile(m); rdepile(m); break;
+        case OP_ACCOLADE: {
+            const int *a = &m->acc[in.arg];
+            short k = depile(m);
+            if (k >= 0 && k < a[0]) { pousse_retour(m, a[1]); ip = a[2 + k]; }
+            else { empile(m, 0); ip = a[1]; }       /* MESURÉ sur « Grow flow » */
+            break;
+        }
+        case OP_APPEL:
+            if (m->dico[in.arg].debut < 0) interne(m, -1 - m->dico[in.arg].debut);
+            else { pousse_retour(m, ip); ip = m->dico[in.arg].debut; }
+            break;
+        case OP_BRUT: {
+            ip--;
+            int r = instruction(m, &ip);
+            if (!r) faute(m, ERR_COMPRIS, m->position);
+            else if (r == 2 && (ip = tire_retour(m)) == RETOUR_HOTE) return;
+            break;
+        }
+        case OP_RETOUR:
+            ip = tire_retour(m);
+            if (ip == RETOUR_HOTE) return;
+            break;
+        default:                                    /* OP_BRUT_FAUX */
+            faute(m, ERR_COMPRIS, m->position);
+            break;
+        }
+    }
+}
+
+/* ---- les mots internes ---- */
+
+static void ajoute_constante(Vm *m, const char *nom, short v)
+{
+    if (m->nconstantes >= CONSTANTES) { faute(m, ERR_MEMOIRE, 0); return; }
+    m->constantes[m->nconstantes] = nom;
+    m->zone[(ZONE_ORIGINE + 2 * m->nconstantes) / 2] = v;
+    m->nconstantes++;
+}
+
+static void make_table(Vm *m)
+{
+    const char *t = lis(m);
+    int n;
+    if (!t || classe(m, t, &n) != C_MOT) return;     /* l'original ne disait rien */
+    for (m->entree = 0; m->entree < FORTH_TABLE && !m->pile_hors && !m->faute; m->entree++) {
+        for (int b = 0; b < FORTH_BITS; b++)
+            m->zone[ZONE_ORIGINE / 2 + b] = (short)((m->entree >> b) & 1);
+        /* LA PILE N'EST PAS REMISE entre deux entrées : la règle trouve ce
+         * que la précédente a laissé. Elle est contrôlée avant chacune. */
+        if (m->a3 > PILE_FOND || m->a3 < PILE_MARGE) m->pile_hors = 1;
+        else execute(m, n);
+    }
+}
+
+static void interne(Vm *m, int n)
+{
+    ForthSortie *s = m->s;
+    switch (n) {
+    case M_MAKE_TABLE: make_table(m); break;
+    case M_PLN0: case M_PLN1: case M_PLN2: case M_PLN3: {
+        int k = n - M_PLN0;
+        short v = depile(m);
+        if (m->entree < FORTH_TABLE) s->plans[k][m->entree] = v ? '1' : '0';
+        s->ecrits |= 1 << k;
         break;
+    }
+    case M_BEEP: s->bips++; break;
+    case M_VARIABLE: {
+        const char *t = lis(m);
+        if (!t) break;
+        if (m->nvariables >= VARIABLES) { faute(m, ERR_MEMOIRE, 0); break; }
+        m->variables[m->nvariables++] = t;
+        break;
+    }
+    case M_CONSTANT: {
+        const char *t = lis(m);
+        if (!t) break;
+        ajoute_constante(m, t, depile(m));
+        break;
+    }
     default:
-        faute(m, ERR_COMPRIS);     /* au premier niveau : les définitions sont vérifiées */
+        declare(m, n - M_DECLARATION);
         break;
     }
-    return m->faute ? -1 : 0;
 }
 
-static int execute(Vm *m, int debut, int fin)
+/* ---- la compilation ---- */
+
+static Ouvert *ouvert(Vm *m, int genre)
 {
-    int i = debut;
-    while (i < fin && !m->faute) {
-        Jeton *j = &m->j[i];
-        resous(m, j);
-        switch (j->genre) {
-        case K_IF:
-            if (depile(m)) i++;
-            else i = j->lien + 1;           /* après ELSE, ou après THEN */
-            break;
-        case K_ELSE:
-            i = j->lien + 1;                /* la fin de la branche vraie */
-            break;
-        case K_THEN: case K_BEGIN:
-            i++;
-            break;
-        case K_ACCOLADE: {
-            /* { a b c } : le n-ième mot de la liste, n pris sur la pile.
-             * Hors de la liste, 0 — MESURÉ sur « Grow flow », dont la somme
-             * de neuf cellules atteint 9 pour une liste de neuf mots. */
-            int n = depile(m), nb = j->lien - i - 1;
-            if (n >= 0 && n < nb) execute_un(m, i + 1 + n);
-            else empile(m, 0);
-            i = j->lien + 1;
-            break;
-        }
-        case K_DO: {
-            int depart = depile(m), limite = depile(m);
-            if (m->rp >= RETOUR) { faute(m, ERR_PILE); break; }
-            m->retour[m->rp][0] = depart;
-            m->retour[m->rp][1] = limite;
-            m->rp++;
-            i++;
-            break;
-        }
-        case K_LOOP:
-            if (!m->rp) { faute(m, ERR_IMBRIQUE); break; }
-            if (++m->retour[m->rp - 1][0] < m->retour[m->rp - 1][1]) i = j->lien + 1;
-            else { m->rp--; i++; }
-            break;
-        case K_I:
-            empile(m, m->rp ? m->retour[m->rp - 1][0] : 0);
-            i++;
-            break;
-        case K_UNTIL:
-            i = depile(m) ? i + 1 : j->lien + 1;
-            break;
-        case K_WHILE:
-            i = depile(m) ? i + 1 : j->lien + 1;
-            break;
-        case K_REPEAT:
-            i = j->lien + 1;
-            break;
-        case K_FERMANTE:
-            faute(m, ERR_IMBRIQUE);
-            break;
-        default:
-            execute_un(m, i);
-            i++;
-            break;
-        }
-    }
-    return m->faute ? -1 : 0;
+    if (m->nouverts && m->ouverts[m->nouverts - 1].genre == genre)
+        return &m->ouverts[m->nouverts - 1];
+    m->mal_imbrique = 1;
+    return NULL;
 }
 
-/* ---- MAKE-TABLE ---- */
-
-static int fait_table(Vm *m, int def, int voisinage, ForthSortie *s)
+static void ouvre(Vm *m, int genre, int ou)
 {
-    int base[PILE], nbase = m->sp;
-    memcpy(base, m->pile, sizeof base);
-    int envoyes = 0;
-    for (int e = 0; e < FORTH_TABLE; e++) {
-        memset(m->voisin, 0, sizeof m->voisin);
-        for (int b = 0; b < FORTH_BITS; b++) {
-            int v = forth_disposition[voisinage][b];
-            if (v >= 0) m->voisin[v] = (unsigned char)((e >> b) & 1);
-        }
-        memcpy(m->pile, base, sizeof base);
-        m->sp = nbase;
-        m->rp = 0;
-        m->envoye = 0;
-        if (execute(m, m->defs[def].debut, m->defs[def].fin) < 0) return -1;
-        for (int k = 0; k < FORTH_PLANS; k++)
-            if (m->envoye & (1 << k))
-                s->plans[k][e] = (m->envoi[k] & 1) ? '1' : '0';
-        envoyes |= m->envoye;
+    if (m->nouverts == (int)(sizeof m->ouverts / sizeof *m->ouverts)) {
+        m->mal_imbrique = 1;
+        return;
     }
-    s->ecrits |= envoyes;
-    return 0;
+    m->ouverts[m->nouverts++] = (Ouvert){ genre, ou };
+}
+
+/* Un mot de base dans une définition : la structure qu'il ouvre ou ferme,
+ * ou son effet. */
+static void compile_primitive(Vm *m, int p)
+{
+    Ouvert *o;
+    int k;
+    switch (p) {
+    case P_IF:
+        ouvre(m, S_IF, emets(m, OP_SAUTZ, -1));
+        break;
+    case P_ELSE:
+        if (!(o = ouvert(m, S_IF))) break;
+        k = emets(m, OP_SAUT, -1);
+        if (k < 0) break;
+        m->code[o->ou].arg = m->ncode;
+        *o = (Ouvert){ S_ELSE, k };
+        break;
+    case P_THEN:
+        if (m->nouverts && (m->ouverts[m->nouverts - 1].genre == S_IF ||
+                            m->ouverts[m->nouverts - 1].genre == S_ELSE)) {
+            m->code[m->ouverts[--m->nouverts].ou].arg = m->ncode;
+        } else m->mal_imbrique = 1;
+        break;
+    case P_BEGIN:
+        ouvre(m, S_BEGIN, m->ncode);
+        break;
+    case P_WHILE:
+        if (!ouvert(m, S_BEGIN)) break;
+        ouvre(m, S_WHILE, emets(m, OP_SAUTZ, -1));
+        break;
+    case P_REPEAT:
+        if (!(o = ouvert(m, S_WHILE)) || m->nouverts < 2 ||
+            m->ouverts[m->nouverts - 2].genre != S_BEGIN) { m->mal_imbrique = 1; break; }
+        emets(m, OP_SAUT, m->ouverts[m->nouverts - 2].ou);
+        m->code[o->ou].arg = m->ncode;
+        m->nouverts -= 2;
+        break;
+    case P_UNTIL:
+        if (!(o = ouvert(m, S_BEGIN))) break;
+        emets(m, OP_SAUTZ, o->ou);
+        m->nouverts--;
+        break;
+    case P_DO:
+        emets(m, OP_DO, 0);
+        ouvre(m, S_DO, emets(m, OP_TEST, -1));
+        break;
+    case P_LOOP:
+        if (!(o = ouvert(m, S_DO))) break;
+        emets(m, OP_SAUT, o->ou);
+        m->code[o->ou].arg = m->ncode;
+        emets(m, OP_FINDO, 0);
+        m->nouverts--;
+        break;
+    case P_ACCOLADE:
+        if (m->elements >= 0) { m->mal_imbrique = 1; break; }
+        ouvre(m, S_ACCOLADE, emets(m, OP_ACCOLADE, -1));
+        m->elements = 0;
+        break;
+    case P_FERMANTE: {
+        if (!(o = ouvert(m, S_ACCOLADE)) || m->elements < 0) break;
+        int a = ajoute_acc(m, m->elements);
+        if (a < 0) break;
+        ajoute_acc(m, m->ncode);
+        for (int i = 0; i < m->elements; i++) ajoute_acc(m, m->debuts[i]);
+        m->code[o->ou].arg = a;
+        m->elements = -1;
+        m->nouverts--;
+        break;
+    }
+    case P_VIRGULE: {
+        /* Le nombre qui précède devient le mot de code lui-même. */
+        Instr *d = m->ncode > 0 ? &m->code[m->ncode - 1] : NULL;
+        if (d && d->op == OP_LIT) *d = (Instr){ OP_BRUT, d->arg & 0xffff };
+        else if (d && d->op == OP_CONST) *d = (Instr){ OP_BRUT, 2 * d->arg };
+        else emets(m, OP_BRUT_FAUX, 0);
+        break;
+    }
+    case P_DIFF: case P_SUPEG: case P_INFEG:
+        break;                          /* le piège _Debugger, et rien d'émis */
+    default:
+        emets(m, OP_PRIM, p);
+        break;
+    }
+}
+
+/* Dans une { … }, chaque mot est un élément : son code, puis un retour. */
+static int element(Vm *m)
+{
+    if (m->elements < 0) return 0;
+    if (m->elements == (int)(sizeof m->debuts / sizeof *m->debuts)) {
+        m->mal_imbrique = 1;
+        return 0;
+    }
+    m->debuts[m->elements++] = m->ncode;
+    return 1;
+}
+
+static void compile_mot(Vm *m, const char *t)
+{
+    int v, k = classe(m, t, &v);
+    int dans = k != C_PRIMITIVE || v != P_FERMANTE ? element(m) : 0;
+    switch (k) {
+    case C_DEUX_POINTS:   faute(m, ERR_COLON, m->position); return;
+    case C_POINT_VIRGULE:
+        emets(m, OP_RETOUR, 0);
+        m->compile = 0;
+        if (m->nouverts || m->mal_imbrique || m->elements >= 0) {
+            m->s->bips++;
+            faute(m, ERR_IMBRIQUE, m->rang_nom);
+        }
+        return;
+    case C_CONSTANTE:     emets(m, OP_CONST, v); break;
+    case C_VARIABLE:      emets(m, OP_LIT, adresse_variable(v)); break;
+    case C_NOMBRE:        emets(m, OP_LIT, v); break;
+    case C_MOT:           emets(m, OP_APPEL, v); break;
+    case C_PRIMITIVE:     compile_primitive(m, v); break;
+    default:              faute(m, ERR_INCONNU, m->position); return;
+    }
+    if (dans) emets(m, OP_RETOUR, 0);
+}
+
+static void ouvre_definition(Vm *m)
+{
+    const char *t = lis(m);
+    if (!t) return;
+    if (m->ndico >= DICTIONNAIRE) { faute(m, ERR_MEMOIRE, 0); return; }
+    /* LE MOT ENTRE AU DICTIONNAIRE MAINTENANT, avant son corps : il peut
+     * s'appeler lui-même. « La récursion indirecte n'est pas possible » :
+     * un mot défini plus loin n'est pas encore connu. */
+    m->dico[m->ndico++] = (Mot){ t, m->ncode };
+    m->compile = 1;
+    m->rang_nom = m->position;
+    m->nouverts = 0;
+    m->mal_imbrique = 0;
+    m->elements = -1;
 }
 
 /* ---- le premier niveau ---- */
 
+static void interprete_mot(Vm *m, const char *t)
+{
+    int v, rang = m->position;
+    short *z;
+    switch (classe(m, t, &v)) {
+    case C_DEUX_POINTS:   ouvre_definition(m); break;
+    case C_POINT_VIRGULE: faute(m, ERR_SEULEMENT, rang); break;
+    case C_MOT:
+        m->pile_hors = 0;
+        execute(m, v);
+        if (m->pile_hors) faute(m, ERR_PILE, rang + 1);
+        break;
+    case C_PRIMITIVE:     break;              /* sans effet hors d'une définition */
+    case C_CONSTANTE:
+        z = case_zone(m, 2 * v);
+        /* Deux SysBeep restés dans l'original : la treizième constante, et
+         * une constante qui vaut 123, le code de « { ». */
+        if (v == 12) m->s->bips++;
+        if (z && *z == 123) m->s->bips++;
+        empile(m, z ? *z : 0);
+        break;
+    case C_VARIABLE:      empile(m, adresse_variable(v)); break;
+    case C_NOMBRE:        empile(m, v); break;
+    default:              faute(m, ERR_COMPRIS, rang); break;
+    }
+}
+
 static void libere(Vm *m)
 {
-    for (int i = 0; i < m->nj; i++) free(m->j[i].t);
-    free(m->j);
-    free(m->defs);
-    free(m->consts);
-}
-
-static int ajoute_def(Vm *m, const char *nom, int debut, int fin)
-{
-    Definition *d = realloc(m->defs, (size_t)(m->ndefs + 1) * sizeof *d);
-    if (!d) return -1;
-    m->defs = d;
-    m->defs[m->ndefs++] = (Definition){ nom, debut, fin };
-    m->version++;
-    return 0;
-}
-
-static int ajoute_const(Vm *m, const char *nom, int val, int variable)
-{
-    Constante *c = realloc(m->consts, (size_t)(m->nconsts + 1) * sizeof *c);
-    if (!c) return -1;
-    m->consts = c;
-    m->consts[m->nconsts++] = (Constante){ nom, val, variable };
-    m->version++;
-    return 0;
+    for (int i = 0; i < m->nmots; i++) free(m->mots[i]);
+    free(m->mots);
+    free(m->dico);
+    free(m->code);
+    free(m->acc);
 }
 
 int forth_compile(const char *source, ForthSortie *s)
 {
     memset(s, 0, sizeof *s);
-    for (int k = 0; k < FORTH_PLANS; k++) memset(s->plans[k], '0', FORTH_TABLE);
     Vm *m = calloc(1, sizeof *m);
-    if (!m) { snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE); return -1; }
-    if (decoupe(m, source ? source : "") < 0) {
+    if (m) m->dico = malloc(DICTIONNAIRE * sizeof *m->dico);
+    if (!m || !m->dico || decoupe(m, source ? source : "") < 0) {
         snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE);
-        libere(m);
-        free(m);
+        if (m) { libere(m); free(m); }
         return -1;
     }
-    int voisinage = FORTH_MOORE;
-    int i = 0;
-    while (i < m->nj && !m->faute) {
-        Jeton *j = &m->j[i];
-        m->position = i + 1;
-        int d;
-        for (d = 0; d < (int)(sizeof DECLARATIONS / sizeof *DECLARATIONS); d++)
-            if (est(j, DECLARATIONS[d].nom)) break;
-        if (d < (int)(sizeof DECLARATIONS / sizeof *DECLARATIONS)) {
-            if (DECLARATIONS[d].voisinage >= 0) voisinage = DECLARATIONS[d].voisinage;
-            i++;
-            continue;
-        }
-        if (est(j, ":")) {
-            int f = i + 2;
-            while (f < m->nj && !est(&m->j[f], ";")) {
-                if (est(&m->j[f], ":")) { faute(m, ERR_COLON); break; }
-                f++;
-            }
-            if (m->faute) break;
-            if (i + 1 >= m->nj || f >= m->nj) { faute(m, ERR_IMBRIQUE); break; }
-            if (relie(m, i + 2, f) < 0) { faute(m, ERR_IMBRIQUE); break; }
-            /* COMPILÉE, comme dans l'original : chaque mot est cherché MAINTENANT,
-             * dans le dictionnaire tel qu'il est, et le reste. Un mot défini
-             * plus tard est une faute ; une redéfinition plus tardive ne change
-             * pas ce qu'appelle une définition déjà faite. */
-            for (int k = i + 2; k < f; k++) {
-                resous(m, &m->j[k]);
-                if (m->j[k].genre == K_INCONNU) { faute(m, ERR_INCONNU); break; }
-                m->j[k].fige = 1;
-            }
-            if (m->faute) break;
-            if (ajoute_def(m, m->j[i + 1].t, i + 2, f) < 0) { faute(m, ERR_MEMOIRE); break; }
-            i = f + 1;
-            continue;
-        }
-        if (est(j, "MAKE-TABLE")) {
-            int k = i + 1 < m->nj ? cherche_def(m, m->j[i + 1].t) : -1;
-            if (k < 0) { faute(m, ERR_COMPRIS); break; }
-            if (fait_table(m, k, voisinage, s) < 0) break;
-            i += 2;
-            continue;
-        }
-        if (est(j, "CONSTANT") || est(j, "VARIABLE")) {
-            if (i + 1 >= m->nj) { faute(m, ERR_COMPRIS); break; }
-            int variable = est(j, "VARIABLE"), v;
-            if (!variable) v = depile(m);
-            else if (m->nvariables >= CELLULES) { faute(m, ERR_PILE); break; }
-            else v = m->nvariables++;
-            if (m->faute) break;
-            if (ajoute_const(m, m->j[i + 1].t, v, variable) < 0) {
-                faute(m, ERR_MEMOIRE);
-                break;
-            }
-            i += 2;
-            continue;
-        }
-        /* Au premier niveau, un mot s'exécute tout de suite. « ; » et les
-         * structures de contrôle n'y ont pas de sens : « Compile Only ». */
-        if (est(j, ";")) { faute(m, ERR_SEULEMENT); break; }
-        resous(m, j);
-        if (j->genre >= K_IF && j->genre <= K_REPEAT) { faute(m, ERR_SEULEMENT); break; }
-        execute_un(m, i);
-        i++;
+    m->s = s;
+    m->a3 = PILE_FOND;
+    m->a7 = RETOUR_CASES;
+    m->elements = -1;
+    for (int i = 0; i < M_INTERNES; i++)
+        m->dico[m->ndico++] = (Mot){ INTERNES[i], -1 - i };
+    m->variables[m->nvariables++] = "BASE";
+    m->variables[m->nvariables++] = "ALTERNATE";       /* d'où le « -4 » */
+    *case_zone(m, adresse_variable(0)) = 10;
+    declare(m, FORTH_MOORE);
+
+    for (const char *t = lis(m); t && !m->faute; t = lis(m)) {
+        t = saute_commentaire(m, t);
+        if (!t) break;
+        if (m->compile) compile_mot(m, t);
+        else interprete_mot(m, t);
+        if (m->pile_hors) break;
     }
-    s->voisinage = voisinage;
+
+    s->voisinage = m->voisinage;
     int r = 0;
     if (m->faute == ERR_MEMOIRE) {
-        snprintf(s->rendu, sizeof s->rendu, "%s", m->faute);
-        r = -1;
-    } else if (m->faute) {
-        snprintf(s->rendu, sizeof s->rendu, "%s, %d ", m->faute, m->position);
+        snprintf(s->rendu, sizeof s->rendu, "%s", ERR_MEMOIRE);
         r = -1;
     } else {
+        if (m->faute) {
+            snprintf(s->faute, sizeof s->faute, "%s, %d ", m->faute, m->rang_faute);
+            r = -1;
+        }
         size_t n = 0;
-        for (int k = 0; k < m->sp && n < sizeof s->rendu - 16; k++) {
+        for (int k = m->a3; k < PILE_FOND && n < sizeof s->rendu - 8; k++) {
             int w = snprintf(s->rendu + n, sizeof s->rendu - n, "%d ", m->pile[k]);
             if (w > 0) n += (size_t)w;
         }
     }
-    for (int k = 0; k < FORTH_PLANS; k++) s->plans[k][FORTH_TABLE] = '\0';
     libere(m);
     free(m);
     return r;

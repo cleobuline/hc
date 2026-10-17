@@ -26,9 +26,36 @@ global pln0, pln1, pln2, pln3
 put FORTH(bg fld "forth") into bg fld "pile"
 ```
 
-Comme l'original, la fonction compile le programme qu'on lui donne, range
-chaque table qu'une `MAKE-TABLE` a remplie dans la globale `pln0` à `pln3`, et
-rend ce qui reste sur sa pile, ou la faute qui l'a arrêtée.
+Comme l'original, la fonction compile et exécute le programme qu'on lui
+donne, range les tables que `MAKE-TABLE` a remplies dans les globales `pln0` à
+`pln3`, et rend ce qui reste sur sa pile, **sommet en tête**. Une faute est
+**envoyée** à la carte — `COMPILE_ERR "Unknow'd word ", 13` —, pour les
+gestionnaires `COMPILE_ERR`, `STACK_ERR`, `NEST_ERR` et `INTERPRET_ERR` des
+piles de MAC•CAM ; le nombre est le rang du mot fautif dans le texte,
+commentaires compris.
+
+Le langage est celui de l'original, lu dans son code 68000 et dans la pile de
+démonstration MAC•CAM FORTH, de 1990 :
+
+- des nombres de **16 bits**, signés ; vrai vaut -1 ; `NOT` complémente bit à
+  bit ;
+- les mots de base, qui ne servent que dans une définition : `DUP DROP SWAP
+  ROT OVER + - * / NOT AND XOR OR < > = { } IF ELSE THEN DO LOOP BEGIN WHILE
+  REPEAT UNTIL , @ ! >R R>` ; au premier niveau, ils sont sans effet ;
+- `MAKE-TABLE`, `>PLN0` à `>PLN3`, `BEEP`, `CONSTANT`, `VARIABLE`, et les
+  déclarations de voisinage ; deux variables internes, `BASE` (10) et
+  `ALTERNATE`, dont l'adresse, -4, est le « -4 » qui reste sur la pile des
+  cartes Margolus ;
+- **la récursion directe** : un mot se connaît dès son `:` ;
+- les majuscules comptent, et un mot redéfini garde sa première définition ;
+- `DO … LOOP` avance son index avant le corps : `10 0 DO` fait dix tours,
+  l'index y valant 1 à 10 ; il n'y a pas de `I` — la pile de démonstration le
+  fabrique en code machine ;
+- `,` dépose dans la définition un mot de code 68000 : HC en exécute le
+  petit jeu d'instructions dont se sert la pile de démonstration (`EXIT`,
+  `LEAVE`, `PICK`, l'index des boucles, `_Debugger`), sur les deux piles
+  disposées comme dans l'original — une adresse de retour y fait deux cases,
+  et `R> R> DROP DROP` la retire.
 
 Une **table** est un texte de 4 096 caractères « 0 » ou « 1 » : la nouvelle
 valeur d'une cellule pour chacun des 4 096 états de son voisinage. L'ordre des
@@ -53,7 +80,7 @@ Les fichiers :
 | fichier | rôle |
 | --- | --- |
 | `forth_coeur.c` | le compilateur, en C ordinaire : il tourne dans le module comme dans le harnais `tests/harnais/forth.c` |
-| `forth.c` | son passage dans HC : l'XFCN, et `SetGlobal` |
+| `forth.c` | son passage dans HC : l'XFCN, `SetGlobal`, et les fautes envoyées par `SendCardMessage` |
 | `maccam_coeur.c` | la machine de la fenêtre CAM, en C ordinaire, éprouvée par `tests/harnais/maccam.c` |
 | `maccam.c` | la fenêtre CAM dans HC : l'XFCN, ses propriétés, ses messages |
 

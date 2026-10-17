@@ -205,15 +205,20 @@
       = 0
 
 == 10. le FORTH de MAC•CAM ==
-   ajoute forth.wasm (19307 octets) : accepté
+   ajoute forth.wasm (24384 octets) : accepté
    compile ": R CENTER >PLN0 ; MAKE-TABLE R"
       = [] 4096 0000000011111111 0
    compile "N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R"
       = [] 4096 0000111100001111 4096
    compile "1 2 3"
-      = [1 2 3 ] 0  0
+      = [3 2 1 ] 0  0
    compile ": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB"
-      = [INTERPRET_ERR "Can't understand ", 8 ] 4096 0101010101010101 0
+      [ERR]    !! personne ne répond à « INTERPRET_ERR "Can't understand ", 8 »
+      = [] 4096 0101010101010101 0
+   -- avec le gestionnaire que portent les piles de MAC•CAM
+   compile "5 ( un commentaire ) : R CENTER ZORGLUB >PLN0 ;"
+      = COMPILE_ERR Unknow'd word /9 
+      = COMPILE_ERR Unknow'd word /9 [5 ]
 
 == 11. les fenêtres d'un module ==
    ajoute fenetres.wasm (5248 octets) : accepté
