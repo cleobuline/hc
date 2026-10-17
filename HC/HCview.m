@@ -2958,30 +2958,110 @@ static int cocoa_style_menu(const char *article)
     return 0;
 }
 
+/* LA TOUCHE EFFACEMENT SUR UNE SÉLECTION DE PEINTURE : la zone flottante
+ * abandonnée, le lasso ou le rectangle effacés. Commune à la touche
+ * (keyDown) et à « type numToChar(8) » d'un script : rend YES si elle a
+ * effacé quelque chose. */
+static BOOL hcv_efface_peinture_choisie(void)
+{
+    if (!gView) return NO;
+    if (gFloating) {
+        gFloating = NO;
+        gFloatDragging = NO;
+        [gView stopAntsTimer];
+        [gView setNeedsDisplay:YES];
+        return YES;
+    }
+    BOOL lasso = gTool == TOOL_LASSO && gLassoActive;
+    BOOL rect  = gTool == TOOL_SELRECT && gSelRectActive;
+    if (!lasso && !rect) return NO;
+    Object *card = hc_current_card();
+    if (!card) return NO;
+    Object *layer = gEditBackground ? card->bg : card;
+    if (!layer) layer = card;
+    NSBitmapImageRep *rep = paint_bitmap(layer, (int)[gView bounds].size.width,
+                                                (int)[gView bounds].size.height);
+    if (lasso) {
+        erase_freeform(rep, gLassoPts, gLassoCount);
+        gLassoActive = NO;
+        gLassoCount = 0;
+    } else {
+        erase_rect(rep, gSelStart, gSelEnd);
+        gSelRectActive = NO;
+    }
+    [gView stopAntsTimer];
+    [gView setNeedsDisplay:YES];
+    return YES;
+}
+
+/* La touche Effacement du Mac d'alors, numToChar(8), et Suppr, 127. */
+static BOOL est_effacement(unichar c) { return c == 8 || c == 127; }
+
+/* « type » : ce que ferait une main sur le clavier.
+ *
+ * L'EFFACEMENT S'Y TAPAIT COMME UNE LETTRE. « type numToChar(8) » insérait
+ * un caractère 8 brut dans un champ ou la boîte de messages, au lieu
+ * d'effacer ; et sur une sélection de peinture, il ne faisait rien du tout.
+ * Relevé DANS HC (l'application) le 17 octobre sur MAC•CAM Workshop, dont
+ * le petit bouton gomme efface son carré par
+ *
+ *     choose select tool
+ *     drag from item 1 of r, item 2 of r to item 3 of r, item 4 of r
+ *     type numtochar(8)
+ *
+ * Il fait maintenant ce que fait la touche : effacer la sélection de
+ * peinture (hcv_efface_peinture_choisie, comme keyDown), le caractère
+ * avant le curseur dans un champ, le dernier de la boîte de messages ou du
+ * texte en cours de l'outil Texte. NON COUVERT : un objet choisi à l'outil
+ * bouton ou champ, que la touche, elle, supprime. */
 static void cocoa_type_text(const char *text, const char *mods) {
     (void)mods;
     if (!text || !gView) return;
     NSString *s = [NSString stringWithUTF8String:text];
     if (!s) return;
+    NSUInteger n = [s length];
 
     if (gTool == TOOL_TEXT && gTextActive) {
         if (!gTextBuf) gTextBuf = [NSMutableString string];
-        [gTextBuf appendString:s];
+        for (NSUInteger i = 0; i < n; i++) {
+            unichar c = [s characterAtIndex:i];
+            if (!est_effacement(c)) {
+                [gTextBuf appendString:[NSString stringWithCharacters:&c length:1]];
+            } else if ([gTextBuf length] > 0) {
+                [gTextBuf deleteCharactersInRange:NSMakeRange([gTextBuf length] - 1, 1)];
+            }
+        }
         [gView commitText];
         gView.needsDisplay = YES;
         return;
     }
 
-    if (gEditingField && gFieldEditor) {
-        [gFieldEditor insertText:s replacementRange:[gFieldEditor selectedRange]];
-    } else if (gMsgBox) {
-        [gMsgBox setStringValue:
-            [[gMsgBox stringValue] stringByAppendingString:s]];
-        /* « type » écrit dans la boîte comme le ferait une main : le noyau
-         * doit l'apprendre, sans quoi « type "x" » suivi de « put msg »
-         * rendrait l'état d'avant. Le délégué ne se déclenche pas ici —
-         * setStringValue: n'est pas une frappe. */
-        hc_message_ecrit([[gMsgBox stringValue] UTF8String]);
+    /* Le texte, coupé à chaque Effacement. */
+    for (NSUInteger i = 0; i <= n; ) {
+        NSUInteger j = i;
+        while (j < n && !est_effacement([s characterAtIndex:j])) j++;
+        NSString *morceau = j > i ? [s substringWithRange:NSMakeRange(i, j - i)] : nil;
+        BOOL efface = j < n;
+
+        if (gEditingField && gFieldEditor) {
+            if (morceau)
+                [gFieldEditor insertText:morceau
+                        replacementRange:[gFieldEditor selectedRange]];
+            if (efface) [gFieldEditor deleteBackward:nil];
+        } else if (efface && !morceau && hcv_efface_peinture_choisie()) {
+            /* la sélection de peinture est effacée */
+        } else if (gMsgBox) {
+            NSString *v = [gMsgBox stringValue];
+            if (morceau) v = [v stringByAppendingString:morceau];
+            if (efface && [v length] > 0) v = [v substringToIndex:[v length] - 1];
+            [gMsgBox setStringValue:v];
+            /* « type » écrit dans la boîte comme le ferait une main : le noyau
+             * doit l'apprendre, sans quoi « type "x" » suivi de « put msg »
+             * rendrait l'état d'avant. Le délégué ne se déclenche pas ici —
+             * setStringValue: n'est pas une frappe. */
+            hc_message_ecrit([v UTF8String]);
+        }
+        i = j + 1;
     }
     [gView setNeedsDisplay:YES];
 }
@@ -7186,10 +7266,7 @@ static int gColorTarget = 0;
          * déjà été effacé au soulèvement : abandonner supprime alors vraiment
          * la zone, ce qui est bien ce qu'on attend de Suppression. */
         if (key == 27 || key == NSDeleteCharacter || key == NSDeleteFunctionKey) {
-            gFloating = NO;
-            gFloatDragging = NO;
-            [self stopAntsTimer];
-            [self setNeedsDisplay:YES];
+            hcv_efface_peinture_choisie();
             return;
         }
     }
@@ -7215,34 +7292,11 @@ static int gColorTarget = 0;
         return;
     }
 
+    /* Le lasso ou le rectangle de peinture : la même fonction que
+     * « type numToChar(8) » d'un script (cocoa_type_text). */
     if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
-        gTool == TOOL_LASSO && gLassoActive) {
-        Object *card = hc_current_card();
-        Object *layer = gEditBackground ? card->bg : card;
-        if (!layer) layer = card;
-        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                    (int)[self bounds].size.height);
-        erase_freeform(rep, gLassoPts, gLassoCount);
-        gLassoActive = NO;
-        gLassoCount = 0;
-        [self stopAntsTimer];
-        [self setNeedsDisplay:YES];
+        hcv_efface_peinture_choisie())
         return;
-    }
-
-    if ((key == NSDeleteCharacter || key == NSDeleteFunctionKey) &&
-        gTool == TOOL_SELRECT && gSelRectActive) {
-        Object *card = hc_current_card();
-        Object *layer = gEditBackground ? card->bg : card;
-        if (!layer) layer = card;
-        NSBitmapImageRep *rep = paint_bitmap(layer, (int)[self bounds].size.width,
-                                                    (int)[self bounds].size.height);
-        erase_rect(rep, gSelStart, gSelEnd);
-        gSelRectActive = NO;
-        [self stopAntsTimer];
-        [self setNeedsDisplay:YES];
-        return;
-    }
 
     /* UN POLYGONE NE DISPARAÎT JAMAIS PAR DELETE. Demandé par l'utilisatrice
      * — « faudra pas faire disparaître tout le bouton avec la touche
