@@ -1070,7 +1070,9 @@ clavier, elle, effaçait (keyDown). CORRIGÉ : les deux passent par une même
 fonction (hcv_efface_peinture_choisie) ; dans un champ, la boîte de
 messages et l'outil Texte, l'Effacement d'un script efface le caractère
 d'avant. NON COUVERT : un objet choisi à l'outil bouton ou champ, que la
-touche supprime. COMPILÉ PAR LA CI, À REJOUER DANS HC.
+touche supprime.
+MESURÉ DANS HC (l'application), le même jour, par l'utilisatrice : « ça
+efface le carré ».
 
 MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice, après
 la correction du drag de script : « le drag'n drop fonctionne, je retrouve
