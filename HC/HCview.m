@@ -2708,6 +2708,8 @@ static void cocoa_menu_hypercard(const char *item)
         { "New Card",       "newCard:"           },
         { "Copy Card",      "copyCard:"          },
         { "Paste Card",     "paste:"             },
+        { "New Button",     "newButton:"         },
+        { "New Field",      "newField:"          },
         { "New Background", "newBackground:"     },
         { "Background",     "toggleBackground:"  },
         /* L'ordre de superposition, atteignable par script comme par menu.
@@ -6327,6 +6329,80 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     hc_send(nc, "newCard");
 }
 
+/* UN BOUTON OU UN CHAMP NEUF, tracé à l'outil comme pris au menu Objects :
+ * un seul endroit, pour que les deux chemins ne divergent pas. Il va sur le
+ * fond quand on édite le fond. La place et la taille sont à l'appelant.
+ *
+ * « New Button » et « New Field », les noms que leur donne HyperCard — dit
+ * par l'utilisatrice le 17 octobre, non vu. HC les nommait « Bouton 3 » et
+ * « Champ 3 ». */
+static Object *hcv_part_neuve(int type)
+{
+    Object *card = hc_current_card();
+    if (!card) return NULL;
+    Object *owner = gEditBackground ? card->bg : card;
+    if (!owner) owner = card;
+    if (type == OBJ_BUTTON) return hc_new_button(owner, "New Button");
+
+    Object *o = hc_new_field(owner, "New Field");
+    /* UN CHAMP NEUF NAÎT EN GENEVA 12, comme dans HyperCard 2.4.1 :
+     * « the textSize » et « the textFont » d'un champ neuf y répondent
+     * 12 et Geneva — mesuré DANS HYPERCARD (Basilisk II) par
+     * l'utilisatrice le 11 octobre, et accordé par elle. Il naissait en
+     * police système, et « the textFont » répondait vide. Geneva est
+     * livrée avec macOS : le champ est DESSINÉ en Geneva, et la réponse
+     * dit vrai.
+     *
+     * Ici seulement, à la souris et par le menu : les champs d'une pile
+     * qu'on ouvre, ceux d'un collage ou d'un script, gardent ce qu'ils ont
+     * — rien ne change dans les piles existantes. */
+    if (o) {
+        free(o->textfont);
+        o->textfont = strdup("Geneva");
+        o->textsize = 12;
+    }
+    return o;
+}
+
+/* NEW BUTTON ET NEW FIELD, au menu Objects — et à « doMenu », par quoi une
+ * pile d'HyperCard fabrique ses boutons : il n'y a pas de « create button »
+ * en HyperTalk. Les deux articles manquaient, alors que la note de la 0.7.8
+ * annonçait déjà « New Button in the Objects menu » ; signalé par
+ * l'utilisatrice le 17 octobre.
+ *
+ * Comme le collage d'un bouton, plus bas : l'outil Bouton (ou Champ) est
+ * choisi, l'objet neuf sélectionné, et il reçoit newButton (ou newField).
+ * L'outil choisi par le menu : NON MESURÉ, comme le message. La place, au
+ * milieu de la carte, est celle que décrit le manuel d'HyperCard ; la
+ * taille et le style sont ceux que HC donne déjà à un objet neuf — 120 × 24
+ * et 200 × 100, « rectangle ». Les trois : NON MESURÉS DANS HYPERCARD.
+ *
+ * L'outil se choisit AVANT la naissance : cocoa_choose_tool défait la
+ * sélection. */
+static void hcv_part_du_menu(int type)
+{
+    if (hcv_menu_trappe(type == OBJ_BUTTON ? "New Button" : "New Field"))
+        return;                                 /* la pile détourne l'article */
+    Object *card = hc_current_card();
+    if (!card) return;
+    Object *stack = card->owner;
+    while (stack && stack->type != OBJ_STACK) stack = stack->owner;
+    int cw = (stack && stack->w > 0) ? stack->w : 512;
+    int ch = (stack && stack->h > 0) ? stack->h : 342;
+
+    cocoa_choose_tool(type == OBJ_BUTTON ? "button" : "field");
+    Object *o = hcv_part_neuve(type);
+    if (!o) return;
+    o->x = (cw - o->w) / 2;
+    o->y = (ch - o->h) / 2;
+    gSelected = o;
+    [gView setNeedsDisplay:YES];
+    hc_send(o, type == OBJ_BUTTON ? "newButton" : "newField");
+}
+
+- (void)newButton:(id)sender { hcv_part_du_menu(OBJ_BUTTON); }
+- (void)newField:(id)sender  { hcv_part_du_menu(OBJ_FIELD); }
+
 - (BOOL)acceptsFirstResponder { return YES; }
 
 /* ═══ Le curseur de l'outil, sur la carte et nulle part ailleurs ═══════
@@ -9702,41 +9778,17 @@ static BOOL      gSansMessageChamp = NO;
         [self setNeedsDisplay:YES];
         return;
     }
-    Object *card = hc_current_card();
-    if (!card) return;
-    Object *owner = gEditBackground ? card->bg : card;
-    if (!owner) owner = card;
-    /* « New Button » et « New Field », les noms que leur donne HyperCard —
-     * dit par l'utilisatrice le 17 octobre, non vu. HC les nommait
-     * « Bouton 3 » et « Champ 3 ». */
-    Object *o;
-    if (gTool == TOOL_BUTTON) {
-        o = hc_new_button(owner, "New Button");
-    } else {
-        o = hc_new_field(owner, "New Field");
-        /* UN CHAMP NEUF NAÎT EN GENEVA 12, comme dans HyperCard 2.4.1 :
-         * « the textSize » et « the textFont » d'un champ neuf y répondent
-         * 12 et Geneva — mesuré DANS HYPERCARD (Basilisk II) par
-         * l'utilisatrice le 11 octobre, et accordé par elle. Il naissait en
-         * police système, et « the textFont » répondait vide. Geneva est
-         * livrée avec macOS : le champ est DESSINÉ en Geneva, et la réponse
-         * dit vrai.
-         *
-         * Ici seulement, à la souris : les champs d'une pile qu'on ouvre,
-         * ceux d'un collage ou d'un script, gardent ce qu'ils ont — rien ne
-         * change dans les piles existantes. */
-        if (o) {
-            free(o->textfont);
-            o->textfont = strdup("Geneva");
-            o->textsize = 12;
-        }
-    }
+    /* Il reçoit newButton (ou newField), comme au menu et au collage :
+     * NON MESURÉ DANS HYPERCARD pour le tracé à la souris. */
+    Object *o = hcv_part_neuve(gTool == TOOL_BUTTON ? OBJ_BUTTON : OBJ_FIELD);
+    if (!o) return;
     o->x = (int)gDragRect.origin.x;
     o->y = (int)gDragRect.origin.y;
     o->w = (int)gDragRect.size.width;
     o->h = (int)gDragRect.size.height;
     gSelected = o;
     [self setNeedsDisplay:YES];
+    hc_send(o, o->type == OBJ_BUTTON ? "newButton" : "newField");
 }
 
 - (void)findInStack:(id)sender {

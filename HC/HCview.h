@@ -226,6 +226,8 @@ void    hcv_selectionne(Object *o);
 - (void)showPolySidesPalette;
 - (void)showBrushPalette;
 - (void)newBackground:(id)sender;
+- (void)newButton:(id)sender;     /* menu Objects, et doMenu */
+- (void)newField:(id)sender;
 - (void)updateWindowTitle;
 - (void)showDrawColorPanel:(BOOL)ink;
 - (void)eraseAll;

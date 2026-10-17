@@ -353,6 +353,19 @@ static NSMenu *gRecentMenu = nil;
         [fileMenu addItem:bgItem];
         [fileItem setSubmenu:fileMenu];
         [mainMenu addItem:fileItem];
+    /* New Button et New Field, avant New Background : l'ordre du menu
+     * Objects d'HyperCard. Ils manquaient — signalé par l'utilisatrice le
+     * 17 octobre. Sans raccourci. */
+    NSMenuItem *nbtItem = [[NSMenuItem alloc] initWithTitle:@"New Button"
+                                                        action:@selector(newButton:)
+                                                 keyEquivalent:@""];
+        [nbtItem setTarget:view];
+        [fileMenu addItem:nbtItem];
+    NSMenuItem *nfdItem = [[NSMenuItem alloc] initWithTitle:@"New Field"
+                                                        action:@selector(newField:)
+                                                 keyEquivalent:@""];
+        [nfdItem setTarget:view];
+        [fileMenu addItem:nfdItem];
     NSMenuItem *nbItem = [[NSMenuItem alloc] initWithTitle:@"New Background"
                                                         action:@selector(newBackground:)
                                                  keyEquivalent:@""];
