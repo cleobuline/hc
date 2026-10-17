@@ -689,6 +689,12 @@ MAC•CAM Workshop, HyperCard tout juste relancé :
      N/MARG-PH — d'où vient le « -4 » des cartes Margolus ?
   4. put FORTH(": ECHO CENTER >PLN1 ;"), puis put FORTH("MAKE-TABLE ECHO") —
      le dictionnaire survit-il d'un appel à l'autre ?
+RÉPONDU LE 17 OCTOBRE PAR LE CODE DE L'ORIGINAL, LU (rien d'exécuté dans
+HyperCard) — voir « LE FORTH REFAIT SUR L'ORIGINAL », plus bas : 1. ECHO
+n'est pas connu, et MAKE-TABLE devant un mot inconnu ne fait rien, sans
+faute ; le champ Pile de Dentrite• porte « -4 » ; 2. le rang du mot,
+commentaires compris : 3 ; 3. le -4 est l'adresse d'ALTERNATE, une
+variable interne ; 4. non : tout est alloué à l'appel, et rendu à la fin.
 
 COMMENT « load » REND LES TABLES À LA MACHINE — LU dans le code 68000 de
 MACCAM le 16 octobre au soir (désassemblé ; rien n'y est exécuté)
@@ -1088,7 +1094,112 @@ HC/tiers/wamr/LICENSE et ATTRIBUTIONS.md dans Contents/Resources/wamr/ —,
 et suit donc HC.app même sorti du DMG. Vérifié par le journal du job
 « interface Cocoa » ; le paquet signé : NON OUVERT ici.
 
+LE FORTH REFAIT SUR L'ORIGINAL — 17 octobre
+------------------------------------------------------------------------
+
+Signalé par l'utilisatrice, avec un cadeau : « la récursion ne fonctionne
+pas dans ta version du forth », et sa pile MAC•CAM FORTH, la démonstration
+du langage qu'elle écrivait en 1990 — 29 cartes, un programme et son
+explication sur chacune, des « reliquats de code 68000 ». Au format de HC ;
+jamais commise.
+
+LU DANS LA PILE DE DÉMONSTRATION, de sa main : « Dans cette implantation de
+FORTH la récursion se fait directement » ; « La récursion indirecte n'est
+pas possible » ; « les deux entiers signés 16 bits » ; « NOT … le complément
+bit à bit » ; « La taille de la pile est d'un millier d'octets » ; « Les
+seuls mots immédiats sont ":" MAKE-TABLE CONSTANT VARIABLE et les valeurs
+numériques. Par contre un mot défini par l'utilisateur est immédiat » ; et
+sur la carte ALTERNATE : « ne pas s'inquiéter du -4 résiduel sur la pile qui
+est l'adresse de ALTERNATE ». Le bouton au-dessus du résultat porte
+« <Sommet ... Pile ... >Fond ». La pile retour est décrite octet par octet :
+une adresse de retour y fait quatre octets, l'index et la limite d'une
+boucle deux chacun.
+
+LU DANS L'XFCN FORTH D'ORIGINE (le binaire de MAC•CAM Workshop, désassemblé ;
+rien d'exécuté), pour chacune de ces phrases, et au-delà :
+  · il compile en vrai code 68000 : A3 est la pile des paramètres, A7 celle
+    du système ; DUP émet MOVE.W (A3),-(A3), + ADD.W, * MULS.W, NOT NOT.W ;
+  · « : » range le nom au dictionnaire ET l'adresse du code avant le corps
+    (0x3206-0x3234) : la récursion directe ; une entrée nouvelle va toujours
+    au bout, et la recherche rend la PREMIÈRE trouvée — un mot redéfini garde
+    sa première définition ;
+  · les noms se comparent par un strcmp : les majuscules comptent ;
+  · l'ordre de recherche : « : », « ; », le dictionnaire (MAKE-TABLE, >PLN0
+    à >PLN3, BEEP, VARIABLE, CONSTANT, les huit N/…, puis ceux de
+    l'utilisatrice), les 35 mots de base, les constantes — les douze voisins
+    du voisinage déclaré, puis celles de l'utilisatrice —, les variables
+    — BASE à -2, qui vaut 10, ALTERNATE à -4 —, les nombres ;
+  · au premier niveau, un mot de base ne fait RIEN (sa case renvoie au mot
+    suivant) ; « ; » y est « Compile Only », un inconnu « Can't
+    understand » ;
+  · ≠ ≥ ≤ sont dans la table des mots de base, mais leur compilation tombe
+    sur le piège _Debugger et n'émet rien ;
+  · DO pousse la limite puis l'index sur A7, et l'index avance AVANT la
+    comparaison : « 10 0 DO » fait dix tours, l'index valant 1 à 10 ;
+  · MAKE-TABLE ne remet pas la pile entre deux entrées ; il la contrôle
+    avant chacune (sous le fond, ou à moins de 20 octets du bas : STACK_ERR,
+    au rang du nom de la règle) ; devant un mot inconnu, il ne fait rien ;
+  · >PLNk écrit « 1 » pour toute valeur non nulle ;
+  · les fautes sont formées par sprintf, puis ENVOYÉES par SendCardMessage
+    (la fonction à 0x44f0 pose request = 1) ; leur nombre est un compteur
+    avancé à chaque mot lu, commentaires compris — le « word b of fld
+    "forth" » des gestionnaires que portent ses deux piles ; NEST_ERR donne
+    le rang du nom de la définition, avec un SysBeep ;
+  · un commentaire s'ouvre sur un mot qui commence par « ( », se ferme sur un
+    mot qui commence par « ) » ; les mots se séparent par l'espace et le
+    retour ;
+  · un nombre : un signe, des chiffres, lu en long puis tronqué à 16 bits ;
+  · la pile rendue va du sommet au fond, « %d » et une espace par nombre ;
+    les quatre globales sont posées à chaque appel ; tout est alloué à
+    l'appel et rendu à la fin.
+
+ÉCRIT : xcmd/maccam/forth_coeur.c refait sur ce modèle, et une petite
+machine 68000 pour le code déposé par « , » — MOVE.W et MOVE.L entre les
+registres de données et les deux piles, ADDQ et SUBQ sur A3 et A7, les
+décalages, NOP, RTS, _Debugger —, sur des piles disposées comme celles de
+l'original. forth.c envoie la faute, sonne les BEEP (dix au plus), pose les
+quatre globales. Le harnais forth, sections 2 à 9 ; le harnais xcmd, une
+faute reçue par un gestionnaire COMPILE_ERR.
+
+MESURÉ, LES DEUX ORACLES, dans le conteneur :
+  · MAC•CAM Workshop : 163 tables sur 175 identiques (159 avant). Les
+    quatre de Dentrite• le sont devenues : MAKE-TABLE ECHO n'y faisait rien.
+    Les douze autres sont les plus vieilles, déjà relevées plus haut ;
+  · son champ Pile : 17 sur 19 identiques, dont les seize « -4 » ;
+    Concurrence• et Concurrence2 portent « 1 », que leur programme ne
+    laisse pas — leurs tables, elles, sont identiques. NON EXPLIQUÉ ;
+  · MAC•CAM FORTH : les champs « result » remplis par l'original sont tous
+    refaits — Fermat, 225 nombres au caractère près (ils ne sortent
+    qu'avec un index de 1 à 100), 11^1024 = -20479 (16 bits), Boucles
+    itératives, Choix multiples, Conditions, Manipulation de pile, LEAVE,
+    Variable, les voisins. Ceux des cartes 07, 21, 22, 23 et 27 étaient
+    l'ancien rendu de HC, l'utilisatrice les ayant joués DANS HC — déduit :
+    ils sont, au caractère près, ce que rendait notre FORTH d'avant. Celui
+    de « Constantes » ne porte qu'une espace, qu'aucun des deux ne rend :
+    NON EXPLIQUÉ ;
+  · la récursion : FACT rend 5040 720 120 24 6 2 1 ; PGCD et REDUCZ
+    7 13 -11 ; EXIT et HOP sautent KLING.
+
+UN ÉCART, VOULU, À TRANCHER PAR L'UTILISATRICE : l'original ne saute qu'UN
+commentaire par mot lu ; deux de suite lui font lire « ( » comme un mot.
+Deux cartes de MAC•CAM Workshop, Terminator 3• et B-Gas Dentrite VF•, ont
+ALTERNATE mis entre parenthèses juste avant un autre commentaire — retouche
+postérieure à leurs tables : le champ Pile de Terminator 3• garde le -4. HC
+saute tous les commentaires qui se suivent, et leurs tables restent
+identiques.
+
+NON FAIT, et dit : la division par zéro (l'original s'arrêtait sur une
+erreur système ; ici 0) ; un nom de plus de 15 caractères ; les mots de
+code machine hors du petit jeu ci-dessus, refusés par « Can't
+understand » ; une récursion sans fin, arrêtée en STACK_ERR au lieu de
+planter le Mac.
+
+À JOUER DANS HC (l'application), sur MAC•CAM FORTH et MAC•CAM Workshop :
+remplacer forth.wasm par le nouveau (Objects ▸ Modules… ▸ Add…), puis le
+bouton « Executer » de chaque carte de démonstration ; une faute doit
+s'afficher dans un dialogue, et son mot être sélectionné dans le champ.
+
 CE QUI RESTE :
-  · ce que les quatre bancs ci-dessus diront ;
-  · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin.
+  · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
+  · l'écart des commentaires, à trancher.
 
