@@ -937,9 +937,18 @@ son bouton, compiler une règle, la charger, « step », puis « stepfast »
 arrêté d'un clic — et Cmd-., qui doit l'arrêter aussi en gardant la
 fenêtre.
 
+MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice, sur
+son Mac, avec forth.wasm et maccam.wasm ajoutés à MAC•CAM Workshop : la
+fenêtre CAM s'ouvre par son bouton, et la règle « Worms2• » y tourne, en
+couleurs — sa capture : « tu as réussi à ressusciter ma pile de 1990 ».
+Le journal montre en même temps « personne ne répond à « ballons the rect
+of me , … » » : l'XCMD Ballons manque toujours.
+PAS ENCORE DIT : stepfast arrêté d'un clic, et par Cmd-. en gardant la
+fenêtre.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
-  · le banc ci-dessus, DANS HC ;
+  · stepfast, le clic et Cmd-., DANS HC ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
