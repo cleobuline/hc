@@ -8,11 +8,13 @@ rappels que HC lui tend : une pile qu'on vous partage ne peut rien faire de
 plus, avec ses modules, qu'avec ses scripts.
 
 Ce dossier est le kit pour en écrire. Pour commencer, de l'installation du
-compilateur à un premier « Hello world » dans votre pile : **`MANUEL.md`**.
+compilateur à un premier « Hello world » dans votre pile : **`MANUEL.md`**
+(en anglais : `MANUAL.md`).
 
 | fichier | rôle |
 | --- | --- |
 | `MANUEL.md` | le premier XCMD, pas à pas |
+| `MANUAL.md` | le même, en anglais |
 | `hc_xcmd.h` | l'en-tête, sur le modèle de `HyperXCmd.h` d'Apple |
 | `hc_xcmd.c` | ce que chaque module emporte : la mémoire, les chaînes, `snprintf` |
 | `inc/` | les en-têtes C réduits qui vont avec |

@@ -1081,8 +1081,14 @@ ATTEINT : MAC•CAM Workshop tourne dans HC sans qu'une ligne de ses scripts
 ait changé — ses quatre externes (FORTH, MACCAM, Ballons, FullDrag) refaits
 en modules WebAssembly.
 
+LA LICENCE DE WAMR, le 17 octobre, pour la 0.8.4 : l'Apache 2.0 demande
+qu'une copie de la licence accompagne ce qu'on redistribue. Elle voyage
+désormais DANS l'app — une phase « Licence de WAMR » du projet copie
+HC/tiers/wamr/LICENSE et ATTRIBUTIONS.md dans Contents/Resources/wamr/ —,
+et suit donc HC.app même sorti du DMG. Vérifié par le journal du job
+« interface Cocoa » ; le paquet signé : NON OUVERT ici.
+
 CE QUI RESTE :
   · ce que les quatre bancs ci-dessus diront ;
-  · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
-  · la licence de WAMR dans le DMG.
+  · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin.
 

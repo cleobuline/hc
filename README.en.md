@@ -11,6 +11,10 @@
   [release notes](docs/releases/).
 - **A superset of HyperCard, in colour.** Everything HyperCard does, plus
   colour: paint, icons, and objects (`backColor`, `foreColor`, `textColor`).
+- **XCMDs and XFCNs, sandboxed.** As in HyperCard, a stack extends itself
+  with commands and functions written in C; HC compiles them to
+  WebAssembly, and they run without being able to touch the Mac. From the
+  compiler to a first "Hello world": [`xcmd/MANUAL.md`](xcmd/MANUAL.md).
 
 Native macOS app, universal binary, macOS 10.13 and later.
 

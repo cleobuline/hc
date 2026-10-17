@@ -1,5 +1,7 @@
 # Votre premier XCMD pour HC, pas à pas
 
+*[English version](MANUAL.md)*
+
 De l'installation du compilateur jusqu'à un « Hello world » qui s'affiche
 dans votre pile. Comptez une demi-heure la première fois, dont l'essentiel
 à attendre un téléchargement.
@@ -22,7 +24,9 @@ qu'on vous partage, même avec ses modules.
 
 - un Mac, avec macOS 10.15 (Catalina) ou plus récent ;
 - de quoi télécharger plusieurs centaines de mégaoctets ;
-- le dossier de HC, celui qui contient le dossier `xcmd`.
+- le dossier de HC, celui qui contient le dossier `xcmd`. Le DMG ne le
+  contient pas — seulement l'application, des piles et ce manuel — : la fin
+  de l'étape 2 dit comment l'obtenir.
 
 Dans ce manuel, le dossier de HC s'appelle `~/hc` (le `~` veut dire « mon
 dossier personnel »). Si le vôtre est ailleurs, remplacez `~/hc` par son
@@ -49,6 +53,16 @@ xcode-select --install
 
 Une fenêtre propose de les installer : acceptez. Si le Terminal répond
 qu'ils sont déjà installés, c'est parfait, passez à la suite.
+
+Si vous n'avez pas encore le dossier de HC, `git` vous l'apporte :
+
+```
+cd ~
+git clone https://github.com/cleobuline/hc.git
+```
+
+Il arrive dans votre dossier personnel, sous le nom `hc` : c'est le `~/hc`
+de ce manuel.
 
 ## Étape 3 — Installer le compilateur WebAssembly
 
