@@ -943,12 +943,12 @@ fenêtre CAM s'ouvre par son bouton, et la règle « Worms2• » y tourne, en
 couleurs — sa capture : « tu as réussi à ressusciter ma pile de 1990 ».
 Le journal montre en même temps « personne ne répond à « ballons the rect
 of me , … » » : l'XCMD Ballons manque toujours.
-PAS ENCORE DIT : stepfast arrêté d'un clic, et par Cmd-. en gardant la
-fenêtre.
+Puis, le même jour, toujours DANS HC : « cmd . et click arrête » —
+stepfast s'arrête d'un clic, et par Cmd-.. Que la fenêtre reste ouverte
+après Cmd-. n'a pas été dit en toutes lettres.
 
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
-  · stepfast, le clic et Cmd-., DANS HC ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
