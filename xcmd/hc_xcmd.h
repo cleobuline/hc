@@ -238,11 +238,13 @@ long DragGrayRgn(const Rect *rects, int n, Point depart, const Rect *limite,
 #define HC_XCMD(nom) HC_ENTREE_(XCMD, nom)
 #define HC_XFCN(nom) HC_ENTREE_(XFCN, nom)
 
+/* paramPtr est marqué « peut ne pas servir » : un XCMD qui n'en lit rien —
+ * le premier « hello world » — compile sans un avertissement. */
 #define HC_ENTREE_(genre, nom)                                           \
     static void genre##_##nom(XCmdPtr paramPtr);                         \
     __attribute__((export_name(#genre " " #nom)))                        \
     void hc_entree_##genre##_##nom(XCmdPtr p);                           \
     void hc_entree_##genre##_##nom(XCmdPtr p) { genre##_##nom(p); }      \
-    static void genre##_##nom(XCmdPtr paramPtr)
+    static void genre##_##nom(XCmdPtr paramPtr __attribute__((unused)))
 
 #endif
