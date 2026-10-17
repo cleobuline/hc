@@ -1240,7 +1240,8 @@ harnais forth, section 7 : A3 poussé jusqu'au bord, il y reste.
 
 MESURÉ DANS HC (l'application), le 17 octobre au soir, par l'utilisatrice,
 sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
-inline 68000 ». La durée, avec le module accéléré, n'est pas relevée.
+inline 68000 ». Avec le module accéléré : « c'est un peu plus rapide » —
+la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
 
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
