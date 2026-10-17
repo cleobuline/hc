@@ -1278,14 +1278,17 @@ l'avait brouillé — table, ordre des bits, phase, découpage des blocs,
 phase de départ. C'est la PREMIÈRE COMPARAISON avec une machine
 d'origine sur la dynamique même, et pas seulement sur les tables.
 
-NON SU : quelle machine a fabriqué ce gaz (le MAC•CAM de l'époque, une
-CAM-6, une autre ?) et en combien de pas ; question posée à
-l'utilisatrice. NON RELEVÉS : le nombre de pas joués dans HC, et le texte
-au pixel près — la capture est réduite.
+D'OÙ VIENT CE GAZ — DIT PAR L'UTILISATRICE, à la question « est-ce toi,
+en 1990, avec le MAC•CAM d'origine, en écrivant « miraculeux ! » puis en
+le faisant tourner à l'envers avec le bouton phase ? » : « oui ça date de
+1990 ». Le gaz est donc l'œuvre de l'XFCN MACCAM d'origine, et HC défait
+ce qu'elle avait fait. Le nombre de pas d'alors n'est pas connu. NON
+RELEVÉS : le nombre de pas joués dans HC, et le texte au pixel près — la
+capture est réduite.
 
 La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
 L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
-voulu ce soir-là : non demandé.
+voulu ce soir-là : demandé, sans réponse.
 
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
