@@ -192,6 +192,25 @@ int Button(void);
  * HyperCard, réduit à ce que MACCAM en lisait. */
 int GetCardPicture(const Rect *r, unsigned char *noir);
 
+/* « gauche,haut,droite,bas », comme l'écrivent les scripts, en Rect. Rend 1,
+ * ou 0 si la chaîne n'en est pas un — *r reste alors tel quel. Le StrToRect
+ * de HyperCard. */
+int StrToRect(const char *s, Rect *r);
+
+/* LES BULLES D'AIDE de System 7 — le Help Manager, réduit à ce que l'XCMD
+ * Ballons de MAC•CAM en employait.
+ *
+ * HMGetBalloons : les bulles sont-elles allumées ? C'est l'article « Show
+ * Balloons » du menu Help de HC, comme celui du menu des bulles de System 7.
+ *
+ * HMShowBalloon : `texte` dans une bulle pointée sur la souris, qui reste
+ * tant que la souris est dans `zone` — en coordonnées carte, comme « the
+ * rect of me ». Rend 1, ou 0 si les bulles sont éteintes : rien ne
+ * s'affiche alors. Le message d'Apple (HMMessageRecord), la pointe et la
+ * méthode se réduisent ici au texte et à la zone. */
+int HMGetBalloons(void);
+int HMShowBalloon(const char *texte, const Rect *zone);
+
 /* DÉCLARER UN XCMD OU UN XFCN.
  *
  * Chacun devient une fonction exportée sous le nom « XCMD bonjour » ou

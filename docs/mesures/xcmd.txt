@@ -947,8 +947,49 @@ Puis, le même jour, toujours DANS HC : « cmd . et click arrête » —
 stepfast s'arrête d'un clic, et par Cmd-.. Que la fenêtre reste ouverte
 après Cmd-. n'a pas été dit en toutes lettres.
 
+LES BULLES D'AIDE : L'XCMD BALLONS — 17 octobre
+------------------------------------------------------------------------
+
+Le journal de HC, sur MAC•CAM Workshop : « personne ne répond à « ballons
+the rect of me , … » », à chaque survol d'un bouton. Demandé par
+l'utilisatrice : « oui avec des vraies bulles, car si on fait cette xcmd ça
+servira à d'autres users qui voudront mettre des bulles dans leurs piles ».
+
+LU DANS BALLONS (désassemblée ; rien d'exécuté) : elle ne dessine rien.
+Elle demande au Help Manager de System 7 (Pack14, le piège $A830) si les
+bulles sont allumées (HMGetBalloons, sélecteur 3) ; éteintes, elle ne fait
+rien. Allumées : GetMouse, LocalToGlobal — la pointe est la souris —, son
+premier paramètre en rectangle, son second en texte (« Sans titre » par
+défaut), et HMShowBalloon (sélecteur $0B01) avec le message texte, la
+pointe, le rectangle, la méthode 0. Les bulles étant éteintes par défaut,
+elle ne faisait le plus souvent rien du tout.
+
+ÉCRIT le même jour :
+  · le kit : HMGetBalloons, HMShowBalloon(texte, &zone) — le message, la
+    pointe et la méthode d'Apple réduits au texte et à la zone —, et
+    StrToRect, que maccam.c prend désormais aussi ;
+  · le module : xcmd/exemples/ballons.c, pour toutes les piles ;
+  · l'hôte : les rappels `bulles` et `bulle` ; dans Cocoa, la bulle, et
+    l'article « Show Balloons » / « Hide Balloons » d'un menu Help, gardé
+    d'un lancement à l'autre. Éteintes par défaut, comme sous System 7 ;
+  · le harnais xcmd, section 13 : Ballons appelée depuis le mouseEnter
+    d'un bouton, sans hôte, bulles éteintes, allumées ; sans texte ; un
+    rectangle illisible.
+
+NON MESURÉ, et choisi : le dessin de la bulle et sa police (Geneva 11),
+sa place (au-dessus à droite de la souris, dessous si l'écran manque) ;
+elle s'efface quand la souris sort de la zone, ou que HC passe derrière ;
+elle ne s'ouvre pas si la souris n'est pas déjà dans la zone. La zone est
+prise en coordonnées CARTE — « the rect of me » —, ce que HMShowBalloon
+recevait tel quel de Ballons. L'interface Cocoa : COMPILÉE PAR LA CI, NON
+EXÉCUTÉE.
+
+À JOUER DANS HC (l'application), sur MAC•CAM Workshop : ajouter
+ballons.wasm, Help ▸ Show Balloons, survoler les boutons de l'atelier.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
+  · les bulles, DANS HC ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
     « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.

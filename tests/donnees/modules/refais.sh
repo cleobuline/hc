@@ -14,6 +14,7 @@ C="--target=wasm32 -O2 -ffreestanding -nostdlib -isystem $KIT/inc -I $KIT -Wall 
 L="-Wl,--no-entry -Wl,--strip-debug"
 make -s -C "$KIT" CLANG="$CLANG"
 cp "$KIT/exemples/bonjour.wasm" "$ICI/bonjour.wasm"
+cp "$KIT/exemples/ballons.wasm" "$ICI/ballons.wasm"
 cp "$KIT/maccam/forth.wasm" "$ICI/forth.wasm"
 cp "$KIT/maccam/maccam.wasm" "$ICI/maccam.wasm"
 # shellcheck disable=SC2086

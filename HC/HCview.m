@@ -5814,6 +5814,174 @@ static int cocoa_peinture(Object *couche, const int r[4], unsigned char *noir)
     return 1;
 }
 
+/* ═══ LES BULLES D'AIDE ═══════════════════════════════════════════════════
+ *
+ * Celles de System 7, pour HMShowBalloon d'un module — l'XCMD Ballons de
+ * MAC•CAM d'abord (xcmd/exemples/ballons.c), qui les montrait sur ses
+ * boutons au survol. L'article « Show Balloons » du menu Help les allume,
+ * comme celui du menu des bulles de System 7 ; HC s'en souvient d'un
+ * lancement à l'autre.
+ *
+ * La bulle pointe sur la souris et s'efface quand la souris sort de sa
+ * zone, ou que HC passe derrière une autre application : un guet de dix
+ * fois par seconde, tant qu'elle est là.
+ *
+ * NON MESURÉ, et écrit comme tel : son dessin — un rectangle arrondi
+ * cerné de noir, et sa pointe —, sa police (Geneva 11), sa place — au-dessus
+ * à droite de la souris, en dessous si l'écran manque —, et qu'une bulle ne
+ * s'ouvre pas quand la souris n'est pas déjà dans sa zone. */
+
+static NSString *const HCV_BULLES = @"HCShowBalloons";
+
+BOOL hcv_bulles_allumees(void)
+{
+    return [[NSUserDefaults standardUserDefaults] boolForKey:HCV_BULLES];
+}
+
+static void hcv_bulle_efface(void);
+
+void hcv_bulles_bascule(void)
+{
+    BOOL b = !hcv_bulles_allumees();
+    [[NSUserDefaults standardUserDefaults] setBool:b forKey:HCV_BULLES];
+    if (!b) hcv_bulle_efface();
+}
+
+enum { BULLE_MARGE = 6, BULLE_QUEUE = 12, BULLE_LARGEUR = 220 };
+
+@interface HCBulleVue : NSView
+@property (nonatomic, strong) NSAttributedString *texte;
+@property (nonatomic) BOOL queueEnHaut;    /* la bulle sous la souris */
+@end
+
+@implementation HCBulleVue
+
+- (BOOL)isFlipped { return YES; }
+
+- (void)drawRect:(NSRect)sale {
+    (void)sale;
+    NSRect b = [self bounds];
+    CGFloat q = BULLE_QUEUE;
+    NSRect corps = self.queueEnHaut
+        ? NSMakeRect(0.5, q + 0.5, NSWidth(b) - 1, NSHeight(b) - q - 1)
+        : NSMakeRect(0.5, 0.5, NSWidth(b) - 1, NSHeight(b) - q - 1);
+    NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:corps
+                                                      xRadius:8 yRadius:8];
+    /* La pointe part du bord, côté souris, et touche le coin de la vue. */
+    NSBezierPath *pointe = [NSBezierPath bezierPath];
+    CGFloat bord = self.queueEnHaut ? NSMinY(corps) : NSMaxY(corps);
+    CGFloat coin = self.queueEnHaut ? 0.5 : NSHeight(b) - 0.5;
+    [pointe moveToPoint:NSMakePoint(12, bord)];
+    [pointe lineToPoint:NSMakePoint(1, coin)];
+    [pointe lineToPoint:NSMakePoint(24, bord)];
+    [p appendBezierPath:pointe];
+    [[NSColor whiteColor] setFill];
+    [p fill];
+    [pointe fill];
+    [[NSColor blackColor] setStroke];
+    [p setLineWidth:1];
+    [p stroke];
+    /* Le bord sous la pointe se recouvre de blanc : la bulle et sa pointe
+     * ne font qu'un. */
+    [[NSColor whiteColor] setStroke];
+    NSBezierPath *joint = [NSBezierPath bezierPath];
+    [joint moveToPoint:NSMakePoint(13, bord)];
+    [joint lineToPoint:NSMakePoint(23, bord)];
+    [joint setLineWidth:1.5];
+    [joint stroke];
+    [self.texte drawWithRect:NSInsetRect(corps, BULLE_MARGE, BULLE_MARGE)
+                     options:NSStringDrawingUsesLineFragmentOrigin
+                     context:nil];
+}
+
+@end
+
+static NSPanel *gBulle;
+static NSRect   gBulleZone;            /* en coordonnées d'écran d'AppKit */
+static NSTimer *gBulleGuet;
+
+static void hcv_bulle_efface(void)
+{
+    [gBulleGuet invalidate];
+    gBulleGuet = nil;
+    [gBulle orderOut:nil];
+}
+
+static BOOL hcv_bulle_tient(void)
+{
+    return [NSApp isActive]
+        && NSPointInRect([NSEvent mouseLocation], NSInsetRect(gBulleZone, -1, -1));
+}
+
+static int cocoa_bulles(void) { return hcv_bulles_allumees() ? 1 : 0; }
+
+static int cocoa_bulle(const char *texte, const int r[4])
+{
+    if (!hcv_bulles_allumees()) return 0;
+    if (!gView || ![gView window]) return 1;
+    NSRect vr = NSMakeRect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+    gBulleZone = [[gView window] convertRectToScreen:
+                     [gView convertRect:vr toView:nil]];
+    if (!hcv_bulle_tient()) { hcv_bulle_efface(); return 1; }
+
+    NSFont *f = [NSFont fontWithName:@"Geneva" size:11];
+    if (!f) f = [NSFont systemFontOfSize:11];
+    NSAttributedString *t = [[NSAttributedString alloc]
+        initWithString:hcv_texte(texte)
+            attributes:@{ NSFontAttributeName: f,
+                          NSForegroundColorAttributeName: [NSColor blackColor] }];
+    NSRect m = [t boundingRectWithSize:NSMakeSize(BULLE_LARGEUR, 10000)
+                               options:NSStringDrawingUsesLineFragmentOrigin
+                               context:nil];
+    CGFloat l = ceil(NSWidth(m)) + 2 * BULLE_MARGE + 2;
+    CGFloat h = ceil(NSHeight(m)) + 2 * BULLE_MARGE + 2 + BULLE_QUEUE;
+    if (l < 40) l = 40;
+
+    /* La pointe sur la souris : la bulle au-dessus à droite, ou en dessous
+     * si le haut de l'écran manque. */
+    NSPoint s = [NSEvent mouseLocation];
+    NSScreen *ecran = [[gView window] screen];
+    if (!ecran) ecran = [NSScreen mainScreen];
+    NSRect vis = [ecran visibleFrame];
+    BOOL dessous = s.y + h > NSMaxY(vis);
+    NSRect cadre = NSMakeRect(s.x - 1, dessous ? s.y - h : s.y, l, h);
+    if (NSMaxX(cadre) > NSMaxX(vis)) cadre.origin.x = NSMaxX(vis) - l;
+
+    if (!gBulle) {
+        gBulle = [[NSPanel alloc] initWithContentRect:cadre
+                                            styleMask:(NSWindowStyleMaskBorderless |
+                                                       NSWindowStyleMaskNonactivatingPanel)
+                                              backing:NSBackingStoreBuffered
+                                                defer:NO];
+        [gBulle setOpaque:NO];
+        [gBulle setBackgroundColor:[NSColor clearColor]];
+        [gBulle setHasShadow:YES];
+        [gBulle setIgnoresMouseEvents:YES];
+        [gBulle setLevel:NSPopUpMenuWindowLevel];
+        [gBulle setReleasedWhenClosed:NO];
+        [gBulle setExcludedFromWindowsMenu:YES];
+        [gBulle setContentView:[[HCBulleVue alloc] initWithFrame:
+                                   NSMakeRect(0, 0, l, h)]];
+    }
+    HCBulleVue *v = (HCBulleVue *)[gBulle contentView];
+    v.texte = t;
+    v.queueEnHaut = dessous;
+    [gBulle setFrame:cadre display:NO];
+    [v setNeedsDisplay:YES];
+    [gBulle orderFront:nil];
+
+    if (!gBulleGuet) {
+        gBulleGuet = [NSTimer timerWithTimeInterval:0.1 repeats:YES
+                                              block:^(NSTimer *tm) {
+            (void)tm;
+            if (!hcv_bulle_tient()) hcv_bulle_efface();
+        }];
+        [[NSRunLoop currentRunLoop] addTimer:gBulleGuet
+                                     forMode:NSRunLoopCommonModes];
+    }
+    return 1;
+}
+
 @implementation HCView {
     HCDoc _doc;
 }
@@ -9709,6 +9877,8 @@ static void hcv_survol(HCView *v, Object *carte)
     host.xw_image      = cocoa_xw_image;
     host.xw_fenetre    = cocoa_xw_fenetre;
     host.peinture      = cocoa_peinture;
+    host.bulles        = cocoa_bulles;
+    host.bulle         = cocoa_bulle;
     host.raccourci_menu = cocoa_raccourci_menu;
     hcv_touches_installe();
     hcv_regard_installe();

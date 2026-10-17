@@ -109,7 +109,9 @@ typedef enum {
     D_DESSINE,              /* DrawXWindow */
     D_COPIE,                /* CopyXWindow */
     D_BOUTON,               /* Button */
-    D_PEINTURE              /* GetCardPicture */
+    D_PEINTURE,             /* GetCardPicture */
+    D_BULLES,               /* HMGetBalloons */
+    D_BULLE                 /* HMShowBalloon */
 } Quoi;
 
 typedef struct {
@@ -416,6 +418,22 @@ static void rappel_get_card_picture(wasm_exec_env_t env, uint64_t *args)
     rend(args, a ? a->reponse : 0);
 }
 
+/* ---- les bulles d'aide ---- */
+
+static void rappel_hm_get_balloons(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_BULLES });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_hm_show_balloon(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_BULLE, .texte = chaine(args, 0),
+                                      .rect = { entier(args, 1), entier(args, 2),
+                                                entier(args, 3), entier(args, 4) } });
+    rend(args, a ? a->reponse : 0);
+}
+
 /* hc_rendu(tampon, taille) : copie la dernière chaîne rendue, coupée à la
  * taille du tampon, zéro final compris. Elle ne sert qu'une fois. Pas de
  * passage au fil de HC : la réponse est déjà dans `a`, et le fil de HC
@@ -453,6 +471,8 @@ static NativeSymbol RAPPELS[] = {
     { "CopyXWindow",     (void *)rappel_copy_xwindow,   "(i)i",   NULL },
     { "Button",          (void *)rappel_button,         "()i",    NULL },
     { "GetCardPicture",  (void *)rappel_get_card_picture, "(iiii*~)i", NULL },
+    { "HMGetBalloons",   (void *)rappel_hm_get_balloons, "()i",   NULL },
+    { "HMShowBalloon",   (void *)rappel_hm_show_balloon, "($iiii)i", NULL },
 };
 
 /* ---- WAMR, démarré une fois ---- */
@@ -1111,6 +1131,12 @@ static void sers(Appel *a)
         break;
     case D_PEINTURE:
         a->reponse = hc_module_peinture(d->rect, d->noir);
+        break;
+    case D_BULLES:
+        a->reponse = hc_module_bulles();
+        break;
+    case D_BULLE:
+        a->reponse = hc_module_bulle(d->texte, d->rect);
         break;
     }
 }

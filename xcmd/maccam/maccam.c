@@ -69,28 +69,6 @@ static const char *param(XCmdPtr p, int i)
     return *s ? s : NULL;
 }
 
-/* StrToRect : « gauche,haut,droite,bas ». */
-static int rectangle(const char *s, Rect *r)
-{
-    int v[4];
-    for (int k = 0; k < 4; k++) {
-        char *fin;
-        v[k] = (int)strtol(s, &fin, 10);
-        if (fin == s) return 0;
-        s = fin;
-        while (*s == ' ') s++;
-        if (k < 3) {
-            if (*s != ',') return 0;
-            s++;
-        }
-    }
-    r->left = (short)v[0];
-    r->top = (short)v[1];
-    r->right = (short)v[2];
-    r->bottom = (short)v[3];
-    return 1;
-}
-
 /* ---- l'image ---- */
 
 static unsigned char *palette(void)
@@ -124,7 +102,7 @@ static void ouvre(XCmdPtr p)
     Fenetre *f = de(0);
     Rect r = { 50, 50, 100, 100 };
     const char *s;
-    if ((s = param(p, 0))) rectangle(s, &r);    /* illisible : le défaut */
+    if ((s = param(p, 0))) StrToRect(s, &r);    /* illisible : le défaut */
     const char *titre = param(p, 1) ? param(p, 1) : "Sans Titre";
     int visible   = (s = param(p, 2)) ? booleen(s) : 1;
     int style     = (s = param(p, 3)) ? nombre(s) : 0x800;
@@ -231,7 +209,7 @@ static void pose_fenetre(const Fenetre *f, const char *prop, int valeur)
 static void image(Fenetre *f, int bit, const char *valeur)
 {
     Rect r;
-    if (!f->ouverte || !rectangle(valeur, &r)) return;
+    if (!f->ouverte || !StrToRect(valeur, &r)) return;
     int l = r.right - r.left, h = r.bottom - r.top;
     if (l <= 0 || h <= 0) return;
     unsigned char *noir = malloc((size_t)l * (size_t)h);

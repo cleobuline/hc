@@ -60,6 +60,12 @@ scripts. Tout est dans docs/mesures/xcmd.txt : le mesuré, les routes
 écartées, l'ordre des marches. La pile elle-même, au format d'Apple, n'est
 jamais commise.
 
+Dans ce chantier, LE 17 OCTOBRE, elle a voulu les vraies bulles d'aide de
+System 7 pour l'XCMD Ballons de sa pile — « ça servira à d'autres users
+qui voudront mettre des bulles dans leurs piles » : les rappels
+HMGetBalloons et HMShowBalloon, et un menu Help qui ne porte que « Show
+Balloons ». Rien de neuf en HyperTalk.
+
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
 noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit
