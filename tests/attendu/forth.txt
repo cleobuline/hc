@@ -109,6 +109,12 @@
       rend «  » ; envoie « INTERPRET_ERR "Can't understand ", 6  »
    : X DUP , ; X
       rend « 0  » ; envoie « INTERPRET_ERR "Can't understand ", 6  »
+   : S 20875 , ; : T 100 0 DO S LOOP ; T
+      rend 400 case(s)
+   : S 20875 , ; : T 100 0 DO S LOOP ; T S
+      rend 400 case(s) ; envoie « INTERPRET_ERR "Can't understand ", 15  »
+   : S 20875 , ; : Q 14080 , ; : T 100 0 DO S LOOP ; T Q
+      rend 400 case(s) ; envoie « INTERPRET_ERR "Can't understand ", 20  »
 
 == 8. MAKE-TABLE ne remet pas la pile ==
    : R CENTER >PLN0 ; 5 MAKE-TABLE R

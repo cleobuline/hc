@@ -1211,9 +1211,32 @@ machine. MESURÉ dans le conteneur (Linux, le noyau en -O2) : Fermat exécute
 68000 émulées (l'index, trois par i, j ou k) et 1,26 million d'appels ;
 60 ms en natif, 1,0 à 1,2 s par le module dans WAMR, dix-huit fois plus.
 DÉCIDÉ par l'utilisatrice : « c'est pas grave si le web assembly est pas
-très rapide », les machines Apple Silicon le cacheront. NON FAIT, et noté
-pour le jour où il le faudra : décoder le code machine une fois, à la
-compilation, plutôt qu'à chaque passage.
+très rapide », les machines Apple Silicon le cacheront. Puis, sur trois
+voies proposées, la première seule : « ne prenons pas de risque de
+sécurité » — PAS de JIT dans WAMR, qui demanderait l'autorisation allow-jit
+du Hardened Runtime et fabriquerait du code natif à l'exécution.
+
+FAIT, et MESURÉ dans le conteneur, Fermat par le module dans WAMR, cinq
+passages chacun :
+  · décoder chaque instruction 68000 une fois, au « ; » : AUCUN gain
+    (1,1 s avant comme après) — le décodage ne coûtait presque rien ;
+  · calculer l'adresse d'une opérande en un passage, sur les index des
+    piles, au lieu de six fonctions : 1,1 s → 0,9 s ;
+  · FUSIONNER la suite de PICK et de l'index — « MOVE.W (A3)+,Dn ; ASL.W
+    #1,Dn ; MOVE.W 0(An,Dn.W),-(A3) », An valant A3 ou A7 —, exécutée d'un
+    coup avec les mêmes effets, Dn compris ; chacune des trois reste
+    décodée à sa place pour un saut qui tomberait au milieu : 0,54 s.
+  En tout, de 1,07 s à 0,54 s en moyenne : DEUX FOIS plus vite. Les
+  résultats sont inchangés : Fermat au caractère près, les quinze champs de
+  l'original, 163 tables, 17 champs Pile ; le harnais forth identique.
+  Les appels et retours allégés, essayés aussi : rien de mesurable, laissés.
+
+TROUVÉ en relisant la fusion, et CORRIGÉ : un -(A3) au fond, ou un SUBQ qui
+descendait A3 sous zéro, laissaient A3 négatif avant la faute, et le rendu
+de la pile lisait alors une case avant son tableau (dans la structure : ni
+ASan ni le fuzzing ne pouvaient le voir). Un registre ne bouge plus que si
+l'accès réussit, et ADDQ ou SUBQ refusent de sortir de leur pile. Le
+harnais forth, section 7 : A3 poussé jusqu'au bord, il y reste.
 
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;

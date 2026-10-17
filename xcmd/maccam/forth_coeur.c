@@ -161,6 +161,7 @@ enum {
     OP_ACCOLADE,    /* { … } : arg est son rang dans m->acc */
     OP_BRUT,        /* un mot de code machine, déposé par « , » : arg */
     OP_BRUT_FAUX,   /* « , » après autre chose qu'un nombre */
+    OP_INSN,        /* une instruction 68000 décodée au « ; » : arg, dans m->insns */
     OP_RETOUR
 };
 
@@ -189,6 +190,8 @@ typedef struct {
     int         ncode, capcode;
     int        *acc;         /* pour chaque { … } : nombre, fin, puis les débuts */
     int         nacc, capacc;
+    struct Insn *insns;      /* les instructions 68000 décodées */
+    int         ninsns, capinsns;
 
     int         compile;     /* une définition est ouverte */
     int         rang_nom;    /* le rang de son nom, pour NEST_ERR */
@@ -450,60 +453,6 @@ static int ajoute_acc(Vm *m, int v)
  * l'original les disposait. Le reste est refusé, par la faute
  * « Can't understand » du mot en cours. */
 
-/* Une adresse : A3 et A7 en octets dans leurs piles, A0 dans la zone. */
-typedef struct { int region, octet; } Adresse;
-enum { R_PILE, R_RETOUR, R_ZONE };
-
-static int registre_a(Vm *m, int r, Adresse *a)
-{
-    switch (r) {
-    case 3: *a = (Adresse){ R_PILE, 2 * m->a3 }; return 1;
-    case 7: *a = (Adresse){ R_RETOUR, 2 * m->a7 }; return 1;
-    case 0: *a = (Adresse){ R_ZONE, ZONE_ORIGINE }; return 1;
-    default: return 0;
-    }
-}
-
-static void pose_registre_a(Vm *m, int r, int octet)
-{
-    if (r == 3) m->a3 = octet / 2;
-    else if (r == 7) m->a7 = octet / 2;
-}
-
-static short *case_memoire(Vm *m, Adresse a)
-{
-    if (a.octet & 1) return NULL;
-    int k = a.octet / 2;
-    switch (a.region) {
-    case R_PILE:   return k >= 0 && k < PILE_CASES ? &m->pile[k] : NULL;
-    case R_RETOUR: return k >= 0 && k < RETOUR_CASES ? &m->retour[k] : NULL;
-    default:       return k >= 0 && k < ZONE_CASES ? &m->zone[k] : NULL;
-    }
-}
-
-static int lis_memoire(Vm *m, Adresse a, int longueur, int *v)
-{
-    short *c = case_memoire(m, a);
-    if (!c) return 0;
-    if (longueur == 2) { *v = *c; return 1; }
-    short *d = case_memoire(m, (Adresse){ a.region, a.octet + 2 });
-    if (!d) return 0;
-    *v = (int)(((unsigned)(unsigned short)*c << 16) | (unsigned short)*d);
-    return 1;
-}
-
-static int ecris_memoire(Vm *m, Adresse a, int longueur, int v)
-{
-    short *c = case_memoire(m, a);
-    if (!c) return 0;
-    if (longueur == 2) { *c = (short)v; return 1; }
-    short *d = case_memoire(m, (Adresse){ a.region, a.octet + 2 });
-    if (!d) return 0;
-    *c = (short)((unsigned)v >> 16);
-    *d = (short)v;
-    return 1;
-}
-
 static int mot_brut(Vm *m, int *ip, int *w)
 {
     if (*ip >= m->ncode || m->code[*ip].op != OP_BRUT) return 0;
@@ -511,105 +460,235 @@ static int mot_brut(Vm *m, int *ip, int *w)
     return 1;
 }
 
-/* Une opérande : un registre de données, ou une adresse. */
-typedef struct { int est_d, reg; Adresse a; } Operande;
+/* UNE INSTRUCTION DÉCODÉE : son genre, sa longueur en mots, extensions
+ * comprises, et ses opérandes telles que ses mots les décrivent. Le décodage
+ * ne dépend que du code, qui ne change plus une fois la définition faite :
+ * il se fait une fois, au « ; », et l'exécution ne refait que le calcul des
+ * adresses. Fermat y passe 1,27 million d'instructions. */
+typedef struct { int mode, reg, xreg, xlong, deplacement; } Ea;
+enum { I_RIEN, I_RTS, I_ADDQ, I_DECALE, I_MOVE, I_PICK };
+typedef struct Insn {
+    int genre, mots, longueur;
+    int reg, n, gauche, logique;        /* ADDQ et SUBQ, les décalages ; I_PICK : Dn, et An en n */
+    Ea  src, dst;                       /* MOVE */
+} Insn;
 
-static int operande(Vm *m, int *ip, int mode, int reg, int longueur, Operande *o)
+static int decode_ea(Vm *m, int *ip, int mode, int reg, Ea *e)
 {
     int w;
-    o->est_d = 0;
-    o->reg = reg;
-    switch (mode) {
-    case 0: o->est_d = 1; return 1;
-    case 2: return registre_a(m, reg, &o->a);
-    case 3:
-        if (!registre_a(m, reg, &o->a)) return 0;
-        pose_registre_a(m, reg, o->a.octet + longueur);
-        return 1;
-    case 4:
-        if (!registre_a(m, reg, &o->a)) return 0;
-        o->a.octet -= longueur;
-        pose_registre_a(m, reg, o->a.octet);
-        return 1;
-    case 5:
-        if (!registre_a(m, reg, &o->a) || !mot_brut(m, ip, &w)) return 0;
-        o->a.octet += (short)w;
-        return 1;
-    case 6: {
-        if (!registre_a(m, reg, &o->a) || !mot_brut(m, ip, &w)) return 0;
-        if (w & 0x8000) return 0;                   /* un index en An : non */
-        int x = m->d[(w >> 12) & 7];
-        if (!(w & 0x800)) x = (short)x;             /* Xn.W */
-        o->a.octet += x + (signed char)(w & 0xff);
-        return 1;
+    *e = (Ea){ mode, reg, 0, 0, 0 };
+    if (mode == 0) return 1;
+    if (mode < 2 || mode > 6 || (reg != 0 && reg != 3 && reg != 7)) return 0;
+    if (mode == 5) {
+        if (!mot_brut(m, ip, &w)) return 0;
+        e->deplacement = (short)w;
+    } else if (mode == 6) {
+        if (!mot_brut(m, ip, &w) || (w & 0x8000)) return 0;   /* un index en An : non */
+        e->xreg = (w >> 12) & 7;
+        e->xlong = (w & 0x800) != 0;
+        e->deplacement = (signed char)(w & 0xff);
     }
-    default: return 0;
-    }
+    return 1;
 }
 
-static int lis_operande(Vm *m, const Operande *o, int longueur, int *v)
+/* Décode l'instruction qui commence en `*ip` : 1, ou 0 si elle n'est pas du
+ * jeu. */
+static int decode(Vm *m, int *ip, Insn *i)
 {
-    if (o->est_d) {
-        *v = longueur == 2 ? (short)m->d[o->reg] : m->d[o->reg];
-        return 1;
-    }
-    return lis_memoire(m, o->a, longueur, v);
+    int w, debut = *ip;
+    if (!mot_brut(m, ip, &w)) return 0;
+    memset(i, 0, sizeof *i);
+    if (w == 0x4e71 || w == 0xa9ff) i->genre = I_RIEN;    /* NOP ; _Debugger, sans débogueur */
+    else if (w == 0x4e75) i->genre = I_RTS;
+    else if ((w & 0xf038) == 0x5008 && (w & 0xc0) != 0xc0) {
+        /* ADDQ et SUBQ #q, An */
+        int q = (w >> 9) & 7;
+        if (!q) q = 8;
+        i->genre = I_ADDQ;
+        i->reg = w & 7;
+        i->n = w & 0x100 ? -q : q;
+        if (i->reg != 3 && i->reg != 7) return 0;
+    } else if ((w & 0xf000) == 0xe000 && (w & 0x20) == 0 && ((w >> 3) & 3) <= 1
+               && ((w >> 6) & 3) != 3) {
+        /* ASL, LSL, ASR, LSR #n, Dn — en mot ou en long ; l'octet : non */
+        if (((w >> 6) & 3) == 0) return 0;
+        i->genre = I_DECALE;
+        i->n = (w >> 9) & 7;
+        if (!i->n) i->n = 8;
+        i->reg = w & 7;
+        i->longueur = ((w >> 6) & 3) == 2 ? 4 : 2;
+        i->gauche = (w & 0x100) != 0;
+        i->logique = (w >> 3) & 1;
+    } else if ((w & 0xc000) == 0 && ((w >> 12) == 3 || (w >> 12) == 2)) {
+        /* MOVE.W et MOVE.L : les extensions de la source d'abord */
+        i->genre = I_MOVE;
+        i->longueur = (w >> 12) == 3 ? 2 : 4;
+        if (!decode_ea(m, ip, (w >> 3) & 7, w & 7, &i->src)) return 0;
+        if (!decode_ea(m, ip, (w >> 6) & 7, (w >> 9) & 7, &i->dst)) return 0;
+    } else return 0;
+    i->mots = *ip - debut;
+    return 1;
 }
 
-static int ecris_operande(Vm *m, const Operande *o, int longueur, int v)
+/* LA CASE D'UNE OPÉRANDE, à l'exécution, en un seul passage : son adresse
+ * calculée sur les index des piles, (An)+ et -(An) bougeant leur registre ;
+ * NULL si elle sort de sa pile, ou tombe sur un octet impair — et le
+ * registre ne bouge alors pas : A3 et A7 restent toujours dans leur pile.
+ * A0 ne bouge pas : il désigne la zone des constantes et des variables. */
+static short *case_ea(Vm *m, const Ea *e, int longueur)
 {
-    if (o->est_d) {
+    int *r = e->reg == 3 ? &m->a3 : e->reg == 7 ? &m->a7 : NULL;
+    int octet = r ? 2 * *r : ZONE_ORIGINE, cases = longueur / 2;
+    switch (e->mode) {
+    case 4: octet -= longueur; break;
+    case 5: octet += e->deplacement; break;
+    case 6: octet += (e->xlong ? m->d[e->xreg] : (short)m->d[e->xreg]) + e->deplacement; break;
+    default: break;
+    }
+    if (octet & 1) return NULL;
+    int k = octet / 2, n = e->reg == 3 ? PILE_CASES : e->reg == 7 ? RETOUR_CASES : ZONE_CASES;
+    if (k < 0 || k + cases > n) return NULL;
+    if (r && e->mode == 3) *r += cases;
+    if (r && e->mode == 4) *r -= cases;
+    return (e->reg == 3 ? m->pile : e->reg == 7 ? m->retour : m->zone) + k;
+}
+
+static int lis_ea(Vm *m, const Ea *e, int longueur, int *v)
+{
+    if (e->mode == 0) {
+        *v = longueur == 2 ? (short)m->d[e->reg] : m->d[e->reg];
+        return 1;
+    }
+    short *c = case_ea(m, e, longueur);
+    if (!c) return 0;
+    *v = longueur == 2 ? c[0] : (int)(((unsigned)(unsigned short)c[0] << 16) | (unsigned short)c[1]);
+    return 1;
+}
+
+static int ecris_ea(Vm *m, const Ea *e, int longueur, int v)
+{
+    if (e->mode == 0) {
         if (longueur == 2)
-            m->d[o->reg] = (int)(((unsigned)m->d[o->reg] & 0xffff0000u) | (unsigned short)v);
+            m->d[e->reg] = (int)(((unsigned)m->d[e->reg] & 0xffff0000u) | (unsigned short)v);
         else
-            m->d[o->reg] = v;
+            m->d[e->reg] = v;
         return 1;
     }
-    return ecris_memoire(m, o->a, longueur, v);
+    short *c = case_ea(m, e, longueur);
+    if (!c) return 0;
+    if (longueur == 2) c[0] = (short)v;
+    else { c[0] = (short)((unsigned)v >> 16); c[1] = (short)v; }
+    return 1;
 }
 
-/* Une instruction, à partir de `*ip`. Rend 1, 0 si elle n'est pas du jeu,
+/* Exécute une instruction décodée. Rend 1, 0 si une adresse sort des piles,
  * ou 2 pour un RTS, que l'appelant fait comme un retour. */
+static int execute_insn(Vm *m, const Insn *i)
+{
+    int v;
+    switch (i->genre) {
+    case I_RIEN: return 1;
+    case I_RTS:  return 2;
+    case I_ADDQ: {                                  /* A3 ou A7, en octets */
+        int *r = i->reg == 3 ? &m->a3 : &m->a7, k = *r + i->n / 2;
+        if ((i->n & 1) || k < 0 || k > (i->reg == 3 ? PILE_CASES : RETOUR_CASES)) return 0;
+        *r = k;
+        return 1;
+    }
+    case I_DECALE: {
+        int l = i->longueur;
+        v = l == 2 ? (short)m->d[i->reg] : m->d[i->reg];
+        if (i->gauche) v = (int)((unsigned)v << i->n);
+        else if (i->logique) v = (int)((l == 2 ? (unsigned)(unsigned short)v : (unsigned)v) >> i->n);
+        else v >>= i->n;
+        Ea d = { 0, i->reg, 0, 0, 0 };
+        return ecris_ea(m, &d, l, v);
+    }
+    case I_PICK: {
+        /* MOVE.W (A3)+,Dn ; ASL.W #1,Dn ; MOVE.W 0(An,Dn.W),-(A3), d'un coup,
+         * dans l'ordre des trois : la case n de la pile, ou de la pile retour. */
+        if (m->a3 >= PILE_CASES) return 0;
+        unsigned d = ((unsigned)m->d[i->reg] & 0xffff0000u) |
+                     (unsigned short)(m->pile[m->a3++] << 1);
+        m->d[i->reg] = (int)d;
+        int octet = 2 * (i->n == 3 ? m->a3 : m->a7) + (short)d;
+        int k = octet / 2;
+        if ((octet & 1) || k < 0 || k >= (i->n == 3 ? PILE_CASES : RETOUR_CASES)) return 0;
+        v = i->n == 3 ? m->pile[k] : m->retour[k];
+        if (m->a3 <= 0) return 0;                   /* -(A3) : comme case_ea */
+        m->pile[--m->a3] = (short)v;
+        return 1;
+    }
+    default:                                        /* I_MOVE : la source, puis la destination */
+        return lis_ea(m, &i->src, i->longueur, &v) && ecris_ea(m, &i->dst, i->longueur, v);
+    }
+}
+
+/* LA SUITE DE PICK ET DE L'INDEX DES BOUCLES : « MOVE.W (A3)+,Dn ; ASL.W
+ * #1,Dn ; MOVE.W 0(An,Dn.W),-(A3) », An valant A3 (PICK) ou A7 (l'index de
+ * la pile de démonstration, que i, j et k appellent). */
+static int est_pick(const Insn *a, const Insn *b, const Insn *c)
+{
+    int n = a->dst.reg;
+    return a->genre == I_MOVE && a->longueur == 2 && a->src.mode == 3 && a->src.reg == 3
+        && a->dst.mode == 0
+        && b->genre == I_DECALE && b->longueur == 2 && b->gauche && b->n == 1 && b->reg == n
+        && c->genre == I_MOVE && c->longueur == 2 && c->src.mode == 6
+        && (c->src.reg == 3 || c->src.reg == 7) && c->src.xreg == n && !c->src.xlong
+        && c->src.deplacement == 0 && c->dst.mode == 4 && c->dst.reg == 3;
+}
+
+/* Une instruction que le « ; » n'a pas décodée — un saut au milieu d'une
+ * suite de mots, ou une instruction hors du jeu —, décodée ici. */
 static int instruction(Vm *m, int *ip)
 {
-    int w;
-    if (!mot_brut(m, ip, &w)) return 0;
-    if (w == 0x4e71 || w == 0xa9ff) return 1;       /* NOP ; _Debugger, sans débogueur */
-    if (w == 0x4e75) return 2;                      /* RTS */
-    if ((w & 0xf038) == 0x5008 && (w & 0xc0) != 0xc0) {
-        /* ADDQ et SUBQ #q, An */
-        int q = (w >> 9) & 7, r = w & 7;
-        Adresse a;
-        if (!q) q = 8;
-        if (!registre_a(m, r, &a) || r == 0) return 0;
-        pose_registre_a(m, r, a.octet + (w & 0x100 ? -q : q));
-        return 1;
+    Insn i;
+    return decode(m, ip, &i) ? execute_insn(m, &i) : 0;
+}
+
+/* Au « ; » : chaque instruction de la définition est décodée une fois, et son
+ * premier mot devient OP_INSN. Ses mots d'extension restent OP_BRUT, comme
+ * une instruction hors du jeu, que l'exécution décode si elle y arrive. */
+static void decode_definition(Vm *m, int debut)
+{
+    for (int q = debut; q < m->ncode && !m->faute;) {
+        int ip = q;
+        Insn i;
+        if (m->code[q].op != OP_BRUT || !decode(m, &ip, &i)) { q++; continue; }
+        if (!m->insns || m->ninsns == m->capinsns) {
+            int cap = m->insns ? 2 * m->capinsns : 16;
+            Insn *n = realloc(m->insns, (size_t)cap * sizeof *n);
+            if (!n) { faute(m, ERR_MEMOIRE, 0); return; }
+            m->insns = n;
+            m->capinsns = cap;
+        }
+        m->insns[m->ninsns] = i;
+        m->code[q] = (Instr){ OP_INSN, m->ninsns++ };
+        q = ip;
     }
-    if ((w & 0xf000) == 0xe000 && (w & 0x20) == 0 && ((w >> 3) & 3) <= 1
-        && ((w >> 6) & 3) != 3) {
-        /* ASL, LSL, ASR, LSR #n, Dn — en mot ou en long */
-        int n = (w >> 9) & 7, r = w & 7, longueur = ((w >> 6) & 3) == 2 ? 4 : 2;
-        int gauche = w & 0x100, logique = (w >> 3) & 1;
-        if (!n) n = 8;
-        if (((w >> 6) & 3) == 0) return 0;          /* l'octet : non */
-        int v = longueur == 2 ? (short)m->d[r] : m->d[r];
-        if (gauche) v = (int)((unsigned)v << n);
-        else if (logique) v = (int)((longueur == 2 ? (unsigned)(unsigned short)v : (unsigned)v) >> n);
-        else v >>= n;
-        Operande o = { 1, r, { 0, 0 } };
-        return ecris_operande(m, &o, longueur, v);
+    /* PICK et l'index, fusionnés : un seul passage pour les trois. Chacune
+     * reste décodée à sa place, pour un saut qui tomberait au milieu. */
+    for (int q = debut; q < m->ncode && !m->faute; q++) {
+        if (m->code[q].op != OP_INSN) continue;
+        const Insn *a = &m->insns[m->code[q].arg];
+        int q2 = q + a->mots;
+        if (q2 >= m->ncode || m->code[q2].op != OP_INSN) continue;
+        const Insn *b = &m->insns[m->code[q2].arg];
+        int q3 = q2 + b->mots;
+        if (q3 >= m->ncode || m->code[q3].op != OP_INSN) continue;
+        const Insn *c = &m->insns[m->code[q3].arg];
+        if (!est_pick(a, b, c)) continue;
+        Insn f = { I_PICK, q3 + c->mots - q, 2, a->dst.reg, c->src.reg, 0, 0,
+                   { 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
+        if (m->ninsns == m->capinsns) {
+            Insn *n = realloc(m->insns, (size_t)(2 * m->capinsns) * sizeof *n);
+            if (!n) { faute(m, ERR_MEMOIRE, 0); return; }
+            m->insns = n;
+            m->capinsns *= 2;
+        }
+        m->insns[m->ninsns] = f;
+        m->code[q].arg = m->ninsns++;
     }
-    if ((w & 0xc000) == 0 && ((w >> 12) == 3 || (w >> 12) == 2)) {
-        /* MOVE.W et MOVE.L : la source d'abord, puis la destination */
-        int longueur = (w >> 12) == 3 ? 2 : 4;
-        Operande src, dst;
-        int v;
-        if (!operande(m, ip, (w >> 3) & 7, w & 7, longueur, &src)) return 0;
-        if (!lis_operande(m, &src, longueur, &v)) return 0;
-        if (!operande(m, ip, (w >> 6) & 7, (w >> 9) & 7, longueur, &dst)) return 0;
-        return ecris_operande(m, &dst, longueur, v);
-    }
-    return 0;
 }
 
 /* ---- l'exécution ---- */
@@ -705,6 +784,14 @@ static void execute(Vm *m, int n)
             if (m->dico[in.arg].debut < 0) interne(m, -1 - m->dico[in.arg].debut);
             else { pousse_retour(m, ip); ip = m->dico[in.arg].debut; }
             break;
+        case OP_INSN: {
+            const Insn *i = &m->insns[in.arg];
+            int r = execute_insn(m, i);
+            ip += i->mots - 1;
+            if (!r) faute(m, ERR_COMPRIS, m->position);
+            else if (r == 2 && (ip = tire_retour(m)) == RETOUR_HOTE) return;
+            break;
+        }
         case OP_BRUT: {
             ip--;
             int r = instruction(m, &ip);
@@ -904,6 +991,7 @@ static void compile_mot(Vm *m, const char *t)
     case C_DEUX_POINTS:   faute(m, ERR_COLON, m->position); return;
     case C_POINT_VIRGULE:
         emets(m, OP_RETOUR, 0);
+        decode_definition(m, m->dico[m->ndico - 1].debut);
         m->compile = 0;
         if (m->nouverts || m->mal_imbrique || m->elements >= 0) {
             m->s->bips++;
@@ -972,6 +1060,7 @@ static void libere(Vm *m)
     free(m->dico);
     free(m->code);
     free(m->acc);
+    free(m->insns);
 }
 
 int forth_compile(const char *source, ForthSortie *s)

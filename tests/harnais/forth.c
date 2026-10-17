@@ -67,6 +67,16 @@ static void compile(const char *src)
     printf("\n");
 }
 
+/* Pour une pile trop longue à imprimer : la faute, et le nombre de cases. */
+static void compile_bref(const char *src)
+{
+    int r = forth_compile(src, &s), n = 0;
+    for (const char *p = s.rendu; *p; p++) n += *p == ' ';
+    printf("   %s\n      rend %d case(s)", src, n);
+    if (r) printf(" ; envoie « %s »", s.faute);
+    printf("\n");
+}
+
 static void disposition(const char *decl)
 {
     char nom[FORTH_BITS][16];
@@ -160,6 +170,11 @@ int main(void)
     compile(": D -22017 , 5 ; D");                           /* _Debugger : rien */
     compile(": X 17999 , ; X");                              /* hors du jeu */
     compile(": X DUP , ; X");
+    /* SUBQ.L #8,A3 cent fois : la pile au bord, puis une fois de trop ;
+     * MOVE.W D0,-(A3) au bord. A3 ne sort jamais de sa pile. */
+    compile_bref(": S 20875 , ; : T 100 0 DO S LOOP ; T");
+    compile_bref(": S 20875 , ; : T 100 0 DO S LOOP ; T S");
+    compile_bref(": S 20875 , ; : Q 14080 , ; : T 100 0 DO S LOOP ; T Q");
 
     puts("\n== 8. MAKE-TABLE ne remet pas la pile ==");
     compile(": R CENTER >PLN0 ; 5 MAKE-TABLE R");
