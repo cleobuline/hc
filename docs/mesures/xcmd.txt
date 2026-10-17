@@ -1060,6 +1060,18 @@ drag simulé qui part dans la sélection la soulève, l'efface sauf Option
 tenue, et la fait flotter à l'arrivée ; choose browse tool la pose
 (dropFloating). COMPILÉ PAR LA CI, À REJOUER DANS HC.
 
+MESURÉ DANS HC (l'application), le même jour : la copie marche. Puis le
+petit bouton gomme, qui efface son carré par « choose select tool », un
+drag qui le sélectionne, et « type numtochar(8) », n'effaçait rien. LU dans
+cocoa_type_text : « type » ne connaissait ni la sélection de peinture ni
+la touche Effacement — un caractère 8 brut s'insérait dans un champ ou la
+boîte de messages, et rien ne se passait sur une sélection. La touche du
+clavier, elle, effaçait (keyDown). CORRIGÉ : les deux passent par une même
+fonction (hcv_efface_peinture_choisie) ; dans un champ, la boîte de
+messages et l'outil Texte, l'Effacement d'un script efface le caractère
+d'avant. NON COUVERT : un objet choisi à l'outil bouton ou champ, que la
+touche supprime. COMPILÉ PAR LA CI, À REJOUER DANS HC.
+
 MESURÉ DANS HC (l'application), le 17 octobre, par l'utilisatrice, après
 la correction du drag de script : « le drag'n drop fonctionne, je retrouve
 ma pile de 1990 en l'état, sans aucune modif ». LE JUGE DE CE CHANTIER EST
