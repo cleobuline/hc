@@ -1262,6 +1262,31 @@ rapportée en entier sur une carte de la pile.
 NON RELEVÉS : le nombre de pas avant l'inversion, et si le texte revient au
 pixel près.
 
+VU, le 18 octobre peu après minuit, sur deux captures d'écran de
+l'utilisatrice — DANS HC : la barre de menus porte « HC », la pile est
+MACCAM.stack —, la démonstration que la carte « Billard sf » porte
+elle-même. Son dessin de départ, le premier carré : le flacon, « Ceci est
+un GAZ ... » en haut, et un gaz en bas. À 00:07:34, la fenêtre CAM montre
+ce dessin chargé. À 00:08:25, le texte du haut s'est fondu en gaz, et le
+gaz du bas s'est rassemblé en « miraculeux ! », net à l'œil sur la
+capture.
+
+Ce gaz du bas était donc « miraculeux ! » passé à l'envers, et ce n'est
+pas HC qui l'a fabriqué : il est dans le dessin de la pile, d'avant HC.
+HC le défait en refaisant, pas pour pas, la dynamique de la machine qui
+l'avait brouillé — table, ordre des bits, phase, découpage des blocs,
+phase de départ. C'est la PREMIÈRE COMPARAISON avec une machine
+d'origine sur la dynamique même, et pas seulement sur les tables.
+
+NON SU : quelle machine a fabriqué ce gaz (le MAC•CAM de l'époque, une
+CAM-6, une autre ?) et en combien de pas ; question posée à
+l'utilisatrice. NON RELEVÉS : le nombre de pas joués dans HC, et le texte
+au pixel près — la capture est réduite.
+
+La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
+L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
+voulu ce soir-là : non demandé.
+
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
   · l'écart des commentaires, à trancher ;
