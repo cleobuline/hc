@@ -90,7 +90,24 @@
 		4DC100000000000000000047 /* bh_queue.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000046 /* bh_queue.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
 		4DC100000000000000000049 /* bh_vector.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC100000000000000000048 /* bh_vector.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
 		4DC10000000000000000004B /* runtime_timer.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000004A /* runtime_timer.c */; settings = {COMPILER_FLAGS = "-w -include \"$(SRCROOT)/HC/tiers/wamr_hc.h\" -I\"$(SRCROOT)/HC/tiers/wamr_plateforme\" -I\"$(SRCROOT)/HC/tiers/wamr/core\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/include\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/common\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/interpreter\" -I\"$(SRCROOT)/HC/tiers/wamr/core/iwasm/libraries/thread-mgr\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/utils\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/mem-alloc\" -I\"$(SRCROOT)/HC/tiers/wamr/core/shared/platform/include\""; }; };
+		4DC10000000000000000004E /* LICENSE in Licence de WAMR */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000004D /* LICENSE */; };
+		4DC100000000000000000050 /* ATTRIBUTIONS.md in Licence de WAMR */ = {isa = PBXBuildFile; fileRef = 4DC10000000000000000004F /* ATTRIBUTIONS.md */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4DC100000000000000000051 /* Licence de WAMR */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = wamr;
+			dstSubfolderSpec = 7;
+			files = (
+				4DC10000000000000000004E /* LICENSE in Licence de WAMR */,
+				4DC100000000000000000050 /* ATTRIBUTIONS.md in Licence de WAMR */,
+			);
+			name = "Licence de WAMR";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		4D3BF8F330384BAA0052F85B /* HCprint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCprint.h; sourceTree = "<group>"; };
@@ -207,6 +224,8 @@
 		4DC100000000000000000046 /* bh_queue.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_queue.c; path = tiers/wamr/core/shared/utils/bh_queue.c; sourceTree = "<group>"; };
 		4DC100000000000000000048 /* bh_vector.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bh_vector.c; path = tiers/wamr/core/shared/utils/bh_vector.c; sourceTree = "<group>"; };
 		4DC10000000000000000004A /* runtime_timer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = runtime_timer.c; path = tiers/wamr/core/shared/utils/runtime_timer.c; sourceTree = "<group>"; };
+		4DC10000000000000000004D /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = tiers/wamr/LICENSE; sourceTree = "<group>"; };
+		4DC10000000000000000004F /* ATTRIBUTIONS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = ATTRIBUTIONS.md; path = tiers/wamr/ATTRIBUTIONS.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -377,6 +396,8 @@
 				4DC100000000000000000046 /* bh_queue.c */,
 				4DC100000000000000000048 /* bh_vector.c */,
 				4DC10000000000000000004A /* runtime_timer.c */,
+				4DC10000000000000000004D /* LICENSE */,
+				4DC10000000000000000004F /* ATTRIBUTIONS.md */,
 			);
 			name = WAMR;
 			sourceTree = "<group>";
@@ -391,6 +412,7 @@
 				4DF5FB463014BE74006AE901 /* Sources */,
 				4DF5FB473014BE74006AE901 /* Frameworks */,
 				4DF5FB483014BE74006AE901 /* Resources */,
+				4DC100000000000000000051 /* Licence de WAMR */,
 			);
 			buildRules = (
 			);
@@ -672,7 +694,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 0.8.3;
+				MARKETING_VERSION = 0.8.4;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -694,7 +716,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 0.8.3;
+				MARKETING_VERSION = 0.8.4;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
