@@ -583,9 +583,364 @@ PAS FAITS : SendHCMessage (le noyau n'a pas de chemin qui saute les
 scripts), et les rappels de conversion (StrToNum, PasToZero…), que les
 chaînes C rendent inutiles ; le kit a gagné strtol et atoi.
 
+LE FORTH DE MAC•CAM — 16 octobre au soir
+---------------------------------------
+
+Lancé par l'utilisatrice : « on attaque le forth ». Le module est
+xcmd/maccam/forth.c, son compilateur forth_coeur.c, son harnais
+tests/harnais/forth.c ; le mode d'emploi, xcmd/maccam/LISEZMOI.md.
+
+L'ORACLE, TROUVÉ DANS LA PILE. 71 cartes gardent à la fois leur programme
+Forth (champ « FORTH ») et les tables que le FORTH d'origine en a tirées
+(champs Pln0, Pln1, pln2, PLN3) : 175 tables. Le format, lu : 4 096
+caractères « 0 » ou « 1 », sans séparateur — un index de 12 bits. Le champ
+« Pile » garde ce que FORTH() rendait : « -4 » sur seize cartes Margolus,
+« 1 » sur trois autres. On compile chaque programme, et l'on compare.
+
+LA MÉCANIQUE : celle de cam_forth.c (maccam-6) — pour chaque entrée, poser
+le voisinage que l'index désigne et exécuter la règle. Écrite à neuf pour le
+dialecte des années 90 : maccam-6 en a dérivé (table de 8 192, CAM-8,
+voisinages hexagonaux et libres), et ses ajouts n'ont rien à faire ici.
+
+MESURÉ, et tenu par le harnais forth :
+  · LA DISPOSITION DES BITS, par voisinage (le tableau du LISEZMOI). Von
+    Neumann est tombé à zéro écart par une recherche locale sur dix cartes :
+    les mots vont par paires, le « prime » sur le bit pair, dans l'ordre
+    E C S N W. Moore suit les colonnes de la fenêtre 3×3, d'est en ouest
+    (E SE NE, C S N, W SW NW) : une seule des 40 320 dispositions des huit
+    voisins rend « Black Forest », la seule carte qui les distingue, à zéro
+    écart. Margolus : CCW OPP CW CENTER par paires, puis &CENTER, PHASE ;
+  · VRAI VAUT -1, la convention de Forth-83 : « : PAIR = -1 * ; », de la
+    carte « Pair », ne donne sa table qu'ainsi ;
+  · { … } HORS DE SES BORNES DONNE 0 : « Grow flow » somme neuf cellules
+    pour une liste de neuf mots, et sa table vaut 0 quand la somme atteint 9 ;
+  · UNE FAUTE GARDE LES TABLES DÉJÀ FAITES : le texte de « Fourmis » finit
+    par une phrase hors parenthèses, que le FORTH ne comprend pas ; ses
+    tables étaient là quand même ;
+  · un mot de l'utilisatrice passe avant les mots de base : ses programmes
+    définissent eux-mêmes RAND, ECHO, CENTERS, >PLNA, >PLNB ou <>.
+
+LE RÉSULTAT : 159 tables sur 175 identiques au caractère près, par le cœur
+en natif comme par le module DANS HC (« put FORTH(…) », puis les
+globales). Les seize autres :
+  · DOUZE SONT PLUS VIEILLES que le FORTH d'origine dans son dernier état.
+    Elles suivent une disposition plus ancienne, le centre sur le bit 0 :
+    Grow(1), Grow(2) et Grow(4) s'y lisent à zéro écart (CENTER bit 0, les
+    huit voisins bits 2 à 9), TM-Gas aussi (CENTER 0, CW 2, CCW 3, OPP 4,
+    PHASE 8), et HPP-Gas ; Dentrite(2) en a la signature. Les tables 1 à 3
+    de Parity9, une autre encore. Le programme a été recompilé depuis, ou
+    ses tables jamais refaites ;
+  · QUATRE, CELLES DE « Dentrite• », s'arrêtent sur « MAKE-TABLE ECHO » : son
+    texte ne définit pas ECHO. Défini, n'importe comment, les quatre tables
+    sont exactes. NON MESURÉ : si le FORTH d'origine connaissait ECHO de
+    lui-même, ou s'il gardait le dictionnaire d'un appel à l'autre — ECHO
+    restant défini par une carte compilée avant.
+
+La plus lente des 71 compilations : 2 ms en natif, 73 ms dans HC (WAMR,
+le noyau sous ASan).
+
+MESURÉ DANS HC (l'application), le 16 octobre au soir, par l'utilisatrice,
+le module forth.wasm ajouté à une pile : « put FORTH(": R CENTER >PLN0 ;
+MAKE-TABLE R") into card field test » laisse le champ vide — FORTH ne rend
+que sa pile, vide ici —, et « put pln0 into card field test » y met la
+table (« ok ça roule »). Le texte de la table n'a pas été relu caractère
+par caractère.
+
+Puis, toujours DANS HC, sur MAC•CAM Workshop importée depuis son
+MacBinary : « ça a l'air de compiler dans maccam ». Le bouton de
+compilation de l'atelier passe donc ; ce que montrent « Pile » et les
+champs Pln0 à PLN3, carte par carte, n'est pas relevé.
+
+LU DANS LE CODE DU FORTH D'ORIGINE, le même soir (désassemblé, rien
+d'exécuté) :
+  · SES HUIT TABLES DE BITS, une par voisinage, 16 octets par nom, dans
+    l'ordre des bits : Moore, von Neumann, Margolus-PH et -HV, Moore-PH et
+    -HV, von Neumann-PH et -HV. Les trois mesurées sur les tables de la
+    pile y sont à l'identique ; les deux que notre FORTH avait posées par
+    analogie (Margolus-HV, Moore-HV : HORZ 10, VERT 11) aussi ; trois
+    manquaient (N/MOORE-PH, N/VONN-PH, N/VONN-HV) : ajoutées. Ses
+    déclarations : ces huit-là, CONSTANT, VARIABLE, BEEP, >PLN0 à >PLN3,
+    MAKE-TABLE ;
+  · SES FAUTES, dans cette forme : INTERPRET_ERR "Can't understand ", %i —
+    INTERPRET_ERR "End definition (;) Compile Only  ", %i — STACK_ERR
+    "Stack problem during execution ", %i — COMPILE_ERR "Unknow'd word ",
+    %i — COMPILE_ERR "COLON inside definition  ", %i — NEST_ERR "Unnested
+    condition ", %i. Le nombre vient d'un compteur global, sans doute la
+    position du mot : NON MESURÉ. Notre FORTH les reprend, avec le rang du
+    mot du premier niveau ;
+  · « COMPILE_ERR "Unknow'd word" » dit qu'un mot inconnu se trouve QUAND LA
+    DÉFINITION SE COMPILE. Notre FORTH cherche désormais chaque mot d'une
+    définition à ce moment-là, et l'y fige : un mot défini plus tard est une
+    faute, une redéfinition plus tardive ne change pas une définition déjà
+    faite. Aucune des 71 cartes n'en est refusée (159 tables exactes,
+    toujours) ;
+  · la pile s'écrit « %d » et une espace par nombre.
+Et LU DANS LE MOTEUR (optscanmoorehv) : en Moore-HV, le bit 10 (HORZ) porte
+la parité de la LIGNE, le bit 11 (VERT) celle de la COLONNE — des bandes
+horizontales, puis verticales ; avec « alternate », la phase s'y ajoute.
+
+NON MESURÉ, À JOUER DANS HYPERCARD 2.4.1 (Basilisk II), sur la pile
+MAC•CAM Workshop, HyperCard tout juste relancé :
+  1. la carte « Dentrite• », son bouton de compilation : que montre « Pile » ?
+     (ECHO inconnu, ou connu ?)
+  2. dans la boîte de messages, put FORTH("1 2 ZORGLUB") — que vaut le
+     nombre de la faute : 3, la position du mot ?
+  3. put FORTH(": R CENTER >PLN0 ; MAKE-TABLE R"), et la même précédée de
+     N/MARG-PH — d'où vient le « -4 » des cartes Margolus ?
+  4. put FORTH(": ECHO CENTER >PLN1 ;"), puis put FORTH("MAKE-TABLE ECHO") —
+     le dictionnaire survit-il d'un appel à l'autre ?
+
+COMMENT « load » REND LES TABLES À LA MACHINE — LU dans le code 68000 de
+MACCAM le 16 octobre au soir (désassemblé ; rien n'y est exécuté)
+------------------------------------------------------------------------
+
+Les scripts : « set the pln7 of window "CAM" to fld "pln0" » — le texte
+entier du champ, 4 096 caractères, devient la valeur de la propriété.
+pln7 reçoit le plan 0, pln6 le plan 1, pln5 le plan 2, pln4 le plan 3 ;
+image7 à image4 de même pour les images de départ (gestionnaires load et
+loadpict du fond WorkShop).
+
+DANS MACCAM, la fonction « pln » (nom laissé par THINK C) :
+  · la machine garde UNE TABLE PAR DEMI-MACHINE, un octet par entrée, et
+    chaque plan y est UN BIT : pln7 → 0x80 et pln6 → 0x40 dans la table de
+    CAM-A ; pln5 → 0x20 et pln4 → 0x10 dans celle de CAM-B. Le bit 7 est
+    donc le plan 0 — l'octet d'entrée a la forme d'un pixel 8 bits, plan 0
+    en tête ;
+  · le texte se lit caractère par caractère : « 0 » ÉTEINT le bit, TOUT
+    AUTRE caractère l'ALLUME ; la lecture s'arrête au zéro de fin, sans
+    compter jusqu'à 4 096 — un texte plus court laisse le reste de la table
+    tel quel, un plus long déborde ;
+  · setProp n'appelle « pln » que pour ces quatre-là : pln3 à pln0 ne font
+    rien.
+LA LECTURE, CORRIGÉE le 16 octobre tard dans la nuit. Ce paragraphe disait
+que « getpln » sert « the pln7 of window » : c'était une SUPPOSITION sur
+l'ordre des noms, écrite comme un fait. Lu depuis : la liste des trente
+noms, dans les données de MACCAM (initList), et les deux tables de
+répartition de getProp et de setProp. getProp n'a RIEN pour pln7 à pln0 :
+il rend NULL, et l'événement est PASSÉ à HyperCard — ce qu'il en faisait
+n'est pas mesuré. getpln sert « the image0 of window » (la table de
+CAM-A) et « the image1 » (celle de CAM-B), en « 1 » là où l'OCTET entier
+n'est pas nul : les deux plans d'une table s'y relisent mêlés. image2 à
+image7, major, minor et alternate passent aussi ; « the phaseA » fait
+SysBeep avant de rendre la phase. Aucun script de la pile ne lit ni les
+plans ni les images.
+
+Ce que la nouvelle MACCAM en reprend : les mêmes bits, la même lecture —
+« 0 » éteint, le reste allume —, mais arrêtée à 4 096.
+
+LES BALAYAGES — LUS le même soir, désassemblés par capstone (68000) :
+  · LE PIXEL a 8 bits, plan 0 sur le bit 7, plan 3 sur le bit 4. Le
+    nouveau pixel vaut lutA[indexA] + lutB[indexB] : les bits 3 à 0
+    retombent à zéro au premier pas. Deux tampons, l'ancien recopié sur le
+    nouveau (BlockMove) à la fin de chaque pas ;
+  · L'INDEX DE CHAQUE DEMI-MACHINE EST CELUI QUE LE FORTH A MESURÉ, bit pour
+    bit, pour les trois voisinages lus :
+      Moore (optscanmoore), colonne par colonne, nord, sud, centre :
+        EAST 0, S.EAST 1, N.EAST 2, CENTER 3, SOUTH 4, NORTH 5, WEST 6,
+        S.WEST 7, N.WEST 8, CENTER' 9, &CENTER' 10, &CENTER 11 ;
+      von Neumann (sfVonn), ouest, nord, sud, centre, est, deux bits par
+        cellule : EAST' 0 … WEST 9, &CENTER' 10, &CENTER 11 ;
+      Margolus (fmargph), le bloc 2×2 lu comme un anneau horaire —
+        haut-gauche, haut-droite, bas-droite, bas-gauche — : CCW' 0 CCW 1
+        OPP' 2 OPP 3 CW' 4 CW 5 CENTER' 6 CENTER 7 &CENTER' 8 &CENTER 9 ;
+    deux sources indépendantes — les tables d'un côté, le moteur de
+    l'autre — disent la même chose ;
+  · CAM-A lit les plans 0 et 1 comme siens et les centres des plans 2 et 3
+    comme « & » ; CAM-B l'inverse : la CAM-6 ;
+  · LA PHASE (Margolus) : bit 10 de l'index de CAM-A, bit 11 de celui de
+    CAM-B ; les deux phases basculent entre 0 et 1 APRÈS CHAQUE PAS, sans
+    condition. « alternate » décide, lui, si le découpage en blocs se
+    décale d'une case à chaque pas (sinon, il reste fixe) ;
+  · « major » choisit le balayage, par une table de huit : 0 Moore,
+    1 von Neumann, 2 et 3 Margolus — LE MÊME balayage pour PH et HV —,
+    4 Moore avec phase, 5 Moore HV, 6 et 7 von Neumann avec phase et HV.
+    Les scripts de la pile ne posent que 0, 1, 2, 3 et 5 ;
+  · LES BORDS : l'image est un TORE. Les balayages ne calculent que
+    l'intérieur ; copyBorders remplit ensuite la bordure d'une cellule par
+    la ligne et la colonne opposées, coins compris.
+LE RESTE DE MACCAM — LU le même soir (désassemblé, rien d'exécuté) :
+  · L'OUVERTURE. « maccam(rect, "CAM", "True", 17, "True", "True") » :
+    les six paramètres de NewXWindow de HyperCard 2 — le rectangle, le
+    titre (« Sans Titre » par défaut), visible, le STYLE de fenêtre
+    (procID : 17 et 20, des fenêtres à coins arrondis), en couleur,
+    FLOTTANTE. Rend « true », ou « false » si la fenêtre n'a pu s'ouvrir.
+    La grille a la taille du contenu de la fenêtre à l'ouverture ; l'échelle
+    vaut 1 ; la palette est la ressource clut 128. Aucun idle : la machine
+    n'avance que sur ses messages (SetXWIdleTime n'est jamais appelé) ;
+  · LES PROPRIÉTÉS, trente : hilite, name, visible, height, width, rect
+    (la fenêtre) ; image0 à image7 ; scale ; pln7 à pln0 ; palette ;
+    PictResource ; major, minor, alternate, phaseA, phaseB. « minor » est
+    rangé mais ne sert à rien. « scale » refait la fenêtre carrée, de côté
+    la largeur de la grille fois l'échelle. « PictResource » écrit l'image
+    en PICT dans les ressources de la pile — aucun script ne s'en sert ;
+  · « image7 » (et ses sœurs) : la peinture de la CARTE, demandée à
+    HyperCard (GetMaskAndData), dans le rectangle donné, est copiée à
+    l'échelle 1 ; chaque point noir ALLUME le bit du plan — aucun n'est
+    éteint —, puis les bords du tore sont refaits ;
+  · LA PALETTE : « NNN » — la ressource clut NNN ; « NNNt » et « NNNo » —
+    chaque chiffre est une clut de 0 à 9, posées l'une sur l'autre sur une
+    palette blanche, en moyenne (t, transparent) ou en recouvrement (o,
+    opaque) ;
+  · LE DESSIN : CopyBits de la grille 8 bits dans la fenêtre, agrandie de
+    l'échelle, par la palette ;
+  · LES MESSAGES, dix-sept :
+      step — un pas : le balayage de « major », les phases basculent, le
+        dessin ;
+      stepfast, stepmfast, stepvfast — la même chose EN BOUCLE, jusqu'à ce
+        que le bouton de la souris soit enfoncé (le piège Button) :
+        stepfast suit « major », stepmfast force Margolus, stepvfast
+        force von Neumann. HyperCard est figé pendant ce temps ;
+      erasea — tous les pixels à zéro ; erase1, erase2 — les bits 0 et 1,
+        qu'aucun plan n'occupe : sans effet visible ;
+      blacka — RIEN ; fill1 à fill8 — allument le bit 0 à 7 partout (fill8
+        le plan 0, fill5 le plan 3) ;
+      toscrap — l'image, en PICT, au presse-papiers.
+
+DÉCIDÉ PAR L'UTILISATRICE, le 16 octobre au soir : le plan de la fenêtre
+CAM dans HC (« oui ») ; « PictResource » ne se refait pas tel quel — il
+créait une ressource PICT, propre au Mac d'alors — mais devient une
+photographie de la fenêtre au presse-papiers ; les palettes clut, « pas
+importantes : on a un moteur MacCam qui s'en passe » — l'import ne les
+gardera pas, la fenêtre aura sa palette à elle.
+
+LA MACHINE DE MACCAM, ÉCRITE le même soir : xcmd/maccam/maccam_coeur.c,
+chaque balayage traduit de sa fonction d'origine (optscanmoore, sfVonn,
+fmargph, et leurs variantes PH et HV, copyBorders, fi, copyToPlane…),
+bornes et bizarreries comprises — l'image posée dans le second tampon, que
+copyToPlane lit en entier. Son harnais (maccam) la fait tourner avec le
+FORTH : le planeur de Conway avance d'une case vers le sud-est en quatre pas
+et revient à sa place en quarante sur un tore de 10 × 10 ; « WEST » fait
+glisser vers l'est ; « OPP », en Margolus alterné, fait filer une particule
+en diagonale ; CAM-B recopie CAM-A par « &CENTER ». Rien de tout cela n'est
+COMPARÉ à HyperCard : ce sont des règles dont on connaît le résultat.
+
+LES FENÊTRES DES MODULES — 16 octobre, tard dans la nuit
+------------------------------------------------------------------------
+
+LU DANS MACCAM (xEventEntryPoint, désassemblé ; rien d'exécuté) : ce
+qu'une fenêtre externe reçoit de HyperCard 2. L'XFCN est rappelée avec
+paramCount à -1, params[0] pointant un XWEventInfo — l'EventRecord du Mac
+d'abord, puis la fenêtre : eventParams[0] est à +0x14, eventResult à
++0x38. Elle répartit sur event.what :
+  · xSendEvt (1200) → doMessage, xSetPropEvt (1201) → setProp,
+    xGetPropEvt (1202) → getProp, la valeur dans eventResult ; ce qu'elle
+    ne connaît pas, elle le PASSE (passFlag) ;
+  · xOpenEvt (1000) → DoOpen (la grille, à la taille de la fenêtre) ;
+  · xCloseEvt (1001) → rend sa mémoire, et passe : HyperCard ferme ;
+  · 1103 (Copier, au menu Édition) → l'image en PICT au presse-papiers ;
+  · updateEvt → draw ; activateEvt → HiliteWindow, SelectWindow, draw ;
+  · mouseDown → FindWindow : la barre déplace, la case ferme
+    (CloseXWindow), le zoom et l'agrandissement font ce qu'ils font sur
+    toute fenêtre ; un clic DANS l'image ne fait rien ;
+  · keyDown et 1400 → SysBeep ; 1300 (le curseur) → passe ; nullEvent →
+    InvertRect, jamais reçu : aucun SetXWIdleTime.
+Ses propriétés de FENÊTRE, dans setProp, sont des pièges du Toolbox :
+hilite (HiliteWindow), name (SetWTitle), visible (ShowWindow, HideWindow),
+width et height (SizeWindow) ; « rect » s'écrit dans le portRect de la
+fenêtre, puis Hide et Show — une bizarrerie qu'aucun script de la pile
+n'éveille. image7 à image4 demandent la peinture de la carte par
+GetMaskAndData (requête 0x1d), puis CopyBits depuis le rectangle donné.
+
+CE QUE HC EN FAIT, ÉCRIT le même soir (hc_wasm.c, xcmd/hc_xcmd.h) :
+  · le MÊME CONTRAT pour le module : paramCount à -1, un XWEventInfo
+    dans params[0] — réduit à what, la fenêtre, les paramètres et
+    eventResult, des chaînes C —, les mêmes numéros d'événement, passFlag ;
+  · NewXWindow ouvre une fenêtre de l'hôte, que le noyau numérote et
+    nomme de son titre ; elle appartient au module, et l'externe qui l'a
+    ouverte en reçoit les événements. CloseXWindow, DrawXWindow (une image
+    indexée et sa palette — HC la garde et la redessine : pas d'update à
+    servir), CopyXWindow (au presse-papiers), Button, et GetCardPicture
+    (la peinture de la carte, en 0 et 1 — le GetMaskAndData réduit) ;
+  · « send … to window », « set/get the … of window », « close window »,
+    « there is a window » passent par le chemin des fenêtres nommées
+    (v3_fenetre_hote), les fenêtres des modules d'abord. Ce que le module
+    passe, HC le sert lui-même : rect, loc, visible, name, width, height.
+    Il le sert aussi quand le module, en cours, pose par SendCardMessage
+    une propriété de sa fenêtre — c'est ainsi qu'un module refait le
+    SizeWindow de « scale » ;
+  · LES CLICS ET LES TOUCHES ne vont pas au module : l'hôte déplace et
+    ferme la fenêtre lui-même. La case de fermeture envoie xCloseEvt ;
+  · L'INSTANCE DU MODULE vit autant que ses fenêtres, qui se ferment avec
+    elle : une faute, le module retiré ou remplacé, la pile fermée ;
+  · CMD-. : Button répond oui dès la touche. Un module qui le guette —
+    les boucles « stepfast » de MAC•CAM — a une seconde pour rendre la
+    main de lui-même, et garde ses fenêtres ; passé ce délai, ou s'il ne
+    le guette pas, HC l'arrête et elles se ferment. Chez HyperCard, Cmd-.
+    n'arrêtait pas stepfast du tout : c'est le clic qui l'arrêtait.
+
+NON MESURÉ dans HyperCard, et choisi :
+  · un message que le module passe n'a pas de suite, sans erreur ;
+  · GetCardPicture lit la couche qu'on édite, la carte ou son fond sous
+    editBkgnd ; l'encre est ce qui est opaque et sombre ;
+  · le procID n'est pas dessiné : une fenêtre à titre et case de
+    fermeture, à petite barre si elle flotte ; ce que l'image ne couvre
+    pas est noir ; le rectangle est celui du contenu, en coordonnées de
+    l'écran, comme les palettes — MACCAM rend le même (GlobalToLocal, puis
+    OffsetRect) ;
+  · une fenêtre qui s'ouvrirait sous la barre de menus est ramenée dans
+    l'écran : la pile donne « 0,0,128,128 », et chez HyperCard la barre de
+    titre passait alors sous celle des menus.
+
+LE HARNAIS (xcmd, section 11), avec un hôte qui dit ce qu'on lui
+demande : l'ouverture et xOpenEvt, les propriétés servies par le module
+puis par HC, l'image, le presse-papiers, la peinture, la réentrance
+refusée, un AUTRE module qui ne peut ni dessiner dans la fenêtre ni la
+fermer, le renommage, les trois fermetures (par le module, par close
+window, par la case), le module remplacé, une faute ; et Cmd-. sur trois
+modules — qui guette Button (rendu avant la seconde, fenêtre gardée), qui
+l'appelle sans s'arrêter (arrêté après sa seconde), qui ne le guette pas
+(arrêté, fenêtre fermée).
+
+L'INTERFACE COCOA (HCview.m) : COMPILÉE PAR LA CI, NON EXÉCUTÉE. Elle sera
+jouée DANS HC (l'application) avec l'enveloppe de MACCAM, qui vient.
+
+L'ENVELOPPE DE MACCAM, ÉCRITE le même soir : xcmd/maccam/maccam.c, sur
+la machine (maccam_coeur.c) et les fenêtres ci-dessus. Lu de plus dans le
+code de MACCAM pour l'écrire :
+  · L'APPEL, maccam(rect, titre, visible, style, couleur, flottante) : les
+    défauts de getParam — 50,50,100,100, « Sans Titre », visible, le
+    style 0x800 (que HC ne dessine pas), en couleur, flottante — ; rend
+    « true » ou « false ». La grille se fait à
+    xOpenEvt (DoOpen), à la taille du contenu ;
+  · LES TRENTE NOMS, dans l'ordre de leurs tables : hilite, name, visible,
+    height, width, rect, image0 à image7, scale, pln7 à pln0, palette,
+    PictResource, major, minor, alternate, phaseA, phaseB. setProp tient
+    tous les trente pour siens — pln3 à pln0 ne font rien ; getProp sert
+    hilite, name, visible, height, width, rect, image0, image1, phaseA et
+    phaseB, et passe le reste ;
+  · « the rect of window » : le portRect, décalé par GlobalToLocal du
+    point 0,0 — le contenu en coordonnées de l'écran, ce que HC sert
+    lui-même. Le gestionnaire movepict de la pile en retire « the rect of
+    card window » pour retomber sur la carte ;
+  · stepfast et ses sœurs : un pas, le dessin, les phases, PUIS Button ;
+    un pas au moins.
+Ce que l'enveloppe fait de ce que HC n'a pas : hilite est retenu sans se
+dessiner ; name, visible, height, width et rect passent à HC ; scale pose
+la largeur et la hauteur de sa fenêtre par SendCardMessage ; palette
+s'accepte sans effet ; PictResource et toscrap photographient la fenêtre.
+
+LE HARNAIS (xcmd, section 12) : ouverte comme dans la pile ; un rectangle
+illisible donne le défaut ; la règle de Conway, du FORTH à pln7 ; un
+planeur peint sur la carte, posé par image7 ; quatre pas, et il a avancé
+d'une case vers le sud-est ; image0 relit 4 096 caractères, image2 et
+pln7 passent ; scale refait la fenêtre carrée ; stepfast s'arrête au clic ;
+fill8, erasea, toscrap, PictResource ; fermée.
+
+MESURÉ dans le conteneur (Linux, WAMR « fast », le noyau en -O1) : un pas
+de la règle de Conway coûte 9,3 ms sur une grille de 256 × 256, image
+comprise — une centaine de pas par seconde —, et 32 ms sur 512 × 512.
+Sur un Mac : NON MESURÉ.
+
+À JOUER DANS HC (l'application), sur MAC•CAM Workshop : ajouter
+forth.wasm et maccam.wasm (Objects ▸ Modules…), ouvrir la fenêtre CAM par
+son bouton, compiler une règle, la charger, « step », puis « stepfast »
+arrêté d'un clic — et Cmd-., qui doit l'arrêter aussi en gardant la
+fenêtre.
+
 CE QUI RESTE AVANT MAC•CAM :
-  · le FORTH, tiré de cam_forth.c (maccam-6), avec le dialecte des années
-    90 (CONSTANT, VARIABLE, DO LOOP, BEGIN…UNTIL, N/MOORE-HV…) ;
-  · la fenêtre externe « CAM » : ses propriétés et ses messages ;
+  · ce que les quatre bancs ci-dessus diront ;
+  · le banc ci-dessus, DANS HC ;
+  · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas
+    « ballons » au survol des boutons ;
   · la licence de WAMR dans le DMG.
 

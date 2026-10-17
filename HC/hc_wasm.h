@@ -86,4 +86,30 @@ void hc_module_delai(double secondes);
 /* 1 si un module est en train de calculer. Du fil de HC seulement. */
 int  hc_module_actif(void);
 
+/* LES FENÊTRES DES MODULES — « NewXWindow » (xcmd/hc_xcmd.h).
+ *
+ * Le noyau les numérote, l'hôte les montre (les rappels xw_ de HcHost), et
+ * les scripts les désignent par leur titre : « window "CAM" ». Une fenêtre
+ * vit autant que l'instance de son module ; une faute, un arrêt, le module
+ * retiré ou la pile fermée la ferment.
+ *
+ * hc_module_fenetre : ce que v3_fenetre_hote demande à l'hôte, demandé
+ * d'abord ici, avec les mêmes mots — "existe", "montre", "cache", "ferme",
+ * "lit", "pose" —, et "envoie" pour « send <valeur> to window ». "lit",
+ * "pose" et "envoie" vont au module (xGetPropEvt, xSetPropEvt, xSendEvt) ;
+ * ce qu'il passe, et ce qu'on lui demande pendant qu'il tourne, HC le sert
+ * comme pour toute fenêtre. "ferme" lui envoie xCloseEvt, puis ferme.
+ *
+ * Rend -2 si aucune fenêtre de module ne porte ce nom ; sinon comme le
+ * rappel `fenetre` — 1 fait, 0 introuvable, -1 propriété inconnue — et -3
+ * si le module s'est arrêté, sur une faute dite dans `faute`, ou par Cmd-..
+ *
+ * hc_module_fenetre_fermee : l'utilisatrice l'a fermée par sa case. Le
+ * module reçoit xCloseEvt, puis l'hôte la ferme (xw_ferme). Rend -1 si le
+ * module s'est arrêté sur une faute en la recevant, dite dans `faute`. */
+int  hc_module_fenetre(const char *nom, const char *quoi, const char *prop,
+                       const char *valeur, char *out, int outlen,
+                       char *faute, size_t nfaute);
+int  hc_module_fenetre_fermee(int id, char *faute, size_t nfaute);
+
 #endif

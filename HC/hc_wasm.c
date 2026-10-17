@@ -56,6 +56,12 @@ enum {
     BLOC_PARAMS  = 4,
     BLOC_RETOUR  = 68,
     BLOC_PASSE   = 72,
+    /* L'XWEventInfo d'un événement de fenêtre (hc_xcmd.h, qui en vérifie
+     * aussi les places) : what, eventWindow, eventParams[9], eventResult. */
+    EV_TAILLE    = 48,
+    EV_FENETRE   = 4,
+    EV_PARAMS    = 8,
+    EV_RESULTAT  = 44,
     PILE_MODULE  = 64 * 1024,
     NIDS_MAX     = 8,          /* modules en cours les uns dans les autres */
     /* La pile du FIL où calcule un module. Celle du module lui-même est à
@@ -97,16 +103,45 @@ typedef enum {
     D_GLOBALE,              /* GetGlobal */
     D_POSE_GLOBALE,         /* SetGlobal */
     D_CHAMP,                /* GetFieldByName, ByNum, ByID */
-    D_POSE_CHAMP            /* SetFieldByName, ByNum, ByID */
+    D_POSE_CHAMP,           /* SetFieldByName, ByNum, ByID */
+    D_OUVRE,                /* NewXWindow */
+    D_FERME,                /* CloseXWindow */
+    D_DESSINE,              /* DrawXWindow */
+    D_COPIE,                /* CopyXWindow */
+    D_BOUTON,               /* Button */
+    D_PEINTURE              /* GetCardPicture */
 } Quoi;
 
 typedef struct {
     Quoi        quoi;
-    const char *texte;      /* la ligne, l'expression, le nom */
+    const char *texte;      /* la ligne, l'expression, le nom, le titre */
     const char *valeur;     /* ce qu'on pose */
     int         carte;      /* le champ est de la carte, sinon du fond */
     int         n, par_id;  /* son numéro, ou son id */
+
+    /* Les fenêtres. Les tampons sont dans la mémoire du module, et WAMR en
+     * a vérifié les bornes. */
+    int                  fenetre;
+    int                  rect[4];       /* gauche, haut, droite, bas */
+    int                  visible, style, flottante;
+    const unsigned char *pixels, *palette;
+    unsigned char       *noir;
+    int                  largeur, hauteur, echelle;
 } Demande;
+
+/* UN ÉVÉNEMENT d'une fenêtre, pour l'externe qui l'a ouverte : son numéro
+ * chez HyperCard (hc_xcmd.h), la fenêtre, et ses paramètres. */
+typedef struct {
+    int         what;
+    int         fenetre;
+    const char *params[2];
+    int         nparams;
+} Evenement;
+
+enum {
+    X_OUVRE = 1000, X_FERME = 1001,
+    X_ENVOIE = 1200, X_POSE = 1201, X_LIT = 1202
+};
 
 typedef struct {
     pthread_mutex_t verrou;
@@ -116,8 +151,10 @@ typedef struct {
 
     struct HcModule     *mo;
     wasm_function_inst_t boite, externe;
+    const char          *nom_externe;   /* « XFCN maccam » */
     const char *const   *argv;
     int                  argc;
+    const Evenement     *ev;            /* un événement, au lieu d'argv */
     uint32_t             taille;
 
     int             demande;    /* `d` attend le fil de HC */
@@ -126,6 +163,10 @@ typedef struct {
     int             reponse;    /* le nombre qu'elle rend */
     int             fini;       /* le fil du module a rendu */
     int             arrete;     /* 0, ARRET_DELAI ou ARRET_DEMANDE */
+    /* Le module guette Button : Cmd-. lui laisse GRACE pour rendre la main
+     * de lui-même. Lus et écrits par le fil de HC seulement. */
+    int             ecoute;
+    double          grace;
 
     int      ok;                /* les deux appels ont réussi */
     int      sans_boite;        /* hc_boite a rendu une adresse fausse */
@@ -145,6 +186,13 @@ enum { ARRET_DELAI = 1, ARRET_DEMANDE = 2 };
  * Ces trois drapeaux s'écrivent sous `verrou` ET atomiquement, puisqu'on
  * les lit aussi sans lui. */
 #define GUET 100e-6
+
+/* CMD-. ET UN MODULE QUI GUETTE Button. Button répond oui dès la touche
+ * (hc_module_bouton) : une boucle qui le guette en sort d'elle-même, et le
+ * module garde son instance — sa mémoire, ses fenêtres. HC lui en laisse le
+ * temps avant de l'arrêter de force. Une seconde : un pas de MAC•CAM sur une
+ * grande grille, interprété, en prend une fraction (NON MESURÉ sur un Mac). */
+#define GRACE 1.0
 
 static int travail_arrive(const Appel *a)
 {
@@ -309,6 +357,65 @@ static void rappel_set_field_id(wasm_exec_env_t env, uint64_t *args)
     rend(args, a ? a->reponse : 0);
 }
 
+/* ---- les fenêtres ---- */
+
+static void rappel_new_xwindow(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_OUVRE,
+                                      .rect = { entier(args, 0), entier(args, 1),
+                                                entier(args, 2), entier(args, 3) },
+                                      .texte = chaine(args, 4),
+                                      .visible = entier(args, 5) != 0,
+                                      .style = entier(args, 6),
+                                      .flottante = entier(args, 7) != 0 });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_close_xwindow(wasm_exec_env_t env, uint64_t *args)
+{
+    confie(env, (Demande){ .quoi = D_FERME, .fenetre = entier(args, 0) });
+}
+
+/* Les tailles se vérifient ICI, sur le fil du module : WAMR a vérifié que
+ * chaque tampon tient dans sa mémoire, pas qu'il tient l'image annoncée. */
+static void rappel_draw_xwindow(wasm_exec_env_t env, uint64_t *args)
+{
+    int32_t npx = entier(args, 2), l = entier(args, 3), h = entier(args, 4);
+    int32_t npal = entier(args, 6), e = entier(args, 7);
+    if (l <= 0 || h <= 0 || l > INT32_MAX / h || npx < l * h || npal < 768)
+        return;
+    confie(env, (Demande){ .quoi = D_DESSINE, .fenetre = entier(args, 0),
+                           .pixels = (const unsigned char *)(uintptr_t)args[1],
+                           .largeur = l, .hauteur = h,
+                           .palette = (const unsigned char *)(uintptr_t)args[5],
+                           .echelle = e < 1 ? 1 : e });
+}
+
+static void rappel_copy_xwindow(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_COPIE,
+                                      .fenetre = entier(args, 0) });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_button(wasm_exec_env_t env, uint64_t *args)
+{
+    Appel *a = confie(env, (Demande){ .quoi = D_BOUTON });
+    rend(args, a ? a->reponse : 0);
+}
+
+static void rappel_get_card_picture(wasm_exec_env_t env, uint64_t *args)
+{
+    int32_t g = entier(args, 0), h = entier(args, 1);
+    int32_t d = entier(args, 2), b = entier(args, 3), n = entier(args, 5);
+    int64_t l = (int64_t)d - g, t = (int64_t)b - h;
+    if (l <= 0 || t <= 0 || l * t > n) { rend(args, 0); return; }
+    Appel *a = confie(env, (Demande){ .quoi = D_PEINTURE,
+                                      .rect = { g, h, d, b },
+                                      .noir = (unsigned char *)(uintptr_t)args[4] });
+    rend(args, a ? a->reponse : 0);
+}
+
 /* hc_rendu(tampon, taille) : copie la dernière chaîne rendue, coupée à la
  * taille du tampon, zéro final compris. Elle ne sert qu'une fois. Pas de
  * passage au fil de HC : la réponse est déjà dans `a`, et le fil de HC
@@ -340,6 +447,12 @@ static NativeSymbol RAPPELS[] = {
     { "SetFieldByNum",   (void *)rappel_set_field_num,  "(ii$)i", NULL },
     { "SetFieldByID",    (void *)rappel_set_field_id,   "(ii$)i", NULL },
     { "hc_rendu",        (void *)rappel_rendu,          "(*~)",   NULL },
+    { "NewXWindow",      (void *)rappel_new_xwindow,    "(iiii$iii)i", NULL },
+    { "CloseXWindow",    (void *)rappel_close_xwindow,  "(i)",    NULL },
+    { "DrawXWindow",     (void *)rappel_draw_xwindow,   "(i*~ii*~i)", NULL },
+    { "CopyXWindow",     (void *)rappel_copy_xwindow,   "(i)i",   NULL },
+    { "Button",          (void *)rappel_button,         "()i",    NULL },
+    { "GetCardPicture",  (void *)rappel_get_card_picture, "(iiii*~)i", NULL },
 };
 
 /* ---- WAMR, démarré une fois ---- */
@@ -497,8 +610,88 @@ static wasm_module_t charge(const unsigned char *octets, size_t n,
     return m;
 }
 
+/* ---- les fenêtres des modules ----
+ *
+ * « NewXWindow » : une fenêtre de l'hôte, que le noyau numérote et nomme —
+ * son titre est le nom que les scripts emploient. Elle appartient au module
+ * qui l'a ouverte, et l'externe qui l'a ouverte en reçoit les événements.
+ * Tout ceci n'est touché que par le fil de HC. */
+typedef struct {
+    int              id;            /* 0 : la case est libre */
+    char             nom[256];
+    struct HcModule *mo;
+    char             externe[80];   /* « XFCN maccam » */
+    int              a_ouvrir;      /* xOpenEvt n'est pas encore parti */
+} Fenetre;
+
+enum { FENETRES_MAX = 32 };
+static Fenetre g_fenetres[FENETRES_MAX];
+static int     g_dernier_id;
+
+static Fenetre *fenetre_d_id(int id)
+{
+    if (id <= 0) return NULL;
+    for (int i = 0; i < FENETRES_MAX; i++)
+        if (g_fenetres[i].id == id) return &g_fenetres[i];
+    return NULL;
+}
+
+/* Deux fenêtres du même nom : la plus récente. */
+static Fenetre *fenetre_de_nom(const char *nom)
+{
+    Fenetre *f = NULL;
+    for (int i = 0; i < FENETRES_MAX; i++)
+        if (g_fenetres[i].id && !strcasecmp(g_fenetres[i].nom, nom)
+            && (!f || g_fenetres[i].id > f->id))
+            f = &g_fenetres[i];
+    return f;
+}
+
+/* La case se libère AVANT que l'hôte ferme : s'il rappelait le noyau en
+ * fermant, il ne trouverait plus la fenêtre. */
+static void oublie(Fenetre *f)
+{
+    int id = f->id;
+    memset(f, 0, sizeof *f);
+    hc_xw_ferme(id);
+}
+
+/* L'instance d'un module s'en va — une faute, un arrêt, le module retiré ou
+ * remplacé, la pile fermée : ses fenêtres partent avec elle, puisque tout
+ * ce qu'elles montraient vivait dans sa mémoire. */
+static void fenetres_fermees_avec(const struct HcModule *mo)
+{
+    for (int i = 0; i < FENETRES_MAX; i++)
+        if (g_fenetres[i].id && g_fenetres[i].mo == mo) oublie(&g_fenetres[i]);
+}
+
+/* NewXWindow, sur le fil de HC, pendant l'appel `a` : la fenêtre est à son
+ * module, et à l'externe en cours. Rend son numéro, ou 0. */
+static int fenetre_ouvre(const Appel *a, const Demande *d)
+{
+    Fenetre *f = NULL;
+    for (int i = 0; i < FENETRES_MAX && !f; i++)
+        if (!g_fenetres[i].id) f = &g_fenetres[i];
+    if (!f || !a->nom_externe) return 0;
+    int id;
+    do {
+        g_dernier_id = g_dernier_id < INT32_MAX ? g_dernier_id + 1 : 1;
+        id = g_dernier_id;
+    } while (fenetre_d_id(id));
+    const char *titre = d->texte ? d->texte : "";
+    if (!hc_xw_ouvre(id, titre, d->rect, d->visible, d->style, d->flottante))
+        return 0;
+    f->id = id;
+    snprintf(f->nom, sizeof f->nom, "%s", titre);
+    f->mo = a->mo;
+    snprintf(f->externe, sizeof f->externe, "%s", a->nom_externe);
+    f->a_ouvrir = 1;
+    return id;
+}
+
 static void desinstancie(struct HcModule *mo)
 {
+    fenetres_fermees_avec(mo);
     if (mo->env) wasm_runtime_destroy_exec_env(mo->env);
     if (mo->inst) wasm_runtime_deinstantiate(mo->inst);
     mo->env = NULL;
@@ -752,8 +945,23 @@ static int export_de(struct HcModule *mo, const char *genre, const char *nom,
     return 0;
 }
 
+/* Une chaîne dans la boîte, à l'adresse `*o` du module ; son adresse va à
+ * la case `ou`. */
+static void depose(unsigned char *q, uint32_t b, uint32_t *o,
+                   const char *s, unsigned char *ou)
+{
+    size_t l = strlen(s) + 1;
+    memcpy(q + (*o - b), s, l);
+    pose32(ou, *o);
+    *o += (uint32_t)l;
+}
+
 /* LE FIL DU MODULE : la boîte, les paramètres qu'on y range, l'externe.
- * Il ne touche qu'à la mémoire du module, et à `a`. */
+ * Il ne touche qu'à la mémoire du module, et à `a`.
+ *
+ * UN ÉVÉNEMENT DE FENÊTRE se range comme chez HyperCard : paramCount à -1,
+ * et dans params[0] l'adresse d'un XWEventInfo, posé juste après le bloc,
+ * ses chaînes ensuite. */
 static void calcule(Appel *a)
 {
     struct HcModule *mo = a->mo;
@@ -768,13 +976,22 @@ static void calcule(Appel *a)
         } else if (a->ok) {
             unsigned char *q = wasm_runtime_addr_app_to_native(mo->inst, b);
             memset(q, 0, BLOC_TAILLE);
-            q[0] = (unsigned char)a->argc;       /* paramCount, un short */
             uint32_t o = b + BLOC_TAILLE;
-            for (int k = 0; k < a->argc; k++) {
-                size_t l = strlen(a->argv[k]) + 1;
-                memcpy(q + (o - b), a->argv[k], l);
-                pose32(q + BLOC_PARAMS + 4 * k, o);
-                o += (uint32_t)l;
+            if (a->ev) {
+                unsigned char *e = q + BLOC_TAILLE;
+                q[0] = q[1] = 0xff;              /* paramCount = -1 */
+                pose32(q + BLOC_PARAMS, o);
+                memset(e, 0, EV_TAILLE);
+                e[0] = (unsigned char)a->ev->what;
+                e[1] = (unsigned char)(a->ev->what >> 8);
+                pose32(e + EV_FENETRE, (uint32_t)a->ev->fenetre);
+                o += EV_TAILLE;
+                for (int k = 0; k < a->ev->nparams; k++)
+                    depose(q, b, &o, a->ev->params[k], e + EV_PARAMS + 4 * k);
+            } else {
+                q[0] = (unsigned char)a->argc;   /* paramCount, un short */
+                for (int k = 0; k < a->argc; k++)
+                    depose(q, b, &o, a->argv[k], q + BLOC_PARAMS + 4 * k);
             }
             a->bloc = b;
             cases[0] = b;
@@ -871,6 +1088,30 @@ static void sers(Appel *a)
         a->reponse = hc_module_pose_champ(d->carte, d->texte, d->n,
                                           d->par_id, d->valeur);
         break;
+    case D_OUVRE:
+        a->reponse = fenetre_ouvre(a, d);
+        break;
+    case D_FERME:
+    case D_DESSINE:
+    case D_COPIE: {
+        /* Un module ne touche qu'à SES fenêtres. */
+        Fenetre *f = fenetre_d_id(d->fenetre);
+        if (!f || f->mo != a->mo) break;
+        if (d->quoi == D_FERME) oublie(f);
+        else if (d->quoi == D_DESSINE)
+            hc_xw_image(f->id, d->pixels, d->largeur, d->hauteur,
+                        d->palette, d->echelle);
+        else
+            a->reponse = hc_xw_hote(f->id, "copie", NULL, NULL, NULL, 0) == 1;
+        break;
+    }
+    case D_BOUTON:
+        a->ecoute = 1;
+        a->reponse = hc_module_bouton();
+        break;
+    case D_PEINTURE:
+        a->reponse = hc_module_peinture(d->rect, d->noir);
+        break;
     }
 }
 
@@ -910,6 +1151,12 @@ static void servir(Appel *a)
         a->arrete = demande ? ARRET_DEMANDE
                   : g_delai > 0 && maintenant() - g_debut > g_delai
                   ? ARRET_DELAI : 0;
+        /* Un module qui guette Button l'a déjà vu répondre oui : il a GRACE
+         * pour rendre la main, et garder ses fenêtres. */
+        if (a->arrete == ARRET_DEMANDE && a->ecoute) {
+            if (!a->grace) a->grace = maintenant() + GRACE;
+            if (maintenant() < a->grace) a->arrete = 0;
+        }
         /* Le fil du module pose `fini` sous ce verrou : l'arrêt vise donc
          * un calcul en cours, ou qui vient JUSTE de rendre. Dans ce second
          * cas, WAMR a marqué une instance qui n'en avait plus besoin ; elle
@@ -917,6 +1164,173 @@ static void servir(Appel *a)
         if (a->arrete) wasm_runtime_terminate(a->mo->inst);
     }
     pthread_mutex_unlock(&a->verrou);
+}
+
+/* APPELER L'EXTERNE `exact` DE `mo`, dans le fil de sa profondeur : un
+ * appel ordinaire (argv, argc), ou un événement de ses fenêtres (ev). Rend
+ * 1, ou -1 et pourquoi dans `faute`. Ce qu'il rend — returnValue, ou
+ * l'eventResult d'un événement — va dans `res`. */
+static int lance(struct HcModule *mo, const char *exact,
+                 const char *const *argv, int argc, const Evenement *ev,
+                 int *passe, char *res, size_t nres, char *faute, size_t nf)
+{
+    *passe = 0;
+    if (res && nres) res[0] = '\0';
+    if (mo->en_cours) {
+        snprintf(faute, nf, "le module « %s » est déjà en cours : il ne "
+                 "peut pas s'appeler lui-même", mo->nom);
+        return -1;
+    }
+    if (instancie(mo, faute, nf) < 0) return -1;
+
+    /* LA BOÎTE : le bloc, l'événement s'il y en a un, puis les chaînes. */
+    size_t taille = BLOC_TAILLE;
+    if (ev) {
+        taille += EV_TAILLE;
+        for (int k = 0; k < ev->nparams; k++)
+            taille += strlen(ev->params[k]) + 1;
+    }
+    for (int k = 0; k < argc; k++) taille += strlen(argv[k]) + 1;
+    if (taille > (size_t)HC_MODULE_PAGES_MAX * 65536) {
+        snprintf(faute, nf, "%s : des paramètres trop longs", exact);
+        return -1;
+    }
+    wasm_function_inst_t fb = wasm_runtime_lookup_function(mo->inst,
+                                                           "hc_boite");
+    wasm_function_inst_t fx = wasm_runtime_lookup_function(mo->inst, exact);
+    if (!fb || !fx) {
+        snprintf(faute, nf, "le module « %s » a perdu « %s »",
+                 mo->nom, fb ? exact : "hc_boite");
+        return -1;
+    }
+    if (g_profondeur >= NIDS_MAX) {
+        snprintf(faute, nf, "trop de modules appelés les uns dans les "
+                 "autres (%d au plus)", NIDS_MAX);
+        return -1;
+    }
+
+    Appel *a = ouvrier_de(g_profondeur);
+    if (!a) {
+        snprintf(faute, nf, "le module « %s » n'a pas pu partir : le "
+                 "système refuse un fil de plus", mo->nom);
+        return -1;
+    }
+    if (g_profondeur++ == 0) g_debut = maintenant();
+    mo->en_cours = 1;
+    wasm_runtime_clear_exception(mo->inst);
+    wasm_runtime_set_user_data(mo->env, a);
+
+    pthread_mutex_lock(&a->verrou);
+    a->mo = mo;
+    a->boite = fb;
+    a->externe = fx;
+    a->nom_externe = exact;
+    a->argv = argv;
+    a->argc = argc;
+    a->ev = ev;
+    a->taille = (uint32_t)taille;
+    __atomic_store_n(&a->demande, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&a->fini, 0, __ATOMIC_RELEASE);
+    a->arrete = a->ok = a->sans_boite = 0;
+    a->ecoute = 0;
+    a->grace = 0;
+    a->bloc = 0;
+    __atomic_store_n(&a->a_faire, 1, __ATOMIC_RELEASE);
+    pthread_cond_broadcast(&a->signal);
+    pthread_mutex_unlock(&a->verrou);
+    servir(a);
+
+    wasm_runtime_set_user_data(mo->env, NULL);
+    mo->en_cours = 0;
+    g_profondeur--;
+    free(a->rendu);         /* une réponse que le module n'a pas prise */
+    a->rendu = NULL;
+
+    if (a->arrete == ARRET_DELAI)
+        snprintf(faute, nf, "le module « %s » a dépassé son délai, "
+                 "et il a été arrêté", mo->nom);
+    else if (a->arrete == ARRET_DEMANDE)
+        snprintf(faute, nf, "le module « %s » a été arrêté", mo->nom);
+    else if (a->sans_boite)
+        snprintf(faute, nf, "le module « %s » n'a pas fait de place "
+                 "pour ses paramètres", mo->nom);
+    else if (!a->ok)
+        snprintf(faute, nf, "le module « %s » s'est arrêté sur une "
+                 "faute : %s", mo->nom, exception(mo->inst));
+    if (a->arrete || !a->ok) {
+        desinstancie(mo);
+        return -1;
+    }
+    uint32_t b = a->bloc;
+
+    /* Ce qu'il rend : une chaîne de SA mémoire, à vérifier comme tout ce
+     * qui vient de lui. */
+    const unsigned char *p = wasm_runtime_addr_app_to_native(mo->inst, b);
+    uint32_t rv = ev ? lis32(p + BLOC_TAILLE + EV_RESULTAT)
+                     : lis32(p + BLOC_RETOUR);
+    *passe = p[BLOC_PASSE] != 0;
+    if (rv && res && nres) {
+        if (!wasm_runtime_validate_app_str_addr(mo->inst, rv)) {
+            wasm_runtime_clear_exception(mo->inst);
+            snprintf(faute, nf, "le module « %s » rend une valeur hors "
+                     "de sa mémoire", mo->nom);
+            return -1;
+        }
+        snprintf(res, nres, "%s",
+                 (const char *)wasm_runtime_addr_app_to_native(mo->inst, rv));
+    }
+    return 1;
+}
+
+static int ouvertures(char *faute, size_t nf);
+
+/* Un événement pour la fenêtre `id`, à l'externe qui l'a ouverte. La
+ * fenêtre peut ne plus exister au retour — le module l'a fermée, ou s'est
+ * arrêté sur une faute : ne la relire que par son numéro. */
+static int evenement(int id, int what, const char *p0, const char *p1,
+                     int *passe, char *res, size_t nres,
+                     char *faute, size_t nf)
+{
+    *passe = 0;
+    Fenetre *f = fenetre_d_id(id);
+    if (!f) return 0;
+    Evenement ev = { .what = what, .fenetre = id, .params = { p0, p1 },
+                     .nparams = p1 ? 2 : p0 ? 1 : 0 };
+    char externe[sizeof f->externe];
+    snprintf(externe, sizeof externe, "%s", f->externe);
+    if (lance(f->mo, externe, NULL, 0, &ev, passe, res, nres, faute, nf) < 0)
+        return -1;
+    return ouvertures(faute, nf) < 0 ? -1 : 1;
+}
+
+/* xOpenEvt, aux fenêtres qui viennent de s'ouvrir — « le premier événement
+ * après votre création », chez HyperCard, que MACCAM attendait pour faire
+ * sa grille. Il part quand l'appel ou l'événement qui les a ouvertes est
+ * fini. Une seule boucle à la fois, et bornée : un module qui rouvrirait
+ * une fenêtre à chaque xOpenEvt ne tiendrait pas HC indéfiniment. */
+static int ouvertures(char *faute, size_t nf)
+{
+    static int dedans;
+    if (dedans) return 0;           /* la boucle du dessus les prendra */
+    dedans = 1;
+    int r = 0;
+    for (int n = 0; n < 4 * FENETRES_MAX && r == 0; n++) {
+        Fenetre *f = NULL;
+        /* Celle d'un module en cours attend la fin de SON appel. */
+        for (int i = 0; i < FENETRES_MAX && !f; i++)
+            if (g_fenetres[i].id && g_fenetres[i].a_ouvrir
+                && !g_fenetres[i].mo->en_cours)
+                f = &g_fenetres[i];
+        if (!f) break;
+        f->a_ouvrir = 0;
+        int passe;
+        char rien[8];
+        if (evenement(f->id, X_OUVRE, NULL, NULL, &passe, rien, sizeof rien,
+                      faute, nf) < 0)
+            r = -1;
+    }
+    dedans = 0;
+    return r;
 }
 
 static int appelle(Object *pile, const char *genre, const char *nom,
@@ -947,103 +1361,10 @@ static int appelle(Object *pile, const char *genre, const char *nom,
                      genre, nom, argc, HC_MODULE_PARAMS_MAX);
             return -1;
         }
-        if (mo->en_cours) {
-            snprintf(faute, nf, "le module « %s » est déjà en cours : il ne "
-                     "peut pas s'appeler lui-même", mo->nom);
+        if (lance(mo, exact, argv, argc, NULL, passe, res, nres,
+                  faute, nf) < 0)
             return -1;
-        }
-        if (instancie(mo, faute, nf) < 0) return -1;
-
-        /* LA BOÎTE : le bloc, puis les chaînes. */
-        size_t taille = BLOC_TAILLE;
-        for (int k = 0; k < argc; k++) taille += strlen(argv[k]) + 1;
-        if (taille > (size_t)HC_MODULE_PAGES_MAX * 65536) {
-            snprintf(faute, nf, "%s %s : des paramètres trop longs",
-                     genre, nom);
-            return -1;
-        }
-        wasm_function_inst_t fb = wasm_runtime_lookup_function(mo->inst,
-                                                               "hc_boite");
-        wasm_function_inst_t fx = wasm_runtime_lookup_function(mo->inst,
-                                                               exact);
-        if (!fb || !fx) {
-            snprintf(faute, nf, "le module « %s » a perdu « %s »",
-                     mo->nom, fb ? exact : "hc_boite");
-            return -1;
-        }
-        if (g_profondeur >= NIDS_MAX) {
-            snprintf(faute, nf, "trop de modules appelés les uns dans les "
-                     "autres (%d au plus)", NIDS_MAX);
-            return -1;
-        }
-
-        Appel *a = ouvrier_de(g_profondeur);
-        if (!a) {
-            snprintf(faute, nf, "le module « %s » n'a pas pu partir : le "
-                     "système refuse un fil de plus", mo->nom);
-            return -1;
-        }
-        if (g_profondeur++ == 0) g_debut = maintenant();
-        mo->en_cours = 1;
-        wasm_runtime_clear_exception(mo->inst);
-        wasm_runtime_set_user_data(mo->env, a);
-
-        pthread_mutex_lock(&a->verrou);
-        a->mo = mo;
-        a->boite = fb;
-        a->externe = fx;
-        a->argv = argv;
-        a->argc = argc;
-        a->taille = (uint32_t)taille;
-        __atomic_store_n(&a->demande, 0, __ATOMIC_RELEASE);
-        __atomic_store_n(&a->fini, 0, __ATOMIC_RELEASE);
-        a->arrete = a->ok = a->sans_boite = 0;
-        a->bloc = 0;
-        __atomic_store_n(&a->a_faire, 1, __ATOMIC_RELEASE);
-        pthread_cond_broadcast(&a->signal);
-        pthread_mutex_unlock(&a->verrou);
-        servir(a);
-
-        wasm_runtime_set_user_data(mo->env, NULL);
-        mo->en_cours = 0;
-        g_profondeur--;
-        free(a->rendu);         /* une réponse que le module n'a pas prise */
-        a->rendu = NULL;
-
-        if (a->arrete == ARRET_DELAI)
-            snprintf(faute, nf, "le module « %s » a dépassé son délai, "
-                     "et il a été arrêté", mo->nom);
-        else if (a->arrete == ARRET_DEMANDE)
-            snprintf(faute, nf, "le module « %s » a été arrêté", mo->nom);
-        else if (a->sans_boite)
-            snprintf(faute, nf, "le module « %s » n'a pas fait de place "
-                     "pour ses paramètres", mo->nom);
-        else if (!a->ok)
-            snprintf(faute, nf, "le module « %s » s'est arrêté sur une "
-                     "faute : %s", mo->nom, exception(mo->inst));
-        if (a->arrete || !a->ok) {
-            desinstancie(mo);
-            return -1;
-        }
-        uint32_t b = a->bloc;
-
-        /* Ce qu'il rend : returnValue, une chaîne de SA mémoire, à
-         * vérifier comme tout ce qui vient de lui. */
-        const unsigned char *p = wasm_runtime_addr_app_to_native(mo->inst, b);
-        uint32_t rv = lis32(p + BLOC_RETOUR);
-        *passe = p[BLOC_PASSE] != 0;
-        if (rv && res && nres) {
-            if (!wasm_runtime_validate_app_str_addr(mo->inst, rv)) {
-                wasm_runtime_clear_exception(mo->inst);
-                snprintf(faute, nf, "le module « %s » rend une valeur hors "
-                         "de sa mémoire", mo->nom);
-                return -1;
-            }
-            snprintf(res, nres, "%s",
-                     (const char *)wasm_runtime_addr_app_to_native(mo->inst,
-                                                                   rv));
-        }
-        return 1;
+        return ouvertures(faute, nf) < 0 ? -1 : 1;
     }
     return 0;
 }
@@ -1062,4 +1383,98 @@ int hc_module_xfcn(Object *pile, const char *nom,
 {
     return appelle(pile, "XFCN", nom, argv, argc, passe, res, nres,
                    faute, nfaute);
+}
+
+/* ---- les fenêtres, vues des scripts ---- */
+
+/* Ce que HC sert lui-même, pour toute fenêtre : quand le module passe, ou
+ * qu'il est en cours — c'est lui qui pose alors, par SendCardMessage. Le
+ * nom est celui des scripts : le noyau le tient, l'hôte en fait le titre. */
+static int standard(int id, const char *quoi, const char *prop,
+                    const char *valeur, char *out, int outlen)
+{
+    Fenetre *f = fenetre_d_id(id);
+    if (!f) return 0;
+    if (!strcmp(quoi, "lit") && prop && !strcasecmp(prop, "name")) {
+        if (out && outlen > 0) snprintf(out, (size_t)outlen, "%s", f->nom);
+        return 1;
+    }
+    int r = hc_xw_hote(id, quoi, prop, valeur, out, outlen);
+    if (r == 1 && !strcmp(quoi, "pose") && prop && !strcasecmp(prop, "name"))
+        snprintf(f->nom, sizeof f->nom, "%s", valeur ? valeur : "");
+    return r;
+}
+
+int hc_module_fenetre(const char *nom, const char *quoi, const char *prop,
+                      const char *valeur, char *out, int outlen,
+                      char *faute, size_t nfaute)
+{
+    if (out && outlen > 0) out[0] = '\0';
+    if (nfaute) faute[0] = '\0';
+    Fenetre *f = nom && quoi ? fenetre_de_nom(nom) : NULL;
+    if (!f || !strcmp(quoi, "palette")) return -2;
+    if (!strcmp(quoi, "existe")) return 1;
+
+    int id = f->id, passe = 0;
+    struct HcModule *mo = f->mo;
+    int libre = !mo->en_cours;      /* peut-il recevoir un événement ? */
+
+    if (!strcmp(quoi, "ferme")) {
+        /* Fermée de force : le module l'apprend, puis elle se ferme, quoi
+         * qu'il réponde. Une faute l'a déjà fermée. */
+        char rien[8];
+        if (libre && evenement(id, X_FERME, NULL, NULL, &passe, rien,
+                               sizeof rien, faute, nfaute) < 0)
+            return -3;
+        f = fenetre_d_id(id);
+        if (f) oublie(f);
+        return 1;
+    }
+    if (!strcmp(quoi, "envoie")) {
+        if (!libre) {
+            snprintf(faute, nfaute, "le module « %s » est déjà en cours : sa "
+                     "fenêtre « %s » ne peut pas recevoir « %s »", mo->nom,
+                     f->nom, valeur ? valeur : "");
+            return -3;
+        }
+        char rien[8];
+        /* Un message que le module PASSE n'a pas de suite : ce que faisait
+         * alors HyperCard n'est PAS MESURÉ. */
+        return evenement(id, X_ENVOIE, valeur ? valeur : "", NULL, &passe,
+                         rien, sizeof rien, faute, nfaute) < 0 ? -3 : 1;
+    }
+    int lit = !strcmp(quoi, "lit");
+    if (lit || !strcmp(quoi, "pose")) {
+        if (!prop) return -1;
+        if (libre) {
+            int r = lit ? evenement(id, X_LIT, prop, NULL, &passe, out,
+                                    out && outlen > 0 ? (size_t)outlen : 0,
+                                    faute, nfaute)
+                        : evenement(id, X_POSE, prop, valeur ? valeur : "",
+                                    &passe, NULL, 0, faute, nfaute);
+            if (r < 0) return -3;
+            if (!passe) return 1;
+        }
+        return standard(id, quoi, prop, valeur, out, outlen);
+    }
+    return hc_xw_hote(id, quoi, prop, valeur, out, outlen);    /* montre, cache */
+}
+
+int hc_module_fenetre_fermee(int id, char *faute, size_t nfaute)
+{
+    if (nfaute) faute[0] = '\0';
+    Fenetre *f = fenetre_d_id(id);
+    if (!f) {
+        hc_xw_ferme(id);
+        return 0;
+    }
+    int passe, r = 0;
+    char rien[8];
+    if (!f->mo->en_cours
+        && evenement(id, X_FERME, NULL, NULL, &passe, rien, sizeof rien,
+                     faute, nfaute) < 0)
+        r = -1;
+    f = fenetre_d_id(id);
+    if (f) oublie(f);
+    return r;
 }

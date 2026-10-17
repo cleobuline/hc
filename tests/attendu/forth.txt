@@ -1,0 +1,87 @@
+== 1. la disposition des bits, LUE dans le FORTH d'origine ==
+   (rien)      (major 0) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:&CENTER' 11:&CENTER
+   N/MOORE     (major 0) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:&CENTER' 11:&CENTER
+   N/VONN      (major 1) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:&CENTER' 11:&CENTER
+   N/MARG-PH   (major 2) : 0:CCW' 1:CCW 2:OPP' 3:OPP 4:CW' 5:CW 6:CENTER' 7:CENTER 8:&CENTER' 9:&CENTER 10:PHASE 11:PHASE'
+   N/MARG-HV   (major 3) : 0:CCW' 1:CCW 2:OPP' 3:OPP 4:CW' 5:CW 6:CENTER' 7:CENTER 8:&CENTER' 9:&CENTER 10:HORZ 11:VERT
+   N/MOORE-PH  (major 4) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:PHASE 11:PHASE'
+   N/MOORE-HV  (major 5) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:HORZ 11:VERT
+   N/VONN-PH   (major 6) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:PHASE 11:PHASE'
+   N/VONN-HV   (major 7) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:HORZ 11:VERT
+
+== 2. vrai, faux, et { … } ==
+   0 0 =
+      rend « -1  »
+   : PAIR = -1 * ; : R NORTH SOUTH PAIR >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit -1
+   : R 1 0 = NOT >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   : R 1 { 0 1 } >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   : R 5 { 1 1 } >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 0 uns, bit -1
+   : R CENTER NORTH + { 0 1 0 } >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit -1
+
+== 3. les mots de l'utilisatrice passent avant les mots de base ==
+   : CENTER NORTH ; : R CENTER >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit 5
+   : RAND &CENTER' ; : R RAND >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit 10
+   ( un commentaire
+  sur deux lignes ) : R CENTER >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit 3
+
+== 4. la règle de Conway, et deux tables ==
+   0 CONSTANT DEATH 1 CONSTANT BORN : UNCHANGED CENTER ; : LIFE NORTH EAST SOUTH WEST N.WEST N.EAST S.WEST S.EAST + + + + + + + { DEATH DEATH UNCHANGED BORN DEATH DEATH DEATH DEATH DEATH } >PLN0 ; : ECHO CENTER >PLN1 ; MAKE-TABLE LIFE MAKE-TABLE ECHO
+      rend «  » ; pln0 : 1120 uns, bit -1 ; pln1 : 2048 uns, bit 3
+      empreinte de pln0 : 05e0dff5
+   N/MARG-PH : R CENTER CW CCW OPP + + + { 0 OPP CW CCW 1 } >PLN0 CENTER' >PLN1 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit -1 ; pln1 : 2048 uns, bit 6
+      empreinte de pln0 : 02e799c5
+   : A CENTER >PLN0 NORTH >PLN1 ; : B SOUTH >PLN1 ; MAKE-TABLE A MAKE-TABLE B
+      rend «  » ; pln0 : 2048 uns, bit 3 ; pln1 : 2048 uns, bit 4
+
+== 5. boucles, constantes, variables ==
+   : R 0 3 0 DO I + LOOP >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   : R 0 BEGIN 1 + DUP 3 = UNTIL >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   : R 0 BEGIN DUP 3 < WHILE 1 + REPEAT >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   VARIABLE V 1 V ! : R V @ >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   -1 CONSTANT M : R M >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 4096 uns, bit -1
+   : R CENTER IF NORTH IF 1 ELSE 0 THEN ELSE 0 THEN >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 1024 uns, bit -1
+   1 2 3
+      rend « 1 2 3  »
+
+== 6. compilé : un mot est cherché quand la définition se fait ==
+   : R FOO >PLN0 ; : FOO 1 ; MAKE-TABLE R
+      FAUTE « COMPILE_ERR "Unknow'd word ", 1  »
+   : A 1 ; : B A >PLN0 ; : A 0 ; MAKE-TABLE B
+      rend «  » ; pln0 : 4096 uns, bit -1
+
+== 7. les fautes, et une faute garde les tables faites ==
+   ZORGLUB
+      FAUTE « INTERPRET_ERR "Can't understand ", 1  »
+   : R IF ; MAKE-TABLE R
+      FAUTE « NEST_ERR "Unnested condition ", 1  »
+   : R : S ;
+      FAUTE « COMPILE_ERR "COLON inside definition  ", 1  »
+   : R DROP >PLN0 ; MAKE-TABLE R
+      FAUTE « STACK_ERR "Stack problem during execution ", 6  »
+   IF
+      FAUTE « INTERPRET_ERR "End definition (;) Compile Only  ", 1  »
+   : R
+      FAUTE « NEST_ERR "Unnested condition ", 1  »
+   ; MAKE-TABLE R
+      FAUTE « INTERPRET_ERR "End definition (;) Compile Only  ", 1  »
+   MAKE-TABLE ABSENT
+      FAUTE « INTERPRET_ERR "Can't understand ", 1  »
+   : R CENTER >PLN0 ; MAKE-TABLE R avec la propriété que
+      FAUTE « INTERPRET_ERR "Can't understand ", 8  » ; pln0 : 2048 uns, bit 3
+   
+      rend «  »

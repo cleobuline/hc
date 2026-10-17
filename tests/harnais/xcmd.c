@@ -49,9 +49,13 @@ static double chrono(void)
     return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
 }
 
+/* La grâce qu'un module qui guette Button a pour rendre la main (GRACE,
+ * hc_wasm.c). */
+#define GRACE_HC 1.0
+
 /* Une ligne, avec Cmd-. au bout de `n` respirations ; un délai de cinq
  * secondes en filet, s'il n'arrêtait rien. */
-static void cmd_point(const char *l, int n)
+static double cmd_point(const char *l, int n)
 {
     hc_module_delai(5);
     g_touche = n;
@@ -64,12 +68,98 @@ static void cmd_point(const char *l, int n)
            g_respirations >= n ? "ses" : "MOINS DE", hc_module_actif());
     g_touche = 0;
     hc_module_delai(0);
+    return s;
 }
 
 static void fais(const char *l)
 {
     printf("   %s\n", l);
     hc_do(l);
+}
+
+/* LES FENÊTRES DES MODULES : l'hôte dit ce qu'on lui demande. Il n'en
+ * montre aucune ; il tient leur rectangle, pour le relire. */
+static int g_rect[4] = { 10, 20, 90, 60 };
+static int g_essai, g_trois;     /* leurs numéros, pour les désigner d'ici */
+
+static int xw_ouvre(int id, const char *titre, const int r[4], int visible,
+                    int style, int flottante)
+{
+    printf("      hôte : ouvre %d « %s » %d,%d,%d,%d, visible %d, style %d, "
+           "flottante %d\n", id, titre, r[0], r[1], r[2], r[3], visible,
+           style, flottante);
+    memcpy(g_rect, r, sizeof g_rect);
+    if (!strcmp(titre, "Essai")) g_essai = id;
+    if (!strcmp(titre, "Trois")) g_trois = id;
+    return 1;
+}
+
+static void xw_ferme(int id)
+{
+    printf("      hôte : ferme %d\n", id);
+}
+
+static void xw_image(int id, const unsigned char *px, int l, int h,
+                     const unsigned char *pal, int e)
+{
+    if (l * h > 6) {        /* la grille de MACCAM : le plan 0, ligne à ligne */
+        int autres = 0;
+        for (int i = 0; i < l * h; i++) autres += (px[i] & 0x70) != 0;
+        printf("      hôte : image de %d, %d × %d à l'échelle %d ; plans 1 à 3 : "
+               "%d point(s) ; couleur 0x80 = %d,%d,%d\n", id, l, h, e, autres,
+               pal[3 * 0x80], pal[3 * 0x80 + 1], pal[3 * 0x80 + 2]);
+        for (int y = 1; y < h - 1 && l <= 16 && h <= 16; y++) {
+            printf("         ");
+            for (int x = 1; x < l - 1; x++) putchar(px[y * l + x] & 0x80 ? '#' : '.');
+            putchar('\n');
+        }
+        return;
+    }
+    printf("      hôte : image de %d, %d × %d à l'échelle %d :", id, l, h, e);
+    for (int i = 0; i < l * h; i++) printf(" %d", px[i]);
+    printf(" ; couleur 2 = %d,%d,%d\n", pal[6], pal[7], pal[8]);
+}
+
+static int xw_fenetre(int id, const char *quoi, const char *prop,
+                      const char *valeur, char *out, int outlen)
+{
+    printf("      hôte : %s %d%s%s%s%s\n", quoi, id, prop ? " " : "",
+           prop ? prop : "", valeur ? " = " : "", valeur ? valeur : "");
+    if (!strcmp(quoi, "lit") && prop && !strcmp(prop, "rect")) {
+        snprintf(out, (size_t)outlen, "%d,%d,%d,%d",
+                 g_rect[0], g_rect[1], g_rect[2], g_rect[3]);
+        return 1;
+    }
+    if (!strcmp(quoi, "lit")) return -1;
+    return 1;
+}
+
+/* La peinture d'une couche, comme la lirait l'hôte : un damier, ou un
+ * dessin posé par le harnais — le planeur de MACCAM, par exemple. */
+static const char *const *g_dessin;
+
+static int peinture(Object *couche, const int r[4], unsigned char *noir)
+{
+    printf("      hôte : la peinture de %s, %d,%d,%d,%d\n",
+           couche && couche->type == OBJ_CARD ? "la carte" : "UNE AUTRE COUCHE",
+           r[0], r[1], r[2], r[3]);
+    int k = 0;
+    for (int y = r[1]; y < r[3]; y++)
+        for (int x = r[0]; x < r[2]; x++) {
+            if (!g_dessin) { noir[k++] = (unsigned char)((x + y) & 1); continue; }
+            const char *l = y >= 0 && y < 16 ? g_dessin[y] : NULL;
+            noir[k++] = l && x >= 0 && x < (int)strlen(l) && l[x] == '#';
+        }
+    return 1;
+}
+
+/* Le bouton de la souris : enfoncé à la lecture numéro `g_souris`. */
+static int g_souris;
+
+static const char *globale(const char *nom)
+{
+    if (strcmp(nom, "mouse") != 0) return NULL;
+    return g_souris && --g_souris == 0 ? "down" : "up";
 }
 
 static unsigned char *lis(const char *dossier, const char *nom, size_t *n)
@@ -361,6 +451,155 @@ int main(int argc, char **argv)
         fais("put memoire()");
         hc_set_script(st, "");
     }
+
+    /* Le premier module de MAC•CAM, appelé comme le fait la pile : les
+     * globales vidées, puis « put FORTH(…) » ; les tables arrivent dans
+     * pln0 à pln3. Le compilateur lui-même a son harnais (forth). */
+    puts("\n== 10. le FORTH de MAC•CAM ==");
+    ajoute(st, D, "forth.wasm", "FORTH");
+    hc_set_script(st, "on compile f\n  global pln0, pln1\n"
+                      "  put empty into pln0\n  put empty into pln1\n"
+                      "  put FORTH(f) into p\n"
+                      "  put \"[\" & p & \"] \" & length(pln0) && char 1 to 16 of pln0"
+                      " && length(pln1)\nend compile");
+    fais("compile \": R CENTER >PLN0 ; MAKE-TABLE R\"");
+    fais("compile \"N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R\"");
+    fais("compile \"1 2 3\"");
+    fais("compile \": R EAST >PLN0 ; MAKE-TABLE R ZORGLUB\"");   /* faute après la table */
+    hc_set_script(st, "");
+
+    /* LES FENÊTRES : l'XFCN qui l'ouvre en reçoit les événements, comme
+     * MACCAM. Sans les rappels xw_ de l'hôte, aucune ne s'ouvre. */
+    puts("\n== 11. les fenêtres d'un module ==");
+    ajoute(st, D, "fenetres.wasm", "fenetres");
+    fais("put fenetre(\"Essai\")");                   /* pas d'hôte : 0 */
+    h.xw_ouvre = xw_ouvre;
+    h.xw_ferme = xw_ferme;
+    h.xw_image = xw_image;
+    h.xw_fenetre = xw_fenetre;
+    h.peinture = peinture;
+    h.global_get = globale;
+    puts("   -- ouverte : xOpenEvt arrive quand l'appel est fini");
+    fais("put fenetre(\"Essai\")");
+    fais("put there is a window \"essai\" && there is a window \"Absente\"");
+    puts("   -- ses propriétés : le module d'abord, HC pour ce qu'il passe");
+    fais("set the compte of window \"Essai\" to 42");
+    fais("put the compte of window \"Essai\" && the ouvertures of window \"Essai\"");
+    fais("put the rect of window \"Essai\"");
+    fais("put the name of window \"Essai\"");
+    fais("put the zorglub of window \"Essai\"");
+    fais("hide window \"Essai\"");
+    puts("   -- ses messages : chacun éprouve un rappel");
+    fais("send \"dessine\" to window \"Essai\"");
+    fais("send copie to window \"Essai\"");
+    fais("send \"peinture\" to window \"Essai\"");
+    fais("send \"largeur\" to window \"Essai\"");     /* HC sert : le module tourne */
+    fais("send \"reentre\" to window \"Essai\"");
+    fais("send \"inconnu\" to window \"Essai\"");      /* passé : rien */
+    fais("send \"dessine\" to window \"Absente\"");
+    g_souris = 3;
+    fais("send \"guette\" to window \"Essai\"");      /* le clic l'arrête */
+    puts("   -- un autre module ne dessine pas dans sa fenêtre");
+    ajoute(st, D, "autre.wasm", "autre");
+    {
+        char l[64];
+        snprintf(l, sizeof l, "dessineAutre %d", g_essai);
+        fais(l);
+    }
+    fais("put there is a window \"Essai\"");
+    puts("   -- renommée : le nom suit");
+    fais("set the name of window \"Essai\" to \"CAM\"");
+    fais("put there is a window \"Essai\" && there is a window \"CAM\"");
+    fais("send \"dessine\" to window \"CAM\"");
+    puts("   -- Cmd-. : un module qui guette Button s'arrête de lui-même, et la garde");
+    printf("   une seconde de grâce consommée : %s\n",
+           cmd_point("send \"guette\" to window \"CAM\"", 6) >= GRACE_HC
+           ? "OUI" : "non, rendue avant");
+    fais("put there is a window \"CAM\" && the compte of window \"CAM\"");
+    puts("   -- Cmd-. : un module qui ne guette pas est arrêté, et la perd");
+    cmd_point("send \"boucle\" to window \"CAM\"", 6);
+    fais("put there is a window \"CAM\"");
+    puts("   -- Cmd-. : un module qui guette sans s'arrêter l'est après sa grâce");
+    fais("put fenetre(\"Sourd\")");
+    printf("   une seconde de grâce consommée : %s\n",
+           cmd_point("send \"sourd\" to window \"Sourd\"", 6) >= GRACE_HC
+           ? "oui" : "NON");
+    fais("put there is a window \"Sourd\"");
+    puts("   -- une faute dans un événement la ferme aussi");
+    fais("put fenetre(\"Essai\")");
+    fais("send \"faute\" to window \"Essai\"");
+    fais("put there is a window \"Essai\"");
+    puts("   -- fermée par le module, par close window, par sa case");
+    fais("put fenetre(\"Un\") && fenetre(\"Deux\") && fenetre(\"Trois\")");
+    fais("send \"ferme\" to window \"Un\"");
+    fais("close window \"Deux\"");
+    printf("   la case de « Trois »\n");
+    hc_xw_fermee(g_trois);
+    fais("get fenetre(\"Quatre\")");
+    fais("put there is a window \"Un\" && there is a window \"Deux\" "
+         "&& there is a window \"Trois\" && there is a window \"Quatre\"");
+    puts("   -- ouverte pendant un événement : xOpenEvt suit l'événement");
+    fais("send \"fille\" to window \"Quatre\"");
+    puts("   -- ouverte, puis un AUTRE module appelé dans le même appel :");
+    puts("      l'autre tourne, et xOpenEvt attend la fin de l'appel");
+    fais("put fenetre(\"Cinq\", \"dessineAutre 0\")");
+    fais("put there is a window \"Fille\" && there is a window \"Cinq\"");
+    puts("   -- le module remplacé : ses fenêtres partent avec son instance");
+    ajoute(st, D, "fenetres.wasm", "fenetres");
+    fais("put there is a window \"Quatre\"");
+
+    /* MACCAM, la fenêtre de MAC•CAM, appelée comme le fait la pile : ouverte
+     * par l'XFCN, chargée par les tables du FORTH (section 10) et par la
+     * peinture de la carte, puis menée par ses messages. La machine a son
+     * propre harnais (maccam) ; ici, c'est le passage dans HC. */
+    puts("\n== 12. MACCAM : la fenêtre CAM de MAC•CAM ==");
+    ajoute(st, D, "maccam.wasm", "MACCAM");
+    fais("get maccam(\"10,40,22,52\", \"CAM\", \"True\", 17, \"True\", \"True\")");
+    fais("put it && the rect of window \"CAM\"");
+    fais("put maccam(\"pas un rectangle\")");         /* le défaut, et son titre */
+    fais("close window \"Sans Titre\"");
+    fais("set the palette of window \"cam\" to 128");  /* la nôtre reste */
+    puts("   -- la règle de Conway, du FORTH à pln7, comme « load »");
+    hc_set_script(st, "on charge f\n  global pln0\n  put FORTH(f) into p\n"
+                      "  set the pln7 of window \"CAM\" to pln0\n"
+                      "  set the major of window \"CAM\" to 0\nend charge");
+    fais("charge \"0 CONSTANT DEATH 1 CONSTANT BORN : UNCHANGED CENTER ; "
+         ": LIFE NORTH EAST SOUTH WEST N.WEST N.EAST S.WEST S.EAST "
+         "+ + + + + + + { DEATH DEATH UNCHANGED BORN DEATH DEATH DEATH "
+         "DEATH DEATH } >PLN0 ; MAKE-TABLE LIFE\"");
+    puts("   -- un planeur peint sur la carte, et image7 le pose sur le plan 0");
+    {
+        static const char *const PLANEUR[] = {
+            ".....", "..#..", "...#.", ".###.", ".....", NULL
+        };
+        g_dessin = PLANEUR;
+        fais("set the image7 of window \"CAM\" to \"0,0,5,5\"");
+        g_dessin = NULL;
+    }
+    puts("   -- quatre pas : une case vers le sud-est");
+    for (int i = 0; i < 3; i++) hc_do("send step to window \"CAM\"");
+    fais("send step to window \"CAM\"");
+    puts("   -- ce que l'original relisait, et ce qui passe");
+    fais("put the number of chars of the image0 of window \"CAM\"");
+    fais("put the image2 of window \"CAM\"");
+    fais("put the pln7 of window \"CAM\"");
+    fais("put the phaseA of window \"CAM\" && the phaseB of window \"CAM\"");
+    fais("put the hilite of window \"CAM\"");
+    puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
+    fais("set the scale of window \"CAM\" to 2");
+    puts("   -- stepfast, jusqu'au clic : trois pas");
+    g_souris = 3;
+    fais("send stepfast to window \"CAM\"");
+    puts("   -- fill8, erasea, toscrap, PictResource");
+    fais("send fill8 to window \"CAM\"");
+    fais("send erasea to window \"CAM\"");
+    fais("send toscrap to window \"CAM\"");
+    fais("set the PictResource of window \"CAM\" to \"x\"");
+    fais("send zorglub to window \"CAM\"");           /* passé : rien */
+    fais("close window \"CAM\"");
+    fais("put there is a window \"CAM\"");
+    hc_set_script(st, "");
+    h.global_get = NULL;
 
     hc_unregister_stack(st);
     hc_free(st);

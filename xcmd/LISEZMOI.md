@@ -15,6 +15,7 @@ Ce dossier est le kit pour en écrire.
 | `hc_xcmd.c` | ce que chaque module emporte : la mémoire, les chaînes, `snprintf` |
 | `inc/` | les en-têtes C réduits qui vont avec |
 | `exemples/bonjour.c` | le premier module : une commande et une fonction |
+| `maccam/` | les XFCN de MAC•CAM Workshop, refaites : `FORTH` d'abord |
 | `Makefile` | de `.c` à `.wasm` |
 
 ## Écrire un module
@@ -75,6 +76,72 @@ HC_XFCN(aujourdhui)                    /* put aujourdhui() */
 Une globale posée par `SetGlobal` se lit dans un gestionnaire qui la
 déclare, comme d'habitude : `global pln0`.
 
+## Une fenêtre
+
+Comme les « XWindows » de HyperCard 2 : un externe ouvre une fenêtre par
+`NewXWindow`, et les scripts la désignent ensuite par son titre.
+
+```
+get maccam("10,40,266,296", "CAM")
+send "step" to window "CAM"
+set the scale of window "CAM" to 2
+put the phaseA of window "CAM"
+close window "CAM"
+```
+
+Chacun de ces gestes revient à l'externe qui a ouvert la fenêtre, appelé
+avec `paramCount` à -1 et, dans `params[0]`, un `XWEventInfo` :
+
+```c
+HC_XFCN(fenetre)                       /* put fenetre("Essai") */
+{
+    static unsigned char image[64 * 64], palette[768];
+    if (paramPtr->paramCount == -1) {
+        XWEventInfoPtr e = (XWEventInfoPtr)paramPtr->params[0];
+        if (e->what == xSendEvt && !strcmp(e->eventParams[0], "dessine"))
+            DrawXWindow(e->eventWindow, image, 64, 64, palette, 4);
+        else
+            paramPtr->passFlag = 1;    /* HC sert le reste : rect, loc… */
+        return;
+    }
+    Rect r = { 40, 10, 296, 266 };     /* haut, gauche, bas, droite */
+    static char s[16];
+    snprintf(s, sizeof s, "%d", NewXWindow(&r, "Essai", 1, 17, 1, 1));
+    paramPtr->returnValue = s;
+}
+```
+
+| événement | quand | |
+| --- | --- | --- |
+| `xOpenEvt` | l'appel qui l'a ouverte est fini | |
+| `xSendEvt` | `send … to window` | `eventParams[0]` : la ligne |
+| `xSetPropEvt` | `set the … of window` | `[0]` la propriété, `[1]` la valeur |
+| `xGetPropEvt` | `the … of window` | `[0]` la propriété ; `eventResult` : la valeur |
+| `xCloseEvt` | `close window`, ou sa case | |
+
+Ce que l'externe passe (`passFlag = 1`), HC le sert comme pour toute
+fenêtre : `rect`, `loc`, `visible`, `name`, `width`, `height`. Il le sert
+aussi quand le module lui-même, pendant qu'il tourne, pose une propriété de
+sa fenêtre par `SendCardMessage`.
+
+| rappel | ce qu'il fait |
+| --- | --- |
+| `NewXWindow(&rect, titre, visible, procID, couleur, flottante)` | l'ouvrir ; 0 si elle ne s'ouvre pas |
+| `CloseXWindow(w)` | la fermer, sans `xCloseEvt` |
+| `DrawXWindow(w, octets, largeur, hauteur, palette, echelle)` | son image : un octet par point, une palette de 256 couleurs RVB |
+| `CopyXWindow(w)` | son image, telle qu'on la voit, au presse-papiers |
+| `Button()` | le bouton de la souris est-il enfoncé — ou Cmd-. tapé ? |
+| `GetCardPicture(&rect, noir)` | la peinture de la carte : 1 où l'encre est sombre |
+
+HC garde l'image et la redessine lui-même : il n'y a pas d'événement
+« update » à servir.
+
+L'instance du module garde sa mémoire d'un appel à l'autre, et ses
+fenêtres vivent autant qu'elle. Une faute, le module retiré ou la pile
+fermée les ferment. Cmd-. aussi, sauf pour un module qui guette `Button` :
+celui-là a une seconde pour rendre la main de lui-même, et garde ses
+fenêtres.
+
 ## Compiler
 
 Il faut un `clang` qui connaisse la cible `wasm32`, avec son éditeur de liens
@@ -103,5 +170,8 @@ Le module sort à côté de son source : `exemples/bonjour.wasm`.
 - Rien pour les fichiers.
 - `SendHCMessage`, et les rappels de conversion (`StrToNum`,
   `PasToZero`…), que les chaînes C rendent inutiles, n'y sont pas.
+- Une fenêtre ne reçoit ni clic ni frappe : HC la déplace et la ferme
+  lui-même, et le module ne voit que ses messages et ses propriétés.
+  `GetNewXWindow`, `SetXWIdleTime` et `GetXWindowValue` n'y sont pas.
 
 Le pourquoi de tout cela, et les mesures : `docs/mesures/xcmd.txt`.

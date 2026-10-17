@@ -4712,6 +4712,7 @@ static void hcv_guette_cmd_point(void)
  * réserve est rendue ici à chaque tour ; rien de ce que cocoa_idle crée ne
  * lui survit autrement que par une référence forte. */
 static void cocoa_idle_corps(void);
+static void hcv_xw_affiche(void);      /* les fenêtres des modules, plus bas */
 static void cocoa_idle(void) {
     @autoreleasepool {
         cocoa_idle_corps();
@@ -4751,6 +4752,7 @@ static void cocoa_idle_corps(void) {
      * chercher dans la file ce qui doit être vu tout de suite. beforeDate:
      * [NSDate date] veut dire « ne dors pas si la file est vide ». */
     [[gView window] displayIfNeeded];
+    hcv_xw_affiche();
     [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
                              beforeDate:[NSDate date]];
     hcv_guette_cmd_point();
@@ -5533,6 +5535,283 @@ static int cocoa_fenetre(const char *nom, const char *quoi, const char *prop,
     if (!strcmp(quoi, "lit"))  return prop ? nav_lit(prop, out, outlen) : -1;
     if (!strcmp(quoi, "pose")) return prop ? nav_pose(prop, valeur) : -1;
     return -1;
+}
+
+/* ═══ LES FENÊTRES DES MODULES ════════════════════════════════════════════
+ *
+ * « NewXWindow » d'un XCMD ou d'un XFCN (hc_wasm.h) : une fenêtre que le
+ * noyau numérote et nomme, et que l'hôte montre par les rappels xw_
+ * (hc_core.h). Elle ne porte qu'une image, que le module lui donne toute
+ * faite (DrawXWindow) : la vue la redessine à son rythme, soixante fois par
+ * seconde au plus pendant que le module calcule (cocoa_idle).
+ *
+ * COMPILÉ PAR LA CI ; RIEN DE CECI N'A TOURNÉ avant d'être joué DANS HC
+ * (l'application).
+ *
+ * NON MESURÉ, et écrit comme tel :
+ *   - le style — le procID du Mac — n'est pas dessiné : une fenêtre à titre
+ *     et case de fermeture, à petite barre de titre si elle flotte ;
+ *   - le rectangle est celui du CONTENU, en coordonnées de l'écran de la
+ *     barre de menus, y vers le bas — comme les palettes ; une fenêtre qui
+ *     s'ouvrirait sous la barre de menus est ramenée dans l'écran ;
+ *   - ce que l'image ne couvre pas est noir ;
+ *   - l'encre que lit GetCardPicture est ce qui est opaque et sombre : la
+ *     peinture d'HyperCard n'avait que du noir. */
+
+@interface HCModuleVue : NSView
+@property (nonatomic, strong) NSBitmapImageRep *image;
+@property (nonatomic) int echelle;
+@end
+
+@implementation HCModuleVue
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)isOpaque  { return YES; }
+
+- (void)drawRect:(NSRect)sale {
+    [[NSColor blackColor] setFill];
+    NSRectFill(sale);
+    NSBitmapImageRep *im = self.image;
+    if (!im) return;
+    CGFloat e = self.echelle > 0 ? self.echelle : 1;
+    [[NSGraphicsContext currentContext]
+        setImageInterpolation:NSImageInterpolationNone];
+    [im drawInRect:NSMakeRect(0, 0, [im pixelsWide] * e, [im pixelsHigh] * e)
+          fromRect:NSZeroRect operation:NSCompositingOperationCopy
+          fraction:1.0 respectFlipped:YES hints:nil];
+}
+
+@end
+
+@interface HCModuleDelegue : NSObject <NSWindowDelegate>
+@property (nonatomic) int ident;
+@end
+
+@implementation HCModuleDelegue
+
+/* La case de fermeture : le noyau prévient le module (xCloseEvt), puis fait
+ * fermer la fenêtre par cocoa_xw_ferme. Elle ne se ferme pas d'elle-même. */
+- (BOOL)windowShouldClose:(NSWindow *)w {
+    (void)w;
+    hc_xw_fermee(self.ident);
+    [gView setNeedsDisplay:YES];
+    return NO;
+}
+
+@end
+
+static NSMutableDictionary<NSNumber *, NSPanel *>         *gModFen;
+static NSMutableDictionary<NSNumber *, HCModuleDelegue *> *gModDel;  /* le délégué n'est pas retenu par sa fenêtre */
+
+static NSPanel *xw_de(int id) { return gModFen[@(id)]; }
+
+/* « gauche,haut,droite,bas » de l'écran d'HyperCard, en contenu d'AppKit. */
+static NSRect xw_contenu(int g, int h, int d, int b)
+{
+    CGFloat l = d - g > 1 ? d - g : 1, t = b - h > 1 ? b - h : 1;
+    return NSMakeRect(g, nav_h0() - h - t, l, t);
+}
+
+static int cocoa_xw_ouvre(int id, const char *titre, const int r[4],
+                          int visible, int style, int flottante)
+{
+    (void)style;
+    if (!gModFen) {
+        gModFen = [NSMutableDictionary dictionary];
+        gModDel = [NSMutableDictionary dictionary];
+    }
+    NSWindowStyleMask m = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+    if (flottante) m |= NSWindowStyleMaskUtilityWindow;
+    NSRect c = xw_contenu(r[0], r[1], r[2], r[3]);
+    NSPanel *p = [[NSPanel alloc] initWithContentRect:c styleMask:m
+                                              backing:NSBackingStoreBuffered
+                                                defer:NO];
+    if (!p) return 0;
+    [p setFloatingPanel:flottante ? YES : NO];
+    [p setBecomesKeyOnlyIfNeeded:YES];
+    [p setHidesOnDeactivate:flottante ? YES : NO];
+    [p setReleasedWhenClosed:NO];
+    [p setTitle:hcv_texte(titre)];
+    HCModuleVue *v = [[HCModuleVue alloc]
+        initWithFrame:NSMakeRect(0, 0, NSWidth(c), NSHeight(c))];
+    v.echelle = 1;
+    [p setContentView:v];
+    HCModuleDelegue *d = [[HCModuleDelegue alloc] init];
+    d.ident = id;
+    [p setDelegate:d];
+    /* « 0,0,128,128 », que MAC•CAM donne : chez HyperCard, la barre de
+     * titre passait sous la barre de menus. Ici, la fenêtre reste dans la
+     * partie visible de l'écran. */
+    NSArray<NSScreen *> *ecrans = [NSScreen screens];
+    if ([ecrans count])
+        [p setFrame:[p constrainFrameRect:[p frame] toScreen:ecrans[0]]
+            display:NO];
+    gModFen[@(id)] = p;
+    gModDel[@(id)] = d;
+    if (visible) [p orderFront:nil];
+    return 1;
+}
+
+static void cocoa_xw_ferme(int id)
+{
+    NSPanel *p = xw_de(id);
+    if (!p) return;
+    [p setDelegate:nil];
+    [p orderOut:nil];
+    [p setTitle:@""];          /* « the windows » ne liste que les titrées */
+    [p close];
+    [gModFen removeObjectForKey:@(id)];
+    [gModDel removeObjectForKey:@(id)];
+}
+
+/* L'image indexée devient une image RVB, ici, en natif : le module n'a
+ * qu'à poser ses octets. Le tampon resert tant que la taille ne change pas. */
+static void cocoa_xw_image(int id, const unsigned char *px, int l, int h,
+                           const unsigned char *pal, int e)
+{
+    NSPanel *p = xw_de(id);
+    if (!p || !px || !pal || l <= 0 || h <= 0) return;
+    HCModuleVue *v = (HCModuleVue *)[p contentView];
+    NSBitmapImageRep *rep = v.image;
+    if (!rep || [rep pixelsWide] != l || [rep pixelsHigh] != h)
+        rep = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes:NULL pixelsWide:l pixelsHigh:h
+                       bitsPerSample:8 samplesPerPixel:3 hasAlpha:NO
+                            isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace
+                         bytesPerRow:0 bitsPerPixel:0];
+    unsigned char *d = [rep bitmapData];
+    if (!d) return;
+    NSInteger ligne = [rep bytesPerRow];
+    for (int y = 0; y < h; y++) {
+        unsigned char *q = d + y * ligne;
+        const unsigned char *s = px + (size_t)y * (size_t)l;
+        for (int x = 0; x < l; x++, q += 3) {
+            const unsigned char *c = pal + 3 * s[x];
+            q[0] = c[0]; q[1] = c[1]; q[2] = c[2];
+        }
+    }
+    v.image = rep;
+    v.echelle = e > 0 ? e : 1;
+    [v setNeedsDisplay:YES];
+}
+
+/* Pendant qu'un module calcule, seule la respiration fait voir ses images. */
+static void hcv_xw_affiche(void)
+{
+    for (NSPanel *p in [gModFen allValues])
+        if ([p isVisible]) [p displayIfNeeded];
+}
+
+/* PictResource et « toscrap » de MACCAM, comme l'a voulu l'utilisatrice :
+ * une photographie de la fenêtre, telle qu'on la voit, au presse-papiers. */
+static int xw_copie(NSPanel *p)
+{
+    NSView *v = [p contentView];
+    NSRect b = [v bounds];
+    NSBitmapImageRep *rep = [v bitmapImageRepForCachingDisplayInRect:b];
+    if (!rep) return 0;
+    [v cacheDisplayInRect:b toBitmapImageRep:rep];
+    NSImage *im = [[NSImage alloc] initWithSize:b.size];
+    [im addRepresentation:rep];
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    return [pb writeObjects:@[ im ]] ? 1 : 0;
+}
+
+static int cocoa_xw_fenetre(int id, const char *quoi, const char *prop,
+                            const char *valeur, char *out, int outlen)
+{
+    NSPanel *p = xw_de(id);
+    if (!p || !quoi) return 0;
+    if (!strcmp(quoi, "montre")) { [p orderFront:nil]; return 1; }
+    if (!strcmp(quoi, "cache"))  { [p orderOut:nil];   return 1; }
+    if (!strcmp(quoi, "copie"))  return xw_copie(p);
+    if (!prop) return -1;
+
+    NSRect c = [p contentRectForFrameRect:[p frame]];
+    int g = (int)lround(NSMinX(c)), h = (int)lround(nav_h0() - NSMaxY(c));
+    int lg = (int)lround(NSWidth(c)), ht = (int)lround(NSHeight(c));
+
+    if (!strcmp(quoi, "lit")) {
+        if (!out || outlen <= 0) return -1;
+        size_t n = (size_t)outlen;
+        if (!strcasecmp(prop, "visible"))
+            snprintf(out, n, "%s", [p isVisible] ? "true" : "false");
+        else if (!strcasecmp(prop, "name"))
+            snprintf(out, n, "%s", [[p title] UTF8String]);
+        else if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+                 !strcasecmp(prop, "topLeft"))
+            snprintf(out, n, "%d,%d", g, h);
+        else if (!strcasecmp(prop, "rect") || !strcasecmp(prop, "rectangle"))
+            snprintf(out, n, "%d,%d,%d,%d", g, h, g + lg, h + ht);
+        else if (!strcasecmp(prop, "bottomRight") || !strcasecmp(prop, "botRight"))
+            snprintf(out, n, "%d,%d", g + lg, h + ht);
+        else if (!strcasecmp(prop, "width"))  snprintf(out, n, "%d", lg);
+        else if (!strcasecmp(prop, "height")) snprintf(out, n, "%d", ht);
+        else if (!strcasecmp(prop, "left"))   snprintf(out, n, "%d", g);
+        else if (!strcasecmp(prop, "top"))    snprintf(out, n, "%d", h);
+        else if (!strcasecmp(prop, "right"))  snprintf(out, n, "%d", g + lg);
+        else if (!strcasecmp(prop, "bottom")) snprintf(out, n, "%d", h + ht);
+        else return -1;
+        return 1;
+    }
+
+    if (!strcmp(quoi, "pose")) {
+        const char *v = valeur ? valeur : "";
+        int a, b, d, e;
+        NSRect nc;
+        if (!strcasecmp(prop, "visible")) {
+            if (!strcasecmp(v, "true")) [p orderFront:nil];
+            else                        [p orderOut:nil];
+            return 1;
+        }
+        if (!strcasecmp(prop, "name")) { [p setTitle:hcv_texte(v)]; return 1; }
+        if (!strcasecmp(prop, "loc") || !strcasecmp(prop, "location") ||
+            !strcasecmp(prop, "topLeft")) {
+            if (sscanf(v, "%d , %d", &a, &b) != 2) return -1;
+            nc = xw_contenu(a, b, a + lg, b + ht);
+        } else if (!strcasecmp(prop, "rect") || !strcasecmp(prop, "rectangle")) {
+            if (sscanf(v, "%d , %d , %d , %d", &a, &b, &d, &e) != 4) return -1;
+            nc = xw_contenu(a, b, d, e);
+        } else if (!strcasecmp(prop, "width")) {
+            if (sscanf(v, "%d", &a) != 1) return -1;
+            nc = xw_contenu(g, h, g + a, h + ht);
+        } else if (!strcasecmp(prop, "height")) {
+            if (sscanf(v, "%d", &a) != 1) return -1;
+            nc = xw_contenu(g, h, g + lg, h + a);
+        } else {
+            return -1;
+        }
+        [p setFrame:[p frameRectForContentRect:nc] display:YES];
+        return 1;
+    }
+    return -1;
+}
+
+/* LA PEINTURE D'UNE COUCHE, pour GetCardPicture : le calque tel que le
+ * dessin le tient (paint_bitmap), sa ligne 0 en haut. */
+static int cocoa_peinture(Object *couche, const int r[4], unsigned char *noir)
+{
+    if (!couche || !gView) return 0;
+    NSRect b = [gView bounds];
+    NSBitmapImageRep *rep = paint_bitmap(couche, (int)b.size.width,
+                                         (int)b.size.height);
+    const unsigned char *d = rep ? [rep bitmapData] : NULL;
+    NSInteger ligne = d ? [rep bytesPerRow] : 0;
+    NSInteger spp   = d ? [rep samplesPerPixel] : 0;
+    int pw = d ? (int)[rep pixelsWide] : 0, ph = d ? (int)[rep pixelsHigh] : 0;
+    size_t k = 0;
+    for (int y = r[1]; y < r[3]; y++)
+        for (int x = r[0]; x < r[2]; x++, k++) {
+            int encre = 0;
+            if (d && spp >= 3 && x >= 0 && y >= 0 && x < pw && y < ph) {
+                const unsigned char *q = d + y * ligne + x * spp;
+                int alpha = spp >= 4 ? q[3] : 255;
+                encre = alpha >= 128 && q[0] + q[1] + q[2] < 3 * 128;
+            }
+            noir[k] = (unsigned char)encre;
+        }
+    return 1;
 }
 
 @implementation HCView {
@@ -9425,6 +9704,11 @@ static void hcv_survol(HCView *v, Object *carte)
     host.global_get    = cocoa_global_get;
     host.popup_menu    = cocoa_popup_menu;
     host.fenetre       = cocoa_fenetre;
+    host.xw_ouvre      = cocoa_xw_ouvre;
+    host.xw_ferme      = cocoa_xw_ferme;
+    host.xw_image      = cocoa_xw_image;
+    host.xw_fenetre    = cocoa_xw_fenetre;
+    host.peinture      = cocoa_peinture;
     host.raccourci_menu = cocoa_raccourci_menu;
     hcv_touches_installe();
     hcv_regard_installe();
