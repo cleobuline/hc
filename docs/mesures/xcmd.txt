@@ -1238,8 +1238,12 @@ ASan ni le fuzzing ne pouvaient le voir). Un registre ne bouge plus que si
 l'accès réussit, et ADDQ ou SUBQ refusent de sortir de leur pile. Le
 harnais forth, section 7 : A3 poussé jusqu'au bord, il y reste.
 
+MESURÉ DANS HC (l'application), le 17 octobre au soir, par l'utilisatrice,
+sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
+inline 68000 ». La durée, avec le module accéléré, n'est pas relevée.
+
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
   · l'écart des commentaires, à trancher ;
-  · le reste du banc de MAC•CAM FORTH, DANS HC.
+  · le reste du banc de MAC•CAM FORTH, DANS HC (LEAVE, EXIT, une faute).
 
