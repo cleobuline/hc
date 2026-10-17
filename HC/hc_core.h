@@ -1056,6 +1056,45 @@ typedef struct {
      * le script l'a écrit. Facultatif : sans lui, le noyau dit qu'il ne sait
      * pas jouer le raccourci. */
     void (*raccourci_menu)(const char *touche);
+
+    /* LES FENÊTRES DES MODULES — « NewXWindow » d'un XCMD ou d'un XFCN
+     * (hc_wasm.h). Le noyau les numérote — `id`, toujours positif — et en
+     * tient le nom ; l'hôte les montre.
+     *
+     *   xw_ouvre    une fenêtre : son titre, son rectangle de CONTENU en
+     *               coordonnées de l'écran — gauche, haut, droite, bas,
+     *               comptés comme pour les palettes —, visible ou non, son
+     *               style (le procID du Mac, que l'hôte peut ignorer),
+     *               flottante au-dessus de la carte ou non. Rend 1, ou 0 si
+     *               elle n'a pas pu s'ouvrir ;
+     *   xw_ferme    la fermer, sans rien rappeler ;
+     *   xw_image    l'image à montrer : `largeur` × `hauteur` octets, une
+     *               ligne après l'autre, chacun un indice dans `palette` —
+     *               256 couleurs de trois octets, rouge, vert, bleu —,
+     *               chaque point agrandi en carré de `echelle` de côté,
+     *               depuis le coin haut-gauche. Les tableaux n'appartiennent
+     *               qu'à l'appel : à recopier. L'hôte la redessine à son
+     *               rythme, pas forcément à chaque image reçue ;
+     *   xw_fenetre  ses propriétés de fenêtre, avec les mots du rappel
+     *               `fenetre` : "lit" et "pose" (rect, loc, visible, name,
+     *               width, height…), "montre", "cache" ; et "copie" — son
+     *               image, telle qu'on la voit, au presse-papiers. Mêmes
+     *               réponses : 1, 0, -1.
+     *
+     * Sans ces rappels, NewXWindow échoue : aucune fenêtre n'existe. */
+    int  (*xw_ouvre)(int id, const char *titre, const int rect[4],
+                     int visible, int style, int flottante);
+    void (*xw_ferme)(int id);
+    void (*xw_image)(int id, const unsigned char *pixels, int largeur,
+                     int hauteur, const unsigned char *palette, int echelle);
+    int  (*xw_fenetre)(int id, const char *quoi, const char *prop,
+                       const char *valeur, char *out, int outlen);
+
+    /* LA PEINTURE D'UNE COUCHE — carte ou fond —, pour GetCardPicture d'un
+     * module : dans `rect` (coordonnées carte : gauche, haut, droite, bas),
+     * un octet par point, une ligne après l'autre, 1 où l'encre est sombre,
+     * 0 ailleurs et hors de la carte. Rend 1, ou 0. */
+    int  (*peinture)(Object *couche, const int rect[4], unsigned char *noir);
 } HcHost;
 
 #define HC_PAS_DE_POINT (-32768)
@@ -1064,6 +1103,11 @@ typedef struct {
  * de sa fenêtre. Le noyau envoie closePalette <nom>, <id> à la carte
  * courante, comme HyperCard ; « close window » l'envoie de lui-même. */
 void hc_palette_fermee(const char *nom, int id);
+
+/* La fenêtre d'un module vient d'être fermée PAR L'UTILISATRICE — sa case.
+ * Le module en reçoit xCloseEvt, puis le noyau la fait fermer par xw_ferme :
+ * l'hôte ne la ferme pas lui-même. */
+void hc_xw_fermee(int id);
 
 /* Installe l'hôte. Passer NULL rétablit l'hôte console par défaut. */
 void        hc_set_host(const HcHost *h);
@@ -1218,6 +1262,24 @@ int     hc_module_pose_champ(int carte, const char *nom, int n, int par_id,
  * redessine et lit ses événements, comme pendant un « wait ». Rend 1 si
  * l'arrêt est demandé (Cmd-.), et le module doit s'arrêter. */
 int     hc_respire_module(void);
+
+/* Les rappels de fenêtre d'un module, servis sur le fil de HC :
+ *
+ *   hc_module_bouton    Button : 1 si le bouton de la souris est enfoncé —
+ *                       ou si l'arrêt est demandé (Cmd-.) ;
+ *   hc_module_peinture  GetCardPicture : la peinture de la carte courante,
+ *                       ou de son fond quand on l'édite (le rappel
+ *                       `peinture` de l'hôte) ; 0 sans carte ni hôte ;
+ *   hc_xw_…             les rappels xw_ de l'hôte, ou rien sans lui. */
+int     hc_module_bouton(void);
+int     hc_module_peinture(const int rect[4], unsigned char *noir);
+int     hc_xw_ouvre(int id, const char *titre, const int rect[4],
+                    int visible, int style, int flottante);
+void    hc_xw_ferme(int id);
+void    hc_xw_image(int id, const unsigned char *pixels, int largeur,
+                    int hauteur, const unsigned char *palette, int echelle);
+int     hc_xw_hote(int id, const char *quoi, const char *prop,
+                   const char *valeur, char *out, int outlen);
 
 /* ---- Utilitaires ---- */
 const char *hc_typename(ObjType t);

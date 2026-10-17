@@ -85,6 +85,113 @@ int   SetFieldByName(int carte, const char *nom, const char *valeur);
 int   SetFieldByNum(int carte, int numero, const char *valeur);
 int   SetFieldByID(int carte, int id, const char *valeur);
 
+/* LES FENÊTRES — les « XWindows » de HyperCard 2.
+ *
+ *     Rect r = { 40, 20, 296, 276 };            haut, gauche, bas, droite
+ *     WindowPtr w = NewXWindow(&r, "CAM", 1, 17, 1, 1);
+ *
+ * ouvre une fenêtre, que les scripts désignent par son titre : « send step
+ * to window "CAM" », « set the scale of window "CAM" to 2 », « close window
+ * "CAM" ». Chacun de ces gestes revient au module PAR L'EXTERNE QUI L'A
+ * OUVERTE, appelé avec paramCount à -1 et, dans params[0], un XWEventInfo —
+ * comme chez HyperCard :
+ *
+ *     HC_XFCN(maccam)
+ *     {
+ *         if (paramPtr->paramCount == -1) {
+ *             XWEventInfoPtr e = (XWEventInfoPtr)paramPtr->params[0];
+ *             switch (e->what) {
+ *             case xSendEvt:    e->eventParams[0] est le message
+ *             case xSetPropEvt: [0] la propriété, [1] la valeur
+ *             case xGetPropEvt: [0] la propriété ; e->eventResult = la valeur
+ *             case xCloseEvt:   la fenêtre se ferme : rendre ce qu'elle tenait
+ *             }
+ *             return;
+ *         }
+ *         …                                  l'appel ordinaire
+ *     }
+ *
+ * Un événement que le module ne sert pas, il le PASSE (passFlag = 1) : HC
+ * sert alors lui-même les propriétés de toute fenêtre — rect, loc, visible,
+ * name, width, height. HC les sert aussi quand c'est le module lui-même
+ * qui les pose, par SendCardMessage, pendant qu'il tourne : « set the width
+ * of window "CAM" to 256 » ne lui revient pas.
+ *
+ * L'instance du module, et donc tout ce qu'il garde en mémoire, vit autant
+ * que ses fenêtres. Si elle s'arrête sur une faute, ou si HC l'arrête, ses
+ * fenêtres se ferment avec elle. */
+
+/* Un NUMÉRO, et non plus un pointeur : le module ne touche pas à la
+ * fenêtre, il la nomme. 0 n'en désigne aucune. */
+typedef int WindowPtr;
+
+/* L'ordre de QuickDraw : haut, gauche, bas, droite. Les scripts écrivent
+ * les rectangles dans un autre ordre — « gauche,haut,droite,bas ». */
+typedef struct Rect { short top, left, bottom, right; } Rect;
+
+/* Les événements, sous leurs numéros de HyperCard — lus dans le code de
+ * MACCAM, qui les servait. */
+enum {
+    xOpenEvt    = 1000,     /* la fenêtre vient de s'ouvrir */
+    xCloseEvt   = 1001,     /* elle se ferme : case de fermeture, close window */
+    xSendEvt    = 1200,     /* send <message> to window */
+    xSetPropEvt = 1201,     /* set the <propriété> of window */
+    xGetPropEvt = 1202      /* the <propriété> of window */
+};
+
+/* De l'EventRecord du Mac, seul « what » a cours ici. */
+typedef struct XWEventInfo {
+    short      what;
+    WindowPtr  eventWindow;
+    char      *eventParams[9];
+    char      *eventResult;     /* xGetPropEvt : la valeur, que HC recopie */
+} XWEventInfo, *XWEventInfoPtr;
+
+_Static_assert(__builtin_offsetof(XWEventInfo, eventWindow) == 4, "eventWindow à +4");
+_Static_assert(__builtin_offsetof(XWEventInfo, eventParams) == 8, "eventParams à +8");
+_Static_assert(__builtin_offsetof(XWEventInfo, eventResult) == 44, "eventResult à +44");
+
+/* Ouvrir une fenêtre : son rectangle de CONTENU en coordonnées de l'écran,
+ * son titre, visible ou non, son style — le procID du Mac, que HC note sans
+ * le dessiner —, en couleur (toujours, ici), flottante au-dessus de la
+ * carte ou non. Rend 0 si elle n'a pas pu s'ouvrir. xOpenEvt arrive au
+ * module dès que l'appel qui l'a ouverte est fini. */
+WindowPtr NewXWindow(const Rect *boundsRect, const char *title, int visible,
+                     int procID, int color, int floating);
+
+/* La fermer, sans xCloseEvt : c'est le module qui le veut. */
+void CloseXWindow(WindowPtr window);
+
+/* L'IMAGE DE LA FENÊTRE : `largeur` × `hauteur` points d'un octet, une ligne
+ * après l'autre, chacun l'indice d'une couleur de `palette` — 256 couleurs
+ * de trois octets, rouge, vert, bleu —, chaque point agrandi en un carré de
+ * `echelle` de côté, depuis le coin haut-gauche. HC la garde et la redessine
+ * quand il le faut : pas d'événement « update » à servir. Le CopyBits de
+ * HyperCard, réduit à une image indexée. */
+void DrawXWindow(WindowPtr window, const unsigned char *pixels,
+                 int largeur, int hauteur, const unsigned char *palette,
+                 int echelle);
+
+/* L'image de la fenêtre, telle qu'on la voit, au presse-papiers. Rend 1, ou
+ * 0 si la fenêtre n'est pas à ce module, ou si rien n'a pu s'y copier. */
+int CopyXWindow(WindowPtr window);
+
+/* LE BOUTON DE LA SOURIS est-il enfoncé ? Le piège Button du Mac, que les
+ * boucles de MAC•CAM guettaient pour s'arrêter.
+ *
+ * Il répond oui AUSSI quand Cmd-. a été tapé : un module qui le guette
+ * s'arrête de lui-même, et garde ses fenêtres. Un module qui ne le guette
+ * pas, HC l'arrête, et il les perd. */
+int Button(void);
+
+/* LA PEINTURE DE LA CARTE COURANTE — celle de son fond quand on édite le
+ * fond — dans le rectangle `r`, en coordonnées carte : un octet par point,
+ * une ligne après l'autre, 1 où l'encre est sombre, 0 ailleurs. `noir` doit
+ * tenir (right - left) × (bottom - top) octets. Rend 1, ou 0 s'il n'y a pas
+ * de carte, ou pas d'hôte pour lire sa peinture. Le GetMaskAndData de
+ * HyperCard, réduit à ce que MACCAM en lisait. */
+int GetCardPicture(const Rect *r, unsigned char *noir);
+
 /* DÉCLARER UN XCMD OU UN XFCN.
  *
  * Chacun devient une fonction exportée sous le nom « XCMD bonjour » ou

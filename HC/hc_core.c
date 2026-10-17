@@ -8442,11 +8442,24 @@ static int v3_fenetre_nom(HctContexte *ctx, const HctNoeud *o,
     return ctx && ctx->erreur ? 0 : 1;
 }
 
+/* Les fenêtres des MODULES d'abord (hc_wasm.h) : celles que leurs XCMD ont
+ * ouvertes. Leur faute se dit ici, une fois, et la question est close —
+ * une valeur lue rend alors le vide, comme un XFCN fautif. Arrêté par
+ * Cmd-., rien ne se dit : le script s'arrête à sa prochaine instruction. */
 static int v3_fenetre_hote(const char *nom, const char *quoi, const char *prop,
                            const char *val, char *out, int outlen)
 {
     if (out && outlen > 0) out[0] = '\0';
-    if (!g_host || !g_host->fenetre || !nom || !*nom) return 0;
+    if (!nom || !*nom) return 0;
+    char faute[300];
+    int r = hc_module_fenetre(nom, quoi, prop, val, out, outlen,
+                              faute, sizeof faute);
+    if (r == -3) {
+        if (!g_interrompu && !g_abandon) emit(HC_ERR, "   !! %s", faute);
+        return 1;
+    }
+    if (r != -2) return r;
+    if (!g_host || !g_host->fenetre) return 0;
     return g_host->fenetre(nom, quoi, prop, val, out, outlen);
 }
 
@@ -12442,6 +12455,30 @@ static int v3_cmd_send(HctContexte *ctx, const HctNoeud *n)
     char *msgline = arena_buf();
     v3_val_texte(ctx, n->fils[0], msgline, HC_VAL);
     if (ctx->erreur) { ARENA_FREE; return 1; }
+
+    /* « send step to window "CAM" » : la fenêtre d'un module, qui reçoit la
+     * ligne entière comme un xSendEvt (hc_wasm.h). Les fenêtres de l'hôte
+     * — la Navigator — ne reçoivent pas de message. */
+    if (n->fils[2]->genre == HCTN_OBJET &&
+        n->fils[2]->typeobj == HCT_OBJ_WINDOW) {
+        char nom[256];
+        if (!v3_fenetre_nom(ctx, n->fils[2], nom, sizeof nom)) {
+            if (!ctx->erreur) emit(HC_ERR, "   !! fenêtre introuvable");
+            ARENA_FREE;
+            return 1;
+        }
+        set_result("");
+        int r = v3_fenetre_hote(nom, "envoie", NULL, skip_spaces(msgline),
+                                NULL, 0);
+        if (r == 0) {
+            emit(HC_ERR, "   !! fenêtre introuvable : %s", nom);
+            set_result("No such window");
+        } else if (r < 0) {
+            emit(HC_ERR, "   !! la fenêtre « %s » ne reçoit pas de message", nom);
+        }
+        ARENA_FREE;
+        return 1;
+    }
 
     Object *target = hct_resout(ctx, n->fils[2]);
     if (!target) {
@@ -19618,4 +19655,65 @@ int hc_respire_module(void)
 {
     host_idle();
     return g_interrompu || g_abandon;
+}
+
+/* Button. Le bouton se lit chez l'hôte, comme « the mouse » ; l'arrêt
+ * demandé répond comme un clic — voir GRACE, dans hc_wasm.c. */
+int hc_module_bouton(void)
+{
+    if (g_interrompu || g_abandon) return 1;
+    const char *m = host_global("mouse");
+    return m && ci_equal(m, "down");
+}
+
+/* GetCardPicture : la couche que l'on édite, comme le GetMaskAndData de
+ * HyperCard — la carte, ou son fond sous editBkgnd. Lequel des deux il
+ * rendait n'est PAS MESURÉ ; MAC•CAM peint sur la carte. */
+int hc_module_peinture(const int rect[4], unsigned char *noir)
+{
+    Object *cd = g_current_card;
+    if (!cd || !g_host || !g_host->peinture) return 0;
+    const char *eb = host_global("editBkgnd");
+    Object *couche = eb && ci_equal(eb, "true") && cd->bg ? cd->bg : cd;
+    return g_host->peinture(couche, rect, noir) ? 1 : 0;
+}
+
+int hc_xw_ouvre(int id, const char *titre, const int rect[4], int visible,
+                int style, int flottante)
+{
+    if (!g_host || !g_host->xw_ouvre) return 0;
+    return g_host->xw_ouvre(id, titre, rect, visible, style, flottante) == 1;
+}
+
+void hc_xw_ferme(int id)
+{
+    if (g_host && g_host->xw_ferme) g_host->xw_ferme(id);
+}
+
+void hc_xw_image(int id, const unsigned char *pixels, int largeur,
+                 int hauteur, const unsigned char *palette, int echelle)
+{
+    if (g_host && g_host->xw_image)
+        g_host->xw_image(id, pixels, largeur, hauteur, palette, echelle);
+}
+
+int hc_xw_hote(int id, const char *quoi, const char *prop,
+               const char *valeur, char *out, int outlen)
+{
+    if (out && outlen > 0) out[0] = '\0';
+    if (!g_host || !g_host->xw_fenetre) return 0;
+    return g_host->xw_fenetre(id, quoi, prop, valeur, out, outlen);
+}
+
+/* La case de fermeture : rien ne tourne, comme pour une ligne tapée. Une
+ * faute du module en recevant xCloseEvt se dit donc comme dans la boîte de
+ * messages, au dialogue. */
+void hc_xw_fermee(int id)
+{
+    char faute[300];
+    if (hc_module_fenetre_fermee(id, faute, sizeof faute) < 0) {
+        g_msg_box++;
+        emit(HC_ERR, "   !! %s", faute);
+        if (--g_msg_box == 0) erreurs_vide();
+    }
 }

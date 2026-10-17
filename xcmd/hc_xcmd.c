@@ -372,3 +372,56 @@ int SetFieldByID(int carte, int id, const char *valeur)
 {
     return hc_SetFieldByID(carte, id, valeur ? valeur : "");
 }
+
+/* ---- les fenêtres ----
+ *
+ * Les rectangles passent en quatre entiers, dans l'ordre des scripts —
+ * gauche, haut, droite, bas — ; les images et les tampons, en adresse et
+ * longueur, que HC vérifie avant d'y toucher. */
+HC_RAPPEL(NewXWindow)     int  hc_NewXWindow(int g, int h, int d, int b,
+                                             const char *titre, int visible,
+                                             int style, int flottante);
+HC_RAPPEL(CloseXWindow)   void hc_CloseXWindow(int w);
+HC_RAPPEL(DrawXWindow)    void hc_DrawXWindow(int w, const unsigned char *px,
+                                              int npx, int largeur, int hauteur,
+                                              const unsigned char *pal,
+                                              int npal, int echelle);
+HC_RAPPEL(CopyXWindow)    int  hc_CopyXWindow(int w);
+HC_RAPPEL(Button)         int  hc_Button(void);
+HC_RAPPEL(GetCardPicture) int  hc_GetCardPicture(int g, int h, int d, int b,
+                                                 unsigned char *noir, int n);
+
+WindowPtr NewXWindow(const Rect *r, const char *title, int visible,
+                     int procID, int color, int floating)
+{
+    (void)color;
+    if (!r) return 0;
+    return hc_NewXWindow(r->left, r->top, r->right, r->bottom,
+                         title ? title : "", visible != 0, procID,
+                         floating != 0);
+}
+
+void CloseXWindow(WindowPtr window) { hc_CloseXWindow(window); }
+
+void DrawXWindow(WindowPtr window, const unsigned char *pixels,
+                 int largeur, int hauteur, const unsigned char *palette,
+                 int echelle)
+{
+    if (!pixels || !palette || largeur <= 0 || hauteur <= 0
+        || largeur > 0x7fffffff / hauteur)
+        return;
+    hc_DrawXWindow(window, pixels, largeur * hauteur, largeur, hauteur,
+                   palette, 768, echelle);
+}
+
+int CopyXWindow(WindowPtr window) { return hc_CopyXWindow(window); }
+
+int Button(void) { return hc_Button(); }
+
+int GetCardPicture(const Rect *r, unsigned char *noir)
+{
+    if (!r || !noir) return 0;
+    int l = r->right - r->left, h = r->bottom - r->top;
+    if (l <= 0 || h <= 0 || l > 0x7fffffff / h) return 0;
+    return hc_GetCardPicture(r->left, r->top, r->right, r->bottom, noir, l * h);
+}

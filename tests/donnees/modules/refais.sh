@@ -15,10 +15,15 @@ L="-Wl,--no-entry -Wl,--strip-debug"
 make -s -C "$KIT" CLANG="$CLANG"
 cp "$KIT/exemples/bonjour.wasm" "$ICI/bonjour.wasm"
 cp "$KIT/maccam/forth.wasm" "$ICI/forth.wasm"
+cp "$KIT/maccam/maccam.wasm" "$ICI/maccam.wasm"
 # shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/epreuves.wasm" "$ICI/epreuves.c" "$KIT/hc_xcmd.c"
 # shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/rappels.wasm" "$ICI/rappels.c" "$KIT/hc_xcmd.c"
+# shellcheck disable=SC2086
+$CLANG $C $L -o "$ICI/fenetres.wasm" "$ICI/fenetres.c" "$KIT/hc_xcmd.c"
+# shellcheck disable=SC2086
+$CLANG $C -DAUTRE $L -o "$ICI/autre.wasm" "$ICI/fenetres.c" "$KIT/hc_xcmd.c"
 # shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/inconnu.wasm" "$ICI/inconnu.c" "$KIT/hc_xcmd.c"
 $CLANG --target=wasm32 -O2 -nostdlib -Wall -Wextra $L -o "$ICI/sansboite.wasm" "$ICI/sansboite.c"

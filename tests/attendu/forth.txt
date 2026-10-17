@@ -1,10 +1,13 @@
-== 1. la disposition des bits, MESURÉE sur les tables de la pile ==
+== 1. la disposition des bits, LUE dans le FORTH d'origine ==
    (rien)      (major 0) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:&CENTER' 11:&CENTER
    N/MOORE     (major 0) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:&CENTER' 11:&CENTER
    N/VONN      (major 1) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:&CENTER' 11:&CENTER
    N/MARG-PH   (major 2) : 0:CCW' 1:CCW 2:OPP' 3:OPP 4:CW' 5:CW 6:CENTER' 7:CENTER 8:&CENTER' 9:&CENTER 10:PHASE 11:PHASE'
    N/MARG-HV   (major 3) : 0:CCW' 1:CCW 2:OPP' 3:OPP 4:CW' 5:CW 6:CENTER' 7:CENTER 8:&CENTER' 9:&CENTER 10:HORZ 11:VERT
+   N/MOORE-PH  (major 4) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:PHASE 11:PHASE'
    N/MOORE-HV  (major 5) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:HORZ 11:VERT
+   N/VONN-PH   (major 6) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:PHASE 11:PHASE'
+   N/VONN-HV   (major 7) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:HORZ 11:VERT
 
 == 2. vrai, faux, et { … } ==
    0 0 =
@@ -55,24 +58,30 @@
    1 2 3
       rend « 1 2 3  »
 
-== 6. les fautes, et une faute garde les tables faites ==
+== 6. compilé : un mot est cherché quand la définition se fait ==
+   : R FOO >PLN0 ; : FOO 1 ; MAKE-TABLE R
+      FAUTE « COMPILE_ERR "Unknow'd word ", 1  »
+   : A 1 ; : B A >PLN0 ; : A 0 ; MAKE-TABLE B
+      rend «  » ; pln0 : 4096 uns, bit -1
+
+== 7. les fautes, et une faute garde les tables faites ==
    ZORGLUB
-      FAUTE « Unknow'd word : ZORGLUB »
+      FAUTE « INTERPRET_ERR "Can't understand ", 1  »
    : R IF ; MAKE-TABLE R
-      FAUTE « Unnested condition : R »
+      FAUTE « NEST_ERR "Unnested condition ", 1  »
    : R : S ;
-      FAUTE « COLON inside definition »
+      FAUTE « COMPILE_ERR "COLON inside definition  ", 1  »
    : R DROP >PLN0 ; MAKE-TABLE R
-      FAUTE « Stack problem during execution »
+      FAUTE « STACK_ERR "Stack problem during execution ", 6  »
    IF
-      FAUTE « Compile Only : IF »
+      FAUTE « INTERPRET_ERR "End definition (;) Compile Only  ", 1  »
    : R
-      FAUTE « End definition »
+      FAUTE « NEST_ERR "Unnested condition ", 1  »
    ; MAKE-TABLE R
-      FAUTE « Compile Only : ; »
+      FAUTE « INTERPRET_ERR "End definition (;) Compile Only  ", 1  »
    MAKE-TABLE ABSENT
-      FAUTE « Unknow'd word : ABSENT »
+      FAUTE « INTERPRET_ERR "Can't understand ", 1  »
    : R CENTER >PLN0 ; MAKE-TABLE R avec la propriété que
-      FAUTE « Unknow'd word : AVEC » ; pln0 : 2048 uns, bit 3
+      FAUTE « INTERPRET_ERR "Can't understand ", 8  » ; pln0 : 2048 uns, bit 3
    
       rend «  »
