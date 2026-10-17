@@ -5847,7 +5847,9 @@ void hcv_bulles_bascule(void)
     if (!b) hcv_bulle_efface();
 }
 
-enum { BULLE_MARGE = 6, BULLE_QUEUE = 12, BULLE_LARGEUR = 220 };
+/* Des CGFloat, et non un enum : Xcode refuse l'arithmétique entre les deux
+ * (-Wenum-float-conversion, vu dans le journal de la CI). */
+static const CGFloat BULLE_MARGE = 6, BULLE_QUEUE = 12, BULLE_LARGEUR = 220;
 
 @interface HCBulleVue : NSView
 @property (nonatomic, strong) NSAttributedString *texte;
