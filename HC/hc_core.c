@@ -19691,6 +19691,17 @@ int hc_module_bulle(const char *texte, const int rect[4])
     return g_host->bulle(texte ? texte : "", rect) ? 1 : 0;
 }
 
+/* DragGrayRgn. Le mot haut porte le vertical, le bas l'horizontal. */
+int hc_module_contour(const int *rects, int n, const int depart[2],
+                      const int limite[4], const int marge[4], int axe)
+{
+    int dh = 0, dv = 0;
+    if (!g_host || !g_host->contour || !rects || n <= 0) return 0;
+    if (!g_host->contour(rects, n, depart, limite, marge, axe, &dh, &dv))
+        return (int)0x80008000u;
+    return (int)(((unsigned)dv & 0xffffu) << 16 | ((unsigned)dh & 0xffffu));
+}
+
 int hc_xw_ouvre(int id, const char *titre, const int rect[4], int visible,
                 int style, int flottante)
 {

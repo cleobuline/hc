@@ -996,6 +996,56 @@ Le même journal porte encore un « personne ne répond à « ballons the rect
 of me , "Hello" » » : une AUTRE pile, à qui ballons.wasm n'a pas été
 ajouté — chaque pile porte ses modules. Que ce soit bien cela : NON VÉRIFIÉ.
 
+FULLDRAG — 17 octobre
+------------------------------------------------------------------------
+
+La quatrième externe de la pile, signalée par l'utilisatrice : « ça permet
+de déplacer un dessin de carré en carré dans MAC•CAM Workshop ». Les carrés
+de dessin l'appellent à leur mouseDown — movepict, puis DoMove :
+« put fulldrag(r, the rect of this card) into Move » — ; au relâcher,
+movepict lit the mouseLoc : sur un autre carré, elle y copie la peinture
+(outil de sélection, glisser avec optionKey) ; sur la fenêtre CAM — son
+rect, moins celui de la card window —, elle pose le carré dans un plan
+(« set the image<n> of window "CAM" »). Le résultat de FullDrag ne sert
+qu'à reconnaître « Error ».
+
+LU DANS FULLDRAG (désassemblée ; rien d'exécuté) : « FullDrag Version 1.3,
+© Frederic RINALDI 1990-1992 », et son mode d'emploi :
+« <DeltaX,DeltaY> FullDrag (<rect(s)>[,<limit rect>[,<test>,<if true>
+[,<if false>]]]) ».
+  · GetMouse au départ ; une région faite du cadre de chaque rectangle, un
+    par ligne, la liste s'arrêtant à la première ligne vide ; la limite, à
+    défaut, est le portRect de la fenêtre — la carte ;
+  · ses fautes, « Error : » et : « Missing or empty rect parameter »,
+    « Incorrect rect in param #1 », « Incorrect limit rect », « Incorrect
+    Test string », « Missing action if true » ;
+  · le bouton relâché : « 0,0 », sans rien faire. Enfoncé : Majuscule
+    tenue (GetKeys, touche 56) → Delay(20), puis l'axe selon le plus grand
+    des deux écarts depuis le départ (vertical si |dv| ≥ |dh|) ;
+  · DragGrayRgn(région, départ, limite, limite, axe) — la marge est la
+    limite — ; avec <test>, une procédure d'action, et « go this cd » à la
+    fin. Elle rend « LoWord,HiWord » du résultat — « dh,dv » —, ou « 0,0 »
+    si l'un des deux vaut 0x8000 (lâché hors de la marge).
+
+ÉCRIT le même jour : le rappel DragGrayRgn (le kit), le crochet `contour`
+de l'hôte, le module xcmd/exemples/fulldrag.c, et dans Cocoa le contour en
+pointillé gris par-dessus la carte, la souris tenue dans la limite — le
+relâcher consommé, comme par le Toolbox. Le harnais xcmd, section 14 :
+sans hôte, bouton relâché, deux rectangles, lâché hors de la limite, sans
+limite, Majuscule sur les deux axes, les fautes.
+
+PAS FAIT, et dit : <test>, <if true>, <if false> — MAC•CAM ne s'en sert
+pas ; ils rendent « Error : <test>, <if true> and <if false> are not
+supported by HC yet » plutôt que d'être ignorés.
+
+NON MESURÉ : le dessin du contour (pointillé gris d'un point ; celui du Mac
+était un motif gris en XOR). L'interface Cocoa : COMPILÉE PAR LA CI, NON
+EXÉCUTÉE.
+
+À JOUER DANS HC (l'application), sur MAC•CAM Workshop : ajouter
+fulldrag.wasm, puis glisser un carré de dessin sur un autre, et sur la
+fenêtre CAM.
+
 CE QUI RESTE AVANT MAC•CAM :
   · ce que les quatre bancs ci-dessus diront ;
   · les bulles d'aide (l'XCMD Ballons) : sans elles, HC ne comprend pas

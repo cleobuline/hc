@@ -16,6 +16,7 @@ Ce dossier est le kit pour en écrire.
 | `inc/` | les en-têtes C réduits qui vont avec |
 | `exemples/bonjour.c` | le premier module : une commande et une fonction |
 | `exemples/ballons.c` | l'XCMD Ballons : une bulle d'aide au survol d'un bouton |
+| `exemples/fulldrag.c` | l'XFCN FullDrag de Frédéric Rinaldi : glisser un contour gris |
 | `maccam/` | les XFCN de MAC•CAM Workshop, refaites : `FORTH` d'abord |
 | `Makefile` | de `.c` à `.wasm` |
 
@@ -134,6 +135,7 @@ sa fenêtre par `SendCardMessage`.
 | `Button()` | le bouton de la souris est-il enfoncé — ou Cmd-. tapé ? |
 | `GetCardPicture(&rect, noir)` | la peinture de la carte : 1 où l'encre est sombre |
 | `StrToRect(texte, &rect)` | « gauche,haut,droite,bas », celui des scripts, en `Rect` |
+| `DragGrayRgn(rects, n, depart, &limite, &marge, axe)` | le contour gris de rectangles suit la souris tant que le bouton est enfoncé ; rend le déplacement, `HiWord` vertical, `LoWord` horizontal |
 
 HC garde l'image et la redessine lui-même : il n'y a pas d'événement
 « update » à servir.
@@ -164,6 +166,22 @@ end mouseEnter
 
 Toute pile peut s'en servir : il suffit d'ajouter `ballons.wasm` à ses
 modules. Il est déjà construit, dans `tests/donnees/modules/`.
+
+## Glisser un contour
+
+`exemples/fulldrag.c` est l'XFCN FullDrag de Frédéric Rinaldi (1990-1992),
+refaite sur `DragGrayRgn` :
+
+```
+on mouseDown
+  put fulldrag(the rect of me, the rect of this card) into delta
+end mouseDown
+```
+
+Tant que le bouton est enfoncé, le contour gris suit la souris ; elle rend
+le déplacement, « dh,dv ». `fulldrag.wasm` est construit, à côté de
+`ballons.wasm`. Ses paramètres `<test>`, `<if true>` et `<if false>` ne
+sont pas encore faits : ils rendent une erreur.
 
 ## Compiler
 
