@@ -226,8 +226,8 @@ static NSMenu *gRecentMenu = nil;
     gStack = hc_new_stack("Untitled");
     /* L'enregistrement auprès du noyau se fait par HCDocument, plus bas :
      * un seul endroit qui décide, plutôt que deux qui pourraient diverger. */
-    Object *bg = hc_new_background(gStack, "commun");
-    Object *c1 = hc_new_card(gStack, bg, "carte 1");
+    Object *bg = hc_new_background(gStack, "");      /* sans nom, comme dans HyperCard */
+    Object *c1 = hc_new_card(gStack, bg, "");
     hc_set_current_card(c1);
 
     // --- vue et message box ---
@@ -1016,10 +1016,10 @@ static NSMenu *gRecentMenu = nil;
 
     HCDocument *doc = [HCDocument current];
     doc.cardCount = doc.cardCount + 1;
-    char name[64];
-    snprintf(name, sizeof name, "carte %d", doc.cardCount);
 
-    Object *c = hc_new_card(pile, cur->bg, name);
+    /* UNE CARTE NEUVE N'A PAS DE NOM, comme dans HyperCard — dit par
+     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ». */
+    Object *c = hc_new_card(pile, cur->bg, "");
     hc_set_current_card(c);
     [doc.view setNeedsDisplay:YES];
 }
@@ -1196,8 +1196,8 @@ static NSMenu *gRecentMenu = nil;
     for (int i = 0; i < st->nparts; i++)
         if (st->parts[i]->type == OBJ_CARD) { first = st->parts[i]; break; }
     if (!first) {                       /* pile sans carte : on en fabrique une */
-        Object *bg = hc_new_background(st, "commun");
-        first = hc_new_card(st, bg, "carte 1");
+        Object *bg = hc_new_background(st, "");
+        first = hc_new_card(st, bg, "");
     }
 
     HCDocument *actif = [HCDocument current];
@@ -1756,8 +1756,8 @@ void cocoa_stack_changed(Object *stack) {
     if ([name length] == 0) name = @"Untitled";
 
     Object *st = hc_new_stack([name UTF8String]);
-    Object *bg = hc_new_background(st, "commun");
-    hc_new_card(st, bg, "carte 1");
+    Object *bg = hc_new_background(st, "");
+    hc_new_card(st, bg, "");
 
     [self installStack:st];
     gStackPath = nil;        /* jamais enregistrée : pas de dossier de référence */

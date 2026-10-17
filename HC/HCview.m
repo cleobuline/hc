@@ -134,9 +134,6 @@ typedef struct {
     Object           *keepLayer;
 
     Object       *card;
-
-    /* numérotation des cartes créées */
-    int           newCount;
 } HCDoc;
 
 static HCDoc  gDoc0;
@@ -172,7 +169,6 @@ void hc_set_active_doc(void *d) { gDoc = d ? (HCDoc *)d : &gDoc0; }
 #define gTextActive      (gDoc->textActive)
 #define gTextPos         (gDoc->textPos)
 #define gTextBuf         (gDoc->textBuf)
-#define gNewCount        (gDoc->newCount)
 #define gDocCard         (gDoc->card)
 #define gPaintUndo       (gDoc->paintUndo)
 #define gPaintUndoLayer  (gDoc->paintUndoLayer)
@@ -6315,10 +6311,9 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     while (stack && stack->type != OBJ_STACK) stack = stack->owner;
     if (!stack) return;
 
-    char name[64];
-    static int bgCount = 0;
-    snprintf(name, sizeof name, "Fond %d", ++bgCount);
-    Object *bg = hc_new_background(stack, name);
+    /* Un fond neuf n'a pas de nom, comme dans HyperCard (dit par
+     * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ». */
+    Object *bg = hc_new_background(stack, "");
     Object *nc = hc_new_card(stack, bg, "");
     hc_set_current_card(nc);
     gSelected = NULL;
@@ -9711,14 +9706,14 @@ static BOOL      gSansMessageChamp = NO;
     if (!card) return;
     Object *owner = gEditBackground ? card->bg : card;
     if (!owner) owner = card;
-    char name[64];
+    /* « New Button » et « New Field », les noms que leur donne HyperCard —
+     * dit par l'utilisatrice le 17 octobre, non vu. HC les nommait
+     * « Bouton 3 » et « Champ 3 ». */
     Object *o;
     if (gTool == TOOL_BUTTON) {
-        snprintf(name, sizeof name, "Bouton %d", ++gNewCount);
-        o = hc_new_button(owner, name);
+        o = hc_new_button(owner, "New Button");
     } else {
-        snprintf(name, sizeof name, "Champ %d", ++gNewCount);
-        o = hc_new_field(owner, name);
+        o = hc_new_field(owner, "New Field");
         /* UN CHAMP NEUF NAÎT EN GENEVA 12, comme dans HyperCard 2.4.1 :
          * « the textSize » et « the textFont » d'un champ neuf y répondent
          * 12 et Geneva — mesuré DANS HYPERCARD (Basilisk II) par
