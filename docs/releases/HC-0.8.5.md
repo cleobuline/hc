@@ -107,7 +107,8 @@ MAC•CAM Workshop is in the DMG.
 
 The **Objects** menu has **New Button** and **New Field**, before New
 Background, and `doMenu "New Button"` works — the way HyperCard stacks
-made buttons before `create button`. The new object appears in the middle
+make their buttons, HyperTalk having no `create button`. The new object
+appears in the middle
 of the card, selected, with the Button or Field tool chosen; it goes on the
 background when you are editing the background. It receives `newButton` or
 `newField`, and so does an object drawn with the tool.
