@@ -6673,6 +6673,21 @@ static BOOL hcv_presse_systeme_plus_recent(void)
            [[NSPasteboard generalPasteboard] changeCount] != gPresseVuPb;
 }
 
+/* UNE IMAGE ARRIVÉE AU PRESSE-PAPIERS DU MAC APRÈS LA CARTE COPIÉE passe
+ * devant elle : c'est la dernière copie. Le collage d'un bouton faisait déjà
+ * cette vérification ; celui de la carte l'avait oubliée. Rapporté le 18
+ * octobre DANS HC (l'application) : Copy Card, puis le bouton de MAC•CAM qui
+ * envoie « toscrap » — l'image de la fenêtre CAM au presse-papiers —, puis
+ * Coller : la CARTE arrivait. Une image copiée dans une autre application
+ * avait le même sort. Une copie de texte, elle, ne la chasse pas : elle ne
+ * se colle pas sur la carte. */
+static BOOL hcv_presse_image_systeme(void)
+{
+    return hcv_presse_systeme_plus_recent() &&
+           [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSImage class]]
+                                                             options:nil];
+}
+
 - (void)copy:(id)sender {
     if (object_selection_active()) {
         if (hc_copy_part(gSelected)) { hcv_presse_objet_retient(); return; }
@@ -6816,7 +6831,8 @@ static BOOL hcv_presse_systeme_plus_recent(void)
      * l'outil courant. Déduire du contexte se tromperait dès qu'une carte a
      * été copiée puis l'outil Bouton choisi. */
     /* Une image copiée APRÈS la carte l'emporte : c'est la dernière copie. */
-    if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE) {
+    if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE &&
+        !hcv_presse_image_systeme()) {
         Object *card = hc_current_card();
         Object *stack = card ? card->owner : NULL;
         Object *nouvelle = stack ? hc_paste_card(stack) : NULL;
@@ -7080,7 +7096,8 @@ static BOOL hcv_presse_systeme_plus_recent(void)
          * presse-papiers qui commande, comme dans paste: lui-même. Sans cette
          * branche, l'article restait grisé après « Copier la carte » — la
          * validation n'autorisait que les outils Bouton et Champ. */
-        if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE)
+        if (hc_clipboard_has_card() && gPresseDerniere != PRESSE_IMAGE &&
+            !hcv_presse_image_systeme())
             return YES;
         BOOL objet_dernier = gPresseDerniere == PRESSE_OBJET &&
                              !hcv_presse_systeme_plus_recent();
