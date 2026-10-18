@@ -1347,8 +1347,10 @@ du dessin ; un plan masqué se dessine éteint ; la machine calcule toujours
 les quatre plans. Complétée à gauche, refusée en silence si elle n'est pas
 faite d'un à quatre chiffres 0 ou 1. Pas « palette », où « 1000 » est le
 numéro d'une clut. Harnais xcmd, section 12. L'interface Cocoa n'est pas
-touchée : la palette arrive par DrawXWindow, comme avant. NON ESSAYÉE DANS
-HC (l'application) à l'heure où ceci s'écrit.
+touchée : la palette arrive par DrawXWindow, comme avant. ESSAYÉE DANS HC
+(l'application) par l'utilisatrice, le même jour, après la fusion (#148) :
+« ça marche, le masque fonctionne ». Les masques joués ne sont pas
+relevés.
 
 La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
 L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
