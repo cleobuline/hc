@@ -85,6 +85,10 @@ LES CAMPAGNES
     make fuzz, 0.8.4        notre format  60 000, Apple  20 000   0 signalement
                             (17 octobre : 1 089 graines récoltées, et non plus
                             58 ; le témoin a attrapé ses trois pièges)
+    make fuzz, 0.8.5        notre format  60 000, Apple  20 000   0 signalement
+                            (18 octobre : 1 089 graines dans notre format, 3
+                            dans celui d'Apple ; le témoin a attrapé ses trois
+                            pièges et laissé la graine saine)
 
 La deuxième a été arrêtée par la limite de temps de la session avant la fin.
 Les deux premières avaient en plus pour graines les deux piles de démonstration
