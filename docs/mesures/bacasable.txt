@@ -45,6 +45,18 @@ CE QUI CASSERAIT
    NSFileManager (URLForDirectory:NSItemReplacementDirectory
    appropriateForURL:…), puis replaceItemAtURL:. Qu'il soit accessible sous
    bac à sable pour un fichier désigné n'est PAS vérifié.
+   Seconde piste, de l'utilisatrice le 18 octobre (« et si on écrit dans
+   /tmp ? ») : le temporaire dans le tmp DU CONTENEUR (NSTemporaryDirectory ;
+   /tmp lui-même est fermé à une app en bac à sable, de mémoire). Mais
+   rename() n'y suffit pas : il échoue d'un volume à l'autre (EXDEV — une
+   pile sur une clé USB), et remplacer une entrée d'un dossier non autorisé
+   peut être refusé (non vérifié). Donc : la pile entière écrite et relue
+   dans le tmp du conteneur, PUIS l'original réécrit sur place — ce que
+   l'autorisation du fichier désigné permet —, la copie du conteneur gardée
+   jusqu'à la fin, pour reprendre si l'écriture s'interrompt. On perd
+   l'atomicité du renommage, pas la sécurité : il existe toujours une copie
+   entière quelque part. NON ÉCRIT, NON MESURÉ ; les deux pistes se
+   comparent le jour où l'on active le bac à sable.
 
 2. start using stack "X", go to stack "X" — GROS. trouver_pile
    (AppDelegate.m) cherche le nom dans le dossier de la pile courante, celui
