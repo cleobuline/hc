@@ -916,7 +916,17 @@ int hc_module_externes(const Object *pile, int i, char *liste, size_t taille)
                             sizeof pourquoi);
         if (!mo->module) return -1;
     }
-    int k = 0;
+    /* DES NOMS ENTIERS, PUIS « … » S'IL EN MANQUE, ET JAMAIS AU-DELÀ.
+     *
+     * La position avançait de ce que snprintf rend — ce qu'il AURAIT écrit —,
+     * si bien qu'elle dépassait le tampon dès qu'un nom n'y tenait plus, et
+     * que l'appel suivant visait liste + pos hors du tableau : un calcul
+     * d'adresse indéfini en C, même pour n'écrire aucun octet. Et le dernier
+     * nom sortait coupé au milieu. Relevé à la relecture le 18 octobre ; le
+     * harnais xcmd, section 15, le montre avec noms.wasm. Les noms viennent
+     * d'un module, donc d'une pile qu'on ne connaît pas. Le compte rendu
+     * reste celui de TOUS les externes. */
+    int k = 0, plein = 0;
     size_t pos = 0;
     int32_t ne = wasm_runtime_get_export_count(mo->module);
     for (int32_t j = 0; j < ne; j++) {
@@ -924,10 +934,17 @@ int hc_module_externes(const Object *pile, int i, char *liste, size_t taille)
         wasm_runtime_get_export_type(mo->module, j, &e);
         if (e.kind != WASM_IMPORT_EXPORT_KIND_FUNC || !est_externe(e.name))
             continue;
-        int w = snprintf(liste + pos, pos < taille ? taille - pos : 0,
-                         "%s%s", k ? "\n" : "", e.name);
-        if (w > 0) pos += (size_t)w;
+        const char *sep = k ? "\n" : "";
         k++;
+        if (plein) continue;
+        if (pos + strlen(sep) + strlen(e.name) < taille) {
+            int w = snprintf(liste + pos, taille - pos, "%s%s", sep, e.name);
+            if (w > 0) pos += (size_t)w;
+        } else {
+            plein = 1;
+            if (pos + strlen(sep) + strlen("…") < taille)
+                snprintf(liste + pos, taille - pos, "%s…", sep);
+        }
     }
     return k;
 }
@@ -1330,6 +1347,16 @@ static int lance(struct HcModule *mo, const char *exact,
                      : lis32(p + BLOC_RETOUR);
     *passe = p[BLOC_PASSE] != 0;
     if (rv && res && nres) {
+        /* UNE VALEUR HORS DE SA MÉMOIRE NE DÉSINSTANCIE PAS LE MODULE, et
+         * c'est voulu — question posée à la relecture le 18 octobre. Les
+         * fautes plus haut (trappe, délai, Cmd-.) interrompent le module EN
+         * COURS de route : sa mémoire peut être à moitié écrite, on la jette.
+         * Ici il est allé au bout ; seule l'adresse qu'il rend est fausse, et
+         * on ne la lit pas. Le garder vivant garde ses fenêtres et son état —
+         * la fenêtre CAM de MACCAM, par exemple. L'exception que pose la
+         * validation de WAMR (« out of bounds memory access ») est retirée
+         * pour l'appel suivant. Le harnais xcmd, section 5, le montre : après
+         * « put hors() », le XCMD resultat du même module répond. */
         if (!wasm_runtime_validate_app_str_addr(mo->inst, rv)) {
             wasm_runtime_clear_exception(mo->inst);
             snprintf(faute, nf, "le module « %s » rend une valeur hors "
