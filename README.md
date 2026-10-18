@@ -55,6 +55,45 @@ make test-asan     # la même sous AddressSanitizer, UBSan et LeakSanitizer
 `zlib1g-dev` est nécessaire : `build-essential` n'apporte pas `zlib.h`.
 Détails dans [`tests/LISEZMOI.md`](tests/LISEZMOI.md).
 
+## Provenance et inspiration
+
+**Comment HC a été fait.** HC est écrit par Patricia Benedetto, avec Claude
+(Anthropic) pour co-auteur, depuis juillet 2026, comme le dit la
+[LICENCE](LICENSE). Apple n'a jamais publié les sources d'HyperCard : il n'y
+avait donc rien à copier. HC est une réimplémentation « en salle blanche »,
+faite à partir de ce qu'HyperCard fait visiblement. Son comportement a été
+mesuré détail par détail dans HyperCard 2.4.1, sous l'émulateur Basilisk II.
+Les mesures, et ce qui n'est pas encore mesuré, sont écrites dans
+[`docs/mesures/`](docs/mesures/), et depuis les premières semaines, les
+messages de commit nomment la cause, le symptôme et la correction.
+
+**Le format des piles d'Apple** a été lu dans deux descriptions publiques et
+indépendantes : `StackFormat.md`, de HyperCardPreview (Pierre Lorenzi), et
+`stakread.py`, de mystextract (Andrew Plotkin), confrontées l'une à l'autre et
+à de vraies piles. Aucun des deux projets ne porte de licence : aucun code
+n'en a été repris. Les offsets sont des faits sur un format, le code est celui
+de HC. La compression des dessins, « Wrath of Bill Atkinson », a été
+retrouvée et nommée par Rebecca Bettencourt.
+
+**Le code tiers.** Une seule bibliothèque : WAMR, le WebAssembly Micro
+Runtime de la Bytecode Alliance, sous licence Apache 2.0 avec les exceptions
+LLVM. Il vit dans [`HC/tiers/wamr`](HC/tiers/wamr), avec sa licence et ses
+attributions, qui voyagent aussi dans l'application.
+
+**Ce qui n'y est pas.** Aucun code d'Apple, aucun en-tête d'Apple, aucune
+pile d'Apple. HyperCard et HyperTalk sont des marques d'Apple Inc. ; HC n'est
+ni affilié à Apple, ni approuvé par Apple.
+
+**L'inspiration.** HyperCard, de Bill Atkinson (1987), et HyperTalk, de Dan
+Winkler. Là où HC va plus loin qu'HyperCard (la couleur, les boutons
+polygones, `the keysDown`, les couleurs des champs), les mots sont ceux de
+LiveCode et SuperCard : rien n'est inventé, et aucune pile d'HyperCard ne
+change de comportement. Le chantier des XCMD et XFCN a eu pour juge MAC•CAM
+Workshop, la pile de Patricia de 1990, un atelier d'automates cellulaires
+bâti sur la CAM-6 de Tommaso Toffoli et Norman Margolus (*Cellular Automata
+Machines*, MIT Press, 1987). Elle tourne dans HC sans qu'une ligne de ses
+scripts ait changé.
+
 ## Licence
 
 [MIT](LICENSE) : libre d'utiliser, de modifier et de redistribuer, à condition
