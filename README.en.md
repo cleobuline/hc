@@ -54,6 +54,43 @@ make test-asan     # the same under AddressSanitizer, UBSan and LeakSanitizer
 `zlib1g-dev` is required: `build-essential` does not provide `zlib.h`.
 Details in [`tests/LISEZMOI.md`](tests/LISEZMOI.md) (in French).
 
+## Provenance and inspiration
+
+**How HC was made.** HC is written by Patricia Benedetto with Claude
+(Anthropic) as co-author, since July 2026, as the [LICENSE](LICENSE) says.
+Apple never released HyperCard's source code, so there was nothing to copy:
+HC is a clean-room reimplementation, built from what HyperCard visibly does.
+Its behaviour was measured detail by detail in HyperCard 2.4.1 running in the
+Basilisk II emulator. The measurements, and what is still unmeasured, are
+written down in [`docs/mesures/`](docs/mesures/) (in French), and since the
+first weeks the commit messages name the cause, the symptom and the fix.
+
+**Apple's stack format** was read from two public, independent descriptions:
+`StackFormat.md` from HyperCardPreview (Pierre Lorenzi) and `stakread.py`
+from mystextract (Andrew Plotkin), checked against each other and against
+real stacks. Neither project carries a license, so no code was taken from
+them: offsets are facts about a format, and the code is HC's own. The picture
+compression, “Wrath of Bill Atkinson”, was reverse-engineered and named by
+Rebecca Bettencourt.
+
+**Third-party code.** One library only: WAMR, the WebAssembly Micro Runtime
+of the Bytecode Alliance, under Apache 2.0 with LLVM exceptions. It lives in
+[`HC/tiers/wamr`](HC/tiers/wamr) with its license and attributions, which
+also ship inside the app.
+
+**Not included.** No Apple code, no Apple headers, no Apple stacks.
+HyperCard and HyperTalk are trademarks of Apple Inc.; HC is not affiliated
+with or endorsed by Apple.
+
+**Inspiration.** HyperCard, by Bill Atkinson (1987), and HyperTalk, by Dan
+Winkler. Where HC goes beyond HyperCard (colour, polygon buttons,
+`the keysDown`, field colours), the words are those of LiveCode and
+SuperCard, so that nothing is invented and no HyperCard stack changes
+behaviour. The XCMD and XFCN work was judged on MAC•CAM Workshop,
+Patricia's own stack from 1990, a cellular automata lab modelled on the
+CAM-6 of Tommaso Toffoli and Norman Margolus (*Cellular Automata Machines*,
+MIT Press, 1987). It runs in HC without a single script line changed.
+
 ## License
 
 [MIT](LICENSE): free to use, modify and redistribute, provided the authors
