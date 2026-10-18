@@ -1327,6 +1327,29 @@ fond, « set the major of window "CAM" to 2 » avant « send step » — le
 « load » qui suit remet le voisinage de la carte —, ce qui vaut pour toutes
 les cartes et rend les boutons de carte inutiles.
 
+LES CLUT, ET « planes » — 18 octobre. LU dans la pile d'origine (sa fourche
+de ressources, version MacBinary) et sur sa carte d'aide « Couleurs » :
+« set the palette of window "CAM" to abcd[o|t] » ; chaque chiffre est une
+clut qui ne colore QU'UN plan (1 et 5 le plan 0, 2 et 6 le plan 1, 3 et 7
+le plan 2, 4, 8 et 9 le plan 3 ; 0 tous en noir), les autres y étant
+blancs : c'est ce qui MASQUAIT des plans ; « o » opaque, le premier chiffre
+au-dessus, « t » transparent ; un nombre sans suffixe est l'ID d'une clut
+(128, seize couleurs). La pile en a dix-sept (-12, 0 à 9, 13, 128, 1000 à
+1002, 1200). Les cartes emploient « 1 » (20), « 12t » (11), « 12o » (8),
+« 128 » (8), « 1o » (7), « 1234o », « 4321t »… Le mélange exact de « t »
+n'est pas relu.
+
+DÉCIDÉ par l'utilisatrice le même jour, plutôt que de refaire les clut : une
+propriété de plus pour la fenêtre, « planes » — « 1000 » le plan 0 seul,
+« 0011 » les plans 2 et 3, « 1111 » tous —, comme le masque du moteur
+MacCam moderne. Écrite dans maccam.c : le masque ne change que la palette
+du dessin ; un plan masqué se dessine éteint ; la machine calcule toujours
+les quatre plans. Complétée à gauche, refusée en silence si elle n'est pas
+faite d'un à quatre chiffres 0 ou 1. Pas « palette », où « 1000 » est le
+numéro d'une clut. Harnais xcmd, section 12. L'interface Cocoa n'est pas
+touchée : la palette arrive par DrawXWindow, comme avant. NON ESSAYÉE DANS
+HC (l'application) à l'heure où ceci s'écrit.
+
 La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
 L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
 voulu ce soir-là : demandé, sans réponse.

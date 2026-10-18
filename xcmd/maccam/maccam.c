@@ -15,7 +15,11 @@
  * ne sont pas reprises — la fenêtre a celle du moteur MacCam moderne, et
  * « palette » s'accepte sans rien changer ; « PictResource », qui écrivait
  * une ressource PICT dans la pile, photographie la fenêtre au
- * presse-papiers, comme « toscrap ». */
+ * presse-papiers, comme « toscrap ».
+ *
+ * CE QUI S'AJOUTE, proposé par l'utilisatrice le 18 octobre : « planes »,
+ * pour masquer des plans au dessin — ce que les clut faisaient en 1990, et
+ * que le moteur MacCam moderne fait déjà. Voir pose(), plus bas. */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +36,7 @@ typedef struct {
     int       largeur, hauteur; /* le contenu demandé à NewXWindow */
     int       echelle;
     int       hilite;
+    int       masque;           /* « planes » : 0x80 le plan 0 … 0x10 le plan 3 */
     char      nom[256];         /* pour se poser ses propriétés de fenêtre */
 } Fenetre;
 
@@ -71,13 +76,16 @@ static const char *param(XCmdPtr p, int i)
 
 /* ---- l'image ---- */
 
-static unsigned char *palette(void)
+/* La palette d'un masque : un plan masqué se dessine comme s'il était
+ * éteint, et le plan d'en dessous se montre à sa place. */
+static unsigned char *palette(int masque)
 {
     static unsigned char p[768];
-    static int faite;
-    if (!faite) {
-        for (int i = 0; i < 256; i++) cam_couleur((unsigned char)i, p + 3 * i);
-        faite = 1;
+    static int faite = -1;
+    if (faite != masque) {
+        for (int i = 0; i < 256; i++)
+            cam_couleur((unsigned char)(i & masque), p + 3 * i);
+        faite = masque;
     }
     return p;
 }
@@ -86,7 +94,7 @@ static unsigned char *palette(void)
 static void dessine(const Fenetre *f)
 {
     if (f->ouverte)
-        DrawXWindow(f->w, f->cam.pix, f->cam.w, f->cam.h, palette(),
+        DrawXWindow(f->w, f->cam.pix, f->cam.w, f->cam.h, palette(f->masque),
                     f->echelle);
 }
 
@@ -119,6 +127,7 @@ static void ouvre(XCmdPtr p)
     f->largeur = r.right - r.left;
     f->hauteur = r.bottom - r.top;
     f->echelle = 1;
+    f->masque = 0xF0;                           /* « 1111 » : tous les plans */
     snprintf(f->nom, sizeof f->nom, "%s", titre);
     p->returnValue = "true";
 }
@@ -180,17 +189,20 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-static const char *const NOMS[30] = {
+enum { PROPRIETES = 31 };
+
+static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
     "image0", "image1", "image2", "image3", "image4", "image5", "image6",
     "image7", "scale", "pln7", "pln6", "pln5", "pln4", "pln3", "pln2",
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
-    "alternate", "phaseA", "phaseB"
+    "alternate", "phaseA", "phaseB",
+    "planes"                                    /* l'ajout : voir pose() */
 };
 
 static int rang(const char *prop)
 {
-    for (int i = 0; i < 30; i++)
+    for (int i = 0; i < PROPRIETES; i++)
         if (pareil(prop, NOMS[i])) return i;
     return -1;
 }
@@ -257,6 +269,29 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
     case 27: c->alternate = nombre(valeur); return 1;
     case 28: c->phaseA = nombre(valeur); return 1;
     case 29: c->phaseB = nombre(valeur); return 1;
+    case 30: {
+        /* « planes », l'ajout de HC, proposé par l'utilisatrice le 18
+         * octobre : un chiffre par plan, dans l'ordre du FORTH — « 1000 » le
+         * plan 0 seul, « 0011 » les plans 2 et 3, « 1111 » tous, le défaut.
+         * Un plan masqué se DESSINE éteint ; la machine calcule toujours
+         * les quatre, et la réversibilité n'en sait rien. Moins de quatre
+         * chiffres se complètent à gauche : sans guillemets, « 0100 » peut
+         * arriver en « 100 ». Autre chose qu'un à quatre chiffres 0 ou 1 :
+         * le masque ne change pas, comme les autres propriétés qui ne
+         * comprennent pas ce qu'on leur donne. Pas « palette » : dans
+         * l'original, « 1000 » y est le numéro d'une clut. */
+        int n = 0, m = 0;
+        while (*valeur == ' ') valeur++;
+        for (; valeur[n] == '0' || valeur[n] == '1'; n++)
+            m = m << 1 | (valeur[n] - '0');
+        const char *reste = valeur + n;
+        while (*reste == ' ') reste++;
+        if (n >= 1 && n <= 4 && !*reste) {
+            f->masque = m << 4;
+            dessine(f);
+        }
+        return 1;
+    }
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -293,6 +328,10 @@ static char *lit(Fenetre *f, const char *prop)
         return s;
     case 29:
         snprintf(s, sizeof s, "%d", f->cam.phaseB);
+        return s;
+    case 30:                                    /* « planes », sur quatre chiffres */
+        for (int k = 0; k < 4; k++) s[k] = (f->masque & (0x80 >> k)) ? '1' : '0';
+        s[4] = '\0';
         return s;
     default:
         return NULL;

@@ -640,6 +640,19 @@ int main(int argc, char **argv)
     fais("put the pln7 of window \"CAM\"");
     fais("put the phaseA of window \"CAM\" && the phaseB of window \"CAM\"");
     fais("put the hilite of window \"CAM\"");
+    /* « planes », l'ajout de HC (proposé par l'utilisatrice le 18 octobre) :
+     * le masque ne change que la PALETTE du dessin — la couleur de 0x80,
+     * le plan 0 seul —, jamais les pixels de la machine. */
+    puts("   -- planes : masquer des plans au dessin, l'ajout de HC");
+    fais("put the planes of window \"CAM\"");
+    fais("set the planes of window \"CAM\" to \"0111\"");   /* plan 0 masqué */
+    fais("set the planes of window \"CAM\" to \"1000\"");   /* le plan 0 seul */
+    fais("set the planes of window \"CAM\" to 100");        /* complété : 0100 */
+    fais("put the planes of window \"CAM\"");
+    fais("set the planes of window \"CAM\" to \"12x\"");    /* incompris : inchangé */
+    fais("set the planes of window \"CAM\" to \"11111\"");
+    fais("put the planes of window \"CAM\"");
+    fais("set the planes of window \"CAM\" to \"1111\"");
     puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
     fais("set the scale of window \"CAM\" to 2");
     puts("   -- stepfast, jusqu'au clic : trois pas");
