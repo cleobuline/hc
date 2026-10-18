@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/8a0fd7a0-a9ab-4b9f-b739-b34f24167786
 *MAC•CAM Workshop, la pile d'automates cellulaires de Patricia (1990), tourne
 dans HC sans qu'une ligne de ses scripts ait changé : ses XCMD ont été refaits
 en WebAssembly. On y voit plusieurs règles, puis Brian's Brain, écrite dans le
-FORTH de la pile, à droite.*
+FORTH de la pile, à droite. Elle est dans le DMG.*
 
 ## Installer
 

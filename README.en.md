@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/8a0fd7a0-a9ab-4b9f-b739-b34f24167786
 *MAC•CAM Workshop, Patricia's cellular-automata stack from 1990, runs in HC
 without a single line of its scripts changed: its XCMDs were rebuilt in
 WebAssembly. Several rules go by, then Brian's Brain, written in the stack's
-own FORTH on the right.*
+own FORTH on the right. It ships in the DMG.*
 
 ## Installing
 
