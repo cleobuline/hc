@@ -147,6 +147,8 @@ modules, files — are next.
 - **Reporting a bug**: two issue forms, one for a bug in HC and one for a
   difference with HyperCard, and a section in the README.
 - A short film of MAC•CAM Workshop running in HC, in the README.
+- The DMG carries MAC•CAM Workshop, MAC•CAM FORTH, and the two manuals for
+  writing an XCMD: `MANUAL.md`, and `MANUEL.md` in French.
 
 ---
 
