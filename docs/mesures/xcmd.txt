@@ -1243,6 +1243,117 @@ sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
 inline 68000 ». Avec le module accéléré : « c'est un peu plus rapide » —
 la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
 
+LA RÉVERSIBILITÉ, MESURÉE DANS HC (l'application), le 17 octobre au soir,
+par l'utilisatrice, sur la carte « Billard sf » de MAC•CAM Workshop — le
+flacon de gaz de la CAM-6, qui se recompose quand on change la phase : du
+texte écrit dans le dessin « devient de la bouillie, et quand j'inverse la
+phase le texte revient ». Le côté, demandé : « c'est hc ».
+
+Ce que ça prouve : une règle de Margolus réversible, appliquée deux fois au
+même découpage, se défait ; inverser la phase fait donc remonter le temps,
+pas à pas. Un gaz est chaotique — une seule erreur grossit à chaque pas —,
+et le texte ne revient que si TOUT est juste à la fois : la table du FORTH,
+l'ordre des bits de l'index, la phase en bit 10 et 11, le décalage des
+blocs de « alternate », les bords du tore. Jusqu'ici la phase n'était que
+LUE (dans le code de MACCAM et dans les tables du FORTH) et éprouvée par le
+harnais sur une particule seule ; c'est la première règle de Margolus
+rapportée en entier sur une carte de la pile.
+
+NON RELEVÉS : le nombre de pas avant l'inversion, et si le texte revient au
+pixel près.
+
+VU, le 18 octobre peu après minuit, sur deux captures d'écran de
+l'utilisatrice — DANS HC : la barre de menus porte « HC », la pile est
+MACCAM.stack —, la démonstration que la carte « Billard sf » porte
+elle-même. Son dessin de départ, le premier carré : le flacon, « Ceci est
+un GAZ ... » en haut, et un gaz en bas. À 00:07:34, la fenêtre CAM montre
+ce dessin chargé. À 00:08:25, le texte du haut s'est fondu en gaz, et le
+gaz du bas s'est rassemblé en « miraculeux ! », net à l'œil sur la
+capture.
+
+Ce gaz du bas était donc « miraculeux ! » passé à l'envers, et ce n'est
+pas HC qui l'a fabriqué : il est dans le dessin de la pile, d'avant HC.
+HC le défait en refaisant, pas pour pas, la dynamique de la machine qui
+l'avait brouillé — table, ordre des bits, phase, découpage des blocs,
+phase de départ. C'est la PREMIÈRE COMPARAISON avec une machine
+d'origine sur la dynamique même, et pas seulement sur les tables.
+
+D'OÙ VIENT CE GAZ — DIT PAR L'UTILISATRICE, à la question « est-ce toi,
+en 1990, avec le MAC•CAM d'origine, en écrivant « miraculeux ! » puis en
+le faisant tourner à l'envers avec le bouton phase ? » : « oui ça date de
+1990 ». Le gaz est donc l'œuvre de l'XFCN MACCAM d'origine, et HC défait
+ce qu'elle avait fait. Le nombre de pas d'alors n'est pas connu. NON
+RELEVÉS : le nombre de pas joués dans HC, et le texte au pixel près — la
+capture est réduite.
+
+UNE GRILLE DE 256 × 256 — VU sur une capture de l'utilisatrice, DANS HC
+(la barre de menus porte « HC »), le 18 octobre vers 02:50 : une pile
+MAC•CAM refaite par elle, cartes agrandies, quatre carrés de dessin de
+256, la fenêtre CAM ouverte sur « 0, 0, 256, 256 », la carte
+« Concurrence2 » (NOISE-BOX sur CAM-B, une population de quatre espèces
+sur CAM-A, N/VONN). Rien n'a changé dans HC ni dans le module : la
+grille prend la taille de la fenêtre, jusqu'à 4096. Dit par
+l'utilisatrice : « et c'est fluide !!! ». NON RELEVÉS : les pas par
+seconde, et le Mac.
+
+LE COULOIR DU TEMPS — 18 octobre. Rapporté par l'utilisatrice, DANS HC, sur
+sa pile refaite à 256 : le bouton « 1<>2 », qui échange les plans 0 et 1
+pour remonter le temps, décalait l'image d'un pixel et ruinait la
+réversibilité ; DANS HYPERCARD (Basilisk II), dit-elle, « ça marche très
+bien ».
+
+LU dans la pile d'origine : DEUX boutons « 1<>2 » au même rectangle
+(347,313,375,339). Celui du FOND WorkShop compile « N/MARG-PH : SWAP … »,
+pour les cartes Margolus. Sur « Le Couloir du temps• » (TIME-TUNNEL, sans
+voisinage déclaré : Moore), « Brownian• », « Parity reversible• »,
+« Parity8 » et « Parity9 », un bouton de CARTE posé dessus compile
+« : SWAP … », en Moore, comme la carte. Le « load » du fond règle « major »
+d'après le texte FORTH de la carte. HyperCard comme HC (part_at : la carte
+avant le fond) envoient le clic au bouton de carte.
+
+MESURÉ dans le conteneur, la machine de HC : la table de « N/MARG-PH :
+SWAP » échange exactement en Margolus ; lue en von Neumann, elle échange
+décalé d'une ligne ; lue en Moore, 149 bits justes sur 200. Un aller-retour
+(40 pas d'une règle du second ordre, le couloir, 40 pas, le couloir) :
+212 cellules fausses avec le SWAP Margolus lu dans un autre voisinage,
+0 avec la fenêtre mise en Margolus pour le pas, 0 avec un SWAP écrit dans
+le voisinage de la règle.
+
+LA CAUSE, hypothèse confirmée par l'utilisatrice (« oui ») : sa pile
+refaite a déplacé les boutons du fond, et les boutons de carte « 1<>2 »,
+restés à 347,313, ne recouvrent plus celui du fond ; le clic va au SWAP
+Margolus, lu en Moore. HC n'est pas en cause. PROPOSÉ : dans le bouton du
+fond, « set the major of window "CAM" to 2 » avant « send step » — le
+« load » qui suit remet le voisinage de la carte —, ce qui vaut pour toutes
+les cartes et rend les boutons de carte inutiles.
+
+LES CLUT, ET « planes » — 18 octobre. LU dans la pile d'origine (sa fourche
+de ressources, version MacBinary) et sur sa carte d'aide « Couleurs » :
+« set the palette of window "CAM" to abcd[o|t] » ; chaque chiffre est une
+clut qui ne colore QU'UN plan (1 et 5 le plan 0, 2 et 6 le plan 1, 3 et 7
+le plan 2, 4, 8 et 9 le plan 3 ; 0 tous en noir), les autres y étant
+blancs : c'est ce qui MASQUAIT des plans ; « o » opaque, le premier chiffre
+au-dessus, « t » transparent ; un nombre sans suffixe est l'ID d'une clut
+(128, seize couleurs). La pile en a dix-sept (-12, 0 à 9, 13, 128, 1000 à
+1002, 1200). Les cartes emploient « 1 » (20), « 12t » (11), « 12o » (8),
+« 128 » (8), « 1o » (7), « 1234o », « 4321t »… Le mélange exact de « t »
+n'est pas relu.
+
+DÉCIDÉ par l'utilisatrice le même jour, plutôt que de refaire les clut : une
+propriété de plus pour la fenêtre, « planes » — « 1000 » le plan 0 seul,
+« 0011 » les plans 2 et 3, « 1111 » tous —, comme le masque du moteur
+MacCam moderne. Écrite dans maccam.c : le masque ne change que la palette
+du dessin ; un plan masqué se dessine éteint ; la machine calcule toujours
+les quatre plans. Complétée à gauche, refusée en silence si elle n'est pas
+faite d'un à quatre chiffres 0 ou 1. Pas « palette », où « 1000 » est le
+numéro d'une clut. Harnais xcmd, section 12. L'interface Cocoa n'est pas
+touchée : la palette arrive par DrawXWindow, comme avant. NON ESSAYÉE DANS
+HC (l'application) à l'heure où ceci s'écrit.
+
+La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
+L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
+voulu ce soir-là : demandé, sans réponse.
+
 CE QUI RESTE :
   · <test>, <if true> et <if false> de FullDrag, si une pile en a besoin ;
   · l'écart des commentaires, à trancher ;

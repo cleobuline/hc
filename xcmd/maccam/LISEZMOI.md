@@ -135,10 +135,26 @@ messages.
 | `scale` | l'agrandissement ; la fenêtre se refait carrée |
 | `PictResource` | une photographie de la fenêtre au presse-papiers |
 | `palette` | acceptée, sans effet : la fenêtre garde sa palette |
+| `planes` | **l'ajout de HC** : les plans montrés, un chiffre par plan — `"1000"` le plan 0 seul, `"0011"` les plans 2 et 3, `"1111"` tous (le défaut) |
 
 Ce qui diffère de l'original, décidé par l'utilisatrice : les palettes clut
 de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
-ressource PICT dans la pile, photographie la fenêtre. Comme l'original,
+ressource PICT dans la pile, photographie la fenêtre.
+
+Ce qui s'ajoute, proposé par elle le 18 octobre : `planes`, pour masquer des
+plans au dessin — ce que les clut permettaient en 1990, et ce que fait le
+moteur MacCam moderne. Un plan masqué se dessine comme s'il était éteint, et
+celui d'en dessous se montre à sa place ; la machine, elle, calcule toujours
+les quatre plans. Le premier chiffre est le plan que remplit `>PLN0`.
+
+```
+set the planes of window "CAM" to "0011"
+put the planes of window "CAM"            -- 0011
+```
+
+Les guillemets sont conseillés : moins de quatre chiffres se complètent à
+gauche (`100` vaut `0100`), et une valeur incomprise ne change rien. Ce n'est
+pas `palette`, où `1000` est, dans l'original, le numéro d'une clut. Comme l'original,
 `the image0` et `the image1` relisent les tables, et `the phaseA` fait bip.
 
 ## L'essayer

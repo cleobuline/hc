@@ -45,6 +45,18 @@ CE QUI CASSERAIT
    NSFileManager (URLForDirectory:NSItemReplacementDirectory
    appropriateForURL:…), puis replaceItemAtURL:. Qu'il soit accessible sous
    bac à sable pour un fichier désigné n'est PAS vérifié.
+   Seconde piste, de l'utilisatrice le 18 octobre (« et si on écrit dans
+   /tmp ? ») : le temporaire dans le tmp DU CONTENEUR (NSTemporaryDirectory ;
+   /tmp lui-même est fermé à une app en bac à sable, de mémoire). Mais
+   rename() n'y suffit pas : il échoue d'un volume à l'autre (EXDEV — une
+   pile sur une clé USB), et remplacer une entrée d'un dossier non autorisé
+   peut être refusé (non vérifié). Donc : la pile entière écrite et relue
+   dans le tmp du conteneur, PUIS l'original réécrit sur place — ce que
+   l'autorisation du fichier désigné permet —, la copie du conteneur gardée
+   jusqu'à la fin, pour reprendre si l'écriture s'interrompt. On perd
+   l'atomicité du renommage, pas la sécurité : il existe toujours une copie
+   entière quelque part. NON ÉCRIT, NON MESURÉ ; les deux pistes se
+   comparent le jour où l'on active le bac à sable.
 
 2. start using stack "X", go to stack "X" — GROS. trouver_pile
    (AppDelegate.m) cherche le nom dans le dossier de la pile courante, celui
@@ -79,7 +91,11 @@ CE QUI N'EST PAS DU BAC À SABLE MAIS EN DÉCIDE AUSSI
   qu'elles n'embarquent pas. HC exécute les scripts des piles qu'on lui
   donne ; des environnements d'apprentissage et de création y sont acceptés,
   mais l'issue n'est pas garantie. HC se présenterait pour ce qu'il est : un
-  environnement où l'on écrit et ouvre ses propres piles.
+  environnement où l'on écrit et ouvre ses propres piles. Les modules
+  WebAssembly d'une pile (depuis le 16 octobre) sont eux aussi du code que
+  l'application n'embarque pas : la revue pourra le regarder de près.
+  Qu'ils soient enfermés et sans plus de pouvoir qu'un script est
+  l'argument ; l'issue n'est pas connue.
 - Un autre certificat (distribution App Store), et un envoi depuis Xcode
   (Product ▸ Archive) — pas de DMG.
 - Les deux voies peuvent coexister : le DMG notarié sur GitHub, complet, et
@@ -107,8 +123,14 @@ CE QU'UNE PILE NE PEUT PAS FAIRE DANS HC, vérifié dans le code ce jour :
   · lancer un programme ou un shell : aucune commande ne le fait — ni
     system, ni popen, ni NSTask, ni NSWorkspace ;
   · parler au réseau : aucun accès ;
-  · exécuter un XCMD ou un XFCN : leur code 68000 ne tourne pas ici. Ceux
-    qu'on imite (PopUpMenu) sont du code écrit et relu dans le dépôt ;
+  · exécuter le code 68000 d'un XCMD ou d'un XFCN : il ne tourne pas ici.
+    Ceux qu'on imite (PopUpMenu) sont du code écrit et relu dans le dépôt.
+    DEPUIS LE 16 OCTOBRE, une pile peut porter des XCMD et des XFCN REFAITS
+    EN WEBASSEMBLY (docs/mesures/xcmd.txt) : ils tournent enfermés dans
+    l'interprète WAMR, et ne touchent que ce que HC leur tend — les rappels,
+    qui passent par HyperTalk. Une pile piégée n'y gagne donc rien de plus
+    qu'un script. (Cette ligne disait encore, au 18 octobre, qu'aucun XCMD
+    ne tournait : corrigée ce jour-là.) ;
   · effacer un fichier : il n'y a pas de « delete file ».
 
 CE QU'ELLE PEUT FAIRE : « open file », « write … to file », « read from
