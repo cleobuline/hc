@@ -55,6 +55,13 @@ make test-asan     # la même sous AddressSanitizer, UBSan et LeakSanitizer
 `zlib1g-dev` est nécessaire : `build-essential` n'apporte pas `zlib.h`.
 Détails dans [`tests/LISEZMOI.md`](tests/LISEZMOI.md).
 
+## Signaler un bug
+
+Un bug, un plantage, ou une pile qui ne se comporte pas comme dans
+HyperCard ? [Ouvrez une issue](https://github.com/cleobuline/hc/issues/new/choose) :
+un formulaire est prévu pour chaque cas. Un script court, ou une petite pile
+qui montre le problème, est le plus utile des rapports.
+
 ## Provenance et inspiration
 
 **Comment HC a été fait.** HC est écrit par Patricia Benedetto, avec Claude

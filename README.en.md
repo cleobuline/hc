@@ -54,6 +54,13 @@ make test-asan     # the same under AddressSanitizer, UBSan and LeakSanitizer
 `zlib1g-dev` is required: `build-essential` does not provide `zlib.h`.
 Details in [`tests/LISEZMOI.md`](tests/LISEZMOI.md) (in French).
 
+## Reporting a bug
+
+Found a bug, a crash, or a stack that behaves differently from HyperCard?
+Please [open an issue](https://github.com/cleobuline/hc/issues/new/choose):
+there is a form for each case. A short script, or a small stack that shows
+the problem, is the most useful report of all.
+
 ## Provenance and inspiration
 
 **How HC was made.** HC is written by Patricia Benedetto with Claude
