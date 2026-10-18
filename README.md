@@ -1,6 +1,6 @@
 
 
-https://github.com/user-attachments/assets/8a0fd7a0-a9ab-4b9f-b739-b34f24167786
+
 
 # HC
 
@@ -29,6 +29,10 @@ https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
 polygones et `the keysDown`. Il est dans le DMG. À partir de la 0.7.9, chaque
 obstacle porte son propre script : on en ajoute un en le copiant.*
 
+
+https://github.com/user-attachments/assets/8a0fd7a0-a9ab-4b9f-b739-b34f24167786
+
+*MAC•CAM Workshop, la pile d’automates cellulaires de Patricia (1990), tourne dans HC sans qu’une ligne de ses scripts ait changé : ses XCMD ont été refaits en WebAssembly. On y voit plusieurs règles, puis Brian’s Brain, écrite dans le FORTH de la pile, à droite.
 ## Installer
 
 Télécharger le DMG de la dernière [version](https://github.com/cleobuline/hc/releases)
