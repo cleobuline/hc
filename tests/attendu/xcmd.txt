@@ -618,3 +618,25 @@
       = Error : Incorrect limit rect
    put fulldrag("10,20,30,40", "0,0,512,342", "the mouse is down", "beep")
       = Error : <test>, <if true> and <if false> are not supported by HC yet
+
+== 15. la liste des externes tient dans son tampon ==
+   ajoute noms.wasm (1462 octets) : accepté
+   tampon de 1000 : 8 externe(s), 407 octet(s)
+      XCMD un_externe_au_nom_assez_long_pour_deborder_01
+      XCMD un_externe_au_nom_assez_long_pour_deborder_02
+      XCMD un_externe_au_nom_assez_long_pour_deborder_03
+      XCMD un_externe_au_nom_assez_long_pour_deborder_04
+      XCMD un_externe_au_nom_assez_long_pour_deborder_05
+      XCMD un_externe_au_nom_assez_long_pour_deborder_06
+      XCMD un_externe_au_nom_assez_long_pour_deborder_07
+      XCMD un_externe_au_nom_assez_long_pour_deborder_08
+   tampon de 120 : 8 externe(s), 105 octet(s)
+      XCMD un_externe_au_nom_assez_long_pour_deborder_01
+      XCMD un_externe_au_nom_assez_long_pour_deborder_02
+      …
+   tampon de 60 : 8 externe(s), 54 octet(s)
+      XCMD un_externe_au_nom_assez_long_pour_deborder_01
+      …
+   tampon de 4 : 8 externe(s), 3 octet(s)
+      …
+   tampon de 1 : 8 externe(s), 0 octet(s)

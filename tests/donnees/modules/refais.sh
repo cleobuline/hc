@@ -28,5 +28,7 @@ $CLANG $C $L -o "$ICI/fenetres.wasm" "$ICI/fenetres.c" "$KIT/hc_xcmd.c"
 $CLANG $C -DAUTRE $L -o "$ICI/autre.wasm" "$ICI/fenetres.c" "$KIT/hc_xcmd.c"
 # shellcheck disable=SC2086
 $CLANG $C $L -o "$ICI/inconnu.wasm" "$ICI/inconnu.c" "$KIT/hc_xcmd.c"
+# shellcheck disable=SC2086
+$CLANG $C $L -o "$ICI/noms.wasm" "$ICI/noms.c" "$KIT/hc_xcmd.c"
 $CLANG --target=wasm32 -O2 -nostdlib -Wall -Wextra $L -o "$ICI/sansboite.wasm" "$ICI/sansboite.c"
 ls -l "$ICI"/*.wasm

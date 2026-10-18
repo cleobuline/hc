@@ -727,6 +727,28 @@ int main(int argc, char **argv)
     h.contour = NULL;
     h.global_get = NULL;
 
+    /* LA LISTE DES EXTERNES TIENT DANS SON TAMPON. snprintf rend ce qu'il
+     * AURAIT écrit : la position avançait au-delà du tampon, et l'appel
+     * suivant visait liste + pos hors du tableau. Relevé à la relecture le
+     * 18 octobre. Des noms entiers, puis « … » s'il en manque. */
+    puts("\n== 15. la liste des externes tient dans son tampon ==");
+    ajoute(st, D, "noms.wasm", "noms");
+    {
+        int m = hc_module_nombre(st) - 1;
+        const size_t tailles[] = { 1000, 120, 60, 4, 1 };
+        for (size_t t = 0; t < sizeof tailles / sizeof *tailles; t++) {
+            char liste[1000];
+            memset(liste, '#', sizeof liste);
+            int k = hc_module_externes(st, m, liste, tailles[t]);
+            size_t l = strnlen(liste, tailles[t]);
+            printf("   tampon de %zu : %d externe(s), %zu octet(s)%s\n",
+                   tailles[t], k, l, l < tailles[t] ? "" : " — PAS DE ZÉRO FINAL");
+            for (char *p = strtok(liste, "\n"); p && l < tailles[t];
+                 p = strtok(NULL, "\n"))
+                printf("      %s\n", p);
+        }
+    }
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;
