@@ -1286,6 +1286,16 @@ ce qu'elle avait fait. Le nombre de pas d'alors n'est pas connu. NON
 RELEVÉS : le nombre de pas joués dans HC, et le texte au pixel près — la
 capture est réduite.
 
+UNE GRILLE DE 256 × 256 — VU sur une capture de l'utilisatrice, DANS HC
+(la barre de menus porte « HC »), le 18 octobre vers 02:50 : une pile
+MAC•CAM refaite par elle, cartes agrandies, quatre carrés de dessin de
+256, la fenêtre CAM ouverte sur « 0, 0, 256, 256 », la carte
+« Concurrence2 » (NOISE-BOX sur CAM-B, une population de quatre espèces
+sur CAM-A, N/VONN). Rien n'a changé dans HC ni dans le module : la
+grille prend la taille de la fenêtre, jusqu'à 4096. Dit par
+l'utilisatrice : « et c'est fluide !!! ». NON RELEVÉS : les pas par
+seconde, et le Mac.
+
 La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
 L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
 voulu ce soir-là : demandé, sans réponse.
