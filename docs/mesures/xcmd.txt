@@ -1296,6 +1296,37 @@ grille prend la taille de la fenêtre, jusqu'à 4096. Dit par
 l'utilisatrice : « et c'est fluide !!! ». NON RELEVÉS : les pas par
 seconde, et le Mac.
 
+LE COULOIR DU TEMPS — 18 octobre. Rapporté par l'utilisatrice, DANS HC, sur
+sa pile refaite à 256 : le bouton « 1<>2 », qui échange les plans 0 et 1
+pour remonter le temps, décalait l'image d'un pixel et ruinait la
+réversibilité ; DANS HYPERCARD (Basilisk II), dit-elle, « ça marche très
+bien ».
+
+LU dans la pile d'origine : DEUX boutons « 1<>2 » au même rectangle
+(347,313,375,339). Celui du FOND WorkShop compile « N/MARG-PH : SWAP … »,
+pour les cartes Margolus. Sur « Le Couloir du temps• » (TIME-TUNNEL, sans
+voisinage déclaré : Moore), « Brownian• », « Parity reversible• »,
+« Parity8 » et « Parity9 », un bouton de CARTE posé dessus compile
+« : SWAP … », en Moore, comme la carte. Le « load » du fond règle « major »
+d'après le texte FORTH de la carte. HyperCard comme HC (part_at : la carte
+avant le fond) envoient le clic au bouton de carte.
+
+MESURÉ dans le conteneur, la machine de HC : la table de « N/MARG-PH :
+SWAP » échange exactement en Margolus ; lue en von Neumann, elle échange
+décalé d'une ligne ; lue en Moore, 149 bits justes sur 200. Un aller-retour
+(40 pas d'une règle du second ordre, le couloir, 40 pas, le couloir) :
+212 cellules fausses avec le SWAP Margolus lu dans un autre voisinage,
+0 avec la fenêtre mise en Margolus pour le pas, 0 avec un SWAP écrit dans
+le voisinage de la règle.
+
+LA CAUSE, hypothèse confirmée par l'utilisatrice (« oui ») : sa pile
+refaite a déplacé les boutons du fond, et les boutons de carte « 1<>2 »,
+restés à 347,313, ne recouvrent plus celui du fond ; le clic va au SWAP
+Margolus, lu en Moore. HC n'est pas en cause. PROPOSÉ : dans le bouton du
+fond, « set the major of window "CAM" to 2 » avant « send step » — le
+« load » qui suit remet le voisinage de la carte —, ce qui vaut pour toutes
+les cartes et rend les boutons de carte inutiles.
+
 La seconde capture montre DEUX fenêtres « CAM », l'ancienne restée noire.
 L'original en ouvrait plusieurs aussi (maccam.c, Fenetre) ; que ce soit
 voulu ce soir-là : demandé, sans réponse.
