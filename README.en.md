@@ -28,6 +28,11 @@ https://github.com/user-attachments/assets/3f2150d7-665b-4b79-8978-b6f2b3017958
 `the keysDown`. It ships in the DMG. From 0.7.9 on, every obstacle carries
 its own script, so you add one by copying it.*
 
+
+https://github.com/user-attachments/assets/8a0fd7a0-a9ab-4b9f-b739-b34f24167786
+
+*MAC•CAM Workshop, Patricia’s cellular-automata stack from 1990, runs in HC without a single line of its scripts changed: its XCMDs were rebuilt in WebAssembly. Several rules go by, then Brian’s Brain, written in the stack’s own FORTH on the right.
+
 ## Installing
 
 Download the DMG from the latest [release](https://github.com/cleobuline/hc/releases)
