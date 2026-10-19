@@ -1361,8 +1361,15 @@ d'origine relue en seize lignes, de 0000 0,0,0 à 1111 255,255,255 ;
 « 1000 255,0,0 » peint 0x80 en rouge et laisse 1100 blanc ; « 1xxx »,
 puis « 1000 » après lui, l'emporte ; quatre refus sans dessin ; le plan 0
 masqué par « planes » prend la couleur de 0000. maccam.wasm : 15 626 →
-17 516 octets ; les autres modules se reconstruisent à l'identique. NON VU
-DANS HC (l'application) : à jouer sur MAC•CAM Workshop.
+17 516 octets ; les autres modules se reconstruisent à l'identique.
+
+VU DANS HC (l'application), sur une capture de l'utilisatrice, le 19 octobre
+à 19:35 (la barre de menus porte « HC », la pile est MAC•CAM) : la carte
+« Population…• » (N/VONN, NOISE-BOX et Population), la fenêtre CAM peinte en
+rose, vert pomme, olive et jaune au lieu de la palette d'origine, et, sous
+le champ FORTH, quatre boutons de couleur — rose, vert, jaune, bleu — de sa
+façon. Dit par l'utilisatrice : « 100% opérationnel ». NON RELEVÉS : les
+lignes posées, et le presse-papiers (toscrap) avec ces couleurs.
 
 LE COULOIR DU TEMPS — 18 octobre. Rapporté par l'utilisatrice, DANS HC, sur
 sa pile refaite à 256 : le bouton « 1<>2 », qui échange les plans 0 et 1
