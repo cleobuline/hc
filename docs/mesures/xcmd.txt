@@ -404,6 +404,57 @@ cousin Apple IIGS de l'en-tête du Mac, pas l'en-tête du Mac :
     window » ni « send … to window », dont MACCAM se sert (ses fonctions
     getProp, setProp, doMessage) : c'est HyperCard 2 sur Mac qu'il faut.
 
+LU LE 19 OCTOBRE : L'EN-TÊTE DU MAC, ENFIN, trouvé et envoyé par
+l'utilisatrice — « HyperXCmd.h », Universal Interfaces 3.4, « Technology:
+HyperCard 2.3 », © Apple 1987-2001. Lu, NON COMMIS, comme tout ce qui est
+d'Apple. Ce qu'il CONFIRME, et qui n'avait que nos lectures pour lui :
+  · LE BLOC DE PARAMÈTRES : paramCount, params[16], returnValue, passFlag,
+    filler1, entryPoint, request, result, inArgs[8], outArgs[4], aligné
+    « mac68k ». Recalculé sur ces déclarations : entryPoint +72, request
+    +76, inArgs +80, outArgs +112, 128 octets en tout — les décalages
+    MESURÉS dans le code de MAC•CAM, au chiffre près ;
+  · L'ÉVÉNEMENT D'UNE FENÊTRE : XWEventInfo = l'EventRecord du Mac
+    (16 octets), eventWindow, eventParams[9], eventResult. Recalculé :
+    eventParams +0x14, eventResult +0x38 — ceux lus dans xEventEntryPoint ;
+  · LES NUMÉROS D'ÉVÉNEMENTS du kit, lus dans MACCAM : xOpenEvt 1000,
+    xCloseEvt 1001, xSendEvt 1200, xSetPropEvt 1201, xGetPropEvt 1202 —
+    noms et numéros identiques. Le « 1103 » que MACCAM servait (copier
+    l'image) a maintenant son nom : xEditCopy, « Edit→Copy » ;
+  · NewXWindow : rectangle, titre, visible, procID, couleur, flottante —
+    l'ordre même du kit (moins le XCmdPtr, que les modules n'ont plus).
+Ce qu'il APPREND :
+  · les autres événements : xGiveUpEditEvt 1002, xGiveUpSoundEvt 1003,
+    xHidePalettesEvt 1004, xShowPalettesEvt 1005 ; xEditUndo 1100, puis
+    Cut 1102, Copy 1103, Paste 1104, Clear 1105 (pas de 1101) ;
+    xCursorWithin 1300 ; xMenuEvt 1400, xMBarClickedEvt 1401 ; et ceux des
+    outils de mise au point, 1501 à 1506 ;
+  · les styles de fenêtre propres à HyperCard : paletteProc 2048,
+    palNoGrowProc 2052, palZoomProc 2056, palZoomNoGrow 2060 ;
+  · ShowHCAlert et ses dialogues : errorDlgID 1 (OK), confirmDlgID 2 (OK,
+    Cancel), confirmDelDlgID 3 (Cancel, Delete), yesNoCancelDlgID 4 (Yes,
+    Cancel, No) ;
+  · LA LISTE ENTIÈRE DES RAPPELS DE HYPERCARD 2.3. Le kit en a
+    SendCardMessage, EvalExpr, GetGlobal, SetGlobal, les six
+    Get/SetFieldBy…, NewXWindow et CloseXWindow. Il lui manque, entre
+    autres : SendHCMessage, RunHandler, SendWindowMessage, StackNameToNum,
+    ShowHCAlert, AbortInQueue, FlushStackFile, GetFilePath, Notify,
+    GetNewXWindow, Hide/ShowHCPalettes, SetXWIdleTime, RegisterXWMenu,
+    XWAllowReEntrancy et leurs voisins ; les conversions (NumToStr,
+    StrToNum, PasToZero… et Double_tToStr, StrToDouble_t pour les
+    flottants), que les chaînes C rendent inutiles ; ce qui tient à
+    TextEdit (GetFieldTE, SetFieldTE, BeginXWEdit, HCWordBreakProc,
+    PrintTEHandle) ; et les outils de l'éditeur de scripts et du débogueur
+    (GetObjectScript, SetObjectScript, GetHandlerInfo, GetVarInfo,
+    GetStackCrawl, StepScript, TraceScript…).
+Ce qu'il NE TRANCHE PAS : les NUMÉROS DE REQUÊTE. Cet en-tête est celui de
+la bibliothèque de liaison (« HyperXLib », CFM) : des fonctions, pas des
+numéros. Le doute ScanToZero 29 ou 39, plus haut, reste entier pour le Mac.
+Et une ERREUR DE NOTRE PART, qu'il révèle : la note de la 0.8.4 nomme
+GetXWindowValue parmi les rappels absents de HC ; il n'existe pas sur le
+Mac — c'est un rappel de l'en-tête du IIGS. HMGetBalloons, HMShowBalloon et
+DragGrayRgn n'y sont pas non plus, et c'est normal : ils sont de la Toolbox
+du Mac, pas de HyperCard.
+
 
 LA CHAÎNE « BONJOUR », DE BOUT EN BOUT — 16 octobre
 --------------------------------------------------

@@ -130,7 +130,8 @@ typedef int WindowPtr;
 typedef struct Rect { short top, left, bottom, right; } Rect;
 
 /* Les événements, sous leurs numéros de HyperCard — lus dans le code de
- * MACCAM, qui les servait. */
+ * MACCAM, qui les servait, et confirmés, noms et numéros, par le
+ * HyperXCmd.h du Mac (Universal Interfaces 3.4, lu, non commis). */
 enum {
     xOpenEvt    = 1000,     /* la fenêtre vient de s'ouvrir */
     xCloseEvt   = 1001,     /* elle se ferme : case de fermeture, close window */
