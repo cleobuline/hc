@@ -19,7 +19,9 @@
  *
  * CE QUI S'AJOUTE, proposé par l'utilisatrice le 18 octobre : « planes »,
  * pour masquer des plans au dessin — ce que les clut faisaient en 1990, et
- * que le moteur MacCam moderne fait déjà. Voir pose(), plus bas. */
+ * que le moteur MacCam moderne fait déjà. Et, le 19 octobre, « colors » :
+ * la couleur de chaque combinaison de plans, qui remplace les clut pour
+ * de bon. Voir pose(), plus bas. */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +39,7 @@ typedef struct {
     int       echelle;
     int       hilite;
     int       masque;           /* « planes » : 0x80 le plan 0 … 0x10 le plan 3 */
+    unsigned char couleurs[16][3];  /* « colors » : par combinaison de plans */
     char      nom[256];         /* pour se poser ses propriétés de fenêtre */
 } Fenetre;
 
@@ -76,17 +79,23 @@ static const char *param(XCmdPtr p, int i)
 
 /* ---- l'image ---- */
 
-/* La palette d'un masque : un plan masqué se dessine comme s'il était
- * éteint, et le plan d'en dessous se montre à sa place. */
-static unsigned char *palette(int masque)
+/* Les couleurs d'origine, celles de cam_couleur, pour les seize
+ * combinaisons des quatre plans. La combinaison k lit les plans dans
+ * l'ordre du FORTH : k = 8·plan 0 + 4·plan 1 + 2·plan 2 + plan 3, soit les
+ * quatre bits hauts du pixel. */
+static void couleurs_origine(Fenetre *f)
+{
+    for (int k = 0; k < 16; k++) cam_couleur((unsigned char)(k << 4), f->couleurs[k]);
+}
+
+/* La palette du dessin : un plan masqué (« planes ») compte comme éteint,
+ * puis la combinaison qui reste prend sa couleur (« colors »). Les quatre
+ * bits bas, qu'aucun plan n'occupe, ne changent rien. */
+static unsigned char *palette(const Fenetre *f)
 {
     static unsigned char p[768];
-    static int faite = -1;
-    if (faite != masque) {
-        for (int i = 0; i < 256; i++)
-            cam_couleur((unsigned char)(i & masque), p + 3 * i);
-        faite = masque;
-    }
+    for (int i = 0; i < 256; i++)
+        memcpy(p + 3 * i, f->couleurs[((i & f->masque) >> 4) & 15], 3);
     return p;
 }
 
@@ -94,7 +103,7 @@ static unsigned char *palette(int masque)
 static void dessine(const Fenetre *f)
 {
     if (f->ouverte)
-        DrawXWindow(f->w, f->cam.pix, f->cam.w, f->cam.h, palette(f->masque),
+        DrawXWindow(f->w, f->cam.pix, f->cam.w, f->cam.h, palette(f),
                     f->echelle);
 }
 
@@ -128,6 +137,7 @@ static void ouvre(XCmdPtr p)
     f->hauteur = r.bottom - r.top;
     f->echelle = 1;
     f->masque = 0xF0;                           /* « 1111 » : tous les plans */
+    couleurs_origine(f);
     snprintf(f->nom, sizeof f->nom, "%s", titre);
     p->returnValue = "true";
 }
@@ -189,7 +199,7 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-enum { PROPRIETES = 31 };
+enum { PROPRIETES = 32 };
 
 static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
@@ -197,7 +207,7 @@ static const char *const NOMS[PROPRIETES] = {
     "image7", "scale", "pln7", "pln6", "pln5", "pln4", "pln3", "pln2",
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
     "alternate", "phaseA", "phaseB",
-    "planes"                                    /* l'ajout : voir pose() */
+    "planes", "colors"                          /* les ajouts : voir pose() */
 };
 
 static int rang(const char *prop)
@@ -229,6 +239,59 @@ static void image(Fenetre *f, int bit, const char *valeur)
     if (GetCardPicture(&r, noir)) cam_image(&f->cam, bit, noir, l, h);
     free(noir);
     dessine(f);
+}
+
+/* « colors » : les lignes « pppp r,g,b », lues dans l'ordre, chacune
+ * peignant les combinaisons que son motif désigne — « 0 » ou « 1 » par
+ * plan, dans l'ordre du FORTH, « x » pour l'un ou l'autre. Rend 1 si tout
+ * est lu (t est alors la nouvelle table), 2 pour une valeur vide (la
+ * palette d'origine), 0 au premier refus : une ligne qu'on ne comprend
+ * pas fait tout refuser, et rien ne change, comme pour « planes ». */
+static int couleurs_lues(const char *v, unsigned char t[16][3])
+{
+    while (*v == ' ' || *v == '\t' || *v == '\r' || *v == '\n') v++;
+    if (!*v) return 2;
+    while (*v) {
+        const char *fin = v;
+        while (*fin && *fin != '\r' && *fin != '\n') fin++;
+        const char *s = v;
+        while (s < fin && (*s == ' ' || *s == '\t')) s++;
+        if (s < fin) {
+            char motif[4];
+            int n = 0, rgb[3];
+            for (; s < fin && strchr("01xX", *s); s++)
+                if (++n <= 4) motif[n - 1] = *s;
+            if (n != 4 || s >= fin || (*s != ' ' && *s != '\t')) return 0;
+            for (int c = 0; c < 3; c++) {
+                while (s < fin && (*s == ' ' || *s == '\t')) s++;
+                int x = 0, chiffres = 0;
+                for (; s < fin && isdigit((unsigned char)*s); s++) {
+                    x = x * 10 + (*s - '0');
+                    if (++chiffres > 3) return 0;
+                }
+                if (!chiffres || x > 255) return 0;
+                rgb[c] = x;
+                while (s < fin && (*s == ' ' || *s == '\t')) s++;
+                if (c < 2) {
+                    if (s >= fin || *s != ',') return 0;
+                    s++;
+                }
+            }
+            if (s != fin) return 0;
+            for (int k = 0; k < 16; k++) {
+                int oui = 1;
+                for (int b = 0; b < 4; b++) {
+                    int bit = (k >> (3 - b)) & 1;
+                    if ((motif[b] == '0' && bit) || (motif[b] == '1' && !bit)) oui = 0;
+                }
+                if (oui)
+                    for (int c = 0; c < 3; c++) t[k][c] = (unsigned char)rgb[c];
+            }
+        }
+        v = fin;
+        while (*v == '\r' || *v == '\n') v++;
+    }
+    return 1;
 }
 
 /* Rend 1 si la propriété est de MACCAM, 0 si elle passe à HC. */
@@ -292,6 +355,23 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         }
         return 1;
     }
+    case 31: {
+        /* « colors », l'ajout de HC décidé par l'utilisatrice le 19
+         * octobre, à la place des clut de 1990 : la couleur de chaque
+         * combinaison de plans. « 1000 255,0,0 » peint le plan 0 seul en
+         * rouge ; « 1xxx 255,255,255 », toute combinaison où le plan 0 est
+         * allumé, en blanc. Les lignes jouent dans l'ordre, la dernière
+         * l'emporte ; ce qu'aucune ne désigne garde sa couleur. Vide : la
+         * palette d'origine. Rien ne change pour la machine, seul le
+         * dessin. */
+        unsigned char t[16][3];
+        memcpy(t, f->couleurs, sizeof t);
+        int lu = couleurs_lues(valeur, t);
+        if (lu == 2) couleurs_origine(f);
+        else if (lu == 1) memcpy(f->couleurs, t, sizeof t);
+        if (lu) dessine(f);
+        return 1;
+    }
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -333,6 +413,16 @@ static char *lit(Fenetre *f, const char *prop)
         for (int k = 0; k < 4; k++) s[k] = (f->masque & (0x80 >> k)) ? '1' : '0';
         s[4] = '\0';
         return s;
+    case 31: {                                  /* « colors » : les seize, 0000 à 1111 */
+        static char c[16 * 20];
+        size_t n = 0;
+        for (int k = 0; k < 16; k++)
+            n += (size_t)snprintf(c + n, sizeof c - n, "%s%d%d%d%d %d,%d,%d",
+                                  k ? "\n" : "", k >> 3 & 1, k >> 2 & 1, k >> 1 & 1,
+                                  k & 1, f->couleurs[k][0], f->couleurs[k][1],
+                                  f->couleurs[k][2]);
+        return c;
+    }
     default:
         return NULL;
     }
