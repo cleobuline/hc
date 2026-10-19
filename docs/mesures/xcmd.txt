@@ -897,6 +897,10 @@ width et height (SizeWindow) ; « rect » s'écrit dans le portRect de la
 fenêtre, puis Hide et Show — une bizarrerie qu'aucun script de la pile
 n'éveille. image7 à image4 demandent la peinture de la carte par
 GetMaskAndData (requête 0x1d), puis CopyBits depuis le rectangle donné.
+LE NOM EST DE MÉMOIRE, PAS LU : seul le numéro 0x1d l'est. L'en-tête du Mac,
+lu le 19 octobre (plus haut), ne connaît pas de GetMaskAndData ; et l'en-tête
+du IIGS donne 29 — 0x1d — à ScanToZero. Ce que la requête rend, en
+revanche, se lit dans le code : la peinture de la carte, que CopyBits copie.
 
 CE QUE HC EN FAIT, ÉCRIT le même soir (hc_wasm.c, xcmd/hc_xcmd.h) :
   · le MÊME CONTRAT pour le module : paramCount à -1, un XWEventInfo
