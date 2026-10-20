@@ -1300,7 +1300,9 @@ la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
 
 MESURÉ DANS HC (l'application), le 20 octobre, par l'utilisatrice, sur la
 même carte : « ça prend une seconde dans la stack » — à l'œil, du clic au
-résultat, la machine non relevée. Dans le conteneur, le FORTH seul : 0,54 s.
+résultat, sur son Mac de 2012 (dit par elle ensuite : « à l'usage sur mon
+vieux mac de 2012 c'est tout à fait bien »). Dans le conteneur, le FORTH
+seul : 0,54 s.
 MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II), le même jour, par l'utilisatrice,
 la même carte avec l'XFCN d'origine : « c'est instantané ». Les réglages de
 l'émulateur (processeur, JIT) non relevés. L'écart s'explique, et ne se
