@@ -1298,6 +1298,10 @@ sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
 inline 68000 ». Avec le module accéléré : « c'est un peu plus rapide » —
 la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
 
+MESURÉ DANS HC (l'application), le 20 octobre, par l'utilisatrice, sur la
+même carte : « ça prend une seconde dans la stack » — à l'œil, du clic au
+résultat, la machine non relevée. Dans le conteneur, le FORTH seul : 0,54 s.
+
 LA RÉVERSIBILITÉ, MESURÉE DANS HC (l'application), le 17 octobre au soir,
 par l'utilisatrice, sur la carte « Billard sf » de MAC•CAM Workshop — le
 flacon de gaz de la CAM-6, qui se recompose quand on change la phase : du
