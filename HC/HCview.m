@@ -1888,7 +1888,7 @@ static char gFileBuf[2048];
  * this stack » répond la même chose avant et après. */
 static int cocoa_save_stack(Object *stack, const char *path) {
     if (!stack || !path || !*path) return 0;
-    [gView flushPaintToKernel];
+    if (![gView flushPaintToKernel]) return 0;   /* un dessin manquerait */
     return hc_save_copie(stack, path) == 0;
 }
 
@@ -6923,7 +6923,11 @@ static BOOL hcv_presse_image_systeme(void)
         NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
         if (imgs.count > 0) {
             NSData *tiff = [imgs[0] TIFFRepresentation];
-            NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
+            /* Ramenée au format du dessin : une image grise, sur 1 bit ou
+             * planaire faisait lire stamp_clipboard au-delà de ses lignes
+             * (revue 2 de Grok). */
+            NSBitmapImageRep *ext =
+                hcp_canonique([NSBitmapImageRep imageRepWithData:tiff]);
             if (ext) {
                 acoller = ext;
                 gClipW = (int)[ext pixelsWide];
@@ -8746,10 +8750,11 @@ static BOOL      gSansMessageChamp = NO;
     gFloatDragging  = NO;
 }
 
-- (void)flushPaintToKernel {
-    if (!gPaintCache) return;
+- (BOOL)flushPaintToKernel {
+    if (!gPaintCache) return YES;
 
     NSMutableArray *mortes = [NSMutableArray array];
+    BOOL complet = YES;     /* chaque calque vivant est repris par le noyau */
 
     for (NSValue *key in gPaintCache) {
         Object *o = [key pointerValue];
@@ -8793,6 +8798,7 @@ static BOOL      gSansMessageChamp = NO;
 
         unsigned char *src = [rep bitmapData];
         unsigned char *dst = [fresh bitmapData];
+        if (!src || !dst) { complet = NO; continue; }
         NSInteger sbpr = [rep bytesPerRow], dbpr = [fresh bytesPerRow];
         NSInteger spp  = [rep samplesPerPixel];
         /* Pas en octets : samplesPerPixel n'est pas le pas des lors qu'une rep
@@ -8818,15 +8824,23 @@ static BOOL      gSansMessageChamp = NO;
             [fresh bitmapImageRepByRetaggingWithColorSpace:cs];
         if (tagged) fresh = tagged;
 
+        /* Un calque non repris n'arrête pas les autres, mais il se dit :
+         * l'enregistrement écrirait l'ancien dessin et annoncerait la
+         * réussite (revue 2 de Grok). */
         NSString *b64 = hcp_encode(fresh);
-        if (!b64) { NSLog(@"[flush] o=%p ECHEC encodage", o); continue; }
+        if (!b64) {
+            NSLog(@"[flush] o=%p ECHEC encodage", o);
+            complet = NO;
+            continue;
+        }
         NSLog(@"[flush] o=%p grave %ldx%ld, %lu car.", o, (long)w, (long)h,
               (unsigned long)[b64 length]);
-        hc_set_paint(o, [b64 UTF8String]);
+        if (!hc_set_paint(o, [b64 UTF8String])) complet = NO;
     }
 
     /* Hors de la boucle : on ne modifie pas une table qu'on parcourt. */
     for (NSValue *key in mortes) [gPaintCache removeObjectForKey:key];
+    return complet;
 }
 
 - (void)mouseMoved:(NSEvent *)event {

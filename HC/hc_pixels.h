@@ -256,7 +256,7 @@ static void hcp_trace_edges(unsigned char *data, long bpr, int spp, int W, int H
         for (int x = x0; x <= x1; x++) {
             if (!hcp_dans_poly(poly, npoly, x, y)) continue;
             unsigned char *px = HCP_PX(data, bpr, spp, x, y);
-            if (hcp_pose(px, spp)) { neuf[(y-y0)*w + (x-x0)] = 2; continue; }
+            if (hcp_pose(px, spp)) { neuf[(size_t)(y-y0)*w + (x-x0)] = 2; continue; }
 
             int touche = 0;
             static const int dx[4] = { -1, 1, 0, 0 };
@@ -266,12 +266,12 @@ static void hcp_trace_edges(unsigned char *data, long bpr, int spp, int W, int H
                 if (vx < 0 || vy < 0 || vx >= W || vy >= H) continue;
                 if (hcp_pose(HCP_PX(data, bpr, spp, vx, vy), spp)) touche = 1;
             }
-            if (touche) neuf[(y-y0)*w + (x-x0)] = 1;
+            if (touche) neuf[(size_t)(y-y0)*w + (x-x0)] = 1;
         }
 
     for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++) {
-            unsigned char q = neuf[(y-y0)*w + (x-x0)];
+            unsigned char q = neuf[(size_t)(y-y0)*w + (x-x0)];
             if (q == 1) hcp_encre(HCP_PX(data, bpr, spp, x, y), spp);
             else if (q == 2) hcp_retire(HCP_PX(data, bpr, spp, x, y), spp);
         }

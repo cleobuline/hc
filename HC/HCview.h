@@ -182,7 +182,9 @@ void    hcv_selectionne(Object *o);
 - (void)endFieldEdit;
 - (void)commitText;
 - (void)testScribble;
-- (void)flushPaintToKernel;
+/* Rend NO si un calque n'a pas pu être repris par le noyau : un
+ * enregistrement qui suivrait perdrait ce dessin sans le dire. */
+- (BOOL)flushPaintToKernel;
 - (void)clearPaintCache;
 - (void)resetForNewStack;
 - (void)toggleBackground:(id)sender;
