@@ -115,7 +115,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -289,7 +289,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -418,7 +418,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -547,7 +547,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -676,7 +676,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -809,7 +809,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -938,7 +938,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1079,7 +1079,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1208,7 +1208,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1337,7 +1337,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1461,7 +1461,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1566,7 +1566,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7
@@ -1695,7 +1695,7 @@ carte id 3000, fond 2000, nom « Atelier », 3 parts
     dontWrap 1 dontSearch 1 sharedText 0 fixedLineHeight 1 autoTab 0
     champ : lockText 1 showLines 1 wideMargins 0 multipleLines 1 autoSelect 0 lignes 1..3
     script : aucun
-  bouton id 2 « TORTURE » (302,20,324,110) checkBox
+  bouton id 2 « TORTURE » (302,-10,324,110) checkBox
     INVISIBLE  police Chicago corps 9 style 3 hauteur 18 alignement 1 famille 5
     dontWrap 0 dontSearch 0 sharedText 0 fixedLineHeight 0 autoTab 1
     bouton : enabled 0 showName 1 hilite 0 autoHilite 1 sharedHilite 1 largeurTitre 42 icone 7

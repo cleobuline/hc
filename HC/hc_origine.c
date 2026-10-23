@@ -748,10 +748,13 @@ static size_t lit_les_parts(Vue *v, HcOrigCouche *k, HcOrigPile *pile,
 
         pt->id     = (int)u16(v, p + 0x02);
         pt->genre  = genre_de(dr);
-        pt->haut   = (int)u16(v, p + 0x06);
-        pt->gauche = (int)u16(v, p + 0x08);
-        pt->bas    = (int)u16(v, p + 0x0A);
-        pt->droite = (int)u16(v, p + 0x0C);
+        /* Un Rect de QuickDraw : quatre SInt16, comme ceux du BMAP plus
+         * haut. Lu non signé, un bord gauche de -10 devenait 65526, et la
+         * part arrivait sans largeur (audit de Grok, octobre). */
+        pt->haut   = s16(v, p + 0x06);
+        pt->gauche = s16(v, p + 0x08);
+        pt->bas    = s16(v, p + 0x0A);
+        pt->droite = s16(v, p + 0x0C);
 
         /* LES QUATRE DRAPEAUX INVERSÉS. Le bit allumé signifie FAUX, et la spec
          * les écrit entre parenthèses. Convertis ici une fois pour toutes, si
