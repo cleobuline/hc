@@ -10044,7 +10044,12 @@ static void hcv_survol(HCView *v, Object *carte)
 
     gInIdle = YES;
     hcv_survol(v, card);
-    hc_send(card, "idle");
+    /* `card` est une variable locale, comme le `hit` du clic : un mouseLeave
+     * ou un mouseWithin qui supprime la carte la libère au retour de son
+     * envoi, et object_gone ne peut pas la mettre à NULL. Si elle n'existe
+     * plus, ou n'est plus la carte courante, idle attend le tick suivant. */
+    if (hc_object_is_live(card) && card == [v documentCard])
+        hc_send(card, "idle");
 
     /* Et rafraîchir si l'un de ces gestionnaires a changé quelque chose.
      * Personne ne le faisait : un « on idle » qui bougeait un objet, ou un
