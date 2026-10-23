@@ -5617,9 +5617,40 @@ static void tache_si_script_avorte(void)
     g_tache_n = 0;
 }
 
+/* LES VARIABLES LOCALES GUETTÉES. Une fonction qui tient un objet dans une
+ * variable locale pendant qu'un gestionnaire peut le supprimer — la carte
+ * d'arrivée d'un go, pendant closeCard — inscrit ici l'ADRESSE de cette
+ * variable, et oublie_objet_interne la remet à NULL quand l'objet meurt,
+ * comme il le fait des globales. Contrairement à hc_object_is_live, cela
+ * marche aussi pour une pile qui n'est pas enregistrée. Si le registre est
+ * plein, la variable n'est pas guettée : rien n'est pire qu'avant. */
+enum { GUETS_MAX = 64 };
+static Object **g_guets[GUETS_MAX];
+static int g_nguets;
+
+static void guette(Object **p)
+{
+    if (g_nguets < GUETS_MAX) g_guets[g_nguets++] = p;
+}
+
+static void cesse_de_guetter(Object **p)
+{
+    for (int i = g_nguets - 1; i >= 0; i--)
+        if (g_guets[i] == p) {
+            memmove(g_guets + i, g_guets + i + 1,
+                    (size_t)(g_nguets - i - 1) * sizeof *g_guets);
+            g_nguets--;
+            return;
+        }
+}
+
 static void oublie_objet_interne(Object *mort)
 {
     if (!mort) return;
+
+    /* les variables locales qu'on a inscrites, voir guette */
+    for (int i = 0; i < g_nguets; i++)
+        if (*g_guets[i] == mort) *g_guets[i] = NULL;
 
     /* le travail d'impression en cours */
     {
@@ -12421,8 +12452,22 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         if (cd != g_current_card) {              /* naviguer si besoin */
             Object *old = g_current_card;
             Object *oldbg = old ? old->bg : NULL;
+            /* La carte trouvée peut mourir en route, comme l'arrivée d'un
+             * go (v3_va_a) : guettée, avec le fond que l'on quitte. L'oubli
+             * des objets a déjà vidé g_found_*. */
+            Object *fond_quitte = oldbg;
+            guette(&cd);
+            guette(&fond_quitte);
             if (old) hc_send_systeme(old, "closeCard");
-            if (oldbg && oldbg != cd->bg) hc_send_systeme(oldbg, "closeBackground");
+            if (cd && fond_quitte && fond_quitte != cd->bg)
+                hc_send_systeme(fond_quitte, "closeBackground");
+            cesse_de_guetter(&fond_quitte);
+            cesse_de_guetter(&cd);
+            if (!cd) {
+                set_result("Not found");
+                g_atop = sauve;
+                return 1;
+            }
             g_current_card = cd;
             if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
             hc_send_systeme(cd, "openCard");
@@ -14943,8 +14988,17 @@ static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
     Object *oldbg = old ? old->bg : NULL;
     Object *newbg = dst->bg;
 
+    /* La carte dépilée peut mourir en route, comme l'arrivée d'un go
+     * (v3_va_a) : guettée, avec le fond que l'on quitte. */
+    Object *fond_quitte = oldbg;
+    guette(&dst);
+    guette(&fond_quitte);
     if (old) hc_send_systeme(old, "closeCard");
-    if (oldbg && oldbg != newbg) hc_send_systeme(oldbg, "closeBackground");
+    if (dst && fond_quitte && fond_quitte != newbg)
+        hc_send_systeme(fond_quitte, "closeBackground");
+    cesse_de_guetter(&fond_quitte);
+    cesse_de_guetter(&dst);
+    if (!dst) { set_result("No such card"); return 1; }
     g_current_card = dst;
     if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
     hc_send_systeme(dst, "openCard");
@@ -15644,9 +15698,25 @@ static int v3_va_a(Object *dst)
      * restent ce qu'ils étaient. */
     int fenetres = change_pile && g_host && g_host->stack_changed;
 
+    /* LA CARTE D'ARRIVÉE PEUT MOURIR EN ROUTE. Les messages de fermeture
+     * font courir des gestionnaires, et un « delete card » de closeCard qui
+     * vise l'arrivée la libère au retour de son envoi, et `dst` est une
+     * variable locale. Elle est donc guettée (voir guette), avec le fond que
+     * l'on quitte — un closeCard qui supprime sa propre carte peut
+     * l'emporter —, et l'on reste sur place si l'arrivée n'est plus (second
+     * audit de Jules, reproduit sous ASan). Ce que fait HyperCard dans ce
+     * cas n'est PAS MESURÉ. */
+    Object *arrivee = dst, *fond_quitte = oldbg;
+    guette(&arrivee);
+    guette(&fond_quitte);
     if (old) hc_send_systeme(old, "closeCard");
-    if (oldbg && oldbg != dst->bg) hc_send_systeme(oldbg, "closeBackground");
-    if (change_pile && vpile && !fenetres) hc_send_systeme(vpile, "closeStack");
+    if (arrivee && fond_quitte && fond_quitte != arrivee->bg)
+        hc_send_systeme(fond_quitte, "closeBackground");
+    if (arrivee && change_pile && vpile && !fenetres)
+        hc_send_systeme(vpile, "closeStack");
+    cesse_de_guetter(&fond_quitte);
+    cesse_de_guetter(&arrivee);
+    if (!arrivee) { set_result("No such card"); return 1; }
 
     if (fenetres) g_host->stack_changed(pile);
     g_current_card = dst;

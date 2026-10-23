@@ -1,0 +1,35 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== go : l'arrivée supprimée par closeCard ==
+arme
+go to card "Deux"
+put the result
+   No such card
+put the short name of this card && the number of cards
+   Un 2
+
+== find : la carte trouvée supprimée par closeCard ==
+arme
+find "grenouille"
+put the result
+   Not found
+put the short name of this card && the number of cards
+   Un 2
+
+== pop : la carte dépilée supprimée par closeCard ==
+go to card "Deux"
+   openCard de Deux
+push this card
+go to card "Un"
+arme
+pop card
+put the result
+   No such card
+put the short name of this card && the number of cards
+   Un 2
+
+== go : closeCard supprime sa propre carte et son fond ==
+go to card "Ailleurs"
+put the result
+   
+put the short name of this card && the number of cards && the number of backgrounds
+   Ailleurs 2 1
