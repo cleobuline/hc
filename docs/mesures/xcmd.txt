@@ -404,6 +404,57 @@ cousin Apple IIGS de l'en-tête du Mac, pas l'en-tête du Mac :
     window » ni « send … to window », dont MACCAM se sert (ses fonctions
     getProp, setProp, doMessage) : c'est HyperCard 2 sur Mac qu'il faut.
 
+LU LE 19 OCTOBRE : L'EN-TÊTE DU MAC, ENFIN, trouvé et envoyé par
+l'utilisatrice — « HyperXCmd.h », Universal Interfaces 3.4, « Technology:
+HyperCard 2.3 », © Apple 1987-2001. Lu, NON COMMIS, comme tout ce qui est
+d'Apple. Ce qu'il CONFIRME, et qui n'avait que nos lectures pour lui :
+  · LE BLOC DE PARAMÈTRES : paramCount, params[16], returnValue, passFlag,
+    filler1, entryPoint, request, result, inArgs[8], outArgs[4], aligné
+    « mac68k ». Recalculé sur ces déclarations : entryPoint +72, request
+    +76, inArgs +80, outArgs +112, 128 octets en tout — les décalages
+    MESURÉS dans le code de MAC•CAM, au chiffre près ;
+  · L'ÉVÉNEMENT D'UNE FENÊTRE : XWEventInfo = l'EventRecord du Mac
+    (16 octets), eventWindow, eventParams[9], eventResult. Recalculé :
+    eventParams +0x14, eventResult +0x38 — ceux lus dans xEventEntryPoint ;
+  · LES NUMÉROS D'ÉVÉNEMENTS du kit, lus dans MACCAM : xOpenEvt 1000,
+    xCloseEvt 1001, xSendEvt 1200, xSetPropEvt 1201, xGetPropEvt 1202 —
+    noms et numéros identiques. Le « 1103 » que MACCAM servait (copier
+    l'image) a maintenant son nom : xEditCopy, « Edit→Copy » ;
+  · NewXWindow : rectangle, titre, visible, procID, couleur, flottante —
+    l'ordre même du kit (moins le XCmdPtr, que les modules n'ont plus).
+Ce qu'il APPREND :
+  · les autres événements : xGiveUpEditEvt 1002, xGiveUpSoundEvt 1003,
+    xHidePalettesEvt 1004, xShowPalettesEvt 1005 ; xEditUndo 1100, puis
+    Cut 1102, Copy 1103, Paste 1104, Clear 1105 (pas de 1101) ;
+    xCursorWithin 1300 ; xMenuEvt 1400, xMBarClickedEvt 1401 ; et ceux des
+    outils de mise au point, 1501 à 1506 ;
+  · les styles de fenêtre propres à HyperCard : paletteProc 2048,
+    palNoGrowProc 2052, palZoomProc 2056, palZoomNoGrow 2060 ;
+  · ShowHCAlert et ses dialogues : errorDlgID 1 (OK), confirmDlgID 2 (OK,
+    Cancel), confirmDelDlgID 3 (Cancel, Delete), yesNoCancelDlgID 4 (Yes,
+    Cancel, No) ;
+  · LA LISTE ENTIÈRE DES RAPPELS DE HYPERCARD 2.3. Le kit en a
+    SendCardMessage, EvalExpr, GetGlobal, SetGlobal, les six
+    Get/SetFieldBy…, NewXWindow et CloseXWindow. Il lui manque, entre
+    autres : SendHCMessage, RunHandler, SendWindowMessage, StackNameToNum,
+    ShowHCAlert, AbortInQueue, FlushStackFile, GetFilePath, Notify,
+    GetNewXWindow, Hide/ShowHCPalettes, SetXWIdleTime, RegisterXWMenu,
+    XWAllowReEntrancy et leurs voisins ; les conversions (NumToStr,
+    StrToNum, PasToZero… et Double_tToStr, StrToDouble_t pour les
+    flottants), que les chaînes C rendent inutiles ; ce qui tient à
+    TextEdit (GetFieldTE, SetFieldTE, BeginXWEdit, HCWordBreakProc,
+    PrintTEHandle) ; et les outils de l'éditeur de scripts et du débogueur
+    (GetObjectScript, SetObjectScript, GetHandlerInfo, GetVarInfo,
+    GetStackCrawl, StepScript, TraceScript…).
+Ce qu'il NE TRANCHE PAS : les NUMÉROS DE REQUÊTE. Cet en-tête est celui de
+la bibliothèque de liaison (« HyperXLib », CFM) : des fonctions, pas des
+numéros. Le doute ScanToZero 29 ou 39, plus haut, reste entier pour le Mac.
+Et une ERREUR DE NOTRE PART, qu'il révèle : la note de la 0.8.4 nomme
+GetXWindowValue parmi les rappels absents de HC ; il n'existe pas sur le
+Mac — c'est un rappel de l'en-tête du IIGS. HMGetBalloons, HMShowBalloon et
+DragGrayRgn n'y sont pas non plus, et c'est normal : ils sont de la Toolbox
+du Mac, pas de HyperCard.
+
 
 LA CHAÎNE « BONJOUR », DE BOUT EN BOUT — 16 octobre
 --------------------------------------------------
@@ -846,6 +897,10 @@ width et height (SizeWindow) ; « rect » s'écrit dans le portRect de la
 fenêtre, puis Hide et Show — une bizarrerie qu'aucun script de la pile
 n'éveille. image7 à image4 demandent la peinture de la carte par
 GetMaskAndData (requête 0x1d), puis CopyBits depuis le rectangle donné.
+LE NOM EST DE MÉMOIRE, PAS LU : seul le numéro 0x1d l'est. L'en-tête du Mac,
+lu le 19 octobre (plus haut), ne connaît pas de GetMaskAndData ; et l'en-tête
+du IIGS donne 29 — 0x1d — à ScanToZero. Ce que la requête rend, en
+revanche, se lit dans le code : la peinture de la carte, que CopyBits copie.
 
 CE QUE HC EN FAIT, ÉCRIT le même soir (hc_wasm.c, xcmd/hc_xcmd.h) :
   · le MÊME CONTRAT pour le module : paramCount à -1, un XWEventInfo
@@ -1243,6 +1298,19 @@ sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
 inline 68000 ». Avec le module accéléré : « c'est un peu plus rapide » —
 la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
 
+MESURÉ DANS HC (l'application), le 20 octobre, par l'utilisatrice, sur la
+même carte : « ça prend une seconde dans la stack » — à l'œil, du clic au
+résultat, sur son Mac de 2012 (dit par elle ensuite : « à l'usage sur mon
+vieux mac de 2012 c'est tout à fait bien »). Dans le conteneur, le FORTH
+seul : 0,54 s.
+MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II), le même jour, par l'utilisatrice,
+la même carte avec l'XFCN d'origine : « c'est instantané ». Les réglages de
+l'émulateur (processeur, JIT) non relevés. L'écart s'explique, et ne se
+comble pas sans ce qui a été refusé : l'original COMPILAIT du code 68000,
+que Basilisk traduit en code de la machine hôte ; notre FORTH INTERPRÈTE
+ses opérations, et tourne lui-même dans l'interprète de WAMR — déjà le
+« fast » (HC/tiers/wamr_hc.h), sans JIT ni AOT, décidé le 17 octobre.
+
 LA RÉVERSIBILITÉ, MESURÉE DANS HC (l'application), le 17 octobre au soir,
 par l'utilisatrice, sur la carte « Billard sf » de MAC•CAM Workshop — le
 flacon de gaz de la CAM-6, qui se recompose quand on change la phase : du
@@ -1295,6 +1363,30 @@ sur CAM-A, N/VONN). Rien n'a changé dans HC ni dans le module : la
 grille prend la taille de la fenêtre, jusqu'à 4096. Dit par
 l'utilisatrice : « et c'est fluide !!! ». NON RELEVÉS : les pas par
 seconde, et le Mac.
+
+« COLORS » — 19 octobre. Décidé par l'utilisatrice, sur ma proposition :
+la couleur de chaque combinaison des quatre plans, pour remplacer pour de
+bon les dix-sept clut de la pile (relues plus haut). Une propriété de la
+fenêtre CAM, lignes « pppp r,g,b » dans la notation de « planes », « x »
+pour l'un ou l'autre ; les lignes jouent dans l'ordre, la dernière
+l'emporte ; vide : la palette d'origine, celle de cam_couleur. « planes »
+joue avant : un plan masqué compte comme éteint. Une ligne incomprise fait
+tout refuser. Rien ne change pour la machine.
+
+MESURÉ dans le conteneur, par le harnais xcmd (section 12) : la palette
+d'origine relue en seize lignes, de 0000 0,0,0 à 1111 255,255,255 ;
+« 1000 255,0,0 » peint 0x80 en rouge et laisse 1100 blanc ; « 1xxx »,
+puis « 1000 » après lui, l'emporte ; quatre refus sans dessin ; le plan 0
+masqué par « planes » prend la couleur de 0000. maccam.wasm : 15 626 →
+17 516 octets ; les autres modules se reconstruisent à l'identique.
+
+VU DANS HC (l'application), sur une capture de l'utilisatrice, le 19 octobre
+à 19:35 (la barre de menus porte « HC », la pile est MAC•CAM) : la carte
+« Population…• » (N/VONN, NOISE-BOX et Population), la fenêtre CAM peinte en
+rose, vert pomme, olive et jaune au lieu de la palette d'origine, et, sous
+le champ FORTH, quatre boutons de couleur — rose, vert, jaune, bleu — de sa
+façon. Dit par l'utilisatrice : « 100% opérationnel ». NON RELEVÉS : les
+lignes posées, et le presse-papiers (toscrap) avec ces couleurs.
 
 LE COULOIR DU TEMPS — 18 octobre. Rapporté par l'utilisatrice, DANS HC, sur
 sa pile refaite à 256 : le bouton « 1<>2 », qui échange les plans 0 et 1

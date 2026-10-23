@@ -58,6 +58,15 @@ HC_XCMD(reentre)
     SendCardMessage("reentre");
 }
 
+/* Supprime la carte courante par une ligne de HyperTalk : ce qui tenait
+ * la carte pendant l'appel ne doit pas la relire ensuite (audits
+ * d'octobre). */
+HC_XCMD(supprime)
+{
+    (void)paramPtr;
+    SendCardMessage("delete this card");
+}
+
 /* Un XCMD qui rend une valeur : elle doit devenir « the result ». */
 HC_XCMD(resultat)
 {

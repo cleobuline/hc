@@ -103,7 +103,10 @@ SuperCard, so that nothing is invented and no HyperCard stack changes
 behaviour. The XCMD and XFCN work was judged on MAC•CAM Workshop,
 Patricia's own stack from 1990, a cellular automata lab modelled on the
 CAM-6 of Tommaso Toffoli and Norman Margolus (*Cellular Automata Machines*,
-MIT Press, 1987). It runs in HC without a single script line changed.
+MIT Press, 1987). It runs in HC without a single script line changed. Its
+XFCNs were rebuilt in WebAssembly from their 68000 code: FORTH and
+MACCAM, which Patricia wrote herself, and FullDrag, by Frédéric Rinaldi
+(1990–1992).
 
 ## License
 

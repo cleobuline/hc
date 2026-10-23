@@ -11,6 +11,9 @@
 #include <string.h>
 #include "hc_xcmd.h"
 
+HC_RAPPEL(GetCardPicture) int hc_GetCardPicture(int g, int h, int d, int b,
+                                                 unsigned char *noir, int n);
+
 static const unsigned char PIXELS[6] = { 0, 1, 2, 2, 1, 0 };
 
 static unsigned char *palette(void)
@@ -78,6 +81,14 @@ static void message(XCmdPtr p, XWEventInfoPtr e)
         SendCardMessage(l);
         Rect vide = { 5, 5, 5, 9 };
         dis("GetCardPicture d'un rectangle vide :", GetCardPicture(&vide, noir));
+        /* Le rappel brut, que le kit borne et qu'un module hostile appelle
+         * tel quel : aux extrêmes des int32, le produit des côtés déborde
+         * un int64. HC doit refuser sans rien peindre (audits d'octobre). */
+        dis("GetCardPicture d'un rectangle géant :",
+            hc_GetCardPicture(-2147483647 - 1, -2147483647 - 1,
+                              2147483647, 2147483647, noir, 8));
+        dis("GetCardPicture plus grand que son tampon :",
+            hc_GetCardPicture(0, 0, 3, 3, noir, 8));
     } else {
         p->passFlag = 1;                       /* le module ne sait pas */
     }

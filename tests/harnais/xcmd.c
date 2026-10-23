@@ -653,6 +653,33 @@ int main(int argc, char **argv)
     fais("set the planes of window \"CAM\" to \"11111\"");
     fais("put the planes of window \"CAM\"");
     fais("set the planes of window \"CAM\" to \"1111\"");
+    /* « colors », l'ajout de HC décidé par l'utilisatrice le 19 octobre, à
+     * la place des clut de 1990 : la couleur de chaque combinaison de
+     * plans. Le dessin le montre par la couleur de 0x80, le plan 0 seul ;
+     * les lignes de « the colors » vont de 0000 (ligne 1) à 1111 (ligne
+     * 16), 1000 en ligne 9. */
+    puts("   -- colors : une couleur par combinaison de plans, l'ajout de HC");
+    fais("put line 1 of the colors of window \"CAM\" && \"/\" && line 9 of the colors of window \"CAM\" && \"/\" && the number of lines of the colors of window \"CAM\"");
+    fais("set the colors of window \"CAM\" to \"1000 255,0,0\" & return & \"0100 0,128,255\"");
+    fais("put line 9 of the colors of window \"CAM\" && \"/\" && line 5 of the colors of window \"CAM\" && \"/\" && line 13 of the colors of window \"CAM\"");
+    /* « x » pour l'un ou l'autre ; la dernière ligne l'emporte ; des
+     * espaces autour des virgules */
+    fais("set the colors of window \"CAM\" to \"1xxx 10,20,30\" & return & \"1000 1, 2 ,3\"");
+    fais("put line 9 of the colors of window \"CAM\" && \"/\" && line 16 of the colors of window \"CAM\"");
+    /* refusés, sans dessin : hors bornes, motif de trois, deux nombres, une
+     * mauvaise ligne parmi de bonnes */
+    fais("set the colors of window \"CAM\" to \"1000 300,0,0\"");
+    fais("set the colors of window \"CAM\" to \"10x 1,2,3\"");
+    fais("set the colors of window \"CAM\" to \"1000 1,2\"");
+    fais("set the colors of window \"CAM\" to \"1000 4,5,6\" & return & \"zut\"");
+    fais("put line 9 of the colors of window \"CAM\"");
+    /* planes joue avant : le plan 0 masqué, 0x80 prend la couleur de 0000 */
+    fais("set the colors of window \"CAM\" to \"0000 9,9,9\"");
+    fais("set the planes of window \"CAM\" to \"0111\"");
+    fais("set the planes of window \"CAM\" to \"1111\"");
+    /* vide : la palette d'origine, les seize */
+    fais("set the colors of window \"CAM\" to empty");
+    fais("put the colors of window \"CAM\"");
     puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
     fais("set the scale of window \"CAM\" to 2");
     puts("   -- stepfast, jusqu'au clic : trois pas");
@@ -760,6 +787,31 @@ int main(int argc, char **argv)
                  p = strtok(NULL, "\n"))
                 printf("      %s\n", p);
         }
+    }
+
+    /* UN MODULE QUI SUPPRIME LA CARTE COURANTE. Ce qui la tenait pendant
+     * l'appel — le gestionnaire qui l'a lancé, le « me » et la « target »
+     * que la ligne du module remet en place — ne doit pas la relire une fois
+     * rendue (audits d'octobre). Sous --asan, une lecture morte se voit ici :
+     * depuis un gestionnaire, puis depuis la boîte de messages. */
+    puts("\n== 16. un module supprime la carte courante ==");
+    {
+        Object *un = hc_new_card(st, bg, "Un");
+        Object *deux = hc_new_card(st, bg, "Deux");
+        hc_new_card(st, bg, "Trois");
+        Object *b = hc_new_button(un, "efface");
+        hc_set_script(b, "on mouseUp\n  supprime\n"
+                         "  put \"après : \" & the short name of me\nend mouseUp");
+        hc_set_script(deux, "on efface\n  supprime\n"
+                            "  put \"après : \" & the short name of me\nend efface");
+        hc_set_current_card(un);
+        fais("send mouseUp to button \"efface\"");
+        fais("put the number of cards");
+        hc_set_current_card(deux);
+        fais("send efface to this card");
+        fais("put the number of cards");
+        fais("supprime");
+        fais("put the number of cards && the short name of this card");
     }
 
     hc_unregister_stack(st);

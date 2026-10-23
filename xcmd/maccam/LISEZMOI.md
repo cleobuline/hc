@@ -136,6 +136,7 @@ messages.
 | `PictResource` | une photographie de la fenêtre au presse-papiers |
 | `palette` | acceptée, sans effet : la fenêtre garde sa palette |
 | `planes` | **l'ajout de HC** : les plans montrés, un chiffre par plan — `"1000"` le plan 0 seul, `"0011"` les plans 2 et 3, `"1111"` tous (le défaut) |
+| `colors` | **l'ajout de HC** : la couleur de chaque combinaison de plans, une ligne `"pppp r,g,b"` par motif — `"1000 255,0,0"` le plan 0 seul en rouge, `x` pour l'un ou l'autre |
 
 Ce qui diffère de l'original, décidé par l'utilisatrice : les palettes clut
 de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
@@ -156,6 +157,38 @@ Les guillemets sont conseillés : moins de quatre chiffres se complètent à
 gauche (`100` vaut `0100`), et une valeur incomprise ne change rien. Ce n'est
 pas `palette`, où `1000` est, dans l'original, le numéro d'une clut. Comme l'original,
 `the image0` et `the image1` relisent les tables, et `the phaseA` fait bip.
+
+Ce qui s'ajoute encore, décidé par elle le 19 octobre : `colors`, la couleur
+de chaque combinaison des quatre plans, qui remplace les clut pour de bon.
+Chaque ligne donne un motif — un chiffre par plan, dans l'ordre de
+`planes`, `x` pour « allumé ou éteint » — puis une couleur `r,g,b`, de 0 à
+255. Les lignes jouent dans l'ordre, la dernière l'emporte, et ce qu'aucune
+ne désigne garde sa couleur :
+
+```
+set the colors of window "CAM" to "1000 255,0,0" & return & "0100 0,128,255"
+set the colors of window "CAM" to "1xxx 255,255,255"   -- plan 0 allumé : blanc
+set the colors of window "CAM" to fld "couleurs"        -- une palette dans un champ
+set the colors of window "CAM" to empty                 -- la palette d'origine
+put the colors of window "CAM"     -- les seize, de 0000 à 1111, une par ligne
+```
+
+La palette d'origine, écrite ainsi :
+
+```
+0000 0,0,0
+0010 0,210,90
+0001 255,140,0
+0011 220,210,0
+01xx 0,200,255
+1xxx 255,255,255
+```
+
+`planes` joue avant `colors` : un plan masqué compte comme éteint, puis la
+combinaison qui reste prend sa couleur. Une ligne qu'on ne comprend pas —
+un motif qui n'a pas quatre signes, un nombre au-delà de 255, deux nombres
+au lieu de trois — fait tout refuser, et rien ne change. Seul le dessin
+change : la machine ne sait rien des couleurs.
 
 ## L'essayer
 

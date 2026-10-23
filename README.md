@@ -106,7 +106,9 @@ change de comportement. Le chantier des XCMD et XFCN a eu pour juge MAC•CAM
 Workshop, la pile de Patricia de 1990, un atelier d'automates cellulaires
 bâti sur la CAM-6 de Tommaso Toffoli et Norman Margolus (*Cellular Automata
 Machines*, MIT Press, 1987). Elle tourne dans HC sans qu'une ligne de ses
-scripts ait changé.
+scripts ait changé. Ses XFCN ont été refaites en WebAssembly d'après leur
+code 68000 : FORTH et MACCAM, que Patricia avait écrites elle-même, et
+FullDrag, de Frédéric Rinaldi (1990-1992).
 
 ## Licence
 

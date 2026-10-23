@@ -1,0 +1,190 @@
+LES AUDITS D'OCTOBRE 2026 — CE QUI S'EST REPRODUIT, CE QUI NE S'EST PAS
+=====================================================================
+
+Quatre relectures défensives, demandées par l'utilisatrice : Jules (deux
+versions de son rapport, la seconde après relance sur ses « CONFIRMED »),
+Grok, ChatGPT et un second Claude. Les rapports sont dans docs/audits/, sauf
+celui de Grok (un PDF, gardé hors dépôt). Un constat d'audit est une
+QUESTION posée au code : chacun a été rejoué ici avant d'y toucher.
+
+
+CORRIGÉS, APRÈS REPRODUCTION
+----------------------------
+
+GetCardPicture (Grok 1 ; vu aussi par ChatGPT et le second Claude, sans
+reproduction). rappel_get_card_picture comparait l * t à la taille du tampon
+sans borner l et t : aux extrêmes des int32, l = t = 2³²−1, le produit
+déborde un int64 et le rectangle passait. La peinture de l'hôte écrivait
+alors hors du tampon du module, puis hors de sa mémoire.
+  REPRODUIT : un module d'épreuve (tests/donnees/modules/fenetres.c, message
+  « peinture ») appelle le rappel brut avec INT32_MIN..INT32_MAX ; sans le
+  correctif, le harnais xcmd est TUÉ PAR SEGV.
+  CORRIGÉ : l et t refusés au-delà de n avant le produit, comme DrawXWindow
+  le faisait déjà. Le harnais xcmd rend 0 pour le rectangle géant et pour un
+  rectangle plus grand que son tampon, sans appeler la peinture de l'hôte.
+
+L'heure démesurée (Grok 3). Les minutes et les secondes d'une heure
+s'accumulaient dans un int sans plafond, l'heure se tronquait d'un long long.
+  REPRODUIT : sous UBSan, « 1/1/2000 12:99999999999 is a date » signale le
+  débordement signé aux deux lignes annoncées.
+  CORRIGÉ : le plafond des autres nombres de la date. Le harnais estdate
+  rend « false » pour trois heures démesurées, sans alerte.
+
+Les bords d'une part d'origine (Grok 4). hc_origine.c lisait le Rect d'une
+part en u16, alors qu'un Rect de QuickDraw est signé — le BMAP, plus haut
+dans le même fichier, les lisait déjà en s16.
+  REPRODUIT : le harnais origine monte son bouton à -10 du bord gauche ;
+  avant, il est lu 65526 et le recoupement signale « PERDU … largeur ».
+  CORRIGÉ : s16. Le bouton est lu à -10, rien n'est perdu.
+  NON MESURÉ : une pile réelle dont une part déborde à gauche n'a pas été
+  ouverte ; le format est celui de QuickDraw, et le harnais le monte ainsi.
+
+L'échelle de DrawXWindow (Jules 5). Sans plafond. Côté Cocoa, le dessin se
+calcule en CGFloat et se découpe à la vue : le blocage annoncé n'est PAS
+MESURÉ. Bornée tout de même, de 1 à 64, et dit dans xcmd/hc_xcmd.h.
+
+
+CORRIGÉ SANS POUVOIR LE REJOUER ICI
+-----------------------------------
+
+idle après mouseLeave (Grok 2, reproduit par lui sous ASan avec un harnais
+qui imite la séquence). idleTick, dans HCview.m, envoyait idle à la carte
+qu'il tenait dans une variable locale, après hcv_survol — dont le
+mouseLeave ou le mouseWithin a pu supprimer la carte. Le clic avait déjà le
+garde (hc_object_is_live) ; l'idle est son site jumeau.
+  CORRIGÉ : idle ne part que si la carte vit encore et reste la carte
+  courante ; sinon, il attend le tick suivant.
+  NON MESURÉ ICI : c'est le côté Cocoa, que le conteneur ne compile pas. Le
+  job « interface Cocoa » le compile. À jouer DANS HC (l'application) : une
+  carte dont un bouton porte « on mouseLeave / delete this card / end
+  mouseLeave », la souris qui entre puis sort du bouton. Une lecture morte
+  ne plante pas toujours : l'absence de plantage n'est pas une preuve.
+
+
+NON REPRODUITS
+--------------
+
+Un module qui supprime la carte (Jules 2, « CONFIRMED sous ASan »). Sa trace
+ASan vient de SON programme de test, qui lit un bouton après avoir supprimé
+la carte qui le portait : la libération est le comportement voulu. Rejoué
+par le vrai chemin — un XCMD « supprime » qui envoie « delete this card »,
+depuis le gestionnaire d'un bouton, depuis celui de la carte, et depuis la
+boîte de messages — sous ASan : AUCUNE lecture morte, et les gestionnaires
+finissent proprement. L'épreuve reste dans le harnais xcmd, section 16.
+
+Le module libéré pendant qu'il tourne (Jules 1) : déduction seule, marquée
+NOT REPRODUCED par Jules lui-même dans sa seconde version.
+
+Le collage d'une carte (Jules 4) : remap_bgtexts se protège déjà d'un fond
+absent ; marqué NOT REPRODUCED par Jules dans sa seconde version.
+
+Le tampon static de lit_sommets (Jules 3) : HC lit une pile sur un seul
+fil, et le tampon est écrit avant d'être lu. Pas un défaut d'exécution.
+
+Les débordements de size_t dans les cumuls de taille (ChatGPT 2 à 4, second
+Claude 2 à 4) : bloc de paramètres d'un module, analyse du format texte,
+conversion MacRoman. Tous NOT REPRODUCED par leurs auteurs, et hors
+d'atteinte d'une machine 64 bits aux tailles qu'une pile ou un module
+peuvent porter (un module est coupé à HC_MODULE_OCTETS_MAX). Laissés.
+
+
+SECONDE VAGUE — 23 OCTOBRE : CHATGPT 2 ET GROK 2
+------------------------------------------------
+
+ChatGPT, seconde revue (docs/audits/2026-10-chatgpt-2.md) : lecteurs de
+pile et morceaux de l'interprète. AUCUN constat, et il le dit : il n'a pas
+pu lancer les tests. Son trou a été bouché ici : une quarantaine de lignes
+aux indices extrêmes (char, item, word, line à ±2³¹ et au-delà, en lecture
+et en écriture ; arithmétique qui déborde ; div et mod de −2³¹ par −1 ;
+repeat jusqu'à 2³¹−1 ; numberFormat à 42 décimales), sous ASan et UBSan :
+AUCUNE alerte. La sonde n'est pas gardée : son témoin figerait des réponses
+jamais mesurées dans HyperCard.
+
+Grok, seconde revue (gardée hors dépôt, comme la première) : ce qui entre
+par l'interface, le son, l'enregistrement.
+
+Coller une image d'une autre application (Grok 2.1). paste: gardait l'image
+du système telle quelle ; stamp_clipboard suppose du RVBA 8 bits. Une image
+grise lisait deux octets au-delà de sa ligne, une image sur 1 bit pire.
+Grok l'a reproduit sous ASan sur un modèle C de la boucle ; Cocoa ne
+s'exécute pas ici.
+  LU ICI, ET CONFIRMÉ À LA LECTURE. Le même défaut a un jumeau dans
+  flushPaintToKernel, qui recopie trois octets par point — protégé par ce
+  qui suit, puisque le calque est toujours en RVBA.
+  CORRIGÉ : l'image collée passe par hcp_canonique (rendu public, borné à
+  20 000 points de côté comme hcp_decode, et sûr si AppKit ne peut pas
+  allouer) ; stamp_clipboard refuse en plus tout ce qui n'a pas trois
+  composantes de 8 bits.
+  VÉRIFIÉ, ET PAS UN DÉFAUT : le dessin relu d'une pile (hcp_decode, ancien
+  PNG gardé tel quel) ne sert jamais brut — paint_bitmap le redessine dans
+  son propre calque RVBA. Annoncé à tort comme un jumeau plus grave, puis
+  retiré après lecture de paint_bitmap.
+  NON MESURÉ : les couleurs d'une image collée non RVBA passent maintenant
+  par un dessin, donc par la gestion des couleurs d'AppKit. Une image RVBA
+  8 bits ordinaire n'est pas touchée (hcp_canonique la rend telle quelle).
+
+L'indice d'un grand calque (Grok 2.2). hcp_trace_edges et dither_region
+indexaient en int ce qu'ils allouent en size_t : au-delà d'environ 46 341
+points de côté, l'indice s'enveloppe. Le produit est mesuré par Grok sous
+UBSan ; l'écriture ne l'est pas (un calque de cette taille ne s'alloue pas
+sur son banc ni ici). CORRIGÉ : les indices en size_t.
+
+L'enregistrement qui oubliait le dessin (Grok 2.3, NOT REPRODUCED chez lui :
+lecture). Si un calque ne s'encodait pas, flushPaintToKernel le sautait,
+hc_save écrivait l'ancien dessin et le panneau annonçait la réussite.
+  CORRIGÉ : flushPaintToKernel rend NO si un calque n'est pas repris (ni
+  encodé, ni accepté par hc_set_paint, ni alloué) ; « Save » n'écrit rien
+  et le dit, « save stack as » rend l'échec au script.
+  ET le temporaire va jusqu'au disque avant de prendre le nom de
+  l'original (F_FULLFSYNC sur macOS, fsync ailleurs), puis le dossier.
+  NON MESURÉ : une coupure de courant ne se rejoue pas ici.
+
+Un .wasm lâché était lu en entier avant le plafond de 8 Mio (Grok 2.4).
+CORRIGÉ : la taille se lit d'abord (NSURLFileSizeKey), et le refus vient
+avant la lecture. Le dépôt sur la fenêtre et Objects ▸ Modules… passent
+tous deux par hcdlg_ajoute_modules : un seul site.
+
+Le son (Grok) : rien à signaler sous les bornes de hc_notes.c ; le moteur
+audio de Cocoa n'a pas été exécuté — un taux d'échantillonnage absurde et
+un son de plus de 30 secondes joué en mélodie restent NON MESURÉS.
+
+
+JULES, SECONDE REVUE (23 octobre)
+---------------------------------
+
+La navigation vers une carte que closeCard supprime (Jules 2.1 et 2.2, et
+pop dans son inventaire). go, find et pop envoient closeCard — puis
+closeBackground, closeStack — à la carte de départ AVANT de poser
+l'arrivée. Un « delete card » de ce gestionnaire qui vise l'arrivée la
+libère au retour de son envoi ; la navigation lisait ensuite dst->bg, son
+nom, et lui envoyait openCard. Ce sont les sites jumeaux d'idleTick, que
+le prompt de la seconde revue demandait de chercher.
+  REPRODUIT ICI, par un vrai script (tests/harnais/navdetruit.c, un
+  closeCard armé par une globale) : heap-use-after-free dans v3_va_a sous
+  ASan.
+  PREMIER CORRECTIF, RETIRÉ : hc_object_is_live après chaque message. Il ne
+  connaît que les piles ENREGISTRÉES : seize harnais, dont les piles ne le
+  sont pas, ne naviguaient plus du tout. La suite l'a dit tout de suite.
+  CORRECTIF : les variables locales guettées (guette, cesse_de_guetter) —
+  la navigation inscrit l'adresse de sa carte d'arrivée et du fond qu'elle
+  quitte, et oublie_objet_interne les remet à NULL quand l'objet meurt,
+  comme il le fait des globales. Si l'arrivée n'est plus : on reste sur
+  place, the result vaut « No such card » (go, pop) ou « Not found »
+  (find), comme pour une carte absente. Le fond quitté, s'il est mort avec
+  une carte qui s'est supprimée elle-même, ne reçoit plus closeBackground.
+  Le harnais rejoue les quatre cas sous ASan : aucune lecture morte.
+  NON MESURÉ : ce que fait HyperCard quand closeCard supprime l'arrivée.
+
+stillDownTick (Jules 2.3, NOT REPRODUCED chez lui). FAUSSE ALERTE, à la
+lecture : _doc.pressed est l'un des emplacements que hcv_oublie_dans remet
+à NULL quand un objet meurt, et le minuteur le relit à chaque tic. Grok
+l'avait dit dans sa première revue.
+
+La taille du bloc de paramètres d'un module (Jules 2, frontière WASM) :
+théorique, argc est refusé au-delà de 16, et la somme ne peut approcher
+SIZE_MAX sur une machine 64 bits. Laissé, comme les constats semblables de
+ChatGPT et du second Claude.
+
+Son tableau de la frontière WASM dit encore GetCardPicture « PROTÉGÉ » par
+le calcul en 64 bits : c'est précisément ce calcul qui débordait (Grok 1).
+Il lisait la ligne, pas le produit.

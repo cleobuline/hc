@@ -1138,8 +1138,23 @@ static NSMenu *gRecentMenu = nil;
     NSWindow *hote = doc.window;
     void (^fini)(NSModalResponse) = ^(NSModalResponse reponse) {
         if (reponse != NSModalResponseOK) return;
-        [doc.view flushPaintToKernel];
         NSString *path = [[panel URL] path];
+
+        /* UN DESSIN QUE LE NOYAU N'A PAS REPRIS : on n'enregistre pas. Le
+         * fichier aurait été complet, mais avec l'ancien dessin, et le
+         * nouveau n'aurait plus vécu que dans un cache perdu au prochain
+         * lancement (revue 2 de Grok). */
+        if (![doc.view flushPaintToKernel]) {
+            NSAlert *a = [[NSAlert alloc] init];
+            [a setMessageText:@"The stack could not be saved."];
+            [a setInformativeText:
+                @"A drawing could not be prepared for saving, probably for "
+                @"lack of memory. Nothing was written: the original file is "
+                @"intact. Close other applications, then try again."];
+            [a addButtonWithTitle:@"OK"];
+            [a runModal];
+            return;
+        }
 
         /* ENREGISTRER D'ABORD, ADOPTER LE CHEMIN ENSUITE.
          *

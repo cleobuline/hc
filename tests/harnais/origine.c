@@ -451,7 +451,10 @@ static void pose_couche(Tampon *t, const char *type, int id, int fond,
      * pour un bouton. */
     if (avec_champ)  pose_part(&parts, 1, 0, 54, 20, 80, 250,
                                0x0031u, 0x50u, 7, 3, 12, "A", NULL);
-    if (avec_bouton) pose_part(&parts, 2, 1, 302, 20, 324, 110,
+    /* Son bord gauche, à -10, déborde de la carte, ce qu'HyperCard permet :
+     * un Rect de QuickDraw est signé. Lu non signé, il valait 65526, et le
+     * bouton arrivait sans largeur (audit de Grok, octobre). */
+    if (avec_bouton) pose_part(&parts, 2, 1, 302, -10, 324, 110,
                                0x0087u, 0xA5u, 5, 16383, 9, "TORTURE", SCRIPT_BOUTON);
     /* UN TROISIÈME PART, UN CHAMP, POUR LES PLAGES DE STYLE, et il lui en fallait
      * un à lui : les deux autres portent déjà un contenu NU, et deux contenus

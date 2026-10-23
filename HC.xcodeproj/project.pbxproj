@@ -698,7 +698,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 0.8.5;
+				MARKETING_VERSION = 0.8.6;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -720,7 +720,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				MARKETING_VERSION = 0.8.5;
+				MARKETING_VERSION = 0.8.6;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
 				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";

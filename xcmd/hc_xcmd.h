@@ -130,7 +130,8 @@ typedef int WindowPtr;
 typedef struct Rect { short top, left, bottom, right; } Rect;
 
 /* Les événements, sous leurs numéros de HyperCard — lus dans le code de
- * MACCAM, qui les servait. */
+ * MACCAM, qui les servait, et confirmés, noms et numéros, par le
+ * HyperXCmd.h du Mac (Universal Interfaces 3.4, lu, non commis). */
 enum {
     xOpenEvt    = 1000,     /* la fenêtre vient de s'ouvrir */
     xCloseEvt   = 1001,     /* elle se ferme : case de fermeture, close window */
@@ -165,7 +166,8 @@ void CloseXWindow(WindowPtr window);
 /* L'IMAGE DE LA FENÊTRE : `largeur` × `hauteur` points d'un octet, une ligne
  * après l'autre, chacun l'indice d'une couleur de `palette` — 256 couleurs
  * de trois octets, rouge, vert, bleu —, chaque point agrandi en un carré de
- * `echelle` de côté, depuis le coin haut-gauche. HC la garde et la redessine
+ * `echelle` de côté (de 1 à 64 : HC ramène l'échelle dans ces bornes),
+ * depuis le coin haut-gauche. HC la garde et la redessine
  * quand il le faut : pas d'événement « update » à servir. Le CopyBits de
  * HyperCard, réduit à une image indexée. */
 void DrawXWindow(WindowPtr window, const unsigned char *pixels,

@@ -77,6 +77,7 @@
 #include <ctype.h>
 #include <unistd.h>    /* close, pour le fichier temporaire de hc_save */
 #include <sys/stat.h>  /* stat, fchmod : les permissions du fichier remplacé */
+#include <fcntl.h>     /* open, F_FULLFSYNC : le temporaire jusqu'au disque */
 
 /* LA DERNIÈRE VERSION DE FORMAT QUE CE BINAIRE COMPREND.
  *
@@ -510,6 +511,33 @@ static void put_part(FILE *f, Object *o)
     fprintf(f, "end %s\n", kind);
 }
 
+/* Les octets d'un fichier jusqu'au disque. Sur macOS, fsync ne pousse que
+ * jusqu'au contrôleur ; F_FULLFSYNC va jusqu'au support. */
+static int jusqu_au_disque(int fd)
+{
+#ifdef F_FULLFSYNC
+    if (fcntl(fd, F_FULLFSYNC) == 0) return 0;
+#endif
+    return fsync(fd);
+}
+
+/* Le NOM aussi : le dossier qui porte le fichier renommé. Sans effet sur un
+ * système qui ne le permet pas — le fichier lui-même est déjà écrit. */
+static void dossier_jusqu_au_disque(const char *path)
+{
+    const char *barre = strrchr(path, '/');
+    char dossier[1024];
+    if (!barre) snprintf(dossier, sizeof dossier, ".");
+    else if (barre == path) snprintf(dossier, sizeof dossier, "/");
+    else if ((size_t)(barre - path) < sizeof dossier)
+        snprintf(dossier, sizeof dossier, "%.*s", (int)(barre - path), path);
+    else return;
+    int fd = open(dossier, O_RDONLY);
+    if (fd < 0) return;
+    (void)jusqu_au_disque(fd);
+    close(fd);
+}
+
 /* Sauvegarde ATOMIQUE : on écrit à côté, puis on renomme.
  *
  * fopen(path, "w") tronque le fichier AVANT d'écrire quoi que ce soit. Un
@@ -718,8 +746,15 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
     fprintf(f, "end hc-file\n");
 
     /* Les deux vérifications comptent : ferror voit ce qui a échoué en
-     * cours de route, fclose ce qui a échoué en vidant le dernier bloc. */
+     * cours de route, fclose ce qui a échoué en vidant le dernier bloc.
+     *
+     * Et le temporaire va JUSQU'AU DISQUE avant de prendre le nom de
+     * l'original : sans cela, une coupure de courant juste après rename
+     * pouvait laisser le nouveau nom sur des blocs pas encore écrits, et
+     * l'ancien fichier déjà décroché (revue 2 de Grok ; non rejoué). */
     int mauvais = ferror(f);
+    if (!mauvais && (fflush(f) != 0 || jusqu_au_disque(fileno(f)) != 0))
+        mauvais = 1;
     if (fclose(f) != 0) mauvais = 1;
 
     if (mauvais || rename(tmp, path) != 0) {
@@ -728,6 +763,7 @@ static int ecrit_pile(Object *stack, const char *path, int adopte)
         return -1;
     }
     free(tmp);
+    dossier_jusqu_au_disque(path);
     if (adopte) hc_set_stack_path(stack, path);
     return 0;
 }

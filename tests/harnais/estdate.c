@@ -118,6 +118,15 @@ int main(void)
     hc_do("put (\"99/99/99\" is not a date)");
     hc_do("put (\"12/25/96\" is not a date)");
 
+    /* UNE HEURE DÉMESURÉE. Les minutes et les secondes s'accumulaient dans
+     * un int sans plafond, et l'heure se tronquait d'un long long : un
+     * débordement signé sur du texte venu d'une pile (audit de Grok,
+     * octobre). Ce ne sont pas des dates, et rien ne doit déborder. */
+    puts("\n=== une heure démesurée ===");
+    hc_do("put (\"1/1/2000 12:99999999999\" is a date)");
+    hc_do("put (\"1/1/2000 12:30:99999999999\" is a date)");
+    hc_do("put (\"1/1/2000 99999999999:30\" is a date)");
+
     hc_free(st);
     return 0;
 }

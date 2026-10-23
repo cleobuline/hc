@@ -11,10 +11,16 @@
 /* Ramène une rep à un format canonique : RGBA 8 bits, non planaire,
    lignes compactes. Cocoa aligne parfois bytesPerRow sur 4 ou 16 octets ;
    sans ce passage, on compresserait le remplissage de fin de ligne et
-   l'image relue serait décalée en diagonale. */
-static NSBitmapImageRep *hcp_canonique(NSBitmapImageRep *src)
+   l'image relue serait décalée en diagonale.
+
+   Public depuis la revue 2 de Grok : une image collée depuis une autre
+   application peut être grise, sur 1 bit, ou planaire, et tout le dessin
+   suppose ce format. Rend nil pour une image vide, de plus de 20 000 points
+   de côté (le plafond de hcp_decode), ou qu'AppKit n'a pas pu allouer. */
+NSBitmapImageRep *hcp_canonique(NSBitmapImageRep *src)
 {
     NSInteger w = [src pixelsWide], h = [src pixelsHigh];
+    if (!src || w <= 0 || h <= 0 || w > 20000 || h > 20000) return nil;
 
     if ([src bytesPerRow] == w * 4 && [src samplesPerPixel] == 4 &&
         [src bitsPerSample] == 8 && ![src isPlanar])
@@ -27,6 +33,7 @@ static NSBitmapImageRep *hcp_canonique(NSBitmapImageRep *src)
                                                   hasAlpha:YES isPlanar:NO
                                             colorSpaceName:NSDeviceRGBColorSpace
                                                bytesPerRow:w * 4 bitsPerPixel:32];
+    if (!dst || ![dst bitmapData]) return nil;
     NSGraphicsContext *ctx =
         [NSGraphicsContext graphicsContextWithBitmapImageRep:dst];
     [NSGraphicsContext saveGraphicsState];
@@ -42,6 +49,7 @@ NSString *hcp_encode(NSBitmapImageRep *rep)
 {
     if (!rep) return nil;
     NSBitmapImageRep *plan = hcp_canonique(rep);
+    if (!plan) return nil;
     NSInteger w = [plan pixelsWide], h = [plan pixelsHigh];
 
     NSCAssert([plan bytesPerRow] == w * 4, @"hcp_encode : lignes non compactes");
