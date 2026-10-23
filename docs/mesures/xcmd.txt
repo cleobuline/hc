@@ -897,6 +897,10 @@ width et height (SizeWindow) ; « rect » s'écrit dans le portRect de la
 fenêtre, puis Hide et Show — une bizarrerie qu'aucun script de la pile
 n'éveille. image7 à image4 demandent la peinture de la carte par
 GetMaskAndData (requête 0x1d), puis CopyBits depuis le rectangle donné.
+LE NOM EST DE MÉMOIRE, PAS LU : seul le numéro 0x1d l'est. L'en-tête du Mac,
+lu le 19 octobre (plus haut), ne connaît pas de GetMaskAndData ; et l'en-tête
+du IIGS donne 29 — 0x1d — à ScanToZero. Ce que la requête rend, en
+revanche, se lit dans le code : la peinture de la carte, que CopyBits copie.
 
 CE QUE HC EN FAIT, ÉCRIT le même soir (hc_wasm.c, xcmd/hc_xcmd.h) :
   · le MÊME CONTRAT pour le module : paramCount à -1, un XWEventInfo
@@ -1293,6 +1297,19 @@ MESURÉ DANS HC (l'application), le 17 octobre au soir, par l'utilisatrice,
 sur la carte {ex: Fermat} : « FERMAT2 s'exécute parfaitement malgré le
 inline 68000 ». Avec le module accéléré : « c'est un peu plus rapide » —
 la durée n'est pas relevée ; dans le conteneur, deux fois plus vite.
+
+MESURÉ DANS HC (l'application), le 20 octobre, par l'utilisatrice, sur la
+même carte : « ça prend une seconde dans la stack » — à l'œil, du clic au
+résultat, sur son Mac de 2012 (dit par elle ensuite : « à l'usage sur mon
+vieux mac de 2012 c'est tout à fait bien »). Dans le conteneur, le FORTH
+seul : 0,54 s.
+MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II), le même jour, par l'utilisatrice,
+la même carte avec l'XFCN d'origine : « c'est instantané ». Les réglages de
+l'émulateur (processeur, JIT) non relevés. L'écart s'explique, et ne se
+comble pas sans ce qui a été refusé : l'original COMPILAIT du code 68000,
+que Basilisk traduit en code de la machine hôte ; notre FORTH INTERPRÈTE
+ses opérations, et tourne lui-même dans l'interprète de WAMR — déjà le
+« fast » (HC/tiers/wamr_hc.h), sans JIT ni AOT, décidé le 17 octobre.
 
 LA RÉVERSIBILITÉ, MESURÉE DANS HC (l'application), le 17 octobre au soir,
 par l'utilisatrice, sur la carte « Billard sf » de MAC•CAM Workshop — le

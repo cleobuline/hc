@@ -6367,13 +6367,22 @@ static int parse_datetime_ex(const char *s, struct tm *tm, int *strict)
                 p++;
             }
             if (*p == ':') {                       /* début d'une heure */
+                /* Plafonnées comme v : « 12:9999999999 » débordait l'int des
+                 * minutes. Un nombre de cette taille n'est jamais une heure ;
+                 * le mode strict le refuse, convert le normalise. */
                 sawcolon = 1;
-                hh = (int)v; p++;
+                hh = v < 100000 ? (int)v : 100000; p++;
                 mi = 0;
-                while (isdigit((unsigned char)*p)) { mi = mi * 10 + (*p - '0'); p++; }
+                while (isdigit((unsigned char)*p)) {
+                    if (mi < 100000) mi = mi * 10 + (*p - '0');
+                    p++;
+                }
                 if (*p == ':') {
                     p++; ss = 0;
-                    while (isdigit((unsigned char)*p)) { ss = ss * 10 + (*p - '0'); p++; }
+                    while (isdigit((unsigned char)*p)) {
+                        if (ss < 100000) ss = ss * 10 + (*p - '0');
+                        p++;
+                    }
                 }
             } else if (nn < 12) {
                 nums[nn++] = v;
