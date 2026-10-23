@@ -385,7 +385,9 @@ static void rappel_close_xwindow(wasm_exec_env_t env, uint64_t *args)
 }
 
 /* Les tailles se vérifient ICI, sur le fil du module : WAMR a vérifié que
- * chaque tampon tient dans sa mémoire, pas qu'il tient l'image annoncée. */
+ * chaque tampon tient dans sa mémoire, pas qu'il tient l'image annoncée.
+ * L'échelle est bornée : une image de 256 points y fait déjà 16 384 pixels. */
+enum { ECHELLE_MAX = 64 };
 static void rappel_draw_xwindow(wasm_exec_env_t env, uint64_t *args)
 {
     int32_t npx = entier(args, 2), l = entier(args, 3), h = entier(args, 4);
@@ -396,7 +398,7 @@ static void rappel_draw_xwindow(wasm_exec_env_t env, uint64_t *args)
                            .pixels = (const unsigned char *)(uintptr_t)args[1],
                            .largeur = l, .hauteur = h,
                            .palette = (const unsigned char *)(uintptr_t)args[5],
-                           .echelle = e < 1 ? 1 : e });
+                           .echelle = e < 1 ? 1 : e > ECHELLE_MAX ? ECHELLE_MAX : e });
 }
 
 static void rappel_copy_xwindow(wasm_exec_env_t env, uint64_t *args)
@@ -417,7 +419,13 @@ static void rappel_get_card_picture(wasm_exec_env_t env, uint64_t *args)
     int32_t g = entier(args, 0), h = entier(args, 1);
     int32_t d = entier(args, 2), b = entier(args, 3), n = entier(args, 5);
     int64_t l = (int64_t)d - g, t = (int64_t)b - h;
-    if (l <= 0 || t <= 0 || l * t > n) { rend(args, 0); return; }
+    /* l et t bornés par n AVANT leur produit : aux extrêmes des int32, ils
+     * valent 2³²−1 chacun, le produit déborde un int64, et le rectangle
+     * passait — la peinture écrivait alors hors du tampon (audits d'octobre). */
+    if (n <= 0 || l <= 0 || t <= 0 || l > n || t > n || l * t > n) {
+        rend(args, 0);
+        return;
+    }
     Appel *a = confie(env, (Demande){ .quoi = D_PEINTURE,
                                       .rect = { g, h, d, b },
                                       .noir = (unsigned char *)(uintptr_t)args[4] });

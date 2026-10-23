@@ -166,7 +166,8 @@ void CloseXWindow(WindowPtr window);
 /* L'IMAGE DE LA FENÊTRE : `largeur` × `hauteur` points d'un octet, une ligne
  * après l'autre, chacun l'indice d'une couleur de `palette` — 256 couleurs
  * de trois octets, rouge, vert, bleu —, chaque point agrandi en un carré de
- * `echelle` de côté, depuis le coin haut-gauche. HC la garde et la redessine
+ * `echelle` de côté (de 1 à 64 : HC ramène l'échelle dans ces bornes),
+ * depuis le coin haut-gauche. HC la garde et la redessine
  * quand il le faut : pas d'événement « update » à servir. Le CopyBits de
  * HyperCard, réduit à une image indexée. */
 void DrawXWindow(WindowPtr window, const unsigned char *pixels,
