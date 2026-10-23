@@ -152,24 +152,24 @@ void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
                 }
                 if (!inside) continue;               // hors polygone : intact
             }
-            use[y*w+x] = 1;
-            lum[y*w+x] = 0.299*px[0] + 0.587*px[1] + 0.114*px[2];
+            use[(size_t)y*w+x] = 1;
+            lum[(size_t)y*w+x] = 0.299*px[0] + 0.587*px[1] + 0.114*px[2];
         }
     }
 
     // diffusion d'erreur
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (!use[y*w+x]) continue;
-            double old = lum[y*w+x];
+            if (!use[(size_t)y*w+x]) continue;
+            double old = lum[(size_t)y*w+x];
             double nv  = (old < 128.0) ? 0.0 : 255.0;
             double err = old - nv;
-            lum[y*w+x] = nv;
-            if (x+1 < w && use[y*w+x+1])          lum[y*w+x+1]     += err * 7.0/16.0;
+            lum[(size_t)y*w+x] = nv;
+            if (x+1 < w && use[(size_t)y*w+x+1])          lum[(size_t)y*w+x+1]     += err * 7.0/16.0;
             if (y+1 < h) {
-                if (x > 0 && use[(y+1)*w+x-1])    lum[(y+1)*w+x-1] += err * 3.0/16.0;
-                if (use[(y+1)*w+x])               lum[(y+1)*w+x]   += err * 5.0/16.0;
-                if (x+1 < w && use[(y+1)*w+x+1])  lum[(y+1)*w+x+1] += err * 1.0/16.0;
+                if (x > 0 && use[(size_t)(y+1)*w+x-1])    lum[(size_t)(y+1)*w+x-1] += err * 3.0/16.0;
+                if (use[(size_t)(y+1)*w+x])               lum[(size_t)(y+1)*w+x]   += err * 5.0/16.0;
+                if (x+1 < w && use[(size_t)(y+1)*w+x+1])  lum[(size_t)(y+1)*w+x+1] += err * 1.0/16.0;
             }
         }
     }
@@ -177,9 +177,9 @@ void dither_region(NSBitmapImageRep *rep, int x0, int y0, int x1, int y1,
     // ecriture en noir ou blanc pur
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            if (!use[y*w+x]) continue;
+            if (!use[(size_t)y*w+x]) continue;
             unsigned char *px = data + (y0+y)*bpr + (x0+x)*spp;
-            unsigned char v = (lum[y*w+x] < 128.0) ? 0 : 255;
+            unsigned char v = (lum[(size_t)y*w+x] < 128.0) ? 0 : 255;
             px[0]=v; px[1]=v; px[2]=v;
             if (spp>=4) px[3]=255;
         }
@@ -923,6 +923,11 @@ void stamp_clipboard(NSBitmapImageRep *rep, NSPoint pos) {
     unsigned char *src = [gClipboard bitmapData];
     NSInteger dbpr = [rep bytesPerRow], dspp = [rep samplesPerPixel];
     NSInteger sbpr = [gClipboard bytesPerRow], sspp = [gClipboard samplesPerPixel];
+    /* Trois composantes de 8 bits au moins, des deux côtés : le collage les
+     * canonise (hcp_canonique), ceci n'est que la ceinture. */
+    if (!dst || !src || sspp < 3 || dspp < 3 || [gClipboard isPlanar] ||
+        [gClipboard bitsPerSample] != 8 || [rep bitsPerSample] != 8)
+        return;
 
     for (int y = 0; y < gClipH; y++) {
         for (int x = 0; x < gClipW; x++) {

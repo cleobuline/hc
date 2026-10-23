@@ -6923,7 +6923,11 @@ static BOOL hcv_presse_image_systeme(void)
         NSArray *imgs = [pb readObjectsForClasses:@[[NSImage class]] options:nil];
         if (imgs.count > 0) {
             NSData *tiff = [imgs[0] TIFFRepresentation];
-            NSBitmapImageRep *ext = [NSBitmapImageRep imageRepWithData:tiff];
+            /* Ramenée au format du dessin : une image grise, sur 1 bit ou
+             * planaire faisait lire stamp_clipboard au-delà de ses lignes
+             * (revue 2 de Grok). */
+            NSBitmapImageRep *ext =
+                hcp_canonique([NSBitmapImageRep imageRepWithData:tiff]);
             if (ext) {
                 acoller = ext;
                 gClipW = (int)[ext pixelsWide];
