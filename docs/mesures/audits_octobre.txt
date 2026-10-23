@@ -86,3 +86,64 @@ Claude 2 à 4) : bloc de paramètres d'un module, analyse du format texte,
 conversion MacRoman. Tous NOT REPRODUCED par leurs auteurs, et hors
 d'atteinte d'une machine 64 bits aux tailles qu'une pile ou un module
 peuvent porter (un module est coupé à HC_MODULE_OCTETS_MAX). Laissés.
+
+
+SECONDE VAGUE — 23 OCTOBRE : CHATGPT 2 ET GROK 2
+------------------------------------------------
+
+ChatGPT, seconde revue (docs/audits/2026-10-chatgpt-2.md) : lecteurs de
+pile et morceaux de l'interprète. AUCUN constat, et il le dit : il n'a pas
+pu lancer les tests. Son trou a été bouché ici : une quarantaine de lignes
+aux indices extrêmes (char, item, word, line à ±2³¹ et au-delà, en lecture
+et en écriture ; arithmétique qui déborde ; div et mod de −2³¹ par −1 ;
+repeat jusqu'à 2³¹−1 ; numberFormat à 42 décimales), sous ASan et UBSan :
+AUCUNE alerte. La sonde n'est pas gardée : son témoin figerait des réponses
+jamais mesurées dans HyperCard.
+
+Grok, seconde revue (gardée hors dépôt, comme la première) : ce qui entre
+par l'interface, le son, l'enregistrement.
+
+Coller une image d'une autre application (Grok 2.1). paste: gardait l'image
+du système telle quelle ; stamp_clipboard suppose du RVBA 8 bits. Une image
+grise lisait deux octets au-delà de sa ligne, une image sur 1 bit pire.
+Grok l'a reproduit sous ASan sur un modèle C de la boucle ; Cocoa ne
+s'exécute pas ici.
+  LU ICI, ET CONFIRMÉ À LA LECTURE. Le même défaut a un jumeau dans
+  flushPaintToKernel, qui recopie trois octets par point — protégé par ce
+  qui suit, puisque le calque est toujours en RVBA.
+  CORRIGÉ : l'image collée passe par hcp_canonique (rendu public, borné à
+  20 000 points de côté comme hcp_decode, et sûr si AppKit ne peut pas
+  allouer) ; stamp_clipboard refuse en plus tout ce qui n'a pas trois
+  composantes de 8 bits.
+  VÉRIFIÉ, ET PAS UN DÉFAUT : le dessin relu d'une pile (hcp_decode, ancien
+  PNG gardé tel quel) ne sert jamais brut — paint_bitmap le redessine dans
+  son propre calque RVBA. Annoncé à tort comme un jumeau plus grave, puis
+  retiré après lecture de paint_bitmap.
+  NON MESURÉ : les couleurs d'une image collée non RVBA passent maintenant
+  par un dessin, donc par la gestion des couleurs d'AppKit. Une image RVBA
+  8 bits ordinaire n'est pas touchée (hcp_canonique la rend telle quelle).
+
+L'indice d'un grand calque (Grok 2.2). hcp_trace_edges et dither_region
+indexaient en int ce qu'ils allouent en size_t : au-delà d'environ 46 341
+points de côté, l'indice s'enveloppe. Le produit est mesuré par Grok sous
+UBSan ; l'écriture ne l'est pas (un calque de cette taille ne s'alloue pas
+sur son banc ni ici). CORRIGÉ : les indices en size_t.
+
+L'enregistrement qui oubliait le dessin (Grok 2.3, NOT REPRODUCED chez lui :
+lecture). Si un calque ne s'encodait pas, flushPaintToKernel le sautait,
+hc_save écrivait l'ancien dessin et le panneau annonçait la réussite.
+  CORRIGÉ : flushPaintToKernel rend NO si un calque n'est pas repris (ni
+  encodé, ni accepté par hc_set_paint, ni alloué) ; « Save » n'écrit rien
+  et le dit, « save stack as » rend l'échec au script.
+  ET le temporaire va jusqu'au disque avant de prendre le nom de
+  l'original (F_FULLFSYNC sur macOS, fsync ailleurs), puis le dossier.
+  NON MESURÉ : une coupure de courant ne se rejoue pas ici.
+
+Un .wasm lâché était lu en entier avant le plafond de 8 Mio (Grok 2.4).
+CORRIGÉ : la taille se lit d'abord (NSURLFileSizeKey), et le refus vient
+avant la lecture. Le dépôt sur la fenêtre et Objects ▸ Modules… passent
+tous deux par hcdlg_ajoute_modules : un seul site.
+
+Le son (Grok) : rien à signaler sous les bornes de hc_notes.c ; le moteur
+audio de Cocoa n'a pas été exécuté — un taux d'échantillonnage absurde et
+un son de plus de 30 secondes joué en mélodie restent NON MESURÉS.
