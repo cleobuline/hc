@@ -789,6 +789,31 @@ int main(int argc, char **argv)
         }
     }
 
+    /* UN MODULE QUI SUPPRIME LA CARTE COURANTE. Ce qui la tenait pendant
+     * l'appel — le gestionnaire qui l'a lancé, le « me » et la « target »
+     * que la ligne du module remet en place — ne doit pas la relire une fois
+     * rendue (audits d'octobre). Sous --asan, une lecture morte se voit ici :
+     * depuis un gestionnaire, puis depuis la boîte de messages. */
+    puts("\n== 16. un module supprime la carte courante ==");
+    {
+        Object *un = hc_new_card(st, bg, "Un");
+        Object *deux = hc_new_card(st, bg, "Deux");
+        hc_new_card(st, bg, "Trois");
+        Object *b = hc_new_button(un, "efface");
+        hc_set_script(b, "on mouseUp\n  supprime\n"
+                         "  put \"après : \" & the short name of me\nend mouseUp");
+        hc_set_script(deux, "on efface\n  supprime\n"
+                            "  put \"après : \" & the short name of me\nend efface");
+        hc_set_current_card(un);
+        fais("send mouseUp to button \"efface\"");
+        fais("put the number of cards");
+        hc_set_current_card(deux);
+        fais("send efface to this card");
+        fais("put the number of cards");
+        fais("supprime");
+        fais("put the number of cards && the short name of this card");
+    }
+
     hc_unregister_stack(st);
     hc_free(st);
     return 0;

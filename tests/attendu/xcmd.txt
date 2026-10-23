@@ -40,11 +40,11 @@
    la pile garde 1 module(s)
 
 == 5. les épreuves : un module qui se conduit mal ==
-   ajoute epreuves.wasm (3075 octets) : accepté
+   ajoute epreuves.wasm (3149 octets) : accepté
    module « bonjour » : 2 externe(s)
       XCMD bonjour
       XFCN bonjour
-   module « epreuves » : 11 externe(s)
+   module « epreuves » : 12 externe(s)
       XCMD boucle
       XCMD patiente
       XCMD bavarde
@@ -52,6 +52,7 @@
       XCMD hors
       XFCN hors
       XCMD reentre
+      XCMD supprime
       XCMD resultat
       XCMD passe
       XCMD mauvaise
@@ -221,7 +222,7 @@
       = COMPILE_ERR Unknow'd word /9 [5 ]
 
 == 11. les fenêtres d'un module ==
-   ajoute fenetres.wasm (5248 octets) : accepté
+   ajoute fenetres.wasm (5414 octets) : accepté
    put fenetre("Essai")
       = 0
    -- ouverte : xOpenEvt arrive quand l'appel est fini
@@ -258,6 +259,8 @@
       hôte : la peinture de la carte, 2,1,6,3
       = GetCardPicture : 1 — 1010 0101
       = GetCardPicture d'un rectangle vide : 0
+      = GetCardPicture d'un rectangle géant : 0
+      = GetCardPicture plus grand que son tampon : 0
    send "largeur" to window "Essai"
       = xSendEvt « largeur »
       hôte : pose 2 width = 200
@@ -364,7 +367,7 @@
       hôte : ferme 8
       hôte : ferme 9
       hôte : ferme 10
-   ajoute fenetres.wasm (5248 octets) : accepté
+   ajoute fenetres.wasm (5414 octets) : accepté
    put there is a window "Quatre"
       = false
 
@@ -799,3 +802,19 @@
    tampon de 4 : 8 externe(s), 3 octet(s)
       …
    tampon de 1 : 8 externe(s), 0 octet(s)
+
+== 16. un module supprime la carte courante ==
+   send mouseUp to button "efface"
+         ⚙ XCMD supprime
+      = après : efface
+   put the number of cards
+      = 3
+   send efface to this card
+         ⚙ XCMD supprime
+      = après : Deux
+   put the number of cards
+      = 2
+   supprime
+         ⚙ XCMD supprime
+   put the number of cards && the short name of this card
+      = 1 C
