@@ -2165,10 +2165,19 @@ int hcdlg_ajoute_modules(Object *pile, NSArray<NSURL *> *urls)
             continue;
         NSString *nom = [[u lastPathComponent] stringByDeletingPathExtension];
         NSError *err = nil;
-        NSData *d = [NSData dataWithContentsOfURL:u options:0 error:&err];
         char pourquoi[300] = "";
         int r = -1;
-        if (!d)
+        /* La taille AVANT la lecture : le plafond du noyau arrivait après
+         * qu'un fichier de n'importe quelle taille avait été chargé en
+         * entier (revue 2 de Grok). */
+        NSNumber *taille = nil;
+        [u getResourceValue:&taille forKey:NSURLFileSizeKey error:NULL];
+        NSData *d = nil;
+        if (taille && [taille unsignedLongLongValue] > HC_MODULE_OCTETS_MAX)
+            snprintf(pourquoi, sizeof pourquoi,
+                     "the module is %llu bytes, %d at most",
+                     [taille unsignedLongLongValue], HC_MODULE_OCTETS_MAX);
+        else if (!(d = [NSData dataWithContentsOfURL:u options:0 error:&err]))
             snprintf(pourquoi, sizeof pourquoi, "the file cannot be read (%s)",
                      err ? [[err localizedDescription] UTF8String] : "?");
         else
