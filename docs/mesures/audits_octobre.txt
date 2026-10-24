@@ -325,11 +325,36 @@ Le collage refusé se dit d'un bip. LU, NON REJOUÉ : Cocoa.
     · New Card et New Background posent la carte JUSTE APRÈS la courante
       (B, D) : hc_new_card_after, appelé par les deux menus.
 
+  A ET C ÉTAIENT VIDES, et le second banc a dit pourquoi : « S: 0 », le
+  script de pile de test8 était vide — le journal n'écoutait rien. Remis
+  en place (S: 34), dans la même pile, deux mesures côte à côte :
+
+      T (go next card, depuis la carte 4) :
+          closeCard - 4 - card id 10709
+          openCard - 5 - card id 11506
+      A (New Card, depuis la carte 4) :
+          closeCard - 4 - card id 10709
+          newCard - 5 - card id 12129
+          openCard - 5 - card id 12129
+      C (New Background, depuis la carte 5) :
+          closeCard - 5 - card id 12129
+          closeBackground - 5 - card id 12129
+          newBackground - 6 - card id 12698
+          newCard - 6 - card id 12698
+          openBackground - 6 - card id 12698
+          openCard - 6 - card id 12698
+
+  T montre que le journal marche ; A et C donnent l'ordre, et the target
+  de CHAQUE message est une carte — l'ancienne pour closeCard et
+  closeBackground, la neuve pour le reste. HC envoyait newBackground au
+  fond. CORRIGÉ : hc_nouvelle_carte, que les deux menus appellent
+  (harnais menucarte, qui rejoue A et C et leurs cibles).
+
   CE QUI RESTE OUVERT :
-    · A et C sont vides : le journal des messages n'a rien reçu. Soit le
-      script de pile n'était pas là où il fallait, soit HyperCard n'envoie
-      rien — à refaire avant de toucher aux messages des deux menus ;
-    · K : « go bkgnd "" » change de carte sans rien dire. Peut-être le fond
-      d'origine de test8 n'a-t-il pas de nom, et HyperCard le prend pour
-      "" — ce qu'il ne fait pas pour une carte. NON COMPRIS ; HC n'y touche
-      pas.
+    · la cible de closeBackground et d'openBackground pendant un GO :
+      change_de_carte les envoie au fond, et C dit qu'HyperCard les envoie
+      à la carte. T ne tranche pas (même fond des deux côtés). NON MESURÉ ;
+    · K : « go bkgnd "" » change de carte sans rien dire. Les huit fonds de
+      test8 sont tous sans nom (ligne N du second banc) : HyperCard semble
+      prendre "" pour « un fond sans nom », ce qu'il ne fait pas pour une
+      carte. NON COMPRIS ; HC n'y touche pas.
