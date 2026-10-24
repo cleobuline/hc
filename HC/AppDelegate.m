@@ -1028,16 +1028,18 @@ static NSMenu *gRecentMenu = nil;
     if (!pile) return;
 
     HCDocument *doc = [HCDocument current];
-    doc.cardCount = doc.cardCount + 1;
 
     /* UNE CARTE NEUVE N'A PAS DE NOM, comme dans HyperCard — dit par
      * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ».
      *
-     * ET ELLE VA JUSTE APRÈS LA CARTE COURANTE, pas en fin de pile :
-     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre — depuis la
-     * carte 2, la carte neuve est la 3 (revue du 24 octobre, constat 5). */
-    Object *c = hc_new_card_after(pile, cur->bg, "", cur);
-    hc_set_current_card(c);
+     * Le noyau la pose juste après la carte courante et lui envoie ses
+     * messages dans l'ordre d'HyperCard — closeCard, newCard, openCard —,
+     * MESURÉS DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre. Ce menu
+     * mettait la carte en fin de pile et n'envoyait rien (revue du 24
+     * octobre, constat 5). Le compte se relit : un gestionnaire a pu
+     * supprimer des cartes. */
+    hc_nouvelle_carte(0);
+    doc.cardCount = hc_card_count(pile);
     [doc.view setNeedsDisplay:YES];
 }
 - (void)deleteCard:(id)sender {

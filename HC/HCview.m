@@ -6314,26 +6314,18 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     if (!stack) return;
 
     /* Un fond neuf n'a pas de nom, comme dans HyperCard (dit par
-     * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ». */
-    Object *bg = hc_new_background(stack, "");
-    /* Juste après la carte courante, comme New Card : MESURÉ DANS
-     * HYPERCARD 2.4.1 (Basilisk II) le 24 octobre, depuis la carte 2 la
-     * carte du fond neuf est la 3. HC la mettait en fin de pile. */
-    Object *nc = hc_new_card_after(stack, bg, "", card);
-    hc_set_current_card(nc);
-    gSelected = NULL;
-    [gView setNeedsDisplay:YES];
-
-    /* Les deux messages, dans l'ordre d'HyperCard : le fond naît, puis la
-     * première carte qui s'y appuie. Envoyés une fois la carte devenue
-     * courante, sans quoi « the target » et « me » désigneraient encore la
-     * carte d'où l'on vient.
+     * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ».
      *
-     * `nc` est une variable locale, comme le `hit` du clic : un
-     * newBackground qui supprime la carte la libère au retour de son envoi.
-     * On demande donc au noyau si elle est encore là (revue du 24 octobre). */
-    hc_send(bg, "newBackground");
-    if (hc_object_is_live(nc)) hc_send(nc, "newCard");
+     * Le noyau crée le fond et sa carte juste après la courante, et envoie
+     * les six messages d'HyperCard — closeCard, closeBackground,
+     * newBackground, newCard, openBackground, openCard —, TOUS À UNE
+     * CARTE : MESURÉS DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre. HC
+     * envoyait newBackground au fond, où le script de la carte ne le voyait
+     * pas, et posait la carte en fin de pile. Le noyau garde aussi la carte
+     * qu'un gestionnaire supprimerait (revue du 24 octobre). */
+    gSelected = NULL;
+    hc_nouvelle_carte(1);
+    [gView setNeedsDisplay:YES];
 }
 
 /* UN BOUTON OU UN CHAMP NEUF, tracé à l'outil comme pris au menu Objects :
