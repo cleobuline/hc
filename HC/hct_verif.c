@@ -34,6 +34,10 @@ static void ajoute(HctRapport *r, HctNiveau niv, int ligne, int col,
     snprintf(s->message, sizeof s->message, "%s", msg ? msg : "");
     if (extrait && lex > 0) {
         int n = lex < (int)sizeof s->extrait - 1 ? lex : (int)sizeof s->extrait - 1;
+        /* Couper sur une frontière de caractère : un extrait de trente « é »
+         * se coupait au milieu du trente-deuxième, et l'éditeur recevait de
+         * l'UTF-8 invalide (revue du 24 octobre). */
+        while (n > 0 && n < lex && ((unsigned char)extrait[n] & 0xC0) == 0x80) n--;
         memcpy(s->extrait, extrait, (size_t)n);
         s->extrait[n] = '\0';
     } else s->extrait[0] = '\0';

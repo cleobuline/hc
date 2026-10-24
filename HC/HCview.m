@@ -10439,8 +10439,11 @@ static NSTextField  *gSprayDensityLabel = nil;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
-    char d[64]; hc_describe(obj, d, sizeof d);
-    [panel setTitle:[NSString stringWithFormat:@"Script of %s", d]];
+    /* Assez grand pour le nom entier : coupé au milieu d'un caractère,
+     * hcv_texte le relirait en Latin-1. Et %@, pas %s, qui lit en MacRoman
+     * (revue du 24 octobre). */
+    char d[1100]; hc_describe(obj, d, sizeof d);
+    [panel setTitle:[@"Script of " stringByAppendingString:hcv_texte(d)]];
     /* 258 de haut et non plus 286 : les menus « Handlers » et « Functions »
      * prennent la bande du haut, comme dans HyperCard 2.4. */
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 258)];
@@ -10566,10 +10569,10 @@ static NSTextField  *gSprayDensityLabel = nil;
     NSMutableString *txt = [NSMutableString string];
     for (int i = 0; i < rap.n; i++) {
         HctSignalement *s = &rap.liste[i];
-        [txt appendFormat:@"%@ line %d: %s",
+        [txt appendFormat:@"%@ line %d: %@",
              s->niveau == HCT_V_ERREUR ? @"Error" : @"Warning",
-             s->ligne, s->message];
-        if (s->extrait[0]) [txt appendFormat:@"  [%s]", s->extrait];
+             s->ligne, hcv_texte(s->message)];
+        if (s->extrait[0]) [txt appendFormat:@"  [%@]", hcv_texte(s->extrait)];
         [txt appendString:@"\n"];
     }
 

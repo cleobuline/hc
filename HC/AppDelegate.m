@@ -1094,8 +1094,10 @@ static NSMenu *gRecentMenu = nil;
     if (!pile) { NSBeep(); return; }
     const char *nm = pile->name ? pile->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];
+    /* %@ et non %s : %s lit la chaîne en MacRoman, et un nom de pile en
+     * UTF-8 — « Épreuve » — arrivait en « Ã‰preuve » (revue du 24 octobre). */
     [panel setNameFieldStringValue:
-        [NSString stringWithFormat:@"%s.stack", nm]];
+        [hcv_texte(nm) stringByAppendingString:@".stack"]];
     /* Documents, et NON le dossier de l'application. Celui-ci est en lecture
      * seule quand l'application tourne depuis une image disque, et vaut
      * /Applications une fois installée — deux endroits où l'on n'enregistre
@@ -1510,8 +1512,8 @@ void cocoa_stack_changed(Object *stack) {
          * trois-là n'appellent pas le même geste. */
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"This HyperCard stack cannot be read"];
-        [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%s",
-                               [path lastPathComponent], pourquoi]];
+        [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%@",
+                               [path lastPathComponent], hcv_texte(pourquoi)]];
         [a runModal];
         return NO;
     }
@@ -1628,9 +1630,9 @@ void cocoa_stack_changed(Object *stack) {
         (void)decores;
         if (ressource_illisible)
             [m appendFormat:@"THE ICONS COULD NOT BE READ: the resource of "
-                            @"the MacBinary file is damaged (%s). The stack is "
+                            @"the MacBinary file is damaged (%@). The stack is "
                             @"there; its icon buttons will show an empty "
-                            @"square.\n\n", pourquoi_r];
+                            @"square.\n\n", hcv_texte(pourquoi_r)];
         [m appendString:@"This stack has no file yet: saving will ask for a "
                         @"name, and the original will not be touched."];
 
@@ -1688,8 +1690,8 @@ void cocoa_stack_changed(Object *stack) {
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"The stack cannot be read"];
         [a setInformativeText:
-            pourquoi ? [NSString stringWithFormat:@"%@\n\n%s",
-                                 [path lastPathComponent], pourquoi]
+            pourquoi ? [NSString stringWithFormat:@"%@\n\n%@",
+                                 [path lastPathComponent], hcv_texte(pourquoi)]
                      : [path lastPathComponent]];
         [a runModal];
         return NO;

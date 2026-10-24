@@ -36,3 +36,6 @@
 == 7. LES FAUTES DE SYNTAXE PASSENT AVANT ==
    repeat sans « to »    erreurs=1
       ligne 2 : « to » attendu
+
+== 8. L'EXTRAIT SE COUPE ENTRE DEUX CARACTÈRES ==
+   ligne 2 : 62 octets, entier
