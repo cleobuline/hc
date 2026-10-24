@@ -12239,6 +12239,58 @@ static int change_de_carte(Object *dst, Object *pile, Object *vpile,
 
 /* Le résultat de la recherche, oublié : une recherche qui échoue, ou dont la
  * carte est tombée en route. */
+/* NEW CARD ET NEW BACKGROUND : la carte neuve, et ses messages — MESURÉS
+ * DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre, par un journal tenu
+ * dans le script de la pile (docs/mesures/audits_octobre.txt) :
+ *
+ *   New Card         closeCard à l'ancienne carte ; newCard, openCard à la
+ *                    neuve
+ *   New Background   closeCard, closeBackground à l'ancienne carte ;
+ *                    newBackground, newCard, openBackground, openCard à la
+ *                    neuve
+ *
+ * TOUS PARTENT À UNE CARTE : the target de closeBackground est la carte
+ * qu'on quitte, celui de newBackground et d'openBackground la carte neuve.
+ * La carte neuve se pose juste après la courante (hc_new_card_after). Les
+ * menus de HC posaient la carte en fin de pile, n'envoyaient rien pour New
+ * Card, et newBackground au FOND, où le script de la carte ne le voyait pas
+ * (revue du 24 octobre, constat 5).
+ *
+ * Gardé comme change_de_carte : l'ancienne carte, son fond et la neuve sont
+ * guettés, et chaque message ne part que si sa carte tient encore. Un
+ * closeCard qui supprime l'ancienne carte : la neuve va en fin de pile, et
+ * s'il emporte le fond dont New Card avait besoin, rien n'est créé. Ce que
+ * fait HyperCard dans ces cas : NON MESURÉ. Rend la carte neuve, ou NULL. */
+Object *hc_nouvelle_carte(int fond_neuf)
+{
+    Object *ancienne = g_current_card;
+    Object *pile = ancienne ? owning_stack(ancienne) : NULL;
+    if (!pile) return NULL;
+    Object *fond = ancienne->bg, *neuve = NULL;
+    guette(&pile); guette(&ancienne); guette(&fond); guette(&neuve);
+
+    hc_send_systeme(ancienne, "closeCard");
+    if (fond_neuf && tient_encore(pile, ancienne))
+        hc_send_systeme(ancienne, "closeBackground");
+
+    if (pile && (fond_neuf || fond)) {
+        Object *bg = fond_neuf ? hc_new_background(pile, "") : fond;
+        neuve = hc_new_card_after(pile, bg, "",
+                                  tient_encore(pile, ancienne) ? ancienne : NULL);
+        hc_set_current_card(neuve);
+        if (fond_neuf) hc_send_systeme(neuve, "newBackground");
+        if (tient_encore(pile, neuve)) hc_send_systeme(neuve, "newCard");
+        if (fond_neuf && tient_encore(pile, neuve))
+            hc_send_systeme(neuve, "openBackground");
+        if (tient_encore(pile, neuve)) hc_send_systeme(neuve, "openCard");
+    }
+
+    Object *rendue = tient_encore(pile, neuve) ? neuve : NULL;
+    cesse_de_guetter(&neuve); cesse_de_guetter(&fond);
+    cesse_de_guetter(&ancienne); cesse_de_guetter(&pile);
+    return rendue;
+}
+
 static void trouvaille_oubliee(void)
 {
     g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
