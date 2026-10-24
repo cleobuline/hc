@@ -188,3 +188,103 @@ ChatGPT et du second Claude.
 Son tableau de la frontière WASM dit encore GetCardPicture « PROTÉGÉ » par
 le calcul en 64 bits : c'est précisément ce calcul qui débordait (Grok 1).
 Il lisait la ligne, pas le produit.
+
+
+LA REVUE DU 24 OCTOBRE — UN CLAUDE, EN PROFONDEUR, SUR LA 0.8.6
+---------------------------------------------------------------
+
+Une revue « max » du code de la 0.8.6, demandée par l'utilisatrice. Deux
+constats touchent les correctifs de la 0.8.6 elle-même, publiée la veille :
+la note de version y affirme « HC now stays where it is », et c'était faux
+dans le cas le plus courant.
+
+La navigation, encore (1 et 3). Le guet de la 0.8.6 ne couvrait que les
+messages de FERMETURE, et seulement au premier niveau. Un openBackground ou
+un openCard qui supprime l'arrivée la laissait relire ; et dans le mouseUp
+d'un bouton — g_depth > 0 —, une carte supprimée n'est que DÉTACHÉE (la
+libération attend la fin de l'envoi le plus extérieur) : le guet ne la
+voyait pas mourir, HC posait la carte détachée et perdait sa carte
+courante.
+  REPRODUIT : tests/harnais/navdetruit.c, sections neuves (go et find dans
+  un mouseUp, openBackground qui supprime l'arrivée, pop et find avec un
+  openCard qui se supprime) ; sous ASan, heap-use-after-free dans v3_va_a
+  avant le correctif.
+  CORRIGÉ : une seule suite de messages pour go, find et pop
+  (change_de_carte), relue après CHAQUE message par tient_encore — la carte
+  guettée vit ET appartient encore à sa pile (card_index >= 0), ce qui voit
+  aussi la carte détachée.
+  NON MESURÉ, toujours : ce que fait HyperCard dans ces cas.
+
+find et sa sortie « Not found » (6) laissaient foundText, foundChunk et
+l'encadré posés sur un champ de fond. CORRIGÉ (trouvaille_oubliee), tenu
+par navdetruit.
+
+New Background (2) envoyait newCard à une carte que le gestionnaire
+newBackground avait pu supprimer : le jumeau oublié d'idleTick. CORRIGÉ
+(hc_object_is_live, la pile étant enregistrée dans l'application). NON
+MESURÉ ICI : c'est le côté Cocoa.
+
+flushPaintToKernel (7). Son échec n'était lu que par l'enregistrement.
+Copy Card, Cut Card et Duplicate Card emportaient l'ancien dessin — et Cut
+Card vidait le cache juste après l'échec, perdant le seul exemplaire du
+dessin ; installStack: et loadStackAtPath: pouvaient juger « vierge » une
+pile dont le dessin n'était que dans le cache. CORRIGÉ : un bip, et rien
+n'est fait ; « vierge » exige que le dessin ait été repris. LU, NON REJOUÉ :
+Cocoa.
+
+Le FORTH de MAC•CAM (10). Deux décalages à gauche d'un int signé,
+comportement indéfini :
+  REPRODUIT, sur le FORTH compilé en natif sous UBSan :
+    : T 0 >R -1 >R ; T          « left shift of 65535 by 16 places »
+    : PICK 12315 , -7360 , 14131 , 0 , ; : T 10 20 30 -1 PICK ; T
+                                « left shift of negative value -1 »
+  CORRIGÉ : en non signé. forth.wasm ne change pas d'un octet — wasm décale
+  déjà sans signe ; c'est le source qui était faux, pas le module.
+  JUMEAU, trouvé à la lecture : « planes » accumulait un décalage par
+  chiffre, sans s'arrêter à quatre ; trente-deux « 1 » faisaient déborder.
+  CORRIGÉ comme le motif de « colors », qui s'arrêtait déjà. maccam.wasm
+  reconstruit ; celui que porte une pile déjà faite reste l'ancien, et le
+  défaut n'y demande qu'une chaîne absurde.
+
+%s dans un format NSString (9). %s s'y lit en MacRoman, et les noms comme
+les motifs du noyau sont en UTF-8 : « mémoire » s'affichait « mÃ©moire ».
+Six sites : le nom proposé par Save As, trois alertes d'une pile illisible,
+le titre de l'éditeur de script, les lignes du vérificateur. CORRIGÉ : %@ et
+hcv_texte.
+  JUMEAU, MESURÉ ICI : le vérificateur coupait son extrait à 63 octets sans
+  regarder les caractères ; quarante « é » finissaient sur un octet seul,
+  de l'UTF-8 invalide. Coupé maintenant sur une frontière de caractère
+  (harnais verifnoms, section 8 ; sans le correctif, elle dit « COUPÉ DANS
+  UN CARACTÈRE »).
+  LAISSÉS EN %s, à dessein : les pluriels en ASCII, le type d'un MacBinary
+  (quatre octets MacRoman, que %s lit justement en MacRoman), et la clé
+  interne de champ_plages, qui ne s'affiche pas.
+
+hcp_canonique et le collage (8). Le chemin rapide ne regardait que la
+forme — quatre échantillons de 8 bits, lignes compactes. Une image CMJN
+sans alpha, un alpha en tête ou non prémultiplié passaient tels quels, lus
+comme du RVBA. Et une image du système refusée (plus de 20 000 points de
+côté, ou illisible) faisait coller la dernière copie faite dans HC, une
+AUTRE image. CORRIGÉ : le chemin rapide exige aussi l'alpha, le modèle RVB,
+32 bits par point, alpha en dernier et prémultiplié ; le calque de la
+peinture y passe toujours, l'enregistrement reste l'identité au bit près.
+Le collage refusé se dit d'un bip. LU, NON REJOUÉ : Cocoa.
+
+EN ATTENTE D'UNE MESURE DANS HYPERCARD (Basilisk II) — 4 et 5.
+
+  Une carte sans nom (4). HC nomme "" les cartes neuves du menu, et
+  hc_describe ne teste que NULL : « the name of this card » rend card "",
+  le menu Recent montre card "" pour chacune, et
+      go to line 2 of the recent cards
+  part vers card "", donc vers la PREMIÈRE carte au nom vide. MESURÉ DANS
+  HC : quatre cartes A B C D, B puis C vidées de leur nom, puis D ; « the
+  recent cards » rend card "D", card "", card "" — la ligne 2 est C, la
+  carte 3, et « go to line 2 of the recent cards » mène à la carte 2. (La
+  ligne 3, B, tombait juste par hasard : B est la première carte au nom
+  vide. Une première mesure faite sur elle ne tranchait rien.) Ce que rend
+  HyperCard pour le nom d'une carte sans nom : NON MESURÉ.
+
+  New Card du menu (5). AppDelegate newCard: crée la carte EN FIN DE PILE
+  et n'envoie ni closeCard, ni newCard, ni openCard. New Background a le
+  même défaut (il n'envoie que newBackground et newCard). Ce que fait
+  HyperCard — où va la carte, quels messages, dans quel ordre : NON MESURÉ.
