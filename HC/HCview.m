@@ -6316,7 +6316,10 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     /* Un fond neuf n'a pas de nom, comme dans HyperCard (dit par
      * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ». */
     Object *bg = hc_new_background(stack, "");
-    Object *nc = hc_new_card(stack, bg, "");
+    /* Juste après la carte courante, comme New Card : MESURÉ DANS
+     * HYPERCARD 2.4.1 (Basilisk II) le 24 octobre, depuis la carte 2 la
+     * carte du fond neuf est la 3. HC la mettait en fin de pile. */
+    Object *nc = hc_new_card_after(stack, bg, "", card);
     hc_set_current_card(nc);
     gSelected = NULL;
     [gView setNeedsDisplay:YES];

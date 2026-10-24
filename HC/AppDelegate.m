@@ -1031,8 +1031,12 @@ static NSMenu *gRecentMenu = nil;
     doc.cardCount = doc.cardCount + 1;
 
     /* UNE CARTE NEUVE N'A PAS DE NOM, comme dans HyperCard — dit par
-     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ». */
-    Object *c = hc_new_card(pile, cur->bg, "");
+     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ».
+     *
+     * ET ELLE VA JUSTE APRÈS LA CARTE COURANTE, pas en fin de pile :
+     * MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre — depuis la
+     * carte 2, la carte neuve est la 3 (revue du 24 octobre, constat 5). */
+    Object *c = hc_new_card_after(pile, cur->bg, "", cur);
     hc_set_current_card(c);
     [doc.view setNeedsDisplay:YES];
 }
