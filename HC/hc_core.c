@@ -424,6 +424,16 @@ static char    g_params[HC_ARGS_MAX + 1][HC_VAL];
 static int     g_nparams = 0;
 
 static void set_result(const char *msg) { snprintf(g_result, sizeof g_result, "%s", msg); }
+
+/* « No such card », SANS POINT : le texte d'HyperCard, MESURÉ DANS
+ * HYPERCARD 2.4.1 (Basilisk II) par l'utilisatrice le 24 octobre — un
+ * bouton y range « the result » d'un « go card "" » dans un champ, qu'elle
+ * a copié : « H: No such card 3 3 ». Un premier relevé, recopié à la main
+ * depuis la boîte de messages, portait un point ; le copier-coller fait foi.
+ * Un seul texte pour les sept endroits qui l'écrivent, pour qu'ils ne
+ * divergent plus. Mesuré sur go ; pop, push recent et go stack le
+ * reprennent sans mesure propre (docs/mesures/audits_octobre.txt). */
+#define HC_PAS_DE_CARTE "No such card"
 static Object *g_me     = NULL;  /* l'objet dont le script s'exécute      → `me` */
 static Object *g_target = NULL;  /* le destinataire initial du message    → `the target` */
 static int     g_depth = 0;   /* profondeur, pour l'indentation de la trace */
@@ -577,7 +587,12 @@ const char *hc_typename(ObjType t)
 void hc_describe(Object *o, char *buf, int buflen)
 {
     if (!o) { snprintf(buf, buflen, "(nul)"); return; }
-    if (o->name)
+    /* Un nom vide n'est pas un nom : HyperCard ne trouve aucune carte par
+     * « go card "" » (mesuré le 24 octobre). Les cartes et les fonds neufs du
+     * menu naissent avec "" ; ils se disaient card "", que rien ne désigne,
+     * dans le menu Recent comme dans « the recent cards » (revue du 24
+     * octobre, constat 4). */
+    if (o->name && o->name[0])
         snprintf(buf, buflen, "%s \"%s\"", hc_typename(o->type), o->name);
     else
         snprintf(buf, buflen, "%s id %d", hc_typename(o->type), o->id);
@@ -643,6 +658,15 @@ void hc_nom_de(Object *o, int forme, char *out, int outlen)
     if (!o || outlen <= 0) { if (outlen > 0) out[0] = '\0'; return; }
 
     if (forme == HC_NOM_COURT) {
+        /* Une CARTE sans nom rend son id, même en nom court : « the short
+         * name of this card » vaut « card id 9789 » — MESURÉ DANS HYPERCARD
+         * 2.4.1 (Basilisk II) le 24 octobre, pour une carte faite au menu
+         * comme pour un nom vidé. HC rendait vide. Les fonds, boutons et
+         * champs sans nom : NON MESURÉS, ils rendent encore vide. */
+        if (o->type == OBJ_CARD && !(o->name && o->name[0])) {
+            snprintf(out, outlen, "card id %d", o->id);
+            return;
+        }
         snprintf(out, outlen, "%s", o->name ? o->name : "");
         return;
     }
@@ -2198,6 +2222,26 @@ Object *hc_new_card(Object *stack, Object *bg, const char *name)
     return o;
 }
 
+/* UNE CARTE NEUVE JUSTE APRÈS `apres`, comme New Card et New Background
+ * d'HyperCard — MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre :
+ * depuis la carte 2, la carte neuve est la 3. Les menus de HC la mettaient
+ * en fin de pile (revue du 24 octobre, constat 5). Sans `apres`, ou s'il
+ * n'est pas dans la pile, elle reste à la fin, comme hc_new_card. parts[]
+ * mêle fonds et cartes : on décale, la place des fonds ne comptant pas. */
+Object *hc_new_card_after(Object *stack, Object *bg, const char *name, Object *apres)
+{
+    Object *c = hc_new_card(stack, bg, name);
+    if (!apres || stack->parts[stack->nparts - 1] != c) return c;
+    int ia = -1;
+    for (int i = 0; i < stack->nparts; i++)
+        if (stack->parts[i] == apres) { ia = i; break; }
+    if (ia < 0) return c;
+    for (int i = stack->nparts - 1; i > ia + 1; i--)
+        stack->parts[i] = stack->parts[i - 1];
+    stack->parts[ia + 1] = c;
+    return c;
+}
+
 Object *hc_new_button(Object *owner, const char *name)
 {
     Object *o = new_object(OBJ_BUTTON, owner, name);
@@ -3742,7 +3786,10 @@ static int card_index_de(Object *stack, Object *fond, Object *card)
 
 static Object *card_par_nom_de(Object *stack, Object *fond, const char *name)
 {
-    if (!stack) return NULL;
+    /* « go card "" » : No such card, DANS HYPERCARD (mesuré le 24 octobre),
+     * même quand la pile a des cartes sans nom. HC allait sur la première
+     * carte au nom vide. */
+    if (!stack || !name || !name[0]) return NULL;
     for (int i = 0; i < stack->nparts; i++) {
         Object *p = stack->parts[i];
         if (p->type != OBJ_CARD) continue;
@@ -14997,7 +15044,7 @@ static int v3_cmd_push(HctContexte *ctx, const HctNoeud *n)
      * cas : NON MESURÉ. */
     if (n->nfils >= 1 && v3_commence_par(n->fils[0], "recent")) {
         dst = histo_precedente();
-        if (!dst) { set_result("No such card"); return 1; }
+        if (!dst) { set_result(HC_PAS_DE_CARTE); return 1; }
     } else if (n->nfils >= 1) {
         Object *o = hct_resout(ctx, n->fils[0]);
         if (!o) return 0;
@@ -15062,7 +15109,7 @@ static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
     char nom[1024];
     snprintf(nom, sizeof nom, "%s", dst->name ? dst->name : "?");
     if (!change_de_carte(dst, owning_stack(dst), NULL, 0, 0, NULL)) {
-        set_result("No such card");
+        set_result(HC_PAS_DE_CARTE);
         return 1;
     }
     set_result("");
@@ -15689,7 +15736,7 @@ static int v3_va_pile(const char *nom)
     Object *prem = NULL;
     for (int k = 0; k < cible->nparts; k++)
         if (cible->parts[k]->type == OBJ_CARD) { prem = cible->parts[k]; break; }
-    if (!prem) { set_result("No such card"); return 1; }
+    if (!prem) { set_result(HC_PAS_DE_CARTE); return 1; }
 
     return v3_va_a(prem);
 }
@@ -15769,7 +15816,7 @@ static int v3_va_a(Object *dst)
     snprintf(journal, sizeof journal, "   ⇒ va à la carte \"%s\"",
              dst->name ? dst->name : "?");
     if (!change_de_carte(dst, pile, vpile, change_pile, fenetres, journal))
-        set_result("No such card");
+        set_result(HC_PAS_DE_CARTE);
     return 1;
 }
 
@@ -15780,7 +15827,7 @@ static int v3_va_a(Object *dst)
 static int v3_va_histo(Object *dst, const char *vide)
 {
     if (!dst) {
-        set_result("No such card");
+        set_result(HC_PAS_DE_CARTE);
         emit(HC_ERR, "   !! %s", vide);
         return 1;
     }
@@ -15936,7 +15983,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         /* concerne = 0 : ce n'était pas une référence de carte marquée malgré
          * le mot — on laisse le chemin ordinaire s'en occuper. */
         if (!concerne) break;
-        if (!cible) { set_result("No such card"); return 1; }
+        if (!cible) { set_result(HC_PAS_DE_CARTE); return 1; }
         set_result("");
         v3_va_a(cible);
         return 1;
@@ -16035,7 +16082,7 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
             else                        c = card_par_nom_de(stk, NULL, nom);
             if (!c) {
                 emit(HC_ERR, "   !! go : carte introuvable : %s", nom);
-                set_result("No such card");
+                set_result(HC_PAS_DE_CARTE);
                 ARENA_FREE;
                 return 1;
             }
@@ -16077,6 +16124,20 @@ static int v3_cmd_go(HctContexte *ctx, const HctNoeud *n)
         dst = nth_card(owning_stack(g_current_card), 0);
     } else {
         dst = hct_resout(ctx, ref);
+
+        /* UNE CARTE QUI N'EXISTE PAS N'ARRÊTE PAS LE SCRIPT : the result vaut
+         * « No such card », on reste où l'on est, et la ligne suivante
+         * s'exécute — MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 24
+         * octobre, sur « go card "" » dans un mouseUp. HC arrêtait le script
+         * sur « objet introuvable » (docs/mesures/long_id.txt l'attendait
+         * d'un banc). Une faute DANS la référence — une expression qui
+         * échoue — reste une faute. */
+        if (!dst && !ctx->erreur && ref->genre == HCTN_OBJET &&
+            ref->typeobj == HCT_OBJ_CARD) {
+            emit(HC_ERR, "   !! go : carte introuvable");
+            set_result(HC_PAS_DE_CARTE);
+            return 1;
+        }
 
         /* UN MOT NU APRÈS « go » EST UNE DESTINATION, PAS UNE EXPRESSION.
          *

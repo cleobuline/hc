@@ -611,6 +611,8 @@ void hc_v3_releve_arme(void);
 Object *hc_new_stack(const char *name);
 Object *hc_new_background(Object *stack, const char *name);
 Object *hc_new_card(Object *stack, Object *bg, const char *name);
+/* La même, posée juste après `apres` (New Card, New Background). */
+Object *hc_new_card_after(Object *stack, Object *bg, const char *name, Object *apres);
 Object *hc_new_button(Object *owner, const char *name);
 Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);

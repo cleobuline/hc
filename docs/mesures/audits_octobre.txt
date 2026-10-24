@@ -270,7 +270,7 @@ AUTRE image. CORRIGÉ : le chemin rapide exige aussi l'alpha, le modèle RVB,
 peinture y passe toujours, l'enregistrement reste l'identité au bit près.
 Le collage refusé se dit d'un bip. LU, NON REJOUÉ : Cocoa.
 
-EN ATTENTE D'UNE MESURE DANS HYPERCARD (Basilisk II) — 4 et 5.
+4 ET 5 — MESURÉS DANS HYPERCARD 2.4.1 (Basilisk II), LE 24 OCTOBRE
 
   Une carte sans nom (4). HC nomme "" les cartes neuves du menu, et
   hc_describe ne teste que NULL : « the name of this card » rend card "",
@@ -281,10 +281,55 @@ EN ATTENTE D'UNE MESURE DANS HYPERCARD (Basilisk II) — 4 et 5.
   recent cards » rend card "D", card "", card "" — la ligne 2 est C, la
   carte 3, et « go to line 2 of the recent cards » mène à la carte 2. (La
   ligne 3, B, tombait juste par hasard : B est la première carte au nom
-  vide. Une première mesure faite sur elle ne tranchait rien.) Ce que rend
-  HyperCard pour le nom d'une carte sans nom : NON MESURÉ.
+  vide. Une première mesure faite sur elle ne tranchait rien.)
 
   New Card du menu (5). AppDelegate newCard: crée la carte EN FIN DE PILE
   et n'envoie ni closeCard, ni newCard, ni openCard. New Background a le
-  même défaut (il n'envoie que newBackground et newCard). Ce que fait
-  HyperCard — où va la carte, quels messages, dans quel ordre : NON MESURÉ.
+  même défaut (il n'envoie que newBackground et newCard).
+
+  LE BANC. Un bouton, dans une pile d'HyperCard (test8, 17 cartes au
+  départ), joue tout et range ses réponses dans un champ que l'utilisatrice
+  a copié : un relevé recopié à la main depuis la boîte de messages
+  portait un point (« No such card. ») que le copier-coller n'a pas. Le
+  copier-coller fait foi.
+
+      0: 6 19            deux New Card depuis la carte 4 : on est sur la 6
+      A:                 (journal vide, voir plus bas)
+      B: 3 20            New Card depuis la carte 2 : la neuve est la 3
+      C:                 (journal vide)
+      D: 3 21            New Background depuis la carte 2 : la 3 aussi
+      E: card id 9789    the name d'une carte faite au menu
+      E2: card id 9789 of stack "Saved HD:AppleScript Stacks:test8"
+      E3: bkgnd id 9512  the name d'un fond fait au menu
+      F: card id 9789    the short name : l'id aussi
+      G: card id 9789    the name après « set the name to "x" » puis empty
+      G2: card id 9789   the short name, de même
+      H: No such card 3 3   go card "" : the result, ON RESTE sur la 3,
+                            et le script continue
+      K:  4              go bkgnd "" : the result VIDE, et l'on est passé
+                         sur la carte 4
+      I: Not found       find qui échoue
+
+  CE QUI EN EST TIRÉ, ET CORRIGÉ :
+    · un nom vide n'est pas un nom — card_par_nom_de ne trouve rien pour
+      "", hc_describe le traite comme un nom absent (card id N) ;
+    · le nom COURT d'une carte sans nom est « card id N » (F, G2) ; HC
+      rendait vide. Les fonds, boutons et champs sans nom : NON MESURÉS,
+      ils rendent encore vide ;
+    · un go vers une carte absente laisse continuer le script (H) ; HC
+      l'arrêtait sur « objet introuvable ». Le script d'exercice du corpus,
+      écrit pour HyperCard, l'attendait : « go vers l inexistant remplit
+      le result ». Il passe maintenant ses 131 essais, quand on lui donne
+      le champ qu'il écrit ;
+    · « No such card » reste SANS point, et devient une seule constante ;
+    · New Card et New Background posent la carte JUSTE APRÈS la courante
+      (B, D) : hc_new_card_after, appelé par les deux menus.
+
+  CE QUI RESTE OUVERT :
+    · A et C sont vides : le journal des messages n'a rien reçu. Soit le
+      script de pile n'était pas là où il fallait, soit HyperCard n'envoie
+      rien — à refaire avant de toucher aux messages des deux menus ;
+    · K : « go bkgnd "" » change de carte sans rien dire. Peut-être le fond
+      d'origine de test8 n'a-t-il pas de nom, et HyperCard le prend pour
+      "" — ce qu'il ne fait pas pour une carte. NON COMPRIS ; HC n'y touche
+      pas.

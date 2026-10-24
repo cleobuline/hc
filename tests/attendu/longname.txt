@@ -42,7 +42,7 @@
    Bouton
    == ce qui ne doit PAS changer ==
    Pile
-   
+   card id 102
 
 == une cible calculee qui ne designe rien ==
    [ERR]    !! objet introuvable (v3, ligne 2 de button "decl".mouseUp)
