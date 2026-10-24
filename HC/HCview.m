@@ -6935,12 +6935,15 @@ static BOOL hcv_presse_image_systeme(void)
              * (revue 2 de Grok). */
             NSBitmapImageRep *ext =
                 hcp_canonique([NSBitmapImageRep imageRepWithData:tiff]);
-            if (ext) {
-                acoller = ext;
-                gClipW = (int)[ext pixelsWide];
-                gClipH = (int)[ext pixelsHigh];
-                gClipPtsCount = 0;
-            }
+            /* Une image du système que l'on ne peut pas prendre — plus de
+             * 20 000 points de côté, ou illisible — se refuse d'un bip.
+             * Retomber sur notre dernière copie collerait une AUTRE image,
+             * plus ancienne, sans rien dire (revue du 24 octobre). */
+            if (!ext) { NSBeep(); return; }
+            acoller = ext;
+            gClipW = (int)[ext pixelsWide];
+            gClipH = (int)[ext pixelsHigh];
+            gClipPtsCount = 0;
         }
     }
     if (!acoller && gPresseImage && gPresseDerniere == PRESSE_IMAGE) {

@@ -22,8 +22,19 @@ NSBitmapImageRep *hcp_canonique(NSBitmapImageRep *src)
     NSInteger w = [src pixelsWide], h = [src pixelsHigh];
     if (!src || w <= 0 || h <= 0 || w > 20000 || h > 20000) return nil;
 
+    /* DÉJÀ BON, et seulement alors : quatre octets par point ne suffisent
+     * pas. Une image CMJN sans alpha, une image où l'alpha vient en tête ou
+     * n'est pas prémultiplié ont la même forme et passaient telles quelles,
+     * lues ensuite comme du RVBA (revue du 24 octobre). Le calque de la
+     * peinture — sRGB, alpha en dernier, prémultiplié — passe toujours ici :
+     * l'aller-retour de l'enregistrement reste l'identité au bit près. */
+    NSBitmapFormat f = [src bitmapFormat];
     if ([src bytesPerRow] == w * 4 && [src samplesPerPixel] == 4 &&
-        [src bitsPerSample] == 8 && ![src isPlanar])
+        [src bitsPerSample] == 8 && [src bitsPerPixel] == 32 &&
+        ![src isPlanar] && [src hasAlpha] &&
+        [[src colorSpace] colorSpaceModel] == NSColorSpaceModelRGB &&
+        !(f & (NSBitmapFormatAlphaFirst | NSBitmapFormatAlphaNonpremultiplied |
+               NSBitmapFormatFloatingPointSamples)))
         return src;                      /* déjà bon : rien à faire */
 
     NSBitmapImageRep *dst =
