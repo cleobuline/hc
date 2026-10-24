@@ -6324,9 +6324,13 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     /* Les deux messages, dans l'ordre d'HyperCard : le fond naît, puis la
      * première carte qui s'y appuie. Envoyés une fois la carte devenue
      * courante, sans quoi « the target » et « me » désigneraient encore la
-     * carte d'où l'on vient. */
+     * carte d'où l'on vient.
+     *
+     * `nc` est une variable locale, comme le `hit` du clic : un
+     * newBackground qui supprime la carte la libère au retour de son envoi.
+     * On demande donc au noyau si elle est encore là (revue du 24 octobre). */
     hc_send(bg, "newBackground");
-    hc_send(nc, "newCard");
+    if (hc_object_is_live(nc)) hc_send(nc, "newCard");
 }
 
 /* UN BOUTON OU UN CHAMP NEUF, tracé à l'outil comme pris au menu Objects :
