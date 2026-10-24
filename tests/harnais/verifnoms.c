@@ -134,5 +134,30 @@ int main(void)
         hct_rapport_libere(&r);
     }
 
+    puts("\n== 8. L'EXTRAIT SE COUPE ENTRE DEUX CARACTÈRES ==");
+    /* L'extrait tient en 63 octets : quarante « é » en font quatre-vingts,
+     * et la coupe tombait au milieu du trente-deuxième (revue du 24
+     * octobre). L'éditeur de script recevait de l'UTF-8 invalide. */
+    {
+        HctRapport r;
+        hct_verifie("on mouseUp\n  put x \xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9"
+                    "\nend mouseUp\n", &r, 1);
+        for (int i = 0; i < r.n; i++) {
+            const char *e = r.liste[i].extrait;
+            size_t n = strlen(e);
+            /* Le dernier octet ne doit pas ouvrir une séquence restée seule. */
+            int coupe = n && ((unsigned char)e[n - 1] & 0xC0) == 0xC0;
+            printf("   ligne %d : %zu octets, %s\n", r.liste[i].ligne, n,
+                   coupe ? "COUPÉ DANS UN CARACTÈRE" : "entier");
+        }
+        hct_rapport_libere(&r);
+    }
+
     return 0;
 }

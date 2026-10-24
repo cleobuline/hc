@@ -13,5 +13,5 @@ carte courante : aucune
 ── put the number of cards
       0
 ── go first card
-         !! objet introuvable (v3, ligne 1)
+         !! go : carte introuvable
 fini sans planter

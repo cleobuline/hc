@@ -503,7 +503,12 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-         !! objet introuvable (v3, ligne 368 de button "Exercice".testNavigation)
+         !! go : carte introuvable
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
    → message "testExistence" à button "Exercice"
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
@@ -532,15 +537,15 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-   → message "testChamps" à button "Exercice"
+   → message "testChamps" �[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+� button "Exercice"
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"
-         → message "a[v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    recours objet: card "carteQuiNexistePas" 1
-[v3] — ce que l'ancien interprète exécute encore —
-[v3]    (rien)
-plat" à button "Exercice"
+         → message "aplat" à button "Exercice"
             · traité par button "Exercice"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"
@@ -585,12 +590,12 @@ plat" à button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
    — retours de la v3 vers l'ancien interpréteur —
-      recours objet: card "carteQuiNexistePas" 1
+      (aucun)
    — ce que l'ancien interprète exécute encore —
       (rien)
 
 ===== CONTENU DU CHAMP "data 2" =====
-130 essais, 0 ratés
+131 essais, 0 ratés
 ok   somme = 7
 ok   produit = 12
 ok   division = 2.5
@@ -704,6 +709,7 @@ ok   go first = 1
 ok   go last = 1
 ok   go card par rang = Une
 ok   pop card = Une
+ok   go vers l inexistant remplit le result = true
 ok   there is a me = true
 ok   there is no ... = false
 ok   there is a this card = true

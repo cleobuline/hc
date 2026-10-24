@@ -345,8 +345,11 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
          * l'original, « 1000 » y est le numéro d'une clut. */
         int n = 0, m = 0;
         while (*valeur == ' ') valeur++;
+        /* Le masque ne retient que les quatre premiers chiffres, comme le
+         * motif de « colors » : trente-deux « 1 » de suite faisaient
+         * déborder m (revue du 24 octobre, jumeau du FORTH). */
         for (; valeur[n] == '0' || valeur[n] == '1'; n++)
-            m = m << 1 | (valeur[n] - '0');
+            if (n < 4) m = m << 1 | (valeur[n] - '0');
         const char *reste = valeur + n;
         while (*reste == ' ') reste++;
         if (n >= 1 && n <= 4 && !*reste) {

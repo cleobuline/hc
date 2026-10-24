@@ -564,7 +564,7 @@ void hc_v3_bilan(void);
  * depuis MARKETING_VERSION — une seule source de vérité. Ce qui suit n'est
  * plus qu'un repli, et le repli doit rester juste : docs/livraison.md le
  * rappelle à l'étape « la version ». */
-#define HC_VERSION "0.8.6"
+#define HC_VERSION "0.8.7"
 
 /* CE QUE « the version » RÉPOND, ET POURQUOI CE N'EST PAS LA NÔTRE.
  *
@@ -611,6 +611,12 @@ void hc_v3_releve_arme(void);
 Object *hc_new_stack(const char *name);
 Object *hc_new_background(Object *stack, const char *name);
 Object *hc_new_card(Object *stack, Object *bg, const char *name);
+/* La même, posée juste après `apres` (New Card, New Background). */
+Object *hc_new_card_after(Object *stack, Object *bg, const char *name, Object *apres);
+/* New Card (fond_neuf = 0) et New Background (1) : la carte neuve après la
+ * courante, ses messages dans l'ordre d'HyperCard. Rend la carte, ou NULL
+ * si un gestionnaire l'a supprimée. */
+Object *hc_nouvelle_carte(int fond_neuf);
 Object *hc_new_button(Object *owner, const char *name);
 Object *hc_new_field(Object *owner, const char *name);
 void    hc_set_script(Object *o, const char *script);

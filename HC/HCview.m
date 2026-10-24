@@ -6314,19 +6314,18 @@ static int cocoa_contour(const int *r, int n, const int depart[2],
     if (!stack) return;
 
     /* Un fond neuf n'a pas de nom, comme dans HyperCard (dit par
-     * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ». */
-    Object *bg = hc_new_background(stack, "");
-    Object *nc = hc_new_card(stack, bg, "");
-    hc_set_current_card(nc);
+     * l'utilisatrice le 17 octobre, non vu) ; HC le nommait « Fond 1 ».
+     *
+     * Le noyau crée le fond et sa carte juste après la courante, et envoie
+     * les six messages d'HyperCard — closeCard, closeBackground,
+     * newBackground, newCard, openBackground, openCard —, TOUS À UNE
+     * CARTE : MESURÉS DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre. HC
+     * envoyait newBackground au fond, où le script de la carte ne le voyait
+     * pas, et posait la carte en fin de pile. Le noyau garde aussi la carte
+     * qu'un gestionnaire supprimerait (revue du 24 octobre). */
     gSelected = NULL;
+    hc_nouvelle_carte(1);
     [gView setNeedsDisplay:YES];
-
-    /* Les deux messages, dans l'ordre d'HyperCard : le fond naît, puis la
-     * première carte qui s'y appuie. Envoyés une fois la carte devenue
-     * courante, sans quoi « the target » et « me » désigneraient encore la
-     * carte d'où l'on vient. */
-    hc_send(bg, "newBackground");
-    hc_send(nc, "newCard");
 }
 
 /* UN BOUTON OU UN CHAMP NEUF, tracé à l'outil comme pris au menu Objects :
@@ -6770,8 +6769,9 @@ static BOOL hcv_presse_image_systeme(void)
     Object *card = hc_current_card();
     if (!card) return;
     /* Même raison : on copie ce qui est à l'écran, pas ce qui dormait dans le
-     * noyau depuis le dernier enregistrement. */
-    [self flushPaintToKernel];
+     * noyau depuis le dernier enregistrement. Si un dessin n'a pas pu
+     * redescendre, la copie emporterait l'ancien : on renonce. */
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
     if (hc_copy_card(card)) hcv_presse_objet_retient();
 }
 
@@ -6791,10 +6791,12 @@ static BOOL hcv_presse_image_systeme(void)
      *
      * On vide APRÈS le flush : ce que la carte avait de peint doit d'abord
      * redescendre dans le noyau, faute de quoi la copie au presse-papiers
-     * emporterait un calque périmé. */
+     * emporterait un calque périmé. Et si un dessin n'a pas pu redescendre,
+     * on renonce AVANT de vider le cache : il serait le seul exemplaire du
+     * dessin (revue du 24 octobre). */
     if (gEditingField) [self endFieldEdit];
     gSelected = NULL;
-    [self flushPaintToKernel];
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
     [self clearPaintCache];
 
     if (!hc_cut_card(card)) {
@@ -6814,8 +6816,8 @@ static BOOL hcv_presse_image_systeme(void)
 
     /* Redescendre la peinture avant de cloner : sans cela le clone emporterait
      * le calque tel qu'il était au dernier enregistrement, et non ce que l'on
-     * voit à l'écran. */
-    [self flushPaintToKernel];
+     * voit à l'écran. Si un dessin n'a pas pu redescendre, on renonce. */
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
 
     Object *nouvelle = hc_duplicate_card(card);
     if (!nouvelle) { NSBeep(); return; }
@@ -6928,12 +6930,15 @@ static BOOL hcv_presse_image_systeme(void)
              * (revue 2 de Grok). */
             NSBitmapImageRep *ext =
                 hcp_canonique([NSBitmapImageRep imageRepWithData:tiff]);
-            if (ext) {
-                acoller = ext;
-                gClipW = (int)[ext pixelsWide];
-                gClipH = (int)[ext pixelsHigh];
-                gClipPtsCount = 0;
-            }
+            /* Une image du système que l'on ne peut pas prendre — plus de
+             * 20 000 points de côté, ou illisible — se refuse d'un bip.
+             * Retomber sur notre dernière copie collerait une AUTRE image,
+             * plus ancienne, sans rien dire (revue du 24 octobre). */
+            if (!ext) { NSBeep(); return; }
+            acoller = ext;
+            gClipW = (int)[ext pixelsWide];
+            gClipH = (int)[ext pixelsHigh];
+            gClipPtsCount = 0;
         }
     }
     if (!acoller && gPresseImage && gPresseDerniere == PRESSE_IMAGE) {
@@ -10432,8 +10437,11 @@ static NSTextField  *gSprayDensityLabel = nil;
                   styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
                     backing:NSBackingStoreBuffered
                       defer:NO];
-    char d[64]; hc_describe(obj, d, sizeof d);
-    [panel setTitle:[NSString stringWithFormat:@"Script of %s", d]];
+    /* Assez grand pour le nom entier : coupé au milieu d'un caractère,
+     * hcv_texte le relirait en Latin-1. Et %@, pas %s, qui lit en MacRoman
+     * (revue du 24 octobre). */
+    char d[1100]; hc_describe(obj, d, sizeof d);
+    [panel setTitle:[@"Script of " stringByAppendingString:hcv_texte(d)]];
     /* 258 de haut et non plus 286 : les menus « Handlers » et « Functions »
      * prennent la bande du haut, comme dans HyperCard 2.4. */
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, 460, 258)];
@@ -10559,10 +10567,10 @@ static NSTextField  *gSprayDensityLabel = nil;
     NSMutableString *txt = [NSMutableString string];
     for (int i = 0; i < rap.n; i++) {
         HctSignalement *s = &rap.liste[i];
-        [txt appendFormat:@"%@ line %d: %s",
+        [txt appendFormat:@"%@ line %d: %@",
              s->niveau == HCT_V_ERREUR ? @"Error" : @"Warning",
-             s->ligne, s->message];
-        if (s->extrait[0]) [txt appendFormat:@"  [%s]", s->extrait];
+             s->ligne, hcv_texte(s->message)];
+        if (s->extrait[0]) [txt appendFormat:@"  [%@]", hcv_texte(s->extrait)];
         [txt appendString:@"\n"];
     }
 
