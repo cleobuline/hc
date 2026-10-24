@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4D2FF4A5307A77A800ABA064 /* shtak.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4D2FF4A4307A77A700ABA064 /* shtak.wav */; };
+		4DE9D8E7307D105700480656 /* piano.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4DE9D8E6307D105700480656 /* piano.wav */; };
 		4D3BF8F530384BAB0052F85B /* HCprint.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D3BF8F430384BAB0052F85B /* HCprint.m */; };
 		4D482C28303899720071BC2B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4D482C26303899710071BC2B /* AppIcon.icns */; };
 		4D482C29303899720071BC2B /* stack.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4D482C27303899710071BC2B /* stack.icns */; };
@@ -110,6 +112,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		4D2FF4A4307A77A700ABA064 /* shtak.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = shtak.wav; sourceTree = "<group>"; };
+		4DE9D8E6307D105700480656 /* piano.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = piano.wav; sourceTree = "<group>"; };
 		4D3BF8F330384BAA0052F85B /* HCprint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HCprint.h; sourceTree = "<group>"; };
 		4D3BF8F430384BAB0052F85B /* HCprint.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HCprint.m; sourceTree = "<group>"; };
 		4D482C26303899710071BC2B /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
@@ -251,6 +255,8 @@
 		4DF28F863023DD3700D7740C /* sounds */ = {
 			isa = PBXGroup;
 			children = (
+				4D2FF4A4307A77A700ABA064 /* shtak.wav */,
+				4DE9D8E6307D105700480656 /* piano.wav */,
 				4DA09F96304719A4003F1A35 /* submarine.wav */,
 				4D8634443076B40C0059FF23 /* tik.wav */,
 				4DA09F923045EB1E003F1A35 /* cocorico.wav */,
@@ -465,6 +471,8 @@
 				4D8634453076B40C0059FF23 /* tik.wav in Resources */,
 				4D482C29303899720071BC2B /* stack.icns in Resources */,
 				4DA09F933045EB1E003F1A35 /* cocorico.wav in Resources */,
+				4D2FF4A5307A77A800ABA064 /* shtak.wav in Resources */,
+				4DE9D8E7307D105700480656 /* piano.wav in Resources */,
 				4D482C28303899720071BC2B /* AppIcon.icns in Resources */,
 				4DF5FB543014BE7D006AE901 /* MainMenu.xib in Resources */,
 				4DA09F97304719A4003F1A35 /* submarine.wav in Resources */,
