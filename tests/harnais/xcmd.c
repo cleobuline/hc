@@ -651,6 +651,9 @@ int main(int argc, char **argv)
     fais("put the planes of window \"CAM\"");
     fais("set the planes of window \"CAM\" to \"12x\"");    /* incompris : inchangé */
     fais("set the planes of window \"CAM\" to \"11111\"");
+    /* Quarante chiffres : incompris aussi, et sans faire déborder le masque
+     * pendant la lecture (revue du 24 octobre). */
+    fais("set the planes of window \"CAM\" to \"1111111111111111111111111111111111111111\"");
     fais("put the planes of window \"CAM\"");
     fais("set the planes of window \"CAM\" to \"1111\"");
     /* « colors », l'ajout de HC décidé par l'utilisatrice le 19 octobre, à

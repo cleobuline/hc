@@ -1,8 +1,13 @@
 [v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
-[ERR]    !! objet introuvable (v3, ligne 38 de button "nav".mouseUp)
+[v3] — retours de la v3 vers l'ancien interpréteur —
+[v3]    (aucun)
+[v3] — ce que l'ancien interprète exécute encore —
+[v3]    (rien)
+[ERR]    !! go : carte introuvable
+[ERR]    !! go : carte introuvable
 
 ───── data2 ─────
---- depart :  (3 cartes) ---
+--- depart : card id 3 (3 cartes) ---
 ok first
 ok last
 ok card 1
@@ -10,3 +15,9 @@ ok next depuis 1
 ok next depuis la derniere
 ok previous depuis 1
 ok this
+FAUX par nom : carte 1 au lieu de 2
+ok par id
+ok par variable
+background Fond -> carte 1
+ok push/pop
+--- retour : card id 4 ---

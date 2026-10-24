@@ -93,6 +93,12 @@ LES CAMPAGNES
                             (23 octobre, après les corrections des audits :
                             1 089 graines dans notre format, 3 dans celui
                             d'Apple ; le témoin a attrapé ses trois pièges)
+    make fuzz, 0.8.7        notre format  60 000, Apple  20 000   0 signalement
+                            (24 octobre, après la revue de la 0.8.6 et les
+                            bancs d'HyperCard : 1 089 graines dans notre
+                            format, 3 dans celui d'Apple ; le témoin a
+                            attrapé ses trois pièges et laissé la graine
+                            saine)
 
 La deuxième a été arrêtée par la limite de temps de la session avant la fin.
 Les deux premières avaient en plus pour graines les deux piles de démonstration

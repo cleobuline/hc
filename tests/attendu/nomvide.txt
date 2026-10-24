@@ -1,0 +1,50 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. deux cartes vidées de leur nom ==
+go to card "B"
+set the name of this card to empty
+put the name of this card
+   card id 4
+put the short name of this card
+   card id 4
+go to card "C"
+set the name of this card to empty
+go to card "D"
+
+== 2. the recent cards : chaque carte se désigne ==
+put the recent cards
+   card "D"
+card id 5
+card id 4
+go to line 2 of the recent cards
+put the result & " / " & the number of this card
+    / 3
+go to card "D"
+go to line 3 of the recent cards
+put the result & " / " & the number of this card
+    / 2
+
+== 3. go card "" : aucune carte, et le texte d'HyperCard ==
+go to card "D"
+go card ""
+      !! go : carte introuvable
+put the result & " / " & the number of this card
+   No such card / 4
+go card "Zut"
+      !! go : carte introuvable
+put the result & " / " & the number of this card
+   No such card / 4
+
+== 4. dans un gestionnaire, le script continue ==
+go to card "A"
+send mouseUp to button "aller"
+      !! go : carte introuvable
+   suite : No such card A
+
+== 5. la carte neuve des menus : juste après la courante ==
+go to card 2
+put the number of this card && the number of cards && the name of this card
+   3 5 card id 8
+put the number of this card && the number of cards && the name of this bkgnd
+   4 6 bkgnd id 9
+put the number of this card && the number of cards
+   7 7

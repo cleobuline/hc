@@ -118,6 +118,10 @@ int main(void)
 
         "  put \"== ce qui ne doit PAS changer ==\"\n"
         "  put the short name of this stack\n"
+        /* La carte 102 n'a pas de nom : son nom court valait vide, et vaut
+         * « card id 102 » depuis la mesure du 24 octobre DANS HYPERCARD 2.4.1
+         * (Basilisk II). « Ne doit pas changer » vise la lecture des
+         * descripteurs, pas ce texte-là (harnais nomvide). */
         "  put the short name of card id 102\n"
         "end mouseUp\n");
     hc_send(decl, "mouseUp");

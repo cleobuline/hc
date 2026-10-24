@@ -349,10 +349,12 @@ Harnais aidemenus, section 8. Les sections 6 et 7 libéraient des piles sans
 les retirer du registre, ce que l'hôte fait toujours (Hcdocument.m) : la
 section 8 tombait sur l'adresse morte. Le harnais respecte le contrat.
 
-NON MESURÉ DANS HYPERCARD : « go card "Zut" » vers une carte absente. HC
-arrête le script sur « objet introuvable » ; HyperCard, de mémoire, pose
-« No such card » dans the result et continue. À vérifier par un banc avant
-d'y toucher.
+« go card "Zut" » vers une carte absente : MESURÉ DANS HYPERCARD 2.4.1
+(Basilisk II) le 24 octobre, sur « go card "" » dans un mouseUp. HyperCard
+pose « No such card » (sans point) dans the result, reste où il est, et le
+script CONTINUE. HC arrêtait le script sur « objet introuvable » ; il fait
+maintenant comme HyperCard (docs/mesures/audits_octobre.txt, harnais
+nomvide).
 
 
 GO CARD theSection & theTopic — 5 octobre

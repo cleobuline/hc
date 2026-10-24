@@ -503,7 +503,12 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-         !! objet introuvable (v3, ligne 368 de button "Exercice".testNavigation)
+         !! go : carte introuvable
+      → message "verif" à button "Exercice"
+         · traité par button "Exercice"
+         → message "aplat" à button "Exercice"
+            · traité par button "Exercice"
+         ⇒ va à la carte "Une"
    → message "testExistence" à button "Exercice"
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
@@ -532,16 +537,15 @@
          · traité par button "Exercice"
          → message "aplat" à button "Exercice"
             · traité par button "Exercice"
-   → message "testChamps" à button "Exercice"
-      · traité par button "Exercice"
-         !! objet introuvable (v3, ligne 405 de button "Exercice".testChamps)
-   → message "testFichiers" à b[v3] — retours de la v3 vers l'ancien interpréteur —
-[v3]    recours objet: card "carteQuiNexistePas" 1
+   → message "testChamps" �[v3] — retours de la v3 vers l'ancien interpréteur —
 [v3]    recours objet: field "data 2"            1
 [v3]    commande put: put rapport & return & gSor 1
 [v3] — ce que l'ancien interprète exécute encore —
 [v3]    v1 refusée recours v3                   1
-utton "Exercice"
+� button "Exercice"
+      · traité par button "Exercice"
+         !! objet introuvable (v3, ligne 405 de button "Exercice".testChamps)
+   → message "testFichiers" à button "Exercice"
       · traité par button "Exercice"
       → message "verif" à button "Exercice"
          · traité par button "Exercice"
@@ -557,7 +561,6 @@ utton "Exercice"
             · traité par button "Exercice"
       !! objet introuvable : put rapport & return & gSortie into field "data 2"
    — retours de la v3 vers l'ancien interpréteur —
-      recours objet: card "carteQuiNexistePas" 1
       recours objet: field "data 2"            1
       commande put: put rapport & return & gSor 1
    — ce que l'ancien interprète exécute encore —

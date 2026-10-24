@@ -372,7 +372,7 @@
       = false
 
 == 12. MACCAM : la fenêtre CAM de MAC•CAM ==
-   ajoute maccam.wasm (17516 octets) : accepté
+   ajoute maccam.wasm (17671 octets) : accepté
    get maccam("10,40,22,52", "CAM", "True", 17, "True", "True")
       hôte : ouvre 11 « CAM » 10,40,22,52, visible 1, style 17, flottante 1
       hôte : image de 11, 12 × 12 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
@@ -514,6 +514,7 @@
       = 0100
    set the planes of window "CAM" to "12x"
    set the planes of window "CAM" to "11111"
+   set the planes of window "CAM" to "1111111111111111111111111111111111111111"
    put the planes of window "CAM"
       = 0100
    set the planes of window "CAM" to "1111"

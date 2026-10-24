@@ -1,0 +1,42 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== A. New Card depuis la carte 2 ==
+go card 2
+put empty into journal
+put journal
+   closeCard - 2 - card id 4
+newCard - 3 - card id 8
+openCard - 3 - card id 8
+
+put the number of this card && the number of cards
+   3 6
+
+== C. New Background depuis la carte 2 ==
+go card 2
+put empty into journal
+put journal
+   closeCard - 2 - card id 12
+closeBackground - 2 - card id 12
+newBackground - 3 - card id 17
+newCard - 3 - card id 17
+openBackground - 3 - card id 17
+openCard - 3 - card id 17
+
+put the number of this card && the number of cards && the number of bkgnds
+   3 6 2
+
+== newBackground passe par la carte neuve ==
+put empty into journal
+put line 3 of journal
+   newBackground - 4 - card id 19
+
+== newCard supprime la carte neuve (non mesuré dans HyperCard) ==
+go card 2
+   carte rendue : aucune
+put the number of this card && the number of cards
+   3 5
+
+== closeCard supprime l'ancienne carte (non mesuré dans HyperCard) ==
+go card 2
+   carte rendue : oui
+put the number of this card && the number of cards
+   5 5

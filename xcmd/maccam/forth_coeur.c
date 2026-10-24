@@ -411,8 +411,10 @@ static void pousse_retour(Vm *m, int ip)
 
 static int tire_retour(Vm *m)
 {
-    int fort = rdepile(m) & 0xffff, faible = rdepile(m) & 0xffff;
-    return (fort << 16) | faible;
+    /* En non signé : un mot fort de 0x8000 ou plus, décalé en int, déborde
+     * — comportement indéfini (revue du 24 octobre, « 0 >R -1 >R »). */
+    unsigned fort = (unsigned)rdepile(m) & 0xffff, faible = (unsigned)rdepile(m) & 0xffff;
+    return (int)((fort << 16) | faible);
 }
 
 /* ---- le code ---- */
@@ -609,7 +611,7 @@ static int execute_insn(Vm *m, const Insn *i)
          * dans l'ordre des trois : la case n de la pile, ou de la pile retour. */
         if (m->a3 >= PILE_CASES) return 0;
         unsigned d = ((unsigned)m->d[i->reg] & 0xffff0000u) |
-                     (unsigned short)(m->pile[m->a3++] << 1);
+                     (unsigned short)((unsigned)m->pile[m->a3++] << 1);
         m->d[i->reg] = (int)d;
         int octet = 2 * (i->n == 3 ? m->a3 : m->a7) + (short)d;
         int k = octet / 2;

@@ -166,6 +166,12 @@ int main(void)
     compile(": index 12315 , -7360 , 14135 , 0 , ; : i 4 index ; : j 6 index ; "
             ": T 3 1 DO 2 0 DO j 10 * i + LOOP LOOP ; T");
     compile(": PICK 12315 , -7360 , 14131 , 0 , ; : T 10 20 30 2 PICK 0 PICK ; T");
+    /* Deux décalages à gauche d'un nombre signé, comportement indéfini que
+     * UBSan voyait (revue du 24 octobre) : une adresse de retour au mot fort
+     * négatif, un PICK d'indice négatif. Ce que l'original en rend n'est pas
+     * mesuré ; le harnais tient que HC répond sans comportement indéfini. */
+    compile(": T 0 >R -1 >R ; T");
+    compile(": PICK 12315 , -7360 , 14131 , 0 , ; : T 10 20 30 -1 PICK ; T");
     compile(": LEAVE 16239 , 6 , 4 , ; : T 0 10 0 DO 1 + DUP 3 = IF LEAVE THEN LOOP ; T");
     compile(": D -22017 , 5 ; D");                           /* _Debugger : rien */
     compile(": X 17999 , ; X");                              /* hors du jeu */

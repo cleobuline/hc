@@ -1028,12 +1028,18 @@ static NSMenu *gRecentMenu = nil;
     if (!pile) return;
 
     HCDocument *doc = [HCDocument current];
-    doc.cardCount = doc.cardCount + 1;
 
     /* UNE CARTE NEUVE N'A PAS DE NOM, comme dans HyperCard — dit par
-     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ». */
-    Object *c = hc_new_card(pile, cur->bg, "");
-    hc_set_current_card(c);
+     * l'utilisatrice le 17 octobre, non vu. HC la nommait « carte 2 ».
+     *
+     * Le noyau la pose juste après la carte courante et lui envoie ses
+     * messages dans l'ordre d'HyperCard — closeCard, newCard, openCard —,
+     * MESURÉS DANS HYPERCARD 2.4.1 (Basilisk II) le 24 octobre. Ce menu
+     * mettait la carte en fin de pile et n'envoyait rien (revue du 24
+     * octobre, constat 5). Le compte se relit : un gestionnaire a pu
+     * supprimer des cartes. */
+    hc_nouvelle_carte(0);
+    doc.cardCount = hc_card_count(pile);
     [doc.view setNeedsDisplay:YES];
 }
 - (void)deleteCard:(id)sender {
@@ -1094,8 +1100,10 @@ static NSMenu *gRecentMenu = nil;
     if (!pile) { NSBeep(); return; }
     const char *nm = pile->name ? pile->name : "MaPile";
     NSSavePanel *panel = [NSSavePanel savePanel];
+    /* %@ et non %s : %s lit la chaîne en MacRoman, et un nom de pile en
+     * UTF-8 — « Épreuve » — arrivait en « Ã‰preuve » (revue du 24 octobre). */
     [panel setNameFieldStringValue:
-        [NSString stringWithFormat:@"%s.stack", nm]];
+        [hcv_texte(nm) stringByAppendingString:@".stack"]];
     /* Documents, et NON le dossier de l'application. Celui-ci est en lecture
      * seule quand l'application tourne depuis une image disque, et vaut
      * /Applications une fois installée — deux endroits où l'on n'enregistre
@@ -1244,9 +1252,12 @@ static NSMenu *gRecentMenu = nil;
      *
      * Une question posée au noyau exige que le noyau soit à jour. Le défaut
      * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
-    if (actif) [actif.view flushPaintToKernel];
+    /* Un dessin que le noyau n'a pas repris rend la pile NON vierge : sa
+     * fenêtre n'est pas réemployée, et le cache garde le seul exemplaire du
+     * dessin (revue du 24 octobre). */
+    BOOL repris = actif ? [actif.view flushPaintToKernel] : YES;
 
-    BOOL vierge = actif && actif.path == nil && actif.stack &&
+    BOOL vierge = repris && actif && actif.path == nil && actif.stack &&
                   hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
@@ -1507,8 +1518,8 @@ void cocoa_stack_changed(Object *stack) {
          * trois-là n'appellent pas le même geste. */
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"This HyperCard stack cannot be read"];
-        [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%s",
-                               [path lastPathComponent], pourquoi]];
+        [a setInformativeText:[NSString stringWithFormat:@"%@\n\n%@",
+                               [path lastPathComponent], hcv_texte(pourquoi)]];
         [a runModal];
         return NO;
     }
@@ -1625,9 +1636,9 @@ void cocoa_stack_changed(Object *stack) {
         (void)decores;
         if (ressource_illisible)
             [m appendFormat:@"THE ICONS COULD NOT BE READ: the resource of "
-                            @"the MacBinary file is damaged (%s). The stack is "
+                            @"the MacBinary file is damaged (%@). The stack is "
                             @"there; its icon buttons will show an empty "
-                            @"square.\n\n", pourquoi_r];
+                            @"square.\n\n", hcv_texte(pourquoi_r)];
         [m appendString:@"This stack has no file yet: saving will ask for a "
                         @"name, and the original will not be touched."];
 
@@ -1685,8 +1696,8 @@ void cocoa_stack_changed(Object *stack) {
         NSAlert *a = [[NSAlert alloc] init];
         [a setMessageText:@"The stack cannot be read"];
         [a setInformativeText:
-            pourquoi ? [NSString stringWithFormat:@"%@\n\n%s",
-                                 [path lastPathComponent], pourquoi]
+            pourquoi ? [NSString stringWithFormat:@"%@\n\n%@",
+                                 [path lastPathComponent], hcv_texte(pourquoi)]
                      : [path lastPathComponent]];
         [a runModal];
         return NO;
@@ -1720,9 +1731,12 @@ void cocoa_stack_changed(Object *stack) {
      *
      * Une question posée au noyau exige que le noyau soit à jour. Le défaut
      * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
-    if (actif) [actif.view flushPaintToKernel];
+    /* Un dessin que le noyau n'a pas repris rend la pile NON vierge : sa
+     * fenêtre n'est pas réemployée, et le cache garde le seul exemplaire du
+     * dessin (revue du 24 octobre). */
+    BOOL repris = actif ? [actif.view flushPaintToKernel] : YES;
 
-    BOOL vierge = actif && actif.path == nil && actif.stack &&
+    BOOL vierge = repris && actif && actif.path == nil && actif.stack &&
                   hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
