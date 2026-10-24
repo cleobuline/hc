@@ -134,6 +134,12 @@ byte; `maccam.wasm` is rebuilt. A stack that carries the old `maccam.wasm`
 keeps it until the new one is dropped on its window; only an absurd
 `planes` value reaches the old fault.
 
+### 8. Two sounds
+
+Two sounds join the ones HC carries: `piano`, and `shtak`, the sound of the
+targets of HC's pinball table. `play "piano"` and `play "shtak"` find them
+by name, like `boing`.
+
 ---
 
 ### Test status
@@ -176,5 +182,7 @@ keeps it until the new one is dropped on its window; only an absurd
 
 - [#161](https://github.com/cleobuline/hc/pull/161): the review of 0.8.6,
   what HyperCard measured, and version 0.8.7
+- [#162](https://github.com/cleobuline/hc/pull/162): the `piano` and
+  `shtak` sounds
 
 **Full changelog:** [HC-0.8.6...HC-0.8.7](https://github.com/cleobuline/hc/compare/HC-0.8.6...HC-0.8.7)
