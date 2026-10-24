@@ -33,3 +33,54 @@ put the result
    
 put the short name of this card && the number of cards && the number of backgrounds
    Ailleurs 2 1
+
+== go dans un mouseUp : l'arrivée supprimée par closeCard ==
+send mouseUp to button "aller"
+   résultat : No such card
+put the short name of this card && the number of cards
+   Un 2
+go next card
+put the short name of this card
+   Trois
+
+== find dans un mouseUp : la carte trouvée supprimée par closeCard ==
+send mouseUp to button "chercher"
+   résultat : Not found
+put the short name of this card && the number of cards
+   Un 2
+go next card
+put the short name of this card
+   Trois
+
+== go : l'arrivée supprimée par openBackground ==
+go to card "Cible"
+put the result
+   
+put the short name of this card && the number of cards
+   Voisine 2
+
+== find et pop : openCard supprime la carte d'arrivée ==
+go to card "Deux"
+   openCard de Deux
+push this card
+go to card "Un"
+arme
+pop card
+put the result
+   
+put the short name of this card && the number of cards
+   Trois 2
+arme
+find "grenouille"
+put the result
+   Not found
+put the short name of this card && the number of cards
+   Trois 2
+
+== find : un champ de fond, la carte supprimée par closeCard ==
+arme
+find "grenouille"
+put the result
+   Not found
+put "[" & the foundText & "] [" & the foundChunk & "]"
+   [] []

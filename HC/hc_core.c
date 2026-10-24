@@ -12124,6 +12124,82 @@ static int find_ligne_de(const char *tx, const char *hit)
     return n;
 }
 
+/* L'ARRIVÉE TIENT-ELLE ENCORE ? Guettée (voir guette), elle vaut NULL une
+ * fois libérée. Mais supprimée pendant qu'un gestionnaire tourne — un go dans
+ * un mouseUp, le cas courant —, elle n'est d'abord que DÉTACHÉE de sa pile,
+ * et libérée seulement au retour au repos : il faut donc aussi qu'elle y soit
+ * encore rangée. La pile est guettée elle aussi. */
+static int tient_encore(Object *pile, Object *carte)
+{
+    return carte && pile && card_index(pile, carte) >= 0;
+}
+
+/* LES MESSAGES D'UN CHANGEMENT DE CARTE, une seule fois pour go, find et pop.
+ *
+ *     closeCard, closeBackground, closeStack
+ *     openStack, openBackground, openCard
+ *
+ * chacun seulement si la chose change, et l'arrivée redemandée après CHACUN,
+ * puisque chacun fait courir des gestionnaires qui peuvent la supprimer. Les
+ * trois navigations en tenaient chacune sa copie : la 0.8.6 n'avait gardé que
+ * les fermetures, et seulement au repos (revue du 24 octobre, reproduit sous
+ * ASan). Rend 0 si l'arrivée est tombée avant d'être posée : on reste sur
+ * place. Rend 1 si elle a été posée — même si un message d'ouverture l'a
+ * supprimée ensuite, la suppression de la carte courante choisissant alors la
+ * suivante ; plus rien ne lui est envoyé. `journal`, s'il y en a un, s'écrit
+ * juste avant openCard. Ce que fait HyperCard quand un de ces gestionnaires
+ * supprime l'arrivée n'est PAS MESURÉ. */
+static int change_de_carte(Object *dst, Object *pile, Object *vpile,
+                           int change_pile, int fenetres, const char *journal)
+{
+    Object *old = g_current_card;
+    Object *oldbg = old ? old->bg : NULL;
+    Object *arrivee = dst, *fond_quitte = oldbg;
+    Object *pile_arrivee = pile, *pile_quittee = vpile;
+    guette(&arrivee);
+    guette(&fond_quitte);
+    guette(&pile_arrivee);
+    guette(&pile_quittee);
+
+    int posee = 0;
+    if (old) hc_send_systeme(old, "closeCard");
+    if (tient_encore(pile_arrivee, arrivee) && fond_quitte &&
+        fond_quitte != arrivee->bg)
+        hc_send_systeme(fond_quitte, "closeBackground");
+    if (tient_encore(pile_arrivee, arrivee) && change_pile && pile_quittee &&
+        !fenetres)
+        hc_send_systeme(pile_quittee, "closeStack");
+    if (tient_encore(pile_arrivee, arrivee) && fenetres)
+        g_host->stack_changed(pile_arrivee);
+    if (tient_encore(pile_arrivee, arrivee)) {
+        posee = 1;
+        g_current_card = arrivee;
+        if (change_pile && !fenetres) hc_send_systeme(pile_arrivee, "openStack");
+        if (tient_encore(pile_arrivee, arrivee) && arrivee->bg &&
+            arrivee->bg != oldbg)
+            hc_send_systeme(arrivee->bg, "openBackground");
+        if (tient_encore(pile_arrivee, arrivee)) {
+            if (journal) emit(HC_INFO, "%s", journal);
+            hc_send_systeme(arrivee, "openCard");
+        }
+    }
+    cesse_de_guetter(&pile_quittee);
+    cesse_de_guetter(&pile_arrivee);
+    cesse_de_guetter(&fond_quitte);
+    cesse_de_guetter(&arrivee);
+    return posee;
+}
+
+/* Le résultat de la recherche, oublié : une recherche qui échoue, ou dont la
+ * carte est tombée en route. */
+static void trouvaille_oubliee(void)
+{
+    g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
+    g_found_start = g_found_len = 0; g_found_card = NULL;
+    g_found_montre = 0;
+    g_found_lisible = 0;
+}
+
 static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
 {
     size_t sauve = g_atop;
@@ -12449,40 +12525,36 @@ static int v3_cmd_find(HctContexte *ctx, const HctNoeud *n)
         g_found_montre = 1;
         g_found_lisible = 1;
 
+        /* Le nom d'abord : la carte trouvée peut tomber pendant les
+         * messages du changement de carte, et le journal la nomme après. */
+        char nom_trouve[1024];
+        snprintf(nom_trouve, sizeof nom_trouve, "%s", cd->name ? cd->name : "?");
         if (cd != g_current_card) {              /* naviguer si besoin */
-            Object *old = g_current_card;
-            Object *oldbg = old ? old->bg : NULL;
-            /* La carte trouvée peut mourir en route, comme l'arrivée d'un
-             * go (v3_va_a) : guettée, avec le fond que l'on quitte. L'oubli
-             * des objets a déjà vidé g_found_*. */
-            Object *fond_quitte = oldbg;
-            guette(&cd);
-            guette(&fond_quitte);
-            if (old) hc_send_systeme(old, "closeCard");
-            if (cd && fond_quitte && fond_quitte != cd->bg)
-                hc_send_systeme(fond_quitte, "closeBackground");
-            cesse_de_guetter(&fond_quitte);
-            cesse_de_guetter(&cd);
-            if (!cd) {
+            /* Si elle tombe en route, la recherche n'a rien trouvé : son
+             * résultat est oublié — un champ de FOND survit à sa carte, et
+             * l'oubli des objets ne l'aurait pas vidé. */
+            Object *arrivee = cd, *pile_cd = owning_stack(cd);
+            guette(&arrivee);
+            guette(&pile_cd);
+            int posee = change_de_carte(cd, pile_cd, NULL, 0, 0, NULL);
+            int tient = posee && tient_encore(pile_cd, arrivee);
+            cesse_de_guetter(&pile_cd);
+            cesse_de_guetter(&arrivee);
+            if (!tient) {
+                trouvaille_oubliee();
                 set_result("Not found");
                 g_atop = sauve;
                 return 1;
             }
-            g_current_card = cd;
-            if (cd->bg && cd->bg != oldbg) hc_send_systeme(cd->bg, "openBackground");
-            hc_send_systeme(cd, "openCard");
         }
         set_result("");
         emit(HC_INFO, "   ⇒ trouvé \"%s\" dans la carte \"%s\"",
-             g_found_text, cd->name ? cd->name : "?");
+             g_found_text, nom_trouve);
         g_atop = sauve;
         return 1;
     }
 
-    g_found_text[0] = 0; g_found_field = NULL; g_found_line = 0;
-    g_found_start = g_found_len = 0; g_found_card = NULL;
-    g_found_montre = 0;
-    g_found_lisible = 0;
+    trouvaille_oubliee();
     set_result("Not found");
     g_atop = sauve;
     return 1;
@@ -14984,26 +15056,17 @@ static int v3_cmd_pop(HctContexte *ctx, const HctNoeud *n)
     if (g_navtop <= 0) { set_result("pile de navigation vide"); return 1; }
 
     Object *dst = g_navstack[--g_navtop];
-    Object *old = g_current_card;
-    Object *oldbg = old ? old->bg : NULL;
-    Object *newbg = dst->bg;
 
-    /* La carte dépilée peut mourir en route, comme l'arrivée d'un go
-     * (v3_va_a) : guettée, avec le fond que l'on quitte. */
-    Object *fond_quitte = oldbg;
-    guette(&dst);
-    guette(&fond_quitte);
-    if (old) hc_send_systeme(old, "closeCard");
-    if (dst && fond_quitte && fond_quitte != newbg)
-        hc_send_systeme(fond_quitte, "closeBackground");
-    cesse_de_guetter(&fond_quitte);
-    cesse_de_guetter(&dst);
-    if (!dst) { set_result("No such card"); return 1; }
-    g_current_card = dst;
-    if (newbg && newbg != oldbg) hc_send_systeme(newbg, "openBackground");
-    hc_send_systeme(dst, "openCard");
+    /* Les messages du changement de carte, gardés comme ceux de go
+     * (change_de_carte) ; le nom d'abord, la carte pouvant tomber en route. */
+    char nom[1024];
+    snprintf(nom, sizeof nom, "%s", dst->name ? dst->name : "?");
+    if (!change_de_carte(dst, owning_stack(dst), NULL, 0, 0, NULL)) {
+        set_result("No such card");
+        return 1;
+    }
     set_result("");
-    emit(HC_INFO, "   ⇒ depile vers \"%s\"", dst->name ? dst->name : "?");
+    emit(HC_INFO, "   ⇒ depile vers \"%s\"", nom);
     return 1;
 }
 
@@ -15667,7 +15730,6 @@ static int v3_va_a(Object *dst)
      * un « go home » revenait dans le vide. Une seule navigation pour tout
      * le monde, et la question ne se repose plus. */
     Object *old    = g_current_card;
-    Object *oldbg  = old ? old->bg : NULL;
     Object *pile   = owning_stack(dst);
     Object *vpile  = old ? owning_stack(old) : NULL;
     int change_pile = (pile != vpile);
@@ -15698,33 +15760,16 @@ static int v3_va_a(Object *dst)
      * restent ce qu'ils étaient. */
     int fenetres = change_pile && g_host && g_host->stack_changed;
 
-    /* LA CARTE D'ARRIVÉE PEUT MOURIR EN ROUTE. Les messages de fermeture
-     * font courir des gestionnaires, et un « delete card » de closeCard qui
-     * vise l'arrivée la libère au retour de son envoi, et `dst` est une
-     * variable locale. Elle est donc guettée (voir guette), avec le fond que
-     * l'on quitte — un closeCard qui supprime sa propre carte peut
-     * l'emporter —, et l'on reste sur place si l'arrivée n'est plus (second
-     * audit de Jules, reproduit sous ASan). Ce que fait HyperCard dans ce
-     * cas n'est PAS MESURÉ. */
-    Object *arrivee = dst, *fond_quitte = oldbg;
-    guette(&arrivee);
-    guette(&fond_quitte);
-    if (old) hc_send_systeme(old, "closeCard");
-    if (arrivee && fond_quitte && fond_quitte != arrivee->bg)
-        hc_send_systeme(fond_quitte, "closeBackground");
-    if (arrivee && change_pile && vpile && !fenetres)
-        hc_send_systeme(vpile, "closeStack");
-    cesse_de_guetter(&fond_quitte);
-    cesse_de_guetter(&arrivee);
-    if (!arrivee) { set_result("No such card"); return 1; }
-
-    if (fenetres) g_host->stack_changed(pile);
-    g_current_card = dst;
-
-    if (change_pile && pile && !fenetres) hc_send_systeme(pile, "openStack");
-    if (dst->bg && dst->bg != oldbg) hc_send_systeme(dst->bg, "openBackground");
-    emit(HC_INFO, "   ⇒ va à la carte \"%s\"", dst->name ? dst->name : "?");
-    hc_send_systeme(dst, "openCard");
+    /* LA CARTE D'ARRIVÉE PEUT MOURIR EN ROUTE : chacun des six messages
+     * fait courir des gestionnaires, et l'un d'eux peut la supprimer. Ils
+     * passent donc par change_de_carte, qui la redemande après chacun ; on
+     * reste sur place si elle est tombée avant d'être posée (second audit de
+     * Jules, puis la revue du 24 octobre, reproduits sous ASan). */
+    char journal[1100];
+    snprintf(journal, sizeof journal, "   ⇒ va à la carte \"%s\"",
+             dst->name ? dst->name : "?");
+    if (!change_de_carte(dst, pile, vpile, change_pile, fenetres, journal))
+        set_result("No such card");
     return 1;
 }
 
