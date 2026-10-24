@@ -1244,9 +1244,12 @@ static NSMenu *gRecentMenu = nil;
      *
      * Une question posée au noyau exige que le noyau soit à jour. Le défaut
      * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
-    if (actif) [actif.view flushPaintToKernel];
+    /* Un dessin que le noyau n'a pas repris rend la pile NON vierge : sa
+     * fenêtre n'est pas réemployée, et le cache garde le seul exemplaire du
+     * dessin (revue du 24 octobre). */
+    BOOL repris = actif ? [actif.view flushPaintToKernel] : YES;
 
-    BOOL vierge = actif && actif.path == nil && actif.stack &&
+    BOOL vierge = repris && actif && actif.path == nil && actif.stack &&
                   hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {
@@ -1720,9 +1723,12 @@ void cocoa_stack_changed(Object *stack) {
      *
      * Une question posée au noyau exige que le noyau soit à jour. Le défaut
      * n'était pas dans le test mais dans ce qu'il avait sous les yeux. */
-    if (actif) [actif.view flushPaintToKernel];
+    /* Un dessin que le noyau n'a pas repris rend la pile NON vierge : sa
+     * fenêtre n'est pas réemployée, et le cache garde le seul exemplaire du
+     * dessin (revue du 24 octobre). */
+    BOOL repris = actif ? [actif.view flushPaintToKernel] : YES;
 
-    BOOL vierge = actif && actif.path == nil && actif.stack &&
+    BOOL vierge = repris && actif && actif.path == nil && actif.stack &&
                   hc_stack_vierge(actif.stack) && actif.cardCount == 0;
 
     if (vierge) {

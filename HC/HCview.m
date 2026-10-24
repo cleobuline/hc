@@ -6774,8 +6774,9 @@ static BOOL hcv_presse_image_systeme(void)
     Object *card = hc_current_card();
     if (!card) return;
     /* Même raison : on copie ce qui est à l'écran, pas ce qui dormait dans le
-     * noyau depuis le dernier enregistrement. */
-    [self flushPaintToKernel];
+     * noyau depuis le dernier enregistrement. Si un dessin n'a pas pu
+     * redescendre, la copie emporterait l'ancien : on renonce. */
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
     if (hc_copy_card(card)) hcv_presse_objet_retient();
 }
 
@@ -6795,10 +6796,12 @@ static BOOL hcv_presse_image_systeme(void)
      *
      * On vide APRÈS le flush : ce que la carte avait de peint doit d'abord
      * redescendre dans le noyau, faute de quoi la copie au presse-papiers
-     * emporterait un calque périmé. */
+     * emporterait un calque périmé. Et si un dessin n'a pas pu redescendre,
+     * on renonce AVANT de vider le cache : il serait le seul exemplaire du
+     * dessin (revue du 24 octobre). */
     if (gEditingField) [self endFieldEdit];
     gSelected = NULL;
-    [self flushPaintToKernel];
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
     [self clearPaintCache];
 
     if (!hc_cut_card(card)) {
@@ -6818,8 +6821,8 @@ static BOOL hcv_presse_image_systeme(void)
 
     /* Redescendre la peinture avant de cloner : sans cela le clone emporterait
      * le calque tel qu'il était au dernier enregistrement, et non ce que l'on
-     * voit à l'écran. */
-    [self flushPaintToKernel];
+     * voit à l'écran. Si un dessin n'a pas pu redescendre, on renonce. */
+    if (![self flushPaintToKernel]) { NSBeep(); return; }
 
     Object *nouvelle = hc_duplicate_card(card);
     if (!nouvelle) { NSBeep(); return; }
