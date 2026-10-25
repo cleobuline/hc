@@ -29,6 +29,37 @@ put empty into journal
 put line 3 of journal
    newBackground - 4 - card id 19
 
+== G. go d'un fond à l'autre, et retour ==
+go card 2
+go card 1
+put empty into journal
+go card 1
+put journal
+   closeCard - 2 - card id 28
+closeBackground - 2 - card id 28
+openBackground - 1 - card id 22
+openCard - 1 - card id 22
+
+put empty into journal
+go next card
+put journal
+   closeCard - 1 - card id 22
+closeBackground - 1 - card id 22
+openBackground - 2 - card id 28
+openCard - 2 - card id 28
+
+   -- un « on openBackground » dans le script d'une carte : il est appelé
+set the script of card 1 to "on openBackground" & return & "  global journal" & return & "  put " & quote & "vu par la carte" & quote & " & return after journal" & return & "  pass openBackground" & return & "end openBackground"
+put empty into journal
+go card 1
+put journal
+   closeCard - 2 - card id 28
+closeBackground - 2 - card id 28
+vu par la carte
+openBackground - 1 - card id 22
+openCard - 1 - card id 22
+
+
 == newCard supprime la carte neuve (non mesuré dans HyperCard) ==
 go card 2
    carte rendue : aucune

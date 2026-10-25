@@ -5670,8 +5670,13 @@ static void tache_si_script_avorte(void)
  * variable, et oublie_objet_interne la remet à NULL quand l'objet meurt,
  * comme il le fait des globales. Contrairement à hc_object_is_live, cela
  * marche aussi pour une pile qui n'est pas enregistrée. Si le registre est
- * plein, la variable n'est pas guettée : rien n'est pire qu'avant. */
-enum { GUETS_MAX = 64 };
+ * plein, la variable n'est pas guettée : rien n'est pire qu'avant.
+ *
+ * HUIT PAR NIVEAU DE GESTIONNAIRE. Une navigation guette six pointeurs, et un
+ * go peut s'imbriquer dans l'openCard d'un autre go, jusqu'à HC_MAX_DEPTH
+ * niveaux : à 64 places, la garde se taisait passé une dizaine de go
+ * imbriqués (relevé le 25 octobre, en ajoutant les deux derniers). */
+enum { GUETS_MAX = HC_MAX_DEPTH * 8 };
 static Object **g_guets[GUETS_MAX];
 static int g_nguets;
 
@@ -12203,16 +12208,28 @@ static int change_de_carte(Object *dst, Object *pile, Object *vpile,
     Object *oldbg = old ? old->bg : NULL;
     Object *arrivee = dst, *fond_quitte = oldbg;
     Object *pile_arrivee = pile, *pile_quittee = vpile;
+    Object *quittee = old, *pile_de_quittee = old ? owning_stack(old) : NULL;
     guette(&arrivee);
     guette(&fond_quitte);
     guette(&pile_arrivee);
     guette(&pile_quittee);
+    guette(&quittee);
+    guette(&pile_de_quittee);
 
     int posee = 0;
     if (old) hc_send_systeme(old, "closeCard");
+    /* closeBackground PART À LA CARTE QU'ON QUITTE, et openBackground à celle
+     * où l'on arrive : MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 25
+     * octobre, par un journal tenu dans le script de la pile — the target
+     * de l'un et de l'autre est une carte, à l'aller comme au retour. HC les
+     * envoyait au fond : un « on openBackground » du script d'une carte
+     * n'était jamais appelé, et the target disait bkgnd. Si closeCard a
+     * supprimé la carte quittée, le message va au fond qui lui survit ; ce
+     * que fait HyperCard alors : NON MESURÉ. */
     if (tient_encore(pile_arrivee, arrivee) && fond_quitte &&
         fond_quitte != arrivee->bg)
-        hc_send_systeme(fond_quitte, "closeBackground");
+        hc_send_systeme(tient_encore(pile_de_quittee, quittee) ? quittee : fond_quitte,
+                        "closeBackground");
     if (tient_encore(pile_arrivee, arrivee) && change_pile && pile_quittee &&
         !fenetres)
         hc_send_systeme(pile_quittee, "closeStack");
@@ -12224,12 +12241,14 @@ static int change_de_carte(Object *dst, Object *pile, Object *vpile,
         if (change_pile && !fenetres) hc_send_systeme(pile_arrivee, "openStack");
         if (tient_encore(pile_arrivee, arrivee) && arrivee->bg &&
             arrivee->bg != oldbg)
-            hc_send_systeme(arrivee->bg, "openBackground");
+            hc_send_systeme(arrivee, "openBackground");
         if (tient_encore(pile_arrivee, arrivee)) {
             if (journal) emit(HC_INFO, "%s", journal);
             hc_send_systeme(arrivee, "openCard");
         }
     }
+    cesse_de_guetter(&pile_de_quittee);
+    cesse_de_guetter(&quittee);
     cesse_de_guetter(&pile_quittee);
     cesse_de_guetter(&pile_arrivee);
     cesse_de_guetter(&fond_quitte);
