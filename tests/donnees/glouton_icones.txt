@@ -1,0 +1,917 @@
+-- Le glouton : les icônes, 16 x 16, doublées à 32 x 32.
+-- Un caractère par point, l'espace est transparent ; chaque lettre est une
+-- couleur de la palette ci-dessous. Elles se retouchent ici, à la main.
+couleur Y 255 224 0
+couleur R 255 0 0
+couleur K 255 184 255
+couleur C 0 255 255
+couleur O 255 184 82
+couleur w 255 255 255
+couleur b 33 33 255
+couleur B 40 40 220
+couleur p 255 184 151
+couleur r 230 0 0
+couleur g 0 170 60
+couleur n 120 60 20
+couleur W 222 222 255
+icone 3001 chomper closed
+                
+     YYYYYY     
+   YYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3002 chomper 1 a
+                
+                
+   YY      YY   
+  YYYY    YYYY  
+  YYYY    YYYY  
+ YYYYYY  YYYYYY 
+ YYYYYY  YYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3003 chomper 1 b
+                
+                
+                
+                
+  YY        YY  
+ YYYY      YYYY 
+ YYYYY    YYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3004 chomper 2 a
+                
+     YYYYYY     
+   YYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+ YYYYYYYYYYYY   
+ YYYYYYYYYY     
+ YYYYYYYY       
+ YYYYYYYY       
+ YYYYYYYYYY     
+ YYYYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3005 chomper 2 b
+                
+     YYYYYY     
+   YYYYYYYYY    
+  YYYYYYYYYY    
+  YYYYYYYYY     
+ YYYYYYYYY      
+ YYYYYYYY       
+ YYYYYYYY       
+ YYYYYYYY       
+ YYYYYYYY       
+ YYYYYYYYY      
+  YYYYYYYYY     
+  YYYYYYYYYY    
+   YYYYYYYYY    
+     YYYYYY     
+                
+icone 3006 chomper 3 a
+                
+     YYYYYY     
+   YYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYY  YYYYYY 
+ YYYYYY  YYYYYY 
+  YYYY    YYYY  
+  YYYY    YYYY  
+   YY      YY   
+                
+                
+icone 3007 chomper 3 b
+                
+     YYYYYY     
+   YYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+ YYYYY    YYYYY 
+ YYYY      YYYY 
+  YY        YY  
+                
+                
+                
+                
+icone 3008 chomper 4 a
+                
+     YYYYYY     
+   YYYYYYYYYY   
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYYYY 
+     YYYYYYYYYY 
+       YYYYYYYY 
+       YYYYYYYY 
+     YYYYYYYYYY 
+   YYYYYYYYYYYY 
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3009 chomper 4 b
+                
+     YYYYYY     
+    YYYYYYYYY   
+    YYYYYYYYYY  
+     YYYYYYYYY  
+      YYYYYYYYY 
+       YYYYYYYY 
+       YYYYYYYY 
+       YYYYYYYY 
+       YYYYYYYY 
+      YYYYYYYYY 
+     YYYYYYYYY  
+    YYYYYYYYYY  
+    YYYYYYYYY   
+     YYYYYY     
+                
+icone 3011 chomper dying 1
+                
+                
+                
+                
+                
+                
+                
+       YY       
+     YYYYYY     
+ YYYYYYYYYYYYYY 
+ YYYYYYYYYYYYYY 
+  YYYYYYYYYYYY  
+  YYYYYYYYYYYY  
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3012 chomper dying 2
+                
+                
+                
+                
+                
+                
+                
+       YY       
+       YY       
+       YY       
+      YYYY      
+     YYYYYY     
+    YYYYYYYY    
+   YYYYYYYYYY   
+     YYYYYY     
+                
+icone 3013 chomper dying 3
+                
+                
+                
+                
+                
+                
+                
+       YY       
+       YY       
+                
+                
+                
+                
+                
+       YY       
+                
+icone 3112 ghost 1 1 0
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRbbRRRRbbRR  
+  RwbbwRRwbbwR  
+ RRwwwwRRwwwwRR 
+ RRwwwwRRwwwwRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RR RRR  RRR RR 
+ R   R    R   R 
+icone 3113 ghost 1 1 1
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRbbRRRRbbRR  
+  RwbbwRRwbbwR  
+ RRwwwwRRwwwwRR 
+ RRwwwwRRwwwwRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRR RR  RR RRR
+  RR   RR   RR  
+icone 3114 ghost 1 2 0
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRwwbbRRwwbbRR 
+ RRwwbbRRwwbbRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RR RRR  RRR RR 
+ R   R    R   R 
+icone 3115 ghost 1 2 1
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRwwbbRRwwbbRR 
+ RRwwbbRRwwbbRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRR RR  RR RRR
+  RR   RR   RR  
+icone 3116 ghost 1 3 0
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRwwwwRRwwwwRR 
+ RRwbbwRRwbbwRR 
+ RRRbbRRRRbbRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RR RRR  RRR RR 
+ R   R    R   R 
+icone 3117 ghost 1 3 1
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRwwwwRRwwwwRR 
+ RRwbbwRRwbbwRR 
+ RRRbbRRRRbbRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRR RR  RR RRR
+  RR   RR   RR  
+icone 3118 ghost 1 4 0
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRbbwwRRbbwwRR 
+ RRbbwwRRbbwwRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RR RRR  RRR RR 
+ R   R    R   R 
+icone 3119 ghost 1 4 1
+                
+      RRRR      
+    RRRRRRRR    
+   RRRRRRRRRR   
+  RRwwRRRRwwRR  
+  RwwwwRRwwwwR  
+ RRbbwwRRbbwwRR 
+ RRbbwwRRbbwwRR 
+ RRRwwRRRRwwRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRRRRRRRRRRRR 
+ RRRR RR  RR RRR
+  RR   RR   RR  
+icone 3122 ghost 2 1 0
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKbbKKKKbbKK  
+  KwbbwKKwbbwK  
+ KKwwwwKKwwwwKK 
+ KKwwwwKKwwwwKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KK KKK  KKK KK 
+ K   K    K   K 
+icone 3123 ghost 2 1 1
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKbbKKKKbbKK  
+  KwbbwKKwbbwK  
+ KKwwwwKKwwwwKK 
+ KKwwwwKKwwwwKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKK KK  KK KKK
+  KK   KK   KK  
+icone 3124 ghost 2 2 0
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKwwbbKKwwbbKK 
+ KKwwbbKKwwbbKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KK KKK  KKK KK 
+ K   K    K   K 
+icone 3125 ghost 2 2 1
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKwwbbKKwwbbKK 
+ KKwwbbKKwwbbKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKK KK  KK KKK
+  KK   KK   KK  
+icone 3126 ghost 2 3 0
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKwwwwKKwwwwKK 
+ KKwbbwKKwbbwKK 
+ KKKbbKKKKbbKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KK KKK  KKK KK 
+ K   K    K   K 
+icone 3127 ghost 2 3 1
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKwwwwKKwwwwKK 
+ KKwbbwKKwbbwKK 
+ KKKbbKKKKbbKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKK KK  KK KKK
+  KK   KK   KK  
+icone 3128 ghost 2 4 0
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKbbwwKKbbwwKK 
+ KKbbwwKKbbwwKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KK KKK  KKK KK 
+ K   K    K   K 
+icone 3129 ghost 2 4 1
+                
+      KKKK      
+    KKKKKKKK    
+   KKKKKKKKKK   
+  KKwwKKKKwwKK  
+  KwwwwKKwwwwK  
+ KKbbwwKKbbwwKK 
+ KKbbwwKKbbwwKK 
+ KKKwwKKKKwwKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKKKKKKKKKKKK 
+ KKKK KK  KK KKK
+  KK   KK   KK  
+icone 3132 ghost 3 1 0
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCbbCCCCbbCC  
+  CwbbwCCwbbwC  
+ CCwwwwCCwwwwCC 
+ CCwwwwCCwwwwCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CC CCC  CCC CC 
+ C   C    C   C 
+icone 3133 ghost 3 1 1
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCbbCCCCbbCC  
+  CwbbwCCwbbwC  
+ CCwwwwCCwwwwCC 
+ CCwwwwCCwwwwCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCC CC  CC CCC
+  CC   CC   CC  
+icone 3134 ghost 3 2 0
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCwwbbCCwwbbCC 
+ CCwwbbCCwwbbCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CC CCC  CCC CC 
+ C   C    C   C 
+icone 3135 ghost 3 2 1
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCwwbbCCwwbbCC 
+ CCwwbbCCwwbbCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCC CC  CC CCC
+  CC   CC   CC  
+icone 3136 ghost 3 3 0
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCwwwwCCwwwwCC 
+ CCwbbwCCwbbwCC 
+ CCCbbCCCCbbCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CC CCC  CCC CC 
+ C   C    C   C 
+icone 3137 ghost 3 3 1
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCwwwwCCwwwwCC 
+ CCwbbwCCwbbwCC 
+ CCCbbCCCCbbCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCC CC  CC CCC
+  CC   CC   CC  
+icone 3138 ghost 3 4 0
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCbbwwCCbbwwCC 
+ CCbbwwCCbbwwCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CC CCC  CCC CC 
+ C   C    C   C 
+icone 3139 ghost 3 4 1
+                
+      CCCC      
+    CCCCCCCC    
+   CCCCCCCCCC   
+  CCwwCCCCwwCC  
+  CwwwwCCwwwwC  
+ CCbbwwCCbbwwCC 
+ CCbbwwCCbbwwCC 
+ CCCwwCCCCwwCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCCCCCCCCCCCC 
+ CCCC CC  CC CCC
+  CC   CC   CC  
+icone 3142 ghost 4 1 0
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OObbOOOObbOO  
+  OwbbwOOwbbwO  
+ OOwwwwOOwwwwOO 
+ OOwwwwOOwwwwOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OO OOO  OOO OO 
+ O   O    O   O 
+icone 3143 ghost 4 1 1
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OObbOOOObbOO  
+  OwbbwOOwbbwO  
+ OOwwwwOOwwwwOO 
+ OOwwwwOOwwwwOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOO OO  OO OOO
+  OO   OO   OO  
+icone 3144 ghost 4 2 0
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OOwwbbOOwwbbOO 
+ OOwwbbOOwwbbOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OO OOO  OOO OO 
+ O   O    O   O 
+icone 3145 ghost 4 2 1
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OOwwbbOOwwbbOO 
+ OOwwbbOOwwbbOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOO OO  OO OOO
+  OO   OO   OO  
+icone 3146 ghost 4 3 0
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OOwwwwOOwwwwOO 
+ OOwbbwOOwbbwOO 
+ OOObbOOOObbOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OO OOO  OOO OO 
+ O   O    O   O 
+icone 3147 ghost 4 3 1
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OOwwwwOOwwwwOO 
+ OOwbbwOOwbbwOO 
+ OOObbOOOObbOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOO OO  OO OOO
+  OO   OO   OO  
+icone 3148 ghost 4 4 0
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OObbwwOObbwwOO 
+ OObbwwOObbwwOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OO OOO  OOO OO 
+ O   O    O   O 
+icone 3149 ghost 4 4 1
+                
+      OOOO      
+    OOOOOOOO    
+   OOOOOOOOOO   
+  OOwwOOOOwwOO  
+  OwwwwOOwwwwO  
+ OObbwwOObbwwOO 
+ OObbwwOObbwwOO 
+ OOOwwOOOOwwOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOOOOOOOOOOOO 
+ OOOO OO  OO OOO
+  OO   OO   OO  
+icone 3150 scared 1
+                
+      BBBB      
+    BBBBBBBB    
+   BBBBBBBBBB   
+  BBBBBBBBBBBB  
+  BBBBBBBBBBBB  
+ BBBBppBBppBBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BBBppBBppBBpBB 
+ BBpBBppBBppBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BB BBB  BBB BB 
+ B   B    B   B 
+icone 3151 scared 2
+                
+      BBBB      
+    BBBBBBBB    
+   BBBBBBBBBB   
+  BBBBBBBBBBBB  
+  BBBBBBBBBBBB  
+ BBBBppBBppBBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BBBppBBppBBpBB 
+ BBpBBppBBppBBB 
+ BBBBBBBBBBBBBB 
+ BBBBBBBBBBBBBB 
+ BBBB BB  BB BBB
+  BB   BB   BB  
+icone 3152 scared white 1
+                
+      WWWW      
+    WWWWWWWW    
+   WWWWWWWWWW   
+  WWWWWWWWWWWW  
+  WWWWWWWWWWWW  
+ WWWWrrWWrrWWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WWWrrWWrrWWrWW 
+ WWrWWrrWWrrWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WW WWW  WWW WW 
+ W   W    W   W 
+icone 3153 scared white 2
+                
+      WWWW      
+    WWWWWWWW    
+   WWWWWWWWWW   
+  WWWWWWWWWWWW  
+  WWWWWWWWWWWW  
+ WWWWrrWWrrWWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WWWrrWWrrWWrWW 
+ WWrWWrrWWrrWWW 
+ WWWWWWWWWWWWWW 
+ WWWWWWWWWWWWWW 
+ WWWW WW  WW WWW
+  WW   WW   WW  
+icone 3161 eyes 1
+                
+                
+                
+                
+    bb    bb    
+   wbbw  wbbw   
+   wwww  wwww   
+   wwww  wwww   
+    ww    ww    
+                
+                
+                
+                
+                
+                
+                
+icone 3162 eyes 2
+                
+                
+                
+                
+    ww    ww    
+   wwww  wwww   
+   wwbb  wwbb   
+   wwbb  wwbb   
+    ww    ww    
+                
+                
+                
+                
+                
+                
+                
+icone 3163 eyes 3
+                
+                
+                
+                
+    ww    ww    
+   wwww  wwww   
+   wwww  wwww   
+   wbbw  wbbw   
+    bb    bb    
+                
+                
+                
+                
+                
+                
+                
+icone 3164 eyes 4
+                
+                
+                
+                
+    ww    ww    
+   wwww  wwww   
+   bbww  bbww   
+   bbww  bbww   
+    ww    ww    
+                
+                
+                
+                
+                
+                
+                
+icone 3170 cherry
+                
+          nn    
+         n gg   
+        n  ggg  
+       n    n   
+      n     n   
+     n      n   
+    n       n   
+   rrr     rrr  
+  rrrrr   rrrrr 
+ rwrrrrr rwrrrrr
+ rrrrrrr rrrrrrr
+ rrrrrrr rrrrrrr
+  rrrrr   rrrrr 
+   rrr     rrr  
+                

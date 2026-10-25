@@ -1,0 +1,740 @@
+-- ════════════════════════════════════════════════════════════════════
+--  GOBE-PROUT — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Un glouton, des pastilles, quatre fantômes : un Pac-Man librement
+--  inspiré, écrit en HyperTalk pour HC. Le labyrinthe est le nôtre ; des
+--  règles d'origine on a gardé l'esprit, tel que tout le monde le décrit :
+--  chaque fantôme a sa façon de chasser, ils se dispersent et reviennent,
+--  et une super-pastille les rend mangeables un moment.
+--
+--  LE LABYRINTHE fait 23 cases sur 17, de 32 points. Il vit dans la globale
+--  gLab, une ligne de texte par rangée, un caractère par case :
+--    #  mur        x  rien         -  porte de la maison (fantômes seuls)
+--    h  la maison (fantômes seuls)     .  pastille   o  super-pastille
+--    (espace)  couloir vide
+--  Il se lit dans le champ caché « maze », où les lettres a b c d marquent
+--  le départ des fantômes, P celui du glouton, F la place du fruit.
+--  La rangée 10 est un tunnel : on sort à gauche, on rentre à droite.
+--
+--  La case (r, c) a sa pastille dans le bouton de carte (r - 1) * 23 + c + 1 ;
+--  le bouton 1 est le fond noir. Le glouton, les fantômes « g1 » à « g4 » et
+--  le fruit sont des boutons à icône, déplacés au point près.
+--
+--  LE MOUVEMENT : chacun avance par pas de 4 points. Au centre d'une case
+--  (gPp = 0), on choisit où aller ; entre deux, on avance. Le glouton fait
+--  deux pas par image, un fantôme un peu moins : la vitesse est un nombre
+--  de pas par image, que l'on cumule.
+--
+--  Directions : 1 haut, 2 droite, 3 bas, 4 gauche ; 0 = arrêté.
+--  Clavier : flèches, ZQSD ou WASD ; Échap pour arrêter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  chargeLab
+  remetPastilles
+  placeActeurs
+  dessine
+  annonce "Arrows, ZQSD or WASD. Esc: stop. Click New game!"
+  pass openCard
+end openCard
+
+on arrowKey
+end arrowKey
+
+on keyDown
+end keyDown
+
+-- ─── la partie ──────────────────────────────────────────────────────
+
+on nouvellePartie
+  global gVies, gNiveau, gScore, gIssue, gManges
+  put 3 into gVies
+  put 1 into gNiveau
+  put 0 into gScore
+  chargeLab
+  remetPastilles
+  montreTout
+  play "piano" tempo 200 "c5e g4e c5e e5e g5q e5e c5e d5e f5e a5q f5e d5e g5h"
+  put true into premiere
+  repeat
+    placeActeurs
+    dessine
+    annonce "Ready!"
+    if premiere then wait 150 ticks
+    else wait 60 ticks
+    put false into premiere
+    annonce empty
+    joue
+    if gIssue is "stop" then
+      annonce "Game stopped."
+      exit repeat
+    end if
+    if gIssue is "fini" then
+      play "cocorico"
+      annonce "Maze cleared!"
+      wait 90 ticks
+      add 1 to gNiveau
+      remetPastilles
+      montreTout
+      next repeat
+    end if
+    meurt
+    subtract 1 from gVies
+    montreTout
+    if gVies > 0 then next repeat
+    annonce "Game over. Score:" && gScore
+    play "canard"
+    gardeRecord
+    exit repeat
+  end repeat
+end nouvellePartie
+
+-- Le glouton se ratatine, puis disparaît.
+on meurt
+  global gIssue
+  play "boing3"
+  lock screen
+  repeat with i = 1 to 4
+    hide card button ("g" & i)
+  end repeat
+  unlock screen
+  repeat with k = 3011 to 3013
+    set the icon of card button "glouton" to k
+    wait 10 ticks
+  end repeat
+  hide card button "glouton"
+  wait 30 ticks
+end meurt
+
+on gardeRecord
+  global gScore
+  if gScore > card field "best" then put gScore into card field "best"
+end gardeRecord
+
+-- ─── la boucle ──────────────────────────────────────────────────────
+
+-- Une image toutes les 3 ticks, vingt par seconde. Une image en retard ne
+-- se rattrape pas en rafale : on repart de maintenant.
+on joue
+  global gIssue
+  put empty into gIssue
+  put the ticks into prochaine
+  repeat until gIssue is not empty
+    image
+    if gIssue is not empty then exit repeat
+    add 3 to prochaine
+    if prochaine < the ticks then put the ticks into prochaine
+    repeat while the ticks < prochaine
+      retiens
+      if gIssue is not empty then exit repeat
+      wait 1 tick
+    end repeat
+  end repeat
+end joue
+
+on image
+  global gPause, gT, gIssue
+  if gPause > 0 then
+    subtract 1 from gPause
+    if gPause is 0 then annonce empty
+    exit image
+  end if
+  add 1 to gT
+  clavier
+  if gIssue is "stop" then exit image
+  bougeGlouton
+  if gIssue is empty then collisions
+  if gIssue is empty then
+    bougeFantomes
+    collisions
+  end if
+  if gIssue is empty then minuteries
+  -- Toujours redessiner, même à la mort : on voit la rencontre.
+  dessine
+end image
+
+-- ─── le labyrinthe ──────────────────────────────────────────────────
+
+on chargeLab
+  global gLab, gDepart, gFruitCase, gSupers, gTotal
+  put card field "maze" into t
+  put empty into gDepart
+  put empty into gSupers
+  put empty into gLab
+  put 0 into gTotal
+  repeat with r = 1 to 17
+    put line r of t into ligne
+    repeat with c = 1 to 23
+      put char c of ligne into ch
+      if ch is "P" then
+        put r & "," & c into line 5 of gDepart
+        put " " into char c of ligne
+      end if
+      if ch is "a" then
+        put r & "," & c into line 1 of gDepart
+        put " " into char c of ligne
+      end if
+      if ch is "b" or ch is "c" or ch is "d" then
+        put r & "," & c into line (offset(ch, "abcd")) of gDepart
+        put "h" into char c of ligne
+      end if
+      if ch is "F" then
+        put r & "," & c into gFruitCase
+        put " " into char c of ligne
+      end if
+      if ch is "." or ch is "o" then add 1 to gTotal
+      if ch is "o" then put (r - 1) * 23 + c & "," after gSupers
+    end repeat
+    put ligne into line r of gLab
+  end repeat
+end chargeLab
+
+-- Toutes les pastilles reviennent, pour une partie ou un niveau neufs.
+on remetPastilles
+  global gLab, gReste, gTotal, gManges
+  put card field "maze" into t
+  lock screen
+  repeat with r = 1 to 17
+    put line r of t into modele
+    put line r of gLab into ligne
+    repeat with c = 1 to 23
+      put char c of modele into ch
+      if ch is "." or ch is "o" then
+        put ch into char c of ligne
+        show card button ((r - 1) * 23 + c + 1)
+      else
+        hide card button ((r - 1) * 23 + c + 1)
+      end if
+    end repeat
+    put ligne into line r of gLab
+  end repeat
+  unlock screen
+  put gTotal into gReste
+  put 0 into gManges
+end remetPastilles
+
+function enroule c
+  if c < 1 then return c + 23
+  if c > 23 then return c - 23
+  return c
+end enroule
+
+function lis r, c
+  global gLab
+  if r < 1 or r > 17 then return "x"
+  return char enroule(c) of line r of gLab
+end lis
+
+-- Le glouton passe partout sauf dans les murs, le vide et la maison.
+function libre r, c
+  put lis(r, c) into ch
+  return not (ch is "#" or ch is "x" or ch is "-" or ch is "h")
+end libre
+
+-- Un fantôme passe la porte et la maison pour en sortir ou y rentrer.
+function libreF m, r, c
+  put lis(r, c) into ch
+  if ch is "#" or ch is "x" then return false
+  if ch is "-" then return m is "sortie" or m is "yeux"
+  if ch is "h" then return m is "sortie" or m is "yeux" or m is "maison"
+  return true
+end libreF
+
+function dy d
+  if d is 1 then return -1
+  if d is 3 then return 1
+  return 0
+end dy
+
+function dx d
+  if d is 2 then return 1
+  if d is 4 then return -1
+  return 0
+end dx
+
+function oppose d
+  if d is 0 then return 0
+  return (d + 1) mod 4 + 1
+end oppose
+
+-- ─── les acteurs ────────────────────────────────────────────────────
+
+-- Chacun à sa place de départ. Le rouge commence dehors ; les trois
+-- autres attendent dans la maison et sortent l'un après l'autre.
+on placeActeurs
+  global gDepart, gPr, gPc, gPd, gPp, gVeut, gPacAcc
+  global gGr, gGc, gGd, gGp, gGm, gGacc, gT, gPause, gPeur, gPhase, gPhaseT, gPlanI
+  global gFruitT, gIcones, gAlea
+  put item 1 of line 5 of gDepart into gPr
+  put item 2 of line 5 of gDepart into gPc
+  put 4 into gPd
+  put 0 into gPp
+  put 4 into gVeut
+  put 0 into gPacAcc
+  put empty into gGr
+  put empty into gGc
+  repeat with i = 1 to 4
+    put item 1 of line i of gDepart into item i of gGr
+    put item 2 of line i of gDepart into item i of gGc
+  end repeat
+  put "4,0,0,0" into gGd
+  put "0,0,0,0" into gGp
+  put "normal,maison,maison,maison" into gGm
+  put "0,0,0,0" into gGacc
+  put 0 into gT
+  put 0 into gPause
+  put 0 into gPeur
+  put "disperse" into gPhase
+  put 1 into gPlanI
+  put item 1 of plan() into gPhaseT
+  put 0 into gFruitT
+  put empty into gIcones
+  if gAlea is empty then put 4242 into gAlea
+  lock screen
+  show card button "glouton"
+  repeat with i = 1 to 4
+    show card button ("g" & i)
+  end repeat
+  hide card button "fruit"
+  unlock screen
+end placeActeurs
+
+-- Dispersion, chasse, dispersion, chasse... en images. Après la dernière,
+-- la chasse ne finit plus.
+function plan
+  return "140,400,140,400,100,400,100"
+end plan
+
+-- ─── le clavier ─────────────────────────────────────────────────────
+
+function direction k
+  put "," & k & "," into k
+  if k contains ",65362," or k contains ",122," or k contains ",119," then return 1
+  if k contains ",65363," or k contains ",100," then return 2
+  if k contains ",65364," or k contains ",115," then return 3
+  if k contains ",65361," or k contains ",113," or k contains ",97," then return 4
+  return 0
+end direction
+
+-- La dernière direction voulue reste voulue : on peut appuyer avant le
+-- carrefour, le glouton tournera en y arrivant.
+on retiens
+  global gVeut, gIssue
+  put the keysDown into k
+  if k is empty then exit retiens
+  if ("," & k & ",") contains ",65307," then
+    put "stop" into gIssue
+    exit retiens
+  end if
+  put direction(k) into d
+  if d is not 0 then put d into gVeut
+end retiens
+
+on clavier
+  retiens
+end clavier
+
+-- ─── le glouton ─────────────────────────────────────────────────────
+
+function vitesseGlouton
+  return 2
+end vitesseGlouton
+
+on bougeGlouton
+  global gPacAcc, gIssue
+  add vitesseGlouton() to gPacAcc
+  repeat while gPacAcc >= 1
+    subtract 1 from gPacAcc
+    pasGlouton
+    if gIssue is not empty then exit bougeGlouton
+  end repeat
+end bougeGlouton
+
+on pasGlouton
+  global gPr, gPc, gPd, gPp, gVeut
+  if gPp is 0 then
+    if gVeut is not 0 and gVeut is not gPd then
+      if libre(gPr + dy(gVeut), gPc + dx(gVeut)) then put gVeut into gPd
+    end if
+    if gPd is 0 then exit pasGlouton
+    if not libre(gPr + dy(gPd), gPc + dx(gPd)) then exit pasGlouton
+    put 4 into gPp
+  else
+    -- Entre deux cases, le demi-tour est permis à tout moment.
+    if gVeut is oppose(gPd) then
+      put gPr + dy(gPd) into gPr
+      put enroule(gPc + dx(gPd)) into gPc
+      put gVeut into gPd
+      put 32 - gPp into gPp
+    end if
+    add 4 to gPp
+  end if
+  if gPp >= 32 then
+    put gPr + dy(gPd) into gPr
+    put enroule(gPc + dx(gPd)) into gPc
+    put 0 into gPp
+    arrive
+  end if
+end pasGlouton
+
+-- Au centre d'une case : ce qu'il y a à manger.
+on arrive
+  global gLab, gPr, gPc, gScore, gReste, gManges, gIssue, gFruitCase, gFruitT, gNiveau
+  put char gPc of line gPr of gLab into ch
+  if ch is "." or ch is "o" then
+    put " " into char gPc of line gPr of gLab
+    hide card button ((gPr - 1) * 23 + gPc + 1)
+    subtract 1 from gReste
+    add 1 to gManges
+    if ch is "." then
+      add 10 to gScore
+      if gManges mod 2 is 0 then
+        play "tik"
+      end if
+    else
+      add 50 to gScore
+      effraie
+    end if
+    montreScore
+    if gManges is 40 or gManges is 90 then montreFruit
+    if gReste is 0 then put "fini" into gIssue
+  end if
+  if gFruitT > 0 and gPr & "," & gPc is gFruitCase then
+    put 0 into gFruitT
+    hide card button "fruit"
+    add 100 * gNiveau to gScore
+    montreScore
+    play "cling"
+    annonce "Cherry!" && 100 * gNiveau
+  end if
+end arrive
+
+on montreFruit
+  global gFruitT, gFruitCase
+  put 200 into gFruitT
+  set the loc of card button "fruit" to centre(item 1 of gFruitCase, item 2 of gFruitCase, 0, 0)
+  show card button "fruit"
+end montreFruit
+
+-- ─── les fantômes ───────────────────────────────────────────────────
+
+-- La peur : chacun dehors fait demi-tour et devient mangeable. Plus le
+-- niveau monte, moins elle dure.
+on effraie
+  global gGm, gPeur, gNiveau, gMangeN
+  put max(40, 140 - 20 * (gNiveau - 1)) into gPeur
+  put 0 into gMangeN
+  play "boing"
+  repeat with i = 1 to 4
+    put item i of gGm into m
+    if m is "normal" then
+      demiTour i
+      put "peur" into item i of gGm
+    end if
+  end repeat
+end effraie
+
+on demiTour i
+  global gGr, gGc, gGd, gGp
+  put item i of gGd into d
+  if d is 0 then exit demiTour
+  put item i of gGp into p
+  if p > 0 then
+    put (item i of gGr) + dy(d) into item i of gGr
+    put enroule((item i of gGc) + dx(d)) into item i of gGc
+    put 32 - p into item i of gGp
+  end if
+  put oppose(d) into item i of gGd
+end demiTour
+
+function vitesseFantome i
+  global gGm, gGr, gGc, gNiveau
+  put item i of gGm into m
+  if m is "maison" then return 0
+  if m is "yeux" then return 3
+  if m is "peur" or m is "sortie" then return 1
+  -- dans le tunnel, ils traînent
+  put item i of gGc into c
+  if (item i of gGr) is 10 and (c <= 5 or c >= 19) then return 1
+  return min(1.9, 1.7 + 0.05 * (gNiveau - 1))
+end vitesseFantome
+
+on bougeFantomes
+  global gGacc
+  repeat with i = 1 to 4
+    put (item i of gGacc) + vitesseFantome(i) into acc
+    repeat while acc >= 1
+      subtract 1 from acc
+      pasFantome i
+    end repeat
+    put acc into item i of gGacc
+  end repeat
+end bougeFantomes
+
+on pasFantome i
+  global gGr, gGc, gGd, gGp, gGm
+  put item i of gGr into r
+  put item i of gGc into c
+  put item i of gGd into d
+  put item i of gGp into p
+  if p is 0 then
+    put choix(i, r, c, d) into d
+    if d is 0 then exit pasFantome
+    put d into item i of gGd
+    put 4 into p
+  else
+    add 4 to p
+  end if
+  if p >= 32 then
+    put r + dy(d) into r
+    put enroule(c + dx(d)) into c
+    put 0 into p
+    put r into item i of gGr
+    put c into item i of gGc
+    put 0 into item i of gGp
+    arriveFantome i
+  else
+    put p into item i of gGp
+  end if
+end pasFantome
+
+-- Arrivé au centre d'une case : sorti de la maison, ou rentré dedans.
+on arriveFantome i
+  global gGr, gGc, gGd, gGm, gDepart
+  put item i of gGm into m
+  put item i of gGr & "," & item i of gGc into ici
+  if m is "sortie" and ici is line 1 of gDepart then
+    put "normal" into item i of gGm
+    put 4 into item i of gGd
+  end if
+  if m is "yeux" and ici is "10,12" then
+    put "sortie" into item i of gGm
+    put 0 into item i of gGd
+  end if
+end arriveFantome
+
+-- Le choix au carrefour : jamais de demi-tour, sauf impasse ; puis la
+-- case la plus proche de la cible, à vol d'oiseau. À égalité : haut,
+-- gauche, bas, droite. Apeuré, il tire au sort.
+function choix i, r, c, d
+  global gGm, gDepart
+  put item i of gGm into m
+  put empty into permises
+  repeat with k = 1 to 4
+    put item k of "1,4,3,2" into nd
+    if d is not 0 and nd is oppose(d) then next repeat
+    if libreF(m, r + dy(nd), c + dx(nd)) then put nd & "," after permises
+  end repeat
+  if permises is not empty then delete last char of permises
+  if permises is empty then
+    if d is not 0 and libreF(m, r + dy(oppose(d)), c + dx(oppose(d))) then return oppose(d)
+    return 0
+  end if
+  if m is "peur" then return item hasard(the number of items of permises) of permises
+  put cible(i) into t
+  put item 1 of t into tr
+  put item 2 of t into tc
+  put 0 into meilleur
+  put 1000000 into dmin
+  repeat with k = 1 to the number of items of permises
+    put item k of permises into nd
+    put (r + dy(nd) - tr) ^ 2 + (c + dx(nd) - tc) ^ 2 into dist
+    if dist < dmin then
+      put dist into dmin
+      put nd into meilleur
+    end if
+  end repeat
+  return meilleur
+end choix
+
+-- Un hasard à nous, pour que le harnais rejoue les mêmes parties.
+function hasard n
+  global gAlea
+  put (gAlea * 75 + 74) mod 65537 into gAlea
+  return gAlea mod n + 1
+end hasard
+
+-- La cible de chacun.
+--   1, le rouge   : le glouton lui-même.
+--   2, la rose    : quatre cases devant le glouton — il coupe la route.
+--   3, le bleu    : deux cases devant le glouton, puis le double de
+--                   l'écart avec le rouge — il prend en tenaille.
+--   4, l'orange   : le glouton de loin, son coin de près — il flâne.
+-- En dispersion, chacun rentre à son coin.
+function cible i
+  global gGm, gGr, gGc, gPr, gPc, gPd, gPhase, gDepart
+  put item i of gGm into m
+  if m is "sortie" then return line 1 of gDepart
+  if m is "yeux" then return "10,12"
+  if gPhase is "disperse" then return coin(i)
+  if i is 1 then return gPr & "," & gPc
+  if i is 2 then return gPr + 4 * dy(gPd) & "," & gPc + 4 * dx(gPd)
+  if i is 3 then
+    put gPr + 2 * dy(gPd) into ar
+    put gPc + 2 * dx(gPd) into ac
+    return 2 * ar - (item 1 of gGr) & "," & 2 * ac - (item 1 of gGc)
+  end if
+  if ((item 4 of gGr) - gPr) ^ 2 + ((item 4 of gGc) - gPc) ^ 2 > 64 then return gPr & "," & gPc
+  return coin(4)
+end cible
+
+-- Les coins, hors du labyrinthe : on ne les atteint jamais, on tourne
+-- autour.
+function coin i
+  if i is 1 then return "0,24"
+  if i is 2 then return "0,0"
+  if i is 3 then return "18,24"
+  return "18,0"
+end coin
+
+-- ─── le temps qui passe ─────────────────────────────────────────────
+
+on minuteries
+  global gT, gGm, gGd, gPeur, gPhase, gPhaseT, gPlanI, gFruitT
+  -- les sorties de la maison
+  if gT is 20 then sortDeLaMaison 2
+  if gT is 80 then sortDeLaMaison 3
+  if gT is 160 then sortDeLaMaison 4
+  -- la peur
+  if gPeur > 0 then
+    subtract 1 from gPeur
+    if gPeur is 0 then
+      repeat with i = 1 to 4
+        if item i of gGm is "peur" then put "normal" into item i of gGm
+      end repeat
+    end if
+  else
+    -- dispersion et chasse, qui s'arrêtent pendant la peur
+    if gPhaseT > 0 then
+      subtract 1 from gPhaseT
+      if gPhaseT is 0 then
+        if gPhase is "disperse" then put "chasse" into gPhase
+        else put "disperse" into gPhase
+        add 1 to gPlanI
+        if gPlanI <= the number of items of plan() then put item gPlanI of plan() into gPhaseT
+        repeat with i = 1 to 4
+          if item i of gGm is "normal" then demiTour i
+        end repeat
+      end if
+    end if
+  end if
+  -- le fruit
+  if gFruitT > 0 then
+    subtract 1 from gFruitT
+    if gFruitT is 0 then hide card button "fruit"
+  end if
+end minuteries
+
+on sortDeLaMaison i
+  global gGm, gGd
+  if item i of gGm is "maison" then
+    put "sortie" into item i of gGm
+    put 0 into item i of gGd
+  end if
+end sortDeLaMaison
+
+-- ─── les rencontres ─────────────────────────────────────────────────
+
+function centre r, c, d, p
+  return (c - 1) * 32 + 16 + dx(d) * p & "," & (r - 1) * 32 + 16 + dy(d) * p
+end centre
+
+on collisions
+  global gPr, gPc, gPd, gPp, gGr, gGc, gGd, gGp, gGm, gIssue, gScore, gMangeN, gPause
+  put centre(gPr, gPc, gPd, gPp) into pg
+  repeat with i = 1 to 4
+    put item i of gGm into m
+    if m is "yeux" or m is "maison" then next repeat
+    put centre(item i of gGr, item i of gGc, item i of gGd, item i of gGp) into pf
+    if abs((item 1 of pf) - (item 1 of pg)) + abs((item 2 of pf) - (item 2 of pg)) >= 20 then next repeat
+    if m is "peur" then
+      add 1 to gMangeN
+      put 100 * 2 ^ gMangeN into points
+      add points to gScore
+      montreScore
+      put "yeux" into item i of gGm
+      play "shtak"
+      annonce points
+      put 15 into gPause
+    else
+      put "mort" into gIssue
+      exit collisions
+    end if
+  end repeat
+end collisions
+
+-- ─── l'écran ────────────────────────────────────────────────────────
+
+-- Les icônes ne se posent que si elles changent : chaque pose fait
+-- repeindre.
+on poseIcone nom, k
+  global gIcones
+  if nom is "glouton" then put 5 into n
+  else put char 2 of nom into n
+  if item n of gIcones is k then exit poseIcone
+  put k into item n of gIcones
+  set the icon of card button nom to k
+end poseIcone
+
+on dessine
+  global gPr, gPc, gPd, gPp, gGr, gGc, gGd, gGp, gGm, gT, gPeur, gSupers, gLab
+  lock screen
+  set the loc of card button "glouton" to centre(gPr, gPc, gPd, gPp)
+  if gPd is 0 then
+    poseIcone "glouton", 3001
+  else
+    put item ((gT div 2) mod 4 + 1) of "0,1,2,1" into f
+    if gPp is 0 and not libre(gPr + dy(gPd), gPc + dx(gPd)) then put 1 into f
+    if f is 0 then
+      poseIcone "glouton", 3001
+    else
+      poseIcone "glouton", 3000 + 2 * gPd + f - 1
+    end if
+  end if
+  repeat with i = 1 to 4
+    put item i of gGd into d
+    set the loc of card button ("g" & i) to centre(item i of gGr, item i of gGc, d, item i of gGp)
+    put (gT div 4) mod 2 into f
+    put item i of gGm into m
+    if d is 0 then put 3 into d
+    if m is "yeux" then
+      poseIcone "g" & i, 3160 + d
+    else
+      if m is "peur" then
+        if gPeur < 40 and (gT div 5) mod 2 is 1 then
+          poseIcone "g" & i, 3152 + f
+        else
+          poseIcone "g" & i, 3150 + f
+        end if
+      else
+        poseIcone "g" & i, 3100 + 10 * i + 2 * d + f
+      end if
+    end if
+  end repeat
+  -- les super-pastilles clignotent
+  if gT mod 8 is 0 then
+    repeat with k = 1 to the number of items of gSupers
+      put item k of gSupers into n
+      if n is empty then next repeat
+      put char ((n - 1) mod 23 + 1) of line ((n - 1) div 23 + 1) of gLab into ch
+      if ch is "o" then set the visible of card button (n + 1) to (gT div 8) mod 2 is 0
+    end repeat
+  end if
+  unlock screen
+end dessine
+
+on montreScore
+  global gScore
+  put gScore into card field "score"
+end montreScore
+
+on montreTout
+  global gVies, gNiveau
+  montreScore
+  put gVies into card field "vies"
+  put gNiveau into card field "niveau"
+end montreTout
+
+on annonce quoi
+  put quoi into card field "etat"
+end annonce
