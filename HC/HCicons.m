@@ -6492,6 +6492,96 @@ static NSColor *icon_couleur_de(const HCIcon *ic, int row, int col) {
                                      alpha:1.0];
 }
 
+/* L'IMAGE D'UNE ICONE EN COULEUR SE CALCULE UNE FOIS, ET SE GARDE.
+ *
+ * hcicon_draw la peignait point par point : une NSColor neuve et un
+ * NSRectFill pour chacun des 1024 points. Une carte de Boulder-Prout porte
+ * 240 icones en couleur, et HC la repeint en entier a chaque image du jeu —
+ * deux fois quand le script verrouille l'ecran, la photographie du verrou
+ * (hcv_lock_screen) repassant par drawRect: : pres d'un demi-million de
+ * remplissages par image. Le jeu, joue DANS HC (l'application) par
+ * l'utilisatrice le 25 octobre : « c'est pas jouable, mon macbook est trop
+ * lent ».
+ *
+ * CE LIEN EST LU DANS LE CODE, IL N'EST PAS ENCORE MESURE. Le banc qui le
+ * tranche — le bouton Bench de « Boulder-Prout banc », avant et apres ce
+ * changement — est decrit dans docs/mesures/dessin_icones.txt.
+ *
+ * L'image se retrouve par une EMPREINTE DU CONTENU — palette et points —, et
+ * non par l'adresse de l'icone : le catalogue de travail se reconstruit a
+ * chaque retouche (hcicon_use_stack_icons), et une adresse reutilisee
+ * rendrait l'ancien dessin. Deux icones au dessin identique partagent la meme
+ * image, ce qui ne coute rien. Une collision de cache (deux empreintes, une
+ * case) ne fait que recalculer.
+ *
+ * LES LIGNES SONT RANGEES DU BAS VERS LE HAUT. CGContextDrawImage pose la
+ * premiere ligne de l'image au y le plus GRAND de l'espace utilisateur ; le
+ * dessin point par point posait la ligne 0 en oy, le y le plus PETIT. Ainsi
+ * rangee, l'image tombe exactement ou tombaient les points, vue retournee ou
+ * non.
+ *
+ * L'espace de couleur est celui de colorWithCalibratedRed: — le RVB
+ * generique —, pour que les teintes ne bougent pas d'un iota. */
+enum { ICON_CACHE = 512 };
+static struct { uint64_t cle; CGImageRef img; } gIconCache[ICON_CACHE];
+
+static uint64_t icon_empreinte(const struct HcIconCouleur *c) {
+    uint64_t h = 1469598103934665603ULL;               /* FNV-1a */
+    int n = c->ncouleurs;
+    if (n < 0) n = 0;
+    if (n > HC_ICON_COULEURS_MAX) n = HC_ICON_COULEURS_MAX;
+    h = (h ^ (uint64_t)(unsigned)c->ncouleurs) * 1099511628211ULL;
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < 3; k++)
+            h = (h ^ (uint64_t)c->palette[i][k]) * 1099511628211ULL;
+    for (int i = 0; i < HC_ICON_PIXELS; i++)
+        h = (h ^ (uint64_t)c->pixels[i]) * 1099511628211ULL;
+    return h;
+}
+
+static void icon_libere_points(void *info, const void *data, size_t size) {
+    (void)info; (void)size;
+    free((void *)data);
+}
+
+/* L'image, ou NULL si elle n'a pas pu se faire — l'appelant retombe alors
+ * sur le dessin point par point. */
+static CGImageRef icon_image(const struct HcIconCouleur *c) {
+    uint64_t cle = icon_empreinte(c);
+    size_t k = (size_t)(cle % ICON_CACHE);
+    if (gIconCache[k].img && gIconCache[k].cle == cle) return gIconCache[k].img;
+
+    unsigned char *points = calloc((size_t)HC_ICON_PIXELS, 4);
+    if (!points) return NULL;
+    for (int row = 0; row < 32; row++) {
+        for (int col = 0; col < 32; col++) {
+            int idx = c->pixels[row * 32 + col];
+            if (idx <= 0 || idx >= c->ncouleurs) continue;   /* comme icon_couleur_de */
+            unsigned char *p = points + ((31 - row) * 32 + col) * 4;
+            p[0] = c->palette[idx][0];
+            p[1] = c->palette[idx][1];
+            p[2] = c->palette[idx][2];
+            p[3] = 255;
+        }
+    }
+    CGDataProviderRef dp = CGDataProviderCreateWithData(NULL, points, (size_t)HC_ICON_PIXELS * 4,
+                                                        icon_libere_points);
+    if (!dp) { free(points); return NULL; }
+    CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGB);
+    CGImageRef img = cs ? CGImageCreate(32, 32, 8, 32, 32 * 4, cs,
+                                        (CGBitmapInfo)kCGImageAlphaPremultipliedLast,
+                                        dp, NULL, false, kCGRenderingIntentDefault)
+                        : NULL;
+    CGColorSpaceRelease(cs);
+    CGDataProviderRelease(dp);          /* l'image garde ses points */
+    if (!img) return NULL;
+
+    CGImageRelease(gIconCache[k].img);
+    gIconCache[k].cle = cle;
+    gIconCache[k].img = img;
+    return img;
+}
+
 void hcicon_draw_inverted(const HCIcon *ic, NSRect r, CGFloat px) {
     if (!ic) return;
 
@@ -6551,10 +6641,24 @@ void hcicon_draw(const HCIcon *ic, NSRect r, CGFloat px) {
         return;
     }
 
-    /* EN COULEUR, l'icone impose la sienne — et il faut donc RENDRE celle de
-     * l'appelant en partant. Sans ce save/restore, la premiere icone en
-     * couleur d'une palette repeindrait toutes les suivantes avec sa derniere
-     * teinte, et le defaut ne se verrait que sur les icones d'apres. */
+    /* EN COULEUR, d'un seul trait : l'image toute faite (icon_image), sans
+     * lissage — agrandie, sur un ecran Retina ou par px, elle garde ses
+     * points carres, comme les NSRectFill. */
+    CGImageRef img = icon_image(ic->couleur);
+    CGContextRef cg = [[NSGraphicsContext currentContext] CGContext];
+    if (img && cg) {
+        CGContextSaveGState(cg);
+        CGContextSetInterpolationQuality(cg, kCGInterpolationNone);
+        CGContextDrawImage(cg, CGRectMake(ox, oy, 32 * px, 32 * px), img);
+        CGContextRestoreGState(cg);
+        return;
+    }
+
+    /* Le repli, point par point. L'icone impose sa couleur — et il faut donc
+     * RENDRE celle de l'appelant en partant. Sans ce save/restore, la
+     * premiere icone en couleur d'une palette repeindrait toutes les
+     * suivantes avec sa derniere teinte, et le defaut ne se verrait que sur
+     * les icones d'apres. */
     [NSGraphicsContext saveGraphicsState];
     for (int row = 0; row < 32; row++) {
         for (int col = 0; col < 32; col++) {

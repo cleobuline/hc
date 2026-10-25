@@ -1,0 +1,118 @@
+LE DESSIN DES ICÔNES EN COULEUR — Boulder-Prout, 25 octobre
+============================================================
+
+LE CONSTAT, DANS HC (l'application)
+-----------------------------------
+
+Boulder-Prout est un Boulder Dash maison, écrit en HyperTalk le 25 octobre :
+une carte de 20 × 12 cases de 32 points, chaque case un bouton transparent qui
+porte une icône en couleur, soit 240 icônes. Jouée par l'utilisatrice :
+
+    « ha zut c'est pas jouable mon macbook est trop lent »
+
+Le même jeu, dans la console (sans dessin), fait une image de logique en
+1,4 ms environ. L'interprète n'est donc pas le premier suspect.
+
+
+CE QUI EST LU DANS LE CODE — NON MESURÉ
+---------------------------------------
+
+1. hcicon_draw (HCicons.m) peignait une icône en couleur POINT PAR POINT :
+   pour chacun des 1024 points, une NSColor neuve et un NSRectFill. Une carte
+   de terre et d'acier, c'est environ 200 000 remplissages par dessin.
+
+2. Tout changement visible pendant un script fait repeindre la carte ENTIÈRE :
+   cocoa_idle → hcv_invalide_tout → setNeedsDisplay:YES. Changer l'icône d'une
+   seule case repeint les 240.
+
+3. Chaque « lock screen » photographie la vue (hcv_lock_screen, HCvisual.m),
+   pour qu'un « unlock screen with visual effect » ait son image de départ.
+   La photographie repasse par drawRect:, donc par les 240 icônes. Le
+   commentaire de hcv_verrou_ecran (HCview.m) l'écrivait déjà : « Coût : une
+   photographie de la vue à chaque lock screen. Non mesuré. » Le jeu verrouille
+   l'écran une fois par image : deux dessins complets par image.
+
+   Ôter « lock screen » du jeu ne servirait à rien, au contraire : sans
+   verrou, v3_respire rend la main à l'hôte à chaque tour de boucle dès que
+   quelque chose de visible a changé, et chaque case posée coûterait un
+   dessin.
+
+Le changement fait sur la foi de cette lecture porte sur (1) seulement :
+l'image d'une icône en couleur se calcule une fois, se retrouve par une
+empreinte de son contenu, et se dessine d'un trait (icon_image, HCicons.m).
+(2) et (3) ne changent pas ; ils coûteront ce que coûte un dessin de carte.
+
+
+LE BANC — à jouer DANS HC (l'application)
+-----------------------------------------
+
+La pile « Boulder-Prout banc » est le jeu, avec un bouton « Bench » de plus.
+Elle vit hors du dépôt, comme le jeu ; le script du bouton est recopié ici
+pour que le banc ne dépende pas d'elle. Un clic, et quatre temps en ticks
+s'écrivent dans la barre d'état :
+
+    A  l'interprète seul : 20 images de logique, rien à l'écran
+    B  10 dessins de la carte, cases en couleur
+    C  les mêmes, chacun entre « lock screen » et « unlock screen »
+    D  10 dessins de la carte, cases vides
+
+Chaque dessin attend au moins un tick : 10 est le minimum de B, C et D. Ce
+qui dépasse 10 est du dessin.
+
+    B ≫ D        le coût est dans les icônes, (1)
+    C ≈ 2 B      la photographie du verrou double tout, (3)
+    B ≈ D ≫ 10   le coût est ailleurs dans le dessin de la carte, (2)
+
+Le script du bouton :
+
+    on mouseUp
+      chargeNiveau 1
+      put the ticks into t
+      repeat 20 times
+        physique
+        ennemis
+      end repeat
+      put the ticks - t into a
+      wait 10 ticks
+      put the ticks into t
+      repeat with i = 1 to 10
+        put "Time" && i into card field "temps"
+        wait 1 tick
+      end repeat
+      put the ticks - t into b
+      put the ticks into t
+      repeat with i = 1 to 10
+        lock screen
+        put "Time" && i into card field "temps"
+        unlock screen
+        wait 1 tick
+      end repeat
+      put the ticks - t into c
+      lock screen
+      repeat with k = 2 to 241
+        set the icon of card button k to 0
+      end repeat
+      unlock screen
+      wait 10 ticks
+      put the ticks into t
+      repeat with i = 1 to 10
+        put "Time" && i into card field "temps"
+        wait 1 tick
+      end repeat
+      put the ticks - t into d
+      chargeNiveau 1
+      put "A" && a && "· B" && b && "· C" && c && "· D" && d into card field "etat"
+    end mouseUp
+
+
+LES RELEVÉS
+-----------
+
+    dans la console, sans dessin (Linux, harnais)    A 2 · B 10 · C 10 · D 10
+
+    DANS HC, avant le changement (son MacBook)       non mesuré
+    DANS HC, après le changement (son MacBook)       non mesuré
+
+Le Mac de l'utilisatrice : non relevé. Elle a aussi fait tourner HC sous High
+Sierra sur un i5 de 2011 (« c'est lent mais ça fonctionne ») ; on ne sait pas
+si c'est la même machine.

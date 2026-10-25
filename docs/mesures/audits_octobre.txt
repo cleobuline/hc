@@ -373,6 +373,26 @@ Le collage refusé se dit d'un bip. LU, NON REJOUÉ : Cocoa.
   à la pile, Hcdocument.m à la première carte ; aucun banc n'a encore dit
   où HyperCard les envoie.
 
+  LES CHANGEMENTS DE PILE — 25 octobre, quatrième série de bancs.
+  DANS HYPERCARD 2.4.1 (Basilisk II), par des alertes posées dans les
+  gestionnaires (le journal par globale n'a jamais rien rendu à travers un
+  changement de pile, et la boîte de messages lit sa propre variable, pas
+  la globale : deux témoins faux, qui ont coûté une soirée de bancs) :
+    · un go qui retombe sur la carte où l'on est n'envoie RIEN ;
+    · un changement de pile envoie bien ses messages ;
+    · vers une pile déjà ouverte, HyperCard envoie suspendStack et
+      resumeStack.
+  L'ORDRE ET LES CIBLES, dans HyperCard : NON MESURÉS — l'utilisatrice a
+  jugé qu'on ne cherchait pas la petite bête, « ça fonctionne ».
+  DANS HC (l'application), deux piles ouvertes, d'une fenêtre à l'autre,
+  par le journal du script de pile (qui marche dans HC) :
+      closeCard, closeBackground, suspendStack  → la carte qu'on quitte
+      resumeStack, openBackground, openCard     → la carte qu'on rejoint
+  ni closeStack ni openStack : aucune pile ne se ferme. Si HyperCard, en
+  passant d'une fenêtre ouverte à l'autre, envoie aussi closeCard et
+  openCard — la carte reste affichée dans sa fenêtre —, ou seulement
+  suspendStack et resumeStack : NON MESURÉ.
+
   Le registre des pointeurs guettés passe de 64 places à HC_MAX_DEPTH × 8 :
   une navigation en guette six, et des go imbriqués dans des openCard
   auraient tu la garde passé une dizaine de niveaux.
