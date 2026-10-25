@@ -137,5 +137,6 @@ Le même soir, À L'ŒIL, DANS HC (l'application), avec la 0.8.8 : les deux jeux
 suivants, Gobe-Prout (un Pac-Man, six boutons à icône déplacés vingt fois par
 seconde au-dessus de six cents boutons) et Astro-Prout (un Asteroids, tout en
 polygones redessinés à chaque image), « fonctionnent très bien sur mon vieux
-macbook mi-2012 ». Que ce soit ou non la machine du relevé de Boulder-Prout :
-non précisé.
+macbook mi-2012 » — précisé ensuite : « sur mon macbook i7 mi-2012 c'est très
+jouable ». Que ce soit ou non la machine du relevé de Boulder-Prout : non
+précisé.
