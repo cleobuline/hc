@@ -18,7 +18,10 @@ Décidé par l'utilisatrice le 17 octobre, après un commentaire public sur les
 dialogues en français : tout ce que HC affiche — dialogues, alertes,
 messages, menus — passe en anglais, lot par lot. Les commentaires des
 sources restent en français, « que ça plaise ou non ». Le panneau « À
-propos » reste bilingue, voulu ainsi. Les NSLog et les traces de mise au
+propos » reste bilingue, voulu ainsi. La pile d'aide « HC Help » l'est
+aussi, par un bouton FR / EN : décidé par l'utilisatrice le 25 octobre. Elle
+vit HORS DU DÉPÔT — ni la pile ni sa recette n'y entrent, « inutile
+d'encombrer le git » — et c'est elle qui la pose dans le DMG. Les NSLog et les traces de mise au
 point ne sont pas des textes d'utilisateur : ils restent en français.
 
 Quand HC imite une erreur d'HyperCard, le bon texte anglais est celui
