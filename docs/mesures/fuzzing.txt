@@ -99,6 +99,12 @@ LES CAMPAGNES
                             format, 3 dans celui d'Apple ; le témoin a
                             attrapé ses trois pièges et laissé la graine
                             saine)
+    make fuzz, 0.8.8        notre format  60 000, Apple  20 000   0 signalement
+                            (25 octobre, après les messages de fond et le
+                            cache des icônes en couleur : 1 089 graines
+                            dans notre format, 3 dans celui d'Apple ; le
+                            témoin a attrapé ses trois pièges et laissé la
+                            graine saine)
 
 La deuxième a été arrêtée par la limite de temps de la session avant la fin.
 Les deux premières avaient en plus pour graines les deux piles de démonstration
