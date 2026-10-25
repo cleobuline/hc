@@ -130,6 +130,12 @@ jouable, pas quelle part du temps revenait aux icônes (1), au dessin de la
 carte entière (2) ou à la photographie du verrou (3). Les trois temps B, C
 et D restent à relever.
 
-Le Mac de l'utilisatrice : non relevé. Elle a aussi fait tourner HC sous High
-Sierra sur un i5 de 2011 (« c'est lent mais ça fonctionne ») ; on ne sait pas
-si c'est la même machine.
+Le Mac du relevé de Boulder-Prout : non précisé. Elle a aussi fait tourner HC
+sous High Sierra sur un i5 de 2011 (« c'est lent mais ça fonctionne »).
+
+Le même soir, À L'ŒIL, DANS HC (l'application), avec la 0.8.8 : les deux jeux
+suivants, Gobe-Prout (un Pac-Man, six boutons à icône déplacés vingt fois par
+seconde au-dessus de six cents boutons) et Astro-Prout (un Asteroids, tout en
+polygones redessinés à chaque image), « fonctionnent très bien sur mon vieux
+macbook mi-2012 ». Que ce soit ou non la machine du relevé de Boulder-Prout :
+non précisé.
