@@ -1,0 +1,44 @@
+-- Boulder-Prout : les cavernes. « niveau N diamants secondes », puis 12 lignes de 20,
+-- puis, si l'on veut, « conseil » et une ligne affichée sous le jeu.
+niveau 1 8 150
+####################
+#P...O..*...O..*...#
+#.....O....O.......#
+#..*.....O.....O.*.#
+#.O..====....*.....#
+#....O.*..O....O...#
+#.*......O...==....#
+#...O..*.....O..*..#
+#.O....O..*.......O#
+#....*....O..O.*...#
+#O.......*......O.E#
+####################
+conseil Falling boulders crush, resting ones don't: dig under one, then step aside.
+niveau 2 10 150
+####################
+#P....O..*...O...*.#
+#...........O......#
+#.F       ...==....#
+#=.O.*..O..O.....O.#
+#..*...O..........O#
+#.O..........F    .#
+#....=====..O..O.*.#
+#.*.O.*...*..O.....#
+#...O..*.......*.O.#
+#.O....O..*...O...E#
+####################
+conseil Fireflies explode when they touch you. A boulder dropped on them does the same.
+niveau 3 12 180
+####################
+#P.......O....O....#
+#.O..*.....*.......#
+#....O..O.....O..*.#
+#.==..........==...#
+#...O..B      ..O..#
+#.*.....O.........*#
+#..O..*....O..*..O.#
+#.....====.....O...#
+#.*..O....*.O..*...#
+#O.....O.......O..E#
+####################
+conseil Ten diamonds won't do. A butterfly crushed by a boulder turns into diamonds.

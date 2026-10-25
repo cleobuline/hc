@@ -47,9 +47,16 @@ LE BANC — à jouer DANS HC (l'application)
 -----------------------------------------
 
 La pile « Boulder-Prout banc » est le jeu, avec un bouton « Bench » de plus.
-Elle vit hors du dépôt, comme le jeu ; le script du bouton est recopié ici
-pour que le banc ne dépende pas d'elle. Un clic, et quatre temps en ticks
-s'écrivent dans la barre d'état :
+Les piles ne sont pas dans le dépôt, leur recette si : le harnais
+tests/harnais/boulder.c les écrit, le jeu seul ou avec le banc, dont le
+script est tests/donnees/boulder_banc.txt (recopié ci-dessous) :
+
+    ./tests/lance.sh boulder              # compile le harnais
+    cd tests && .travail/bin/boulder donnees/boulder_pile.txt \
+        donnees/boulder_icones.txt donnees/boulder_niveaux.txt \
+        "Boulder-Prout banc.stack" donnees/boulder_banc.txt
+
+Un clic, et quatre temps en ticks s'écrivent dans la barre d'état :
 
     A  l'interprète seul : 20 images de logique, rien à l'écran
     B  10 dessins de la carte, cases en couleur

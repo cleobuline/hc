@@ -24,6 +24,7 @@ arguments() {
     tetris)             echo "donnees/tetris_pile.txt" ;;
     invaders)           echo "donnees/invaders_pile.txt" ;;
     briques)            echo "donnees/briques_pile.txt" ;;
+    boulder)            echo "donnees/boulder_pile.txt donnees/boulder_icones.txt donnees/boulder_niveaux.txt" ;;
     xcmd)               echo "donnees/modules" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;

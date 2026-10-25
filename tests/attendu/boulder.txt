@@ -1,0 +1,149 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, la caverne 1 est dessinée ==
+   15 icônes, 3 cavernes, 242 boutons
+   contrôle : 0
+   cases : vide 0, acier 60, briques 6, terre 139, rochers 20, diamants 13, creuseuse 1, sortie 1
+   Arrows, ZQSD or WASD to dig. R: try again. Esc: stop. | Level 1 | Diamonds 0 / 8 | Time 150
+
+== 2. un rocher tombe dans le vide, une case par image, et s'arrête sur la terre ==
+   départ      |O|_|_|_|.|
+   -           |_|O|_|_|.|
+   -           |_|_|O|_|.|
+   -           |_|_|_|O|.|
+   -           |_|_|_|O|.|
+   -           |_|_|_|O|.|
+   sons : tik · le rocher tombe encore : 0
+
+== 3. il écrase la creuseuse qui est dessous ==
+   départ      |O|_|_|_|P|.|
+   -           |_|O|_|_|P|.|
+   -           |_|_|O|_|P|.|
+   -           |_|_|_|O|P|.|
+   -           |_|_|_|x|x|x|
+   mort true · sons shtak
+   issue « dead » après 12 images de plus
+   ensuite     |._.|___|___|___|
+
+== 4. posé sur sa tête, il ne lui fait rien ; qu'elle s'écarte, il tombe ==
+   départ      |O.|P_|._|
+   -           |O.|P_|._|
+   -           |O.|P_|._|
+   -           |O.|P_|._|
+   d           |_.|OP|._|
+   -           |_.|OP|._|
+   -           |_.|OP|._|
+   mort false · joueur 5,7
+
+== 5. sur un rocher, un rocher roule du côté libre, puis tombe ==
+   départ      |_O|_O|_.|..|
+   -           |O_|_O|_.|..|
+   -           |__|OO|_.|..|
+   -           |__|_O|O.|..|
+   -           |__|_O|O.|..|
+   — un diamant sur un rocher, libre à droite seulement :
+   départ      |*_|O_|._|..|
+   -           |_*|O_|._|..|
+   -           |__|O*|._|..|
+   -           |__|O_|.*|..|
+   -           |__|O_|.*|..|
+   — sur des briques, mais la case d'à côté est pleine dessous : il reste
+   départ      |_O|.=|..|
+   -           |_O|.=|..|
+   -           |_O|.=|..|
+
+== 6. elle pousse un rocher de côté, s'il y a de la place, et pas vers le haut ==
+   départ      |.PO_..|
+   d           |._PO..|
+   d           |._PO..|
+   — vers le haut :
+   départ      |O|P|
+   h           |O|P|
+
+== 7. deux diamants ouvrent la sortie, et l'on sort ==
+   un diamant  : 1 · ouverte false · score 10
+   deux        : 2 · ouverte true · score 20
+   la sortie   : issue « won » · gagné true · sons cling cling cocorico
+   The exit is open! | Diamonds 2 / 2 | Score 20
+   sortie fermée : joueur 2,2, issue «  »
+
+== 8. un rocher qui tombe sur une luciole : elle explose, et laisse du vide ==
+   départ      |.O.|._.|.F.|...|
+   -           |._.|.O.|.F.|...|
+   -           |._.|xxx|xxx|xxx|
+   -           |._.|xxx|xxx|xxx|
+   -           |._.|xxx|xxx|xxx|
+   -           |._.|___|___|___|
+   -           |._.|___|___|___|
+   bêtes «  » · sons shtak
+
+== 9. sur un papillon : il laisse neuf diamants ==
+   départ      |.O.|._.|.B.|___|...|
+   -           |._.|.O.|.B.|___|...|
+   -           |._.|yyy|yyy|yyy|...|
+   -           |._.|yyy|yyy|yyy|...|
+   -           |._.|yyy|yyy|yyy|...|
+   -           |._.|***|***|***|...|
+   -           |._.|***|***|***|...|
+
+== 10. une luciole longe son tunnel, et explose en touchant la creuseuse ==
+   départ      |......P...|.F________|
+   -           |......P...|.F________|
+   -           |......P...|.F________|
+   -           |......P...|._F_______|
+   -           |......P...|.__F______|
+   -           |......P...|.___F_____|
+   -           |......P...|.____F____|
+   -           |......P...|._____F___|
+   -           |.....xxx..|.____xxx__|
+   mort true · bêtes «  »
+
+== 11. un papillon tourne à droite, une luciole à gauche : chacun longe son mur ==
+   départ      |___....___|_F_...._B_|___....___|
+   -           |___...._B_|___....___|_F_....___|
+   -           |___....__B|___....___|__F....___|
+   -           |___....___|__F....__B|___....___|
+   -           |___....___|_F_...._B_|___....___|
+   -           |___...._B_|___....___|_F_....___|
+   -           |___....__B|___....___|__F....___|
+   -           |___....___|__F....__B|___....___|
+   -           |___....___|_F_...._B_|___....___|
+
+== 12. R : elle renonce, et le niveau recommence ==
+   après R     |xxx|xxx|xxx|
+   mort true · joueur «  »
+   issue « dead » après 12 images ; les éclats :                |___|___|___|
+
+== 13. le clavier : flèches, ZQSD, WASD ==
+   flèche droite          → 6,11
+   q (gauche, français)   → 6,10
+   a (gauche, anglais)    → 6,9
+   z (haut, français)     → 5,9
+   w (haut, anglais)      → 4,9
+   s (bas)                → 5,9
+   flèche gauche          → 5,8
+   flèche haut            → 4,8
+   flèche bas             → 5,8
+   frappe brève à droite entre deux images → 5,9
+   droite tenue, relâchée avant l'image  → 5,10 (pas de pas de trop)
+
+== 14. un robot creuse les cavernes, et l'écran suit le plateau ==
+   caverne 1 : SORTIE en 1 essai(s), 0 mort(s), 38 images, 8 diamant(s)
+   caverne 2 : SORTIE en 2 essai(s), 1 mort(s), 135 images, 10 diamant(s)
+   caverne 3 : pas sortie en 12 essai(s), 12 mort(s), 1481 images, 10 diamant(s)
+   défauts : 0
+
+== 14 bis. la caverne 3 se résout : un rocher lâché sur le papillon ==
+   depuis (4,8), « bdgh.. » : SORTIE en attendant 4 image(s) ; 5 essai(s) (0 morte(s), 4 papillon(s) manqué(s)), 62 images, 13 diamants
+   depuis (4,10), « bgdh.. » : aucun moment ne marche sur 32 essais (14 morte(s), 18 papillon(s) manqué(s))
+
+== 15. la vraie boucle : le temps s'épuise, trois fois ==
+   Game over. Score: 0 | Lives 0 | Time 0 · sons : canard
+
+== 16. la vraie boucle : Échap arrête la partie ==
+   arrêtée par Échap · Game stopped.
+
+== 17. la vraie boucle : d'une caverne à l'autre, jusqu'au bout ==
+   You made it through every cave! Final score: 120 | Level 3 | Score 120 | Tiny.
+   sons : cling cocorico piano(4 notes) cling cocorico piano(4 notes) cling cocorico piano(4 notes)
+
+== bilan : 0 défaut(s), 0 erreur(s) de script ==
