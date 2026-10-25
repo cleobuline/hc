@@ -26,6 +26,7 @@ arguments() {
     briques)            echo "donnees/briques_pile.txt" ;;
     boulder)            echo "donnees/boulder_pile.txt donnees/boulder_icones.txt donnees/boulder_niveaux.txt" ;;
     glouton)            echo "donnees/glouton_pile.txt donnees/glouton_icones.txt donnees/glouton_labyrinthe.txt" ;;
+    astro)              echo "donnees/astro_pile.txt" ;;
     xcmd)               echo "donnees/modules" ;;
     quelgest|analyse)   echo "donnees/rawchart.txt" ;;
     profond)            echo "donnees/endmanquant.txt" ;;
