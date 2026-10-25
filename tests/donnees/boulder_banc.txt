@@ -1,0 +1,44 @@
+-- LE BANC, à jouer DANS HC (l'application). Quatre temps, en ticks :
+--   A  l'interprète seul : 20 images de logique, rien à l'écran
+--   B  10 dessins de la carte, cases en couleur
+--   C  les mêmes, chacun entre lock screen et unlock screen
+--   D  10 dessins de la carte, cases vides
+-- Chaque dessin attend au moins un tick : 10 est le minimum de B, C et D.
+on mouseUp
+  chargeNiveau 1
+  put the ticks into t
+  repeat 20 times
+    physique
+    ennemis
+  end repeat
+  put the ticks - t into a
+  wait 10 ticks
+  put the ticks into t
+  repeat with i = 1 to 10
+    put "Time" && i into card field "temps"
+    wait 1 tick
+  end repeat
+  put the ticks - t into b
+  put the ticks into t
+  repeat with i = 1 to 10
+    lock screen
+    put "Time" && i into card field "temps"
+    unlock screen
+    wait 1 tick
+  end repeat
+  put the ticks - t into c
+  lock screen
+  repeat with k = 2 to 241
+    set the icon of card button k to 0
+  end repeat
+  unlock screen
+  wait 10 ticks
+  put the ticks into t
+  repeat with i = 1 to 10
+    put "Time" && i into card field "temps"
+    wait 1 tick
+  end repeat
+  put the ticks - t into d
+  chargeNiveau 1
+  put "A" && a && "· B" && b && "· C" && c && "· D" && d into card field "etat"
+end mouseUp

@@ -1,0 +1,287 @@
+-- Boulder-Prout : les icônes, 16 x 16, doublées à 32 x 32.
+-- Un caractère par point, l'espace est transparent ; chaque lettre est une
+-- couleur de la palette ci-dessous. Elles se retouchent ici, à la main.
+couleur K 0 0 0
+couleur w 255 255 255
+couleur 1 212 212 224
+couleur 2 150 150 164
+couleur 3 88 88 102
+couleur b 130 82 38
+couleur c 92 56 24
+couleur e 170 116 58
+couleur r 180 64 42
+couleur R 222 106 70
+couleur m 70 58 52
+couleur o 204 194 176
+couleur p 150 140 126
+couleur q 98 90 82
+couleur L 205 250 255
+couleur C 70 220 255
+couleur B 30 118 222
+couleur N 24 52 150
+couleur y 255 228 60
+couleur O 255 148 30
+couleur f 250 206 168
+couleur h 222 104 34
+couleur d 232 52 118
+couleur k 255 150 186
+couleur a 196 30 40
+couleur D 138 82 34
+couleur E 96 54 20
+couleur P 156 72 214
+couleur Y 238 192 40
+icone 2001 steel
+1111111111111112
+1222222222222223
+12w12222222w1223
+1213222222213223
+1222222222222223
+1222222222222223
+1222222222222223
+1222222222222223
+1222222222222223
+1222222222222223
+1222222222222223
+12w12222222w1223
+1213222222213223
+1222222222222223
+1222222222222223
+2333333333333333
+icone 2002 bricks
+RRRRRRRmRRRRRRRm
+rrrrrrrmrrrrrrrm
+rrrrrrrmrrrrrrrm
+mmmmmmmmmmmmmmmm
+RRRmRRRRRRRmRRRR
+rrrmrrrrrrrmrrrr
+rrrmrrrrrrrmrrrr
+mmmmmmmmmmmmmmmm
+RRRRRRRmRRRRRRRm
+rrrrrrrmrrrrrrrm
+rrrrrrrmrrrrrrrm
+mmmmmmmmmmmmmmmm
+RRRmRRRRRRRmRRRR
+rrrmrrrrrrrmrrrr
+rrrmrrrrrrrmrrrr
+mmmmmmmmmmmmmmmm
+icone 2003 dirt
+cbbbcbebbbcbbbbb
+bbcbcebbebbbbebc
+bbecbbbbcbbbebbc
+bbcbcbbbbcbebcbb
+bcebcbcebebebbbb
+bcbbbbbbbbcbbcbb
+cbbbcecbbebcebcb
+cbcbbbbbbbbcbebc
+bbcbbbbbbbbbbbcb
+bcbbbbcbbbbbebbb
+bbbbbbbbbbebbbcc
+cbbccbebbbbbbbbb
+eebbbcbbbbbcbbbb
+bbbcbbbbbbccbbec
+ebbcbcbbbcbbebbb
+bbccbbecebbcbebb
+icone 2004 boulder
+                
+      qqqq      
+    qqwoooqq    
+   qwwwoooopq   
+  qwwwwooooppq  
+ qqwwwoooooppqq 
+ qwwooooooppppq 
+ qooooooooppppq 
+ qoooooooppppqq 
+ qooooopppqpqqq 
+ qoooppppppqqqq 
+ qqppqpppppqqqq 
+  qpppqppqqqqq  
+   qpppqqqqqq   
+    qqqqqqqq    
+      qqqq      
+icone 2005 diamond
+                
+                
+    wLLLLLLC    
+   wLLwLLCCCB   
+  LLLLLLLCCCCB  
+ LLLLLLLCCCCCBB 
+ CCCCCCCCCCCBBN 
+  CCCCCCCCCBBN  
+   CCCCCCCBBN   
+    CCCCCBBN    
+     CCCBBN     
+      CCBN      
+       BN       
+                
+                
+                
+icone 2006 digger
+     hhhhhh     
+    hhhhhhhh    
+  yyhhhhhhhhyy  
+  hhhffffffhhh  
+  hh fKffKf hh  
+  hh ffffff hh  
+  hh fkaakf hh  
+   h  ffff  h   
+  D  dddddd     
+  D fddddddf    
+  Dffddddddf    
+  D  dddddd     
+  D dddddddd    
+ 111dddddddd    
+ 222 ff  ff     
+  2 KKK  KKK    
+icone 2007 exit
+2222222222222222
+2EEEEEEEEEEEEEE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDYDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2DDDEDDDDEDDDDE2
+2EEEEEEEEEEEEEE2
+2222222222222222
+icone 2008 open exit
+2222222222222222
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2yyyyyyyyyyyyDE2
+2222222222222222
+icone 2012 open exit 2
+2222222222222222
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2wwwwwwwwwwwwDE2
+2222222222222222
+icone 2009 firefly
+                
+ OOOOOOOOOOOOOO 
+ OyyyyyyyyyyyyO 
+ Oy          yO 
+ Oy OOOOOOOO yO 
+ Oy O      O yO 
+ Oy O wwww O yO 
+ Oy O wwww O yO 
+ Oy O wwww O yO 
+ Oy O wwww O yO 
+ Oy O      O yO 
+ Oy OOOOOOOO yO 
+ Oy          yO 
+ OyyyyyyyyyyyyO 
+ OOOOOOOOOOOOOO 
+                
+icone 2013 firefly 2
+                
+ yyyyyyyyyyyyyy 
+ yOOOOOOOOOOOOy 
+ yO          Oy 
+ yO yyyyyyyy Oy 
+ yO y      y Oy 
+ yO y OOOO y Oy 
+ yO y OOOO y Oy 
+ yO y OOOO y Oy 
+ yO y OOOO y Oy 
+ yO y      y Oy 
+ yO yyyyyyyy Oy 
+ yO          Oy 
+ yOOOOOOOOOOOOy 
+ yyyyyyyyyyyyyy 
+                
+icone 2010 butterfly
+                
+ PPPP      PPPP 
+ PBBBP    PBBBP 
+ PBCCBP  PBCCBP 
+ PBCCBBKKBBCCBP 
+ PBBBBBKKBBBBBP 
+  PBBBBKKBBBBP  
+   PPPPKKPPPP   
+   PBBBKKBBBP   
+  PBBCBKKBCBBP  
+  PBCCBKKBCCBP  
+  PBBBP KK PBBBP
+   PPP  KK PPP  
+        KK      
+                
+                
+icone 2014 butterfly 2
+                
+                
+    PPP  PPP    
+    PBBPPBBP    
+    PBCBKBCP    
+    PBBBKBBP    
+     PBBKBBP    
+     PPPKPPP    
+     PBBKBBP    
+    PBCBKBCBP   
+    PBBBKBBBP   
+     PPPKPPP    
+        K       
+                
+                
+                
+icone 2011 explosion
+                
+       OO       
+  O    OO    O  
+  aOO  OO  OOa  
+   OOO yy OOO   
+    OyyyyyyO    
+     ywwwwy     
+ OOOyywwwwyyOOO 
+aOOOyywwwwyyOOO 
+     ywwwwy     
+    OyyyyyyO    
+   OOO yy OOO   
+  aOO  OO  OO   
+  O    OO   aO  
+       OO       
+       a        
+icone 2015 sparkle
+                
+   B      CC    
+   CCC   CCC    
+    CC   CC     
+    CCC CCC     
+    BCLLLLC     
+     LLwwLLCCCCB
+ CCCCLwwwwLCCCCC
+CCCCCLwwwwLCCCC 
+ CCCCLLwwLL     
+     CLLLLC     
+     CCC CCC    
+     CCB BCCB   
+    CCC   CCC   
+    CCB     B   
+     B          

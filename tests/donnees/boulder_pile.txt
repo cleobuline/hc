@@ -1,0 +1,569 @@
+-- ════════════════════════════════════════════════════════════════════
+--  BOULDER-PROUT — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Une creuseuse, des rochers, des diamants : un Boulder Dash librement
+--  inspiré, écrit en HyperTalk pour HC. Rien du jeu d'origine n'est repris
+--  que l'idée.
+--
+--  LE PLATEAU fait 20 cases sur 12. Il vit dans la globale gPlat, une ligne
+--  de texte par rangée, un caractère par case :
+--    #  acier (incassable)    =  briques          .  terre     (espace) vide
+--    O  rocher                *  diamant          P  la creuseuse
+--    E  la sortie             F  luciole          B  papillon
+--    x  explosion qui laissera du vide     y  explosion qui laissera des diamants
+--  La case (r, c) est le bouton de carte numéro (r - 1) * 20 + c + 1 : le
+--  bouton 1 est le fond noir, posé dessous.
+--
+--  gChute dit, case par case, si un rocher ou un diamant est en train de
+--  tomber (1) ou non (0) : seul ce qui tombe écrase. Un rocher posé sur la
+--  tête de la creuseuse ne lui fait rien ; qu'elle s'écarte, il tombe.
+--
+--  LES NIVEAUX sont dans les champs cachés « level 1 », « level 2 »... :
+--  une première ligne « diamants à trouver,secondes », puis 12 lignes de 20
+--  caractères, bordées d'acier, puis un conseil d'une ligne, affiché sous le
+--  jeu. Pour en ajouter un, copiez un champ, donnez-lui le numéro suivant,
+--  dessinez.
+--
+--  Clavier : flèches, ZQSD (clavier français) ou WASD (anglais) pour
+--  creuser ; R pour recommencer le niveau (une vie) ; Échap pour arrêter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  chargeNiveau 1
+  annonce "Arrows, ZQSD or WASD to dig. R: try again. Esc: stop."
+  pass openCard
+end openCard
+
+-- Les touches sont lues par « the keysDown » dans la boucle : on avale leurs
+-- messages, sinon HC changerait de carte, ou taperait dans la boîte.
+on arrowKey
+end arrowKey
+
+on keyDown
+end keyDown
+
+on nouvellePartie
+  global gVies, gIssue, gNiveau, gScore, gBesoin, gTemps
+  put 3 into gVies
+  put 1 into gNiveau
+  put 0 into gScore
+  montreVies
+  montreScore
+  repeat
+    chargeNiveau gNiveau
+    annonce "Level" && gNiveau & ": find" && gBesoin && "diamonds, then the exit."
+    joue
+    if gIssue is "stop" then
+      annonce "Game stopped."
+      exit repeat
+    end if
+    if gIssue is "won" then
+      add gTemps to gScore
+      montreScore
+      play "piano" tempo 220 "c4e e g c5q"
+      if there is a card field ("level" && gNiveau + 1) then
+        add 1 to gNiveau
+        annonce "Well done! Time bonus:" && gTemps & ". On to level" && gNiveau & "."
+        wait 120 ticks
+        next repeat
+      end if
+      annonce "You made it through every cave! Final score:" && gScore
+      exit repeat
+    end if
+    subtract 1 from gVies
+    montreVies
+    if gVies > 0 then
+      if gIssue is "time" then annonce "Out of time!"
+      else annonce "Ouch!"
+      wait 90 ticks
+      next repeat
+    end if
+    annonce "Game over. Score:" && gScore
+    play "canard"
+    exit repeat
+  end repeat
+end nouvellePartie
+
+-- ─── la boucle de jeu ───────────────────────────────────────────────
+
+-- Une image toutes les 7 ticks, un peu plus de huit par seconde. Entre deux
+-- images on guette le clavier : une touche tapée plus vite qu'une image
+-- n'est pas perdue (voir retiens).
+on joue
+  global gIssue, gTemps, gLimite, gVoulu, gTenue
+  put empty into gIssue
+  put empty into gVoulu
+  put empty into gTenue
+  put the ticks into depart
+  put depart into prochaine
+  repeat until gIssue is not empty
+    image
+    if gIssue is not empty then exit repeat
+    put gLimite - (the ticks - depart) div 60 into reste
+    if reste < 0 then put 0 into reste
+    if reste is not gTemps then
+      put reste into gTemps
+      montreTemps
+      if reste is 0 then
+        put "time" into gIssue
+        exit repeat
+      end if
+    end if
+    add 7 to prochaine
+    repeat while the ticks < prochaine
+      retiens
+      if gIssue is not empty then exit repeat
+      wait 1 tick
+    end repeat
+  end repeat
+end joue
+
+-- Une image du jeu : les éclats s'éteignent, la creuseuse bouge, ce qui
+-- doit tomber tombe, les bêtes avancent, et l'écran suit.
+on image
+  global gMort, gGagne, gIssue, gApres, gPhase
+  put 1 - gPhase into gPhase
+  eclats
+  clavier
+  physique
+  ennemis
+  anime
+  dessine
+  if gGagne is true then put "won" into gIssue
+  -- Après une mort, la caverne vit encore un instant : on voit l'explosion.
+  if gMort is true then
+    add 1 to gApres
+    if gApres > 12 then put "dead" into gIssue
+  end if
+end image
+
+-- ─── le niveau ──────────────────────────────────────────────────────
+
+on chargeNiveau n
+  global gBesoin, gLimite
+  put card field ("level" && n) into t
+  put item 1 of line 1 of t into gBesoin
+  put item 2 of line 1 of t into gLimite
+  put "Level" && n into card field "niveau"
+  if line 14 of t is empty then put "Dig, collect, get out." into card field "aide"
+  else put line 14 of t into card field "aide"
+  installe line 2 to 13 of t
+end chargeNiveau
+
+on installe plateau
+  global gPlat, gChute, gJoueur, gEnnemis, gDiams, gTemps, gLimite
+  global gOuvert, gSortie, gSales, gMort, gGagne, gEclats, gApres, gPhase
+  put plateau into gPlat
+  put empty into gChute
+  repeat 12 times
+    put "00000000000000000000" & return after gChute
+  end repeat
+  delete last char of gChute
+  put empty into gJoueur
+  put empty into gEnnemis
+  put empty into gSortie
+  repeat with r = 1 to 12
+    put line r of gPlat into ligne
+    repeat with c = 1 to 20
+      put char c of ligne into ch
+      if ch is "P" then put r & "," & c into gJoueur
+      if ch is "E" then put r & "," & c into gSortie
+      if ch is "F" or ch is "B" then put r & "," & c & ",4," & ch & return after gEnnemis
+    end repeat
+  end repeat
+  put 0 into gDiams
+  put gLimite into gTemps
+  put false into gOuvert
+  put false into gMort
+  put false into gGagne
+  put 0 into gApres
+  put 0 into gPhase
+  put empty into gSales
+  put empty into gEclats
+  montreDiamants
+  montreTemps
+  redessineTout
+end installe
+
+-- ─── les cases ──────────────────────────────────────────────────────
+
+function lis r, c
+  global gPlat
+  return char c of line r of gPlat
+end lis
+
+on pose r, c, ch
+  global gPlat, gSales
+  put ch into char c of line r of gPlat
+  put (r - 1) * 20 + c & "," after gSales
+end pose
+
+on poseChute r, c, f
+  global gChute
+  put f into char c of line r of gChute
+end poseChute
+
+-- ─── le clavier ─────────────────────────────────────────────────────
+
+-- Les flèches ; Q Z S D ; A W S D. « the keysDown » donne les lettres en
+-- minuscules, et Échap vaut 65307 : c'est le code de la touche, comme dans
+-- LiveCode, et non charToNum de son caractère.
+function direction k
+  put "," & k & "," into k
+  if k contains ",65361," or k contains ",113," or k contains ",97," then return "0,-1"
+  if k contains ",65363," or k contains ",100," then return "0,1"
+  if k contains ",65362," or k contains ",122," or k contains ",119," then return "-1,0"
+  if k contains ",65364," or k contains ",115," then return "1,0"
+  return empty
+end direction
+
+-- Entre deux images : une direction qui n'était pas tenue à l'image d'avant
+-- est retenue, pour qu'une frappe brève compte. Une touche qu'on TIENT n'est
+-- pas retenue : relâchée juste avant l'image, elle ne ferait pas faire un
+-- pas de trop.
+on retiens
+  global gIssue, gVoulu, gTenue
+  put the keysDown into k
+  if k is empty then exit retiens
+  if ("," & k & ",") contains ",65307," then
+    put "stop" into gIssue
+    exit retiens
+  end if
+  put direction(k) into d
+  if d is not empty and d is not gTenue then put d into gVoulu
+end retiens
+
+on clavier
+  global gJoueur, gVoulu, gTenue, gIssue
+  put the keysDown into k
+  if ("," & k & ",") contains ",65307," then
+    put "stop" into gIssue
+    exit clavier
+  end if
+  if gJoueur is empty then exit clavier
+  if ("," & k & ",") contains ",114," then
+    explose item 1 of gJoueur, item 2 of gJoueur, "P"
+    exit clavier
+  end if
+  put direction(k) into d
+  put d into gTenue
+  if d is empty then put gVoulu into d
+  put empty into gVoulu
+  if d is not empty then joueurBouge item 1 of d, item 2 of d
+end clavier
+
+-- ─── la creuseuse ───────────────────────────────────────────────────
+
+on joueurBouge dr, dc
+  global gJoueur, gDiams, gBesoin, gOuvert, gGagne, gScore
+  global gChute
+  put item 1 of gJoueur into r
+  put item 2 of gJoueur into c
+  put r + dr into nr
+  put c + dc into nc
+  put lis(nr, nc) into ch
+  if ch is " " or ch is "." then
+    avance r, c, nr, nc
+    exit joueurBouge
+  end if
+  if ch is "*" then
+    add 1 to gDiams
+    if gDiams > gBesoin then add 20 to gScore
+    else add 10 to gScore
+    montreDiamants
+    montreScore
+    play "cling"
+    avance r, c, nr, nc
+    if gDiams >= gBesoin and gOuvert is not true then ouvreSortie
+    exit joueurBouge
+  end if
+  if ch is "E" then
+    if gOuvert is true then
+      avance r, c, nr, nc
+      put true into gGagne
+    end if
+    exit joueurBouge
+  end if
+  -- Un rocher se pousse de côté, s'il ne tombe pas et que la place est libre.
+  if ch is "O" and dr is 0 then
+    if lis(nr, nc + dc) is " " and char nc of line nr of gChute is "0" then
+      pose nr, nc + dc, "O"
+      avance r, c, nr, nc
+    end if
+  end if
+end joueurBouge
+
+on avance r, c, nr, nc
+  global gJoueur
+  pose r, c, " "
+  poseChute r, c, "0"
+  pose nr, nc, "P"
+  poseChute nr, nc, "0"
+  put nr & "," & nc into gJoueur
+end avance
+
+on ouvreSortie
+  global gOuvert, gSortie
+  put true into gOuvert
+  play "cocorico"
+  annonce "The exit is open!"
+end ouvreSortie
+
+-- ─── la gravité ─────────────────────────────────────────────────────
+
+-- De bas en haut : ce qui tombe d'une rangée arrive dans une rangée déjà
+-- vue, et ne tombe donc que d'une case par image. Ce qui roule à droite
+-- arrive dans la case suivante : on la saute.
+on physique
+  global gPlat, gChute
+  put false into choc
+  repeat with r = 11 down to 2
+    put line r of gPlat into ligne
+    if ligne contains "O" or ligne contains "*" then
+      put line r + 1 of gPlat into bas
+      put 2 into c
+      repeat while c <= 19
+        put char c of ligne into ch
+        if ch is "O" or ch is "*" then
+          put char c of bas into dessous
+          put char c of line r of gChute into tombe
+          if dessous is " " then
+            deplace r, c, r + 1, c, ch
+          else
+            if tombe is "1" and (dessous is "P" or dessous is "F" or dessous is "B") then
+              explose r + 1, c, dessous
+            else
+              put empty into vers
+              if dessous is "O" or dessous is "*" or dessous is "=" then
+                if char (c - 1) of ligne is " " and char (c - 1) of bas is " " then
+                  put c - 1 into vers
+                else
+                  if char (c + 1) of ligne is " " and char (c + 1) of bas is " " then put c + 1 into vers
+                end if
+              end if
+              if vers is empty then
+                if tombe is "1" then
+                  poseChute r, c, "0"
+                  put true into choc
+                end if
+              else
+                deplace r, c, r, vers, ch
+                if vers > c then add 1 to c
+              end if
+            end if
+          end if
+          put line r of gPlat into ligne
+          put line r + 1 of gPlat into bas
+        end if
+        add 1 to c
+      end repeat
+    end if
+  end repeat
+  if choc then play "tik"
+end physique
+
+on deplace r, c, nr, nc, ch
+  pose r, c, " "
+  poseChute r, c, "0"
+  pose nr, nc, ch
+  poseChute nr, nc, "1"
+end deplace
+
+-- ─── les bêtes ──────────────────────────────────────────────────────
+
+-- Directions : 1 haut, 2 droite, 3 bas, 4 gauche. La luciole tourne à
+-- gauche dès qu'elle peut, le papillon à droite : chacun longe son mur.
+-- Ni l'une ni l'autre ne creuse ; qui touche la creuseuse explose.
+function dy d
+  if d is 1 then return -1
+  if d is 3 then return 1
+  return 0
+end dy
+
+function dx d
+  if d is 2 then return 1
+  if d is 4 then return -1
+  return 0
+end dx
+
+function voisinJoueur r, c
+  if lis(r - 1, c) is "P" or lis(r + 1, c) is "P" then return true
+  if lis(r, c - 1) is "P" or lis(r, c + 1) is "P" then return true
+  return false
+end voisinJoueur
+
+on ennemis
+  global gEnnemis
+  if gEnnemis is empty then exit ennemis
+  put empty into suite
+  repeat with i = 1 to the number of lines of gEnnemis
+    put line i of gEnnemis into e
+    put item 1 of e into r
+    put item 2 of e into c
+    put item 3 of e into d
+    put item 4 of e into t
+    if lis(r, c) is not t then next repeat
+    if voisinJoueur(r, c) then
+      explose r, c, t
+      next repeat
+    end if
+    if t is "F" then
+      put (d + 2) mod 4 + 1 into tourne
+      put d mod 4 + 1 into autre
+    else
+      put d mod 4 + 1 into tourne
+      put (d + 2) mod 4 + 1 into autre
+    end if
+    if lis(r + dy(tourne), c + dx(tourne)) is " " then
+      put tourne into d
+    else
+      if lis(r + dy(d), c + dx(d)) is not " " then
+        put r & "," & c & "," & autre & "," & t & return after suite
+        next repeat
+      end if
+    end if
+    put r + dy(d) into nr
+    put c + dx(d) into nc
+    pose r, c, " "
+    pose nr, nc, t
+    put nr & "," & nc & "," & d & "," & t & return after suite
+  end repeat
+  put suite into gEnnemis
+end ennemis
+
+-- ─── les explosions ─────────────────────────────────────────────────
+
+-- Trois cases sur trois, sauf l'acier et la sortie. Un papillon laisse
+-- des diamants (y), le reste du vide (x). Les éclats durent trois images.
+on explose r, c, quoi
+  global gMort, gJoueur, gEclats
+  if quoi is "B" then put "y" into reste
+  else put "x" into reste
+  repeat with i = r - 1 to r + 1
+    repeat with j = c - 1 to c + 1
+      put lis(i, j) into ch
+      if ch is "#" or ch is "E" then next repeat
+      if ch is "P" then
+        put true into gMort
+        put empty into gJoueur
+      end if
+      pose i, j, reste
+      poseChute i, j, "0"
+      put i & "," & j & ",3" & return after gEclats
+    end repeat
+  end repeat
+  play "shtak"
+end explose
+
+on eclats
+  global gEclats
+  if gEclats is empty then exit eclats
+  put empty into suite
+  repeat with i = 1 to the number of lines of gEclats
+    put line i of gEclats into p
+    put item 1 of p into r
+    put item 2 of p into c
+    put (item 3 of p) - 1 into n
+    put lis(r, c) into ch
+    if ch is not "x" and ch is not "y" then next repeat
+    if n > 0 then
+      put r & "," & c & "," & n & return after suite
+      next repeat
+    end if
+    if ch is "x" then pose r, c, " "
+    else pose r, c, "*"
+  end repeat
+  put suite into gEclats
+end eclats
+
+-- ─── l'écran ────────────────────────────────────────────────────────
+
+function icone ch
+  global gOuvert, gPhase
+  if ch is "#" then return 2001
+  if ch is "=" then return 2002
+  if ch is "." then return 2003
+  if ch is "O" then return 2004
+  if ch is "*" then return 2005
+  if ch is "P" then return 2006
+  if ch is "E" then
+    if gOuvert is not true then return 2007
+    if gPhase is 0 then return 2008
+    return 2012
+  end if
+  if ch is "F" then
+    if gPhase is 0 then return 2009
+    return 2013
+  end if
+  if ch is "B" then
+    if gPhase is 0 then return 2010
+    return 2014
+  end if
+  if ch is "x" then return 2011
+  if ch is "y" then return 2015
+  return 0
+end icone
+
+-- Les bêtes battent des ailes, la sortie ouverte clignote : leurs cases
+-- se redessinent à chaque image.
+on anime
+  global gEnnemis, gOuvert, gSortie, gSales
+  repeat with i = 1 to the number of lines of gEnnemis
+    put line i of gEnnemis into e
+    put ((item 1 of e) - 1) * 20 + item 2 of e & "," after gSales
+  end repeat
+  if gOuvert is true and gSortie is not empty then
+    put ((item 1 of gSortie) - 1) * 20 + item 2 of gSortie & "," after gSales
+  end if
+end anime
+
+on dessine
+  global gSales, gPlat
+  if gSales is empty then exit dessine
+  lock screen
+  repeat with i = 1 to the number of items of gSales
+    put item i of gSales into k
+    if k is empty then next repeat
+    put char ((k - 1) mod 20 + 1) of line ((k - 1) div 20 + 1) of gPlat into ch
+    set the icon of card button (k + 1) to icone(ch)
+  end repeat
+  unlock screen
+  put empty into gSales
+end dessine
+
+on redessineTout
+  global gSales, gPlat
+  lock screen
+  repeat with r = 1 to 12
+    put line r of gPlat into ligne
+    repeat with c = 1 to 20
+      set the icon of card button ((r - 1) * 20 + c + 1) to icone(char c of ligne)
+    end repeat
+  end repeat
+  unlock screen
+  put empty into gSales
+end redessineTout
+
+on montreDiamants
+  global gDiams, gBesoin
+  put "Diamonds" && gDiams && "/" && gBesoin into card field "diamants"
+end montreDiamants
+
+on montreTemps
+  global gTemps
+  put "Time" && gTemps into card field "temps"
+end montreTemps
+
+on montreVies
+  global gVies
+  put "Lives" && gVies into card field "vies"
+end montreVies
+
+on montreScore
+  global gScore
+  put "Score" && gScore into card field "score"
+end montreScore
+
+on annonce quoi
+  put quoi into card field "etat"
+end annonce
