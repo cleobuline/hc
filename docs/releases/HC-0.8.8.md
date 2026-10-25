@@ -50,10 +50,10 @@ single operation. Its colours and the positions of its points are computed
 as before, and an enlarged icon keeps its square points. Black-and-white
 icons, and a colour icon in a highlighted button, are drawn as before.
 
-What has not been measured is how the time split between the icons
-themselves, the redraw of the whole card, and the picture taken at each
-`lock screen`. Those two still cost what a redraw of the card costs — much
-less, now.
+What has not been measured is how a redraw's time is split between the
+icons themselves, the redraw of the whole card, and the picture taken at
+each `lock screen`. The last two still cost what a redraw of the card
+costs — much less, now.
 
 Boulder-Prout is on <https://hc.labynet.fr>, with HC's other demo games.
 
