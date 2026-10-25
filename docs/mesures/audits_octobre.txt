@@ -350,10 +350,34 @@ Le collage refusé se dit d'un bip. LU, NON REJOUÉ : Cocoa.
   fond. CORRIGÉ : hc_nouvelle_carte, que les deux menus appellent
   (harnais menucarte, qui rejoue A et C et leurs cibles).
 
+  LE TROISIÈME BANC, G — 25 octobre, même pile, même journal : un fond
+  neuf posé après la carte 1, puis go card 1 depuis la 2 (G) et go next
+  card depuis la 1 (G2) :
+
+      G :  closeCard - 2 - card id 13150
+           closeBackground - 2 - card id 13150
+           openBackground - 1 - card id 3014
+           openCard - 1 - card id 3014
+      G2 : closeCard - 1 - card id 3014
+           closeBackground - 1 - card id 3014
+           openBackground - 2 - card id 13150
+           openCard - 2 - card id 13150
+
+  Pendant un go aussi, closeBackground part à la carte qu'on quitte et
+  openBackground à celle où l'on arrive. change_de_carte les envoyait au
+  fond : un « on openBackground » du script d'une carte n'était jamais
+  appelé. CORRIGÉ (harnais menucarte, section G ; gohome montre les quatre
+  messages changer d'adresse). Si closeCard a supprimé la carte quittée,
+  closeBackground va au fond qui lui survit : NON MESURÉ.
+  NON MESURÉS AUSSI : openStack et closeStack. change_de_carte les envoie
+  à la pile, Hcdocument.m à la première carte ; aucun banc n'a encore dit
+  où HyperCard les envoie.
+
+  Le registre des pointeurs guettés passe de 64 places à HC_MAX_DEPTH × 8 :
+  une navigation en guette six, et des go imbriqués dans des openCard
+  auraient tu la garde passé une dizaine de niveaux.
+
   CE QUI RESTE OUVERT :
-    · la cible de closeBackground et d'openBackground pendant un GO :
-      change_de_carte les envoie au fond, et C dit qu'HyperCard les envoie
-      à la carte. T ne tranche pas (même fond des deux côtés). NON MESURÉ ;
     · K : « go bkgnd "" » change de carte sans rien dire. Les huit fonds de
       test8 sont tous sans nom (ligne N du second banc) : HyperCard semble
       prendre "" pour « un fond sans nom », ce qu'il ne fait pas pour une

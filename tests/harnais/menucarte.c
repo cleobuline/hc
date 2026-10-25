@@ -94,6 +94,35 @@ int main(void)
     fais("put line 3 of journal");
     defait();
 
+    puts("\n== G. go d'un fond à l'autre, et retour ==");
+    /* MESURÉ DANS HYPERCARD 2.4.1 (Basilisk II) le 25 octobre, même journal,
+     * un fond neuf posé après la carte 1 :
+     *   G  (go card 1, depuis la 2)       G2 (go next card, depuis la 1)
+     *     closeCard - 2 - card id 13150     closeCard - 1 - card id 3014
+     *     closeBackground - 2 - card id 13150
+     *                                       closeBackground - 1 - card id 3014
+     *     openBackground - 1 - card id 3014 openBackground - 2 - card id 13150
+     *     openCard - 1 - card id 3014       openCard - 2 - card id 13150
+     * Les messages de fond partent à une CARTE. HC les envoyait au fond. */
+    monte();
+    fais("go card 1");
+    hc_nouvelle_carte(1);
+    fais("put empty into journal");
+    fais("go card 1");
+    fais("put journal");
+    fais("put empty into journal");
+    fais("go next card");
+    fais("put journal");
+    puts("   -- un « on openBackground » dans le script d'une carte : il est appelé");
+    fais("set the script of card 1 to \"on openBackground\" & return & "
+         "\"  global journal\" & return & "
+         "\"  put \" & quote & \"vu par la carte\" & quote & \" & return after journal\" & return & "
+         "\"  pass openBackground\" & return & \"end openBackground\"");
+    fais("put empty into journal");
+    fais("go card 1");
+    fais("put journal");
+    defait();
+
     puts("\n== newCard supprime la carte neuve (non mesuré dans HyperCard) ==");
     monte();
     hc_set_script(st, "on newCard\n  delete this card\nend newCard\n"
