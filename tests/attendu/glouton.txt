@@ -1,0 +1,76 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, le labyrinthe est dessiné ==
+   53 icônes, 197 murs, 131 pastilles visibles, 131 à manger
+   départs : 8,12
+10,11
+10,12
+10,13
+16,12 · fruit en 12,12 · super-pastilles 48,68,324,344,
+   contrôle : 0
+   Arrows, ZQSD or WASD. Esc: stop. Click New game!
+
+== 2. le glouton part à gauche, mange, et bute sur le mur ==
+   départ                                  glouton 16,12 dir 4 pas 0 · score 0
+   4 images                                 glouton 16,11 dir 4 pas 0 · score 10
+   au bout du couloir                       glouton 16,2 dir 4 pas 0 · score 100
+   sons : tik tik tik tik tik
+
+== 3. tourner au carrefour, faire demi-tour entre deux cases ==
+   parti à gauche                          glouton 16,12 dir 4 pas 8 · score 0
+   droite : demi-tour tout de suite         glouton 16,12 dir 2 pas 0 · score 0
+   puis il continue à droite               glouton 16,12 dir 2 pas 24 · score 0
+   haut demandé hors d'un carrefour        glouton 16,13 dir 2 pas 0 · score 10
+   il a tourné au carrefour suivant        glouton 14,13 dir 1 pas 0 · score 30
+
+== 4. le tunnel : on sort à gauche, on rentre à droite ==
+   dans le tunnel, vers la gauche           glouton 10,2 dir 4 pas 8 · score 0
+                                            glouton 10,2 dir 4 pas 16 · score 0
+                                            glouton 10,2 dir 4 pas 24 · score 0
+                                            glouton 10,1 dir 4 pas 0 · score 0
+                                            glouton 10,1 dir 4 pas 8 · score 0
+                                            glouton 10,1 dir 4 pas 16 · score 0
+                                            glouton 10,1 dir 4 pas 24 · score 0
+                                            glouton 10,23 dir 4 pas 0 · score 0
+
+== 5. une super-pastille : la peur, le demi-tour, deux fantômes mangés ==
+   avant                                    fantôme 1 en 2,5 dir 4 · normal
+   la super-pastille mangée                glouton 3,2 dir 1 pas 0 · score 50
+                                            peur 139 · modes peur,peur,maison,maison · sons boing
+   le rouge a fait demi-tour                fantôme 1 en 2,4 dir 2 · peur
+   le robot les chasse                      modes yeux,peur,maison,maison · score 360 · 60 images
+   les yeux sont rentrés                   modes sortie,peur,maison,maison · score 370 · 33 images de plus
+   et ressortis                             modes normal,yeux,maison,maison · score 770 · 29 images de plus
+
+== 6. la cible de chacun, en chasse ==
+   le rouge : le glouton                    14,6
+   la rose : quatre devant                  14,10
+   le bleu : en tenaille avec le rouge      26,14
+   l'orange, de près : son coin            18,0
+   l'orange, de loin : le glouton           14,6
+   en dispersion, chacun son coin           0,24
+                                            0,0
+                                            18,24
+                                            18,0
+
+== 7. dispersion puis chasse : tous font demi-tour ==
+   avant                                    fantôme 1 en 8,12 dir 4 · normal
+                                            phase chasse, pour 400 images
+   après                                   fantôme 1 en 8,11 dir 2 · normal
+
+== 8. un fantôme qui n'a pas peur : la rencontre tue ==
+   issue « mort » après 8 images
+
+== 9. quarante pastilles : la cerise paraît, et se mange ==
+   la quarantième                          fruit 199 images · visible 1 · en 368,368 · manges 40
+   il passe dessus                          fruit 0 · visible 0 · score 110 · tik cling
+
+== 10. la dernière pastille finit le niveau ==
+   issue « fini » après 8 images · reste 0
+
+== 11. un robot joue, et l'écran suit l'état ==
+   2 parties, 3000 images, 3 niveau(x) fini(s), 3 vie(s) perdue(s), 8 fantôme(s) mangé(s) · défauts 0
+
+== 12. la vraie boucle : Échap arrête la partie ==
+   arrêtée par Échap · Game stopped. · sons : piano(13 notes) tik
+
+== bilan : 0 défaut(s), 0 erreur(s) de script ==

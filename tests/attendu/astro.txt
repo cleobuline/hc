@@ -1,0 +1,53 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+== 1. à l'ouverture, la première vague dérive ==
+   4 rochers (4 gros) · vaisseau en 320,239, 4 sommets · contrôle 0
+   un rocher : 11 sommets, 62 × 54
+
+== 2. tourner : neuf degrés par image ==
+   dix images à droite                   x 320.0 y 240.0 · vx 0.00 vy 0.00 · angle 90
+   couché sur le flanc                   le vaisseau fait 24 × 18
+   vingt à gauche (Q)                    x 320.0 y 240.0 · vx 0.00 vy 0.00 · angle -90
+
+== 3. pousser, glisser sur son élan, l'espace qui se replie ==
+   dix images de poussée                 x 320.0 y 216.7 · vx 0.00 vy -4.14 · angle 0
+   encore quarante : plafonné à 9       x 320.0 y 367.1 · vx 0.00 vy -9.00 · angle 0
+   trente sans pousser : il ralentit      x 320.0 y 151.7 · vx 0.00 vy -5.72 · angle 0
+                                          flamme visible 0
+
+== 4. tirer : une frappe, un tir ; quatre au plus ; ils s'éteignent ==
+   espace tenu cinq images                tirs 19,0,0,0 · sons tik
+   cinq frappes de plus                   tirs 9,15,17,19
+   trente images après                   tirs 0,0,0,0
+   frappe brève entre deux images        tirs 23,0,0,0
+
+== 5. un rocher touché se casse : gros, moyens, petits ==
+   le gros                                rochers 2 (moyens 2) · score 20 · tik shtak(1) shtak
+   un moyen                               rochers 2 (petits 2) · score 70
+   un petit                               rochers 0 · score 170
+
+== 6. un rocher sur le vaisseau : il explose, puis revient ==
+   le choc                                vivant attend · vaisseaux 2 · éclats 43,45,39,48,44,33,0,0 · boing boing3
+   il revient                             après 51 images, en 320,240, intouchable 40
+
+== 7. l'hyperespace ==
+   bas : ailleurs, à l'arrêt            x 530.5 y 179.3 · vx 0.00 vy 0.00 · angle 0
+   bas tenu : un seul saut                x 530.5 y 179.3 · vx 0.00 vy 0.00 · angle 0
+
+== 8. la soucoupe passe, tire, et se fait abattre ==
+   elle arrive                            en 639,185, vers -3
+   trente images plus tard                tirs de la soucoupe 20,0
+   abattue                                soucoupe 0 · score 200
+
+== 9. dix mille points : un vaisseau de plus ==
+   un petit rocher                        score 10090 · vaisseaux 4 · prochain bonus 20000
+
+== 10. plus un rocher : la vague suivante ==
+   l'espace vide                          après 40 images : vague 2, 5 gros rochers
+
+== 11. un robot joue, et l'écran suit l'état ==
+   1 partie(s), 1500 images, 1 vague(s) passée(s), 0 vaisseau(x) perdu(s) · défauts 0
+
+== 12. la vraie boucle : Échap arrête la partie ==
+   arrêtée par Échap · Game stopped.
+
+== bilan : 0 défaut(s), 0 erreur(s) de script ==

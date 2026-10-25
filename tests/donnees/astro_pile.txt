@@ -1,0 +1,740 @@
+-- ════════════════════════════════════════════════════════════════════
+--  ASTRO-PROUT — LE SCRIPT DE LA PILE (Objects > Stack Info... > Script)
+--
+--  Un vaisseau, des rochers, une soucoupe : un Asteroids librement
+--  inspiré, écrit en HyperTalk pour HC, tout en boutons polygones tracés
+--  au trait blanc — le fond de chaque polygone est transparent
+--  (« 0,0,0,0 »), comme sur l'écran vectoriel d'origine.
+--
+--  L'ESPACE fait 640 × 480 et se replie sur lui-même : ce qui sort d'un
+--  bord rentre par l'autre. Les positions sont des nombres à virgule ; les
+--  boutons ne s'arrondissent qu'à l'affichage.
+--
+--  LES OBJETS sont des boutons prêts d'avance, cachés quand ils ne
+--  servent pas :
+--    « a1 » à « a40 »  les rochers         « t1 » à « t4 »  les tirs
+--    « e1 » à « e8 »   les débris          « u1 », « u2 »   les tirs de la soucoupe
+--    « soucoupe », « flamme », « vaisseau »
+--  Leurs états vivent dans des listes à virgules, un item par objet :
+--  gAx, gAy, gAvx, gAvy, gAt (la taille : 3 gros, 2 moyen, 1 petit, 0 libre).
+--
+--  LE VAISSEAU se redessine en posant ses sommets, en coordonnées de carte :
+--  « set the points » cale le bouton sur eux. Un rocher, lui, garde sa forme
+--  et se déplace par « set the loc » : sa position est le centre de son
+--  rectangle.
+--
+--  Clavier : flèches gauche et droite (ou Q D, A D) pour tourner, haut (ou
+--  Z, W) pour pousser, espace pour tirer, bas (ou S) pour l'hyperespace,
+--  Échap pour arrêter.
+-- ════════════════════════════════════════════════════════════════════
+
+on openCard
+  global gAlea
+  if gAlea is empty then put 2025 into gAlea
+  videTout
+  remetVaisseau
+  nouvelleVague 1
+  dessine
+  annonce "Arrows: turn, thrust · Space: fire · Down: hyperspace · Esc: stop"
+  pass openCard
+end openCard
+
+on arrowKey
+end arrowKey
+
+on keyDown
+end keyDown
+
+-- ─── la partie ──────────────────────────────────────────────────────
+
+on nouvellePartie
+  global gScore, gVies, gVague, gBonus, gIssue
+  put 0 into gScore
+  put 3 into gVies
+  put 0 into gVague
+  put 10000 into gBonus
+  videTout
+  remetVaisseau
+  nouvelleVague 1
+  montreTout
+  annonce empty
+  joue
+  if gIssue is "stop" then
+    annonce "Game stopped."
+  else
+    annonce "Game over. Score:" && gScore
+    play "canard"
+    if gScore > card field "best" then put gScore into card field "best"
+  end if
+end nouvellePartie
+
+-- Une image toutes les 3 ticks, vingt par seconde ; un retard ne se
+-- rattrape pas en rafale.
+on joue
+  global gIssue
+  put empty into gIssue
+  put the ticks into prochaine
+  repeat until gIssue is not empty
+    image
+    if gIssue is not empty then exit repeat
+    add 3 to prochaine
+    if prochaine < the ticks then put the ticks into prochaine
+    repeat while the ticks < prochaine
+      retiens
+      if gIssue is not empty then exit repeat
+      wait 1 tick
+    end repeat
+  end repeat
+end joue
+
+on image
+  global gT, gIssue
+  add 1 to gT
+  clavier
+  if gIssue is "stop" then exit image
+  vaisseau
+  tirs
+  rochers
+  soucoupe
+  debris
+  chocs
+  vagues
+  battement
+  dessine
+end image
+
+-- ─── le hasard ──────────────────────────────────────────────────────
+
+-- Un hasard à nous, pour que le harnais rejoue les mêmes parties.
+function hasard n
+  global gAlea
+  put (gAlea * 75 + 74) mod 65537 into gAlea
+  return gAlea mod n + 1
+end hasard
+
+-- Un nombre entre a et b.
+function entre a, b
+  return a + (b - a) * (hasard(1000) - 1) / 999
+end entre
+
+-- ─── les listes ─────────────────────────────────────────────────────
+
+function liste n, v
+  put empty into l
+  repeat n times
+    put v & "," after l
+  end repeat
+  delete last char of l
+  return l
+end liste
+
+on videTout
+  global gAx, gAy, gAvx, gAvy, gAt, gTx, gTy, gTvx, gTvy, gTvie
+  global gEx, gEy, gEvx, gEvy, gEvie, gUx, gUy, gUvx, gUvy, gUvie
+  global gSvie, gSprochaine, gT, gAttente
+  put liste(40, 0) into gAx
+  put gAx into gAy
+  put gAx into gAvx
+  put gAx into gAvy
+  put gAx into gAt
+  put liste(4, 0) into gTx
+  put gTx into gTy
+  put gTx into gTvx
+  put gTx into gTvy
+  put gTx into gTvie
+  put liste(8, 0) into gEx
+  put gEx into gEy
+  put gEx into gEvx
+  put gEx into gEvy
+  put gEx into gEvie
+  put liste(2, 0) into gUx
+  put gUx into gUy
+  put gUx into gUvx
+  put gUx into gUvy
+  put gUx into gUvie
+  put 0 into gSvie
+  put 400 into gSprochaine
+  put 0 into gT
+  put 0 into gAttente
+  lock screen
+  repeat with i = 1 to 40
+    hide card button ("a" & i)
+  end repeat
+  repeat with i = 1 to 4
+    hide card button ("t" & i)
+  end repeat
+  repeat with i = 1 to 8
+    hide card button ("e" & i)
+  end repeat
+  hide card button "u1"
+  hide card button "u2"
+  hide card button "soucoupe"
+  hide card button "flamme"
+  unlock screen
+end videTout
+
+-- ─── les rochers ────────────────────────────────────────────────────
+
+function rayon t
+  if t is 3 then return 36
+  if t is 2 then return 18
+  return 9
+end rayon
+
+-- Une forme de rocher : onze sommets autour du centre, chacun à sa
+-- distance, tirée au hasard entre 62 et 100 % du rayon ; l'orientation
+-- aussi. Pas deux rochers pareils.
+function forme x, y, t
+  put rayon(t) into r
+  put entre(0, 2 * pi) into a0
+  put empty into p
+  repeat with k = 0 to 10
+    put a0 + k * 2 * pi / 11 into a
+    put r * entre(0.62, 1) into d
+    put round(x + d * sin(a)) & "," & round(y - d * cos(a)) & return after p
+  end repeat
+  delete last char of p
+  return p
+end forme
+
+-- Un rocher neuf dans le premier bouton libre ; rend son numéro, ou 0.
+function nouveauRocher x, y, t, vitesse
+  global gAx, gAy, gAvx, gAvy, gAt
+  repeat with i = 1 to 40
+    if item i of gAt is 0 then
+      put entre(0, 2 * pi) into a
+      put vitesse * entre(0.6, 1.2) into v
+      put x into item i of gAx
+      put y into item i of gAy
+      put v * sin(a) into item i of gAvx
+      put -v * cos(a) into item i of gAvy
+      put t into item i of gAt
+      set the points of card button ("a" & i) to forme(x, y, t)
+      set the loc of card button ("a" & i) to round(x), round(y)
+      show card button ("a" & i)
+      return i
+    end if
+  end repeat
+  return 0
+end nouveauRocher
+
+function vitesseRocher t
+  global gVague
+  put min(1.6, 1 + 0.05 * gVague) into k
+  if t is 3 then return 1.2 * k
+  if t is 2 then return 2 * k
+  return 3 * k
+end vitesseRocher
+
+-- Une vague : des gros rochers sur les bords, loin du vaisseau.
+on nouvelleVague n
+  global gVague, gX, gY
+  put n into gVague
+  repeat min(11, 3 + n) times
+    repeat 20 times
+      if hasard(2) is 1 then
+        put entre(0, 640) into x
+        put item (hasard(2)) of "20,460" into y
+      else
+        put item (hasard(2)) of "20,620" into x
+        put entre(0, 480) into y
+      end if
+      if (x - gX) ^ 2 + (y - gY) ^ 2 > 150 ^ 2 then exit repeat
+    end repeat
+    get nouveauRocher(x, y, 3, vitesseRocher(3))
+  end repeat
+  montreTout
+end nouvelleVague
+
+on rochers
+  global gAx, gAy, gAvx, gAvy, gAt
+  repeat with i = 1 to 40
+    if item i of gAt is 0 then next repeat
+    put replie((item i of gAx) + (item i of gAvx), 640) into item i of gAx
+    put replie((item i of gAy) + (item i of gAvy), 480) into item i of gAy
+  end repeat
+end rochers
+
+function replie v, m
+  if v < 0 then return v + m
+  if v >= m then return v - m
+  return v
+end replie
+
+-- Un rocher touché : il se casse en deux plus petits, ou disparaît.
+on casse i, paie
+  global gAx, gAy, gAt, gScore
+  put item i of gAt into t
+  put item i of gAx into x
+  put item i of gAy into y
+  put 0 into item i of gAt
+  hide card button ("a" & i)
+  if paie then
+    if t is 3 then add 20 to gScore
+    if t is 2 then add 50 to gScore
+    if t is 1 then add 100 to gScore
+    gagneVie
+  end if
+  if t is 3 then
+    play "shtak"
+  else
+    play "boing"
+  end if
+  if t > 1 then
+    get nouveauRocher(x, y, t - 1, vitesseRocher(t - 1))
+    get nouveauRocher(x, y, t - 1, vitesseRocher(t - 1))
+  end if
+  montreScore
+end casse
+
+on gagneVie
+  global gScore, gBonus, gVies
+  if gScore >= gBonus then
+    add 1 to gVies
+    add 10000 to gBonus
+    play "cling"
+    montreTout
+  end if
+end gagneVie
+
+-- ─── le vaisseau ────────────────────────────────────────────────────
+
+on remetVaisseau
+  global gX, gY, gVx, gVy, gAng, gVivant, gInvul, gPousse
+  put 320 into gX
+  put 240 into gY
+  put 0 into gVx
+  put 0 into gVy
+  put 0 into gAng
+  put true into gVivant
+  put 40 into gInvul
+  put false into gPousse
+  show card button "vaisseau"
+end remetVaisseau
+
+-- Les sommets du vaisseau, tournés de gAng degrés autour de son centre.
+-- Le nez est en haut quand gAng vaut 0.
+function sommets pts
+  global gX, gY, gAng
+  put gAng * pi / 180 into a
+  put cos(a) into co
+  put sin(a) into si
+  put empty into p
+  repeat with k = 1 to (the number of items of pts) div 2
+    put item (2 * k - 1) of pts into px
+    put item (2 * k) of pts into py
+    put round(gX + px * co - py * si) & "," & round(gY + px * si + py * co) & return after p
+  end repeat
+  delete last char of p
+  return p
+end sommets
+
+function coque
+  return "0,-13,9,11,0,6,-9,11"
+end coque
+
+function feu
+  return "-4,9,0,19,4,9"
+end feu
+
+on vaisseau
+  global gX, gY, gVx, gVy, gAng, gVivant, gInvul, gPousse, gTourne, gRetour
+  if gVivant is not true then
+    -- On revient au centre quand la place est libre.
+    if gRetour > 0 then subtract 1 from gRetour
+    if gRetour is 0 and gVivant is "attend" and centreLibre() then remetVaisseau
+    exit vaisseau
+  end if
+  add 9 * gTourne to gAng
+  put gAng mod 360 into gAng
+  if gPousse then
+    add 0.45 * sin(gAng * pi / 180) to gVx
+    subtract 0.45 * cos(gAng * pi / 180) from gVy
+  end if
+  put gVx * 0.985 into gVx
+  put gVy * 0.985 into gVy
+  put sqrt(gVx ^ 2 + gVy ^ 2) into v
+  if v > 9 then
+    put gVx * 9 / v into gVx
+    put gVy * 9 / v into gVy
+  end if
+  put replie(gX + gVx, 640) into gX
+  put replie(gY + gVy, 480) into gY
+  if gInvul > 0 then subtract 1 from gInvul
+end vaisseau
+
+function centreLibre
+  global gAx, gAy, gAt
+  repeat with i = 1 to 40
+    if item i of gAt is 0 then next repeat
+    if ((item i of gAx) - 320) ^ 2 + ((item i of gAy) - 240) ^ 2 < 110 ^ 2 then return false
+  end repeat
+  return true
+end centreLibre
+
+on hyperespace
+  global gX, gY, gVx, gVy, gInvul
+  put entre(40, 600) into gX
+  put entre(40, 440) into gY
+  put 0 into gVx
+  put 0 into gVy
+  put 6 into gInvul
+  play "submarine"
+end hyperespace
+
+-- Le vaisseau explose : six éclats de sa coque s'envolent.
+on explose
+  global gX, gY, gVies, gVivant, gRetour, gEx, gEy, gEvx, gEvy, gEvie
+  put false into gVivant
+  play "boing3"
+  hide card button "vaisseau"
+  hide card button "flamme"
+  repeat with i = 1 to 6
+    put gX into item i of gEx
+    put gY into item i of gEy
+    put entre(0, 2 * pi) into a
+    put entre(0.5, 2.5) into v
+    put v * sin(a) into item i of gEvx
+    put v * cos(a) into item i of gEvy
+    put 30 + hasard(20) into item i of gEvie
+  end repeat
+  subtract 1 from gVies
+  montreTout
+  if gVies > 0 then
+    put "attend" into gVivant
+    put 50 into gRetour
+  end if
+end explose
+
+-- ─── le clavier ─────────────────────────────────────────────────────
+
+function tenue k, codes
+  repeat with i = 1 to the number of items of codes
+    if ("," & k & ",") contains ("," & item i of codes & ",") then return true
+  end repeat
+  return false
+end tenue
+
+-- Entre deux images : un tir ou un saut demandés d'une frappe brève ne se
+-- perdent pas.
+on retiens
+  global gIssue, gFeuTenu, gFeuVoulu, gSautTenu, gSautVoulu
+  put the keysDown into k
+  if k is empty then exit retiens
+  if tenue(k, "65307") then
+    put "stop" into gIssue
+    exit retiens
+  end if
+  if tenue(k, "32") and gFeuTenu is not true then put true into gFeuVoulu
+  if tenue(k, "65364,115") and gSautTenu is not true then put true into gSautVoulu
+end retiens
+
+on clavier
+  global gTourne, gPousse, gFeuTenu, gFeuVoulu, gSautTenu, gSautVoulu, gVivant, gIssue
+  put the keysDown into k
+  if tenue(k, "65307") then
+    put "stop" into gIssue
+    exit clavier
+  end if
+  put 0 into gTourne
+  if tenue(k, "65361,113,97") then subtract 1 from gTourne
+  if tenue(k, "65363,100") then add 1 to gTourne
+  put tenue(k, "65362,122,119") into gPousse
+  put tenue(k, "32") into feu
+  put tenue(k, "65364,115") into saut
+  if gVivant is true then
+    if (feu and gFeuTenu is not true) or gFeuVoulu is true then tire
+    if (saut and gSautTenu is not true) or gSautVoulu is true then hyperespace
+  end if
+  put feu into gFeuTenu
+  put saut into gSautTenu
+  put false into gFeuVoulu
+  put false into gSautVoulu
+end clavier
+
+-- ─── les tirs ───────────────────────────────────────────────────────
+
+on tire
+  global gX, gY, gVx, gVy, gAng, gTx, gTy, gTvx, gTvy, gTvie
+  repeat with i = 1 to 4
+    if item i of gTvie is 0 then
+      put gAng * pi / 180 into a
+      put gX + 14 * sin(a) into item i of gTx
+      put gY - 14 * cos(a) into item i of gTy
+      put gVx + 11 * sin(a) into item i of gTvx
+      put gVy - 11 * cos(a) into item i of gTvy
+      put 24 into item i of gTvie
+      show card button ("t" & i)
+      play "tik"
+      exit tire
+    end if
+  end repeat
+end tire
+
+on tirs
+  global gTx, gTy, gTvx, gTvy, gTvie, gUx, gUy, gUvx, gUvy, gUvie
+  repeat with i = 1 to 4
+    if item i of gTvie is 0 then next repeat
+    put replie((item i of gTx) + (item i of gTvx), 640) into item i of gTx
+    put replie((item i of gTy) + (item i of gTvy), 480) into item i of gTy
+    put (item i of gTvie) - 1 into item i of gTvie
+    if item i of gTvie is 0 then hide card button ("t" & i)
+  end repeat
+  repeat with i = 1 to 2
+    if item i of gUvie is 0 then next repeat
+    put replie((item i of gUx) + (item i of gUvx), 640) into item i of gUx
+    put replie((item i of gUy) + (item i of gUvy), 480) into item i of gUy
+    put (item i of gUvie) - 1 into item i of gUvie
+    if item i of gUvie is 0 then hide card button ("u" & i)
+  end repeat
+end tirs
+
+-- ─── la soucoupe ────────────────────────────────────────────────────
+
+function carene
+  return "-15,1,-7,-4,-4,-9,4,-9,7,-4,15,1,7,6,-7,6"
+end carene
+
+-- Elle traverse de temps en temps, zigzague, et tire au hasard.
+on soucoupe
+  global gT, gSx, gSy, gSvx, gSvy, gSvie, gSprochaine, gSTir, gUx, gUy, gUvx, gUvy, gUvie
+  if gSvie is 0 then
+    if gSprochaine > 0 then subtract 1 from gSprochaine
+    if gSprochaine is 0 then
+      put 1 into gSvie
+      if hasard(2) is 1 then
+        put 0 into gSx
+        put 3 into gSvx
+      else
+        put 639 into gSx
+        put -3 into gSvx
+      end if
+      put entre(60, 420) into gSy
+      put 0 into gSvy
+      put 20 into gSTir
+      play "submarine"
+      show card button "soucoupe"
+    end if
+    exit soucoupe
+  end if
+  add gSvx to gSx
+  put replie(gSy + gSvy, 480) into gSy
+  if gT mod 30 is 0 then put item (hasard(3)) of "-2,0,2" into gSvy
+  if gSx < 0 or gSx > 640 then
+    finSoucoupe
+    exit soucoupe
+  end if
+  subtract 1 from gSTir
+  if gSTir <= 0 then
+    put 25 into gSTir
+    repeat with i = 1 to 2
+      if item i of gUvie is 0 then
+        put entre(0, 2 * pi) into a
+        put gSx into item i of gUx
+        put gSy into item i of gUy
+        put 6 * sin(a) into item i of gUvx
+        put -6 * cos(a) into item i of gUvy
+        put 30 into item i of gUvie
+        show card button ("u" & i)
+        exit repeat
+      end if
+    end repeat
+  end if
+end soucoupe
+
+on finSoucoupe
+  global gSvie, gSprochaine
+  put 0 into gSvie
+  put 300 + hasard(200) into gSprochaine
+  hide card button "soucoupe"
+end finSoucoupe
+
+-- ─── les débris ─────────────────────────────────────────────────────
+
+on debris
+  global gEx, gEy, gEvx, gEvy, gEvie
+  repeat with i = 1 to 8
+    if item i of gEvie is 0 then next repeat
+    put (item i of gEx) + (item i of gEvx) into item i of gEx
+    put (item i of gEy) + (item i of gEvy) into item i of gEy
+    put (item i of gEvie) - 1 into item i of gEvie
+  end repeat
+end debris
+
+-- ─── les chocs ──────────────────────────────────────────────────────
+
+function proche x1, y1, x2, y2, d
+  return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 < d ^ 2
+end proche
+
+on chocs
+  global gAx, gAy, gAt, gTx, gTy, gTvie, gX, gY, gVivant, gInvul
+  global gSvie, gSx, gSy, gUx, gUy, gUvie, gScore
+  -- les tirs du vaisseau : sur les rochers, puis sur la soucoupe
+  repeat with j = 1 to 4
+    if item j of gTvie is 0 then next repeat
+    put item j of gTx into tx
+    put item j of gTy into ty
+    repeat with i = 1 to 40
+      put item i of gAt into t
+      if t is 0 then next repeat
+      if proche(tx, ty, item i of gAx, item i of gAy, rayon(t)) then
+        put 0 into item j of gTvie
+        hide card button ("t" & j)
+        casse i, true
+        exit repeat
+      end if
+    end repeat
+    if (item j of gTvie) > 0 and gSvie > 0 then
+      if proche(tx, ty, gSx, gSy, 15) then
+        put 0 into item j of gTvie
+        hide card button ("t" & j)
+        add 200 to gScore
+        gagneVie
+        montreScore
+        play "shtak"
+        finSoucoupe
+      end if
+    end if
+  end repeat
+  -- la soucoupe dans un rocher
+  if gSvie > 0 then
+    repeat with i = 1 to 40
+      put item i of gAt into t
+      if t is 0 then next repeat
+      if proche(gSx, gSy, item i of gAx, item i of gAy, rayon(t) + 10) then
+        casse i, false
+        finSoucoupe
+        exit repeat
+      end if
+    end repeat
+  end if
+  -- le vaisseau
+  if gVivant is not true or gInvul > 0 then exit chocs
+  repeat with i = 1 to 40
+    put item i of gAt into t
+    if t is 0 then next repeat
+    if proche(gX, gY, item i of gAx, item i of gAy, rayon(t) + 9) then
+      casse i, true
+      explose
+      exit chocs
+    end if
+  end repeat
+  repeat with i = 1 to 2
+    if (item i of gUvie) > 0 and proche(gX, gY, item i of gUx, item i of gUy, 10) then
+      put 0 into item i of gUvie
+      hide card button ("u" & i)
+      explose
+      exit chocs
+    end if
+  end repeat
+  if gSvie > 0 and proche(gX, gY, gSx, gSy, 22) then
+    finSoucoupe
+    explose
+  end if
+end chocs
+
+-- ─── les vagues ─────────────────────────────────────────────────────
+
+-- Plus un rocher : une vague neuve, un peu plus tard. Plus de vies, plus
+-- de débris : la partie est finie.
+on vagues
+  global gAt, gVague, gAttente, gVies, gVivant, gEvie, gIssue
+  if gVies <= 0 and gVivant is false then
+    if gEvie is liste(8, 0) then put "fin" into gIssue
+    exit vagues
+  end if
+  if gAt is not liste(40, 0) then exit vagues
+  if gAttente is 0 then put 40 into gAttente
+  subtract 1 from gAttente
+  if gAttente is 0 then nouvelleVague gVague + 1
+end vagues
+
+-- Le battement de cœur : deux notes graves, de plus en plus rapprochées à
+-- mesure que les rochers se font rares.
+on battement
+  global gT, gAt, gBat, gBatN
+  put 0 into n
+  repeat with i = 1 to 40
+    if (item i of gAt) > 0 then add 1 to n
+  end repeat
+  if n is 0 then exit battement
+  put max(6, min(20, 6 + n)) into intervalle
+  add 1 to gBat
+  if gBat < intervalle then exit battement
+  put 0 into gBat
+  put 1 - gBatN into gBatN
+  if gBatN is 1 then play "shtak" "c2s"
+  else play "shtak" "b1s"
+end battement
+
+-- ─── l'écran ────────────────────────────────────────────────────────
+
+on dessine
+  global gAx, gAy, gAt, gTx, gTy, gTvie, gUx, gUy, gUvie, gEx, gEy, gEvie
+  global gX, gY, gVivant, gInvul, gPousse, gT, gSvie, gSx, gSy
+  lock screen
+  repeat with i = 1 to 40
+    if item i of gAt is 0 then next repeat
+    set the loc of card button ("a" & i) to round(item i of gAx), round(item i of gAy)
+  end repeat
+  repeat with i = 1 to 4
+    if item i of gTvie is 0 then next repeat
+    set the loc of card button ("t" & i) to round(item i of gTx), round(item i of gTy)
+  end repeat
+  repeat with i = 1 to 2
+    if item i of gUvie is 0 then next repeat
+    set the loc of card button ("u" & i) to round(item i of gUx), round(item i of gUy)
+  end repeat
+  if gSvie > 0 then
+    set the points of card button "soucoupe" to decale(carene(), gSx, gSy)
+  end if
+  if gVivant is true then
+    set the points of card button "vaisseau" to sommets(coque())
+    -- à son retour, il clignote tant qu'il est intouchable
+    set the visible of card button "vaisseau" to (gInvul is 0 or (gInvul div 3) mod 2 is 0)
+    if gPousse and gT mod 2 is 0 then
+      set the points of card button "flamme" to sommets(feu())
+      show card button "flamme"
+    else
+      hide card button "flamme"
+    end if
+  end if
+  repeat with i = 1 to 8
+    if item i of gEvie is 0 then
+      if the visible of card button ("e" & i) then hide card button ("e" & i)
+      next repeat
+    end if
+    put round(item i of gEx) into x
+    put round(item i of gEy) into y
+    set the points of card button ("e" & i) to x - 4 & "," & y & return & x + 4 & "," & y + 2
+    show card button ("e" & i)
+  end repeat
+  unlock screen
+end dessine
+
+-- Des sommets relatifs, posés autour de (x, y).
+function decale pts, x, y
+  put empty into p
+  repeat with k = 1 to (the number of items of pts) div 2
+    put round(x + (item (2 * k - 1) of pts)) & "," & round(y + (item (2 * k) of pts)) & return after p
+  end repeat
+  delete last char of p
+  return p
+end decale
+
+on montreScore
+  global gScore
+  put gScore into card field "score"
+end montreScore
+
+on montreTout
+  global gVies, gVague
+  montreScore
+  put max(0, gVies) into card field "vies"
+  put gVague into card field "vague"
+end montreTout
+
+on annonce quoi
+  put quoi into card field "etat"
+end annonce
