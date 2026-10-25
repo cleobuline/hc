@@ -110,5 +110,6 @@ to the background instead. What HyperCard does then has not been measured.
   `openBackground` go to the card, as in HyperCard
 - [#166](https://github.com/cleobuline/hc/pull/166): colour icons drawn in
   one go
+- [#167](https://github.com/cleobuline/hc/pull/167): version 0.8.8
 
 **Full changelog:** [HC-0.8.7...HC-0.8.8](https://github.com/cleobuline/hc/compare/HC-0.8.7...HC-0.8.8)
