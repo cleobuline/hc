@@ -113,6 +113,16 @@ LES RELEVÉS
     DANS HC, avant le changement (son MacBook)       non mesuré
     DANS HC, après le changement (son MacBook)       non mesuré
 
+À L'ŒIL, en jouant, DANS HC (l'application), sur le même MacBook :
+
+    avant (HC 0.8.7)               « c'est pas jouable mon macbook est trop lent »
+    après (main, #166 fusionnée)   « oui c'est jouable !!! ça n'a rien à voir »
+
+Ce n'est pas le banc : il dit que le changement suffit à rendre le jeu
+jouable, pas quelle part du temps revenait aux icônes (1), au dessin de la
+carte entière (2) ou à la photographie du verrou (3). Les trois temps B, C
+et D restent à relever.
+
 Le Mac de l'utilisatrice : non relevé. Elle a aussi fait tourner HC sous High
 Sierra sur un i5 de 2011 (« c'est lent mais ça fonctionne ») ; on ne sait pas
 si c'est la même machine.
