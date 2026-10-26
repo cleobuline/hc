@@ -105,6 +105,11 @@ LES CAMPAGNES
                             dans notre format, 3 dans celui d'Apple ; le
                             témoin a attrapé ses trois pièges et laissé la
                             graine saine)
+    make fuzz, 0.8.9        notre format  60 000, Apple  20 000   0 signalement
+                            (26 octobre, après « does not contain » et
+                            « replace » : 1 089 graines dans notre format,
+                            3 dans celui d'Apple ; le témoin a attrapé ses
+                            trois pièges et laissé la graine saine)
 
 La deuxième a été arrêtée par la limite de temps de la session avant la fin.
 Les deux premières avaient en plus pour graines les deux piles de démonstration
