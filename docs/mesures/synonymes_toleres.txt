@@ -87,6 +87,31 @@ bkgnd fields » contre « the number of background fields » —, toutes deux
 confirmées des deux côtés le même soir.
 
 
+3. « does not contain »                                          TOLÉRANCE
+----------------------------------------------------------------------------
+
+    if x does not contain "z" ...     HyperCard -> Can't understand this keyword
+    if "z" is not in x ...            les deux  -> marche
+
+Mesuré DANS HYPERCARD (Basilisk II) le 26 octobre. Accepté par HC le même
+jour, à la demande de l'utilisatrice : un opérateur de LiveCode, l'exact
+contraire de « contains ». Détail dans mots_absents.txt.
+
+
+4. « replace … with … in »                                      TOLÉRANCE
+----------------------------------------------------------------------------
+
+    replace "a" with "b" in x         HyperCard -> Can't understand arguments
+                                                   of replace
+
+Même soir, même décision : une commande de LiveCode et de SuperCard. Une pile
+d'HyperCard qui définit son propre « on replace » et l'appelle avec des
+virgules n'en voit rien. Détail dans mots_absents.txt.
+
+COMME POUR « chars », LA RÈGLE DES BANCS TIENT : un banc à jouer des deux
+côtés n'emploie ni l'une ni l'autre.
+
+
 CE QU'IL FAUT CHERCHER MAINTENANT
 ---------------------------------
 

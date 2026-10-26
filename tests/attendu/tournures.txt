@@ -1,0 +1,125 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+=== 1. « does not contain », le contraire exact de « contains » ===
+   put "abc" into x
+   if x does not contain "z" then put "oui" else put "non"
+      -> oui
+   if x does not contain "b" then put "oui" else put "non"
+      -> non
+   put "ABC" does not contain "b"
+      -> false
+   put "abc" does not contain empty
+      -> false
+   put "abc" contains empty
+      -> true
+   put "abc" does not contain "d" and 1 is 1
+      -> true
+   put not ("abc" contains "d") and 1 is 1
+      -> true
+   put word 2 of "un deux trois" does not contain "eu"
+      -> false
+   put "hello" into card field "f"
+   put card field "f" does not contain "ELL"
+      -> false
+   put card field "f" does not contain "xyz"
+      -> true
+   (dans une boucle, ôter les « a » un à un :)
+      -> brcdbr 5
+
+=== 2. « replace … with … in » ===
+   put "banana" into x
+   replace "an" with "AN" in x
+   put x
+      -> bANANa
+   (la casse ignorée, comme dans « contains » :)
+   put "BaNaNa" into y
+   replace "A" with "o" in y
+   put y
+      -> BoNoNo
+   (de gauche à droite, sans recouvrement :)
+   put "aaa" into z
+   replace "aa" with "b" in z
+   put z
+      -> ba
+   (le neuf contient le vieux : un seul passage, pas de boucle :)
+   put "aba" into w
+   replace "a" with "aa" in w
+   put w
+      -> aabaa
+   (un vieux vide ne remplace rien ; un neuf vide efface :)
+   replace empty with "x" in w
+   put w
+      -> aabaa
+   replace "a" with empty in w
+   put w
+      -> b
+   (des expressions de part et d'autre :)
+   put "banana" into x
+   replace "a" & "n" with "-" & "-" in x
+   put x
+      -> b----a
+   (dans un champ :)
+   put "Il pleut, il mouille" into card field "f"
+   replace "il" with "elle" in card field "f"
+   put card field "f"
+      -> elle pleut, elle mouellele
+   (« mouille » contient « il » : on remplace des chaînes, pas des mots)
+   (dans un morceau, et seulement là :)
+   put "a,b,a" & return & "a,b,a" into t
+   replace "a" with "z" in line 2 of t
+   put t
+      -> a,b,a
+z,b,z
+   put "un,deux,trois" into card field "f"
+   replace "e" with "E" in item 2 of card field "f"
+   put card field "f"
+      -> un,dEux,trois
+   (une variable devant « in » : « in » reste à la commande ;
+    « of » garde son sens dans le neuf :)
+   put "Z" into neuf
+   put "abc" into s
+   replace "b" with neuf in s
+   replace "c" with the short name of this card in s
+   put s
+      -> aZUne
+   replace "Z" with (neuf & neuf) in s
+   put s
+      -> aZZUne
+   (une variable jamais affectée est vide, pas son propre nom :)
+   replace "j" with "J" in jamais
+   put "[" & jamais & "]"
+      -> []
+   (the result est vidé — un find raté l'a rempli juste avant :)
+   put "vieux" into x
+   find "qqqq"
+   put "[" & the result & "]"
+      -> [Not found]
+   replace "v" with "n" in x
+   put "[" & the result & "]" && x
+      -> [] nieux
+   (ce qui ne s'écrit pas est refusé :)
+   replace "U" with "V" in the name of this card
+      [ERR]    !! replace : cette cible ne s'écrit pas (v3, ligne 1)
+   put the name of this card
+      -> card "Une"
+   (dans une fonction de la pile :)
+   put remplace("Mississippi", "ss", "s")
+      -> Misisippi
+
+=== 3. les voisins n'ont pas bougé ===
+   (le « on replace » d'une pile, appelé avec des virgules :)
+   replace "un", "deux", "trois"
+      -> le gestionnaire de la pile : un|deux|trois
+   (« replace » et « does », noms de variable :)
+   put 3 into replace
+   put replace + 1
+      -> 4
+   put 5 into does
+   put does * 2
+      -> 10
+   (contains, is in, is not in :)
+   put "abc" contains "B"
+      -> true
+   put "b" is in "abc"
+      -> true
+   put "z" is not in "abc"
+      -> true

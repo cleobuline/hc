@@ -863,6 +863,49 @@ static void resultat_vide(HctExec *x)
     if (x->hote.resultat_vide) x->hote.resultat_vide(x->hote.donnees);
 }
 
+/* « replace a with b in c » : toutes les occurrences de `vieux` dans `t`,
+ * remplacées par `neuf`, de gauche à droite et sans recouvrement, la casse
+ * ignorée comme dans « contains » — le même strncasecmp. Un `vieux` vide ne
+ * remplace rien : il est partout, et l'on ne finirait pas. Rend une chaîne
+ * neuve, ou NULL si la mémoire manque ou si le résultat ne tiendrait pas
+ * dans un int, la borne de toute valeur. */
+static char *remplace_tout(const char *t, const char *vieux, const char *neuf)
+{
+    /* Le contrat d'HctValeur veut un texte jamais nul ; clang --analyze ne
+     * voit pas jusque-là, et la garde ne coûte rien. */
+    if (!t) t = "";
+    if (!vieux) vieux = "";
+    if (!neuf) neuf = "";
+    size_t lt = strlen(t), lv = strlen(vieux), ln = strlen(neuf);
+    if (!lv) return strdup(t);
+    size_t n = 0;
+    for (size_t i = 0; i + lv <= lt; ) {
+        if (!strncasecmp(t + i, vieux, lv)) { n++; i += lv; }
+        else i++;
+    }
+    size_t taille = lt;
+    if (ln > lv) {
+        if (lt > (size_t)INT_MAX || (n && ln - lv > ((size_t)INT_MAX - lt) / n)) return NULL;
+        taille += n * (ln - lv);
+    } else {
+        taille -= n * (lv - ln);
+    }
+    char *r = malloc(taille + 1);
+    if (!r) return NULL;
+    size_t k = 0;
+    for (size_t i = 0; i < lt; ) {
+        if (i + lv <= lt && !strncasecmp(t + i, vieux, lv)) {
+            memcpy(r + k, neuf, ln);
+            k += ln;
+            i += lv;
+        } else {
+            r[k++] = t[i++];
+        }
+    }
+    r[k] = 0;
+    return r;
+}
+
 static void commande(HctExec *x, const HctNoeud *n)
 {
     const char *v = n->op ? n->op : "";
@@ -1000,6 +1043,55 @@ static void commande(HctExec *x, const HctNoeud *n)
             if (nom) { var_ecrit(x, nom, ""); free(nom); }
         }
         resultat_vide(x);
+        return;
+    }
+
+    /* « replace a with b in c » : UNE TOLÉRANCE DE HC, venue de LiveCode et de
+     * SuperCard — HyperCard la refuse, mesuré (voir hct_cmd.c et
+     * docs/mesures/mots_absents.txt).
+     *
+     * Le chemin d'« add » juste en dessous : lire la cible, calculer,
+     * réécrire par ecrit_dans. Tout ce que « put … into » sait écrire —
+     * variable, champ, morceau, boîte de messages — se remplace donc aussi,
+     * et ce qui ne s'écrit pas est refusé AVANT qu'on évalue quoi que ce
+     * soit. */
+    if (!strcasecmp(v, "replace")) {
+        if (n->nfils < 5) return;
+        const HctNoeud *ncible = n->fils[4];
+        if (!cible_connue(x, ncible)) {
+            hct_ctx_faute(&x->ctx, n, "replace : cette cible ne s'écrit pas");
+            return;
+        }
+        HctValeur vieux = hct_evalue(&x->ctx, n->fils[0]);
+        HctValeur neuf = hct_val_vide(), act = hct_val_vide();
+        if (!x->ctx.erreur) neuf = hct_evalue(&x->ctx, n->fils[2]);
+        if (!x->ctx.erreur) act = hct_evalue(&x->ctx, ncible);
+        if (x->ctx.erreur) {
+            hct_val_libere(&vieux); hct_val_libere(&neuf); hct_val_libere(&act);
+            return;
+        }
+        /* Une variable jamais affectée est VIDE ici, comme pour « add » : son
+         * nom ne vaut son propre texte que lorsqu'on le lit comme littéral. */
+        if (ncible->genre == HCTN_IDENT && act.txt) {
+            char *nom = texte(ncible);
+            if (nom && !strcmp(nom, act.txt)) {
+                hct_val_libere(&act);
+                act = hct_val_vide();
+            }
+            free(nom);
+        }
+        char *r = remplace_tout(act.txt, vieux.txt, neuf.txt);
+        if (!r) {
+            hct_ctx_faute(&x->ctx, n, "mémoire insuffisante");
+        } else {
+            HctValeur res = hct_val_texte(r);
+            free(r);
+            if (!ecrit_dans(x, ncible, res, 0))
+                hct_ctx_faute(&x->ctx, n, "replace : cette cible ne s'écrit pas");
+            hct_val_libere(&res);
+        }
+        hct_val_libere(&vieux); hct_val_libere(&neuf); hct_val_libere(&act);
+        if (!x->ctx.erreur) resultat_vide(x);
         return;
     }
 

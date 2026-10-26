@@ -1,0 +1,108 @@
+MESURE — DEUX TOURNURES QU'HYPERCARD N'A PAS, ET HC NON PLUS
+=============================================================
+
+Le 26 octobre, en écrivant le script d'un jeu (Lingot-Prout, le Lode Runner
+maison, pas encore dans le dépôt), HC a refusé deux tournures qu'on croise en
+LiveCode et en SuperCard :
+
+    replace "o" with "#" in p
+    if seg does not contain "0" and ...
+
+Avant de les déclarer absentes d'HyperCard, on a mesuré.
+
+
+LE BANC — à jouer DANS HYPERCARD (Basilisk II), dans la boîte de messages
+----------------------------------------------------------------------------
+
+    put "abc" into x
+    if x does not contain "z" then answer "ok"
+    replace "a" with "b" in x
+
+
+CE QU'A RÉPONDU HYPERCARD — relevé par l'utilisatrice, le 26 octobre,
+DANS HYPERCARD (Basilisk II), étiquette confirmée par elle
+----------------------------------------------------------------------------
+
+    if x does not contain "z" ...    Can't understand this keyword
+    replace "a" with "b" in x        Can't understand arguments of replace
+
+Les deux sont REFUSÉES. Les mots sont ceux qu'elle a recopiés à la main : la
+majuscule et la ponctuation finale ne sont PAS MESURÉES. Que le premier
+message vienne bien de la ligne « does not contain » est DÉDUIT de l'ordre des
+relevés (la ligne 1 est un simple « put », le second message nomme
+« replace ») ; le mot qu'HyperCard désigne par « this keyword » n'est pas
+relevé.
+
+
+CE QUE RÉPOND HC — mesuré le même jour, DANS LE NOYAU (hc_do, sans
+l'interface)
+----------------------------------------------------------------------------
+
+    if x does not contain "z" ...    !! ne sait pas lire : if x does not contain ...
+    replace "a" with "b" in x        !! ne sait pas lire : replace "a" with "b" in x
+    put x                            abc   (x n'a pas bougé)
+
+Ce qu'affiche l'APPLICATION pour ces deux lignes : NON MESURÉ.
+
+
+CE QUE ÇA DIT
+-------------
+
+1. CE QUI EST ACCEPTÉ : les deux côtés refusent les deux tournures. Il n'y a
+   rien à corriger ; ce n'est pas une tolérance de plus à inscrire dans
+   synonymes_toleres.txt. Le HyperTalk portable s'écrit :
+
+       if "0" is not in seg then ...          au lieu de  does not contain
+       if not (seg contains "0") then ...
+       une boucle sur offset() ou sur les caractères, au lieu de  replace
+
+2. LE TEXTE DE L'ERREUR, LUI, DIFFÈRE : HC dit « ne sait pas lire », en
+   français, là où HyperCard dit l'une des deux phrases ci-dessus. La règle
+   du projet veut qu'une erreur imitée d'HyperCard emploie son texte anglais,
+   au mot près. Reprendre ces deux textes est une modification du code :
+   proposée à l'utilisatrice, PAS FAITE.
+
+
+LA DÉCISION — le 26 octobre, par l'utilisatrice, sitôt la mesure lue
+----------------------------------------------------------------------------
+
+    « ça ne nous empêche pas de rendre ces expressions valides dans HC »
+
+C'est la décision prise pour « chars » (synonymes_toleres.txt) : HC accepte
+plus que l'original, et c'est voulu. Les deux tournures sont donc des
+TOLÉRANCES, inscrites là-bas sous les numéros 3 et 4. Le point 2 ci-dessus
+(le texte de l'erreur) devient sans objet pour elles : HC ne les refuse plus.
+
+CE QUI EST FAIT, dans le noyau :
+
+    does not contain    opérateur composé du rang 7 (hct_expr.c), l'exact
+                        contraire de « contains » (hct_eval.c)
+    replace a with b in c
+                        commande (hct_cmd.c, motif « e with i in c »),
+                        exécutée par hct_exec.c sur le chemin d'« add » :
+                        lire la cible, remplacer, réécrire par ecrit_dans.
+                        Toutes les occurrences, de gauche à droite, sans
+                        recouvrement ; la casse ignorée comme dans
+                        « contains » ; un vieux vide ne remplace rien ; une
+                        variable jamais affectée vaut vide ; the result est
+                        vidé ; ce qui ne s'écrit pas est refusé avant toute
+                        évaluation.
+
+LE PIÈGE TROUVÉ EN CHEMIN : « in » est un synonyme de « of » en HyperTalk,
+si bien que « replace "a" with neuf in s » lisait « neuf in s » comme « la
+propriété neuf de s ». Une chaîne passait, une variable non. D'où le garde
+sans_in de l'analyseur (hct_expr.h) et l'élément « i » des motifs : une
+expression qui laisse « in » à la commande, sans toucher au « of » de « the
+name of card 1 ».
+
+LE SITE JUMEAU A LE MÊME DÉFAUT, ET IL EST ANCIEN : « find x in card field
+"f" », x étant une variable, répond « propriété inconnue » dans HC (mesuré
+le 26 octobre, dans le noyau), alors que « find "deux" in card field "f" »
+trouve. Ce qu'en fait HyperCard : NON MESURÉ. Signalé à l'utilisatrice, pas
+corrigé sans elle.
+
+AUCUNE PILE D'HYPERCARD NE CHANGE DE COMPORTEMENT, et le harnais tournures le
+tient : une pile qui définit SON « on replace » et l'appelle avec des
+virgules garde la main (la virgule fait échouer le motif, et la ligne
+retourne au filet des messages) ; « replace » et « does » restent des noms
+de variable.

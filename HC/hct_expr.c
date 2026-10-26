@@ -180,6 +180,13 @@ static const Compose COMPOSES[] = {
     { "is", "a",      NULL,  "is a"          },
     { "is", "an",     NULL,  "is a"          },
     { "contains", NULL, NULL, "contains"     },
+    /* « does not contain » : de LiveCode et de SuperCard, PAS d'HyperCard —
+     * mesuré le 26 octobre DANS HYPERCARD (Basilisk II), qui répond « Can't
+     * understand this keyword ». Accepté ici à la demande de l'utilisatrice,
+     * comme « chars » : une tolérance, voir docs/mesures/mots_absents.txt.
+     * Aucun script d'HyperCard ne change de sens : trois mots qui suivent
+     * un opérande n'y avaient aucune lecture. */
+    { "does", "not", "contain", "does not contain" },
     /* rang 8 */
     { "is", "not",    NULL,  "is not"        },
     { "is", NULL,     NULL,  "is"            },
@@ -475,9 +482,10 @@ static HctNoeud *facteur(HctAnalyseur *a)
     }
     if (op_est(&j, "(")) {
         avance(a);
-        int garde = a->sans_of; a->sans_of = 0;
+        int garde = a->sans_of, garde_in = a->sans_in;
+        a->sans_of = 0; a->sans_in = 0;
         HctNoeud *dedans = rang_ou(a);
-        a->sans_of = garde;
+        a->sans_of = garde; a->sans_in = garde_in;
         if (!op_ici(a, ")")) return faute(a, "parenthèse fermante attendue");
         avance(a);
         return dedans;
@@ -777,7 +785,7 @@ static int mot_structurel(HctAnalyseur *a)
 /* Le « of <cible> » facultatif, commun à toutes les formes. */
 static void attache_cible(HctAnalyseur *a, HctNoeud *n)
 {
-    if (!a->sans_of && (mot_ici(a, "of") || mot_ici(a, "in"))) {
+    if (!a->sans_of && (mot_ici(a, "of") || (mot_ici(a, "in") && !a->sans_in))) {
         avance(a);
         hct_ajoute_fils(a->reserve, n, chunk_ou_of(a));
     }
@@ -1201,9 +1209,10 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
     if (op_ici(a, "(")) {
         HctJeton jp = *ici(a);
         avance(a);
-        int garde = a->sans_of; a->sans_of = 0;
+        int garde = a->sans_of, garde_in = a->sans_in;
+        a->sans_of = 0; a->sans_in = 0;
         HctNoeud *dedans = rang_ou(a);
-        a->sans_of = garde;
+        a->sans_of = garde; a->sans_in = garde_in;
         if (!op_ici(a, ")")) return faute(a, "parenthèse fermante attendue");
         avance(a);
         (void)jp;
@@ -1247,7 +1256,8 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
         HctNoeud *appel = hct_noeud(a->reserve, HCTN_APPEL, j);
         if (!appel) return NULL;
         hct_ajoute_fils(a->reserve, appel, n);
-        int garde = a->sans_of; a->sans_of = 0;
+        int garde = a->sans_of, garde_in = a->sans_in;
+        a->sans_of = 0; a->sans_in = 0;
         if (!op_ici(a, ")")) {
             for (;;) {
                 if (op_ici(a, ",") || op_ici(a, ")"))
@@ -1258,7 +1268,7 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
                 break;
             }
         }
-        a->sans_of = garde;
+        a->sans_of = garde; a->sans_in = garde_in;
         if (!op_ici(a, ")"))
             hct_ajoute_fils(a->reserve, appel,
                             faute(a, "parenthèse fermante attendue"));
@@ -1267,7 +1277,7 @@ static HctNoeud *chunk_ou_of_corps(HctAnalyseur *a)
     }
 
     /* « X of Y » : propriété, ou appartenance. */
-    while (!a->sans_of && (mot_ici(a, "of") || mot_ici(a, "in"))) {
+    while (!a->sans_of && (mot_ici(a, "of") || (mot_ici(a, "in") && !a->sans_in))) {
 
         /* « the average of 1,2,3 » : les fonctions d'agrégat acceptent une
          * LISTE derrière « of ». On en fait un APPEL — average(1,2,3) —, forme
@@ -1320,6 +1330,7 @@ void hct_analyseur_init(HctAnalyseur *a, const HctLot *lot, HctReserve *r)
     a->reserve = r;
     a->nerreurs = 0;
     a->sans_of = 0;
+    a->sans_in = 0;
     a->prof = 0;
     a->prof_si = 0;
     a->prof_bloc = 0;
