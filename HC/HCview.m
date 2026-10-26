@@ -7918,6 +7918,16 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
          * se voyait pas, ce qui est exactement ce qui le rendait difficile à
          * situer.
          *
+         * CE N'ÉTAIT QUE LA MOITIÉ, ET LA SECONDE A ÉTÉ RELEVÉE LE 26 OCTOBRE.
+         * Une vue qui n'est pas le document courant ne trouve pas NULL : elle
+         * trouve SA carte, et lie donc le catalogue à SA pile. Or le menu vise
+         * la vue de la première fenêtre, et le panneau ouvert par Edit ▸ Icon…
+         * la redessinait à l'ouverture et à chaque geste : avec « Untitled » encore ouverte, la
+         * grille n'avait plus que les icônes d'origine — et les retrouvait
+         * quand on fermait Untitled. Corrigé des deux côtés : editIcon: passe
+         * la main à la vue active (HCdialogs.m), et les vues du panneau lient
+         * le catalogue à leur pile avant de le lire (IconGrid, HCFatBits).
+         *
          * Rompre le lien est une décision, pas un effet de bord d'un dessin :
          * Hcdocument le fait explicitement par hcicon_edit_sync(NULL) quand
          * une pile se ferme, et c'est le seul endroit qui doive le faire. Un

@@ -301,6 +301,10 @@ int hcicon_edit_est_couleur(Object *stack, int id)
 - (void)drawRect:(NSRect)dirty {
     (void)dirty;
 
+    /* pixelRow: lit le catalogue : le lier d'abord à notre pile, comme la
+     * grille du panneau (IconGrid, HCpalettes.m, où la raison est écrite). */
+    if (self.stack) hcicon_edit_bind(self.stack);
+
     [[NSColor whiteColor] setFill];
     NSRectFill([self bounds]);
 
@@ -394,6 +398,7 @@ int hcicon_edit_est_couleur(Object *stack, int id)
 - (void)mouseDown:(NSEvent *)e {
     int row, col;
     if (![self hitRow:&row col:&col forEvent:e]) return;
+    if (self.stack) hcicon_edit_bind(self.stack);   /* voir drawRect: */
 
     /* EN COULEUR, le bascule se fait sur la couleur CHOISIE, pas sur l'encre.
      * Cliquer un pixel qui porte deja la teinte courante l'efface ; cliquer
