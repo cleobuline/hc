@@ -1,0 +1,63 @@
+MESURE — DEUX TOURNURES QU'HYPERCARD N'A PAS, ET HC NON PLUS
+=============================================================
+
+Le 26 octobre, en écrivant le script d'un jeu (Lingot-Prout, le Lode Runner
+maison, pas encore dans le dépôt), HC a refusé deux tournures qu'on croise en
+LiveCode et en SuperCard :
+
+    replace "o" with "#" in p
+    if seg does not contain "0" and ...
+
+Avant de les déclarer absentes d'HyperCard, on a mesuré.
+
+
+LE BANC — à jouer DANS HYPERCARD (Basilisk II), dans la boîte de messages
+----------------------------------------------------------------------------
+
+    put "abc" into x
+    if x does not contain "z" then answer "ok"
+    replace "a" with "b" in x
+
+
+CE QU'A RÉPONDU HYPERCARD — relevé par l'utilisatrice, le 26 octobre,
+DANS HYPERCARD (Basilisk II), étiquette confirmée par elle
+----------------------------------------------------------------------------
+
+    if x does not contain "z" ...    Can't understand this keyword
+    replace "a" with "b" in x        Can't understand arguments of replace
+
+Les deux sont REFUSÉES. Les mots sont ceux qu'elle a recopiés à la main : la
+majuscule et la ponctuation finale ne sont PAS MESURÉES. Que le premier
+message vienne bien de la ligne « does not contain » est DÉDUIT de l'ordre des
+relevés (la ligne 1 est un simple « put », le second message nomme
+« replace ») ; le mot qu'HyperCard désigne par « this keyword » n'est pas
+relevé.
+
+
+CE QUE RÉPOND HC — mesuré le même jour, DANS LE NOYAU (hc_do, sans
+l'interface)
+----------------------------------------------------------------------------
+
+    if x does not contain "z" ...    !! ne sait pas lire : if x does not contain ...
+    replace "a" with "b" in x        !! ne sait pas lire : replace "a" with "b" in x
+    put x                            abc   (x n'a pas bougé)
+
+Ce qu'affiche l'APPLICATION pour ces deux lignes : NON MESURÉ.
+
+
+CE QUE ÇA DIT
+-------------
+
+1. CE QUI EST ACCEPTÉ : les deux côtés refusent les deux tournures. Il n'y a
+   rien à corriger ; ce n'est pas une tolérance de plus à inscrire dans
+   synonymes_toleres.txt. Le HyperTalk portable s'écrit :
+
+       if "0" is not in seg then ...          au lieu de  does not contain
+       if not (seg contains "0") then ...
+       une boucle sur offset() ou sur les caractères, au lieu de  replace
+
+2. LE TEXTE DE L'ERREUR, LUI, DIFFÈRE : HC dit « ne sait pas lire », en
+   français, là où HyperCard dit l'une des deux phrases ci-dessus. La règle
+   du projet veut qu'une erreur imitée d'HyperCard emploie son texte anglais,
+   au mot près. Reprendre ces deux textes est une modification du code :
+   proposée à l'utilisatrice, PAS FAITE.
