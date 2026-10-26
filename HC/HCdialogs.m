@@ -1126,7 +1126,12 @@ static void info_couleurs_ferme(void)
     gContentsTarget = NULL;
     [self setNeedsDisplay:YES];
 }
+/* Le menu vise la vue de la première fenêtre : la main passe à la vue active,
+ * comme dans editIcon: (plus bas), où la raison est écrite. Ici, `self` est la
+ * cible des boutons du panneau, et cardOK: redessinait la mauvaise fenêtre —
+ * dont le redessin, en passant, liait le catalogue d'icônes à sa pile. */
 - (void)showCardInfo {
+    if (gView && gView != self) { [gView showCardInfo]; return; }
     if (hcv_menu_trappe("Card Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
@@ -1240,7 +1245,9 @@ static void info_couleurs_ferme(void)
     gCardMarked = gCardDontSearch = gCardCantDelete = nil;
     [self setNeedsDisplay:YES];
 }
+/* La main à la vue active : voir showCardInfo et editIcon:. */
 - (void)showBackgroundInfo {
+    if (gView && gView != self) { [gView showBackgroundInfo]; return; }
     if (hcv_menu_trappe("Bkgnd Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card || !card->bg) return;
@@ -1339,7 +1346,12 @@ static void info_couleurs_ferme(void)
     [self bgOK:sender];
     if (bg) [self editScriptOf:bg];
 }
+/* La main à la vue active : voir showCardInfo et editIcon:. Ici, stackOK:
+ * renommait la pile active mais retitrait la fenêtre de la PREMIÈRE pile ;
+ * celle qu'on renommait gardait son ancien titre jusqu'à ce qu'autre chose le
+ * refasse. Lu dans le code, NON MESURÉ dans l'application. */
 - (void)showStackInfo {
+    if (gView && gView != self) { [gView showStackInfo]; return; }
     if (hcv_menu_trappe("Stack Info…")) return;   /* la pile détourne l'article */
     Object *card = hc_current_card();
     if (!card) return;
@@ -1521,6 +1533,12 @@ void hcicon_panel_stack_closing(Object *stack)
     if (!gIconPanel) return;
     if (stack && gIconStack != stack) return;
 
+    /* Les vues lient le catalogue à leur pile avant de dessiner : elles ne
+     * doivent plus la connaître, même si AppKit les garde un instant. */
+    gIconGrid.stack = NULL;
+    gIconBits.stack = NULL;
+    gIconPal.stack  = NULL;
+
     [gIconPanel close];
     gIconPanel  = nil;
     gIconGrid   = nil;
@@ -1542,8 +1560,31 @@ void hcicon_panel_stack_closing(Object *stack)
  * sur l'objet sélectionné s'il s'agit d'un bouton, à NULL sinon.
  * gInfoIconField est remis à nil parce que le panneau d'info n'est pas ouvert —
  * iconOK: y écrit, et le laisser pointer sur le champ d'un panneau refermé
- * reviendrait à peindre dans le vide. */
+ * reviendrait à peindre dans le vide.
+ *
+ * LA MAIN PASSE D'ABORD À LA VUE ACTIVE, ET C'EST UNE CORRECTION.
+ *
+ * L'article vise la vue de la PREMIÈRE fenêtre — tout le menu la vise, voir
+ * « ATTENTION, PIÈGE » dans AppDelegate.m —, et infoIcon: se sert de `self` :
+ * cible des boutons du panneau, et vue que iconRefresh redessine. Avec deux
+ * piles ouvertes, c'est donc la fenêtre de la première qui se redessinait à
+ * l'ouverture du panneau et à chaque geste dedans, et son redessin lie le
+ * catalogue d'icônes à SA pile (drawCardContent:, HCview.m). Le panneau
+ * n'affichait plus que les icônes d'origine : la première pile était
+ * « Untitled », sans icône à elle. Et iconOK: redessinait cette fenêtre-là,
+ * pas celle du bouton qui venait de recevoir son icône.
+ *
+ * RELEVÉ DANS HC (l'application) par l'utilisatrice, le 26 octobre : le
+ * panneau ouvert par l'info du bouton montrait toutes les icônes de sa pile,
+ * le même ouvert par Edit ▸ Icon… les seules icônes d'origine ; et « si je
+ * ferme Untitled stack, les icônes apparaissent ». L'info du bouton s'ouvre
+ * d'un double-clic dans la carte, donc sur la bonne vue : c'est ce qui
+ * séparait les deux portes.
+ *
+ * Les trois infos du menu Objects (carte, fond, pile) ont le même défaut,
+ * et la même correction, plus haut. */
 - (void)editIcon:(id)sender {
+    if (gView && gView != self) { [gView editIcon:sender]; return; }
     if (hcv_menu_trappe("Icon…")) return;   /* la pile détourne l'article */
     Object *sel = hcv_selection();
     gInfoTarget = (sel && sel->type == OBJ_BUTTON) ? sel : NULL;
@@ -1597,6 +1638,7 @@ void hcicon_panel_stack_closing(Object *stack)
     [scroll setBorderType:NSBezelBorder];
 
     gIconGrid = [[IconGrid alloc] initWithFrame:NSMakeRect(0, 0, gw, gh)];
+    gIconGrid.stack    = gIconStack;
     gIconGrid.selected = o ? o->icon : 0;
     gIconGrid.target   = self;
     gIconGrid.action   = @selector(iconPicked:);
@@ -1715,6 +1757,11 @@ void hcicon_panel_stack_closing(Object *stack)
 /* Seul endroit qui remet les deux colonnes d'accord. Toutes les actions y
  * passent : c'est ce qui evite qu'une d'elles oublie un morceau. */
 - (void)iconRefresh {
+    /* Le catalogue est lié à la pile de la DERNIÈRE fenêtre dessinée, qui
+     * n'est pas forcément celle du panneau : on le lie avant de le lire,
+     * comme le font la grille et les gros bits (voir IconGrid, HCpalettes.m). */
+    if (gIconStack) hcicon_edit_bind(gIconStack);
+
     int id = gIconGrid ? gIconGrid.selected : 0;
     const HCIcon     *ic  = hcicon_find(id);
     struct StackIcon *own = hc_icon_get(gIconStack, id);

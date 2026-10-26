@@ -11,6 +11,7 @@
 #import "icons.h"
 #import "HCview.h"
 #import "HCicons.h"
+#import "Hciconedit.h"  /* hcicon_edit_bind : la grille lie le catalogue */
 // #import "HCview.h"
 // ==================== palette d'épaisseur de trait (vue custom) ====================
  
@@ -640,6 +641,7 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
  * lui, sinon les dernieres tombent hors du document et le defilement ne les
  * atteint jamais. */
 - (void)reload {
+    if (self.stack) hcicon_edit_bind(self.stack);
     NSRect f = [self frame];
     f.size.height = [IconGrid heightForCount:hcicon_catalog_count()];
     [self setFrame:f];
@@ -647,6 +649,19 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
+    /* LIER LE CATALOGUE À SA PILE AVANT DE LE LIRE, ET C'EST UNE CORRECTION.
+     *
+     * HCicons ne tient qu'un catalogue à la fois, et chaque fenêtre de carte
+     * qui se dessine y impose sa pile (drawCardContent:, HCview.m). Une
+     * fenêtre redessinée derrière le panneau Icônes — une autre pile ouverte
+     * — lui retirait donc ses icônes : relevé DANS HC (l'application) le
+     * 26 octobre, où la grille ouverte par Edit ▸ Icon… ne montrait plus que
+     * les icônes d'origine tant que « Untitled » restait ouverte. La cause de
+     * CE redessin-là est corrigée dans editIcon: (HCdialogs.m) ; celle-ci
+     * ferme la porte à tous les autres. Rien à faire quand c'est déjà la
+     * bonne pile : hcicon_edit_bind compare deux pointeurs. */
+    if (self.stack) hcicon_edit_bind(self.stack);
+
     [[NSColor colorWithWhite:0.9 alpha:1.0] setFill];
     NSRectFill([self bounds]);
 
@@ -680,6 +695,7 @@ const int NUM_TOOLCELLS = (int)(sizeof(TOOLCELLS)/sizeof(TOOLCELLS[0]));
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    if (self.stack) hcicon_edit_bind(self.stack);   /* voir drawRect: */
     NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     int col = (int)(p.x / ICONGRID_CELL);
     int row = (int)(p.y / ICONGRID_CELL);

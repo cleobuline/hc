@@ -76,6 +76,10 @@ NSCursor *hcv_curseur_montre(void);
  * l'editeur a besoin pour suivre. Facultatifs. */
 @interface IconGrid : NSView
 @property (assign) int selected;
+/* La pile dont la grille montre les icônes. Le catalogue de HCicons est lié
+ * à une pile à la fois, celle de la dernière fenêtre dessinée : la grille le
+ * lie à la sienne avant de le lire. NULL : le catalogue tel qu'il est. */
+@property (assign) Object *stack;
 @property (assign) id  target;
 @property (assign) SEL action;
 - (void)reload;

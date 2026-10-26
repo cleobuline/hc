@@ -294,6 +294,14 @@ static NSMenu *gRecentMenu = nil;
          * C'est le cas de toutes les autres, vérifié — mais la prochaine
          * qu'on écrira ne le sera pas d'office.
          *
+         * « Vérifié » ne l'était pas pour les panneaux : Card Info…, Bkgnd
+         * Info…, Stack Info… et Icon… prennent bien leur objet au noyau, mais
+         * font de `self` la cible de leurs boutons et la vue qu'ils
+         * redessinent. Relevé le 26 octobre par le panneau Icônes, qui perdait
+         * les icônes de la pile tant que la première fenêtre restait ouverte.
+         * Tous quatre passent maintenant la main à gView en entrant
+         * (HCdialogs.m, editIcon:).
+         *
          * RÈGLE : une action de menu ne lit jamais `self` pour savoir sur
          * quoi travailler. Elle demande au noyau, ou à gView. */
         [siItem setTarget:view];
