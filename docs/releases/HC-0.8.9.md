@@ -122,5 +122,6 @@ ladder.
   Astro-Prout join the test suite
 - [#170](https://github.com/cleobuline/hc/pull/170): `does not contain` and
   `replace … with … in`
+- [#171](https://github.com/cleobuline/hc/pull/171): version 0.8.9
 
 **Full changelog:** [HC-0.8.8...HC-0.8.9](https://github.com/cleobuline/hc/compare/HC-0.8.8...HC-0.8.9)
