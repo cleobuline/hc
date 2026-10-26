@@ -11,6 +11,7 @@
  *   6   &  &&                       concaténation
  *   7   >  <  <=  >=  ≤  ≥  contains  is in  is not in
  *       is a  is an  is not a  is not an  is within  is not within
+ *       does not contain            (de LiveCode : une tolérance de HC)
  *   8   =  ≠  is  is not  <>
  *   9   and
  *   10  or
@@ -38,6 +39,13 @@ typedef struct {
      * colWidth. Une parenthèse remet le compteur à zéro, puisqu'elle isole
      * ce qu'elle contient. */
     int           sans_of;
+
+    /* Tant qu'il est non nul, « in » n'est PAS pris pour « of » : il
+     * appartient à la commande qui entoure l'expression. Né pour « replace
+     * "a" with neuf in s », où « neuf in s » se lisait « la propriété neuf
+     * de s ». Plus fin que sans_of, qui bloquerait aussi le « of » de « the
+     * name of card 1 ». Une parenthèse le remet à zéro, comme sans_of. */
+    int           sans_in;
 
     /* Profondeur d'imbrication en cours. L'analyse étant récursive, une
      * expression assez profonde ferait déborder la pile C — mesuré vers

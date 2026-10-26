@@ -61,3 +61,48 @@ CE QUE ÇA DIT
    du projet veut qu'une erreur imitée d'HyperCard emploie son texte anglais,
    au mot près. Reprendre ces deux textes est une modification du code :
    proposée à l'utilisatrice, PAS FAITE.
+
+
+LA DÉCISION — le 26 octobre, par l'utilisatrice, sitôt la mesure lue
+----------------------------------------------------------------------------
+
+    « ça ne nous empêche pas de rendre ces expressions valides dans HC »
+
+C'est la décision prise pour « chars » (synonymes_toleres.txt) : HC accepte
+plus que l'original, et c'est voulu. Les deux tournures sont donc des
+TOLÉRANCES, inscrites là-bas sous les numéros 3 et 4. Le point 2 ci-dessus
+(le texte de l'erreur) devient sans objet pour elles : HC ne les refuse plus.
+
+CE QUI EST FAIT, dans le noyau :
+
+    does not contain    opérateur composé du rang 7 (hct_expr.c), l'exact
+                        contraire de « contains » (hct_eval.c)
+    replace a with b in c
+                        commande (hct_cmd.c, motif « e with i in c »),
+                        exécutée par hct_exec.c sur le chemin d'« add » :
+                        lire la cible, remplacer, réécrire par ecrit_dans.
+                        Toutes les occurrences, de gauche à droite, sans
+                        recouvrement ; la casse ignorée comme dans
+                        « contains » ; un vieux vide ne remplace rien ; une
+                        variable jamais affectée vaut vide ; the result est
+                        vidé ; ce qui ne s'écrit pas est refusé avant toute
+                        évaluation.
+
+LE PIÈGE TROUVÉ EN CHEMIN : « in » est un synonyme de « of » en HyperTalk,
+si bien que « replace "a" with neuf in s » lisait « neuf in s » comme « la
+propriété neuf de s ». Une chaîne passait, une variable non. D'où le garde
+sans_in de l'analyseur (hct_expr.h) et l'élément « i » des motifs : une
+expression qui laisse « in » à la commande, sans toucher au « of » de « the
+name of card 1 ».
+
+LE SITE JUMEAU A LE MÊME DÉFAUT, ET IL EST ANCIEN : « find x in card field
+"f" », x étant une variable, répond « propriété inconnue » dans HC (mesuré
+le 26 octobre, dans le noyau), alors que « find "deux" in card field "f" »
+trouve. Ce qu'en fait HyperCard : NON MESURÉ. Signalé à l'utilisatrice, pas
+corrigé sans elle.
+
+AUCUNE PILE D'HYPERCARD NE CHANGE DE COMPORTEMENT, et le harnais tournures le
+tient : une pile qui définit SON « on replace » et l'appelle avec des
+virgules garde la main (la virgule fait échouer le motif, et la ligne
+retourne au filet des messages) ; « replace » et « does » restent des noms
+de variable.

@@ -10,6 +10,9 @@
  *   e            une expression
  *   c            un conteneur (variable, champ, chunk) — analysé comme e,
  *                la distinction relevant du sens, pas de la forme
+ *   i            une expression qui laisse « in » à la commande : « in » n'y
+ *                est pas pris pour « of ». Pour « replace "a" with neuf in
+ *                s », où « neuf in s » se lisait « la propriété neuf de s »
  *   r            une référence d'objet ou une expression
  *   mot          ce mot exactement, obligatoire
  *   mot|mot|mot  l'un de ces mots, obligatoire
@@ -166,6 +169,21 @@ static const HctCommande TABLE[] = {
     { "put",        "e [into|before|after c] "
                     "[with menumsg|menumsgs|menumessage|menumessages e]" },
     { "read",       "from file e [at e] [for|until e]" },
+    /* « replace "a" with "b" in x » : de LiveCode et de SuperCard, PAS
+     * d'HyperCard — mesuré le 26 octobre DANS HYPERCARD (Basilisk II), qui
+     * répond « Can't understand arguments of replace ». Accepté ici à la
+     * demande de l'utilisatrice : une tolérance, voir
+     * docs/mesures/mots_absents.txt.
+     *
+     * Une pile d'HyperCard qui définit SON « on replace » et l'appelle avec
+     * des virgules — « replace x, "a", "b" » — n'en voit rien : la virgule
+     * fait échouer ce motif, et hct_commande rend alors la ligne au filet
+     * des messages, comme avant. Le harnais tournures le vérifie.
+     *
+     * « i » ET NON « e » DEVANT « in » : « replace "a" with neuf in s »
+     * lisait « neuf in s » comme « la propriété neuf de s » — « in » est un
+     * synonyme de « of » en HyperTalk. Une chaîne passait, une variable non. */
+    { "replace",    "e with i in c" },
     { "reply",      "e [with keyword e]" },
     { "request",    "*" },
     { "reset",      "*" },
@@ -399,6 +417,12 @@ static int applique(HctAnalyseur *a, const char *motif, HctNoeud *cmd)
         }
         if (len == 1 && (*el == 'e' || *el == 'c' || *el == 'r')) {
             hct_ajoute_fils(a->reserve, cmd, hct_expression(a));
+            continue;
+        }
+        if (len == 1 && *el == 'i') {
+            a->sans_in++;
+            hct_ajoute_fils(a->reserve, cmd, hct_expression(a));
+            a->sans_in--;
             continue;
         }
 

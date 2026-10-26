@@ -521,6 +521,7 @@ static HctValeur binaire(HctContexte *ctx, const HctNoeud *n)
     else if (!strcmp(op, "<=")) r = hct_val_bool(vals_compare(a, b) <= 0);
     else if (!strcmp(op, ">=")) r = hct_val_bool(vals_compare(a, b) >= 0);
     else if (!strcmp(op, "contains"))   r = hct_val_bool(contient(a.txt, b.txt));
+    else if (!strcmp(op, "does not contain")) r = hct_val_bool(!contient(a.txt, b.txt));
     else if (!strcmp(op, "is in"))      r = hct_val_bool(contient(b.txt, a.txt));
     else if (!strcmp(op, "is not in"))  r = hct_val_bool(!contient(b.txt, a.txt));
     else if (!strcmp(op, "is within"))  r = hct_val_bool(dans_rect(a.txt, b.txt));
