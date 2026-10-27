@@ -1201,7 +1201,24 @@ static NSMenu *gRecentMenu = nil;
          * Il enregistre donc la pile à l'adresse choisie, et la pile habite
          * désormais là. Son nom ment un peu ; c'est le nom qu'il faudra
          * changer, pas ce comportement. */
+        /* LA PILE PREND LE NOM DE SON FICHIER, comme dans HyperCard, où le
+         * nom d'une pile est celui de son fichier.
+         *
+         * Relevé DANS HC (l'application) par l'utilisatrice le 27 octobre :
+         * une pile « Untitled » enregistrée sous « home stack » gardait
+         * « Untitled » dans sa fenêtre. Mesuré dans le noyau le même jour :
+         * le nom restait aussi dans le FICHIER, et revenait à la relecture.
+         *
+         * Le nom change donc AVANT d'écrire, pour que le fichier le porte, et
+         * l'ancien revient si l'écriture échoue. */
+        char *ancien_nom = pile->name;
+        NSString *base = [[path lastPathComponent] stringByDeletingPathExtension];
+        const char *nouveau = [base length] > 0 ? [base UTF8String] : NULL;
+        char *copie = nouveau ? strdup(nouveau) : NULL;
+        if (copie) pile->name = copie;
+
         if (hc_save(pile, [path UTF8String]) != 0) {
+            if (copie) { pile->name = ancien_nom; free(copie); }
             NSAlert *a = [[NSAlert alloc] init];
             [a setMessageText:@"The stack could not be saved."];
             [a setInformativeText:[NSString stringWithFormat:
@@ -1214,6 +1231,8 @@ static NSMenu *gRecentMenu = nil;
             return;                   /* le document garde son ancien chemin */
         }
         doc.path = path;              /* « go to stack » cherchera à côté */
+        if (copie) free(ancien_nom);
+        [doc.view updateWindowTitle];
     };
 
     if (hote) [panel beginSheetModalForWindow:hote completionHandler:fini];
