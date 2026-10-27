@@ -1,0 +1,31 @@
+[v3] HC_V3=absent (défaut 1) -> exécuteur v3 ACTIF
+--- go to stack the short name of me
+      (l'hôte cherche la pile « Cible »)
+      -> carte : card "Accueil" of stack "Cible"
+      -> result : []
+--- go stack the short name of me
+      -> carte : card "Accueil" of stack "Cible"
+      -> result : []
+--- go to stack (the short name of me)
+      -> carte : card "Accueil" of stack "Cible"
+      -> result : []
+--- put the short name of me into n
+  go to stack n
+      -> carte : card "Accueil" of stack "Cible"
+      -> result : []
+--- go to card the short name of me
+      -> carte : card "Deux" of stack "Lanceur"
+      -> result : []
+--- go to stack the name of me
+      (l'hôte cherche la pile « card button "Cible" »)
+      [ERR]    !! go : pile introuvable : card button "Cible"
+      -> carte : card "Une" of stack "Lanceur"
+      -> result : []
+--- put the short name of stack && the short name of me
+      -> Lanceur Cible
+      -> carte : card "Une" of stack "Lanceur"
+      -> result : []
+--- put the number of cards && the short name of card 2
+      -> 2 Deux
+      -> carte : card "Une" of stack "Lanceur"
+      -> result : []
