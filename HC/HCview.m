@@ -525,28 +525,20 @@ static NSPoint hcv_cale_pt(NSPoint p)
  * sur l'un des chemins. Le wrapper restaure toujours, quel que soit le
  * chemin qu'a pris le corps.
  *
- * FATBITS N'EST ACTIF QU'AVEC UN OUTIL DE PEINTURE, OU AVEC LA MAIN. Sous
- * les outils Bouton et Champ, il s'efface sans qu'on ait à le débrancher —
- * l'état reste, et revient avec le crayon.
- *
- * LA MAIN Y FAIT DÉFILER LA FENÊTRE GROSSIE, et rien d'autre : décidé par
- * l'utilisatrice le 27 octobre (« je veux que la main fasse scroller la
- * fenêtre fatbit »). La main y fermait FatBits, et l'article était grisé
- * sous elle. HyperCard n'a rien en face — FatBits n'y existe qu'avec les
- * outils de peinture —, aucune pile ne peut donc en dépendre. Sous FatBits,
- * un clic de la main ne va à aucun objet : ni mouseDown, ni éditeur de
- * champ (une vraie sous-vue d'AppKit, qui ne suivrait pas la
- * transformation), ni menu surgissant. Le survol, la molette, the mouseLine
- * et the mouseLoc, eux, passent par hcv_vue_vers_calque comme le clic : ils
- * désignent ce qui est sous le curseur grossi.
+ * FATBITS N'EST ACTIF QU'AVEC UN OUTIL DE PEINTURE, et cela règle trois
+ * choses d'un coup : l'éditeur de champ est une vraie sous-vue d'AppKit et
+ * ne suivrait pas la transformation ; les menus surgissants et le survol
+ * gardent leurs coordonnées ; et choisir la main fait sortir de FatBits sans
+ * qu'on ait à le débrancher — l'état reste, et revient avec le crayon.
  *
  * OPTION-GLISSER DÉPLACE LA FENÊTRE GROSSIE, COMME DANS HYPERCARD : relevé
  * DANS HYPERCARD (Basilisk II) par l'utilisatrice le 27 octobre, « dans
  * hyper card option scroll fonctionne ». Sous FatBits, Option ne veut donc
- * plus dire que cela, quel que soit l'outil : ni copie d'une sélection
- * qu'on glisse, ni forme centrée. Hors de FatBits, Option garde ses deux
- * sens. Ce que fait HyperCard d'une sélection Option-glissée SOUS FatBits,
- * et si son curseur devient une main dès qu'Option est tenue : NON MESURÉ.
+ * plus dire que cela, quel que soit l'outil de peinture : ni copie d'une
+ * sélection qu'on glisse, ni forme centrée. Hors de FatBits, Option garde
+ * ses deux sens. Ce que fait HyperCard d'une sélection Option-glissée SOUS
+ * FatBits, et si son curseur devient une main dès qu'Option est tenue :
+ * NON MESURÉ.
  *
  * CE QUI EST DE NOUS : le ⌘-glisser, qui fait la même chose — écrit avant la
  * mesure, quand Option paraissait pris, et gardé : aucun outil de peinture
@@ -578,11 +570,10 @@ static BOOL hcv_outil_peint(void)
 }
 
 /* FatBits est-il EN VIGUEUR ? Allumé ne suffit pas : il faut aussi un outil
- * qui peigne, ou la main, qui y fait défiler (voir l'en-tête). Les deux
- * questions sont ici, une fois. */
+ * qui peigne. Les deux questions sont ici, une fois. */
 static BOOL hcv_fat(void)
 {
-    return gFatBits && (hcv_outil_peint() || gTool == TOOL_BROWSE);
+    return gFatBits && hcv_outil_peint();
 }
 
 /* Le point de la vue → le point du calque. L'identité hors FatBits, donc les
@@ -3635,9 +3626,7 @@ static const char *cocoa_global_get(const char *name) {
         NSPoint s = [NSEvent mouseLocation];
         NSRect  w = [[gView window] convertRectFromScreen:
                         NSMakeRect(s.x, s.y, 0, 0)];
-        /* Un point de CARTE, sous FatBits aussi : voir the mouseLoc. */
-        NSPoint v = hcv_vue_vers_calque(
-            [gView convertPoint:w.origin fromView:nil]);
+        NSPoint v = [gView convertPoint:w.origin fromView:nil];
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d",
                  (name[5] == 'H' || name[5] == 'h') ? (int)v.x : (int)v.y);
         return gGlobBuf;
@@ -3811,12 +3800,7 @@ static const char *cocoa_global_get(const char *name) {
     }
 
     if (strcasecmp(name, "mouseLoc") == 0) {
-        /* Sous FatBits, le point de CARTE sous le curseur grossi — celui
-         * que désignent le clic et le survol. Ce que rendait HyperCard sous
-         * FatBits, avec un outil de peinture : NON MESURÉ. L'identité
-         * partout ailleurs. Pas dans hcv_souris_carte : le glisser des
-         * modules s'en sert, et lui ne connaît pas la loupe. */
-        NSPoint v = hcv_vue_vers_calque(hcv_souris_carte());
+        NSPoint v = hcv_souris_carte();
         snprintf(gGlobBuf, sizeof gGlobBuf, "%d,%d", (int)v.x, (int)v.y);
         return gGlobBuf;
     }
@@ -3966,9 +3950,7 @@ static const char *cocoa_global_get(const char *name) {
         static char buf[160];
         buf[0] = '\0';
         NSPoint w = [[gView window] mouseLocationOutsideOfEventStream];
-        /* La même frontière que le clic : sous FatBits, la ligne sous le
-         * curseur grossi. */
-        NSPoint p = hcv_vue_vers_calque([gView convertPoint:w fromView:nil]);
+        NSPoint p = [gView convertPoint:w fromView:nil];
         Object *f = part_at(hc_current_card(), p);
         if (f && f->type == OBJ_FIELD) {
             int line = click_line_number(f, p);
@@ -7097,16 +7079,14 @@ static BOOL hcv_presse_image_systeme(void)
             return YES;
         }
 
-        /* FatBits porte sa coche comme la grille, mais se GRISE sous les
-         * outils Bouton et Champ : là il n'a aucun effet, et un article
-         * cochable qui ne fait rien est pire qu'un article grisé. C'est la
-         * même règle que partout ailleurs dans ce menu — ne proposer que ce
-         * qui agira. Sous la main, il agit : elle fait défiler la fenêtre
-         * grossie (voir l'en-tête de FatBits). */
+        /* FatBits porte sa coche comme la grille, mais se GRISE sous un outil
+         * qui ne peint pas : là il n'a aucun effet, et un article cochable
+         * qui ne fait rien est pire qu'un article grisé. C'est la même règle
+         * que partout ailleurs dans ce menu — ne proposer que ce qui agira. */
         if (t == HCV_PAINT_FATBITS) {
             [item setState:gFatBits ? NSControlStateValueOn
                                     : NSControlStateValueOff];
-            return hcv_outil_peint() || gTool == TOOL_BROWSE;
+            return hcv_outil_peint();
         }
 
         /* Pas de coche : il OUVRE une boîte, il ne bascule pas un état. Le
@@ -7740,26 +7720,7 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
 
     if (quoi == HCV_PAINT_FATBITS) {
         gFatBits = !gFatBits;
-        if (gFatBits) {
-            /* LÀ OÙ EST LA SOURIS si elle est sur la carte — doMenu
-             * « FatBits » d'un script, par exemple —, sinon le dernier clic :
-             * choisi au menu, la souris est dans la barre des menus, et le
-             * dernier endroit cliqué est celui qu'on regardait. Demandé par
-             * l'utilisatrice le 27 octobre. hcv_souris_carte rend un point
-             * de VUE ; FatBits étant éteint jusqu'ici, la vue montrait la
-             * carte telle quelle, et c'est donc aussi un point de carte. */
-            NSPoint sur = gFatDernier;
-            NSPoint ici = hcv_souris_carte();
-            if (NSPointInRect(ici, [gView bounds])) sur = ici;
-            hcv_fat_centre(sur, [gView bounds]);
-            /* Sous la main, rien d'ouvert ne doit survivre à la loupe :
-             * l'éditeur de champ est une sous-vue qui ne la suivrait pas, et
-             * un menu surgissant attendrait un clic qui n'y va plus. */
-            if (gTool == TOOL_BROWSE) {
-                if (gEditingField) [gView endFieldEdit];
-                if (gPopupTarget) close_popup_menu();
-            }
-        }
+        if (gFatBits) hcv_fat_centre(gFatDernier, [gView bounds]);
         [gView setNeedsDisplay:YES];
         return;
     }
@@ -7971,9 +7932,10 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
          * la vue de la première fenêtre, et le panneau ouvert par Edit ▸ Icon…
          * la redessinait à l'ouverture et à chaque geste : avec « Untitled »
          * encore ouverte, la grille n'avait plus que les icônes d'origine —
-         * et les retrouvait quand on fermait Untitled. Corrigé des deux côtés : editIcon: passe
-         * la main à la vue active (HCdialogs.m), et les vues du panneau lient
-         * le catalogue à leur pile avant de le lire (IconGrid, HCFatBits).
+         * et les retrouvait quand on fermait Untitled. Corrigé des deux
+         * côtés : editIcon: passe la main à la vue active (HCdialogs.m), et
+         * les vues du panneau lient le catalogue à leur pile avant de le lire
+         * (IconGrid, HCFatBits).
          *
          * Rompre le lien est une décision, pas un effet de bord d'un dessin :
          * Hcdocument le fait explicitement par hcicon_edit_sync(NULL) quand
@@ -8944,14 +8906,12 @@ static BOOL      gSansMessageChamp = NO;
     gFatDernier = p;          /* on centrera là-dessus si FatBits s'allume */
 
     /* OPTION-GLISSER DÉPLACE LA FENÊTRE GROSSIE, comme dans HyperCard ; ⌘ le
-     * fait aussi, et la main sans touche. Avant tout le reste : sous FatBits
-     * on ne voit qu'un huitième du calque, et sans moyen de bouger le mode ne
-     * servirait qu'au coin où l'on est entré. Avant les menus, les boutons et
-     * les champs aussi : sous FatBits, le clic de la main ne va à aucun
-     * objet. Voir l'en-tête. */
-    if (hcv_fat() && (gTool == TOOL_BROWSE ||
-                      ([event modifierFlags] & (NSEventModifierFlagCommand |
-                                                NSEventModifierFlagOption)))) {
+     * fait aussi. Avant tout le reste : sous FatBits on ne voit qu'un
+     * huitième du calque, et sans moyen de bouger le mode ne servirait qu'au
+     * coin où l'on est entré. Avant la sélection aussi, qu'Option-glisser
+     * copierait hors de FatBits. Voir l'en-tête. */
+    if (hcv_fat() && ([event modifierFlags] & (NSEventModifierFlagCommand |
+                                               NSEventModifierFlagOption))) {
         gFatGlisse   = YES;
         gFatSaisiVue = pvue;
         gFatSaisiOrg = gFatOrigine;
@@ -10071,10 +10031,7 @@ static void hcv_survol(HCView *v, Object *carte)
     if (w && [w isKeyWindow]) {
         NSPoint p = [v convertPoint:[w mouseLocationOutsideOfEventStream]
                            fromView:nil];
-        /* Sous FatBits, ce qui est sous le curseur grossi : la même
-         * frontière que le clic. L'identité partout ailleurs. */
-        if (NSPointInRect(p, [v bounds]))
-            sous = part_at(carte, hcv_vue_vers_calque(p));
+        if (NSPointInRect(p, [v bounds])) sous = part_at(carte, p);
     }
 
     if (sous == gSurvole) {
@@ -10663,10 +10620,8 @@ static NSTextField  *gSprayDensityLabel = nil;
 - (void)beginFieldEdit:(Object *)field {
     if (!field) return;
 
-    /* Interdiction d'éditer si l'outil n'est pas BROWSE ou si le champ est
-     * verrouillé — ou sous FatBits, où l'éditeur, sous-vue d'AppKit, ne
-     * suivrait pas le grossissement (voir l'en-tête de FatBits). */
-    if (gTool != TOOL_BROWSE || field->locktext || hcv_fat()) {
+    /* Interdiction d'éditer si l'outil n'est pas BROWSE ou si le champ est verrouillé */
+    if (gTool != TOOL_BROWSE || field->locktext) {
         if (gEditingField) [self endFieldEdit];
         [[self window] makeFirstResponder:self];
         [self setNeedsDisplay:YES];
@@ -10785,9 +10740,7 @@ static NSTextField  *gSprayDensityLabel = nil;
 }
 
 - (void)scrollWheel:(NSEvent *)event {
-    /* Le champ sous le curseur, grossi ou non : la frontière de FatBits. */
-    NSPoint p = hcv_vue_vers_calque(
-        [self convertPoint:[event locationInWindow] fromView:nil]);
+    NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
     Object *hit = part_at(hc_current_card(), p);
     if (!hit || hit->type != OBJ_FIELD ||
         !(hit->style && strcmp(hit->style, "scrolling") == 0)) {
