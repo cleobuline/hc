@@ -1,0 +1,52 @@
+MESURE — LA PILE HOME À L'OUVERTURE
+===================================
+
+POURQUOI
+--------
+
+Le 27 octobre, l'utilisatrice a monté une pile « Home » : un bouton par
+pile, chacun avec « go to stack the short name of me » (#174). Elle a
+demandé si HC devait l'ouvrir à son lancement.
+
+
+CE QUE FAIT HYPERCARD — relevé par l'utilisatrice le 27 octobre, DANS
+HYPERCARD (Basilisk II)
+----------------------------------------------------------------------------
+
+    HyperCard lancé seul                 il ouvre Home
+    HyperCard lancé par une autre pile   il n'ouvre QUE cette pile
+
+« hypercard ouvre home, si je clique sur une autre pile ça n'ouvre que la
+pile », dans ses mots.
+
+NON MESURÉ :
+  - si Home, sans fenêtre, reste dans le chemin des messages quand on a
+    ouvert une autre pile (« put the stacks », puis un message que seule
+    Home saurait traiter) ;
+  - ce que fait HyperCard quand Home est introuvable (« Where is Home? »,
+    de mémoire seulement) ;
+  - si Home reçoit « startUp ».
+
+
+CE QUE FAIT HC — le 27 octobre
+------------------------------
+
+Au lancement, toujours une pile neuve « Untitled »
+(applicationDidFinishLaunching:, AppDelegate.m). « go home » existe, et va
+à la pile nommée Home par le chemin de « go to stack » (v3_cmd_go,
+hc_core.c).
+
+
+CE QUI EST FAIT — le 27 octobre, à la demande de l'utilisatrice
+----------------------------------------------------------------
+
+Lancé seul — le Finder n'a demandé aucune pile —, HC cherche Home comme
+« go to stack "Home" » : à côté de l'application, puis dans Documents, avec
+ou sans « .stack » (trouver_pile, AppDelegate.m). Trouvée, elle remplace
+« Untitled », encore vierge, par le chemin de File ▸ Open. Introuvable,
+rien ne change : « Untitled », sans dialogue — choix proposé à
+l'utilisatrice, pas une mesure.
+
+Lancé par une pile, HC n'ouvre que celle-ci, comme avant.
+
+Avec le bac à sable, Home se cherchera dans le dossier de travail.

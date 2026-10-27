@@ -47,6 +47,7 @@ static NSMutableArray *gPilesEnUsage = nil;
  * gView est encore nil au moment ou le Finder nous parle. On met le chemin
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
+static NSString *trouver_pile(NSString *nom);   /* plus bas : go to stack */
 static BOOL gLancee = NO;      /* vrai une fois applicationDidFinishLaunching passé */
 /* Tous les articles de la barre de menus, sous-menus compris. Récursif parce
  * qu'un raccourci peut se cacher à deux niveaux — Format ▸ Font ▸ Bold. */
@@ -966,6 +967,24 @@ static NSMenu *gRecentMenu = nil;
         NSString *p = gPendingOpen;
         gPendingOpen = nil;
         [self loadStackAtPath:p];
+    } else {
+        /* LANCÉ SEUL, HC OUVRE LA PILE HOME, COMME HYPERCARD.
+         *
+         * Relevé DANS HYPERCARD (Basilisk II) par l'utilisatrice le 27
+         * octobre : lancé seul, HyperCard ouvre Home ; lancé par une autre
+         * pile, il n'ouvre que celle-ci (docs/mesures/home.txt). C'est
+         * pourquoi ce chemin est celui où le Finder n'a rien demandé.
+         *
+         * Home se cherche comme « go to stack "Home" » : à côté de
+         * l'application, puis dans Documents, avec ou sans « .stack »
+         * (trouver_pile). Introuvable, rien ne change : la pile « Untitled »
+         * reste, sans dialogue — le « Where is Home? » d'HyperCard, de mémoire
+         * et non mesuré, dérouterait qui découvre HC. Trouvée, elle remplace
+         * « Untitled », encore vierge, par le chemin de File ▸ Open.
+         *
+         * Avec le bac à sable, Home se cherchera dans le dossier de travail. */
+        NSString *home = trouver_pile(@"Home");
+        if (home) [self loadStackAtPath:home];
     }
     gLancee = YES;
 
