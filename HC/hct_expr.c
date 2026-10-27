@@ -660,6 +660,20 @@ static const char *STRUCTURELS[] = {
     "div", "mod", "up", "repeat", NULL
 };
 
+/* « the <propriété> of » commence-t-il ici ? Un, deux ou trois mots entre
+ * « the » et « of » : « the name of », « the short name of », « the number
+ * of ». Voir son emploi, au désignateur d'une référence. */
+static int propriete_designe(HctAnalyseur *a)
+{
+    if (!mot_ici(a, "the")) return 0;
+    for (int k = a->i + 1; k < a->lot->n && k <= a->i + 4; k++) {
+        const HctJeton *j = &a->lot->jetons[k];
+        if (mot_est(j, "of")) return k > a->i + 1;
+        if (j->genre != HCT_IDENT) return 0;
+    }
+    return 0;
+}
+
 static int designateur_suit(HctAnalyseur *a)
 {
     int k = a->i + 1;
@@ -1022,6 +1036,23 @@ static HctNoeud *reference(HctAnalyseur *a)
         a->sans_of++;
         hct_ajoute_fils(a->reserve, n, facteur(a));
         a->sans_of--;
+    } else if (propriete_designe(a)) {
+        /* « GO TO STACK THE SHORT NAME OF ME » : une propriété désigne.
+         *
+         * « the » est structurel (STRUCTURELS), et la référence s'arrêtait
+         * donc au mot « stack » : « cette pile ». La propriété restait à
+         * côté, et « go » allait à la pile où l'on était déjà — sans un mot,
+         * ni erreur ni the result. Relevé DANS HC (l'application) par
+         * l'utilisatrice le 27 octobre, sur le bouton d'un lanceur de piles ;
+         * « go to stack (the short name of me) » marchait. Ce qu'en fait
+         * HyperCard sans parenthèses : NON MESURÉ — au pire, une tolérance de
+         * plus.
+         *
+         * Seule la forme « the <propriété> of » désigne, et c'est voulu :
+         * « the » reste structurel partout ailleurs. La propriété se lit
+         * comme un facteur, « of » compris — d'où l'absence de sans_of. */
+        n->designateur = HCT_DES_RANG;
+        hct_ajoute_fils(a->reserve, n, facteur(a));
     } else if (ici(a)->genre == HCT_IDENT && !mot_structurel(a)) {
         /* Désignateur pris dans une variable : « card whichCard »,
          * « bg field "x" of card theCard ». Le nom ou le rang n'est connu
