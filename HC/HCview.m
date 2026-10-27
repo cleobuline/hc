@@ -531,11 +531,19 @@ static NSPoint hcv_cale_pt(NSPoint p)
  * gardent leurs coordonnées ; et choisir la main fait sortir de FatBits sans
  * qu'on ait à le débrancher — l'état reste, et revient avec le crayon.
  *
- * CE QUI EST DE NOUS : le déplacement à ⌘-glisser. HyperCard fait défiler
- * FatBits tout seul quand on dessine près du bord ; je ne sais pas le
- * reproduire de mémoire avec assez de certitude pour le prétendre, et une
- * fidélité inventée vaut moins qu'un choix assumé. ⌘ est libre — aucun outil
- * de peinture ne s'en sert. */
+ * OPTION-GLISSER DÉPLACE LA FENÊTRE GROSSIE, COMME DANS HYPERCARD : relevé
+ * DANS HYPERCARD (Basilisk II) par l'utilisatrice le 27 octobre, « dans
+ * hyper card option scroll fonctionne ». Sous FatBits, Option ne veut donc
+ * plus dire que cela, quel que soit l'outil de peinture : ni copie d'une
+ * sélection qu'on glisse, ni forme centrée. Hors de FatBits, Option garde
+ * ses deux sens. Ce que fait HyperCard d'une sélection Option-glissée SOUS
+ * FatBits, et si son curseur devient une main dès qu'Option est tenue :
+ * NON MESURÉ.
+ *
+ * CE QUI EST DE NOUS : le ⌘-glisser, qui fait la même chose — écrit avant la
+ * mesure, quand Option paraissait pris, et gardé : aucun outil de peinture
+ * ne se sert de ⌘. Le défilement automatique quand on dessine près du bord,
+ * qu'HyperCard ferait selon un souvenir : NON MESURÉ, donc pas fait. */
 #define HCV_FATBITS 8
 
 static NSPoint gFatOrigine  = {0, 0};  /* coin du calque montré, en pixels de calque */
@@ -7873,17 +7881,118 @@ static BOOL hcv_zone_peinture(int *x0, int *y0, int *x1, int *y1,
  *
  * La vue est retournée, origine en haut ; un NSBitmapImageRep ne l'est pas.
  * Le rectangle source se déduit donc par symétrie verticale. */
+static BOOL draw_layer_fat(NSBitmapImageRep *rep, NSRect dest);
+
 static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
     if (!rep) return;
     CGFloat W = [rep pixelsWide], H = [rep pixelsHigh];
     NSRect dest = NSIntersectionRect(NSIntegralRect(sale), NSMakeRect(0, 0, W, H));
     if (NSIsEmptyRect(dest)) return;
+    if (hcv_fat() && draw_layer_fat(rep, dest)) return;
     NSRect src = NSMakeRect(dest.origin.x,
                             H - (dest.origin.y + dest.size.height),
                             dest.size.width, dest.size.height);
     [rep drawInRect:dest fromRect:src
           operation:NSCompositingOperationSourceOver fraction:1.0
      respectFlipped:YES hints:nil];
+}
+
+/* SOUS FATBITS, LE CALQUE SE GROSSIT ICI, PIXEL PAR PIXEL, ET NON PAR QUARTZ.
+ *
+ * RELEVÉ DANS HC (l'application) par l'utilisatrice, le 27 octobre : « la
+ * grille est décalée d'un pixel vers le bas par rapport au big pixel ». Sa
+ * capture d'écran, lue au pixel, l'a dit plus exactement. Les traits de la
+ * grille tombent bien tous les huit points depuis le haut de la vue, et sur
+ * la PREMIÈRE colonne de chaque gros pixel ; mais chaque gros pixel commence
+ * une LIGNE plus haut que son trait. C'est le dessin qui est remonté d'un
+ * point d'écran, pas la grille qui est descendue, et sur l'axe vertical
+ * seulement : celui où l'image est retournée. Le clic, lui, était juste —
+ * le crayon peignait la case que montrait la grille.
+ *
+ * La grille et le calque partagent pourtant la même transformation, et
+ * l'origine est entière (hcv_fat_centre). Reste l'agrandissement lui-même :
+ * Quartz grossit une image « sans interpolation » à sa façon, et la façon
+ * dont il choisit le pixel source sur une frontière n'est écrite nulle part.
+ * Elle a pris le pixel du dessous sur le bord bas de chaque case, sur l'axe
+ * retourné. Pourquoi exactement : NON MESURÉ, et on ne le cherche pas.
+ *
+ * On ne lui demande donc plus d'agrandir. L'image est recopiée ici,
+ * chaque pixel de calque répété en un carré de k × k pixels d'ÉCRAN — k
+ * vaut huit fois l'échelle de l'écran, lue sur le contexte —, puis dessinée
+ * dans le même rectangle qu'avant : de l'image à l'écran, il ne reste
+ * qu'une copie à l'échelle un, qui n'a rien à choisir. Le format, la
+ * composition et l'espace de couleur sont ceux du calque (paint_bitmap),
+ * donc les couleurs ne bougent pas.
+ *
+ * Rend NO quand le calque n'a pas la forme attendue, ou que l'échelle n'est
+ * pas entière : on retombe alors sur le dessin d'avant, décalé mais juste
+ * pour le reste.
+ *
+ * LE JUMEAU, LAISSÉ : la sélection flottante (gClipboard, dans
+ * drawCardContent:) est encore grossie par Quartz, et sous FatBits elle suit
+ * la souris par huitièmes de pixel avant d'être posée par stamp_clipboard.
+ * Qu'elle montre le même décalage : NON MESURÉ. */
+static BOOL draw_layer_fat(NSBitmapImageRep *rep, NSRect dest)
+{
+    if ([rep isPlanar] || [rep bitsPerPixel] % 8 != 0) return NO;
+    unsigned char *s = [rep bitmapData];
+    if (!s) return NO;
+
+    CGContextRef cg = [[NSGraphicsContext currentContext] CGContext];
+    if (!cg) return NO;
+    CGSize d = CGContextConvertSizeToDeviceSpace(cg, CGSizeMake(1, 1));
+    double kx = fabs(d.width), ky = fabs(d.height);
+    int k = (int)lround(kx);
+    if (k < 1 || k > 64 || fabs(kx - k) > 1e-6 || fabs(ky - k) > 1e-6)
+        return NO;
+
+    int x0 = (int)dest.origin.x, y0 = (int)dest.origin.y;
+    int cw = (int)dest.size.width, ch = (int)dest.size.height;
+    if (cw <= 0 || ch <= 0) return NO;
+
+    NSBitmapImageRep *g = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL
+                      pixelsWide:cw * k pixelsHigh:ch * k
+                   bitsPerSample:[rep bitsPerSample]
+                 samplesPerPixel:[rep samplesPerPixel]
+                        hasAlpha:[rep hasAlpha] isPlanar:NO
+                  colorSpaceName:[rep colorSpaceName]
+                    bitmapFormat:[rep bitmapFormat]
+                     bytesPerRow:0 bitsPerPixel:[rep bitsPerPixel]];
+    if (!g) return NO;
+    /* Le retag AVANT d'écrire un pixel, comme dans paint_bitmap : la méthode
+     * rend une nouvelle rep. */
+    NSColorSpace *cs = [rep colorSpace];
+    if (cs) {
+        NSBitmapImageRep *marque = [g bitmapImageRepByRetaggingWithColorSpace:cs];
+        if (marque) g = marque;
+    }
+    unsigned char *t = [g bitmapData];
+    if (!t) return NO;
+
+    NSInteger bpp  = [rep bitsPerPixel] / 8;
+    NSInteger sbpr = [rep bytesPerRow], tbpr = [g bytesPerRow];
+    NSInteger large = (NSInteger)cw * k * bpp;
+    for (int r = 0; r < ch; r++) {
+        /* Les données d'un NSBitmapImageRep commencent par la rangée du HAUT,
+         * comme les rangées du calque : la rangée r du rectangle est la
+         * rangée y0 + r des données. */
+        const unsigned char *src = s + (NSInteger)(y0 + r) * sbpr
+                                     + (NSInteger)x0 * bpp;
+        unsigned char *ligne = t + (NSInteger)r * k * tbpr;
+        for (int c = 0; c < cw; c++)
+            for (int i = 0; i < k; i++)
+                memcpy(ligne + ((NSInteger)c * k + i) * bpp,
+                       src + (NSInteger)c * bpp, (size_t)bpp);
+        for (int i = 1; i < k; i++)
+            memcpy(ligne + (NSInteger)i * tbpr, ligne, (size_t)large);
+    }
+
+    [g drawInRect:dest
+         fromRect:NSMakeRect(0, 0, [g size].width, [g size].height)
+        operation:NSCompositingOperationSourceOver fraction:1.0
+   respectFlipped:YES hints:nil];
+    return YES;
 }
 
 /* Le dessin de la carte, en coordonnées de CALQUE.
@@ -7922,11 +8031,12 @@ static void draw_layer_dirty(NSBitmapImageRep *rep, NSRect sale) {
          * Une vue qui n'est pas le document courant ne trouve pas NULL : elle
          * trouve SA carte, et lie donc le catalogue à SA pile. Or le menu vise
          * la vue de la première fenêtre, et le panneau ouvert par Edit ▸ Icon…
-         * la redessinait à l'ouverture et à chaque geste : avec « Untitled » encore ouverte, la
-         * grille n'avait plus que les icônes d'origine — et les retrouvait
-         * quand on fermait Untitled. Corrigé des deux côtés : editIcon: passe
-         * la main à la vue active (HCdialogs.m), et les vues du panneau lient
-         * le catalogue à leur pile avant de le lire (IconGrid, HCFatBits).
+         * la redessinait à l'ouverture et à chaque geste : avec « Untitled »
+         * encore ouverte, la grille n'avait plus que les icônes d'origine —
+         * et les retrouvait quand on fermait Untitled. Corrigé des deux
+         * côtés : editIcon: passe la main à la vue active (HCdialogs.m), et
+         * les vues du panneau lient le catalogue à leur pile avant de le lire
+         * (IconGrid, HCFatBits).
          *
          * Rompre le lien est une décision, pas un effet de bord d'un dessin :
          * Hcdocument le fait explicitement par hcicon_edit_sync(NULL) quand
@@ -8896,12 +9006,13 @@ static BOOL      gSansMessageChamp = NO;
     p = hcv_vue_vers_calque(p);
     gFatDernier = p;          /* on centrera là-dessus si FatBits s'allume */
 
-    /* ⌘-GLISSER DÉPLACE LA FENÊTRE GROSSIE. Avant tout le reste : sous
-     * FatBits on ne voit qu'un huitième du calque, et sans moyen de bouger
-     * le mode ne servirait qu'au coin où l'on est entré. ⌘ est libre —
-     * aucun outil de peinture ne s'en sert. C'est NOTRE choix, pas celui
-     * d'HyperCard : voir l'en-tête. */
-    if (hcv_fat() && ([event modifierFlags] & NSEventModifierFlagCommand)) {
+    /* OPTION-GLISSER DÉPLACE LA FENÊTRE GROSSIE, comme dans HyperCard ; ⌘ le
+     * fait aussi. Avant tout le reste : sous FatBits on ne voit qu'un
+     * huitième du calque, et sans moyen de bouger le mode ne servirait qu'au
+     * coin où l'on est entré. Avant la sélection aussi, qu'Option-glisser
+     * copierait hors de FatBits. Voir l'en-tête. */
+    if (hcv_fat() && ([event modifierFlags] & (NSEventModifierFlagCommand |
+                                               NSEventModifierFlagOption))) {
         gFatGlisse   = YES;
         gFatSaisiVue = pvue;
         gFatSaisiOrg = gFatOrigine;
