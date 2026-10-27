@@ -1,0 +1,46 @@
+MESURE — LA PILE HOME À L'OUVERTURE
+===================================
+
+POURQUOI
+--------
+
+Le 27 octobre, l'utilisatrice a monté une pile « Home » : un bouton par
+pile, chacun avec « go to stack the short name of me » (#174). Elle a
+demandé si HC devait l'ouvrir à son lancement.
+
+
+CE QUE FAIT HYPERCARD — relevé par l'utilisatrice le 27 octobre, DANS
+HYPERCARD (Basilisk II)
+----------------------------------------------------------------------------
+
+    HyperCard lancé seul                 il ouvre Home
+    HyperCard lancé par une autre pile   il n'ouvre QUE cette pile
+
+« hypercard ouvre home, si je clique sur une autre pile ça n'ouvre que la
+pile », dans ses mots.
+
+NON MESURÉ :
+  - si Home, sans fenêtre, reste dans le chemin des messages quand on a
+    ouvert une autre pile (« put the stacks », puis un message que seule
+    Home saurait traiter) ;
+  - ce que fait HyperCard quand Home est introuvable (« Where is Home? »,
+    de mémoire seulement) ;
+  - si Home reçoit « startUp ».
+
+
+CE QUE FAIT HC — le 27 octobre
+------------------------------
+
+Au lancement, toujours une pile neuve « Untitled »
+(applicationDidFinishLaunching:, AppDelegate.m). « go home » existe, et va
+à la pile nommée Home par le chemin de « go to stack » (v3_cmd_go,
+hc_core.c).
+
+
+CE QUI EST DÉCIDÉ, PAS FAIT
+---------------------------
+
+Faire comme HyperCard, avec le chantier du bac à sable : en bac à sable, HC
+ne pourra chercher Home que dans le dossier de travail, et les deux se
+tiennent. Proposé à l'utilisatrice : Home introuvable, HC ouvre « Untitled »
+comme aujourd'hui, sans dialogue.
