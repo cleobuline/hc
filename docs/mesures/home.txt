@@ -37,10 +37,16 @@ Au lancement, toujours une pile neuve « Untitled »
 hc_core.c).
 
 
-CE QUI EST DÉCIDÉ, PAS FAIT
----------------------------
+CE QUI EST FAIT — le 27 octobre, à la demande de l'utilisatrice
+----------------------------------------------------------------
 
-Faire comme HyperCard, avec le chantier du bac à sable : en bac à sable, HC
-ne pourra chercher Home que dans le dossier de travail, et les deux se
-tiennent. Proposé à l'utilisatrice : Home introuvable, HC ouvre « Untitled »
-comme aujourd'hui, sans dialogue.
+Lancé seul — le Finder n'a demandé aucune pile —, HC cherche Home comme
+« go to stack "Home" » : à côté de l'application, puis dans Documents, avec
+ou sans « .stack » (trouver_pile, AppDelegate.m). Trouvée, elle remplace
+« Untitled », encore vierge, par le chemin de File ▸ Open. Introuvable,
+rien ne change : « Untitled », sans dialogue — choix proposé à
+l'utilisatrice, pas une mesure.
+
+Lancé par une pile, HC n'ouvre que celle-ci, comme avant.
+
+Avec le bac à sable, Home se cherchera dans le dossier de travail.
