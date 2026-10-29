@@ -72,7 +72,18 @@ encore vu sur la machine : hc_save (hc_file.c) écrit d'abord un fichier
 temporaire par mkstemp DANS LE DOSSIER de la destination, puis le renomme
 par-dessus. Le bac à sable permet d'écrire le fichier choisi dans le
 panneau, pas d'en créer un autre à côté. Que l'échec vienne de mkstemp :
-DÉDUIT de la lecture, NON MESURÉ (le message affiché n'est pas relevé).
+DÉDUIT de la lecture, et le message affiché le confirme — relevé par
+l'utilisatrice, au mot près :
+
+    The stack could not be written to test.stack.
+
+    The original file is intact. Check the disk space and the write
+    permissions, then try again.
+
+C'est l'alerte de saveStack: (AppDelegate.m) quand hc_save rend une faute :
+le fichier d'origine est bien intact, l'échec venant avant le rename. Mais
+le conseil égare : ni la place ni les permissions ne sont en cause, c'est le
+bac à sable qui refuse.
 
 Les remèdes prévus : dans le dossier de travail, l'accès au dossier rend
 le temporaire possible ; ailleurs, le temporaire d'Apple
