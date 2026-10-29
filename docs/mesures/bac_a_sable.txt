@@ -1,0 +1,64 @@
+MESURE — CE QUE LE BAC À SABLE RETIRE À HC
+==========================================
+
+POURQUOI
+--------
+
+L'App Store exige le bac à sable (com.apple.security.app-sandbox). HC ne
+l'a jamais eu : HC/HC.entitlements n'en porte que deux droits annexes,
+« files.user-selected.read-write » et « print ». Le 29 octobre,
+l'utilisatrice l'a allumé pour un essai, dans Xcode 14.2 sous Monterey,
+sans rien commettre.
+
+
+LE BANC — à jouer DANS HC (l'application), compilé par Xcode
+-------------------------------------------------------------
+
+Dans ~/Documents : Home.stack, demo.stack, outils.stack. Un bouton de
+demo.stack :
+
+    on mouseUp
+      start using stack "outils"
+      put cube (1000)
+    end mouseUp
+
+
+CE QU'A RÉPONDU HC — relevé par l'utilisatrice le 29 octobre
+------------------------------------------------------------
+
+Premier essai, cru en bac à sable, et qui ne l'était pas : la capacité
+n'était pas dans l'application lancée. « codesign -d --entitlements - »
+sur le HC qui tournait (DerivedData, Debug) n'a montré que
+user-selected.read-write, get-task-allow et print — pas app-sandbox. Le
+bouton a répondu, et « put the stacks », tapé APRÈS le clic, montrait
+demo, Home et outils. Le conteneur ~/Library/Containers/labynet.HC
+existait pourtant : il ne prouve qu'un lancement en bac à sable, pas
+celui-là. D'où la règle : vérifier par codesign, pas par le conteneur.
+
+Second essai, recompilé avec la capacité :
+
+    hors bac à sable    Home s'ouvre au lancement (trouver_pile, Documents)
+                        start using stack "outils" trouve la pile
+    en bac à sable      Home ne s'ouvre plus au lancement
+                        start using stack "outils" : « pile introuvable »
+
+Que le second essai portait bien app-sandbox : DÉDUIT du changement de
+comportement après recompilation, codesign non relevé cette fois.
+
+
+CE QUE ÇA DIT
+-------------
+
+En bac à sable, NSSearchPathForDirectoriesInDomains(NSDocumentDirectory)
+désigne le Documents du CONTENEUR (~/Library/Containers/labynet.HC/Data/
+Documents), vide, et non celui de l'utilisatrice ; lire à côté d'une pile
+ouverte n'est pas permis non plus — seul le fichier choisi dans un panneau
+l'est. trouver_pile (AppDelegate.m) ne trouve donc plus rien par le nom.
+
+Le remède décidé avec l'utilisatrice : File ▸ « Choose Working Folder… »,
+un dossier choisi une fois et retenu par un signet de sécurité, où HC
+cherche Home au lancement et les piles par leur nom.
+
+Le message « pile introuvable » est en français, alors que HC parle
+anglais à ses utilisateurs : un reste connu du noyau. Le texte
+d'HyperCard pour une pile introuvable : NON MESURÉ.
