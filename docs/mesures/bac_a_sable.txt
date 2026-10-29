@@ -62,3 +62,19 @@ cherche Home au lancement et les piles par leur nom.
 Le message « pile introuvable » est en français, alors que HC parle
 anglais à ses utilisateurs : un reste connu du noyau. Le texte
 d'HyperCard pour une pile introuvable : NON MESURÉ.
+
+
+ENREGISTRER — relevé par l'utilisatrice le 29 octobre, même essai
+------------------------------------------------------------------
+
+En bac à sable, enregistrer une pile échoue aussi. Lu dans le code, pas
+encore vu sur la machine : hc_save (hc_file.c) écrit d'abord un fichier
+temporaire par mkstemp DANS LE DOSSIER de la destination, puis le renomme
+par-dessus. Le bac à sable permet d'écrire le fichier choisi dans le
+panneau, pas d'en créer un autre à côté. Que l'échec vienne de mkstemp :
+DÉDUIT de la lecture, NON MESURÉ (le message affiché n'est pas relevé).
+
+Les remèdes prévus : dans le dossier de travail, l'accès au dossier rend
+le temporaire possible ; ailleurs, le temporaire d'Apple
+(NSItemReplacementDirectory, même volume, autorisé) puis replaceItemAtURL,
+qui garde l'écriture atomique.
