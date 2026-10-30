@@ -355,6 +355,16 @@ lien vers labynet.fr (un lien vers le site du développeur est permis, et la
 page de don y vit), monter le build, renvoyer. Garder le lien dans le DMG
 reste à décider avec elle.
 
+Le même soir, l'utilisatrice a écrit sur la page PayPal elle-même (le lien
+du panneau) que HC est publié par une association à but non lucratif, que
+le don se fait hors de l'application, dans le navigateur, sans rien
+débloquer, « conformément à la directive 3.2.2(iv) ». C'est bien la règle
+qui s'applique : une application gratuite peut collecter pour une
+association, hors de l'application. Mais les vérificateurs ne lisent cette
+page que s'ils cliquent. SI APPLE REFUSE POUR 3.1.1 : répondre dans App
+Store Connect, au message du refus, avec ce même argument, en anglais
+d'abord, avant d'ôter quoi que ce soit.
+
 Le même jour, la LICENSE et les deux README ont dit enfin ce que HCicons.h
 disait seul : les 185 icônes d'origine sont des dessins d'Apple, hors de la
 licence MIT. La revue d'Apple pourrait le relever (règle 5.2.1) ; non mesuré.
