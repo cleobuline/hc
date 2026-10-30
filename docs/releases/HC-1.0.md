@@ -119,7 +119,9 @@ version of HC.
 - **Zero warnings**: gcc at three optimisation levels, *and* clang with
   Xcode's warning families. **Zero** static-analyser warnings. The Cocoa
   application builds on macOS in continuous integration.
-- Stack fuzzing: FUZZ_RESULT.
+- Stack fuzzing: **no reports on 80,000 damaged stacks** (60,000 in HC's
+  format, 20,000 in Apple's), after the canary check caught its three
+  planted faults.
 - The sandbox was tested inside HC itself, with the sandbox checked by
   `codesign`: no working folder, choosing one, Home at the next launch,
   `start using`, and saving inside and outside the working folder.
