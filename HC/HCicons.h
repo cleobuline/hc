@@ -4,7 +4,14 @@
 #import <Cocoa/Cocoa.h>
 
 /* Icones ICON 32x32 d'origine HyperCard (Apple / FileMaker).
-   bits : 128 octets, 32 lignes de 4 octets, bit de poids fort a gauche. */
+   bits : 128 octets, 32 lignes de 4 octets, bit de poids fort a gauche.
+
+   LES SEULS DESSINS D'APPLE DANS HC. La licence MIT ne les couvre pas, et le
+   depot le dit depuis le 30 octobre (LICENSE, README.md, README.en.md) : le
+   README annoncait « aucun code d'Apple » sans parler d'elles. Si Apple le
+   demandait un jour, on les redessinerait avec l'editeur d'icones, en
+   gardant numeros et noms : les piles qui les designent continueraient de
+   marcher, avec un autre visage. */
 struct HcIconCouleur;
 
 typedef struct {

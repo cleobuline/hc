@@ -98,6 +98,12 @@ attributions, qui voyagent aussi dans l'application.
 pile d'Apple. HyperCard et HyperTalk sont des marques d'Apple Inc. ; HC n'est
 ni affilié à Apple, ni approuvé par Apple.
 
+**La seule pièce d'Apple : les icônes d'origine.** Les 185 icônes intégrées
+de HC, dans [`HC/HCicons.m`](HC/HCicons.m), sont les icônes 32 × 32
+d'HyperCard. Elles sont là pour que les piles d'époque, qui les désignent par
+leur numéro, gardent leur visage. Elles restent la propriété d'Apple et ne
+sont pas couvertes par la licence MIT : voir la [LICENCE](LICENSE).
+
 **L'inspiration.** HyperCard, de Bill Atkinson (1987), et HyperTalk, de Dan
 Winkler. Là où HC va plus loin qu'HyperCard (la couleur, les boutons
 polygones, `the keysDown`, les couleurs des champs), les mots sont ceux de

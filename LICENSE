@@ -21,3 +21,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------
+
+HyperCard's built-in icons are not covered by the licence above.
+
+The 185 built-in icons in HC/HCicons.m are the original 32 x 32 icons of
+HyperCard, and remain the property of Apple Inc. They are included so that
+classic stacks, which refer to them by number, keep their look. This
+licence grants no right to them.
+
+HyperCard and HyperTalk are trademarks of Apple Inc. HC is not affiliated
+with or endorsed by Apple.
