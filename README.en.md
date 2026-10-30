@@ -96,6 +96,12 @@ also ship inside the app.
 HyperCard and HyperTalk are trademarks of Apple Inc.; HC is not affiliated
 with or endorsed by Apple.
 
+**The one thing from Apple: the built-in icons.** HC's 185 built-in icons, in
+[`HC/HCicons.m`](HC/HCicons.m), are HyperCard's original 32 × 32 icons. They
+are there so that classic stacks, which refer to them by number, keep their
+look. They remain Apple's property and are not covered by the MIT licence:
+see the [LICENSE](LICENSE).
+
 **Inspiration.** HyperCard, by Bill Atkinson (1987), and HyperTalk, by Dan
 Winkler. Where HC goes beyond HyperCard (colour, polygon buttons,
 `the keysDown`, field colours), the words are those of LiveCode and
