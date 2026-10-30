@@ -135,3 +135,9 @@ Le banc tel qu'il était proposé :
   - l'enregistrement d'une pile dans le dossier, et HORS du dossier ;
   - « open file » sur un nom introuvable : le noyau demande où est le
     fichier (answer_file), ce qui devrait accorder l'accès.
+
+
+L'IDENTIFIANT A CHANGÉ APRÈS CES MESURES : labynet.HC est devenu
+fr.labynet.HC le 30 octobre au soir, pour accorder le projet à la fiche App
+Store Connect. Le conteneur est désormais ~/Library/Containers/fr.labynet.HC ;
+les chemins ci-dessus sont ceux du jour où l'on a mesuré.

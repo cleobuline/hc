@@ -81,7 +81,7 @@ static NSURL *gDossierTravail = nil;
 /* Le VRAI dossier Documents de l'utilisatrice.
  *
  * En bac à sable, NSSearchPathForDirectoriesInDomains rend celui du
- * CONTENEUR, ~/Library/Containers/labynet.HC/Data/Documents : caché, vide,
+ * CONTENEUR, ~/Library/Containers/fr.labynet.HC/Data/Documents : caché, vide,
  * et sans rapport avec le sien. Proposer celui-là dans un panneau, c'est
  * envoyer ses piles là où le Finder ne les montre pas. Le dossier personnel
  * se lit donc dans la base des comptes, qui ne connaît pas le conteneur. */

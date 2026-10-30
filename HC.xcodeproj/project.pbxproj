@@ -705,7 +705,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 1.0;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
-				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
+				PRODUCT_BUNDLE_IDENTIFIER = fr.labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -728,7 +728,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 1.0;
 				SYSTEM_HEADER_SEARCH_PATHS = "$(SRCROOT)/HC/tiers/wamr/core/iwasm/include";
-				PRODUCT_BUNDLE_IDENTIFIER = labynet.HC;
+				PRODUCT_BUNDLE_IDENTIFIER = fr.labynet.HC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;

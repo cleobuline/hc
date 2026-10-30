@@ -311,11 +311,30 @@ Ce qui est fait :
   5. **`NSHumanReadableCopyright`** : « Copyright © 2026 Patricia
      Benedetto », comme `LICENSE`.
 
+L'identifiant est **`fr.labynet.HC`**, celui de la fiche App Store Connect,
+qui ne se change plus une fois créée. Le projet disait `labynet.HC` jusqu'au
+30 octobre : le conteneur du bac à sable a donc changé de nom, et le dossier de
+travail se rechoisit une fois.
+
+Le schéma HC doit construire la cible pour l'archivage (« Archive » coché dans
+Edit Scheme ▸ Build) : sans quoi Product ▸ Archive est grisé, comme le 30
+octobre.
+
 L'envoi, depuis Xcode 14.2 : destination « Any Mac », Product ▸ Archive, puis
 dans l'Organizer, Distribute App ▸ App Store Connect ▸ Upload. La signature est
 automatique, avec l'équipe de l'Association Labynet : certificat de
 distribution d'applications Mac, certificat de l'installateur, et profil App
-Store pour `labynet.HC`.
+Store pour `fr.labynet.HC`.
+
+LE PREMIER ENVOI, le 30 octobre 2026 : HC 1.0, build 1, archivé par Xcode
+14.2 sous Monterey 12.7.2 (Juliette). Validate App, puis Distribute App ▸
+Upload : « Upload Succeeded ». Deux obstacles rencontrés en route, corrigés
+dans le dépôt : « Archive » grisé (schéma sans buildForArchiving), puis une
+création de fiche refusée parce que le nom « HC » était déjà pris — Xcode ne
+reconnaissait pas la fiche existante, faute du même identifiant. App Store
+Connect a réclamé ensuite, pour la localisation française, l'URL de la
+politique de confidentialité (https://hc.labynet.fr/HC-confidentialite.html)
+et l'URL d'assistance (https://hc.labynet.fr/).
 
 Puis la revue humaine d'Apple, qui regardera aussi le nom : HyperCard est une
 marque d'Apple. La fiche le dit : HC est un projet indépendant, et HyperCard
