@@ -13,8 +13,10 @@ redécouvre mal : chaque étape a une raison, et une seule d'entre elles est
 | **Hardened Runtime** | **exigé** | exigé |
 | **App Sandbox** | *optionnel* | exigé |
 
-HC se distribue hors App Store. Donc : Hardened Runtime oui, sandbox non —
-voir le commentaire dans `HC/HC.entitlements`, qui dit pourquoi.
+Depuis la 1.0, HC se distribue des deux façons — DMG notarisé et Mac App
+Store — et c'est la MÊME application : Hardened Runtime et bac à sable des deux
+côtés (#176). Voir le commentaire de `HC/HC.entitlements`, qui dit pourquoi et
+quels droits, et `docs/mesures/bac_a_sable.txt`, qui dit ce qui a été mesuré.
 
 ## Prérequis, une seule fois
 
@@ -280,29 +282,41 @@ notarisée. Le contournement, à donner aux utilisateurs :
 C'est ce que porte la section « Installing » de la note de 0.6.9.4. Le jour où
 la chaîne ci-dessus tourne, cette section disparaît des notes suivantes.
 
-## Le Mac App Store, un jour — décidé le 13 octobre
+## Le Mac App Store — la 1.0, le 30 octobre
 
-HC se distribue hors App Store, signé et notarisé. Si un jour il y va, c'est
-**la CI de GitHub** qui construira et enverra — choix de l'utilisatrice, le
-13 octobre, plutôt qu'Xcode Cloud : Apple exige pour l'App Store un Xcode
-récent (de mémoire, Xcode 16 depuis 2025), que le Mac de l'utilisatrice, sous
-Catalina, ne peut pas faire tourner, et le Mac de la CI le fait déjà
-compiler HC à chaque poussée.
+Ce que disait cette section le 13 octobre n'est plus le plan : la CI de GitHub
+devait construire et envoyer, faute d'un Xcode assez récent chez
+l'utilisatrice. Elle a préféré installer Monterey (12.7.2) et Xcode 14.2 sur
+son Mac, partitions Lucie et Juliette, et envoyer elle-même ; ses certificats
+et sa clé ne quittent pas sa machine.
 
-Le chantier, dans l'ordre :
+Pourquoi Xcode 14.2 : les notes de version d'App Store Connect exigent Xcode 14
+ou plus récent pour envoyer une application macOS, et Xcode 13 ne suffit plus.
+Xcode 14.2 est le dernier qui tourne sous Monterey (de mémoire ; le 14.3
+demande Ventura).
 
-  1. le **bac à sable**, obligatoire sur l'App Store (voir HC/HC.entitlements,
-     qui dit pourquoi il n'est pas posé) : piles ouvertes par leur chemin,
-     `open file`, sons à côté des piles, tout passerait par des
-     autorisations ;
-  2. les **piles intégrées à l'app**, copiées dans les Documents au premier
-     lancement : un paquet pour l'App Store n'installe que l'app ; et
-     aucune pile d'Apple ne peut y voyager ;
-  3. un **workflow** qui construit avec l'Xcode récent, signe avec les
-     certificats « Distribution d'applications Mac » et « Distribution de
-     l'installateur Mac », et envoie le `.pkg` à App Store Connect ;
-     certificats et clé d'API en secrets du dépôt.
+Ce qui est fait :
+  1. le **bac à sable** (#176) : le dossier de travail, l'enregistrement par
+     NSItemReplacementDirectory, les panneaux hors conteneur ;
+  2. les **démos** ne voyagent pas dans l'application : File ▸ Load Demos…
+     ouvre `https://labynet.fr/download/demo.dmg` dans le navigateur.
+     Aucune pile d'Apple n'y est ;
+  3. le **numéro de build** est réglable : `CFBundleVersion` vaut
+     `$(CURRENT_PROJECT_VERSION)`. App Store Connect refuse deux envois de la
+     même version avec le même build : le monter à chaque nouvel envoi
+     (cible HC ▸ General ▸ Build) ;
+  4. **`ITSAppUsesNonExemptEncryption`** vaut `false` : HC ne chiffre rien —
+     pas de réseau, et zlib compresse sans chiffrer. App Store Connect ne
+     pose donc plus la question à chaque envoi ;
+  5. **`NSHumanReadableCopyright`** : « Copyright © 2026 Patricia
+     Benedetto », comme `LICENSE`.
+
+L'envoi, depuis Xcode 14.2 : destination « Any Mac », Product ▸ Archive, puis
+dans l'Organizer, Distribute App ▸ App Store Connect ▸ Upload. La signature est
+automatique, avec l'équipe de l'Association Labynet : certificat de
+distribution d'applications Mac, certificat de l'installateur, et profil App
+Store pour `labynet.HC`.
 
 Puis la revue humaine d'Apple, qui regardera aussi le nom : HyperCard est une
-marque d'Apple.
-
+marque d'Apple. La fiche le dit : HC est un projet indépendant, et HyperCard
+et HyperTalk sont des marques d'Apple.
