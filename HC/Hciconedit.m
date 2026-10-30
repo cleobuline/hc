@@ -584,8 +584,12 @@ static int     gPalIconeEnCours = 0;
      * collage la refait entiere) pendant que le selecteur restait ouvert. */
     if (gPalIndexEnCours >= hc_icon_couleur(e)->ncouleurs) return;
 
+    /* genericRGBColorSpace, l'espace de NSCalibratedRGBColorSpace : celui où
+     * l'icône se dessine (colorWithCalibratedRed:, HCicons.m). Écrit par
+     * son nom d'espace, colorUsingColorSpaceName:, déprécié depuis macOS
+     * 10.14 — relevé par l'utilisatrice dans Xcode 14.2, le 30 octobre. */
     NSColor *co = [[(NSColorPanel *)sender color]
-                     colorUsingColorSpaceName:NSCalibratedRGBColorSpace];
+                     colorUsingColorSpace:[NSColorSpace genericRGBColorSpace]];
     if (!co) return;
 
     hc_icon_palette_pose(e, gPalIndexEnCours,
