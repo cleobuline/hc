@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <stdlib.h>   /* calloc/free, pour la liste du menu Recent */
 #include <string.h>
+#include <pwd.h>      /* getpwuid : le vrai dossier personnel, hors conteneur */
+#include <unistd.h>   /* getuid */
 #import "HCicons.h"   /* hcicon_id_for_text */
 #import "HCview.h"
 #import "HCdialogs.h"
@@ -48,6 +50,97 @@ static NSMutableArray *gPilesEnUsage = nil;
  * de cote et on le traite une fois la vue construite. */
 static NSString *gPendingOpen = nil;
 static NSString *trouver_pile(NSString *nom);   /* plus bas : go to stack */
+
+/* ═══ LE DOSSIER DE TRAVAIL ════════════════════════════════════════════
+ *
+ * HC TOURNE EN BAC À SABLE : l'App Store l'exige. Un programme en bac à sable
+ * ne lit et n'écrit que ce qu'on lui confie — le fichier choisi dans un
+ * panneau, celui qu'on double-clique dans le Finder. Rien autour.
+ *
+ * MESURÉ DANS HC (l'application) par l'utilisatrice le 29 octobre, le bac à
+ * sable allumé (docs/mesures/bac_a_sable.txt) : Home ne s'ouvrait plus au
+ * lancement, « start using stack "outils" » répondait « pile introuvable »,
+ * et l'enregistrement d'une pile était refusé. Les trois ont la même racine.
+ *
+ * Le remède, décidé avec elle : File ▸ « Choose Working Folder… ». Un
+ * dossier choisi UNE fois, que HC garde d'une séance à l'autre sous la forme
+ * d'un signet de sécurité — la seule façon qu'a le bac à sable de rendre, au
+ * lancement suivant, un accès accordé dans un panneau. HC y cherche Home, et
+ * les piles que nomment les scripts ; il peut y écrire librement.
+ *
+ * C'est l'équivalent, en plus simple, des « Search Paths » de la pile Home
+ * d'HyperCard : un dossier au lieu d'une liste, et pas un mot de HyperTalk de
+ * plus. Hors bac à sable — un HC compilé sans le droit —, tout marche comme
+ * avant, et le dossier de travail s'ajoute aux endroits déjà fouillés.
+ *
+ * gDossierTravail garde son accès ouvert toute la séance : on ne le referme
+ * qu'en en choisissant un autre. */
+static NSString *const HC_CLE_DOSSIER = @"HCWorkingFolder";
+static NSURL *gDossierTravail = nil;
+
+/* Le VRAI dossier Documents de l'utilisatrice.
+ *
+ * En bac à sable, NSSearchPathForDirectoriesInDomains rend celui du
+ * CONTENEUR, ~/Library/Containers/labynet.HC/Data/Documents : caché, vide,
+ * et sans rapport avec le sien. Proposer celui-là dans un panneau, c'est
+ * envoyer ses piles là où le Finder ne les montre pas. Le dossier personnel
+ * se lit donc dans la base des comptes, qui ne connaît pas le conteneur. */
+static NSURL *dossier_documents(void)
+{
+    const struct passwd *pw = getpwuid(getuid());
+    NSString *maison = (pw && pw->pw_dir) ? [NSString stringWithUTF8String:pw->pw_dir]
+                                          : NSHomeDirectory();
+    return [NSURL fileURLWithPath:[maison stringByAppendingPathComponent:@"Documents"]
+                      isDirectory:YES];
+}
+
+/* Retient le dossier pour les séances suivantes. À appeler pendant que
+ * l'accès est ouvert — juste après le panneau —, sans quoi le signet ne
+ * porte aucun droit. */
+static BOOL dossier_travail_retient(NSURL *url)
+{
+    NSError *err = nil;
+    NSData *signet = [url bookmarkDataWithOptions:NSURLBookmarkCreationWithSecurityScope
+                   includingResourceValuesForKeys:nil
+                                    relativeToURL:nil
+                                            error:&err];
+    if (!signet) {
+        NSLog(@"dossier de travail : signet impossible pour %@ (%@)", [url path], err);
+        return NO;
+    }
+    [[NSUserDefaults standardUserDefaults] setObject:signet forKey:HC_CLE_DOSSIER];
+    return YES;
+}
+
+/* Au lancement : rouvrir le dossier retenu, s'il y en a un.
+ *
+ * Un signet « périmé » — le dossier a été déplacé ou renommé — se résout
+ * encore ; on le refait alors, pour la fois suivante. Un signet illisible —
+ * le dossier a disparu — est oublié sans un mot : HC repart sans dossier de
+ * travail, comme au premier lancement, et l'article du menu est là. */
+static void dossier_travail_restaure(void)
+{
+    NSData *signet = [[NSUserDefaults standardUserDefaults] dataForKey:HC_CLE_DOSSIER];
+    if (!signet) return;
+    BOOL perime = NO;
+    NSError *err = nil;
+    NSURL *url = [NSURL URLByResolvingBookmarkData:signet
+                                           options:NSURLBookmarkResolutionWithSecurityScope
+                                     relativeToURL:nil
+                               bookmarkDataIsStale:&perime
+                                             error:&err];
+    if (!url) {
+        NSLog(@"dossier de travail : signet illisible, oublié (%@)", err);
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:HC_CLE_DOSSIER];
+        return;
+    }
+    /* Hors bac à sable, ceci peut rendre NO sans que rien manque : le
+     * dossier est lisible de toute façon. On le garde donc dans les deux cas. */
+    if (![url startAccessingSecurityScopedResource])
+        NSLog(@"dossier de travail : pas d'accès ouvert sur %@", [url path]);
+    gDossierTravail = url;
+    if (perime) dossier_travail_retient(url);
+}
 static BOOL gLancee = NO;      /* vrai une fois applicationDidFinishLaunching passé */
 /* Tous les articles de la barre de menus, sous-menus compris. Récursif parce
  * qu'un raccourci peut se cacher à deux niveaux — Format ▸ Font ▸ Bold. */
@@ -460,10 +553,18 @@ static NSMenu *gRecentMenu = nil;
                                              keyEquivalent:@"s"];
         [sv setTarget:self];
 
+        /* Le dossier de travail : voir son en-tête, plus haut. Dans le menu
+         * File, décidé par l'utilisatrice le 29 octobre. */
+        NSMenuItem *wf = [[NSMenuItem alloc] initWithTitle:@"Choose Working Folder…"
+                                                    action:@selector(chooseWorkingFolder:)
+                                             keyEquivalent:@""];
+        [wf setTarget:self];
+
         [sysFile insertItem:np atIndex:0];
         [sysFile insertItem:op atIndex:1];
         [sysFile insertItem:sv atIndex:2];
-        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:3];
+        [sysFile insertItem:wf atIndex:3];
+        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:4];
     } else {
         /* Nib inattendu : plutôt que de perdre les deux commandes, on les
          * laisse dans le menu Pile, là où elles étaient. */
@@ -480,6 +581,10 @@ static NSMenu *gRecentMenu = nil;
                                              action:@selector(saveStack:)
                                       keyEquivalent:@"s"];
         [sv setTarget:self];
+        NSMenuItem *wf = [fileMenu addItemWithTitle:@"Choose Working Folder…"
+                                             action:@selector(chooseWorkingFolder:)
+                                      keyEquivalent:@""];
+        [wf setTarget:self];
     }
 
     /* --- menu « Outils » : afficher ou masquer les palettes ---
@@ -963,6 +1068,11 @@ static NSMenu *gRecentMenu = nil;
     [view applyStackSize];
 
     /* Le Finder nous a peut-etre demande une pile avant que tout ceci existe. */
+    /* Le dossier de travail AVANT tout ce qui cherche une pile : Home juste
+     * en dessous, et la pile qu'aurait demandée le Finder, dont les scripts
+     * peuvent en appeler d'autres dès openStack. */
+    dossier_travail_restaure();
+
     if (gPendingOpen) {
         NSString *p = gPendingOpen;
         gPendingOpen = nil;
@@ -982,7 +1092,8 @@ static NSMenu *gRecentMenu = nil;
          * et non mesuré, dérouterait qui découvre HC. Trouvée, elle remplace
          * « Untitled », encore vierge, par le chemin de File ▸ Open.
          *
-         * Avec le bac à sable, Home se cherchera dans le dossier de travail. */
+         * En bac à sable, c'est dans le dossier de travail que trouver_pile
+         * la trouve : ailleurs, HC n'a pas le droit de lire. */
         NSString *home = trouver_pile(@"Home");
         if (home) [self loadStackAtPath:home];
     }
@@ -1107,6 +1218,60 @@ static NSMenu *gRecentMenu = nil;
     [gView setNeedsDisplay:YES];
 }
 
+/* ENREGISTRER, Y COMPRIS EN BAC À SABLE, ET SANS JAMAIS ABÎMER L'ORIGINAL.
+ *
+ * hc_save écrit d'abord un fichier temporaire DANS LE DOSSIER de la pile,
+ * puis le renomme par-dessus : une écriture qui échoue en route laisse
+ * l'original intact. Mais en bac à sable, HC n'a le droit d'écrire que le
+ * fichier choisi dans le panneau, pas d'en créer un autre à côté. Relevé
+ * DANS HC (l'application) le 29 octobre : « The stack could not be written
+ * to test.stack. » (docs/mesures/bac_a_sable.txt).
+ *
+ * On essaie donc hc_save d'abord : il réussit partout où HC peut écrire le
+ * dossier — hors bac à sable, et dans le dossier de travail. S'il échoue, la
+ * méthode qu'Apple prévoit pour le bac à sable : un dossier temporaire
+ * AUTORISÉ, sur le même volume (NSItemReplacementDirectory), où l'on écrit
+ * une copie, puis replaceItemAtURL, qui la met à la place de l'ancienne d'un
+ * seul geste. L'écriture reste atomique, et l'original intact tant qu'elle
+ * n'a pas réussi. Le chemin n'est adopté qu'à la fin, comme dans hc_save.
+ *
+ * Rend 0 si la pile est écrite. */
+static int enregistre_pile(Object *pile, NSString *path)
+{
+    if (hc_save(pile, [path UTF8String]) == 0) return 0;
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSURL *dest = [NSURL fileURLWithPath:path];
+    NSError *err = nil;
+    NSURL *dossier = [fm URLForDirectory:NSItemReplacementDirectory
+                                inDomain:NSUserDomainMask
+                       appropriateForURL:dest
+                                  create:YES
+                                   error:&err];
+    if (!dossier) {
+        NSLog(@"enregistrement : pas de dossier temporaire pour %@ (%@)", path, err);
+        return -1;
+    }
+
+    int r = -1;
+    NSURL *tmp = [dossier URLByAppendingPathComponent:[dest lastPathComponent]];
+    if (hc_save_copie(pile, [[tmp path] UTF8String]) == 0) {
+        /* Une pile qui existe déjà se REMPLACE ; une pile neuve se dépose. */
+        BOOL ok = [fm fileExistsAtPath:path]
+            ? [fm replaceItemAtURL:dest withItemAtURL:tmp backupItemName:nil
+                           options:0 resultingItemURL:NULL error:&err]
+            : [fm moveItemAtURL:tmp toURL:dest error:&err];
+        if (ok) {
+            hc_set_stack_path(pile, [path UTF8String]);
+            r = 0;
+        } else {
+            NSLog(@"enregistrement : remplacement refusé pour %@ (%@)", path, err);
+        }
+    }
+    [fm removeItemAtURL:dossier error:NULL];
+    return r;
+}
+
 - (void)saveStack:(id)sender {
     if (hcv_menu_trappe("Save a Copy…")) return;   /* la pile détourne l'article */
     /* La pile de la fenêtre ACTIVE, et non gStack.
@@ -1152,10 +1317,10 @@ static NSMenu *gRecentMenu = nil;
                        isDirectory:YES]];
         [panel setNameFieldStringValue:[chemin lastPathComponent]];
     } else {
-        NSArray *docs = NSSearchPathForDirectoriesInDomains(
-            NSDocumentDirectory, NSUserDomainMask, YES);
-        if ([docs count] > 0)
-            [panel setDirectoryURL:[NSURL fileURLWithPath:docs[0] isDirectory:YES]];
+        /* Une pile neuve : le dossier de travail, sinon le VRAI Documents —
+         * pas celui du conteneur, en bac à sable (dossier_documents). */
+        [panel setDirectoryURL:gDossierTravail ? gDossierTravail
+                                               : dossier_documents()];
     }
     /* Une FEUILLE attachée à la fenêtre de la pile, plutôt qu'un panneau
      * modal pour toute l'application.
@@ -1236,7 +1401,7 @@ static NSMenu *gRecentMenu = nil;
         char *copie = nouveau ? strdup(nouveau) : NULL;
         if (copie) pile->name = copie;
 
-        if (hc_save(pile, [path UTF8String]) != 0) {
+        if (enregistre_pile(pile, path) != 0) {
             if (copie) { pile->name = ancien_nom; free(copie); }
             NSAlert *a = [[NSAlert alloc] init];
             [a setMessageText:@"The stack could not be saved."];
@@ -1358,13 +1523,15 @@ static NSString *trouver_pile(NSString *nom) {
         return [[NSFileManager defaultManager] fileExistsAtPath:p] ? p : nil;
     }
 
+    /* LE DOSSIER DE TRAVAIL EN DEUXIÈME, juste après celui de la pile ouverte :
+     * en bac à sable, c'est le seul où HC ait le droit de lire (voir son
+     * en-tête). Documents est le VRAI, pas celui du conteneur. */
     NSMutableArray *dossiers = [NSMutableArray array];
     if (gStackPath) [dossiers addObject:[gStackPath stringByDeletingLastPathComponent]];
+    if (gDossierTravail) [dossiers addObject:[gDossierTravail path]];
     [dossiers addObject:[[[NSBundle mainBundle] bundlePath]
                             stringByDeletingLastPathComponent]];
-    NSArray *docs = NSSearchPathForDirectoriesInDomains(
-        NSDocumentDirectory, NSUserDomainMask, YES);
-    if ([docs count] > 0) [dossiers addObject:docs[0]];
+    [dossiers addObject:[dossier_documents() path]];
 
     /* Avec et sans l'extension : « go to stack "Index" » doit trouver
      * « Index.stack », qui est la façon dont on les nomme ici. */
@@ -1373,7 +1540,11 @@ static NSString *trouver_pile(NSString *nom) {
         for (NSString *suffixe in @[@"", @".stack"]) {
             NSString *p = [d stringByAppendingPathComponent:
                               [nom stringByAppendingString:suffixe]];
-            if ([fm fileExistsAtPath:p]) return p;
+            /* LISIBLE, et pas seulement présent : en bac à sable, une pile
+             * voisine peut exister sans qu'on ait le droit de la lire, et la
+             * prendre ici ferait échouer le chargement au lieu de chercher
+             * dans le dossier de travail, un cran plus loin. */
+            if ([fm isReadableFileAtPath:p]) return p;
         }
     }
     return nil;
@@ -1878,9 +2049,52 @@ static NSURL *app_folder(void)
      * distribution, la pile de démonstration est juste à côté d'elle, et la
      * chercher à la main est le premier obstacle qu'un nouvel arrivant
      * rencontre. Le panneau retient ensuite le dernier dossier visité. */
-    [panel setDirectoryURL:app_folder()];
+    /* Le dossier de travail d'abord, s'il y en a un : c'est là que vivent
+     * les piles qu'on a confiées à HC. */
+    [panel setDirectoryURL:gDossierTravail ? gDossierTravail : app_folder()];
     if ([panel runModal] == NSModalResponseOK)
         [self loadStackAtPath:[[panel URL] path]];
+}
+
+/* File ▸ « Choose Working Folder… » : voir l'en-tête du dossier de travail,
+ * en haut du fichier.
+ *
+ * Le dossier choisi est retenu tout de suite, pendant que le panneau en a
+ * ouvert l'accès. Si la fenêtre ne montre encore rien — « Untitled » vierge,
+ * le cas du tout premier lancement —, Home s'ouvre aussitôt, comme elle le
+ * fera aux lancements suivants : choisir le dossier se voit. */
+- (void)chooseWorkingFolder:(id)sender {
+    (void)sender;
+    if (hcv_menu_trappe("Choose Working Folder…")) return;
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    [panel setCanChooseFiles:NO];
+    [panel setCanChooseDirectories:YES];
+    [panel setCanCreateDirectories:YES];
+    [panel setAllowsMultipleSelection:NO];
+    [panel setPrompt:@"Choose"];
+    [panel setMessage:@"HC looks in this folder for your Home stack "
+                      @"and for the stacks your scripts go to."];
+    [panel setDirectoryURL:gDossierTravail ? gDossierTravail : dossier_documents()];
+    if ([panel runModal] != NSModalResponseOK) return;
+
+    NSURL *url = [panel URL];
+    if (!dossier_travail_retient(url)) {
+        NSAlert *a = [[NSAlert alloc] init];
+        [a setMessageText:@"HC could not remember this folder."];
+        [a setInformativeText:@"It will be used until HC quits. At the next "
+                              @"launch, choose it again."];
+        [a addButtonWithTitle:@"OK"];
+        [a runModal];
+    }
+    if (gDossierTravail) [gDossierTravail stopAccessingSecurityScopedResource];
+    [url startAccessingSecurityScopedResource];
+    gDossierTravail = url;
+
+    HCDocument *actif = [HCDocument current];
+    if (actif && actif.path == nil && actif.stack && hc_stack_vierge(actif.stack)) {
+        NSString *home = trouver_pile(@"Home");
+        if (home) [self loadStackAtPath:home];
+    }
 }
 
 /* Double-clic sur une pile dans le Finder. Sans ce message, AppKit refuse

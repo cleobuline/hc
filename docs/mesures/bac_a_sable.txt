@@ -89,3 +89,33 @@ Les remèdes prévus : dans le dossier de travail, l'accès au dossier rend
 le temporaire possible ; ailleurs, le temporaire d'Apple
 (NSItemReplacementDirectory, même volume, autorisé) puis replaceItemAtURL,
 qui garde l'écriture atomique.
+
+
+CE QUI EST FAIT — le 30 octobre
+-------------------------------
+
+HC/HC.entitlements porte maintenant app-sandbox, avec
+files.user-selected.read-write, files.bookmarks.app-scope et print. Une
+seule configuration pour le DMG et l'App Store, proposée à l'utilisatrice.
+
+Dans AppDelegate.m :
+  - File ▸ « Choose Working Folder… » : un panneau de dossier ; le choix est
+    retenu par un signet de sécurité (NSUserDefaults, clé HCWorkingFolder)
+    et rouvert au lancement, AVANT la recherche de Home. Si la fenêtre ne
+    montre encore qu'une « Untitled » vierge, Home s'ouvre aussitôt.
+  - trouver_pile cherche dans le dossier de travail juste après celui de la
+    pile ouverte, et ne retient qu'un fichier LISIBLE ; « Documents » y est le
+    vrai, pas celui du conteneur.
+  - saveStack: passe par enregistre_pile : hc_save d'abord ; s'il échoue,
+    une copie dans NSItemReplacementDirectory, puis replaceItemAtURL (ou
+    moveItemAtURL pour une pile neuve), et le chemin adopté à la fin.
+  - les panneaux Ouvrir et Enregistrer s'ouvrent sur le dossier de travail,
+    sinon sur l'emplacement d'avant ou le vrai Documents.
+
+NON MESURÉ, à jouer DANS HC (l'application), bac à sable vérifié par
+codesign :
+  - le choix du dossier, puis Home au lancement suivant ;
+  - « start using stack "outils" » avec outils dans le dossier ;
+  - l'enregistrement d'une pile dans le dossier, et HORS du dossier ;
+  - « open file » sur un nom introuvable : le noyau demande où est le
+    fichier (answer_file), ce qui devrait accorder l'accès.
