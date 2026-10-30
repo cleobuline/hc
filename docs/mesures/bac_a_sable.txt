@@ -112,8 +112,24 @@ Dans AppDelegate.m :
   - les panneaux Ouvrir et Enregistrer s'ouvrent sur le dossier de travail,
     sinon sur l'emplacement d'avant ou le vrai Documents.
 
-NON MESURÉ, à jouer DANS HC (l'application), bac à sable vérifié par
-codesign :
+MESURÉ DANS HC (l'application) par l'utilisatrice le 30 octobre, Xcode
+14.2 sous Monterey, bac à sable VÉRIFIÉ par codesign (app-sandbox,
+files.bookmarks.app-scope, files.user-selected.read-write, print, et
+get-task-allow que Xcode ajoute en Debug) : « tout fonctionne bien ».
+
+    sans dossier de travail     « Untitled » au lancement — lent la première
+                                fois, cause non mesurée (conteneur neuf,
+                                débogueur de Xcode ?)
+    Choose Working Folder…      Home s'ouvre aussitôt
+    start using stack "outils"  trouvée, « put cube (1000) » répond
+    relance                     Home s'ouvre directement
+    enregistrer                 dans le dossier, et ailleurs
+
+Un essai précédent avait ouvert Home SANS dossier de travail : la
+compilation n'était pas en bac à sable (avant le Clean Build Folder). Même
+leçon que le 29 : codesign d'abord.
+
+Le banc tel qu'il était proposé :
   - le choix du dossier, puis Home au lancement suivant ;
   - « start using stack "outils" » avec outils dans le dossier ;
   - l'enregistrement d'une pile dans le dossier, et HORS du dossier ;
