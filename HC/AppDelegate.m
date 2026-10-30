@@ -2082,8 +2082,8 @@ static NSURL *app_folder(void)
  * ne demande aucun droit, et les démos se mettent à jour sur le site sans
  * nouvelle version de HC.
  *
- * L'adresse : le 30 octobre, elle répondait 404 — le DMG n'y était pas
- * encore déposé. */
+ * L'adresse : déposée par l'utilisatrice le 30 octobre ; elle répond 200,
+ * application/x-apple-diskimage, 5 355 087 octets. */
 static NSString *const HC_URL_DEMOS = @"https://labynet.fr/download/demo.dmg";
 
 - (void)loadDemos:(id)sender {
