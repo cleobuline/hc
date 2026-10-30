@@ -339,3 +339,22 @@ et l'URL d'assistance (https://hc.labynet.fr/).
 Puis la revue humaine d'Apple, qui regardera aussi le nom : HyperCard est une
 marque d'Apple. La fiche le dit : HC est un projet indépendant, et HyperCard
 et HyperTalk sont des marques d'Apple.
+
+LE LIEN DE DON EST PARTI DANS LA 1.0. Le panneau « À propos » porte « Support
+HC · Soutenir HC », un lien PayPal (hcAPropos:, AppDelegate.m), que son propre
+commentaire du 6 octobre disait « À RETIRER d'une éventuelle version App
+Store ». Il ne l'a pas été. La règle 3.1.1 d'Apple refuse les liens vers un
+paiement autre que l'achat intégré, et un don au développeur compte comme un
+pourboire. Le refus pour ce motif est souvent rapporté par des développeurs ;
+pour HC, NON MESURÉ — tout dépend de la revue.
+
+Décidé par l'utilisatrice le 30 octobre : ON ATTEND le verdict. Changer le
+build en cours de revue ferait perdre la place dans la file. Si Apple refuse
+pour 3.1.1 : ôter le lien et sa phrase « HC is free… » du panneau, garder le
+lien vers labynet.fr (un lien vers le site du développeur est permis, et la
+page de don y vit), monter le build, renvoyer. Garder le lien dans le DMG
+reste à décider avec elle.
+
+Le même jour, la LICENSE et les deux README ont dit enfin ce que HCicons.h
+disait seul : les 185 icônes d'origine sont des dessins d'Apple, hors de la
+licence MIT. La revue d'Apple pourrait le relever (règle 5.2.1) ; non mesuré.
