@@ -560,11 +560,17 @@ static NSMenu *gRecentMenu = nil;
                                              keyEquivalent:@""];
         [wf setTarget:self];
 
+        NSMenuItem *dm = [[NSMenuItem alloc] initWithTitle:@"Load Demos…"
+                                                    action:@selector(loadDemos:)
+                                             keyEquivalent:@""];
+        [dm setTarget:self];
+
         [sysFile insertItem:np atIndex:0];
         [sysFile insertItem:op atIndex:1];
         [sysFile insertItem:sv atIndex:2];
         [sysFile insertItem:wf atIndex:3];
-        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:4];
+        [sysFile insertItem:dm atIndex:4];
+        [sysFile insertItem:[NSMenuItem separatorItem] atIndex:5];
     } else {
         /* Nib inattendu : plutôt que de perdre les deux commandes, on les
          * laisse dans le menu Pile, là où elles étaient. */
@@ -585,6 +591,10 @@ static NSMenu *gRecentMenu = nil;
                                              action:@selector(chooseWorkingFolder:)
                                       keyEquivalent:@""];
         [wf setTarget:self];
+        NSMenuItem *dm = [fileMenu addItemWithTitle:@"Load Demos…"
+                                             action:@selector(loadDemos:)
+                                      keyEquivalent:@""];
+        [dm setTarget:self];
     }
 
     /* --- menu « Outils » : afficher ou masquer les palettes ---
@@ -2054,6 +2064,41 @@ static NSURL *app_folder(void)
     [panel setDirectoryURL:gDossierTravail ? gDossierTravail : app_folder()];
     if ([panel runModal] == NSModalResponseOK)
         [self loadStackAtPath:[[panel URL] path]];
+}
+
+/* File ▸ « Load Demos… » : LE NAVIGATEUR TÉLÉCHARGE, PAS HC.
+ *
+ * Décidé par l'utilisatrice le 30 octobre, entre deux voies : des démos
+ * rangées dans l'application, ou un lien. Le lien l'a emporté, et c'est le
+ * navigateur qui l'ouvre : il télécharge demo.dmg dans Téléchargements, le
+ * Finder le monte au double-clic, et l'on glisse les piles dans son dossier
+ * de travail.
+ *
+ * Trois raisons de ne pas télécharger depuis HC lui-même : il lui faudrait
+ * le droit au réseau, que le bac à sable ne lui donne pas ; il ne pourrait
+ * pas monter un DMG, le bac à sable ne lançant pas l'outil qui le fait ; et
+ * l'App Store se méfie d'une application qui va chercher elle-même du code
+ * (règle 2.5.2) — une pile porte des scripts. Ouvrir une page, en revanche,
+ * ne demande aucun droit, et les démos se mettent à jour sur le site sans
+ * nouvelle version de HC.
+ *
+ * L'adresse : le 30 octobre, elle répondait 404 — le DMG n'y était pas
+ * encore déposé. */
+static NSString *const HC_URL_DEMOS = @"https://labynet.fr/download/demo.dmg";
+
+- (void)loadDemos:(id)sender {
+    (void)sender;
+    if (hcv_menu_trappe("Load Demos…")) return;
+    NSAlert *a = [[NSAlert alloc] init];
+    [a setMessageText:@"Download the demo stacks?"];
+    [a setInformativeText:
+        @"Your web browser will download demo.dmg from labynet.fr. "
+        @"Open it, then drag the stacks into your working folder "
+        @"(File ▸ Choose Working Folder…)."];
+    [a addButtonWithTitle:@"Download"];
+    [a addButtonWithTitle:@"Cancel"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:HC_URL_DEMOS]];
 }
 
 /* File ▸ « Choose Working Folder… » : voir l'en-tête du dossier de travail,
