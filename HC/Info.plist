@@ -10,7 +10,7 @@
 			<key>CFBundleTypeIconFile</key>
 			<string>stack.icns</string>
 			<key>CFBundleTypeName</key>
-			<string>Pile HC</string>
+			<string>HC Stack</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -36,11 +36,15 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Patricia Benedetto</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
@@ -54,7 +58,7 @@
 				<string>public.content</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Pile HC</string>
+			<string>HC Stack</string>
 			<key>UTTypeIconFile</key>
 			<string>stack.icns</string>
 			<key>UTTypeIdentifier</key>
