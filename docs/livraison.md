@@ -368,3 +368,32 @@ d'abord, avant d'ôter quoi que ce soit.
 Le même jour, la LICENSE et les deux README ont dit enfin ce que HCicons.h
 disait seul : les 185 icônes d'origine sont des dessins d'Apple, hors de la
 licence MIT. La revue d'Apple pourrait le relever (règle 5.2.1) ; non mesuré.
+
+LA PREMIÈRE RÉPONSE D'APPLE, le 2 novembre 2026. Passée de « En attente » à
+« Vérification de l'application » le samedi 31 octobre, la 1.0 a reçu un
+message « Guideline 2.1 - Information Needed - New App Submission ». Ce n'est
+pas un refus : Apple le demande à un compte de développeur sans historique de
+revue. Six pièces exigées : une vidéo tournée sur un Mac, du lancement de HC à
+son usage courant ; le but de l'application et son public ; comment l'essayer,
+avec des fichiers d'exemple ; les services extérieurs ; les différences selon
+les pays ; le matériel protégé de tiers.
+
+Envoyé par l'utilisatrice le jour même : une vidéo tournée sous Monterey 12.7,
+le plus récent macOS de son Mac (Apple demande « le dernier système » : à
+surveiller), et une réponse écrite de 2 907 caractères, sous la limite de
+4 000 du champ « Remarques », à recopier aussi dans ce champ pour les envois
+suivants. Elle dit :
+  - aucun compte, aucune connexion, aucun achat, aucun contenu partagé ;
+  - les démos par https://labynet.fr/download/demo.dmg ;
+  - aucun service extérieur ; WAMR embarqué, exécuté dans le bac à sable ;
+    le lien de don déclaré : association à but non lucratif, page PayPal
+    ouverte dans le navigateur, rien de débloqué ;
+  - HyperCard et HyperTalk, marques d'Apple ; aucun code d'Apple ;
+  - LES 185 ICÔNES D'ORIGINE, DÉCLARÉES : ce sont celles d'Apple, sans
+    licence particulière, et on les remplacera par nos dessins si Apple le
+    préfère. La question 6 le demandait en toutes lettres ; répondre « non »
+    aurait été faux.
+
+Si Apple demande le remplacement des icônes : les redessiner avec l'éditeur
+d'icônes en gardant numéros et noms (la route notée dans HCicons.h), monter
+le build, renvoyer. Verdict : non encore reçu.
