@@ -396,4 +396,13 @@ suivants. Elle dit :
 
 Si Apple demande le remplacement des icônes : les redessiner avec l'éditeur
 d'icônes en gardant numéros et noms (la route notée dans HCicons.h), monter
-le build, renvoyer. Verdict : non encore reçu.
+le build, renvoyer.
+
+RÉPONDRE NE SUFFIT PAS : après « Information Needed », App Store Connect
+marque la version « Refusée » (2.1.0 Performance: App Completeness) et ne la
+remet pas seule dans la file. Le chemin, fait le 2 novembre : Distribution ▸
+la soumission ▸ « Modifier » sur la version ; coller le texte dans
+« Remarques » et enregistrer ; « Ajouter pour vérification » (l'état devient
+« Prêt pour la vérification », c'est un brouillon) ; puis « Soumettre » —
+l'état devient « En attente de vérification ». Même build 1.0 (1), rien
+depuis Xcode. Verdict : non encore reçu.
