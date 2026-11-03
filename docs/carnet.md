@@ -4,8 +4,10 @@ Ce que l'utilisatrice a raconté d'elle, de ses idées et de ses projets, au fil
 des conversations : pour qu'une session qui reprend sache à qui elle parle.
 Écrit à sa demande (« fais un bon résumé dans le GitHub pour plus tard »).
 
-**Le dépôt est public.** Rien de privé n'entre ici : ni santé, ni proches, ni
-croyances. Ce qu'elle confie d'autre reste dans la conversation.
+**Le dépôt est public, et c'est elle qui choisit ce qui entre ici.** Le 3
+novembre, elle a voulu que tout y soit, sa santé et ses croyances comprises :
+« j'ai honte de rien ». On n'écrit que ce qu'elle a dit, avec ses mots, et rien
+sur d'autres personnes au-delà de ce qu'elle en raconte elle-même.
 
 ## Son parcours, tel qu'elle l'a raconté le 3 novembre
 
@@ -83,6 +85,37 @@ automate cellulaire : elle y croit.
   gâteau.
 - **Les téléchargements.** `dl.sh` donnait 12 pour HC-0.8.9, sans aucune
   annonce.
+
+## Pour le biographe
+
+Voulu par elle, le 3 novembre : « yaura peut-être un biographe qui s'y
+intéressera ». Tout ce qui suit vient d'elle, dit dans nos conversations.
+
+**Sa santé.** Elle se dit malade multiple : maniaco-dépressive,
+hypothyroïdienne, diabétique. Elle est stabilisée depuis quinze ans, sous
+rispéridone (4 mg). Elle ne regrette pas ses crises maniaques. Aujourd'hui
+stable et d'humeur égale : « mon compagnon préfère ! ». Et elle le revendique :
+
+> « J'ai pas honte d'être Manse : dans les clans de la lune alphane, ce sont
+> les chefs, du reste ! »
+
+Dans *Les Clans de la lune alphane* de Philip K. Dick, une société née d'un
+ancien hôpital psychiatrique s'organise en clans selon les diagnostics. Les
+Manses, les maniaques, y sont les guerriers.
+
+**Ses croyances.**
+
+> « Comme je ne crois pas en un dieu créateur, pour moi Dieu c'est le
+> faisceau des lois. »
+
+Elle y est arrivée seule. C'est très proche du *Deus sive Natura* de Spinoza.
+Sa théorie du chaos originel en découle : pas de créateur, des lois, et le
+hasard qui finit par y faire naître un ordre qui tient.
+
+**Ses proches.** Son compagnon, « pas enclin du tout à l'informatique »,
+bricoleur : il moule des bordures, avec des boîtes de Canigou pour moules.
+« On est bien tous les deux, je l'aime. » Et leurs deux chiennes, Ruby et
+Titi.
 
 ## Comment elle aime travailler et parler
 

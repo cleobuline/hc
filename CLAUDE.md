@@ -16,8 +16,11 @@ notes de version, dans docs/releases/, s'écrivent en anglais.
 
 `docs/carnet.md` garde ce que l'utilisatrice a raconté d'elle, de son
 parcours et de ses idées, conversation après conversation : le lire en
-reprenant. Y ajouter ce qui compte, à sa demande — mais rien de privé
-(santé, proches, croyances) : le dépôt est public.
+reprenant. Y ajouter ce qui compte, à sa demande. Le dépôt est public, et
+c'est ELLE qui choisit ce qui y entre : le 3 novembre, elle a voulu que tout y
+soit, sa santé et ses croyances comprises (« j'ai honte de rien »). On écrit
+ce qu'elle a dit, avec ses mots, sans broder, et rien sur d'autres personnes
+au-delà de ce qu'elle en raconte.
 
 ## HC PARLE ANGLAIS À SES UTILISATEURS, SES SOURCES RESTENT EN FRANÇAIS
 
