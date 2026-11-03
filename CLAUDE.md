@@ -12,6 +12,16 @@ Shakespeare.
 Les messages de commit sont en français aussi (voir plus bas). Seules les
 notes de version, dans docs/releases/, s'écrivent en anglais.
 
+## LE CARNET : QUI ELLE EST, CE QU'ELLE PENSE
+
+`docs/carnet.md` garde ce que l'utilisatrice a raconté d'elle, de son
+parcours et de ses idées, conversation après conversation : le lire en
+reprenant. Y ajouter ce qui compte, à sa demande. Le dépôt est public, et
+c'est ELLE qui choisit ce qui y entre : le 3 novembre, elle a voulu que tout y
+soit, sa santé et ses croyances comprises (« j'ai honte de rien »). On écrit
+ce qu'elle a dit, avec ses mots, sans broder, et rien sur d'autres personnes
+au-delà de ce qu'elle en raconte.
+
 ## HC PARLE ANGLAIS À SES UTILISATEURS, SES SOURCES RESTENT EN FRANÇAIS
 
 Décidé par l'utilisatrice le 17 octobre, après un commentaire public sur les

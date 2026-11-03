@@ -1,0 +1,225 @@
+LA FOURMI DE LANGTON DANS MAC•CAM, ET LE λ DU BESTIAIRE — 3 novembre
+====================================================================
+
+Né d'une conversation : l'utilisatrice se souvenait des fourmis qu'elle
+changeait de fourmilière, enfant, et a demandé « on peut faire ça dans
+maccam ? ». La réponse est UNE RÈGLE, pas un changement de HC : une vingtaine
+de lignes du FORTH de la pile, que la machine CAM fait tourner telle qu'elle
+est. Rien de HC n'a bougé. La règle, écrite ce jour-là, est à nous et se
+garde ici ; la pile, elle, ne se commet toujours pas.
+
+
+LA RÈGLE
+--------
+
+    N/VONN
+
+    : DEPUIS-O  WEST  WEST'  NOT AND ;
+    : DEPUIS-E  EAST  EAST'  AND ;
+    : DEPUIS-N  NORTH NORTH' NOT AND ;
+    : DEPUIS-S  SOUTH SOUTH' AND ;
+
+    : ARRIVE  &CENTER' IF DEPUIS-O DEPUIS-E OR
+                     ELSE DEPUIS-N DEPUIS-S OR THEN ;
+    : TOURNE  &CENTER' IF DEPUIS-E ELSE DEPUIS-N THEN
+             &CENTER XOR ;
+
+    : FOURMI  ARRIVE DUP >PLN0  TOURNE AND >PLN1
+              &CENTER CENTER XOR >PLN2
+              CENTER' 1 XOR >PLN3 ;
+
+    MAKE-TABLE FOURMI
+
+    ( Fourmi de Langton, 1986. Plan 0 : la fourmi ; plan 1 : son sens ;
+      plan 2 : la trace ; plan 3 : une horloge, à masquer : planes 1110.
+      Fenêtre vide, deux pas, puis UN seul point sur le plan 0.
+      L'autoroute vient vers le pas 10 000. )
+
+Le commentaire va À LA FIN : le script de la pile cherche le voisinage dans
+le texte, il doit tomber d'abord sur le vrai N/VONN.
+
+
+L'ASTUCE
+--------
+
+Chaque demi-machine ne voit que DEUX bits chez ses voisines. Une fourmi,
+c'est « là ou pas » et quatre directions : cinq états, ça ne rentre pas.
+
+Mais la fourmi tourne à CHAQUE pas d'un quart de tour : elle alterne
+forcément pas horizontal et pas vertical. Une horloge qui bascule à chaque
+pas donne donc l'axe, et la fourmi n'a plus besoin que de deux bits :
+
+    plan 0   la fourmi est là
+    plan 1   son sens sur l'axe (1 : vers l'ouest ou le nord)
+    plan 2   la couleur de la case, la trace
+    plan 3   l'horloge : 0, l'axe de sortie est vertical ; 1, horizontal
+
+La fourmi porte sa direction de SORTIE, déjà tournée selon la couleur de sa
+case. CAM-A la fait arriver chez la voisine qu'elle vise et la fait tourner
+selon la couleur de cette case (&CENTER) ; CAM-B retourne la couleur de la
+case qu'elle quitte (son &CENTER est le plan 0). Blanc : à droite, en
+coordonnées d'écran.
+
+
+MESURÉ DANS LE CONTENEUR
+------------------------
+
+forth_coeur.c et maccam_coeur.c compilés en natif, hors de la suite :
+
+  · un tore de 200 × 200, une fourmi seule, comparée À CHAQUE PAS à une
+    fourmi calculée directement : 12 000 pas, 0 désaccord — la trace du plan
+    2, la position, et une fourmi et une seule à chaque pas ;
+  · l'autoroute, mesurée par le déplacement sur les 104 pas suivants :
+    (-2, -2) aux pas 10 500 et 12 000 ; (-2, 12) au pas 5 000 et (10, -2) au
+    pas 9 000, pas encore ;
+  · la règle se compile pareil sur une ligne, sur plusieurs (retours CR), et
+    avec le commentaire final ; le texte collé par l'utilisatrice dans sa
+    carte donne les mêmes quatre tables de 4 096, en von Neumann.
+
+
+LES PIÈGES, trouvés en cherchant pourquoi « la fenêtre reste noire »
+--------------------------------------------------------------------
+
+Mesurés sur la machine, un point au départ :
+
+  · major 0 (Moore) au lieu de 1 : la fourmi reste figée sur un pixel.
+    stepvfast impose von Neumann, quoi que vaille major ;
+  · les tables de CAM-B absentes : pas de trace, la fourmi fait des
+    allers-retours ;
+  · le point sur la première ligne ou la première colonne du rectangle
+    d'image7 : il tombe sur la bordure du tore, refaite aussitôt — rien.
+
+LA CAUSE DE CE JOUR-LÀ, DANS HC : le bouton de compilation de l'atelier
+remplit les GLOBALES pln0 à pln3 ; c'est un autre bouton qui les range dans
+les champs Pln0 à PLN3. « Les champs sont vides » ne voulait pas dire que
+rien n'était compilé : `put the length of pln0` rendait 4096.
+
+
+LE MODE D'EMPLOI — à jouer DANS HC (l'application)
+--------------------------------------------------
+
+    (compiler la règle avec le bouton de la carte)
+    set the pln7 of window "CAM" to pln0
+    set the pln6 of window "CAM" to pln1
+    set the pln5 of window "CAM" to pln2
+    set the pln4 of window "CAM" to pln3
+    set the planes of window "CAM" to "1110"     -- sinon l'horloge clignote
+    send erasea to window "CAM"
+    send step to window "CAM"                    -- deux fois : image7 recopie
+    send step to window "CAM"                    -- aussi le second tampon
+    (UN pixel noir au crayon sur la CARTE, dans un coin blanc)
+    set the image7 of window "CAM" to "190,140,230,180"
+    send stepvfast to window "CAM"
+
+
+MESURÉ DANS HC (l'application), le 3 novembre après-midi, par l'utilisatrice
+----------------------------------------------------------------------------
+
+Sur MAC•CAM Workshop, carte « fourmi de Langton », fenêtre CAM de 256 :
+
+  · premier essai, un « gros point » : quatre pixels, QUATRE fourmis —
+    comptées en pixels blancs sur ses trois captures, quatre sur chacune.
+    Deux autoroutes à angle droit, chacune tirée par sa fourmi. Pas
+    comparable à la prévision d'une fourmi seule ;
+  · second essai, UN pixel blanc : la première autoroute part vers le haut à
+    gauche, la direction même du calcul (-2, -2) ; elle fait le tour du
+    tore, percute le chaos, et une nouvelle repart à angle droit vers le
+    haut à droite — (+2, -2), la direction prévue ;
+  · la vitesse : ESTIMÉE, pas mesurée — environ 30 pas par seconde, d'après
+    la longueur des autoroutes sur deux captures (14:39:32, vers le pas
+    12 400 ; 14:46:54, vers le pas 25 000). L'heure de lancement donnée ne
+    concorde pas avec les captures.
+
+
+PRÉVU, NON VÉRIFIÉ
+------------------
+
+Une fourmi seule sur un tore N × N, le même départ. La taille du tore de la
+fenêtre n'est PAS établie : 254 ou 256.
+
+                              tore de 254          tore de 256
+    1re autoroute             9 984                9 984
+    collision                 22 256               22 360
+    2e autoroute              24 024 (+2, -2)      24 128 (+2, -2)
+    sa mort                   29 744               29 848
+    3e autoroute              48 984 (-2, +2)      38 896 (+2, -2)
+
+La troisième autoroute tranche : vers le bas à gauche, 254 ; vers le haut à
+droite, 256. Pas encore rapportée.
+
+
+LE λ DE LANGTON DU BESTIAIRE
+----------------------------
+
+L'EXPORT. Un bouton ajouté par l'utilisatrice écrit, pour chaque carte qui
+a un bg fld "forth" non vide, « === n nom » puis le programme, dans un
+fichier choisi par ask file. Essayé d'abord avec le noyau sur une pile de
+quatre cartes — l'une sans champ, l'une vide : deux programmes écrits, les
+deux autres sautés, aucune carte visitée.
+
+    on mouseUp
+      ask file "Enregistrer les programmes Forth sous :" with "bestiaire.txt"
+      if it is empty then exit mouseUp
+      put it into chemin
+      open file chemin
+      put 0 into n
+      repeat with c = 1 to the number of cards
+        if there is a bg fld "forth" of card c then
+          put bg fld "forth" of card c into prog
+          if prog is not empty then
+            write "=== " & c && the short name of card c & return to file chemin
+            write prog & return to file chemin
+            add 1 to n
+          end if
+        end if
+      end repeat
+      close file chemin
+      answer n && "programmes Forth enregistrés."
+    end mouseUp
+
+73 programmes reçus ; tous se compilent avec le FORTH de HC, sans faute.
+
+LA MESURE. λ = la part de plan 0 allumé après UN pas de la machine, partie
+d'une grille de 256 × 256 dont les quatre plans sont tirés au hasard ;
+moyenne de huit tirages, les deux phases, alternate ou non. Étalonnée : le
+Jeu de la vie donne 0,275 (0,273 en théorie, 140 / 512) ; le billard 0,500.
+
+LE PREMIER ESSAI, SUR LES QUATRE PLANS ENSEMBLE, NE DIT RIEN : les plans
+d'écho, de bruit et d'horloge l'écrasent — Conway sort à 0,61, parce que
+son plan 1 recopie le plan 0. D'où le plan 0 seul.
+
+LE RÉSULTAT : 43 cartes à 0,50 (à 0,005 près), 17 en dessous, 13 au-dessus.
+
+    Brian's brain 0,027   Dentrite 0,031   Pair 0,063   Greenberg 0,234
+    Worms, Worms2 0,25    Conway 0,273     Annealing 0,430
+    à 0,500 : Billard, les Terminator, Tron, Spires, HPP-Gas, TM-Gas,
+              Brownian, Fourmis, les Couloirs du temps, Parity, Scroll,
+              Voting…
+    Grow(1) à Grow(4) de 0,53 à 0,68   Filling 0,719   Goutte 0,751
+
+LECTURE :
+  · les 43 à 0,5 sont les règles VOULUES pour conserver ou remonter le
+    temps : réversibles, gaz qui gardent leurs particules, XOR avec le passé,
+    décalages, vote majoritaire. Une règle qui ne crée ni ne détruit garde
+    autant de 1 que de 0 : le λ les range dans le chaos, ce sont les plus
+    ordonnées ;
+  · Worms et Greenberg sont des milieux excitables : leur 0,25 vient surtout
+    de ce que « prêt » est un quart des états codés. Brian de même, poussé à
+    l'extrême : son λ sur ses TROIS états vaut 0,424, calculé à la main —
+    (3^8 + C(8,2) · 2^6) / 3^9 ;
+  · au-dessus, les règles de croissance. Pour une règle à deux états, 0,75
+    vaut 0,25 en échangeant le vide et le plein.
+
+Les 23 règles de l'application CAM-6 (cleobuline/maccam-6, compilées avec
+son propre Forth) disent la même chose : toutes les règles réversibles de
+Margolus à 0,500 exactement, Brian 0,027 sur son plan 0, hglass 0,281.
+
+CONCLUSION : le λ est un thermomètre pour des règles TIRÉES AU HASARD.
+Celles du bestiaire sont DESSINÉES, avec une intention — la réversibilité,
+la conservation —, et c'est ce que le thermomètre ne voit pas. C'est aussi
+la critique de Mitchell, Hraber et Crutchfield (1993).
+
+NON COMMIS : les 73 programmes, qui sont la pile ; les outils de mesure,
+restés dans le brouillon de la session. Pour refaire : compiler chaque
+programme avec forth_coeur.c, poser les tables écrites dans un Cam neuf
+(maccam_coeur.c), major selon le voisinage, et compter.
