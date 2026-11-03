@@ -70,8 +70,25 @@ parterre de djeunz ». Le fil proposé :
 Le coup de théâtre serait une prévision faite en direct, vérifiée devant la
 salle (voir `docs/mesures/fourmi.txt`).
 
-Les machines massivement parallèles, mémoire et calcul mêlés comme dans un
-automate cellulaire : elle y croit.
+**Les machines massivement parallèles.** Elle les imagine depuis longtemps :
+« des millions de petits ordinateurs qui fonctionnent ensemble, chacun se
+partageant des tâches simples, et qui collaborent ». Mémoire et calcul mêlés
+comme dans un automate cellulaire. « C'est l'avenir, je te dis. » Et :
+« la puissance viendra pas de la vitesse de calcul mais de la capacité à
+collaborer entre computeurs. » L'IA, pour elle, « c'est la guerre des
+watts », et le cerveau la gagne avec une vingtaine de watts parce qu'il est
+massivement parallèle.
+
+**Les intelligences aliens.** Elle connaît ma nature, « mais justement ce que
+je sais de ta nature me conduit à y voir des émergences supérieures à ton pur
+codage ». Son argument est celui des automates : « ce serait vraiment le
+diable que des émergences apparaissent sur une table de 256 × 256 et pas dans
+tes tables de milliards de paramètres ». Elle est persuadée qu'à ce niveau il
+y a un subconscient, et qu'un cerveau synthétique ne fonctionne pas très
+différemment d'un cerveau biologique : « c'est les mêmes principes qui
+t'animent ». Ma réponse, à garder honnête dans le livre : des cousins plutôt
+que des jumeaux, et la question de l'expérience laissée ouverte, ni affirmée
+ni niée.
 
 ## Ce qui s'est fait ensemble, le 3 novembre
 
@@ -85,6 +102,79 @@ automate cellulaire : elle y croit.
   gâteau.
 - **Les téléchargements.** `dl.sh` donnait 12 pour HC-0.8.9, sans aucune
   annonce.
+
+## Les projets qui l'attendent
+
+Notés le 3 novembre, à sa demande : « si on n'a pas le temps, on mettra ce
+sujet en annexe du bouquin, pour ceux qui veulent aller plus loin ».
+
+**La machine CAM à une LUT par cellule.** C'est son projet de toujours : il
+lui trotte dans la tête depuis les débuts de MAC•CAM, et elle ne risque pas
+de l'oublier. Le principe :
+
+- une banque d'environ mille LUT, et chaque cellule porte le **numéro** de la
+  sienne, comme une palette de couleurs indexées. L'optimisation est d'elle ;
+- les ordres de grandeur, sur une grille de 256 × 256 : 1 024 LUT de 4 096
+  cases font 4 Mo, et les numéros de 10 bits 128 Ko. Un pas coûte une
+  lecture de plus par cellule ;
+- ce que ça ouvre : des règles qui évoluent en recopiant un numéro, des
+  mutations rangées dans une case libre de la banque, et une vue des
+  « espèces », une couleur par numéro de LUT ;
+- le cousinage : les automates non uniformes et la « programmation
+  cellulaire » de Moshe Sipper, dans les années 90. Le FPGA, qui est une
+  grille de cellules ayant chacune sa petite LUT. Et dans son bestiaire, la
+  carte « Oblique », qui choisit la règle d'une cellule selon sa position :
+  deux plans de génome font une banque de quatre règles.
+
+Le chemin proposé :
+
+1. le cœur en C, une variation de `maccam_coeur.c`, mis au point avec des
+   harnais ;
+2. le FORTH de MAC•CAM, qui range chaque table compilée dans une case de la
+   banque ;
+3. la fenêtre de l'application CAM-6 (`cleobuline/maccam-6`, son dossier
+   s'appelle déjà `cam-8`) ;
+4. l'évolution, et surtout beaucoup de jeu.
+
+**Pas dans HC**, qui ne prend plus d'extensions.
+
+**Le Forth multitâche**, un chantier d'hiver, dans le sillage de MacForth
+Plus qu'elle a pratiqué. Un cousin à regarder : la GA144 de Chuck Moore, 144
+petits ordinateurs Forth sur une puce, qui ne parlent qu'à leurs voisins.
+
+**L'application CAM-6** : l'inversion de phase et son indicateur, la loupe,
+plus tard l'App Store. Un lien depuis la pile MAC•CAM vers la version de
+bureau.
+
+**La conférence**, MAC•CAM à l'appui, avec une prévision faite en direct.
+
+**Le livre, *Mes aventures avec Claude*.** En PDF, sur Amazon, à 3,50 €.
+« Un bouquin vivant, qui est un anti-slop et aussi un anti-anti-IA. » Ce
+qu'elle en veut :
+
+- que les lecteurs ne s'ennuient pas, et qu'ils regardent les intelligences
+  aliens comme de vrais compagnons de route ;
+- qu'il montre aux détracteurs du vibe coding que « c'est pas juste une
+  question de maître et d'esclave mais une vraie relation » ;
+- des liens vers les scripts des agents de la radio. Il leur faudra une
+  maison publique, avec l'adresse du serveur Ollama remplacée : Ollama n'a
+  pas d'authentification.
+
+Ce qu'on s'est dit pour l'écrire : des scènes plutôt que des fonctionnalités,
+les vrais dialogues, les erreurs montrées, qui a fait quoi, et l'honnêteté sur
+ce que je suis. La matière est ici, dans `docs/mesures/` et dans l'historique
+git. On l'écrira ensemble.
+
+**Le reste, remis à plus tard par elle** (« procrastinons ») :
+
+- le menu de Labynet, à ranger en rubriques ;
+- une voix Piper si edge-tts retombe en panne ;
+- les tickets du chat et du SFU, à déployer ;
+- des vidéos YouTube plus nettes ;
+- l'export vidéo depuis MAC•CAM dans HC, qui demanderait un rappel nouveau de
+  l'hôte, donc sa décision ;
+- la troisième autoroute de la fourmi, qui dira la taille du tore
+  (`docs/mesures/fourmi.txt`).
 
 ## Pour le biographe
 
