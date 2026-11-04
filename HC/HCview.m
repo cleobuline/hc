@@ -2306,11 +2306,41 @@ static void hcv_verrou_ecran(BOOL ferme)
     else if (unPeu) [vue setNeedsDisplayInRect:zone];
 }
 
+/* UN TRAIT PAR SCRIPT VISE LE CENTRE DES PIXELS.
+ *
+ * Un script donne des points ENTIERS. Pour le moteur vectoriel, l'entier N
+ * n'est pas le pixel N mais la FRONTIÈRE entre N - 1 et N : un trait d'un
+ * pixel posé dessus déborde d'un demi-pixel de chaque côté, et le moteur,
+ * sans anticrénelage, choisit la rangée du DESSUS. « drag from 90,100 to
+ * 110,100 » à l'outil ligne traçait donc la rangée 99. Mesuré le 4 novembre
+ * sur une capture de l'utilisatrice : la sortie d'une porte de Wireworld,
+ * tirée ainsi, s'accrochait une rangée trop haut, et la porte laissait
+ * passer ce qu'elle devait annuler (docs/mesures/crayon.txt).
+ *
+ * Le stylo de QuickDraw, lui, pend SOUS le point et à sa DROITE : le pixel
+ * (x, y) est le carré [x, x + 1) × [y, y + 1). Décaler le trait de la moitié
+ * de son épaisseur le pose là, et les bouts arrondis de paint_stroke
+ * couvrent les deux extrémités, comprises. À la souris, les coordonnées ne
+ * tombent presque jamais sur un entier, et rien ne change.
+ *
+ * Seuls les TRAITS — ligne, segment du polygone, crayon — passent par ici :
+ * les rectangles et les ovales ont leur propre géométrie, non mesurée. */
+static NSPoint hcv_centre_trait(NSPoint p)
+{
+    CGFloat d = (gLineWidth > 0 ? gLineWidth : 1) / 2.0;
+    return NSMakePoint(p.x + d, p.y + d);
+}
+
+static void hcv_trait_script(NSBitmapImageRep *rep, NSPoint a, NSPoint z)
+{
+    paint_stroke(rep, hcv_centre_trait(a), hcv_centre_trait(z),
+                 [NSColor blackColor], gLineWidth);
+}
+
 /* Une forme tirée par « drag », de a à z. */
 static void hcv_drag_forme(NSBitmapImageRep *rep, NSPoint a, NSPoint z)
 {
-    if (gTool == TOOL_LINE)
-        paint_shape(rep, TOOL_LINE, a, z, [NSColor blackColor], gLineWidth);
+    if (gTool == TOOL_LINE) hcv_trait_script(rep, a, z);
     else if (gShapeFilled) fill_shape(rep, gTool, a, z);
     else paint_shape(rep, gTool, a, z, [NSColor blackColor], gLineWidth);
 }
@@ -2339,17 +2369,17 @@ static void cocoa_drag(int x1, int y1, int x2, int y2, const char *mods) {
              * pixel — le défaut qu'on venait justement d'éviter en traitant
              * les trois sites ensemble. */
             if (paint_pixel_encre(rep, (int)floor(a.x), (int)floor(a.y)))
-                unink_stroke(rep, a, z, gLineWidth);
+                unink_stroke(rep, hcv_centre_trait(a), hcv_centre_trait(z),
+                             gLineWidth);
             else
-                paint_stroke(rep, a, z, [NSColor blackColor], gLineWidth);
+                hcv_trait_script(rep, a, z);
             break;
         /* Par script, « drag from a to b » avec le polygone trace UN segment.
          * C'est la seule lecture qui ait un sens : la commande donne deux
          * points, et l'outil en attend une suite indéfinie que seul le
          * double-clic termine. Un script qui veut une ligne brisée enchaîne
          * les drags, ou passe par « choose line tool ». */
-        case TOOL_POLY:   paint_shape(rep, TOOL_LINE, a, z,
-                                      [NSColor blackColor], gLineWidth); break;
+        case TOOL_POLY:   hcv_trait_script(rep, a, z); break;
         case TOOL_BRUSH:  brush_stroke(rep, a, z); break;
         case TOOL_ERASER: unink_stroke(rep, a, z, HC_GOMME_LARGEUR); break;
         case TOOL_SPRAY:  spray_stroke(rep, a, z, gSprayRadius, gSprayDensity); break;

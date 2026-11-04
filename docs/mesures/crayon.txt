@@ -30,13 +30,53 @@ le mouseDown (paint_pixel_encre sur floor(p)), puis pencil_pixel (graphics.m)
 de fond, comme unink_stroke : transparent, le pixel se vide ; opaque, il prend
 la couleur de fond. Peindre suit gInk, comme paint_stroke.
 
-NON MESURÉ, et laissé tel quel :
-  · « drag » au crayon par script passe toujours par paint_stroke entre deux
-    points entiers : un trait sur des bords de pixels, dont la ligne choisie
-    n'est pas relevée ;
-  · le crayon à la souris prend gLineWidth comme épaisseur ; celui
-    d'HyperCard ne ferait qu'un pixel quelle que soit la taille de trait
-    — non mesuré.
+NON MESURÉ, et laissé tel quel : le crayon à la souris prend gLineWidth comme
+épaisseur ; celui d'HyperCard ne ferait qu'un pixel quelle que soit la taille
+de trait.
+
+
+LE JUMEAU : L'OUTIL LIGNE PAR SCRIPT TRAÇAIT UNE RANGÉE TROP HAUT
+-----------------------------------------------------------------
+
+LE SYMPTÔME, le même matin, une fois le crayon corrigé. La porte OU exclusif de
+Wireworld laissait passer les coïncidences : quatre électrons tous les 72 pas
+au lieu de trois.
+
+MESURÉ sur la capture de l'utilisatrice, la fenêtre CAM relevée cellule par
+cellule et refaite tourner dans le conteneur : la sortie de la porte, tirée
+par « drag from … to … » à l'outil ligne, est accrochée sur la barre du HAUT
+de la petite boîte, une rangée au-dessus de la ligne voulue. Telle quelle,
+les électrons de A et de B arrivent ensemble aux pas 12, 84, 156, et la
+porte les laisse passer ; la sortie redescendue d'une rangée, ces
+coïncidences sont annulées. Le crayon, avant sa correction, peignait lui aussi
+une rangée trop haut : les deux défauts se compensaient.
+
+LA CAUSE, LUE : un script donne des points entiers, et pour le moteur
+vectoriel l'entier N est la frontière entre les pixels N - 1 et N. Un trait
+d'un pixel posé dessus déborde d'un demi-pixel de chaque côté ; sans
+anticrénelage, le moteur prend la rangée du dessus.
+
+LA CORRECTION, dans cocoa_drag : les TRAITS par script — l'outil ligne, le
+segment du polygone, le crayon — sont décalés de la moitié de leur épaisseur
+(hcv_centre_trait), là où pend le stylo de QuickDraw, sous le point et à sa
+droite, et tracés par paint_stroke, dont les bouts arrondis couvrent les deux
+extrémités.
+
+NON MESURÉ :
+  · ce que trace HyperCard (Basilisk II) — le banc ci-dessous ;
+  · un trait de plus d'un pixel : le stylo carré de QuickDraw et les bouts
+    arrondis de HC diffèrent aux extrémités ;
+  · les rectangles et les ovales tirés par script, laissés tels quels.
+
+À JOUER DANS HYPERCARD (Basilisk II), puis DANS HC (l'application) :
+
+    choose pencil tool
+    click at 100,100
+    choose line tool
+    drag from 90,100 to 110,100
+    choose browse tool
+
+Le point du crayon doit tomber SUR la ligne.
 
 À JOUER DANS HC (l'application), une fois reconstruite, dans la boîte de
 message, sur une carte vide :
