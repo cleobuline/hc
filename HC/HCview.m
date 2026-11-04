@@ -2548,8 +2548,24 @@ static void cocoa_click_at(int x, int y, const char *mods) {
                 spray_stroke(rep, p, p, gSprayRadius, gSprayDensity);
                 marge = gSprayRadius + 4;
                 break;
+            case TOOL_PENCIL: {
+                /* LE CRAYON : CE QUE FAIT LA SOURIS. Un clic pose UN pixel,
+                 * et l'efface s'il portait déjà de l'encre — un second clic
+                 * au même endroit le retire, comme dans HyperCard (dit par
+                 * l'utilisatrice ; non mesuré dans Basilisk II). Le sens se
+                 * décide sur le pixel floor(p), comme au mouseDown.
+                 *
+                 * Ce cas passait par le paint_stroke de « default » : un trait
+                 * de p à p + 1, qui peignait deux pixels côte à côte et
+                 * n'effaçait jamais. Le mouseDown avait été corrigé, pas son
+                 * jumeau par script (docs/mesures/crayon.txt). */
+                int px = (int)floor(p.x), py = (int)floor(p.y);
+                pencil_pixel(rep, px, py, paint_pixel_encre(rep, px, py));
+                marge = 2;
+                break;
+            }
             default:
-                /* Crayon, ligne et formes. On passe par paint_stroke plutôt
+                /* Ligne et formes. On passe par paint_stroke plutôt
                  * que de peindre à la main : elle travaille dans le repère de
                  * la CARTE, y vers le bas, alors qu'un contexte bitmap a son
                  * origine en bas à gauche — un NSRectFill direct posait le

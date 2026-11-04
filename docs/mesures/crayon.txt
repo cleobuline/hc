@@ -1,0 +1,49 @@
+LE CRAYON PAR SCRIPT : « click at » POSAIT DEUX PIXELS — 4 novembre
+==================================================================
+
+LE SYMPTÔME. Un bouton qui dessine une horloge de Wireworld au crayon, pixel
+par pixel (« choose pencil tool », puis « click at x, y » en boucle), dans
+la pile MAC•CAM Workshop. L'utilisatrice l'a joué DANS HC (l'application) :
+les électrons pullulaient sur tous les fils.
+
+MESURÉ sur sa capture d'écran (fenêtre CAM à l'échelle 2, relevée pixel par
+pixel) :
+  · les côtés verticaux des anneaux sortent sur DEUX cellules de large ;
+  · la ligne du haut fait NEUF cellules au lieu de huit, et vient toucher le
+    côté droit : le coin coupé de l'anneau est refermé ;
+  · les lignes horizontales n'ont qu'une cellule de haut.
+Chaque « click at x, y » a donc peint (x, y) ET (x + 1, y).
+
+LA CAUSE, LUE dans HCview.m. cocoa_click_at confiait le crayon au cas
+commun des outils de tracé : paint_stroke de p à (p.x + 1, p.y), « un trait
+d'un pixel de long » mis là pour éviter le segment de longueur nulle. Ce trait
+couvre deux pixels. Et il peignait toujours en noir, alors que le crayon à la
+souris (mouseDown) décide d'abord, sur le pixel floor(p), s'il pose ou s'il
+efface. Le geste avait été corrigé, pas son jumeau par script.
+
+HYPERCARD, DIT PAR L'UTILISATRICE, NON MESURÉ dans Basilisk II : un clic de
+crayon pose un pixel, un second clic au même endroit l'efface.
+
+LA CORRECTION. Le crayon a son propre cas dans cocoa_click_at : il décide comme
+le mouseDown (paint_pixel_encre sur floor(p)), puis pencil_pixel (graphics.m)
+écrit LE pixel lui-même dans le bitmap, comme spray_stamp. Effacer suit le mode
+de fond, comme unink_stroke : transparent, le pixel se vide ; opaque, il prend
+la couleur de fond. Peindre suit gInk, comme paint_stroke.
+
+NON MESURÉ, et laissé tel quel :
+  · « drag » au crayon par script passe toujours par paint_stroke entre deux
+    points entiers : un trait sur des bords de pixels, dont la ligne choisie
+    n'est pas relevée ;
+  · le crayon à la souris prend gLineWidth comme épaisseur ; celui
+    d'HyperCard ne ferait qu'un pixel quelle que soit la taille de trait
+    — non mesuré.
+
+À JOUER DANS HC (l'application), une fois reconstruite, dans la boîte de
+message, sur une carte vide :
+
+    choose pencil tool
+    click at 100,100
+    choose browse tool
+
+Un seul pixel noir. Puis la même chose une seconde fois : le pixel disparaît.
+Et à jouer DANS HYPERCARD (Basilisk II), pour l'oracle : les mêmes lignes.
