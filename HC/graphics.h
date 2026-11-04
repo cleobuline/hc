@@ -28,6 +28,15 @@ void erase_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width
  * ce que font déjà brush_stamp et spray_stamp. */
 int  paint_pixel_encre(NSBitmapImageRep *rep, int x, int y);
 
+/* LE CRAYON PAR SCRIPT : UN PIXEL, ET UN SEUL.
+ *
+ * « click at » avec le crayon pose le pixel (x, y), ou le retire si
+ * `efface` — la décision est celle du mouseDown, prise par l'appelant sur
+ * paint_pixel_encre. Retirer suit le mode de fond, comme unink_stroke :
+ * transparent, le pixel se vide ; opaque, il prend la couleur de fond.
+ * Mêmes coordonnées de VUE que paint_pixel_encre. */
+void pencil_pixel(NSBitmapImageRep *rep, int x, int y, int efface);
+
 /* RETIRER L'ENCRE D'UN SEGMENT — la moitié « efface » du crayon.
  *
  * CE QUE « RETIRER » VEUT DIRE DÉPEND DU MODE DE FOND, et c'est la seule

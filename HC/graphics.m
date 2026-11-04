@@ -691,6 +691,39 @@ int paint_pixel_encre(NSBitmapImageRep *rep, int x, int y)
     return 1;
 }
 
+/* LE CRAYON PAR SCRIPT, PIXEL PAR PIXEL (graphics.h).
+ *
+ * « click at » passait par paint_stroke, d'un point au point voisin : un
+ * trait d'un pixel de long, qui en couvrait DEUX, x et x + 1, et toujours
+ * en noir. Mesuré le 4 novembre sur la capture de l'utilisatrice : les côtés
+ * d'un anneau de Wireworld dessiné par script sortaient sur deux cellules de
+ * large, et la ligne du haut d'un pixel trop longue refermait le coin coupé.
+ * On écrit donc le pixel lui-même, comme spray_stamp. */
+void pencil_pixel(NSBitmapImageRep *rep, int x, int y, int efface)
+{
+    if (!rep) return;
+    if ([rep bitsPerSample] != 8 || [rep samplesPerPixel] < 3) return;
+    int W = (int)[rep pixelsWide], H = (int)[rep pixelsHigh];
+    if (x < 0 || x >= W || y < 0 || y >= H) return;
+    unsigned char *data = [rep bitmapData];
+    if (!data) return;
+    NSInteger bpr = [rep bytesPerRow], spp = [rep samplesPerPixel];
+    unsigned char *px = data + y*bpr + x*spp;
+    INK_RGB_LOCALS;
+
+    /* Le vide : un pixel qu'on retire en mode transparent, ou l'encre
+     * « effacer » de paint_stroke. */
+    int vide = efface ? (gTransparentBg ? 1 : 0) : (gInk == INK_ERASE ? 1 : 0);
+    if (vide) {
+        px[0] = 0; px[1] = 0; px[2] = 0;
+        if (spp >= 4) px[3] = 0;
+    } else if (efface || gInk == INK_WHITE) {
+        PUT_BACK(px);
+    } else {
+        PUT_INK(px);
+    }
+}
+
 void unink_stroke(NSBitmapImageRep *rep, NSPoint from, NSPoint to, CGFloat width)
 {
     /* TRANSPARENT : on retire pour de bon, et le calque du dessous
