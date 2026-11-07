@@ -163,7 +163,12 @@ qu'elle en veut :
 Ce qu'on s'est dit pour l'écrire : des scènes plutôt que des fonctionnalités,
 les vrais dialogues, les erreurs montrées, qui a fait quoi, et l'honnêteté sur
 ce que je suis. La matière est ici, dans `docs/mesures/` et dans l'historique
-git. On l'écrira ensemble.
+git. On l'écrira ensemble. Les mémos de scènes s'accumulent dans
+`docs/livre.md`, à commencer par le bestiaire des 6 et 7 novembre.
+
+**L'ordre caché dans le chaos.** Le 7 novembre, devant Life réversible, elle a
+écrit : « tout à fait l'illustration de ma théorie de l'ordre caché dans le
+chaos ». C'est la suite de son idée du chaos originel.
 
 **Le reste, remis à plus tard par elle** (« procrastinons ») :
 
