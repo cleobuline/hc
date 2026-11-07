@@ -74,6 +74,11 @@ garde, et retrouvé dans le moteur de MACCAM — trois sources d'accord.
 | `N/MOORE-HV` | 5 | Moore, puis HORZ VERT |
 | `N/VONN-PH` | 6 | von Neumann, puis PHASE PHASE' |
 | `N/VONN-HV` | 7 | von Neumann, puis HORZ VERT |
+| `N/MOORE-RAND` | 8 | **de HC** : Moore, avec RAND à la place de &CENTER' |
+| `N/VONN-RAND` | 9 | **de HC** : von Neumann, avec RAND à la place de &CENTER' |
+| `N/MARG-RAND` | 10 | **de HC** : Margolus, PHASE puis RAND à la place de PHASE' |
+
+Les trois derniers sont l'ajout du 7 novembre, le hasard (voir plus bas).
 
 Les fichiers :
 
@@ -96,7 +101,8 @@ désassemblé ; rien n'en a été exécuté dans HyperCard pour comparaison) :
   `pln6`), CAM-B les plans 2 et 3 (`pln5`, `pln4`) ; chacune lit le centre
   de l'autre comme « & » ;
 - les huit balayages de `major`, dans l'ordre de bits des tables du FORTH ;
-  les phases basculent après chaque pas ;
+  les phases basculent après chaque pas ; et les trois du hasard, qui sont
+  de HC ;
 - `fill`, `erase`, `image`, et la palette du moteur MacCam moderne (plan 0
   blanc, plan 1 cyan, CAM-B jaune, orange, vert) : les palettes clut de la
   pile ne sont pas reprises — décidé par l'utilisatrice.
@@ -137,6 +143,7 @@ messages.
 | `palette` | acceptée, sans effet : la fenêtre garde sa palette |
 | `planes` | **l'ajout de HC** : les plans montrés, un chiffre par plan — `"1000"` le plan 0 seul, `"0011"` les plans 2 et 3, `"1111"` tous (le défaut) |
 | `colors` | **l'ajout de HC** : la couleur de chaque combinaison de plans, une ligne `"pppp r,g,b"` par motif — `"1000 255,0,0"` le plan 0 seul en rouge, `x` pour l'un ou l'autre |
+| `rand` | **l'ajout de HC** : la probabilité que RAND vaille 1, en pour cent, au millionième près — `50` à l'ouverture, `0.1` une cellule sur mille |
 
 Ce qui diffère de l'original, décidé par l'utilisatrice : les palettes clut
 de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
@@ -189,6 +196,64 @@ combinaison qui reste prend sa couleur. Une ligne qu'on ne comprend pas —
 un motif qui n'a pas quatre signes, un nombre au-delà de 255, deux nombres
 au lieu de trois — fait tout refuser, et rien ne change. Seul le dessin
 change : la machine ne sait rien des couleurs.
+
+## Le hasard : RAND
+
+Ajouté le 7 novembre, à la demande de l'utilisatrice. La machine d'origine
+n'avait aucun hasard : une règle ne pouvait que le fabriquer, avec des plans
+entiers de bruit. Trois voisinages de plus donnent aux règles un bit tiré au
+sort à chaque pas, que le FORTH appelle `RAND`. Chacun est un voisinage
+d'origine dont **un seul bit change** : le bit 10 (`&CENTER'`) en Moore et en
+von Neumann, le bit 11 (`PHASE'`) en Margolus. Les huit voisinages de
+l'original ne bougent pas, et `RAND` n'y existe pas : une pile de 1990 ne voit
+aucune différence.
+
+```
+N/MOORE-RAND
+: BRUINE  CENTER RAND OR >PLN0 ;     ( une goutte tombe, et reste )
+MAKE-TABLE BRUINE
+```
+
+```
+set the rand of window "CAM" to 0.1      -- une cellule sur mille, à chaque pas
+put the rand of window "CAM"             -- 0.1
+```
+
+Ce qu'il faut savoir :
+
+- **Un tirage par cellule et par pas**, le même pour les deux demi-machines :
+  une règle qui écrit `RAND` dans le plan 0 et dans le plan 2 y écrit le
+  même bit.
+- **En Margolus, un tirage par bloc** : les quatre cellules décident
+  ensemble. Une règle qui tourne son bloc au hasard,
+  `RAND IF CW ELSE CCW THEN >PLN0`, ne perd ni ne gagne une seule
+  particule : c'est une diffusion.
+- **Le tirage dépend de la place et du pas**, pas d'une suite qu'on dévide.
+  Un bloc Margolus à cheval sur le bord du tore est calculé deux fois, une
+  de chaque côté de la bordure, et les deux copies doivent tirer le même
+  bit. Avec une suite, la diffusion gagnait 13 particules sur 400 en 200
+  pas ; avec la place, elle les garde toutes.
+- **La même graine à chaque ouverture** : une fenêtre neuve rejoue les mêmes
+  tirages, ce qui permet de refaire une expérience à l'identique. Deux
+  expériences de suite dans la même fenêtre en tirent de différents.
+- **`rand`** : un pourcentage, entier ou à point décimal, de `0` (jamais) à
+  `100` (toujours), au millionième près. Ce qui n'est pas un nombre de 0 à
+  100 ne change rien.
+
+Le gestionnaire `load` de la pile pose `major` d'après le texte FORTH. Pour
+les trois nouveaux voisinages, il lui faut trois lignes de plus, **après**
+celles de `N/VONN` (le dernier test vrai gagne) :
+
+```
+if it contains "N/MOORE-RAND" then set the major of window "CAM" to 8
+if it contains "N/VONN-RAND" then set the major of window "CAM" to 9
+if it contains "N/MARG-RAND" then set the major of window "CAM" to 10
+```
+
+Mesuré dans le conteneur, sur 256 × 256 cellules et 200 pas : à 50 %, la
+part de cellules tirées est 0,50009 ; deux voisines, ou deux pas successifs
+d'une même cellule, tombent ensemble 0,2500 fois sur une, ce qu'on attend de
+tirages indépendants. Non mesuré : sur le Mac de l'utilisatrice.
 
 ## L'essayer
 

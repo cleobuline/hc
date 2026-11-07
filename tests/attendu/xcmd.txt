@@ -206,7 +206,7 @@
       = 0
 
 == 10. le FORTH de MAC•CAM ==
-   ajoute forth.wasm (25526 octets) : accepté
+   ajoute forth.wasm (25618 octets) : accepté
    compile ": R CENTER >PLN0 ; MAKE-TABLE R"
       = [] 4096 0000000011111111 0
    compile "N/VONN : R CENTER' >PLN0 NORTH >PLN1 ; MAKE-TABLE R"
@@ -372,7 +372,7 @@
       = false
 
 == 12. MACCAM : la fenêtre CAM de MAC•CAM ==
-   ajoute maccam.wasm (17671 octets) : accepté
+   ajoute maccam.wasm (19344 octets) : accepté
    get maccam("10,40,22,52", "CAM", "True", 17, "True", "True")
       hôte : ouvre 11 « CAM » 10,40,22,52, visible 1, style 17, flottante 1
       hôte : image de 11, 12 × 12 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
@@ -631,6 +631,35 @@
 1101 255,255,255
 1110 255,255,255
 1111 255,255,255
+   -- rand : la probabilité du hasard, l'ajout de HC
+   put the rand of window "CAM"
+      = 50
+   set the rand of window "CAM" to 0.1
+   put the rand of window "CAM"
+      = 0.1
+   set the rand of window "CAM" to 12.5
+   put the rand of window "CAM"
+      = 12.5
+   set the rand of window "CAM" to ".5"
+   put the rand of window "CAM"
+      = 0.5
+   set the rand of window "CAM" to 33.333333
+   put the rand of window "CAM"
+      = 33.3333
+   set the rand of window "CAM" to 101
+   set the rand of window "CAM" to -1
+   set the rand of window "CAM" to 123456789
+   set the rand of window "CAM" to "zut"
+   set the rand of window "CAM" to empty
+   put the rand of window "CAM"
+      = 33.3333
+   set the rand of window "CAM" to 100
+   put the rand of window "CAM"
+      = 100
+   set the rand of window "CAM" to 0
+   put the rand of window "CAM"
+      = 0
+   set the rand of window "CAM" to 50
    -- scale : la fenêtre, carrée, de côté la grille fois l'échelle
    set the scale of window "CAM" to 2
       hôte : pose 11 width = 24

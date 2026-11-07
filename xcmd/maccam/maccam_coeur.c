@@ -37,7 +37,37 @@ int cam_ouvre(Cam *c, int w, int h)
     if (!c->pix || !c->neuf) { cam_ferme(c); return -1; }
     c->w = w;
     c->h = h;
+    c->graine = 0x9E3779B97F4A7C15ull;
+    cam_hasard(c, 500000);
     return 0;
+}
+
+/* ---- le hasard : RAND ---- */
+
+void cam_hasard(Cam *c, unsigned long ppm)
+{
+    if (ppm > 1000000) ppm = 1000000;
+    c->ppm = ppm;
+    c->seuil = ((unsigned long long)ppm << 32) / 1000000ull;
+}
+
+/* Le tirage de la cellule (y, x) du tore — l'intérieur, compté depuis 0 —
+ * au pas en cours : la graine, le pas et la place, mêlés par le finaliseur
+ * de splitmix64 (Steele, Lea et Flood), trente-deux bits. */
+static unsigned tirage(const Cam *c, unsigned y, unsigned x)
+{
+    unsigned long long z = c->graine
+                         + c->tour * 0x9E3779B97F4A7C15ull
+                         + (((unsigned long long)y << 32) | x) * 0xD6E8FEB86659FD93ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    z ^= z >> 31;
+    return (unsigned)(z >> 32);
+}
+
+static unsigned rand_bit(const Cam *c, unsigned y, unsigned x)
+{
+    return (unsigned long long)tirage(c, y, x) < c->seuil;
 }
 
 void cam_ferme(Cam *c)
@@ -99,7 +129,7 @@ static void bords(u8 *b, int w, int h)
 
 /* ---- Moore : optscanmoore, optscanmooreph, optscanmoorehv ---- */
 
-enum { MODE_ESPERLUETTE, MODE_PH, MODE_HV };
+enum { MODE_ESPERLUETTE, MODE_PH, MODE_HV, MODE_RAND };
 
 /* L'index de Moore, colonne par colonne — l'est, le centre, l'ouest —, et
  * dans chaque colonne le centre, le sud, le nord. `p` choisit le plan
@@ -132,6 +162,11 @@ static void balaye_moore(Cam *c, int mode)
             if (mode == MODE_ESPERLUETTE) {
                 a |= (unsigned)P3(centre) << 10 | (unsigned)P2(centre) << 11;
                 b |= (unsigned)P1(centre) << 10 | (unsigned)P0(centre) << 11;
+            } else if (mode == MODE_RAND) {
+                /* RAND à la place de &CENTER' ; le même tirage des deux côtés. */
+                unsigned hasard = rand_bit(c, (unsigned)r - 1, (unsigned)x - 1);
+                a |= hasard << 10 | (unsigned)P2(centre) << 11;
+                b |= hasard << 10 | (unsigned)P0(centre) << 11;
             } else if (mode == MODE_PH) {
                 unsigned ph = (unsigned)(c->phaseA & 1) << 10
                             | (unsigned)(c->phaseB & 1) << 11;
@@ -174,6 +209,10 @@ static void balaye_vonn(Cam *c, int mode)
             if (mode == MODE_ESPERLUETTE) {
                 a |= (unsigned)P2(centre) << 11 | (unsigned)P3(centre) << 10;
                 b |= (unsigned)P0(centre) << 11 | (unsigned)P1(centre) << 10;
+            } else if (mode == MODE_RAND) {
+                unsigned hasard = rand_bit(c, (unsigned)r - 1, (unsigned)x - 1);
+                a |= (unsigned)P2(centre) << 11 | hasard << 10;
+                b |= (unsigned)P0(centre) << 11 | hasard << 10;
             } else if (mode == MODE_PH) {
                 /* sfVonnph : chaque demi-machine a SA phase en bit 10, et
                  * celle de l'autre en bit 11. */
@@ -195,14 +234,29 @@ static u8 rol2(u8 x) { return (u8)(x << 2 | x >> 6); }
 
 /* Une rangée de blocs 2 × 2, à partir de `o` ; lue comme l'original, jusqu'à
  * o + w - phaseA, quitte à déborder sur la ligne suivante. */
-static void fmargph(Cam *c, size_t o)
+static void fmargph(Cam *c, size_t o, int hasard)
 {
     const int w = c->w;
     const u8 *s = c->pix;
     u8 *d = c->neuf;
     const size_t fin = o + (size_t)w - (size_t)c->phaseA;
-    const unsigned phA = c->phaseA ? 0x400 : 0, phB = c->phaseB ? 0x800 : 0;
+    unsigned phA = c->phaseA ? 0x400 : 0, phB = c->phaseB ? 0x800 : 0;
+    /* N/MARG-RAND : chaque demi-machine garde SA phase en bit 10 (PHASE),
+     * et le bit 11 devient RAND. */
+    if (hasard) phB = c->phaseB ? 0x400 : 0;
     for (; o < fin; o += 2) {
+        /* UN tirage par bloc : les quatre cellules décident ensemble, sans
+         * quoi une règle qui tourne le bloc au hasard perdrait des
+         * particules. */
+        unsigned r = 0;
+        if (hasard) {
+            /* Le coin haut-gauche du bloc, ramené sur le tore : les deux
+             * copies d'un bloc à cheval sur le bord tombent au même endroit. */
+            const int H = c->h - 2, W = c->w - 2;
+            const int ry = (int)(o / (size_t)w), rx = (int)(o % (size_t)w);
+            r = rand_bit(c, (unsigned)((ry - 1 + H) % H),
+                            (unsigned)((rx - 1 + W) % W)) << 11;
+        }
         u8 hg = s[o], hd = s[o + 1], bg = s[o + w], bd = s[o + w + 1];
         /* L'anneau horaire : haut-gauche, haut-droite, bas-droite,
          * bas-gauche ; deux bits par cellule. */
@@ -213,8 +267,8 @@ static void fmargph(Cam *c, size_t o)
         for (int k = 0; k < 4; k++) {
             eB <<= 2;
             eA <<= 2;
-            unsigned a = anA | (eB & 0x300) | phA;
-            unsigned b = anB | (eA & 0x300) | phB;
+            unsigned a = anA | (eB & 0x300) | phA | r;
+            unsigned b = anB | (eA & 0x300) | phB | r;
             d[cible[k]] = (u8)(c->lutA[a] + c->lutB[b]);
             anA = rol2(anA);
             anB = rol2(anB);
@@ -222,15 +276,15 @@ static void fmargph(Cam *c, size_t o)
     }
 }
 
-static void balaye_margolus(Cam *c)
+static void balaye_margolus(Cam *c, int hasard)
 {
     const int w = c->w, h = c->h;
     if (c->alternate) {
         for (int r = c->phaseA; r < h - c->phaseA; r += 2)
-            fmargph(c, (size_t)r * w + (size_t)c->phaseA);
+            fmargph(c, (size_t)r * w + (size_t)c->phaseA, hasard);
     } else {
         for (int r = 1; r < h - 1; r += 2)
-            fmargph(c, (size_t)r * w + 1);
+            fmargph(c, (size_t)r * w + 1, hasard);
     }
 }
 
@@ -242,17 +296,21 @@ void cam_pas(Cam *c, int voisinage)
     switch (v) {
     case 0: balaye_moore(c, MODE_ESPERLUETTE); break;
     case 1: balaye_vonn(c, MODE_ESPERLUETTE); break;
-    case 2: case 3: balaye_margolus(c); break;       /* le même pour PH et HV */
+    case 2: case 3: balaye_margolus(c, 0); break;    /* le même pour PH et HV */
     case 4: balaye_moore(c, MODE_PH); break;
     case 5: balaye_moore(c, MODE_HV); break;
     case 6: balaye_vonn(c, MODE_PH); break;
     case 7: balaye_vonn(c, MODE_HV); break;
+    case CAM_MOORE_RAND: balaye_moore(c, MODE_RAND); break;     /* de HC */
+    case CAM_VONN_RAND:  balaye_vonn(c, MODE_RAND); break;
+    case CAM_MARG_RAND:  balaye_margolus(c, 1); break;
     default: return;                                  /* l'original ne fait rien */
     }
     bords(c->neuf, c->w, c->h);
     memcpy(c->pix, c->neuf, (size_t)c->w * (size_t)c->h);
     c->phaseA = !c->phaseA;
     c->phaseB = !c->phaseB;
+    c->tour++;
 }
 
 /* ---- remplir, effacer, poser une image ---- */

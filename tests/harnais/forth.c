@@ -199,5 +199,18 @@ int main(void)
     compile(": R CENTER >PLN0 ; MAKE-TABLE R avec la propriété que");
     compile(": B BEEP ; B B 2 B");
     compile("");
+
+    /* L'AJOUT DE HC du 7 novembre, décidé par l'utilisatrice : trois
+     * voisinages où un bit devient RAND, tiré au sort par la machine
+     * (maccam_coeur.c). Chacun est son voisinage d'origine, un bit changé :
+     * le 10 (&CENTER') en Moore et en von Neumann, le 11 (PHASE') en
+     * Margolus. Ailleurs, RAND n'existe pas : les huit voisinages de
+     * l'original ne le connaissent pas. */
+    puts("\n== 10. le hasard, de HC : RAND ==");
+    disposition("N/MOORE-RAND");
+    disposition("N/VONN-RAND");
+    disposition("N/MARG-RAND");
+    compile("N/MOORE : R RAND >PLN0 ; MAKE-TABLE R");
+    compile("N/MOORE-RAND : R RAND 0 = >PLN0 ; MAKE-TABLE R");
     return 0;
 }

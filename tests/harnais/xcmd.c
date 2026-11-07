@@ -683,6 +683,31 @@ int main(int argc, char **argv)
     /* vide : la palette d'origine, les seize */
     fais("set the colors of window \"CAM\" to empty");
     fais("put the colors of window \"CAM\"");
+    /* « rand », l'ajout de HC décidé par l'utilisatrice le 7 novembre : la
+     * probabilité du bit RAND des voisinages 8, 9 et 10, en pour cent. La
+     * machine elle-même est éprouvée par le harnais maccam ; ici, la
+     * propriété : lue, posée, et ce qui est refusé sans rien changer. */
+    puts("   -- rand : la probabilité du hasard, l'ajout de HC");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 0.1");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 12.5");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to \".5\"");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 33.333333");  /* au millionième */
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 101");        /* refusés : inchangé */
+    fais("set the rand of window \"CAM\" to -1");
+    fais("set the rand of window \"CAM\" to 123456789");  /* 32 bits : sans déborder */
+    fais("set the rand of window \"CAM\" to \"zut\"");
+    fais("set the rand of window \"CAM\" to empty");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 100");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 0");
+    fais("put the rand of window \"CAM\"");
+    fais("set the rand of window \"CAM\" to 50");
     puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
     fais("set the scale of window \"CAM\" to 2");
     puts("   -- stepfast, jusqu'au clic : trois pas");

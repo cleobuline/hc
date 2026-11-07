@@ -159,5 +159,85 @@ int main(void)
         cam_couleur(px[i], rgb);
         printf("   %02x → %3d %3d %3d\n", px[i], rgb[0], rgb[1], rgb[2]);
     }
+
+    /* L'AJOUT DE HC du 7 novembre, décidé par l'utilisatrice : un bit tiré
+     * au sort, RAND, dans les voisinages 8, 9 et 10. La graine est la même
+     * à chaque ouverture : les comptes ci-dessous ne bougent pas d'une
+     * exécution à l'autre. */
+    puts("\n== 8. le hasard : RAND >PLN0, sur 64 × 64 cellules ==");
+    static const unsigned long probas[] = { 0, 1000, 250000, 500000, 1000000 };
+    for (size_t k = 0; k < sizeof probas / sizeof *probas; k++) {
+        cam_ouvre(&c, 66, 66);
+        charge(&c, "N/MOORE-RAND : R RAND >PLN0 ; MAKE-TABLE R");
+        cam_hasard(&c, probas[k]);
+        cam_pas(&c, CAM_SELON_MAJOR);
+        printf("   Moore, p = %7lu millionièmes : %4d cellules sur 4096\n",
+               probas[k], vivantes(&c, 7));
+        cam_ferme(&c);
+    }
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/VONN-RAND : R RAND >PLN0 ; MAKE-TABLE R");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   von Neumann, p = 50 %% : %d cellules sur 4096\n", vivantes(&c, 7));
+    cam_ferme(&c);
+
+    puts("\n== 9. le même tirage pour les deux demi-machines ==");
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/MOORE-RAND : R RAND >PLN0 RAND >PLN2 ; MAKE-TABLE R");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    n = 0;
+    for (int r = 1; r <= 64; r++)
+        for (int x = 1; x <= 64; x++) {
+            unsigned char p = c.pix[r * c.w + x];
+            n += ((p >> 7) & 1) != ((p >> 5) & 1);
+        }
+    printf("   plan 0 : %d, plan 2 : %d, cellules où ils diffèrent : %d\n",
+           vivantes(&c, 7), vivantes(&c, 5), n);
+    cam_ferme(&c);
+
+    puts("\n== 10. Margolus : un tirage par bloc ==");
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/MARG-RAND : R RAND >PLN0 ; MAKE-TABLE R");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    int panaches = 0, blocs = 0;
+    for (int r = 1; r < 65; r += 2)
+        for (int x = 1; x < 65; x += 2) {
+            int s4 = (c.pix[r * c.w + x] >> 7) + (c.pix[r * c.w + x + 1] >> 7)
+                   + (c.pix[(r + 1) * c.w + x] >> 7) + (c.pix[(r + 1) * c.w + x + 1] >> 7);
+            blocs += s4 == 4;
+            panaches += s4 != 0 && s4 != 4;
+        }
+    printf("   blocs allumés : %d sur 1024 ; blocs panachés : %d\n", blocs, panaches);
+    cam_ferme(&c);
+
+    puts("\n== 11. Margolus : un bloc tourné au hasard ne perd rien ==");
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/MARG-RAND ALTERNATE : R RAND IF CW ELSE CCW THEN >PLN0 ; MAKE-TABLE R");
+    c.alternate = 1;
+    for (int r = 20; r < 40; r++)
+        for (int x = 20; x < 40; x++) allume(&c, r, x, 7);
+    int avant = vivantes(&c, 7);
+    for (int i = 0; i < 200; i++) cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   %d particules au départ, %d après 200 pas : la diffusion\n",
+           avant, vivantes(&c, 7));
+    montre(&c, 7, "après 200 pas : le carré s'est dissous en nuage");
+    cam_ferme(&c);
+
+    puts("\n== 12. la même graine à chaque ouverture ==");
+    Cam d;
+    cam_ouvre(&c, 34, 34);
+    cam_ouvre(&d, 34, 34);
+    charge(&c, "N/MOORE-RAND : R RAND >PLN0 ; MAKE-TABLE R");
+    charge(&d, "N/MOORE-RAND : R RAND >PLN0 ; MAKE-TABLE R");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    cam_pas(&d, CAM_SELON_MAJOR);
+    unsigned premier = empreinte(&c);
+    printf("   deux fenêtres ouvertes : %s\n",
+           premier == empreinte(&d) ? "le même tirage" : "DES TIRAGES DIFFÉRENTS");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    printf("   deux pas dans la même : %s\n",
+           empreinte(&c) != premier ? "deux tirages différents" : "LE MÊME TIRAGE");
+    cam_ferme(&c);
+    cam_ferme(&d);
     return 0;
 }

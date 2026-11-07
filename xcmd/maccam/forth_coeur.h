@@ -31,7 +31,14 @@ enum {
     FORTH_MOORE_HV = 5,
     FORTH_VONN_PH  = 6,
     FORTH_VONN_HV  = 7,
-    FORTH_VOISINAGES = 8
+    /* LE HASARD, l'ajout de HC décidé par l'utilisatrice le 7 novembre :
+     * les mêmes voisinages, où un bit de l'index devient RAND, tiré au sort
+     * à chaque pas (maccam_coeur.h). L'original n'en avait aucun ; ses huit
+     * voisinages ne changent pas. */
+    FORTH_MOORE_RAND = 8,
+    FORTH_VONN_RAND  = 9,
+    FORTH_MARG_RAND  = 10,
+    FORTH_VOISINAGES = 11
 };
 
 /* Les mots qui lisent le voisinage d'une cellule. */
@@ -43,6 +50,7 @@ enum {
     V_CW, V_CCW, V_OPP, V_CWP, V_CCWP, V_OPPP,
     V_PHASE, V_PHASEP, V_HORZ, V_VERT,
     V_ACENTER, V_ACENTERP,
+    V_RAND,
     V_NOMBRE
 };
 

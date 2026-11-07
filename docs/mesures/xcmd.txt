@@ -1453,3 +1453,62 @@ CE QUI RESTE :
   · l'écart des commentaires, à trancher ;
   · le reste du banc de MAC•CAM FORTH, DANS HC (LEAVE, EXIT, une faute).
 
+
+
+LE HASARD : RAND — 7 novembre
+-----------------------------
+
+DEMANDÉ par l'utilisatrice (« tu veux faire RAND dans maccam ? »), et le lieu
+choisi par elle : les modules MAC•CAM de HC, ce dépôt, plutôt que
+l'application de bureau. Le contexte : deux jours à écrire des règles pour
+son bestiaire, où les lucioles, le feu de forêt et une diffusion propre
+butaient tous sur l'absence de hasard. La machine d'origine n'en avait pas.
+
+CE QUI EST FAIT :
+  · trois voisinages de plus, majors 8, 9 et 10 : N/MOORE-RAND, N/VONN-RAND,
+    N/MARG-RAND. Chacun est un voisinage d'origine, UN bit changé : le 10
+    (&CENTER') en Moore et en von Neumann, le 11 (PHASE') en Margolus. Ce bit
+    devient RAND, un mot du FORTH qui n'existe que là ;
+  · « rand », une propriété de la fenêtre : la probabilité, en pour cent, au
+    millionième près ; 50 à l'ouverture ; refusée en silence hors de 0 à 100 ;
+  · le dictionnaire de départ grandit des trois déclarations, et sa borne
+    d'autant : la faute de mémoire tombe au 185e mot de l'utilisatrice, avant
+    comme après (mesuré dans le conteneur, l'ancien et le nouveau FORTH).
+
+RIEN NE CHANGE pour une pile de 1990 : les témoins forth, maccam et xcmd
+n'ont bougé qu'aux sections ajoutées, et les deux modules, refaits depuis
+les sources de main avec le clang du conteneur, sont identiques à l'octet à
+ceux du dépôt — leurs différences viennent donc de RAND seul.
+
+UN DÉFAUT TROUVÉ PAR LE HARNAIS, avant toute poussée. La première version
+dévidait une suite (xorshift64*) : la diffusion en Margolus — un bloc tourné
+dans un sens ou dans l'autre au hasard — GAGNAIT 13 particules sur 400 en 200
+pas. LA CAUSE : avec ALTERNATE, un bloc à cheval sur le bord du tore est
+calculé deux fois, de part et d'autre de la bordure, et chaque copie tirait
+son propre bit ; sans hasard, les deux copies donnaient le même résultat. LA
+CORRECTION : le tirage est une fonction de la place (la cellule, ou le coin
+du bloc ramené sur le tore) et du numéro du pas, mêlés par le finaliseur de
+splitmix64. Mesuré : 400 particules, 400 après 200 pas.
+
+UN SECOND, PAR LE HARNAIS xcmd : « the rand » répondait « lu.04lu ». Le
+snprintf du kit ne connaît ni %lu ni les largeurs ; les décimales s'écrivent
+à la main. Et « long » n'a que 32 bits dans le module : la lecture du
+pourcentage passe en 64 bits (« 123456789 » refusé, sans déborder).
+
+MESURÉ dans le conteneur, la machine compilée en natif, 256 × 256 cellules,
+200 pas, N/MOORE-RAND, « RAND >PLN0 » :
+
+    p visée   p mesurée   deux voisines ensemble   deux pas de suite
+    0,5       0,50009     0,25000 (attendu 0,25009)   0,25014
+    0,01      0,00997     0,00010 (attendu 0,00010)   0,00009
+    0,001     0,00101     0,00000                     0,00000
+
+Harnais : forth, section 10 (les dispositions, RAND inconnu en N/MOORE) ;
+maccam, sections 8 à 12 (les proportions, le même tirage pour les deux
+demi-machines, un tirage par bloc Margolus, la diffusion qui conserve, la
+même graine à l'ouverture) ; xcmd, section 12 (la propriété « rand »).
+
+NON MESURÉ :
+  · DANS HC (l'application), sur le Mac de l'utilisatrice ;
+  · le gestionnaire « load » de sa pile : il lui faut trois lignes, majors 8,
+    9 et 10, après celle de N/VONN — données dans xcmd/maccam/LISEZMOI.md.
