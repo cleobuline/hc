@@ -33,7 +33,8 @@
 /* ---- la disposition des bits ---- */
 
 /* LES HUIT TABLES DU FORTH D'ORIGINE, recopiées de son code, dans l'ordre
- * des bits (docs/mesures/xcmd.txt). Chaque déclaration recopie ses douze noms
+ * des bits (docs/mesures/xcmd.txt) ; puis les trois du hasard, qui sont de
+ * HC. Chaque déclaration recopie ses douze noms
  * dans les douze premières constantes : CENTER, NORTH… sont des constantes,
  * que MAKE-TABLE remplit à chaque entrée. Trois sont aussi MESURÉES sur les
  * tables de la pile — Moore, von Neumann, Margolus-PH —, et le moteur de
@@ -64,6 +65,22 @@ signed char forth_disposition[FORTH_VOISINAGES][FORTH_BITS] = {
     [FORTH_VONN_HV] = {
         V_EASTP, V_EAST, V_CENTERP, V_CENTER, V_SOUTHP, V_SOUTH,
         V_NORTHP, V_NORTH, V_WESTP, V_WEST, V_HORZ, V_VERT },
+    /* LE HASARD, ajouté par HC le 7 novembre, à la demande de
+     * l'utilisatrice. Chaque table est celle de son voisinage d'origine,
+     * avec un seul bit changé : en Moore et en von Neumann, le bit 10, qui
+     * portait le centre de l'autre demi-machine « primé » (&CENTER'),
+     * devient RAND ; en Margolus, le bit 11, qui portait la phase de
+     * l'autre (PHASE'), devient RAND. Le bit le moins servi des deux, à
+     * chaque fois : &CENTER et PHASE restent. */
+    [FORTH_MOORE_RAND] = {
+        V_EAST, V_SEAST, V_NEAST, V_CENTER, V_SOUTH, V_NORTH,
+        V_WEST, V_SWEST, V_NWEST, V_CENTERP, V_RAND, V_ACENTER },
+    [FORTH_VONN_RAND] = {
+        V_EASTP, V_EAST, V_CENTERP, V_CENTER, V_SOUTHP, V_SOUTH,
+        V_NORTHP, V_NORTH, V_WESTP, V_WEST, V_RAND, V_ACENTER },
+    [FORTH_MARG_RAND] = {
+        V_CCWP, V_CCW, V_OPPP, V_OPP, V_CWP, V_CW,
+        V_CENTERP, V_CENTER, V_ACENTERP, V_ACENTER, V_PHASE, V_RAND },
 };
 
 static const char *const NOMS_VOISINS[V_NOMBRE] = {
@@ -74,6 +91,7 @@ static const char *const NOMS_VOISINS[V_NOMBRE] = {
     "CW", "CCW", "OPP", "CW'", "CCW'", "OPP'",
     "PHASE", "PHASE'", "HORZ", "VERT",
     "&CENTER", "&CENTER'",
+    "RAND",
 };
 
 const char *forth_nom_voisin(int v)
@@ -121,6 +139,7 @@ static const char *const INTERNES[M_INTERNES] = {
     "VARIABLE", "CONSTANT",
     "N/MOORE", "N/VONN", "N/MARG-PH", "N/MARG-HV",
     "N/MOORE-PH", "N/MOORE-HV", "N/VONN-PH", "N/VONN-HV",
+    "N/MOORE-RAND", "N/VONN-RAND", "N/MARG-RAND",
 };
 
 /* ---- les tailles de l'original ---- */
@@ -143,7 +162,10 @@ enum {
     ZONE_ORIGINE = 0xc6,
     CONSTANTES   = 100,
     VARIABLES    = 99,
-    DICTIONNAIRE = 200
+    /* Les trois déclarations du hasard (N/MOORE-RAND…) entrent au
+     * dictionnaire de départ : il grandit d'autant, pour que les mots de
+     * l'utilisatrice gardent exactement la place qu'ils avaient. */
+    DICTIONNAIRE = 200 + (FORTH_VOISINAGES - FORTH_MOORE_RAND)
 };
 
 /* ---- le code compilé ---- */

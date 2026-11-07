@@ -92,6 +92,12 @@ qui voudront mettre des bulles dans leurs piles » : les rappels
 HMGetBalloons et HMShowBalloon, et un menu Help qui ne porte que « Show
 Balloons ». Rien de neuf en HyperTalk.
 
+LE 7 NOVEMBRE, dans les modules de MAC•CAM et non dans HC : le HASARD,
+demandé par elle. Trois voisinages de plus pour son FORTH (N/MOORE-RAND,
+N/VONN-RAND, N/MARG-RAND, majors 8 à 10), où un bit devient RAND, et la
+propriété « rand » de la fenêtre CAM. Les huit voisinages de l'original ne
+changent pas. Tout est dans xcmd/maccam/LISEZMOI.md et docs/mesures/xcmd.txt.
+
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
 noté dans docs/mesures/polygone.txt), plus aucune extension. La 0.7.8 doit

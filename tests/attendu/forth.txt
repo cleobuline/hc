@@ -151,3 +151,12 @@
       rend « 2  » ; 3 bip(s)
    
       rend «  »
+
+== 10. le hasard, de HC : RAND ==
+   N/MOORE-RAND (major 8) : 0:EAST 1:S.EAST 2:N.EAST 3:CENTER 4:SOUTH 5:NORTH 6:WEST 7:S.WEST 8:N.WEST 9:CENTER' 10:RAND 11:&CENTER
+   N/VONN-RAND (major 9) : 0:EAST' 1:EAST 2:CENTER' 3:CENTER 4:SOUTH' 5:SOUTH 6:NORTH' 7:NORTH 8:WEST' 9:WEST 10:RAND 11:&CENTER
+   N/MARG-RAND (major 10) : 0:CCW' 1:CCW 2:OPP' 3:OPP 4:CW' 5:CW 6:CENTER' 7:CENTER 8:&CENTER' 9:&CENTER 10:PHASE 11:RAND
+   N/MOORE : R RAND >PLN0 ; MAKE-TABLE R
+      rend «  » ; envoie « COMPILE_ERR "Unknow'd word ", 4  »
+   N/MOORE-RAND : R RAND 0 = >PLN0 ; MAKE-TABLE R
+      rend «  » ; pln0 : 2048 uns, bit -1

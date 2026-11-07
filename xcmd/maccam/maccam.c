@@ -21,7 +21,12 @@
  * pour masquer des plans au dessin — ce que les clut faisaient en 1990, et
  * que le moteur MacCam moderne fait déjà. Et, le 19 octobre, « colors » :
  * la couleur de chaque combinaison de plans, qui remplace les clut pour
- * de bon. Voir pose(), plus bas. */
+ * de bon. Voir pose(), plus bas.
+ *
+ * ET LE 7 NOVEMBRE, décidé par l'utilisatrice : le HASARD. Les voisinages
+ * 8, 9 et 10 (N/MOORE-RAND, N/VONN-RAND, N/MARG-RAND dans le FORTH) donnent
+ * aux règles un bit tiré au sort, RAND, et « rand » en règle la probabilité,
+ * en pour cent. Rien ne change pour les huit voisinages de l'original. */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -199,7 +204,7 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-enum { PROPRIETES = 32 };
+enum { PROPRIETES = 33 };
 
 static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
@@ -207,7 +212,8 @@ static const char *const NOMS[PROPRIETES] = {
     "image7", "scale", "pln7", "pln6", "pln5", "pln4", "pln3", "pln2",
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
     "alternate", "phaseA", "phaseB",
-    "planes", "colors"                          /* les ajouts : voir pose() */
+    "planes", "colors",                         /* les ajouts : voir pose() */
+    "rand"
 };
 
 static int rang(const char *prop)
@@ -239,6 +245,30 @@ static void image(Fenetre *f, int bit, const char *valeur)
     if (GetCardPicture(&r, noir)) cam_image(&f->cam, bit, noir, l, h);
     free(noir);
     dessine(f);
+}
+
+/* « rand » : un pourcentage, entier ou décimal à point, de 0 à 100 ; quatre
+ * décimales au plus, le millionième. Rend les millionièmes, ou -1 si ce
+ * n'est pas un nombre de 0 à 100 : rien ne change alors, comme pour les
+ * autres propriétés qui ne comprennent pas ce qu'on leur donne. */
+static long pour_cent(const char *v)
+{
+    /* En 64 bits : « long » n'en a que 32 dans le module WebAssembly, et
+     * neuf chiffres fois dix mille y débordaient. */
+    unsigned long long ppm = 0;
+    int chiffres = 0, decimales = 0, point = 0;
+    while (*v == ' ') v++;
+    for (; *v; v++) {
+        if (*v == '.' && !point) { point = 1; continue; }
+        if (*v < '0' || *v > '9') break;
+        if (point && ++decimales > 4) continue;     /* au-delà du millionième */
+        if (++chiffres > 9) return -1;
+        ppm = ppm * 10 + (unsigned)(*v - '0');
+    }
+    while (*v == ' ') v++;
+    if (*v || !chiffres) return -1;
+    for (int k = point ? decimales : 0; k < 4; k++) ppm *= 10;
+    return ppm > 1000000 ? -1 : (long)ppm;
 }
 
 /* « colors » : les lignes « pppp r,g,b », lues dans l'ordre, chacune
@@ -375,6 +405,14 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         if (lu) dessine(f);
         return 1;
     }
+    case 32: {
+        /* « rand », l'ajout du 7 novembre : la probabilité que RAND vaille
+         * 1, en pour cent. « set the rand of window "CAM" to 0.1 » : une
+         * cellule sur mille. 50 à l'ouverture. */
+        long ppm = pour_cent(valeur);
+        if (ppm >= 0 && f->ouverte) cam_hasard(c, (unsigned long)ppm);
+        return 1;
+    }
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -425,6 +463,22 @@ static char *lit(Fenetre *f, const char *prop)
                                   k & 1, f->couleurs[k][0], f->couleurs[k][1],
                                   f->couleurs[k][2]);
         return c;
+    }
+    case 32: {
+        /* « rand », en pour cent : les décimales à la main, le snprintf
+         * du kit ne connaissant ni « %lu » ni les largeurs (le harnais xcmd
+         * l'a montré : « lu.04lu »). */
+        unsigned p = (unsigned)f->cam.ppm, dec = p % 10000;
+        int n = snprintf(s, sizeof s, "%u", p / 10000);
+        if (dec && n > 0 && n < 10) {
+            s[n++] = '.';
+            for (unsigned d = 1000; d && dec; d /= 10) {
+                s[n++] = (char)('0' + dec / d);
+                dec %= d;
+            }
+            s[n] = '\0';
+        }
+        return s;
     }
     default:
         return NULL;
