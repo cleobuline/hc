@@ -239,5 +239,45 @@ int main(void)
            empreinte(&c) != premier ? "deux tirages différents" : "LE MÊME TIRAGE");
     cam_ferme(&c);
     cam_ferme(&d);
+
+    /* LE COMPTEUR, l'ajout de HC décidé par l'utilisatrice le 8 novembre :
+     * les cellules allumées de chaque plan, sur le tore seul. Il doit dire,
+     * plan par plan, ce que dit vivantes(), et ne jamais compter la
+     * bordure, qui ne porte que des copies. */
+    puts("\n== 13. le compteur ==");
+    unsigned long nb[4];
+    cam_ouvre(&c, 34, 34);
+    cam_compte(&c, nb);
+    printf("   une fenêtre neuve : %lu,%lu,%lu,%lu\n", nb[0], nb[1], nb[2], nb[3]);
+    static const int planeur[5][2] = { { 2, 3 }, { 3, 4 }, { 4, 2 }, { 4, 3 }, { 4, 4 } };
+    for (int k = 0; k < 5; k++) allume(&c, planeur[k][0], planeur[k][1], 7);
+    for (int x = 5; x <= 11; x++) allume(&c, 10, x, 5);
+    allume(&c, 1, 1, 4);                    /* le coin du tore, recopié au bord */
+    allume(&c, 1, 1, 7);
+    cam_compte(&c, nb);
+    printf("   un planeur et un coin au plan 0, sept au plan 2, un coin au plan 3 :"
+           " %lu,%lu,%lu,%lu\n", nb[0], nb[1], nb[2], nb[3]);
+    charge(&c, "N/MOORE : A CENTER >PLN0 CENTER' >PLN1 ; "
+               ": B CENTER >PLN2 CENTER' >PLN3 ; MAKE-TABLE A MAKE-TABLE B");
+    cam_pas(&c, CAM_SELON_MAJOR);
+    int grille = 0;
+    for (int r = 0; r < c.h; r++)
+        for (int x = 0; x < c.w; x++) grille += (c.pix[r * c.w + x] >> 7) & 1;
+    cam_compte(&c, nb);
+    printf("   après un pas qui ne change rien : %d au plan 0 dans toute la grille,"
+           " bordure comprise ; le compteur : %lu,%lu,%lu,%lu\n",
+           grille, nb[0], nb[1], nb[2], nb[3]);
+    cam_ferme(&c);
+    cam_ouvre(&c, 66, 66);
+    charge(&c, "N/MOORE-RAND : R RAND >PLN0 RAND >PLN3 ; MAKE-TABLE R");
+    cam_hasard(&c, 250000);
+    cam_pas(&c, CAM_SELON_MAJOR);
+    cam_compte(&c, nb);
+    printf("   RAND à 25 %% : le compteur %lu,%lu,%lu,%lu ; vivantes() %d,%d,%d,%d\n",
+           nb[0], nb[1], nb[2], nb[3], vivantes(&c, 7), vivantes(&c, 6),
+           vivantes(&c, 5), vivantes(&c, 4));
+    cam_ferme(&c);
+    cam_compte(&c, nb);
+    printf("   une fenêtre fermée : %lu,%lu,%lu,%lu\n", nb[0], nb[1], nb[2], nb[3]);
     return 0;
 }

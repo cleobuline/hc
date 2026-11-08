@@ -26,7 +26,12 @@
  * ET LE 7 NOVEMBRE, décidé par l'utilisatrice : le HASARD. Les voisinages
  * 8, 9 et 10 (N/MOORE-RAND, N/VONN-RAND, N/MARG-RAND dans le FORTH) donnent
  * aux règles un bit tiré au sort, RAND, et « rand » en règle la probabilité,
- * en pour cent. Rien ne change pour les huit voisinages de l'original. */
+ * en pour cent. Rien ne change pour les huit voisinages de l'original.
+ *
+ * ET LE 8 NOVEMBRE, décidé par elle aussi : le COMPTEUR. « the count of
+ * window "CAM" » rend les cellules allumées de chaque plan, « 1834,52,0,0 »
+ * — de quoi mesurer dans HC ce qu'une expérience fait : une aimantation,
+ * un seuil, π par une pluie de Monte-Carlo. Il se lit et ne se pose pas. */
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -204,7 +209,7 @@ static int message(Fenetre *f, const char *m)
 
 /* ---- les propriétés : setProp, getProp ---- */
 
-enum { PROPRIETES = 33 };
+enum { PROPRIETES = 34 };
 
 static const char *const NOMS[PROPRIETES] = {
     "hilite", "name", "visible", "height", "width", "rect",
@@ -213,7 +218,7 @@ static const char *const NOMS[PROPRIETES] = {
     "pln1", "pln0", "palette", "PictResource", "major", "minor",
     "alternate", "phaseA", "phaseB",
     "planes", "colors",                         /* les ajouts : voir pose() */
-    "rand"
+    "rand", "count"
 };
 
 static int rang(const char *prop)
@@ -413,6 +418,10 @@ static int pose(Fenetre *f, const char *prop, const char *valeur)
         if (ppm >= 0 && f->ouverte) cam_hasard(c, (unsigned long)ppm);
         return 1;
     }
+    case 33:
+        /* « count », l'ajout du 8 novembre : il se lit, il ne se pose pas.
+         * Le poser ne change rien, comme une valeur incomprise ailleurs. */
+        return 1;
     default:
         if (i >= 6 && i <= 13) {                /* image0 à image7 */
             image(f, i - 6, valeur);
@@ -479,6 +488,18 @@ static char *lit(Fenetre *f, const char *prop)
             s[n] = '\0';
         }
         return s;
+    }
+    case 33: {
+        /* « count », l'ajout du 8 novembre : les cellules allumées des
+         * plans 0 à 3, séparées par des virgules — « item 1 of the count of
+         * window "CAM" » pour le plan 0. Le tore seul, sans sa bordure ;
+         * une fenêtre pas encore ouverte compte « 0,0,0,0 ». */
+        static char t[48];
+        unsigned long n[4] = { 0, 0, 0, 0 };
+        if (f->ouverte) cam_compte(&f->cam, n);
+        snprintf(t, sizeof t, "%u,%u,%u,%u", (unsigned)n[0], (unsigned)n[1],
+                 (unsigned)n[2], (unsigned)n[3]);
+        return t;
     }
     default:
         return NULL;

@@ -1508,7 +1508,57 @@ maccam, sections 8 à 12 (les proportions, le même tirage pour les deux
 demi-machines, un tirage par bloc Margolus, la diffusion qui conserve, la
 même graine à l'ouverture) ; xcmd, section 12 (la propriété « rand »).
 
-NON MESURÉ :
-  · DANS HC (l'application), sur le Mac de l'utilisatrice ;
-  · le gestionnaire « load » de sa pile : il lui faut trois lignes, majors 8,
-    9 et 10, après celle de N/VONN — données dans xcmd/maccam/LISEZMOI.md.
+VU DANS HC (l'application), sur le Mac de l'utilisatrice, les 7 et 8
+novembre — vu sur ses captures, pas mesuré en nombres :
+  · son gestionnaire « load » porte les trois lignes, majors 8, 9 et 10,
+    après celle de N/VONN (lu dans sa pile) ;
+  · des règles des trois voisinages tournent comme dans le conteneur : la
+    forêt et le vote (N/VONN-RAND, N/MOORE-RAND), le brownien, les fourmis
+    et les gaz (N/MARG-RAND), le percolateur, le chat, le feu de bois ;
+  · « rand » posé depuis un bouton de sa pile (ask, puis set).
+Un écart vu et compris : « Can't understand N/VONN-RAND », le 7 au soir —
+les modules de son Mac étaient les anciens ; refaits avec « make » dans
+xcmd/, l'alerte est partie.
+
+NON MESURÉ : les proportions du tableau ci-dessus, DANS HC. Le compteur du
+8 novembre (ci-dessous) permet maintenant de les relever.
+
+
+LE COMPTEUR : count — 8 novembre
+--------------------------------
+
+DEMANDÉ par l'utilisatrice (« on fait le compteur »), le lendemain d'une
+soirée où toutes les mesures des règles RAND — l'aimantation d'Ising, le
+seuil du percolateur, la densité de Conway qui hésite — avaient été faites
+dans le conteneur, faute de pouvoir compter dans HC. Le premier usage
+prévu : π, par une pluie de Monte-Carlo sur un disque.
+
+CE QUI EST FAIT :
+  · cam_compte (maccam_coeur.c) : les cellules allumées de chaque plan, sur
+    le tore seul — la bordure, copie des lignes et colonnes opposées, n'est
+    pas comptée ;
+  · « count », une propriété de la fenêtre, lue seulement : « 1834,52,0,0 »,
+    les plans 0 à 3 ; la poser ne change rien ; une fenêtre dont la grille
+    n'est pas faite compte « 0,0,0,0 ».
+  · Le compte se fait à la lecture, en un passage sur la grille : le pas
+    n'en sait rien, et MAC•CAM ne ralentit pas — la question de
+    l'utilisatrice, avant de dire oui.
+
+RIEN NE CHANGE pour une pile de 1990, ni pour une pile du 7 novembre : les
+témoins maccam et xcmd n'ont bougé qu'aux lignes ajoutées et à la taille du
+module ; les autres modules, refaits avec le même clang, sont identiques à
+l'octet à ceux du dépôt.
+
+MESURÉ dans le conteneur :
+  · harnais maccam, section 13 : une fenêtre neuve compte 0,0,0,0 ; un
+    planeur et le coin du tore au plan 0, sept cellules au plan 2, le coin
+    au plan 3 comptent 6,0,7,1 ; après un pas qui ne change rien, la grille
+    entière porte 9 cellules au plan 0 — le coin et ses trois copies au
+    bord — et le compteur dit encore 6 ; RAND à 25 % sur 64 × 64 : 1 025 au
+    plan 0 et au plan 3, ce que dit le compte cellule par cellule ; une
+    fenêtre fermée compte 0,0,0,0 ;
+  · harnais xcmd, section 12 : « the count » lu, posé (sans effet), un
+    « item » ; 100 au plan 0 après fill8 (le tore de 10 × 10 du harnais),
+    0 après erasea.
+
+NON MESURÉ : DANS HC (l'application), sur le Mac de l'utilisatrice.

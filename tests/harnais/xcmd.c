@@ -708,6 +708,15 @@ int main(int argc, char **argv)
     fais("set the rand of window \"CAM\" to 0");
     fais("put the rand of window \"CAM\"");
     fais("set the rand of window \"CAM\" to 50");
+    /* « count », l'ajout de HC décidé par l'utilisatrice le 8 novembre :
+     * les cellules allumées de chaque plan, sur le tore seul. Il se lit ;
+     * le poser ne change rien. La machine est éprouvée par le harnais
+     * maccam ; ici, la propriété, et fill8 et erasea plus bas. */
+    puts("   -- count : les cellules allumées de chaque plan, l'ajout de HC");
+    fais("put the count of window \"CAM\"");
+    fais("set the count of window \"CAM\" to \"1,2,3,4\"");
+    fais("put the count of window \"CAM\"");
+    fais("put item 1 of the count of window \"CAM\" + item 3 of the count of window \"CAM\"");
     puts("   -- scale : la fenêtre, carrée, de côté la grille fois l'échelle");
     fais("set the scale of window \"CAM\" to 2");
     puts("   -- stepfast, jusqu'au clic : trois pas");
@@ -715,7 +724,9 @@ int main(int argc, char **argv)
     fais("send stepfast to window \"CAM\"");
     puts("   -- fill8, erasea, toscrap, PictResource");
     fais("send fill8 to window \"CAM\"");
+    fais("put the count of window \"CAM\"");     /* le plan 0 plein */
     fais("send erasea to window \"CAM\"");
+    fais("put the count of window \"CAM\"");
     fais("send toscrap to window \"CAM\"");
     fais("set the PictResource of window \"CAM\" to \"x\"");
     fais("send zorglub to window \"CAM\"");           /* passé : rien */

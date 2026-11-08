@@ -372,7 +372,7 @@
       = false
 
 == 12. MACCAM : la fenêtre CAM de MAC•CAM ==
-   ajoute maccam.wasm (19344 octets) : accepté
+   ajoute maccam.wasm (19792 octets) : accepté
    get maccam("10,40,22,52", "CAM", "True", 17, "True", "True")
       hôte : ouvre 11 « CAM » 10,40,22,52, visible 1, style 17, flottante 1
       hôte : image de 11, 12 × 12 à l'échelle 1 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
@@ -660,6 +660,14 @@
    put the rand of window "CAM"
       = 0
    set the rand of window "CAM" to 50
+   -- count : les cellules allumées de chaque plan, l'ajout de HC
+   put the count of window "CAM"
+      = 5,0,0,0
+   set the count of window "CAM" to "1,2,3,4"
+   put the count of window "CAM"
+      = 5,0,0,0
+   put item 1 of the count of window "CAM" + item 3 of the count of window "CAM"
+      = 5
    -- scale : la fenêtre, carrée, de côté la grille fois l'échelle
    set the scale of window "CAM" to 2
       hôte : pose 11 width = 24
@@ -723,6 +731,8 @@
          ##########
          ##########
          ##########
+   put the count of window "CAM"
+      = 100,0,0,0
    send erasea to window "CAM"
       hôte : image de 11, 12 × 12 à l'échelle 2 ; plans 1 à 3 : 0 point(s) ; couleur 0x80 = 255,255,255
          ..........
@@ -735,6 +745,8 @@
          ..........
          ..........
          ..........
+   put the count of window "CAM"
+      = 0,0,0,0
    send toscrap to window "CAM"
       hôte : copie 11
    set the PictResource of window "CAM" to "x"

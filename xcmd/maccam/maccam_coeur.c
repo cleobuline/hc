@@ -70,6 +70,23 @@ static unsigned rand_bit(const Cam *c, unsigned y, unsigned x)
     return (unsigned long long)tirage(c, y, x) < c->seuil;
 }
 
+/* ---- le compteur ---- */
+
+void cam_compte(const Cam *c, unsigned long n[4])
+{
+    n[0] = n[1] = n[2] = n[3] = 0;
+    if (!c->pix) return;
+    for (int r = 1; r <= c->h - 2; r++) {
+        const u8 *ligne = c->pix + (size_t)r * (size_t)c->w;
+        for (int x = 1; x <= c->w - 2; x++) {
+            n[0] += P0(ligne[x]);
+            n[1] += P1(ligne[x]);
+            n[2] += P2(ligne[x]);
+            n[3] += P3(ligne[x]);
+        }
+    }
+}
+
 void cam_ferme(Cam *c)
 {
     free(c->pix);

@@ -171,3 +171,10 @@
 == 12. la même graine à chaque ouverture ==
    deux fenêtres ouvertes : le même tirage
    deux pas dans la même : deux tirages différents
+
+== 13. le compteur ==
+   une fenêtre neuve : 0,0,0,0
+   un planeur et un coin au plan 0, sept au plan 2, un coin au plan 3 : 6,0,7,1
+   après un pas qui ne change rien : 9 au plan 0 dans toute la grille, bordure comprise ; le compteur : 6,0,7,1
+   RAND à 25 % : le compteur 1025,0,0,1025 ; vivantes() 1025,0,0,1025
+   une fenêtre fermée : 0,0,0,0

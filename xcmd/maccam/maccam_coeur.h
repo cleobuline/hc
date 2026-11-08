@@ -71,6 +71,13 @@ void cam_lit_pln(const Cam *c, int n, char *texte);
  * au-delà, toujours. 500 000 à l'ouverture. */
 void cam_hasard(Cam *c, unsigned long ppm);
 
+/* LE COMPTEUR, l'ajout de HC décidé par l'utilisatrice le 8 novembre : les
+ * cellules allumées de chaque plan, n[0] pour le plan 0 … n[3] pour le plan
+ * 3. Sur le tore seul : la bordure n'est qu'une copie des lignes et des
+ * colonnes opposées, et ses cellules compteraient deux fois. Le compte ne
+ * se fait que quand on le demande ; le pas n'en sait rien. */
+void cam_compte(const Cam *c, unsigned long n[4]);
+
 /* Un pas : le balayage, puis les deux phases basculent. */
 void cam_pas(Cam *c, int voisinage);
 
