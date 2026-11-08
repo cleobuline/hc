@@ -144,6 +144,7 @@ messages.
 | `planes` | **l'ajout de HC** : les plans montrés, un chiffre par plan — `"1000"` le plan 0 seul, `"0011"` les plans 2 et 3, `"1111"` tous (le défaut) |
 | `colors` | **l'ajout de HC** : la couleur de chaque combinaison de plans, une ligne `"pppp r,g,b"` par motif — `"1000 255,0,0"` le plan 0 seul en rouge, `x` pour l'un ou l'autre |
 | `rand` | **l'ajout de HC** : la probabilité que RAND vaille 1, en pour cent, au millionième près — `50` à l'ouverture, `0.1` une cellule sur mille |
+| `count` | **l'ajout de HC** : les cellules allumées de chaque plan, séparées par des virgules — `"1834,52,0,0"` ; elle se lit, et la poser ne change rien |
 
 Ce qui diffère de l'original, décidé par l'utilisatrice : les palettes clut
 de la pile ne sont pas reprises, et `PictResource`, qui écrivait une
@@ -254,6 +255,30 @@ Mesuré dans le conteneur, sur 256 × 256 cellules et 200 pas : à 50 %, la
 part de cellules tirées est 0,50009 ; deux voisines, ou deux pas successifs
 d'une même cellule, tombent ensemble 0,2500 fois sur une, ce qu'on attend de
 tirages indépendants. Non mesuré : sur le Mac de l'utilisatrice.
+
+## Le compteur : count
+
+Ajouté le 8 novembre, à la demande de l'utilisatrice. La fenêtre sait
+maintenant dire combien de cellules sont allumées dans chacun de ses
+quatre plans : de quoi mesurer, dans HC, ce que fait une expérience — une
+densité, une aimantation, un seuil, la part d'une pluie tombée dans un
+disque.
+
+```
+put the count of window "CAM"            -- 1834,52,0,0 : les plans 0 à 3
+put item 1 of the count of window "CAM"  -- 1834 : le plan 0 seul
+```
+
+Ce qu'il faut savoir :
+
+- **Le tore seul** : la bordure d'un pixel, refaite à chaque pas avec les
+  lignes et les colonnes opposées, n'est qu'une copie ; elle ne compte pas.
+  Une fenêtre de 256 × 256 compte au plus 254 × 254 = 64 516 cellules par
+  plan.
+- **Il se lit, il ne se pose pas** : `set the count` ne change rien.
+- **Il ne coûte rien entre deux questions** : le compte se fait quand on le
+  lit, en un passage sur la grille ; le pas n'en sait rien.
+- Une fenêtre dont la grille n'est pas encore faite compte `0,0,0,0`.
 
 ## L'essayer
 

@@ -97,6 +97,9 @@ demandé par elle. Trois voisinages de plus pour son FORTH (N/MOORE-RAND,
 N/VONN-RAND, N/MARG-RAND, majors 8 à 10), où un bit devient RAND, et la
 propriété « rand » de la fenêtre CAM. Les huit voisinages de l'original ne
 changent pas. Tout est dans xcmd/maccam/LISEZMOI.md et docs/mesures/xcmd.txt.
+LE 8 NOVEMBRE, au même endroit et décidé par elle : le COMPTEUR, « the count
+of window "CAM" », les cellules allumées de chaque plan, lu seulement. Pour
+mesurer dans HC ce qui ne se mesurait que dans le conteneur, et π.
 
 ET IL N'Y EN AURA PAS D'AUTRE. Dit par l'utilisatrice le 2 octobre au soir :
 après l'éditeur de polygone et l'alpha des couleurs de bouton (le chantier
